@@ -71,17 +71,19 @@ Both apps are separate Next.js App Router projects. One account works across bot
 
 Auto-approved operations:
   pnpm commands
-  File creation in project
-  Directory creation
-  Git read operations
-  
-Always requires approval:
-  Any deletion
+  File creation and editing in project
+  Directory creation (mkdir)
+  Directory listing (ls)
+  Git read operations (status, diff, log, branch, show)
   Git commits and pushes
+
+Always requires approval:
+  Any deletion (rm, rmdir)
+  Destructive git (push --force, reset --hard, checkout --)
   .env file changes
   Global installs
   External network calls
-  
+
 Never without explicit confirmation:
   DROP/TRUNCATE/DELETE SQL
   Modifying existing migrations
