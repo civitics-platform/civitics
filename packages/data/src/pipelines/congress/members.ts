@@ -121,8 +121,9 @@ export async function fetchCongressApi<T>(
   const response = await fetch(url.toString());
 
   if (!response.ok) {
+    const body = await response.text().catch(() => "");
     throw new Error(
-      `Congress.gov API error: ${response.status} ${response.statusText} — ${url.toString()}`
+      `Congress.gov API error: ${response.status} ${response.statusText} — ${url.toString()}\n  Body: ${body.slice(0, 300)}`
     );
   }
 

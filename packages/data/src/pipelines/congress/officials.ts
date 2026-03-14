@@ -117,7 +117,12 @@ export async function runOfficialsPipeline(
 
     const { firstName, lastName, fullName } = parseMemberName(member.name);
     const party = mapParty(member.partyName);
-    const isSenator = member.chamber.includes("Senate");
+    // chamber is absent on some API responses; fall back to last term's chamber
+    const chamber =
+      member.chamber ??
+      member.terms?.item?.slice(-1)[0]?.chamber ??
+      "";
+    const isSenator = chamber.toLowerCase().includes("senate");
 
     // Resolve jurisdiction: fall back to federal for DC, territories, etc.
     const jurisdictionId = stateIds.get(member.state) ?? federalId;

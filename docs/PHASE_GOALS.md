@@ -40,7 +40,7 @@
 > **Done when:** 500 beta users, real government data loading, at least one complete user journey (search → official → vote record → donor → connection graph), grant applications submitted.
 
 ### Data Ingestion Pipelines
-- [ ] Congress.gov API → officials + votes
+- [x] Congress.gov API → officials + votes
 - [ ] FEC API → financial_relationships
 - [ ] USASpending.gov → spending_records
 - [ ] Regulations.gov → proposals + comment periods
