@@ -49,11 +49,11 @@
 - [x] Master orchestrator + scheduler (daily/weekly cron)
 
 ### Core Pages
-- [x] Official profile page with real data
-- [ ] Agency profile page
+- [x] Official profile page with real data (list + /officials/[id] standalone)
+- [x] Agency profile page (/agencies list + /agencies/[id] profile)
 - [ ] Proposal detail page
 - [ ] Search across all entities
-- [ ] Homepage wired to real data
+- [x] Homepage wired to real data
 
 ### AI Features
 - [ ] Plain language bill summaries (cached)

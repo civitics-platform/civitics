@@ -54,15 +54,25 @@ export function OfficialsList({
     return ["all", ...Array.from(s).sort()];
   }, [officials]);
 
+  const PARTY_ORDER: Record<string, number> = { democrat: 1, republican: 2 };
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return officials.filter((o) => {
-      if (q && !o.full_name.toLowerCase().includes(q)) return false;
-      if (chamberFilter !== "all" && o.chamber !== chamberFilter) return false;
-      if (partyFilter !== "all" && o.party !== partyFilter) return false;
-      if (stateFilter !== "all" && o.state_name !== stateFilter) return false;
-      return true;
-    });
+    return officials
+      .filter((o) => {
+        if (q && !o.full_name.toLowerCase().includes(q)) return false;
+        if (chamberFilter !== "all" && o.chamber !== chamberFilter) return false;
+        if (partyFilter !== "all" && o.party !== partyFilter) return false;
+        if (stateFilter !== "all" && o.state_name !== stateFilter) return false;
+        return true;
+      })
+      .sort((a, b) => {
+        const pa = PARTY_ORDER[a.party ?? ""] ?? 3;
+        const pb = PARTY_ORDER[b.party ?? ""] ?? 3;
+        if (pa !== pb) return pa - pb;
+        return a.full_name.localeCompare(b.full_name);
+      });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [officials, search, chamberFilter, partyFilter, stateFilter]);
 
   const selected = useMemo(

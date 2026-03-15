@@ -3,6 +3,15 @@ export const dynamic = "force-dynamic";
 import { cookies } from "next/headers";
 import { createServerClient } from "@civitics/db";
 
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+type Stats = {
+  officials: number;
+  proposals: number;
+  donors: number;
+  spending: number;
+};
+
 type FeaturedOfficial = {
   id: string;
   name: string;
@@ -10,114 +19,95 @@ type FeaturedOfficial = {
   party: string | null;
   state: string | null;
   district: string | null;
-  chamber: string | null;
   voteCount: number;
 };
 
-const PROPOSALS = [
-  {
-    id: "1",
-    number: "S. 2847",
-    title: "Clean Energy Investment and Grid Modernization Act",
-    status: "In Committee",
-    statusColor: "amber",
-    chamber: "Senate",
-    introduced: "Feb 14, 2026",
-    commentDeadline: "Mar 28, 2026",
-    summary:
-      "Authorizes $180B in federal investment for renewable energy infrastructure and transmission grid upgrades over 10 years.",
-    commentCount: 12841,
-    openForComment: true,
-  },
-  {
-    id: "2",
-    number: "HR 4291",
-    title: "Algorithmic Accountability and Transparency Act",
-    status: "Floor Vote",
-    statusColor: "blue",
-    chamber: "House",
-    introduced: "Jan 8, 2026",
-    commentDeadline: null,
-    summary:
-      "Requires federal agencies and large platforms to audit automated decision systems for bias and provide plain-language disclosures.",
-    commentCount: 31204,
-    openForComment: false,
-  },
-  {
-    id: "3",
-    number: "EPA-HQ-OAR-2026-0112",
-    title: "Proposed Rule: National Ambient Air Quality Standards Revision",
-    status: "Open Comment",
-    statusColor: "green",
-    chamber: "Regulatory",
-    introduced: "Feb 1, 2026",
-    commentDeadline: "Apr 2, 2026",
-    summary:
-      "Proposes updated particulate matter standards (PM2.5) lowering the annual limit from 12 to 9 micrograms per cubic meter.",
-    commentCount: 8203,
-    openForComment: true,
-  },
-];
-
-const AGENCIES = [
-  {
-    id: "1",
-    acronym: "EPA",
-    name: "Environmental Protection Agency",
-    activeProposals: 14,
-    annualBudgetB: 9.7,
-    openCommentPeriods: 3,
-    employeeCount: 14600,
-  },
-  {
-    id: "2",
-    acronym: "FTC",
-    name: "Federal Trade Commission",
-    activeProposals: 7,
-    annualBudgetB: 0.43,
-    openCommentPeriods: 2,
-    employeeCount: 1100,
-  },
-  {
-    id: "3",
-    acronym: "SEC",
-    name: "Securities and Exchange Commission",
-    activeProposals: 11,
-    annualBudgetB: 2.1,
-    openCommentPeriods: 4,
-    employeeCount: 4600,
-  },
-  {
-    id: "4",
-    acronym: "DOE",
-    name: "Department of Energy",
-    activeProposals: 22,
-    annualBudgetB: 48.2,
-    openCommentPeriods: 6,
-    employeeCount: 14000,
-  },
-];
-
-const PARTY_STYLES: Record<string, { border: string; badge: string; text: string; label: string }> = {
-  democrat:    { border: "border-blue-400",   badge: "bg-blue-100 text-blue-800",   text: "text-blue-700",   label: "D" },
-  republican:  { border: "border-red-400",    badge: "bg-red-100 text-red-800",     text: "text-red-700",    label: "R" },
-  independent: { border: "border-purple-400", badge: "bg-purple-100 text-purple-800", text: "text-purple-700", label: "I" },
+type FeaturedProposal = {
+  id: string;
+  identifier: string;
+  title: string;
+  status: string;
+  type: string;
+  introducedAt: string | null;
+  commentDeadline: string | null;
+  summary: string | null;
+  openForComment: boolean;
+  agencyId: string | null;
 };
-const DEFAULT_PARTY = { border: "border-gray-300", badge: "bg-gray-100 text-gray-700", text: "text-gray-600", label: "?" };
 
-const STATUS_STYLES: Record<string, string> = {
-  amber: "bg-amber-100 text-amber-800",
-  blue: "bg-blue-100 text-blue-800",
-  green: "bg-emerald-100 text-emerald-800",
-  red: "bg-red-100 text-red-800",
+type FeaturedAgency = {
+  id: string;
+  acronym: string;
+  name: string;
+  totalProposals: number;
+  openProposals: number;
 };
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+const PARTY_STYLES: Record<string, { border: string; badge: string; label: string }> = {
+  democrat:    { border: "border-blue-400",   badge: "bg-blue-100 text-blue-800",     label: "D" },
+  republican:  { border: "border-red-400",    badge: "bg-red-100 text-red-800",       label: "R" },
+  independent: { border: "border-purple-400", badge: "bg-purple-100 text-purple-800", label: "I" },
+};
+const DEFAULT_PARTY = { border: "border-gray-300", badge: "bg-gray-100 text-gray-700", label: "?" };
+
+const PROPOSAL_STATUS: Record<string, { color: string; label: string }> = {
+  open_comment:           { color: "bg-emerald-100 text-emerald-800", label: "Open Comment" },
+  introduced:             { color: "bg-amber-100 text-amber-800",     label: "Introduced" },
+  in_committee:           { color: "bg-amber-100 text-amber-800",     label: "In Committee" },
+  passed_committee:       { color: "bg-blue-100 text-blue-800",       label: "Passed Committee" },
+  floor_vote:             { color: "bg-blue-100 text-blue-800",       label: "Floor Vote" },
+  passed_chamber:         { color: "bg-blue-100 text-blue-800",       label: "Passed Chamber" },
+  passed_both_chambers:   { color: "bg-indigo-100 text-indigo-800",   label: "Passed Both Chambers" },
+  signed:                 { color: "bg-green-100 text-green-800",     label: "Signed" },
+  enacted:                { color: "bg-green-100 text-green-800",     label: "Enacted" },
+  failed:                 { color: "bg-red-100 text-red-800",         label: "Failed" },
+  withdrawn:              { color: "bg-gray-100 text-gray-700",       label: "Withdrawn" },
+  comment_closed:         { color: "bg-gray-100 text-gray-700",       label: "Comment Closed" },
+};
+
+const PROPOSAL_TYPE_LABELS: Record<string, string> = {
+  regulation:     "Federal Regulation",
+  bill:           "Congress",
+  executive_order: "Executive Order",
+  treaty:         "Treaty",
+  referendum:     "Referendum",
+  resolution:     "Resolution",
+};
+
+function formatStat(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return n.toLocaleString();
+  return String(n);
+}
+
+function formatDate(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function initials(name: string) {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0])
+    .join("")
+    .toUpperCase();
+}
+
+// ─── Sub-components ───────────────────────────────────────────────────────────
 
 function NavBar() {
   return (
     <header className="border-b border-gray-200 bg-white">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="flex h-16 items-center justify-between">
-          {/* Logo */}
           <div className="flex items-center gap-3">
             <div className="flex h-8 w-8 items-center justify-center rounded bg-indigo-600">
               <span className="text-xs font-bold text-white">CV</span>
@@ -125,15 +115,14 @@ function NavBar() {
             <span className="text-lg font-semibold tracking-tight text-gray-900">Civitics</span>
           </div>
 
-          {/* Nav links */}
           <nav className="hidden md:flex items-center gap-6">
             {[
-              { label: "Officials", href: "/officials" },
-              { label: "Proposals", href: "#" },
-              { label: "Agencies", href: "#" },
-              { label: "Spending", href: "#" },
+              { label: "Officials",    href: "/officials" },
+              { label: "Proposals",   href: "#" },
+              { label: "Agencies",    href: "/agencies" },
+              { label: "Spending",    href: "#" },
               { label: "Connections", href: "/graph" },
-            { label: "Dashboard",   href: "/dashboard" },
+              { label: "Dashboard",   href: "/dashboard" },
             ].map((item) => (
               <a
                 key={item.label}
@@ -145,12 +134,8 @@ function NavBar() {
             ))}
           </nav>
 
-          {/* Right side */}
           <div className="flex items-center gap-3">
-            <a
-              href="#"
-              className="text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors"
-            >
+            <a href="#" className="text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors">
               Sign in
             </a>
             <a
@@ -166,14 +151,21 @@ function NavBar() {
   );
 }
 
-function Hero() {
+function Hero({ stats }: { stats: Stats }) {
+  const statItems = [
+    { label: "Officials tracked",  value: formatStat(stats.officials) },
+    { label: "Active proposals",   value: formatStat(stats.proposals) },
+    { label: "Donor records",      value: stats.donors > 0 ? formatStat(stats.donors) : "Coming soon" },
+    { label: "Spending records",   value: formatStat(stats.spending) },
+  ];
+
   return (
     <section className="border-b border-gray-200 bg-white py-16">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="max-w-3xl">
           <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-            Public beta — all data is free to access
+            Beta · All data is public record
           </div>
           <h1 className="text-4xl font-bold tracking-tight text-gray-900 sm:text-5xl">
             Democracy with receipts.
@@ -197,14 +189,8 @@ function Hero() {
             </a>
           </div>
 
-          {/* Stats bar */}
           <div className="mt-12 grid grid-cols-2 gap-6 sm:grid-cols-4">
-            {[
-              { label: "Officials tracked", value: "14,821" },
-              { label: "Active proposals", value: "3,204" },
-              { label: "Donor records", value: "48.2M" },
-              { label: "Comments submitted", value: "891,440" },
-            ].map((stat) => (
+            {statItems.map((stat) => (
               <div key={stat.label}>
                 <p className="text-2xl font-bold text-gray-900">{stat.value}</p>
                 <p className="mt-0.5 text-sm text-gray-500">{stat.label}</p>
@@ -244,11 +230,21 @@ function SectionHeader({
   );
 }
 
-function initials(name: string) {
-  return name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase();
-}
-
 function OfficialsSection({ officials }: { officials: FeaturedOfficial[] }) {
+  if (officials.length === 0) {
+    return (
+      <section>
+        <SectionHeader
+          title="Officials"
+          description="Every elected and appointed official — votes, donors, and promises on record."
+          href="/officials"
+          linkLabel="Browse all officials"
+        />
+        <p className="mt-4 text-sm text-gray-500">Loading officials data…</p>
+      </section>
+    );
+  }
+
   return (
     <section>
       <SectionHeader
@@ -287,7 +283,9 @@ function OfficialsSection({ officials }: { officials: FeaturedOfficial[] }) {
                   <p className="text-[10px] text-gray-400 mt-0.5">Party</p>
                 </div>
                 <div className="text-center">
-                  <p className="text-sm font-semibold text-gray-900">{official.voteCount.toLocaleString()}</p>
+                  <p className="text-sm font-semibold text-gray-900">
+                    {official.voteCount.toLocaleString()}
+                  </p>
                   <p className="text-[10px] text-gray-400">Votes</p>
                 </div>
                 <div className="text-center">
@@ -303,7 +301,21 @@ function OfficialsSection({ officials }: { officials: FeaturedOfficial[] }) {
   );
 }
 
-function ProposalsSection() {
+function ProposalsSection({ proposals }: { proposals: FeaturedProposal[] }) {
+  if (proposals.length === 0) {
+    return (
+      <section>
+        <SectionHeader
+          title="Proposals"
+          description="Bills, regulations, and rules open for public comment — submit your position for free."
+          href="#"
+          linkLabel="Browse all proposals"
+        />
+        <p className="mt-4 text-sm text-gray-500">No open comment periods right now. Check back soon.</p>
+      </section>
+    );
+  }
+
   return (
     <section>
       <SectionHeader
@@ -313,63 +325,99 @@ function ProposalsSection() {
         linkLabel="Browse all proposals"
       />
       <div className="mt-4 flex flex-col gap-3">
-        {PROPOSALS.map((proposal) => (
-          <a
-            key={proposal.id}
-            href="#"
-            className="group block rounded-lg border border-gray-200 bg-white p-5 hover:border-indigo-300 hover:shadow-sm transition-all"
-          >
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <span className="rounded bg-gray-100 px-2 py-0.5 font-mono text-xs text-gray-600">
-                  {proposal.number}
-                </span>
-                <span
-                  className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_STYLES[proposal.statusColor] ?? STATUS_STYLES["amber"]}`}
-                >
-                  {proposal.status}
-                </span>
-                {proposal.openForComment && (
-                  <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-medium text-emerald-700">
-                    Comment open
+        {proposals.map((proposal) => {
+          const statusStyle = PROPOSAL_STATUS[proposal.status] ?? {
+            color: "bg-gray-100 text-gray-700",
+            label: proposal.status,
+          };
+          const typeLabel = PROPOSAL_TYPE_LABELS[proposal.type] ?? proposal.type;
+
+          return (
+            <a
+              key={proposal.id}
+              href="#"
+              className="group block rounded-lg border border-gray-200 bg-white p-5 hover:border-indigo-300 hover:shadow-sm transition-all"
+            >
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  {proposal.identifier !== proposal.type && (
+                    <span className="rounded bg-gray-100 px-2 py-0.5 font-mono text-xs text-gray-600">
+                      {proposal.identifier.length > 30
+                        ? proposal.identifier.slice(0, 30) + "…"
+                        : proposal.identifier}
+                    </span>
+                  )}
+                  <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${statusStyle.color}`}>
+                    {statusStyle.label}
+                  </span>
+                  {proposal.openForComment && (
+                    <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-medium text-emerald-700">
+                      Comment open
+                    </span>
+                  )}
+                </div>
+                {proposal.commentDeadline && (
+                  <span className="text-xs text-gray-400">
+                    Deadline: {formatDate(proposal.commentDeadline)}
                   </span>
                 )}
               </div>
-              {proposal.commentDeadline && (
-                <span className="text-xs text-gray-400">
-                  Deadline: {proposal.commentDeadline}
-                </span>
-              )}
-            </div>
-            <h3 className="mt-2 text-sm font-semibold text-gray-900 group-hover:text-indigo-700">
-              {proposal.title}
-            </h3>
-            <p className="mt-1.5 text-sm text-gray-500 leading-relaxed">{proposal.summary}</p>
-            <div className="mt-3 flex items-center gap-4 text-xs text-gray-400">
-              <span>{proposal.chamber}</span>
-              <span>·</span>
-              <span>Introduced {proposal.introduced}</span>
-              <span>·</span>
-              <span>{proposal.commentCount.toLocaleString()} comments on record</span>
-            </div>
-          </a>
-        ))}
+              <h3 className="mt-2 text-sm font-semibold text-gray-900 group-hover:text-indigo-700 line-clamp-2">
+                {proposal.title}
+              </h3>
+              {proposal.summary ? (
+                <p className="mt-1.5 text-sm text-gray-500 leading-relaxed line-clamp-2">
+                  {proposal.summary}
+                </p>
+              ) : null}
+              <div className="mt-3 flex items-center gap-4 text-xs text-gray-400">
+                <span>{typeLabel}</span>
+                {proposal.agencyId && (
+                  <>
+                    <span>·</span>
+                    <span>{proposal.agencyId}</span>
+                  </>
+                )}
+                {proposal.introducedAt && (
+                  <>
+                    <span>·</span>
+                    <span>Introduced {formatDate(proposal.introducedAt)}</span>
+                  </>
+                )}
+              </div>
+            </a>
+          );
+        })}
       </div>
     </section>
   );
 }
 
-function AgenciesSection() {
+function AgenciesSection({ agencies }: { agencies: FeaturedAgency[] }) {
+  if (agencies.length === 0) {
+    return (
+      <section>
+        <SectionHeader
+          title="Agencies"
+          description="Federal agencies, their active rulemaking, and open comment periods."
+          href="#"
+          linkLabel="Browse all agencies"
+        />
+        <p className="mt-4 text-sm text-gray-500">Loading agency data…</p>
+      </section>
+    );
+  }
+
   return (
     <section>
       <SectionHeader
         title="Agencies"
-        description="Federal agencies, their budgets, active rulemaking, and open comment periods."
+        description="Federal agencies, their active rulemaking, and open comment periods."
         href="#"
         linkLabel="Browse all agencies"
       />
       <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {AGENCIES.map((agency) => (
+        {agencies.map((agency) => (
           <a
             key={agency.id}
             href="#"
@@ -377,29 +425,23 @@ function AgenciesSection() {
           >
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded border border-gray-200 bg-gray-50 font-mono text-xs font-bold text-gray-600">
-                {agency.acronym}
+                {agency.acronym.slice(0, 5)}
               </div>
               <div className="min-w-0">
                 <p className="truncate text-sm font-semibold text-gray-900 group-hover:text-indigo-700">
                   {agency.acronym}
                 </p>
-                <p className="truncate text-xs text-gray-500">{agency.name}</p>
+                <p className="truncate text-xs text-gray-500">Federal Agency</p>
               </div>
             </div>
-            <div className="mt-3 grid grid-cols-3 gap-2 border-t border-gray-100 pt-3">
+            <div className="mt-3 grid grid-cols-2 gap-2 border-t border-gray-100 pt-3">
               <div className="text-center">
-                <p className="text-sm font-semibold text-gray-900">{agency.activeProposals}</p>
-                <p className="text-[10px] text-gray-400">Active rules</p>
+                <p className="text-sm font-semibold text-gray-900">{agency.totalProposals}</p>
+                <p className="text-[10px] text-gray-400">Total rules</p>
               </div>
               <div className="text-center">
-                <p className="text-sm font-semibold text-gray-900">
-                  ${agency.annualBudgetB}B
-                </p>
-                <p className="text-[10px] text-gray-400">Budget</p>
-              </div>
-              <div className="text-center">
-                <p className={`text-sm font-semibold ${agency.openCommentPeriods > 0 ? "text-emerald-600" : "text-gray-400"}`}>
-                  {agency.openCommentPeriods}
+                <p className={`text-sm font-semibold ${agency.openProposals > 0 ? "text-emerald-600" : "text-gray-400"}`}>
+                  {agency.openProposals}
                 </p>
                 <p className="text-[10px] text-gray-400">Open now</p>
               </div>
@@ -435,34 +477,99 @@ function CommentBanner() {
   );
 }
 
+// ─── Page ─────────────────────────────────────────────────────────────────────
+
 export default async function HomePage() {
   const cookieStore = await cookies();
   const supabase = createServerClient(cookieStore);
 
-  // Fetch 2 senators + 2 reps ordered by last name as featured officials
-  const [senRes, repRes] = await Promise.all([
+  // Wave 1: stats + open proposals + agency list (all parallel)
+  const [
+    officialsCountRes,
+    activeProposalsRes,
+    donorCountRes,
+    spendingCountRes,
+    openProposalsRes,
+    agencyRowsRes,
+  ] = await Promise.all([
     supabase
       .from("officials")
-      .select("id, full_name, role_title, party, district_name, jurisdictions!jurisdiction_id(name), governing_bodies!governing_body_id(short_name)")
-      .eq("is_active", true)
-      .eq("governing_bodies.short_name" as never, "Senate")
-      .order("last_name")
-      .limit(2),
+      .select("id", { count: "exact", head: true })
+      .eq("is_active", true),
     supabase
-      .from("officials")
-      .select("id, full_name, role_title, party, district_name, jurisdictions!jurisdiction_id(name), governing_bodies!governing_body_id(short_name)")
+      .from("proposals")
+      .select("id", { count: "exact", head: true })
+      .in("status", ["open_comment", "introduced", "in_committee", "floor_vote"]),
+    supabase
+      .from("financial_relationships")
+      .select("id", { count: "exact", head: true }),
+    supabase
+      .from("spending_records")
+      .select("id", { count: "exact", head: true }),
+    supabase
+      .from("proposals")
+      .select(
+        "id,title,status,type,bill_number,regulations_gov_id,introduced_at,comment_period_end,summary_plain,metadata"
+      )
+      .eq("status", "open_comment")
+      .gt("comment_period_end", new Date().toISOString())
+      .order("comment_period_end", { ascending: true })
+      .limit(3),
+    supabase
+      .from("agencies")
+      .select("id,name,acronym")
       .eq("is_active", true)
-      .eq("governing_bodies.short_name" as never, "House")
-      .order("last_name")
-      .limit(2),
+      .order("name")
+      .limit(4),
   ]);
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const rawFeatured: any[] = [...(senRes.data ?? []), ...(repRes.data ?? [])];
+  const officialsTotal = officialsCountRes.count ?? 0;
+  const agencyRows = agencyRowsRes.data ?? [];
 
-  // Fetch vote counts for each featured official in parallel
+  // Proposal fallback: if no open comment periods, show most recent
+  let proposalData = openProposalsRes.data ?? [];
+  if (proposalData.length === 0) {
+    const { data: fallback } = await supabase
+      .from("proposals")
+      .select(
+        "id,title,status,type,bill_number,regulations_gov_id,introduced_at,comment_period_end,summary_plain,metadata"
+      )
+      .order("introduced_at", { ascending: false })
+      .limit(3);
+    proposalData = fallback ?? [];
+  }
+
+  // Wave 2: officials (random sample) + agency proposal counts (all parallel)
+  const randomOffset =
+    officialsTotal > 4 ? Math.floor(Math.random() * (officialsTotal - 4)) : 0;
+
+  const [officialsRes, ...agencyStatPairs] = await Promise.all([
+    supabase
+      .from("officials")
+      .select(
+        "id,full_name,role_title,party,district_name,jurisdictions!jurisdiction_id(name)"
+      )
+      .eq("is_active", true)
+      .range(randomOffset, randomOffset + 3),
+    ...agencyRows.map((agency) =>
+      Promise.all([
+        supabase
+          .from("proposals")
+          .select("id", { count: "exact", head: true })
+          .filter("metadata->>agency_id", "eq", agency.acronym ?? agency.name),
+        supabase
+          .from("proposals")
+          .select("id", { count: "exact", head: true })
+          .filter("metadata->>agency_id", "eq", agency.acronym ?? agency.name)
+          .eq("status", "open_comment"),
+      ])
+    ),
+  ]);
+
+  // Wave 3: vote counts for featured officials
+  const rawOfficials = officialsRes.data ?? [];
   const voteCounts = await Promise.all(
-    rawFeatured.map((o) =>
+    rawOfficials.map((o) =>
       supabase
         .from("votes")
         .select("id", { count: "exact", head: true })
@@ -472,36 +579,84 @@ export default async function HomePage() {
   );
   const voteCountMap = new Map(voteCounts.map((v) => [v.id, v.count]));
 
-  const featuredOfficials: FeaturedOfficial[] = rawFeatured.map((o) => ({
-    id: o.id,
-    name: o.full_name,
-    role: o.role_title,
-    party: o.party ?? null,
-    state: o.jurisdictions?.name ?? null,
-    district: o.district_name ?? null,
-    chamber: o.governing_bodies?.short_name ?? null,
-    voteCount: voteCountMap.get(o.id) ?? 0,
-  }));
+  // ─── Shape data ────────────────────────────────────────────────────────────
+
+  const stats: Stats = {
+    officials: officialsTotal,
+    proposals: activeProposalsRes.count ?? 0,
+    donors: donorCountRes.count ?? 0,
+    spending: spendingCountRes.count ?? 0,
+  };
+
+  const featuredOfficials: FeaturedOfficial[] = rawOfficials.map((o) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const jurisdiction = o.jurisdictions as any;
+    return {
+      id: o.id,
+      name: o.full_name,
+      role: o.role_title,
+      party: o.party ?? null,
+      state: jurisdiction?.name ?? null,
+      district: o.district_name ?? null,
+      voteCount: voteCountMap.get(o.id) ?? 0,
+    };
+  });
+
+  const featuredProposals: FeaturedProposal[] = proposalData.map((p) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const meta = p.metadata as any;
+    return {
+      id: p.id,
+      identifier: p.bill_number ?? p.regulations_gov_id ?? p.type ?? "—",
+      title: p.title,
+      status: p.status,
+      type: p.type,
+      introducedAt: p.introduced_at ?? null,
+      commentDeadline: p.comment_period_end ?? null,
+      summary: p.summary_plain ?? null,
+      openForComment: p.status === "open_comment",
+      agencyId: meta?.agency_id ?? null,
+    };
+  });
+
+  const featuredAgencies: FeaturedAgency[] = agencyRows.map((agency, i) => {
+    const [totalRes, openRes] = (agencyStatPairs[i] as [{ count: number | null }, { count: number | null }]) ?? [
+      { count: 0 },
+      { count: 0 },
+    ];
+    return {
+      id: agency.id,
+      acronym: agency.acronym ?? agency.name,
+      name: agency.name,
+      totalProposals: totalRes.count ?? 0,
+      openProposals: openRes.count ?? 0,
+    };
+  });
+
+  // ─── Render ────────────────────────────────────────────────────────────────
 
   return (
     <div className="min-h-screen bg-gray-50">
       <NavBar />
-      <Hero />
+      <Hero stats={stats} />
       <main className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
         <div className="flex flex-col gap-12">
           <CommentBanner />
           <OfficialsSection officials={featuredOfficials} />
-          <ProposalsSection />
-          <AgenciesSection />
+          <ProposalsSection proposals={featuredProposals} />
+          <AgenciesSection agencies={featuredAgencies} />
         </div>
       </main>
       <footer className="mt-16 border-t border-gray-200 bg-white">
         <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-sm text-gray-500">
-              Civitics — open civic infrastructure. All data is public record.
+              Civitics — open civic infrastructure. Beta · All data is public record.
             </p>
-            <a href="/dashboard" className="text-xs text-gray-400 hover:text-indigo-600 transition-colors">
+            <a
+              href="/dashboard"
+              className="text-xs text-gray-400 hover:text-indigo-600 transition-colors"
+            >
               Platform transparency →
             </a>
           </div>

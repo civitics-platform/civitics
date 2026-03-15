@@ -48,21 +48,33 @@ function formatDate(d: string | null) {
   return new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
+function formatMoney(cents: number): string {
+  const dollars = cents / 100;
+  if (dollars >= 1_000_000) return `$${(dollars / 1_000_000).toFixed(1)}M`;
+  if (dollars >= 1_000) return `$${(dollars / 1_000).toFixed(0)}K`;
+  if (dollars > 0) return `$${dollars.toLocaleString()}`;
+  return "$0";
+}
+
 export function OfficialCard({ official }: { official: OfficialRow }) {
-  const [votes, setVotes] = useState<RecentVote[]>([]);
-  const [voteCount, setVoteCount] = useState<number | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [votes, setVotes]             = useState<RecentVote[]>([]);
+  const [voteCount, setVoteCount]     = useState<number | null>(null);
+  const [donorCount, setDonorCount]   = useState<number | null>(null);
+  const [totalDonations, setTotal]    = useState<number | null>(null);
+  const [loading, setLoading]         = useState(true);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setVotes([]);
     setVoteCount(null);
+    setDonorCount(null);
+    setTotal(null);
 
     const supabase = createBrowserClient();
 
-    async function fetch() {
-      const [recentRes, countRes] = await Promise.all([
+    async function load() {
+      const [recentRes, voteCountRes, donorCountRes, donorAmtRes] = await Promise.all([
         supabase
           .from("votes")
           .select("id, vote, voted_at, roll_call_number, proposals!proposal_id(id, title, bill_number, short_title)")
@@ -73,16 +85,29 @@ export function OfficialCard({ official }: { official: OfficialRow }) {
           .from("votes")
           .select("id", { count: "exact", head: true })
           .eq("official_id", official.id),
+        supabase
+          .from("financial_relationships")
+          .select("id", { count: "exact", head: true })
+          .eq("official_id", official.id),
+        supabase
+          .from("financial_relationships")
+          .select("amount_cents")
+          .eq("official_id", official.id),
       ]);
 
       if (cancelled) return;
+
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       setVotes((recentRes.data as any[]) ?? []);
-      setVoteCount(countRes.count ?? 0);
+      setVoteCount(voteCountRes.count ?? 0);
+      setDonorCount(donorCountRes.count ?? 0);
+      setTotal(
+        (donorAmtRes.data ?? []).reduce((sum, r) => sum + (r.amount_cents ?? 0), 0)
+      );
       setLoading(false);
     }
 
-    fetch();
+    load();
     return () => { cancelled = true; };
   }, [official.id]);
 
@@ -148,8 +173,18 @@ export function OfficialCard({ official }: { official: OfficialRow }) {
             label="Votes on record"
             loading={loading}
           />
-          <Stat value="—" label="Donors on record" note="FEC coming soon" />
-          <Stat value="—" label="Promises" note="Phase 2" />
+          <Stat
+            value={donorCount !== null ? donorCount.toLocaleString() : "—"}
+            label="Donors on record"
+            loading={loading}
+            note={donorCount === 0 ? "FEC sync weekly" : undefined}
+          />
+          <Stat
+            value={totalDonations !== null ? formatMoney(totalDonations) : "—"}
+            label="Total raised"
+            loading={loading}
+            note={totalDonations === 0 ? "FEC sync weekly" : undefined}
+          />
         </div>
       </div>
 
@@ -166,7 +201,9 @@ export function OfficialCard({ official }: { official: OfficialRow }) {
             ))}
           </div>
         ) : votes.length === 0 ? (
-          <p className="text-sm text-gray-400">No vote records found.</p>
+          <p className="text-sm text-gray-400">
+            Voting record loading — check back as we sync congressional data.
+          </p>
         ) : (
           <div className="space-y-1.5">
             {votes.map((v) => {
@@ -194,12 +231,18 @@ export function OfficialCard({ official }: { official: OfficialRow }) {
         )}
       </div>
 
-      {/* Phase 2 teaser */}
-      <div className="border-t border-gray-100 px-5 pb-4">
+      {/* Profile link + Phase 2 teaser */}
+      <div className="border-t border-gray-100 px-5 pb-4 space-y-2">
+        <a
+          href={`/officials/${official.id}`}
+          className="mt-3 block w-full rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-center text-xs font-medium text-gray-600 hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 transition-colors"
+        >
+          View full profile →
+        </a>
         <button
           disabled
           title="Available in Phase 2 with AI credits"
-          className="mt-3 w-full cursor-not-allowed rounded-md border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs font-medium text-indigo-400"
+          className="w-full cursor-not-allowed rounded-md border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs font-medium text-indigo-400"
         >
           ✦ AI analysis of this official — Phase 2
         </button>
