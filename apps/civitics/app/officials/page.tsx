@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { cookies } from "next/headers";
 import { createServerClient } from "@civitics/db";
 import { OfficialsList } from "./components/OfficialsList";
