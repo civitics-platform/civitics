@@ -23,7 +23,7 @@ export interface CongressMember {
   bioguideId: string;
   name: string; // "LastName, FirstName" format
   partyName: string;
-  state: string; // two-letter abbr e.g. "OH"
+  state: string; // full name e.g. "Ohio" (NOT two-letter abbr — use stateIds.get(name))
   district?: number | null;
   chamber: string; // "Senate" | "House of Representatives"
   terms?: {
@@ -254,6 +254,21 @@ export function mapVoteResult(result: string): string {
     return "failed";
   }
   return "floor_vote";
+}
+
+/**
+ * Fetch raw text (HTML/XML) from any URL.
+ * Used for House Clerk and Senate LIS XML vote feeds.
+ * Applies the same 200ms rate-limit delay as fetchCongressApi.
+ */
+export async function fetchText(url: string): Promise<string> {
+  await sleep(200);
+  const res = await fetch(url);
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`HTTP ${res.status} ${res.statusText} — ${url}\n  Body: ${body.slice(0, 200)}`);
+  }
+  return res.text();
 }
 
 /**

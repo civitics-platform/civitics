@@ -142,7 +142,8 @@ export async function seedJurisdictions(
       if (selectErr) throw selectErr;
 
       if (existing) {
-        stateIds.set(state.abbr, existing.id);
+        stateIds.set(state.abbr, existing.id);   // "IN" → id
+        stateIds.set(state.name, existing.id);   // "Indiana" → id (Congress.gov returns full names)
       } else {
         const { data: inserted, error: insertErr } = await db
           .from("jurisdictions")
@@ -160,7 +161,8 @@ export async function seedJurisdictions(
           .single();
 
         if (insertErr) throw insertErr;
-        stateIds.set(state.abbr, inserted.id);
+        stateIds.set(state.abbr, inserted.id);   // "IN" → id
+        stateIds.set(state.name, inserted.id);   // "Indiana" → id
         seededCount++;
       }
     } catch (err) {
