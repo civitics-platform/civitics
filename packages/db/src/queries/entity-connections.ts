@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Database, ConnectionType } from "../types/database";
+import type { Database } from "../types/database";
+type ConnectionType = Database["public"]["Tables"]["entity_connections"]["Row"]["connection_type"];
 
 type DB = SupabaseClient<Database>;
 type Row = Database["public"]["Tables"]["entity_connections"]["Row"];
@@ -83,7 +84,8 @@ export async function getShortestPath(
 ): Promise<Row[]> {
   // Implemented as a PostgreSQL recursive CTE function (Phase 2+).
   // Stub returns empty array until the function is deployed.
-  const { data, error } = await db.rpc("find_shortest_path", {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (db as any).rpc("find_shortest_path", {
     p_from_type: fromType,
     p_from_id: fromId,
     p_to_type: toType,

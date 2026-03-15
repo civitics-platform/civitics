@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Database, PromiseStatus } from "../types/database";
+import type { Database } from "../types/database";
+type PromiseStatus = Database["public"]["Tables"]["promises"]["Row"]["status"];
 
 type DB = SupabaseClient<Database>;
 type Row = Database["public"]["Tables"]["promises"]["Row"];

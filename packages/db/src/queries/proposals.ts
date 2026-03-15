@@ -1,5 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Database, ProposalStatus, ProposalType } from "../types/database";
+import type { Database } from "../types/database";
+type ProposalStatus = Database["public"]["Tables"]["proposals"]["Row"]["status"];
+type ProposalType = Database["public"]["Tables"]["proposals"]["Row"]["type"];
 
 type DB = SupabaseClient<Database>;
 type Row = Database["public"]["Tables"]["proposals"]["Row"];

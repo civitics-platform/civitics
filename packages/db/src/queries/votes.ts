@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Database, VoteValue } from "../types/database";
+import type { Database } from "../types/database";
+type VoteValue = Database["public"]["Tables"]["votes"]["Row"]["vote"];
 
 type DB = SupabaseClient<Database>;
 type Row = Database["public"]["Tables"]["votes"]["Row"];

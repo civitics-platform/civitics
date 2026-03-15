@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Database, Party } from "../types/database";
+import type { Database } from "../types/database";
+type Party = Database["public"]["Tables"]["officials"]["Row"]["party"];
 
 type DB = SupabaseClient<Database>;
 type Row = Database["public"]["Tables"]["officials"]["Row"];
@@ -46,7 +47,7 @@ export async function listOfficialsByParty(
     .from("officials")
     .select("*")
     .eq("governing_body_id", governingBodyId)
-    .eq("party", party)
+    .eq("party", party as NonNullable<Party>)
     .eq("is_active", true)
     .order("last_name");
   if (error) throw error;

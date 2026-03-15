@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Database, DonorType } from "../types/database";
+import type { Database } from "../types/database";
+type DonorType = Database["public"]["Tables"]["financial_relationships"]["Row"]["donor_type"];
 
 type DB = SupabaseClient<Database>;
 type Row = Database["public"]["Tables"]["financial_relationships"]["Row"];

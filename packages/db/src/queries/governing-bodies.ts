@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Database, GoverningBodyType } from "../types/database";
+import type { Database } from "../types/database";
+type GoverningBodyType = Database["public"]["Tables"]["governing_bodies"]["Row"]["type"];
 
 type DB = SupabaseClient<Database>;
 type Row = Database["public"]["Tables"]["governing_bodies"]["Row"];

@@ -1,27 +1,19 @@
 {
   "permissions": {
     "allow": [
-      "Bash(pnpm*)",
-      "Bash(git status*)",
-      "Bash(git diff*)",
-      "Bash(git log*)",
-      "Bash(git add*)",
-      "Bash(git commit*)",
-      "Bash(git push*)",
-      "Bash(git branch*)",
-      "Bash(git show*)",
-      "Bash(git stash*)",
-      "Bash(mkdir*)",
-      "Bash(ls*)",
+      "Bash(*)",
       "Write(c:/Users/Craig/Documents/Civitics/App/**)",
       "Edit(c:/Users/Craig/Documents/Civitics/App/**)",
-      "Read(c:/Users/Craig/Documents/Civitics/App/**)"
+      "Read(c:/Users/Craig/Documents/Civitics/App/**)",
+      "WebSearch",
+      "WebFetch(*)",
+      "mcp__supabase__*"
     ],
     "deny": [
       "Bash(git push --force*)",
       "Bash(git reset --hard*)",
       "Bash(git checkout -- *)",
-      "Bash(rm*)",
+      "Bash(rm -rf*)",
       "Bash(rmdir*)"
     ]
   }

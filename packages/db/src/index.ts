@@ -4,18 +4,6 @@ export type { CookieStore } from "./client";
 
 // Types
 export type { Database, Json } from "./types/database";
-export type {
-  JurisdictionType,
-  GoverningBodyType,
-  ProposalType,
-  ProposalStatus,
-  ConnectionType,
-  Party,
-  PromiseStatus,
-  DonorType,
-  VoteValue,
-  AgencyType,
-} from "./types/database";
 
 // Queries
 export {

@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Database, AgencyType } from "../types/database";
+import type { Database } from "../types/database";
+type AgencyType = Database["public"]["Tables"]["agencies"]["Row"]["agency_type"];
 
 type DB = SupabaseClient<Database>;
 type Row = Database["public"]["Tables"]["agencies"]["Row"];

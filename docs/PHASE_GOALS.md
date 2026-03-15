@@ -48,7 +48,7 @@
 - [ ] CourtListener → judges + rulings
 
 ### Core Pages
-- [ ] Official profile page with real data
+- [x] Official profile page with real data
 - [ ] Agency profile page
 - [ ] Proposal detail page
 - [ ] Search across all entities
