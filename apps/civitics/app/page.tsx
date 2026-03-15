@@ -163,7 +163,7 @@ function NavBar() {
           {/* Nav links */}
           <nav className="hidden md:flex items-center gap-6">
             {[
-              { label: "Officials", href: "#" },
+              { label: "Officials", href: "/officials" },
               { label: "Proposals", href: "#" },
               { label: "Agencies", href: "#" },
               { label: "Spending", href: "#" },
@@ -218,7 +218,7 @@ function Hero() {
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
             <a
-              href="#"
+              href="/officials"
               className="rounded-md bg-indigo-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-indigo-700 transition-colors"
             >
               Find your representatives
@@ -284,7 +284,7 @@ function OfficialsSection() {
       <SectionHeader
         title="Officials"
         description="Every elected and appointed official — votes, donors, and promises on record."
-        href="#"
+        href="/officials"
         linkLabel="Browse all officials"
       />
       <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -294,7 +294,7 @@ function OfficialsSection() {
           return (
             <a
               key={official.id}
-              href="#"
+              href="/officials"
               className="group block rounded-lg border border-gray-200 bg-white p-4 hover:border-indigo-300 hover:shadow-sm transition-all"
             >
               <div className="flex items-center gap-3">
