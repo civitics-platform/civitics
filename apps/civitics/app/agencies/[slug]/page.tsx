@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { cookies } from "next/headers";
 import { createServerClient, createAdminClient } from "@civitics/db";
+import { createClient } from "@supabase/supabase-js";
 import { AgencyGraph } from "./components/AgencyGraph";
 
 export const revalidate = 3600;
@@ -119,23 +120,21 @@ function aggregateSpending(rows: SpendingRow[]): SpendingGroup[] {
 
 // ─── Static params (top 50 agencies pre-rendered) ────────────────────────────
 
+// Uses NEXT_PUBLIC keys (available at Vercel build time).
+// createAdminClient() must NOT be used here — secret key is runtime-only.
 export async function generateStaticParams() {
-  // createAdminClient() throws at build time on Vercel if SUPABASE_SECRET_KEY
-  // isn't in the build env. Return [] so the build succeeds; pages are then
-  // generated on first request and cached via ISR (revalidate = 3600).
-  try {
-    const supabase = createAdminClient();
-    const { data } = await supabase
-      .from("agencies")
-      .select("id")
-      .eq("is_active", true)
-      .order("name")
-      .limit(50);
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
+  );
+  const { data } = await supabase
+    .from("agencies")
+    .select("id")
+    .eq("is_active", true)
+    .order("name")
+    .limit(50);
 
-    return (data ?? []).map((a) => ({ slug: a.id }));
-  } catch {
-    return [];
-  }
+  return (data ?? []).map((a) => ({ slug: a.id }));
 }
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {

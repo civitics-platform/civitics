@@ -133,6 +133,17 @@ createAdminClient()
   → bypasses RLS
   → data ingestion pipelines only
 
+generateStaticParams:
+  → use createClient() directly
+     from @supabase/supabase-js
+  → NEXT_PUBLIC_SUPABASE_URL
+  → NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+  → Never createAdminClient()
+     (secret key not available
+      at Vercel build time)
+  → RLS public SELECT is sufficient
+     for fetching slugs
+
 Import from '@civitics/db' not directly
 from @supabase/supabase-js
 

@@ -1,25 +1,27 @@
 import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
-import { createServerClient, createAdminClient } from "@civitics/db";
+import { createServerClient } from "@civitics/db";
+import { createClient } from "@supabase/supabase-js";
 import { OfficialGraph } from "../components/OfficialGraph";
 
 export const revalidate = 3600;
 
 // ─── Static pre-render top 100 officials for SEO ──────────────────────────────
+// Uses NEXT_PUBLIC keys (available at Vercel build time).
+// createAdminClient() must NOT be used here — secret key is runtime-only.
 
 export async function generateStaticParams() {
-  try {
-    const supabase = createAdminClient();
-    const { data } = await supabase
-      .from("officials")
-      .select("id")
-      .eq("is_active", true)
-      .order("last_name")
-      .limit(100);
-    return (data ?? []).map((o) => ({ id: o.id }));
-  } catch {
-    return [];
-  }
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
+  );
+  const { data } = await supabase
+    .from("officials")
+    .select("id")
+    .eq("is_active", true)
+    .order("last_name")
+    .limit(100);
+  return (data ?? []).map((o) => ({ id: o.id }));
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
