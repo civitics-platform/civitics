@@ -82,7 +82,7 @@ export function EntitySelector({ selectedEntity, onSelect, searchFn }: EntitySel
               ? `Centered on: ${selectedEntity.label}`
               : "Search officials, agencies, proposals…"
           }
-          className="w-full pl-9 pr-10 py-2.5 text-sm bg-gray-950 border-b border-gray-800 text-gray-200 placeholder-gray-600 focus:outline-none focus:border-indigo-500 transition-colors"
+          className="w-full pl-9 pr-10 py-3 text-sm bg-gray-900 border-b border-gray-700 text-gray-200 placeholder-gray-500 focus:outline-none focus:border-indigo-500 focus:bg-gray-800 transition-colors"
         />
         {loading && (
           <div className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full border border-gray-500 border-t-transparent animate-spin" />

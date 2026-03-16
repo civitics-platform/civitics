@@ -2,9 +2,6 @@
 
 import type { VisualConfig } from "./index";
 
-export { DEFAULT_VISUAL_CONFIG } from "./index";
-export type { VisualConfig };
-
 export interface CustomizePanelProps {
   config: VisualConfig;
   onChange: (config: VisualConfig) => void;
