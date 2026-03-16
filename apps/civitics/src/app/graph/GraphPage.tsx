@@ -275,6 +275,9 @@ export function GraphPage({ initialCode, initialState }: GraphPageProps = {}) {
               {count} connections · {allNodes.length} entities
             </span>
           )}
+          <span className="text-xs text-gray-700 font-mono hidden sm:inline shrink-0">
+            v:{process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? "dev"}
+          </span>
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
