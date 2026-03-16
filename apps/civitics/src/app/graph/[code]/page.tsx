@@ -1,5 +1,7 @@
 import { createAdminClient } from "@civitics/db";
 
+export const dynamic = "force-dynamic";
+
 // graph_snapshots was created after the Database type was generated.
 // TODO: run `supabase gen types typescript` to regenerate packages/db/src/types/database.ts
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

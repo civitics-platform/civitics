@@ -144,21 +144,22 @@ generateStaticParams:
   → RLS public SELECT is sufficient
      for fetching slugs
 
-Route Handlers (API routes):
+Route Handlers AND Pages using createAdminClient():
   → ALWAYS add at the top of every
-     route.ts that uses createAdminClient():
+     route.ts OR page.tsx that calls createAdminClient():
 
      export const dynamic = "force-dynamic";
 
-  → Next.js statically prerenders route
-     handlers by default during next build
-  → Without this, Next.js calls GET() at
-     build time → createAdminClient() fails
-     because SUPABASE_SECRET_KEY is not
-     available in the Vercel build environment
-  → This applies to ALL routes using
-     createAdminClient(), not just graph routes
-  → Routes using only createServerClient()
+  → Next.js statically prerenders both route handlers
+     AND page components at build time by default
+  → Without this, Next.js calls the handler/component at
+     build time → createAdminClient() fails because
+     SUPABASE_SECRET_KEY is not available in the
+     Vercel build environment
+  → This applies to ALL files using createAdminClient():
+     - app/api/**/route.ts (API routes)
+     - app/**/page.tsx (Server Components that call it)
+  → Routes/pages using only createServerClient()
      with cookies() are already dynamic
      (cookies() is a dynamic function)
 
