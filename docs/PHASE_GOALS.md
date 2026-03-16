@@ -42,6 +42,7 @@
 ### Data Ingestion Pipelines
 - [x] Congress.gov API → officials + votes
 - [x] FEC API → financial_relationships (replaced with bulk approach — no rate limits)
+- [ ] FEC Individuals Donations bulk file (2GB - pending R2)
 - [x] FEC bulk pipeline → weball24 download → parse → match → upsert → auto-run connections
 - [x] USASpending.gov → spending_records (2,000 records, FY2024 contracts)
 - [x] Regulations.gov → proposals + comment periods (1,000 proposed rules)
@@ -61,6 +62,10 @@
 - [x] Graph screenshot export — PNG 1×/2×/4× with non-removable watermark (URL + data sources + date)
 - [x] Graph preset views — Follow the Money, Votes & Bills, Revolving Door, Full Picture, Clean View
 - [x] Graph empty state — ghost node animation + "Connections being mapped" message when table is empty
+- [x] Graph entity selector — search-as-you-type for officials, agencies, proposals; centers graph on selection
+- [x] Graph depth control — 1–5 hop selector; client-side BFS filter; amber warning at depth 4+
+- [x] Graph filter pills — per-connection-type toggles with live counts; syncs with presets; shows "Custom" badge
+- [x] Graph customize panel — node size/color encoding, edge thickness/opacity, layout, theme (dark/light/print)
 
 ### AI Features
 - [ ] Plain language bill summaries (cached)

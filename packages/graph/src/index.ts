@@ -1,6 +1,15 @@
 export { ForceGraph } from "./ForceGraph";
 export type { ForceGraphProps } from "./ForceGraph";
 
+export { EntitySelector } from "./EntitySelector";
+export type { EntitySelectorProps } from "./EntitySelector";
+export { DepthControl } from "./DepthControl";
+export type { DepthControlProps } from "./DepthControl";
+export { FilterPills } from "./FilterPills";
+export type { FilterPillsProps } from "./FilterPills";
+export { CustomizePanel } from "./CustomizePanel";
+export type { CustomizePanelProps } from "./CustomizePanel";
+
 /**
  * @civitics/graph
  *
@@ -107,4 +116,36 @@ export function edgeWidth(edge: Pick<GraphEdge, "type" | "amountCents">): number
     return Math.min(6, Math.max(1, Math.log10(edge.amountCents / 100_000) + 3));
   }
   return 1.5;
+}
+
+// ── Visual config ─────────────────────────────────────────────────────────────
+
+export interface VisualConfig {
+  nodeSizeEncoding: "connection_count" | "donation_total" | "votes_cast" | "bills_sponsored" | "years_in_office" | "uniform";
+  nodeColorEncoding: "entity_type" | "party_affiliation" | "industry_sector" | "state_region" | "single_color";
+  singleColor: string;
+  edgeThicknessEncoding: "amount_proportional" | "strength_proportional" | "uniform";
+  edgeOpacity: number; // 0–1
+  layout: "force" | "radial" | "circular";
+  theme: "light" | "dark" | "print";
+}
+
+export const DEFAULT_VISUAL_CONFIG: VisualConfig = {
+  nodeSizeEncoding: "connection_count",
+  nodeColorEncoding: "entity_type",
+  singleColor: "#3b82f6",
+  edgeThicknessEncoding: "amount_proportional",
+  edgeOpacity: 0.7,
+  layout: "force",
+  theme: "dark",
+};
+
+// ── Entity search ────────────────────────────────────────────────────────────
+
+export interface EntitySearchResult {
+  id: string;
+  label: string;
+  type: "official" | "agency" | "proposal";
+  subtitle?: string;
+  party?: string;
 }

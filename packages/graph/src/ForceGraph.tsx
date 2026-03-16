@@ -5,6 +5,7 @@ import React, { useEffect, useRef, useCallback } from "react";
 import {
   type GraphNode,
   type GraphEdge,
+  type VisualConfig,
   NODE_COLORS,
   PARTY_COLORS,
   EDGE_COLORS,
@@ -16,6 +17,7 @@ export interface ForceGraphProps {
   edges: GraphEdge[];
   onNodeClick?: (node: GraphNode | null) => void;
   className?: string;
+  visualConfig?: VisualConfig;
 }
 
 // D3 mutates link source/target from string IDs to node objects at runtime
@@ -23,6 +25,17 @@ type SimLink = Omit<GraphEdge, "source" | "target"> & {
   source: GraphNode;
   target: GraphNode;
 };
+
+function getNodeRadius(type: GraphNode["type"], encoding: VisualConfig["nodeSizeEncoding"] | undefined): number {
+  if (encoding === "uniform") return 18;
+  return NODE_RADIUS[type];
+}
+
+function getEdgeWidth(edge: Pick<GraphEdge, "type" | "amountCents" | "strength">, encoding: VisualConfig["edgeThicknessEncoding"] | undefined): number {
+  if (encoding === "uniform") return 1.5;
+  if (encoding === "strength_proportional") return Math.max(0.5, edge.strength * 3);
+  return edgeWidth(edge);
+}
 
 const NODE_RADIUS: Record<GraphNode["type"], number> = {
   official: 26,
@@ -47,7 +60,7 @@ function truncate(s: string, n: number) {
 }
 
 export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
-function ForceGraph({ nodes, edges, onNodeClick, className }: ForceGraphProps, forwardedRef) {
+function ForceGraph({ nodes, edges, onNodeClick, className, visualConfig }: ForceGraphProps, forwardedRef) {
   const svgRef = useRef<SVGSVGElement>(null);
   const simRef = useRef<d3.Simulation<GraphNode, SimLink> | null>(null);
 
@@ -126,8 +139,8 @@ function ForceGraph({ nodes, edges, onNodeClick, className }: ForceGraphProps, f
       .data(simEdges)
       .join("line")
       .attr("stroke", (d) => EDGE_COLORS[d.type])
-      .attr("stroke-width", (d) => edgeWidth(d))
-      .attr("stroke-opacity", 0.55)
+      .attr("stroke-width", (d) => getEdgeWidth(d, visualConfig?.edgeThicknessEncoding))
+      .attr("stroke-opacity", visualConfig?.edgeOpacity ?? 0.55)
       .attr("stroke-dasharray", (d) => (d.type === "appointment" ? "6,3" : null))
       .attr("marker-end", (d) => `url(#arrow-${d.type})`);
 
@@ -180,7 +193,7 @@ function ForceGraph({ nodes, edges, onNodeClick, className }: ForceGraphProps, f
 
       if (d.type === "official") {
         el.append("circle")
-          .attr("r", NODE_RADIUS.official)
+          .attr("r", getNodeRadius("official", visualConfig?.nodeSizeEncoding))
           .attr("fill", colors.fill)
           .attr("stroke", stroke)
           .attr("stroke-width", 3);
@@ -263,7 +276,7 @@ function ForceGraph({ nodes, edges, onNodeClick, className }: ForceGraphProps, f
       } else {
         // individual — small filled circle, steel blue
         el.append("circle")
-          .attr("r", NODE_RADIUS.individual)
+          .attr("r", getNodeRadius("individual", visualConfig?.nodeSizeEncoding))
           .attr("fill", colors.fill)
           .attr("stroke", stroke)
           .attr("stroke-width", 1.5)
@@ -361,7 +374,7 @@ function ForceGraph({ nodes, edges, onNodeClick, className }: ForceGraphProps, f
 
     simRef.current = sim;
     return () => { sim.stop(); };
-  }, [nodes, edges, handleClick, onNodeClick]);
+  }, [nodes, edges, handleClick, onNodeClick, visualConfig]);
 
   return (
     <svg

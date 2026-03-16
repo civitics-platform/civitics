@@ -8,6 +8,12 @@ interface GraphStateSnapshot {
   minStrength?: number;
   nodeCount: number;
   edgeCount: number;
+  // Extended state for new components
+  centerEntityId?: string;
+  centerEntityType?: string;
+  depth?: number;
+  activeFilters?: string[] | null;
+  visualConfig?: Record<string, unknown>;
 }
 
 interface SharePanelProps {
