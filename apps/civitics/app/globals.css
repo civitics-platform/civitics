@@ -3,10 +3,27 @@
 @tailwind utilities;
 
 @layer base {
+  :root {
+    --font-inter: "Inter", system-ui, sans-serif;
+    --font-mono: "JetBrains Mono", "Fira Code", monospace;
+  }
+
   html {
     @apply antialiased;
   }
+
   body {
-    @apply bg-gray-50 text-gray-900;
+    @apply bg-white text-gray-900;
+  }
+}
+
+@layer utilities {
+  /* Civic app must feel like serious infrastructure, not social media */
+  .civic-surface {
+    @apply bg-white border border-gray-200 rounded-lg;
+  }
+
+  .civic-surface-elevated {
+    @apply bg-white border border-gray-200 rounded-lg shadow-sm;
   }
 }
