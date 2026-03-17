@@ -122,10 +122,10 @@ export async function GET() {
     }
 
     // Build nodes — one per unique entity (keyed as "type:id")
+    // Use fallback label if name lookup failed — never silently drop a node
     const nodes: GraphNode[] = [];
     for (const [key, { type, id }] of entityMap) {
-      const info = nameMap.get(id);
-      if (!info) continue; // skip entities we couldn't resolve
+      const info = nameMap.get(id) ?? { label: `Unknown ${type}` };
       nodes.push({
         id: key,
         type: mapNodeType(type, info.subType),

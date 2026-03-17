@@ -80,7 +80,7 @@ export interface GraphEdge {
 
 export const NODE_COLORS: Record<NodeType, { fill: string; stroke: string }> = {
   official:       { fill: "#f8fafc", stroke: "#6366f1" },  // party overrides stroke
-  governing_body: { fill: "#f1f5f9", stroke: "#94a3b8" },
+  governing_body: { fill: "#f5f3ff", stroke: "#7c3aed" },  // purple — legislative body / committee
   proposal:       { fill: "#fffbeb", stroke: "#f59e0b" },
   corporation:    { fill: "#f0fdf4", stroke: "#16a34a" },  // green — financial entity
   pac:            { fill: "#fff7ed", stroke: "#ea580c" },  // orange — political money
