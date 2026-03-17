@@ -43,14 +43,9 @@ function mapEdgeType(dbType: string): EdgeType {
   }
 }
 
-// financial_entities and graph_snapshots were created after types were generated.
-// TODO: run `supabase gen types typescript` to update packages/db/src/types/database.ts
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type AnyClient = ReturnType<typeof createAdminClient> & { from(table: string): any };
-
 export async function GET() {
   try {
-    const supabase = createAdminClient() as AnyClient;
+    const supabase = createAdminClient();
 
     // Fetch connections ordered by strength, cap at 150 for performance
     const { data: connections, error } = await supabase

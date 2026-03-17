@@ -1,11 +1,7 @@
 import { createAdminClient } from "@civitics/db";
+import type { Json } from "@civitics/db";
 
 export const dynamic = "force-dynamic";
-
-// graph_snapshots was created after the Database type was generated.
-// TODO: run `supabase gen types typescript` to update packages/db/src/types/database.ts
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type AnyClient = ReturnType<typeof createAdminClient> & { from(table: string): any; rpc(fn: string, args?: Record<string, unknown>): any };
 
 // ── Code generation ────────────────────────────────────────────────────────
 const CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no ambiguous I/O/0/1
@@ -45,7 +41,7 @@ export async function POST(request: Request) {
       return Response.json({ error: "state is required" }, { status: 400 });
     }
 
-    const supabase = createAdminClient() as AnyClient;
+    const supabase = createAdminClient();
 
     // Generate a unique code — retry up to 5 times on collision
     let code = "";
@@ -67,7 +63,7 @@ export async function POST(request: Request) {
       .from("graph_snapshots")
       .insert({
         code,
-        state: body.state,
+        state: body.state as Json,
         title: body.title ?? null,
         is_public: true,
       })
@@ -97,7 +93,7 @@ export async function GET(request: Request) {
       return Response.json({ error: "code is required" }, { status: 400 });
     }
 
-    const supabase = createAdminClient() as AnyClient;
+    const supabase = createAdminClient();
 
     const { data, error } = await supabase
       .from("graph_snapshots")
@@ -109,8 +105,8 @@ export async function GET(request: Request) {
       return Response.json({ error: "Snapshot not found" }, { status: 404 });
     }
 
-    // Increment view count asynchronously — don't await, don't fail on error
-    supabase.rpc("increment_snapshot_view", { p_code: code }).then(() => {}).catch(() => {});
+    // Increment view count asynchronously — don't await, don't fail on error.
+    void supabase.rpc("increment_snapshot_view", { p_code: code });
 
     return Response.json(data);
   } catch (err) {

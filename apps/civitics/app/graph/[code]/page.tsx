@@ -4,11 +4,6 @@ import { GraphPage } from "../GraphPage";
 export const dynamic = "force-dynamic";
 import type { Metadata } from "next";
 
-// graph_snapshots was created after the Database type was generated.
-// TODO: run `supabase gen types typescript` to regenerate packages/db/src/types/database.ts
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type AnyClient = ReturnType<typeof createAdminClient> & { from(table: string): any; rpc(fn: string, args?: Record<string, unknown>): any };
-
 interface Props {
   params: { code: string };
 }
@@ -32,7 +27,7 @@ export default async function SharedGraphPage({ params }: Props) {
     return <InvalidCode code={code} />;
   }
 
-  const supabase = createAdminClient() as AnyClient;
+  const supabase = createAdminClient();
   const { data } = await supabase
     .from("graph_snapshots")
     .select("code, state, title, created_at")
@@ -43,8 +38,8 @@ export default async function SharedGraphPage({ params }: Props) {
     return <InvalidCode code={code} />;
   }
 
-  // Increment view count (fire-and-forget)
-  supabase.rpc("increment_snapshot_view", { p_code: code }).then(() => {}).catch(() => {});
+  // Increment view count (fire-and-forget).
+  void supabase.rpc("increment_snapshot_view", { p_code: code });
 
   return (
     <GraphPage
