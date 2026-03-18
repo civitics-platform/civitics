@@ -29,6 +29,15 @@ export function DistrictMap() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Track map load for billing monitor (fire-and-forget)
+  useEffect(() => {
+    fetch("/api/track-usage", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ service: "mapbox", metric: "map_load" }),
+    }).catch(() => {/* non-critical */});
+  }, []);
+
   // Initialize map once on mount
   useEffect(() => {
     if (!containerRef.current) return;

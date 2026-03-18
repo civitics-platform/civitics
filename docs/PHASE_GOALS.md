@@ -89,9 +89,12 @@
 - [x] Storage utility (`packages/db/src/storage.ts`) — `uploadFile()` / `getFile()` / `getStorageUrl()`, path-based (migration-ready for R2)
 - [x] `data_sync_log` table tracking all pipeline runs
 - [x] `api_usage_logs` table
+- [x] `ai_summary_cache` table — entity-based cache for AI summaries (migration 0005)
+- [x] `service_usage` table — tracks Mapbox loads, R2 ops, Vercel deploys (migration 0006)
 - [x] `financial_entities` table (created after main schema — types not yet regenerated)
 - [x] `graph_snapshots` table (created after main schema — types not yet regenerated)
   - TODO: run `pnpm --filter @civitics/db gen:types` to regenerate `database.ts` and remove the `any` casts in graph API routes
+- [x] Vercel Analytics + Speed Insights — installed, wired into root layout
 - [x] Cloudflare R2 — buckets created (`civitics-documents`, `civitics-cache`), storage.ts updated to use @aws-sdk/client-s3, STORAGE_PROVIDER=r2 active
 - [ ] Custom storage domain
 
