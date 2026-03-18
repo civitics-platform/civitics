@@ -173,7 +173,7 @@ function Hero({ stats }: { stats: Stats }) {
           </h1>
           <p className="mt-4 text-lg text-gray-600 leading-relaxed">
             Every vote, donor, promise, and dollar — connected, searchable, and permanent. Official
-            comment submission is always free. No account required to read anything. bananna
+            comment submission is always free. No account required to read anything.
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
             <a
@@ -510,6 +510,7 @@ export default async function HomePage() {
   // Wave 1: stats + open proposals + agency list (all parallel)
   const [
     officialsCountRes,
+    federalOfficialsCountRes,
     activeProposalsRes,
     donorCountRes,
     spendingCountRes,
@@ -520,6 +521,11 @@ export default async function HomePage() {
       .from("officials")
       .select("id", { count: "exact", head: true })
       .eq("is_active", true),
+    supabase
+      .from("officials")
+      .select("id", { count: "exact", head: true })
+      .eq("is_active", true)
+      .in("role_title", ["Senator", "Representative"]),
     supabase
       .from("proposals")
       .select("id", { count: "exact", head: true })
@@ -548,6 +554,7 @@ export default async function HomePage() {
   ]);
 
   const officialsTotal = officialsCountRes.count ?? 0;
+  const federalTotal = federalOfficialsCountRes.count ?? 0;
   const agencyRows = agencyRowsRes.data ?? [];
 
   // Proposal fallback: if no open comment periods, show most recent
@@ -563,9 +570,9 @@ export default async function HomePage() {
     proposalData = fallback ?? [];
   }
 
-  // Wave 2: officials (random sample) + agency proposal counts (all parallel)
-  const randomOffset =
-    officialsTotal > 4 ? Math.floor(Math.random() * (officialsTotal - 4)) : 0;
+  // Wave 2: federal officials (random sample) + agency proposal counts (all parallel)
+  const federalOffset =
+    federalTotal > 4 ? Math.floor(Math.random() * (federalTotal - 4)) : 0;
 
   const [officialsRes, ...agencyStatPairs] = await Promise.all([
     supabase
@@ -574,7 +581,8 @@ export default async function HomePage() {
         "id,full_name,role_title,party,district_name,jurisdictions!jurisdiction_id(name)"
       )
       .eq("is_active", true)
-      .range(randomOffset, randomOffset + 3),
+      .in("role_title", ["Senator", "Representative"])
+      .range(federalOffset, federalOffset + 3),
     ...agencyRows.map((agency) =>
       Promise.all([
         supabase
