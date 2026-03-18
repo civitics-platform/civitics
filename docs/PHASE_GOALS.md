@@ -48,7 +48,7 @@
   - Note: Full 2GB individual-level FEC file pending Cloudflare R2 account
 - [x] USASpending.gov → spending_records (`packages/data/src/pipelines/usaspending/`)
 - [x] Regulations.gov → proposals + comment periods (`packages/data/src/pipelines/regulations/`)
-- [x] OpenStates → state legislators (`packages/data/src/pipelines/openstates/`)
+- [x] OpenStates → state legislators (`packages/data/src/pipelines/openstates/`) — 6,268 inserted, 1,031 updated (2026-03-17)
 - [x] CourtListener → judges + rulings (`packages/data/src/pipelines/courtlistener/`)
 - [x] Entity connections pipeline — derives donation/vote/oversight/appointment from ingested data (`packages/data/src/pipelines/connections/`)
 - [x] Master orchestrator + scheduler (`packages/data/src/pipelines/index.ts`)
