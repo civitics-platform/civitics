@@ -12,25 +12,18 @@
  */
 
 import Anthropic from "@anthropic-ai/sdk";
-import { createHash } from "crypto";
 import { createAdminClient } from "@civitics/db";
 
 export const anthropic = new Anthropic({
   apiKey: process.env["ANTHROPIC_API_KEY"],
 });
 
-// $4.00 hard cap — $0.01 = 1 cent
+// $4.00 hard cap — stored as integer cents
 const MONTHLY_SPEND_LIMIT_CENTS = 400;
 
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
-
-function buildCacheKey(text: string, type: string): string {
-  return createHash("md5")
-    .update(`${type}:${text.slice(0, 1000)}`)
-    .digest("hex");
-}
 
 async function getMonthlySpendCents(): Promise<number> {
   try {
@@ -47,34 +40,45 @@ async function getMonthlySpendCents(): Promise<number> {
 
     return data?.reduce((sum, r) => sum + (r.cost_cents ?? 0), 0) ?? 0;
   } catch {
-    // Fail open — a failed check should not block summary generation
-    return 0;
+    return 0; // fail open — a failed check should not block generation
   }
 }
 
-async function getCachedSummary(cacheKey: string): Promise<string | null> {
+async function getCachedSummary(
+  entityType: string,
+  entityId: string,
+  summaryType: string
+): Promise<string | null> {
   try {
     const db = createAdminClient();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data } = await (db as any)
+    const { data } = await db
       .from("ai_summary_cache")
-      .select("summary")
-      .eq("cache_key", cacheKey)
+      .select("summary_text")
+      .eq("entity_type", entityType)
+      .eq("entity_id", entityId)
+      .eq("summary_type", summaryType)
       .single();
-    return (data as { summary: string } | null)?.summary ?? null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (data as any)?.summary_text ?? null;
   } catch {
-    // Table may not exist yet — fail open (cache miss)
-    return null;
+    return null; // cache miss — proceed to generate
   }
 }
 
-async function cacheSummary(cacheKey: string, summary: string): Promise<void> {
+async function cacheSummary(
+  entityType: string,
+  entityId: string,
+  summaryType: string,
+  summaryText: string,
+  model: string,
+  tokensUsed: number
+): Promise<void> {
   try {
     const db = createAdminClient();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (db as any)
-      .from("ai_summary_cache")
-      .upsert({ cache_key: cacheKey, summary }, { onConflict: "cache_key" });
+    await db.from("ai_summary_cache").upsert(
+      { entity_type: entityType, entity_id: entityId, summary_type: summaryType, summary_text: summaryText, model, tokens_used: tokensUsed },
+      { onConflict: "entity_type,entity_id,summary_type" }
+    );
   } catch {
     // Non-critical — cache write failure never blocks the response
   }
@@ -133,22 +137,28 @@ function buildSummaryPrompt(
 // ---------------------------------------------------------------------------
 
 /**
- * Generate a plain-language summary.
+ * Generate a plain-language summary for a specific entity.
  *
- * Checks the cache first (ai_summary_cache table).
- * If not cached: checks monthly spend cap, calls Haiku, caches result, logs usage.
+ * @param text        - Raw text to summarize (bill text, regulation, official data)
+ * @param type        - Summary type: 'bill' | 'regulation' | 'official'
+ * @param entityType  - DB entity type: 'proposal' | 'official' | 'agency'
+ * @param entityId    - UUID of the entity in the database
  *
- * Returns cached or freshly generated summary.
- * Throws if monthly spend cap is exceeded.
+ * Flow:
+ *  1. Check ai_summary_cache — return immediately if found
+ *  2. Check monthly spend cap ($4.00) — throw if exceeded
+ *  3. Call Haiku — cheapest model, 300 token max
+ *  4. Write to cache + log usage (parallel, non-blocking)
+ *  5. Return summary
  */
 export async function generateSummary(
   text: string,
-  type: "bill" | "regulation" | "official"
+  type: "bill" | "regulation" | "official",
+  entityType: string,
+  entityId: string
 ): Promise<string> {
-  const cacheKey = buildCacheKey(text, type);
-
   // Check cache first
-  const cached = await getCachedSummary(cacheKey);
+  const cached = await getCachedSummary(entityType, entityId, type);
   if (cached) return cached;
 
   // Cost guard: never exceed $4.00/month on Anthropic
@@ -171,17 +181,18 @@ export async function generateSummary(
   const summary =
     message.content[0]?.type === "text" ? message.content[0].text : "";
 
-  // Estimate cost in cents (Haiku: $0.25/M input + $1.25/M output)
   const inputTokens = message.usage.input_tokens;
   const outputTokens = message.usage.output_tokens;
+  const tokensUsed = inputTokens + outputTokens;
+  // Haiku pricing: $0.25/M input + $1.25/M output → integer cents
   const costCents = Math.ceil(
     (inputTokens * 0.00025 + outputTokens * 0.00125) / 10
   );
 
-  // Cache and log in parallel — neither should block the response
+  // Cache and log in parallel — neither blocks the response
   await Promise.all([
-    cacheSummary(cacheKey, summary),
-    logUsage(model, inputTokens + outputTokens, costCents),
+    cacheSummary(entityType, entityId, type, summary, model, tokensUsed),
+    logUsage(model, tokensUsed, costCents),
   ]);
 
   return summary;
