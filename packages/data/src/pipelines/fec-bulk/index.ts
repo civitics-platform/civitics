@@ -31,7 +31,6 @@ import * as path     from "path";
 import * as os       from "os";
 import * as readline from "readline";
 import * as unzipper from "unzipper";
-import { parse }     from "csv-parse/sync";
 import { createAdminClient } from "@civitics/db";
 import type { Database }     from "@civitics/db";
 import {
@@ -68,7 +67,9 @@ interface WeBallRow {
 interface OfficialRecord {
   id:         string;
   full_name:  string;
+  first_name: string | null;
   last_name:  string | null;
+  role_title: string | null;
   source_ids: Record<string, string>;
   state:      string | null;
 }
@@ -213,15 +214,10 @@ function parseMoney(raw: string | undefined): number {
 }
 
 function parseWeBall(buffer: Buffer): WeBallRow[] {
-  const records = parse(buffer.toString("latin1"), {
-    delimiter:          "|",
-    relax_column_count: true,
-    skip_empty_lines:   true,
-    quote:              false,  // FEC names contain literal quote chars — disable quoting
-  }) as string[][];
-
   const rows: WeBallRow[] = [];
-  for (const cols of records) {
+  for (const line of buffer.toString("latin1").split(/\r?\n/)) {
+    if (!line.trim()) continue;
+    const cols   = line.split("|");
     const candId = (cols[COL.CAND_ID] ?? "").trim();
     if (!candId) continue;
     rows.push({
@@ -269,7 +265,7 @@ async function loadOfficials(
 ): Promise<OfficialRecord[]> {
   const { data, error } = await db
     .from("officials")
-    .select("id, full_name, last_name, source_ids, jurisdictions!jurisdiction_id(short_name)")
+    .select("id, full_name, first_name, last_name, role_title, source_ids, jurisdictions!jurisdiction_id(short_name)")
     .eq("is_active", true);
 
   if (error) throw new Error(`Could not load officials: ${error.message}`);
@@ -278,7 +274,9 @@ async function loadOfficials(
   return (data ?? []).map((o: any) => ({
     id:         o.id as string,
     full_name:  o.full_name as string,
+    first_name: (o.first_name as string | null) ?? null,
     last_name:  (o.last_name as string | null) ?? null,
+    role_title: (o.role_title as string | null) ?? null,
     source_ids: (o.source_ids ?? {}) as Record<string, string>,
     state:      (o.jurisdictions?.short_name as string | null) ?? null,
   }));
@@ -294,9 +292,23 @@ function buildMatchIndex(officials: OfficialRecord[]): MatchIndex {
   const byLastName = new Map<string, OfficialRecord[]>();
 
   for (const o of officials) {
-    // Support both key names (new = fec_id, legacy = fec_candidate_id)
-    const fecId = o.source_ids["fec_id"] ?? o.source_ids["fec_candidate_id"];
-    if (fecId) byFecId.set(fecId, o.id);
+    // fec_candidate_id is the most authoritative key — always include
+    const candidateId = o.source_ids["fec_candidate_id"];
+    if (candidateId) byFecId.set(candidateId, o.id);
+
+    // fec_id: only include if its FEC prefix matches the official's current role.
+    // Prefix mismatch means it's an old ID from a prior race (e.g. a Senator who
+    // previously served in the House and has an H-prefix fec_id still stored).
+    const fecId = o.source_ids["fec_id"];
+    if (fecId) {
+      const prefix    = fecId[0]?.toUpperCase() ?? "";
+      const isSenator = o.role_title === "Senator";
+      const isRep     = o.role_title === "Representative";
+      if ((isSenator && prefix === "S") || (isRep && prefix === "H")) {
+        byFecId.set(fecId, o.id);
+      }
+      // Mismatched prefix (old race) — skip; don't pollute the index
+    }
 
     const key  = normalizeLastName(o.last_name ?? o.full_name);
     const list = byLastName.get(key) ?? [];
@@ -353,15 +365,10 @@ function matchRow(row: WeBallRow, index: MatchIndex): MatchResult | null {
  * File is ~2 MB uncompressed — safe to load fully.
  */
 function parseCm24(buffer: Buffer): Map<string, CommitteeInfo> {
-  const records = parse(buffer.toString("latin1"), {
-    delimiter:          "|",
-    relax_column_count: true,
-    skip_empty_lines:   true,
-    quote:              false,
-  }) as string[][];
-
   const lookup = new Map<string, CommitteeInfo>();
-  for (const cols of records) {
+  for (const line of buffer.toString("latin1").split(/\r?\n/)) {
+    if (!line.trim()) continue;
+    const cols   = line.split("|");
     const cmteId = (cols[CM_COL.CMTE_ID] ?? "").trim();
     if (!cmteId) continue;
     lookup.set(cmteId, {
@@ -423,24 +430,16 @@ function donationStrength(amountCents: number): number {
 // ---------------------------------------------------------------------------
 
 /**
- * Stream pas224.zip entry line-by-line. Never loads the full file into memory.
- *
- * Filters applied while streaming:
- *   TRANSACTION_TP in ('24K', '24Z')   — direct contributions only
- *   TRANSACTION_AMT >= 5 000           — skip small contributions
- *   CAND_ID in candidateSet            — only our matched officials
- *
- * Returns aggregated totals keyed by "CMTE_ID|CAND_ID".
- * The result map is small (hundreds–low thousands of entries) and safe to hold in memory.
+ * Extract a single entry from a zip file to disk via pipe (streaming — no buffering).
+ * Returns true if the entry was found, false if not.
  */
-async function streamPas224(
-  zipPath:      string,
-  candidateSet: Set<string>,
-): Promise<Map<string, PacAggregation>> {
-  const aggregated = new Map<string, PacAggregation>();
-
-  await new Promise<void>((resolve, reject) => {
-    let entryFound = false;
+async function extractZipEntryToDisk(
+  zipPath:   string,
+  matchName: (name: string) => boolean,
+  destPath:  string,
+): Promise<boolean> {
+  return new Promise((resolve, reject) => {
+    let found = false;
 
     fs.createReadStream(zipPath)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -448,56 +447,112 @@ async function streamPas224(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .on("entry", (entry: any) => {
         const name = path.basename(entry.path as string).toLowerCase();
-
-        if (!entryFound && name.startsWith("pas2") && name.endsWith(".txt")) {
-          entryFound = true;
-
-          const rl = readline.createInterface({ input: entry, crlfDelay: Infinity });
-
-          rl.on("line", (line: string) => {
-            const cols   = line.split("|");
-            const cmteId = (cols[PAS_COL.CMTE_ID]         ?? "").trim();
-            const txType = (cols[PAS_COL.TRANSACTION_TP]  ?? "").trim();
-            const candId = (cols[PAS_COL.CAND_ID]         ?? "").trim();
-            const amtStr = (cols[PAS_COL.TRANSACTION_AMT] ?? "").trim();
-            const dtStr  = (cols[PAS_COL.TRANSACTION_DT]  ?? "").trim();
-
-            // Filter: transaction type
-            if (txType !== "24K" && txType !== "24Z") return;
-            // Filter: known official
-            if (!candidateSet.has(candId)) return;
-            // Filter: minimum amount
-            const amt = parseFloat(amtStr);
-            if (isNaN(amt) || amt < 5000) return;
-
-            // Aggregate by committee × candidate (keeps memory bounded)
-            const key      = `${cmteId}|${candId}`;
-            const amtCents = Math.round(amt * 100);
-            const existing = aggregated.get(key);
-            if (existing) {
-              existing.totalCents += amtCents;
-              existing.txCount++;
-              if (dtStr && dtStr > (existing.latestDate ?? "")) existing.latestDate = dtStr;
-            } else {
-              aggregated.set(key, {
-                cmteId,
-                candId,
-                totalCents: amtCents,
-                txCount:    1,
-                latestDate: dtStr || null,
-              });
-            }
-          });
-
-          rl.on("close", resolve);
-          rl.on("error", reject);
+        if (!found && matchName(name.toLowerCase())) {
+          found = true;
+          const out = fs.createWriteStream(destPath);
+          entry.pipe(out);
+          out.on("finish", () => resolve(true));
+          out.on("error", reject);
         } else {
           entry.autodrain();
         }
       })
-      .on("finish", resolve)  // resolves cleanly if pas2 entry was not found
+      .on("finish", () => { if (!found) resolve(false); })
       .on("error", reject);
   });
+}
+
+/**
+ * Stream pas224.txt (extracted to disk) line-by-line.
+ * Never loads the full file into memory.
+ *
+ * Filters applied while streaming:
+ *   TRANSACTION_TP in ('24K', '24Z')   — direct contributions only
+ *   TRANSACTION_AMT >= 5 000           — skip small contributions
+ *   CAND_ID in candidateSet            — only our matched officials
+ *
+ * Returns aggregated totals keyed by "CMTE_ID|CAND_ID".
+ *
+ * NOTE: extracts pas224.txt to TMP_DIR first to avoid a race condition where
+ * unzipper.Parse()'s 'finish' event resolves the Promise before readline
+ * finishes consuming the in-memory entry stream.
+ */
+async function streamPas224(
+  zipPath:      string,
+  candidateSet: Set<string>,
+): Promise<Map<string, PacAggregation>> {
+  const aggregated = new Map<string, PacAggregation>();
+
+  // Step A: extract pas224.txt to disk via streaming pipe
+  const txtPath = path.join(TMP_DIR, "pas224.txt");
+  const found   = await extractZipEntryToDisk(
+    zipPath,
+    (name) => name.includes("pas2") && name.endsWith(".txt"),  // itpas2.txt inside the zip
+    txtPath,
+  );
+
+  if (!found) {
+    console.error("    pas224.txt not found inside zip — skipping PAC step");
+    return aggregated;
+  }
+
+  const txtMb = (fs.statSync(txtPath).size / 1024 / 1024).toFixed(0);
+  console.log(`    Extracted pas224.txt (${txtMb} MB) — streaming line by line...`);
+
+  // Step B: stream the extracted file line by line
+  let linesRead = 0, passedTxType = 0, passedCand = 0, passedAmt = 0;
+
+  const rl = readline.createInterface({
+    input:      fs.createReadStream(txtPath, { encoding: "latin1" }),
+    crlfDelay:  Infinity,
+  });
+
+  for await (const line of rl) {
+    linesRead++;
+
+    const cols   = line.split("|");
+    const cmteId = (cols[PAS_COL.CMTE_ID]         ?? "").trim();
+    const txType = (cols[PAS_COL.TRANSACTION_TP]  ?? "").trim();
+    const candId = (cols[PAS_COL.CAND_ID]         ?? "").trim();
+    const amtStr = (cols[PAS_COL.TRANSACTION_AMT] ?? "").trim();
+    const dtStr  = (cols[PAS_COL.TRANSACTION_DT]  ?? "").trim();
+
+    if (txType !== "24K" && txType !== "24Z") continue;
+    passedTxType++;
+
+    if (!candidateSet.has(candId)) continue;
+    passedCand++;
+
+    const amt = parseFloat(amtStr);
+    if (isNaN(amt) || amt < 5000) continue;
+    passedAmt++;
+
+    // Aggregate by committee × candidate
+    const key      = `${cmteId}|${candId}`;
+    const amtCents = Math.round(amt * 100);
+    const existing = aggregated.get(key);
+    if (existing) {
+      existing.totalCents += amtCents;
+      existing.txCount++;
+      if (dtStr && dtStr > (existing.latestDate ?? "")) existing.latestDate = dtStr;
+    } else {
+      aggregated.set(key, {
+        cmteId,
+        candId,
+        totalCents: amtCents,
+        txCount:    1,
+        latestDate: dtStr || null,
+      });
+    }
+  }
+
+  console.log(`    Lines read: ${linesRead.toLocaleString()}`);
+  console.log(`    Passed 24K/24Z filter:    ${passedTxType.toLocaleString()}`);
+  console.log(`    Passed candidateSet filter: ${passedCand.toLocaleString()}`);
+  console.log(`    Passed $5k+ filter:        ${passedAmt.toLocaleString()}`);
+
+  // Clean up the extracted file — TMP_DIR cleanup handles the zip files
+  try { fs.unlinkSync(txtPath); } catch { /* best effort */ }
 
   return aggregated;
 }
@@ -808,7 +863,11 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
     const candidateSet = new Set<string>(index.byFecId.keys());
 
     const matches: Array<{ row: WeBallRow; match: MatchResult }> = [];
-    const newFecIds: Array<{ officialId: string; fecId: string }> = [];
+    const newFecIds: Array<{
+      officialId:  string;
+      fecId:       string;
+      storageKey:  "fec_id" | "fec_candidate_id";
+    }> = [];
 
     for (const row of weballRows) {
       const match = matchRow(row, index);
@@ -821,8 +880,8 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
       } else {
         matchedByName++;
         index.byFecId.set(match.fecId, match.officialId);
-        newFecIds.push({ officialId: match.officialId, fecId: match.fecId });
-        candidateSet.add(match.fecId); // include newly discovered IDs in PAC filter
+        newFecIds.push({ officialId: match.officialId, fecId: match.fecId, storageKey: "fec_id" });
+        candidateSet.add(match.fecId);
       }
     }
 
@@ -830,15 +889,67 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
     console.log(`    Matched by name:   ${matchedByName}`);
     console.log(`    Not matched:       ${notMatched}`);
 
-    // Persist newly discovered fec_ids into officials.source_ids
+    // ── Fix 3: name-fallback for officials with no stored FEC ID at all ──────
+    //
+    // Officials whose source_ids contain neither fec_candidate_id nor fec_id
+    // (or whose fec_id had a prefix mismatch and was excluded from the index)
+    // get a second chance: look up their last-name+first-3+state against weball.
+    // Matches are stored as fec_candidate_id (the authoritative key) so future
+    // runs use the direct byFecId path and the candidateSet grows.
+    {
+      const alreadyIndexed = new Set(index.byFecId.values());
+      const noFecIdOfficials = officials.filter((o) => {
+        if (alreadyIndexed.has(o.id)) return false;           // already matched
+        const cid = o.source_ids["fec_candidate_id"];
+        const fid = o.source_ids["fec_id"];
+        return !cid && !fid;                                   // no FEC ID stored at all
+      });
+
+      if (noFecIdOfficials.length > 0) {
+        // Build a weball lookup keyed by "NORMLAAST|FIRST3|STATE"
+        const weballByKey = new Map<string, WeBallRow>();
+        for (const row of weballRows) {
+          const { last, first } = parseFecName(row.candName);
+          const key = `${last.replace(/[^A-Z]/g, "")}|${first.slice(0, 3)}|${row.candOfficeSt}`;
+          if (!weballByKey.has(key)) weballByKey.set(key, row);
+        }
+
+        let fallbackMatched = 0;
+        for (const official of noFecIdOfficials) {
+          const normLast  = normalizeLastName(official.last_name ?? official.full_name);
+          const normFirst = (official.first_name ?? official.full_name.split(" ")[0] ?? "")
+            .toUpperCase()
+            .replace(/[^A-Z]/g, "")
+            .slice(0, 3);
+          const state = (official.state ?? "").toUpperCase();
+          const key   = `${normLast}|${normFirst}|${state}`;
+
+          const row = weballByKey.get(key);
+          if (!row) continue;
+
+          fallbackMatched++;
+          index.byFecId.set(row.candId, official.id);
+          candidateSet.add(row.candId);
+          newFecIds.push({ officialId: official.id, fecId: row.candId, storageKey: "fec_candidate_id" });
+          // Also capture this as a weball match for financial_relationships
+          matches.push({ row, match: { officialId: official.id, fecId: row.candId, byFecId: false } });
+        }
+
+        if (fallbackMatched > 0) {
+          console.log(`    Name fallback matched: ${fallbackMatched} additional officials`);
+        }
+      }
+    }
+
+    // Persist newly discovered FEC IDs back into officials.source_ids
     if (newFecIds.length > 0) {
-      console.log(`    Storing ${newFecIds.length} new fec_id associations...`);
-      for (const { officialId, fecId } of newFecIds) {
+      console.log(`    Storing ${newFecIds.length} FEC ID associations...`);
+      for (const { officialId, fecId, storageKey } of newFecIds) {
         const o = officialMap.get(officialId);
         if (!o) continue;
         await db
           .from("officials")
-          .update({ source_ids: { ...o.source_ids, fec_id: fecId } })
+          .update({ source_ids: { ...o.source_ids, [storageKey]: fecId } })
           .eq("id", officialId);
       }
     }
