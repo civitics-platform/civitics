@@ -23,7 +23,7 @@ into Supabase. Runs as Node.js scripts, not as part of the Next.js build.
 | Source | Budget | Strategy |
 |--------|--------|----------|
 | Congress.gov | 80MB | Full resolution — bills + votes + legislators |
-| FEC bulk | 50MB | Candidate totals only (weball24.zip), not individual-level |
+| FEC bulk | 50MB | Candidate totals (weball24.zip) + PAC contributions (pas224.zip, streamed) |
 | USASpending | 60MB | Current FY, contracts >$1M, top 20 agencies |
 | Regulations.gov | 40MB | Active proposals only, no archived |
 | CourtListener | 20MB | Metadata only — no opinion text |
@@ -45,7 +45,15 @@ into Supabase. Runs as Node.js scripts, not as part of the Next.js build.
 | File | URL | Contents |
 |------|-----|----------|
 | `weball24.zip` | `fec.gov/files/bulk-downloads/2024/weball24.zip` | All-candidates summary: total raised, individual/PAC/party/self contributions per candidate |
-| `cm24.zip` | `fec.gov/files/bulk-downloads/2024/cm24.zip` | Committee master (reserved for future individual-donor drill-down) |
+| `cm24.zip` | `fec.gov/files/bulk-downloads/2024/cm24.zip` | Committee master — maps committee IDs to names, types, and parent organizations |
+| `pas224.zip` | `fec.gov/files/bulk-downloads/2024/pas224.zip` | PAC to candidate contributions (~200 MB compressed) — **streamed line-by-line, never fully loaded** |
+
+Step 2b (PAC contributions):
+- Parses cm24 into a committee ID → name/type/connected-org lookup map
+- Streams pas224, filtering to: 24K/24Z transaction types, $5 000+, and known FEC candidate IDs
+- Aggregates total contributions per committee × candidate pair
+- Upserts `financial_entities` rows for named PAC donors (keyed on `source_ids->>'fec_committee_id'`)
+- Upserts `financial_relationships` rows per PAC × candidate pair (keyed on `official_id + fec_committee_id + cycle_year`)
 
 - No API key required, no rate limits
 - FEC updates bulk files weekly — run on weekly cron
