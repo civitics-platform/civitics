@@ -103,6 +103,10 @@ async function logUsage(
   }
 }
 
+const PLAIN_TEXT_INSTRUCTION =
+  " Write in plain prose only — no markdown, no headers, no bullet points, " +
+  "no bold text, no asterisks, no pound signs. Just clear sentences.";
+
 function buildSummaryPrompt(
   text: string,
   type: "bill" | "regulation" | "official"
@@ -112,7 +116,8 @@ function buildSummaryPrompt(
   if (type === "bill") {
     return (
       "Summarize this bill in 2-3 sentences in plain language a citizen can understand. " +
-      "Focus on what it does and who it affects.\n\n" +
+      "Focus on what it does and who it affects." +
+      PLAIN_TEXT_INSTRUCTION + "\n\n" +
       `Bill text: ${truncated}`
     );
   }
@@ -120,14 +125,16 @@ function buildSummaryPrompt(
   if (type === "regulation") {
     return (
       "Summarize this proposed regulation in 2-3 sentences. " +
-      "What is being changed and what does it mean for ordinary people?\n\n" +
+      "What is being changed and what does it mean for ordinary people?" +
+      PLAIN_TEXT_INSTRUCTION + "\n\n" +
       `Regulation: ${truncated}`
     );
   }
 
   return (
     "Based on this voting record and donor information, write a 2-3 sentence " +
-    "neutral factual summary of this official's legislative profile.\n\n" +
+    "neutral factual summary of this official's legislative profile." +
+    PLAIN_TEXT_INSTRUCTION + "\n\n" +
     `Data: ${truncated}`
   );
 }
@@ -175,6 +182,10 @@ export async function generateSummary(
   const message = await anthropic.messages.create({
     model,
     max_tokens: 300,
+    system:
+      "You write plain language civic summaries for ordinary citizens. " +
+      "Always respond in plain prose — never use markdown formatting, " +
+      "headers, bullet points, bold text, asterisks, or pound signs.",
     messages: [{ role: "user", content: buildSummaryPrompt(text, type) }],
   });
 
