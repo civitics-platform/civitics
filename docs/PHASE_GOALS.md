@@ -3,6 +3,7 @@
 > This file tracks progress against the phased development plan defined in `CLAUDE.md`.
 > Update checkboxes as tasks complete. Phases are sequential; each unlocks the next.
 > Last audited: 2026-03-18 (verified against actual files, tables, and code — not guessed).
+> Last updated: 2026-03-18 — search + homepage fixes complete.
 
 ---
 
@@ -36,7 +37,7 @@
 
 ---
 
-## Phase 1 — MVP `Weeks 3–10` `~83% complete` ← **current**
+## Phase 1 — MVP `Weeks 3–10` `~88% complete` ← **current**
 
 > **Done when:** Search works, one complete user journey end to end (search → official → vote record → donor → connection graph), auth working, 500 beta users, grant applications submitted.
 
@@ -57,6 +58,8 @@
 ### Core Pages
 - [x] Homepage wired to real data — officials, proposals, agencies, spending counts pulled live from Supabase
   - Proposals nav and all CTA links wired to `/proposals` and `/proposals?status=open`
+  - Hero search bar (GlobalSearch variant="hero") + nav search bar (Cmd/Ctrl+K)
+  - Officials section shows federal-only (congress_gov source), ordered by vote count desc
 - [x] Officials list page (`/officials`) — full list, party filter, real data
 - [x] Official detail page (`/officials/[id]`) — votes, donor data, real data
 - [x] Agency list page (`/agencies`) — real data
@@ -64,7 +67,11 @@
 - [x] Proposals list page (`/proposals`) — status/type/agency/search filters, open-now featured section, clickable cards, full agency names, pagination with filter preservation
 - [x] Proposal detail page (`/proposals/[id]`) — "What This Means" AI summary section, comment period banner, 3-step comment draft tool, vote record, related proposals, generateStaticParams for top 50
 - [x] Public accountability dashboard (`/dashboard`) — platform stats, pipeline health, data counts
-- [ ] Search — no search component or API route exists anywhere in the app
+- [x] Search — universal search across officials, proposals, agencies
+  - `GET /api/search?q=&type=` — parallel queries, special cases (state abbr, party, role), trigram+ILIKE
+  - `GlobalSearch` component — nav (Cmd/Ctrl+K, dropdown) + hero (full-width) variants
+  - `/search` full results page — tabs (All/Officials/Proposals/Agencies), grouped results
+  - GIN trigram indexes — migration `0008_search_indexes.sql` applied
 
 ### Graph Features
 - [x] Connection graph with D3 force simulation (`packages/graph/src/ForceGraph.tsx`)

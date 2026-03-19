@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { cookies } from "next/headers";
 import { createServerClient } from "@civitics/db";
 import { DistrictMap } from "./components/DistrictMap";
+import { GlobalSearch } from "./components/GlobalSearch";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -116,14 +117,12 @@ function NavBar() {
             <span className="text-lg font-semibold tracking-tight text-gray-900">Civitics</span>
           </div>
 
-          <nav className="hidden md:flex items-center gap-6">
+          <nav className="hidden md:flex items-center gap-4">
             {[
-              { label: "Officials",    href: "/officials" },
-              { label: "Proposals",   href: "/proposals" },
-              { label: "Agencies",    href: "/agencies" },
-              { label: "Spending",    href: "#" },
-              { label: "Connections", href: "/graph" },
-              { label: "Dashboard",   href: "/dashboard" },
+              { label: "Officials",  href: "/officials" },
+              { label: "Proposals",  href: "/proposals" },
+              { label: "Agencies",   href: "/agencies" },
+              { label: "Graph",      href: "/graph" },
             ].map((item) => (
               <a
                 key={item.label}
@@ -134,6 +133,10 @@ function NavBar() {
               </a>
             ))}
           </nav>
+
+          <div className="hidden lg:block">
+            <GlobalSearch variant="nav" />
+          </div>
 
           <div className="flex items-center gap-3">
             <a href="#" className="text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors">
@@ -175,7 +178,11 @@ function Hero({ stats }: { stats: Stats }) {
             Every vote, donor, promise, and dollar — connected, searchable, and permanent. Official
             comment submission is always free. No account required to read anything.
           </p>
-          <div className="mt-8 flex flex-wrap gap-3">
+          <div className="mt-8">
+            <GlobalSearch variant="hero" placeholder="Search any official, agency, or proposal…" />
+          </div>
+
+          <div className="mt-4 flex flex-wrap gap-3">
             <a
               href="/officials"
               className="rounded-md bg-indigo-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-indigo-700 transition-colors"
@@ -510,7 +517,6 @@ export default async function HomePage() {
   // Wave 1: stats + open proposals + agency list (all parallel)
   const [
     officialsCountRes,
-    federalOfficialsCountRes,
     activeProposalsRes,
     donorCountRes,
     spendingCountRes,
@@ -521,11 +527,6 @@ export default async function HomePage() {
       .from("officials")
       .select("id", { count: "exact", head: true })
       .eq("is_active", true),
-    supabase
-      .from("officials")
-      .select("id", { count: "exact", head: true })
-      .eq("is_active", true)
-      .in("role_title", ["Senator", "Representative"]),
     supabase
       .from("proposals")
       .select("id", { count: "exact", head: true })
@@ -554,7 +555,6 @@ export default async function HomePage() {
   ]);
 
   const officialsTotal = officialsCountRes.count ?? 0;
-  const federalTotal = federalOfficialsCountRes.count ?? 0;
   const agencyRows = agencyRowsRes.data ?? [];
 
   // Proposal fallback: if no open comment periods, show most recent
@@ -570,10 +570,7 @@ export default async function HomePage() {
     proposalData = fallback ?? [];
   }
 
-  // Wave 2: federal officials (random sample) + agency proposal counts (all parallel)
-  const federalOffset =
-    federalTotal > 4 ? Math.floor(Math.random() * (federalTotal - 4)) : 0;
-
+  // Wave 2: federal officials (top 20 by vote count later) + agency proposal counts (all parallel)
   const [officialsRes, ...agencyStatPairs] = await Promise.all([
     supabase
       .from("officials")
@@ -582,7 +579,8 @@ export default async function HomePage() {
       )
       .eq("is_active", true)
       .in("role_title", ["Senator", "Representative"])
-      .range(federalOffset, federalOffset + 3),
+      .filter("source_ids->>congress_gov", "not.is", null)
+      .limit(20),
     ...agencyRows.map((agency) =>
       Promise.all([
         supabase
@@ -598,7 +596,7 @@ export default async function HomePage() {
     ),
   ]);
 
-  // Wave 3: vote counts for featured officials
+  // Wave 3: vote counts for all fetched officials — sort by count, take top 4
   const rawOfficials = officialsRes.data ?? [];
   const voteCounts = await Promise.all(
     rawOfficials.map((o) =>
@@ -611,6 +609,10 @@ export default async function HomePage() {
   );
   const voteCountMap = new Map(voteCounts.map((v) => [v.id, v.count]));
 
+  // Sort by vote count desc, take top 4
+  rawOfficials.sort((a, b) => (voteCountMap.get(b.id) ?? 0) - (voteCountMap.get(a.id) ?? 0));
+  const topOfficials = rawOfficials.slice(0, 4);
+
   // ─── Shape data ────────────────────────────────────────────────────────────
 
   const stats: Stats = {
@@ -620,7 +622,7 @@ export default async function HomePage() {
     spending: spendingCountRes.count ?? 0,
   };
 
-  const featuredOfficials: FeaturedOfficial[] = rawOfficials.map((o) => {
+  const featuredOfficials: FeaturedOfficial[] = topOfficials.map((o) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const jurisdiction = o.jurisdictions as any;
     return {
