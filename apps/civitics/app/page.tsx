@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import { createServerClient, agencyFullName } from "@civitics/db";
 import { DistrictMap } from "./components/DistrictMap";
 import { GlobalSearch } from "./components/GlobalSearch";
+import { AuthButton } from "./components/AuthButton";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -141,15 +142,7 @@ function NavBar() {
           </div>
 
           <div className="flex items-center gap-3">
-            <a href="#" className="text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors">
-              Sign in
-            </a>
-            <a
-              href="#"
-              className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 transition-colors"
-            >
-              Get started
-            </a>
+            <AuthButton />
           </div>
         </div>
       </div>

@@ -3,7 +3,7 @@
 > This file tracks progress against the phased development plan defined in `CLAUDE.md`.
 > Update checkboxes as tasks complete. Phases are sequential; each unlocks the next.
 > Last audited: 2026-03-18 (verified against actual files, tables, and code — not guessed).
-> Last updated: 2026-03-18 — search + homepage fixes complete.
+> Last updated: 2026-03-19 — user auth via Supabase (magic link + OAuth) complete.
 
 ---
 
@@ -37,7 +37,7 @@
 
 ---
 
-## Phase 1 — MVP `Weeks 3–10` `~88% complete` ← **current**
+## Phase 1 — MVP `Weeks 3–10` `~92% complete` ← **current**
 
 > **Done when:** Search works, one complete user journey end to end (search → official → vote record → donor → connection graph), auth working, 500 beta users, grant applications submitted.
 
@@ -139,7 +139,16 @@
 - [x] `civic_comments` — table exists, no commenting UI yet
 
 ### Community & Auth
-- [ ] User auth via Supabase (no auth route handler exists)
+- [x] User auth via Supabase (magic link + Google OAuth + GitHub OAuth)
+  - `/auth/sign-in` page — magic link primary, OAuth secondary
+  - `/auth/callback` route — PKCE code exchange, user upsert on first sign-in
+  - `/auth/confirm` route — token_hash email confirmation (email change etc.)
+  - `AuthButton` — smart nav component (Sign in → modal, signed in → avatar + UserMenu)
+  - `AuthModal` — in-page modal, no navigation away, contextual trigger text
+  - `UserMenu` — signed-in dropdown (Phase 2 items shown as coming soon)
+  - `SignInForm` — shared form component (used by page + modal)
+  - `middleware.ts` — silent session refresh on all routes, no protected routes yet
+  - Migration `0009_users_table.sql` — run `pnpm db:migrate` in packages/db to apply
 - [ ] Community commenting on entities (`civic_comments` table exists, no UI)
 - [ ] Position tracking on proposals
 - [ ] Follow officials and agencies
