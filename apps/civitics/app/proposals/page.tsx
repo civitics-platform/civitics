@@ -16,7 +16,6 @@ const PROPOSAL_TYPE_LABELS: Record<string, string> = {
 };
 
 // Top agencies by proposal volume — used for the filter dropdown.
-// Sourced from distinct metadata->>'agency_id' values in the proposals table.
 const AGENCIES = [
   "EPA","FAA","USCG","FCC","FWS","NOAA","IRS","NCUA","OSHA","AMS",
   "CMS","OCC","NRC","ED","FERC","OPM","FDA","VA","CPSC","NHTSA",
@@ -31,14 +30,28 @@ type SearchParams = {
 };
 
 function buildUrl(base: SearchParams, updates: Partial<SearchParams>): string {
-  const merged = { ...base, ...updates, page: "1" }; // reset page on filter change
+  // Merge — only reset page to "1" when the update is a filter change (no explicit page)
+  const merged = { ...base, ...updates };
+  if (!("page" in updates)) merged.page = "1";
   const params = new URLSearchParams();
   if (merged.status && merged.status !== "all") params.set("status", merged.status);
   if (merged.type)   params.set("type",   merged.type);
   if (merged.agency) params.set("agency", merged.agency);
   if (merged.q)      params.set("q",      merged.q);
+  if (merged.page && merged.page !== "1") params.set("page", merged.page);
   const qs = params.toString();
   return `/proposals${qs ? `?${qs}` : ""}`;
+}
+
+function buildCountLabel(
+  totalCount: number,
+  statusFilter: string,
+  searchQ: string
+): string {
+  if (searchQ) return `${totalCount.toLocaleString()} proposals matching "${searchQ}"`;
+  if (statusFilter === "open") return `${totalCount.toLocaleString()} open for comment`;
+  if (statusFilter === "closed") return `${totalCount.toLocaleString()} closed proposals`;
+  return `${totalCount.toLocaleString()} total proposals`;
 }
 
 export default async function ProposalsPage({
@@ -61,7 +74,7 @@ export default async function ProposalsPage({
   // ─── Open-now featured section ────────────────────────────────────────────
   const openFeaturedQuery = supabase
     .from("proposals")
-    .select("id,title,type,status,regulations_gov_id,congress_gov_url,comment_period_end,summary_plain,introduced_at,metadata")
+    .select("id,title,type,status,regulations_gov_id,congress_gov_url,comment_period_end,summary_plain,summary_model,introduced_at,metadata")
     .eq("status", "open_comment")
     .gt("comment_period_end", now)
     .order("comment_period_end", { ascending: true })
@@ -70,7 +83,7 @@ export default async function ProposalsPage({
   // ─── Filtered main list ───────────────────────────────────────────────────
   let mainQuery = supabase
     .from("proposals")
-    .select("id,title,type,status,regulations_gov_id,congress_gov_url,comment_period_end,summary_plain,introduced_at,metadata", {
+    .select("id,title,type,status,regulations_gov_id,congress_gov_url,comment_period_end,summary_plain,summary_model,introduced_at,metadata", {
       count: "exact",
     });
 
@@ -97,17 +110,68 @@ export default async function ProposalsPage({
     .order("comment_period_end", { ascending: true, nullsFirst: false })
     .range(offset, offset + PAGE_SIZE - 1);
 
-  const [openFeaturedRes, mainRes] = await Promise.all([
+  // ─── Agency name lookup ───────────────────────────────────────────────────
+  const agencyLookupQuery = supabase
+    .from("agencies")
+    .select("acronym,name")
+    .not("acronym", "is", null);
+
+  const [openFeaturedRes, mainRes, agencyLookupRes] = await Promise.all([
     openFeaturedQuery,
     mainQuery,
+    agencyLookupQuery,
   ]);
 
-  const openFeatured = (openFeaturedRes.data ?? []) as ProposalCardData[];
-  const mainProposals = (mainRes.data ?? []) as ProposalCardData[];
+  // Build acronym → full name map
+  const agencyNameMap: Record<string, string> = {};
+  for (const a of agencyLookupRes.data ?? []) {
+    if (a.acronym) agencyNameMap[a.acronym] = a.name;
+  }
+
+  const rawOpenFeatured = (openFeaturedRes.data ?? []) as ProposalCardData[];
+  const rawMainProposals = (mainRes.data ?? []) as ProposalCardData[];
   const totalCount = mainRes.count ?? 0;
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
 
-  const showFeaturedSection = statusFilter !== "closed" && !typeFilter && !agencyFilter && !searchQ && page === 1;
+  // ─── AI summary cache lookup ──────────────────────────────────────────────
+  // Fetch cached summaries for all proposals on this page in one query
+  const allProposalIds = [
+    ...rawOpenFeatured.map((p) => p.id),
+    ...rawMainProposals.map((p) => p.id),
+  ];
+
+  // ai_summary_cache may not be in generated types — cast to bypass
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const sb = supabase as any;
+  const summaryRes =
+    allProposalIds.length > 0
+      ? await sb
+          .from("ai_summary_cache")
+          .select("entity_id,summary_text")
+          .eq("entity_type", "proposal")
+          .in("entity_id", allProposalIds)
+      : { data: [] };
+
+  const summaryMap: Record<string, string> = {};
+  for (const s of summaryRes.data ?? []) {
+    if (!summaryMap[s.entity_id]) summaryMap[s.entity_id] = s.summary_text;
+  }
+
+  // Enrich proposals with agency names and AI summaries
+  function enrich(p: ProposalCardData): ProposalCardData {
+    const acronym = p.metadata?.agency_id ?? null;
+    return {
+      ...p,
+      agency_name: acronym ? (agencyNameMap[acronym] ?? null) : null,
+      ai_summary: summaryMap[p.id] ?? null,
+    };
+  }
+
+  const openFeatured = rawOpenFeatured.map(enrich);
+  const mainProposals = rawMainProposals.map(enrich);
+
+  const showFeaturedSection =
+    statusFilter !== "closed" && !typeFilter && !agencyFilter && !searchQ && page === 1;
 
   const currentParams: SearchParams = {
     status: statusFilter,
@@ -115,6 +179,8 @@ export default async function ProposalsPage({
     agency: agencyFilter || undefined,
     q: searchQ || undefined,
   };
+
+  const countLabel = buildCountLabel(totalCount, statusFilter, searchQ);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -204,7 +270,7 @@ export default async function ProposalsPage({
                 <option value="">All Agencies</option>
                 {AGENCIES.map((a) => (
                   <option key={a} value={a}>
-                    {a}
+                    {a}{agencyNameMap[a] ? ` · ${agencyNameMap[a].slice(0, 35)}${agencyNameMap[a].length > 35 ? "…" : ""}` : ""}
                   </option>
                 ))}
               </select>
@@ -243,9 +309,7 @@ export default async function ProposalsPage({
         {/* ─── Results header ─────────────────────────────────────────────── */}
         <div className="mb-4 flex items-center justify-between">
           <p className="text-sm text-gray-500">
-            {totalCount === 0
-              ? "No proposals found"
-              : `${totalCount.toLocaleString()} proposals${searchQ ? ` for "${searchQ}"` : ""}`}
+            {totalCount === 0 ? "No proposals found" : countLabel}
           </p>
           {totalPages > 1 && (
             <p className="text-sm text-gray-400">

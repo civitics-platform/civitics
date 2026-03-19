@@ -149,6 +149,16 @@ export default async function ProposalDetailPage({
   const docType = p.metadata?.document_type ?? null;
   const docketId = p.metadata?.docket_id ?? null;
 
+  // Agency full name lookup
+  const agencyNameRes = agencyAcronym
+    ? await supabase
+        .from("agencies")
+        .select("name")
+        .eq("acronym", agencyAcronym)
+        .single()
+    : null;
+  const agencyFullName = agencyNameRes?.data?.name ?? null;
+
   // Votes (for congressional bills)
   const votesPromise = p.type === "bill"
     ? supabase
@@ -205,8 +215,11 @@ export default async function ProposalDetailPage({
               {open ? "⏰ " : ""}{statusBadge.label}
             </span>
             {agencyAcronym && (
-              <span className="rounded border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs font-mono font-medium text-gray-700">
-                {agencyAcronym}
+              <span className="inline-flex items-center gap-1.5 rounded border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs">
+                <span className="font-mono font-semibold text-gray-700">{agencyAcronym}</span>
+                {agencyFullName && (
+                  <span className="text-gray-400">· {agencyFullName}</span>
+                )}
               </span>
             )}
             <span className="rounded border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs font-medium text-gray-600">
@@ -398,7 +411,12 @@ export default async function ProposalDetailPage({
               </h2>
               <div className="rounded-lg border border-gray-200 bg-white p-4 space-y-3">
                 <DetailRow label="Type" value={typeLabel} />
-                {agencyAcronym && <DetailRow label="Agency" value={agencyAcronym} />}
+                {agencyAcronym && (
+                  <DetailRow
+                    label="Agency"
+                    value={agencyFullName ? `${agencyAcronym} · ${agencyFullName}` : agencyAcronym}
+                  />
+                )}
                 {docketId && <DetailRow label="Docket" value={docketId} mono />}
                 {p.regulations_gov_id && (
                   <DetailRow label="Regulations.gov ID" value={p.regulations_gov_id} mono />

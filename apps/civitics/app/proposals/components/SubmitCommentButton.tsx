@@ -1,13 +1,17 @@
+"use client";
+
 type Props = {
   regulationsGovId: string | null;
   congressGovUrl: string | null;
   size?: "sm" | "md" | "lg";
+  stopPropagation?: boolean;
 };
 
 export function SubmitCommentButton({
   regulationsGovId,
   congressGovUrl,
   size = "md",
+  stopPropagation = false,
 }: Props) {
   const href = regulationsGovId
     ? `https://www.regulations.gov/commenton/${regulationsGovId}`
@@ -27,9 +31,10 @@ export function SubmitCommentButton({
       href={href}
       target="_blank"
       rel="noopener noreferrer"
+      onClick={stopPropagation ? (e) => e.stopPropagation() : undefined}
       className={`inline-flex items-center gap-1.5 rounded-md bg-indigo-600 font-medium text-white hover:bg-indigo-700 transition-colors ${sizeClass}`}
     >
-      Submit Official Comment
+      Submit Comment at Regulations.gov
       <svg
         xmlns="http://www.w3.org/2000/svg"
         viewBox="0 0 20 20"
