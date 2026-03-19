@@ -123,6 +123,7 @@ function NavBar() {
               { label: "Proposals",  href: "/proposals" },
               { label: "Agencies",   href: "/agencies" },
               { label: "Graph",      href: "/graph" },
+              { label: "Dashboard",  href: "/dashboard" },
             ].map((item) => (
               <a
                 key={item.label}
@@ -297,7 +298,7 @@ function OfficialsSection({ officials }: { officials: FeaturedOfficial[] }) {
                   <p className="text-[10px] text-gray-400">Votes</p>
                 </div>
                 <div className="text-center">
-                  <p className="text-sm font-semibold text-gray-300">—</p>
+                  <p className="text-sm font-semibold text-gray-900">0</p>
                   <p className="text-[10px] text-gray-400">Donors</p>
                 </div>
               </div>
@@ -408,7 +409,7 @@ function AgenciesSection({ agencies }: { agencies: FeaturedAgency[] }) {
         <SectionHeader
           title="Agencies"
           description="Federal agencies, their active rulemaking, and open comment periods."
-          href="#"
+          href="/agencies"
           linkLabel="Browse all agencies"
         />
         <p className="mt-4 text-sm text-gray-500">Loading agency data…</p>
@@ -421,14 +422,14 @@ function AgenciesSection({ agencies }: { agencies: FeaturedAgency[] }) {
       <SectionHeader
         title="Agencies"
         description="Federal agencies, their active rulemaking, and open comment periods."
-        href="#"
+        href="/agencies"
         linkLabel="Browse all agencies"
       />
       <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {agencies.map((agency) => (
           <a
             key={agency.id}
-            href="#"
+            href={`/agencies/${agency.id}`}
             className="group block rounded-lg border border-gray-200 bg-white p-4 hover:border-indigo-300 hover:shadow-sm transition-all"
           >
             <div className="flex items-center gap-3">
