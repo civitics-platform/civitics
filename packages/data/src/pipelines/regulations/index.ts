@@ -12,7 +12,7 @@
  *   pnpm --filter @civitics/data data:regulations
  */
 
-import { createAdminClient } from "@civitics/db";
+import { createAdminClient, agencyFullName, AGENCY_NAMES } from "@civitics/db";
 import type { Database } from "@civitics/db";
 import { sleep, fetchJson } from "../utils";
 import { startSync, completeSync, failSync, type PipelineResult } from "../sync-log";
@@ -155,21 +155,35 @@ export async function runRegulationsPipeline(
     }
 
     // 5. Upsert agencies (by acronym — find or create)
+    //    Use agencyFullName() to resolve acronym → full name from the shared static map.
+    //    If the acronym isn't in the map yet, log it so it can be added.
     const agencyIdMap = new Map<string, string>(); // acronym → agencies.id
+    const unmappedAcronyms: string[] = [];
     console.log(`  Upserting ${agencyAcronyms.size} agencies...`);
     for (const acronym of agencyAcronyms) {
+      const fullName = agencyFullName(acronym);
+      if (!(acronym.toUpperCase() in AGENCY_NAMES)) {
+        unmappedAcronyms.push(acronym);
+      }
       try {
         const { data: existing } = await db
           .from("agencies")
-          .select("id")
+          .select("id, name")
           .eq("acronym", acronym)
           .maybeSingle();
 
         if (existing) {
           agencyIdMap.set(acronym, existing.id as string);
+          // Backfill name if it's still stored as the acronym
+          if (existing.name === acronym && fullName && fullName !== acronym) {
+            await db
+              .from("agencies")
+              .update({ name: fullName })
+              .eq("id", existing.id);
+          }
         } else {
           const row: AgencyInsert = {
-            name: acronym,             // best we have without a lookup
+            name: fullName ?? acronym,  // full name from map, acronym as fallback
             acronym,
             jurisdiction_id: federalId,
             agency_type: "federal",
@@ -190,6 +204,10 @@ export async function runRegulationsPipeline(
       } catch (err) {
         console.error(`    Agency ${acronym}: unexpected error —`, err);
       }
+    }
+    if (unmappedAcronyms.length > 0) {
+      console.warn(`  ⚠ Unmapped agency acronyms (add to packages/db/src/agency-names.ts):`);
+      console.warn(`    ${unmappedAcronyms.join(", ")}`);
     }
 
     // 6. Upsert proposals
