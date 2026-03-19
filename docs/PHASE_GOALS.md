@@ -2,7 +2,7 @@
 
 > This file tracks progress against the phased development plan defined in `CLAUDE.md`.
 > Update checkboxes as tasks complete. Phases are sequential; each unlocks the next.
-> Last audited: 2026-03-16 (verified against actual files, tables, and code — not guessed).
+> Last audited: 2026-03-18 (verified against actual files, tables, and code — not guessed).
 
 ---
 
@@ -36,16 +36,16 @@
 
 ---
 
-## Phase 1 — MVP `Weeks 3–10` `~65% complete` ← **current**
+## Phase 1 — MVP `Weeks 3–10` `~80% complete` ← **current**
 
-> **Done when:** Search works, homepage shows real data for all sections (proposals link live, not `href="#"`), one complete user journey end to end (search → official → vote record → donor → connection graph), auth working, 500 beta users, grant applications submitted.
+> **Done when:** Search works, one complete user journey end to end (search → official → vote record → donor → connection graph), auth working, 500 beta users, grant applications submitted.
 
 ### Data Ingestion Pipelines
 - [x] Congress.gov API → officials + votes (`packages/data/src/pipelines/congress/`)
-- [x] FEC bulk pipeline → `weball24.zip` download → parse → match → upsert → auto-run connections (`packages/data/src/pipelines/fec-bulk/`)
-  - Note: FEC API-based pipeline (`fec/`) retained for reference but must not be used — hits rate limits
-- [x] FEC Individuals bulk file pipeline (`packages/data/src/pipelines/financial-entities/`) — creates `financial_entities` table rows from FEC donor categories
-  - Note: Full 2GB individual-level FEC file pending Cloudflare R2 account
+- [x] FEC bulk pipeline → `weball24.zip` + `pas224.zip` → financial_relationships + entity_connections (`packages/data/src/pipelines/fec-bulk/`)
+  - Note: FEC API-based pipeline (`fec/`) retained for reference only — do not use (hits rate limits)
+  - Note: Full 2GB individual-level FEC file (`indiv24.zip`) pending Cloudflare R2 account
+- [x] Financial entities pipeline — `financial_entities` rows from FEC donor categories (`packages/data/src/pipelines/financial-entities/`)
 - [x] USASpending.gov → spending_records (`packages/data/src/pipelines/usaspending/`)
 - [x] Regulations.gov → proposals + comment periods (`packages/data/src/pipelines/regulations/`)
 - [x] OpenStates → state legislators (`packages/data/src/pipelines/openstates/`) — 6,268 inserted, 1,031 updated (2026-03-17)
@@ -56,16 +56,16 @@
 
 ### Core Pages
 - [x] Homepage wired to real data — officials, proposals, agencies, spending counts pulled live from Supabase
-  - Proposals nav and CTA links now wired to `/proposals` and `/proposals?status=open`
+  - Proposals nav and all CTA links wired to `/proposals` and `/proposals?status=open`
 - [x] Officials list page (`/officials`) — full list, party filter, real data
 - [x] Official detail page (`/officials/[id]`) — votes, donor data, real data
 - [x] Agency list page (`/agencies`) — real data
 - [x] Agency detail page (`/agencies/[slug]`) — real data
-- [x] Proposals list page (`/proposals`) — status/type/agency/search filters, open-now featured section, pagination
+- [x] Proposals list page (`/proposals`) — status/type/agency/search filters, open-now featured section, clickable cards, full agency names, pagination with filter preservation
 - [x] Proposal detail page (`/proposals/[id]`) — full summary, comment period banner, 3-step comment draft tool, vote record, related proposals, generateStaticParams for top 50
-  - AI summaries: show cached `summary_plain` only — no on-demand generation (AI credit system not yet live)
-- [ ] Search — no search component or API route exists anywhere in the app
+  - AI summaries: show cached `summary_plain` only — no on-demand generation (credit system not yet live)
 - [x] Public accountability dashboard (`/dashboard`) — platform stats, pipeline health, data counts
+- [ ] Search — no search component or API route exists anywhere in the app
 
 ### Graph Features
 - [x] Connection graph with D3 force simulation (`packages/graph/src/ForceGraph.tsx`)
@@ -79,6 +79,8 @@
 - [x] Depth control — 1–5 hop selector; client-side BFS filter
 - [x] Filter pills — per-connection-type toggles with live counts; syncs with presets; "Custom" badge
 - [x] Customize panel — node size/color encoding, edge thickness/opacity, layout, theme
+- [x] Strength slider — filter weak connections by minimum strength threshold
+- [x] Smart expansion — click node to expand neighbors; keyboard shortcut support
 - [x] Node types rendered: official (circle), proposal (document rect), corporation/financial (diamond, green), pac (triangle, orange), individual (dashed circle, blue), governing_body (rounded rect, purple)
   - Note: `entity_connections` schema uses `from_id`/`from_type`/`to_id`/`to_type` — different from original CLAUDE.md spec which showed `entity_a_id`/`entity_b_id`
 - [ ] AI narrative ("Explain this graph") — not yet built
@@ -86,34 +88,44 @@
 - [ ] Timeline scrubber — Phase 2
 - [ ] Comparison mode (split screen) — Phase 2
 
+### Maps
+- [x] Mapbox account + API key — `NEXT_PUBLIC_MAPBOX_TOKEN` configured
+- [x] District finder from address — `DistrictMap` component geocodes via Mapbox, calls `/api/representatives`
+- [x] "Find your representatives" map — live on homepage
+- [x] Lazy loading + geolocation — user-activated map (4-state machine), browser geolocation with privacy coarsening, fade transition
+
+### AI Features
+- [x] `ai_summary_cache` table — entity-based cache, UNIQUE on (entity_type, entity_id, summary_type)
+- [x] `generateSummary()` function — `packages/ai/src/client.ts`, Haiku model, $4.00/month cost guard, logs to `api_usage_logs`
+- [x] Anthropic API connected
+- [ ] Plain language summaries running on ingestion (in progress — function exists, pipeline integration pending)
+- [ ] Basic credit system in Supabase
+- [ ] "What does this mean for me" personalized query
+
 ### Infrastructure
 - [x] Supabase storage buckets created
 - [x] Storage utility (`packages/db/src/storage.ts`) — `uploadFile()` / `getFile()` / `getStorageUrl()`, path-based (migration-ready for R2)
+- [x] Cloudflare R2 configured — buckets (`civitics-documents`, `civitics-cache`), `@aws-sdk/client-s3`, `STORAGE_PROVIDER=r2` active
 - [x] `data_sync_log` table tracking all pipeline runs
 - [x] `api_usage_logs` table
-- [x] `ai_summary_cache` table — entity-based cache for AI summaries (migration 0005)
-- [x] `service_usage` table — tracks Mapbox loads, R2 ops, Vercel deploys (migration 0006)
-- [x] `financial_entities` table (created after main schema — types not yet regenerated)
-- [x] `graph_snapshots` table (created after main schema — types not yet regenerated)
-  - TODO: run `pnpm --filter @civitics/db gen:types` to regenerate `database.ts` and remove the `any` casts in graph API routes
+- [x] `ai_summary_cache` table — migration 0005
+- [x] `service_usage` table — tracks Mapbox loads, R2 ops, Vercel deploys — migration 0006
+- [x] `financial_entities` table (types not yet regenerated — `any` casts in place)
+- [x] `graph_snapshots` table (types not yet regenerated)
+  - TODO: run `pnpm --filter @civitics/db gen:types` to regenerate `database.ts` and remove `any` casts
 - [x] Vercel Analytics + Speed Insights — installed, wired into root layout
-- [x] Cloudflare R2 — buckets created (`civitics-documents`, `civitics-cache`), storage.ts updated to use @aws-sdk/client-s3, STORAGE_PROVIDER=r2 active
+- [x] All services monitored — dashboard at `/dashboard` shows live pipeline health + data counts
 - [ ] Custom storage domain
 
-### Database (as of 2026-03-16 audit)
-- [x] `entity_connections` — 2,212 rows
+### Database (as of 2026-03-18)
 - [x] `officials` — 1,983 rows
 - [x] `proposals` — 1,917 rows
-- [x] `spending_records` — 1,980 rows
 - [x] `votes` — 226,873 rows
+- [x] `spending_records` — 1,980 rows
+- [x] `entity_connections` — 2,212 rows
 - [x] `financial_entities` — FEC donor categories seeded
 - [x] `graph_snapshots` — table exists, rows created on share
 - [x] `civic_comments` — table exists, no commenting UI yet
-
-### AI Features
-- [x] Plain language bill summaries — `generateSummary()` in `packages/ai/src/client.ts`, Haiku model, cache + $4.00/month cost guard, logs to `api_usage_logs`
-- [ ] Basic credit system in Supabase
-- [ ] "What does this mean for me" personalized query
 
 ### Community & Auth
 - [ ] User auth via Supabase (no auth route handler exists)
@@ -121,16 +133,11 @@
 - [ ] Position tracking on proposals
 - [ ] Follow officials and agencies
 
-### Maps
-- [x] Mapbox account + API key — NEXT_PUBLIC_MAPBOX_TOKEN configured
-- [x] District finder from address — `DistrictMap` component geocodes address via Mapbox, calls `/api/representatives`
-- [x] "Find your representatives" map — live on homepage between CommentBanner and GraphBanner
-
 ---
 
 ## Phase 2 — Growth `Weeks 11–22` `Planned`
 
-> **Done when:** Platform financially self-sustaining, official comment submission working, first institutional API customer, first grant money received.
+> **Done when:** Platform financially self-sustaining, first institutional API customer, first grant money received.
 
 ### Accountability Tools
 - [ ] Official comment submission → regulations.gov API
