@@ -113,56 +113,78 @@ function computeCostCents(inputTokens: number, outputTokens: number): number {
 // Step 1 — Proposals
 // ---------------------------------------------------------------------------
 
+// Agency acronym → full name (subset; used for prompt context only)
+const AGENCY_NAMES: Record<string, string> = {
+  EPA: "Environmental Protection Agency",
+  FAA: "Federal Aviation Administration",
+  USCG: "U.S. Coast Guard",
+  FCC: "Federal Communications Commission",
+  FWS: "U.S. Fish and Wildlife Service",
+  NOAA: "National Oceanic and Atmospheric Administration",
+  IRS: "Internal Revenue Service",
+  NCUA: "National Credit Union Administration",
+  OSHA: "Occupational Safety and Health Administration",
+  AMS: "Agricultural Marketing Service",
+  CMS: "Centers for Medicare & Medicaid Services",
+  OCC: "Office of the Comptroller of the Currency",
+  NRC: "Nuclear Regulatory Commission",
+  ED: "Department of Education",
+  FERC: "Federal Energy Regulatory Commission",
+  OPM: "Office of Personnel Management",
+  FDA: "Food and Drug Administration",
+  VA: "Department of Veterans Affairs",
+  CPSC: "Consumer Product Safety Commission",
+  NHTSA: "National Highway Traffic Safety Administration",
+  HHS: "Department of Health and Human Services",
+  DOT: "Department of Transportation",
+  DOE: "Department of Energy",
+  SEC: "Securities and Exchange Commission",
+  CFTC: "Commodity Futures Trading Commission",
+  FMCSA: "Federal Motor Carrier Safety Administration",
+  FTA: "Federal Transit Administration",
+};
+
 async function fetchOpenProposals(db: ReturnType<typeof createAdminClient>): Promise<ProposalRow[]> {
+  // Proposals store agency as metadata->>'agency_id' (acronym string), not a FK.
+  // Fetch open proposals, then filter out those already cached.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await (db as any).rpc("get_open_proposals_needing_summary", {
-    limit_count: 100,
-  });
+  const result = await (db as any)
+    .from("proposals")
+    .select("id, title, summary_plain, type, metadata")
+    .gt("comment_period_end", new Date().toISOString())
+    .order("comment_period_end", { ascending: true })
+    .limit(200);
 
-  if (error || !data) {
-    // Fallback: manual query if RPC not available
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const result = await (db as any)
-      .from("proposals")
-      .select(`
-        id,
-        title,
-        summary_plain,
-        type,
-        agencies!agency_id ( name, acronym )
-      `)
-      .gt("comment_period_end", new Date().toISOString())
-      .order("comment_period_end", { ascending: true })
-      .limit(200);
+  if (result.error || !result.data) {
+    console.error("   ✗ Proposal fetch error:", result.error?.message ?? "no data");
+    return [];
+  }
 
-    if (result.error || !result.data) return [];
+  // Filter to those without a cached summary
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const cacheCheck = await (db as any)
+    .from("ai_summary_cache")
+    .select("entity_id")
+    .eq("entity_type", "proposal")
+    .eq("summary_type", "plain_language");
 
-    // Filter to those without a cached summary
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const cacheCheck = await (db as any)
-      .from("ai_summary_cache")
-      .select("entity_id")
-      .eq("entity_type", "proposal")
-      .eq("summary_type", "plain_language");
+  const cached = new Set<string>((cacheCheck.data ?? []).map((r: { entity_id: string }) => r.entity_id));
 
-    const cached = new Set<string>((cacheCheck.data ?? []).map((r: { entity_id: string }) => r.entity_id));
-
-    return result.data
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .filter((p: any) => !cached.has(p.id))
-      .slice(0, 100)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .map((p: any) => ({
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return result.data
+    .filter((p: any) => !cached.has(p.id))
+    .slice(0, 100)
+    .map((p: any) => {
+      const acronym: string | null = p.metadata?.agency_id ?? null;
+      return {
         id: p.id,
         title: p.title,
         summary_plain: p.summary_plain ?? null,
         type: p.type,
-        agency_name: p.agencies?.name ?? null,
-        agency_acronym: p.agencies?.acronym ?? null,
-      }));
-  }
-
-  return data;
+        agency_acronym: acronym,
+        agency_name: acronym ? (AGENCY_NAMES[acronym] ?? null) : null,
+      };
+    });
 }
 
 async function generateProposalSummaries(
@@ -203,7 +225,8 @@ async function generateProposalSummaries(
         system:
           "You are a plain language expert helping ordinary citizens understand federal regulations. " +
           "Write clear, jargon-free summaries that explain what a proposal means for real people. " +
-          "Be factual and neutral. Never editorialize.",
+          "Be factual and neutral. Never editorialize. " +
+          "Write in plain prose only — no markdown, no headers, no bullet points, no bold text.",
         messages: [{ role: "user", content: userPrompt }],
       });
 
@@ -356,7 +379,8 @@ async function generateOfficialSummaries(
         max_tokens: 200,
         system:
           "You are a civic analyst writing neutral factual profiles of elected officials for citizens. " +
-          "Be factual, balanced, and brief.",
+          "Be factual, balanced, and brief. " +
+          "Write in plain prose only — no markdown, no headers, no bullet points, no bold text.",
         messages: [{ role: "user", content: userPrompt }],
       });
 

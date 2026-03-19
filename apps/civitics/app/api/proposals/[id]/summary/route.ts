@@ -119,7 +119,8 @@ export async function GET(
       system:
         "You are a plain language expert helping ordinary citizens understand federal regulations. " +
         "Write clear, jargon-free summaries that explain what a proposal means for real people. " +
-        "Be factual and neutral. Never editorialize.",
+        "Be factual and neutral. Never editorialize. " +
+        "Write in plain prose only — no markdown, no headers, no bullet points, no bold text.",
       messages: [{ role: "user", content: userPrompt }],
     });
 

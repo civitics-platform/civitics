@@ -132,7 +132,8 @@ export async function GET(
       max_tokens: 200,
       system:
         "You are a civic analyst writing neutral factual profiles of elected officials for citizens. " +
-        "Be factual, balanced, and brief.",
+        "Be factual, balanced, and brief. " +
+        "Write in plain prose only — no markdown, no headers, no bullet points, no bold text.",
       messages: [{ role: "user", content: userPrompt }],
     });
 
