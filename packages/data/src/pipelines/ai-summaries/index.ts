@@ -207,6 +207,14 @@ async function generateProposalSummaries(
     }
 
     try {
+      // Skip if there isn't enough context beyond the title alone
+      const inputText = proposal.summary_plain ?? proposal.title;
+      if (inputText.length < 100) {
+        console.log(`   — Skipping (insufficient context): ${proposal.title.slice(0, 60)}…`);
+        skipped++;
+        continue;
+      }
+
       const agencyLine = proposal.agency_name
         ? `${proposal.agency_name}${proposal.agency_acronym ? ` (${proposal.agency_acronym})` : ""}`
         : (proposal.agency_acronym ?? "Federal Agency");
