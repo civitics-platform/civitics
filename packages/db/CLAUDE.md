@@ -89,6 +89,39 @@ evidence      (JSONB array of source URLs)
 The original CLAUDE.md spec used `entity_a_id` / `entity_b_id` — **those names are wrong**.
 All API routes, queries, and pipelines must use `from_id` / `from_type` / `to_id` / `to_type`.
 
+## users table — design notes
+
+`id` is the Supabase Auth UUID — same UUID shared between `auth.users` and `public.users`.
+Supabase Auth manages identity; this table stores profile data only.
+
+```
+id                    UUID  → auth.users(id) ON DELETE CASCADE
+email                 TEXT  — cached from auth for easier queries
+display_name          TEXT  — optional, from OAuth or user-set
+avatar_url            TEXT  — from OAuth provider or upload
+auth_provider         TEXT  — 'email' | 'google' | 'github'
+civic_credits_balance INT   — Phase 4 will migrate on-chain; keep here for now
+is_active             BOOL
+last_seen             TIMESTAMPTZ
+created_at            TIMESTAMPTZ
+updated_at            TIMESTAMPTZ  — managed by trigger
+metadata              JSONB — Phase 4 wallet data goes here:
+                               metadata->>'wallet_address'
+                               metadata->>'wallet_chain'
+```
+
+**Columns intentionally NOT here:**
+- `wallet_address` / `wallet_chain` → `metadata` JSONB when Phase 4 starts
+- `district_jurisdiction_id` / `zip_code` → `user_preferences` table (Phase 2)
+- `privy_user_id` → removed; Supabase Auth handles identity
+
+**Do not add blockchain columns directly to `users`.** Use `metadata` JSONB until Phase 4 design is finalized.
+
+**Phase 2 `user_preferences` table** (not yet created) will hold:
+- `district_jurisdiction_id`, `zip_code`, notification settings, followed officials, saved positions
+
+---
+
 ## officials table — column names
   role_title  (NOT role_type)
   full_name   (NOT name)

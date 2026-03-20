@@ -27,6 +27,8 @@ export async function GET(request: Request) {
             {
               id: user.id,
               email: user.email,
+              display_name: user.user_metadata?.full_name as string | undefined,
+              avatar_url: user.user_metadata?.avatar_url as string | undefined,
               auth_provider:
                 (user.app_metadata?.provider as string) || "email",
               last_seen: new Date().toISOString(),
@@ -34,7 +36,7 @@ export async function GET(request: Request) {
             { onConflict: "id", ignoreDuplicates: false }
           );
         } catch {
-          // Table may not exist yet (migration 0009 pending) — auth still succeeds
+          // Auth still succeeds even if profile upsert fails
         }
       }
 
