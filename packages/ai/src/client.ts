@@ -15,7 +15,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { createAdminClient } from "@civitics/db";
 
 export const anthropic = new Anthropic({
-  apiKey: process.env["ANTHROPIC_API_KEY"],
+  apiKey: process.env["CIVITICS_ANTHROPIC_API_KEY"],
 });
 
 // $4.00 hard cap — stored as integer cents

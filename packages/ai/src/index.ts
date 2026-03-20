@@ -53,8 +53,8 @@ export const CREDIT_COSTS = {
 export type AiOperation = keyof typeof CREDIT_COSTS;
 
 export function createAiClient() {
-  const apiKey = process.env["ANTHROPIC_API_KEY"];
-  if (!apiKey) throw new Error("Missing ANTHROPIC_API_KEY");
+  const apiKey = process.env["CIVITICS_ANTHROPIC_API_KEY"];
+  if (!apiKey) throw new Error("Missing CIVITICS_ANTHROPIC_API_KEY");
   return new Anthropic({ apiKey });
 }
 
