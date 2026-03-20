@@ -86,7 +86,8 @@ async function cacheSummary(
 
 async function logUsage(
   model: string,
-  tokensUsed: number,
+  inputTokens: number,
+  outputTokens: number,
   costCents: number
 ): Promise<void> {
   try {
@@ -95,7 +96,9 @@ async function logUsage(
       service: "anthropic",
       endpoint: "generate_summary",
       model,
-      tokens_used: tokensUsed,
+      tokens_used: inputTokens + outputTokens,
+      input_tokens: inputTokens,
+      output_tokens: outputTokens,
       cost_cents: costCents,
     });
   } catch {
@@ -195,15 +198,15 @@ export async function generateSummary(
   const inputTokens = message.usage.input_tokens;
   const outputTokens = message.usage.output_tokens;
   const tokensUsed = inputTokens + outputTokens;
-  // Haiku pricing: $0.25/M input + $1.25/M output → integer cents
-  const costCents = Math.ceil(
-    (inputTokens * 0.00025 + outputTokens * 0.00125) / 10
-  );
+  // Haiku pricing: $0.25/M input + $1.25/M output → fractional cents (DECIMAL)
+  // Math.round to 2 decimal places avoids the old Math.ceil() inflation
+  // (Math.ceil turned every 0.02¢ call into 1¢, inflating 181 calls to $1.81)
+  const costCents = Math.round((inputTokens * 0.25 + outputTokens * 1.25) / 10000 * 100) / 100;
 
   // Cache and log in parallel — neither blocks the response
   await Promise.all([
     cacheSummary(entityType, entityId, type, summary, model, tokensUsed),
-    logUsage(model, tokensUsed, costCents),
+    logUsage(model, inputTokens, outputTokens, costCents),
   ]);
 
   return summary;

@@ -21,24 +21,30 @@ async function getDatabaseSizeBytes(): Promise<number> {
 }
 
 async function getAnthropicUsage() {
-  const db = createAdminClient();
   const now = new Date();
   const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0);
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const anyDb = db as any;
+  const anyDb = createAdminClient() as any;
   try {
     const [today, month, daily7] = await Promise.all([
-      anyDb.from("api_usage_logs").select("cost_cents").eq("service", "anthropic").gte("created_at", todayStart.toISOString()),
-      anyDb.from("api_usage_logs").select("service,model,cost_cents").eq("service", "anthropic").gte("created_at", monthStart.toISOString()),
+      anyDb.from("api_usage_logs").select("cost_cents,input_tokens,output_tokens").eq("service", "anthropic").gte("created_at", todayStart.toISOString()),
+      anyDb.from("api_usage_logs").select("model,cost_cents,input_tokens,output_tokens").eq("service", "anthropic").gte("created_at", monthStart.toISOString()),
       anyDb.from("api_usage_logs").select("cost_cents,created_at").eq("service", "anthropic").gte("created_at", new Date(now.getTime() - 7 * 86400_000).toISOString()),
     ]);
-    type Row = { cost_cents: number; model?: string; created_at?: string };
+    type Row = { cost_cents: number; model?: string; created_at?: string; input_tokens?: number; output_tokens?: number };
     const todayRows: Row[] = today.data ?? [];
     const monthRows: Row[] = month.data ?? [];
     const daily7Rows: Row[] = daily7.data ?? [];
 
-    const sumCents = (rows: Row[]) => rows.reduce((s, r) => s + (r.cost_cents ?? 0), 0);
+    // Actual cost from token counts (post-fix rows only — pre-fix rows have null tokens)
+    const tokenCostDollars = (rows: Row[]) =>
+      rows.reduce((s, r) => {
+        if (r.input_tokens != null && r.output_tokens != null) {
+          return s + (r.input_tokens * 0.25 + r.output_tokens * 1.25) / 1_000_000;
+        }
+        return s;
+      }, 0);
 
     const dayBuckets: number[] = Array(7).fill(0);
     for (const r of daily7Rows) {
@@ -50,15 +56,16 @@ async function getAnthropicUsage() {
     for (const r of monthRows) { const k = r.model ?? "unknown"; modelBreakdown[k] = (modelBreakdown[k] ?? 0) + 1; }
 
     return {
-      todayCents: sumCents(todayRows),
-      monthCents: sumCents(monthRows),
+      monthCostDollars: tokenCostDollars(monthRows),
+      monthInputTokens: monthRows.reduce((s, r) => s + (r.input_tokens ?? 0), 0),
+      monthOutputTokens: monthRows.reduce((s, r) => s + (r.output_tokens ?? 0), 0),
       todayCalls: todayRows.length,
       monthCalls: monthRows.length,
       dailyCents7: dayBuckets,
       modelBreakdown,
     };
   } catch {
-    return { todayCents: 0, monthCents: 0, todayCalls: 0, monthCalls: 0, dailyCents7: Array(7).fill(0), modelBreakdown: {} };
+    return { monthCostDollars: 0, monthInputTokens: 0, monthOutputTokens: 0, todayCalls: 0, monthCalls: 0, dailyCents7: Array(7).fill(0), modelBreakdown: {} };
   }
 }
 
@@ -72,6 +79,35 @@ async function getServiceUsage(period: string) {
     return { mapboxLoads: get("mapbox", "map_load") };
   } catch {
     return { mapboxLoads: 0 };
+  }
+}
+
+async function getSiteActivity(period: string) {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db = createAdminClient() as any;
+    const monthStart = new Date();
+    monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
+
+    const [svcRows, graphShares, aiSummaries, comments] = await Promise.all([
+      db.from("service_usage").select("service,metric,count").eq("period", period),
+      db.from("graph_snapshots").select("*", { count: "exact", head: true }).gte("created_at", monthStart.toISOString()),
+      db.from("ai_summary_cache").select("*", { count: "exact", head: true }),
+      db.from("official_comment_submissions").select("*", { count: "exact", head: true }).gte("created_at", monthStart.toISOString()),
+    ]);
+
+    type SvcRow = { service: string; metric: string; count: number };
+    const rows: SvcRow[] = svcRows.data ?? [];
+    const get = (svc: string, metric: string) => rows.find((r) => r.service === svc && r.metric === metric)?.count ?? 0;
+
+    return {
+      mapActivations: get("mapbox", "map_activated"),
+      graphShares: graphShares.count ?? 0,
+      aiSummaries: aiSummaries.count ?? 0,
+      commentsDrafted: comments.count ?? 0,
+    };
+  } catch {
+    return { mapActivations: 0, graphShares: 0, aiSummaries: 0, commentsDrafted: 0 };
   }
 }
 
@@ -93,31 +129,6 @@ async function getCloudflareR2Stats() {
   }
 }
 
-async function getVercelStats() {
-  const token = process.env["VERCEL_TOKEN"];
-  if (!token) return null;
-  try {
-    const projectId = process.env["VERCEL_PROJECT_ID"];
-    const url = projectId
-      ? `https://api.vercel.com/v6/deployments?projectId=${projectId}&limit=3`
-      : `https://api.vercel.com/v6/deployments?limit=3`;
-    const res = await fetch(url, {
-      headers: { Authorization: `Bearer ${token}` },
-      next: { revalidate: 300 },
-    });
-    if (!res.ok) return null;
-    const json = await res.json();
-    const deploys: Array<{ uid: string; state: string; created: number; url: string }> = json.deployments ?? [];
-    const latest = deploys[0];
-    return {
-      latestState: latest?.state ?? "UNKNOWN",
-      latestCreated: latest ? new Date(latest.created) : null,
-      recentCount: deploys.length,
-    };
-  } catch {
-    return null;
-  }
-}
 
 // Reads the most recent completed run per pipeline from data_sync_log
 async function getSyncLog() {
@@ -411,12 +422,12 @@ export default async function DashboardPage() {
   const fetchedAt = new Date();
   const period = `${fetchedAt.getFullYear()}-${String(fetchedAt.getMonth() + 1).padStart(2, "0")}`;
 
-  const [dbBytes, ai, svcUsage, r2Stats, vercel, syncLog] = await Promise.all([
+  const [dbBytes, ai, svcUsage, r2Stats, siteActivity, syncLog] = await Promise.all([
     getDatabaseSizeBytes(),
     getAnthropicUsage(),
     getServiceUsage(period),
     getCloudflareR2Stats(),
-    getVercelStats(),
+    getSiteActivity(period),
     getSyncLog(),
   ]);
 
@@ -437,8 +448,9 @@ export default async function DashboardPage() {
   const BW_FREE_LIMIT = 5 * 1024 * 1024 * 1024;   // 5 GB
 
   // Anthropic budget — $4.00 hard cap
-  const ANTHROPIC_BUDGET_CENTS = 400;
-  const aiRemaining = Math.max(0, ANTHROPIC_BUDGET_CENTS - ai.monthCents);
+  const ANTHROPIC_BUDGET_DOLLARS = 4.00;
+  const aiRemainingDollars = Math.max(0, ANTHROPIC_BUDGET_DOLLARS - ai.monthCostDollars);
+  const aiSpentPct = Math.min(100, Math.round((ai.monthCostDollars / ANTHROPIC_BUDGET_DOLLARS) * 100));
 
   // Mapbox free tier
   const MAPBOX_FREE_LOADS = 50_000;
@@ -447,12 +459,11 @@ export default async function DashboardPage() {
   const R2_FREE_BYTES = 10 * 1024 * 1024 * 1024;
 
   const dbLevel = statusFromPercent(dbBytes > 0 ? Math.round((dbBytes / DB_FREE_LIMIT) * 100) : 0);
-  const aiLevel = statusFromPercent(ai.monthCents > 0 ? Math.round((ai.monthCents / ANTHROPIC_BUDGET_CENTS) * 100) : 0);
+  const aiLevel = statusFromPercent(aiSpentPct);
   const r2Level = r2Stats ? statusFromPercent(Math.round((r2Stats.payloadBytes / R2_FREE_BYTES) * 100)) : "gray" as StatusLevel;
   const mapboxLevel = statusFromPercent(mapboxPct);
-  const vercelLevel: StatusLevel = vercel
-    ? (vercel.latestState === "READY" ? "green" : vercel.latestState === "ERROR" ? "red" : "yellow")
-    : "gray";
+  // If this page is loading, Vercel is up
+  const vercelLevel: StatusLevel = "green";
 
   const vercelEnv = process.env["VERCEL_ENV"] ?? process.env["NODE_ENV"] ?? "development";
   const vercelSha = process.env["VERCEL_GIT_COMMIT_SHA"] ?? null;
@@ -460,7 +471,7 @@ export default async function DashboardPage() {
   const phase1Done = PHASE1_TASKS.filter((t) => t.done).length;
   const phase1Pct  = Math.round((phase1Done / PHASE1_TASKS.length) * 100);
 
-  const sparkMax = Math.max(...ai.dailyCents7, 1);
+  const sparkMax = Math.max(...ai.dailyCents7, 0.01);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -497,24 +508,31 @@ export default async function DashboardPage() {
             />
             <DashboardStatsSection />
 
-            {/* Analytics link */}
+            {/* Site Activity — self-tracked */}
             <div className="mt-4 rounded-lg border border-gray-200 bg-white p-5">
-              <div className="flex items-center justify-between">
+              <p className="text-sm font-semibold text-gray-900 mb-3">Site Activity (self-tracked, this month)</p>
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
                 <div>
-                  <p className="text-sm font-medium text-gray-700">Vercel Analytics</p>
-                  <p className="mt-0.5 text-xs text-gray-400">
-                    Page views, visitors, and performance — collecting now. Data appears in Vercel dashboard after 24h.
-                  </p>
+                  <p className="text-xl font-bold tabular-nums text-gray-900">{siteActivity.mapActivations.toLocaleString()}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">Map activations</p>
                 </div>
-                <a
-                  href="https://vercel.com/civitics-platform/civitics/analytics"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="shrink-0 text-xs font-medium text-indigo-600 hover:text-indigo-700"
-                >
-                  Vercel Analytics →
-                </a>
+                <div>
+                  <p className="text-xl font-bold tabular-nums text-gray-900">{siteActivity.graphShares.toLocaleString()}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">Graph shares created</p>
+                </div>
+                <div>
+                  <p className="text-xl font-bold tabular-nums text-gray-900">{siteActivity.aiSummaries.toLocaleString()}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">AI summaries cached</p>
+                </div>
+                <div>
+                  <p className="text-xl font-bold tabular-nums text-gray-900">{siteActivity.commentsDrafted.toLocaleString()}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">Official comments drafted</p>
+                </div>
               </div>
+              <p className="mt-3 text-xs text-gray-400 italic">
+                Detailed visitor analytics are collected by Vercel and visible to platform maintainers.
+                We track civic engagement metrics above ourselves.
+              </p>
             </div>
           </section>
 
@@ -536,21 +554,27 @@ export default async function DashboardPage() {
               {/* Anthropic */}
               <ServiceCard
                 name="Anthropic"
-                cost={`$${(ai.monthCents / 100).toFixed(2)}`}
+                cost={`$${ai.monthCostDollars.toFixed(4)}`}
                 level={aiLevel}
                 note="Hard cap: $4.00/month. Cost guard enforced server-side."
               >
                 <div className="flex items-center justify-between text-xs text-gray-500">
                   <span>{ai.monthCalls.toLocaleString()} calls this month</span>
                   <span className="tabular-nums font-medium text-gray-700">
-                    ${(aiRemaining / 100).toFixed(2)} remaining
+                    ${aiRemainingDollars.toFixed(2)} remaining
                   </span>
                 </div>
-                <BudgetBar label="Monthly budget ($4.00)" spentCents={ai.monthCents} budgetCents={ANTHROPIC_BUDGET_CENTS} />
-                {ai.dailyCents7.some((v) => v > 0) ? (
-                  <div className="flex items-end gap-2 pt-1">
-                    <p className="text-xs text-gray-400">7-day spend</p>
-                    <Sparkline values={ai.dailyCents7} maxVal={sparkMax} />
+                <BudgetBar label="Monthly budget ($4.00)" spentCents={Math.round(ai.monthCostDollars * 100)} budgetCents={400} />
+                {ai.monthInputTokens > 0 || ai.monthOutputTokens > 0 ? (
+                  <div className="space-y-0.5 pt-1">
+                    <p className="text-[11px] text-gray-400 tabular-nums">
+                      Input: {ai.monthInputTokens.toLocaleString()} tokens
+                      {" · "}${((ai.monthInputTokens * 0.25) / 1_000_000).toFixed(4)}
+                    </p>
+                    <p className="text-[11px] text-gray-400 tabular-nums">
+                      Output: {ai.monthOutputTokens.toLocaleString()} tokens
+                      {" · "}${((ai.monthOutputTokens * 1.25) / 1_000_000).toFixed(4)}
+                    </p>
                   </div>
                 ) : (
                   <p className="text-xs text-gray-400">No AI calls yet this month</p>
@@ -589,28 +613,21 @@ export default async function DashboardPage() {
 
               {/* Vercel */}
               <ServiceCard name="Vercel" cost="$0.00" level={vercelLevel} note="Hobby plan: 100 GB bandwidth · 6,000 build minutes/month">
-                {vercel ? (
-                  <>
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-gray-500">Latest deploy</span>
-                      <span className={`font-medium ${vercel.latestState === "READY" ? "text-emerald-600" : "text-yellow-600"}`}>
-                        {vercel.latestState}
-                      </span>
-                    </div>
-                    {vercel.latestCreated && (
-                      <p className="text-xs text-gray-400 tabular-nums">
-                        {vercel.latestCreated.toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
-                      </p>
-                    )}
-                  </>
-                ) : (
-                  <p className="text-xs text-gray-400">
-                    ⚠ Add <code className="rounded bg-gray-100 px-1 font-mono text-[11px]">VERCEL_TOKEN</code> for live deploy status.
-                  </p>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-gray-500">Status</span>
+                  <span className="font-medium text-emerald-600">Live</span>
+                </div>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-gray-500">Environment</span>
+                  <span className="tabular-nums text-gray-700">{vercelEnv}</span>
+                </div>
+                {vercelSha && (
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-gray-500">Commit</span>
+                    <span className="font-mono text-gray-700">{vercelSha.slice(0, 7)}</span>
+                  </div>
                 )}
-                <p className="text-xs text-gray-500">
-                  Env: {vercelEnv}{vercelSha ? ` · ${vercelSha.slice(0, 7)}` : ""}
-                </p>
+                <p className="text-xs text-gray-400">Plan: Hobby (Free)</p>
               </ServiceCard>
 
               {/* Resend */}
