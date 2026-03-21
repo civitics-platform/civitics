@@ -1519,6 +1519,8 @@ export type Database = {
         | "vote_yes"
         | "vote_no"
         | "vote_abstain"
+        | "nomination_vote_yes"
+        | "nomination_vote_no"
         | "appointment"
         | "revolving_door"
         | "oversight"
@@ -1738,6 +1740,8 @@ export const Constants = {
         "vote_yes",
         "vote_no",
         "vote_abstain",
+        "nomination_vote_yes",
+        "nomination_vote_no",
         "appointment",
         "revolving_door",
         "oversight",

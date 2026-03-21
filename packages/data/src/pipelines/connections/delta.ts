@@ -14,7 +14,7 @@
 
 import { createAdminClient } from "@civitics/db";
 import { startSync, completeSync, failSync, type PipelineResult } from "../sync-log";
-import { runConnectionsPipeline } from "./index";
+import { runConnectionsPipeline, voteToConnectionType } from "./index";
 
 const STATE_KEY = "connections_last_run";
 
@@ -42,8 +42,15 @@ async function getLastRunTimestamp(db: any): Promise<Date | null> {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function setLastRunTimestamp(db: any, ts: Date): Promise<void> {
   try {
+    // Merge with existing value so last_vote_id written by the full pipeline is preserved
+    const { data: existing } = await db
+      .from("pipeline_state")
+      .select("value")
+      .eq("key", STATE_KEY)
+      .maybeSingle();
+    const currentValue = ((existing?.value as Record<string, unknown>) ?? {});
     await db.from("pipeline_state").upsert(
-      { key: STATE_KEY, value: { last_run: ts.toISOString() }, updated_at: new Date().toISOString() },
+      { key: STATE_KEY, value: { ...currentValue, last_run: ts.toISOString() }, updated_at: new Date().toISOString() },
       { onConflict: "key" }
     );
   } catch (err) {
@@ -183,12 +190,15 @@ export async function runConnectionsDelta(): Promise<PipelineResult> {
     console.log("  Deriving vote connections for changed officials...");
     const { data: votes } = await db
       .from("votes")
-      .select("official_id, proposal_id, vote, voted_at, roll_call_number, chamber, session, source_ids")
+      .select("official_id, proposal_id, vote, voted_at, roll_call_number, chamber, session, source_ids, metadata, proposals!proposal_id(title, vote_category)")
       .in("official_id", changedIds);
 
     for (const v of votes ?? []) {
-      const voteMap: Record<string, string> = { yes: "vote_yes", no: "vote_no", abstain: "vote_abstain", present: "vote_abstain", not_voting: "vote_abstain" };
-      const connType = voteMap[String(v.vote ?? "")] ?? null;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const proposal = (v.proposals as any) ?? {};
+      const voteCategory = (proposal.vote_category as string | null) ?? null;
+      const title = (proposal.title as string | null) ?? null;
+      const connType = voteToConnectionType(String(v.vote ?? ""), voteCategory, title, v.metadata);
       if (!connType) continue;
 
       const sourceIds = (v.source_ids as Record<string, string>) ?? {};

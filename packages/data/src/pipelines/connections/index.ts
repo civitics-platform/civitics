@@ -75,7 +75,6 @@ const PROCEDURAL_QUESTIONS = [
   "on the motion",
   "on the motion to proceed",
   "on the motion to table",
-  "on the nomination",
   "on the motion to recommit",
   "on agreeing to the amendment",
 ];
@@ -87,7 +86,7 @@ const PROCEDURAL_QUESTIONS = [
  * votes.vote values are lowercase: 'yes' | 'no' | 'present' | 'not voting'
  * metadata->>'vote_question' contains the procedural type string from Congress.gov
  */
-function voteToConnectionType(
+export function voteToConnectionType(
   vote: string,
   voteCategory: string | null,
   title: string | null,
@@ -351,15 +350,20 @@ async function deriveDonationConnections(
 async function deriveVoteConnections(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   db: any,
-  counts: ConnectionCounts
-): Promise<void> {
+  counts: ConnectionCounts,
+  startFromVoteId: string | null = null,
+): Promise<{ lastVoteId: string | null; totalFetched: number }> {
   console.log("\n  [2/4] Vote connections...");
+  if (startFromVoteId) {
+    console.log(`    Delta mode: only votes after id ${startFromVoteId}`);
+  }
 
   // Cursor-based pagination — avoids the O(n) offset-scan that causes timeouts
   // at high page numbers. Each page fetches rows WHERE id > lastId ORDER BY id.
   // JOIN to proposals brings vote_category + title for connection-type determination.
   const MAX_RETRIES = 3;
-  let lastId: string | null = null;
+  let lastId: string | null = startFromVoteId;
+  let lastProcessedId: string | null = null;
   let pageNum = 0;
   let totalFetched = 0;
 
@@ -390,6 +394,7 @@ async function deriveVoteConnections(
       break;
     }
     lastId = String(votes[votes.length - 1]["id"]);
+    lastProcessedId = lastId;
     totalFetched += votes.length;
 
     const rowsThisPage = votes.length;
@@ -453,6 +458,8 @@ async function deriveVoteConnections(
     `${counts.nomination_vote_yes} nomination_vote_yes, ${counts.nomination_vote_no} nomination_vote_no, ` +
     `${counts.vote_abstain} vote_abstain`
   );
+
+  return { lastVoteId: lastProcessedId, totalFetched };
 }
 
 // ---------------------------------------------------------------------------
@@ -588,7 +595,21 @@ export async function runConnectionsPipeline(): Promise<PipelineResult> {
 
   try {
     await deriveDonationConnections(db, counts);
-    await deriveVoteConnections(db, counts);
+
+    // Read delta state to enable cursor-based resume across runs
+    const { data: stateRow } = await db
+      .from("pipeline_state")
+      .select("value")
+      .eq("key", "connections_last_run")
+      .maybeSingle();
+    const resumeVoteId: string | null =
+      ((stateRow?.value as Record<string, unknown>)?.last_vote_id as string) ?? null;
+    if (resumeVoteId) {
+      console.log(`\n  Delta mode: resuming vote processing after id ${resumeVoteId}`);
+    }
+
+    const { lastVoteId: finalVoteId, totalFetched: totalVotesFetched } =
+      await deriveVoteConnections(db, counts, resumeVoteId);
     await deriveOversightConnections(db, counts);
     await deriveAppointmentConnections(db, counts);
 
@@ -601,6 +622,20 @@ export async function runConnectionsPipeline(): Promise<PipelineResult> {
       counts.nomination_vote_no +
       counts.oversight +
       counts.appointment;
+
+    // Persist delta tracking state for next run
+    await db.from("pipeline_state").upsert(
+      {
+        key: "connections_last_run",
+        value: {
+          last_run: new Date().toISOString(),
+          last_vote_id: finalVoteId,
+          total_votes_processed: totalVotesFetched,
+          connections_created: total,
+        },
+      },
+      { onConflict: "key" },
+    );
 
     const result: PipelineResult = {
       inserted:    total,

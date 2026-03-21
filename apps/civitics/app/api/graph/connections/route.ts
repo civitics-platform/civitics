@@ -117,15 +117,42 @@ export async function GET(request: Request) {
     const collapsedNodes = new Map<string, number>();
 
     if (entityId) {
-      // ── Entity-focused mode ────────────────────────────────────────────
-      const { data: directConns, error: directErr } = await supabase
-        .from("entity_connections")
-        .select("*")
-        .or(`from_id.eq.${entityId},to_id.eq.${entityId}`)
-        .order("strength", { ascending: false });
+      // ── Entity-focused mode — parallel type-bucketed fetches ───────────
+      // Donations and oversight are fetched in full (never more than ~20–30).
+      // Votes are capped at 50 most recent — prevents a single default row limit
+      // from crowding out donations when an official has thousands of vote records.
+      const VOTE_TYPES = [
+        "vote_yes", "vote_no", "vote_abstain",
+        "nomination_vote_yes", "nomination_vote_no",
+      ] as const;
+      const OVERSIGHT_TYPES = ["oversight", "appointment", "co_sponsorship"] as const;
 
-      if (directErr) throw directErr;
-      const direct = directConns ?? [];
+      const [donationsRes, votesRes, oversightRes] = await Promise.all([
+        supabase
+          .from("entity_connections")
+          .select("*")
+          .eq("connection_type", "donation")
+          .or(`from_id.eq.${entityId},to_id.eq.${entityId}`),
+        supabase
+          .from("entity_connections")
+          .select("*")
+          .in("connection_type", VOTE_TYPES)
+          .or(`from_id.eq.${entityId},to_id.eq.${entityId}`)
+          .order("occurred_at", { ascending: false, nullsFirst: false })
+          .limit(50),
+        supabase
+          .from("entity_connections")
+          .select("*")
+          .in("connection_type", OVERSIGHT_TYPES)
+          .or(`from_id.eq.${entityId},to_id.eq.${entityId}`),
+      ]);
+
+      if (donationsRes.error) throw donationsRes.error;
+      const direct: ConnectionRow[] = [
+        ...(donationsRes.data ?? []),
+        ...(oversightRes.data ?? []),
+        ...(votesRes.data ?? []),
+      ];
 
       if (depth >= 2 && direct.length > 0) {
         // Get all neighbor IDs from direct connections

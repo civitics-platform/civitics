@@ -41,6 +41,8 @@ const CONNECTION_TYPES = [
   "vote_yes",
   "vote_no",
   "vote_abstain",
+  "nomination_vote_yes",
+  "nomination_vote_no",
   "appointment",
   "revolving_door",
   "oversight",
@@ -282,7 +284,7 @@ export async function GET(request: Request) {
             anyDb
               .from("entity_connections")
               .select("*", { count: "exact", head: true })
-              .in("connection_type", ["vote_yes", "vote_no", "vote_abstain"]),
+              .in("connection_type", ["vote_yes", "vote_no", "vote_abstain", "nomination_vote_yes", "nomination_vote_no"]),
           ]);
 
         // Wave 2: PAC IDs needed for industry tag coverage join
@@ -452,9 +454,9 @@ export async function GET(request: Request) {
           },
           {
             name: "warren_has_vote_connections",
-            passed: (warrenVotesRes.count ?? 0) > 100,
+            passed: (warrenVotesRes.count ?? 0) > 10,
             detail: warrenId
-              ? `${warrenVotesRes.count ?? 0} vote_yes connections for ${warrenEntity?.label}`
+              ? `${warrenVotesRes.count ?? 0} vote_yes connections (expected ~23 per-proposal deduplicated)`
               : "Warren not found — skipped",
           },
           {
