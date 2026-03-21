@@ -10,6 +10,8 @@ type Stats = {
     financial: number;
     connections: number;
     comments: number;
+    aiSummaries: number;
+    tags: number;
   };
   officialsBreakdown: {
     federal: number;
@@ -79,7 +81,7 @@ export function DashboardStatsSection() {
 
   return (
     <div>
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-8">
         {/* Officials card with inline breakdown */}
         <div className="rounded-lg border border-gray-200 bg-white p-5 col-span-2 sm:col-span-1">
           <p className="text-2xl font-bold tabular-nums text-gray-900">
@@ -106,6 +108,8 @@ export function DashboardStatsSection() {
         <MetricCard label="Financial records" value={counts?.financial ?? "—"} />
         <MetricCard label="Connections mapped" value={counts?.connections ?? "—"} />
         <MetricCard label="Comments submitted" value={counts?.comments ?? "—"} />
+        <MetricCard label="AI summaries" value={counts?.aiSummaries ?? "—"} />
+        <MetricCard label="Tags applied" value={counts?.tags ?? "—"} />
       </div>
 
       <p className="mt-2 text-xs text-gray-400">

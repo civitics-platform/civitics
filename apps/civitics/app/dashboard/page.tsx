@@ -99,7 +99,8 @@ async function getPageViewAnalytics() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = createAdminClient() as any;
   try {
-    const [summary, topPages, sources, devices, countries, bots, topOfficials, topProposals] =
+    const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+    const [summary, topPages, sources, devices, countries, bots, topOfficials, topProposals, todayAll, todayHuman] =
       await Promise.all([
         db.rpc("get_pv_summary"),
         db.rpc("get_pv_top_pages", { lim: 8 }),
@@ -109,6 +110,8 @@ async function getPageViewAnalytics() {
         db.rpc("get_pv_bots"),
         db.rpc("get_pv_top_officials", { lim: 5 }),
         db.rpc("get_pv_top_proposals", { lim: 5 }),
+        db.from("page_views").select("*", { count: "exact", head: true }).gte("viewed_at", todayStart.toISOString()),
+        db.from("page_views").select("*", { count: "exact", head: true }).gte("viewed_at", todayStart.toISOString()).eq("is_bot", false),
       ]);
 
     type SummaryRow = { total_views: number; human_views: number; bot_views: number };
@@ -122,20 +125,23 @@ async function getPageViewAnalytics() {
 
     const s: SummaryRow = summary.data?.[0] ?? { total_views: 0, human_views: 0, bot_views: 0 };
     return {
-      totalViews:   Number(s.total_views),
-      humanViews:   Number(s.human_views),
-      botViews:     Number(s.bot_views),
-      topPages:     (topPages.data ?? [])    as PageRow[],
-      sources:      (sources.data ?? [])     as SourceRow[],
-      devices:      (devices.data ?? [])     as DeviceRow[],
-      countries:    (countries.data ?? [])   as CountryRow[],
-      bots:         (bots.data ?? [])        as BotRow[],
-      topOfficials: (topOfficials.data ?? []) as OfficialRow[],
-      topProposals: (topProposals.data ?? []) as ProposalRow[],
+      totalViews:      Number(s.total_views),
+      humanViews:      Number(s.human_views),
+      botViews:        Number(s.bot_views),
+      todayTotalViews: todayAll.count ?? 0,
+      todayHumanViews: todayHuman.count ?? 0,
+      topPages:        (topPages.data ?? [])     as PageRow[],
+      sources:         (sources.data ?? [])      as SourceRow[],
+      devices:         (devices.data ?? [])      as DeviceRow[],
+      countries:       (countries.data ?? [])    as CountryRow[],
+      bots:            (bots.data ?? [])         as BotRow[],
+      topOfficials:    (topOfficials.data ?? [])  as OfficialRow[],
+      topProposals:    (topProposals.data ?? [])  as ProposalRow[],
     };
   } catch {
     return {
       totalViews: 0, humanViews: 0, botViews: 0,
+      todayTotalViews: 0, todayHumanViews: 0,
       topPages: [], sources: [], devices: [], countries: [],
       bots: [], topOfficials: [], topProposals: [],
     };
@@ -381,7 +387,7 @@ function SectionHeader({ title, description }: { title: string; description?: st
   );
 }
 
-// Pipeline display names and ordering for the Data Freshness section
+// Canonical pipeline keys and display labels for the Data Freshness section
 const PIPELINES: Array<{ key: string; label: string }> = [
   { key: "congress",      label: "Congress.gov — officials + votes" },
   { key: "fec_bulk",      label: "FEC Campaign Finance" },
@@ -390,6 +396,20 @@ const PIPELINES: Array<{ key: string; label: string }> = [
   { key: "openstates",    label: "OpenStates — state legislators" },
   { key: "courtlistener", label: "CourtListener — judges + rulings" },
 ];
+
+// Normalize any pipeline name variant → canonical key used in PIPELINES above
+function normalizePipeline(name: string): string {
+  const n = name.toLowerCase().replace(/-/g, "_");
+  if (n === "congress_gov" || n === "congress") return "congress";
+  if (n === "fec_bulk" || n === "fec") return "fec_bulk";
+  if (n === "usaspending" || n === "usa_spending") return "usaspending";
+  if (n === "regulations_gov" || n === "regulations") return "regulations";
+  if (n === "openstates" || n === "open_states") return "openstates";
+  if (n === "courtlistener" || n === "court_listener") return "courtlistener";
+  if (n === "nightly_cron" || n === "nightly") return "nightly_cron";
+  if (n === "connections" || n === "entity_connections") return "connections";
+  return n;
+}
 
 function FreshnessRow({
   label,
@@ -519,7 +539,7 @@ export default async function DashboardPage() {
     getSyncLog(),
   ]);
 
-  // Build pipeline map for Data Freshness section
+  // Build pipeline map for Data Freshness section — normalize names to canonical keys
   type SyncRow = {
     pipeline: string;
     completed_at: string;
@@ -527,9 +547,13 @@ export default async function DashboardPage() {
     rows_updated: number;
     estimated_mb: string | null;
   };
-  const syncMap = Object.fromEntries(
-    (syncLog as SyncRow[]).map((r) => [r.pipeline, r])
-  );
+  const syncMap: Record<string, SyncRow> = {};
+  for (const r of syncLog as SyncRow[]) {
+    const key = normalizePipeline(r.pipeline);
+    // getSyncLog already returns rows ordered desc by completed_at and deduped by
+    // original name, so the first hit per canonical key is the most recent run.
+    if (!syncMap[key]) syncMap[key] = r;
+  }
 
   // Supabase free tier limits
   const DB_FREE_LIMIT = 500 * 1024 * 1024;        // 500 MB
@@ -608,14 +632,22 @@ export default async function DashboardPage() {
               ) : (
                 <>
                   {/* Summary row */}
-                  <div className="grid grid-cols-3 gap-4 border-b border-gray-100 pb-4">
+                  <div className="grid grid-cols-2 gap-4 border-b border-gray-100 pb-4 sm:grid-cols-5">
                     <div>
+                      <p className="text-2xl font-bold tabular-nums text-gray-900">{pv.todayHumanViews.toLocaleString()}</p>
+                      <p className="text-xs text-gray-500 mt-0.5">Human visits today</p>
+                    </div>
+                    <div>
+                      <p className="text-2xl font-bold tabular-nums text-gray-900">{pv.todayTotalViews.toLocaleString()}</p>
+                      <p className="text-xs text-gray-500 mt-0.5">Page views today</p>
+                    </div>
+                    <div className="sm:col-span-1 border-l border-gray-100 sm:pl-4">
                       <p className="text-2xl font-bold tabular-nums text-gray-900">{pv.humanViews.toLocaleString()}</p>
-                      <p className="text-xs text-gray-500 mt-0.5">Human visits</p>
+                      <p className="text-xs text-gray-500 mt-0.5">Human visits (month)</p>
                     </div>
                     <div>
                       <p className="text-2xl font-bold tabular-nums text-gray-900">{pv.totalViews.toLocaleString()}</p>
-                      <p className="text-xs text-gray-500 mt-0.5">Total page views</p>
+                      <p className="text-xs text-gray-500 mt-0.5">Total views (month)</p>
                     </div>
                     <div>
                       <p className="text-2xl font-bold tabular-nums text-gray-900">{pv.botViews.toLocaleString()}</p>
