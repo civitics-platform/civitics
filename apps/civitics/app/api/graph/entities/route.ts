@@ -151,27 +151,67 @@ export async function GET(request: Request) {
     top_tags: tagMap.get(r.id) ?? [],
   }));
 
-  // Enrich officials with state from metadata
+  // Enrich officials with state and detect federal vs state-level
   const officialIds = results
     .filter((r) => r.type === "official")
     .map((r) => r.id);
 
+  const federalIds = new Set<string>();
+
   if (officialIds.length > 0) {
     const { data: offData } = await supabase
       .from("officials")
-      .select("id, metadata")
+      .select("id, metadata, source_ids")
       .in("id", officialIds);
 
-    const stateMap = new Map<string, string>();
-    for (const o of (offData ?? []) as { id: string; metadata: Record<string, string> | null }[]) {
-      const state = o.metadata?.["state"];
-      if (state) stateMap.set(o.id, state);
-    }
+    type OffRow = {
+      id: string;
+      metadata: Record<string, string> | null;
+      source_ids: Record<string, string> | null;
+    };
 
-    for (const r of results) {
-      if (r.type === "official") r.state = stateMap.get(r.id);
+    for (const o of (offData ?? []) as OffRow[]) {
+      // Federal = has a congress_gov source ID
+      if (o.source_ids?.["congress_gov"]) federalIds.add(o.id);
+
+      // State extraction: metadata.state → metadata.state_abbr → FEC candidate ID
+      const candId = o.source_ids?.["fec_candidate_id"] ?? o.source_ids?.["fec_id"] ?? "";
+      const stateFromFec = /^[SH][0-9][A-Z]{2}/.test(candId)
+        ? candId.substring(2, 4)
+        : undefined;
+
+      const state =
+        o.metadata?.["state"] ||
+        o.metadata?.["state_abbr"] ||
+        stateFromFec;
+
+      const result = results.find((r) => r.id === o.id);
+      if (result && state) result.state = state;
     }
   }
+
+  // Sort by relevance: exact match → starts-with → federal+connections →
+  // federal → state+connections → everything else.
+  // Secondary: connection_count desc, name asc.
+  const qLower = q.toLowerCase();
+  results.sort((a, b) => {
+    const priority = (r: (typeof results)[0]): number => {
+      const name = r.name.toLowerCase();
+      if (name === qLower) return 0;
+      if (name.startsWith(qLower)) return 1;
+      const isFederal = r.type === "official" && federalIds.has(r.id);
+      if (isFederal && r.connection_count > 0) return 2;
+      if (isFederal) return 3;
+      if (r.connection_count > 0) return 4;
+      return 5;
+    };
+    const pa = priority(a);
+    const pb = priority(b);
+    if (pa !== pb) return pa - pb;
+    if (b.connection_count !== a.connection_count)
+      return b.connection_count - a.connection_count;
+    return a.name.localeCompare(b.name);
+  });
 
   return Response.json(
     { results, total: results.length },

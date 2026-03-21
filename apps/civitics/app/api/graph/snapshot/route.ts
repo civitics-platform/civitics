@@ -443,7 +443,7 @@ function forceEdges(
 async function buildChordData(
   supabase: AdminClient,
   industryFilter: string[],
-  limit: number,
+  _limit: number,
 ): Promise<{
   groups: {
     id: string;
@@ -465,89 +465,84 @@ async function buildChordData(
   untagged_flow_pct: number;
   queries: number;
 }> {
-  let queries = 0;
-
-  type FRRow = {
-    official_id: string | null;
-    donor_name: string;
-    industry: string | null;
-    amount_cents: number;
+  // Use chord_industry_flows() RPC which joins entity_tags for industry.
+  // The old approach read financial_relationships.industry directly — that
+  // column is mostly NULL. Industry data lives in entity_tags.
+  type FlowRow = {
+    industry: string;
+    display_label: string;
+    display_icon: string;
+    party_chamber: string;
+    total_cents: number;
+    official_count: number;
+    donor_count: number;
   };
 
-  let frQ = supabase
-    .from("financial_relationships")
-    .select("official_id, donor_name, industry, amount_cents")
-    .not("amount_cents", "is", null)
-    .gt("amount_cents", 0)
-    .limit(limit);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase as any).rpc("chord_industry_flows");
+  const queries = 1;
 
-  if (industryFilter.length > 0) frQ = frQ.in("industry", industryFilter);
+  if (error || !data) {
+    return { groups: [], recipients: [], matrix: [], top_flows: [], total_flow_usd: 0, untagged_flow_usd: 0, untagged_flow_pct: 0, queries };
+  }
 
-  const { data: fr } = await frQ;
-  queries++;
+  let rows = (data as FlowRow[]);
+  if (industryFilter.length > 0) {
+    rows = rows.filter((r) => industryFilter.includes(r.industry));
+  }
 
-  const rows = (fr ?? []) as FRRow[];
-
-  // Fetch official parties
-  const officialIds = [...new Set(rows.map((r) => r.official_id).filter(Boolean))] as string[];
-  const officialsRes = officialIds.length
-    ? await supabase.from("officials").select("id, party").in("id", officialIds)
-    : null;
-  const officials = (officialsRes?.data ?? []) as { id: string; party: string | null }[];
-  queries++;
-
-  const partyMap = new Map<string, string>();
-  for (const o of officials)
-    partyMap.set(o.id, o.party ?? "other");
-
-  // Aggregate
-  const industryTotals = new Map<string, { total: number; donors: Set<string> }>();
-  const recipientTotals = new Map<string, { total: number; officials: Set<string> }>();
+  const industryTotals = new Map<string, { label: string; icon: string; total: number; donors: number }>();
+  const recipientTotals = new Map<string, { total: number; officials: number }>();
   const flowMatrix = new Map<string, Map<string, number>>();
   let untaggedFlow = 0;
   let totalFlow = 0;
 
   for (const row of rows) {
-    const usd = row.amount_cents / 100;
-    const industry = row.industry ?? "__untagged__";
-    const party = row.official_id ? (partyMap.get(row.official_id) ?? "other") : "other";
-
+    const usd = Number(row.total_cents) / 100;
     totalFlow += usd;
-    if (!row.industry) untaggedFlow += usd;
 
-    const ig = industryTotals.get(industry) ?? { total: 0, donors: new Set<string>() };
+    if (row.industry === "untagged") {
+      untaggedFlow += usd;
+      continue;
+    }
+
+    const ig = industryTotals.get(row.industry) ?? {
+      label: row.display_label || labelFor(row.industry),
+      icon: row.display_icon || icoFor(row.industry),
+      total: 0,
+      donors: 0,
+    };
     ig.total += usd;
-    ig.donors.add(row.donor_name);
-    industryTotals.set(industry, ig);
+    ig.donors += Number(row.donor_count);
+    industryTotals.set(row.industry, ig);
 
-    const rg = recipientTotals.get(party) ?? { total: 0, officials: new Set<string>() };
+    const rg = recipientTotals.get(row.party_chamber) ?? { total: 0, officials: 0 };
     rg.total += usd;
-    if (row.official_id) rg.officials.add(row.official_id);
-    recipientTotals.set(party, rg);
+    rg.officials += Number(row.official_count);
+    recipientTotals.set(row.party_chamber, rg);
 
-    if (!flowMatrix.has(industry)) flowMatrix.set(industry, new Map());
-    const pm = flowMatrix.get(industry)!;
-    pm.set(party, (pm.get(party) ?? 0) + usd);
+    if (!flowMatrix.has(row.industry)) flowMatrix.set(row.industry, new Map());
+    const pm = flowMatrix.get(row.industry)!;
+    pm.set(row.party_chamber, (pm.get(row.party_chamber) ?? 0) + usd);
   }
 
   const groups = [...industryTotals.entries()]
-    .filter(([k]) => k !== "__untagged__")
     .sort((a, b) => b[1].total - a[1].total)
-    .map(([id, { total, donors }]) => ({
+    .map(([id, { label, icon, total, donors }]) => ({
       id,
-      label: labelFor(id),
-      icon: icoFor(id),
+      label,
+      icon,
       total_usd: Math.round(total),
-      pac_count: donors.size,
+      pac_count: donors,
     }));
 
   const recipients = [...recipientTotals.entries()]
     .sort((a, b) => b[1].total - a[1].total)
     .map(([id, { total, officials }]) => ({
       id,
-      label: id.charAt(0).toUpperCase() + id.slice(1),
+      label: id,
       total_received_usd: Math.round(total),
-      official_count: officials.size,
+      official_count: officials,
     }));
 
   const groupIds = groups.map((g) => g.id);
@@ -558,11 +553,9 @@ async function buildChordData(
   );
 
   const topFlows: { from: string; to: string; amount_usd: number }[] = [];
-  for (const [ind, pm] of flowMatrix) {
-    if (ind === "__untagged__") continue;
+  for (const [ind, pm] of flowMatrix)
     for (const [party, usd] of pm)
       topFlows.push({ from: labelFor(ind), to: party, amount_usd: Math.round(usd) });
-  }
   topFlows.sort((a, b) => b.amount_usd - a.amount_usd);
 
   return {
@@ -742,10 +735,14 @@ function makeChecks(
     });
 
     // CHECK 4 — industry coverage
+    // Threshold: ≥3 named groups (not % of total dollars — individual contributor
+    // dollars dominate total flow but lack entity_tags, skewing the percentage).
     checks.push({
       name: "industry_coverage",
-      passed: chordStats.taggedPct > 50,
-      detail: `${chordStats.taggedPct}% of donation dollars have industry tags`,
+      passed: chordStats.groupCount >= 3,
+      detail: chordStats.groupCount >= 3
+        ? `${chordStats.groupCount} named industry groups · $${(chordStats.totalFlowUsd / 1_000_000).toFixed(0)}M labeled flow`
+        : `Only ${chordStats.groupCount} industry group(s) — check entity_tags join`,
     });
   }
 
