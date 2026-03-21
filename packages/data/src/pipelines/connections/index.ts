@@ -66,16 +66,26 @@ function donationStrength(amountCents: number): number {
 }
 
 /**
- * Map votes.vote value to connection_type.
- * Returns null for non-definitive votes (paired_yes / paired_no).
- *
- * @param vote         The vote value (yes/no/abstain/etc.)
- * @param voteCategory The proposal's vote_category (nomination → distinct edge types)
+ * Detect nomination votes from proposal title — no vote_category column required.
+ * Works before migration 0017 has run.
  */
-function voteToConnectionType(vote: string, voteCategory?: string | null): string | null {
-  const isNomination = voteCategory === "nomination";
-  switch (vote) {
+function isTitleNomination(title: string | null | undefined): boolean {
+  if (!title) return false;
+  const lower = title.toLowerCase();
+  return lower.includes("nomination") || lower.includes("confirming");
+}
+
+/**
+ * Map votes.vote + proposal title to connection_type.
+ * Returns null for non-definitive votes (paired_yes / paired_no).
+ * Nomination detection derived from title — no dependency on vote_category column.
+ */
+function voteToConnectionType(vote: string, proposalTitle?: string | null): string | null {
+  const isNomination = isTitleNomination(proposalTitle);
+  switch (vote.toLowerCase()) {
+    case "yea":
     case "yes":        return isNomination ? "nomination_vote_yes" : "vote_yes";
+    case "nay":
     case "no":         return isNomination ? "nomination_vote_no"  : "vote_no";
     case "abstain":
     case "present":
@@ -324,6 +334,25 @@ async function deriveVoteConnections(
 ): Promise<void> {
   console.log("\n  [2/4] Vote connections...");
 
+  // ── Pre-load proposal titles for nomination detection ─────────────────────
+  // vote_category column (migration 0017) may not exist yet — derive from title instead.
+  const proposalTitles = new Map<string, string>(); // proposal_id → title
+  {
+    let tPage = 0;
+    while (true) {
+      const { data: tBatch, error } = await db
+        .from("proposals")
+        .select("id, title")
+        .range(tPage * FETCH_SIZE, tPage * FETCH_SIZE + FETCH_SIZE - 1);
+      if (error) { console.warn("    Warning: could not pre-load proposal titles:", error.message); break; }
+      if (!tBatch || tBatch.length === 0) break;
+      for (const p of tBatch) proposalTitles.set(String(p.id), String(p.title ?? ""));
+      if (tBatch.length < FETCH_SIZE) break;
+      tPage++;
+    }
+    console.log(`    Pre-loaded ${proposalTitles.size} proposal titles for nomination detection`);
+  }
+
   // Cursor-based pagination — avoids the O(n) offset-scan that causes timeouts
   // at high page numbers. Each page fetches rows WHERE id > lastId ORDER BY id.
   const MAX_RETRIES = 3;
@@ -339,7 +368,7 @@ async function deriveVoteConnections(
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       let q = db
         .from("votes")
-        .select("id, official_id, proposal_id, vote_cast, vote_date")
+        .select("id, official_id, proposal_id, vote, voted_at")
         .order("id")
         .limit(FETCH_SIZE);
       if (lastId) q = q.gt("id", lastId);
@@ -371,7 +400,8 @@ async function deriveVoteConnections(
     // same conflict key more than once.
     const batchMap = new Map<string, Record<string, unknown>>();
     for (const v of votes) {
-      const connType = voteToConnectionType(String(v.vote_cast ?? ""));
+      const proposalTitle = proposalTitles.get(String(v.proposal_id)) ?? null;
+      const connType = voteToConnectionType(String(v.vote ?? ""), proposalTitle);
       if (!connType) continue;
 
       const fromId = String(v.official_id);
@@ -388,7 +418,7 @@ async function deriveVoteConnections(
         strength:        1.0,
         evidence: [{
           source:    "congress_gov",
-          vote_date: v.vote_date ?? null,
+          vote_date: v.voted_at ?? null,
         }],
       });
     }
