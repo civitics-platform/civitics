@@ -8,10 +8,15 @@
  * Skips entities already in ai_summary_cache.
  * 300ms delay between API calls to be respectful.
  *
+ * Context levels for proposals:
+ *   full_summary  — summary_plain > 100 chars → full 2-3 sentence summary
+ *   title_only    — title only, no summary → 1-2 sentence inference from title + agency
+ *   truly_empty   — no usable text at all → skipped, no API call
+ *
  * Cost estimate per run:
- *   100 proposals × ~450 tokens = ~$0.026
- *   50  officials × ~300 tokens = ~$0.009
- *   Total: ~$0.035 (well within $4.00/month cap)
+ *   ~100 proposals × ~300 tokens (mix of full + title-only) = ~$0.020
+ *    ~50 officials × ~300 tokens = ~$0.009
+ *   Total: ~$0.029 (well within $4.00/month cap)
  *
  * Run:
  *   pnpm --filter @civitics/data data:ai-summaries
@@ -29,6 +34,8 @@ import { sleep } from "../utils";
 // Types
 // ---------------------------------------------------------------------------
 
+type ContextLevel = "full_summary" | "title_only" | "truly_empty";
+
 type ProposalRow = {
   id: string;
   title: string;
@@ -36,6 +43,7 @@ type ProposalRow = {
   type: string;
   agency_name: string | null;
   agency_acronym: string | null;
+  context_level: ContextLevel;
 };
 
 type OfficialRow = {
@@ -49,6 +57,24 @@ type OfficialRow = {
   total_raised: number;
 };
 
+type ProposalStats = {
+  summarized_full: number;
+  summarized_title_only: number;
+  skipped_truly_empty: number;
+  failed: number;
+  costCents: number;
+};
+
+// ---------------------------------------------------------------------------
+// Context classification
+// ---------------------------------------------------------------------------
+
+function classifyContext(summaryPlain: string | null, title: string): ContextLevel {
+  if ((summaryPlain?.length ?? 0) > 100) return "full_summary";
+  if (title.trim().length >= 10) return "title_only";
+  return "truly_empty";
+}
+
 // ---------------------------------------------------------------------------
 // DB helpers
 // ---------------------------------------------------------------------------
@@ -60,11 +86,12 @@ async function writeSummaryCache(
   summaryType: string,
   summaryText: string,
   model: string,
-  tokensUsed: number
+  tokensUsed: number,
+  metadata: Record<string, unknown> = {}
 ): Promise<void> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   await (db as any).from("ai_summary_cache").upsert(
-    { entity_type: entityType, entity_id: entityId, summary_type: summaryType, summary_text: summaryText, model, tokens_used: tokensUsed },
+    { entity_type: entityType, entity_id: entityId, summary_type: summaryType, summary_text: summaryText, model, tokens_used: tokensUsed, metadata },
     { onConflict: "entity_type,entity_id,summary_type" }
   );
 }
@@ -97,11 +124,8 @@ function computeCostCents(inputTokens: number, outputTokens: number): number {
 // Step 1 — Proposals
 // ---------------------------------------------------------------------------
 
-// Agency names resolved from shared map in @civitics/db
-
 async function fetchOpenProposals(db: ReturnType<typeof createAdminClient>): Promise<ProposalRow[]> {
   // Proposals store agency as metadata->>'agency_id' (acronym string), not a FK.
-  // Fetch open proposals, then filter out those already cached.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const result = await (db as any)
     .from("proposals")
@@ -115,7 +139,7 @@ async function fetchOpenProposals(db: ReturnType<typeof createAdminClient>): Pro
     return [];
   }
 
-  // Filter to those without a cached summary
+  // Filter to those without a cached summary (onlyNew applied here)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const cacheCheck = await (db as any)
     .from("ai_summary_cache")
@@ -131,55 +155,75 @@ async function fetchOpenProposals(db: ReturnType<typeof createAdminClient>): Pro
     .slice(0, 100)
     .map((p: any) => {
       const acronym: string | null = p.metadata?.agency_id ?? null;
+      const contextLevel = classifyContext(p.summary_plain ?? null, p.title ?? "");
       return {
         id: p.id,
-        title: p.title,
+        title: p.title ?? "",
         summary_plain: p.summary_plain ?? null,
         type: p.type,
         agency_acronym: acronym,
         agency_name: agencyFullName(acronym),
+        context_level: contextLevel,
       };
     });
+}
+
+function buildProposalPrompt(proposal: ProposalRow): { userPrompt: string; maxTokens: number } {
+  const agencyLine = proposal.agency_name
+    ? `${proposal.agency_name}${proposal.agency_acronym ? ` (${proposal.agency_acronym})` : ""}`
+    : (proposal.agency_acronym ?? "Federal Agency");
+
+  if (proposal.context_level === "full_summary") {
+    return {
+      maxTokens: 300,
+      userPrompt:
+        `Summarize this federal proposal in 2-3 sentences in plain language.\n` +
+        `Focus on: what is changing, who is affected, and why it matters.\n\n` +
+        `Agency: ${agencyLine}\n` +
+        `Title: ${proposal.title}\n` +
+        `Summary: ${proposal.summary_plain}\n\n` +
+        `Write as if explaining to someone with no policy background.`,
+    };
+  }
+
+  // title_only — infer from title + agency
+  return {
+    maxTokens: 200,
+    userPrompt:
+      `Based only on this federal regulation title and the issuing agency, write 1-2 sentences ` +
+      `explaining what type of regulation this likely is and who it probably affects. ` +
+      `Be clear this is based on the title only.\n\n` +
+      `Agency: ${agencyLine}\n` +
+      `Title: ${proposal.title}`,
+  };
 }
 
 async function generateProposalSummaries(
   proposals: ProposalRow[],
   incremental: boolean,
   onTokens?: (input: number, output: number) => void
-): Promise<{ summarized: number; skipped: number; failed: number; costCents: number }> {
+): Promise<ProposalStats> {
   const db = createAdminClient();
   const ai = createAiClient();
-  let summarized = 0, skipped = 0, failed = 0, totalCostCents = 0;
+  let summarizedFull = 0, summarizedTitleOnly = 0, skippedTrulyEmpty = 0, failed = 0, totalCostCents = 0;
+
+  const actionable = proposals.filter((p) => p.context_level !== "truly_empty");
+  const trulyEmpty = proposals.filter((p) => p.context_level === "truly_empty");
+  skippedTrulyEmpty = trulyEmpty.length;
 
   console.log(`\n── Step 1: Proposals ─────────────────────────────────────`);
   console.log(`   ${proposals.length} proposals need summaries${incremental ? " (incremental)" : ""}`);
+  console.log(`     full_summary:  ${proposals.filter((p) => p.context_level === "full_summary").length}`);
+  console.log(`     title_only:    ${proposals.filter((p) => p.context_level === "title_only").length}`);
+  console.log(`     truly_empty:   ${skippedTrulyEmpty} (skipping — no usable text)`);
 
-  for (const proposal of proposals) {
-
+  for (const proposal of actionable) {
     try {
-      // Skip if there isn't enough context beyond the title alone
-      const inputText = proposal.summary_plain ?? proposal.title;
-      if (inputText.length < 100) {
-        console.log(`   — Skipping (insufficient context): ${proposal.title.slice(0, 60)}…`);
-        skipped++;
-        continue;
-      }
-
-      const agencyLine = proposal.agency_name
-        ? `${proposal.agency_name}${proposal.agency_acronym ? ` (${proposal.agency_acronym})` : ""}`
-        : (proposal.agency_acronym ?? "Federal Agency");
-
-      const userPrompt =
-        `Summarize this federal proposal in 2-3 sentences in plain language.\n` +
-        `Focus on: what is changing, who is affected, and why it matters.\n\n` +
-        `Agency: ${agencyLine}\n` +
-        `Title: ${proposal.title}\n` +
-        `Summary: ${proposal.summary_plain ?? "No summary provided"}\n\n` +
-        `Write as if explaining to someone with no policy background.`;
+      const { userPrompt, maxTokens } = buildProposalPrompt(proposal);
 
       const response = await ai.messages.create({
         model: MODELS.haiku,
-        max_tokens: 300,
+        max_tokens: maxTokens,
         system:
           "You are a plain language expert helping ordinary citizens understand federal regulations. " +
           "Write clear, jargon-free summaries that explain what a proposal means for real people. " +
@@ -196,19 +240,35 @@ async function generateProposalSummaries(
       const costCents = computeCostCents(inputTokens, outputTokens);
 
       await Promise.all([
-        writeSummaryCache(db, "proposal", proposal.id, "plain_language", summaryText, MODELS.haiku, inputTokens + outputTokens),
+        writeSummaryCache(
+          db, "proposal", proposal.id, "plain_language", summaryText, MODELS.haiku,
+          inputTokens + outputTokens,
+          { context_level: proposal.context_level }
+        ),
         logApiUsage(db, MODELS.haiku, inputTokens, outputTokens, costCents),
       ]);
 
       onTokens?.(inputTokens, outputTokens);
       totalCostCents += costCents;
-      summarized++;
 
-      if (summarized <= 3) {
-        console.log(`   ✓ [${summarized}] ${proposal.title.slice(0, 70)}…`);
-        console.log(`       → ${summaryText.slice(0, 100)}…`);
-      } else if (summarized % 10 === 0) {
-        console.log(`   ✓ ${summarized} proposals done so far…`);
+      if (proposal.context_level === "full_summary") {
+        summarizedFull++;
+        const n = summarizedFull + summarizedTitleOnly;
+        if (n <= 3) {
+          console.log(`   ✓ [full] ${proposal.title.slice(0, 70)}…`);
+          console.log(`       → ${summaryText.slice(0, 100)}…`);
+        } else if (n % 10 === 0) {
+          console.log(`   ✓ ${n} proposals done so far…`);
+        }
+      } else {
+        summarizedTitleOnly++;
+        const n = summarizedFull + summarizedTitleOnly;
+        if (n <= 3) {
+          console.log(`   ✓ [title] ${proposal.title.slice(0, 70)}…`);
+          console.log(`       → ${summaryText.slice(0, 100)}…`);
+        } else if (n % 10 === 0) {
+          console.log(`   ✓ ${n} proposals done so far…`);
+        }
       }
     } catch (err) {
       console.error(`   ✗ ${proposal.id}: ${err instanceof Error ? err.message : String(err)}`);
@@ -219,7 +279,7 @@ async function generateProposalSummaries(
     await sleep(300);
   }
 
-  return { summarized, skipped, failed, costCents: totalCostCents };
+  return { summarized_full: summarizedFull, summarized_title_only: summarizedTitleOnly, skipped_truly_empty: skippedTrulyEmpty, failed, costCents: totalCostCents };
 }
 
 // ---------------------------------------------------------------------------
@@ -238,7 +298,7 @@ async function fetchOfficials(db: ReturnType<typeof createAdminClient>): Promise
 
   if (officialsRes.error || !officialsRes.data) return [];
 
-  // Find which ones already have cached summaries
+  // Find which ones already have cached summaries (onlyNew applied here)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const cacheCheck = await (db as any)
     .from("ai_summary_cache")
@@ -377,35 +437,38 @@ async function generateOfficialSummaries(
 // ---------------------------------------------------------------------------
 
 async function reportResults(
-  proposalStats: { summarized: number; skipped: number; failed: number; costCents: number },
+  proposalStats: ProposalStats,
   officialStats: { summarized: number; failed: number; costCents: number },
   db: ReturnType<typeof createAdminClient>
 ): Promise<void> {
   const totalCostCents = proposalStats.costCents + officialStats.costCents;
-  const totalEntries = proposalStats.summarized + officialStats.summarized;
+  const totalEntries = proposalStats.summarized_full + proposalStats.summarized_title_only + officialStats.summarized;
 
   // Fetch 3 sample summaries
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const samplesRes = await (db as any)
     .from("ai_summary_cache")
-    .select("entity_id, entity_type, summary_type, summary_text, created_at")
+    .select("entity_id, entity_type, summary_type, summary_text, metadata, created_at")
     .eq("entity_type", "proposal")
     .order("created_at", { ascending: false })
     .limit(3);
 
   console.log(`\n══ Results ═══════════════════════════════════════════════`);
-  console.log(`   Proposals summarized: ${proposalStats.summarized}`);
-  console.log(`   Proposals skipped:    ${proposalStats.skipped}`);
-  console.log(`   Proposals failed:     ${proposalStats.failed}`);
-  console.log(`   Officials summarized: ${officialStats.summarized}`);
-  console.log(`   Officials failed:     ${officialStats.failed}`);
+  console.log(`   Proposals summarized:  ${proposalStats.summarized_full + proposalStats.summarized_title_only}`);
+  console.log(`     full_summary:        ${proposalStats.summarized_full}`);
+  console.log(`     title_only:          ${proposalStats.summarized_title_only}`);
+  console.log(`   Proposals skipped:     ${proposalStats.skipped_truly_empty} (truly empty — no title)`);
+  console.log(`   Proposals failed:      ${proposalStats.failed}`);
+  console.log(`   Officials summarized:  ${officialStats.summarized}`);
+  console.log(`   Officials failed:      ${officialStats.failed}`);
   console.log(`   Cache entries created: ${totalEntries}`);
-  console.log(`   This run cost:        $${(totalCostCents / 100).toFixed(4)}`);
+  console.log(`   This run cost:         $${(totalCostCents / 100).toFixed(4)}`);
 
   if (samplesRes.data?.length > 0) {
     console.log(`\n── Sample Outputs ────────────────────────────────────────`);
     for (const s of samplesRes.data) {
-      console.log(`\n   Entity: ${s.entity_type} ${s.entity_id}`);
+      const level = (s.metadata as { context_level?: string } | null)?.context_level ?? "unknown";
+      console.log(`\n   Entity: ${s.entity_type} ${s.entity_id} [${level}]`);
       console.log(`   Summary: ${s.summary_text}`);
     }
   }
@@ -423,46 +486,43 @@ export async function runAiSummariesPipeline(incremental = false): Promise<void>
   const db = createAdminClient();
   const ai = createAiClient();
 
-  // Fetch entities first so we have something to sample
+  // Fetch entities first (cache filter applied inside each fetch fn)
   const proposals = await fetchOpenProposals(db);
   const officials  = await fetchOfficials(db);
-  const totalEntities = proposals.length + officials.length;
+
+  // FIX 2: Count only proposals that will actually get API calls — exclude truly_empty.
+  // The cache filter (onlyNew) is already applied in fetchOpenProposals/fetchOfficials.
+  const actionableProposals = proposals.filter((p) => p.context_level !== "truly_empty");
+  const totalEntities = actionableProposals.length + officials.length;
 
   if (totalEntities === 0) {
     console.log("    ✓ Nothing to summarize — all entities are cached");
+    if (proposals.some((p) => p.context_level === "truly_empty")) {
+      console.log(`    (${proposals.filter((p) => p.context_level === "truly_empty").length} truly-empty proposals skipped)`);
+    }
     return;
   }
 
-  // Build a sample prompt using the first proposal (representative of the batch)
-  const sampleProposal = proposals[0] ?? {
+  // Sample from the first actionable proposal (representative of cost)
+  const sampleProposal = actionableProposals[0] ?? {
     id: "sample",
     title: "Sample Federal Proposal",
     summary_plain: "This is a sample proposal for cost estimation purposes.",
     type: "rule",
     agency_name: "Federal Agency",
     agency_acronym: "FA",
+    context_level: "full_summary" as ContextLevel,
   };
 
   const gate = await costGate.gate({
     pipelineName: "ai_summaries",
-    entityCount:  totalEntities,
+    entityCount:  totalEntities,   // count after cache filter + truly_empty exclusion
     model:        MODELS.haiku,
     sampleFn: async () => {
-      const agencyLine = sampleProposal.agency_name
-        ? `${sampleProposal.agency_name}${sampleProposal.agency_acronym ? ` (${sampleProposal.agency_acronym})` : ""}`
-        : (sampleProposal.agency_acronym ?? "Federal Agency");
-
-      const userPrompt =
-        `Summarize this federal proposal in 2-3 sentences in plain language.\n` +
-        `Focus on: what is changing, who is affected, and why it matters.\n\n` +
-        `Agency: ${agencyLine}\n` +
-        `Title: ${sampleProposal.title}\n` +
-        `Summary: ${sampleProposal.summary_plain ?? "No summary provided"}\n\n` +
-        `Write as if explaining to someone with no policy background.`;
-
+      const { userPrompt, maxTokens } = buildProposalPrompt(sampleProposal);
       return ai.messages.create({
         model:      MODELS.haiku,
-        max_tokens: 300,
+        max_tokens: maxTokens,
         system:
           "You are a plain language expert helping ordinary citizens understand federal regulations. " +
           "Write clear, jargon-free summaries that explain what a proposal means for real people. " +
