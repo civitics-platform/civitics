@@ -23,7 +23,8 @@
     "data:ai-summaries-new": "tsx --env-file=../../.env.local src/pipelines/ai-summaries/index.ts --incremental",
     "data:tag-rules": "tsx --env-file=../../.env.local src/pipelines/tags/rules.ts",
     "data:tag-ai": "tsx --env-file=../../.env.local src/pipelines/tags/ai-tagger.ts",
-    "data:tag-all": "tsx --env-file=../../.env.local src/pipelines/tags/rules.ts && tsx --env-file=../../.env.local src/pipelines/tags/ai-tagger.ts -- --confirm",
+    "data:tag-industry": "tsx --env-file=../../.env.local src/pipelines/tags/ai-classifier.ts",
+    "data:tag-all": "tsx --env-file=../../.env.local src/pipelines/tags/rules.ts && tsx --env-file=../../.env.local src/pipelines/tags/ai-tagger.ts -- --confirm && tsx --env-file=../../.env.local src/pipelines/tags/ai-classifier.ts -- --confirm",
     "data:nightly": "tsx --env-file=../../.env.local src/pipelines/index.ts nightly"
   },
   "dependencies": {

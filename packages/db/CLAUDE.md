@@ -136,7 +136,22 @@ metadata              JSONB — Phase 4 wallet data goes here:
     metadata->>'level' (federal/state)
 
 Common mistake: role_type does
-not exist — always use role_title"
+not exist — always use role_title
+
+---
+
+## financial_relationships table — column names
+  source_ids  (JSONB — NOT source_id)
+    source_ids->>'fec_committee_id'
+    source_ids->>'fec_candidate_id'
+
+Common mistake: source_id (singular, wrong)
+Always use: source_ids (plural, with s)
+
+Same JSONB pattern as officials:
+  officials.source_ids->>'congress_gov'
+  officials.source_ids->>'fec_id'
+  financial_relationships.source_ids->>'fec_committee_id'
 
 ---
 

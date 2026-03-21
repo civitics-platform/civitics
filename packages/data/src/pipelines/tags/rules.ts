@@ -75,27 +75,126 @@ const AGENCY_SECTORS: Record<
 // ---------------------------------------------------------------------------
 
 const INDUSTRY_KEYWORDS: Record<string, string[]> = {
-  pharma:      ["pharma", "drug", "medical", "health", "biotech", "pfizer", "merck", "ama"],
-  oil_gas:     ["oil", "gas", "energy", "petroleum", "exxon", "chevron", "koch", "pipeline"],
-  finance:     ["bank", "financial", "investment", "securities", "goldman", "jpmorgan", "wells"],
-  tech:        ["tech", "software", "google", "amazon", "meta", "apple", "microsoft"],
-  defense:     ["defense", "military", "lockheed", "boeing", "raytheon", "northrop"],
-  real_estate: ["real estate", "realty", "housing", "property"],
-  labor:       ["union", "workers", "seiu", "afscme", "teamsters", "afl"],
-  agriculture: ["farm", "agri", "crop", "cattle", "dairy"],
-  legal:       ["attorney", "trial", "lawyers", "legal"],
+  pharma: [
+    "pharma", "drug", "medical", "health", "biotech",
+    "pfizer", "merck", "physician", "hospital", "healthcare",
+    "medicine", "surgical", "dental", "optometry", "nursing",
+    "american medical", "american hospital", "american dental",
+    "american nurses", "ama",
+  ],
+  oil_gas: [
+    "petroleum", "exxon", "chevron", "koch", "pipeline",
+    "natural gas", "propane", "fossil", "drilling", "mining",
+    "coal", "american petroleum", "independent petroleum",
+    "american gas", "conocophillips", "valero", "refin",
+    // short keywords (word-boundary matched): oil, gas, bp
+    "oil", "gas", "bp", "shell",
+  ],
+  finance: [
+    "bank", "financial", "investment", "securities",
+    "goldman", "jpmorgan", "wells", "capital", "credit",
+    "insurance", "mortgage", "lending", "asset management",
+    "hedge", "private equity", "venture", "ubs",
+    "morgan stanley", "blackstone", "fidelity", "vanguard",
+    "american bankers", "american financial", "american insurance",
+    "independent insurance", "national association of insurance",
+    "american council of life",
+  ],
+  tech: [
+    "tech", "software", "google", "amazon", "microsoft",
+    "digital", "internet", "semiconductor", "computer",
+    "cyber", "telecom", "wireless", "broadband",
+    "national cable", "ctia", "information technology",
+    "computing", "electronic",
+    // short keywords (word-boundary matched): att, meta, data
+    "att", "meta", "data", "apple", "verizon", "comcast",
+  ],
+  defense: [
+    "defense", "military", "lockheed", "boeing", "raytheon",
+    "northrop", "general dynamics", "leidos", "bae systems",
+    "aerospace", "veteran", "navy league", "air force",
+    "national guard",
+    "association of the united states army",
+    // short keywords (word-boundary matched): army
+    "army",
+  ],
+  real_estate: [
+    "real estate", "realty", "housing", "property", "realtor",
+    "builder", "homebuilder", "apartment",
+    "national association of realtors", "national multifamily",
+    "mortgage bankers", "home builders",
+    "commercial real estate", "retail properties",
+    "shopping center",
+  ],
+  labor: [
+    "union", "workers", "seiu", "afscme", "teamsters",
+    "ibew", "ufcw", "machinists", "steelworkers",
+    "carpenters", "painters", "plumbers", "electricians",
+    "teachers", "firefighters", "postal workers",
+    "transit workers", "communications workers",
+    "sheet metal", "ironworkers", "operating engineers",
+    "laborers international",
+    // short keywords (word-boundary matched): afl, cwa, police
+    "afl", "cwa", "police",
+  ],
+  agriculture: [
+    "farm", "agri", "crop", "cattle", "dairy",
+    "sugar", "corn", "soybean", "wheat", "cotton",
+    "tobacco", "poultry", "american farm",
+    "national farmers", "farm bureau", "rural",
+    "agribusiness", "food processing", "crystal sugar",
+    "imperial sugar", "american sugar", "rice growers",
+    // short keywords (word-boundary matched): pork, beef
+    "pork", "beef",
+  ],
+  legal: [
+    "attorney", "trial", "lawyers", "legal",
+    "bar association", "american bar", "plaintiffs",
+    "tort", "litigation",
+    "american association for justice",
+  ],
+  retail: [
+    "retail", "restaurant", "grocery", "walmart", "target",
+    "home depot", "costco", "national retail",
+    "national restaurant", "american restaurant",
+    "convenience store", "drug store", "pharmacy chain",
+    "fast food",
+    // short keywords (word-boundary matched): food, lowes
+    "food", "lowes",
+  ],
+  transportation: [
+    "transport", "trucking", "airline", "railroad",
+    "shipping", "freight", "logistics",
+    "american trucking", "air transport", "pilots",
+    "flight attendants", "united parcel", "fedex",
+    "american airlines", "delta", "southwest",
+    // short keywords (word-boundary matched): ups
+    "ups",
+  ],
+  lobby: [
+    "aipac", "american israel",
+    "national rifle", "gun owners", "club for growth",
+    "chamber of commerce", "business roundtable",
+    "national federation of independent business",
+    "citizens united",
+    // short keywords (word-boundary matched): nra, nfib
+    "nra", "nfib",
+  ],
 };
 
 const INDUSTRY_LABELS: Record<string, { label: string; icon: string }> = {
-  pharma:      { label: "Pharma",       icon: "💊" },
-  oil_gas:     { label: "Oil & Gas",    icon: "🛢" },
-  finance:     { label: "Finance",      icon: "📈" },
-  tech:        { label: "Tech",         icon: "💻" },
-  defense:     { label: "Defense",      icon: "🛡" },
-  real_estate: { label: "Real Estate",  icon: "🏠" },
-  labor:       { label: "Labor",        icon: "👷" },
-  agriculture: { label: "Agriculture",  icon: "🌾" },
-  legal:       { label: "Legal",        icon: "⚖️" },
+  pharma:         { label: "Pharma",          icon: "💊" },
+  oil_gas:        { label: "Oil & Gas",       icon: "🛢" },
+  finance:        { label: "Finance",         icon: "📈" },
+  tech:           { label: "Tech",            icon: "💻" },
+  defense:        { label: "Defense",         icon: "🛡" },
+  real_estate:    { label: "Real Estate",     icon: "🏠" },
+  labor:          { label: "Labor",           icon: "👷" },
+  agriculture:    { label: "Agriculture",     icon: "🌾" },
+  legal:          { label: "Legal",           icon: "⚖️" },
+  retail:         { label: "Retail",          icon: "🛒" },
+  transportation: { label: "Transportation",  icon: "🚛" },
+  lobby:          { label: "Lobby / Advocacy",icon: "🏛" },
 };
 
 // ---------------------------------------------------------------------------
@@ -506,9 +605,16 @@ async function tagFinancialEntities(db: any): Promise<number> {
     const matchedIndustries: string[] = [];
 
     for (const [industry, keywords] of Object.entries(INDUSTRY_KEYWORDS)) {
-      if (keywords.some((kw) => nameLower.includes(kw))) {
-        matchedIndustries.push(industry);
-      }
+      const matched = keywords.some((kw) => {
+        if (kw.length <= 4) {
+          // Short keywords require word boundaries to avoid false positives.
+          // e.g. "gas" should not match "gaston"; "ups" should not match "groups"
+          const escaped = kw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+          return new RegExp(`\\b${escaped}\\b`, "i").test(nameLower);
+        }
+        return nameLower.includes(kw);
+      });
+      if (matched) matchedIndustries.push(industry);
     }
 
     if (matchedIndustries.length === 0) continue;
