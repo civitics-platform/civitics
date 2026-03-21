@@ -186,7 +186,8 @@ export async function GET(request: Request) {
       // fec_id is intentionally excluded — it's a committee/filing ID that can
       // encode a different state than the official's actual state (e.g. Tammy
       // Baldwin has fec_id="S0VA00070" but represents WI).
-      const candId = o.source_ids?.["fec_candidate_id"] ?? "";
+      const candId =
+        o.source_ids?.["fec_candidate_id"] ?? o.source_ids?.["fec_id"] ?? "";
       let stateFromFec: string | undefined;
       if (/^[SH][0-9][A-Z]{2}/.test(candId)) {
         const code = candId.substring(2, 4);
