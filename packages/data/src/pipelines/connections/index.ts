@@ -65,31 +65,53 @@ function donationStrength(amountCents: number): number {
   return Math.max(0, Math.min(1.0, Math.log10(amountCents / 100000) / 4));
 }
 
+const PROCEDURAL_QUESTIONS = [
+  "on the cloture motion",
+  "on passage",
+  "on the amendment",
+  "on the conference report",
+  "on the joint resolution",
+  "on the resolution",
+  "on the motion",
+  "on the motion to proceed",
+  "on the motion to table",
+  "on the nomination",
+  "on the motion to recommit",
+  "on agreeing to the amendment",
+];
+
 /**
- * Map vote_cast + vote_category (from DB) to connection_type.
+ * Map votes.vote + vote_category + metadata->vote_question to connection_type.
  * Returns null to skip procedural votes and unrecognised values.
  *
- * @param voteCast     votes.vote_cast  ("Yea" / "Yes" / "Nay" / "No" / …)
- * @param voteCategory proposals.vote_category  ("nomination" | "procedural" | null)
- * @param title        proposals.title — fallback nomination detection when vote_category is null
+ * votes.vote values are lowercase: 'yes' | 'no' | 'present' | 'not voting'
+ * metadata->>'vote_question' contains the procedural type string from Congress.gov
  */
 function voteToConnectionType(
-  voteCast: string,
+  vote: string,
   voteCategory: string | null,
   title: string | null,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  metadata?: any,
 ): string | null {
-  // Procedural votes generate no connection edges
-  if (voteCategory === "procedural") return null;
+  const voteQuestion: string = (metadata?.vote_question ?? "").toLowerCase();
 
+  // Skip procedural by vote_category OR vote_question
+  if (
+    voteCategory === "procedural" ||
+    PROCEDURAL_QUESTIONS.includes(voteQuestion)
+  ) return null;
+
+  // Nomination votes — by vote_category, vote_question, or title
   const isNomination =
     voteCategory === "nomination" ||
+    voteQuestion.includes("nomination") ||
     (title?.toLowerCase().includes("nomination") ?? false) ||
     (title?.toLowerCase().includes("confirming") ?? false);
 
-  const cast = voteCast.toLowerCase();
-  if (cast === "yea" || cast === "yes") return isNomination ? "nomination_vote_yes" : "vote_yes";
-  if (cast === "nay" || cast === "no")  return isNomination ? "nomination_vote_no"  : "vote_no";
-  if (cast === "abstain" || cast === "present" || cast === "not_voting") return "vote_abstain";
+  if (vote === "yes") return isNomination ? "nomination_vote_yes" : "vote_yes";
+  if (vote === "no")  return isNomination ? "nomination_vote_no"  : "vote_no";
+  if (vote === "present" || vote === "not voting" || vote === "abstain") return "vote_abstain";
   return null;
 }
 
@@ -349,7 +371,7 @@ async function deriveVoteConnections(
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       let q = db
         .from("votes")
-        .select("id, official_id, proposal_id, vote_cast, vote_date, proposals!proposal_id(title, vote_category)")
+        .select("id, official_id, proposal_id, vote, voted_at, metadata, proposals!proposal_id(title, vote_category)")
         .order("id")
         .limit(FETCH_SIZE);
       if (lastId) q = q.gt("id", lastId);
@@ -382,10 +404,11 @@ async function deriveVoteConnections(
     const batchMap = new Map<string, Record<string, unknown>>();
     for (const v of votes) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const proposal     = (v.proposals as any) ?? {};
       const voteCategory = (proposal.vote_category as string | null) ?? null;
       const title        = (proposal.title as string | null) ?? null;
-      const connType     = voteToConnectionType(String(v.vote_cast ?? ""), voteCategory, title);
+      const connType     = voteToConnectionType(String(v.vote ?? ""), voteCategory, title, v.metadata);
       if (!connType) continue;
 
       const fromId = String(v.official_id);
@@ -402,7 +425,7 @@ async function deriveVoteConnections(
         strength:        1.0,
         evidence: [{
           source:    "congress_gov",
-          vote_date: v.vote_date ?? null,
+          vote_date: v.voted_at ?? null,
         }],
       });
     }

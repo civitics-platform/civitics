@@ -185,6 +185,20 @@ Key remaining Phase 1 tasks:
 
 ---
 
+## votes Table — Actual Column Names
+
+```
+vote      (not vote_cast)
+  values: 'yes' | 'no' | 'present' | 'not voting'
+voted_at  (not vote_date)
+metadata->>'vote_question'   procedural type string (e.g. "On Passage", "On the Cloture Motion")
+metadata->>'legis_num'       bill number
+```
+
+Do NOT use vote_cast or vote_date — those columns do not exist.
+
+---
+
 ## generateStaticParams Rules
 
 ```
