@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { createBrowserClient } from "@civitics/db";
 import { ForceGraph } from "@civitics/graph";
-import type { GraphNode, GraphEdge, EdgeType } from "@civitics/graph";
+import type { GraphNodeV2 as GraphNode, GraphEdgeV2 as GraphEdge } from "@civitics/graph";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -30,14 +30,14 @@ type VoteRow = {
 };
 
 type GraphData = { nodes: GraphNode[]; edges: GraphEdge[] };
-type EdgeTypeCount = Partial<Record<EdgeType, number>>;
+type EdgeTypeCount = Record<string, number>;
 
 // ── Presets ───────────────────────────────────────────────────────────────────
 
 const PRESETS: {
   id: string;
   label: string;
-  filters: EdgeType[];
+  filters: string[];
   emptyMsg: string;
 }[] = [
   {
@@ -66,7 +66,7 @@ const PRESETS: {
   },
 ];
 
-const EDGE_TYPE_LABELS: Partial<Record<EdgeType, string>> = {
+const EDGE_TYPE_LABELS: Record<string, string> = {
   donation:       "Donation",
   vote_yes:       "Vote yes",
   vote_no:        "Vote no",
@@ -80,7 +80,7 @@ const EDGE_TYPE_LABELS: Partial<Record<EdgeType, string>> = {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function mapVoteToEdge(vote: string): EdgeType | null {
+function mapVoteToEdge(vote: string): string | null {
   if (vote === "yes" || vote === "paired_yes") return "vote_yes";
   if (vote === "no"  || vote === "paired_no")  return "vote_no";
   if (vote === "abstain" || vote === "present" || vote === "not_voting") return "vote_abstain";
@@ -108,15 +108,14 @@ function buildGraphData(
   const central: GraphNode = {
     id: officialId,
     type: "official",
-    label: officialName,
+    name: officialName,
     party: mapParty(officialParty),
-    metadata: {},
   };
   nodes.set(officialId, central);
 
   // Entity_connections edges
   for (const c of connections) {
-    const edgeType = c.connection_type as EdgeType;
+    const edgeType = c.connection_type as string;
     const isFrom = c.from_id === officialId;
     const peerId = isFrom ? c.to_id : c.from_id;
     const peerType = isFrom ? c.to_type : c.from_type;
@@ -130,18 +129,16 @@ function buildGraphData(
             : peerType === "corporation" ? "corporation"
             : peerType === "pac" ? "pac"
             : peerType === "individual" ? "individual"
-            : "governing_body",
-        label: (meta["name"] as string) ?? (meta["full_name"] as string) ?? peerId.slice(0, 8),
-        metadata: meta,
+            : "agency",
+        name: (meta["name"] as string) ?? (meta["full_name"] as string) ?? peerId.slice(0, 8),
       });
     }
 
     edges.push({
-      id: c.id,
-      source: isFrom ? officialId : peerId,
-      target: isFrom ? peerId : officialId,
-      type: edgeType,
-      amountCents: c.amount_cents ?? undefined,
+      fromId: isFrom ? officialId : peerId,
+      toId: isFrom ? peerId : officialId,
+      connectionType: edgeType,
+      amountUsd: c.amount_cents != null ? c.amount_cents / 100 : undefined,
       occurredAt: c.occurred_at ?? undefined,
       strength: Number(c.strength) || 0.5,
     });
@@ -162,11 +159,7 @@ function buildGraphData(
       nodes.set(proposalId, {
         id: proposalId,
         type: "proposal",
-        label: label.length > 20 ? label.slice(0, 20) + "…" : label,
-        metadata: {
-          fullTitle: p.title,
-          bill_number: p.bill_number,
-        },
+        name: label.length > 20 ? label.slice(0, 20) + "…" : label,
       });
     }
 
@@ -174,10 +167,9 @@ function buildGraphData(
     if (!proposalsSeen.has(proposalId)) {
       proposalsSeen.add(proposalId);
       edges.push({
-        id: `vote-${v.id}`,
-        source: officialId,
-        target: proposalId,
-        type: edgeType,
+        fromId: officialId,
+        toId: proposalId,
+        connectionType: edgeType,
         occurredAt: v.voted_at ?? undefined,
         strength: 1,
       });
@@ -190,7 +182,7 @@ function buildGraphData(
 function countByType(edges: GraphEdge[]): EdgeTypeCount {
   const counts: EdgeTypeCount = {};
   for (const e of edges) {
-    counts[e.type] = (counts[e.type] ?? 0) + 1;
+    counts[e.connectionType] = (counts[e.connectionType] ?? 0) + 1;
   }
   return counts;
 }
@@ -240,7 +232,7 @@ export function OfficialGraph({
   const [allData, setAllData] = useState<GraphData | null>(null);
   const [loading, setLoading] = useState(true);
   const [activePreset, setActivePreset] = useState("full_picture");
-  const [activeFilters, setActiveFilters] = useState<EdgeType[]>([]);
+  const [activeFilters, setActiveFilters] = useState<string[]>([]);
 
   // Cache fetched data per official to avoid re-fetching on re-select
   const cache = useRef<Map<string, GraphData>>(new Map());
@@ -298,14 +290,14 @@ export function OfficialGraph({
 
     const filterSet = activeFilters.length > 0 ? new Set(activeFilters) : null;
     const filteredEdges = filterSet
-      ? allData.edges.filter((e) => filterSet.has(e.type))
+      ? allData.edges.filter((e) => filterSet.has(e.connectionType))
       : allData.edges;
 
     // Keep only nodes that appear in filtered edges, plus the central node
     const referencedIds = new Set<string>([officialId]);
     for (const e of filteredEdges) {
-      referencedIds.add(e.source);
-      referencedIds.add(e.target);
+      referencedIds.add(e.fromId);
+      referencedIds.add(e.toId);
     }
     const filteredNodes = allData.nodes.filter((n) => referencedIds.has(n.id));
 
@@ -320,7 +312,7 @@ export function OfficialGraph({
   const hasAnyData = (allData?.edges.length ?? 0) > 0;
 
   // Decide which edge types to show as pills (only those present in data)
-  const availableTypes = Object.keys(typeCounts) as EdgeType[];
+  const availableTypes = Object.keys(typeCounts);
 
   return (
     <div className="flex flex-col bg-gray-50">

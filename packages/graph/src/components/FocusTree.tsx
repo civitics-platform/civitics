@@ -14,6 +14,7 @@ import type { UseGraphViewReturn } from '../hooks/useGraphView';
 import { TreeNode, TreeSection } from './TreeNode';
 import { EntitySearchInput } from './EntitySearchInput';
 import { EntityBrowse } from './EntityBrowse';
+import { PathFinder } from '../PathFinder';
 
 export interface FocusTreeProps {
   focus: GraphView['focus'];
@@ -196,6 +197,18 @@ export function FocusTree({ focus, hooks }: FocusTreeProps) {
             hooks.addEntity(entity);
           }}
         />
+      </TreeSection>
+
+      {/* Path Finder */}
+      <TreeSection
+        label="Path Finder"
+        defaultExpanded={false}
+        separator={false}
+        depth={1}
+      >
+        <div className="px-2 pb-2">
+          <PathFinder />
+        </div>
       </TreeSection>
 
       {/* Global options */}

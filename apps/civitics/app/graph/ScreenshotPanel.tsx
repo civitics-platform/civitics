@@ -4,7 +4,7 @@ import { useState } from "react";
 import type { RefObject } from "react";
 
 interface ScreenshotPanelProps {
-  svgRef: RefObject<SVGSVGElement>;
+  svgRef: RefObject<SVGSVGElement> | null;
   shareCode: string | null;
   onClose: () => void;
 }
@@ -17,7 +17,7 @@ export function ScreenshotPanel({ svgRef, shareCode, onClose }: ScreenshotPanelP
   const [exporting, setExporting] = useState<ExportScale | null>(null);
 
   async function handleDownload(scale: ExportScale) {
-    const svgEl = svgRef.current;
+    const svgEl = svgRef?.current;
     if (!svgEl || exporting) return;
     setExporting(scale);
     try {

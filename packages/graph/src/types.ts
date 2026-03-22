@@ -93,6 +93,12 @@ export interface ForceOptions {
   edgeThicknessEncoding: 'amount_proportional' | 'strength_proportional' | 'uniform'
   edgeOpacity: number
   theme: 'light' | 'dark' | 'print'
+  // Physics — Category B (restart simulation, no re-fetch)
+  charge?: number        // many-body strength, default: -300
+  linkDistance?: number  // link target distance, default: 150
+  gravity?: number       // center force strength, default: 0.1
+  // Display — Category A (update SVG styles directly, no restart)
+  labels?: 'always' | 'hover' | 'never'
 }
 
 export interface ChordOptions {

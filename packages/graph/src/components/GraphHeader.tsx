@@ -15,11 +15,12 @@
 import { useState, useEffect, useRef } from 'react';
 import type { GraphView, VizType } from '../types';
 import { VIZ_REGISTRY } from '../visualizations/registry';
+import { AiNarrative } from '../AiNarrative';
 
 export interface GraphHeaderProps {
   view: GraphView;
   onVizChange: (vizType: VizType) => void;
-  /** Called when the user selects a search result. (id, name) */
+  /** Called when the user selects a search result — ADDS to focus, not replaces */
   onEntitySelect: (id: string, name: string) => void;
   onShare: () => void;
   onScreenshot: () => void;
@@ -50,12 +51,13 @@ export function GraphHeader({
 }: GraphHeaderProps) {
   const activeViz = VIZ_REGISTRY.find(v => v.id === view.style.vizType);
 
-  const [showVizMenu, setShowVizMenu]   = useState(false);
-  const [query, setQuery]               = useState('');
-  const [results, setResults]           = useState<EntityResult[]>([]);
-  const [searchOpen, setSearchOpen]     = useState(false);
-  const [searching, setSearching]       = useState(false);
-  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [showVizMenu, setShowVizMenu]       = useState(false);
+  const [query, setQuery]                   = useState('');
+  const [results, setResults]               = useState<EntityResult[]>([]);
+  const [searchOpen, setSearchOpen]         = useState(false);
+  const [searching, setSearching]           = useState(false);
+  const [isFullscreen, setIsFullscreen]     = useState(false);
+  const [narrativeOpen, setNarrativeOpen]   = useState(false);
 
   const vizMenuRef = useRef<HTMLDivElement>(null);
   const searchRef  = useRef<HTMLDivElement>(null);
@@ -226,7 +228,7 @@ export function GraphHeader({
             value={query}
             onChange={e => setQuery(e.target.value)}
             onFocus={() => results.length > 0 && setSearchOpen(true)}
-            placeholder={view.focus.entities[0]?.name ?? 'Search entity…'}
+            placeholder="Add to graph…"
             className="w-full pl-8 pr-3 py-1.5 text-xs bg-gray-50 border border-gray-200 rounded-md text-gray-700 placeholder-gray-400 focus:outline-none focus:border-indigo-400 focus:bg-white transition-colors"
           />
           {searching && (
@@ -266,6 +268,14 @@ export function GraphHeader({
       {/* Action buttons */}
       <div className="flex items-center gap-1 shrink-0">
         <button
+          onClick={() => setNarrativeOpen(true)}
+          title="AI-generated summary of the current graph"
+          className="px-2.5 py-1.5 text-xs font-medium rounded-md hover:bg-gray-100 transition-colors text-gray-600"
+        >
+          ✨ Explain
+        </button>
+
+        <button
           onClick={onShare}
           className="px-2.5 py-1.5 text-xs font-medium rounded-md hover:bg-gray-100 transition-colors text-gray-600"
         >
@@ -295,6 +305,15 @@ export function GraphHeader({
           )}
         </button>
       </div>
+      {narrativeOpen && (
+        <AiNarrative
+          vizType={view.style.vizType}
+          entityNames={view.focus.entities.map(e => e.name)}
+          activeFilters={Object.keys(view.connections).filter(t => view.connections[t]?.enabled)}
+          isVisible={narrativeOpen}
+          onClose={() => setNarrativeOpen(false)}
+        />
+      )}
     </header>
   );
 }

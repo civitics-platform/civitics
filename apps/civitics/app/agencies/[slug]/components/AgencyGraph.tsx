@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { createBrowserClient } from "@civitics/db";
 import { ForceGraph } from "@civitics/graph";
-import type { GraphNode, GraphEdge } from "@civitics/graph";
+import type { GraphNodeV2 as GraphNode, GraphEdgeV2 as GraphEdge } from "@civitics/graph";
 
 type ConnectionRow = {
   id: string;
@@ -48,6 +48,17 @@ function PlaceholderNodes() {
   );
 }
 
+/** Map old DB entity type strings to new NodeType values */
+function mapNodeType(t: string): GraphNode["type"] {
+  if (t === "official")      return "official";
+  if (t === "proposal")      return "proposal";
+  if (t === "corporation")   return "corporation";
+  if (t === "pac")           return "pac";
+  if (t === "individual")    return "individual";
+  if (t === "organization")  return "organization";
+  return "agency"; // covers governing_body + agency
+}
+
 export function AgencyGraph({
   agencyId,
   agencyName,
@@ -79,43 +90,34 @@ export function AgencyGraph({
 
         // Central node
         nodeMap.set(agencyId, {
-          id: agencyId,
-          type: "governing_body",
-          label: agencyName,
-          metadata: {},
+          id:   agencyId,
+          type: "agency",
+          name: agencyName,
         });
 
         for (const c of rows) {
-          const isFrom = c.from_id === agencyId;
+          const isFrom   = c.from_id === agencyId;
           const peerId   = isFrom ? c.to_id   : c.from_id;
           const peerType = isFrom ? c.to_type : c.from_type;
-          const meta = c.metadata ?? {};
+          const meta     = c.metadata ?? {};
 
           if (!nodeMap.has(peerId)) {
             nodeMap.set(peerId, {
-              id: peerId,
-              type:
-                peerType === "official"      ? "official"
-                : peerType === "proposal"    ? "proposal"
-                : peerType === "corporation" ? "corporation"
-                : peerType === "pac"         ? "pac"
-                : "governing_body",
-              label:
-                (meta["name"] as string) ??
-                (meta["full_name"] as string) ??
-                peerId.slice(0, 8),
-              metadata: meta,
+              id:   peerId,
+              type: mapNodeType(peerType),
+              name: (meta["name"] as string) ??
+                    (meta["full_name"] as string) ??
+                    peerId.slice(0, 8),
             });
           }
 
           edgeList.push({
-            id: c.id,
-            source: isFrom ? agencyId : peerId,
-            target: isFrom ? peerId   : agencyId,
-            type:   c.connection_type as GraphEdge["type"],
-            amountCents:  c.amount_cents ?? undefined,
-            occurredAt:   c.occurred_at  ?? undefined,
-            strength:     Number(c.strength) || 0.5,
+            fromId:         isFrom ? agencyId : peerId,
+            toId:           isFrom ? peerId   : agencyId,
+            connectionType: c.connection_type,
+            amountUsd:      c.amount_cents != null ? c.amount_cents / 100 : undefined,
+            occurredAt:     c.occurred_at  ?? undefined,
+            strength:       Number(c.strength) || 0.5,
           });
         }
 

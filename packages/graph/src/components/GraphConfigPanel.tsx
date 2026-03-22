@@ -132,6 +132,20 @@ function ForceSettings({ view, hooks }: { view: GraphView; hooks: UseGraphViewRe
         onChange={v => set('nodeColorEncoding', v)}
       />
       <LabeledSlider label="Edge opacity" min={0} max={1} step={0.05} value={opts?.edgeOpacity ?? 0.7} onChange={v => set('edgeOpacity', v)} />
+      <LabeledSelect
+        label="Labels"
+        value={opts?.labels ?? 'hover'}
+        options={[
+          { value: 'always', label: 'Always' },
+          { value: 'hover',  label: 'Hover'  },
+          { value: 'never',  label: 'Never'  },
+        ]}
+        onChange={v => set('labels', v)}
+      />
+      <div className="px-3 pt-1 pb-0.5 text-[9px] font-semibold text-gray-400 uppercase tracking-wide">Physics</div>
+      <LabeledSlider label="Charge" min={-1000} max={-50} step={50} value={opts?.charge ?? -300} onChange={v => set('charge', v)} />
+      <LabeledSlider label="Link dist" min={50} max={500} step={10} value={opts?.linkDistance ?? 150} onChange={v => set('linkDistance', v)} />
+      <LabeledSlider label="Gravity" min={0} max={1} step={0.05} value={opts?.gravity ?? 0.1} onChange={v => set('gravity', v)} />
     </>
   );
 }
@@ -324,30 +338,7 @@ export function GraphConfigPanel({ view, hooks, collapsed, onCollapse, onSavePre
           {vizType === 'sunburst'&& <SunburstSettings view={view} hooks={hooks} />}
         </TreeSection>
 
-        {/* Display */}
-        <TreeSection label="Display" defaultExpanded={false} separator>
-          <LabeledSelect
-            label="Node size"
-            value="medium"
-            options={[
-              { value: 'small',  label: 'Small'  },
-              { value: 'medium', label: 'Medium' },
-              { value: 'large',  label: 'Large'  },
-            ]}
-            onChange={() => {}}
-          />
-          <LabeledSelect
-            label="Labels"
-            value="hover"
-            options={[
-              { value: 'always', label: 'Always' },
-              { value: 'hover',  label: 'Hover'  },
-              { value: 'never',  label: 'Never'  },
-            ]}
-            onChange={() => {}}
-          />
-          <LabeledToggle label="Animation" value={true} onChange={() => {}} />
-        </TreeSection>
+        {/* Display section removed — per-viz settings now live inside each viz's Settings section */}
 
       </div>
 
