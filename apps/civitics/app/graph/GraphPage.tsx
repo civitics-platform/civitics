@@ -115,6 +115,13 @@ export function GraphPage({ initialCode, initialState }: GraphPageProps = {}) {
   const graphHooks = useGraphView();
   const { view }   = graphHooks;
 
+  // Backward-compat shim: derive single entity ID/name from new entities array
+  // Used until ForceGraph and other viz components are fully migrated in G3
+  const primaryEntityId   = graphHooks.primaryEntity?.id   ?? null;
+  const primaryEntityName = graphHooks.primaryEntity?.name ?? null;
+  void primaryEntityId;   // used indirectly via graphHooks in G3
+  void primaryEntityName; // used indirectly via graphHooks in G3
+
   // SVG refs for screenshot
   const svgRef         = useRef<SVGSVGElement>(null);
   const chordSvgRef    = useRef<SVGSVGElement>(null);
@@ -264,8 +271,8 @@ export function GraphPage({ initialCode, initialState }: GraphPageProps = {}) {
   }
 
   function handleHeaderEntitySelect(id: string, name: string) {
-    graphHooks.setEntity(id, name);
     if (id) {
+      graphHooks.addEntity({ id, name, type: 'official' });
       setCenterEntity({ id, type: "official", label: name });
       // If compare mode is on, second search sets the compare entity
       if (compareMode && centerEntity) {
@@ -273,6 +280,7 @@ export function GraphPage({ initialCode, initialState }: GraphPageProps = {}) {
         return;
       }
     } else {
+      graphHooks.clearFocus();
       setCenterEntity(null);
     }
   }

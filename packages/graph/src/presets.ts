@@ -19,8 +19,7 @@ import { DEFAULT_CONNECTION_STATE } from './connections'
 
 export const DEFAULT_GRAPH_VIEW: GraphView = {
   focus: {
-    entityId: null,
-    entityName: null,
+    entities: [],
     scope: 'all',
     depth: 1,
     includeProcedural: false,
@@ -64,8 +63,7 @@ function buildConnections(
 
 export const FOLLOW_THE_MONEY: GraphViewPreset = {
   focus: {
-    entityId: null,
-    entityName: null,
+    entities: [],
     scope: 'all',
     depth: 1,           // financial networks are dense — depth 1 by default
     includeProcedural: false,
@@ -95,8 +93,7 @@ export const FOLLOW_THE_MONEY: GraphViewPreset = {
 
 export const VOTES_AND_BILLS: GraphViewPreset = {
   focus: {
-    entityId: null,
-    entityName: null,
+    entities: [],
     scope: 'all',
     depth: 2,
     includeProcedural: false, // procedural votes (cloture, passage) hidden by default
@@ -126,8 +123,7 @@ export const VOTES_AND_BILLS: GraphViewPreset = {
 
 export const NOMINATIONS: GraphViewPreset = {
   focus: {
-    entityId: null,
-    entityName: null,
+    entities: [],
     scope: 'senate', // nominations are confirmed by the Senate
     depth: 2,
     includeProcedural: false,
@@ -157,8 +153,7 @@ export const NOMINATIONS: GraphViewPreset = {
 
 export const COMMITTEE_POWER: GraphViewPreset = {
   focus: {
-    entityId: null,
-    entityName: null,
+    entities: [],
     scope: 'all',
     depth: 2,
     includeProcedural: false,
@@ -190,8 +185,7 @@ export const COMMITTEE_POWER: GraphViewPreset = {
 // For researchers and journalists who need the complete record.
 export const FULL_RECORD: GraphViewPreset = {
   focus: {
-    entityId: null,
-    entityName: null,
+    entities: [],
     scope: 'all',
     depth: 2,
     includeProcedural: true,  // show procedural votes (cloture, etc.)
@@ -223,8 +217,7 @@ export const FULL_RECORD: GraphViewPreset = {
 // Shows only meaningful amounts — reduces visual noise for public audiences.
 export const CLEAN_VIEW: GraphViewPreset = {
   focus: {
-    entityId: null,
-    entityName: null,
+    entities: [],
     scope: 'all',
     depth: 1,
     includeProcedural: false,

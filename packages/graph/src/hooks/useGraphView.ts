@@ -12,7 +12,8 @@
  */
 
 import { useState } from 'react';
-import type { GraphView, GraphViewPreset, VizType } from '../types';
+import type { FocusEntity, GraphView, GraphViewPreset, VizType } from '../types';
+import { MAX_FOCUS_ENTITIES } from '../types';
 import { DEFAULT_GRAPH_VIEW, applyPreset as applyPresetUtil, markDirty } from '../presets';
 
 export function useGraphView(initialView?: Partial<GraphView>) {
@@ -26,10 +27,46 @@ export function useGraphView(initialView?: Partial<GraphView>) {
 
     // ── Layer 1: Focus ──────────────────────────────────────────────────────
 
-    setEntity: (id: string | null, name: string | null) =>
+    addEntity: (entity: FocusEntity) =>
+      setView(v => {
+        if (v.focus.entities.length >= MAX_FOCUS_ENTITIES) return v; // caller shows warning
+        return markDirty({
+          ...v,
+          focus: {
+            ...v.focus,
+            entities: [
+              ...v.focus.entities.filter(e => e.id !== entity.id), // prevent duplicates
+              entity,
+            ],
+          },
+        });
+      }),
+
+    removeEntity: (id: string) =>
       setView(v => markDirty({
         ...v,
-        focus: { ...v.focus, entityId: id, entityName: name },
+        focus: {
+          ...v.focus,
+          entities: v.focus.entities.filter(e => e.id !== id),
+        },
+      })),
+
+    updateEntity: (id: string, options: Partial<FocusEntity>) =>
+      setView(v => markDirty({
+        ...v,
+        focus: {
+          ...v.focus,
+          entities: v.focus.entities.map(e => e.id === id ? { ...e, ...options } : e),
+        },
+      })),
+
+    clearFocus: () =>
+      setView(v => ({
+        ...v,
+        focus: {
+          ...v.focus,
+          entities: [],
+        },
       })),
 
     setDepth: (depth: 1 | 2 | 3) =>
@@ -129,6 +166,17 @@ export function useGraphView(initialView?: Partial<GraphView>) {
 
     applyPreset: (preset: GraphViewPreset) =>
       setView(applyPresetUtil(preset, view)),
+
+    // ── Computed helpers (backward compat with single-entity APIs) ───────────
+
+    /** First focused entity. For backward compat during G2/G3 migration. */
+    primaryEntity: view.focus.entities[0] ?? null,
+
+    /** True when at least one entity is focused. */
+    hasFocus: view.focus.entities.length > 0,
+
+    /** True when MAX_FOCUS_ENTITIES has been reached. */
+    atMaxFocus: view.focus.entities.length >= MAX_FOCUS_ENTITIES,
 
     // ── Serialization ────────────────────────────────────────────────────────
 

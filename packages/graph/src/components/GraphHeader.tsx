@@ -226,7 +226,7 @@ export function GraphHeader({
             value={query}
             onChange={e => setQuery(e.target.value)}
             onFocus={() => results.length > 0 && setSearchOpen(true)}
-            placeholder={view.focus.entityName ?? 'Search entity…'}
+            placeholder={view.focus.entities[0]?.name ?? 'Search entity…'}
             className="w-full pl-8 pr-3 py-1.5 text-xs bg-gray-50 border border-gray-200 rounded-md text-gray-700 placeholder-gray-400 focus:outline-none focus:border-indigo-400 focus:bg-white transition-colors"
           />
           {searching && (

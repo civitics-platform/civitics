@@ -1,6 +1,8 @@
 // ── New architecture (Stage 1) ─────────────────────────────────────────────
 export { useGraphView } from "./hooks/useGraphView";
 export type { UseGraphViewReturn } from "./hooks/useGraphView";
+export { useEntitySearch } from "./hooks/useEntitySearch";
+export { useGraphData } from "./hooks/useGraphData";
 
 export { GraphHeader } from "./components/GraphHeader";
 export type { GraphHeaderProps } from "./components/GraphHeader";
@@ -18,7 +20,8 @@ export { NodePopup } from "./components/NodePopup";
 export type { NodePopupProps } from "./components/NodePopup";
 
 // New types (Stage 1)
-export type { GraphView, GraphViewPreset, VizType, GraphNode as GraphNodeV2, GraphEdge as GraphEdgeV2 } from "./types";
+export type { GraphView, GraphViewPreset, VizType, GraphNode as GraphNodeV2, GraphEdge as GraphEdgeV2, FocusEntity, FocusOperation, UpdateCategory } from "./types";
+export { MAX_FOCUS_ENTITIES } from "./types";
 export { DEFAULT_GRAPH_VIEW, BUILT_IN_PRESETS, applyPreset, markDirty } from "./presets";
 export { CONNECTION_TYPE_REGISTRY, DEFAULT_CONNECTION_STATE } from "./connections";
 

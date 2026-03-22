@@ -55,13 +55,13 @@ export function FocusSection({
       {/* Entity display */}
       <div>
         <FieldLabel>Entity</FieldLabel>
-        {focus.entityId ? (
+        {focus.entities[0] ? (
           <div className="flex items-center gap-2 px-2.5 py-2 bg-indigo-50 rounded-lg border border-indigo-100">
             <div className="w-7 h-7 rounded-full bg-indigo-200 flex items-center justify-center text-[10px] font-bold text-indigo-700 shrink-0">
-              {(focus.entityName ?? '?').charAt(0).toUpperCase()}
+              {(focus.entities[0].name ?? '?').charAt(0).toUpperCase()}
             </div>
             <span className="text-xs font-medium text-indigo-800 truncate flex-1">
-              {focus.entityName}
+              {focus.entities[0].name}
             </span>
           </div>
         ) : (

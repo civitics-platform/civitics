@@ -112,6 +112,52 @@ export interface SunburstOptions {
   showLabels: boolean
 }
 
+// ── Focus Entity ───────────────────────────────────────────────────────────────
+
+export interface FocusEntity {
+  id: string
+  name: string
+  type: 'official' | 'agency' | 'proposal' | 'financial'
+  role?: string
+  party?: string
+  photoUrl?: string
+
+  // Per-entity overrides
+  /** Overrides global depth for this entity only */
+  depth?: 1 | 2 | 3
+  /** Render as larger node. Default: true for all focused entities */
+  highlight?: boolean
+  /** Lock position in simulation */
+  pinned?: boolean
+  /** Custom highlight ring color */
+  color?: string
+}
+
+/** Maximum number of entities that can be in focus simultaneously */
+export const MAX_FOCUS_ENTITIES = 5
+
+// ── Focus Operations ───────────────────────────────────────────────────────────
+
+export type FocusOperation =
+  | { type: 'add'; entity: FocusEntity }
+  | { type: 'remove'; id: string }
+  | { type: 'update'; id: string; options: Partial<FocusEntity> }
+  | { type: 'clear' }
+
+// ── Update Categories (real-time wiring) ──────────────────────────────────────
+//
+// Category A — Visual only (< 16ms): no simulation restart, update SVG styles directly
+//   e.g. connection color, opacity, thickness
+// Category B — Simulation restart (~200ms): data already loaded
+//   e.g. layout change, node size encoding, add/remove connection type
+// Category C — Re-fetch (~500–1000ms): new data needed from API
+//   e.g. add/remove entity from focus, depth change, scope filter change
+
+export type UpdateCategory =
+  | 'visual'   // Cat A: no restart
+  | 'physics'  // Cat B: restart
+  | 'data'     // Cat C: re-fetch
+
 // ── GraphView — The Three-Layer Model ─────────────────────────────────────────
 //
 // Every graph state is a GraphView. This is the single source of truth.
@@ -120,10 +166,11 @@ export interface SunburstOptions {
 
 export interface GraphView {
   // LAYER 1 — FOCUS
-  // Who/what is this graph about
+  // A SET of entities to explore.
+  // The graph shows all of them plus their connections,
+  // with shared connections becoming visually prominent.
   focus: {
-    entityId: string | null
-    entityName: string | null
+    entities: FocusEntity[]
     scope: 'all' | 'federal' | 'state' | 'senate' | 'house'
     depth: 1 | 2 | 3
     includeProcedural: boolean
@@ -232,7 +279,7 @@ export interface VizDefinition {
 
   /**
    * Does this viz require a focused entity?
-   * true  = needs focus.entityId (force, sunburst)
+   * true  = needs focus.entities (force, sunburst)
    * false = works globally without one (chord, treemap)
    */
   requiresEntity: boolean
