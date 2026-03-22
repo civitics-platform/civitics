@@ -181,6 +181,10 @@ export function ChordGraph({ className = "", svgRef: externalSvgRef }: ChordGrap
           error?: string;
         };
 
+        // Diagnostic: log API shape to confirm groups/recipients/matrix structure.
+        // Remove once chord is confirmed working in production.
+        console.log('[ChordGraph] data:', json);
+
         if (cancelled) return;
 
         // API returns { groups, recipients, matrix } — not { data }
@@ -294,7 +298,7 @@ export function ChordGraph({ className = "", svgRef: externalSvgRef }: ChordGrap
       )}
 
       {status === "ok" && (
-        <svg ref={svgRef} className="w-full h-full" />
+        <svg id="chord-diagram-svg" ref={svgRef} className="w-full h-full" />
       )}
 
       {tooltip && (

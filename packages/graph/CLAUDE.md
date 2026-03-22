@@ -1,699 +1,875 @@
 # packages/graph/CLAUDE.md
 
 ## Purpose
-The connection graph is not a feature — it IS the core product of Civitics. Every journalist who uses it to break a story, every citizen who shares a screenshot, every researcher who embeds it in an article is the mission made tangible. Build it accordingly.
+The connection graph is not a feature — it IS the core product of Civitics.
+Every journalist who uses it to break a story, every citizen who shares a
+screenshot, every researcher who embeds it is the mission made tangible.
+Build it accordingly.
 
 ## The One Rule
-The graph must be beautiful enough to screenshot, powerful enough to investigate, simple enough for anyone, and deep enough for experts.
+The graph must be beautiful enough to screenshot, powerful enough to
+investigate, simple enough for anyone, and deep enough for experts.
+
+---
+
+## The Three-Layer Model
+
+Every graph state is a `GraphView`. This is the single source of truth
+for all state — what entity is focused, which connections are visible,
+and how they are rendered.
+
+```ts
+interface GraphView {
+  // LAYER 1 — FOCUS
+  // Who/what is this graph about
+  focus: {
+    entityId: string | null
+    entityName: string | null
+    scope: 'all' | 'federal' | 'state' | 'senate' | 'house'
+    depth: 1 | 2 | 3
+    includeProcedural: boolean
+  }
+
+  // LAYER 2 — CONNECTIONS
+  // Which relationships to show and how to weight/style them
+  connections: {
+    [connectionType: string]: {
+      enabled: boolean
+      color: string
+      opacity: number      // 0–1
+      thickness: number    // 0–1
+      minAmount?: number   // donations only
+      dateRange?: {
+        start: string | null
+        end: string | null
+      }
+    }
+  }
+
+  // LAYER 3 — STYLE
+  // How to render the data
+  style: {
+    vizType: VizType
+    // Viz-specific options live here, keyed by vizType.
+    // Switching viz type preserves each viz's own settings.
+    vizOptions: {
+      force?: ForceOptions
+      chord?: ChordOptions
+      treemap?: TreemapOptions
+      sunburst?: SunburstOptions
+    }
+  }
+
+  // METADATA
+  meta?: {
+    name?: string        // if saved/preset
+    isPreset?: boolean
+    presetId?: string
+    isDirty?: boolean    // modified from preset baseline
+  }
+}
+```
+
+### The Critical Rule: Viz Switching Is Style-Only
+
+Switching viz type sets `style.vizType` only.
+
+`focus` and `connections` **NEVER change** on viz switch.
+
+The user's entity, depth, scope, and connection filters persist when they
+switch from Force → Chord → Treemap → Sunburst. The user's context is
+sacred — never throw it away on a UI mode change.
+
+---
 
 ## Technology
-- D3 force simulation — non-negotiable, never replace with React Flow or Cytoscape
-- The organic force clustering IS the analysis — dense clusters mean deep entanglement
-- Bridge nodes reveal hidden connections — this insight only exists with real force simulation
-- WebGL upgrade path (Sigma.js/Pixi.js) when graphs exceed 500 nodes — Phase 3+
 
-## File Structure
-packages/graph/
-  src/
-    ForceGraph.tsx          — core D3 component, all rendering logic
-    GraphControls.tsx       — preset, filter, and customization panel
-    GraphToolbar.tsx        — top bar: share, screenshot, AI narrative, zoom
-    GraphLegend.tsx         — node shapes and edge colors explained
-    SharePanel.tsx          — share code generation and copy/embed options
-    ScreenshotPanel.tsx     — export options: PNG, SVG, PDF
-    AiNarrative.tsx         — AI explanation panel
-    PathFinder.tsx          — find connection between any two entities
-    TimelineScrubber.tsx    — animate graph through time
-    ComparisonMode.tsx      — split screen two entities
-    types.ts                — all TypeScript types for graph
-    utils/
-      layout.ts             — force simulation parameters
-      colors.ts             — node and edge color system
-      serialize.ts          — graph state to JSON to share code
-      screenshot.ts         — html2canvas/dom-to-image utilities
-      clustering.ts         — cluster detection algorithms
+- **D3 force simulation — non-negotiable.** Never replace with React Flow
+  or Cytoscape.
+- The organic force clustering IS the analysis — dense clusters reveal
+  entanglement.
+- Bridge nodes reveal hidden connections — this insight only exists with
+  real force simulation.
+- WebGL upgrade path (Sigma.js/Pixi.js) when graphs exceed 500 nodes —
+  Phase 3+.
 
-## Node Types and Visual Language
+---
 
-### Shapes (never change these — visual consistency matters)
-  Official      → Circle (photo if available, initials if not)
-  Agency        → Rounded rectangle
-  Proposal/Bill → Document rectangle (folded corner)
-  Financial     → Diamond
-  Organization  → Hexagon
-  Court         → Scale/balance icon
-  Corporation   → Square with rounded corners
+## File Structure (Target Architecture)
 
-### Node Size (default: connection count)
-  Base size per type:
-    Official:     24px radius
-    Agency:       20px radius
-    Proposal:     18px radius
-    Financial:    16px radius
+```
+packages/graph/src/
+  types.ts                  ← GraphView, VizDefinition, NodeActions,
+                               VizType, all shared interfaces
+  registry.ts               ← VIZ_REGISTRY
+  connections.ts            ← CONNECTION_TYPE_REGISTRY
+  presets.ts                ← built-in presets as GraphView objects
 
-  Scale formula:
-    radius = base + Math.sqrt(connectionCount) * 2
+  components/
+    GraphHeader.tsx         ← fixed header bar: viz dropdown, search,
+                               share button, screenshot button
+    SettingsPanel.tsx       ← draggable panel: 3 collapsible sections
+    FocusSection.tsx        ← Layer 1 settings (entity, depth, scope)
+    ConnectionsSection.tsx  ← Layer 2 settings (per-type toggles)
+    StyleSection.tsx        ← Layer 3 settings (dynamic per active viz)
+    NodePopup.tsx           ← click popup (shared across all viz types)
+    Tooltip.tsx             ← hover tooltip (shared across all viz types)
 
-  User can change size encoding to:
-    connection_count (default)
-    donation_total
-    votes_cast
-    bills_sponsored
-    years_in_office
-    uniform
+  visualizations/
+    registry.ts             ← VIZ_REGISTRY (already exists)
+    ForceGraph.tsx
+    ChordGraph.tsx
+    TreemapGraph.tsx
+    SunburstGraph.tsx
+    (future viz files here)
+```
 
-### Node Color (default: entity type)
-  Official border:
-    Democrat:     #2563eb (blue)
-    Republican:   #dc2626 (red)
-    Independent:  #7c3aed (purple)
-    Other:        #d97706 (amber)
+**Current state (as of March 2026):** Components still live flat in `src/`.
+The `components/` subdirectory and the new panel architecture are being
+built toward. Do not move files until the new components exist.
 
-  Agency:         #6b7280 (gray border)
-  Proposal:       #f59e0b (amber border)
-  Financial:      #16a34a (green border)
-  Corporation:    #0891b2 (cyan border)
+---
 
-  User can change color encoding to:
-    entity_type (default)
-    party_affiliation
-    industry_sector
-    state_region
-    single_color
+## Current State & Migration
 
-## Edge Types and Visual Language
+### Existing Files in `packages/graph/src/`
 
-### Connection Types
-  donation             → green   #16a34a  solid
-  vote_yes             → blue    #2563eb  solid   (legislation votes only)
-  vote_no              → red     #dc2626  solid   (legislation votes only)
-  nomination_vote_yes  → violet  #8b5cf6  solid   (judicial/cabinet confirmation in favor)
-  nomination_vote_no   → pink    #db2777  solid   (judicial/cabinet confirmation against)
-  co_sponsor           → blue    #3b82f6  dashed
-  appointment          → purple  #7c3aed  dashed
-  revolving_door       → orange  #ea580c  solid
-  oversight            → gray    #6b7280  solid
-  investigated_by      → pink    #be185d  solid
-  lobbied_for          → amber   #f59e0b  dashed
-  formerly_employed    → orange  #ea580c  dashed
+| File | What it does | Status |
+|---|---|---|
+| `index.ts` | Barrel exports + inline type definitions: `NodeType`, `EdgeType`, `GraphNode`, `GraphEdge`, `NODE_COLORS`, `PARTY_COLORS`, `EDGE_COLORS`, `edgeWidth()`, `VisualConfig`, `DEFAULT_VISUAL_CONFIG`, `EntitySearchResult` | **MIGRATE** — type defs move to `types.ts`; constants and `edgeWidth` move to `types.ts` or remain; barrel stays but is updated |
+| `ForceGraph.tsx` | Full D3 force simulation with drag, zoom, hover highlight, collapsed-node badges, arrowhead markers, drop-shadow filter, label rendering. Works well. | **MIGRATE** → `visualizations/ForceGraph.tsx`; add `screenshotTarget`, `tooltip`, `onNodeClick` registry entry |
+| `ChordGraph.tsx` | Chord diagram that fetches `/api/graph/chord`, **already expands** the rectangular industry×party matrix to NxN square before calling `d3.chord()`. Tooltip on arcs and ribbons. Resize observer. | **MIGRATE** → `visualizations/ChordGraph.tsx`; the N×N matrix expansion is already correct (see Chord Fix note below) |
+| `TreemapGraph.tsx` | D3 treemap grouped by party, sized by `total_donated_cents`. Hover tooltip, legend, resize observer. | **MIGRATE** → `visualizations/TreemapGraph.tsx` |
+| `SunburstGraph.tsx` | D3 partition sunburst with click-to-zoom, breadcrumb trail, resize observer. Requires `entityId` prop. | **MIGRATE** → `visualizations/SunburstGraph.tsx` |
+| `GraphSidebar.tsx` | Left sidebar with 6 collapsible sections: Visualization picker, Focus (entity search + depth + compare + path finder), Filters (pills + strength slider + industry filter), Appearance (node/edge encoding + theme), Presets, Export. Also contains `PRESETS` and `PRESET_ORDER` constants and inline `SidebarEntitySearch`. | **REPLACE** — replaced entirely by `SettingsPanel.tsx` + `GraphHeader.tsx`; preset data migrates to `presets.ts`; entity search logic migrates to `FocusSection.tsx` |
+| `CustomizePanel.tsx` | Floating overlay panel for node size, node color, edge thickness, layout, theme. Duplicates the Appearance section of `GraphSidebar.tsx`. | **DELETE** — functionality absorbed into `StyleSection.tsx` |
+| `CollapsiblePanel.tsx` | Generic collapsible section with header button and localStorage persistence. Clean, reusable. | **KEEP** — used by `SettingsPanel.tsx` sections |
+| `FilterPills.tsx` | Pill-style connection type toggles. Hardcodes `PILL_CONFIG` array with type strings and colors. | **REPLACE** — replaced by `ConnectionsSection.tsx` which reads from `CONNECTION_TYPE_REGISTRY`; never hardcode type strings again |
+| `EntitySelector.tsx` | Full-width entity search with categorized dropdown results (Officials / Agencies / Proposals / Donors). Debounced, with party color dots. | **MIGRATE** — logic and UX migrate into `FocusSection.tsx`; this standalone component deleted once migrated |
+| `DepthControl.tsx` | Simple 1–5 depth button group with tooltips. | **MIGRATE** — migrates into `FocusSection.tsx`; deleted once migrated |
+| `PathFinder.tsx` | BFS path finder UI: two entity search boxes + "Find shortest path" button. POSTs to `/api/graph/pathfinder`. Clean, standalone. | **KEEP** — remains as a standalone component; referenced from `FocusSection.tsx` |
+| `AiNarrative.tsx` | Floating overlay panel; POSTs to `/api/graph/narrative`, shows streaming text, copy button, regenerate, disclaimer. Auto-generates on open. | **KEEP** — independent overlay; not part of the settings panel |
+| `EmbedModal.tsx` | Modal that generates `<iframe>` embed code from a share code. Size presets + custom dimensions + copy button. | **KEEP** — independent modal |
+| `visualizations/registry.ts` | `VIZ_REGISTRY` array with `id`, `label`, `civicQuestion`, `description`, `status`, `icon` for 4 viz types. | **MIGRATE** — extend each entry with `component`, `requiresEntity`, `supportedConnectionTypes`, `defaultOptions`, `screenshotTarget`, `screenshotPrep`, `tooltip`, `onNodeClick` |
 
-  NOTE: nomination_vote_yes/no are VALID and DISTINCT from vote_yes/vote_no.
-  They are derived from proposals with vote_category='nomination'.
-  Show in graph filter pills as "Nomination Votes" — separate from "Legislation Votes".
+---
 
-### Edge Thickness
-  Donation edges: proportional to log(amount)
-    formula: Math.max(1, Math.log10(amountCents / 100000))
-    $10k donation  = 1px
-    $100k donation = 2px
-    $1M donation   = 3px
-    $10M donation  = 4px
+### Stage 1 (Build Now)
 
-  All other edges: 2px uniform
+These are the files to create in Stage 1. Everything else follows from them.
 
-  User can change to:
-    amount_proportional (default for donations)
-    strength_proportional
-    uniform
+```
+[ ] types.ts
+      Full GraphView interface, VizDefinition, NodeActions,
+      VizType, VizProps. Move existing type defs from index.ts here.
 
-### Edge Opacity
-  Opacity = connection strength (0.3 minimum)
-  Stronger connections more visible
-  Weak connections fade into background
+[ ] connections.ts
+      CONNECTION_TYPE_REGISTRY constant.
+      Never hardcode connection type strings anywhere else.
 
-## Preset Views
+[ ] components/GraphHeader.tsx
+      Fixed header bar with:
+        - Viz type dropdown (renders from VIZ_REGISTRY, grouped)
+        - Entity search (replaces the top EntitySelector)
+        - Share button
+        - Screenshot button (delegates to vizDef.screenshotPrep + target)
+        - "✨ Explain" button (opens AiNarrative)
+
+[ ] components/SettingsPanel.tsx
+      Bottom-left fixed pill "[⚙ Settings ▾]"
+      Click to expand to 280px-wide panel with 3 collapsible sections.
+      Hosts FocusSection, ConnectionsSection, StyleSection.
+      Footer: [💾 Save as preset] [↗ Share]
+      When isDirty: [💾 Save changes] [↗ Share]
+      Stage 1: fixed position. Drag deferred to Stage 2.
+
+[ ] components/FocusSection.tsx
+      Layer 1 controls: entity search, depth (1/2/3), scope filter.
+      Absorbs EntitySelector.tsx + DepthControl.tsx.
+      Includes PathFinder as a collapsible subsection.
+
+[ ] components/ConnectionsSection.tsx
+      Layer 2 controls: one row per type from CONNECTION_TYPE_REGISTRY.
+      [✓] checkbox  label  [━━] thickness slider
+      [■] color     [░░░] opacity slider
+      (minAmount row if type has hasAmount=true)
+      Replaces FilterPills.tsx entirely.
+
+[ ] components/StyleSection.tsx
+      Layer 3 controls: dynamic content from active viz's registry entry.
+      Reads VIZ_REGISTRY[activeVizType].defaultOptions to render controls.
+      Never contains viz-specific if/else logic.
+
+[ ] components/NodePopup.tsx
+      Shared click popup used by all viz types.
+      Name + party badge, role + jurisdiction, key stats, action buttons.
+      Receives data through NodeActions interface.
+
+[ ] components/Tooltip.tsx
+      Shared hover tooltip used by all viz types.
+      Standard fields: name (bold), subtitle, divider, 2–3 stats, hint.
+
+[ ] Update visualizations/registry.ts
+      Extend each of the 4 existing viz entries with:
+        component, requiresEntity, supportedConnectionTypes,
+        defaultOptions, screenshotTarget, screenshotPrep?,
+        tooltip, onNodeClick
+
+[ ] Update ChordGraph.tsx screenshot
+      Add id="chord-svg" to the SVG element so
+      screenshotTarget: '#chord-svg' works.
+      (The N×N matrix fix is already done — see Chord Fix note below.)
+```
+
+---
+
+### Stage 2 (After Launch)
+
+```
+[ ] User-saved custom views stored per-user in DB
+[ ] Share URL encodes full GraphView (not just entity ID)
+[ ] Community preset library (browseable public presets)
+[ ] Draggable/resizable SettingsPanel (currently fixed position)
+[ ] Timeline viz
+[ ] Sankey viz
+[ ] Geographic map viz
+[ ] Collaboration / investigation rooms
+[ ] Annotations layer
+```
+
+---
+
+### Chord Diagram Fix Required
+
+`d3.chord()` requires a square N×N matrix. Our API returns a rectangular
+`M×P` matrix (M industries → P party groups), which is **not** square.
+
+**The fix is already implemented in `ChordGraph.tsx` (lines 215–226).**
+The code expands the rectangular matrix to a square N×N matrix where:
+- Industries flow TO party slots (forward direction)
+- Party slots mirror back to industries (symmetric, so `d3.chord()` renders arcs on both sides)
+- Industries never flow to other industries
+- Parties never flow to each other
+
+```ts
+const N = groups.length + recipients.length  // e.g. 13 + 4 = 17
+const square: number[][] = Array.from({ length: N }, () => Array(N).fill(0))
+
+rawMatrix.forEach((row, i) => {
+  row.forEach((val, j) => {
+    const partyIdx = groups.length + j
+    square[i][partyIdx] = val      // industry → party
+    square[partyIdx][i] = val      // party → industry (symmetric)
+  })
+})
+```
+
+Industry group arcs: indices `0` to `groups.length - 1`
+Party group arcs: indices `groups.length` to `N - 1`
+
+Colors:
+- Industries: use `INDUSTRY_COLORS` array (already in `ChordGraph.tsx`)
+- Democrat groups (`dem_senate`, `dem_house`): `#2563eb`
+- Republican groups (`rep_senate`, `rep_house`): `#dc2626`
+
+**No code changes needed for the matrix logic.** The only pending fix is
+adding `id="chord-svg"` to the SVG element for screenshot targeting.
+
+---
+
+### Settings Panel UX
+
+The panel:
+- Starts **docked to bottom-left** of the graph canvas
+- **Collapsed by default** — shows as a small pill: `[⚙ Settings ▾]`
+- Click pill to expand
+- When expanded: shows all 3 sections, each individually collapsible
+- Width: `280px` fixed
+- Height: `auto`, max `80vh` with internal scroll
+- On mobile: full-width sheet from bottom
+
+**Do NOT make it draggable in Stage 1** — fixed position is fine.
+Add drag in Stage 2 once the panel content is stable.
+
+---
+
+## The Viz Registry
+
+Every viz type is defined exactly once in `registry.ts`. Adding a new viz
+requires only one new entry — nothing else in the codebase changes.
+
+```ts
+interface VizDefinition {
+  id: VizType
+  label: string
+  icon: string                    // inline SVG path string
+  group: 'standard' | 'coming_soon' | 'custom'
+  description: string
+  civicQuestion: string           // "Which industries fund which groups?"
+
+  // The React component that renders this viz
+  component: React.ComponentType<VizProps>
+
+  // Does this viz require a focused entity?
+  // true  = needs focus.entityId (force, sunburst)
+  // false = works globally without one (chord, treemap)
+  requiresEntity: boolean
+
+  // Which connection types this viz can display.
+  // force: all types
+  // chord: donation only
+  // treemap: donation only
+  // sunburst: all types
+  supportedConnectionTypes: string[]
+
+  // Default values for this viz's style options.
+  // Auto-populates GraphView.style.vizOptions[id].
+  defaultOptions: Record<string, any>
+
+  // Screenshot target: CSS selector for the element to capture.
+  // e.g. '#chord-svg', '#force-canvas'
+  screenshotTarget: string
+
+  // Called before capture: hide tooltips, reset zoom, etc.
+  screenshotPrep?: () => void
+
+  // Tooltip rendered on node/arc/cell hover.
+  tooltip: (node: GraphNode) => React.ReactNode
+
+  // Called on node/arc/cell click.
+  // Receives NodeActions so the popup stays viz-agnostic.
+  onNodeClick: (node: GraphNode, actions: NodeActions) => void
+}
+
+interface NodeActions {
+  recenter: (nodeId: string) => void      // force only
+  openProfile: (nodeId: string) => void   // all viz types
+  addToComparison: (nodeId: string) => void // force only
+  expandNode: (nodeId: string) => void    // force only
+}
+```
+
+---
+
+## The Settings Panel
+
+Three collapsible sections. This is the **only** settings UI.
+The old `GraphSidebar.tsx` / `CustomizePanel.tsx` pattern is being
+replaced by `SettingsPanel.tsx`.
+
+### Section 1 — FOCUS
+Always the same regardless of viz type.
+Controls: `GraphView.focus.*`
+
+- Entity search / selector
+- Depth (1 / 2 / 3)
+- Scope filter (all / federal / state / senate / house)
+- Time range (future)
+
+### Section 2 — CONNECTIONS
+Always the same regardless of viz type.
+Controls: `GraphView.connections.*`
+
+One row per connection type from `CONNECTION_TYPE_REGISTRY`:
+```
+[✓] checkbox  label           [━━] thickness slider
+[■] color     [░░░] opacity   (min amount if type=donation)
+```
+
+**Never hardcode connection type names in the UI.** Always render from
+`CONNECTION_TYPE_REGISTRY` keys.
+
+### Section 3 — STYLE
+Changes dynamically based on the active viz type.
+Controls: `GraphView.style.vizOptions[activeVizType]`
+
+Content is defined by each viz's `defaultOptions` in `VIZ_REGISTRY`.
+The panel renders whatever options that viz declares.
+
+**Never put viz-specific settings code outside of that viz's registry
+entry and component file.**
+
+### Panel Footer
+```
+[💾 Save as preset]   [↗ Share]
+```
+If view is a loaded preset and `meta.isDirty = true`:
+```
+[💾 Save changes]     [↗ Share]
+```
+
+---
+
+## The Viz Dropdown
+
+Lives in the fixed `GraphHeader.tsx` bar. **Not** inside the settings panel.
+
+Renders from `VIZ_REGISTRY`, grouped by `entry.group`:
+```
+─── Standard ───
+⬡  Force Graph
+◎  Chord Diagram
+▦  Treemap
+◉  Sunburst
+─── Coming Soon ───
+↔  Timeline
+─── Custom ───
+   [user saved views]
+   + Create new view
+```
+
+Selecting a viz:
+- Sets `style.vizType`
+- Does NOT change `focus`
+- Does NOT change `connections`
+- Updates the Style section in the settings panel
+
+---
+
+## Connection Type Registry
+
+Single source of truth for all connection types. Never hardcode these
+strings anywhere in the codebase — always use `CONNECTION_TYPE_REGISTRY`
+keys.
+
+```ts
+const CONNECTION_TYPE_REGISTRY = {
+  donation: {
+    label: 'Donations',
+    icon: '💰',
+    color: '#f59e0b',
+    description: 'PAC and individual donor contributions',
+    hasAmount: true,
+  },
+  vote_yes: {
+    label: 'Voted Yes',
+    icon: '✓',
+    color: '#22c55e',
+    description: 'Affirmative votes on legislation',
+    hasAmount: false,
+  },
+  vote_no: {
+    label: 'Voted No',
+    icon: '✗',
+    color: '#ef4444',
+    description: 'Negative votes on legislation',
+    hasAmount: false,
+  },
+  vote_abstain: {
+    label: 'Abstained',
+    icon: '○',
+    color: '#94a3b8',
+    description: 'Present / not voting',
+    hasAmount: false,
+  },
+  nomination_vote_yes: {
+    label: 'Confirmed',
+    icon: '⭐',
+    color: '#8b5cf6',
+    description: 'Voted to confirm nomination',
+    hasAmount: false,
+  },
+  nomination_vote_no: {
+    label: 'Rejected',
+    icon: '✗',
+    color: '#ec4899',
+    description: 'Voted against confirmation',
+    hasAmount: false,
+  },
+  oversight: {
+    label: 'Oversight',
+    icon: '👁',
+    color: '#06b6d4',
+    description: 'Committee oversight relationships',
+    hasAmount: false,
+  },
+  co_sponsorship: {
+    label: 'Co-Sponsored',
+    icon: '🤝',
+    color: '#84cc16',
+    description: 'Bill co-sponsorship',
+    hasAmount: false,
+  },
+}
+```
+
+Note: `nomination_vote_yes` / `nomination_vote_no` are VALID and DISTINCT
+from `vote_yes` / `vote_no`. They are derived from proposals with
+`vote_category = 'nomination'`. Show in UI as "Nomination Votes" —
+separate from "Legislation Votes". Never merge them.
+
+---
+
+## Interaction Contracts
+
+Every viz type MUST implement both contracts below. No exceptions.
+
+### Tooltip (hover)
+- Appears on hover of any node, arc, cell, or edge
+- Implemented per viz in `VIZ_REGISTRY.tooltip()`
+
+Standard tooltip fields:
+```
+[name — bold]
+[subtitle: role / type]
+─────────────────────
+[key stat 1]
+[key stat 2]
+[key stat 3]  (2–3 max)
+[hint: "Click for more"]
+```
+
+### Click Popup
+- Implemented per viz in `VIZ_REGISTRY.onNodeClick()`
+- Rendered by the shared `NodePopup.tsx` component
+- Each viz passes its node data through the `NodeActions` interface
+
+Standard popup content:
+```
+[Name]  [Party badge]
+[Role · Jurisdiction]
+─────────────────────
+[key stat 1]
+[key stat 2]
+─────────────────────
+[⊙ Recenter]    (force only)
+[↗ View profile] (all)
+[+ Compare]     (force only)
+```
+
+---
+
+## Screenshot Contract
+
+Screenshot button in `GraphHeader.tsx` calls the active viz's definition:
+
+```ts
+const vizDef = VIZ_REGISTRY[activeVizType]
+
+if (vizDef.screenshotPrep) {
+  vizDef.screenshotPrep()
+}
+
+html2canvas(document.querySelector(vizDef.screenshotTarget))
+```
+
+Each viz registers its own `screenshotTarget` selector and optional
+`screenshotPrep` callback.
+
+**Never hardcode a specific viz's selector in the screenshot button handler.**
+That logic belongs in the viz's registry entry.
+
+### Watermark (always included, non-removable)
+```
+civitics.com/graph/[SHARE_CODE]
+Data: [source list — FEC, Congress.gov, etc.]
+Generated: [date]
+```
+
+The URL watermark is the single most strategically important feature in
+this package. Every shared screenshot drives new users back to the
+platform. It is non-removable by design.
+
+---
+
+## Presets
+
+A preset is a named `GraphView`. Nothing more, nothing less.
+
+Built-in presets live in `packages/graph/src/presets.ts`. Each is a
+complete `GraphView` object with `meta.isPreset = true`.
+
+Loading a preset replaces the entire `GraphView` state with preset values.
+
+Modifying any value after loading sets `meta.isDirty = true` and shows
+`[💾 Save changes]` in the panel footer.
+
+User-saved presets: stored in localStorage for now. Future: per-user DB.
 
 ### Built-in Presets (never remove these)
 
-  Follow the Money:
-    filters: ['donation']
-    nodeSize: 'donation_total'
-    nodeColor: 'entity_type'
-    description: "Who funds this official and how much"
-
-  Votes and Bills:
-    filters: ['vote_yes', 'vote_no', 'co_sponsor', 'proposal']
-    nodeSize: 'bills_sponsored'
-    nodeColor: 'party_affiliation'
-    hide_procedural: true (default — cloture/passage votes hidden)
-    description: "Legislative patterns and alliances — real bills only"
-
-  The Revolving Door:
-    filters: ['revolving_door', 'formerly_employed', 'appointment']
-    nodeSize: 'connection_count'
-    nodeColor: 'entity_type'
-    description: "Movement between government and industry"
-
-  Committee Power:
-    filters: ['oversight', 'appointment']
-    nodeSize: 'years_in_office'
-    nodeColor: 'entity_type'
-    description: "Who controls what and who appointed them"
-
-  Industry Capture:
-    filters: ['donation', 'lobbied_for', 'revolving_door']
-    nodeSize: 'donation_total'
-    nodeColor: 'industry_sector'
-    description: "Industry influence on this official"
-
-  Co-Sponsor Network:
-    filters: ['co_sponsor', 'vote_yes']
-    nodeSize: 'bills_sponsored'
-    nodeColor: 'party_affiliation'
-    description: "Who works across the aisle"
-
-  Nominations:
-    filters: ['nomination_vote_yes', 'nomination_vote_no']
-    nodeSize: 'connection_count'
-    nodeColor: 'party_affiliation'
-    description: "Judicial and cabinet confirmation votes — who did this senator confirm?"
-
-  Full Record:
-    filters: ['all']
-    include_procedural: true
-    description: "Every connection type including procedural votes — for researchers and journalists"
-
-  Full Picture:
-    filters: ['all']
-    description: "Every connection type visible (procedural hidden)"
-
-  Clean View:
-    filters: ['all']
-    minStrength: 0.7
-    verifiedOnly: true
-    description: "High-confidence connections only"
-
-### Community Presets
-  Users can save named presets
-  Stored in graph_presets table:
-    id, user_id, name, description,
-    config JSONB, use_count, is_public
-
-  Public presets browseable
-  Platform features most-used
-
-## Graph State Serialization
-Every graph state serializes to JSON for share codes:
-
-{
-  "version": "1.0",
-  "centerEntity": { "type": "official", "id": "uuid" },
-  "depth": 2,
-  "filters": {
-    "connectionTypes": ["donation", "vote_yes"],
-    "minStrength": 0.3,
-    "minAmountCents": 0,
-    "dateRange": { "start": null, "end": null },
-    "verifiedOnly": false
-  },
-  "visual": {
-    "nodeSize": "connection_count",
-    "nodeColor": "entity_type",
-    "edgeThickness": "amount_proportional",
-    "theme": "light",
-    "layout": "force_directed"
-  },
-  "viewport": { "x": 0, "y": 0, "zoom": 1.0 },
-  "pinnedNodes": [],
-  "annotations": [],
-  "preset": "follow_the_money"
-}
-
-Share codes stored in graph_snapshots table:
-  id UUID
-  code TEXT — format: CIV-XXXX-XXXX
-    generated from:
-    "CIV-" + randomChars(4) + "-" + entityNameSlug.slice(0,8).toUpperCase()
-  state JSONB — full serialized state above
-  created_by UUID nullable
-  created_at TIMESTAMPTZ
-  view_count INTEGER default 0
-  title TEXT nullable — user can name their graph
-
-URL pattern: civitics.com/graph/CIV-X7K2-WARREN
-
-## Screenshot System
-Uses html2canvas for PNG export
-Uses inline SVG serialization for SVG export
-Uses jsPDF for PDF export
-
-### Watermark (always included, non-removable)
-  Position: bottom right corner
-  Content:
-    civitics.com/graph/[SHARE_CODE]
-    Data: [source list e.g. FEC, Congress.gov]
-    Generated: [date]
-
-  The URL watermark is strategic:
-  Every shared screenshot drives
-  new users back to the platform.
-  This is the single most important
-  user acquisition mechanic.
-
-### Export Options
-  Format: PNG, SVG, PDF report
-  Size: 1x, 2x (retina), 4x (print)
-  Theme override for export:
-    current, light, dark, print
-  Include options:
-    legend (default on)
-    title (default on)
-    watermark (always on, non-removable)
-    AI narrative (PDF only)
-    share code (default on)
-
-## AI Narrative
-Triggered by "Explain This Graph" button
-Uses Claude API (claude-sonnet-4-6 model)
-Costs 1 civic credit per generation
-Results cached per graph state hash
-
-### Prompt Structure
-System:
-  "You are a civic accountability analyst
-   explaining government connection graphs
-   to citizens. Be factual, neutral, and
-   specific. Highlight patterns that matter."
-
-User:
-  "Analyze this graph state:
-   [serialized graph summary]
-
-   Visible nodes: [list with types]
-   Visible edges: [list with amounts]
-   Active preset: [preset name]
-
-   Provide:
-   1. What this graph shows (2 sentences)
-   2. Key patterns (3 bullet points)
-   3. Most significant single connection
-   4. Suggested next investigation steps"
-
-### Tone Options
-  neutral:       facts only, no interpretation
-  investigative: highlight unusual patterns
-  educational:   explain what connections mean
-
-## Force Simulation Parameters
-
-### Default Values (tuned for civic data)
-  charge strength: -300 - (connectionCount * 50)
-    more connected = stronger repulsion
-    creates natural spacing
-
-  link distance: 150 - (strength * 100)
-    stronger connections = nodes closer
-
-  link strength: strength * 0.5
-
-  collision radius: nodeRadius + 10
-    prevents overlap
-
-  center force: width/2, height/2
-    gentle pull toward center
-
-  alpha decay: 0.0228 (default D3)
-  velocity decay: 0.4
-
-### Layout Presets
-  force_directed:
-    organic clustering (default)
-    uses params above
-
-  radial:
-    center node fixed at center
-    other nodes on expanding rings
-    ring distance based on hop count
-
-  hierarchical:
-    y position based on power/seniority
-    x position based on party/type
-
-  circular:
-    all nodes on circle perimeter
-    edges drawn inside
-
-## Performance Rules
-  Under 100 nodes:  standard SVG rendering
-  100-500 nodes:    optimize with canvas
-  500+ nodes:       WebGL via Sigma.js (Phase 3)
-
-  Always:
-    Debounce filter changes 150ms
-    Cache fetched connections per entity
-    Do not re-fetch if already in state
-    Freeze simulation when not visible
-    requestAnimationFrame for all animation
-
-## Interaction Patterns
-
-### Click Behaviors
-  Single click node:
-    Select node
-    Highlight connected edges
-    Fade unconnected nodes
-    Show entity panel (right side)
-
-  Double click node:
-    Expand — fetch and add this node's
-    connections to current graph
-    New nodes fly in from clicked position
-
-  Click background:
-    Deselect everything
-    Reset all opacity
-
-  Click edge:
-    Show edge detail panel:
-      Connection type
-      Amount/strength
-      Date range
-      Evidence sources
-      Link to source documents
-
-### Hover Behaviors
-  Hover node:
-    Show tooltip:
-      Entity name
-      Type
-      Key stat (top donor amount or total votes)
-    Highlight connected edges
-    Fade unconnected nodes
-    Show edge labels for this node's connections
-
-  Hover edge:
-    Show edge label always
-    Highlight connected nodes
-    Show tooltip:
-      Connection type
-      Amount or description
-      Date
-
-### Drag Behaviors
-  Drag node:
-    Node follows cursor
-    Simulation continues
-    Node stays where dropped
-    Does not snap back — feels like Obsidian
-
-  Drag background:
-    Pan the viewport
-
-### Zoom Behaviors
-  Scroll:                zoom in/out
-  Double click background: zoom to fit
-  Pinch (mobile):        zoom
-  Ctrl+scroll:           zoom
-  Min zoom: 0.1
-  Max zoom: 8.0
-
-## Path Finder
-Finds shortest connection path between
-any two entities using PostgreSQL
-recursive CTE query.
-
-UI:
-  "From" entity search box
-  "To" entity search box
-  "Find Path" button
-
-  Result: highlighted path on graph
-  Entity A → Connection → Entity B
-    → Connection → Entity C
-
-  Readable text result:
-  "Senator Smith → donated to →
-   PharmaPAC → funded → PharmaCorp
-   in 2 hops"
-
-  Max hops: 6 (performance limit)
-  If no path found:
-    "No connection found within 6 degrees"
-
-## Timeline Scrubber
-Shows how network evolved over time.
-
-UI:
-  [2010 ━━━━━━●━━━━━━━━━━━ 2026]
-  Play button with speed control: 1x 2x 5x
-
-Behavior:
-  Filter edges to show only connections
-  that existed at or before selected date
-
-  Nodes appear/disappear as officials
-  come and go from office
-
-  Edge thickness grows as
-  donations accumulate over time
-
-  Simulation gently re-settles
-  after each time change
-
-  Key events marked on timeline:
-    Elections marked with triangle
-    Major legislation marked with circle
-    Indictments/investigations marked with !
-
-## Comparison Mode
-Split screen two entities side by side.
-
-UI:
-  "Compare Mode" button in toolbar
-  Opens second graph panel
-  Each panel has own entity selector
-
-  Shared controls:
-    Same preset applied to both
-    Same date range
-
-  Independent per panel:
-    Each can be panned separately
-    Each shows own entity
-
-  Shared node highlighting:
-    Entities in both graphs glow/pulse
-    "12 shared donors" indicator shown
-
-## Collaboration Features (Phase 3)
-
-### Annotations
-  Click any node or edge
-  Add text note
-  Visibility options: private / link-only / public
-  Stored in graph_annotations table
-  Shown as small icon on graph
-  Hover to read full note
-
-### Investigation Rooms
-  Create shared investigation
-  Invite collaborators by email or share link
-  Real-time collaboration via Supabase Realtime
-  See other users' cursors on graph
-  Shared annotation layer
-  Chat panel alongside graph
-
-### Community Findings
-  Publish completed investigation publicly
-  Includes: graph state, annotations,
-    AI narrative, evidence links
-  Community validation and upvoting
-  Platform features best findings
-  "Verified Investigation" badge from platform team
-
-## Database Tables Required
-
-### graph_snapshots (share codes)
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid()
-  code TEXT UNIQUE NOT NULL
-  state JSONB NOT NULL
-  title TEXT
-  created_by UUID REFERENCES users(id)
-  created_at TIMESTAMPTZ DEFAULT NOW()
-  view_count INTEGER DEFAULT 0
-  is_public BOOLEAN DEFAULT true
-
-### graph_presets (community presets)
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid()
-  user_id UUID REFERENCES users(id)
-  name TEXT NOT NULL
-  description TEXT
-  config JSONB NOT NULL
-  use_count INTEGER DEFAULT 0
-  is_public BOOLEAN DEFAULT false
-  created_at TIMESTAMPTZ DEFAULT NOW()
-
-### graph_annotations (Phase 3)
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid()
-  snapshot_id UUID REFERENCES graph_snapshots(id)
-  entity_id UUID
-  entity_type TEXT
-  note TEXT NOT NULL
-  visibility TEXT DEFAULT 'private'
-  created_by UUID REFERENCES users(id)
-  created_at TIMESTAMPTZ DEFAULT NOW()
-
-## Graph Filter Pills (connection type toggles)
-
-Standard filter pills shown in the UI (in order):
-  [✓] Legislation Votes   → filters: vote_yes, vote_no
-  [✓] Nomination Votes    → filters: nomination_vote_yes, nomination_vote_no
-  [✓] Oversight           → filter: oversight
-  [✓] Donations           → filter: donation
-  [ ] Procedural Votes    → hidden by default; shown only when include_procedural=true
-
-Procedural votes are always archived in the DB, never deleted.
-The filter pill is available to researchers via the Full Record preset.
+| Preset | Connections | Focus |
+|---|---|---|
+| Follow the Money | donation | depth 1 default |
+| Votes and Bills | vote_yes, vote_no, co_sponsorship | hide_procedural |
+| The Revolving Door | revolving_door, appointment | — |
+| Committee Power | oversight, appointment | — |
+| Industry Capture | donation, oversight, revolving_door | — |
+| Co-Sponsor Network | co_sponsorship, vote_yes | — |
+| Nominations | nomination_vote_yes, nomination_vote_no | — |
+| Full Record | all | include_procedural=true |
+| Full Picture | all | include_procedural=false |
+| Clean View | all | minStrength=0.7, verifiedOnly=true |
+
+---
+
+## Node Visual Language
+
+### Shapes (never change — visual consistency matters)
+| Entity | Shape |
+|---|---|
+| Official | Circle (photo or initials) |
+| Agency | Rounded rectangle |
+| Proposal/Bill | Document rectangle (folded corner) |
+| Financial | Diamond |
+| Organization | Hexagon |
+| Court | Scale/balance icon |
+| Corporation | Square with rounded corners |
+
+### Node Size (default: connection count)
+```
+radius = base + Math.sqrt(connectionCount) * 2
+
+Base sizes:
+  Official:   24px
+  Agency:     20px
+  Proposal:   18px
+  Financial:  16px
+```
+
+User can change size encoding to: `connection_count` (default),
+`donation_total`, `votes_cast`, `bills_sponsored`, `years_in_office`,
+`uniform`.
+
+### Node Color (default: entity type)
+```
+Official borders:
+  Democrat:     #2563eb
+  Republican:   #dc2626
+  Independent:  #7c3aed
+  Other:        #d97706
+Agency:         #6b7280
+Proposal:       #f59e0b
+Financial:      #16a34a
+Corporation:    #0891b2
+```
+
+---
+
+## Edge Visual Language
+
+### Thickness
+Donation edges: `Math.max(1, Math.log10(amountCents / 100000))`
+All other edges: 2px uniform
+
+### Opacity
+Opacity = connection strength (0.3 minimum). Weak connections fade.
+
+---
 
 ## Smart Graph Expansion Rules
 
-Never auto-expand nodes with 50+ connections at depth 2+.
-Show them as collapsed nodes with an orange [+] badge.
-User must click the node then use the sidebar "Expand" button.
+`MAX_AUTO_EXPAND = 50` — if a neighbor has 50+ connections, it is
+collapsed. Show as a node with an orange `[+]` badge. User must click
+then use "Expand."
 
-**MAX_AUTO_EXPAND = 50** — if a neighbor has 50+ connections, it is collapsed.
+Per connection type at depth 2:
+- `vote_yes` / `vote_no` — auto-expand (proposals have bounded voter counts)
+- `oversight` — auto-expand (agencies have bounded connections)
+- `revolving_door` / `appointment` — auto-expand (bounded by career history)
+- `donation` — **NEVER auto-expand** (financial entities connect to hundreds)
 
-Per connection type behavior at depth 2:
-- `votes` / `vote_yes` / `vote_no`: auto-expand — proposals have bounded voter counts (~100 per proposal), safe
-- `oversight`: auto-expand — agencies have bounded connections
-- `revolving_door` / `appointment`: auto-expand — bounded by career history
-- `donation`: NEVER auto-expand — financial entities (e.g. "Individual Contributors") connect to hundreds of officials. The 50-connection threshold catches all real cases.
+Node count warnings:
+- < 200: render freely
+- 200–500: amber warning bar
+- 500–1000: orange warning + "Apply strength ≥ 0.5" suggestion
+- 1000+: red warning + auto-apply strength 0.5 (one-shot only)
 
-Node count thresholds:
-- < 200 nodes: render freely, no warning
-- 200–500 nodes: amber warning bar above graph
-- 500–1000 nodes: orange warning + "Apply strength ≥ 0.5" button + "WebGL in Phase 3" note
-- 1000+ nodes: red warning + auto-apply strength 0.5 (one-shot, only if minStrength < 0.5)
+Follow the Money preset defaults to depth 1. Depth 2 of donations is an
+explicit manual opt-in — never automatic.
 
-Follow the Money preset defaults to depth 1:
-- Financial networks are dense — depth 1 shows who funds THIS official
-- Depth 2 of donations (who else does this donor fund?) is interesting but expensive — manual opt-in only
-- Collapsed financial nodes at depth 2 show [+] button — user clicks to expand that specific donor
+**Never freeze the browser. Never hide data. Warn and let the user decide.**
 
-The goal: **never freeze the browser** while **never hiding data**.
-User chooses complexity consciously. Platform warns, never decides for them.
+---
 
 ## Strength Filter
 
-The strength slider is always client-side — never a server query parameter.
+Always client-side — never a server query parameter. All connections are
+fetched once; the user filters locally. Default threshold: 0.0 (never
+hide data by default).
 
-All connections are fetched once. The user filters locally. This keeps the graph
-responsive and puts the user in control.
+Donation strength bands:
+- 0.0–0.3 = under $10k
+- 0.3–0.5 = $10k–$100k
+- 0.5–0.7 = $100k–$500k
+- 0.7–1.0 = over $500k
 
-**Default strength threshold: 0.0** — never default to hiding data.
+Votes and oversight: always 1.0 (binary — happened or didn't).
 
-What strength means per connection type:
-- Donations: 0.0–0.3 = under $10k · 0.3–0.5 = $10k–$100k · 0.5–0.7 = $100k–$500k · 0.7–1.0 = over $500k
-- Votes: always 1.0 (certain — happened or it didn't)
-- Oversight: always 1.0 (certain)
+---
 
-Preset interaction:
-- Clean View → sets slider to 0.7 automatically
-- Full Picture → resets slider to 0.0
+## Force Simulation Parameters
+
+```
+charge strength:  -300 - (connectionCount * 50)
+link distance:    150 - (strength * 100)
+link strength:    strength * 0.5
+collision radius: nodeRadius + 10
+center force:     width/2, height/2
+alpha decay:      0.0228 (D3 default)
+velocity decay:   0.4
+```
+
+Layout options: `force_directed` (default), `radial`, `hierarchical`,
+`circular`.
+
+---
+
+## Performance Rules
+
+| Node count | Rendering |
+|---|---|
+| < 100 | Standard SVG |
+| 100–500 | Optimize with canvas |
+| 500+ | WebGL via Sigma.js (Phase 3) |
+
+- Debounce filter changes 150ms
+- Cache fetched connections per entity — never re-fetch if in state
+- Freeze simulation when not visible
+- `requestAnimationFrame` for all animation
+- Never block the UI during simulation settling
+
+---
+
+## Graph State Serialization (Share Codes)
+
+```json
+{
+  "version": "2.0",
+  "view": { /* full GraphView object */ }
+}
+```
+
+Share codes stored in `graph_snapshots` table:
+```
+code   TEXT — format: CIV-XXXX-XXXX
+state  JSONB — full serialized GraphView
+```
+
+URL pattern: `civitics.com/graph/CIV-X7K2-WARREN`
+
+---
+
+## Database Tables
+
+```sql
+-- Share codes
+graph_snapshots (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  code TEXT UNIQUE NOT NULL,
+  state JSONB NOT NULL,
+  title TEXT,
+  created_by UUID REFERENCES users(id),
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  view_count INTEGER DEFAULT 0,
+  is_public BOOLEAN DEFAULT true
+)
+
+-- Community presets
+graph_presets (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES users(id),
+  name TEXT NOT NULL,
+  description TEXT,
+  config JSONB NOT NULL,
+  use_count INTEGER DEFAULT 0,
+  is_public BOOLEAN DEFAULT false,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+)
+
+-- Annotations (Phase 2)
+graph_annotations (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  snapshot_id UUID REFERENCES graph_snapshots(id),
+  entity_id UUID,
+  entity_type TEXT,
+  note TEXT NOT NULL,
+  visibility TEXT DEFAULT 'private',
+  created_by UUID REFERENCES users(id),
+  created_at TIMESTAMPTZ DEFAULT NOW()
+)
+```
+
+---
+
+## AI Narrative
+
+Model: `claude-haiku-4-5-20251001` (~$0.0003/generation)
+Costs 1 civic credit. Results cached per graph state hash.
+`POST /api/graph/narrative`
+Always show disclaimer: "AI-generated summary. Always verify against source data."
+
+---
+
+## Path Finder
+
+BFS server-side via PostgreSQL recursive CTE (`find_entity_path` RPC).
+Max 4 hops. `POST /api/graph/pathfinder` with `{ from_id, to_id, max_hops: 4 }`.
+Results highlighted on viz (Phase 2+).
+
+---
+
+## Embed Mode
+
+`/graph/embed/[code]` — minimal chrome, watermark required, always.
+
+---
 
 ## Default View (No Entity Selected)
 
-When no entity is selected, show the top 10 most connected officials and all their
-direct connections. This is the most interesting graph by default — dense, revealing,
-and a natural entry point for exploration.
+Show the top 10 most connected officials and all their direct connections.
+Show a persistent hint: "Select any official to explore their full network."
 
-Show a persistent hint: "Select any official to explore their full network"
-
-## Depth and Performance
-
-Server-side depth cap: 2 (direct connections + one expansion).
-Client-side BFS handles further depth filtering on loaded data.
-
-Depth 1: fetch direct connections only (fast, focused)
-Depth 2: fetch direct + one expansion (moderate)
-Depth 3+: same server fetch as depth 2, but warn the user: "Large graph — may be slow"
-
-The user choosing depth = user accepting performance impact.
-The platform never hides data to improve performance — it warns and lets the user decide.
+---
 
 ## What Not To Do
-- Never use React Flow — D3 force simulation only
-- Never show blockchain addresses or transaction hashes in UI
-- Never make the screenshot watermark removable
-- Never auto-play the timeline on page load (disorienting)
-- Never fetch all connections at once for large entities
-  (paginate and expand on demand)
-- Never re-fetch connections already loaded in graph state
-- Never block the UI during simulation settling
-  (run simulation asynchronously)
-- Never use more than 6 colors in a single graph view
-  (visual noise kills insight)
-- Never remove empty state messaging
-  (users need to know why graph is sparse)
-- Never skip loading skeleton states
-  (graph appearing suddenly is jarring)
-- Never store full document text in graph state
-  (store IDs and fetch on demand)
+
+```
+✗ Don't add viz-specific settings outside of that viz's registry
+  entry and component file
+
+✗ Don't hardcode connection type strings anywhere —
+  always use CONNECTION_TYPE_REGISTRY keys
+
+✗ Don't add new panels following the old GraphSidebar/CustomizePanel
+  pattern — the old sidebar is being replaced by SettingsPanel.tsx
+
+✗ Don't change Focus or Connections state when the user switches viz type
+
+✗ Don't put screenshot logic in the header component —
+  it belongs in each viz's registry entry and screenshotPrep callback
+
+✗ Don't make the Style section content static —
+  it must render from the active viz's registry entry
+
+✗ Don't use React Flow — D3 force simulation only
+
+✗ Don't make the screenshot watermark removable
+
+✗ Don't auto-play the timeline on page load
+
+✗ Don't fetch all connections at once for large entities —
+  paginate and expand on demand
+
+✗ Don't re-fetch connections already loaded in graph state
+
+✗ Don't block the UI during simulation settling
+
+✗ Don't use more than 6 colors in a single graph view
+
+✗ Don't skip loading skeleton states
+
+✗ Don't store full document text in graph state —
+  store IDs and fetch on demand
+```
+
+---
 
 ## The North Star
-Every feature in this package should
-answer yes to this question:
 
-"Does this help a citizen, journalist,
-or researcher see a connection they
-couldn't see before?"
+Every feature in this package should answer yes to one question:
 
-If yes — build it.
-If no — don't.
+> "Does this help a citizen, journalist, or researcher see a connection
+> they couldn't see before?"
 
-The screenshot watermark with share code URL
-is the single most strategically important
-feature in this package. It turns every
-shared image into a user acquisition event.
-Build it before anything else.
-
-## Visualization Registry Pattern
-
-All visualization types are registered in `visualizations/registry.ts`.
-Adding a new visualization = add one object to VIZ_REGISTRY array. No other changes needed.
-
-`VizMode` type: `"force" | "treemap" | "chord" | "sunburst"`
-
-## Chord Diagram
-Civic question: "Which industries fund which political groups — and how much?"
-Groups: 9 donor industries + 5 recipient party/chamber groups
-Data: `/api/graph/chord` → financial_relationships joined with entity_tags
-Normalize mode: % of total raised (shows dependence, not just absolute dollars)
-Mobile fallback: horizontal bar chart when width < 600px
-
-## Sunburst
-Civic question: "What is the full scope of this official's network?"
-Data: `/api/graph/sunburst?entityId=...`
-Rings: center=official, ring1=connection types, ring2+=specific connections
-Click to zoom in, click center to zoom back out
-
-## Comparison Mode
-Max 2 entities (force graph only in Phase 1)
-Side-by-side layout when compareMode=true and compareEntity is set
-Shared connections highlighted gold (Phase 2+)
-Stats comparison table below (Phase 2+)
-
-## Path Finder
-BFS algorithm server-side via PostgreSQL recursive CTE (find_entity_path RPC)
-Max 4 hops
-POST /api/graph/pathfinder with { from_id, to_id, max_hops: 4 }
-Results highlighted gold on viz (Phase 2+)
-
-## AI Narrative
-Model: claude-haiku-4-5-20251001
-~$0.0003 per narrative
-POST /api/graph/narrative
-Always show disclaimer: "AI-generated summary. Always verify against source data."
-
-## Embed Mode
-/graph/embed/[code] — minimal chrome, watermark required
-Panel 6 "Embed this graph" button opens EmbedModal
-iframe code generated from share code
-
-## Annotations (Phase 2)
-Requires auth — graph_annotations table
-Toggle in Export panel
-
-## Saved Investigations (Phase 2)
-Requires auth — stored in users.metadata JSONB
-Max 20 per user in Phase 1
+If yes — build it. If no — don't.

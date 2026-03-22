@@ -1,0 +1,274 @@
+/**
+ * packages/graph/src/types.ts
+ *
+ * New three-layer GraphView architecture types.
+ * This is the single source of truth for all TypeScript interfaces.
+ *
+ * These types coexist with legacy types in index.ts during migration.
+ * Old types remain in index.ts for backward compatibility with existing components.
+ * New components import directly from this file.
+ */
+
+import type { ComponentType, ReactNode } from 'react'
+
+// ── Viz Type ───────────────────────────────────────────────────────────────────
+
+export type VizType = 'force' | 'chord' | 'treemap' | 'sunburst'
+
+// ── Node ───────────────────────────────────────────────────────────────────────
+
+export type NodeType =
+  | 'official'
+  | 'agency'
+  | 'proposal'
+  | 'financial'
+  | 'organization'
+  | 'corporation'
+  | 'pac'
+  | 'individual'
+
+export interface GraphNode {
+  id: string
+  name: string
+  type: NodeType
+  party?: 'democrat' | 'republican' | 'independent' | 'nonpartisan'
+  /** Role or title, e.g. "Senator", "CEO" */
+  role?: string
+  /** Entity tags, e.g. industry sectors */
+  tags?: string[]
+  connectionCount?: number
+  donationTotal?: number
+}
+
+// ── Edge ───────────────────────────────────────────────────────────────────────
+
+export interface GraphEdge {
+  /** Source node id */
+  fromId: string
+  /** Target node id */
+  toId: string
+  /** Key from CONNECTION_TYPE_REGISTRY */
+  connectionType: string
+  /** Dollar amount (USD) — donations only */
+  amountUsd?: number
+  /** 0–1. Derived from amount, certainty, or recency. */
+  strength: number
+  /** ISO date string */
+  occurredAt?: string
+}
+
+// ── Connection Type Definition ─────────────────────────────────────────────────
+
+export interface ConnectionTypeDefinition {
+  label: string
+  /** Emoji or short text icon */
+  icon: string
+  /** Hex color string */
+  color: string
+  description: string
+  /** True if this connection type carries a dollar amount */
+  hasAmount: boolean
+}
+
+// ── Viz-Specific Style Options ─────────────────────────────────────────────────
+
+export interface ForceOptions {
+  layout: 'force_directed' | 'radial' | 'hierarchical' | 'circular'
+  nodeSizeEncoding:
+    | 'connection_count'
+    | 'donation_total'
+    | 'votes_cast'
+    | 'bills_sponsored'
+    | 'years_in_office'
+    | 'uniform'
+  nodeColorEncoding:
+    | 'entity_type'
+    | 'party_affiliation'
+    | 'industry_sector'
+    | 'state_region'
+    | 'single_color'
+  singleColor: string
+  edgeThicknessEncoding: 'amount_proportional' | 'strength_proportional' | 'uniform'
+  edgeOpacity: number
+  theme: 'light' | 'dark' | 'print'
+}
+
+export interface ChordOptions {
+  showLabels: boolean
+  /** Show % of total raised instead of absolute dollars */
+  normalizeMode: boolean
+  padAngle: number
+}
+
+export interface TreemapOptions {
+  groupBy: 'party' | 'state' | 'industry'
+  sizeBy: 'donation_total' | 'connection_count'
+}
+
+export interface SunburstOptions {
+  maxDepth: number
+  showLabels: boolean
+}
+
+// ── GraphView — The Three-Layer Model ─────────────────────────────────────────
+//
+// Every graph state is a GraphView. This is the single source of truth.
+// The critical rule: switching vizType only changes style.vizType.
+// focus and connections NEVER change when the user switches viz type.
+
+export interface GraphView {
+  // LAYER 1 — FOCUS
+  // Who/what is this graph about
+  focus: {
+    entityId: string | null
+    entityName: string | null
+    scope: 'all' | 'federal' | 'state' | 'senate' | 'house'
+    depth: 1 | 2 | 3
+    includeProcedural: boolean
+  }
+
+  // LAYER 2 — CONNECTIONS
+  // Which relationships to show and how to weight/style them
+  connections: {
+    [connectionType: string]: {
+      enabled: boolean
+      color: string
+      opacity: number     // 0–1
+      thickness: number   // 0–1
+      minAmount?: number  // USD — donations only
+      dateRange?: {
+        start: string | null
+        end: string | null
+      }
+    }
+  }
+
+  // LAYER 3 — STYLE
+  // How to render the data
+  style: {
+    vizType: VizType
+    // Viz-specific options keyed by vizType.
+    // Switching viz type preserves each viz's individual settings.
+    vizOptions: {
+      force?: ForceOptions
+      chord?: ChordOptions
+      treemap?: TreemapOptions
+      sunburst?: SunburstOptions
+    }
+  }
+
+  // METADATA
+  meta?: {
+    name?: string
+    isPreset?: boolean
+    presetId?: string
+    /** True when this view has been modified from its preset baseline */
+    isDirty?: boolean
+  }
+}
+
+/**
+ * A GraphViewPreset is a named, saved GraphView.
+ * Built-in presets live in presets.ts.
+ * Loading a preset replaces the entire GraphView state.
+ */
+export interface GraphViewPreset extends GraphView {
+  meta: {
+    name: string
+    isPreset: true
+    presetId: string
+    isDirty?: boolean
+  }
+}
+
+// ── Node Actions ───────────────────────────────────────────────────────────────
+//
+// Passed to onNodeClick so popup logic stays viz-agnostic.
+// Each viz passes its node data through this interface.
+
+export interface NodeActions {
+  /** Re-center the graph on this node. Force viz only. */
+  recenter: (nodeId: string) => void
+  /** Navigate to the entity's profile page. All viz types. */
+  openProfile: (nodeId: string) => void
+  /** Add to side-by-side comparison. Force viz only. */
+  addToComparison: (nodeId: string) => void
+  /** Expand a collapsed node (50+ connections). Force viz only. */
+  expandNode: (nodeId: string) => void
+}
+
+// ── Viz Props ──────────────────────────────────────────────────────────────────
+
+export interface VizProps {
+  graphView: GraphView
+  nodes: GraphNode[]
+  edges: GraphEdge[]
+  onNodeClick: (node: GraphNode | null) => void
+  width: number
+  height: number
+}
+
+// ── Viz Definition ─────────────────────────────────────────────────────────────
+//
+// Every viz type is defined exactly once in visualizations/registry.ts.
+// Adding a new viz = one new VizDefinition entry. Nothing else changes.
+
+export interface VizDefinition {
+  id: VizType
+  label: string
+  /** Inline SVG path string for the icon */
+  icon: string
+  group: 'standard' | 'coming_soon' | 'custom'
+  description: string
+  civicQuestion: string
+
+  /**
+   * The React component that renders this viz.
+   * Optional in Stage 1 — filled in when components are moved in Stage 2.
+   */
+  component?: ComponentType<VizProps>
+
+  /**
+   * Does this viz require a focused entity?
+   * true  = needs focus.entityId (force, sunburst)
+   * false = works globally without one (chord, treemap)
+   */
+  requiresEntity: boolean
+
+  /**
+   * Which connection types this viz can display.
+   * force/sunburst: all types. chord/treemap: ['donation'] only.
+   */
+  supportedConnectionTypes: string[]
+
+  /**
+   * Default values for this viz's style options.
+   * Auto-populates GraphView.style.vizOptions[id] on first use.
+   */
+  defaultOptions: Record<string, unknown>
+
+  /**
+   * CSS selector for the element to capture in screenshots.
+   * e.g. '#chord-diagram-svg', '#force-graph-canvas'
+   * Never hardcode this in the screenshot button — read from here.
+   */
+  screenshotTarget: string
+
+  /**
+   * Called before screenshot capture: hide tooltips, reset zoom, etc.
+   * Defined per viz. Never put this logic in the header component.
+   */
+  screenshotPrep?: () => void
+
+  /**
+   * Tooltip rendered on node/arc/cell hover.
+   * Stage 1: returns null. Real implementation in Prompt 3.
+   */
+  tooltip: (node: GraphNode) => ReactNode
+
+  /**
+   * Called on node/arc/cell click.
+   * Use NodeActions so the popup stays viz-agnostic.
+   */
+  onNodeClick: (node: GraphNode, actions: NodeActions) => void
+}
