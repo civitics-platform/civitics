@@ -9,7 +9,7 @@
  * Sections that error are marked { error: string; partial: true }.
  */
 
-export const dynamic = "force-dynamic";
+export const revalidate = 300; // Cache at edge 5 minutes — reduces DB egress significantly
 
 import { createAdminClient } from "@civitics/db";
 import { NextResponse } from "next/server";
@@ -576,6 +576,6 @@ export async function GET(request: Request) {
       chord: chordSection,
       activity: activitySection,
     },
-    { headers: { "Cache-Control": "no-store" } },
+    {},
   );
 }

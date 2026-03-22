@@ -1,36 +1,16 @@
 import { notFound } from "next/navigation";
 import { cookies } from "next/headers";
 import { createServerClient } from "@civitics/db";
-import { createClient } from "@supabase/supabase-js";
 import { CommentPeriodBadge } from "../components/CommentPeriodBadge";
 import { CommentDraftSection } from "../components/CommentDraftSection";
 import { AGENCY_FULL_NAMES } from "../components/agencyNames";
 import { AiSummarySection } from "../components/AiSummarySection";
 import { PageViewTracker } from "../../components/PageViewTracker";
 
-export const revalidate = 3600;
-
-// ─── generateStaticParams ─────────────────────────────────────────────────────
-// Pre-render top 50 proposals. Uses publishable key only — secret key is not
-// available at Vercel build time.
+export const dynamic = "force-dynamic";
 
 export async function generateStaticParams() {
-  try {
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
-    );
-    const { data } = await Promise.race([
-      supabase.from("proposals").select("id").eq("status", "open_comment").order("comment_period_end", { ascending: true }).limit(50),
-      new Promise<{ data: null; error: Error }>((resolve) =>
-        setTimeout(() => resolve({ data: null, error: new Error("timeout") }), 5000)
-      ),
-    ]);
-    return (data ?? []).map((row) => ({ id: row.id }));
-  } catch (error) {
-    console.warn("generateStaticParams failed, falling back to empty:", error);
-    return [];
-  }
+  return [];
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────

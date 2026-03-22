@@ -115,9 +115,28 @@ export function useDashboardData() {
   }, []);
 
   useEffect(() => {
+    let interval: ReturnType<typeof setInterval>;
+
+    const start = () => { interval = setInterval(fetchData, 900_000); };
+    const stop = () => { clearInterval(interval); };
+
+    const onVisibility = () => {
+      if (document.hidden) {
+        stop();
+      } else {
+        fetchData();
+        start();
+      }
+    };
+
+    document.addEventListener("visibilitychange", onVisibility);
     fetchData();
-    const interval = setInterval(fetchData, 60_000);
-    return () => clearInterval(interval);
+    start();
+
+    return () => {
+      stop();
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
   }, [fetchData]);
 
   return { data, loading, error, refresh: fetchData };

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@civitics/db";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 600; // Chord data changes rarely — cache 10 minutes at edge
 
 type FlowRow = {
   industry: string;

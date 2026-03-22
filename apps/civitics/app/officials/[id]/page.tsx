@@ -1,34 +1,14 @@
 import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
 import { createServerClient } from "@civitics/db";
-import { createClient } from "@supabase/supabase-js";
 import { OfficialGraph } from "../components/OfficialGraph";
 import { AiProfileSection } from "../components/AiProfileSection";
 import { PageViewTracker } from "../../components/PageViewTracker";
 
-export const revalidate = 3600;
-
-// ─── Static pre-render top 100 officials for SEO ──────────────────────────────
-// Uses NEXT_PUBLIC keys (available at Vercel build time).
-// createAdminClient() must NOT be used here — secret key is runtime-only.
+export const dynamic = "force-dynamic";
 
 export async function generateStaticParams() {
-  try {
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
-    );
-    const { data } = await Promise.race([
-      supabase.from("officials").select("id").eq("is_active", true).order("last_name").limit(50),
-      new Promise<{ data: null; error: Error }>((resolve) =>
-        setTimeout(() => resolve({ data: null, error: new Error("timeout") }), 5000)
-      ),
-    ]);
-    return (data ?? []).map((o) => ({ id: o.id }));
-  } catch (error) {
-    console.warn("generateStaticParams failed, falling back to empty:", error);
-    return [];
-  }
+  return [];
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────

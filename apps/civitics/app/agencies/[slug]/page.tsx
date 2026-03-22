@@ -5,8 +5,6 @@ import { createClient } from "@supabase/supabase-js";
 import { AgencyGraph } from "./components/AgencyGraph";
 import { PageViewTracker } from "../../components/PageViewTracker";
 
-export const revalidate = 3600;
-
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type Proposal = {
@@ -119,28 +117,11 @@ function aggregateSpending(rows: SpendingRow[]): SpendingGroup[] {
     .slice(0, 10);
 }
 
-// ─── Static params (top 50 agencies pre-rendered) ────────────────────────────
-
-// Uses NEXT_PUBLIC keys (available at Vercel build time).
-// createAdminClient() must NOT be used here — secret key is runtime-only.
 export async function generateStaticParams() {
-  try {
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
-    );
-    const { data } = await Promise.race([
-      supabase.from("agencies").select("id").eq("is_active", true).order("name").limit(50),
-      new Promise<{ data: null; error: Error }>((resolve) =>
-        setTimeout(() => resolve({ data: null, error: new Error("timeout") }), 5000)
-      ),
-    ]);
-    return (data ?? []).map((a) => ({ slug: a.id }));
-  } catch (error) {
-    console.warn("generateStaticParams failed, falling back to empty:", error);
-    return [];
-  }
+  return [];
 }
+
+export const dynamic = "force-dynamic";
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;

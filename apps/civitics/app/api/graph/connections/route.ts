@@ -1,3 +1,5 @@
+export const revalidate = 60; // Graph connections cached 1 minute at edge
+
 import { createAdminClient } from "@civitics/db";
 import type { Database } from "@civitics/db";
 import type { GraphEdge, GraphNode, EdgeType, NodeType } from "@civitics/graph";
