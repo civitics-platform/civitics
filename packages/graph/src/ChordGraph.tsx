@@ -1,10 +1,10 @@
 "use client";
 
 import * as d3 from "d3";
-import React, { useEffect, useRef, useState, useCallback } from "react";
+import React, { useEffect, useRef, useState } from "react";
+import type { RefObject } from "react";
 
-interface ChordGroup {
-  id: string;
+interface DynamicGroup {
   label: string;
   icon: string;
   color: string;
@@ -13,164 +13,158 @@ interface ChordGroup {
 
 export interface ChordGraphProps {
   className?: string;
+  svgRef?: RefObject<SVGSVGElement>;
 }
 
-const DONOR_GROUPS: ChordGroup[] = [
-  { id: "pharma",      label: "Pharma",      icon: "💊", color: "#ec4899", kind: "donor" },
-  { id: "oil_gas",     label: "Oil & Gas",   icon: "🛢",  color: "#f97316", kind: "donor" },
-  { id: "finance",     label: "Finance",     icon: "📈", color: "#06b6d4", kind: "donor" },
-  { id: "tech",        label: "Technology",  icon: "💻", color: "#6366f1", kind: "donor" },
-  { id: "defense",     label: "Defense",     icon: "🛡",  color: "#64748b", kind: "donor" },
-  { id: "real_estate", label: "Real Estate", icon: "🏠", color: "#a78bfa", kind: "donor" },
-  { id: "labor",       label: "Labor",       icon: "👷", color: "#fbbf24", kind: "donor" },
-  { id: "agriculture", label: "Agriculture", icon: "🌾", color: "#4ade80", kind: "donor" },
-  { id: "other",       label: "Other",       icon: "⚙",  color: "#94a3b8", kind: "donor" },
+// Industry arc colors — enough for up to 13 industries
+const INDUSTRY_COLORS = [
+  "#ec4899", "#f97316", "#06b6d4", "#6366f1", "#64748b",
+  "#a78bfa", "#fbbf24", "#4ade80", "#94a3b8", "#f43f5e",
+  "#10b981", "#8b5cf6", "#0ea5e9",
 ];
 
-const RECIPIENT_GROUPS: ChordGroup[] = [
-  { id: "dem_senate",  label: "Dem Senators",  icon: "🔵", color: "#3b82f6", kind: "recipient" },
-  { id: "rep_senate",  label: "Rep Senators",  icon: "🔴", color: "#ef4444", kind: "recipient" },
-  { id: "dem_house",   label: "Dem Reps",      icon: "🔵", color: "#2563eb", kind: "recipient" },
-  { id: "rep_house",   label: "Rep Reps",      icon: "🔴", color: "#dc2626", kind: "recipient" },
-  { id: "independent", label: "Independent",   icon: "⚪", color: "#a855f7", kind: "recipient" },
-];
-
-const ALL_GROUPS = [...DONOR_GROUPS, ...RECIPIENT_GROUPS];
+// Party arc colors keyed to API party_chamber values
+const PARTY_COLORS: Record<string, string> = {
+  dem_senate:  "#3b82f6",
+  rep_senate:  "#ef4444",
+  dem_house:   "#2563eb",
+  rep_house:   "#dc2626",
+  independent: "#a855f7",
+};
 
 type Tooltip = { x: number; y: number; html: string } | null;
 
-function formatDollars(cents: number): string {
-  const dollars = cents / 100;
-  if (dollars >= 1_000_000) return `$${(dollars / 1_000_000).toFixed(1)}M`;
-  if (dollars >= 1_000) return `$${(dollars / 1_000).toFixed(0)}K`;
-  return `$${dollars.toFixed(0)}`;
+function formatDollars(usd: number): string {
+  if (usd >= 1_000_000_000) return `$${(usd / 1_000_000_000).toFixed(1)}B`;
+  if (usd >= 1_000_000) return `$${(usd / 1_000_000).toFixed(1)}M`;
+  if (usd >= 1_000) return `$${(usd / 1_000).toFixed(0)}K`;
+  return `$${usd.toFixed(0)}`;
 }
 
-export function ChordGraph({ className = "" }: ChordGraphProps) {
+function draw(
+  svgEl: SVGSVGElement,
+  containerEl: HTMLDivElement,
+  squareMatrix: number[][],
+  allGroups: DynamicGroup[],
+  width: number,
+  height: number,
+  setTooltip: (t: Tooltip) => void
+) {
+  d3.select(svgEl).selectAll("*").remove();
+
+  const size = Math.min(width, height);
+  const outerR = size / 2 - 80;
+  const innerR = outerR - 24;
+
+  const g = d3.select(svgEl)
+    .attr("width", width)
+    .attr("height", height)
+    .append("g")
+    .attr("transform", `translate(${width / 2},${height / 2})`);
+
+  const chord = d3.chord()
+    .padAngle(0.05)
+    .sortSubgroups(d3.descending);
+
+  const chords = chord(squareMatrix);
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const arc = d3.arc<d3.ChordGroup>()
+    .innerRadius(innerR)
+    .outerRadius(outerR) as any;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const ribbon = d3.ribbon<d3.Chord, d3.ChordSubgroup>()
+    .radius(innerR) as any;
+
+  const group = g.append("g")
+    .selectAll("g")
+    .data(chords.groups)
+    .join("g");
+
+  group.append("path")
+    .attr("fill", (d) => allGroups[d.index]?.color ?? "#6b7280")
+    .attr("stroke", "#111827")
+    .attr("stroke-width", 1)
+    .attr("d", arc)
+    .style("cursor", "pointer")
+    .on("mouseover", (_event, d) => {
+      const grp = allGroups[d.index];
+      const row = squareMatrix[d.index];
+      const total = row ? row.reduce((sum, v) => sum + v, 0) : 0;
+      const rect = containerEl.getBoundingClientRect();
+      const angle = (d.startAngle + d.endAngle) / 2 - Math.PI / 2;
+      const r = (innerR + outerR) / 2;
+      const x = width / 2 + r * Math.cos(angle);
+      const y = height / 2 + r * Math.sin(angle);
+      setTooltip({
+        x: x + rect.left,
+        y: y + rect.top,
+        html: `<strong>${grp?.icon ?? ""} ${grp?.label ?? `Group ${d.index}`}</strong><br/>${formatDollars(total)} total`,
+      });
+      g.selectAll("path.ribbon")
+        .style("opacity", (rd: unknown) => {
+          const r = rd as d3.Chord;
+          return r.source.index === d.index || r.target.index === d.index ? 0.9 : 0.1;
+        });
+    })
+    .on("mouseout", () => {
+      setTooltip(null);
+      g.selectAll("path.ribbon").style("opacity", 0.7);
+    });
+
+  group.append("text")
+    .each((d) => { (d as d3.ChordGroup & { angle: number }).angle = (d.startAngle + d.endAngle) / 2; })
+    .attr("dy", "0.35em")
+    .attr("transform", (d) => {
+      const angle = (d.startAngle + d.endAngle) / 2;
+      const rotate = (angle * 180) / Math.PI - 90;
+      const flip = angle > Math.PI;
+      return `rotate(${rotate}) translate(${outerR + 8},0)${flip ? " rotate(180)" : ""}`;
+    })
+    .attr("text-anchor", (d) => ((d.startAngle + d.endAngle) / 2 > Math.PI ? "end" : "start"))
+    .attr("fill", "#9ca3af")
+    .attr("font-size", "10px")
+    .text((d) => {
+      const grp = allGroups[d.index];
+      return grp ? `${grp.icon} ${grp.label}`.trim() : `Group ${d.index}`;
+    });
+
+  g.append("g")
+    .attr("fill-opacity", 0.7)
+    .selectAll("path")
+    .data(chords)
+    .join("path")
+    .attr("class", "ribbon")
+    .attr("d", ribbon)
+    .attr("fill", (d) => allGroups[d.source.index]?.color ?? "#6b7280")
+    .attr("stroke", "#111827")
+    .attr("stroke-width", 0.5)
+    .style("cursor", "pointer")
+    .on("mouseover", (_event, d) => {
+      const src = allGroups[d.source.index];
+      const tgt = allGroups[d.target.index];
+      const rect = containerEl.getBoundingClientRect();
+      setTooltip({
+        x: rect.left + width / 2,
+        y: rect.top + height / 2,
+        html: `<strong>${src?.label ?? "?"}</strong> → <strong>${tgt?.label ?? "?"}</strong><br/>${formatDollars(d.source.value)}`,
+      });
+      g.selectAll("path.ribbon")
+        .style("opacity", (rd: unknown) => rd === d ? 1 : 0.1);
+    })
+    .on("mouseout", () => {
+      setTooltip(null);
+      g.selectAll("path.ribbon").style("opacity", 0.7);
+    });
+}
+
+export function ChordGraph({ className = "", svgRef: externalSvgRef }: ChordGraphProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const svgRef = useRef<SVGSVGElement>(null);
+  const internalSvgRef = useRef<SVGSVGElement>(null);
+  const svgRef = externalSvgRef ?? internalSvgRef;
   const [status, setStatus] = useState<"loading" | "empty" | "error" | "ok">("loading");
   const [tooltip, setTooltip] = useState<Tooltip>(null);
-
-  const draw = useCallback((matrix: number[][], width: number, height: number) => {
-    const svg = svgRef.current;
-    if (!svg) return;
-
-    d3.select(svg).selectAll("*").remove();
-
-    const size = Math.min(width, height);
-    const outerR = size / 2 - 80;
-    const innerR = outerR - 24;
-
-    const g = d3.select(svg)
-      .attr("width", width)
-      .attr("height", height)
-      .append("g")
-      .attr("transform", `translate(${width / 2},${height / 2})`);
-
-    const chord = d3.chord()
-      .padAngle(0.05)
-      .sortSubgroups(d3.descending);
-
-    const chords = chord(matrix);
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const arc = d3.arc<d3.ChordGroup>()
-      .innerRadius(innerR)
-      .outerRadius(outerR) as any;
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const ribbon = d3.ribbon<d3.Chord, d3.ChordSubgroup>()
-      .radius(innerR) as any;
-
-    // Draw group arcs
-    const group = g.append("g")
-      .selectAll("g")
-      .data(chords.groups)
-      .join("g");
-
-    group.append("path")
-      .attr("fill", (d) => ALL_GROUPS[d.index]?.color ?? "#6b7280")
-      .attr("stroke", "#111827")
-      .attr("stroke-width", 1)
-      .attr("d", arc)
-      .style("cursor", "pointer")
-      .on("mouseover", (_event, d) => {
-        const grp = ALL_GROUPS[d.index];
-        const row = matrix[d.index];
-        const total = row ? row.reduce((sum, v) => sum + v, 0) : 0;
-        if (containerRef.current) {
-          const rect = containerRef.current.getBoundingClientRect();
-          const angle = (d.startAngle + d.endAngle) / 2 - Math.PI / 2;
-          const r = (innerR + outerR) / 2;
-          const x = width / 2 + r * Math.cos(angle);
-          const y = height / 2 + r * Math.sin(angle);
-          setTooltip({
-            x: x + rect.left,
-            y: y + rect.top,
-            html: `<strong>${grp?.icon ?? ""} ${grp?.label ?? `Group ${d.index}`}</strong><br/>${formatDollars(total)} total`,
-          });
-        }
-        g.selectAll("path.ribbon")
-          .style("opacity", (rd: unknown) => {
-            const r = rd as d3.Chord;
-            return r.source.index === d.index || r.target.index === d.index ? 0.9 : 0.1;
-          });
-      })
-      .on("mouseout", () => {
-        setTooltip(null);
-        g.selectAll("path.ribbon").style("opacity", 0.7);
-      });
-
-    // Labels
-    group.append("text")
-      .each((d) => { (d as d3.ChordGroup & { angle: number }).angle = (d.startAngle + d.endAngle) / 2; })
-      .attr("dy", "0.35em")
-      .attr("transform", (d) => {
-        const angle = (d.startAngle + d.endAngle) / 2;
-        const rotate = (angle * 180) / Math.PI - 90;
-        const flip = angle > Math.PI;
-        return `rotate(${rotate}) translate(${outerR + 8},0)${flip ? " rotate(180)" : ""}`;
-      })
-      .attr("text-anchor", (d) => ((d.startAngle + d.endAngle) / 2 > Math.PI ? "end" : "start"))
-      .attr("fill", "#9ca3af")
-      .attr("font-size", "10px")
-      .text((d) => {
-        const grp = ALL_GROUPS[d.index];
-        return grp ? `${grp.icon} ${grp.label}` : `Group ${d.index}`;
-      });
-
-    // Draw ribbons
-    g.append("g")
-      .attr("fill-opacity", 0.7)
-      .selectAll("path")
-      .data(chords)
-      .join("path")
-      .attr("class", "ribbon")
-      .attr("d", ribbon)
-      .attr("fill", (d) => ALL_GROUPS[d.source.index]?.color ?? "#6b7280")
-      .attr("stroke", "#111827")
-      .attr("stroke-width", 0.5)
-      .style("cursor", "pointer")
-      .on("mouseover", (_event, d) => {
-        const src = ALL_GROUPS[d.source.index];
-        const tgt = ALL_GROUPS[d.target.index];
-        if (containerRef.current) {
-          const rect = containerRef.current.getBoundingClientRect();
-          setTooltip({
-            x: rect.left + width / 2,
-            y: rect.top + height / 2,
-            html: `<strong>${src?.label ?? "?"}</strong> → <strong>${tgt?.label ?? "?"}</strong><br/>${formatDollars(d.source.value)}`,
-          });
-        }
-        g.selectAll("path.ribbon")
-          .style("opacity", (rd: unknown) => rd === d ? 1 : 0.1);
-      })
-      .on("mouseout", () => {
-        setTooltip(null);
-        g.selectAll("path.ribbon").style("opacity", 0.7);
-      });
-  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -180,27 +174,62 @@ export function ChordGraph({ className = "" }: ChordGraphProps) {
       try {
         const res = await fetch("/api/graph/chord");
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const json = await res.json() as { data?: unknown[]; groups?: unknown[]; matrix?: number[][]; error?: string };
+        const json = await res.json() as {
+          groups?: { id: string; label: string; icon: string }[];
+          recipients?: { id: string; label: string }[];
+          matrix?: number[][];
+          error?: string;
+        };
 
         if (cancelled) return;
 
-        if (json.error || !json.data || json.data.length === 0) {
+        // API returns { groups, recipients, matrix } — not { data }
+        if (json.error || !json.groups?.length || !json.matrix?.length) {
           setStatus("empty");
           return;
         }
 
-        // If the API returns a pre-built matrix, use it directly
-        if (json.matrix && json.matrix.length > 0) {
-          setStatus("ok");
-          const container = containerRef.current;
-          if (!container) return;
-          const { width, height } = container.getBoundingClientRect();
-          draw(json.matrix, width || 600, height || 500);
-          return;
-        }
+        const groups = json.groups;
+        const recipients = json.recipients ?? [];
+        const rawMatrix = json.matrix;
 
-        // Otherwise show empty state — data exists but needs processing
-        setStatus("empty");
+        // Build dynamic group metadata for all arcs (industries first, then parties)
+        const allGroups: DynamicGroup[] = [
+          ...groups.map((g, i) => ({
+            label: g.label,
+            icon: g.icon ?? "🏢",
+            color: INDUSTRY_COLORS[i % INDUSTRY_COLORS.length] ?? "#94a3b8",
+            kind: "donor" as const,
+          })),
+          ...recipients.map((r) => ({
+            label: r.label,
+            icon: "",
+            color: PARTY_COLORS[r.id] ?? "#6b7280",
+            kind: "recipient" as const,
+          })),
+        ];
+
+        // Expand 13×4 (industry × party) matrix to NxN square for d3.chord().
+        // Industries flow TO parties; parties don't flow to each other.
+        // Make symmetric so the chord renders arcs on both sides.
+        const N = groups.length + recipients.length;
+        const square: number[][] = Array.from({ length: N }, () => Array(N).fill(0) as number[]);
+        rawMatrix.forEach((row, i) => {
+          row.forEach((val, j) => {
+            const partyIdx = groups.length + j;
+            const rowI = square[i];
+            const rowP = square[partyIdx];
+            if (rowI) rowI[partyIdx] = val;
+            if (rowP) rowP[i] = val;
+          });
+        });
+
+        setStatus("ok");
+        const container = containerRef.current;
+        const svgEl = svgRef.current;
+        if (!container || !svgEl) return;
+        const { width, height } = container.getBoundingClientRect();
+        draw(svgEl, container, square, allGroups, width || 600, height || 500, setTooltip);
       } catch {
         if (!cancelled) setStatus("error");
       }
@@ -208,9 +237,9 @@ export function ChordGraph({ className = "" }: ChordGraphProps) {
 
     load();
     return () => { cancelled = true; };
-  }, [draw]);
+  }, [svgRef]);
 
-  // ResizeObserver
+  // Resize: just update SVG dimensions (re-fetch would flash the viz)
   useEffect(() => {
     if (status !== "ok") return;
     const container = containerRef.current;
@@ -220,17 +249,14 @@ export function ChordGraph({ className = "" }: ChordGraphProps) {
       const entry = entries[0];
       if (!entry) return;
       const { width, height } = entry.contentRect;
-      // Re-fetch and re-draw on resize would re-trigger full load; just redraw with last matrix
-      // For now, re-draw with a null-safe check
       if (svgRef.current) {
-        const svg = d3.select(svgRef.current);
-        svg.attr("width", width).attr("height", height);
+        d3.select(svgRef.current).attr("width", width).attr("height", height);
       }
     });
 
     obs.observe(container);
     return () => obs.disconnect();
-  }, [status]);
+  }, [status, svgRef]);
 
   return (
     <div ref={containerRef} className={`relative w-full h-full flex items-center justify-center ${className}`}>

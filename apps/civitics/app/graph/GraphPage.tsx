@@ -123,6 +123,7 @@ export function GraphPage({ initialCode, initialState }: GraphPageProps = {}) {
   const [expandingNodeId, setExpandingNodeId] = useState<string | null>(null);
 
   const svgRef = useRef<SVGSVGElement>(null);
+  const chordSvgRef = useRef<SVGSVGElement>(null);
   const lastFetchUrl = useRef<string | null>(null);
   const hasAutoFilteredRef = useRef(false);
 
@@ -555,7 +556,7 @@ export function GraphPage({ initialCode, initialState }: GraphPageProps = {}) {
             className="absolute inset-0 transition-opacity duration-300"
             style={{ opacity: viewMode === "chord" ? 1 : 0, pointerEvents: viewMode === "chord" ? "auto" : "none" }}
           >
-            <ChordGraph className="w-full h-full" />
+            <ChordGraph className="w-full h-full" svgRef={chordSvgRef} />
           </div>
 
           {/* ── Sunburst view ────────────────────────────────────────────── */}
@@ -672,7 +673,7 @@ export function GraphPage({ initialCode, initialState }: GraphPageProps = {}) {
           )}
           {showScreenshot && (
             <div className="absolute top-4 right-4 z-20">
-              <ScreenshotPanel svgRef={svgRef} shareCode={shareCode} onClose={() => setShowScreenshot(false)} />
+              <ScreenshotPanel svgRef={viewMode === "chord" ? chordSvgRef : svgRef} shareCode={shareCode} onClose={() => setShowScreenshot(false)} />
             </div>
           )}
         </div>
