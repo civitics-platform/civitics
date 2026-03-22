@@ -159,15 +159,15 @@ built toward. Do not move files until the new components exist.
 These are the files to create in Stage 1. Everything else follows from them.
 
 ```
-[ ] types.ts
+[x] types.ts
       Full GraphView interface, VizDefinition, NodeActions,
       VizType, VizProps. Move existing type defs from index.ts here.
 
-[ ] connections.ts
+[x] connections.ts
       CONNECTION_TYPE_REGISTRY constant.
       Never hardcode connection type strings anywhere else.
 
-[ ] components/GraphHeader.tsx
+[x] components/GraphHeader.tsx
       Fixed header bar with:
         - Viz type dropdown (renders from VIZ_REGISTRY, grouped)
         - Entity search (replaces the top EntitySelector)
@@ -175,7 +175,7 @@ These are the files to create in Stage 1. Everything else follows from them.
         - Screenshot button (delegates to vizDef.screenshotPrep + target)
         - "✨ Explain" button (opens AiNarrative)
 
-[ ] components/SettingsPanel.tsx
+[x] components/SettingsPanel.tsx
       Bottom-left fixed pill "[⚙ Settings ▾]"
       Click to expand to 280px-wide panel with 3 collapsible sections.
       Hosts FocusSection, ConnectionsSection, StyleSection.
@@ -183,42 +183,61 @@ These are the files to create in Stage 1. Everything else follows from them.
       When isDirty: [💾 Save changes] [↗ Share]
       Stage 1: fixed position. Drag deferred to Stage 2.
 
-[ ] components/FocusSection.tsx
+[x] components/FocusSection.tsx
       Layer 1 controls: entity search, depth (1/2/3), scope filter.
       Absorbs EntitySelector.tsx + DepthControl.tsx.
       Includes PathFinder as a collapsible subsection.
+      Compare mode toggle wired to GraphPage state.
 
-[ ] components/ConnectionsSection.tsx
+[x] components/ConnectionsSection.tsx
       Layer 2 controls: one row per type from CONNECTION_TYPE_REGISTRY.
       [✓] checkbox  label  [━━] thickness slider
       [■] color     [░░░] opacity slider
       (minAmount row if type has hasAmount=true)
       Replaces FilterPills.tsx entirely.
 
-[ ] components/StyleSection.tsx
+[x] components/StyleSection.tsx
       Layer 3 controls: dynamic content from active viz's registry entry.
       Reads VIZ_REGISTRY[activeVizType].defaultOptions to render controls.
       Never contains viz-specific if/else logic.
 
-[ ] components/NodePopup.tsx
+[x] components/NodePopup.tsx
       Shared click popup used by all viz types.
       Name + party badge, role + jurisdiction, key stats, action buttons.
       Receives data through NodeActions interface.
 
-[ ] components/Tooltip.tsx
+[x] components/Tooltip.tsx
       Shared hover tooltip used by all viz types.
       Standard fields: name (bold), subtitle, divider, 2–3 stats, hint.
 
-[ ] Update visualizations/registry.ts
+[x] Update visualizations/registry.ts
       Extend each of the 4 existing viz entries with:
         component, requiresEntity, supportedConnectionTypes,
         defaultOptions, screenshotTarget, screenshotPrep?,
         tooltip, onNodeClick
 
-[ ] Update ChordGraph.tsx screenshot
-      Add id="chord-svg" to the SVG element so
+[x] Update ChordGraph.tsx screenshot
+      Added id="chord-svg" to the SVG element so
       screenshotTarget: '#chord-svg' works.
       (The N×N matrix fix is already done — see Chord Fix note below.)
+
+[x] Wire Tooltip + NodePopup into all 4 viz types
+      ForceGraph, ChordGraph, TreemapGraph, SunburstGraph — all use
+      shared Tooltip/NodePopup. D3 mouse events hooked. adaptNode()
+      bridges old GraphNode type to new GraphNode in ForceGraph.
+
+[x] Wire view.connections to ForceGraph edge color/opacity/thickness
+      connectionSettings prop added to ForceGraph; edges styled from
+      GraphView.connections state.
+
+[x] Remove GraphSidebar dependency from GraphPage
+      GraphPage.tsx rebuilt around SettingsPanel + GraphHeader.
+      GraphSidebar still exported from index.ts for backward compat
+      but no longer used in the main graph page.
+
+[x] svgRef props for all viz types
+      TreemapGraph and SunburstGraph accept svgRef prop.
+      GraphPage passes refs for registry-based screenshot routing.
 ```
 
 ---

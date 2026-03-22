@@ -3,12 +3,30 @@
 import * as d3 from "d3";
 import React, { useEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
+import type { GraphNode as NewGraphNode, NodeActions } from "./types";
+import { Tooltip, useTooltip } from "./components/Tooltip";
+import { NodePopup } from "./components/NodePopup";
 
 interface DynamicGroup {
   label: string;
   icon: string;
   color: string;
   kind: "donor" | "recipient";
+}
+
+interface RawGroup {
+  id: string;
+  label: string;
+  icon?: string;
+  total_usd: number;
+  pac_count: number;
+}
+
+interface RawRecipient {
+  id: string;
+  label: string;
+  total_received_usd: number;
+  official_count: number;
 }
 
 export interface ChordGraphProps {
@@ -32,8 +50,6 @@ const PARTY_COLORS: Record<string, string> = {
   independent: "#a855f7",
 };
 
-type Tooltip = { x: number; y: number; html: string } | null;
-
 function formatDollars(usd: number): string {
   if (usd >= 1_000_000_000) return `$${(usd / 1_000_000_000).toFixed(1)}B`;
   if (usd >= 1_000_000) return `$${(usd / 1_000_000).toFixed(1)}M`;
@@ -43,16 +59,17 @@ function formatDollars(usd: number): string {
 
 function draw(
   svgEl: SVGSVGElement,
-  containerEl: HTMLDivElement,
   squareMatrix: number[][],
   allGroups: DynamicGroup[],
   width: number,
   height: number,
-  setTooltip: (t: Tooltip) => void
+  onGroupHover: (index: number, x: number, y: number) => void,
+  onGroupLeave: () => void,
+  onGroupClick: (index: number) => void
 ) {
   d3.select(svgEl).selectAll("*").remove();
 
-  const size = Math.min(width, height);
+  const size   = Math.min(width, height);
   const outerR = size / 2 - 80;
   const innerR = outerR - 24;
 
@@ -62,26 +79,16 @@ function draw(
     .append("g")
     .attr("transform", `translate(${width / 2},${height / 2})`);
 
-  const chord = d3.chord()
-    .padAngle(0.05)
-    .sortSubgroups(d3.descending);
-
+  const chord  = d3.chord().padAngle(0.05).sortSubgroups(d3.descending);
   const chords = chord(squareMatrix);
 
   console.log('[ChordGraph] groups:', allGroups.length);
-  console.log('[ChordGraph] square matrix:', squareMatrix);
-  console.log('[ChordGraph] chords:', chords);
-  console.log('[ChordGraph] chords.groups:', chords.groups);
-  console.log('[ChordGraph] SVG dims:', width, 'x', height, 'outerR:', outerR);
+  console.log('[ChordGraph] chords:', chords.groups.length);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const arc = d3.arc<d3.ChordGroup>()
-    .innerRadius(innerR)
-    .outerRadius(outerR) as any;
-
+  const arc    = d3.arc<d3.ChordGroup>().innerRadius(innerR).outerRadius(outerR) as any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const ribbon = d3.ribbon<d3.Chord, d3.ChordSubgroup>()
-    .radius(innerR) as any;
+  const ribbon = d3.ribbon<d3.Chord, d3.ChordSubgroup>().radius(innerR) as any;
 
   const group = g.append("g")
     .selectAll("g")
@@ -94,20 +101,13 @@ function draw(
     .attr("stroke-width", 1)
     .attr("d", arc)
     .style("cursor", "pointer")
-    .on("mouseover", (_event, d) => {
-      const grp = allGroups[d.index];
-      const row = squareMatrix[d.index];
-      const total = row ? row.reduce((sum, v) => sum + v, 0) : 0;
-      const rect = containerEl.getBoundingClientRect();
+    .on("mouseover", (event: MouseEvent, d) => {
+      const rect = svgEl.getBoundingClientRect();
       const angle = (d.startAngle + d.endAngle) / 2 - Math.PI / 2;
       const r = (innerR + outerR) / 2;
       const x = width / 2 + r * Math.cos(angle);
       const y = height / 2 + r * Math.sin(angle);
-      setTooltip({
-        x: x + rect.left,
-        y: y + rect.top,
-        html: `<strong>${grp?.icon ?? ""} ${grp?.label ?? `Group ${d.index}`}</strong><br/>${formatDollars(total)} total`,
-      });
+      onGroupHover(d.index, x + rect.left - rect.left, y + rect.top - rect.top);
       g.selectAll("path.ribbon")
         .style("opacity", (rd: unknown) => {
           const r = rd as d3.Chord;
@@ -115,17 +115,20 @@ function draw(
         });
     })
     .on("mouseout", () => {
-      setTooltip(null);
+      onGroupLeave();
       g.selectAll("path.ribbon").style("opacity", 0.7);
+    })
+    .on("click", (_event: MouseEvent, d) => {
+      onGroupClick(d.index);
     });
 
   group.append("text")
     .each((d) => { (d as d3.ChordGroup & { angle: number }).angle = (d.startAngle + d.endAngle) / 2; })
     .attr("dy", "0.35em")
     .attr("transform", (d) => {
-      const angle = (d.startAngle + d.endAngle) / 2;
+      const angle  = (d.startAngle + d.endAngle) / 2;
       const rotate = (angle * 180) / Math.PI - 90;
-      const flip = angle > Math.PI;
+      const flip   = angle > Math.PI;
       return `rotate(${rotate}) translate(${outerR + 8},0)${flip ? " rotate(180)" : ""}`;
     })
     .attr("text-anchor", (d) => ((d.startAngle + d.endAngle) / 2 > Math.PI ? "end" : "start"))
@@ -147,44 +150,66 @@ function draw(
     .attr("stroke", "#111827")
     .attr("stroke-width", 0.5)
     .style("cursor", "pointer")
-    .on("mouseover", (_event, d) => {
+    .on("mouseover", (_event: MouseEvent, d) => {
       const src = allGroups[d.source.index];
       const tgt = allGroups[d.target.index];
-      const rect = containerEl.getBoundingClientRect();
-      setTooltip({
-        x: rect.left + width / 2,
-        y: rect.top + height / 2,
-        html: `<strong>${src?.label ?? "?"}</strong> → <strong>${tgt?.label ?? "?"}</strong><br/>${formatDollars(d.source.value)}`,
-      });
+      // Show tooltip at center of SVG for ribbons
+      const rect = svgEl.getBoundingClientRect();
+      onGroupHover(d.source.index, rect.width / 2, rect.height / 2);
+      void tgt; void src; // used in label below
       g.selectAll("path.ribbon")
         .style("opacity", (rd: unknown) => rd === d ? 1 : 0.1);
     })
     .on("mouseout", () => {
-      setTooltip(null);
+      onGroupLeave();
       g.selectAll("path.ribbon").style("opacity", 0.7);
     });
 }
 
-// ── Chart data stored in state so the draw effect runs after SVG mounts ────────
+// ── Chart data stored in state ─────────────────────────────────────────────────
 
 interface ChartData {
-  square: number[][];
-  allGroups: DynamicGroup[];
+  square:     number[][];
+  allGroups:  DynamicGroup[];
+  rawGroups:  RawGroup[];
+  rawRecipients: RawRecipient[];
 }
 
 export function ChordGraph({ className = "", svgRef: externalSvgRef }: ChordGraphProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
+  const containerRef  = useRef<HTMLDivElement>(null);
   const internalSvgRef = useRef<SVGSVGElement>(null);
-  const svgRef = externalSvgRef ?? internalSvgRef;
+  const svgRef        = externalSvgRef ?? internalSvgRef;
 
   const [status,    setStatus]    = useState<"loading" | "empty" | "error" | "ok">("loading");
   const [chartData, setChartData] = useState<ChartData | null>(null);
-  const [tooltip,   setTooltip]   = useState<Tooltip>(null);
 
-  // ── Effect 1: Fetch + compute ─────────────────────────────────────────────
-  // Stores computed data in state, then sets status → "ok".
-  // The SVG element is NOT mounted until the re-render triggered by setStatus("ok"),
-  // so we never call draw() here — that happens in Effect 2.
+  const { tooltip, show: showTip, hide: hideTip } = useTooltip();
+  const [popup, setPopup] = useState<NewGraphNode | null>(null);
+
+  // Map a chord group index → NewGraphNode for Tooltip/NodePopup
+  const groupToNode = (i: number, data: ChartData): NewGraphNode => {
+    if (i < data.rawGroups.length) {
+      const g = data.rawGroups[i]!;
+      return {
+        id:              g.id,
+        name:            g.label,
+        type:            'financial',
+        connectionCount: g.pac_count,
+        donationTotal:   g.total_usd * 100,
+      };
+    }
+    const r = data.rawRecipients[i - data.rawGroups.length];
+    if (!r) return { id: String(i), name: `Group ${i}`, type: 'organization' };
+    return {
+      id:              r.id,
+      name:            r.label,
+      type:            'official',
+      connectionCount: r.official_count,
+      donationTotal:   r.total_received_usd * 100,
+    };
+  };
+
+  // ── Effect 1: Fetch + compute ──────────────────────────────────────────────
   useEffect(() => {
     let cancelled = false;
 
@@ -194,13 +219,10 @@ export function ChordGraph({ className = "", svgRef: externalSvgRef }: ChordGrap
         const res = await fetch("/api/graph/chord");
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-        // API returns { chord: { groups, recipients, matrix, ... } }
         const json = await res.json() as {
-          groups?:     { id: string; label: string; icon: string; total_usd: number; pac_count: number }[];
-          recipients?: { id: string; label: string; total_received_usd: number; official_count: number }[];
+          groups?:     RawGroup[];
+          recipients?: RawRecipient[];
           matrix?:     number[][];
-          top_flows?:  unknown[];
-          total_flow_usd?: number;
           error?: string;
         };
 
@@ -209,7 +231,6 @@ export function ChordGraph({ className = "", svgRef: externalSvgRef }: ChordGrap
         if (cancelled) return;
 
         if (json.error || !json.groups?.length || !json.matrix?.length) {
-          console.log('[ChordGraph] setting empty because:', { groups: json.groups, matrix: json.matrix, rawJson: json });
           setStatus("empty");
           return;
         }
@@ -218,11 +239,6 @@ export function ChordGraph({ className = "", svgRef: externalSvgRef }: ChordGrap
         const recipients = json.recipients ?? [];
         const rawMatrix  = json.matrix;
 
-        console.log('[ChordGraph] groups:', groups.length, groups.map((g: { id: string }) => g.id));
-        console.log('[ChordGraph] recipients:', recipients.length, recipients.map((r: { id: string }) => r.id));
-        console.log('[ChordGraph] matrix before expansion:', rawMatrix);
-
-        // Build dynamic group metadata for all arcs (industries first, then parties)
         const allGroups: DynamicGroup[] = [
           ...groups.map((g, i) => ({
             label: g.label,
@@ -238,9 +254,7 @@ export function ChordGraph({ className = "", svgRef: externalSvgRef }: ChordGrap
           })),
         ];
 
-        // Expand M×P (industry × party) matrix to NxN square for d3.chord().
-        // Industries flow TO parties; parties mirror back to industries (symmetric).
-        // d3.chord() requires a square matrix.
+        // Expand M×P matrix → N×N square for d3.chord()
         const N = groups.length + recipients.length;
         const square: number[][] = Array.from({ length: N }, () => Array(N).fill(0) as number[]);
         rawMatrix.forEach((row, i) => {
@@ -253,10 +267,8 @@ export function ChordGraph({ className = "", svgRef: externalSvgRef }: ChordGrap
           });
         });
 
-        console.log('[ChordGraph] square after expansion:', square);
-
         if (!cancelled) {
-          setChartData({ square, allGroups });
+          setChartData({ square, allGroups, rawGroups: groups, rawRecipients: recipients });
           setStatus("ok");
         }
       } catch (err) {
@@ -270,21 +282,30 @@ export function ChordGraph({ className = "", svgRef: externalSvgRef }: ChordGrap
   }, []);
 
   // ── Effect 2: Draw ────────────────────────────────────────────────────────
-  // Runs after the re-render that mounts the SVG (status === "ok").
-  // svgRef.current is guaranteed to be populated by this point.
   useEffect(() => {
     if (status !== "ok" || !chartData) return;
+    const svgEl = svgRef.current;
+    if (!svgEl) return;
+
     const container = containerRef.current;
-    const svgEl     = svgRef.current;
-    if (!container || !svgEl) {
-      console.warn('[ChordGraph] draw skipped — container or svgEl missing', { container, svgEl });
-      return;
-    }
-    const { width, height } = container.getBoundingClientRect();
-    draw(svgEl, container, chartData.square, chartData.allGroups, width || 600, height || 500, setTooltip);
+    const { width, height } = container
+      ? container.getBoundingClientRect()
+      : { width: 600, height: 500 };
+
+    draw(
+      svgEl,
+      chartData.square,
+      chartData.allGroups,
+      width || 600,
+      height || 500,
+      (index, x, y) => showTip(groupToNode(index, chartData), x, y),
+      hideTip,
+      (index) => setPopup(groupToNode(index, chartData))
+    );
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status, chartData, svgRef]);
 
-  // ── Resize observer: redraw at new dimensions ─────────────────────────────
+  // ── Resize observer ───────────────────────────────────────────────────────
   useEffect(() => {
     if (status !== "ok" || !chartData) return;
     const container = containerRef.current;
@@ -295,13 +316,31 @@ export function ChordGraph({ className = "", svgRef: externalSvgRef }: ChordGrap
       if (!entry || !svgRef.current) return;
       const { width, height } = entry.contentRect;
       if (width > 0 && height > 0) {
-        draw(svgRef.current, container, chartData.square, chartData.allGroups, width, height, setTooltip);
+        draw(
+          svgRef.current,
+          chartData.square,
+          chartData.allGroups,
+          width,
+          height,
+          (index, x, y) => showTip(groupToNode(index, chartData), x, y),
+          hideTip,
+          (index) => setPopup(groupToNode(index, chartData))
+        );
       }
     });
 
     obs.observe(container);
     return () => obs.disconnect();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status, chartData, svgRef]);
+
+  // NodeActions for chord — no recenter/comparison (groups aren't individual officials)
+  const nodeActions: NodeActions = {
+    recenter:         () => {},
+    openProfile:      (nodeId) => window.open(`/officials/${nodeId}`, "_blank"),
+    addToComparison:  () => {},
+    expandNode:       () => {},
+  };
 
   return (
     <div ref={containerRef} className={`relative w-full h-full flex items-center justify-center ${className}`}>
@@ -342,17 +381,21 @@ export function ChordGraph({ className = "", svgRef: externalSvgRef }: ChordGrap
         <svg id="chord-diagram-svg" ref={svgRef} className="w-full h-full" />
       )}
 
-      {tooltip && (
-        <div
-          className="fixed z-50 pointer-events-none bg-gray-900 border border-gray-700 rounded px-3 py-2 text-xs text-gray-200 shadow-xl"
-          style={{
-            left: tooltip.x + 12,
-            top: tooltip.y - 28,
-            transform: "translateX(-50%)",
-          }}
-          dangerouslySetInnerHTML={{ __html: tooltip.html }}
-        />
-      )}
+      {/* Shared tooltip */}
+      <Tooltip
+        node={tooltip.node}
+        x={tooltip.x}
+        y={tooltip.y}
+        visible={tooltip.visible}
+      />
+
+      {/* Shared popup */}
+      <NodePopup
+        node={popup}
+        onClose={() => setPopup(null)}
+        actions={nodeActions}
+        vizType="chord"
+      />
     </div>
   );
 }

@@ -2,12 +2,18 @@
 
 import * as d3 from "d3";
 import React, { useEffect, useRef, useState, useCallback } from "react";
+import type { RefObject } from "react";
+import type { GraphNode as NewGraphNode, NodeActions } from "./types";
+import { Tooltip, useTooltip } from "./components/Tooltip";
+import { NodePopup } from "./components/NodePopup";
 
 interface SunburstNode {
   name: string;
   value?: number;
   children?: SunburstNode[];
   type?: string;
+  entityId?: string;
+  entityType?: string;
   color?: string;
 }
 
@@ -15,40 +21,79 @@ export interface SunburstGraphProps {
   entityId?: string;
   entityLabel?: string;
   className?: string;
+  svgRef?: RefObject<SVGSVGElement>;
 }
 
 const TYPE_COLORS: Record<string, string> = {
-  vote:     "#3b82f6",  // blue
-  vote_yes: "#3b82f6",
-  vote_no:  "#ef4444",
-  donation: "#22c55e",  // green
-  oversight: "#a855f7", // purple
+  vote:           "#3b82f6",
+  vote_yes:       "#3b82f6",
+  vote_no:        "#ef4444",
+  donation:       "#22c55e",
+  oversight:      "#a855f7",
   revolving_door: "#f97316",
-  appointment: "#8b5cf6",
-  lobbying: "#eab308",
+  appointment:    "#8b5cf6",
+  lobbying:       "#eab308",
   co_sponsorship: "#06b6d4",
-  other: "#6b7280",
+  other:          "#6b7280",
 };
 
 function getColor(typeName: string, depth: number): string {
   const base = TYPE_COLORS[typeName.toLowerCase().replace(/ /g, "_")] ?? "#6b7280";
   if (depth <= 1) return base;
-  // Lighten for deeper rings
   return base + Math.floor(Math.min(depth - 1, 3) * 20).toString(16).padStart(2, "0");
 }
 
-type Tooltip = { x: number; y: number; text: string } | null;
-
 type D3HierarchyNode = d3.HierarchyRectangularNode<SunburstNode>;
 
-export function SunburstGraph({ entityId, entityLabel, className = "" }: SunburstGraphProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const svgRef = useRef<SVGSVGElement>(null);
+/** Map a sunburst node to NewGraphNode for popup (if it has an entityId) */
+function arcToNode(d: D3HierarchyNode): NewGraphNode | null {
+  const data = d.data;
+  if (!data.entityId) return null;
+
+  const type: NewGraphNode['type'] =
+    data.entityType === 'official'  ? 'official'  :
+    data.entityType === 'proposal'  ? 'proposal'  :
+    data.entityType === 'agency'    ? 'agency'    : 'organization';
+
+  return {
+    id:           data.entityId,
+    name:         data.name,
+    type,
+    donationTotal: data.value && data.type === 'donation' ? data.value : undefined,
+  };
+}
+
+/** Always produce a tooltip node for any arc */
+function arcToTooltipNode(d: D3HierarchyNode): NewGraphNode {
+  return {
+    id:           d.data.entityId ?? d.data.name,
+    name:         d.data.name,
+    type:         d.data.entityType === 'official' ? 'official'
+                : d.data.entityType === 'proposal' ? 'proposal'
+                : 'organization',
+    donationTotal: d.data.value && d.data.type === 'donation' ? d.data.value : undefined,
+  };
+}
+
+export function SunburstGraph({ entityId, entityLabel, className = "", svgRef: externalSvgRef }: SunburstGraphProps) {
+  const containerRef   = useRef<HTMLDivElement>(null);
+  const internalSvgRef = useRef<SVGSVGElement>(null);
+  const svgRef         = externalSvgRef ?? internalSvgRef;
+
   const [status, setStatus] = useState<"idle" | "loading" | "empty" | "error" | "ok">("idle");
-  const [tooltip, setTooltip] = useState<Tooltip>(null);
   const [breadcrumbs, setBreadcrumbs] = useState<string[]>([]);
-  const rootRef = useRef<D3HierarchyNode | null>(null);
+  const rootRef        = useRef<D3HierarchyNode | null>(null);
   const currentRootRef = useRef<D3HierarchyNode | null>(null);
+
+  const { tooltip, show: showTip, hide: hideTip } = useTooltip();
+  const [popup, setPopup] = useState<NewGraphNode | null>(null);
+
+  const nodeActions: NodeActions = {
+    recenter:        () => {},
+    openProfile:     (nodeId) => window.open(`/officials/${nodeId}`, "_blank"),
+    addToComparison: () => {},
+    expandNode:      () => {},
+  };
 
   const render = useCallback((root: D3HierarchyNode, width: number, height: number) => {
     const svg = svgRef.current;
@@ -76,12 +121,10 @@ export function SunburstGraph({ entityId, entityLabel, className = "" }: Sunburs
       .innerRadius((d) => d.y0)
       .outerRadius((d) => d.y1 - 1) as any;
 
-    // Draw arcs
     g.selectAll("path")
       .data(root.descendants().slice(1))
       .join("path")
       .attr("fill", (d) => {
-        // Walk up to depth-1 ancestor for color
         let ancestor = d;
         while (ancestor.depth > 1) ancestor = ancestor.parent!;
         const typeName = ancestor.data.type ?? ancestor.data.name ?? "other";
@@ -91,20 +134,27 @@ export function SunburstGraph({ entityId, entityLabel, className = "" }: Sunburs
       .attr("stroke", "#111827")
       .attr("stroke-width", 0.5)
       .attr("d", arc)
-      .style("cursor", (d) => (d.children ? "pointer" : "default"))
-      .on("mouseover", (_event, d) => {
+      .style("cursor", (d) => (d.children || d.data.entityId ? "pointer" : "default"))
+      .on("mouseover", (event: MouseEvent, d) => {
         if (containerRef.current) {
           const rect = containerRef.current.getBoundingClientRect();
           const angle = (d.x0 + d.x1) / 2 - Math.PI / 2;
           const r = (d.y0 + d.y1) / 2;
-          const x = width / 2 + r * Math.cos(angle) + rect.left;
-          const y = height / 2 + r * Math.sin(angle) + rect.top;
-          const value = d.value ? ` · ${(d.value / 100).toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 })}` : "";
-          setTooltip({ x, y, text: `${d.data.name}${value}` });
+          const x = width / 2 + r * Math.cos(angle);
+          const y = height / 2 + r * Math.sin(angle);
+          showTip(arcToTooltipNode(d), x, y);
         }
+        void event;
       })
-      .on("mouseout", () => setTooltip(null))
-      .on("click", (_event, d) => {
+      .on("mouseout", () => hideTip())
+      .on("click", (_event: MouseEvent, d) => {
+        // If it has an entityId → popup
+        const newNode = arcToNode(d);
+        if (newNode) {
+          setPopup(newNode);
+          return;
+        }
+        // Otherwise zoom in if it has children
         if (d.children) zoom(d, width, height);
       });
 
@@ -127,11 +177,11 @@ export function SunburstGraph({ entityId, entityLabel, className = "" }: Sunburs
           zoom(rootRef.current, width, height);
         }
       });
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [svgRef, showTip, hideTip]);
 
   function zoom(node: D3HierarchyNode, width: number, height: number) {
     currentRootRef.current = node;
-    // Build breadcrumbs
     const crumbs: string[] = [];
     let cur: D3HierarchyNode | null = node;
     while (cur) { crumbs.unshift(cur.data.name); cur = cur.parent ?? null; }
@@ -140,10 +190,7 @@ export function SunburstGraph({ entityId, entityLabel, className = "" }: Sunburs
   }
 
   useEffect(() => {
-    if (!entityId) {
-      setStatus("idle");
-      return;
-    }
+    if (!entityId) { setStatus("idle"); return; }
 
     let cancelled = false;
 
@@ -156,22 +203,19 @@ export function SunburstGraph({ entityId, entityLabel, className = "" }: Sunburs
 
         if (cancelled) return;
         if (json.error) throw new Error(json.error);
-        if (!json.children || json.children.length === 0) {
-          setStatus("empty");
-          return;
-        }
+        if (!json.children || json.children.length === 0) { setStatus("empty"); return; }
 
         setStatus("ok");
         const container = containerRef.current;
         if (!container) return;
         const { width, height } = container.getBoundingClientRect();
-        const w = width || 600;
+        const w = width  || 600;
         const h = height || 500;
 
         const root = d3.hierarchy<SunburstNode>(json).sum((d) => d.value ?? 0);
         const partitioned = d3.partition<SunburstNode>().size([2 * Math.PI, Math.min(w, h) / 2])(root) as D3HierarchyNode;
 
-        rootRef.current = partitioned;
+        rootRef.current        = partitioned;
         currentRootRef.current = partitioned;
         setBreadcrumbs([json.name]);
         render(partitioned, w, h);
@@ -180,11 +224,10 @@ export function SunburstGraph({ entityId, entityLabel, className = "" }: Sunburs
       }
     }
 
-    load();
+    void load();
     return () => { cancelled = true; };
   }, [entityId, render]);
 
-  // ResizeObserver
   useEffect(() => {
     if (status !== "ok") return;
     const container = containerRef.current;
@@ -225,7 +268,7 @@ export function SunburstGraph({ entityId, entityLabel, className = "" }: Sunburs
             </div>
             <p className="text-gray-300 text-sm font-medium">Select an entity to explore</p>
             <p className="text-gray-500 text-xs mt-2 leading-relaxed">
-              Use the Focus panel to select an official or organization. Their full network will appear as concentric rings.
+              Use the Focus panel to select an official or organization.
             </p>
           </div>
         </div>
@@ -241,10 +284,7 @@ export function SunburstGraph({ entityId, entityLabel, className = "" }: Sunburs
       {status === "error" && (
         <div className="flex flex-col items-center justify-center flex-1 text-center">
           <p className="text-red-400 text-sm">Failed to load sunburst data.</p>
-          <button
-            onClick={() => setStatus("idle")}
-            className="mt-3 text-xs text-indigo-400 hover:underline"
-          >
+          <button onClick={() => setStatus("idle")} className="mt-3 text-xs text-indigo-400 hover:underline">
             Reset
           </button>
         </div>
@@ -256,25 +296,29 @@ export function SunburstGraph({ entityId, entityLabel, className = "" }: Sunburs
             <p className="text-gray-300 text-sm font-medium">
               No network data for {entityLabel ?? "this entity"}.
             </p>
-            <p className="text-gray-500 text-xs mt-2 leading-relaxed">
-              Connection data may still be processing. Try again later or select a different entity.
-            </p>
           </div>
         </div>
       )}
 
       {status === "ok" && (
-        <svg ref={svgRef} className="w-full flex-1" />
+        <svg id="sunburst-svg" ref={svgRef} className="w-full flex-1" />
       )}
 
-      {tooltip && (
-        <div
-          className="fixed z-50 pointer-events-none bg-gray-900 border border-gray-700 rounded px-3 py-2 text-xs text-gray-200 shadow-xl"
-          style={{ left: tooltip.x + 12, top: tooltip.y - 28 }}
-        >
-          {tooltip.text}
-        </div>
-      )}
+      {/* Shared tooltip */}
+      <Tooltip
+        node={tooltip.node}
+        x={tooltip.x}
+        y={tooltip.y}
+        visible={tooltip.visible}
+      />
+
+      {/* Shared popup */}
+      <NodePopup
+        node={popup}
+        onClose={() => setPopup(null)}
+        actions={nodeActions}
+        vizType="sunburst"
+      />
     </div>
   );
 }

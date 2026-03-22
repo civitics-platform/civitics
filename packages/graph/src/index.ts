@@ -12,6 +12,10 @@ export { ConnectionsSection } from "./components/ConnectionsSection";
 export type { ConnectionsSectionProps } from "./components/ConnectionsSection";
 export { StyleSection } from "./components/StyleSection";
 export type { StyleSectionProps } from "./components/StyleSection";
+export { Tooltip, useTooltip } from "./components/Tooltip";
+export type { TooltipProps, TooltipState } from "./components/Tooltip";
+export { NodePopup } from "./components/NodePopup";
+export type { NodePopupProps } from "./components/NodePopup";
 
 // New types (Stage 1)
 export type { GraphView, GraphViewPreset, VizType, GraphNode as GraphNodeV2, GraphEdge as GraphEdgeV2 } from "./types";

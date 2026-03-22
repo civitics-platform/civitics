@@ -38,6 +38,8 @@ export interface GraphNode {
   tags?: string[]
   connectionCount?: number
   donationTotal?: number
+  /** True when this node has 50+ connections and is collapsed (force graph only). */
+  collapsed?: boolean
 }
 
 // ── Edge ───────────────────────────────────────────────────────────────────────

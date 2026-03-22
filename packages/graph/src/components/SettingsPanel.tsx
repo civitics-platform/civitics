@@ -24,6 +24,10 @@ export interface SettingsPanelProps {
   hooks: UseGraphViewReturn;
   onSavePreset?: () => void;
   onShare: () => void;
+  /** Compare mode — lifted state from GraphPage */
+  compareMode?: boolean;
+  onCompareModeChange?: (v: boolean) => void;
+  compareEntityName?: string | null;
 }
 
 // Display config for the built-in preset pills
@@ -68,7 +72,7 @@ function SectionHeader({
   );
 }
 
-export function SettingsPanel({ hooks, onSavePreset, onShare }: SettingsPanelProps) {
+export function SettingsPanel({ hooks, onSavePreset, onShare, compareMode, onCompareModeChange, compareEntityName }: SettingsPanelProps) {
   const { view } = hooks;
 
   const [expanded,         setExpanded]         = useState(false);
@@ -199,6 +203,9 @@ export function SettingsPanel({ hooks, onSavePreset, onShare }: SettingsPanelPro
                     onDepthChange={hooks.setDepth}
                     onScopeChange={hooks.setScope}
                     onProceduralToggle={hooks.toggleIncludeProcedural}
+                    compareMode={compareMode}
+                    onCompareModeChange={onCompareModeChange}
+                    compareEntityName={compareEntityName}
                   />
                 </div>
               )}

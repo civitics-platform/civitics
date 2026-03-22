@@ -3,8 +3,15 @@
 import React, { useState, useEffect, useCallback } from "react";
 import type { EntitySearchResult } from "./index";
 
+async function defaultSearchFn(q: string): Promise<EntitySearchResult[]> {
+  const res = await fetch(`/api/graph/search?q=${encodeURIComponent(q)}&limit=10`);
+  if (!res.ok) return [];
+  const data = await res.json() as EntitySearchResult[];
+  return Array.isArray(data) ? data : [];
+}
+
 export interface PathFinderProps {
-  searchFn: (q: string) => Promise<EntitySearchResult[]>;
+  searchFn?: (q: string) => Promise<EntitySearchResult[]>;
   onPathFound?: (path: PathResult) => void;
 }
 
@@ -104,7 +111,7 @@ function MiniEntitySearch({ placeholder, selected, onSelect, onClear, searchFn }
   );
 }
 
-export function PathFinder({ searchFn, onPathFound }: PathFinderProps) {
+export function PathFinder({ searchFn = defaultSearchFn, onPathFound }: PathFinderProps) {
   const [fromEntity, setFromEntity] = useState<{ id: string; label: string } | null>(null);
   const [toEntity, setToEntity] = useState<{ id: string; label: string } | null>(null);
   const [searching, setSearching] = useState(false);
