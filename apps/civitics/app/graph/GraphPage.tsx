@@ -12,6 +12,9 @@ import { DEFAULT_VISUAL_CONFIG, VIZ_REGISTRY } from "@civitics/graph";
 import type { VizMode } from "@civitics/graph";
 import { GraphSidebar, PRESETS, PRESET_ORDER } from "@civitics/graph";
 import type { PresetId } from "@civitics/graph";
+// ── New architecture (Stage 1) ──────────────────────────────────────────────
+import { useGraphView, GraphHeader, SettingsPanel } from "@civitics/graph";
+import type { VizType } from "@civitics/graph";
 import { SharePanel } from "./SharePanel";
 import { ScreenshotPanel } from "./ScreenshotPanel";
 import { GhostGraph } from "./GhostGraph";
@@ -121,6 +124,10 @@ export function GraphPage({ initialCode, initialState }: GraphPageProps = {}) {
   const [compareEdges, setCompareEdges] = useState<GraphEdge[]>([]);
 
   const [expandingNodeId, setExpandingNodeId] = useState<string | null>(null);
+
+  // ── New architecture: useGraphView ─────────────────────────────────────────
+  const graphHooks = useGraphView();
+  const { view } = graphHooks;
 
   const svgRef = useRef<SVGSVGElement>(null);
   const chordSvgRef = useRef<SVGSVGElement>(null);
@@ -306,6 +313,33 @@ export function GraphPage({ initialCode, initialState }: GraphPageProps = {}) {
     ? allEdges.filter((e) => e.source === selectedNode.id || e.target === selectedNode.id)
     : [];
 
+  // ── New header combined handlers ────────────────────────────────────────────
+  // These keep the old state (viewMode, centerEntity) and new graphHooks.view in sync.
+
+  function handleHeaderVizChange(vizType: VizType) {
+    graphHooks.setVizType(vizType);
+    setViewMode(vizType as VizMode);
+    setSelectedNode(null);
+  }
+
+  function handleHeaderEntitySelect(id: string, name: string) {
+    graphHooks.setEntity(id, name);
+    if (id) {
+      setCenterEntity({ id, type: "official", label: name });
+      setSelectedNode(null);
+    } else {
+      setCenterEntity(null);
+    }
+  }
+
+  function handleFullscreen() {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(() => {});
+    } else {
+      document.exitFullscreen().catch(() => {});
+    }
+  }
+
   // Active viz registry entry for header title
   const activeViz = VIZ_REGISTRY.find((v) => v.id === viewMode);
 
@@ -325,44 +359,15 @@ export function GraphPage({ initialCode, initialState }: GraphPageProps = {}) {
   return (
     <div className={`flex flex-col h-screen overflow-hidden ${bgClass}`}>
 
-      {/* ── Top bar: title + share/screenshot ─────────────────────────────── */}
-      <header className="flex items-center justify-between px-4 py-2 border-b border-gray-800 shrink-0 gap-4 bg-gray-950">
-        <div className="flex items-center gap-3 min-w-0">
-          <a href="/" className="text-gray-500 hover:text-white text-xs transition-colors shrink-0">← Civitics</a>
-          <span className="text-gray-700">|</span>
-          <h1 className="text-xs font-semibold tracking-wide shrink-0">
-            {activeViz?.label ?? "Connection Graph"}
-          </h1>
-          {!loading && viewMode === "force" && (
-            <span className="text-xs text-gray-600 truncate">
-              {count} connections · {allNodes.length} entities
-            </span>
-          )}
-          <span className="text-xs text-gray-700 font-mono hidden sm:inline shrink-0">
-            v:{process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? "dev"}
-          </span>
-        </div>
-
-        <div className="flex items-center gap-2 shrink-0">
-          {shareCode && viewMode === "force" && (
-            <span className="text-xs text-indigo-400 font-mono border border-indigo-800 rounded px-2 py-1 hidden sm:inline">
-              {shareCode}
-            </span>
-          )}
-          <button
-            onClick={() => setShowShare(true)}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded bg-gray-800 hover:bg-gray-700 transition-colors text-gray-300"
-          >
-            Share
-          </button>
-          <button
-            onClick={() => setShowScreenshot(true)}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded bg-gray-800 hover:bg-gray-700 transition-colors text-gray-300"
-          >
-            Screenshot
-          </button>
-        </div>
-      </header>
+      {/* ── NEW: GraphHeader (light theme, always at top) ──────────────────── */}
+      <GraphHeader
+        view={view}
+        onVizChange={handleHeaderVizChange}
+        onEntitySelect={handleHeaderEntitySelect}
+        onShare={() => setShowShare(true)}
+        onScreenshot={() => setShowScreenshot(true)}
+        onFullscreen={handleFullscreen}
+      />
 
       {/* ── Node count warning bar ─────────────────────────────────────────── */}
       {!loading && viewMode === "force" && filteredNodes.length > 200 && (() => {
@@ -640,6 +645,12 @@ export function GraphPage({ initialCode, initialState }: GraphPageProps = {}) {
               )}
             </aside>
           )}
+
+          {/* ── NEW: SettingsPanel (floats over canvas, bottom-left) ─────── */}
+          <SettingsPanel
+            hooks={graphHooks}
+            onShare={() => setShowShare(true)}
+          />
 
           {/* ── AI Narrative panel ───────────────────────────────────────── */}
           <AiNarrative

@@ -1,3 +1,24 @@
+// ── New architecture (Stage 1) ─────────────────────────────────────────────
+export { useGraphView } from "./hooks/useGraphView";
+export type { UseGraphViewReturn } from "./hooks/useGraphView";
+
+export { GraphHeader } from "./components/GraphHeader";
+export type { GraphHeaderProps } from "./components/GraphHeader";
+export { SettingsPanel } from "./components/SettingsPanel";
+export type { SettingsPanelProps } from "./components/SettingsPanel";
+export { FocusSection } from "./components/FocusSection";
+export type { FocusSectionProps } from "./components/FocusSection";
+export { ConnectionsSection } from "./components/ConnectionsSection";
+export type { ConnectionsSectionProps } from "./components/ConnectionsSection";
+export { StyleSection } from "./components/StyleSection";
+export type { StyleSectionProps } from "./components/StyleSection";
+
+// New types (Stage 1)
+export type { GraphView, GraphViewPreset, VizType, GraphNode as GraphNodeV2, GraphEdge as GraphEdgeV2 } from "./types";
+export { DEFAULT_GRAPH_VIEW, BUILT_IN_PRESETS, applyPreset, markDirty } from "./presets";
+export { CONNECTION_TYPE_REGISTRY, DEFAULT_CONNECTION_STATE } from "./connections";
+
+// ── Visualizations ─────────────────────────────────────────────────────────
 export { ForceGraph } from "./ForceGraph";
 export type { ForceGraphProps } from "./ForceGraph";
 
