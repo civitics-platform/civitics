@@ -11,4 +11,32 @@ dist/
 
 *.env.local
 
+.env*.local
+
+.env.local.*
+
 .turbo/
+
+*.tsbuildinfo
+
+supabase/
+
+data.sql
+
+backup.sql
+
+.data.sql
+
+*.data.sql
+
+.backup.sql
+
+*.backup.sql
+
+.prod-data.sql
+
+*.prod-data.sql
+
+.prod-backup.sql
+
+*.prod-backup.sql
