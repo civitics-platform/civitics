@@ -19,7 +19,10 @@ dist/
 
 *.tsbuildinfo
 
-supabase/
+supabase/snippets/
+supabase/.branches/
+supabase/.temp/
+supabase/seed.sql
 
 data.sql
 
