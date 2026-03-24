@@ -29,6 +29,7 @@ import { createAdminClient, agencyFullName } from "@civitics/db";
 import { createAiClient, MODELS } from "@civitics/ai";
 import { costGate } from "@civitics/ai/cost-gate";
 import { sleep } from "../utils";
+import { checkFlag } from "../../feature-flags";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -484,6 +485,31 @@ export async function runAiSummariesPipeline(incremental = false): Promise<void>
   console.log(`    Time: ${new Date().toISOString()}`);
 
   const db = createAdminClient();
+
+  // ── Recency guard ────────────────────────────────────────────────────────
+  // Prevent re-runs within 2 hours. Pass --force to override.
+  const force = process.argv.includes("--force");
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: recencyState } = await (db as any)
+    .from("pipeline_state")
+    .select("value")
+    .eq("key", "ai_summaries_last_run")
+    .maybeSingle();
+  const lastRunTs = (recencyState?.value as Record<string, unknown> | null)?.last_run as string | undefined;
+  if (lastRunTs && !force) {
+    const hoursSince = (Date.now() - new Date(lastRunTs).getTime()) / 3_600_000;
+    if (hoursSince < 2) {
+      console.log(
+        `⏭  AI Summaries skipping — ran ${hoursSince.toFixed(1)}h ago. Min interval: 2h. Use --force to override.`
+      );
+      return;
+    }
+  }
+  if (force) {
+    console.log("⚠  --force flag set: skipping recency guard");
+  }
+  // ─────────────────────────────────────────────────────────────────────────
+
   const ai = createAiClient();
 
   // Fetch entities first (cache filter applied inside each fetch fn)
@@ -567,6 +593,13 @@ export async function runAiSummariesPipeline(incremental = false): Promise<void>
   }
 
   await reportResults(proposalStats, officialStats, db);
+
+  // Persist last-run timestamp for recency guard
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await (db as any).from("pipeline_state").upsert(
+    { key: "ai_summaries_last_run", value: { last_run: new Date().toISOString() } },
+    { onConflict: "key" }
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -574,6 +607,7 @@ export async function runAiSummariesPipeline(incremental = false): Promise<void>
 // ---------------------------------------------------------------------------
 
 if (require.main === module) {
+  if (!checkFlag("AI_SUMMARIES_ENABLED", "ai-summaries")) process.exit(0);
   const incremental = process.argv.includes("--incremental");
 
   runAiSummariesPipeline(incremental)

@@ -22,6 +22,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { createAdminClient } from "@civitics/db";
 import { costGate } from "@civitics/ai/cost-gate";
 import { startSync, completeSync, failSync } from "../sync-log";
+import { checkFlag } from "../../feature-flags";
 
 const AI_MODEL = "claude-haiku-4-5-20251001";
 
@@ -455,9 +456,33 @@ export async function runAiTagger(options?: {
   console.log("\n=== AI tagger ===");
   console.log(`  Only new: ${onlyNew} | Model: ${AI_MODEL}`);
 
-  const logId = await startSync("tag-ai");
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = createAdminClient() as any;
+
+  // ── Recency guard ────────────────────────────────────────────────────────
+  // Prevent re-runs within 2 hours. Pass --force to override.
+  const force = process.argv.includes("--force");
+  const { data: recencyState } = await db
+    .from("pipeline_state")
+    .select("value")
+    .eq("key", "tags_last_run")
+    .maybeSingle();
+  const lastRunTs = (recencyState?.value as Record<string, unknown> | null)?.last_run as string | undefined;
+  if (lastRunTs && !force) {
+    const hoursSince = (Date.now() - new Date(lastRunTs).getTime()) / 3_600_000;
+    if (hoursSince < 2) {
+      console.log(
+        `⏭  AI Tagger skipping — ran ${hoursSince.toFixed(1)}h ago. Min interval: 2h. Use --force to override.`
+      );
+      return { tagsCreated: 0, costCents: 0 };
+    }
+  }
+  if (force) {
+    console.log("⚠  --force flag set: skipping recency guard");
+  }
+  // ─────────────────────────────────────────────────────────────────────────
+
+  const logId = await startSync("tag-ai");
 
   sessionCostCents = 0;
 
@@ -560,6 +585,13 @@ export async function runAiTagger(options?: {
     }
 
     await completeSync(logId, { inserted: totalTags, updated: 0, failed: 0, estimatedMb: 0 });
+
+    // Persist last-run timestamp for recency guard
+    await db.from("pipeline_state").upsert(
+      { key: "tags_last_run", value: { last_run: new Date().toISOString() } },
+      { onConflict: "key" }
+    );
+
     return { tagsCreated: totalTags, costCents: sessionCostCents };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -610,6 +642,7 @@ async function estimateCost(db: any): Promise<void> {
 
 if (require.main === module) {
   (async () => {
+    if (!checkFlag("AI_SUMMARIES_ENABLED", "ai-tagger")) process.exit(0);
     const args = process.argv.slice(2);
     const isDryRun = args.includes("--dry-run") || (!args.includes("--confirm"));
     const isConfirmed = args.includes("--confirm");

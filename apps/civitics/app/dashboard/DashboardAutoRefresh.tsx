@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
-export function DashboardAutoRefresh({ intervalMs = 60_000 }: { intervalMs?: number }) {
+export function DashboardAutoRefresh({ intervalMs = 900_000 }: { intervalMs?: number }) {
   const router = useRouter();
   const [secondsAgo, setSecondsAgo] = useState(0);
 
@@ -11,15 +11,33 @@ export function DashboardAutoRefresh({ intervalMs = 60_000 }: { intervalMs?: num
     // Count up seconds since last refresh
     const counter = setInterval(() => setSecondsAgo((s) => s + 1), 1000);
 
-    // Refresh server data every intervalMs
-    const refresher = setInterval(() => {
-      router.refresh();
-      setSecondsAgo(0);
-    }, intervalMs);
+    let refresher: ReturnType<typeof setInterval>;
+
+    const start = () => {
+      refresher = setInterval(() => {
+        router.refresh();
+        setSecondsAgo(0);
+      }, intervalMs);
+    };
+    const stop = () => clearInterval(refresher);
+
+    const onVisibility = () => {
+      if (document.hidden) {
+        stop();
+      } else {
+        router.refresh();
+        setSecondsAgo(0);
+        start();
+      }
+    };
+
+    document.addEventListener("visibilitychange", onVisibility);
+    start();
 
     return () => {
+      stop();
       clearInterval(counter);
-      clearInterval(refresher);
+      document.removeEventListener("visibilitychange", onVisibility);
     };
   }, [router, intervalMs]);
 

@@ -43,3 +43,7 @@ backup.sql
 .prod-backup.sql
 
 *.prod-backup.sql
+
+dev-local.ps1
+
+dev-prod.ps1

@@ -25,6 +25,11 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createAdminClient } from "@civitics/db";
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
+  // Feature flag kill switch — set CRON_DISABLED=true to halt without a deploy
+  if (process.env["CRON_DISABLED"] === "true") {
+    return NextResponse.json({ skipped: true, reason: "CRON_DISABLED flag" });
+  }
+
   // Verify this is a legitimate Vercel cron call
   const authHeader = request.headers.get("authorization");
   const expected   = `Bearer ${process.env["CRON_SECRET"] ?? ""}`;

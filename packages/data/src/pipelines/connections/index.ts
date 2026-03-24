@@ -25,6 +25,7 @@ import {
   failSync,
   type PipelineResult,
 } from "../sync-log";
+import { checkFlag } from "../../feature-flags";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -603,9 +604,33 @@ async function deriveAppointmentConnections(
 
 export async function runConnectionsPipeline(): Promise<PipelineResult> {
   console.log("\n=== Entity connections pipeline ===");
-  const logId = await startSync("connections");
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = createAdminClient() as any;
+
+  // ── Recency guard ────────────────────────────────────────────────────────
+  // Prevent accidental re-runs within 4 hours. Pass --force to override.
+  const force = process.argv.includes("--force");
+  const { data: recencyState } = await db
+    .from("pipeline_state")
+    .select("value")
+    .eq("key", "connections_last_run")
+    .maybeSingle();
+  const lastRunTs = (recencyState?.value as Record<string, unknown> | null)?.last_run as string | undefined;
+  if (lastRunTs && !force) {
+    const hoursSince = (Date.now() - new Date(lastRunTs).getTime()) / 3_600_000;
+    if (hoursSince < 4) {
+      console.log(
+        `⏭  Connections skipping — ran ${hoursSince.toFixed(1)}h ago. Min interval: 4h. Use --force to override.`
+      );
+      return { inserted: 0, updated: 0, failed: 0, estimatedMb: 0 };
+    }
+  }
+  if (force) {
+    console.log("⚠  --force flag set: skipping recency guard");
+  }
+  // ─────────────────────────────────────────────────────────────────────────
+
+  const logId = await startSync("connections");
 
   const counts: ConnectionCounts = {
     donation:            0,
@@ -672,7 +697,10 @@ export async function runConnectionsPipeline(): Promise<PipelineResult> {
       counts.oversight +
       counts.appointment;
 
-    // Persist delta tracking state for next run
+    // Egress estimate: ~500 bytes per vote row fetched
+    const egress_mb = Math.round((totalVotesFetched * 500) / 1_000_000 * 10) / 10;
+
+    // Persist delta tracking state for next run (includes egress estimate)
     await db.from("pipeline_state").upsert(
       {
         key: "connections_last_run",
@@ -681,6 +709,29 @@ export async function runConnectionsPipeline(): Promise<PipelineResult> {
           last_vote_id: finalVoteId,
           total_votes_processed: totalVotesFetched,
           connections_created: total,
+          egress_mb_estimate: egress_mb,
+        },
+      },
+      { onConflict: "key" },
+    );
+
+    // Accumulate monthly egress estimate
+    const thisMonth = new Date().toISOString().slice(0, 7); // 'YYYY-MM'
+    const { data: monthlyRow } = await db
+      .from("pipeline_state")
+      .select("value")
+      .eq("key", "monthly_egress_estimate")
+      .maybeSingle();
+    const prev = monthlyRow?.value as Record<string, unknown> | null;
+    const prevMonth = prev?.month as string | undefined;
+    const prevMb = prevMonth === thisMonth ? (prev?.egress_mb as number ?? 0) : 0;
+    await db.from("pipeline_state").upsert(
+      {
+        key: "monthly_egress_estimate",
+        value: {
+          month: thisMonth,
+          egress_mb: Math.round((prevMb + egress_mb) * 10) / 10,
+          updated_at: new Date().toISOString(),
         },
       },
       { onConflict: "key" },
@@ -737,6 +788,7 @@ export async function runConnectionsPipeline(): Promise<PipelineResult> {
 
 if (require.main === module) {
   (async () => {
+    if (!checkFlag("CONNECTIONS_PIPELINE_ENABLED", "connections")) process.exit(0);
     try {
       await runConnectionsPipeline();
       process.exit(0);

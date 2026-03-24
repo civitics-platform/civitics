@@ -97,8 +97,8 @@ export async function GET(request: Request) {
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
   const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
 
-  // ── All 9 sections run in parallel ───────────────────────────────────────
-  const [version, database, connectionTypes, pipelines, aiCosts, quality, selfTests, chordSection, activitySection] =
+  // ── All 10 sections run in parallel ──────────────────────────────────────
+  const [version, database, connectionTypes, pipelines, aiCosts, quality, selfTests, chordSection, activitySection, resourceWarnings] =
     await Promise.all([
       // ── 1. Platform version ──────────────────────────────────────────────
       section(async () => {
@@ -556,6 +556,26 @@ export async function GET(request: Request) {
           top_pages: topPages,
         };
       }),
+
+      // ── 10. Resource warnings ────────────────────────────────────────
+      section(async () => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const anyDb = db as any;
+        const { data: egressRow } = await anyDb
+          .from("pipeline_state")
+          .select("value")
+          .eq("key", "monthly_egress_estimate")
+          .maybeSingle();
+        const egressMb = (egressRow?.value as Record<string, unknown> | null)?.egress_mb as number ?? 0;
+        const EGRESS_LIMIT_MB = 5000;
+        return {
+          egress_estimate_mb: egressMb,
+          egress_limit_mb: EGRESS_LIMIT_MB,
+          egress_pct: Math.round(egressMb / EGRESS_LIMIT_MB * 100),
+          egress_warning: egressMb > 4000,
+          egress_critical: egressMb > 4750,
+        };
+      }),
     ]);
 
   const query_time_ms = Date.now() - t0;
@@ -575,6 +595,7 @@ export async function GET(request: Request) {
       self_tests: selfTests,
       chord: chordSection,
       activity: activitySection,
+      resource_warnings: resourceWarnings,
     },
     {},
   );
