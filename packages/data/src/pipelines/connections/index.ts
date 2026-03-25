@@ -496,9 +496,32 @@ async function deriveVoteConnections(
 async function deriveOversightConnections(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   db: any,
-  counts: ConnectionCounts
+  counts: ConnectionCounts,
+  force = false,
 ): Promise<void> {
   console.log("\n  [3/4] Oversight connections...");
+
+  // Delta guard: agency→governing_body relationships are static.
+  // Skip unless agencies table has changed since the last oversight run.
+  const { data: oversightState } = await db
+    .from("pipeline_state")
+    .select("value")
+    .eq("key", "oversight_last_run")
+    .maybeSingle();
+  const lastOversightRun = (oversightState?.value as Record<string, unknown> | null)?.last_run as string | undefined;
+
+  if (lastOversightRun && !force) {
+    const { count } = await db
+      .from("agencies")
+      .select("*", { count: "exact", head: true })
+      .not("governing_body_id", "is", null)
+      .gt("updated_at", lastOversightRun);
+    if (!count) {
+      console.log("    Delta mode: no agency changes since last run — skipping.");
+      return;
+    }
+    console.log(`    Delta mode: ${count} agencies changed since last run — re-deriving.`);
+  }
 
   const { data: agencies, error } = await db
     .from("agencies")
@@ -524,6 +547,12 @@ async function deriveOversightConnections(
 
   await batchUpsertConnections(db, batch, counts, "oversight", 1);
   console.log(`    Created/updated: ${counts.oversight} oversight connections`);
+
+  // Persist last-run timestamp so future runs can skip if no agencies changed
+  await db.from("pipeline_state").upsert(
+    { key: "oversight_last_run", value: { last_run: new Date().toISOString() } },
+    { onConflict: "key" },
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -684,7 +713,7 @@ export async function runConnectionsPipeline(): Promise<PipelineResult> {
 
     const { lastVoteId: finalVoteId, totalFetched: totalVotesFetched } =
       await deriveVoteConnections(db, counts, resumeVoteId);
-    await deriveOversightConnections(db, counts);
+    await deriveOversightConnections(db, counts, force);
     await deriveAppointmentConnections(db, counts);
 
     const total =
