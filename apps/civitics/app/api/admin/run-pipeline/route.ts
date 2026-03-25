@@ -21,6 +21,7 @@ export const dynamic = "force-dynamic";
 import { createServerClient } from "@civitics/db";
 import { NextResponse, type NextRequest } from "next/server";
 import { cookies } from "next/headers";
+import { supabaseUnavailable, unavailableResponse } from "@/lib/supabase-check";
 
 const VALID_PIPELINES = [
   "congress",
@@ -40,6 +41,7 @@ const VALID_PIPELINES = [
 type Pipeline = typeof VALID_PIPELINES[number];
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  if (supabaseUnavailable()) return unavailableResponse();
   // Auth check — must be signed in as ADMIN_EMAIL
   const adminEmail = process.env["ADMIN_EMAIL"];
   if (!adminEmail) {
@@ -123,6 +125,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
  * Poll for the result of a manual pipeline run.
  */
 export async function GET(request: NextRequest): Promise<NextResponse> {
+  if (supabaseUnavailable()) return unavailableResponse();
   const adminEmail = process.env["ADMIN_EMAIL"];
   if (!adminEmail) {
     return NextResponse.json({ error: "ADMIN_EMAIL not configured" }, { status: 503 });

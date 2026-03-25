@@ -44,6 +44,25 @@ const nextConfig = {
       { protocol: "https", hostname: "*.r2.cloudflarestorage.com" },
     ],
   },
+  async redirects() {
+    return [
+      {
+        source: "/:path*.php",
+        destination: "/404",
+        permanent: false,
+      },
+      {
+        source: "/wp-:path*",
+        destination: "/404",
+        permanent: false,
+      },
+      {
+        source: "/.env:path*",
+        destination: "/404",
+        permanent: false,
+      },
+    ];
+  },
   async headers() {
     return [
       {

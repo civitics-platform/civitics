@@ -1,7 +1,30 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
+const BOT_PATTERNS = [
+  /\.php$/i,
+  /wp-content/i,
+  /wp-admin/i,
+  /wp-login/i,
+  /xmlrpc/i,
+  /\.env$/i,
+  /\.git\//i,
+  /actuator/i,
+  /solr/i,
+  /\.asp(x?)$/i,
+  /\.cgi$/i,
+  /phpmyadmin/i,
+  /\.sql$/i,
+  /admin\/config/i,
+  /shell\.php/i,
+];
+
 export async function middleware(request: NextRequest) {
+  const path = request.nextUrl.pathname;
+  if (BOT_PATTERNS.some((p) => p.test(path))) {
+    return new NextResponse(null, { status: 404 });
+  }
+
   let response = NextResponse.next({
     request: { headers: request.headers },
   });

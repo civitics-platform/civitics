@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { createAdminClient } from "@civitics/db";
+import { supabaseUnavailable, unavailableResponse } from "@/lib/supabase-check";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
+  if (supabaseUnavailable()) return unavailableResponse();
   try {
     const { from_id, to_id, max_hops = 4 } = await req.json() as {
       from_id: string;

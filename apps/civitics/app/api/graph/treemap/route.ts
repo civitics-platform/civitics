@@ -1,4 +1,5 @@
 import { createAdminClient } from "@civitics/db";
+import { supabaseUnavailable, unavailableResponse } from "@/lib/supabase-check";
 
 export const dynamic = "force-dynamic";
 
@@ -11,6 +12,7 @@ interface TreemapRow {
 }
 
 export async function GET() {
+  if (supabaseUnavailable()) return unavailableResponse();
   const supabase = createAdminClient();
 
   const { data, error } = await supabase.rpc("treemap_officials_by_donations", {

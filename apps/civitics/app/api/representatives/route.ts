@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createServerClient } from "@civitics/db";
+import { supabaseUnavailable, unavailableResponse } from "@/lib/supabase-check";
 
 export const dynamic = "force-dynamic";
 
@@ -11,6 +12,7 @@ function coarsen(n: number): number {
 }
 
 export async function GET(request: NextRequest) {
+  if (supabaseUnavailable()) return unavailableResponse();
   const { searchParams } = new URL(request.url);
   const latStr = searchParams.get("lat");
   const lngStr = searchParams.get("lng");

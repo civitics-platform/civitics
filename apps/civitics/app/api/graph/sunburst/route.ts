@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { createAdminClient } from "@civitics/db";
+import { supabaseUnavailable, unavailableResponse } from "@/lib/supabase-check";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
+  if (supabaseUnavailable()) return unavailableResponse();
   try {
     const { searchParams } = new URL(req.url);
     const entityId = searchParams.get("entityId");

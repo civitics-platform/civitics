@@ -19,6 +19,7 @@
 
 import { createAdminClient } from "@civitics/db";
 import type { Json } from "@civitics/db";
+import { supabaseUnavailable, unavailableResponse } from "@/lib/supabase-check";
 
 export const dynamic = "force-dynamic";
 // revalidate = 60 is overridden by force-dynamic; Cache-Control header is set manually.
@@ -1161,6 +1162,7 @@ function generateCode(presetSlug?: string): string {
 
 // ── POST /api/graph/snapshot — create a new share code ────────────────────────
 export async function POST(request: Request) {
+  if (supabaseUnavailable()) return unavailableResponse();
   try {
     const body = (await request.json()) as {
       state: Record<string, unknown>;
@@ -1217,6 +1219,7 @@ export async function POST(request: Request) {
 // Diagnostic mode: ?viz= | ?entity_id= | ?entity_name=
 // Share code mode: ?code=CIV-XXXX-YYYY
 export async function GET(request: Request) {
+  if (supabaseUnavailable()) return unavailableResponse();
   const { searchParams } = new URL(request.url);
 
   // Detect diagnostic mode

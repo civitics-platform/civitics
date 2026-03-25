@@ -1,4 +1,5 @@
 import { createAdminClient } from "@civitics/db";
+import { supabaseUnavailable, unavailableResponse } from "@/lib/supabase-check";
 
 export const dynamic = "force-dynamic";
 
@@ -11,6 +12,7 @@ interface SearchRow {
 }
 
 export async function GET(req: Request) {
+  if (supabaseUnavailable()) return unavailableResponse();
   const { searchParams } = new URL(req.url);
   const q = searchParams.get("q")?.trim() ?? "";
   if (q.length < 2) return Response.json([]);

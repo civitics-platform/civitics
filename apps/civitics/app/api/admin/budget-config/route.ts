@@ -14,8 +14,10 @@ export const dynamic = "force-dynamic";
 import { createServerClient, createAdminClient } from "@civitics/db";
 import { NextResponse, type NextRequest } from "next/server";
 import { cookies } from "next/headers";
+import { supabaseUnavailable, unavailableResponse } from "@/lib/supabase-check";
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  if (supabaseUnavailable()) return unavailableResponse();
   const adminEmail = process.env["ADMIN_EMAIL"];
   if (!adminEmail) {
     return NextResponse.json({ error: "ADMIN_EMAIL not configured" }, { status: 503 });

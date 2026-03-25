@@ -12,6 +12,7 @@
  */
 
 import { createAdminClient } from "@civitics/db";
+import { supabaseUnavailable, unavailableResponse } from "@/lib/supabase-check";
 
 export const dynamic = "force-dynamic";
 
@@ -47,6 +48,7 @@ interface SearchRow {
 
 // ── GET /api/graph/entities ────────────────────────────────────────────────────
 export async function GET(request: Request) {
+  if (supabaseUnavailable()) return unavailableResponse();
   const ip = getIp(request);
   if (!rateOk(ip)) {
     return Response.json(

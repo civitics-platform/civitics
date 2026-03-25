@@ -1,6 +1,7 @@
 export const revalidate = 60; // Graph connections cached 1 minute at edge
 
 import { createAdminClient } from "@civitics/db";
+import { supabaseUnavailable, unavailableResponse } from "@/lib/supabase-check";
 import type { Database } from "@civitics/db";
 import type { GraphEdge, GraphNode, EdgeType, NodeType } from "@civitics/graph";
 
@@ -100,6 +101,7 @@ async function filterProceduralConnections(
 }
 
 export async function GET(request: Request) {
+  if (supabaseUnavailable()) return unavailableResponse();
   const { searchParams } = new URL(request.url);
   const entityId = searchParams.get("entityId");
   // Server handles up to depth 2 (direct + one smart expansion).
