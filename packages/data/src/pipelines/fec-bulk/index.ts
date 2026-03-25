@@ -1197,13 +1197,10 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
 // ---------------------------------------------------------------------------
 
 if (require.main === module) {
-  (async () => {
-    try {
-      await runFecBulkPipeline();
-      process.exit(0);
-    } catch (err) {
-      console.error("Fatal:", err);
-      process.exit(1);
-    }
-  })();
+  runFecBulkPipeline()
+    .then(() => { setTimeout(() => process.exit(0), 500); })
+    .catch((err) => {
+      console.error("Pipeline failed:", err);
+      setTimeout(() => process.exit(1), 500);
+    });
 }

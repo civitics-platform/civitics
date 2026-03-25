@@ -787,14 +787,11 @@ export async function runConnectionsPipeline(): Promise<PipelineResult> {
 // ---------------------------------------------------------------------------
 
 if (require.main === module) {
-  (async () => {
-    if (!checkFlag("CONNECTIONS_PIPELINE_ENABLED", "connections")) process.exit(0);
-    try {
-      await runConnectionsPipeline();
-      process.exit(0);
-    } catch (err) {
-      console.error("Fatal:", err);
-      process.exit(1);
-    }
-  })();
+  if (!checkFlag("CONNECTIONS_PIPELINE_ENABLED", "connections")) process.exit(0);
+  runConnectionsPipeline()
+    .then(() => { setTimeout(() => process.exit(0), 500); })
+    .catch((err) => {
+      console.error("Pipeline failed:", err);
+      setTimeout(() => process.exit(1), 500);
+    });
 }

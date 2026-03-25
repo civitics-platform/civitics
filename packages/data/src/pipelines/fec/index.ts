@@ -326,13 +326,10 @@ if (require.main === module) {
   const apiKey = process.env["FEC_API_KEY"];
   if (!apiKey) { console.error("FEC_API_KEY not set"); process.exit(1); }
 
-  (async () => {
-    try {
-      await runFecPipeline(apiKey);
-      process.exit(0);
-    } catch (err) {
-      console.error("Fatal:", err);
-      process.exit(1);
-    }
-  })();
+  runFecPipeline(apiKey)
+    .then(() => { setTimeout(() => process.exit(0), 500); })
+    .catch((err) => {
+      console.error("Pipeline failed:", err);
+      setTimeout(() => process.exit(1), 500);
+    });
 }

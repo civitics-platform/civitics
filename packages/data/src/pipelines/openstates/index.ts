@@ -262,13 +262,12 @@ if (require.main === module) {
   const db = createAdminClient();
 
   (async () => {
-    try {
-      const { stateIds } = await seedJurisdictions(db);
-      await runOpenStatesPipeline(apiKey, stateIds);
-      process.exit(0);
-    } catch (err) {
-      console.error("Fatal:", err);
-      process.exit(1);
-    }
-  })();
+    const { stateIds } = await seedJurisdictions(db);
+    await runOpenStatesPipeline(apiKey, stateIds);
+  })()
+    .then(() => { setTimeout(() => process.exit(0), 500); })
+    .catch((err) => {
+      console.error("Pipeline failed:", err);
+      setTimeout(() => process.exit(1), 500);
+    });
 }

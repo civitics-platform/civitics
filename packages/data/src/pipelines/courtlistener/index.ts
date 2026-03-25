@@ -301,15 +301,14 @@ if (require.main === module) {
   const db = createAdminClient();
 
   (async () => {
-    try {
-      const { federalId } = await seedJurisdictions(db);
-      const { senateId }  = await seedGoverningBodies(db, federalId);
-      // Use Senate governing body as proxy for federal judiciary — good enough for Phase 1
-      await runCourtListenerPipeline(apiKey, federalId, senateId);
-      process.exit(0);
-    } catch (err) {
-      console.error("Fatal:", err);
-      process.exit(1);
-    }
-  })();
+    const { federalId } = await seedJurisdictions(db);
+    const { senateId }  = await seedGoverningBodies(db, federalId);
+    // Use Senate governing body as proxy for federal judiciary — good enough for Phase 1
+    await runCourtListenerPipeline(apiKey, federalId, senateId);
+  })()
+    .then(() => { setTimeout(() => process.exit(0), 500); })
+    .catch((err) => {
+      console.error("Pipeline failed:", err);
+      setTimeout(() => process.exit(1), 500);
+    });
 }

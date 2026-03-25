@@ -472,10 +472,16 @@ if (require.main === module) {
   const command = process.argv[2];
 
   if (command === "status") {
-    printStatus().then(() => process.exit(0)).catch((e) => { console.error(e); process.exit(1); });
+    printStatus()
+      .then(() => { setTimeout(() => process.exit(0), 500); })
+      .catch((e) => { console.error("Pipeline failed:", e); setTimeout(() => process.exit(1), 500); });
   } else if (command === "nightly") {
-    runNightlySync().then(() => process.exit(0)).catch((e) => { console.error(e); process.exit(1); });
+    runNightlySync()
+      .then(() => { setTimeout(() => process.exit(0), 500); })
+      .catch((e) => { console.error("Pipeline failed:", e); setTimeout(() => process.exit(1), 500); });
   } else {
-    runAllPipelines().then(() => process.exit(0)).catch((e) => { console.error(e); process.exit(1); });
+    runAllPipelines()
+      .then(() => { setTimeout(() => process.exit(0), 500); })
+      .catch((e) => { console.error("Pipeline failed:", e); setTimeout(() => process.exit(1), 500); });
   }
 }

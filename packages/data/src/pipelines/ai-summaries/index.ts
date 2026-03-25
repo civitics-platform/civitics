@@ -611,9 +611,9 @@ if (require.main === module) {
   const incremental = process.argv.includes("--incremental");
 
   runAiSummariesPipeline(incremental)
-    .then(() => process.exit(0))
+    .then(() => { setTimeout(() => process.exit(0), 500); })
     .catch((err) => {
-      console.error("Fatal:", err);
-      process.exit(1);
+      console.error("Pipeline failed:", err);
+      setTimeout(() => process.exit(1), 500);
     });
 }

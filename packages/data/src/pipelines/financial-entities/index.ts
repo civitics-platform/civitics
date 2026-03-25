@@ -245,13 +245,10 @@ export async function runFinancialEntitiesPipeline(): Promise<PipelineResult> {
 // ---------------------------------------------------------------------------
 
 if (require.main === module) {
-  (async () => {
-    try {
-      await runFinancialEntitiesPipeline();
-      process.exit(0);
-    } catch (err) {
-      console.error("Fatal:", err);
-      process.exit(1);
-    }
-  })();
+  runFinancialEntitiesPipeline()
+    .then(() => { setTimeout(() => process.exit(0), 500); })
+    .catch((err) => {
+      console.error("Pipeline failed:", err);
+      setTimeout(() => process.exit(1), 500);
+    });
 }
