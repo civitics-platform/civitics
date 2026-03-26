@@ -8,7 +8,6 @@ import {
   LoadingSkeleton,
   formatMetricValue,
 } from "@civitics/ui";
-import { calculateOverageCost, getSourceDisplay } from "@civitics/db";
 import type { PlatformMetric, SourceDisplay } from "@civitics/db";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -212,7 +211,7 @@ function ServiceGroup({
   return (
     <div className="mb-6">
       <div className="flex items-center gap-2 mb-2">
-        <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide capitalize">
+        <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
           {service}
         </h3>
         {hasCritical && <span className="text-xs text-red-500">⛔ Critical</span>}
@@ -343,7 +342,17 @@ export function PlatformCostsSection() {
   const [expanded, setExpanded] = useState(false);
   const [sortBy, setSortBy] = useState<"usage_pct" | "cost">("usage_pct");
   const [updatingMetric, setUpdatingMetric] = useState<PlatformMetric | null>(null);
+  const [adminKey, setAdminKey] = useState("");
   const isAdmin = useIsAdmin();
+
+  // Read admin key from localStorage after mount only — never during SSR
+  useEffect(() => {
+    try {
+      setAdminKey(localStorage.getItem("civitics_admin_key") ?? "");
+    } catch {
+      // Blocked storage (private mode, etc.) — stay empty
+    }
+  }, []);
 
   const fetchUsage = useCallback(async () => {
     try {
@@ -362,12 +371,6 @@ export function PlatformCostsSection() {
   useEffect(() => {
     void fetchUsage();
   }, [fetchUsage]);
-
-  // Admin: get key from localStorage (set manually in dev console)
-  const adminKey =
-    typeof window !== "undefined"
-      ? (localStorage.getItem("civitics_admin_key") ?? "")
-      : "";
 
   async function adminPost(body: Record<string, unknown>) {
     const res = await fetch("/api/platform/usage", {
