@@ -87,5 +87,23 @@ export {
 // Storage (Supabase now, R2 later — paths are provider-agnostic)
 export { getStorageUrl, uploadFile, getFile, fileExists } from "./storage";
 
+// Platform usage tracking
+export {
+  getPlatformUsage,
+  updateUsage,
+  verifyUsage,
+  upgradeServicePlan,
+  calculateOverageCost,
+  getSourceDisplay,
+} from "./platform-usage";
+export type {
+  PlanTier,
+  UsageSource,
+  PlatformLimit,
+  PlatformUsage,
+  PlatformMetric,
+  SourceDisplay,
+} from "./platform-usage";
+
 // Reference data
 export { AGENCY_NAMES, agencyFullName } from "./agency-names";

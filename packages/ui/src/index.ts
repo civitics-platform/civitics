@@ -1,4 +1,4 @@
-// Utils
+// Utils (includes formatUSD, formatNumber, formatRelativeTime, formatPipelineStatus, formatMetricValue, formatCountdown)
 export * from "./utils";
 export * from "./colors";
 

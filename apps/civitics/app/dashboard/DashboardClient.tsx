@@ -23,6 +23,7 @@ import {
   type PipelineRun,
   type ActivitySectionData,
 } from "./useDashboardData";
+import { PlatformCostsSection } from "./PlatformCostsSection";
 
 // ── Types from server ─────────────────────────────────────────────────────────
 
@@ -140,21 +141,7 @@ function pathLabel(path: string): string {
   return path;
 }
 
-// ── Platform cost helpers (FIX 3) ────────────────────────────────────────────
-
-function costStatusDot(pct: number): string {
-  if (pct >= 95) return "🔴";
-  if (pct >= 80) return "🟠";
-  if (pct >= 60) return "🟡";
-  return "🟢";
-}
-
-function costBarColor(pct: number): string {
-  if (pct >= 95) return "bg-red-500";
-  if (pct >= 80) return "bg-orange-500";
-  if (pct >= 60) return "bg-amber-500";
-  return "bg-green-500";
-}
+// (Platform cost helpers moved to PlatformCostsSection.tsx)
 
 // ── Sections ─────────────────────────────────────────────────────────────────
 
@@ -615,142 +602,7 @@ function ActivitySection({
   );
 }
 
-// ── FIX 3: Platform Costs ─────────────────────────────────────────────────────
-
-function PlatformCostsSection({
-  aiCosts,
-  version,
-}: {
-  aiCosts: NonNullable<ReturnType<typeof useDashboardData>["data"]>["status"]["ai_costs"];
-  version: NonNullable<ReturnType<typeof useDashboardData>["data"]>["status"]["version"];
-}) {
-  const costs = isPartial(aiCosts) ? null : aiCosts;
-  const ver = isPartial(version) ? null : version;
-  const anthropicCost = costs?.monthly_spent_usd ?? 0;
-  const anthropicPct = costs?.budget_used_pct ?? 0;
-  const totalMonthly = anthropicCost;
-
-  const commitSha = ver?.commit_sha ?? "local";
-  const shortSha = commitSha === "local" ? "local" : commitSha.slice(0, 7);
-
-  const services: Array<{
-    name: string;
-    status: string;
-    pct: number;
-    cost: number;
-    details: string[];
-    note?: string;
-  }> = [
-    {
-      name: "Supabase",
-      status: "Healthy",
-      pct: 0,
-      cost: 0,
-      details: ["DB: 141.5 MB / 500 MB (28%)", "Egress: 3.5 / 5 GB (70%)"],
-      note: "Upgrade to Pro ($25/mo) when DB hits 400 MB",
-    },
-    {
-      name: "Anthropic",
-      status: "Healthy",
-      pct: anthropicPct,
-      cost: anthropicCost,
-      details: [`$${anthropicCost.toFixed(2)} / $3.50 budget (${anthropicPct.toFixed(0)}%)`],
-      note: "Hard cap: $3.50/month. Cost guard enforced server-side.",
-    },
-    {
-      name: "Cloudflare R2",
-      status: "Healthy",
-      pct: 0,
-      cost: 0,
-      details: ["Storage: 0 KB / 10 GB (0%)"],
-      note: "Egress always free",
-    },
-    {
-      name: "Mapbox",
-      status: "Healthy",
-      pct: 0,
-      cost: 0,
-      details: ["Map loads: 8 / 50,000 (0%)"],
-    },
-    {
-      name: "Vercel",
-      status: "Healthy",
-      pct: 0,
-      cost: 0,
-      details: ["Plan: Hobby", "Deploy: READY", `Commit: ${shortSha}`],
-    },
-    {
-      name: "Resend",
-      status: "Pending (Phase 2)",
-      pct: 0,
-      cost: 0,
-      details: [],
-      note: "Email integration pending Phase 2",
-    },
-  ];
-
-  return (
-    <SectionCard>
-      <SectionHeader
-        icon="💸"
-        title="Monthly Spend Tracker"
-        description="Every cost is public record"
-      />
-      <div className="mt-4 space-y-3">
-        {services.map((svc) => (
-          <div key={svc.name} className="rounded-lg border border-gray-100 bg-gray-50 p-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="text-sm">{costStatusDot(svc.pct)}</span>
-                <span className="text-sm font-medium text-gray-900">{svc.name}</span>
-              </div>
-              <div className="flex items-center gap-3">
-                <span className="text-xs text-gray-500">{svc.status}</span>
-                <span className="text-sm font-semibold text-gray-900 tabular-nums">
-                  ${svc.cost.toFixed(2)}/mo
-                </span>
-              </div>
-            </div>
-            {svc.details.length > 0 && (
-              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-0.5">
-                {svc.details.map((d) => (
-                  <span key={d} className="text-xs text-gray-600">{d}</span>
-                ))}
-              </div>
-            )}
-            {svc.pct > 0 && (
-              <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-gray-200">
-                <div
-                  className={`h-full rounded-full ${costBarColor(svc.pct)}`}
-                  style={{ width: `${Math.min(100, svc.pct)}%` }}
-                />
-              </div>
-            )}
-            {svc.note && (
-              <p className="mt-1.5 text-xs italic text-gray-500">{svc.note}</p>
-            )}
-          </div>
-        ))}
-      </div>
-      <div className="mt-4 border-t border-gray-100 pt-4">
-        <div className="flex items-baseline justify-between">
-          <span className="text-sm font-semibold text-gray-900">Total</span>
-          <span className="text-lg font-bold text-gray-900">${totalMonthly.toFixed(2)}/month</span>
-        </div>
-        <p className="mt-1 text-xs text-gray-500">
-          Running a civic accountability platform tracking $1.75B in donations costs less than a
-          streaming subscription.
-        </p>
-      </div>
-      <div className="mt-3 flex flex-wrap gap-3 text-xs text-gray-500">
-        <span><span className="text-green-500">●</span> 0–60% healthy</span>
-        <span><span className="text-amber-500">●</span> 60–80% watch</span>
-        <span><span className="text-orange-500">●</span> 80–95% plan upgrade</span>
-        <span><span className="text-red-500">●</span> 95%+ urgent</span>
-      </div>
-    </SectionCard>
-  );
-}
+// PlatformCostsSection is now DB-driven — imported from ./PlatformCostsSection
 
 // ── FIX 4: Development Progress ───────────────────────────────────────────────
 
@@ -1060,14 +912,8 @@ export function DashboardClient({
         )}
       </div>
 
-      {/* ── FIX 3: Platform Costs ── */}
-      {!loading && (
-        <PlatformCostsSection
-          aiCosts={data?.status.ai_costs ?? { error: "Loading", partial: true }}
-          version={data?.status.version ?? { error: "Loading", partial: true }}
-        />
-      )}
-      {loading && <LoadingSkeleton variant="card" />}
+      {/* ── Platform Costs (DB-driven) ── */}
+      <PlatformCostsSection />
 
       {/* ── FIX 4: Development Progress + FIX 5: Community Compute ── */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
