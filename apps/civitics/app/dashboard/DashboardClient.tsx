@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   StatCard,
   SectionCard,
@@ -23,8 +23,17 @@ import {
   type PipelineRun,
   type ActivitySectionData,
 } from "./useDashboardData";
-import { PlatformCostsSection } from "./PlatformCostsSection";
-import { AnthropicCard } from "./components/AnthropicCard";
+import dynamic from "next/dynamic";
+
+const AnthropicCard = dynamic(
+  () => import("./components/AnthropicCard").then((m) => ({ default: m.AnthropicCard })),
+  { ssr: false },
+);
+
+const PlatformCostsSection = dynamic(
+  () => import("./PlatformCostsSection").then((m) => ({ default: m.PlatformCostsSection })),
+  { ssr: false, loading: () => <LoadingSkeleton variant="card" /> },
+);
 
 // ── Types from server ─────────────────────────────────────────────────────────
 
@@ -294,6 +303,21 @@ function PipelinesSection({
   pipelines: NonNullable<ReturnType<typeof useDashboardData>["data"]>["status"]["pipelines"];
   aiCosts: NonNullable<ReturnType<typeof useDashboardData>["data"]>["status"]["ai_costs"];
 }) {
+  const [hoursUntilNext, setHoursUntilNext] = useState(0);
+
+  useEffect(() => {
+    function computeHours() {
+      const now = new Date();
+      const next2am = new Date(now);
+      next2am.setUTCHours(2, 0, 0, 0);
+      if (next2am <= now) next2am.setUTCDate(next2am.getUTCDate() + 1);
+      setHoursUntilNext(Math.round((next2am.getTime() - now.getTime()) / 3_600_000));
+    }
+    computeHours();
+    const interval = setInterval(computeHours, 60_000);
+    return () => clearInterval(interval);
+  }, []);
+
   if (isPartial(pipelines)) {
     return (
       <SectionCard>
@@ -338,13 +362,6 @@ function PipelinesSection({
   // Overall freshness for header status
   const latestRun = pipelines.recent_runs[0];
   const overallFreshness = latestRun ? pipelineFreshness(latestRun.completed_at) : "error";
-
-  // Next 2am UTC
-  const now = new Date();
-  const next2am = new Date(now);
-  next2am.setUTCHours(2, 0, 0, 0);
-  if (next2am <= now) next2am.setUTCDate(next2am.getUTCDate() + 1);
-  const hoursUntilNext = Math.round((next2am.getTime() - now.getTime()) / 3_600_000);
 
   return (
     <SectionCard noPadding>
@@ -812,6 +829,11 @@ export function DashboardClient({
 }: DashboardClientProps) {
   const { data, loading, error } = useDashboardData();
   const [_secondsAgo] = useState(0);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const db = data && !isPartial(data.status.database) ? data.status.database : null;
   const failedTests =
@@ -853,8 +875,8 @@ export function DashboardClient({
       )}
 
       {/* Refresh timestamp */}
-      {data && (
-        <p className="text-xs text-gray-400">
+      {mounted && data && (
+        <p className="text-xs text-gray-400" suppressHydrationWarning>
           Updated {new Date(data.status.meta.timestamp).toLocaleTimeString()} ·
           query took {data.status.meta.query_time_ms}ms · auto-refreshes every 60s
         </p>
