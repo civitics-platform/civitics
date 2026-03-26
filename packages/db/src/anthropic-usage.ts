@@ -71,8 +71,8 @@ function emptyWindow(): AnthropicWindowUsage {
   };
 }
 
-function buildUrl(path: string, params: Record<string, string>): string {
-  const url = new URL(`${BASE}/${path}`);
+function buildUrl(base: string, path: string, params: Record<string, string>): string {
+  const url = new URL(`${base}/${path}`);
   for (const [k, v] of Object.entries(params)) {
     url.searchParams.append(k, v);
   }
@@ -220,7 +220,7 @@ export async function getAnthropicUsage(): Promise<AnthropicUsageResponse> {
     {
       windowName,
       kind: "usage" as const,
-      url: buildUrl("usage_report/messages", {
+      url: buildUrl(BASE, "usage_report/messages", {
         starting_at: w.starting_at,
         ending_at: w.ending_at,
         bucket_width: w.bucket_width,
@@ -230,7 +230,7 @@ export async function getAnthropicUsage(): Promise<AnthropicUsageResponse> {
     {
       windowName,
       kind: "cost" as const,
-      url: buildUrl("cost_report", {
+      url: buildUrl(BASE, "cost_report", {
         starting_at: w.starting_at,
         ending_at: w.ending_at,
         bucket_width: w.bucket_width,
