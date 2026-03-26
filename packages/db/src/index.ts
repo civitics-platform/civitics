@@ -107,3 +107,14 @@ export type {
 
 // Reference data
 export { AGENCY_NAMES, agencyFullName } from "./agency-names";
+
+// Anthropic Admin API usage helper
+export { getAnthropicUsage } from "./anthropic-usage";
+export type {
+  AnthropicUsageResponse,
+  AnthropicUsageSuccess,
+  AnthropicUsageError,
+  AnthropicWindowUsage,
+  AnthropicBudget,
+  AnthropicModelUsage,
+} from "./anthropic-usage";

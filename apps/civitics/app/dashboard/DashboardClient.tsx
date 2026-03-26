@@ -24,6 +24,7 @@ import {
   type ActivitySectionData,
 } from "./useDashboardData";
 import { PlatformCostsSection } from "./PlatformCostsSection";
+import { AnthropicCard } from "./components/AnthropicCard";
 
 // ── Types from server ─────────────────────────────────────────────────────────
 
@@ -914,6 +915,9 @@ export function DashboardClient({
 
       {/* ── Platform Costs (DB-driven) ── */}
       <PlatformCostsSection />
+
+      {/* ── Anthropic AI — live usage from Anthropic Admin API ── */}
+      <AnthropicCard />
 
       {/* ── FIX 4: Development Progress + FIX 5: Community Compute ── */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">

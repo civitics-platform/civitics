@@ -11,7 +11,7 @@
 
 export const revalidate = 300; // Cache at edge 5 minutes — reduces DB egress significantly
 
-import { createAdminClient } from "@civitics/db";
+import { createAdminClient, getAnthropicUsage } from "@civitics/db";
 import { NextResponse } from "next/server";
 
 // ── Rate limiter: 60 req/hour/IP ─────────────────────────────────────────────
@@ -213,6 +213,26 @@ export async function GET(request: Request) {
 
       // ── 5. AI costs ──────────────────────────────────────────────────────
       section(async () => {
+        // Try Anthropic Admin API first (shared helper — no duplication)
+        const adminResult = await getAnthropicUsage();
+
+        if (adminResult.source === "api") {
+          const { this_month, budget } = adminResult;
+          return {
+            monthly_spent_usd: Math.round(budget.spent_usd * 10000) / 10000,
+            monthly_budget_usd: budget.limit_usd,
+            budget_used_pct: Math.round(budget.pct_used * 10) / 10,
+            month_start: monthStart,
+            last_hour_tokens: adminResult.last_hour.total_tokens,
+            last_24h_tokens: adminResult.last_24h.total_tokens,
+            last_24h_cost_usd: adminResult.last_24h.cost_usd,
+            source: "api" as const,
+            // Keep cache_read for self-test budget check
+            this_month_total_tokens: this_month.total_tokens,
+          };
+        }
+
+        // Fallback: compute from api_usage_logs when admin key is absent
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const anyDb = db as any;
         const { data: rows } = await anyDb
@@ -238,13 +258,16 @@ export async function GET(request: Request) {
           },
           0,
         );
+        const budget_usd =
+          parseFloat(process.env.ANTHROPIC_MONTHLY_BUDGET ?? "") || 3.5;
 
         return {
           monthly_spent_usd: Math.round(monthly_spent * 10000) / 10000,
-          monthly_budget_usd: 3.5,
-          budget_used_pct: Math.round((monthly_spent / 3.5) * 1000) / 10,
+          monthly_budget_usd: budget_usd,
+          budget_used_pct:
+            Math.round((monthly_spent / budget_usd) * 1000) / 10,
           month_start: monthStart,
-          source: "api_usage_logs",
+          source: "api_usage_logs" as const,
         };
       }),
 
