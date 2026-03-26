@@ -28,6 +28,14 @@ export default function RootLayout({
         {children}
         <Analytics />
         <SpeedInsights />
+        {process.env.NODE_ENV === "development" && (
+          <div
+            suppressHydrationWarning
+            className="fixed bottom-2 right-2 z-50 bg-black/70 text-white text-xs px-2 py-1 rounded font-mono pointer-events-none"
+          >
+            local · {new Date().toLocaleTimeString()}
+          </div>
+        )}
       </body>
     </html>
   );
