@@ -20,6 +20,7 @@ import {
 import {
   useDashboardData,
   isPartial,
+  type AiCosts,
   type PipelineRun,
   type ActivitySectionData,
 } from "./useDashboardData";
@@ -827,7 +828,7 @@ export function DashboardClient({
   activity,
   officialsBreakdown,
 }: DashboardClientProps) {
-  const { data, loading, error } = useDashboardData();
+  const { data, loading, error, refresh } = useDashboardData();
   const [_secondsAgo] = useState(0);
   const [mounted, setMounted] = useState(false);
 
@@ -935,11 +936,20 @@ export function DashboardClient({
         )}
       </div>
 
-      {/* ── Platform Costs (DB-driven) ── */}
-      <PlatformCostsSection />
+      {/* ── Platform Costs — data from useDashboardData, no independent fetch ── */}
+      <PlatformCostsSection
+        platformUsage={data?.platformUsage ?? null}
+        onRefresh={refresh}
+      />
 
-      {/* ── Anthropic AI — live usage from Anthropic Admin API ── */}
-      <AnthropicCard />
+      {/* ── Anthropic AI — data from status ai_costs, no independent fetch ── */}
+      <AnthropicCard
+        aiCosts={
+          data?.status.ai_costs && !isPartial(data.status.ai_costs)
+            ? (data.status.ai_costs as AiCosts)
+            : null
+        }
+      />
 
       {/* ── FIX 4: Development Progress + FIX 5: Community Compute ── */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">

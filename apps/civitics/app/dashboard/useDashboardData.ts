@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import type { PlatformMetric } from "@civitics/db";
 
 // ── Types matching /api/claude/status response ────────────────────────────────
 
@@ -35,6 +36,11 @@ export type AiCosts = {
   monthly_budget_usd: number;
   budget_used_pct: number;
   month_start: string;
+  last_hour_tokens?: number;
+  last_24h_tokens?: number;
+  last_24h_cost_usd?: number;
+  source?: string;
+  this_month_total_tokens?: number;
 };
 
 export type QualityData = {
@@ -80,9 +86,29 @@ export type ChordFlow = {
   amount_usd: number;
 };
 
+export type PlatformUsageResponse = {
+  plan: string;
+  metrics: PlatformMetric[];
+  by_service: Record<string, PlatformMetric[]>;
+  total_metrics: number;
+  summary: {
+    total_overage_cost: number;
+    top3_by_pct: PlatformMetric[];
+    top3_by_cost: PlatformMetric[];
+    any_critical: boolean;
+    any_warning: boolean;
+    needs_verification: boolean;
+    critical_count: number;
+    warning_count: number;
+    unverified_count: number;
+  };
+  timestamp: string;
+};
+
 export type DashboardData = {
   status: StatusData;
   chordFlows: ChordFlow[];
+  platformUsage: PlatformUsageResponse | null;
 };
 
 // ── Hook ─────────────────────────────────────────────────────────────────────
@@ -94,9 +120,12 @@ export function useDashboardData() {
 
   const fetchData = useCallback(async () => {
     try {
-      const res = await fetch("/api/claude/status");
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const status = (await res.json()) as StatusData;
+      const [statusRes, usageRes] = await Promise.all([
+        fetch("/api/claude/status"),
+        fetch("/api/platform/usage"),
+      ]);
+      if (!statusRes.ok) throw new Error(`HTTP ${statusRes.status}`);
+      const status = (await statusRes.json()) as StatusData;
 
       // Read chord flows from status — no separate fetch needed
       const chordData =
@@ -105,7 +134,14 @@ export function useDashboardData() {
           : null;
       const chordFlows: ChordFlow[] = chordData?.top_flows ?? [];
 
-      setData({ status, chordFlows });
+      let platformUsage: PlatformUsageResponse | null = null;
+      if (usageRes.ok) {
+        try {
+          platformUsage = (await usageRes.json()) as PlatformUsageResponse;
+        } catch { /* ignore — platform usage is non-critical */ }
+      }
+
+      setData({ status, chordFlows, platformUsage });
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unknown error");

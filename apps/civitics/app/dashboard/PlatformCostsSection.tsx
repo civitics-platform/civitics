@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import {
   SectionCard,
   SectionHeader,
@@ -9,27 +9,7 @@ import {
   formatMetricValue,
 } from "@civitics/ui";
 import type { PlatformMetric, SourceDisplay } from "@civitics/db";
-
-// ── Types ─────────────────────────────────────────────────────────────────────
-
-interface UsageResponse {
-  plan: string;
-  metrics: PlatformMetric[];
-  by_service: Record<string, PlatformMetric[]>;
-  total_metrics: number;
-  summary: {
-    total_overage_cost: number;
-    top3_by_pct: PlatformMetric[];
-    top3_by_cost: PlatformMetric[];
-    any_critical: boolean;
-    any_warning: boolean;
-    needs_verification: boolean;
-    critical_count: number;
-    warning_count: number;
-    unverified_count: number;
-  };
-  timestamp: string;
-}
+import type { PlatformUsageResponse } from "./useDashboardData";
 
 // ── Admin key (dev only — no secret in client bundle) ─────────────────────────
 // In production this is only set in the server env. The UI shows admin controls
@@ -335,10 +315,12 @@ function UpdateModal({
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export function PlatformCostsSection() {
-  const [data, setData] = useState<UsageResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+interface PlatformCostsSectionProps {
+  platformUsage: PlatformUsageResponse | null;
+  onRefresh: () => void;
+}
+
+export function PlatformCostsSection({ platformUsage, onRefresh }: PlatformCostsSectionProps) {
   const [expanded, setExpanded] = useState(false);
   const [sortBy, setSortBy] = useState<"usage_pct" | "cost">("usage_pct");
   const [updatingMetric, setUpdatingMetric] = useState<PlatformMetric | null>(null);
@@ -354,24 +336,6 @@ export function PlatformCostsSection() {
     }
   }, []);
 
-  const fetchUsage = useCallback(async () => {
-    try {
-      const res = await fetch("/api/platform/usage");
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = await res.json();
-      setData(json);
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load usage data");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void fetchUsage();
-  }, [fetchUsage]);
-
   async function adminPost(body: Record<string, unknown>) {
     const res = await fetch("/api/platform/usage", {
       method: "POST",
@@ -382,7 +346,7 @@ export function PlatformCostsSection() {
       body: JSON.stringify(body),
     });
     if (!res.ok) throw new Error(`Admin action failed: HTTP ${res.status}`);
-    await fetchUsage();
+    onRefresh();
   }
 
   async function handleVerify(metric: PlatformMetric) {
@@ -399,7 +363,7 @@ export function PlatformCostsSection() {
     });
   }
 
-  if (loading) {
+  if (!platformUsage) {
     return (
       <SectionCard>
         <SectionHeader icon="💰" title="Platform Costs" />
@@ -410,15 +374,7 @@ export function PlatformCostsSection() {
     );
   }
 
-  if (error || !data) {
-    return (
-      <SectionCard>
-        <SectionHeader icon="💰" title="Platform Costs" />
-        <p className="mt-3 text-sm text-red-600">{error ?? "No data available"}</p>
-      </SectionCard>
-    );
-  }
-
+  const data = platformUsage;
   const { summary, by_service, total_metrics } = data;
 
   // Top 3 based on sort mode
