@@ -33,7 +33,7 @@ const AnthropicCard = dynamic(
 
 const PlatformCostsSection = dynamic(
   () => import("./PlatformCostsSection").then((m) => ({ default: m.PlatformCostsSection })),
-  { ssr: false, loading: () => <LoadingSkeleton variant="card" /> },
+  { ssr: false },
 );
 
 // ── Types from server ─────────────────────────────────────────────────────────
