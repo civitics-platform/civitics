@@ -875,11 +875,19 @@ export function DashboardClient({
         />
       )}
 
-      {/* Refresh timestamp */}
+      {/* Refresh timestamp + manual refresh button */}
       {mounted && data && (
-        <p className="text-xs text-gray-400" suppressHydrationWarning>
+        <p className="flex items-center gap-1 text-xs text-gray-400" suppressHydrationWarning>
           Updated {new Date(data.status.meta.timestamp).toLocaleTimeString()} ·
-          query took {data.status.meta.query_time_ms}ms · auto-refreshes every 60s
+          query took {data.status.meta.query_time_ms}ms
+          <button
+            onClick={refresh}
+            disabled={loading}
+            className="ml-1 transition-colors hover:text-gray-600 disabled:opacity-40"
+            title="Refresh data"
+          >
+            {loading ? "⟳" : "↺"}
+          </button>
         </p>
       )}
 

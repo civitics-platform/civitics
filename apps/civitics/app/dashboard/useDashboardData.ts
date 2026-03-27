@@ -150,30 +150,13 @@ export function useDashboardData() {
     }
   }, []);
 
+  // Fetch exactly once on mount. No interval, no tab-focus re-fetch.
+  // In React StrictMode (dev only) effects run twice — this produces 2 calls
+  // in dev but exactly 1 in production. That is acceptable and expected.
   useEffect(() => {
-    let interval: ReturnType<typeof setInterval>;
-
-    const start = () => { interval = setInterval(fetchData, 900_000); };
-    const stop = () => { clearInterval(interval); };
-
-    const onVisibility = () => {
-      if (document.hidden) {
-        stop();
-      } else {
-        fetchData();
-        start();
-      }
-    };
-
-    document.addEventListener("visibilitychange", onVisibility);
     fetchData();
-    start();
-
-    return () => {
-      stop();
-      document.removeEventListener("visibilitychange", onVisibility);
-    };
-  }, [fetchData]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return { data, loading, error, refresh: fetchData };
 }
