@@ -3,7 +3,24 @@ export const revalidate = 0;
 
 import { createAdminClient } from "@civitics/db";
 import { PageHeader } from "@civitics/ui";
-import { DashboardClient } from "./DashboardClient";
+import nextDynamic from "next/dynamic";
+
+const DashboardClient = nextDynamic(
+  () => import("./DashboardClient").then((m) => ({ default: m.DashboardClient })),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="space-y-6">
+        {[...Array(6)].map((_, i) => (
+          <div
+            key={i}
+            className="h-40 bg-white rounded-xl border border-gray-200 shadow-sm animate-pulse"
+          />
+        ))}
+      </div>
+    ),
+  },
+);
 import { PageViewTracker } from "../components/PageViewTracker";
 
 export const metadata = { title: "Platform Transparency | Civitics" };

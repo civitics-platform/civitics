@@ -832,12 +832,6 @@ export function DashboardClient({
 }: DashboardClientProps) {
   const { data, loading, error, refresh } = useDashboardData();
   const [_secondsAgo] = useState(0);
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
   const db = data && !isPartial(data.status.database) ? data.status.database : null;
   const failedTests =
     data && !isPartial(data.status.self_tests)
@@ -856,21 +850,6 @@ export function DashboardClient({
       : null;
   const topPages = activitySectionData?.top_pages ?? activity;
   const totalViews = activitySectionData?.page_views_24h ?? db?.page_views_24h ?? 0;
-
-  if (!mounted) {
-    return (
-      <div className="min-h-screen bg-gray-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
-          {[...Array(6)].map((_, i) => (
-            <div
-              key={i}
-              className="h-40 bg-white rounded-xl border border-gray-200 shadow-sm animate-pulse"
-            />
-          ))}
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-6">
@@ -893,7 +872,7 @@ export function DashboardClient({
       )}
 
       {/* Refresh timestamp + manual refresh button */}
-      {mounted && data && (
+      {data && (
         <p className="flex items-center gap-1 text-xs text-gray-400" suppressHydrationWarning>
           Updated {new Date(data.status.meta.timestamp).toLocaleTimeString()} ·
           query took {data.status.meta.query_time_ms}ms
