@@ -79,12 +79,25 @@ function CardInner({
         {badge && (
           <span>
             {badge.href ? (
-              <a
-                href={badge.href}
-                className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${badgeVariantStyles[badgeVariant]}`}
+              <span
+                role="link"
+                tabIndex={0}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (badge.href) window.location.href = badge.href;
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && badge.href) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    window.location.href = badge.href;
+                  }
+                }}
+                className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium cursor-pointer ${badgeVariantStyles[badgeVariant]}`}
               >
                 {badge.label}
-              </a>
+              </span>
             ) : (
               <span
                 className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${badgeVariantStyles[badgeVariant]}`}
