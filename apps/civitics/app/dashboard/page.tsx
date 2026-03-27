@@ -1,29 +1,16 @@
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
-
 import { createAdminClient } from "@civitics/db";
 import { PageHeader } from "@civitics/ui";
 import nextDynamic from "next/dynamic";
+import { PageViewTracker } from "../components/PageViewTracker";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+export const metadata = { title: "Platform Transparency | Civitics" };
 
 const DashboardClient = nextDynamic(
   () => import("./DashboardClient").then((m) => ({ default: m.DashboardClient })),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="space-y-6">
-        {[...Array(6)].map((_, i) => (
-          <div
-            key={i}
-            className="h-40 bg-white rounded-xl border border-gray-200 shadow-sm animate-pulse"
-          />
-        ))}
-      </div>
-    ),
-  },
+  { ssr: false, loading: () => null },
 );
-import { PageViewTracker } from "../components/PageViewTracker";
-
-export const metadata = { title: "Platform Transparency | Civitics" };
 
 // ── Server-side data fetching ─────────────────────────────────────────────────
 
@@ -135,7 +122,7 @@ export default async function DashboardPage() {
           ]}
         />
 
-        {/* FIX 2: The Receipt */}
+        {/* The Receipt */}
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-6 mb-8">
           <p className="text-base font-semibold text-amber-900 mb-2">
             This page is our receipt.
