@@ -1,16 +1,11 @@
 import { createAdminClient } from "@civitics/db";
 import { PageHeader } from "@civitics/ui";
-import nextDynamic from "next/dynamic";
 import { PageViewTracker } from "../components/PageViewTracker";
+import { DashboardWrapper } from "./DashboardWrapper";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const metadata = { title: "Platform Transparency | Civitics" };
-
-const DashboardClient = nextDynamic(
-  () => import("./DashboardClient").then((m) => ({ default: m.DashboardClient })),
-  { ssr: false, loading: () => null },
-);
 
 // ── Server-side data fetching ─────────────────────────────────────────────────
 
@@ -138,7 +133,7 @@ export default async function DashboardPage() {
           </p>
         </div>
 
-        <DashboardClient
+        <DashboardWrapper
           openProposals={openProposals}
           activity={activity}
           officialsBreakdown={officialsBreakdown}
