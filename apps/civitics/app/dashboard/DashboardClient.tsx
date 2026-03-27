@@ -25,6 +25,7 @@ import {
   type ActivitySectionData,
 } from "./useDashboardData";
 import dynamic from "next/dynamic";
+import { useRouter } from "next/navigation";
 
 const AnthropicCard = dynamic(
   () => import("./components/AnthropicCard").then((m) => ({ default: m.AnthropicCard })),
@@ -167,6 +168,7 @@ function StatsSection({
   officialsBreakdown: OfficialsBreakdown;
   openProposalCount: number;
 }) {
+  const router = useRouter();
   const db = isPartial(database) ? null : database;
   const costs = isPartial(aiCosts) ? null : aiCosts;
 
@@ -190,7 +192,7 @@ function StatsSection({
         label="Proposals"
         value={db?.proposals ?? 0}
         formatAs="number"
-        href="/proposals"
+        onClick={() => router.push("/proposals")}
         badge={
           openProposalCount > 0
             ? {

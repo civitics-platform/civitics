@@ -1,4 +1,6 @@
-import * as React from "react";
+"use client";
+
+import { useState, useEffect } from "react";
 import { formatUSD, formatNumber } from "../../utils";
 import { LoadingSkeleton } from "../feedback/LoadingSkeleton";
 
@@ -10,6 +12,7 @@ interface StatCardProps {
   trend?: string;
   trendDirection?: "up" | "down" | "neutral";
   href?: string;
+  onClick?: () => void;
   badge?: {
     label: string;
     href?: string;
@@ -141,11 +144,33 @@ function CardInner({
 }
 
 export function StatCard(props: StatCardProps) {
-  if (props.loading) {
-    return <LoadingSkeleton variant="stat-card" />;
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted || props.loading) {
+    return (
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 animate-pulse">
+        <div className="h-4 bg-gray-100 rounded w-24 mb-4" />
+        <div className="h-8 bg-gray-100 rounded w-16" />
+      </div>
+    );
   }
 
   const inner = <CardInner {...props} />;
+
+  if (props.onClick) {
+    return (
+      <div
+        onClick={props.onClick}
+        className="group block bg-white rounded-xl border border-gray-200 shadow-sm p-6 cursor-pointer hover:border-blue-200 hover:shadow-md transition-all duration-150"
+      >
+        {inner}
+      </div>
+    );
+  }
 
   if (props.href) {
     return (
