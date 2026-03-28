@@ -69,9 +69,23 @@ function draw(
 ) {
   d3.select(svgEl).selectAll("*").remove();
 
+  if (width < 100 || height < 100) {
+    d3.select(svgEl)
+      .attr("width", width)
+      .attr("height", height)
+      .append("text")
+      .attr("x", width / 2)
+      .attr("y", height / 2)
+      .attr("text-anchor", "middle")
+      .attr("fill", "#9ca3af")
+      .attr("font-size", "12px")
+      .text("Expand panel to see chord diagram");
+    return;
+  }
+
   const size   = Math.min(width, height);
-  const outerR = size / 2 - 80;
-  const innerR = outerR - 24;
+  const outerR = Math.max(10, size / 2 - 80);
+  const innerR = Math.max(5, outerR - 24);
 
   const g = d3.select(svgEl)
     .attr("width", width)
