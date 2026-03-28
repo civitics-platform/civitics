@@ -10,12 +10,19 @@
  *   Auth:    x-api-key: <admin key>  (sk-ant-admin01-...)
  *   Paging:  ?page=<token> until has_more: false  (≈7 buckets/page)
  *
+ *   NOTE: The org ID must NOT appear in the URL path — the admin key already
+ *   identifies the org. Correct URL: /v1/organizations/usage_report/messages
+ *
  *   usage_report results fields:
  *     uncached_input_tokens, cache_read_input_tokens, output_tokens, model
  *     cache_creation: { ephemeral_1h_input_tokens, ephemeral_5m_input_tokens }
  *
  *   cost_report results fields:
  *     amount (string, in USD CENTS), model, token_type, currency: "USD"
+ *
+ * Individual accounts: if the API returns 404/403 with "individual account"
+ * in the error body (org-level reporting not available), falls back to
+ * querying api_usage_logs in Supabase (source: "api_usage_logs").
  *
  * Used by:
  *   /api/platform/anthropic  — dedicated dashboard card
@@ -24,6 +31,9 @@
  * Never throws — always returns a structured response with error field set.
  */
 
+import { createAdminClient } from "./client";
+
+// Base URL — no org ID in path; admin key determines the org
 const BASE = "https://api.anthropic.com/v1/organizations";
 const MAX_PAGES = 20; // safety cap
 
@@ -60,7 +70,7 @@ export type AnthropicUsageSuccess = {
   last_24h: AnthropicWindowUsage;
   this_month: AnthropicWindowUsage;
   budget: AnthropicBudget;
-  source: "api";
+  source: "api" | "api_usage_logs";
   fetched_at: string;
 };
 
@@ -168,6 +178,44 @@ async function fetchAllPages<T>(
   }
 
   return all;
+}
+
+/** Returns true when the error looks like an individual-account 403/404. */
+function isIndividualAccountError(msg: string): boolean {
+  return (msg.includes("HTTP 403") || msg.includes("HTTP 404")) &&
+    msg.toLowerCase().includes("individual");
+}
+
+type UsageLogRow = {
+  input_tokens: number | null;
+  output_tokens: number | null;
+  cost_cents: number | null;
+};
+
+/** Fallback: build a window from api_usage_logs when org API is unavailable. */
+async function fetchWindowFromLogs(
+  startingAt: string,
+  endingAt: string,
+): Promise<AnthropicWindowUsage> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const supabase = createAdminClient() as any;
+  const { data } = await supabase
+    .from("api_usage_logs")
+    .select("input_tokens, output_tokens, cost_cents")
+    .eq("service", "anthropic")
+    .gte("created_at", startingAt)
+    .lte("created_at", endingAt);
+
+  const window = emptyWindow();
+  for (const row of (data ?? []) as UsageLogRow[]) {
+    const inp = row.input_tokens ?? 0;
+    const out = row.output_tokens ?? 0;
+    window.input_tokens += inp;
+    window.output_tokens += out;
+    window.total_tokens += inp + out;
+    window.cost_usd += (row.cost_cents ?? 0) / 100;
+  }
+  return window;
 }
 
 function aggregateUsage(
@@ -317,13 +365,56 @@ export async function getAnthropicUsage(): Promise<AnthropicUsageResponse> {
 
   const settled = await Promise.allSettled(tasks.map((t) => t.promise));
 
-  // If all 6 failed, return an error
+  // If all 6 failed, check for individual-account error → fall back to DB logs
   if (settled.every((r) => r.status === "rejected")) {
     const firstRejected = settled.find((r) => r.status === "rejected");
     const msg =
       firstRejected?.status === "rejected"
         ? String(firstRejected.reason)
         : "All requests failed";
+
+    if (isIndividualAccountError(msg)) {
+      try {
+        const [last_hour, last_24h, this_month] = await Promise.all([
+          fetchWindowFromLogs(
+            new Date(now.getTime() - 3_600_000).toISOString(),
+            now.toISOString(),
+          ),
+          fetchWindowFromLogs(
+            new Date(now.getTime() - 86_400_000).toISOString(),
+            now.toISOString(),
+          ),
+          fetchWindowFromLogs(monthStart, now.toISOString()),
+        ]);
+
+        const limitUsd = parseFloat(process.env.ANTHROPIC_MONTHLY_BUDGET ?? "") || 3.5;
+        const spentUsd = this_month.cost_usd;
+        const pctUsed = limitUsd > 0 ? (spentUsd / limitUsd) * 100 : 0;
+
+        const fallbackResult: AnthropicUsageResponse = {
+          last_hour,
+          last_24h,
+          this_month,
+          budget: {
+            limit_usd: limitUsd,
+            spent_usd: spentUsd,
+            remaining_usd: Math.max(0, limitUsd - spentUsd),
+            pct_used: Math.round(pctUsed * 10) / 10,
+            warning: pctUsed > 80,
+            critical: pctUsed > 95,
+          },
+          source: "api_usage_logs",
+          fetched_at,
+        };
+
+        cachedResult = fallbackResult;
+        cacheExpiresAt = Date.now() + CACHE_TTL_MS;
+        return fallbackResult;
+      } catch {
+        // DB fallback also failed — fall through to api_error
+      }
+    }
+
     return { error: msg, source: "api_error", fetched_at };
   }
 
