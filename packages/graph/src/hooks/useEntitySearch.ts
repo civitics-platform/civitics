@@ -4,7 +4,7 @@
  * packages/graph/src/hooks/useEntitySearch.ts
  *
  * Debounced entity search hook.
- * Queries /api/graph/entities and returns results as FocusEntity[].
+ * Queries /api/graph/search and returns results as FocusEntity[].
  */
 
 import { useState, useEffect } from 'react';
@@ -28,19 +28,20 @@ export function useEntitySearch() {
       setError(null);
       try {
         const res = await fetch(
-          `/api/graph/entities?q=` + encodeURIComponent(query.trim())
+          `/api/graph/search?q=` + encodeURIComponent(query.trim())
         );
         const data = await res.json();
 
         // Map API results to FocusEntity shape
         setResults(
-          (data.entities ?? data ?? []).map((e: Record<string, unknown>) => ({
-            id: e.id,
-            name: e.name,
-            type: e.type ?? 'official',
-            role: e.role ?? e.role_title,
-            party: e.party ?? e.party_affiliation,
-            photoUrl: e.photo_url,
+          (data ?? []).map((e: Record<string, unknown>) => ({
+            id: e.id as string,
+            name: e.label as string,
+            type: (e.type as string) ?? 'official',
+            role: (e.subtitle as string) ?? undefined,
+            party: (e.party as string) ?? undefined,
+            photoUrl: undefined,
+            connectionCount: (e.connectionCount as number) ?? 0,
           }))
         );
       } catch (err) {
