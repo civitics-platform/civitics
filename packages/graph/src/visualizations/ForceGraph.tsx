@@ -306,7 +306,7 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
         .attr("font-size", "9px")
         .attr("fill", edgeColor)
         .attr("font-weight", "600")
-        .text((d) => (CONNECTION_TYPE_REGISTRY[d.connectionType]?.label ?? d.connectionType).replace(/_/g, " "));
+        .text((d) => (CONNECTION_TYPE_REGISTRY[d.connectionType]?.label ?? d.connectionType ?? '').replace(/_/g, " "));
 
       // ── Node groups ───────────────────────────────────────────────────────
       const nodeGroup = g.append("g").attr("class", "nodes");

@@ -25,28 +25,58 @@ interface BrowseEntity {
   photoUrl?: string;
 }
 
+// Maps scope → { q, type, resultKey, mapEntity }
+const SCOPE_CONFIG: Record<string, {
+  q: string;
+  type: string;
+  resultKey: string;
+  mapEntity: (e: Record<string, unknown>) => BrowseEntity;
+}> = {
+  federal_officials: {
+    q: 'senator',
+    type: 'officials',
+    resultKey: 'officials',
+    mapEntity: (e) => ({
+      id:       String(e.id ?? ''),
+      name:     String(e.full_name ?? e.label ?? ''),
+      type:     'official',
+      role:     e.role_title as string | undefined,
+      party:    e.party as string | undefined,
+      photoUrl: e.photo_url as string | undefined,
+    }),
+  },
+  agencies: {
+    q: 'a',
+    type: 'agencies',
+    resultKey: 'agencies',
+    mapEntity: (e) => ({
+      id:       String(e.id ?? ''),
+      name:     String(e.name ?? e.label ?? ''),
+      type:     'agency',
+      role:     e.acronym as string | undefined,
+      party:    undefined,
+      photoUrl: undefined,
+    }),
+  },
+};
+
 function useBrowseEntities(scope: string, limit = 20) {
   const [entities, setEntities] = useState<BrowseEntity[]>([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
+    const cfg = SCOPE_CONFIG[scope];
+    if (!cfg) {
+      setEntities([]);
+      return;
+    }
     setLoading(true);
-    fetch(`/api/graph/entities?browse=${scope}&limit=${limit}`)
+    fetch(`/api/search?q=${encodeURIComponent(cfg.q)}&type=${cfg.type}`)
       .then(r => r.json())
       .then((data: unknown) => {
-        const arr = Array.isArray(data)
-          ? data
-          : (data as Record<string, unknown>)?.entities ?? [];
-        setEntities(
-          (arr as Record<string, unknown>[]).map(e => ({
-            id:       String(e.id ?? ''),
-            name:     String(e.name ?? e.label ?? ''),
-            type:     (e.type as FocusEntity['type']) ?? 'official',
-            role:     e.role as string | undefined,
-            party:    e.party as string | undefined,
-            photoUrl: e.photo_url as string | undefined,
-          }))
-        );
+        const obj = data as Record<string, unknown>;
+        const arr = (obj?.[cfg.resultKey] ?? []) as Record<string, unknown>[];
+        setEntities(arr.slice(0, limit).map(cfg.mapEntity));
       })
       .catch(() => setEntities([]))
       .finally(() => setLoading(false));
