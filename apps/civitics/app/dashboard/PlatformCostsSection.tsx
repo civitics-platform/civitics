@@ -253,16 +253,50 @@ function ServiceGroup({
           </a>
         )}
       </div>
-      {metrics.map((m) => (
-        <MetricRow
-          key={`${m.service}:${m.metric}`}
-          metric={m}
-          isAdmin={isAdmin}
-          adminKey={adminKey}
-          onVerify={onVerify}
-          onUpdate={onUpdate}
-        />
-      ))}
+      {metrics.map((m) => {
+        // For anthropic monthly spend, override displayed value with total account cost
+        const isAnthropicSpend = service === "anthropic" && m.metric === "monthly_spend_usd";
+        const totalCost = isAnthropicSpend ? anthropicDetail?.this_month?.cost_usd : undefined;
+        const appOnlyCost = aiCosts?.monthly_spent_usd ?? 0;
+
+        const displayMetric: PlatformMetric =
+          isAnthropicSpend && totalCost != null && m.included_limit > 0
+            ? {
+                ...m,
+                value: totalCost,
+                pct: (totalCost / m.included_limit) * 100,
+                status:
+                  (totalCost / m.included_limit) * 100 >= m.critical_pct
+                    ? "critical"
+                    : (totalCost / m.included_limit) * 100 >= m.warning_pct
+                      ? "warning"
+                      : "healthy",
+              }
+            : m;
+
+        const showSubLabel =
+          isAnthropicSpend &&
+          totalCost != null &&
+          Math.abs(totalCost - appOnlyCost) > 0.01;
+
+        return (
+          <div key={`${m.service}:${m.metric}`}>
+            <MetricRow
+              metric={displayMetric}
+              isAdmin={isAdmin}
+              adminKey={adminKey}
+              onVerify={onVerify}
+              onUpdate={onUpdate}
+            />
+            {showSubLabel && (
+              <div className="flex justify-between text-xs text-gray-400 mt-1 mb-2">
+                <span>${appOnlyCost.toFixed(2)} from Civitics app</span>
+                <span>${(totalCost - appOnlyCost).toFixed(2)} other tools</span>
+              </div>
+            )}
+          </div>
+        );
+      })}
 
       {/* Token detail toggle — anthropic only */}
       {service === "anthropic" && (
@@ -334,7 +368,7 @@ function ServiceGroup({
                       {fmtUsd(aiCosts?.last_24h_cost_usd ?? 0)}
                     </td>
                     <td className="tabular-nums font-medium">
-                      {fmtUsd(aiCosts?.monthly_spent_usd ?? 0)}
+                      {fmtUsd(anthropicDetail?.this_month?.cost_usd ?? aiCosts?.monthly_spent_usd ?? 0)}
                     </td>
                   </tr>
                 </tbody>
