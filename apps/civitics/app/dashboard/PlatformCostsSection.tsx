@@ -473,6 +473,34 @@ function ServiceCard({
       ? (anthropicDetail?.this_month?.cost_usd ?? aiCosts?.monthly_spent_usd ?? 0)
       : metrics.reduce((sum, m) => sum + (m.overage_cost ?? 0), 0);
 
+  // For Anthropic: override the collapsed bar to reflect total account spend, not just app spend
+  const anthropicBarPct =
+    service === "anthropic" && anthropicDetail?.this_month?.cost_usd != null
+      ? (() => {
+          const spendMetric = metrics.find((m) => m.metric === "monthly_spend_usd");
+          const budget = spendMetric?.included_limit ?? 3.5;
+          return (anthropicDetail.this_month!.cost_usd / budget) * 100;
+        })()
+      : null;
+  const displayBarPct = anthropicBarPct ?? (topMetric?.pct ?? 0);
+  const displayBarStatus =
+    anthropicBarPct != null
+      ? (() => {
+          const spendMetric = metrics.find((m) => m.metric === "monthly_spend_usd");
+          return anthropicBarPct >= (spendMetric?.critical_pct ?? 95)
+            ? "critical"
+            : anthropicBarPct >= (spendMetric?.warning_pct ?? 80)
+              ? "warning"
+              : "healthy";
+        })()
+      : (topMetric?.status ?? "healthy");
+
+  const appOnlyCost = aiCosts?.monthly_spent_usd ?? 0;
+  const showAnthropicSubLabel =
+    service === "anthropic" &&
+    anthropicDetail?.this_month?.cost_usd != null &&
+    Math.abs(anthropicDetail.this_month.cost_usd - appOnlyCost) > 0.01;
+
   return (
     <div className="border border-gray-200 rounded-xl overflow-hidden bg-white">
       {/* Collapsed header — always visible */}
@@ -497,18 +525,28 @@ function ServiceCard({
 
         {/* Single progress bar */}
         {topMetric && (
-          <div className="h-1.5 bg-gray-100 rounded-full mb-2">
-            <div
-              className={`h-full rounded-full ${
-                topMetric.status === "critical"
-                  ? "bg-red-500"
-                  : topMetric.status === "warning"
-                    ? "bg-amber-500"
-                    : "bg-green-500"
-              }`}
-              style={{ width: `${Math.min(topMetric.pct ?? 0, 100)}%` }}
-            />
-          </div>
+          <>
+            <div className="h-1.5 bg-gray-100 rounded-full mb-2">
+              <div
+                className={`h-full rounded-full ${
+                  displayBarStatus === "critical"
+                    ? "bg-red-500"
+                    : displayBarStatus === "warning"
+                      ? "bg-amber-500"
+                      : "bg-green-500"
+                }`}
+                style={{ width: `${Math.min(displayBarPct, 100)}%` }}
+              />
+            </div>
+            {showAnthropicSubLabel && (
+              <div className="flex justify-between text-xs text-gray-400 mt-1 mb-1">
+                <span>${appOnlyCost.toFixed(2)} from Civitics app</span>
+                <span>
+                  ${((anthropicDetail!.this_month!.cost_usd) - appOnlyCost).toFixed(2)} other tools
+                </span>
+              </div>
+            )}
+          </>
         )}
 
         {/* Show/hide button */}
