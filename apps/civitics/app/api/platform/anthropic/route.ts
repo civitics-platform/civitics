@@ -78,11 +78,12 @@ export async function GET() {
 
   const isFresh = ageMinutes < CACHE_TTL_MINUTES;
 
-  // FIX 3: Don't serve cached data if tokens=0 but cost>0 (bad seed data)
-  const cachedIsValid =
+  // FIX 3: Reject seed/bad data where cost > 0 but tokens = 0
+  const cachedDataUsable =
     cached &&
-    isFresh &&
     !((tokenRow?.value as number ?? 0) === 0 && (cached.value as number) > 0);
+
+  const cachedIsValid = cachedDataUsable && isFresh;
 
   if (cachedIsValid) {
     return NextResponse.json({
@@ -108,8 +109,8 @@ export async function GET() {
   const data = await getAnthropicUsage();
 
   if ("error" in data) {
-    // API failed — serve stale DB data if available
-    if (cached) {
+    // API failed — serve stale DB data only if it's not bad seed data
+    if (cachedDataUsable) {
       return NextResponse.json({
         last_hour: null,
         last_24h: null,

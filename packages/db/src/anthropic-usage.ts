@@ -183,10 +183,13 @@ async function fetchAllPages<T>(
   return all;
 }
 
-/** Returns true when the error looks like an individual-account 403/404. */
+/**
+ * Returns true when the org-level endpoint is unavailable for this account.
+ * We're always hitting /v1/organizations/... so any 403 or 404 means
+ * org-level reporting isn't accessible — fall back to local usage logs.
+ */
 function isIndividualAccountError(msg: string): boolean {
-  return (msg.includes("HTTP 403") || msg.includes("HTTP 404")) &&
-    msg.toLowerCase().includes("individual");
+  return msg.includes("HTTP 403") || msg.includes("HTTP 404");
 }
 
 type UsageLogRow = {
