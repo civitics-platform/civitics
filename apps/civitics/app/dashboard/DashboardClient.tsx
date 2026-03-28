@@ -812,6 +812,22 @@ export function DashboardClient({
   const { data, error, refresh } = useDashboardData();
   const [_secondsAgo] = useState(0);
   const [mounted, setMounted] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+
+  async function handleAdminRefresh() {
+    setRefreshing(true);
+    try {
+      await fetch("/api/platform/anthropic", {
+        method: "POST",
+        headers: {
+          "X-Admin-Key": process.env["NEXT_PUBLIC_ADMIN_KEY"] ?? "admin",
+        },
+      });
+      await refresh();
+    } finally {
+      setRefreshing(false);
+    }
+  }
 
   useEffect(() => {
     setMounted(true);
@@ -929,6 +945,21 @@ export function DashboardClient({
           selfTests={data?.status.self_tests ?? { error: "Loading", partial: true }}
           aiCosts={data?.status.ai_costs ?? { error: "Loading", partial: true }}
         />
+      </div>
+
+      {/* Admin refresh — bottom right */}
+      <div className="fixed bottom-4 right-4 z-50 flex items-center gap-2">
+        <span className="text-xs text-gray-300 font-mono bg-black/20 px-2 py-1 rounded">
+          local
+        </span>
+        <button
+          onClick={handleAdminRefresh}
+          disabled={refreshing}
+          title="Force refresh all platform data"
+          className="text-xs bg-gray-800 text-gray-300 hover:bg-gray-700 hover:text-white px-2 py-1 rounded transition-colors disabled:opacity-50"
+        >
+          {refreshing ? "⟳" : "↺ Refresh"}
+        </button>
       </div>
     </div>
   );

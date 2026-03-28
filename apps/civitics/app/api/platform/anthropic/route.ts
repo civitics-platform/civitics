@@ -52,16 +52,25 @@ export async function GET() {
     1,
   ).toISOString();
 
-  // 1. Check DB for a recent spend entry this month
-  const { data: cached } = await supabase
-    .from("platform_usage")
-    .select("value, source, recorded_at")
-    .eq("service", "anthropic")
-    .eq("metric", "monthly_spend_usd")
-    .eq("period_start", monthStart)
-    .order("recorded_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  // 1. Check DB for a recent spend + token entry this month
+  const [{ data: cached }, { data: tokenRow }] = await Promise.all([
+    supabase
+      .from("platform_usage")
+      .select("value, source, recorded_at")
+      .eq("service", "anthropic")
+      .eq("metric", "monthly_spend_usd")
+      .eq("period_start", monthStart)
+      .order("recorded_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    supabase
+      .from("platform_usage")
+      .select("value")
+      .eq("service", "anthropic")
+      .eq("metric", "monthly_tokens")
+      .eq("period_start", monthStart)
+      .maybeSingle(),
+  ]);
 
   const ageMinutes = cached?.recorded_at
     ? (Date.now() - new Date(cached.recorded_at as string).getTime()) / 60_000
@@ -69,15 +78,13 @@ export async function GET() {
 
   const isFresh = ageMinutes < CACHE_TTL_MINUTES;
 
-  if (isFresh && cached) {
-    const { data: tokenRow } = await supabase
-      .from("platform_usage")
-      .select("value")
-      .eq("service", "anthropic")
-      .eq("metric", "monthly_tokens")
-      .eq("period_start", monthStart)
-      .maybeSingle();
+  // FIX 3: Don't serve cached data if tokens=0 but cost>0 (bad seed data)
+  const cachedIsValid =
+    cached &&
+    isFresh &&
+    !((tokenRow?.value as number ?? 0) === 0 && (cached.value as number) > 0);
 
+  if (cachedIsValid) {
     return NextResponse.json({
       last_hour: null,
       last_24h: null,
@@ -103,14 +110,6 @@ export async function GET() {
   if ("error" in data) {
     // API failed — serve stale DB data if available
     if (cached) {
-      const { data: tokenRow } = await supabase
-        .from("platform_usage")
-        .select("value")
-        .eq("service", "anthropic")
-        .eq("metric", "monthly_tokens")
-        .eq("period_start", monthStart)
-        .maybeSingle();
-
       return NextResponse.json({
         last_hour: null,
         last_24h: null,
@@ -157,4 +156,17 @@ export async function GET() {
       source: data.source,
     },
   });
+}
+
+export async function POST(request: Request) {
+  const adminKey = request.headers.get("X-Admin-Key");
+  if (adminKey !== process.env["ADMIN_SECRET"]) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const supabase = createAdminClient() as any;
+  await supabase.from("platform_usage").delete().eq("service", "anthropic");
+
+  return NextResponse.json({ success: true, message: "Cache cleared, next load will refresh" });
 }
