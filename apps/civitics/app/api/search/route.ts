@@ -94,6 +94,8 @@ export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl;
   const q = (searchParams.get("q") ?? "").trim();
   const typeFilter = searchParams.get("type") ?? "all";
+  const limitParam = parseInt(searchParams.get("limit") ?? "10");
+  const limit = Math.min(isNaN(limitParam) ? 10 : limitParam, 50);
 
   // Minimum 2 characters — return empty for very short queries
   if (q.length < 2) {
@@ -125,7 +127,7 @@ export async function GET(req: NextRequest) {
       .from("officials")
       .select("id, full_name, role_title, party, photo_url, is_active, metadata")
       .eq("is_active", true)
-      .limit(10);
+      .limit(limit);
 
     if (partyFilter) {
       query = query.eq("party", partyFilter);
@@ -162,7 +164,7 @@ export async function GET(req: NextRequest) {
       .select("id, title, status, type, comment_period_end, metadata, summary_plain")
       .or(`title.ilike.%${q}%,summary_plain.ilike.%${q}%`)
       .order("comment_period_end", { ascending: true, nullsFirst: false })
-      .limit(10);
+      .limit(limit);
 
     // Fetch AI summaries for matched proposals
     const ids = (proposalData ?? []).map((p: { id: string }) => p.id);
@@ -204,7 +206,7 @@ export async function GET(req: NextRequest) {
       .eq("is_active", true)
       .or(`name.ilike.%${q}%,acronym.ilike.%${q}%,description.ilike.%${q}%`)
       .order("name")
-      .limit(5);
+      .limit(limit);
 
     // Sort: exact acronym match first
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

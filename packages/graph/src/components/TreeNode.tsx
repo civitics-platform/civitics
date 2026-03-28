@@ -14,6 +14,7 @@
  */
 
 import { useState, type ReactNode } from 'react';
+import React from 'react';
 
 // ── Action ─────────────────────────────────────────────────────────────────────
 
@@ -30,7 +31,7 @@ export type TreeNodeVariant = 'section' | 'item' | 'entity' | 'connection';
 // ── Props ──────────────────────────────────────────────────────────────────────
 
 export interface TreeNodeProps {
-  label: string;
+  label: string | React.ReactNode;
   variant?: TreeNodeVariant;
   /** Depth for indentation: depth * 12px */
   depth?: number;
@@ -146,9 +147,9 @@ export function TreeNode({
         {variant === 'entity' && (
           <div className={`w-6 h-6 shrink-0 rounded-full ring-2 ${partyRingClass(party)} overflow-hidden flex items-center justify-center bg-gray-100`}>
             {photoUrl ? (
-              <img src={photoUrl} alt={label} className="w-full h-full object-cover" />
+              <img src={photoUrl} alt={typeof label === 'string' ? label : ''} className="w-full h-full object-cover" />
             ) : (
-              <span className="text-[9px] font-semibold text-gray-600">{initials(label)}</span>
+              <span className="text-[9px] font-semibold text-gray-600">{typeof label === 'string' ? initials(label) : '?'}</span>
             )}
           </div>
         )}
@@ -219,7 +220,7 @@ export function TreeNode({
 // ── TreeSection ────────────────────────────────────────────────────────────────
 
 export interface TreeSectionProps {
-  label: string;
+  label: string | React.ReactNode;
   icon?: string;
   count?: number;
   action?: {
