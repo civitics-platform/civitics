@@ -54,6 +54,9 @@ export type AnthropicWindowUsage = {
   total_tokens: number;
   cost_usd: number;
   by_model: AnthropicModelUsage[];
+  /** True when data came from api_usage_logs fallback rather than the Anthropic Admin API.
+   *  Cache/model breakdown fields will be zero/empty in this case. */
+  from_logs?: boolean;
 };
 
 export type AnthropicBudget = {
@@ -215,6 +218,7 @@ async function fetchWindowFromLogs(
     window.total_tokens += inp + out;
     window.cost_usd += (row.cost_cents ?? 0) / 100;
   }
+  window.from_logs = true;
   return window;
 }
 
