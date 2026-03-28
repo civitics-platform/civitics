@@ -36,7 +36,7 @@ export function EntitySearchInput({ onSelect, placeholder = 'Search officials, a
           onChange={e => setQuery(e.target.value)}
           placeholder={placeholder}
           disabled={disabled}
-          className="w-full pl-6 pr-2 py-1.5 text-xs border border-gray-200 rounded-md bg-white placeholder:text-gray-400 focus:outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-full pl-6 pr-2 py-1.5 text-xs border border-gray-200 rounded-md bg-white text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400 disabled:opacity-50 disabled:cursor-not-allowed"
         />
         {query && (
           <button
