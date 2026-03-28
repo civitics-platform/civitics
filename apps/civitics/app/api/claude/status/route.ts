@@ -387,7 +387,7 @@ export async function GET(request: Request) {
         const [
           chordData,
           warrenVotesRes,
-          usageRows,
+          anthropicUsageResult,
           cronState,
           connPipelineRes,
           voteYesTotal,
@@ -402,11 +402,7 @@ export async function GET(request: Request) {
                 .eq("connection_type", "vote_yes")
             : Promise.resolve({ count: null }),
 
-          anyDb
-            .from("api_usage_logs")
-            .select("input_tokens, output_tokens, cost_cents")
-            .eq("service", "anthropic")
-            .gte("created_at", monthStart),
+          getAnthropicUsage(),
 
           anyDb
             .from("pipeline_state")
@@ -428,24 +424,11 @@ export async function GET(request: Request) {
             .eq("connection_type", "vote_yes"),
         ]);
 
-        // Compute monthly spend for budget check
-        type UsageRow = {
-          input_tokens: number | null;
-          output_tokens: number | null;
-          cost_cents: number | null;
-        };
-        const monthlySpent = ((usageRows.data ?? []) as UsageRow[]).reduce(
-          (sum, r) => {
-            if (r.input_tokens != null && r.output_tokens != null) {
-              return (
-                sum +
-                (r.input_tokens * 0.25 + r.output_tokens * 1.25) / 1_000_000
-              );
-            }
-            return sum + (r.cost_cents ?? 0) / 100;
-          },
-          0,
-        );
+        // Compute monthly spend for budget check — use Admin API when available
+        const monthlySpent =
+          anthropicUsageResult.source === "api"
+            ? anthropicUsageResult.this_month.cost_usd
+            : 0;
 
         // chord: count distinct industries (excluding untagged)
         type ChordRow = { industry: string };
@@ -484,8 +467,12 @@ export async function GET(request: Request) {
           },
           {
             name: "ai_budget_ok",
-            passed: monthlySpent < 3.5 * 0.9,
-            detail: `$${monthlySpent.toFixed(4)} of $3.50 budget (${Math.round((monthlySpent / 3.5) * 100)}% used)`,
+            passed: anthropicUsageResult.source === "api"
+              ? monthlySpent < anthropicUsageResult.budget.limit_usd * 0.9
+              : monthlySpent < 3.5 * 0.9,
+            detail: anthropicUsageResult.source === "api"
+              ? `$${monthlySpent.toFixed(4)} of $${anthropicUsageResult.budget.limit_usd.toFixed(2)} budget (${Math.round((monthlySpent / anthropicUsageResult.budget.limit_usd) * 100)}% used) [admin api]`
+              : `$${monthlySpent.toFixed(4)} — admin key unavailable`,
           },
           {
             name: "nightly_ran_today",
