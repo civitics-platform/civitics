@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import type { PlatformMetric } from "@civitics/db";
+
 // ── Types matching /api/claude/status response ────────────────────────────────
 
 type PartialError = { error: string; partial: true };
@@ -77,45 +79,6 @@ export type StatusData = {
   activity?: ActivitySectionData | PartialError;
 };
 
-export type SourceDisplay = {
-  label: string;
-  color: "green" | "amber" | "gray";
-  icon: string;
-  tooltip: string;
-  isStale: boolean;
-  needsVerification: boolean;
-};
-
-export type PlatformMetric = {
-  id: string;
-  service: string;
-  metric: string;
-  plan: string;
-  included_limit: number;
-  unit: string;
-  overage_unit_cost: number | null;
-  overage_unit: string | null;
-  overage_cap: number | null;
-  display_label: string | null;
-  display_group: string | null;
-  warning_pct: number;
-  critical_pct: number;
-  billing_cycle: string;
-  sort_order: number;
-  notes: string | null;
-  is_active: boolean;
-  value: number | null;
-  source: "api" | "webhook" | "estimated" | "manual" | null;
-  verified_at: string | null;
-  verified_by: string | null;
-  stale_after_days: number | null;
-  recorded_at: string | null;
-  pct: number;
-  status: "healthy" | "warning" | "critical";
-  overage_cost: number;
-  source_display: SourceDisplay;
-};
-
 export type ChordFlow = {
   from: string;
   from_id?: string;
@@ -187,13 +150,30 @@ export function useDashboardData() {
     }
   }, []);
 
-  // Fetch exactly once on mount. No interval, no tab-focus re-fetch.
-  // In React StrictMode (dev only) effects run twice — this produces 2 calls
-  // in dev but exactly 1 in production. That is acceptable and expected.
   useEffect(() => {
+    let interval: ReturnType<typeof setInterval>;
+
+    const start = () => { interval = setInterval(fetchData, 900_000); };
+    const stop = () => { clearInterval(interval); };
+
+    const onVisibility = () => {
+      if (document.hidden) {
+        stop();
+      } else {
+        fetchData();
+        start();
+      }
+    };
+
+    document.addEventListener("visibilitychange", onVisibility);
     fetchData();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    start();
+
+    return () => {
+      stop();
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [fetchData]);
 
   return { data, loading, error, refresh: fetchData };
 }

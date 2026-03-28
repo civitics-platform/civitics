@@ -1,10 +1,11 @@
-import { createAdminClient } from "@civitics/db";
-import { PageHeader } from "@civitics/ui";
-import { PageViewTracker } from "../components/PageViewTracker";
-import { DashboardWrapper } from "./DashboardWrapper";
-
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
+
+import { createAdminClient } from "@civitics/db";
+import { PageHeader } from "@civitics/ui";
+import { DashboardClient } from "./DashboardClient";
+import { PageViewTracker } from "../components/PageViewTracker";
+
 export const metadata = { title: "Platform Transparency | Civitics" };
 
 // ── Server-side data fetching ─────────────────────────────────────────────────
@@ -117,7 +118,7 @@ export default async function DashboardPage() {
           ]}
         />
 
-        {/* The Receipt */}
+        {/* FIX 2: The Receipt */}
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-6 mb-8">
           <p className="text-base font-semibold text-amber-900 mb-2">
             This page is our receipt.
@@ -133,7 +134,7 @@ export default async function DashboardPage() {
           </p>
         </div>
 
-        <DashboardWrapper
+        <DashboardClient
           openProposals={openProposals}
           activity={activity}
           officialsBreakdown={officialsBreakdown}

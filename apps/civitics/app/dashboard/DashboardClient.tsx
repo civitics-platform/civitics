@@ -25,7 +25,6 @@ import {
   type ActivitySectionData,
 } from "./useDashboardData";
 import dynamic from "next/dynamic";
-import { useRouter } from "next/navigation";
 
 const AnthropicCard = dynamic(
   () => import("./components/AnthropicCard").then((m) => ({ default: m.AnthropicCard })),
@@ -34,7 +33,7 @@ const AnthropicCard = dynamic(
 
 const PlatformCostsSection = dynamic(
   () => import("./PlatformCostsSection").then((m) => ({ default: m.PlatformCostsSection })),
-  { ssr: false },
+  { ssr: false, loading: () => <LoadingSkeleton variant="card" /> },
 );
 
 // ── Types from server ─────────────────────────────────────────────────────────
@@ -168,7 +167,6 @@ function StatsSection({
   officialsBreakdown: OfficialsBreakdown;
   openProposalCount: number;
 }) {
-  const router = useRouter();
   const db = isPartial(database) ? null : database;
   const costs = isPartial(aiCosts) ? null : aiCosts;
 
@@ -192,7 +190,7 @@ function StatsSection({
         label="Proposals"
         value={db?.proposals ?? 0}
         formatAs="number"
-        onClick={() => router.push("/proposals")}
+        href="/proposals"
         badge={
           openProposalCount > 0
             ? {
@@ -832,6 +830,12 @@ export function DashboardClient({
 }: DashboardClientProps) {
   const { data, loading, error, refresh } = useDashboardData();
   const [_secondsAgo] = useState(0);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const db = data && !isPartial(data.status.database) ? data.status.database : null;
   const failedTests =
     data && !isPartial(data.status.self_tests)
@@ -871,19 +875,11 @@ export function DashboardClient({
         />
       )}
 
-      {/* Refresh timestamp + manual refresh button */}
-      {data && (
-        <p className="flex items-center gap-1 text-xs text-gray-400" suppressHydrationWarning>
+      {/* Refresh timestamp */}
+      {mounted && data && (
+        <p className="text-xs text-gray-400" suppressHydrationWarning>
           Updated {new Date(data.status.meta.timestamp).toLocaleTimeString()} ·
-          query took {data.status.meta.query_time_ms}ms
-          <button
-            onClick={refresh}
-            disabled={loading}
-            className="ml-1 transition-colors hover:text-gray-600 disabled:opacity-40"
-            title="Refresh data"
-          >
-            {loading ? "⟳" : "↺"}
-          </button>
+          query took {data.status.meta.query_time_ms}ms · auto-refreshes every 60s
         </p>
       )}
 
