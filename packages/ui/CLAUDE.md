@@ -283,6 +283,24 @@ formatPipelineStatus(
   -- 'failed'   → { label: 'Failed',
   --   color: 'red', icon: '✗' }
 
+## Hydration
+
+✗ Never nest <a> inside <a>
+
+  If a card has href AND contains
+  a clickable badge/button with
+  its own href:
+    Card outer: <a> or <div onClick>
+    Inner link: <span role="link">
+      with onClick + stopPropagation
+
+  This applies to:
+    StatCard
+    ActivityItem  
+    CommentPeriodCard
+    PipelineRow
+    Any future card component
+
 ## What NOT To Do
 
 ✗ Never import from Supabase

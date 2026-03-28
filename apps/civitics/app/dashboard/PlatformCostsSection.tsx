@@ -8,8 +8,7 @@ import {
   LoadingSkeleton,
   formatMetricValue,
 } from "@civitics/ui";
-import type { PlatformMetric, SourceDisplay } from "@civitics/db";
-import type { PlatformUsageResponse } from "./useDashboardData";
+import type { PlatformMetric, SourceDisplay, PlatformUsageResponse } from "./useDashboardData";
 
 // ── Admin key (dev only — no secret in client bundle) ─────────────────────────
 // In production this is only set in the server env. The UI shows admin controls
