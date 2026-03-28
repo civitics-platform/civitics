@@ -124,6 +124,15 @@ export type AnthropicTokenPeriod = {
   cost_usd: number;
 };
 
+export type CacheMeta = {
+  hit: boolean;
+  age_minutes: number;
+  recorded_at: string;
+  source: string;
+  stale?: boolean;
+  error?: string;
+};
+
 export type AnthropicDetail = {
   last_hour: AnthropicTokenPeriod | null;
   last_24h: AnthropicTokenPeriod | null;
@@ -137,6 +146,7 @@ export type AnthropicDetail = {
   }) | null;
   source: string;
   fetched_at: string;
+  cache?: CacheMeta;
 };
 
 export type DashboardData = {
@@ -152,6 +162,7 @@ export function useDashboardData() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [anthropicCacheAge, setAnthropicCacheAge] = useState<number | null>(null);
 
   const fetchData = useCallback(async () => {
     try {
@@ -184,6 +195,7 @@ export function useDashboardData() {
       if (anthropicResult.status === "fulfilled" && anthropicResult.value.ok) {
         try {
           anthropicDetail = (await anthropicResult.value.json()) as AnthropicDetail;
+          setAnthropicCacheAge(anthropicDetail.cache?.age_minutes ?? 0);
         } catch { /* ignore — anthropic detail is non-critical */ }
       }
 
@@ -221,7 +233,7 @@ export function useDashboardData() {
     };
   }, [fetchData]);
 
-  return { data, loading, error, refresh: fetchData };
+  return { data, loading, error, refresh: fetchData, anthropicCacheAge };
 }
 
 // ── Type guards ───────────────────────────────────────────────────────────────

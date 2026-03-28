@@ -77,6 +77,66 @@ function SourceIndicator({ display }: { display: SourceDisplay }) {
   );
 }
 
+// ── Data age indicator ────────────────────────────────────────────────────────
+
+function DataAge({
+  recordedAt,
+  source,
+}: {
+  recordedAt?: string | null;
+  source?: string | null;
+}) {
+  if (!recordedAt && !source) {
+    return <span className="text-xs text-gray-300">&#9675; No data</span>;
+  }
+
+  if (!recordedAt) {
+    return (
+      <span className="text-xs text-gray-400">
+        {source === "manual"
+          ? "✓ Manual entry"
+          : source === "estimated"
+            ? "~ Estimated"
+            : "○ No data"}
+      </span>
+    );
+  }
+
+  const ageMs = Date.now() - new Date(recordedAt).getTime();
+  const ageMin = Math.round(ageMs / 60_000);
+  const ageHrs = Math.round(ageMs / 3_600_000);
+  const ageDays = Math.round(ageMs / 86_400_000);
+
+  const ageStr =
+    ageMin < 1
+      ? "just now"
+      : ageMin < 60
+        ? `${ageMin}m ago`
+        : ageHrs < 24
+          ? `${ageHrs}h ago`
+          : `${ageDays}d ago`;
+
+  const isStale = ageMin > 15;
+
+  const sourceIcon =
+    source === "api" ? "●" : source === "estimated" ? "~" : source === "manual" ? "✓" : "○";
+
+  const colorClass =
+    source === "api" && !isStale
+      ? "text-green-600"
+      : source === "api" && isStale
+        ? "text-amber-500"
+        : source === "manual"
+          ? "text-blue-500"
+          : "text-gray-400";
+
+  return (
+    <span suppressHydrationWarning className={`text-xs ${colorClass}`}>
+      {sourceIcon} {ageStr}
+    </span>
+  );
+}
+
 // ── Service metadata ──────────────────────────────────────────────────────────
 
 const SERVICE_META: Record<string, { label: string; icon: string; costLabel: string }> = {
@@ -459,6 +519,23 @@ function ServiceCard({
           <span>{expanded ? "▲" : "▾"}</span>
           {expanded ? "Hide details" : "Show details"}
         </button>
+
+        {/* Data age */}
+        {(() => {
+          const latestRecordedAt =
+            metrics
+              .filter((m) => m.recorded_at)
+              .sort(
+                (a, b) =>
+                  new Date(b.recorded_at!).getTime() - new Date(a.recorded_at!).getTime(),
+              )[0]?.recorded_at ?? null;
+          const latestSource = metrics.filter((m) => m.source)[0]?.source ?? null;
+          return (
+            <div className="mt-1">
+              <DataAge recordedAt={latestRecordedAt} source={latestSource} />
+            </div>
+          );
+        })()}
       </div>
 
       {/* Expanded details */}
