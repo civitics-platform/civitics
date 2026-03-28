@@ -32,7 +32,6 @@ const AnthropicCard = dynamic(
 
 const PlatformCostsSection = dynamic(
   () => import("./PlatformCostsSection").then((m) => ({ default: m.PlatformCostsSection })),
-  //{ ssr: false, loading: () => <LoadingSkeleton variant="card" /> },
   { ssr: false },
 );
 
@@ -810,7 +809,7 @@ export function DashboardClient({
   activity,
   officialsBreakdown,
 }: DashboardClientProps) {
-  const { data, error } = useDashboardData();
+  const { data, error, refresh } = useDashboardData();
   const [_secondsAgo] = useState(0);
   const [mounted, setMounted] = useState(false);
 
@@ -894,10 +893,10 @@ export function DashboardClient({
       </div>
 
       {/* ── Platform Costs — data from useDashboardData, no independent fetch ── */}
-      {/* <PlatformCostsSection
+      <PlatformCostsSection
         platformUsage={data?.platformUsage ?? null}
         onRefresh={refresh}
-      /> */}
+      />
 
       {/* ── Anthropic AI — data from status ai_costs, no independent fetch ── */}
       {/* <AnthropicCard
