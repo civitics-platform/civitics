@@ -820,7 +820,8 @@ export function DashboardClient({
       await fetch("/api/platform/anthropic", {
         method: "POST",
         headers: {
-          "X-Admin-Key": process.env["NEXT_PUBLIC_ADMIN_KEY"] ?? "admin",
+          // Must use dot notation — Next.js only inlines NEXT_PUBLIC_ with dot access
+          "X-Admin-Key": process.env.NEXT_PUBLIC_ADMIN_KEY ?? "admin",
         },
       });
       await refresh();
@@ -947,11 +948,8 @@ export function DashboardClient({
         />
       </div>
 
-      {/* Admin refresh — bottom right */}
-      <div className="fixed bottom-4 right-4 z-50 flex items-center gap-2">
-        <span className="text-xs text-gray-300 font-mono bg-black/20 px-2 py-1 rounded">
-          local
-        </span>
+      {/* Admin refresh — sits above the layout dev badge (fixed bottom-2 right-2) */}
+      <div className="fixed bottom-10 right-2 z-50">
         <button
           onClick={handleAdminRefresh}
           disabled={refreshing}
