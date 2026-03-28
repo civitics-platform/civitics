@@ -115,10 +115,35 @@ export type PlatformUsageResponse = {
   timestamp: string;
 };
 
+export type AnthropicTokenPeriod = {
+  input_tokens: number;
+  output_tokens: number;
+  cache_creation_tokens: number;
+  cache_read_tokens: number;
+  total_tokens: number;
+  cost_usd: number;
+};
+
+export type AnthropicDetail = {
+  last_hour: AnthropicTokenPeriod | null;
+  last_24h: AnthropicTokenPeriod | null;
+  this_month: (AnthropicTokenPeriod & {
+    by_model: Array<{
+      model: string;
+      input_tokens: number;
+      output_tokens: number;
+      cost_usd: number;
+    }>;
+  }) | null;
+  source: string;
+  fetched_at: string;
+};
+
 export type DashboardData = {
   status: StatusData;
   chordFlows: ChordFlow[];
   platformUsage: PlatformUsageResponse | null;
+  anthropicDetail: AnthropicDetail | null;
 };
 
 // ── Hook ─────────────────────────────────────────────────────────────────────
@@ -130,10 +155,14 @@ export function useDashboardData() {
 
   const fetchData = useCallback(async () => {
     try {
-      const [statusRes, usageRes] = await Promise.all([
+      const [statusResult, usageResult, anthropicResult] = await Promise.allSettled([
         fetch("/api/claude/status"),
         fetch("/api/platform/usage"),
+        fetch("/api/platform/anthropic"),
       ]);
+
+      if (statusResult.status === "rejected") throw new Error(statusResult.reason);
+      const statusRes = statusResult.value;
       if (!statusRes.ok) throw new Error(`HTTP ${statusRes.status}`);
       const status = (await statusRes.json()) as StatusData;
 
@@ -145,13 +174,20 @@ export function useDashboardData() {
       const chordFlows: ChordFlow[] = chordData?.top_flows ?? [];
 
       let platformUsage: PlatformUsageResponse | null = null;
-      if (usageRes.ok) {
+      if (usageResult.status === "fulfilled" && usageResult.value.ok) {
         try {
-          platformUsage = (await usageRes.json()) as PlatformUsageResponse;
+          platformUsage = (await usageResult.value.json()) as PlatformUsageResponse;
         } catch { /* ignore — platform usage is non-critical */ }
       }
 
-      setData({ status, chordFlows, platformUsage });
+      let anthropicDetail: AnthropicDetail | null = null;
+      if (anthropicResult.status === "fulfilled" && anthropicResult.value.ok) {
+        try {
+          anthropicDetail = (await anthropicResult.value.json()) as AnthropicDetail;
+        } catch { /* ignore — anthropic detail is non-critical */ }
+      }
+
+      setData({ status, chordFlows, platformUsage, anthropicDetail });
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unknown error");

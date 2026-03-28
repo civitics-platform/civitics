@@ -9,7 +9,46 @@ import {
   formatMetricValue,
 } from "@civitics/ui";
 import type { PlatformMetric, SourceDisplay } from "@civitics/db";
-import type { PlatformUsageResponse } from "./useDashboardData";
+import type { PlatformUsageResponse, AnthropicDetail, AiCosts } from "./useDashboardData";
+
+// ── Token / cost formatters ───────────────────────────────────────────────────
+
+function fmtTokens(n: number): string {
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M";
+  if (n >= 1_000) return (n / 1_000).toFixed(0) + "K";
+  return n === 0 ? "—" : String(n);
+}
+
+function fmtUsd(n: number): string {
+  if (n === 0) return "—";
+  if (n < 0.01) return "<$0.01";
+  return "$" + n.toFixed(2);
+}
+
+// ── Anthropic source badge (live / logs / estimated) ─────────────────────────
+
+function AnthropicSourceBadge({ source }: { source?: string }) {
+  if (source === "api")
+    return (
+      <span className="inline-flex items-center gap-1.5 text-xs text-green-600">
+        <span className="w-1.5 h-1.5 bg-green-500 rounded-full inline-block animate-pulse" />
+        Live · Anthropic Admin API
+      </span>
+    );
+  if (source === "api_usage_logs")
+    return (
+      <span className="inline-flex items-center gap-1.5 text-xs text-blue-600">
+        <span className="w-1.5 h-1.5 bg-blue-500 rounded-full inline-block" />
+        From local usage logs
+      </span>
+    );
+  return (
+    <span className="inline-flex items-center gap-1.5 text-xs text-amber-600">
+      <span className="w-1.5 h-1.5 bg-amber-500 rounded-full inline-block" />
+      Estimated
+    </span>
+  );
+}
 
 // ── Admin key (dev only — no secret in client bundle) ─────────────────────────
 // In production this is only set in the server env. The UI shows admin controls
@@ -176,6 +215,8 @@ function ServiceGroup({
   adminKey,
   onVerify,
   onUpdate,
+  anthropicDetail,
+  aiCosts,
 }: {
   service: string;
   metrics: PlatformMetric[];
@@ -183,7 +224,10 @@ function ServiceGroup({
   adminKey: string;
   onVerify: (metric: PlatformMetric) => void;
   onUpdate: (metric: PlatformMetric) => void;
+  anthropicDetail?: AnthropicDetail | null;
+  aiCosts?: AiCosts | null;
 }) {
+  const [showTokens, setShowTokens] = useState(false);
   const hasCritical = metrics.some((m) => m.status === "critical");
   const hasWarning = metrics.some((m) => m.status === "warning");
   const link = SERVICE_LINKS[service];
@@ -219,6 +263,106 @@ function ServiceGroup({
           onUpdate={onUpdate}
         />
       ))}
+
+      {/* Token detail toggle — anthropic only */}
+      {service === "anthropic" && (
+        <>
+          <button
+            onClick={() => setShowTokens((s) => !s)}
+            className="text-xs text-gray-400 hover:text-gray-600 mt-2 flex items-center gap-1 transition-colors"
+          >
+            <span>{showTokens ? "▲" : "▾"}</span>
+            {showTokens ? "Hide details" : "Show token details"}
+          </button>
+
+          {showTokens && (
+            <div className="mt-3 border-t border-gray-100 pt-3 space-y-3">
+              {/* Source indicator */}
+              <AnthropicSourceBadge source={aiCosts?.source} />
+
+              {/* Token breakdown table */}
+              <table className="w-full text-xs text-gray-600">
+                <thead>
+                  <tr className="text-gray-400 border-b border-gray-100 text-right">
+                    <th className="text-left pb-1.5 font-medium">Tokens</th>
+                    <th className="pb-1.5 font-medium">1h</th>
+                    <th className="pb-1.5 font-medium">24h</th>
+                    <th className="pb-1.5 font-medium">Month</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  <tr className="text-right">
+                    <td className="text-left py-1.5">Input</td>
+                    <td className="tabular-nums text-gray-400">—</td>
+                    <td className="tabular-nums text-gray-400">—</td>
+                    <td className="tabular-nums">
+                      {fmtTokens(anthropicDetail?.this_month?.input_tokens ?? 0)}
+                    </td>
+                  </tr>
+                  <tr className="text-right">
+                    <td className="text-left py-1.5">Output</td>
+                    <td className="tabular-nums text-gray-400">—</td>
+                    <td className="tabular-nums text-gray-400">—</td>
+                    <td className="tabular-nums">
+                      {fmtTokens(anthropicDetail?.this_month?.output_tokens ?? 0)}
+                    </td>
+                  </tr>
+                  <tr className="text-right">
+                    <td className="text-left py-1.5">Cache hits</td>
+                    <td className="tabular-nums text-gray-400">—</td>
+                    <td className="tabular-nums text-gray-400">—</td>
+                    <td className="tabular-nums">
+                      {fmtTokens(anthropicDetail?.this_month?.cache_read_tokens ?? 0)}
+                    </td>
+                  </tr>
+                  <tr className="text-right font-medium border-t border-gray-100">
+                    <td className="text-left py-1.5">Total</td>
+                    <td className="tabular-nums">
+                      {fmtTokens(aiCosts?.last_hour_tokens ?? 0)}
+                    </td>
+                    <td className="tabular-nums">
+                      {fmtTokens(aiCosts?.last_24h_tokens ?? 0)}
+                    </td>
+                    <td className="tabular-nums">
+                      {fmtTokens(anthropicDetail?.this_month?.total_tokens ?? 0)}
+                    </td>
+                  </tr>
+                  <tr className="text-right">
+                    <td className="text-left py-1.5 text-gray-500">Cost</td>
+                    <td className="tabular-nums text-gray-400">—</td>
+                    <td className="tabular-nums">
+                      {fmtUsd(aiCosts?.last_24h_cost_usd ?? 0)}
+                    </td>
+                    <td className="tabular-nums font-medium">
+                      {fmtUsd(aiCosts?.monthly_spent_usd ?? 0)}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+
+              {/* By model breakdown */}
+              {anthropicDetail?.this_month?.by_model &&
+                anthropicDetail.this_month.by_model.length > 0 && (
+                  <div className="text-xs text-gray-500">
+                    <div className="font-medium text-gray-400 mb-1">By model</div>
+                    {anthropicDetail.this_month.by_model.map((m) => (
+                      <div key={m.model} className="flex justify-between py-0.5">
+                        <span className="font-mono text-gray-400 truncate max-w-[180px]">
+                          {m.model.replace("claude-", "")}
+                        </span>
+                        <span className="tabular-nums">
+                          {fmtTokens(m.input_tokens + m.output_tokens)}
+                          {" · "}
+                          {fmtUsd(m.cost_usd)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }
@@ -318,9 +462,16 @@ function UpdateModal({
 interface PlatformCostsSectionProps {
   platformUsage: PlatformUsageResponse | null;
   onRefresh: () => void;
+  anthropicDetail?: AnthropicDetail | null;
+  aiCosts?: AiCosts | null;
 }
 
-export function PlatformCostsSection({ platformUsage, onRefresh }: PlatformCostsSectionProps) {
+export function PlatformCostsSection({
+  platformUsage,
+  onRefresh,
+  anthropicDetail,
+  aiCosts,
+}: PlatformCostsSectionProps) {
   const [mounted, setMounted] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [sortBy, setSortBy] = useState<"usage_pct" | "cost">("usage_pct");
@@ -502,6 +653,8 @@ export function PlatformCostsSection({ platformUsage, onRefresh }: PlatformCosts
                   adminKey={adminKey}
                   onVerify={handleVerify}
                   onUpdate={(metric) => setUpdatingMetric(metric)}
+                  anthropicDetail={service === "anthropic" ? anthropicDetail : undefined}
+                  aiCosts={service === "anthropic" ? aiCosts : undefined}
                 />
               ),
             )}

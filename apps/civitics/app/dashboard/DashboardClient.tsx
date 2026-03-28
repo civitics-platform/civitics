@@ -896,6 +896,12 @@ export function DashboardClient({
       <PlatformCostsSection
         platformUsage={data?.platformUsage ?? null}
         onRefresh={refresh}
+        anthropicDetail={data?.anthropicDetail ?? null}
+        aiCosts={
+          data?.status.ai_costs && !isPartial(data.status.ai_costs)
+            ? (data.status.ai_costs as AiCosts)
+            : null
+        }
       />
 
       {/* ── Anthropic AI — data from status ai_costs, no independent fetch ── */}
