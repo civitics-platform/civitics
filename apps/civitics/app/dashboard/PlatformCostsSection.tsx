@@ -25,7 +25,7 @@ function fmtUsd(n: number): string {
   return "$" + n.toFixed(2);
 }
 
-// ── Anthropic source badge (live / logs / estimated) ─────────────────────────
+// ── Anthropic source badge ────────────────────────────────────────────────────
 
 function AnthropicSourceBadge({ source }: { source?: string }) {
   if (source === "api")
@@ -51,9 +51,6 @@ function AnthropicSourceBadge({ source }: { source?: string }) {
 }
 
 // ── Admin key (dev only — no secret in client bundle) ─────────────────────────
-// In production this is only set in the server env. The UI shows admin controls
-// whenever window.CIVITICS_ADMIN is set (dev convenience) or via a future
-// session-based role check.
 function useIsAdmin(): boolean {
   const [isAdmin, setIsAdmin] = useState(false);
   useEffect(() => {
@@ -80,124 +77,17 @@ function SourceIndicator({ display }: { display: SourceDisplay }) {
   );
 }
 
-// ── Single metric row ─────────────────────────────────────────────────────────
+// ── Service metadata ──────────────────────────────────────────────────────────
 
-function MetricRow({
-  metric,
-  isAdmin,
-  adminKey,
-  onVerify,
-  onUpdate,
-}: {
-  metric: PlatformMetric;
-  isAdmin: boolean;
-  adminKey: string;
-  onVerify: (metric: PlatformMetric) => void;
-  onUpdate: (metric: PlatformMetric) => void;
-}) {
-  const pct = metric.included_limit === -1 ? 0 : metric.pct;
-  const barColor =
-    metric.status === "critical"
-      ? "bg-red-500"
-      : metric.status === "warning"
-        ? "bg-amber-500"
-        : "bg-green-500";
-  const pctColor =
-    metric.status === "critical"
-      ? "text-red-600"
-      : metric.status === "warning"
-        ? "text-amber-600"
-        : "text-gray-600";
+const SERVICE_META: Record<string, { label: string; icon: string; costLabel: string }> = {
+  anthropic: { label: "Anthropic", icon: "🤖", costLabel: "monthly spend" },
+  vercel: { label: "Vercel", icon: "▲", costLabel: "monthly usage" },
+  supabase: { label: "Supabase", icon: "🗄", costLabel: "monthly usage" },
+  cloudflare: { label: "Cloudflare R2", icon: "☁", costLabel: "monthly usage" },
+  mapbox: { label: "Mapbox", icon: "🗺", costLabel: "map loads" },
+};
 
-  return (
-    <div className="group flex items-center gap-3 py-2.5 border-b border-gray-50 last:border-0">
-      {/* Service + metric name */}
-      <div className="w-44 flex-shrink-0">
-        <div className="text-sm font-medium text-gray-900 leading-tight">
-          {metric.display_label ?? metric.metric}
-        </div>
-        <div className="text-xs text-gray-400 capitalize">{metric.service}</div>
-      </div>
-
-      {/* Progress bar */}
-      <div className="flex-1 min-w-0">
-        <div className="flex justify-between text-xs text-gray-400 mb-1">
-          <span>
-            {metric.value !== null
-              ? formatMetricValue(metric.value, metric.unit)
-              : "—"}
-          </span>
-          <span>
-            {metric.included_limit === -1
-              ? "Unlimited"
-              : formatMetricValue(metric.included_limit, metric.unit)}
-          </span>
-        </div>
-        <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-          {metric.included_limit !== -1 && metric.value !== null && (
-            <div
-              className={`h-full rounded-full transition-all duration-200 ${barColor}`}
-              style={{ width: `${Math.min(pct, 100)}%` }}
-            />
-          )}
-        </div>
-      </div>
-
-      {/* Percentage */}
-      <div className={`w-14 text-right text-sm font-medium tabular-nums ${pctColor}`}>
-        {metric.included_limit === -1
-          ? "∞"
-          : metric.value !== null
-            ? pct > 100
-              ? `${Math.round(pct)}% ⛔`
-              : `${Math.round(pct)}%`
-            : "—"}
-      </div>
-
-      {/* Source indicator */}
-      <div className="w-28 text-right">
-        {metric.source !== null ? (
-          <SourceIndicator display={metric.source_display} />
-        ) : (
-          <span className="text-xs text-gray-300">No data</span>
-        )}
-      </div>
-
-      {/* Overage cost */}
-      <div className="w-20 text-right">
-        {metric.overage_cost > 0 ? (
-          <span className="text-xs text-red-600 font-medium">
-            +${metric.overage_cost.toFixed(2)}
-          </span>
-        ) : (
-          <span className="text-xs text-gray-300">—</span>
-        )}
-      </div>
-
-      {/* Admin actions — visible on group hover */}
-      {isAdmin && (
-        <div className="flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-          {metric.source_display.needsVerification && (
-            <button
-              onClick={() => onVerify(metric)}
-              className="text-xs text-amber-600 hover:text-amber-800 font-medium"
-            >
-              Verify
-            </button>
-          )}
-          <button
-            onClick={() => onUpdate(metric)}
-            className="text-xs text-gray-400 hover:text-gray-700"
-          >
-            Update
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ── Service group (expanded view) ─────────────────────────────────────────────
+const SERVICE_ORDER = ["anthropic", "supabase", "vercel", "cloudflare", "mapbox"];
 
 const SERVICE_LINKS: Record<string, string> = {
   vercel: "https://vercel.com/dashboard",
@@ -208,194 +98,393 @@ const SERVICE_LINKS: Record<string, string> = {
   resend: "https://resend.com/dashboard",
 };
 
-function ServiceGroup({
+// ── Status dot ────────────────────────────────────────────────────────────────
+
+function StatusDot({ status }: { status: string }) {
+  const colors = {
+    healthy: "bg-green-500",
+    warning: "bg-amber-500",
+    critical: "bg-red-500",
+  };
+  return (
+    <span
+      className={`w-1.5 h-1.5 rounded-full inline-block ${
+        colors[status as keyof typeof colors] ?? "bg-gray-300"
+      }`}
+    />
+  );
+}
+
+// ── Metric row (non-Anthropic expanded view) ──────────────────────────────────
+
+function MetricRow({
+  metric,
+  isAdmin,
+  onVerify,
+  onUpdate,
+}: {
+  metric: PlatformMetric;
+  isAdmin?: boolean;
+  onVerify?: (metric: PlatformMetric) => void;
+  onUpdate?: (metric: PlatformMetric) => void;
+}) {
+  const pct = metric.included_limit === -1 ? 0 : (metric.pct ?? 0);
+  const barColor =
+    metric.status === "critical"
+      ? "bg-red-500"
+      : metric.status === "warning"
+        ? "bg-amber-500"
+        : "bg-green-500";
+
+  return (
+    <div>
+      <div className="flex justify-between text-xs mb-1">
+        <span className="text-gray-600 font-medium">
+          {metric.display_label ?? metric.metric}
+        </span>
+        <span className="text-gray-500 tabular-nums">
+          {metric.value != null
+            ? `${formatMetricValue(metric.value, metric.unit)} / ${
+                metric.included_limit === -1
+                  ? "∞"
+                  : formatMetricValue(metric.included_limit, metric.unit)
+              }`
+            : "No data"}
+        </span>
+      </div>
+      <div className="h-1.5 bg-gray-100 rounded-full">
+        {metric.included_limit !== -1 && metric.value !== null && (
+          <div
+            className={`h-full rounded-full ${barColor}`}
+            style={{ width: `${Math.min(pct, 100)}%` }}
+          />
+        )}
+      </div>
+      {pct > 0 && (
+        <div className="text-xs text-gray-400 mt-0.5 text-right">{Math.round(pct)}%</div>
+      )}
+      <div className="flex items-center justify-between mt-1">
+        {metric.source !== null ? (
+          <SourceIndicator display={metric.source_display} />
+        ) : (
+          <span className="text-xs text-gray-300">No data</span>
+        )}
+        {isAdmin && (
+          <div className="flex gap-2">
+            {metric.source_display.needsVerification && onVerify && (
+              <button
+                onClick={() => onVerify(metric)}
+                className="text-xs text-amber-600 hover:text-amber-800 font-medium"
+              >
+                Verify
+              </button>
+            )}
+            {onUpdate && (
+              <button
+                onClick={() => onUpdate(metric)}
+                className="text-xs text-gray-400 hover:text-gray-700"
+              >
+                Update
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Anthropic detail panel (expanded view) ────────────────────────────────────
+
+function AnthropicDetailPanel({
+  aiCosts,
+  anthropicDetail,
+  metrics,
+  isAdmin,
+  onVerify,
+  onUpdate,
+}: {
+  aiCosts?: AiCosts | null;
+  anthropicDetail?: AnthropicDetail | null;
+  metrics: PlatformMetric[];
+  isAdmin?: boolean;
+  onVerify?: (metric: PlatformMetric) => void;
+  onUpdate?: (metric: PlatformMetric) => void;
+}) {
+  const spendMetric = metrics.find((m) => m.metric === "monthly_spend_usd");
+  const totalCost = anthropicDetail?.this_month?.cost_usd;
+  const appOnlyCost = aiCosts?.monthly_spent_usd ?? 0;
+
+  const displayMetric: PlatformMetric | undefined =
+    spendMetric && totalCost != null && spendMetric.included_limit > 0
+      ? {
+          ...spendMetric,
+          value: totalCost,
+          pct: (totalCost / spendMetric.included_limit) * 100,
+          status:
+            (totalCost / spendMetric.included_limit) * 100 >= spendMetric.critical_pct
+              ? "critical"
+              : (totalCost / spendMetric.included_limit) * 100 >= spendMetric.warning_pct
+                ? "warning"
+                : "healthy",
+        }
+      : spendMetric;
+
+  const showSubLabel = totalCost != null && Math.abs(totalCost - appOnlyCost) > 0.01;
+
+  return (
+    <div className="space-y-3">
+      {/* Spend metric row */}
+      {displayMetric && (
+        <div>
+          <div className="flex justify-between text-xs mb-1">
+            <span className="text-gray-600 font-medium">
+              {displayMetric.display_label ?? displayMetric.metric}
+            </span>
+            <span className="text-gray-500 tabular-nums">
+              {displayMetric.value != null
+                ? `${fmtUsd(displayMetric.value)} / ${fmtUsd(displayMetric.included_limit)}`
+                : "No data"}
+            </span>
+          </div>
+          <div className="h-1.5 bg-gray-100 rounded-full">
+            {displayMetric.included_limit !== -1 && displayMetric.value !== null && (
+              <div
+                className={`h-full rounded-full ${
+                  displayMetric.status === "critical"
+                    ? "bg-red-500"
+                    : displayMetric.status === "warning"
+                      ? "bg-amber-500"
+                      : "bg-green-500"
+                }`}
+                style={{ width: `${Math.min(displayMetric.pct ?? 0, 100)}%` }}
+              />
+            )}
+          </div>
+          <div className="flex items-center justify-between mt-1">
+            <AnthropicSourceBadge source={aiCosts?.source} />
+            {isAdmin && (
+              <div className="flex gap-2">
+                {displayMetric.source_display.needsVerification && onVerify && (
+                  <button
+                    onClick={() => onVerify(displayMetric)}
+                    className="text-xs text-amber-600 hover:text-amber-800 font-medium"
+                  >
+                    Verify
+                  </button>
+                )}
+                {onUpdate && (
+                  <button
+                    onClick={() => onUpdate(displayMetric)}
+                    className="text-xs text-gray-400 hover:text-gray-700"
+                  >
+                    Update
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+          {showSubLabel && (
+            <div className="flex justify-between text-xs text-gray-400 mt-1">
+              <span>${appOnlyCost.toFixed(2)} from Civitics app</span>
+              <span>${((totalCost ?? 0) - appOnlyCost).toFixed(2)} other tools</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Token breakdown table */}
+      <table className="w-full text-xs text-gray-600">
+        <thead>
+          <tr className="text-gray-400 border-b border-gray-100 text-right">
+            <th className="text-left pb-1.5 font-medium">Tokens</th>
+            <th className="pb-1.5 font-medium">1h</th>
+            <th className="pb-1.5 font-medium">24h</th>
+            <th className="pb-1.5 font-medium">Month</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-50">
+          <tr className="text-right">
+            <td className="text-left py-1.5">Input</td>
+            <td className="tabular-nums text-gray-400">—</td>
+            <td className="tabular-nums text-gray-400">—</td>
+            <td className="tabular-nums">
+              {fmtTokens(anthropicDetail?.this_month?.input_tokens ?? 0)}
+            </td>
+          </tr>
+          <tr className="text-right">
+            <td className="text-left py-1.5">Output</td>
+            <td className="tabular-nums text-gray-400">—</td>
+            <td className="tabular-nums text-gray-400">—</td>
+            <td className="tabular-nums">
+              {fmtTokens(anthropicDetail?.this_month?.output_tokens ?? 0)}
+            </td>
+          </tr>
+          <tr className="text-right">
+            <td className="text-left py-1.5">Cache hits</td>
+            <td className="tabular-nums text-gray-400">—</td>
+            <td className="tabular-nums text-gray-400">—</td>
+            <td className="tabular-nums">
+              {fmtTokens(anthropicDetail?.this_month?.cache_read_tokens ?? 0)}
+            </td>
+          </tr>
+          <tr className="text-right font-medium border-t border-gray-100">
+            <td className="text-left py-1.5">Total</td>
+            <td className="tabular-nums">{fmtTokens(aiCosts?.last_hour_tokens ?? 0)}</td>
+            <td className="tabular-nums">{fmtTokens(aiCosts?.last_24h_tokens ?? 0)}</td>
+            <td className="tabular-nums">
+              {fmtTokens(anthropicDetail?.this_month?.total_tokens ?? 0)}
+            </td>
+          </tr>
+          <tr className="text-right">
+            <td className="text-left py-1.5 text-gray-500">Cost</td>
+            <td className="tabular-nums text-gray-400">—</td>
+            <td className="tabular-nums">{fmtUsd(aiCosts?.last_24h_cost_usd ?? 0)}</td>
+            <td className="tabular-nums font-medium">
+              {fmtUsd(
+                anthropicDetail?.this_month?.cost_usd ?? aiCosts?.monthly_spent_usd ?? 0,
+              )}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      {/* By model breakdown */}
+      {anthropicDetail?.this_month?.by_model &&
+        anthropicDetail.this_month.by_model.length > 0 && (
+          <div className="text-xs text-gray-500">
+            <div className="font-medium text-gray-400 mb-1">By model</div>
+            {anthropicDetail.this_month.by_model.map((m) => (
+              <div key={m.model} className="flex justify-between py-0.5">
+                <span className="font-mono text-gray-400 truncate max-w-[180px]">
+                  {m.model.replace("claude-", "")}
+                </span>
+                <span className="tabular-nums">
+                  {fmtTokens(m.input_tokens + m.output_tokens)}
+                  {" · "}
+                  {fmtUsd(m.cost_usd)}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+    </div>
+  );
+}
+
+// ── Service card (collapsible) ────────────────────────────────────────────────
+
+function ServiceCard({
   service,
   metrics,
+  meta,
+  anthropicDetail,
+  aiCosts,
   isAdmin,
   adminKey,
   onVerify,
   onUpdate,
-  anthropicDetail,
-  aiCosts,
 }: {
   service: string;
   metrics: PlatformMetric[];
+  meta: (typeof SERVICE_META)[string];
+  anthropicDetail?: AnthropicDetail | null;
+  aiCosts?: AiCosts | null;
   isAdmin: boolean;
   adminKey: string;
   onVerify: (metric: PlatformMetric) => void;
   onUpdate: (metric: PlatformMetric) => void;
-  anthropicDetail?: AnthropicDetail | null;
-  aiCosts?: AiCosts | null;
 }) {
-  const [showTokens, setShowTokens] = useState(false);
-  const hasCritical = metrics.some((m) => m.status === "critical");
-  const hasWarning = metrics.some((m) => m.status === "warning");
-  const link = SERVICE_LINKS[service];
+  const [expanded, setExpanded] = useState(false);
+
+  const topMetric =
+    metrics
+      .filter((m) => m.value !== null && m.value !== undefined)
+      .sort((a, b) => (b.pct ?? 0) - (a.pct ?? 0))[0] ?? metrics[0];
+
+  const serviceStatus: string = metrics.some((m) => m.status === "critical")
+    ? "critical"
+    : metrics.some((m) => m.status === "warning")
+      ? "warning"
+      : "healthy";
+
+  const totalCost =
+    service === "anthropic"
+      ? (anthropicDetail?.this_month?.cost_usd ?? aiCosts?.monthly_spent_usd ?? 0)
+      : metrics.reduce((sum, m) => sum + (m.overage_cost ?? 0), 0);
 
   return (
-    <div className="mb-6">
-      <div className="flex items-center gap-2 mb-2">
-        <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-          {service}
-        </h3>
-        {hasCritical && <span className="text-xs text-red-500">⛔ Critical</span>}
-        {!hasCritical && hasWarning && (
-          <span className="text-xs text-amber-500">⚠ Warning</span>
+    <div className="border border-gray-200 rounded-xl overflow-hidden bg-white">
+      {/* Collapsed header — always visible */}
+      <div className="p-4">
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2">
+            <span>{meta.icon}</span>
+            <span className="font-medium text-sm text-gray-900">{meta.label}</span>
+            <StatusDot status={serviceStatus} />
+          </div>
+          <span className="text-sm font-medium text-gray-700">
+            ${totalCost.toFixed(2)}/mo
+          </span>
+        </div>
+
+        {/* Top metric label */}
+        {topMetric && (
+          <div className="text-xs text-gray-500 mb-1.5">
+            {topMetric.display_label ?? topMetric.metric}
+          </div>
         )}
-        {link && (
-          <a
-            href={link}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="ml-auto text-xs text-gray-400 hover:text-blue-600"
-          >
-            Dashboard ↗
-          </a>
+
+        {/* Single progress bar */}
+        {topMetric && (
+          <div className="h-1.5 bg-gray-100 rounded-full mb-2">
+            <div
+              className={`h-full rounded-full ${
+                topMetric.status === "critical"
+                  ? "bg-red-500"
+                  : topMetric.status === "warning"
+                    ? "bg-amber-500"
+                    : "bg-green-500"
+              }`}
+              style={{ width: `${Math.min(topMetric.pct ?? 0, 100)}%` }}
+            />
+          </div>
         )}
+
+        {/* Show/hide button */}
+        <button
+          onClick={() => setExpanded((e) => !e)}
+          className="text-xs text-gray-400 hover:text-gray-600 transition-colors flex items-center gap-1"
+        >
+          <span>{expanded ? "▲" : "▾"}</span>
+          {expanded ? "Hide details" : "Show details"}
+        </button>
       </div>
-      {metrics.map((m) => {
-        // For anthropic monthly spend, override displayed value with total account cost
-        const isAnthropicSpend = service === "anthropic" && m.metric === "monthly_spend_usd";
-        const totalCost = isAnthropicSpend ? anthropicDetail?.this_month?.cost_usd : undefined;
-        const appOnlyCost = aiCosts?.monthly_spent_usd ?? 0;
 
-        const displayMetric: PlatformMetric =
-          isAnthropicSpend && totalCost != null && m.included_limit > 0
-            ? {
-                ...m,
-                value: totalCost,
-                pct: (totalCost / m.included_limit) * 100,
-                status:
-                  (totalCost / m.included_limit) * 100 >= m.critical_pct
-                    ? "critical"
-                    : (totalCost / m.included_limit) * 100 >= m.warning_pct
-                      ? "warning"
-                      : "healthy",
-              }
-            : m;
-
-        const showSubLabel =
-          isAnthropicSpend &&
-          totalCost != null &&
-          Math.abs(totalCost - appOnlyCost) > 0.01;
-
-        return (
-          <div key={`${m.service}:${m.metric}`}>
-            <MetricRow
-              metric={displayMetric}
+      {/* Expanded details */}
+      {expanded && (
+        <div className="border-t border-gray-100 p-4 space-y-4 bg-gray-50/50">
+          {service === "anthropic" ? (
+            <AnthropicDetailPanel
+              aiCosts={aiCosts}
+              anthropicDetail={anthropicDetail}
+              metrics={metrics}
               isAdmin={isAdmin}
-              adminKey={adminKey}
               onVerify={onVerify}
               onUpdate={onUpdate}
             />
-            {showSubLabel && (
-              <div className="flex justify-between text-xs text-gray-400 mt-1 mb-2">
-                <span>${appOnlyCost.toFixed(2)} from Civitics app</span>
-                <span>${(totalCost - appOnlyCost).toFixed(2)} other tools</span>
-              </div>
-            )}
-          </div>
-        );
-      })}
-
-      {/* Token detail toggle — anthropic only */}
-      {service === "anthropic" && (
-        <>
-          <button
-            onClick={() => setShowTokens((s) => !s)}
-            className="text-xs text-gray-400 hover:text-gray-600 mt-2 flex items-center gap-1 transition-colors"
-          >
-            <span>{showTokens ? "▲" : "▾"}</span>
-            {showTokens ? "Hide details" : "Show token details"}
-          </button>
-
-          {showTokens && (
-            <div className="mt-3 border-t border-gray-100 pt-3 space-y-3">
-              {/* Source indicator */}
-              <AnthropicSourceBadge source={aiCosts?.source} />
-
-              {/* Token breakdown table */}
-              <table className="w-full text-xs text-gray-600">
-                <thead>
-                  <tr className="text-gray-400 border-b border-gray-100 text-right">
-                    <th className="text-left pb-1.5 font-medium">Tokens</th>
-                    <th className="pb-1.5 font-medium">1h</th>
-                    <th className="pb-1.5 font-medium">24h</th>
-                    <th className="pb-1.5 font-medium">Month</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50">
-                  <tr className="text-right">
-                    <td className="text-left py-1.5">Input</td>
-                    <td className="tabular-nums text-gray-400">—</td>
-                    <td className="tabular-nums text-gray-400">—</td>
-                    <td className="tabular-nums">
-                      {fmtTokens(anthropicDetail?.this_month?.input_tokens ?? 0)}
-                    </td>
-                  </tr>
-                  <tr className="text-right">
-                    <td className="text-left py-1.5">Output</td>
-                    <td className="tabular-nums text-gray-400">—</td>
-                    <td className="tabular-nums text-gray-400">—</td>
-                    <td className="tabular-nums">
-                      {fmtTokens(anthropicDetail?.this_month?.output_tokens ?? 0)}
-                    </td>
-                  </tr>
-                  <tr className="text-right">
-                    <td className="text-left py-1.5">Cache hits</td>
-                    <td className="tabular-nums text-gray-400">—</td>
-                    <td className="tabular-nums text-gray-400">—</td>
-                    <td className="tabular-nums">
-                      {fmtTokens(anthropicDetail?.this_month?.cache_read_tokens ?? 0)}
-                    </td>
-                  </tr>
-                  <tr className="text-right font-medium border-t border-gray-100">
-                    <td className="text-left py-1.5">Total</td>
-                    <td className="tabular-nums">
-                      {fmtTokens(aiCosts?.last_hour_tokens ?? 0)}
-                    </td>
-                    <td className="tabular-nums">
-                      {fmtTokens(aiCosts?.last_24h_tokens ?? 0)}
-                    </td>
-                    <td className="tabular-nums">
-                      {fmtTokens(anthropicDetail?.this_month?.total_tokens ?? 0)}
-                    </td>
-                  </tr>
-                  <tr className="text-right">
-                    <td className="text-left py-1.5 text-gray-500">Cost</td>
-                    <td className="tabular-nums text-gray-400">—</td>
-                    <td className="tabular-nums">
-                      {fmtUsd(aiCosts?.last_24h_cost_usd ?? 0)}
-                    </td>
-                    <td className="tabular-nums font-medium">
-                      {fmtUsd(anthropicDetail?.this_month?.cost_usd ?? aiCosts?.monthly_spent_usd ?? 0)}
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-
-              {/* By model breakdown */}
-              {anthropicDetail?.this_month?.by_model &&
-                anthropicDetail.this_month.by_model.length > 0 && (
-                  <div className="text-xs text-gray-500">
-                    <div className="font-medium text-gray-400 mb-1">By model</div>
-                    {anthropicDetail.this_month.by_model.map((m) => (
-                      <div key={m.model} className="flex justify-between py-0.5">
-                        <span className="font-mono text-gray-400 truncate max-w-[180px]">
-                          {m.model.replace("claude-", "")}
-                        </span>
-                        <span className="tabular-nums">
-                          {fmtTokens(m.input_tokens + m.output_tokens)}
-                          {" · "}
-                          {fmtUsd(m.cost_usd)}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-            </div>
+          ) : (
+            metrics.map((metric) => (
+              <MetricRow
+                key={metric.metric}
+                metric={metric}
+                isAdmin={isAdmin}
+                onVerify={onVerify}
+                onUpdate={onUpdate}
+              />
+            ))
           )}
-        </>
+        </div>
       )}
     </div>
   );
@@ -507,8 +596,6 @@ export function PlatformCostsSection({
   aiCosts,
 }: PlatformCostsSectionProps) {
   const [mounted, setMounted] = useState(false);
-  const [expanded, setExpanded] = useState(false);
-  const [sortBy, setSortBy] = useState<"usage_pct" | "cost">("usage_pct");
   const [updatingMetric, setUpdatingMetric] = useState<PlatformMetric | null>(null);
   const [adminKey, setAdminKey] = useState("");
   const isAdmin = useIsAdmin();
@@ -566,14 +653,20 @@ export function PlatformCostsSection({
     );
   }
 
-  const data = platformUsage;
-  const { summary, by_service, total_metrics } = data;
+  const { summary, by_service } = platformUsage;
 
-  // Top 3 based on sort mode
-  const top3 = sortBy === "usage_pct" ? summary.top3_by_pct : summary.top3_by_cost;
+  // Total monthly cost: Anthropic actual spend + other service overages
+  const anthropicCost =
+    anthropicDetail?.this_month?.cost_usd ?? aiCosts?.monthly_spent_usd ?? 0;
+  const otherOverages = Object.entries(by_service)
+    .filter(([svc]) => svc !== "anthropic")
+    .flatMap(([, metrics]) => metrics)
+    .reduce((sum, m) => sum + (m.overage_cost ?? 0), 0);
+  const totalMonthlyCost = anthropicCost + otherOverages;
 
   // Alert banners
-  const banners: Array<{ level: "error" | "warning" | "info"; message: string; detail?: string }> = [];
+  const banners: Array<{ level: "error" | "warning" | "info"; message: string; detail?: string }> =
+    [];
   if (summary.any_critical) {
     banners.push({
       level: "error",
@@ -606,113 +699,50 @@ export function PlatformCostsSection({
         <SectionHeader
           icon="💰"
           title="Platform Costs"
-          description={`On ${data.plan} plan`}
+          description="Every cost is public record"
         />
 
         {/* Summary row */}
-        <div className="flex items-center justify-between mt-4 mb-4 flex-wrap gap-2">
-          <div className="flex items-baseline gap-1.5">
-            <span className="text-2xl font-bold text-gray-900 tabular-nums">
-              ${summary.total_overage_cost > 0
-                ? summary.total_overage_cost.toFixed(2)
-                : "0.00"}
-            </span>
-            <span className="text-sm text-gray-400">/month overages</span>
-          </div>
-          <div className="flex gap-2">
-            <button
-              onClick={() => setSortBy("usage_pct")}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                sortBy === "usage_pct"
-                  ? "bg-blue-600 text-white"
-                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-              }`}
-            >
-              Closest to limit
-            </button>
-            <button
-              onClick={() => setSortBy("cost")}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                sortBy === "cost"
-                  ? "bg-blue-600 text-white"
-                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-              }`}
-            >
-              Highest cost
-            </button>
-          </div>
-        </div>
-
-        {/* Column headers */}
-        <div className="flex items-center gap-3 pb-1 mb-1 border-b border-gray-100">
-          <div className="w-44 text-xs text-gray-400">Metric</div>
-          <div className="flex-1 text-xs text-gray-400">Usage</div>
-          <div className="w-14 text-right text-xs text-gray-400">Used</div>
-          <div className="w-28 text-right text-xs text-gray-400">Source</div>
-          <div className="w-20 text-right text-xs text-gray-400">Overage</div>
-          {isAdmin && <div className="w-16" />}
-        </div>
-
-        {/* Top 3 metrics */}
-        {top3.map((m) => (
-          <MetricRow
-            key={`${m.service}:${m.metric}`}
-            metric={m}
-            isAdmin={isAdmin}
-            adminKey={adminKey}
-            onVerify={handleVerify}
-            onUpdate={(metric) => setUpdatingMetric(metric)}
-          />
-        ))}
-
-        {/* Expand/collapse */}
-        <button
-          onClick={() => setExpanded(!expanded)}
-          className="mt-3 text-xs text-gray-500 hover:text-gray-700 flex items-center gap-1"
-        >
-          <span>{expanded ? "▲" : "▾"}</span>
-          <span>{expanded ? "Show less" : `Show all ${total_metrics} metrics`}</span>
-        </button>
-
-        {/* Expanded: all metrics grouped by service */}
-        {expanded && (
-          <div className="mt-4 border-t border-gray-100 pt-4">
-            {Object.entries(by_service).sort(([a], [b]) => a.localeCompare(b)).map(
-              ([service, metrics]) => (
-                <ServiceGroup
-                  key={service}
-                  service={service}
-                  metrics={metrics}
-                  isAdmin={isAdmin}
-                  adminKey={adminKey}
-                  onVerify={handleVerify}
-                  onUpdate={(metric) => setUpdatingMetric(metric)}
-                  anthropicDetail={service === "anthropic" ? anthropicDetail : undefined}
-                  aiCosts={service === "anthropic" ? aiCosts : undefined}
-                />
-              ),
-            )}
-          </div>
-        )}
-
-        {/* Legend */}
-        <div className="mt-4 flex flex-wrap gap-3 text-xs text-gray-400 border-t border-gray-100 pt-3">
-          <span>
-            <span className="text-green-500">●</span> Healthy (&lt;{80}%)
+        <div className="flex justify-between items-center mb-4 px-1 mt-4">
+          <span className="text-2xl font-bold tabular-nums">
+            ${totalMonthlyCost.toFixed(2)}
+            <span className="text-sm font-normal text-gray-500 ml-1">/month</span>
           </span>
-          <span>
-            <span className="text-amber-500">●</span> Warning ({80}–{95}%)
-          </span>
-          <span>
-            <span className="text-red-500">●</span> Critical ({95}%+)
-          </span>
-          <span className="ml-auto">
-            <span className="text-green-600">●</span> Live{" "}
-            <span className="text-green-600 ml-1">✓</span> Verified{" "}
-            <span className="text-gray-400 ml-1">~</span> Estimated{" "}
-            <span className="text-amber-500 ml-1">⚠</span> Unverified
+          <span className="text-xs text-gray-400">
+            On {platformUsage.plan} plan ·{" "}
+            <button className="underline hover:text-gray-600">Upgrade</button>
           </span>
         </div>
+
+        {/* Service cards */}
+        <div className="space-y-3">
+          {SERVICE_ORDER.map((service) => {
+            const metrics = by_service[service] ?? [];
+            if (metrics.length === 0) return null;
+            const meta = SERVICE_META[service];
+            if (!meta) return null;
+            return (
+              <ServiceCard
+                key={service}
+                service={service}
+                metrics={metrics}
+                meta={meta}
+                anthropicDetail={service === "anthropic" ? anthropicDetail : undefined}
+                aiCosts={service === "anthropic" ? aiCosts : undefined}
+                isAdmin={isAdmin}
+                adminKey={adminKey}
+                onVerify={handleVerify}
+                onUpdate={(metric) => setUpdatingMetric(metric)}
+              />
+            );
+          })}
+        </div>
+
+        {/* Footer */}
+        <p className="text-xs text-center text-gray-400 mt-4">
+          Running a civic accountability platform tracking $1.75B in donations costs less
+          than a streaming subscription
+        </p>
       </SectionCard>
 
       {/* Update modal */}
