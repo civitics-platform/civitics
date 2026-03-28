@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { SectionCard, SectionHeader, LoadingSkeleton } from "@civitics/ui";
 import type { AiCosts } from "../useDashboardData";
 
@@ -32,6 +33,7 @@ interface AnthropicCardProps {
 // ── Main component ──────────────────────────────────────────────────────────
 
 export function AnthropicCard({ aiCosts }: AnthropicCardProps) {
+  const [showTokens, setShowTokens] = useState(false);
   const isLoading = aiCosts === null;
   const source = aiCosts?.source ?? "unavailable";
   const isLive = source === "api";
@@ -140,6 +142,53 @@ export function AnthropicCard({ aiCosts }: AnthropicCardProps) {
                 </span>
               </div>
             </div>
+          )}
+
+          {/* Token detail toggle */}
+          <button
+            onClick={() => setShowTokens(!showTokens)}
+            className="text-xs text-gray-400 hover:text-gray-600 mt-2"
+          >
+            {showTokens ? "▲ Show less" : "▾ Show token details"}
+          </button>
+
+          {showTokens && (
+            <table className="w-full text-xs mt-2 text-gray-600">
+              <thead>
+                <tr className="text-gray-400 border-b border-gray-100">
+                  <th className="text-left py-1">Metric</th>
+                  <th className="text-right py-1">1h</th>
+                  <th className="text-right py-1">24h</th>
+                  <th className="text-right py-1">Month</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Input tokens</td>
+                  <td className="text-right">{fmtTokens(aiCosts!.last_hour?.input_tokens ?? 0)}</td>
+                  <td className="text-right">{fmtTokens(aiCosts!.last_24h?.input_tokens ?? 0)}</td>
+                  <td className="text-right">{fmtTokens(aiCosts!.this_month?.input_tokens ?? 0)}</td>
+                </tr>
+                <tr>
+                  <td>Output tokens</td>
+                  <td className="text-right">{fmtTokens(aiCosts!.last_hour?.output_tokens ?? 0)}</td>
+                  <td className="text-right">{fmtTokens(aiCosts!.last_24h?.output_tokens ?? 0)}</td>
+                  <td className="text-right">{fmtTokens(aiCosts!.this_month?.output_tokens ?? 0)}</td>
+                </tr>
+                <tr>
+                  <td>Cache hits</td>
+                  <td className="text-right">{fmtTokens(aiCosts!.last_hour?.cache_read_tokens ?? 0)}</td>
+                  <td className="text-right">{fmtTokens(aiCosts!.last_24h?.cache_read_tokens ?? 0)}</td>
+                  <td className="text-right">{fmtTokens(aiCosts!.this_month?.cache_read_tokens ?? 0)}</td>
+                </tr>
+                <tr className="border-t border-gray-100 font-medium">
+                  <td>Cost</td>
+                  <td className="text-right">{fmtUsd(aiCosts!.last_hour?.cost_usd ?? 0)}</td>
+                  <td className="text-right">{fmtUsd(aiCosts!.last_24h?.cost_usd ?? 0)}</td>
+                  <td className="text-right">{fmtUsd(aiCosts!.this_month?.cost_usd ?? 0)}</td>
+                </tr>
+              </tbody>
+            </table>
           )}
         </div>
       )}

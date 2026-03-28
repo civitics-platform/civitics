@@ -31,6 +31,13 @@ export type PipelinesData = {
   cron_last_run: Record<string, unknown> | null;
 };
 
+type TokenPeriod = {
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_tokens: number;
+  cost_usd: number;
+};
+
 export type AiCosts = {
   monthly_spent_usd: number;
   monthly_budget_usd: number;
@@ -41,6 +48,9 @@ export type AiCosts = {
   last_24h_cost_usd?: number;
   source?: string;
   this_month_total_tokens?: number;
+  last_hour?: TokenPeriod;
+  last_24h?: TokenPeriod;
+  this_month?: TokenPeriod;
 };
 
 export type QualityData = {

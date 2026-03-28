@@ -299,10 +299,8 @@ function CommentPeriodsSection({ openProposals }: { openProposals: OpenProposal[
 
 function PipelinesSection({
   pipelines,
-  aiCosts,
 }: {
   pipelines: NonNullable<ReturnType<typeof useDashboardData>["data"]>["status"]["pipelines"];
-  aiCosts: NonNullable<ReturnType<typeof useDashboardData>["data"]>["status"]["ai_costs"];
 }) {
   const [hoursUntilNext, setHoursUntilNext] = useState(0);
 
@@ -327,8 +325,6 @@ function PipelinesSection({
       </SectionCard>
     );
   }
-
-  const costs = isPartial(aiCosts) ? null : aiCosts;
 
   // Deduplicate recent_runs — keep latest per pipeline
   const latestByPipeline = new Map<string, PipelineRun>();
@@ -372,9 +368,14 @@ function PipelinesSection({
           title="Data Pipelines"
           status={overallFreshness === "ok" ? "ok" : overallFreshness === "warning" ? "warning" : "error"}
           description={
-            latestRun
-              ? `Last sync: ${formatRelativeTime(latestRun.completed_at)} · Next sync: in ${hoursUntilNext}h`
-              : "No recent runs found"
+            latestRun ? (
+              <>
+                Last sync: {formatRelativeTime(latestRun.completed_at)} · Next sync: in{" "}
+                <span suppressHydrationWarning>{hoursUntilNext}</span>h
+              </>
+            ) : (
+              "No recent runs found"
+            )
           }
         />
       </div>
@@ -434,25 +435,6 @@ function PipelinesSection({
         })}
       </div>
 
-      {/* AI cost footer */}
-      {costs && (
-        <div className="border-t border-gray-100 p-6 pt-4">
-          <div className="flex items-center justify-between text-xs text-gray-600">
-            <span className="font-medium text-gray-900">Monthly AI cost</span>
-            <span className="tabular-nums">
-              ${costs.monthly_spent_usd.toFixed(2)} / ${costs.monthly_budget_usd.toFixed(2)} budget ({costs.budget_used_pct.toFixed(0)}%)
-            </span>
-          </div>
-          <div className="mt-2 h-2 w-full rounded-full bg-gray-100 overflow-hidden">
-            <div
-              className={`h-full rounded-full transition-all duration-200 ${
-                costs.budget_used_pct > 75 ? "bg-amber-500" : "bg-blue-500"
-              }`}
-              style={{ width: `${Math.min(100, costs.budget_used_pct)}%` }}
-            />
-          </div>
-        </div>
-      )}
     </SectionCard>
   );
 }
@@ -911,7 +893,6 @@ export function DashboardClient({
           <>
             <PipelinesSection
               pipelines={data?.status.pipelines ?? { error: "Loading", partial: true }}
-              aiCosts={data?.status.ai_costs ?? { error: "Loading", partial: true }}
             />
             <DataQualitySection
               quality={data?.status.quality ?? { error: "Loading", partial: true }}
