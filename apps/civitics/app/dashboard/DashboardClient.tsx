@@ -5,7 +5,6 @@ import {
   StatCard,
   SectionCard,
   SectionHeader,
-  LoadingSkeleton,
   EmptyState,
   CommentPeriodCard,
   PipelineRow,
@@ -33,7 +32,8 @@ const AnthropicCard = dynamic(
 
 const PlatformCostsSection = dynamic(
   () => import("./PlatformCostsSection").then((m) => ({ default: m.PlatformCostsSection })),
-  { ssr: false, loading: () => <LoadingSkeleton variant="card" /> },
+  //{ ssr: false, loading: () => <LoadingSkeleton variant="card" /> },
+  { ssr: false },
 );
 
 // ── Types from server ─────────────────────────────────────────────────────────
@@ -234,7 +234,7 @@ function StatsSection({
       />
       <StatCard
         icon="🤖"
-        label="AI Summaries"
+        label="AI Summaries X"
         value={db?.ai_summary_cache ?? 0}
         formatAs="number"
         sublabel="Plain-language summaries generated"
@@ -810,7 +810,7 @@ export function DashboardClient({
   activity,
   officialsBreakdown,
 }: DashboardClientProps) {
-  const { data, loading, error, refresh } = useDashboardData();
+  const { data, error } = useDashboardData();
   const [_secondsAgo] = useState(0);
   const [mounted, setMounted] = useState(false);
 
@@ -866,106 +866,64 @@ export function DashboardClient({
       )}
 
       {/* ── Stat Cards ── */}
-      {loading ? (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <LoadingSkeleton variant="stat-card" count={6} />
-        </div>
-      ) : (
-        <StatsSection
-          database={data?.status.database ?? { error: "Loading", partial: true }}
-          aiCosts={data?.status.ai_costs ?? { error: "Loading", partial: true }}
-          officialsBreakdown={officialsBreakdown}
-          openProposalCount={openProposals.length}
-        />
-      )}
+      <StatsSection
+        database={data?.status.database ?? { error: "Loading", partial: true }}
+        aiCosts={data?.status.ai_costs ?? { error: "Loading", partial: true }}
+        officialsBreakdown={officialsBreakdown}
+        openProposalCount={openProposals.length}
+      />
 
       {/* ── Comment Periods ── */}
       <CommentPeriodsSection openProposals={openProposals} />
 
       {/* ── Two-column: Pipelines + Quality ── */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        {loading ? (
-          <>
-            <LoadingSkeleton variant="card" />
-            <LoadingSkeleton variant="card" />
-          </>
-        ) : (
-          <>
-            <PipelinesSection
-              pipelines={data?.status.pipelines ?? { error: "Loading", partial: true }}
-            />
-            <DataQualitySection
-              quality={data?.status.quality ?? { error: "Loading", partial: true }}
-              database={data?.status.database ?? { error: "Loading", partial: true }}
-            />
-          </>
-        )}
+        <PipelinesSection
+          pipelines={data?.status.pipelines ?? { error: "Loading", partial: true }}
+        />
+        <DataQualitySection
+          quality={data?.status.quality ?? { error: "Loading", partial: true }}
+          database={data?.status.database ?? { error: "Loading", partial: true }}
+        />
       </div>
 
       {/* ── Two-column: Connections + Activity ── */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        {loading ? (
-          <>
-            <LoadingSkeleton variant="card" />
-            <LoadingSkeleton variant="card" />
-          </>
-        ) : (
-          <>
-            <ConnectionHighlightsSection chordFlows={data?.chordFlows ?? []} />
-            <ActivitySection activity={topPages} totalViews={totalViews} />
-          </>
-        )}
+        <ConnectionHighlightsSection chordFlows={data?.chordFlows ?? []} />
+        <ActivitySection activity={topPages} totalViews={totalViews} />
       </div>
 
       {/* ── Platform Costs — data from useDashboardData, no independent fetch ── */}
-      <PlatformCostsSection
+      {/* <PlatformCostsSection
         platformUsage={data?.platformUsage ?? null}
         onRefresh={refresh}
-      />
+      /> */}
 
       {/* ── Anthropic AI — data from status ai_costs, no independent fetch ── */}
-      <AnthropicCard
+      {/* <AnthropicCard
         aiCosts={
           data?.status.ai_costs && !isPartial(data.status.ai_costs)
             ? (data.status.ai_costs as AiCosts)
             : null
         }
-      />
+      /> */}
 
       {/* ── FIX 4: Development Progress + FIX 5: Community Compute ── */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        {loading ? (
-          <>
-            <LoadingSkeleton variant="card" />
-            <LoadingSkeleton variant="card" />
-          </>
-        ) : (
-          <>
-            <DevelopmentProgressSection />
-            <CommunityComputeSection />
-          </>
-        )}
+        <DevelopmentProgressSection />
+        <CommunityComputeSection />
       </div>
 
       {/* ── Two-column: Platform Story + Self Tests ── */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        {loading ? (
-          <>
-            <LoadingSkeleton variant="card" />
-            <LoadingSkeleton variant="card" />
-          </>
-        ) : (
-          <>
-            <PlatformStorySection
-              database={data?.status.database ?? { error: "Loading", partial: true }}
-              chordTotalFlowUsd={chordTotalFlowUsd}
-            />
-            <SelfTestsSection
-              selfTests={data?.status.self_tests ?? { error: "Loading", partial: true }}
-              aiCosts={data?.status.ai_costs ?? { error: "Loading", partial: true }}
-            />
-          </>
-        )}
+        <PlatformStorySection
+          database={data?.status.database ?? { error: "Loading", partial: true }}
+          chordTotalFlowUsd={chordTotalFlowUsd}
+        />
+        <SelfTestsSection
+          selfTests={data?.status.self_tests ?? { error: "Loading", partial: true }}
+          aiCosts={data?.status.ai_costs ?? { error: "Loading", partial: true }}
+        />
       </div>
     </div>
   );
