@@ -321,11 +321,14 @@ interface PlatformCostsSectionProps {
 }
 
 export function PlatformCostsSection({ platformUsage, onRefresh }: PlatformCostsSectionProps) {
+  const [mounted, setMounted] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [sortBy, setSortBy] = useState<"usage_pct" | "cost">("usage_pct");
   const [updatingMetric, setUpdatingMetric] = useState<PlatformMetric | null>(null);
   const [adminKey, setAdminKey] = useState("");
   const isAdmin = useIsAdmin();
+
+  useEffect(() => setMounted(true), []);
 
   // Read admin key from localStorage after mount only — never during SSR
   useEffect(() => {
@@ -368,7 +371,11 @@ export function PlatformCostsSection({ platformUsage, onRefresh }: PlatformCosts
       <SectionCard>
         <SectionHeader icon="💰" title="Platform Costs" />
         <div className="mt-4">
-          <LoadingSkeleton variant="card" />
+          {!mounted ? (
+            <div className="animate-pulse bg-white rounded-xl border border-gray-200 shadow-sm h-48" />
+          ) : (
+            <LoadingSkeleton variant="card" />
+          )}
         </div>
       </SectionCard>
     );
