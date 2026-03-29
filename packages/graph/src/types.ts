@@ -108,12 +108,16 @@ export interface ChordOptions {
   padAngle: number
   /** Filter out flows below this dollar amount. 0 = show all. */
   minFlowUsd: number
+  /** Hint: when true the preset is designed for entity-focused mode */
+  entityMode?: boolean
 }
 
 export interface TreemapOptions {
   groupBy: 'party' | 'state' | 'chamber' | 'industry'
   sizeBy: 'donation_total' | 'connection_count' | 'vote_count'
   colorBy: 'party' | 'chamber'
+  /** Hint: when true the preset is designed for entity-focused mode */
+  entityMode?: boolean
 }
 
 export interface SunburstOptions {

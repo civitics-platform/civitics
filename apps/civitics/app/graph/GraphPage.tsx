@@ -114,7 +114,8 @@ export function GraphPage({ initialCode }: GraphPageProps = {}) {
     }
   }
 
-  const vizType = view.style.vizType;
+  const vizType      = view.style.vizType;
+  const primaryEntity = view.focus.entities[0] ?? null;
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
@@ -188,6 +189,8 @@ export function GraphPage({ initialCode }: GraphPageProps = {}) {
               className="w-full h-full"
               svgRef={treemapSvgRef}
               vizOptions={view.style.vizOptions.treemap}
+              primaryEntityId={primaryEntity?.id ?? null}
+              primaryEntityName={primaryEntity?.name ?? null}
             />
           </div>
 
@@ -200,6 +203,7 @@ export function GraphPage({ initialCode }: GraphPageProps = {}) {
               className="w-full h-full"
               svgRef={chordSvgRef}
               vizOptions={view.style.vizOptions.chord}
+              primaryEntityId={primaryEntity?.id ?? null}
             />
           </div>
 

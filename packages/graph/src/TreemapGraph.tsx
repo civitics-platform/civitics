@@ -18,12 +18,43 @@ interface TreemapOfficial {
   total_donated_cents: number;
 }
 
+interface DonorRow {
+  donor_id: string;
+  donor_name: string;
+  industry_category: string;
+  amount_usd: number;
+  entity_type: string;
+}
+
 // D3 hierarchy datum for internal nodes
 interface GroupDatum {
   name: string;
   children?: GroupDatum[];
   value?: number;
   official?: TreemapOfficial;
+  donor?: DonorRow;
+  industryIndex?: number; // entity mode: palette index for the industry group
+}
+
+// ── Industry colors (entity mode) ─────────────────────────────────────────────
+
+const INDUSTRY_FILL_PALETTE = [
+  "#1a2a3a", "#1a3a2a", "#2a1a3a", "#3a2a1a", "#1a3a3a",
+  "#3a1a2a", "#2a3a1a", "#1a2a2a", "#2a2a1a", "#1a1a3a",
+  "#3a1a1a", "#2a1a2a", "#1a3a1a",
+];
+const INDUSTRY_STROKE_PALETTE = [
+  "#06b6d4", "#22c55e", "#a855f7", "#f97316", "#14b8a6",
+  "#ec4899", "#84cc16", "#0ea5e9", "#eab308", "#6366f1",
+  "#ef4444", "#8b5cf6", "#10b981",
+];
+
+function getIndustryFill(index: number): string {
+  return INDUSTRY_FILL_PALETTE[index % INDUSTRY_FILL_PALETTE.length] ?? "#1e3040";
+}
+
+function getIndustryStroke(index: number): string {
+  return INDUSTRY_STROKE_PALETTE[index % INDUSTRY_STROKE_PALETTE.length] ?? "#64748b";
 }
 
 // ── Party colors ──────────────────────────────────────────────────────────────
@@ -121,14 +152,17 @@ export interface TreemapGraphProps {
   className?: string;
   svgRef?: RefObject<SVGSVGElement>;
   vizOptions?: Partial<TreemapOptions>;
+  primaryEntityId?: string | null;
+  primaryEntityName?: string | null;
 }
 
-export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOptions }: TreemapGraphProps) {
+export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOptions, primaryEntityId, primaryEntityName }: TreemapGraphProps) {
   const containerRef   = useRef<HTMLDivElement>(null);
   const internalSvgRef = useRef<SVGSVGElement>(null);
   const svgRef         = externalSvgRef ?? internalSvgRef;
 
   const [officials, setOfficials] = useState<TreemapOfficial[]>([]);
+  const [donors, setDonors]       = useState<DonorRow[]>([]);
   const [loading, setLoading]     = useState(true);
   const [error, setError]         = useState<string | null>(null);
 
@@ -142,40 +176,81 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
   // ── Fetch data ──────────────────────────────────────────────────────────────
   useEffect(() => {
     setLoading(true);
-    fetch(`/api/graph/treemap?groupBy=${groupBy}&sizeBy=${sizeBy}`)
+
+    const url = primaryEntityId
+      ? `/api/graph/treemap?entityId=${encodeURIComponent(primaryEntityId)}&groupBy=${groupBy}&sizeBy=${sizeBy}`
+      : `/api/graph/treemap?groupBy=${groupBy}&sizeBy=${sizeBy}`;
+
+    fetch(url)
       .then((r) => r.json())
-      .then((data: TreemapOfficial[] | { error: string }) => {
-        if ("error" in data) throw new Error(data.error);
-        setOfficials(data);
+      .then((data: TreemapOfficial[] | DonorRow[] | { error: string }) => {
+        if ("error" in data) throw new Error((data as { error: string }).error);
+        if (primaryEntityId) {
+          const donorData = data as DonorRow[];
+          setDonors(donorData);
+          setOfficials([]);
+        } else {
+          setOfficials(data as TreemapOfficial[]);
+          setDonors([]);
+        }
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false));
-  // Refetch when groupBy/sizeBy change so the API can serve alternate data in future
+  // Refetch when entity / groupBy / sizeBy change
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [groupBy, sizeBy]);
+  }, [primaryEntityId, groupBy, sizeBy]);
 
   // ── Render treemap ──────────────────────────────────────────────────────────
   const render = useCallback(() => {
     const container = containerRef.current;
     const svg = svgRef.current;
-    if (!container || !svg || officials.length === 0) return;
+    if (!container || !svg) return;
+
+    const isEntityMode = !!primaryEntityId && donors.length > 0;
+    if (!isEntityMode && officials.length === 0) return;
+    if (isEntityMode && donors.length === 0) return;
 
     const width  = container.clientWidth;
     const height = container.clientHeight;
     if (width === 0 || height === 0) return;
 
-    const grouped = d3.group(officials, (d) => getGroupKey(d, groupBy));
-    const root: GroupDatum = {
-      name: "root",
-      children: Array.from(grouped, ([key, items]) => ({
-        name: key,
-        children: items.map((o) => ({
-          name: o.official_name,
-          value: getSizeValue(o, sizeBy),
-          official: o,
+    let root: GroupDatum;
+
+    if (isEntityMode) {
+      // Group donors by industry, assign a palette index per industry
+      const grouped = d3.group(donors, (d) => d.industry_category);
+      const industryKeys = [...grouped.keys()].sort((a, b) => {
+        const aTotal = grouped.get(a)!.reduce((s, r) => s + r.amount_usd, 0);
+        const bTotal = grouped.get(b)!.reduce((s, r) => s + r.amount_usd, 0);
+        return bTotal - aTotal;
+      });
+      root = {
+        name: "root",
+        children: industryKeys.map((industry, idx) => ({
+          name: industry,
+          industryIndex: idx,
+          children: (grouped.get(industry) ?? []).map((d) => ({
+            name:         d.donor_name,
+            value:        d.amount_usd,
+            donor:        d,
+            industryIndex: idx,
+          })),
         })),
-      })),
-    };
+      };
+    } else {
+      const grouped = d3.group(officials, (d) => getGroupKey(d, groupBy));
+      root = {
+        name: "root",
+        children: Array.from(grouped, ([key, items]) => ({
+          name: key,
+          children: items.map((o) => ({
+            name:    o.official_name,
+            value:   getSizeValue(o, sizeBy),
+            official: o,
+          })),
+        })),
+      };
+    }
 
     const hierarchy = d3
       .hierarchy<GroupDatum>(root)
@@ -204,7 +279,9 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
       .attr("y", (d) => d.y0)
       .attr("width", (d) => d.x1 - d.x0)
       .attr("height", (d) => d.y1 - d.y0)
-      .attr("fill", (d) => getFill(d.data.name, colorBy))
+      .attr("fill", (d) => isEntityMode
+        ? getIndustryFill(d.data.industryIndex ?? 0)
+        : getFill(d.data.name, colorBy))
       .attr("rx", 3);
 
     // Group labels
@@ -214,13 +291,17 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
       .attr("class", "group-label")
       .attr("x", (d) => d.x0 + 6)
       .attr("y", (d) => d.y0 + 14)
-      .attr("fill", (d) => getStroke(d.data.name, colorBy))
+      .attr("fill", (d) => isEntityMode
+        ? getIndustryStroke(d.data.industryIndex ?? 0)
+        : getStroke(d.data.name, colorBy))
       .attr("font-size", 11)
       .attr("font-weight", "600")
       .attr("font-family", "system-ui, sans-serif")
-      .text((d) => getGroupLabel(d.data.name, groupBy));
+      .text((d) => isEntityMode
+        ? d.data.name.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
+        : getGroupLabel(d.data.name, groupBy));
 
-    // Official leaf cells
+    // Leaf cells
     const leafNodes = hierarchy.leaves() as d3.HierarchyRectangularNode<GroupDatum>[];
     const cell = g
       .selectAll<SVGGElement, d3.HierarchyRectangularNode<GroupDatum>>(".leaf")
@@ -234,20 +315,35 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
       .append("rect")
       .attr("width",  (d) => Math.max(0, d.x1 - d.x0 - 1))
       .attr("height", (d) => Math.max(0, d.y1 - d.y0 - 1))
-      .attr("fill",   (d) => {
-        const key = d.data.official ? getGroupKey(d.data.official, colorBy === 'chamber' ? 'chamber' : 'party') : 'nonpartisan';
-        return getFill(key, colorBy);
-      })
-      .attr("stroke", (d) => {
-        const key = d.data.official ? getGroupKey(d.data.official, colorBy === 'chamber' ? 'chamber' : 'party') : 'nonpartisan';
-        return getStroke(key, colorBy);
-      })
+      .attr("fill",   (d) => isEntityMode
+        ? getIndustryFill(d.data.industryIndex ?? 0)
+        : (() => {
+            const key = d.data.official ? getGroupKey(d.data.official, colorBy === 'chamber' ? 'chamber' : 'party') : 'nonpartisan';
+            return getFill(key, colorBy);
+          })())
+      .attr("stroke", (d) => isEntityMode
+        ? getIndustryStroke(d.data.industryIndex ?? 0)
+        : (() => {
+            const key = d.data.official ? getGroupKey(d.data.official, colorBy === 'chamber' ? 'chamber' : 'party') : 'nonpartisan';
+            return getStroke(key, colorBy);
+          })())
       .attr("stroke-width", 0.5)
       .attr("rx", 2)
       .on("mouseenter", function (event: MouseEvent, d) {
         d3.select(this).attr("stroke-width", 2).attr("fill-opacity", 0.85);
-        if (d.data.official) {
-          const rect = (containerRef.current ?? svg).getBoundingClientRect();
+        const rect = (containerRef.current ?? svg).getBoundingClientRect();
+        if (d.data.donor) {
+          showTip(
+            {
+              id:           d.data.donor.donor_id,
+              name:         d.data.donor.donor_name,
+              type:         'financial',
+              donationTotal: d.data.donor.amount_usd * 100,
+            },
+            event.clientX - rect.left,
+            event.clientY - rect.top
+          );
+        } else if (d.data.official) {
           showTip(
             officialToNode(d.data.official),
             event.clientX - rect.left,
@@ -256,8 +352,19 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
         }
       })
       .on("mousemove", function (event: MouseEvent, d) {
-        if (d.data.official) {
-          const rect = (containerRef.current ?? svg).getBoundingClientRect();
+        const rect = (containerRef.current ?? svg).getBoundingClientRect();
+        if (d.data.donor) {
+          showTip(
+            {
+              id:           d.data.donor.donor_id,
+              name:         d.data.donor.donor_name,
+              type:         'financial',
+              donationTotal: d.data.donor.amount_usd * 100,
+            },
+            event.clientX - rect.left,
+            event.clientY - rect.top
+          );
+        } else if (d.data.official) {
           showTip(
             officialToNode(d.data.official),
             event.clientX - rect.left,
@@ -270,10 +377,19 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
         hideTip();
       })
       .on("click", (_event: MouseEvent, d) => {
-        if (d.data.official) setPopup(officialToNode(d.data.official));
+        if (d.data.donor) {
+          setPopup({
+            id:            d.data.donor.donor_id,
+            name:          d.data.donor.donor_name,
+            type:          'financial',
+            donationTotal: d.data.donor.amount_usd * 100,
+          });
+        } else if (d.data.official) {
+          setPopup(officialToNode(d.data.official));
+        }
       });
 
-    // Official name labels
+    // Name labels
     cell
       .append("text")
       .attr("x", 4)
@@ -290,12 +406,12 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
       .text((d) => {
         const w = d.x1 - d.x0;
         if (w < 40) return "";
-        const name = d.data.official?.official_name ?? d.data.name;
+        const name = d.data.donor?.donor_name ?? d.data.official?.official_name ?? d.data.name;
         const maxChars = Math.floor(w / 6);
         return name.length > maxChars ? name.slice(0, maxChars - 1) + "…" : name;
       });
 
-    // Dollar label — large cells only
+    // Amount label — large cells only
     cell
       .append("text")
       .attr("x", 4)
@@ -308,10 +424,11 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
         const w = d.x1 - d.x0;
         const h = d.y1 - d.y0;
         if (w < 60 || h < 36) return "";
-        const cents = d.data.official?.total_donated_cents ?? 0;
-        return "$" + (cents / 100).toLocaleString("en-US", { notation: "compact", maximumFractionDigits: 1 });
+        const amount = d.data.donor?.amount_usd
+          ?? (d.data.official ? d.data.official.total_donated_cents / 100 : 0);
+        return "$" + amount.toLocaleString("en-US", { notation: "compact", maximumFractionDigits: 1 });
       });
-  }, [officials, groupBy, sizeBy, colorBy, showTip, hideTip]);
+  }, [officials, donors, primaryEntityId, groupBy, sizeBy, colorBy, showTip, hideTip]);
 
   // Render on data change + resize
   useEffect(() => {
@@ -331,9 +448,18 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
     expandNode:       () => {},
   };
 
+  const isEntityMode = !!primaryEntityId && !loading;
+
   // ── Legend ─────────────────────────────────────────────────────────────────
 
   function renderLegend() {
+    if (isEntityMode) {
+      return (
+        <span className="text-[10px] text-gray-500">
+          Color = industry · Size = donation amount
+        </span>
+      );
+    }
     if (colorBy === 'chamber') {
       return (
         <>
@@ -383,7 +509,8 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
     );
   }
 
-  if (officials.length === 0) {
+  const hasData = primaryEntityId ? donors.length > 0 : officials.length > 0;
+  if (!hasData) {
     return (
       <div className={`flex items-center justify-center ${className}`}>
         <p className="text-gray-500 text-sm">No donation data available yet.</p>
@@ -391,8 +518,18 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
     );
   }
 
+  const contextLabel = primaryEntityId && primaryEntityName
+    ? `${primaryEntityName} — Top Donors`
+    : "All Officials by Party";
+
   return (
     <div ref={containerRef} className={`relative overflow-hidden ${className}`}>
+      {/* Context label */}
+      <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 pointer-events-none">
+        <span className="text-xs text-gray-400 bg-gray-950/70 px-2 py-0.5 rounded-full">
+          {contextLabel}
+        </span>
+      </div>
       <svg id="treemap-svg" ref={svgRef} className="w-full h-full" />
 
       {/* Shared tooltip */}

@@ -327,6 +327,61 @@ export const TREEMAP_BY_CHAMBER: GraphViewPreset = {
   },
 }
 
+export const TREEMAP_DONOR_BREAKDOWN: GraphViewPreset = {
+  focus: {
+    entities: [],
+    scope: 'all',
+    depth: 1,
+    includeProcedural: false,
+  },
+  connections: DEFAULT_CONNECTION_STATE,
+  style: {
+    vizType: 'treemap',
+    vizOptions: {
+      treemap: {
+        groupBy: 'industry',
+        sizeBy: 'donation_total',
+        colorBy: 'party',
+        entityMode: true,
+      },
+    },
+  },
+  meta: {
+    name: 'Donor Breakdown',
+    isPreset: true,
+    presetId: 'treemap-donor-breakdown',
+    isDirty: false,
+  },
+}
+
+export const CHORD_DONOR_INDUSTRIES: GraphViewPreset = {
+  focus: {
+    entities: [],
+    scope: 'all',
+    depth: 1,
+    includeProcedural: false,
+  },
+  connections: DEFAULT_CONNECTION_STATE,
+  style: {
+    vizType: 'chord',
+    vizOptions: {
+      chord: {
+        normalizeMode: false,
+        showLabels: true,
+        padAngle: 0.05,
+        minFlowUsd: 0,
+        entityMode: true,
+      },
+    },
+  },
+  meta: {
+    name: 'Industry Donors',
+    isPreset: true,
+    presetId: 'chord-donor-industries',
+    isDirty: false,
+  },
+}
+
 // ── Preset Collection ──────────────────────────────────────────────────────────
 
 export const BUILT_IN_PRESETS: GraphViewPreset[] = [
@@ -339,6 +394,8 @@ export const BUILT_IN_PRESETS: GraphViewPreset[] = [
   CHORD_TOP_DONORS,
   TREEMAP_BY_STATE,
   TREEMAP_BY_CHAMBER,
+  TREEMAP_DONOR_BREAKDOWN,
+  CHORD_DONOR_INDUSTRIES,
 ]
 
 // ── Preset Utilities ───────────────────────────────────────────────────────────

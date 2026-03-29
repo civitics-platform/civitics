@@ -33,6 +33,7 @@ export interface ChordGraphProps {
   className?: string;
   svgRef?: RefObject<SVGSVGElement>;
   vizOptions?: Partial<ChordOptions>;
+  primaryEntityId?: string | null;
 }
 
 // Industry arc colors — enough for up to 13 industries
@@ -190,7 +191,7 @@ interface ChartData {
   rawRecipients: RawRecipient[];
 }
 
-export function ChordGraph({ className = "", svgRef: externalSvgRef, vizOptions }: ChordGraphProps) {
+export function ChordGraph({ className = "", svgRef: externalSvgRef, vizOptions, primaryEntityId }: ChordGraphProps) {
   const containerRef  = useRef<HTMLDivElement>(null);
   const internalSvgRef = useRef<SVGSVGElement>(null);
   const svgRef        = externalSvgRef ?? internalSvgRef;
@@ -199,6 +200,7 @@ export function ChordGraph({ className = "", svgRef: externalSvgRef, vizOptions 
   const [status,    setStatus]    = useState<"loading" | "empty" | "error" | "ok">("loading");
   const [rawData,   setRawData]   = useState<{ groups: RawGroup[]; recipients: RawRecipient[]; matrix: number[][] } | null>(null);
   const [chartData, setChartData] = useState<ChartData | null>(null);
+  const [entityName, setEntityName] = useState<string | null>(null);
 
   const { tooltip, show: showTip, hide: hideTip } = useTooltip();
   const [popup, setPopup] = useState<NewGraphNode | null>(null);
@@ -232,8 +234,14 @@ export function ChordGraph({ className = "", svgRef: externalSvgRef, vizOptions 
 
     async function load() {
       setStatus("loading");
+      setEntityName(null);
       try {
-        const res = await fetch("/api/graph/chord");
+        const minFlow = vizOptions?.minFlowUsd ?? 0;
+        const url = primaryEntityId
+          ? `/api/graph/chord?entityId=${encodeURIComponent(primaryEntityId)}&minFlowUsd=${minFlow}`
+          : `/api/graph/chord?minFlowUsd=${minFlow}`;
+
+        const res = await fetch(url);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
         const json = await res.json() as {
@@ -251,6 +259,10 @@ export function ChordGraph({ className = "", svgRef: externalSvgRef, vizOptions 
         }
 
         if (!cancelled) {
+          // In entity mode the single recipient label is the official's name
+          if (primaryEntityId && json.recipients?.[0]?.label) {
+            setEntityName(json.recipients[0].label);
+          }
           setRawData({
             groups:     json.groups,
             recipients: json.recipients ?? [],
@@ -265,7 +277,8 @@ export function ChordGraph({ className = "", svgRef: externalSvgRef, vizOptions 
 
     void load();
     return () => { cancelled = true; };
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [primaryEntityId]);
 
   // ── Effect 2: Apply vizOptions to raw data → chartData ───────────────────
   useEffect(() => {
@@ -436,7 +449,16 @@ export function ChordGraph({ className = "", svgRef: externalSvgRef, vizOptions 
       )}
 
       {status === "ok" && (
-        <svg id="chord-diagram-svg" ref={svgRef} className="w-full h-full" />
+        <>
+          <svg id="chord-diagram-svg" ref={svgRef} className="w-full h-full" />
+          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 pointer-events-none">
+            <span className="text-xs text-gray-400 bg-gray-950/70 px-2 py-0.5 rounded-full">
+              {primaryEntityId && entityName
+                ? `${entityName}'s Industry Donors`
+                : "Industry → Party Flows"}
+            </span>
+          </div>
+        </>
       )}
 
       {/* Shared tooltip */}

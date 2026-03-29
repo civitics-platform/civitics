@@ -138,8 +138,9 @@ export function GraphHeader({
 
       <span className="text-gray-300">|</span>
 
-      {/* Viz dropdown */}
-      <div className="relative shrink-0" ref={vizMenuRef}>
+      {/* Viz dropdown + entity focus indicator */}
+      <div className="flex items-center gap-1.5 shrink-0">
+      <div className="relative" ref={vizMenuRef}>
         <button
           onClick={() => setShowVizMenu(v => !v)}
           className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md hover:bg-gray-100 transition-colors text-gray-700"
@@ -212,6 +213,15 @@ export function GraphHeader({
             </div>
           </div>
         )}
+      </div>
+
+      {/* Entity focus indicator — shown next to viz selector for entity-aware viz types */}
+      {view.focus.entities.length > 0 &&
+       ['chord', 'treemap', 'sunburst'].includes(view.style.vizType) && (
+        <span className="text-xs text-indigo-400 truncate max-w-[140px]" title={`Focused on ${view.focus.entities[0]!.name}`}>
+          · {view.focus.entities[0]!.name}
+        </span>
+      )}
       </div>
 
       {/* Entity search */}

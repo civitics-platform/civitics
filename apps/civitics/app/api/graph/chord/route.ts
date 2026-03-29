@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
 import { createAdminClient } from "@civitics/db";
+import { supabaseUnavailable, unavailableResponse } from "@/lib/supabase-check";
 
-export const revalidate = 600; // Chord data changes rarely — cache 10 minutes at edge
+export const dynamic = "force-dynamic";
 
 type FlowRow = {
   industry: string;
@@ -13,11 +15,102 @@ type FlowRow = {
   donor_count: number;
 };
 
+type EntityDonorRow = {
+  industry_category: string | null;
+  total_usd: number;
+  donor_count: number;
+};
+
+type OfficialRow = {
+  id: string;
+  name: string;
+};
+
 function labelFor(s: string) {
   return s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  if (supabaseUnavailable()) return unavailableResponse();
+  const { searchParams } = new URL(req.url);
+  const entityId = searchParams.get("entityId");
+
+  const supabase = createAdminClient();
+
+  // ── Entity mode: show industries donating to one official ─────────────────
+  if (entityId) {
+    try {
+      // Fetch official name
+      const { data: officialData } = await (supabase as ReturnType<typeof createAdminClient>)
+        .from("officials")
+        .select("id, name")
+        .eq("id", entityId)
+        .maybeSingle();
+
+      const official = officialData as OfficialRow | null;
+
+      // Aggregate donations to this official by industry
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data: donorData, error } = await (supabase as any)
+        .from("financial_relationships")
+        .select("financial_entities!inner(industry_category), amount_cents")
+        .eq("official_id", entityId) as {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          data: Array<{ financial_entities: { industry_category: string | null } | null; amount_cents: number }> | null;
+          error: { message: string } | null;
+        };
+
+      if (error) {
+        console.error("[chord/entity] query error:", error.message);
+        return NextResponse.json({ groups: [], recipients: [], matrix: [] });
+      }
+
+      // Aggregate by industry client-side
+      const industryMap = new Map<string, { total: number; count: number }>();
+      for (const row of donorData ?? []) {
+        const fe = row.financial_entities;
+        const industry = fe?.industry_category ?? "untagged";
+        if (industry === "untagged") continue;
+        const usd = Number(row.amount_cents) / 100;
+        const prev = industryMap.get(industry) ?? { total: 0, count: 0 };
+        industryMap.set(industry, { total: prev.total + usd, count: prev.count + 1 });
+      }
+
+      const groups = [...industryMap.entries()]
+        .sort((a, b) => b[1].total - a[1].total)
+        .map(([industry, v]) => ({
+          id: industry,
+          label: labelFor(industry),
+          icon: "🏢",
+          total_usd: Math.round(v.total),
+          pac_count: v.count,
+        }));
+
+      if (groups.length === 0) {
+        return NextResponse.json({ groups: [], recipients: [], matrix: [] });
+      }
+
+      const officialName = official?.name ?? entityId;
+      const recipients = [
+        {
+          id: entityId,
+          label: officialName,
+          total_received_usd: groups.reduce((s, g) => s + g.total_usd, 0),
+          official_count: 1,
+        },
+      ];
+
+      // Matrix: M industries × 1 official
+      const matrix: number[][] = groups.map((g) => [g.total_usd]);
+
+      return NextResponse.json({ groups, recipients, matrix });
+    } catch (e) {
+      console.error("[chord/entity]", e);
+      return NextResponse.json({ error: "Internal error" }, { status: 500 });
+    }
+  }
+
+  // ── Aggregate mode: industry → party flows ────────────────────────────────
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data, error } = await (createAdminClient() as any).rpc("chord_industry_flows");
