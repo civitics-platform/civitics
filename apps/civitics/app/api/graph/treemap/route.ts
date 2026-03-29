@@ -29,35 +29,31 @@ export async function GET(request: Request) {
 
   // ── Entity mode: donors for one official ─────────────────────────────────
   if (entityId) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data, error } = await (supabase as any)
-      .from("financial_relationships")
-      .select("financial_entities!inner(id, name, industry_category, entity_type), amount_cents")
-      .eq("official_id", entityId)
-      .order("amount_cents", { ascending: false })
-      .limit(100) as {
-        data: Array<{
-          financial_entities: { id: string; name: string; industry_category: string | null; entity_type: string | null } | null;
-          amount_cents: number;
-        }> | null;
-        error: { message: string } | null;
-      };
+    type RpcRow = {
+      financial_entity_id: string | null;
+      entity_name: string;
+      entity_type: string;
+      industry_category: string;
+      total_amount_usd: number;
+      transaction_count: number;
+    };
+
+    const { data, error } = await supabase.rpc("get_official_donors", {
+      p_official_id: entityId,
+    });
 
     if (error) {
-      console.error("[graph/treemap/entity] query error:", error.message);
+      console.error("[graph/treemap/entity] RPC error:", error.message);
       return Response.json({ error: error.message }, { status: 500 });
     }
 
-    const rows: DonorRow[] = (data ?? []).map((row) => {
-      const fe = row.financial_entities;
-      return {
-        donor_id:          fe?.id ?? "",
-        donor_name:        fe?.name ?? "Unknown",
-        industry_category: fe?.industry_category ?? "Other",
-        amount_usd:        Number(row.amount_cents) / 100,
-        entity_type:       fe?.entity_type ?? "pac",
-      };
-    });
+    const rows: DonorRow[] = ((data ?? []) as RpcRow[]).map((row) => ({
+      donor_id:          row.financial_entity_id ?? "",
+      donor_name:        row.entity_name,
+      industry_category: row.industry_category,
+      amount_usd:        Number(row.total_amount_usd),
+      entity_type:       row.entity_type,
+    }));
 
     return Response.json(rows);
   }

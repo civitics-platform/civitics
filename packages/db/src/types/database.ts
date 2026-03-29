@@ -1419,6 +1419,17 @@ export type Database = {
         }[]
       }
       get_database_size_bytes: { Args: never; Returns: number }
+      get_official_donors: {
+        Args: { p_official_id: string }
+        Returns: {
+          financial_entity_id: string | null
+          entity_name: string
+          entity_type: string
+          industry_category: string
+          total_amount_usd: number
+          transaction_count: number
+        }[]
+      }
       get_officials_breakdown: {
         Args: never
         Returns: {
