@@ -96,9 +96,6 @@ function draw(
   const chord  = d3.chord().padAngle(0.05).sortSubgroups(d3.descending);
   const chords = chord(squareMatrix);
 
-  console.log('[ChordGraph] groups:', allGroups.length);
-  console.log('[ChordGraph] chords:', chords.groups.length);
-
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const arc    = d3.arc<d3.ChordGroup>().innerRadius(innerR).outerRadius(outerR) as any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -193,6 +190,7 @@ export function ChordGraph({ className = "", svgRef: externalSvgRef }: ChordGrap
   const containerRef  = useRef<HTMLDivElement>(null);
   const internalSvgRef = useRef<SVGSVGElement>(null);
   const svgRef        = externalSvgRef ?? internalSvgRef;
+  const lastSizeRef   = useRef({ w: 0, h: 0 });
 
   const [status,    setStatus]    = useState<"loading" | "empty" | "error" | "ok">("loading");
   const [chartData, setChartData] = useState<ChartData | null>(null);
@@ -239,8 +237,6 @@ export function ChordGraph({ className = "", svgRef: externalSvgRef }: ChordGrap
           matrix?:     number[][];
           error?: string;
         };
-
-        console.log('[ChordGraph] raw API response:', json);
 
         if (cancelled) return;
 
@@ -328,14 +324,17 @@ export function ChordGraph({ className = "", svgRef: externalSvgRef }: ChordGrap
     const obs = new ResizeObserver((entries) => {
       const entry = entries[0];
       if (!entry || !svgRef.current) return;
-      const { width, height } = entry.contentRect;
-      if (width > 0 && height > 0) {
+      const w = Math.floor(entry.contentRect.width);
+      const h = Math.floor(entry.contentRect.height);
+      if (w === lastSizeRef.current.w && h === lastSizeRef.current.h) return;
+      lastSizeRef.current = { w, h };
+      if (w > 0 && h > 0) {
         draw(
           svgRef.current,
           chartData.square,
           chartData.allGroups,
-          width,
-          height,
+          w,
+          h,
           (index, x, y) => showTip(groupToNode(index, chartData), x, y),
           hideTip,
           (index) => setPopup(groupToNode(index, chartData))

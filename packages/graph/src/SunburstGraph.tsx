@@ -87,6 +87,8 @@ export function SunburstGraph({ entityId, entityLabel, className = "", svgRef: e
 
   const { tooltip, show: showTip, hide: hideTip } = useTooltip();
   const [popup, setPopup] = useState<NewGraphNode | null>(null);
+  const cacheRef      = useRef<Map<string, SunburstNode>>(new Map());
+  const lastSizeRef   = useRef({ w: 0, h: 0 });
 
   const nodeActions: NodeActions = {
     recenter:        () => {},
@@ -197,20 +199,41 @@ export function SunburstGraph({ entityId, entityLabel, className = "", svgRef: e
   useEffect(() => {
     if (!entityId) { setStatus("idle"); return; }
 
-    let cancelled = false;
+    const controller = new AbortController();
 
     async function load() {
+      // Serve from cache if available
+      const cached = cacheRef.current.get(entityId!);
+      if (cached) {
+        const container = containerRef.current;
+        if (!container) return;
+        const { width, height } = container.getBoundingClientRect();
+        const w = width  || 600;
+        const h = height || 500;
+        const root = d3.hierarchy<SunburstNode>(cached).sum((d) => d.value ?? 0);
+        const partitioned = d3.partition<SunburstNode>().size([2 * Math.PI, Math.min(w, h) / 2])(root) as D3HierarchyNode;
+        rootRef.current        = partitioned;
+        currentRootRef.current = partitioned;
+        setBreadcrumbs([cached.name]);
+        setStatus("ok");
+        renderRef.current?.(partitioned, w, h);
+        return;
+      }
+
       setStatus("loading");
       try {
-        const res = await fetch(`/api/graph/sunburst?entityId=${encodeURIComponent(entityId!)}`);
+        const res = await fetch(
+          `/api/graph/sunburst?entityId=${encodeURIComponent(entityId!)}`,
+          { signal: controller.signal }
+        );
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const json = await res.json() as SunburstNode & { error?: string };
 
-        if (cancelled) return;
         if (json.error) throw new Error(json.error);
         if (!json.children || json.children.length === 0) { setStatus("empty"); return; }
 
-        setStatus("ok");
+        cacheRef.current.set(entityId!, json);
+
         const container = containerRef.current;
         if (!container) return;
         const { width, height } = container.getBoundingClientRect();
@@ -223,14 +246,15 @@ export function SunburstGraph({ entityId, entityLabel, className = "", svgRef: e
         rootRef.current        = partitioned;
         currentRootRef.current = partitioned;
         setBreadcrumbs([json.name]);
+        setStatus("ok");
         renderRef.current?.(partitioned, w, h);
-      } catch {
-        if (!cancelled) setStatus("error");
+      } catch (err) {
+        if ((err as Error).name !== "AbortError") setStatus("error");
       }
     }
 
     void load();
-    return () => { cancelled = true; };
+    return () => { controller.abort(); };
   // render is intentionally excluded — renderRef.current always holds the latest version
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entityId]);
@@ -243,8 +267,11 @@ export function SunburstGraph({ entityId, entityLabel, className = "", svgRef: e
     const obs = new ResizeObserver((entries) => {
       const entry = entries[0];
       if (!entry || !currentRootRef.current) return;
-      const { width, height } = entry.contentRect;
-      renderRef.current?.(currentRootRef.current, width, height);
+      const w = Math.floor(entry.contentRect.width);
+      const h = Math.floor(entry.contentRect.height);
+      if (w === lastSizeRef.current.w && h === lastSizeRef.current.h) return;
+      lastSizeRef.current = { w, h };
+      renderRef.current?.(currentRootRef.current, w, h);
     });
 
     obs.observe(container);

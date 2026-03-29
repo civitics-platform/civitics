@@ -788,12 +788,10 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
         window.open(`/officials/${nodeId}`, "_blank");
       }, []),
 
-      addToComparison: useCallback((nodeId: string) => {
-        console.log("[ForceGraph] Add to comparison:", nodeId);
+      addToComparison: useCallback((_nodeId: string) => {
       }, []),
 
-      expandNode: useCallback((nodeId: string) => {
-        console.log("[ForceGraph] Expand node:", nodeId);
+      expandNode: useCallback((_nodeId: string) => {
       }, []),
     };
 
