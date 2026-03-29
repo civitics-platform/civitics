@@ -341,7 +341,7 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
       .tile(d3.treemapSquarify)(hierarchy);
 
     d3.select(svg).selectAll("*").remove();
-    d3.select(svg).attr("width", width).attr("height", height);
+    d3.select(svg).attr("width", width).attr("height", height).style("user-select", "none");
 
     const g = d3.select(svg).append("g");
 
@@ -380,6 +380,9 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
       .attr("font-size", 11)
       .attr("font-weight", "600")
       .attr("font-family", "system-ui, sans-serif")
+      .attr("pointer-events", "none")
+      .style("user-select", "none")
+      .style("-webkit-user-select", "none")
       .text((d) => isEntityMode
         ? d.data.name.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
         : getGroupLabel(d.data.name, groupBy));
@@ -396,6 +399,8 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
         .attr("fill", "#64748b")
         .attr("font-family", "system-ui, sans-serif")
         .attr("pointer-events", "none")
+        .style("user-select", "none")
+        .style("-webkit-user-select", "none")
         .text((d) => {
           if (!d.data.children?.length) return "";
           const w = d.x1 - d.x0;
@@ -514,6 +519,8 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
       .attr("fill", "#e2e8f0")
       .attr("font-family", "system-ui, sans-serif")
       .attr("pointer-events", "none")
+      .style("user-select", "none")
+      .style("-webkit-user-select", "none")
       .text((d) => {
         const w = d.x1 - d.x0;
         if (w < 40) return "";
@@ -531,6 +538,8 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
       .attr("fill", "#94a3b8")
       .attr("font-family", "system-ui, sans-serif")
       .attr("pointer-events", "none")
+      .style("user-select", "none")
+      .style("-webkit-user-select", "none")
       .text((d) => {
         const w = d.x1 - d.x0;
         const h = d.y1 - d.y0;
@@ -688,6 +697,7 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
         x={tooltip.x}
         y={tooltip.y}
         visible={tooltip.visible}
+        containerWidth={containerRef.current?.clientWidth}
       />
 
       {/* Shared popup */}

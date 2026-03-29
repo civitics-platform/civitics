@@ -16,13 +16,15 @@ export interface TooltipProps {
   x: number;
   y: number;
   visible: boolean;
+  /** Width of the containing element (px). Used to flip tooltip when near right edge. */
+  containerWidth?: number;
 }
 
-export function Tooltip({ node, x, y, visible }: TooltipProps) {
+export function Tooltip({ node, x, y, visible, containerWidth }: TooltipProps) {
   if (!visible || !node) return null;
 
-  const flipLeft =
-    typeof window !== 'undefined' && x > window.innerWidth - 280;
+  const boundary = containerWidth ?? (typeof window !== 'undefined' ? window.innerWidth : 1024);
+  const flipLeft = x + 12 + 240 > boundary;
 
   return (
     <div
