@@ -13,7 +13,7 @@ RETURNS TABLE (
   donation_count BIGINT
 ) AS $$
   SELECT
-    COALESCE(o.party, 'Unknown')      AS party,
+    COALESCE(o.party::TEXT, 'other')  AS party,
     fr.donor_name,
     SUM(fr.amount_cents) / 100.0      AS total_usd,
     COUNT(*)                          AS donation_count
