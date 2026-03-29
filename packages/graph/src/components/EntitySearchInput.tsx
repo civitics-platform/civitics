@@ -29,14 +29,13 @@ export function EntitySearchInput({ onSelect, placeholder = 'Search officials, a
     <div className="relative px-2 pb-1">
       {/* Input */}
       <div className="relative">
-        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs pointer-events-none">🔍</span>
         <input
           type="text"
           value={query}
           onChange={e => setQuery(e.target.value)}
           placeholder={placeholder}
           disabled={disabled}
-          className="w-full pl-6 pr-2 py-1.5 text-xs border border-gray-200 rounded-md bg-white text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-full pl-2 pr-2 py-1.5 text-xs border border-gray-200 rounded-md bg-white text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400 disabled:opacity-50 disabled:cursor-not-allowed"
         />
         {query && (
           <button
@@ -50,7 +49,7 @@ export function EntitySearchInput({ onSelect, placeholder = 'Search officials, a
 
       {/* Dropdown results */}
       {query.trim().length >= 2 && (
-        <div className="mt-1 border border-gray-200 rounded-md bg-white shadow-sm overflow-hidden max-h-48 overflow-y-auto">
+        <div className="mt-1 border border-gray-200 rounded-md bg-white shadow-sm overflow-hidden max-h-48 overflow-y-auto w-full max-w-full">
           {loading && (
             <div className="px-3 py-2 text-xs text-gray-400">Loading…</div>
           )}
@@ -60,7 +59,7 @@ export function EntitySearchInput({ onSelect, placeholder = 'Search officials, a
           {!loading && results.map(entity => (
             <TreeNode
               key={entity.id}
-              label={entity.name}
+              label={<span className="truncate block max-w-full overflow-hidden text-ellipsis whitespace-nowrap">{entity.name}</span>}
               variant="entity"
               party={entity.party}
               photoUrl={entity.photoUrl}

@@ -49,7 +49,7 @@ export function DataExplorerPanel({ view, hooks, collapsed, onCollapse }: DataEx
 
   // Expanded: 260px panel
   return (
-    <div className="h-full w-[260px] flex flex-col border-r border-gray-200 bg-white overflow-hidden shrink-0">
+    <div className="h-full w-[260px] flex flex-col border-r border-gray-200 bg-white overflow-hidden shrink-0 min-w-0">
 
       {/* Panel header */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-gray-100 shrink-0">
