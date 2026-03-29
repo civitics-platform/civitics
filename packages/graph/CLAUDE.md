@@ -1172,6 +1172,65 @@ Show a persistent hint: "Select any official to explore their full network."
 
 ---
 
+## API Field Name Contract
+
+The graph uses V2 field names throughout. ALL API routes and hooks MUST
+use these names — never the legacy V1 names.
+
+**Nodes** (`GraphNode` / `GraphNodeV2` from `packages/graph/src/types.ts`):
+```
+id             ← plain "type:uuid" composite key (e.g. "official:86328793-…")
+name           ← NOT 'label'
+type           ← NodeType from types.ts (e.g. "official", "agency", "pac")
+collapsed      ← NOT 'metadata.collapsed'
+connectionCount ← NOT 'metadata.connectionCount'
+```
+
+**Edges** (`GraphEdge` / `GraphEdgeV2` from `packages/graph/src/types.ts`):
+```
+fromId         ← NOT 'source'
+toId           ← NOT 'target'
+connectionType ← NOT 'type'
+amountUsd      ← NOT 'amountCents'
+strength
+occurredAt
+```
+
+**API query params** (`/api/graph/connections`):
+```
+entityId       ← NOT 'entity_id'
+```
+
+**NodeType** — use the V2 union from `types.ts`:
+```
+"official" | "agency" | "proposal" | "financial" |
+"organization" | "corporation" | "pac" | "individual"
+```
+Note: `"governing_body"` does NOT exist in V2. Map it to `"agency"`.
+
+**Never use legacy V1 field names:**
+```
+✗ source, target       → use fromId, toId
+✗ type on edges        → use connectionType
+✗ label on nodes       → use name
+✗ amountCents          → use amountUsd
+✗ metadata.collapsed   → use collapsed directly
+✗ entity_id param      → use entityId
+✗ governing_body type  → use agency
+```
+
+Any new API route or hook that touches graph data must import from
+`@civitics/graph` using the V2 aliases:
+```ts
+import type {
+  GraphNodeV2 as GraphNode,
+  GraphEdgeV2 as GraphEdge,
+  NodeTypeV2 as NodeType,
+} from "@civitics/graph";
+```
+
+---
+
 ## The North Star
 
 Every feature in this package should answer yes to one question:
