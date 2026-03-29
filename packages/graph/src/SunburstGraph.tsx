@@ -95,6 +95,8 @@ export function SunburstGraph({ entityId, entityLabel, className = "", svgRef: e
     expandNode:      () => {},
   };
 
+  const renderRef = useRef<((root: D3HierarchyNode, width: number, height: number) => void) | null>(null);
+
   const render = useCallback((root: D3HierarchyNode, width: number, height: number) => {
     const svg = svgRef.current;
     if (!svg) return;
@@ -180,6 +182,9 @@ export function SunburstGraph({ entityId, entityLabel, className = "", svgRef: e
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [svgRef, showTip, hideTip]);
 
+  // Keep renderRef current so effects can call the latest render without adding it to deps
+  useEffect(() => { renderRef.current = render; });
+
   function zoom(node: D3HierarchyNode, width: number, height: number) {
     currentRootRef.current = node;
     const crumbs: string[] = [];
@@ -218,7 +223,7 @@ export function SunburstGraph({ entityId, entityLabel, className = "", svgRef: e
         rootRef.current        = partitioned;
         currentRootRef.current = partitioned;
         setBreadcrumbs([json.name]);
-        render(partitioned, w, h);
+        renderRef.current?.(partitioned, w, h);
       } catch {
         if (!cancelled) setStatus("error");
       }
@@ -226,7 +231,9 @@ export function SunburstGraph({ entityId, entityLabel, className = "", svgRef: e
 
     void load();
     return () => { cancelled = true; };
-  }, [entityId, render]);
+  // render is intentionally excluded — renderRef.current always holds the latest version
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entityId]);
 
   useEffect(() => {
     if (status !== "ok") return;
@@ -237,12 +244,12 @@ export function SunburstGraph({ entityId, entityLabel, className = "", svgRef: e
       const entry = entries[0];
       if (!entry || !currentRootRef.current) return;
       const { width, height } = entry.contentRect;
-      render(currentRootRef.current, width, height);
+      renderRef.current?.(currentRootRef.current, width, height);
     });
 
     obs.observe(container);
     return () => obs.disconnect();
-  }, [status, render]);
+  }, [status]);
 
   return (
     <div ref={containerRef} className={`relative w-full h-full flex flex-col ${className}`}>
