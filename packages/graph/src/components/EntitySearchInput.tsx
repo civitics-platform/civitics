@@ -26,7 +26,7 @@ export function EntitySearchInput({ onSelect, placeholder = 'Search officials, a
   }
 
   return (
-    <div className="relative px-2 pb-1">
+    <div className="relative px-2 pb-1 w-full">
       {/* Input */}
       <div className="relative">
         <input
@@ -49,7 +49,7 @@ export function EntitySearchInput({ onSelect, placeholder = 'Search officials, a
 
       {/* Dropdown results */}
       {query.trim().length >= 2 && (
-        <div className="mt-1 border border-gray-200 rounded-md bg-white shadow-sm overflow-hidden max-h-48 overflow-y-auto w-full max-w-full">
+        <div className="absolute left-2 right-2 z-50 border border-gray-200 rounded-md bg-white shadow-lg overflow-hidden max-h-48 overflow-y-auto">
           {loading && (
             <div className="px-3 py-2 text-xs text-gray-400">Loading…</div>
           )}
@@ -59,7 +59,7 @@ export function EntitySearchInput({ onSelect, placeholder = 'Search officials, a
           {!loading && results.map(entity => (
             <TreeNode
               key={entity.id}
-              label={<span className="truncate block max-w-full overflow-hidden text-ellipsis whitespace-nowrap">{entity.name}</span>}
+              label={(entity.name ?? '').length > 28 ? (entity.name ?? '').slice(0, 28) + '…' : (entity.name ?? '')}
               variant="entity"
               party={entity.party}
               photoUrl={entity.photoUrl}
