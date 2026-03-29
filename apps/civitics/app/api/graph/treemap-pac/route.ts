@@ -94,10 +94,12 @@ export async function GET(request: Request) {
   const byParty = new Map<string, Map<string, { totalUsd: number; count: number }>>();
 
   for (const row of data ?? []) {
-    const party  = (row.party as string) ?? "Unknown";
-    const donor  = (row.donor_name as string) ?? "Unknown";
-    const usd    = Number(row.total_usd) ?? 0;
-    const count  = Number(row.donation_count) ?? 0;
+    const usd = Number(row.total_usd) ?? 0;
+    if (usd <= 10000) continue; // skip tiny donations
+
+    const party = (row.party as string) ?? "Unknown";
+    const donor = (row.donor_name as string) ?? "Unknown";
+    const count = Number(row.donation_count) ?? 0;
 
     if (!byParty.has(party)) byParty.set(party, new Map());
     const donors = byParty.get(party)!;
@@ -105,13 +107,13 @@ export async function GET(request: Request) {
     donors.set(donor, { totalUsd: prev.totalUsd + usd, count: prev.count + count });
   }
 
-  // Build hierarchy — all parties, top 20 donors each
+  // Build hierarchy — top 3 parties, top 50 donors each
   const children: PacGroup[] = Array.from(byParty.entries())
     .map(([party, donors]) => {
       const leaves: PacLeaf[] = Array.from(donors.entries())
         .map(([name, stats]) => ({ name, value: stats.totalUsd, count: stats.count }))
         .sort((a, b) => b.value - a.value)
-        .slice(0, 20);
+        .slice(0, 50);
 
       return {
         name:     party,
@@ -119,7 +121,8 @@ export async function GET(request: Request) {
         children: leaves,
       };
     })
-    .sort((a, b) => b.totalUsd - a.totalUsd);
+    .sort((a, b) => b.totalUsd - a.totalUsd)
+    .slice(0, 3);
 
   const hierarchy: PacHierarchy = { name: "PAC Money by Party", children };
   return Response.json(hierarchy);
