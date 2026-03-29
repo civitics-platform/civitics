@@ -282,6 +282,8 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
         return base * 4;
       }
 
+      const hasConnectionFilter = connections && Object.keys(connections).length > 0;
+
       const linkGroup = g.append("g").attr("class", "links");
       const link = linkGroup
         .selectAll<SVGLineElement, SimLink>("line")
@@ -292,7 +294,8 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
         .attr("stroke-width", edgeWidthFn)
         .attr("stroke-opacity", edgeOpacityFn)
         .style("display", (d) =>
-          connections[d.connectionType]?.enabled !== false ? "block" : "none"
+          // Show all edges when no filter is set; otherwise respect enabled flag
+          !hasConnectionFilter || connections[d.connectionType]?.enabled !== false ? "block" : "none"
         )
         .attr("marker-end", (d) => `url(#arrow-${d.connectionType})`);
 
@@ -607,10 +610,11 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
       if (!link) return;
 
       const focusIds = new Set(focusEntities.map((fe) => fe.id));
+      const hasConnectionFilter = connections && Object.keys(connections).length > 0;
 
       link
         .style("display", (d: SimLink) =>
-          connections[d.connectionType]?.enabled !== false ? "block" : "none"
+          !hasConnectionFilter || connections[d.connectionType]?.enabled !== false ? "block" : "none"
         )
         .attr("stroke", (d: SimLink) =>
           connections[d.connectionType]?.color

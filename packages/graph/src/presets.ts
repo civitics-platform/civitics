@@ -263,15 +263,25 @@ export const BUILT_IN_PRESETS: GraphViewPreset[] = [
 
 /**
  * Apply a preset to the current view.
- * Replaces the entire GraphView state with preset values.
+ * Replaces connections and style with preset values.
+ * Preserves current focus.entities so the active search context is not lost.
  * Sets meta.isDirty = false since we just loaded the preset clean.
+ *
+ * Presets are viz-type specific. A preset with vizType 'force' only shows
+ * when the force viz is active. Use vizType 'any' for presets that work
+ * across viz types.
  */
 export function applyPreset(
   preset: GraphViewPreset,
-  _current: GraphView
+  current: GraphView
 ): GraphView {
   return {
     ...preset,
+    focus: {
+      ...preset.focus,
+      // Preserve current entities so focused officials/agencies survive preset switches
+      entities: current.focus.entities,
+    },
     meta: {
       ...preset.meta,
       isDirty: false,

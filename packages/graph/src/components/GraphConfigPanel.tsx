@@ -216,6 +216,11 @@ export function GraphConfigPanel({ view, hooks, collapsed, onCollapse, onSavePre
   const activePreset  = view.meta?.presetId ?? null;
   const isDirty       = view.meta?.isDirty  ?? false;
 
+  // Only show presets that match the active viz type (or 'any' which works everywhere)
+  const relevantPresets = BUILT_IN_PRESETS.filter(
+    p => p.style.vizType === vizType || (p.style.vizType as string) === 'any'
+  );
+
   // Collapsed: 40px icon strip
   if (collapsed) {
     return (
@@ -297,23 +302,30 @@ export function GraphConfigPanel({ view, hooks, collapsed, onCollapse, onSavePre
           )}
         </TreeSection>
 
-        {/* Presets */}
+        {/* Presets — filtered to active viz type */}
         <TreeSection label="Presets" defaultExpanded separator>
-          {BUILT_IN_PRESETS.map(preset => (
-            <TreeNode
-              key={preset.meta.presetId}
-              label={preset.meta.name}
-              variant="item"
-              collapsible={false}
-              active={activePreset === preset.meta.presetId}
-              separator={false}
-              depth={1}
-              icon={PRESET_EMOJI[preset.meta.presetId] ?? '📋'}
-              onClick={() => hooks.applyPreset(preset)}
-            >
-              {null}
-            </TreeNode>
-          ))}
+          {relevantPresets.length > 0
+            ? relevantPresets.map(preset => (
+                <TreeNode
+                  key={preset.meta.presetId}
+                  label={preset.meta.name}
+                  variant="item"
+                  collapsible={false}
+                  active={activePreset === preset.meta.presetId}
+                  separator={false}
+                  depth={1}
+                  icon={PRESET_EMOJI[preset.meta.presetId] ?? '📋'}
+                  onClick={() => hooks.applyPreset(preset)}
+                >
+                  {null}
+                </TreeNode>
+              ))
+            : (
+                <div className="px-3 py-2 text-xs text-gray-400">
+                  No presets for this visualization
+                </div>
+              )
+          }
 
           <div className="h-px bg-gray-100 mx-2 my-1" />
 
