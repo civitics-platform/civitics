@@ -23,12 +23,15 @@ export function NodePopup({ node, onClose, actions, vizType }: NodePopupProps) {
   const isForce    = vizType === 'force';
   const isOfficial = node.type === 'official';
 
-  const initials = node.name
+  const displayName = node.name ?? 'Unknown';
+
+  const initials = displayName
     .split(' ')
+    .filter(Boolean)
     .map((n) => n[0] ?? '')
     .slice(0, 2)
     .join('')
-    .toUpperCase();
+    .toUpperCase() || '?';
 
   const avatarBg =
     node.party === 'democrat'
@@ -65,7 +68,7 @@ export function NodePopup({ node, onClose, actions, vizType }: NodePopupProps) {
           </div>
           <div>
             <div className="font-semibold text-gray-900 leading-tight text-sm">
-              {node.name}
+              {displayName}
             </div>
             {node.role && (
               <div className="text-xs text-gray-500 mt-0.5">{node.role}</div>
