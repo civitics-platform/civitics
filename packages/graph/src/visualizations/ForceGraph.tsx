@@ -116,7 +116,7 @@ function getNodeRadius(node: GraphNode, sizeBy: string | undefined): number {
   return base + Math.sqrt(node.connectionCount ?? 0) * 2;
 }
 
-function initials(name: string | undefined): string {
+function initials(name: string | undefined | null): string {
   if (!name) return "?";
   const parts = name.trim().split(/\s+/).filter(Boolean);
   if (parts.length >= 2)
@@ -124,7 +124,8 @@ function initials(name: string | undefined): string {
   return name.slice(0, 2).toUpperCase();
 }
 
-function truncate(s: string, n: number): string {
+function truncate(s: string | undefined | null, n: number): string {
+  if (!s) return "";
   return s.length > n ? s.slice(0, n) + "…" : s;
 }
 
@@ -371,7 +372,7 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
             .attr("font-weight", "700")
             .attr("fill", d.type === "official" ? "#374151" : "#1e40af")
             .attr("pointer-events", "none")
-            .text(initials(d.name ?? ""));
+            .text(initials(d.name));
         } else if (d.type === "agency" || d.type === "organization") {
           el.append("rect")
             .attr("class", "node-circle")
