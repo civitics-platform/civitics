@@ -1,9 +1,11 @@
 /**
- * PAC Industry Classification pipeline.
+ * PAC Sector Classification pipeline.
  *
- * Classifies financial_entities with entity_type 'pac' or 'party_committee'
- * by matching their names against industry keyword lists. Stores the result
- * in metadata->>'industry_category'.
+ * Classifies financial_relationships rows where donor_type = 'pac'
+ * by matching donor_name + industry against keyword lists.
+ * Stores the result in metadata->>'sector'.
+ *
+ * Safe to re-run — overwrites existing sector values.
  *
  * Run standalone:
  *   pnpm --filter @civitics/data data:pac-classify
@@ -15,62 +17,82 @@ import { createAdminClient } from "@civitics/db";
 // Keyword map
 // ---------------------------------------------------------------------------
 
-const INDUSTRY_KEYWORDS: Record<string, string[]> = {
+const SECTOR_KEYWORDS: Record<string, string[]> = {
+  Labor: [
+    "union", "workers", "labor", "teamster", "brotherhood",
+    "seiu", "afl", "cio", "machinists", "carpenters",
+    "electricians", "plumbers", "steamfitters", "firefighter",
+    "police", "teachers", "federation of teachers", "sheet metal",
+    "laborers", "longshoremen", "ironworkers", "painters",
+    "bricklayers", "operating engineers",
+  ],
   Finance: [
     "bank", "financial", "capital", "investment", "securities",
     "credit union", "mortgage", "insurance", "wall street",
-    "asset management",
+    "asset management", "fund", "equity", "venture", "ubs",
+    "goldman", "morgan", "citi", "jpmorgan", "blackstone",
+    "accounting", "accountants", "cpa", "actuari",
   ],
   "Real Estate": [
     "realtor", "realtors", "real estate", "housing", "homebuilder",
-    "apartment", "multifamily", "property",
+    "home builder", "apartment", "multifamily", "property",
+    "mortgage", "home depot", "lowe's",
   ],
   Energy: [
-    "gas", "oil", "energy", "petroleum", "coal", "electric", "utility",
-    "utilities", "pipeline", "nuclear", "solar", "wind",
-    "chevron", "exxon", "shell",
+    "gas", "oil", "energy", "petroleum", "coal", "electric",
+    "utility", "utilities", "pipeline", "nuclear", "solar", "wind",
+    "chevron", "exxon", "shell", "bp", "refin", "mining", "crystal sugar",
   ],
   Healthcare: [
     "health", "medical", "hospital", "physician", "doctor", "pharma",
     "drug", "dental", "nurse", "biotech", "medicare", "clinic",
+    "surgeons", "psychiatr", "chiropractic", "optometr",
+    "veterinar", "hospice",
   ],
   Defense: [
-    "defense", "military", "aerospace", "veteran", "army", "navy",
-    "lockheed", "boeing", "raytheon", "northrop", "general dynamics",
+    "defense", "military", "aerospace", "veteran", "lockheed",
+    "boeing", "raytheon", "northrop", "general dynamics", "l3",
+    "leidos", "saic", "caci",
   ],
   Tech: [
-    "technology", "tech", "software", "internet", "digital", "data",
-    "cyber", "telecom", "wireless", "broadband", "semiconductor",
+    "technology", "tech", "software", "internet", "digital", "cyber",
+    "telecom", "wireless", "broadband", "semiconductor",
+    "microsoft", "google", "amazon", "apple", "meta",
+    "ibm", "oracle", "intel",
   ],
   Agriculture: [
-    "farm", "farmer", "agriculture", "agri", "crop", "grain", "cotton",
-    "rice", "dairy", "livestock", "beef", "pork", "poultry", "seed",
+    "farm", "farmer", "agriculture", "agri", "crop", "grain",
+    "cotton", "rice", "dairy", "livestock", "beef", "pork",
+    "poultry", "seed", "sugar", "soybean", "corn", "wheat",
+    "tobacco", "nursery",
   ],
   Transportation: [
-    "transport", "auto", "automobile", "dealer", "truck", "airline",
+    "transport", "automobile", "auto dealers", "truck", "airline",
     "aviation", "railroad", "shipping", "maritime", "transit",
+    "uber", "lyft", "fedex", "ups", "freight",
   ],
   Legal: [
-    "attorney", "lawyer", "legal", "trial", "litigation", "law firm",
-    "justice", "association of trial",
+    "attorney", "lawyer", "legal", "trial", "litigation",
+    "law firm", "justice", "association of trial", "plaintiff",
   ],
   Education: [
-    "education", "school", "college", "university", "teacher", "faculty",
-    "student loan", "learning",
-  ],
-  Labor: [
-    "union", "workers", "labor", "teamster", "employee", "seiu",
-    "afl", "cio", "brotherhood", "federation of teachers",
-    "firefighter", "police",
+    "education", "school", "college", "university", "teacher",
+    "faculty", "student loan", "learning", "academic",
   ],
   Construction: [
     "construction", "builder", "contractor", "engineer",
     "infrastructure", "cement", "steel", "lumber", "plumber",
-    "electrician",
+    "electrician", "mason", "roofing", "flooring",
   ],
-  Retail: [
-    "retail", "store", "restaurant", "food service", "grocery",
-    "franchise", "hospitality", "hotel", "tourism",
+  "Retail & Food": [
+    "retail", "restaurant", "food service", "grocery", "franchise",
+    "hospitality", "hotel", "tourism", "beverage", "alcohol",
+    "beer", "wine", "spirits", "supermarket",
+  ],
+  "Party Committee": [
+    "democrat", "republican", "gop", "dccc", "nrcc",
+    "dscc", "nrsc", "dlcc", "victory fund", "pac fund",
+    "liberty fund", "freedom fund", "leadership pac",
   ],
 };
 
@@ -78,27 +100,14 @@ const INDUSTRY_KEYWORDS: Record<string, string[]> = {
 // Classify
 // ---------------------------------------------------------------------------
 
-function classifyPac(name: string): string {
-  const lower = name.toLowerCase();
+function classifySector(donorName: string, industryField: string | null): string {
+  const text = [donorName, industryField ?? ""].join(" ").toLowerCase();
 
-  for (const [industry, keywords] of Object.entries(INDUSTRY_KEYWORDS)) {
-    if (keywords.some((kw) => lower.includes(kw))) {
-      return industry;
+  for (const [sector, keywords] of Object.entries(SECTOR_KEYWORDS)) {
+    if (keywords.some((kw) => text.includes(kw.toLowerCase()))) {
+      return sector;
     }
   }
-
-  if (
-    lower.includes("democrat") ||
-    lower.includes("republican") ||
-    lower.includes("gop") ||
-    lower.includes("dccc") ||
-    lower.includes("nrcc") ||
-    lower.includes("dscc") ||
-    lower.includes("nrsc")
-  ) {
-    return "Party Committee";
-  }
-
   return "Other";
 }
 
@@ -107,87 +116,87 @@ function classifyPac(name: string): string {
 // ---------------------------------------------------------------------------
 
 async function main() {
-  console.log("[pac-classify] Starting PAC classification pipeline…");
+  console.log("\n=== PAC Classification ===");
 
   const supabase = createAdminClient();
 
-  const { data: entities, error } = await supabase
-    .from("financial_entities")
-    .select("id, name, entity_type, metadata")
-    .in("entity_type", ["pac", "party_committee"]);
+  const FETCH_BATCH  = 1000;
+  const UPDATE_BATCH = 500;
 
-  if (error) {
-    console.error("[pac-classify] Failed to fetch entities:", error.message);
-    process.exit(1);
-  }
+  let offset      = 0;
+  let total       = 0;
+  let classified  = 0;
+  let unclassified = 0;
+  const sectorCount: Record<string, number> = {};
 
-  if (!entities || entities.length === 0) {
-    console.log("[pac-classify] No PAC/party_committee entities found.");
-    return;
-  }
+  while (true) {
+    const { data: rows, error } = await supabase
+      .from("financial_relationships")
+      .select("id, donor_name, industry, metadata")
+      .eq("donor_type", "pac")
+      .not("donor_name", "is", null)
+      .range(offset, offset + FETCH_BATCH - 1);
 
-  console.log(`[pac-classify] Classifying ${entities.length} entities…`);
-
-  const industryCount: Record<string, number> = {};
-
-  // Classify all entities
-  const updates = entities.map((entity) => {
-    const industry = classifyPac(entity.name as string);
-    industryCount[industry] = (industryCount[industry] ?? 0) + 1;
-    return {
-      id: entity.id as string,
-      industry,
-      // Merge industry_category into existing metadata (preserve other fields)
-      metadata: {
-        ...((entity.metadata as Record<string, unknown>) ?? {}),
-        industry_category: industry,
-      },
-    };
-  });
-
-  // Batch update in groups of 100
-  const BATCH_SIZE = 100;
-  let processed = 0;
-  let errors = 0;
-
-  for (let i = 0; i < updates.length; i += BATCH_SIZE) {
-    const batch = updates.slice(i, i + BATCH_SIZE);
-
-    const results = await Promise.allSettled(
-      batch.map(({ id, metadata }) =>
-        supabase
-          .from("financial_entities")
-          .update({ metadata })
-          .eq("id", id)
-      )
-    );
-
-    for (const result of results) {
-      if (result.status === "rejected") {
-        errors++;
-      } else if (result.value.error) {
-        errors++;
-        console.error("[pac-classify] Row error:", result.value.error.message);
-      } else {
-        processed++;
-      }
+    if (error) {
+      console.error("Fetch error:", error.message);
+      process.exit(1);
     }
 
-    console.log(
-      `[pac-classify] Progress: ${Math.min(i + BATCH_SIZE, updates.length)}/${updates.length}`
-    );
+    if (!rows || rows.length === 0) break;
+
+    total += rows.length;
+
+    // Classify all rows in this batch
+    const updates = rows.map((row) => {
+      const sector = classifySector(
+        row.donor_name as string,
+        row.industry as string | null
+      );
+      sectorCount[sector] = (sectorCount[sector] ?? 0) + 1;
+      if (sector === "Other") unclassified++;
+      else classified++;
+
+      return {
+        id: row.id as string,
+        metadata: {
+          ...((row.metadata as Record<string, unknown>) ?? {}),
+          sector,
+        },
+      };
+    });
+
+    // Batch update in groups of UPDATE_BATCH (parallel within each group)
+    for (let i = 0; i < updates.length; i += UPDATE_BATCH) {
+      const batch = updates.slice(i, i + UPDATE_BATCH);
+      await Promise.all(
+        batch.map(({ id, metadata }) =>
+          supabase
+            .from("financial_relationships")
+            .update({ metadata })
+            .eq("id", id)
+        )
+      );
+    }
+
+    console.log(`  Processed: ${total}`);
+
+    if (rows.length < FETCH_BATCH) break;
+    offset += FETCH_BATCH;
   }
 
-  console.log(`\n[pac-classify] Classified ${processed} PACs (${errors} errors)`);
-  console.log("[pac-classify] Industry breakdown:");
+  console.log(`\nTotal PACs:           ${total.toLocaleString()}`);
+  console.log(`Classified:           ${classified.toLocaleString()}`);
+  console.log(`Unclassified (Other): ${unclassified.toLocaleString()}`);
+  console.log("\nSector breakdown:");
 
-  const sorted = Object.entries(industryCount).sort(([, a], [, b]) => b - a);
-  for (const [industry, count] of sorted) {
-    console.log(`  ${industry.padEnd(20)} ${count}`);
+  const sorted = Object.entries(sectorCount).sort(([, a], [, b]) => b - a);
+  for (const [sector, count] of sorted) {
+    const pct = total > 0 ? ((count / total) * 100).toFixed(1) : "0.0";
+    console.log(`  ${sector.padEnd(22)} ${count.toLocaleString().padStart(7)} (${pct}%)`);
   }
 }
 
 main().catch((err) => {
-  console.error("[pac-classify] Fatal error:", err);
+  console.error("Fatal:", err);
   process.exit(1);
 });

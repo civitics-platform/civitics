@@ -3,13 +3,12 @@ import { supabaseUnavailable, unavailableResponse } from "@/lib/supabase-check";
 
 export const dynamic = "force-dynamic";
 
-// ── Shared hierarchy types ───────────────────────────────────────────────────
+// ── Hierarchy types ──────────────────────────────────────────────────────────
 
 interface PacLeaf {
   name: string;
   value: number;
-  pacId: string;
-  officialCount: number;
+  count: number;
 }
 
 interface PacGroup {
@@ -32,171 +31,96 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const groupBy = (searchParams.get("groupBy") ?? "sector") as "sector" | "party";
 
-  // Step 1: Fetch PAC entities with their fec_committee_id and industry
-  const { data: entities, error: entErr } = await supabase
-    .from("financial_entities")
-    .select("id, name, metadata, source_ids")
-    .in("entity_type", ["pac", "party_committee"])
-    .not("metadata->>industry_category", "is", null)
-    .limit(1000);
-
-  if (entErr) {
-    console.error("[treemap-pac] entities error:", entErr.message);
-    return Response.json({ error: entErr.message }, { status: 500 });
-  }
-
-  if (!entities || entities.length === 0) {
-    const label = groupBy === "sector" ? "PAC Donations by Sector" : "PAC Donations by Party";
-    return Response.json({ name: label, children: [] } satisfies PacHierarchy);
-  }
-
-  // Build lookup: fec_committee_id → { entityId, name, sector }
-  const byCommitteeId: Record<string, { entityId: string; name: string; sector: string }> = {};
-  const byEntityId: Record<string, { name: string; sector: string }> = {};
-
-  for (const e of entities) {
-    const sid = e.source_ids as Record<string, string> | null;
-    const meta = e.metadata as Record<string, string> | null;
-    const sector = meta?.industry_category ?? "Other";
-    const committeeId = sid?.fec_committee_id;
-    byEntityId[e.id as string] = { name: e.name as string, sector };
-    if (committeeId) {
-      byCommitteeId[committeeId] = { entityId: e.id as string, name: e.name as string, sector };
-    }
-  }
-
-  const committeeIds = Object.keys(byCommitteeId);
-  if (committeeIds.length === 0) {
-    const label = groupBy === "sector" ? "PAC Donations by Sector" : "PAC Donations by Party";
-    return Response.json({ name: label, children: [] } satisfies PacHierarchy);
-  }
-
-  // Step 2: Fetch financial_relationships for these committee IDs
-  const { data: rels, error: relErr } = await supabase
-    .from("financial_relationships")
-    .select("fec_committee_id, official_id, amount_cents")
-    .in("fec_committee_id", committeeIds.slice(0, 500));
-
-  if (relErr) {
-    console.error("[treemap-pac] rels error:", relErr.message);
-    return Response.json({ error: relErr.message }, { status: 500 });
-  }
-
-  // ── Sector mode ─────────────────────────────────────────────────────────────
+  // ── Sector mode ──────────────────────────────────────────────────────────────
 
   if (groupBy === "sector") {
-    // sector → committeeId → { name, totalCents, officials }
-    const grouped: Record<string, Record<string, { name: string; totalCents: number; officials: Set<string> }>> = {};
+    const { data, error } = await supabase
+      .from("financial_relationships")
+      .select("donor_name, amount_cents, metadata")
+      .eq("donor_type", "pac")
+      .not("metadata->>sector", "is", null);
 
-    for (const rel of rels ?? []) {
-      const committeeId = rel.fec_committee_id as string | null;
-      if (!committeeId) continue;
-      const pac = byCommitteeId[committeeId];
-      if (!pac) continue;
-
-      const { entityId, name, sector } = pac;
-      if (!grouped[sector]) grouped[sector] = {};
-      if (!grouped[sector]![entityId]) {
-        grouped[sector]![entityId] = { name, totalCents: 0, officials: new Set() };
-      }
-      grouped[sector]![entityId]!.totalCents += rel.amount_cents as number;
-      if (rel.official_id) grouped[sector]![entityId]!.officials.add(rel.official_id as string);
+    if (error) {
+      console.error("[treemap-pac/sector] query error:", error.message);
+      return Response.json({ error: error.message }, { status: 500 });
     }
 
-    const hierarchy: PacHierarchy = {
-      name: "PAC Donations by Sector",
-      children: Object.entries(grouped)
-        .map(([sector, pacs]) => {
-          const children: PacLeaf[] = Object.entries(pacs)
-            .map(([pacId, stats]) => ({
-              name:          stats.name,
-              value:         stats.totalCents / 100,
-              pacId,
-              officialCount: stats.officials.size,
-            }))
-            .sort((a, b) => b.value - a.value);
+    // sector → donor → { totalUsd, count }
+    const bySector = new Map<string, Map<string, { totalUsd: number; count: number }>>();
 
-          return {
-            name:     sector,
-            totalUsd: children.reduce((s, c) => s + c.value, 0),
-            children,
-          };
-        })
-        .sort((a, b) => b.totalUsd - a.totalUsd),
-    };
+    for (const row of data ?? []) {
+      const meta   = row.metadata as Record<string, string> | null;
+      const sector = meta?.sector ?? "Other";
+      const donor  = (row.donor_name as string) ?? "Unknown";
+      const usd    = (row.amount_cents as number) / 100;
 
+      if (!bySector.has(sector)) bySector.set(sector, new Map());
+      const donors = bySector.get(sector)!;
+      const prev   = donors.get(donor) ?? { totalUsd: 0, count: 0 };
+      donors.set(donor, { totalUsd: prev.totalUsd + usd, count: prev.count + 1 });
+    }
+
+    // Build hierarchy — top 15 sectors, top 20 donors each
+    const children: PacGroup[] = Array.from(bySector.entries())
+      .map(([sector, donors]) => {
+        const leaves: PacLeaf[] = Array.from(donors.entries())
+          .map(([name, stats]) => ({ name, value: stats.totalUsd, count: stats.count }))
+          .sort((a, b) => b.value - a.value)
+          .slice(0, 20);
+
+        return {
+          name:     sector,
+          totalUsd: leaves.reduce((s, l) => s + l.value, 0),
+          children: leaves,
+        };
+      })
+      .sort((a, b) => b.totalUsd - a.totalUsd)
+      .slice(0, 15);
+
+    const hierarchy: PacHierarchy = { name: "PAC Money by Sector", children };
     return Response.json(hierarchy);
   }
 
-  // ── Party mode ──────────────────────────────────────────────────────────────
+  // ── Party mode ───────────────────────────────────────────────────────────────
 
-  // Collect unique official ids to look up parties
-  const officialIds = [
-    ...new Set(
-      (rels ?? [])
-        .map((r) => r.official_id as string | null)
-        .filter((id): id is string => id !== null)
-    ),
-  ];
+  const { data, error } = await supabase.rpc("get_pac_donations_by_party");
 
-  let partyByOfficial: Record<string, string> = {};
-
-  if (officialIds.length > 0) {
-    const { data: officials, error: offErr } = await supabase
-      .from("officials")
-      .select("id, party")
-      .in("id", officialIds.slice(0, 500));
-
-    if (offErr) {
-      console.error("[treemap-pac/party] officials error:", offErr.message);
-      return Response.json({ error: offErr.message }, { status: 500 });
-    }
-
-    for (const off of officials ?? []) {
-      partyByOfficial[off.id as string] = (off.party as string) ?? "Unknown";
-    }
+  if (error) {
+    console.error("[treemap-pac/party] rpc error:", error.message);
+    return Response.json({ error: error.message }, { status: 500 });
   }
 
-  // party → committeeId → totalCents
-  const partyGroup: Record<string, Record<string, number>> = {};
+  // party → donor → { totalUsd, count }
+  const byParty = new Map<string, Map<string, { totalUsd: number; count: number }>>();
 
-  for (const rel of rels ?? []) {
-    const committeeId = rel.fec_committee_id as string | null;
-    if (!committeeId) continue;
-    const pac = byCommitteeId[committeeId];
-    if (!pac) continue;
+  for (const row of data ?? []) {
+    const party  = (row.party as string) ?? "Unknown";
+    const donor  = (row.donor_name as string) ?? "Unknown";
+    const usd    = Number(row.total_usd) ?? 0;
+    const count  = Number(row.donation_count) ?? 0;
 
-    const party = rel.official_id
-      ? (partyByOfficial[rel.official_id as string] ?? "Unknown")
-      : "Unknown";
-
-    const { entityId } = pac;
-    if (!partyGroup[party]) partyGroup[party] = {};
-    partyGroup[party]![entityId] =
-      (partyGroup[party]![entityId] ?? 0) + (rel.amount_cents as number);
+    if (!byParty.has(party)) byParty.set(party, new Map());
+    const donors = byParty.get(party)!;
+    const prev   = donors.get(donor) ?? { totalUsd: 0, count: 0 };
+    donors.set(donor, { totalUsd: prev.totalUsd + usd, count: prev.count + count });
   }
 
-  const partyHierarchy: PacHierarchy = {
-    name: "PAC Donations by Party",
-    children: Object.entries(partyGroup)
-      .map(([party, pacs]) => {
-        const children: PacLeaf[] = Object.entries(pacs)
-          .map(([pacId, cents]) => ({
-            name:          byEntityId[pacId]?.name ?? pacId,
-            value:         cents / 100,
-            pacId,
-            officialCount: 0,
-          }))
-          .sort((a, b) => b.value - a.value);
+  // Build hierarchy — all parties, top 20 donors each
+  const children: PacGroup[] = Array.from(byParty.entries())
+    .map(([party, donors]) => {
+      const leaves: PacLeaf[] = Array.from(donors.entries())
+        .map(([name, stats]) => ({ name, value: stats.totalUsd, count: stats.count }))
+        .sort((a, b) => b.value - a.value)
+        .slice(0, 20);
 
-        return {
-          name:     party,
-          totalUsd: children.reduce((s, c) => s + c.value, 0),
-          children,
-        };
-      })
-      .sort((a, b) => b.totalUsd - a.totalUsd),
-  };
+      return {
+        name:     party,
+        totalUsd: leaves.reduce((s, l) => s + l.value, 0),
+        children: leaves,
+      };
+    })
+    .sort((a, b) => b.totalUsd - a.totalUsd);
 
-  return Response.json(partyHierarchy);
+  const hierarchy: PacHierarchy = { name: "PAC Money by Party", children };
+  return Response.json(hierarchy);
 }

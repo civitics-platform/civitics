@@ -1419,6 +1419,15 @@ export type Database = {
         }[]
       }
       get_database_size_bytes: { Args: never; Returns: number }
+      get_pac_donations_by_party: {
+        Args: never
+        Returns: {
+          party:          string
+          donor_name:     string
+          total_usd:      number
+          donation_count: number
+        }[]
+      }
       get_official_donors: {
         Args: { p_official_id: string }
         Returns: {

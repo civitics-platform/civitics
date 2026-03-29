@@ -30,8 +30,9 @@ interface DonorRow {
 interface PacLeaf {
   name: string;
   value: number;
-  pacId: string;
-  officialCount: number;
+  count: number;
+  pacId?: string;
+  officialCount?: number;
 }
 
 interface PacGroup {
@@ -272,7 +273,7 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
             industryIndex: idx,
             // Reuse donor slot to carry PAC data for tooltip/popup
             donor: {
-              donor_id:          leaf.pacId,
+              donor_id:          leaf.pacId ?? leaf.name,
               donor_name:        leaf.name,
               industry_category: group.name,
               amount_usd:        leaf.value,
