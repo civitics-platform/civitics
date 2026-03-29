@@ -3,7 +3,7 @@
 import * as d3 from "d3";
 import React, { useEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
-import type { GraphNode as NewGraphNode, NodeActions } from "./types";
+import type { GraphNode as NewGraphNode, NodeActions, ChordOptions } from "./types";
 import { Tooltip, useTooltip } from "./components/Tooltip";
 import { NodePopup } from "./components/NodePopup";
 
@@ -32,6 +32,7 @@ interface RawRecipient {
 export interface ChordGraphProps {
   className?: string;
   svgRef?: RefObject<SVGSVGElement>;
+  vizOptions?: Partial<ChordOptions>;
 }
 
 // Industry arc colors — enough for up to 13 industries
@@ -63,6 +64,7 @@ function draw(
   allGroups: DynamicGroup[],
   width: number,
   height: number,
+  showLabels: boolean,
   onGroupHover: (index: number, x: number, y: number) => void,
   onGroupLeave: () => void,
   onGroupClick: (index: number) => void
@@ -133,22 +135,24 @@ function draw(
       onGroupClick(d.index);
     });
 
-  group.append("text")
-    .each((d) => { (d as d3.ChordGroup & { angle: number }).angle = (d.startAngle + d.endAngle) / 2; })
-    .attr("dy", "0.35em")
-    .attr("transform", (d) => {
-      const angle  = (d.startAngle + d.endAngle) / 2;
-      const rotate = (angle * 180) / Math.PI - 90;
-      const flip   = angle > Math.PI;
-      return `rotate(${rotate}) translate(${outerR + 8},0)${flip ? " rotate(180)" : ""}`;
-    })
-    .attr("text-anchor", (d) => ((d.startAngle + d.endAngle) / 2 > Math.PI ? "end" : "start"))
-    .attr("fill", "#9ca3af")
-    .attr("font-size", "10px")
-    .text((d) => {
-      const grp = allGroups[d.index];
-      return grp ? `${grp.icon} ${grp.label}`.trim() : `Group ${d.index}`;
-    });
+  if (showLabels) {
+    group.append("text")
+      .each((d) => { (d as d3.ChordGroup & { angle: number }).angle = (d.startAngle + d.endAngle) / 2; })
+      .attr("dy", "0.35em")
+      .attr("transform", (d) => {
+        const angle  = (d.startAngle + d.endAngle) / 2;
+        const rotate = (angle * 180) / Math.PI - 90;
+        const flip   = angle > Math.PI;
+        return `rotate(${rotate}) translate(${outerR + 8},0)${flip ? " rotate(180)" : ""}`;
+      })
+      .attr("text-anchor", (d) => ((d.startAngle + d.endAngle) / 2 > Math.PI ? "end" : "start"))
+      .attr("fill", "#9ca3af")
+      .attr("font-size", "10px")
+      .text((d) => {
+        const grp = allGroups[d.index];
+        return grp ? `${grp.icon} ${grp.label}`.trim() : `Group ${d.index}`;
+      });
+  }
 
   g.append("g")
     .attr("fill-opacity", 0.7)
@@ -186,13 +190,14 @@ interface ChartData {
   rawRecipients: RawRecipient[];
 }
 
-export function ChordGraph({ className = "", svgRef: externalSvgRef }: ChordGraphProps) {
+export function ChordGraph({ className = "", svgRef: externalSvgRef, vizOptions }: ChordGraphProps) {
   const containerRef  = useRef<HTMLDivElement>(null);
   const internalSvgRef = useRef<SVGSVGElement>(null);
   const svgRef        = externalSvgRef ?? internalSvgRef;
   const lastSizeRef   = useRef({ w: 0, h: 0 });
 
   const [status,    setStatus]    = useState<"loading" | "empty" | "error" | "ok">("loading");
+  const [rawData,   setRawData]   = useState<{ groups: RawGroup[]; recipients: RawRecipient[]; matrix: number[][] } | null>(null);
   const [chartData, setChartData] = useState<ChartData | null>(null);
 
   const { tooltip, show: showTip, hide: hideTip } = useTooltip();
@@ -221,7 +226,7 @@ export function ChordGraph({ className = "", svgRef: externalSvgRef }: ChordGrap
     };
   };
 
-  // ── Effect 1: Fetch + compute ──────────────────────────────────────────────
+  // ── Effect 1: Fetch raw data ──────────────────────────────────────────────
   useEffect(() => {
     let cancelled = false;
 
@@ -245,41 +250,12 @@ export function ChordGraph({ className = "", svgRef: externalSvgRef }: ChordGrap
           return;
         }
 
-        const groups     = json.groups;
-        const recipients = json.recipients ?? [];
-        const rawMatrix  = json.matrix;
-
-        const allGroups: DynamicGroup[] = [
-          ...groups.map((g, i) => ({
-            label: g.label,
-            icon:  g.icon ?? "🏢",
-            color: INDUSTRY_COLORS[i % INDUSTRY_COLORS.length] ?? "#94a3b8",
-            kind:  "donor" as const,
-          })),
-          ...recipients.map((r) => ({
-            label: r.label,
-            icon:  "",
-            color: PARTY_COLORS[r.id] ?? "#6b7280",
-            kind:  "recipient" as const,
-          })),
-        ];
-
-        // Expand M×P matrix → N×N square for d3.chord()
-        const N = groups.length + recipients.length;
-        const square: number[][] = Array.from({ length: N }, () => Array(N).fill(0) as number[]);
-        rawMatrix.forEach((row, i) => {
-          row.forEach((val, j) => {
-            const partyIdx = groups.length + j;
-            const rowI = square[i];
-            const rowP = square[partyIdx];
-            if (rowI) rowI[partyIdx] = val;
-            if (rowP) rowP[i] = val;
-          });
-        });
-
         if (!cancelled) {
-          setChartData({ square, allGroups, rawGroups: groups, rawRecipients: recipients });
-          setStatus("ok");
+          setRawData({
+            groups:     json.groups,
+            recipients: json.recipients ?? [],
+            matrix:     json.matrix,
+          });
         }
       } catch (err) {
         console.error('[ChordGraph] fetch error:', err);
@@ -291,7 +267,74 @@ export function ChordGraph({ className = "", svgRef: externalSvgRef }: ChordGrap
     return () => { cancelled = true; };
   }, []);
 
-  // ── Effect 2: Draw ────────────────────────────────────────────────────────
+  // ── Effect 2: Apply vizOptions to raw data → chartData ───────────────────
+  useEffect(() => {
+    if (!rawData) return;
+
+    const minFlow      = vizOptions?.minFlowUsd ?? 0;
+    const normalizeMode = vizOptions?.normalizeMode ?? false;
+
+    // Filter groups by minFlowUsd
+    const filteredGroups = minFlow > 0
+      ? rawData.groups.filter(g => g.total_usd >= minFlow)
+      : rawData.groups;
+
+    // If all groups filtered out, show empty state
+    if (filteredGroups.length === 0) {
+      setStatus("empty");
+      return;
+    }
+
+    // Build index map: original group index → new filtered index
+    const originalIndices = filteredGroups.map(g => rawData.groups.indexOf(g));
+
+    const recipients = rawData.recipients;
+
+    const allGroups: DynamicGroup[] = [
+      ...filteredGroups.map((g, i) => ({
+        label: g.label,
+        icon:  g.icon ?? "🏢",
+        color: INDUSTRY_COLORS[i % INDUSTRY_COLORS.length] ?? "#94a3b8",
+        kind:  "donor" as const,
+      })),
+      ...recipients.map((r) => ({
+        label: r.label,
+        icon:  "",
+        color: PARTY_COLORS[r.id] ?? "#6b7280",
+        kind:  "recipient" as const,
+      })),
+    ];
+
+    // Rebuild matrix using only filtered groups
+    const N = filteredGroups.length + recipients.length;
+    let rawMatrix: number[][] = Array.from({ length: N }, () => Array(N).fill(0) as number[]);
+
+    originalIndices.forEach((origI, newI) => {
+      const row = rawData.matrix[origI];
+      if (!row) return;
+      row.forEach((val, j) => {
+        const partyIdx = filteredGroups.length + j;
+        const rowN = rawMatrix[newI];
+        const rowP = rawMatrix[partyIdx];
+        if (rowN) rowN[partyIdx] = val;
+        if (rowP) rowP[newI] = val;
+      });
+    });
+
+    // Apply normalizeMode: normalize each donor row to 100%
+    const square = normalizeMode
+      ? rawMatrix.map(row => {
+          const total = row.reduce((s, v) => s + v, 0);
+          return total === 0 ? row : row.map(v => v / total);
+        })
+      : rawMatrix;
+
+    setChartData({ square, allGroups, rawGroups: filteredGroups, rawRecipients: recipients });
+    setStatus("ok");
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rawData, vizOptions?.minFlowUsd, vizOptions?.normalizeMode]);
+
+  // ── Effect 3: Draw ────────────────────────────────────────────────────────
   useEffect(() => {
     if (status !== "ok" || !chartData) return;
     const svgEl = svgRef.current;
@@ -308,12 +351,13 @@ export function ChordGraph({ className = "", svgRef: externalSvgRef }: ChordGrap
       chartData.allGroups,
       width || 600,
       height || 500,
+      vizOptions?.showLabels ?? true,
       (index, x, y) => showTip(groupToNode(index, chartData), x, y),
       hideTip,
       (index) => setPopup(groupToNode(index, chartData))
     );
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status, chartData, svgRef]);
+  }, [status, chartData, vizOptions?.showLabels, svgRef]);
 
   // ── Resize observer ───────────────────────────────────────────────────────
   useEffect(() => {
@@ -335,6 +379,7 @@ export function ChordGraph({ className = "", svgRef: externalSvgRef }: ChordGrap
           chartData.allGroups,
           w,
           h,
+          vizOptions?.showLabels ?? true,
           (index, x, y) => showTip(groupToNode(index, chartData), x, y),
           hideTip,
           (index) => setPopup(groupToNode(index, chartData))
@@ -345,7 +390,7 @@ export function ChordGraph({ className = "", svgRef: externalSvgRef }: ChordGrap
     obs.observe(container);
     return () => obs.disconnect();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status, chartData, svgRef]);
+  }, [status, chartData, vizOptions?.showLabels, svgRef]);
 
   // NodeActions for chord — no recenter/comparison (groups aren't individual officials)
   const nodeActions: NodeActions = {

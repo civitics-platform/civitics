@@ -1509,6 +1509,7 @@ export type Database = {
           official_name: string
           party: string
           state: string
+          chamber: string
           total_donated_cents: number
         }[]
       }

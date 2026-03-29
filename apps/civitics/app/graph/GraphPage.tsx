@@ -184,7 +184,11 @@ export function GraphPage({ initialCode }: GraphPageProps = {}) {
             className="absolute inset-0 transition-opacity duration-300"
             style={{ opacity: vizType === "treemap" ? 1 : 0, pointerEvents: vizType === "treemap" ? "auto" : "none" }}
           >
-            <TreemapGraph className="w-full h-full" svgRef={treemapSvgRef} />
+            <TreemapGraph
+              className="w-full h-full"
+              svgRef={treemapSvgRef}
+              vizOptions={view.style.vizOptions.treemap}
+            />
           </div>
 
           {/* Chord */}
@@ -192,7 +196,11 @@ export function GraphPage({ initialCode }: GraphPageProps = {}) {
             className="absolute inset-0 transition-opacity duration-300"
             style={{ opacity: vizType === "chord" ? 1 : 0, pointerEvents: vizType === "chord" ? "auto" : "none" }}
           >
-            <ChordGraph className="w-full h-full" svgRef={chordSvgRef} />
+            <ChordGraph
+              className="w-full h-full"
+              svgRef={chordSvgRef}
+              vizOptions={view.style.vizOptions.chord}
+            />
           </div>
 
           {/* Sunburst */}

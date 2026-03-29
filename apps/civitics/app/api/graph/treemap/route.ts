@@ -8,12 +8,19 @@ interface TreemapRow {
   official_name: string;
   party: string;
   state: string;
+  chamber: string;
   total_donated_cents: number;
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   if (supabaseUnavailable()) return unavailableResponse();
   const supabase = createAdminClient();
+
+  // groupBy and sizeBy are accepted for API compatibility and passed to the client.
+  // Actual grouping is done client-side in TreemapGraph; chamber data is always returned.
+  const { searchParams } = new URL(request.url);
+  void searchParams.get("groupBy");  // accepted, used client-side
+  void searchParams.get("sizeBy");   // accepted, used client-side
 
   const { data, error } = await supabase.rpc("treemap_officials_by_donations", {
     lim: 200,

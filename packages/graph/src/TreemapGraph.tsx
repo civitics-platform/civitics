@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import * as d3 from "d3";
 import type { RefObject } from "react";
-import type { GraphNode as NewGraphNode, NodeActions } from "./types";
+import type { GraphNode as NewGraphNode, NodeActions, TreemapOptions } from "./types";
 import { Tooltip, useTooltip } from "./components/Tooltip";
 import { NodePopup } from "./components/NodePopup";
 
@@ -14,6 +14,7 @@ interface TreemapOfficial {
   official_name: string;
   party: string;
   state: string;
+  chamber: string;
   total_donated_cents: number;
 }
 
@@ -48,9 +49,61 @@ const PARTY_LABEL: Record<string, string> = {
   nonpartisan: "Nonpartisan",
 };
 
-function getFill(party: string): string   { return PARTY_FILL[party]   ?? "#1e3040"; }
-function getStroke(party: string): string { return PARTY_STROKE[party] ?? "#64748b"; }
-function getLabel(party: string): string  { return PARTY_LABEL[party]  ?? party; }
+// ── Chamber colors ────────────────────────────────────────────────────────────
+
+const CHAMBER_FILL: Record<string, string> = {
+  senate: "#1e2f4f",
+  house:  "#2f1e4f",
+  unknown: "#1e3040",
+};
+
+const CHAMBER_STROKE: Record<string, string> = {
+  senate: "#60a5fa",
+  house:  "#c084fc",
+  unknown: "#64748b",
+};
+
+const CHAMBER_LABEL: Record<string, string> = {
+  senate: "Senate",
+  house:  "House",
+  unknown: "Unknown",
+};
+
+function getFill(key: string, colorBy: 'party' | 'chamber'): string {
+  if (colorBy === 'chamber') return CHAMBER_FILL[key] ?? "#1e3040";
+  return PARTY_FILL[key] ?? "#1e3040";
+}
+
+function getStroke(key: string, colorBy: 'party' | 'chamber'): string {
+  if (colorBy === 'chamber') return CHAMBER_STROKE[key] ?? "#64748b";
+  return PARTY_STROKE[key] ?? "#64748b";
+}
+
+function getGroupLabel(key: string, groupBy: TreemapOptions['groupBy']): string {
+  if (groupBy === 'chamber') return CHAMBER_LABEL[key] ?? key;
+  if (groupBy === 'party')   return PARTY_LABEL[key]   ?? key;
+  // state or industry: use key directly
+  return key;
+}
+
+function getGroupKey(official: TreemapOfficial, groupBy: TreemapOptions['groupBy']): string {
+  switch (groupBy) {
+    case 'state':   return official.state || 'Unknown';
+    case 'chamber': return official.chamber || 'unknown';
+    case 'industry':
+    case 'party':
+    default:        return official.party;
+  }
+}
+
+function getSizeValue(official: TreemapOfficial, sizeBy: TreemapOptions['sizeBy']): number {
+  switch (sizeBy) {
+    case 'connection_count': return 1;      // flat; real data not in treemap payload
+    case 'vote_count':       return 1;      // flat; real data not in treemap payload
+    case 'donation_total':
+    default:                 return official.total_donated_cents;
+  }
+}
 
 function officialToNode(o: TreemapOfficial): NewGraphNode {
   return {
@@ -67,9 +120,10 @@ function officialToNode(o: TreemapOfficial): NewGraphNode {
 export interface TreemapGraphProps {
   className?: string;
   svgRef?: RefObject<SVGSVGElement>;
+  vizOptions?: Partial<TreemapOptions>;
 }
 
-export function TreemapGraph({ className = "", svgRef: externalSvgRef }: TreemapGraphProps) {
+export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOptions }: TreemapGraphProps) {
   const containerRef   = useRef<HTMLDivElement>(null);
   const internalSvgRef = useRef<SVGSVGElement>(null);
   const svgRef         = externalSvgRef ?? internalSvgRef;
@@ -81,10 +135,14 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef }: Treemap
   const { tooltip, show: showTip, hide: hideTip } = useTooltip();
   const [popup, setPopup] = useState<NewGraphNode | null>(null);
 
+  const groupBy  = vizOptions?.groupBy  ?? 'party';
+  const sizeBy   = vizOptions?.sizeBy   ?? 'donation_total';
+  const colorBy  = vizOptions?.colorBy  ?? 'party';
+
   // ── Fetch data ──────────────────────────────────────────────────────────────
   useEffect(() => {
     setLoading(true);
-    fetch("/api/graph/treemap")
+    fetch(`/api/graph/treemap?groupBy=${groupBy}&sizeBy=${sizeBy}`)
       .then((r) => r.json())
       .then((data: TreemapOfficial[] | { error: string }) => {
         if ("error" in data) throw new Error(data.error);
@@ -92,7 +150,9 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef }: Treemap
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false));
-  }, []);
+  // Refetch when groupBy/sizeBy change so the API can serve alternate data in future
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [groupBy, sizeBy]);
 
   // ── Render treemap ──────────────────────────────────────────────────────────
   const render = useCallback(() => {
@@ -104,14 +164,14 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef }: Treemap
     const height = container.clientHeight;
     if (width === 0 || height === 0) return;
 
-    const grouped = d3.group(officials, (d) => d.party);
+    const grouped = d3.group(officials, (d) => getGroupKey(d, groupBy));
     const root: GroupDatum = {
       name: "root",
-      children: Array.from(grouped, ([party, items]) => ({
-        name: party,
+      children: Array.from(grouped, ([key, items]) => ({
+        name: key,
         children: items.map((o) => ({
           name: o.official_name,
-          value: o.total_donated_cents,
+          value: getSizeValue(o, sizeBy),
           official: o,
         })),
       })),
@@ -134,31 +194,31 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef }: Treemap
 
     const g = d3.select(svg).append("g");
 
-    // Party group backgrounds (depth=1)
-    const partyNodes = hierarchy.descendants().filter((d) => d.depth === 1);
-    g.selectAll<SVGRectElement, d3.HierarchyRectangularNode<GroupDatum>>(".party-bg")
-      .data(partyNodes as d3.HierarchyRectangularNode<GroupDatum>[])
+    // Group backgrounds (depth=1)
+    const groupNodes = hierarchy.descendants().filter((d) => d.depth === 1);
+    g.selectAll<SVGRectElement, d3.HierarchyRectangularNode<GroupDatum>>(".group-bg")
+      .data(groupNodes as d3.HierarchyRectangularNode<GroupDatum>[])
       .join("rect")
-      .attr("class", "party-bg")
+      .attr("class", "group-bg")
       .attr("x", (d) => d.x0)
       .attr("y", (d) => d.y0)
       .attr("width", (d) => d.x1 - d.x0)
       .attr("height", (d) => d.y1 - d.y0)
-      .attr("fill", (d) => getFill(d.data.name))
+      .attr("fill", (d) => getFill(d.data.name, colorBy))
       .attr("rx", 3);
 
-    // Party labels
-    g.selectAll<SVGTextElement, d3.HierarchyRectangularNode<GroupDatum>>(".party-label")
-      .data(partyNodes as d3.HierarchyRectangularNode<GroupDatum>[])
+    // Group labels
+    g.selectAll<SVGTextElement, d3.HierarchyRectangularNode<GroupDatum>>(".group-label")
+      .data(groupNodes as d3.HierarchyRectangularNode<GroupDatum>[])
       .join("text")
-      .attr("class", "party-label")
+      .attr("class", "group-label")
       .attr("x", (d) => d.x0 + 6)
       .attr("y", (d) => d.y0 + 14)
-      .attr("fill", (d) => getStroke(d.data.name))
+      .attr("fill", (d) => getStroke(d.data.name, colorBy))
       .attr("font-size", 11)
       .attr("font-weight", "600")
       .attr("font-family", "system-ui, sans-serif")
-      .text((d) => getLabel(d.data.name));
+      .text((d) => getGroupLabel(d.data.name, groupBy));
 
     // Official leaf cells
     const leafNodes = hierarchy.leaves() as d3.HierarchyRectangularNode<GroupDatum>[];
@@ -174,8 +234,14 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef }: Treemap
       .append("rect")
       .attr("width",  (d) => Math.max(0, d.x1 - d.x0 - 1))
       .attr("height", (d) => Math.max(0, d.y1 - d.y0 - 1))
-      .attr("fill",   (d) => getFill(d.data.official?.party ?? "nonpartisan"))
-      .attr("stroke", (d) => getStroke(d.data.official?.party ?? "nonpartisan"))
+      .attr("fill",   (d) => {
+        const key = d.data.official ? getGroupKey(d.data.official, colorBy === 'chamber' ? 'chamber' : 'party') : 'nonpartisan';
+        return getFill(key, colorBy);
+      })
+      .attr("stroke", (d) => {
+        const key = d.data.official ? getGroupKey(d.data.official, colorBy === 'chamber' ? 'chamber' : 'party') : 'nonpartisan';
+        return getStroke(key, colorBy);
+      })
       .attr("stroke-width", 0.5)
       .attr("rx", 2)
       .on("mouseenter", function (event: MouseEvent, d) {
@@ -245,7 +311,7 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef }: Treemap
         const cents = d.data.official?.total_donated_cents ?? 0;
         return "$" + (cents / 100).toLocaleString("en-US", { notation: "compact", maximumFractionDigits: 1 });
       });
-  }, [officials, showTip, hideTip]);
+  }, [officials, groupBy, sizeBy, colorBy, showTip, hideTip]);
 
   // Render on data change + resize
   useEffect(() => {
@@ -264,6 +330,39 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef }: Treemap
     addToComparison:  () => {},
     expandNode:       () => {},
   };
+
+  // ── Legend ─────────────────────────────────────────────────────────────────
+
+  function renderLegend() {
+    if (colorBy === 'chamber') {
+      return (
+        <>
+          {Object.entries(CHAMBER_LABEL).map(([key, label]) => (
+            <div key={key} className="flex items-center gap-1">
+              <span className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: CHAMBER_STROKE[key] }} />
+              <span className="text-[10px] text-gray-400">{label}</span>
+            </div>
+          ))}
+          <span className="text-[10px] text-gray-600 border-l border-gray-700 pl-3 ml-1">
+            Color = chamber
+          </span>
+        </>
+      );
+    }
+    return (
+      <>
+        {Object.entries(PARTY_LABEL).map(([key, label]) => (
+          <div key={key} className="flex items-center gap-1">
+            <span className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: PARTY_STROKE[key] }} />
+            <span className="text-[10px] text-gray-400">{label}</span>
+          </div>
+        ))}
+        <span className="text-[10px] text-gray-600 border-l border-gray-700 pl-3 ml-1">
+          Size = donations received
+        </span>
+      </>
+    );
+  }
 
   if (loading) {
     return (
@@ -314,18 +413,7 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef }: Treemap
 
       {/* Legend */}
       <div className="absolute bottom-3 right-3 flex items-center gap-3 bg-gray-950/80 rounded-lg px-3 py-1.5">
-        {Object.entries(PARTY_LABEL).map(([key, label]) => (
-          <div key={key} className="flex items-center gap-1">
-            <span
-              className="w-2.5 h-2.5 rounded-sm"
-              style={{ backgroundColor: PARTY_STROKE[key] }}
-            />
-            <span className="text-[10px] text-gray-400">{label}</span>
-          </div>
-        ))}
-        <span className="text-[10px] text-gray-600 border-l border-gray-700 pl-3 ml-1">
-          Size = donations received
-        </span>
+        {renderLegend()}
       </div>
     </div>
   );

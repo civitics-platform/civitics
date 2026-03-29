@@ -106,11 +106,14 @@ export interface ChordOptions {
   /** Show % of total raised instead of absolute dollars */
   normalizeMode: boolean
   padAngle: number
+  /** Filter out flows below this dollar amount. 0 = show all. */
+  minFlowUsd: number
 }
 
 export interface TreemapOptions {
-  groupBy: 'party' | 'state' | 'industry'
-  sizeBy: 'donation_total' | 'connection_count'
+  groupBy: 'party' | 'state' | 'chamber' | 'industry'
+  sizeBy: 'donation_total' | 'connection_count' | 'vote_count'
+  colorBy: 'party' | 'chamber'
 }
 
 export interface SunburstOptions {

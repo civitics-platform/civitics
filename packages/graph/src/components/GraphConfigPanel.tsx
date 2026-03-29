@@ -160,6 +160,17 @@ function ChordSettings({ view, hooks }: { view: GraphView; hooks: UseGraphViewRe
     <>
       <LabeledToggle label="Normalize" value={opts?.normalizeMode ?? false} onChange={v => set('normalizeMode', v)} />
       <LabeledToggle label="Show labels" value={opts?.showLabels ?? true} onChange={v => set('showLabels', v)} />
+      <LabeledSelect
+        label="Min flow"
+        value={String(opts?.minFlowUsd ?? 0)}
+        options={[
+          { value: '0',        label: 'Show all' },
+          { value: '100000',   label: '$100K+'   },
+          { value: '1000000',  label: '$1M+'     },
+          { value: '10000000', label: '$10M+'    },
+        ]}
+        onChange={v => set('minFlowUsd', parseInt(v))}
+      />
     </>
   );
 }
@@ -176,9 +187,9 @@ function TreemapSettings({ view, hooks }: { view: GraphView; hooks: UseGraphView
         label="Group by"
         value={opts?.groupBy ?? 'party'}
         options={[
-          { value: 'party',    label: 'Party'    },
-          { value: 'state',    label: 'State'    },
-          { value: 'industry', label: 'Industry' },
+          { value: 'party',   label: 'Party'   },
+          { value: 'state',   label: 'State'   },
+          { value: 'chamber', label: 'Chamber' },
         ]}
         onChange={v => set('groupBy', v)}
       />
@@ -188,8 +199,18 @@ function TreemapSettings({ view, hooks }: { view: GraphView; hooks: UseGraphView
         options={[
           { value: 'donation_total',   label: 'Donations'   },
           { value: 'connection_count', label: 'Connections' },
+          { value: 'vote_count',       label: 'Votes cast'  },
         ]}
         onChange={v => set('sizeBy', v)}
+      />
+      <LabeledSelect
+        label="Color by"
+        value={opts?.colorBy ?? 'party'}
+        options={[
+          { value: 'party',   label: 'Party'   },
+          { value: 'chamber', label: 'Chamber' },
+        ]}
+        onChange={v => set('colorBy', v)}
       />
     </>
   );

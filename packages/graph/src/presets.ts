@@ -248,6 +248,85 @@ export const CLEAN_VIEW: GraphViewPreset = {
   },
 }
 
+export const CHORD_TOP_DONORS: GraphViewPreset = {
+  focus: {
+    entities: [],
+    scope: 'all',
+    depth: 1,
+    includeProcedural: false,
+  },
+  connections: DEFAULT_CONNECTION_STATE,
+  style: {
+    vizType: 'chord',
+    vizOptions: {
+      chord: {
+        normalizeMode: false,
+        showLabels: true,
+        padAngle: 0.05,
+        minFlowUsd: 1_000_000,
+      },
+    },
+  },
+  meta: {
+    name: 'Top Donors Only',
+    isPreset: true,
+    presetId: 'chord-top-donors',
+    isDirty: false,
+  },
+}
+
+export const TREEMAP_BY_STATE: GraphViewPreset = {
+  focus: {
+    entities: [],
+    scope: 'all',
+    depth: 1,
+    includeProcedural: false,
+  },
+  connections: DEFAULT_CONNECTION_STATE,
+  style: {
+    vizType: 'treemap',
+    vizOptions: {
+      treemap: {
+        groupBy: 'state',
+        sizeBy: 'donation_total',
+        colorBy: 'party',
+      },
+    },
+  },
+  meta: {
+    name: 'By State',
+    isPreset: true,
+    presetId: 'treemap-by-state',
+    isDirty: false,
+  },
+}
+
+export const TREEMAP_BY_CHAMBER: GraphViewPreset = {
+  focus: {
+    entities: [],
+    scope: 'all',
+    depth: 1,
+    includeProcedural: false,
+  },
+  connections: DEFAULT_CONNECTION_STATE,
+  style: {
+    vizType: 'treemap',
+    vizOptions: {
+      treemap: {
+        groupBy: 'chamber',
+        sizeBy: 'donation_total',
+        colorBy: 'chamber',
+      },
+    },
+  },
+  meta: {
+    name: 'By Chamber',
+    isPreset: true,
+    presetId: 'treemap-by-chamber',
+    isDirty: false,
+  },
+}
+
 // ── Preset Collection ──────────────────────────────────────────────────────────
 
 export const BUILT_IN_PRESETS: GraphViewPreset[] = [
@@ -257,6 +336,9 @@ export const BUILT_IN_PRESETS: GraphViewPreset[] = [
   COMMITTEE_POWER,
   FULL_RECORD,
   CLEAN_VIEW,
+  CHORD_TOP_DONORS,
+  TREEMAP_BY_STATE,
+  TREEMAP_BY_CHAMBER,
 ]
 
 // ── Preset Utilities ───────────────────────────────────────────────────────────
