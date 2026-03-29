@@ -76,7 +76,7 @@ export function useGraphData(
       setLoadingEntityId(entity.id);
       try {
         const params = new URLSearchParams({
-          entity_id: entity.id,
+          entityId: entity.id,
           depth: String(entity.depth ?? focus.depth),
           viz: 'force',
         });

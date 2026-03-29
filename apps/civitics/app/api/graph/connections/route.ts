@@ -3,7 +3,7 @@ export const revalidate = 60; // Graph connections cached 1 minute at edge
 import { createAdminClient } from "@civitics/db";
 import { supabaseUnavailable, unavailableResponse } from "@/lib/supabase-check";
 import type { Database } from "@civitics/db";
-import type { GraphEdge, GraphNode, EdgeType, NodeType } from "@civitics/graph";
+import type { GraphEdgeV2 as GraphEdge, GraphNodeV2 as GraphNode, EdgeType, NodeTypeV2 as NodeType } from "@civitics/graph";
 
 type ConnectionRow = Database["public"]["Tables"]["entity_connections"]["Row"];
 
@@ -23,8 +23,8 @@ const MAX_AUTO_EXPAND = 50;
 function mapNodeType(dbType: string, subType?: string): NodeType {
   switch (dbType) {
     case "official": return "official";
-    case "agency": return "governing_body";
-    case "governing_body": return "governing_body";
+    case "agency": return "agency";
+    case "governing_body": return "agency";
     case "proposal": return "proposal";
     case "financial": {
       switch (subType) {
@@ -35,7 +35,7 @@ function mapNodeType(dbType: string, subType?: string): NodeType {
         default: return "corporation";
       }
     }
-    case "organization": return "corporation";
+    case "organization": return "organization";
     default: return "corporation";
   }
 }
@@ -310,15 +310,11 @@ export async function GET(request: Request) {
       nodes.push({
         id: key,
         type: mapNodeType(type, info.subType),
-        label: info.label,
+        name: info.label,
         party: info.party as GraphNode["party"],
-        metadata: {
-          entityType: type,
-          entityId: id,
-          ...(isCollapsed
-            ? { collapsed: true, connectionCount: collapsedNodes.get(id) }
-            : {}),
-        },
+        ...(isCollapsed
+          ? { collapsed: true, connectionCount: collapsedNodes.get(id) }
+          : {}),
       });
     }
 
@@ -331,11 +327,10 @@ export async function GET(request: Request) {
       const targetKey = `${c.to_type}:${c.to_id}`;
       if (!nodeIds.has(sourceKey) || !nodeIds.has(targetKey)) continue;
       edges.push({
-        id: c.id,
-        source: sourceKey,
-        target: targetKey,
-        type: mapEdgeType(c.connection_type),
-        amountCents: c.amount_cents ?? undefined,
+        fromId: sourceKey,
+        toId: targetKey,
+        connectionType: mapEdgeType(c.connection_type),
+        amountUsd: c.amount_cents != null ? c.amount_cents / 100 : undefined,
         occurredAt: c.occurred_at ?? undefined,
         strength: Number(c.strength),
       });
