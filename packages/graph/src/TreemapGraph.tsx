@@ -188,7 +188,8 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
   const [error, setError]                 = useState<string | null>(null);
 
   const { tooltip, show: showTip, hide: hideTip } = useTooltip();
-  const [popup, setPopup] = useState<NewGraphNode | null>(null);
+  const [popup, setPopup]       = useState<NewGraphNode | null>(null);
+  const [drillNode, setDrillNode] = useState<GroupDatum | null>(null);
 
   const groupBy  = vizOptions?.groupBy  ?? 'party';
   const sizeBy   = vizOptions?.sizeBy   ?? 'donation_total';
@@ -240,6 +241,11 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
   // Refetch when entity / groupBy / sizeBy / dataMode change
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [primaryEntityId, groupBy, sizeBy, dataMode]);
+
+  // Reset drill state when the view changes
+  useEffect(() => {
+    setDrillNode(null);
+  }, [vizOptions?.groupBy, vizOptions?.dataMode, primaryEntityId]);
 
   // ── Render treemap ──────────────────────────────────────────────────────────
   const render = useCallback(() => {
@@ -318,8 +324,12 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
       };
     }
 
+    const displayData: GroupDatum = drillNode
+      ? { name: "root", children: [drillNode] }
+      : root;
+
     const hierarchy = d3
-      .hierarchy<GroupDatum>(root)
+      .hierarchy<GroupDatum>(displayData)
       .sum((d) => d.value ?? 0)
       .sort((a, b) => (b.value ?? 0) - (a.value ?? 0));
 
@@ -348,7 +358,14 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
       .attr("fill", (d) => (isPacMode || isEntityMode)
         ? getIndustryFill(d.data.industryIndex ?? 0)
         : getFill(d.data.name, colorBy as 'party' | 'chamber'))
-      .attr("rx", 3);
+      .attr("rx", 3)
+      .style("cursor", (d) =>
+        !drillNode && d.data.children?.length ? "zoom-in" : "default")
+      .on("click", (_event, d) => {
+        if (d.data.children && d.data.children.length > 0 && !drillNode) {
+          setDrillNode(d.data);
+        }
+      });
 
     // Group labels
     g.selectAll<SVGTextElement, d3.HierarchyRectangularNode<GroupDatum>>(".group-label")
@@ -366,6 +383,27 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
       .text((d) => isEntityMode
         ? d.data.name.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
         : getGroupLabel(d.data.name, groupBy));
+
+    // Drill hint on group cells (only when not already drilled)
+    if (!drillNode) {
+      g.selectAll<SVGTextElement, d3.HierarchyRectangularNode<GroupDatum>>(".group-hint")
+        .data(groupNodes as d3.HierarchyRectangularNode<GroupDatum>[])
+        .join("text")
+        .attr("class", "group-hint")
+        .attr("x", (d) => d.x0 + 6)
+        .attr("y", (d) => d.y0 + 26)
+        .attr("font-size", 8)
+        .attr("fill", "#64748b")
+        .attr("font-family", "system-ui, sans-serif")
+        .attr("pointer-events", "none")
+        .text((d) => {
+          if (!d.data.children?.length) return "";
+          const w = d.x1 - d.x0;
+          const h = d.y1 - d.y0;
+          if (w < 60 || h < 30) return "";
+          return `▸ ${d.data.children.length} officials`;
+        });
+    }
 
     // Leaf cells
     const leafNodes = hierarchy.leaves() as d3.HierarchyRectangularNode<GroupDatum>[];
@@ -450,8 +488,15 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
             type:          'financial',
             donationTotal: d.data.donor.amount_usd * 100,
           });
-        } else if (d.data.official) {
+          return;
+        }
+        if (d.data.official) {
           setPopup(officialToNode(d.data.official));
+          return;
+        }
+        // Group leaf (shouldn't happen with current data shape, guard only)
+        if (d.data.children && d.data.children.length > 0 && !drillNode) {
+          setDrillNode(d.data);
         }
       });
 
@@ -494,7 +539,7 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
           ?? (d.data.official ? d.data.official.total_donated_cents / 100 : 0);
         return "$" + amount.toLocaleString("en-US", { notation: "compact", maximumFractionDigits: 1 });
       });
-  }, [officials, donors, pacHierarchy, primaryEntityId, groupBy, sizeBy, colorBy, dataMode, showTip, hideTip]);
+  }, [officials, donors, pacHierarchy, primaryEntityId, groupBy, sizeBy, colorBy, dataMode, drillNode, showTip, hideTip]);
 
   // Render on data change + resize
   useEffect(() => {
@@ -603,14 +648,39 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
       : "All Officials by Party";
 
   return (
-    <div ref={containerRef} className={`relative overflow-hidden ${className}`}>
+    <div ref={containerRef} className={`relative overflow-hidden flex flex-col ${className}`}>
+      {/* Breadcrumb bar — shown only when drilled into a group */}
+      {drillNode && (
+        <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-900/80 border-b border-gray-700 text-xs shrink-0 z-10">
+          <button
+            onClick={() => setDrillNode(null)}
+            className="text-indigo-400 hover:text-indigo-300 transition-colors flex items-center gap-1"
+          >
+            ← All
+          </button>
+          <span className="text-gray-500">/</span>
+          <span className="text-gray-200 font-medium">
+            {getGroupLabel(drillNode.name, groupBy)}
+          </span>
+          <span className="text-gray-500 ml-auto">
+            {drillNode.children?.length ?? 0} officials
+            {drillNode.value
+              ? ` · $${(drillNode.value / 100).toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+              : ""}
+          </span>
+        </div>
+      )}
+
       {/* Context label */}
-      <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 pointer-events-none">
-        <span className="text-xs text-gray-400 bg-gray-950/70 px-2 py-0.5 rounded-full">
-          {contextLabel}
-        </span>
-      </div>
-      <svg id="treemap-svg" ref={svgRef} className="w-full h-full" />
+      {!drillNode && (
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 pointer-events-none">
+          <span className="text-xs text-gray-400 bg-gray-950/70 px-2 py-0.5 rounded-full">
+            {contextLabel}
+          </span>
+        </div>
+      )}
+
+      <svg id="treemap-svg" ref={svgRef} className="w-full flex-1" />
 
       {/* Shared tooltip */}
       <Tooltip
