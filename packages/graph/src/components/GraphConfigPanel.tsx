@@ -181,37 +181,54 @@ function TreemapSettings({ view, hooks }: { view: GraphView; hooks: UseGraphView
   const opts = view.style.vizOptions.treemap;
   function set(key: string, value: unknown) { hooks.setVizOption('treemap', key, value); }
 
+  const dataMode = opts?.dataMode ?? 'officials';
+  const isPacMode = dataMode === 'pac_sector' || dataMode === 'pac_party';
+
   return (
     <>
       <LabeledSelect
-        label="Group by"
-        value={opts?.groupBy ?? 'party'}
+        label="Data"
+        value={dataMode}
         options={[
-          { value: 'party',   label: 'Party'   },
-          { value: 'state',   label: 'State'   },
-          { value: 'chamber', label: 'Chamber' },
+          { value: 'officials',  label: 'Officials'      },
+          { value: 'pac_sector', label: 'PACs by Sector' },
+          { value: 'pac_party',  label: 'PACs by Party'  },
         ]}
-        onChange={v => set('groupBy', v)}
+        onChange={v => set('dataMode', v)}
       />
-      <LabeledSelect
-        label="Size by"
-        value={opts?.sizeBy ?? 'donation_total'}
-        options={[
-          { value: 'donation_total',   label: 'Donations'   },
-          { value: 'connection_count', label: 'Connections' },
-          { value: 'vote_count',       label: 'Votes cast'  },
-        ]}
-        onChange={v => set('sizeBy', v)}
-      />
-      <LabeledSelect
-        label="Color by"
-        value={opts?.colorBy ?? 'party'}
-        options={[
-          { value: 'party',   label: 'Party'   },
-          { value: 'chamber', label: 'Chamber' },
-        ]}
-        onChange={v => set('colorBy', v)}
-      />
+      {!isPacMode && (
+        <>
+          <LabeledSelect
+            label="Group by"
+            value={opts?.groupBy ?? 'party'}
+            options={[
+              { value: 'party',   label: 'Party'   },
+              { value: 'state',   label: 'State'   },
+              { value: 'chamber', label: 'Chamber' },
+            ]}
+            onChange={v => set('groupBy', v)}
+          />
+          <LabeledSelect
+            label="Size by"
+            value={opts?.sizeBy ?? 'donation_total'}
+            options={[
+              { value: 'donation_total',   label: 'Donations'   },
+              { value: 'connection_count', label: 'Connections' },
+              { value: 'vote_count',       label: 'Votes cast'  },
+            ]}
+            onChange={v => set('sizeBy', v)}
+          />
+          <LabeledSelect
+            label="Color by"
+            value={opts?.colorBy ?? 'party'}
+            options={[
+              { value: 'party',   label: 'Party'   },
+              { value: 'chamber', label: 'Chamber' },
+            ]}
+            onChange={v => set('colorBy', v)}
+          />
+        </>
+      )}
     </>
   );
 }

@@ -115,9 +115,16 @@ export interface ChordOptions {
 export interface TreemapOptions {
   groupBy: 'party' | 'state' | 'chamber' | 'industry'
   sizeBy: 'donation_total' | 'connection_count' | 'vote_count'
-  colorBy: 'party' | 'chamber'
+  colorBy: 'party' | 'chamber' | 'industry'
   /** Hint: when true the preset is designed for entity-focused mode */
   entityMode?: boolean
+  /**
+   * Data source for the treemap.
+   * 'officials'  = officials ranked by donations received (default)
+   * 'pac_sector' = PAC donations grouped by industry sector
+   * 'pac_party'  = PAC donations grouped by recipient party
+   */
+  dataMode?: 'officials' | 'pac_sector' | 'pac_party'
 }
 
 export interface SunburstOptions {

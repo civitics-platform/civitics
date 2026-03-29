@@ -26,6 +26,25 @@ interface DonorRow {
   entity_type: string;
 }
 
+// PAC hierarchy types (returned by /api/graph/treemap-pac)
+interface PacLeaf {
+  name: string;
+  value: number;
+  pacId: string;
+  officialCount: number;
+}
+
+interface PacGroup {
+  name: string;
+  totalUsd: number;
+  children: PacLeaf[];
+}
+
+interface PacHierarchy {
+  name: string;
+  children: PacGroup[];
+}
+
 // D3 hierarchy datum for internal nodes
 interface GroupDatum {
   name: string;
@@ -161,10 +180,11 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
   const internalSvgRef = useRef<SVGSVGElement>(null);
   const svgRef         = externalSvgRef ?? internalSvgRef;
 
-  const [officials, setOfficials] = useState<TreemapOfficial[]>([]);
-  const [donors, setDonors]       = useState<DonorRow[]>([]);
-  const [loading, setLoading]     = useState(true);
-  const [error, setError]         = useState<string | null>(null);
+  const [officials, setOfficials]         = useState<TreemapOfficial[]>([]);
+  const [donors, setDonors]               = useState<DonorRow[]>([]);
+  const [pacHierarchy, setPacHierarchy]   = useState<PacHierarchy | null>(null);
+  const [loading, setLoading]             = useState(true);
+  const [error, setError]                 = useState<string | null>(null);
 
   const { tooltip, show: showTip, hide: hideTip } = useTooltip();
   const [popup, setPopup] = useState<NewGraphNode | null>(null);
@@ -172,10 +192,30 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
   const groupBy  = vizOptions?.groupBy  ?? 'party';
   const sizeBy   = vizOptions?.sizeBy   ?? 'donation_total';
   const colorBy  = vizOptions?.colorBy  ?? 'party';
+  const dataMode = vizOptions?.dataMode ?? 'officials';
 
   // ── Fetch data ──────────────────────────────────────────────────────────────
   useEffect(() => {
     setLoading(true);
+
+    // PAC modes — fetch from treemap-pac endpoint
+    if (dataMode === 'pac_sector' || dataMode === 'pac_party') {
+      const pacGroupBy = dataMode === 'pac_sector' ? 'sector' : 'party';
+      fetch(`/api/graph/treemap-pac?groupBy=${pacGroupBy}`)
+        .then((r) => r.json())
+        .then((data: PacHierarchy | { error: string }) => {
+          if ("error" in data) throw new Error((data as { error: string }).error);
+          setPacHierarchy(data as PacHierarchy);
+          setOfficials([]);
+          setDonors([]);
+        })
+        .catch((e: Error) => setError(e.message))
+        .finally(() => setLoading(false));
+      return;
+    }
+
+    // Officials mode (default)
+    setPacHierarchy(null);
 
     const url = primaryEntityId
       ? `/api/graph/treemap?entityId=${encodeURIComponent(primaryEntityId)}&groupBy=${groupBy}&sizeBy=${sizeBy}`
@@ -196,9 +236,9 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false));
-  // Refetch when entity / groupBy / sizeBy change
+  // Refetch when entity / groupBy / sizeBy / dataMode change
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [primaryEntityId, groupBy, sizeBy]);
+  }, [primaryEntityId, groupBy, sizeBy, dataMode]);
 
   // ── Render treemap ──────────────────────────────────────────────────────────
   const render = useCallback(() => {
@@ -206,9 +246,12 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
     const svg = svgRef.current;
     if (!container || !svg) return;
 
+    const isPacMode    = dataMode === 'pac_sector' || dataMode === 'pac_party';
     const isEntityMode = !!primaryEntityId && donors.length > 0;
-    if (!isEntityMode && officials.length === 0) return;
-    if (isEntityMode && donors.length === 0) return;
+
+    if (isPacMode && !pacHierarchy) return;
+    if (!isPacMode && !isEntityMode && officials.length === 0) return;
+    if (!isPacMode && isEntityMode && donors.length === 0) return;
 
     const width  = container.clientWidth;
     const height = container.clientHeight;
@@ -216,7 +259,29 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
 
     let root: GroupDatum;
 
-    if (isEntityMode) {
+    if (isPacMode && pacHierarchy) {
+      // PAC hierarchy — pre-grouped from the API
+      root = {
+        name: "root",
+        children: pacHierarchy.children.map((group, idx) => ({
+          name: group.name,
+          industryIndex: idx,
+          children: group.children.map((leaf) => ({
+            name:  leaf.name,
+            value: leaf.value,
+            industryIndex: idx,
+            // Reuse donor slot to carry PAC data for tooltip/popup
+            donor: {
+              donor_id:          leaf.pacId,
+              donor_name:        leaf.name,
+              industry_category: group.name,
+              amount_usd:        leaf.value,
+              entity_type:       "pac",
+            },
+          })),
+        })),
+      };
+    } else if (isEntityMode) {
       // Group donors by industry, assign a palette index per industry
       const grouped = d3.group(donors, (d) => d.industry_category);
       const industryKeys = [...grouped.keys()].sort((a, b) => {
@@ -279,9 +344,9 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
       .attr("y", (d) => d.y0)
       .attr("width", (d) => d.x1 - d.x0)
       .attr("height", (d) => d.y1 - d.y0)
-      .attr("fill", (d) => isEntityMode
+      .attr("fill", (d) => (isPacMode || isEntityMode)
         ? getIndustryFill(d.data.industryIndex ?? 0)
-        : getFill(d.data.name, colorBy))
+        : getFill(d.data.name, colorBy as 'party' | 'chamber'))
       .attr("rx", 3);
 
     // Group labels
@@ -291,9 +356,9 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
       .attr("class", "group-label")
       .attr("x", (d) => d.x0 + 6)
       .attr("y", (d) => d.y0 + 14)
-      .attr("fill", (d) => isEntityMode
+      .attr("fill", (d) => (isPacMode || isEntityMode)
         ? getIndustryStroke(d.data.industryIndex ?? 0)
-        : getStroke(d.data.name, colorBy))
+        : getStroke(d.data.name, colorBy as 'party' | 'chamber'))
       .attr("font-size", 11)
       .attr("font-weight", "600")
       .attr("font-family", "system-ui, sans-serif")
@@ -315,17 +380,17 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
       .append("rect")
       .attr("width",  (d) => Math.max(0, d.x1 - d.x0 - 1))
       .attr("height", (d) => Math.max(0, d.y1 - d.y0 - 1))
-      .attr("fill",   (d) => isEntityMode
+      .attr("fill",   (d) => (isPacMode || isEntityMode)
         ? getIndustryFill(d.data.industryIndex ?? 0)
         : (() => {
             const key = d.data.official ? getGroupKey(d.data.official, colorBy === 'chamber' ? 'chamber' : 'party') : 'nonpartisan';
-            return getFill(key, colorBy);
+            return getFill(key, colorBy as 'party' | 'chamber');
           })())
-      .attr("stroke", (d) => isEntityMode
+      .attr("stroke", (d) => (isPacMode || isEntityMode)
         ? getIndustryStroke(d.data.industryIndex ?? 0)
         : (() => {
             const key = d.data.official ? getGroupKey(d.data.official, colorBy === 'chamber' ? 'chamber' : 'party') : 'nonpartisan';
-            return getStroke(key, colorBy);
+            return getStroke(key, colorBy as 'party' | 'chamber');
           })())
       .attr("stroke-width", 0.5)
       .attr("rx", 2)
@@ -428,7 +493,7 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
           ?? (d.data.official ? d.data.official.total_donated_cents / 100 : 0);
         return "$" + amount.toLocaleString("en-US", { notation: "compact", maximumFractionDigits: 1 });
       });
-  }, [officials, donors, primaryEntityId, groupBy, sizeBy, colorBy, showTip, hideTip]);
+  }, [officials, donors, pacHierarchy, primaryEntityId, groupBy, sizeBy, colorBy, dataMode, showTip, hideTip]);
 
   // Render on data change + resize
   useEffect(() => {
@@ -440,7 +505,7 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
     return () => ro.disconnect();
   }, [render]);
 
-  // NodeActions for treemap — officials have profiles
+  // NodeActions for treemap — officials have profiles; PACs link to financial entities
   const nodeActions: NodeActions = {
     recenter:         () => {},
     openProfile:      (nodeId) => window.open(`/officials/${nodeId}`, "_blank"),
@@ -448,11 +513,19 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
     expandNode:       () => {},
   };
 
+  const isPacMode    = dataMode === 'pac_sector' || dataMode === 'pac_party';
   const isEntityMode = !!primaryEntityId && !loading;
 
   // ── Legend ─────────────────────────────────────────────────────────────────
 
   function renderLegend() {
+    if (isPacMode) {
+      return (
+        <span className="text-[10px] text-gray-500">
+          Color = {dataMode === 'pac_sector' ? 'industry' : 'party'} · Size = total donated
+        </span>
+      );
+    }
     if (isEntityMode) {
       return (
         <span className="text-[10px] text-gray-500">
@@ -509,7 +582,11 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
     );
   }
 
-  const hasData = primaryEntityId ? donors.length > 0 : officials.length > 0;
+  const hasData = isPacMode
+    ? !!pacHierarchy && pacHierarchy.children.length > 0
+    : primaryEntityId
+      ? donors.length > 0
+      : officials.length > 0;
   if (!hasData) {
     return (
       <div className={`flex items-center justify-center ${className}`}>
@@ -518,9 +595,11 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
     );
   }
 
-  const contextLabel = primaryEntityId && primaryEntityName
-    ? `${primaryEntityName} — Top Donors`
-    : "All Officials by Party";
+  const contextLabel = isPacMode
+    ? (dataMode === 'pac_sector' ? "PAC Money by Sector" : "PAC Money by Party")
+    : primaryEntityId && primaryEntityName
+      ? `${primaryEntityName} — Top Donors`
+      : "All Officials by Party";
 
   return (
     <div ref={containerRef} className={`relative overflow-hidden ${className}`}>

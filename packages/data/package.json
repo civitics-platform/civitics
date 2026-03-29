@@ -25,7 +25,8 @@
     "data:tag-ai": "tsx --env-file=../../.env.local src/pipelines/tags/ai-tagger.ts",
     "data:tag-industry": "tsx --env-file=../../.env.local src/pipelines/tags/ai-classifier.ts",
     "data:tag-all": "tsx --env-file=../../.env.local src/pipelines/tags/rules.ts && tsx --env-file=../../.env.local src/pipelines/tags/ai-tagger.ts -- --confirm && tsx --env-file=../../.env.local src/pipelines/tags/ai-classifier.ts -- --confirm",
-    "data:nightly": "tsx --env-file=../../.env.local src/pipelines/index.ts nightly"
+    "data:nightly": "tsx --env-file=../../.env.local src/pipelines/index.ts nightly",
+    "data:pac-classify": "tsx --env-file=../../.env.local src/pipelines/pac-classify/index.ts"
   },
   "dependencies": {
     "@civitics/ai": "workspace:*",

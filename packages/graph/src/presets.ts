@@ -354,6 +354,60 @@ export const TREEMAP_DONOR_BREAKDOWN: GraphViewPreset = {
   },
 }
 
+export const TREEMAP_PAC_SECTOR: GraphViewPreset = {
+  focus: {
+    entities: [],
+    scope: 'all',
+    depth: 1,
+    includeProcedural: false,
+  },
+  connections: DEFAULT_CONNECTION_STATE,
+  style: {
+    vizType: 'treemap',
+    vizOptions: {
+      treemap: {
+        dataMode: 'pac_sector',
+        groupBy: 'industry',
+        sizeBy: 'donation_total',
+        colorBy: 'industry',
+      },
+    },
+  },
+  meta: {
+    name: 'PAC Money by Sector',
+    isPreset: true,
+    presetId: 'treemap-pac-sector',
+    isDirty: false,
+  },
+}
+
+export const TREEMAP_PAC_PARTY: GraphViewPreset = {
+  focus: {
+    entities: [],
+    scope: 'all',
+    depth: 1,
+    includeProcedural: false,
+  },
+  connections: DEFAULT_CONNECTION_STATE,
+  style: {
+    vizType: 'treemap',
+    vizOptions: {
+      treemap: {
+        dataMode: 'pac_party',
+        groupBy: 'party',
+        sizeBy: 'donation_total',
+        colorBy: 'party',
+      },
+    },
+  },
+  meta: {
+    name: 'PAC Money by Party',
+    isPreset: true,
+    presetId: 'treemap-pac-party',
+    isDirty: false,
+  },
+}
+
 export const CHORD_DONOR_INDUSTRIES: GraphViewPreset = {
   focus: {
     entities: [],
@@ -395,6 +449,8 @@ export const BUILT_IN_PRESETS: GraphViewPreset[] = [
   TREEMAP_BY_STATE,
   TREEMAP_BY_CHAMBER,
   TREEMAP_DONOR_BREAKDOWN,
+  TREEMAP_PAC_SECTOR,
+  TREEMAP_PAC_PARTY,
   CHORD_DONOR_INDUSTRIES,
 ]
 
