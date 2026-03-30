@@ -25,6 +25,7 @@ const SECTOR_KEYWORDS: Record<string, string[]> = {
     "police", "teachers", "federation of teachers", "sheet metal",
     "laborers", "longshoremen", "ironworkers", "painters",
     "bricklayers", "operating engineers",
+    "air line pilots", "pilots association", "flight attendant", "air traffic",
   ],
   Finance: [
     "bank", "financial", "capital", "investment", "securities",
@@ -63,12 +64,16 @@ const SECTOR_KEYWORDS: Record<string, string[]> = {
     "telecom", "wireless", "broadband", "semiconductor",
     "microsoft", "google", "amazon", "apple", "meta",
     "ibm", "oracle", "intel",
+    "comcast", "nbcuniversal", "charter communications", "cable", "media",
+    "broadcast", "at&t", "verizon", "sprint", "t-mobile",
   ],
   Agriculture: [
     "farm", "farmer", "agriculture", "agri", "crop", "grain",
     "cotton", "rice", "dairy", "livestock", "beef", "pork",
     "poultry", "seed", "sugar", "soybean", "corn", "wheat",
     "tobacco", "nursery",
+    "john deere", "deere", "caterpillar", "cnh", "agco",
+    "pioneer", "monsanto", "bayer crop", "syngenta",
   ],
   Transportation: [
     "transport", "automobile", "auto dealers", "truck", "airline",
@@ -87,6 +92,8 @@ const SECTOR_KEYWORDS: Record<string, string[]> = {
     "construction", "builder", "contractor", "engineer",
     "infrastructure", "cement", "steel", "lumber", "plumber",
     "electrician", "mason", "roofing", "flooring",
+    "stone", "sand", "gravel", "aggregate", "quarry",
+    "minerals", "rockpac", "concrete",
   ],
   "Retail & Food": [
     "retail", "restaurant", "food service", "grocery", "franchise",

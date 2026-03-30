@@ -54,6 +54,13 @@ export async function GET(request: Request) {
       const sector = meta?.sector;
       if (!sector || sector === "Other") continue;
       const donor  = (row.donor_name as string) ?? "Unknown";
+
+      // Skip FEC aggregate artifact entries
+      const donorUpper = donor.toUpperCase();
+      if (
+        donorUpper.includes("PAC/COMMITTEE") ||
+        donorUpper.includes("COMMITTEE CONTRIBUTIONS")
+      ) continue;
       const usd    = (row.amount_cents as number) / 100;
 
       if (!bySector.has(sector)) bySector.set(sector, new Map());
