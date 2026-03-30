@@ -12,7 +12,7 @@
  */
 
 import { useState } from 'react';
-import type { FocusEntity, GraphView, GraphViewPreset, VizType } from '../types';
+import type { FocusEntity, GraphView, GraphViewPreset, GroupFilter, VizType } from '../types';
 import { MAX_FOCUS_ENTITIES } from '../types';
 import { DEFAULT_GRAPH_VIEW, applyPreset as applyPresetUtil, markDirty } from '../presets';
 
@@ -66,6 +66,44 @@ export function useGraphView(initialView?: Partial<GraphView>) {
         focus: {
           ...v.focus,
           entities: [],
+        },
+      })),
+
+    addGroup: async (filter: GroupFilter) => {
+      const res = await fetch(
+        `/api/search?q=${encodeURIComponent(filter.value)}&type=officials&limit=50`
+      );
+      const data = await res.json();
+      const officials: Array<{ id: string; full_name: string; party: string | null; photo_url: string | null }> =
+        data.officials ?? [];
+
+      setView(v => {
+        let entities = [...v.focus.entities];
+        for (const o of officials) {
+          if (entities.length >= MAX_FOCUS_ENTITIES) break;
+          if (entities.some(e => e.id === o.id)) continue;
+          entities = [
+            ...entities,
+            {
+              id: o.id,
+              name: o.full_name,
+              type: 'official' as const,
+              party: o.party ?? undefined,
+              photoUrl: o.photo_url ?? undefined,
+              groupTag: filter.value.toUpperCase(),
+            },
+          ];
+        }
+        return markDirty({ ...v, focus: { ...v.focus, entities } });
+      });
+    },
+
+    removeGroup: (groupTag: string) =>
+      setView(v => markDirty({
+        ...v,
+        focus: {
+          ...v.focus,
+          entities: v.focus.entities.filter(e => e.groupTag !== groupTag),
         },
       })),
 

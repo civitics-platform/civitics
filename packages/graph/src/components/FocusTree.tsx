@@ -8,7 +8,8 @@
  * search input, browse by category, and global options.
  */
 
-import type { GraphView } from '../types';
+import { useState, useEffect } from 'react';
+import type { GraphView, GroupFilter } from '../types';
 import { MAX_FOCUS_ENTITIES } from '../types';
 import type { UseGraphViewReturn } from '../hooks/useGraphView';
 import { TreeNode, TreeSection } from './TreeNode';
@@ -57,9 +58,114 @@ const SCOPE_OPTIONS = [
   { value: 'state',   label: 'State' },
 ] as const;
 
+const GROUP_OPTIONS = {
+  state: [
+    'AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA',
+    'HI','ID','IL','IN','IA','KS','KY','LA','ME','MD',
+    'MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ',
+    'NM','NY','NC','ND','OH','OK','OR','PA','RI','SC',
+    'SD','TN','TX','UT','VT','VA','WA','WV','WI','WY','DC',
+  ],
+  party: ['democrat', 'republican', 'independent'],
+  chamber: ['senator', 'representative'],
+} as const;
+
+function GroupSelector({
+  onAdd,
+  onClose,
+}: {
+  onAdd: (filter: GroupFilter) => void;
+  onClose: () => void;
+}) {
+  const [filterType, setFilterType] = useState<'state' | 'party' | 'chamber'>('state');
+  const [filterValue, setFilterValue] = useState<string>(GROUP_OPTIONS.state[0]);
+
+  useEffect(() => {
+    setFilterValue(GROUP_OPTIONS[filterType][0]);
+  }, [filterType]);
+
+  const options = GROUP_OPTIONS[filterType] as readonly string[];
+
+  const displayValue = (opt: string) =>
+    filterType === 'state' ? opt : opt.charAt(0).toUpperCase() + opt.slice(1);
+
+  return (
+    <div className="mx-2 mb-2 border border-indigo-200 rounded-lg bg-indigo-50/50 p-2">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-xs font-medium text-gray-700">Add Group</span>
+        <button
+          onClick={onClose}
+          className="text-gray-400 hover:text-gray-600 text-xs leading-none"
+        >
+          ×
+        </button>
+      </div>
+
+      {/* Filter type tabs */}
+      <div className="flex gap-1 mb-2">
+        {(['state', 'party', 'chamber'] as const).map(t => (
+          <button
+            key={t}
+            onClick={() => setFilterType(t)}
+            className={`px-2 py-0.5 text-[10px] rounded capitalize transition-colors ${
+              filterType === t
+                ? 'bg-indigo-600 text-white'
+                : 'bg-white text-gray-500 border border-gray-200 hover:border-gray-300'
+            }`}
+          >
+            {t}
+          </button>
+        ))}
+      </div>
+
+      {/* Value selector */}
+      <select
+        value={filterValue}
+        onChange={e => setFilterValue(e.target.value)}
+        className="w-full text-xs border border-gray-200 rounded px-2 py-1 bg-white text-gray-700 focus:outline-none focus:border-indigo-400 mb-2"
+      >
+        {options.map(opt => (
+          <option key={opt} value={opt}>
+            {displayValue(opt)}
+          </option>
+        ))}
+      </select>
+
+      {/* Add button */}
+      <button
+        onClick={() => {
+          if (filterValue) {
+            onAdd({ type: filterType, value: filterValue });
+            onClose();
+          }
+        }}
+        className="w-full py-1 text-xs font-medium bg-indigo-600 hover:bg-indigo-700 text-white rounded transition-colors"
+      >
+        Add {displayValue(filterValue)} officials
+      </button>
+    </div>
+  );
+}
+
 export function FocusTree({ focus, hooks }: FocusTreeProps) {
   const { entities, depth, scope, includeProcedural } = focus;
   const atMax = hooks.atMaxFocus;
+  const [showGroupSelector, setShowGroupSelector] = useState(false);
+
+  // Group entities by groupTag ('' = ungrouped)
+  const grouped = entities.reduce<Record<string, typeof entities>>((acc, e) => {
+    const tag = e.groupTag ?? '';
+    if (!acc[tag]) acc[tag] = [];
+    acc[tag].push(e);
+    return acc;
+  }, {});
+
+  // Ungrouped entities (no groupTag)
+  const ungrouped = grouped[''] ?? [];
+  // Groups with a tag, sorted alphabetically
+  const taggedGroups = Object.entries(grouped)
+    .filter(([tag]) => tag !== '')
+    .sort(([a], [b]) => a.localeCompare(b));
 
   return (
     <TreeSection
@@ -92,71 +198,29 @@ export function FocusTree({ focus, hooks }: FocusTreeProps) {
           separator={false}
           depth={1}
         >
-          {entities.map(entity => (
-            <TreeNode
-              key={entity.id}
-              label={entity.name}
-              variant="entity"
-              party={entity.party}
-              photoUrl={entity.photoUrl}
-              active
-              collapsible
-              defaultExpanded={false}
-              depth={1}
-              separator={false}
-              actions={[
-                {
-                  icon: entity.pinned ? '📌' : '📍',
-                  label: entity.pinned ? 'Unpin' : 'Pin',
-                  onClick: () => hooks.updateEntity(entity.id, { pinned: !entity.pinned }),
-                },
-                {
-                  icon: '×',
-                  label: 'Remove',
-                  onClick: () => hooks.removeEntity(entity.id),
-                },
-              ]}
-            >
-              {/* Per-entity depth */}
-              <div
-                className="flex items-center gap-2 px-2 py-1"
-                style={{ paddingLeft: '32px' }}
-              >
-                <span className="text-[10px] text-gray-500 shrink-0">Depth</span>
-                <DepthButtons
-                  value={(entity.depth ?? depth) as 1 | 2 | 3}
-                  onChange={d => hooks.updateEntity(entity.id, { depth: d })}
-                />
-              </div>
-
-              {/* Highlight toggle */}
-              <div
-                className="flex items-center justify-between px-2 py-1"
-                style={{ paddingLeft: '32px' }}
-              >
-                <span className="text-[10px] text-gray-500">Highlight</span>
+          {/* Tagged groups with Remove all header */}
+          {taggedGroups.map(([tag, members]) => (
+            <div key={tag}>
+              <div className="px-3 py-1 flex items-center justify-between">
+                <span className="text-[10px] text-gray-500">
+                  {tag} group ({members.length})
+                </span>
                 <button
-                  onClick={() => hooks.updateEntity(entity.id, { highlight: !entity.highlight })}
-                  className={`w-7 h-4 rounded-full transition-colors relative ${(entity.highlight ?? true) ? 'bg-indigo-500' : 'bg-gray-200'}`}
+                  onClick={() => hooks.removeGroup(tag)}
+                  className="text-[10px] text-gray-400 hover:text-red-500"
                 >
-                  <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow transition-transform ${(entity.highlight ?? true) ? 'translate-x-3.5' : 'translate-x-0.5'}`} />
+                  Remove all
                 </button>
               </div>
+              {members.map(entity => (
+                <EntityRow key={entity.id} entity={entity} hooks={hooks} depth={depth} />
+              ))}
+            </div>
+          ))}
 
-              {/* Pin position toggle */}
-              <div
-                className="flex items-center justify-between px-2 py-1"
-                style={{ paddingLeft: '32px' }}
-              >
-                <span className="text-[10px] text-gray-500">Pin position</span>
-                <button
-                  onClick={() => hooks.updateEntity(entity.id, { pinned: !entity.pinned })}
-                  className={`w-7 h-4 rounded-full transition-colors relative ${entity.pinned ? 'bg-indigo-500' : 'bg-gray-200'}`}
-                >
-                  <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow transition-transform ${entity.pinned ? 'translate-x-3.5' : 'translate-x-0.5'}`} />
-                </button>
-              </div>
-            </TreeNode>
+          {/* Ungrouped entities */}
+          {ungrouped.map(entity => (
+            <EntityRow key={entity.id} entity={entity} hooks={hooks} depth={depth} />
           ))}
         </TreeSection>
       )}
@@ -166,6 +230,27 @@ export function FocusTree({ focus, hooks }: FocusTreeProps) {
         <p className="px-3 py-1 text-[10px] text-amber-600">
           Maximum {MAX_FOCUS_ENTITIES} entities reached
         </p>
+      )}
+
+      {/* Add group button */}
+      <div className="px-2 pb-1">
+        <button
+          onClick={() => setShowGroupSelector(s => !s)}
+          className="w-full text-xs text-gray-500 hover:text-gray-700 border border-dashed border-gray-200 hover:border-gray-300 rounded px-2 py-1 transition-colors flex items-center justify-center gap-1"
+        >
+          <span>⊞</span>
+          Add group
+        </button>
+      </div>
+
+      {/* Group selector panel */}
+      {showGroupSelector && (
+        <GroupSelector
+          onAdd={async filter => {
+            await hooks.addGroup(filter);
+          }}
+          onClose={() => setShowGroupSelector(false)}
+        />
       )}
 
       {/* Find entity search */}
@@ -259,5 +344,92 @@ export function FocusTree({ focus, hooks }: FocusTreeProps) {
         </div>
       </TreeSection>
     </TreeSection>
+  );
+}
+
+// ── EntityRow ──────────────────────────────────────────────────────────────────
+
+function EntityRow({
+  entity,
+  hooks,
+  depth,
+}: {
+  entity: GraphView['focus']['entities'][number];
+  hooks: UseGraphViewReturn;
+  depth: 1 | 2 | 3;
+}) {
+  const label = entity.groupTag ? (
+    <span className="flex items-center gap-1">
+      {entity.name}
+      <span className="text-[9px] bg-gray-100 text-gray-500 px-1 rounded">
+        {entity.groupTag}
+      </span>
+    </span>
+  ) : entity.name;
+
+  return (
+    <TreeNode
+      label={label}
+      variant="entity"
+      party={entity.party}
+      photoUrl={entity.photoUrl}
+      active
+      collapsible
+      defaultExpanded={false}
+      depth={1}
+      separator={false}
+      actions={[
+        {
+          icon: entity.pinned ? '📌' : '📍',
+          label: entity.pinned ? 'Unpin' : 'Pin',
+          onClick: () => hooks.updateEntity(entity.id, { pinned: !entity.pinned }),
+        },
+        {
+          icon: '×',
+          label: 'Remove',
+          onClick: () => hooks.removeEntity(entity.id),
+        },
+      ]}
+    >
+      {/* Per-entity depth */}
+      <div
+        className="flex items-center gap-2 px-2 py-1"
+        style={{ paddingLeft: '32px' }}
+      >
+        <span className="text-[10px] text-gray-500 shrink-0">Depth</span>
+        <DepthButtons
+          value={(entity.depth ?? depth) as 1 | 2 | 3}
+          onChange={d => hooks.updateEntity(entity.id, { depth: d })}
+        />
+      </div>
+
+      {/* Highlight toggle */}
+      <div
+        className="flex items-center justify-between px-2 py-1"
+        style={{ paddingLeft: '32px' }}
+      >
+        <span className="text-[10px] text-gray-500">Highlight</span>
+        <button
+          onClick={() => hooks.updateEntity(entity.id, { highlight: !entity.highlight })}
+          className={`w-7 h-4 rounded-full transition-colors relative ${(entity.highlight ?? true) ? 'bg-indigo-500' : 'bg-gray-200'}`}
+        >
+          <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow transition-transform ${(entity.highlight ?? true) ? 'translate-x-3.5' : 'translate-x-0.5'}`} />
+        </button>
+      </div>
+
+      {/* Pin position toggle */}
+      <div
+        className="flex items-center justify-between px-2 py-1"
+        style={{ paddingLeft: '32px' }}
+      >
+        <span className="text-[10px] text-gray-500">Pin position</span>
+        <button
+          onClick={() => hooks.updateEntity(entity.id, { pinned: !entity.pinned })}
+          className={`w-7 h-4 rounded-full transition-colors relative ${entity.pinned ? 'bg-indigo-500' : 'bg-gray-200'}`}
+        >
+          <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow transition-transform ${entity.pinned ? 'translate-x-3.5' : 'translate-x-0.5'}`} />
+        </button>
+      </div>
+    </TreeNode>
   );
 }

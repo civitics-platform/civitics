@@ -151,6 +151,15 @@ export interface FocusEntity {
   pinned?: boolean
   /** Custom highlight ring color */
   color?: string
+  /** Group tag set when added via Add Group (e.g. 'CA', 'DEMOCRAT') */
+  groupTag?: string
+}
+
+// ── Group Filter ───────────────────────────────────────────────────────────────
+
+export interface GroupFilter {
+  type: 'state' | 'party' | 'chamber'
+  value: string
 }
 
 /** Maximum number of entities that can be in focus simultaneously */
