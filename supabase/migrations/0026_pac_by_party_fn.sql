@@ -20,6 +20,8 @@ RETURNS TABLE (
   FROM financial_relationships fr
   JOIN officials o ON fr.official_id = o.id
   WHERE fr.donor_type IN ('pac', 'party_committee')
+    AND fr.donor_name NOT ILIKE '%PAC/Committee%'
+    AND fr.donor_name NOT ILIKE '%Committee Contributions%'
   GROUP BY o.party, fr.donor_name
   ORDER BY total_usd DESC
 $$ LANGUAGE SQL STABLE;

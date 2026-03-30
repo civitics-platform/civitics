@@ -107,8 +107,16 @@ export async function GET(request: Request) {
     const usd = Number(row.total_usd) ?? 0;
     if (usd <= 10000) continue; // skip tiny donations
 
-    const party = (row.party as string) ?? "Unknown";
     const donor = (row.donor_name as string) ?? "Unknown";
+
+    // Skip FEC aggregate artifact entries
+    const donorUpper = donor.toUpperCase();
+    if (
+      donorUpper.includes("PAC/COMMITTEE") ||
+      donorUpper.includes("COMMITTEE CONTRIBUTIONS")
+    ) continue;
+
+    const party = (row.party as string) ?? "Unknown";
     const count = Number(row.donation_count) ?? 0;
 
     if (!byParty.has(party)) byParty.set(party, new Map());

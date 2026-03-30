@@ -253,8 +253,10 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
     const svg = svgRef.current;
     if (!container || !svg) return;
 
-    const isPacMode    = dataMode === 'pac_sector' || dataMode === 'pac_party';
-    const isEntityMode = !!primaryEntityId && donors.length > 0;
+    const isPacMode       = dataMode === 'pac_sector' || dataMode === 'pac_party';
+    const isPacSectorMode = dataMode === 'pac_sector';
+    const isPacPartyMode  = dataMode === 'pac_party';
+    const isEntityMode    = !!primaryEntityId && donors.length > 0;
 
     if (isPacMode && !pacHierarchy) return;
     if (!isPacMode && !isEntityMode && officials.length === 0) return;
@@ -357,9 +359,11 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
       .attr("y", (d) => d.y0)
       .attr("width", (d) => d.x1 - d.x0)
       .attr("height", (d) => d.y1 - d.y0)
-      .attr("fill", (d) => (isPacMode || isEntityMode)
+      .attr("fill", (d) => (isPacSectorMode || isEntityMode)
         ? getIndustryFill(d.data.industryIndex ?? 0)
-        : getFill(d.data.name, colorBy as 'party' | 'chamber'))
+        : isPacPartyMode
+          ? (PARTY_FILL[d.data.name.toLowerCase()] ?? "#1e3040")
+          : getFill(d.data.name, colorBy as 'party' | 'chamber'))
       .attr("rx", 3)
       .style("cursor", (d) =>
         !drillNode && d.data.children?.length ? "zoom-in" : "default")
@@ -376,9 +380,11 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
       .attr("class", "group-label")
       .attr("x", (d) => d.x0 + 6)
       .attr("y", (d) => d.y0 + 14)
-      .attr("fill", (d) => (isPacMode || isEntityMode)
+      .attr("fill", (d) => (isPacSectorMode || isEntityMode)
         ? getIndustryStroke(d.data.industryIndex ?? 0)
-        : getStroke(d.data.name, colorBy as 'party' | 'chamber'))
+        : isPacPartyMode
+          ? (PARTY_STROKE[d.data.name.toLowerCase()] ?? "#64748b")
+          : getStroke(d.data.name, colorBy as 'party' | 'chamber'))
       .attr("font-size", 11)
       .attr("font-weight", "600")
       .attr("font-family", "system-ui, sans-serif")
@@ -426,18 +432,22 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
       .append("rect")
       .attr("width",  (d) => Math.max(0, d.x1 - d.x0 - 1))
       .attr("height", (d) => Math.max(0, d.y1 - d.y0 - 1))
-      .attr("fill",   (d) => (isPacMode || isEntityMode)
+      .attr("fill",   (d) => (isPacSectorMode || isEntityMode)
         ? getIndustryFill(d.data.industryIndex ?? 0)
-        : (() => {
-            const key = d.data.official ? getGroupKey(d.data.official, colorBy === 'chamber' ? 'chamber' : 'party') : 'nonpartisan';
-            return getFill(key, colorBy as 'party' | 'chamber');
-          })())
-      .attr("stroke", (d) => (isPacMode || isEntityMode)
+        : isPacPartyMode
+          ? (PARTY_FILL[(d.data.donor?.industry_category ?? "").toLowerCase()] ?? "#1e3040")
+          : (() => {
+              const key = d.data.official ? getGroupKey(d.data.official, colorBy === 'chamber' ? 'chamber' : 'party') : 'nonpartisan';
+              return getFill(key, colorBy as 'party' | 'chamber');
+            })())
+      .attr("stroke", (d) => (isPacSectorMode || isEntityMode)
         ? getIndustryStroke(d.data.industryIndex ?? 0)
-        : (() => {
-            const key = d.data.official ? getGroupKey(d.data.official, colorBy === 'chamber' ? 'chamber' : 'party') : 'nonpartisan';
-            return getStroke(key, colorBy as 'party' | 'chamber');
-          })())
+        : isPacPartyMode
+          ? (PARTY_STROKE[(d.data.donor?.industry_category ?? "").toLowerCase()] ?? "#64748b")
+          : (() => {
+              const key = d.data.official ? getGroupKey(d.data.official, colorBy === 'chamber' ? 'chamber' : 'party') : 'nonpartisan';
+              return getStroke(key, colorBy as 'party' | 'chamber');
+            })())
       .attr("stroke-width", 0.5)
       .attr("rx", 2)
       .on("mouseenter", function (event: MouseEvent, d) {
