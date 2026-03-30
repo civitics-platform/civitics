@@ -221,3 +221,8 @@ Never: **AWS S3** (egress fees are prohibitive)
 - Test locally before pushing
 - Never `DROP TABLE`, `TRUNCATE`, or `DELETE` without explicit user confirmation
 - Filename format: `YYYYMMDD_description.sql`
+  
+  "NEVER run supabase migration up
+   without --local flag.
+   NEVER connect to prod DB during
+   development."

@@ -23,16 +23,17 @@ export interface TooltipProps {
 export function Tooltip({ node, x, y, visible, containerWidth }: TooltipProps) {
   if (!visible || !node) return null;
 
+  const TOOLTIP_W = 220;
   const boundary = containerWidth ?? (typeof window !== 'undefined' ? window.innerWidth : 1024);
-  const flipLeft = x + 12 + 240 > boundary;
+  const safeX = Math.min(x + 12, boundary - TOOLTIP_W - 8);
+  const safeY = Math.min(y - 8, (typeof window !== 'undefined' ? window.innerHeight : 800) - 100);
 
   return (
     <div
       className="absolute z-50 pointer-events-none bg-white border border-gray-200 rounded-lg shadow-lg px-3 py-2 text-sm max-w-[240px]"
       style={{
-        left: x + 12,
-        top: y - 8,
-        transform: flipLeft ? 'translateX(-100%)' : 'none',
+        left: safeX,
+        top: safeY,
       }}
     >
       {/* Name — bold */}

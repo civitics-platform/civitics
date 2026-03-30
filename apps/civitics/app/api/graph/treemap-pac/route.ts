@@ -37,8 +37,9 @@ export async function GET(request: Request) {
     const { data, error } = await supabase
       .from("financial_relationships")
       .select("donor_name, amount_cents, metadata")
-      .eq("donor_type", "pac")
-      .not("metadata->>sector", "is", null);
+      .in("donor_type", ["pac", "party_committee"])
+      .not("metadata->>sector", "is", null)
+      .neq("metadata->>sector", "Other");
 
     if (error) {
       console.error("[treemap-pac/sector] query error:", error.message);
@@ -50,7 +51,8 @@ export async function GET(request: Request) {
 
     for (const row of data ?? []) {
       const meta   = row.metadata as Record<string, string> | null;
-      const sector = meta?.sector ?? "Other";
+      const sector = meta?.sector;
+      if (!sector || sector === "Other") continue;
       const donor  = (row.donor_name as string) ?? "Unknown";
       const usd    = (row.amount_cents as number) / 100;
 
@@ -83,6 +85,7 @@ export async function GET(request: Request) {
 
   // ── Party mode ───────────────────────────────────────────────────────────────
 
+  // donor_type filter is enforced inside the RPC function
   const { data, error } = await supabase.rpc("get_pac_donations_by_party");
 
   if (error) {

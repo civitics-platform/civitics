@@ -32,11 +32,15 @@ const SECTOR_KEYWORDS: Record<string, string[]> = {
     "asset management", "fund", "equity", "venture", "ubs",
     "goldman", "morgan", "citi", "jpmorgan", "blackstone",
     "accounting", "accountants", "cpa", "actuari",
+    "bankers", "brokers", "traders", "exchange",
+    "lending", "loans", "commercial", "advisors",
   ],
   "Real Estate": [
     "realtor", "realtors", "real estate", "housing", "homebuilder",
     "home builder", "apartment", "multifamily", "property",
     "mortgage", "home depot", "lowe's",
+    "builders", "developers", "development", "properties",
+    "commercial real",
   ],
   Energy: [
     "gas", "oil", "energy", "petroleum", "coal", "electric",
@@ -93,6 +97,11 @@ const SECTOR_KEYWORDS: Record<string, string[]> = {
     "democrat", "republican", "gop", "dccc", "nrcc",
     "dscc", "nrsc", "dlcc", "victory fund", "pac fund",
     "liberty fund", "freedom fund", "leadership pac",
+    "liberty pac", "opportunity pac", "progress pac",
+    "future pac", "majority pac", "bold pac",
+    "collective pac", "country pac",
+    "caucus", "committee", "congressional",
+    "senate victory", "house victory",
   ],
 };
 

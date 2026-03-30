@@ -341,7 +341,9 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
       .tile(d3.treemapSquarify)(hierarchy);
 
     d3.select(svg).selectAll("*").remove();
-    d3.select(svg).attr("width", width).attr("height", height).style("user-select", "none");
+    d3.select(svg).attr("width", width).attr("height", height)
+      .style("user-select", "none")
+      .style("-webkit-user-select", "none");
 
     const g = d3.select(svg).append("g");
 

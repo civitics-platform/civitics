@@ -19,8 +19,7 @@ RETURNS TABLE (
     COUNT(*)                          AS donation_count
   FROM financial_relationships fr
   JOIN officials o ON fr.official_id = o.id
-  WHERE fr.donor_type = 'pac'
-    AND fr.donor_name IS NOT NULL
+  WHERE fr.donor_type IN ('pac', 'party_committee')
   GROUP BY o.party, fr.donor_name
   ORDER BY total_usd DESC
 $$ LANGUAGE SQL STABLE;

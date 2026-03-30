@@ -221,6 +221,30 @@ If DB is unavailable: build succeeds with [] → pages render on-demand (ISR)
 
 ---
 
+## Database Safety Rules
+
+NEVER run database commands against production:
+
+- Always use --local flag:
+  `supabase migration up --local`
+
+- Local Studio URL:
+  http://127.0.0.1:54323
+
+- Prod Studio URL (NEVER touch during development):
+  https://supabase.com/dashboard
+
+- Local DB connection:
+  postgresql://postgres:postgres@127.0.0.1:54322/postgres
+
+- If asked to run SQL, always use local Studio at 127.0.0.1:54323
+
+- If asked to run migrations, always add --local flag
+
+- Never unpause the Supabase project during development
+
+---
+
 ## What Not To Do
 
 - Do not store precise user coordinates — always coarsen to district level
