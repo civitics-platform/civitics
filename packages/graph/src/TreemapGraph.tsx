@@ -219,15 +219,21 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
     // Officials mode (default)
     setPacHierarchy(null);
 
-    const url = primaryEntityId
-      ? `/api/graph/treemap?entityId=${encodeURIComponent(primaryEntityId)}&groupBy=${groupBy}&sizeBy=${sizeBy}`
+    const isRealUuid = (id: string) =>
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+
+    const entityIdParam =
+      primaryEntityId && isRealUuid(primaryEntityId) ? primaryEntityId : null;
+
+    const url = entityIdParam
+      ? `/api/graph/treemap?entityId=${encodeURIComponent(entityIdParam)}&groupBy=${groupBy}&sizeBy=${sizeBy}`
       : `/api/graph/treemap?groupBy=${groupBy}&sizeBy=${sizeBy}`;
 
     fetch(url)
       .then((r) => r.json())
       .then((data: TreemapOfficial[] | DonorRow[] | { error: string }) => {
         if ("error" in data) throw new Error((data as { error: string }).error);
-        if (primaryEntityId) {
+        if (entityIdParam) {
           const donorData = data as DonorRow[];
           setDonors(donorData);
           setOfficials([]);

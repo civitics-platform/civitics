@@ -27,8 +27,12 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const entityId = searchParams.get("entityId");
 
+  // Validate UUID format — reject group IDs like 'group-pac-finance'
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const validEntityId = entityId && UUID_RE.test(entityId) ? entityId : null;
+
   // ── Entity mode: donors for one official ─────────────────────────────────
-  if (entityId) {
+  if (validEntityId) {
     type RpcRow = {
       financial_entity_id: string | null;
       entity_name: string;
@@ -39,7 +43,7 @@ export async function GET(request: Request) {
     };
 
     const { data, error } = await supabase.rpc("get_official_donors", {
-      p_official_id: entityId,
+      p_official_id: validEntityId,
     });
 
     if (error) {
