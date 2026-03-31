@@ -9,12 +9,13 @@
  */
 
 import { useState, useEffect } from 'react';
-import type { FocusEntity, GraphView, GroupFilter } from '../types';
-import { isFocusEntity, MAX_FOCUS_ENTITIES } from '../types';
+import type { FocusEntity, FocusGroup, GraphView, GroupFilter } from '../types';
+import { isFocusEntity, isFocusGroup, MAX_FOCUS_ENTITIES } from '../types';
 import type { UseGraphViewReturn } from '../hooks/useGraphView';
 import { TreeNode, TreeSection } from './TreeNode';
 import { EntitySearchInput } from './EntitySearchInput';
-import { EntityBrowse } from './EntityBrowse';
+import { GroupBrowser } from './GroupBrowser';
+import { createCustomGroup } from '../groups';
 import { PathFinder } from '../PathFinder';
 
 export interface FocusTreeProps {
@@ -251,8 +252,8 @@ export function FocusTree({ focus, hooks }: FocusTreeProps) {
       {/* Group selector panel */}
       {showGroupSelector && (
         <GroupSelector
-          onAdd={async filter => {
-            await hooks.addGroup(filter);
+          onAdd={filter => {
+            hooks.addGroup(createCustomGroup(filter));
           }}
           onClose={() => setShowGroupSelector(false)}
         />
@@ -274,18 +275,20 @@ export function FocusTree({ focus, hooks }: FocusTreeProps) {
         />
       </TreeSection>
 
-      {/* Browse by category */}
+      {/* Browse groups */}
       <TreeSection
-        label="Browse"
+        label="Browse Groups"
         defaultExpanded={false}
         separator={false}
         depth={1}
       >
-        <EntityBrowse
-          onSelect={entity => {
-            if (hooks.atMaxFocus) return;
-            hooks.addEntity(entity);
-          }}
+        <GroupBrowser
+          onAddGroup={group => hooks.addGroup(group)}
+          activeGroupIds={
+            focus.entities
+              .filter(isFocusGroup)
+              .map(g => g.id)
+          }
         />
       </TreeSection>
 

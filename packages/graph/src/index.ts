@@ -92,8 +92,8 @@ export type { ConnectionsTreeProps } from "./components/ConnectionsTree";
 export { EntitySearchInput } from "./components/EntitySearchInput";
 export type { EntitySearchInputProps } from "./components/EntitySearchInput";
 
-export { EntityBrowse } from "./components/EntityBrowse";
-export type { EntityBrowseProps } from "./components/EntityBrowse";
+export { GroupBrowser } from "./components/GroupBrowser";
+export type { GroupBrowserProps } from "./components/GroupBrowser";
 
 export { ConnectionStyleRow } from "./components/ConnectionStyleRow";
 export type { ConnectionStyleRowProps, ConnectionTypeSettings } from "./components/ConnectionStyleRow";
