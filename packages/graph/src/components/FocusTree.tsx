@@ -8,14 +8,12 @@
  * search input, browse by category, and global options.
  */
 
-import { useState, useEffect } from 'react';
-import type { FocusEntity, FocusGroup, GraphView, GroupFilter } from '../types';
+import type { FocusEntity, GraphView } from '../types';
 import { isFocusEntity, isFocusGroup, MAX_FOCUS_ENTITIES } from '../types';
 import type { UseGraphViewReturn } from '../hooks/useGraphView';
 import { TreeNode, TreeSection } from './TreeNode';
 import { EntitySearchInput } from './EntitySearchInput';
 import { GroupBrowser } from './GroupBrowser';
-import { createCustomGroup } from '../groups';
 import { PathFinder } from '../PathFinder';
 
 export interface FocusTreeProps {
@@ -59,104 +57,10 @@ const SCOPE_OPTIONS = [
   { value: 'state',   label: 'State' },
 ] as const;
 
-const GROUP_OPTIONS = {
-  state: [
-    'AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA',
-    'HI','ID','IL','IN','IA','KS','KY','LA','ME','MD',
-    'MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ',
-    'NM','NY','NC','ND','OH','OK','OR','PA','RI','SC',
-    'SD','TN','TX','UT','VT','VA','WA','WV','WI','WY','DC',
-  ],
-  party: ['democrat', 'republican', 'independent'],
-  chamber: ['senator', 'representative'],
-} as const;
-
-function GroupSelector({
-  onAdd,
-  onClose,
-}: {
-  onAdd: (filter: GroupFilter) => void;
-  onClose: () => void;
-}) {
-  const [filterType, setFilterType] = useState<'state' | 'party' | 'chamber'>('state');
-  const [filterValue, setFilterValue] = useState<string>(GROUP_OPTIONS.state[0]);
-
-  useEffect(() => {
-    setFilterValue(GROUP_OPTIONS[filterType][0]);
-  }, [filterType]);
-
-  const options = GROUP_OPTIONS[filterType] as readonly string[];
-
-  const displayValue = (opt: string) =>
-    filterType === 'state' ? opt : opt.charAt(0).toUpperCase() + opt.slice(1);
-
-  return (
-    <div className="mx-2 mb-2 border border-indigo-200 rounded-lg bg-indigo-50/50 p-2">
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-xs font-medium text-gray-700">Add Group</span>
-        <button
-          onClick={onClose}
-          className="text-gray-400 hover:text-gray-600 text-xs leading-none"
-        >
-          ×
-        </button>
-      </div>
-
-      {/* Filter type tabs */}
-      <div className="flex gap-1 mb-2">
-        {(['state', 'party', 'chamber'] as const).map(t => (
-          <button
-            key={t}
-            onClick={() => setFilterType(t)}
-            className={`px-2 py-0.5 text-[10px] rounded capitalize transition-colors ${
-              filterType === t
-                ? 'bg-indigo-600 text-white'
-                : 'bg-white text-gray-500 border border-gray-200 hover:border-gray-300'
-            }`}
-          >
-            {t}
-          </button>
-        ))}
-      </div>
-
-      {/* Value selector */}
-      <select
-        value={filterValue}
-        onChange={e => setFilterValue(e.target.value)}
-        className="w-full text-xs border border-gray-200 rounded px-2 py-1 bg-white text-gray-700 focus:outline-none focus:border-indigo-400 mb-2"
-      >
-        {options.map(opt => (
-          <option key={opt} value={opt}>
-            {displayValue(opt)}
-          </option>
-        ))}
-      </select>
-
-      {/* Add button */}
-      <button
-        onClick={() => {
-          if (filterValue) {
-            const filter: GroupFilter = filterType === 'state'
-              ? { entity_type: 'official', state: filterValue }
-              : filterType === 'party'
-              ? { entity_type: 'official', party: filterValue }
-              : { entity_type: 'official', chamber: filterValue === 'senator' ? 'senate' : 'house' };
-            onAdd(filter);
-            onClose();
-          }
-        }}
-        className="w-full py-1 text-xs font-medium bg-indigo-600 hover:bg-indigo-700 text-white rounded transition-colors"
-      >
-        Add {displayValue(filterValue)} officials
-      </button>
-    </div>
-  );
-}
 
 export function FocusTree({ focus, hooks }: FocusTreeProps) {
   const { entities, depth, scope, includeProcedural } = focus;
   const atMax = hooks.atMaxFocus;
-  const [showGroupSelector, setShowGroupSelector] = useState(false);
 
   // Group entities by groupTag ('' = ungrouped). FocusGroups are handled separately.
   const grouped = entities.filter(isFocusEntity).reduce<Record<string, FocusEntity[]>>((acc, e) => {
@@ -204,7 +108,36 @@ export function FocusTree({ focus, hooks }: FocusTreeProps) {
           separator={false}
           depth={1}
         >
-          {/* Tagged groups with Remove all header */}
+          {/* FocusGroup items */}
+          {entities.filter(isFocusGroup).map(item => (
+            <div
+              key={item.id}
+              className="flex items-center justify-between px-3 py-2 bg-indigo-50/50 border-b border-gray-100"
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <span
+                  className="w-2 h-2 rounded-full shrink-0"
+                  style={{ backgroundColor: item.color }}
+                />
+                <span className="text-sm shrink-0">{item.icon}</span>
+                <div className="min-w-0">
+                  <div className="text-xs font-medium text-gray-800 truncate">{item.name}</div>
+                  <div className="text-[10px] text-gray-400">
+                    Group{item.count ? ` · ${item.count} members` : ''}
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={() => hooks.removeGroup(item.id)}
+                className="shrink-0 ml-2 text-gray-300 hover:text-red-400 text-xs transition-colors"
+                title="Remove group"
+              >
+                ×
+              </button>
+            </div>
+          ))}
+
+          {/* Tagged entity groups with Remove all header */}
           {taggedGroups.map(([tag, members]) => (
             <div key={tag}>
               <div className="px-3 py-1 flex items-center justify-between">
@@ -236,27 +169,6 @@ export function FocusTree({ focus, hooks }: FocusTreeProps) {
         <p className="px-3 py-1 text-[10px] text-amber-600">
           Maximum {MAX_FOCUS_ENTITIES} entities reached
         </p>
-      )}
-
-      {/* Add group button */}
-      <div className="px-2 pb-1">
-        <button
-          onClick={() => setShowGroupSelector(s => !s)}
-          className="w-full text-xs text-gray-500 hover:text-gray-700 border border-dashed border-gray-200 hover:border-gray-300 rounded px-2 py-1 transition-colors flex items-center justify-center gap-1"
-        >
-          <span>⊞</span>
-          Add group
-        </button>
-      </div>
-
-      {/* Group selector panel */}
-      {showGroupSelector && (
-        <GroupSelector
-          onAdd={filter => {
-            hooks.addGroup(createCustomGroup(filter));
-          }}
-          onClose={() => setShowGroupSelector(false)}
-        />
       )}
 
       {/* Find entity search */}

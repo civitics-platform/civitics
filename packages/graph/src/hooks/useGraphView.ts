@@ -13,7 +13,7 @@
 
 import { useState } from 'react';
 import type { FocusEntity, FocusGroup, FocusItem, GraphView, GraphViewPreset, VizType } from '../types';
-import { isFocusEntity, MAX_FOCUS_ENTITIES } from '../types';
+import { isFocusEntity, isFocusGroup, MAX_FOCUS_ENTITIES } from '../types';
 import { DEFAULT_GRAPH_VIEW, applyPreset as applyPresetUtil, markDirty } from '../presets';
 
 export function useGraphView(initialView?: Partial<GraphView>) {
@@ -71,17 +71,28 @@ export function useGraphView(initialView?: Partial<GraphView>) {
         },
       })),
 
-    addGroup: (_group: FocusGroup) => {
-      // Stub — implemented in Prompt 3
-      console.warn('addGroup not yet implemented', _group);
-    },
+    addGroup: (group: FocusGroup) =>
+      setView(v => {
+        if (v.focus.entities.some(e => e.id === group.id)) return v;
+        if (v.focus.entities.length >= MAX_FOCUS_ENTITIES) return v;
+        return {
+          ...v,
+          focus: {
+            ...v.focus,
+            entities: [
+              ...v.focus.entities,
+              group,
+            ],
+          },
+        };
+      }),
 
-    removeGroup: (groupTag: string) =>
-      setView(v => markDirty({
+    removeGroup: (groupId: string) =>
+      setView(v => ({
         ...v,
         focus: {
           ...v.focus,
-          entities: v.focus.entities.filter(e => !isFocusEntity(e) || e.groupTag !== groupTag),
+          entities: v.focus.entities.filter(e => e.id !== groupId),
         },
       })),
 
@@ -195,8 +206,8 @@ export function useGraphView(initialView?: Partial<GraphView>) {
 
     // ── Computed helpers (backward compat with single-entity APIs) ───────────
 
-    /** First focused entity. For backward compat during G2/G3 migration. */
-    primaryEntity: view.focus.entities[0] ?? null,
+    /** First focused FocusEntity (skips groups). For backward compat during G2/G3 migration. */
+    primaryEntity: view.focus.entities.find(isFocusEntity) ?? null,
 
     /** True when at least one entity is focused. */
     hasFocus: view.focus.entities.length > 0,
