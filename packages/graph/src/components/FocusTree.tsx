@@ -9,8 +9,8 @@
  */
 
 import { useState, useEffect } from 'react';
-import type { GraphView, GroupFilter } from '../types';
-import { MAX_FOCUS_ENTITIES } from '../types';
+import type { FocusEntity, GraphView, GroupFilter } from '../types';
+import { isFocusEntity, MAX_FOCUS_ENTITIES } from '../types';
 import type { UseGraphViewReturn } from '../hooks/useGraphView';
 import { TreeNode, TreeSection } from './TreeNode';
 import { EntitySearchInput } from './EntitySearchInput';
@@ -135,7 +135,12 @@ function GroupSelector({
       <button
         onClick={() => {
           if (filterValue) {
-            onAdd({ type: filterType, value: filterValue });
+            const filter: GroupFilter = filterType === 'state'
+              ? { entity_type: 'official', state: filterValue }
+              : filterType === 'party'
+              ? { entity_type: 'official', party: filterValue }
+              : { entity_type: 'official', chamber: filterValue === 'senator' ? 'senate' : 'house' };
+            onAdd(filter);
             onClose();
           }
         }}
@@ -152,8 +157,8 @@ export function FocusTree({ focus, hooks }: FocusTreeProps) {
   const atMax = hooks.atMaxFocus;
   const [showGroupSelector, setShowGroupSelector] = useState(false);
 
-  // Group entities by groupTag ('' = ungrouped)
-  const grouped = entities.reduce<Record<string, typeof entities>>((acc, e) => {
+  // Group entities by groupTag ('' = ungrouped). FocusGroups are handled separately.
+  const grouped = entities.filter(isFocusEntity).reduce<Record<string, FocusEntity[]>>((acc, e) => {
     const tag = e.groupTag ?? '';
     if (!acc[tag]) acc[tag] = [];
     acc[tag].push(e);
@@ -354,7 +359,7 @@ function EntityRow({
   hooks,
   depth,
 }: {
-  entity: GraphView['focus']['entities'][number];
+  entity: FocusEntity;
   hooks: UseGraphViewReturn;
   depth: 1 | 2 | 3;
 }) {

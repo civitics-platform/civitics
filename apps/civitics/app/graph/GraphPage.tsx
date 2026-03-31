@@ -14,6 +14,7 @@ import {
   DataExplorerPanel,
   GraphConfigPanel,
   VIZ_REGISTRY,
+  isFocusEntity,
 } from "@civitics/graph";
 import type { VizType } from "@civitics/graph";
 import { SharePanel }      from "./SharePanel";
@@ -172,7 +173,7 @@ export function GraphPage({ initialCode }: GraphPageProps = {}) {
                 nodes={nodes}
                 edges={allEdges}
                 loadingEntityId={loadingEntityId}
-                focusEntities={view.focus.entities}
+                focusEntities={view.focus.entities.filter(isFocusEntity)}
                 connections={view.connections}
                 vizOptions={view.style.vizOptions?.force}
                 className="w-full h-full"

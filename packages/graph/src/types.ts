@@ -158,8 +158,40 @@ export interface FocusEntity {
 // ── Group Filter ───────────────────────────────────────────────────────────────
 
 export interface GroupFilter {
-  type: 'state' | 'party' | 'chamber'
-  value: string
+  entity_type: 'official' | 'pac' | 'agency'
+  chamber?: 'senate' | 'house'
+  party?: string
+  state?: string
+  industry?: string
+}
+
+// ── Focus Group ────────────────────────────────────────────────────────────────
+
+export interface FocusGroup {
+  /** Stable ID. Premade: 'group-senate-dems'. Custom: 'group-custom-{uuid}' */
+  id: string
+  name: string
+  type: 'group'
+  icon: string
+  color: string
+  filter: GroupFilter
+  /** Resolved member count. Fetched lazily, not required. */
+  count?: number
+  isPremade: boolean
+  /** Optional tooltip text */
+  description?: string
+}
+
+// ── Focus Item ─────────────────────────────────────────────────────────────────
+
+export type FocusItem = FocusEntity | FocusGroup
+
+export function isFocusGroup(item: FocusItem): item is FocusGroup {
+  return item.type === 'group'
+}
+
+export function isFocusEntity(item: FocusItem): item is FocusEntity {
+  return item.type !== 'group'
 }
 
 /** Maximum number of entities that can be in focus simultaneously */
@@ -199,7 +231,7 @@ export interface GraphView {
   // The graph shows all of them plus their connections,
   // with shared connections becoming visually prominent.
   focus: {
-    entities: FocusEntity[]
+    entities: FocusItem[]
     scope: 'all' | 'federal' | 'state' | 'senate' | 'house'
     depth: 1 | 2 | 3
     includeProcedural: boolean

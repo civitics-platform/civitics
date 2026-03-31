@@ -12,8 +12,8 @@
  */
 
 import { useState } from 'react';
-import type { FocusEntity, GraphView, GraphViewPreset, GroupFilter, VizType } from '../types';
-import { MAX_FOCUS_ENTITIES } from '../types';
+import type { FocusEntity, FocusItem, GraphView, GraphViewPreset, GroupFilter, VizType } from '../types';
+import { isFocusEntity, MAX_FOCUS_ENTITIES } from '../types';
 import { DEFAULT_GRAPH_VIEW, applyPreset as applyPresetUtil, markDirty } from '../presets';
 
 export function useGraphView(initialView?: Partial<GraphView>) {
@@ -56,7 +56,9 @@ export function useGraphView(initialView?: Partial<GraphView>) {
         ...v,
         focus: {
           ...v.focus,
-          entities: v.focus.entities.map(e => e.id === id ? { ...e, ...options } : e),
+          entities: v.focus.entities.map(e =>
+            (e.id === id && isFocusEntity(e)) ? { ...e, ...options } : e
+          ),
         },
       })),
 
@@ -70,15 +72,16 @@ export function useGraphView(initialView?: Partial<GraphView>) {
       })),
 
     addGroup: async (filter: GroupFilter) => {
+      const searchTerm = filter.state ?? filter.party ?? filter.chamber ?? '';
       const res = await fetch(
-        `/api/search?q=${encodeURIComponent(filter.value)}&type=officials&limit=50`
+        `/api/search?q=${encodeURIComponent(searchTerm)}&type=officials&limit=50`
       );
       const data = await res.json();
       const officials: Array<{ id: string; full_name: string; party: string | null; photo_url: string | null }> =
         data.officials ?? [];
 
       setView(v => {
-        let entities = [...v.focus.entities];
+        let entities: FocusItem[] = [...v.focus.entities];
         for (const o of officials) {
           if (entities.length >= MAX_FOCUS_ENTITIES) break;
           if (entities.some(e => e.id === o.id)) continue;
@@ -90,7 +93,7 @@ export function useGraphView(initialView?: Partial<GraphView>) {
               type: 'official' as const,
               party: o.party ?? undefined,
               photoUrl: o.photo_url ?? undefined,
-              groupTag: filter.value.toUpperCase(),
+              groupTag: searchTerm.toUpperCase(),
             },
           ];
         }
@@ -103,7 +106,7 @@ export function useGraphView(initialView?: Partial<GraphView>) {
         ...v,
         focus: {
           ...v.focus,
-          entities: v.focus.entities.filter(e => e.groupTag !== groupTag),
+          entities: v.focus.entities.filter(e => !isFocusEntity(e) || e.groupTag !== groupTag),
         },
       })),
 

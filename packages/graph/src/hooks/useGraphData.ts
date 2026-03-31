@@ -11,6 +11,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import type { GraphView } from '../types';
 import type { FocusEntity } from '../types';
+import { isFocusEntity } from '../types';
 import type { GraphNode, GraphEdge } from '../types';
 
 export function useGraphData(
@@ -29,8 +30,10 @@ export function useGraphData(
   useEffect(() => {
     const currentIds = new Set(focus.entities.map(e => e.id));
 
-    // Find newly added entities
-    const toFetch = focus.entities.filter(e => !fetchedIds.current.has(e.id));
+    // Find newly added entities (groups are resolved separately; only fetch FocusEntity items here)
+    const toFetch = focus.entities.filter(
+      (e): e is FocusEntity => isFocusEntity(e) && !fetchedIds.current.has(e.id)
+    );
 
     // Find removed entities
     const removedIds = [...fetchedIds.current].filter(id => !currentIds.has(id));

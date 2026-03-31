@@ -19,6 +19,9 @@ export type {
   GraphNode as GraphNodeV2,
   GraphEdge as GraphEdgeV2,
   FocusEntity,
+  FocusGroup,
+  FocusItem,
+  GroupFilter,
   FocusOperation,
   UpdateCategory,
   ForceOptions,
@@ -29,11 +32,19 @@ export type {
   NodeType as NodeTypeV2,
   ConnectionTypeDefinition,
 } from "./types";
-export { MAX_FOCUS_ENTITIES } from "./types";
+export { MAX_FOCUS_ENTITIES, isFocusGroup, isFocusEntity } from "./types";
 
 // ── Presets + connections ───────────────────────────────────────────────────
 export { DEFAULT_GRAPH_VIEW, BUILT_IN_PRESETS, applyPreset, markDirty } from "./presets";
 export { CONNECTION_TYPE_REGISTRY, DEFAULT_CONNECTION_STATE } from "./connections";
+
+// ── Groups ──────────────────────────────────────────────────────────────────
+export {
+  BUILT_IN_GROUPS,
+  GROUP_CATEGORIES,
+  getGroupById,
+  createCustomGroup,
+} from "./groups";
 
 // ── Registry ────────────────────────────────────────────────────────────────
 export { VIZ_REGISTRY, vizRegistry } from "./visualizations/registry";
