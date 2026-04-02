@@ -151,6 +151,12 @@ export function GraphPage({ initialCode }: GraphPageProps = {}) {
   const vizType      = view.style.vizType;
   const primaryEntity = view.focus.entities[0] ?? null;
 
+  // ── Group-aware chord props ────────────────────────────────────────────────
+  const primaryGroup =
+    (view.focus.entities.find(isFocusGroup) as FocusGroup | undefined) ?? null;
+  const focusGroups =
+    view.focus.entities.filter(isFocusGroup) as FocusGroup[];
+
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div className="flex flex-col h-screen bg-gray-950 text-white">
@@ -242,6 +248,8 @@ export function GraphPage({ initialCode }: GraphPageProps = {}) {
               svgRef={chordSvgRef}
               vizOptions={view.style.vizOptions.chord}
               primaryEntityId={primaryEntity?.id ?? null}
+              primaryGroup={primaryGroup}
+              secondaryGroup={focusGroups[1] ?? null}
             />
           </div>
 

@@ -2,8 +2,25 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { createAdminClient } from "@civitics/db";
 import { supabaseUnavailable, unavailableResponse } from "@/lib/supabase-check";
+import type { GroupFilter } from "@civitics/graph";
 
 export const dynamic = "force-dynamic";
+
+const SECTOR_ICONS: Record<string, string> = {
+  'Finance': '💰',
+  'Labor': '👷',
+  'Energy': '⚡',
+  'Healthcare': '🏥',
+  'Real Estate': '🏘',
+  'Tech': '💻',
+  'Agriculture': '🌾',
+  'Defense': '🛡',
+  'Transportation': '🚗',
+  'Construction': '🔨',
+  'Retail & Food': '🛍',
+  'Education': '📚',
+  'Legal': '⚖️',
+};
 
 type FlowRow = {
   industry: string;
@@ -35,7 +52,161 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const entityId = searchParams.get("entityId");
 
+  const groupId = searchParams.get('groupId');
+  const groupFilterRaw = searchParams.get('groupFilter');
+  const groupNameParam = searchParams.get('groupName');
+  const secondaryGroupId = searchParams.get('secondaryGroupId');
+  const secondaryFilterRaw = searchParams.get('secondaryFilter');
+  const secondaryGroupNameParam = searchParams.get('secondaryGroupName');
+
+  let groupFilter: GroupFilter | null = null;
+  let secondaryFilter: GroupFilter | null = null;
+
+  try {
+    if (groupFilterRaw) groupFilter = JSON.parse(decodeURIComponent(groupFilterRaw)) as GroupFilter;
+    if (secondaryFilterRaw) secondaryFilter = JSON.parse(decodeURIComponent(secondaryFilterRaw)) as GroupFilter;
+  } catch {
+    groupFilter = null;
+  }
+
   const supabase = createAdminClient();
+
+  // ── Helper: resolve official member IDs for a GroupFilter ─────────────────
+  async function getMemberIds(filter: GroupFilter): Promise<string[]> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let q = (supabase as any).from('officials').select('id').eq('is_active', true);
+    if (filter.chamber === 'senate') q = q.eq('role_title', 'Senator');
+    else if (filter.chamber === 'house') q = q.eq('role_title', 'Representative');
+    if (filter.party) q = q.eq('party', filter.party);
+    if (filter.state) q = q.filter('metadata->>state', 'eq', filter.state);
+    const { data } = await q.limit(500) as { data: Array<{ id: string }> | null };
+    return (data ?? []).map((m) => m.id);
+  }
+
+  // ── Mode 3: Cross-group chord ──────────────────────────────────────────────
+  if (groupId && groupFilter && secondaryGroupId && secondaryFilter) {
+    try {
+      const [group1Ids, group2Ids] = await Promise.all([
+        getMemberIds(groupFilter),
+        getMemberIds(secondaryFilter),
+      ]);
+
+      const allIds = [...new Set([...group1Ids, ...group2Ids])];
+      if (allIds.length === 0) {
+        return NextResponse.json({ groups: [], recipients: [], matrix: [], mode: 'cross-group' });
+      }
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data: donations } = await (supabase as any)
+        .from('financial_relationships')
+        .select('amount_cents, metadata, official_id')
+        .in('official_id', allIds) as {
+          data: Array<{ amount_cents: number; metadata: Record<string, unknown> | null; official_id: string }> | null;
+        };
+
+      const group1Set = new Set(group1Ids);
+      const group2Set = new Set(group2Ids);
+
+      // sector → { group1_total, group2_total }
+      const sectorMap = new Map<string, [number, number]>();
+      for (const d of donations ?? []) {
+        const sector = (d.metadata?.sector as string) ?? 'Other';
+        if (sector === 'Other') continue;
+        const usd = (d.amount_cents ?? 0) / 100;
+        const prev = sectorMap.get(sector) ?? [0, 0];
+        if (group1Set.has(d.official_id)) prev[0] += usd;
+        if (group2Set.has(d.official_id)) prev[1] += usd;
+        sectorMap.set(sector, prev);
+      }
+
+      const sortedSectors = [...sectorMap.entries()]
+        .sort((a, b) => (b[1][0] + b[1][1]) - (a[1][0] + a[1][1]))
+        .slice(0, 12);
+
+      const groups = sortedSectors.map(([label, [t0, t1]], i) => ({
+        id: `sector-${i}`,
+        label,
+        icon: SECTOR_ICONS[label] ?? '💼',
+        total_usd: Math.round(t0 + t1),
+        pac_count: 0,
+      }));
+
+      const group1Name = groupNameParam ?? 'Group 1';
+      const group2Name = secondaryGroupNameParam ?? 'Group 2';
+
+      const recipients = [
+        { id: groupId, label: group1Name, total_received_usd: Math.round(sortedSectors.reduce((s, [, [t]]) => s + t, 0)), official_count: group1Ids.length },
+        { id: secondaryGroupId, label: group2Name, total_received_usd: Math.round(sortedSectors.reduce((s, [, [, t]]) => s + t, 0)), official_count: group2Ids.length },
+      ];
+
+      const matrix = sortedSectors.map(([label, [t0, t1]]) => {
+        void label;
+        return [Math.round(t0), Math.round(t1)];
+      });
+
+      return NextResponse.json({ groups, recipients, matrix, top_flows: [], total_flow_usd: 0, untagged_flow_usd: 0, mode: 'cross-group' });
+    } catch (e) {
+      console.error('[chord/cross-group]', e);
+      return NextResponse.json({ error: 'Internal error' }, { status: 500 });
+    }
+  }
+
+  // ── Mode 2: Single group chord ─────────────────────────────────────────────
+  if (groupId && groupFilter && !secondaryGroupId) {
+    try {
+      const memberIds = await getMemberIds(groupFilter);
+      if (memberIds.length === 0) {
+        return NextResponse.json({ groups: [], recipients: [], matrix: [], mode: 'group' });
+      }
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data: donations } = await (supabase as any)
+        .from('financial_relationships')
+        .select('amount_cents, metadata, official_id')
+        .in('official_id', memberIds) as {
+          data: Array<{ amount_cents: number; metadata: Record<string, unknown> | null; official_id: string }> | null;
+        };
+
+      const sectorMap = new Map<string, number>();
+      for (const d of donations ?? []) {
+        const sector = (d.metadata?.sector as string) ?? 'Other';
+        if (sector === 'Other') continue;
+        sectorMap.set(sector, (sectorMap.get(sector) ?? 0) + (d.amount_cents ?? 0) / 100);
+      }
+
+      const groups = [...sectorMap.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 12)
+        .map(([label, total_usd], i) => ({
+          id: `sector-${i}`,
+          label,
+          icon: SECTOR_ICONS[label] ?? '💼',
+          total_usd: Math.round(total_usd),
+          pac_count: 0,
+        }));
+
+      if (groups.length === 0) {
+        return NextResponse.json({ groups: [], recipients: [], matrix: [], mode: 'group' });
+      }
+
+      const groupName = groupNameParam ?? 'Group';
+      const totalReceived = groups.reduce((s, g) => s + g.total_usd, 0);
+
+      const recipients = [{
+        id: groupId,
+        label: groupName,
+        total_received_usd: totalReceived,
+        official_count: memberIds.length,
+      }];
+
+      const matrix = groups.map((g) => [sectorMap.get(g.label) ? Math.round(sectorMap.get(g.label)!) : 0]);
+
+      return NextResponse.json({ groups, recipients, matrix, top_flows: [], total_flow_usd: totalReceived, untagged_flow_usd: 0, mode: 'group' });
+    } catch (e) {
+      console.error('[chord/group]', e);
+      return NextResponse.json({ error: 'Internal error' }, { status: 500 });
+    }
+  }
 
   // ── Entity mode: show industries donating to one official ─────────────────
   if (entityId) {

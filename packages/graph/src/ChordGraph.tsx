@@ -3,7 +3,7 @@
 import * as d3 from "d3";
 import React, { useEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
-import type { GraphNode as NewGraphNode, NodeActions, ChordOptions } from "./types";
+import type { GraphNode as NewGraphNode, NodeActions, ChordOptions, FocusGroup } from "./types";
 import { Tooltip, useTooltip } from "./components/Tooltip";
 import { NodePopup } from "./components/NodePopup";
 
@@ -34,6 +34,8 @@ export interface ChordGraphProps {
   svgRef?: RefObject<SVGSVGElement>;
   vizOptions?: Partial<ChordOptions>;
   primaryEntityId?: string | null;
+  primaryGroup?: FocusGroup | null;
+  secondaryGroup?: FocusGroup | null;
 }
 
 // Industry arc colors — enough for up to 13 industries
@@ -191,7 +193,7 @@ interface ChartData {
   rawRecipients: RawRecipient[];
 }
 
-export function ChordGraph({ className = "", svgRef: externalSvgRef, vizOptions, primaryEntityId }: ChordGraphProps) {
+export function ChordGraph({ className = "", svgRef: externalSvgRef, vizOptions, primaryEntityId, primaryGroup, secondaryGroup }: ChordGraphProps) {
   const containerRef  = useRef<HTMLDivElement>(null);
   const internalSvgRef = useRef<SVGSVGElement>(null);
   const svgRef        = externalSvgRef ?? internalSvgRef;
@@ -237,9 +239,35 @@ export function ChordGraph({ className = "", svgRef: externalSvgRef, vizOptions,
       setEntityName(null);
       try {
         const minFlow = vizOptions?.minFlowUsd ?? 0;
-        const url = primaryEntityId
-          ? `/api/graph/chord?entityId=${encodeURIComponent(primaryEntityId)}&minFlowUsd=${minFlow}`
-          : `/api/graph/chord?minFlowUsd=${minFlow}`;
+
+        let url: string;
+
+        if (primaryEntityId && !primaryEntityId.startsWith('group-')) {
+          // MODE 1: Single official
+          url = `/api/graph/chord` +
+            `?entityId=${encodeURIComponent(primaryEntityId)}` +
+            `&minFlowUsd=${minFlow}`;
+        } else if (primaryGroup && secondaryGroup) {
+          // MODE 3: Cross-group chord — flows BETWEEN two groups
+          url = `/api/graph/chord` +
+            `?groupId=${primaryGroup.id}` +
+            `&groupFilter=${encodeURIComponent(JSON.stringify(primaryGroup.filter))}` +
+            `&groupName=${encodeURIComponent(primaryGroup.name)}` +
+            `&secondaryGroupId=${secondaryGroup.id}` +
+            `&secondaryFilter=${encodeURIComponent(JSON.stringify(secondaryGroup.filter))}` +
+            `&secondaryGroupName=${encodeURIComponent(secondaryGroup.name)}` +
+            `&minFlowUsd=${minFlow}`;
+        } else if (primaryGroup) {
+          // MODE 2: Single group chord — donor industries → group
+          url = `/api/graph/chord` +
+            `?groupId=${primaryGroup.id}` +
+            `&groupFilter=${encodeURIComponent(JSON.stringify(primaryGroup.filter))}` +
+            `&groupName=${encodeURIComponent(primaryGroup.name)}` +
+            `&minFlowUsd=${minFlow}`;
+        } else {
+          // MODE 0: Aggregate
+          url = `/api/graph/chord?minFlowUsd=${minFlow}`;
+        }
 
         const res = await fetch(url);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -260,7 +288,7 @@ export function ChordGraph({ className = "", svgRef: externalSvgRef, vizOptions,
 
         if (!cancelled) {
           // In entity mode the single recipient label is the official's name
-          if (primaryEntityId && json.recipients?.[0]?.label) {
+          if (primaryEntityId && !primaryEntityId.startsWith('group-') && json.recipients?.[0]?.label) {
             setEntityName(json.recipients[0].label);
           }
           setRawData({
@@ -278,7 +306,7 @@ export function ChordGraph({ className = "", svgRef: externalSvgRef, vizOptions,
     void load();
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [primaryEntityId]);
+  }, [primaryEntityId, primaryGroup?.id, secondaryGroup?.id]);
 
   // ── Effect 2: Apply vizOptions to raw data → chartData ───────────────────
   useEffect(() => {
@@ -453,9 +481,13 @@ export function ChordGraph({ className = "", svgRef: externalSvgRef, vizOptions,
           <svg id="chord-diagram-svg" ref={svgRef} className="w-full h-full" />
           <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 pointer-events-none">
             <span className="text-xs text-gray-400 bg-gray-950/70 px-2 py-0.5 rounded-full">
-              {primaryEntityId && entityName
+              {primaryGroup && secondaryGroup
+                ? `${primaryGroup.name} \u2194 ${secondaryGroup.name} Money Flows`
+                : primaryGroup
+                ? `Who Funds ${primaryGroup.name}?`
+                : primaryEntityId && !primaryEntityId.startsWith('group-') && entityName
                 ? `${entityName}'s Industry Donors`
-                : "Industry → Party Flows"}
+                : "Industry \u2192 Party Flows"}
             </span>
           </div>
         </>
