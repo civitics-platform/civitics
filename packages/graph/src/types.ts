@@ -26,6 +26,7 @@ export type NodeType =
   | 'corporation'
   | 'pac'
   | 'individual'
+  | 'group'
 
 export interface GraphNode {
   id: string
@@ -40,6 +41,8 @@ export interface GraphNode {
   donationTotal?: number
   /** True when this node has 50+ connections and is collapsed (force graph only). */
   collapsed?: boolean
+  /** Extra data from API — group nodes use isGroup, icon, color, memberCount */
+  metadata?: Record<string, unknown>
 }
 
 // ── Edge ───────────────────────────────────────────────────────────────────────
@@ -57,6 +60,8 @@ export interface GraphEdge {
   strength: number
   /** ISO date string */
   occurredAt?: string
+  /** Extra data — group edges use memberCount, pctOfGroup */
+  metadata?: Record<string, unknown>
 }
 
 // ── Connection Type Definition ─────────────────────────────────────────────────

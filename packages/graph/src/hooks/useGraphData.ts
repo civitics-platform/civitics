@@ -10,8 +10,8 @@
 
 import { useState, useEffect, useRef, useMemo } from 'react';
 import type { GraphView } from '../types';
-import type { FocusEntity } from '../types';
-import { isFocusEntity } from '../types';
+import type { FocusEntity, FocusGroup } from '../types';
+import { isFocusEntity, isFocusGroup } from '../types';
 import type { GraphNode, GraphEdge } from '../types';
 
 export function useGraphData(
@@ -33,6 +33,11 @@ export function useGraphData(
     // Find newly added entities (groups are resolved separately; only fetch FocusEntity items here)
     const toFetch = focus.entities.filter(
       (e): e is FocusEntity => isFocusEntity(e) && !fetchedIds.current.has(e.id)
+    );
+
+    // Find newly added groups
+    const toFetchGroups = focus.entities.filter(
+      (e): e is FocusGroup => isFocusGroup(e) && !fetchedIds.current.has(e.id)
     );
 
     // Find removed entities
@@ -59,9 +64,12 @@ export function useGraphData(
       );
     }
 
-    // Fetch data for new entities
+    // Fetch data for new entities and groups
     if (toFetch.length > 0) {
       fetchEntities(toFetch);
+    }
+    if (toFetchGroups.length > 0) {
+      fetchGroups(toFetchGroups);
     }
 
     // If all entities removed: clear graph state
@@ -106,6 +114,52 @@ export function useGraphData(
         });
       } catch (err) {
         console.error('[useGraphData] fetch failed:', entity.id, err);
+      }
+    }
+    setLoadingEntityId(null);
+    setLoading(false);
+  }
+
+  async function fetchGroups(groups: FocusGroup[]) {
+    setLoading(true);
+    for (const group of groups) {
+      setLoadingEntityId(group.id);
+      try {
+        const params = new URLSearchParams({
+          groupId: group.id,
+          entity_type: group.filter.entity_type,
+          groupName: group.name,
+          groupIcon: group.icon,
+          groupColor: group.color,
+        });
+
+        if (group.filter.chamber) params.set('chamber', group.filter.chamber);
+        if (group.filter.party)   params.set('party',   group.filter.party);
+        if (group.filter.state)   params.set('state',   group.filter.state);
+        if (group.filter.industry) params.set('industry', group.filter.industry);
+
+        const res  = await fetch(`/api/graph/group?` + params);
+        const data = await res.json();
+
+        // Mark as fetched
+        fetchedIds.current.add(group.id);
+
+        // Merge nodes (dedupe by id)
+        setNodes(prev => {
+          const existing = new Map(prev.map(n => [n.id, n]));
+          (data.nodes ?? []).forEach((n: GraphNode) => existing.set(n.id, n));
+          return [...existing.values()];
+        });
+
+        // Merge edges (dedupe by fromId:toId:connectionType)
+        setEdges(prev => {
+          const key = (e: GraphEdge) => `${e.fromId}:${e.toId}:${e.connectionType}`;
+          const existing = new Map(prev.map(e => [key(e), e]));
+          (data.edges ?? []).forEach((e: GraphEdge) => existing.set(key(e), e));
+          return [...existing.values()];
+        });
+      } catch (err) {
+        console.error('[useGraphData] group fetch failed:', group.id, err);
       }
     }
     setLoadingEntityId(null);

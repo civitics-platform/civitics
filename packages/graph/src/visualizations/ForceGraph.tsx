@@ -65,6 +65,7 @@ type SimLink = {
   strength: number;
   fromId: string;
   toId: string;
+  metadata?: Record<string, unknown>;
 };
 
 // ── Visual constants ──────────────────────────────────────────────────────────
@@ -78,6 +79,7 @@ const NODE_FILL: Record<string, string> = {
   corporation:  "#f0fdf4",
   pac:          "#fff7ed",
   individual:   "#eff6ff",
+  group:        "#1e1b4b",
 };
 
 const NODE_STROKE: Record<string, string> = {
@@ -89,6 +91,7 @@ const NODE_STROKE: Record<string, string> = {
   corporation:  "#16a34a",
   pac:          "#ea580c",
   individual:   "#3b82f6",
+  group:        "#818cf8",
 };
 
 const PARTY_STROKE: Record<string, string> = {
@@ -103,6 +106,7 @@ function getBaseRadius(node: GraphNode): number {
   const BASE: Record<string, number> = {
     official: 24, agency: 20, proposal: 18, financial: 16,
     organization: 20, corporation: 20, pac: 18, individual: 14,
+    group: 30,
   };
   return BASE[node.type] ?? 20;
 }
@@ -200,6 +204,7 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
         connectionType: e.connectionType,
         amountUsd: e.amountUsd,
         strength: e.strength,
+        metadata: e.metadata,
         source: (nodeById.get(e.fromId) ?? simNodes[0]!) as SimNode,
         target: (nodeById.get(e.toId)   ?? simNodes[0]!) as SimNode,
       }));
@@ -276,6 +281,11 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
           focusIds.has(d.target?.id ?? d.toId);
         const base = connections[d.connectionType]?.thickness ?? 0.5;
         if (isShared) return base * 8;
+        // Group edges: scale width by pctOfGroup (0–100) → 1–8px
+        const pct = d.metadata?.pctOfGroup as number | undefined;
+        if (pct !== undefined) {
+          return Math.max(1, (pct / 100) * 8);
+        }
         if (d.connectionType === "donation" && d.amountUsd) {
           return Math.max(1, Math.log10(d.amountUsd / 1_000) * base * 3);
         }
@@ -355,15 +365,58 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
       nodeGrp.each(function (d) {
         const el     = d3.select(this);
         const r      = getNodeRadius(d, sizeBy);
-        const fill   = NODE_FILL[d.type]   ?? "#f8fafc";
-        const stroke = d.type === "official" && d.party
-          ? (PARTY_STROKE[d.party.toLowerCase()] ?? NODE_STROKE[d.type] ?? "#6366f1")
-          : (NODE_STROKE[d.type] ?? "#94a3b8");
+        // Group nodes use their metadata color; others use the type registry
+        const fill = d.type === "group" && d.metadata?.color
+          ? (d.metadata.color as string) + "33"  // 20% opacity
+          : (NODE_FILL[d.type] ?? "#f8fafc");
+        const stroke = d.type === "group" && d.metadata?.color
+          ? (d.metadata.color as string)
+          : d.type === "official" && d.party
+            ? (PARTY_STROKE[d.party.toLowerCase()] ?? NODE_STROKE[d.type] ?? "#6366f1")
+            : (NODE_STROKE[d.type] ?? "#94a3b8");
 
         // Store baseRadius for focus highlight effect
         (d as SimNode).baseRadius = r;
 
-        if (d.type === "official" || d.type === "individual") {
+        if (d.type === "group") {
+          // Large circle with color-tinted fill
+          el.append("circle")
+            .attr("class", "node-circle")
+            .attr("r", r)
+            .attr("fill", fill)
+            .attr("stroke", stroke)
+            .attr("stroke-width", 3);
+          // Emoji icon in center
+          el.append("text")
+            .attr("text-anchor", "middle")
+            .attr("dominant-baseline", "central")
+            .attr("font-size", "16px")
+            .attr("pointer-events", "none")
+            .style("user-select", "none")
+            .text((d.metadata?.icon as string) ?? "👥");
+          // Member count badge — small circle top-right
+          const memberCount = d.metadata?.memberCount as number | undefined;
+          if (memberCount) {
+            el.append("circle")
+              .attr("r", 9)
+              .attr("cx", r * 0.7)
+              .attr("cy", -r * 0.7)
+              .attr("fill", "#4f46e5")
+              .attr("stroke", "#312e81")
+              .attr("stroke-width", 1)
+              .attr("pointer-events", "none");
+            el.append("text")
+              .attr("x", r * 0.7)
+              .attr("y", -r * 0.7)
+              .attr("text-anchor", "middle")
+              .attr("dominant-baseline", "central")
+              .attr("font-size", "7px")
+              .attr("fill", "white")
+              .attr("pointer-events", "none")
+              .style("user-select", "none")
+              .text(memberCount > 99 ? "99+" : String(memberCount));
+          }
+        } else if (d.type === "official" || d.type === "individual") {
           el.append("circle")
             .attr("class", "node-circle")
             .attr("r", r)
@@ -464,6 +517,12 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
         const labelY = d.type === "official" ? r + 16 :
                        d.type === "pac"       ? r + 14 :
                        d.type === "individual"? r + 12 : r + 16;
+        const labelText = d.type === "group"
+          ? (() => {
+              const count = d.metadata?.memberCount as number | undefined;
+              return count ? `${d.name} (${count})` : (d.name ?? "");
+            })()
+          : truncate(d.name, 22);
         el.append("text")
           .attr("class", "node-label")
           .attr("y", labelY)
@@ -471,7 +530,7 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
           .attr("font-size", "10px")
           .attr("fill", "#6b7280")
           .attr("pointer-events", "none")
-          .text(truncate(d.name, 22));
+          .text(labelText);
 
         // Loading ring (animated, hidden by default)
         el.append("circle")
@@ -641,6 +700,8 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
             focusIds.has((d.target as SimNode).id ?? d.toId);
           const thickness = connections[d.connectionType]?.thickness ?? 0.5;
           if (isShared) return thickness * 8;
+          const pct = d.metadata?.pctOfGroup as number | undefined;
+          if (pct !== undefined) return Math.max(1, (pct / 100) * 8);
           if (d.connectionType === "donation" && d.amountUsd) {
             return Math.max(1, Math.log10(d.amountUsd / 1_000) * thickness * 3);
           }
