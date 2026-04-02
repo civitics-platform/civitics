@@ -26,6 +26,9 @@ export function useGraphData(
   // Track which entity IDs we've already fetched to avoid re-fetching
   const fetchedIds = useRef(new Set<string>());
 
+  // Track which nodes belong to each group (groupId → Set of connected node IDs)
+  const groupNodeIds = useRef(new Map<string, Set<string>>());
+
   // When focus.entities changes: fetch data for new entities, remove data for removed entities
   useEffect(() => {
     const currentIds = new Set(focus.entities.map(e => e.id));
@@ -47,18 +50,26 @@ export function useGraphData(
     if (removedIds.length > 0) {
       removedIds.forEach(id => fetchedIds.current.delete(id));
 
+      // Collect nodes that belonged to removed groups
+      const groupConnectedToRemove = new Set<string>();
+      for (const removedId of removedIds) {
+        const connected = groupNodeIds.current.get(removedId);
+        if (connected) {
+          connected.forEach(id => groupConnectedToRemove.add(id));
+          groupNodeIds.current.delete(removedId);
+        }
+      }
+
       setNodes(prev =>
         prev.filter(n =>
-          // Keep if it's not a removed entity OR it connects to a remaining entity
-          !removedIds.includes(n.id) || focus.entities.some(e => e.id === n.id)
+          !removedIds.includes(n.id) && !groupConnectedToRemove.has(n.id)
         )
       );
 
       setEdges(prev =>
         prev.filter(e => {
-          // Keep edge only if BOTH endpoints still exist
-          const fromRemoved = removedIds.includes(e.fromId);
-          const toRemoved = removedIds.includes(e.toId);
+          const fromRemoved = removedIds.includes(e.fromId) || groupConnectedToRemove.has(e.fromId);
+          const toRemoved   = removedIds.includes(e.toId)   || groupConnectedToRemove.has(e.toId);
           return !fromRemoved && !toRemoved;
         })
       );
@@ -143,6 +154,14 @@ export function useGraphData(
 
         // Mark as fetched
         fetchedIds.current.add(group.id);
+
+        // Track which nodes belong to this group (all nodes except the group node itself)
+        const connectedIds = new Set<string>(
+          (data.nodes ?? [])
+            .map((n: GraphNode) => n.id)
+            .filter((id: string) => id !== group.id)
+        );
+        groupNodeIds.current.set(group.id, connectedIds);
 
         // Merge nodes (dedupe by id)
         setNodes(prev => {

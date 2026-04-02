@@ -59,12 +59,20 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    const { data: donationData } = await supabase
-      .from("financial_relationships")
-      .select("donor_name, amount_cents, metadata")
-      .in("official_id", memberIds)
-      .not("donor_name", "ilike", "%PAC/Committee%")
-      .order("amount_cents", { ascending: false });
+    // Batch the .in() query — PostgREST URL limits break with hundreds of UUIDs
+    const BATCH_SIZE = 100;
+    const allDonationRows: Array<{ donor_name: string; amount_cents: number; metadata: unknown }> = [];
+    for (let i = 0; i < memberIds.length; i += BATCH_SIZE) {
+      const batch = memberIds.slice(i, i + BATCH_SIZE);
+      const { data: batchData } = await supabase
+        .from("financial_relationships")
+        .select("donor_name, amount_cents, metadata")
+        .in("official_id", batch)
+        .not("donor_name", "ilike", "%PAC/Committee%")
+        .order("amount_cents", { ascending: false });
+      if (batchData) allDonationRows.push(...batchData);
+    }
+    const donationData = allDonationRows;
 
     // Aggregate by donor name across all group members
     const donorMap = new Map<string, {

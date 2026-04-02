@@ -390,7 +390,7 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
           el.append("text")
             .attr("text-anchor", "middle")
             .attr("dominant-baseline", "central")
-            .attr("font-size", "16px")
+            .attr("font-size", "22px")
             .attr("pointer-events", "none")
             .style("user-select", "none")
             .text((d.metadata?.icon as string) ?? "👥");
@@ -410,7 +410,7 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
               .attr("y", -r * 0.7)
               .attr("text-anchor", "middle")
               .attr("dominant-baseline", "central")
-              .attr("font-size", "7px")
+              .attr("font-size", "8px")
               .attr("fill", "white")
               .attr("pointer-events", "none")
               .style("user-select", "none")
