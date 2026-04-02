@@ -42,6 +42,10 @@ export interface ForceGraphProps {
   onNodeClick?: (node: GraphNode) => void;
   onNodeHover?: (node: GraphNode | null, x: number, y: number) => void;
   className?: string;
+  onViewGroupAsTreemap?: (groupId: string) => void;
+  onViewGroupAsChord?: (groupId: string) => void;
+  onViewGroupAsSunburst?: (groupId: string) => void;
+  onRemoveGroup?: (groupId: string) => void;
 }
 
 // ── D3 simulation types ────────────────────────────────────────────────────────
@@ -147,6 +151,10 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
       onNodeClick,
       onNodeHover,
       className,
+      onViewGroupAsTreemap,
+      onViewGroupAsChord,
+      onViewGroupAsSunburst,
+      onRemoveGroup,
     },
     forwardedRef
   ) {
@@ -861,6 +869,11 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
 
       expandNode: useCallback((_nodeId: string) => {
       }, []),
+
+      viewGroupAsTreemap: onViewGroupAsTreemap,
+      viewGroupAsChord: onViewGroupAsChord,
+      viewGroupAsSunburst: onViewGroupAsSunburst,
+      removeGroup: onRemoveGroup,
     };
 
     return (

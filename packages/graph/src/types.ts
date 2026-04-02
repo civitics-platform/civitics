@@ -310,6 +310,14 @@ export interface NodeActions {
   addToComparison: (nodeId: string) => void
   /** Expand a collapsed node (50+ connections). Force viz only. */
   expandNode: (nodeId: string) => void
+  /** Switch to treemap viz focused on this group. Group nodes only. */
+  viewGroupAsTreemap?: (groupId: string) => void
+  /** Switch to chord viz focused on this group. Group nodes only. */
+  viewGroupAsChord?: (groupId: string) => void
+  /** Switch to sunburst viz focused on this group. Group nodes only. */
+  viewGroupAsSunburst?: (groupId: string) => void
+  /** Remove the group from focus. Group nodes only. */
+  removeGroup?: (groupId: string) => void
 }
 
 // ── Viz Props ──────────────────────────────────────────────────────────────────

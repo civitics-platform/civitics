@@ -20,10 +20,127 @@ export interface NodePopupProps {
 export function NodePopup({ node, onClose, actions, vizType }: NodePopupProps) {
   if (!node) return null;
 
+  const isGroup    = node.type === 'group';
   const isForce    = vizType === 'force';
   const isOfficial = node.type === 'official';
 
   const displayName = node.name ?? 'Unknown';
+
+  const memberCount = node.metadata?.memberCount as number | undefined;
+  const groupColor  = node.metadata?.color as string | undefined;
+  const groupIcon   = node.metadata?.icon as string | undefined;
+
+  if (isGroup) {
+    return (
+      <>
+        {/* Backdrop */}
+        <div className="fixed inset-0 z-40" onClick={onClose} />
+
+        {/* Group popup card */}
+        <div
+          className="absolute z-50 bg-white rounded-xl shadow-xl border border-gray-200 w-64 p-4"
+          style={{ top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }}
+        >
+          {/* Close button */}
+          <button
+            onClick={onClose}
+            className="absolute top-3 right-3 text-gray-400 hover:text-gray-600 text-base leading-none"
+            aria-label="Close"
+          >
+            ✕
+          </button>
+
+          {/* Group header */}
+          <div className="flex items-center gap-3 pr-6 mb-3">
+            {/* Color circle + icon */}
+            <div
+              className="w-10 h-10 rounded-full flex items-center justify-center text-xl flex-shrink-0"
+              style={{
+                backgroundColor: (groupColor ?? '#6366f1') + '33',
+                border: `2px solid ${groupColor ?? '#6366f1'}`,
+              }}
+            >
+              {groupIcon ?? '👥'}
+            </div>
+            <div>
+              <div className="font-semibold text-gray-900 text-sm leading-tight">
+                {displayName}
+              </div>
+              {memberCount && (
+                <div className="text-xs text-gray-500 mt-0.5">
+                  {memberCount} members
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Divider */}
+          <div className="border-t border-gray-100 mb-3" />
+
+          {/* Explore actions */}
+          <div className="text-xs font-medium text-gray-400 uppercase tracking-wide px-1 mb-1">
+            Explore as
+          </div>
+
+          <div className="space-y-1">
+            {/* Treemap */}
+            <button
+              onClick={() => {
+                actions.viewGroupAsTreemap?.(node.id);
+                onClose();
+              }}
+              className="w-full text-left px-3 py-2 rounded-lg text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-700 flex items-center gap-2 transition-colors"
+            >
+              <span>▦</span>
+              <span>Treemap</span>
+              <span className="text-xs text-gray-400 ml-auto">Size by donations</span>
+            </button>
+
+            {/* Chord */}
+            <button
+              onClick={() => {
+                actions.viewGroupAsChord?.(node.id);
+                onClose();
+              }}
+              className="w-full text-left px-3 py-2 rounded-lg text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-700 flex items-center gap-2 transition-colors"
+            >
+              <span>◎</span>
+              <span>Chord diagram</span>
+              <span className="text-xs text-gray-400 ml-auto">Money flows</span>
+            </button>
+
+            {/* Sunburst */}
+            <button
+              onClick={() => {
+                actions.viewGroupAsSunburst?.(node.id);
+                onClose();
+              }}
+              className="w-full text-left px-3 py-2 rounded-lg text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-700 flex items-center gap-2 transition-colors"
+            >
+              <span>☀</span>
+              <span>Sunburst</span>
+              <span className="text-xs text-gray-400 ml-auto">Full breakdown</span>
+            </button>
+
+            {/* Divider */}
+            <div className="border-t border-gray-100 my-1" />
+
+            {/* Remove group */}
+            <button
+              onClick={() => {
+                actions.removeGroup?.(node.id);
+                onClose();
+              }}
+              className="w-full text-left px-3 py-2 rounded-lg text-sm text-red-500 hover:bg-red-50 flex items-center gap-2 transition-colors"
+            >
+              <span>×</span>
+              <span>Remove group</span>
+            </button>
+          </div>
+        </div>
+      </>
+    );
+  }
 
   const initials = displayName
     .split(' ')

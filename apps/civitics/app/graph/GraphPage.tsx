@@ -15,8 +15,9 @@ import {
   GraphConfigPanel,
   VIZ_REGISTRY,
   isFocusEntity,
+  isFocusGroup,
 } from "@civitics/graph";
-import type { VizType } from "@civitics/graph";
+import type { VizType, FocusGroup } from "@civitics/graph";
 import { SharePanel }      from "./SharePanel";
 import { ScreenshotPanel } from "./ScreenshotPanel";
 import { GhostGraph }      from "./GhostGraph";
@@ -115,6 +116,38 @@ export function GraphPage({ initialCode }: GraphPageProps = {}) {
     }
   }
 
+  // ── Group node actions ─────────────────────────────────────────────────────
+  function handleViewGroupAsTreemap(groupId: string) {
+    const group = view.focus.entities.find(
+      (e) => e.id === groupId && isFocusGroup(e)
+    ) as FocusGroup | undefined;
+    if (!group) return;
+
+    graphHooks.setVizType('treemap');
+
+    if (group.filter.entity_type === 'pac') {
+      graphHooks.setVizOption('treemap', 'dataMode', 'pac_sector');
+      graphHooks.setVizOption('treemap', 'groupBy', 'sector');
+    } else {
+      graphHooks.setVizOption('treemap', 'dataMode', 'officials');
+      graphHooks.setVizOption('treemap', 'groupBy', group.filter.chamber ?? group.filter.party ?? 'party');
+    }
+  }
+
+  function handleViewGroupAsChord(groupId: string) {
+    void groupId;
+    graphHooks.setVizType('chord');
+  }
+
+  function handleViewGroupAsSunburst(groupId: string) {
+    void groupId;
+    graphHooks.setVizType('sunburst');
+  }
+
+  function handleRemoveGroup(groupId: string) {
+    graphHooks.removeGroup(groupId);
+  }
+
   const vizType      = view.style.vizType;
   const primaryEntity = view.focus.entities[0] ?? null;
 
@@ -177,6 +210,10 @@ export function GraphPage({ initialCode }: GraphPageProps = {}) {
                 connections={view.connections}
                 vizOptions={view.style.vizOptions?.force}
                 className="w-full h-full"
+                onViewGroupAsTreemap={handleViewGroupAsTreemap}
+                onViewGroupAsChord={handleViewGroupAsChord}
+                onViewGroupAsSunburst={handleViewGroupAsSunburst}
+                onRemoveGroup={handleRemoveGroup}
               />
             )}
           </div>
