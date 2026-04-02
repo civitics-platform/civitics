@@ -74,13 +74,12 @@ export async function GET(req: NextRequest) {
   // ── Helper: resolve official member IDs for a GroupFilter ─────────────────
   async function getMemberIds(filter: GroupFilter): Promise<string[]> {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let q = (supabase as any).from('officials').select('id').eq('is_active', true);
-    if (filter.chamber === 'senate') q = q.eq('role_title', 'Senator');
-    else if (filter.chamber === 'house') q = q.eq('role_title', 'Representative');
-    if (filter.party) q = q.eq('party', filter.party);
-    if (filter.state) q = q.filter('metadata->>state', 'eq', filter.state);
-    const { data } = await q.limit(500) as { data: Array<{ id: string }> | null };
-    return (data ?? []).map((m) => m.id);
+    const { data } = await (supabase as any).rpc('get_officials_by_filter', {
+      p_chamber: filter.chamber ?? null,
+      p_party:   filter.party   ?? null,
+      p_state:   filter.state   ?? null,
+    }) as { data: Array<{ id: string }> | null };
+    return (data ?? []).map((m: { id: string }) => m.id);
   }
 
   // ── Mode 3: Cross-group chord ──────────────────────────────────────────────
@@ -113,10 +112,10 @@ export async function GET(req: NextRequest) {
         const sector = (d.metadata?.sector as string) ?? 'Other';
         if (sector === 'Other') continue;
         const usd = (d.amount_cents ?? 0) / 100;
-        const prev = sectorMap.get(sector) ?? [0, 0];
-        if (group1Set.has(d.official_id)) prev[0] += usd;
-        if (group2Set.has(d.official_id)) prev[1] += usd;
-        sectorMap.set(sector, prev);
+        const existing = sectorMap.get(sector) ?? [0, 0];
+        if (group1Set.has(d.official_id)) existing[0] += usd;
+        if (group2Set.has(d.official_id)) existing[1] += usd;
+        sectorMap.set(sector, existing);
       }
 
       const sortedSectors = [...sectorMap.entries()]
