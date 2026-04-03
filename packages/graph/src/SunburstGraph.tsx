@@ -222,10 +222,9 @@ export function SunburstGraph({ entityId, entityLabel, className = "", svgRef: e
 
       setStatus("loading");
       try {
-        const res = await fetch(
-          `/api/graph/sunburst?entityId=${encodeURIComponent(entityId!)}`,
-          { signal: controller.signal }
-        );
+        const url = `/api/graph/sunburst?entityId=${encodeURIComponent(entityId!)}` +
+          (entityLabel ? `&entityLabel=${encodeURIComponent(entityLabel)}` : "");
+        const res = await fetch(url, { signal: controller.signal });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const json = await res.json() as SunburstNode & { error?: string };
 
