@@ -68,6 +68,10 @@ export async function GET(request: Request) {
   void searchParams.get("groupBy");  // accepted, used client-side
   void searchParams.get("sizeBy");   // accepted, used client-side
 
+  const chamber = searchParams.get("chamber");
+  const party   = searchParams.get("party");
+  const state   = searchParams.get("state");
+
   const { data, error } = await supabase.rpc("treemap_officials_by_donations", {
     lim: 200,
   });
@@ -77,5 +81,11 @@ export async function GET(request: Request) {
     return Response.json({ error: error.message }, { status: 500 });
   }
 
-  return Response.json((data ?? []) as TreemapRow[]);
+  let filtered = (data ?? []) as TreemapRow[];
+
+  if (chamber) filtered = filtered.filter((o) => o.chamber === chamber);
+  if (party)   filtered = filtered.filter((o) => o.party   === party);
+  if (state)   filtered = filtered.filter((o) => o.state   === state);
+
+  return Response.json(filtered);
 }

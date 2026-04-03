@@ -297,12 +297,12 @@ export function SunburstGraph({ entityId, entityLabel, className = "", svgRef: e
           <div className="text-center max-w-sm px-8 py-10 rounded-2xl bg-gray-900/80 border border-gray-800">
             <div className="w-10 h-10 mx-auto mb-4 rounded-full border border-gray-700 flex items-center justify-center">
               <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707m12.728 0l-.707-.707M6.343 6.343l-.707-.707" />
               </svg>
             </div>
-            <p className="text-gray-300 text-sm font-medium">Select an entity to explore</p>
+            <p className="text-gray-300 text-sm font-medium">Select an official</p>
             <p className="text-gray-500 text-xs mt-2 leading-relaxed">
-              Use the Focus panel to select an official or organization.
+              Click any official node in the graph to see their full connection sunburst.
             </p>
           </div>
         </div>

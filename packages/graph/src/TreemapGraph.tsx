@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import * as d3 from "d3";
 import type { RefObject } from "react";
-import type { GraphNode as NewGraphNode, NodeActions, TreemapOptions } from "./types";
+import type { GraphNode as NewGraphNode, NodeActions, TreemapOptions, FocusGroup } from "./types";
 import { Tooltip, useTooltip } from "./components/Tooltip";
 import { NodePopup } from "./components/NodePopup";
 
@@ -174,9 +174,10 @@ export interface TreemapGraphProps {
   vizOptions?: Partial<TreemapOptions>;
   primaryEntityId?: string | null;
   primaryEntityName?: string | null;
+  primaryGroup?: FocusGroup | null;
 }
 
-export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOptions, primaryEntityId, primaryEntityName }: TreemapGraphProps) {
+export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOptions, primaryEntityId, primaryEntityName, primaryGroup }: TreemapGraphProps) {
   const containerRef   = useRef<HTMLDivElement>(null);
   const internalSvgRef = useRef<SVGSVGElement>(null);
   const svgRef         = externalSvgRef ?? internalSvgRef;
@@ -225,9 +226,25 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
     const entityIdParam =
       primaryEntityId && isRealUuid(primaryEntityId) ? primaryEntityId : null;
 
-    const url = entityIdParam
-      ? `/api/graph/treemap?entityId=${encodeURIComponent(entityIdParam)}&groupBy=${groupBy}&sizeBy=${sizeBy}`
-      : `/api/graph/treemap?groupBy=${groupBy}&sizeBy=${sizeBy}`;
+    let url: string;
+
+    if (primaryGroup && primaryGroup.filter.entity_type === 'official') {
+      // Group of officials: fetch aggregate and filter server-side
+      const g = primaryGroup.filter;
+      const params = new URLSearchParams({ groupBy, sizeBy });
+      if (g.chamber) params.set('chamber', g.chamber);
+      if (g.party)   params.set('party',   g.party);
+      if (g.state)   params.set('state',   g.state);
+      url = `/api/graph/treemap?${params.toString()}`;
+    } else if (primaryGroup && primaryGroup.filter.entity_type === 'pac') {
+      // PAC group: redirect to pac endpoint — handled by dataMode guard above
+      // (dataMode should be 'pac_sector' by the time we reach here)
+      url = `/api/graph/treemap-pac?groupBy=sector`;
+    } else if (entityIdParam) {
+      url = `/api/graph/treemap?entityId=${encodeURIComponent(entityIdParam)}&groupBy=${groupBy}&sizeBy=${sizeBy}`;
+    } else {
+      url = `/api/graph/treemap?groupBy=${groupBy}&sizeBy=${sizeBy}`;
+    }
 
     fetch(url)
       .then((r) => r.json())
@@ -244,14 +261,14 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false));
-  // Refetch when entity / groupBy / sizeBy / dataMode change
+  // Refetch when entity / group / groupBy / sizeBy / dataMode change
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [primaryEntityId, groupBy, sizeBy, dataMode]);
+  }, [primaryEntityId, primaryGroup, groupBy, sizeBy, dataMode]);
 
   // Reset drill state when the view changes
   useEffect(() => {
     setDrillNode(null);
-  }, [vizOptions?.groupBy, vizOptions?.dataMode, primaryEntityId]);
+  }, [vizOptions?.groupBy, vizOptions?.dataMode, primaryEntityId, primaryGroup]);
 
   // ── Render treemap ──────────────────────────────────────────────────────────
   const render = useCallback(() => {

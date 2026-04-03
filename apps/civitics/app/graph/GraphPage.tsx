@@ -149,7 +149,7 @@ export function GraphPage({ initialCode }: GraphPageProps = {}) {
   }
 
   const vizType      = view.style.vizType;
-  const primaryEntity = view.focus.entities[0] ?? null;
+  const primaryEntity = (view.focus.entities.find(isFocusEntity) ?? null);
 
   const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   const sunburstEntityId = primaryEntity?.id && UUID_RE.test(primaryEntity.id)
@@ -240,6 +240,7 @@ export function GraphPage({ initialCode }: GraphPageProps = {}) {
               vizOptions={view.style.vizOptions.treemap}
               primaryEntityId={primaryEntity?.id ?? null}
               primaryEntityName={primaryEntity?.name ?? null}
+              primaryGroup={primaryGroup}
             />
           </div>
 
