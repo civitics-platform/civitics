@@ -259,10 +259,16 @@ export function ChordGraph({ className = "", svgRef: externalSvgRef, vizOptions,
             `&minFlowUsd=${minFlow}`;
         } else if (primaryGroup) {
           // MODE 2: Single group chord — donor industries → group
+          const f = primaryGroup.filter;
           url = `/api/graph/chord` +
             `?groupId=${primaryGroup.id}` +
-            `&groupFilter=${encodeURIComponent(JSON.stringify(primaryGroup.filter))}` +
+            `&groupFilter=${encodeURIComponent(JSON.stringify(f))}` +
             `&groupName=${encodeURIComponent(primaryGroup.name)}` +
+            `&entity_type=${f.entity_type}` +
+            (f.chamber ? `&chamber=${f.chamber}` : '') +
+            (f.party ? `&party=${f.party}` : '') +
+            (f.state ? `&state=${f.state}` : '') +
+            (f.industry ? `&industry=${f.industry}` : '') +
             `&minFlowUsd=${minFlow}`;
         } else {
           // MODE 0: Aggregate

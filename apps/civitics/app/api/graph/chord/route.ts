@@ -63,22 +63,61 @@ export async function GET(req: NextRequest) {
   let secondaryFilter: GroupFilter | null = null;
 
   try {
-    if (groupFilterRaw) groupFilter = JSON.parse(decodeURIComponent(groupFilterRaw)) as GroupFilter;
-    if (secondaryFilterRaw) secondaryFilter = JSON.parse(decodeURIComponent(secondaryFilterRaw)) as GroupFilter;
-  } catch {
+    if (groupFilterRaw) {
+      console.log('[chord] groupFilterRaw:', groupFilterRaw);
+      try {
+        const decoded = decodeURIComponent(groupFilterRaw);
+        console.log('[chord] decoded:', decoded);
+        groupFilter = JSON.parse(decoded) as GroupFilter;
+      } catch {
+        groupFilter = JSON.parse(groupFilterRaw) as GroupFilter;
+      }
+      console.log('[chord] groupFilter:', groupFilter);
+    }
+    if (secondaryFilterRaw) {
+      try {
+        secondaryFilter = JSON.parse(decodeURIComponent(secondaryFilterRaw)) as GroupFilter;
+      } catch {
+        secondaryFilter = JSON.parse(secondaryFilterRaw) as GroupFilter;
+      }
+    }
+  } catch (e) {
+    console.error('[chord] groupFilter parse error:', e);
     groupFilter = null;
+  }
+
+  // Fallback: reconstruct groupFilter from individual params if parse failed
+  if (groupId && !groupFilter) {
+    const entityType = searchParams.get('entity_type');
+    const chamber = searchParams.get('chamber');
+    const party = searchParams.get('party');
+    const state = searchParams.get('state');
+    const industry = searchParams.get('industry');
+    if (entityType) {
+      groupFilter = {
+        entity_type: entityType as 'official' | 'pac',
+        ...(chamber && { chamber: chamber as 'senate' | 'house' }),
+        ...(party && { party }),
+        ...(state && { state }),
+        ...(industry && { industry }),
+      };
+      console.log('[chord] reconstructed groupFilter:', groupFilter);
+    }
   }
 
   const supabase = createAdminClient();
 
   // ── Helper: resolve official member IDs for a GroupFilter ─────────────────
   async function getMemberIds(filter: GroupFilter): Promise<string[]> {
+    console.log('[getMemberIds] filter:', JSON.stringify(filter));
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data } = await (supabase as any).rpc('get_officials_by_filter', {
+    const { data, error } = await (supabase as any).rpc('get_officials_by_filter', {
       p_chamber: filter.chamber ?? null,
       p_party:   filter.party   ?? null,
       p_state:   filter.state   ?? null,
-    }) as { data: Array<{ id: string }> | null };
+    }) as { data: Array<{ id: string }> | null; error: unknown };
+    console.log('[getMemberIds] count:', data?.length ?? 0);
+    console.log('[getMemberIds] error:', error);
     return (data ?? []).map((m: { id: string }) => m.id);
   }
 
