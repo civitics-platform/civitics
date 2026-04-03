@@ -129,43 +129,29 @@ export async function GET(req: NextRequest) {
         getMemberIds(secondaryFilter),
       ]);
 
-      const allIds = [...new Set([...group1Ids, ...group2Ids])];
-      if (allIds.length === 0) {
+      if (group1Ids.length === 0 && group2Ids.length === 0) {
         return NextResponse.json({ groups: [], recipients: [], matrix: [], mode: 'cross-group' });
       }
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data: donations } = await (supabase as any)
-        .from('financial_relationships')
-        .select('amount_cents, metadata, official_id')
-        .in('official_id', allIds) as {
-          data: Array<{ amount_cents: number; metadata: Record<string, unknown> | null; official_id: string }> | null;
-        };
+      const { data: sectorData, error: sectorError } = await (supabase as any).rpc(
+        'get_crossgroup_sector_totals',
+        { p_group1_ids: group1Ids, p_group2_ids: group2Ids }
+      ) as { data: Array<{ sector: string; group1_usd: number; group2_usd: number }> | null; error: unknown };
 
-      const group1Set = new Set(group1Ids);
-      const group2Set = new Set(group2Ids);
-
-      // sector → { group1_total, group2_total }
-      const sectorMap = new Map<string, [number, number]>();
-      for (const d of donations ?? []) {
-        const sector = (d.metadata?.sector as string) ?? 'Other';
-        if (sector === 'Other') continue;
-        const usd = (d.amount_cents ?? 0) / 100;
-        const existing = sectorMap.get(sector) ?? [0, 0];
-        if (group1Set.has(d.official_id)) existing[0] += usd;
-        if (group2Set.has(d.official_id)) existing[1] += usd;
-        sectorMap.set(sector, existing);
+      if (sectorError) {
+        console.error('[chord/cross-group] sector error:', sectorError);
       }
 
-      const sortedSectors = [...sectorMap.entries()]
-        .sort((a, b) => (b[1][0] + b[1][1]) - (a[1][0] + a[1][1]))
-        .slice(0, 12);
+      console.log('[chord/cross-group] sectors:', sectorData?.length ?? 0);
 
-      const groups = sortedSectors.map(([label, [t0, t1]], i) => ({
+      const sortedSectors = sectorData ?? [];
+
+      const groups = sortedSectors.map((row, i) => ({
         id: `sector-${i}`,
-        label,
-        icon: SECTOR_ICONS[label] ?? '💼',
-        total_usd: Math.round(t0 + t1),
+        label: row.sector,
+        icon: SECTOR_ICONS[row.sector] ?? '💼',
+        total_usd: Math.round(row.group1_usd + row.group2_usd),
         pac_count: 0,
       }));
 
@@ -173,14 +159,11 @@ export async function GET(req: NextRequest) {
       const group2Name = secondaryGroupNameParam ?? 'Group 2';
 
       const recipients = [
-        { id: groupId, label: group1Name, total_received_usd: Math.round(sortedSectors.reduce((s, [, [t]]) => s + t, 0)), official_count: group1Ids.length },
-        { id: secondaryGroupId, label: group2Name, total_received_usd: Math.round(sortedSectors.reduce((s, [, [, t]]) => s + t, 0)), official_count: group2Ids.length },
+        { id: groupId, label: group1Name, total_received_usd: Math.round(sortedSectors.reduce((s, r) => s + r.group1_usd, 0)), official_count: group1Ids.length },
+        { id: secondaryGroupId, label: group2Name, total_received_usd: Math.round(sortedSectors.reduce((s, r) => s + r.group2_usd, 0)), official_count: group2Ids.length },
       ];
 
-      const matrix = sortedSectors.map(([label, [t0, t1]]) => {
-        void label;
-        return [Math.round(t0), Math.round(t1)];
-      });
+      const matrix = sortedSectors.map((r) => [Math.round(r.group1_usd), Math.round(r.group2_usd)]);
 
       return NextResponse.json({ groups, recipients, matrix, top_flows: [], total_flow_usd: 0, untagged_flow_usd: 0, mode: 'cross-group' });
     } catch (e) {
@@ -197,31 +180,27 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ groups: [], recipients: [], matrix: [], mode: 'group' });
       }
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data: donations } = await (supabase as any)
-        .from('financial_relationships')
-        .select('amount_cents, metadata, official_id')
-        .in('official_id', memberIds) as {
-          data: Array<{ amount_cents: number; metadata: Record<string, unknown> | null; official_id: string }> | null;
-        };
+      const minFlowParam = parseFloat(searchParams.get('minFlowUsd') ?? '0');
 
-      const sectorMap = new Map<string, number>();
-      for (const d of donations ?? []) {
-        const sector = (d.metadata?.sector as string) ?? 'Other';
-        if (sector === 'Other') continue;
-        sectorMap.set(sector, (sectorMap.get(sector) ?? 0) + (d.amount_cents ?? 0) / 100);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data: sectorData, error: sectorError } = await (supabase as any).rpc(
+        'get_group_sector_totals',
+        { p_member_ids: memberIds, p_min_usd: minFlowParam }
+      ) as { data: Array<{ sector: string; total_usd: number }> | null; error: unknown };
+
+      if (sectorError) {
+        console.error('[chord/group] sector error:', sectorError);
       }
 
-      const groups = [...sectorMap.entries()]
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 12)
-        .map(([label, total_usd], i) => ({
-          id: `sector-${i}`,
-          label,
-          icon: SECTOR_ICONS[label] ?? '💼',
-          total_usd: Math.round(total_usd),
-          pac_count: 0,
-        }));
+      console.log('[chord/group] sectors:', sectorData?.length ?? 0);
+
+      const groups = (sectorData ?? []).map((row, i) => ({
+        id: `sector-${i}`,
+        label: row.sector,
+        icon: SECTOR_ICONS[row.sector] ?? '💼',
+        total_usd: Math.round(row.total_usd),
+        pac_count: 0,
+      }));
 
       if (groups.length === 0) {
         return NextResponse.json({ groups: [], recipients: [], matrix: [], mode: 'group' });
@@ -237,7 +216,7 @@ export async function GET(req: NextRequest) {
         official_count: memberIds.length,
       }];
 
-      const matrix = groups.map((g) => [sectorMap.get(g.label) ? Math.round(sectorMap.get(g.label)!) : 0]);
+      const matrix = groups.map((g) => [g.total_usd]);
 
       return NextResponse.json({ groups, recipients, matrix, top_flows: [], total_flow_usd: totalReceived, untagged_flow_usd: 0, mode: 'group' });
     } catch (e) {

@@ -151,6 +151,11 @@ export function GraphPage({ initialCode }: GraphPageProps = {}) {
   const vizType      = view.style.vizType;
   const primaryEntity = view.focus.entities[0] ?? null;
 
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const sunburstEntityId = primaryEntity?.id && UUID_RE.test(primaryEntity.id)
+    ? primaryEntity.id
+    : null;
+
   // ── Group-aware chord props ────────────────────────────────────────────────
   const primaryGroup =
     (view.focus.entities.find(isFocusGroup) as FocusGroup | undefined) ?? null;
@@ -261,8 +266,8 @@ export function GraphPage({ initialCode }: GraphPageProps = {}) {
             <SunburstGraph
               className="w-full h-full"
               svgRef={sunburstSvgRef}
-              entityId={view.focus.entities[0]?.id}
-              entityLabel={view.focus.entities[0]?.name}
+              entityId={sunburstEntityId ?? undefined}
+              entityLabel={sunburstEntityId ? primaryEntity?.name : undefined}
             />
           </div>
 
