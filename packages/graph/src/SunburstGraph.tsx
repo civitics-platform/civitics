@@ -24,23 +24,23 @@ export interface SunburstGraphProps {
   svgRef?: RefObject<SVGSVGElement>;
 }
 
-const TYPE_COLORS: Record<string, string> = {
-  vote:           "#3b82f6",
-  vote_yes:       "#3b82f6",
-  vote_no:        "#ef4444",
-  donation:       "#22c55e",
-  oversight:      "#a855f7",
-  revolving_door: "#f97316",
-  appointment:    "#8b5cf6",
-  lobbying:       "#eab308",
-  co_sponsorship: "#06b6d4",
-  other:          "#6b7280",
+const TYPE_PALETTE: Record<string, { bright: string; dark: string; glow: string }> = {
+  vote_yes:            { bright: "#4ade80", dark: "#14532d", glow: "#22c55e" },
+  vote_no:             { bright: "#f87171", dark: "#7f1d1d", glow: "#ef4444" },
+  donation:            { bright: "#fbbf24", dark: "#78350f", glow: "#f59e0b" },
+  oversight:           { bright: "#c084fc", dark: "#4a1d96", glow: "#a855f7" },
+  nomination_vote_yes: { bright: "#34d399", dark: "#064e3b", glow: "#10b981" },
+  nomination_vote_no:  { bright: "#fca5a5", dark: "#7f1d1d", glow: "#f87171" },
+  appointment:         { bright: "#a78bfa", dark: "#2e1065", glow: "#8b5cf6" },
+  revolving_door:      { bright: "#fb923c", dark: "#7c2d12", glow: "#f97316" },
+  lobbying:            { bright: "#fde047", dark: "#713f12", glow: "#eab308" },
+  co_sponsorship:      { bright: "#22d3ee", dark: "#164e63", glow: "#06b6d4" },
+  other:               { bright: "#94a3b8", dark: "#1e293b", glow: "#64748b" },
 };
 
-function getColor(typeName: string, depth: number): string {
-  const base = TYPE_COLORS[typeName.toLowerCase().replace(/ /g, "_")] ?? "#6b7280";
-  if (depth <= 1) return base;
-  return base + Math.floor(Math.min(depth - 1, 3) * 20).toString(16).padStart(2, "0");
+function getPalette(typeName: string) {
+  const key = typeName.toLowerCase().replace(/ /g, "_");
+  return TYPE_PALETTE[key] ?? TYPE_PALETTE.other!;
 }
 
 type D3HierarchyNode = d3.HierarchyRectangularNode<SunburstNode>;
@@ -50,28 +50,28 @@ function arcToNode(d: D3HierarchyNode): NewGraphNode | null {
   const data = d.data;
   if (!data.entityId) return null;
 
-  const type: NewGraphNode['type'] =
-    data.entityType === 'official'  ? 'official'  :
-    data.entityType === 'proposal'  ? 'proposal'  :
-    data.entityType === 'agency'    ? 'agency'    : 'organization';
+  const type: NewGraphNode["type"] =
+    data.entityType === "official" ? "official" :
+    data.entityType === "proposal" ? "proposal" :
+    data.entityType === "agency"   ? "agency"   : "organization";
 
   return {
-    id:           data.entityId,
-    name:         data.name,
+    id:            data.entityId,
+    name:          data.name,
     type,
-    donationTotal: data.value && data.type === 'donation' ? data.value : undefined,
+    donationTotal: data.value && data.type === "donation" ? data.value : undefined,
   };
 }
 
 /** Always produce a tooltip node for any arc */
 function arcToTooltipNode(d: D3HierarchyNode): NewGraphNode {
   return {
-    id:           d.data.entityId ?? d.data.name,
-    name:         d.data.name,
-    type:         d.data.entityType === 'official' ? 'official'
-                : d.data.entityType === 'proposal' ? 'proposal'
-                : 'organization',
-    donationTotal: d.data.value && d.data.type === 'donation' ? d.data.value : undefined,
+    id:            d.data.entityId ?? d.data.name,
+    name:          d.data.name,
+    type:          d.data.entityType === "official" ? "official"
+                 : d.data.entityType === "proposal" ? "proposal"
+                 : "organization",
+    donationTotal: d.data.value && d.data.type === "donation" ? d.data.value : undefined,
   };
 }
 
@@ -105,75 +105,285 @@ export function SunburstGraph({ entityId, entityLabel, className = "", svgRef: e
 
     d3.select(svg).selectAll("*").remove();
 
-    const radius = Math.min(width, height) / 2;
+    const radius   = Math.min(width, height) / 2;
+    const innerPad = radius * 0.22;   // center gap
+    const outerR   = radius * 0.78;   // partition space — arcs end at radius after offset
 
-    const g = d3.select(svg)
+    // ── Dark background ──────────────────────────────────────────────────────
+    const svgSel = d3.select(svg)
       .attr("width", width)
       .attr("height", height)
+      .style("background", "#030712");
+
+    // ── Defs ─────────────────────────────────────────────────────────────────
+    const defs = svgSel.append("defs");
+
+    // Radial gradient per type (coordinates in g-space where center = 0,0)
+    Object.entries(TYPE_PALETTE).forEach(([type, palette]) => {
+      const grad = defs.append("radialGradient")
+        .attr("id", `grad-${type}`)
+        .attr("cx", "0")
+        .attr("cy", "0")
+        .attr("r", radius)
+        .attr("gradientUnits", "userSpaceOnUse");
+
+      grad.append("stop")
+        .attr("offset", "0%")
+        .attr("stop-color", palette.bright)
+        .attr("stop-opacity", 0.95);
+
+      grad.append("stop")
+        .attr("offset", "100%")
+        .attr("stop-color", palette.dark)
+        .attr("stop-opacity", 0.85);
+    });
+
+    // Center glow gradient
+    const centerGrad = defs.append("radialGradient")
+      .attr("id", "center-glow")
+      .attr("cx", "0")
+      .attr("cy", "0")
+      .attr("r", innerPad)
+      .attr("gradientUnits", "userSpaceOnUse");
+
+    centerGrad.append("stop")
+      .attr("offset", "0%")
+      .attr("stop-color", "#6366f1")
+      .attr("stop-opacity", 0.9);
+
+    centerGrad.append("stop")
+      .attr("offset", "100%")
+      .attr("stop-color", "#1e1b4b")
+      .attr("stop-opacity", 1);
+
+    // Background radial gradient
+    const bgGrad = defs.append("radialGradient")
+      .attr("id", "bg-grad")
+      .attr("cx", "0")
+      .attr("cy", "0")
+      .attr("r", radius * 1.2)
+      .attr("gradientUnits", "userSpaceOnUse");
+
+    bgGrad.append("stop").attr("offset", "0%").attr("stop-color", "#0f172a");
+    bgGrad.append("stop").attr("offset", "100%").attr("stop-color", "#030712");
+
+    // Glow blur filter
+    const filter = defs.append("filter")
+      .attr("id", "glow")
+      .attr("x", "-50%")
+      .attr("y", "-50%")
+      .attr("width", "200%")
+      .attr("height", "200%");
+
+    filter.append("feGaussianBlur")
+      .attr("stdDeviation", "3")
+      .attr("result", "coloredBlur");
+
+    const feMerge = filter.append("feMerge");
+    feMerge.append("feMergeNode").attr("in", "coloredBlur");
+    feMerge.append("feMergeNode").attr("in", "SourceGraphic");
+
+    // ── Main group (centered) ────────────────────────────────────────────────
+    const g = svgSel
       .append("g")
       .attr("transform", `translate(${width / 2},${height / 2})`);
 
-    const partition = d3.partition<SunburstNode>().size([2 * Math.PI, radius]);
+    // Background circle (subtle inner glow)
+    g.append("circle")
+      .attr("r", radius * 1.05)
+      .attr("fill", "url(#bg-grad)");
+
+    // ── Partition ────────────────────────────────────────────────────────────
+    const partition = d3.partition<SunburstNode>().size([2 * Math.PI, outerR]);
     partition(root);
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const arc = d3.arc<D3HierarchyNode>()
       .startAngle((d) => d.x0)
       .endAngle((d) => d.x1)
-      .padAngle((d) => Math.min((d.x1 - d.x0) / 2, 0.005))
-      .padRadius(radius / 2)
-      .innerRadius((d) => d.y0)
-      .outerRadius((d) => d.y1 - 1) as any;
+      .padAngle((d) => Math.min((d.x1 - d.x0) / 2, 0.008))
+      .padRadius(radius / 3)
+      .innerRadius((d) => d.depth === 0 ? 0 : d.y0 + innerPad)
+      .outerRadius((d) => d.depth === 0 ? 0 : d.y1 + innerPad - 2) as any; // eslint-disable-line @typescript-eslint/no-explicit-any
 
-    g.selectAll("path")
+    // ── Arc paths ────────────────────────────────────────────────────────────
+    g.selectAll<SVGPathElement, D3HierarchyNode>(".sunburst-arc")
       .data(root.descendants().slice(1))
       .join("path")
+      .attr("class", "sunburst-arc")
       .attr("fill", (d) => {
         let ancestor = d;
         while (ancestor.depth > 1) ancestor = ancestor.parent!;
-        const typeName = ancestor.data.type ?? ancestor.data.name ?? "other";
-        return getColor(typeName, d.depth);
+        const typeName = (ancestor.data.type ?? ancestor.data.name ?? "other")
+          .toLowerCase().replace(/ /g, "_");
+        if (d.depth === 1) return `url(#grad-${typeName})`;
+        return getPalette(typeName).dark + "cc";
       })
-      .attr("fill-opacity", (d) => (d.x1 - d.x0 > 0.001 ? 0.8 : 0))
-      .attr("stroke", "#111827")
-      .attr("stroke-width", 0.5)
+      .attr("fill-opacity", (d) =>
+        d.x1 - d.x0 > 0.001 ? (d.depth === 1 ? 1.0 : 0.75) : 0)
+      .attr("stroke", (d) => {
+        let ancestor = d;
+        while (ancestor.depth > 1) ancestor = ancestor.parent!;
+        const typeName = ancestor.data.type ?? "other";
+        return getPalette(typeName).glow;
+      })
+      .attr("stroke-width", (d) => d.depth === 1 ? 0.5 : 0.3)
+      .attr("stroke-opacity", 0.4)
       .attr("d", arc)
       .style("cursor", (d) => (d.children || d.data.entityId ? "pointer" : "default"))
       .on("mouseover", (event: MouseEvent, d) => {
         if (containerRef.current) {
-          const rect = containerRef.current.getBoundingClientRect();
           const angle = (d.x0 + d.x1) / 2 - Math.PI / 2;
-          const r = (d.y0 + d.y1) / 2;
-          const x = width / 2 + r * Math.cos(angle);
-          const y = height / 2 + r * Math.sin(angle);
+          const r     = (d.y0 + d.y1) / 2 + innerPad;
+          const x     = width  / 2 + r * Math.cos(angle);
+          const y     = height / 2 + r * Math.sin(angle);
           showTip(arcToTooltipNode(d), x, y);
         }
-        void event;
+        // Highlight hovered arc
+        d3.select(event.currentTarget as Element)
+          .attr("fill-opacity", 1.0)
+          .attr("stroke-opacity", 0.9)
+          .attr("filter", "url(#glow)");
+        // Dim others
+        g.selectAll<SVGPathElement, D3HierarchyNode>(".sunburst-arc")
+          .filter(function(this: SVGPathElement) { return this !== event.currentTarget; })
+          .attr("fill-opacity", 0.3);
       })
-      .on("mouseout", () => hideTip())
+      .on("mouseout", () => {
+        hideTip();
+        g.selectAll<SVGPathElement, D3HierarchyNode>(".sunburst-arc")
+          .attr("fill-opacity", (d) =>
+            d.x1 - d.x0 > 0.001 ? (d.depth === 1 ? 1.0 : 0.75) : 0)
+          .attr("stroke-opacity", 0.4)
+          .attr("filter", null);
+      })
       .on("click", (_event: MouseEvent, d) => {
-        // If it has an entityId → popup
         const newNode = arcToNode(d);
         if (newNode) {
           setPopup(newNode);
           return;
         }
-        // Otherwise zoom in if it has children
         if (d.children) zoom(d, width, height);
       });
 
-    // Center label
-    g.append("text")
-      .attr("text-anchor", "middle")
-      .attr("dy", "0.35em")
-      .attr("fill", "#e5e7eb")
-      .attr("font-size", "12px")
-      .attr("font-weight", "600")
-      .text(root.data.name.length > 20 ? root.data.name.slice(0, 18) + "…" : root.data.name);
+    // ── Curved arc labels (ring 1 only, wide arcs) ───────────────────────────
+    const labelData = root.descendants().filter((d) => d.depth === 1 && (d.x1 - d.x0) > 0.3);
 
-    // Click center to zoom out
+    g.selectAll<SVGPathElement, D3HierarchyNode>(".arc-label-path")
+      .data(labelData)
+      .join("path")
+      .attr("class", "arc-label-path")
+      .attr("id", (_, i) => `arc-path-${i}`)
+      .attr("fill", "none")
+      .attr("d", (d) => {
+        const midR       = (d.y0 + d.y1) / 2 + innerPad;
+        const startAngle = d.x0 - Math.PI / 2;
+        const endAngle   = d.x1 - Math.PI / 2;
+        const midAngle   = (d.x0 + d.x1) / 2 - Math.PI / 2;
+        const isBottom   = midAngle > 0;
+
+        const x1 = midR * Math.cos(startAngle);
+        const y1 = midR * Math.sin(startAngle);
+        const x2 = midR * Math.cos(endAngle);
+        const y2 = midR * Math.sin(endAngle);
+        const lg = d.x1 - d.x0 > Math.PI ? 1 : 0;
+
+        return isBottom
+          ? `M ${x2} ${y2} A ${midR} ${midR} 0 ${lg} 0 ${x1} ${y1}`
+          : `M ${x1} ${y1} A ${midR} ${midR} 0 ${lg} 1 ${x2} ${y2}`;
+      });
+
+    g.selectAll<SVGTextElement, D3HierarchyNode>(".arc-label")
+      .data(labelData)
+      .join("text")
+      .attr("class", "arc-label")
+      .attr("dy", "-3px")
+      .style("pointer-events", "none")
+      .style("user-select", "none")
+      .append("textPath")
+      .attr("href", (_, i) => `#arc-path-${i}`)
+      .attr("startOffset", "50%")
+      .attr("text-anchor", "middle")
+      .attr("fill", "#f1f5f9")
+      .attr("font-size", (d) => {
+        const arcWidth = d.y1 - d.y0;
+        return Math.min(arcWidth * 0.35, 11) + "px";
+      })
+      .attr("font-weight", "500")
+      .style("text-shadow", "0 1px 2px rgba(0,0,0,0.8)")
+      .text((d) => {
+        const name    = d.data.name;
+        const arcSpan = (d.x1 - d.x0) * ((d.y0 + d.y1) / 2 + innerPad);
+        const max     = Math.floor(arcSpan / 7);
+        return name.length > max ? name.slice(0, max - 1) + "…" : name;
+      });
+
+    // ── Glowing center circle ────────────────────────────────────────────────
+    const centerRadius = innerPad;
+
+    // Outer glow ring
     g.append("circle")
-      .attr("r", root.descendants()[0]?.y1 ?? 40)
+      .attr("r", centerRadius + 3)
+      .attr("fill", "none")
+      .attr("stroke", "#6366f1")
+      .attr("stroke-width", 1.5)
+      .attr("stroke-opacity", 0.6)
+      .attr("filter", "url(#glow)");
+
+    // Center fill
+    g.append("circle")
+      .attr("r", centerRadius)
+      .attr("fill", "url(#center-glow)")
+      .attr("stroke", "#818cf8")
+      .attr("stroke-width", 1)
+      .attr("stroke-opacity", 0.8);
+
+    // Center label
+    const displayName  = root.data.name ?? "";
+    const initials     = displayName
+      .split(" ")
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((w: string) => w[0] ?? "")
+      .join("")
+      .toUpperCase() || "?";
+    const showInitials = displayName.length > 16;
+
+    if (showInitials) {
+      g.append("text")
+        .attr("text-anchor", "middle")
+        .attr("dy", "-0.1em")
+        .attr("fill", "#e0e7ff")
+        .attr("font-size", Math.max(centerRadius * 0.5, 14) + "px")
+        .attr("font-weight", "700")
+        .attr("letter-spacing", "0.05em")
+        .style("pointer-events", "none")
+        .style("user-select", "none")
+        .text(initials);
+
+      g.append("text")
+        .attr("text-anchor", "middle")
+        .attr("dy", "1.2em")
+        .attr("fill", "#a5b4fc")
+        .attr("font-size", Math.max(centerRadius * 0.2, 9) + "px")
+        .style("pointer-events", "none")
+        .style("user-select", "none")
+        .text(displayName.length > 20 ? displayName.slice(0, 18) + "…" : displayName);
+    } else {
+      g.append("text")
+        .attr("text-anchor", "middle")
+        .attr("dy", "0.35em")
+        .attr("fill", "#e0e7ff")
+        .attr("font-size", Math.max(centerRadius * 0.3, 11) + "px")
+        .attr("font-weight", "600")
+        .style("pointer-events", "none")
+        .style("user-select", "none")
+        .text(displayName);
+    }
+
+    // Transparent click overlay for zoom-out
+    g.append("circle")
+      .attr("r", centerRadius)
       .attr("fill", "transparent")
       .style("cursor", currentRootRef.current !== rootRef.current ? "zoom-out" : "default")
       .on("click", () => {
