@@ -27,6 +27,8 @@ export interface SunburstGraphProps {
   svgRef?: RefObject<SVGSVGElement>;
   vizOptions?: Partial<SunburstOptions>;
   primaryGroup?: FocusGroup | null;
+  /** Convenience alias for vizOptions.badgeSize */
+  badgeSize?: 'full' | 'large' | 'medium' | 'small' | 'tiny';
 }
 
 const TYPE_PALETTE: Record<string, { bright: string; dark: string; glow: string }> = {
@@ -80,7 +82,7 @@ function arcToTooltipNode(d: D3HierarchyNode): NewGraphNode {
   };
 }
 
-export function SunburstGraph({ entityId, entityLabel, className = "", svgRef: externalSvgRef, vizOptions, primaryGroup }: SunburstGraphProps) {
+export function SunburstGraph({ entityId, entityLabel, className = "", svgRef: externalSvgRef, vizOptions, primaryGroup, badgeSize: badgeSizeProp }: SunburstGraphProps) {
   const containerRef   = useRef<HTMLDivElement>(null);
   const internalSvgRef = useRef<SVGSVGElement>(null);
   const svgRef         = externalSvgRef ?? internalSvgRef;
@@ -107,6 +109,8 @@ export function SunburstGraph({ entityId, entityLabel, className = "", svgRef: e
   const arcRef = useRef<d3.Arc<unknown, D3HierarchyNode> | null>(null);
 
   const centerMetaRef = useRef<{ isGroup: boolean; party?: string; icon?: string }>({ isGroup: false });
+  const vizOptionsRef = useRef<Partial<SunburstOptions>>({});
+  vizOptionsRef.current = { ...vizOptions, ...(badgeSizeProp !== undefined ? { badgeSize: badgeSizeProp } : {}) };
 
   const render = useCallback((root: D3HierarchyNode, width: number, height: number) => {
     const svg = svgRef.current;
@@ -114,9 +118,28 @@ export function SunburstGraph({ entityId, entityLabel, className = "", svgRef: e
 
     d3.select(svg).selectAll("*").remove();
 
+    // Badge mode options (via ref — always current without adding deps)
+    const vizOpts    = vizOptionsRef.current;
+    const shape      = vizOpts?.shape ?? 'circle';
+    const badgeSize  = vizOpts?.badgeSize;
+    const isTiny     = badgeSize === 'tiny';
+    const isMini     = badgeSize === 'small' || badgeSize === 'tiny';
+    const showLabels = vizOpts?.showLabels ?? 'auto';
+    const skipLabels = isMini || showLabels === 'never';
+
     const radius   = Math.min(width, height) / 2;
     const innerPad = radius * 0.22;   // center gap
     const outerR   = radius * 0.78;   // partition space — arcs end at radius after offset
+
+    // Pre-compute display values needed before early returns
+    const displayName = root.data.name ?? "";
+    const initials    = displayName
+      .split(" ")
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((w: string) => w[0] ?? "")
+      .join("")
+      .toUpperCase() || "?";
 
     // ── Dark background ──────────────────────────────────────────────────────
     const svgSel = d3.select(svg)
@@ -208,6 +231,25 @@ export function SunburstGraph({ entityId, entityLabel, className = "", svgRef: e
     feMerge.append("feMergeNode").attr("in", "coloredBlur");
     feMerge.append("feMergeNode").attr("in", "SourceGraphic");
 
+    // ── Octagon clip-path ────────────────────────────────────────────────────
+    if (shape === 'octagon') {
+      const clipId = 'octagon-clip';
+      const cx = width / 2;
+      const cy = height / 2;
+      const r  = Math.min(width, height) / 2 * 0.92;
+      const points = Array.from({ length: 8 }, (_, i) => {
+        const angle = (i * Math.PI / 4) - Math.PI / 8;
+        return [cx + r * Math.cos(angle), cy + r * Math.sin(angle)].join(',');
+      }).join(' ');
+      defs.append('clipPath')
+        .attr('id', clipId)
+        .append('polygon')
+        .attr('points', points);
+      svgSel.attr('clip-path', `url(#${clipId})`);
+    } else {
+      svgSel.attr('clip-path', null);
+    }
+
     // ── Main group (centered) ────────────────────────────────────────────────
     const g = svgSel
       .append("g")
@@ -217,6 +259,23 @@ export function SunburstGraph({ entityId, entityLabel, className = "", svgRef: e
     g.append("circle")
       .attr("r", radius * 1.05)
       .attr("fill", "url(#bg-grad)");
+
+    // ── Tiny badge: just party-colored circle with initials ──────────────────
+    if (isTiny) {
+      g.append("circle")
+        .attr("r", radius * 0.8)
+        .attr("fill", centerColor)
+        .attr("fill-opacity", 0.9);
+      g.append("text")
+        .attr("text-anchor", "middle")
+        .attr("dominant-baseline", "central")
+        .attr("fill", "white")
+        .attr("font-size", radius * 0.5 + "px")
+        .attr("font-weight", "700")
+        .style("pointer-events", "none")
+        .text(initials);
+      return;
+    }
 
     // ── Partition ────────────────────────────────────────────────────────────
     const partition = d3.partition<SunburstNode>().size([2 * Math.PI, outerR]);
@@ -302,80 +361,84 @@ export function SunburstGraph({ entityId, entityLabel, className = "", svgRef: e
       });
 
     // ── Curved arc labels (ring 1 only, wide arcs) ───────────────────────────
-    const labelData = root.descendants().filter((d) => d.depth === 1 && (d.x1 - d.x0) > 0.3);
+    if (!skipLabels) {
+      const labelData = root.descendants().filter((d) => d.depth === 1 && (d.x1 - d.x0) > 0.3);
 
-    g.selectAll<SVGPathElement, D3HierarchyNode>(".arc-label-path")
-      .data(labelData)
-      .join("path")
-      .attr("class", "arc-label-path")
-      .attr("id", (_, i) => `arc-path-${i}`)
-      .attr("fill", "none")
-      .attr("d", (d) => {
-        const midR       = (d.y0 + d.y1) / 2 + innerPad;
-        const startAngle = d.x0 - Math.PI / 2;
-        const endAngle   = d.x1 - Math.PI / 2;
-        const midAngle   = (d.x0 + d.x1) / 2 - Math.PI / 2;
-        const isBottom   = midAngle > 0;
+      g.selectAll<SVGPathElement, D3HierarchyNode>(".arc-label-path")
+        .data(labelData)
+        .join("path")
+        .attr("class", "arc-label-path")
+        .attr("id", (_, i) => `arc-path-${i}`)
+        .attr("fill", "none")
+        .attr("d", (d) => {
+          const midR       = (d.y0 + d.y1) / 2 + innerPad;
+          const startAngle = d.x0 - Math.PI / 2;
+          const endAngle   = d.x1 - Math.PI / 2;
+          const midAngle   = (d.x0 + d.x1) / 2 - Math.PI / 2;
+          const isBottom   = midAngle > 0;
 
-        const x1 = midR * Math.cos(startAngle);
-        const y1 = midR * Math.sin(startAngle);
-        const x2 = midR * Math.cos(endAngle);
-        const y2 = midR * Math.sin(endAngle);
-        const lg = d.x1 - d.x0 > Math.PI ? 1 : 0;
+          const x1 = midR * Math.cos(startAngle);
+          const y1 = midR * Math.sin(startAngle);
+          const x2 = midR * Math.cos(endAngle);
+          const y2 = midR * Math.sin(endAngle);
+          const lg = d.x1 - d.x0 > Math.PI ? 1 : 0;
 
-        return isBottom
-          ? `M ${x2} ${y2} A ${midR} ${midR} 0 ${lg} 0 ${x1} ${y1}`
-          : `M ${x1} ${y1} A ${midR} ${midR} 0 ${lg} 1 ${x2} ${y2}`;
-      });
+          return isBottom
+            ? `M ${x2} ${y2} A ${midR} ${midR} 0 ${lg} 0 ${x1} ${y1}`
+            : `M ${x1} ${y1} A ${midR} ${midR} 0 ${lg} 1 ${x2} ${y2}`;
+        });
 
-    g.selectAll<SVGTextElement, D3HierarchyNode>(".arc-label")
-      .data(labelData)
-      .join("text")
-      .attr("class", "arc-label")
-      .attr("dy", "-3px")
-      .style("pointer-events", "none")
-      .style("user-select", "none")
-      .append("textPath")
-      .attr("href", (_, i) => `#arc-path-${i}`)
-      .attr("startOffset", "50%")
-      .attr("text-anchor", "middle")
-      .attr("fill", "#f1f5f9")
-      .attr("font-size", (d) => {
-        const arcWidth = d.y1 - d.y0;
-        return Math.min(arcWidth * 0.35, 11) + "px";
-      })
-      .attr("font-weight", "500")
-      .style("text-shadow", "0 1px 2px rgba(0,0,0,0.8)")
-      .text((d) => {
-        const name    = d.data.name;
-        const arcSpan = (d.x1 - d.x0) * ((d.y0 + d.y1) / 2 + innerPad);
-        const max     = Math.floor(arcSpan / 7);
-        return name.length > max ? name.slice(0, max - 1) + "…" : name;
-      });
+      g.selectAll<SVGTextElement, D3HierarchyNode>(".arc-label")
+        .data(labelData)
+        .join("text")
+        .attr("class", "arc-label")
+        .attr("dy", "-3px")
+        .style("pointer-events", "none")
+        .style("user-select", "none")
+        .append("textPath")
+        .attr("href", (_, i) => `#arc-path-${i}`)
+        .attr("startOffset", "50%")
+        .attr("text-anchor", "middle")
+        .attr("fill", "#f1f5f9")
+        .attr("font-size", (d) => {
+          const arcWidth = d.y1 - d.y0;
+          return Math.min(arcWidth * 0.35, 11) + "px";
+        })
+        .attr("font-weight", "500")
+        .style("text-shadow", "0 1px 2px rgba(0,0,0,0.8)")
+        .text((d) => {
+          const name    = d.data.name;
+          const arcSpan = (d.x1 - d.x0) * ((d.y0 + d.y1) / 2 + innerPad);
+          const max     = Math.floor(arcSpan / 7);
+          return name.length > max ? name.slice(0, max - 1) + "…" : name;
+        });
+    }
 
     // ── Drill-down hint chevrons (visible on hover for arcs with children) ──
-    g.selectAll<SVGTextElement, D3HierarchyNode>(".drill-hint")
-      .data(root.descendants().filter((d) => d.depth >= 1 && !!d.children && (d.x1 - d.x0) > 0.4))
-      .join("text")
-      .attr("class", "drill-hint")
-      .attr("text-anchor", "middle")
-      .attr("dominant-baseline", "central")
-      .attr("x", (d) => {
-        const angle = (d.x0 + d.x1) / 2 - Math.PI / 2;
-        const r     = d.y1 + innerPad - 8;
-        return r * Math.cos(angle);
-      })
-      .attr("y", (d) => {
-        const angle = (d.x0 + d.x1) / 2 - Math.PI / 2;
-        const r     = d.y1 + innerPad - 8;
-        return r * Math.sin(angle);
-      })
-      .attr("font-size", "8px")
-      .attr("fill", "#6b7280")
-      .attr("opacity", 0)
-      .style("pointer-events", "none")
-      .style("user-select", "none")
-      .text("›");
+    if (!isMini) {
+      g.selectAll<SVGTextElement, D3HierarchyNode>(".drill-hint")
+        .data(root.descendants().filter((d) => d.depth >= 1 && !!d.children && (d.x1 - d.x0) > 0.4))
+        .join("text")
+        .attr("class", "drill-hint")
+        .attr("text-anchor", "middle")
+        .attr("dominant-baseline", "central")
+        .attr("x", (d) => {
+          const angle = (d.x0 + d.x1) / 2 - Math.PI / 2;
+          const r     = d.y1 + innerPad - 8;
+          return r * Math.cos(angle);
+        })
+        .attr("y", (d) => {
+          const angle = (d.x0 + d.x1) / 2 - Math.PI / 2;
+          const r     = d.y1 + innerPad - 8;
+          return r * Math.sin(angle);
+        })
+        .attr("font-size", "8px")
+        .attr("fill", "#6b7280")
+        .attr("opacity", 0)
+        .style("pointer-events", "none")
+        .style("user-select", "none")
+        .text("›");
+    }
 
     // ── Glowing center circle ────────────────────────────────────────────────
     const centerRadius = innerPad;
@@ -398,8 +461,6 @@ export function SunburstGraph({ entityId, entityLabel, className = "", svgRef: e
       .attr("stroke-opacity", 0.8);
 
     // Center label
-    const displayName = root.data.name ?? "";
-
     if (meta.isGroup && meta.icon) {
       // Group: show icon emoji + truncated name below
       g.append("text")
@@ -420,13 +481,6 @@ export function SunburstGraph({ entityId, entityLabel, className = "", svgRef: e
         .style("user-select", "none")
         .text(displayName.length > 14 ? displayName.slice(0, 12) + "…" : displayName);
     } else {
-      const initials     = displayName
-        .split(" ")
-        .filter(Boolean)
-        .slice(0, 2)
-        .map((w: string) => w[0] ?? "")
-        .join("")
-        .toUpperCase() || "?";
       const showInitials = displayName.length > 16;
 
       if (showInitials) {
@@ -483,6 +537,21 @@ export function SunburstGraph({ entityId, entityLabel, className = "", svgRef: e
         .style("pointer-events", "none")
         .style("user-select", "none")
         .text("↑ back");
+    }
+
+    // ── Octagon border ring ──────────────────────────────────────────────────
+    if (shape === 'octagon') {
+      const borderR = Math.min(width, height) / 2 * 0.92 - 1;
+      g.append('polygon')
+        .attr('points', Array.from({ length: 8 }, (_, i) => {
+          const angle = (i * Math.PI / 4) - Math.PI / 8;
+          return [borderR * Math.cos(angle), borderR * Math.sin(angle)].join(',');
+        }).join(' '))
+        .attr('fill', 'none')
+        .attr('stroke', '#4338ca')
+        .attr('stroke-width', 2)
+        .attr('stroke-opacity', 0.6)
+        .attr('filter', 'url(#glow)');
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [svgRef, showTip, hideTip]);
@@ -735,6 +804,46 @@ export function SunburstGraph({ entityId, entityLabel, className = "", svgRef: e
         onClose={() => setPopup(null)}
         actions={nodeActions}
         vizType="sunburst"
+      />
+    </div>
+  );
+}
+
+// ── CivicBadge ───────────────────────────────────────────────────────────────
+
+const BADGE_PX: Record<string, number> = {
+  large:  200,
+  medium: 128,
+  small:  64,
+  tiny:   32,
+};
+
+export function CivicBadge({
+  entityId,
+  entityLabel,
+  size = 'medium',
+  shape = 'circle',
+}: {
+  entityId?: string;
+  entityLabel?: string;
+  size?: 'large' | 'medium' | 'small' | 'tiny';
+  party?: string;
+  shape?: 'circle' | 'octagon';
+}) {
+  const px = BADGE_PX[size] ?? 128;
+  return (
+    <div
+      style={{ width: px, height: px, flexShrink: 0 }}
+      className={`overflow-hidden ${shape !== 'octagon' ? 'rounded-full' : ''}`}
+    >
+      <SunburstGraph
+        entityId={entityId}
+        entityLabel={entityLabel}
+        vizOptions={{
+          shape,
+          badgeSize: size,
+          showLabels: size === 'large' ? 'auto' : 'never',
+        }}
       />
     </div>
   );

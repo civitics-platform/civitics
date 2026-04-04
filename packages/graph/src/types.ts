@@ -141,6 +141,7 @@ export interface SunburstOptions {
   maxRing2?: number
   shape?: 'circle' | 'octagon'
   showLabels?: 'auto' | 'always' | 'never'
+  badgeSize?: 'full' | 'large' | 'medium' | 'small' | 'tiny'
 }
 
 // ── Focus Entity ───────────────────────────────────────────────────────────────

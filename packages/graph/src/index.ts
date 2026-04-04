@@ -66,7 +66,7 @@ export type { TreemapGraphProps } from "./TreemapGraph";
 export { ChordGraph } from "./ChordGraph";
 export type { ChordGraphProps } from "./ChordGraph";
 
-export { SunburstGraph } from "./SunburstGraph";
+export { SunburstGraph, CivicBadge } from "./SunburstGraph";
 export type { SunburstGraphProps } from "./SunburstGraph";
 
 // ── Components — panels ─────────────────────────────────────────────────────
@@ -97,6 +97,9 @@ export type { GroupBrowserProps } from "./components/GroupBrowser";
 
 export { ConnectionStyleRow } from "./components/ConnectionStyleRow";
 export type { ConnectionStyleRowProps, ConnectionTypeSettings } from "./components/ConnectionStyleRow";
+
+export { AlignmentPanel } from "./components/AlignmentPanel";
+export type { AlignmentPanelProps } from "./components/AlignmentPanel";
 
 // ── Components — shared overlays ────────────────────────────────────────────
 export { NodePopup } from "./components/NodePopup";
