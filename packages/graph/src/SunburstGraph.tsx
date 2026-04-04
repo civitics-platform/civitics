@@ -15,6 +15,9 @@ interface SunburstNode {
   entityId?: string;
   entityType?: string;
   color?: string;
+  // group / individual meta (top-level only)
+  isGroup?: boolean;
+  party?: string;
 }
 
 export interface SunburstGraphProps {
@@ -84,6 +87,7 @@ export function SunburstGraph({ entityId, entityLabel, className = "", svgRef: e
 
   const [status, setStatus] = useState<"idle" | "loading" | "empty" | "error" | "ok">("idle");
   const [breadcrumbs, setBreadcrumbs] = useState<string[]>([]);
+  const [centerMeta, setCenterMeta] = useState<{ isGroup: boolean; party?: string; icon?: string }>({ isGroup: false });
   const rootRef        = useRef<D3HierarchyNode | null>(null);
   const currentRootRef = useRef<D3HierarchyNode | null>(null);
 
@@ -100,6 +104,8 @@ export function SunburstGraph({ entityId, entityLabel, className = "", svgRef: e
   };
 
   const renderRef = useRef<((root: D3HierarchyNode, width: number, height: number) => void) | null>(null);
+
+  const centerMetaRef = useRef<{ isGroup: boolean; party?: string; icon?: string }>({ isGroup: false });
 
   const render = useCallback((root: D3HierarchyNode, width: number, height: number) => {
     const svg = svgRef.current;
@@ -140,7 +146,23 @@ export function SunburstGraph({ entityId, entityLabel, className = "", svgRef: e
         .attr("stop-opacity", 0.85);
     });
 
-    // Center glow gradient
+    // Center glow gradient — color reflects party or group
+    const meta = centerMetaRef.current;
+    const centerColor = meta.isGroup
+      ? "#6366f1"
+      : meta.party === "democrat"
+      ? "#3b82f6"
+      : meta.party === "republican"
+      ? "#ef4444"
+      : "#6366f1";
+    const centerColorDark = meta.isGroup
+      ? "#1e1b4b"
+      : meta.party === "democrat"
+      ? "#1e3a8a"
+      : meta.party === "republican"
+      ? "#7f1d1d"
+      : "#1e1b4b";
+
     const centerGrad = defs.append("radialGradient")
       .attr("id", "center-glow")
       .attr("cx", "0")
@@ -150,12 +172,12 @@ export function SunburstGraph({ entityId, entityLabel, className = "", svgRef: e
 
     centerGrad.append("stop")
       .attr("offset", "0%")
-      .attr("stop-color", "#6366f1")
+      .attr("stop-color", centerColor)
       .attr("stop-opacity", 0.9);
 
     centerGrad.append("stop")
       .attr("offset", "100%")
-      .attr("stop-color", "#1e1b4b")
+      .attr("stop-color", centerColorDark)
       .attr("stop-opacity", 1);
 
     // Background radial gradient
@@ -327,7 +349,7 @@ export function SunburstGraph({ entityId, entityLabel, className = "", svgRef: e
     g.append("circle")
       .attr("r", centerRadius + 3)
       .attr("fill", "none")
-      .attr("stroke", "#6366f1")
+      .attr("stroke", centerColor)
       .attr("stroke-width", 1.5)
       .attr("stroke-opacity", 0.6)
       .attr("filter", "url(#glow)");
@@ -336,51 +358,73 @@ export function SunburstGraph({ entityId, entityLabel, className = "", svgRef: e
     g.append("circle")
       .attr("r", centerRadius)
       .attr("fill", "url(#center-glow)")
-      .attr("stroke", "#818cf8")
+      .attr("stroke", centerColor)
       .attr("stroke-width", 1)
       .attr("stroke-opacity", 0.8);
 
     // Center label
-    const displayName  = root.data.name ?? "";
-    const initials     = displayName
-      .split(" ")
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((w: string) => w[0] ?? "")
-      .join("")
-      .toUpperCase() || "?";
-    const showInitials = displayName.length > 16;
+    const displayName = root.data.name ?? "";
 
-    if (showInitials) {
+    if (meta.isGroup && meta.icon) {
+      // Group: show icon emoji + truncated name below
       g.append("text")
         .attr("text-anchor", "middle")
-        .attr("dy", "-0.1em")
-        .attr("fill", "#e0e7ff")
-        .attr("font-size", Math.max(centerRadius * 0.5, 14) + "px")
-        .attr("font-weight", "700")
-        .attr("letter-spacing", "0.05em")
+        .attr("dominant-baseline", "central")
+        .attr("dy", `-${centerRadius * 0.15}px`)
+        .attr("font-size", Math.max(centerRadius * 0.6, 18) + "px")
         .style("pointer-events", "none")
         .style("user-select", "none")
-        .text(initials);
+        .text(meta.icon);
 
       g.append("text")
         .attr("text-anchor", "middle")
-        .attr("dy", "1.2em")
+        .attr("dy", `${centerRadius * 0.55}px`)
         .attr("fill", "#a5b4fc")
         .attr("font-size", Math.max(centerRadius * 0.2, 9) + "px")
         .style("pointer-events", "none")
         .style("user-select", "none")
-        .text(displayName.length > 20 ? displayName.slice(0, 18) + "…" : displayName);
+        .text(displayName.length > 14 ? displayName.slice(0, 12) + "…" : displayName);
     } else {
-      g.append("text")
-        .attr("text-anchor", "middle")
-        .attr("dy", "0.35em")
-        .attr("fill", "#e0e7ff")
-        .attr("font-size", Math.max(centerRadius * 0.3, 11) + "px")
-        .attr("font-weight", "600")
-        .style("pointer-events", "none")
-        .style("user-select", "none")
-        .text(displayName);
+      const initials     = displayName
+        .split(" ")
+        .filter(Boolean)
+        .slice(0, 2)
+        .map((w: string) => w[0] ?? "")
+        .join("")
+        .toUpperCase() || "?";
+      const showInitials = displayName.length > 16;
+
+      if (showInitials) {
+        g.append("text")
+          .attr("text-anchor", "middle")
+          .attr("dy", "-0.1em")
+          .attr("fill", "#e0e7ff")
+          .attr("font-size", Math.max(centerRadius * 0.5, 14) + "px")
+          .attr("font-weight", "700")
+          .attr("letter-spacing", "0.05em")
+          .style("pointer-events", "none")
+          .style("user-select", "none")
+          .text(initials);
+
+        g.append("text")
+          .attr("text-anchor", "middle")
+          .attr("dy", "1.2em")
+          .attr("fill", "#a5b4fc")
+          .attr("font-size", Math.max(centerRadius * 0.2, 9) + "px")
+          .style("pointer-events", "none")
+          .style("user-select", "none")
+          .text(displayName.length > 20 ? displayName.slice(0, 18) + "…" : displayName);
+      } else {
+        g.append("text")
+          .attr("text-anchor", "middle")
+          .attr("dy", "0.35em")
+          .attr("fill", "#e0e7ff")
+          .attr("font-size", Math.max(centerRadius * 0.3, 11) + "px")
+          .attr("font-weight", "600")
+          .style("pointer-events", "none")
+          .style("user-select", "none")
+          .text(displayName);
+      }
     }
 
     // Transparent click overlay for zoom-out
@@ -435,6 +479,12 @@ export function SunburstGraph({ entityId, entityLabel, className = "", svgRef: e
         rootRef.current        = partitioned;
         currentRootRef.current = partitioned;
         setBreadcrumbs([cached.name]);
+        centerMetaRef.current = {
+          isGroup: cached.isGroup ?? false,
+          party: cached.party,
+          icon: primaryGroup?.icon,
+        };
+        setCenterMeta(centerMetaRef.current);
         setStatus("ok");
         renderRef.current?.(partitioned, w, h);
         return;
@@ -477,6 +527,12 @@ export function SunburstGraph({ entityId, entityLabel, className = "", svgRef: e
         rootRef.current        = partitioned;
         currentRootRef.current = partitioned;
         setBreadcrumbs([json.name]);
+        centerMetaRef.current = {
+          isGroup: json.isGroup ?? false,
+          party: json.party,
+          icon: primaryGroup?.icon,
+        };
+        setCenterMeta(centerMetaRef.current);
         setStatus("ok");
         renderRef.current?.(partitioned, w, h);
       } catch (err) {

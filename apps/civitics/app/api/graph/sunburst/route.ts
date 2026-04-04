@@ -120,17 +120,122 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ name: groupNameParam ?? "Group", groupId, isGroup: true, children: [], meta: { totalConnections: 0, connectionTypes: [] } });
       }
 
-      const { data: groupConns, error: connsError } = await supabase
-        .from("entity_connections")
-        .select("connection_type, to_id, strength, amount_cents, from_id")
-        .in("from_id", memberIds)
-        .limit(500);
+      // ── Group mode: donation_industries ─────────────────────────────────────
+      if (ring1 === "donation_industries") {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data: sectorData, error: sectorError } = await (supabase as any).rpc("get_group_sector_totals", {
+          p_member_ids: memberIds,
+          p_min_usd: 0,
+        }) as { data: Array<{ sector: string; total_usd: number }> | null; error: unknown };
 
-      if (connsError) {
-        console.error("[sunburst] group conns error:", connsError.message);
-        return NextResponse.json({ name: groupNameParam ?? "Group", groupId, isGroup: true, children: [], meta: { totalConnections: 0, connectionTypes: [] } });
+        if (sectorError) console.error("[sunburst] group sector error:", sectorError);
+
+        const children = (sectorData ?? [])
+          .slice(0, maxRing1)
+          .map((row) => ({
+            name: row.sector,
+            type: "donation",
+            value: Math.round(row.total_usd),
+            children: [] as Array<{ name: string; value: number; type: string }>,
+          }));
+
+        return NextResponse.json({
+          name: groupNameParam ?? "Group",
+          groupId,
+          isGroup: true,
+          children,
+          meta: {
+            ring1: "donation_industries",
+            totalConnections: children.length,
+            connectionTypes: children.map((c) => c.name),
+          },
+        });
       }
 
+      // ── Fetch all group connections via RPC (avoids .in() URL limit) ─────────
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data: groupConns, error: connsError } = await (supabase as any).rpc("get_group_connections", {
+        p_member_ids: memberIds,
+        p_limit: 500,
+      }) as { data: Array<{ connection_type: string | null; to_id: string; strength: number; amount_cents: number | null; from_id: string }> | null; error: unknown };
+
+      if (connsError) {
+        console.error("[sunburst] group conns error:", (connsError as { message?: string }).message ?? connsError);
+        return NextResponse.json({ name: groupNameParam ?? "Group", groupId, isGroup: true, children: [], meta: { totalConnections: 0, connectionTypes: [] } });
+      }
+      console.log("[sunburst] group conns:", groupConns?.length ?? 0);
+
+      // ── Group mode: vote_categories ──────────────────────────────────────────
+      if (ring1 === "vote_categories") {
+        const voteTypes = new Set(["vote_yes", "vote_no", "vote_abstain", "nomination_vote_yes", "nomination_vote_no"]);
+        const voteConns = (groupConns ?? []).filter((c) => voteTypes.has(c.connection_type ?? ""));
+
+        const aggregatedVotes = new Map<string, { connection_type: string; to_id: string; strength: number; amount_cents: number }>();
+        for (const conn of voteConns) {
+          const key = `${conn.connection_type ?? "other"}::${conn.to_id}`;
+          const existing = aggregatedVotes.get(key);
+          if (existing) {
+            existing.amount_cents += conn.amount_cents ?? 0;
+            existing.strength = Math.max(existing.strength, conn.strength);
+          } else {
+            aggregatedVotes.set(key, {
+              connection_type: conn.connection_type ?? "other",
+              to_id: conn.to_id,
+              strength: conn.strength,
+              amount_cents: conn.amount_cents ?? 0,
+            });
+          }
+        }
+
+        const flatVoteConns = Array.from(aggregatedVotes.values());
+        const proposalIds = [...new Set(flatVoteConns.map((c) => c.to_id))];
+        const { data: proposals } = await supabase
+          .from("proposals")
+          .select("id, title")
+          .in("id", proposalIds.slice(0, 100));
+
+        const proposalMap = new Map((proposals ?? []).map((p) => [p.id, p.title]));
+
+        const byType = new Map<string, typeof flatVoteConns>();
+        for (const c of flatVoteConns) {
+          const t = c.connection_type;
+          if (!byType.has(t)) byType.set(t, []);
+          byType.get(t)!.push(c);
+        }
+
+        const children = [...byType.entries()]
+          .map(([type, conns]) => ({
+            name: type.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+            type,
+            children: conns
+              .sort((a, b) => b.amount_cents - a.amount_cents)
+              .slice(0, maxRing2)
+              .map((c) => ({
+                name: proposalMap.get(c.to_id) ?? c.to_id,
+                entityId: c.to_id,
+                entityType: "proposal",
+                value: c.amount_cents || Math.round(c.strength * 1_000_000),
+                type,
+              })),
+          }))
+          .filter((c) => c.children.length > 0)
+          .sort((a, b) => b.children.length - a.children.length)
+          .slice(0, maxRing1);
+
+        return NextResponse.json({
+          name: groupNameParam ?? "Group",
+          groupId,
+          isGroup: true,
+          children,
+          meta: {
+            ring1: "vote_categories",
+            totalConnections: voteConns.length,
+            connectionTypes: children.map((c) => c.name),
+          },
+        });
+      }
+
+      // ── Group mode: connection_types (default) ────────────────────────────────
       // Aggregate to_id totals per connection_type
       const aggregated = new Map<string, { connection_type: string | null; to_id: string; strength: number; amount_cents: number | null }>();
       for (const conn of groupConns ?? []) {
