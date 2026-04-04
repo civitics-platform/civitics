@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 import { createServerClient } from "@civitics/db";
 import { OfficialGraph } from "../components/OfficialGraph";
 import { AiProfileSection } from "../components/AiProfileSection";
+import { ProfileTabs } from "../components/ProfileTabs";
+import { ShareButton } from "../components/ShareButton";
 import { PageViewTracker } from "../../components/PageViewTracker";
 
 export const dynamic = "force-dynamic";
@@ -77,14 +79,14 @@ const PARTY_STYLES: Record<string, { border: string; badge: string; label: strin
 const DEFAULT_PARTY = { border: "border-l-4 border-l-gray-300", badge: "bg-gray-100 text-gray-700", label: "Unknown" };
 
 const DONOR_TYPE_LABELS: Record<string, string> = {
-  individual:     "Individual",
-  corporation:    "Corporation",
-  pac:            "PAC",
-  super_pac:      "Super PAC",
-  party:          "Political Party",
-  union:          "Union",
-  nonprofit:      "Nonprofit",
-  foreign:        "Foreign Entity",
+  individual:  "Individual",
+  corporation: "Corporation",
+  pac:         "PAC",
+  super_pac:   "Super PAC",
+  party:       "Political Party",
+  union:       "Union",
+  nonprofit:   "Nonprofit",
+  foreign:     "Foreign Entity",
 };
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -121,7 +123,7 @@ export default async function OfficialProfilePage({
         )
         .eq("official_id", params.id)
         .order("voted_at", { ascending: false })
-        .limit(10),
+        .limit(100),
       supabase
         .from("financial_relationships")
         .select("id", { count: "exact", head: true })
@@ -183,7 +185,7 @@ export default async function OfficialProfilePage({
   const topDonors: DonorRow[] = Array.from(donorMap.entries())
     .map(([donor_name, v]) => ({ donor_name, ...v }))
     .sort((a, b) => b.total_cents - a.total_cents)
-    .slice(0, 10);
+    .slice(0, 50);
 
   const voteCount = voteCountRes.count ?? 0;
   const donorCount = donorCountRes.count ?? 0;
@@ -274,28 +276,8 @@ export default async function OfficialProfilePage({
                   </p>
                 )}
 
-                {/* About — AI civic profile */}
-                {cachedAiProfile ? (
-                  <div className="mt-3 rounded-md border border-indigo-100 bg-indigo-50 px-4 py-3">
-                    <p className="text-sm text-gray-700 leading-relaxed">{cachedAiProfile}</p>
-                    <p className="mt-1.5 text-[10px] text-indigo-400">Civic profile · AI generated</p>
-                  </div>
-                ) : (voteCount > 0 || donorCount > 0) ? (
-                  <AiProfileSection officialId={official.id} />
-                ) : null}
-
                 {/* Contact */}
                 <div className="mt-3 flex flex-wrap gap-3">
-                  {official.website_url && (
-                    <a
-                      href={official.website_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-xs text-indigo-600 hover:text-indigo-800 transition-colors"
-                    >
-                      Official website →
-                    </a>
-                  )}
                   {official.email && (
                     <a
                       href={`mailto:${official.email}`}
@@ -306,6 +288,31 @@ export default async function OfficialProfilePage({
                   )}
                   {official.phone && (
                     <span className="text-xs text-gray-500">{official.phone}</span>
+                  )}
+                </div>
+
+                {/* Action buttons */}
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <a
+                    href={`/graph?entity=${official.id}`}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 transition-colors"
+                  >
+                    <span>◎</span>
+                    View in Graph
+                  </a>
+                  <ShareButton
+                    name={official.full_name}
+                    url={`/officials/${official.id}`}
+                  />
+                  {official.website_url && (
+                    <a
+                      href={official.website_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 transition-colors"
+                    >
+                      Official site ↗
+                    </a>
                   )}
                 </div>
               </div>
@@ -332,28 +339,78 @@ export default async function OfficialProfilePage({
           </div>
         </div>
 
-        {/* ── VOTING RECORD + CAMPAIGN FINANCE ──────────────────────────── */}
-        <div className="mt-6 grid gap-6 lg:grid-cols-2">
+        {/* ── TABS ────────────────────────────────────────────────────────── */}
+        <ProfileTabs
+          voteCount={voteCount}
+          donorCount={donorCount}
+          overview={
+            <div className="p-6 space-y-6">
+              {/* AI Summary */}
+              {cachedAiProfile ? (
+                <div className="rounded-md border border-indigo-100 bg-indigo-50 px-4 py-3">
+                  <p className="text-sm text-gray-700 leading-relaxed">{cachedAiProfile}</p>
+                  <p className="mt-1.5 text-[10px] text-indigo-400">Civic profile · AI generated</p>
+                </div>
+              ) : (voteCount > 0 || donorCount > 0) ? (
+                <AiProfileSection officialId={official.id} />
+              ) : null}
 
-          {/* Voting Record */}
-          <section className="rounded-lg border border-gray-200 bg-white overflow-hidden">
-            <div className="border-b border-gray-100 px-5 py-3">
-              <h2 className="text-sm font-semibold text-gray-900">Voting Record</h2>
-              <p className="text-xs text-gray-400 mt-0.5">
-                {voteCount.toLocaleString()} total votes · showing most recent
-              </p>
+              {/* Quick vote breakdown */}
+              {recentVotes.length > 0 && (
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-900 mb-3">Recent Votes</h3>
+                  <div className="divide-y divide-gray-100 rounded-lg border border-gray-200 overflow-hidden">
+                    {recentVotes.slice(0, 5).map((v) => {
+                      const vs = VOTE_STYLES[v.vote] ?? { label: v.vote, cls: "bg-gray-100 text-gray-600" };
+                      const proposal = v.proposals;
+                      const label = proposal?.short_title ?? proposal?.title ?? "Unknown bill";
+                      return (
+                        <div key={v.id} className="flex items-center gap-3 px-4 py-3">
+                          <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold ${vs.cls}`}>
+                            {vs.label}
+                          </span>
+                          <p className="flex-1 truncate text-xs text-gray-700">{label}</p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Top donors preview */}
+              {topDonors.length > 0 && (
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-900 mb-3">Top Donors</h3>
+                  <div className="divide-y divide-gray-100 rounded-lg border border-gray-200 overflow-hidden">
+                    {topDonors.slice(0, 5).map((d, i) => (
+                      <div key={i} className="flex items-center gap-3 px-4 py-3">
+                        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-gray-100 text-[10px] font-bold text-gray-500">
+                          {i + 1}
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <p className="truncate text-xs font-medium text-gray-800">{d.donor_name}</p>
+                          <p className="truncate text-[10px] text-gray-400">
+                            {d.industry ?? d.donor_type}
+                          </p>
+                        </div>
+                        <p className="shrink-0 text-xs font-semibold text-gray-900">
+                          {formatMoney(d.total_cents)}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
-
-            {recentVotes.length === 0 ? (
-              <div className="px-5 py-8 text-center">
-                <p className="text-sm font-medium text-gray-500">Voting record loading</p>
-                <p className="mt-1 text-xs text-gray-400">
-                  Check back as we sync congressional data.
-                </p>
-              </div>
-            ) : (
-              <div className="divide-y divide-gray-100">
-                {recentVotes.map((v) => {
+          }
+          votes={
+            <div className="divide-y divide-gray-100">
+              {recentVotes.length === 0 ? (
+                <div className="px-5 py-8 text-center">
+                  <p className="text-sm font-medium text-gray-500">No voting record available</p>
+                </div>
+              ) : (
+                recentVotes.map((v) => {
                   const vs = VOTE_STYLES[v.vote] ?? { label: v.vote, cls: "bg-gray-100 text-gray-600" };
                   const proposal = v.proposals;
                   const label =
@@ -378,30 +435,18 @@ export default async function OfficialProfilePage({
                       )}
                     </div>
                   );
-                })}
-              </div>
-            )}
-          </section>
-
-          {/* Campaign Finance */}
-          <section className="rounded-lg border border-gray-200 bg-white overflow-hidden">
-            <div className="border-b border-gray-100 px-5 py-3">
-              <h2 className="text-sm font-semibold text-gray-900">Campaign Finance</h2>
-              <p className="text-xs text-gray-400 mt-0.5">
-                {donorCount.toLocaleString()} donors · {formatMoney(totalDonations)} total · FEC data
-              </p>
+                })
+              )}
             </div>
-
-            {topDonors.length === 0 ? (
-              <div className="px-5 py-8 text-center">
-                <p className="text-sm font-medium text-gray-500">Donor data loading</p>
-                <p className="mt-1 text-xs text-gray-400">
-                  FEC filings sync weekly. Data will appear when available.
-                </p>
-              </div>
-            ) : (
-              <div className="divide-y divide-gray-100">
-                {topDonors.map((d, i) => (
+          }
+          donations={
+            <div className="divide-y divide-gray-100">
+              {topDonors.length === 0 ? (
+                <div className="px-5 py-8 text-center">
+                  <p className="text-sm font-medium text-gray-500">No donor data available</p>
+                </div>
+              ) : (
+                topDonors.map((d, i) => (
                   <div key={i} className="flex items-center gap-3 px-5 py-3">
                     <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-gray-100 text-[10px] font-bold text-gray-500">
                       {i + 1}
@@ -415,23 +460,25 @@ export default async function OfficialProfilePage({
                     </div>
                     <div className="shrink-0 text-right">
                       <p className="text-xs font-semibold text-gray-900">{formatMoney(d.total_cents)}</p>
-                      <p className="text-[10px] text-gray-400">{d.count} transaction{d.count !== 1 ? "s" : ""}</p>
+                      <p className="text-[10px] text-gray-400">
+                        {d.count} transaction{d.count !== 1 ? "s" : ""}
+                      </p>
                     </div>
                   </div>
-                ))}
-              </div>
-            )}
-          </section>
-        </div>
-
-        {/* ── CONNECTION GRAPH ──────────────────────────────────────────── */}
-        <div className="mt-6 rounded-lg border border-gray-200 bg-white overflow-hidden">
-          <OfficialGraph
-            officialId={official.id}
-            officialName={official.full_name}
-            officialParty={official.party}
-          />
-        </div>
+                ))
+              )}
+            </div>
+          }
+          connections={
+            <div className="p-0">
+              <OfficialGraph
+                officialId={official.id}
+                officialName={official.full_name}
+                officialParty={official.party}
+              />
+            </div>
+          }
+        />
 
       </main>
 
