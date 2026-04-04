@@ -61,6 +61,114 @@ function initials(name: string) {
     .toUpperCase();
 }
 
+// ─── Procedural vote filter ───────────────────────────────────────────────────
+
+const PROCEDURAL_PATTERNS = [
+  "on passage",
+  "on the motion",
+  "on cloture",
+  "on the cloture",
+  "on the nomination",
+  "on the resolution",
+  "on ordering",
+  "on the amendment",
+  "on the conference",
+  "on the joint",
+  "on adjourn",
+  "on the motion to table",
+];
+
+function isProcedural(title: string): boolean {
+  const lower = title.toLowerCase();
+  return PROCEDURAL_PATTERNS.some((p) => lower.startsWith(p));
+}
+
+// ─── Issue keyword taxonomy ───────────────────────────────────────────────────
+
+const ISSUE_KEYWORDS: Record<
+  string,
+  { label: string; icon: string; keywords: string[]; color: string }
+> = {
+  healthcare: {
+    label: "Healthcare",
+    icon: "🏥",
+    color: "#10b981",
+    keywords: [
+      "health", "medicare", "medicaid", "hospital", "prescription", "drug",
+      "pharma", "insurance", "care act", "patient", "medical", "mental health",
+      "opioid", "vaccine", "public health",
+    ],
+  },
+  climate: {
+    label: "Climate & Energy",
+    icon: "⚡",
+    color: "#06b6d4",
+    keywords: [
+      "climate", "clean energy", "renewable", "carbon", "emission",
+      "environment", "pollution", "solar", "wind energy", "fossil", "oil",
+      "gas pipeline", "green", "conservation", "wildlife", "ocean",
+      "water quality",
+    ],
+  },
+  economy: {
+    label: "Economy",
+    icon: "💼",
+    color: "#f59e0b",
+    keywords: [
+      "tax", "budget", "spending", "economic", "inflation", "trade", "tariff",
+      "jobs", "employment", "wage", "financial", "bank", "housing", "debt",
+      "appropriation", "fund", "relief",
+    ],
+  },
+  education: {
+    label: "Education",
+    icon: "📚",
+    color: "#8b5cf6",
+    keywords: [
+      "education", "school", "student", "teacher", "college", "university",
+      "loan", "learning", "child", "youth", "early childhood",
+    ],
+  },
+  defense: {
+    label: "Defense & Security",
+    icon: "🛡",
+    color: "#64748b",
+    keywords: [
+      "defense", "military", "national security", "armed forces", "veteran",
+      "army", "navy", "air force", "pentagon", "nato", "authorization act",
+      "homeland",
+    ],
+  },
+  immigration: {
+    label: "Immigration",
+    icon: "🌎",
+    color: "#f97316",
+    keywords: [
+      "immigration", "border", "asylum", "refugee", "citizenship", "visa",
+      "daca", "migrant", "deportation", "undocumented",
+    ],
+  },
+  justice: {
+    label: "Justice & Rights",
+    icon: "⚖️",
+    color: "#a855f7",
+    keywords: [
+      "justice", "civil rights", "voting rights", "police", "criminal",
+      "prison", "court", "constitutional", "amendment", "equal",
+      "discrimination", "freedom", "privacy",
+    ],
+  },
+};
+
+function tagIssues(title: string): string[] {
+  const lower = title.toLowerCase();
+  return Object.entries(ISSUE_KEYWORDS)
+    .filter(([, cfg]) => cfg.keywords.some((kw) => lower.includes(kw)))
+    .map(([id]) => id);
+}
+
+// ─── Vote display styles ───────────────────────────────────────────────────────
+
 const VOTE_STYLES: Record<string, { label: string; cls: string }> = {
   yes:        { label: "Yea",     cls: "bg-emerald-100 text-emerald-700" },
   no:         { label: "Nay",     cls: "bg-red-100 text-red-700" },
@@ -103,7 +211,7 @@ export default async function OfficialProfilePage({
   const sb = supabase as any;
 
   // Fetch official + joins in parallel with votes, donor count, donor amounts, AI summary
-  const [officialRes, voteCountRes, votesRes, donorCountRes, donorAmtRes, aiSummaryRes] =
+  const [officialRes, voteCountRes, votesRes, donorCountRes, donorAmtRes, aiSummaryRes, allVotesRes] =
     await Promise.all([
       supabase
         .from("officials")
@@ -139,6 +247,11 @@ export default async function OfficialProfilePage({
         .eq("entity_id", params.id)
         .eq("summary_type", "profile")
         .maybeSingle(),
+      supabase
+        .from("votes")
+        .select("vote, proposals!proposal_id(id, title, bill_number)")
+        .eq("official_id", params.id)
+        .limit(500),
     ]);
 
   if (officialRes.error || !officialRes.data) {
@@ -186,6 +299,71 @@ export default async function OfficialProfilePage({
     .map(([donor_name, v]) => ({ donor_name, ...v }))
     .sort((a, b) => b.total_cents - a.total_cents)
     .slice(0, 50);
+
+  // ── Issue tagging + vote breakdown ──────────────────────────────────────────
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const allVotesRaw = (allVotesRes.data ?? []) as any[];
+
+  const substantiveVotesRaw = allVotesRaw.filter((v) => {
+    const title = v.proposals?.title ?? "";
+    return !isProcedural(title);
+  });
+  const proceduralCount = allVotesRaw.length - substantiveVotesRaw.length;
+
+  const voteBreakdown = {
+    yes: allVotesRaw.filter((v) => v.vote === "yes" || v.vote === "paired_yes").length,
+    no: allVotesRaw.filter((v) => v.vote === "no" || v.vote === "paired_no").length,
+    abstain: allVotesRaw.filter(
+      (v) => v.vote === "abstain" || v.vote === "not_voting" || v.vote === "present"
+    ).length,
+    total: allVotesRaw.length,
+    procedural: proceduralCount,
+    substantive: substantiveVotesRaw.length,
+  };
+
+  const taggedVotes = substantiveVotesRaw.map((v) => ({
+    vote: v.vote as string,
+    title: (v.proposals?.title ?? "") as string,
+    billNumber: (v.proposals?.bill_number ?? undefined) as string | undefined,
+    issues: tagIssues(v.proposals?.title ?? ""),
+  }));
+
+  const issueStats = Object.entries(ISSUE_KEYWORDS)
+    .map(([issue, cfg]) => {
+      const issueVotes = taggedVotes.filter((v) => v.issues.includes(issue));
+      const yes = issueVotes.filter(
+        (v) => v.vote === "yes" || v.vote === "paired_yes"
+      ).length;
+      const no = issueVotes.filter(
+        (v) => v.vote === "no" || v.vote === "paired_no"
+      ).length;
+      const total = yes + no;
+      return {
+        issue,
+        label: cfg.label,
+        icon: cfg.icon,
+        color: cfg.color,
+        yes,
+        no,
+        total,
+        yesRate: total > 0 ? Math.round((yes / total) * 100) : 0,
+        recentBills: issueVotes
+          .filter((v) => v.title && !isProcedural(v.title))
+          .slice(0, 3)
+          .map((v) => v.title),
+      };
+    })
+    .filter((s) => s.total > 0)
+    .sort((a, b) => b.total - a.total);
+
+  // Map recent votes for VotesTab display
+  const allVotesForTab = (votesRes.data ?? []).map((v) => ({
+    id: v.id,
+    vote: v.vote,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    title: (v.proposals as any)?.title ?? "",
+    date: v.voted_at ?? undefined,
+  }));
 
   const voteCount = voteCountRes.count ?? 0;
   const donorCount = donorCountRes.count ?? 0;
@@ -343,6 +521,9 @@ export default async function OfficialProfilePage({
         <ProfileTabs
           voteCount={voteCount}
           donorCount={donorCount}
+          issueStats={issueStats}
+          voteBreakdown={voteBreakdown}
+          allVotes={allVotesForTab}
           overview={
             <div className="p-6 space-y-6">
               {/* AI Summary */}
@@ -400,42 +581,6 @@ export default async function OfficialProfilePage({
                     ))}
                   </div>
                 </div>
-              )}
-            </div>
-          }
-          votes={
-            <div className="divide-y divide-gray-100">
-              {recentVotes.length === 0 ? (
-                <div className="px-5 py-8 text-center">
-                  <p className="text-sm font-medium text-gray-500">No voting record available</p>
-                </div>
-              ) : (
-                recentVotes.map((v) => {
-                  const vs = VOTE_STYLES[v.vote] ?? { label: v.vote, cls: "bg-gray-100 text-gray-600" };
-                  const proposal = v.proposals;
-                  const label =
-                    proposal?.bill_number ??
-                    proposal?.short_title ??
-                    proposal?.title ??
-                    "Unknown bill";
-                  return (
-                    <div key={v.id} className="flex items-center gap-3 px-5 py-3">
-                      <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold ${vs.cls}`}>
-                        {vs.label}
-                      </span>
-                      <p className="flex-1 truncate text-xs text-gray-700">{label}</p>
-                      {v.voted_at && (
-                        <span className="shrink-0 text-[10px] text-gray-400">
-                          {new Date(v.voted_at).toLocaleDateString("en-US", {
-                            month: "short",
-                            day: "numeric",
-                            year: "2-digit",
-                          })}
-                        </span>
-                      )}
-                    </div>
-                  );
-                })
               )}
             </div>
           }

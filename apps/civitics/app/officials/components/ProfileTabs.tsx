@@ -1,25 +1,35 @@
 "use client";
 
 import { useState } from "react";
+import { VotesTab, IssueStats, VoteBreakdown } from "./VotesTab";
 
 type Tab = "overview" | "votes" | "donations" | "connections";
 
 interface ProfileTabsProps {
   overview: React.ReactNode;
-  votes: React.ReactNode;
   donations: React.ReactNode;
   connections: React.ReactNode;
   voteCount: number;
   donorCount: number;
+  issueStats: IssueStats[];
+  voteBreakdown: VoteBreakdown;
+  allVotes: Array<{
+    id: string;
+    vote: string;
+    title: string;
+    date?: string;
+  }>;
 }
 
 export function ProfileTabs({
   overview,
-  votes,
   donations,
   connections,
   voteCount,
   donorCount,
+  issueStats,
+  voteBreakdown,
+  allVotes,
 }: ProfileTabsProps) {
   const [active, setActive] = useState<Tab>("overview");
 
@@ -65,7 +75,13 @@ export function ProfileTabs({
       {/* Tab content */}
       <div className="bg-white rounded-b-lg border border-t-0 border-gray-200 overflow-hidden">
         {active === "overview" && overview}
-        {active === "votes" && votes}
+        {active === "votes" && (
+          <VotesTab
+            issueStats={issueStats}
+            voteBreakdown={voteBreakdown}
+            recentVotes={allVotes}
+          />
+        )}
         {active === "donations" && donations}
         {active === "connections" && connections}
       </div>
