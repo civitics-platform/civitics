@@ -104,6 +104,7 @@ export function SunburstGraph({ entityId, entityLabel, className = "", svgRef: e
   };
 
   const renderRef = useRef<((root: D3HierarchyNode, width: number, height: number) => void) | null>(null);
+  const arcRef = useRef<d3.Arc<unknown, D3HierarchyNode> | null>(null);
 
   const centerMetaRef = useRef<{ isGroup: boolean; party?: string; icon?: string }>({ isGroup: false });
 
@@ -230,6 +231,8 @@ export function SunburstGraph({ entityId, entityLabel, className = "", svgRef: e
       .innerRadius((d) => d.depth === 0 ? 0 : d.y0 + innerPad)
       .outerRadius((d) => d.depth === 0 ? 0 : d.y1 + innerPad - 2) as any; // eslint-disable-line @typescript-eslint/no-explicit-any
 
+    arcRef.current = arc;
+
     // ── Arc paths ────────────────────────────────────────────────────────────
     g.selectAll<SVGPathElement, D3HierarchyNode>(".sunburst-arc")
       .data(root.descendants().slice(1))
@@ -272,6 +275,12 @@ export function SunburstGraph({ entityId, entityLabel, className = "", svgRef: e
         g.selectAll<SVGPathElement, D3HierarchyNode>(".sunburst-arc")
           .filter(function(this: SVGPathElement) { return this !== event.currentTarget; })
           .attr("fill-opacity", 0.3);
+        // Show drill hint for hovered arc with children
+        if (d.children) {
+          g.selectAll<SVGTextElement, D3HierarchyNode>(".drill-hint")
+            .filter((h) => h === d)
+            .attr("opacity", 1);
+        }
       })
       .on("mouseout", () => {
         hideTip();
@@ -280,6 +289,8 @@ export function SunburstGraph({ entityId, entityLabel, className = "", svgRef: e
             d.x1 - d.x0 > 0.001 ? (d.depth === 1 ? 1.0 : 0.75) : 0)
           .attr("stroke-opacity", 0.4)
           .attr("filter", null);
+        // Hide all drill hints
+        g.selectAll(".drill-hint").attr("opacity", 0);
       })
       .on("click", (_event: MouseEvent, d) => {
         const newNode = arcToNode(d);
@@ -341,6 +352,30 @@ export function SunburstGraph({ entityId, entityLabel, className = "", svgRef: e
         const max     = Math.floor(arcSpan / 7);
         return name.length > max ? name.slice(0, max - 1) + "…" : name;
       });
+
+    // ── Drill-down hint chevrons (visible on hover for arcs with children) ──
+    g.selectAll<SVGTextElement, D3HierarchyNode>(".drill-hint")
+      .data(root.descendants().filter((d) => d.depth >= 1 && !!d.children && (d.x1 - d.x0) > 0.4))
+      .join("text")
+      .attr("class", "drill-hint")
+      .attr("text-anchor", "middle")
+      .attr("dominant-baseline", "central")
+      .attr("x", (d) => {
+        const angle = (d.x0 + d.x1) / 2 - Math.PI / 2;
+        const r     = d.y1 + innerPad - 8;
+        return r * Math.cos(angle);
+      })
+      .attr("y", (d) => {
+        const angle = (d.x0 + d.x1) / 2 - Math.PI / 2;
+        const r     = d.y1 + innerPad - 8;
+        return r * Math.sin(angle);
+      })
+      .attr("font-size", "8px")
+      .attr("fill", "#6b7280")
+      .attr("opacity", 0)
+      .style("pointer-events", "none")
+      .style("user-select", "none")
+      .text("›");
 
     // ── Glowing center circle ────────────────────────────────────────────────
     const centerRadius = innerPad;
@@ -437,6 +472,18 @@ export function SunburstGraph({ entityId, entityLabel, className = "", svgRef: e
           zoom(rootRef.current, width, height);
         }
       });
+
+    // "↑ back" hint in center when drilled in
+    if (currentRootRef.current !== rootRef.current) {
+      g.append("text")
+        .attr("text-anchor", "middle")
+        .attr("dy", centerRadius * 0.35 + "px")
+        .attr("fill", "#4b5563")
+        .attr("font-size", "8px")
+        .style("pointer-events", "none")
+        .style("user-select", "none")
+        .text("↑ back");
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [svgRef, showTip, hideTip]);
 
@@ -445,11 +492,46 @@ export function SunburstGraph({ entityId, entityLabel, className = "", svgRef: e
 
   function zoom(node: D3HierarchyNode, width: number, height: number) {
     currentRootRef.current = node;
+
+    // Update breadcrumbs
     const crumbs: string[] = [];
     let cur: D3HierarchyNode | null = node;
     while (cur) { crumbs.unshift(cur.data.name); cur = cur.parent ?? null; }
     setBreadcrumbs(crumbs);
-    render(node, width, height);
+
+    // If SVG not ready, fall back to instant render
+    const svg = svgRef.current;
+    if (!svg || !arcRef.current) {
+      render(node, width, height);
+      return;
+    }
+
+    // Animate existing arcs out, then render new view and animate in
+    d3.select(svg)
+      .selectAll("path")
+      .transition()
+      .duration(250)
+      .ease(d3.easeCubicOut)
+      .attr("fill-opacity", 0)
+      .attr("stroke-opacity", 0)
+      .end()
+      .then(() => {
+        render(node, width, height);
+        d3.select(svg)
+          .selectAll<SVGPathElement, D3HierarchyNode>("path")
+          .attr("fill-opacity", 0)
+          .attr("stroke-opacity", 0)
+          .transition()
+          .duration(300)
+          .ease(d3.easeCubicIn)
+          .attr("fill-opacity", (d) =>
+            d.x1 - d.x0 > 0.001 ? (d.depth === 1 ? 1.0 : 0.75) : 0)
+          .attr("stroke-opacity", 0.4);
+      })
+      .catch(() => {
+        // Fallback if transition is interrupted
+        render(node, width, height);
+      });
   }
 
   const ring1    = vizOptions?.ring1    ?? "connection_types";
@@ -567,13 +649,27 @@ export function SunburstGraph({ entityId, entityLabel, className = "", svgRef: e
 
   return (
     <div ref={containerRef} className={`relative w-full h-full flex flex-col ${className}`}>
-      {/* Breadcrumb trail */}
-      {status === "ok" && breadcrumbs.length > 0 && (
-        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1 bg-gray-900/80 border border-gray-800 rounded-full px-3 py-1">
+      {/* Breadcrumb trail — only shown when drilled in */}
+      {status === "ok" && breadcrumbs.length > 1 && (
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1 bg-gray-900/90 backdrop-blur-sm border border-gray-700/50 rounded-full px-3 py-1.5 shadow-lg">
+          {/* Back button */}
+          <button
+            onClick={() => {
+              if (!rootRef.current || !containerRef.current) return;
+              const { width, height } = containerRef.current.getBoundingClientRect();
+              zoom(rootRef.current, width || 600, height || 500);
+            }}
+            className="text-indigo-400 hover:text-indigo-300 text-xs font-medium flex items-center gap-1 transition-colors mr-1"
+          >
+            ← Back
+          </button>
+          <span className="text-gray-600 text-xs">|</span>
           {breadcrumbs.map((crumb, i) => (
             <React.Fragment key={i}>
               {i > 0 && <span className="text-gray-600 text-xs">›</span>}
-              <span className="text-xs text-gray-300">{crumb}</span>
+              <span className={`text-xs transition-colors ${i === breadcrumbs.length - 1 ? "text-white font-medium" : "text-gray-400"}`}>
+                {crumb.length > 16 ? crumb.slice(0, 14) + "…" : crumb}
+              </span>
             </React.Fragment>
           ))}
         </div>
