@@ -603,12 +603,18 @@ export function SunburstGraph({ entityId, entityLabel, className = "", svgRef: e
       });
   }
 
-  const ring1    = vizOptions?.ring1    ?? "connection_types";
+  const defaultRing1 = primaryGroup?.filter.entity_type === "pac"
+    ? "donation_industries"
+    : "connection_types";
+  const ring1    = vizOptions?.ring1    ?? defaultRing1;
   const maxRing1 = vizOptions?.maxRing1 ?? 8;
   const maxRing2 = vizOptions?.maxRing2 ?? 10;
 
   useEffect(() => {
-    if (!entityId && !primaryGroup) { setStatus("idle"); return; }
+    if (!entityId && !primaryGroup) {
+      if (!rootRef.current) { setStatus("idle"); }
+      return;
+    }
 
     const controller = new AbortController();
 
@@ -616,6 +622,9 @@ export function SunburstGraph({ entityId, entityLabel, className = "", svgRef: e
       const cacheKey = primaryGroup
         ? `group:${primaryGroup.id}:${ring1}:${maxRing1}:${maxRing2}`
         : `${entityId!}:${ring1}:${maxRing1}:${maxRing2}`;
+
+      // Show loading briefly when ring1 changes to avoid stale flash
+      if (status === "ok") { setStatus("loading"); }
 
       // Serve from cache if available
       const cached = cacheRef.current.get(cacheKey);
@@ -694,8 +703,9 @@ export function SunburstGraph({ entityId, entityLabel, className = "", svgRef: e
     void load();
     return () => { controller.abort(); };
   // render is intentionally excluded — renderRef.current always holds the latest version
+  // primaryGroup?.id used (not full object) to avoid re-firing when reference changes but ID doesn't
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [entityId, primaryGroup, ring1, maxRing1, maxRing2]);
+  }, [entityId, primaryGroup?.id, ring1, maxRing1, maxRing2]);
 
   useEffect(() => {
     if (status !== "ok") return;
