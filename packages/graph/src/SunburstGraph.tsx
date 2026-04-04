@@ -105,27 +105,27 @@ export function SunburstGraph({ entityId, entityLabel, className = "", svgRef: e
     expandNode:      () => {},
   };
 
-  const renderRef = useRef<((root: D3HierarchyNode, width: number, height: number) => void) | null>(null);
+  const renderRef = useRef<((root: D3HierarchyNode, width: number, height: number, opts?: { shape?: string; skipLabels?: boolean }) => void) | null>(null);
   const arcRef = useRef<d3.Arc<unknown, D3HierarchyNode> | null>(null);
 
   const centerMetaRef = useRef<{ isGroup: boolean; party?: string; icon?: string }>({ isGroup: false });
   const vizOptionsRef = useRef<Partial<SunburstOptions>>({});
   vizOptionsRef.current = { ...vizOptions, ...(badgeSizeProp !== undefined ? { badgeSize: badgeSizeProp } : {}) };
 
-  const render = useCallback((root: D3HierarchyNode, width: number, height: number) => {
+  const render = useCallback((root: D3HierarchyNode, width: number, height: number, opts?: { shape?: string; skipLabels?: boolean }) => {
     const svg = svgRef.current;
     if (!svg) return;
 
     d3.select(svg).selectAll("*").remove();
 
-    // Badge mode options (via ref — always current without adding deps)
+    // Badge mode options (opts take precedence; fall back to vizOptionsRef for badge-only options)
     const vizOpts    = vizOptionsRef.current;
-    const shape      = vizOpts?.shape ?? 'circle';
+    const shape      = opts?.shape ?? vizOpts?.shape ?? 'circle';
     const badgeSize  = vizOpts?.badgeSize;
     const isTiny     = badgeSize === 'tiny';
     const isMini     = badgeSize === 'small' || badgeSize === 'tiny';
     const showLabels = vizOpts?.showLabels ?? 'auto';
-    const skipLabels = isMini || showLabels === 'never';
+    const skipLabels = opts?.skipLabels ?? (isMini || showLabels === 'never');
 
     const radius   = Math.min(width, height) / 2;
     const innerPad = radius * 0.22;   // center gap
@@ -568,10 +568,17 @@ export function SunburstGraph({ entityId, entityLabel, className = "", svgRef: e
     while (cur) { crumbs.unshift(cur.data.name); cur = cur.parent ?? null; }
     setBreadcrumbs(crumbs);
 
+    // Build opts from current vizOptionsRef so zoom always uses the latest visual settings
+    const zoomVizOpts = vizOptionsRef.current;
+    const zoomShape   = zoomVizOpts?.shape ?? 'circle';
+    const zoomShowLabels = zoomVizOpts?.showLabels ?? 'auto';
+    const zoomSkipLabels = zoomShowLabels === 'never';
+    const zoomOpts = { shape: zoomShape, skipLabels: zoomSkipLabels };
+
     // If SVG not ready, fall back to instant render
     const svg = svgRef.current;
     if (!svg || !arcRef.current) {
-      render(node, width, height);
+      render(node, width, height, zoomOpts);
       return;
     }
 
@@ -585,7 +592,7 @@ export function SunburstGraph({ entityId, entityLabel, className = "", svgRef: e
       .attr("stroke-opacity", 0)
       .end()
       .then(() => {
-        render(node, width, height);
+        render(node, width, height, zoomOpts);
         d3.select(svg)
           .selectAll<SVGPathElement, D3HierarchyNode>("path")
           .attr("fill-opacity", 0)
@@ -599,7 +606,7 @@ export function SunburstGraph({ entityId, entityLabel, className = "", svgRef: e
       })
       .catch(() => {
         // Fallback if transition is interrupted
-        render(node, width, height);
+        render(node, width, height, zoomOpts);
       });
   }
 
@@ -607,8 +614,14 @@ export function SunburstGraph({ entityId, entityLabel, className = "", svgRef: e
     ? "donation_industries"
     : "connection_types";
   const ring1    = vizOptions?.ring1    ?? defaultRing1;
+  const ring2    = vizOptions?.ring2    ?? 'top_entities';
   const maxRing1 = vizOptions?.maxRing1 ?? 8;
   const maxRing2 = vizOptions?.maxRing2 ?? 10;
+
+  // Derived visual opts — used by render and by the shape/label change effects
+  const shape         = vizOptions?.shape      ?? 'circle';
+  const showLabelsOpt = vizOptions?.showLabels ?? 'auto';
+  const skipLabels    = showLabelsOpt === 'never';
 
   useEffect(() => {
     if (!entityId && !primaryGroup) {
@@ -620,8 +633,8 @@ export function SunburstGraph({ entityId, entityLabel, className = "", svgRef: e
 
     async function load() {
       const cacheKey = primaryGroup
-        ? `group:${primaryGroup.id}:${ring1}:${maxRing1}:${maxRing2}`
-        : `${entityId!}:${ring1}:${maxRing1}:${maxRing2}`;
+        ? `group:${primaryGroup.id}:${ring1}:${ring2}:${maxRing1}:${maxRing2}`
+        : `${entityId!}:${ring1}:${ring2}:${maxRing1}:${maxRing2}`;
 
       // Show loading briefly when ring1 changes to avoid stale flash
       if (status === "ok") { setStatus("loading"); }
@@ -646,7 +659,7 @@ export function SunburstGraph({ entityId, entityLabel, className = "", svgRef: e
         };
         setCenterMeta(centerMetaRef.current);
         setStatus("ok");
-        renderRef.current?.(partitioned, w, h);
+        renderRef.current?.(partitioned, w, h, { shape, skipLabels });
         return;
       }
 
@@ -658,12 +671,12 @@ export function SunburstGraph({ entityId, entityLabel, className = "", svgRef: e
             `?groupId=${encodeURIComponent(primaryGroup.id)}` +
             `&groupFilter=${encodeURIComponent(JSON.stringify(primaryGroup.filter))}` +
             `&groupName=${encodeURIComponent(primaryGroup.name)}` +
-            `&ring1=${ring1}&maxRing1=${maxRing1}&maxRing2=${maxRing2}`;
+            `&ring1=${ring1}&ring2=${ring2}&maxRing1=${maxRing1}&maxRing2=${maxRing2}`;
         } else {
           url = `/api/graph/sunburst` +
             `?entityId=${encodeURIComponent(entityId!)}` +
             (entityLabel ? `&entityLabel=${encodeURIComponent(entityLabel)}` : "") +
-            `&ring1=${ring1}&maxRing1=${maxRing1}&maxRing2=${maxRing2}`;
+            `&ring1=${ring1}&ring2=${ring2}&maxRing1=${maxRing1}&maxRing2=${maxRing2}`;
         }
 
         const res = await fetch(url, { signal: controller.signal });
@@ -694,7 +707,7 @@ export function SunburstGraph({ entityId, entityLabel, className = "", svgRef: e
         };
         setCenterMeta(centerMetaRef.current);
         setStatus("ok");
-        renderRef.current?.(partitioned, w, h);
+        renderRef.current?.(partitioned, w, h, { shape, skipLabels });
       } catch (err) {
         if ((err as Error).name !== "AbortError") setStatus("error");
       }
@@ -705,7 +718,7 @@ export function SunburstGraph({ entityId, entityLabel, className = "", svgRef: e
   // render is intentionally excluded — renderRef.current always holds the latest version
   // primaryGroup?.id used (not full object) to avoid re-firing when reference changes but ID doesn't
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [entityId, primaryGroup?.id, ring1, maxRing1, maxRing2]);
+  }, [entityId, primaryGroup?.id, primaryGroup?.filter.entity_type, ring1, ring2, maxRing1, maxRing2]);
 
   useEffect(() => {
     if (status !== "ok") return;
@@ -719,12 +732,25 @@ export function SunburstGraph({ entityId, entityLabel, className = "", svgRef: e
       const h = Math.floor(entry.contentRect.height);
       if (w === lastSizeRef.current.w && h === lastSizeRef.current.h) return;
       lastSizeRef.current = { w, h };
-      renderRef.current?.(currentRootRef.current, w, h);
+      renderRef.current?.(currentRootRef.current, w, h, { shape, skipLabels });
     });
 
     obs.observe(container);
     return () => obs.disconnect();
-  }, [status]);
+  // shape and showLabelsOpt in deps so the ResizeObserver closure always captures current visual opts
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status, shape, showLabelsOpt]);
+
+  // FIX 3 — re-render immediately when shape or label visibility changes (no refetch needed)
+  useEffect(() => {
+    if (status !== "ok") return;
+    if (!currentRootRef.current) return;
+    const container = containerRef.current;
+    if (!container) return;
+    const { width, height } = container.getBoundingClientRect();
+    renderRef.current?.(currentRootRef.current, width || 600, height || 500, { shape, skipLabels });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shape, skipLabels, status]);
 
   return (
     <div ref={containerRef} className={`relative w-full h-full flex flex-col ${className}`}>

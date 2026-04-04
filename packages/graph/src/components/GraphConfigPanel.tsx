@@ -79,12 +79,15 @@ function LabeledToggle({ label, value, onChange }: { label: string; value: boole
   return (
     <div className="flex items-center justify-between px-3 py-1">
       <span className="text-[10px] text-gray-500">{label}</span>
-      <button
-        onClick={() => onChange(!value)}
-        className={`w-7 h-4 rounded-full transition-colors relative ${value ? 'bg-indigo-500' : 'bg-gray-200'}`}
-      >
-        <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow transition-transform ${value ? 'translate-x-3.5' : 'translate-x-0.5'}`} />
-      </button>
+      <div className="flex items-center gap-1.5">
+        <span className="text-[9px] text-gray-400">{value ? 'On' : 'Off'}</span>
+        <button
+          onClick={() => onChange(!value)}
+          className={`w-7 h-4 rounded-full transition-colors relative ${value ? 'bg-indigo-500' : 'bg-gray-300'}`}
+        >
+          <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow transition-transform ${value ? 'translate-x-3.5' : 'translate-x-0.5'}`} />
+        </button>
+      </div>
     </div>
   );
 }
