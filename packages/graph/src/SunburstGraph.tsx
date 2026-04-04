@@ -3,7 +3,7 @@
 import * as d3 from "d3";
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import type { RefObject } from "react";
-import type { GraphNode as NewGraphNode, NodeActions } from "./types";
+import type { GraphNode as NewGraphNode, NodeActions, SunburstOptions, FocusGroup } from "./types";
 import { Tooltip, useTooltip } from "./components/Tooltip";
 import { NodePopup } from "./components/NodePopup";
 
@@ -18,10 +18,12 @@ interface SunburstNode {
 }
 
 export interface SunburstGraphProps {
-  entityId?: string;
+  entityId?: string | null;
   entityLabel?: string;
   className?: string;
   svgRef?: RefObject<SVGSVGElement>;
+  vizOptions?: Partial<SunburstOptions>;
+  primaryGroup?: FocusGroup | null;
 }
 
 const TYPE_PALETTE: Record<string, { bright: string; dark: string; glow: string }> = {
@@ -75,7 +77,7 @@ function arcToTooltipNode(d: D3HierarchyNode): NewGraphNode {
   };
 }
 
-export function SunburstGraph({ entityId, entityLabel, className = "", svgRef: externalSvgRef }: SunburstGraphProps) {
+export function SunburstGraph({ entityId, entityLabel, className = "", svgRef: externalSvgRef, vizOptions, primaryGroup }: SunburstGraphProps) {
   const containerRef   = useRef<HTMLDivElement>(null);
   const internalSvgRef = useRef<SVGSVGElement>(null);
   const svgRef         = externalSvgRef ?? internalSvgRef;
@@ -406,14 +408,22 @@ export function SunburstGraph({ entityId, entityLabel, className = "", svgRef: e
     render(node, width, height);
   }
 
+  const ring1    = vizOptions?.ring1    ?? "connection_types";
+  const maxRing1 = vizOptions?.maxRing1 ?? 8;
+  const maxRing2 = vizOptions?.maxRing2 ?? 10;
+
   useEffect(() => {
-    if (!entityId) { setStatus("idle"); return; }
+    if (!entityId && !primaryGroup) { setStatus("idle"); return; }
 
     const controller = new AbortController();
 
     async function load() {
+      const cacheKey = primaryGroup
+        ? `group:${primaryGroup.id}:${ring1}:${maxRing1}:${maxRing2}`
+        : `${entityId!}:${ring1}:${maxRing1}:${maxRing2}`;
+
       // Serve from cache if available
-      const cached = cacheRef.current.get(entityId!);
+      const cached = cacheRef.current.get(cacheKey);
       if (cached) {
         const container = containerRef.current;
         if (!container) return;
@@ -432,8 +442,20 @@ export function SunburstGraph({ entityId, entityLabel, className = "", svgRef: e
 
       setStatus("loading");
       try {
-        const url = `/api/graph/sunburst?entityId=${encodeURIComponent(entityId!)}` +
-          (entityLabel ? `&entityLabel=${encodeURIComponent(entityLabel)}` : "");
+        let url: string;
+        if (primaryGroup) {
+          url = `/api/graph/sunburst` +
+            `?groupId=${encodeURIComponent(primaryGroup.id)}` +
+            `&groupFilter=${encodeURIComponent(JSON.stringify(primaryGroup.filter))}` +
+            `&groupName=${encodeURIComponent(primaryGroup.name)}` +
+            `&ring1=${ring1}&maxRing1=${maxRing1}&maxRing2=${maxRing2}`;
+        } else {
+          url = `/api/graph/sunburst` +
+            `?entityId=${encodeURIComponent(entityId!)}` +
+            (entityLabel ? `&entityLabel=${encodeURIComponent(entityLabel)}` : "") +
+            `&ring1=${ring1}&maxRing1=${maxRing1}&maxRing2=${maxRing2}`;
+        }
+
         const res = await fetch(url, { signal: controller.signal });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const json = await res.json() as SunburstNode & { error?: string };
@@ -441,7 +463,7 @@ export function SunburstGraph({ entityId, entityLabel, className = "", svgRef: e
         if (json.error) throw new Error(json.error);
         if (!json.children || json.children.length === 0) { setStatus("empty"); return; }
 
-        cacheRef.current.set(entityId!, json);
+        cacheRef.current.set(cacheKey, json);
 
         const container = containerRef.current;
         if (!container) return;
@@ -466,7 +488,7 @@ export function SunburstGraph({ entityId, entityLabel, className = "", svgRef: e
     return () => { controller.abort(); };
   // render is intentionally excluded — renderRef.current always holds the latest version
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [entityId]);
+  }, [entityId, primaryGroup, ring1, maxRing1, maxRing2]);
 
   useEffect(() => {
     if (status !== "ok") return;

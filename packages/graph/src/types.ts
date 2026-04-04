@@ -133,8 +133,14 @@ export interface TreemapOptions {
 }
 
 export interface SunburstOptions {
-  maxDepth: number
-  showLabels: boolean
+  ring1?: 'connection_types' | 'donation_industries' | 'vote_categories'
+  ring2?: 'top_entities' | 'by_amount' | 'by_count'
+  /** Max segments in ring 1. Default 8. */
+  maxRing1?: number
+  /** Max children per ring 1 segment. Default 10. */
+  maxRing2?: number
+  shape?: 'circle' | 'octagon'
+  showLabels?: 'auto' | 'always' | 'never'
 }
 
 // ── Focus Entity ───────────────────────────────────────────────────────────────

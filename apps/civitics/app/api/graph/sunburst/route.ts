@@ -10,11 +10,14 @@ export async function GET(req: NextRequest) {
   if (supabaseUnavailable()) return unavailableResponse();
   try {
     const { searchParams } = new URL(req.url);
-    const entityId      = searchParams.get("entityId");
-    const entityLabel   = searchParams.get("entityLabel");
-    const groupId       = searchParams.get("groupId");
+    const entityId       = searchParams.get("entityId");
+    const entityLabel    = searchParams.get("entityLabel");
+    const groupId        = searchParams.get("groupId");
     const groupFilterRaw = searchParams.get("groupFilter");
     const groupNameParam = searchParams.get("groupName");
+    const ring1    = searchParams.get("ring1") ?? "connection_types";
+    const maxRing1 = parseInt(searchParams.get("maxRing1") ?? "8");
+    const maxRing2 = parseInt(searchParams.get("maxRing2") ?? "10");
 
     const supabase = createAdminClient();
 
@@ -172,6 +175,105 @@ export async function GET(req: NextRequest) {
 
     const centerName = centerEntity?.full_name ?? entityLabel ?? entityId;
 
+    // ── MODE: donation_industries ──────────────────────────────────────────
+    if (ring1 === "donation_industries") {
+      const { data: donations } = await supabase
+        .from("financial_relationships")
+        .select("donor_name, amount_cents, metadata")
+        .eq("official_id", entityId)
+        .not("donor_name", "ilike", "%PAC/Committee%")
+        .order("amount_cents", { ascending: false })
+        .limit(200);
+
+      const bySector = new Map<string, Array<{ name: string; value: number }>>();
+      for (const d of donations ?? []) {
+        const sector = (d.metadata as Record<string, string> | null)?.sector ?? "Other";
+        if (!bySector.has(sector)) bySector.set(sector, []);
+        bySector.get(sector)!.push({
+          name: d.donor_name as string,
+          value: ((d.amount_cents as number | null) ?? 0) / 100,
+        });
+      }
+
+      const children = [...bySector.entries()]
+        .map(([sector, donors]) => ({
+          name: sector,
+          type: "donation",
+          children: donors
+            .sort((a, b) => b.value - a.value)
+            .slice(0, maxRing2)
+            .map(d => ({ name: d.name, value: d.value, type: "donation" })),
+        }))
+        .sort((a, b) => {
+          const aTotal = a.children.reduce((s, c) => s + c.value, 0);
+          const bTotal = b.children.reduce((s, c) => s + c.value, 0);
+          return bTotal - aTotal;
+        })
+        .slice(0, maxRing1);
+
+      return NextResponse.json({
+        name: centerName,
+        entityId,
+        party: centerEntity?.party,
+        role: centerEntity?.role_title,
+        children,
+        meta: { ring1: "donation_industries", totalConnections: donations?.length ?? 0 },
+      });
+    }
+
+    // ── MODE: vote_categories ──────────────────────────────────────────────
+    if (ring1 === "vote_categories") {
+      const { data: votes } = await supabase
+        .from("entity_connections")
+        .select("connection_type, to_id, strength")
+        .eq("from_id", entityId)
+        .in("connection_type", ["vote_yes", "vote_no", "vote_abstain", "nomination_vote_yes", "nomination_vote_no"])
+        .limit(200);
+
+      const proposalIds = [...new Set((votes ?? []).map(v => v.to_id))];
+      const { data: proposals } = await supabase
+        .from("proposals")
+        .select("id, title")
+        .in("id", proposalIds);
+
+      const proposalMap = new Map((proposals ?? []).map(p => [p.id, p.title]));
+
+      const byType = new Map<string, typeof votes>();
+      for (const v of votes ?? []) {
+        const type = v.connection_type ?? "other";
+        if (!byType.has(type)) byType.set(type, []);
+        byType.get(type)!.push(v);
+      }
+
+      const children = [...byType.entries()]
+        .map(([type, voteList]) => ({
+          name: type.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()),
+          type,
+          children: (voteList ?? [])
+            .slice(0, maxRing2)
+            .map(v => ({
+              name: proposalMap.get(v.to_id) ?? v.to_id,
+              entityId: v.to_id,
+              entityType: "proposal",
+              value: Math.round(v.strength * 1_000_000),
+              type,
+            })),
+        }))
+        .filter(c => c.children.length > 0)
+        .sort((a, b) => b.children.length - a.children.length)
+        .slice(0, maxRing1);
+
+      return NextResponse.json({
+        name: centerName,
+        entityId,
+        party: centerEntity?.party,
+        role: centerEntity?.role_title,
+        children,
+        meta: { ring1: "vote_categories", totalConnections: votes?.length ?? 0 },
+      });
+    }
+
+    // ── MODE: connection_types (default) ───────────────────────────────────
     const { data: connections, error } = await supabase
       .from("entity_connections")
       .select("connection_type, to_id, strength, amount_cents")
@@ -185,7 +287,11 @@ export async function GET(req: NextRequest) {
 
     const allToIds = [...new Set((connections ?? []).map((c) => c.to_id))];
     const nameMap = await buildNameMap(allToIds);
-    const children = buildChildren(connections ?? [], nameMap);
+    const rawChildren = buildChildren(connections ?? [], nameMap);
+    // Apply maxRing1 / maxRing2
+    const children = rawChildren
+      .slice(0, maxRing1)
+      .map(c => ({ ...c, children: c.children.slice(0, maxRing2) }));
 
     return NextResponse.json({
       name: centerName,

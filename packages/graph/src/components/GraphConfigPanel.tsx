@@ -241,8 +241,50 @@ function SunburstSettings({ view, hooks }: { view: GraphView; hooks: UseGraphVie
 
   return (
     <>
-      <LabeledToggle label="Animate" value={true} onChange={_v => set('animate', _v)} />
-      <LabeledToggle label="Breadcrumb" value={opts?.showLabels ?? true} onChange={v => set('showLabels', v)} />
+      <LabeledSelect
+        label="Ring 1"
+        value={opts?.ring1 ?? 'connection_types'}
+        options={[
+          { value: 'connection_types',   label: 'Connection types' },
+          { value: 'donation_industries', label: 'Donor industries' },
+          { value: 'vote_categories',    label: 'Vote record'      },
+        ]}
+        onChange={v => set('ring1', v)}
+      />
+      <LabeledSelect
+        label="Ring 2"
+        value={opts?.ring2 ?? 'top_entities'}
+        options={[
+          { value: 'top_entities', label: 'Top entities' },
+          { value: 'by_amount',    label: 'By amount'    },
+          { value: 'by_count',     label: 'By count'     },
+        ]}
+        onChange={v => set('ring2', v)}
+      />
+      <LabeledSelect
+        label="Max segments"
+        value={String(opts?.maxRing1 ?? 8)}
+        options={[
+          { value: '5',  label: '5'  },
+          { value: '8',  label: '8'  },
+          { value: '12', label: '12' },
+        ]}
+        onChange={v => set('maxRing1', parseInt(v))}
+      />
+      <LabeledToggle
+        label="Show labels"
+        value={(opts?.showLabels ?? 'auto') !== 'never'}
+        onChange={v => set('showLabels', v ? 'auto' : 'never')}
+      />
+      <LabeledSelect
+        label="Shape"
+        value={opts?.shape ?? 'circle'}
+        options={[
+          { value: 'circle',  label: '○ Circle'  },
+          { value: 'octagon', label: '⬡ Octagon' },
+        ]}
+        onChange={v => set('shape', v)}
+      />
     </>
   );
 }

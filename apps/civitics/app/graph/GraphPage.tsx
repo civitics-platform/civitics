@@ -269,6 +269,8 @@ export function GraphPage({ initialCode }: GraphPageProps = {}) {
               svgRef={sunburstSvgRef}
               entityId={sunburstEntityId ?? undefined}
               entityLabel={sunburstEntityId ? primaryEntity?.name : undefined}
+              vizOptions={view.style.vizOptions.sunburst}
+              primaryGroup={primaryGroup}
             />
           </div>
 
