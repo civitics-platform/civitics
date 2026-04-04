@@ -426,7 +426,15 @@ export function GraphConfigPanel({ view, hooks, collapsed, onCollapse, onSavePre
         </TreeSection>
 
         {/* Type-specific settings */}
-        <TreeSection label="Settings" separator>
+        <TreeSection
+          label={
+            <span className="flex items-center gap-2">
+              <span>Settings</span>
+              <span className="text-[10px] text-indigo-500 font-medium capitalize">{vizType}</span>
+            </span>
+          }
+          separator
+        >
           {vizType === 'force'   && <ForceSettings   view={view} hooks={hooks} />}
           {vizType === 'chord'   && <ChordSettings   view={view} hooks={hooks} />}
           {vizType === 'treemap' && <TreemapSettings  view={view} hooks={hooks} />}

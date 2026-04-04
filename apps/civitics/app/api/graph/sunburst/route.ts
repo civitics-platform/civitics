@@ -16,6 +16,7 @@ export async function GET(req: NextRequest) {
     const groupFilterRaw = searchParams.get("groupFilter");
     const groupNameParam = searchParams.get("groupName");
     const ring1    = searchParams.get("ring1") ?? "connection_types";
+    const ring2    = searchParams.get("ring2") ?? "top_entities";
     const maxRing1 = parseInt(searchParams.get("maxRing1") ?? "8");
     const maxRing2 = parseInt(searchParams.get("maxRing2") ?? "10");
 
@@ -49,6 +50,13 @@ export async function GET(req: NextRequest) {
       return nameMap;
     }
 
+    // ── Helper: sort ring2 children by the selected mode ──────────────────
+    function sortByRing2<T extends { value?: number }>(items: T[]): T[] {
+      // by_count: future — use count field when available. For now same as by_amount.
+      // top_entities / by_amount / by_count all sort value desc until count tracking lands.
+      return [...items].sort((a, b) => (b.value ?? 0) - (a.value ?? 0));
+    }
+
     // ── Helper: build children hierarchy from connections ──────────────────
     function buildChildren(
       connections: Array<{ connection_type: string | null; to_id: string; strength: number; amount_cents: number | null }>,
@@ -65,8 +73,8 @@ export async function GET(req: NextRequest) {
         .map(([type, conns]) => ({
           name: type.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
           type,
-          children: conns
-            .map((c) => {
+          children: sortByRing2(
+            conns.map((c) => {
               const entity = nameMap.get(c.to_id);
               return {
                 name: entity?.name ?? c.to_id,
@@ -77,8 +85,7 @@ export async function GET(req: NextRequest) {
                 type,
               };
             })
-            .sort((a, b) => (b.value ?? 0) - (a.value ?? 0))
-            .slice(0, 20),
+          ).slice(0, maxRing2),
         }))
         .filter((c) => c.children.length > 0)
         .sort((a, b) => {
@@ -207,16 +214,15 @@ export async function GET(req: NextRequest) {
           .map(([type, conns]) => ({
             name: type.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
             type,
-            children: conns
-              .sort((a, b) => b.amount_cents - a.amount_cents)
-              .slice(0, maxRing2)
-              .map((c) => ({
+            children: sortByRing2(
+              conns.map((c) => ({
                 name: proposalMap.get(c.to_id) ?? c.to_id,
                 entityId: c.to_id,
                 entityType: "proposal",
                 value: c.amount_cents || Math.round(c.strength * 1_000_000),
                 type,
-              })),
+              }))
+            ).slice(0, maxRing2),
           }))
           .filter((c) => c.children.length > 0)
           .sort((a, b) => b.children.length - a.children.length)
@@ -304,8 +310,7 @@ export async function GET(req: NextRequest) {
         .map(([sector, donors]) => ({
           name: sector,
           type: "donation",
-          children: donors
-            .sort((a, b) => b.value - a.value)
+          children: sortByRing2(donors)
             .slice(0, maxRing2)
             .map(d => ({ name: d.name, value: d.value, type: "donation" })),
         }))
@@ -354,15 +359,15 @@ export async function GET(req: NextRequest) {
         .map(([type, voteList]) => ({
           name: type.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()),
           type,
-          children: (voteList ?? [])
-            .slice(0, maxRing2)
-            .map(v => ({
+          children: sortByRing2(
+            (voteList ?? []).map(v => ({
               name: proposalMap.get(v.to_id) ?? v.to_id,
               entityId: v.to_id,
               entityType: "proposal",
               value: Math.round(v.strength * 1_000_000),
               type,
-            })),
+            }))
+          ).slice(0, maxRing2),
         }))
         .filter(c => c.children.length > 0)
         .sort((a, b) => b.children.length - a.children.length)

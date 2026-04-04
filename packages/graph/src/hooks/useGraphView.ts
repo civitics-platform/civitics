@@ -164,6 +164,16 @@ export function useGraphView(initialView?: Partial<GraphView>) {
         } as GraphView['connections'],
       })),
 
+    /** Set a scalar option on the connections map (e.g. filterProcedural). */
+    setConnectionOption: (key: string, value: unknown) =>
+      setView(v => markDirty({
+        ...v,
+        connections: {
+          ...v.connections,
+          [key]: value,
+        } as GraphView['connections'],
+      })),
+
     /** Replace the full settings object for a connection type. Used by ConnectionStyleRow. */
     setConnection: (type: string, settings: GraphView['connections'][string]) =>
       setView(v => markDirty({

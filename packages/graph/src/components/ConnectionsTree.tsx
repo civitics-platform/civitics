@@ -59,6 +59,20 @@ export function ConnectionsTree({ connections, vizType, hooks }: ConnectionsTree
         {enabledTypes.length === 0 && (
           <div className="px-3 py-2 text-xs text-gray-400">No active connection types</div>
         )}
+
+        {/* Procedural vote filter — groundwork for Phase 2 edge filtering */}
+        <div className="px-3 py-1.5 flex items-center justify-between">
+          <span className="text-[10px] text-gray-400 pl-2">Hide procedural</span>
+          <label className="relative inline-flex items-center cursor-pointer">
+            <input
+              type="checkbox"
+              className="sr-only peer"
+              checked={(connections as Record<string, unknown>).filterProcedural as boolean ?? false}
+              onChange={e => hooks.setConnectionOption('filterProcedural', e.target.checked)}
+            />
+            <div className="w-7 h-3.5 bg-gray-200 rounded-full peer peer-checked:bg-indigo-500 after:content-[''] after:absolute after:top-0 after:left-0 after:bg-white after:rounded-full after:h-3.5 after:w-3.5 after:transition-all after:border after:border-gray-200 peer-checked:after:translate-x-3.5" />
+          </label>
+        </div>
       </TreeSection>
 
       {/* Disabled types — can be added */}
