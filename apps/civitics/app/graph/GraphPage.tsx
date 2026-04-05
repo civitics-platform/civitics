@@ -36,7 +36,7 @@ export function GraphPage({ initialCode }: GraphPageProps = {}) {
   const { view }   = graphHooks;
 
   // ── Graph data (nodes + edges for all focused entities) ───────────────────
-  const { nodes, allEdges, loadingEntityId } = useGraphData(
+  const { nodes, allEdges, loadingEntityId, graphMeta } = useGraphData(
     view.focus,
     view.connections
   );
@@ -185,6 +185,7 @@ export function GraphPage({ initialCode }: GraphPageProps = {}) {
           hooks={graphHooks}
           collapsed={leftCollapsed}
           onCollapse={() => setLeftCollapsed(p => !p)}
+          graphMeta={graphMeta}
         />
 
         {/* CANVAS */}
@@ -312,6 +313,7 @@ export function GraphPage({ initialCode }: GraphPageProps = {}) {
           collapsed={rightCollapsed}
           onCollapse={() => setRightCollapsed(p => !p)}
           onSavePreset={handleSavePreset}
+          graphMeta={graphMeta}
         />
 
       </div>

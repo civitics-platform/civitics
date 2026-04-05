@@ -11,6 +11,7 @@
 
 import type { GraphView, VizType } from '../types';
 import type { UseGraphViewReturn } from '../hooks/useGraphView';
+import type { GraphMeta } from '../hooks/useGraphData';
 import { VIZ_REGISTRY } from '../visualizations/registry';
 import { BUILT_IN_PRESETS } from '../presets';
 import { TreeNode, TreeSection } from './TreeNode';
@@ -21,6 +22,8 @@ export interface GraphConfigPanelProps {
   collapsed: boolean;
   onCollapse: () => void;
   onSavePreset: () => void;
+  /** Optional: derived from loaded graph data. Used to self-configure visible options. */
+  graphMeta?: GraphMeta;
 }
 
 // Emoji for each preset
@@ -238,20 +241,49 @@ function TreemapSettings({ view, hooks }: { view: GraphView; hooks: UseGraphView
 
 // ── Sunburst settings ──────────────────────────────────────────────────────────
 
-function SunburstSettings({ view, hooks }: { view: GraphView; hooks: UseGraphViewReturn }) {
+function SunburstSettings({
+  view, hooks, graphMeta,
+}: {
+  view: GraphView;
+  hooks: UseGraphViewReturn;
+  graphMeta?: GraphMeta;
+}) {
   const opts = view.style.vizOptions.sunburst;
   function set(key: string, value: unknown) { hooks.setVizOption('sunburst', key, value); }
+
+  // Build ring1 options based on available data.
+  // Default true (show option) when graphMeta not yet available.
+  const ring1Options = [
+    {
+      value: 'connection_types',
+      label: 'All connections',
+      available: true, // always available
+    },
+    {
+      value: 'donation_industries',
+      label: 'Donor industries',
+      available: graphMeta?.hasDonations ?? true,
+    },
+    {
+      value: 'vote_categories',
+      label: 'Vote record',
+      // Hide for PAC groups (they don't vote). Show if votes exist.
+      available: !(graphMeta?.isPacFocus ?? false) && (graphMeta?.hasVotes ?? true),
+    },
+  ].filter(o => o.available);
+
+  // If the current ring1 selection is no longer in the available list, reset to default.
+  const ring1 = opts?.ring1 ?? 'connection_types';
+  const validRing1 = ring1Options.some(o => o.value === ring1)
+    ? ring1
+    : (ring1Options[0]?.value ?? 'connection_types');
 
   return (
     <>
       <LabeledSelect
         label="Ring 1"
-        value={opts?.ring1 ?? 'connection_types'}
-        options={[
-          { value: 'connection_types',   label: 'Connection types' },
-          { value: 'donation_industries', label: 'Donor industries' },
-          { value: 'vote_categories',    label: 'Vote record'      },
-        ]}
+        value={validRing1}
+        options={ring1Options}
         onChange={v => set('ring1', v)}
       />
       <LabeledSelect
@@ -259,13 +291,13 @@ function SunburstSettings({ view, hooks }: { view: GraphView; hooks: UseGraphVie
         value={opts?.ring2 ?? 'top_entities'}
         options={[
           { value: 'top_entities', label: 'Top entities' },
-          { value: 'by_amount',    label: 'By amount'    },
+          { value: 'by_amount',    label: 'By $ amount'  },
           { value: 'by_count',     label: 'By count'     },
         ]}
         onChange={v => set('ring2', v)}
       />
       <LabeledSelect
-        label="Max segments"
+        label="Max items"
         value={String(opts?.maxRing1 ?? 8)}
         options={[
           { value: '5',  label: '5'  },
@@ -275,7 +307,7 @@ function SunburstSettings({ view, hooks }: { view: GraphView; hooks: UseGraphVie
         onChange={v => set('maxRing1', parseInt(v))}
       />
       <LabeledToggle
-        label="Show labels"
+        label="Labels"
         value={(opts?.showLabels ?? 'auto') !== 'never'}
         onChange={v => set('showLabels', v ? 'auto' : 'never')}
       />
@@ -294,15 +326,21 @@ function SunburstSettings({ view, hooks }: { view: GraphView; hooks: UseGraphVie
 
 // ── Main panel ─────────────────────────────────────────────────────────────────
 
-export function GraphConfigPanel({ view, hooks, collapsed, onCollapse, onSavePreset }: GraphConfigPanelProps) {
+export function GraphConfigPanel({ view, hooks, collapsed, onCollapse, onSavePreset, graphMeta }: GraphConfigPanelProps) {
   const vizType       = view.style.vizType;
   const activePreset  = view.meta?.presetId ?? null;
   const isDirty       = view.meta?.isDirty  ?? false;
 
-  // Only show presets that match the active viz type (or 'any' which works everywhere)
-  const relevantPresets = BUILT_IN_PRESETS.filter(
-    p => p.style.vizType === vizType || (p.style.vizType as string) === 'any'
-  );
+  // Only show presets that match the active viz type (or 'any') and have relevant data.
+  const relevantPresets = BUILT_IN_PRESETS.filter(p => {
+    // Must match viz type
+    if (p.style.vizType !== vizType && (p.style.vizType as string) !== 'any') return false;
+    // "Follow the Money" needs donation data
+    if (p.meta.presetId === 'follow-the-money' && graphMeta && !graphMeta.hasDonations) return false;
+    // "Votes & Bills" needs vote data
+    if (p.meta.presetId === 'votes-and-bills' && graphMeta && !graphMeta.hasVotes) return false;
+    return true;
+  });
 
   // Collapsed: 40px icon strip
   if (collapsed) {
@@ -435,10 +473,10 @@ export function GraphConfigPanel({ view, hooks, collapsed, onCollapse, onSavePre
           }
           separator
         >
-          {vizType === 'force'   && <ForceSettings   view={view} hooks={hooks} />}
-          {vizType === 'chord'   && <ChordSettings   view={view} hooks={hooks} />}
-          {vizType === 'treemap' && <TreemapSettings  view={view} hooks={hooks} />}
-          {vizType === 'sunburst'&& <SunburstSettings view={view} hooks={hooks} />}
+          {vizType === 'force'    && <ForceSettings    view={view} hooks={hooks} />}
+          {vizType === 'chord'    && <ChordSettings    view={view} hooks={hooks} />}
+          {vizType === 'treemap'  && <TreemapSettings  view={view} hooks={hooks} />}
+          {vizType === 'sunburst' && <SunburstSettings view={view} hooks={hooks} graphMeta={graphMeta} />}
         </TreeSection>
 
         {/* Display section removed — per-viz settings now live inside each viz's Settings section */}

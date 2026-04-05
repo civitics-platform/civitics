@@ -12,6 +12,7 @@
 import { useState } from 'react';
 import type { GraphView } from '../types';
 import type { UseGraphViewReturn } from '../hooks/useGraphView';
+import type { GraphMeta } from '../hooks/useGraphData';
 import { FocusTree } from './FocusTree';
 import { ConnectionsTree } from './ConnectionsTree';
 import { AlignmentPanel } from './AlignmentPanel';
@@ -21,6 +22,7 @@ export interface DataExplorerPanelProps {
   hooks: UseGraphViewReturn;
   collapsed: boolean;
   onCollapse: () => void;
+  graphMeta?: GraphMeta;
 }
 
 type Section = 'focus' | 'connections';
@@ -30,7 +32,7 @@ const SECTION_ICONS: Record<Section, string> = {
   connections: '🔗',
 };
 
-export function DataExplorerPanel({ view, hooks, collapsed, onCollapse }: DataExplorerPanelProps) {
+export function DataExplorerPanel({ view, hooks, collapsed, onCollapse, graphMeta }: DataExplorerPanelProps) {
   const [savedAlignment] = useState(() => {
     try {
       const saved = localStorage.getItem('civic-alignment');
@@ -88,6 +90,7 @@ export function DataExplorerPanel({ view, hooks, collapsed, onCollapse }: DataEx
           connections={view.connections}
           vizType={view.style.vizType}
           hooks={hooks}
+          graphMeta={graphMeta}
         />
         <AlignmentPanel
           initialIssues={savedAlignment}

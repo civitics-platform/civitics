@@ -54,6 +54,7 @@ export type { VizMode, VizRegistryEntry } from "./visualizations/registry";
 export { useGraphView } from "./hooks/useGraphView";
 export type { UseGraphViewReturn } from "./hooks/useGraphView";
 export { useGraphData } from "./hooks/useGraphData";
+export type { GraphMeta } from "./hooks/useGraphData";
 export { useEntitySearch } from "./hooks/useEntitySearch";
 
 // ── Visualizations ──────────────────────────────────────────────────────────

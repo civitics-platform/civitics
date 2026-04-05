@@ -9,6 +9,7 @@
 
 import type { GraphView, VizType } from '../types';
 import type { UseGraphViewReturn } from '../hooks/useGraphView';
+import type { GraphMeta } from '../hooks/useGraphData';
 import { CONNECTION_TYPE_REGISTRY } from '../connections';
 import { TreeNode, TreeSection } from './TreeNode';
 import { ConnectionStyleRow } from './ConnectionStyleRow';
@@ -17,14 +18,27 @@ export interface ConnectionsTreeProps {
   connections: GraphView['connections'];
   vizType: VizType;
   hooks: UseGraphViewReturn;
+  graphMeta?: GraphMeta;
 }
 
 // Viz types that only support donations
 const DONATION_ONLY_VIZ = new Set<VizType>(['chord', 'treemap']);
 
-export function ConnectionsTree({ connections, vizType, hooks }: ConnectionsTreeProps) {
-  const enabledTypes  = Object.keys(CONNECTION_TYPE_REGISTRY).filter(t => connections[t]?.enabled);
-  const disabledTypes = Object.keys(CONNECTION_TYPE_REGISTRY).filter(t => !connections[t]?.enabled);
+export function ConnectionsTree({ connections, vizType, hooks, graphMeta }: ConnectionsTreeProps) {
+  // All known types
+  const allTypes = Object.keys(CONNECTION_TYPE_REGISTRY);
+
+  // When graphMeta is available, only show a type if it has data OR is currently enabled.
+  // When graphMeta is absent (data not yet loaded), show all types.
+  const visibleTypes = graphMeta
+    ? allTypes.filter(t =>
+        (graphMeta.connectionTypes[t]?.count ?? 0) > 0 ||
+        connections[t]?.enabled
+      )
+    : allTypes;
+
+  const enabledTypes  = visibleTypes.filter(t =>  connections[t]?.enabled);
+  const disabledTypes = visibleTypes.filter(t => !connections[t]?.enabled);
 
   const donationOnlyViz = DONATION_ONLY_VIZ.has(vizType);
 
@@ -53,6 +67,7 @@ export function ConnectionsTree({ connections, vizType, hooks }: ConnectionsTree
               def={def}
               settings={settings}
               onChange={(t, s) => hooks.setConnection(t, s)}
+              count={graphMeta?.connectionTypes[type]?.count}
             />
           );
         })}
@@ -84,12 +99,20 @@ export function ConnectionsTree({ connections, vizType, hooks }: ConnectionsTree
           depth={1}
         >
           {disabledTypes.map(type => {
-            const def = CONNECTION_TYPE_REGISTRY[type];
+            const def   = CONNECTION_TYPE_REGISTRY[type];
+            const count = graphMeta?.connectionTypes[type]?.count;
             if (!def) return null;
             return (
               <TreeNode
                 key={type}
-                label={def.label}
+                label={
+                  <span className="flex items-center gap-1 flex-1 min-w-0">
+                    <span className="truncate">{def.label}</span>
+                    {count != null && count > 0 && (
+                      <span className="text-[9px] text-gray-400 ml-auto shrink-0">{count}</span>
+                    )}
+                  </span>
+                }
                 variant="connection"
                 connectionColor={def.color}
                 collapsible={false}

@@ -14,6 +14,20 @@ import type { FocusEntity, FocusGroup } from '../types';
 import { isFocusEntity, isFocusGroup } from '../types';
 import type { GraphNode, GraphEdge } from '../types';
 
+export interface GraphMeta {
+  /** Connection types present with counts and total amounts */
+  connectionTypes: Record<string, { count: number; totalAmount: number }>;
+  /** Entity types present in the graph */
+  entityTypes: Set<string>;
+  hasVotes: boolean;
+  hasDonations: boolean;
+  hasOversight: boolean;
+  hasNominations: boolean;
+  hasGroups: boolean;
+  /** Is any focused entity a PAC group? */
+  isPacFocus: boolean;
+}
+
 export function useGraphData(
   focus: GraphView['focus'],
   connections: GraphView['connections']
@@ -191,12 +205,56 @@ export function useGraphData(
     [edges, connections]
   );
 
+  // Derive metadata from loaded edges and nodes
+  const graphMeta = useMemo((): GraphMeta => {
+    const connectionTypes: Record<string, { count: number; totalAmount: number }> = {};
+
+    for (const edge of edges) {
+      const t = edge.connectionType;
+      if (!connectionTypes[t]) {
+        connectionTypes[t] = { count: 0, totalAmount: 0 };
+      }
+      connectionTypes[t].count++;
+      connectionTypes[t].totalAmount += edge.amountUsd ?? 0;
+    }
+
+    const entityTypes = new Set(nodes.map(n => n.type));
+
+    const voteTypes = new Set([
+      'vote_yes', 'vote_no', 'vote_abstain',
+      'nomination_vote_yes', 'nomination_vote_no',
+    ]);
+
+    const hasVotes      = Object.keys(connectionTypes).some(t => voteTypes.has(t));
+    const hasDonations  = 'donation' in connectionTypes;
+    const hasOversight  = 'oversight' in connectionTypes;
+    const hasNominations =
+      'nomination_vote_yes' in connectionTypes ||
+      'nomination_vote_no'  in connectionTypes;
+    const hasGroups = nodes.some(n => n.type === 'group');
+    const isPacFocus = focus.entities.some(
+      e => isFocusGroup(e) && e.filter.entity_type === 'pac'
+    );
+
+    return {
+      connectionTypes,
+      entityTypes,
+      hasVotes,
+      hasDonations,
+      hasOversight,
+      hasNominations,
+      hasGroups,
+      isPacFocus,
+    };
+  }, [edges, nodes, focus.entities]);
+
   return {
     nodes,
     edges: visibleEdges,
     allEdges: edges,
     loading,
     loadingEntityId,
+    graphMeta,
     refetch: () => {
       fetchedIds.current.clear();
       setNodes([]);

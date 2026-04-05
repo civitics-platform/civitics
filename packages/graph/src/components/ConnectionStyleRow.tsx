@@ -20,9 +20,10 @@ export interface ConnectionStyleRowProps {
   def: ConnectionTypeDefinition;
   settings: ConnectionTypeSettings;
   onChange: (type: string, settings: ConnectionTypeSettings) => void;
+  count?: number;
 }
 
-export function ConnectionStyleRow({ type, def, settings, onChange }: ConnectionStyleRowProps) {
+export function ConnectionStyleRow({ type, def, settings, onChange, count }: ConnectionStyleRowProps) {
   const [open, setOpen] = useState(false);
 
   function set<K extends keyof ConnectionTypeSettings>(key: K, value: ConnectionTypeSettings[K]) {
@@ -53,6 +54,11 @@ export function ConnectionStyleRow({ type, def, settings, onChange }: Connection
         {/* Icon + label */}
         <span className="text-xs shrink-0">{def.icon}</span>
         <span className="flex-1 text-xs text-gray-700 truncate">{def.label}</span>
+
+        {/* Count badge */}
+        {count != null && count > 0 && (
+          <span className="text-[9px] text-gray-400 shrink-0">{count}</span>
+        )}
 
         {/* Expand arrow */}
         <svg
