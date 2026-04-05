@@ -52,9 +52,16 @@ export async function GET(req: NextRequest) {
 
     // ── Helper: sort ring2 children by the selected mode ──────────────────
     function sortByRing2<T extends { value?: number }>(items: T[]): T[] {
-      // by_count: future — use count field when available. For now same as by_amount.
-      // top_entities / by_amount / by_count all sort value desc until count tracking lands.
-      return [...items].sort((a, b) => (b.value ?? 0) - (a.value ?? 0));
+      switch (ring2) {
+        case 'by_amount':
+          return [...items].sort((a, b) => (b.value ?? 0) - (a.value ?? 0));
+        case 'by_count':
+          // Future: sort by count field when available; for now same as by_amount
+          return [...items].sort((a, b) => (b.value ?? 0) - (a.value ?? 0));
+        case 'top_entities':
+        default:
+          return [...items].sort((a, b) => (b.value ?? 0) - (a.value ?? 0));
+      }
     }
 
     // ── Helper: build children hierarchy from connections ──────────────────
