@@ -52,6 +52,8 @@
     "@civitics/db": "workspace:*",
     "csv-parse": "^5.5.0",
     "fast-xml-parser": "^4.5.0",
+    "hyparquet": "^1.25.6",
+    "hyparquet-compressors": "^1.1.1",
     "pg": "^8.13.0",
     "shapefile": "^0.6.6",
     "unzipper": "^0.12.3"
