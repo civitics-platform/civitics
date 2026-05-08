@@ -281,3 +281,4 @@
 2026-05-06 | FIX-215 | 76fa820a | local-only | feat(pipelines): add OPM PLUM Book pipeline for full political appointment coverage
 2026-05-06 | FIX-211 | 4d4e8544 | local-only | feat(agencies): show PLUM Book data freshness in leadership section
 2026-05-06 | FIX-215 | 44faef89 | local+prod | chore(pipelines): verify FIX-215 against prod
+2026-05-07 | FIX-214 | c761ea5e | local+prod | feat(pipelines): OPM FTE pipeline — switch to HuggingFace parquet source
