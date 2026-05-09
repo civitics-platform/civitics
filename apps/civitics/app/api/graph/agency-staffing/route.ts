@@ -55,34 +55,68 @@ export async function GET(req: NextRequest) {
 
   const agencyIds = agencies.map((a: { id: string }) => a.id);
 
-  // Appointment counts via entity_connections.
-  const { data: appts } = await supabase
-    .from("entity_connections")
-    .select("to_id")
-    .eq("connection_type", "appointment")
-    .eq("to_type", "agency")
-    .in("to_id", agencyIds);
-
+  // FIX-220: paginate appointment + spending queries in batches of 100
+  // agencyIds. With 98 federal agencies, the previous single-shot
+  // .in("to_id", agencyIds) hit PostgREST URL length limits and silently
+  // returned partial/empty results — the agencies page rendered DOJ with
+  // appointmentCount: 0 even though Bondi's edge exists.
+  const BATCH = 100;
+  const PAGE = 1000;
   const apptCountByAgency = new Map<string, number>();
-  for (const r of (appts ?? []) as { to_id: string }[]) {
-    apptCountByAgency.set(r.to_id, (apptCountByAgency.get(r.to_id) ?? 0) + 1);
-  }
-
-  // Contract + grant totals via per-agency aggregate. Computed inline since
-  // financial_relationships doesn't have a per-agency rollup column on the
-  // FROM side — only financial_entities has totals on the TO side.
-  const { data: spendRows } = await supabase
-    .from("financial_relationships")
-    .select("from_id, amount_cents, relationship_type")
-    .eq("from_type", "agency")
-    .in("from_id", agencyIds)
-    .in("relationship_type", ["contract", "grant"]);
-
   const contractByAgency = new Map<string, number>();
   const grantByAgency    = new Map<string, number>();
-  for (const r of (spendRows ?? []) as { from_id: string; amount_cents: number | null; relationship_type: string }[]) {
-    const map = r.relationship_type === "contract" ? contractByAgency : grantByAgency;
-    map.set(r.from_id, (map.get(r.from_id) ?? 0) + (r.amount_cents ?? 0));
+
+  for (let i = 0; i < agencyIds.length; i += BATCH) {
+    const batch = agencyIds.slice(i, i + BATCH);
+
+    // Appointment counts. Paginate in case a single agency has >1000 leaders.
+    let from = 0;
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const { data: appts, error: apptErr } = await supabase
+        .from("entity_connections")
+        .select("to_id")
+        .eq("connection_type", "appointment")
+        .eq("to_type", "agency")
+        .in("to_id", batch)
+        .range(from, from + PAGE - 1);
+      if (apptErr) {
+        console.error("[agency-staffing] appts error:", apptErr.message);
+        break;
+      }
+      if (!appts || appts.length === 0) break;
+      for (const r of appts as { to_id: string }[]) {
+        apptCountByAgency.set(r.to_id, (apptCountByAgency.get(r.to_id) ?? 0) + 1);
+      }
+      if (appts.length < PAGE) break;
+      from += PAGE;
+      if (from > 50_000) break; // safety
+    }
+
+    // Contract + grant totals.
+    let sFrom = 0;
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const { data: spendRows, error: spendErr } = await supabase
+        .from("financial_relationships")
+        .select("from_id, amount_cents, relationship_type")
+        .eq("from_type", "agency")
+        .in("from_id", batch)
+        .in("relationship_type", ["contract", "grant"])
+        .range(sFrom, sFrom + PAGE - 1);
+      if (spendErr) {
+        console.error("[agency-staffing] spend error:", spendErr.message);
+        break;
+      }
+      if (!spendRows || spendRows.length === 0) break;
+      for (const r of spendRows as { from_id: string; amount_cents: number | null; relationship_type: string }[]) {
+        const map = r.relationship_type === "contract" ? contractByAgency : grantByAgency;
+        map.set(r.from_id, (map.get(r.from_id) ?? 0) + (r.amount_cents ?? 0));
+      }
+      if (spendRows.length < PAGE) break;
+      sFrom += PAGE;
+      if (sFrom > 200_000) break;
+    }
   }
 
   const rows: ResponseRow[] = agencies.map((a: {
