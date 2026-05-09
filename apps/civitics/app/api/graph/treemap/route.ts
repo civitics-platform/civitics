@@ -135,9 +135,15 @@ export async function GET(request: Request) {
   // FIX-124: select source_ids + jurisdictions.short_name so we can derive
   // state with the same fallback chain the old RPC used. Pure metadata lookups
   // missed every federal Senator/Rep before the state_abbr backfill.
-  let officialsQuery = supabase
+  // FIX-219: select total_received_cents (May 8 migration) so we can
+  // skip the 1000-row-capped per-batch financial_relationships scan
+  // unless an industry_filter is active. Generated DB types may lag the
+  // migration on the dev box; cast through unknown to keep the strict
+  // build green without regenerating types.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let officialsQuery = (supabase as any)
     .from("officials")
-    .select("id, full_name, party, role_title, metadata, source_ids, jurisdictions:jurisdiction_id(short_name)")
+    .select("id, full_name, party, role_title, metadata, source_ids, total_received_cents, jurisdictions:jurisdiction_id(short_name)")
     .eq("is_active", true);
 
   if (chamber === "senate") officialsQuery = officialsQuery.eq("role_title", "Senator");
@@ -184,6 +190,7 @@ export async function GET(request: Request) {
     party: string | null;
     role_title: string | null;
     state: string;
+    total_received_cents: number;
   }>();
   for (const o of officials ?? []) {
     // jurisdictions:jurisdiction_id(short_name) collapses to a single object
@@ -199,6 +206,13 @@ export async function GET(request: Request) {
         o.source_ids as Record<string, unknown> | null,
         jur?.short_name ?? null,
       ),
+      // FIX-219: read the denormalized total instead of re-aggregating
+      // financial_relationships per-batch. The previous per-batch query
+      // capped at 1000 rows (PostgREST default) and silently dropped
+      // donations for officials whose rows didn't make the cut — e.g.
+      // Senate Democrats showed $0 for everyone except Maria Cantwell
+      // because her rows happened to be in the first 1000 returned.
+      total_received_cents: Number(o.total_received_cents ?? 0),
     });
   }
 
@@ -218,49 +232,86 @@ export async function GET(request: Request) {
   const votesByOfficial = new Map<string, number>();
 
   const officialIds = [...officialById.keys()];
-  if (officialIds.length > 0) {
+
+  // FIX-219: default donations source is the denormalized
+  // officials.total_received_cents (refreshed by
+  // rebuild_official_donation_totals_full()). Only run a real
+  // financial_relationships scan when an industry_filter is set, since
+  // that requires donor-side filtering not encoded in the precomputed
+  // total. The scan uses range() pagination to defeat the 1000-row
+  // PostgREST default that produced the original Cantwell-only result.
+  if (!filterPacIds) {
+    for (const [id, o] of officialById) {
+      totalByOfficial.set(id, o.total_received_cents);
+    }
+  } else if (officialIds.length > 0) {
+    const PAGE = 1000;
     const BATCH = 200;
     for (let i = 0; i < officialIds.length; i += BATCH) {
       const batch = officialIds.slice(i, i + BATCH);
-      // FIX-185: when industry_filter is set, restrict donor side to PACs
-      // tagged with that industry — turns "donations received" into
-      // "donations from {industry} PACs received" without changing cohort.
-      let donationsQuery = supabase
-        .from("financial_relationships")
-        .select("to_id, amount_cents")
-        .eq("relationship_type", "donation")
-        .eq("to_type", "official")
-        .in("to_id", batch);
-      if (filterPacIds) donationsQuery = donationsQuery.in("from_id", filterPacIds);
-
-      const [donationsRes, connFromRes, connToRes] = await Promise.all([
-        donationsQuery,
-        supabase
-          .from("entity_connections")
-          .select("from_id, connection_type")
-          .eq("from_type", "official")
-          .in("from_id", batch),
-        supabase
-          .from("entity_connections")
-          .select("to_id, connection_type")
+      let from = 0;
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        const { data } = await supabase
+          .from("financial_relationships")
+          .select("to_id, amount_cents")
+          .eq("relationship_type", "donation")
           .eq("to_type", "official")
-          .in("to_id", batch),
+          .in("to_id", batch)
+          .in("from_id", filterPacIds)
+          .range(from, from + PAGE - 1);
+        if (!data || data.length === 0) break;
+        for (const d of data) {
+          totalByOfficial.set(d.to_id, (totalByOfficial.get(d.to_id) ?? 0) + (d.amount_cents ?? 0));
+        }
+        if (data.length < PAGE) break;
+        from += PAGE;
+        if (from > 200_000) break; // safety guard
+      }
+    }
+  }
+
+  // Connection counts and vote counts — paginate the same way.
+  if (officialIds.length > 0) {
+    const PAGE = 1000;
+    const BATCH = 200;
+    for (let i = 0; i < officialIds.length; i += BATCH) {
+      const batch = officialIds.slice(i, i + BATCH);
+
+      const accumulate = async (
+        column: "from_id" | "to_id",
+        typeColumn: "from_type" | "to_type",
+        target: Map<string, number>,
+        voteTarget: Map<string, number>,
+      ) => {
+        let from = 0;
+        // eslint-disable-next-line no-constant-condition
+        while (true) {
+          const { data } = await supabase
+            .from("entity_connections")
+            .select(`${column}, connection_type`)
+            .eq(typeColumn, "official")
+            .in(column, batch)
+            .range(from, from + PAGE - 1);
+          if (!data || data.length === 0) break;
+          for (const r of data as Array<Record<string, string>>) {
+            const id = r[column];
+            if (!id) continue;
+            target.set(id, (target.get(id) ?? 0) + 1);
+            if (VOTE_CONN_TYPES.has(r.connection_type as string)) {
+              voteTarget.set(id, (voteTarget.get(id) ?? 0) + 1);
+            }
+          }
+          if (data.length < PAGE) break;
+          from += PAGE;
+          if (from > 200_000) break;
+        }
+      };
+
+      await Promise.all([
+        accumulate("from_id", "from_type", connByOfficial, votesByOfficial),
+        accumulate("to_id",   "to_type",   connByOfficial, votesByOfficial),
       ]);
-      for (const d of donationsRes.data ?? []) {
-        totalByOfficial.set(d.to_id, (totalByOfficial.get(d.to_id) ?? 0) + (d.amount_cents ?? 0));
-      }
-      for (const r of connFromRes.data ?? []) {
-        connByOfficial.set(r.from_id, (connByOfficial.get(r.from_id) ?? 0) + 1);
-        if (VOTE_CONN_TYPES.has(r.connection_type)) {
-          votesByOfficial.set(r.from_id, (votesByOfficial.get(r.from_id) ?? 0) + 1);
-        }
-      }
-      for (const r of connToRes.data ?? []) {
-        connByOfficial.set(r.to_id, (connByOfficial.get(r.to_id) ?? 0) + 1);
-        if (VOTE_CONN_TYPES.has(r.connection_type)) {
-          votesByOfficial.set(r.to_id, (votesByOfficial.get(r.to_id) ?? 0) + 1);
-        }
-      }
     }
   }
 
