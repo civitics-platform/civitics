@@ -108,18 +108,26 @@ export async function GET(req: NextRequest) {
   if (districts.length === 0) return NextResponse.json([]);
 
   const districtIds = districts.map(d => d.id);
+  const districtIdSet = new Set(districtIds);
 
-  // Officials per district.
-  const { data: officials } = await supabase
+  // Officials per district. FIX-217: link_officials_to_districts() writes
+  // the district id to officials.metadata->>'district_jurisdiction_id',
+  // not to the officials.jurisdiction_id column (which still points at the
+  // statewide jurisdiction for state legislators). So we query metadata
+  // and bucket client-side rather than via .in() on jurisdiction_id, which
+  // returned 0 matches.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: officials } = await (supabase as any)
     .from("officials")
-    .select("id, jurisdiction_id, party")
-    .in("jurisdiction_id", districtIds);
+    .select("id, party, metadata")
+    .not("metadata->>district_jurisdiction_id", "is", null)
+    .limit(20000);
   const officialsByDistrict = new Map<string, OfficialRow[]>();
-  for (const o of (officials ?? []) as OfficialRow[]) {
-    if (!o.jurisdiction_id) continue;
-    if (!officialsByDistrict.has(o.jurisdiction_id))
-      officialsByDistrict.set(o.jurisdiction_id, []);
-    officialsByDistrict.get(o.jurisdiction_id)!.push(o);
+  for (const o of (officials ?? []) as Array<{ id: string; party: string | null; metadata: { district_jurisdiction_id?: string } | null }>) {
+    const jid = o.metadata?.district_jurisdiction_id;
+    if (!jid || !districtIdSet.has(jid)) continue;
+    if (!officialsByDistrict.has(jid)) officialsByDistrict.set(jid, []);
+    officialsByDistrict.get(jid)!.push({ id: o.id, jurisdiction_id: jid, party: o.party });
   }
 
   // For party_cohesion: pull a sample of recent votes per official.

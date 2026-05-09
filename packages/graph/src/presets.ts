@@ -748,10 +748,14 @@ export const VOTING_DIVERGENCE_MAP: GraphViewPreset = {
   connections: buildConnections(['vote_yes', 'vote_no']),
   style: {
     vizType: 'choropleth',
+    // FIX-217: TIGER (FIX-163) only ships state legislative districts; the
+    // congressional band has no boundary geometry on prod. Default to
+    // SLD-U so the choropleth has shapes to render. Congressional support
+    // can be added once a federal-district shapefile pipeline lands.
     vizOptions: {
       choropleth: {
         measure: 'party_cohesion',
-        bandLevel: 'congressional',
+        bandLevel: 'sld_u',
         colorScale: 'diverging',
       },
     },
