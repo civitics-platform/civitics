@@ -630,6 +630,176 @@ export const GROUP_OVERVIEW: GraphViewPreset = {
   },
 }
 
+// ── FIX-218 — Tier 1 + Tier 2 New Presets ──────────────────────────────────────
+
+export const FUNDRAISING_BY_DONOR_TYPE: GraphViewPreset = {
+  focus: { entities: [], scope: 'all', depth: 1, includeProcedural: false },
+  connections: DEFAULT_CONNECTION_STATE,
+  style: {
+    vizType: 'treemap',
+    vizOptions: {
+      treemap: {
+        dataMode: 'officials',
+        groupBy: 'donor_type',
+        sizeBy: 'donation_total',
+        colorBy: 'donor_type',
+        entityMode: true,
+      },
+    },
+  },
+  meta: {
+    name: 'Fundraising by Donor Type',
+    isPreset: true,
+    presetId: 'treemap-fundraising-donor-type',
+    isDirty: false,
+    applicableEntityTypes: ['official'],
+    intent: 'fundraising-by-donor-type',
+  },
+}
+
+export const TREEMAP_INDIVIDUALS_BY_STATE: GraphViewPreset = {
+  focus: { entities: [], scope: 'all', depth: 1, includeProcedural: false },
+  connections: DEFAULT_CONNECTION_STATE,
+  style: {
+    vizType: 'treemap',
+    vizOptions: {
+      treemap: {
+        dataMode: 'individuals_by_state',
+        groupBy: 'state',
+        sizeBy: 'donation_total',
+        colorBy: 'party',
+      },
+    },
+  },
+  meta: {
+    name: 'Top Individual Donors by State',
+    isPreset: true,
+    presetId: 'treemap-individuals-by-state',
+    isDirty: false,
+    applicableEntityTypes: ['official', 'pac', 'financial', 'unfocused'],
+    intent: 'individuals-by-state',
+  },
+}
+
+export const SPENDING_SANKEY_BY_SECTOR: GraphViewPreset = {
+  focus: { entities: [], scope: 'federal', depth: 1, includeProcedural: false },
+  connections: buildConnections(['contract_award']),
+  style: {
+    vizType: 'sankey',
+    vizOptions: { sankey: { levels: 4, topN: 20, minFlowUsd: 1_000_000, showLabels: true } },
+  },
+  meta: {
+    name: 'Federal Spending Flows',
+    isPreset: true,
+    presetId: 'sankey-spending-by-sector',
+    isDirty: false,
+    applicableEntityTypes: ['agency', 'financial', 'unfocused'],
+    intent: 'agency-spending-flows',
+  },
+}
+
+export const AGENCIES_BY_STAFFING: GraphViewPreset = {
+  focus: { entities: [], scope: 'federal', depth: 1, includeProcedural: false },
+  connections: DEFAULT_CONNECTION_STATE,
+  style: {
+    vizType: 'scatter',
+    vizOptions: {
+      scatter: {
+        xAxis: 'fte',
+        yAxis: 'appointment_count',
+        sizeBy: 'fte',
+        colorBy: 'agency_type',
+        showLabels: true,
+        logXAxis: true,
+      },
+    },
+  },
+  meta: {
+    name: 'Agencies by Staffing',
+    isPreset: true,
+    presetId: 'scatter-agency-staffing',
+    isDirty: false,
+    applicableEntityTypes: ['agency', 'unfocused'],
+    intent: 'agency-staffing',
+  },
+}
+
+// ── Tier 2 ────────────────────────────────────────────────────────────────────
+
+export const LEADERSHIP_TENURE_GANTT: GraphViewPreset = {
+  focus: { entities: [], scope: 'federal', depth: 1, includeProcedural: false },
+  connections: buildConnections(['appointment']),
+  style: {
+    vizType: 'gantt',
+    vizOptions: { gantt: { groupBy: 'position_title', showCurrent: true, showLabels: true } },
+  },
+  meta: {
+    name: 'Leadership Tenure',
+    isPreset: true,
+    presetId: 'gantt-leadership-tenure',
+    isDirty: false,
+    applicableEntityTypes: ['agency'],
+    intent: 'leadership-tenure',
+  },
+}
+
+export const VOTING_DIVERGENCE_MAP: GraphViewPreset = {
+  focus: { entities: [], scope: 'all', depth: 1, includeProcedural: false },
+  connections: buildConnections(['vote_yes', 'vote_no']),
+  style: {
+    vizType: 'choropleth',
+    vizOptions: {
+      choropleth: {
+        measure: 'party_cohesion',
+        bandLevel: 'congressional',
+        colorScale: 'diverging',
+      },
+    },
+  },
+  meta: {
+    name: 'Voting Divergence Map',
+    isPreset: true,
+    presetId: 'choropleth-voting-divergence',
+    isDirty: false,
+    applicableEntityTypes: ['official', 'proposal', 'unfocused'],
+    intent: 'voting-divergence-map',
+  },
+}
+
+export const SMALL_DOLLAR_DEPENDENCY: GraphViewPreset = {
+  focus: { entities: [], scope: 'all', depth: 1, includeProcedural: false },
+  connections: DEFAULT_CONNECTION_STATE,
+  style: {
+    vizType: 'alignment',
+    vizOptions: { alignment: { sortBy: 'alignment', showLabels: true, fillMode: 'gradient' } },
+  },
+  meta: {
+    name: 'Small-Dollar Dependency',
+    isPreset: true,
+    presetId: 'alignment-small-dollar',
+    isDirty: false,
+    applicableEntityTypes: ['official'],
+    intent: 'small-dollar-share',
+  },
+}
+
+export const SECTOR_AFFINITY_BY_OFFICIAL: GraphViewPreset = {
+  focus: { entities: [], scope: 'all', depth: 1, includeProcedural: false },
+  connections: DEFAULT_CONNECTION_STATE,
+  style: {
+    vizType: 'alignment',
+    vizOptions: { alignment: { sortBy: 'alignment', showLabels: true, fillMode: 'ratio' } },
+  },
+  meta: {
+    name: 'Sector Affinity',
+    isPreset: true,
+    presetId: 'alignment-sector-affinity',
+    isDirty: false,
+    applicableEntityTypes: ['official'],
+    intent: 'sector-affinity',
+  },
+}
+
 // ── Preset Collection ──────────────────────────────────────────────────────────
 
 export const BUILT_IN_PRESETS: GraphViewPreset[] = [
@@ -650,6 +820,15 @@ export const BUILT_IN_PRESETS: GraphViewPreset[] = [
   TREEMAP_PAC_PARTY,
   CHORD_DONOR_INDUSTRIES,
   HOW_ALIGNED_ARE_MY_REPS,
+  // FIX-218 — Tier 1 + Tier 2 new presets
+  FUNDRAISING_BY_DONOR_TYPE,
+  TREEMAP_INDIVIDUALS_BY_STATE,
+  SPENDING_SANKEY_BY_SECTOR,
+  AGENCIES_BY_STAFFING,
+  LEADERSHIP_TENURE_GANTT,
+  VOTING_DIVERGENCE_MAP,
+  SMALL_DOLLAR_DEPENDENCY,
+  SECTOR_AFFINITY_BY_OFFICIAL,
 ]
 
 // ── FIX-216 — Entity-Type Awareness ────────────────────────────────────────────

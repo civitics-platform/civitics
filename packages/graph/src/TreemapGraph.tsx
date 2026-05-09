@@ -152,8 +152,25 @@ function getGroupKey(official: TreemapOfficial, groupBy: TreemapOptions['groupBy
     case 'state':   return official.state || 'Unknown';
     case 'chamber': return official.chamber || 'unknown';
     case 'industry':
+    case 'donor_type':  // donor-type grouping doesn't apply to officials —
+                        // fall through to party.
     case 'party':
     default:        return official.party;
+  }
+}
+
+// FIX-218 — donor entity_type → user-friendly label for the
+// "Fundraising by Donor Type" preset.
+function prettyDonorType(entityType: string): string {
+  const t = (entityType ?? '').toLowerCase();
+  switch (t) {
+    case 'pac':             return 'PACs';
+    case 'super_pac':       return 'Super PACs';
+    case 'party_committee': return 'Party Committees';
+    case 'corporation':     return 'Corporations';
+    case 'union':           return 'Unions';
+    case 'individual':      return 'Individuals';
+    default:                return entityType || 'Other';
   }
 }
 
@@ -286,6 +303,29 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
     // Single-primary modes clear compare state
     setCompareEntries([]);
 
+    // FIX-218 — Individuals-by-state mode. Response is hierarchy-shaped
+    // (state → donors), so we slot it into the same pacHierarchy state.
+    if (dataMode === 'individuals_by_state') {
+      const isRealUuid = (id: string) =>
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+      const params = new URLSearchParams();
+      if (primaryEntityId && isRealUuid(primaryEntityId)) {
+        params.set('entityId', primaryEntityId);
+      }
+      const qs = params.toString();
+      fetch(`/api/graph/treemap-individuals${qs ? `?${qs}` : ''}`)
+        .then((r) => r.json())
+        .then((data: PacHierarchy | { error: string }) => {
+          if ("error" in data) throw new Error((data as { error: string }).error);
+          setPacHierarchy(data as PacHierarchy);
+          setOfficials([]);
+          setDonors([]);
+        })
+        .catch((e: Error) => setError(e.message))
+        .finally(() => setLoading(false));
+      return;
+    }
+
     // PAC modes — fetch from treemap-pac endpoint
     if (dataMode === 'pac_sector' || dataMode === 'pac_party') {
       const pacGroupBy = dataMode === 'pac_sector' ? 'sector' : 'party';
@@ -390,17 +430,20 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
     const svg = svgRef.current;
     if (!container || !svg) return;
 
+    // FIX-218 — individuals_by_state shares the pre-built-hierarchy render
+    // path with PAC modes. Treat them together for the gating logic.
     const isPacMode       = dataMode === 'pac_sector' || dataMode === 'pac_party';
     const isPacSectorMode = dataMode === 'pac_sector';
     const isPacPartyMode  = dataMode === 'pac_party';
+    const isHierarchyMode = isPacMode || dataMode === 'individuals_by_state';
     const isEntityMode    = !compareMode && !!primaryEntityId && donors.length > 0;
     const isCompareMode   = compareMode && compareEntries.length >= 2;
 
     if (isCompareMode) {
       // ok — compare mode
-    } else if (isPacMode && !pacHierarchy) return;
-    else if (!isPacMode && !isEntityMode && officials.length === 0) return;
-    else if (!isPacMode && isEntityMode && donors.length === 0) return;
+    } else if (isHierarchyMode && !pacHierarchy) return;
+    else if (!isHierarchyMode && !isEntityMode && officials.length === 0) return;
+    else if (!isHierarchyMode && isEntityMode && donors.length === 0) return;
 
     const width  = container.clientWidth;
     const height = container.clientHeight;
@@ -439,8 +482,8 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
           })),
         })),
       };
-    } else if (isPacMode && pacHierarchy) {
-      // PAC hierarchy — pre-grouped from the API
+    } else if (isHierarchyMode && pacHierarchy) {
+      // PAC or individuals-by-state hierarchy — pre-grouped from the API
       root = {
         name: "root",
         children: pacHierarchy.children.map((group, idx) => ({
@@ -462,8 +505,12 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
         })),
       };
     } else if (isEntityMode) {
-      // Group donors by industry, assign a palette index per industry
-      const grouped = d3.group(donors, (d) => d.industry_category);
+      // Group donors by industry — or by entity_type when the preset
+      // requests donor-type grouping (FIX-218).
+      const groupKeyFn = groupBy === 'donor_type'
+        ? (d: DonorRow) => prettyDonorType(d.entity_type)
+        : (d: DonorRow) => d.industry_category;
+      const grouped = d3.group(donors, groupKeyFn);
       const industryKeys = [...grouped.keys()].sort((a, b) => {
         const aTotal = grouped.get(a)!.reduce((s, r) => s + r.amount_usd, 0);
         const bTotal = grouped.get(b)!.reduce((s, r) => s + r.amount_usd, 0);
