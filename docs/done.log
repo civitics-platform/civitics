@@ -291,3 +291,6 @@
 2026-05-08 | FIX-218 | 794e7d1d | local+prod | chore(graph): individuals state index + Built-in Presets table refresh
 2026-05-08 | FIX-218 | 58228fce | local-only | feat(graph): 8 new presets exploiting May 2026 data + 3 new endpoints
 2026-05-08 | FIX-216 | 7892c6c1 | local+prod | fix(graph): treemap aggregate mode reads denormalized donation totals
+2026-05-09 | FIX-217 | 8be39cd5 | local-only | fix(graph): agency-staffing batches appointment + spending queries
+2026-05-09 | FIX-217 | e11aedc2 | local-only | feat(graph): donation floor slider + choropleth enum fix + treemap minAmount wiring
+2026-05-09 | FIX-220 | e11aedc2 | local-only | feat(graph): donation floor slider + choropleth enum fix + treemap minAmount wiring
