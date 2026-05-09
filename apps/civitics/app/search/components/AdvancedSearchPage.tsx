@@ -59,9 +59,10 @@ function filtersToParams(q: string, filters: SearchFilters): URLSearchParams {
   if (filters.industry)           p.set("industry",       filters.industry);
   if (filters.min_amount)         p.set("min_amount",     filters.min_amount);
   if (filters.max_amount)         p.set("max_amount",     filters.max_amount);
-  if (filters.official_role)      p.set("official_role",  filters.official_role);
-  if (filters.financial_type)     p.set("financial_type", filters.financial_type);
-  if (filters.initiative_stage)   p.set("initiative_stage", filters.initiative_stage);
+  if (filters.official_role)      p.set("official_role",      filters.official_role);
+  if (filters.financial_type)     p.set("financial_type",     filters.financial_type);
+  if (filters.initiative_stage)   p.set("initiative_stage",   filters.initiative_stage);
+  if (filters.jurisdiction_level) p.set("jurisdiction_level", filters.jurisdiction_level);
   return p;
 }
 
@@ -127,9 +128,10 @@ export function AdvancedSearchPage({
     industry:        initialParams?.industry,
     min_amount:      initialParams?.min_amount,
     max_amount:      initialParams?.max_amount,
-    official_role:   initialParams?.official_role,
-    financial_type:  initialParams?.financial_type,
-    initiative_stage: initialParams?.initiative_stage,
+    official_role:      initialParams?.official_role,
+    financial_type:     initialParams?.financial_type,
+    initiative_stage:   initialParams?.initiative_stage,
+    jurisdiction_level: initialParams?.jurisdiction_level,
   });
   const [sort, setSort] = useState(initialParams?.sort ?? "relevance");
 

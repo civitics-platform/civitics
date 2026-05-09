@@ -198,6 +198,11 @@ function OfficialCardContent({ o, badge, isInGraph }: { o: SearchOfficial; badge
       </div>
       <div className="flex items-center gap-2 shrink-0">
         {isInGraph && <InGraphBadge />}
+        {o.total_received_cents != null && o.total_received_cents > 0 && (
+          <span className="shrink-0 rounded bg-green-50 px-1.5 py-0.5 text-[10px] font-medium text-green-700 tabular-nums">
+            {formatDollars(o.total_received_cents)} raised
+          </span>
+        )}
         <ConnectionBadge count={o.connection_count} />
         <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${partyBadge}`}>
           {o.party?.[0]?.toUpperCase() ?? "?"}
@@ -294,7 +299,11 @@ function FinancialCardContent({ f, badge, isInGraph }: { f: SearchFinancialEntit
         <ConnectionBadge count={f.connection_count} />
         {showAmt && (
           <span className="rounded bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-600">
-            {formatDollars(f.total_amount_cents!)} · Donations
+            {formatDollars(f.total_amount_cents!)} · {
+              f.amount_label === "contract" ? "Contracts"
+              : f.amount_label === "grant"  ? "Grants"
+              : "Donations"
+            }
           </span>
         )}
       </div>

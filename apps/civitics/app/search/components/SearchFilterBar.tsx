@@ -120,7 +120,7 @@ export function SearchFilterBar({ filters, onFiltersChange, sort, onSortChange }
 
   // Count active filters (excluding type and sort)
   const activeCount = [
-    filters.party, filters.chamber, filters.state,
+    filters.party, filters.chamber, filters.state, filters.jurisdiction_level,
     filters.status, filters.proposal_type, filters.date_from, filters.date_to,
     filters.agency_type,
     filters.entity_type, filters.industry, filters.min_amount, filters.max_amount,
@@ -129,7 +129,7 @@ export function SearchFilterBar({ filters, onFiltersChange, sort, onSortChange }
 
   function clearAll() {
     onFiltersChange({
-      party: undefined, chamber: undefined, state: undefined,
+      party: undefined, chamber: undefined, state: undefined, jurisdiction_level: undefined,
       status: undefined, proposal_type: undefined, date_from: undefined, date_to: undefined,
       agency_type: undefined,
       entity_type: undefined, industry: undefined, min_amount: undefined, max_amount: undefined,
@@ -164,6 +164,19 @@ export function SearchFilterBar({ filters, onFiltersChange, sort, onSortChange }
           onFiltersChange({ status: next, type: next ? "proposals" : filters.type });
         },
         "bg-emerald-100 border-emerald-300 text-emerald-700",
+      )}
+
+      {/* Officials: Jurisdiction level pills */}
+      {showOfficials && (
+        <>
+          {(["Federal", "State", "Local"] as const).map((level) => {
+            const value = level.toLowerCase();
+            return pill(level, filters.jurisdiction_level === value,
+              () => onFiltersChange({ jurisdiction_level: filters.jurisdiction_level === value ? undefined : value }),
+            );
+          })}
+          <div className="shrink-0 h-4 w-px bg-gray-200" />
+        </>
       )}
 
       {/* Officials: Party pills */}

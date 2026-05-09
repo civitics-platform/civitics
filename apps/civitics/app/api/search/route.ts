@@ -36,6 +36,7 @@ export type SearchOfficial = {
   is_active: boolean;
   relevance_score: number;
   connection_count: number;
+  total_received_cents: number | null;
 };
 
 export type SearchProposal = {
@@ -195,11 +196,12 @@ export async function GET(req: NextRequest) {
   const sortParam = sp.get("sort") ?? "relevance";
 
   // Explicit filter params — officials
-  const filterParty       = sp.get("party")         ?? null;
-  const filterState       = sp.get("state")         ?? null;
-  const filterChamber     = sp.get("chamber")       ?? null;
-  const filterIsActive    = sp.get("is_active")     !== "false";
-  const filterOfficialRole = sp.get("official_role") ?? null; // congress|judiciary|cabinet|state_gov
+  const filterParty            = sp.get("party")              ?? null;
+  const filterState            = sp.get("state")              ?? null;
+  const filterChamber          = sp.get("chamber")            ?? null;
+  const filterIsActive         = sp.get("is_active")          !== "false";
+  const filterOfficialRole     = sp.get("official_role")      ?? null; // congress|judiciary|cabinet|state_gov
+  const filterJurisdictionLevel = sp.get("jurisdiction_level") ?? null; // federal|state|local
 
   // Explicit filter params — proposals
   const filterStatus       = sp.get("status")        ?? null;
@@ -231,7 +233,7 @@ export async function GET(req: NextRequest) {
   const roleMatch  = !filterChamber ? (ROLE_KEYWORDS[qLower] ?? null)  : null;
 
   // Filter group booleans — used to type-scope "all" tab results
-  const hasOfficialFilters  = !!(filterParty || filterChamber || filterState || filterOfficialRole);
+  const hasOfficialFilters  = !!(filterParty || filterChamber || filterState || filterOfficialRole || filterJurisdictionLevel);
   const hasProposalFilters  = !!(filterStatus || filterProposalType || filterDateFrom || filterDateTo);
   const hasAgencyFilters    = !!filterAgencyType;
   const hasFinancialFilters = !!(filterEntityType || filterIndustry || filterMinAmountCents || filterMaxAmountCents);
@@ -271,7 +273,7 @@ export async function GET(req: NextRequest) {
 
     let qb = db2
       .from("officials")
-      .select("id, full_name, role_title, party, photo_url, is_active, metadata, source_ids", { count: "exact" });
+      .select("id, full_name, role_title, party, photo_url, is_active, metadata, source_ids, total_received_cents", { count: "exact" });
 
     if (filterIsActive && !filterOfficialRole) qb = qb.eq("is_active", true);
     if (filterParty)    qb = qb.eq("party", filterParty);
@@ -298,6 +300,25 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    // jurisdiction_level filter — two-step subquery: jurisdiction.type → governing_body → official
+    if (filterJurisdictionLevel) {
+      const levelTypeMap: Record<string, string[]> = {
+        federal: ["country"],
+        state:   ["state"],
+        local:   ["county", "city", "district", "precinct", "other"],
+      };
+      const jTypes = levelTypeMap[filterJurisdictionLevel];
+      if (jTypes) {
+        const { data: jRows } = await db2.from("jurisdictions").select("id").in("type", jTypes);
+        const jIds = (jRows ?? []).map((j: { id: string }) => j.id);
+        if (jIds.length === 0) return { results: [], hasMore: false, total_count: 0 };
+        const { data: gbRows } = await db2.from("governing_bodies").select("id").in("jurisdiction_id", jIds);
+        const gbIds = (gbRows ?? []).map((g: { id: string }) => g.id);
+        if (gbIds.length === 0) return { results: [], hasMore: false, total_count: 0 };
+        qb = qb.in("governing_body_id", gbIds);
+      }
+    }
+
     if (q.length >= 2) {
       if (!filterParty && partyMatch) {
         qb = qb.eq("party", partyMatch);
@@ -315,7 +336,7 @@ export async function GET(req: NextRequest) {
     const { data, count: totalCount } = await qb;
     const rows: Array<{
       id: string; full_name: string; role_title: string; party: string | null;
-      photo_url: string | null; is_active: boolean;
+      photo_url: string | null; is_active: boolean; total_received_cents: number | null;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       metadata: any; source_ids: Record<string, string> | null;
     }> = data ?? [];
@@ -340,6 +361,7 @@ export async function GET(req: NextRequest) {
         photo_url: o.photo_url ?? null, is_active: o.is_active,
         relevance_score: Math.min(score, 100),
         connection_count: connCount,
+        total_received_cents: o.total_received_cents ?? null,
       };
     });
     return { results: applySort(results, (r) => r.full_name), hasMore, total_count: totalCount ?? 0 };

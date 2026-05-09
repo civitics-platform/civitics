@@ -22,9 +22,10 @@ export interface SearchFilters {
   min_amount?: string;
   max_amount?: string;
   // Phase 2+ fields
-  official_role?: string;    // congress|judiciary|cabinet|state_gov
-  financial_type?: string;   // individual|pac|super_pac|corporation|union|party_committee
-  initiative_stage?: string; // draft|deliberate|mobilise|resolved
+  official_role?: string;        // congress|judiciary|cabinet|state_gov
+  financial_type?: string;       // individual|pac|super_pac|corporation|union|party_committee
+  initiative_stage?: string;     // draft|deliberate|mobilise|resolved
+  jurisdiction_level?: string;   // federal|state|local
 }
 
 interface SearchFiltersPanelProps {
