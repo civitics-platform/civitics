@@ -27,7 +27,7 @@ Actionable improvement backlog. Every item has a priority, complexity, and enoug
 
 ## BUGS — Fix These First
 
-
+- [ ] 🔴 L — **Graph presets ignore focused entity — Ted Cruz treemap shows disjoint PAC sets across "By State" and "PAC Money by Sector"** — `/api/graph/treemap-pac` accepts no `entityId` and returns ALL PACs globally, while `/api/graph/treemap` is entity-aware. Same toolbar, two scopes. Root cause: presets carry no entity-type metadata; `GraphConfigPanel.tsx:827-841` filter only checks `vizType`. Fix: (a) extend `GraphViewPreset.meta` with `applicableEntityTypes`, `dataModeByEntity`, `intent`; (b) add `resolvePresetForFocus` helper that runs in `applyPreset` and re-runs on focus change unless `meta.isDirty`; (c) add `entityId` param to `/api/graph/treemap-pac` (pre-filter PAC set to donors of that official); (d) fix three drifted presets per `packages/graph/CLAUDE.md` Built-in Presets table — `COMMITTEE_POWER` add `appointment`, `INDUSTRY_CAPTURE` add `oversight,revolving_door`, `CO_SPONSOR_NETWORK` add `vote_yes`; (e) `GraphConfigPanel` renders presets in two buckets — "Native" + "Adapted for {focusName}". <!--id:FIX-216-->
 
 
 ---
@@ -79,11 +79,15 @@ Actionable improvement backlog. Every item has a priority, complexity, and enoug
 
 ## GRAPH
 
+- [ ] 🟠 L — **Eight new graph presets exploiting May 2026 data pipelines** — Tier 1 (~4): "Fundraising by Donor Type" (treemap groupBy=donor_type), "Top Individual Donors by State" (treemap of `financial_entities` where `entity_type='individual'`), "Federal Spending Flows" (sankey `agency → sector → vendor` from USASpending bulk), "Agencies by Staffing" (scatter — see FIX-217). Tier 2 (~4): "Leadership Tenure" (gantt — see FIX-217), "Voting Divergence Map" (choropleth — see FIX-217), "Small-Dollar Dependency" (alignment-style horizontal bar of % donations under $500), "Sector Affinity" (alignment-style top industries via `chord_industry_flows_mv`). All declare `applicableEntityTypes` per FIX-216 framework. New endpoints: `/api/graph/treemap-individuals`, `/api/graph/small-dollar`, `/api/graph/sector-affinity`. Adds `groupBy='donor_type'` and `dataMode='individuals_by_state'` branches to `TreemapGraph.tsx`. Migrations: partial index on `financial_entities (metadata->>'state') WHERE entity_type='individual'`. Updates `packages/graph/CLAUDE.md` Built-in Presets table. <!--id:FIX-218-->
+
 
 ### New connection types
 
 
 ### New visualization types
+
+- [ ] 🟠 L — **Add Scatter, Choropleth, and Gantt visualizations** — Three new viz components added to `packages/graph/src/`: (1) `ScatterGraph.tsx` for "Agencies by Staffing" (FTE × appointment count, bubble size = contracts, color by agency type) — uses `agencies.personnel_fte` (FIX-214), `entity_connections` count (FIX-209/215), `total_contract_cents` (FIX-194); (2) `ChoroplethGraph.tsx` for "Voting Divergence Map" (district choropleth from `jurisdictions.boundary_geometry` + per-district party-cohesion-rate computed on-the-fly; `proposals.party_line` doesn't exist so use within-district cohesion as the metric); (3) `GanttGraph.tsx` for "Leadership Tenure" (per-position bars from `entity_connections WHERE connection_type='appointment' AND to_id=$agencyId` with `metadata.start_date/end_date`). New endpoints: `/api/graph/agency-staffing`, `/api/graph/voting-divergence`, `/api/graph/leadership-tenure`. Registry entries with `isApplicable` rules. Adds `'scatter'|'choropleth'|'gantt'` to `VizType` union. <!--id:FIX-217-->
 
 
 ### Documentation

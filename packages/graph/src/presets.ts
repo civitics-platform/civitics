@@ -10,7 +10,14 @@
  * Never remove any built-in preset — they are part of the civic toolset.
  */
 
-import type { GraphView, GraphViewPreset } from './types'
+import type {
+  GraphView,
+  GraphViewPreset,
+  PresetEntityKind,
+  FocusItem,
+  FocusEntity,
+} from './types'
+import { isFocusGroup } from './types'
 import { DEFAULT_CONNECTION_STATE } from './connections'
 
 // ── Default GraphView ──────────────────────────────────────────────────────────
@@ -88,6 +95,8 @@ export const FOLLOW_THE_MONEY: GraphViewPreset = {
     isPreset: true,
     presetId: 'follow-the-money',
     isDirty: false,
+    applicableEntityTypes: ['official', 'agency', 'pac', 'financial', 'proposal', 'unfocused'],
+    intent: 'follow-the-money',
   },
 }
 
@@ -118,6 +127,9 @@ export const VOTES_AND_BILLS: GraphViewPreset = {
     isPreset: true,
     presetId: 'votes-and-bills',
     isDirty: false,
+    applicableEntityTypes: ['official', 'proposal'],
+    inapplicableEntityTypes: ['pac', 'financial', 'individual'],
+    intent: 'votes-and-bills',
   },
 }
 
@@ -148,6 +160,8 @@ export const NOMINATIONS: GraphViewPreset = {
     isPreset: true,
     presetId: 'nominations',
     isDirty: false,
+    applicableEntityTypes: ['official'],
+    intent: 'nominations',
   },
 }
 
@@ -178,6 +192,8 @@ export const COMMITTEE_POWER: GraphViewPreset = {
     isPreset: true,
     presetId: 'committee-power',
     isDirty: false,
+    applicableEntityTypes: ['official', 'agency'],
+    intent: 'committee-power',
   },
 }
 
@@ -210,6 +226,8 @@ export const FULL_RECORD: GraphViewPreset = {
     isPreset: true,
     presetId: 'full-record',
     isDirty: false,
+    applicableEntityTypes: ['official', 'agency', 'pac', 'financial', 'proposal', 'unfocused'],
+    intent: 'full-record',
   },
 }
 
@@ -245,6 +263,8 @@ export const CLEAN_VIEW: GraphViewPreset = {
     isPreset: true,
     presetId: 'clean-view',
     isDirty: false,
+    applicableEntityTypes: ['any'],
+    intent: 'clean-view',
   },
 }
 
@@ -276,6 +296,8 @@ export const INDUSTRY_CAPTURE: GraphViewPreset = {
     isPreset: true,
     presetId: 'industry-capture',
     isDirty: false,
+    applicableEntityTypes: ['official', 'pac', 'financial', 'agency'],
+    intent: 'industry-capture',
   },
 }
 
@@ -307,6 +329,8 @@ export const CO_SPONSOR_NETWORK: GraphViewPreset = {
     isPreset: true,
     presetId: 'co-sponsor-network',
     isDirty: false,
+    applicableEntityTypes: ['official', 'proposal'],
+    intent: 'co-sponsorship-network',
   },
 }
 
@@ -334,6 +358,11 @@ export const CHORD_TOP_DONORS: GraphViewPreset = {
     isPreset: true,
     presetId: 'chord-top-donors',
     isDirty: false,
+    applicableEntityTypes: ['official', 'pac', 'financial', 'unfocused'],
+    intent: 'top-donors-chord',
+    dataModeByEntity: {
+      official: { chord: { entityMode: true, normalizeMode: false, showLabels: true, padAngle: 0.05, minFlowUsd: 1_000_000 } },
+    },
   },
 }
 
@@ -360,6 +389,8 @@ export const TREEMAP_BY_STATE: GraphViewPreset = {
     isPreset: true,
     presetId: 'treemap-by-state',
     isDirty: false,
+    applicableEntityTypes: ['official', 'unfocused'],
+    intent: 'official-donors',
   },
 }
 
@@ -386,6 +417,8 @@ export const TREEMAP_BY_CHAMBER: GraphViewPreset = {
     isPreset: true,
     presetId: 'treemap-by-chamber',
     isDirty: false,
+    applicableEntityTypes: ['official', 'unfocused'],
+    intent: 'official-donors',
   },
 }
 
@@ -413,6 +446,11 @@ export const TREEMAP_DONOR_BREAKDOWN: GraphViewPreset = {
     isPreset: true,
     presetId: 'treemap-donor-breakdown',
     isDirty: false,
+    applicableEntityTypes: ['official'],
+    intent: 'official-donors',
+    dataModeByEntity: {
+      pac: { treemap: { dataMode: 'pac_sector', groupBy: 'industry', sizeBy: 'donation_total', colorBy: 'industry' } },
+    },
   },
 }
 
@@ -440,6 +478,14 @@ export const TREEMAP_PAC_SECTOR: GraphViewPreset = {
     isPreset: true,
     presetId: 'treemap-pac-sector',
     isDirty: false,
+    // FIX-216 — when an official is focused, the resolver flips the intent
+    // to 'pacs-to-official' and TreemapGraph forwards entityId to the
+    // /api/graph/treemap-pac endpoint. Otherwise the global view applies.
+    applicableEntityTypes: ['official', 'pac', 'financial', 'agency', 'unfocused'],
+    intent: 'pacs-by-sector-global',
+    dataModeByEntity: {
+      official: { treemap: { dataMode: 'pac_sector', groupBy: 'industry', sizeBy: 'donation_total', colorBy: 'industry' } },
+    },
   },
 }
 
@@ -467,6 +513,13 @@ export const TREEMAP_PAC_PARTY: GraphViewPreset = {
     isPreset: true,
     presetId: 'treemap-pac-party',
     isDirty: false,
+    // FIX-216 — official focus → degenerate single-group hierarchy
+    // (one party). Resolver still applies entityId via intent flip.
+    applicableEntityTypes: ['official', 'pac', 'financial', 'unfocused'],
+    intent: 'pacs-by-sector-global',
+    dataModeByEntity: {
+      official: { treemap: { dataMode: 'pac_party', groupBy: 'party', sizeBy: 'donation_total', colorBy: 'party' } },
+    },
   },
 }
 
@@ -495,6 +548,8 @@ export const CHORD_DONOR_INDUSTRIES: GraphViewPreset = {
     isPreset: true,
     presetId: 'chord-donor-industries',
     isDirty: false,
+    applicableEntityTypes: ['official', 'pac', 'financial'],
+    intent: 'industry-donors-chord',
   },
 }
 
@@ -524,6 +579,8 @@ export const HOW_ALIGNED_ARE_MY_REPS: GraphViewPreset = {
     isPreset: true,
     presetId: 'alignment-my-reps',
     isDirty: false,
+    applicableEntityTypes: ['official', 'unfocused'],
+    intent: 'alignment-my-reps',
   },
 }
 
@@ -560,6 +617,8 @@ export const GROUP_OVERVIEW: GraphViewPreset = {
     isPreset: true,
     presetId: 'group-overview',
     isDirty: false,
+    applicableEntityTypes: ['group'],
+    intent: 'group-overview',
   },
 }
 
@@ -585,6 +644,121 @@ export const BUILT_IN_PRESETS: GraphViewPreset[] = [
   HOW_ALIGNED_ARE_MY_REPS,
 ]
 
+// ── FIX-216 — Entity-Type Awareness ────────────────────────────────────────────
+
+/**
+ * Concrete focus kinds excluding the 'any' wildcard, which is only meaningful
+ * in `applicableEntityTypes`. The resolver and applicability logic always
+ * see one of these — never 'any'.
+ */
+type ConcreteFocusKind = Exclude<PresetEntityKind, 'any'>
+
+/**
+ * Map a FocusItem to a ConcreteFocusKind. PACs/individuals are "financial"
+ * subtypes — surfaced separately so presets can target them precisely.
+ */
+function focusItemToKind(item: FocusItem): ConcreteFocusKind {
+  if (isFocusGroup(item)) return 'group'
+  const ent = item as FocusEntity
+  if (ent.type === 'financial') {
+    // Heuristic: roles/names with INDIVIDUAL → 'individual', else treat as 'pac'.
+    // The proper subtype lives in the API result (entity_type), but FocusEntity
+    // doesn't carry it; treat unspecified financial as 'pac' since presets
+    // overwhelmingly target PACs (individuals are rarely focused directly).
+    const role = (ent.role ?? '').toUpperCase()
+    if (role.includes('INDIVIDUAL')) return 'individual'
+    return 'pac'
+  }
+  return ent.type as ConcreteFocusKind
+}
+
+/**
+ * Reduce a focus entities[] list to its dominant kind for resolver lookup.
+ * Picks the first focused entity's kind. Returns 'unfocused' for empty focus.
+ */
+function dominantFocusKind(focus: GraphView['focus']): ConcreteFocusKind {
+  const head = focus.entities[0]
+  if (!head) return 'unfocused'
+  return focusItemToKind(head)
+}
+
+/**
+ * FIX-216 — Rewrite a preset's vizOptions based on the current focus.
+ *
+ * If the preset declares a `dataModeByEntity[<focusKind>]` override, deep-
+ * merge that into `style.vizOptions[vizType]`. Otherwise return the preset
+ * unchanged. Presets with no `dataModeByEntity` are no-ops (full backward
+ * compat).
+ *
+ * Called from `applyPreset` and from `useGraphView`'s focus-change effect.
+ */
+export function resolvePresetForFocus(
+  preset: GraphViewPreset,
+  focus: GraphView['focus'],
+): GraphViewPreset {
+  const overrides = preset.meta.dataModeByEntity
+  if (!overrides) return preset
+
+  const kind = dominantFocusKind(focus)
+  const branch = overrides[kind]
+  if (!branch) return preset
+
+  // Deep-merge: existing vizOptions + branch overrides keyed per viz.
+  const mergedVizOptions: GraphView['style']['vizOptions'] = { ...preset.style.vizOptions }
+  for (const [vizKey, vizOpts] of Object.entries(branch)) {
+    const key = vizKey as keyof GraphView['style']['vizOptions']
+    mergedVizOptions[key] = {
+      ...(mergedVizOptions[key] ?? {}),
+      ...(vizOpts ?? {}),
+    } as never
+  }
+
+  return {
+    ...preset,
+    style: {
+      ...preset.style,
+      vizOptions: mergedVizOptions,
+    },
+  }
+}
+
+/**
+ * FIX-216 — Decide whether a preset should appear in the right panel
+ * for the current view. Returns:
+ *   - 'native'   : preset matches focus type natively
+ *   - 'adapted'  : preset has a dataModeByEntity override for this focus
+ *   - 'inapplicable' : focus matches inapplicableEntityTypes — render disabled
+ *   - 'hidden'   : viz mismatch or otherwise irrelevant
+ *
+ * `vizType` filtering still happens upstream — this is purely the
+ * focus-vs-preset compatibility check.
+ */
+export type PresetApplicability = 'native' | 'adapted' | 'inapplicable' | 'hidden'
+
+export function isPresetApplicableToView(
+  preset: GraphViewPreset,
+  view: GraphView,
+): PresetApplicability {
+  // Viz mismatch is a hard hide (callers usually pre-filter, but be safe)
+  if (preset.style.vizType !== view.style.vizType) return 'hidden'
+
+  // No applicableEntityTypes declared → treat as 'any' (always native)
+  const apply = preset.meta.applicableEntityTypes
+  if (!apply || apply.includes('any')) return 'native'
+
+  const kind = dominantFocusKind(view.focus)
+
+  // Explicit inapplicability wins
+  if (preset.meta.inapplicableEntityTypes?.includes(kind)) return 'inapplicable'
+
+  if (apply.includes(kind)) return 'native'
+
+  // Adapted = preset has an override for this kind
+  if (preset.meta.dataModeByEntity?.[kind]) return 'adapted'
+
+  return 'hidden'
+}
+
 // ── Preset Utilities ───────────────────────────────────────────────────────────
 
 /**
@@ -592,6 +766,9 @@ export const BUILT_IN_PRESETS: GraphViewPreset[] = [
  * Replaces connections and style with preset values.
  * Preserves current focus.entities so the active search context is not lost.
  * Sets meta.isDirty = false since we just loaded the preset clean.
+ *
+ * FIX-216 — runs `resolvePresetForFocus` first so per-focus-kind
+ * `dataModeByEntity` overrides are merged into the applied vizOptions.
  *
  * Presets are viz-type specific. A preset with vizType 'force' only shows
  * when the force viz is active. Use vizType 'any' for presets that work
@@ -601,15 +778,16 @@ export function applyPreset(
   preset: GraphViewPreset,
   current: GraphView
 ): GraphView {
+  const resolved = resolvePresetForFocus(preset, current.focus)
   return {
-    ...preset,
+    ...resolved,
     focus: {
-      ...preset.focus,
+      ...resolved.focus,
       // Preserve current entities so focused officials/agencies survive preset switches
       entities: current.focus.entities,
     },
     meta: {
-      ...preset.meta,
+      ...resolved.meta,
       isDirty: false,
     },
   }

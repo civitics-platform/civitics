@@ -13,7 +13,19 @@ import type { ComponentType, ReactNode } from 'react'
 
 // ── Viz Type ───────────────────────────────────────────────────────────────────
 
-export type VizType = 'force' | 'chord' | 'treemap' | 'sunburst' | 'spending' | 'hierarchy' | 'matrix' | 'alignment' | 'sankey'
+export type VizType =
+  | 'force'
+  | 'chord'
+  | 'treemap'
+  | 'sunburst'
+  | 'spending'
+  | 'hierarchy'
+  | 'matrix'
+  | 'alignment'
+  | 'sankey'
+  | 'scatter'      // FIX-217 — agency staffing X×Y plot
+  | 'choropleth'   // FIX-217 — voting-divergence map
+  | 'gantt'        // FIX-217 — agency leadership tenure
 
 // ── Node ───────────────────────────────────────────────────────────────────────
 
@@ -164,18 +176,19 @@ export interface ChordOptions {
 }
 
 export interface TreemapOptions {
-  groupBy: 'party' | 'state' | 'chamber' | 'industry'
+  groupBy: 'party' | 'state' | 'chamber' | 'industry' | 'donor_type'
   sizeBy: 'donation_total' | 'connection_count' | 'vote_count'
-  colorBy: 'party' | 'chamber' | 'industry'
+  colorBy: 'party' | 'chamber' | 'industry' | 'donor_type'
   /** Hint: when true the preset is designed for entity-focused mode */
   entityMode?: boolean
   /**
    * Data source for the treemap.
-   * 'officials'  = officials ranked by donations received (default)
-   * 'pac_sector' = PAC donations grouped by industry sector
-   * 'pac_party'  = PAC donations grouped by recipient party
+   * 'officials'             = officials ranked by donations received (default)
+   * 'pac_sector'            = PAC donations grouped by industry sector
+   * 'pac_party'             = PAC donations grouped by recipient party
+   * 'individuals_by_state'  = individual contributors aggregated by donor state (FIX-218)
    */
-  dataMode?: 'officials' | 'pac_sector' | 'pac_party'
+  dataMode?: 'officials' | 'pac_sector' | 'pac_party' | 'individuals_by_state'
   /**
    * How treemap cell area encodes the size value.
    * 'log'    = log10(value+1)+1 — every cell visible regardless of distribution
@@ -252,6 +265,39 @@ export interface AlignmentOptions {
    *  'gradient'— same fill but with a low→high colour gradient
    */
   fillMode?: 'ratio' | 'gradient'
+}
+
+// FIX-217 — Scatter: agencies plotted on configurable X/Y axes.
+export interface ScatterOptions {
+  xAxis: 'fte' | 'budget' | 'founded_year' | 'appointment_count'
+  yAxis: 'appointment_count' | 'contract_total' | 'grant_total' | 'fte'
+  sizeBy: 'fte' | 'contract_total' | 'uniform'
+  colorBy: 'agency_type' | 'tenure' | 'founded_decade'
+  showLabels?: boolean
+  logXAxis?: boolean
+  logYAxis?: boolean
+}
+
+// FIX-217 — Choropleth: per-district map of a derived metric.
+export interface ChoroplethOptions {
+  /**
+   * 'party_cohesion' — within-district party-line cohesion rate
+   *                    (% of district reps voting same way on legislation)
+   * 'divergence'     — for a focused proposal, district vote distribution
+   * 'small_dollar_share' — % of donations under $500 per district's reps
+   */
+  measure: 'party_cohesion' | 'divergence' | 'small_dollar_share'
+  bandLevel: 'state' | 'congressional' | 'sld_u' | 'sld_l'
+  colorScale: 'diverging' | 'sequential'
+  showLabels?: boolean
+}
+
+// FIX-217 — Gantt: time-tenure bars for agency leadership.
+export interface GanttOptions {
+  groupBy: 'position_title' | 'official' | 'administration'
+  showCurrent: boolean
+  dateRange?: { start: string; end: string }
+  showLabels?: boolean
 }
 
 export interface SunburstOptions {
@@ -425,6 +471,9 @@ export interface GraphView {
       matrix?: MatrixOptions
       alignment?: AlignmentOptions
       sankey?: SankeyOptions
+      scatter?: ScatterOptions       // FIX-217
+      choropleth?: ChoroplethOptions // FIX-217
+      gantt?: GanttOptions           // FIX-217
     }
   }
 
@@ -439,6 +488,34 @@ export interface GraphView {
 }
 
 /**
+ * Entity-type "kinds" a preset can declare itself applicable to.
+ * Broader than `FocusEntity['type']` because presets care about
+ * `pac` / `individual` (subtypes of `financial`) and the unfocused state.
+ * (FIX-216)
+ */
+export type PresetEntityKind =
+  | 'official'
+  | 'agency'
+  | 'proposal'
+  | 'financial'  // any financial entity
+  | 'pac'        // financial subtype
+  | 'individual' // financial subtype
+  | 'group'
+  | 'unfocused'  // empty focus
+  | 'any'        // matches everything
+
+/**
+ * Per-focus-kind override for a preset's vizOptions. The resolver
+ * deep-merges the matching key into `style.vizOptions[vizType]` before
+ * the preset is applied (or whenever focus changes for a clean preset).
+ * (FIX-216)
+ */
+export type DataModeByEntity = Partial<Record<
+  Exclude<PresetEntityKind, 'any'>,
+  Partial<GraphView['style']['vizOptions']>
+>>
+
+/**
  * A GraphViewPreset is a named, saved GraphView.
  * Built-in presets live in presets.ts.
  * Loading a preset replaces the entire GraphView state.
@@ -449,8 +526,51 @@ export interface GraphViewPreset extends GraphView {
     isPreset: true
     presetId: string
     isDirty?: boolean
+    /**
+     * FIX-216 — Entity kinds this preset is *natively* designed for.
+     * Used by `isPresetApplicableToView` to pick Native vs Adapted bucket
+     * in the right-panel preset list. Omit (or include 'any') = always native.
+     */
+    applicableEntityTypes?: ReadonlyArray<PresetEntityKind>
+    /** FIX-216 — Kinds where this preset is shown disabled with a reason. */
+    inapplicableEntityTypes?: ReadonlyArray<PresetEntityKind>
+    /** FIX-216 — Per-focus-kind overrides for vizOptions. Resolver applies these. */
+    dataModeByEntity?: DataModeByEntity
+    /**
+     * FIX-216 — Stable string the per-viz fetch builders read to choose
+     * the API endpoint and params. Lets one preset ride multiple endpoints
+     * (e.g. global PAC sectors vs PACs-to-an-official) without ad-hoc
+     * branching in TreemapGraph.
+     */
+    intent?: PresetIntent
   }
 }
+
+/** FIX-216 — Intent strings consumed by per-viz fetch URL builders. */
+export type PresetIntent =
+  | 'official-donors'           // /api/graph/treemap?entityId=X
+  | 'pacs-to-official'          // /api/graph/treemap-pac?entityId=X (FIX-216)
+  | 'pacs-by-sector-global'     // /api/graph/treemap-pac (no entityId)
+  | 'individuals-by-state'      // /api/graph/treemap-individuals (FIX-218)
+  | 'fundraising-by-donor-type' // /api/graph/treemap?entityId=X&groupBy=donor_type (FIX-218)
+  | 'agency-spending-flows'     // /api/graph/sankey?agencyId=X (FIX-218)
+  | 'agency-staffing'           // /api/graph/agency-staffing (FIX-217/218)
+  | 'leadership-tenure'         // /api/graph/leadership-tenure?agencyId=X (FIX-217/218)
+  | 'voting-divergence-map'     // /api/graph/voting-divergence (FIX-217/218)
+  | 'small-dollar-share'        // /api/graph/small-dollar?entityId=X (FIX-218)
+  | 'sector-affinity'           // /api/graph/sector-affinity?entityId=X (FIX-218)
+  | 'co-sponsorship-network'    // existing /api/graph/connections
+  | 'votes-and-bills'           // existing
+  | 'follow-the-money'          // existing
+  | 'industry-capture'          // existing
+  | 'committee-power'           // existing
+  | 'nominations'               // existing
+  | 'top-donors-chord'          // existing
+  | 'industry-donors-chord'     // existing
+  | 'alignment-my-reps'         // existing
+  | 'group-overview'            // existing
+  | 'full-record'               // existing
+  | 'clean-view'                // existing
 
 // ── Node Actions ───────────────────────────────────────────────────────────────
 //
