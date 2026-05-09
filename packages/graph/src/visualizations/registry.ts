@@ -368,6 +368,97 @@ export const VIZ_REGISTRY: VizRegistryEntry[] = [
     // It always has data to draw against in Pro since USASpending is loaded.
     isApplicable: () => APPLICABLE,
   },
+
+  // FIX-217 — Scatter: agencies plotted on configurable X/Y axes.
+  {
+    id: 'scatter',
+    label: 'Scatter',
+    civicQuestion: 'Are larger agencies more politically appointed — or less?',
+    description: 'Agencies plotted by FTE × appointments × spending; bubble size encodes one axis',
+    group: 'standard',
+    status: 'active',
+    icon: 'M3 21h18M5 17l4-8 4 4 6-12',
+
+    requiresEntity: false,
+    supportedConnectionTypes: ['appointment', 'contract_award'],
+    defaultOptions: {
+      xAxis: 'fte',
+      yAxis: 'appointment_count',
+      sizeBy: 'fte',
+      colorBy: 'agency_type',
+      showLabels: true,
+      logXAxis: true,
+    },
+
+    screenshotTarget: '#scatter-svg',
+    screenshotPrep: prepScreenshot,
+    tooltip: placeholderTooltip,
+    onNodeClick: defaultOnNodeClick,
+
+    // Scatter is the agency overview viz. Always available — global default
+    // when nothing focused. Highlights the focused agency when one is in focus.
+    isApplicable: () => APPLICABLE,
+  },
+
+  // FIX-217 — Choropleth: per-district map of a derived metric.
+  {
+    id: 'choropleth',
+    label: 'Choropleth Map',
+    civicQuestion: 'Where do districts diverge from their party line?',
+    description: 'Per-district map; color encodes within-district party-cohesion or vote divergence',
+    group: 'standard',
+    status: 'active',
+    icon: 'M3 5l6-2 6 2 6-2v16l-6 2-6-2-6 2zM9 3v16M15 5v16',
+
+    requiresEntity: false,
+    supportedConnectionTypes: ['vote_yes', 'vote_no'],
+    defaultOptions: {
+      measure: 'party_cohesion',
+      bandLevel: 'congressional',
+      colorScale: 'diverging',
+      showLabels: false,
+    },
+
+    screenshotTarget: '#choropleth-svg',
+    screenshotPrep: prepScreenshot,
+    tooltip: placeholderTooltip,
+    onNodeClick: defaultOnNodeClick,
+
+    // Choropleth always has districts to render. Highlights the focused
+    // official's district when one is set.
+    isApplicable: () => APPLICABLE,
+  },
+
+  // FIX-217 — Gantt: time-tenure bars for agency leadership.
+  {
+    id: 'gantt',
+    label: 'Tenure Gantt',
+    civicQuestion: 'Who has led this agency, and for how long?',
+    description: 'Per-position tenure bars — start/end dates, party color, current vs past',
+    group: 'standard',
+    status: 'active',
+    icon: 'M3 6h8M3 12h12m-12 6h6',
+
+    requiresEntity: true,
+    supportedConnectionTypes: ['appointment'],
+    defaultOptions: {
+      groupBy: 'position_title',
+      showCurrent: true,
+      showLabels: true,
+    },
+
+    screenshotTarget: '#gantt-svg',
+    screenshotPrep: prepScreenshot,
+    tooltip: placeholderTooltip,
+    onNodeClick: defaultOnNodeClick,
+
+    // Gantt is agency-leadership-only. Needs an agency in focus to scope
+    // the tenure query.
+    isApplicable: (focus) => {
+      if (focusHasEntityType(focus, 'agency')) return APPLICABLE
+      return { applicable: false, reason: 'Add an agency to enable Tenure Gantt' }
+    },
+  },
 ]
 
 // ── Public helper (FIX-129) ────────────────────────────────────────────────────

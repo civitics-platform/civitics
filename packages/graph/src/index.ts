@@ -33,6 +33,9 @@ export type {
   AlignmentOptions,
   SankeyOptions,
   SpendingOptions,
+  ScatterOptions,
+  ChoroplethOptions,
+  GanttOptions,
   NodeActions,
   NodeType as NodeTypeV2,
   ConnectionTypeDefinition,
@@ -96,6 +99,16 @@ export type { AlignmentGraphProps } from "./AlignmentGraph";
 
 export { SankeyGraph } from "./SankeyGraph";
 export type { SankeyGraphProps } from "./SankeyGraph";
+
+// FIX-217 — new viz components
+export { ScatterGraph } from "./ScatterGraph";
+export type { ScatterGraphProps } from "./ScatterGraph";
+
+export { ChoroplethGraph } from "./ChoroplethGraph";
+export type { ChoroplethGraphProps } from "./ChoroplethGraph";
+
+export { GanttGraph } from "./GanttGraph";
+export type { GanttGraphProps } from "./GanttGraph";
 
 // ── Components — panels ─────────────────────────────────────────────────────
 export { GraphHeader } from "./components/GraphHeader";
