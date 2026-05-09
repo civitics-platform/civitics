@@ -98,9 +98,11 @@ export async function GET(req: NextRequest) {
       p_limit:   1200,
     });
     if (error) {
-      console.error("[voting-divergence] query_districts error:", error.message);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      console.error("[voting-divergence] query_districts error:", error.message, "chamber=", chamberFilter);
+      return NextResponse.json({ error: error.message, chamber: chamberFilter }, { status: 500 });
     }
+    const rawRowCount = Array.isArray(data) ? data.length : 0;
+    console.log(`[voting-divergence] query_districts(chamber=${chamberFilter}) → ${rawRowCount} rows`);
     jRows = (data ?? []) as Array<{ id: string; name: string; geom_geojson: string | null }>;
   }
 
