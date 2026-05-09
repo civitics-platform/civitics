@@ -89,8 +89,12 @@ export async function GET(req: NextRequest) {
     const { data, error } = await (supabase as any).rpc("query_districts", {
       p_chamber: chamberFilter,
       p_state:   null,
-      p_simplify_tolerance: 0.005,  // coarser for choropleth — payload size
-      p_limit:   500,
+      // FIX-217: heavier simplification (0.01) keeps district shapes
+      // recognisable while shrinking the per-polygon payload ~3x. Required
+      // because we now ask for up to 2000 districts (covers most SLD-U +
+      // SLD-L sets — 50 × ~25 SLD-U ≈ 1250, lower chamber ~3000+).
+      p_simplify_tolerance: 0.01,
+      p_limit:   2000,
     });
     if (error) {
       console.error("[voting-divergence] query_districts error:", error.message);
@@ -107,22 +111,38 @@ export async function GET(req: NextRequest) {
 
   // Officials per district. FIX-217: link_officials_to_districts() writes
   // the district id to officials.metadata->>'district_jurisdiction_id',
-  // not to the officials.jurisdiction_id column (which still points at the
-  // statewide jurisdiction for state legislators). So we query metadata
-  // and bucket client-side rather than via .in() on jurisdiction_id, which
-  // returned 0 matches.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: officials } = await (supabase as any)
-    .from("officials")
-    .select("id, party, metadata")
-    .not("metadata->>district_jurisdiction_id", "is", null)
-    .limit(20000);
+  // not to officials.jurisdiction_id (which still points at the statewide
+  // jurisdiction for state legislators). Query metadata and bucket
+  // client-side. Paginate via range() because the officials table has
+  // ~7,000+ linked rows and PostgREST caps at 1000 per response — without
+  // pagination only ~156 of 500 districts would resolve a rep.
   const officialsByDistrict = new Map<string, OfficialRow[]>();
-  for (const o of (officials ?? []) as Array<{ id: string; party: string | null; metadata: { district_jurisdiction_id?: string } | null }>) {
-    const jid = o.metadata?.district_jurisdiction_id;
-    if (!jid || !districtIdSet.has(jid)) continue;
-    if (!officialsByDistrict.has(jid)) officialsByDistrict.set(jid, []);
-    officialsByDistrict.get(jid)!.push({ id: o.id, jurisdiction_id: jid, party: o.party });
+  {
+    const PAGE = 1000;
+    let from = 0;
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (supabase as any)
+        .from("officials")
+        .select("id, party, metadata")
+        .not("metadata->>district_jurisdiction_id", "is", null)
+        .range(from, from + PAGE - 1);
+      if (error) {
+        console.error("[voting-divergence] officials fetch:", error.message);
+        break;
+      }
+      if (!data || data.length === 0) break;
+      for (const o of data as Array<{ id: string; party: string | null; metadata: { district_jurisdiction_id?: string } | null }>) {
+        const jid = o.metadata?.district_jurisdiction_id;
+        if (!jid || !districtIdSet.has(jid)) continue;
+        if (!officialsByDistrict.has(jid)) officialsByDistrict.set(jid, []);
+        officialsByDistrict.get(jid)!.push({ id: o.id, jurisdiction_id: jid, party: o.party });
+      }
+      if (data.length < PAGE) break;
+      from += PAGE;
+      if (from > 50_000) break; // safety
+    }
   }
 
   // FIX-217 — Choropleth measure on SLDs.
