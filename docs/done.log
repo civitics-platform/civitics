@@ -284,3 +284,9 @@
 2026-05-07 | FIX-214 | c761ea5e | local+prod | feat(pipelines): OPM FTE pipeline — switch to HuggingFace parquet source
 2026-05-08 | FIX-211 | 4a7dd80c | local+prod | fix(agencies): filter leadership connections to appointment type only
 2026-05-08 | FIX-215 | 2558c4b4 | local+prod | fix(pipelines): fix PLUM Book connection dedup and PostgREST 1000-row limit
+2026-05-08 | FIX-216 | 11a55513 | local-only | feat(graph): preset bucketing + auto-adapt on focus change + sankey agencyId
+2026-05-08 | FIX-216 | 6bbe49f2 | local-only | fix(graph): treemap PAC presets respect focused official + drift fixes
+2026-05-08 | FIX-216 | 0d3bced6 | local-only | feat(graph): preset entity-type awareness scaffolding
+2026-05-08 | FIX-217 | be9ced1f | local-only | feat(graph): add Scatter, Choropleth, Gantt viz + their endpoints
+2026-05-08 | FIX-218 | 794e7d1d | local+prod | chore(graph): individuals state index + Built-in Presets table refresh
+2026-05-08 | FIX-218 | 58228fce | local-only | feat(graph): 8 new presets exploiting May 2026 data + 3 new endpoints
