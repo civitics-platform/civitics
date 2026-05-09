@@ -85,25 +85,34 @@ export async function GET(req: NextRequest) {
       id: r.id, name: r.name, geom_geojson: null,
     }));
   } else {
+    // FIX-217: query jurisdictions directly (bypassing query_districts RPC
+    // which silently returned 0 rows for chamber='congressional' on Vercel
+    // — same call returned 436 from a local script). The RPC's PostGIS
+    // simplify happens server-side; we accept slightly larger payloads in
+    // exchange for predictable behavior. Cap at 1500 with full geometry.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data, error } = await (supabase as any).rpc("query_districts", {
-      p_chamber: chamberFilter,
-      p_state:   null,
-      // FIX-217: simplification tolerance and limit balanced against
-      // Supabase's statement timeout. ST_SimplifyPreserveTopology cost
-      // grows with both polygon count and tolerance × geometry density.
-      // 1200 × 0.01 stays under the timeout for SLD-U/L; congressional
-      // is only ~440 districts so easily fits.
-      p_simplify_tolerance: 0.01,
-      p_limit:   1200,
-    });
+    const { data, error } = await (supabase as any)
+      .from("jurisdictions")
+      .select("id, name, boundary_geometry, metadata")
+      .eq("type", "district")
+      .eq("metadata->>source", "tiger")
+      .eq("metadata->>chamber", chamberFilter)
+      .not("boundary_geometry", "is", null)
+      .limit(1500);
     if (error) {
-      console.error("[voting-divergence] query_districts error:", error.message, "chamber=", chamberFilter);
+      console.error("[voting-divergence] jurisdictions fetch:", error.message, "chamber=", chamberFilter);
       return NextResponse.json({ error: error.message, chamber: chamberFilter }, { status: 500 });
     }
     const rawRowCount = Array.isArray(data) ? data.length : 0;
-    console.log(`[voting-divergence] query_districts(chamber=${chamberFilter}) → ${rawRowCount} rows`);
-    jRows = (data ?? []) as Array<{ id: string; name: string; geom_geojson: string | null }>;
+    console.log(`[voting-divergence] jurisdictions(chamber=${chamberFilter}) → ${rawRowCount} rows`);
+    // boundary_geometry is PostGIS — PostgREST serializes as a GeoJSON-ish
+    // object. Coerce to JSON string for the parsing step below; if it's
+    // already an object, JSON.stringify wraps it cleanly.
+    jRows = (data ?? []).map((r: { id: string; name: string; boundary_geometry: unknown }) => ({
+      id: r.id,
+      name: r.name,
+      geom_geojson: r.boundary_geometry ? JSON.stringify(r.boundary_geometry) : null,
+    })) as Array<{ id: string; name: string; geom_geojson: string | null }>;
   }
 
   const districts = jRows;
