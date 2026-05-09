@@ -191,12 +191,12 @@ async function processShapefile(
   return out;
 }
 
-// FIX-217: Congressional shapefile is a single nationwide file at
-// www2.census.gov/geo/tiger/TIGER2024/CD/tl_2024_us_cd119.zip. Each
-// feature's STATEFP picks its parent jurisdiction; CD119FP is the
-// district number ("00" for at-large, "01"–"53" for districted).
+// FIX-217: Congressional shapefiles are per-state, like SLDU/SLDL —
+// www2.census.gov/geo/tiger/TIGER2024/CD/tl_2024_{state_fips}_cd119.zip.
+// CD119FP is the district number ("00" for at-large, "01"–"53" for
+// districted). The 119th Congress runs 2025-01-03 → 2027-01-03.
 const CD_BASE = `${TIGER_BASE}/CD`;
-const CD_FILE = `tl_${TIGER_YEAR}_us_cd119.zip`;
+const CD_SESSION = "119";
 
 const FIPS_TO_STATE = new Map(
   STATE_DATA.map(s => [s.fips, s] as const),
@@ -342,37 +342,50 @@ export async function runTigerDistrictsPipeline(
       }
     }
 
-    // FIX-217: Pass 2 — Congressional districts (single nationwide file).
-    // Census ships tl_2024_us_cd119.zip covering all 50 states + DC + PR
-    // + territories at once. ~5MB compressed; ~30MB extracted geometry.
+    // FIX-217: Pass 2 — Congressional districts (per-state, 119th Congress).
+    // TIGER ships these as one shapefile per state at
+    // tl_{year}_{state_fips}_cd119.zip — same shape as SLD files. DC, PR,
+    // and territories aren't included; STATE_DATA lists US states only.
     console.log(`\n  --- Congressional districts (119th Congress) ---`);
-    {
-      const url = `${CD_BASE}/${CD_FILE}`;
-      const zipPath = path.join(TMP_DIR, CD_FILE);
-      const extractDir = path.join(TMP_DIR, "us_cd119");
+    for (const state of STATE_DATA) {
+      const fileName = `tl_${TIGER_YEAR}_${state.fips}_cd${CD_SESSION}.zip`;
+      const url = `${CD_BASE}/${fileName}`;
+      const zipPath = path.join(TMP_DIR, fileName);
+      const extractDir = path.join(TMP_DIR, `${state.abbr}_cd${CD_SESSION}`);
+
+      let bytes = 0;
       try {
-        const bytes = await downloadFile(url, zipPath);
-        bytesDownloaded += bytes;
-        const paths = await extractZip(zipPath, extractDir);
-        safeUnlink(zipPath);
-        if (!paths) {
-          console.warn(`  Congressional: unzip failed — no shp/dbf found`);
-          rmDir(extractDir);
-          totalFailed++;
-        } else {
-          const { inserted, failed, skipped } = await processCongressionalShapefile(
-            paths.shp, paths.dbf, stateIds, db,
-          );
-          totalInserted += inserted;
-          totalFailed += failed;
-          totalSkipped += skipped;
-          console.log(`  US Congressional: ${inserted} districts upserted${failed ? ` · ${failed} failed` : ""}${skipped ? ` · ${skipped} skipped` : ""} · ${(bytes / 1024).toFixed(0)}KB`);
-          rmDir(extractDir);
-        }
+        bytes = await downloadFile(url, zipPath);
       } catch (err) {
-        console.warn(`  Congressional: download/process failed — ${err instanceof Error ? err.message : err}`);
+        // Some territories don't have a CD file — skip silently rather
+        // than spam the log. State_data shouldn't include those, but
+        // be defensive.
+        console.warn(`  ${state.abbr} cd: download failed — ${err instanceof Error ? err.message : err}`);
         totalFailed++;
+        continue;
       }
+      bytesDownloaded += bytes;
+
+      const paths = await extractZip(zipPath, extractDir).catch((err) => {
+        console.warn(`  ${state.abbr} cd: unzip failed — ${err instanceof Error ? err.message : err}`);
+        return null;
+      });
+      safeUnlink(zipPath);
+      if (!paths) {
+        rmDir(extractDir);
+        totalFailed++;
+        continue;
+      }
+
+      const { inserted, failed, skipped } = await processCongressionalShapefile(
+        paths.shp, paths.dbf, stateIds, db,
+      );
+      totalInserted += inserted;
+      totalFailed += failed;
+      totalSkipped += skipped;
+      console.log(`  ${state.abbr} cd: ${inserted} districts upserted${failed ? ` · ${failed} failed` : ""}${skipped ? ` · ${skipped} skipped` : ""} · ${(bytes / 1024).toFixed(0)}KB`);
+
+      rmDir(extractDir);
     }
 
     rmDir(TMP_DIR);
