@@ -283,3 +283,4 @@
 2026-05-06 | FIX-215 | 44faef89 | local+prod | chore(pipelines): verify FIX-215 against prod
 2026-05-07 | FIX-214 | c761ea5e | local+prod | feat(pipelines): OPM FTE pipeline — switch to HuggingFace parquet source
 2026-05-08 | FIX-211 | 4a7dd80c | local+prod | fix(agencies): filter leadership connections to appointment type only
+2026-05-08 | FIX-215 | 2558c4b4 | local+prod | fix(pipelines): fix PLUM Book connection dedup and PostgREST 1000-row limit
