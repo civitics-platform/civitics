@@ -901,24 +901,38 @@ Authoritative list lives in `BUILT_IN_PRESETS` in `presets.ts`. Each row's
 `presetId` is the stable handle — never renumber or drop one, since saved
 sessions reference it.
 
-| Preset | presetId | Viz | Connections |
-|---|---|---|---|
-| Follow the Money | `follow-the-money` | force | donation |
-| Votes & Bills | `votes-and-bills` | force | vote_yes, vote_no, co_sponsorship |
-| Nominations | `nominations` | force | nomination_vote_yes, nomination_vote_no |
-| Committee Power | `committee-power` | force | oversight, appointment |
-| Full Record | `full-record` | force | all |
-| Clean View | `clean-view` | force | all (high-strength only) |
-| Industry Capture | `industry-capture` | force | donation, oversight, revolving_door |
-| Co-Sponsor Network | `co-sponsor-network` | force | co_sponsorship, vote_yes |
-| Top Donors Only | `chord-top-donors` | chord | donation |
-| Industry Donors | `chord-donor-industries` | chord | donation |
-| By State | `treemap-by-state` | treemap | donation |
-| By Chamber | `treemap-by-chamber` | treemap | donation |
-| Donor Breakdown | `treemap-donor-breakdown` | treemap | donation |
-| PAC Money by Sector | `treemap-pac-sector` | treemap | donation |
-| PAC Money by Party | `treemap-pac-party` | treemap | donation |
-| How aligned are my reps? | `alignment-my-reps` | alignment | alignment (FIX-146) |
+Each preset also declares `meta.applicableEntityTypes` and `meta.intent`
+(FIX-216) so the right-panel surfaces them in Native vs Adapted buckets.
+Presets with `meta.dataModeByEntity` rewrite their viz options when the
+focus type changes — see `resolvePresetForFocus` in `presets.ts`.
+
+| Preset | presetId | Viz | Connections | Native for |
+|---|---|---|---|---|
+| Follow the Money | `follow-the-money` | force | donation | any |
+| Votes & Bills | `votes-and-bills` | force | vote_yes, vote_no, co_sponsorship | official, proposal |
+| Nominations | `nominations` | force | nomination_vote_yes, nomination_vote_no | official |
+| Committee Power | `committee-power` | force | oversight, appointment | official, agency |
+| Full Record | `full-record` | force | all | any |
+| Clean View | `clean-view` | force | all (high-strength only) | any |
+| Industry Capture | `industry-capture` | force | donation, oversight, revolving_door | official, pac, agency |
+| Co-Sponsor Network | `co-sponsor-network` | force | co_sponsorship, vote_yes | official, proposal |
+| Top Donors Only | `chord-top-donors` | chord | donation | official, pac |
+| Industry Donors | `chord-donor-industries` | chord | donation | official, pac |
+| By State | `treemap-by-state` | treemap | donation | official |
+| By Chamber | `treemap-by-chamber` | treemap | donation | official |
+| Donor Breakdown | `treemap-donor-breakdown` | treemap | donation | official (adapts for pac) |
+| PAC Money by Sector | `treemap-pac-sector` | treemap | donation | official, pac, agency (entityId fix — FIX-216) |
+| PAC Money by Party | `treemap-pac-party` | treemap | donation | official, pac (degenerates with entityId) |
+| How aligned are my reps? | `alignment-my-reps` | alignment | alignment (FIX-146) | official |
+| Group Overview | `group-overview` | force | donation (≥$25k) | group |
+| Fundraising by Donor Type | `treemap-fundraising-donor-type` | treemap | donation | official (FIX-218) |
+| Top Individual Donors by State | `treemap-individuals-by-state` | treemap | donation | official, pac, financial (FIX-218) |
+| Federal Spending Flows | `sankey-spending-by-sector` | sankey | contract_award | agency, financial (FIX-218) |
+| Agencies by Staffing | `scatter-agency-staffing` | scatter | appointment, contract_award | agency (FIX-217/218) |
+| Leadership Tenure | `gantt-leadership-tenure` | gantt | appointment | agency (FIX-217/218) |
+| Voting Divergence Map | `choropleth-voting-divergence` | choropleth | vote_yes, vote_no | official, proposal (FIX-217/218) |
+| Small-Dollar Dependency | `alignment-small-dollar` | alignment | donation | official (FIX-218) |
+| Sector Affinity | `alignment-sector-affinity` | alignment | donation | official (FIX-218) |
 
 ---
 
