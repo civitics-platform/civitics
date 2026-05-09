@@ -54,6 +54,9 @@ interface SldFeatureProps {
   NAMELSAD?:  string;
   NAMELSAD20?: string;
   LSY?:       string;
+  // Congressional shapefile fields
+  CD119FP?:   string;       // 119th Congress district number
+  CDSESSN?:   string;       // session number
 }
 
 function ensureTmpDir(): void {
@@ -188,6 +191,91 @@ async function processShapefile(
   return out;
 }
 
+// FIX-217: Congressional shapefile is a single nationwide file at
+// www2.census.gov/geo/tiger/TIGER2024/CD/tl_2024_us_cd119.zip. Each
+// feature's STATEFP picks its parent jurisdiction; CD119FP is the
+// district number ("00" for at-large, "01"–"53" for districted).
+const CD_BASE = `${TIGER_BASE}/CD`;
+const CD_FILE = `tl_${TIGER_YEAR}_us_cd119.zip`;
+
+const FIPS_TO_STATE = new Map(
+  STATE_DATA.map(s => [s.fips, s] as const),
+);
+
+async function processCongressionalShapefile(
+  shpPath: string,
+  dbfPath: string,
+  stateIds: Map<string, string>,
+  db: ReturnType<typeof createAdminClient>,
+): Promise<{ inserted: number; failed: number; skipped: number }> {
+  const out = { inserted: 0, failed: 0, skipped: 0 };
+  const source = await openShapefile(shpPath, dbfPath);
+  for (;;) {
+    const { done, value } = await source.read();
+    if (done) break;
+    const feature = value as Feature<Polygon | MultiPolygon, SldFeatureProps>;
+    if (!feature.geometry) { out.skipped++; continue; }
+
+    const props = feature.properties ?? {};
+    const statefp = props.STATEFP;
+    if (!statefp) { out.skipped++; continue; }
+    const state = FIPS_TO_STATE.get(statefp);
+    if (!state) { out.skipped++; continue; }  // territory not in our list
+
+    const districtNum = props.CD119FP ?? "";
+    if (!districtNum || districtNum.toUpperCase() === "ZZ") {
+      out.skipped++;
+      continue;
+    }
+
+    const geoid = props.GEOID20 ?? props.GEOID ?? `${statefp}${districtNum}`;
+    const namelsad = props.NAMELSAD20 ?? props.NAMELSAD ?? `Congressional District ${districtNum}`;
+
+    // At-large districts are CD119FP="00". Render the name as "At-Large"
+    // for one-rep states (AK, DE, MT, ND, SD, VT, WY).
+    const isAtLarge = districtNum === "00";
+    const name = isAtLarge
+      ? `${state.name} At-Large Congressional District`
+      : `${state.name} ${namelsad}`;
+    const shortName = isAtLarge
+      ? `${state.abbr}-AL`
+      : `${state.abbr}-${districtNum.replace(/^0+/, "") || districtNum}`;
+
+    const parentId = stateIds.get(state.name);
+    if (!parentId) { out.skipped++; continue; }
+
+    const metadata = {
+      source:        "tiger",
+      tiger_year:    TIGER_YEAR,
+      state_fips:    state.fips,
+      state_abbr:    state.abbr,
+      chamber:       "congressional",
+      district_id:   districtNum,
+      cd_session:    props.CDSESSN ?? "119",
+    };
+
+    const { error } = await db.rpc("upsert_district_jurisdiction" as never, {
+      p_parent_id:    parentId,
+      p_name:         name,
+      p_short_name:   shortName,
+      p_fips_code:    state.fips,
+      p_census_geoid: geoid,
+      p_chamber:      "congressional",
+      p_metadata:     metadata,
+      p_geojson:      JSON.stringify(feature.geometry),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+
+    if (error) {
+      console.warn(`    ${state.abbr} CD-${districtNum}: rpc error — ${error.message}`);
+      out.failed++;
+    } else {
+      out.inserted++;
+    }
+  }
+  return out;
+}
+
 export async function runTigerDistrictsPipeline(
   stateIds: Map<string, string>,
 ): Promise<PipelineResult> {
@@ -254,6 +342,39 @@ export async function runTigerDistrictsPipeline(
       }
     }
 
+    // FIX-217: Pass 2 — Congressional districts (single nationwide file).
+    // Census ships tl_2024_us_cd119.zip covering all 50 states + DC + PR
+    // + territories at once. ~5MB compressed; ~30MB extracted geometry.
+    console.log(`\n  --- Congressional districts (119th Congress) ---`);
+    {
+      const url = `${CD_BASE}/${CD_FILE}`;
+      const zipPath = path.join(TMP_DIR, CD_FILE);
+      const extractDir = path.join(TMP_DIR, "us_cd119");
+      try {
+        const bytes = await downloadFile(url, zipPath);
+        bytesDownloaded += bytes;
+        const paths = await extractZip(zipPath, extractDir);
+        safeUnlink(zipPath);
+        if (!paths) {
+          console.warn(`  Congressional: unzip failed — no shp/dbf found`);
+          rmDir(extractDir);
+          totalFailed++;
+        } else {
+          const { inserted, failed, skipped } = await processCongressionalShapefile(
+            paths.shp, paths.dbf, stateIds, db,
+          );
+          totalInserted += inserted;
+          totalFailed += failed;
+          totalSkipped += skipped;
+          console.log(`  US Congressional: ${inserted} districts upserted${failed ? ` · ${failed} failed` : ""}${skipped ? ` · ${skipped} skipped` : ""} · ${(bytes / 1024).toFixed(0)}KB`);
+          rmDir(extractDir);
+        }
+      } catch (err) {
+        console.warn(`  Congressional: download/process failed — ${err instanceof Error ? err.message : err}`);
+        totalFailed++;
+      }
+    }
+
     rmDir(TMP_DIR);
 
     // Cross-link officials to their district jurisdictions. Match on
@@ -265,7 +386,18 @@ export async function runTigerDistrictsPipeline(
     if (linkRes.error) {
       console.warn(`  link_officials_to_districts error: ${linkRes.error.message}`);
     } else {
-      console.log(`  Linked ${linked} officials to district jurisdictions`);
+      console.log(`  Linked ${linked} officials to district jurisdictions (state legs)`);
+    }
+
+    // FIX-217: Federal House Reps don't have org_classification='lower'
+    // (that's an OpenStates state-leg convention). Link them via a separate
+    // RPC that matches role_title='Representative' to chamber='congressional'.
+    const fedLinkRes = await db.rpc("link_federal_reps_to_districts" as never).single();
+    const fedLinked = (fedLinkRes.data as unknown as number | null) ?? 0;
+    if (fedLinkRes.error) {
+      console.warn(`  link_federal_reps_to_districts error: ${fedLinkRes.error.message}`);
+    } else {
+      console.log(`  Linked ${fedLinked} House Reps to congressional districts`);
     }
 
     const estimatedMb = +(bytesDownloaded / 1024 / 1024).toFixed(2);
