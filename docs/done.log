@@ -302,3 +302,5 @@
 2026-05-09 | FIX-217 | acad023c | local-only | fix(graph): voting-divergence query_districts limit 1200, simplify 0.01
 2026-05-09 | FIX-217 | ed584fd1 | local-only | feat(graph): TIGER congressional districts + stronger official→district linker
 2026-05-09 | FIX-217 | 61a1543e | local-only | fix(graph): paginate voting-divergence officials query + raise district limit
+2026-05-09 | FIX-217 | b974e797 | local-only | perf(graph): voting-divergence parallel Representative + state-leg fetch
+2026-05-09 | FIX-217 | beb0c7de | local-only | fix(graph): voting-divergence per-state query_districts loop
