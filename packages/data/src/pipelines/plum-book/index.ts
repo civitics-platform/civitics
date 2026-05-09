@@ -322,15 +322,27 @@ export async function runPlumBookPipeline(opts: { force?: boolean } = {}): Promi
       console.warn("  WARNING: federal jurisdiction (fips_code=00) not found — inserts will be skipped");
     }
 
-    // ── Build official lookup by plum_id ───────────────────────────────────
-    const { data: existingOfficials } = await db
-      .from("officials")
-      .select("id, source_ids")
-      .not("source_ids->>plum_id", "is", null);
+    // ── Build official lookup by plum_id (paginated) ──────────────────────
+    // PostgREST db-max-rows=1000 cannot be overridden client-side. Paginate
+    // explicitly to load all officials regardless of total count.
     const officialByPlumId = new Map<string, string>();
-    for (const o of existingOfficials ?? []) {
-      const plumId = (o.source_ids as Record<string, string> | null)?.plum_id;
-      if (plumId) officialByPlumId.set(plumId, o.id as string);
+    {
+      let page = 0;
+      const PAGE = 1000;
+      while (true) {
+        const { data: batch } = await db
+          .from("officials")
+          .select("id, source_ids")
+          .not("source_ids->>plum_id", "is", null)
+          .range(page * PAGE, (page + 1) * PAGE - 1);
+        if (!batch || batch.length === 0) break;
+        for (const o of batch) {
+          const plumId = (o.source_ids as Record<string, string> | null)?.plum_id;
+          if (plumId) officialByPlumId.set(plumId, o.id as string);
+        }
+        if (batch.length < PAGE) break;
+        page++;
+      }
     }
     console.log(`  ${officialByPlumId.size} officials with plum_id already in DB`);
 
@@ -384,26 +396,39 @@ export async function runPlumBookPipeline(opts: { force?: boolean } = {}): Promi
 
     console.log(`  Agency matches: ${matched.toLocaleString()}, unmatched: ${unmatched.toLocaleString()}`);
 
-    // ── Phase 2: Pre-fetch all officials for case-insensitive name dedup ───
-    // One query instead of one ilike per unknown person.
-    // PLUM names are ALL CAPS; DB names from other pipelines are mixed case.
-    const { data: allOfficials, error: allOffErr } = await db
-      .from("officials")
-      .select("id, full_name, source_ids")
-      .limit(100000);
-    if (allOffErr) throw new Error(allOffErr.message);
+    // ── Phase 2: Name-lookup for unknown persons (targeted, paginated) ─────
+    // PostgREST db-max-rows=1000 means fetching all officials is impossible
+    // client-side. Instead: collect only the names we actually need, then
+    // query in ilike batches (case-insensitive, PLUM names are ALL CAPS).
+    const unknownNames = new Set<string>();
+    for (const r of resolved) {
+      if (!officialByPlumId.has(r.personId)) unknownNames.add(r.personName.toLowerCase());
+    }
 
     const officialByLowerName = new Map<
       string,
       { id: string; source_ids: Record<string, string> | null }
     >();
-    for (const o of allOfficials ?? []) {
-      const lower = (o.full_name as string).toLowerCase();
-      if (!officialByLowerName.has(lower)) {
-        officialByLowerName.set(lower, {
-          id:         o.id as string,
-          source_ids: o.source_ids as Record<string, string> | null,
-        });
+    // Batch ilike queries: PostgREST supports `.in()` on normal columns, but
+    // for case-insensitive we need ilike. Use paginated OR queries in chunks.
+    const nameArr = [...unknownNames];
+    const NAME_BATCH = 50;
+    for (let i = 0; i < nameArr.length; i += NAME_BATCH) {
+      const chunk = nameArr.slice(i, i + NAME_BATCH);
+      // Build OR filter: full_name.ilike.NAME1,full_name.ilike.NAME2,...
+      const orFilter = chunk.map(n => `full_name.ilike.${n}`).join(",");
+      const { data: batch } = await db
+        .from("officials")
+        .select("id, full_name, source_ids")
+        .or(orFilter);
+      for (const o of batch ?? []) {
+        const lower = (o.full_name as string).toLowerCase();
+        if (!officialByLowerName.has(lower)) {
+          officialByLowerName.set(lower, {
+            id:         o.id as string,
+            source_ids: o.source_ids as Record<string, string> | null,
+          });
+        }
       }
     }
 
@@ -503,7 +528,10 @@ export async function runPlumBookPipeline(opts: { force?: boolean } = {}): Promi
       metadata: Record<string, unknown>;
     }
 
-    const connections: ConnectionRow[] = [];
+    // Deduplicate by unique key (from_type,from_id,to_type,to_id,connection_type).
+    // A person can have multiple PLUM occupancies for the same agency — keep the
+    // current one when present, otherwise the most recent by start date.
+    const connMap = new Map<string, ConnectionRow>();
     const currentsByAgency = new Map<string, Set<string>>();
 
     for (const r of resolved) {
@@ -516,7 +544,7 @@ export async function runPlumBookPipeline(opts: { force?: boolean } = {}): Promi
         currentsByAgency.set(r.agencyId, s);
       }
 
-      connections.push({
+      const row: ConnectionRow = {
         from_type: "official", from_id: officialId,
         to_type:   "agency",   to_id:   r.agencyId,
         connection_type: "appointment",
@@ -535,8 +563,16 @@ export async function runPlumBookPipeline(opts: { force?: boolean } = {}): Promi
           plum_person_id:    r.personId,
           plum_position_id:  r.positionId,
         },
-      });
+      };
+      const key = `${officialId}|${r.agencyId}`;
+      const existing = connMap.get(key);
+      if (!existing || (!existing.metadata["is_current"] && r.isCurrent) ||
+          (existing.metadata["is_current"] === r.isCurrent &&
+           (r.startDate ?? "") > ((existing.metadata["start_date"] as string) ?? ""))) {
+        connMap.set(key, row);
+      }
     }
+    const connections = [...connMap.values()];
 
     const CONNECTION_BATCH = 500;
     for (let i = 0; i < connections.length; i += CONNECTION_BATCH) {
