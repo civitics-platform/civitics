@@ -40,11 +40,6 @@ interface OfficialRow {
   party: string | null;
 }
 
-interface VoteRow {
-  official_id: string;
-  proposal_id: string;
-  vote: string;
-}
 
 export async function GET(req: NextRequest) {
   if (supabaseUnavailable()) return unavailableResponse();
@@ -130,62 +125,44 @@ export async function GET(req: NextRequest) {
     officialsByDistrict.get(jid)!.push({ id: o.id, jurisdiction_id: jid, party: o.party });
   }
 
-  // For party_cohesion: pull a sample of recent votes per official.
-  // The cohesion calculation is per-district: across all votes where
-  // ALL of the district's reps cast a Yes/No, what fraction had every
-  // rep vote the same way?
-  let cohesionByDistrict = new Map<string, number>();
-  if (measure === "party_cohesion") {
-    const allOfficialIds = (officials ?? []).map((o: OfficialRow) => o.id);
-    if (allOfficialIds.length > 0) {
-      // Pull recent legislation votes (yes/no only). Limit cap controls
-      // total scan size — at ~500 districts × 2 reps × 200 votes that's
-      // ~200k rows max, well under PostgREST limits.
-      const { data: votes } = await supabase
-        .from("votes")
-        .select("official_id, proposal_id, vote")
-        .in("official_id", allOfficialIds)
-        .in("vote", ["yes", "no"])
-        .order("voted_at", { ascending: false })
-        .limit(50000);
+  // FIX-217 — Choropleth measure on SLDs.
+  //
+  // Originally this computed within-district "party cohesion" by looking
+  // for votes where every rep in the district cast the same yes/no. That
+  // doesn't apply to state legislative districts: nearly all are
+  // single-rep, so cohesion is trivially 1.0 and the map ends up uniform.
+  //
+  // Better signal for an SLD-level choropleth: party of the rep,
+  // rendered on a diverging scale so a Red/Blue political map falls out.
+  // -1 = Democrat, +1 = Republican, 0 = Independent / no rep / Unknown.
+  // The d3.interpolateRdBu scale on the client paints D districts blue
+  // and R districts red, with neutral / no-data districts in white-ish.
+  //
+  // For multi-rep districts (rare on SLDs but possible at the
+  // state-aggregate band) we average across reps so a 50/50 D+R district
+  // colors neutral.
+  const partyToScalar = (p: string | null | undefined): number => {
+    const s = (p ?? "").toLowerCase();
+    if (s === "democrat") return -1;
+    if (s === "republican") return 1;
+    return 0;
+  };
 
-      // Group votes by proposal then bucket by district.
-      const byProposal = new Map<string, Map<string, string>>();
-      for (const v of (votes ?? []) as VoteRow[]) {
-        if (!byProposal.has(v.proposal_id)) byProposal.set(v.proposal_id, new Map());
-        byProposal.get(v.proposal_id)!.set(v.official_id, v.vote);
-      }
-
-      for (const district of districts) {
-        const reps = officialsByDistrict.get(district.id) ?? [];
-        if (reps.length < 2) {
-          // Single-rep districts have trivially 100% cohesion — skip.
-          // Show as 1.0 (cohesive) so they color predictably.
-          cohesionByDistrict.set(district.id, 1.0);
-          continue;
-        }
-        let coherent = 0;
-        let total = 0;
-        for (const [, repVotes] of byProposal) {
-          // Only count proposals where all of this district's reps voted.
-          const districtVotes = reps
-            .map(r => repVotes.get(r.id))
-            .filter((v): v is string => Boolean(v));
-          if (districtVotes.length !== reps.length) continue;
-          total++;
-          const allSame = districtVotes.every(v => v === districtVotes[0]);
-          if (allSame) coherent++;
-        }
-        cohesionByDistrict.set(district.id, total === 0 ? 0.5 : coherent / total);
-      }
+  const measureByDistrict = new Map<string, number | null>();
+  for (const district of districts) {
+    const reps = officialsByDistrict.get(district.id) ?? [];
+    if (reps.length === 0) {
+      measureByDistrict.set(district.id, null);
+      continue;
     }
+    const sum = reps.reduce((s, r) => s + partyToScalar(r.party), 0);
+    measureByDistrict.set(district.id, sum / reps.length);
   }
 
-  // small_dollar_share / divergence: stub — return 0.5 so the choropleth
-  // still renders a uniform color rather than failing. The plan flagged
-  // these as later additions.
+  // small_dollar_share / divergence are not yet implemented for SLDs —
+  // fall back to the same party-based scalar so the map at least colors.
   if (measure !== "party_cohesion") {
-    cohesionByDistrict = new Map(districts.map(d => [d.id, 0.5]));
+    // (intentional fall-through — same map.)
   }
 
   const rows: ResponseRow[] = districts.map(d => {
@@ -209,7 +186,7 @@ export async function GET(req: NextRequest) {
       districtId:   d.id,
       districtName: d.name,
       geojson,
-      measureValue: cohesionByDistrict.get(d.id) ?? null,
+      measureValue: measureByDistrict.get(d.id) ?? null,
       officialIds:  reps.map(r => r.id),
       primaryParty,
     };
