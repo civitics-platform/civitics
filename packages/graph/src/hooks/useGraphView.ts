@@ -11,10 +11,16 @@
  *   - All other setters call markDirty so the panel footer knows a preset was modified
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { FocusEntity, FocusGroup, FocusItem, GraphView, GraphViewPreset, VizType } from '../types';
 import { isFocusEntity, isFocusGroup, MAX_FOCUS_ENTITIES } from '../types';
-import { DEFAULT_GRAPH_VIEW, applyPreset as applyPresetUtil, markDirty } from '../presets';
+import {
+  DEFAULT_GRAPH_VIEW,
+  applyPreset as applyPresetUtil,
+  markDirty,
+  BUILT_IN_PRESETS,
+  resolvePresetForFocus,
+} from '../presets';
 import { recordRecent } from '../recently-viewed';
 
 export function useGraphView(initialView?: Partial<GraphView>) {
@@ -22,6 +28,38 @@ export function useGraphView(initialView?: Partial<GraphView>) {
     ...DEFAULT_GRAPH_VIEW,
     ...initialView,
   });
+
+  // FIX-216 — Auto-adapt the active preset when focus changes.
+  // When a clean (non-dirty) preset is loaded, switching focus from e.g.
+  // an unfocused state to "Ted Cruz" should re-merge per-focus dataMode
+  // overrides into vizOptions. We do this by:
+  //   1. Looking up the original preset by meta.presetId
+  //   2. Re-resolving it for the current focus
+  //   3. Updating only style.vizOptions when the resolved view differs
+  // Skips when isDirty=true (user has manually edited the preset).
+  useEffect(() => {
+    const presetId = view.meta?.presetId;
+    if (!presetId) return;
+    if (view.meta?.isDirty) return;
+    const original = BUILT_IN_PRESETS.find(p => p.meta.presetId === presetId);
+    if (!original) return;
+    const resolved = resolvePresetForFocus(original, view.focus);
+    // Cheap structural equality on the just-resolved viz-options
+    const currentJson  = JSON.stringify(view.style.vizOptions);
+    const resolvedJson = JSON.stringify(resolved.style.vizOptions);
+    if (currentJson === resolvedJson) return;
+    setView(v => ({
+      ...v,
+      style: {
+        ...v.style,
+        vizOptions: resolved.style.vizOptions,
+      },
+    }));
+    // Intentionally narrow deps: only react to focus changes + the loaded
+    // preset id. Ignoring view.style.vizOptions is what makes "no-op when
+    // unchanged" stable; the equality check above guards re-entry.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view.focus.entities, view.meta?.presetId, view.meta?.isDirty]);
 
   return {
     view,

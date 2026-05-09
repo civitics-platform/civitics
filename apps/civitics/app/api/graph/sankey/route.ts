@@ -94,15 +94,24 @@ const SCAN_LIMIT = 5000;
 
 // ── Route ─────────────────────────────────────────────────────────────────────
 
-export async function GET(_req: NextRequest) {
+export async function GET(req: NextRequest) {
   if (supabaseUnavailable()) return unavailableResponse();
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const supabase = createAdminClient() as any;
 
+  // FIX-218: when an agencyId is provided, narrow the contract scan to flows
+  // originating from that agency. Powers the "Federal Spending Flows on
+  // {agency}" preset where the user has, e.g., DOD focused and wants only
+  // DOD's contract → sector → vendor breakdown.
+  const { searchParams } = new URL(req.url);
+  const agencyIdParam = searchParams.get("agencyId");
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const agencyId = agencyIdParam && UUID_RE.test(agencyIdParam) ? agencyIdParam : null;
+
   // Pull the largest contracts first. The Sankey is dominated by the top of
   // the distribution; capping here keeps response size bounded.
-  const { data: contractRows, error: contractsErr } = await supabase
+  let contractsQuery = supabase
     .from("financial_relationships")
     .select("from_id, to_id, amount_cents, metadata")
     .eq("relationship_type", "contract")
@@ -111,6 +120,8 @@ export async function GET(_req: NextRequest) {
     .gt("amount_cents", 0)
     .order("amount_cents", { ascending: false })
     .limit(SCAN_LIMIT);
+  if (agencyId) contractsQuery = contractsQuery.eq("from_id", agencyId);
+  const { data: contractRows, error: contractsErr } = await contractsQuery;
 
   if (contractsErr) {
     console.error("[graph/sankey] contracts fetch:", contractsErr.message);

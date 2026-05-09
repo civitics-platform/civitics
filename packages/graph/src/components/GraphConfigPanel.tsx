@@ -14,8 +14,9 @@ import type { GraphView, VizType, IndividualDisplayMode } from '../types';
 import type { UseGraphViewReturn } from '../hooks/useGraphView';
 import type { GraphMeta } from '../hooks/useGraphData';
 import { VIZ_REGISTRY, getVizApplicability } from '../visualizations/registry';
-import { BUILT_IN_PRESETS } from '../presets';
+import { BUILT_IN_PRESETS, isPresetApplicableToView } from '../presets';
 import { TreeNode, TreeSection } from './TreeNode';
+import { isFocusEntity } from '../types';
 
 // FIX-134: section-jump targets the right-panel collapsed icons can scroll to.
 type ConfigSection = 'viz' | 'presets' | 'settings';
@@ -823,22 +824,38 @@ export function GraphConfigPanel({ view, hooks, collapsed, onCollapse, onSavePre
     if (collapsed) onCollapse();
   }
 
-  // Only show presets that match the active viz type (or 'any') and have relevant data.
-  const relevantPresets = BUILT_IN_PRESETS.filter(p => {
-    // Must match viz type
-    if (p.style.vizType !== vizType && (p.style.vizType as string) !== 'any') return false;
-    // "Follow the Money" needs donation data
+  // FIX-216 — Two-bucket preset filtering. Keep the hard data-availability
+  // hides (no point showing "Follow the Money" when there are zero donations)
+  // and layer entity-type applicability on top:
+  //   - Native    : preset matches the focused entity type natively
+  //   - Adapted   : preset has a dataModeByEntity override for this focus
+  //   - Hidden    : viz mismatch or unsuitable for this focus
+  // The two visible buckets are rendered as separate sections so the user
+  // can see when a preset has been auto-rewritten for their focus.
+  const dataApplicable = (p: typeof BUILT_IN_PRESETS[number]): boolean => {
     if (p.meta.presetId === 'follow-the-money' && graphMeta && !graphMeta.hasDonations) return false;
-    // "Votes & Bills" needs vote data
-    if (p.meta.presetId === 'votes-and-bills' && graphMeta && !graphMeta.hasVotes) return false;
-    // QWEN-ADDED: Industry Capture needs donation data (same as follow-the-money)
-    if (p.meta.presetId === 'industry-capture' && graphMeta && !graphMeta.hasDonations) return false;
-    // QWEN-ADDED: Co-Sponsor Network needs co_sponsorship edges.
-    // Fix: hasVotes was wrong — voteTypes only tracks vote_yes/no/abstain, not co_sponsorship.
-    // Check connectionTypes directly, mirroring how hasDonations checks 'donation' in connectionTypes.
+    if (p.meta.presetId === 'votes-and-bills'   && graphMeta && !graphMeta.hasVotes) return false;
+    if (p.meta.presetId === 'industry-capture'  && graphMeta && !graphMeta.hasDonations) return false;
     if (p.meta.presetId === 'co-sponsor-network' && graphMeta && !('co_sponsorship' in graphMeta.connectionTypes)) return false;
     return true;
-  });
+  };
+  const partitionedPresets = BUILT_IN_PRESETS.reduce(
+    (acc, p) => {
+      if (p.style.vizType !== vizType && (p.style.vizType as string) !== 'any') return acc;
+      if (!dataApplicable(p)) return acc;
+      const app = isPresetApplicableToView(p, view);
+      if (app === 'native')   acc.native.push(p);
+      else if (app === 'adapted') acc.adapted.push(p);
+      // 'inapplicable' / 'hidden' — drop
+      return acc;
+    },
+    { native: [] as typeof BUILT_IN_PRESETS, adapted: [] as typeof BUILT_IN_PRESETS },
+  );
+
+  // Label the Adapted bucket with the focused entity name, when present.
+  const focusHead = view.focus.entities[0];
+  const adaptedFocusName = focusHead && isFocusEntity(focusHead) ? focusHead.name : focusHead?.name;
+  const adaptedLabel = adaptedFocusName ? `Adapted for ${adaptedFocusName}` : 'Adapted';
 
   // Collapsed: 40px icon strip — FIX-134: each icon expands and scrolls to its section.
   if (collapsed) {
@@ -976,11 +993,40 @@ export function GraphConfigPanel({ view, hooks, collapsed, onCollapse, onSavePre
         </TreeSection>
         </div>
 
-        {/* Presets — filtered to active viz type */}
+        {/* Presets — Native + Adapted buckets (FIX-216) */}
         <div data-section="presets">
         <TreeSection label="Presets" defaultExpanded separator>
-          {relevantPresets.length > 0
-            ? relevantPresets.map(preset => (
+          {partitionedPresets.native.length === 0 && partitionedPresets.adapted.length === 0 && (
+            <div className="px-3 py-2 text-xs text-gray-400">
+              No presets for this visualization
+            </div>
+          )}
+
+          {partitionedPresets.native.map(preset => (
+            <TreeNode
+              key={preset.meta.presetId}
+              label={preset.meta.name}
+              variant="item"
+              collapsible={false}
+              active={activePreset === preset.meta.presetId}
+              separator={false}
+              depth={1}
+              icon={PRESET_EMOJI[preset.meta.presetId] ?? '📋'}
+              onClick={() => hooks.applyPreset(preset)}
+            >
+              {null}
+            </TreeNode>
+          ))}
+
+          {partitionedPresets.adapted.length > 0 && (
+            <TreeSection
+              label={adaptedLabel}
+              count={partitionedPresets.adapted.length}
+              defaultExpanded
+              separator={partitionedPresets.native.length > 0}
+              depth={1}
+            >
+              {partitionedPresets.adapted.map(preset => (
                 <TreeNode
                   key={preset.meta.presetId}
                   label={preset.meta.name}
@@ -988,19 +1034,15 @@ export function GraphConfigPanel({ view, hooks, collapsed, onCollapse, onSavePre
                   collapsible={false}
                   active={activePreset === preset.meta.presetId}
                   separator={false}
-                  depth={1}
+                  depth={2}
                   icon={PRESET_EMOJI[preset.meta.presetId] ?? '📋'}
                   onClick={() => hooks.applyPreset(preset)}
                 >
                   {null}
                 </TreeNode>
-              ))
-            : (
-                <div className="px-3 py-2 text-xs text-gray-400">
-                  No presets for this visualization
-                </div>
-              )
-          }
+              ))}
+            </TreeSection>
+          )}
 
           <div className="h-px bg-gray-100 mx-2 my-1" />
 
