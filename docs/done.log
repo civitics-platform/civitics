@@ -296,3 +296,9 @@
 2026-05-09 | FIX-220 | e11aedc2 | local-only | feat(graph): donation floor slider + choropleth enum fix + treemap minAmount wiring
 2026-05-09 | FIX-217 | 64b1912c | local-only | fix(graph): choropleth measure encodes party (-1 D, +1 R) on SLDs
 2026-05-09 | FIX-217 | 35f9a365 | local-only | fix(graph): choropleth queries metadata.district_jurisdiction_id + sld_u default
+2026-05-09 | FIX-217 | 8b803e90 | local-only | perf(graph): voting-divergence officials query .in() batched on jid
+2026-05-09 | FIX-217 | ab1188b1 | local-only | fix(graph): voting-divergence bypasses query_districts RPC
+2026-05-09 | FIX-217 | 7f88a0e9 | unverified | fix(graph): TIGER congressional uses per-state shapefiles
+2026-05-09 | FIX-217 | acad023c | local-only | fix(graph): voting-divergence query_districts limit 1200, simplify 0.01
+2026-05-09 | FIX-217 | ed584fd1 | local-only | feat(graph): TIGER congressional districts + stronger official→district linker
+2026-05-09 | FIX-217 | 61a1543e | local-only | fix(graph): paginate voting-divergence officials query + raise district limit
