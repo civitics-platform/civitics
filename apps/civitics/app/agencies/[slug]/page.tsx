@@ -289,6 +289,7 @@ export default async function AgencyProfilePage({
   const { data: connectionRows } = await supabase
     .from("entity_connections")
     .select("from_id, from_type, to_id, to_type, connection_type, strength, metadata, evidence_source")
+    .eq("connection_type", "appointment")
     .or(
       `and(from_type.eq.official,to_id.eq.${agency.id}),and(to_type.eq.official,from_id.eq.${agency.id})`
     )
