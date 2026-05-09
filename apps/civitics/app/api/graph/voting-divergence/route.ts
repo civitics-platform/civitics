@@ -103,8 +103,6 @@ export async function GET(req: NextRequest) {
       console.error("[voting-divergence] jurisdictions fetch:", error.message, "chamber=", chamberFilter);
       return NextResponse.json({ error: error.message, chamber: chamberFilter }, { status: 500 });
     }
-    const rawRowCount = Array.isArray(data) ? data.length : 0;
-    console.log(`[voting-divergence] jurisdictions(chamber=${chamberFilter}) → ${rawRowCount} rows`);
     // boundary_geometry is PostGIS — PostgREST serializes as a GeoJSON-ish
     // object. Coerce to JSON string for the parsing step below; if it's
     // already an object, JSON.stringify wraps it cleanly.
@@ -133,8 +131,6 @@ export async function GET(req: NextRequest) {
   // approach hit Supabase statement timeouts on Vercel — JSON-path
   // index lookups are seq-scans without a function-based index.
   const officialsByDistrict = new Map<string, OfficialRow[]>();
-  let totalOfficialsScanned = 0;
-  let totalOfficialsBucketed = 0;
   {
     const PAGE = 1000;
     let from = 0;
@@ -147,27 +143,21 @@ export async function GET(req: NextRequest) {
         .not("metadata->>district_jurisdiction_id", "is", null)
         .range(from, from + PAGE - 1);
       if (error) {
-        console.error("[voting-divergence] officials fetch error:", error.message);
+        console.error("[voting-divergence] officials fetch:", error.message);
         break;
       }
       const rows = data as Array<{ id: string; party: string | null; metadata: { district_jurisdiction_id?: string } | null }> | null;
       if (!rows || rows.length === 0) break;
-      totalOfficialsScanned += rows.length;
-      let pageBucketed = 0;
       for (const o of rows) {
         const jid = o.metadata?.district_jurisdiction_id;
         if (!jid || !districtIdSet.has(jid)) continue;
         if (!officialsByDistrict.has(jid)) officialsByDistrict.set(jid, []);
         officialsByDistrict.get(jid)!.push({ id: o.id, jurisdiction_id: jid, party: o.party });
-        totalOfficialsBucketed++;
-        pageBucketed++;
       }
-      console.log(`[voting-divergence] page from=${from} returned=${rows.length} bucketed_in_page=${pageBucketed}`);
       if (rows.length < PAGE) break;
       from += PAGE;
       if (from > 50_000) break;
     }
-    console.log(`[voting-divergence] TOTAL: scanned=${totalOfficialsScanned} bucketed=${totalOfficialsBucketed} districts=${districtIdSet.size}`);
   }
 
   // FIX-217 — Choropleth measure on SLDs.
