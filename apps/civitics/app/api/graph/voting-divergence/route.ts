@@ -89,12 +89,13 @@ export async function GET(req: NextRequest) {
     const { data, error } = await (supabase as any).rpc("query_districts", {
       p_chamber: chamberFilter,
       p_state:   null,
-      // FIX-217: heavier simplification (0.01) keeps district shapes
-      // recognisable while shrinking the per-polygon payload ~3x. Required
-      // because we now ask for up to 2000 districts (covers most SLD-U +
-      // SLD-L sets — 50 × ~25 SLD-U ≈ 1250, lower chamber ~3000+).
+      // FIX-217: simplification tolerance and limit balanced against
+      // Supabase's statement timeout. ST_SimplifyPreserveTopology cost
+      // grows with both polygon count and tolerance × geometry density.
+      // 1200 × 0.01 stays under the timeout for SLD-U/L; congressional
+      // is only ~440 districts so easily fits.
       p_simplify_tolerance: 0.01,
-      p_limit:   2000,
+      p_limit:   1200,
     });
     if (error) {
       console.error("[voting-divergence] query_districts error:", error.message);
