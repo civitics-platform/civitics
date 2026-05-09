@@ -117,31 +117,33 @@ export async function GET(req: NextRequest) {
   const districtIds = districts.map(d => d.id);
   const districtIdSet = new Set(districtIds);
 
-  // Officials per district. FIX-217: link_officials_to_districts() writes
-  // the district id to officials.metadata->>'district_jurisdiction_id',
-  // not to officials.jurisdiction_id (which still points at the statewide
-  // jurisdiction for state legislators). Query metadata and bucket
-  // client-side. Paginate via range() because the officials table has
-  // ~7,000+ linked rows and PostgREST caps at 1000 per response — without
-  // pagination only ~156 of 500 districts would resolve a rep.
-  // FIX-217: paginate all linked officials and bucket client-side. The
-  // alternative `.in('metadata->>district_jurisdiction_id', batch)`
-  // approach hit Supabase statement timeouts on Vercel — JSON-path
-  // index lookups are seq-scans without a function-based index.
+  // FIX-217: bucket linked officials by district. Run two narrow queries
+  // (federal Reps + state legs) in parallel rather than one nationwide
+  // pagination — keeps each query small and fast on Vercel where total
+  // function-execution budget is tight after the per-state district
+  // fetch loop. role_title is an indexed enum so each filtered query
+  // returns < 5,000 rows.
   const officialsByDistrict = new Map<string, OfficialRow[]>();
-  {
+
+  async function fetchAndBucket(roleFilter: 'Representative' | 'state-leg'): Promise<void> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let q = (supabase as any)
+      .from("officials")
+      .select("id, party, metadata, role_title")
+      .not("metadata->>district_jurisdiction_id", "is", null);
+    if (roleFilter === 'Representative') {
+      q = q.eq("role_title", "Representative");
+    } else {
+      q = q.in("role_title", ["State Senator", "State Representative", "State Delegate", "State Assemblymember"]);
+    }
+    // Paginate — defensive even though each branch is bounded.
     const PAGE = 1000;
     let from = 0;
     // eslint-disable-next-line no-constant-condition
     while (true) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data, error } = await (supabase as any)
-        .from("officials")
-        .select("id, party, metadata")
-        .not("metadata->>district_jurisdiction_id", "is", null)
-        .range(from, from + PAGE - 1);
+      const { data, error } = await q.range(from, from + PAGE - 1);
       if (error) {
-        console.error("[voting-divergence] officials fetch:", error.message);
+        console.error(`[voting-divergence] ${roleFilter} fetch:`, error.message);
         break;
       }
       const rows = data as Array<{ id: string; party: string | null; metadata: { district_jurisdiction_id?: string } | null }> | null;
@@ -154,9 +156,14 @@ export async function GET(req: NextRequest) {
       }
       if (rows.length < PAGE) break;
       from += PAGE;
-      if (from > 50_000) break;
+      if (from > 20_000) break;
     }
   }
+
+  await Promise.all([
+    fetchAndBucket('Representative'),
+    fetchAndBucket('state-leg'),
+  ]);
 
   // FIX-217 — Choropleth measure on SLDs.
   //
