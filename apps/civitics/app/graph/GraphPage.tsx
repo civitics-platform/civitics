@@ -612,6 +612,8 @@ export function GraphPage({ initialCode, aiEnabled = true }: GraphPageProps = {}
                   ) ?? null
                 }
                 focusEntities={focusEntityList}
+                // FIX-220 — donation floor sourced from connections state.
+                minAmountUsd={view.connections?.donation?.minAmount ?? 0}
               />
             </div>
           )}

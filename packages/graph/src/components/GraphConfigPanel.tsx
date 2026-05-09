@@ -94,6 +94,76 @@ function LabeledSlider({
   );
 }
 
+// FIX-220 — Donation floor control. Six log-scale stops mapped to a single
+// minAmount value on view.connections.donation. Surfaced in both the
+// Treemap and Force settings panels so users can suppress noise without
+// hunting for the buried Min $ field in the Connections row.
+//
+// Stop-index → dollar floor:
+//   0: $0      (show all)
+//   1: $200    (hide below the FEC itemization threshold)
+//   2: $1,000
+//   3: $10,000 (mid)
+//   4: $100,000 (major)
+//   5: $1,000,000 (mega)
+const DONATION_FLOOR_STOPS = [0, 200, 1_000, 10_000, 100_000, 1_000_000] as const;
+
+function dollarsToStop(dollars: number): number {
+  // Find the index of the closest stop ≤ dollars
+  let idx = 0;
+  for (let i = 0; i < DONATION_FLOOR_STOPS.length; i++) {
+    if (dollars >= DONATION_FLOOR_STOPS[i]!) idx = i;
+  }
+  return idx;
+}
+
+function formatDollars(d: number): string {
+  if (d === 0)        return '$0';
+  if (d < 1_000)      return `$${d}`;
+  if (d < 1_000_000)  return `$${(d / 1_000).toFixed(0)}K`;
+  return `$${(d / 1_000_000).toFixed(0)}M`;
+}
+
+function DonationFloorControl({ view, hooks, label = 'Donation floor' }: {
+  view: GraphView;
+  hooks: UseGraphViewReturn;
+  label?: string;
+}) {
+  const current = view.connections?.donation?.minAmount ?? 0;
+  const stop = dollarsToStop(current);
+  const dollars = DONATION_FLOOR_STOPS[stop]!;
+  return (
+    <>
+      <div className="flex items-center gap-2 px-3 py-1">
+        <span className="text-[10px] text-gray-500 w-20 shrink-0">{label}</span>
+        <input
+          type="range"
+          min={0}
+          max={DONATION_FLOOR_STOPS.length - 1}
+          step={1}
+          value={stop}
+          aria-label={label}
+          onChange={e => {
+            const next = parseInt(e.target.value, 10);
+            const safe = Math.max(0, Math.min(DONATION_FLOOR_STOPS.length - 1, next));
+            const value = DONATION_FLOOR_STOPS[safe]!;
+            hooks.setConnectionMinAmount('donation', value);
+          }}
+          className="flex-1 h-1 accent-indigo-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1 rounded"
+        />
+        <span className="text-[10px] text-gray-500 w-10 text-right tabular-nums">
+          {formatDollars(dollars)}
+        </span>
+      </div>
+      <div className="px-3 pb-1 text-[9px] text-gray-400 italic leading-tight">
+        {dollars === 0
+          ? 'Showing all donations'
+          : `Hiding donations below ${formatDollars(dollars)}`}
+      </div>
+    </>
+  );
+}
+
 function LabeledSelect({
   label, value, options, onChange, disabledReason,
 }: {
@@ -275,6 +345,9 @@ function ForceSettings({ view, hooks, graphMeta }: { view: GraphView; hooks: Use
         />
       )}
       <div className="px-3 pt-2 pb-0.5 text-[9px] font-semibold text-gray-400 uppercase tracking-wide">Filters</div>
+      {/* FIX-220 — same control as treemap so the floor is consistent
+          across viz switches. Writes to view.connections.donation.minAmount. */}
+      <DonationFloorControl view={view} hooks={hooks} />
       <LabeledSlider
         label="Min strength"
         min={0} max={0.9} step={0.1}
@@ -438,6 +511,8 @@ function TreemapSettings({ view, hooks, graphMeta }: { view: GraphView; hooks: U
         ]}
         onChange={v => set('dataMode', v)}
       />
+      {/* FIX-220 — donation floor available in every treemap mode */}
+      <DonationFloorControl view={view} hooks={hooks} />
       {!isPacMode && (
         <>
           <LabeledSelect

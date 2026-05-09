@@ -34,13 +34,6 @@ interface ResponseRow {
 const VALID_MEASURES = new Set(["party_cohesion", "divergence", "small_dollar_share"]);
 const VALID_BANDS    = new Set(["state", "congressional", "sld_u", "sld_l"]);
 
-interface JurisdictionRow {
-  id: string;
-  name: string;
-  type: string;
-  boundary_geometry: GeoJSON.Geometry | null;
-}
-
 interface OfficialRow {
   id: string;
   jurisdiction_id: string | null;
@@ -67,25 +60,51 @@ export async function GET(req: NextRequest) {
   if (!VALID_BANDS.has(bandLevel))
     return NextResponse.json({ error: `invalid bandLevel: ${bandLevel}` }, { status: 400 });
 
-  // Map bandLevel → jurisdictions.type values used in the migration.
-  const jurisdictionType =
-    bandLevel === "state"         ? "state" :
-    bandLevel === "congressional" ? "district_congressional" :
-    bandLevel === "sld_u"         ? "district_state_upper" :
-                                     "district_state_lower";
+  // FIX-217: jurisdiction_type is a single 'district' enum value with
+  // metadata->>'chamber' disambiguating ('upper' | 'lower' | 'congressional').
+  // The TIGER pipeline writes congressional districts under chamber='congressional'
+  // (FIX-163). State band uses jurisdiction_type='state' directly.
+  const isStateBand = bandLevel === "state";
+  const chamberFilter =
+    bandLevel === "congressional" ? "congressional" :
+    bandLevel === "sld_u"         ? "upper" :
+    bandLevel === "sld_l"         ? "lower" :
+                                    null;
 
-  // Fetch districts + their boundaries.
-  const { data: jRows, error: jErr } = await supabase
-    .from("jurisdictions")
-    .select("id, name, type, boundary_geometry")
-    .eq("type", jurisdictionType)
-    .limit(500);
-
-  if (jErr) {
-    console.error("[voting-divergence] jurisdictions fetch:", jErr.message);
-    return NextResponse.json({ error: jErr.message }, { status: 500 });
+  // Fetch districts + their boundaries via the existing query_districts RPC,
+  // which returns ST_AsGeoJSON-converted polygons rather than raw PostGIS.
+  // For 'state' band, query the jurisdictions table directly.
+  let jRows: Array<{ id: string; name: string; geom_geojson: string | null }>;
+  if (isStateBand) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data, error } = await (supabase as any)
+      .from("jurisdictions")
+      .select("id, name")
+      .eq("type", "state")
+      .limit(60);
+    if (error) {
+      console.error("[voting-divergence] state fetch:", error.message);
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+    jRows = (data ?? []).map((r: { id: string; name: string }) => ({
+      id: r.id, name: r.name, geom_geojson: null,
+    }));
+  } else {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data, error } = await (supabase as any).rpc("query_districts", {
+      p_chamber: chamberFilter,
+      p_state:   null,
+      p_simplify_tolerance: 0.005,  // coarser for choropleth — payload size
+      p_limit:   500,
+    });
+    if (error) {
+      console.error("[voting-divergence] query_districts error:", error.message);
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+    jRows = (data ?? []) as Array<{ id: string; name: string; geom_geojson: string | null }>;
   }
-  const districts = (jRows ?? []) as JurisdictionRow[];
+
+  const districts = jRows;
   if (districts.length === 0) return NextResponse.json([]);
 
   const districtIds = districts.map(d => d.id);
@@ -171,10 +190,17 @@ export async function GET(req: NextRequest) {
     let primaryParty: string | null = null;
     let maxN = 0;
     for (const [p, n] of partyCount) if (n > maxN) { primaryParty = p; maxN = n; }
+    // FIX-217: query_districts returns ST_AsGeoJSON-converted polygons as a
+    // text column. Parse to a GeoJSON Geometry object for the client.
+    let geojson: GeoJSON.Geometry | null = null;
+    if (d.geom_geojson) {
+      try { geojson = JSON.parse(d.geom_geojson) as GeoJSON.Geometry; }
+      catch { geojson = null; }
+    }
     return {
       districtId:   d.id,
       districtName: d.name,
-      geojson:      d.boundary_geometry,
+      geojson,
       measureValue: cohesionByDistrict.get(d.id) ?? null,
       officialIds:  reps.map(r => r.id),
       primaryParty,

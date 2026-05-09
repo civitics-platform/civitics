@@ -43,6 +43,11 @@ export async function GET(request: Request) {
   // rendered the same global all-sectors view.
   const industryFilter = searchParams.get("industry");
 
+  // FIX-220 — user-controlled donation floor. Replaces the hardcoded
+  // `> $10k` filter in party mode. Default 0 (show all). Applied
+  // post-aggregation in dollars (per-donor totals).
+  const minAmountUsd = Math.max(0, parseFloat(searchParams.get("minAmountUsd") ?? "0") || 0);
+
   // FIX-216: when an officialId is provided, restrict the PAC set to those
   // that donated to that official, and constrain donations to flows touching
   // that official. Without this, "Ted Cruz > PAC Money by Sector" returned
@@ -182,10 +187,13 @@ export async function GET(request: Request) {
     const PER_SECTOR_CAP = industryFilter ? Number.POSITIVE_INFINITY : 100;
     const SECTOR_CAP     = industryFilter ? Number.POSITIVE_INFINITY : 15;
 
+    // FIX-220 — apply user donation floor before per-sector cap so the floor
+    // is honored even when sector contents are heavy.
     const children: PacGroup[] = Array.from(bySector.entries())
       .map(([sector, donors]) => {
         const leaves: PacLeaf[] = Array.from(donors.entries())
           .map(([name, stats]) => ({ name, value: stats.totalUsd, count: stats.count }))
+          .filter(l => l.value >= minAmountUsd)
           .sort((a, b) => b.value - a.value)
           .slice(0, PER_SECTOR_CAP);
 
@@ -195,6 +203,7 @@ export async function GET(request: Request) {
           children: leaves,
         };
       })
+      .filter(g => g.children.length > 0)
       .sort((a, b) => b.totalUsd - a.totalUsd)
       .slice(0, SECTOR_CAP);
 
@@ -275,7 +284,8 @@ export async function GET(request: Request) {
   }
 
   for (const [key, val] of donorCombined) {
-    if (val.totalUsd <= 10000) continue;
+    // FIX-220 — was hardcoded `<= 10000`; now respects user-set floor.
+    if (val.totalUsd < minAmountUsd) continue;
     const donor = key.slice(val.party.length + 1);
     const donorUpper = donor.toUpperCase();
     if (

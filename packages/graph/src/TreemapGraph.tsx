@@ -235,9 +235,15 @@ export interface TreemapGraphProps {
    * donors, color-matched across cells where donors overlap.
    */
   focusEntities?: FocusEntity[];
+  /**
+   * FIX-220 — Donation floor in USD. Forwarded from
+   * view.connections.donation.minAmount. Filters out donor leaves and
+   * official cohort rows whose total falls below this floor. 0 = show all.
+   */
+  minAmountUsd?: number;
 }
 
-export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOptions, primaryEntityId, primaryEntityName, primaryGroup, secondaryGroup, focusEntities = [] }: TreemapGraphProps) {
+export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOptions, primaryEntityId, primaryEntityName, primaryGroup, secondaryGroup, focusEntities = [], minAmountUsd = 0 }: TreemapGraphProps) {
   const containerRef   = useRef<HTMLDivElement>(null);
   const internalSvgRef = useRef<SVGSVGElement>(null);
   const svgRef         = externalSvgRef ?? internalSvgRef;
@@ -350,6 +356,8 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
       if (primaryEntityId && isRealUuid(primaryEntityId)) {
         params.set('entityId', primaryEntityId);
       }
+      // FIX-220 — donation floor
+      if (minAmountUsd > 0) params.set('minAmountUsd', String(minAmountUsd));
       fetch(`/api/graph/treemap-pac?${params.toString()}`)
         .then((r) => r.json())
         .then((data: PacHierarchy | { error: string }) => {
@@ -389,14 +397,17 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
       if (g.party)   params.set('party',   g.party);
       if (g.state)   params.set('state',   g.state);
       if (industryFilter) params.set('industry_filter', industryFilter);
+      if (minAmountUsd > 0) params.set('minAmountUsd', String(minAmountUsd));
       url = `/api/graph/treemap?${params.toString()}`;
     } else if (entityIdParam) {
       const params = new URLSearchParams({ entityId: entityIdParam, groupBy, sizeBy });
       if (industryFilter) params.set('industry_filter', industryFilter);
+      if (minAmountUsd > 0) params.set('minAmountUsd', String(minAmountUsd));
       url = `/api/graph/treemap?${params.toString()}`;
     } else {
       const params = new URLSearchParams({ groupBy, sizeBy });
       if (industryFilter) params.set('industry_filter', industryFilter);
+      if (minAmountUsd > 0) params.set('minAmountUsd', String(minAmountUsd));
       url = `/api/graph/treemap?${params.toString()}`;
     }
 
@@ -415,9 +426,9 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false));
-  // Refetch when entity / group / groupBy / sizeBy / dataMode / industry filter / compare change
+  // Refetch when entity / group / groupBy / sizeBy / dataMode / industry filter / compare / minAmount change
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [primaryEntityId, primaryGroup, secondaryGroup, groupBy, sizeBy, dataMode, compareMode, focusEntities]);
+  }, [primaryEntityId, primaryGroup, secondaryGroup, groupBy, sizeBy, dataMode, compareMode, focusEntities, minAmountUsd]);
 
   // Reset drill state when the view changes
   useEffect(() => {

@@ -35,6 +35,13 @@ export async function GET(request: Request) {
   // when unset — no breaking change.
   const industryFilter = searchParams.get("industry_filter");
 
+  // FIX-220 — user-controlled donation floor. Filters donor leaves
+  // (entity mode) and official cohort rows (aggregate mode) by total ≥ floor.
+  // Default 0 (show all). Forwarded by TreemapGraph from
+  // view.connections.donation.minAmount.
+  const minAmountUsd = Math.max(0, parseFloat(searchParams.get("minAmountUsd") ?? "0") || 0);
+  const minAmountCents = minAmountUsd * 100;
+
   // Resolve filter PAC ids once. Used in both entity mode and aggregate mode.
   let filterPacIds: string[] | null = null;
   if (industryFilter) {
@@ -102,6 +109,8 @@ export async function GET(request: Request) {
 
     const rows: DonorRow[] = [];
     for (const [donorId, cents] of byDonor) {
+      // FIX-220 — apply user donation floor before pushing the row.
+      if (cents < minAmountCents) continue;
       const info = donorInfo.get(donorId);
       if (!info) continue;
       const industry = industryByEntityId.get(donorId);
@@ -317,13 +326,16 @@ export async function GET(request: Request) {
 
   const rows: TreemapRow[] = [];
   for (const [officialId, o] of officialById) {
+    const total = totalByOfficial.get(officialId) ?? 0;
+    // FIX-220 — apply user donation floor against per-official aggregate.
+    if (total < minAmountCents) continue;
     rows.push({
       official_id: officialId,
       official_name: o.full_name,
       party: o.party ?? "Unknown",
       state: o.state,
       chamber: o.role_title === "Senator" ? "senate" : o.role_title === "Representative" ? "house" : (o.role_title ?? ""),
-      total_donated_cents: totalByOfficial.get(officialId) ?? 0,
+      total_donated_cents: total,
       connection_count:    connByOfficial.get(officialId)  ?? 0,
       vote_count:          votesByOfficial.get(officialId) ?? 0,
     });
