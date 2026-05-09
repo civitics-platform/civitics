@@ -294,3 +294,5 @@
 2026-05-09 | FIX-217 | 8be39cd5 | local-only | fix(graph): agency-staffing batches appointment + spending queries
 2026-05-09 | FIX-217 | e11aedc2 | local-only | feat(graph): donation floor slider + choropleth enum fix + treemap minAmount wiring
 2026-05-09 | FIX-220 | e11aedc2 | local-only | feat(graph): donation floor slider + choropleth enum fix + treemap minAmount wiring
+2026-05-09 | FIX-217 | 64b1912c | local-only | fix(graph): choropleth measure encodes party (-1 D, +1 R) on SLDs
+2026-05-09 | FIX-217 | 35f9a365 | local-only | fix(graph): choropleth queries metadata.district_jurisdiction_id + sld_u default
