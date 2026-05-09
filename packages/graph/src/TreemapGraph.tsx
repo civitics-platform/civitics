@@ -300,6 +300,16 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
       ) {
         params.set('industry', primaryGroup.filter.industry);
       }
+      // FIX-216: when an official is focused, restrict the PAC set to those
+      // who donated to that official. Without this, "Ted Cruz > PAC Money by
+      // Sector" returned every PAC in the database — a different scope than
+      // the sibling "By State" preset, producing disjoint PAC sets across
+      // presets that should overlap.
+      const isRealUuid = (id: string) =>
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+      if (primaryEntityId && isRealUuid(primaryEntityId)) {
+        params.set('entityId', primaryEntityId);
+      }
       fetch(`/api/graph/treemap-pac?${params.toString()}`)
         .then((r) => r.json())
         .then((data: PacHierarchy | { error: string }) => {

@@ -172,7 +172,9 @@ export const COMMITTEE_POWER: GraphViewPreset = {
     depth: 2,
     includeProcedural: false,
   },
-  connections: buildConnections(['oversight']),
+  // FIX-216: drifted from packages/graph/CLAUDE.md Built-in Presets table —
+  // committee power is oversight + appointment authority.
+  connections: buildConnections(['oversight', 'appointment']),
   style: {
     vizType: 'force',
     vizOptions: {
@@ -276,7 +278,10 @@ export const INDUSTRY_CAPTURE: GraphViewPreset = {
     depth: 2,
     includeProcedural: false,
   },
-  connections: buildConnections(['donation']),
+  // FIX-216: drifted from packages/graph/CLAUDE.md Built-in Presets table —
+  // capture is the donation flow PLUS the oversight/revolving-door evidence
+  // that money correlates with regulatory leverage.
+  connections: buildConnections(['donation', 'oversight', 'revolving_door']),
   style: {
     vizType: 'force',
     vizOptions: {
@@ -309,7 +314,10 @@ export const CO_SPONSOR_NETWORK: GraphViewPreset = {
     depth: 2,
     includeProcedural: false,
   },
-  connections: buildConnections(['co_sponsorship']),
+  // FIX-216: drifted from packages/graph/CLAUDE.md Built-in Presets table —
+  // co-sponsor network surfaces alignment via co_sponsorship + vote_yes
+  // (officials co-sponsor but also signal alignment via votes).
+  connections: buildConnections(['co_sponsorship', 'vote_yes']),
   style: {
     vizType: 'force',
     vizOptions: {

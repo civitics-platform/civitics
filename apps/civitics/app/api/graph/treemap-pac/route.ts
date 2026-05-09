@@ -43,6 +43,27 @@ export async function GET(request: Request) {
   // rendered the same global all-sectors view.
   const industryFilter = searchParams.get("industry");
 
+  // FIX-216: when an officialId is provided, restrict the PAC set to those
+  // that donated to that official, and constrain donations to flows touching
+  // that official. Without this, "Ted Cruz > PAC Money by Sector" returned
+  // every PAC in the database — disjoint from sibling presets like "By State"
+  // that DO respect the focused entity.
+  const entityIdParam = searchParams.get("entityId");
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const entityId = entityIdParam && UUID_RE.test(entityIdParam) ? entityIdParam : null;
+
+  // Look up the official's display name for the hierarchy title; non-blocking
+  // failure leaves it as the generic title.
+  let officialName: string | null = null;
+  if (entityId) {
+    const { data: o } = await supabase
+      .from("officials")
+      .select("full_name")
+      .eq("id", entityId)
+      .maybeSingle();
+    officialName = o?.full_name ?? null;
+  }
+
   // ── Sector mode ──────────────────────────────────────────────────────────────
 
   if (groupBy === "sector") {
@@ -91,6 +112,31 @@ export async function GET(request: Request) {
     const pacsTotal = (pacEntities ?? []).length;
     const pacsTagged = pacInfo.size;
 
+    // FIX-216: when an officialId is set, narrow pacInfo to PACs that have
+    // at least one donation to that official. This must run BEFORE the
+    // per-batch donations aggregation so we don't count flows to other officials.
+    if (entityId) {
+      const linkedIds: string[] = [];
+      const allPacIds = [...pacInfo.keys()];
+      const BATCH = 300;
+      for (let i = 0; i < allPacIds.length; i += BATCH) {
+        const batch = allPacIds.slice(i, i + BATCH);
+        const { data: linked } = await supabase
+          .from("financial_relationships")
+          .select("from_id")
+          .eq("relationship_type", "donation")
+          .eq("from_type", "financial_entity")
+          .eq("to_type", "official")
+          .eq("to_id", entityId)
+          .in("from_id", batch);
+        for (const r of linked ?? []) linkedIds.push(r.from_id);
+      }
+      const linkedSet = new Set(linkedIds);
+      for (const id of [...pacInfo.keys()]) {
+        if (!linkedSet.has(id)) pacInfo.delete(id);
+      }
+    }
+
     // Step 2: their donations.
     const pacIds = [...pacInfo.keys()];
     const bySector = new Map<string, Map<string, { totalUsd: number; count: number }>>();
@@ -98,12 +144,17 @@ export async function GET(request: Request) {
       const BATCH = 300;
       for (let i = 0; i < pacIds.length; i += BATCH) {
         const batch = pacIds.slice(i, i + BATCH);
-        const { data: donations } = await supabase
+        // FIX-216: when entityId is set, the donations aggregation must only
+        // count flows TO that official — otherwise sector totals would still
+        // include those PACs' donations to other recipients.
+        let donationsQuery = supabase
           .from("financial_relationships")
           .select("from_id, amount_cents")
           .eq("relationship_type", "donation")
           .eq("from_type", "financial_entity")
           .in("from_id", batch);
+        if (entityId) donationsQuery = donationsQuery.eq("to_id", entityId);
+        const { data: donations } = await donationsQuery;
 
         for (const row of donations ?? []) {
           const info = pacInfo.get(row.from_id);
@@ -147,8 +198,11 @@ export async function GET(request: Request) {
       .sort((a, b) => b.totalUsd - a.totalUsd)
       .slice(0, SECTOR_CAP);
 
+    const baseName = industryFilter ? `${industryFilter} PACs` : "PAC Money by Sector";
     const hierarchy: PacHierarchy = {
-      name: industryFilter ? `${industryFilter} PACs` : "PAC Money by Sector",
+      // FIX-216: prefix with the focused official's name so the user can see
+      // the rewrite ("PACs that donated to Ted Cruz, by sector").
+      name: officialName ? `${officialName} — ${baseName}` : baseName,
       children,
       meta: { pacsTotal, pacsTagged, pacsUntagged: untaggedCount },
     };
@@ -176,13 +230,18 @@ export async function GET(request: Request) {
     const BATCH = 300;
     for (let i = 0; i < pacIds2.length; i += BATCH) {
       const batch = pacIds2.slice(i, i + BATCH);
-      const { data } = await supabase
+      // FIX-216: party-mode with entityId is degenerate (one official has one
+      // party) but we still constrain so the single-group hierarchy correctly
+      // reports flows TO that official rather than global PAC donations.
+      let q = supabase
         .from("financial_relationships")
         .select("from_id, to_id, amount_cents")
         .eq("relationship_type", "donation")
         .eq("from_type", "financial_entity")
         .eq("to_type", "official")
         .in("from_id", batch);
+      if (entityId) q = q.eq("to_id", entityId);
+      const { data } = await q;
       if (data) donations.push(...data);
     }
   }
@@ -244,7 +303,8 @@ export async function GET(request: Request) {
     .sort((a, b) => b.totalUsd - a.totalUsd)
     .slice(0, 3);
 
-  const hierarchy: PacHierarchy = { name: "PAC Money by Party", children };
+  const partyTitle = officialName ? `${officialName} — PAC Money by Party` : "PAC Money by Party";
+  const hierarchy: PacHierarchy = { name: partyTitle, children };
   return Response.json(hierarchy, {
     headers: { "Cache-Control": "public, max-age=0, s-maxage=86400, stale-while-revalidate=172800" },
   });
