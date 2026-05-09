@@ -129,6 +129,8 @@ export async function GET(req: NextRequest) {
   // ~7,000+ linked rows and PostgREST caps at 1000 per response — without
   // pagination only ~156 of 500 districts would resolve a rep.
   const officialsByDistrict = new Map<string, OfficialRow[]>();
+  let totalOfficialsScanned = 0;
+  let totalOfficialsBucketed = 0;
   {
     const PAGE = 1000;
     let from = 0;
@@ -141,20 +143,23 @@ export async function GET(req: NextRequest) {
         .not("metadata->>district_jurisdiction_id", "is", null)
         .range(from, from + PAGE - 1);
       if (error) {
-        console.error("[voting-divergence] officials fetch:", error.message);
+        console.error("[voting-divergence] officials fetch error:", error.message);
         break;
       }
       if (!data || data.length === 0) break;
+      totalOfficialsScanned += data.length;
       for (const o of data as Array<{ id: string; party: string | null; metadata: { district_jurisdiction_id?: string } | null }>) {
         const jid = o.metadata?.district_jurisdiction_id;
         if (!jid || !districtIdSet.has(jid)) continue;
         if (!officialsByDistrict.has(jid)) officialsByDistrict.set(jid, []);
         officialsByDistrict.get(jid)!.push({ id: o.id, jurisdiction_id: jid, party: o.party });
+        totalOfficialsBucketed++;
       }
       if (data.length < PAGE) break;
       from += PAGE;
       if (from > 50_000) break; // safety
     }
+    console.log(`[voting-divergence] officials scanned=${totalOfficialsScanned} bucketed=${totalOfficialsBucketed} (${districtIdSet.size} districts)`);
   }
 
   // FIX-217 — Choropleth measure on SLDs.
