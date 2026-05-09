@@ -128,35 +128,46 @@ export async function GET(req: NextRequest) {
   // client-side. Paginate via range() because the officials table has
   // ~7,000+ linked rows and PostgREST caps at 1000 per response — without
   // pagination only ~156 of 500 districts would resolve a rep.
-  // FIX-217: query officials whose district_jurisdiction_id is in the
-  // visible district set. PostgREST .in() accepts JSON-path expressions
-  // (PostgreSQL `IN ($1, $2, ...)`), avoiding a 7,000-row paginated scan.
-  // Batched in 100s because Postgres caps the IN-list at ~32K elements
-  // but URL length matters more.
+  // FIX-217: paginate all linked officials and bucket client-side. The
+  // alternative `.in('metadata->>district_jurisdiction_id', batch)`
+  // approach hit Supabase statement timeouts on Vercel — JSON-path
+  // index lookups are seq-scans without a function-based index.
   const officialsByDistrict = new Map<string, OfficialRow[]>();
+  let totalOfficialsScanned = 0;
   let totalOfficialsBucketed = 0;
   {
-    const BATCH = 100;
-    for (let i = 0; i < districtIds.length; i += BATCH) {
-      const batch = districtIds.slice(i, i + BATCH);
+    const PAGE = 1000;
+    let from = 0;
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data, error } = await (supabase as any)
         .from("officials")
         .select("id, party, metadata")
-        .in("metadata->>district_jurisdiction_id", batch);
+        .not("metadata->>district_jurisdiction_id", "is", null)
+        .range(from, from + PAGE - 1);
       if (error) {
-        console.error("[voting-divergence] officials .in fetch:", error.message);
-        continue;
+        console.error("[voting-divergence] officials fetch error:", error.message);
+        break;
       }
-      for (const o of (data ?? []) as Array<{ id: string; party: string | null; metadata: { district_jurisdiction_id?: string } | null }>) {
+      const rows = data as Array<{ id: string; party: string | null; metadata: { district_jurisdiction_id?: string } | null }> | null;
+      if (!rows || rows.length === 0) break;
+      totalOfficialsScanned += rows.length;
+      let pageBucketed = 0;
+      for (const o of rows) {
         const jid = o.metadata?.district_jurisdiction_id;
         if (!jid || !districtIdSet.has(jid)) continue;
         if (!officialsByDistrict.has(jid)) officialsByDistrict.set(jid, []);
         officialsByDistrict.get(jid)!.push({ id: o.id, jurisdiction_id: jid, party: o.party });
         totalOfficialsBucketed++;
+        pageBucketed++;
       }
+      console.log(`[voting-divergence] page from=${from} returned=${rows.length} bucketed_in_page=${pageBucketed}`);
+      if (rows.length < PAGE) break;
+      from += PAGE;
+      if (from > 50_000) break;
     }
-    console.log(`[voting-divergence] officials bucketed=${totalOfficialsBucketed} for ${districtIdSet.size} districts`);
+    console.log(`[voting-divergence] TOTAL: scanned=${totalOfficialsScanned} bucketed=${totalOfficialsBucketed} districts=${districtIdSet.size}`);
   }
 
   // FIX-217 — Choropleth measure on SLDs.
