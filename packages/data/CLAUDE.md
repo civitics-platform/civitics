@@ -36,7 +36,7 @@ into Supabase. Runs as Node.js scripts, not as part of the Next.js build.
 ### Congress.gov
 - Full resolution: bills, votes, vote records, legislator data
 - API key required: `CONGRESS_API_KEY`
-- Update schedule: daily at 2am
+- Update schedule: daily via nightly orchestrator (officials + votes)
 - Script: `pnpm --filter @civitics/data data:congress`
 
 ### FEC Campaign Finance
@@ -67,9 +67,8 @@ Step 2c (individual contributions, FIX-181):
 - Disable per-run with `FEC_INCLUDE_INDIV=false`. Caches FEC bulk files in R2 is a planned follow-up (FIX-192)
 
 - No API key required, no rate limits
-- FEC updates bulk files weekly — run on weekly cron
+- FEC updates bulk files weekly — run on weekly cron (Sunday block of nightly orchestrator)
 - Script: `pnpm --filter @civitics/data data:fec-bulk`
-- The API-based pipeline (`data:fec`) is retained for reference only — **do not use it** (hits rate limits)
 
 ### USASpending.gov
 - Full FY bulk archive — all agencies in `public.agencies`, all award sizes, no rate limits
@@ -80,7 +79,7 @@ Step 2c (individual contributions, FIX-181):
 - Subsequent runs: Delta files since last processed date (much smaller)
 - State tracked in `packages/data/.usaspending-bulk-state.json` per-category (gitignored, not committed). Pre-FIX-114 single-shape state migrates into the `contracts` slot on first read.
 - No API key required
-- Update schedule: weekly cron (Full file refreshes weekly; Deltas daily)
+- Update schedule: weekly via nightly orchestrator (Sunday-only block); Full file refreshes weekly, Deltas thereafter
 - Force full re-run: append `-- --force` (e.g. `pnpm … data:usaspending-bulk -- --force`)
 - Underlying script accepts `--category=contracts|assistance --force` directly: `pnpm --filter @civitics/data data:usaspending-bulk -- --category=assistance --force`
 - Legacy API script (`data:usaspending`) retained for reference — superseded by bulk approach (FIX-118)
@@ -89,13 +88,13 @@ Step 2c (individual contributions, FIX-181):
 - Active proposals only (open for comment + recently closed)
 - No archived/historical rulemaking
 - API key: `REGULATIONS_GOV_API_KEY`
-- Update schedule: hourly for active periods
+- Update schedule: daily via nightly orchestrator
 - Script: `pnpm --filter @civitics/data data:regulations`
 
 ### CourtListener
 - Federal judges and case metadata — **not opinion text** (too large)
 - Free registration required
-- Update schedule: daily at 2am
+- Update schedule: weekly via nightly orchestrator (Sunday-only block)
 - Script: `pnpm --filter @civitics/data data:courtlistener`
 
 ### OpenStates
@@ -111,21 +110,34 @@ Scripts:
 - `pnpm --filter @civitics/data data:states` — bulk people pipeline (default; runs daily via nightly orchestrator). Calls `link_officials_to_districts()` at the end so the district cross-link survives the wholesale metadata-jsonb rewrite.
 - `pnpm --filter @civitics/data data:states-api` — full API pipeline (people + bills, weekly). Use when term dates need refreshing or the bulk CSV is stale.
 
-### Census TIGER districts (FIX-160 maps integration)
-- State legislative district boundaries (SLD-U + SLD-L) for all 50 states.
-- Source: `https://www2.census.gov/geo/tiger/TIGER2024/SLD{U,L}/tl_2024_{ss}_{sldu,sldl}.zip` — public, no auth.
-- ~197 MB downloaded per run (50 states × 2 chambers × 1–6 MB each); persisted as ~30–50 MB of MULTIPOLYGON geometry in `jurisdictions.boundary_geometry`.
+### Census TIGER districts (FIX-160 maps integration, FIX-217 congressional)
+- District boundaries for all 50 states across three chambers:
+  - **SLD-U** (state senate / upper chamber)
+  - **SLD-L** (state house / lower chamber)
+  - **CD119** (US Congressional, 119th Congress, 2025-2027) — **per-state** files
+- Source URLs (all public, no auth):
+  - `https://www2.census.gov/geo/tiger/TIGER2024/SLD{U,L}/tl_2024_{ss}_{sldu,sldl}.zip`
+  - `https://www2.census.gov/geo/tiger/TIGER2024/CD/tl_2024_{ss}_cd119.zip` — note: per-state, no nationwide bundle
+- ~250 MB downloaded per run (~50 SLD-U + ~50 SLD-L + ~50 CD files, 1–6 MB each).
+- Persisted as `jurisdictions` rows with `metadata.chamber ∈ {upper, lower, congressional}` and full MULTIPOLYGON in `boundary_geometry`.
 - Skipped: DC (no SLDs), Nebraska SLDL (unicameral — only SLDU published).
 - Cadence: annual (Census TIGER refresh). Not in the nightly orchestrator.
 - Script: `pnpm --filter @civitics/data data:districts`
+- **Two linker RPCs run after each pipeline pass:**
+  - `link_officials_to_districts()` — state legislators (matches `metadata.org_classification` to TIGER chamber, with regex stripping of "House District N" / "Senate District N" prefixes)
+  - `link_federal_reps_to_districts()` — House Representatives (matches `role_title='Representative'` + state + district_name to congressional districts; handles at-large states with NULL district_name)
+- The link is written to `officials.metadata->>'district_jurisdiction_id'` (NOT `officials.jurisdiction_id`, which keeps pointing at the statewide jurisdiction).
 
 ---
 
 ## Update Schedules
 
-- **Hourly:** Active proposal status, comment period deadlines
-- **Daily (2am):** Spending data, voting records, new bills, court metadata
-- **Weekly:** FEC bulk download, full reconciliation, AI summary regeneration, search index rebuild
+Single source of truth is the nightly orchestrator in `packages/data/src/pipelines/index.ts` (`runNightlySync()`), invoked by GitHub Actions at 02:00 UTC daily. The Sunday-only weekly block fires when `new Date().getDay() === 0`.
+
+- **Daily (every nightly run):** Regulations.gov, Congress.gov officials + votes, OpenStates bulk people, rule-based tags, AI tags (`$0.10` cap, `onlyNew`), AI summaries (incremental), MV refreshes (proposal_trending, proposal_popularity, spending_totals, chord MVs, homepage stats), entity_connections rebuild.
+- **Weekly (Sunday block of nightly run):** FEC bulk, USASpending bulk (contracts + assistance), CourtListener, OpenStates API (bills + term dates), agencies hierarchy, OPM FTE, PLUM Book, elections, Congress committees.
+- **Annual (manual):** TIGER districts (Census refresh cadence).
+- **Manual only:** integrity audit, agency leadership, agency enrichment, Legistar per-metro, votes backfill, PAC industry tagger.
 
 ---
 
@@ -143,13 +155,32 @@ The nightly orchestrator (`pnpm --filter @civitics/data data:nightly`) calls it 
 
 ---
 
-## Two Pending Data Sources
+## Bulk vs API for Data Sources
 
-These require a privacy.com virtual card to set up accounts:
-- **Cloudflare R2** — storage migration from Supabase Storage
-- **Mapbox** — map tiles and geocoding API key
+Default to bulk downloads when a source publishes them. Bulk is:
+- Faster — one fetch + parse vs. N paginated API calls
+- More complete — APIs often miss tail rows due to rate limits, undocumented
+  caps, or pagination edge cases
+- More reproducible — same input → same output, easier to diff between runs
+- More resilient — no mid-pipeline pagination failures
 
-Pipeline code is ready; waiting on account/payment method.
+Use APIs for:
+- Incremental updates after a bulk seed has landed
+- Sources that don't publish bulk
+- Live / per-entity hydration triggered by user actions
+
+When writing a new pipeline, check for bulk availability first:
+- FEC: https://www.fec.gov/data/browse-data/?tab=bulk-data
+- IRS Form 990: IRS bulk e-file XML (verify current canonical URL — moved
+  from S3 to IRS-hosted ZIPs around 2022-2023)
+- SEC EDGAR: https://www.sec.gov/Archives/edgar/full-index/ + DERA datasets
+  at https://www.sec.gov/dera/data
+- LittleSis: https://littlesis.org/database
+- Most state campaign finance: state portals publish CSV / XLSX exports
+- OpenSecrets bulk data: https://www.opensecrets.org/open-data/bulk-data
+
+If a new pipeline ends up API-based anyway, document why bulk wasn't
+used (in the pipeline source header comment or migration comment).
 
 ---
 

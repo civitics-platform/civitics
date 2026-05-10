@@ -18,7 +18,7 @@
  *       Filter to >$10k disclosures on first pass to stay within budget.
  */
 
-import { completeSync, startSync, type PipelineResult } from "../sync-log";
+import { skipSync, startSync, type PipelineResult } from "../sync-log";
 
 export async function runOpenSecretsBulkPipeline(): Promise<PipelineResult> {
   console.log("\n=== OpenSecrets bulk pipeline (skeleton) ===");
@@ -35,8 +35,8 @@ export async function runOpenSecretsBulkPipeline(): Promise<PipelineResult> {
   //      (Phase 2.5)
   //   6. Delete temp files after parse completes
 
-  await completeSync(logId, result);
-  console.log("  Skeleton pipeline — no work performed.");
+  await skipSync(logId, "not_implemented");
+  console.log("  Skeleton pipeline — no work performed (status=skipped).");
   return result;
 }
 

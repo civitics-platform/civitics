@@ -64,6 +64,30 @@ export async function failSync(id: string, errorMessage: string): Promise<void> 
   }
 }
 
+// Mark a run as a deliberate no-op (Phase 2 skeleton, version-unchanged short-
+// circuit, etc.). Distinct from `complete` so the dashboard can render skipped
+// runs differently from real zero-row days.
+export async function skipSync(id: string, reason: string): Promise<void> {
+  if (!id) return;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = createAdminClient() as any;
+  try {
+    const { data: existing } = await db
+      .from("data_sync_log")
+      .select("metadata")
+      .eq("id", id)
+      .maybeSingle();
+    const merged = { ...(existing?.metadata ?? {}), skip_reason: reason };
+    await db.from("data_sync_log").update({
+      status: "skipped",
+      completed_at: new Date().toISOString(),
+      metadata: merged,
+    }).eq("id", id);
+  } catch (err) {
+    console.warn("  [sync-log] Could not skip log entry:", err instanceof Error ? err.message : err);
+  }
+}
+
 export async function getDbSizeMb(): Promise<number> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = createAdminClient() as any;

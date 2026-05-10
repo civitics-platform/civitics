@@ -12,7 +12,7 @@
  *       before wiring this into runNightlySync.
  */
 
-import { completeSync, startSync, type PipelineResult } from "../sync-log";
+import { skipSync, startSync, type PipelineResult } from "../sync-log";
 
 export async function runGovtrackCosponsorsPipeline(_sinceDate?: string): Promise<PipelineResult> {
   console.log("\n=== GovTrack cosponsors pipeline (skeleton) ===");
@@ -26,8 +26,8 @@ export async function runGovtrackCosponsorsPipeline(_sinceDate?: string): Promis
   //   4. Upsert into proposal_cosponsors keyed on (proposal_id, official_id)
   //   5. Throttle 1 req / 500 ms; paginate via next cursor
 
-  await completeSync(logId, result);
-  console.log("  Skeleton pipeline — no work performed.");
+  await skipSync(logId, "not_implemented");
+  console.log("  Skeleton pipeline — no work performed (status=skipped).");
   return result;
 }
 

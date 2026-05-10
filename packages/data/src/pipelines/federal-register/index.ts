@@ -16,7 +16,7 @@
  *      to EOs in entity_connections.
  */
 
-import { completeSync, startSync, type PipelineResult } from "../sync-log";
+import { skipSync, startSync, type PipelineResult } from "../sync-log";
 
 export async function runFederalRegisterPipeline(_sinceDate?: string): Promise<PipelineResult> {
   console.log("\n=== Federal Register pipeline (skeleton) ===");
@@ -33,8 +33,8 @@ export async function runFederalRegisterPipeline(_sinceDate?: string): Promise<P
   //   4. For PRORULE, link to regulations.gov docket when available
   //   5. Throttle 1 req / 200 ms; paginate via next_page_url
 
-  await completeSync(logId, result);
-  console.log("  Skeleton pipeline — no work performed.");
+  await skipSync(logId, "not_implemented");
+  console.log("  Skeleton pipeline — no work performed (status=skipped).");
   return result;
 }
 
