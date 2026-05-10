@@ -22,9 +22,12 @@ import { runRuleBasedTagger } from "./tags/rules";
 import { runAiTagger } from "./tags/ai-tagger";
 import { runAiSummariesPipeline } from "./ai-summaries";
 import { runAgenciesHierarchyPipeline } from "./agencies-hierarchy";
+import { runAgencyLeadershipPipeline } from "./agency-leadership";
+import { runAgencyEnrichmentPipeline } from "./agency-enrichment";
 import { runOpmFtePipeline } from "./opm-fte";
 import { runPlumBookPipeline } from "./plum-book";
 import { runElectionsPipeline } from "./elections";
+import { runAiClassifier } from "./tags/ai-classifier";
 import { seedJurisdictions, seedGoverningBodies } from "../jurisdictions/us-states";
 
 // Build a session-pooler connection string for direct pg.Client access (used
@@ -349,11 +352,14 @@ export interface NightlySyncResults {
     plum_book?: NightlyPipelineResult;
     elections?: NightlyPipelineResult;
     congress_committees?: NightlyPipelineResult;
+    agency_leadership?: NightlyPipelineResult;
+    agency_enrichment?: NightlyPipelineResult;
     entity_connections_rebuild?: NightlyPipelineResult;
   };
   ai: {
     tag_rules?: NightlyAiResult;
     tag_ai?: NightlyAiResult;
+    tag_industry?: NightlyAiResult;
     ai_summaries?: NightlyAiResult;
   };
   total_ai_cost_usd: number;
@@ -598,6 +604,64 @@ export async function runNightlySync(): Promise<NightlySyncResults> {
         console.error("[nightly] congress committees failed:", msg);
         results.pipelines.congress_committees = { status: "failed", error: msg };
         results.errors.push(`Congress committees: ${msg}`);
+      }
+    }
+
+    // FIX-227: Agency leadership (Wikidata SPARQL + Congress.gov nominations)
+    // Writes to entity_connections; must run before the connections rebuild + MV refreshes below.
+    {
+      const t0 = Date.now();
+      try {
+        const r = await runAgencyLeadershipPipeline();
+        results.pipelines.agency_leadership = { status: "complete", rows_added: r.inserted + r.updated, duration_ms: Date.now() - t0 };
+      } catch (err) {
+        const msg = errMsg(err);
+        console.error("[nightly] agency-leadership failed:", msg);
+        results.pipelines.agency_leadership = { status: "failed", error: msg };
+        results.errors.push(`Agency leadership: ${msg}`);
+      }
+    }
+
+    // FIX-228: Agency enrichment (Federal Register descriptions + Wikidata founding dates).
+    // Monthly cadence — Federal Register + Wikidata data shifts slowly and the
+    // SPARQL query pulls 3000 rows per run.
+    {
+      const isFirstSundayOfMonth = new Date(Date.now()).getUTCDate() <= 7;
+      if (isFirstSundayOfMonth) {
+        const t0 = Date.now();
+        try {
+          const r = await runAgencyEnrichmentPipeline();
+          results.pipelines.agency_enrichment = { status: "complete", rows_added: r.inserted + r.updated, duration_ms: Date.now() - t0 };
+        } catch (err) {
+          const msg = errMsg(err);
+          console.error("[nightly] agency-enrichment failed:", msg);
+          results.pipelines.agency_enrichment = { status: "failed", error: msg };
+          results.errors.push(`Agency enrichment: ${msg}`);
+        }
+      } else {
+        results.pipelines.agency_enrichment = { status: "not_scheduled" };
+      }
+    }
+
+    // FIX-232: AI industry classifier for PACs > $100k that the rule-based
+    // tagger missed. Runs after FEC bulk so newly-arrived PACs get classified
+    // in the same Sunday wave. Cost-gate auto-skips in autonomous mode if
+    // entity count or projected cost exceeds the configured caps.
+    {
+      const t0 = Date.now();
+      try {
+        const r = await runAiClassifier({ confirmed: true });
+        const costUsd = r.tagged * 0.0002;
+        results.ai.tag_industry = { status: "complete", entities: r.tagged, cost_usd: costUsd };
+        results.total_ai_cost_usd += costUsd;
+        // Surface duration through the pipeline tag-industry slot via console only —
+        // tag_industry lives under results.ai (no duration_ms field).
+        console.log(`[nightly] tag-industry — complete in ${((Date.now() - t0) / 1000).toFixed(1)}s, ${r.tagged} tagged`);
+      } catch (err) {
+        const msg = errMsg(err);
+        console.error("[nightly] tag-industry failed:", msg);
+        results.ai.tag_industry = { status: "failed" };
+        results.errors.push(`Tag industry: ${msg}`);
       }
     }
   }

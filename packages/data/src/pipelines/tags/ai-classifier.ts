@@ -137,8 +137,18 @@ async function classifyPac(
 // Main
 // ---------------------------------------------------------------------------
 
-export async function runAiClassifier(): Promise<{ tagged: number; skipped: number }> {
+export async function runAiClassifier(options: { confirmed?: boolean } = {}): Promise<{ tagged: number; skipped: number }> {
   console.log("\n=== AI industry classifier ===");
+
+  // `confirmed: true` (set by orchestrator + CLI --confirm) flips the
+  // cost-gate into autonomous-approval mode for this process — it skips the
+  // interactive Y/n prompt and applies the pre-configured budget caps in
+  // packages/ai/src/cost-config.ts. Already-autonomous environments
+  // (CI, Vercel cron, AUTONOMOUS=true) need no override.
+  if (options.confirmed && !process.env["AUTONOMOUS"] && !process.env["CI"] && !process.env["VERCEL_CRON_SIGNATURE"]) {
+    process.env["AUTONOMOUS"] = "true";
+  }
+
   const logId = await startSync("tag_ai");
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = createAdminClient() as any;
@@ -291,7 +301,8 @@ export async function runAiClassifier(): Promise<{ tagged: number; skipped: numb
 if (require.main === module) {
   (async () => {
     try {
-      await runAiClassifier();
+      const confirmed = process.argv.includes("--confirm");
+      await runAiClassifier({ confirmed });
       process.exit(0);
     } catch (err) {
       console.error("Fatal:", err);

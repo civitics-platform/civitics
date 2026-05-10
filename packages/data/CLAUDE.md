@@ -134,9 +134,10 @@ Scripts:
 Single source of truth is the nightly orchestrator in `packages/data/src/pipelines/index.ts` (`runNightlySync()`), invoked by GitHub Actions at 02:00 UTC daily. The Sunday-only weekly block fires when `new Date().getDay() === 0`.
 
 - **Daily (every nightly run):** Regulations.gov, Congress.gov officials + votes, OpenStates bulk people, rule-based tags, AI tags (`$0.10` cap, `onlyNew`), AI summaries (incremental), MV refreshes (proposal_trending, proposal_popularity, spending_totals, chord MVs, homepage stats), entity_connections rebuild.
-- **Weekly (Sunday block of nightly run):** FEC bulk, USASpending bulk (contracts + assistance), CourtListener, OpenStates API (bills + term dates), agencies hierarchy, OPM FTE, PLUM Book, elections, Congress committees.
+- **Weekly (Sunday block of nightly run):** FEC bulk, USASpending bulk (contracts + assistance), CourtListener, OpenStates API (bills + term dates), agencies hierarchy, OPM FTE, PLUM Book, elections, Congress committees, agency leadership, tag-industry.
+- **Monthly (first Sunday of month, in nightly run):** agency enrichment (Federal Register descriptions + Wikidata founding dates).
 - **Annual (manual):** TIGER districts (Census refresh cadence).
-- **Manual only:** integrity audit, agency leadership, agency enrichment, Legistar per-metro, votes backfill, PAC industry tagger.
+- **Manual only:** integrity audit, Legistar per-metro, votes backfill.
 
 ---
 
