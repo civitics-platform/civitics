@@ -712,6 +712,13 @@ export async function runAiSummariesPipeline(incremental = false): Promise<void>
 if (require.main === module) {
   if (!checkFlag("AI_SUMMARIES_ENABLED", "ai-summaries")) process.exit(0);
   const incremental = process.argv.includes("--incremental");
+  const confirmed = process.argv.includes("--confirm");
+
+  if (!incremental && !confirmed) {
+    console.log("[ai-summaries] Non-incremental run against ALL entities will spend uncapped Claude credits.");
+    console.log("[ai-summaries] Re-run with --confirm to proceed, or --incremental for the daily safe path.");
+    process.exit(0);
+  }
 
   runAiSummariesPipeline(incremental)
     .then(() => { setTimeout(() => process.exit(0), 500); })
