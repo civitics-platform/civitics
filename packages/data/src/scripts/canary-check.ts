@@ -2,7 +2,7 @@
  * FIX-234 — Silent-failure alarm for the nightly sync.
  *
  * Queries data_sync_log for `nightly_cron` complete rows over the last 7 UTC
- * days. If any expected day has no matching row, optionally emails ALERT_EMAIL
+ * days. If any expected day has no matching row, optionally emails ADMIN_EMAIL
  * via Resend.
  *
  * Designed for GitHub Actions (.github/workflows/sync-canary-check.yml) at
@@ -10,7 +10,11 @@
  * `nightly_cron` is what runNightlySync() writes on completion — see
  * packages/data/src/pipelines/index.ts.
  *
- * No-op-safe: missing ALERT_EMAIL or RESEND_API_KEY simply skips the send.
+ * No-op-safe: missing ADMIN_EMAIL or RESEND_API_KEY simply skips the send.
+ * Local-run guard: even when both env vars are set, the Resend send is gated
+ * on GITHUB_ACTIONS=true OR --send-real, so local iteration doesn't page the
+ * admin by accident.
+ *
  * Exit 1 only on real errors (DB unreachable, Resend API failure). Missing
  * nightlies are not script errors — they're the thing the script reports.
  */
@@ -116,11 +120,19 @@ async function main(): Promise<void> {
   const missing  = expected.filter((d) => !actual.has(d));
 
   let alertSent = false;
-  const alertEmail  = process.env["ALERT_EMAIL"];
-  const resendKey   = process.env["RESEND_API_KEY"];
-  if (missing.length > 0 && alertEmail && resendKey) {
-    await sendAlert(missing, alertEmail, resendKey);
-    alertSent = true;
+  const adminEmail = process.env["ADMIN_EMAIL"];
+  const resendKey  = process.env["RESEND_API_KEY"];
+  const inCi       = process.env["GITHUB_ACTIONS"] === "true";
+  const sendReal   = process.argv.includes("--send-real");
+  if (missing.length > 0 && adminEmail && resendKey) {
+    if (inCi || sendReal) {
+      await sendAlert(missing, adminEmail, resendKey);
+      alertSent = true;
+    } else {
+      console.log(
+        "[canary-check] local run — skipping Resend send; pass --send-real to actually email"
+      );
+    }
   }
 
   await writeMetaRow(missing);

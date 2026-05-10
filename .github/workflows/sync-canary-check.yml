@@ -3,7 +3,7 @@ name: sync-canary-check
 # FIX-234 — Daily check that the nightly sync (.github/workflows/nightly.yml at
 # 02:00 UTC) actually landed a `nightly_cron` row in data_sync_log. Runs at
 # 05:00 UTC, 3h after the nightly's start, so a slow-but-successful run still
-# completes in time. Emails ALERT_EMAIL via Resend when days are missing.
+# completes in time. Emails ADMIN_EMAIL via Resend when days are missing.
 
 on:
   schedule:
@@ -25,7 +25,7 @@ jobs:
     env:
       NEXT_PUBLIC_SUPABASE_URL: https://xsazcoxinpgttgquwvuf.supabase.co
       SUPABASE_SECRET_KEY:      ${{ secrets.SUPABASE_SECRET_KEY }}
-      ALERT_EMAIL:              ${{ secrets.ALERT_EMAIL }}
+      ADMIN_EMAIL:              ${{ secrets.ADMIN_EMAIL }}
       RESEND_API_KEY:           ${{ secrets.RESEND_API_KEY }}
 
     steps:
