@@ -1,0 +1,62 @@
+name: weekly-integrity-audit
+
+# FIX-226 — Weekly read-only integrity audit against prod. Runs Mondays
+# 04:00 UTC, 2h after the Sunday-block of nightly-sync (which fires Sunday
+# 02:00 UTC and includes weekly pipelines). The audit produces dated
+# {YYYY-MM-DD}.md + .json reports under docs/audits/ and commits the
+# markdown back to main, so regressions in invariants surface as diffs
+# in `git log docs/audits/`.
+
+on:
+  schedule:
+    - cron: "0 4 * * 1"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: weekly-integrity-audit
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: https://xsazcoxinpgttgquwvuf.supabase.co
+      SUPABASE_SECRET_KEY:      ${{ secrets.SUPABASE_SECRET_KEY }}
+      SUPABASE_DB_PASSWORD:     ${{ secrets.SUPABASE_DB_PASSWORD }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run integrity audit
+        run: pnpm --filter @civitics/data data:audit -- --out docs/audits
+
+      - name: Commit and push report
+        run: |
+          DATE=$(date -u +%Y-%m-%d)
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "docs/audits/${DATE}.md" "docs/audits/${DATE}.json"
+          if git diff --cached --quiet; then
+            echo "No audit report changes for ${DATE} — skipping commit."
+            exit 0
+          fi
+          git commit -m "chore(audit): weekly integrity report ${DATE}"
+          git push

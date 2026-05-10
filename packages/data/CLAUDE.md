@@ -135,9 +135,10 @@ Single source of truth is the nightly orchestrator in `packages/data/src/pipelin
 
 - **Daily (every nightly run):** Regulations.gov, Congress.gov officials + votes, OpenStates bulk people, rule-based tags, AI tags (`$0.10` cap, `onlyNew`), AI summaries (incremental), MV refreshes (proposal_trending, proposal_popularity, spending_totals, chord MVs, homepage stats), entity_connections rebuild.
 - **Weekly (Sunday block of nightly run):** FEC bulk, USASpending bulk (contracts + assistance), CourtListener, OpenStates API (bills + term dates), agencies hierarchy, OPM FTE, PLUM Book, elections, Congress committees, agency leadership, tag-industry.
+- **Weekly (Monday 04:00 UTC, separate GHA workflow `audit.yml`, FIX-226):** integrity audit. Report committed to `docs/audits/{YYYY-MM-DD}.md` (+ `.json`) on main; regressions surface as diffs in `git log docs/audits/`.
 - **Monthly (first Sunday of month, in nightly run):** agency enrichment (Federal Register descriptions + Wikidata founding dates).
 - **Annual (manual):** TIGER districts (Census refresh cadence).
-- **Manual only:** integrity audit, Legistar per-metro, votes backfill.
+- **Manual only:** Legistar per-metro, votes backfill.
 
 ---
 

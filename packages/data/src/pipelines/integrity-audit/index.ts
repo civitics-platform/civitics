@@ -39,9 +39,27 @@ function defaultOutDir(): string {
   return `${root}/docs/audits`;
 }
 
+// CI (and any session-pooler-only environment) only carries the project
+// password + URL, not a pre-baked readonly DSN. Mirror buildDbUrl() in
+// pipelines/index.ts so the audit can run from the weekly GHA workflow
+// without a separate secret.
+function constructDbUrlFromEnv(): string {
+  const password = process.env.SUPABASE_DB_PASSWORD;
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (!password || !supabaseUrl) return "";
+  const m = supabaseUrl.match(/^https?:\/\/([a-z0-9]+)\.supabase\.co/i);
+  if (!m) return "";
+  const projectRef = m[1];
+  const region = process.env.SUPABASE_DB_REGION ?? "us-west-2";
+  return `postgresql://postgres.${projectRef}:${encodeURIComponent(password)}@aws-0-${region}.pooler.supabase.com:5432/postgres`;
+}
+
 function parseArgs(argv: string[]): Args {
   const args = argv.slice(2);
-  let dbUrl = process.env.COWORK_READONLY_DB_URL ?? "";
+  let dbUrl =
+    process.env.COWORK_READONLY_DB_URL ??
+    process.env.SUPABASE_DB_URL ??
+    "";
   let strict = false;
   let outDir = defaultOutDir();
   for (let i = 0; i < args.length; i++) {
@@ -61,9 +79,13 @@ function parseArgs(argv: string[]): Args {
     }
   }
   if (!dbUrl) {
+    dbUrl = constructDbUrlFromEnv();
+  }
+  if (!dbUrl) {
     // eslint-disable-next-line no-console
     console.error(
-      "ERROR: no database URL. Set COWORK_READONLY_DB_URL or pass --db-url.",
+      "ERROR: no database URL. Set COWORK_READONLY_DB_URL or SUPABASE_DB_URL, " +
+        "or provide SUPABASE_DB_PASSWORD + NEXT_PUBLIC_SUPABASE_URL, or pass --db-url.",
     );
     process.exit(2);
   }
