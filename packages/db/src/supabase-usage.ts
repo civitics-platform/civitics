@@ -117,7 +117,7 @@ async function mgmtGet<T>(path: string, token: string): Promise<T> {
     },
     // Avoid Next.js fetch caching the response — we run our own 5-min cache.
     cache: "no-store",
-  });
+  } as RequestInit & { cache?: "default" | "force-cache" | "no-cache" | "no-store" | "only-if-cached" | "reload" });
   if (!res.ok) {
     const body = await res.text().catch(() => res.statusText);
     throw new Error(`HTTP ${res.status}: ${body.slice(0, 200)}`);
