@@ -314,3 +314,6 @@
 2026-05-10 | FIX-224 | abff3278 | local+prod | chore(pipelines): delete legacy data:usaspending (collapsed from 2-step plan)
 2026-05-10 | FIX-235 | 126bdf17 | local-only | fix(db): satisfy tsc on supabase-usage cache fetch option
 2026-05-10 | FIX-230 | a716e284 | local-only | feat(ai-summaries): gate non-incremental CLI path behind --confirm
+2026-05-10 | FIX-227 | c3ba32d7 | local-only | feat(orchestrator): schedule agency-leadership, agency-enrichment, tag-industry
+2026-05-10 | FIX-228 | c3ba32d7 | local-only | feat(orchestrator): schedule agency-leadership, agency-enrichment, tag-industry
+2026-05-10 | FIX-232 | c3ba32d7 | local-only | feat(orchestrator): schedule agency-leadership, agency-enrichment, tag-industry
