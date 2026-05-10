@@ -45,7 +45,9 @@
     "data:drain:status": "tsx --env-file=../../.env.local src/drain/status.ts",
     "data:audit": "tsx --env-file=../../.env.local src/pipelines/integrity-audit/index.ts",
     "data:retitle-stubs": "tsx --env-file=../../.env.local src/scripts/retitle-procedural-bill-stubs.ts",
-    "data:retitle-pn-stubs": "tsx --env-file=../../.env.local src/scripts/retitle-pn-stubs.ts"
+    "data:retitle-pn-stubs": "tsx --env-file=../../.env.local src/scripts/retitle-pn-stubs.ts",
+    "data:canary-check": "tsx --env-file=../../.env.local src/scripts/canary-check.ts",
+    "data:canary-check:ci": "tsx src/scripts/canary-check.ts"
   },
   "dependencies": {
     "@civitics/ai": "workspace:*",
@@ -55,6 +57,7 @@
     "hyparquet": "^1.25.6",
     "hyparquet-compressors": "^1.1.1",
     "pg": "^8.13.0",
+    "resend": "^6.12.3",
     "shapefile": "^0.6.6",
     "unzipper": "^0.12.3"
   },
