@@ -830,6 +830,8 @@ export async function runNightlySync(): Promise<NightlySyncResults> {
     // FIX-223: homepage hero stats + per-official Wave 3 stats
     "refresh_homepage_stats_mv",
     "refresh_official_homepage_stats_mv",
+    // FIX-233 (part 1): p50/p95/max duration per pipeline over last 30 days
+    "refresh_pipeline_runtime_stats_mv",
   ]) {
     try {
       const { createAdminClient } = await import("@civitics/db");

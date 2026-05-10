@@ -868,6 +868,7 @@ function DataHealthSection({
               "No recent runs found"
             )
           }
+          action={{ label: "Runtime stats", href: "/admin/pipeline-health" }}
         />
 
         {/* Top strip */}
