@@ -306,3 +306,4 @@
 2026-05-09 | FIX-217 | beb0c7de | local-only | fix(graph): voting-divergence per-state query_districts loop
 2026-05-10 | FIX-221 | 1182edd3 | local+prod | feat(graph): chord multi-mode + granularity controls + compare mode
 2026-05-10 | FIX-222 | 3ef69c84 | local+prod | perf(graph): materialize 3 global chord RPCs to fix prod 5s timeout
+2026-05-10 | FIX-223 | 03e00960 | local+prod | perf(home): precompute hero + per-official stats into MVs
