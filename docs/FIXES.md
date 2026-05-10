@@ -44,6 +44,7 @@ Actionable improvement backlog. Every item has a priority, complexity, and enoug
 ## HOMEPAGE
 
 - [x] 🟢 M — **State legislative district overlay on homepage map** — DistrictMap exposes SLD-U and SLD-L layer toggles backed by Census TIGER boundaries (`pnpm data:districts`). Click any district polygon to navigate to `/districts/[id]`. Layers debounced-refetch on map move via `/api/districts?bbox=…&chamber=…`. <!--id:FIX-163-->
+- [ ] 🔴 L — **Homepage perf + "Donor records — Coming soon" fix** — hero stats and per-official stats are computed at request time (4× `count: "exact"` Wave 1 + ~60 sub-queries Wave 3, including a JS-side donation sum). Donor count intermittently times out and falls back to `0` → renders "Coming soon". Precompute via `homepage_stats_mv` (single row) and `official_homepage_stats_mv` (keyed by official_id), refresh nightly in `runNightlySync()` step 7, replace inline queries with single-row reads wrapped in `withDbTimeout`. Add `console.time` + hidden `<script id="__perf">` payload for per-phase timing visibility. <!--id:FIX-223-->
 
 ---
 

@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { createServerClient, agencyFullName } from "@civitics/db";
+import { withDbTimeout } from "../src/lib/supabase-check";
 import nextDynamic from "next/dynamic";
 const DistrictMap = nextDynamic(
   () => import("./components/DistrictMap").then((m) => m.DistrictMap),
@@ -279,32 +280,45 @@ export default async function HomePage({
 
   const now = new Date().toISOString();
 
-  // ── Wave 1: stats + featured rows (all parallel) ────────────────────────────
+  // FIX-223 — per-phase timings, surfaced as a hidden <script id="__perf">
+  // payload at the end of the page so we can diagnose slow renders from
+  // browser DevTools without middleware. Also logged via console.time for
+  // pnpm dev / Vercel function logs.
+  const perf: { phase: string; ms: number }[] = [];
+  async function timed<T>(phase: string, fn: () => Promise<T>): Promise<T> {
+    const label = `home/${phase}`;
+    const t0 = Date.now();
+    console.time(label);
+    try {
+      return await fn();
+    } finally {
+      const ms = Date.now() - t0;
+      perf.push({ phase, ms });
+      console.timeEnd(label);
+    }
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const sbAny = supabase as any;
+
+  // ── Wave 1: precomputed hero stats (FIX-223) + featured rows ────────────────
+  // Hero stats are served from homepage_stats_mv (refreshed nightly). One row.
+  // Sub-millisecond on the read path; replaces 4 count: "exact" queries that
+  // intermittently timed out and fell back to "Coming soon".
   const [
-    officialsCountRes,
-    activeProposalsRes,
-    donorCountRes,
-    spendingCountRes,
+    homepageStatsRes,
     openProposalsRes,
     agencyRowsRes,
     upvotesRes,
-  ] = await Promise.all([
-    supabase
-      .from("officials")
-      .select("id", { count: "exact", head: true })
-      .eq("is_active", true),
-    supabase
-      .from("proposals")
-      .select("id", { count: "exact", head: true })
-      .in("status", ["open_comment", "introduced", "in_committee", "floor_vote"]),
-    supabase
-      .from("financial_relationships")
-      .select("id", { count: "exact", head: true })
-      .eq("relationship_type", "donation"),
-    supabase
-      .from("financial_relationships")
-      .select("id", { count: "exact", head: true })
-      .in("relationship_type", ["contract", "grant"]),
+  ] = await timed("wave1", () => Promise.all([
+    withDbTimeout(
+      sbAny
+        .from("homepage_stats_mv")
+        .select("officials_count,active_proposals_count,donor_records_count,spending_records_count")
+        .limit(1)
+        .maybeSingle(),
+      2000
+    ),
     supabase
       .from("proposals")
       .select("id,title,type,status,summary_plain,summary_model,introduced_at,metadata")
@@ -324,7 +338,37 @@ export default async function HomePage({
       .from("civic_initiative_upvotes")
       .select("initiative_id")
       .limit(5000),
-  ]);
+  ]));
+
+  // Defensive fallback for donor_records_count only — if the MV row is missing
+  // (cron failed for many nights, or migration not yet applied) or returns 0,
+  // run the live count query so the hero never regresses to "Coming soon".
+  // Cheap insurance; remove once cron is proven stable.
+  type HomepageStatsRow = {
+    officials_count:        number | null;
+    active_proposals_count: number | null;
+    donor_records_count:    number | null;
+    spending_records_count: number | null;
+  };
+  const homepageStatsTyped = homepageStatsRes as { data: HomepageStatsRow | null };
+  let mvStats: HomepageStatsRow | null = homepageStatsTyped.data ?? null;
+  if (!mvStats || (mvStats.donor_records_count ?? 0) === 0) {
+    const liveDonorRes = await timed("wave1_donor_fallback", () =>
+      withDbTimeout(
+        supabase
+          .from("financial_relationships")
+          .select("id", { count: "exact", head: true })
+          .eq("relationship_type", "donation"),
+        2000
+      )
+    );
+    mvStats = {
+      officials_count:        mvStats?.officials_count        ?? 0,
+      active_proposals_count: mvStats?.active_proposals_count ?? 0,
+      donor_records_count:    liveDonorRes.count              ?? 0,
+      spending_records_count: mvStats?.spending_records_count ?? 0,
+    };
+  }
 
   // Flatten proposals rows into legacy ProposalCardData shape — post-promotion
   // regulations_gov_id / congress_gov_url / comment_period_end live in metadata.
@@ -381,8 +425,6 @@ export default async function HomePage({
   // Post-promotion, initiatives = proposals(type='initiative') + initiative_details
   // satellite row (keyed by proposal_id). We join initiative_details → proposals and
   // flatten back to the legacy InitiativeCardData shape.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const sbAny = supabase as any;
   const initiativeJoinSelect =
     "proposal_id,stage,scope,authorship_type,issue_area_tags,target_district,mobilise_started_at,resolved_at,proposals!inner(id,title,summary_plain,type,created_at)";
   const [topInitiativesRes, fallbackInitiativesRes] = await Promise.all([
@@ -450,7 +492,7 @@ export default async function HomePage({
   const proposalIds = rawProposals.map((p) => p.id);
   const agencyRows = agencyRowsRes.data ?? [];
 
-  const [officialsRes, summaryRes, tagsRes, ...agencyStatPairs] = await Promise.all([
+  const [officialsRes, summaryRes, tagsRes, ...agencyStatPairs] = await timed("wave2", () => Promise.all([
     supabase
       .from("officials")
       .select(
@@ -491,41 +533,44 @@ export default async function HomePage({
           .gt("metadata->>comment_period_end", now),
       ]);
     }),
-  ]);
+  ]));
 
-  // ── Wave 3: vote + donor stats for each official (parallel) ────────────────
+  // ── Wave 3: per-official stats — single read from official_homepage_stats_mv
+  // (FIX-223). Replaces an N=20 .map() loop that ran 60 sub-queries per render
+  // and silently filtered by a non-existent `official_id` column on
+  // financial_relationships. The MV uses to_type='official' AND to_id and is
+  // refreshed nightly.
   const rawOfficials = officialsRes.data ?? [];
-  const officialStats = await Promise.all(
-    rawOfficials.map(async (o) => {
-      const id = o.id as string;
-      const [voteCountRes, donorCountRes, donationSumRes] = await Promise.all([
-        supabase
-          .from("votes")
-          .select("id", { count: "exact", head: true })
-          .eq("official_id", id),
-        supabase
-          .from("financial_relationships")
-          .select("id", { count: "exact", head: true })
-          .eq("official_id", id),
-        supabase
-          .from("financial_relationships")
-          .select("amount_cents")
-          .eq("official_id", id),
-      ]);
-      const totalCents =
-        (donationSumRes.data ?? []).reduce(
-          (sum: number, r: { amount_cents: number | null }) => sum + (r.amount_cents ?? 0),
-          0
-        ) ?? 0;
-      return {
-        id,
-        voteCount: voteCountRes.count ?? 0,
-        donorCount: donorCountRes.count ?? 0,
-        totalDonationsCents: totalCents,
-      };
-    })
+  const officialIds = rawOfficials.map((o) => o.id as string);
+  type OfficialStatRow = {
+    official_id: string;
+    vote_count: number;
+    donor_count: number;
+    total_donations_cents: number;
+  };
+  const officialStatsRes = officialIds.length > 0
+    ? await timed("wave3", () =>
+        withDbTimeout(
+          sbAny
+            .from("official_homepage_stats_mv")
+            .select("official_id,vote_count,donor_count,total_donations_cents")
+            .in("official_id", officialIds),
+          2000
+        )
+      )
+    : { data: [] as OfficialStatRow[] };
+  const officialStatsTyped = officialStatsRes as { data: OfficialStatRow[] | null };
+  const statsById = new Map<string, { id: string; voteCount: number; donorCount: number; totalDonationsCents: number }>(
+    (officialStatsTyped.data ?? []).map((s) => [
+      s.official_id,
+      {
+        id:                  s.official_id,
+        voteCount:           Number(s.vote_count            ?? 0),
+        donorCount:          Number(s.donor_count           ?? 0),
+        totalDonationsCents: Number(s.total_donations_cents ?? 0),
+      },
+    ])
   );
-  const statsById = new Map(officialStats.map((s) => [s.id, s]));
 
   // Sort by vote count desc, take top 4
   rawOfficials.sort(
@@ -538,10 +583,10 @@ export default async function HomePage({
   // ─── Shape data ────────────────────────────────────────────────────────────
 
   const stats: Stats = {
-    officials: officialsCountRes.count ?? 0,
-    proposals: activeProposalsRes.count ?? 0,
-    donors: donorCountRes.count ?? 0,
-    spending: spendingCountRes.count ?? 0,
+    officials: Number(mvStats.officials_count        ?? 0),
+    proposals: Number(mvStats.active_proposals_count ?? 0),
+    donors:    Number(mvStats.donor_records_count    ?? 0),
+    spending:  Number(mvStats.spending_records_count ?? 0),
   };
 
   // Officials → HomeOfficialCardData
@@ -665,6 +710,13 @@ export default async function HomePage({
           </span>
         </div>
       </footer>
+      {/* FIX-223: per-phase timings (ms). Inspect with
+          JSON.parse(document.getElementById('__perf').textContent) */}
+      <script
+        id="__perf"
+        type="application/json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(perf) }}
+      />
     </div>
   );
 }

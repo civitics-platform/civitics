@@ -763,6 +763,9 @@ export async function runNightlySync(): Promise<NightlySyncResults> {
     "refresh_chord_donor_type_party_flows_mv",
     "refresh_chord_donor_state_party_flows_mv",
     "refresh_chord_subject_party_flows_mv",
+    // FIX-223: homepage hero stats + per-official Wave 3 stats
+    "refresh_homepage_stats_mv",
+    "refresh_official_homepage_stats_mv",
   ]) {
     try {
       const { createAdminClient } = await import("@civitics/db");
