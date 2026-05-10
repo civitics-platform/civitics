@@ -310,3 +310,4 @@
 2026-05-10 | FIX-225 | 060f88e6 | local+prod | chore(pipelines): doc reconcile + skeleton status + orphan archive
 2026-05-10 | FIX-229 | 060f88e6 | local+prod | chore(pipelines): doc reconcile + skeleton status + orphan archive
 2026-05-10 | FIX-231 | 060f88e6 | local+prod | chore(pipelines): doc reconcile + skeleton status + orphan archive
+2026-05-10 | FIX-234 | f8b6bf13 | local-only | feat(cron): silent-failure alarm for nightly sync
