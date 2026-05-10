@@ -319,3 +319,4 @@
 2026-05-10 | FIX-232 | c3ba32d7 | local-only | feat(orchestrator): schedule agency-leadership, agency-enrichment, tag-industry
 2026-05-10 | FIX-226 | 4e44850e | local-only | feat(audit): weekly integrity audit with auto-commit to docs/audits/
 2026-05-10 | FIX-233 | f0449601 | local+prod | feat(observability): pipeline_runtime_stats_mv + /admin/pipeline-health
+2026-05-10 | FIX-233 | ddf8ca13 | local-only | chore(observability): peak_rss_mb in data_sync_log.metadata
