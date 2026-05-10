@@ -57,13 +57,20 @@ Step 2b (PAC contributions):
 - Upserts `financial_entities` rows for named PAC donors (keyed on `source_ids->>'fec_committee_id'`)
 - Upserts `financial_relationships` rows per PAC × candidate pair (keyed on `official_id + fec_committee_id + cycle_year`)
 
-Step 2c (individual contributions, FIX-181):
+Step 2c (individual contributions, FIX-181 + FIX-236):
 - Parses ccl into a `CMTE_ID → CAND_ID` lookup, restricted to principal ('P') and authorized ('A') committees
-- Streams indiv line-by-line, filtering to transaction types `15` and `15E`, amount ≥ $200, and recipient CMTE_ID mapping to a candidate in our DB
+- Parses cm into a second `CMTE_ID → CMTE_TP` lookup, restricted to super PACs (`O`), party committees (`X`/`Y`/`Z`), and other PACs (`N`/`Q`/`V`/`W`) NOT already in ccl P/A — this is the recipient set that captures Form 3X Schedule A flow (Musk → America PAC etc.). Joint-fundraising (`J`), leadership (`D`), and `B` stay excluded — their money is re-itemized via downstream transfers and would double-count.
+- Streams indiv line-by-line, filtering to transaction types `15` and `15E`, amount ≥ $200, and recipient CMTE_ID present in EITHER lookup
 - Donor identity is `fingerprint = upper(NAME) + "|" + ZIP5` (FEC's standard near-duplicate convention). No donor IDs exist in FEC data
-- Aggregates to (donor × candidate × cycle) tuples in memory (~500 MB peak per presidential cycle); bump `NODE_OPTIONS=--max-old-space-size=4096` if OOM
+- Aggregates two maps in memory:
+  - `(donor × candidate × cycle)` tuples for ccl-mapped lines → donor → official donations
+  - `(donor × committee × cycle)` tuples for super-PAC/party/PAC lines → donor → financial_entity (committee) donations
+  - Peak heap roughly doubled after FIX-236. **Run with `NODE_OPTIONS=--max-old-space-size=8192`** (8 GB) for non-presidential cycles; 12 GB recommended for presidential cycles (2024/2028). The default 4 GB OOMs mid-stream around the 20–25 M-line mark on a presidential cycle. Disable the indiv stage with `FEC_INCLUDE_INDIV=false` if memory is constrained.
 - Upserts donor `financial_entities` rows with `entity_type='individual'`, deduped by `donor_fingerprint` UNIQUE (added by migration `20260502120000_financial_entities_donor_fingerprint.sql`). Multiple NULL fingerprints are allowed, so non-individual entities (PACs etc.) are unaffected.
-- Upserts `financial_relationships` rows with `relationship_type='donation'`, source='fec_bulk_indiv'
+- Pre-upserts recipient committee `financial_entities` rows for any super PAC / party / non-cand PAC that received itemized individual contributions, so the donor → committee relationships have a `to_id` to point at. `total_donated_cents` is left at 0 for these (or whatever pas2 set; never overwritten with indiv-inflow — `total_donated_cents` is the outflow convention used elsewhere in the schema).
+- Upserts `financial_relationships` rows with `relationship_type='donation'`:
+  - `to_type='official'`, `source='fec_bulk_indiv'` for candidate recipients
+  - `to_type='financial_entity'`, `source='fec_bulk_indiv_to_committee'` for super PAC / party / other PAC recipients
 - Disable per-run with `FEC_INCLUDE_INDIV=false`. Caches FEC bulk files in R2 is a planned follow-up (FIX-192)
 
 - No API key required, no rate limits
@@ -191,9 +198,13 @@ The individual-level FEC donor file (`indiv{yy}.zip`, ~2 GB) is now ingested
 by the FEC bulk pipeline. Each cycle:
 - Downloads `indiv{yy}.zip` + `ccl{yy}.zip` to OS temp dir
 - Streams line-by-line via readline (never loads full file)
-- Aggregates to (donor × candidate × cycle) tuples in-memory
+- Aggregates to two maps: (donor × candidate × cycle) for candidate-authorized
+  recipients AND (donor × committee × cycle) for non-cand recipients (super
+  PACs etc., FIX-236)
 - Upserts donor entities + donation relationships, then deletes the temp files
-- ~500 MB peak heap per cycle; bump `NODE_OPTIONS=--max-old-space-size=4096` if OOM
+- Peak heap roughly doubled by FIX-236 — **run with
+  `NODE_OPTIONS=--max-old-space-size=8192`** for non-presidential cycles;
+  12 GB for presidential. Default 4 GB OOMs mid-stream on presidential.
 
 Pro verified 2026-05-02 (cycles 2024 + 2026): 540,859 distinct individual
 donors, 959,010 indiv donation rows, 0 failures across both cycles.

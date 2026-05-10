@@ -459,3 +459,104 @@ export async function upsertIndividualDonationsBatch(
 
   return { upserted, failed };
 }
+
+// ---------------------------------------------------------------------------
+// Batched individual → committee donation upsert (FIX-236)
+//
+// Donations from an individual donor to a non-candidate committee — super
+// PACs (CMTE_TP O), party committees (X/Y/Z), other PACs (N/Q/V/W). Same
+// dedup arbiter as the donor-to-official path; differs only in to_type
+// (financial_entity instead of official) and source metadata.
+//
+// This is the path that captures Form 3X Schedule A — Musk → America PAC,
+// Soros → Democracy PAC, etc. Pre-FIX-236 these contributions were silently
+// dropped at the indiv stream filter.
+// ---------------------------------------------------------------------------
+
+export interface IndividualToCommitteeDonationInput {
+  fromEntityId:     string; // financial_entities.id of the individual donor
+  toEntityId:       string; // financial_entities.id of the recipient committee
+  cycleYear:        number;
+  amountCents:      number; // cycle-level aggregate
+  occurredAt:       string | null;
+  donorFingerprint: string;
+  cmteId:           string; // recipient FEC committee id (for source_url + provenance)
+  txCount:          number;
+}
+
+export async function upsertIndividualToCommitteeDonationsBatch(
+  db:     Db,
+  inputs: IndividualToCommitteeDonationInput[],
+): Promise<RelationshipBatchResult> {
+  let upserted = 0;
+  let failed   = 0;
+
+  if (inputs.length === 0) return { upserted, failed };
+
+  // Same client-side dedup as the donor→official writer: collapse rows that
+  // would collide on the partial unique arbiter
+  // (relationship_type, from_id, to_id, cycle_year). Two identical
+  // (donor, committee, cycle) tuples can arise if a donor's NAME is
+  // recorded with two different formattings the fingerprint normalizes
+  // to the same string.
+  const merged = new Map<string, IndividualToCommitteeDonationInput>();
+  for (const input of inputs) {
+    const key = `${input.fromEntityId}|${input.toEntityId}|${input.cycleYear}`;
+    const existing = merged.get(key);
+    if (!existing) {
+      merged.set(key, { ...input });
+      continue;
+    }
+    existing.amountCents += input.amountCents;
+    existing.txCount     += input.txCount;
+    if (input.occurredAt && (!existing.occurredAt || input.occurredAt > existing.occurredAt)) {
+      existing.occurredAt = input.occurredAt;
+    }
+  }
+
+  const records = [...merged.values()].map((input) => {
+    const occurredAt = input.occurredAt ?? `${input.cycleYear}-01-01`;
+    return {
+      relationship_type: "donation" as const,
+      from_type:         "financial_entity",
+      from_id:           input.fromEntityId,
+      to_type:           "financial_entity",
+      to_id:             input.toEntityId,
+      amount_cents:      input.amountCents,
+      occurred_at:       occurredAt,
+      started_at:        null,
+      ended_at:          null,
+      cycle_year:        input.cycleYear,
+      source_url:        `https://www.fec.gov/data/committee/${input.cmteId}/`,
+      metadata: {
+        donor_fingerprint: input.donorFingerprint,
+        fec_committee_id:  input.cmteId,
+        tx_count:          input.txCount,
+        source:            "fec_bulk_indiv_to_committee",
+        aggregated:        true,
+      },
+    };
+  });
+
+  for (let i = 0; i < records.length; i += RELATIONSHIP_CHUNK) {
+    const chunk = records.slice(i, i + RELATIONSHIP_CHUNK);
+
+    const { error } = await db
+      .from("financial_relationships")
+      .upsert(chunk, {
+        onConflict: "relationship_type,from_id,to_id,cycle_year",
+      });
+
+    if (error) {
+      console.error(
+        `    indiv-to-committee chunk ${i}-${i + chunk.length} failed: ${error.message}`,
+      );
+      failed += chunk.length;
+      continue;
+    }
+
+    upserted += chunk.length;
+  }
+
+  return { upserted, failed };
+}

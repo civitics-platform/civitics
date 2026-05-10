@@ -77,7 +77,9 @@ import {
   upsertDonationRelationshipsBatch,
   upsertIndividualDonorsBatch,
   upsertIndividualDonationsBatch,
+  upsertIndividualToCommitteeDonationsBatch,
   type IndividualDonationInput,
+  type IndividualToCommitteeDonationInput,
 } from "./writer";
 import { extractZipEntryToDisk, parseFecDate } from "./util";
 import { parseCcl, streamIndiv } from "./indiv";
@@ -537,6 +539,7 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
   let pacRelsUpserted = 0, pacRelsFailed = 0;
   let indivDonorsUpserted = 0, indivDonorsFailed = 0;
   let indivRelsUpserted = 0, indivRelsFailed = 0;
+  let indivCmteRelsUpserted = 0, indivCmteRelsFailed = 0; // FIX-236
   let indivCyclesProcessed = 0, indivCyclesSkipped = 0;
   let matchedByFecId = 0, matchedByName = 0, notMatched = 0;
   let totalFileMb = 0;
@@ -833,15 +836,37 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
               }
               console.log(`    ccl: ${cclLookupAll.size.toLocaleString()} all committees, ${cmteToCand.size.toLocaleString()} mapped to our candidates`);
 
-              if (cmteToCand.size === 0) {
-                console.warn("    No committees mapped to known candidates — skipping indiv stage");
-              } else {
-                const indivResult = await streamIndiv(indivPath, cmteToCand, candidateSet, TMP_DIR);
+              // FIX-236: build the non-candidate-committee recipient set —
+              // every committee in cmLookup with a CMTE_TP we want to capture
+              // (super PAC O, party X/Y/Z, other PAC N/Q/V/W) that is NOT
+              // already in the candidate-authorized ccl set. Joint-fundraising
+              // (J), leadership (D), and "B" stay excluded — their money is
+              // re-itemized via downstream transfers and would double-count.
+              const NON_CAND_KEEP_TYPES = new Set(["O", "X", "Y", "Z", "N", "Q", "V", "W"]);
+              const nonCandCmtes = new Set<string>();
+              for (const [cmteId, info] of cmLookup.entries()) {
+                if (cmteToCand.has(cmteId)) continue;
+                if (NON_CAND_KEEP_TYPES.has(info.type)) nonCandCmtes.add(cmteId);
+              }
+              console.log(`    Non-candidate committees to capture (super PAC + party + other PAC): ${nonCandCmtes.size.toLocaleString()}`);
 
-                // Build per-cycle donor totals from the aggregations (initial
-                // total_donated_cents for the donor entity row).
+              if (cmteToCand.size === 0 && nonCandCmtes.size === 0) {
+                console.warn("    No committees mapped to candidates or non-cand recipients — skipping indiv stage");
+              } else {
+                const indivResult = await streamIndiv(indivPath, cmteToCand, candidateSet, nonCandCmtes, TMP_DIR);
+
+                // Build per-cycle donor totals from BOTH aggregation maps —
+                // candidate-path and committee-path. A donor who gives to
+                // both a candidate AND a super PAC counts both contributions
+                // toward total_donated_cents for the cycle.
                 const cycleDonorTotals = new Map<string, number>();
                 for (const agg of indivResult.aggregations.values()) {
+                  cycleDonorTotals.set(
+                    agg.donorFingerprint,
+                    (cycleDonorTotals.get(agg.donorFingerprint) ?? 0) + agg.totalCents,
+                  );
+                }
+                for (const agg of indivResult.committeeAggregations.values()) {
                   cycleDonorTotals.set(
                     agg.donorFingerprint,
                     (cycleDonorTotals.get(agg.donorFingerprint) ?? 0) + agg.totalCents,
@@ -886,11 +911,90 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
                   });
                 }
 
-                console.log(`    Upserting ${indivRelInputs.length.toLocaleString()} individual donation relationships...`);
+                console.log(`    Upserting ${indivRelInputs.length.toLocaleString()} individual → candidate donation relationships...`);
                 const indivRelResult = await upsertIndividualDonationsBatch(db, indivRelInputs);
                 indivRelsUpserted += indivRelResult.upserted;
                 indivRelsFailed   += indivRelResult.failed;
-                console.log(`    Donations — upserted: ${indivRelResult.upserted}  failed: ${indivRelResult.failed}`);
+                console.log(`    Donations (→ candidate) — upserted: ${indivRelResult.upserted}  failed: ${indivRelResult.failed}`);
+
+                // ── FIX-236: donor → non-candidate committee donations ──
+                // Pre-upsert the recipient committee entities so we can
+                // resolve cmteId → entityId. upsertPacEntitiesBatch uses
+                // ON CONFLICT (fec_committee_id), so committees already
+                // touched by the pas2 path are updated idempotently.
+                //
+                // We DO NOT roll indiv-inflow into total_donated_cents.
+                // The existing convention (set by the pas2 path) is that
+                // total_donated_cents = outflow this entity sent to others.
+                // Indiv-inflow is the *received* side for super PACs and
+                // semantically belongs in total_received_cents (currently
+                // unused; future FIX can populate it). Setting inflow=0
+                // here means a pure-IE super PAC ranks low by amount in
+                // search, but it surfaces by name, and clicking through
+                // shows the donor relationships correctly.
+                //
+                // For committees that ALSO appeared in pas2, the cross-
+                // cycle final pass at the bottom of this function uses
+                // `cmteTotalsAllCycles` (pas2-derived) as the source of
+                // truth and overwrites whatever this pre-upsert set —
+                // so any totalDonatedCents value here for a dual-mode PAC
+                // is transient.
+                const cmteEntityInputs = [];
+                const seenInflowCmtes  = new Set<string>();
+                for (const agg of indivResult.committeeAggregations.values()) {
+                  if (seenInflowCmtes.has(agg.cmteId)) continue;
+                  seenInflowCmtes.add(agg.cmteId);
+                  const info = cmLookup.get(agg.cmteId);
+                  if (!info) continue;
+                  cmteEntityInputs.push({
+                    cmteId:            agg.cmteId,
+                    name:              info.name,
+                    cmteType:          info.type,
+                    connectedOrg:      info.connectedOrg,
+                    totalDonatedCents: 0,
+                  });
+                  // Remember the committee info so the cross-cycle pass
+                  // has it for committees never seen by pas2 (would
+                  // otherwise be skipped by the `if (!info) continue;`
+                  // check at the final pass).
+                  if (!cmteInfoSeen.has(agg.cmteId)) cmteInfoSeen.set(agg.cmteId, info);
+                }
+
+                if (cmteEntityInputs.length > 0) {
+                  console.log(`    Pre-upserting ${cmteEntityInputs.length.toLocaleString()} non-candidate-committee recipient entities...`);
+                  const cmteEntityResult = await upsertPacEntitiesBatch(db, cmteEntityInputs);
+                  pacEntitiesUpserted += cmteEntityResult.upserted;
+                  pacEntitiesFailed   += cmteEntityResult.failed;
+                  for (const [cmteId, id] of cmteEntityResult.entityIdByCmte.entries()) {
+                    entityIdByCmteAcc.set(cmteId, id);
+                  }
+                  console.log(`    Recipient committees — upserted: ${cmteEntityResult.upserted}  failed: ${cmteEntityResult.failed}`);
+                }
+
+                const indivCmteRelInputs: IndividualToCommitteeDonationInput[] = [];
+                for (const agg of indivResult.committeeAggregations.values()) {
+                  const fromEntityId = donorResult.donorIdByFingerprint.get(agg.donorFingerprint);
+                  if (!fromEntityId) continue;
+                  const toEntityId = entityIdByCmteAcc.get(agg.cmteId);
+                  if (!toEntityId) continue;
+                  indivCmteRelInputs.push({
+                    fromEntityId,
+                    toEntityId,
+                    cycleYear:        parseInt(CYCLE, 10),
+                    amountCents:      agg.totalCents,
+                    occurredAt:       agg.latestDate ? parseFecDate(agg.latestDate) : null,
+                    donorFingerprint: agg.donorFingerprint,
+                    cmteId:           agg.cmteId,
+                    txCount:          agg.txCount,
+                  });
+                }
+
+                console.log(`    Upserting ${indivCmteRelInputs.length.toLocaleString()} individual → committee donation relationships...`);
+                const indivCmteRelResult = await upsertIndividualToCommitteeDonationsBatch(db, indivCmteRelInputs);
+                indivCmteRelsUpserted += indivCmteRelResult.upserted;
+                indivCmteRelsFailed   += indivCmteRelResult.failed;
+                console.log(`    Donations (→ committee) — upserted: ${indivCmteRelResult.upserted}  failed: ${indivCmteRelResult.failed}`);
+
                 indivCyclesProcessed++;
               }
             }
@@ -950,10 +1054,10 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
 
     const totalUpserted =
       pacEntitiesUpserted + pacRelsUpserted + finalResult.upserted +
-      indivDonorsUpserted + indivRelsUpserted;
+      indivDonorsUpserted + indivRelsUpserted + indivCmteRelsUpserted;
     const totalFailed =
       pacEntitiesFailed + pacRelsFailed + finalResult.failed +
-      indivDonorsFailed + indivRelsFailed;
+      indivDonorsFailed + indivRelsFailed + indivCmteRelsFailed;
 
     console.log("\n  ──────────────────────────────────────────────────");
     console.log("  FEC Bulk Pipeline Report (multi-cycle)");
@@ -971,8 +1075,10 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
       console.log(`  ${"Indiv cycles processed / skipped:".padEnd(38)} ${indivCyclesProcessed} / ${indivCyclesSkipped}`);
       console.log(`  ${"Indiv donor entities upserted:".padEnd(38)} ${indivDonorsUpserted}`);
       console.log(`  ${"Indiv donor entity failures:".padEnd(38)} ${indivDonorsFailed}`);
-      console.log(`  ${"Indiv donation rels upserted:".padEnd(38)} ${indivRelsUpserted}`);
-      console.log(`  ${"Indiv donation rels failed:".padEnd(38)} ${indivRelsFailed}`);
+      console.log(`  ${"Indiv → cand rels upserted:".padEnd(38)} ${indivRelsUpserted}`);
+      console.log(`  ${"Indiv → cand rels failed:".padEnd(38)} ${indivRelsFailed}`);
+      console.log(`  ${"Indiv → cmte rels upserted:".padEnd(38)} ${indivCmteRelsUpserted}`);
+      console.log(`  ${"Indiv → cmte rels failed:".padEnd(38)} ${indivCmteRelsFailed}`);
     }
     console.log(`  ${"Financial data processed:".padEnd(38)} ~${totalFileMb.toFixed(1)} MB`);
 

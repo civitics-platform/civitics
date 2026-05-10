@@ -1,15 +1,23 @@
 /**
- * FEC individual contributions (indiv{yy}.zip) — FIX-181.
+ * FEC individual contributions (indiv{yy}.zip) — FIX-181 + FIX-236.
  *
  * Each cycle's indiv file is ~2 GB compressed (~10 GB uncompressed) and
  * contains every itemized individual contribution to FEC-registered
  * committees for the cycle. Roughly 30M rows for a presidential cycle.
  *
- * Unlike pas2, indiv rows reference the recipient committee (CMTE_ID)
- * rather than the candidate (CAND_ID), so we need ccl{yy}.zip — the
- * candidate-committee linkage file — to map CMTE_ID → CAND_ID. We only
- * keep principal ('P') and authorized ('A') committees, which covers
- * virtually all individual contribution flow.
+ * Indiv rows reference the recipient committee (CMTE_ID). There are two
+ * recipient classes we care about:
+ *   1. Candidate-authorized committees (designation P/A in ccl{yy}.zip)
+ *      → donation flows to a specific CAND_ID → official.
+ *   2. Non-candidate committees (super PACs, party committees, other PACs
+ *      — CMTE_TP O/X/Y/Z/N/Q/V/W in cm{yy}.zip) → donation flows to the
+ *      committee as a financial_entity. This is the path that captures
+ *      Form 3X Schedule A — Musk → America PAC, Soros → Democracy PAC, etc.
+ *      Pre-FIX-236 these contributions were silently dropped.
+ *
+ * Leadership/joint-fundraising designations (D/B/J) stay excluded — their
+ * money is split downstream and re-itemized via transfers, so capturing
+ * them at the source would double-count.
  *
  * Donor identity: indiv has no donor ID. We dedupe on
  *   fingerprint = upper(NAME) collapsed + "|" + ZIP5
@@ -18,8 +26,11 @@
  * dedup contract is honored.
  *
  * Memory: streams the file line-by-line, but holds the per-cycle
- * aggregation map in RAM. Empirical peak ~500 MB for a presidential
- * cycle. If you hit OOM, bump heap with NODE_OPTIONS=--max-old-space-size=4096.
+ * aggregation maps in RAM. With both candidate and committee paths
+ * active (FIX-236), heap pressure roughly doubles vs. the FIX-181-only
+ * shape — empirical OOM at ~3.4 GB mid-2026 with the default 4 GB cap.
+ * Run with NODE_OPTIONS=--max-old-space-size=8192 for non-presidential
+ * cycles; 12 GB recommended for presidential cycles.
  */
 
 import * as fs       from "fs";
@@ -77,6 +88,15 @@ export interface IndivAggregation {
   latestDate:       string | null; // raw MMDDYYYY
 }
 
+/** FIX-236: per-cycle donor → non-candidate-committee aggregate. */
+export interface IndivCommitteeAggregation {
+  donorFingerprint: string;
+  cmteId:           string;
+  totalCents:       number;
+  txCount:          number;
+  latestDate:       string | null;
+}
+
 export interface IndivDonorMeta {
   fingerprint: string;
   displayName: string;
@@ -88,14 +108,16 @@ export interface IndivDonorMeta {
 }
 
 export interface IndivStreamResult {
-  aggregations: Map<string, IndivAggregation>; // key = `${fingerprint}|${candId}`
-  donorMetas:   Map<string, IndivDonorMeta>;   // key = fingerprint
+  aggregations:          Map<string, IndivAggregation>;          // key = `${fingerprint}|${candId}`
+  committeeAggregations: Map<string, IndivCommitteeAggregation>; // key = `${fingerprint}|${cmteId}` (FIX-236)
+  donorMetas:            Map<string, IndivDonorMeta>;            // key = fingerprint
   stats: {
-    linesRead:    number;
-    passedTxType: number;
-    passedCmte:   number;
-    passedCand:   number;
-    passedAmt:    number;
+    linesRead:        number;
+    passedTxType:     number;
+    passedCmte:       number;     // line had cmteId in EITHER candidate OR committee map
+    passedCand:       number;     // routed to the candidate aggregation
+    passedCommittee:  number;     // routed to the non-candidate-committee aggregation
+    passedAmt:        number;
   };
 }
 
@@ -155,10 +177,11 @@ export function donorFingerprint(name: string, zip5: string): string {
 // ---------------------------------------------------------------------------
 
 export async function streamIndiv(
-  zipPath:      string,
-  cmteToCandId: Map<string, string>,
-  candidateSet: Set<string>,
-  tempDir:      string,
+  zipPath:        string,
+  cmteToCandId:   Map<string, string>,
+  candidateSet:   Set<string>,
+  nonCandCmtes:   Set<string>,    // FIX-236: super PAC / party / other-PAC CMTE_IDs (not in ccl P/A)
+  tempDir:        string,
 ): Promise<IndivStreamResult> {
   const txtPath = path.join(tempDir, "indiv-extracted.txt");
   const found = await extractZipEntryToDisk(
@@ -173,10 +196,16 @@ export async function streamIndiv(
   const txtMb = (fs.statSync(txtPath).size / 1024 / 1024).toFixed(0);
   console.log(`    Extracted indiv text (${txtMb} MB) — streaming line by line...`);
 
-  const aggregations = new Map<string, IndivAggregation>();
-  const donorMetas   = new Map<string, IndivDonorMeta>();
+  const aggregations          = new Map<string, IndivAggregation>();
+  const committeeAggregations = new Map<string, IndivCommitteeAggregation>();
+  const donorMetas            = new Map<string, IndivDonorMeta>();
 
-  let linesRead = 0, passedTxType = 0, passedCmte = 0, passedCand = 0, passedAmt = 0;
+  let linesRead = 0,
+      passedTxType = 0,
+      passedCmte = 0,
+      passedCand = 0,
+      passedCommittee = 0,
+      passedAmt = 0;
 
   const rl = readline.createInterface({
     input:     fs.createReadStream(txtPath, { encoding: "latin1" }),
@@ -188,7 +217,8 @@ export async function streamIndiv(
     if (linesRead % 1_000_000 === 0) {
       console.log(
         `    ... ${linesRead.toLocaleString()} lines | ` +
-        `${aggregations.size.toLocaleString()} pairs | ` +
+        `${aggregations.size.toLocaleString()} cand pairs | ` +
+        `${committeeAggregations.size.toLocaleString()} cmte pairs | ` +
         `${donorMetas.size.toLocaleString()} donors`,
       );
     }
@@ -199,12 +229,22 @@ export async function streamIndiv(
     passedTxType++;
 
     const cmteId = (cols[INDIV_COL.CMTE_ID] ?? "").trim();
-    const candId = cmteToCandId.get(cmteId);
-    if (!candId) continue;
+
+    // Route by recipient class. cmteToCandId is the ccl P/A → CAND_ID set;
+    // nonCandCmtes is super PAC / party / other-PAC committees from cm{yy}
+    // that are *not* in ccl P/A. The two sets are disjoint by construction
+    // in index.ts; route candidate-first to keep existing path stable.
+    const candId      = cmteToCandId.get(cmteId);
+    const isCmteOnly  = !candId && nonCandCmtes.has(cmteId);
+    if (!candId && !isCmteOnly) continue;
     passedCmte++;
 
-    if (!candidateSet.has(candId)) continue;
-    passedCand++;
+    // Candidate path additionally requires the CAND_ID to map to one of our
+    // matched officials. Committee path skips this — every committee we
+    // kept in nonCandCmtes is already an entity we'll surface.
+    if (candId && !candidateSet.has(candId)) continue;
+    if (candId)     passedCand++;
+    if (isCmteOnly) passedCommittee++;
 
     const amtStr = (cols[INDIV_COL.TRANSACTION_AMT] ?? "").trim();
     const amt    = parseFloat(amtStr);
@@ -231,32 +271,57 @@ export async function streamIndiv(
       });
     }
 
-    const aggKey  = `${fp}|${candId}`;
-    const existing = aggregations.get(aggKey);
-    if (existing) {
-      existing.totalCents += amtCents;
-      existing.txCount++;
-      if (dt && dt > (existing.latestDate ?? "")) existing.latestDate = dt;
+    if (candId) {
+      const aggKey  = `${fp}|${candId}`;
+      const existing = aggregations.get(aggKey);
+      if (existing) {
+        existing.totalCents += amtCents;
+        existing.txCount++;
+        if (dt && dt > (existing.latestDate ?? "")) existing.latestDate = dt;
+      } else {
+        aggregations.set(aggKey, {
+          donorFingerprint: fp,
+          candId,
+          totalCents:       amtCents,
+          txCount:          1,
+          latestDate:       dt || null,
+        });
+      }
     } else {
-      aggregations.set(aggKey, {
-        donorFingerprint: fp,
-        candId,
-        totalCents:       amtCents,
-        txCount:          1,
-        latestDate:       dt || null,
-      });
+      const aggKey  = `${fp}|${cmteId}`;
+      const existing = committeeAggregations.get(aggKey);
+      if (existing) {
+        existing.totalCents += amtCents;
+        existing.txCount++;
+        if (dt && dt > (existing.latestDate ?? "")) existing.latestDate = dt;
+      } else {
+        committeeAggregations.set(aggKey, {
+          donorFingerprint: fp,
+          cmteId,
+          totalCents:       amtCents,
+          txCount:          1,
+          latestDate:       dt || null,
+        });
+      }
     }
   }
 
   console.log(`    Lines read:                ${linesRead.toLocaleString()}`);
   console.log(`    Passed 15/15E filter:      ${passedTxType.toLocaleString()}`);
-  console.log(`    Passed cmte→cand lookup:   ${passedCmte.toLocaleString()}`);
-  console.log(`    Passed candidateSet:       ${passedCand.toLocaleString()}`);
+  console.log(`    Passed cmte lookup:        ${passedCmte.toLocaleString()}`);
+  console.log(`      → candidate path:        ${passedCand.toLocaleString()}`);
+  console.log(`      → committee path:        ${passedCommittee.toLocaleString()}`);
   console.log(`    Passed $200+ filter:       ${passedAmt.toLocaleString()}`);
   console.log(`    Unique donors:             ${donorMetas.size.toLocaleString()}`);
   console.log(`    Donor × candidate pairs:   ${aggregations.size.toLocaleString()}`);
+  console.log(`    Donor × committee pairs:   ${committeeAggregations.size.toLocaleString()}`);
 
   try { fs.unlinkSync(txtPath); } catch { /* best effort */ }
 
-  return { aggregations, donorMetas, stats: { linesRead, passedTxType, passedCmte, passedCand, passedAmt } };
+  return {
+    aggregations,
+    committeeAggregations,
+    donorMetas,
+    stats: { linesRead, passedTxType, passedCmte, passedCand, passedCommittee, passedAmt },
+  };
 }

@@ -480,13 +480,23 @@ export async function GET(req: NextRequest) {
       .from("financial_entities")
       .select(selectCols, { count: "exact" });
 
-    // financial_type / entity_type filter (when set, allow individuals too)
+    // FIX-236: individuals are surfaced whenever the user is actively
+    // searching or filtering. The only time we exclude them is the
+    // landing browse view (no query, no industry/amount filter) — where
+    // including 540K individual rows would crowd out the PAC/corp/union
+    // diversity in the default "amount_desc" sort.
+    const isBrowseMode =
+      q.length < 2 &&
+      !filterIndustry &&
+      !filterMinAmountCents &&
+      !filterMaxAmountCents;
+
     if (filterEntityType) {
       qb = qb.eq("entity_type", filterEntityType);
-    } else {
-      // browse mode: exclude individual donors from "all" / default financial view
+    } else if (isBrowseMode) {
       qb = qb.neq("entity_type", "individual");
     }
+    // else: query or other filter active → all entity_types, individuals included
 
     if (filterMinAmountCents) qb = qb.gte("total_donated_cents", filterMinAmountCents);
     if (filterMaxAmountCents) qb = qb.lte("total_donated_cents", filterMaxAmountCents);
@@ -503,7 +513,24 @@ export async function GET(req: NextRequest) {
     }
 
     if (q.length >= 2) {
-      qb = qb.ilike("display_name", `%${q}%`);
+      // FEC stores individual donor NAME as "LAST, FIRST" — so a natural-order
+      // query like "Elon Musk" won't substring-match "MUSK, ELON". For any
+      // two-token query that doesn't already contain a comma, also try the
+      // reversed comma form. PostgREST's `.or()` parser treats commas as
+      // condition separators, so values containing commas must be wrapped in
+      // double-quotes (per Supabase/PostgREST docs); backslash-escape does NOT
+      // work and yields PGRST100 "failed to parse logic tree". The query
+      // string itself is bare ASCII (per Civitics Latin-script donor data) so
+      // wrapping it in `"..."` is unambiguous.
+      const tokens = q.trim().split(/\s+/);
+      if (tokens.length === 2 && !q.includes(",")) {
+        const reversed = `${tokens[1]}, ${tokens[0]}`;
+        qb = qb.or(
+          `display_name.ilike."%${q}%",display_name.ilike."%${reversed}%"`,
+        );
+      } else {
+        qb = qb.ilike("display_name", `%${q}%`);
+      }
     }
 
     if (sortParam === "amount_desc" || (!q && !filterIndustry)) {
