@@ -627,6 +627,9 @@ export function GraphPage({ initialCode, aiEnabled = true }: GraphPageProps = {}
                 primaryEntityId={primaryEntity?.id ?? null}
                 primaryGroup={primaryGroup}
                 secondaryGroup={focusGroups[1] ?? null}
+                focusedOfficials={focusEntityList
+                  .filter(e => e.type === 'official')
+                  .map(e => ({ id: e.id, name: e.name }))}
               />
             </div>
           )}

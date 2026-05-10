@@ -561,6 +561,135 @@ export const CHORD_DONOR_INDUSTRIES: GraphViewPreset = {
   },
 }
 
+// Sector ↔ Vote Outcome — for focused officials, attribute donor-sector
+// dollars to yes/no/other vote outcomes. Reveals whether sector funding
+// correlates with affirmative or negative votes.
+export const CHORD_SECTOR_VOTE: GraphViewPreset = {
+  focus: {
+    entities: [],
+    scope: 'all',
+    depth: 1,
+    includeProcedural: false,
+  },
+  connections: buildConnections(['donation', 'vote_yes', 'vote_no']),
+  style: {
+    vizType: 'chord',
+    vizOptions: {
+      chord: {
+        normalizeMode: false,
+        showLabels: true,
+        padAngle: 0.05,
+        minFlowUsd: 0,
+        dataMode: 'sector-vote',
+      },
+    },
+  },
+  meta: {
+    name: 'Sector vs Vote Outcome',
+    isPreset: true,
+    presetId: 'chord-sector-vote',
+    isDirty: false,
+    applicableEntityTypes: ['official'],
+    intent: 'sector-vote-chord',
+  },
+}
+
+// Bill Subjects → Party Chambers — global view of which topics break
+// party-line. Weighted by affirmative-vote count.
+export const CHORD_SUBJECT_PARTY: GraphViewPreset = {
+  focus: {
+    entities: [],
+    scope: 'all',
+    depth: 1,
+    includeProcedural: false,
+  },
+  connections: buildConnections(['vote_yes']),
+  style: {
+    vizType: 'chord',
+    vizOptions: {
+      chord: {
+        normalizeMode: false,
+        showLabels: true,
+        padAngle: 0.05,
+        minFlowUsd: 0,
+        dataMode: 'subject-party',
+      },
+    },
+  },
+  meta: {
+    name: 'Topics by Party',
+    isPreset: true,
+    presetId: 'chord-subject-party',
+    isDirty: false,
+    applicableEntityTypes: ['unfocused', 'group', 'proposal'],
+    intent: 'subject-party-chord',
+  },
+}
+
+// Donor Type ↔ Party Chambers — Individual / PAC / Super PAC / Corporation
+// / Union / Party Committee breakdown of campaign money flows.
+export const CHORD_DONOR_TYPE_PARTY: GraphViewPreset = {
+  focus: {
+    entities: [],
+    scope: 'all',
+    depth: 1,
+    includeProcedural: false,
+  },
+  connections: DEFAULT_CONNECTION_STATE,
+  style: {
+    vizType: 'chord',
+    vizOptions: {
+      chord: {
+        normalizeMode: false,
+        showLabels: true,
+        padAngle: 0.05,
+        minFlowUsd: 0,
+        dataMode: 'donor-type-party',
+      },
+    },
+  },
+  meta: {
+    name: 'Donor Type by Party',
+    isPreset: true,
+    presetId: 'chord-donor-type-party',
+    isDirty: false,
+    applicableEntityTypes: ['official', 'unfocused', 'group'],
+    intent: 'donor-type-party-chord',
+  },
+}
+
+// Donor State ↔ Recipient Party — out-of-state-money map. With an official
+// focused, scopes to that official's donor states.
+export const CHORD_STATE_PARTY: GraphViewPreset = {
+  focus: {
+    entities: [],
+    scope: 'all',
+    depth: 1,
+    includeProcedural: false,
+  },
+  connections: DEFAULT_CONNECTION_STATE,
+  style: {
+    vizType: 'chord',
+    vizOptions: {
+      chord: {
+        normalizeMode: false,
+        showLabels: true,
+        padAngle: 0.05,
+        minFlowUsd: 0,
+        dataMode: 'state-party',
+      },
+    },
+  },
+  meta: {
+    name: 'Out-of-State Money',
+    isPreset: true,
+    presetId: 'chord-state-party',
+    isDirty: false,
+    applicableEntityTypes: ['official', 'unfocused'],
+    intent: 'state-party-chord',
+  },
+}
+
 // FIX-146: alignment viz auto-loads alongside the USER node + rep edges that
 // GraphPage already fetches when the user has a home district configured.
 // Selecting this preset switches viz; alignment data lights up on its own.
@@ -823,6 +952,10 @@ export const BUILT_IN_PRESETS: GraphViewPreset[] = [
   TREEMAP_PAC_SECTOR,
   TREEMAP_PAC_PARTY,
   CHORD_DONOR_INDUSTRIES,
+  CHORD_SECTOR_VOTE,
+  CHORD_SUBJECT_PARTY,
+  CHORD_DONOR_TYPE_PARTY,
+  CHORD_STATE_PARTY,
   HOW_ALIGNED_ARE_MY_REPS,
   // FIX-218 — Tier 1 + Tier 2 new presets
   FUNDRAISING_BY_DONOR_TYPE,

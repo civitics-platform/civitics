@@ -918,6 +918,10 @@ focus type changes — see `resolvePresetForFocus` in `presets.ts`.
 | Co-Sponsor Network | `co-sponsor-network` | force | co_sponsorship, vote_yes | official, proposal |
 | Top Donors Only | `chord-top-donors` | chord | donation | official, pac |
 | Industry Donors | `chord-donor-industries` | chord | donation | official, pac |
+| Sector vs Vote Outcome | `chord-sector-vote` | chord | donation, vote_yes, vote_no | official |
+| Topics by Party | `chord-subject-party` | chord | vote_yes | unfocused, group, proposal |
+| Donor Type by Party | `chord-donor-type-party` | chord | donation | official, unfocused, group |
+| Out-of-State Money | `chord-state-party` | chord | donation | official, unfocused |
 | By State | `treemap-by-state` | treemap | donation | official |
 | By Chamber | `treemap-by-chamber` | treemap | donation | official |
 | Donor Breakdown | `treemap-donor-breakdown` | treemap | donation | official (adapts for pac) |

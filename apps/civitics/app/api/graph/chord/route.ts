@@ -32,25 +32,35 @@ type FlowRow = {
   donor_count: number;
 };
 
-type EntityDonorRow = {
-  industry_category: string | null;
-  total_usd: number;
-  donor_count: number;
-};
-
-type OfficialRow = {
-  id: string;
-  name: string;
-};
-
 function labelFor(s: string) {
   return s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
+
+// Display label maps for the new modes.
+const VOTE_OUTCOME_LABELS: Record<string, string> = {
+  yes:   'Yes Votes',
+  no:    'No Votes',
+  other: 'Other',
+};
+
+const DONOR_TYPE_LABELS: Record<string, string> = {
+  individual:           'Individual',
+  pac:                  'PAC',
+  super_pac:            'Super PAC',
+  corporation:          'Corporation',
+  union:                'Union',
+  party_committee:      'Party Committee',
+  small_donor_aggregate:'Small Donors',
+  tribal:               'Tribal',
+  '527':                '527 Group',
+  other:                'Other',
+};
 
 export async function GET(req: NextRequest) {
   if (supabaseUnavailable()) return unavailableResponse();
   const { searchParams } = new URL(req.url);
   const entityId = searchParams.get("entityId");
+  const dataMode = searchParams.get('dataMode');
 
   const groupId = searchParams.get('groupId');
   const groupFilterRaw = searchParams.get('groupFilter');
@@ -121,6 +131,246 @@ export async function GET(req: NextRequest) {
     console.log('[getMemberIds] count:', data?.length ?? 0);
     console.log('[getMemberIds] error:', error);
     return (data ?? []).map((m: { id: string }) => m.id);
+  }
+
+  // ── Helper: resolve focused-cohort IDs from entityId or groupFilter ───────
+  async function resolveCohortIds(): Promise<string[]> {
+    if (entityId) return [entityId];
+    if (groupFilter) return await getMemberIds(groupFilter);
+    return [];
+  }
+
+  // ── Explicit dataMode branches (preferred over inferred-from-props) ────────
+
+  // Mode: sector-vote — donor sectors × vote outcomes (yes/no/other) for the
+  // focused official(s). Cell value = sum across officials of
+  //   sector_donations × (vote_outcome_count / total_votes).
+  if (dataMode === 'sector-vote') {
+    try {
+      const cohortIds = await resolveCohortIds();
+      if (cohortIds.length === 0) {
+        return NextResponse.json({ groups: [], recipients: [], matrix: [], mode: 'sector-vote' });
+      }
+      const minFlowParam = parseFloat(searchParams.get('minFlowUsd') ?? '0');
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await withDbTimeout<{ data: Array<{ sector: string; display_label: string; display_icon: string; vote_outcome: string; total_usd: number; vote_count: number }> | null; error: unknown }>(
+        (supabase as any).rpc('chord_sector_vote_for_officials', { p_official_ids: cohortIds, p_min_usd: minFlowParam })
+      );
+      if (error) {
+        console.error('[chord/sector-vote] rpc error:', error);
+        return NextResponse.json({ groups: [], recipients: [], matrix: [], mode: 'sector-vote' });
+      }
+      const rows = data ?? [];
+
+      const sectorMap = new Map<string, { label: string; icon: string; total: number }>();
+      const outcomeMap = new Map<string, { usd: number; votes: number }>();
+      const cellMap = new Map<string, Map<string, number>>();
+      for (const row of rows) {
+        const sec = row.sector;
+        const out = row.vote_outcome;
+        const usd = Number(row.total_usd) || 0;
+        const sg = sectorMap.get(sec) ?? { label: row.display_label || labelFor(sec), icon: row.display_icon || '💼', total: 0 };
+        sg.total += usd;
+        sectorMap.set(sec, sg);
+        const op = outcomeMap.get(out) ?? { usd: 0, votes: 0 };
+        op.usd += usd;
+        op.votes += Number(row.vote_count) || 0;
+        outcomeMap.set(out, op);
+        if (!cellMap.has(sec)) cellMap.set(sec, new Map());
+        cellMap.get(sec)!.set(out, usd);
+      }
+
+      const groups = [...sectorMap.entries()]
+        .sort((a, b) => b[1].total - a[1].total)
+        .map(([sec, v]) => ({
+          id: sec,
+          label: v.label,
+          icon: v.icon || SECTOR_ICONS[v.label] || '💼',
+          total_usd: Math.round(v.total),
+          pac_count: 0,
+        }));
+      const outcomeOrder = ['yes', 'no', 'other'];
+      const recipients = outcomeOrder
+        .filter(o => outcomeMap.has(o))
+        .map(o => ({
+          id: o,
+          label: VOTE_OUTCOME_LABELS[o] ?? o,
+          total_received_usd: Math.round(outcomeMap.get(o)!.usd),
+          official_count: outcomeMap.get(o)!.votes,
+        }));
+      const matrix = groups.map(g =>
+        recipients.map(r => Math.round(cellMap.get(g.id)?.get(r.id) ?? 0))
+      );
+      return NextResponse.json({ groups, recipients, matrix, mode: 'sector-vote' });
+    } catch (e) {
+      console.error('[chord/sector-vote]', e);
+      return NextResponse.json({ error: 'Internal error' }, { status: 500 });
+    }
+  }
+
+  // Mode: subject-party — bill subjects × party_chamber, weighted by yes votes.
+  if (dataMode === 'subject-party') {
+    try {
+      const cohortIds = await resolveCohortIds();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await withDbTimeout<{ data: Array<{ subject: string; display_label: string; display_icon: string; party_chamber: string; vote_count: number }> | null; error: unknown }>(
+        (supabase as any).rpc('chord_subject_party_flows', { p_official_ids: cohortIds.length ? cohortIds : null })
+      );
+      if (error) {
+        console.error('[chord/subject-party] rpc error:', error);
+        return NextResponse.json({ groups: [], recipients: [], matrix: [], mode: 'subject-party' });
+      }
+      const rows = data ?? [];
+
+      const subjectMap = new Map<string, { label: string; icon: string; total: number }>();
+      const partyMap = new Map<string, number>();
+      const cellMap = new Map<string, Map<string, number>>();
+      for (const row of rows) {
+        const sub = row.subject;
+        const pc = row.party_chamber;
+        const cnt = Number(row.vote_count) || 0;
+        const sg = subjectMap.get(sub) ?? { label: row.display_label || labelFor(sub), icon: row.display_icon || '🏷️', total: 0 };
+        sg.total += cnt;
+        subjectMap.set(sub, sg);
+        partyMap.set(pc, (partyMap.get(pc) ?? 0) + cnt);
+        if (!cellMap.has(sub)) cellMap.set(sub, new Map());
+        cellMap.get(sub)!.set(pc, (cellMap.get(sub)!.get(pc) ?? 0) + cnt);
+      }
+
+      const groups = [...subjectMap.entries()]
+        .sort((a, b) => b[1].total - a[1].total)
+        .slice(0, 12)
+        .map(([id, v]) => ({
+          id,
+          label: v.label,
+          icon: v.icon,
+          total_usd: v.total, // overloaded: vote count
+          pac_count: 0,
+        }));
+      const recipients = [...partyMap.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .map(([id, total]) => ({
+          id,
+          label: id,
+          total_received_usd: total,
+          official_count: 0,
+        }));
+      const matrix = groups.map(g =>
+        recipients.map(r => cellMap.get(g.id)?.get(r.id) ?? 0)
+      );
+      return NextResponse.json({ groups, recipients, matrix, mode: 'subject-party' });
+    } catch (e) {
+      console.error('[chord/subject-party]', e);
+      return NextResponse.json({ error: 'Internal error' }, { status: 500 });
+    }
+  }
+
+  // Mode: donor-type-party — donor entity_type × party_chamber.
+  if (dataMode === 'donor-type-party') {
+    try {
+      const cohortIds = await resolveCohortIds();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await withDbTimeout<{ data: Array<{ donor_type: string; party_chamber: string; total_usd: number }> | null; error: unknown }>(
+        (supabase as any).rpc('chord_donor_type_party_flows', { p_official_ids: cohortIds.length ? cohortIds : null })
+      );
+      if (error) {
+        console.error('[chord/donor-type-party] rpc error:', error);
+        return NextResponse.json({ groups: [], recipients: [], matrix: [], mode: 'donor-type-party' });
+      }
+      const rows = data ?? [];
+
+      const typeMap = new Map<string, number>();
+      const partyMap = new Map<string, number>();
+      const cellMap = new Map<string, Map<string, number>>();
+      for (const row of rows) {
+        const dt = row.donor_type;
+        const pc = row.party_chamber;
+        const usd = Number(row.total_usd) || 0;
+        typeMap.set(dt, (typeMap.get(dt) ?? 0) + usd);
+        partyMap.set(pc, (partyMap.get(pc) ?? 0) + usd);
+        if (!cellMap.has(dt)) cellMap.set(dt, new Map());
+        cellMap.get(dt)!.set(pc, usd);
+      }
+
+      const groups = [...typeMap.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .map(([id, total]) => ({
+          id,
+          label: DONOR_TYPE_LABELS[id] ?? labelFor(id),
+          icon: '🏛️',
+          total_usd: Math.round(total),
+          pac_count: 0,
+        }));
+      const recipients = [...partyMap.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .map(([id, total]) => ({
+          id,
+          label: id,
+          total_received_usd: Math.round(total),
+          official_count: 0,
+        }));
+      const matrix = groups.map(g =>
+        recipients.map(r => Math.round(cellMap.get(g.id)?.get(r.id) ?? 0))
+      );
+      return NextResponse.json({ groups, recipients, matrix, mode: 'donor-type-party' });
+    } catch (e) {
+      console.error('[chord/donor-type-party]', e);
+      return NextResponse.json({ error: 'Internal error' }, { status: 500 });
+    }
+  }
+
+  // Mode: state-party — donor home state × recipient party_chamber.
+  if (dataMode === 'state-party') {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await withDbTimeout<{ data: Array<{ donor_state: string; party_chamber: string; total_usd: number }> | null; error: unknown }>(
+        (supabase as any).rpc('chord_donor_state_party_flows', { p_official_id: entityId ?? null })
+      );
+      if (error) {
+        console.error('[chord/state-party] rpc error:', error);
+        return NextResponse.json({ groups: [], recipients: [], matrix: [], mode: 'state-party' });
+      }
+      const rows = data ?? [];
+
+      const stateMap = new Map<string, number>();
+      const partyMap = new Map<string, number>();
+      const cellMap = new Map<string, Map<string, number>>();
+      for (const row of rows) {
+        const st = row.donor_state;
+        const pc = row.party_chamber;
+        const usd = Number(row.total_usd) || 0;
+        stateMap.set(st, (stateMap.get(st) ?? 0) + usd);
+        partyMap.set(pc, (partyMap.get(pc) ?? 0) + usd);
+        if (!cellMap.has(st)) cellMap.set(st, new Map());
+        cellMap.get(st)!.set(pc, usd);
+      }
+
+      const groups = [...stateMap.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 12)
+        .map(([id, total]) => ({
+          id,
+          label: id,
+          icon: '📍',
+          total_usd: Math.round(total),
+          pac_count: 0,
+        }));
+      const recipients = [...partyMap.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .map(([id, total]) => ({
+          id,
+          label: id,
+          total_received_usd: Math.round(total),
+          official_count: 0,
+        }));
+      const matrix = groups.map(g =>
+        recipients.map(r => Math.round(cellMap.get(g.id)?.get(r.id) ?? 0))
+      );
+      return NextResponse.json({ groups, recipients, matrix, mode: 'state-party' });
+    } catch (e) {
+      console.error('[chord/state-party]', e);
+      return NextResponse.json({ error: 'Internal error' }, { status: 500 });
+    }
   }
 
   // ── Mode 3: Cross-group chord ──────────────────────────────────────────────
@@ -231,67 +481,227 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // ── Entity mode: show industries donating to one official ─────────────────
+  // ── Multi-entity compare mode: 2+ focused officials ──────────────────────
+  // Each official becomes a recipient arc; donor arcs are the union of
+  // industries / PACs / brackets across all officials. Cell value is each
+  // official's slice of donations from that donor — visually surfaces shared
+  // donor bases (thick ribbons to multiple officials) at a glance.
+  const entityIdsRaw = searchParams.get('entityIds');
+  if (entityIdsRaw) {
+    try {
+      const entityIds = entityIdsRaw.split(',').filter(Boolean);
+      if (entityIds.length === 0) {
+        return NextResponse.json({ groups: [], recipients: [], matrix: [], mode: 'compare' });
+      }
+      const granularity = searchParams.get('granularity') ?? 'aggregate';
+      const topPacsLimit = parseInt(searchParams.get('topPacsLimit') ?? '12');
+      const minFlowParam = parseFloat(searchParams.get('minFlowUsd') ?? '0');
+
+      // Fetch official names + per-official donor breakdowns in parallel.
+      const officialsPromise = withDbTimeout<{ data: Array<{ id: string; full_name: string }> | null; error: unknown }>(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (supabase as any).from('officials').select('id, full_name').in('id', entityIds)
+      );
+
+      type DonorRow = { id: string; label: string; icon: string; total_cents: number; pac_count: number; industry?: string };
+
+      async function fetchDonorsFor(officialId: string): Promise<DonorRow[]> {
+        if (granularity === 'top-pacs') {
+          // Fetch a wider per-official batch (2× the requested limit, capped
+          // at 100) so the union has enough candidates to surface PACs that
+          // gave to multiple focused officials — the "shared donor base"
+          // signal that's the whole point of compare mode.
+          const perOfficialLimit = Math.min(100, Math.max(topPacsLimit * 2, topPacsLimit));
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const { data } = await withDbTimeout<{ data: Array<{ pac_id: string; pac_name: string; industry: string; display_label: string; display_icon: string; total_cents: number }> | null; error: unknown }>(
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (supabase as any).rpc('chord_top_pacs_for_official', { p_official_id: officialId, p_limit: perOfficialLimit })
+          );
+          return (data ?? []).map(r => ({
+            id: r.pac_id, label: r.pac_name, icon: r.display_icon || '🏛️',
+            total_cents: Number(r.total_cents), pac_count: 1, industry: r.industry,
+          }));
+        }
+        if (granularity === 'by-bracket') {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const { data } = await withDbTimeout<{ data: Array<{ bracket: string; total_cents: number; donor_count: number }> | null; error: unknown }>(
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (supabase as any).rpc('chord_donor_brackets_for_official', { p_official_id: officialId })
+          );
+          const labels: Record<string, string> = {
+            mega: 'Mega ($10k+)', major: 'Major ($2.5k–10k)',
+            mid: 'Mid ($500–2.5k)', small: 'Small (<$500)',
+          };
+          return (data ?? []).map(r => ({
+            id: r.bracket, label: labels[r.bracket] ?? r.bracket, icon: '💵',
+            total_cents: Number(r.total_cents), pac_count: r.donor_count,
+          }));
+        }
+        // aggregate
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data } = await withDbTimeout<{ data: Array<{ industry: string; display_label: string; display_icon: string; total_cents: number; donor_count: number }> | null; error: unknown }>(
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (supabase as any).rpc('chord_industry_flows_for_official', { p_official_id: officialId })
+        );
+        return (data ?? [])
+          .filter(r => r.industry !== 'untagged')
+          .map(r => ({
+            id: r.industry, label: r.display_label || labelFor(r.industry),
+            icon: r.display_icon || '🏢', total_cents: Number(r.total_cents),
+            pac_count: r.donor_count,
+          }));
+      }
+
+      const [{ data: officialsData }, ...perOfficialDonors] = await Promise.all([
+        officialsPromise,
+        ...entityIds.map(fetchDonorsFor),
+      ]);
+
+      const nameById = new Map<string, string>(
+        (officialsData ?? []).map(o => [o.id, o.full_name])
+      );
+
+      // Union of donor IDs across officials, ranked by total contribution.
+      const donorTotals = new Map<string, { label: string; icon: string; total: number; donors: number; industry?: string }>();
+      const cell = new Map<string, Map<string, number>>(); // donorId → officialId → cents
+
+      perOfficialDonors.forEach((rows, idx) => {
+        const officialId = entityIds[idx];
+        if (!officialId) return;
+        for (const r of rows) {
+          const t = donorTotals.get(r.id) ?? { label: r.label, icon: r.icon, total: 0, donors: 0, industry: r.industry };
+          t.total += r.total_cents;
+          t.donors += r.pac_count;
+          if (r.industry && !t.industry) t.industry = r.industry;
+          donorTotals.set(r.id, t);
+          if (!cell.has(r.id)) cell.set(r.id, new Map());
+          cell.get(r.id)!.set(officialId, r.total_cents);
+        }
+      });
+
+      // Cap donor arcs by granularity: by-bracket has fixed 4 buckets;
+      // top-pacs uses the user-set topPacsLimit; aggregate keeps 12
+      // industries (more would crowd the layout).
+      const donorCap = granularity === 'by-bracket' ? 4
+                     : granularity === 'top-pacs'   ? topPacsLimit
+                     :                                12;
+      const topDonors = [...donorTotals.entries()]
+        .filter(([, v]) => v.total >= minFlowParam * 100)
+        .sort((a, b) => b[1].total - a[1].total)
+        .slice(0, donorCap);
+
+      const groups = topDonors.map(([id, v]) => ({
+        id,
+        label: v.label,
+        icon: v.icon,
+        total_usd: Math.round(v.total / 100),
+        pac_count: v.donors,
+        industry: v.industry,
+      }));
+
+      const recipients = entityIds.map(id => {
+        const total = topDonors.reduce((s, [donorId]) =>
+          s + (cell.get(donorId)?.get(id) ?? 0), 0);
+        return {
+          id,
+          label: nameById.get(id) ?? id,
+          total_received_usd: Math.round(total / 100),
+          official_count: 1,
+        };
+      });
+
+      const matrix = groups.map(g =>
+        recipients.map(r => Math.round((cell.get(g.id)?.get(r.id) ?? 0) / 100))
+      );
+
+      return NextResponse.json({ groups, recipients, matrix, mode: 'compare' });
+    } catch (e) {
+      console.error('[chord/compare]', e);
+      return NextResponse.json({ error: 'Internal error' }, { status: 500 });
+    }
+  }
+
+  // ── Entity mode: industries / PACs / brackets donating to one official ────
+  // Delegates to one of three RPCs based on the granularity option:
+  //   aggregate   → chord_industry_flows_for_official       (sectors as arcs)
+  //   top-pacs    → chord_top_pacs_for_official              (top-N PAC arcs)
+  //   by-bracket  → chord_donor_brackets_for_official        (size brackets)
   if (entityId) {
     try {
-      // Fetch official name
-      // QWEN-ADDED: Add generic type to withDbTimeout for maybeSingle query
-      const { data: officialData } = await withDbTimeout<{
-        data: OfficialRow | null;
-        error: { message: string } | null;
-      }>(
-        (supabase as ReturnType<typeof createAdminClient>)
-          .from("officials")
-          .select("id, name")
-          .eq("id", entityId)
-          .maybeSingle()
-      );
+      const granularity = searchParams.get('granularity') ?? 'aggregate';
+      const topPacsLimit = parseInt(searchParams.get('topPacsLimit') ?? '12');
 
-      const official = officialData;
-
-      // Aggregate donations to this official by industry
+      // Fetch official name (post-cutover column is full_name).
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data: donorData, error } = await withDbTimeout<{
+      const { data: officialData } = await withDbTimeout<{ data: { id: string; full_name: string } | null; error: unknown }>(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        data: Array<{ financial_entities: { industry_category: string | null } | null; amount_cents: number }> | null;
-        error: { message: string } | null;
-      }>((supabase as any)
-        .from("financial_relationships")
-        .select("financial_entities!inner(industry_category), amount_cents")
-        .eq("official_id", entityId)
-        .limit(2000)
+        (supabase as any).from('officials').select('id, full_name').eq('id', entityId).maybeSingle()
       );
-      if (error) {
-        console.error("[chord/entity] query error:", error.message);
-        return NextResponse.json({ groups: [], recipients: [], matrix: [] });
-      }
+      const officialName = officialData?.full_name ?? entityId;
 
-      // Aggregate by industry client-side
-      const industryMap = new Map<string, { total: number; count: number }>();
-      for (const row of donorData ?? []) {
-        const fe = row.financial_entities;
-        const industry = fe?.industry_category ?? "untagged";
-        if (industry === "untagged") continue;
-        const usd = Number(row.amount_cents) / 100;
-        const prev = industryMap.get(industry) ?? { total: 0, count: 0 };
-        industryMap.set(industry, { total: prev.total + usd, count: prev.count + 1 });
-      }
+      let groups: { id: string; label: string; icon: string; total_usd: number; pac_count: number; industry?: string }[] = [];
 
-      const groups = [...industryMap.entries()]
-        .sort((a, b) => b[1].total - a[1].total)
-        .map(([industry, v]) => ({
-          id: industry,
-          label: labelFor(industry),
-          icon: "🏢",
-          total_usd: Math.round(v.total),
-          pac_count: v.count,
+      if (granularity === 'top-pacs') {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data, error } = await withDbTimeout<{ data: Array<{ pac_id: string; pac_name: string; industry: string; display_label: string; display_icon: string; total_cents: number }> | null; error: unknown }>(
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (supabase as any).rpc('chord_top_pacs_for_official', { p_official_id: entityId, p_limit: topPacsLimit })
+        );
+        if (error) console.error('[chord/entity/top-pacs] rpc error:', error);
+        groups = (data ?? []).map(row => ({
+          id: row.pac_id,
+          label: row.pac_name,
+          icon: row.display_icon || '🏛️',
+          total_usd: Math.round(Number(row.total_cents) / 100),
+          pac_count: 1,
+          industry: row.industry,
         }));
+      } else if (granularity === 'by-bracket') {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data, error } = await withDbTimeout<{ data: Array<{ bracket: string; total_cents: number; donor_count: number }> | null; error: unknown }>(
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (supabase as any).rpc('chord_donor_brackets_for_official', { p_official_id: entityId })
+        );
+        if (error) console.error('[chord/entity/by-bracket] rpc error:', error);
+        const order: Record<string, number> = { mega: 0, major: 1, mid: 2, small: 3 };
+        const labels: Record<string, string> = {
+          mega:  'Mega ($10k+)',
+          major: 'Major ($2.5k–10k)',
+          mid:   'Mid ($500–2.5k)',
+          small: 'Small (<$500)',
+        };
+        groups = (data ?? [])
+          .sort((a, b) => (order[a.bracket] ?? 9) - (order[b.bracket] ?? 9))
+          .map(row => ({
+            id: row.bracket,
+            label: labels[row.bracket] ?? row.bracket,
+            icon: '💵',
+            total_usd: Math.round(Number(row.total_cents) / 100),
+            pac_count: row.donor_count,
+          }));
+      } else {
+        // aggregate: industries as arcs
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data, error } = await withDbTimeout<{ data: Array<{ industry: string; display_label: string; display_icon: string; total_cents: number; donor_count: number }> | null; error: unknown }>(
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (supabase as any).rpc('chord_industry_flows_for_official', { p_official_id: entityId })
+        );
+        if (error) console.error('[chord/entity/aggregate] rpc error:', error);
+        groups = (data ?? [])
+          .filter(r => r.industry !== 'untagged')
+          .map(row => ({
+            id: row.industry,
+            label: row.display_label || labelFor(row.industry),
+            icon: row.display_icon || '🏢',
+            total_usd: Math.round(Number(row.total_cents) / 100),
+            pac_count: row.donor_count,
+          }));
+      }
 
       if (groups.length === 0) {
         return NextResponse.json({ groups: [], recipients: [], matrix: [] });
       }
 
-      const officialName = official?.name ?? entityId;
       const recipients = [
         {
           id: entityId,

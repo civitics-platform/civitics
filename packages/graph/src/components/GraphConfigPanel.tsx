@@ -33,12 +33,16 @@ export interface GraphConfigPanelProps {
 
 // Emoji for each preset
 const PRESET_EMOJI: Record<string, string> = {
-  'follow-the-money': '💰',
-  'votes-and-bills':  '🗳',
-  'nominations':      '⭐',
-  'committee-power':  '👁',
-  'full-record':      '📋',
-  'clean-view':       '✨',
+  'follow-the-money':       '💰',
+  'votes-and-bills':        '🗳',
+  'nominations':            '⭐',
+  'committee-power':        '👁',
+  'full-record':            '📋',
+  'clean-view':             '✨',
+  'chord-sector-vote':      '⚖️',
+  'chord-subject-party':    '🏷️',
+  'chord-donor-type-party': '🏛️',
+  'chord-state-party':      '📍',
 };
 
 // Standard viz types from registry
@@ -408,45 +412,219 @@ function ChordSettings({ view, hooks, graphMeta }: { view: GraphView; hooks: Use
   const opts = view.style.vizOptions.chord;
   function set(key: string, value: unknown) { hooks.setVizOption('chord', key, value); }
 
-  // FIX-130: chord controls all depend on donation data. When graphMeta has
-  // loaded and confirms no donations, disable each control with a reason
-  // rather than blanking the section. A small banner above explains the
-  // empty-state — keeping the controls present preserves muscle memory and
-  // flips back to enabled the moment donation data arrives.
-  const noDonations = graphMeta !== undefined && !graphMeta.hasDonations;
-  const reason = noDonations ? 'No donation data in graph' : undefined;
+  // Per-mode data + focus requirements. Modes lacking backing data or focus
+  // stay visible in the picker but are disabled with a one-line reason — same
+  // pattern as TreemapSettings, so users always see the full option set.
+  const focusOfficialCount = view.focus.entities.filter(
+    (e) => e.type === 'official',
+  ).length;
+  const focusGroupCount = view.focus.entities.filter(
+    (e) => e.type === 'group',
+  ).length;
+  // graphMeta is undefined until first graph data load; default to permissive.
+  const hasDonations = graphMeta?.hasDonations ?? true;
+  const hasVotes     = graphMeta?.hasVotes     ?? true;
+
+  const dataModeOptions: LabeledOption[] = [
+    {
+      value: 'industry-party',
+      label: 'Industry → Party (global)',
+      disabled: !hasDonations,
+      disabledReason: 'No donation data in graph',
+    },
+    {
+      value: 'industry-official',
+      label: 'Industries → Official',
+      disabled: focusOfficialCount === 0 || !hasDonations,
+      disabledReason: focusOfficialCount === 0 ? 'Focus an official' : 'No donation data in graph',
+    },
+    {
+      value: 'sector-group',
+      label: 'Sectors → Group',
+      disabled: focusGroupCount < 1 || !hasDonations,
+      disabledReason: focusGroupCount < 1 ? 'Focus a group' : 'No donation data in graph',
+    },
+    {
+      value: 'sector-group-pair',
+      label: 'Sectors ↔ Two Groups',
+      disabled: focusGroupCount < 2 || !hasDonations,
+      disabledReason: focusGroupCount < 2 ? 'Focus 2 groups' : 'No donation data in graph',
+    },
+    {
+      value: 'sector-vote',
+      label: 'Sectors ↔ Vote Outcome',
+      disabled: focusOfficialCount === 0,
+      disabledReason: 'Focus an official',
+    },
+    {
+      value: 'subject-party',
+      label: 'Bill Subjects → Party',
+      disabled: !hasVotes,
+      disabledReason: 'No vote data in graph',
+    },
+    {
+      value: 'donor-type-party',
+      label: 'Donor Type → Party',
+    },
+    {
+      value: 'state-party',
+      label: 'Donor State → Party',
+    },
+  ];
+
+  // Default mode mirrors registry — fall back to industry-party. If the
+  // current pick is now disabled (focus changed), drop back to the default.
+  const dataMode = opts?.dataMode ?? 'industry-party';
+  const dataModeDisabled = dataModeOptions.find(o => o.value === dataMode)?.disabled ?? false;
+  const validDataMode = dataModeDisabled ? 'industry-party' : dataMode;
+
+  // Granularity picker — controls how donor arcs are bucketed. Only meaningful
+  // for donor-side modes (industry-party, industry-official). For other modes
+  // (subject-party / donor-type-party / state-party) the arc dimension is
+  // already fixed; granularity is disabled with a tooltip.
+  const granularitySupported = validDataMode === 'industry-party'
+    || validDataMode === 'industry-official';
+  const granularity = opts?.granularity ?? 'aggregate';
+
+  // Top-pacs and by-bracket only work with an official focus today (server
+  // RPCs are scoped per-official). For the global industry-party view we
+  // keep granularity as 'aggregate'.
+  const granularityNeedsOfficial = granularity === 'top-pacs' || granularity === 'by-bracket';
+  const granularityDisabled = !granularitySupported
+    || (granularityNeedsOfficial && focusOfficialCount === 0);
 
   return (
     <>
-      {noDonations && (
-        <div className="px-3 py-2 text-[10px] text-gray-400 italic">
-          No donation data in this graph — chord diagram will be empty.
-        </div>
+      <LabeledSelect
+        label="Data"
+        value={validDataMode}
+        options={dataModeOptions}
+        onChange={v => set('dataMode', v)}
+      />
+      <LabeledSelect
+        label="Group by"
+        value={granularity}
+        options={[
+          { value: 'aggregate',  label: 'Aggregate (sectors)' },
+          {
+            value: 'top-pacs',
+            label: 'Top PACs (by sector)',
+            disabled: !granularitySupported || focusOfficialCount === 0,
+            disabledReason: !granularitySupported
+              ? 'Only for industry data modes'
+              : 'Focus an official',
+          },
+          {
+            value: 'by-bracket',
+            label: 'By donor size',
+            disabled: !granularitySupported || focusOfficialCount === 0,
+            disabledReason: !granularitySupported
+              ? 'Only for industry data modes'
+              : 'Focus an official',
+          },
+        ]}
+        onChange={v => set('granularity', v)}
+        disabledReason={granularityDisabled && !granularitySupported ? 'Not applicable to this data mode' : undefined}
+      />
+      {granularity === 'top-pacs' && granularitySupported && (
+        <>
+          <div className="flex items-center gap-2 px-3 py-1">
+            <span className="text-[10px] text-gray-500 w-20 shrink-0">Top N</span>
+            <input
+              type="range"
+              min={1}
+              max={50}
+              step={1}
+              value={opts?.topPacsLimit ?? 12}
+              aria-label="Top N PACs"
+              onChange={e => set('topPacsLimit', parseInt(e.target.value, 10))}
+              className="flex-1 h-1 accent-indigo-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded"
+            />
+            <span className="text-[10px] text-gray-500 w-10 text-right tabular-nums">
+              {opts?.topPacsLimit ?? 12}
+            </span>
+          </div>
+          <div className="px-3 pb-1 text-[9px] text-gray-400 italic leading-tight">
+            Total PAC arcs (combined across focused officials)
+          </div>
+        </>
       )}
       <LabeledToggle
         label="Normalize"
         value={opts?.normalizeMode ?? false}
         onChange={v => set('normalizeMode', v)}
-        disabledReason={reason}
       />
       <LabeledToggle
         label="Show labels"
         value={opts?.showLabels ?? true}
         onChange={v => set('showLabels', v)}
-        disabledReason={reason}
       />
-      <LabeledSelect
-        label="Min flow"
-        value={String(opts?.minFlowUsd ?? 0)}
-        options={[
-          { value: '0',        label: 'Show all' },
-          { value: '100000',   label: '$100K+'   },
-          { value: '1000000',  label: '$1M+'     },
-          { value: '10000000', label: '$10M+'    },
-        ]}
-        onChange={v => set('minFlowUsd', parseInt(v))}
-        disabledReason={reason}
+      <ChordMinFlowControl
+        value={opts?.minFlowUsd ?? 0}
+        onChange={v => set('minFlowUsd', v)}
       />
+    </>
+  );
+}
+
+// ── Chord min-flow log-scale control ──────────────────────────────────────────
+//
+// Twelve discrete stops covering the donation range users care about — from
+// FEC itemization threshold ($200) through mega-donor territory ($10M).
+// Mirrors the DonationFloorControl pattern but with finer mid-band steps so
+// users can suppress noise at any of: small, mid, major, mega.
+const CHORD_MIN_FLOW_STOPS = [
+  0, 200, 500, 1_000, 5_000, 10_000, 50_000, 100_000, 500_000, 1_000_000, 5_000_000, 10_000_000,
+] as const;
+
+function chordFlowToStop(dollars: number): number {
+  let idx = 0;
+  for (let i = 0; i < CHORD_MIN_FLOW_STOPS.length; i++) {
+    if (dollars >= CHORD_MIN_FLOW_STOPS[i]!) idx = i;
+  }
+  return idx;
+}
+
+function chordFormatDollars(d: number): string {
+  if (d === 0)        return '$0';
+  if (d < 1_000)      return `$${d}`;
+  if (d < 1_000_000)  return `$${(d / 1_000).toFixed(d % 1_000 === 0 ? 0 : 1)}K`;
+  return `$${(d / 1_000_000).toFixed(d % 1_000_000 === 0 ? 0 : 1)}M`;
+}
+
+function ChordMinFlowControl({ value, onChange }: {
+  value: number;
+  onChange: (v: number) => void;
+}) {
+  const stop = chordFlowToStop(value);
+  const dollars = CHORD_MIN_FLOW_STOPS[stop]!;
+  return (
+    <>
+      <div className="flex items-center gap-2 px-3 py-1">
+        <span className="text-[10px] text-gray-500 w-20 shrink-0">Min flow</span>
+        <input
+          type="range"
+          min={0}
+          max={CHORD_MIN_FLOW_STOPS.length - 1}
+          step={1}
+          value={stop}
+          aria-label="Minimum flow"
+          onChange={e => {
+            const next = parseInt(e.target.value, 10);
+            const safe = Math.max(0, Math.min(CHORD_MIN_FLOW_STOPS.length - 1, next));
+            onChange(CHORD_MIN_FLOW_STOPS[safe]!);
+          }}
+          className="flex-1 h-1 accent-indigo-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded"
+        />
+        <span className="text-[10px] text-gray-500 w-12 text-right tabular-nums">
+          {chordFormatDollars(dollars)}
+        </span>
+      </div>
+      <div className="px-3 pb-1 text-[9px] text-gray-400 italic leading-tight">
+        {dollars === 0
+          ? 'Showing all flows'
+          : `Hiding flows below ${chordFormatDollars(dollars)}`}
+      </div>
     </>
   );
 }

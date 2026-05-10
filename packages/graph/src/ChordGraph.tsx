@@ -20,6 +20,9 @@ interface RawGroup {
   icon?: string;
   total_usd: number;
   pac_count: number;
+  /** Industry tag — populated for top-pacs granularity so each PAC arc
+   *  can be colored by its sector. */
+  industry?: string;
 }
 
 interface RawRecipient {
@@ -36,7 +39,18 @@ export interface ChordGraphProps {
   primaryEntityId?: string | null;
   primaryGroup?: FocusGroup | null;
   secondaryGroup?: FocusGroup | null;
+  /**
+   * All officials currently in focus. When 2+ are present, the chord
+   * renders a comparison view: M donor arcs × N official arcs, with each
+   * ribbon weight proportional to that donor's contributions to that
+   * specific official. Falls back to single-official mode when length<2.
+   */
+  focusedOfficials?: { id: string; name: string }[];
 }
+
+// Slider max for top-pacs granularity. Always fetch this many from the
+// server so the user can drag the slider without firing new requests.
+const MAX_PAC_ARCS = 50;
 
 // Industry arc colors — enough for up to 13 industries
 const INDUSTRY_COLORS = [
@@ -45,14 +59,110 @@ const INDUSTRY_COLORS = [
   "#10b981", "#8b5cf6", "#0ea5e9",
 ];
 
-// Party arc colors keyed to API party_chamber values
+// Party arc colors keyed to API party_chamber values.
+// Includes both the legacy underscore form ("dem_senate") and the
+// post-cutover space form ("Democrat Senate") emitted by the new RPCs.
 const PARTY_COLORS: Record<string, string> = {
+  // Legacy
   dem_senate:  "#3b82f6",
   rep_senate:  "#ef4444",
   dem_house:   "#2563eb",
   rep_house:   "#dc2626",
   independent: "#a855f7",
+  // Post-cutover party_chamber strings
+  "Democrat Senate":     "#3b82f6",
+  "Republican Senate":   "#ef4444",
+  "Democrat House":      "#2563eb",
+  "Republican House":    "#dc2626",
+  "Independent Senate":  "#a855f7",
+  "Independent House":   "#a855f7",
+  "Other Senate":        "#9ca3af",
+  "Other House":         "#9ca3af",
 };
+
+// Vote-outcome arc colors — green for affirmative, red for negative,
+// neutral grey for abstain / present / not-voting.
+const VOTE_OUTCOME_COLORS: Record<string, string> = {
+  yes:   "#22c55e",
+  no:    "#ef4444",
+  other: "#94a3b8",
+};
+
+// Donor-type arc colors — distinct hues for the financial_entities.entity_type
+// enum (individual / pac / super_pac / corporation / union / party_committee /
+// small_donor_aggregate / tribal / 527 / other).
+const DONOR_TYPE_COLORS: Record<string, string> = {
+  individual:            "#fbbf24",
+  pac:                   "#f97316",
+  super_pac:             "#dc2626",
+  corporation:           "#0891b2",
+  union:                 "#10b981",
+  party_committee:       "#6366f1",
+  small_donor_aggregate: "#84cc16",
+  tribal:                "#a855f7",
+  '527':                 "#ec4899",
+  other:                 "#94a3b8",
+};
+
+// Donor-bracket arc colors — match BRACKET_TIERS in types.ts so chord and
+// force graph speak the same visual language for donor size brackets.
+const BRACKET_COLORS: Record<string, string> = {
+  mega:  "#b45309",
+  major: "#d97706",
+  mid:   "#f59e0b",
+  small: "#fbbf24",
+};
+
+// Stable colorhash for industry tags so each industry maps to the same
+// INDUSTRY_COLORS slot regardless of arc order. Keeps colors consistent
+// when switching granularity between 'aggregate' and 'top-pacs'.
+function industryColor(tag: string): string {
+  let h = 0;
+  for (let i = 0; i < tag.length; i++) h = (h * 31 + tag.charCodeAt(i)) | 0;
+  return INDUSTRY_COLORS[Math.abs(h) % INDUSTRY_COLORS.length] ?? "#94a3b8";
+}
+
+/**
+ * Pick a color for a chord arc based on its kind (donor / recipient),
+ * the active dataMode, and the active granularity. Falls back to
+ * INDUSTRY_COLORS / PARTY_COLORS for the default behavior.
+ */
+function colorForArc(
+  group: { kind: 'donor' | 'recipient'; id?: string; industry?: string },
+  index: number,
+  dataMode?: string,
+  granularity?: string,
+): string {
+  // Recipient-side palettes override INDUSTRY_COLORS
+  if (group.kind === 'recipient') {
+    if (dataMode === 'sector-vote' && group.id) {
+      return VOTE_OUTCOME_COLORS[group.id] ?? "#6b7280";
+    }
+    const partyColor = PARTY_COLORS[group.id ?? ''];
+    if (partyColor) return partyColor;
+    // Compare mode: recipient ids are UUIDs (not party_chamber strings).
+    // Hash to a stable INDUSTRY_COLORS slot so each official gets a
+    // distinct color across re-renders.
+    if (group.id) return industryColor(group.id);
+    return "#6b7280";
+  }
+  // Donor-side palettes
+  if (granularity === 'by-bracket' && group.id) {
+    return BRACKET_COLORS[group.id] ?? "#94a3b8";
+  }
+  if (granularity === 'top-pacs') {
+    // Color each PAC arc by its industry so PACs cluster visually by sector.
+    return industryColor(group.industry ?? 'untagged');
+  }
+  if (dataMode === 'donor-type-party' && group.id) {
+    return DONOR_TYPE_COLORS[group.id] ?? "#6b7280";
+  }
+  if (dataMode === 'industry-party' || dataMode === 'industry-official') {
+    // Use the industry tag (group.id) for stable per-industry colors.
+    return industryColor(group.id ?? `idx-${index}`);
+  }
+  return INDUSTRY_COLORS[index % INDUSTRY_COLORS.length] ?? "#94a3b8";
+}
 
 function formatDollars(usd: number): string {
   if (usd >= 1_000_000_000) return `$${(usd / 1_000_000_000).toFixed(1)}B`;
@@ -193,7 +303,7 @@ interface ChartData {
   rawRecipients: RawRecipient[];
 }
 
-export function ChordGraph({ className = "", svgRef: externalSvgRef, vizOptions, primaryEntityId, primaryGroup, secondaryGroup }: ChordGraphProps) {
+export function ChordGraph({ className = "", svgRef: externalSvgRef, vizOptions, primaryEntityId, primaryGroup, secondaryGroup, focusedOfficials }: ChordGraphProps) {
   const containerRef  = useRef<HTMLDivElement>(null);
   const internalSvgRef = useRef<SVGSVGElement>(null);
   const svgRef        = externalSvgRef ?? internalSvgRef;
@@ -238,15 +348,52 @@ export function ChordGraph({ className = "", svgRef: externalSvgRef, vizOptions,
       setStatus("loading");
       setEntityName(null);
       try {
-        const minFlow = vizOptions?.minFlowUsd ?? 0;
+        // Both topPacsLimit and minFlowUsd are applied client-side in
+        // Effect 2 — the server fetch is invariant of slider position so
+        // dragging never refetches (no API spam, no 429s, no stale cache).
+        const minFlow = 0;
+        const dataMode = vizOptions?.dataMode;
+        const granularity = vizOptions?.granularity ?? 'aggregate';
+        const topPacsLimit = MAX_PAC_ARCS;
 
         let url: string;
 
-        if (primaryEntityId && !primaryEntityId.startsWith('group-')) {
-          // MODE 1: Single official
-          url = `/api/graph/chord` +
-            `?entityId=${encodeURIComponent(primaryEntityId)}` +
-            `&minFlowUsd=${minFlow}`;
+        // Explicit dataMode short-circuits the inferred routing below.
+        // Each new mode forwards entityId / groupFilter when provided so
+        // the route can scope the query to the cohort.
+        if (dataMode && dataMode !== 'industry-party'
+                     && dataMode !== 'industry-official'
+                     && dataMode !== 'sector-group'
+                     && dataMode !== 'sector-group-pair') {
+          const params = new URLSearchParams();
+          params.set('dataMode', dataMode);
+          params.set('minFlowUsd', String(minFlow));
+          if (primaryEntityId && !primaryEntityId.startsWith('group-')) {
+            params.set('entityId', primaryEntityId);
+          }
+          if (primaryGroup) {
+            params.set('groupId', primaryGroup.id);
+            params.set('groupFilter', JSON.stringify(primaryGroup.filter));
+            params.set('groupName', primaryGroup.name);
+          }
+          url = `/api/graph/chord?${params.toString()}`;
+        } else if ((focusedOfficials?.length ?? 0) >= 2) {
+          // MODE 1b: Compare — 2+ officials focused. Each becomes a recipient
+          // arc; donor arcs are the union/aggregate across all of them.
+          const params = new URLSearchParams();
+          params.set('entityIds', focusedOfficials!.map(o => o.id).join(','));
+          params.set('minFlowUsd', String(minFlow));
+          params.set('granularity', granularity);
+          if (granularity === 'top-pacs') params.set('topPacsLimit', String(topPacsLimit));
+          url = `/api/graph/chord?${params.toString()}`;
+        } else if (primaryEntityId && !primaryEntityId.startsWith('group-')) {
+          // MODE 1: Single official — forward granularity (aggregate / top-pacs / by-bracket)
+          const params = new URLSearchParams();
+          params.set('entityId', primaryEntityId);
+          params.set('minFlowUsd', String(minFlow));
+          params.set('granularity', granularity);
+          if (granularity === 'top-pacs') params.set('topPacsLimit', String(topPacsLimit));
+          url = `/api/graph/chord?${params.toString()}`;
         } else if (primaryGroup && secondaryGroup) {
           // MODE 3: Cross-group chord — flows BETWEEN two groups
           url = `/api/graph/chord` +
@@ -311,8 +458,11 @@ export function ChordGraph({ className = "", svgRef: externalSvgRef, vizOptions,
 
     void load();
     return () => { cancelled = true; };
+  // Note: vizOptions.topPacsLimit and vizOptions.minFlowUsd are intentionally
+  // NOT in this list — both are applied client-side in Effect 2, so dragging
+  // those sliders never refetches.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [primaryEntityId, primaryGroup?.id, secondaryGroup?.id]);
+  }, [primaryEntityId, primaryGroup?.id, secondaryGroup?.id, vizOptions?.dataMode, vizOptions?.granularity, focusedOfficials?.map(o => o.id).join(',')]);
 
   // ── Effect 2: Apply vizOptions to raw data → chartData ───────────────────
   useEffect(() => {
@@ -320,11 +470,19 @@ export function ChordGraph({ className = "", svgRef: externalSvgRef, vizOptions,
 
     const minFlow      = vizOptions?.minFlowUsd ?? 0;
     const normalizeMode = vizOptions?.normalizeMode ?? false;
+    const granularity  = vizOptions?.granularity ?? 'aggregate';
+    const topPacsLimit = vizOptions?.topPacsLimit ?? 12;
 
     // Filter groups by minFlowUsd
-    const filteredGroups = minFlow > 0
+    let filteredGroups = minFlow > 0
       ? rawData.groups.filter(g => g.total_usd >= minFlow)
       : rawData.groups;
+
+    // Client-side slice for top-pacs granularity. Server returns up to
+    // MAX_PAC_ARCS (50); slider trims to user's chosen N without refetch.
+    if (granularity === 'top-pacs' && filteredGroups.length > topPacsLimit) {
+      filteredGroups = filteredGroups.slice(0, topPacsLimit);
+    }
 
     // If all groups filtered out, show empty state
     if (filteredGroups.length === 0) {
@@ -337,17 +495,18 @@ export function ChordGraph({ className = "", svgRef: externalSvgRef, vizOptions,
 
     const recipients = rawData.recipients;
 
+    const dataMode = vizOptions?.dataMode;
     const allGroups: DynamicGroup[] = [
       ...filteredGroups.map((g, i) => ({
         label: g.label,
         icon:  g.icon ?? "🏢",
-        color: INDUSTRY_COLORS[i % INDUSTRY_COLORS.length] ?? "#94a3b8",
+        color: colorForArc({ kind: 'donor', id: g.id, industry: g.industry }, i, dataMode, granularity),
         kind:  "donor" as const,
       })),
       ...recipients.map((r) => ({
         label: r.label,
         icon:  "",
-        color: PARTY_COLORS[r.id] ?? "#6b7280",
+        color: colorForArc({ kind: 'recipient', id: r.id }, 0, dataMode, granularity),
         kind:  "recipient" as const,
       })),
     ];
@@ -379,7 +538,7 @@ export function ChordGraph({ className = "", svgRef: externalSvgRef, vizOptions,
     setChartData({ square, allGroups, rawGroups: filteredGroups, rawRecipients: recipients });
     setStatus("ok");
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rawData, vizOptions?.minFlowUsd, vizOptions?.normalizeMode]);
+  }, [rawData, vizOptions?.minFlowUsd, vizOptions?.normalizeMode, vizOptions?.topPacsLimit, vizOptions?.granularity]);
 
   // ── Effect 3: Draw ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -487,13 +646,40 @@ export function ChordGraph({ className = "", svgRef: externalSvgRef, vizOptions,
           <svg id="chord-diagram-svg" ref={svgRef} className="w-full h-full" />
           <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 pointer-events-none">
             <span className="text-xs text-gray-400 bg-gray-950/70 px-2 py-0.5 rounded-full">
-              {primaryGroup && secondaryGroup
-                ? `${primaryGroup.name} \u2194 ${secondaryGroup.name} Money Flows`
-                : primaryGroup
-                ? `Who Funds ${primaryGroup.name}?`
-                : primaryEntityId && !primaryEntityId.startsWith('group-') && entityName
-                ? `${entityName}'s Industry Donors`
-                : "Industry \u2192 Party Flows"}
+              {(() => {
+                const focusName = entityName ?? primaryGroup?.name ?? null;
+                const compareCount = focusedOfficials?.length ?? 0;
+                if (compareCount >= 2 && !vizOptions?.dataMode) {
+                  const names = focusedOfficials!.map(o => o.name).join(' vs ');
+                  const granLabel = vizOptions?.granularity === 'top-pacs' ? 'Top PACs'
+                                  : vizOptions?.granularity === 'by-bracket' ? 'Donor Size'
+                                  : 'Industries';
+                  return `${granLabel} → ${names}`;
+                }
+                switch (vizOptions?.dataMode) {
+                  case 'sector-vote':
+                    return focusName
+                      ? `${focusName}: Donor Sectors \u2194 Vote Outcomes`
+                      : "Donor Sectors \u2194 Vote Outcomes";
+                  case 'subject-party':
+                    return focusName
+                      ? `${focusName}: Bill Subjects \u2192 Party`
+                      : "Bill Subjects \u2192 Party Chambers";
+                  case 'donor-type-party':
+                    return focusName
+                      ? `${focusName}: Donor Types \u2192 Party`
+                      : "Donor Types \u2192 Party Chambers";
+                  case 'state-party':
+                    return focusName
+                      ? `${focusName}: Donor States \u2192 Party`
+                      : "Donor States \u2192 Party Chambers";
+                  default:
+                    if (primaryGroup && secondaryGroup) return `${primaryGroup.name} \u2194 ${secondaryGroup.name} Money Flows`;
+                    if (primaryGroup) return `Who Funds ${primaryGroup.name}?`;
+                    if (primaryEntityId && !primaryEntityId.startsWith('group-') && entityName) return `${entityName}'s Industry Donors`;
+                    return "Industry \u2192 Party Flows";
+                }
+              })()}
             </span>
           </div>
         </>

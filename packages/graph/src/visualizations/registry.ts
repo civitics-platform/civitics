@@ -169,11 +169,15 @@ export const VIZ_REGISTRY: VizRegistryEntry[] = [
     icon: 'M12 2a10 10 0 100 20A10 10 0 0012 2zm0 2a8 8 0 110 16A8 8 0 0112 4z',
 
     requiresEntity: false,
-    supportedConnectionTypes: ['donation'],
+    // Chord can render donation flows or vote-outcome flows depending on
+    // the selected `dataMode`. Listing both keeps the connection-type
+    // registry honest — sector↔vote needs vote edges loaded to be useful.
+    supportedConnectionTypes: ['donation', 'vote_yes', 'vote_no'],
     defaultOptions: {
       showLabels: true,
       normalizeMode: false,
       padAngle: 0.05,
+      dataMode: 'industry-party',
     },
 
     screenshotTarget: '#chord-diagram-svg',
@@ -181,12 +185,16 @@ export const VIZ_REGISTRY: VizRegistryEntry[] = [
     tooltip: placeholderTooltip,
     onNodeClick: defaultOnNodeClick,
 
-    // Chord is a flow diagram — needs at least 2 donor edges to draw a useful arc.
-    isApplicable: (_focus, _connections, graphMeta) => {
-      const count = donationCount(graphMeta)
-      if (count >= 2) return APPLICABLE
-      return { applicable: false, reason: 'Add a PAC or donor data to enable Chord' }
-    },
+    // Chord is always applicable — it has multiple data modes that read
+    // server-side aggregates directly, so it can render whether or not
+    // graph edges are loaded:
+    //   - default industry-party hits the global chord_industry_flows MV
+    //   - donor-type-party / state-party hit global FEC aggregates
+    //   - sector-group reads from a focused group's members
+    //   - sector-vote / industry-official read from a focused official
+    // The Settings → Data picker disables specific modes whose required
+    // focus isn't present, but the viz itself is always available.
+    isApplicable: () => APPLICABLE,
   },
 
   {

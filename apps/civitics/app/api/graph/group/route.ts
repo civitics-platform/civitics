@@ -124,17 +124,34 @@ export async function GET(req: NextRequest) {
     // entity_type is needed to filter out individual donors —
     // group summary shows institutional money (PACs, orgs, corps) only;
     // individual donor detail lives in the DonorListPanel.
+    //
+    // CRITICAL: batch the financial_entities lookup. With ~900+ distinct
+    // donors per group (Full Senate routinely hits this), an unbatched
+    // .in("id", donorIds) blows past PostgREST's URI length cap and
+    // returns silently empty — leaving every donor unresolved and the
+    // group rendering with zero edges. fetchIndustryTagsByEntityId
+    // already batches internally; we just need to match it here.
     const donorIds = [...new Set(allDonationRows.map((r) => r.from_id))];
     const donorInfo = new Map<string, { name: string; sector: string | null; entityType: string }>();
     if (donorIds.length > 0) {
-      const [{ data: entities }, industryByEntityId] = await Promise.all([
-        supabase
-          .from("financial_entities")
-          .select("id, display_name, entity_type")
-          .in("id", donorIds),
+      const FE_BATCH = 100;
+      const feChunks: string[][] = [];
+      for (let i = 0; i < donorIds.length; i += FE_BATCH) {
+        feChunks.push(donorIds.slice(i, i + FE_BATCH));
+      }
+      const [feResults, industryByEntityId] = await Promise.all([
+        Promise.all(
+          feChunks.map(batch =>
+            supabase
+              .from("financial_entities")
+              .select("id, display_name, entity_type")
+              .in("id", batch),
+          ),
+        ),
         fetchIndustryTagsByEntityId(supabase, donorIds),
       ]);
-      for (const e of entities ?? []) {
+      const entities = feResults.flatMap(r => r.data ?? []);
+      for (const e of entities) {
         donorInfo.set(e.id, {
           name:       e.display_name,
           sector:     industryByEntityId.get(e.id)?.display_label ?? null,

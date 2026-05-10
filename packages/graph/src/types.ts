@@ -164,6 +164,47 @@ export interface ForceOptions {
   connectorMinRecipients?: number                // default: 2 (connector mode only)
 }
 
+/**
+ * Data shape rendered by the chord diagram. Driven by an explicit
+ * `dataMode`; falls back to the legacy inferred mode (props-driven) when
+ * unset, so existing presets and `primaryEntityId` / `primaryGroup` paths
+ * continue to work unchanged.
+ *
+ * 'industry-party'        — Industry sectors → party chambers (global)
+ * 'industry-official'     — Donor industries → focused official
+ * 'sector-group'          — Sectors → focused group cohort
+ * 'sector-group-pair'     — Sectors split between two focused groups
+ * 'sector-vote'           — Donor sectors ↔ vote outcomes (yes/no/other)
+ *                           for the focused official(s)
+ * 'subject-party'         — Bill subjects ↔ party chambers, weighted by
+ *                           affirmative votes (global or cohort-scoped)
+ * 'donor-type-party'      — Donor entity_type ↔ party chambers
+ * 'state-party'           — Donor home state ↔ recipient party chamber
+ */
+export type ChordDataMode =
+  | 'industry-party'
+  | 'industry-official'
+  | 'sector-group'
+  | 'sector-group-pair'
+  | 'sector-vote'
+  | 'subject-party'
+  | 'donor-type-party'
+  | 'state-party'
+
+/**
+ * How donor-side arcs are grouped. Applies to modes whose source axis is
+ * the donor cohort (industry-party, industry-official, sector-group,
+ * sector-group-pair, sector-vote). Other modes ignore this option.
+ *
+ * 'aggregate'   — one arc per industry/sector (default; maps to existing
+ *                 chord_industry_flows / get_group_sector_totals behavior)
+ * 'top-pacs'    — one arc per top-N PAC entity, colored by its industry.
+ *                 Reveals which specific organizations dominate a flow.
+ * 'by-bracket'  — donors aggregated into Mega ($10k+) / Major ($2.5k–10k) /
+ *                 Mid ($500–2.5k) / Small (<$500) size brackets.
+ */
+export type ChordGranularity = 'aggregate' | 'top-pacs' | 'by-bracket'
+
 export interface ChordOptions {
   showLabels: boolean
   /** Show % of total raised instead of absolute dollars */
@@ -173,6 +214,15 @@ export interface ChordOptions {
   minFlowUsd: number
   /** Hint: when true the preset is designed for entity-focused mode */
   entityMode?: boolean
+  /**
+   * Explicit data shape. When unset the route infers the mode from props
+   * (entityId / groupId / secondaryGroupId), preserving legacy behavior.
+   */
+  dataMode?: ChordDataMode
+  /** How donor arcs are grouped. Default: 'aggregate'. */
+  granularity?: ChordGranularity
+  /** When granularity='top-pacs', how many PAC arcs to show (default 12). */
+  topPacsLimit?: number
 }
 
 export interface TreemapOptions {
@@ -567,6 +617,10 @@ export type PresetIntent =
   | 'nominations'               // existing
   | 'top-donors-chord'          // existing
   | 'industry-donors-chord'     // existing
+  | 'sector-vote-chord'         // chord: sector ↔ vote outcome (new)
+  | 'subject-party-chord'       // chord: bill subject ↔ party (new)
+  | 'donor-type-party-chord'    // chord: donor type ↔ party (new)
+  | 'state-party-chord'         // chord: donor state ↔ party (new)
   | 'alignment-my-reps'         // existing
   | 'group-overview'            // existing
   | 'full-record'               // existing
