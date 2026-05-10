@@ -8,7 +8,7 @@
  *   - "contracts"   → procurement contracts (FY{year}_All_Contracts_*.zip)
  *   - "assistance"  → grants & financial assistance (FY{year}_All_Assistance_*.zip)
  *
- * Advantages over the API pipeline (data:usaspending):
+ * Advantages over the legacy paginated API approach (removed in FIX-224):
  *   - All agencies (not just the hardcoded top 20)
  *   - All award sizes (no $1M minimum)
  *   - All awards in the FY (not just top 100 per agency)
@@ -18,7 +18,7 @@
  *   - First run (no prior state): Full file FY{year}_All_{Category}_Full_{YYYYMMDD}.zip
  *   - Subsequent runs: Delta files since last processed date
  *   - Filters rows to agencies present in public.agencies (by name match)
- *   - Reuses resolveRecipients + upsertSpendingRelationshipsBatch from usaspending/writer.ts
+ *   - resolveRecipients + upsertSpendingRelationshipsBatch live in ./writer.ts
  *   - Dedup key: contract_award_unique_key / assistance_award_unique_key
  *   - For assistance, filters to grant-shaped assistance_type_codes (02/03/04/05/11);
  *     loans, insurance, and direct payments are skipped because the
@@ -55,7 +55,7 @@ import {
   resolveRecipients,
   upsertSpendingRelationshipsBatch,
   type SpendingRelationshipInput,
-} from "../usaspending/writer";
+} from "./writer";
 import { canonicalizeEntityName } from "../fec-bulk/writer";
 
 // ---------------------------------------------------------------------------

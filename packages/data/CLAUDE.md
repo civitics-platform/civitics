@@ -82,7 +82,6 @@ Step 2c (individual contributions, FIX-181):
 - Update schedule: weekly via nightly orchestrator (Sunday-only block); Full file refreshes weekly, Deltas thereafter
 - Force full re-run: append `-- --force` (e.g. `pnpm … data:usaspending-bulk -- --force`)
 - Underlying script accepts `--category=contracts|assistance --force` directly: `pnpm --filter @civitics/data data:usaspending-bulk -- --category=assistance --force`
-- Legacy API script (`data:usaspending`) retained for reference — superseded by bulk approach (FIX-118)
 
 ### Regulations.gov
 - Active proposals only (open for comment + recently closed)

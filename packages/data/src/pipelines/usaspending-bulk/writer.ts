@@ -1,5 +1,5 @@
 /**
- * USASpending writer — post-cutover, batched writes against public.
+ * USASpending writer — shared by the bulk archive pipeline.
  *
  * Tables written:
  *   public.financial_entities         corporation recipients (dedup via
@@ -165,105 +165,6 @@ export async function resolveRecipients(
   }
 
   return out;
-}
-
-// ---------------------------------------------------------------------------
-// SEC CIK lookup — FIX-212 (revolving door groundwork)
-// ---------------------------------------------------------------------------
-
-// In-process cache of name → CIK (hit = found, null = searched but not found).
-const _cikCache = new Map<string, string | null>();
-
-/**
- * Attempt to resolve an SEC EDGAR Central Index Key (CIK) for a company name.
- * Uses the EFTS full-text search API.  Returns null on no match or error.
- *
- * Rate limit: SEC asks for ≤10 req/sec.  Callers must ensure ≥120ms between
- * calls; this function does NOT sleep internally so it can be batched.
- */
-export async function lookupEdgarCIK(name: string): Promise<string | null> {
-  const key = name.trim().toLowerCase();
-  if (_cikCache.has(key)) return _cikCache.get(key)!;
-
-  try {
-    // EFTS full-text search — returns the most recent 10-K filings matching
-    // the company name.  We take the first hit's entity_id (= CIK) if the
-    // relevance score looks confident enough.
-    const q = encodeURIComponent(`"${name.trim()}"`);
-    const url = `https://efts.sec.gov/LATEST/search-index?q=${q}&forms=10-K&dateRange=custom&startdt=2020-01-01&enddt=2025-12-31&hits.hits._source=entity_id,display_names&hits.hits.total.value=1`;
-    const resp = await fetch(url, {
-      headers: {
-        "User-Agent": "Civitics/1.0 (civic data platform; contact@civitics.com)",
-        accept: "application/json",
-      },
-    });
-    if (!resp.ok) {
-      _cikCache.set(key, null);
-      return null;
-    }
-    const body = await resp.json() as {
-      hits?: { hits?: Array<{ _score: number; _source: { entity_id?: string } }> };
-    };
-    const hits = body.hits?.hits ?? [];
-    // Require a minimum score to avoid false matches
-    const best = hits[0];
-    if (!best || best._score < 10 || !best._source?.entity_id) {
-      _cikCache.set(key, null);
-      return null;
-    }
-    const cik = String(best._source.entity_id).padStart(10, "0");
-    _cikCache.set(key, cik);
-    return cik;
-  } catch {
-    _cikCache.set(key, null);
-    return null;
-  }
-}
-
-/**
- * For a batch of financial_entity rows that lack source_ids.sec_cik, attempt
- * EDGAR CIK lookups and persist the hits.  Adds ~120ms per entity.
- */
-export async function backfillEdgarCIKs(
-  db: Db,
-  entityIds: string[],
-): Promise<{ matched: number; failed: number }> {
-  if (entityIds.length === 0) return { matched: 0, failed: 0 };
-
-  const { data, error } = await db
-    .from("financial_entities")
-    .select("id, display_name, source_ids")
-    .in("id", entityIds)
-    .eq("entity_type", "corporation")
-    .is("source_ids->>sec_cik", null);
-
-  if (error || !data) return { matched: 0, failed: 0 };
-
-  let matched = 0;
-  let failed = 0;
-
-  for (const entity of data as Array<{ id: string; display_name: string; source_ids: Record<string, unknown> | null }>) {
-    // 120ms gap to stay under SEC's 10 req/sec guideline
-    await new Promise((r) => setTimeout(r, 120));
-    const cik = await lookupEdgarCIK(entity.display_name ?? "");
-    if (!cik) continue;
-
-    const { error: upErr } = await db
-      .from("financial_entities")
-      .update({
-        source_ids: { ...(entity.source_ids ?? {}), sec_cik: cik },
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", entity.id);
-
-    if (upErr) {
-      failed++;
-    } else {
-      matched++;
-    }
-  }
-
-  return { matched, failed };
 }
 
 // ---------------------------------------------------------------------------
