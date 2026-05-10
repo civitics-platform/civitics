@@ -10,7 +10,7 @@
  */
 
 import { createAdminClient } from "@civitics/db";
-import { getDbSizeMb, getLastSync, startSync, completeSync, failSync } from "./sync-log";
+import { getDbSizeMb, getLastSync, startSync, completeSync, failSync, captureRssMb } from "./sync-log";
 import { runRegulationsPipeline } from "./regulations";
 import { runFecBulkPipeline } from "./fec-bulk";
 import { runUsaSpendingBulkPipeline } from "./usaspending-bulk";
@@ -882,7 +882,7 @@ export async function runNightlySync(): Promise<NightlySyncResults> {
       rows_inserted: Object.values(results.pipelines).reduce(
         (sum, p) => sum + (p?.rows_added ?? 0), 0
       ),
-      metadata: results,
+      metadata: { ...results, peak_rss_mb: captureRssMb() },
     });
   } catch (err) {
     console.error("[nightly] failed to record results:", errMsg(err));

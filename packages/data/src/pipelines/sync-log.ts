@@ -13,6 +13,15 @@ export interface PipelineResult {
   estimatedMb: number;
 }
 
+// RSS at completion time, not peak across the run. Acceptable proxy for
+// bulk-streaming pipelines whose RSS doesn't shrink during the process
+// lifetime. True-peak instrumentation (setInterval sampler) is deferred.
+export function captureRssMb(): number {
+  const mu = process.memoryUsage as typeof process.memoryUsage & { rss?: () => number };
+  const rssBytes = typeof mu.rss === "function" ? mu.rss() : process.memoryUsage().rss;
+  return Math.round(rssBytes / 1024 / 1024);
+}
+
 export async function startSync(pipeline: string): Promise<string> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = createAdminClient() as any;
@@ -36,6 +45,12 @@ export async function completeSync(id: string, result: PipelineResult): Promise<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = createAdminClient() as any;
   try {
+    const { data: existing } = await db
+      .from("data_sync_log")
+      .select("metadata")
+      .eq("id", id)
+      .maybeSingle();
+    const merged = { ...(existing?.metadata ?? {}), peak_rss_mb: captureRssMb() };
     await db.from("data_sync_log").update({
       status: "complete",
       completed_at: new Date().toISOString(),
@@ -43,6 +58,7 @@ export async function completeSync(id: string, result: PipelineResult): Promise<
       rows_updated:  result.updated,
       rows_failed:   result.failed,
       estimated_mb:  result.estimatedMb,
+      metadata: merged,
     }).eq("id", id);
   } catch (err) {
     console.warn("  [sync-log] Could not update log entry:", err instanceof Error ? err.message : err);
@@ -54,10 +70,17 @@ export async function failSync(id: string, errorMessage: string): Promise<void> 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = createAdminClient() as any;
   try {
+    const { data: existing } = await db
+      .from("data_sync_log")
+      .select("metadata")
+      .eq("id", id)
+      .maybeSingle();
+    const merged = { ...(existing?.metadata ?? {}), peak_rss_mb: captureRssMb() };
     await db.from("data_sync_log").update({
       status: "failed",
       completed_at: new Date().toISOString(),
       error_message: errorMessage.slice(0, 1000),
+      metadata: merged,
     }).eq("id", id);
   } catch (err) {
     console.warn("  [sync-log] Could not fail log entry:", err instanceof Error ? err.message : err);
@@ -77,7 +100,11 @@ export async function skipSync(id: string, reason: string): Promise<void> {
       .select("metadata")
       .eq("id", id)
       .maybeSingle();
-    const merged = { ...(existing?.metadata ?? {}), skip_reason: reason };
+    const merged = {
+      ...(existing?.metadata ?? {}),
+      skip_reason: reason,
+      peak_rss_mb: captureRssMb(),
+    };
     await db.from("data_sync_log").update({
       status: "skipped",
       completed_at: new Date().toISOString(),

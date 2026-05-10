@@ -20,6 +20,7 @@
  */
 
 import { createAdminClient } from "@civitics/db";
+import { captureRssMb } from "../pipelines/sync-log";
 
 const PIPELINE_NAME      = "nightly_cron";
 const CHECK_DAYS         = 7;
@@ -84,6 +85,7 @@ async function writeMetaRow(missing: string[]): Promise<void> {
       checked_days:     CHECK_DAYS,
       missing_count:    missing.length,
       missing_dates:    missing,
+      peak_rss_mb:      captureRssMb(),
     },
   });
   if (error) {
