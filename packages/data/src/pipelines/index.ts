@@ -740,11 +740,15 @@ export async function runNightlySync(): Promise<NightlySyncResults> {
     results.errors.push(`AI summaries: ${msg}`);
   }
 
-  // 7. Refresh chord_industry_flows MV (FIX-207). Runs last so industry
-  //    tags from steps 4 + 5 are current. The base query is the 8s join
-  //    that the live chord RPC used to perform; here it runs once nightly
-  //    against a session timeout big enough to complete, then the RPC
-  //    serves cached rows the rest of the day.
+  // 7. Refresh chord MVs. Runs last so industry tags from steps 4 + 5 are
+  //    current. Each base query is a multi-second full-table scan that
+  //    used to time out the live RPC at the 5s ceiling; here they run
+  //    once nightly against the session timeout, then the RPCs serve
+  //    cached rows the rest of the day.
+  //    - chord_industry_flows_mv (FIX-207): industry × party
+  //    - chord_donor_type_party_flows_mv (FIX-222): donor entity_type × party
+  //    - chord_donor_state_party_flows_mv (FIX-222): donor state × party
+  //    - chord_subject_party_flows_mv (FIX-222): bill topic × party (yes votes)
   try {
     const { createAdminClient } = await import("@civitics/db");
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -753,7 +757,23 @@ export async function runNightlySync(): Promise<NightlySyncResults> {
   } catch (err) {
     const msg = errMsg(err);
     console.error("[nightly] refresh_chord_industry_flows_mv failed:", msg);
-    results.errors.push(`Chord MV refresh: ${msg}`);
+    results.errors.push(`Chord industry MV refresh: ${msg}`);
+  }
+  for (const fn of [
+    "refresh_chord_donor_type_party_flows_mv",
+    "refresh_chord_donor_state_party_flows_mv",
+    "refresh_chord_subject_party_flows_mv",
+  ]) {
+    try {
+      const { createAdminClient } = await import("@civitics/db");
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const admin = createAdminClient() as any;
+      await admin.rpc(fn);
+    } catch (err) {
+      const msg = errMsg(err);
+      console.error(`[nightly] ${fn} failed:`, msg);
+      results.errors.push(`${fn}: ${msg}`);
+    }
   }
 
   results.completed_at = new Date();
