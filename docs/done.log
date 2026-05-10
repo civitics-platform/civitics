@@ -304,3 +304,4 @@
 2026-05-09 | FIX-217 | 61a1543e | local-only | fix(graph): paginate voting-divergence officials query + raise district limit
 2026-05-09 | FIX-217 | b974e797 | local-only | perf(graph): voting-divergence parallel Representative + state-leg fetch
 2026-05-09 | FIX-217 | beb0c7de | local-only | fix(graph): voting-divergence per-state query_districts loop
+2026-05-10 | FIX-221 | 1182edd3 | local+prod | feat(graph): chord multi-mode + granularity controls + compare mode
