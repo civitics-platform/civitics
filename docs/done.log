@@ -320,3 +320,4 @@
 2026-05-10 | FIX-226 | 4e44850e | local-only | feat(audit): weekly integrity audit with auto-commit to docs/audits/
 2026-05-10 | FIX-233 | f0449601 | local+prod | feat(observability): pipeline_runtime_stats_mv + /admin/pipeline-health
 2026-05-10 | FIX-233 | ddf8ca13 | local-only | chore(observability): peak_rss_mb in data_sync_log.metadata
+2026-05-10 | FIX-236 | 98cb30fd | local-only | feat(fec-bulk,search): surface individual donors + ingest super-PAC indiv contributions
