@@ -13,6 +13,7 @@ import { createAdminClient } from "@civitics/db";
 import { getDbSizeMb, getLastSync, startSync, completeSync, failSync, captureRssMb } from "./sync-log";
 import { runRegulationsPipeline } from "./regulations";
 import { runFecBulkPipeline } from "./fec-bulk";
+import { runIrs990Pipeline } from "./irs990";
 import { runUsaSpendingBulkPipeline } from "./usaspending-bulk";
 import { runCourtListenerPipeline } from "./courtlistener";
 import { runOpenStatesPipeline } from "./openstates";
@@ -93,7 +94,7 @@ async function printStatus(): Promise<void> {
       .in("relationship_type", ["contract", "grant"]),
   ]);
 
-  const pipelines = ["regulations", "fec_bulk", "usaspending", "courtlistener", "openstates", "congress_officials", "congress_votes"] as const;
+  const pipelines = ["regulations", "fec_bulk", "irs990", "usaspending", "courtlistener", "openstates", "congress_officials", "congress_votes"] as const;
   const syncTimes = await Promise.all(pipelines.map((p) => getLastSync(p)));
 
   console.log("\n=== Civitics Data Status ===");
@@ -343,6 +344,7 @@ export interface NightlySyncResults {
     congress_officials?: NightlyPipelineResult;
     congress_votes?: NightlyPipelineResult;
     fec_bulk?: NightlyPipelineResult;
+    irs990?: NightlyPipelineResult;
     usaspending?: NightlyPipelineResult;
     courtlistener?: NightlyPipelineResult;
     openstates?: NightlyPipelineResult;
@@ -500,6 +502,22 @@ export async function runNightlySync(): Promise<NightlySyncResults> {
       } finally {
         if (!prevFecCycles)      delete process.env["FEC_CYCLES"];
         if (!prevFecIndivCycles) delete process.env["FEC_INDIV_CYCLES"];
+      }
+    }
+
+    // FIX-250: IRS 990 bulk (officers + grants-out, seed list only — NOT donors).
+    // Runs after FEC so resolveGrantRecipient can see fec-bulk's PAC entities
+    // in the same Sunday wave if a 990 grants to a PAC.
+    {
+      const t0 = Date.now();
+      try {
+        const r = await runIrs990Pipeline();
+        results.pipelines.irs990 = { status: "complete", rows_added: r.inserted, duration_ms: Date.now() - t0 };
+      } catch (err) {
+        const msg = errMsg(err);
+        console.error("[nightly] irs990 failed:", msg);
+        results.pipelines.irs990 = { status: "failed", error: msg };
+        results.errors.push(`IRS 990: ${msg}`);
       }
     }
 

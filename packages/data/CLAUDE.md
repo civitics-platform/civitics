@@ -100,6 +100,46 @@ Step 2d (independent expenditures, FIX-240):
 - FEC updates bulk files weekly — run on weekly cron (Sunday block of nightly orchestrator)
 - Script: `pnpm --filter @civitics/data data:fec-bulk`
 
+### IRS Form 990 (FIX-250)
+**Use IRS-hosted bulk ZIPs — NEVER the historical AWS S3 `irs-form-990` bucket (frozen Dec 2021).**
+
+| File | URL | Contents |
+|------|-----|----------|
+| Index CSV | `https://apps.irs.gov/pub/epostcard/990/xml/{YEAR}/index_{YEAR}.csv` | Columns: RETURN_ID, FILING_TYPE, EIN, TAX_PERIOD, SUB_DATE, TAXPAYER_NAME, RETURN_TYPE, DLN, OBJECT_ID, XML_BATCH_ID. Subsection code is NOT in the index — it lives in the XML body. |
+| Filing XML | `https://apps.irs.gov/pub/epostcard/990/xml/{YEAR}/{OBJECT_ID}_public.xml` | Per-filing structured data. Typically <1 MB. |
+
+**Critical scope note: 990s do NOT disclose donors.** Schedule B (the donor schedule) is redacted from the public e-file distribution. Anywhere this is implied in code, types, comments, or UI is a bug. The pipeline ingests only:
+- **Officers / directors / key employees** (Part VII Section A) — names, titles, compensation
+- **Grants OUT** (Schedule I) — recipient name, EIN if disclosed, amount, purpose
+- **Financial summary** — total revenue / assets / expenses, subsection code, NTEE code
+
+Per-filing flow:
+- HEAD the index CSV with `pipeline_state.irs990.index_watermark` (JSONB `{year: lastModified}`). Skip the year if Last-Modified is unchanged.
+- Stream-parse the index. Keep rows where `EIN ∈ SEED_EIN_SET` ([packages/data/src/pipelines/irs990/seed.ts](src/pipelines/irs990/seed.ts), ~35 politically-active 501(c)(3)/(c)(4)/(c)(5)/(c)(6)/527 orgs).
+- Pre-filter to OBJECT_IDs not already in `irs990_filings` (UNIQUE on object_id, the IRS DLN — globally stable per filing).
+- For each new filing: GET XML (3x exponential backoff), parse via `fast-xml-parser` with `removeNSPrefix`, then tag-name-only DFS for the fields we care about (robust across yearly schema variants 2014-present).
+
+Schema (migration `20260510000008_irs990.sql`):
+- `'nonprofit'` added to `financial_entities.entity_type` CHECK.
+- `irs990_filings` — one row per filing. UNIQUE(object_id). FK to `financial_entities`. Carries subsection_code, ntee_code, financials, address_state, schema_version.
+- `irs990_officers` — one row per (filing, name_canonical, role_title). matched_entity_id resolves to `officials.id` when canonical name matches; otherwise NULL.
+- `irs990_grants_out` — one row per (filing, recipient_name_canonical, amount). matched_entity_id resolves to a `financial_entities` row when recipient EIN or canonical name resolves; otherwise NULL.
+- When a grant recipient resolves, a `financial_relationships` row with `relationship_type='grant'` is written, with `disclosure_form_id='irs990:{object_id}:{to_entity_id}:{amount_cents}'` as the dedup key for re-runs.
+- `rebuild_entity_connections()` block 6 (holds_position) UNIONs in `irs990_officers` rows with `matched_entity_id IS NOT NULL` to emit `(from='official', to='financial_entity'=nonprofit)` edges. Grants-out fold into block 8 (contract_award) via the existing `relationship_type IN ('contract','grant')` path.
+
+EIN binding: `external_source_refs(source='irs_990', external_id=EIN)` — same pattern as Congress.gov bioguide IDs etc.
+
+Officer matching is high-precision only: officials by exact canonical name (canonicalize via `canonicalizePersonName`, which mirrors `canonicalizeEntityName` minus the corporate-suffix strip). Donor-side matching against the 540k individual donor rows is deferred to Phase 2 — false-positive risk on common names is too high without state/employer context.
+
+Update schedule: weekly Sunday (after FEC bulk in the orchestrator so resolveGrantRecipient sees freshly-upserted PAC entities). 990s file annually with ~1-month bulk lag, but HEAD-watermark short-circuits unchanged years cheaply.
+
+ProPublica Nonprofit Explorer API (`https://projects.propublica.org/nonprofits/api/v2/`) is NOT on the orchestrator path. It's reserved for ad-hoc EIN resolution (e.g. adding a new seed org by name) and gated to 1 req/sec defensive backoff. No API key required.
+
+Override default tax years via `IRS990_TAX_YEARS=2022,2023,2024`. Default is `[CURRENT_YEAR-3, CURRENT_YEAR-2, CURRENT_YEAR-1]`.
+
+- No API key required, no rate limits
+- Script: `pnpm --filter @civitics/data data:irs990`
+
 ### USASpending.gov
 - Full FY bulk archive — all agencies in `public.agencies`, all award sizes, no rate limits
 - Two categories, run independently:
