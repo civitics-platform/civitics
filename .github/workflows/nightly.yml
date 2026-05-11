@@ -16,7 +16,11 @@ concurrency:
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    # 120 min headroom for the Sunday block: FIX-236's indiv stage runs
+    # 60-90 min on a presidential cycle once warm. The watermark + env knob
+    # (FIX-193) and R2 cache (FIX-192) reduce average runtime, but worst
+    # case (cold cache + new FEC drop) needs the budget.
+    timeout-minutes: 120
 
     env:
       NEXT_PUBLIC_SUPABASE_URL: https://xsazcoxinpgttgquwvuf.supabase.co
@@ -29,6 +33,18 @@ jobs:
       CIVITICS_ANTHROPIC_API_KEY: ${{ secrets.CIVITICS_ANTHROPIC_API_KEY }}
       AUTONOMOUS:               "true"
       CIVITICS_ENRICHMENT_MODE: queue
+      # FEC indiv stage (FIX-236) doubles peak heap vs. FIX-181 alone. 4 GB
+      # default OOMs around the 25M-line mark on presidential cycles; 8 GB
+      # is the documented floor in packages/data/CLAUDE.md. ubuntu-latest
+      # runners have 16 GB RAM — plenty of headroom.
+      NODE_OPTIONS: --max-old-space-size=8192
+      # R2 cache for FEC bulk zips (FIX-192). All four are optional — code
+      # falls through to direct FEC fetch when any are missing — but adding
+      # them as repo secrets cuts ~10 min off repeat-run downloads.
+      CLOUDFLARE_ACCOUNT_ID:           ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_R2_ACCESS_KEY_ID:     ${{ secrets.CLOUDFLARE_R2_ACCESS_KEY_ID }}
+      CLOUDFLARE_R2_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_R2_SECRET_ACCESS_KEY }}
+      CLOUDFLARE_R2_BUCKET_CACHE:      civitics-cache
 
     steps:
       - name: Checkout

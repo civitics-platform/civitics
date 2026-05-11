@@ -466,16 +466,28 @@ export async function runNightlySync(): Promise<NightlySyncResults> {
 
     {
       const t0 = Date.now();
-      // Weekly cron only refreshes the current + prior cycle (the only ones
-      // FEC actively updates on a weekly cadence). The pipeline's 4-cycle
-      // default (2020,2022,2024,2026) is reserved for manual backfill via
-      // `pnpm data:fec-bulk`. An explicit FEC_CYCLES env var still wins, so
-      // a cron-time override remains possible without code changes.
-      const prevFecCycles = process.env["FEC_CYCLES"];
-      if (!prevFecCycles) {
+      // Weekly cron only refreshes the current + prior cycle for the PAC
+      // stage (the only ones FEC actively updates on a weekly cadence). The
+      // pipeline's 4-cycle default (2020,2022,2024,2026) is reserved for
+      // manual backfill via `pnpm data:fec-bulk`. An explicit FEC_CYCLES env
+      // var still wins, so a cron-time override remains possible without code
+      // changes.
+      //
+      // FIX-193: separate knob for the giant indiv stage. By default, only
+      // the active cycle's indiv file is reprocessed — closed cycles' indiv
+      // files don't move week-to-week (last FEC quarterly drop for 2024 was
+      // 2026-01-31), so re-streaming 80M+ rows weekly burned bandwidth and
+      // Pro write IO for ~zero new data. The Last-Modified watermark in
+      // fec-bulk/index.ts is a second, finer-grained guard inside the
+      // pipeline, so closed cycles still skip even if a manual override
+      // re-adds them here.
+      const prevFecCycles      = process.env["FEC_CYCLES"];
+      const prevFecIndivCycles = process.env["FEC_INDIV_CYCLES"];
+      if (!prevFecCycles || !prevFecIndivCycles) {
         const yr = new Date().getFullYear();
         const currentCycle = yr % 2 === 0 ? yr : yr + 1;
-        process.env["FEC_CYCLES"] = `${currentCycle - 2},${currentCycle}`;
+        if (!prevFecCycles)      process.env["FEC_CYCLES"]       = `${currentCycle - 2},${currentCycle}`;
+        if (!prevFecIndivCycles) process.env["FEC_INDIV_CYCLES"] = `${currentCycle}`;
       }
       try {
         const r = await runFecBulkPipeline();
@@ -486,7 +498,8 @@ export async function runNightlySync(): Promise<NightlySyncResults> {
         results.pipelines.fec_bulk = { status: "failed", error: msg };
         results.errors.push(`FEC bulk: ${msg}`);
       } finally {
-        if (!prevFecCycles) delete process.env["FEC_CYCLES"];
+        if (!prevFecCycles)      delete process.env["FEC_CYCLES"];
+        if (!prevFecIndivCycles) delete process.env["FEC_INDIV_CYCLES"];
       }
     }
 

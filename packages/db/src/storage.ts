@@ -116,3 +116,7 @@ export async function fileExists(path: string): Promise<boolean> {
     return false;
   }
 }
+
+// Note: R2 cache helpers for opaque pipeline artifacts (e.g. FEC bulk zips,
+// FIX-192) live in `./storage-server.ts` to keep their `fs` / `stream` imports
+// out of the client bundle. Import them via `@civitics/db/server-storage`.

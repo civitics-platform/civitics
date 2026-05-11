@@ -92,6 +92,7 @@ export {
 
 // Storage (Supabase now, R2 later — paths are provider-agnostic)
 export { getStorageUrl, uploadFile, getFile, fileExists } from "./storage";
+// R2 cache bucket helpers (FIX-192) live at `@civitics/db/server-storage` — server-only.
 
 // Platform usage tracking
 export {

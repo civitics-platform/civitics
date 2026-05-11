@@ -81,7 +81,14 @@ import {
   type IndividualDonationInput,
   type IndividualToCommitteeDonationInput,
 } from "./writer";
-import { extractZipEntryToDisk, parseFecDate } from "./util";
+import {
+  extractZipEntryToDisk,
+  parseFecDate,
+  downloadWithR2Cache,
+  headFecFile,
+  parseLastModified,
+  type FecHead,
+} from "./util";
 import { parseCcl, streamIndiv } from "./indiv";
 
 // ---------------------------------------------------------------------------
@@ -178,6 +185,12 @@ const TMP_DIR = path.join(os.tmpdir(), "fec-bulk");
 
 function ensureTmpDir(): void {
   if (!fs.existsSync(TMP_DIR)) fs.mkdirSync(TMP_DIR, { recursive: true });
+}
+
+/** R2 cache key layout for FEC bulk files (FIX-192). One namespace per cycle
+ *  keeps simple LIST-by-prefix operations clean if we ever audit the bucket. */
+function r2KeyFor(cycle: string, fileName: string): string {
+  return `fec/${cycle}/${fileName}`;
 }
 
 function downloadFile(url: string, destPath: string): Promise<void> {
@@ -535,6 +548,17 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
     .filter(Boolean);
   console.log(`  Cycles to process: ${CYCLES.join(", ")}`);
 
+  // FIX-193: separate knob for the (very expensive) indiv stage. Defaults to
+  // FEC_CYCLES so a manual `pnpm data:fec-bulk` still processes indiv for every
+  // cycle. The nightly orchestrator narrows this to the active cycle only —
+  // closed cycles' indiv files don't change between weekly drops.
+  const INDIV_CYCLES = (process.env.FEC_INDIV_CYCLES ?? process.env.FEC_CYCLES ?? CYCLES.join(","))
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const indivCycleSet = new Set(INDIV_CYCLES);
+  console.log(`  Indiv cycles:      ${INDIV_CYCLES.join(", ")}`);
+
   let pacEntitiesUpserted = 0, pacEntitiesFailed = 0;
   let pacRelsUpserted = 0, pacRelsFailed = 0;
   let indivDonorsUpserted = 0, indivDonorsFailed = 0;
@@ -561,8 +585,34 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
   }> = [];
   const newFecIdSeen = new Set<string>(); // dedup key: `${officialId}|${fecId}`
 
+  // FIX-193: per-cycle Last-Modified watermark for the indiv stage. Keyed by
+  // cycle string. Stored as pipeline_state.fec_indiv_watermark, JSONB shape
+  // `{ "2024": { last_modified: "<RFC1123>", etag: "..." }, "2026": {...} }`.
+  // Watermark is FEC's value (source of truth) — R2 mirror is downstream.
+  type IndivWatermark = Record<string, { last_modified: string; etag: string | null }>;
+  let indivWatermark: IndivWatermark = {};
+  // Pending uploads for the CURRENT cycle. Drained before each per-cycle
+  // tmpdir cleanup, since R2 multipart uploads stream from disk and would
+  // fail if their source files were unlinked mid-stream.
+  let cycleR2Uploads: Array<Promise<boolean>> = [];
+  let totalR2UploadsOk = 0;
+  let totalR2UploadsAttempted = 0;
+
   try {
     ensureTmpDir();
+
+    // Load existing indiv watermark (best-effort — empty on first run / missing row).
+    try {
+      const { data } = await db
+        .from("pipeline_state")
+        .select("value")
+        .eq("key", "fec_indiv_watermark")
+        .maybeSingle();
+      const v = (data?.value ?? null) as IndivWatermark | null;
+      if (v && typeof v === "object") indivWatermark = v;
+    } catch {
+      // Non-fatal: missing pipeline_state row, RLS hiccup, etc.
+    }
 
     // ── Load officials + match index (once, shared across all cycles) ───────
     console.log("\n  Loading officials and building match index...");
@@ -592,9 +642,11 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
         const destPath = path.join(TMP_DIR, f.name);
         console.log(`    Downloading ${f.name}...`);
         try {
-          await downloadFile(f.url, destPath);
+          const r2Key = r2KeyFor(CYCLE, f.name);
+          const res = await downloadWithR2Cache(f.url, r2Key, destPath, downloadFile);
           const sizeMb = (fs.statSync(destPath).size / 1024 / 1024).toFixed(1);
-          console.log(`    ✓ ${f.name} (${sizeMb} MB)`);
+          console.log(`    ✓ ${f.name} (${sizeMb} MB, source=${res.source})`);
+          if (res.r2UploadPromise) cycleR2Uploads.push(res.r2UploadPromise);
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           console.warn(`    ✗ ${f.name} unavailable: ${msg} — skipping cycle ${CYCLE}`);
@@ -781,7 +833,19 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
       // Tolerant of FEC outages on these files: if either download fails, log
       // and continue with PAC-only data for the cycle. Indiv files may also be
       // unpublished for a not-yet-closed cycle (e.g. mid-2026).
-      if (INCLUDE_INDIV) {
+      //
+      // FIX-193 gates (in order):
+      //   1. FEC_INDIV_CYCLES — env knob. Defaults to FEC_CYCLES, but cron
+      //      narrows to the active cycle only to avoid the 80M-row churn on
+      //      closed cycles whose indiv file hasn't moved.
+      //   2. Last-Modified watermark — HEAD the FEC indiv URL; if unchanged
+      //      since the last successful pipeline run, skip the cycle's indiv
+      //      stage entirely (no download, no streaming, no upsert).
+      if (INCLUDE_INDIV && !indivCycleSet.has(CYCLE)) {
+        console.log(`  [${CYCLE} 5/6] Indiv stage skipped — cycle not in FEC_INDIV_CYCLES`);
+        indivCyclesSkipped++;
+      }
+      if (INCLUDE_INDIV && indivCycleSet.has(CYCLE)) {
         const yy        = CYCLE.slice(2);
         const cclName   = `ccl${yy}.zip`;
         const indivName = `indiv${yy}.zip`;
@@ -790,26 +854,54 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
         const cclPath   = path.join(TMP_DIR, cclName);
         const indivPath = path.join(TMP_DIR, indivName);
 
-        let indivFailed = false;
+        let indivFailed     = false;
+        let indivFecHead:   FecHead | null = null;
         console.log(`  [${CYCLE} 5/6] Individual contributions stage (FIX-181)...`);
-        console.log(`    Downloading ${cclName}...`);
-        try {
-          await downloadFile(cclUrl, cclPath);
-          const sizeMb = (fs.statSync(cclPath).size / 1024 / 1024).toFixed(2);
-          console.log(`    ✓ ${cclName} (${sizeMb} MB)`);
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err);
-          console.warn(`    ✗ ${cclName} unavailable: ${msg} — skipping indiv stage`);
+
+        // FIX-193 layer 2: watermark short-circuit. HEAD FEC; if Last-Modified
+        // is unchanged from the stored watermark, skip the whole stage. We
+        // tolerate HEAD failures (null head → fall through to download path,
+        // which is the pre-FIX-193 behavior).
+        const headProbe = await headFecFile(indivUrl);
+        const stored    = indivWatermark[CYCLE];
+        const probeLm   = parseLastModified(headProbe?.lastModified);
+        const storedLm  = parseLastModified(stored?.last_modified);
+        if (probeLm && storedLm && probeLm.getTime() <= storedLm.getTime()) {
+          console.log(
+            `    ↺ Indiv ${indivName} unchanged since last run ` +
+            `(FEC Last-Modified ${headProbe?.lastModified} ≤ watermark ${stored?.last_modified}) — skipping cycle ${CYCLE}`,
+          );
+          // indivFailed routes us into the existing `else { indivCyclesSkipped++ }`
+          // branch at the bottom of the indiv block — single source of truth for
+          // the skipped counter avoids double-counting.
           indivFailed = true;
+        }
+
+        if (!indivFailed) {
+          console.log(`    Downloading ${cclName}...`);
+          try {
+            const r2KeyCcl = r2KeyFor(CYCLE, cclName);
+            const res = await downloadWithR2Cache(cclUrl, r2KeyCcl, cclPath, downloadFile);
+            const sizeMb = (fs.statSync(cclPath).size / 1024 / 1024).toFixed(2);
+            console.log(`    ✓ ${cclName} (${sizeMb} MB, source=${res.source})`);
+            if (res.r2UploadPromise) cycleR2Uploads.push(res.r2UploadPromise);
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            console.warn(`    ✗ ${cclName} unavailable: ${msg} — skipping indiv stage`);
+            indivFailed = true;
+          }
         }
 
         if (!indivFailed) {
           console.log(`    Downloading ${indivName} (~2 GB)...`);
           try {
-            await downloadFile(indivUrl, indivPath);
+            const r2KeyIndiv = r2KeyFor(CYCLE, indivName);
+            const res = await downloadWithR2Cache(indivUrl, r2KeyIndiv, indivPath, downloadFile);
             const sizeMb = (fs.statSync(indivPath).size / 1024 / 1024).toFixed(0);
-            console.log(`    ✓ ${indivName} (${sizeMb} MB)`);
+            console.log(`    ✓ ${indivName} (${sizeMb} MB, source=${res.source})`);
             totalFileMb += parseFloat(sizeMb);
+            indivFecHead = res.fecHead ?? headProbe;
+            if (res.r2UploadPromise) cycleR2Uploads.push(res.r2UploadPromise);
           } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
             console.warn(`    ✗ ${indivName} unavailable: ${msg} — skipping indiv stage`);
@@ -995,6 +1087,18 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
                 indivCmteRelsFailed   += indivCmteRelResult.failed;
                 console.log(`    Donations (→ committee) — upserted: ${indivCmteRelResult.upserted}  failed: ${indivCmteRelResult.failed}`);
 
+                // FIX-193 watermark advance: record the FEC Last-Modified we
+                // just successfully processed. Next run sees this and short-
+                // circuits if FEC hasn't published a newer drop. Only update
+                // when we have a non-null Last-Modified — falling back to
+                // never-watermark is safer than recording an empty value.
+                if (indivFecHead?.lastModified) {
+                  indivWatermark[CYCLE] = {
+                    last_modified: indivFecHead.lastModified,
+                    etag:          indivFecHead.etag,
+                  };
+                }
+
                 indivCyclesProcessed++;
               }
             }
@@ -1006,6 +1110,19 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
         } else {
           indivCyclesSkipped++;
         }
+      }
+
+      // Drain any in-flight R2 cache uploads for this cycle before nuking
+      // its temp files — `Upload` streams from disk; unlinking mid-upload
+      // fails on Windows and is racy on Linux.
+      if (cycleR2Uploads.length > 0) {
+        console.log(`    Awaiting ${cycleR2Uploads.length} R2 cache upload(s) for cycle ${CYCLE}...`);
+        const results = await Promise.all(cycleR2Uploads);
+        const ok = results.filter(Boolean).length;
+        console.log(`    R2 uploads: ${ok}/${cycleR2Uploads.length} ok`);
+        totalR2UploadsOk        += ok;
+        totalR2UploadsAttempted += cycleR2Uploads.length;
+        cycleR2Uploads = [];
       }
 
       // Step 6: cleanup cycle-specific temp files (keeps disk under ~3GB
@@ -1048,6 +1165,32 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
     }
     const finalResult = await upsertPacEntitiesBatch(db, finalEntityInputs);
     console.log(`    Cross-cycle entity totals — upserted: ${finalResult.upserted}  failed: ${finalResult.failed}`);
+
+    // ── Persist indiv Last-Modified watermark (FIX-193) ─────────────────────
+    if (Object.keys(indivWatermark).length > 0) {
+      try {
+        await db
+          .from("pipeline_state")
+          .upsert(
+            {
+              key:        "fec_indiv_watermark",
+              value:      indivWatermark,
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: "key" },
+          );
+        console.log(`  Persisted indiv watermark for cycles: ${Object.keys(indivWatermark).join(", ")}`);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn(`  Failed to persist indiv watermark: ${msg}`);
+      }
+    }
+
+    // R2 cache upload summary (FIX-192) — per-cycle uploads were drained
+    // inside the cycle loop above; this is just the final tally.
+    if (totalR2UploadsAttempted > 0) {
+      console.log(`  R2 cache uploads (cumulative): ${totalR2UploadsOk}/${totalR2UploadsAttempted} ok`);
+    }
 
     // ── Final cleanup + report ──────────────────────────────────────────────
     deleteTmpDir();
