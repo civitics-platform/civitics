@@ -657,5 +657,7 @@ export async function GET(req: NextRequest) {
       initiatives: initiativesTotal,
     },
     timing_ms: Date.now() - t0, has_more, next_cursor,
-  } satisfies SearchResults);
+  } satisfies SearchResults, {
+    headers: { "Cache-Control": "public, max-age=0, s-maxage=60, stale-while-revalidate=300" },
+  });
 }

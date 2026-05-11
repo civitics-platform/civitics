@@ -38,6 +38,10 @@ function formatDollars(cents: number): string {
   return `$${d.toFixed(0)}`;
 }
 
+const CACHE_HEADERS = {
+  "Cache-Control": "public, max-age=0, s-maxage=60, stale-while-revalidate=300",
+} as const;
+
 export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl;
   const id   = searchParams.get("id")   ?? "";
@@ -81,7 +85,7 @@ export async function GET(req: NextRequest) {
           Status: data.is_active ? "Active" : "Inactive",
         },
       };
-      return NextResponse.json(detail);
+      return NextResponse.json(detail, { headers: CACHE_HEADERS });
     }
 
     if (type === "proposal") {
@@ -113,7 +117,7 @@ export async function GET(req: NextRequest) {
           Agency: data.metadata?.agency_id ?? null,
         },
       };
-      return NextResponse.json(detail);
+      return NextResponse.json(detail, { headers: CACHE_HEADERS });
     }
 
     if (type === "agency") {
@@ -135,7 +139,7 @@ export async function GET(req: NextRequest) {
         profile_url: data.slug ? `/agencies/${data.slug}` : `/agencies/${id}`,
         meta: { Type: data.agency_type.replace(/_/g, " ") },
       };
-      return NextResponse.json(detail);
+      return NextResponse.json(detail, { headers: CACHE_HEADERS });
     }
 
     if (type === "financial") {
@@ -171,7 +175,7 @@ export async function GET(req: NextRequest) {
           Industry: tagRes?.data?.tag_value ?? null,
         },
       };
-      return NextResponse.json(detail);
+      return NextResponse.json(detail, { headers: CACHE_HEADERS });
     }
 
     return NextResponse.json({ error: "Unknown type" }, { status: 400 });
