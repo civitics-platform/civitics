@@ -325,3 +325,4 @@
 2026-05-10 | FIX-192 | e6464187 | local-only | feat(fec-bulk): cache FEC zips in R2 + Last-Modified watermark + FEC_INDIV_CYCLES env knob
 2026-05-10 | FIX-193 | e6464187 | local-only | feat(fec-bulk): cache FEC zips in R2 + Last-Modified watermark + FEC_INDIV_CYCLES env knob
 2026-05-10 | FIX-243 | 89dd4d5b | local+prod | feat(search): edge-cache /api/search + /api/search/entity responses
+2026-05-10 | FIX-240 | dc496ed6 | local-only | feat(fec-bulk): Schedule E IE ingest closes super-PAC → candidate trail
