@@ -21,6 +21,14 @@
 --                       the winner-set; losers vacate the surface.
 --   7. fp rewrite     — UPDATE donor_fingerprint + canonical_name on the
 --                       surviving rows whose new_fp differs from old_fp.
+--
+-- Pro has a non-zero default statement_timeout on the migration connection
+-- (~2 min). Step 4 (relationship merge) on 550K rows + 159K relationships
+-- ran cleanly locally in 7s but tripped the prod timeout, so disable it for
+-- this migration session — the DO block then runs uninterrupted.
+
+SET statement_timeout = 0;
+SET idle_in_transaction_session_timeout = 0;
 
 DO $$
 DECLARE
