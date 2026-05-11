@@ -150,15 +150,41 @@ export function parseCcl(buffer: Buffer): Map<string, string> {
 }
 
 // ---------------------------------------------------------------------------
-// Donor fingerprinting
+// Donor fingerprinting — FIX-239 Layer 1 + FIX-244.
+//
+// Mirrors the SQL function `public.canonical_donor_fingerprint(name, zip5)`
+// added in supabase/migrations/20260510000005. The two MUST stay in sync —
+// the FEC pipeline's idempotency under the donor_fingerprint UNIQUE index
+// depends on TS output ≡ SQL output for every (name, zip5) pair.
+//
+// Layer 1 rule set (investigation docs/FIX_239_INVESTIGATION.md §4):
+//   1. Uppercase.
+//   2. Strip apostrophes and periods to EMPTY STRING (FIX-244 — was the bug
+//      that split O'BRIEN into "O BRIEN"). M.D. -> MD, ST. -> ST.
+//   3. Replace other non-alphanumeric with whitespace; collapse runs.
+//   4. Tokenize.
+//   5. Drop honorific noise tokens (MR/MRS/MD/PHD/...). Preserve generational
+//      tokens (JR/SR/II-V) and middle initials — these are the signal that
+//      keeps the §2.4 father/son cases split.
+//   6. Emit `tokens.join(' ') + '|' + zip5` (or name-only if zip5 blank).
 // ---------------------------------------------------------------------------
 
+const NOISE_TOKENS: ReadonlySet<string> = new Set([
+  "MR", "MRS", "MS", "DR", "MD", "PHD", "ESQ", "REV", "HON",
+  "CPA", "CFP", "JD", "RN", "DDS", "DO", "MBA",
+]);
+
 function normalizeName(raw: string): string {
-  return (raw ?? "")
+  if (!raw) return "";
+  const cleaned = raw
     .toUpperCase()
+    .replace(/['.]/g, "")          // FIX-244: apostrophe + period → empty, not whitespace
     .replace(/[^A-Z0-9 ]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+  if (!cleaned) return "";
+  const tokens = cleaned.split(" ").filter((t) => t && !NOISE_TOKENS.has(t));
+  return tokens.join(" ");
 }
 
 function zip5Of(raw: string): string {
@@ -168,6 +194,7 @@ function zip5Of(raw: string): string {
 
 export function donorFingerprint(name: string, zip5: string): string {
   const n = normalizeName(name);
+  if (!n) return "";
   const z = zip5Of(zip5);
   return z ? `${n}|${z}` : n;
 }
@@ -256,6 +283,7 @@ export async function streamIndiv(
 
     const zip5 = zip5Of(cols[INDIV_COL.ZIP_CODE] ?? "");
     const fp   = donorFingerprint(name, zip5);
+    if (!fp) continue;            // name was empty / pure noise after Layer 1 normalization
     const dt   = (cols[INDIV_COL.TRANSACTION_DT] ?? "").trim();
     const amtCents = Math.round(amt * 100);
 
