@@ -21,6 +21,8 @@ interface ProfileTabsProps {
     proposalId?: string;
     voteQuestion?: string | null;
   }>;
+  /** Tier='candidate' rows have no votes by design — hide the Votes tab. FIX-246 */
+  isCandidate?: boolean;
 }
 
 export function ProfileTabs({
@@ -32,12 +34,13 @@ export function ProfileTabs({
   issueStats,
   voteBreakdown,
   allVotes,
+  isCandidate = false,
 }: ProfileTabsProps) {
   const [active, setActive] = useState<Tab>("overview");
 
   const tabs: { id: Tab; label: string; count?: number }[] = [
     { id: "overview", label: "Overview" },
-    { id: "votes", label: "Votes", count: voteCount },
+    ...(isCandidate ? [] : [{ id: "votes" as Tab, label: "Votes", count: voteCount }]),
     { id: "donations", label: "Donations", count: donorCount },
     { id: "connections", label: "Connections" },
   ];

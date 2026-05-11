@@ -86,6 +86,8 @@ import {
 import {
   extractZipEntryToDisk,
   parseFecDate,
+  parseFecName,
+  candMasterUrl,
   downloadWithR2Cache,
   headFecFile,
   parseLastModified,
@@ -93,6 +95,11 @@ import {
 } from "./util";
 import { parseCcl, streamIndiv } from "./indiv";
 import { streamIndependentExpenditures } from "./indep-exp";
+import {
+  streamCandidates,
+  loadOfficialsByFecIds,
+} from "./candidates";
+import { seedJurisdictions, seedGoverningBodies } from "../../jurisdictions/us-states";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -296,14 +303,6 @@ function parseWeBall(buffer: Buffer): WeBallRow[] {
 // ---------------------------------------------------------------------------
 
 /** "SMITH, JOHN A" → { last: "SMITH", first: "JOHN" } */
-function parseFecName(candName: string): { last: string; first: string } {
-  const commaIdx = candName.indexOf(",");
-  if (commaIdx < 0) return { last: candName.toUpperCase().trim(), first: "" };
-  const last  = candName.slice(0, commaIdx).toUpperCase().trim();
-  const parts = candName.slice(commaIdx + 1).trim().split(/\s+/);
-  return { last, first: (parts[0] ?? "").toUpperCase() };
-}
-
 function normalizeLastName(name: string | null): string {
   return (name ?? "").toUpperCase().replace(/[^A-Z]/g, "");
 }
@@ -621,6 +620,22 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
       // Non-fatal: missing pipeline_state row, RLS hiccup, etc.
     }
 
+    // FIX-246: seed jurisdictions + governing bodies for the cn{yy} stage's
+    //          candidate-row inserts. Idempotent — re-seed defensively when
+    //          fec-bulk runs standalone (orchestrator path already seeds).
+    console.log("\n  Seeding jurisdictions + governing bodies (idempotent)...");
+    const { federalId, stateIds } = await seedJurisdictions(db);
+    const governingBodies = await seedGoverningBodies(db, federalId);
+
+    // FIX-246: pre-fetch every officials row carrying any FEC ID (either
+    //          fec_candidate_id or a role-prefix-matching fec_id). The cn{yy}
+    //          stage skips these so it never overwrites electeds and never
+    //          double-inserts candidates across cycles.
+    const existingByFecCandId = await loadOfficialsByFecIds(db);
+    console.log(`    Officials indexed by FEC ID: ${existingByFecCandId.size}`);
+    let totalCandidatesInserted = 0;
+    let totalCandidatesMatched  = 0;
+
     // ── Load officials + match index (once, shared across all cycles) ───────
     console.log("\n  Loading officials and building match index...");
     const officials   = await loadOfficials(db);
@@ -667,6 +682,51 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
           try { fs.unlinkSync(path.join(TMP_DIR, f.name)); } catch { /* ok */ }
         }
         continue;
+      }
+
+      // Step 1b (FIX-246): Ingest FEC candidate master (cn{yy}.zip) before
+      // weball matching so candidate rows exist and weball's fec_candidate_id
+      // discovery path can resolve against them without going through the
+      // name-fallback branch.
+      console.log(`  [${CYCLE} 1b/5] Ingesting FEC candidate master (cn${CYCLE.slice(2)}.zip)...`);
+      const cnZipName = `cn${CYCLE.slice(2)}.zip`;
+      const cnZipPath = path.join(TMP_DIR, cnZipName);
+      let cnDownloadOk = true;
+      try {
+        const r2Key = r2KeyFor(CYCLE, cnZipName);
+        const res   = await downloadWithR2Cache(candMasterUrl(CYCLE), r2Key, cnZipPath, downloadFile);
+        const sizeMb = (fs.statSync(cnZipPath).size / 1024 / 1024).toFixed(2);
+        console.log(`    ✓ ${cnZipName} (${sizeMb} MB, source=${res.source})`);
+        if (res.r2UploadPromise) cycleR2Uploads.push(res.r2UploadPromise);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn(`    ✗ ${cnZipName} unavailable: ${msg} — continuing without candidate ingest for ${CYCLE}`);
+        cnDownloadOk = false;
+      }
+      if (cnDownloadOk) {
+        const candResult = await streamCandidates({
+          db,
+          zipPath: cnZipPath,
+          cycle:   CYCLE,
+          tempDir: TMP_DIR,
+          existingByFecCandId,
+          governingBodies,
+          stateJurisdictions: stateIds,
+          federalId,
+        });
+        totalCandidatesInserted += candResult.insertedNew;
+        totalCandidatesMatched  += candResult.matchedExisting;
+        console.log(
+          `    cn${CYCLE.slice(2)}: lines=${candResult.linesRead} ` +
+          `new=${candResult.insertedNew} existing=${candResult.matchedExisting} ` +
+          `no_office=${candResult.skippedNoOffice} failed=${candResult.failed}`,
+        );
+        // Wire newly-inserted candidate rows into the weball match index so
+        // weball matching resolves them via fec_candidate_id this cycle.
+        for (const { candId, officialId } of candResult.newInserts) {
+          index.byFecId.set(candId, officialId);
+        }
+        try { fs.unlinkSync(cnZipPath); } catch { /* ok */ }
       }
 
       // Step 2: Extract + parse weball
@@ -1320,7 +1380,7 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
     const totalUpserted =
       pacEntitiesUpserted + pacRelsUpserted + finalResult.upserted +
       indivDonorsUpserted + indivRelsUpserted + indivCmteRelsUpserted +
-      ieRelsUpserted;
+      ieRelsUpserted + totalCandidatesInserted;
     const totalFailed =
       pacEntitiesFailed + pacRelsFailed + finalResult.failed +
       indivDonorsFailed + indivRelsFailed + indivCmteRelsFailed +
@@ -1333,6 +1393,8 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
     console.log(`  ${"Officials matched by fec_id:".padEnd(38)} ${matchedByFecId}`);
     console.log(`  ${"Officials matched by name:".padEnd(38)} ${matchedByName}`);
     console.log(`  ${"Officials not matched:".padEnd(38)} ${notMatched}`);
+    console.log(`  ${"Candidate officials inserted:".padEnd(38)} ${totalCandidatesInserted}`);
+    console.log(`  ${"Candidate officials existing:".padEnd(38)} ${totalCandidatesMatched}`);
     console.log(`  ${"PAC entity upserts (per-cycle):".padEnd(38)} ${pacEntitiesUpserted}`);
     console.log(`  ${"PAC entity failures:".padEnd(38)} ${pacEntitiesFailed}`);
     console.log(`  ${"PAC entity upserts (cross-cycle):".padEnd(38)} ${finalResult.upserted}`);

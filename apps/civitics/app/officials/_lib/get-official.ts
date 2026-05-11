@@ -27,6 +27,7 @@ export type CachedOfficial = {
   term_start: string | null;
   term_end: string | null;
   is_active: boolean;
+  tier: string | null;
   jurisdiction_id: string | null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   jurisdictions: any;
@@ -40,7 +41,7 @@ export const getCachedOfficial = cache(
     const { data } = await supabase
       .from("officials")
       .select(
-        "id, full_name, first_name, last_name, role_title, party, photo_url, email, website_url, phone, district_name, term_start, term_end, is_active, jurisdiction_id, jurisdictions!jurisdiction_id(name), governing_bodies!governing_body_id(short_name)"
+        "id, full_name, first_name, last_name, role_title, party, photo_url, email, website_url, phone, district_name, term_start, term_end, is_active, tier, jurisdiction_id, jurisdictions!jurisdiction_id(name), governing_bodies!governing_body_id(short_name)"
       )
       .eq("id", id)
       .single();

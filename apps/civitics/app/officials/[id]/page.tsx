@@ -379,10 +379,15 @@ export default async function OfficialProfilePage({
     term_start: (o.term_start ?? null) as string | null,
     term_end: (o.term_end ?? null) as string | null,
     is_active: (o.is_active ?? null) as boolean | null,
+    tier: (o.tier ?? "elected") as string,
     jurisdiction_id: (o.jurisdiction_id ?? null) as string | null,
     state_name: (o.jurisdictions?.name ?? null) as string | null,
     chamber: (o.governing_bodies?.short_name ?? null) as string | null,
   };
+
+  // FIX-246: candidate-tier officials skip incumbent-only sections (votes,
+  // committees, promises, career history) since their data is empty by design.
+  const isCandidate = official.tier === "candidate";
 
   // Aggregate donor data in JS (no GROUP BY in PostgREST)
   const donorMap = new Map<
@@ -705,6 +710,11 @@ export default async function OfficialProfilePage({
                   <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${party.badge}`}>
                     {party.label}
                   </span>
+                  {isCandidate && (
+                    <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold bg-amber-100 text-amber-900">
+                      Candidate
+                    </span>
+                  )}
                   {official.chamber && (
                     <span className="rounded border border-gray-200 px-1.5 py-0.5 font-mono text-[10px] text-gray-500">
                       {official.chamber.toUpperCase()}
@@ -821,10 +831,12 @@ export default async function OfficialProfilePage({
         </div>
 
         {/* QWEN-ADDED: Promises Section - flagship feature, shown below basic info */}
-        <PromisesSection promises={promises} />
+        {/* FIX-246: hide incumbent-only sections for tier='candidate' rows */}
+        {!isCandidate && <PromisesSection promises={promises} />}
 
         {/* ── TABS ────────────────────────────────────────────────────────── */}
         <ProfileTabs
+          isCandidate={isCandidate}
           voteCount={voteCount}
           donorCount={donorCount}
           issueStats={issueStats}
@@ -843,13 +855,13 @@ export default async function OfficialProfilePage({
               ) : null}
 
               {/* QWEN-ADDED: Career History Section */}
-              <CareerHistory items={careerHistory} />
+              {!isCandidate && <CareerHistory items={careerHistory} />}
 
               {/* Civic responsiveness */}
               <ResponsivenessCard data={responsivenessData} />
 
               {/* Quick vote breakdown */}
-              {recentVotes.length > 0 && (
+              {!isCandidate && recentVotes.length > 0 && (
                 <div>
                   <h3 className="text-sm font-semibold text-gray-900 mb-3">Recent Votes</h3>
                   <div className="divide-y divide-gray-100 rounded-lg border border-gray-200 overflow-hidden">

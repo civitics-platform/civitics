@@ -50,6 +50,16 @@ into Supabase. Runs as Node.js scripts, not as part of the Next.js build.
 | `ccl24.zip` | `fec.gov/files/bulk-downloads/2024/ccl24.zip` | Candidate-committee linkage — maps committee IDs to candidate IDs (FIX-181). Tiny (~0.5 MB). |
 | `indiv24.zip` | `fec.gov/files/bulk-downloads/2024/indiv24.zip` | Itemized individual contributions (~2 GB compressed, ~10 GB uncompressed) — streamed line-by-line, aggregated in-memory per cycle (FIX-181). Skip with `FEC_INCLUDE_INDIV=false`. |
 | `independent_expenditure_2024.csv` | `fec.gov/files/bulk-downloads/2024/independent_expenditure_2024.csv` | FEC Form 3X Schedule E independent expenditures (~19 MB per cycle). CSV with header row, comma-delimited (unlike all the other pipe-delimited bulk files). FIX-240. |
+| `cn24.zip` | `fec.gov/files/bulk-downloads/2024/cn24.zip` | Candidate master — one row per FEC candidate (House/Senate/Pres) per cycle (~10k rows, <1 MB). Inserts new `officials` rows with `tier='candidate'`, keyed on `source_ids->>'fec_candidate_id'`. Existing elected officials are never overwritten. FIX-246. |
+
+Step 1b (candidate master, FIX-246):
+- Downloads `cn{yy}.zip` per cycle (~kB-MB, ~10k candidate rows for a presidential cycle).
+- Streams line-by-line; skips rows with `CAND_OFFICE ∉ {H, S, P}` (rare municipal / blank).
+- For each `CAND_ID`, looks it up in `existingByFecCandId` (pre-fetched at pipeline start). If already present (elected or prior cycle), skips — never overwrites elected officials.
+- Otherwise inserts a new `officials` row with `tier='candidate'`, `role_title='Candidate for {President/Senator/Representative}'`, party from `CAND_PTY_AFFILIATION`, district from `CAND_OFFICE_DISTRICT` (House only), `source_ids = {fec_candidate_id: CAND_ID}`, `metadata.cand_status/cand_ici/fec_election_yr` preserved for downstream audits.
+- Idempotency: dedup happens at the application layer via the pre-fetched map plus an in-run `seenThisRun` set. Re-running the pipeline inserts zero new candidate rows for a stable cn{yy}.zip.
+- Newly-inserted (CAND_ID → officials.id) pairs are pushed into the weball match index so weball matching for the same cycle resolves them via fec_candidate_id rather than the name fallback.
+- Runs **before** weball matching for the cycle, so the matching path benefits from the new candidate rows on first ingestion.
 
 Step 2b (PAC contributions):
 - Parses cm24 into a committee ID → name/type/connected-org lookup map

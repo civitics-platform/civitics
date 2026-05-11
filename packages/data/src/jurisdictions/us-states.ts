@@ -183,11 +183,12 @@ export async function seedJurisdictions(
 export async function seedGoverningBodies(
   db: ReturnType<typeof createAdminClient>,
   federalId: string
-): Promise<{ senateId: string; houseId: string }> {
+): Promise<{ senateId: string; houseId: string; presidencyId: string }> {
   console.log("  Seeding governing bodies...");
 
   let senateId: string;
   let houseId: string;
+  let presidencyId: string;
 
   // --- US Senate ---
   try {
@@ -263,7 +264,44 @@ export async function seedGoverningBodies(
     throw err;
   }
 
-  return { senateId, houseId };
+  // --- Office of the President (executive — for presidential candidates, FIX-246) ---
+  try {
+    const { data: existing, error: selectErr } = await db
+      .from("governing_bodies")
+      .select("id")
+      .eq("name", "Office of the President of the United States")
+      .eq("type", "executive")
+      .maybeSingle();
+
+    if (selectErr) throw selectErr;
+
+    if (existing) {
+      presidencyId = existing.id;
+    } else {
+      const { data: inserted, error: insertErr } = await db
+        .from("governing_bodies")
+        .insert({
+          name: "Office of the President of the United States",
+          short_name: "Presidency",
+          type: "executive",
+          jurisdiction_id: federalId,
+          seat_count: 1,
+          term_length_years: 4,
+          website_url: "https://www.whitehouse.gov",
+          is_active: true,
+        })
+        .select("id")
+        .single();
+
+      if (insertErr) throw insertErr;
+      presidencyId = inserted.id;
+    }
+  } catch (err) {
+    console.error("  Error upserting US Presidency:", err);
+    throw err;
+  }
+
+  return { senateId, houseId, presidencyId };
 }
 
 // ---------------------------------------------------------------------------
@@ -279,9 +317,10 @@ if (require.main === module) {
       console.log("State IDs seeded:", stateIds.size);
       return seedGoverningBodies(db, federalId);
     })
-    .then(({ senateId, houseId }) => {
+    .then(({ senateId, houseId, presidencyId }) => {
       console.log("US Senate ID:", senateId);
       console.log("US House ID:", houseId);
+      console.log("US Presidency ID:", presidencyId);
       console.log("Done.");
     })
     .catch((err) => {

@@ -41,6 +41,25 @@ export async function extractZipEntryToDisk(
   });
 }
 
+/** FEC bulk URL for candidate master (cn{yy}.zip) per cycle. FIX-246. */
+export function candMasterUrl(cycle: string): string {
+  const yy = cycle.slice(2);
+  return `https://www.fec.gov/files/bulk-downloads/${cycle}/cn${yy}.zip`;
+}
+
+/**
+ * Parse FEC "LASTNAME, FIRSTNAME [MIDDLE]" → { last, first } in uppercase.
+ * The full middle name / suffix is dropped — callers can reconstruct from
+ * the raw input if needed.
+ */
+export function parseFecName(candName: string): { last: string; first: string } {
+  const commaIdx = candName.indexOf(",");
+  if (commaIdx < 0) return { last: candName.toUpperCase().trim(), first: "" };
+  const last  = candName.slice(0, commaIdx).toUpperCase().trim();
+  const parts = candName.slice(commaIdx + 1).trim().split(/\s+/);
+  return { last, first: (parts[0] ?? "").toUpperCase() };
+}
+
 /** Convert FEC date "MMDDYYYY" → ISO "YYYY-MM-DD". Returns null if invalid. */
 export function parseFecDate(mmddyyyy: string): string | null {
   if (!mmddyyyy || mmddyyyy.length !== 8) return null;
