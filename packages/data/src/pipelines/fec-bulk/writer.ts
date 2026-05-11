@@ -461,6 +461,119 @@ export async function upsertIndividualDonationsBatch(
 }
 
 // ---------------------------------------------------------------------------
+// Batched independent-expenditure upsert (FIX-240)
+//
+// FEC Schedule E rows: a spending committee (typically a super PAC) makes
+// an independent expenditure for or against a candidate. SUP_OPP carries
+// the direction — 'S' (support) or 'O' (oppose). Support and oppose
+// stay distinct rows in financial_relationships because they are
+// politically opposite; collapsing them would erase the most important
+// signal in the data.
+//
+// Schema choice: two new relationship_type enum values, 'ie_support' and
+// 'ie_oppose', added by migration 20260510000000. The existing 4-col
+// arbiter `(relationship_type, from_id, to_id, cycle_year)` naturally
+// distinguishes S vs O via relationship_type — no new column, no new
+// index needed. Raw 'S'/'O' is still preserved in metadata.support_oppose.
+//
+// Graph derivation: rebuild_entity_connections() includes ie_support in
+// the 'donation' edge case (positive money flow toward a candidate). It
+// does NOT include ie_oppose, since opposition spending is anti-candidate
+// and showing it as a "donation" edge would misrepresent the influence
+// direction. A dedicated opposition connection_type is a follow-up.
+// ---------------------------------------------------------------------------
+
+export interface IndependentExpenditureInput {
+  fromEntityId:   string;  // spending committee's financial_entities.id
+  toOfficialId:   string;
+  cycleYear:      number;
+  amountCents:    number;  // cycle-level aggregate (one direction only)
+  occurredAt:     string | null;
+  supportOppose:  "S" | "O";
+  spendingCmteId: string;  // for source_url + provenance
+  txCount:        number;
+}
+
+export async function upsertIndependentExpendituresBatch(
+  db:     Db,
+  inputs: IndependentExpenditureInput[],
+): Promise<RelationshipBatchResult> {
+  let upserted = 0;
+  let failed   = 0;
+
+  if (inputs.length === 0) return { upserted, failed };
+
+  // Client-side dedup. Two aggregations for the same (cmte, cand, cycle,
+  // S/O) shouldn't arise from a single pipeline run because we aggregate
+  // by exactly that key in the streamer — but if an official ever ends up
+  // double-mapped (carries both an H-prefixed and S-prefixed FEC ID, etc.)
+  // the writer might see two inputs that resolve to the same officialId.
+  // Same pattern as upsertDonationRelationshipsBatch.
+  const merged = new Map<string, IndependentExpenditureInput>();
+  for (const input of inputs) {
+    const key = `${input.fromEntityId}|${input.toOfficialId}|${input.cycleYear}|${input.supportOppose}`;
+    const existing = merged.get(key);
+    if (!existing) {
+      merged.set(key, { ...input });
+      continue;
+    }
+    existing.amountCents += input.amountCents;
+    existing.txCount     += input.txCount;
+    if (input.occurredAt && (!existing.occurredAt || input.occurredAt > existing.occurredAt)) {
+      existing.occurredAt = input.occurredAt;
+    }
+  }
+
+  const records = [...merged.values()].map((input) => {
+    const occurredAt = input.occurredAt ?? `${input.cycleYear}-01-01`;
+    const relationshipType =
+      input.supportOppose === "S" ? "ie_support" : "ie_oppose";
+    return {
+      relationship_type: relationshipType,
+      from_type:         "financial_entity",
+      from_id:           input.fromEntityId,
+      to_type:           "official",
+      to_id:             input.toOfficialId,
+      amount_cents:      input.amountCents,
+      occurred_at:       occurredAt,
+      started_at:        null,
+      ended_at:          null,
+      cycle_year:        input.cycleYear,
+      source_url:        `https://www.fec.gov/data/committee/${input.spendingCmteId}/`,
+      metadata: {
+        fec_committee_id: input.spendingCmteId,
+        support_oppose:   input.supportOppose, // raw 'S' or 'O' from FEC
+        tx_count:         input.txCount,
+        source:           "fec_bulk_ie",
+        aggregated:       true,
+      },
+    };
+  });
+
+  for (let i = 0; i < records.length; i += RELATIONSHIP_CHUNK) {
+    const chunk = records.slice(i, i + RELATIONSHIP_CHUNK);
+
+    const { error } = await db
+      .from("financial_relationships")
+      .upsert(chunk, {
+        onConflict: "relationship_type,from_id,to_id,cycle_year",
+      });
+
+    if (error) {
+      console.error(
+        `    indep-exp chunk ${i}-${i + chunk.length} failed: ${error.message}`,
+      );
+      failed += chunk.length;
+      continue;
+    }
+
+    upserted += chunk.length;
+  }
+
+  return { upserted, failed };
+}
+
+// ---------------------------------------------------------------------------
 // Batched individual → committee donation upsert (FIX-236)
 //
 // Donations from an individual donor to a non-candidate committee — super

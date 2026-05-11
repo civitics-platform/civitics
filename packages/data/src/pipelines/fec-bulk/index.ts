@@ -78,8 +78,10 @@ import {
   upsertIndividualDonorsBatch,
   upsertIndividualDonationsBatch,
   upsertIndividualToCommitteeDonationsBatch,
+  upsertIndependentExpendituresBatch,
   type IndividualDonationInput,
   type IndividualToCommitteeDonationInput,
+  type IndependentExpenditureInput,
 } from "./writer";
 import {
   extractZipEntryToDisk,
@@ -90,6 +92,7 @@ import {
   type FecHead,
 } from "./util";
 import { parseCcl, streamIndiv } from "./indiv";
+import { streamIndependentExpenditures } from "./indep-exp";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -565,6 +568,10 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
   let indivRelsUpserted = 0, indivRelsFailed = 0;
   let indivCmteRelsUpserted = 0, indivCmteRelsFailed = 0; // FIX-236
   let indivCyclesProcessed = 0, indivCyclesSkipped = 0;
+  let ieRelsUpserted = 0, ieRelsFailed = 0;               // FIX-240
+  let ieSupportRows = 0, ieOpposeRows = 0;                // FIX-240
+  let ieSpendersUpserted = 0, ieSpendersOrphaned = 0;     // FIX-240
+  let ieCyclesProcessed = 0, ieCyclesSkipped = 0;         // FIX-240
   let matchedByFecId = 0, matchedByName = 0, notMatched = 0;
   let totalFileMb = 0;
 
@@ -1112,6 +1119,121 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
         }
       }
 
+      // Step 6: Independent expenditures (Schedule E) — FIX-240
+      // ~19 MB CSV per cycle, plain comma-delimited with a header row
+      // (different from the pipe-delimited TXTs everywhere else in FEC).
+      // Closes the super-PAC → candidate trail that pas2 (24K/24Z direct
+      // contributions) misses because IE-only super PACs never appear in
+      // pas2. Tolerant of FEC outages: failure here is logged and the
+      // cycle still wraps up cleanly with PAC + indiv data already landed.
+      console.log(`  [${CYCLE} 6/7] Independent expenditures (Schedule E) stage...`);
+      {
+        const ieName = `independent_expenditure_${CYCLE}.csv`;
+        const ieUrl  = `https://www.fec.gov/files/bulk-downloads/${CYCLE}/${ieName}`;
+        const iePath = path.join(TMP_DIR, ieName);
+
+        let ieFailed = false;
+        try {
+          const r2KeyIe = r2KeyFor(CYCLE, ieName);
+          const res = await downloadWithR2Cache(ieUrl, r2KeyIe, iePath, downloadFile);
+          const sizeMb = (fs.statSync(iePath).size / 1024 / 1024).toFixed(1);
+          console.log(`    ✓ ${ieName} (${sizeMb} MB, source=${res.source})`);
+          totalFileMb += parseFloat(sizeMb);
+          if (res.r2UploadPromise) cycleR2Uploads.push(res.r2UploadPromise);
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          console.warn(`    ✗ ${ieName} unavailable: ${msg} — skipping IE stage for cycle ${CYCLE}`);
+          ieFailed = true;
+        }
+
+        if (!ieFailed) {
+          try {
+            const ieResult = await streamIndependentExpenditures(iePath, candidateSet);
+
+            // Surface new spenders that pas2/cm/indiv never touched. The
+            // canonical case is IE-only super PACs whose only money flow
+            // is Schedule E spending — no pas2 contributions, no indiv
+            // inflow within our matched-candidate set. Pre-upsert them
+            // here so we can resolve cmteId → entityId for the writer.
+            const newSpenderIds = new Set<string>();
+            for (const agg of ieResult.aggregations.values()) {
+              if (!entityIdByCmteAcc.has(agg.spendingCmteId)) {
+                newSpenderIds.add(agg.spendingCmteId);
+              }
+            }
+
+            if (newSpenderIds.size > 0) {
+              const newSpenderInputs = [];
+              let orphanCount = 0;
+              for (const cmteId of newSpenderIds) {
+                const info = cmteInfoSeen.get(cmteId);
+                if (!info) { orphanCount++; continue; }
+                newSpenderInputs.push({
+                  cmteId,
+                  name:              info.name,
+                  cmteType:          info.type,
+                  connectedOrg:      info.connectedOrg,
+                  // total_donated_cents kept at 0 — the cross-cycle final
+                  // pass below uses cmteTotalsAllCycles (pas2-derived) as
+                  // truth, same convention as the FIX-236 pre-upsert.
+                  totalDonatedCents: 0,
+                });
+              }
+              console.log(
+                `    New IE spenders to pre-upsert: ${newSpenderInputs.length}` +
+                (orphanCount > 0 ? ` (${orphanCount} orphan spe_id(s) missing from cm — skipped)` : ""),
+              );
+              ieSpendersOrphaned += orphanCount;
+
+              if (newSpenderInputs.length > 0) {
+                const spenderResult = await upsertPacEntitiesBatch(db, newSpenderInputs);
+                pacEntitiesUpserted += spenderResult.upserted;
+                pacEntitiesFailed   += spenderResult.failed;
+                ieSpendersUpserted  += spenderResult.upserted;
+                for (const [cmteId, id] of spenderResult.entityIdByCmte.entries()) {
+                  entityIdByCmteAcc.set(cmteId, id);
+                }
+              }
+            }
+
+            // Build IE writer inputs from aggregations
+            const ieInputs: IndependentExpenditureInput[] = [];
+            for (const agg of ieResult.aggregations.values()) {
+              const fromEntityId = entityIdByCmteAcc.get(agg.spendingCmteId);
+              if (!fromEntityId) continue;
+              const toOfficialId = index.byFecId.get(agg.candId);
+              if (!toOfficialId) continue;
+              ieInputs.push({
+                fromEntityId,
+                toOfficialId,
+                cycleYear:      parseInt(CYCLE, 10),
+                amountCents:    agg.totalCents,
+                occurredAt:     agg.latestDate,
+                supportOppose:  agg.supportOppose,
+                spendingCmteId: agg.spendingCmteId,
+                txCount:        agg.txCount,
+              });
+              if (agg.supportOppose === "S") ieSupportRows++;
+              else                            ieOpposeRows++;
+            }
+
+            console.log(`    Upserting ${ieInputs.length.toLocaleString()} IE relationships (S: ${ieSupportRows}, O: ${ieOpposeRows})...`);
+            const ieWriteResult = await upsertIndependentExpendituresBatch(db, ieInputs);
+            ieRelsUpserted += ieWriteResult.upserted;
+            ieRelsFailed   += ieWriteResult.failed;
+            console.log(`    IE relationships — upserted: ${ieWriteResult.upserted}  failed: ${ieWriteResult.failed}`);
+
+            ieCyclesProcessed++;
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            console.warn(`    IE stage failed: ${msg} — continuing without IE data for cycle ${CYCLE}`);
+            ieCyclesSkipped++;
+          }
+        } else {
+          ieCyclesSkipped++;
+        }
+      }
+
       // Drain any in-flight R2 cache uploads for this cycle before nuking
       // its temp files — `Upload` streams from disk; unlinking mid-upload
       // fails on Windows and is racy on Linux.
@@ -1125,9 +1247,9 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
         cycleR2Uploads = [];
       }
 
-      // Step 6: cleanup cycle-specific temp files (keeps disk under ~3GB
-      // peak with indiv enabled — pas2 + indiv + cm + weball + ccl per cycle)
-      console.log(`  [${CYCLE} 6/6] Cleaning up cycle ${CYCLE} temp files...`);
+      // Step 7: cleanup cycle-specific temp files (keeps disk under ~3GB
+      // peak with indiv enabled — pas2 + indiv + cm + weball + ccl + IE per cycle)
+      console.log(`  [${CYCLE} 7/7] Cleaning up cycle ${CYCLE} temp files...`);
       for (const f of fs.readdirSync(TMP_DIR)) {
         try { fs.unlinkSync(path.join(TMP_DIR, f)); } catch { /* ok */ }
       }
@@ -1197,10 +1319,12 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
 
     const totalUpserted =
       pacEntitiesUpserted + pacRelsUpserted + finalResult.upserted +
-      indivDonorsUpserted + indivRelsUpserted + indivCmteRelsUpserted;
+      indivDonorsUpserted + indivRelsUpserted + indivCmteRelsUpserted +
+      ieRelsUpserted;
     const totalFailed =
       pacEntitiesFailed + pacRelsFailed + finalResult.failed +
-      indivDonorsFailed + indivRelsFailed + indivCmteRelsFailed;
+      indivDonorsFailed + indivRelsFailed + indivCmteRelsFailed +
+      ieRelsFailed;
 
     console.log("\n  ──────────────────────────────────────────────────");
     console.log("  FEC Bulk Pipeline Report (multi-cycle)");
@@ -1223,6 +1347,12 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
       console.log(`  ${"Indiv → cmte rels upserted:".padEnd(38)} ${indivCmteRelsUpserted}`);
       console.log(`  ${"Indiv → cmte rels failed:".padEnd(38)} ${indivCmteRelsFailed}`);
     }
+    console.log(`  ${"IE cycles processed / skipped:".padEnd(38)} ${ieCyclesProcessed} / ${ieCyclesSkipped}`);
+    console.log(`  ${"IE new spenders pre-upserted:".padEnd(38)} ${ieSpendersUpserted}`);
+    console.log(`  ${"IE orphan spe_ids skipped:".padEnd(38)} ${ieSpendersOrphaned}`);
+    console.log(`  ${"IE → cand rels upserted (S+O):".padEnd(38)} ${ieRelsUpserted}`);
+    console.log(`  ${"IE → cand rels failed:".padEnd(38)} ${ieRelsFailed}`);
+    console.log(`  ${"IE support / oppose split:".padEnd(38)} ${ieSupportRows} / ${ieOpposeRows}`);
     console.log(`  ${"Financial data processed:".padEnd(38)} ~${totalFileMb.toFixed(1)} MB`);
 
     // Sanity check — top 10 PAC donors by total contributed (cross-cycle)

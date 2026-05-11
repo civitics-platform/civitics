@@ -49,6 +49,7 @@ into Supabase. Runs as Node.js scripts, not as part of the Next.js build.
 | `pas224.zip` | `fec.gov/files/bulk-downloads/2024/pas224.zip` | PAC to candidate contributions (~200 MB compressed) — **streamed line-by-line, never fully loaded** |
 | `ccl24.zip` | `fec.gov/files/bulk-downloads/2024/ccl24.zip` | Candidate-committee linkage — maps committee IDs to candidate IDs (FIX-181). Tiny (~0.5 MB). |
 | `indiv24.zip` | `fec.gov/files/bulk-downloads/2024/indiv24.zip` | Itemized individual contributions (~2 GB compressed, ~10 GB uncompressed) — streamed line-by-line, aggregated in-memory per cycle (FIX-181). Skip with `FEC_INCLUDE_INDIV=false`. |
+| `independent_expenditure_2024.csv` | `fec.gov/files/bulk-downloads/2024/independent_expenditure_2024.csv` | FEC Form 3X Schedule E independent expenditures (~19 MB per cycle). CSV with header row, comma-delimited (unlike all the other pipe-delimited bulk files). FIX-240. |
 
 Step 2b (PAC contributions):
 - Parses cm24 into a committee ID → name/type/connected-org lookup map
@@ -72,6 +73,18 @@ Step 2c (individual contributions, FIX-181 + FIX-236):
   - `to_type='official'`, `source='fec_bulk_indiv'` for candidate recipients
   - `to_type='financial_entity'`, `source='fec_bulk_indiv_to_committee'` for super PAC / party / other PAC recipients
 - Disable per-run with `FEC_INCLUDE_INDIV=false`. Caches FEC bulk files in R2 is a planned follow-up (FIX-192)
+
+Step 2d (independent expenditures, FIX-240):
+- Downloads `independent_expenditure_{cycle}.csv` (Schedule E) per cycle — small (~19 MB) plain CSV with header row, comma-delimited (different format from the pipe-delimited TXTs everywhere else).
+- Streams via `csv-parse`, aggregating by `(spe_id × cand_id × sup_opp)` where `sup_opp` is FEC's raw 'S' (support) or 'O' (oppose) flag.
+- Filters: `spe_id` non-empty, `cand_id` non-empty AND in our matched-officials set, `sup_opp` ∈ {S,O}, `exp_amo` > 0. No itemization threshold — Schedule E has no $200 floor and small IEs are still meaningful.
+- Date parsing: Schedule E dates come as `DD-MON-YY` (e.g. `27-SEP-24`) — NOT MMDDYYYY. A local `parseDdMonYy` helper converts to ISO.
+- Pre-upserts any new spending committees that pas2/cm/indiv never surfaced (the canonical case: IE-only super PACs whose only money flow is Schedule E spending). `total_donated_cents` left at 0 — pas2 outflow remains the source of truth for that column.
+- Upserts `financial_relationships` rows with **two new** `relationship_type` enum values: `ie_support` (for `sup_opp='S'`) and `ie_oppose` (for `sup_opp='O'`). They use the existing 4-col arbiter `(relationship_type, from_id, to_id, cycle_year)` for idempotency — no new column or index — because relationship_type itself distinguishes S from O. Raw `'S'`/`'O'` is also preserved in `metadata.support_oppose` for downstream consumers.
+- `source='fec_bulk_ie'` in metadata; `source_url` points at `fec.gov/data/committee/{spe_id}/`.
+- Graph derivation: `rebuild_entity_connections()` folds `ie_support` into the existing 'donation' edge case (positive money flow toward a candidate). `ie_oppose` is NOT folded in — opposition spending is anti-candidate; misclassifying it as "donation" would inflate apparent support. Opposition graph edges are a planned follow-up.
+- No separate R2 cache watermark — the file is small enough that the R2 freshness check in `downloadWithR2Cache` already short-circuits an unchanged download.
+- Stage failure is tolerated — if the IE CSV is unavailable, the cycle still wraps up with PAC + indiv data already landed.
 
 - No API key required, no rate limits
 - FEC updates bulk files weekly — run on weekly cron (Sunday block of nightly orchestrator)
