@@ -330,3 +330,4 @@
 2026-05-10 | FIX-239 | cd7d45c6 | local-only | feat(donor-dedup): FIX-239 Layer 1 + FIX-244 conservative donor name normalization
 2026-05-10 | FIX-244 | 970f5b4c | local+prod | fix(donor-dedup): disable statement_timeout for FIX-239 backfill on Pro
 2026-05-10 | FIX-244 | cd7d45c6 | local-only | feat(donor-dedup): FIX-239 Layer 1 + FIX-244 conservative donor name normalization
+2026-05-10 | FIX-246 | 51951e87 | local+prod | feat(officials): FIX-246 add tier column + ingest FEC cn{yy}.zip candidate master
