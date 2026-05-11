@@ -322,3 +322,5 @@
 2026-05-10 | FIX-233 | ddf8ca13 | local-only | chore(observability): peak_rss_mb in data_sync_log.metadata
 2026-05-10 | FIX-236 | 98cb30fd | local-only | feat(fec-bulk,search): surface individual donors + ingest super-PAC indiv contributions
 2026-05-10 | FIX-237 | cbe7acc2 | local+prod | feat(donors): build /donors/[id] profile page
+2026-05-10 | FIX-192 | e6464187 | local-only | feat(fec-bulk): cache FEC zips in R2 + Last-Modified watermark + FEC_INDIV_CYCLES env knob
+2026-05-10 | FIX-193 | e6464187 | local-only | feat(fec-bulk): cache FEC zips in R2 + Last-Modified watermark + FEC_INDIV_CYCLES env knob
