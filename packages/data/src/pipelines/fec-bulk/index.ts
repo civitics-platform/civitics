@@ -719,6 +719,7 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
         console.log(
           `    cn${CYCLE.slice(2)}: lines=${candResult.linesRead} ` +
           `new=${candResult.insertedNew} existing=${candResult.matchedExisting} ` +
+          `name_updated=${candResult.nameUpdated} ` +
           `no_office=${candResult.skippedNoOffice} failed=${candResult.failed}`,
         );
         // Wire newly-inserted candidate rows into the weball match index so

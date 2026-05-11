@@ -72,6 +72,9 @@ export interface CandidateStreamResult {
   linesRead:       number;
   matchedExisting: number;
   insertedNew:     number;
+  /** Existing tier='candidate' rows whose computed full_name/first_name
+   *  changed (e.g. after a parseFecName fix). FIX-247. */
+  nameUpdated:     number;
   skippedNoOffice: number;
   failed:          number;
   /** Newly-inserted (CAND_ID → officials.id) pairs from this run. Caller can
@@ -125,6 +128,49 @@ interface PendingRow {
   row:    OfficialInsert;
 }
 
+interface PendingNameUpdate {
+  officialId: string;
+  full_name:  string;
+  first_name: string | null;
+  last_name:  string | null;
+}
+
+/**
+ * Pre-fetch (id, first_name, last_name, full_name, source_ids) for every
+ * tier='candidate' row. Returned as a CAND_ID → row map so streamCandidates
+ * can detect names that need updating after a parseFecName change. FIX-247.
+ */
+async function loadExistingCandidateNames(
+  db: AdminDb,
+): Promise<Map<string, { id: string; first_name: string | null; last_name: string | null; full_name: string }>> {
+  const map = new Map<string, { id: string; first_name: string | null; last_name: string | null; full_name: string }>();
+  const PAGE = 1000;
+  let offset = 0;
+  for (;;) {
+    const { data, error } = await db
+      .from("officials")
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .select("id, first_name, last_name, full_name, source_ids, tier" as any)
+      .eq("tier", "candidate")
+      .range(offset, offset + PAGE - 1);
+    if (error) throw new Error(`loadExistingCandidateNames: ${error.message}`);
+    const rows = (data ?? []) as unknown as Array<{
+      id:          string;
+      first_name:  string | null;
+      last_name:   string | null;
+      full_name:   string;
+      source_ids:  Record<string, string>;
+    }>;
+    for (const r of rows) {
+      const candId = r.source_ids?.["fec_candidate_id"];
+      if (candId) map.set(candId, { id: r.id, first_name: r.first_name, last_name: r.last_name, full_name: r.full_name });
+    }
+    if (rows.length < PAGE) break;
+    offset += PAGE;
+  }
+  return map;
+}
+
 async function flushBatch(
   db:         AdminDb,
   pending:    PendingRow[],
@@ -159,10 +205,17 @@ export async function streamCandidates(opts: CandidateStreamOptions): Promise<Ca
     linesRead:       0,
     matchedExisting: 0,
     insertedNew:     0,
+    nameUpdated:     0,
     skippedNoOffice: 0,
     failed:          0,
     newInserts:      [],
   };
+
+  // FIX-247: pre-fetch existing tier='candidate' rows so we can detect rows
+  //          whose full_name / first_name / last_name would parse differently
+  //          under the current parser and queue UPDATEs for them. Elected rows
+  //          are excluded — their names are owned by congress/openstates.
+  const existingCandidateNames = await loadExistingCandidateNames(opts.db);
 
   const yy = opts.cycle.slice(2);
   const txtPath = path.join(opts.tempDir, `cn-${yy}-extracted.txt`);
@@ -184,7 +237,8 @@ export async function streamCandidates(opts: CandidateStreamOptions): Promise<Ca
     crlfDelay: Infinity,
   });
 
-  const pending: PendingRow[] = [];
+  const pending:        PendingRow[]         = [];
+  const pendingUpdates: PendingNameUpdate[]  = [];
   const seenThisRun = new Set<string>();
 
   for await (const line of rl) {
@@ -204,6 +258,27 @@ export async function streamCandidates(opts: CandidateStreamOptions): Promise<Ca
 
     if (opts.existingByFecCandId.has(candId) || seenThisRun.has(candId)) {
       result.matchedExisting++;
+      // FIX-247: if the existing row is a tier='candidate' row whose stored
+      // name differs from what the current parser yields, queue an UPDATE.
+      // We only update candidate-tier rows — elected rows are owned by
+      // congress/openstates pipelines.
+      const existingName = existingCandidateNames.get(candId);
+      if (existingName) {
+        const { full: newFull, first: newFirst, last: newLast } = formatFecName(candName);
+        if (
+          existingName.full_name  !== newFull  ||
+          existingName.first_name !== (newFirst || null) ||
+          existingName.last_name  !== (newLast  || null)
+        ) {
+          pendingUpdates.push({
+            officialId: existingName.id,
+            full_name:  newFull,
+            first_name: newFirst || null,
+            last_name:  newLast  || null,
+          });
+        }
+      }
+      seenThisRun.add(candId);
       continue;
     }
     seenThisRun.add(candId);
@@ -268,9 +343,37 @@ export async function streamCandidates(opts: CandidateStreamOptions): Promise<Ca
     pending.length = 0;
   }
 
+  // FIX-247: apply any queued name updates for existing candidate rows.
+  if (pendingUpdates.length > 0) {
+    const { updated, failed } = await flushNameUpdates(opts.db, pendingUpdates);
+    result.nameUpdated += updated;
+    result.failed      += failed;
+  }
+
   try { fs.unlinkSync(txtPath); } catch { /* best-effort cleanup */ }
 
   return result;
+}
+
+async function flushNameUpdates(
+  db:      AdminDb,
+  updates: PendingNameUpdate[],
+): Promise<{ updated: number; failed: number }> {
+  let updated = 0, failed = 0;
+  for (const u of updates) {
+    const { error } = await db
+      .from("officials")
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .update({ full_name: u.full_name, first_name: u.first_name, last_name: u.last_name } as any)
+      .eq("id", u.officialId);
+    if (error) {
+      console.error(`    candidate UPDATE failed (${u.officialId}): ${error.message}`);
+      failed++;
+    } else {
+      updated++;
+    }
+  }
+  return { updated, failed };
 }
 
 /**

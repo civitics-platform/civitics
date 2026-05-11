@@ -49,15 +49,53 @@ export function candMasterUrl(cycle: string): string {
 
 /**
  * Parse FEC "LASTNAME, FIRSTNAME [MIDDLE]" → { last, first } in uppercase.
- * The full middle name / suffix is dropped — callers can reconstruct from
- * the raw input if needed.
+ *
+ * Two or more leading single-letter tokens are joined with periods so that
+ * "VANCE, J D" → first = "J.D." rather than "J" (FIX-247). Single-token
+ * proper first names are preserved as-is: "VANCE, JOHN D" → first = "JOHN".
+ *
+ * Middle names / suffixes past the leading initial cluster (or past a single
+ * proper first name) are dropped — callers can reconstruct from the raw input
+ * if they need them.
  */
 export function parseFecName(candName: string): { last: string; first: string } {
   const commaIdx = candName.indexOf(",");
   if (commaIdx < 0) return { last: candName.toUpperCase().trim(), first: "" };
   const last  = candName.slice(0, commaIdx).toUpperCase().trim();
-  const parts = candName.slice(commaIdx + 1).trim().split(/\s+/);
-  return { last, first: (parts[0] ?? "").toUpperCase() };
+  const rawAfter = candName.slice(commaIdx + 1).trim();
+  if (!rawAfter) return { last, first: "" };
+
+  const tokens = rawAfter.split(/\s+/).map((t) => t.toUpperCase());
+
+  // Collect leading single-letter initials, tolerating a trailing period or
+  // comma on each token. "J", "J.", and "J," all count as one initial.
+  const initials: string[] = [];
+  let i = 0;
+  while (i < tokens.length) {
+    const stripped = tokens[i].replace(/[.,]+$/, "");
+    if (stripped.length === 1 && /^[A-Z]$/.test(stripped)) {
+      initials.push(stripped);
+      i++;
+    } else {
+      break;
+    }
+  }
+
+  if (initials.length >= 2) {
+    // Two or more leading initials → join with periods.
+    return { last, first: initials.join(".") + "." };
+  }
+  if (initials.length === 1 && tokens.length === 1) {
+    // Single token that is a single letter (e.g. "PRYCE, B"). Store as-is.
+    return { last, first: initials[0] };
+  }
+  if (initials.length === 1) {
+    // One leading initial followed by a proper name (rare, e.g. "DOE, J SMITH").
+    // The initial is the first name; the following tokens are middle.
+    return { last, first: initials[0] };
+  }
+  // First token is a proper name — use as-is, drop any trailing middle tokens.
+  return { last, first: tokens[0] };
 }
 
 /** Convert FEC date "MMDDYYYY" → ISO "YYYY-MM-DD". Returns null if invalid. */
