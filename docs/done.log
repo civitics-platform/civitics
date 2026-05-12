@@ -334,3 +334,4 @@
 2026-05-10 | FIX-247 | 9e4aa797 | local+prod | fix(fec-bulk): FIX-247 join leading initials in parseFecName ("J D" → "J.D.")
 2026-05-10 | FIX-250 | 9fafb170 | local-only | feat(irs990): FIX-250 ingest officers + grants-out from IRS Form 990 bulk
 2026-05-11 | FIX-250 | f046d6c3 | prod-only | chore(fixes): sync status after FIX-250 + record prod verification
+2026-05-11 | FIX-251 | 4e6916f4 | local+prod | feat(littlesis): FIX-251 ingest LittleSis bulk dumps with 2-hop expansion
