@@ -14,6 +14,7 @@ import { getDbSizeMb, getLastSync, startSync, completeSync, failSync, captureRss
 import { runRegulationsPipeline } from "./regulations";
 import { runFecBulkPipeline } from "./fec-bulk";
 import { runIrs990Pipeline } from "./irs990";
+import { runLittleSisPipeline } from "./littlesis";
 import { runUsaSpendingBulkPipeline } from "./usaspending-bulk";
 import { runCourtListenerPipeline } from "./courtlistener";
 import { runOpenStatesPipeline } from "./openstates";
@@ -345,6 +346,7 @@ export interface NightlySyncResults {
     congress_votes?: NightlyPipelineResult;
     fec_bulk?: NightlyPipelineResult;
     irs990?: NightlyPipelineResult;
+    littlesis?: NightlyPipelineResult;
     usaspending?: NightlyPipelineResult;
     courtlistener?: NightlyPipelineResult;
     openstates?: NightlyPipelineResult;
@@ -518,6 +520,25 @@ export async function runNightlySync(): Promise<NightlySyncResults> {
         console.error("[nightly] irs990 failed:", msg);
         results.pipelines.irs990 = { status: "failed", error: msg };
         results.errors.push(`IRS 990: ${msg}`);
+      }
+    }
+
+    // FIX-251: LittleSis bulk (relationship graph, CC-BY-SA 4.0). Runs after
+    // FEC + IRS-990 so the match index sees fresh PAC / nonprofit entities
+    // in the same Sunday wave. Pipeline's internal SHA256 fingerprint gate
+    // makes this a no-op (skipSync='dumps_unchanged') until LittleSis
+    // publishes new dumps — typically every few months — so weekly cadence
+    // is safe.
+    {
+      const t0 = Date.now();
+      try {
+        const r = await runLittleSisPipeline();
+        results.pipelines.littlesis = { status: "complete", rows_added: r.inserted, duration_ms: Date.now() - t0 };
+      } catch (err) {
+        const msg = errMsg(err);
+        console.error("[nightly] littlesis failed:", msg);
+        results.pipelines.littlesis = { status: "failed", error: msg };
+        results.errors.push(`LittleSis: ${msg}`);
       }
     }
 

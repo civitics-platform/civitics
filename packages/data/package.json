@@ -13,6 +13,7 @@
     "data:regulations": "tsx --env-file=../../.env.local src/pipelines/regulations/index.ts",
     "data:fec-bulk": "tsx --env-file=../../.env.local src/pipelines/fec-bulk/index.ts",
     "data:irs990": "tsx --env-file=../../.env.local src/pipelines/irs990/index.ts",
+    "data:littlesis": "tsx --env-file=../../.env.local src/pipelines/littlesis/index.ts",
     "data:usaspending-bulk": "tsx --env-file=../../.env.local src/pipelines/usaspending-bulk/index.ts",
     "data:usaspending-bulk-assistance": "tsx --env-file=../../.env.local src/pipelines/usaspending-bulk/index.ts --category=assistance",
     "data:courts": "tsx --env-file=../../.env.local src/pipelines/courtlistener/index.ts",
