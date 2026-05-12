@@ -513,24 +513,13 @@ export async function GET(req: NextRequest) {
     }
 
     if (q.length >= 2) {
-      // FEC stores individual donor NAME as "LAST, FIRST" — so a natural-order
-      // query like "Elon Musk" won't substring-match "MUSK, ELON". For any
-      // two-token query that doesn't already contain a comma, also try the
-      // reversed comma form. PostgREST's `.or()` parser treats commas as
-      // condition separators, so values containing commas must be wrapped in
-      // double-quotes (per Supabase/PostgREST docs); backslash-escape does NOT
-      // work and yields PGRST100 "failed to parse logic tree". The query
-      // string itself is bare ASCII (per Civitics Latin-script donor data) so
-      // wrapping it in `"..."` is unambiguous.
-      const tokens = q.trim().split(/\s+/);
-      if (tokens.length === 2 && !q.includes(",")) {
-        const reversed = `${tokens[1]}, ${tokens[0]}`;
-        qb = qb.or(
-          `display_name.ilike."%${q}%",display_name.ilike."%${reversed}%"`,
-        );
-      } else {
-        qb = qb.ilike("display_name", `%${q}%`);
-      }
+      // FIX-238: canonical_name is the unified search target. Individual donor
+      // canonical_name is now stored in natural "FIRST [MI] LAST" form by the
+      // pipeline (canonicalDonorName in indiv.ts), backed by the trgm GIN
+      // financial_entities_canonical_trgm. Non-individual canonical_name has
+      // corporate suffixes stripped, so it's a good trigram target there too.
+      // No more LAST-FIRST reversal fallback (the FIX-236 workaround).
+      qb = qb.ilike("canonical_name", `%${q}%`);
     }
 
     if (sortParam === "amount_desc" || (!q && !filterIndustry)) {

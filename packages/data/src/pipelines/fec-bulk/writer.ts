@@ -16,6 +16,7 @@
  */
 
 import type { createAdminClient } from "@civitics/db";
+import { canonicalDonorName } from "./indiv";
 
 type Db = ReturnType<typeof createAdminClient>;
 
@@ -210,13 +211,13 @@ export async function upsertIndividualDonorsBatch(
     if (!existing.zip5       && input.zip5)       existing.zip5       = input.zip5;
   }
 
-  // canonical_name = fingerprint up to the "|" — name without zip, suitable
-  // for the existing canonical_name trgm search index.
+  // canonical_name = natural-order "FIRST [MI] LAST" reorder of the raw FEC
+  // display name (FIX-238). The trgm GIN on canonical_name (migration
+  // 20260512000002) backs the search-route ilike. display_name keeps the
+  // raw FEC "LAST, FIRST" source-cased form for UI display.
   const records = [...merged.values()].map((input) => {
-    const pipeIdx = input.fingerprint.indexOf("|");
-    const namePart = pipeIdx >= 0 ? input.fingerprint.slice(0, pipeIdx) : input.fingerprint;
     return {
-      canonical_name:       namePart,
+      canonical_name:       canonicalDonorName(input.displayName),
       display_name:         input.displayName,
       entity_type:          "individual" as const,
       fec_committee_id:     null,

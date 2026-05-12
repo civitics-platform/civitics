@@ -200,6 +200,31 @@ export function donorFingerprint(name: string, zip5: string): string {
 }
 
 // ---------------------------------------------------------------------------
+// Natural-order canonical name for the search-side index (FIX-238).
+//
+// FEC stores individual NAME as "LAST, FIRST [MI] [SFX/HONORIFIC]". The
+// donor_fingerprint normalizes that into a comma-less "LAST FIRST" form for
+// dedup — but a natural-order search like "Elon Musk" can't substring-match
+// "MUSK ELON" via trigrams in any useful way. canonical_name is the search
+// target (trgm GIN added by 20260512000002), so we reorder it to natural
+// "FIRST [MI] LAST" form at write time and the search route can ilike it
+// directly without the LAST-FIRST reversal fallback FIX-236 added.
+//
+// Fingerprint stays in LAST-FIRST normalized form — it's the UNIQUE-index
+// dedup key, must remain stable across pipeline runs.
+// ---------------------------------------------------------------------------
+
+export function canonicalDonorName(rawName: string): string {
+  if (!rawName) return "";
+  const commaIdx = rawName.indexOf(",");
+  const reordered =
+    commaIdx >= 0
+      ? `${rawName.slice(commaIdx + 1).trim()} ${rawName.slice(0, commaIdx).trim()}`
+      : rawName;
+  return normalizeName(reordered);
+}
+
+// ---------------------------------------------------------------------------
 // Stream indiv{yy}.zip → in-memory aggregations
 // ---------------------------------------------------------------------------
 
