@@ -52,9 +52,12 @@ export const SEED_NONPROFITS: SeedNonprofit[] = [
   // ── 501(c)(3) — politically active think tanks / advocacy ────────────────
   { ein: "300126510", expectedName: "Center for American Progress",            subsection: "501c3", note: "Progressive policy" },
   { ein: "237327730", expectedName: "Heritage Foundation",                     subsection: "501c3", note: "Conservative policy" },
-  { ein: "521263436", expectedName: "Cato Institute",                          subsection: "501c3", note: "Libertarian policy" },
+  { ein: "237432162", expectedName: "Cato Institute",                          subsection: "501c3", note: "Libertarian policy. EIN verified via ProPublica 2026-05-11." },
+  { ein: "521263436", expectedName: "Ludwig von Mises Institute",              subsection: "501c3", note: "Austrian-school libertarian think tank. (Originally seeded under the Cato Institute label; this is the correct identity for EIN 521263436.)" },
   { ein: "521324646", expectedName: "American Enterprise Institute",           subsection: "501c3", note: "Conservative policy" },
   { ein: "521304621", expectedName: "Brookings Institution",                   subsection: "501c3", note: "Centrist policy" },
+  { ein: "133839293", expectedName: "Brennan Center for Justice",              subsection: "501c3", note: "Voting rights / democracy reform (NYU-affiliated). EIN verified via ProPublica 2026-05-11." },
+  { ein: "521623781", expectedName: "American Israel Education Foundation",    subsection: "501c3", note: "AIPAC's 501(c)(3) sister; politically active. (Originally seeded under the Brennan Center label; this is the correct identity for EIN 521623781.)" },
   { ein: "133082975", expectedName: "Demos",                                   subsection: "501c3", note: "Voting rights / democracy" },
   { ein: "521264819", expectedName: "Center for Responsive Politics (OpenSecrets)", subsection: "501c3", note: "Money-in-politics transparency" },
   { ein: "521268274", expectedName: "Citizens for Responsibility and Ethics in Washington (CREW)", subsection: "501c3", note: "Government accountability" },
@@ -67,10 +70,12 @@ export const SEED_NONPROFITS: SeedNonprofit[] = [
   { ein: "530227420", expectedName: "AFL-CIO",                                 subsection: "501c5", note: "Labor federation" },
   { ein: "131628121", expectedName: "Service Employees International Union",   subsection: "501c5", note: "SEIU" },
   { ein: "131623831", expectedName: "American Federation of Teachers",         subsection: "501c5", note: "AFT" },
-  { ein: "530115260", expectedName: "U.S. Chamber of Commerce",                subsection: "501c6", note: "Big business lobby" },
+  { ein: "530115260", expectedName: "National Education Association",          subsection: "501c5", note: "Largest US teacher's union. (Originally seeded under the U.S. Chamber of Commerce label; this is the correct identity for EIN 530115260.)" },
+  { ein: "530045720", expectedName: "U.S. Chamber of Commerce",                subsection: "501c6", note: "Big business lobby. EIN verified via ProPublica 2026-05-11." },
   { ein: "530245876", expectedName: "National Association of Manufacturers",   subsection: "501c6", note: "Industry trade group" },
   { ein: "131734621", expectedName: "American Hospital Association",           subsection: "501c6", note: "Hospital lobby" },
-  { ein: "530196605", expectedName: "American Medical Association",            subsection: "501c6", note: "Physician lobby" },
+  { ein: "360727175", expectedName: "American Medical Association",            subsection: "501c6", note: "Physician lobby. EIN verified via ProPublica 2026-05-11." },
+  { ein: "530196605", expectedName: "American National Red Cross",             subsection: "501c3", note: "Disaster relief; included by accident under the AMA label. Kept in seed because filings are already ingested at this EIN; minimally politically active. Remove if seed-list size becomes a concern." },
   // TODO: AFSCME national — multiple per-local EINs; need national HQ EIN. Likely starts 53- given DC address.
 ];
 
