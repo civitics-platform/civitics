@@ -12,6 +12,7 @@
  */
 
 import * as https from "https";
+import * as crypto from "crypto";
 import * as fs    from "fs";
 import * as path  from "path";
 import * as os    from "os";
@@ -292,14 +293,39 @@ export function safeUnlink(p: string): void {
 // Watermark helpers — public.pipeline_state(key TEXT PK, value JSONB)
 //
 // One row per pipeline+purpose. Key: 'irs990:index_watermark'. Value:
-// { "2024": "Mon, 03 May 2026 12:14:00 GMT", "2023": "..." } — Last-Modified
-// per year. Skip ingesting a year when its watermark matches the current
-// HEAD value.
+//   { "2024": { lastModified: "Mon, 03 May ...", seedFingerprint: "abc123..." }, ... }
+//
+// Skip a year only when BOTH the index's Last-Modified header matches the
+// stored value AND the seed-set fingerprint matches. Without the second
+// check, expanding the seed list never re-streams the index — a real bug
+// hit during the FIX-250 seed-correction follow-up: 4 newly-correct EINs
+// stayed unprocessed because the year's Last-Modified hadn't moved.
+//
+// Backwards-compat: old watermarks stored a plain string per year
+// (Last-Modified only). Those are deserialized as `{ lastModified, seedFingerprint: '' }`
+// — empty seedFingerprint can never match a real one, so the first run
+// after upgrading silently re-streams once and writes the new shape. No
+// migration needed.
 // ---------------------------------------------------------------------------
 
 const WATERMARK_KEY = "irs990:index_watermark";
 
-export type IndexWatermark = Record<string, string>;
+export interface YearWatermark {
+  lastModified:    string;
+  seedFingerprint: string;
+}
+
+export type IndexWatermark = Record<string, YearWatermark>;
+
+/**
+ * Stable 12-char fingerprint of the seed-EIN set. Order-independent (sort
+ * before hashing). Sha256 truncated to 12 chars — collision risk for our
+ * use case is astronomically low.
+ */
+export function fingerprintSeedEins(eins: Iterable<string>): string {
+  const sorted = Array.from(eins).sort();
+  return crypto.createHash("sha256").update(sorted.join("|")).digest("hex").slice(0, 12);
+}
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function loadIndexWatermark(db: any): Promise<IndexWatermark> {
@@ -310,7 +336,22 @@ export async function loadIndexWatermark(db: any): Promise<IndexWatermark> {
       .eq("key", WATERMARK_KEY)
       .maybeSingle();
     if (error) return {};
-    return (data?.value as IndexWatermark | null) ?? {};
+    const raw = (data?.value as Record<string, unknown> | null) ?? null;
+    if (!raw) return {};
+    const out: IndexWatermark = {};
+    for (const [year, v] of Object.entries(raw)) {
+      if (typeof v === "string") {
+        // Legacy shape — preserve lastModified but force a re-stream by
+        // leaving seedFingerprint blank.
+        out[year] = { lastModified: v, seedFingerprint: "" };
+      } else if (v && typeof v === "object" && "lastModified" in v) {
+        out[year] = {
+          lastModified:    String((v as { lastModified: unknown }).lastModified ?? ""),
+          seedFingerprint: String((v as { seedFingerprint?: unknown }).seedFingerprint ?? ""),
+        };
+      }
+    }
+    return out;
   } catch {
     return {};
   }

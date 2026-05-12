@@ -38,6 +38,7 @@ import {
   safeUnlink,
   loadIndexWatermark,
   saveIndexWatermark,
+  fingerprintSeedEins,
   normalizeEin,
   parseTaxYear,
   type IndexRow,
@@ -101,18 +102,25 @@ export async function runIrs990Pipeline(): Promise<PipelineResult> {
     console.log(`    ${officialsByName.size.toLocaleString()} canonical names indexed`);
 
     const watermark = await loadIndexWatermark(db);
+    const seedFp = fingerprintSeedEins(SEED_NONPROFITS.map((s) => s.ein));
 
     for (const year of years) {
       console.log(`\n  [year=${year}]`);
       const url = indexCsvUrl(year);
 
-      // Watermark check.
+      // Watermark check — skip only when BOTH the index Last-Modified AND
+      // the seed-EIN fingerprint match the stored values. Without the
+      // second check, expanding the seed list never re-streams the index.
       const head = await headIrsFile(url);
       const lm = head?.lastModified ?? null;
       const wmKey = String(year);
-      if (lm && watermark[wmKey] && watermark[wmKey] === lm) {
-        console.log(`    Index unchanged since last run (Last-Modified=${lm}) — skipping`);
+      const stored = watermark[wmKey];
+      if (lm && stored && stored.lastModified === lm && stored.seedFingerprint === seedFp) {
+        console.log(`    Index unchanged + seed fingerprint matches (lm=${lm}, fp=${seedFp}) — skipping`);
         continue;
+      }
+      if (lm && stored && stored.lastModified === lm && stored.seedFingerprint !== seedFp) {
+        console.log(`    Index unchanged but seed fingerprint differs (was ${stored.seedFingerprint || "<legacy>"}, now ${seedFp}) — re-streaming`);
       }
 
       // Stream the index CSV, collecting only rows whose EIN is in the seed set.
@@ -140,7 +148,7 @@ export async function runIrs990Pipeline(): Promise<PipelineResult> {
       console.log(`    New filings to ingest: ${newMatches.length} (skipping ${alreadyIngested.size} already-present)`);
       if (newMatches.length === 0) {
         if (lm) {
-          watermark[wmKey] = lm;
+          watermark[wmKey] = { lastModified: lm, seedFingerprint: seedFp };
           await saveIndexWatermark(db, watermark);
         }
         continue;
@@ -299,9 +307,11 @@ export async function runIrs990Pipeline(): Promise<PipelineResult> {
         result.failed += needed.size;
       }
 
-      // Advance watermark on successful year.
-      if (lm) {
-        watermark[wmKey] = lm;
+      // Advance watermark on a successful year (only when ALL matched filings
+      // resolved cleanly — otherwise leave the year unwatermarked so the
+      // next run retries).
+      if (lm && needed.size === 0) {
+        watermark[wmKey] = { lastModified: lm, seedFingerprint: seedFp };
         await saveIndexWatermark(db, watermark);
       }
     }
