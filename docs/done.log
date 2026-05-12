@@ -336,3 +336,4 @@
 2026-05-11 | FIX-250 | f046d6c3 | prod-only | chore(fixes): sync status after FIX-250 + record prod verification
 2026-05-11 | FIX-251 | 4e6916f4 | local+prod | feat(littlesis): FIX-251 ingest LittleSis bulk dumps with 2-hop expansion
 2026-05-11 | FIX-253 | e26f832d | local+prod | feat(edgar): FIX-253 ingest SEC EDGAR exec roster + 13D/G major shareholders
+2026-05-12 | FIX-238 | 97b24d6c | local+prod | feat(fec-bulk): FIX-238 reorder donor canonical_name to natural FIRST-LAST + trgm GIN
