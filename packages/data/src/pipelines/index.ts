@@ -15,6 +15,7 @@ import { runRegulationsPipeline } from "./regulations";
 import { runFecBulkPipeline } from "./fec-bulk";
 import { runIrs990Pipeline } from "./irs990";
 import { runLittleSisPipeline } from "./littlesis";
+import { runEdgarPipeline, runEdgarDailyPipeline } from "./edgar";
 import { runUsaSpendingBulkPipeline } from "./usaspending-bulk";
 import { runCourtListenerPipeline } from "./courtlistener";
 import { runOpenStatesPipeline } from "./openstates";
@@ -351,6 +352,8 @@ export interface NightlySyncResults {
     courtlistener?: NightlyPipelineResult;
     openstates?: NightlyPipelineResult;
     openstates_bulk_people?: NightlyPipelineResult;
+    edgar?: NightlyPipelineResult;
+    edgar_daily?: NightlyPipelineResult;
     agencies_hierarchy?: NightlyPipelineResult;
     opm_fte?: NightlyPipelineResult;
     plum_book?: NightlyPipelineResult;
@@ -463,6 +466,24 @@ export async function runNightlySync(): Promise<NightlySyncResults> {
     }
   }
 
+  // 1d. Daily — SEC EDGAR 13D/G poll (FIX-253). Scans the previous business
+  //     day's full-index for new beneficial-ownership filings touching
+  //     tracked S&P 500 CIKs. Cheap (~one HTTP call + per-hit retrieval);
+  //     skipSync if the index is unpublished (weekends/holidays). The full
+  //     DEF 14A reconciliation runs weekly in the Sunday block below.
+  {
+    const t0 = Date.now();
+    try {
+      const r = await runEdgarDailyPipeline();
+      results.pipelines.edgar_daily = { status: "complete", rows_added: r.inserted, duration_ms: Date.now() - t0 };
+    } catch (err) {
+      const msg = errMsg(err);
+      console.error("[nightly] edgar daily failed:", msg);
+      results.pipelines.edgar_daily = { status: "failed", error: msg };
+      results.errors.push(`EDGAR daily: ${msg}`);
+    }
+  }
+
   // 2. Weekly pipelines (Sunday only) — FEC bulk, USASpending, CourtListener, OpenStates
   if (isWeekly) {
     const clKey  = process.env["COURTLISTENER_API_KEY"];
@@ -539,6 +560,22 @@ export async function runNightlySync(): Promise<NightlySyncResults> {
         console.error("[nightly] littlesis failed:", msg);
         results.pipelines.littlesis = { status: "failed", error: msg };
         results.errors.push(`LittleSis: ${msg}`);
+      }
+    }
+
+    // FIX-253: SEC EDGAR weekly DEF 14A reconciliation (officer rosters +
+    // donor matching). Runs after FEC so the matcher's donor lookup sees
+    // freshly-upserted individual donor rows in the same Sunday wave.
+    {
+      const t0 = Date.now();
+      try {
+        const r = await runEdgarPipeline();
+        results.pipelines.edgar = { status: "complete", rows_added: r.inserted, duration_ms: Date.now() - t0 };
+      } catch (err) {
+        const msg = errMsg(err);
+        console.error("[nightly] edgar weekly failed:", msg);
+        results.pipelines.edgar = { status: "failed", error: msg };
+        results.errors.push(`EDGAR: ${msg}`);
       }
     }
 

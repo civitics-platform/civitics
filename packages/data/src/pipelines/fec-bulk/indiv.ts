@@ -174,7 +174,7 @@ const NOISE_TOKENS: ReadonlySet<string> = new Set([
   "CPA", "CFP", "JD", "RN", "DDS", "DO", "MBA",
 ]);
 
-function normalizeName(raw: string): string {
+export function normalizeName(raw: string): string {
   if (!raw) return "";
   const cleaned = raw
     .toUpperCase()

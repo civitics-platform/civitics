@@ -1,0 +1,76 @@
+/**
+ * FIX-253 · EDGAR util helpers.
+ *
+ * Small, dependency-free building blocks shared across the pipeline. Nothing
+ * here hits the network or the DB — keep it that way so the test surface is
+ * easy to reason about.
+ */
+
+const TITLE_PATTERNS: ReadonlyArray<readonly [RegExp, string]> = [
+  [/\b(?:chief\s+executive\s+officer|^ceo$|\bceo\b)/i, "ceo"],
+  [/\b(?:chief\s+financial\s+officer|^cfo$|\bcfo\b)/i, "cfo"],
+  [/\b(?:chief\s+operating\s+officer|^coo$|\bcoo\b)/i, "coo"],
+  [/\bchair(?:man|person|woman)?\b/i,                  "chairperson"],
+  [/\bpresident\b/i,                                   "president"],
+  [/\bdirector\b/i,                                    "director"],
+];
+
+/** Pad CIK to the 10-digit zero-prefixed form SEC URLs expect. */
+export function padCik(raw: string | number): string {
+  const s = String(raw).trim();
+  if (!s) return "";
+  return s.padStart(10, "0");
+}
+
+/** Map a free-form filed title string to one of the role_category enum values. */
+export function classifyTitle(title: string): string {
+  if (!title) return "officer";
+  for (const [re, cat] of TITLE_PATTERNS) {
+    if (re.test(title)) return cat;
+  }
+  return "officer";
+}
+
+/** Strip "0000320193-24-000123" → "000032019324000123" for filing URL paths. */
+export function accessionPathSegment(accession: string): string {
+  return accession.replace(/-/g, "");
+}
+
+/**
+ * Parse cents from strings like "$1,234,567", "1234567", "1,234.56".
+ * Returns null on parse failure; never throws. Treats bare integers as USD
+ * (DEF 14A Summary Compensation Tables disclose total comp in whole dollars).
+ */
+export function parseUsdCents(raw: string | null | undefined): number | null {
+  if (!raw) return null;
+  const cleaned = raw.replace(/[$,\s]/g, "").trim();
+  if (!cleaned) return null;
+  const n = Number(cleaned);
+  if (!Number.isFinite(n)) return null;
+  return Math.round(n * 100);
+}
+
+/** Parse a percentage string ("7.3%", "7.3") to a numeric. Null on failure. */
+export function parsePercent(raw: string | null | undefined): number | null {
+  if (!raw) return null;
+  const cleaned = raw.replace(/[%\s]/g, "").trim();
+  if (!cleaned) return null;
+  const n = Number(cleaned);
+  return Number.isFinite(n) ? n : null;
+}
+
+/** Best-effort YYYY-MM-DD parse. Accepts ISO, "September 24, 2024", "9/24/24". */
+export function parseFilingDate(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const s = raw.trim();
+  const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+  const dt = new Date(s);
+  if (!Number.isFinite(dt.getTime())) return null;
+  return dt.toISOString().slice(0, 10);
+}
+
+/** Current calendar year (UTC) — used as the default for DEF 14A effective_year. */
+export function currentYear(): number {
+  return new Date().getUTCFullYear();
+}
