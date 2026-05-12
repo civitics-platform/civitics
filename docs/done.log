@@ -335,3 +335,4 @@
 2026-05-10 | FIX-250 | 9fafb170 | local-only | feat(irs990): FIX-250 ingest officers + grants-out from IRS Form 990 bulk
 2026-05-11 | FIX-250 | f046d6c3 | prod-only | chore(fixes): sync status after FIX-250 + record prod verification
 2026-05-11 | FIX-251 | 4e6916f4 | local+prod | feat(littlesis): FIX-251 ingest LittleSis bulk dumps with 2-hop expansion
+2026-05-11 | FIX-253 | e26f832d | local+prod | feat(edgar): FIX-253 ingest SEC EDGAR exec roster + 13D/G major shareholders
