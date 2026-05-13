@@ -1,0 +1,96 @@
+[pipeline] target: https://xsazcoxinpgttgquwvuf.supabase.co (REMOTE)
+=== pipeline_runtime_stats_mv (p50/p95/max in ms) ===
+  {"pipeline":"agencies-hierarchy","runs_30d":2,"successful_runs_30d":2,"success_rate_pct":100,"p50_duration_ms":2368,"p95_duration_ms":3937,"max_duration_ms":4111,"last_run_at":"2026-04-28T03:28:25.75+00:00","max_peak_rss_mb":null,"p95_peak_rss_mb":null}
+  {"pipeline":"agency_enrichment","runs_30d":3,"successful_runs_30d":3,"success_rate_pct":100,"p50_duration_ms":5022,"p95_duration_ms":10872,"max_duration_ms":11522,"last_run_at":"2026-05-07T00:49:17.857+00:00","max_peak_rss_mb":null,"p95_peak_rss_mb":null}
+  {"pipeline":"agency_leadership","runs_30d":6,"successful_runs_30d":5,"success_rate_pct":83.3,"p50_duration_ms":68820,"p95_duration_ms":112863,"max_duration_ms":117953,"last_run_at":"2026-05-09T07:05:47.692+00:00","max_peak_rss_mb":null,"p95_peak_rss_mb":null}
+  {"pipeline":"congress_committees","runs_30d":5,"successful_runs_30d":4,"success_rate_pct":80,"p50_duration_ms":21539,"p95_duration_ms":66432,"max_duration_ms":75228,"last_run_at":"2026-04-28T03:31:38.1+00:00","max_peak_rss_mb":null,"p95_peak_rss_mb":null}
+  {"pipeline":"congress_officials","runs_30d":11,"successful_runs_30d":11,"success_rate_pct":100,"p50_duration_ms":54418,"p95_duration_ms":69912,"max_duration_ms":73661,"last_run_at":"2026-05-12T05:39:35.227+00:00","max_peak_rss_mb":137,"p95_peak_rss_mb":137}
+  {"pipeline":"congress_votes","runs_30d":11,"successful_runs_30d":11,"success_rate_pct":100,"p50_duration_ms":126036,"p95_duration_ms":147176,"max_duration_ms":151812,"last_run_at":"2026-05-12T05:40:05.388+00:00","max_peak_rss_mb":168,"p95_peak_rss_mb":168}
+  {"pipeline":"courtlistener","runs_30d":4,"successful_runs_30d":4,"success_rate_pct":100,"p50_duration_ms":130766,"p95_duration_ms":145958,"max_duration_ms":146378,"last_run_at":"2026-04-28T03:22:59.173+00:00","max_peak_rss_mb":null,"p95_peak_rss_mb":null}
+  {"pipeline":"elections","runs_30d":2,"successful_runs_30d":2,"success_rate_pct":100,"p50_duration_ms":375020,"p95_duration_ms":545871,"max_duration_ms":564854,"last_run_at":"2026-04-28T23:31:44.7+00:00","max_peak_rss_mb":null,"p95_peak_rss_mb":null}
+  {"pipeline":"entity_connections_rebuild","runs_30d":9,"successful_runs_30d":9,"success_rate_pct":100,"p50_duration_ms":847166,"p95_duration_ms":913217,"max_duration_ms":915656,"last_run_at":"2026-05-12T05:43:26.828+00:00","max_peak_rss_mb":141,"p95_peak_rss_mb":141}
+  {"pipeline":"fec_bulk","runs_30d":11,"successful_runs_30d":10,"success_rate_pct":90.9,"p50_duration_ms":248132,"p95_duration_ms":3094245,"max_duration_ms":4264563,"last_run_at":"2026-05-11T05:44:08.941+00:00","max_peak_rss_mb":408,"p95_peak_rss_mb":405}
+  {"pipeline":"irs990","runs_30d":4,"successful_runs_30d":4,"success_rate_pct":100,"p50_duration_ms":132624,"p95_duration_ms":296956,"max_duration_ms":303875,"last_run_at":"2026-05-12T01:36:17.648+00:00","max_peak_rss_mb":502,"p95_peak_rss_mb":485}
+  {"pipeline":"legistar","runs_30d":1,"successful_runs_30d":1,"success_rate_pct":100,"p50_duration_ms":410851,"p95_duration_ms":410851,"max_duration_ms":410851,"last_run_at":"2026-04-23T05:19:06.621+00:00","max_peak_rss_mb":null,"p95_peak_rss_mb":null}
+  {"pipeline":"littlesis","runs_30d":1,"successful_runs_30d":1,"success_rate_pct":100,"p50_duration_ms":932915,"p95_duration_ms":932915,"max_duration_ms":932915,"last_run_at":"2026-05-12T05:01:57.873+00:00","max_peak_rss_mb":1020,"p95_peak_rss_mb":1020}
+  {"pipeline":"nightly_cron","runs_30d":16,"successful_runs_30d":11,"success_rate_pct":68.8,"p50_duration_ms":964906,"p95_duration_ms":1533754,"max_duration_ms":1549661,"last_run_at":"2026-05-11T06:00:00.304+00:00","max_peak_rss_mb":171,"p95_peak_rss_mb":171}
+  {"pipeline":"openstates","runs_30d":2,"successful_runs_30d":2,"success_rate_pct":100,"p50_duration_ms":1219305,"p95_duration_ms":1533889,"max_duration_ms":1568843,"last_run_at":"2026-04-28T03:25:02.716+00:00","max_peak_rss_mb":null,"p95_peak_rss_mb":null}
+  {"pipeline":"openstates_bulk_people","runs_30d":20,"successful_runs_30d":20,"success_rate_pct":100,"p50_duration_ms":31244,"p95_duration_ms":38255,"max_duration_ms":48854,"last_run_at":"2026-05-12T05:42:37.253+00:00","max_peak_rss_mb":167,"p95_peak_rss_mb":166}
+  {"pipeline":"opm_fte","runs_30d":1,"successful_runs_30d":1,"success_rate_pct":100,"p50_duration_ms":6540,"p95_duration_ms":6540,"max_duration_ms":6540,"last_run_at":"2026-05-08T05:34:50.511+00:00","max_peak_rss_mb":null,"p95_peak_rss_mb":null}
+  {"pipeline":"plum_book","runs_30d":6,"successful_runs_30d":6,"success_rate_pct":100,"p50_duration_ms":15862,"p95_duration_ms":835132,"max_duration_ms":1058271,"last_run_at":"2026-05-09T07:05:19.393+00:00","max_peak_rss_mb":null,"p95_peak_rss_mb":null}
+  {"pipeline":"regulations","runs_30d":22,"successful_runs_30d":20,"success_rate_pct":90.9,"p50_duration_ms":5846,"p95_duration_ms":179155,"max_duration_ms":230915,"last_run_at":"2026-05-12T05:39:29.424+00:00","max_peak_rss_mb":118,"p95_peak_rss_mb":118}
+  {"pipeline":"tag_rules","runs_30d":10,"successful_runs_30d":10,"success_rate_pct":100,"p50_duration_ms":124720,"p95_duration_ms":239171,"max_duration_ms":245910,"last_run_at":"2026-05-12T05:49:04.548+00:00","max_peak_rss_mb":171,"p95_peak_rss_mb":170}
+  {"pipeline":"tag-rules","runs_30d":10,"successful_runs_30d":10,"success_rate_pct":100,"p50_duration_ms":182628,"p95_duration_ms":250273,"max_duration_ms":265071,"last_run_at":"2026-05-01T05:49:59.628+00:00","max_peak_rss_mb":null,"p95_peak_rss_mb":null}
+  {"pipeline":"tiger_districts","runs_30d":4,"successful_runs_30d":4,"success_rate_pct":100,"p50_duration_ms":690376,"p95_duration_ms":782752,"max_duration_ms":785939,"last_run_at":"2026-05-09T08:06:58.7+00:00","max_peak_rss_mb":null,"p95_peak_rss_mb":null}
+  {"pipeline":"usaspending","runs_30d":4,"successful_runs_30d":4,"success_rate_pct":100,"p50_duration_ms":17464,"p95_duration_ms":20328,"max_duration_ms":20659,"last_run_at":"2026-04-25T05:58:43.442+00:00","max_peak_rss_mb":null,"p95_peak_rss_mb":null}
+  {"pipeline":"usaspending_bulk","runs_30d":6,"successful_runs_30d":5,"success_rate_pct":83.3,"p50_duration_ms":783506,"p95_duration_ms":954152,"max_duration_ms":999460,"last_run_at":"2026-05-10T06:17:39.608+00:00","max_peak_rss_mb":null,"p95_peak_rss_mb":null}
+  {"pipeline":"usaspending_bulk_assistance","runs_30d":2,"successful_runs_30d":2,"success_rate_pct":100,"p50_duration_ms":186412,"p95_duration_ms":191964,"max_duration_ms":192581,"last_run_at":"2026-05-10T06:34:19.169+00:00","max_peak_rss_mb":null,"p95_peak_rss_mb":null}
+
+=== data_sync_log — last 30 rows ===
+  {"pipeline":"fec_bulk","status":"failed","started_at":"2026-05-13T00:10:13.821+00:00","completed_at":"2026-05-13T02:26:40.615762+00:00","rows_inserted":0,"rows_updated":0,"error_message":"reaped_orphan"}
+  {"pipeline":"edgar_daily","status":"skipped","started_at":"2026-05-13T00:10:13.033+00:00","completed_at":"2026-05-13T00:10:13.768+00:00","rows_inserted":0,"rows_updated":0,"error_message":null}
+  {"pipeline":"openstates_bulk_people","status":"complete","started_at":"2026-05-13T00:09:47.255+00:00","completed_at":"2026-05-13T00:10:12.966+00:00","rows_inserted":0,"rows_updated":7355,"error_message":null}
+  {"pipeline":"congress_votes","status":"complete","started_at":"2026-05-13T00:05:34.923+00:00","completed_at":"2026-05-13T00:09:47.202+00:00","rows_inserted":496,"rows_updated":204,"error_message":null}
+  {"pipeline":"congress_officials","status":"complete","started_at":"2026-05-13T00:05:04.577+00:00","completed_at":"2026-05-13T00:05:34.876+00:00","rows_inserted":0,"rows_updated":536,"error_message":null}
+  {"pipeline":"regulations","status":"complete","started_at":"2026-05-13T00:04:59.549+00:00","completed_at":"2026-05-13T00:05:04.511+00:00","rows_inserted":7,"rows_updated":992,"error_message":null}
+  {"pipeline":"edgar","status":"complete","started_at":"2026-05-12T06:22:54.433+00:00","completed_at":"2026-05-12T06:22:57.45+00:00","rows_inserted":8,"rows_updated":0,"error_message":null}
+  {"pipeline":"edgar","status":"complete","started_at":"2026-05-12T06:22:49.215+00:00","completed_at":"2026-05-12T06:22:52.402+00:00","rows_inserted":8,"rows_updated":0,"error_message":null}
+  {"pipeline":"edgar","status":"complete","started_at":"2026-05-12T06:21:36.542+00:00","completed_at":"2026-05-12T06:21:39.898+00:00","rows_inserted":8,"rows_updated":0,"error_message":null}
+  {"pipeline":"edgar","status":"complete","started_at":"2026-05-12T06:19:11.708+00:00","completed_at":"2026-05-12T06:19:14.963+00:00","rows_inserted":5,"rows_updated":0,"error_message":null}
+  {"pipeline":"edgar","status":"complete","started_at":"2026-05-12T06:17:55.104+00:00","completed_at":"2026-05-12T06:18:39.983+00:00","rows_inserted":7,"rows_updated":0,"error_message":null}
+  {"pipeline":"edgar","status":"complete","started_at":"2026-05-12T06:14:48.313+00:00","completed_at":"2026-05-12T06:15:05.629+00:00","rows_inserted":5,"rows_updated":0,"error_message":null}
+  {"pipeline":"tag_rules","status":"complete","started_at":"2026-05-12T05:49:04.548+00:00","completed_at":"2026-05-12T05:50:16.339+00:00","rows_inserted":1633,"rows_updated":0,"error_message":null}
+  {"pipeline":"entity_connections_rebuild","status":"complete","started_at":"2026-05-12T05:43:26.828+00:00","completed_at":"2026-05-12T05:49:04.268+00:00","rows_inserted":1914338,"rows_updated":0,"error_message":null}
+  {"pipeline":"openstates_bulk_people","status":"complete","started_at":"2026-05-12T05:42:37.253+00:00","completed_at":"2026-05-12T05:43:14.95+00:00","rows_inserted":0,"rows_updated":7355,"error_message":null}
+  {"pipeline":"congress_votes","status":"complete","started_at":"2026-05-12T05:40:05.388+00:00","completed_at":"2026-05-12T05:42:37.2+00:00","rows_inserted":110,"rows_updated":202,"error_message":null}
+  {"pipeline":"congress_officials","status":"complete","started_at":"2026-05-12T05:39:35.227+00:00","completed_at":"2026-05-12T05:40:05.348+00:00","rows_inserted":0,"rows_updated":536,"error_message":null}
+  {"pipeline":"regulations","status":"complete","started_at":"2026-05-12T05:39:29.424+00:00","completed_at":"2026-05-12T05:39:35.183+00:00","rows_inserted":1,"rows_updated":998,"error_message":null}
+  {"pipeline":"nightly_cron","status":"complete","started_at":"2026-05-12T05:39:26.043+00:00","completed_at":"2026-05-12T05:52:28.588+00:00","rows_inserted":1922340,"rows_updated":0,"error_message":null}
+  {"pipeline":"littlesis","status":"complete","started_at":"2026-05-12T05:01:57.873+00:00","completed_at":"2026-05-12T05:17:30.788+00:00","rows_inserted":238720,"rows_updated":0,"error_message":null}
+  {"pipeline":"nightly-sync","status":"triggered","started_at":"2026-05-12T02:47:06.783+00:00","completed_at":null,"rows_inserted":0,"rows_updated":0,"error_message":null}
+  {"pipeline":"irs990","status":"complete","started_at":"2026-05-12T01:36:17.648+00:00","completed_at":"2026-05-12T01:36:19.688+00:00","rows_inserted":0,"rows_updated":0,"error_message":null}
+  {"pipeline":"irs990","status":"complete","started_at":"2026-05-12T01:36:04.34+00:00","completed_at":"2026-05-12T01:36:11.838+00:00","rows_inserted":0,"rows_updated":0,"error_message":null}
+  {"pipeline":"irs990","status":"complete","started_at":"2026-05-12T01:21:42.791+00:00","completed_at":"2026-05-12T01:26:00.54+00:00","rows_inserted":348,"rows_updated":0,"error_message":null}
+  {"pipeline":"irs990","status":"complete","started_at":"2026-05-12T01:03:43.683+00:00","completed_at":"2026-05-12T01:08:47.558+00:00","rows_inserted":830,"rows_updated":0,"error_message":null}
+  {"pipeline":"tag_rules","status":"complete","started_at":"2026-05-11T06:12:01.447+00:00","completed_at":"2026-05-11T06:12:47.234+00:00","rows_inserted":570,"rows_updated":0,"error_message":null}
+  {"pipeline":"entity_connections_rebuild","status":"complete","started_at":"2026-05-11T06:06:38.731+00:00","completed_at":"2026-05-11T06:12:00.958+00:00","rows_inserted":1734244,"rows_updated":0,"error_message":null}
+  {"pipeline":"openstates_bulk_people","status":"complete","started_at":"2026-05-11T06:05:55.175+00:00","completed_at":"2026-05-11T06:06:26.376+00:00","rows_inserted":0,"rows_updated":7355,"error_message":null}
+  {"pipeline":"congress_votes","status":"complete","started_at":"2026-05-11T06:03:47.929+00:00","completed_at":"2026-05-11T06:05:54.868+00:00","rows_inserted":0,"rows_updated":200,"error_message":null}
+  {"pipeline":"congress_officials","status":"complete","started_at":"2026-05-11T06:02:48.355+00:00","completed_at":"2026-05-11T06:03:47.824+00:00","rows_inserted":0,"rows_updated":536,"error_message":null}
+
+=== data_sync_log — fec_bulk history (last 10) ===
+  {"pipeline":"fec_bulk","status":"failed","started_at":"2026-05-13T00:10:13.821+00:00","completed_at":"2026-05-13T02:26:40.615762+00:00","rows_inserted":0,"rows_updated":0,"error_message":"reaped_orphan","metadata":{}}
+  {"pipeline":"fec_bulk","status":"complete","started_at":"2026-05-11T05:44:08.941+00:00","completed_at":"2026-05-11T05:48:17.073+00:00","rows_inserted":240041,"rows_updated":0,"error_message":null,"metadata":{"peak_rss_mb":341}}
+  {"pipeline":"fec_bulk","status":"complete","started_at":"2026-05-11T05:14:28.321+00:00","completed_at":"2026-05-11T05:18:59.938+00:00","rows_inserted":240035,"rows_updated":0,"error_message":null,"metadata":{"peak_rss_mb":408}}
+  {"pipeline":"fec_bulk","status":"complete","started_at":"2026-05-11T05:11:04.813+00:00","completed_at":"2026-05-11T05:15:19.809+00:00","rows_inserted":253098,"rows_updated":0,"error_message":null,"metadata":{"peak_rss_mb":376}}
+  {"pipeline":"fec_bulk","status":"complete","started_at":"2026-05-10T05:45:35.542+00:00","completed_at":"2026-05-10T06:17:39.469+00:00","rows_inserted":1817296,"rows_updated":0,"error_message":null,"metadata":{}}
+  {"pipeline":"fec_bulk","status":"complete","started_at":"2026-05-03T00:21:49.19+00:00","completed_at":"2026-05-03T00:42:32.831+00:00","rows_inserted":1779910,"rows_updated":0,"error_message":null,"metadata":{}}
+  {"pipeline":"fec_bulk","status":"complete","started_at":"2026-05-02T22:35:13.028+00:00","completed_at":"2026-05-02T22:39:06.486+00:00","rows_inserted":386749,"rows_updated":0,"error_message":null,"metadata":{}}
+  {"pipeline":"fec_bulk","status":"complete","started_at":"2026-05-01T04:56:03.995+00:00","completed_at":"2026-05-01T04:58:46.147+00:00","rows_inserted":81171,"rows_updated":0,"error_message":null,"metadata":{}}
+  {"pipeline":"fec_bulk","status":"complete","started_at":"2026-04-28T03:21:28.828+00:00","completed_at":"2026-04-28T03:22:29.082+00:00","rows_inserted":24643,"rows_updated":0,"error_message":null,"metadata":{}}
+  {"pipeline":"fec_bulk","status":"complete","started_at":"2026-04-24T23:25:09.319+00:00","completed_at":"2026-04-24T23:26:05.621+00:00","rows_inserted":23884,"rows_updated":0,"error_message":null,"metadata":{}}
+
+=== anchor counts ===
+  officials_total                          28668
+  officials_tier_candidate                 13005
+  officials_tier_elected                   15663
+  financial_entities_total                 634879
+  financial_entities_individuals           558396
+  financial_relationships_total            error: 
+  fr_donation                              error: 
+  fr_ie_support                            3315
+  fr_ie_oppose                             1396
+  fr_source_fec_bulk_indiv                 error: 
+  fr_source_fec_bulk_indiv_to_committee    error: 
+  fr_source_fec_bulk_ie                    error: 
+  entity_connections_total                 1914338
+
+=== pipeline_state — cron_last_run ===
+  updated_at: 2026-05-12T05:52:28.588+00:00
+  status:     complete
+  started_at: 2026-05-12T05:39:26.043Z
+  completed:  2026-05-12T05:52:28.588Z
+  duration_ms: 782545
+  errors:     []
+
+=== Sunday cron prediction inputs ===

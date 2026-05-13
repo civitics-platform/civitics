@@ -1,0 +1,107 @@
+[pipeline] target: https://xsazcoxinpgttgquwvuf.supabase.co (REMOTE)
+Run window: 2026-05-13T02:41:33Z → now
+
+=== data_sync_log rows for this run window ===
+  2026-05-13T02:41:43.34+00:00 | regulations                  | complete   | dur=    5.3s | ins=0 upd=999 fail=0 | rss_peak=167MB
+  2026-05-13T02:41:48.687+00:00 | congress_officials           | complete   | dur=   27.8s | ins=0 upd=536 fail=0 | rss_peak=149MB
+  2026-05-13T02:42:16.587+00:00 | congress_votes               | complete   | dur=  191.6s | ins=0 upd=200 fail=0 | rss_peak=197MB
+  2026-05-13T02:45:28.334+00:00 | openstates_bulk_people       | complete   | dur=   21.2s | ins=0 upd=7355 fail=0 | rss_peak=254MB
+  2026-05-13T02:45:50.525+00:00 | edgar_daily                  | skipped    | dur=    0.5s | ins=0 upd=0 fail=0 | rss_peak=255MB
+  2026-05-13T02:45:51.151+00:00 | fec_bulk                     | running    | dur=    open | ins=0 upd=0 fail=0 | rss_peak=-MB
+
+=== pipeline_state.cron_last_run ===
+  updated_at: 2026-05-12T05:52:28.588+00:00
+{
+  "status": "complete",
+  "results": {
+    "ai": {
+      "tag_ai": {
+        "status": "complete",
+        "cost_usd": 0,
+        "entities": 27
+      },
+      "tag_rules": {
+        "status": "complete"
+      },
+      "ai_summaries": {
+        "status": "complete"
+      }
+    },
+    "errors": [],
+    "is_weekly": false,
+    "pipelines": {
+      "regulations": {
+        "status": "complete",
+        "rows_added": 1,
+        "duration_ms": 5802
+      },
+      "congress_votes": {
+        "status": "complete",
+        "rows_added": 110,
+        "duration_ms": 151866
+      },
+      "congress_officials": {
+        "status": "complete",
+        "rows_added": 536,
+        "duration_ms": 30160
+      },
+      "openstates_bulk_people": {
+        "status": "complete",
+        "rows_added": 7355,
+        "duration_ms": 37756
+      },
+      "entity_connections_rebuild": {
+        "status": "complete",
+        "rows_added": 1914338,
+        "duration_ms": 336498
+      }
+    },
+    "started_at": "2026-05-12T05:39:26.043Z",
+    "duration_ms": 782545,
+    "completed_at": "2026-05-12T05:52:28.588Z",
+    "total_ai_cost_usd": 0
+  },
+  "started_at": "2026-05-12T05:39:26.043Z",
+  "completed_at": "2026-05-12T05:52:28.588Z"
+}
+
+=== pipeline_state — FEC + IRS990 + USASpending watermarks ===
+  legistar_seattle_last_run | 2026-04-23T05:20:08.436077+00:00 | {"matters":13418,"last_run":"2026-04-23T05:20:08.218Z","meetings":94}
+  legistar_austintexas_last_run | 2026-04-23T05:25:57.508029+00:00 | {"matters":19857,"last_run":"2026-04-23T05:25:57.346Z","meetings":36}
+  irs990:index_watermark | 2026-05-12T01:36:11.606+00:00 | {"2024":{"lastModified":"Thu, 06 Mar 2025 14:03:55 GMT","seedFingerprint":"7e521b3ae612"}}
+  cron_last_started | 2026-05-12T02:47:06.783+00:00 | {"status":"triggered","started_at":"2026-05-12T02:47:06.783Z","triggered_by":"vercel-cron"}
+  notify_followers_last_run | 2026-05-12T03:33:55.23+00:00 | {"last_run":"2026-05-12T03:33:55.230Z","previous":"2026-05-11T03:04:16.478Z","agency_events_sent":0,"official_events_sent":0}
+  littlesis_state | 2026-05-12T05:17:30.375+00:00 | {"last_run_at":"2026-05-12T05:17:30.375Z","entities_sha":"758b5784bde28fed1c70f97618647c42067d1ad031ce53cab244a1275cb34ff1","relationships_sha":"b7f0268f63932e6b1c19ba7654d575d39853d8d82d3e2f1a623dc38
+  cron_last_run | 2026-05-12T05:52:28.588+00:00 | {"status":"complete","results":{"ai":{"tag_ai":{"status":"complete","cost_usd":0,"entities":27},"tag_rules":{"status":"complete"},"ai_summaries":{"status":"complete"}},"errors":[],"is_weekly":false,"p
+  plum_book_state | 2026-05-09T02:26:00.09+00:00 | {"export_date":"2026-05-09T00:12:03","last_change":"2026-02-16T17:26:04"}
+  platform_plan | 2026-05-02T18:35:17.27296+00:00 | {"supabase":"pro"}
+
+=== financial_relationships by source (post-halt) ===
+  source=fec_bulk                            count=err:
+  source=fec_bulk_indiv                      count=err:
+  source=fec_bulk_indiv_to_committee         count=err:
+  source=fec_bulk_ie                         count=err:
+  source=usaspending_bulk                    count=err:
+  source=irs990                              count=err:
+  source=irs_990                             count=err:
+
+=== financial_relationships by relationship_type ===
+  type=donation         count=err:
+  type=ie_support       count=3315
+  type=ie_oppose        count=1396
+  type=contract         count=err:
+  type=grant            count=88370
+
+=== entity_connections totals ===
+  total: 1914338
+
+=== refreshed MV freshness — row counts ===
+  chord_industry_flows_mv                  rows=85
+  chord_donor_type_party_flows_mv          rows=26
+  chord_donor_state_party_flows_mv         rows=322
+  chord_subject_party_flows_mv             rows=80
+  homepage_stats_mv                        rows=1
+  official_homepage_stats_mv               rows=15663
+  pipeline_runtime_stats_mv                rows=25
+  proposal_trending_24h                    rows=74037
+  proposal_popularity_24h                  rows=0
