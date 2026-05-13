@@ -33,11 +33,11 @@ jobs:
       CIVITICS_ANTHROPIC_API_KEY: ${{ secrets.CIVITICS_ANTHROPIC_API_KEY }}
       AUTONOMOUS:               "true"
       CIVITICS_ENRICHMENT_MODE: queue
-      # FEC indiv stage (FIX-236) doubles peak heap vs. FIX-181 alone. 4 GB
-      # default OOMs around the 25M-line mark on presidential cycles; 8 GB
-      # is the documented floor in packages/data/CLAUDE.md. ubuntu-latest
-      # runners have 16 GB RAM — plenty of headroom.
-      NODE_OPTIONS: --max-old-space-size=8192
+      # FEC indiv stage (FIX-236) doubles peak heap vs. FIX-181 alone. 8 GB
+      # OOMs mid-stream on presidential cycles (2024/2028) — observed in the
+      # 2026-05-12 run. 12 GB matches packages/data/CLAUDE.md's
+      # presidential-cycle guidance; ubuntu-latest runners ship 16 GB. (FIX-254)
+      NODE_OPTIONS: --max-old-space-size=12288
       # R2 cache for FEC bulk zips (FIX-192). All four are optional — code
       # falls through to direct FEC fetch when any are missing — but adding
       # them as repo secrets cuts ~10 min off repeat-run downloads.

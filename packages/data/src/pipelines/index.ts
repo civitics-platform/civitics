@@ -398,6 +398,23 @@ export async function runNightlySync(): Promise<NightlySyncResults> {
 
   // Seed jurisdictions (idempotent)
   const db = createAdminClient();
+
+  // FIX-255: reap any data_sync_log rows stranded in status='running' by a
+  // prior uncatchable abort (V8 OOM, SIGKILL, hard crash). Belt-and-braces
+  // alongside the in-process signal handler in sync-log.ts. Non-fatal.
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: reaped, error } = await (db as any).rpc("reap_stale_sync_log", { stale_minutes: 60 });
+    if (error) throw error;
+    if (Array.isArray(reaped) && reaped.length > 0) {
+      console.log(`[nightly] reap_stale_sync_log — reaped ${reaped.length} orphan row(s):`);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      for (const r of reaped as any[]) console.log(`  ${r.pipeline} (${r.id})`);
+    }
+  } catch (err) {
+    console.warn("[nightly] reap_stale_sync_log failed (continuing):", errMsg(err));
+  }
+
   const { federalId, stateIds } = await seedJurisdictions(db);
   const { senateId: senateGovBodyId, houseId: houseGovBodyId } = await seedGoverningBodies(db, federalId);
 

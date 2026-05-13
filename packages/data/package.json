@@ -51,7 +51,8 @@
     "data:retitle-stubs": "tsx --env-file=../../.env.local src/scripts/retitle-procedural-bill-stubs.ts",
     "data:retitle-pn-stubs": "tsx --env-file=../../.env.local src/scripts/retitle-pn-stubs.ts",
     "data:canary-check": "tsx --env-file=../../.env.local src/scripts/canary-check.ts",
-    "data:canary-check:ci": "tsx src/scripts/canary-check.ts"
+    "data:canary-check:ci": "tsx src/scripts/canary-check.ts",
+    "data:reap-sync-log": "tsx --env-file=../../.env.local src/scripts/reap-sync-log.ts"
   },
   "dependencies": {
     "@civitics/ai": "workspace:*",

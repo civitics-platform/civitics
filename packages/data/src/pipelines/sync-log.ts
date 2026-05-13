@@ -13,6 +13,55 @@ export interface PipelineResult {
   estimatedMb: number;
 }
 
+// FIX-255: best-effort failSync on abnormal exit so data_sync_log rows don't
+// strand in status='running'. V8 OOM lands as SIGABRT and is NOT catchable
+// from JS; SIGKILL likewise. For those cases the reap_stale_sync_log() RPC
+// (see migration 20260512000000) is the only recovery path.
+const inFlightLogIds = new Set<string>();
+let exitHandlersInstalled = false;
+let exitHandlerFired = false;
+
+function handleExit(reason: string, finalize: () => void): void {
+  if (exitHandlerFired) return;
+  exitHandlerFired = true;
+  const ids = [...inFlightLogIds];
+  inFlightLogIds.clear();
+  if (ids.length === 0) {
+    finalize();
+    return;
+  }
+  console.warn(`  [sync-log] ${reason} — flushing ${ids.length} in-flight log row(s)`);
+  Promise.race([
+    Promise.allSettled(ids.map((id) => failSync(id, reason))),
+    new Promise<void>((resolve) => setTimeout(resolve, 2000)),
+  ]).finally(finalize);
+}
+
+function installExitHandlers(): void {
+  if (exitHandlersInstalled) return;
+  exitHandlersInstalled = true;
+  const onSignal = (signal: NodeJS.Signals) => () =>
+    handleExit(`node-aborted-${signal}`, () => {
+      process.removeAllListeners(signal);
+      process.kill(process.pid, signal);
+    });
+  process.on("SIGTERM", onSignal("SIGTERM"));
+  process.on("SIGINT",  onSignal("SIGINT"));
+  process.on("SIGHUP",  onSignal("SIGHUP"));
+  process.on("uncaughtException", (err) =>
+    handleExit(
+      `node-aborted-uncaughtException:${(err instanceof Error ? err.message : String(err)).slice(0, 200)}`,
+      () => process.exit(1),
+    ),
+  );
+  process.on("unhandledRejection", (reason) =>
+    handleExit(
+      `node-aborted-unhandledRejection:${String(reason).slice(0, 200)}`,
+      () => process.exit(1),
+    ),
+  );
+}
+
 // RSS at completion time, not peak across the run. Acceptable proxy for
 // bulk-streaming pipelines whose RSS doesn't shrink during the process
 // lifetime. True-peak instrumentation (setInterval sampler) is deferred.
@@ -23,6 +72,7 @@ export function captureRssMb(): number {
 }
 
 export async function startSync(pipeline: string): Promise<string> {
+  installExitHandlers();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = createAdminClient() as any;
   try {
@@ -32,7 +82,9 @@ export async function startSync(pipeline: string): Promise<string> {
       .select("id")
       .single();
     if (error) throw new Error(error.message);
-    return data.id as string;
+    const id = data.id as string;
+    inFlightLogIds.add(id);
+    return id;
   } catch (err) {
     // Non-fatal: log but don't crash the pipeline
     console.warn("  [sync-log] Could not create log entry:", err instanceof Error ? err.message : err);
@@ -42,6 +94,7 @@ export async function startSync(pipeline: string): Promise<string> {
 
 export async function completeSync(id: string, result: PipelineResult): Promise<void> {
   if (!id) return;
+  inFlightLogIds.delete(id);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = createAdminClient() as any;
   try {
@@ -67,6 +120,7 @@ export async function completeSync(id: string, result: PipelineResult): Promise<
 
 export async function failSync(id: string, errorMessage: string): Promise<void> {
   if (!id) return;
+  inFlightLogIds.delete(id);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = createAdminClient() as any;
   try {
@@ -92,6 +146,7 @@ export async function failSync(id: string, errorMessage: string): Promise<void> 
 // runs differently from real zero-row days.
 export async function skipSync(id: string, reason: string): Promise<void> {
   if (!id) return;
+  inFlightLogIds.delete(id);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = createAdminClient() as any;
   try {
