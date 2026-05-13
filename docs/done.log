@@ -339,3 +339,5 @@
 2026-05-12 | FIX-238 | 97b24d6c | local+prod | feat(fec-bulk): FIX-238 reorder donor canonical_name to natural FIRST-LAST + trgm GIN
 2026-05-12 | FIX-254 | 60085ca0 | local-only | fix(ops): raise nightly heap to 12 GB + recovery for stranded sync_log rows
 2026-05-12 | FIX-255 | 60085ca0 | local-only | fix(ops): raise nightly heap to 12 GB + recovery for stranded sync_log rows
+2026-05-12 | FIX-254 | b3d78a23 | prod-only | chore(fixes): sync status after FIX-254/255 + record prod reap
+2026-05-12 | FIX-255 | b3d78a23 | prod-only | chore(fixes): sync status after FIX-254/255 + record prod reap
