@@ -337,3 +337,5 @@
 2026-05-11 | FIX-251 | 4e6916f4 | local+prod | feat(littlesis): FIX-251 ingest LittleSis bulk dumps with 2-hop expansion
 2026-05-11 | FIX-253 | e26f832d | local+prod | feat(edgar): FIX-253 ingest SEC EDGAR exec roster + 13D/G major shareholders
 2026-05-12 | FIX-238 | 97b24d6c | local+prod | feat(fec-bulk): FIX-238 reorder donor canonical_name to natural FIRST-LAST + trgm GIN
+2026-05-12 | FIX-254 | 60085ca0 | local-only | fix(ops): raise nightly heap to 12 GB + recovery for stranded sync_log rows
+2026-05-12 | FIX-255 | 60085ca0 | local-only | fix(ops): raise nightly heap to 12 GB + recovery for stranded sync_log rows
