@@ -81,6 +81,18 @@ type DonorRow = {
   count: number;
 };
 
+// FIX-270: super-PAC IE rows are politically distinct from donations —
+// money spent on the candidate's behalf (or against them) under Schedule E,
+// not capped contributions to the campaign. We surface them as separate
+// lists so the legal and political distinction stays visible.
+type OutsideSpenderRow = {
+  spender_id: string;
+  spender_name: string;
+  spender_type: string;
+  total_cents: number;
+  count: number;
+};
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function formatDate(iso: string | null | undefined): string {
@@ -282,13 +294,21 @@ export default async function OfficialProfilePage({
         .eq("relationship_type", "donation")
         .eq("to_type", "official")
         .eq("to_id", params.id),
+      // FIX-270: include super-PAC independent expenditures (FIX-240 Schedule E
+      // rows) alongside direct donations. ie_support and ie_oppose target the
+      // same to_type='official'/to_id since FEC weball matching (FIX-246) maps
+      // them through the candidate's FEC ID to the matched official row — no
+      // PCC indirection needed. Split client-side on relationship_type so the
+      // three are displayed as separate sections rather than conflated.
       supabase
         .from("financial_relationships")
-        .select("from_id, amount_cents, metadata")
-        .eq("relationship_type", "donation")
+        .select("from_id, amount_cents, metadata, relationship_type")
+        .in("relationship_type", ["donation", "ie_support", "ie_oppose"])
         .eq("to_type", "official")
         .eq("to_id", params.id)
-        .eq("from_type", "financial_entity"),
+        .eq("from_type", "financial_entity")
+        .order("amount_cents", { ascending: false })
+        .limit(2000),
       sb
         .from("ai_summary_cache")
         .select("summary_text")
@@ -321,19 +341,23 @@ export default async function OfficialProfilePage({
         .limit(20),
     ]);
 
-  // Enrich donations with entity data (donor_name, industry, entity_type).
-  // After the shadow→public promotion, financial_relationships is polymorphic:
-  // donor info lives on financial_entities, not on the relationship row itself.
-  // Industry comes from `entity_tags` (FIX-167) — the legacy
-  // `financial_entities.industry` column was dropped.
-  const donorAmtRaw = (donorAmtRawRes.data ?? []) as Array<{ from_id: string; amount_cents: number | null; metadata: Record<string, unknown> | null }>;
-  const donorIds = [...new Set(donorAmtRaw.map((d) => d.from_id))];
+  // FIX-270: combined query now returns donation + ie_support + ie_oppose
+  // rows in one fetch. Enrich all of them in one pass (same financial_entities
+  // join), then split downstream so the donations-vs-IE distinction is
+  // preserved in the UI. Industry comes from `entity_tags` (FIX-167).
+  const inflowRaw = (donorAmtRawRes.data ?? []) as Array<{
+    from_id: string;
+    amount_cents: number | null;
+    metadata: Record<string, unknown> | null;
+    relationship_type: string;
+  }>;
+  const fromEntityIds = [...new Set(inflowRaw.map((d) => d.from_id))];
   const entityInfo = new Map<string, { display_name: string; industry: string | null; entity_type: string | null }>();
-  if (donorIds.length > 0) {
-    const industryByEntityId = await fetchIndustryTagsByEntityId(supabase, donorIds);
+  if (fromEntityIds.length > 0) {
+    const industryByEntityId = await fetchIndustryTagsByEntityId(supabase, fromEntityIds);
     const BATCH = 300;
-    for (let i = 0; i < donorIds.length; i += BATCH) {
-      const batch = donorIds.slice(i, i + BATCH);
+    for (let i = 0; i < fromEntityIds.length; i += BATCH) {
+      const batch = fromEntityIds.slice(i, i + BATCH);
       const { data: entities } = await supabase
         .from("financial_entities")
         .select("id, display_name, entity_type")
@@ -347,18 +371,26 @@ export default async function OfficialProfilePage({
       }
     }
   }
+  const enrichedInflow = inflowRaw.map((r) => {
+    const info = entityInfo.get(r.from_id);
+    return {
+      from_id:           r.from_id,
+      donor_name:        info?.display_name ?? "Unknown",
+      donor_type:        info?.entity_type ?? "other",
+      industry:          info?.industry ?? null,
+      amount_cents:      r.amount_cents,
+      metadata:          r.metadata,
+      relationship_type: r.relationship_type,
+    };
+  });
+  // Donations only — preserve existing semantics for total raised, top donors,
+  // and industry breakdown. IEs are uncapped Schedule E spending and have no
+  // meaningful "industry" or "donor" interpretation in the FECA sense.
   const donorAmtRes = {
-    data: donorAmtRaw.map((r) => {
-      const info = entityInfo.get(r.from_id);
-      return {
-        donor_name:   info?.display_name ?? "Unknown",
-        donor_type:   info?.entity_type ?? "other",
-        industry:     info?.industry ?? null,
-        amount_cents: r.amount_cents,
-        metadata:     r.metadata,
-      };
-    }),
+    data: enrichedInflow.filter((r) => r.relationship_type === "donation"),
   };
+  const ieSupportRows = enrichedInflow.filter((r) => r.relationship_type === "ie_support");
+  const ieOpposeRows  = enrichedInflow.filter((r) => r.relationship_type === "ie_oppose");
 
   if (!officialData) {
     notFound();
@@ -417,6 +449,39 @@ export default async function OfficialProfilePage({
     (sum, r) => sum + (r.amount_cents ?? 0),
     0
   );
+
+  // FIX-270: aggregate ie_support and ie_oppose rows by spender. Same shape
+  // as topDonors but keyed by spender_id (the from_id of the spending super-PAC
+  // / committee) instead of name — names can collide, ids cannot.
+  function aggregateOutsideSpenders(
+    rows: typeof enrichedInflow,
+  ): { rows: OutsideSpenderRow[]; total: number } {
+    const map = new Map<string, OutsideSpenderRow>();
+    let total = 0;
+    for (const r of rows) {
+      total += r.amount_cents ?? 0;
+      const existing = map.get(r.from_id);
+      if (existing) {
+        existing.total_cents += r.amount_cents ?? 0;
+        existing.count       += 1;
+      } else {
+        map.set(r.from_id, {
+          spender_id:   r.from_id,
+          spender_name: r.donor_name,
+          spender_type: r.donor_type,
+          total_cents:  r.amount_cents ?? 0,
+          count:        1,
+        });
+      }
+    }
+    const aggregated = [...map.values()]
+      .sort((a, b) => b.total_cents - a.total_cents)
+      .slice(0, 50);
+    return { rows: aggregated, total };
+  }
+
+  const ieSupport = aggregateOutsideSpenders(ieSupportRows);
+  const ieOppose  = aggregateOutsideSpenders(ieOpposeRows);
 
   // ── Industry breakdown ───────────────────────────────────────────────────────
   const bySector = new Map<string, number>();
@@ -810,7 +875,13 @@ export default async function OfficialProfilePage({
             <StatCell
               value={formatMoney(totalDonations)}
               label="Total raised"
-              note={totalDonations === 0 ? "FEC sync weekly" : undefined}
+              note={
+                ieSupport.total > 0 || ieOppose.total > 0
+                  ? `+${formatMoney(ieSupport.total)} support · ${formatMoney(ieOppose.total)} oppose`
+                  : totalDonations === 0
+                    ? "FEC sync weekly"
+                    : undefined
+              }
             />
             <StatCell
               value={yearsInOffice !== null ? `${yearsInOffice}y` : "—"}
@@ -976,6 +1047,26 @@ export default async function OfficialProfilePage({
                   ))
                 )}
               </div>
+
+              {/* FIX-270: super-PAC independent expenditures (FEC Schedule E).
+                  Money spent on behalf of (ie_support) or against (ie_oppose)
+                  the candidate. Politically distinct from capped donations
+                  above — kept in separate sections so the legal and
+                  accountability distinction stays visible. */}
+              <OutsideSpendingList
+                title="Outside spending supporting"
+                subtitle="Super-PAC IEs supporting this official (uncapped Schedule E)"
+                spenders={ieSupport.rows}
+                total={ieSupport.total}
+                accent="emerald"
+              />
+              <OutsideSpendingList
+                title="Outside spending opposing"
+                subtitle="Super-PAC IEs opposing this official (uncapped Schedule E)"
+                spenders={ieOppose.rows}
+                total={ieOppose.total}
+                accent="rose"
+              />
             </div>
           }
           connections={
@@ -1093,6 +1184,66 @@ function StatCell({
       <p className="text-lg font-bold text-gray-900">{value}</p>
       <p className="mt-0.5 text-[10px] text-gray-400">{label}</p>
       {note && <p className="text-[9px] text-gray-300">{note}</p>}
+    </div>
+  );
+}
+
+function OutsideSpendingList({
+  title,
+  subtitle,
+  spenders,
+  total,
+  accent,
+}: {
+  title: string;
+  subtitle: string;
+  spenders: OutsideSpenderRow[];
+  total: number;
+  accent: "emerald" | "rose";
+}) {
+  if (spenders.length === 0) return null;
+  const accentCls =
+    accent === "emerald"
+      ? "border-emerald-100 bg-emerald-50/40"
+      : "border-rose-100 bg-rose-50/40";
+  const totalCls = accent === "emerald" ? "text-emerald-700" : "text-rose-700";
+  return (
+    <div className={`border-t ${accentCls}`}>
+      <div className="px-5 py-4 flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold text-gray-900">{title}</h3>
+          <p className="text-[11px] text-gray-500 mt-0.5">{subtitle}</p>
+        </div>
+        <p className={`shrink-0 text-sm font-bold tabular-nums ${totalCls}`}>
+          {formatMoney(total)}
+        </p>
+      </div>
+      <div className="divide-y divide-gray-100 bg-white">
+        {spenders.map((s, i) => (
+          <div key={s.spender_id} className="flex items-center gap-3 px-5 py-3">
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-gray-100 text-[10px] font-bold text-gray-500">
+              {i + 1}
+            </span>
+            <div className="flex-1 min-w-0">
+              <a
+                href={`/donors/${s.spender_id}`}
+                className="truncate text-xs font-medium text-gray-800 hover:text-indigo-600 hover:underline transition-colors block"
+              >
+                {s.spender_name}
+              </a>
+              <p className="truncate text-[10px] text-gray-400">
+                {DONOR_TYPE_LABELS[s.spender_type] ?? s.spender_type}
+              </p>
+            </div>
+            <div className="shrink-0 text-right">
+              <p className="text-xs font-semibold text-gray-900">{formatMoney(s.total_cents)}</p>
+              <p className="text-[10px] text-gray-400">
+                {s.count} expenditure{s.count !== 1 ? "s" : ""}
+              </p>
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
