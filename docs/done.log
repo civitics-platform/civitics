@@ -352,3 +352,4 @@
 2026-05-13 | FIX-269 | d78bfdce | prod-only | fix(donors): rewrite rebuild RPC to materialize aggregation in temp table
 2026-05-13 | FIX-269 | 88cb8917 | local-only | fix(donors): donor profile total includes super-PAC contributions
 2026-05-13 | FIX-270 | ee4c7c1e | local-only | fix(officials): include super-PAC IEs in profile inflow aggregation
+2026-05-13 | FIX-270 | ee4c7c1e | prod-only | chore(fixes): FIX-270 prod-verified via curl — Trump +$137.5M support $185.0M oppose, Moreno +$67.3M/$85.9M, Schumer no IE (regression clean), Harris +$1733.1M/$259.3M
