@@ -351,3 +351,4 @@
 2026-05-13 | FIX-265 | 2bab1942 | prod-only | chore(fixes): sync status after FIX-263/265 + record prod rebuild
 2026-05-13 | FIX-269 | d78bfdce | prod-only | fix(donors): rewrite rebuild RPC to materialize aggregation in temp table
 2026-05-13 | FIX-269 | 88cb8917 | local-only | fix(donors): donor profile total includes super-PAC contributions
+2026-05-13 | FIX-270 | ee4c7c1e | local-only | fix(officials): include super-PAC IEs in profile inflow aggregation
