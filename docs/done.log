@@ -347,3 +347,7 @@
 2026-05-13 | FIX-265 | 8b35a23a | local-only | fix(graph): chunked rebuild_entity_connections + display_name drift
 2026-05-13 | FIX-263 | 8b35a23a | prod-only | chore(fixes): FIX-263 chunked rebuild prod-verified 4.58M edges 72min (donation 60min/3.85M)
 2026-05-13 | FIX-265 | 8b35a23a | prod-only | chore(fixes): FIX-265 display_name drift fix prod-verified via anchor-verify + tag_ai SELECT
+2026-05-13 | FIX-263 | 2bab1942 | prod-only | chore(fixes): sync status after FIX-263/265 + record prod rebuild
+2026-05-13 | FIX-265 | 2bab1942 | prod-only | chore(fixes): sync status after FIX-263/265 + record prod rebuild
+2026-05-13 | FIX-269 | d78bfdce | prod-only | fix(donors): rewrite rebuild RPC to materialize aggregation in temp table
+2026-05-13 | FIX-269 | 88cb8917 | local-only | fix(donors): donor profile total includes super-PAC contributions
