@@ -56,7 +56,7 @@ const INDUSTRY_LABELS: Record<Industry, { label: string; icon: string }> = {
 
 interface UntaggedPac {
   id: string;
-  name: string;
+  display_name: string;
   total_donated_cents: number;
 }
 
@@ -100,7 +100,7 @@ async function classifyPac(
       system:
         "You classify political action committees into industries. " +
         "Respond ONLY with valid JSON. No markdown, no explanation.",
-      messages: [{ role: "user", content: buildPrompt(pac.name) }],
+      messages: [{ role: "user", content: buildPrompt(pac.display_name) }],
     });
 
     const raw = response.content[0]?.type === "text" ? response.content[0].text.trim() : null;
@@ -128,7 +128,7 @@ async function classifyPac(
       output_tokens: response.usage.output_tokens,
     };
   } catch (err) {
-    console.error(`    [ai-classifier] Parse error for "${pac.name}":`, err instanceof Error ? err.message : err);
+    console.error(`    [ai-classifier] Parse error for "${pac.display_name}":`, err instanceof Error ? err.message : err);
     return null;
   }
 }
@@ -169,7 +169,7 @@ export async function runAiClassifier(options: { confirmed?: boolean } = {}): Pr
 
     const { data: allPacs, error: fetchErr } = await db
       .from("financial_entities")
-      .select("id, name, total_donated_cents")
+      .select("id, display_name, total_donated_cents")
       .eq("entity_type", "pac")
       .gt("total_donated_cents", MIN_DONATION_CENTS)
       .order("total_donated_cents", { ascending: false });
@@ -180,7 +180,7 @@ export async function runAiClassifier(options: { confirmed?: boolean } = {}): Pr
       return { tagged: 0, skipped: 0 };
     }
 
-    const pacs: UntaggedPac[] = ((allPacs ?? []) as { id: string; name: string; total_donated_cents: number }[])
+    const pacs: UntaggedPac[] = ((allPacs ?? []) as { id: string; display_name: string; total_donated_cents: number }[])
       .filter((r) => !alreadyTagged.has(r.id));
 
     if (pacs.length === 0) {
@@ -206,7 +206,7 @@ export async function runAiClassifier(options: { confirmed?: boolean } = {}): Pr
           system:
             "You classify political action committees into industries. " +
             "Respond ONLY with valid JSON. No markdown, no explanation.",
-          messages: [{ role: "user", content: buildPrompt(samplePac.name) }],
+          messages: [{ role: "user", content: buildPrompt(samplePac.display_name) }],
         }),
     });
 
@@ -226,7 +226,7 @@ export async function runAiClassifier(options: { confirmed?: boolean } = {}): Pr
     console.log(`\n  Classifying ${pacsToProcess.length} PACs...\n`);
 
     for (const pac of pacsToProcess) {
-      process.stdout.write(`  ${pac.name.slice(0, 55).padEnd(55)} → `);
+      process.stdout.write(`  ${pac.display_name.slice(0, 55).padEnd(55)} → `);
 
       const result = await classifyPac(anthropic, pac);
       if (!result) {

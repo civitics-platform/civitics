@@ -27,12 +27,12 @@ async function main(): Promise<void> {
   await section("DONOR — Elon Musk", async () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data: ents } = await (db as any).from("financial_entities")
-      .select("id, name, canonical_name, entity_type, total_donated_cents, source_ids, metadata")
-      .ilike("name", "%MUSK%ELON%")
-      .or("name.ilike.%ELON%MUSK%")
+      .select("id, display_name, canonical_name, entity_type, total_donated_cents, source_ids, metadata")
+      .ilike("display_name", "%MUSK%ELON%")
+      .or("display_name.ilike.%ELON%MUSK%")
       .limit(10);
     console.log("  matching financial_entities (LIKE %MUSK%ELON% or %ELON%MUSK%):");
-    for (const e of (ents ?? [])) console.log(`    [${e.id}] name="${e.name}" canonical="${e.canonical_name}" type=${e.entity_type} total=${fmt$(e.total_donated_cents)}`);
+    for (const e of (ents ?? [])) console.log(`    [${e.id}] display_name="${e.display_name}" canonical="${e.canonical_name}" type=${e.entity_type} total=${fmt$(e.total_donated_cents)}`);
 
     if (!ents || ents.length === 0) return;
     const muskIds = ents.map((e: { id: string }) => e.id);
@@ -79,22 +79,22 @@ async function main(): Promise<void> {
   await section("DONOR — Elizabeth Simons → DCCC (FIX-236 anchor, expect ~$522K)", async () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data: ents } = await (db as any).from("financial_entities")
-      .select("id, name, total_donated_cents")
-      .or("name.ilike.%SIMONS%ELIZABETH%,name.ilike.%ELIZABETH%SIMONS%")
+      .select("id, display_name, total_donated_cents")
+      .or("display_name.ilike.%SIMONS%ELIZABETH%,display_name.ilike.%ELIZABETH%SIMONS%")
       .limit(10);
     console.log(`  matching donor entities: ${(ents ?? []).length}`);
-    for (const e of (ents ?? [])) console.log(`    [${e.id}] name="${e.name}" total=${fmt$(e.total_donated_cents)}`);
+    for (const e of (ents ?? [])) console.log(`    [${e.id}] display_name="${e.display_name}" total=${fmt$(e.total_donated_cents)}`);
 
     if (!ents || ents.length === 0) return;
     const ids = ents.map((e: { id: string }) => e.id);
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data: dccc } = await (db as any).from("financial_entities")
-      .select("id, name")
-      .or("name.ilike.%DCCC%,name.ilike.%DEMOCRATIC CONGRESSIONAL CAMPAIGN%")
+      .select("id, display_name")
+      .or("display_name.ilike.%DCCC%,display_name.ilike.%DEMOCRATIC CONGRESSIONAL CAMPAIGN%")
       .limit(10);
     console.log(`  DCCC candidate entities: ${(dccc ?? []).length}`);
-    for (const e of (dccc ?? [])) console.log(`    [${e.id}] name="${e.name}"`);
+    for (const e of (dccc ?? [])) console.log(`    [${e.id}] display_name="${e.display_name}"`);
 
     const dcccIds = (dccc ?? []).map((e: { id: string }) => e.id);
     if (dcccIds.length === 0) return;
@@ -113,17 +113,17 @@ async function main(): Promise<void> {
   await section("DONOR — Jon Stryker → DCCC (FIX-236 anchor, expect ~$310K)", async () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data: ents } = await (db as any).from("financial_entities")
-      .select("id, name, total_donated_cents")
-      .or("name.ilike.%STRYKER%JON%,name.ilike.%JON%STRYKER%")
+      .select("id, display_name, total_donated_cents")
+      .or("display_name.ilike.%STRYKER%JON%,display_name.ilike.%JON%STRYKER%")
       .limit(10);
     console.log(`  matching donor entities: ${(ents ?? []).length}`);
-    for (const e of (ents ?? [])) console.log(`    [${e.id}] name="${e.name}" total=${fmt$(e.total_donated_cents)}`);
+    for (const e of (ents ?? [])) console.log(`    [${e.id}] display_name="${e.display_name}" total=${fmt$(e.total_donated_cents)}`);
     if (!ents || ents.length === 0) return;
     const ids = ents.map((e: { id: string }) => e.id);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data: dccc } = await (db as any).from("financial_entities")
-      .select("id, name")
-      .or("name.ilike.%DCCC%,name.ilike.%DEMOCRATIC CONGRESSIONAL CAMPAIGN%")
+      .select("id, display_name")
+      .or("display_name.ilike.%DCCC%,display_name.ilike.%DEMOCRATIC CONGRESSIONAL CAMPAIGN%")
       .limit(10);
     const dcccIds = (dccc ?? []).map((e: { id: string }) => e.id);
     if (dcccIds.length === 0) return;
@@ -140,31 +140,31 @@ async function main(): Promise<void> {
   await section("DONOR — Stephen Schwarzman (FIX-239 dedup — expect ONE row)", async () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data: ents } = await (db as any).from("financial_entities")
-      .select("id, name, canonical_name, donor_fingerprint, total_donated_cents")
-      .ilike("name", "%SCHWARZMAN%")
+      .select("id, display_name, canonical_name, donor_fingerprint, total_donated_cents")
+      .ilike("display_name", "%SCHWARZMAN%")
       .limit(20);
     console.log(`  Schwarzman entities: ${(ents ?? []).length}`);
-    for (const e of (ents ?? [])) console.log(`    [${e.id}] name="${e.name}" canonical="${e.canonical_name}" fp="${e.donor_fingerprint}" total=${fmt$(e.total_donated_cents)}`);
+    for (const e of (ents ?? [])) console.log(`    [${e.id}] display_name="${e.display_name}" canonical="${e.canonical_name}" fp="${e.donor_fingerprint}" total=${fmt$(e.total_donated_cents)}`);
   });
 
   await section("DONOR — high-volume small-donor THOMPSON (FIX-236 anchor — 1,889 matches)", async () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { count, error } = await (db as any).from("financial_entities")
       .select("id", { count: "exact", head: true })
-      .ilike("name", "THOMPSON,%");
-    console.log(`  entities with name starting THOMPSON,: ${count} (expected ~1889)`);
+      .ilike("display_name", "THOMPSON,%");
+    console.log(`  entities with display_name starting THOMPSON,: ${count} (expected ~1889)`);
     if (error) console.log("  error:", error.message);
 
     // pick one and confirm it resolves
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data: sample } = await (db as any).from("financial_entities")
-      .select("id, name, canonical_name, total_donated_cents")
-      .ilike("name", "THOMPSON,%")
+      .select("id, display_name, canonical_name, total_donated_cents")
+      .ilike("display_name", "THOMPSON,%")
       .gt("total_donated_cents", 50000)
       .order("total_donated_cents", { ascending: false })
       .limit(5);
     console.log("  top THOMPSON donors by total_donated_cents:");
-    for (const e of (sample ?? [])) console.log(`    [${e.id}] name="${e.name}" total=${fmt$(e.total_donated_cents)}`);
+    for (const e of (sample ?? [])) console.log(`    [${e.id}] display_name="${e.display_name}" total=${fmt$(e.total_donated_cents)}`);
   });
 
   await section("DONOR — apostrophe surnames (FIX-244 + FIX-245)", async () => {
@@ -172,14 +172,14 @@ async function main(): Promise<void> {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { count } = await (db as any).from("financial_entities")
         .select("id", { count: "exact", head: true })
-        .ilike("name", `${surname},%`);
+        .ilike("display_name", `${surname},%`);
       console.log(`  ${surname},*  entity count: ${count}`);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data: sample } = await (db as any).from("financial_entities")
-        .select("id, name, canonical_name")
-        .ilike("name", `${surname},%`)
+        .select("id, display_name, canonical_name")
+        .ilike("display_name", `${surname},%`)
         .limit(3);
-      for (const e of (sample ?? [])) console.log(`    sample: name="${e.name}" canonical="${e.canonical_name}"`);
+      for (const e of (sample ?? [])) console.log(`    sample: display_name="${e.display_name}" canonical="${e.canonical_name}"`);
     }
   });
 
@@ -227,11 +227,11 @@ async function main(): Promise<void> {
   await section("RECIPIENT — Senate Majority PAC inflow (FIX-240 IE)", async () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data: ents } = await (db as any).from("financial_entities")
-      .select("id, name, source_ids")
-      .ilike("name", "%SENATE MAJORITY PAC%")
+      .select("id, display_name, source_ids")
+      .ilike("display_name", "%SENATE MAJORITY PAC%")
       .limit(5);
     console.log(`  SMP entities: ${(ents ?? []).length}`);
-    for (const e of (ents ?? [])) console.log(`    [${e.id}] name="${e.name}" fec_cmte=${e.source_ids?.fec_committee_id ?? "-"}`);
+    for (const e of (ents ?? [])) console.log(`    [${e.id}] display_name="${e.display_name}" fec_cmte=${e.source_ids?.fec_committee_id ?? "-"}`);
 
     // ie_support / ie_oppose total rows in prod
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -249,10 +249,10 @@ async function main(): Promise<void> {
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data: ap } = await (db as any).from("financial_entities")
-      .select("id, name")
-      .ilike("name", "%AMERICA PAC%")
+      .select("id, display_name")
+      .ilike("display_name", "%AMERICA PAC%")
       .limit(5);
-    for (const e of (ap ?? [])) console.log(`    America PAC: [${e.id}] name="${e.name}"`);
+    for (const e of (ap ?? [])) console.log(`    America PAC: [${e.id}] display_name="${e.display_name}"`);
 
     const apIds = (ap ?? []).map((e: { id: string }) => e.id);
     if (apIds.length > 0) {
@@ -293,13 +293,13 @@ async function main(): Promise<void> {
     for (const q of ["elon musk", "elon", "musk", "JD Vance", "Schwarzman", "STRYKER"]) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data, error, count } = await (db as any).from("financial_entities")
-        .select("id, name, canonical_name", { count: "exact" })
+        .select("id, display_name, canonical_name", { count: "exact" })
         .ilike("canonical_name", `%${q.toLowerCase()}%`)
         .limit(3);
       if (error) console.log(`  q="${q.padEnd(15)}"  error: ${error.message}`);
       else {
         console.log(`  q="${q.padEnd(15)}" matches=${count} examples:`);
-        for (const r of (data ?? [])) console.log(`    [${r.id}] name="${r.name}" canonical="${r.canonical_name}"`);
+        for (const r of (data ?? [])) console.log(`    [${r.id}] display_name="${r.display_name}" canonical="${r.canonical_name}"`);
       }
     }
   });

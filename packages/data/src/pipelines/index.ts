@@ -813,37 +813,76 @@ export async function runNightlySync(): Promise<NightlySyncResults> {
     }
   }
 
-  // 3c. Rebuild entity_connections via SQL derivation (FIX-100)
-  // Full rebuild from financial_relationships, votes, proposal_cosponsors,
-  // career_history, agencies. Function-level statement_timeout is 15min
-  // (migration 20260430000000); the call site needs to bypass PostgREST's
-  // ~60s gateway timeout, which it does when SUPABASE_DB_URL is set by
-  // talking to the session pooler directly via pg.Client. Falls back to
-  // PostgREST RPC for local dev where the rebuild completes in <1s.
+  // 3c. Rebuild entity_connections via SQL derivation (FIX-100, chunked FIX-263)
+  // Each connection_type has its own function (rebuild_entity_connections_<chunk>())
+  // with its own per-function statement_timeout. The direct-pg path calls each
+  // chunk as a separate top-level statement so each gets a fresh session
+  // statement_timeout budget (45min) instead of sharing one cap across the
+  // whole rebuild. Per-chunk DELETE replaces the global TRUNCATE so live
+  // reads on /officials/[id] / /donors/[id] aren't blocked for the entire
+  // rebuild window.
+  //
+  // Partial failure: if one chunk times out (e.g. donations on a presidential
+  // backfill), the orchestrator logs the failure and continues to subsequent
+  // chunks. Graph reflects fresh successful chunks + stale failed chunk
+  // rather than going all-stale.
+  //
+  // Order matters: external (LittleSis, ON CONFLICT DO NOTHING) MUST run
+  // after all authoritative blocks so its overlapping rows are skipped.
+  //
+  // PostgREST RPC fallback (local dev) calls the umbrella rebuild_entity_connections()
+  // which loops through the chunks itself — locally the whole rebuild completes
+  // in <1s so PostgREST's gateway timeout isn't a factor.
   {
     const t0 = Date.now();
     const logId = await startSync("entity_connections_rebuild");
+    const chunkFns = [
+      "rebuild_entity_connections_donations",
+      "rebuild_entity_connections_votes",
+      "rebuild_entity_connections_cosponsors",
+      "rebuild_entity_connections_appointments",
+      "rebuild_entity_connections_oversight",
+      "rebuild_entity_connections_holds",
+      "rebuild_entity_connections_gifts",
+      "rebuild_entity_connections_contracts",
+      "rebuild_entity_connections_lobbying",
+      "rebuild_entity_connections_external",
+    ];
     try {
       const dbUrl = buildDbUrl();
-      console.log(`[nightly] rebuild_entity_connections — starting (${dbUrl ? "direct pg" : "PostgREST RPC"})`);
+      console.log(`[nightly] rebuild_entity_connections — starting (${dbUrl ? "direct pg, per-chunk" : "PostgREST RPC umbrella"})`);
       let total = 0;
-      let breakdown: { connection_type: string; edges_upserted: string | number }[] = [];
+      let breakdown: { connection_type: string; edges_upserted: string | number; duration_ms?: number }[] = [];
+      const chunkFailures: string[] = [];
       if (dbUrl) {
         const { Client } = await import("pg");
         const client = new Client({ connectionString: dbUrl });
         await client.connect();
         try {
-          // Raise the session-level statement_timeout above the role default
-          // (120s on Pro). The function's own proconfig sets 15min internally,
-          // but the OUTER SELECT inherits the session/role default, which is
-          // what was firing the timeout. 20min gives the outer call a small
-          // margin over the function-level 15min cap.
-          await client.query("SET statement_timeout = '20min'");
-          const res = await client.query<{ connection_type: string; edges_upserted: string | number }>(
-            "SELECT * FROM rebuild_entity_connections()"
-          );
-          breakdown = res.rows;
-          total = res.rows.reduce((a, r) => a + Number(r.edges_upserted ?? 0), 0);
+          for (const fn of chunkFns) {
+            const chunkStart = Date.now();
+            try {
+              // Per-chunk session statement_timeout reset. Each chunk gets
+              // a fresh wall-clock budget so a slow donation chunk doesn't
+              // eat into contracts'.
+              await client.query("SET statement_timeout = '45min'");
+              const res = await client.query<{ connection_type: string; edges_upserted: string | number }>(
+                `SELECT * FROM public.${fn}()`
+              );
+              const chunkDur = Date.now() - chunkStart;
+              for (const r of res.rows) {
+                breakdown.push({ ...r, duration_ms: chunkDur });
+                total += Number(r.edges_upserted ?? 0);
+              }
+              console.log(`  [chunk] ${fn} — complete in ${(chunkDur / 1000).toFixed(1)}s`);
+            } catch (chunkErr) {
+              const chunkDur = Date.now() - chunkStart;
+              const msg = errMsg(chunkErr);
+              console.error(`  [chunk] ${fn} — FAILED in ${(chunkDur / 1000).toFixed(1)}s: ${msg}`);
+              chunkFailures.push(`${fn}: ${msg}`);
+              breakdown.push({ connection_type: `${fn}:failed`, edges_upserted: -1, duration_ms: chunkDur });
+            }
+          }
         } finally {
           await client.end();
         }
@@ -858,14 +897,28 @@ export async function runNightlySync(): Promise<NightlySyncResults> {
         total = (data ?? []).reduce((a: number, r: any) => a + Number(r.edges_upserted ?? 0), 0);
       }
       const dur = Date.now() - t0;
-      console.log(`[nightly] rebuild_entity_connections — complete in ${(dur / 1000).toFixed(1)}s, ${total} edges`);
-      for (const r of breakdown) console.log(`  ${r.connection_type}: ${r.edges_upserted}`);
-      results.pipelines.entity_connections_rebuild = {
-        status: "complete",
-        rows_added: total,
-        duration_ms: dur,
-      };
-      await completeSync(logId, { inserted: total, updated: 0, failed: 0, estimatedMb: 0 });
+      const statusLabel = chunkFailures.length > 0 ? "PARTIAL" : "complete";
+      console.log(`[nightly] rebuild_entity_connections — ${statusLabel} in ${(dur / 1000).toFixed(1)}s, ${total} edges` +
+                  (chunkFailures.length > 0 ? ` (${chunkFailures.length} chunk failures)` : ""));
+      for (const r of breakdown) {
+        const durStr = r.duration_ms !== undefined ? ` (${(r.duration_ms / 1000).toFixed(1)}s)` : "";
+        console.log(`  ${r.connection_type}: ${r.edges_upserted}${durStr}`);
+      }
+      if (chunkFailures.length > 0) {
+        results.pipelines.entity_connections_rebuild = {
+          status: "failed",
+          error: `${chunkFailures.length} chunk(s) failed: ${chunkFailures.join("; ")}`,
+        };
+        results.errors.push(`Rebuild entity_connections (partial): ${chunkFailures.join("; ")}`);
+        await failSync(logId, chunkFailures.join("; "));
+      } else {
+        results.pipelines.entity_connections_rebuild = {
+          status: "complete",
+          rows_added: total,
+          duration_ms: dur,
+        };
+        await completeSync(logId, { inserted: total, updated: 0, failed: 0, estimatedMb: 0 });
+      }
     } catch (err) {
       const msg = errMsg(err);
       console.error("[nightly] rebuild_entity_connections failed:", msg);

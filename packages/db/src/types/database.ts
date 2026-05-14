@@ -309,6 +309,13 @@ export type Database = {
             foreignKeyName: "bill_details_primary_sponsor_id_fkey"
             columns: ["primary_sponsor_id"]
             isOneToOne: false
+            referencedRelation: "official_homepage_stats_mv"
+            referencedColumns: ["official_id"]
+          },
+          {
+            foreignKeyName: "bill_details_primary_sponsor_id_fkey"
+            columns: ["primary_sponsor_id"]
+            isOneToOne: false
             referencedRelation: "officials"
             referencedColumns: ["id"]
           },
@@ -381,6 +388,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "governing_bodies"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "career_history_official_id_fkey"
+            columns: ["official_id"]
+            isOneToOne: false
+            referencedRelation: "official_homepage_stats_mv"
+            referencedColumns: ["official_id"]
           },
           {
             foreignKeyName: "career_history_official_id_fkey"
@@ -901,6 +915,13 @@ export type Database = {
             foreignKeyName: "civic_initiative_responses_official_id_fkey"
             columns: ["official_id"]
             isOneToOne: false
+            referencedRelation: "official_homepage_stats_mv"
+            referencedColumns: ["official_id"]
+          },
+          {
+            foreignKeyName: "civic_initiative_responses_official_id_fkey"
+            columns: ["official_id"]
+            isOneToOne: false
             referencedRelation: "officials"
             referencedColumns: ["id"]
           },
@@ -1203,6 +1224,206 @@ export type Database = {
         }
         Relationships: []
       }
+      edgar_companies: {
+        Row: {
+          canonical_name: string
+          cik: string
+          created_at: string
+          financial_entity_id: string | null
+          id: string
+          metadata: Json
+          name: string
+          sector: string | null
+          sic_code: string | null
+          source_ids: Json
+          state_of_inc: string | null
+          ticker: string | null
+          updated_at: string
+        }
+        Insert: {
+          canonical_name: string
+          cik: string
+          created_at?: string
+          financial_entity_id?: string | null
+          id?: string
+          metadata?: Json
+          name: string
+          sector?: string | null
+          sic_code?: string | null
+          source_ids?: Json
+          state_of_inc?: string | null
+          ticker?: string | null
+          updated_at?: string
+        }
+        Update: {
+          canonical_name?: string
+          cik?: string
+          created_at?: string
+          financial_entity_id?: string | null
+          id?: string
+          metadata?: Json
+          name?: string
+          sector?: string | null
+          sic_code?: string | null
+          source_ids?: Json
+          state_of_inc?: string | null
+          ticker?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "edgar_companies_financial_entity_id_fkey"
+            columns: ["financial_entity_id"]
+            isOneToOne: false
+            referencedRelation: "financial_entities"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      edgar_executive_officers: {
+        Row: {
+          canonical_name: string
+          company_id: string
+          created_at: string
+          effective_year: number
+          financial_entity_id: string | null
+          full_name: string
+          id: string
+          match_confidence: string | null
+          metadata: Json
+          role_category: string
+          source_accession: string
+          source_filing_type: string
+          source_ids: Json
+          title: string
+          total_compensation_cents: number | null
+          updated_at: string
+        }
+        Insert: {
+          canonical_name: string
+          company_id: string
+          created_at?: string
+          effective_year: number
+          financial_entity_id?: string | null
+          full_name: string
+          id?: string
+          match_confidence?: string | null
+          metadata?: Json
+          role_category: string
+          source_accession: string
+          source_filing_type: string
+          source_ids?: Json
+          title: string
+          total_compensation_cents?: number | null
+          updated_at?: string
+        }
+        Update: {
+          canonical_name?: string
+          company_id?: string
+          created_at?: string
+          effective_year?: number
+          financial_entity_id?: string | null
+          full_name?: string
+          id?: string
+          match_confidence?: string | null
+          metadata?: Json
+          role_category?: string
+          source_accession?: string
+          source_filing_type?: string
+          source_ids?: Json
+          title?: string
+          total_compensation_cents?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "edgar_executive_officers_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "edgar_companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "edgar_executive_officers_financial_entity_id_fkey"
+            columns: ["financial_entity_id"]
+            isOneToOne: false
+            referencedRelation: "financial_entities"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      edgar_major_shareholders: {
+        Row: {
+          accession: string
+          canonical_holder_name: string
+          company_id: string
+          created_at: string
+          event_date: string | null
+          filed_at: string
+          filing_type: string
+          financial_entity_id: string | null
+          holder_name: string
+          id: string
+          match_confidence: string | null
+          metadata: Json
+          pct_of_class: number | null
+          shares_held: number | null
+          source_ids: Json
+          updated_at: string
+        }
+        Insert: {
+          accession: string
+          canonical_holder_name: string
+          company_id: string
+          created_at?: string
+          event_date?: string | null
+          filed_at: string
+          filing_type: string
+          financial_entity_id?: string | null
+          holder_name: string
+          id?: string
+          match_confidence?: string | null
+          metadata?: Json
+          pct_of_class?: number | null
+          shares_held?: number | null
+          source_ids?: Json
+          updated_at?: string
+        }
+        Update: {
+          accession?: string
+          canonical_holder_name?: string
+          company_id?: string
+          created_at?: string
+          event_date?: string | null
+          filed_at?: string
+          filing_type?: string
+          financial_entity_id?: string | null
+          holder_name?: string
+          id?: string
+          match_confidence?: string | null
+          metadata?: Json
+          pct_of_class?: number | null
+          shares_held?: number | null
+          source_ids?: Json
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "edgar_major_shareholders_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "edgar_companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "edgar_major_shareholders_financial_entity_id_fkey"
+            columns: ["financial_entity_id"]
+            isOneToOne: false
+            referencedRelation: "financial_entities"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       enrichment_queue: {
         Row: {
           claimed_at: string | null
@@ -1359,6 +1580,123 @@ export type Database = {
           tag?: string
           tag_category?: string
           visibility?: string
+        }
+        Relationships: []
+      }
+      external_relationships: {
+        Row: {
+          amount_cents: number | null
+          connection_type: Database["public"]["Enums"]["connection_type"]
+          description: string | null
+          ended_at: string | null
+          from_id: string
+          from_type: string
+          id: string
+          ingested_at: string
+          is_current: boolean | null
+          match_confidence: string
+          metadata: Json
+          occurred_at: string | null
+          raw_category: string
+          raw_category_name: string | null
+          source: string
+          source_id: string
+          source_updated_at: string | null
+          source_url: string | null
+          to_id: string
+          to_type: string
+        }
+        Insert: {
+          amount_cents?: number | null
+          connection_type: Database["public"]["Enums"]["connection_type"]
+          description?: string | null
+          ended_at?: string | null
+          from_id: string
+          from_type: string
+          id?: string
+          ingested_at?: string
+          is_current?: boolean | null
+          match_confidence: string
+          metadata?: Json
+          occurred_at?: string | null
+          raw_category: string
+          raw_category_name?: string | null
+          source: string
+          source_id: string
+          source_updated_at?: string | null
+          source_url?: string | null
+          to_id: string
+          to_type: string
+        }
+        Update: {
+          amount_cents?: number | null
+          connection_type?: Database["public"]["Enums"]["connection_type"]
+          description?: string | null
+          ended_at?: string | null
+          from_id?: string
+          from_type?: string
+          id?: string
+          ingested_at?: string
+          is_current?: boolean | null
+          match_confidence?: string
+          metadata?: Json
+          occurred_at?: string | null
+          raw_category?: string
+          raw_category_name?: string | null
+          source?: string
+          source_id?: string
+          source_updated_at?: string | null
+          source_url?: string | null
+          to_id?: string
+          to_type?: string
+        }
+        Relationships: []
+      }
+      external_relationships_review_queue: {
+        Row: {
+          candidate_matches: Json
+          created_at: string
+          id: string
+          reason: string
+          resolution_notes: string | null
+          resolved_at: string | null
+          resolved_to_id: string | null
+          resolved_to_type: string | null
+          source: string
+          source_entity_id: string | null
+          source_payload: Json
+          source_relationship_id: string | null
+          status: string
+        }
+        Insert: {
+          candidate_matches: Json
+          created_at?: string
+          id?: string
+          reason: string
+          resolution_notes?: string | null
+          resolved_at?: string | null
+          resolved_to_id?: string | null
+          resolved_to_type?: string | null
+          source: string
+          source_entity_id?: string | null
+          source_payload: Json
+          source_relationship_id?: string | null
+          status?: string
+        }
+        Update: {
+          candidate_matches?: Json
+          created_at?: string
+          id?: string
+          reason?: string
+          resolution_notes?: string | null
+          resolved_at?: string | null
+          resolved_to_id?: string | null
+          resolved_to_type?: string | null
+          source?: string
+          source_entity_id?: string | null
+          source_payload?: Json
+          source_relationship_id?: string | null
+          status?: string
         }
         Relationships: []
       }
@@ -1729,6 +2067,174 @@ export type Database = {
           },
         ]
       }
+      irs990_filings: {
+        Row: {
+          address_state: string | null
+          created_at: string
+          ein: string
+          fetched_at: string
+          filing_type: string
+          financial_entity_id: string
+          id: string
+          metadata: Json
+          ntee_code: string | null
+          object_id: string
+          schema_version: string | null
+          source_url: string
+          subsection_code: number | null
+          tax_year: number
+          total_assets_eoy_cents: number | null
+          total_expenses_cents: number | null
+          total_revenue_cents: number | null
+          updated_at: string
+        }
+        Insert: {
+          address_state?: string | null
+          created_at?: string
+          ein: string
+          fetched_at?: string
+          filing_type: string
+          financial_entity_id: string
+          id?: string
+          metadata?: Json
+          ntee_code?: string | null
+          object_id: string
+          schema_version?: string | null
+          source_url: string
+          subsection_code?: number | null
+          tax_year: number
+          total_assets_eoy_cents?: number | null
+          total_expenses_cents?: number | null
+          total_revenue_cents?: number | null
+          updated_at?: string
+        }
+        Update: {
+          address_state?: string | null
+          created_at?: string
+          ein?: string
+          fetched_at?: string
+          filing_type?: string
+          financial_entity_id?: string
+          id?: string
+          metadata?: Json
+          ntee_code?: string | null
+          object_id?: string
+          schema_version?: string | null
+          source_url?: string
+          subsection_code?: number | null
+          tax_year?: number
+          total_assets_eoy_cents?: number | null
+          total_expenses_cents?: number | null
+          total_revenue_cents?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "irs990_filings_financial_entity_id_fkey"
+            columns: ["financial_entity_id"]
+            isOneToOne: false
+            referencedRelation: "financial_entities"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      irs990_grants_out: {
+        Row: {
+          amount_cents: number
+          filing_id: string
+          id: string
+          matched_entity_id: string | null
+          matched_entity_type: string | null
+          metadata: Json
+          purpose: string | null
+          recipient_ein: string | null
+          recipient_name: string
+          recipient_name_canonical: string
+        }
+        Insert: {
+          amount_cents: number
+          filing_id: string
+          id?: string
+          matched_entity_id?: string | null
+          matched_entity_type?: string | null
+          metadata?: Json
+          purpose?: string | null
+          recipient_ein?: string | null
+          recipient_name: string
+          recipient_name_canonical: string
+        }
+        Update: {
+          amount_cents?: number
+          filing_id?: string
+          id?: string
+          matched_entity_id?: string | null
+          matched_entity_type?: string | null
+          metadata?: Json
+          purpose?: string | null
+          recipient_ein?: string | null
+          recipient_name?: string
+          recipient_name_canonical?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "irs990_grants_out_filing_id_fkey"
+            columns: ["filing_id"]
+            isOneToOne: false
+            referencedRelation: "irs990_filings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      irs990_officers: {
+        Row: {
+          compensation_cents: number | null
+          filing_id: string
+          hours_per_week: number | null
+          id: string
+          match_confidence: number | null
+          matched_entity_id: string | null
+          matched_entity_type: string | null
+          metadata: Json
+          name_canonical: string
+          person_name: string
+          role_title: string
+        }
+        Insert: {
+          compensation_cents?: number | null
+          filing_id: string
+          hours_per_week?: number | null
+          id?: string
+          match_confidence?: number | null
+          matched_entity_id?: string | null
+          matched_entity_type?: string | null
+          metadata?: Json
+          name_canonical: string
+          person_name: string
+          role_title: string
+        }
+        Update: {
+          compensation_cents?: number | null
+          filing_id?: string
+          hours_per_week?: number | null
+          id?: string
+          match_confidence?: number | null
+          matched_entity_id?: string | null
+          matched_entity_type?: string | null
+          metadata?: Json
+          name_canonical?: string
+          person_name?: string
+          role_title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "irs990_officers_filing_id_fkey"
+            columns: ["filing_id"]
+            isOneToOne: false
+            referencedRelation: "irs990_filings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       jurisdictions: {
         Row: {
           boundary_geometry: unknown
@@ -1853,6 +2359,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "industry_codes"
             referencedColumns: ["code"]
+          },
+          {
+            foreignKeyName: "lobbying_disclosures_official_id_fkey"
+            columns: ["official_id"]
+            isOneToOne: false
+            referencedRelation: "official_homepage_stats_mv"
+            referencedColumns: ["official_id"]
           },
           {
             foreignKeyName: "lobbying_disclosures_official_id_fkey"
@@ -2152,6 +2665,13 @@ export type Database = {
             foreignKeyName: "official_committee_memberships_official_id_fkey"
             columns: ["official_id"]
             isOneToOne: false
+            referencedRelation: "official_homepage_stats_mv"
+            referencedColumns: ["official_id"]
+          },
+          {
+            foreignKeyName: "official_committee_memberships_official_id_fkey"
+            columns: ["official_id"]
+            isOneToOne: false
             referencedRelation: "officials"
             referencedColumns: ["id"]
           },
@@ -2196,6 +2716,13 @@ export type Database = {
             foreignKeyName: "official_community_comments_official_id_fkey"
             columns: ["official_id"]
             isOneToOne: false
+            referencedRelation: "official_homepage_stats_mv"
+            referencedColumns: ["official_id"]
+          },
+          {
+            foreignKeyName: "official_community_comments_official_id_fkey"
+            columns: ["official_id"]
+            isOneToOne: false
             referencedRelation: "officials"
             referencedColumns: ["id"]
           },
@@ -2235,6 +2762,8 @@ export type Database = {
           source_ids: Json
           term_end: string | null
           term_start: string | null
+          tier: string
+          total_received_cents: number
           updated_at: string
           website_url: string | null
         }
@@ -2264,6 +2793,8 @@ export type Database = {
           source_ids?: Json
           term_end?: string | null
           term_start?: string | null
+          tier?: string
+          total_received_cents?: number
           updated_at?: string
           website_url?: string | null
         }
@@ -2293,6 +2824,8 @@ export type Database = {
           source_ids?: Json
           term_end?: string | null
           term_start?: string | null
+          tier?: string
+          total_received_cents?: number
           updated_at?: string
           website_url?: string | null
         }
@@ -2614,6 +3147,13 @@ export type Database = {
             foreignKeyName: "promises_official_id_fkey"
             columns: ["official_id"]
             isOneToOne: false
+            referencedRelation: "official_homepage_stats_mv"
+            referencedColumns: ["official_id"]
+          },
+          {
+            foreignKeyName: "promises_official_id_fkey"
+            columns: ["official_id"]
+            isOneToOne: false
             referencedRelation: "officials"
             referencedColumns: ["id"]
           },
@@ -2672,6 +3212,13 @@ export type Database = {
             foreignKeyName: "proposal_actions_performed_by_id_fkey"
             columns: ["performed_by_id"]
             isOneToOne: false
+            referencedRelation: "official_homepage_stats_mv"
+            referencedColumns: ["official_id"]
+          },
+          {
+            foreignKeyName: "proposal_actions_performed_by_id_fkey"
+            columns: ["performed_by_id"]
+            isOneToOne: false
             referencedRelation: "officials"
             referencedColumns: ["id"]
           },
@@ -2723,6 +3270,13 @@ export type Database = {
           source?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "proposal_cosponsors_official_id_fkey"
+            columns: ["official_id"]
+            isOneToOne: false
+            referencedRelation: "official_homepage_stats_mv"
+            referencedColumns: ["official_id"]
+          },
           {
             foreignKeyName: "proposal_cosponsors_official_id_fkey"
             columns: ["official_id"]
@@ -3127,6 +3681,13 @@ export type Database = {
             foreignKeyName: "votes_official_id_fkey"
             columns: ["official_id"]
             isOneToOne: false
+            referencedRelation: "official_homepage_stats_mv"
+            referencedColumns: ["official_id"]
+          },
+          {
+            foreignKeyName: "votes_official_id_fkey"
+            columns: ["official_id"]
+            isOneToOne: false
             referencedRelation: "officials"
             referencedColumns: ["id"]
           },
@@ -3200,6 +3761,22 @@ export type Database = {
       }
     }
     Views: {
+      chord_donor_state_party_flows_mv: {
+        Row: {
+          donor_state: string | null
+          party_chamber: string | null
+          total_usd: number | null
+        }
+        Relationships: []
+      }
+      chord_donor_type_party_flows_mv: {
+        Row: {
+          donor_type: string | null
+          party_chamber: string | null
+          total_usd: number | null
+        }
+        Relationships: []
+      }
       chord_industry_flows_mv: {
         Row: {
           display_icon: string | null
@@ -3209,6 +3786,16 @@ export type Database = {
           official_count: number | null
           party_chamber: string | null
           total_cents: number | null
+        }
+        Relationships: []
+      }
+      chord_subject_party_flows_mv: {
+        Row: {
+          display_icon: string | null
+          display_label: string | null
+          party_chamber: string | null
+          subject: string | null
+          vote_count: number | null
         }
         Relationships: []
       }
@@ -3251,6 +3838,42 @@ export type Database = {
           f_table_schema?: unknown
           srid?: number | null
           type?: string | null
+        }
+        Relationships: []
+      }
+      homepage_stats_mv: {
+        Row: {
+          active_proposals_count: number | null
+          donor_records_count: number | null
+          officials_count: number | null
+          refreshed_at: string | null
+          spending_records_count: number | null
+        }
+        Relationships: []
+      }
+      official_homepage_stats_mv: {
+        Row: {
+          donor_count: number | null
+          financial_relationship_count: number | null
+          official_id: string | null
+          refreshed_at: string | null
+          total_donations_cents: number | null
+          vote_count: number | null
+        }
+        Relationships: []
+      }
+      pipeline_runtime_stats_mv: {
+        Row: {
+          last_run_at: string | null
+          max_duration_ms: number | null
+          max_peak_rss_mb: number | null
+          p50_duration_ms: number | null
+          p95_duration_ms: number | null
+          p95_peak_rss_mb: number | null
+          pipeline: string | null
+          runs_30d: number | null
+          success_rate_pct: number | null
+          successful_runs_30d: number | null
         }
         Relationships: []
       }
@@ -3430,6 +4053,10 @@ export type Database = {
             }
             Returns: string
           }
+      canonical_donor_fingerprint: {
+        Args: { raw_name: string; zip5: string }
+        Returns: string
+      }
       chord_contract_flows: {
         Args: never
         Returns: {
@@ -3441,6 +4068,30 @@ export type Database = {
           total_cents: number
         }[]
       }
+      chord_donor_brackets_for_official: {
+        Args: { p_official_id: string }
+        Returns: {
+          bracket: string
+          donor_count: number
+          total_cents: number
+        }[]
+      }
+      chord_donor_state_party_flows: {
+        Args: { p_official_id?: string }
+        Returns: {
+          donor_state: string
+          party_chamber: string
+          total_usd: number
+        }[]
+      }
+      chord_donor_type_party_flows: {
+        Args: { p_official_ids?: string[] }
+        Returns: {
+          donor_type: string
+          party_chamber: string
+          total_usd: number
+        }[]
+      }
       chord_industry_flows: {
         Args: never
         Returns: {
@@ -3450,6 +4101,48 @@ export type Database = {
           industry: string
           official_count: number
           party_chamber: string
+          total_cents: number
+        }[]
+      }
+      chord_industry_flows_for_official: {
+        Args: { p_official_id: string }
+        Returns: {
+          display_icon: string
+          display_label: string
+          donor_count: number
+          industry: string
+          total_cents: number
+        }[]
+      }
+      chord_sector_vote_for_officials: {
+        Args: { p_min_usd?: number; p_official_ids: string[] }
+        Returns: {
+          display_icon: string
+          display_label: string
+          sector: string
+          total_usd: number
+          vote_count: number
+          vote_outcome: string
+        }[]
+      }
+      chord_subject_party_flows: {
+        Args: { p_official_ids?: string[] }
+        Returns: {
+          display_icon: string
+          display_label: string
+          party_chamber: string
+          subject: string
+          vote_count: number
+        }[]
+      }
+      chord_top_pacs_for_official: {
+        Args: { p_limit?: number; p_official_id: string }
+        Returns: {
+          display_icon: string
+          display_label: string
+          industry: string
+          pac_id: string
+          pac_name: string
           total_cents: number
         }[]
       }
@@ -3810,6 +4503,7 @@ export type Database = {
         }[]
       }
       gettransactionid: { Args: never; Returns: unknown }
+      link_federal_reps_to_districts: { Args: never; Returns: number }
       link_officials_to_districts: { Args: never; Returns: number }
       longtransactionsenabled: { Args: never; Returns: boolean }
       normalize_pv_path: { Args: { p: string }; Returns: string }
@@ -3877,6 +4571,14 @@ export type Database = {
           state_abbr: string
         }[]
       }
+      reap_stale_sync_log: {
+        Args: { stale_minutes?: number }
+        Returns: {
+          id: string
+          pipeline: string
+          reaped_at: string
+        }[]
+      }
       rebuild_entity_connections: {
         Args: never
         Returns: {
@@ -3884,11 +4586,95 @@ export type Database = {
           edges_upserted: number
         }[]
       }
+      rebuild_entity_connections_appointments: {
+        Args: never
+        Returns: {
+          connection_type: string
+          edges_upserted: number
+        }[]
+      }
+      rebuild_entity_connections_contracts: {
+        Args: never
+        Returns: {
+          connection_type: string
+          edges_upserted: number
+        }[]
+      }
+      rebuild_entity_connections_cosponsors: {
+        Args: never
+        Returns: {
+          connection_type: string
+          edges_upserted: number
+        }[]
+      }
+      rebuild_entity_connections_donations: {
+        Args: never
+        Returns: {
+          connection_type: string
+          edges_upserted: number
+        }[]
+      }
+      rebuild_entity_connections_external: {
+        Args: never
+        Returns: {
+          connection_type: string
+          edges_upserted: number
+        }[]
+      }
+      rebuild_entity_connections_gifts: {
+        Args: never
+        Returns: {
+          connection_type: string
+          edges_upserted: number
+        }[]
+      }
+      rebuild_entity_connections_holds: {
+        Args: never
+        Returns: {
+          connection_type: string
+          edges_upserted: number
+        }[]
+      }
+      rebuild_entity_connections_lobbying: {
+        Args: never
+        Returns: {
+          connection_type: string
+          edges_upserted: number
+        }[]
+      }
+      rebuild_entity_connections_oversight: {
+        Args: never
+        Returns: {
+          connection_type: string
+          edges_upserted: number
+        }[]
+      }
+      rebuild_entity_connections_votes: {
+        Args: never
+        Returns: {
+          connection_type: string
+          edges_upserted: number
+        }[]
+      }
+      rebuild_official_donation_totals: { Args: never; Returns: undefined }
+      rebuild_official_donation_totals_full: { Args: never; Returns: undefined }
       record_enrichment_failure: {
         Args: { p_error: string; p_queue_id: number }
         Returns: string
       }
+      refresh_chord_donor_state_party_flows_mv: {
+        Args: never
+        Returns: undefined
+      }
+      refresh_chord_donor_type_party_flows_mv: {
+        Args: never
+        Returns: undefined
+      }
       refresh_chord_industry_flows_mv: { Args: never; Returns: undefined }
+      refresh_chord_subject_party_flows_mv: { Args: never; Returns: undefined }
+      refresh_homepage_stats_mv: { Args: never; Returns: undefined }
+      refresh_official_homepage_stats_mv: { Args: never; Returns: undefined }
+      refresh_pipeline_runtime_stats_mv: { Args: never; Returns: undefined }
       refresh_proposal_popularity: { Args: never; Returns: undefined }
       refresh_proposal_trending: { Args: never; Returns: undefined }
       refresh_spending_totals: { Args: never; Returns: undefined }
@@ -4571,6 +5357,10 @@ export type Database = {
         | "nomination_vote_no"
         | "holds_position"
         | "gift_received"
+        | "member_of"
+        | "owns"
+        | "parent_of"
+        | "affiliated_with"
       donor_type:
         | "individual"
         | "pac"
@@ -4592,6 +5382,8 @@ export type Database = {
         | "grant"
         | "lobbying_spend"
         | "other"
+        | "ie_support"
+        | "ie_oppose"
       flag_content_type: "civic_comment" | "official_community_comment"
       flag_reason:
         | "spam"
@@ -4850,6 +5642,10 @@ export const Constants = {
         "nomination_vote_no",
         "holds_position",
         "gift_received",
+        "member_of",
+        "owns",
+        "parent_of",
+        "affiliated_with",
       ],
       donor_type: [
         "individual",
@@ -4873,6 +5669,8 @@ export const Constants = {
         "grant",
         "lobbying_spend",
         "other",
+        "ie_support",
+        "ie_oppose",
       ],
       flag_content_type: ["civic_comment", "official_community_comment"],
       flag_reason: [
