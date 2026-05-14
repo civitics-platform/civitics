@@ -1349,6 +1349,22 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
     const finalResult = await upsertPacEntitiesBatch(db, finalEntityInputs);
     console.log(`    Cross-cycle entity totals — upserted: ${finalResult.upserted}  failed: ${finalResult.failed}`);
 
+    // ── Cross-cycle individual-donor total recompute (FIX-269) ──────────────
+    // Per-cycle indiv upsert overwrites total_donated_cents (onConflict on
+    // donor_fingerprint), so multi-cycle donors carry only the last cycle's
+    // slice. SQL recompute UPDATEs every entity with its live SUM of donation
+    // outflow from financial_relationships, covering candidate AND committee
+    // recipients (FIX-181 + FIX-236) in one pass. Excludes ie_support/
+    // ie_oppose/contract/grant/lobbying — only relationship_type='donation'
+    // counts toward this column. Pattern mirrors rebuild_official_donation_totals.
+    console.log("\n  Recomputing financial_entities.total_donated_cents from live financial_relationships...");
+    const { error: rebuildErr } = await db.rpc("rebuild_financial_entity_donation_totals");
+    if (rebuildErr) {
+      console.warn(`    rebuild_financial_entity_donation_totals failed: ${rebuildErr.message}`);
+    } else {
+      console.log("    ✓ donor totals recomputed from financial_relationships");
+    }
+
     // ── Persist indiv Last-Modified watermark (FIX-193) ─────────────────────
     if (Object.keys(indivWatermark).length > 0) {
       try {

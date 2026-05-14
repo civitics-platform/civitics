@@ -96,6 +96,9 @@ Step 2d (independent expenditures, FIX-240):
 - No separate R2 cache watermark — the file is small enough that the R2 freshness check in `downloadWithR2Cache` already short-circuits an unchanged download.
 - Stage failure is tolerated — if the IE CSV is unavailable, the cycle still wraps up with PAC + indiv data already landed.
 
+Post-cycle recompute (FIX-269):
+- After all cycles process, the pipeline calls `rebuild_financial_entity_donation_totals()` which UPDATEs `financial_entities.total_donated_cents` to live SUM of donation outflow (`from_type='financial_entity'` + `relationship_type='donation'`, covering candidate AND committee recipients). Replaces the lossy per-cycle overwrite that left multi-cycle individuals with only the latest cycle's total. Mirrors `rebuild_official_donation_totals()` shipped for officials. Defined in migration `20260513010000_financial_entity_donation_totals.sql`; full backfill via `SELECT rebuild_financial_entity_donation_totals_full();`.
+
 - No API key required, no rate limits
 - FEC updates bulk files weekly — run on weekly cron (Sunday block of nightly orchestrator)
 - Script: `pnpm --filter @civitics/data data:fec-bulk`
