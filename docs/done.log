@@ -343,3 +343,7 @@
 2026-05-12 | FIX-255 | b3d78a23 | prod-only | chore(fixes): sync status after FIX-254/255 + record prod reap
 2026-05-13 | FIX-236 | 702eeef3 | prod-only | chore(audit): cron run #2 2026-05-12 + FIX-236/240 prod backfill verified
 2026-05-13 | FIX-240 | 702eeef3 | prod-only | chore(audit): cron run #2 2026-05-12 + FIX-236/240 prod backfill verified
+2026-05-13 | FIX-263 | 8b35a23a | local-only | fix(graph): chunked rebuild_entity_connections + display_name drift
+2026-05-13 | FIX-265 | 8b35a23a | local-only | fix(graph): chunked rebuild_entity_connections + display_name drift
+2026-05-13 | FIX-263 | 8b35a23a | prod-only | chore(fixes): FIX-263 chunked rebuild prod-verified 4.58M edges 72min (donation 60min/3.85M)
+2026-05-13 | FIX-265 | 8b35a23a | prod-only | chore(fixes): FIX-265 display_name drift fix prod-verified via anchor-verify + tag_ai SELECT
