@@ -354,3 +354,5 @@
 2026-05-13 | FIX-270 | ee4c7c1e | local-only | fix(officials): include super-PAC IEs in profile inflow aggregation
 2026-05-13 | FIX-270 | ee4c7c1e | prod-only | chore(fixes): FIX-270 prod-verified via curl — Trump +$137.5M support $185.0M oppose, Moreno +$67.3M/$85.9M, Schumer no IE (regression clean), Harris +$1733.1M/$259.3M
 2026-05-14 | FIX-271 | 1c35cf34 | local+prod | feat(entities): cross-source entity resolution foundation (Strategy D)
+2026-05-14 | FIX-277 | 645dfae7 | local-only | feat(entities): IRS 990 + EDGAR pipelines use resolve_entity_by_canonical (Strategy D Session 2)
+2026-05-14 | FIX-278 | 645dfae7 | local-only | feat(entities): IRS 990 + EDGAR pipelines use resolve_entity_by_canonical (Strategy D Session 2)
