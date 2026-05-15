@@ -109,22 +109,40 @@ async function preloadCikBindings(db: Db): Promise<Map<string, string>> {
 }
 
 /**
- * Find an existing public.financial_entities row by canonical_name +
- * entity_type='corporation'. Returns the id or null.
+ * FIX-278 — Find an existing public.financial_entities row whose canonical_name
+ * matches and whose entity_type is 'corporation' OR 'other'. Uses
+ * resolve_entity_by_canonical (FIX-271) as the single source of truth for
+ * cross-source matching; returns NULL on miss or ambiguity.
+ *
+ * Loosened from 'corporation' only to also include 'other' because LittleSis
+ * writes corporations under either type depending on the source `types[]`
+ * shape (littleSisOrgEntityType fallback), and USAspending recipient
+ * ingestion can land under 'other' too. Pre-FIX-278 the EDGAR sync would
+ * INSERT a duplicate corporation row whenever the existing row sat under
+ * 'other' — investigation §3.4 + §5.3.
+ *
+ * Sequential rather than a single multi-type lookup: if both a 'corporation'
+ * and an 'other' row exist for the same canonical, treat each type window
+ * independently — the helper returns NULL within each window on multi-match,
+ * which is the safe (FP-resistant) outcome.
  */
-async function findFinancialEntityByCanonical(db: Db, canonical: string): Promise<string | null> {
-  const { data, error } = await db
-    .from("financial_entities")
-    .select("id")
-    .eq("canonical_name", canonical)
-    .eq("entity_type", "corporation")
-    .limit(1)
-    .maybeSingle();
-  if (error && error.code !== "PGRST116") {
-    console.warn(`  [edgar/companies] findFinancialEntity(${canonical}): ${error.message}`);
-    return null;
+async function resolveCorporationEntityByCanonical(
+  db: Db,
+  canonical: string,
+): Promise<string | null> {
+  for (const entityType of ["corporation", "other"] as const) {
+    const { data, error } = await db.rpc("resolve_entity_by_canonical", {
+      p_canonical_name: canonical,
+      p_entity_type:    entityType,
+      p_state:          null,
+    });
+    if (error) {
+      console.warn(`  [edgar/companies] resolve_entity_by_canonical(${canonical}, ${entityType}): ${error.message}`);
+      continue;
+    }
+    if (data) return data as string;
   }
-  return (data as { id: string } | null)?.id ?? null;
+  return null;
 }
 
 async function insertCorporationEntity(
@@ -253,8 +271,10 @@ export async function syncCompanies(
 
     let financialEntityId = bindings.get(cik) ?? null;
     if (!financialEntityId) {
-      financialEntityId = await findFinancialEntityByCanonical(db, canonical);
-      if (!financialEntityId) {
+      financialEntityId = await resolveCorporationEntityByCanonical(db, canonical);
+      if (financialEntityId) {
+        console.log(`  [edgar/companies] CIK ${cik} canonical-bound to existing entity ${financialEntityId} (canonical="${canonical}")`);
+      } else {
         financialEntityId = await insertCorporationEntity(db, meta, canonical, cik);
       }
       if (financialEntityId) {

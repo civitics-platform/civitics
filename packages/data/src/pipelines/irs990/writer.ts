@@ -115,6 +115,38 @@ export async function upsertNonprofitEntity(
     return { entityId: existing.data.entity_id as string };
   }
 
+  // 1.5. Canonical-name fallback (FIX-277). Cross-source resolution: the same
+  //      org may already exist as a LittleSis hop-1 row (entity_type='other'
+  //      or 'corporation'), a USAspending recipient, or another pipeline's
+  //      financial_entity. resolve_entity_by_canonical (FIX-271) returns
+  //      single-match-only — NULL on miss OR ambiguity — so unsafe collisions
+  //      fall through to the INSERT path below.
+  //      p_entity_type=NULL catches matches under any non-individual type
+  //      (the FEC-PAC case is naturally protected by fec_committee_id UNIQUE,
+  //      which keeps PACs as distinct rows even when canonical collides).
+  const { data: matchedId, error: rpcErr } = await db.rpc(
+    "resolve_entity_by_canonical",
+    { p_canonical_name: canonical, p_entity_type: null, p_state: null },
+  );
+  if (rpcErr) {
+    console.warn(`  [irs990] resolve_entity_by_canonical failed for EIN ${input.ein}: ${rpcErr.message}`);
+  }
+  if (matchedId) {
+    // Bind EIN → existing entity. Do NOT update financial_entities.metadata —
+    // preserves the existing row's source attribution. 990 financial summary
+    // lands in irs990_filings via insertFiling regardless.
+    console.log(`  [irs990] EIN ${input.ein} canonical-bound to existing entity ${matchedId} (canonical="${canonical}")`);
+    await db.from("external_source_refs").upsert({
+      source:       "irs_990",
+      external_id:  input.ein,
+      entity_type:  "financial_entity",
+      entity_id:    matchedId,
+      source_url:   `https://projects.propublica.org/nonprofits/organizations/${input.ein}`,
+      last_seen_at: new Date().toISOString(),
+    }, { onConflict: "source,external_id" });
+    return { entityId: matchedId as string };
+  }
+
   // 2. Insert a new financial_entities row. No ON CONFLICT — there is no
   //    UNIQUE on (canonical_name, entity_type) anymore after FIX-195 made
   //    that index non-unique. Dedup runs against external_source_refs by EIN
