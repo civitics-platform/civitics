@@ -7,10 +7,6 @@
     {
       "path": "/api/cron/notify-followers",
       "schedule": "0 3 * * *"
-    },
-    {
-      "path": "/api/cron/platform-snapshot",
-      "schedule": "*/10 * * * *"
     }
   ]
 }
