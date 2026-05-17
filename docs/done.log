@@ -362,3 +362,4 @@
 2026-05-16 | FIX-283 | d46f1f17 | local-only | feat(ops): live Cloudflare R2 + Vercel Usage in platform snapshot
 2026-05-16 | FIX-284 | d46f1f17 | local-only | feat(ops): live Cloudflare R2 + Vercel Usage in platform snapshot
 2026-05-16 | FIX-283 | 76584821 | prod-only | chore(ops): mark FIX-283 verified prod after live prod smoke
+2026-05-17 | FIX-285 | e848f550 | local+prod | feat(ops): GitHub Actions usage in platform snapshot
