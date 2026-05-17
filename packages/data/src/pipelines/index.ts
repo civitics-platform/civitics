@@ -358,14 +358,28 @@ export interface NightlySyncResults {
 // Nightly sync — used by Vercel cron and standalone scheduler
 // ---------------------------------------------------------------------------
 
-export async function runNightlySync(): Promise<NightlySyncResults> {
+// FIX-292: nightly is split across two GHA jobs. Phase 1 ('fec') runs
+// regulations → IRS 990 inside a 120-min budget; Phase 2 ('enrichment') runs
+// LittleSis → tag-industry → refresh_* under its own 120-min budget after
+// Phase 1 completes. 'all' preserves the pre-split behavior for manual /
+// ad-hoc invocations and for the Vercel cron canary path.
+export type NightlyPhase = "fec" | "enrichment" | "all";
+
+export interface RunNightlyOptions {
+  phase?: NightlyPhase;
+}
+
+export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<NightlySyncResults> {
+  const phase: NightlyPhase = opts.phase ?? "all";
+  const runFec = phase === "fec" || phase === "all";
+  const runEnrichment = phase === "enrichment" || phase === "all";
+
   const startedAt = new Date();
   console.log("\n╔══════════════════════════════════════════╗");
   console.log("║          Nightly Sync Starting            ║");
   console.log("╚══════════════════════════════════════════╝");
-  console.log(`  Started: ${startedAt.toISOString()}`);
+  console.log(`  Started: ${startedAt.toISOString()}  phase=${phase}`);
 
-  const apiKey = process.env["REGULATIONS_API_KEY"];
   const isWeekly = new Date().getDay() === 0; // Sunday
 
   const results: NightlySyncResults = {
@@ -399,9 +413,13 @@ export async function runNightlySync(): Promise<NightlySyncResults> {
   const { federalId, stateIds } = await seedJurisdictions(db);
   const { senateId: senateGovBodyId, houseId: houseGovBodyId } = await seedGoverningBodies(db, federalId);
 
+  // FIX-292: Phase 1 ('fec') — daily ingest + weekly FEC bulk + IRS 990.
+  if (runFec) {
+
   // 1. Daily data pipelines — Regulations.gov
   {
     const t0 = Date.now();
+    const apiKey = process.env["REGULATIONS_API_KEY"];
     if (apiKey) {
       try {
         const r = await runRegulationsPipeline(apiKey, federalId);
@@ -482,10 +500,16 @@ export async function runNightlySync(): Promise<NightlySyncResults> {
     }
   }
 
+  } // end Phase 1 daily pipelines (FIX-292)
+
   // 2. Weekly pipelines (Sunday only) — FEC bulk, USASpending, CourtListener, OpenStates
   if (isWeekly) {
     const clKey  = process.env["COURTLISTENER_API_KEY"];
     const osKey  = process.env["OPENSTATES_API_KEY"];
+
+    // FIX-292: Phase 1 ('fec') weekly stages — FEC bulk + IRS 990. These flush
+    // before the Phase 2 enrichment job picks up the LittleSis matcher index.
+    if (runFec) {
 
     {
       const t0 = Date.now();
@@ -541,6 +565,14 @@ export async function runNightlySync(): Promise<NightlySyncResults> {
         results.errors.push(`IRS 990: ${msg}`);
       }
     }
+
+    } // end Phase 1 weekly stages (FIX-292)
+
+    // FIX-292: Phase 2 ('enrichment') weekly stages — LittleSis through
+    // tag-industry. Depends on Phase 1's FEC + IRS-990 writes having flushed
+    // (job 2 needs job 1 in nightly.yml; FIX-276 ordering is now an explicit
+    // job dependency rather than implicit orchestrator sequencing).
+    if (runEnrichment) {
 
     // FIX-251: LittleSis bulk (relationship graph, CC-BY-SA 4.0). Runs after
     // FEC + IRS-990 so the match index sees fresh PAC / nonprofit entities
@@ -751,7 +783,15 @@ export async function runNightlySync(): Promise<NightlySyncResults> {
         results.errors.push(`Tag industry: ${msg}`);
       }
     }
+
+    } // end Phase 2 weekly stages (FIX-292)
   }
+
+  // FIX-292: Phase 2 ('enrichment') daily stages — MV refreshes, rule + AI
+  // taggers, AI summaries, chord/homepage/runtime MV refreshes, prune jobs.
+  // These run after the Phase 2 weekly block (when active) so tag-industry
+  // writes are visible to downstream MV refreshes.
+  if (runEnrichment) {
 
   // 3b. Refresh derived MVs that back the proposals list page.
   //  - proposal_trending_24h (FIX-029): comment-activity scoring for the
@@ -888,6 +928,8 @@ export async function runNightlySync(): Promise<NightlySyncResults> {
     }
   }
 
+  } // end Phase 2 daily stages (FIX-292)
+
   results.completed_at = new Date();
   results.duration_ms = results.completed_at.getTime() - startedAt.getTime();
 
@@ -915,7 +957,9 @@ export async function runNightlySync(): Promise<NightlySyncResults> {
       { onConflict: "key" }
     );
 
-    // Also write to data_sync_log
+    // Also write to data_sync_log. FIX-292: each phase writes its own row,
+    // tagged metadata.phase so two rows-per-night-on-Sunday is the new
+    // normal. Canary semantics are unchanged — it dedups by UTC date.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await (db as any).from("data_sync_log").insert({
       pipeline:      "nightly_cron",
@@ -925,7 +969,7 @@ export async function runNightlySync(): Promise<NightlySyncResults> {
       rows_inserted: Object.values(results.pipelines).reduce(
         (sum, p) => sum + (p?.rows_added ?? 0), 0
       ),
-      metadata: { ...results, peak_rss_mb: captureRssMb() },
+      metadata: { ...results, peak_rss_mb: captureRssMb(), phase },
     });
   } catch (err) {
     console.error("[nightly] failed to record results:", errMsg(err));
@@ -946,7 +990,18 @@ if (require.main === module) {
       .then(() => { setTimeout(() => process.exit(0), 500); })
       .catch((e) => { console.error("Pipeline failed:", e); setTimeout(() => process.exit(1), 500); });
   } else if (command === "nightly") {
-    runNightlySync()
+    // FIX-292: optional --phase=<fec|enrichment|all>. Default 'all' preserves
+    // pre-split behavior for `pnpm data:nightly` (local) and the Vercel cron
+    // canary. GHA invokes each phase explicitly via :ci scripts.
+    const phaseArg = process.argv.find((a) => a.startsWith("--phase="));
+    const phase: NightlyPhase = phaseArg
+      ? (phaseArg.slice("--phase=".length) as NightlyPhase)
+      : "all";
+    if (!["fec", "enrichment", "all"].includes(phase)) {
+      console.error(`Invalid --phase value: ${phase}. Must be one of: fec, enrichment, all.`);
+      process.exit(2);
+    }
+    runNightlySync({ phase })
       .then(() => { setTimeout(() => process.exit(0), 500); })
       .catch((e) => { console.error("Pipeline failed:", e); setTimeout(() => process.exit(1), 500); });
   } else {

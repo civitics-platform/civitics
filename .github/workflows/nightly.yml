@@ -14,12 +14,28 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  run:
+  # FIX-292: runNightlySync was hitting timeout-minutes: 120 cumulatively
+  # because LittleSis canonical binding consumes 60+ minutes after FEC bulk +
+  # IRS 990 had already used most of the budget (observed 2026-05-14 + 2026-
+  # 05-17 — both runs cancelled at exactly 2h0m wall-clock, well past where
+  # FEC indiv had finished cleanly). Split into two jobs, each with its own
+  # 120-min budget:
+  #   fec-phase        regulations → congress → openstates-bulk → edgar-daily
+  #                    → (Sunday: FEC bulk → IRS 990)
+  #   enrichment-phase (Sunday: LittleSis → EDGAR weekly → USASpending →
+  #                    CourtListener → OpenStates API → agencies-hierarchy →
+  #                    OPM FTE → PLUM Book → elections → committees →
+  #                    agency-leadership → agency-enrichment → tag-industry)
+  #                    → daily MV refreshes + rule/AI taggers + AI summaries
+  #                    → chord / homepage / runtime MV refreshes + prune
+  # enrichment-phase `needs: fec-phase` so FEC + IRS-990 writes are flushed
+  # before the LittleSis matcher builds its in-memory index (FIX-276
+  # ordering is now an explicit job dependency, not implicit orchestrator
+  # sequencing). Both jobs share the same env block; GHA doesn't support
+  # YAML anchors so the duplication is explicit.
+
+  fec-phase:
     runs-on: ubuntu-latest
-    # 120 min headroom for the Sunday block: FIX-236's indiv stage runs
-    # 60-90 min on a presidential cycle once warm. The watermark + env knob
-    # (FIX-193) and R2 cache (FIX-192) reduce average runtime, but worst
-    # case (cold cache + new FEC drop) needs the budget.
     timeout-minutes: 120
 
     env:
@@ -62,16 +78,63 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Run nightly sync
-        run: pnpm --filter @civitics/data data:nightly:ci
+      - name: Run FEC phase
+        run: pnpm --filter @civitics/data data:nightly:fec:ci
 
-      # FIX-290: when this workflow gets SIGTERM'd by `timeout-minutes`, the
-      # nightly-sync step above never reaches its completion-row write. The
-      # canary then can't tell "never ran" from "ran but killed by workflow
+      # FIX-290: when this job gets SIGTERM'd by `timeout-minutes`, the FEC
+      # phase step above never reaches its completion-row write. The canary
+      # then can't tell "never ran" from "ran but killed by workflow
       # timeout." This post-step always runs and inserts a synthetic
       # `nightly_killed` row to data_sync_log only if there's a recent
       # `nightly_cron` row stuck at status='running'. Observability, never
       # gates the job (always exits 0).
+      - name: Mark nightly-killed if no completion row
+        if: always()
+        run: pnpm --filter @civitics/data data:mark-killed:ci
+
+  enrichment-phase:
+    needs: fec-phase
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: https://xsazcoxinpgttgquwvuf.supabase.co
+      SUPABASE_SECRET_KEY:      ${{ secrets.SUPABASE_SECRET_KEY }}
+      SUPABASE_DB_PASSWORD:     ${{ secrets.SUPABASE_DB_PASSWORD }}
+      CONGRESS_API_KEY:         ${{ secrets.CONGRESS_API_KEY }}
+      OPENSTATES_API_KEY:       ${{ secrets.OPENSTATES_API_KEY }}
+      COURTLISTENER_API_KEY:    ${{ secrets.COURTLISTENER_API_KEY }}
+      REGULATIONS_API_KEY:      ${{ secrets.REGULATIONS_API_KEY }}
+      CIVITICS_ANTHROPIC_API_KEY: ${{ secrets.CIVITICS_ANTHROPIC_API_KEY }}
+      AUTONOMOUS:               "true"
+      CIVITICS_ENRICHMENT_MODE: queue
+      # Heap headroom matches fec-phase. LittleSis bulk + matcher index
+      # build is RAM-heavy too; keeping the 12 GB ceiling avoids surprises.
+      NODE_OPTIONS: --max-old-space-size=12288
+      CLOUDFLARE_ACCOUNT_ID:           ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_R2_ACCESS_KEY_ID:     ${{ secrets.CLOUDFLARE_R2_ACCESS_KEY_ID }}
+      CLOUDFLARE_R2_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_R2_SECRET_ACCESS_KEY }}
+      CLOUDFLARE_R2_BUCKET_CACHE:      civitics-cache
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run enrichment phase
+        run: pnpm --filter @civitics/data data:nightly:enrichment:ci
+
       - name: Mark nightly-killed if no completion row
         if: always()
         run: pnpm --filter @civitics/data data:mark-killed:ci

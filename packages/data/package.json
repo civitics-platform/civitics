@@ -32,6 +32,8 @@
     "data:tag-all": "tsx --env-file=../../.env.local src/pipelines/tags/rules.ts && tsx --env-file=../../.env.local src/pipelines/tags/ai-tagger.ts -- --confirm && tsx --env-file=../../.env.local src/pipelines/tags/ai-classifier.ts -- --confirm",
     "data:nightly": "tsx --env-file=../../.env.local src/pipelines/index.ts nightly",
     "data:nightly:ci": "tsx src/pipelines/index.ts nightly --allow-prod",
+    "data:nightly:fec:ci": "tsx src/pipelines/index.ts nightly --phase=fec --allow-prod",
+    "data:nightly:enrichment:ci": "tsx src/pipelines/index.ts nightly --phase=enrichment --allow-prod",
     "data:agencies-hierarchy": "tsx --env-file=../../.env.local src/pipelines/agencies-hierarchy/index.ts",
     "data:agency-enrichment": "tsx --env-file=../../.env.local src/pipelines/agency-enrichment/index.ts",
     "data:agency-leadership": "tsx --env-file=../../.env.local src/pipelines/agency-leadership/index.ts",
