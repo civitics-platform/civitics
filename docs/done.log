@@ -370,3 +370,4 @@
 2026-05-17 | FIX-289 | 2b1514e0 | local+prod | feat(ops): email alerts on kill switch flips + close FIX-234
 2026-05-17 | FIX-290 | 8e7d13cb | local+prod | fix(ops): split rebuild_entity_connections out of nightly + canary accepts partial
 2026-05-17 | FIX-291 | 8e7d13cb | local+prod | fix(ops): split rebuild_entity_connections out of nightly + canary accepts partial
+2026-05-17 | FIX-213 | superseded-by-fix-253 | superseded | FIX-253 (SEC EDGAR DEF 14A exec roster) covers same scope; FIX-213 mis-specified data.sec.gov/submissions/{CIK}.json as officer source
