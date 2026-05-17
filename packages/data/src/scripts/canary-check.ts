@@ -24,7 +24,11 @@ import { captureRssMb } from "../pipelines/sync-log";
 
 const PIPELINE_NAME      = "nightly_cron";
 const CHECK_DAYS         = 7;
-const ALERTS_FROM        = "alerts@civitics.platform";
+// FIX-289: unify From: address with the rest of the platform (kill-switch
+// alerts in apps/civitics/src/lib/email.ts also read RESEND_FROM). Falls back
+// to the prior hardcoded address only if the env var isn't set, so behavior
+// is unchanged for any deployment still missing the variable.
+const ALERTS_FROM        = process.env["RESEND_FROM"] ?? "alerts@civitics.com";
 const NIGHTLY_RUN_URL    =
   "https://github.com/civitics-platform/civitics/actions/workflows/nightly.yml";
 

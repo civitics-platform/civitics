@@ -95,3 +95,65 @@ function escapeHtml(s: string): string {
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
 }
+
+/**
+ * Render a kill-switch flip notification email (FIX-288).
+ *
+ * Subject + body shape mirrors the three flip surfaces:
+ *   - auto + OFF      → "⚠️ AUTO-TRIP: <name> DISABLED" + metric / value / threshold
+ *   - manual + OFF    → "Kill switch disabled: <name>"
+ *   - manual + ON     → "Kill switch re-enabled: <name>"  (positive tone)
+ *   - auto + ON       → shouldn't fire (auto-trip is one-way per FIX-286
+ *                       decision #11) but handled as a manual re-enable shape
+ *                       in case of future bidirectional auto-recovery.
+ *
+ * The auto-trip body includes the trigger metric / current value / threshold
+ * so the admin can decide whether to re-enable directly from the email body.
+ */
+export function renderKillSwitchEmail(event: {
+  switch_name: string;
+  trigger_metric: string | null;
+  trigger_value: number | null;
+  threshold_pct: number | null;
+  flipped_to: boolean;
+  source: "auto" | "manual";
+  flipped_at: string;
+  siteUrl: string;
+}): { subject: string; html: string } {
+  const { switch_name, trigger_metric, trigger_value, threshold_pct, flipped_to, source, flipped_at, siteUrl } =
+    event;
+
+  let subject: string;
+  let title: string;
+  let body: string;
+
+  if (source === "auto" && !flipped_to) {
+    subject = `⚠️ AUTO-TRIP: ${switch_name} DISABLED`;
+    title = `Kill switch auto-tripped: ${switch_name}`;
+    const metricLine =
+      trigger_metric && trigger_value !== null && threshold_pct !== null
+        ? `Trigger: ${trigger_metric} hit ${trigger_value} (threshold ${threshold_pct}% of free-tier limit).`
+        : "Trigger metric details not available.";
+    body =
+      `${metricLine} Flipped at ${flipped_at}. ` +
+      `Open the Operations tab to review the metric and re-enable when ready ` +
+      `(auto-trip is one-way — the switch stays off until you manually flip it back on).`;
+  } else if (!flipped_to) {
+    subject = `Kill switch disabled: ${switch_name}`;
+    title = `Kill switch disabled: ${switch_name}`;
+    body = `Manually disabled at ${flipped_at}. Open the Operations tab to review or re-enable.`;
+  } else {
+    subject = `Kill switch re-enabled: ${switch_name}`;
+    title = `Kill switch re-enabled: ${switch_name}`;
+    body = `Manually re-enabled at ${flipped_at}. The pipeline is back online.`;
+  }
+
+  const html = renderNotificationEmail({
+    title,
+    body,
+    link: "/dashboard?tab=operations",
+    siteUrl,
+  });
+
+  return { subject, html };
+}

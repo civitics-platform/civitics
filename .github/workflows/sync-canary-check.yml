@@ -27,6 +27,8 @@ jobs:
       SUPABASE_SECRET_KEY:      ${{ secrets.SUPABASE_SECRET_KEY }}
       ADMIN_EMAIL:              ${{ secrets.ADMIN_EMAIL }}
       RESEND_API_KEY:           ${{ secrets.RESEND_API_KEY }}
+      # FIX-289: unify From: address across canary + kill-switch alerts.
+      RESEND_FROM:              ${{ secrets.RESEND_FROM }}
 
     steps:
       - name: Checkout

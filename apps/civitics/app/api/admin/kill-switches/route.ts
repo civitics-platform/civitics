@@ -27,6 +27,9 @@ import {
   setKillSwitch,
   type KillSwitchName,
 } from "@civitics/db";
+import { sendEmail, renderKillSwitchEmail } from "@/lib/email";
+
+const SITE_URL_FALLBACK = "https://civitics-civitics.vercel.app";
 
 const ALLOWED_NAMES: ReadonlyArray<KillSwitchName> = [
   "ai_summaries",
@@ -81,6 +84,34 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       body.name,
       body.enabled,
     );
+
+    // FIX-288: notify admin on manual flips. Auto-trips are handled by the
+    // cron route's own email fan-out. Fire-and-forget — email failure logs
+    // a warning but never blocks the flip response (audit is best-effort,
+    // same posture as the kill_switch_events insert).
+    if (
+      process.env["EMAIL_ALERTS_ENABLED"] === "true" &&
+      adminEmail
+    ) {
+      const siteUrl = process.env["NEXT_PUBLIC_SITE_URL"] ?? SITE_URL_FALLBACK;
+      const { subject, html } = renderKillSwitchEmail({
+        switch_name: body.name,
+        trigger_metric: null,
+        trigger_value: null,
+        threshold_pct: null,
+        flipped_to: body.enabled,
+        source: "manual",
+        flipped_at: flipped_at ?? new Date().toISOString(),
+        siteUrl,
+      });
+      const sendResult = await sendEmail({ to: adminEmail, subject, html });
+      if (!sendResult.sent) {
+        console.warn(
+          `[kill-switch email] manual flip not sent (${body.name}): ${sendResult.reason}`,
+        );
+      }
+    }
+
     return NextResponse.json({
       ok: true,
       name: body.name,

@@ -21,6 +21,9 @@ export const dynamic = "force-dynamic";
 
 import { NextResponse, type NextRequest } from "next/server";
 import { createAdminClient, writePlatformUsageSnapshot } from "@civitics/db";
+import { sendEmail, renderKillSwitchEmail } from "@/lib/email";
+
+const SITE_URL_FALLBACK = "https://civitics-civitics.vercel.app";
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const authHeader = request.headers.get("authorization");
@@ -33,6 +36,40 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
     const db = createAdminClient();
     const result = await writePlatformUsageSnapshot(db);
+
+    // FIX-288: email the admin on any auto-trip flip. Best-effort —
+    // sendEmail no-ops when RESEND_API_KEY/RESEND_FROM are missing and
+    // the gate is a separate per-environment toggle so a verified Resend
+    // setup doesn't start paging the moment the API key is added.
+    if (process.env["EMAIL_ALERTS_ENABLED"] === "true") {
+      const adminEmail = process.env["ADMIN_EMAIL"];
+      if (adminEmail) {
+        const siteUrl = process.env["NEXT_PUBLIC_SITE_URL"] ?? SITE_URL_FALLBACK;
+        const flips = result.payload.auto_trip_decisions.filter(
+          (d) => d.action === "flip",
+        );
+        await Promise.allSettled(
+          flips.map(async (d) => {
+            const { subject, html } = renderKillSwitchEmail({
+              switch_name: d.switch_name,
+              trigger_metric: d.trigger_metric,
+              trigger_value: d.trigger_value,
+              threshold_pct: d.threshold_pct,
+              flipped_to: false,
+              source: "auto",
+              flipped_at: result.payload.timestamp,
+              siteUrl,
+            });
+            const sendResult = await sendEmail({ to: adminEmail, subject, html });
+            if (!sendResult.sent) {
+              console.warn(
+                `[kill-switch email] not sent (${d.switch_name}): ${sendResult.reason}`,
+              );
+            }
+          }),
+        );
+      }
+    }
 
     return NextResponse.json({
       ok: true,
