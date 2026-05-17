@@ -356,3 +356,4 @@
 2026-05-14 | FIX-271 | 1c35cf34 | local+prod | feat(entities): cross-source entity resolution foundation (Strategy D)
 2026-05-14 | FIX-277 | 645dfae7 | local-only | feat(entities): IRS 990 + EDGAR pipelines use resolve_entity_by_canonical (Strategy D Session 2)
 2026-05-14 | FIX-278 | 645dfae7 | local-only | feat(entities): IRS 990 + EDGAR pipelines use resolve_entity_by_canonical (Strategy D Session 2)
+2026-05-16 | FIX-280 | 9abf4d9c | local-only | feat(entities): LittleSis hop-1 canonical-resolve + fix max(uuid) bug in RPC (Strategy D Session 3)
