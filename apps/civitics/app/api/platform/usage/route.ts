@@ -2,211 +2,80 @@
  * GET  /api/platform/usage  — Platform resource usage with limits
  * POST /api/platform/usage  — Admin: update/verify/upgrade (requires X-Admin-Key)
  *
- * GET is cached at edge for 1 hour. Anthropic cost is always fetched live
- * from api_usage_logs and upserted before responding.
+ * GET reads the latest row from platform_usage_snapshot (populated every
+ * 10 minutes by /api/cron/platform-snapshot, FIX-281). When the snapshot
+ * is missing or older than 20 minutes (two missed cron ticks) the route
+ * falls back to a live recompute via computePlatformUsagePayload so the
+ * dashboard still works during a cron outage. Edge-cached for 60s with
+ * 5-min SWR (matches FIX-243 pattern).
  */
 
 export const dynamic = "force-dynamic";
 
 import { createAdminClient } from "@civitics/db";
 import {
-  getPlatformUsage,
   updateUsage,
   verifyUsage,
   upgradeServicePlan,
-  calculateOverageCost,
-  getSourceDisplay,
-  getSupabaseSqlMetrics,
-  getSupabaseManagementMetrics,
+  computePlatformUsagePayload,
   type PlanTier,
-  type UsageSource,
+  type PlatformUsagePayload,
 } from "@civitics/db";
 import { NextResponse } from "next/server";
+import { withDbTimeout } from "@/lib/supabase-check";
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+// Snapshot is considered stale after two missed 10-min cron ticks.
+const SNAPSHOT_STALE_MS = 20 * 60 * 1000;
 
-type UsageRow = {
-  input_tokens: number | null;
-  output_tokens: number | null;
-  cost_cents: number | null;
+// Edge cache: snapshot only changes every 10 min; 60s s-maxage absorbs the
+// dashboard-load burst without ever serving meaningfully stale data.
+const CACHE_HEADER = "public, max-age=0, s-maxage=60, stale-while-revalidate=300";
+
+type SnapshotRow = {
+  fetched_at: string;
+  payload: PlatformUsagePayload;
 };
-
-// ── Anthropic live spend ──────────────────────────────────────────────────────
-
-async function getMonthlyAnthropicSpend(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  db: any,
-): Promise<number | null> {
-  try {
-    const monthStart = new Date(
-      new Date().getFullYear(),
-      new Date().getMonth(),
-      1,
-    ).toISOString();
-
-    const { data: rows } = await db
-      .from("api_usage_logs")
-      .select("input_tokens, output_tokens, cost_cents")
-      .eq("service", "anthropic")
-      .gte("created_at", monthStart);
-
-    if (!rows) return null;
-
-    const total = ((rows as UsageRow[]) ?? []).reduce((sum, r) => {
-      if (r.input_tokens != null && r.output_tokens != null) {
-        return sum + (r.input_tokens * 0.25 + r.output_tokens * 1.25) / 1_000_000;
-      }
-      return sum + (r.cost_cents ?? 0) / 100;
-    }, 0);
-
-    return Math.round(total * 10000) / 10000;
-  } catch {
-    return null;
-  }
-}
 
 // ── GET ───────────────────────────────────────────────────────────────────────
 
 export async function GET() {
   try {
+    const db = createAdminClient();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const db = createAdminClient() as any;
+    const anyDb = db as any;
 
-    // Read per-service plan overrides from pipeline_state
-    const { data: planState } = await db
-      .from("pipeline_state")
-      .select("value")
-      .eq("key", "platform_plan")
-      .maybeSingle();
-
-    const planOverrides = (planState?.value as Record<string, string> | null) ?? {};
-    // Default plan for services not explicitly overridden
-    const defaultPlan: PlanTier = "free";
-
-    // Auto-update Anthropic from live api_usage_logs (source = 'api')
-    const anthropicSpend = await getMonthlyAnthropicSpend(db);
-    if (anthropicSpend !== null) {
-      await updateUsage(db, "anthropic", "monthly_spend_usd", anthropicSpend, "api");
-    }
-
-    // Auto-update Supabase live metrics (FIX-190).
-    // SQL helper: db_size_bytes + storage_bytes via the public.get_supabase_self_metrics RPC.
-    // Management helper: api_requests_total + function_invocations + disk_used_bytes via Supabase Management API
-    //   (no-op if SUPABASE_MANAGEMENT_API_KEY isn't set — returns { error } instead of throwing).
-    const [supabaseSql, supabaseMgmt] = await Promise.all([
-      getSupabaseSqlMetrics(db),
-      getSupabaseManagementMetrics(),
-    ]);
-
-    if (!("error" in supabaseSql)) {
-      await Promise.all([
-        updateUsage(db, "supabase", "db_size_bytes", supabaseSql.db_size_bytes, "api"),
-        updateUsage(db, "supabase", "storage_bytes", supabaseSql.storage_bytes, "api"),
-      ]);
-    }
-
-    if (!("error" in supabaseMgmt)) {
-      await Promise.all([
-        updateUsage(db, "supabase", "api_requests_7d", supabaseMgmt.api_requests_7d, "api"),
-        updateUsage(db, "supabase", "disk_used_bytes", supabaseMgmt.disk_used_bytes, "api"),
-      ]);
-    }
-
-    // Determine which plans to query for each service
-    // Since getPlatformUsage takes a single plan, we handle the common case:
-    // most services are on 'free', upgrades stored in planOverrides per-service.
-    // For simplicity we fetch free plan limits for all, then re-fetch pro overrides.
-    const freePlan = defaultPlan;
-    const allMetrics = await getPlatformUsage(db, freePlan);
-
-    // Apply per-service plan overrides: if a service has a non-free plan,
-    // re-fetch its limits at the correct tier and merge
-    const upgradedServices = Object.entries(planOverrides).filter(
-      ([, plan]) => plan !== freePlan,
+    const snapRes = await withDbTimeout<{
+      data: SnapshotRow | null;
+      error: { message: string } | null;
+    }>(
+      anyDb
+        .from("platform_usage_snapshot")
+        .select("fetched_at, payload")
+        .order("fetched_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
     );
 
-    let finalMetrics = allMetrics;
+    const snapshot = snapRes?.data ?? null;
+    const fresh =
+      snapshot &&
+      Date.now() - new Date(snapshot.fetched_at).getTime() < SNAPSHOT_STALE_MS;
 
-    if (upgradedServices.length > 0) {
-      // For each upgraded service, get pro metrics and splice them in
-      const overrideResults = await Promise.all(
-        upgradedServices.map(async ([service, plan]) => ({
-          service,
-          metrics: await getPlatformUsage(db, plan as PlanTier),
-        })),
-      );
-
-      finalMetrics = allMetrics.filter(
-        (m) => !upgradedServices.some(([svc]) => svc === m.service),
-      );
-
-      for (const { service, metrics } of overrideResults) {
-        finalMetrics.push(...metrics.filter((m) => m.service === service));
-      }
-
-      // Re-sort: by service name, then sort_order
-      finalMetrics.sort((a, b) =>
-        a.service === b.service
-          ? a.sort_order - b.sort_order
-          : a.service.localeCompare(b.service),
-      );
+    if (fresh && snapshot) {
+      return NextResponse.json(snapshot.payload, {
+        headers: { "Cache-Control": CACHE_HEADER },
+      });
     }
 
-    // Group by service
-    const byService: Record<string, typeof finalMetrics> = {};
-    for (const m of finalMetrics) {
-      if (!byService[m.service]) byService[m.service] = [];
-      byService[m.service]!.push(m);
-    }
-
-    // Summary calculations
-    let totalOverageCost = 0;
-    const metricsWithValues = finalMetrics.filter((m) => m.value !== null);
-
-    for (const m of metricsWithValues) {
-      totalOverageCost += m.overage_cost;
-    }
-
-    // Top 3 by pct
-    const top3ByPct = [...metricsWithValues]
-      .sort((a, b) => b.pct - a.pct)
-      .slice(0, 3);
-
-    // Top 3 by cost
-    const top3ByCost = [...metricsWithValues]
-      .sort((a, b) => b.overage_cost - a.overage_cost || b.pct - a.pct)
-      .slice(0, 3);
-
-    const anyCritical = metricsWithValues.some((m) => m.status === "critical");
-    const anyWarning = metricsWithValues.some((m) => m.status === "warning");
-    const needsVerification = metricsWithValues.some(
-      (m) => m.source_display.needsVerification,
+    // Fall back to live recompute. Slower path, but it's the safety net
+    // for cron outages, so we'd rather respond slow than 500.
+    console.warn(
+      "[platform/usage] snapshot missing or stale, falling back to live recompute",
+      snapshot ? { fetched_at: snapshot.fetched_at } : { snapshot: null },
     );
-
-    const criticalCount = metricsWithValues.filter((m) => m.status === "critical").length;
-    const warningCount = metricsWithValues.filter((m) => m.status === "warning").length;
-    const unverifiedCount = metricsWithValues.filter(
-      (m) => m.source_display.needsVerification,
-    ).length;
-
-    return NextResponse.json({
-      plan: defaultPlan,
-      plan_overrides: planOverrides,
-      metrics: finalMetrics,
-      by_service: byService,
-      total_metrics: finalMetrics.length,
-      summary: {
-        total_overage_cost: totalOverageCost,
-        top3_by_pct: top3ByPct,
-        top3_by_cost: top3ByCost,
-        any_critical: anyCritical,
-        any_warning: anyWarning,
-        needs_verification: needsVerification,
-        critical_count: criticalCount,
-        warning_count: warningCount,
-        unverified_count: unverifiedCount,
-      },
-      timestamp: new Date().toISOString(),
+    const live = await computePlatformUsagePayload(db);
+    return NextResponse.json(live.payload, {
+      headers: { "Cache-Control": CACHE_HEADER },
     });
   } catch (err) {
     return NextResponse.json(

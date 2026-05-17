@@ -991,6 +991,8 @@ export async function runNightlySync(): Promise<NightlySyncResults> {
     "refresh_official_homepage_stats_mv",
     // FIX-233 (part 1): p50/p95/max duration per pipeline over last 30 days
     "refresh_pipeline_runtime_stats_mv",
+    // FIX-281: keep platform_usage_snapshot bounded at 30 days
+    "prune_platform_usage_snapshot",
   ]) {
     try {
       const { createAdminClient } = await import("@civitics/db");

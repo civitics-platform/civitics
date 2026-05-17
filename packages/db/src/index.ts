@@ -116,7 +116,12 @@ export type {
 export { AGENCY_NAMES, agencyFullName } from "./agency-names";
 
 // Anthropic Admin API usage helper
-export { getAnthropicUsage } from "./anthropic-usage";
+export {
+  getAnthropicUsage,
+  getMonthlyAnthropicSpend,
+  getMonthlyAnthropicLimitUsd,
+  clearMonthlyAnthropicSpendCache,
+} from "./anthropic-usage";
 export type {
   AnthropicUsageResponse,
   AnthropicUsageSuccess,
@@ -125,6 +130,29 @@ export type {
   AnthropicBudget,
   AnthropicModelUsage,
 } from "./anthropic-usage";
+
+// Platform usage snapshot (cron-populated, dashboard-read)
+export {
+  computePlatformUsagePayload,
+  writePlatformUsageSnapshot,
+} from "./platform-snapshot";
+export type {
+  PlatformUsagePayload,
+  PlatformUsageSummary,
+  PlatformSnapshotResult,
+} from "./platform-snapshot";
+
+// DB-backed kill switches
+export {
+  isKillSwitchEnabled,
+  setKillSwitch,
+  clearKillSwitchCache,
+} from "./kill-switches";
+export type {
+  KillSwitchName,
+  KillSwitchState,
+  KillSwitchesMap,
+} from "./kill-switches";
 
 // Supabase self-metrics (db size, file storage, Management API analytics)
 export {

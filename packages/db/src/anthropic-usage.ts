@@ -31,6 +31,7 @@
  * Never throws — always returns a structured response with error field set.
  */
 
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "./client";
 
 // Base URL — no org ID in path; admin key determines the org
@@ -483,4 +484,111 @@ export async function getAnthropicUsage(): Promise<AnthropicUsageResponse> {
   cacheExpiresAt = Date.now() + CACHE_TTL_MS;
 
   return result;
+}
+
+// ── Per-request spend helper ──────────────────────────────────────────────────
+//
+// Cheap SUM of api_usage_logs for the current month, used by the AI client
+// per-request kill gate. Cached for 60s so a burst of AI calls hits the
+// cached value rather than the table. Returns USD (decimal), null on error.
+//
+// Distinct from getAnthropicUsage() — which talks to the Anthropic Admin API
+// and is the dashboard's source of truth — and from the snapshot helper in
+// platform-snapshot.ts, which intentionally bypasses this cache because it
+// runs every 10 min and wants fresh numbers.
+
+type UsageLogSumRow = {
+  input_tokens: number | null;
+  output_tokens: number | null;
+  cost_cents: number | null;
+};
+
+const PER_REQUEST_CACHE_TTL_MS = 60_000;
+let cachedSpendUsd: number | null = null;
+let cachedSpendExpiresAt = 0;
+
+export function clearMonthlyAnthropicSpendCache(): void {
+  cachedSpendUsd = null;
+  cachedSpendExpiresAt = 0;
+}
+
+export async function getMonthlyAnthropicSpend(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  db: SupabaseClient<any>,
+): Promise<number | null> {
+  if (cachedSpendUsd !== null && Date.now() < cachedSpendExpiresAt) {
+    return cachedSpendUsd;
+  }
+
+  try {
+    const monthStart = new Date(
+      new Date().getFullYear(),
+      new Date().getMonth(),
+      1,
+    ).toISOString();
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const anyDb = db as any;
+    const { data: rows } = await anyDb
+      .from("api_usage_logs")
+      .select("input_tokens, output_tokens, cost_cents")
+      .eq("service", "anthropic")
+      .gte("created_at", monthStart);
+
+    if (!rows) return null;
+
+    const total = ((rows as UsageLogSumRow[]) ?? []).reduce((sum, r) => {
+      if (r.input_tokens != null && r.output_tokens != null) {
+        return sum + (r.input_tokens * 0.25 + r.output_tokens * 1.25) / 1_000_000;
+      }
+      return sum + (r.cost_cents ?? 0) / 100;
+    }, 0);
+
+    const spend = Math.round(total * 10000) / 10000;
+    cachedSpendUsd = spend;
+    cachedSpendExpiresAt = Date.now() + PER_REQUEST_CACHE_TTL_MS;
+    return spend;
+  } catch {
+    return null;
+  }
+}
+
+// Anthropic monthly limit (USD) from platform_limits, cached alongside the
+// spend so the AI gate makes one read per minute instead of two per request.
+let cachedLimitUsd: number | null = null;
+let cachedLimitExpiresAt = 0;
+
+export async function getMonthlyAnthropicLimitUsd(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  db: SupabaseClient<any>,
+  plan: string = "free",
+): Promise<number | null> {
+  if (cachedLimitUsd !== null && Date.now() < cachedLimitExpiresAt) {
+    return cachedLimitUsd;
+  }
+
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const anyDb = db as any;
+    const { data } = await anyDb
+      .from("platform_limits")
+      .select("included_limit")
+      .eq("service", "anthropic")
+      .eq("metric", "monthly_spend_usd")
+      .eq("plan", plan)
+      .maybeSingle();
+
+    const limit =
+      typeof data?.included_limit === "number"
+        ? data.included_limit
+        : data?.included_limit != null
+          ? Number(data.included_limit)
+          : null;
+
+    cachedLimitUsd = limit;
+    cachedLimitExpiresAt = Date.now() + PER_REQUEST_CACHE_TTL_MS;
+    return limit;
+  } catch {
+    return null;
+  }
 }

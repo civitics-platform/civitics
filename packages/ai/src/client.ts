@@ -12,45 +12,21 @@
  */
 
 import Anthropic from "@anthropic-ai/sdk";
-import { createAdminClient } from "@civitics/db";
+import {
+  createAdminClient,
+  getMonthlyAnthropicSpend,
+  getMonthlyAnthropicLimitUsd,
+  isKillSwitchEnabled,
+} from "@civitics/db";
 
 export const anthropic = new Anthropic({
   apiKey: process.env["CIVITICS_ANTHROPIC_API_KEY"],
 });
 
-// $4.00 hard cap — stored as integer cents
-const MONTHLY_SPEND_LIMIT_CENTS = 400;
-
-// ---------------------------------------------------------------------------
-// Internal helpers
-// ---------------------------------------------------------------------------
-
-async function getMonthlySpendCents(): Promise<number> {
-  try {
-    const db = createAdminClient();
-    const start = new Date();
-    start.setDate(1);
-    start.setHours(0, 0, 0, 0);
-
-    const { data } = await db
-      .from("api_usage_logs")
-      .select("cost_cents, input_tokens, output_tokens")
-      .eq("service", "anthropic")
-      .gte("created_at", start.toISOString());
-
-    // Prefer token-based cost when available (accurate); fall back to stored cost_cents
-    return data?.reduce((sum, r) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const row = r as any;
-      if (row.input_tokens != null && row.output_tokens != null) {
-        return sum + (row.input_tokens * 0.25 + row.output_tokens * 1.25) / 10_000;
-      }
-      return sum + (row.cost_cents ?? 0);
-    }, 0) ?? 0;
-  } catch {
-    return 0; // fail open — a failed check should not block generation
-  }
-}
+// Fallback hard cap used when platform_limits is unreachable.
+// platform_limits.anthropic.monthly_spend_usd is the source of truth — this
+// value only kicks in if that query fails (returns null).
+const FALLBACK_MONTHLY_SPEND_LIMIT_USD = 4.0;
 
 async function getCachedSummary(
   entityType: string,
@@ -179,21 +155,31 @@ export async function generateSummary(
   const cached = await getCachedSummary(entityType, entityId, type);
   if (cached) return cached;
 
-  // Kill switch: when AI_SUMMARIES_ENABLED=false, refuse on cache miss
-  // instead of calling Anthropic. Matches the pipeline-level guard in
-  // packages/data/src/pipelines/ai-summaries and tags/ai-tagger.
-  if (process.env["AI_SUMMARIES_ENABLED"] === "false") {
+  // Kill switch: refuse on cache miss when the switch is off. Layered
+  // env > DB > on, with a 30s module cache inside isKillSwitchEnabled
+  // (see packages/db/src/kill-switches.ts). Replaces the bare
+  // AI_SUMMARIES_ENABLED env check.
+  const db = createAdminClient();
+  const aiOn = await isKillSwitchEnabled(db, "ai_summaries");
+  if (!aiOn) {
     throw new Error(
       "AI summaries are temporarily disabled. Cached summaries are still available; " +
         "uncached entities will resume once summaries are re-enabled."
     );
   }
 
-  // Cost guard: never exceed $4.00/month on Anthropic
-  const spentCents = await getMonthlySpendCents();
-  if (spentCents >= MONTHLY_SPEND_LIMIT_CENTS) {
+  // Cost guard: refuse when the current-month spend is at or above the
+  // platform_limits cap for anthropic.monthly_spend_usd. Both spend and
+  // limit are module-cached for 60s, so a burst of AI calls hits cached
+  // values rather than hammering api_usage_logs.
+  const [spentUsd, limitUsdRaw] = await Promise.all([
+    getMonthlyAnthropicSpend(db),
+    getMonthlyAnthropicLimitUsd(db, "free"),
+  ]);
+  const limitUsd = limitUsdRaw ?? FALLBACK_MONTHLY_SPEND_LIMIT_USD;
+  if (spentUsd !== null && spentUsd >= limitUsd) {
     throw new Error(
-      "Monthly AI spend limit reached ($4.00). Plain-language summaries " +
+      `Monthly AI spend limit reached ($${limitUsd.toFixed(2)}). Plain-language summaries ` +
         "are temporarily unavailable — they will resume next month."
     );
   }
