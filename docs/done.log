@@ -373,3 +373,6 @@
 2026-05-17 | FIX-213 | superseded-by-fix-253 | superseded | FIX-253 (SEC EDGAR DEF 14A exec roster) covers same scope; FIX-213 mis-specified data.sec.gov/submissions/{CIK}.json as officer source
 2026-05-17 | FIX-213 | ae8fe937 | local-only | chore(fixes): close FIX-213 as superseded by FIX-253
 2026-05-17 | FIX-242 | redirected-to-fix-292 | redirected | verification ran (no OOM, no heap issue); 2h0m wall-clock timeout surfaced as new constraint, tracked under FIX-292
+2026-05-17 | FIX-242 | 70fca6f3 | local-only | chore(fixes): close FIX-242 — verification redirected to FIX-292
+2026-05-17 | FIX-276 | c1d42142 | local-only | feat(nightly): split into FEC + enrichment phases (GHA two-job)
+2026-05-17 | FIX-292 | c1d42142 | local-only | feat(nightly): split into FEC + enrichment phases (GHA two-job)
