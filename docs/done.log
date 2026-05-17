@@ -357,3 +357,5 @@
 2026-05-14 | FIX-277 | 645dfae7 | local-only | feat(entities): IRS 990 + EDGAR pipelines use resolve_entity_by_canonical (Strategy D Session 2)
 2026-05-14 | FIX-278 | 645dfae7 | local-only | feat(entities): IRS 990 + EDGAR pipelines use resolve_entity_by_canonical (Strategy D Session 2)
 2026-05-16 | FIX-280 | 9abf4d9c | local-only | feat(entities): LittleSis hop-1 canonical-resolve + fix max(uuid) bug in RPC (Strategy D Session 3)
+2026-05-16 | FIX-281 | a874ef3f | local+prod | feat(ops): platform usage snapshot + DB-backed kill switches
+2026-05-16 | FIX-282 | a874ef3f | local+prod | feat(ops): platform usage snapshot + DB-backed kill switches
