@@ -30,6 +30,8 @@ import {
   getSupabaseSqlMetrics,
   getSupabaseManagementMetrics,
 } from "./supabase-usage";
+import { getCloudflareR2Usage } from "./cloudflare-usage";
+import { getVercelUsage } from "./vercel-usage";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -177,6 +179,53 @@ export async function computePlatformUsagePayload(
     }
   } catch (err) {
     errors.push(`supabase_mgmt: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  // Cloudflare R2 live metrics → platform_usage. Helper returns aggregated
+  // totals across every bucket the account holds; per-bucket detail is
+  // available for a future per-bucket dashboard tab.
+  try {
+    const cf = await getCloudflareR2Usage();
+    if (!("error" in cf)) {
+      await Promise.all([
+        updateUsage(db, "cloudflare", "storage_bytes", cf.totals.storage_bytes, "api"),
+        updateUsage(db, "cloudflare", "class_a_ops", cf.totals.class_a_ops, "api"),
+        updateUsage(db, "cloudflare", "class_b_ops", cf.totals.class_b_ops, "api"),
+      ]);
+    } else {
+      if (!/CLOUDFLARE_(API_TOKEN|ACCOUNT_ID)/i.test(cf.error)) {
+        errors.push(`cloudflare: ${cf.error}`);
+      }
+    }
+  } catch (err) {
+    errors.push(`cloudflare: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  // Vercel current-cycle usage → platform_usage. The /v1/usage endpoint is
+  // Pro+ only; Hobby tier returns plan_upgrade_required and the rows stay on
+  // their last manual value. We log it as a non-blocking errors entry rather
+  // than a partial-flag trip so the snapshot still completes cleanly.
+  try {
+    const v = await getVercelUsage();
+    if (!("error" in v)) {
+      await Promise.all([
+        updateUsage(db, "vercel", "fluid_cpu_seconds", v.fluid_cpu_seconds, "api"),
+        updateUsage(db, "vercel", "function_invocations", v.function_invocations, "api"),
+        updateUsage(db, "vercel", "origin_transfer_bytes", v.origin_transfer_bytes, "api"),
+        updateUsage(db, "vercel", "edge_requests", v.edge_requests, "api"),
+        updateUsage(db, "vercel", "edge_cpu_ms", v.edge_cpu_ms, "api"),
+        updateUsage(db, "vercel", "build_minutes", v.build_minutes, "api"),
+        updateUsage(db, "vercel", "web_analytics_events", v.web_analytics_events, "api"),
+        updateUsage(db, "vercel", "isr_reads", v.isr_reads, "api"),
+        updateUsage(db, "vercel", "fluid_memory_gb_hrs", v.fluid_memory_gb_hrs, "api"),
+      ]);
+    } else {
+      if (!/VERCEL_API_TOKEN/i.test(v.error) && !/plan_upgrade_required|Plan not found/i.test(v.error)) {
+        errors.push(`vercel: ${v.error}`);
+      }
+    }
+  } catch (err) {
+    errors.push(`vercel: ${err instanceof Error ? err.message : String(err)}`);
   }
 
   // Pull free-tier limits + apply per-service plan overrides

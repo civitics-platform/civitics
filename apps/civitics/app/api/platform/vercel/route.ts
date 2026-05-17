@@ -1,9 +1,12 @@
 /**
  * GET /api/platform/vercel
  *
- * Current-month Vercel billing charges from the Vercel Billing API.
- * Parses JSONL response, groups by charge description, and returns
- * aggregated metrics and total cost.
+ * Current-month Vercel billing charges from the Vercel Billing API, plus
+ * live current-cycle quantities from the shared getVercelUsage() helper.
+ *
+ * Strictly additive shape — the existing PlatformCostsSection consumer reads
+ * `metrics`, `total_cost_usd`, and `period` at the top level. PR 2 adds a
+ * `usage` field alongside without disturbing those keys.
  *
  * Cached at edge for 1 hour — billing data doesn't change that fast.
  * Never returns 500 — always 200 with error field if unavailable.
@@ -12,6 +15,7 @@
 export const revalidate = 3600; // Cache 1 hour
 
 import { NextResponse } from "next/server";
+import { getVercelUsage } from "@civitics/db";
 
 interface VercelMetric {
   label: string;
@@ -45,6 +49,7 @@ export async function GET() {
   if (teamId) url.searchParams.set("teamId", teamId);
 
   let res: Response;
+  let usagePromise = getVercelUsage();
   try {
     res = await fetch(url.toString(), {
       headers: {
@@ -54,17 +59,21 @@ export async function GET() {
       next: { revalidate: 3600 },
     });
   } catch (err) {
+    const usage = await usagePromise;
     return NextResponse.json({
       error: err instanceof Error ? err.message : String(err),
       source: "api_error",
+      usage,
     });
   }
 
   if (!res.ok) {
+    const usage = await usagePromise;
     return NextResponse.json({
       error: res.statusText,
       status: res.status,
       source: "api_error",
+      usage,
     });
   }
 
@@ -106,6 +115,8 @@ export async function GET() {
     0,
   );
 
+  const usage = await usagePromise;
+
   return NextResponse.json({
     metrics: Object.fromEntries(metrics),
     charges_count: charges.length,
@@ -113,5 +124,6 @@ export async function GET() {
     period: { from, to },
     source: "api",
     fetched_at: new Date().toISOString(),
+    usage,
   });
 }

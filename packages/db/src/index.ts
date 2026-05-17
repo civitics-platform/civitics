@@ -166,3 +166,24 @@ export type {
   SupabaseManagementMetrics,
   SupabaseManagementMetricsError,
 } from "./supabase-usage";
+
+// Cloudflare R2 metrics (storage + class-A/B operations via GraphQL Analytics)
+export {
+  getCloudflareR2Usage,
+  clearCloudflareUsageCache,
+} from "./cloudflare-usage";
+export type {
+  CloudflareR2BucketUsage,
+  CloudflareR2Usage,
+  CloudflareR2UsageError,
+} from "./cloudflare-usage";
+
+// Vercel current-cycle usage (Pro Usage endpoint + Billing Charges fallback)
+export {
+  getVercelUsage,
+  clearVercelUsageCache,
+} from "./vercel-usage";
+export type {
+  VercelUsage,
+  VercelUsageError,
+} from "./vercel-usage";
