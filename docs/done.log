@@ -359,3 +359,5 @@
 2026-05-16 | FIX-280 | 9abf4d9c | local-only | feat(entities): LittleSis hop-1 canonical-resolve + fix max(uuid) bug in RPC (Strategy D Session 3)
 2026-05-16 | FIX-281 | a874ef3f | local+prod | feat(ops): platform usage snapshot + DB-backed kill switches
 2026-05-16 | FIX-282 | a874ef3f | local+prod | feat(ops): platform usage snapshot + DB-backed kill switches
+2026-05-16 | FIX-283 | d46f1f17 | local-only | feat(ops): live Cloudflare R2 + Vercel Usage in platform snapshot
+2026-05-16 | FIX-284 | d46f1f17 | local-only | feat(ops): live Cloudflare R2 + Vercel Usage in platform snapshot
