@@ -2,6 +2,88 @@
 
 ---
 
+## 2026-05-17 (FIX-290 + FIX-291 — split rebuild_entity_connections out of nightly, accept partial in canary)
+
+**Driver:** PR 4 canary fired 2026-05-17 reporting 4 "missing" nightly_cron rows
+over 2026-05-10 → 2026-05-16. Audit
+([docs/audits/missing-nightlies-2026-05-10-to-16.md](audits/missing-nightlies-2026-05-10-to-16.md))
+showed two distinct root causes:
+
+1. **Canary false positives (5/13 + 5/16).** `nightly_cron` rows DID exist but
+   with `status='partial'` — the canary's `.eq("status","complete")` filter
+   excluded them. Result: "ran with errors" looked identical to "didn't run."
+2. **Workflow SIGTERM (5/10 + 5/14 + 5/17).** Nightly hit `timeout-minutes: 120`
+   while `rebuild_entity_connections` chunks were still grinding. Donations +
+   votes alone now burn ~90 min wall-clock on prod. Completion row never
+   written → canary correctly fires but on a misleading signal.
+
+**FIX-290 (monitoring bundle):**
+
+- `packages/data/src/scripts/canary-check.ts`: accept `status IN
+  ('complete','partial')` for the "did it run?" question. Partial runs still
+  ran. Error-tracking is the dashboard's job (FIX-287 banner).
+- New `packages/data/src/scripts/mark-killed.ts` + `data:mark-killed` /
+  `data:mark-killed:ci` scripts. Writes a synthetic
+  `pipeline='nightly_killed'` row to `data_sync_log` only when the source
+  pipeline has a recent `status='running'` row and no terminal row. Always
+  exits 0 — observability, never a gate.
+- `if: always()` post-step in `.github/workflows/nightly.yml` runs the
+  marker after `Run nightly sync` regardless of step outcome.
+- Canary surfaces `nightly_killed` rows with a distinct subject line
+  ("⚠️ Nightly killed by workflow timeout") so "didn't run at all" and
+  "ran but SIGTERM'd" stay separate signals.
+
+**FIX-291 (structural fix):**
+
+- New workflow `.github/workflows/rebuild-entity-connections.yml` — runs
+  `rebuild_entity_connections` chunks on a Sun + Wed 08:00 UTC cadence,
+  240-min budget, NODE_OPTIONS=12 GB. 6h after nightly's 02:00 UTC start.
+- New script `packages/data/src/scripts/rebuild-entity-connections.ts` —
+  copies the per-chunk pg.Client loop out of `runNightlySync` verbatim,
+  writes `entity_connections_rebuild` sync-log rows. PostgREST RPC fallback
+  preserved for local dev.
+- `runNightlySync` no longer calls rebuild RPCs at step 3c. The block was
+  replaced with a comment pointing at the new workflow. Unused imports
+  (`startSync`, `completeSync`, `failSync`) and the now-dead `buildDbUrl`
+  helper were removed alongside it.
+- New migration `supabase/migrations/20260517060000_donations_chunk_timeout_raise.sql`
+  raises the donations chunk's function-level `statement_timeout` from
+  60min → 90min via `ALTER FUNCTION`. Cleaner than CREATE OR REPLACE
+  FUNCTION (body byte-identical, just the GUC moves).
+- `packages/data/CLAUDE.md` Update Schedules section now lists the
+  twice-weekly rebuild as a distinct cadence.
+
+**Decisions logged here for future reference:**
+
+- **Why not raise nightly `timeout-minutes` further?** Because the rebuild
+  was the only thing burning the budget. With it gone, nightly should run
+  in 30-60 min and 120 is plenty of margin. Raising would have papered
+  over the underlying creep.
+- **Why not split the donations chunk further (per cycle / per state)?**
+  Months-long refactor; out of scope. Filed mentally as a future FIX if
+  90 min stops being enough.
+- **Why not put `nightly_killed` into the same pipeline name as `nightly_cron`?**
+  Separating them keeps the canary's "did the nightly run?" query simple
+  and unambiguous. A `nightly_cron` row means runNightlySync wrote it;
+  a `nightly_killed` row means the GHA post-step did. Different writers,
+  different semantics.
+- **Why not add a separate canary for the rebuild workflow?** GHA UI
+  surfaces failures already. Adding a SQL-level canary would be premature
+  until proven necessary. Filed as follow-up if the workflow starts
+  silently degrading.
+
+**Out of scope (filed mentally as follow-ups):**
+
+- Incremental rebuild — only re-derive edges for source rows that changed.
+  Months-long.
+- Audit of read paths that assume daily-fresh `entity_connections`. Should
+  be none (all reads go through MVs or current state), but worth a grep
+  pass when there's time.
+- Backfilling `entity_connections` between PR merge and the first
+  scheduled rebuild — handled by manual `gh workflow run` after deploy.
+
+---
+
 ## 2026-04-27 evening (FIX-160 OpenStates bulk + FIX-022 elections + state-district maps)
 
 **Done (all verified local; prod runs queued — see below):**

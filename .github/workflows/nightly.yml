@@ -64,3 +64,14 @@ jobs:
 
       - name: Run nightly sync
         run: pnpm --filter @civitics/data data:nightly:ci
+
+      # FIX-290: when this workflow gets SIGTERM'd by `timeout-minutes`, the
+      # nightly-sync step above never reaches its completion-row write. The
+      # canary then can't tell "never ran" from "ran but killed by workflow
+      # timeout." This post-step always runs and inserts a synthetic
+      # `nightly_killed` row to data_sync_log only if there's a recent
+      # `nightly_cron` row stuck at status='running'. Observability, never
+      # gates the job (always exits 0).
+      - name: Mark nightly-killed if no completion row
+        if: always()
+        run: pnpm --filter @civitics/data data:mark-killed:ci

@@ -10,7 +10,7 @@
  */
 
 import { createAdminClient } from "@civitics/db";
-import { getDbSizeMb, getLastSync, startSync, completeSync, failSync, captureRssMb } from "./sync-log";
+import { getDbSizeMb, getLastSync, captureRssMb } from "./sync-log";
 import { runRegulationsPipeline } from "./regulations";
 import { runFecBulkPipeline } from "./fec-bulk";
 import { runIrs990Pipeline } from "./irs990";
@@ -32,25 +32,6 @@ import { runPlumBookPipeline } from "./plum-book";
 import { runElectionsPipeline } from "./elections";
 import { runAiClassifier } from "./tags/ai-classifier";
 import { seedJurisdictions, seedGoverningBodies } from "../jurisdictions/us-states";
-
-// Build a session-pooler connection string for direct pg.Client access (used
-// when an RPC's runtime would exceed PostgREST's gateway timeout). Prefers an
-// explicit SUPABASE_DB_URL when set; otherwise constructs one from the
-// project ref (derived from NEXT_PUBLIC_SUPABASE_URL) + SUPABASE_DB_PASSWORD.
-// Region defaults to us-west-2; override with SUPABASE_DB_REGION if needed.
-// Returns null when neither input is available.
-function buildDbUrl(): string | null {
-  const explicit = process.env["SUPABASE_DB_URL"];
-  if (explicit) return explicit;
-  const password = process.env["SUPABASE_DB_PASSWORD"];
-  const supabaseUrl = process.env["NEXT_PUBLIC_SUPABASE_URL"];
-  if (!password || !supabaseUrl) return null;
-  const m = supabaseUrl.match(/^https?:\/\/([a-z0-9]+)\.supabase\.co/i);
-  if (!m) return null;
-  const projectRef = m[1];
-  const region = process.env["SUPABASE_DB_REGION"] ?? "us-west-2";
-  return `postgresql://postgres.${projectRef}:${encodeURIComponent(password)}@aws-0-${region}.pooler.supabase.com:5432/postgres`;
-}
 
 // Supabase RPC errors come back as plain objects ({ code, message, details, hint })
 // — not Error instances — so String(err) → "[object Object]". Unwrap them so
@@ -813,120 +794,19 @@ export async function runNightlySync(): Promise<NightlySyncResults> {
     }
   }
 
-  // 3c. Rebuild entity_connections via SQL derivation (FIX-100, chunked FIX-263)
-  // Each connection_type has its own function (rebuild_entity_connections_<chunk>())
-  // with its own per-function statement_timeout. The direct-pg path calls each
-  // chunk as a separate top-level statement so each gets a fresh session
-  // statement_timeout budget (45min) instead of sharing one cap across the
-  // whole rebuild. Per-chunk DELETE replaces the global TRUNCATE so live
-  // reads on /officials/[id] / /donors/[id] aren't blocked for the entire
-  // rebuild window.
-  //
-  // Partial failure: if one chunk times out (e.g. donations on a presidential
-  // backfill), the orchestrator logs the failure and continues to subsequent
-  // chunks. Graph reflects fresh successful chunks + stale failed chunk
-  // rather than going all-stale.
-  //
-  // Order matters: external (LittleSis, ON CONFLICT DO NOTHING) MUST run
-  // after all authoritative blocks so its overlapping rows are skipped.
-  //
-  // PostgREST RPC fallback (local dev) calls the umbrella rebuild_entity_connections()
-  // which loops through the chunks itself — locally the whole rebuild completes
-  // in <1s so PostgREST's gateway timeout isn't a factor.
-  {
-    const t0 = Date.now();
-    const logId = await startSync("entity_connections_rebuild");
-    const chunkFns = [
-      "rebuild_entity_connections_donations",
-      "rebuild_entity_connections_votes",
-      "rebuild_entity_connections_cosponsors",
-      "rebuild_entity_connections_appointments",
-      "rebuild_entity_connections_oversight",
-      "rebuild_entity_connections_holds",
-      "rebuild_entity_connections_gifts",
-      "rebuild_entity_connections_contracts",
-      "rebuild_entity_connections_lobbying",
-      "rebuild_entity_connections_external",
-    ];
-    try {
-      const dbUrl = buildDbUrl();
-      console.log(`[nightly] rebuild_entity_connections — starting (${dbUrl ? "direct pg, per-chunk" : "PostgREST RPC umbrella"})`);
-      let total = 0;
-      let breakdown: { connection_type: string; edges_upserted: string | number; duration_ms?: number }[] = [];
-      const chunkFailures: string[] = [];
-      if (dbUrl) {
-        const { Client } = await import("pg");
-        const client = new Client({ connectionString: dbUrl });
-        await client.connect();
-        try {
-          for (const fn of chunkFns) {
-            const chunkStart = Date.now();
-            try {
-              // Per-chunk session statement_timeout reset. Each chunk gets
-              // a fresh wall-clock budget so a slow donation chunk doesn't
-              // eat into contracts'.
-              await client.query("SET statement_timeout = '45min'");
-              const res = await client.query<{ connection_type: string; edges_upserted: string | number }>(
-                `SELECT * FROM public.${fn}()`
-              );
-              const chunkDur = Date.now() - chunkStart;
-              for (const r of res.rows) {
-                breakdown.push({ ...r, duration_ms: chunkDur });
-                total += Number(r.edges_upserted ?? 0);
-              }
-              console.log(`  [chunk] ${fn} — complete in ${(chunkDur / 1000).toFixed(1)}s`);
-            } catch (chunkErr) {
-              const chunkDur = Date.now() - chunkStart;
-              const msg = errMsg(chunkErr);
-              console.error(`  [chunk] ${fn} — FAILED in ${(chunkDur / 1000).toFixed(1)}s: ${msg}`);
-              chunkFailures.push(`${fn}: ${msg}`);
-              breakdown.push({ connection_type: `${fn}:failed`, edges_upserted: -1, duration_ms: chunkDur });
-            }
-          }
-        } finally {
-          await client.end();
-        }
-      } else {
-        const { createAdminClient } = await import("@civitics/db");
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const admin = createAdminClient() as any;
-        const { data, error } = await admin.rpc("rebuild_entity_connections");
-        if (error) throw error;
-        breakdown = data ?? [];
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        total = (data ?? []).reduce((a: number, r: any) => a + Number(r.edges_upserted ?? 0), 0);
-      }
-      const dur = Date.now() - t0;
-      const statusLabel = chunkFailures.length > 0 ? "PARTIAL" : "complete";
-      console.log(`[nightly] rebuild_entity_connections — ${statusLabel} in ${(dur / 1000).toFixed(1)}s, ${total} edges` +
-                  (chunkFailures.length > 0 ? ` (${chunkFailures.length} chunk failures)` : ""));
-      for (const r of breakdown) {
-        const durStr = r.duration_ms !== undefined ? ` (${(r.duration_ms / 1000).toFixed(1)}s)` : "";
-        console.log(`  ${r.connection_type}: ${r.edges_upserted}${durStr}`);
-      }
-      if (chunkFailures.length > 0) {
-        results.pipelines.entity_connections_rebuild = {
-          status: "failed",
-          error: `${chunkFailures.length} chunk(s) failed: ${chunkFailures.join("; ")}`,
-        };
-        results.errors.push(`Rebuild entity_connections (partial): ${chunkFailures.join("; ")}`);
-        await failSync(logId, chunkFailures.join("; "));
-      } else {
-        results.pipelines.entity_connections_rebuild = {
-          status: "complete",
-          rows_added: total,
-          duration_ms: dur,
-        };
-        await completeSync(logId, { inserted: total, updated: 0, failed: 0, estimatedMb: 0 });
-      }
-    } catch (err) {
-      const msg = errMsg(err);
-      console.error("[nightly] rebuild_entity_connections failed:", msg);
-      results.pipelines.entity_connections_rebuild = { status: "failed", error: msg };
-      results.errors.push(`Rebuild entity_connections: ${msg}`);
-      await failSync(logId, msg);
-    }
-  }
+  // 3c. rebuild_entity_connections has moved to its own GHA workflow
+  //     (.github/workflows/rebuild-entity-connections.yml, Sun + Wed 08:00 UTC,
+  //     FIX-291). The donations chunk alone routinely exceeds 60 min on prod,
+  //     so cramming it into the nightly's 120-min budget caused the 5/10,
+  //     5/14, 5/17 GHA SIGTERMs (docs/audits/missing-nightlies-2026-05-10-to-16.md).
+  //     The umbrella rebuild_entity_connections() RPC is preserved for local
+  //     dev callers; the standalone pipeline lives at
+  //     packages/data/src/scripts/rebuild-entity-connections.ts.
+  //     entity_connections + MVs derived from it (homepage_stats_mv etc.)
+  //     reflect whatever the last rebuild left behind. Step 7 below still
+  //     refreshes those MVs nightly — they're cheap reads of an unchanging
+  //     table during the in-between days, then catch the new edges on
+  //     rebuild day.
 
   // 4. Rule-based tags (all new/updated entities)
   try {

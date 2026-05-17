@@ -52,7 +52,11 @@
     "data:retitle-pn-stubs": "tsx --env-file=../../.env.local src/scripts/retitle-pn-stubs.ts",
     "data:canary-check": "tsx --env-file=../../.env.local src/scripts/canary-check.ts",
     "data:canary-check:ci": "tsx src/scripts/canary-check.ts --allow-prod",
-    "data:reap-sync-log": "tsx --env-file=../../.env.local src/scripts/reap-sync-log.ts"
+    "data:reap-sync-log": "tsx --env-file=../../.env.local src/scripts/reap-sync-log.ts",
+    "data:rebuild-connections": "tsx --env-file=../../.env.local src/scripts/rebuild-entity-connections.ts",
+    "data:rebuild-connections:ci": "tsx src/scripts/rebuild-entity-connections.ts --allow-prod",
+    "data:mark-killed": "tsx --env-file=../../.env.local src/scripts/mark-killed.ts",
+    "data:mark-killed:ci": "tsx src/scripts/mark-killed.ts --allow-prod"
   },
   "dependencies": {
     "@civitics/ai": "workspace:*",

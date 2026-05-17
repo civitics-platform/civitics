@@ -1,0 +1,70 @@
+name: rebuild-entity-connections
+
+# FIX-291 — rebuild_entity_connections (chunked, FIX-263) moved out of the
+# daily nightly so the donations chunk (~90 min wall-clock) doesn't push the
+# nightly past `timeout-minutes: 120`. Daily nightly stays light and
+# predictable; this workflow runs twice a week (Sun + Wed at 08:00 UTC) with
+# a 4-hour budget. Graph edges go stale up to ~3 days between rebuilds —
+# accepted vs the 4-of-7-nights-fail baseline that came from cramming the
+# rebuild into the nightly.
+on:
+  schedule:
+    # Sunday + Wednesday at 08:00 UTC — 6h after the nightly's 02:00 UTC
+    # start, so the rebuild reads the latest day's FEC bulk / votes / etc.
+    - cron: "0 8 * * 0,3"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rebuild-entity-connections
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    # 4h budget. Donations + votes chunks are the long poles (~90 min + ~15 min
+    # together on a presidential cycle). Contracts is ~5–40 min. Everything
+    # else is seconds. 240 min leaves real headroom; revisit if creep past
+    # 180 min becomes routine.
+    timeout-minutes: 240
+
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: https://xsazcoxinpgttgquwvuf.supabase.co
+      SUPABASE_SECRET_KEY:      ${{ secrets.SUPABASE_SECRET_KEY }}
+      SUPABASE_DB_PASSWORD:     ${{ secrets.SUPABASE_DB_PASSWORD }}
+      # No source-pipeline API keys needed — this workflow only re-derives
+      # entity_connections from already-ingested tables. Kept the heap
+      # ceiling identical to nightly.yml in case a future chunk grows
+      # client-side aggregations.
+      NODE_OPTIONS: --max-old-space-size=12288
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Rebuild entity_connections
+        run: pnpm --filter @civitics/data data:rebuild-connections:ci
+
+      # FIX-290: if the workflow exceeds timeout-minutes mid-rebuild, the
+      # entity_connections_rebuild data_sync_log row strands at
+      # status='running' and the rebuild step above never reaches its
+      # completeSync/failSync. This post-step writes a synthetic
+      # nightly_killed row keyed to the rebuild pipeline so failures are
+      # greppable. Observability, never gates the job.
+      - name: Mark killed if no completion row
+        if: always()
+        run: pnpm --filter @civitics/data data:mark-killed:ci -- --pipeline=entity_connections_rebuild

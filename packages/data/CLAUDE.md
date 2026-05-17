@@ -206,8 +206,9 @@ Scripts:
 
 Single source of truth is the nightly orchestrator in `packages/data/src/pipelines/index.ts` (`runNightlySync()`), invoked by GitHub Actions at 02:00 UTC daily. The Sunday-only weekly block fires when `new Date().getDay() === 0`.
 
-- **Daily (every nightly run):** Regulations.gov, Congress.gov officials + votes, OpenStates bulk people, rule-based tags, AI tags (`$0.10` cap, `onlyNew`), AI summaries (incremental), MV refreshes (proposal_trending, proposal_popularity, spending_totals, chord MVs, homepage stats), entity_connections rebuild.
+- **Daily (every nightly run):** Regulations.gov, Congress.gov officials + votes, OpenStates bulk people, rule-based tags, AI tags (`$0.10` cap, `onlyNew`), AI summaries (incremental), MV refreshes (proposal_trending, proposal_popularity, spending_totals, chord MVs, homepage stats). **Note:** entity_connections rebuild is no longer in the nightly — moved to its own twice-weekly workflow (see below).
 - **Weekly (Sunday block of nightly run):** FEC bulk, USASpending bulk (contracts + assistance), CourtListener, OpenStates API (bills + term dates), agencies hierarchy, OPM FTE, PLUM Book, elections, Congress committees, agency leadership, tag-industry.
+- **Twice weekly (Sun + Wed 08:00 UTC, separate GHA workflow `rebuild-entity-connections.yml`, FIX-291):** `rebuild_entity_connections` (chunked, FIX-263). Runs 6h after nightly's 02:00 UTC start. Donations chunk runs with a 90-min function-level statement_timeout (FIX-291) — was pushing past the daily nightly's 120-min wall-clock budget. Graph edges go stale up to ~3 days between rebuilds; accepted vs the 4-of-7-nights-fail baseline that came from cramming the rebuild into the nightly. Trigger ad-hoc with `gh workflow run rebuild-entity-connections.yml`.
 - **Weekly (Monday 04:00 UTC, separate GHA workflow `audit.yml`, FIX-226):** integrity audit. Report committed to `docs/audits/{YYYY-MM-DD}.md` (+ `.json`) on main; regressions surface as diffs in `git log docs/audits/`.
 - **Monthly (first Sunday of month, in nightly run):** agency enrichment (Federal Register descriptions + Wikidata founding dates).
 - **Annual (manual):** TIGER districts (Census refresh cadence).
@@ -225,7 +226,7 @@ After all source pipelines run, derived `entity_connections` rows are produced b
 - `oversight` from `agencies`
 - `contract_award`, `gift_received`, `lobbying` from `financial_relationships`
 
-The nightly orchestrator (`pnpm --filter @civitics/data data:nightly`) calls it directly via `pg.Client` against the session pooler when `SUPABASE_DB_URL` is set, falling back to PostgREST `admin.rpc()` for local dev. There is no longer a standalone `data:connections` TS pipeline — that path was dead post-cutover and has been removed (FIX-187). Run nightly to refresh derived edges.
+The rebuild runs as a standalone GHA workflow on a Sun + Wed 08:00 UTC cadence (FIX-291). Invocation is `pnpm --filter @civitics/data data:rebuild-connections:ci` (defined in [packages/data/src/scripts/rebuild-entity-connections.ts](src/scripts/rebuild-entity-connections.ts)) which calls each chunk directly via `pg.Client` against the session pooler when `SUPABASE_DB_URL` is set, falling back to PostgREST `admin.rpc("rebuild_entity_connections")` (the umbrella function) for local dev. Sync-log rows are written under pipeline name `entity_connections_rebuild` (NOT `nightly_cron` — different cadence, different semantics, and the FIX-234 canary only watches `nightly_cron`). Run `pnpm --filter @civitics/data data:rebuild-connections` locally to refresh derived edges against the local Docker DB.
 
 ---
 

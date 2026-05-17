@@ -23,6 +23,7 @@ import { createAdminClient } from "@civitics/db";
 import { captureRssMb } from "../pipelines/sync-log";
 
 const PIPELINE_NAME      = "nightly_cron";
+const KILLED_PIPELINE    = "nightly_killed";
 const CHECK_DAYS         = 7;
 // FIX-289: unify From: address with the rest of the platform (kill-switch
 // alerts in apps/civitics/src/lib/email.ts also read RESEND_FROM). Falls back
@@ -57,11 +58,14 @@ async function fetchActualDates(daysBack: number): Promise<Set<string>> {
   const since = new Date();
   since.setUTCDate(since.getUTCDate() - (daysBack + 1));
 
+  // FIX-290: accept status='partial' too. Partial runs (errors > 0) still
+  // indicate the nightly ran. The canary's job is "didn't run at all"
+  // detection; error-tracking is the dashboard's job (see FIX-287 banner).
   const { data, error } = await db
     .from("data_sync_log")
     .select("started_at, completed_at")
     .eq("pipeline", PIPELINE_NAME)
-    .eq("status", "complete")
+    .in("status", ["complete", "partial"])
     .gte("started_at", since.toISOString());
 
   if (error) throw new Error(`data_sync_log query failed: ${error.message}`);
@@ -75,7 +79,37 @@ async function fetchActualDates(daysBack: number): Promise<Set<string>> {
   return set;
 }
 
-async function writeMetaRow(missing: string[]): Promise<void> {
+// FIX-290: nightly_killed rows are written by .github/workflows/nightly.yml's
+// post-step when the workflow runs out of time before runNightlySync reaches
+// its own completion-row insert. Surfacing them separately lets the canary
+// distinguish "never ran" from "ran but SIGTERM'd."
+async function fetchKilledDates(daysBack: number): Promise<Set<string>> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = createAdminClient() as any;
+  const since = new Date();
+  since.setUTCDate(since.getUTCDate() - (daysBack + 1));
+
+  const { data, error } = await db
+    .from("data_sync_log")
+    .select("started_at, completed_at")
+    .eq("pipeline", KILLED_PIPELINE)
+    .gte("started_at", since.toISOString());
+
+  if (error) {
+    console.warn(`[canary-check] killed-row query failed (non-fatal): ${error.message}`);
+    return new Set();
+  }
+
+  const rows = (data ?? []) as SyncRow[];
+  const set = new Set<string>();
+  for (const row of rows) {
+    const ts = row.started_at ?? row.completed_at;
+    if (ts) set.add(utcDateString(new Date(ts)));
+  }
+  return set;
+}
+
+async function writeMetaRow(missing: string[], killed: string[]): Promise<void> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = createAdminClient() as any;
   const now = new Date().toISOString();
@@ -89,6 +123,8 @@ async function writeMetaRow(missing: string[]): Promise<void> {
       checked_days:     CHECK_DAYS,
       missing_count:    missing.length,
       missing_dates:    missing,
+      killed_count:     killed.length,
+      killed_dates:     killed,
       peak_rss_mb:      captureRssMb(),
     },
   });
@@ -97,18 +133,46 @@ async function writeMetaRow(missing: string[]): Promise<void> {
   }
 }
 
-async function sendAlert(missing: string[], to: string, apiKey: string): Promise<void> {
+async function sendAlert(
+  missing: string[],
+  killed: string[],
+  to: string,
+  apiKey: string,
+): Promise<void> {
   // Lazy import keeps the script no-op-safe when Resend isn't installed for
   // some reason — prevents a hard module-resolution failure at startup.
   const { Resend } = await import("resend");
   const resend = new Resend(apiKey);
 
-  const subject = `[Civitics] Nightly sync missed ${missing.length} day(s)`;
-  const body =
-    `The nightly sync (pipeline=${PIPELINE_NAME}) is missing complete rows ` +
-    `for the following UTC date(s):\n\n` +
-    missing.map((d) => `  - ${d}`).join("\n") +
-    `\n\nWorkflow runs: ${NIGHTLY_RUN_URL}\n`;
+  // FIX-290: distinguish "didn't run at all" from "ran but got SIGTERM'd."
+  // Killed-only is a softer signal — the workflow started and the post-step
+  // wrote a synthetic row, so the runner + GHA scheduling are healthy.
+  let subject: string;
+  if (missing.length > 0 && killed.length > 0) {
+    subject = `[Civitics] Nightly sync missed ${missing.length} day(s), killed ${killed.length} day(s)`;
+  } else if (missing.length > 0) {
+    subject = `[Civitics] Nightly sync missed ${missing.length} day(s)`;
+  } else {
+    subject = `⚠️ Nightly killed by workflow timeout (${killed.length} day(s))`;
+  }
+
+  const sections: string[] = [];
+  if (missing.length > 0) {
+    sections.push(
+      `Missing entirely (no row in data_sync_log) — likely never ran or died ` +
+        `before its post-step:\n` +
+        missing.map((d) => `  - ${d}`).join("\n"),
+    );
+  }
+  if (killed.length > 0) {
+    sections.push(
+      `Killed by workflow timeout (synthetic nightly_killed row present) — ` +
+        `the workflow ran but exceeded timeout-minutes before reaching the ` +
+        `completion-row write in runNightlySync:\n` +
+        killed.map((d) => `  - ${d}`).join("\n"),
+    );
+  }
+  const body = sections.join("\n\n") + `\n\nWorkflow runs: ${NIGHTLY_RUN_URL}\n`;
 
   const { error } = await resend.emails.send({
     from:    ALERTS_FROM,
@@ -123,16 +187,21 @@ async function main(): Promise<void> {
   const now      = new Date();
   const expected = expectedDates(now, CHECK_DAYS);
   const actual   = await fetchActualDates(CHECK_DAYS);
-  const missing  = expected.filter((d) => !actual.has(d));
+  const killedSet = await fetchKilledDates(CHECK_DAYS);
+  // "missing" = no nightly_cron row AND no nightly_killed row for that date.
+  // "killed" = no nightly_cron row but a nightly_killed synthetic row exists.
+  const missing  = expected.filter((d) => !actual.has(d) && !killedSet.has(d));
+  const killed   = expected.filter((d) => !actual.has(d) &&  killedSet.has(d));
 
   let alertSent = false;
   const adminEmail = process.env["ADMIN_EMAIL"];
   const resendKey  = process.env["RESEND_API_KEY"];
   const inCi       = process.env["GITHUB_ACTIONS"] === "true";
   const sendReal   = process.argv.includes("--send-real");
-  if (missing.length > 0 && adminEmail && resendKey) {
+  const hasAlert   = missing.length > 0 || killed.length > 0;
+  if (hasAlert && adminEmail && resendKey) {
     if (inCi || sendReal) {
-      await sendAlert(missing, adminEmail, resendKey);
+      await sendAlert(missing, killed, adminEmail, resendKey);
       alertSent = true;
     } else {
       console.log(
@@ -141,12 +210,13 @@ async function main(): Promise<void> {
     }
   }
 
-  await writeMetaRow(missing);
+  await writeMetaRow(missing, killed);
 
   console.log(
     JSON.stringify({
       checked_days:  CHECK_DAYS,
       missing_dates: missing,
+      killed_dates:  killed,
       alert_sent:    alertSent,
     })
   );
