@@ -244,6 +244,15 @@ export async function upgradeServicePlan(
 /**
  * Calculate overage cost for a metric given its current value.
  * Returns 0 if no overage or no overage pricing defined.
+ *
+ * billing_cycle handling:
+ *   - 'monthly_reset' / 'rolling_30d' / 'cumulative' (or unset): overage_unit_cost
+ *     is treated as cost-per-unit for the current cycle. Default behavior.
+ *   - 'per_day_reset': overage_unit_cost is cost-per-unit-per-DAY (currently
+ *     only github.storage_bytes — GitHub bills Actions+Packages storage at
+ *     $0.008/GB/day). The displayed overage projects the daily cost out to
+ *     the end of the current calendar month so the dashboard shows the bill
+ *     that will actually arrive, not today's micro-fraction.
  */
 export function calculateOverageCost(
   value: number,
@@ -253,6 +262,7 @@ export function calculateOverageCost(
     | "overage_unit_cost"
     | "overage_unit"
     | "overage_cap"
+    | "billing_cycle"
   >,
 ): number {
   if (!limit.overage_unit_cost) return 0;
@@ -283,7 +293,14 @@ export function calculateOverageCost(
       overageUnits = overage;
   }
 
-  const cost = overageUnits * limit.overage_unit_cost;
+  let cost = overageUnits * limit.overage_unit_cost;
+
+  if (limit.billing_cycle === "per_day_reset") {
+    const now = new Date();
+    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    const daysRemaining = Math.max(1, monthEnd.getDate() - now.getDate() + 1);
+    cost = cost * daysRemaining;
+  }
 
   if (limit.overage_cap !== null) {
     return Math.min(cost, limit.overage_cap);

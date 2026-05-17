@@ -33,6 +33,10 @@ import {
 import { getCloudflareR2Usage } from "./cloudflare-usage";
 import { getVercelUsage } from "./vercel-usage";
 import { getGitHubUsage } from "./github-usage";
+import {
+  evaluateAutoTrips,
+  type AutoTripDecision,
+} from "./auto-trip-evaluator";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -61,6 +65,10 @@ export type PlatformUsagePayload = {
   by_service: Record<string, PlatformMetric[]>;
   total_metrics: number;
   summary: PlatformUsageSummary;
+  // PR 3 (FIX-286): per-switch evaluation result from the auto-trip evaluator.
+  // Surfaced here so the dashboard can show why a switch did or did not flip
+  // without having to cross-reference kill_switch_events.
+  auto_trip_decisions: AutoTripDecision[];
   timestamp: string;
 };
 
@@ -69,6 +77,7 @@ export type PlatformSnapshotResult = {
   any_critical: boolean;
   any_warning: boolean;
   total_overage_cost: number;
+  auto_trips_flipped: number;
   error: string | null;
 };
 
@@ -309,6 +318,21 @@ export async function computePlatformUsagePayload(
     (m) => m.source_display.needsVerification,
   ).length;
 
+  // Auto-trip evaluator runs after all vendor APIs have written through to
+  // platform_usage (above), before the snapshot row is inserted. Failure to
+  // evaluate is non-fatal — we record an error and ship an empty decisions
+  // array so the snapshot still lands. The safety net for AI cost overrun
+  // is the per-request DB check from PR 1 (kill_switches), not this.
+  let autoTripDecisions: AutoTripDecision[] = [];
+  try {
+    autoTripDecisions = await evaluateAutoTrips(db, finalMetrics);
+  } catch (err) {
+    errors.push(`auto_trip: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  const autoTripsFlipped = autoTripDecisions.filter(
+    (d) => d.action === "flip",
+  ).length;
+
   const payload: PlatformUsagePayload = {
     plan: defaultPlan,
     plan_overrides: planOverrides,
@@ -326,6 +350,7 @@ export async function computePlatformUsagePayload(
       warning_count: warningCount,
       unverified_count: unverifiedCount,
     },
+    auto_trip_decisions: autoTripDecisions,
     timestamp: new Date().toISOString(),
   };
 
@@ -334,6 +359,7 @@ export async function computePlatformUsagePayload(
     any_critical: anyCritical,
     any_warning: anyWarning,
     total_overage_cost: totalOverageCost,
+    auto_trips_flipped: autoTripsFlipped,
     error: errors.length > 0 ? errors.join("; ") : null,
   };
 }

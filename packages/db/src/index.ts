@@ -146,13 +146,22 @@ export type {
 export {
   isKillSwitchEnabled,
   setKillSwitch,
+  flipSwitch,
   clearKillSwitchCache,
 } from "./kill-switches";
 export type {
   KillSwitchName,
   KillSwitchState,
   KillSwitchesMap,
+  KillSwitchEventInput,
 } from "./kill-switches";
+
+// Auto-trip evaluator (PR 3 / FIX-286)
+export { evaluateAutoTrips } from "./auto-trip-evaluator";
+export type {
+  AutoTripDecision,
+  AutoTripAction,
+} from "./auto-trip-evaluator";
 
 // Supabase self-metrics (db size, file storage, Management API analytics)
 export {

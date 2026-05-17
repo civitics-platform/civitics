@@ -5,9 +5,11 @@
 // us most of the ISR benefit without depending on build-time data fetching.
 export const dynamic = "force-dynamic";
 
-import { createAdminClient } from "@civitics/db";
+import { cookies } from "next/headers";
+import { createAdminClient, createServerClient } from "@civitics/db";
 import { PageHeader, TabBar } from "@civitics/ui";
 import { DashboardClient } from "./DashboardClient";
+import { KillSwitchBanner, type KillSwitchEvent } from "./KillSwitchBanner";
 import { SitemapSection } from "./SitemapSection";
 import { BrowsingFlowsSection, type PathTransition, type EntryPage } from "./BrowsingFlowsSection";
 import { ModerationSection } from "./ModerationSection";
@@ -161,6 +163,40 @@ async function getInitialStatus(): Promise<StatusData | null> {
   }
 }
 
+// FIX-287: recent kill-switch flips for the admin-only banner. One-hour
+// window matches the dashboard's normal refresh cadence (operators dismiss
+// what they've acted on; old flips just age out instead of growing a list).
+// Only OFF flips surface — re-enables are non-events for an "operator
+// awareness" surface (a re-enable means someone already knew and acted).
+async function getRecentKillSwitchEvents(): Promise<KillSwitchEvent[]> {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db = createAdminClient() as any;
+    const { data } = await db
+      .from("kill_switch_events")
+      .select(
+        "id, switch_name, trigger_metric, trigger_value, threshold_pct, flipped_to, source, flipped_at",
+      )
+      .gte("flipped_at", new Date(Date.now() - 3_600_000).toISOString())
+      .eq("flipped_to", false)
+      .order("flipped_at", { ascending: false })
+      .limit(10);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (data ?? []).map((r: any) => ({
+      id: r.id as number,
+      switch_name: r.switch_name as string,
+      trigger_metric: (r.trigger_metric as string | null) ?? null,
+      trigger_value: r.trigger_value === null ? null : Number(r.trigger_value),
+      threshold_pct: (r.threshold_pct as number | null) ?? null,
+      flipped_to: r.flipped_to as boolean,
+      source: r.source as "auto" | "manual",
+      flipped_at: r.flipped_at as string,
+    }));
+  } catch {
+    return [];
+  }
+}
+
 async function getBrowsingFlows(): Promise<{
   transitions: PathTransition[];
   entryPages: EntryPage[];
@@ -206,11 +242,29 @@ export default async function DashboardPage({
   const tab = searchParams?.tab === "operations" ? "operations" : "transparency";
   const isOps = tab === "operations";
 
-  const [openProposals, openProposalCount, browsingFlows, initialStatus] = await Promise.all([
+  // FIX-287: kill-switch banner is admin-only + operations-tab-only. Cheap
+  // server-context user lookup gates the kill_switch_events read so anon
+  // pageviews don't pay for it.
+  const adminEmail = process.env["ADMIN_EMAIL"];
+  let isAdmin = false;
+  if (adminEmail) {
+    try {
+      const cookieStore = await cookies();
+      const supabase = createServerClient(cookieStore);
+      const { data: { user } } = await supabase.auth.getUser();
+      isAdmin = !!user && user.email === adminEmail;
+    } catch {
+      isAdmin = false;
+    }
+  }
+  const showKillSwitchBanner = isAdmin && isOps;
+
+  const [openProposals, openProposalCount, browsingFlows, initialStatus, killSwitchEvents] = await Promise.all([
     getOpenProposals(),
     getOpenProposalCount(),
     isOps ? getBrowsingFlows() : Promise.resolve({ transitions: [] as PathTransition[], entryPages: [] as EntryPage[] }),
     getInitialStatus(),
+    showKillSwitchBanner ? getRecentKillSwitchEvents() : Promise.resolve([] as KillSwitchEvent[]),
   ]);
 
   return (
@@ -230,6 +284,10 @@ export default async function DashboardPage({
           <div className="mb-6">
             <TabBar tabs={DASHBOARD_TABS} activeTab={tab} />
           </div>
+
+          {showKillSwitchBanner && (
+            <KillSwitchBanner events={killSwitchEvents} />
+          )}
 
           <DashboardClient
             openProposals={openProposals}

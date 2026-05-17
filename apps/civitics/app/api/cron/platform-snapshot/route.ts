@@ -40,6 +40,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       any_critical: result.any_critical,
       any_warning: result.any_warning,
       total_overage_cost: result.total_overage_cost,
+      // PR 3 (FIX-286): one-glance log signal so we don't need to query
+      // kill_switch_events from the GHA workflow log to spot a flip.
+      auto_trips_flipped: result.auto_trips_flipped,
       partial: result.error !== null,
       error: result.error,
     });

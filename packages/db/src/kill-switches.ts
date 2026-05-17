@@ -17,6 +17,11 @@
  * admin POST route calls clearKillSwitchCache() so manual flips take
  * effect immediately on the process that handled the POST; other Vercel
  * function instances pick it up on the next 30s tick.
+ *
+ * Auto-trip is one-way: PR 3's evaluator (auto-trip-evaluator.ts) flips
+ * switches OFF when a tracked metric crosses auto_trip_threshold_pct; it
+ * never flips them back on. Re-enable is a manual decision via the admin
+ * POST, which re-uses this module's setKillSwitch helper.
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -33,9 +38,22 @@ export type KillSwitchName =
 export type KillSwitchState = {
   enabled: boolean;
   auto_trip_threshold_pct: number | null;
+  // PR 3 (FIX-286): which platform_usage rows can trigger an auto-trip for
+  // this switch. Format: `service.metric` (e.g. "anthropic.monthly_spend_usd").
+  // Empty array → switch cannot auto-trip even if a threshold is set.
+  metrics?: string[];
 };
 
 export type KillSwitchesMap = Record<KillSwitchName, KillSwitchState>;
+
+// PR 3 (FIX-287): metadata for a single switch flip, persisted to
+// kill_switch_events. Both auto and manual flips share this shape.
+export type KillSwitchEventInput = {
+  source: "auto" | "manual";
+  trigger_metric: string | null;     // null for manual flips
+  trigger_value: number | null;
+  threshold_pct: number | null;
+};
 
 // ── Env-var mapping ───────────────────────────────────────────────────────────
 //
@@ -117,12 +135,28 @@ export async function isKillSwitchEnabled(
   return true;
 }
 
-export async function setKillSwitch(
+/**
+ * Shared internal flip: updates pipeline_state.kill_switches and inserts a
+ * kill_switch_events row in the same call. Used by:
+ *   - setKillSwitch (manual flips from admin POST)
+ *   - evaluateAutoTrips (auto flips from the snapshot cron)
+ *
+ * Returns the inserted event id so callers can echo it back in API responses
+ * (the admin POST returns event_id; the evaluator includes it in its
+ * decision list for cron observability).
+ *
+ * pipeline_state and kill_switch_events are not transactionally tied — if the
+ * event insert fails the switch flip still stands. That's the right tradeoff:
+ * the switch flip is the safety action; the event row is audit. Logged event
+ * with no flip would be misleading; flip with no event is recoverable.
+ */
+export async function flipSwitch(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   db: SupabaseClient<any>,
   name: KillSwitchName,
   enabled: boolean,
-): Promise<void> {
+  event: KillSwitchEventInput,
+): Promise<{ event_id: number | null; flipped_at: string }> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const anyDb = db as any;
 
@@ -142,14 +176,57 @@ export async function setKillSwitch(
     [name]: { ...prev, enabled },
   };
 
+  const flipped_at = new Date().toISOString();
+
   await anyDb.from("pipeline_state").upsert(
     {
       key: "kill_switches",
       value: next,
-      updated_at: new Date().toISOString(),
+      updated_at: flipped_at,
     },
     { onConflict: "key" },
   );
 
   clearKillSwitchCache();
+
+  let event_id: number | null = null;
+  try {
+    const { data: inserted } = await anyDb
+      .from("kill_switch_events")
+      .insert({
+        switch_name: name,
+        trigger_metric: event.trigger_metric,
+        trigger_value: event.trigger_value,
+        threshold_pct: event.threshold_pct,
+        flipped_to: enabled,
+        source: event.source,
+        flipped_at,
+      })
+      .select("id")
+      .maybeSingle();
+    event_id = (inserted?.id as number | undefined) ?? null;
+  } catch {
+    // Audit-row failure shouldn't surface as an API error — see comment above.
+    event_id = null;
+  }
+
+  return { event_id, flipped_at };
+}
+
+/**
+ * Manual flip from admin UI / API. Wraps flipSwitch with source='manual' and
+ * no trigger metadata (the operator's intent is the trigger).
+ */
+export async function setKillSwitch(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  db: SupabaseClient<any>,
+  name: KillSwitchName,
+  enabled: boolean,
+): Promise<{ event_id: number | null; flipped_at: string }> {
+  return flipSwitch(db, name, enabled, {
+    source: "manual",
+    trigger_metric: null,
+    trigger_value: null,
+    threshold_pct: null,
+  });
 }

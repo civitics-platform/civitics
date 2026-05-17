@@ -76,12 +76,21 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   try {
     const db = createAdminClient();
-    await setKillSwitch(db, body.name, body.enabled);
+    const { event_id, flipped_at } = await setKillSwitch(
+      db,
+      body.name,
+      body.enabled,
+    );
     return NextResponse.json({
       ok: true,
       name: body.name,
       enabled: body.enabled,
-      flipped_at: new Date().toISOString(),
+      // PR 3 (FIX-287): event_id lets the browser reflect the new banner
+      // entry immediately without a full page refresh. Null if the
+      // kill_switch_events insert failed (audit is best-effort, the flip
+      // itself stands).
+      event_id,
+      flipped_at,
     });
   } catch (err) {
     return NextResponse.json(
