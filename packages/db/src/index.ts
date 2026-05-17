@@ -187,3 +187,13 @@ export type {
   VercelUsage,
   VercelUsageError,
 } from "./vercel-usage";
+
+// GitHub Actions usage (org-level billing minutes + shared-storage)
+export {
+  getGitHubUsage,
+  clearGitHubUsageCache,
+} from "./github-usage";
+export type {
+  GitHubUsage,
+  GitHubUsageError,
+} from "./github-usage";

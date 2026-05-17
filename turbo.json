@@ -34,7 +34,8 @@
         "ANTHROPIC_ADMIN_API_KEY",
         "ANTHROPIC_ORG_ID",
         "ADMIN_EMAIL",
-        "SUPABASE_DB_PASSWORD"
+        "SUPABASE_DB_PASSWORD",
+        "GITHUB_BILLING_TOKEN"
       ]
     },
     "dev": {

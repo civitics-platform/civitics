@@ -32,6 +32,7 @@ import {
 } from "./supabase-usage";
 import { getCloudflareR2Usage } from "./cloudflare-usage";
 import { getVercelUsage } from "./vercel-usage";
+import { getGitHubUsage } from "./github-usage";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -199,6 +200,26 @@ export async function computePlatformUsagePayload(
     }
   } catch (err) {
     errors.push(`cloudflare: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  // GitHub Actions usage → platform_usage. Pulls org-level billing minutes +
+  // shared-storage. Missing token is benign (matches FIX-284 convention — the
+  // partial flag stays false so the snapshot still completes cleanly); rows
+  // stay on source='manual' until GITHUB_BILLING_TOKEN is added.
+  try {
+    const gh = await getGitHubUsage();
+    if (!("error" in gh)) {
+      await Promise.all([
+        updateUsage(db, "github", "action_minutes", gh.action_minutes, "api"),
+        updateUsage(db, "github", "storage_bytes", gh.storage_bytes, "api"),
+      ]);
+    } else {
+      if (!/GITHUB_BILLING_TOKEN/i.test(gh.error)) {
+        errors.push(`github: ${gh.error}`);
+      }
+    }
+  } catch (err) {
+    errors.push(`github: ${err instanceof Error ? err.message : String(err)}`);
   }
 
   // Vercel current-cycle usage → platform_usage. The /v1/usage endpoint is
