@@ -365,3 +365,6 @@
 2026-05-17 | FIX-285 | e848f550 | local+prod | feat(ops): GitHub Actions usage in platform snapshot
 2026-05-17 | FIX-286 | 3dbd9385 | local+prod | feat(ops): kill-switch auto-trip evaluator + dashboard banner
 2026-05-17 | FIX-287 | 3dbd9385 | local+prod | feat(ops): kill-switch auto-trip evaluator + dashboard banner
+2026-05-17 | FIX-288 | 2b1514e0 | local+prod | feat(ops): email alerts on kill switch flips + close FIX-234
+2026-05-17 | FIX-289 | b9ea73d8 | local-only | fix(canary): pass --allow-prod to canary-check:ci so pipeline guard doesn't block
+2026-05-17 | FIX-289 | 2b1514e0 | local+prod | feat(ops): email alerts on kill switch flips + close FIX-234
