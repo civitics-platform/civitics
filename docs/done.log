@@ -376,3 +376,4 @@
 2026-05-17 | FIX-242 | 70fca6f3 | local-only | chore(fixes): close FIX-242 — verification redirected to FIX-292
 2026-05-17 | FIX-276 | c1d42142 | local-only | feat(nightly): split into FEC + enrichment phases (GHA two-job)
 2026-05-17 | FIX-292 | c1d42142 | local-only | feat(nightly): split into FEC + enrichment phases (GHA two-job)
+2026-05-17 | FIX-293 | 2a3f5bb0 | local-only | fix(nightly): merge cron_last_run blob across phases (FIX-293)
