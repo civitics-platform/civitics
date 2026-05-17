@@ -1,7 +1,12 @@
 /**
- * Vercel cron route — platform usage snapshot.
+ * Cron-triggered platform usage snapshot.
  *
- * Schedule: every 10 minutes (configured in apps/civitics/vercel.json).
+ * Fires every 10 minutes from .github/workflows/platform-snapshot.yml, which
+ * curls this endpoint with `Authorization: Bearer <CRON_SECRET>`. Vercel
+ * Hobby blocks sub-daily cron expressions, so the schedule lives in GHA
+ * rather than vercel.json. The auth shape is identical to the
+ * Vercel-internal cron header (Bearer + CRON_SECRET), so swapping back to
+ * a vercel.json entry on Pro would be a one-line change.
  *
  * Runs the full vendor-API + DB-sum aggregation that used to happen inside
  * /api/platform/usage GET on every request, and persists the result to
@@ -10,10 +15,6 @@
  *
  * Returns a lightweight ack — the full payload lives in the snapshot row
  * itself; cron responses shouldn't carry the dashboard payload as well.
- *
- * Security: Vercel sends `Authorization: Bearer <CRON_SECRET>` automatically
- * when CRON_SECRET is set in project env vars. Matches the auth shape used
- * by /api/cron/nightly-sync.
  */
 
 export const dynamic = "force-dynamic";

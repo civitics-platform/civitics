@@ -1,0 +1,63 @@
+name: platform-snapshot
+
+# FIX-281 — Trigger /api/cron/platform-snapshot every 10 minutes.
+#
+# Why GHA instead of vercel.json crons: Vercel Hobby rejects cron expressions
+# more frequent than daily. The route itself accepts Authorization: Bearer
+# <CRON_SECRET>, the same env var Vercel's own cron uses, so we can call it
+# from an external scheduler without protocol changes.
+#
+# GHA cron cadence drifts during platform load (real-world ~5-15 min), which
+# is well inside the GET handler's 20-minute staleness window — when GHA is
+# late, the dashboard falls back to live recompute, and the worst case is
+# the same as the pre-FIX-281 state. No correctness risk, just an occasional
+# slow request.
+#
+# Required GitHub Actions secrets:
+#   - CRON_SECRET           — must match the value in Vercel project env
+#   - CIVITICS_APP_URL      — e.g. https://civitics-civitics.vercel.app
+#                             (falls back to the production URL below if unset)
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+# Skip overlapping runs. The route is idempotent (each invocation INSERTs a
+# new snapshot row), but stacking runs during a slow Vercel deploy wastes
+# minutes and clutters the table.
+concurrency:
+  group: platform-snapshot
+  cancel-in-progress: true
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Curl /api/cron/platform-snapshot
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          APP_URL: ${{ secrets.CIVITICS_APP_URL || 'https://civitics-civitics.vercel.app' }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CRON_SECRET}" ]; then
+            echo "::error::CRON_SECRET secret is not set"; exit 1
+          fi
+          # Capture body + status separately so we can both log and gate on
+          # the response. Anything non-2xx → workflow fails and surfaces in
+          # the Actions tab.
+          HTTP=$(curl -sS -o /tmp/body.json -w "%{http_code}" \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            "${APP_URL}/api/cron/platform-snapshot")
+          echo "HTTP ${HTTP}"
+          cat /tmp/body.json
+          echo
+          if [ "${HTTP}" != "200" ]; then
+            echo "::error::snapshot route returned HTTP ${HTTP}"
+            exit 1
+          fi
