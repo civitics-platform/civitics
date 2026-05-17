@@ -939,18 +939,63 @@ export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<Nigh
     console.log(`  Errors (${results.errors.length}): ${results.errors.join("; ")}`);
   }
 
-  // Record results to pipeline_state for dashboard
+  // Record results to pipeline_state for dashboard. FIX-293: merge with any
+  // existing same-UTC-day row so the two-phase nightly (FIX-292) preserves
+  // both phases' results.pipelines.* keys instead of clobbering them.
   try {
-    const status = results.errors.length === 0 ? "complete" : "partial";
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (db as any).from("pipeline_state").upsert(
+    const adminDb = db as any;
+
+    const { data: existing } = await adminDb
+      .from("pipeline_state")
+      .select("value")
+      .eq("key", "cron_last_run")
+      .maybeSingle();
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const existingValue = (existing?.value ?? null) as any;
+    const existingDate = typeof existingValue?.started_at === "string"
+      ? existingValue.started_at.slice(0, 10)
+      : null;
+    const thisDate = startedAt.toISOString().slice(0, 10);
+    const sameDay = existingDate === thisDate;
+
+    const mergedPipelines = sameDay
+      ? { ...(existingValue?.results?.pipelines ?? {}), ...results.pipelines }
+      : results.pipelines;
+
+    const mergedErrors = sameDay
+      ? [...(existingValue?.results?.errors ?? []), ...results.errors]
+      : results.errors;
+
+    const mergedAi = sameDay
+      ? { ...(existingValue?.results?.ai ?? {}), ...results.ai }
+      : results.ai;
+
+    const mergedTotalAiCost = sameDay
+      ? (existingValue?.results?.total_ai_cost_usd ?? 0) + results.total_ai_cost_usd
+      : results.total_ai_cost_usd;
+
+    const mergedResults = {
+      ...results,
+      pipelines: mergedPipelines,
+      errors: mergedErrors,
+      ai: mergedAi,
+      total_ai_cost_usd: mergedTotalAiCost,
+    };
+
+    const mergedStatus = mergedErrors.length === 0 ? "complete" : "partial";
+    const phaseStatus = results.errors.length === 0 ? "complete" : "partial";
+
+    await adminDb.from("pipeline_state").upsert(
       {
         key: "cron_last_run",
         value: {
           started_at:   startedAt.toISOString(),
           completed_at: results.completed_at.toISOString(),
-          status,
-          results,
+          status: mergedStatus,
+          phase,
+          results: mergedResults,
         },
         updated_at: new Date().toISOString(),
       },
@@ -963,7 +1008,7 @@ export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<Nigh
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await (db as any).from("data_sync_log").insert({
       pipeline:      "nightly_cron",
-      status,
+      status:        phaseStatus,
       started_at:    startedAt.toISOString(),
       completed_at:  results.completed_at.toISOString(),
       rows_inserted: Object.values(results.pipelines).reduce(
