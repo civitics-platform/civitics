@@ -24,7 +24,7 @@ import type { AnchorMatch, AmbiguousMatch } from "./expand";
 
 type Db = ReturnType<typeof createAdminClient>;
 
-const ENTITY_CHUNK     = 500;
+const RESOLVE_BATCH    = 50;     // FIX-280 — RPC + INSERT bounded concurrency per chunk
 const REL_CHUNK        = 500;
 const REVIEW_CHUNK     = 500;
 const REFS_CHUNK       = 500;
@@ -60,10 +60,15 @@ export async function preloadKnownLittleSisIds(db: Db): Promise<Map<number, Anch
     for (const r of rows) {
       const ls = Number(r.external_id);
       if (!Number.isFinite(ls)) continue;
+      // confidence in storage can be 'high' | 'medium' | 'hop1' | 'canonical_match'
+      // (FIX-280). Collapse anything that isn't 'high' to 'medium' for the
+      // in-memory AnchorMatch shape — edge match_confidence treats medium as
+      // the conservative default and never promotes hop-1 rows to high.
+      const storedConf = r.metadata?.["confidence"];
       out.set(ls, {
         civitics_type: r.entity_type as "official" | "financial_entity",
         civitics_id:   r.entity_id,
-        confidence:    (r.metadata?.["confidence"] as "high" | "medium") ?? "medium",
+        confidence:    storedConf === "high" ? "high" : "medium",
       });
     }
     if (rows.length < KNOWN_LOAD_PAGE) break;
@@ -73,41 +78,79 @@ export async function preloadKnownLittleSisIds(db: Db): Promise<Map<number, Anch
 }
 
 // ---------------------------------------------------------------------------
-// hop-1 financial_entities upsert
+// hop-1 financial_entities — resolve-or-insert via resolve_entity_by_canonical
+// (Strategy D Session 3, FIX-280)
 //
-// For LittleSis Persons (entity_type='individual') we append an `[LS:<id>]`
-// suffix to canonical_name. Common surnames + first names collide otherwise,
-// and the existing UNIQUE(canonical_name, entity_type) would silently merge
-// two different people. Org names are distinct enough that merging by
-// canonical_name is correct (Goldman Sachs Group = Goldman Sachs Group).
+// Before inserting a new financial_entities row for a LittleSis hop-1 entity,
+// ask the database whether an existing row with the same canonical_name
+// already exists from any source (FEC, IRS 990, EDGAR, or an earlier
+// LittleSis run). On single-match we bind the LS id to that row via
+// external_source_refs(source='littlesis') instead of inserting a duplicate.
+// On 0-match or multi-match (RPC returns NULL) we INSERT a new row.
+//
+// For Persons we pass p_entity_type='individual' so the RPC's
+// `donor_fingerprint IS NOT NULL` filter rules out matching LS-only
+// individuals under common names. For Orgs we pass p_entity_type=NULL so a
+// LittleSis 'other'/'corporation' row can bind to an IRS 990 'nonprofit' row
+// under the same canonical (Heritage Foundation case from investigation
+// §5.6); the single-match-only contract still blocks unsafe collisions.
+//
+// The `[LS:<id>]` suffix that used to discriminate Person canonicals was
+// removed at the same time — match-first via RPC supersedes its collision-
+// prevention purpose and no production rows ever carried it (0 of 84,811
+// LS-bound individuals per investigation §3.2(d) / OOS #1).
+//
+// Idempotency for previously-bound LS ids is upstream via
+// preloadKnownLittleSisIds + the `known.has(lsId)` filter in index.ts — no
+// LS id ever reaches this code path after a successful prior binding, so
+// the helper does not re-check external_source_refs.
 // ---------------------------------------------------------------------------
 
 interface UpsertHop1Result {
   /** lsId → financial_entity uuid (covers both newly-inserted and matched-existing) */
-  idMap:    Map<number, string>;
-  inserted: number;
-  failed:   number;
+  idMap:        Map<number, string>;
+  /** newly INSERTed (no canonical match found) */
+  inserted:     number;
+  /** RPC single-match (bound to existing row instead of INSERTing) */
+  matched:      number;
+  /** per-row INSERT or canonicalization failures */
+  failed:       number;
+  /** RPC errors that fell through to INSERT path (degraded-mode visibility) */
+  rpcErrors:    number;
+  /** lsIds that came from RPC match (caller stamps confidence='canonical_match') */
+  matchedLsIds: Set<number>;
 }
 
-export async function upsertHop1FinancialEntities(
-  db: Db,
-  entities: LittleSisEntity[],
-): Promise<UpsertHop1Result> {
-  const idMap = new Map<number, string>();
-  let inserted = 0;
-  let failed   = 0;
-  if (entities.length === 0) return { idMap, inserted, failed };
+async function resolveOrInsertHop1(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  db: any,
+  ent: LittleSisEntity,
+): Promise<{ id: string; created: boolean; rpcError: boolean } | null> {
+  const canonical = canonicalizeEntityName(ent.name);
+  if (!canonical) return null;   // empty after canonicalization — skip
 
-  const records = entities.map((ent) => {
-    const baseCanonical = canonicalizeEntityName(ent.name);
-    const entityType = ent.primary_ext === "Person"
-      ? "individual"
-      : littleSisOrgEntityType(ent.types);
-    const canonical = entityType === "individual"
-      ? `${baseCanonical} [LS:${ent.id}]`        // discriminator suffix
-      : baseCanonical;
-    return {
-      _lsId: ent.id,
+  const entityType = ent.primary_ext === "Person"
+    ? "individual"
+    : littleSisOrgEntityType(ent.types);
+  const rpcType = entityType === "individual" ? "individual" : null;
+
+  const { data: matchedId, error: rpcErr } = await db.rpc(
+    "resolve_entity_by_canonical",
+    { p_canonical_name: canonical, p_entity_type: rpcType, p_state: null },
+  );
+  let rpcError = false;
+  if (rpcErr) {
+    console.warn(`  [littlesis] resolve_entity_by_canonical failed for LS:${ent.id}: ${rpcErr.message}`);
+    rpcError = true;
+    // Fall through to INSERT in degraded mode.
+  } else if (matchedId) {
+    console.log(`  [littlesis] LS:${ent.id} canonical-bound to existing entity ${matchedId} (canonical="${canonical}", entity_type=${entityType})`);
+    return { id: matchedId as string, created: false, rpcError: false };
+  }
+
+  const { data: ins, error: insErr } = await db
+    .from("financial_entities")
+    .insert({
       canonical_name:       canonical,
       display_name:         (ent.name ?? "").slice(0, 255),
       entity_type:          entityType,
@@ -122,44 +165,44 @@ export async function upsertHop1FinancialEntities(
         types:         ent.types ?? [],
         aliases:       ent.aliases ?? [],
       },
-    };
-  });
+    })
+    .select("id")
+    .single();
+  if (insErr) {
+    console.warn(`  [littlesis] financial_entities insert failed for LS:${ent.id}: ${insErr.message}`);
+    return null;
+  }
+  return { id: (ins as { id: string }).id, created: true, rpcError };
+}
 
-  // Bare INSERT — `(canonical_name, entity_type)` is NOT uniquely-constrained
-  // on the table post-FIX-181 (donor_fingerprint UNIQUE is the only individuals
-  // arbiter; PACs use fec_committee_id UNIQUE). LittleSis hop-1 entities have
-  // neither, so we can't piggyback on either constraint. Idempotency is
-  // instead enforced upstream by the `external_source_refs(source='littlesis')`
-  // preload — entities already bound to a LittleSis id never reach this code
-  // path. Risk: same canonical_name + entity_type as a pre-existing non-
-  // LittleSis row produces a duplicate row; accepted for v1 and documented.
-  for (let i = 0; i < records.length; i += ENTITY_CHUNK) {
-    const chunk = records.slice(i, i + ENTITY_CHUNK);
-    const lsByCanonical = new Map<string, number>();
-    for (const r of chunk) lsByCanonical.set(r.canonical_name, r._lsId);
+export async function upsertHop1FinancialEntities(
+  db: Db,
+  entities: LittleSisEntity[],
+): Promise<UpsertHop1Result> {
+  const idMap        = new Map<number, string>();
+  const matchedLsIds = new Set<number>();
+  let inserted  = 0;
+  let matched   = 0;
+  let failed    = 0;
+  let rpcErrors = 0;
+  if (entities.length === 0) return { idMap, inserted, matched, failed, rpcErrors, matchedLsIds };
 
-    const payload = chunk.map(({ _lsId: _, ...rest }) => rest);
-
+  for (let i = 0; i < entities.length; i += RESOLVE_BATCH) {
+    const chunk = entities.slice(i, i + RESOLVE_BATCH);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data, error } = await (db as any)
-      .from("financial_entities")
-      .insert(payload)
-      .select("id, canonical_name");
-    if (error) {
-      console.error(`  [littlesis] financial_entities chunk ${i}-${i + chunk.length} failed: ${error.message}`);
-      failed += chunk.length;
-      continue;
-    }
-    for (const row of (data ?? []) as Array<{ id: string; canonical_name: string }>) {
-      const lsId = lsByCanonical.get(row.canonical_name);
-      if (lsId !== undefined) {
-        idMap.set(lsId, row.id);
-        inserted++;
-      }
+    const results = await Promise.all(chunk.map((ent) => resolveOrInsertHop1(db as any, ent)));
+    for (let j = 0; j < chunk.length; j++) {
+      const ent = chunk[j]!;
+      const res = results[j];
+      if (res === null) { failed++; continue; }
+      idMap.set(ent.id, res.id);
+      if (res.created) inserted++;
+      else { matched++; matchedLsIds.add(ent.id); }
+      if (res.rpcError) rpcErrors++;
     }
   }
 
-  return { idMap, inserted, failed };
+  return { idMap, inserted, matched, failed, rpcErrors, matchedLsIds };
 }
 
 // ---------------------------------------------------------------------------

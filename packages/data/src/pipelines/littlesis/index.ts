@@ -157,13 +157,22 @@ export async function runLittleSisPipeline(opts: { force?: boolean } = {}): Prom
     }
     console.log(`  Materializing ${hop1Entities.length} hop-1 entities...`);
     const hop1Upsert = await upsertHop1FinancialEntities(db, hop1Entities);
-    console.log(`    inserted/matched=${hop1Upsert.inserted} failed=${hop1Upsert.failed}`);
-    result.inserted += hop1Upsert.inserted;
+    console.log(
+      `    inserted=${hop1Upsert.inserted} matched=${hop1Upsert.matched}` +
+      ` failed=${hop1Upsert.failed} rpcErrors=${hop1Upsert.rpcErrors}`,
+    );
+    result.inserted += hop1Upsert.inserted + hop1Upsert.matched;
     result.failed   += hop1Upsert.failed;
 
     // Bind the new hop-1 LittleSis ids to their financial_entity uuids.
+    // FIX-280: matched-existing rows are stamped 'canonical_match' so the
+    // metadata distinguishes RPC-resolved cross-source bindings from pure
+    // hop-1 inserts.
     const bindings = [...hop1Upsert.idMap].map(([lsId, entity_id]) => ({
-      lsId, entity_type: "financial_entity", entity_id, confidence: "hop1",
+      lsId,
+      entity_type: "financial_entity",
+      entity_id,
+      confidence: hop1Upsert.matchedLsIds.has(lsId) ? "canonical_match" : "hop1",
     }));
     const refs = await upsertSourceRefs(db, bindings);
     if (refs.failed > 0) console.warn(`    [refs] ${refs.failed} bindings failed`);
