@@ -378,3 +378,5 @@
 2026-05-17 | FIX-292 | c1d42142 | local-only | feat(nightly): split into FEC + enrichment phases (GHA two-job)
 2026-05-17 | FIX-293 | 2a3f5bb0 | local-only | fix(nightly): merge cron_last_run blob across phases (FIX-293)
 2026-05-17 | FIX-241 | 3aa96950 | local+prod | fix(search): correct entity_tags column references — tag_category + display_label
+2026-05-18 | FIX-295 | edf35e3f | local-only | feat(ops): complete Supabase tracking — Pro plan flip + Auth MAUs + egress manual-update UI
+2026-05-18 | FIX-296 | edf35e3f | local-only | feat(ops): complete Supabase tracking — Pro plan flip + Auth MAUs + egress manual-update UI
