@@ -380,3 +380,5 @@
 2026-05-17 | FIX-241 | 3aa96950 | local+prod | fix(search): correct entity_tags column references — tag_category + display_label
 2026-05-18 | FIX-295 | edf35e3f | local-only | feat(ops): complete Supabase tracking — Pro plan flip + Auth MAUs + egress manual-update UI
 2026-05-18 | FIX-296 | edf35e3f | local-only | feat(ops): complete Supabase tracking — Pro plan flip + Auth MAUs + egress manual-update UI
+2026-05-18 | FIX-295 | 2eec308d | prod-only | chore(fixes): sync status after FIX-295 + FIX-296
+2026-05-18 | FIX-296 | 2eec308d | prod-only | chore(fixes): sync status after FIX-295 + FIX-296
