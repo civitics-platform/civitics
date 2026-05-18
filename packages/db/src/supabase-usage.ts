@@ -51,6 +51,15 @@ export type SupabaseManagementMetricsError = {
   error: string;
 };
 
+export type SupabaseAuthMau = {
+  auth_mau: number;
+  fetched_at: string;
+};
+
+export type SupabaseAuthMauError = {
+  error: string;
+};
+
 // ── SQL metrics ───────────────────────────────────────────────────────────────
 
 export async function getSupabaseSqlMetrics(
@@ -74,6 +83,39 @@ export async function getSupabaseSqlMetrics(
   return {
     db_size_bytes: Number(row.db_size_bytes ?? 0),
     storage_bytes: Number(row.storage_bytes ?? 0),
+  };
+}
+
+// ── Auth MAUs ─────────────────────────────────────────────────────────────────
+//
+// Calls the public.get_supabase_auth_mau() RPC (migration
+// 20260518000000_supabase_auth_mau.sql), which counts auth.users with
+// last_sign_in_at >= NOW() - INTERVAL '30 days'. SECURITY DEFINER inside the
+// RPC handles the auth-schema read; this helper just unwraps the BIGINT.
+// Cheap (~ms) — no cache.
+
+export async function getSupabaseAuthMau(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: SupabaseClient<any>,
+): Promise<SupabaseAuthMau | SupabaseAuthMauError> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const anyDb = supabase as any;
+  const { data, error } = await anyDb.rpc("get_supabase_auth_mau");
+
+  if (error) {
+    return { error: error.message };
+  }
+
+  // RPC returns BIGINT scalar; PostgREST surfaces it as a number or a
+  // single-cell array depending on driver version. Handle both shapes.
+  const raw = Array.isArray(data) ? data[0] : data;
+  const count = typeof raw === "object" && raw !== null
+    ? Number((raw as { get_supabase_auth_mau?: unknown }).get_supabase_auth_mau ?? 0)
+    : Number(raw ?? 0);
+
+  return {
+    auth_mau: Number.isFinite(count) ? count : 0,
+    fetched_at: new Date().toISOString(),
   };
 }
 

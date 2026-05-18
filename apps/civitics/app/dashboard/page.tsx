@@ -13,6 +13,7 @@ import { KillSwitchBanner, type KillSwitchEvent } from "./KillSwitchBanner";
 import { SitemapSection } from "./SitemapSection";
 import { BrowsingFlowsSection, type PathTransition, type EntryPage } from "./BrowsingFlowsSection";
 import { ModerationSection } from "./ModerationSection";
+import { ManualMetricsPanel, type ManualMetric } from "./ManualMetricsPanel";
 import { PageViewTracker } from "../components/PageViewTracker";
 import {
   type Db,
@@ -197,6 +198,78 @@ async function getRecentKillSwitchEvents(): Promise<KillSwitchEvent[]> {
   }
 }
 
+// FIX-296: pulls the platform_usage rows that have no public API path so
+// the operator-facing ManualMetricsPanel can render them with a freshness
+// badge. Joins to platform_limits to honor has_public_api=false as the
+// canonical filter — manual rows with has_public_api=true are scraper-
+// backlog items, not "must be hand-entered" items.
+async function getManualMetrics(): Promise<ManualMetric[]> {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db = createAdminClient() as any;
+    const monthStart = new Date(
+      new Date().getFullYear(),
+      new Date().getMonth(),
+      1,
+    ).toISOString();
+
+    const [usageRes, limitsRes] = await Promise.all([
+      db
+        .from("platform_usage")
+        .select(
+          "service, metric, value, verified_at, stale_after_days, source",
+        )
+        .eq("source", "manual")
+        .eq("period_start", monthStart),
+      db
+        .from("platform_limits")
+        .select("service, metric, display_label, unit, has_public_api")
+        .eq("has_public_api", false)
+        .eq("is_active", true),
+    ]);
+
+    const limits = (limitsRes.data ?? []) as Array<{
+      service: string;
+      metric: string;
+      display_label: string | null;
+      unit: string;
+      has_public_api: boolean;
+    }>;
+    const usageRows = (usageRes.data ?? []) as Array<{
+      service: string;
+      metric: string;
+      value: number | null;
+      verified_at: string | null;
+      stale_after_days: number | null;
+    }>;
+    const usageByKey = new Map(
+      usageRows.map((u) => [`${u.service}:${u.metric}`, u]),
+    );
+
+    return limits.map((lim) => {
+      const usage = usageByKey.get(`${lim.service}:${lim.metric}`);
+      const days =
+        usage?.verified_at
+          ? Math.floor(
+              (Date.now() - new Date(usage.verified_at).getTime()) / 86_400_000,
+            )
+          : null;
+      return {
+        service: lim.service,
+        metric: lim.metric,
+        display_label: lim.display_label ?? lim.metric,
+        unit: lim.unit,
+        value: usage?.value ?? null,
+        verified_at: usage?.verified_at ?? null,
+        stale_after_days: usage?.stale_after_days ?? null,
+        days_since_verified: days,
+      };
+    });
+  } catch {
+    return [];
+  }
+}
+
 async function getBrowsingFlows(): Promise<{
   transitions: PathTransition[];
   entryPages: EntryPage[];
@@ -259,12 +332,18 @@ export default async function DashboardPage({
   }
   const showKillSwitchBanner = isAdmin && isOps;
 
-  const [openProposals, openProposalCount, browsingFlows, initialStatus, killSwitchEvents] = await Promise.all([
+  // FIX-296: manual metrics are admin + operations-tab only — same gate as
+  // the kill-switch banner. Skips the query entirely on Transparency
+  // pageviews and anon sessions.
+  const showManualMetrics = isAdmin && isOps;
+
+  const [openProposals, openProposalCount, browsingFlows, initialStatus, killSwitchEvents, manualMetrics] = await Promise.all([
     getOpenProposals(),
     getOpenProposalCount(),
     isOps ? getBrowsingFlows() : Promise.resolve({ transitions: [] as PathTransition[], entryPages: [] as EntryPage[] }),
     getInitialStatus(),
     showKillSwitchBanner ? getRecentKillSwitchEvents() : Promise.resolve([] as KillSwitchEvent[]),
+    showManualMetrics ? getManualMetrics() : Promise.resolve([] as ManualMetric[]),
   ]);
 
   return (
@@ -306,6 +385,9 @@ export default async function DashboardPage({
           {/* Operations-only: Browsing Flows + Moderation */}
           {isOps && (
             <div className="mt-6 space-y-6">
+              {showManualMetrics && manualMetrics.length > 0 && (
+                <ManualMetricsPanel metrics={manualMetrics} />
+              )}
               <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
                 <BrowsingFlowsSection
                   transitions={browsingFlows.transitions}

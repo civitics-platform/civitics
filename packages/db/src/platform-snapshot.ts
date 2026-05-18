@@ -29,6 +29,7 @@ import {
 import {
   getSupabaseSqlMetrics,
   getSupabaseManagementMetrics,
+  getSupabaseAuthMau,
 } from "./supabase-usage";
 import { getCloudflareR2Usage } from "./cloudflare-usage";
 import { getVercelUsage } from "./vercel-usage";
@@ -170,6 +171,20 @@ export async function computePlatformUsagePayload(
     }
   } catch (err) {
     errors.push(`supabase_sql: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  // FIX-295: Auth MAU count from a thin RPC over auth.users. Independent of
+  // the Management API path — failure here doesn't trip partial because the
+  // RPC's only failure mode in practice is "migration hasn't applied yet."
+  try {
+    const authMau = await getSupabaseAuthMau(db);
+    if (!("error" in authMau)) {
+      await updateUsage(db, "supabase", "auth_mau", authMau.auth_mau, "api");
+    } else {
+      errors.push(`supabase_auth_mau: ${authMau.error}`);
+    }
+  } catch (err) {
+    errors.push(`supabase_auth_mau: ${err instanceof Error ? err.message : String(err)}`);
   }
 
   try {

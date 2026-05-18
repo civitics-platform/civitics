@@ -58,7 +58,9 @@
     "data:rebuild-connections": "tsx --env-file=../../.env.local src/scripts/rebuild-entity-connections.ts",
     "data:rebuild-connections:ci": "tsx src/scripts/rebuild-entity-connections.ts --allow-prod",
     "data:mark-killed": "tsx --env-file=../../.env.local src/scripts/mark-killed.ts",
-    "data:mark-killed:ci": "tsx src/scripts/mark-killed.ts --allow-prod"
+    "data:mark-killed:ci": "tsx src/scripts/mark-killed.ts --allow-prod",
+    "data:flip-supabase-pro": "tsx --env-file=../../.env.local src/scripts/flip-supabase-pro.ts",
+    "data:flip-supabase-pro:ci": "tsx src/scripts/flip-supabase-pro.ts --allow-prod"
   },
   "dependencies": {
     "@civitics/ai": "workspace:*",

@@ -167,6 +167,7 @@ export type {
 export {
   getSupabaseSqlMetrics,
   getSupabaseManagementMetrics,
+  getSupabaseAuthMau,
   clearSupabaseManagementCache,
 } from "./supabase-usage";
 export type {
@@ -174,6 +175,8 @@ export type {
   SupabaseSqlMetricsError,
   SupabaseManagementMetrics,
   SupabaseManagementMetricsError,
+  SupabaseAuthMau,
+  SupabaseAuthMauError,
 } from "./supabase-usage";
 
 // Cloudflare R2 metrics (storage + class-A/B operations via GraphQL Analytics)
