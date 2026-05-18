@@ -152,8 +152,8 @@ export async function GET(req: NextRequest) {
 
       const [connection_count, tagRes, aiRes] = await Promise.all([
         getConnectionCount(db2, id),
-        db2.from("entity_tags").select("tag_value, tag_type")
-          .eq("entity_id", id).eq("tag_type", "industry").maybeSingle(),
+        db2.from("entity_tags").select("display_label, tag")
+          .eq("entity_id", id).eq("tag_category", "industry").maybeSingle(),
         db2.from("ai_summary_cache").select("summary_text")
           .eq("entity_id", id).eq("entity_type", "financial").maybeSingle(),
       ]);
@@ -163,7 +163,7 @@ export async function GET(req: NextRequest) {
         name: data.display_name,
         subtitle: [
           data.entity_type.replace(/_/g, " "),
-          tagRes?.data?.tag_value ?? null,
+          tagRes?.data?.display_label ?? tagRes?.data?.tag ?? null,
         ].filter(Boolean).join(" · "),
         description: aiRes?.data?.summary_text ?? null,
         connection_count,
@@ -172,7 +172,7 @@ export async function GET(req: NextRequest) {
           "Total donated": data.total_donated_cents
             ? formatDollars(data.total_donated_cents)
             : null,
-          Industry: tagRes?.data?.tag_value ?? null,
+          Industry: tagRes?.data?.display_label ?? tagRes?.data?.tag ?? null,
         },
       };
       return NextResponse.json(detail, { headers: CACHE_HEADERS });

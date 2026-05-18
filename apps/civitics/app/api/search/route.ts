@@ -505,8 +505,8 @@ export async function GET(req: NextRequest) {
       const { data: tagRows } = await db2
         .from("entity_tags")
         .select("entity_id")
-        .eq("tag_type", "industry")
-        .ilike("tag_value", filterIndustry);
+        .eq("tag_category", "industry")
+        .ilike("tag", filterIndustry);
       const tagIds = (tagRows ?? []).map((r: { entity_id: string }) => r.entity_id);
       if (tagIds.length === 0) return { results: [], hasMore: false, total_count: 0 };
       qb = qb.in("id", tagIds);
