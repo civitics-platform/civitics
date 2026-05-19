@@ -1,0 +1,232 @@
+{
+  "ranAt": "2026-05-19T00:32:03.288Z",
+  "durationMs": 24822,
+  "dbHost": "aws-0-us-west-2.pooler.supabase.com:5432",
+  "results": [
+    {
+      "category": "officials.senator_count",
+      "severity": "info",
+      "expected": 100,
+      "actual": 100,
+      "sample": [],
+      "detail": "Active U.S. senators (2 per state × 50 states)."
+    },
+    {
+      "category": "officials.senators_per_state",
+      "severity": "error",
+      "expected": "every state = 2",
+      "actual": "1 states ≠ 2",
+      "sample": [
+        {
+          "state": null,
+          "count": "100"
+        }
+      ],
+      "detail": "States that don't have exactly two active senators."
+    },
+    {
+      "category": "officials.rep_count",
+      "severity": "error",
+      "expected": 441,
+      "actual": 438,
+      "sample": [],
+      "detail": "Active U.S. House: 435 voting + 6 non-voting delegates."
+    },
+    {
+      "category": "officials.president_count",
+      "severity": "error",
+      "expected": 1,
+      "actual": 2605,
+      "sample": [],
+      "detail": "Sitting U.S. President."
+    },
+    {
+      "category": "officials.vp_count",
+      "severity": "error",
+      "expected": 1,
+      "actual": 46,
+      "sample": [],
+      "detail": "Sitting U.S. Vice President."
+    },
+    {
+      "category": "officials.duplicate_congress_gov",
+      "severity": "info",
+      "expected": 0,
+      "actual": 0,
+      "sample": [],
+      "detail": "Distinct officials sharing the same source_ids->>'congress_gov' (federal congressional ID)."
+    },
+    {
+      "category": "officials.missing_party",
+      "severity": "info",
+      "expected": 0,
+      "actual": 0,
+      "sample": [],
+      "detail": "Active senators/reps with NULL party. Independents should be 'independent', not NULL."
+    },
+    {
+      "category": "proposals.procedural_contamination",
+      "severity": "error",
+      "expected": 0,
+      "actual": 1865,
+      "sample": [
+        {
+          "id": "d8bf1c6a-9b70-45bf-af36-b9f7d8525a4b",
+          "title": "Kaur v. Blanche",
+          "type": "other"
+        },
+        {
+          "id": "2bd807a1-fedc-4e7c-b5ef-977dd77f67ae",
+          "title": "Pesticide Action & Agroecology Network v. United States Environmental Protection Agency",
+          "type": "other"
+        },
+        {
+          "id": "f5a52b9d-24c2-421c-976d-0bb41983c20d",
+          "title": "Vanicek v. Blanche",
+          "type": "other"
+        },
+        {
+          "id": "75b7fbce-56f8-4777-9929-edb422bc46d0",
+          "title": "Carlos Calderon Brito v. Todd Blanche",
+          "type": "other"
+        },
+        {
+          "id": "a60a59be-d2b5-4c31-8d39-64c6421ee500",
+          "title": "Castro-Lopez v. Blanche",
+          "type": "other"
+        },
+        {
+          "id": "b6d883b4-6522-49ba-b639-80fa8f9e2975",
+          "title": "Crew v. Ratliff",
+          "type": "other"
+        },
+        {
+          "id": "0c947f04-7045-4d2a-a047-23126e1a2499",
+          "title": "Appointment of Todd V. Biesold as member, Seattle Freight Advisory Board, for a term to May 31, 2019.",
+          "type": "appointment"
+        },
+        {
+          "id": "72c6108b-49ea-4e37-b5bc-f91a2fe60432",
+          "title": "A RESOLUTION in support of abortion rights and other reproductive rights, in opposition to the U.S. Supreme Court draft majority opinion in Dobbs v. Jackson Women’s Health Organization; and urging state and federal elected officials to codify abortion rights and other reproductive rights.",
+          "type": "resolution"
+        },
+        {
+          "id": "dccbabe3-02bf-4405-ba12-9ebe13e149c0",
+          "title": "Ordinance authorizing settlement of litigation of Linda Kay Roberts against the City and County of San Francisco by payment of $500,000.  [Linda Kay Roberts v. City and County of San Francisco and Gregory Labat, San Francisco Superior Court No. 992-339, Filed 1/16/98]",
+          "type": "ordinance"
+        },
+        {
+          "id": "d9f38efc-304c-4fb8-b643-908ab2bc3ec3",
+          "title": "Diaz-Jimenez v. Blanche",
+          "type": "other"
+        }
+      ],
+      "detail": "Proposals whose title looks like a procedural-vote subject ('On Passage', 'On the Cloture Motion') or a court case name ('Smith v. Jones'). FIX-A regression test."
+    },
+    {
+      "category": "proposals.orphaned_agency_id",
+      "severity": "info",
+      "expected": 0,
+      "actual": 0,
+      "sample": [],
+      "detail": "proposals.metadata->>'agency_id' values that don't resolve to any row in agencies.acronym."
+    },
+    {
+      "category": "votes.orphan_official_id",
+      "severity": "info",
+      "expected": 0,
+      "actual": 0,
+      "sample": [],
+      "detail": "votes.official_id values not present in officials.id."
+    },
+    {
+      "category": "votes.invalid_vote_value",
+      "severity": "info",
+      "expected": 0,
+      "actual": 0,
+      "sample": [],
+      "detail": "votes.vote values outside schema CHECK enum {yes, no, abstain, present, not_voting, paired_yes, paired_no}."
+    },
+    {
+      "category": "referential.orphan_entity_tags",
+      "severity": "error",
+      "expected": 0,
+      "actual": 170,
+      "sample": [
+        {
+          "id": "0f21d61d-b6ff-4969-8f75-860fc546fde0",
+          "entity_type": "financial_entity",
+          "entity_id": "fba2ad6c-dfe0-4284-96eb-bd18dd6a76d0"
+        },
+        {
+          "id": "85972442-28eb-402b-b38b-4e6656105b88",
+          "entity_type": "financial_entity",
+          "entity_id": "36e4b51b-a9c5-4590-b7d9-ac25bbecc042"
+        },
+        {
+          "id": "b889b0e4-242a-4e78-a30b-4d187560da2b",
+          "entity_type": "financial_entity",
+          "entity_id": "84a1ee09-7f0d-4321-a3f4-144e3c7c3a8c"
+        },
+        {
+          "id": "f8e8570a-d84e-48b4-a55c-7ed74a522043",
+          "entity_type": "financial_entity",
+          "entity_id": "fe9e6e6e-a734-46f7-833f-18969b03e06c"
+        },
+        {
+          "id": "28476956-64c8-404d-b869-8c9e2a2edd0a",
+          "entity_type": "financial_entity",
+          "entity_id": "36baa001-cee5-4d6a-97ce-10e4c9af8fed"
+        },
+        {
+          "id": "838ff793-fa66-4f92-a3fa-a1c8b36c9b29",
+          "entity_type": "financial_entity",
+          "entity_id": "0155f452-3c79-4953-9bed-599f4de30140"
+        },
+        {
+          "id": "c136fcd2-e6a2-4821-9af7-2797264e4028",
+          "entity_type": "financial_entity",
+          "entity_id": "edebf3ff-ae15-49f4-a1f0-694679a3e819"
+        },
+        {
+          "id": "af91e727-5060-40d3-bc15-798f91438965",
+          "entity_type": "financial_entity",
+          "entity_id": "05a6c183-59ec-499c-a1ad-de8b5a276239"
+        },
+        {
+          "id": "9ea996a5-18d6-462f-a23d-adafc809ab5e",
+          "entity_type": "financial_entity",
+          "entity_id": "ed29e194-e005-4909-977b-bd043a5b0ae4"
+        },
+        {
+          "id": "c7499944-bd37-4a5a-8ec2-27191efd17e3",
+          "entity_type": "financial_entity",
+          "entity_id": "307a9d54-463f-4407-b3bc-65fae59e2cd7"
+        }
+      ],
+      "detail": "entity_tags rows whose (entity_type, entity_id) does not resolve to a row in proposals/officials/agencies."
+    },
+    {
+      "category": "referential.orphan_ai_summary_cache",
+      "severity": "info",
+      "expected": 0,
+      "actual": 0,
+      "sample": [],
+      "detail": "ai_summary_cache rows whose (entity_type, entity_id) does not resolve."
+    },
+    {
+      "category": "referential.orphan_enrichment_queue",
+      "severity": "info",
+      "expected": 0,
+      "actual": 0,
+      "sample": [],
+      "detail": "enrichment_queue rows whose (entity_type, entity_id) does not resolve. Note: entity_id is TEXT in this table."
+    }
+  ],
+  "summary": {
+    "total": 14,
+    "errors": 6,
+    "warnings": 0,
+    "infos": 8
+  }
+}
