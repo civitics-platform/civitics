@@ -406,3 +406,4 @@
 2026-05-18 | FIX-274 | f0a3bce5 | local-only | fix(fec-bulk): guard against org-shaped names in indiv ingest
 2026-05-18 | FIX-275 | 8c375194 | local-only | fix(littlesis): persist anchorMap matches to external_source_refs
 2026-05-18 | FIX-279 | a86d4113 | local-only | fix(irs990): aggregate same-recipient-same-cycle grants before upsert
+2026-05-18 | FIX-314 | 64b40229 | unverified | feat(fixes): adopt Closes: trailer convention for recognition-shaped closures
