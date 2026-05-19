@@ -174,6 +174,29 @@ export async function runLittleSisPipeline(opts: { force?: boolean } = {}): Prom
       entity_id,
       confidence: hop1Upsert.matchedLsIds.has(lsId) ? "canonical_match" : "hop1",
     }));
+
+    // FIX-275: persist anchor matches (matchPerson/matchOrg returning
+    // kind='high'|'medium') to external_source_refs. Pre-FIX-275 these were
+    // resolved in-memory but never written back — every subsequent ingest
+    // re-ran matchPerson against a moving target (the 'index built from
+    // financial_entities at pipeline start' shape in matcher.ts), letting
+    // newly-added FEC rows knock previously-bound LS ids back into the
+    // queue/miss bucket. preloadKnownLittleSisIds reads what's persisted, so
+    // without this write the binding never makes it across runs.
+    //
+    // `known` is the preloaded set (read from external_source_refs at the
+    // start of this run); anchorMap = known ∪ matched-this-run. We only
+    // upsert the difference — preloaded entries are already in the table.
+    for (const [lsId, anchor] of p1.anchorMap) {
+      if (known.has(lsId)) continue;
+      bindings.push({
+        lsId,
+        entity_type: anchor.civitics_type,
+        entity_id:   anchor.civitics_id,
+        confidence:  anchor.confidence,
+      });
+    }
+
     const refs = await upsertSourceRefs(db, bindings);
     if (refs.failed > 0) console.warn(`    [refs] ${refs.failed} bindings failed`);
 
