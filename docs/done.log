@@ -388,3 +388,5 @@
 2026-05-18 | FIX-299 | c28bc5b6 | local-only | fix(audit): resolve --out path against workspace root
 2026-05-18 | FIX-299 | 8f03f98f | local+prod | chore(fixes): file FIX-300 (audit drift triage) + record prod verification for FIX-299
 2026-05-18 | FIX-298 | 74ab6c6e | local+prod | fix(ops): raise statement_timeout on get_connection_type_counts() to 120s
+2026-05-18 | FIX-301 | 5f72cdd3 | local-only | docs(db): codify materialization pattern + audit request-path aggregations
+2026-05-18 | FIX-302 | 5f72cdd3 | local-only | docs(db): codify materialization pattern + audit request-path aggregations
