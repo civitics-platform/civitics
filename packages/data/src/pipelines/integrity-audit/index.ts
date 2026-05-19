@@ -11,6 +11,8 @@
  *   pnpm --filter @civitics/data data:audit -- --out docs/audits
  */
 
+import { dirname, isAbsolute, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { Client } from "pg";
 import { officialsChecks } from "./checks/officials";
 import { proposalsChecks } from "./checks/proposals";
@@ -32,11 +34,18 @@ interface Args {
   outDir: string;
 }
 
+// Workspace root, derived from this file's location:
+//   packages/data/src/pipelines/integrity-audit/index.ts → up 5 levels.
+// INIT_CWD would be the right idea, but pnpm v9 on Windows doesn't reliably
+// set it for `pnpm <script>` invocations, so we anchor on a fixed file-system
+// path that doesn't depend on how the script was launched. (FIX-299)
+function workspaceRoot(): string {
+  const here = dirname(fileURLToPath(import.meta.url));
+  return resolve(here, "..", "..", "..", "..", "..");
+}
+
 function defaultOutDir(): string {
-  // pnpm/npm set INIT_CWD to the directory where the user invoked the script,
-  // which for `pnpm --filter ...` is the workspace root, not the package dir.
-  const root = process.env.INIT_CWD ?? process.cwd();
-  return `${root}/docs/audits`;
+  return resolve(workspaceRoot(), "docs/audits");
 }
 
 // CI (and any session-pooler-only environment) only carries the project
@@ -77,6 +86,17 @@ function parseArgs(argv: string[]): Args {
       );
       process.exit(0);
     }
+  }
+  // Relative --out is resolved against the workspace root, so `--out
+  // docs/audits` always lands at repo-root/docs/audits regardless of whether
+  // the script was launched from the workspace root or from packages/data/.
+  // The bug this fixes: the GHA workflow ran `pnpm --filter @civitics/data
+  // data:audit -- --out docs/audits`, which historically resolved against
+  // packages/data/ → reports written under packages/data/docs/audits/ →
+  // the workflow's commit step at repo root found nothing → silent no-op.
+  // (FIX-299)
+  if (!isAbsolute(outDir)) {
+    outDir = resolve(workspaceRoot(), outDir);
   }
   if (!dbUrl) {
     dbUrl = constructDbUrlFromEnv();
