@@ -386,3 +386,4 @@
 2026-05-18 | FIX-298 | fd233013 | local+prod | feat(ops): materialize /api/claude/status/core into status_snapshot
 2026-05-18 | FIX-299 | 798f7fa4 | local-only | fix(audit): add data:audit:ci variant without --env-file flag
 2026-05-18 | FIX-299 | c28bc5b6 | local-only | fix(audit): resolve --out path against workspace root
+2026-05-18 | FIX-299 | 8f03f98f | local+prod | chore(fixes): file FIX-300 (audit drift triage) + record prod verification for FIX-299
