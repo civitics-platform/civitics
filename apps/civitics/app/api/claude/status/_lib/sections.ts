@@ -147,20 +147,26 @@ export async function getDatabase(db: Db, yesterday: string) {
 }
 
 // ── 3. Connection type breakdown ─────────────────────────────────────────────
+//
+// FIX-298: single GROUP BY scan via get_connection_type_counts() RPC,
+// replacing a 16-iteration count:'exact' fan-out that was the 9.5 s long
+// pole of /api/claude/status/core on 5.1 M rows. The RPC sorts DESC by
+// total; we still emit every CONNECTION_TYPES entry (zero-filled if the
+// RPC didn't return a row for it) so the dashboard's per-type bars don't
+// disappear when a type has no edges yet.
 export async function getConnectionTypes(db: Db) {
-  const results = await Promise.all(
-    CONNECTION_TYPES.map((ct) =>
-      db
-        .from("entity_connections")
-        .select("*", { count: "exact", head: true })
-        .eq("connection_type", ct)
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .then((r: any) => ({ connection_type: ct, count: r.count ?? 0 })),
-    ),
-  );
-  return results.sort(
-    (a: { count: number }, b: { count: number }) => b.count - a.count,
-  );
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (db as any).rpc("get_connection_type_counts");
+  if (error) throw new Error(error.message ?? "get_connection_type_counts RPC error");
+
+  type Row = { connection_type: string; total: number | string };
+  const byType = new Map<string, number>();
+  for (const r of (data ?? []) as Row[]) {
+    byType.set(r.connection_type, Number(r.total));
+  }
+  return CONNECTION_TYPES
+    .map((ct) => ({ connection_type: ct, count: byType.get(ct) ?? 0 }))
+    .sort((a, b) => b.count - a.count);
 }
 
 // ── 4. Pipeline status ───────────────────────────────────────────────────────

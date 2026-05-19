@@ -915,6 +915,8 @@ export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<Nigh
     "prune_platform_usage_snapshot",
     // FIX-287: keep kill_switch_events bounded at 90 days
     "prune_kill_switch_events",
+    // FIX-297: keep status_snapshot bounded at 24 hours
+    "prune_status_snapshot",
   ]) {
     try {
       const { createAdminClient } = await import("@civitics/db");
