@@ -69,3 +69,7 @@ backups/
 packages/data/.usaspending-bulk-state.json
 
 .vercel
+
+# Pipeline / build / debug logs (e.g. fec-bulk.log was accidentally committed once at a doubled path).
+*.log
+
