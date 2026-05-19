@@ -388,17 +388,72 @@ export async function upsertGrantsOutBatch(
   let inserted = 0;
   let failed = 0;
 
-  for (let i = 0; i < inputs.length; i += GRANT_CHUNK) {
-    const chunk = inputs.slice(i, i + GRANT_CHUNK);
-    const rows = chunk.map(({ filingId, grant, matchedEntityId, matchedEntityType }) => ({
-      filing_id:                  filingId,
-      recipient_name:             grant.recipientName,
-      recipient_name_canonical:   canonicalizeOrgName(grant.recipientName),
-      recipient_ein:              grant.recipientEin,
-      amount_cents:               grant.amountCents,
-      purpose:                    grant.purpose,
-      matched_entity_type:        matchedEntityType,
-      matched_entity_id:          matchedEntityId,
+  // FIX-279: aggregate by (filing_id, recipient_name_canonical) BEFORE the
+  // upsert. A single 990 filing can carry multiple Schedule I lines to the
+  // same canonical recipient — quarterly disbursements, per-state chapter
+  // grants of identical amounts, recurring program grants. The UNIQUE on
+  // (filing_id, recipient_name_canonical, amount_cents) rejects two
+  // identical-amount lines as 'ON CONFLICT DO UPDATE command cannot affect
+  // row a second time', and the batched .upsert call drops the entire chunk
+  // when one row collides. Concrete loss: AMERICAN MEDICAL ASSOCIATION 2025
+  // filing dropped 142 grants_out rows (2026-05-14 local re-run, 199
+  // total across the seed set). Sum amount_cents; preserve count + first
+  // matched_entity binding in metadata. Mirrors fec-bulk PAC writer's
+  // per-(committee × candidate × cycle) aggregation pattern.
+  interface AggGrant {
+    filingId: string;
+    recipientName: string;
+    recipientNameCanonical: string;
+    recipientEin: string | null;
+    totalAmountCents: number;
+    lineCount: number;
+    purposes: string[];
+    matchedEntityId: string | null;
+    matchedEntityType: "financial_entity" | "agency" | "official" | null;
+  }
+  const agg = new Map<string, AggGrant>();
+  for (const { filingId, grant, matchedEntityId, matchedEntityType } of inputs) {
+    const canonical = canonicalizeOrgName(grant.recipientName);
+    const key = `${filingId}|${canonical}`;
+    const existing = agg.get(key);
+    if (!existing) {
+      agg.set(key, {
+        filingId,
+        recipientName:           grant.recipientName,
+        recipientNameCanonical:  canonical,
+        recipientEin:            grant.recipientEin,
+        totalAmountCents:        grant.amountCents,
+        lineCount:               1,
+        purposes:                grant.purpose ? [grant.purpose] : [],
+        matchedEntityId,
+        matchedEntityType,
+      });
+      continue;
+    }
+    existing.totalAmountCents += grant.amountCents;
+    existing.lineCount++;
+    if (grant.purpose && !existing.purposes.includes(grant.purpose)) {
+      existing.purposes.push(grant.purpose);
+    }
+    if (!existing.recipientEin && grant.recipientEin) existing.recipientEin = grant.recipientEin;
+    if (!existing.matchedEntityId && matchedEntityId) {
+      existing.matchedEntityId   = matchedEntityId;
+      existing.matchedEntityType = matchedEntityType;
+    }
+  }
+  const aggregated = [...agg.values()];
+
+  for (let i = 0; i < aggregated.length; i += GRANT_CHUNK) {
+    const chunk = aggregated.slice(i, i + GRANT_CHUNK);
+    const rows = chunk.map((g) => ({
+      filing_id:                  g.filingId,
+      recipient_name:             g.recipientName,
+      recipient_name_canonical:   g.recipientNameCanonical,
+      recipient_ein:              g.recipientEin,
+      amount_cents:               g.totalAmountCents,
+      purpose:                    g.purposes[0] ?? null,
+      matched_entity_type:        g.matchedEntityType,
+      matched_entity_id:          g.matchedEntityId,
     }));
 
     const { error } = await db
@@ -445,8 +500,31 @@ export async function writeGrantRelationships(
   let skipped = 0;
   let failed = 0;
 
-  for (let i = 0; i < inputs.length; i += REL_CHUNK) {
-    const chunk = inputs.slice(i, i + REL_CHUNK);
+  // FIX-279: aggregate by (filingObjectId, toEntityId, taxYear) BEFORE the
+  // insert. financial_relationships_relcycle_unique is a FULL UNIQUE on
+  // (relationship_type, from_id, to_id, cycle_year) — two grants from the
+  // same 990 to the same recipient in the same tax year collide
+  // regardless of amount, and the bare .insert() rejects the whole batch.
+  // Concrete loss: AMA 2025 filing dropped 25 financial_relationships
+  // rows from the same Schedule I that lost 142 grants_out lines above.
+  // Sum amountCents; preserve count in metadata. The disclosure_form_id
+  // pre-check below now sees the aggregated total, so re-runs with the
+  // same source data correctly skip the row.
+  const relAgg = new Map<string, GrantRelationshipInput & { lineCount: number }>();
+  for (const r of inputs) {
+    const key = `${r.filingObjectId}|${r.toEntityId}|${r.taxYear}`;
+    const existing = relAgg.get(key);
+    if (!existing) {
+      relAgg.set(key, { ...r, lineCount: 1 });
+      continue;
+    }
+    existing.amountCents += r.amountCents;
+    existing.lineCount++;
+  }
+  const aggregatedInputs = [...relAgg.values()];
+
+  for (let i = 0; i < aggregatedInputs.length; i += REL_CHUNK) {
+    const chunk = aggregatedInputs.slice(i, i + REL_CHUNK);
 
     // Pre-check by disclosure_form_id (we encode object_id|toEntityId|amount
     // there to keep the row uniquely identifiable on re-runs).
@@ -474,9 +552,10 @@ export async function writeGrantRelationships(
           occurred_at:        `${c.taxYear}-12-31`,    // 990s don't carry exact grant dates; end-of-tax-year is conventional
           disclosure_form_id: dedupKey,
           metadata: {
-            source:          "irs_990_schedule_i",
+            source:           "irs_990_schedule_i",
             filing_object_id: c.filingObjectId,
             tax_year:         c.taxYear,
+            line_count:       c.lineCount,    // FIX-279: number of Schedule I lines aggregated into this row
           },
         };
       })
