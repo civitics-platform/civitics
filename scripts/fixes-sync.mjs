@@ -3,7 +3,9 @@
 //
 // One-way sync between git commit trailers and FIXES.md status.
 //
-//   1. Scans `git log` for commits whose body contains `Fixes: FIX-NNN[, FIX-MMM]`.
+//   1. Scans `git log` for commits whose body contains `Fixes: FIX-NNN[, FIX-MMM]`
+//      (code-level fix) or `Closes: FIX-NNN[, FIX-MMM]` (administrative closure
+//      for superseded / redirected / recognized prior work / no-op — FIX-314).
 //   2. Appends any new (FIX-ID, commit-sha) pairs to docs/done.log.
 //      Append-only — existing lines are never rewritten.
 //   3. Reads docs/done.log and flips `- [ ]` to `- [x]` for any bullet in FIXES.md
@@ -32,19 +34,47 @@ const CHECK = process.argv.includes("--check");
 //   `Verified: local`           → "local-only"
 //   `Verified: prod`            → "prod-only"
 //   `Verified: local + prod`    → "local+prod"   (also: `local+prod`, `local & prod`)
-//   trailer absent              → "unverified"
+//   trailer absent (Fixes:)     → "unverified"
+// FIX-314: closure-type vocabulary for `Closes:` trailers (recognition-shaped
+// closures). Used when a FIX is closed administratively, not by a code-level
+// fix in this commit.
+//   `Verified: closes-as-recognized`  → prior work resolved it (default for Closes:)
+//   `Verified: closes-as-superseded`  → superseded by another FIX
+//   `Verified: closes-as-redirected`  → redirected to a new FIX
+//   `Verified: closes-as-no-op`       → investigation found no real bug
+//   trailer absent (Closes:)          → "closes-as-recognized"
 // done.log gains a 5th column with this status. Lines without the column are
 // pre-FIX-159 (4-column) entries — parsed by detecting whether the 4th column
 // matches a known verification literal.
-const VERIFIED_VALUES = new Set(["local-only", "prod-only", "local+prod", "unverified"]);
+const CLOSES_VALUES = new Set([
+  "closes-as-superseded",
+  "closes-as-redirected",
+  "closes-as-recognized",
+  "closes-as-no-op",
+]);
+const VERIFIED_VALUES = new Set([
+  "local-only",
+  "prod-only",
+  "local+prod",
+  "unverified",
+  ...CLOSES_VALUES,
+]);
 
-function normalizeVerified(raw) {
-  if (!raw) return "unverified";
+function normalizeVerified(raw, { trailer = "fixes" } = {}) {
+  if (!raw) return trailer === "closes" ? "closes-as-recognized" : "unverified";
   const t = raw.trim().toLowerCase().replace(/\s+/g, " ");
   if (/^local\s*[+&]\s*prod$|^local\s+and\s+prod$/i.test(t) || t === "local+prod") return "local+prod";
   if (t === "local" || t === "local-only" || t === "local only") return "local-only";
   if (t === "prod" || t === "prod-only" || t === "prod only") return "prod-only";
-  return "unverified";
+  if (CLOSES_VALUES.has(t)) return t;
+  // Synonyms — normalize bare nouns into canonical `closes-as-*` form so new
+  // rows match the documented vocabulary. Historical one-off rows that used
+  // the bare form stay as-is per the append-only rule.
+  if (t === "superseded") return "closes-as-superseded";
+  if (t === "redirected") return "closes-as-redirected";
+  if (t === "recognized") return "closes-as-recognized";
+  if (t === "no-op" || t === "noop") return "closes-as-no-op";
+  return trailer === "closes" ? "closes-as-recognized" : "unverified";
 }
 
 function readDoneLog() {
@@ -96,24 +126,48 @@ function scanCommits() {
     { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }
   );
   const blocks = raw.split("\x1e").map((b) => b.trim()).filter(Boolean);
-  const trailerRe = /^\s*Fixes:\s*(.+)$/im;
+  const fixesRe = /^\s*Fixes:\s*(.+)$/im;
+  const closesRe = /^\s*Closes:\s*(.+)$/im;
   const verifiedRe = /^\s*Verified:\s*(.+)$/im;
   const idRe = /FIX-\d{3}/g;
   const completions = [];
   for (const block of blocks) {
     const [sha = "", date = "", subject = "", body = ""] = block.split("\x00");
-    const m = body.match(trailerRe);
-    if (!m) continue;
-    const ids = [...new Set(m[1].match(idRe) || [])];
+    const fixesMatch = body.match(fixesRe);
+    const closesMatch = body.match(closesRe);
+    if (!fixesMatch && !closesMatch) continue;
+    const fixesIds = new Set(fixesMatch ? fixesMatch[1].match(idRe) || [] : []);
+    const closesIds = new Set(closesMatch ? closesMatch[1].match(idRe) || [] : []);
+    // FIX-314: if an ID appears in both trailers in the same commit, Fixes:
+    // wins (code-level fix is the stronger signal). Warn so we notice.
+    const conflicts = [...closesIds].filter((id) => fixesIds.has(id));
+    if (conflicts.length > 0) {
+      console.warn(
+        `warn: commit ${sha.trim().slice(0, 8)} lists ${conflicts.join(", ")} in both Fixes: and Closes: trailers; Fixes: wins.`
+      );
+      for (const id of conflicts) closesIds.delete(id);
+    }
     const vMatch = body.match(verifiedRe);
-    const verified = normalizeVerified(vMatch ? vMatch[1] : null);
-    for (const id of ids) {
+    const rawVerified = vMatch ? vMatch[1] : null;
+    const shortSha = sha.trim().slice(0, 8);
+    const noteText = subject.trim();
+    const dateText = date.trim();
+    for (const id of fixesIds) {
       completions.push({
         id,
-        sha: sha.trim().slice(0, 8),
-        date: date.trim(),
-        verified,
-        note: subject.trim(),
+        sha: shortSha,
+        date: dateText,
+        verified: normalizeVerified(rawVerified, { trailer: "fixes" }),
+        note: noteText,
+      });
+    }
+    for (const id of closesIds) {
+      completions.push({
+        id,
+        sha: shortSha,
+        date: dateText,
+        verified: normalizeVerified(rawVerified, { trailer: "closes" }),
+        note: noteText,
       });
     }
   }

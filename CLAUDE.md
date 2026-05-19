@@ -47,6 +47,7 @@ drift, and duplicate-commit shuffles.
 | `docs/FIXES.md` | Craig (adds, edits, reprioritises) | Claude **only appends new items** or lets `fixes:sync` flip `[ ]` → `[x]` |
 | `docs/done.log` | Claude / `fixes:sync` | **Append-only**, never rewritten |
 | Git commit trailer `Fixes: FIX-NNN` | Claude (when code lands a fix) | Feeds done.log via `fixes:sync` |
+| Git commit trailer `Closes: FIX-NNN` | Claude (administrative closure, no code change) | Feeds done.log via `fixes:sync` (FIX-314) |
 | Git commit trailer `Verified: …`    | Claude (when code lands a fix) | Records per-environment verification in done.log (FIX-159) |
 
 **When you (Claude) complete a FIX item:**
@@ -84,12 +85,59 @@ drift, and duplicate-commit shuffles.
      trailer is logged as `unverified` and is greppable, so future-you can
      audit which fixes were merged untested.
 3. After committing, run `pnpm fixes:sync`. The script:
-   - Scans all `Fixes:` and `Verified:` trailers across git history
+   - Scans all `Fixes:`, `Closes:`, and `Verified:` trailers across git history
    - Appends new `(FIX-ID, sha, verified)` rows to `docs/done.log` (deduplicated)
    - Flips matching `[ ]` bullets in FIXES.md to `[x]` (only ever one direction)
 4. Commit the resulting FIXES.md + done.log diff as its own status commit, e.g.
    `chore(fixes): sync status after FIX-027`. Keep status commits separate from
    code commits so reverts don't drag status with them.
+
+**Closure type — `Fixes:` vs `Closes:` trailer (added 2026-05-18, FIX-314):**
+
+Two trailers, mutually exclusive per commit-and-FIX-ID pair:
+
+- `Fixes: FIX-NNN` — this commit's code change resolves the bug. Use when you
+  actually wrote/changed/deleted code that fixed the issue.
+- `Closes: FIX-NNN` — this commit administratively closes the FIX without a
+  code-level resolution. Use when:
+  - The bug was already resolved by prior work that didn't carry a trailer
+    (e.g., FIX-272 closed because FIX-280 had already removed the suffix code).
+  - The FIX was superseded by a different FIX with broader scope (e.g., FIX-213
+    superseded by FIX-253).
+  - The FIX was redirected — its original investigation ran and surfaced a
+    different problem that became a new FIX (e.g., FIX-242 redirected to FIX-292).
+  - Investigation found the bug doesn't actually exist (no-op closure).
+
+When `Closes:` is used, pair it with a `Verified:` trailer using one of the
+closure vocabulary values:
+
+- `Verified: closes-as-recognized` — prior work resolved it (default if
+  `Verified:` absent on a `Closes:` commit)
+- `Verified: closes-as-superseded` — superseded by another FIX
+- `Verified: closes-as-redirected` — redirected to a new FIX
+- `Verified: closes-as-no-op` — investigation found no real bug
+
+Example:
+
+```
+docs(littlesis): document [LS:<id>] suffix as already removed (FIX-272 closeout)
+
+The suffix code was removed by FIX-280; FIX-272 was tracking the same
+work without a closure trailer. No code change in this commit.
+
+Verified: closes-as-recognized
+Closes: FIX-272
+```
+
+If a single commit lists the same FIX-ID in both `Fixes:` and `Closes:`, the
+sync script lets `Fixes:` win (code-level fix is the stronger signal) and logs
+a warning. Use one or the other per FIX-ID, not both.
+
+**Historical note:** done.log rows written before 2026-05-18 used `Fixes:` for
+both code-fix and recognition closures, and a few one-off `verified: superseded`
+/ `verified: redirected` values. These rows stay as-is per the append-only rule.
+Audit queries spanning history should grep for both old and new value forms,
+e.g. `grep -E "\| (superseded|closes-as-superseded) \|" docs/done.log`.
 
 **Auditing per-environment state:**
 
@@ -97,6 +145,7 @@ drift, and duplicate-commit shuffles.
 grep "| prod-only |"  docs/done.log   # shipped without local repro
 grep "| unverified |" docs/done.log   # trailer was forgotten
 grep "| local-only |" docs/done.log   # local-tested but prod side never confirmed
+grep "| closes-as-" docs/done.log     # administrative closures (FIX-314 onward)
 ```
 
 **Do NOT:**
