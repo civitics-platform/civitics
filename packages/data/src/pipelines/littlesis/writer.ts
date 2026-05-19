@@ -95,10 +95,15 @@ export async function preloadKnownLittleSisIds(db: Db): Promise<Map<number, Anch
 // under the same canonical (Heritage Foundation case from investigation
 // §5.6); the single-match-only contract still blocks unsafe collisions.
 //
-// The `[LS:<id>]` suffix that used to discriminate Person canonicals was
-// removed at the same time — match-first via RPC supersedes its collision-
-// prevention purpose and no production rows ever carried it (0 of 84,811
-// LS-bound individuals per investigation §3.2(d) / OOS #1).
+// FIX-272 closeout: the `[LS:<id>]` suffix that used to discriminate Person
+// canonicals (originally at writer.ts:107 before FIX-280) was removed at the
+// same time as the RPC switch. Match-first via resolve_entity_by_canonical
+// supersedes its collision-prevention purpose, and no production rows ever
+// carried the suffix anyway — 0 of 84,811 LS-bound individuals per
+// investigation §3.2(d) / OOS #1 (re-confirmed 2026-05-18: still 0 rows in
+// local DB matching `canonical_name LIKE '%[LS:%'`). The pre-FIX-271 LS rows
+// without the suffix stay as-is; the cross-source merge backfill in FIX-271
+// is the destructive cleanup path, not a retroactive suffix add.
 //
 // Idempotency for previously-bound LS ids is upstream via
 // preloadKnownLittleSisIds + the `known.has(lsId)` filter in index.ts — no
