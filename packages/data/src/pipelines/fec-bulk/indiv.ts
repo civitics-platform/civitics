@@ -225,6 +225,49 @@ export function canonicalDonorName(rawName: string): string {
 }
 
 // ---------------------------------------------------------------------------
+// FIX-274 · org-shape guard for individual donor NAME field
+//
+// FEC's indiv schedule is "itemized contributions from individuals", but the
+// NAME column accepts free text from the filer. Real-world data has org names
+// land in there — donors who file "AMERICANS FOR PROSPERITY" as their own
+// NAME, treasurer-style "DEMOCRACY ENGINE LLC" entries, etc. Without a
+// guard, every one of these becomes an `entity_type='individual'` row that
+// then competes with the legitimate org's nonprofit/PAC/LittleSis row by
+// canonical_name (investigation §2.5: AfP has 5 rows total, 2 of them
+// accidentally indiv).
+//
+// Two layers, both conservative:
+//   1. Static blacklist — exact-canonical matches for the worst offenders we
+//      already know about (investigation §2.5).
+//   2. Heuristic — tokenized check against a small suffix set. Word boundary
+//      via split-by-whitespace avoids false-positives on real surnames that
+//      embed substrings (MICHAEL PACE doesn't match `PAC`; KEITH FOSTER does
+//      not match `FOUNDATION` either way). False-positive cost is silent
+//      loss of a real individual donor, so additions to ORG_SUFFIX_TOKENS
+//      should be paranoid.
+// ---------------------------------------------------------------------------
+
+const ORG_SUFFIX_TOKENS: ReadonlySet<string> = new Set([
+  "INC", "LLC", "LTD", "CORP", "CORPORATION", "COMPANY",
+  "PAC", "FOUNDATION", "ASSOCIATION", "SOCIETY", "FUND", "COMMITTEE",
+]);
+
+const ORG_NAME_BLACKLIST: ReadonlySet<string> = new Set([
+  "AMERICANS FOR PROSPERITY",
+  "ONE NATION",
+]);
+
+export function isLikelyOrgName(normalizedName: string): boolean {
+  if (!normalizedName) return false;
+  if (ORG_NAME_BLACKLIST.has(normalizedName)) return true;
+  const tokens = normalizedName.split(" ").filter(Boolean);
+  for (const tok of tokens) {
+    if (ORG_SUFFIX_TOKENS.has(tok)) return true;
+  }
+  return false;
+}
+
+// ---------------------------------------------------------------------------
 // Stream indiv{yy}.zip → in-memory aggregations
 // ---------------------------------------------------------------------------
 
@@ -257,7 +300,8 @@ export async function streamIndiv(
       passedCmte = 0,
       passedCand = 0,
       passedCommittee = 0,
-      passedAmt = 0;
+      passedAmt = 0,
+      skippedOrgShaped = 0;
 
   const rl = readline.createInterface({
     input:     fs.createReadStream(txtPath, { encoding: "latin1" }),
@@ -309,6 +353,20 @@ export async function streamIndiv(
     const zip5 = zip5Of(cols[INDIV_COL.ZIP_CODE] ?? "");
     const fp   = donorFingerprint(name, zip5);
     if (!fp) continue;            // name was empty / pure noise after Layer 1 normalization
+
+    // FIX-274: drop org-shaped names before they become individual rows.
+    // donorFingerprint's first half is the normalizedName; if it carries an
+    // org-suffix token or is on the static blacklist, this is an org filed
+    // in the NAME field, not a real individual donor.
+    const fpName = fp.includes("|") ? fp.slice(0, fp.indexOf("|")) : fp;
+    if (isLikelyOrgName(fpName)) {
+      skippedOrgShaped++;
+      if (skippedOrgShaped <= 20) {
+        console.log(`    [fec-bulk:indiv] skipped org-shaped name: ${fpName}`);
+      }
+      continue;
+    }
+
     const dt   = (cols[INDIV_COL.TRANSACTION_DT] ?? "").trim();
     const amtCents = Math.round(amt * 100);
 
@@ -365,6 +423,7 @@ export async function streamIndiv(
   console.log(`      → candidate path:        ${passedCand.toLocaleString()}`);
   console.log(`      → committee path:        ${passedCommittee.toLocaleString()}`);
   console.log(`    Passed $200+ filter:       ${passedAmt.toLocaleString()}`);
+  console.log(`    Skipped org-shaped names:  ${skippedOrgShaped.toLocaleString()}`);
   console.log(`    Unique donors:             ${donorMetas.size.toLocaleString()}`);
   console.log(`    Donor × candidate pairs:   ${aggregations.size.toLocaleString()}`);
   console.log(`    Donor × committee pairs:   ${committeeAggregations.size.toLocaleString()}`);
