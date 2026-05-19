@@ -207,6 +207,193 @@ CREATE POLICY "owner" ON table_name USING (auth.uid() = user_id);
 
 ---
 
+## Materialization pattern for slow request-path aggregations
+
+When a request-path query that aggregates over a table that grows with data
+exceeds p95 ~1 s, the durable fix is to move the aggregation off the request
+path. This pattern has shipped five+ times across the codebase
+(FIX-207, FIX-222, FIX-223, FIX-233, FIX-281, FIX-297) — codified here so the
+next surface follows the recipe instead of re-deciding.
+
+### When to reach for it
+
+All three must hold:
+
+1. The query aggregates over a table that grows with data.
+2. p95 request time has exceeded ~1 s for that query.
+3. The data tolerates some staleness — minutes to days, depending on cadence.
+
+If any one of these doesn't hold, leave the query live. Don't materialize
+preemptively.
+
+### Shape options — pick by cadence + audience + history value
+
+| Shape | Naming | Use when | Examples |
+|---|---|---|---|
+| **Single-row MV** | `<surface>_stats_mv` | One row of summary stats, public anon read, nightly cadence acceptable, no history needed | `homepage_stats_mv` (FIX-223) |
+| **Per-entity MV** (`REFRESH CONCURRENTLY` w/ unique index) | `<surface>_<axis>_mv` | Per-row keyed stats, public read, nightly cadence | `official_homepage_stats_mv` (FIX-223); `chord_industry_flows_mv`, `chord_donor_type_party_flows_mv`, `chord_donor_state_party_flows_mv`, `chord_subject_party_flows_mv` (FIX-207, FIX-222); `pipeline_runtime_stats_mv` (FIX-233) |
+| **Rolling-history snapshot table** (`INSERT`-per-tick + N-day prune) | `<surface>_snapshot` | Sub-daily cadence, debug history valuable, computation needs language SQL views can't express (RPC + external HTTP), admin/internal read | `platform_usage_snapshot` (FIX-281) — 30 d prune; `status_snapshot` (FIX-297) — 24 h prune |
+
+Three shapes — all valid for the right job. **Do not retro-fit existing
+materializations to one shape** to unify; cadence + audience + history value
+determine the right pick, and "homepage hero stats" (single-row MV) and
+"platform usage every 10 min" (rolling snapshot) are correctly different.
+
+#### Snapshot table vs MV — when each wins
+
+- **MV** when the computation is expressible in pure SQL and refreshes once
+  a day. `REFRESH MATERIALIZED VIEW CONCURRENTLY` needs a unique index;
+  single-row MVs use non-CONCURRENT refresh (millisecond-scale lock, fine
+  for the nightly window).
+- **Snapshot table** when the payload includes an RPC call, an external
+  HTTP request, or anything else a SQL view can't express; or when sub-daily
+  cadence + debug history matter (the prune retention IS the rolling
+  history).
+
+### Naming conventions
+
+- `_mv` suffix → materialized view
+- `_snapshot` suffix → plain table populated by cron
+- `refresh_<name>_mv()` for refresh functions on MVs
+- `prune_<name>_snapshot()` for retention on rolling snapshot tables
+- Migration filename: `<ts>_<descriptive_name>.sql`
+
+### Refresh hook placement
+
+Pick one based on cadence:
+
+- **Nightly:** append the refresh function name to
+  `runNightlySync()`'s MV refresh block at
+  `packages/data/src/pipelines/index.ts:908` (search for
+  `refresh_homepage_stats_mv`). One line per new MV. No new GHA workflow.
+- **Sub-daily (10 min default):** extend
+  `apps/civitics/app/api/cron/platform-snapshot/route.ts` to call the new
+  `write<Surface>Snapshot(db)` helper alongside the existing writes (each
+  in its own `Promise.allSettled` slot so one failure doesn't block
+  another). Schedule lives in `.github/workflows/platform-snapshot.yml`
+  (Vercel Hobby blocks sub-daily cron) — don't add a new GHA workflow if
+  the existing 10-min cron's cadence fits.
+
+If neither fits, file a FIX bullet documenting the new cadence and the
+reason an existing hook didn't work before adding a new cron — they multiply
+fast.
+
+### Read path convention
+
+- Wrap snapshot reads in `withDbTimeout<{...}>(2000)` (from
+  `apps/civitics/src/lib/supabase-check.ts`).
+- Always have a live-compute fallback for staleness/missing. Threshold
+  proportional to refresh cadence:
+  - **10-min cron** → 30 min staleness threshold (three cycles of slack).
+  - **Nightly** → 4 h threshold (catches a missed run window before page
+    rendering shows yesterday's data).
+- **Single-row MV reads** use `SELECT * FROM <mv> LIMIT 1`.
+- **Snapshot table reads** use `ORDER BY fetched_at DESC LIMIT 1`.
+- **Per-entity MV reads** use `.in(<entity_id>, ids)` and a `Map<id, row>`
+  lookup on the caller — see `apps/civitics/app/page.tsx`'s Wave 3 for the
+  pattern.
+
+### Compute + read + write helper convention
+
+Keep the live compute and the snapshot read/write side-by-side so the cron
+path and the live-fallback path stay in sync:
+
+- `compute<Surface>Payload(db)` — runs the live aggregation. The function
+  that would have lived inside the request handler.
+- `write<Surface>Snapshot(db)` — calls `compute<Surface>Payload(db)` and
+  persists the result. Returns the same payload (so the cron route response
+  can echo summary fields without re-reading).
+- `read<Surface>Snapshot(db)` — returns the latest snapshot row, or `null`
+  if missing. Caller is responsible for the staleness check and the
+  fallback to `compute<Surface>Payload`.
+
+Two reference implementations in the codebase:
+- `packages/db/src/platform-snapshot.ts` (FIX-281) — when the helpers live
+  in a shared package.
+- `apps/civitics/app/api/claude/status/_lib/status-snapshot.ts` (FIX-297) —
+  when the helpers must compose route-local imports (`packages/db` can't
+  import from `apps`).
+
+### Function-level `statement_timeout`
+
+Any new aggregation RPC over a table > 1 M rows should set its own
+`statement_timeout`. The service_role default (8 s on Pro) times out
+cold-cache GROUP BYs on `entity_connections` / `financial_relationships`.
+
+```sql
+ALTER FUNCTION public.<name>(...) SET statement_timeout = '<budget>';
+```
+
+Sizing guidance:
+- Aggregation over 5 M rows (cold) → **120 s** (precedent:
+  `get_connection_type_counts`, FIX-298 follow-up).
+- Per-chunk rebuild functions → **90 min** (precedent:
+  `rebuild_entity_connections_donations`, FIX-291).
+
+Set the timeout via `ALTER FUNCTION`, not by rewriting the body — cleaner
+diff and the GUC is what changes.
+
+### When NOT to materialize
+
+- Data changes too fast for any acceptable staleness window — real-time
+  surfaces stay live.
+- Compute is already fast (<200 ms request budget). Materializing
+  cheap-but-frequent queries adds cron load without latency benefit.
+- Surface is admin-only and not under user-facing latency pressure — may
+  be cheaper to leave live.
+- A simple mode change suffices: `count:'exact'` → `count:'estimated'` on
+  an unfiltered big-table count reads `pg_class.reltuples` (no scan,
+  sub-200 ms) and is accurate-enough for hero stats. FIX-206 made this
+  the default for `sections.ts:getDatabase`.
+
+### Cost note
+
+- Cron compute time is off the request path but still real database load
+  every N minutes. Profile the *compute*, not just the read.
+- **Prefer "superset payload + multiple consumers" over per-route
+  snapshots.** `status_snapshot` (FIX-297) serves /core, /quality, AND
+  the dashboard SSR with one 11-section payload — three surfaces, one
+  snapshot. Per-route snapshots fragment the surface and multiply cron
+  cost.
+
+### Per-enum-value loops — the FIX-298 shape
+
+A recurring trap: an array of N enum values mapped over to fire N count
+queries on the same table. Solution is the same every time — single GROUP
+BY RPC + `Map<key, total>` lookup with a zero-fill fallback:
+
+```ts
+const { data } = await db.rpc("get_<table>_counts_by_<axis>");
+const byKey = new Map<string, number>();
+for (const r of data ?? []) byKey.set(r.<axis>, Number(r.total));
+const results = ENUM_VALUES.map((k) => ({ key: k, count: byKey.get(k) ?? 0 }));
+```
+
+Precedents: `get_connection_type_counts` (FIX-298),
+`checkDerivedDrift` (FIX-301). When you see a `for (const x of ENUM)` or
+`ENUM.map(x => db.from(...).select(...).count)` doing N count queries on
+the same table, this is the recipe.
+
+### Existing materializations — quick-lookup table
+
+| Name | Shape | Cadence | Refresh trigger | Read audience |
+|---|---|---|---|---|
+| `homepage_stats_mv` | Single-row MV | Nightly | `runNightlySync` MV block | Public (anon) |
+| `official_homepage_stats_mv` | Per-entity MV | Nightly | `runNightlySync` MV block | Public |
+| `chord_industry_flows_mv` | Per-row MV | Nightly | `runNightlySync` | Public |
+| `chord_donor_type_party_flows_mv` | Per-row MV | Nightly | `runNightlySync` | Public |
+| `chord_donor_state_party_flows_mv` | Per-row MV | Nightly | `runNightlySync` | Public |
+| `chord_subject_party_flows_mv` | Per-row MV | Nightly | `runNightlySync` | Public |
+| `pipeline_runtime_stats_mv` | Per-pipeline MV | Nightly | `runNightlySync` | Admin |
+| `platform_usage_snapshot` | Rolling table (30 d prune) | 10 min | `platform-snapshot` cron | Public-readable, admin-displayed |
+| `status_snapshot` | Rolling table (24 h prune) | 10 min | `platform-snapshot` cron | Admin |
+
+Audit history of which long poles each one replaced lives in `docs/FIXES.md`
+under the cited FIX ID; full conventions audit at
+`docs/audits/request-path-aggregations.md`.
+
+---
+
 ## Storage Strategy
 
 Current: **Supabase Storage** (warm tier substitute until Cloudflare account set up)

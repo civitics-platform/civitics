@@ -492,26 +492,33 @@ const DRIFT_RULES = [
   },
 ] as const;
 
+// FIX-301: derived counts come from a single GROUP BY via the
+// get_connection_type_counts() RPC (FIX-298), not 11 sequential count:'exact'
+// scans of entity_connections. Same shape as getConnectionTypes above —
+// one round-trip instead of N, on a 5.1M-row table.
 async function checkDerivedDrift(db: Db) {
-  const sourceCounts = await Promise.all(
-    DRIFT_RULES.map((r) =>
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      r.source(db).then((res: any) => res.count ?? 0),
-    ),
-  );
-  const derivedCounts = await Promise.all(
-    DRIFT_RULES.map((r) =>
-      db
-        .from("entity_connections")
-        .select("*", { count: "exact", head: true })
-        .eq("connection_type", r.type)
+  const [sourceCounts, derivedRes] = await Promise.all([
+    Promise.all(
+      DRIFT_RULES.map((r) =>
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .then((res: any) => res.count ?? 0),
+        r.source(db).then((res: any) => res.count ?? 0),
+      ),
     ),
-  );
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (db as any).rpc("get_connection_type_counts"),
+  ]);
+  if (derivedRes.error)
+    throw new Error(derivedRes.error.message ?? "get_connection_type_counts RPC error");
+
+  type Row = { connection_type: string; total: number | string };
+  const byType = new Map<string, number>();
+  for (const r of (derivedRes.data ?? []) as Row[]) {
+    byType.set(r.connection_type, Number(r.total));
+  }
+
   const drifted = DRIFT_RULES.flatMap((r, i) => {
     const source = sourceCounts[i] ?? 0;
-    const derived = derivedCounts[i] ?? 0;
+    const derived = byType.get(r.type) ?? 0;
     return source > 0 && derived === 0 ? [{ type: r.type, source, derived }] : [];
   });
   return { drifted, total_rules: DRIFT_RULES.length };

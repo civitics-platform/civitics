@@ -193,13 +193,20 @@ Social app reaches mainstream users → introduces them to civic tools. They sha
 
 | Package | Topics |
 |---------|--------|
-| `packages/db/CLAUDE.md` | Supabase clients, schema conventions, entity_connections correction, RLS, storage, migrations |
+| `packages/db/CLAUDE.md` | Supabase clients, schema conventions, entity_connections correction, RLS, **materialization pattern for slow request-path aggregations**, storage, migrations |
 | `packages/data/CLAUDE.md` | Pipelines, FEC bulk strategy, storage budget, per-source rules, update schedules |
 | `packages/graph/CLAUDE.md` | D3 graph, node types, smart expansion, strength filter, share codes, presets |
 | `packages/ai/CLAUDE.md` | Claude API, model routing, credit gating, caching, cost rules |
 | `packages/maps/CLAUDE.md` | Mapbox, Deck.gl, PostGIS patterns, privacy rules, geographic data |
 | `packages/blockchain/CLAUDE.md` | Chains, wallets, audit requirement, Two Economies, compute pool |
 | `apps/civitics/CLAUDE.md` | Tone, data rules, user tiers, institutional API, candidate tools, build rules |
+
+When a request-path query becomes slow as data grows, the durable fix is
+materialization. See `packages/db/CLAUDE.md` — *Materialization pattern for
+slow request-path aggregations* — for shape options (single-row MV,
+per-entity MV, rolling-history snapshot table), refresh hook placement,
+read-path conventions with live-compute fallback, and the table of existing
+materializations to model off.
 
 ---
 
