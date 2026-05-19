@@ -394,3 +394,8 @@
 2026-05-19 | FIX-293 | prod-verified-2026-05-19 | prod-only | retroactive prod verification — 5/18 06:15 UTC cron run 26016843548; pipeline_state.cron_last_run merged correctly (value.phase='enrichment', pipelines map carries Phase 1 + Phase 2 keys, errors=0, status=complete); zero nightly_killed synthetic rows for 2026-05-18; Phase 2 wall-clock 8.16 min
 2026-05-18 | FIX-292 | 8cc5e6b8 | prod-only | chore(fixes): retroactively verify FIX-292 + FIX-293 against 5/18 cron
 2026-05-18 | FIX-293 | 8cc5e6b8 | prod-only | chore(fixes): retroactively verify FIX-292 + FIX-293 against 5/18 cron
+2026-05-18 | FIX-272 | 71116e9a | local-only | docs(littlesis): tag [LS:<id>] suffix removal as FIX-272 closeout
+2026-05-18 | FIX-273 | 3b2544b0 | local-only | fix(littlesis): intra-source dedupe in hop-1 resolve loop
+2026-05-18 | FIX-274 | f0a3bce5 | local-only | fix(fec-bulk): guard against org-shaped names in indiv ingest
+2026-05-18 | FIX-275 | 8c375194 | local-only | fix(littlesis): persist anchorMap matches to external_source_refs
+2026-05-18 | FIX-279 | a86d4113 | local-only | fix(irs990): aggregate same-recipient-same-cycle grants before upsert
