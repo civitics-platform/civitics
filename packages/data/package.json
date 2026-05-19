@@ -49,6 +49,7 @@
     "data:drain:submit": "tsx --env-file=../../.env.local src/drain/submit.ts",
     "data:drain:status": "tsx --env-file=../../.env.local src/drain/status.ts",
     "data:audit": "tsx --env-file=../../.env.local src/pipelines/integrity-audit/index.ts",
+    "data:audit:ci": "tsx src/pipelines/integrity-audit/index.ts",
     "data:backfill:individual-canonical": "tsx --env-file=../../.env.local src/scripts/backfill-individual-canonical-name.ts",
     "data:retitle-stubs": "tsx --env-file=../../.env.local src/scripts/retitle-procedural-bill-stubs.ts",
     "data:retitle-pn-stubs": "tsx --env-file=../../.env.local src/scripts/retitle-pn-stubs.ts",

@@ -46,7 +46,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Run integrity audit
-        run: pnpm --filter @civitics/data data:audit -- --out docs/audits
+        run: pnpm --filter @civitics/data data:audit:ci -- --out docs/audits
 
       - name: Commit and push report
         run: |
