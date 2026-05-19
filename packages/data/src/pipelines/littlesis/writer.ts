@@ -192,17 +192,54 @@ export async function upsertHop1FinancialEntities(
   let rpcErrors = 0;
   if (entities.length === 0) return { idMap, inserted, matched, failed, rpcErrors, matchedLsIds };
 
-  for (let i = 0; i < entities.length; i += RESOLVE_BATCH) {
-    const chunk = entities.slice(i, i + RESOLVE_BATCH);
+  // FIX-273: intra-source dedupe. Two LittleSis entities with the same
+  // canonical_name + entity_type that both arrive in the same ingest race
+  // each other through resolveOrInsertHop1 — both query RPC concurrently,
+  // both see no existing FE row (RESOLVE_BATCH parallelism), both INSERT.
+  // Result: two FE rows for the same LS-side dupe (the Paul Singer
+  // LS:59970/LS:101660 pattern from investigation §9 OOS #2). Group by
+  // (canonical, entity_type) up front; only the first LS entity in each
+  // group goes through the RPC+INSERT, and every other LS-id in the group
+  // binds to the same financial_entity uuid. preloadKnownLittleSisIds in
+  // a future run will see all the bindings via external_source_refs.
+  const groups = new Map<string, LittleSisEntity[]>();
+  for (const ent of entities) {
+    const canonical = canonicalizeEntityName(ent.name);
+    if (!canonical) continue;
+    const entityType = ent.primary_ext === "Person"
+      ? "individual"
+      : littleSisOrgEntityType(ent.types);
+    const key = `${canonical}|${entityType}`;
+    const list = groups.get(key) ?? [];
+    list.push(ent);
+    groups.set(key, list);
+  }
+  const representatives = [...groups.values()].map((g) => g[0]!);
+  const dupesCollapsed  = entities.length - representatives.length;
+  if (dupesCollapsed > 0) {
+    console.log(`  [littlesis] intra-source dedupe: ${entities.length} entities → ${representatives.length} groups (${dupesCollapsed} duplicates folded)`);
+  }
+
+  for (let i = 0; i < representatives.length; i += RESOLVE_BATCH) {
+    const chunk = representatives.slice(i, i + RESOLVE_BATCH);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const results = await Promise.all(chunk.map((ent) => resolveOrInsertHop1(db as any, ent)));
     for (let j = 0; j < chunk.length; j++) {
-      const ent = chunk[j]!;
+      const rep = chunk[j]!;
       const res = results[j];
       if (res === null) { failed++; continue; }
-      idMap.set(ent.id, res.id);
+      // Map every LS-id in the rep's group to the resolved/inserted entity.
+      const canonical = canonicalizeEntityName(rep.name);
+      const entityType = rep.primary_ext === "Person"
+        ? "individual"
+        : littleSisOrgEntityType(rep.types);
+      const group = groups.get(`${canonical}|${entityType}`) ?? [rep];
+      for (const member of group) {
+        idMap.set(member.id, res.id);
+        if (!res.created) matchedLsIds.add(member.id);
+      }
       if (res.created) inserted++;
-      else { matched++; matchedLsIds.add(ent.id); }
+      else            matched++;
       if (res.rpcError) rpcErrors++;
     }
   }
