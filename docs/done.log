@@ -390,3 +390,5 @@
 2026-05-18 | FIX-298 | 74ab6c6e | local+prod | fix(ops): raise statement_timeout on get_connection_type_counts() to 120s
 2026-05-18 | FIX-301 | 5f72cdd3 | local-only | docs(db): codify materialization pattern + audit request-path aggregations
 2026-05-18 | FIX-302 | 5f72cdd3 | local-only | docs(db): codify materialization pattern + audit request-path aggregations
+2026-05-19 | FIX-292 | prod-verified-2026-05-19 | prod-only | retroactive prod verification — 5/18 06:15 UTC cron run 26016843548; both phases ran clean (fec-phase 4m21s success, enrichment-phase 8m30s success); original prompt's dual-day premise was wrong (FIX-293 commit 2a3f5bb0 landed 2026-05-17 23:31 UTC, ~7h pre-cron, so 5/18 already exercised both)
+2026-05-19 | FIX-293 | prod-verified-2026-05-19 | prod-only | retroactive prod verification — 5/18 06:15 UTC cron run 26016843548; pipeline_state.cron_last_run merged correctly (value.phase='enrichment', pipelines map carries Phase 1 + Phase 2 keys, errors=0, status=complete); zero nightly_killed synthetic rows for 2026-05-18; Phase 2 wall-clock 8.16 min
