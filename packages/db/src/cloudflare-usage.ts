@@ -186,7 +186,7 @@ export async function getCloudflareR2Usage(): Promise<
       },
       body: buildQuery(accountTag, monthStart, yesterday),
       cache: "no-store",
-    } as RequestInit & { cache?: RequestCache });
+    } as RequestInit & { cache?: "default" | "force-cache" | "no-cache" | "no-store" | "only-if-cached" | "reload" });
 
     if (!res.ok) {
       const body = await res.text().catch(() => res.statusText);

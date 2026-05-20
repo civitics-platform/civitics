@@ -236,7 +236,7 @@ export async function getVercelUsage(): Promise<VercelUsage | VercelUsageError> 
     const res = await fetch(u.toString(), {
       headers,
       cache: "no-store",
-    } as RequestInit & { cache?: RequestCache });
+    } as RequestInit & { cache?: "default" | "force-cache" | "no-cache" | "no-store" | "only-if-cached" | "reload" });
 
     if (res.ok) {
       const body = (await res.json()) as UsageResponse;
@@ -266,7 +266,7 @@ export async function getVercelUsage(): Promise<VercelUsage | VercelUsageError> 
     const res = await fetch(u.toString(), {
       headers,
       cache: "no-store",
-    } as RequestInit & { cache?: RequestCache });
+    } as RequestInit & { cache?: "default" | "force-cache" | "no-cache" | "no-store" | "only-if-cached" | "reload" });
 
     if (!res.ok) {
       const body = await res.text().catch(() => res.statusText);
