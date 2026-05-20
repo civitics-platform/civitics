@@ -73,3 +73,6 @@ packages/data/.usaspending-bulk-state.json
 # Pipeline / build / debug logs (e.g. fec-bulk.log was accidentally committed once at a doubled path).
 *.log
 
+# Enrichment-drain wave artifacts (see CLAUDE.md "Enrichment Queue Drain — Runbook").
+.drain-tmp/
+

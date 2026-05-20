@@ -49,5 +49,5 @@ $$ LANGUAGE plpgsql;
 GRANT EXECUTE ON FUNCTION rebuild_official_donation_totals()      TO service_role;
 GRANT EXECUTE ON FUNCTION rebuild_official_donation_totals_full() TO service_role;
 
--- Backfill immediately on migration.
-SELECT rebuild_official_donation_totals();
+-- Backfill runs separately (too slow for inline migration on prod).
+-- Run manually: SELECT rebuild_official_donation_totals_full();
