@@ -411,3 +411,5 @@
 2026-05-19 | FIX-315 | 1e840dd9 | local-only | fix(db): inline RequestCache union on 3 sibling usage files (FIX-315)
 2026-05-19 | FIX-316 | 16e3ec00 | local-only | fix(blockchain): add DOM lib to tsconfig (FIX-316)
 2026-05-19 | FIX-317 | d0b9c065 | local-only | fix(maps): add @types/node devDep so `process` resolves (FIX-317)
+2026-05-19 | FIX-300 | f5d8f425 | local+prod | fix(integrity-audit): tighten officials checks for post-cutover schema
+2026-05-19 | FIX-318 | f5d8f425 | local+prod | fix(integrity-audit): tighten officials checks for post-cutover schema
