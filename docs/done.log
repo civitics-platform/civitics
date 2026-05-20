@@ -409,3 +409,5 @@
 2026-05-18 | FIX-314 | 64b40229 | unverified | feat(fixes): adopt Closes: trailer convention for recognition-shaped closures
 2026-05-19 | FIX-219 | 7892c6c1 | local+prod | backfill: 7892c6c1 was the actual FIX-219 fix (PostgREST 1000-row truncation in treemap aggregate); trailer mistakenly read Fixes: FIX-216
 2026-05-19 | FIX-315 | 1e840dd9 | local-only | fix(db): inline RequestCache union on 3 sibling usage files (FIX-315)
+2026-05-19 | FIX-316 | 16e3ec00 | local-only | fix(blockchain): add DOM lib to tsconfig (FIX-316)
+2026-05-19 | FIX-317 | d0b9c065 | local-only | fix(maps): add @types/node devDep so `process` resolves (FIX-317)
