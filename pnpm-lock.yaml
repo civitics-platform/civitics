@@ -356,6 +356,9 @@ importers:
       '@types/mapbox-gl':
         specifier: ^3.1.0
         version: 3.5.0
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.37
       typescript:
         specifier: ^5.4.0
         version: 5.9.3

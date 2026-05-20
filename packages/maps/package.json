@@ -13,6 +13,7 @@
   "devDependencies": {
     "@civitics/config": "workspace:*",
     "@types/mapbox-gl": "^3.1.0",
+    "@types/node": "^20.0.0",
     "typescript": "^5.4.0"
   },
   "dependencies": {
