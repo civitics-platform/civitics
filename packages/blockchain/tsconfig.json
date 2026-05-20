@@ -1,5 +1,8 @@
 {
   "extends": "@civitics/config/typescript/base",
-  "compilerOptions": { "outDir": "dist" },
+  "compilerOptions": {
+    "outDir": "dist",
+    "lib": ["ES2022", "DOM"]
+  },
   "include": ["src"]
 }
