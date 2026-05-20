@@ -492,7 +492,7 @@ export default async function HomePage({
   const proposalIds = rawProposals.map((p) => p.id);
   const agencyRows = agencyRowsRes.data ?? [];
 
-  const [officialsRes, summaryRes, tagsRes, ...agencyStatPairs] = await timed("wave2", () => Promise.all([
+  const [officialsRes, summaryRes, tagsRes, agencyCountsRes] = await timed("wave2", () => Promise.all([
     supabase
       .from("officials")
       .select(
@@ -518,22 +518,24 @@ export default async function HomePage({
           .eq("entity_type", "proposal")
           .in("entity_id", proposalIds)
       : Promise.resolve({ data: [] as EntityTag[] }),
-    ...agencyRows.map((agency) => {
-      const key = agency.acronym ?? agency.name;
-      return Promise.all([
-        supabase
-          .from("proposals")
-          .select("id", { count: "exact", head: true })
-          .filter("metadata->>agency_id", "eq", key),
-        supabase
-          .from("proposals")
-          .select("id", { count: "exact", head: true })
-          .filter("metadata->>agency_id", "eq", key)
-          .eq("status", "open_comment")
-          .gt("metadata->>comment_period_end", now),
-      ]);
-    }),
+    // FIX-303 — one RPC instead of up to 200 × 2 = 400 count:'exact' sub-queries
+    // (one per featured agency × {total, open}). The agencies page consumes
+    // the same payload. See agencies/page.tsx for the matching swap.
+    withDbTimeout<{ data: { agency_id: string; total: number | string; open: number | string }[] | null; error: { message: string } | null }>(
+      sbAny.rpc("get_proposal_counts_by_agency"),
+      2000
+    ),
   ]));
+
+  if (agencyCountsRes.error) {
+    console.error("agency counts RPC error:", agencyCountsRes.error.message);
+  }
+  const agencyCountsMap = new Map<string, { total: number; open: number }>(
+    (agencyCountsRes.data ?? []).map((r) => [
+      r.agency_id,
+      { total: Number(r.total), open: Number(r.open) },
+    ])
+  );
 
   // ── Wave 3: per-official stats — single read from official_homepage_stats_mv
   // (FIX-223). Replaces an N=20 .map() loop that ran 60 sub-queries per render
@@ -656,10 +658,9 @@ export default async function HomePage({
     .map((i) => ({ ...i, upvoteCount: upvoteCountByInitiative[i.id] ?? 0 }));
 
   // Agencies → AgencyRow[]
-  const featuredAgencies: AgencyRow[] = agencyRows.map((agency, i) => {
-    const pair = agencyStatPairs[i] as
-      | [{ count: number | null }, { count: number | null }]
-      | undefined;
+  const featuredAgencies: AgencyRow[] = agencyRows.map((agency) => {
+    const key = agency.acronym ?? agency.name;
+    const counts = agencyCountsMap.get(key) ?? { total: 0, open: 0 };
     const meta = agency.metadata as Record<string, unknown> | null;
     return {
       id: agency.id,
@@ -669,8 +670,8 @@ export default async function HomePage({
       agency_type: agency.agency_type,
       website_url: agency.website_url ?? null,
       description: agency.description ?? null,
-      totalProposals: pair?.[0]?.count ?? 0,
-      openProposals: pair?.[1]?.count ?? 0,
+      totalProposals: counts.total,
+      openProposals: counts.open,
       isFeatured: meta?.["is_whitehouse"] === true,
     };
   });

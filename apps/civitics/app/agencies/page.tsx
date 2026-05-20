@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { cookies } from "next/headers";
 import { createServerClient, agencyFullName } from "@civitics/db";
+import { withDbTimeout } from "../../src/lib/supabase-check";
 import { AgenciesList } from "./components/AgenciesList";
 import { AgencyActivityChart } from "./components/AgencyActivityChart";
 import { GroupBuilderWidget } from "./components/GroupBuilderWidget";
@@ -45,29 +46,32 @@ export default async function AgenciesPage() {
   if (error) console.error("agencies fetch error:", error.message);
 
   const rows = agencyRows ?? [];
-  const now = new Date().toISOString();
 
-  // Fetch proposal counts for each agency in parallel
-  const statPairs = await Promise.all(
-    rows.map((agency) => {
-      const key = agency.acronym ?? agency.name;
-      return Promise.all([
-        supabase
-          .from("proposals")
-          .select("id", { count: "exact", head: true })
-          .filter("metadata->>agency_id", "eq", key),
-        supabase
-          .from("proposals")
-          .select("id", { count: "exact", head: true })
-          .filter("metadata->>agency_id", "eq", key)
-          .eq("status", "open_comment")
-          .gt("comment_period_end", now),
-      ]);
-    })
+  // FIX-303 — one RPC instead of up to 200 × 2 = 400 count:'exact' sub-queries.
+  // get_proposal_counts_by_agency() returns the full (agency_id, total, open)
+  // set in a single indexed GROUP BY scan over proposals; the homepage Wave 2
+  // consumes the same payload. `open` is computed inside the RPC against
+  // (metadata->>'comment_period_end')::timestamptz — the prior live filter
+  // used .gt('comment_period_end', now) against a non-existent top-level
+  // column, which PostgREST silently no-op'd, making openProposals always
+  // equal totalProposals for every agency.
+  type AgencyCountRow = { agency_id: string; total: number | string; open: number | string };
+  const countsRes = await withDbTimeout<{ data: AgencyCountRow[] | null; error: { message: string } | null }>(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (supabase as any).rpc("get_proposal_counts_by_agency"),
+    5000
+  );
+  if (countsRes.error) console.error("agency counts RPC error:", countsRes.error.message);
+  const countsByAgency = new Map<string, { total: number; open: number }>(
+    (countsRes.data ?? []).map((r) => [
+      r.agency_id,
+      { total: Number(r.total), open: Number(r.open) },
+    ])
   );
 
-  const agencies: AgencyRow[] = rows.map((agency, i) => {
-    const pair = statPairs[i];
+  const agencies: AgencyRow[] = rows.map((agency) => {
+    const key = agency.acronym ?? agency.name;
+    const counts = countsByAgency.get(key) ?? { total: 0, open: 0 };
     return {
       id: agency.id,
       name: agencyFullName(agency.acronym) ?? agency.name,
@@ -76,8 +80,8 @@ export default async function AgenciesPage() {
       agency_type: agency.agency_type,
       website_url: agency.website_url ?? null,
       description: agency.description ?? null,
-      totalProposals: pair?.[0]?.count ?? 0,
-      openProposals: pair?.[1]?.count ?? 0,
+      totalProposals: counts.total,
+      openProposals: counts.open,
     };
   });
 
