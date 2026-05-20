@@ -25,13 +25,17 @@ export const officialsChecks: Check = async ({ query }) => {
     detail: "Active U.S. senators (2 per state × 50 states).",
   });
 
+  // Senator metadata is empty {} on federal rows — state info lives via the
+  // jurisdictions JOIN (officials.jurisdiction_id -> jurisdictions.name).
+  // Pre-FIX-318 used COALESCE(metadata->>'state', metadata->>'state_abbr')
+  // which grouped all 100 senators into a single NULL bucket.
   const senatorsByState = await query<{ state: string | null; count: string }>(
-    `SELECT COALESCE(NULLIF(metadata->>'state', ''), NULLIF(metadata->>'state_abbr', '')) AS state,
-            COUNT(*)::text AS count
-       FROM officials
-      WHERE is_active = true
-        AND role_title ILIKE '%senator%'
-        AND ${FED_FILTER}
+    `SELECT j.name AS state, COUNT(*)::text AS count
+       FROM officials o
+       LEFT JOIN jurisdictions j ON j.id = o.jurisdiction_id
+      WHERE o.is_active = true
+        AND o.role_title ILIKE '%senator%'
+        AND o.source_ids ? 'congress_gov'
       GROUP BY 1`,
   );
   const wrongStates = senatorsByState.filter((row) => Number(row.count) !== 2);
@@ -63,12 +67,18 @@ export const officialsChecks: Check = async ({ query }) => {
     detail: "Active U.S. House: 435 voting + 6 non-voting delegates.",
   });
 
+  // President + VP: pre-FIX-318 used ILIKE '%president%' which swept in the
+  // 2603 cn24.zip 'Candidate for President' rows (tier=candidate), USPS
+  // "Executive Vice President" titles, and other state-legislature
+  // "President of the Senate" / pro-tem roles. Tighten to exact canonical
+  // role_title for the sitting POTUS / VPOTUS. Currently returns 0 — the
+  // executive branch is not yet ingested (filed as FIX-321).
   const president = await query<{ count: string }>(
     `SELECT COUNT(*)::text AS count
        FROM officials
       WHERE is_active = true
-        AND role_title ILIKE '%president%'
-        AND role_title NOT ILIKE '%vice%'`,
+        AND tier = 'elected'
+        AND role_title ~ '^President( of the United States)?$'`,
   );
   const presCount = Number(president[0]?.count ?? 0);
   out.push({
@@ -84,7 +94,8 @@ export const officialsChecks: Check = async ({ query }) => {
     `SELECT COUNT(*)::text AS count
        FROM officials
       WHERE is_active = true
-        AND role_title ILIKE '%vice president%'`,
+        AND tier = 'elected'
+        AND role_title ~ '^Vice President( of the United States)?$'`,
   );
   const vpCount = Number(vp[0]?.count ?? 0);
   out.push({
