@@ -43,7 +43,7 @@ in CC prompts kept producing:
 - `<tier>` ∈ {`closes-as-*`} → emit `Closes: <ids>` trailer.
 
 The user never specifies Fixes-vs-Closes directly — the tier decides. This
-matches the contract documented in `apps/civitics/CLAUDE.md` (FIXES Workflow,
+matches the contract documented in `CLAUDE.md` (FIXES Workflow,
 FIX-314).
 
 ### Examples
@@ -207,7 +207,7 @@ Stop. Do not initiate any further work.
 - **Never** `--no-verify` or pass any other hook-skipping flag. If a hook
   fails, surface the failure and let the user resolve.
 - **Never** `git commit --amend`. Always create a new commit. (Per
-  `apps/civitics/CLAUDE.md` — "never amend".)
+  `CLAUDE.md` — "never amend".)
 - **Never** force-push (`git push -f`, `git push --force-with-lease`, etc.).
 - **Never** push to a branch other than the current branch.
 - **Never** stage files on the user's behalf. If `git status` shows unstaged
@@ -224,6 +224,6 @@ Stop. Do not initiate any further work.
 This command is invoked many times per session and runs against `main` by
 default. Every safeguard above maps to a real prior incident or to the
 explicit "never amend / never --no-verify" guidance in
-`apps/civitics/CLAUDE.md`. The approval gate at step 4 is the only place the
+`CLAUDE.md`. The approval gate at step 4 is the only place the
 user reviews — once they approve, the command runs the rest unattended, so
 the rest of the flow has to be conservative.
