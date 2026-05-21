@@ -4,6 +4,13 @@
 Data ingestion pipelines. Downloads, parses, and upserts civic data from government sources
 into Supabase. Runs as Node.js scripts, not as part of the Next.js build.
 
+When a request-path query becomes slow as data grows, the durable fix is
+materialization. See `../db/CLAUDE.md` — *Materialization pattern for
+slow request-path aggregations* — for shape options (single-row MV,
+per-entity MV, rolling-history snapshot table), refresh hook placement,
+read-path conventions with live-compute fallback, and the table of existing
+materializations to model off.
+
 ---
 
 ## Pipeline Conventions

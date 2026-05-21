@@ -6,6 +6,13 @@ Every journalist who uses it to break a story, every citizen who shares a
 screenshot, every researcher who embeds it is the mission made tangible.
 Build it accordingly.
 
+When a request-path query becomes slow as data grows, the durable fix is
+materialization. See `../db/CLAUDE.md` — *Materialization pattern for
+slow request-path aggregations* — for shape options (single-row MV,
+per-entity MV, rolling-history snapshot table), refresh hook placement,
+read-path conventions with live-compute fallback, and the table of existing
+materializations to model off.
+
 ## The One Rule
 The graph must be beautiful enough to screenshot, powerful enough to
 investigate, simple enough for anyone, and deep enough for experts.
@@ -35,9 +42,13 @@ Cross-cutting principles being introduced:
 - **Never auto-switch viz on the user.** Suggest via toast at most.
 - **Custom groups are DB-backed** — `user_custom_groups` table, not localStorage.
   See FIX-126.
-- **AI gate** — every Anthropic call site (including `/api/graph/narrative`) checks
-  `FLAGS.AI_SUMMARIES_ENABLED` from `packages/data/src/feature-flags.ts`. The flag
-  is the platform-wide kill switch. See FIX-122.
+- **AI gate** — every Anthropic call site has a feature-specific flag in
+  `packages/data/src/feature-flags.ts`. `/api/graph/narrative` and other
+  graph-side Anthropic calls check `FLAGS.AI_NARRATIVE_ENABLED`;
+  enrichment-queue tag work checks `FLAGS.AI_TAGGER_ENABLED`; cached summaries
+  check `FLAGS.AI_SUMMARIES_ENABLED`. Each is paired 1:1 with a DB-backed kill
+  switch — see `packages/db/src/kill-switches.ts`. Originally one combined
+  `AI_SUMMARIES_ENABLED` flag (FIX-122); split per-feature in FIX-311.
 - **USER node Stage 1** — visible and toggleable in FocusTree; alignment edges
   render. Full alignment-scoring pipeline (AlignmentPanel ↔ edge weighting) is
   Stage 2. See FIX-120.

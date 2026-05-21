@@ -3,6 +3,13 @@
 ## Purpose
 Shared Claude API service layer. All AI features across both apps route through this package.
 
+When a request-path query becomes slow as data grows, the durable fix is
+materialization. See `../db/CLAUDE.md` — *Materialization pattern for
+slow request-path aggregations* — for shape options (single-row MV,
+per-entity MV, rolling-history snapshot table), refresh hook placement,
+read-path conventions with live-compute fallback, and the table of existing
+materializations to model off.
+
 ---
 
 ## API Key

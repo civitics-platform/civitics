@@ -137,6 +137,7 @@ Actionable improvement backlog. Every item has a priority, complexity, and enoug
 
 ## DOCUMENTATION (Open Source Readiness)
 
+- [ ] 🟢 S — **Document the `AI_SUMMARIES_ENABLED` → per-feature env var split in CLAUDE.md (FIX-311 follow-up)** — FIX-311 split the env var into `AI_SUMMARIES_ENABLED` / `AI_NARRATIVE_ENABLED` / `AI_TAGGER_ENABLED` but the documentation step ("document the rename in `apps/civitics/CLAUDE.md`") never landed. Root `/CLAUDE.md` Environment Variables section gains a paragraph; `packages/graph/CLAUDE.md:39`'s stale `FLAGS.AI_SUMMARIES_ENABLED` reference updated to the per-feature flag accessor (verify the actual export name in `packages/data/src/feature-flags.ts`). Pure docs follow-up, no code touched. <!--id:FIX-326-->
 
 ---
 

@@ -224,12 +224,3 @@ The `jurisdictions` table hierarchy makes global deployment a configuration chan
 
 **Censorship resistance for Tier 3:** Tor hidden service, ENS domain, IPFS, offline PWA.
 
----
-
-## Development Environment
-
-This project runs on **Windows 10 with VS Code and Claude Code extension**.
-Use PowerShell or the VS Code integrated terminal.
-
-Note: The root CLAUDE.md mentions WSL2 — that recommendation does not reflect actual usage.
-Development happens natively on Windows. Claude Code extension handles the session.

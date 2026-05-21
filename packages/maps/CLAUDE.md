@@ -4,6 +4,13 @@
 Mapbox GL JS + Deck.gl utilities for the Civitics civic governance app.
 Shared spatial query helpers built on PostGIS.
 
+When a request-path query becomes slow as data grows, the durable fix is
+materialization. See `../db/CLAUDE.md` — *Materialization pattern for
+slow request-path aggregations* — for shape options (single-row MV,
+per-entity MV, rolling-history snapshot table), refresh hook placement,
+read-path conventions with live-compute fallback, and the table of existing
+materializations to model off.
+
 ---
 
 ## Status

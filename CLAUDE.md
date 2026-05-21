@@ -1,9 +1,14 @@
 # CLAUDE.md — Civitics Platform
 
-Authoritative reference for the Civitics platform. Read before writing any code.
-Update when architecture decisions change. Last updated: 2026-04-22 (Supabase Pro cutover).
+Operational reference for every Claude Code session. New to the project? Read
+`docs/ONBOARDING.md` first; this file is the every-session loud-rail.
 
-> **Cutover status (2026-04-22):** Production is live on Supabase Pro. The `shadow.*` schema has been promoted to `public.*` (migration `20260422000000`). Production branch is `main`. See `docs/archive/MIGRATION_RUNBOOK.md` for the runbook that executed this; the post-cutover reimplementation backlog (FIX-097–FIX-104) closed by 2026-04-25 — see `docs/done.log`.
+> **Cutover status (2026-04-22):** Production is live on Supabase Pro. The
+> `shadow.*` schema has been promoted to `public.*` (migration
+> `20260422000000`). Production branch is `main`. See
+> `docs/archive/MIGRATION_RUNBOOK.md` for the runbook that executed this; the
+> post-cutover reimplementation backlog (FIX-097–FIX-104) closed by 2026-04-25
+> — see `docs/done.log`.
 
 ---
 
@@ -31,6 +36,96 @@ environment check" below.
 > Windows) runs the full loop autonomously: migrate → build → commit → push →
 > `pnpm fixes:sync` → commit → push. No SESSION_LOG ⚠️ hand-off required for
 > local migrations. `docs/QWEN_PROMPTS.md` is preserved as historical archive.
+
+---
+
+## Active environment check (CRITICAL)
+
+`.env.local` is the active config. Two saved templates exist alongside it:
+
+```
+.env.local.dev     → points at local Docker     (NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321)
+.env.local.prod    → points at Supabase Pro     (NEXT_PUBLIC_SUPABASE_URL=https://xsazcoxinpgttgquwvuf.supabase.co)
+.env.local         → whichever was Copy-Item'd most recently
+```
+
+**Before running anything that reads or writes data — including pipelines, scripts,
+RPC calls, or ad-hoc queries — verify which DB is active:**
+
+```powershell
+grep "^NEXT_PUBLIC_SUPABASE_URL" .env.local
+```
+
+If it points at prod (`xsazcoxinpgttgquwvuf.supabase.co`):
+- App reads (`pnpm dev` → localhost:3000) will hit prod data
+- `pnpm data:*` pipelines will write to prod
+- Any seed/backfill/RPC invocation runs against prod
+
+**Confirm with the user before running data-writing scripts (`pnpm data:*`,
+`SELECT * FROM rebuild_*()`, etc.) when `.env.local` points at prod.** Never
+assume the active env matches the user's intent — always check.
+
+Switch with:
+```powershell
+Copy-Item .env.local.dev  .env.local    # → local Docker
+Copy-Item .env.local.prod .env.local    # → production Pro
+```
+
+Pipelines run from `packages/data/` read `.env.local` from the repo root. The
+shell that runs the pipeline inherits whichever env is active at invocation
+time — there is no per-script override.
+
+---
+
+## votes Table — Actual Column Names
+
+```
+vote      (not vote_cast)
+  Schema CHECK enum (see supabase/migrations/0001_initial_schema.sql):
+  'yes' | 'no' | 'abstain' | 'present' | 'not_voting' | 'paired_yes' | 'paired_no'
+  NOTE: 'not_voting' uses an underscore, NOT a space. Using 'not voting'
+  in queries silently returns zero rows. This bit us in FIX-073.
+voted_at  (not vote_date)
+metadata->>'vote_question'   procedural type string (e.g. "On Passage", "On the Cloture Motion")
+metadata->>'legis_num'       bill number
+```
+
+Do NOT use vote_cast or vote_date — those columns do not exist.
+
+When asserting or filtering on an enum value, treat the schema CHECK
+constraint as ground truth. Not CLAUDE.md, not a prior pipeline's
+normalizer — the constraint. Quick check:
+
+    \d+ votes          -- in psql
+    -- or grep supabase/migrations/0001_initial_schema.sql for CHECK constraints
+
+---
+
+## generateStaticParams Rules
+
+```
+ALWAYS use try/catch — return [] on any error
+ALWAYS wrap the query in Promise.race with a 5s timeout
+ALWAYS limit to 50 rows max
+ALWAYS use NEXT_PUBLIC keys only (never createAdminClient)
+NEVER let a build fail due to DB unavailability
+
+Timeout pattern:
+  const { data } = await Promise.race([
+    supabase.from("table").select("col").limit(50),
+    new Promise<{ data: null; error: Error }>((resolve) =>
+      setTimeout(() => resolve({ data: null, error: new Error("timeout") }), 5000)
+    ),
+  ]);
+
+If DB is unavailable: build succeeds with [] → pages render on-demand (ISR)
+```
+
+---
+
+## Active App Directory — CRITICAL
+
+**Always edit `apps/civitics/app/` — see [apps/civitics/CLAUDE.md](apps/civitics/CLAUDE.md#active-app-directory--critical) for why.**
 
 ---
 
@@ -178,77 +273,67 @@ before referencing it in a commit.
 
 ---
 
-## Mission
+## Claude ↔ Database Access
 
-Restore democratic power to its rightful owners — the people. Facilitate collaboration across all political, religious, language, and geographic barriers. Bring together data on all public institutions and officials, make it easy for anyone to explore, and provide powerful tools for citizens, researchers, journalists, and investigators. Make government promises permanent public record. Give average people a genuine seat at the table.
+**Default (VS Code Claude Code extension on Windows):** Claude runs migrations,
+builds, commits, and pushes directly from the integrated shell. Local Studio:
+http://127.0.0.1:54323
 
----
-
-## The North Star
-
-A world map, dark at first. District by district, it gets brighter as democratic accountability increases — as officials engage with constituents, as promises are kept, as donors and votes are connected in plain sight.
-
-**Every feature we build should make that map brighter. If it doesn't, we don't build it.**
-
----
-
-## What This Is
-
-Two distinct products sharing one infrastructure:
-
-1. **Civitics App** — The mission vehicle. "Wikipedia meets Bloomberg Terminal for democracy." Structured civic data, legislative tracking, public comment submission, connection graph, maps, AI accountability tools. Serious civic infrastructure — never social media.
-
-2. **Social App** — The distribution vehicle. Censorship-resistant platform with COMMONS token economy. General civic discourse, bipartisan feed mechanics, creator economy, algorithm marketplace. Cat memes are welcome.
-
-Social app reaches mainstream users → introduces them to civic tools. They share identity, wallet, and content infrastructure but are kept visually and tonally separate.
-
----
-
-## Core Principles (Non-Negotiable)
-
-- **Official comment submission is always free** — No fees, tokens, or credits required. Constitutional right.
-- **No paywalling civic participation** — Reading and submitting positions on government proposals is free forever.
-- **Blockchain is invisible** — No seed phrases, wallet addresses, gas fees, or network names in UI.
-- **No gas fees for users** — All costs sponsored via Biconomy, ERC-4337.
-- **Geography is never stored precisely** — Coarsen to district/zip level before any INSERT.
-- **Warrant canary on-chain weekly** — Signed attestation of non-compromise written to Optimism.
-- **Platform earns are never extractive** — Revenue model aligned with civic mission.
-- **Free tier is genuinely powerful** — Covers 90% of citizen needs.
-
----
-
-## Monorepo Structure
-
-**Tooling:** Turborepo / pnpm
+Standard autonomous loop after a code change with DB impact:
 
 ```
-/apps
-  /civitics    # Next.js civic governance app  → see apps/civitics/CLAUDE.md
-  /social      # Next.js social/COMMONS app
-/packages
-  /ui          # Shared Tailwind component library
-  /db          # Supabase client, schema, migrations  → see packages/db/CLAUDE.md
-  /blockchain  # Wallet, ABIs, chain config, ERC-4337 → see packages/blockchain/CLAUDE.md
-  /maps        # Mapbox GL + Deck.gl utilities        → see packages/maps/CLAUDE.md
-  /graph       # D3 force simulation (connection graph)→ see packages/graph/CLAUDE.md
-  /ai          # Shared Claude API service layer      → see packages/ai/CLAUDE.md
-  /auth        # Privy integration, session management
-  /config      # Shared ESLint, TypeScript, Tailwind configs
+supabase migration up --local                # apply migration against local Docker DB
+supabase db push --linked                    # apply migration against Pro (only after local is green)
+pnpm --filter @civitics/app-civitics build
+git add <files>
+git commit -m "...Fixes: FIX-NNN"
+git push origin main
+pnpm fixes:sync
+git add docs/done.log
+git commit -m "chore(fixes): sync status after FIX-NNN"
+git push origin main
 ```
+
+`supabase db push --linked` is the only CLI path to Pro. Never run ad-hoc SQL against Pro without explicit user confirmation.
+
+**Fallback (Cowork or any sandboxed environment):** If the active shell can't
+reach `127.0.0.1:54322` (Docker Supabase), Claude cannot run migrations, git,
+or pnpm locally. In that case:
+
+1. Write the migration file to `supabase/migrations/` and any code changes.
+2. **Emit a ready-to-paste Claude Code prompt** at the end of the session —
+   not a SESSION_LOG ⚠️ bullet — that Craig can drop into the VS Code Claude
+   Code extension to execute the loop above end-to-end. Example format:
+
+   ```
+   Run the standard autonomous loop for FIX-NNN:
+   - supabase migration up --local
+   - build, commit with "Fixes: FIX-NNN", push
+   - pnpm fixes:sync, commit the done.log diff, push
+   ```
+
+   The prompt should be copy-pasteable, reference the specific FIX IDs, and
+   name any files that need staging.
 
 ---
 
-## Package Documentation
+## Database Safety Rules
 
-| Package | Topics |
-|---------|--------|
-| `packages/db/CLAUDE.md` | Supabase clients, schema conventions, entity_connections correction, RLS, **materialization pattern for slow request-path aggregations**, storage, migrations |
-| `packages/data/CLAUDE.md` | Pipelines, FEC bulk strategy, storage budget, per-source rules, update schedules |
-| `packages/graph/CLAUDE.md` | D3 graph, node types, smart expansion, strength filter, share codes, presets |
-| `packages/ai/CLAUDE.md` | Claude API, model routing, credit gating, caching, cost rules |
-| `packages/maps/CLAUDE.md` | Mapbox, Deck.gl, PostGIS patterns, privacy rules, geographic data |
-| `packages/blockchain/CLAUDE.md` | Chains, wallets, audit requirement, Two Economies, compute pool |
-| `apps/civitics/CLAUDE.md` | Tone, data rules, user tiers, institutional API, candidate tools, build rules |
+Two-tier environment: local Docker Supabase for development, Supabase **Pro** for production.
+
+**Local (dev):**
+- Studio URL: `http://127.0.0.1:54323`
+- DB connection: `postgresql://postgres:postgres@127.0.0.1:54322/postgres`
+- Apply migrations with `supabase migration up --local`
+- Free to run any SQL, including DROP/TRUNCATE/DELETE, for iteration.
+
+**Production (Pro):**
+- Studio URL: `https://supabase.com/dashboard/project/xsazcoxinpgttgquwvuf`
+- Connection details in Vercel env vars (`NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SECRET_KEY`).
+- Apply migrations with `supabase db push --linked` (requires prior `supabase link --project-ref xsazcoxinpgttgquwvuf`).
+- **Never run ad-hoc destructive SQL against Pro** without explicit user confirmation. If the user asks for a data cleanup, confirm the exact query first.
+- PITR retention is 7 days on Pro — mistakes are recoverable but costly. Still verify twice.
+- App is live at `https://civitics-civitics.vercel.app` — any schema change affects real users.
 
 When a request-path query becomes slow as data grows, the durable fix is
 materialization. See `packages/db/CLAUDE.md` — *Materialization pattern for
@@ -256,6 +341,72 @@ slow request-path aggregations* — for shape options (single-row MV,
 per-entity MV, rolling-history snapshot table), refresh hook placement,
 read-path conventions with live-compute fallback, and the table of existing
 materializations to model off.
+
+---
+
+## Data-state changes vs schema changes
+
+Schema and data are propagated to prod by **separate** mechanisms.
+
+**Schema changes** (anything in `supabase/migrations/`):
+- `supabase migration up --local` applies to local
+- `supabase db push --linked` applies to prod
+- The standard autonomous loop in "Claude ↔ Database Access" handles both
+
+**Data-state changes** (any runtime DB action that writes data):
+- `pnpm data:*` pipelines
+- `SELECT * FROM rebuild_entity_connections();` and similar RPCs
+- Seeds, backfills, `UPDATE`/`INSERT` scripts
+- These ONLY hit the DB pointed at by the active `.env.local` at the moment of invocation
+
+Schema migrations being applied to both DBs does NOT mean derived data exists in
+both. A FIX item that requires a runtime action (rebuild, pipeline re-run, seed)
+must be executed against **each** environment separately:
+
+```
+1. Run against local (.env.local → local Docker)
+2. Verify locally
+3. Switch:  Copy-Item .env.local.prod .env.local
+4. Re-run the same action against prod
+5. Verify against prod
+6. Switch back: Copy-Item .env.local.dev .env.local
+7. Commit trailer:  Verified: local + prod
+```
+
+**Never mark a runtime-action FIX as complete after only running it locally.** If
+you cannot run against prod in this session, leave the FIX open and document
+the prod step as pending.
+
+---
+
+## Supabase Clients (Summary)
+
+```
+createBrowserClient()          → 'use client' components
+createServerClient(cookies())  → Server Components, Route Handlers (respects RLS)
+createAdminClient()            → Server only, pipelines only (bypasses RLS)
+```
+
+**Every route/page using `createAdminClient()` must have:**
+```ts
+export const dynamic = "force-dynamic";
+```
+Without this, Next.js calls it at build time → fails on Vercel (secret key unavailable).
+
+**`generateStaticParams`:** use `createClient()` from `@supabase/supabase-js` with publishable key — never `createAdminClient()`.
+
+Import from `@civitics/db`, not directly from `@supabase/supabase-js`.
+
+## Supabase API Keys
+
+Use NEW format keys only:
+```
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY   (sb_publishable_xxx)  — client-side
+SUPABASE_SECRET_KEY                    (sb_secret_xxx)       — server-only
+```
+Never use legacy `anon` / `service_role` keys. Never use `NEXT_PUBLIC_` on the secret key.
+
+See `packages/db/CLAUDE.md` for full client documentation.
 
 ---
 
@@ -303,114 +454,20 @@ When adding a new API key:
      to .env.example
   4. Update CLAUDE.md if relevant
 
-## Active environment check (CRITICAL)
+**AI kill-switch env vars (FIX-311):** The original single `AI_SUMMARIES_ENABLED`
+env var was split into three per-feature env-level hard kills, each mapping 1:1
+to a DB-backed kill switch in `pipeline_state.kill_switches`:
 
-`.env.local` is the active config. Two saved templates exist alongside it:
+| Env var | DB switch | Covers |
+|---|---|---|
+| `AI_SUMMARIES_ENABLED` | `ai_summaries` | Cached plain-language summaries |
+| `AI_NARRATIVE_ENABLED` | `ai_narrative` | `/api/graph/narrative` and graph-side Anthropic calls |
+| `AI_TAGGER_ENABLED`    | `ai_tagger`    | Enrichment-queue tag generation |
 
-```
-.env.local.dev     → points at local Docker     (NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321)
-.env.local.prod    → points at Supabase Pro     (NEXT_PUBLIC_SUPABASE_URL=https://xsazcoxinpgttgquwvuf.supabase.co)
-.env.local         → whichever was Copy-Item'd most recently
-```
-
-**Before running anything that reads or writes data — including pipelines, scripts,
-RPC calls, or ad-hoc queries — verify which DB is active:**
-
-```powershell
-grep "^NEXT_PUBLIC_SUPABASE_URL" .env.local
-```
-
-If it points at prod (`xsazcoxinpgttgquwvuf.supabase.co`):
-- App reads (`pnpm dev` → localhost:3000) will hit prod data
-- `pnpm data:*` pipelines will write to prod
-- Any seed/backfill/RPC invocation runs against prod
-
-**Confirm with the user before running data-writing scripts (`pnpm data:*`,
-`SELECT * FROM rebuild_*()`, etc.) when `.env.local` points at prod.** Never
-assume the active env matches the user's intent — always check.
-
-Switch with:
-```powershell
-Copy-Item .env.local.dev  .env.local    # → local Docker
-Copy-Item .env.local.prod .env.local    # → production Pro
-```
-
-Pipelines run from `packages/data/` read `.env.local` from the repo root. The
-shell that runs the pipeline inherits whichever env is active at invocation
-time — there is no per-script override.
-
-## Data-state changes vs schema changes
-
-Schema and data are propagated to prod by **separate** mechanisms.
-
-**Schema changes** (anything in `supabase/migrations/`):
-- `supabase migration up --local` applies to local
-- `supabase db push --linked` applies to prod
-- The standard autonomous loop in "Claude ↔ Database Access" handles both
-
-**Data-state changes** (any runtime DB action that writes data):
-- `pnpm data:*` pipelines
-- `SELECT * FROM rebuild_entity_connections();` and similar RPCs
-- Seeds, backfills, `UPDATE`/`INSERT` scripts
-- These ONLY hit the DB pointed at by the active `.env.local` at the moment of invocation
-
-Schema migrations being applied to both DBs does NOT mean derived data exists in
-both. A FIX item that requires a runtime action (rebuild, pipeline re-run, seed)
-must be executed against **each** environment separately:
-
-```
-1. Run against local (.env.local → local Docker)
-2. Verify locally
-3. Switch:  Copy-Item .env.local.prod .env.local
-4. Re-run the same action against prod
-5. Verify against prod
-6. Switch back: Copy-Item .env.local.dev .env.local
-7. Commit trailer:  Verified: local + prod
-```
-
-**Never mark a runtime-action FIX as complete after only running it locally.** If
-you cannot run against prod in this session, leave the FIX open and document
-the prod step as pending.
-
-## Supabase API Keys
-
-Use NEW format keys only:
-```
-NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY   (sb_publishable_xxx)  — client-side
-SUPABASE_SECRET_KEY                    (sb_secret_xxx)       — server-only
-```
-Never use legacy `anon` / `service_role` keys. Never use `NEXT_PUBLIC_` on the secret key.
-
-See `packages/db/CLAUDE.md` for full client documentation.
-
----
-
-## Supabase Clients (Summary)
-
-```
-createBrowserClient()          → 'use client' components
-createServerClient(cookies())  → Server Components, Route Handlers (respects RLS)
-createAdminClient()            → Server only, pipelines only (bypasses RLS)
-```
-
-**Every route/page using `createAdminClient()` must have:**
-```ts
-export const dynamic = "force-dynamic";
-```
-Without this, Next.js calls it at build time → fails on Vercel (secret key unavailable).
-
-**`generateStaticParams`:** use `createClient()` from `@supabase/supabase-js` with publishable key — never `createAdminClient()`.
-
-Import from `@civitics/db`, not directly from `@supabase/supabase-js`.
-
----
-
-## Active App Directory — CRITICAL
-
-```
-apps/civitics/app/       ← ACTIVE — always edit here
-apps/civitics/src/app/   ← INACTIVE — silently ignored by Next.js
-```
+Set any of these to `"false"` to force-off that specific feature regardless of
+the DB switch state. See `packages/db/src/kill-switches.ts` for the env →
+DB-switch layering rules and `packages/data/src/feature-flags.ts` for the
+`FLAGS.AI_*_ENABLED` accessors used by pipelines.
 
 ---
 
@@ -487,127 +544,20 @@ means: 5 waves × 12 subagents (6 tag + 6 summary in parallel per wave) = 30 tag
 
 ---
 
-## votes Table — Actual Column Names
-
-```
-vote      (not vote_cast)
-  Schema CHECK enum (see supabase/migrations/0001_initial_schema.sql):
-  'yes' | 'no' | 'abstain' | 'present' | 'not_voting' | 'paired_yes' | 'paired_no'
-  NOTE: 'not_voting' uses an underscore, NOT a space. Using 'not voting'
-  in queries silently returns zero rows. This bit us in FIX-073.
-voted_at  (not vote_date)
-metadata->>'vote_question'   procedural type string (e.g. "On Passage", "On the Cloture Motion")
-metadata->>'legis_num'       bill number
-```
-
-Do NOT use vote_cast or vote_date — those columns do not exist.
-
-When asserting or filtering on an enum value, treat the schema CHECK
-constraint as ground truth. Not CLAUDE.md, not a prior pipeline's
-normalizer — the constraint. Quick check:
-
-    \d+ votes          -- in psql
-    -- or grep supabase/migrations/0001_initial_schema.sql for CHECK constraints
-
----
-
-## generateStaticParams Rules
-
-```
-ALWAYS use try/catch — return [] on any error
-ALWAYS wrap the query in Promise.race with a 5s timeout
-ALWAYS limit to 50 rows max
-ALWAYS use NEXT_PUBLIC keys only (never createAdminClient)
-NEVER let a build fail due to DB unavailability
-
-Timeout pattern:
-  const { data } = await Promise.race([
-    supabase.from("table").select("col").limit(50),
-    new Promise<{ data: null; error: Error }>((resolve) =>
-      setTimeout(() => resolve({ data: null, error: new Error("timeout") }), 5000)
-    ),
-  ]);
-
-If DB is unavailable: build succeeds with [] → pages render on-demand (ISR)
-```
-
----
-
-## Claude ↔ Database Access
-
-**Default (VS Code Claude Code extension on Windows):** Claude runs migrations,
-builds, commits, and pushes directly from the integrated shell. Local Studio:
-http://127.0.0.1:54323
-
-Standard autonomous loop after a code change with DB impact:
-
-```
-supabase migration up --local                # apply migration against local Docker DB
-supabase db push --linked                    # apply migration against Pro (only after local is green)
-pnpm --filter @civitics/app-civitics build
-git add <files>
-git commit -m "...Fixes: FIX-NNN"
-git push origin main
-pnpm fixes:sync
-git add docs/done.log
-git commit -m "chore(fixes): sync status after FIX-NNN"
-git push origin main
-```
-
-`supabase db push --linked` is the only CLI path to Pro. Never run ad-hoc SQL against Pro without explicit user confirmation.
-
-**Fallback (Cowork or any sandboxed environment):** If the active shell can't
-reach `127.0.0.1:54322` (Docker Supabase), Claude cannot run migrations, git,
-or pnpm locally. In that case:
-
-1. Write the migration file to `supabase/migrations/` and any code changes.
-2. **Emit a ready-to-paste Claude Code prompt** at the end of the session —
-   not a SESSION_LOG ⚠️ bullet — that Craig can drop into the VS Code Claude
-   Code extension to execute the loop above end-to-end. Example format:
-
-   ```
-   Run the standard autonomous loop for FIX-NNN:
-   - supabase migration up --local
-   - build, commit with "Fixes: FIX-NNN", push
-   - pnpm fixes:sync, commit the done.log diff, push
-   ```
-
-   The prompt should be copy-pasteable, reference the specific FIX IDs, and
-   name any files that need staging.
-
----
-
-## Database Safety Rules
-
-Two-tier environment: local Docker Supabase for development, Supabase **Pro** for production.
-
-**Local (dev):**
-- Studio URL: `http://127.0.0.1:54323`
-- DB connection: `postgresql://postgres:postgres@127.0.0.1:54322/postgres`
-- Apply migrations with `supabase migration up --local`
-- Free to run any SQL, including DROP/TRUNCATE/DELETE, for iteration.
-
-**Production (Pro):**
-- Studio URL: `https://supabase.com/dashboard/project/xsazcoxinpgttgquwvuf`
-- Connection details in Vercel env vars (`NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SECRET_KEY`).
-- Apply migrations with `supabase db push --linked` (requires prior `supabase link --project-ref xsazcoxinpgttgquwvuf`).
-- **Never run ad-hoc destructive SQL against Pro** without explicit user confirmation. If the user asks for a data cleanup, confirm the exact query first.
-- PITR retention is 7 days on Pro — mistakes are recoverable but costly. Still verify twice.
-- App is live at `https://civitics-civitics.vercel.app` — any schema change affects real users.
-
----
-
 ## What Not To Do
 
-- Do not store precise user coordinates — always coarsen to district level
-- Do not show blockchain addresses, tx hashes, or network names in UI
-- Do not require credits for official comment submission
+Operational guardrails (mission-tone and product-design "do nots" live in
+`docs/ONBOARDING.md`):
+
 - Do not use client-side Supabase calls that bypass RLS
 - Do not build AI features before the credit/revenue mechanism is live
-- Do not use React Flow for the connection graph — D3 force simulation only
-- Do not use AWS S3 — use Cloudflare R2 (no egress fees)
-- Do not launch a speculative token — COMMONS is utility, earned not bought
-- Do not make the governance app feel like social media
-- Do not skip the smart contract audit before mainnet deployment
 - Do not open-end AI API access without rate limits and credit gating
-- Do not add gas fee prompts — Biconomy handles this silently
+- Do not skip the smart contract audit before mainnet deployment
+- Do not `--no-verify`, skip pre-commit hooks, or `--amend` published commits
+
+---
+
+## Onboarding — see [docs/ONBOARDING.md](docs/ONBOARDING.md)
+
+Mission, North Star, two-product split, monorepo structure, core principles,
+and mission-tone product rules live there. Read once on your way in.
