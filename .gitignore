@@ -3,6 +3,8 @@
 .claude/*
 !.claude/agents/
 !.claude/agents/**
+!.claude/commands/
+!.claude/commands/**
 !.claude/settings.local.json
 
 node_modules/
