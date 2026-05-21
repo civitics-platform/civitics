@@ -419,3 +419,6 @@
 2026-05-20 | FIX-322 | ead54084 | local+prod | feat(audit): new suspicious_elected_tier check + --allow-prod flag
 2026-05-20 | FIX-323 | ead54084 | local+prod | feat(audit): new suspicious_elected_tier check + --allow-prod flag
 2026-05-20 | FIX-305 | b7c8b568 | local-only | feat(tooling): /civitics-commit-push slash command
+2026-05-20 | FIX-306 | 400e759a | local-only | docs(claude-md): restructure root + onboarding split + adjacent stale fixes
+2026-05-20 | FIX-310 | 400e759a | local-only | docs(claude-md): restructure root + onboarding split + adjacent stale fixes
+2026-05-20 | FIX-326 | 400e759a | local-only | docs(claude-md): restructure root + onboarding split + adjacent stale fixes
