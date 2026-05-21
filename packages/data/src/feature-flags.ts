@@ -19,6 +19,12 @@ export const FLAGS = {
   AI_SUMMARIES_ENABLED:
     process.env["AI_SUMMARIES_ENABLED"] !== "false",
 
+  AI_NARRATIVE_ENABLED:
+    process.env["AI_NARRATIVE_ENABLED"] !== "false",
+
+  AI_TAGGER_ENABLED:
+    process.env["AI_TAGGER_ENABLED"] !== "false",
+
   CRON_ENABLED:
     process.env["CRON_DISABLED"] !== "true",
 

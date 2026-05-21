@@ -12,7 +12,7 @@ export const metadata = {
 };
 
 export default function Page() {
-  const aiEnabled = process.env["AI_SUMMARIES_ENABLED"] !== "false";
+  const aiEnabled = process.env["AI_NARRATIVE_ENABLED"] !== "false";
   return (
     <>
       <PageViewTracker entityType="graph" />

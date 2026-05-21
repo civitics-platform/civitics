@@ -747,7 +747,7 @@ async function estimateCost(db: any): Promise<void> {
 
 if (require.main === module) {
   (async () => {
-    if (!checkFlag("AI_SUMMARIES_ENABLED", "ai-tagger")) process.exit(0);
+    if (!checkFlag("AI_TAGGER_ENABLED", "ai-tagger")) process.exit(0);
     const args = process.argv.slice(2);
     const isDryRun = args.includes("--dry-run") || (!args.includes("--confirm"));
     const isConfirmed = args.includes("--confirm");

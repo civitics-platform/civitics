@@ -57,9 +57,9 @@ export type KillSwitchEventInput = {
 
 // ── Env-var mapping ───────────────────────────────────────────────────────────
 //
-// PR 1 keeps the existing env-var names; the AI trio share a single
-// AI_SUMMARIES_ENABLED flag because that's the only AI kill the codebase
-// has today. CRON_DISABLED is inverted ("true" = off) to match the
+// Each AI sub-feature has its own env-level hard kill, matching the
+// granularity of the DB-backed switches and the auto-trip evaluator
+// (FIX-311). CRON_DISABLED is inverted ("true" = off) to match the
 // existing /api/cron/nightly-sync code path.
 
 type EnvRule =
@@ -68,8 +68,8 @@ type EnvRule =
 
 const ENV_RULES: Record<KillSwitchName, EnvRule> = {
   ai_summaries:          { envVar: "AI_SUMMARIES_ENABLED",       off: "false" },
-  ai_narrative:          { envVar: "AI_SUMMARIES_ENABLED",       off: "false" },
-  ai_tagger:             { envVar: "AI_SUMMARIES_ENABLED",       off: "false" },
+  ai_narrative:          { envVar: "AI_NARRATIVE_ENABLED",       off: "false" },
+  ai_tagger:             { envVar: "AI_TAGGER_ENABLED",          off: "false" },
   connection_graph_live: { envVar: "CONNECTIONS_PIPELINE_ENABLED", off: "false" },
   cron:                  { envVar: "CRON_DISABLED",              off: "true"  },
 };

@@ -26,7 +26,7 @@ export interface GraphHeaderProps {
   onShare: () => void;
   onScreenshot: () => void;
   onFullscreen: () => void;
-  /** When false, ✨ Explain is disabled (kill switch via AI_SUMMARIES_ENABLED). Defaults true. */
+  /** When false, ✨ Explain is disabled (kill switch via AI_NARRATIVE_ENABLED). Defaults true. */
   aiEnabled?: boolean;
   /** Loaded-data summary used to gate the viz dropdown by applicability (FIX-129). */
   graphMeta?: VizApplicabilityMeta;

@@ -46,7 +46,7 @@ interface GraphPageProps {
   initialCode?: string;
   /** Serialized snapshot state (old arch or v2 JSON). Stage 2: restore full GraphView. */
   initialState?: Record<string, unknown>;
-  /** AI_SUMMARIES_ENABLED kill switch — read server-side and threaded down. Defaults true. */
+  /** AI_NARRATIVE_ENABLED kill switch — read server-side and threaded down. Defaults true. */
   aiEnabled?: boolean;
 }
 

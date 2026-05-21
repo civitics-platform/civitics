@@ -5,11 +5,12 @@ import { createAiClient, MODELS } from "@civitics/ai";
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
-  // Kill switch: when AI_SUMMARIES_ENABLED=false, refuse before calling
+  // Kill switch: when AI_NARRATIVE_ENABLED=false, refuse before calling
   // Anthropic. Mirrors the guard in /api/officials/[id]/summary and
   // packages/ai/src/client.ts#generateSummary. See FLAGS in
-  // packages/data/src/feature-flags.ts.
-  if (process.env["AI_SUMMARIES_ENABLED"] === "false") {
+  // packages/data/src/feature-flags.ts. Per-feature env vars (FIX-311);
+  // AI_SUMMARIES_ENABLED no longer kills this route.
+  if (process.env["AI_NARRATIVE_ENABLED"] === "false") {
     return NextResponse.json({ disabled: true }, { status: 503 });
   }
 

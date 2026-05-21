@@ -13,8 +13,10 @@
  * Vercel function instance that handled the POST sees the new value
  * immediately. Other instances pick it up on their next cache tick. Layered
  * env-var override (env=false > DB=false > on) means the env var still wins
- * — flipping a DB switch on while CRON_DISABLED=true / AI_SUMMARIES_ENABLED=false
- * is a no-op until the env var is also cleared.
+ * — flipping a DB switch on while its corresponding env hard-kill is set
+ * is a no-op until the env var is also cleared. Env hard-kills are
+ * per-feature (FIX-311): AI_SUMMARIES_ENABLED, AI_NARRATIVE_ENABLED,
+ * AI_TAGGER_ENABLED, CONNECTIONS_PIPELINE_ENABLED, CRON_DISABLED.
  */
 
 export const dynamic = "force-dynamic";
