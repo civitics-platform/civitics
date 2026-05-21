@@ -70,14 +70,21 @@ export function summarize(results: CheckResult[]): AuditReport["summary"] {
   };
 }
 
-export function writeReport(report: AuditReport, outDir: string): {
+export function writeReport(
+  report: AuditReport,
+  outDir: string,
+  allowProd: boolean,
+): {
   jsonPath: string;
   mdPath: string;
 } {
   mkdirSync(outDir, { recursive: true });
   const date = todayISO();
-  const jsonPath = join(outDir, `${date}.json`);
-  const mdPath = join(outDir, `${date}.md`);
+  // FIX-323: suffix goes before the extension so date-based sorting still
+  // works. CI runs pass --allow-prod (via data:audit:ci); local runs don't.
+  const suffix = allowProd ? "" : "-local";
+  const jsonPath = join(outDir, `${date}${suffix}.json`);
+  const mdPath = join(outDir, `${date}${suffix}.md`);
   writeFileSync(jsonPath, formatJSON(report), "utf8");
   writeFileSync(mdPath, formatMarkdown(report), "utf8");
   return { jsonPath, mdPath };

@@ -142,5 +142,43 @@ export const officialsChecks: Check = async ({ query }) => {
       "Active senators/reps with NULL party. Independents should be 'independent', not NULL.",
   });
 
+  // FIX-322: observational check for tier-mapping drift. Surfaces active
+  // officials carrying tier='elected' whose role_title is obviously not an
+  // elected role (USPS execs, institutional "President, [Institute]" forms,
+  // appointed Special Representative / Special Envoy positions). FED_FILTER
+  // is deliberately NOT applied — the USPS rows have no congress_gov
+  // source_id. When this trips at volume, file a follow-up to fix the
+  // upstream ingest; the check itself is the guardrail.
+  const suspiciousElected = await query<{
+    id: string;
+    full_name: string;
+    role_title: string;
+    tier: string;
+  }>(
+    `SELECT id, full_name, role_title, tier
+       FROM officials
+      WHERE is_active = true
+        AND tier = 'elected'
+        AND (
+          (role_title ILIKE '%vice president%'
+           AND role_title NOT ILIKE 'Vice President of the United States%'
+           AND role_title NOT ILIKE 'VPOTUS%')
+          OR role_title ILIKE 'President, %'
+          OR role_title ILIKE 'Special Representative %'
+          OR role_title ILIKE 'Special Envoy %'
+        )
+      ORDER BY full_name
+      LIMIT 20`,
+  );
+  out.push({
+    category: "officials.suspicious_elected_tier",
+    severity: suspiciousElected.length === 0 ? "info" : "error",
+    expected: 0,
+    actual: suspiciousElected.length,
+    sample: suspiciousElected.slice(0, 20),
+    detail:
+      "Active officials with tier='elected' but role_title matches a non-elected pattern (USPS exec, institutional president, special representative/envoy). Surfaces upstream tier-mapping drift; file a follow-up FIX to fix the ingest when this trips at volume.",
+  });
+
   return out;
 };

@@ -32,6 +32,7 @@ interface Args {
   dbUrl: string;
   strict: boolean;
   outDir: string;
+  allowProd: boolean;
 }
 
 // Workspace root, derived from this file's location:
@@ -71,6 +72,7 @@ function parseArgs(argv: string[]): Args {
     "";
   let strict = false;
   let outDir = defaultOutDir();
+  let allowProd = false;
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
     if (a === "--db-url" && args[i + 1]) {
@@ -79,10 +81,12 @@ function parseArgs(argv: string[]): Args {
       strict = true;
     } else if (a === "--out" && args[i + 1]) {
       outDir = args[++i];
+    } else if (a === "--allow-prod") {
+      allowProd = true;
     } else if (a === "--help" || a === "-h") {
       // eslint-disable-next-line no-console
       console.log(
-        "Usage: data:audit [--db-url <url>] [--strict] [--out <dir>]",
+        "Usage: data:audit [--db-url <url>] [--strict] [--out <dir>] [--allow-prod]",
       );
       process.exit(0);
     }
@@ -109,7 +113,7 @@ function parseArgs(argv: string[]): Args {
     );
     process.exit(2);
   }
-  return { dbUrl, strict, outDir };
+  return { dbUrl, strict, outDir, allowProd };
 }
 
 function hostFromUrl(url: string): string {
@@ -121,7 +125,7 @@ function hostFromUrl(url: string): string {
 }
 
 async function main(): Promise<void> {
-  const { dbUrl, strict, outDir } = parseArgs(process.argv);
+  const { dbUrl, strict, outDir, allowProd } = parseArgs(process.argv);
   const start = Date.now();
   // Strip sslmode from the URL so we can set SSL options ourselves. New pg
   // versions treat URL sslmode=require as verify-full, which fails against
@@ -167,7 +171,7 @@ async function main(): Promise<void> {
     summary: summarize(all),
   };
 
-  const { jsonPath, mdPath } = writeReport(report, outDir);
+  const { jsonPath, mdPath } = writeReport(report, outDir, allowProd);
   printStdoutTable(report);
   // eslint-disable-next-line no-console
   console.log(`\nWrote: ${jsonPath}\nWrote: ${mdPath}`);
