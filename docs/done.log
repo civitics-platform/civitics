@@ -416,3 +416,5 @@
 2026-05-20 | FIX-303 | 7b3ac306 | local+prod | fix(agencies): single RPC + functional index for per-agency proposal counts
 2026-05-20 | FIX-304 | 00041132 | local-only | fix(env): symlink apps/civitics/.env.local to root + split AI kill switches per-feature
 2026-05-20 | FIX-311 | 00041132 | local-only | fix(env): symlink apps/civitics/.env.local to root + split AI kill switches per-feature
+2026-05-20 | FIX-322 | ead54084 | local+prod | feat(audit): new suspicious_elected_tier check + --allow-prod flag
+2026-05-20 | FIX-323 | ead54084 | local+prod | feat(audit): new suspicious_elected_tier check + --allow-prod flag
