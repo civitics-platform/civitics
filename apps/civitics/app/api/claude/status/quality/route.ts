@@ -23,10 +23,10 @@ import { withDbTimeout } from "@/lib/supabase-check";
 import {
   computeStatusPayload,
   readStatusSnapshot,
+  SNAPSHOT_STALE_MS,
+  SNAPSHOT_FALLBACK_TIMEOUT_MS,
   type StatusSnapshotRow,
 } from "../_lib/status-snapshot";
-
-const SNAPSHOT_STALE_MS = 30 * 60 * 1000;
 
 export async function GET(request: Request) {
   const ip = getIp(request);
@@ -52,25 +52,63 @@ export async function GET(request: Request) {
 
   let payload;
   let snapshotQueryTimeMs: number | null = null;
+  let fetchedAt: string = now.toISOString();
+  let servedStale = false;
   if (fresh && snapshot) {
     payload = snapshot.payload;
     snapshotQueryTimeMs = snapshot.query_time_ms;
+    fetchedAt = snapshot.fetched_at;
   } else {
-    console.warn(
-      "[status/quality] snapshot missing or stale, falling back to live recompute",
-      snapshot ? { fetched_at: snapshot.fetched_at } : { snapshot: null },
-    );
-    const live = await computeStatusPayload(db);
-    payload = live.payload;
-    snapshotQueryTimeMs = live.query_time_ms;
+    // FIX-327: cap live-compute fallback. See /core route for context.
+    const TIMEOUT = Symbol("status-fallback-timeout");
+    const result = await Promise.race<
+      Awaited<ReturnType<typeof computeStatusPayload>> | typeof TIMEOUT
+    >([
+      computeStatusPayload(db),
+      new Promise<typeof TIMEOUT>((resolve) =>
+        setTimeout(() => resolve(TIMEOUT), SNAPSHOT_FALLBACK_TIMEOUT_MS),
+      ),
+    ]);
+    if (result === TIMEOUT) {
+      console.warn(
+        "[status/quality] live-compute fallback timed out after",
+        SNAPSHOT_FALLBACK_TIMEOUT_MS,
+        "ms",
+        snapshot ? { fetched_at: snapshot.fetched_at, served_stale: true } : { snapshot: null },
+      );
+      if (!snapshot) {
+        return NextResponse.json(
+          { error: "snapshot unavailable" },
+          { status: 503 },
+        );
+      }
+      payload = snapshot.payload;
+      snapshotQueryTimeMs = snapshot.query_time_ms;
+      fetchedAt = snapshot.fetched_at;
+      servedStale = true;
+    } else {
+      console.warn(
+        "[status/quality] snapshot missing or stale, served live recompute",
+        snapshot ? { fetched_at: snapshot.fetched_at } : { snapshot: null },
+      );
+      payload = result.payload;
+      snapshotQueryTimeMs = result.query_time_ms;
+    }
   }
+
+  const snapshotAgeMinutes =
+    fresh || servedStale
+      ? Math.floor((Date.now() - new Date(fetchedAt).getTime()) / 60_000)
+      : null;
 
   return NextResponse.json({
     meta: {
       query_time_ms: Date.now() - t0,
       snapshot_compute_ms: snapshotQueryTimeMs,
-      fetched_at: fresh && snapshot ? snapshot.fetched_at : now.toISOString(),
-      from_snapshot: !!(fresh && snapshot),
+      fetched_at: fetchedAt,
+      from_snapshot: !!(fresh && snapshot) || servedStale,
+      snapshot_age_minutes: snapshotAgeMinutes,
+      served_stale: servedStale,
       timestamp: now.toISOString(),
     },
     quality: payload.quality,

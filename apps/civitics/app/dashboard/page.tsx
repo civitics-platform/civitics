@@ -18,11 +18,11 @@ import { PageViewTracker } from "../components/PageViewTracker";
 import {
   computeStatusPayload,
   readStatusSnapshot,
+  SNAPSHOT_STALE_MS,
+  SNAPSHOT_FALLBACK_TIMEOUT_MS,
 } from "../api/claude/status/_lib/status-snapshot";
 import { withDbTimeout } from "@/lib/supabase-check";
 import type { StatusData } from "./useDashboardData";
-
-const SNAPSHOT_STALE_MS = 30 * 60 * 1000;
 
 export const metadata = { title: "Platform Transparency | Civitics" };
 
@@ -108,19 +108,52 @@ async function getInitialStatus(): Promise<StatusData | null> {
 
     let payload;
     let computeMs: number;
+    let timestamp: string;
     if (fresh && snapshot) {
       payload = snapshot.payload;
       computeMs = snapshot.query_time_ms;
+      timestamp = snapshot.fetched_at;
     } else {
-      const live = await computeStatusPayload(db);
-      payload = live.payload;
-      computeMs = live.query_time_ms;
+      // FIX-327: cap live-compute fallback at 5 s. Prod observed
+      // computeStatusPayload taking 30+ s — unbounded fallback turned every
+      // stale-snapshot SSR into a 30-s hang. On timeout, serve the
+      // last-known-good snapshot if we have one; only return null when
+      // there is no snapshot row at all.
+      const TIMEOUT = Symbol("status-fallback-timeout");
+      const result = await Promise.race<
+        Awaited<ReturnType<typeof computeStatusPayload>> | typeof TIMEOUT
+      >([
+        computeStatusPayload(db),
+        new Promise<typeof TIMEOUT>((resolve) =>
+          setTimeout(() => resolve(TIMEOUT), SNAPSHOT_FALLBACK_TIMEOUT_MS),
+        ),
+      ]);
+      if (result === TIMEOUT) {
+        console.warn(
+          "[dashboard.getInitialStatus] live-compute fallback timed out after",
+          SNAPSHOT_FALLBACK_TIMEOUT_MS,
+          "ms — serving stale snapshot",
+          snapshot ? { fetched_at: snapshot.fetched_at } : { snapshot: null },
+        );
+        if (!snapshot) return null;
+        payload = snapshot.payload;
+        computeMs = snapshot.query_time_ms;
+        timestamp = snapshot.fetched_at;
+      } else {
+        console.warn(
+          "[dashboard.getInitialStatus] snapshot missing or stale, served live recompute",
+          snapshot ? { fetched_at: snapshot.fetched_at } : { snapshot: null },
+        );
+        payload = result.payload;
+        computeMs = result.query_time_ms;
+        timestamp = now.toISOString();
+      }
     }
 
     return {
       meta: {
         query_time_ms: computeMs,
-        timestamp: fresh && snapshot ? snapshot.fetched_at : now.toISOString(),
+        timestamp,
       },
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       version: payload.version as any,

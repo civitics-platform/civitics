@@ -23,9 +23,14 @@ import {
 } from "@civitics/db";
 import { NextResponse } from "next/server";
 import { withDbTimeout } from "@/lib/supabase-check";
+import {
+  SNAPSHOT_STALE_MS,
+  SNAPSHOT_FALLBACK_TIMEOUT_MS,
+} from "../../claude/status/_lib/status-snapshot";
 
-// Snapshot is considered stale after two missed 10-min cron ticks.
-const SNAPSHOT_STALE_MS = 20 * 60 * 1000;
+// platform_usage_snapshot is written by the same /api/cron/platform-snapshot
+// route as status_snapshot, so it inherits the same staleness window
+// (FIX-327 — bumped from 20 min to 4 h to absorb GHA cron drift).
 
 // Edge cache: snapshot only changes every 10 min; 60s s-maxage absorbs the
 // dashboard-load burst without ever serving meaningfully stale data.
@@ -67,14 +72,39 @@ export async function GET() {
       });
     }
 
-    // Fall back to live recompute. Slower path, but it's the safety net
-    // for cron outages, so we'd rather respond slow than 500.
+    // FIX-327: cap live-compute fallback at 5 s. On timeout, serve the
+    // stale snapshot if we have one; only 503 when there is no snapshot.
+    const TIMEOUT = Symbol("usage-fallback-timeout");
+    const result = await Promise.race<
+      Awaited<ReturnType<typeof computePlatformUsagePayload>> | typeof TIMEOUT
+    >([
+      computePlatformUsagePayload(db),
+      new Promise<typeof TIMEOUT>((resolve) =>
+        setTimeout(() => resolve(TIMEOUT), SNAPSHOT_FALLBACK_TIMEOUT_MS),
+      ),
+    ]);
+    if (result === TIMEOUT) {
+      console.warn(
+        "[platform/usage] live-compute fallback timed out after",
+        SNAPSHOT_FALLBACK_TIMEOUT_MS,
+        "ms",
+        snapshot ? { fetched_at: snapshot.fetched_at, served_stale: true } : { snapshot: null },
+      );
+      if (snapshot) {
+        return NextResponse.json(snapshot.payload, {
+          headers: { "Cache-Control": CACHE_HEADER },
+        });
+      }
+      return NextResponse.json(
+        { served_stale: false, error: "snapshot unavailable" },
+        { status: 503 },
+      );
+    }
     console.warn(
-      "[platform/usage] snapshot missing or stale, falling back to live recompute",
+      "[platform/usage] snapshot missing or stale, served live recompute",
       snapshot ? { fetched_at: snapshot.fetched_at } : { snapshot: null },
     );
-    const live = await computePlatformUsagePayload(db);
-    return NextResponse.json(live.payload, {
+    return NextResponse.json(result.payload, {
       headers: { "Cache-Control": CACHE_HEADER },
     });
   } catch (err) {

@@ -35,6 +35,18 @@ import {
   getChord,
 } from "./sections";
 
+// ── Shared staleness / timeout constants (FIX-327) ────────────────────────────
+// Hoisted here so /dashboard SSR, /api/claude/status/{core,quality}, and
+// /api/platform/usage all read the same numbers. Tuning history:
+//   - FIX-297 set 30 min (three 10-min cron cycles).
+//   - Prod observation 2026-05-22: GHA */10 cron drifts to 1h-3h35m gaps
+//     under scheduler load — 30 min flipped most pageloads to a 30-s live
+//     recompute path. Bumped to 4 h (covers 9 of last 10 observed gaps).
+// The fallback cap was unbounded — any cold-cache stale-snapshot hit blocked
+// SSR for whatever computeStatusPayload actually took (30+ s on prod).
+export const SNAPSHOT_STALE_MS = 4 * 60 * 60 * 1000;
+export const SNAPSHOT_FALLBACK_TIMEOUT_MS = 5000;
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type PartialError = { error: string; partial: true };
