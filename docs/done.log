@@ -426,3 +426,4 @@
 2026-05-22 | FIX-329 | 85e11fe0 | local-only | fix(homepage): drop redundant console.time calls from timed() helper
 2026-05-22 | FIX-328 | 0f24fe01 | local+prod | feat(ops): per-section timings on status_snapshot — surface the 30s long pole
 2026-05-23 | FIX-331 | a7ef2e5d | local+prod | perf(db): tighten autovacuum on entity_connections + ANALYZE per chunk rebuild
+2026-05-23 | FIX-330 | 5a631ad8 | local+prod | feat(homepage): materialize per-agency proposal counts to homepage_agency_counts_mv
