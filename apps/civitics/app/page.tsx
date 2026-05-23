@@ -286,15 +286,12 @@ export default async function HomePage({
   // pnpm dev / Vercel function logs.
   const perf: { phase: string; ms: number }[] = [];
   async function timed<T>(phase: string, fn: () => Promise<T>): Promise<T> {
-    const label = `home/${phase}`;
     const t0 = Date.now();
-    console.time(label);
     try {
       return await fn();
     } finally {
       const ms = Date.now() - t0;
       perf.push({ phase, ms });
-      console.timeEnd(label);
     }
   }
 
