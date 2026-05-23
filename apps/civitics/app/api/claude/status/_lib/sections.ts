@@ -2,10 +2,29 @@
 // Each helper does one logical section of the platform health response.
 // Errors are wrapped with `section()` at the call site, never thrown out.
 
-import { createAdminClient, getAnthropicUsage } from "@civitics/db";
+import {
+  createAdminClient,
+  getAnthropicUsage,
+  type AnthropicUsageResponse,
+} from "@civitics/db";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type Db = ReturnType<typeof createAdminClient> & Record<string, any>;
+
+// FIX-332: Shared resolved RPC / API call shapes hoisted out of section scope
+// in computeStatusPayload so multiple sections can await one promise instead
+// of each re-issuing the same call. The {data,error} shape mirrors the raw
+// Supabase RPC return; callers fall back to issuing the call themselves when
+// the optional promise is undefined (matters for tests + future surfaces).
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type SharedConnTypeCountsPromise = Promise<{ data: any; error: any }>;
+export type SharedAnthropicUsagePromise = Promise<AnthropicUsageResponse>;
+
+// FIX-332: per-op timing collector. Same shape as the sectionTimes record
+// computeStatusPayload threads through `timed()` at section level — the
+// helpers below write under prefixed keys (e.g. `self_tests:warren_search`,
+// `derived_drift:donation`) into the same map.
+export type TimingCollect = (key: string, ms: number) => void;
 
 export const CONNECTION_TYPES = [
   "donation",
@@ -154,9 +173,14 @@ export async function getDatabase(db: Db, yesterday: string) {
 // total; we still emit every CONNECTION_TYPES entry (zero-filled if the
 // RPC didn't return a row for it) so the dashboard's per-type bars don't
 // disappear when a type has no edges yet.
-export async function getConnectionTypes(db: Db) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await (db as any).rpc("get_connection_type_counts");
+export async function getConnectionTypes(
+  db: Db,
+  sharedConnTypeCountsPromise?: SharedConnTypeCountsPromise,
+) {
+  const { data, error } = sharedConnTypeCountsPromise
+    ? await sharedConnTypeCountsPromise
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    : await (db as any).rpc("get_connection_type_counts");
   if (error) throw new Error(error.message ?? "get_connection_type_counts RPC error");
 
   type Row = { connection_type: string; total: number | string };
@@ -258,8 +282,14 @@ export async function getPipelines(db: Db) {
 }
 
 // ── 5. AI costs ──────────────────────────────────────────────────────────────
-export async function getAiCosts(db: Db, monthStart: string) {
-  const adminResult = await getAnthropicUsage();
+export async function getAiCosts(
+  db: Db,
+  monthStart: string,
+  sharedAnthropicUsagePromise?: SharedAnthropicUsagePromise,
+) {
+  const adminResult = sharedAnthropicUsagePromise
+    ? await sharedAnthropicUsagePromise
+    : await getAnthropicUsage();
 
   if (adminResult.source === "api") {
     const { this_month, budget } = adminResult;
@@ -471,16 +501,50 @@ const DRIFT_RULES = [
 // get_connection_type_counts() RPC (FIX-298), not 11 sequential count:'exact'
 // scans of entity_connections. Same shape as getConnectionTypes above —
 // one round-trip instead of N, on a 5.1M-row table.
-async function checkDerivedDrift(db: Db) {
+//
+// FIX-332: accepts the shared get_connection_type_counts() promise so
+// computeStatusPayload can dedupe with getConnectionTypes; accepts an
+// optional timing collector so each per-rule source count and the
+// derived-counts RPC each land under their own `derived_drift:<key>` entry
+// in status_snapshot.section_times.
+async function checkDerivedDrift(
+  db: Db,
+  opts?: {
+    sharedConnTypeCountsPromise?: SharedConnTypeCountsPromise;
+    collect?: TimingCollect;
+  },
+) {
+  const collect = opts?.collect;
+  const timed = async <T>(
+    key: string,
+    fn: () => PromiseLike<T>,
+  ): Promise<T> => {
+    if (!collect) return await fn();
+    const ts = Date.now();
+    try {
+      return await fn();
+    } finally {
+      collect(key, Date.now() - ts);
+    }
+  };
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const derivedPromise: Promise<{ data: any; error: any }> =
+    opts?.sharedConnTypeCountsPromise ??
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (db as any).rpc("get_connection_type_counts");
+
   const [sourceCounts, derivedRes] = await Promise.all([
     Promise.all(
       DRIFT_RULES.map((r) =>
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        r.source(db).then((res: any) => res.count ?? 0),
+        timed(`derived_drift:${r.type}`, async () => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const res: any = await r.source(db);
+          return (res.count ?? 0) as number;
+        }),
       ),
     ),
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (db as any).rpc("get_connection_type_counts"),
+    timed("derived_drift:get_connection_type_counts", () => derivedPromise),
   ]);
   if (derivedRes.error)
     throw new Error(derivedRes.error.message ?? "get_connection_type_counts RPC error");
@@ -500,12 +564,41 @@ async function checkDerivedDrift(db: Db) {
 }
 
 // ── 7. Self-tests ────────────────────────────────────────────────────────────
-export async function getSelfTests(db: Db) {
-  // Step 1: resolve Warren (needed for two checks)
-  const warrenSearch = await db.rpc("search_graph_entities", {
-    q: "warren",
-    lim: 5,
-  });
+//
+// FIX-332: accepts shared promises so the dashboard cron's two duplicate
+// callers (`get_connection_type_counts` via checkDerivedDrift, and
+// `getAnthropicUsage` via the parallel block) award one network round-trip
+// each instead of two. The `collect` callback writes per-sub-op timings
+// under `self_tests:<op>` and `derived_drift:<rule>` keys into the same
+// section_times JSONB the section-level timed() wrapper uses — diagnostic
+// drilldown without a schema change.
+export async function getSelfTests(
+  db: Db,
+  opts?: {
+    sharedConnTypeCountsPromise?: SharedConnTypeCountsPromise;
+    sharedAnthropicUsagePromise?: SharedAnthropicUsagePromise;
+    collect?: TimingCollect;
+  },
+) {
+  const collect = opts?.collect;
+  const timed = async <T>(
+    key: string,
+    fn: () => PromiseLike<T>,
+  ): Promise<T> => {
+    if (!collect) return await fn();
+    const ts = Date.now();
+    try {
+      return await fn();
+    } finally {
+      collect(key, Date.now() - ts);
+    }
+  };
+
+  // Step 1: resolve Warren (needed for two checks). Sequential — every
+  // downstream check waits on this, so it floors the section wall-clock.
+  const warrenSearch = await timed("self_tests:warren_search", () =>
+    db.rpc("search_graph_entities", { q: "warren", lim: 5 }),
+  );
   type SearchRow = { id: string; label: string; entity_type: string };
   const warrenRows = (warrenSearch.data ?? []) as SearchRow[];
   const warrenEntity = warrenRows.find(
@@ -523,30 +616,43 @@ export async function getSelfTests(db: Db) {
     voteYesTotal,
     drift,
   ] = await Promise.all([
-    db.rpc("chord_industry_flows"),
+    timed("self_tests:chord_industry_flows", () => db.rpc("chord_industry_flows")),
 
     warrenId
-      ? db
-          .from("entity_connections")
-          .select("*", { count: "exact", head: true })
-          .eq("from_id", warrenId)
-          .eq("connection_type", "vote_yes")
+      ? timed("self_tests:warren_votes_count", () =>
+          db
+            .from("entity_connections")
+            .select("*", { count: "exact", head: true })
+            .eq("from_id", warrenId)
+            .eq("connection_type", "vote_yes"),
+        )
       : Promise.resolve({ count: null }),
 
-    getAnthropicUsage(),
+    timed("self_tests:anthropic_usage", () =>
+      opts?.sharedAnthropicUsagePromise ?? getAnthropicUsage(),
+    ),
 
-    db
-      .from("pipeline_state")
-      .select("value")
-      .eq("key", "cron_last_run")
-      .maybeSingle(),
+    timed("self_tests:cron_state", () =>
+      db
+        .from("pipeline_state")
+        .select("value")
+        .eq("key", "cron_last_run")
+        .maybeSingle(),
+    ),
 
-    db
-      .from("entity_connections")
-      .select("*", { count: "exact", head: true })
-      .eq("connection_type", "vote_yes"),
+    timed("self_tests:vote_yes_count", () =>
+      db
+        .from("entity_connections")
+        .select("*", { count: "exact", head: true })
+        .eq("connection_type", "vote_yes"),
+    ),
 
-    checkDerivedDrift(db),
+    timed("self_tests:derived_drift", () =>
+      checkDerivedDrift(db, {
+        sharedConnTypeCountsPromise: opts?.sharedConnTypeCountsPromise,
+        collect,
+      }),
+    ),
   ]);
 
   const monthlySpent =

@@ -19,6 +19,7 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { getAnthropicUsage } from "@civitics/db";
 import {
   type Db,
   section,
@@ -111,6 +112,11 @@ export async function computeStatusPayload(
   // throws after 25 s matters just as much as one that returns slowly.
   // Lives here (not in section()) so the section helper's signature stays
   // the same across sections.ts's callers.
+  //
+  // FIX-332: same sectionTimes map is shared with the per-sub-op `collect`
+  // callback passed into getSelfTests / checkDerivedDrift below — the
+  // sub-op writes land under `self_tests:<op>` / `derived_drift:<rule>`
+  // prefixes alongside the section-level keys, single source of truth.
   const sectionTimes: Record<string, number> = {};
   const timed = async <T>(name: string, fn: () => Promise<T>): Promise<T> => {
     const ts = Date.now();
@@ -120,6 +126,22 @@ export async function computeStatusPayload(
       sectionTimes[name] = Date.now() - ts;
     }
   };
+  const collect = (key: string, ms: number) => {
+    sectionTimes[key] = ms;
+  };
+
+  // FIX-332: hoist expensive calls that multiple sections were issuing
+  // independently. Each runs once per payload; consumers `await` the
+  // shared promise. `.then(r => r)` coerces the PostgrestBuilder to a
+  // native Promise so multiple awaits resolve to the same value rather
+  // than re-issuing the request — same pattern sections.ts already uses
+  // for get_quality_counts.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const sharedConnTypeCountsPromise = (dbAsDb as any)
+    .rpc("get_connection_type_counts")
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .then((r: any) => r);
+  const sharedAnthropicUsagePromise = getAnthropicUsage();
 
   const [
     sectionVersion,
@@ -136,14 +158,24 @@ export async function computeStatusPayload(
   ] = await Promise.all([
     section(() => timed("version", () => getVersion(dbAsDb))),
     section(() => timed("database", () => getDatabase(dbAsDb, yesterday))),
-    section(() => timed("connection_types", () => getConnectionTypes(dbAsDb))),
+    section(() => timed("connection_types", () =>
+      getConnectionTypes(dbAsDb, sharedConnTypeCountsPromise),
+    )),
     section(() => timed("pipelines", () => getPipelines(dbAsDb))),
-    section(() => timed("ai_costs", () => getAiCosts(dbAsDb, monthStart))),
+    section(() => timed("ai_costs", () =>
+      getAiCosts(dbAsDb, monthStart, sharedAnthropicUsagePromise),
+    )),
     section(() => timed("activity", () => getActivity(dbAsDb, yesterday))),
     section(() => timed("resource_warnings", () => getResourceWarnings(dbAsDb))),
     section(() => timed("officials_breakdown", () => getOfficialsBreakdown(dbAsDb))),
     section(() => timed("quality", () => getQuality(dbAsDb))),
-    section(() => timed("self_tests", () => getSelfTests(dbAsDb))),
+    section(() => timed("self_tests", () =>
+      getSelfTests(dbAsDb, {
+        sharedConnTypeCountsPromise,
+        sharedAnthropicUsagePromise,
+        collect,
+      }),
+    )),
     section(() => timed("chord", () => getChord(dbAsDb))),
   ]);
 
