@@ -284,7 +284,15 @@ fast.
   `apps/civitics/src/lib/supabase-check.ts`).
 - Always have a live-compute fallback for staleness/missing. Threshold
   proportional to refresh cadence:
-  - **10-min cron** → 30 min staleness threshold (three cycles of slack).
+  - **10-min cron (Vercel-internal / actually-honored cadence)** → 30 min
+    staleness threshold (three cycles of slack).
+  - **10-min cron (GHA-driven)** → 4 h staleness threshold. GHA
+    `*/10 * * * *` drifts to 1–3.5 h gaps under platform load (confirmed
+    2026-05-22, FIX-327). The `status_snapshot` and `platform_usage_snapshot`
+    consumers all use the 4 h threshold for this reason. If a consumer
+    needs sub-30-min freshness, the cron driver cannot be GHA — switch to
+    Vercel Pro (`vercel.json` honors sub-daily crons) or use an external
+    scheduler that actually honors its cadence.
   - **Nightly** → 4 h threshold (catches a missed run window before page
     rendering shows yesterday's data).
 - **Single-row MV reads** use `SELECT * FROM <mv> LIMIT 1`.

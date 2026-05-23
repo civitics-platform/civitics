@@ -72,6 +72,10 @@ export type StatusPayload = {
 export type StatusComputeResult = {
   payload: StatusPayload;
   query_time_ms: number;
+  // FIX-328: per-section wall-clock ms, keyed by the section identifier
+  // (`version`, `database`, …). Captured by the inline timed() wrapper in
+  // computeStatusPayload, persisted to status_snapshot.section_times.
+  section_times: Record<string, number>;
   // Non-null when any section returned a {partial:true} result. Lists the
   // section keys that failed. Mirrors platform-snapshot's `error: string|null`
   // convention.
@@ -82,6 +86,7 @@ export type StatusSnapshotRow = {
   fetched_at: string;
   query_time_ms: number;
   payload: StatusPayload;
+  section_times: Record<string, number> | null;
   error: string | null;
 };
 
@@ -101,6 +106,21 @@ export async function computeStatusPayload(
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
   const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
 
+  // FIX-328: per-section wall-clock ms. Wraps each section() call so the
+  // timing fires regardless of success/partial-failure — a section that
+  // throws after 25 s matters just as much as one that returns slowly.
+  // Lives here (not in section()) so the section helper's signature stays
+  // the same across sections.ts's callers.
+  const sectionTimes: Record<string, number> = {};
+  const timed = async <T>(name: string, fn: () => Promise<T>): Promise<T> => {
+    const ts = Date.now();
+    try {
+      return await fn();
+    } finally {
+      sectionTimes[name] = Date.now() - ts;
+    }
+  };
+
   const [
     sectionVersion,
     sectionDatabase,
@@ -114,17 +134,17 @@ export async function computeStatusPayload(
     sectionSelfTests,
     sectionChord,
   ] = await Promise.all([
-    section(() => getVersion(dbAsDb)),
-    section(() => getDatabase(dbAsDb, yesterday)),
-    section(() => getConnectionTypes(dbAsDb)),
-    section(() => getPipelines(dbAsDb)),
-    section(() => getAiCosts(dbAsDb, monthStart)),
-    section(() => getActivity(dbAsDb, yesterday)),
-    section(() => getResourceWarnings(dbAsDb)),
-    section(() => getOfficialsBreakdown(dbAsDb)),
-    section(() => getQuality(dbAsDb)),
-    section(() => getSelfTests(dbAsDb)),
-    section(() => getChord(dbAsDb)),
+    section(() => timed("version", () => getVersion(dbAsDb))),
+    section(() => timed("database", () => getDatabase(dbAsDb, yesterday))),
+    section(() => timed("connection_types", () => getConnectionTypes(dbAsDb))),
+    section(() => timed("pipelines", () => getPipelines(dbAsDb))),
+    section(() => timed("ai_costs", () => getAiCosts(dbAsDb, monthStart))),
+    section(() => timed("activity", () => getActivity(dbAsDb, yesterday))),
+    section(() => timed("resource_warnings", () => getResourceWarnings(dbAsDb))),
+    section(() => timed("officials_breakdown", () => getOfficialsBreakdown(dbAsDb))),
+    section(() => timed("quality", () => getQuality(dbAsDb))),
+    section(() => timed("self_tests", () => getSelfTests(dbAsDb))),
+    section(() => timed("chord", () => getChord(dbAsDb))),
   ]);
 
   // ── Merged payload assembly ─────────────────────────────────────────────────
@@ -158,6 +178,7 @@ export async function computeStatusPayload(
   return {
     payload,
     query_time_ms: Date.now() - t0,
+    section_times: sectionTimes,
     error: failedSections.length > 0 ? `partial: ${failedSections.join(", ")}` : null,
   };
 }
@@ -175,6 +196,7 @@ export async function writeStatusSnapshot(
   await anyDb.from("status_snapshot").insert({
     query_time_ms: result.query_time_ms,
     payload: result.payload,
+    section_times: result.section_times,
     error: result.error,
   });
 
@@ -191,7 +213,7 @@ export async function readStatusSnapshot(
   const anyDb = db as any;
   const { data } = await anyDb
     .from("status_snapshot")
-    .select("fetched_at, query_time_ms, payload, error")
+    .select("fetched_at, query_time_ms, payload, section_times, error")
     .order("fetched_at", { ascending: false })
     .limit(1)
     .maybeSingle();
