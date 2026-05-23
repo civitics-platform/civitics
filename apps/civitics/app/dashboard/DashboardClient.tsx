@@ -601,9 +601,6 @@ function DataHealthRow({
               color="blue"
             />
           )}
-          {def.key === "fec_bulk" && q?.industry_tags.note && (
-            <p className="text-xs text-gray-500 -mt-2">{q.industry_tags.note}</p>
-          )}
           {def.key === "ai_summaries" && dbResolved && (
             <DataQualityBar
               label="AI summaries cached"

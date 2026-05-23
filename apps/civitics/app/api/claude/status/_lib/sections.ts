@@ -305,56 +305,35 @@ export async function getAiCosts(db: Db, monthStart: string) {
 }
 
 // ── 6. Data quality checks ───────────────────────────────────────────────────
+// FIX-333: 8-roundtrip fan-out collapsed into one get_quality_counts() RPC +
+// the unchanged Congress-members SELECT (~535 rows, JSONB only). The RPC
+// returns vote_category_counts as a JSONB map plus three BIGINT scalars; the
+// tagged_pacs count is now computed over the full PAC population (the prior
+// LIMIT-2000 sampling bias is gone).
 export async function getQuality(db: Db) {
-  const [congressMembers, voteCategoryCounts, totalPacsRes, voteConnTotal] =
-    await Promise.all([
-      db
-        .from("officials")
-        .select("source_ids, metadata")
-        .in("role_title", ["Senator", "Representative"]),
+  type QualityCountsRow = {
+    vote_category_counts: Record<string, number> | null;
+    total_pacs: number | string | null;
+    tagged_pacs: number | string | null;
+    vote_connection_total: number | string | null;
+  };
 
-      Promise.all(
-        VOTE_CATEGORIES.map((cat) =>
-          db
-            .from("proposals")
-            .select("*", { count: "exact", head: true })
-            .eq("vote_category", cat)
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            .then((r: any) => ({ vote_category: cat, count: r.count ?? 0 })),
-        ),
-      ),
+  const [congressMembers, qualityCountsRes] = await Promise.all([
+    db
+      .from("officials")
+      .select("source_ids, metadata")
+      .in("role_title", ["Senator", "Representative"]),
 
-      db
-        .from("financial_entities")
-        .select("*", { count: "exact", head: true })
-        .eq("entity_type", "pac"),
-
-      db
-        .from("entity_connections")
-        .select("*", { count: "exact", head: true })
-        .in("connection_type", [
-          "vote_yes",
-          "vote_no",
-          "vote_abstain",
-          "nomination_vote_yes",
-          "nomination_vote_no",
-        ]),
-    ]);
-
-  const pacIdRows = await db
-    .from("financial_entities")
-    .select("id")
-    .eq("entity_type", "pac")
-    .limit(2000);
-  const pacIds: string[] = (pacIdRows.data ?? []).map(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (r: any) => r.id as string,
-  );
-  const { count: taggedPacs } = await db
-    .from("entity_tags")
-    .select("entity_id", { count: "exact", head: true })
-    .in("entity_id", pacIds)
-    .eq("tag_category", "industry");
+    (db as any).rpc("get_quality_counts").then((r: any) => r),
+  ]);
+
+  const counts: QualityCountsRow = (qualityCountsRes.data?.[0] ??
+    {}) as QualityCountsRow;
+  const voteCategoryCountsMap = counts.vote_category_counts ?? {};
+  const totalPacs = Number(counts.total_pacs ?? 0);
+  const taggedPacs = Number(counts.tagged_pacs ?? 0);
+  const voteConnTotal = Number(counts.vote_connection_total ?? 0);
 
   type CongressRow = {
     source_ids: Record<string, string> | null;
@@ -368,7 +347,6 @@ export async function getQuality(db: Db) {
   const missing_state = allCongress.filter(
     (r) => !r.metadata?.["state"] && !r.metadata?.["state_abbr"],
   ).length;
-  const totalPacs = totalPacsRes.count ?? 0;
 
   return {
     fec_coverage: {
@@ -377,19 +355,16 @@ export async function getQuality(db: Db) {
       pct: total ? Math.round((has_fec / total) * 1000) / 10 : 0,
     },
     missing_state,
-    vote_categories: (
-      voteCategoryCounts as { vote_category: string; count: number }[]
-    ).filter((r) => r.count > 0),
+    vote_categories: VOTE_CATEGORIES.map((cat) => ({
+      vote_category: cat,
+      count: voteCategoryCountsMap[cat] ?? 0,
+    })).filter((r) => r.count > 0),
     industry_tags: {
       total: totalPacs,
-      tagged: taggedPacs ?? 0,
-      pct: totalPacs
-        ? Math.round(((taggedPacs ?? 0) / totalPacs) * 1000) / 10
-        : 0,
-      note:
-        pacIds.length >= 2000 ? "tagged count capped at first 2000 PACs" : undefined,
+      tagged: taggedPacs,
+      pct: totalPacs ? Math.round((taggedPacs / totalPacs) * 1000) / 10 : 0,
     },
-    vote_connections: voteConnTotal.count ?? 0,
+    vote_connections: voteConnTotal,
   };
 }
 

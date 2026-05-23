@@ -79,7 +79,7 @@ export type QualityData = {
   fec_coverage: { total: number; has_fec: number; pct: number };
   missing_state: number;
   vote_categories: Array<{ vote_category: string; count: number }>;
-  industry_tags: { total: number; tagged: number; pct: number; note?: string };
+  industry_tags: { total: number; tagged: number; pct: number };
   vote_connections: number;
 };
 
