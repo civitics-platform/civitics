@@ -424,3 +424,4 @@
 2026-05-20 | FIX-326 | 400e759a | local-only | docs(claude-md): restructure root + onboarding split + adjacent stale fixes
 2026-05-22 | FIX-327 | 27c7cd03 | local+prod | perf(dashboard): bump snapshot staleness to 4h + cap live-compute fallback at 5s
 2026-05-22 | FIX-329 | 85e11fe0 | local-only | fix(homepage): drop redundant console.time calls from timed() helper
+2026-05-22 | FIX-328 | 0f24fe01 | local+prod | feat(ops): per-section timings on status_snapshot — surface the 30s long pole
