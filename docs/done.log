@@ -427,3 +427,5 @@
 2026-05-22 | FIX-328 | 0f24fe01 | local+prod | feat(ops): per-section timings on status_snapshot — surface the 30s long pole
 2026-05-23 | FIX-331 | a7ef2e5d | local+prod | perf(db): tighten autovacuum on entity_connections + ANALYZE per chunk rebuild
 2026-05-23 | FIX-330 | 5a631ad8 | local+prod | feat(homepage): materialize per-agency proposal counts to homepage_agency_counts_mv
+2026-05-23 | FIX-333 | 094d296e | local+prod | perf(db): collapse getQuality 8-roundtrip fan-out into get_quality_counts() RPC
+2026-05-23 | FIX-334 | 094d296e | local+prod | perf(db): collapse getQuality 8-roundtrip fan-out into get_quality_counts() RPC
