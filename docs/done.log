@@ -429,3 +429,4 @@
 2026-05-23 | FIX-330 | 5a631ad8 | local+prod | feat(homepage): materialize per-agency proposal counts to homepage_agency_counts_mv
 2026-05-23 | FIX-333 | 094d296e | local+prod | perf(db): collapse getQuality 8-roundtrip fan-out into get_quality_counts() RPC
 2026-05-23 | FIX-334 | 094d296e | local+prod | perf(db): collapse getQuality 8-roundtrip fan-out into get_quality_counts() RPC
+2026-05-23 | FIX-332 | 0cc04d08 | local-only | perf(ops): dedup shared RPCs in computeStatusPayload + instrument self_tests internals
