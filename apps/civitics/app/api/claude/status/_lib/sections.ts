@@ -410,7 +410,7 @@ const DRIFT_RULES = [
     source: (db: Db) =>
       db
         .from("financial_relationships")
-        .select("*", { count: "exact", head: true })
+        .select("*", { count: "planned", head: true })
         .eq("relationship_type", "donation"),
   },
   {
@@ -418,7 +418,7 @@ const DRIFT_RULES = [
     source: (db: Db) =>
       db
         .from("votes")
-        .select("*", { count: "exact", head: true })
+        .select("*", { count: "planned", head: true })
         .eq("vote", "yes"),
   },
   {
@@ -426,7 +426,7 @@ const DRIFT_RULES = [
     source: (db: Db) =>
       db
         .from("votes")
-        .select("*", { count: "exact", head: true })
+        .select("*", { count: "planned", head: true })
         .eq("vote", "no"),
   },
   {
@@ -434,7 +434,7 @@ const DRIFT_RULES = [
     source: (db: Db) =>
       db
         .from("votes")
-        .select("*", { count: "exact", head: true })
+        .select("*", { count: "planned", head: true })
         .eq("vote", "abstain"),
   },
   {
@@ -442,7 +442,7 @@ const DRIFT_RULES = [
     source: (db: Db) =>
       db
         .from("proposal_cosponsors")
-        .select("*", { count: "exact", head: true })
+        .select("*", { count: "planned", head: true })
         .is("date_withdrawn", null),
   },
   {
@@ -450,7 +450,7 @@ const DRIFT_RULES = [
     source: (db: Db) =>
       db
         .from("career_history")
-        .select("*", { count: "exact", head: true })
+        .select("*", { count: "planned", head: true })
         .eq("is_government", true)
         .not("governing_body_id", "is", null),
   },
@@ -459,7 +459,7 @@ const DRIFT_RULES = [
     source: (db: Db) =>
       db
         .from("agencies")
-        .select("*", { count: "exact", head: true })
+        .select("*", { count: "planned", head: true })
         .not("governing_body_id", "is", null),
   },
   {
@@ -467,7 +467,7 @@ const DRIFT_RULES = [
     source: (db: Db) =>
       db
         .from("financial_relationships")
-        .select("*", { count: "exact", head: true })
+        .select("*", { count: "planned", head: true })
         .in("relationship_type", ["owns_stock", "owns_bond", "property"])
         .is("ended_at", null),
   },
@@ -476,7 +476,7 @@ const DRIFT_RULES = [
     source: (db: Db) =>
       db
         .from("financial_relationships")
-        .select("*", { count: "exact", head: true })
+        .select("*", { count: "planned", head: true })
         .in("relationship_type", ["gift", "honorarium"]),
   },
   {
@@ -484,7 +484,7 @@ const DRIFT_RULES = [
     source: (db: Db) =>
       db
         .from("financial_relationships")
-        .select("*", { count: "exact", head: true })
+        .select("*", { count: "planned", head: true })
         .in("relationship_type", ["contract", "grant"]),
   },
   {
@@ -492,7 +492,7 @@ const DRIFT_RULES = [
     source: (db: Db) =>
       db
         .from("financial_relationships")
-        .select("*", { count: "exact", head: true })
+        .select("*", { count: "planned", head: true })
         .eq("relationship_type", "lobbying_spend"),
   },
 ] as const;
