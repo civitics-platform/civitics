@@ -909,6 +909,8 @@ export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<Nigh
     // FIX-223: homepage hero stats + per-official Wave 3 stats
     "refresh_homepage_stats_mv",
     "refresh_official_homepage_stats_mv",
+    // FIX-330: per-agency proposal counts (replaces FIX-303 RPC on request path)
+    "refresh_homepage_agency_counts_mv",
     // FIX-233 (part 1): p50/p95/max duration per pipeline over last 30 days
     "refresh_pipeline_runtime_stats_mv",
     // FIX-281: keep platform_usage_snapshot bounded at 30 days

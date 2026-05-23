@@ -47,23 +47,32 @@ export default async function AgenciesPage() {
 
   const rows = agencyRows ?? [];
 
-  // FIX-303 — one RPC instead of up to 200 × 2 = 400 count:'exact' sub-queries.
-  // get_proposal_counts_by_agency() returns the full (agency_id, total, open)
-  // set in a single indexed GROUP BY scan over proposals; the homepage Wave 2
-  // consumes the same payload. `open` is computed inside the RPC against
-  // (metadata->>'comment_period_end')::timestamptz — the prior live filter
-  // used .gt('comment_period_end', now) against a non-existent top-level
-  // column, which PostgREST silently no-op'd, making openProposals always
-  // equal totalProposals for every agency.
+  // FIX-330 — read from homepage_agency_counts_mv (refreshed nightly).
+  // Same (agency_id, total, open) shape the FIX-303 RPC returns, served
+  // from a unique-indexed MV. 1000ms request-path budget; falls back to
+  // the FIX-303 RPC below when the MV is missing/empty (fresh DB,
+  // post-truncate). Homepage Wave 2 consumes the same MV.
   type AgencyCountRow = { agency_id: string; total: number | string; open: number | string };
-  const countsRes = await withDbTimeout<{ data: AgencyCountRow[] | null; error: { message: string } | null }>(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (supabase as any).rpc("get_proposal_counts_by_agency"),
-    5000
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const sbAny = supabase as any;
+  const countsMvRes = await withDbTimeout<{ data: AgencyCountRow[] | null; error: { message: string } | null }>(
+    sbAny.from("homepage_agency_counts_mv").select("agency_id,total,open"),
+    1000
   );
-  if (countsRes.error) console.error("agency counts RPC error:", countsRes.error.message);
+  if (countsMvRes.error) console.error("agency counts MV read error:", countsMvRes.error.message);
+  let countsRows = countsMvRes.data ?? [];
+  if (countsRows.length === 0) {
+    // FIX-330 fallback — MV missing or empty. Falls back to the FIX-303 RPC
+    // at its prior 5000ms request-path budget.
+    const countsRes = await withDbTimeout<{ data: AgencyCountRow[] | null; error: { message: string } | null }>(
+      sbAny.rpc("get_proposal_counts_by_agency"),
+      5000
+    );
+    if (countsRes.error) console.error("agency counts RPC error:", countsRes.error.message);
+    countsRows = countsRes.data ?? [];
+  }
   const countsByAgency = new Map<string, { total: number; open: number }>(
-    (countsRes.data ?? []).map((r) => [
+    countsRows.map((r) => [
       r.agency_id,
       { total: Number(r.total), open: Number(r.open) },
     ])
