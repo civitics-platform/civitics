@@ -10,6 +10,7 @@ import {
 } from "@civitics/ui";
 import type { PlatformMetric, SourceDisplay } from "@civitics/db";
 import type { PlatformUsageResponse, AnthropicDetail, AiCosts } from "./useDashboardData";
+import { useIsAdmin } from "@/lib/use-is-admin";
 
 // ── Token / cost formatters ───────────────────────────────────────────────────
 
@@ -48,16 +49,6 @@ function AnthropicSourceBadge({ source }: { source?: string }) {
       Estimated
     </span>
   );
-}
-
-// ── Admin key (dev only — no secret in client bundle) ─────────────────────────
-function useIsAdmin(): boolean {
-  const [isAdmin, setIsAdmin] = useState(false);
-  useEffect(() => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    setIsAdmin(!!(window as any).CIVITICS_ADMIN);
-  }, []);
-  return isAdmin;
 }
 
 // ── Source indicator ──────────────────────────────────────────────────────────
@@ -715,7 +706,7 @@ export function PlatformCostsSection({
   const [mounted, setMounted] = useState(false);
   const [updatingMetric, setUpdatingMetric] = useState<PlatformMetric | null>(null);
   const [adminKey, setAdminKey] = useState("");
-  const isAdmin = useIsAdmin();
+  const { isAdmin } = useIsAdmin();
 
   useEffect(() => setMounted(true), []);
 

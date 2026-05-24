@@ -7,14 +7,18 @@
  * dismissal is stored in localStorage, keyed by event id; a new flip with
  * a new id reappears even if the user previously dismissed prior events.
  *
- * Why client-side: dismissal state lives in localStorage (per-browser),
- * which Server Components can't read. The events array is passed in as
- * props after being fetched server-side in dashboard/page.tsx with the
- * admin client, so the network shape stays one round trip.
+ * FIX-347: this component now fetches its own data on mount instead of
+ * trusting a prop baked in by the SSR path. The dashboard page is edge-
+ * cached (30 min s-maxage), so any admin-rendered HTML it embeds leaks to
+ * anonymous visitors for the cache lifetime. Moving the fetch client-side
+ * means the SSR HTML is identical for everyone (safe to cache) and the
+ * admin payload only reaches authed admin browsers via /api/admin/me +
+ * /api/admin/kill-switches/recent (both 404 for non-admins).
  */
 
 import { useEffect, useMemo, useState } from "react";
 import { AlertBanner, formatRelativeTime } from "@civitics/ui";
+import { useIsAdmin } from "@/lib/use-is-admin";
 
 export type KillSwitchEvent = {
   id: number;
@@ -76,9 +80,9 @@ function saveDismissed(ids: Set<number>): void {
   }
 }
 
-export function KillSwitchBanner({ events }: { events: KillSwitchEvent[] }) {
-  // Defer reading localStorage until after mount to avoid hydration mismatch
-  // (server renders with the full event list; client trims it post-hydration).
+export function KillSwitchBanner() {
+  const { isAdmin, loading: adminLoading } = useIsAdmin();
+  const [events, setEvents] = useState<KillSwitchEvent[]>([]);
   const [dismissed, setDismissed] = useState<Set<number>>(new Set());
   const [hydrated, setHydrated] = useState(false);
 
@@ -87,11 +91,34 @@ export function KillSwitchBanner({ events }: { events: KillSwitchEvent[] }) {
     setHydrated(true);
   }, []);
 
+  useEffect(() => {
+    if (!isAdmin) return;
+    let active = true;
+    void (async () => {
+      try {
+        const res = await fetch("/api/admin/kill-switches/recent", {
+          credentials: "same-origin",
+        });
+        if (!res.ok) return;
+        const body = (await res.json()) as { events?: KillSwitchEvent[] };
+        if (active && Array.isArray(body.events)) {
+          setEvents(body.events);
+        }
+      } catch {
+        /* network errors leave events empty — banner stays hidden */
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [isAdmin]);
+
   const visible = useMemo(
-    () => (hydrated ? events.filter((e) => !dismissed.has(e.id)) : events),
+    () => (hydrated ? events.filter((e) => !dismissed.has(e.id)) : []),
     [events, dismissed, hydrated],
   );
 
+  if (adminLoading || !isAdmin) return null;
   if (visible.length === 0) return null;
 
   const dismiss = (id: number) => {

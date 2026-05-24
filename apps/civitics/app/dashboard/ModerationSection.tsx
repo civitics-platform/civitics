@@ -1,15 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-
-function useIsAdmin(): boolean {
-  const [isAdmin, setIsAdmin] = useState(false);
-  useEffect(() => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    setIsAdmin(!!(window as any).CIVITICS_ADMIN);
-  }, []);
-  return isAdmin;
-}
+import { useIsAdmin } from "@/lib/use-is-admin";
 
 type Flag = {
   id: string;
@@ -58,7 +50,7 @@ function contextLink(flag: Flag): string | null {
 }
 
 export function ModerationSection() {
-  const isAdmin = useIsAdmin();
+  const { isAdmin, loading: adminLoading } = useIsAdmin();
   const [flags, setFlags] = useState<Flag[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<"pending" | "resolved">("pending");
@@ -89,6 +81,7 @@ export function ModerationSection() {
     load();
   }, [load]);
 
+  if (adminLoading) return null;
   if (!isAdmin) return null;
 
   const act = async (flagId: string, action: "dismiss" | "delete") => {

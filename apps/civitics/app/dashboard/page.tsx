@@ -5,15 +5,13 @@
 // us most of the ISR benefit without depending on build-time data fetching.
 export const dynamic = "force-dynamic";
 
-import { cookies } from "next/headers";
-import { createAdminClient, createServerClient } from "@civitics/db";
+import { createAdminClient } from "@civitics/db";
 import { PageHeader, TabBar } from "@civitics/ui";
 import { DashboardClient } from "./DashboardClient";
-import { KillSwitchBanner, type KillSwitchEvent } from "./KillSwitchBanner";
+import { KillSwitchBanner } from "./KillSwitchBanner";
 import { SitemapSection } from "./SitemapSection";
 import { BrowsingFlowsSection, type PathTransition, type EntryPage } from "./BrowsingFlowsSection";
 import { ModerationSection } from "./ModerationSection";
-import { ManualMetricsPanel, type ManualMetric } from "./ManualMetricsPanel";
 import { PageViewTracker } from "../components/PageViewTracker";
 import {
   computeStatusPayload,
@@ -179,112 +177,6 @@ async function getInitialStatus(): Promise<StatusData | null> {
   }
 }
 
-// FIX-287: recent kill-switch flips for the admin-only banner. One-hour
-// window matches the dashboard's normal refresh cadence (operators dismiss
-// what they've acted on; old flips just age out instead of growing a list).
-// Only OFF flips surface — re-enables are non-events for an "operator
-// awareness" surface (a re-enable means someone already knew and acted).
-async function getRecentKillSwitchEvents(): Promise<KillSwitchEvent[]> {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const db = createAdminClient() as any;
-    const { data } = await db
-      .from("kill_switch_events")
-      .select(
-        "id, switch_name, trigger_metric, trigger_value, threshold_pct, flipped_to, source, flipped_at",
-      )
-      .gte("flipped_at", new Date(Date.now() - 3_600_000).toISOString())
-      .eq("flipped_to", false)
-      .order("flipped_at", { ascending: false })
-      .limit(10);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return (data ?? []).map((r: any) => ({
-      id: r.id as number,
-      switch_name: r.switch_name as string,
-      trigger_metric: (r.trigger_metric as string | null) ?? null,
-      trigger_value: r.trigger_value === null ? null : Number(r.trigger_value),
-      threshold_pct: (r.threshold_pct as number | null) ?? null,
-      flipped_to: r.flipped_to as boolean,
-      source: r.source as "auto" | "manual",
-      flipped_at: r.flipped_at as string,
-    }));
-  } catch {
-    return [];
-  }
-}
-
-// FIX-296: pulls the platform_usage rows that have no public API path so
-// the operator-facing ManualMetricsPanel can render them with a freshness
-// badge. Joins to platform_limits to honor has_public_api=false as the
-// canonical filter — manual rows with has_public_api=true are scraper-
-// backlog items, not "must be hand-entered" items.
-async function getManualMetrics(): Promise<ManualMetric[]> {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const db = createAdminClient() as any;
-    const monthStart = new Date(
-      new Date().getFullYear(),
-      new Date().getMonth(),
-      1,
-    ).toISOString();
-
-    const [usageRes, limitsRes] = await Promise.all([
-      db
-        .from("platform_usage")
-        .select(
-          "service, metric, value, verified_at, stale_after_days, source",
-        )
-        .eq("source", "manual")
-        .eq("period_start", monthStart),
-      db
-        .from("platform_limits")
-        .select("service, metric, display_label, unit, has_public_api")
-        .eq("has_public_api", false)
-        .eq("is_active", true),
-    ]);
-
-    const limits = (limitsRes.data ?? []) as Array<{
-      service: string;
-      metric: string;
-      display_label: string | null;
-      unit: string;
-      has_public_api: boolean;
-    }>;
-    const usageRows = (usageRes.data ?? []) as Array<{
-      service: string;
-      metric: string;
-      value: number | null;
-      verified_at: string | null;
-      stale_after_days: number | null;
-    }>;
-    const usageByKey = new Map(
-      usageRows.map((u) => [`${u.service}:${u.metric}`, u]),
-    );
-
-    return limits.map((lim) => {
-      const usage = usageByKey.get(`${lim.service}:${lim.metric}`);
-      const days =
-        usage?.verified_at
-          ? Math.floor(
-              (Date.now() - new Date(usage.verified_at).getTime()) / 86_400_000,
-            )
-          : null;
-      return {
-        service: lim.service,
-        metric: lim.metric,
-        display_label: lim.display_label ?? lim.metric,
-        unit: lim.unit,
-        value: usage?.value ?? null,
-        verified_at: usage?.verified_at ?? null,
-        stale_after_days: usage?.stale_after_days ?? null,
-        days_since_verified: days,
-      };
-    });
-  } catch {
-    return [];
-  }
-}
-
 async function getBrowsingFlows(): Promise<{
   transitions: PathTransition[];
   entryPages: EntryPage[];
@@ -330,35 +222,15 @@ export default async function DashboardPage({
   const tab = searchParams?.tab === "operations" ? "operations" : "transparency";
   const isOps = tab === "operations";
 
-  // FIX-287: kill-switch banner is admin-only + operations-tab-only. Cheap
-  // server-context user lookup gates the kill_switch_events read so anon
-  // pageviews don't pay for it.
-  const adminEmail = process.env["ADMIN_EMAIL"];
-  let isAdmin = false;
-  if (adminEmail) {
-    try {
-      const cookieStore = await cookies();
-      const supabase = createServerClient(cookieStore);
-      const { data: { user } } = await supabase.auth.getUser();
-      isAdmin = !!user && user.email === adminEmail;
-    } catch {
-      isAdmin = false;
-    }
-  }
-  const showKillSwitchBanner = isAdmin && isOps;
-
-  // FIX-296: manual metrics are admin + operations-tab only — same gate as
-  // the kill-switch banner. Skips the query entirely on Transparency
-  // pageviews and anon sessions.
-  const showManualMetrics = isAdmin && isOps;
-
-  const [openProposals, openProposalCount, browsingFlows, initialStatus, killSwitchEvents, manualMetrics] = await Promise.all([
+  // FIX-347: dashboard is edge-cached for 30 min, so any admin-only content
+  // baked into the SSR HTML leaks to anon visitors for the cache lifetime.
+  // KillSwitchBanner / ModerationSection / PlatformCostsSection admin
+  // surfaces all fetch client-side on mount, gated by /api/admin/me.
+  const [openProposals, openProposalCount, browsingFlows, initialStatus] = await Promise.all([
     getOpenProposals(),
     getOpenProposalCount(),
     isOps ? getBrowsingFlows() : Promise.resolve({ transitions: [] as PathTransition[], entryPages: [] as EntryPage[] }),
     getInitialStatus(),
-    showKillSwitchBanner ? getRecentKillSwitchEvents() : Promise.resolve([] as KillSwitchEvent[]),
-    showManualMetrics ? getManualMetrics() : Promise.resolve([] as ManualMetric[]),
   ]);
 
   return (
@@ -379,9 +251,7 @@ export default async function DashboardPage({
             <TabBar tabs={DASHBOARD_TABS} activeTab={tab} />
           </div>
 
-          {showKillSwitchBanner && (
-            <KillSwitchBanner events={killSwitchEvents} />
-          )}
+          <KillSwitchBanner />
 
           <DashboardClient
             openProposals={openProposals}
@@ -400,9 +270,6 @@ export default async function DashboardPage({
           {/* Operations-only: Browsing Flows + Moderation */}
           {isOps && (
             <div className="mt-6 space-y-6">
-              {showManualMetrics && manualMetrics.length > 0 && (
-                <ManualMetricsPanel metrics={manualMetrics} />
-              )}
               <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
                 <BrowsingFlowsSection
                   transitions={browsingFlows.transitions}
