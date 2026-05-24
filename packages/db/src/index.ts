@@ -170,10 +170,6 @@ export {
   getSupabaseManagementMetrics,
   getSupabaseAuthMau,
   clearSupabaseManagementCache,
-  getSupabaseComputeTier,
-  clearSupabaseComputeTierCache,
-  SUPABASE_COMPUTE_POOL_MAX,
-  poolMaxForTier,
 } from "./supabase-usage";
 export type {
   SupabaseSqlMetrics,
@@ -182,8 +178,6 @@ export type {
   SupabaseManagementMetricsError,
   SupabaseAuthMau,
   SupabaseAuthMauError,
-  SupabaseComputeTier,
-  SupabaseComputeTierError,
 } from "./supabase-usage";
 
 // Supabase Prometheus metrics (egress + db_connections + disk_used_bytes

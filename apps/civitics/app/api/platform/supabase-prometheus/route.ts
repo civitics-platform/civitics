@@ -18,24 +18,26 @@ import {
   createAdminClient,
   getSupabasePrometheusMetrics,
   clearSupabasePrometheusCache,
-  getSupabaseComputeTier,
-  clearSupabaseComputeTierCache,
-  poolMaxForTier,
 } from "@civitics/db";
 import { NextResponse } from "next/server";
 
 export async function GET() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const supabase = createAdminClient() as any;
-  const [prometheus, tier] = await Promise.all([
+  // FIX-357: max_connections from the new SECURITY DEFINER RPC, replacing the
+  // FIX-354 Management API tier lookup. Surfaced here so the resolved cap is
+  // grep-able from Vercel logs alongside the Prometheus tick.
+  const [prometheus, maxConnRes] = await Promise.all([
     getSupabasePrometheusMetrics(supabase),
-    getSupabaseComputeTier(),
+    supabase.rpc("get_supabase_max_connections"),
   ]);
-  const tierId = "tier" in tier ? tier.tier : undefined;
+  const maxConnections =
+    !maxConnRes.error && typeof maxConnRes.data === "number"
+      ? maxConnRes.data
+      : null;
   return NextResponse.json({
     prometheus,
-    compute_tier: tier,
-    pool_max: poolMaxForTier(tierId),
+    max_connections: maxConnections,
     fetched_at: new Date().toISOString(),
   });
 }
@@ -47,11 +49,10 @@ export async function POST(request: Request) {
   }
 
   clearSupabasePrometheusCache();
-  clearSupabaseComputeTierCache();
 
   return NextResponse.json({
     success: true,
     message:
-      "Supabase Prometheus + compute-tier caches cleared. Next /api/platform/supabase-prometheus hit will re-fetch.",
+      "Supabase Prometheus cache cleared. Next /api/platform/supabase-prometheus hit will re-fetch.",
   });
 }

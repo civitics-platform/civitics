@@ -30,8 +30,6 @@ import {
   getSupabaseSqlMetrics,
   getSupabaseManagementMetrics,
   getSupabaseAuthMau,
-  getSupabaseComputeTier,
-  poolMaxForTier,
 } from "./supabase-usage";
 import { getSupabasePrometheusMetrics } from "./supabase-prometheus";
 import { getCloudflareR2Usage } from "./cloudflare-usage";
@@ -305,25 +303,29 @@ export async function computePlatformUsagePayload(
     errors.push(`supabase_prometheus: ${err instanceof Error ? err.message : String(err)}`);
   }
 
-  // FIX-354: db_connections pool max varies by Supabase compute add-on tier.
-  // Pull the current tier from the Management API (1-hour cache inside the
-  // helper) and look up the pool-max table. Default Pro compute (no addon)
-  // resolves to "micro" → 15. On Management API failure, fall back to "large"
-  // → 60, which matches the prior static seed so the bar can't regress
-  // visibly while the API path is broken.
+  // FIX-357: db_connections gauge counts Postgres backends, bounded by
+  // current_setting('max_connections') — not PgBouncer's default_pool_size,
+  // which is what the FIX-354 tier→pool-size lookup table was actually
+  // returning. Querying max_connections directly is self-correcting on tier
+  // upgrades (Supabase adjusts it automatically) and removes the Management
+  // API call + tier cache. On RPC failure we skip the UPDATE, so the value
+  // stays last-known-good rather than regressing to a wrong default.
   try {
-    const tier = await getSupabaseComputeTier();
-    const poolMax = poolMaxForTier(
-      "tier" in tier ? tier.tier : undefined,
+    const { data: maxConn, error: maxConnErr } = await anyDb.rpc(
+      "get_supabase_max_connections",
     );
-    await anyDb.from("platform_limits")
-      .update({ included_limit: poolMax })
-      .eq("service", "supabase")
-      .eq("metric", "db_connections")
-      .eq("plan", "pro");
+    if (!maxConnErr && typeof maxConn === "number" && maxConn > 0) {
+      await anyDb.from("platform_limits")
+        .update({ included_limit: maxConn })
+        .eq("service", "supabase")
+        .eq("metric", "db_connections")
+        .eq("plan", "pro");
+    } else if (maxConnErr) {
+      errors.push(`supabase_max_connections: ${maxConnErr.message}`);
+    }
   } catch (err) {
     errors.push(
-      `supabase_compute_tier: ${err instanceof Error ? err.message : String(err)}`,
+      `supabase_max_connections: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
 
