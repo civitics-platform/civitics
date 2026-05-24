@@ -453,3 +453,4 @@
 2026-05-24 | FIX-354 | f77a18a5 | prod-only | feat(platform): display_limit column + dynamic db_connections pool max
 2026-05-24 | FIX-355 | 1e4fb2bd | prod-only | feat(platform): Supabase CPU % tracking with windowed max
 2026-05-24 | FIX-356 | 1e4fb2bd | prod-only | feat(platform): Supabase CPU % tracking with windowed max
+2026-05-24 | FIX-357 | 25e011cb | prod-only | fix(platform): use Postgres max_connections for db_connections limit
