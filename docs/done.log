@@ -433,3 +433,5 @@
 2026-05-23 | FIX-336 | 75b83509 | local+prod | perf(ops): drift-source counts use count:'planned' — was count:'exact' on multi-M-row tables
 2026-05-23 | FIX-335 | e60869f1 | local+prod | perf(db): make search_graph_entities use partial trigram + add deferred individual-side trigram
 2026-05-23 | FIX-337 | ebace532 | local+prod | perf(ops): self_tests cheaper shapes for two count:'exact' ops
+2026-05-23 | FIX-338 | ceaf6607 | local+prod | perf(db): materialize get_connection_type_counts -> table; fix ABBY WARREN
+2026-05-23 | FIX-339 | ceaf6607 | local+prod | perf(db): materialize get_connection_type_counts -> table; fix ABBY WARREN
