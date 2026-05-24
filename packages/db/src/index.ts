@@ -179,6 +179,17 @@ export type {
   SupabaseAuthMauError,
 } from "./supabase-usage";
 
+// Supabase Prometheus metrics (egress + db_connections + disk_used_bytes
+// via /customer/v1/privileged/metrics; FIX-349 / FIX-350)
+export {
+  getSupabasePrometheusMetrics,
+  clearSupabasePrometheusCache,
+} from "./supabase-prometheus";
+export type {
+  SupabasePrometheusMetrics,
+  SupabasePrometheusMetricsError,
+} from "./supabase-prometheus";
+
 // Cloudflare R2 metrics (storage + class-A/B operations via GraphQL Analytics)
 export {
   getCloudflareR2Usage,

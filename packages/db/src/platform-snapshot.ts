@@ -31,6 +31,7 @@ import {
   getSupabaseManagementMetrics,
   getSupabaseAuthMau,
 } from "./supabase-usage";
+import { getSupabasePrometheusMetrics } from "./supabase-prometheus";
 import { getCloudflareR2Usage } from "./cloudflare-usage";
 import { getVercelUsage } from "./vercel-usage";
 import { getGitHubUsage } from "./github-usage";
@@ -190,10 +191,7 @@ export async function computePlatformUsagePayload(
   try {
     const supabaseMgmt = await getSupabaseManagementMetrics();
     if (!("error" in supabaseMgmt)) {
-      await Promise.all([
-        updateUsage(db, "supabase", "api_requests_7d", supabaseMgmt.api_requests_7d, "api"),
-        updateUsage(db, "supabase", "disk_used_bytes", supabaseMgmt.disk_used_bytes, "api"),
-      ]);
+      await updateUsage(db, "supabase", "api_requests_7d", supabaseMgmt.api_requests_7d, "api");
     } else {
       // Management API is optional (no token → benign error). Only flag
       // when it's a real HTTP error, not the missing-token branch
@@ -224,6 +222,29 @@ export async function computePlatformUsagePayload(
     }
   } catch (err) {
     errors.push(`cloudflare: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  // Supabase Prometheus live metrics → platform_usage. Sources egress
+  // (counter delta), db_connections (gauge), disk_used_bytes (size − avail
+  // on the /data mount). Overrides the disk_used_bytes value the Management
+  // API helper used to write — FIX-349 removed that side; both writers used
+  // 'source=api', so even if the Mgmt write resurfaced on a stale code path
+  // the Prometheus tick lands second and wins.
+  try {
+    const prom = await getSupabasePrometheusMetrics(db);
+    if (!("error" in prom)) {
+      await Promise.all([
+        updateUsage(db, "supabase", "egress_bytes", prom.egress_bytes_month_to_date, "api"),
+        updateUsage(db, "supabase", "db_connections", prom.db_connections_active, "api"),
+        updateUsage(db, "supabase", "disk_used_bytes", prom.disk_used_bytes, "api"),
+      ]);
+    } else {
+      if (!/SUPABASE_SECRET_KEY/i.test(prom.error)) {
+        errors.push(`supabase_prometheus: ${prom.error}`);
+      }
+    }
+  } catch (err) {
+    errors.push(`supabase_prometheus: ${err instanceof Error ? err.message : String(err)}`);
   }
 
   // GitHub Actions usage → platform_usage. Pulls org-level billing minutes +

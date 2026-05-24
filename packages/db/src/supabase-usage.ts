@@ -11,14 +11,16 @@
  *  - getSupabaseManagementMetrics()
  *      Hits the Supabase Management API at api.supabase.com/v1/projects/{ref}/...
  *      Needs SUPABASE_MANAGEMENT_API_KEY (Personal Access Token from
- *      supabase.com/dashboard/account/tokens). Returns api_requests_total,
- *      function_invocations, disk_used_bytes. 5-minute in-memory cache to
- *      stay well under any rate limit. Returns { error } if the env var is
- *      missing — never throws.
+ *      supabase.com/dashboard/account/tokens). Returns api_requests_7d only —
+ *      Prometheus (see supabase-prometheus.ts, FIX-349) now sources
+ *      disk_used_bytes more reliably, so the Management API's config/disk/util
+ *      call was dropped. 5-minute in-memory cache to stay well under any
+ *      rate limit. Returns { error } if the env var is missing — never throws.
  *
- * Egress is not exposed by any public Supabase API as of May 2026 — that row
- * stays manual and is flagged via platform_limits.has_public_api=false so the
- * card can render it differently from "stale manual".
+ * Egress used to live here as "no public API, manual entry only"; FIX-349
+ * moved it onto the Prometheus path (node_network_transmit_bytes_total +
+ * a small state table for monthly delta) and flipped
+ * platform_limits.has_public_api = true for the egress_bytes row.
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -43,7 +45,6 @@ export type SupabaseManagementMetrics = {
    *  The Management API's analytics endpoint caps at 7day intervals — there's
    *  no monthly-cycle equivalent. */
   api_requests_7d: number;
-  disk_used_bytes: number;
   fetched_at: string;
 };
 
@@ -142,15 +143,6 @@ type UsageApiCountsResponse = {
   error?: unknown;
 };
 
-type DiskUtilResponse = {
-  timestamp: string;
-  metrics: {
-    fs_size_bytes: number;
-    fs_avail_bytes: number;
-    fs_used_bytes: number;
-  };
-};
-
 async function mgmtGet<T>(path: string, token: string): Promise<T> {
   const res = await fetch(`${MGMT_BASE}${path}`, {
     headers: {
@@ -196,17 +188,14 @@ export async function getSupabaseManagementMetrics(): Promise<
     // 7day is the largest interval the analytics endpoint accepts —
     // 'monthly' returns 400. function-invocations endpoint requires a per-
     // function ID and we don't deploy Edge Functions, so it's omitted entirely.
-    const [apiCounts, disk] = await Promise.all([
-      mgmtGet<UsageApiCountsResponse>(
-        `/projects/${PROJECT_REF}/analytics/endpoints/usage.api-counts?interval=7day`,
-        token,
-      ),
-      mgmtGet<DiskUtilResponse>(`/projects/${PROJECT_REF}/config/disk/util`, token),
-    ]);
+    // disk_used_bytes moved to Prometheus (FIX-349) — one HTTP call removed.
+    const apiCounts = await mgmtGet<UsageApiCountsResponse>(
+      `/projects/${PROJECT_REF}/analytics/endpoints/usage.api-counts?interval=7day`,
+      token,
+    );
 
     const result: SupabaseManagementMetrics = {
       api_requests_7d: sumApiRequests(apiCounts),
-      disk_used_bytes: Number(disk.metrics?.fs_used_bytes ?? 0),
       fetched_at: new Date().toISOString(),
     };
 
