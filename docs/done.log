@@ -439,3 +439,4 @@
 2026-05-23 | FIX-340 | befd5147 | local+prod | fix(status): self-test correctness pass — rebuild reader + Warren resolver + indexed predicate
 2026-05-23 | FIX-343 | befd5147 | local+prod | fix(status): self-test correctness pass — rebuild reader + Warren resolver + indexed predicate
 2026-05-23 | FIX-308 | 62d1cfc6 | local+prod | fix(officials): read OfficialCard stats from official_homepage_stats_mv
+2026-05-23 | FIX-341 | c14c894e | prod-only | feat(audit): cutover-dropped-indexes audit script (FIX-341)
