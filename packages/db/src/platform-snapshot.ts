@@ -238,6 +238,22 @@ export async function computePlatformUsagePayload(
         updateUsage(db, "supabase", "db_connections", prom.db_connections_active, "api"),
         updateUsage(db, "supabase", "disk_used_bytes", prom.disk_used_bytes, "api"),
       ]);
+
+      // FIX-351: disk utilization % must divide against provisioned size,
+      // not the 8 GB Pro plan-included quota that was seeded. Every other
+      // platform_limits row is config-shaped (static seed); this one row
+      // is overridden each tick with the actual /data filesystem size
+      // from Prometheus so the dashboard % reflects real headroom on the
+      // (manually resized) disk.
+      await anyDb.from("platform_limits")
+        .update({
+          included_limit: prom.disk_size_bytes,
+          notes: "Dynamically set to provisioned disk size from Prometheus tick. " +
+                 "Includes db + WAL + indexes + temp on /data.",
+        })
+        .eq("service", "supabase")
+        .eq("metric", "disk_used_bytes")
+        .eq("plan", "pro");
     } else {
       if (!/SUPABASE_SECRET_KEY/i.test(prom.error)) {
         errors.push(`supabase_prometheus: ${prom.error}`);

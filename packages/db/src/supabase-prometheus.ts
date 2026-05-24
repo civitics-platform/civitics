@@ -19,6 +19,14 @@
  *                                  and not what the Management API was
  *                                  reporting). Replaces the Management API
  *                                  config/disk/util call.
+ *   disk_size_bytes              - node_filesystem_size_bytes for the
+ *                                  '/data' mount. Exposed so the snapshot
+ *                                  can write the provisioned-disk size
+ *                                  through to platform_limits.included_limit
+ *                                  for disk_used_bytes (FIX-351). The 8 GB
+ *                                  Pro plan included quota is the wrong
+ *                                  denominator once the disk is manually
+ *                                  resized above it.
  *
  * Auth: HTTP basic auth, username 'service_role', password is the project's
  * SUPABASE_SECRET_KEY. No new env var.
@@ -63,6 +71,14 @@ export type SupabasePrometheusMetrics = {
   egress_bytes_month_to_date: number;
   db_connections_active: number;
   disk_used_bytes: number;
+  /**
+   * Provisioned filesystem size of the /data mount in bytes. Reported by
+   * Prometheus regardless of plan; the snapshot writer uses this to keep
+   * `platform_limits.included_limit` for disk_used_bytes in sync with the
+   * actual disk size (which can be manually resized above the 8 GB Pro
+   * included quota). FIX-351.
+   */
+  disk_size_bytes: number;
   /** Raw counter value at this scrape — exposed for debug / introspection. */
   raw_egress_counter: number;
   fetched_at: string;
@@ -291,6 +307,7 @@ export async function getSupabasePrometheusMetrics(
       egress_bytes_month_to_date: egressDelta,
       db_connections_active: Math.round(numBackends),
       disk_used_bytes: Math.max(0, Math.round(diskSize - diskAvail)),
+      disk_size_bytes: Math.max(0, Math.round(diskSize)),
       raw_egress_counter: egressRaw,
       fetched_at: new Date().toISOString(),
     };
