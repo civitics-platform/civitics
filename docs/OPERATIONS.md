@@ -537,3 +537,36 @@ main().then(() => setTimeout(() => process.exit(0), 500));
 Run `supabase migration list --local` to check for gaps or duplicates in migration numbers.
 
 Known history: migration `0008` was duplicated and renumbered `0021`. If you see state errors, this is the likely cause.
+
+### `supabase start` Fails — Port 54322 Blocked (Windows / Hyper-V)
+
+**Symptom:** `supabase start` fails with:
+
+```
+failed to start docker container: Error response from daemon:
+  ports are not available: exposing port TCP 0.0.0.0:54322 -> 127.0.0.1:0:
+  listen tcp 0.0.0.0:54322: bind: An attempt was made to access a socket
+  in a way forbidden by its access permissions.
+```
+
+**Cause:** Windows reserves dynamic port ranges for Hyper-V; the reservation pool sometimes includes port 54322 (Supabase's local Postgres port).
+
+**Diagnostic** (PowerShell):
+
+```powershell
+netsh interface ipv4 show excludedportrange protocol=tcp
+```
+
+If 54322 falls inside one of the listed ranges (e.g. `54255-54354`), Docker cannot bind it.
+
+**Durable fix** (run once as administrator; persists across reboots):
+
+```powershell
+netsh int ipv4 set dynamicport tcp start=10000 num=1000
+```
+
+Shifts the OS dynamic-port range to 10000–10999 so future boots won't generate 54xxx exclusions.
+
+**Important:** the dynamicport change does NOT release exclusions that HNS / Docker Desktop have already allocated in the old range. `net stop winnat / net start winnat`, `net stop hns / net start hns`, and Docker Desktop restarts all fail to flush them. **A full Windows reboot is the only reliable way to clear stale exclusions.** The dynamicport change makes the fix permanent post-reboot.
+
+**Fallback while waiting to reboot:** schema changes can still ship via `supabase db push --linked` against prod. The commit trailer becomes `Verified: prod` instead of `Verified: local + prod` — see [apps/civitics/CLAUDE.md](../apps/civitics/CLAUDE.md) FIXES Workflow for the trailer convention.
