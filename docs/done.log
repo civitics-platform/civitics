@@ -459,3 +459,6 @@
 2026-05-24 | FIX-360 | c9456166 | local+prod | fix(db): IOWait Round 1 — RPC reads materialized table, proposals metadata indexes, entity_connections shape
 2026-05-24 | FIX-361 | 8a7fe1da | local-only | feat(workflow): fix:add script + CRLF tolerance + additive contract
 2026-05-24 | FIX-363 | 8a7fe1da | local-only | feat(workflow): fix:add script + CRLF tolerance + additive contract
+2026-05-24 | FIX-364 | b71a6a52 | local+prod | fix(db): IOWait Round 2 — drop unused + duplicate indexes (~1.00 GB working-set shrink on prod top-3)
+2026-05-24 | FIX-365 | b71a6a52 | local+prod | fix(db): IOWait Round 2 — drop unused + duplicate indexes (~1.00 GB working-set shrink on prod top-3)
+2026-05-24 | FIX-366 | b71a6a52 | local+prod | fix(db): IOWait Round 2 — drop unused + duplicate indexes (~1.00 GB working-set shrink on prod top-3)
