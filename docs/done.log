@@ -462,3 +462,4 @@
 2026-05-24 | FIX-364 | b71a6a52 | local+prod | fix(db): IOWait Round 2 — drop unused + duplicate indexes (~1.00 GB working-set shrink on prod top-3)
 2026-05-24 | FIX-365 | b71a6a52 | local+prod | fix(db): IOWait Round 2 — drop unused + duplicate indexes (~1.00 GB working-set shrink on prod top-3)
 2026-05-24 | FIX-366 | b71a6a52 | local+prod | fix(db): IOWait Round 2 — drop unused + duplicate indexes (~1.00 GB working-set shrink on prod top-3)
+2026-05-24 | FIX-368 | 342cbe3e | local-only | fix(scripts): fix:add allocator counts markers only, not cross-refs
