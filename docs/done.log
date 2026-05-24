@@ -447,3 +447,4 @@
 2026-05-24 | FIX-348 | 08b1858c | local-only | fix(dashboard): move admin content off the SSR/edge-cached path
 2026-05-24 | FIX-349 | 490bc3b2 | prod-only | feat(platform): Supabase Prometheus metrics + autopopulate egress
 2026-05-24 | FIX-350 | 490bc3b2 | prod-only | feat(platform): Supabase Prometheus metrics + autopopulate egress
+2026-05-24 | FIX-351 | 6bc6ed57 | prod-only | fix(platform): Supabase disk % divides by provisioned size
