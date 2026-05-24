@@ -123,6 +123,20 @@ async function main(): Promise<void> {
             breakdown.push({ connection_type: `${fn}:failed`, edges_upserted: -1, duration_ms: chunkDur });
           }
         }
+        // FIX-338 — refresh the connection_type_counts materialization
+        // after all chunks land. The umbrella RPC body does this itself
+        // (see 20260523040002_umbrella_rebuild_calls_refresh.sql), but the
+        // per-chunk path GHA uses on prod bypasses the umbrella, so the
+        // refresh has to be invoked explicitly here. Wrapped so a refresh
+        // failure doesn't mask a successful rebuild — the next run picks up.
+        try {
+          await client.query("SELECT public.refresh_connection_type_counts()");
+          console.log("  [post] refresh_connection_type_counts — complete");
+        } catch (refreshErr) {
+          console.warn(
+            `  [post] refresh_connection_type_counts — FAILED: ${errMsg(refreshErr)}`,
+          );
+        }
       } finally {
         await client.end();
       }

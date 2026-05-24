@@ -601,11 +601,19 @@ export async function getSelfTests(
   );
   type SearchRow = { id: string; label: string; entity_type: string };
   const warrenRows = (warrenSearch.data ?? []) as SearchRow[];
-  const warrenEntity = warrenRows.find(
-    (r) =>
-      r.label.toLowerCase().includes("elizabeth warren") ||
-      (r.label.toLowerCase().endsWith("warren") && r.entity_type === "official"),
-  );
+  // FIX-339 — try specific-name match first; falling back to the loose
+  // endsWith match used to return ABBY WARREN ahead of Elizabeth because
+  // `.find()` walks the array in order and Abby sorts alphabetically first.
+  const warrenEntity =
+    warrenRows.find(
+      (r) =>
+        r.label.toLowerCase().includes("elizabeth warren") &&
+        r.entity_type === "official",
+    ) ??
+    warrenRows.find(
+      (r) =>
+        r.label.toLowerCase().endsWith("warren") && r.entity_type === "official",
+    );
   const warrenId = warrenEntity?.id ?? null;
 
   const [
