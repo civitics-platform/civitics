@@ -629,6 +629,17 @@ export async function getSelfTests(
     );
   const warrenId = warrenEntity?.id ?? null;
 
+  // FIX-337 follow-up (2026-05-23): when no shared promise is provided (the
+  // /api/claude/status live route is one such caller), synthesize one here
+  // so checkDerivedDrift AND the voteYesTotalCount derivation below share a
+  // single get_connection_type_counts() round-trip. Without this, the live
+  // route's connections_pipeline_healthy test always saw vote_yes total: 0
+  // and failed even when the rebuild was healthy.
+  const localConnTypeCountsPromise: SharedConnTypeCountsPromise =
+    opts?.sharedConnTypeCountsPromise ??
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (db as any).rpc("get_connection_type_counts");
+
   const [
     chordData,
     warrenVotesRes,
@@ -688,7 +699,7 @@ export async function getSelfTests(
 
     timed("self_tests:derived_drift", () =>
       checkDerivedDrift(db, {
-        sharedConnTypeCountsPromise: opts?.sharedConnTypeCountsPromise,
+        sharedConnTypeCountsPromise: localConnTypeCountsPromise,
         collect,
       }),
     ),
@@ -700,9 +711,7 @@ export async function getSelfTests(
   // the vote_yes total as part of its 16-row output — read it from there.
   // Emit a 0 timing under the historical key so snapshot queries continue
   // to surface it as "explicitly free" rather than disappear.
-  const sharedConnTypeCountsResult = opts?.sharedConnTypeCountsPromise
-    ? await opts.sharedConnTypeCountsPromise
-    : null;
+  const sharedConnTypeCountsResult = await localConnTypeCountsPromise;
   const voteYesTotalCount = sharedConnTypeCountsResult?.data
     ? Number(
         (
