@@ -1,0 +1,3097 @@
+{
+  "run_at": "2026-05-24T19:44:11.455Z",
+  "db_host": "aws-0-us-west-2.pooler.supabase.com:5432",
+  "active_supabase_url": "https://xsazcoxinpgttgquwvuf.supabase.co",
+  "section_a": {
+    "version": "PostgreSQL 17.6 on aarch64-unknown-linux-gnu, compiled by gcc (GCC) 15.2.0, 64-bit",
+    "shared_buffers": "32768",
+    "work_mem": "3500",
+    "effective_cache_size": "98304",
+    "max_connections": "60",
+    "autovacuum": "on",
+    "maintenance_work_mem": "65536",
+    "effective_io_concurrency": "200",
+    "random_page_cost": "1.1",
+    "server_encoding": "UTF8",
+    "pg_stat_statements_max": "5000",
+    "track_io_timing": "off"
+  },
+  "section_b_top25": [
+    {
+      "query": "WITH pgrst_source AS ( SELECT \"public\".\"enrichment_queue\".* FROM \"public\".\"enrichment_queue\" WHERE  \"public\".\"enrichment_queue\".\"status\" = $1   LIMIT $2 OFFSET $3 ) , pgrst_source_count AS (SELECT $5  FROM \"public\".\"enrichment_queue\" WHERE  \"public\".\"enrichment_queue\".\"status\" = $4) SELECT (SELECT pg_catalog.count(*) FROM pgrst_source_count) AS total_result_set, pg_catalog.count(_postgrest_t) AS page_total, $6::text AS body, nullif(current_setting($7, $8), $9) AS response_headers, nullif(current_setting($10, $11), $12) AS response_status, $13 AS response_inserted FROM ( SELECT * FROM pgrst_source ) _postgrest_t",
+      "calls": "768",
+      "total_ms": "2274941",
+      "mean_ms": "2962",
+      "shared_blks_read": "41493325",
+      "shared_blks_hit": "2161331",
+      "hit_pct": "5.0",
+      "shared_blks_dirtied": "1418",
+      "shared_blks_written": "1757",
+      "temp_blks_read": "0",
+      "temp_blks_written": "0",
+      "rows": "768"
+    },
+    {
+      "query": "WITH pgrst_source AS (SELECT \"pgrst_call\".* FROM \"public\".\"get_connection_type_counts\"() pgrst_call) SELECT $3::bigint AS total_result_set, pg_catalog.count(_postgrest_t) AS page_total, coalesce(json_agg(_postgrest_t), $4) AS body, nullif(current_setting($5, $6), $7) AS response_headers, nullif(current_setting($8, $9), $10) AS response_status, $11 AS response_inserted FROM (SELECT \"record\".* FROM \"pgrst_source\" AS \"record\"   LIMIT $1 OFFSET $2) _postgrest_t",
+      "calls": "1028",
+      "total_ms": "6159383",
+      "mean_ms": "5992",
+      "shared_blks_read": "38931948",
+      "shared_blks_hit": "8160232",
+      "hit_pct": "17.3",
+      "shared_blks_dirtied": "39413",
+      "shared_blks_written": "23100",
+      "temp_blks_read": "0",
+      "temp_blks_written": "0",
+      "rows": "1028"
+    },
+    {
+      "query": "WITH pgrst_source AS ( SELECT \"public\".\"proposals\".\"id\" FROM \"public\".\"proposals\" WHERE  \"public\".\"proposals\".\"metadata\"->>$1 = $2   LIMIT $3 OFFSET $4 ) , pgrst_source_count AS (SELECT $7  FROM \"public\".\"proposals\" WHERE  \"public\".\"proposals\".\"metadata\"->>$5 = $6) SELECT (SELECT pg_catalog.count(*) FROM pgrst_source_count) AS total_result_set, pg_catalog.count(_postgrest_t) AS page_total, $8::text AS body, nullif(current_setting($9, $10), $11) AS response_headers, nullif(current_setting($12, $13), $14) AS response_status, $15 AS response_inserted FROM ( SELECT * FROM pgrst_source ) _postgrest_t",
+      "calls": "7229",
+      "total_ms": "4909305",
+      "mean_ms": "679",
+      "shared_blks_read": "32219277",
+      "shared_blks_hit": "102841359",
+      "hit_pct": "76.1",
+      "shared_blks_dirtied": "359",
+      "shared_blks_written": "20735",
+      "temp_blks_read": "0",
+      "temp_blks_written": "0",
+      "rows": "7229"
+    },
+    {
+      "query": "SELECT * FROM public.rebuild_entity_connections_donations()",
+      "calls": "5",
+      "total_ms": "15108502",
+      "mean_ms": "3021700",
+      "shared_blks_read": "29422239",
+      "shared_blks_hit": "884273381",
+      "hit_pct": "96.8",
+      "shared_blks_dirtied": "25525057",
+      "shared_blks_written": "19481350",
+      "temp_blks_read": "971602",
+      "temp_blks_written": "1007689",
+      "rows": "5"
+    },
+    {
+      "query": "WITH pgrst_source AS ( SELECT \"public\".\"financial_entities\".\"id\", \"public\".\"financial_entities\".\"canonical_name\", \"public\".\"financial_entities\".\"entity_type\" FROM \"public\".\"financial_entities\"   LIMIT $1 OFFSET $2 )  SELECT $3::bigint AS total_result_set, pg_catalog.count(_postgrest_t) AS page_total, coalesce(json_agg(_postgrest_t), $4) AS body, nullif(current_setting($5, $6), $7) AS response_headers, nullif(current_setting($8, $9), $10) AS response_status, $11 AS response_inserted FROM ( SELECT * FROM pgrst_source ) _postgrest_t",
+      "calls": "1274",
+      "total_ms": "1653286",
+      "mean_ms": "1298",
+      "shared_blks_read": "24206374",
+      "shared_blks_hit": "6240804",
+      "hit_pct": "20.5",
+      "shared_blks_dirtied": "0",
+      "shared_blks_written": "0",
+      "temp_blks_read": "0",
+      "temp_blks_written": "0",
+      "rows": "1274"
+    },
+    {
+      "query": "WITH pgrst_source AS (INSERT INTO \"public\".\"financial_relationships\"(\"amount_cents\", \"cycle_year\", \"ended_at\", \"from_id\", \"from_type\", \"metadata\", \"occurred_at\", \"relationship_type\", \"source_url\", \"started_at\", \"to_id\", \"to_type\") SELECT \"pgrst_body\".\"amount_cents\", \"pgrst_body\".\"cycle_year\", \"pgrst_body\".\"ended_at\", \"pgrst_body\".\"from_id\", \"pgrst_body\".\"from_type\", \"pgrst_body\".\"metadata\", \"pgrst_body\".\"occurred_at\", \"pgrst_body\".\"relationship_type\", \"pgrst_body\".\"source_url\", \"pgrst_body\".\"started_at\", \"pgrst_body\".\"to_id\", \"pgrst_body\".\"to_type\" FROM (SELECT $1 AS json_data) pgrst_payload, LATERAL (SELECT \"amount_cents\", \"cycle_year\", \"ended_at\", \"from_id\", \"from_type\", \"metadata\", \"occurred_at\", \"relationship_type\", \"source_url\", \"started_at\", \"to_id\", \"to_type\" FROM json_to_recordset(pgrst_payload.json_data) AS _(\"amount_cents\" bigint, \"cycle_year\" integer, \"ended_at\" date, \"from_id\" uuid, \"from_type\" text, \"metadata\" jsonb, \"occurred_at\" date, \"relationship_type\" public.financial_relationship_type, \"source_url\" text, \"started_at\" date, \"to_id\" uuid, \"to_type\" text) ) pgrst_body WHERE set_config($2, (coalesce(nullif(current_setting($3, $4), $5)::int, $6) + $7)::text, $8) <> $9 ON CONFLICT(\"relationship_type\", \"from_id\", \"to_id\", \"cycle_year\") DO UPDATE SET \"amount_cents\" = EXCLUDED.\"amount_cents\", \"cycle_year\" = EXCLUDED.\"cycle_year\", \"ended_at\" = EXCLUDED.\"ended_at\", \"from_id\" = EXCLUDED.\"from_id\", \"from_type\" = EXCLUDED.\"from_type\", \"metadata\" = EXCLUDED.\"metadata\", \"occurred_at\" = EXCLUDED.\"occurred_at\", \"relationship_type\" = EXCLUDED.\"relationship_type\", \"source_url\" = EXCLUDED.\"source_url\", \"started_at\" = EXCLUDED.\"started_at\", \"to_id\" = EXCLUDED.\"to_id\", \"to_type\" = EXCLUDED.\"to_type\"WHERE set_config($10, (coalesce(nullif(current_setting($11, $12), $13)::int, $14) - $15)::text, $16) <> $17 RETURNING $18) SELECT $19 AS total_result_set, pg_catalog.count(_postgrest_t) AS page_total, array[]::text[] AS header, $20::text AS body, nullif(current_setting($21, $22), $23) AS response_headers, nullif(current_setting($24, $25), $26) AS response_status, nullif(current_setting($27, $28),$29)::int AS response_inserted FROM (SELECT * FROM pgrst_source) _postgrest_t",
+      "calls": "17145",
+      "total_ms": "13573297",
+      "mean_ms": "792",
+      "shared_blks_read": "18009503",
+      "shared_blks_hit": "316856102",
+      "hit_pct": "94.6",
+      "shared_blks_dirtied": "18312903",
+      "shared_blks_written": "11779922",
+      "temp_blks_read": "0",
+      "temp_blks_written": "0",
+      "rows": "17145"
+    },
+    {
+      "query": "SELECT * FROM public.rebuild_entity_connections()",
+      "calls": "17",
+      "total_ms": "8315217",
+      "mean_ms": "489130",
+      "shared_blks_read": "14942512",
+      "shared_blks_hit": "530410800",
+      "hit_pct": "97.3",
+      "shared_blks_dirtied": "2672497",
+      "shared_blks_written": "1959810",
+      "temp_blks_read": "237002",
+      "temp_blks_written": "269685",
+      "rows": "189"
+    },
+    {
+      "query": "WITH pgrst_source AS ( SELECT \"public\".\"proposals\".\"id\" FROM \"public\".\"proposals\" WHERE  \"public\".\"proposals\".\"metadata\"->>$1 = $2   LIMIT $3 OFFSET $4 ) , pgrst_source_count AS (SELECT $7  FROM \"public\".\"proposals\" WHERE  \"public\".\"proposals\".\"metadata\"->>$5 = $6) SELECT (SELECT pg_catalog.count(*) FROM pgrst_source_count) AS total_result_set, pg_catalog.count(_postgrest_t) AS page_total, $8::text AS body, nullif(current_setting($9, $10), $11) AS response_headers, nullif(current_setting($12, $13), $14) AS response_status, $15 AS response_inserted FROM ( SELECT * FROM pgrst_source ) _postgrest_t",
+      "calls": "3410",
+      "total_ms": "2770615",
+      "mean_ms": "812",
+      "shared_blks_read": "12358512",
+      "shared_blks_hit": "48415948",
+      "hit_pct": "79.7",
+      "shared_blks_dirtied": "2",
+      "shared_blks_written": "13235",
+      "temp_blks_read": "0",
+      "temp_blks_written": "0",
+      "rows": "3410"
+    },
+    {
+      "query": "WITH pgrst_source AS ( SELECT \"public\".\"entity_connections\".\"id\" FROM \"public\".\"entity_connections\" WHERE  \"public\".\"entity_connections\".\"from_id\" = $1 AND  \"public\".\"entity_connections\".\"connection_type\" = $2   LIMIT $3 OFFSET $4 )  SELECT $5::bigint AS total_result_set, pg_catalog.count(_postgrest_t) AS page_total, coalesce(json_agg(_postgrest_t), $6) AS body, nullif(current_setting($7, $8), $9) AS response_headers, nullif(current_setting($10, $11), $12) AS response_status, $13 AS response_inserted FROM ( SELECT * FROM pgrst_source ) _postgrest_t",
+      "calls": "326",
+      "total_ms": "1302348",
+      "mean_ms": "3995",
+      "shared_blks_read": "10903426",
+      "shared_blks_hit": "446425",
+      "hit_pct": "3.9",
+      "shared_blks_dirtied": "0",
+      "shared_blks_written": "371",
+      "temp_blks_read": "0",
+      "temp_blks_written": "0",
+      "rows": "326"
+    },
+    {
+      "query": "SELECT * FROM public.rebuild_entity_connections_votes()",
+      "calls": "6",
+      "total_ms": "2960063",
+      "mean_ms": "493344",
+      "shared_blks_read": "5018764",
+      "shared_blks_hit": "75996149",
+      "hit_pct": "93.8",
+      "shared_blks_dirtied": "2317937",
+      "shared_blks_written": "1210264",
+      "temp_blks_read": "0",
+      "temp_blks_written": "4952",
+      "rows": "18"
+    },
+    {
+      "query": "WITH pgrst_source AS ( SELECT \"public\".\"proposals\".\"id\", \"public\".\"proposals\".\"title\", \"public\".\"proposals\".\"type\", \"public\".\"proposals\".\"status\", \"public\".\"proposals\".\"summary_plain\", \"public\".\"proposals\".\"summary_model\", \"public\".\"proposals\".\"introduced_at\", \"public\".\"proposals\".\"metadata\" FROM \"public\".\"proposals\"  ORDER BY \"public\".\"proposals\".\"introduced_at\" DESC NULLS LAST LIMIT $1 OFFSET $2 )  SELECT $3::bigint AS total_result_set, pg_catalog.count(_postgrest_t) AS page_total, coalesce(json_agg(_postgrest_t), $4) AS body, nullif(current_setting($5, $6), $7) AS response_headers, nullif(current_setting($8, $9), $10) AS response_status, $11 AS response_inserted FROM ( SELECT * FROM pgrst_source ) _postgrest_t",
+      "calls": "741",
+      "total_ms": "206820",
+      "mean_ms": "279",
+      "shared_blks_read": "3596027",
+      "shared_blks_hit": "3317378",
+      "hit_pct": "48.0",
+      "shared_blks_dirtied": "311",
+      "shared_blks_written": "447",
+      "temp_blks_read": "0",
+      "temp_blks_written": "0",
+      "rows": "741"
+    },
+    {
+      "query": "WITH pgrst_source AS (INSERT INTO \"public\".\"financial_entities\"(\"canonical_name\", \"display_name\", \"donor_fingerprint\", \"entity_type\", \"fec_committee_id\", \"metadata\", \"total_donated_cents\", \"total_received_cents\") SELECT \"pgrst_body\".\"canonical_name\", \"pgrst_body\".\"display_name\", \"pgrst_body\".\"donor_fingerprint\", \"pgrst_body\".\"entity_type\", \"pgrst_body\".\"fec_committee_id\", \"pgrst_body\".\"metadata\", \"pgrst_body\".\"total_donated_cents\", \"pgrst_body\".\"total_received_cents\" FROM (SELECT $1 AS json_data) pgrst_payload, LATERAL (SELECT \"canonical_name\", \"display_name\", \"donor_fingerprint\", \"entity_type\", \"fec_committee_id\", \"metadata\", \"total_donated_cents\", \"total_received_cents\" FROM json_to_recordset(pgrst_payload.json_data) AS _(\"canonical_name\" text, \"display_name\" text, \"donor_fingerprint\" text, \"entity_type\" text, \"fec_committee_id\" text, \"metadata\" jsonb, \"total_donated_cents\" bigint, \"total_received_cents\" bigint) ) pgrst_body WHERE set_config($2, (coalesce(nullif(current_setting($3, $4), $5)::int, $6) + $7)::text, $8) <> $9 ON CONFLICT(\"donor_fingerprint\") DO UPDATE SET \"canonical_name\" = EXCLUDED.\"canonical_name\", \"display_name\" = EXCLUDED.\"display_name\", \"donor_fingerprint\" = EXCLUDED.\"donor_fingerprint\", \"entity_type\" = EXCLUDED.\"entity_type\", \"fec_committee_id\" = EXCLUDED.\"fec_committee_id\", \"metadata\" = EXCLUDED.\"metadata\", \"total_donated_cents\" = EXCLUDED.\"total_donated_cents\", \"total_received_cents\" = EXCLUDED.\"total_received_cents\"WHERE set_config($10, (coalesce(nullif(current_setting($11, $12), $13)::int, $14) - $15)::text, $16) <> $17 RETURNING \"public\".\"financial_entities\".\"donor_fingerprint\", \"public\".\"financial_entities\".\"id\") SELECT $18 AS total_result_set, pg_catalog.count(_postgrest_t) AS page_total, array[]::text[] AS header, coalesce(json_agg(_postgrest_t), $19) AS body, nullif(current_setting($20, $21), $22) AS response_headers, nullif(current_setting($23, $24), $25) AS response_status, nullif(current_setting($26, $27),$28)::int AS response_inserted FROM (SELECT \"financial_entities\".\"id\", \"financial_entities\".\"donor_fingerprint\" FROM \"pgrst_source\" AS \"financial_entities\"   ) _postgrest_t",
+      "calls": "6028",
+      "total_ms": "5203540",
+      "mean_ms": "863",
+      "shared_blks_read": "3480588",
+      "shared_blks_hit": "68346869",
+      "hit_pct": "95.2",
+      "shared_blks_dirtied": "3546540",
+      "shared_blks_written": "1672554",
+      "temp_blks_read": "0",
+      "temp_blks_written": "0",
+      "rows": "6028"
+    },
+    {
+      "query": "SELECT * FROM public.rebuild_entity_connections_external()",
+      "calls": "8",
+      "total_ms": "2855632",
+      "mean_ms": "356954",
+      "shared_blks_read": "2898012",
+      "shared_blks_hit": "44850189",
+      "hit_pct": "93.9",
+      "shared_blks_dirtied": "2263215",
+      "shared_blks_written": "1325833",
+      "temp_blks_read": "0",
+      "temp_blks_written": "2498",
+      "rows": "8"
+    },
+    {
+      "query": "SELECT * FROM public.rebuild_entity_connections_contracts()",
+      "calls": "8",
+      "total_ms": "2316829",
+      "mean_ms": "289604",
+      "shared_blks_read": "2462193",
+      "shared_blks_hit": "14316348",
+      "hit_pct": "85.3",
+      "shared_blks_dirtied": "352112",
+      "shared_blks_written": "91468",
+      "temp_blks_read": "239420",
+      "temp_blks_written": "239802",
+      "rows": "8"
+    },
+    {
+      "query": "SELECT id::text, display_name, canonical_name\n             FROM public.financial_entities\n            WHERE entity_type = $3 AND id > $1\n            ORDER BY id\n            LIMIT $2",
+      "calls": "111",
+      "total_ms": "149154",
+      "mean_ms": "1344",
+      "shared_blks_read": "2317751",
+      "shared_blks_hit": "1442959",
+      "hit_pct": "38.4",
+      "shared_blks_dirtied": "146",
+      "shared_blks_written": "45107",
+      "temp_blks_read": "0",
+      "temp_blks_written": "0",
+      "rows": "553396"
+    },
+    {
+      "query": "WITH pgrst_source AS (INSERT INTO \"public\".\"financial_entities\"(\"canonical_name\", \"display_name\", \"donor_fingerprint\", \"entity_type\", \"fec_committee_id\", \"metadata\", \"total_donated_cents\", \"total_received_cents\") SELECT \"pgrst_body\".\"canonical_name\", \"pgrst_body\".\"display_name\", \"pgrst_body\".\"donor_fingerprint\", \"pgrst_body\".\"entity_type\", \"pgrst_body\".\"fec_committee_id\", \"pgrst_body\".\"metadata\", \"pgrst_body\".\"total_donated_cents\", \"pgrst_body\".\"total_received_cents\" FROM (SELECT $1 AS json_data) pgrst_payload, LATERAL (SELECT \"canonical_name\", \"display_name\", \"donor_fingerprint\", \"entity_type\", \"fec_committee_id\", \"metadata\", \"total_donated_cents\", \"total_received_cents\" FROM json_to_recordset(pgrst_payload.json_data) AS _(\"canonical_name\" text, \"display_name\" text, \"donor_fingerprint\" text, \"entity_type\" text, \"fec_committee_id\" text, \"metadata\" jsonb, \"total_donated_cents\" bigint, \"total_received_cents\" bigint) ) pgrst_body WHERE set_config($2, (coalesce(nullif(current_setting($3, $4), $5)::int, $6) + $7)::text, $8) <> $9 ON CONFLICT(\"donor_fingerprint\") DO UPDATE SET \"canonical_name\" = EXCLUDED.\"canonical_name\", \"display_name\" = EXCLUDED.\"display_name\", \"donor_fingerprint\" = EXCLUDED.\"donor_fingerprint\", \"entity_type\" = EXCLUDED.\"entity_type\", \"fec_committee_id\" = EXCLUDED.\"fec_committee_id\", \"metadata\" = EXCLUDED.\"metadata\", \"total_donated_cents\" = EXCLUDED.\"total_donated_cents\", \"total_received_cents\" = EXCLUDED.\"total_received_cents\"WHERE set_config($10, (coalesce(nullif(current_setting($11, $12), $13)::int, $14) - $15)::text, $16) <> $17 RETURNING \"public\".\"financial_entities\".\"donor_fingerprint\", \"public\".\"financial_entities\".\"id\") SELECT $18 AS total_result_set, pg_catalog.count(_postgrest_t) AS page_total, array[]::text[] AS header, coalesce(json_agg(_postgrest_t), $19) AS body, nullif(current_setting($20, $21), $22) AS response_headers, nullif(current_setting($23, $24), $25) AS response_status, nullif(current_setting($26, $27),$28)::int AS response_inserted FROM (SELECT \"financial_entities\".\"id\", \"financial_entities\".\"donor_fingerprint\" FROM \"pgrst_source\" AS \"financial_entities\"   ) _postgrest_t",
+      "calls": "2002",
+      "total_ms": "2263642",
+      "mean_ms": "1131",
+      "shared_blks_read": "2017496",
+      "shared_blks_hit": "12156028",
+      "hit_pct": "85.8",
+      "shared_blks_dirtied": "1634689",
+      "shared_blks_written": "706746",
+      "temp_blks_read": "0",
+      "temp_blks_written": "0",
+      "rows": "2002"
+    },
+    {
+      "query": "UPDATE financial_entities fe SET total_donated_cents = dt.total\nFROM _donor_totals dt\nWHERE fe.id = dt.from_id AND fe.total_donated_cents IS DISTINCT FROM dt.total",
+      "calls": "1",
+      "total_ms": "768169",
+      "mean_ms": "768169",
+      "shared_blks_read": "1527223",
+      "shared_blks_hit": "10739814",
+      "hit_pct": "87.6",
+      "shared_blks_dirtied": "1296544",
+      "shared_blks_written": "942156",
+      "temp_blks_read": "26008",
+      "temp_blks_written": "26008",
+      "rows": "398091"
+    },
+    {
+      "query": "WITH pgrst_source AS (SELECT pgrst_call.pgrst_scalar FROM (SELECT \"public\".\"rebuild_financial_entity_donation_totals\"() pgrst_scalar) pgrst_call) SELECT $3::bigint AS total_result_set, $4 AS page_total, coalesce(json_agg(_postgrest_t.pgrst_scalar)->$5, $6) AS body, nullif(current_setting($7, $8), $9) AS response_headers, nullif(current_setting($10, $11), $12) AS response_status, $13 AS response_inserted FROM (SELECT \"rebuild_financial_entity_donation_totals\".* FROM \"pgrst_source\" AS \"rebuild_financial_entity_donation_totals\"   LIMIT $1 OFFSET $2) _postgrest_t",
+      "calls": "1",
+      "total_ms": "650039",
+      "mean_ms": "650039",
+      "shared_blks_read": "1442524",
+      "shared_blks_hit": "4822581",
+      "hit_pct": "77.0",
+      "shared_blks_dirtied": "967667",
+      "shared_blks_written": "625894",
+      "temp_blks_read": "149099",
+      "temp_blks_written": "173258",
+      "rows": "1"
+    },
+    {
+      "query": "WITH pgrst_source AS (SELECT \"pgrst_call\".* FROM (SELECT $1 AS json_data) pgrst_payload, LATERAL (SELECT \"q\", \"lim\" FROM json_to_record(pgrst_payload.json_data) AS _(\"q\" text, \"lim\" integer) LIMIT $4) pgrst_body , LATERAL \"public\".\"search_graph_entities\"(\"q\" := pgrst_body.\"q\", \"lim\" := pgrst_body.\"lim\") pgrst_call) SELECT $5::bigint AS total_result_set, pg_catalog.count(_postgrest_t) AS page_total, coalesce(json_agg(_postgrest_t), $6) AS body, nullif(current_setting($7, $8), $9) AS response_headers, nullif(current_setting($10, $11), $12) AS response_status, $13 AS response_inserted FROM (SELECT \"record\".* FROM \"pgrst_source\" AS \"record\"   LIMIT $2 OFFSET $3) _postgrest_t",
+      "calls": "768",
+      "total_ms": "1295456",
+      "mean_ms": "1687",
+      "shared_blks_read": "1278877",
+      "shared_blks_hit": "2321743",
+      "hit_pct": "64.5",
+      "shared_blks_dirtied": "206",
+      "shared_blks_written": "4649",
+      "temp_blks_read": "0",
+      "temp_blks_written": "0",
+      "rows": "768"
+    },
+    {
+      "query": "WITH pgrst_source AS (SELECT \"pgrst_call\".* FROM \"public\".\"get_quality_counts\"() pgrst_call) SELECT $3::bigint AS total_result_set, pg_catalog.count(_postgrest_t) AS page_total, coalesce(json_agg(_postgrest_t), $4) AS body, nullif(current_setting($5, $6), $7) AS response_headers, nullif(current_setting($8, $9), $10) AS response_status, $11 AS response_inserted FROM (SELECT \"record\".* FROM \"pgrst_source\" AS \"record\"   LIMIT $1 OFFSET $2) _postgrest_t",
+      "calls": "791",
+      "total_ms": "3243355",
+      "mean_ms": "4100",
+      "shared_blks_read": "1182859",
+      "shared_blks_hit": "6707390",
+      "hit_pct": "85.0",
+      "shared_blks_dirtied": "2276",
+      "shared_blks_written": "23095",
+      "temp_blks_read": "0",
+      "temp_blks_written": "0",
+      "rows": "791"
+    },
+    {
+      "query": "WITH pgrst_source AS ( SELECT \"public\".\"entity_connections\".\"id\", \"public\".\"entity_connections\".\"from_type\", \"public\".\"entity_connections\".\"from_id\", \"public\".\"entity_connections\".\"to_type\", \"public\".\"entity_connections\".\"to_id\", \"public\".\"entity_connections\".\"connection_type\", \"public\".\"entity_connections\".\"strength\", \"public\".\"entity_connections\".\"amount_cents\", \"public\".\"entity_connections\".\"occurred_at\", \"public\".\"entity_connections\".\"metadata\" FROM \"public\".\"entity_connections\" WHERE  ( \"public\".\"entity_connections\".\"from_id\" = $1 OR  \"public\".\"entity_connections\".\"to_id\" = $2)   LIMIT $3 OFFSET $4 )  SELECT $5::bigint AS total_result_set, pg_catalog.count(_postgrest_t) AS page_total, coalesce(json_agg(_postgrest_t), $6) AS body, nullif(current_setting($7, $8), $9) AS response_headers, nullif(current_setting($10, $11), $12) AS response_status, $13 AS response_inserted FROM ( SELECT * FROM pgrst_source ) _postgrest_t",
+      "calls": "84",
+      "total_ms": "47123",
+      "mean_ms": "561",
+      "shared_blks_read": "1111167",
+      "shared_blks_hit": "105244",
+      "hit_pct": "8.7",
+      "shared_blks_dirtied": "0",
+      "shared_blks_written": "2508",
+      "temp_blks_read": "0",
+      "temp_blks_written": "0",
+      "rows": "84"
+    },
+    {
+      "query": "WITH pgrst_source AS ( SELECT \"public\".\"financial_relationships\".* FROM \"public\".\"financial_relationships\" WHERE  \"public\".\"financial_relationships\".\"relationship_type\" = ANY ($1)    LIMIT $2 OFFSET $3 )  SELECT $4::bigint AS total_result_set, pg_catalog.count(_postgrest_t) AS page_total, $5::text AS body, nullif(current_setting($6, $7), $8) AS response_headers, nullif(current_setting($9, $10), $11) AS response_status, $12 AS response_inserted FROM ( SELECT * FROM pgrst_source ) _postgrest_t",
+      "calls": "1343",
+      "total_ms": "206628",
+      "mean_ms": "154",
+      "shared_blks_read": "1073506",
+      "shared_blks_hit": "18221",
+      "hit_pct": "1.7",
+      "shared_blks_dirtied": "826",
+      "shared_blks_written": "600",
+      "temp_blks_read": "0",
+      "temp_blks_written": "0",
+      "rows": "1343"
+    },
+    {
+      "query": "WITH pgrst_source AS (INSERT INTO \"public\".\"financial_relationships\"(\"amount_cents\", \"ended_at\", \"from_id\", \"from_type\", \"metadata\", \"occurred_at\", \"relationship_type\", \"source_url\", \"started_at\", \"to_id\", \"to_type\", \"usaspending_award_id\") SELECT \"pgrst_body\".\"amount_cents\", \"pgrst_body\".\"ended_at\", \"pgrst_body\".\"from_id\", \"pgrst_body\".\"from_type\", \"pgrst_body\".\"metadata\", \"pgrst_body\".\"occurred_at\", \"pgrst_body\".\"relationship_type\", \"pgrst_body\".\"source_url\", \"pgrst_body\".\"started_at\", \"pgrst_body\".\"to_id\", \"pgrst_body\".\"to_type\", \"pgrst_body\".\"usaspending_award_id\" FROM (SELECT $1 AS json_data) pgrst_payload, LATERAL (SELECT \"amount_cents\", \"ended_at\", \"from_id\", \"from_type\", \"metadata\", \"occurred_at\", \"relationship_type\", \"source_url\", \"started_at\", \"to_id\", \"to_type\", \"usaspending_award_id\" FROM json_to_recordset(pgrst_payload.json_data) AS _(\"amount_cents\" bigint, \"ended_at\" date, \"from_id\" uuid, \"from_type\" text, \"metadata\" jsonb, \"occurred_at\" date, \"relationship_type\" public.financial_relationship_type, \"source_url\" text, \"started_at\" date, \"to_id\" uuid, \"to_type\" text, \"usaspending_award_id\" text) ) pgrst_body WHERE set_config($2, (coalesce(nullif(current_setting($3, $4), $5)::int, $6) + $7)::text, $8) <> $9 ON CONFLICT(\"usaspending_award_id\") DO UPDATE SET \"amount_cents\" = EXCLUDED.\"amount_cents\", \"ended_at\" = EXCLUDED.\"ended_at\", \"from_id\" = EXCLUDED.\"from_id\", \"from_type\" = EXCLUDED.\"from_type\", \"metadata\" = EXCLUDED.\"metadata\", \"occurred_at\" = EXCLUDED.\"occurred_at\", \"relationship_type\" = EXCLUDED.\"relationship_type\", \"source_url\" = EXCLUDED.\"source_url\", \"started_at\" = EXCLUDED.\"started_at\", \"to_id\" = EXCLUDED.\"to_id\", \"to_type\" = EXCLUDED.\"to_type\", \"usaspending_award_id\" = EXCLUDED.\"usaspending_award_id\"WHERE set_config($10, (coalesce(nullif(current_setting($11, $12), $13)::int, $14) - $15)::text, $16) <> $17 RETURNING $18) SELECT $19 AS total_result_set, pg_catalog.count(_postgrest_t) AS page_total, array[]::text[] AS header, $20::text AS body, nullif(current_setting($21, $22), $23) AS response_headers, nullif(current_setting($24, $25), $26) AS response_status, nullif(current_setting($27, $28),$29)::int AS response_inserted FROM (SELECT * FROM pgrst_source) _postgrest_t",
+      "calls": "7018",
+      "total_ms": "814707",
+      "mean_ms": "116",
+      "shared_blks_read": "1073424",
+      "shared_blks_hit": "121861621",
+      "hit_pct": "99.1",
+      "shared_blks_dirtied": "1251754",
+      "shared_blks_written": "375143",
+      "temp_blks_read": "0",
+      "temp_blks_written": "0",
+      "rows": "7018"
+    },
+    {
+      "query": "WITH pgrst_source AS ( SELECT \"public\".\"financial_relationships\".* FROM \"public\".\"financial_relationships\" WHERE  \"public\".\"financial_relationships\".\"relationship_type\" = $1   LIMIT $2 OFFSET $3 ) , pgrst_source_count AS (SELECT $5  FROM \"public\".\"financial_relationships\" WHERE  \"public\".\"financial_relationships\".\"relationship_type\" = $4) SELECT (SELECT pg_catalog.count(*) FROM pgrst_source_count) AS total_result_set, pg_catalog.count(_postgrest_t) AS page_total, $6::text AS body, nullif(current_setting($7, $8), $9) AS response_headers, nullif(current_setting($10, $11), $12) AS response_status, $13 AS response_inserted FROM ( SELECT * FROM pgrst_source ) _postgrest_t",
+      "calls": "341",
+      "total_ms": "210630",
+      "mean_ms": "618",
+      "shared_blks_read": "925820",
+      "shared_blks_hit": "653034",
+      "hit_pct": "41.4",
+      "shared_blks_dirtied": "7825",
+      "shared_blks_written": "32497",
+      "temp_blks_read": "0",
+      "temp_blks_written": "0",
+      "rows": "341"
+    },
+    {
+      "query": "WITH pgrst_source AS ( SELECT \"public\".\"financial_entities\".\"id\", \"public\".\"financial_entities\".\"display_name\", \"public\".\"financial_entities\".\"entity_type\" FROM \"public\".\"financial_entities\" WHERE  \"public\".\"financial_entities\".\"display_name\" ilike $1   LIMIT $2 OFFSET $3 )  SELECT $4::bigint AS total_result_set, pg_catalog.count(_postgrest_t) AS page_total, coalesce(json_agg(_postgrest_t), $5) AS body, nullif(current_setting($6, $7), $8) AS response_headers, nullif(current_setting($9, $10), $11) AS response_status, $12 AS response_inserted FROM ( SELECT * FROM pgrst_source ) _postgrest_t",
+      "calls": "96",
+      "total_ms": "50453",
+      "mean_ms": "526",
+      "shared_blks_read": "886376",
+      "shared_blks_hit": "29459",
+      "hit_pct": "3.2",
+      "shared_blks_dirtied": "0",
+      "shared_blks_written": "0",
+      "temp_blks_read": "0",
+      "temp_blks_written": "0",
+      "rows": "96"
+    }
+  ],
+  "section_c_activity_samples": [
+    {
+      "sample_at": "2026-05-24T19:43:45.888Z",
+      "rows": [
+        {
+          "pid": 3349334,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 70366,
+          "query": "show archive_mode;",
+          "application_name": "",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4075092,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 44661,
+          "query": "LISTEN \"pgrst\"",
+          "application_name": "postgrest",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4156523,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 26,
+          "query": "COMMIT",
+          "application_name": "postgrest",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4156524,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 26,
+          "query": "COMMIT",
+          "application_name": "postgrest",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4156525,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 26,
+          "query": "COMMIT",
+          "application_name": "postgrest",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4156526,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 26,
+          "query": "COMMIT",
+          "application_name": "postgrest",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4156528,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 20,
+          "query": "COMMIT",
+          "application_name": "postgrest",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4156529,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 20,
+          "query": "COMMIT",
+          "application_name": "postgrest",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4156530,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 19,
+          "query": "COMMIT",
+          "application_name": "postgrest",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4156517,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 19,
+          "query": "COMMIT",
+          "application_name": "postgrest",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4156518,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 19,
+          "query": "COMMIT",
+          "application_name": "postgrest",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4156519,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 19,
+          "query": "COMMIT",
+          "application_name": "postgrest",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4156521,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 19,
+          "query": "COMMIT",
+          "application_name": "postgrest",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 3574402,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 16,
+          "query": "select case\n           when (select count(*) from pg_stat_wal_receiver) = 1 and pg_last_wal_receive_lsn() = pg_last_wal_replay_lsn()\n               then 0\n           when (not pg_is_in_recovery()) then 0\n           else coalesce(extract(epoch from now() - pg_last_xact_replay_timestamp()), 0)\n           end                                     as physical_replication_lag_seconds,\n       case\n       ",
+          "application_name": "postgres_exporter",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4156516,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 9,
+          "query": "SELECT mfa_amr_claims.authentication_method, mfa_amr_claims.created_at, mfa_amr_claims.id, mfa_amr_claims.session_id, mfa_amr_claims.updated_at FROM mfa_amr_claims AS mfa_amr_claims WHERE session_id = $1",
+          "application_name": "",
+          "client_addr": "127.0.0.1/32"
+        },
+        {
+          "pid": 4156522,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 9,
+          "query": "COMMIT",
+          "application_name": "postgrest",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4156520,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 9,
+          "query": "SELECT mfa_amr_claims.authentication_method, mfa_amr_claims.created_at, mfa_amr_claims.id, mfa_amr_claims.session_id, mfa_amr_claims.updated_at FROM mfa_amr_claims AS mfa_amr_claims WHERE session_id = $1",
+          "application_name": "",
+          "client_addr": "127.0.0.1/32"
+        },
+        {
+          "pid": 4156546,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 0,
+          "query": "SELECT t.oid, t.typname, t.typsend, t.typreceive, t.typoutput, t.typinput,\n       coalesce(d.typelem, t.typelem), coalesce(r.rngsubtype, 0), ARRAY (\n  SELECT a.atttypid\n  FROM pg_attribute AS a\n  WHERE a.attrelid = t.typrelid AND a.attnum > 0 AND NOT a.attisdropped\n  ORDER BY a.attnum\n)\n\nFROM pg_type AS t\nLEFT JOIN pg_type AS d ON t.typbasetype = d.oid\nLEFT JOIN pg_range AS r ON r.rngtypid = t.oid",
+          "application_name": "Supavisor (auth_query)",
+          "client_addr": "2600:1f13:838:6e02:b797:d318:70d5:9f96/128"
+        }
+      ]
+    },
+    {
+      "sample_at": "2026-05-24T19:43:50.947Z",
+      "rows": [
+        {
+          "pid": 3349334,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 70371,
+          "query": "show archive_mode;",
+          "application_name": "",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4075092,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 44666,
+          "query": "LISTEN \"pgrst\"",
+          "application_name": "postgrest",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4156523,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 31,
+          "query": "COMMIT",
+          "application_name": "postgrest",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4156524,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 31,
+          "query": "COMMIT",
+          "application_name": "postgrest",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4156525,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 31,
+          "query": "COMMIT",
+          "application_name": "postgrest",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4156526,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 31,
+          "query": "COMMIT",
+          "application_name": "postgrest",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4156528,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 25,
+          "query": "COMMIT",
+          "application_name": "postgrest",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4156529,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 25,
+          "query": "COMMIT",
+          "application_name": "postgrest",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4156530,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 24,
+          "query": "COMMIT",
+          "application_name": "postgrest",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4156517,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 24,
+          "query": "COMMIT",
+          "application_name": "postgrest",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4156518,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 24,
+          "query": "COMMIT",
+          "application_name": "postgrest",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4156519,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 24,
+          "query": "COMMIT",
+          "application_name": "postgrest",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4156521,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 24,
+          "query": "COMMIT",
+          "application_name": "postgrest",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 3574402,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 21,
+          "query": "select case\n           when (select count(*) from pg_stat_wal_receiver) = 1 and pg_last_wal_receive_lsn() = pg_last_wal_replay_lsn()\n               then 0\n           when (not pg_is_in_recovery()) then 0\n           else coalesce(extract(epoch from now() - pg_last_xact_replay_timestamp()), 0)\n           end                                     as physical_replication_lag_seconds,\n       case\n       ",
+          "application_name": "postgres_exporter",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4156516,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 14,
+          "query": "SELECT mfa_amr_claims.authentication_method, mfa_amr_claims.created_at, mfa_amr_claims.id, mfa_amr_claims.session_id, mfa_amr_claims.updated_at FROM mfa_amr_claims AS mfa_amr_claims WHERE session_id = $1",
+          "application_name": "",
+          "client_addr": "127.0.0.1/32"
+        },
+        {
+          "pid": 4156522,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 14,
+          "query": "COMMIT",
+          "application_name": "postgrest",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4156520,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 14,
+          "query": "SELECT mfa_amr_claims.authentication_method, mfa_amr_claims.created_at, mfa_amr_claims.id, mfa_amr_claims.session_id, mfa_amr_claims.updated_at FROM mfa_amr_claims AS mfa_amr_claims WHERE session_id = $1",
+          "application_name": "",
+          "client_addr": "127.0.0.1/32"
+        },
+        {
+          "pid": 4156546,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 5,
+          "query": "SELECT t.oid, t.typname, t.typsend, t.typreceive, t.typoutput, t.typinput,\n       coalesce(d.typelem, t.typelem), coalesce(r.rngsubtype, 0), ARRAY (\n  SELECT a.atttypid\n  FROM pg_attribute AS a\n  WHERE a.attrelid = t.typrelid AND a.attnum > 0 AND NOT a.attisdropped\n  ORDER BY a.attnum\n)\n\nFROM pg_type AS t\nLEFT JOIN pg_type AS d ON t.typbasetype = d.oid\nLEFT JOIN pg_range AS r ON r.rngtypid = t.oid",
+          "application_name": "Supavisor (auth_query)",
+          "client_addr": "2600:1f13:838:6e02:b797:d318:70d5:9f96/128"
+        }
+      ]
+    },
+    {
+      "sample_at": "2026-05-24T19:43:55.992Z",
+      "rows": [
+        {
+          "pid": 3349334,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 70376,
+          "query": "show archive_mode;",
+          "application_name": "",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4075092,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 44671,
+          "query": "LISTEN \"pgrst\"",
+          "application_name": "postgrest",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4156523,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 36,
+          "query": "COMMIT",
+          "application_name": "postgrest",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4156524,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 36,
+          "query": "COMMIT",
+          "application_name": "postgrest",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4156525,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 36,
+          "query": "COMMIT",
+          "application_name": "postgrest",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4156526,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 36,
+          "query": "COMMIT",
+          "application_name": "postgrest",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4156528,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 30,
+          "query": "COMMIT",
+          "application_name": "postgrest",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4156529,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 30,
+          "query": "COMMIT",
+          "application_name": "postgrest",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4156530,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 30,
+          "query": "COMMIT",
+          "application_name": "postgrest",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4156517,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 30,
+          "query": "COMMIT",
+          "application_name": "postgrest",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4156518,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 29,
+          "query": "COMMIT",
+          "application_name": "postgrest",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4156519,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 29,
+          "query": "COMMIT",
+          "application_name": "postgrest",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4156521,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 29,
+          "query": "COMMIT",
+          "application_name": "postgrest",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 3574402,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 26,
+          "query": "select case\n           when (select count(*) from pg_stat_wal_receiver) = 1 and pg_last_wal_receive_lsn() = pg_last_wal_replay_lsn()\n               then 0\n           when (not pg_is_in_recovery()) then 0\n           else coalesce(extract(epoch from now() - pg_last_xact_replay_timestamp()), 0)\n           end                                     as physical_replication_lag_seconds,\n       case\n       ",
+          "application_name": "postgres_exporter",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4156516,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 19,
+          "query": "SELECT mfa_amr_claims.authentication_method, mfa_amr_claims.created_at, mfa_amr_claims.id, mfa_amr_claims.session_id, mfa_amr_claims.updated_at FROM mfa_amr_claims AS mfa_amr_claims WHERE session_id = $1",
+          "application_name": "",
+          "client_addr": "127.0.0.1/32"
+        },
+        {
+          "pid": 4156522,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 19,
+          "query": "COMMIT",
+          "application_name": "postgrest",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4156520,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 19,
+          "query": "SELECT mfa_amr_claims.authentication_method, mfa_amr_claims.created_at, mfa_amr_claims.id, mfa_amr_claims.session_id, mfa_amr_claims.updated_at FROM mfa_amr_claims AS mfa_amr_claims WHERE session_id = $1",
+          "application_name": "",
+          "client_addr": "127.0.0.1/32"
+        },
+        {
+          "pid": 4156546,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 10,
+          "query": "SELECT t.oid, t.typname, t.typsend, t.typreceive, t.typoutput, t.typinput,\n       coalesce(d.typelem, t.typelem), coalesce(r.rngsubtype, 0), ARRAY (\n  SELECT a.atttypid\n  FROM pg_attribute AS a\n  WHERE a.attrelid = t.typrelid AND a.attnum > 0 AND NOT a.attisdropped\n  ORDER BY a.attnum\n)\n\nFROM pg_type AS t\nLEFT JOIN pg_type AS d ON t.typbasetype = d.oid\nLEFT JOIN pg_range AS r ON r.rngtypid = t.oid",
+          "application_name": "Supavisor (auth_query)",
+          "client_addr": "2600:1f13:838:6e02:b797:d318:70d5:9f96/128"
+        }
+      ]
+    },
+    {
+      "sample_at": "2026-05-24T19:44:01.053Z",
+      "rows": [
+        {
+          "pid": 3349334,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 70381,
+          "query": "show archive_mode;",
+          "application_name": "",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4075092,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 44676,
+          "query": "LISTEN \"pgrst\"",
+          "application_name": "postgrest",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4156523,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 42,
+          "query": "COMMIT",
+          "application_name": "postgrest",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4156524,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 42,
+          "query": "COMMIT",
+          "application_name": "postgrest",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4156525,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 41,
+          "query": "COMMIT",
+          "application_name": "postgrest",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4156526,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 41,
+          "query": "COMMIT",
+          "application_name": "postgrest",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4156528,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 35,
+          "query": "COMMIT",
+          "application_name": "postgrest",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4156529,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 35,
+          "query": "COMMIT",
+          "application_name": "postgrest",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4156530,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 35,
+          "query": "COMMIT",
+          "application_name": "postgrest",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4156517,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 35,
+          "query": "COMMIT",
+          "application_name": "postgrest",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4156518,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 34,
+          "query": "COMMIT",
+          "application_name": "postgrest",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4156519,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 34,
+          "query": "COMMIT",
+          "application_name": "postgrest",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4156521,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 34,
+          "query": "COMMIT",
+          "application_name": "postgrest",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 3574402,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 31,
+          "query": "select case\n           when (select count(*) from pg_stat_wal_receiver) = 1 and pg_last_wal_receive_lsn() = pg_last_wal_replay_lsn()\n               then 0\n           when (not pg_is_in_recovery()) then 0\n           else coalesce(extract(epoch from now() - pg_last_xact_replay_timestamp()), 0)\n           end                                     as physical_replication_lag_seconds,\n       case\n       ",
+          "application_name": "postgres_exporter",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4156516,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 24,
+          "query": "SELECT mfa_amr_claims.authentication_method, mfa_amr_claims.created_at, mfa_amr_claims.id, mfa_amr_claims.session_id, mfa_amr_claims.updated_at FROM mfa_amr_claims AS mfa_amr_claims WHERE session_id = $1",
+          "application_name": "",
+          "client_addr": "127.0.0.1/32"
+        },
+        {
+          "pid": 4156522,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 24,
+          "query": "COMMIT",
+          "application_name": "postgrest",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4156520,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 24,
+          "query": "SELECT mfa_amr_claims.authentication_method, mfa_amr_claims.created_at, mfa_amr_claims.id, mfa_amr_claims.session_id, mfa_amr_claims.updated_at FROM mfa_amr_claims AS mfa_amr_claims WHERE session_id = $1",
+          "application_name": "",
+          "client_addr": "127.0.0.1/32"
+        },
+        {
+          "pid": 4156546,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 0,
+          "query": "SELECT * FROM pgbouncer.get_auth($1)",
+          "application_name": "Supavisor (auth_query)",
+          "client_addr": "2600:1f13:838:6e02:b797:d318:70d5:9f96/128"
+        }
+      ]
+    },
+    {
+      "sample_at": "2026-05-24T19:44:06.114Z",
+      "rows": [
+        {
+          "pid": 3349334,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 70386,
+          "query": "show archive_mode;",
+          "application_name": "",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4075092,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 44681,
+          "query": "LISTEN \"pgrst\"",
+          "application_name": "postgrest",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4156523,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 47,
+          "query": "COMMIT",
+          "application_name": "postgrest",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4156524,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 47,
+          "query": "COMMIT",
+          "application_name": "postgrest",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4156525,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 46,
+          "query": "COMMIT",
+          "application_name": "postgrest",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4156526,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 46,
+          "query": "COMMIT",
+          "application_name": "postgrest",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4156528,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 40,
+          "query": "COMMIT",
+          "application_name": "postgrest",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4156529,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 40,
+          "query": "COMMIT",
+          "application_name": "postgrest",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4156530,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 40,
+          "query": "COMMIT",
+          "application_name": "postgrest",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4156517,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 40,
+          "query": "COMMIT",
+          "application_name": "postgrest",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4156518,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 39,
+          "query": "COMMIT",
+          "application_name": "postgrest",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4156519,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 39,
+          "query": "COMMIT",
+          "application_name": "postgrest",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4156521,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 39,
+          "query": "COMMIT",
+          "application_name": "postgrest",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 3574402,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 36,
+          "query": "select case\n           when (select count(*) from pg_stat_wal_receiver) = 1 and pg_last_wal_receive_lsn() = pg_last_wal_replay_lsn()\n               then 0\n           when (not pg_is_in_recovery()) then 0\n           else coalesce(extract(epoch from now() - pg_last_xact_replay_timestamp()), 0)\n           end                                     as physical_replication_lag_seconds,\n       case\n       ",
+          "application_name": "postgres_exporter",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4156516,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 30,
+          "query": "SELECT mfa_amr_claims.authentication_method, mfa_amr_claims.created_at, mfa_amr_claims.id, mfa_amr_claims.session_id, mfa_amr_claims.updated_at FROM mfa_amr_claims AS mfa_amr_claims WHERE session_id = $1",
+          "application_name": "",
+          "client_addr": "127.0.0.1/32"
+        },
+        {
+          "pid": 4156522,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 29,
+          "query": "COMMIT",
+          "application_name": "postgrest",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4156520,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 29,
+          "query": "SELECT mfa_amr_claims.authentication_method, mfa_amr_claims.created_at, mfa_amr_claims.id, mfa_amr_claims.session_id, mfa_amr_claims.updated_at FROM mfa_amr_claims AS mfa_amr_claims WHERE session_id = $1",
+          "application_name": "",
+          "client_addr": "127.0.0.1/32"
+        },
+        {
+          "pid": 4156546,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 5,
+          "query": "SELECT * FROM pgbouncer.get_auth($1)",
+          "application_name": "Supavisor (auth_query)",
+          "client_addr": "2600:1f13:838:6e02:b797:d318:70d5:9f96/128"
+        }
+      ]
+    },
+    {
+      "sample_at": "2026-05-24T19:44:11.167Z",
+      "rows": [
+        {
+          "pid": 3349334,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 70391,
+          "query": "show archive_mode;",
+          "application_name": "",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4075092,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 44686,
+          "query": "LISTEN \"pgrst\"",
+          "application_name": "postgrest",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4156523,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 52,
+          "query": "COMMIT",
+          "application_name": "postgrest",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4156524,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 52,
+          "query": "COMMIT",
+          "application_name": "postgrest",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4156525,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 52,
+          "query": "COMMIT",
+          "application_name": "postgrest",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4156526,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 51,
+          "query": "COMMIT",
+          "application_name": "postgrest",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4156528,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 45,
+          "query": "COMMIT",
+          "application_name": "postgrest",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4156529,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 45,
+          "query": "COMMIT",
+          "application_name": "postgrest",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4156530,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 45,
+          "query": "COMMIT",
+          "application_name": "postgrest",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4156517,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 45,
+          "query": "COMMIT",
+          "application_name": "postgrest",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4156518,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 45,
+          "query": "COMMIT",
+          "application_name": "postgrest",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4156519,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 44,
+          "query": "COMMIT",
+          "application_name": "postgrest",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4156521,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 44,
+          "query": "COMMIT",
+          "application_name": "postgrest",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 3574402,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 41,
+          "query": "select case\n           when (select count(*) from pg_stat_wal_receiver) = 1 and pg_last_wal_receive_lsn() = pg_last_wal_replay_lsn()\n               then 0\n           when (not pg_is_in_recovery()) then 0\n           else coalesce(extract(epoch from now() - pg_last_xact_replay_timestamp()), 0)\n           end                                     as physical_replication_lag_seconds,\n       case\n       ",
+          "application_name": "postgres_exporter",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4156516,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 35,
+          "query": "SELECT mfa_amr_claims.authentication_method, mfa_amr_claims.created_at, mfa_amr_claims.id, mfa_amr_claims.session_id, mfa_amr_claims.updated_at FROM mfa_amr_claims AS mfa_amr_claims WHERE session_id = $1",
+          "application_name": "",
+          "client_addr": "127.0.0.1/32"
+        },
+        {
+          "pid": 4156522,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 34,
+          "query": "COMMIT",
+          "application_name": "postgrest",
+          "client_addr": "::1/128"
+        },
+        {
+          "pid": 4156520,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 34,
+          "query": "SELECT mfa_amr_claims.authentication_method, mfa_amr_claims.created_at, mfa_amr_claims.id, mfa_amr_claims.session_id, mfa_amr_claims.updated_at FROM mfa_amr_claims AS mfa_amr_claims WHERE session_id = $1",
+          "application_name": "",
+          "client_addr": "127.0.0.1/32"
+        },
+        {
+          "pid": 4156546,
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "xact_age_s": null,
+          "query_age_s": 10,
+          "query": "SELECT * FROM pgbouncer.get_auth($1)",
+          "application_name": "Supavisor (auth_query)",
+          "client_addr": "2600:1f13:838:6e02:b797:d318:70d5:9f96/128"
+        }
+      ]
+    }
+  ],
+  "section_c_contention_samples": [
+    {
+      "sample_at": "2026-05-24T19:43:45.888Z",
+      "row": {
+        "io_waiting": "0",
+        "lock_waiting": "0",
+        "active": "1",
+        "idle": "18",
+        "idle_in_xact": "0",
+        "total": "21"
+      }
+    },
+    {
+      "sample_at": "2026-05-24T19:43:50.947Z",
+      "row": {
+        "io_waiting": "0",
+        "lock_waiting": "0",
+        "active": "1",
+        "idle": "18",
+        "idle_in_xact": "0",
+        "total": "21"
+      }
+    },
+    {
+      "sample_at": "2026-05-24T19:43:55.992Z",
+      "row": {
+        "io_waiting": "0",
+        "lock_waiting": "0",
+        "active": "1",
+        "idle": "18",
+        "idle_in_xact": "0",
+        "total": "21"
+      }
+    },
+    {
+      "sample_at": "2026-05-24T19:44:01.053Z",
+      "row": {
+        "io_waiting": "0",
+        "lock_waiting": "0",
+        "active": "1",
+        "idle": "18",
+        "idle_in_xact": "0",
+        "total": "21"
+      }
+    },
+    {
+      "sample_at": "2026-05-24T19:44:06.114Z",
+      "row": {
+        "io_waiting": "0",
+        "lock_waiting": "0",
+        "active": "1",
+        "idle": "18",
+        "idle_in_xact": "0",
+        "total": "21"
+      }
+    },
+    {
+      "sample_at": "2026-05-24T19:44:11.167Z",
+      "row": {
+        "io_waiting": "0",
+        "lock_waiting": "0",
+        "active": "1",
+        "idle": "18",
+        "idle_in_xact": "0",
+        "total": "21"
+      }
+    }
+  ],
+  "section_d_top_tables": [
+    {
+      "relname": "entity_connections",
+      "total_bytes": "5118844928",
+      "heap_bytes": "2370273280",
+      "index_bytes": "2747883520",
+      "approx_rows": "5183709"
+    },
+    {
+      "relname": "financial_relationships",
+      "total_bytes": "4793901056",
+      "heap_bytes": "2459754496",
+      "index_bytes": "2333450240",
+      "approx_rows": "5930046"
+    },
+    {
+      "relname": "financial_entities",
+      "total_bytes": "2612199424",
+      "heap_bytes": "1534631936",
+      "index_bytes": "1077108736",
+      "approx_rows": "2424126"
+    },
+    {
+      "relname": "votes",
+      "total_bytes": "500219904",
+      "heap_bytes": "259448832",
+      "index_bytes": "240672768",
+      "approx_rows": "902226"
+    },
+    {
+      "relname": "jurisdictions",
+      "total_bytes": "450748416",
+      "heap_bytes": "8421376",
+      "index_bytes": "2637824",
+      "approx_rows": "7267"
+    },
+    {
+      "relname": "enrichment_queue",
+      "total_bytes": "258883584",
+      "heap_bytes": "232824832",
+      "index_bytes": "25968640",
+      "approx_rows": "142129"
+    },
+    {
+      "relname": "external_relationships_review_queue",
+      "total_bytes": "204300288",
+      "heap_bytes": "164585472",
+      "index_bytes": "23937024",
+      "approx_rows": "120018"
+    },
+    {
+      "relname": "proposals",
+      "total_bytes": "149872640",
+      "heap_bytes": "80601088",
+      "index_bytes": "69214208",
+      "approx_rows": "76622"
+    },
+    {
+      "relname": "external_relationships",
+      "total_bytes": "137232384",
+      "heap_bytes": "101957632",
+      "index_bytes": "34922496",
+      "approx_rows": "193593"
+    },
+    {
+      "relname": "external_source_refs",
+      "total_bytes": "85368832",
+      "heap_bytes": "35594240",
+      "index_bytes": "49725440",
+      "approx_rows": "176299"
+    },
+    {
+      "relname": "officials",
+      "total_bytes": "41762816",
+      "heap_bytes": "15720448",
+      "index_bytes": "26001408",
+      "approx_rows": "28768"
+    },
+    {
+      "relname": "bill_details",
+      "total_bytes": "22331392",
+      "heap_bytes": "7864320",
+      "index_bytes": "14426112",
+      "approx_rows": "68276"
+    },
+    {
+      "relname": "entity_tags",
+      "total_bytes": "20234240",
+      "heap_bytes": "9183232",
+      "index_bytes": "11010048",
+      "approx_rows": "43356"
+    },
+    {
+      "relname": "platform_usage_snapshot",
+      "total_bytes": "9134080",
+      "heap_bytes": "385024",
+      "index_bytes": "90112",
+      "approx_rows": "823"
+    },
+    {
+      "relname": "status_snapshot",
+      "total_bytes": "7569408",
+      "heap_bytes": "1441792",
+      "index_bytes": "90112",
+      "approx_rows": "691"
+    },
+    {
+      "relname": "ai_summary_cache",
+      "total_bytes": "4063232",
+      "heap_bytes": "2613248",
+      "index_bytes": "1409024",
+      "approx_rows": "6695"
+    },
+    {
+      "relname": "official_committee_memberships",
+      "total_bytes": "2572288",
+      "heap_bytes": "1302528",
+      "index_bytes": "1228800",
+      "approx_rows": "3879"
+    },
+    {
+      "relname": "web_vitals_samples",
+      "total_bytes": "860160",
+      "heap_bytes": "507904",
+      "index_bytes": "311296",
+      "approx_rows": "2254"
+    },
+    {
+      "relname": "irs990_officers",
+      "total_bytes": "802816",
+      "heap_bytes": "319488",
+      "index_bytes": "442368",
+      "approx_rows": "2090"
+    },
+    {
+      "relname": "agencies",
+      "total_bytes": "688128",
+      "heap_bytes": "147456",
+      "index_bytes": "499712",
+      "approx_rows": "98"
+    },
+    {
+      "relname": "irs990_grants_out",
+      "total_bytes": "622592",
+      "heap_bytes": "245760",
+      "index_bytes": "335872",
+      "approx_rows": "1166"
+    },
+    {
+      "relname": "case_details",
+      "total_bytes": "368640",
+      "heap_bytes": "122880",
+      "index_bytes": "204800",
+      "approx_rows": "699"
+    },
+    {
+      "relname": "page_views",
+      "total_bytes": "344064",
+      "heap_bytes": "139264",
+      "index_bytes": "172032",
+      "approx_rows": "585"
+    },
+    {
+      "relname": "governing_bodies",
+      "total_bytes": "303104",
+      "heap_bytes": "155648",
+      "index_bytes": "106496",
+      "approx_rows": "604"
+    },
+    {
+      "relname": "data_sync_log",
+      "total_bytes": "286720",
+      "heap_bytes": "106496",
+      "index_bytes": "139264",
+      "approx_rows": "321"
+    }
+  ],
+  "section_d_hot_tables": [
+    {
+      "relname": "financial_relationships",
+      "seq_scan": "6423",
+      "seq_tup_read": "1780933322",
+      "idx_scan": "13605188",
+      "idx_tup_fetch": "398309947",
+      "n_live_tup": "6174475",
+      "n_dead_tup": "835012",
+      "n_tup_ins": "6596683",
+      "n_tup_upd": "5689699",
+      "n_tup_del": "422772",
+      "n_tup_hot_upd": "737199"
+    },
+    {
+      "relname": "proposals",
+      "seq_scan": "26068",
+      "seq_tup_read": "1635804525",
+      "idx_scan": "892542",
+      "idx_tup_fetch": "56536650",
+      "n_live_tup": "76661",
+      "n_dead_tup": "9356",
+      "n_tup_ins": "76968",
+      "n_tup_upd": "40571",
+      "n_tup_del": "307",
+      "n_tup_hot_upd": "0"
+    },
+    {
+      "relname": "entity_connections",
+      "seq_scan": "1996",
+      "seq_tup_read": "1061683143",
+      "idx_scan": "2094681",
+      "idx_tup_fetch": "247997781",
+      "n_live_tup": "5183709",
+      "n_dead_tup": "147824",
+      "n_tup_ins": "60322473",
+      "n_tup_upd": "4692",
+      "n_tup_del": "30584918",
+      "n_tup_hot_upd": "698"
+    },
+    {
+      "relname": "votes",
+      "seq_scan": "1265",
+      "seq_tup_read": "7952442",
+      "idx_scan": "45719",
+      "idx_tup_fetch": "849333563",
+      "n_live_tup": "927208",
+      "n_dead_tup": "1408",
+      "n_tup_ins": "1006106",
+      "n_tup_upd": "0",
+      "n_tup_del": "0",
+      "n_tup_hot_upd": "0"
+    },
+    {
+      "relname": "financial_entities",
+      "seq_scan": "3326",
+      "seq_tup_read": "719593864",
+      "idx_scan": "28519852",
+      "idx_tup_fetch": "46569937",
+      "n_live_tup": "2424336",
+      "n_dead_tup": "282605",
+      "n_tup_ins": "2483056",
+      "n_tup_upd": "25657945",
+      "n_tup_del": "18455",
+      "n_tup_hot_upd": "5176800"
+    },
+    {
+      "relname": "enrichment_queue",
+      "seq_scan": "2438",
+      "seq_tup_read": "304017451",
+      "idx_scan": "417015",
+      "idx_tup_fetch": "17171887",
+      "n_live_tup": "148408",
+      "n_dead_tup": "8521",
+      "n_tup_ins": "150811",
+      "n_tup_upd": "326622",
+      "n_tup_del": "0",
+      "n_tup_hot_upd": "12502"
+    },
+    {
+      "relname": "officials",
+      "seq_scan": "7719",
+      "seq_tup_read": "104797900",
+      "idx_scan": "5022164",
+      "idx_tup_fetch": "9282011",
+      "n_live_tup": "28797",
+      "n_dead_tup": "28",
+      "n_tup_ins": "38369",
+      "n_tup_upd": "575410",
+      "n_tup_del": "9572",
+      "n_tup_hot_upd": "0"
+    },
+    {
+      "relname": "entity_tags",
+      "seq_scan": "1207",
+      "seq_tup_read": "4303409",
+      "idx_scan": "4812874",
+      "idx_tup_fetch": "22660615",
+      "n_live_tup": "43871",
+      "n_dead_tup": "701",
+      "n_tup_ins": "43875",
+      "n_tup_upd": "29078",
+      "n_tup_del": "0",
+      "n_tup_hot_upd": "24708"
+    },
+    {
+      "relname": "jurisdictions",
+      "seq_scan": "87405",
+      "seq_tup_read": "4996385",
+      "idx_scan": "130497",
+      "idx_tup_fetch": "1620253",
+      "n_live_tup": "7270",
+      "n_dead_tup": "0",
+      "n_tup_ins": "7268",
+      "n_tup_upd": "20326",
+      "n_tup_del": "1",
+      "n_tup_hot_upd": "0"
+    },
+    {
+      "relname": "external_source_refs",
+      "seq_scan": "11",
+      "seq_tup_read": "178981",
+      "idx_scan": "1442832",
+      "idx_tup_fetch": "2717329",
+      "n_live_tup": "176875",
+      "n_dead_tup": "4067",
+      "n_tup_ins": "177182",
+      "n_tup_upd": "4067",
+      "n_tup_del": "0",
+      "n_tup_hot_upd": "0"
+    },
+    {
+      "relname": "external_relationships",
+      "seq_scan": "12",
+      "seq_tup_read": "460827",
+      "idx_scan": "201799",
+      "idx_tup_fetch": "2110699",
+      "n_live_tup": "193593",
+      "n_dead_tup": "26580",
+      "n_tup_ins": "193593",
+      "n_tup_upd": "26582",
+      "n_tup_del": "0",
+      "n_tup_hot_upd": "2"
+    },
+    {
+      "relname": "proposal_trending_24h",
+      "seq_scan": "40",
+      "seq_tup_read": "2086201",
+      "idx_scan": "778",
+      "idx_tup_fetch": "49206",
+      "n_live_tup": "76201",
+      "n_dead_tup": "635",
+      "n_tup_ins": "76836",
+      "n_tup_upd": "0",
+      "n_tup_del": "635",
+      "n_tup_hot_upd": "0"
+    },
+    {
+      "relname": "ai_summary_cache",
+      "seq_scan": "1072",
+      "seq_tup_read": "1037000",
+      "idx_scan": "58822",
+      "idx_tup_fetch": "884969",
+      "n_live_tup": "7055",
+      "n_dead_tup": "0",
+      "n_tup_ins": "7055",
+      "n_tup_upd": "555",
+      "n_tup_del": "0",
+      "n_tup_hot_upd": "466"
+    },
+    {
+      "relname": "bill_details",
+      "seq_scan": "24",
+      "seq_tup_read": "9022",
+      "idx_scan": "1015987",
+      "idx_tup_fetch": "931303",
+      "n_live_tup": "74729",
+      "n_dead_tup": "0",
+      "n_tup_ins": "75036",
+      "n_tup_upd": "0",
+      "n_tup_del": "0",
+      "n_tup_hot_upd": "0"
+    },
+    {
+      "relname": "data_sync_log",
+      "seq_scan": "2111",
+      "seq_tup_read": "610922",
+      "idx_scan": "977",
+      "idx_tup_fetch": "11257",
+      "n_live_tup": "336",
+      "n_dead_tup": "22",
+      "n_tup_ins": "336",
+      "n_tup_upd": "271",
+      "n_tup_del": "0",
+      "n_tup_hot_upd": "0"
+    },
+    {
+      "relname": "chord_industry_flows_mv",
+      "seq_scan": "1851",
+      "seq_tup_read": "157335",
+      "idx_scan": "0",
+      "idx_tup_fetch": "0",
+      "n_live_tup": "85",
+      "n_dead_tup": "0",
+      "n_tup_ins": "85",
+      "n_tup_upd": "0",
+      "n_tup_del": "0",
+      "n_tup_hot_upd": "0"
+    },
+    {
+      "relname": "agencies",
+      "seq_scan": "1659",
+      "seq_tup_read": "145485",
+      "idx_scan": "4621",
+      "idx_tup_fetch": "1793",
+      "n_live_tup": "100",
+      "n_dead_tup": "32",
+      "n_tup_ins": "101",
+      "n_tup_upd": "240",
+      "n_tup_del": "0",
+      "n_tup_hot_upd": "0"
+    },
+    {
+      "relname": "governing_bodies",
+      "seq_scan": "10",
+      "seq_tup_read": "1970",
+      "idx_scan": "101279",
+      "idx_tup_fetch": "119296",
+      "n_live_tup": "604",
+      "n_dead_tup": "0",
+      "n_tup_ins": "604",
+      "n_tup_upd": "920",
+      "n_tup_del": "0",
+      "n_tup_hot_upd": "0"
+    },
+    {
+      "relname": "page_views",
+      "seq_scan": "45",
+      "seq_tup_read": "6766",
+      "idx_scan": "6629",
+      "idx_tup_fetch": "94021",
+      "n_live_tup": "673",
+      "n_dead_tup": "0",
+      "n_tup_ins": "673",
+      "n_tup_upd": "0",
+      "n_tup_del": "0",
+      "n_tup_hot_upd": "0"
+    },
+    {
+      "relname": "platform_usage",
+      "seq_scan": "1986",
+      "seq_tup_read": "45685",
+      "idx_scan": "9658",
+      "idx_tup_fetch": "9914",
+      "n_live_tup": "26",
+      "n_dead_tup": "16",
+      "n_tup_ins": "26",
+      "n_tup_upd": "9550",
+      "n_tup_del": "0",
+      "n_tup_hot_upd": "9550"
+    },
+    {
+      "relname": "official_homepage_stats_mv",
+      "seq_scan": "5",
+      "seq_tup_read": "34326",
+      "idx_scan": "7756",
+      "idx_tup_fetch": "11228",
+      "n_live_tup": "15663",
+      "n_dead_tup": "0",
+      "n_tup_ins": "15663",
+      "n_tup_upd": "0",
+      "n_tup_del": "0",
+      "n_tup_hot_upd": "0"
+    },
+    {
+      "relname": "pipeline_state",
+      "seq_scan": "3633",
+      "seq_tup_read": "39857",
+      "idx_scan": "546",
+      "idx_tup_fetch": "315",
+      "n_live_tup": "11",
+      "n_dead_tup": "5",
+      "n_tup_ins": "12",
+      "n_tup_upd": "80",
+      "n_tup_del": "1",
+      "n_tup_hot_upd": "80"
+    },
+    {
+      "relname": "platform_limits",
+      "seq_scan": "8",
+      "seq_tup_read": "174",
+      "idx_scan": "1878",
+      "idx_tup_fetch": "26317",
+      "n_live_tup": "31",
+      "n_dead_tup": "3",
+      "n_tup_ins": "32",
+      "n_tup_upd": "7",
+      "n_tup_del": "1",
+      "n_tup_hot_upd": "6"
+    },
+    {
+      "relname": "official_committee_memberships",
+      "seq_scan": "9",
+      "seq_tup_read": "12637",
+      "idx_scan": "9596",
+      "idx_tup_fetch": "3879",
+      "n_live_tup": "3879",
+      "n_dead_tup": "0",
+      "n_tup_ins": "19395",
+      "n_tup_upd": "0",
+      "n_tup_del": "15516",
+      "n_tup_hot_upd": "0"
+    },
+    {
+      "relname": "external_relationships_review_queue",
+      "seq_scan": "4",
+      "seq_tup_read": "0",
+      "idx_scan": "8",
+      "idx_tup_fetch": "7820",
+      "n_live_tup": "124080",
+      "n_dead_tup": "5",
+      "n_tup_ins": "125065",
+      "n_tup_upd": "2",
+      "n_tup_del": "3",
+      "n_tup_hot_upd": "0"
+    }
+  ],
+  "section_e_low_idx": [
+    {
+      "schemaname": "public",
+      "table_name": "entity_connections",
+      "index_name": "entity_connections_strength",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0",
+      "size_bytes": "490430464"
+    },
+    {
+      "schemaname": "public",
+      "table_name": "financial_relationships",
+      "index_name": "financial_relationships_metadata_gin",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0",
+      "size_bytes": "257581056"
+    },
+    {
+      "schemaname": "public",
+      "table_name": "entity_connections",
+      "index_name": "entity_connections_amount",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0",
+      "size_bytes": "128548864"
+    },
+    {
+      "schemaname": "public",
+      "table_name": "financial_entities",
+      "index_name": "financial_entities_display_trgm_individual",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0",
+      "size_bytes": "122855424"
+    },
+    {
+      "schemaname": "public",
+      "table_name": "financial_relationships",
+      "index_name": "financial_relationships_occurred_at",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0",
+      "size_bytes": "75636736"
+    },
+    {
+      "schemaname": "public",
+      "table_name": "votes",
+      "index_name": "votes_roll_call_id_official_id_key",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0",
+      "size_bytes": "67911680"
+    },
+    {
+      "schemaname": "public",
+      "table_name": "proposals",
+      "index_name": "shadow_proposals_search_vector",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0",
+      "size_bytes": "13090816"
+    },
+    {
+      "schemaname": "public",
+      "table_name": "external_source_refs",
+      "index_name": "external_source_refs_metadata_gin",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0",
+      "size_bytes": "11395072"
+    },
+    {
+      "schemaname": "public",
+      "table_name": "external_relationships",
+      "index_name": "external_relationships_pkey",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0",
+      "size_bytes": "8904704"
+    },
+    {
+      "schemaname": "public",
+      "table_name": "votes",
+      "index_name": "votes_voted_at",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0",
+      "size_bytes": "8798208"
+    },
+    {
+      "schemaname": "public",
+      "table_name": "officials",
+      "index_name": "officials_full_name_trgm",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0",
+      "size_bytes": "6651904"
+    },
+    {
+      "schemaname": "public",
+      "table_name": "external_relationships_review_queue",
+      "index_name": "external_relationships_review_queue_pkey",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0",
+      "size_bytes": "4939776"
+    },
+    {
+      "schemaname": "public",
+      "table_name": "officials",
+      "index_name": "idx_officials_fts",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0",
+      "size_bytes": "4898816"
+    },
+    {
+      "schemaname": "public",
+      "table_name": "bill_details",
+      "index_name": "shadow_bill_details_bill_number",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0",
+      "size_bytes": "3055616"
+    },
+    {
+      "schemaname": "public",
+      "table_name": "entity_tags",
+      "index_name": "idx_entity_tags_visibility",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0",
+      "size_bytes": "2154496"
+    },
+    {
+      "schemaname": "public",
+      "table_name": "entity_tags",
+      "index_name": "entity_tags_pkey",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0",
+      "size_bytes": "1859584"
+    },
+    {
+      "schemaname": "public",
+      "table_name": "bill_details",
+      "index_name": "shadow_bill_details_legistar",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0",
+      "size_bytes": "1802240"
+    },
+    {
+      "schemaname": "public",
+      "table_name": "external_relationships",
+      "index_name": "external_relationships_connection_type",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0",
+      "size_bytes": "1597440"
+    },
+    {
+      "schemaname": "public",
+      "table_name": "officials",
+      "index_name": "officials_updated_at",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0",
+      "size_bytes": "1163264"
+    },
+    {
+      "schemaname": "public",
+      "table_name": "proposals",
+      "index_name": "shadow_proposals_last_action_at",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0",
+      "size_bytes": "1073152"
+    },
+    {
+      "schemaname": "public",
+      "table_name": "external_relationships_review_queue",
+      "index_name": "exr_queue_status",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0",
+      "size_bytes": "917504"
+    },
+    {
+      "schemaname": "public",
+      "table_name": "bill_details",
+      "index_name": "shadow_bill_details_chamber",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0",
+      "size_bytes": "524288"
+    },
+    {
+      "schemaname": "public",
+      "table_name": "jurisdictions",
+      "index_name": "jurisdictions_centroid_gist",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0",
+      "size_bytes": "475136"
+    },
+    {
+      "schemaname": "public",
+      "table_name": "officials",
+      "index_name": "officials_next_election_date",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0",
+      "size_bytes": "425984"
+    },
+    {
+      "schemaname": "public",
+      "table_name": "officials",
+      "index_name": "officials_is_up_for_election",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0",
+      "size_bytes": "417792"
+    },
+    {
+      "schemaname": "public",
+      "table_name": "official_committee_memberships",
+      "index_name": "official_committee_memberships_pkey",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0",
+      "size_bytes": "319488"
+    },
+    {
+      "schemaname": "public",
+      "table_name": "official_committee_memberships",
+      "index_name": "official_committee_memberships_unique",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0",
+      "size_bytes": "319488"
+    },
+    {
+      "schemaname": "public",
+      "table_name": "jurisdictions",
+      "index_name": "jurisdictions_updated_at",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0",
+      "size_bytes": "262144"
+    },
+    {
+      "schemaname": "public",
+      "table_name": "web_vitals_samples",
+      "index_name": "web_vitals_samples_metric_recorded",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0",
+      "size_bytes": "147456"
+    },
+    {
+      "schemaname": "public",
+      "table_name": "jurisdictions",
+      "index_name": "jurisdictions_country_code",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0",
+      "size_bytes": "122880"
+    },
+    {
+      "schemaname": "public",
+      "table_name": "agencies",
+      "index_name": "agencies_name_trgm",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0",
+      "size_bytes": "122880"
+    },
+    {
+      "schemaname": "public",
+      "table_name": "web_vitals_samples",
+      "index_name": "web_vitals_samples_pkey",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0",
+      "size_bytes": "114688"
+    },
+    {
+      "schemaname": "public",
+      "table_name": "jurisdictions",
+      "index_name": "jurisdictions_parent_id",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0",
+      "size_bytes": "114688"
+    },
+    {
+      "schemaname": "public",
+      "table_name": "irs990_officers",
+      "index_name": "irs990_officers_pkey",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0",
+      "size_bytes": "90112"
+    },
+    {
+      "schemaname": "public",
+      "table_name": "irs990_officers",
+      "index_name": "irs990_officers_name_canonical",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0",
+      "size_bytes": "90112"
+    },
+    {
+      "schemaname": "public",
+      "table_name": "irs990_grants_out",
+      "index_name": "irs990_grants_out_recipient_name",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0",
+      "size_bytes": "73728"
+    },
+    {
+      "schemaname": "public",
+      "table_name": "irs990_grants_out",
+      "index_name": "irs990_grants_out_recipient_ein",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0",
+      "size_bytes": "57344"
+    },
+    {
+      "schemaname": "public",
+      "table_name": "irs990_grants_out",
+      "index_name": "irs990_grants_out_pkey",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0",
+      "size_bytes": "57344"
+    },
+    {
+      "schemaname": "public",
+      "table_name": "case_details",
+      "index_name": "shadow_case_details_courtlistener",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0",
+      "size_bytes": "57344"
+    },
+    {
+      "schemaname": "public",
+      "table_name": "case_details",
+      "index_name": "shadow_case_details_docket",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0",
+      "size_bytes": "57344"
+    },
+    {
+      "schemaname": "public",
+      "table_name": "web_vitals_samples",
+      "index_name": "web_vitals_samples_exceeded",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0",
+      "size_bytes": "49152"
+    },
+    {
+      "schemaname": "public",
+      "table_name": "platform_usage_snapshot",
+      "index_name": "platform_usage_snapshot_pkey",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0",
+      "size_bytes": "40960"
+    },
+    {
+      "schemaname": "public",
+      "table_name": "officials",
+      "index_name": "officials_current_term_end",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0",
+      "size_bytes": "32768"
+    },
+    {
+      "schemaname": "public",
+      "table_name": "governing_bodies",
+      "index_name": "governing_bodies_updated_at",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0",
+      "size_bytes": "32768"
+    },
+    {
+      "schemaname": "public",
+      "table_name": "chord_donor_state_party_flows_mv",
+      "index_name": "chord_donor_state_party_flows_mv_pk",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0",
+      "size_bytes": "32768"
+    },
+    {
+      "schemaname": "public",
+      "table_name": "jurisdictions",
+      "index_name": "jurisdictions_coverage_status",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0",
+      "size_bytes": "16384"
+    },
+    {
+      "schemaname": "public",
+      "table_name": "meetings",
+      "index_name": "meetings_type",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0",
+      "size_bytes": "16384"
+    },
+    {
+      "schemaname": "public",
+      "table_name": "proposal_popularity_24h",
+      "index_name": "proposal_popularity_24h_pk",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0",
+      "size_bytes": "16384"
+    },
+    {
+      "schemaname": "public",
+      "table_name": "edgar_executive_officers",
+      "index_name": "edgar_officers_company_idx",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0",
+      "size_bytes": "16384"
+    },
+    {
+      "schemaname": "public",
+      "table_name": "meetings",
+      "index_name": "meetings_status",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0",
+      "size_bytes": "16384"
+    },
+    {
+      "schemaname": "public",
+      "table_name": "edgar_companies",
+      "index_name": "edgar_companies_canonical_name_idx",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0",
+      "size_bytes": "16384"
+    },
+    {
+      "schemaname": "public",
+      "table_name": "edgar_executive_officers",
+      "index_name": "edgar_officers_canonical_name_idx",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0",
+      "size_bytes": "16384"
+    },
+    {
+      "schemaname": "public",
+      "table_name": "meetings",
+      "index_name": "meetings_scheduled_at",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0",
+      "size_bytes": "16384"
+    },
+    {
+      "schemaname": "public",
+      "table_name": "edgar_companies",
+      "index_name": "edgar_companies_ticker_idx",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0",
+      "size_bytes": "16384"
+    },
+    {
+      "schemaname": "public",
+      "table_name": "meetings",
+      "index_name": "meetings_body",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0",
+      "size_bytes": "16384"
+    },
+    {
+      "schemaname": "public",
+      "table_name": "chord_subject_party_flows_mv",
+      "index_name": "chord_subject_party_flows_mv_pk",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0",
+      "size_bytes": "16384"
+    },
+    {
+      "schemaname": "public",
+      "table_name": "meetings",
+      "index_name": "meetings_pkey",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0",
+      "size_bytes": "16384"
+    },
+    {
+      "schemaname": "public",
+      "table_name": "pipeline_runtime_stats_mv",
+      "index_name": "pipeline_runtime_stats_mv_pkey",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0",
+      "size_bytes": "16384"
+    },
+    {
+      "schemaname": "public",
+      "table_name": "case_details",
+      "index_name": "shadow_case_details_outcome",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0",
+      "size_bytes": "16384"
+    },
+    {
+      "schemaname": "public",
+      "table_name": "case_details",
+      "index_name": "shadow_case_details_court",
+      "idx_scan": "0",
+      "idx_tup_read": "0",
+      "idx_tup_fetch": "0",
+      "size_bytes": "16384"
+    }
+  ],
+  "section_e_duplicate_idx": [
+    {
+      "table_name": "financial_entities",
+      "index_name": "financial_entities_donor_fingerprint_pattern",
+      "size_bytes": "174522368",
+      "is_unique": false,
+      "is_primary": false,
+      "dup_of": "financial_entities_donor_fingerprint_unique",
+      "dup_size": "170844160",
+      "indexdef": "CREATE INDEX financial_entities_donor_fingerprint_pattern ON public.financial_entities USING btree (donor_fingerprint text_pattern_ops)",
+      "dup_indexdef": "CREATE UNIQUE INDEX financial_entities_donor_fingerprint_unique ON public.financial_entities USING btree (donor_fingerprint)"
+    },
+    {
+      "table_name": "financial_entities",
+      "index_name": "financial_entities_canonical",
+      "size_bytes": "4374528",
+      "is_unique": false,
+      "is_primary": false,
+      "dup_of": "financial_entities_canonical_trgm",
+      "dup_size": "242589696",
+      "indexdef": "CREATE INDEX financial_entities_canonical ON public.financial_entities USING btree (canonical_name) WHERE (entity_type <> 'individual'::text)",
+      "dup_indexdef": "CREATE INDEX financial_entities_canonical_trgm ON public.financial_entities USING gin (canonical_name gin_trgm_ops)"
+    },
+    {
+      "table_name": "financial_entities",
+      "index_name": "financial_entities_display_trgm",
+      "size_bytes": "15409152",
+      "is_unique": false,
+      "is_primary": false,
+      "dup_of": "financial_entities_display_trgm_individual",
+      "dup_size": "122855424",
+      "indexdef": "CREATE INDEX financial_entities_display_trgm ON public.financial_entities USING gin (display_name gin_trgm_ops) WHERE (entity_type <> 'individual'::text)",
+      "dup_indexdef": "CREATE INDEX financial_entities_display_trgm_individual ON public.financial_entities USING gin (display_name gin_trgm_ops) WHERE (entity_type = 'individual'::text)"
+    },
+    {
+      "table_name": "officials",
+      "index_name": "idx_officials_name_trgm",
+      "size_bytes": "6651904",
+      "is_unique": false,
+      "is_primary": false,
+      "dup_of": "officials_full_name_trgm",
+      "dup_size": "6651904",
+      "indexdef": "CREATE INDEX idx_officials_name_trgm ON public.officials USING gin (full_name gin_trgm_ops)",
+      "dup_indexdef": "CREATE INDEX officials_full_name_trgm ON public.officials USING gin (full_name gin_trgm_ops)"
+    },
+    {
+      "table_name": "agencies",
+      "index_name": "agencies_name_trgm",
+      "size_bytes": "122880",
+      "is_unique": false,
+      "is_primary": false,
+      "dup_of": "idx_agencies_name_trgm",
+      "dup_size": "122880",
+      "indexdef": "CREATE INDEX agencies_name_trgm ON public.agencies USING gin (name gin_trgm_ops)",
+      "dup_indexdef": "CREATE INDEX idx_agencies_name_trgm ON public.agencies USING gin (name gin_trgm_ops)"
+    },
+    {
+      "table_name": "agencies",
+      "index_name": "agencies_acronym_unique",
+      "size_bytes": "16384",
+      "is_unique": true,
+      "is_primary": false,
+      "dup_of": "idx_agencies_acronym_trgm",
+      "dup_size": "49152",
+      "indexdef": "CREATE UNIQUE INDEX agencies_acronym_unique ON public.agencies USING btree (acronym)",
+      "dup_indexdef": "CREATE INDEX idx_agencies_acronym_trgm ON public.agencies USING gin (acronym gin_trgm_ops)"
+    },
+    {
+      "table_name": "notifications",
+      "index_name": "notifications_user_all",
+      "size_bytes": "8192",
+      "is_unique": false,
+      "is_primary": false,
+      "dup_of": "notifications_user_unread",
+      "dup_size": "8192",
+      "indexdef": "CREATE INDEX notifications_user_all ON public.notifications USING btree (user_id, created_at DESC)",
+      "dup_indexdef": "CREATE INDEX notifications_user_unread ON public.notifications USING btree (user_id, created_at DESC) WHERE (is_read = false)"
+    },
+    {
+      "table_name": "graph_snapshots",
+      "index_name": "graph_snapshots_code_key",
+      "size_bytes": "8192",
+      "is_unique": true,
+      "is_primary": false,
+      "dup_of": "idx_graph_snapshots_code",
+      "dup_size": "8192",
+      "indexdef": "CREATE UNIQUE INDEX graph_snapshots_code_key ON public.graph_snapshots USING btree (code)",
+      "dup_indexdef": "CREATE INDEX idx_graph_snapshots_code ON public.graph_snapshots USING btree (code)"
+    }
+  ],
+  "section_f_bloat": [
+    {
+      "relname": "financial_relationships",
+      "n_live_tup": "6174475",
+      "n_dead_tup": "835012",
+      "dead_pct": "11.9",
+      "last_vacuum": null,
+      "last_autovacuum": "2026-05-13T07:35:23.009Z",
+      "last_analyze": "2026-05-14T22:57:47.284Z",
+      "last_autoanalyze": "2026-05-17T07:01:20.717Z",
+      "vacuum_count": "0",
+      "autovacuum_count": "33"
+    },
+    {
+      "relname": "financial_entities",
+      "n_live_tup": "2424336",
+      "n_dead_tup": "282605",
+      "dead_pct": "10.4",
+      "last_vacuum": null,
+      "last_autovacuum": "2026-05-20T11:53:17.142Z",
+      "last_analyze": "2026-05-24T03:38:07.692Z",
+      "last_autoanalyze": "2026-05-24T07:55:56.879Z",
+      "vacuum_count": "0",
+      "autovacuum_count": "43"
+    },
+    {
+      "relname": "entity_connections",
+      "n_live_tup": "5183709",
+      "n_dead_tup": "147824",
+      "dead_pct": "2.8",
+      "last_vacuum": "2026-05-23T07:23:08.365Z",
+      "last_autovacuum": "2026-05-24T13:15:08.197Z",
+      "last_analyze": "2026-05-24T13:32:39.697Z",
+      "last_autoanalyze": "2026-05-24T13:34:15.343Z",
+      "vacuum_count": "1",
+      "autovacuum_count": "33"
+    },
+    {
+      "relname": "external_relationships",
+      "n_live_tup": "193593",
+      "n_dead_tup": "26580",
+      "dead_pct": "12.1",
+      "last_vacuum": null,
+      "last_autovacuum": "2026-05-12T05:17:28.122Z",
+      "last_analyze": "2026-05-14T22:57:48.161Z",
+      "last_autoanalyze": "2026-05-14T22:58:37.590Z",
+      "vacuum_count": "0",
+      "autovacuum_count": "2"
+    },
+    {
+      "relname": "proposals",
+      "n_live_tup": "76661",
+      "n_dead_tup": "9356",
+      "dead_pct": "10.9",
+      "last_vacuum": null,
+      "last_autovacuum": "2026-05-17T05:52:08.104Z",
+      "last_analyze": null,
+      "last_autoanalyze": "2026-05-23T07:46:39.399Z",
+      "vacuum_count": "0",
+      "autovacuum_count": "9"
+    },
+    {
+      "relname": "enrichment_queue",
+      "n_live_tup": "148408",
+      "n_dead_tup": "8521",
+      "dead_pct": "5.4",
+      "last_vacuum": null,
+      "last_autovacuum": "2026-04-25T05:01:42.146Z",
+      "last_analyze": null,
+      "last_autoanalyze": "2026-04-29T06:29:39.496Z",
+      "vacuum_count": "0",
+      "autovacuum_count": "9"
+    },
+    {
+      "relname": "external_source_refs",
+      "n_live_tup": "176875",
+      "n_dead_tup": "4067",
+      "dead_pct": "2.2",
+      "last_vacuum": null,
+      "last_autovacuum": "2026-05-12T05:16:28.341Z",
+      "last_analyze": "2026-05-14T22:57:48.493Z",
+      "last_autoanalyze": "2026-05-12T05:16:28.777Z",
+      "vacuum_count": "0",
+      "autovacuum_count": "9"
+    },
+    {
+      "relname": "votes",
+      "n_live_tup": "927208",
+      "n_dead_tup": "1408",
+      "dead_pct": "0.2",
+      "last_vacuum": null,
+      "last_autovacuum": "2026-04-29T04:27:21.616Z",
+      "last_analyze": null,
+      "last_autoanalyze": "2026-04-29T04:31:22.703Z",
+      "vacuum_count": "0",
+      "autovacuum_count": "12"
+    },
+    {
+      "relname": "entity_tags",
+      "n_live_tup": "43871",
+      "n_dead_tup": "701",
+      "dead_pct": "1.6",
+      "last_vacuum": null,
+      "last_autovacuum": "2026-05-13T06:14:36.239Z",
+      "last_analyze": null,
+      "last_autoanalyze": "2026-05-21T06:17:25.155Z",
+      "vacuum_count": "0",
+      "autovacuum_count": "9"
+    },
+    {
+      "relname": "proposal_trending_24h",
+      "n_live_tup": "76201",
+      "n_dead_tup": "635",
+      "dead_pct": "0.8",
+      "last_vacuum": null,
+      "last_autovacuum": "2026-04-28T03:33:13.557Z",
+      "last_analyze": null,
+      "last_autoanalyze": "2026-04-28T03:33:13.842Z",
+      "vacuum_count": "0",
+      "autovacuum_count": "1"
+    },
+    {
+      "relname": "pipeline_runtime_stats_mv",
+      "n_live_tup": "29",
+      "n_dead_tup": "47",
+      "dead_pct": "61.8",
+      "last_vacuum": null,
+      "last_autovacuum": "2026-05-18T06:29:11.246Z",
+      "last_analyze": null,
+      "last_autoanalyze": "2026-05-23T05:51:33.037Z",
+      "vacuum_count": "0",
+      "autovacuum_count": "1"
+    },
+    {
+      "relname": "status_snapshot",
+      "n_live_tup": "757",
+      "n_dead_tup": "33",
+      "dead_pct": "4.2",
+      "last_vacuum": null,
+      "last_autovacuum": null,
+      "last_analyze": null,
+      "last_autoanalyze": "2026-05-24T07:07:56.478Z",
+      "vacuum_count": "0",
+      "autovacuum_count": "0"
+    },
+    {
+      "relname": "agencies",
+      "n_live_tup": "100",
+      "n_dead_tup": "32",
+      "dead_pct": "24.2",
+      "last_vacuum": null,
+      "last_autovacuum": "2026-05-08T05:36:04.685Z",
+      "last_analyze": null,
+      "last_autoanalyze": "2026-05-08T05:35:04.652Z",
+      "vacuum_count": "0",
+      "autovacuum_count": "2"
+    },
+    {
+      "relname": "officials",
+      "n_live_tup": "28797",
+      "n_dead_tup": "28",
+      "dead_pct": "0.1",
+      "last_vacuum": null,
+      "last_autovacuum": "2026-05-24T06:06:43.007Z",
+      "last_analyze": null,
+      "last_autoanalyze": "2026-05-24T06:06:43.869Z",
+      "vacuum_count": "0",
+      "autovacuum_count": "72"
+    },
+    {
+      "relname": "case_details",
+      "n_live_tup": "699",
+      "n_dead_tup": "24",
+      "dead_pct": "3.3",
+      "last_vacuum": null,
+      "last_autovacuum": "2026-04-28T03:25:12.391Z",
+      "last_analyze": null,
+      "last_autoanalyze": "2026-05-13T11:32:03.692Z",
+      "vacuum_count": "0",
+      "autovacuum_count": "1"
+    },
+    {
+      "relname": "data_sync_log",
+      "n_live_tup": "336",
+      "n_dead_tup": "22",
+      "dead_pct": "6.1",
+      "last_vacuum": null,
+      "last_autovacuum": "2026-05-21T06:13:24.148Z",
+      "last_analyze": null,
+      "last_autoanalyze": "2026-05-23T05:41:32.579Z",
+      "vacuum_count": "0",
+      "autovacuum_count": "3"
+    },
+    {
+      "relname": "platform_usage",
+      "n_live_tup": "26",
+      "n_dead_tup": "16",
+      "dead_pct": "38.1",
+      "last_vacuum": null,
+      "last_autovacuum": null,
+      "last_analyze": null,
+      "last_autoanalyze": "2026-05-24T19:40:25.736Z",
+      "vacuum_count": "0",
+      "autovacuum_count": "0"
+    },
+    {
+      "relname": "supabase_prometheus_state",
+      "n_live_tup": "1",
+      "n_dead_tup": "10",
+      "dead_pct": "90.9",
+      "last_vacuum": null,
+      "last_autovacuum": null,
+      "last_analyze": null,
+      "last_autoanalyze": null,
+      "vacuum_count": "0",
+      "autovacuum_count": "0"
+    },
+    {
+      "relname": "edgar_executive_officers",
+      "n_live_tup": "5",
+      "n_dead_tup": "10",
+      "dead_pct": "66.7",
+      "last_vacuum": null,
+      "last_autovacuum": null,
+      "last_analyze": null,
+      "last_autoanalyze": null,
+      "vacuum_count": "0",
+      "autovacuum_count": "0"
+    },
+    {
+      "relname": "proposal_popularity_24h",
+      "n_live_tup": "0",
+      "n_dead_tup": "6",
+      "dead_pct": "100.0",
+      "last_vacuum": null,
+      "last_autovacuum": null,
+      "last_analyze": null,
+      "last_autoanalyze": null,
+      "vacuum_count": "0",
+      "autovacuum_count": "0"
+    },
+    {
+      "relname": "external_relationships_review_queue",
+      "n_live_tup": "124080",
+      "n_dead_tup": "5",
+      "dead_pct": "0.0",
+      "last_vacuum": null,
+      "last_autovacuum": "2026-05-12T05:17:29.650Z",
+      "last_analyze": null,
+      "last_autoanalyze": "2026-05-12T05:17:30.590Z",
+      "vacuum_count": "0",
+      "autovacuum_count": "1"
+    },
+    {
+      "relname": "pipeline_state",
+      "n_live_tup": "11",
+      "n_dead_tup": "5",
+      "dead_pct": "31.3",
+      "last_vacuum": null,
+      "last_autovacuum": null,
+      "last_analyze": null,
+      "last_autoanalyze": "2026-05-12T03:34:22.997Z",
+      "vacuum_count": "0",
+      "autovacuum_count": "0"
+    },
+    {
+      "relname": "chord_subject_party_flows_mv",
+      "n_live_tup": "80",
+      "n_dead_tup": "4",
+      "dead_pct": "4.8",
+      "last_vacuum": null,
+      "last_autovacuum": null,
+      "last_analyze": null,
+      "last_autoanalyze": "2026-05-10T07:30:22.392Z",
+      "vacuum_count": "0",
+      "autovacuum_count": "0"
+    },
+    {
+      "relname": "users",
+      "n_live_tup": "1",
+      "n_dead_tup": "3",
+      "dead_pct": "75.0",
+      "last_vacuum": null,
+      "last_autovacuum": null,
+      "last_analyze": null,
+      "last_autoanalyze": null,
+      "vacuum_count": "0",
+      "autovacuum_count": "0"
+    },
+    {
+      "relname": "edgar_companies",
+      "n_live_tup": "5",
+      "n_dead_tup": "3",
+      "dead_pct": "37.5",
+      "last_vacuum": null,
+      "last_autovacuum": null,
+      "last_analyze": null,
+      "last_autoanalyze": null,
+      "vacuum_count": "0",
+      "autovacuum_count": "0"
+    }
+  ]
+}

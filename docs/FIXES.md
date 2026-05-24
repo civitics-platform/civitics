@@ -38,6 +38,12 @@ Actionable improvement backlog. Every item has a priority, complexity, and enoug
 
 ---
 
+## DB PERFORMANCE / COMPUTE
+
+- [x] 🟠 M — **Supabase IOWait diagnosis — read-only audit pass** — Read-only diagnostic against prod (Pro Small, 1 GB RAM, 256 MB shared_buffers) covering top IO consumers (pg_stat_statements), burst contention (pg_stat_activity sampling), working set vs shared_buffers, unused/oversized indexes, table bloat ([[FIX-346]] re-measure), cron schedule overlap, and rebuild/snapshot shape. Output: [docs/audits/2026-05-24-iowait-diagnosis.md](audits/2026-05-24-iowait-diagnosis.md) with 12 findings ranked by expected IO impact (top 3: incrementalise rebuild_entity_connections, verify get_connection_type_counts MV is on the read path, add proposals(metadata->>agency_id) expression index). FIX-346 closable per Section F — autovacuum has caught up. Follow-up implementation FIXes will be specced from the audit in a separate Cowork session. Script preserved at packages/data/src/scripts/iowait-diagnosis.ts (pnpm data:iowait-diagnosis) for re-runs. <!--id:FIX-352-->
+
+---
+
 ## GENERAL / CROSS-CUTTING
 
 - [x] 🟢 S — **Document `VERCEL_API_TOKEN` vs `VERCEL_TOKEN` CLI distinction in `.env.example`** — `VERCEL_API_TOKEN` is the REST API token used by `/api/platform/vercel` and `packages/db/src/vercel-usage.ts`. It is NOT a `vercel` CLI token — passing it to `vercel --token <api-token>` errors. The two surfaces want different tokens (CLI tokens are generated differently in the dashboard). Caught in passing during FIX-285 wiring. `.env.example` already lists `VERCEL_API_TOKEN` post-FIX-284's name correction; just add a one-line comment above it noting the distinction so the next person setting up local dev doesn't waste 15 minutes diagnosing a "wrong token" error. Zero functional change. <!--id:FIX-309-->
