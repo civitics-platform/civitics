@@ -448,3 +448,4 @@
 2026-05-24 | FIX-349 | 490bc3b2 | prod-only | feat(platform): Supabase Prometheus metrics + autopopulate egress
 2026-05-24 | FIX-350 | 490bc3b2 | prod-only | feat(platform): Supabase Prometheus metrics + autopopulate egress
 2026-05-24 | FIX-351 | 6bc6ed57 | prod-only | fix(platform): Supabase disk % divides by provisioned size
+2026-05-24 | FIX-352 | 78e17f7b | local+prod | docs(audit): IOWait diagnosis — top consumers, working set, cron overlap, rebuild shape
