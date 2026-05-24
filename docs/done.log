@@ -443,3 +443,5 @@
 2026-05-24 | FIX-345 | 4139e9dd | local+prod | feat(status): swap derived_drift source check from COUNT to EXISTS RPC (FIX-345)
 2026-05-24 | FIX-309 | 04daec97 | local+prod | docs(env): clarify VERCEL_API_TOKEN is REST API token not CLI token (FIX-309)
 2026-05-24 | FIX-342 | 82ecef87 | closes-as-superseded | chore(fixes): close FIX-342 as superseded by FIX-345
+2026-05-24 | FIX-347 | 08b1858c | local-only | fix(dashboard): move admin content off the SSR/edge-cached path
+2026-05-24 | FIX-348 | 08b1858c | local-only | fix(dashboard): move admin content off the SSR/edge-cached path
