@@ -22,6 +22,7 @@ export interface PlatformLimit {
   metric: string;
   plan: string;
   included_limit: number;
+  display_limit: number | null;
   unit: string;
   overage_unit_cost: number | null;
   overage_unit: string | null;

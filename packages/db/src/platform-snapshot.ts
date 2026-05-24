@@ -30,6 +30,8 @@ import {
   getSupabaseSqlMetrics,
   getSupabaseManagementMetrics,
   getSupabaseAuthMau,
+  getSupabaseComputeTier,
+  poolMaxForTier,
 } from "./supabase-usage";
 import { getSupabasePrometheusMetrics } from "./supabase-prometheus";
 import { getCloudflareR2Usage } from "./cloudflare-usage";
@@ -254,6 +256,18 @@ export async function computePlatformUsagePayload(
         .eq("service", "supabase")
         .eq("metric", "disk_used_bytes")
         .eq("plan", "pro");
+
+      // FIX-353: db_size_bytes preserves its 8 GB included_limit for
+      // billing-overage math ($0.125/GB above included), but the %-bar
+      // denominator should be the provisioned disk size (same value
+      // FIX-351 already reads for disk_used_bytes). display_limit is the
+      // capacity-context override added by 20260524200436; included_limit
+      // stays untouched here so overage_cost still shows the real $/mo.
+      await anyDb.from("platform_limits")
+        .update({ display_limit: prom.disk_size_bytes })
+        .eq("service", "supabase")
+        .eq("metric", "db_size_bytes")
+        .eq("plan", "pro");
     } else {
       if (!/SUPABASE_SECRET_KEY/i.test(prom.error)) {
         errors.push(`supabase_prometheus: ${prom.error}`);
@@ -261,6 +275,28 @@ export async function computePlatformUsagePayload(
     }
   } catch (err) {
     errors.push(`supabase_prometheus: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  // FIX-354: db_connections pool max varies by Supabase compute add-on tier.
+  // Pull the current tier from the Management API (1-hour cache inside the
+  // helper) and look up the pool-max table. Default Pro compute (no addon)
+  // resolves to "micro" → 15. On Management API failure, fall back to "large"
+  // → 60, which matches the prior static seed so the bar can't regress
+  // visibly while the API path is broken.
+  try {
+    const tier = await getSupabaseComputeTier();
+    const poolMax = poolMaxForTier(
+      "tier" in tier ? tier.tier : undefined,
+    );
+    await anyDb.from("platform_limits")
+      .update({ included_limit: poolMax })
+      .eq("service", "supabase")
+      .eq("metric", "db_connections")
+      .eq("plan", "pro");
+  } catch (err) {
+    errors.push(
+      `supabase_compute_tier: ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
 
   // GitHub Actions usage → platform_usage. Pulls org-level billing minutes +

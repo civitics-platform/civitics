@@ -61,6 +61,16 @@ export type SupabaseAuthMauError = {
   error: string;
 };
 
+export type SupabaseComputeTier = {
+  /** Lowercased tier identifier — micro / small / medium / large / xl / 2xl / … */
+  tier: string;
+  fetched_at: string;
+};
+
+export type SupabaseComputeTierError = {
+  error: string;
+};
+
 // ── SQL metrics ───────────────────────────────────────────────────────────────
 
 export async function getSupabaseSqlMetrics(
@@ -205,4 +215,98 @@ export async function getSupabaseManagementMetrics(): Promise<
   } catch (err) {
     return { error: err instanceof Error ? err.message : String(err) };
   }
+}
+
+// ── Compute tier (Management API addons) ──────────────────────────────────────
+//
+// FIX-354: db_connections pool max varies by compute add-on tier. Pulled from
+// /v1/projects/{ref}/billing/addons — selected_addons[].variant.identifier is
+// `ci_<tier>` for compute_instance type. A project on the default Pro compute
+// (no compute_instance addon) is treated as "micro". 1-hour cache because tier
+// changes are rare (manual upgrade); five-minute cache would burn API quota
+// for no benefit.
+
+const COMPUTE_TIER_CACHE_TTL_MS = 60 * 60 * 1000;
+let cachedComputeTier: SupabaseComputeTier | null = null;
+let cachedComputeTierExpiresAt = 0;
+
+export function clearSupabaseComputeTierCache(): void {
+  cachedComputeTier = null;
+  cachedComputeTierExpiresAt = 0;
+}
+
+type BillingAddon = {
+  type?: string;
+  variant?: { identifier?: string };
+};
+
+type BillingAddonsResponse = {
+  selected_addons?: BillingAddon[];
+};
+
+export async function getSupabaseComputeTier(): Promise<
+  SupabaseComputeTier | SupabaseComputeTierError
+> {
+  if (cachedComputeTier && Date.now() < cachedComputeTierExpiresAt) {
+    return cachedComputeTier;
+  }
+
+  const token = process.env["SUPABASE_MANAGEMENT_API_KEY"];
+  if (!token) {
+    return { error: "SUPABASE_MANAGEMENT_API_KEY not set" };
+  }
+
+  try {
+    const json = await mgmtGet<BillingAddonsResponse>(
+      `/projects/${PROJECT_REF}/billing/addons`,
+      token,
+    );
+
+    const compute = (json.selected_addons ?? []).find(
+      (a) => a.type === "compute_instance",
+    );
+    const identifier = compute?.variant?.identifier ?? "";
+    // `ci_large` → `large`. Falls back to `micro` when no compute_instance
+    // addon is selected (= default Pro compute). The caller's lookup table
+    // still applies a "large" fallback when this whole helper errors, so
+    // the absolute worst case matches the prior static value.
+    const tier = identifier.startsWith("ci_")
+      ? identifier.slice(3).toLowerCase()
+      : "micro";
+
+    const result: SupabaseComputeTier = {
+      tier,
+      fetched_at: new Date().toISOString(),
+    };
+    cachedComputeTier = result;
+    cachedComputeTierExpiresAt = Date.now() + COMPUTE_TIER_CACHE_TTL_MS;
+    return result;
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+// FIX-354: pool max per Supabase compute add-on tier. Source:
+// https://supabase.com/docs/guides/database/connection-management.
+// Values reflect the dedicated-Postgres connection cap, not the pgBouncer
+// pool size (the project queries direct Postgres for self-metrics).
+// Re-verify against the docs when adding new tiers — these numbers shift
+// occasionally on Supabase's side.
+export const SUPABASE_COMPUTE_POOL_MAX: Record<string, number> = {
+  nano: 15,
+  micro: 15,
+  small: 15,
+  medium: 15,
+  large: 60,
+  xl: 120,
+  "2xl": 200,
+  "4xl": 300,
+  "8xl": 400,
+  "12xl": 500,
+  "16xl": 750,
+};
+
+export function poolMaxForTier(tier: string | undefined): number {
+  if (!tier) return 60;
+  return SUPABASE_COMPUTE_POOL_MAX[tier] ?? 60;
 }

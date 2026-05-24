@@ -11,6 +11,11 @@ export interface PlatformLimit {
   metric: string;
   plan: string;
   included_limit: number;
+  // FIX-353: optional override for the %-bar denominator. NULL = use
+  // included_limit (current behavior for every metric except a couple
+  // Supabase ones). Set per-metric by the snapshot writer when the
+  // billing-overage and capacity denominators legitimately differ.
+  display_limit: number | null;
   unit: string;
   overage_unit_cost: number | null;
   overage_unit: string | null;
@@ -109,10 +114,12 @@ export async function getPlatformUsage(
   return limits.map((limit) => {
     const usage = usageMap.get(`${limit.service}:${limit.metric}`) ?? null;
     const value = usage?.value ?? null;
+    // FIX-353: pct uses effective limit (display_limit ?? included_limit).
+    // overage_cost below still reads included_limit directly — billing math
+    // stays anchored on the plan-included quota.
+    const denom = effectiveLimit(limit);
     const pct =
-      value !== null && limit.included_limit > 0
-        ? (value / limit.included_limit) * 100
-        : 0;
+      value !== null && denom > 0 ? (value / denom) * 100 : 0;
     const status: PlatformMetric["status"] =
       pct >= limit.critical_pct
         ? "critical"
@@ -240,6 +247,18 @@ export async function upgradeServicePlan(
 }
 
 // ── Pure helpers ──────────────────────────────────────────────────────────────
+
+/**
+ * FIX-353: resolve the effective %-bar denominator. Falls back to
+ * included_limit when display_limit is unset (the common case). Callers
+ * computing **billing overage cost** should keep reading included_limit
+ * directly — this helper is for display math only.
+ */
+export function effectiveLimit(
+  row: Pick<PlatformLimit, "included_limit" | "display_limit">,
+): number {
+  return row.display_limit ?? row.included_limit;
+}
 
 /**
  * Calculate overage cost for a metric given its current value.

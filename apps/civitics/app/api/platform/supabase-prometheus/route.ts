@@ -18,15 +18,24 @@ import {
   createAdminClient,
   getSupabasePrometheusMetrics,
   clearSupabasePrometheusCache,
+  getSupabaseComputeTier,
+  clearSupabaseComputeTierCache,
+  poolMaxForTier,
 } from "@civitics/db";
 import { NextResponse } from "next/server";
 
 export async function GET() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const supabase = createAdminClient() as any;
-  const result = await getSupabasePrometheusMetrics(supabase);
+  const [prometheus, tier] = await Promise.all([
+    getSupabasePrometheusMetrics(supabase),
+    getSupabaseComputeTier(),
+  ]);
+  const tierId = "tier" in tier ? tier.tier : undefined;
   return NextResponse.json({
-    prometheus: result,
+    prometheus,
+    compute_tier: tier,
+    pool_max: poolMaxForTier(tierId),
     fetched_at: new Date().toISOString(),
   });
 }
@@ -38,10 +47,11 @@ export async function POST(request: Request) {
   }
 
   clearSupabasePrometheusCache();
+  clearSupabaseComputeTierCache();
 
   return NextResponse.json({
     success: true,
     message:
-      "Supabase Prometheus cache cleared. Next /api/platform/supabase-prometheus hit will re-fetch.",
+      "Supabase Prometheus + compute-tier caches cleared. Next /api/platform/supabase-prometheus hit will re-fetch.",
   });
 }
