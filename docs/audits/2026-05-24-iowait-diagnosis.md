@@ -745,3 +745,156 @@ PS C:\…\App> Copy-Item .env.local.dev .env.local
 PS C:\…\App> grep ^NEXT_PUBLIC_SUPABASE_URL .env.local
 NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321
 ```
+
+---
+
+## Round 2 — drops (2026-05-24 / FIX-364 + FIX-366)
+
+Working-set shrink batch. FIX-365 (FIX-B, donor_fingerprint_pattern) was
+redirected to FIX-367 after pre-ship grep found a live `.like(...)` callsite
+in the EDGAR matcher — that index stays. FIX-364 (FIX-A) and FIX-366 (FIX-C)
+shipped.
+
+**Pre-flight + measurement script:**
+[docs/audits/scratch/2026-05-24-round2-prod-measurement.ts](scratch/2026-05-24-round2-prod-measurement.ts)
+([pre-flight verification script](scratch/2026-05-24-round2-preflight.ts)).
+Both read-only against prod. Migrations:
+[20260524230000_fix_a_drop_unused_indexes.sql](../../supabase/migrations/20260524230000_fix_a_drop_unused_indexes.sql),
+[20260524230001_fix_c_drop_duplicate_indexes.sql](../../supabase/migrations/20260524230001_fix_c_drop_duplicate_indexes.sql).
+
+### Indexes dropped (verified `idx_scan = 0` immediately before drop)
+
+| Table | Index | Pre-drop size | Pre-drop idx_scan | FIX |
+|---|---|---:|---:|---|
+| `entity_connections` | `entity_connections_strength` | 468 MB | 0 | FIX-364 |
+| `financial_relationships` | `financial_relationships_metadata_gin` | 246 MB | 0 | FIX-364 |
+| `entity_connections` | `entity_connections_amount` | 123 MB | 0 | FIX-364 |
+| `financial_entities` | `financial_entities_display_trgm_individual` | 117 MB | 0 | FIX-364 |
+| `financial_relationships` | `financial_relationships_occurred_at` | 72 MB | 0 | FIX-364 |
+| `proposals` | `shadow_proposals_search_vector` | 12 MB | 0 | FIX-364 |
+| `external_source_refs` | `external_source_refs_metadata_gin` | 11 MB | 0 | FIX-364 |
+| `officials` | `officials_full_name_trgm` | 6.5 MB | (duplicate — kept `idx_officials_name_trgm`) | FIX-366 |
+| `agencies` | `agencies_name_trgm` | 120 kB | (duplicate — kept `idx_agencies_name_trgm`) | FIX-366 |
+| `graph_snapshots` | `idx_graph_snapshots_code` | 8 kB | (non-unique dup — kept UNIQUE `graph_snapshots_code_key`) | FIX-366 |
+
+### `pg_total_relation_size` deltas on prod (top-3 tables)
+
+Captured via the prod-measurement script immediately before / immediately
+after `supabase db push --linked`.
+
+| Table | Before total | After total | Δ total | Before indexes | After indexes | Δ indexes |
+|---|---:|---:|---:|---:|---:|---:|
+| `entity_connections` | 4998 MB | 4407 MB | **-591 MB** | 2737 MB | 2146 MB | **-591 MB** |
+| `financial_relationships` | 4572 MB | 4254 MB | **-318 MB** | 2225 MB | 1907 MB | **-318 MB** |
+| `financial_entities` | 2491 MB | 2374 MB | **-117 MB** | 1027 MB | 910 MB | **-117 MB** |
+| **SUM (top-3)** | **12061 MB** | **11035 MB** | **-1026 MB** | **5989 MB** | **4964 MB** | **-1025 MB** |
+
+Total bytes freed on top-3 tables: **1,075,404,800** (~1.00 GB). Matches
+the sum of dropped index sizes for those tables exactly (591 + 318 + 117 =
+1026 MB), confirming no other writes happened in the push window.
+
+The proposals + external_source_refs + FIX-366 duplicate drops (~30 MB
+combined) shrink smaller tables not represented in the top-3 row.
+
+### What was NOT dropped
+
+- `financial_entities_donor_fingerprint_pattern` (166 MB, text_pattern_ops)
+  — pre-ship grep found a live `.like("donor_fingerprint", "<canonical>|%")`
+  call at [packages/data/src/pipelines/edgar/matcher.ts:88](../../packages/data/src/pipelines/edgar/matcher.ts)
+  (FIX-253 EDGAR matcher). Index kept; investigation of whether its 166 MB
+  is worth the per-weekly-EDGAR-run usage is redirected to FIX-367.
+- `votes_roll_call_id_official_id_key` (65 MB UNIQUE constraint) — excluded
+  by explicit Craig decision; kept for insert-idempotency protection.
+
+### Working-set ratio after Round 2
+
+- `shared_buffers` = 256 MB (unchanged — that's a tier-level setting)
+- Top-3 working set: 12061 MB → 11035 MB (**~8.5% shrink**)
+- `shared_buffers` / top-3 ratio: 2.12% → 2.32%
+- `effective_cache_size` (768 MB) / top-3 ratio: 6.37% → 6.96%
+
+The headline ratio is still tight — Round 3 (incremental
+`rebuild_entity_connections`, audit Finding #1) is where the
+larger lever is. Round 2 freed enough working-set room that
+post-cutover index pages have ~17% more headroom inside `shared_buffers`
+on the entity_connections table specifically (2737 → 2146 MB indexes,
+fits the same 256 MB cache "fewer times over"). Post-push cache rewarm
+will surface as `hit_pct` recovery in pg_stat_statements over the next
+4-6 hours; re-run `pnpm data:iowait-diagnosis` then to capture it.
+
+---
+
+## Round 2 — sunburst route measurement
+
+Two route shapes from [apps/civitics/app/api/graph/sunburst/route.ts](../../apps/civitics/app/api/graph/sunburst/route.ts)
+flagged in the FIX-360 after-commit report. Captured against prod immediately
+after the Round 2 push (so the freed index pages have not yet been re-used
+by other workloads — same plan shape as before the push, validated by the
+"BEFORE" capture being identical structurally).
+
+High-degree probe `from_id` picked at runtime: `37164e8b-fa41-44ca-9b5b-4ab210286e81`
+(15,484 connections — the busiest single from_id on prod).
+
+### Shape 1 — `vote_categories` mode (route line 372-378)
+
+```sql
+SELECT connection_type, to_id, strength
+FROM public.entity_connections
+WHERE from_id = $1
+  AND connection_type = ANY ($2::connection_type[])
+LIMIT 200;
+```
+
+```
+Limit  (cost=0.43..182.41 rows=200 width=25) (actual time=0.021..0.021 rows=0 loops=1)
+  Buffers: shared hit=6
+  ->  Index Scan using entity_connections_from_id_connection_type on entity_connections
+        Index Cond: ((from_id = '37164e8b-...'::uuid) AND (connection_type = ANY ('{vote_yes,vote_no,vote_abstain,nomination_vote_yes,nomination_vote_no}'::connection_type[])))
+        Buffers: shared hit=6
+Planning Time: 0.127 ms
+Execution Time: 0.043 ms
+```
+
+**Healthy.** Two-key seek on the FIX-360 compound index, 6 shared-buffer
+hits, all cache. The high-degree probe entity has zero connections of
+`vote_*` type (it's not an official) — but the plan shape is what we're
+auditing, and it's tight. No additional index needed.
+
+### Shape 2 — `connection_types` default mode (route line 431-434)
+
+```sql
+SELECT connection_type, to_id, strength, amount_cents
+FROM public.entity_connections
+WHERE from_id = $1
+LIMIT 200;
+```
+
+```
+Limit  (cost=0.43..176.96 rows=200 width=33) (actual time=0.021..0.108 rows=200 loops=1)
+  Buffers: shared hit=11
+  ->  Index Scan using entity_connections_from_id_connection_type on entity_connections
+        Index Cond: (from_id = '37164e8b-...'::uuid)
+        Buffers: shared hit=11
+Planning Time: 0.100 ms
+Execution Time: 0.137 ms
+```
+
+**Healthy.** The planner walks the FIX-360 compound index using `from_id`
+alone (leading column), early-terminates at LIMIT 200. 11 shared-buffer
+hits, all cache, 0.14 ms execution. The 17,418 estimated rows for this
+from_id (matches the runtime-pick of 15,484 connections) confirms it's
+the worst case in the table.
+
+### Verdict
+
+**No follow-up FIX warranted from sunburst measurement.** The FIX-360
+compound index (`entity_connections_from_id_connection_type`) serves both
+sunburst shapes with sub-millisecond execution and small bounded buffer
+counts. The plan was already optimal before Round 2; Round 2's index
+drops don't change the read path for entity_connections sunburst queries
+(none of the dropped indexes were on the hot path for these shapes).
+
+The FIX-360 after-commit report's worry — that sunburst routes might need
+additional indexes — turns out to be unfounded against the current data
+shape. If a future workload pattern (e.g., a "top X connection types for
+this from_id" aggregation) materializes, that's a separate spec.
