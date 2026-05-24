@@ -214,6 +214,16 @@ function MetricRow({
       {pct > 0 && (
         <div className="text-xs text-gray-400 mt-0.5 text-right">{Math.round(pct)}%</div>
       )}
+      {metric.metric === "cpu_pct" && metric.metadata && (
+        <div className="text-xs text-gray-500 mt-0.5">
+          max 1h: {metric.metadata.cpu_max_1h != null
+            ? `${Math.round(metric.metadata.cpu_max_1h)}%`
+            : "—"}
+          {" · "}24h: {metric.metadata.cpu_max_24h != null
+            ? `${Math.round(metric.metadata.cpu_max_24h)}%`
+            : "—"}
+        </div>
+      )}
       <div className="flex items-center justify-between mt-1">
         {metric.source !== null ? (
           <SourceIndicator display={metric.source_display} />

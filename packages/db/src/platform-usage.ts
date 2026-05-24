@@ -57,6 +57,14 @@ export interface PlatformMetric extends PlatformLimit {
   status: "healthy" | "warning" | "critical";
   overage_cost: number;
   source_display: SourceDisplay;
+  // FIX-356: per-metric extras stitched on at snapshot-write time. Only the
+  // supabase.cpu_pct row populates this today (windowed-max CPU sub-label);
+  // other metrics leave it undefined. Optional shape — additive across
+  // future metrics that want their own pass-through fields.
+  metadata?: {
+    cpu_max_1h?: number;
+    cpu_max_24h?: number;
+  };
 }
 
 export interface SourceDisplay {

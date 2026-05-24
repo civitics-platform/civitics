@@ -137,6 +137,9 @@ export function formatMetricValue(value: number, unit: string): string {
       if (value >= 1000) return `${(value / 1000).toFixed(1)}K`;
       return value.toString();
 
+    case "percent":
+      return `${Math.round(value)}%`;
+
     default:
       return value.toString();
   }

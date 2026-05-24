@@ -27,6 +27,24 @@
  *                                  Pro plan included quota is the wrong
  *                                  denominator once the disk is manually
  *                                  resized above it.
+ *   cpu_pct_current              - 0–100 CPU utilization for the current
+ *                                  scrape interval. FIX-355. Derived from
+ *                                  node_cpu_seconds_total counter deltas:
+ *                                    busy_delta = sum over all (cpu, mode)
+ *                                      where mode != 'idle'
+ *                                    total_delta = sum over all (cpu, mode)
+ *                                  cpu_pct = 100 * busy_delta / total_delta.
+ *                                  num_cores cancels out of the ratio so the
+ *                                  formula is robust across tier upgrades.
+ *                                  First tick (no prior baseline) and counter
+ *                                  resets (current < last) both return 0 to
+ *                                  avoid wild values from a stale denominator.
+ *   cpu_max_1h / cpu_max_24h     - windowed max of cpu_pct_current over the
+ *                                  last 1h / 24h, including this tick's
+ *                                  freshly computed value. FIX-356.
+ *                                  Sourced from get_supabase_cpu_max RPC,
+ *                                  which scans platform_usage_snapshot
+ *                                  payload->'supabase_cpu'->>'current_pct'.
  *
  * Auth: HTTP basic auth, username 'service_role', password is the project's
  * SUPABASE_SECRET_KEY. No new env var.
@@ -59,6 +77,12 @@ const METRICS_URL =
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const EGRESS_METRIC = "node_network_transmit_bytes_total";
 
+// CPU counter state-table keys. These match the metric names used in
+// supabase_prometheus_state — applyCounterDelta keys off them.
+const CPU_BUSY_METRIC = "cpu_busy_seconds_total";
+const CPU_TOTAL_METRIC = "cpu_total_seconds_total";
+const CPU_METRIC_NAME = "node_cpu_seconds_total";
+
 // Disk metric mount selection: '/data' is the DB filesystem on Supabase
 // compute (~25 GB ext4 on nvme0n1). '/' is the OS image (~10 GB) and is
 // not what the Management API's config/disk/util endpoint was reporting.
@@ -79,6 +103,22 @@ export type SupabasePrometheusMetrics = {
    * included quota). FIX-351.
    */
   disk_size_bytes: number;
+  /**
+   * 0–100 CPU utilization for the current scrape interval. FIX-355. Zero on
+   * the first ever tick (bootstrap) and on any tick following a counter
+   * reset; real values start appearing on the second tick post-bootstrap.
+   */
+  cpu_pct_current: number;
+  /**
+   * 0–100 max cpu_pct observed in the rolling 1h window (includes this
+   * tick). FIX-356. Sourced from get_supabase_cpu_max RPC over
+   * platform_usage_snapshot.
+   */
+  cpu_max_1h: number;
+  /** 0–100 max cpu_pct observed in the rolling 24h window. FIX-356. */
+  cpu_max_24h: number;
+  /** Number of CPU cores observed in the scrape — debug only. */
+  cpu_core_count: number;
   /** Raw counter value at this scrape — exposed for debug / introspection. */
   raw_egress_counter: number;
   fetched_at: string;
@@ -226,6 +266,74 @@ export async function applyCounterDelta(
   return Math.max(0, currentValue - baseline);
 }
 
+/**
+ * Per-tick counter delta — for metrics where the meaningful unit is the
+ * change between scrapes, not month-to-date. Used by CPU % (FIX-355):
+ *   cpu_busy_delta_this_scrape / cpu_total_delta_this_scrape × 100
+ *
+ * Same state table as applyCounterDelta, same reset detection. Differs in
+ * two ways:
+ *   1. No month-rollover reset (CPU has no monthly accumulator semantic).
+ *   2. Returns `current - last_raw` instead of `current - baseline`.
+ *
+ * Bootstrap and reset both return 0, write current to both baseline and
+ * last so a follow-up tick computes a clean delta.
+ */
+export async function applyTickDelta(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  db: SupabaseClient<any>,
+  metric: string,
+  currentValue: number,
+): Promise<number> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const anyDb = db as any;
+
+  const { data: existing } = await anyDb
+    .from("supabase_prometheus_state")
+    .select("metric, baseline_value, baseline_at, last_raw_value")
+    .eq("metric", metric)
+    .maybeSingle();
+
+  const now = new Date();
+
+  if (!existing) {
+    await anyDb.from("supabase_prometheus_state").insert({
+      metric,
+      baseline_value: currentValue,
+      baseline_at: now.toISOString(),
+      last_raw_value: currentValue,
+      last_scraped_at: now.toISOString(),
+    });
+    return 0;
+  }
+
+  const row = existing as StateRow;
+  const last = Number(row.last_raw_value);
+
+  if (currentValue < last) {
+    await anyDb
+      .from("supabase_prometheus_state")
+      .update({
+        baseline_value: currentValue,
+        baseline_at: now.toISOString(),
+        last_raw_value: currentValue,
+        last_scraped_at: now.toISOString(),
+      })
+      .eq("metric", metric);
+    return 0;
+  }
+
+  await anyDb
+    .from("supabase_prometheus_state")
+    .update({
+      last_raw_value: currentValue,
+      last_scraped_at: now.toISOString(),
+    })
+    .eq("metric", metric);
+
+  return Math.max(0, currentValue - last);
+}
+
 // ── Main fetch ────────────────────────────────────────────────────────────────
 
 export async function getSupabasePrometheusMetrics(
@@ -303,11 +411,70 @@ export async function getSupabasePrometheusMetrics(
 
     const egressDelta = await applyCounterDelta(db, EGRESS_METRIC, egressRaw);
 
+    // FIX-355: CPU % from counter deltas on node_cpu_seconds_total. Walk every
+    // matching line (one row per (cpu, mode) combination), accumulate busy
+    // (mode != 'idle') and total separately. cpu_pct = 100 * busy_delta /
+    // total_delta — num_cores divides out of both and is plan-tier robust.
+    let cpuBusyRaw = 0;
+    let cpuTotalRaw = 0;
+    const cpuCoreIds = new Set<string>();
+    for (const line of text.split("\n")) {
+      if (!line.startsWith(`${CPU_METRIC_NAME}{`)) continue;
+      const braceIdx = line.indexOf("{");
+      const spaceIdx = line.indexOf(" ", braceIdx);
+      if (spaceIdx === -1) continue;
+      const labels = line.slice(braceIdx, spaceIdx);
+      const value = Number(line.slice(spaceIdx + 1).trim());
+      if (!Number.isFinite(value)) continue;
+      cpuTotalRaw += value;
+      if (!labels.includes('mode="idle"')) cpuBusyRaw += value;
+      const cpuMatch = labels.match(/cpu="([^"]+)"/);
+      if (cpuMatch && cpuMatch[1]) cpuCoreIds.add(cpuMatch[1]);
+    }
+
+    const cpuBusyDelta = await applyTickDelta(
+      db,
+      CPU_BUSY_METRIC,
+      Math.floor(cpuBusyRaw),
+    );
+    const cpuTotalDelta = await applyTickDelta(
+      db,
+      CPU_TOTAL_METRIC,
+      Math.floor(cpuTotalRaw),
+    );
+    const cpuPctCurrent =
+      cpuTotalDelta > 0
+        ? Math.max(0, Math.min(100, (cpuBusyDelta / cpuTotalDelta) * 100))
+        : 0;
+
+    // FIX-356: max-1h and max-24h. RPC reads existing snapshot rows; the
+    // current tick hasn't been written yet, so fold it in client-side.
+    // Fail-soft: if the RPC errors (e.g., migration not applied), windowed
+    // max falls back to the current value alone.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const anyDb = db as any;
+    let cpuMax1h = cpuPctCurrent;
+    let cpuMax24h = cpuPctCurrent;
+    try {
+      const [{ data: max1h }, { data: max24h }] = await Promise.all([
+        anyDb.rpc("get_supabase_cpu_max", { window_minutes: 60 }),
+        anyDb.rpc("get_supabase_cpu_max", { window_minutes: 1440 }),
+      ]);
+      cpuMax1h = Math.max(Number(max1h ?? 0), cpuPctCurrent);
+      cpuMax24h = Math.max(Number(max24h ?? 0), cpuPctCurrent);
+    } catch {
+      // RPC unavailable — keep cpu_max_* equal to the current value.
+    }
+
     const result: SupabasePrometheusMetrics = {
       egress_bytes_month_to_date: egressDelta,
       db_connections_active: Math.round(numBackends),
       disk_used_bytes: Math.max(0, Math.round(diskSize - diskAvail)),
       disk_size_bytes: Math.max(0, Math.round(diskSize)),
+      cpu_pct_current: Math.round(cpuPctCurrent * 100) / 100,
+      cpu_max_1h: Math.round(cpuMax1h * 100) / 100,
+      cpu_max_24h: Math.round(cpuMax24h * 100) / 100,
+      cpu_core_count: cpuCoreIds.size,
       raw_egress_counter: egressRaw,
       fetched_at: new Date().toISOString(),
     };

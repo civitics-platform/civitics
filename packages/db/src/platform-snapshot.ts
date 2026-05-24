@@ -73,6 +73,18 @@ export type PlatformUsagePayload = {
   // Surfaced here so the dashboard can show why a switch did or did not flip
   // without having to cross-reference kill_switch_events.
   auto_trip_decisions: AutoTripDecision[];
+  // FIX-356: snapshot-time CPU summary. Lives at the payload root (not inside
+  // the metrics array) because the get_supabase_cpu_max RPC reads it back
+  // out via a stable JSON path — fishing it from payload->'metrics' would
+  // require LATERAL jsonb_array_elements every tick. The PlatformMetric for
+  // cpu_pct in `metrics` carries the same numbers in its `metadata` field
+  // for the dashboard to render alongside the current value.
+  supabase_cpu?: {
+    current_pct: number;
+    max_1h_pct: number;
+    max_24h_pct: number;
+    core_count: number;
+  };
   timestamp: string;
 };
 
@@ -228,10 +240,19 @@ export async function computePlatformUsagePayload(
 
   // Supabase Prometheus live metrics → platform_usage. Sources egress
   // (counter delta), db_connections (gauge), disk_used_bytes (size − avail
-  // on the /data mount). Overrides the disk_used_bytes value the Management
-  // API helper used to write — FIX-349 removed that side; both writers used
-  // 'source=api', so even if the Mgmt write resurfaced on a stale code path
-  // the Prometheus tick lands second and wins.
+  // on the /data mount), cpu_pct (FIX-355 — busy/total delta ratio).
+  // Overrides the disk_used_bytes value the Management API helper used to
+  // write — FIX-349 removed that side; both writers used 'source=api', so
+  // even if the Mgmt write resurfaced on a stale code path the Prometheus
+  // tick lands second and wins.
+  let supabaseCpuPayload:
+    | {
+        current_pct: number;
+        max_1h_pct: number;
+        max_24h_pct: number;
+        core_count: number;
+      }
+    | null = null;
   try {
     const prom = await getSupabasePrometheusMetrics(db);
     if (!("error" in prom)) {
@@ -239,7 +260,14 @@ export async function computePlatformUsagePayload(
         updateUsage(db, "supabase", "egress_bytes", prom.egress_bytes_month_to_date, "api"),
         updateUsage(db, "supabase", "db_connections", prom.db_connections_active, "api"),
         updateUsage(db, "supabase", "disk_used_bytes", prom.disk_used_bytes, "api"),
+        updateUsage(db, "supabase", "cpu_pct", prom.cpu_pct_current, "api"),
       ]);
+      supabaseCpuPayload = {
+        current_pct: prom.cpu_pct_current,
+        max_1h_pct: prom.cpu_max_1h,
+        max_24h_pct: prom.cpu_max_24h,
+        core_count: prom.cpu_core_count,
+      };
 
       // FIX-351: disk utilization % must divide against provisioned size,
       // not the 8 GB Pro plan-included quota that was seeded. Every other
@@ -377,6 +405,20 @@ export async function computePlatformUsagePayload(
     );
   }
 
+  // FIX-356: attach the windowed-max CPU values to the cpu_pct PlatformMetric
+  // so the dashboard renders the sub-label from the same shape as every other
+  // metric. metadata stays undefined for all other metrics.
+  if (supabaseCpuPayload) {
+    for (const m of finalMetrics) {
+      if (m.service === "supabase" && m.metric === "cpu_pct") {
+        m.metadata = {
+          cpu_max_1h: supabaseCpuPayload.max_1h_pct,
+          cpu_max_24h: supabaseCpuPayload.max_24h_pct,
+        };
+      }
+    }
+  }
+
   const byService: Record<string, PlatformMetric[]> = {};
   for (const m of finalMetrics) {
     if (!byService[m.service]) byService[m.service] = [];
@@ -439,6 +481,7 @@ export async function computePlatformUsagePayload(
       unverified_count: unverifiedCount,
     },
     auto_trip_decisions: autoTripDecisions,
+    ...(supabaseCpuPayload ? { supabase_cpu: supabaseCpuPayload } : {}),
     timestamp: new Date().toISOString(),
   };
 
