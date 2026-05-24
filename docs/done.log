@@ -438,3 +438,4 @@
 2026-05-23 | FIX-307 | 76aa22a9 | closes-as-no-op | docs(pipelines): document Phase 2 metadata.pipelines shape contract (FIX-307 closeout)
 2026-05-23 | FIX-340 | befd5147 | local+prod | fix(status): self-test correctness pass — rebuild reader + Warren resolver + indexed predicate
 2026-05-23 | FIX-343 | befd5147 | local+prod | fix(status): self-test correctness pass — rebuild reader + Warren resolver + indexed predicate
+2026-05-23 | FIX-308 | 62d1cfc6 | local+prod | fix(officials): read OfficialCard stats from official_homepage_stats_mv
