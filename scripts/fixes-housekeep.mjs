@@ -35,13 +35,16 @@ const COMPLETED_RE = /^##\s+COMPLETED\b/i;
 
 function scanAllIds() {
   const ids = new Set();
+  // FIX-361: tolerate CRLF on read. ID scan would still work without
+  // normalization (no \n anchors), but kept consistent with sibling scripts.
+  const readLf = (path) => readFileSync(path, "utf8").replace(/\r\n/g, "\n");
   const push = (text) => {
     const matches = text.match(/FIX-\d{3}/g) || [];
     for (const m of matches) ids.add(m);
   };
-  push(readFileSync(FIXES_PATH, "utf8"));
-  if (existsSync(DONE_PATH)) push(readFileSync(DONE_PATH, "utf8"));
-  if (existsSync(ARCHIVE_PATH)) push(readFileSync(ARCHIVE_PATH, "utf8"));
+  push(readLf(FIXES_PATH));
+  if (existsSync(DONE_PATH)) push(readLf(DONE_PATH));
+  if (existsSync(ARCHIVE_PATH)) push(readLf(ARCHIVE_PATH));
   return ids;
 }
 
@@ -69,7 +72,8 @@ function warnFormat(body) {
 }
 
 // ── main ─────────────────────────────────────────────────────────────
-const content = readFileSync(FIXES_PATH, "utf8");
+// FIX-361: tolerate CRLF on read; writes stay LF via .join("\n") downstream.
+const content = readFileSync(FIXES_PATH, "utf8").replace(/\r\n/g, "\n");
 const lines = content.split("\n");
 const usedIds = scanAllIds();
 const genId = nextFreeId(usedIds);

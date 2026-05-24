@@ -16,7 +16,8 @@
     "fixes:clean": "node scripts/fixes-clean.mjs",
     "fixes:clean:dry": "node scripts/fixes-clean.mjs --dry-run",
     "fixes:archive": "node scripts/fixes-archive.mjs",
-    "fixes:archive:dry": "node scripts/fixes-archive.mjs --dry-run"
+    "fixes:archive:dry": "node scripts/fixes-archive.mjs --dry-run",
+    "fix:add": "node scripts/fix-add.mjs"
   },
   "devDependencies": {
     "supabase": "latest",

@@ -81,7 +81,10 @@ function readDoneLog() {
   if (!existsSync(DONE_PATH)) {
     return { entries: [], keys: new Set(), completedIds: new Set(), reopenedIds: new Set() };
   }
-  const text = readFileSync(DONE_PATH, "utf8");
+  // FIX-361: tolerate CRLF on files saved by a misconfigured editor.
+  // .gitattributes prevents re-introduction at commit, but a one-off
+  // working-tree edit shouldn't silently break sync.
+  const text = readFileSync(DONE_PATH, "utf8").replace(/\r\n/g, "\n");
   const entries = [];
   const keys = new Set();
   const completedIds = new Set();
@@ -188,7 +191,9 @@ function appendNewEntries(existing, completions) {
 }
 
 function syncFixesMd(completedIds) {
-  const content = readFileSync(FIXES_PATH, "utf8");
+  // FIX-361: tolerate CRLF on read (see readDoneLog). Writes stay LF —
+  // out.join("\n") below preserves the in-memory LF form.
+  const content = readFileSync(FIXES_PATH, "utf8").replace(/\r\n/g, "\n");
   const lines = content.split("\n");
   const flipped = [];
   const missingMarker = [];

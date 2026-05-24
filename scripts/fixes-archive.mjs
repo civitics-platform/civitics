@@ -30,7 +30,8 @@ const SECTION_RE = /^##\s+(.+?)\s*$/;
 const COMPLETED_RE = /^##\s+COMPLETED\b/i;
 const BULLET_RE = /^(\s*- \[)([ xX])(\] )(.*)$/;
 
-const content = readFileSync(FIXES_PATH, "utf8");
+// FIX-361: tolerate CRLF on read; writes stay LF via .join("\n") downstream.
+const content = readFileSync(FIXES_PATH, "utf8").replace(/\r\n/g, "\n");
 const lines = content.split("\n");
 
 // Split into blocks by ## heading (same parser shape as fixes-clean).

@@ -47,7 +47,8 @@ function loadCompletedFromDoneLog() {
   // which were reopened then re-completed.
   const completed = new Set();
   if (!existsSync(DONE_PATH)) return completed;
-  const text = readFileSync(DONE_PATH, "utf8");
+  // FIX-361: tolerate CRLF on files saved by a misconfigured editor.
+  const text = readFileSync(DONE_PATH, "utf8").replace(/\r\n/g, "\n");
   for (const raw of text.split("\n")) {
     const line = raw.trim();
     if (!line || line.startsWith("#")) continue;
@@ -64,7 +65,8 @@ function loadCompletedFromDoneLog() {
 }
 
 // ── parse FIXES.md into structured blocks ────────────────────────────
-const content = readFileSync(FIXES_PATH, "utf8");
+// FIX-361: tolerate CRLF on read; writes stay LF via .join("\n") downstream.
+const content = readFileSync(FIXES_PATH, "utf8").replace(/\r\n/g, "\n");
 const lines = content.split("\n");
 
 // Blocks: { kind: 'preamble' | 'section', name?, headerIdx, bodyLines[] }

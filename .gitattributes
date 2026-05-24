@@ -1,2 +1,10 @@
 * text=auto eol=lf
 *.bat text eol=crlf
+
+# FIXES.md + done.log must be LF — fixes:sync regex is \n-anchored and
+# silently no-ops on CRLF. The broad `* text=auto eol=lf` above already
+# covers them, but the explicit rules below force text classification
+# (no auto-detection) so a misconfigured editor can't slip CRLF in.
+# See FIX-361.
+docs/FIXES.md text eol=lf
+docs/done.log text eol=lf

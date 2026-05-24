@@ -145,6 +145,33 @@ drift, and duplicate-commit shuffles.
 | Git commit trailer `Closes: FIX-NNN` | Claude (administrative closure, no code change) | Feeds done.log via `fixes:sync` (FIX-314) |
 | Git commit trailer `Verified: …`    | Claude (when code lands a fix) | Records per-environment verification in done.log (FIX-159) |
 
+**Additive changes — no permission needed.** Claude (whether running in
+the autonomous loop or invoked via Cowork-generated prompts) may freely
+append new FIX bullets to `docs/FIXES.md` at code-commit time without
+asking. This is the default flow for follow-up FIXes surfaced during
+implementation. Claude must NOT modify or delete existing bullets without
+explicit user authorization — the append-only contract is the foundation
+the `fixes:sync` machinery and concurrent-edit safety both depend on.
+
+**Use `pnpm fix:add` to append.** Centralizes formatting + atomic
+FIX-ID allocation. Both Craig and Claude call the same script so
+bullet shape stays consistent. Example:
+
+```
+pnpm fix:add \
+  --title "Short title" \
+  --severity "🟠" \
+  --size "S" \
+  --section "INFRASTRUCTURE & PERFORMANCE" \
+  --body "Long markdown body referencing [[FIX-NNN]] cross-refs..."
+```
+
+Prints the allocated FIX-ID to stdout. Use the printed ID in the
+commit trailer immediately: `Fixes: FIX-<printed-id>`. The manual
+`grep -oE 'FIX-[0-9]+' docs/FIXES.md | sort -u | tail -5` + hand-format
+recipe still works (`fix:add` produces identical bullets), but all new
+work should use the script.
+
 **When you (Claude) complete a FIX item:**
 
 1. Find the item's ID in FIXES.md — the `<!--id:FIX-NNN-->` marker at the end of
