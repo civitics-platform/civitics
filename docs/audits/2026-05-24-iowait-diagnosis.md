@@ -653,6 +653,64 @@ implementation cost: S = day, M = a few days, L = a week or more.
 | 11 | **Enable `track_io_timing = on`** so future `EXPLAIN (ANALYZE, BUFFERS)` against the top consumers can report per-op IO time. Tiny per-query overhead on modern Linux. Without it, when we get to fixing #2 or #4 we'll be flying blind on which plan node is the IO sink. | n/a (observability) | **S** (one ALTER SYSTEM, supabase support ticket if dashboard doesn't expose it) | §A |
 | 12 | **`enrichment_queue` and `agencies` autoanalyze lag** — `enrichment_queue.last_autoanalyze = 2026-04-29` (25 days), `agencies.dead_pct = 24.2%`. Likely a per-table `autovacuum_analyze_scale_factor` would help once row counts are this small or this update-churny. Low priority — neither table is hot enough to matter. | **Low** (planner accuracy on tiny tables) | **S** | §F bloat |
 
+### Finding #4 — outcome (IOWait Round 1, FIX-C / FIX-360)
+
+**Branch A — index missing.** The `entity_connections` index list at
+investigation time (local, 2026-05-24):
+
+```
+entity_connections_from         (from_type, from_id)              128 MB
+entity_connections_to           (to_type,   to_id)                 59 MB
+entity_connections_type         (connection_type)                  35 MB
+entity_connections_amount       (amount_cents) WHERE NOT NULL      23 MB
+entity_connections_derived_at   (derived_at)                       35 MB
+entity_connections_evidence_source                                 36 MB
+entity_connections_strength     (strength DESC)                   117 MB
+entity_connections_from_type_from_id_to_type_to_id_connecti_key   470 MB
+entity_connections_pkey         (id)                              227 MB
+```
+
+No index leads with `from_id` alone. The `(from_type, from_id)` composite
+and the 5-column unique constraint both lead with `from_type` — when the
+caller's WHERE omits `from_type`, those indexes are unusable as seeks.
+The planner falls back to scanning `(from_type, from_id)` for the matching
+`from_id` across every `from_type` value, then filtering by
+`connection_type` row-by-row.
+
+`EXPLAIN (ANALYZE, BUFFERS)` on the audit's query #9 shape against local
+(2.52M rows; busiest `from_id = c07a4ff4-6998-4a04-a02e-aaf98f5aa716`
+with 2,998 connections, none of type `'donation'`) before adding the
+index:
+
+```
+Limit  (cost=0.43..2113.03 rows=50 width=16) (actual time=117.701..117.703 rows=0 loops=1)
+  Buffers: shared read=15998
+  ->  Index Scan using entity_connections_from on entity_connections
+        Index Cond: (from_id = 'c07a4ff4-...'::uuid)
+        Filter: (connection_type = 'donation'::connection_type)
+        Rows Removed by Filter: 2998
+        Buffers: shared read=15998
+Execution Time: 117.745 ms
+```
+
+After adding `entity_connections_from_id_connection_type (from_id,
+connection_type)`:
+
+```
+Limit  (cost=0.43..172.64 rows=50 width=16) (actual time=0.024..0.024 rows=0 loops=1)
+  Buffers: shared read=3
+  ->  Index Scan using entity_connections_from_id_connection_type
+        Index Cond: ((from_id = 'c07a4ff4-...'::uuid) AND (connection_type = 'donation'::connection_type))
+        Buffers: shared read=3
+Execution Time: 0.062 ms
+```
+
+5,300× buffer reduction (15,998 → 3), 1,900× execution time reduction
+(117.7 ms → 0.06 ms). On prod's 5.18M-row table the absolute numbers
+will be larger but the shape change is the same: tight two-key seek
+replaces a per-row filter scan. Ships in
+`supabase/migrations/20260524100002_fix_c_entity_connections_from_id_connection_type_idx.sql`.
+
 ### FIX-346 closure
 
 Section F confirms autovacuum has caught up on `financial_relationships`
