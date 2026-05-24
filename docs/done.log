@@ -454,3 +454,6 @@
 2026-05-24 | FIX-355 | 1e4fb2bd | prod-only | feat(platform): Supabase CPU % tracking with windowed max
 2026-05-24 | FIX-356 | 1e4fb2bd | prod-only | feat(platform): Supabase CPU % tracking with windowed max
 2026-05-24 | FIX-357 | 25e011cb | prod-only | fix(platform): use Postgres max_connections for db_connections limit
+2026-05-24 | FIX-358 | c9456166 | local+prod | fix(db): IOWait Round 1 — RPC reads materialized table, proposals metadata indexes, entity_connections shape
+2026-05-24 | FIX-359 | c9456166 | local+prod | fix(db): IOWait Round 1 — RPC reads materialized table, proposals metadata indexes, entity_connections shape
+2026-05-24 | FIX-360 | c9456166 | local+prod | fix(db): IOWait Round 1 — RPC reads materialized table, proposals metadata indexes, entity_connections shape
