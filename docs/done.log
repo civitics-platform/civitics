@@ -445,3 +445,5 @@
 2026-05-24 | FIX-342 | 82ecef87 | closes-as-superseded | chore(fixes): close FIX-342 as superseded by FIX-345
 2026-05-24 | FIX-347 | 08b1858c | local-only | fix(dashboard): move admin content off the SSR/edge-cached path
 2026-05-24 | FIX-348 | 08b1858c | local-only | fix(dashboard): move admin content off the SSR/edge-cached path
+2026-05-24 | FIX-349 | 490bc3b2 | prod-only | feat(platform): Supabase Prometheus metrics + autopopulate egress
+2026-05-24 | FIX-350 | 490bc3b2 | prod-only | feat(platform): Supabase Prometheus metrics + autopopulate egress
