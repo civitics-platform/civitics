@@ -504,9 +504,16 @@ const DRIFT_RULES = [
 //
 // FIX-332: accepts the shared get_connection_type_counts() promise so
 // computeStatusPayload can dedupe with getConnectionTypes; accepts an
-// optional timing collector so each per-rule source count and the
-// derived-counts RPC each land under their own `derived_drift:<key>` entry
-// in status_snapshot.section_times.
+// optional timing collector for status_snapshot.section_times.
+//
+// FIX-345: source side now uses a single get_drift_source_presence() RPC
+// (UNION ALL of 11 EXISTS) instead of 11 parallel count:'planned' HEADs
+// over DRIFT_RULES.source. The COUNT(*) shape was forcing Seq Scan for
+// the common values (donation = ~5M rows, contract/grant = ~1.4M),
+// dominating derived_drift wall-clock at 8-12s per rule. EXISTS stops at
+// the first matching row regardless of cardinality. Drift detection only
+// cares about presence (`source > 0`), not magnitude — the count value
+// was never used outside the diagnostic display string.
 async function checkDerivedDrift(
   db: Db,
   opts?: {
@@ -534,31 +541,36 @@ async function checkDerivedDrift(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (db as any).rpc("get_connection_type_counts");
 
-  const [sourceCounts, derivedRes] = await Promise.all([
-    Promise.all(
-      DRIFT_RULES.map((r) =>
-        timed(`derived_drift:${r.type}`, async () => {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const res: any = await r.source(db);
-          return (res.count ?? 0) as number;
-        }),
-      ),
-    ),
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const sourcePresencePromise: Promise<{ data: any; error: any }> =
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (db as any).rpc("get_drift_source_presence");
+
+  const [sourceRes, derivedRes] = await Promise.all([
+    timed("derived_drift:source_presence", () => sourcePresencePromise),
     timed("derived_drift:get_connection_type_counts", () => derivedPromise),
   ]);
+  if (sourceRes.error)
+    throw new Error(sourceRes.error.message ?? "get_drift_source_presence RPC error");
   if (derivedRes.error)
     throw new Error(derivedRes.error.message ?? "get_connection_type_counts RPC error");
 
-  type Row = { connection_type: string; total: number | string };
+  type DerivedRow = { connection_type: string; total: number | string };
   const byType = new Map<string, number>();
-  for (const r of (derivedRes.data ?? []) as Row[]) {
+  for (const r of (derivedRes.data ?? []) as DerivedRow[]) {
     byType.set(r.connection_type, Number(r.total));
   }
 
-  const drifted = DRIFT_RULES.flatMap((r, i) => {
-    const source = sourceCounts[i] ?? 0;
+  type PresenceRow = { rule_type: string; has_rows: boolean };
+  const sourcePresent = new Map<string, boolean>();
+  for (const r of (sourceRes.data ?? []) as PresenceRow[]) {
+    sourcePresent.set(r.rule_type, Boolean(r.has_rows));
+  }
+
+  const drifted = DRIFT_RULES.flatMap((r) => {
+    const hasSource = sourcePresent.get(r.type) ?? false;
     const derived = byType.get(r.type) ?? 0;
-    return source > 0 && derived === 0 ? [{ type: r.type, source, derived }] : [];
+    return hasSource && derived === 0 ? [{ type: r.type, derived }] : [];
   });
   return { drifted, total_rules: DRIFT_RULES.length };
 }
@@ -825,7 +837,7 @@ export async function getSelfTests(
       detail:
         drift.drifted.length === 0
           ? `all ${drift.total_rules} derivation rules have non-zero derived edges`
-          : `drift detected: ${drift.drifted.map((d) => `${d.type} ${d.source} source / 0 derived`).join("; ")}`,
+          : `drift detected: ${drift.drifted.map((d) => `${d.type} has source rows but 0 derived edges`).join("; ")}`,
     },
   ];
 }
