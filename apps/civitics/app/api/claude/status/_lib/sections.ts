@@ -599,17 +599,30 @@ export async function getSelfTests(
   const warrenSearch = await timed("self_tests:warren_search", () =>
     db.rpc("search_graph_entities", { q: "warren", lim: 5 }),
   );
-  type SearchRow = { id: string; label: string; entity_type: string };
+  type SearchRow = {
+    id: string;
+    label: string;
+    entity_type: string;
+    subtitle?: string | null;
+  };
   const warrenRows = (warrenSearch.data ?? []) as SearchRow[];
-  // FIX-339 — try specific-name match first; falling back to the loose
-  // endsWith match used to return ABBY WARREN ahead of Elizabeth because
-  // `.find()` walks the array in order and Abby sorts alphabetically first.
+  // FIX-339 + Warren resolver fix (2026-05-23): prod has three "Elizabeth
+  // Warren" officials — one elected Senator (~606 vote_yes edges) plus two
+  // FEC candidate slots ("Candidate for President", "Candidate for Senator",
+  // both with ≤6 edges because rebuild_entity_connections joins votes to the
+  // elected row, not candidate duplicates). The search RPC returns all three
+  // with identical trigram sim, so `.find()` was picking the first candidate
+  // slot. Prefer the row whose subtitle does NOT mark it as a candidate.
+  const isElizabethWarrenOfficial = (r: SearchRow) =>
+    r.label.toLowerCase().includes("elizabeth warren") &&
+    r.entity_type === "official";
+  const isCandidateSubtitle = (s?: string | null) =>
+    (s ?? "").toLowerCase().includes("candidate for");
   const warrenEntity =
     warrenRows.find(
-      (r) =>
-        r.label.toLowerCase().includes("elizabeth warren") &&
-        r.entity_type === "official",
+      (r) => isElizabethWarrenOfficial(r) && !isCandidateSubtitle(r.subtitle),
     ) ??
+    warrenRows.find(isElizabethWarrenOfficial) ??
     warrenRows.find(
       (r) =>
         r.label.toLowerCase().endsWith("warren") && r.entity_type === "official",
@@ -621,6 +634,7 @@ export async function getSelfTests(
     warrenVotesRes,
     anthropicUsageResult,
     cronState,
+    rebuildLastRunRes,
     drift,
   ] = await Promise.all([
     timed("self_tests:chord_industry_flows", () => db.rpc("chord_industry_flows")),
@@ -629,11 +643,15 @@ export async function getSelfTests(
     // count:'planned' was no faster for this two-column indexed predicate.
     // Boolean check is `> 10`; .limit(11) is the minimum sufficient — no
     // COUNT co-query issued, index seek stops at 11 hits.
+    // FIX-343: from_type leads the entity_connections_from composite index;
+    // without this predicate the planner falls back to a vote_yes-edge scan
+    // (~6s on prod).
     warrenId
       ? timed("self_tests:warren_votes_count", () =>
           db
             .from("entity_connections")
             .select("id")
+            .eq("from_type", "official")
             .eq("from_id", warrenId)
             .eq("connection_type", "vote_yes")
             .limit(11),
@@ -649,6 +667,22 @@ export async function getSelfTests(
         .from("pipeline_state")
         .select("value")
         .eq("key", "cron_last_run")
+        .maybeSingle(),
+    ),
+
+    // FIX-340: connections_pipeline_healthy used to read the rebuild result
+    // out of pipeline_state.cron_last_run.results.pipelines.entity_connections_rebuild,
+    // but FIX-291 extracted the rebuild into its own GHA workflow that writes
+    // ONLY to data_sync_log under pipeline='entity_connections_rebuild'.
+    // Reader updated to follow the data; writer stays as the single source of
+    // truth per its file-header comment in scripts/rebuild-entity-connections.ts.
+    timed("self_tests:rebuild_last_run", () =>
+      db
+        .from("data_sync_log")
+        .select("status, completed_at, rows_inserted")
+        .eq("pipeline", "entity_connections_rebuild")
+        .order("completed_at", { ascending: false })
+        .limit(1)
         .maybeSingle(),
     ),
 
@@ -694,24 +728,21 @@ export async function getSelfTests(
       ).length;
 
   const cronVal = (cronState.data?.value ?? null) as
-    | {
-        completed_at?: string;
-        started_at?: string;
-        results?: {
-          pipelines?: {
-            entity_connections_rebuild?: {
-              status?: string;
-              rows_added?: number;
-              duration_ms?: number;
-              error?: string;
-            };
-          };
-        };
-      }
+    | { completed_at?: string; started_at?: string }
     | null;
   const cronLastRun = cronVal?.completed_at ?? cronVal?.started_at ?? null;
-  const rebuildResult =
-    cronVal?.results?.pipelines?.entity_connections_rebuild ?? null;
+
+  // FIX-340: shape of one data_sync_log row from the standalone rebuild script.
+  const rebuildLastRun = (rebuildLastRunRes.data ?? null) as
+    | { status: string; completed_at: string | null; rows_inserted: number | null }
+    | null;
+  // GHA workflow rebuild-entity-connections.yml runs Sun + Wed 08:00 UTC, so
+  // the natural max-stale window is ~3.5 days; 4.5d gives a small cushion for
+  // long-running rebuilds without false-passing a genuinely missed schedule.
+  const REBUILD_STALE_MS = 4.5 * 24 * 60 * 60 * 1000;
+  const rebuildAgeMs = rebuildLastRun?.completed_at
+    ? Date.now() - new Date(rebuildLastRun.completed_at).getTime()
+    : null;
 
   return [
     {
@@ -731,8 +762,13 @@ export async function getSelfTests(
     {
       name: "warren_has_vote_connections",
       passed: (warrenVotesRes.data?.length ?? 0) > 10,
+      // Senator Warren has ~600 vote_yes edges on prod; sample of 15 sitting
+      // senators (2026-05-23) ranged 38–785 with median ~640. `> 10` stays
+      // the floor — junior senators (Alsobrooks: 38) still clear it, but a
+      // resolved-to-wrong-record bug like the pre-fix one (≤6 edges on a
+      // candidate slot) trips it immediately.
       detail: warrenId
-        ? `${warrenVotesRes.data?.length ?? 0}+ vote_yes connections (capped at 11; expected ~23 per-proposal deduplicated — full count omitted for perf)`
+        ? `${warrenVotesRes.data?.length ?? 0}+ vote_yes connections (capped at 11)`
         : "Warren not found — skipped",
     },
     {
@@ -758,15 +794,21 @@ export async function getSelfTests(
     {
       name: "connections_pipeline_healthy",
       passed:
-        rebuildResult?.status === "complete" &&
-        voteYesTotalCount > 50000,
-      detail: rebuildResult
-        ? `rebuild_entity_connections: ${rebuildResult.status}${
-            rebuildResult.rows_added != null
-              ? ` (${rebuildResult.rows_added} edges)`
+        rebuildLastRun?.status === "complete" &&
+        voteYesTotalCount > 50000 &&
+        rebuildAgeMs != null &&
+        rebuildAgeMs < REBUILD_STALE_MS,
+      detail: rebuildLastRun
+        ? `entity_connections_rebuild: ${rebuildLastRun.status} at ${rebuildLastRun.completed_at ?? "?"}${
+            rebuildLastRun.rows_inserted != null
+              ? ` (${rebuildLastRun.rows_inserted} rows)`
               : ""
-          }, vote_yes total: ${voteYesTotalCount}`
-        : "No nightly cron run recorded in pipeline_state.cron_last_run — has nightly_cron run since cutover?",
+          }, vote_yes total: ${voteYesTotalCount}${
+            rebuildAgeMs != null
+              ? `, age ${(rebuildAgeMs / (60 * 60 * 1000)).toFixed(1)}h`
+              : ""
+          }`
+        : "No entity_connections_rebuild row in data_sync_log — has the Sun+Wed GHA workflow run since cutover?",
     },
     {
       name: "derived_edges_match_source",
