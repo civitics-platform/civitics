@@ -435,3 +435,6 @@
 2026-05-23 | FIX-337 | ebace532 | local+prod | perf(ops): self_tests cheaper shapes for two count:'exact' ops
 2026-05-23 | FIX-338 | ceaf6607 | local+prod | perf(db): materialize get_connection_type_counts -> table; fix ABBY WARREN
 2026-05-23 | FIX-339 | ceaf6607 | local+prod | perf(db): materialize get_connection_type_counts -> table; fix ABBY WARREN
+2026-05-23 | FIX-307 | 76aa22a9 | closes-as-no-op | docs(pipelines): document Phase 2 metadata.pipelines shape contract (FIX-307 closeout)
+2026-05-23 | FIX-340 | befd5147 | local+prod | fix(status): self-test correctness pass — rebuild reader + Warren resolver + indexed predicate
+2026-05-23 | FIX-343 | befd5147 | local+prod | fix(status): self-test correctness pass — rebuild reader + Warren resolver + indexed predicate
