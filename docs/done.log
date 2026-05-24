@@ -451,3 +451,5 @@
 2026-05-24 | FIX-352 | 78e17f7b | local+prod | docs(audit): IOWait diagnosis — top consumers, working set, cron overlap, rebuild shape
 2026-05-24 | FIX-353 | f77a18a5 | prod-only | feat(platform): display_limit column + dynamic db_connections pool max
 2026-05-24 | FIX-354 | f77a18a5 | prod-only | feat(platform): display_limit column + dynamic db_connections pool max
+2026-05-24 | FIX-355 | 1e4fb2bd | prod-only | feat(platform): Supabase CPU % tracking with windowed max
+2026-05-24 | FIX-356 | 1e4fb2bd | prod-only | feat(platform): Supabase CPU % tracking with windowed max
