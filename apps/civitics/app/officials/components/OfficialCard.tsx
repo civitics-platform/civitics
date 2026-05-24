@@ -75,7 +75,11 @@ export function OfficialCard({ official }: { official: OfficialRow }) {
     const supabase = createBrowserClient();
 
     async function load() {
-      const [recentRes, voteCountRes, donorCountRes, donorAmtRes] = await Promise.all([
+      // Stats read from official_homepage_stats_mv (FIX-223 / FIX-308); see
+      // migration 20260510000001_homepage_stats_mvs.sql. MV refreshes nightly;
+      // officials missing from the MV fall back to 0/0/$0 — acceptable for a
+      // directory card and consistent with the homepage's numbers.
+      const [recentRes, mvRes] = await Promise.all([
         supabase
           .from("votes")
           .select("id, vote, voted_at, roll_call_number, proposals!proposal_id(id, title, bill_number, short_title)")
@@ -83,28 +87,19 @@ export function OfficialCard({ official }: { official: OfficialRow }) {
           .order("voted_at", { ascending: false })
           .limit(10),
         supabase
-          .from("votes")
-          .select("id", { count: "exact", head: true })
-          .eq("official_id", official.id),
-        supabase
-          .from("financial_relationships")
-          .select("id", { count: "exact", head: true })
-          .eq("official_id", official.id),
-        supabase
-          .from("financial_relationships")
-          .select("amount_cents")
-          .eq("official_id", official.id),
+          .from("official_homepage_stats_mv")
+          .select("vote_count, donor_count, total_donations_cents")
+          .eq("official_id", official.id)
+          .maybeSingle(),
       ]);
 
       if (cancelled) return;
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       setVotes((recentRes.data as any[]) ?? []);
-      setVoteCount(voteCountRes.count ?? 0);
-      setDonorCount(donorCountRes.count ?? 0);
-      setTotal(
-        (donorAmtRes.data ?? []).reduce((sum, r) => sum + (r.amount_cents ?? 0), 0)
-      );
+      setVoteCount(mvRes.data?.vote_count ?? 0);
+      setDonorCount(mvRes.data?.donor_count ?? 0);
+      setTotal(mvRes.data?.total_donations_cents ?? 0);
       setLoading(false);
     }
 
