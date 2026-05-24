@@ -1009,6 +1009,16 @@ export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<Nigh
     // Also write to data_sync_log. FIX-292: each phase writes its own row,
     // tagged metadata.phase so two rows-per-night-on-Sunday is the new
     // normal. Canary semantics are unchanged — it dedups by UTC date.
+    //
+    // Shape contract (FIX-307 closeout, 2026-05-23): `metadata.pipelines` is
+    // populated only by stages that write to `results.pipelines.*`. On a
+    // weekday Phase 2 run that map is genuinely `{}` — all daily Phase 2
+    // work lives under `results.ai.*` (tag_rules, tag_ai, ai_summaries) or
+    // in MV-refresh side effects that only surface via `results.errors`.
+    // Phase 2 only writes pipeline rows on Sunday's `isWeekly` block
+    // (LittleSis, EDGAR, USASpending, etc.). The original FIX-307 report
+    // misattributed Phase 1's edgar_daily / openstates_bulk_people work to
+    // Phase 2; closed as no-op against prod inspection of 5/18-5/23 rows.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await (db as any).from("data_sync_log").insert({
       pipeline:      "nightly_cron",
