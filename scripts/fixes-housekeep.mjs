@@ -38,13 +38,20 @@ function scanAllIds() {
   // FIX-361: tolerate CRLF on read. ID scan would still work without
   // normalization (no \n anchors), but kept consistent with sibling scripts.
   const readLf = (path) => readFileSync(path, "utf8").replace(/\r\n/g, "\n");
-  const push = (text) => {
-    const matches = text.match(/FIX-\d{3}/g) || [];
-    for (const m of matches) ids.add(m);
+  // FIX-368: marker-only on FIXES.md + fixes-archive.md so cross-refs
+  // (`[[FIX-NNN]]`) and prose mentions don't consume IDs. done.log has no
+  // markers — keep loose there so logged completions whose marker is
+  // missing from the live file still block re-allocation. See fix-add.mjs
+  // `allocateNextId` for the full rationale.
+  const pushMarker = (text) => {
+    for (const m of text.matchAll(/<!--id:FIX-(\d{3})-->/g)) ids.add(`FIX-${m[1]}`);
   };
-  push(readLf(FIXES_PATH));
-  if (existsSync(DONE_PATH)) push(readLf(DONE_PATH));
-  if (existsSync(ARCHIVE_PATH)) push(readLf(ARCHIVE_PATH));
+  const pushLoose = (text) => {
+    for (const m of text.match(/FIX-\d{3}/g) || []) ids.add(m);
+  };
+  pushMarker(readLf(FIXES_PATH));
+  if (existsSync(DONE_PATH)) pushLoose(readLf(DONE_PATH));
+  if (existsSync(ARCHIVE_PATH)) pushMarker(readLf(ARCHIVE_PATH));
   return ids;
 }
 

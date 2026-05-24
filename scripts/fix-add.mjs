@@ -102,14 +102,28 @@ function hashOf(s) {
 function allocateNextId() {
   // Mirror fixes-housekeep.mjs `scanAllIds` — max across FIXES.md, done.log,
   // and fixes-archive.md so reassignment is impossible even after archival.
+  //
+  // FIX-368: on FIXES.md and fixes-archive.md, count `<!--id:FIX-NNN-->`
+  // markers only — the canonical handle per CLAUDE.md FIXES Workflow.
+  // Cross-refs (`[[FIX-NNN]]`) and prose mentions in bullet bodies are
+  // decorative and must not consume IDs. Bug observed on FIX-363 ship
+  // (2026-05-25): `[[FIX-362]]` forward-ref in FIX-361's body bumped the
+  // counter via the old loose `/FIX-\d{3}/g`, burning FIX-362.
+  //
+  // done.log has no markers — every `FIX-NNN` there is a real allocation
+  // (column 2 ID or a referenced ID in the note). Keep the loose pattern
+  // so audit-orphaned IDs (logged completions whose marker has gone
+  // missing from the live file) still block re-allocation.
   const ids = new Set();
-  const push = (text) => {
-    const matches = text.match(/FIX-\d{3}/g) || [];
-    for (const m of matches) ids.add(m);
+  const pushMarker = (text) => {
+    for (const m of text.matchAll(/<!--id:FIX-(\d{3})-->/g)) ids.add(`FIX-${m[1]}`);
   };
-  push(readLf(FIXES_PATH));
-  if (existsSync(DONE_PATH)) push(readLf(DONE_PATH));
-  if (existsSync(ARCHIVE_PATH)) push(readLf(ARCHIVE_PATH));
+  const pushLoose = (text) => {
+    for (const m of text.match(/FIX-\d{3}/g) || []) ids.add(m);
+  };
+  pushMarker(readLf(FIXES_PATH));
+  if (existsSync(DONE_PATH)) pushLoose(readLf(DONE_PATH));
+  if (existsSync(ARCHIVE_PATH)) pushMarker(readLf(ARCHIVE_PATH));
   let max = 0;
   for (const id of ids) {
     const n = parseInt(id.slice(4), 10);
