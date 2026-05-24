@@ -613,20 +613,24 @@ export async function getSelfTests(
     warrenVotesRes,
     anthropicUsageResult,
     cronState,
-    voteYesTotal,
     drift,
   ] = await Promise.all([
     timed("self_tests:chord_industry_flows", () => db.rpc("chord_industry_flows")),
 
+    // FIX-337: was count:'exact' (~8.3s). FIX-336 diagnostic showed
+    // count:'planned' was no faster for this two-column indexed predicate.
+    // Boolean check is `> 10`; .limit(11) is the minimum sufficient — no
+    // COUNT co-query issued, index seek stops at 11 hits.
     warrenId
       ? timed("self_tests:warren_votes_count", () =>
           db
             .from("entity_connections")
-            .select("*", { count: "exact", head: true })
+            .select("id")
             .eq("from_id", warrenId)
-            .eq("connection_type", "vote_yes"),
+            .eq("connection_type", "vote_yes")
+            .limit(11),
         )
-      : Promise.resolve({ count: null }),
+      : Promise.resolve({ data: null }),
 
     timed("self_tests:anthropic_usage", () =>
       opts?.sharedAnthropicUsagePromise ?? getAnthropicUsage(),
@@ -640,13 +644,6 @@ export async function getSelfTests(
         .maybeSingle(),
     ),
 
-    timed("self_tests:vote_yes_count", () =>
-      db
-        .from("entity_connections")
-        .select("*", { count: "exact", head: true })
-        .eq("connection_type", "vote_yes"),
-    ),
-
     timed("self_tests:derived_drift", () =>
       checkDerivedDrift(db, {
         sharedConnTypeCountsPromise: opts?.sharedConnTypeCountsPromise,
@@ -654,6 +651,27 @@ export async function getSelfTests(
       }),
     ),
   ]);
+
+  // FIX-337: vote_yes total was a separate count:'exact' (~6s) on
+  // entity_connections. The shared get_connection_type_counts() promise
+  // (FIX-332) is already awaited inside checkDerivedDrift above and returns
+  // the vote_yes total as part of its 16-row output — read it from there.
+  // Emit a 0 timing under the historical key so snapshot queries continue
+  // to surface it as "explicitly free" rather than disappear.
+  const sharedConnTypeCountsResult = opts?.sharedConnTypeCountsPromise
+    ? await opts.sharedConnTypeCountsPromise
+    : null;
+  const voteYesTotalCount = sharedConnTypeCountsResult?.data
+    ? Number(
+        (
+          sharedConnTypeCountsResult.data as Array<{
+            connection_type: string;
+            total: number | string;
+          }>
+        ).find((r) => r.connection_type === "vote_yes")?.total ?? 0,
+      )
+    : 0;
+  collect?.("self_tests:vote_yes_count", 0);
 
   const monthlySpent =
     anthropicUsageResult.source === "api"
@@ -704,9 +722,9 @@ export async function getSelfTests(
     },
     {
       name: "warren_has_vote_connections",
-      passed: (warrenVotesRes.count ?? 0) > 10,
+      passed: (warrenVotesRes.data?.length ?? 0) > 10,
       detail: warrenId
-        ? `${warrenVotesRes.count ?? 0} vote_yes connections (expected ~23 per-proposal deduplicated)`
+        ? `${warrenVotesRes.data?.length ?? 0}+ vote_yes connections (capped at 11; expected ~23 per-proposal deduplicated — full count omitted for perf)`
         : "Warren not found — skipped",
     },
     {
@@ -733,13 +751,13 @@ export async function getSelfTests(
       name: "connections_pipeline_healthy",
       passed:
         rebuildResult?.status === "complete" &&
-        (voteYesTotal.count ?? 0) > 50000,
+        voteYesTotalCount > 50000,
       detail: rebuildResult
         ? `rebuild_entity_connections: ${rebuildResult.status}${
             rebuildResult.rows_added != null
               ? ` (${rebuildResult.rows_added} edges)`
               : ""
-          }, vote_yes total: ${voteYesTotal.count ?? 0}`
+          }, vote_yes total: ${voteYesTotalCount}`
         : "No nightly cron run recorded in pipeline_state.cron_last_run — has nightly_cron run since cutover?",
     },
     {
