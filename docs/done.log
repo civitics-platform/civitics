@@ -489,3 +489,5 @@
 2026-05-25 | FIX-382 | f6040331 | local-only | feat(dashboard): cadence-aware Data Health + per-pipeline window + worst-status alias rollup (FIX-381)
 2026-05-25 | FIX-383 | cedfd9df | local-only | fix(jurisdictions): narrow seedJurisdictions existence-check by parent_id
 2026-05-25 | FIX-383 | 57bd5908 | prod-only | chore(jurisdictions): record prod verification of FIX-383
+2026-05-25 | FIX-384 | 543dfd48 | unverified | chore(diag): commit pipeline-history-shape-check (from FIX-382)
+2026-05-25 | FIX-384 | 8a597d49 | local-only | feat(dashboard): split committees, register orphans, hide bookkeeping
