@@ -480,3 +480,4 @@
 2026-05-24 | FIX-373 | 1e722f3d | local+prod | docs(audit): Round 3 prod verification captured (FIX-372, FIX-373)
 2026-05-24 | FIX-376 | e05f78b7 | local+prod | feat(officials): seed executive branch + re-juris delegates + candidate→elected promotion + casing-dupe normalization
 2026-05-24 | FIX-377 | 1be94ed1 | local+prod | fix(officials): re-juris Norton (DC, N000147) prod-only misroute (FIX-377)
+2026-05-24 | FIX-374 | 93d8d389 | local+prod | fix(graph): sunburst donor wedge enriches via financial_entities (FIX-374)
