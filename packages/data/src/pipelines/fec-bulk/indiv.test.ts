@@ -111,10 +111,59 @@ test("FIX-244 apostrophes strip to empty string, not whitespace", () => {
 });
 
 test("FIX-244 periods strip to empty string, not whitespace", () => {
-  // ST. CLAIR -> ST CLAIR (period gone, space from comma stays).
-  assert.equal(fp("ST. CLAIR, JOHN", "90210"), "ST CLAIR JOHN|90210");
+  // ST. CLAIR -> ST CLAIR (period gone) → FIX-245 particle-joins ST+CLAIR.
+  // Pre-FIX-245 this produced "ST CLAIR JOHN"; post-FIX-245 the "ST"
+  // particle fuses into "STCLAIR JOHN", which is the desired collapse
+  // (ST CLAIR / ST. CLAIR variants all converge to STCLAIR).
+  assert.equal(fp("ST. CLAIR, JOHN", "90210"), "STCLAIR JOHN|90210");
   // M.D. as a trailing token after a comma stays a no-op (MD is noise and drops).
   assert.equal(fp("SMITH, JANE M.D.", "00000"), "SMITH JANE|00000");
+});
+
+// ── FIX-245: backtick strip + position-0 particle joiner ──────────────────
+
+test("FIX-245 backtick strips like apostrophe (no token split)", () => {
+  // ``O`BRIEN`` (backtick) → OBRIEN, same as O'BRIEN.
+  assert.equal(fp("O`BRIEN, HALLEY MARIE", "20007"), "OBRIEN HALLEY MARIE|20007");
+});
+
+test("FIX-245 space-separated particle joins (O / D / ST / MC / DE)", () => {
+  // The pre-FIX-245 residue path: raw FEC NAME field carries `O BRIEN`
+  // with a literal space instead of an apostrophe. After FIX-245 the
+  // position-0 O+BRIEN fuse runs.
+  assert.equal(fp("O BRIEN, MICHAEL",  "78734"), "OBRIEN MICHAEL|78734");
+  assert.equal(fp("D ANGELO, MARIA",   "10001"), "DANGELO MARIA|10001");
+  assert.equal(fp("ST JAMES, JAMES",   "10001"), "STJAMES JAMES|10001");
+  assert.equal(fp("MC CARTHY, KEVIN",  "20007"), "MCCARTHY KEVIN|20007");
+});
+
+test("FIX-245 apostrophe+space variant joins after apostrophe-strip", () => {
+  // `O' BRIEN, HALLEY` → upper → strip apostrophe → "O BRIEN, HALLEY"
+  // → tokenize → ["O","BRIEN","HALLEY"] → particle-join → "OBRIEN HALLEY".
+  assert.equal(fp("O' BRIEN, HALLEY MARIE", "20007"), "OBRIEN HALLEY MARIE|20007");
+});
+
+test("FIX-245 single-letter 'O' is part of multi-char surname token (no fuse)", () => {
+  // Regression — "OLIVER" must not particle-join. The position-0 token is
+  // OLIVER, not O; particle test uses PARTICLE_TOKENS.has on the full
+  // token, so OLIVER ≠ O and no fuse happens.
+  assert.equal(fp("OLIVER, JAMES", "20007"), "OLIVER JAMES|20007");
+});
+
+test("FIX-245 multi-particle 'DE LA RENTA' — known residue, not fully cleaned", () => {
+  // The particle joiner is position-0 only and joins exactly two tokens.
+  // "DE LA RENTA, OSCAR" → tokens ["DE","LA","RENTA","OSCAR"] → fuse to
+  // ["DELA","RENTA","OSCAR"]. "DELA RENTA" is wrong but documented — the
+  // bullet's allow-list is narrow on purpose; multi-particle clusters
+  // remain a follow-up.
+  assert.equal(fp("DE LA RENTA, OSCAR", "10010"), "DELA RENTA OSCAR|10010");
+});
+
+test("FIX-245 leading honorific is dropped before the particle joiner runs", () => {
+  // "MR O BRIEN, MICHAEL" → noise filter drops MR → ["O","BRIEN","MICHAEL"]
+  // → particle-join → "OBRIEN MICHAEL". Order matters; if particle-join
+  // ran before the noise filter, tokens[0]=MR would short-circuit.
+  assert.equal(fp("MR O BRIEN, MICHAEL", "78734"), "OBRIEN MICHAEL|78734");
 });
 
 // ── Noise vs generational preservation rules ────────────────────────────────

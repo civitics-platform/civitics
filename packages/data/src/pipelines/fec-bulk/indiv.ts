@@ -150,23 +150,31 @@ export function parseCcl(buffer: Buffer): Map<string, string> {
 }
 
 // ---------------------------------------------------------------------------
-// Donor fingerprinting — FIX-239 Layer 1 + FIX-244.
+// Donor fingerprinting — FIX-239 Layer 1 + FIX-244 + FIX-245.
 //
 // Mirrors the SQL function `public.canonical_donor_fingerprint(name, zip5)`
-// added in supabase/migrations/20260510000005. The two MUST stay in sync —
+// (defined originally in 20260510000005, last updated by FIX-245's
+// 20260525065710_entity_backfill_bundle.sql). The two MUST stay in sync —
 // the FEC pipeline's idempotency under the donor_fingerprint UNIQUE index
 // depends on TS output ≡ SQL output for every (name, zip5) pair.
 //
 // Layer 1 rule set (investigation docs/FIX_239_INVESTIGATION.md §4):
 //   1. Uppercase.
-//   2. Strip apostrophes and periods to EMPTY STRING (FIX-244 — was the bug
-//      that split O'BRIEN into "O BRIEN"). M.D. -> MD, ST. -> ST.
+//   2. Strip backtick, apostrophe, and period to EMPTY STRING (FIX-244 added
+//      apostrophe + period; FIX-245 added backtick to cover ``O`BRIEN``).
+//      M.D. -> MD, ST. -> ST.
 //   3. Replace other non-alphanumeric with whitespace; collapse runs.
 //   4. Tokenize.
 //   5. Drop honorific noise tokens (MR/MRS/MD/PHD/...). Preserve generational
 //      tokens (JR/SR/II-V) and middle initials — these are the signal that
 //      keeps the §2.4 father/son cases split.
-//   6. Emit `tokens.join(' ') + '|' + zip5` (or name-only if zip5 blank).
+//   6. FIX-245: position-0 particle joiner. When tokens[0] ∈ {O,D,DE,ST,MC}
+//      and tokens[1] is all-uppercase ASCII, fuse the two. Handles the
+//      space/backtick FEC NAME residue that wasn't an apostrophe in the
+//      source (`O BRIEN`, `O' BRIEN`, ``O`BRIEN``). Narrow allow-list of 5
+//      particles, position 0 only — aggressive joining would fuse legitimate
+//      mononyms.
+//   7. Emit `tokens.join(' ') + '|' + zip5` (or name-only if zip5 blank).
 // ---------------------------------------------------------------------------
 
 const NOISE_TOKENS: ReadonlySet<string> = new Set([
@@ -174,16 +182,28 @@ const NOISE_TOKENS: ReadonlySet<string> = new Set([
   "CPA", "CFP", "JD", "RN", "DDS", "DO", "MBA",
 ]);
 
+const PARTICLE_TOKENS: ReadonlySet<string> = new Set(["O", "D", "DE", "ST", "MC"]);
+
 export function normalizeName(raw: string): string {
   if (!raw) return "";
   const cleaned = raw
     .toUpperCase()
-    .replace(/['.]/g, "")          // FIX-244: apostrophe + period → empty, not whitespace
+    .replace(/[`'.]/g, "")         // FIX-244 + FIX-245: backtick + apostrophe + period → empty
     .replace(/[^A-Z0-9 ]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
   if (!cleaned) return "";
   const tokens = cleaned.split(" ").filter((t) => t && !NOISE_TOKENS.has(t));
+  // FIX-245 position-0 particle joiner. Must run after the noise filter so
+  // an "MR O BRIEN" input (LAST,FIRST swapped with a leading honorific) gets
+  // MR dropped first, then O+BRIEN fused.
+  if (
+    tokens.length >= 2 &&
+    PARTICLE_TOKENS.has(tokens[0]!) &&
+    /^[A-Z]+$/.test(tokens[1]!)
+  ) {
+    tokens.splice(0, 2, tokens[0]! + tokens[1]!);
+  }
   return tokens.join(" ");
 }
 
