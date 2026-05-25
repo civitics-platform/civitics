@@ -312,11 +312,13 @@ async function runCongressNominationsPass(
       }
 
       if (!officialId) {
-        // Fall back to name match
+        // Fall back to name match. ilike with no wildcards = case-insensitive
+        // equality. Was .eq(), which let "ADAM SCHEINMAN" and "Adam Scheinman"
+        // land as separate officials rows (FIX-325).
         const { data: byName } = await db
           .from("officials")
           .select("id, source_ids")
-          .eq("full_name", name)
+          .ilike("full_name", name)
           .maybeSingle();
         if (byName?.id) {
           officialId = byName.id as string;
@@ -543,10 +545,12 @@ export async function runAgencyLeadershipPipeline(): Promise<PipelineResult> {
               .single();
 
             if (insErr) {
+              // Case-insensitive recovery lookup — same FIX-325 hardening as
+              // the Congress-nominations branch above.
               const { data: found } = await db
                 .from("officials")
                 .select("id")
-                .eq("full_name", fullName)
+                .ilike("full_name", fullName)
                 .maybeSingle();
               if (found?.id) {
                 officialId = found.id as string;

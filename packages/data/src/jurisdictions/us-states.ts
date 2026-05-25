@@ -70,6 +70,17 @@ export const STATE_DATA: StateRecord[] = [
   { name: "West Virginia",        abbr: "WV", fips: "54", timezone: "America/New_York",      type: "state"    },
   { name: "Wisconsin",            abbr: "WI", fips: "55", timezone: "America/Chicago",       type: "state"    },
   { name: "Wyoming",              abbr: "WY", fips: "56", timezone: "America/Denver",        type: "state"    },
+  // FIX-321 / FIX-B (2026-05-24): five U.S. territories with non-voting House
+  // delegates. Modeled as type='district' to mirror the existing DC convention
+  // (no 'territory' value in the jurisdiction_type enum). Without these,
+  // congress/officials.ts at stateIds.get(member.state) falls through to the
+  // 'United States' umbrella for AS/GU/MP/PR/VI delegates, leaving
+  // officials.rep_count at 437 instead of 441.
+  { name: "American Samoa",            abbr: "AS", fips: "60", timezone: "Pacific/Pago_Pago", type: "district" },
+  { name: "Guam",                      abbr: "GU", fips: "66", timezone: "Pacific/Guam",      type: "district" },
+  { name: "Northern Mariana Islands",  abbr: "MP", fips: "69", timezone: "Pacific/Saipan",    type: "district" },
+  { name: "Puerto Rico",               abbr: "PR", fips: "72", timezone: "America/Puerto_Rico", type: "district" },
+  { name: "U.S. Virgin Islands",       abbr: "VI", fips: "78", timezone: "America/St_Thomas", type: "district" },
 ];
 
 // ---------------------------------------------------------------------------

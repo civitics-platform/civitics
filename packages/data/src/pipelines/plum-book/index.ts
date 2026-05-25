@@ -400,9 +400,16 @@ export async function runPlumBookPipeline(opts: { force?: boolean } = {}): Promi
     // PostgREST db-max-rows=1000 means fetching all officials is impossible
     // client-side. Instead: collect only the names we actually need, then
     // query in ilike batches (case-insensitive, PLUM names are ALL CAPS).
+    //
+    // FIX-325: normalize the lookup key with trim + collapsed-whitespace
+    // alongside the existing case-fold so "Adam  Scheinman" (two spaces) and
+    // "Adam Scheinman" (one) collapse to the same key. The DB column itself
+    // stays as-source (display value preserved).
+    const normNameKey = (s: string): string =>
+      s.trim().toLowerCase().replace(/\s+/g, " ");
     const unknownNames = new Set<string>();
     for (const r of resolved) {
-      if (!officialByPlumId.has(r.personId)) unknownNames.add(r.personName.toLowerCase());
+      if (!officialByPlumId.has(r.personId)) unknownNames.add(normNameKey(r.personName));
     }
 
     const officialByLowerName = new Map<
@@ -422,9 +429,9 @@ export async function runPlumBookPipeline(opts: { force?: boolean } = {}): Promi
         .select("id, full_name, source_ids")
         .or(orFilter);
       for (const o of batch ?? []) {
-        const lower = (o.full_name as string).toLowerCase();
-        if (!officialByLowerName.has(lower)) {
-          officialByLowerName.set(lower, {
+        const key = normNameKey(o.full_name as string);
+        if (!officialByLowerName.has(key)) {
+          officialByLowerName.set(key, {
             id:         o.id as string,
             source_ids: o.source_ids as Record<string, string> | null,
           });
@@ -461,7 +468,7 @@ export async function runPlumBookPipeline(opts: { force?: boolean } = {}): Promi
       if (officialByPlumId.has(r.personId) || seenPlumIds.has(r.personId)) continue;
       seenPlumIds.add(r.personId);
 
-      const byName = officialByLowerName.get(r.personName.toLowerCase());
+      const byName = officialByLowerName.get(normNameKey(r.personName));
       if (byName) {
         officialByPlumId.set(r.personId, byName.id);
         toLink.push({

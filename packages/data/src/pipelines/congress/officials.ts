@@ -16,6 +16,7 @@ import {
   CURRENT_CONGRESS,
 } from "./members";
 import { startSync, completeSync, failSync } from "../sync-log";
+import { runCandidateToElectedPromotion } from "./promote-candidates";
 
 type OfficialInsert = Database["public"]["Tables"]["officials"]["Insert"];
 
@@ -203,6 +204,17 @@ export async function runOfficialsPipeline(
   console.log(`Inserted ${inserted}, Updated ${updated} officials`);
   if (skipped > 0) {
     console.log(`Skipped ${skipped} officials due to errors`);
+  }
+
+  // FIX-248: unify (Senator|Representative, Candidate for X) pairs that
+  // resolve to the same person. Non-fatal — a failure here doesn't void the
+  // upstream ingest. The resolver band-aid (sections.ts subtitle filter)
+  // stays in place as defense-in-depth.
+  try {
+    await runCandidateToElectedPromotion({ db });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`  promote-candidates step failed (non-fatal): ${msg}`);
   }
 
     const estimatedMb = +(((inserted + updated) * 350) / 1024 / 1024).toFixed(2);

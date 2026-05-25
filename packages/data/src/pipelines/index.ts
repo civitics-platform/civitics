@@ -21,6 +21,7 @@ import { runCourtListenerPipeline } from "./courtlistener";
 import { runOpenStatesPipeline } from "./openstates";
 import { runBulkPeoplePipeline } from "./openstates-bulk/people";
 import { runOfficialsPipeline, runVotesPipeline, runCommitteesPipeline } from "./congress";
+import { runExecutiveSeed } from "./executive/seed";
 import { runRuleBasedTagger } from "./tags/rules";
 import { runAiTagger } from "./tags/ai-tagger";
 import { runAiSummariesPipeline } from "./ai-summaries";
@@ -432,6 +433,21 @@ export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<Nigh
       }
     } else {
       results.pipelines.regulations = { status: "skipped", error: "REGULATIONS_API_KEY not set" };
+    }
+  }
+
+  // 1a-exec. Daily — executive-branch seed (FIX-321). Two hardcoded rows
+  // (sitting POTUS + VPOTUS) so the FIX-318 audit checks flip from error→info.
+  // Idempotent on source_ids->>'official_seed_id'; runs in ~50ms.
+  {
+    const t0 = Date.now();
+    try {
+      const r = await runExecutiveSeed({ db });
+      console.log(`[nightly] executive seed — complete in ${Date.now() - t0}ms (inserted=${r.inserted} updated=${r.updated})`);
+    } catch (err) {
+      const msg = errMsg(err);
+      console.error("[nightly] executive seed failed (non-fatal):", msg);
+      results.errors.push(`Executive seed: ${msg}`);
     }
   }
 
