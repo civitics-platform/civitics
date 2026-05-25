@@ -6,8 +6,8 @@ normalization shipped in this PR closes the new-dupe inflow.
 
 ## Summary
 
-- Active-row casing-dupe clusters: **1,829**
-- Total dupe rows in those clusters: **4,108**
+- Active-row casing-dupe clusters: **1,828**
+- Total dupe rows in those clusters: **4,105**
 
 ## Source-pipeline breakdown
 
@@ -15,13 +15,13 @@ normalization shipped in this PR closes the new-dupe inflow.
 |---|--:|--:|
 | `fec_candidate_id` | 977 | 1955 |
 | `openstates_id` | 227 | 267 |
-| `plum_id` | 198 | 202 |
-| `congress_nomination_id` | 109 | 112 |
+| `plum_id` | 191 | 195 |
+| `congress_nomination_id` | 102 | 104 |
 | `fec_id` | 88 | 88 |
 | `congress_gov` | 78 | 78 |
 | `courtlistener_person_id` | 11 | 11 |
 | `legistar:austintexas` | 11 | 11 |
-| `legistar:sfgov` | 10 | 11 |
+| `legistar:sfgov` | 9 | 9 |
 | `wikidata_id` | 5 | 5 |
 | `legistar:seattle` | 4 | 4 |
 | `official_seed_id` | 1 | 1 |
