@@ -463,3 +463,7 @@
 2026-05-24 | FIX-365 | b71a6a52 | local+prod | fix(db): IOWait Round 2 — drop unused + duplicate indexes (~1.00 GB working-set shrink on prod top-3)
 2026-05-24 | FIX-366 | b71a6a52 | local+prod | fix(db): IOWait Round 2 — drop unused + duplicate indexes (~1.00 GB working-set shrink on prod top-3)
 2026-05-24 | FIX-368 | 342cbe3e | local-only | fix(scripts): fix:add allocator counts markers only, not cross-refs
+2026-05-24 | FIX-367 | 3891b807 | closes-as-recognized | docs(fixes): close FIX-367 — donor_fingerprint_pattern is structurally necessary
+2026-05-24 | FIX-369 | a0aed845 | local+prod | feat(scripts): fixes-sync supports per-trailer Verified
+2026-05-24 | FIX-370 | 704891ee | local-only | docs(claude-md): document in-shell env-switching pattern alongside Copy-Item
+2026-05-24 | FIX-371 | 3891b807 | closes-as-recognized | docs(fixes): close FIX-367 — donor_fingerprint_pattern is structurally necessary
