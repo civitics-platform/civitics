@@ -232,6 +232,18 @@ export type PipelineHistoryRun = {
   error_message: string | null;
 };
 
+// Wrapper-bookkeeping rows that write to data_sync_log but aren't operator-
+// facing pipelines. Filtered out server-side here (rather than client-side in
+// DashboardClient.tsx) so any other consumer of getPipelines() inherits the
+// same exclusion. Add new entries only for wrappers — never for real
+// pipelines that happen to be misnamed; fix those at the writer instead.
+//   • nightly_cron  — runNightlySync() completion row
+//   • canary_check  — daily canary that verifies nightly_cron rows exist
+const HIDDEN_PIPELINES = new Set<string>([
+  "canary_check",
+  "nightly_cron",
+]);
+
 export async function getPipelines(db: Db) {
   // ISO timestamp 14 months ago. Calculated as 14 × 30 days to avoid
   // month-boundary off-by-ones; close enough — the bound is a safety net,
@@ -278,8 +290,11 @@ export async function getPipelines(db: Db) {
 
   // Per-pipeline bucket, capped at 7. Rows arrive grouped by pipeline with
   // each group already DESC by completed_at, so we just walk and trim.
+  // HIDDEN_PIPELINES rows are skipped here so neither the bucketed history
+  // nor the back-compat recent_runs derived below surface them.
   const history: Record<string, PipelineHistoryRun[]> = {};
   for (const run of allRuns) {
+    if (HIDDEN_PIPELINES.has(run.pipeline)) continue;
     const bucket = (history[run.pipeline] ??= []);
     if (bucket.length < 7) bucket.push(run);
   }

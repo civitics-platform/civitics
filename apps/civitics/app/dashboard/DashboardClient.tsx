@@ -106,14 +106,25 @@ const PIPELINES: PipelineDef[] = [
   {
     key: "congress",
     display: "Congress.gov",
-    aliases: ["congress", "congress_committees", "congress_officials", "congress_votes"],
+    aliases: ["congress", "congress_officials", "congress_votes"],
     cadence: "daily",
     dbTotals: (db) => [
       { value: db.officials, label: "officials" },
       { value: db.proposals_bills, label: "bills + resolutions" },
     ],
     source: { label: "Congress.gov", href: "https://congress.gov" },
-    retryCmd: "pnpm data:officials  /  data:votes  /  data:committees",
+    retryCmd: "pnpm data:officials  /  data:votes",
+  },
+  {
+    // Split out of the Congress.gov row (was an alias under cadence: "daily")
+    // because committees run weekly via the Sunday-only orchestrator block
+    // — bundling them under daily made the row read false-red every weekday.
+    key: "congress_committees",
+    display: "Congress Committees",
+    aliases: ["congress_committees"],
+    cadence: "weekly",
+    source: { label: "Congress.gov", href: "https://congress.gov" },
+    retryCmd: "pnpm data:committees",
   },
   {
     key: "regulations",
@@ -208,6 +219,76 @@ const PIPELINES: PipelineDef[] = [
     aliases: ["agencies_hierarchy"],
     cadence: "quarterly",
     retryCmd: "pnpm data:agencies",
+  },
+  {
+    key: "agency_leadership",
+    display: "Agency Leadership",
+    aliases: ["agency_leadership"],
+    // packages/data/CLAUDE.md: Sunday block of nightly. Audit shows ~weekly
+    // cadence in prod; the "federal directory rarely changes" assumption is
+    // about content churn, not run frequency.
+    cadence: "weekly",
+    retryCmd: "pnpm data:agency-leadership",
+  },
+  {
+    key: "agency_enrichment",
+    display: "Agency Enrichment",
+    aliases: ["agency_enrichment"],
+    // First Sunday of month per packages/data/CLAUDE.md ("Monthly").
+    cadence: "monthly",
+    retryCmd: "pnpm data:agency-enrichment",
+  },
+  {
+    key: "opm_fte",
+    display: "OPM FTE",
+    aliases: ["opm_fte"],
+    cadence: "weekly",
+    retryCmd: "pnpm data:opm-fte",
+  },
+  {
+    key: "plum_book",
+    display: "PLUM Book",
+    aliases: ["plum_book"],
+    cadence: "weekly",
+    retryCmd: "pnpm data:plum-book",
+  },
+  {
+    key: "irs990",
+    display: "IRS 990 (nonprofits)",
+    aliases: ["irs990"],
+    // packages/data/CLAUDE.md: weekly Sunday after FEC bulk. HEAD-watermark
+    // short-circuits cheaply when IRS bulk hasn't changed, but the pipeline
+    // still records a run each Sunday.
+    cadence: "weekly",
+    source: { label: "IRS 990 Bulk", href: "https://apps.irs.gov/pub/epostcard/990/xml/" },
+    retryCmd: "pnpm data:irs990",
+  },
+  {
+    key: "littlesis",
+    display: "LittleSis",
+    aliases: ["littlesis"],
+    cadence: "weekly",
+    source: { label: "LittleSis", href: "https://littlesis.org" },
+    retryCmd: "pnpm data:littlesis",
+  },
+  {
+    key: "edgar",
+    display: "SEC EDGAR (weekly)",
+    aliases: ["edgar"],
+    // Weekly full reconciliation of the S&P 500 universe (FIX-253).
+    cadence: "weekly",
+    source: { label: "SEC EDGAR", href: "https://www.sec.gov/edgar" },
+    retryCmd: "pnpm data:edgar",
+  },
+  {
+    key: "edgar_daily",
+    display: "SEC EDGAR (daily)",
+    aliases: ["edgar_daily"],
+    // Daily SC 13D/13G scan over tracked CIKs. `status: skipped` on quiet
+    // days is normal — no new filings doesn't constitute failure.
+    cadence: "daily",
+    source: { label: "SEC EDGAR", href: "https://www.sec.gov/edgar" },
+    retryCmd: "pnpm data:edgar:daily",
   },
   {
     key: "districts",
