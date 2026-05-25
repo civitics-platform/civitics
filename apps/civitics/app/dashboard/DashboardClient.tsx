@@ -63,6 +63,30 @@ interface DashboardClientProps {
 
 // ── Pipeline display name mapping ────────────────────────────────────────────
 
+// `cadence` drives per-pipeline freshness thresholds (see freshnessFor()
+// below). Without it, every pipeline was scored against a single 48h ok /
+// 168h warning threshold, which flagged TIGER (annual) as red after 7 days,
+// hid actually-stale daily pipelines, and disagreed with /admin/pipeline-
+// health. Values picked from .github/workflows/*.yml + a prod audit query
+// against data_sync_log (see scripts/pipeline-cadence-audit.ts).
+type Cadence =
+  | "hourly"
+  | "daily"
+  | "weekly"
+  | "monthly"
+  | "quarterly"
+  | "annual"
+  | "on_demand"   // no expected schedule; healthy as long as any run exists
+  | "continuous"; // background queue; freshness reads activity, not last_run
+
+const SLOW_CADENCES: ReadonlySet<Cadence> = new Set([
+  "weekly",
+  "monthly",
+  "quarterly",
+  "annual",
+  "on_demand",
+]);
+
 // One row on the Data Health card. `aliases` holds every writer-side name that
 // should be merged into this row's history — used when one display row covers
 // multiple sub-pipelines (e.g. Congress = officials + votes + committees).
@@ -71,6 +95,7 @@ type PipelineDef = {
   key: string; // canonical key (used as React key + display name fallback)
   display: string; // user-facing label
   aliases: string[]; // writer-side `pipeline` strings that map to this row
+  cadence: Cadence; // expected schedule, drives freshness thresholds
   dbTotals?: (db: DatabaseStats) => Array<{ value: number; label: string }>;
   source?: { label: string; href: string };
   retryCmd?: string;
@@ -82,6 +107,7 @@ const PIPELINES: PipelineDef[] = [
     key: "congress",
     display: "Congress.gov",
     aliases: ["congress", "congress_committees", "congress_officials", "congress_votes"],
+    cadence: "daily",
     dbTotals: (db) => [
       { value: db.officials, label: "officials" },
       { value: db.proposals_bills, label: "bills + resolutions" },
@@ -93,6 +119,7 @@ const PIPELINES: PipelineDef[] = [
     key: "regulations",
     display: "Regulations.gov",
     aliases: ["regulations", "federal_register"],
+    cadence: "daily",
     dbTotals: (db) => [
       { value: db.proposals_regulations, label: "regulations" },
     ],
@@ -103,6 +130,7 @@ const PIPELINES: PipelineDef[] = [
     key: "fec_bulk",
     display: "FEC / Donors",
     aliases: ["fec_bulk", "fec"],
+    cadence: "weekly",
     dbTotals: (db) => [
       { value: db.financial_entities, label: "donors / PACs" },
       { value: db.financial_relationships, label: "donations" },
@@ -112,8 +140,11 @@ const PIPELINES: PipelineDef[] = [
   },
   {
     key: "usaspending",
+    // FIX-249 deprecated the legacy `usaspending` (API path) alias — bulk is
+    // the live writer. Audit shows bulk + assistance run on the Sunday block.
     display: "USAspending",
-    aliases: ["usaspending", "usaspending_bulk", "usaspending_bulk_assistance"],
+    aliases: ["usaspending_bulk", "usaspending_bulk_assistance"],
+    cadence: "weekly",
     dbTotals: (db) => [
       { value: db.financial_relationships, label: "spending records (shared)" },
     ],
@@ -123,7 +154,12 @@ const PIPELINES: PipelineDef[] = [
   {
     key: "openstates",
     display: "OpenStates",
+    // `openstates_bulk_people` runs daily; `openstates` (v3 API for term
+    // dates + bills) runs weekly in the Sunday block. Weekly is the row's
+    // cadence — daily satisfies, weekly stale on the API side is what
+    // worst-status propagation surfaces.
     aliases: ["openstates", "openstates_bulk_people"],
+    cadence: "weekly",
     source: { label: "OpenStates.org", href: "https://openstates.org" },
     retryCmd: "pnpm data:states  /  data:states-api",
   },
@@ -131,6 +167,9 @@ const PIPELINES: PipelineDef[] = [
     key: "courtlistener",
     display: "CourtListener",
     aliases: ["courtlistener"],
+    // packages/data/CLAUDE.md: "weekly via nightly orchestrator (Sunday-only
+    // block)". Audit confirms ~5d gap between runs.
+    cadence: "weekly",
     source: { label: "CourtListener", href: "https://www.courtlistener.com" },
     retryCmd: "pnpm data:courts",
   },
@@ -138,42 +177,56 @@ const PIPELINES: PipelineDef[] = [
     key: "elections",
     display: "Elections",
     aliases: ["elections"],
+    cadence: "annual",
     retryCmd: "pnpm data:elections",
   },
   {
     key: "opensecrets",
     display: "OpenSecrets",
     aliases: ["opensecrets_bulk"],
+    cadence: "monthly",
     retryCmd: "pnpm data:opensecrets-bulk",
   },
   {
     key: "govtrack",
     display: "GovTrack Cosponsors",
     aliases: ["govtrack_cosponsors"],
+    cadence: "weekly",
     retryCmd: "pnpm data:govtrack-cosponsors",
   },
   {
     key: "legistar",
     display: "Legistar (local)",
     aliases: ["legistar"],
+    // packages/data/CLAUDE.md: "Manual only" — not on the orchestrator.
+    cadence: "on_demand",
     retryCmd: "pnpm data:legistar",
   },
   {
     key: "agencies",
     display: "Agencies (hierarchy)",
     aliases: ["agencies_hierarchy"],
+    cadence: "quarterly",
     retryCmd: "pnpm data:agencies",
   },
   {
     key: "districts",
     display: "TIGER Districts",
     aliases: ["tiger_districts"],
+    // Census TIGER/Line ships annually. Manual reruns happen but don't
+    // change the underlying cadence designation.
+    cadence: "annual",
     retryCmd: "pnpm data:districts",
   },
   {
     key: "ai_summaries",
     display: "AI Summaries",
     aliases: ["ai_summaries"],
+    // Background work lives in enrichment_queue, drained by subagent
+    // sessions (see docs/SESSION_LOG.md). The pipeline name rarely writes
+    // to data_sync_log itself, so `continuous` would always show red.
+    // `on_demand` treats "any run logged" as healthy.
+    cadence: "on_demand",
     dbTotals: (db) => [
       { value: db.ai_summary_cache, label: "summaries cached" },
     ],
@@ -183,6 +236,9 @@ const PIPELINES: PipelineDef[] = [
     key: "tag_ai",
     display: "AI Tagger",
     aliases: ["tag_ai"],
+    // Same shape as ai_summaries — drained via subagent queue. See
+    // `ai_summaries` for rationale.
+    cadence: "on_demand",
     dbTotals: (db) => [
       { value: db.entity_tags, label: "entity_tags rows (all categories)" },
     ],
@@ -192,12 +248,16 @@ const PIPELINES: PipelineDef[] = [
     key: "tag_rules",
     display: "Rule Tagger",
     aliases: ["tag_rules"],
+    cadence: "continuous",
     retryCmd: "pnpm data:tag-rules",
   },
   {
     key: "entity_connections_rebuild",
     display: "Connections (derived)",
     aliases: ["entity_connections_rebuild"],
+    // rebuild-entity-connections.yml runs Sun + Wed 08:00 UTC ≈ 3-4 day
+    // cadence. `weekly` thresholds (8d ok / 15d warn) absorb both legs.
+    cadence: "weekly",
     dbTotals: (db) => [
       { value: db.entity_connections, label: "edges" },
     ],
@@ -267,13 +327,28 @@ const PHASE1_TASKS: Array<{ label: string; done: boolean }> = [
 
 // ── Pipeline freshness helper ────────────────────────────────────────────────
 
-function pipelineFreshness(completedAt: string | null | undefined): "ok" | "warning" | "error" {
-  if (!completedAt) return "error";
-  const age = Date.now() - new Date(completedAt).getTime();
-  const hours = age / 3_600_000;
-  if (hours < 48) return "ok";
-  if (hours < 168) return "warning";
-  return "error";
+// Thresholds are expressed in hours. Each tier roughly maps to "one expected
+// cycle" (ok), "missed one cycle" (warning), "missed multiple" (error).
+function freshnessFor(
+  cadence: Cadence,
+  completedAt: string | null | undefined,
+): "ok" | "warning" | "error" {
+  if (!completedAt) {
+    // On-demand pipelines that never logged are a soft warning — no expected
+    // schedule means we can't call it broken. Everything else is error.
+    return cadence === "on_demand" ? "warning" : "error";
+  }
+  const ageH = (Date.now() - new Date(completedAt).getTime()) / 3_600_000;
+  switch (cadence) {
+    case "hourly":     return ageH < 2     ? "ok" : ageH < 6     ? "warning" : "error";
+    case "daily":      return ageH < 48    ? "ok" : ageH < 96    ? "warning" : "error";
+    case "weekly":     return ageH < 192   ? "ok" : ageH < 360   ? "warning" : "error"; // 8d / 15d
+    case "monthly":    return ageH < 840   ? "ok" : ageH < 1560  ? "warning" : "error"; // 35d / 65d
+    case "quarterly":  return ageH < 2400  ? "ok" : ageH < 3120  ? "warning" : "error"; // 100d / 130d
+    case "annual":     return ageH < 9600  ? "ok" : ageH < 12000 ? "warning" : "error"; // 400d / 500d
+    case "on_demand":  return "ok"; // any run is fine, indefinite
+    case "continuous": return ageH < 24    ? "ok" : ageH < 72    ? "warning" : "error";
+  }
 }
 
 // ── Activity path → display name ─────────────────────────────────────────────
@@ -464,14 +539,86 @@ function HealthMetricTile({
   );
 }
 
+type RowStatus = "complete" | "running" | "interrupted" | "failed" | "pending";
+
+type AliasState = {
+  alias: string;
+  latest: PipelineHistoryRun | null;
+  freshness: "ok" | "warning" | "error";
+};
+
+type RowVerdict = {
+  rowStatus: RowStatus;
+  worstFreshness: "ok" | "warning" | "error";
+  aliasStates: AliasState[];
+  worstAlias: string | null;
+};
+
+// One verdict per registered PIPELINES row. Worst-status across the def's
+// aliases drives the badge — the Congress.gov row reads red when *any* of
+// congress_officials / congress_votes / congress_committees / congress is
+// stale or failing, instead of going green because one alias completed.
+function computeRowVerdict(
+  cadence: Cadence,
+  perAlias: Record<string, PipelineHistoryRun[]>,
+  aliases: string[],
+): RowVerdict {
+  const aliasStates: AliasState[] = aliases.map((a) => {
+    const latest = perAlias[a]?.[0] ?? null;
+    return {
+      alias: a,
+      latest,
+      freshness: freshnessFor(cadence, latest?.completed_at),
+    };
+  });
+
+  // failed > stale-error > stale-warning > complete > pending
+  const rank = (s: AliasState): number => {
+    if (s.latest?.status === "failed") return 5;
+    if (s.freshness === "error") return 4;
+    if (s.freshness === "warning") return 3;
+    if (s.latest && s.latest.status === "complete") return 2;
+    return 1;
+  };
+
+  const worst =
+    aliasStates.length > 0
+      ? aliasStates.reduce((a, b) => (rank(b) > rank(a) ? b : a))
+      : null;
+
+  let rowStatus: RowStatus;
+  if (!worst || !worst.latest) {
+    rowStatus = "pending";
+  } else if (worst.latest.status === "failed") {
+    rowStatus = "failed";
+  } else if (worst.freshness === "error") {
+    rowStatus = "failed";
+  } else if (worst.freshness === "warning") {
+    rowStatus = "interrupted";
+  } else {
+    rowStatus = (worst.latest.status as RowStatus) ?? "pending";
+  }
+
+  return {
+    rowStatus,
+    worstFreshness: worst?.freshness ?? "error",
+    aliasStates,
+    worstAlias: worst?.alias ?? null,
+  };
+}
+
 function DataHealthRow({
   def,
   history,
+  perAlias,
+  verdict,
   database,
   quality,
 }: {
   def: PipelineDef;
   history: PipelineHistoryRun[];
+  perAlias: Record<string, PipelineHistoryRun[]>;
+  verdict: RowVerdict;
   database:
     | NonNullable<ReturnType<typeof useDashboardData>["data"]>["status"]["database"]
     | null;
@@ -483,17 +630,7 @@ function DataHealthRow({
   const latest = history[0] ?? null;
   const prior = history[1] ?? null;
 
-  const freshness = latest?.completed_at
-    ? pipelineFreshness(latest.completed_at)
-    : "error";
-  const rowStatus =
-    !latest || !latest.completed_at
-      ? "pending"
-      : freshness === "error"
-      ? "failed"
-      : freshness === "warning"
-      ? "interrupted"
-      : ((latest.status as "complete" | "running" | "interrupted" | "failed" | "pending"));
+  const { rowStatus, worstFreshness, aliasStates, worstAlias } = verdict;
 
   const dbResolved = database && !isPartial(database) ? database : null;
   const totals = dbResolved && def.dbTotals ? def.dbTotals(dbResolved) : [];
@@ -503,6 +640,19 @@ function DataHealthRow({
 
   const lastFailed = history.find((r) => r.status === "failed" && r.error_message);
   const q = quality && !isPartial(quality) ? quality : null;
+
+  // Right-column timestamp label. For slow cadences we prefix "Current · " on
+  // healthy rows so a 16-day-old TIGER doesn't look stale next to a fresh
+  // daily pipeline. on_demand with no run reads "Loaded never" to distinguish
+  // an unloaded one-shot pipeline from a broken scheduled one.
+  let timestampLabel: string;
+  if (!latest?.completed_at) {
+    timestampLabel = def.cadence === "on_demand" ? "Loaded never" : "never";
+  } else if (worstFreshness === "ok" && SLOW_CADENCES.has(def.cadence)) {
+    timestampLabel = `Current · ${formatRelativeTime(latest.completed_at)}`;
+  } else {
+    timestampLabel = formatRelativeTime(latest.completed_at);
+  }
 
   return (
     <div className="border-t border-gray-100 first:border-t-0">
@@ -545,8 +695,8 @@ function DataHealthRow({
           <StatusSparkline runs={history} />
         </span>
         <StatusBadge status={rowStatus} size="sm" />
-        <span className="text-xs text-gray-400 w-24 text-right shrink-0">
-          {latest?.completed_at ? formatRelativeTime(latest.completed_at) : "never"}
+        <span className="text-xs text-gray-400 w-28 text-right shrink-0">
+          {timestampLabel}
         </span>
       </button>
 
@@ -613,6 +763,55 @@ function DataHealthRow({
               total={dbResolved.proposals}
               color="amber"
             />
+          )}
+
+          {/* Per-alias sub-pipeline breakdown (multi-alias defs only). The
+              alias that drove the row's worst-status verdict is marked
+              ← propagating so the operator can see which writer is dragging
+              the rollup down. */}
+          {def.aliases.length > 1 && (
+            <div>
+              <div className="text-xs font-medium text-gray-700 mb-1.5">
+                Sub-pipelines ({def.aliases.length}):
+              </div>
+              <div className="overflow-hidden rounded-md border border-gray-100 bg-white">
+                <table className="w-full text-xs">
+                  <tbody className="divide-y divide-gray-100">
+                    {aliasStates.map((s) => {
+                      const propagating =
+                        s.alias === worstAlias && aliasStates.length > 1;
+                      const subStatus: RowStatus = !s.latest
+                        ? "pending"
+                        : s.latest.status === "failed"
+                        ? "failed"
+                        : s.freshness === "error"
+                        ? "failed"
+                        : s.freshness === "warning"
+                        ? "interrupted"
+                        : ((s.latest.status as RowStatus) ?? "pending");
+                      return (
+                        <tr key={s.alias}>
+                          <td className="px-3 py-1.5 font-mono text-[11px] text-gray-700">
+                            {s.alias}
+                          </td>
+                          <td className="px-3 py-1.5">
+                            <StatusBadge status={subStatus} size="sm" />
+                          </td>
+                          <td className="px-3 py-1.5 text-gray-500 tabular-nums">
+                            {s.latest?.completed_at
+                              ? formatRelativeTime(s.latest.completed_at)
+                              : "(no runs in window)"}
+                          </td>
+                          <td className="px-3 py-1.5 text-amber-700 text-[11px]">
+                            {propagating ? "← propagating" : ""}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           )}
 
           {/* Last 5 runs */}
@@ -772,18 +971,33 @@ function DataHealthSection({
   // any of the def's aliases, then sort newest-first and trim to 7. This is
   // where pipeline-name normalization happens — writer-side inconsistencies
   // (hyphens vs underscores, sub-pipeline subkeys) collapse into one row.
+  // `perAlias` preserves per-writer identity so the expanded panel and the
+  // worst-status verdict can see each sub-pipeline separately.
   const historyMap = pipelines.history ?? {};
-  const rows: Array<{ def: PipelineDef; history: PipelineHistoryRun[] }> = PIPELINES.map(
-    (def) => {
-      const merged = def.aliases.flatMap((a) => historyMap[a] ?? []);
-      merged.sort((a, b) => {
-        const at = a.completed_at ? new Date(a.completed_at).getTime() : 0;
-        const bt = b.completed_at ? new Date(b.completed_at).getTime() : 0;
-        return bt - at;
-      });
-      return { def, history: merged.slice(0, 7) };
-    },
-  );
+  type Row = {
+    def: PipelineDef;
+    history: PipelineHistoryRun[];
+    perAlias: Record<string, PipelineHistoryRun[]>;
+    verdict: RowVerdict;
+  };
+  const rows: Row[] = PIPELINES.map((def) => {
+    const perAlias: Record<string, PipelineHistoryRun[]> = {};
+    for (const a of def.aliases) perAlias[a] = historyMap[a] ?? [];
+
+    const merged = def.aliases.flatMap((a) => historyMap[a] ?? []);
+    merged.sort((a, b) => {
+      const at = a.completed_at ? new Date(a.completed_at).getTime() : 0;
+      const bt = b.completed_at ? new Date(b.completed_at).getTime() : 0;
+      return bt - at;
+    });
+
+    return {
+      def,
+      history: merged.slice(0, 7),
+      perAlias,
+      verdict: computeRowVerdict(def.cadence, perAlias, def.aliases),
+    };
+  });
 
   // Append any unknown writer-side pipeline strings as orphan rows so they're
   // never silently dropped from the dashboard. If we see one of these in
@@ -792,29 +1006,37 @@ function DataHealthSection({
   const knownAliases = new Set(Object.keys(ALIAS_TO_DEF));
   for (const name of Object.keys(historyMap)) {
     if (!knownAliases.has(name)) {
+      const orphanDef: PipelineDef = {
+        key: name,
+        display: `${name} (orphan)`,
+        aliases: [name],
+        // on_demand keeps unknown writers from being flagged red just because
+        // their cadence is unknown — the orphan label itself is the signal.
+        cadence: "on_demand",
+        note:
+          "This pipeline is logging to data_sync_log but isn't registered in PIPELINES. Add an entry to apps/civitics/app/dashboard/DashboardClient.tsx to give it a proper display name and DB total.",
+      };
+      const orphanHistory: PipelineHistoryRun[] = historyMap[name] ?? [];
+      const orphanPerAlias: Record<string, PipelineHistoryRun[]> = {
+        [name]: orphanHistory,
+      };
       rows.push({
-        def: {
-          key: name,
-          display: `${name} (orphan)`,
-          aliases: [name],
-          note:
-            "This pipeline is logging to data_sync_log but isn't registered in PIPELINES. Add an entry to apps/civitics/app/dashboard/DashboardClient.tsx to give it a proper display name and DB total.",
-        },
-        history: historyMap[name] ?? [],
+        def: orphanDef,
+        history: orphanHistory,
+        perAlias: orphanPerAlias,
+        verdict: computeRowVerdict(orphanDef.cadence, orphanPerAlias, [name]),
       });
     }
   }
 
-  // Health score: fraction of registered pipelines that ran <48h ago AND completed.
+  // Health score: fraction of registered rows whose worst-status verdict is
+  // both complete AND within the cadence's "ok" threshold. Uses the same
+  // worst-status semantics as the row badge, so the header metric and the
+  // per-row badges can't disagree.
   const registeredRows = rows.filter((r) => !r.def.display.endsWith("(orphan)"));
-  const healthyCount = registeredRows.filter((r) => {
-    const latest = r.history[0];
-    return (
-      latest?.status === "complete" &&
-      latest.completed_at &&
-      pipelineFreshness(latest.completed_at) === "ok"
-    );
-  }).length;
+  const healthyCount = registeredRows.filter(
+    (r) => r.verdict.rowStatus === "complete" && r.verdict.worstFreshness === "ok",
+  ).length;
   const healthPct = registeredRows.length
     ? Math.round((healthyCount / registeredRows.length) * 100)
     : 0;
@@ -873,7 +1095,7 @@ function DataHealthSection({
           <HealthMetricTile
             label="Pipeline health"
             value={`${healthyCount}/${registeredRows.length} fresh`}
-            sub={`${healthPct}% of pipelines complete and < 48h old`}
+            sub={`${healthPct}% complete and within cadence`}
             tone={healthTone}
           />
           <HealthMetricTile
@@ -931,6 +1153,8 @@ function DataHealthSection({
             key={r.def.key}
             def={r.def}
             history={r.history}
+            perAlias={r.perAlias}
+            verdict={r.verdict}
             database={database}
             quality={quality}
           />

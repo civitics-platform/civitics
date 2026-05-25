@@ -198,12 +198,28 @@ export async function getConnectionTypes(
 // Returns enough state for the unified Data Health card on /dashboard:
 //   - recent_runs: latest 10 (kept for back-compat / quick "last sync" reads)
 //   - cron_last_run: nightly cron summary blob
-//   - history: per-pipeline last 7 runs (newest first), grouped from a 100-row
-//     fetch so the dashboard can render sparklines + a "last 5 runs" mini-table
-//     without a per-pipeline round-trip
+//   - history: per-pipeline last 7 runs (newest first), bucketed per pipeline
+//     so every registered pipeline that ran in the lookback window appears
+//     reliably — not just whichever ones happened to land in a global LIMIT
 //   - enrichment_backlog: enrichment_queue depth split by tag/summary/in_progress
 //     (table is from FIX-101 stage 1 schema; fall back to zeros if unavailable
 //     so a missing/renamed table doesn't black out the whole pipelines card)
+//
+// Window + bucketing rationale (FIX-381): the pre-fix shape used a global
+// `ORDER BY completed_at DESC LIMIT 100` which the high-frequency writers
+// (regulations, congress_officials, openstates_bulk_people, fec_bulk, …)
+// monopolized — sparser pipelines like tiger_districts (annual) fell out of
+// the window even when their last run was healthy and visible in
+// pipeline_runtime_stats_mv. The new shape:
+//   • 14-month time bound covers annual cadence + 2-month grace
+//   • multi-column ORDER lets us scan (pipeline ASC, completed_at DESC) so
+//     bucketing keeps the right 7 rows per pipeline as we walk
+//   • 3000-row safety limit: prod audit (2026-05-25) showed ~322 rows in
+//     90 days across ~30 pipelines → ~1500 in 14 months, well under 3000
+//
+// The per-group LIMIT could move into a Postgres RPC (PARTITION BY +
+// ROW_NUMBER) if the row count keeps growing — current shape stays cheap
+// enough that an RPC isn't warranted.
 export type PipelineHistoryRun = {
   pipeline: string;
   status: string;
@@ -217,14 +233,24 @@ export type PipelineHistoryRun = {
 };
 
 export async function getPipelines(db: Db) {
+  // ISO timestamp 14 months ago. Calculated as 14 × 30 days to avoid
+  // month-boundary off-by-ones; close enough — the bound is a safety net,
+  // not the source of truth for cadence freshness (that lives client-side
+  // per-pipeline; see apps/civitics/app/dashboard/DashboardClient.tsx).
+  const fourteenMonthsAgo = new Date(
+    Date.now() - 14 * 30 * 24 * 60 * 60 * 1000,
+  ).toISOString();
+
   const [recentRunsRes, cronState, queueResults] = await Promise.all([
     db
       .from("data_sync_log")
       .select(
         "pipeline, status, started_at, completed_at, rows_inserted, rows_updated, rows_failed, estimated_mb, error_message",
       )
-      .order("completed_at", { ascending: false })
-      .limit(100),
+      .gt("completed_at", fourteenMonthsAgo)
+      .order("pipeline", { ascending: true })
+      .order("completed_at", { ascending: false, nullsFirst: false })
+      .limit(3000),
     db
       .from("pipeline_state")
       .select("value")
@@ -250,20 +276,31 @@ export async function getPipelines(db: Db) {
 
   const allRuns = (recentRunsRes.data ?? []) as PipelineHistoryRun[];
 
+  // Per-pipeline bucket, capped at 7. Rows arrive grouped by pipeline with
+  // each group already DESC by completed_at, so we just walk and trim.
   const history: Record<string, PipelineHistoryRun[]> = {};
   for (const run of allRuns) {
     const bucket = (history[run.pipeline] ??= []);
     if (bucket.length < 7) bucket.push(run);
   }
 
-  // First 10 runs in (pipeline, completed_at desc) order — back-compat shape
-  // expected by callers that only want the slim PipelineRun fields.
-  const recent_runs = allRuns.slice(0, 10).map((r) => ({
-    pipeline: r.pipeline,
-    status: r.status,
-    completed_at: r.completed_at ?? "",
-    rows_inserted: r.rows_inserted ?? 0,
-  }));
+  // Back-compat shape: global newest-first across all pipelines, top 10.
+  // Used by callers that only need the slim PipelineRun fields. Sorting
+  // ~210 trimmed rows is cheaper than the prior over-fetch.
+  const recent_runs = Object.values(history)
+    .flat()
+    .sort((a, b) => {
+      const at = a.completed_at ? new Date(a.completed_at).getTime() : 0;
+      const bt = b.completed_at ? new Date(b.completed_at).getTime() : 0;
+      return bt - at;
+    })
+    .slice(0, 10)
+    .map((r) => ({
+      pipeline: r.pipeline,
+      status: r.status,
+      completed_at: r.completed_at ?? "",
+      rows_inserted: r.rows_inserted ?? 0,
+    }));
 
   const safeCount = (
     r: PromiseSettledResult<{ count: number | null }>,
