@@ -62,6 +62,7 @@
     "diag:dc-territory-jurisdictions": "tsx --env-file=../../.env.local src/scripts/audit-dc-territory-jurisdiction-assignments.ts",
     "diag:dc-backfill-preflight": "tsx --env-file=../../.env.local src/scripts/preflight-fix-backfill.ts",
     "diag:dc-backfill-verify": "tsx --env-file=../../.env.local src/scripts/verify-fix-backfill.ts",
+    "diag:territory-name-mismatch": "tsx --env-file=../../.env.local src/scripts/investigate-territory-name-mismatch.ts",
     "data:backfill:individual-canonical": "tsx --env-file=../../.env.local src/scripts/backfill-individual-canonical-name.ts",
     "data:retitle-stubs": "tsx --env-file=../../.env.local src/scripts/retitle-procedural-bill-stubs.ts",
     "data:retitle-pn-stubs": "tsx --env-file=../../.env.local src/scripts/retitle-pn-stubs.ts",

@@ -18,6 +18,16 @@ interface StateRecord {
   type: "state" | "district";
 }
 
+// FIX-385: Congress.gov returns `member.state = "Virgin Islands"` for VI's
+// delegate, which does not match STATE_DATA.name = "U.S. Virgin Islands" —
+// the name-keyed lookup misses and the caller falls back to federalId. Other
+// territories (AS/GU/MP/PR) and DC return strings that match STATE_DATA.name
+// directly, so no aliases are needed for them today. Extend this map only
+// when prod data confirms an additional Congress.gov string mismatches.
+const CONGRESS_STATE_ALIASES: Record<string, string> = {
+  "U.S. Virgin Islands": "Virgin Islands",
+};
+
 export const STATE_DATA: StateRecord[] = [
   { name: "Alabama",              abbr: "AL", fips: "01", timezone: "America/Chicago",      type: "state"    },
   { name: "Alaska",               abbr: "AK", fips: "02", timezone: "America/Anchorage",    type: "state"    },
@@ -182,6 +192,13 @@ export async function seedJurisdictions(
         stateIds.set(state.abbr, inserted.id);   // "IN" → id
         stateIds.set(state.name, inserted.id);   // "Indiana" → id
         seededCount++;
+      }
+      // FIX-385: alias Congress.gov's variant for any state whose canonical
+      // name differs from the API's `member.state` string (currently only VI).
+      const congressAlias = CONGRESS_STATE_ALIASES[state.name];
+      const aliasTargetId = stateIds.get(state.abbr);
+      if (congressAlias && aliasTargetId) {
+        stateIds.set(congressAlias, aliasTargetId);
       }
     } catch (err) {
       console.error(`  Error upserting jurisdiction for ${state.name}:`, err);
