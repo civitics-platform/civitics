@@ -499,3 +499,4 @@
 2026-05-25 | FIX-385 | c678553d | local+prod | fix(jurisdictions): alias Congress.gov "Virgin Islands" + backfill territory misattributions
 2026-05-25 | FIX-386 | f840f27a | local-only | feat(jurisdictions): surface seedJurisdictions warnings to data_sync_log
 2026-05-25 | FIX-344 | 02d09ee8 | closes-as-recognized | docs(fixes): close FIX-344 — both halves shipped via 981e5afd + FIX-374
+2026-05-25 | FIX-381 | 3e9fc01a | local-only | docs(merge-template): extend FE FK-rewrite surface to entity_tags + enrichment_queue (FIX-381)
