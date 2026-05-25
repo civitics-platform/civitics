@@ -470,3 +470,6 @@
 2026-05-24 | FIX-372 | 4dba8f19 | local-only | feat(workflow): split rebuild-entity-connections into Sun=full + Wed=incremental crons (FIX-372)
 2026-05-24 | FIX-372 | f6926592 | local-only | feat(db): Round 3 — incremental rebuild_entity_connections_donations + _votes (FIX-372, FIX-373)
 2026-05-24 | FIX-373 | f6926592 | local-only | feat(db): Round 3 — incremental rebuild_entity_connections_donations + _votes (FIX-372, FIX-373)
+2026-05-24 | FIX-344 | 981e5afd | local+prod | fix(officials/summary): read donor stats from official_homepage_stats_mv
+2026-05-24 | FIX-344 | 0ea30f2e | local+prod | fix(graph): sunburst donor breakdown reads polymorphic (to_type,to_id)
+2026-05-24 | FIX-344 | reopen | sunburst half (commit 0ea30f2e) reverted as f29be960 because filter swap alone left route still broken on dropped donor_name column; sunburst rewrite tracked separately by FIX-374. Only summary half (commit 981e5afd) shipped.
