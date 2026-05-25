@@ -1,0 +1,36 @@
+# Fixture for scripts/test-fixes-sync.mjs (FIX-369).
+#
+# This is a synthetic commit message body. The harness reads it, hands it to
+# `parseCommitTrailers()` from scripts/fixes-sync.mjs, and asserts the
+# per-trailer overrides survive parsing.
+#
+# Lines starting with `#` above the `---FIXTURE---` marker are this comment
+# header and are stripped before parsing. The body below the marker is
+# verbatim — it is what would land in a real `git log` body block.
+#
+# Expected parse result:
+#   fixesIds        = { FIX-901, FIX-903 }
+#   closesIds       = { FIX-902 }
+#   globalVerified  = "local + prod"
+#   perFixVerified  = { FIX-902 -> "closes-as-redirected" }
+#   warnings        = []
+#
+# Expected post-normalize verified values:
+#   FIX-901 -> "local+prod"           (global, Fixes trailer)
+#   FIX-902 -> "closes-as-redirected" (per-FIX override, Closes trailer)
+#   FIX-903 -> "local+prod"           (global, Fixes trailer)
+#
+# To exercise manually:
+#   node scripts/test-fixes-sync.mjs
+#
+---FIXTURE---
+fix(example): test of mixed verification states
+
+Synthetic commit body — exercises FIX-369's per-trailer Verified parser.
+FIX-902 is closed-as-redirected via an explicit override while FIX-901 and
+FIX-903 inherit the bare `local + prod` global from the same commit.
+
+Verified: local + prod
+Verified[FIX-902]: closes-as-redirected
+Fixes: FIX-901, FIX-903
+Closes: FIX-902

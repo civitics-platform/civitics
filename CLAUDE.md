@@ -261,6 +261,29 @@ both code-fix and recognition closures, and a few one-off `verified: superseded`
 Audit queries spanning history should grep for both old and new value forms,
 e.g. `grep -E "\| (superseded|closes-as-superseded) \|" docs/done.log`.
 
+**Per-FIX verification (mixed-state commits, FIX-369):** When a single commit
+needs different `Verified:` values for different FIX-IDs — typically because
+the commit pairs a `Fixes:` and a `Closes:` whose vocabularies don't overlap —
+use the bracketed-trailer syntax. The per-FIX value overrides the global
+`Verified:` for that ID only:
+
+```
+Verified: local + prod                           # default for unbracketed FIX-IDs
+Verified[FIX-365]: closes-as-redirected          # override for FIX-365 specifically
+Fixes: FIX-364, FIX-366
+Closes: FIX-365
+```
+
+This was added in FIX-369. Without it, `fixes:sync` applied the bare
+`Verified:` value to every FIX-ID in the commit, which lost closure-vocabulary
+info on mixed `Fixes:` + `Closes:` commits (FIX-365 was the surfacing case —
+its `closes-as-redirected` collapsed to `local+prod` in done.log because the
+commit only carried a single global `Verified: local + prod`).
+
+A `Verified[FIX-NNN]:` line referencing a FIX-ID NOT in the commit's `Fixes:`
+or `Closes:` trailers is ignored with a warning. Test the parser with
+`pnpm fixes:test` after touching `scripts/fixes-sync.mjs`.
+
 **Auditing per-environment state:**
 
 ```bash

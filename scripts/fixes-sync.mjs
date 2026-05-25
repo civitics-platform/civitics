@@ -22,13 +22,11 @@
 import { execSync } from "node:child_process";
 import { readFileSync, writeFileSync, existsSync, appendFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 
 const REPO_ROOT = execSync("git rev-parse --show-toplevel").toString().trim();
 const FIXES_PATH = resolve(REPO_ROOT, "docs/FIXES.md");
 const DONE_PATH = resolve(REPO_ROOT, "docs/done.log");
-
-const DRY = process.argv.includes("--dry-run");
-const CHECK = process.argv.includes("--check");
 
 // FIX-159: per-environment verification trailer.
 //   `Verified: local`           → "local-only"
@@ -43,16 +41,21 @@ const CHECK = process.argv.includes("--check");
 //   `Verified: closes-as-redirected`  → redirected to a new FIX
 //   `Verified: closes-as-no-op`       → investigation found no real bug
 //   trailer absent (Closes:)          → "closes-as-recognized"
+// FIX-369: per-trailer override syntax `Verified[FIX-NNN]: <value>`. When a
+// single commit has different verification states for different FIX-IDs (e.g.
+// `Fixes: FIX-A` verified locally + `Closes: FIX-B` closed-as-redirected), the
+// per-FIX form overrides the bare global `Verified:` for that ID. Backwards
+// compatible — every existing commit continues to produce the same rows.
 // done.log gains a 5th column with this status. Lines without the column are
 // pre-FIX-159 (4-column) entries — parsed by detecting whether the 4th column
 // matches a known verification literal.
-const CLOSES_VALUES = new Set([
+export const CLOSES_VALUES = new Set([
   "closes-as-superseded",
   "closes-as-redirected",
   "closes-as-recognized",
   "closes-as-no-op",
 ]);
-const VERIFIED_VALUES = new Set([
+export const VERIFIED_VALUES = new Set([
   "local-only",
   "prod-only",
   "local+prod",
@@ -60,7 +63,7 @@ const VERIFIED_VALUES = new Set([
   ...CLOSES_VALUES,
 ]);
 
-function normalizeVerified(raw, { trailer = "fixes" } = {}) {
+export function normalizeVerified(raw, { trailer = "fixes" } = {}) {
   if (!raw) return trailer === "closes" ? "closes-as-recognized" : "unverified";
   const t = raw.trim().toLowerCase().replace(/\s+/g, " ");
   if (/^local\s*[+&]\s*prod$|^local\s+and\s+prod$/i.test(t) || t === "local+prod") return "local+prod";
@@ -75,6 +78,57 @@ function normalizeVerified(raw, { trailer = "fixes" } = {}) {
   if (t === "recognized") return "closes-as-recognized";
   if (t === "no-op" || t === "noop") return "closes-as-no-op";
   return trailer === "closes" ? "closes-as-recognized" : "unverified";
+}
+
+// Pure trailer parser — extracts everything fixes-sync needs from a commit
+// body without touching git or the filesystem. Exposed so the test harness
+// (scripts/test-fixes-sync.mjs) can exercise the parsing path directly.
+export function parseCommitTrailers(body) {
+  const fixesRe = /^\s*Fixes:\s*(.+)$/im;
+  const closesRe = /^\s*Closes:\s*(.+)$/im;
+  const verifiedRe = /^\s*Verified:\s*(.+)$/im;
+  const verifiedPerFixRe = /^\s*Verified\[(FIX-\d{3})\]:\s*(.+)$/gim;
+  const idRe = /FIX-\d{3}/g;
+
+  const warnings = [];
+  const fixesMatch = body.match(fixesRe);
+  const closesMatch = body.match(closesRe);
+  const fixesIds = new Set(fixesMatch ? fixesMatch[1].match(idRe) || [] : []);
+  const closesIds = new Set(closesMatch ? closesMatch[1].match(idRe) || [] : []);
+
+  // FIX-314: if an ID appears in both trailers in the same commit, Fixes:
+  // wins (code-level fix is the stronger signal). Warn so we notice.
+  const conflicts = [...closesIds].filter((id) => fixesIds.has(id));
+  if (conflicts.length > 0) {
+    warnings.push(
+      `lists ${conflicts.join(", ")} in both Fixes: and Closes: trailers; Fixes: wins.`,
+    );
+    for (const id of conflicts) closesIds.delete(id);
+  }
+
+  const vMatch = body.match(verifiedRe);
+  const globalVerified = vMatch ? vMatch[1] : null;
+
+  // FIX-369: per-FIX overrides. Multiple `Verified[FIX-NNN]:` lines allowed;
+  // last write wins per ID. A line referencing a FIX-ID NOT in Fixes:/Closes:
+  // is dropped with a warning — silently applying it would imply a hidden
+  // completion record the commit never claimed.
+  const perFixVerified = new Map();
+  let pm;
+  while ((pm = verifiedPerFixRe.exec(body)) !== null) {
+    perFixVerified.set(pm[1], pm[2]);
+  }
+  const allTrailerIds = new Set([...fixesIds, ...closesIds]);
+  for (const id of perFixVerified.keys()) {
+    if (!allTrailerIds.has(id)) {
+      warnings.push(
+        `has Verified[${id}] but ${id} is not in Fixes: or Closes:; ignoring.`,
+      );
+      perFixVerified.delete(id);
+    }
+  }
+
+  return { fixesIds, closesIds, globalVerified, perFixVerified, warnings };
 }
 
 function readDoneLog() {
@@ -129,47 +183,34 @@ function scanCommits() {
     { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }
   );
   const blocks = raw.split("\x1e").map((b) => b.trim()).filter(Boolean);
-  const fixesRe = /^\s*Fixes:\s*(.+)$/im;
-  const closesRe = /^\s*Closes:\s*(.+)$/im;
-  const verifiedRe = /^\s*Verified:\s*(.+)$/im;
-  const idRe = /FIX-\d{3}/g;
   const completions = [];
   for (const block of blocks) {
     const [sha = "", date = "", subject = "", body = ""] = block.split("\x00");
-    const fixesMatch = body.match(fixesRe);
-    const closesMatch = body.match(closesRe);
-    if (!fixesMatch && !closesMatch) continue;
-    const fixesIds = new Set(fixesMatch ? fixesMatch[1].match(idRe) || [] : []);
-    const closesIds = new Set(closesMatch ? closesMatch[1].match(idRe) || [] : []);
-    // FIX-314: if an ID appears in both trailers in the same commit, Fixes:
-    // wins (code-level fix is the stronger signal). Warn so we notice.
-    const conflicts = [...closesIds].filter((id) => fixesIds.has(id));
-    if (conflicts.length > 0) {
-      console.warn(
-        `warn: commit ${sha.trim().slice(0, 8)} lists ${conflicts.join(", ")} in both Fixes: and Closes: trailers; Fixes: wins.`
-      );
-      for (const id of conflicts) closesIds.delete(id);
-    }
-    const vMatch = body.match(verifiedRe);
-    const rawVerified = vMatch ? vMatch[1] : null;
+    const parsed = parseCommitTrailers(body);
+    if (parsed.fixesIds.size === 0 && parsed.closesIds.size === 0) continue;
     const shortSha = sha.trim().slice(0, 8);
     const noteText = subject.trim();
     const dateText = date.trim();
-    for (const id of fixesIds) {
+    for (const w of parsed.warnings) {
+      console.warn(`warn: commit ${shortSha} ${w}`);
+    }
+    for (const id of parsed.fixesIds) {
+      const rawV = parsed.perFixVerified.get(id) ?? parsed.globalVerified;
       completions.push({
         id,
         sha: shortSha,
         date: dateText,
-        verified: normalizeVerified(rawVerified, { trailer: "fixes" }),
+        verified: normalizeVerified(rawV, { trailer: "fixes" }),
         note: noteText,
       });
     }
-    for (const id of closesIds) {
+    for (const id of parsed.closesIds) {
+      const rawV = parsed.perFixVerified.get(id) ?? parsed.globalVerified;
       completions.push({
         id,
         sha: shortSha,
         date: dateText,
-        verified: normalizeVerified(rawVerified, { trailer: "closes" }),
+        verified: normalizeVerified(rawV, { trailer: "closes" }),
         note: noteText,
       });
     }
@@ -177,7 +218,7 @@ function scanCommits() {
   return completions;
 }
 
-function appendNewEntries(existing, completions) {
+function appendNewEntries(existing, completions, { dry }) {
   const seen = existing.keys;
   const newOnes = completions.filter((c) => !seen.has(`${c.id}|${c.sha}`));
   if (newOnes.length === 0) return [];
@@ -186,11 +227,11 @@ function appendNewEntries(existing, completions) {
   const lines = newOnes.map(
     (c) => `${c.date} | ${c.id} | ${c.sha} | ${c.verified ?? "unverified"} | ${c.note}`,
   );
-  if (!DRY && !CHECK) appendFileSync(DONE_PATH, lines.join("\n") + "\n");
+  if (!dry) appendFileSync(DONE_PATH, lines.join("\n") + "\n");
   return newOnes;
 }
 
-function syncFixesMd(completedIds) {
+function syncFixesMd(completedIds, { dry }) {
   // FIX-361: tolerate CRLF on read (see readDoneLog). Writes stay LF —
   // out.join("\n") below preserves the in-memory LF form.
   const content = readFileSync(FIXES_PATH, "utf8").replace(/\r\n/g, "\n");
@@ -223,47 +264,57 @@ function syncFixesMd(completedIds) {
     return line;
   });
 
-  if (flipped.length > 0 && !DRY && !CHECK) {
+  if (flipped.length > 0 && !dry) {
     writeFileSync(FIXES_PATH, out.join("\n"));
   }
   return { flipped, missingMarker };
 }
 
-// ── main ─────────────────────────────────────────────────────────────
-const done = readDoneLog();
-const trailerCompletions = scanCommits();
-const newEntries = appendNewEntries(done, trailerCompletions);
-// Last-write-wins across the existing log + newly-discovered trailer commits.
-// Past reopen state does NOT gate re-completion — a fresh commit with a
-// `Fixes:` trailer is itself the new "last write".
-const allCompleted = new Set(done.completedIds);
-for (const c of newEntries) allCompleted.add(c.id);
-const { flipped, missingMarker } = syncFixesMd(allCompleted);
+function main() {
+  const DRY = process.argv.includes("--dry-run");
+  const CHECK = process.argv.includes("--check");
+  const writeMode = !DRY && !CHECK;
 
-const summary = {
-  trailersScanned: trailerCompletions.length,
-  newLoggedEntries: newEntries.length,
-  checkboxesFlipped: flipped.length,
-  bulletsMissingIdMarker: missingMarker.length,
-};
+  const done = readDoneLog();
+  const trailerCompletions = scanCommits();
+  const newEntries = appendNewEntries(done, trailerCompletions, { dry: !writeMode });
+  // Last-write-wins across the existing log + newly-discovered trailer commits.
+  // Past reopen state does NOT gate re-completion — a fresh commit with a
+  // `Fixes:` trailer is itself the new "last write".
+  const allCompleted = new Set(done.completedIds);
+  for (const c of newEntries) allCompleted.add(c.id);
+  const { flipped, missingMarker } = syncFixesMd(allCompleted, { dry: !writeMode });
 
-console.log("fixes:sync —", DRY ? "DRY RUN" : CHECK ? "CHECK MODE" : "APPLIED");
-console.table(summary);
-if (newEntries.length) {
-  console.log("\nNew done.log entries:");
-  for (const e of newEntries)
-    console.log(`  ${e.date} | ${e.id} | ${e.sha} | ${e.verified ?? "unverified"} | ${e.note}`);
-}
-if (flipped.length) {
-  console.log("\nCheckboxes flipped to [x]:");
-  for (const id of flipped) console.log(`  ${id}`);
-}
-if (missingMarker.length && !CHECK) {
-  console.log(`\n${missingMarker.length} bullet(s) without <!--id:FIX-NNN--> marker (first 5):`);
-  for (const snip of missingMarker.slice(0, 5)) console.log(`  ${snip}…`);
+  const summary = {
+    trailersScanned: trailerCompletions.length,
+    newLoggedEntries: newEntries.length,
+    checkboxesFlipped: flipped.length,
+    bulletsMissingIdMarker: missingMarker.length,
+  };
+
+  console.log("fixes:sync —", DRY ? "DRY RUN" : CHECK ? "CHECK MODE" : "APPLIED");
+  console.table(summary);
+  if (newEntries.length) {
+    console.log("\nNew done.log entries:");
+    for (const e of newEntries)
+      console.log(`  ${e.date} | ${e.id} | ${e.sha} | ${e.verified ?? "unverified"} | ${e.note}`);
+  }
+  if (flipped.length) {
+    console.log("\nCheckboxes flipped to [x]:");
+    for (const id of flipped) console.log(`  ${id}`);
+  }
+  if (missingMarker.length && !CHECK) {
+    console.log(`\n${missingMarker.length} bullet(s) without <!--id:FIX-NNN--> marker (first 5):`);
+    for (const snip of missingMarker.slice(0, 5)) console.log(`  ${snip}…`);
+  }
+
+  if (CHECK && (newEntries.length > 0 || flipped.length > 0)) {
+    console.error("\nFIXES.md is out of sync with commit trailers. Run `pnpm fixes:sync`.");
+    process.exit(1);
+  }
 }
 
-if (CHECK && (newEntries.length > 0 || flipped.length > 0)) {
-  console.error("\nFIXES.md is out of sync with commit trailers. Run `pnpm fixes:sync`.");
-  process.exit(1);
+// Run main only when invoked directly (not when imported by the test harness).
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main();
 }

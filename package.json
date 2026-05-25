@@ -11,6 +11,7 @@
     "fixes:sync": "node scripts/fixes-sync.mjs",
     "fixes:sync:dry": "node scripts/fixes-sync.mjs --dry-run",
     "fixes:check": "node scripts/fixes-sync.mjs --check",
+    "fixes:test": "node scripts/test-fixes-sync.mjs",
     "fixes:housekeep": "node scripts/fixes-housekeep.mjs",
     "fixes:housekeep:dry": "node scripts/fixes-housekeep.mjs --dry-run",
     "fixes:clean": "node scripts/fixes-clean.mjs",
