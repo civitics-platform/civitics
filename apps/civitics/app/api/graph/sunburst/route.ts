@@ -321,9 +321,7 @@ export async function GET(req: NextRequest) {
         supabase
           .from("financial_relationships")
           .select("donor_name, amount_cents, metadata")
-          .eq("to_type", "official")
-          .eq("to_id", entityId)
-          .eq("relationship_type", "donation")
+          .eq("official_id", entityId)
           .not("donor_name", "ilike", "%PAC/Committee%")
           .order("amount_cents", { ascending: false })
           .limit(200)
