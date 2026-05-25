@@ -65,15 +65,53 @@ If it points at prod (`xsazcoxinpgttgquwvuf.supabase.co`):
 `SELECT * FROM rebuild_*()`, etc.) when `.env.local` points at prod.** Never
 assume the active env matches the user's intent — always check.
 
-Switch with:
+### Switching the active env
+
+Two supported patterns. Pick by shell + workflow shape:
+
+**Pattern A — `Copy-Item` (default, works in every shell):**
+
 ```powershell
 Copy-Item .env.local.dev  .env.local    # → local Docker
 Copy-Item .env.local.prod .env.local    # → production Pro
+grep "^NEXT_PUBLIC_SUPABASE_URL" .env.local
 ```
+
+Mutates the working-tree `.env.local`. Restore is the caller's responsibility —
+if a session ends mid-loop on prod, the next session inherits prod-pointing
+config until someone notices.
+
+**Pattern B — in-shell `source` + `--env-file=` (bash / WSL / Git Bash):**
+
+```bash
+# One-off interactive prod query (psql, supabase CLI, ad-hoc tsx)
+source .env.local.prod && supabase db push --linked
+
+# TypeScript scripts that load env via dotenv-style flag
+tsx --env-file=.env.local.prod scripts/whatever.ts
+
+# Bracket the whole prod block in a subshell so the parent env stays clean
+( source .env.local.prod && pnpm --filter @civitics/data data:foo )
+```
+
+`.env.local` is never touched. The next shell starts on dev. No "forgot to
+restore" failure mode. PowerShell has no `source` equivalent, so this pattern
+is bash-side only.
+
+**When to use which:**
+
+| Situation | Use |
+|---|---|
+| One-off prod query inside an otherwise local session | Pattern B (no restore step) |
+| Long autonomous loop touching prod from many scripts | Pattern B (mechanically eliminates the "did I restore?" question) |
+| PowerShell-native session, no bash available | Pattern A (only option) |
+| Mixed-shell workflow (PowerShell + bash side-by-side) | Pattern A (consistent across both) |
+| `pnpm dev` against prod for browser-side QA | Pattern A — Next dev reads `.env.local` at startup and caches it for the lifetime of the server, so `source .env.local.prod` followed by `pnpm dev` would silently still read the on-disk `.env.local` |
 
 Pipelines run from `packages/data/` read `.env.local` from the repo root. The
 shell that runs the pipeline inherits whichever env is active at invocation
-time — there is no per-script override.
+time — there is no per-script override. With Pattern B, `--env-file=` is the
+per-script override that wins regardless of `.env.local` state.
 
 ---
 
