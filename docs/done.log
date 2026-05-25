@@ -495,3 +495,4 @@
 2026-05-25 | FIX-389 | b7d9d68f | local-only | fix(jurisdictions): backfill DC officials misattributed during FIX-383 window
 2026-05-25 | FIX-384 | 492376fb | prod-only | chore(fixes): verify FIX-384 prod
 2026-05-25 | FIX-387 | 492376fb | prod-only | chore(fixes): verify FIX-384 prod
+2026-05-25 | FIX-388 | 59a9f9e2 | local-only | chore(diag): commit FIX-383/389 audit scripts as pnpm diag:dc-* helpers
