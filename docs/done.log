@@ -493,3 +493,5 @@
 2026-05-25 | FIX-384 | 8a597d49 | local-only | feat(dashboard): split committees, register orphans, hide bookkeeping
 2026-05-25 | FIX-389 | 535ee000 | prod-only | chore(jurisdictions): record prod verification of FIX-389
 2026-05-25 | FIX-389 | b7d9d68f | local-only | fix(jurisdictions): backfill DC officials misattributed during FIX-383 window
+2026-05-25 | FIX-384 | 492376fb | prod-only | chore(fixes): verify FIX-384 prod
+2026-05-25 | FIX-387 | 492376fb | prod-only | chore(fixes): verify FIX-384 prod
