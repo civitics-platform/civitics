@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { createAdminClient } from "@civitics/db";
+import { createAdminClient, fetchIndustryTagsByEntityId } from "@civitics/db";
 import { supabaseUnavailable, unavailableResponse, withDbTimeout } from "@/lib/supabase-check";
 import type { GroupFilter } from "@civitics/graph";
 
@@ -315,26 +315,66 @@ export async function GET(req: NextRequest) {
 
     // ── MODE: donation_industries ──────────────────────────────────────────
     if (ring1 === "donation_industries") {
+      // FIX-374: post-cutover, financial_relationships.{donor_name,donor_type,
+      // industry} were dropped — donor identity now flows through the
+      // polymorphic from_id → financial_entities lookup, and industry comes
+      // from entity_tags via fetchIndustryTagsByEntityId. Pattern mirrors
+      // apps/civitics/app/officials/[id]/page.tsx donor enrichment.
       // QWEN-ADDED: Add generic type to withDbTimeout for financial_relationships query
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data: donations } = await withDbTimeout<any>(
+      const { data: donationsRaw } = await withDbTimeout<any>(
         supabase
           .from("financial_relationships")
-          .select("donor_name, amount_cents, metadata")
-          .eq("official_id", entityId)
-          .not("donor_name", "ilike", "%PAC/Committee%")
+          .select("from_id, amount_cents, metadata")
+          .eq("relationship_type", "donation")
+          .eq("from_type", "financial_entity")
+          .eq("to_type", "official")
+          .eq("to_id", entityId)
           .order("amount_cents", { ascending: false })
           .limit(200)
       );
 
+      const fromEntityIds = [
+        ...new Set(((donationsRaw ?? []) as Array<{ from_id: string }>).map((d) => d.from_id)),
+      ];
+
+      const entityInfo = new Map<string, { display_name: string; entity_type: string | null; industry: string | null }>();
+      if (fromEntityIds.length > 0) {
+        const industryByEntityId = await fetchIndustryTagsByEntityId(supabase, fromEntityIds);
+        const BATCH = 300;
+        for (let i = 0; i < fromEntityIds.length; i += BATCH) {
+          const batch = fromEntityIds.slice(i, i + BATCH);
+          const { data: entities } = await supabase
+            .from("financial_entities")
+            .select("id, display_name, entity_type")
+            .in("id", batch);
+          for (const e of entities ?? []) {
+            entityInfo.set(e.id, {
+              display_name: e.display_name,
+              entity_type:  e.entity_type,
+              industry:     industryByEntityId.get(e.id)?.display_label ?? null,
+            });
+          }
+        }
+      }
+
       const bySector = new Map<string, Array<{ name: string; value: number }>>();
-      for (const d of donations ?? []) {
-        const sector = (d.metadata as Record<string, string> | null)?.sector ?? "Other";
+      let kept = 0;
+      for (const d of (donationsRaw ?? []) as Array<{ from_id: string; amount_cents: number | null; metadata: unknown }>) {
+        const info = entityInfo.get(d.from_id);
+        if (!info) continue;
+        // FIX-374: replaces the pre-cutover `donor_name ILIKE '%PAC/Committee%'`
+        // exclusion. Real target is the synthetic aggregate placeholder rows
+        // whose display_name carries the literal "PAC/Committee" string —
+        // same intent as apps/civitics/app/api/graph/group/route.ts:178.
+        if (/PAC\/Committee/i.test(info.display_name)) continue;
+        const sector = info.industry ?? "Other";
         if (!bySector.has(sector)) bySector.set(sector, []);
         bySector.get(sector)!.push({
-          name: d.donor_name as string,
+          name: info.display_name,
           value: ((d.amount_cents as number | null) ?? 0) / 100,
         });
+        kept++;
       }
 
       const children = [...bySector.entries()]
@@ -358,7 +398,7 @@ export async function GET(req: NextRequest) {
         party: centerEntity?.party,
         role: centerEntity?.role_title,
         children,
-        meta: { ring1: "donation_industries", totalConnections: donations?.length ?? 0 },
+        meta: { ring1: "donation_industries", totalConnections: kept },
       });
     }
 
