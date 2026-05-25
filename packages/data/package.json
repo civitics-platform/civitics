@@ -54,6 +54,7 @@
     "data:audit": "tsx --env-file=../../.env.local src/pipelines/integrity-audit/index.ts",
     "data:audit:ci": "tsx src/pipelines/integrity-audit/index.ts --allow-prod",
     "data:audit-cutover-indexes": "tsx --env-file=../../.env.local src/scripts/cutover-index-audit.ts",
+    "data:audit-fe-fk-surface": "tsx --env-file=../../.env.local src/scripts/audit-fe-fk-surface.ts",
     "data:iowait-diagnosis": "tsx --env-file=../../.env.local src/scripts/iowait-diagnosis.ts",
     "data:backfill:individual-canonical": "tsx --env-file=../../.env.local src/scripts/backfill-individual-canonical-name.ts",
     "data:retitle-stubs": "tsx --env-file=../../.env.local src/scripts/retitle-procedural-bill-stubs.ts",
