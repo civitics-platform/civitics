@@ -3,16 +3,34 @@ name: rebuild-entity-connections
 # FIX-291 — rebuild_entity_connections (chunked, FIX-263) moved out of the
 # daily nightly so the donations chunk (~90 min wall-clock) doesn't push the
 # nightly past `timeout-minutes: 120`. Daily nightly stays light and
-# predictable; this workflow runs twice a week (Sun + Wed at 08:00 UTC) with
-# a 4-hour budget. Graph edges go stale up to ~3 days between rebuilds —
-# accepted vs the 4-of-7-nights-fail baseline that came from cramming the
-# rebuild into the nightly.
+# predictable; this workflow runs twice a week with a 4-hour budget.
+#
+# FIX-372/FIX-373 — Round 3 split the cadence by mode:
+#   * Sunday 08:00 UTC → mode=full     — calls _donations_full/_votes_full,
+#                                        the safety net that catches anything
+#                                        the watermark missed (deletes etc.)
+#   * Wednesday 08:00 UTC → mode=incremental — donations/votes touch only the
+#                                              dirty set since the last
+#                                              watermark. ~95% IO reduction
+#                                              expected vs full.
+#
+# Graph edges go stale up to ~3 days between rebuilds — accepted vs the
+# 4-of-7-nights-fail baseline that came from cramming the rebuild into the
+# nightly.
 on:
   schedule:
-    # Sunday + Wednesday at 08:00 UTC — 6h after the nightly's 02:00 UTC
-    # start, so the rebuild reads the latest day's FEC bulk / votes / etc.
-    - cron: "0 8 * * 0,3"
-  workflow_dispatch: {}
+    - cron: "0 8 * * 0"   # Sunday    — full rebuild
+    - cron: "0 8 * * 3"   # Wednesday — incremental rebuild
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Rebuild mode (full or incremental)"
+        required: true
+        default: "incremental"
+        type: choice
+        options:
+          - incremental
+          - full
 
 permissions:
   contents: read
@@ -56,8 +74,22 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Rebuild entity_connections
-        run: pnpm --filter @civitics/data data:rebuild-connections:ci
+      - name: Determine mode (FIX-372/FIX-373)
+        id: mode
+        # Sunday cron → full; Wednesday cron → incremental; dispatch → input.
+        run: |
+          if [[ "${{ github.event_name }}" == "schedule" ]]; then
+            if [[ "${{ github.event.schedule }}" == "0 8 * * 0" ]]; then
+              echo "mode=full" >> "$GITHUB_OUTPUT"
+            else
+              echo "mode=incremental" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            echo "mode=${{ inputs.mode }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Rebuild entity_connections (mode=${{ steps.mode.outputs.mode }})
+        run: pnpm --filter @civitics/data data:rebuild-connections:ci -- --mode=${{ steps.mode.outputs.mode }}
 
       # FIX-290: if the workflow exceeds timeout-minutes mid-rebuild, the
       # entity_connections_rebuild data_sync_log row strands at
