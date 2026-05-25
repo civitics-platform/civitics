@@ -467,3 +467,6 @@
 2026-05-24 | FIX-369 | a0aed845 | local+prod | feat(scripts): fixes-sync supports per-trailer Verified
 2026-05-24 | FIX-370 | 704891ee | local-only | docs(claude-md): document in-shell env-switching pattern alongside Copy-Item
 2026-05-24 | FIX-371 | 3891b807 | closes-as-recognized | docs(fixes): close FIX-367 — donor_fingerprint_pattern is structurally necessary
+2026-05-24 | FIX-372 | 4dba8f19 | local-only | feat(workflow): split rebuild-entity-connections into Sun=full + Wed=incremental crons (FIX-372)
+2026-05-24 | FIX-372 | f6926592 | local-only | feat(db): Round 3 — incremental rebuild_entity_connections_donations + _votes (FIX-372, FIX-373)
+2026-05-24 | FIX-373 | f6926592 | local-only | feat(db): Round 3 — incremental rebuild_entity_connections_donations + _votes (FIX-372, FIX-373)
