@@ -402,6 +402,131 @@ under the cited FIX ID; full conventions audit at
 
 ---
 
+## Cross-source merge surface — `financial_entities` FK-rewrite template
+
+When two `financial_entities` rows collapse into one (cross-source dedup,
+casing-dupe merge, org-misclassified indiv merge, LS intra-source merge),
+every polymorphic `(entity_type='financial_entity', entity_id)` reference
+to the **loser** must be rewritten to the **winner** before the loser is
+deleted, otherwise downstream consumers see orphans.
+
+**Source of truth for the surface:** `pnpm --filter @civitics/data
+data:audit-fe-fk-surface` (script: `packages/data/src/scripts/audit-fe-fk-surface.ts`).
+Run before designing any new merge migration; latest reports live at
+`docs/audits/<date>-fe-fk-surface-audit-{local,prod}.md`.
+
+### Canonical merge template
+
+[supabase/migrations/20260514000001_cross_source_backfill.sql](../../supabase/migrations/20260514000001_cross_source_backfill.sql)
+is the canonical end-to-end FK-rewrite migration (FIX-271). Mirror its
+execution sequence:
+
+1. `_loser_remap` temp table flat `(loser_id → winner_id)`.
+2. `financial_relationships` — **set-based DELETE+INSERT** aggregating by
+   `(type, new_from_id, to_type, new_to_id, cycle_year)` to dedupe the
+   `_relcycle_unique` UNIQUE before insert. Straight UPDATE collides.
+3. `external_relationships` — straight UPDATE (UNIQUE is `(source, source_id)`).
+4. `external_source_refs.entity_id` — straight UPDATE (UNIQUE is `(source, external_id)`).
+5. Hard-FK rewrites — straight UPDATE: `edgar_companies`,
+   `edgar_executive_officers`, `edgar_major_shareholders`,
+   `irs990_filings`, `irs990_officers`, `irs990_grants_out.matched_entity_id`,
+   `financial_entities.parent_entity_id` (self-ref).
+6. `entity_tags` + `enrichment_queue` (added per FIX-381) — see below.
+7. Winner row merge — sum totals, longest `display_name`, best metadata jsonb.
+8. DELETE losers.
+9. TRUNCATE `entity_connections`; downstream rebuild repopulates.
+
+### Full FE-bearing surface (2026-05-25 audit)
+
+| # | Table | Ref column | Discriminator type | UNIQUE-collision risk | Pattern |
+|---|---|---|---|---|---|
+| 1 | `financial_relationships` | `from_id`, `to_id` | TEXT + CHECK ✓ | High — `relcycle_unique (relationship_type, from_id, to_id, cycle_year)` | DELETE+INSERT aggregate |
+| 2 | `external_relationships` | `from_id`, `to_id` | TEXT no-constraint | None | Straight UPDATE |
+| 3 | `external_source_refs` | `entity_id` | TEXT no-constraint | None — `(source, external_id)` UNIQUE doesn't touch entity_id | Straight UPDATE |
+| 4 | `edgar_companies` | `entity_id`-style | n/a | None | Straight UPDATE |
+| 5 | `edgar_executive_officers` | `entity_id`-style | n/a | None | Straight UPDATE |
+| 6 | `edgar_major_shareholders` | `entity_id`-style | n/a | None | Straight UPDATE |
+| 7 | `irs990_filings` | `entity_id`-style | n/a | None | Straight UPDATE |
+| 8 | `irs990_officers.matched_entity_id` | UUID NULL no-discriminator | n/a | None | Straight UPDATE |
+| 9 | `irs990_grants_out.matched_entity_id` | UUID NULL no-discriminator | n/a | None | Straight UPDATE |
+| 10 | `financial_entities.parent_entity_id` | UUID self-FK | n/a | None | Straight UPDATE |
+| 11 | `entity_tags` | `entity_id` UUID | TEXT no-constraint | Low — `(entity_type, entity_id, tag, tag_category)` | UPDATE + `ON CONFLICT DO NOTHING` |
+| 12 | `enrichment_queue` | `entity_id` **TEXT** | TEXT no-constraint | Low — `(entity_id, entity_type, task_type)` | UPDATE + `ON CONFLICT DO NOTHING` (cast UUID → TEXT) |
+
+Rows 11-12 are the FIX-381 extension beyond FIX-271's nine. The
+**page_views** table also carries free-TEXT discriminators but holds 0
+FE rows (analytics, stale-OK; skip). **notifications** + **user_follows**
+discriminator is ENUM `follow_entity_type(official, agency)` — FE is
+forbidden at the type system; skip.
+
+### Copy-paste rewrite SQL — entity_tags + enrichment_queue
+
+Add after step 5 (hard-FK rewrites), before the financial_entities
+winner-merge step:
+
+```sql
+  -- ── 6a. entity_tags rewrite (FIX-381) ──────────────────────────────────
+  -- UNIQUE (entity_type, entity_id, tag, tag_category) → low collision risk.
+  -- A loser row tagged 'pharma' and a winner row also tagged 'pharma' would
+  -- collide. Pre-delete colliding loser rows; the winner's tag survives.
+  WITH dupes AS (
+    SELECT et_loser.id
+      FROM public.entity_tags et_loser
+      JOIN _loser_remap lr ON lr.loser_id = et_loser.entity_id
+      JOIN public.entity_tags et_winner
+        ON et_winner.entity_id   = lr.winner_id
+       AND et_winner.entity_type = et_loser.entity_type
+       AND et_winner.tag         = et_loser.tag
+       AND et_winner.tag_category = et_loser.tag_category
+     WHERE et_loser.entity_type = 'financial_entity'
+  )
+  DELETE FROM public.entity_tags WHERE id IN (SELECT id FROM dupes);
+
+  UPDATE public.entity_tags et
+     SET entity_id = lr.winner_id
+    FROM _loser_remap lr
+   WHERE et.entity_type = 'financial_entity'
+     AND et.entity_id   = lr.loser_id;
+
+  -- ── 6b. enrichment_queue rewrite (FIX-381) ─────────────────────────────
+  -- UNIQUE (entity_id, entity_type, task_type). entity_id is TEXT — cast
+  -- the UUIDs from _loser_remap. A loser + winner both having a pending
+  -- 'tag' row for the same task_type would collide; drop the loser's
+  -- (the winner's row stays in the queue).
+  WITH dupes AS (
+    SELECT eq_loser.id
+      FROM public.enrichment_queue eq_loser
+      JOIN _loser_remap lr ON lr.loser_id::text = eq_loser.entity_id
+      JOIN public.enrichment_queue eq_winner
+        ON eq_winner.entity_id   = lr.winner_id::text
+       AND eq_winner.entity_type = eq_loser.entity_type
+       AND eq_winner.task_type   = eq_loser.task_type
+     WHERE eq_loser.entity_type = 'financial_entity'
+  )
+  DELETE FROM public.enrichment_queue WHERE id IN (SELECT id FROM dupes);
+
+  UPDATE public.enrichment_queue eq
+     SET entity_id = lr.winner_id::text
+    FROM _loser_remap lr
+   WHERE eq.entity_type = 'financial_entity'
+     AND eq.entity_id   = lr.loser_id::text;
+```
+
+### When to extend this list
+
+Re-run `data:audit-fe-fk-surface` whenever:
+- A new table with an `entity_id` / `from_id` / `to_id` / `matched_entity_id`
+  column lands in `public.*`.
+- A discriminator constraint changes (CHECK added/removed, ENUM expanded).
+- A merge migration completes — confirm 0 FE-loser orphans across all
+  Pass C tables before declaring done.
+
+If Pass C surfaces a non-zero orphan count post-merge, the loser-remap
+missed a table — file a FIX, don't paper over with `WHERE entity_id IS
+NOT NULL` guards downstream.
+
+---
+
 ## Storage Strategy
 
 Current: **Supabase Storage** (warm tier substitute until Cloudflare account set up)
