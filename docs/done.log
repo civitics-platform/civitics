@@ -482,3 +482,7 @@
 2026-05-24 | FIX-377 | 1be94ed1 | local+prod | fix(officials): re-juris Norton (DC, N000147) prod-only misroute (FIX-377)
 2026-05-24 | FIX-374 | 93d8d389 | local+prod | fix(graph): sunburst donor wedge enriches via financial_entities (FIX-374)
 2026-05-24 | FIX-378 | 22510c21 | local-only | feat(observability): withDbTimeout surfaces PostgREST structural errors (FIX-378)
+2026-05-25 | FIX-245 | d227d5ab | local-only | feat(financial_entities): entity backfill bundle — particle-prefix tighten + orphan entity_tags cleanup; org/LS merges deferred
+2026-05-25 | FIX-312 | d227d5ab | closes-as-redirected | feat(financial_entities): entity backfill bundle — particle-prefix tighten + orphan entity_tags cleanup; org/LS merges deferred
+2026-05-25 | FIX-313 | d227d5ab | closes-as-redirected | feat(financial_entities): entity backfill bundle — particle-prefix tighten + orphan entity_tags cleanup; org/LS merges deferred
+2026-05-25 | FIX-320 | d227d5ab | local-only | feat(financial_entities): entity backfill bundle — particle-prefix tighten + orphan entity_tags cleanup; org/LS merges deferred
