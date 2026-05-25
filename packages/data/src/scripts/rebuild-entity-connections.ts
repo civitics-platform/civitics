@@ -57,20 +57,37 @@ function errMsg(err: unknown): string {
   return String(err);
 }
 
-// Same chunk order as the pre-extraction runNightlySync had. External MUST
-// stay last (FIX-251 ON CONFLICT DO NOTHING).
-const CHUNK_FNS = [
-  "rebuild_entity_connections_donations",
-  "rebuild_entity_connections_votes",
-  "rebuild_entity_connections_cosponsors",
-  "rebuild_entity_connections_appointments",
-  "rebuild_entity_connections_oversight",
-  "rebuild_entity_connections_holds",
-  "rebuild_entity_connections_gifts",
-  "rebuild_entity_connections_contracts",
-  "rebuild_entity_connections_lobbying",
-  "rebuild_entity_connections_external",
-];
+type Mode = "full" | "incremental";
+
+// FIX-372/FIX-373 — donations + votes have _full() companions for the weekly
+// reconcile path. The other 8 chunks always run as a single full-rebuild
+// function. External MUST stay last (FIX-251 ON CONFLICT DO NOTHING).
+function chunkFns(mode: Mode): string[] {
+  const suffix = mode === "full" ? "_full" : "";
+  return [
+    `rebuild_entity_connections_donations${suffix}`,
+    `rebuild_entity_connections_votes${suffix}`,
+    "rebuild_entity_connections_cosponsors",
+    "rebuild_entity_connections_appointments",
+    "rebuild_entity_connections_oversight",
+    "rebuild_entity_connections_holds",
+    "rebuild_entity_connections_gifts",
+    "rebuild_entity_connections_contracts",
+    "rebuild_entity_connections_lobbying",
+    "rebuild_entity_connections_external",
+  ];
+}
+
+function parseMode(argv: string[]): Mode {
+  for (const arg of argv) {
+    if (arg.startsWith("--mode=")) {
+      const v = arg.slice("--mode=".length);
+      if (v === "full" || v === "incremental") return v;
+      throw new Error(`[rebuild] invalid --mode value: ${v} (expected 'full' or 'incremental')`);
+    }
+  }
+  return "incremental";
+}
 
 interface ChunkResult {
   connection_type: string;
@@ -80,6 +97,8 @@ interface ChunkResult {
 
 async function main(): Promise<void> {
   const t0 = Date.now();
+  const mode = parseMode(process.argv.slice(2));
+  const fns = chunkFns(mode);
   const logId = await startSync("entity_connections_rebuild");
   const breakdown: ChunkResult[] = [];
   const chunkFailures: string[] = [];
@@ -87,7 +106,7 @@ async function main(): Promise<void> {
 
   const dbUrl = buildDbUrl();
   console.log(
-    `[rebuild] starting (${dbUrl ? "direct pg, per-chunk" : "PostgREST RPC umbrella"})`,
+    `[rebuild] mode=${mode} (${dbUrl ? "direct pg, per-chunk" : "PostgREST RPC umbrella"})`,
   );
 
   try {
@@ -96,7 +115,7 @@ async function main(): Promise<void> {
       const client = new Client({ connectionString: dbUrl });
       await client.connect();
       try {
-        for (const fn of CHUNK_FNS) {
+        for (const fn of fns) {
           const chunkStart = Date.now();
           try {
             // Each chunk's ALTER FUNCTION ... SET statement_timeout sets a
@@ -141,6 +160,14 @@ async function main(): Promise<void> {
         await client.end();
       }
     } else {
+      // PostgREST RPC umbrella fallback (local dev without SUPABASE_DB_URL).
+      // The umbrella calls the incremental functions; --mode=full is honored
+      // only on the direct-pg path. Warn so the operator knows.
+      if (mode === "full") {
+        console.warn(
+          "[rebuild] --mode=full ignored on PostgREST fallback path; umbrella calls incremental functions",
+        );
+      }
       const { createAdminClient } = await import("@civitics/db");
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const admin = createAdminClient() as any;
