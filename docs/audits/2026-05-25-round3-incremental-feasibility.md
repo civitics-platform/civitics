@@ -137,3 +137,51 @@ delivers FIX-372 (donations) and FIX-373 (votes), targeting audit
 Finding #1 — donations chunk alone is 17.7% of all prod DB time, votes
 chunk another 3.5%. Per the audit, incremental rebuild should cut
 those two chunks' IO by ~80-95% on Wednesday runs.
+
+---
+
+## Prod verification — 2026-05-25
+
+Migration pushed to prod via `supabase db push --linked` at 2026-05-25
+~04:00 UTC. First incremental run triggered via `gh workflow run
+rebuild-entity-connections.yml -f mode=incremental` ([run
+#26382771212](https://github.com/civitics-platform/civitics/actions/runs/26382771212)),
+completed in **1h18m35s**. Watermarks bootstrapped as designed.
+
+Post-bootstrap prod state:
+
+| connection_type | rows |
+|---|---:|
+| donation       | 4,447,509 |
+| vote_yes       |   342,569 |
+| vote_no        |   141,784 |
+| vote_abstain   |         0 |
+
+Watermarks set: `entity_connections_donations.last_indexed_at = 2026-05-25 04:12:14`,
+`entity_connections_votes.last_indexed_at = 2026-05-25 05:12:36`.
+
+Second incremental, run manually via psql (no FR/votes writes since
+bootstrap):
+
+| Function | Wall-clock | edges_upserted |
+|---|---:|---:|
+| `rebuild_entity_connections_donations()` | **92 ms** | 0 |
+| `rebuild_entity_connections_votes()`     | **42 ms** | 0/0/0 |
+
+Compared to the pre-Round-3 mean per call from the IOWait audit
+(donations ≈ 50 min / 25M dirtied blocks; votes ≈ 8 min / 5M dirtied
+blocks), the no-op short-circuit is ~32,000× faster for donations and
+~10,000× faster for votes. The first Wednesday post-deploy where FR
+sees real churn (~10–100k rows/day per the audit) will be the true
+proof, but the no-op floor is exactly where the design wants it.
+
+Watermark behavior observation: after bootstrap (which sets watermark
+to `NOW()`), the first no-op incremental advances the watermark to
+`MAX(FR.updated_at)` — which is whatever the most recent UPSERT
+happened to be, usually earlier than `NOW()`. So the watermark
+"regresses" to the actual data freshness point. This is
+correctness-preserving (no rows missed — any future UPSERT will have
+`updated_at > MAX_at_no-op_time` and be captured) but does mean a
+small re-process window (`MAX_at_no-op` → `NOW()_at_bootstrap`)
+could be recovered on the next incremental that has data. Not
+worth a follow-up fix today; documented for future reference.
