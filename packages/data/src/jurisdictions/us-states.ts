@@ -143,11 +143,18 @@ export async function seedJurisdictions(
 
   for (const state of STATE_DATA) {
     try {
+      // FIX-383: narrow to direct children of the federal jurisdiction. Without
+      // parent_id, TIGER sub-districts that inherit a state-equivalent's
+      // fips_code collide with (fips_code, type) for entries with
+      // type='district' (DC + the 5 FIX-376 territories) — e.g. the DC-98
+      // delegate-district row at fips='11', type='district' makes .maybeSingle()
+      // throw PGRST116 against the canonical DC row.
       const { data: existing, error: selectErr } = await db
         .from("jurisdictions")
         .select("id")
         .eq("fips_code", state.fips)
         .eq("type", state.type)
+        .eq("parent_id", federalId)
         .maybeSingle();
 
       if (selectErr) throw selectErr;
