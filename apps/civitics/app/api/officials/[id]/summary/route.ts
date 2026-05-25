@@ -88,19 +88,18 @@ export async function GET(
     .select("id", { count: "exact", head: true })
     .eq("official_id", id);
 
-  // Get donor count + total
+  // Read donor count + total from the homepage MV (FIX-308 / FIX-344 pattern).
+  // MV row may be missing for newly-created officials between nightly refreshes.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const donorRes = await (db as any)
-    .from("financial_relationships")
-    .select("amount_cents")
-    .eq("official_id", id);
+  const mvRes = await (db as any)
+    .from("official_homepage_stats_mv")
+    .select("donor_count, total_donations_cents")
+    .eq("official_id", id)
+    .maybeSingle();
 
   const voteCount = voteCountRes.count ?? 0;
-  const donorCount = (donorRes.data ?? []).length;
-  const totalRaisedCents = (donorRes.data ?? []).reduce(
-    (sum: number, r: { amount_cents: number }) => sum + (r.amount_cents ?? 0),
-    0
-  );
+  const donorCount = mvRes.data?.donor_count ?? 0;
+  const totalRaisedCents = mvRes.data?.total_donations_cents ?? 0;
 
   // Only generate if there's meaningful data
   if (voteCount === 0 && donorCount === 0) {
