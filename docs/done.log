@@ -487,3 +487,4 @@
 2026-05-25 | FIX-313 | d227d5ab | closes-as-redirected | feat(financial_entities): entity backfill bundle — particle-prefix tighten + orphan entity_tags cleanup; org/LS merges deferred
 2026-05-25 | FIX-320 | d227d5ab | local-only | feat(financial_entities): entity backfill bundle — particle-prefix tighten + orphan entity_tags cleanup; org/LS merges deferred
 2026-05-25 | FIX-382 | f6040331 | local-only | feat(dashboard): cadence-aware Data Health + per-pipeline window + worst-status alias rollup (FIX-381)
+2026-05-25 | FIX-383 | cedfd9df | local-only | fix(jurisdictions): narrow seedJurisdictions existence-check by parent_id
