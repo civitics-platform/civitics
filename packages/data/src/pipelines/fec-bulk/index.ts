@@ -624,7 +624,7 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
     //          candidate-row inserts. Idempotent — re-seed defensively when
     //          fec-bulk runs standalone (orchestrator path already seeds).
     console.log("\n  Seeding jurisdictions + governing bodies (idempotent)...");
-    const { federalId, stateIds } = await seedJurisdictions(db);
+    const { federalId, stateIds, warnings: seedWarnings } = await seedJurisdictions(db);
     const governingBodies = await seedGoverningBodies(db, federalId);
 
     // FIX-246: pre-fetch every officials row carrying any FEC ID (either
@@ -1486,6 +1486,7 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
       updated:  0,
       failed:   totalFailed,
       estimatedMb: totalFileMb,
+      seed_warnings: seedWarnings.length > 0 ? seedWarnings : undefined,
     };
     await completeSync(logId, result);
     return result;

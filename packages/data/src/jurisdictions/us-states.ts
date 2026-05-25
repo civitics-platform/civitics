@@ -103,12 +103,19 @@ export const STATE_DATA: StateRecord[] = [
  * Uses a select-then-insert pattern to avoid relying on a specific unique
  * constraint name — we check by fips_code + type, and only insert if missing.
  *
- * Returns a map of state abbreviation → UUID, plus the federal jurisdiction ID.
+ * Returns a map of state abbreviation → UUID, plus the federal jurisdiction
+ * ID, plus a `warnings` array of any per-state errors. The catch path here
+ * intentionally swallows individual failures so a single bad state doesn't
+ * abort the whole nightly seed; FIX-386 surfaces those swallowed errors to
+ * data_sync_log so they're visible on the Data Health dashboard instead of
+ * silently degrading downstream pipelines (see FIX-383 for the precursor
+ * incident this addresses).
  */
 export async function seedJurisdictions(
   db: ReturnType<typeof createAdminClient>
-): Promise<{ federalId: string; stateIds: Map<string, string> }> {
+): Promise<{ federalId: string; stateIds: Map<string, string>; warnings: string[] }> {
   console.log("  Seeding jurisdictions...");
+  const warnings: string[] = [];
 
   // --- Federal (US country node) ---
   let federalId: string;
@@ -201,13 +208,44 @@ export async function seedJurisdictions(
         stateIds.set(congressAlias, aliasTargetId);
       }
     } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      // FIX-386: surface to caller for data_sync_log persistence. console.error
+      // is preserved so the dev shell still sees the failure inline.
       console.error(`  Error upserting jurisdiction for ${state.name}:`, err);
+      warnings.push(`seedJurisdictions failed for ${state.name}: ${msg}`);
       // Continue with remaining states
     }
   }
 
   console.log(`  Seeded ${seededCount} jurisdictions`);
-  return { federalId, stateIds };
+  if (warnings.length > 0) {
+    // FIX-386: self-log a `jurisdictions_seed` data_sync_log row when any
+    // per-state catch fired. Single canonical visible signal regardless of
+    // which caller invoked seedJurisdictions. Non-fatal — wrapped in
+    // try/catch so a log-write failure cannot abort the seed itself.
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const dbAny = db as any;
+      await dbAny.from("data_sync_log").insert({
+        pipeline: "jurisdictions_seed",
+        status: "complete",
+        started_at: new Date().toISOString(),
+        completed_at: new Date().toISOString(),
+        rows_inserted: seededCount,
+        rows_failed: warnings.length,
+        metadata: {
+          seed_warnings: warnings,
+          seed_warning_count: warnings.length,
+        },
+      });
+    } catch (logErr) {
+      console.warn(
+        "  [seedJurisdictions] could not write jurisdictions_seed row:",
+        logErr instanceof Error ? logErr.message : logErr,
+      );
+    }
+  }
+  return { federalId, stateIds, warnings };
 }
 
 /**

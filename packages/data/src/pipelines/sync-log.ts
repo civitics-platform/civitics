@@ -11,6 +11,12 @@ export interface PipelineResult {
   updated: number;
   failed: number;
   estimatedMb: number;
+  // FIX-386: optional. When the pipeline called seedJurisdictions() internally
+  // and the seed had non-fatal per-state failures, the caller can pass the
+  // returned warnings here. completeSync folds them into metadata.seed_warnings
+  // so the Data Health dashboard can surface them as a yellow sub-status.
+  // Pipelines that don't seed (or whose seed was clean) just omit this field.
+  seed_warnings?: string[];
 }
 
 // FIX-255: best-effort failSync on abnormal exit so data_sync_log rows don't
@@ -103,7 +109,14 @@ export async function completeSync(id: string, result: PipelineResult): Promise<
       .select("metadata")
       .eq("id", id)
       .maybeSingle();
-    const merged = { ...(existing?.metadata ?? {}), peak_rss_mb: captureRssMb() };
+    const merged: Record<string, unknown> = {
+      ...(existing?.metadata ?? {}),
+      peak_rss_mb: captureRssMb(),
+    };
+    if (result.seed_warnings && result.seed_warnings.length > 0) {
+      merged.seed_warnings = result.seed_warnings;
+      merged.seed_warning_count = result.seed_warnings.length;
+    }
     await db.from("data_sync_log").update({
       status: "complete",
       completed_at: new Date().toISOString(),
