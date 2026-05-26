@@ -941,21 +941,24 @@ export async function getActivity(db: Db, yesterday: string) {
       .eq("is_bot", false),
     db
       .from("page_views")
-      .select("path")
+      .select("page")
       .gt("viewed_at", yesterday)
       .eq("is_bot", false)
-      .not("path", "in", `("/","/dashboard")`)
+      .not("page", "in", `("/","/dashboard")`)
       .limit(500),
   ]);
 
+  if (countRes.error) throw new Error(countRes.error.message);
+  if (pathRes.error) throw new Error(pathRes.error.message);
+
   const counts: Record<string, number> = {};
-  for (const r of (pathRes.data ?? []) as unknown as { path: string }[]) {
-    counts[r.path] = (counts[r.path] ?? 0) + 1;
+  for (const r of (pathRes.data ?? []) as unknown as { page: string }[]) {
+    counts[r.page] = (counts[r.page] ?? 0) + 1;
   }
   const topPages = Object.entries(counts)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 8)
-    .map(([path, views]) => ({ path, views }));
+    .map(([page, views]) => ({ path: page, views }));
 
   return {
     page_views_24h: countRes.count ?? 0,
