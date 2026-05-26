@@ -578,6 +578,7 @@ function StatusSparkline({ runs }: { runs: PipelineHistoryRun[] }) {
       {padded.map((run, i) => (
         <span
           key={i}
+          suppressHydrationWarning
           title={
             run
               ? `${run.status} · ${run.completed_at ? formatRelativeTime(run.completed_at) : "—"} · +${formatNumber(run.rows_inserted ?? 0)}`
@@ -776,7 +777,7 @@ function DataHealthRow({
           <StatusSparkline runs={history} />
         </span>
         <StatusBadge status={rowStatus} size="sm" />
-        <span className="text-xs text-gray-400 w-28 text-right shrink-0">
+        <span className="text-xs text-gray-400 w-28 text-right shrink-0" suppressHydrationWarning>
           {timestampLabel}
         </span>
       </button>
@@ -878,7 +879,7 @@ function DataHealthRow({
                           <td className="px-3 py-1.5">
                             <StatusBadge status={subStatus} size="sm" />
                           </td>
-                          <td className="px-3 py-1.5 text-gray-500 tabular-nums">
+                          <td className="px-3 py-1.5 text-gray-500 tabular-nums" suppressHydrationWarning>
                             {s.latest?.completed_at
                               ? formatRelativeTime(s.latest.completed_at)
                               : "(no runs in window)"}
@@ -914,7 +915,7 @@ function DataHealthRow({
                   <tbody className="divide-y divide-gray-100 bg-white">
                     {history.slice(0, 5).map((r, i) => (
                       <tr key={`${r.completed_at ?? r.started_at}-${i}`}>
-                        <td className="px-3 py-1.5 text-gray-700">
+                        <td className="px-3 py-1.5 text-gray-700" suppressHydrationWarning>
                           {r.started_at
                             ? new Date(r.started_at).toLocaleString("en-US", {
                                 month: "short",
@@ -972,9 +973,11 @@ function DataHealthRow({
             <div className="rounded-md border border-rose-200 bg-rose-50/60 px-3 py-2">
               <div className="text-xs font-medium text-rose-800 mb-0.5">
                 Latest failure ·{" "}
-                {lastFailed.completed_at
-                  ? formatRelativeTime(lastFailed.completed_at)
-                  : "unknown time"}
+                <span suppressHydrationWarning>
+                  {lastFailed.completed_at
+                    ? formatRelativeTime(lastFailed.completed_at)
+                    : "unknown time"}
+                </span>
               </div>
               <pre className="text-[11px] text-rose-900 whitespace-pre-wrap break-words font-mono">
                 {lastFailed.error_message}
@@ -1161,7 +1164,7 @@ function DataHealthSection({
           description={
             latestAcrossAll ? (
               <>
-                Last sync: {formatRelativeTime(latestAcrossAll.completed_at!)} · Next
+                Last sync: <span suppressHydrationWarning>{formatRelativeTime(latestAcrossAll.completed_at!)}</span> · Next
                 nightly in <span suppressHydrationWarning>{hoursUntilNext}</span>h
               </>
             ) : (
@@ -1197,17 +1200,19 @@ function DataHealthSection({
           <HealthMetricTile
             label="Last nightly"
             value={
-              cronAt
-                ? new Date(cronAt).toLocaleDateString("en-US", {
-                    month: "short",
-                    day: "numeric",
-                  }) +
-                  " " +
-                  new Date(cronAt).toLocaleTimeString("en-US", {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })
-                : "—"
+              <span suppressHydrationWarning>
+                {cronAt
+                  ? new Date(cronAt).toLocaleDateString("en-US", {
+                      month: "short",
+                      day: "numeric",
+                    }) +
+                    " " +
+                    new Date(cronAt).toLocaleTimeString("en-US", {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })
+                  : "—"}
+              </span>
             }
             sub={
               cronAt ? (
