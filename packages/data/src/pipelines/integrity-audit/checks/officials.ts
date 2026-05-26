@@ -149,15 +149,10 @@ export const officialsChecks: Check = async ({ query }) => {
   // is deliberately NOT applied — the USPS rows have no congress_gov
   // source_id. When this trips at volume, file a follow-up to fix the
   // upstream ingest; the check itself is the guardrail.
-  const suspiciousElected = await query<{
-    id: string;
-    full_name: string;
-    role_title: string;
-    tier: string;
-  }>(
-    `SELECT id, full_name, role_title, tier
-       FROM officials
-      WHERE is_active = true
+  // FIX-324: split COUNT from sample. Pre-FIX, the single LIMIT 20 query made
+  // `actual` cap at 20, hiding drift trend above that. Now `actual` is the
+  // unbounded count; `sample` keeps the first 20 rows for the audit dump.
+  const suspiciousFilter = `is_active = true
         AND tier = 'elected'
         AND (
           (role_title ILIKE '%vice president%'
@@ -166,16 +161,29 @@ export const officialsChecks: Check = async ({ query }) => {
           OR role_title ILIKE 'President, %'
           OR role_title ILIKE 'Special Representative %'
           OR role_title ILIKE 'Special Envoy %'
-        )
+        )`;
+  const suspiciousCount = await query<{ count: string }>(
+    `SELECT COUNT(*)::text AS count FROM officials WHERE ${suspiciousFilter}`,
+  );
+  const suspiciousActual = Number(suspiciousCount[0]?.count ?? 0);
+  const suspiciousSample = await query<{
+    id: string;
+    full_name: string;
+    role_title: string;
+    tier: string;
+  }>(
+    `SELECT id, full_name, role_title, tier
+       FROM officials
+      WHERE ${suspiciousFilter}
       ORDER BY full_name
       LIMIT 20`,
   );
   out.push({
     category: "officials.suspicious_elected_tier",
-    severity: suspiciousElected.length === 0 ? "info" : "error",
+    severity: suspiciousActual === 0 ? "info" : "error",
     expected: 0,
-    actual: suspiciousElected.length,
-    sample: suspiciousElected.slice(0, 20),
+    actual: suspiciousActual,
+    sample: suspiciousSample,
     detail:
       "Active officials with tier='elected' but role_title matches a non-elected pattern (USPS exec, institutional president, special representative/envoy). Surfaces upstream tier-mapping drift; file a follow-up FIX to fix the ingest when this trips at volume.",
   });
