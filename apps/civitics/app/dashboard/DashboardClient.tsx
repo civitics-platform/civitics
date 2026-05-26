@@ -1300,16 +1300,18 @@ function ConnectionHighlightsSection({
 function ActivitySection({
   activity,
   totalViews,
+  lookbackDays,
 }: {
   activity: ActivityRow[];
   totalViews: number;
+  lookbackDays: number;
 }) {
   return (
     <SectionCard>
       <SectionHeader
         icon={<Eye size={16} />}
         title="Site Activity"
-        description={`${formatNumber(totalViews)} human page views in the last 24h`}
+        description={`${formatNumber(totalViews)} human page views in the last ${lookbackDays} days`}
       />
       <div className="mt-3 divide-y divide-gray-100">
         {activity.length === 0 ? (
@@ -1567,7 +1569,8 @@ export function DashboardClient({
       ? (data.status.activity as ActivitySectionData)
       : null;
   const topPages = activitySectionData?.top_pages ?? [];
-  const totalViews = activitySectionData?.page_views_24h ?? 0;
+  const totalViews = activitySectionData?.page_views ?? 0;
+  const lookbackDays = activitySectionData?.lookback_days ?? 7;
 
   // Shared banners (shown on both tabs when there's a problem)
   const banners = (
@@ -1668,7 +1671,7 @@ export function DashboardClient({
       />
 
       {/* ── Site Activity ── */}
-      <ActivitySection activity={topPages} totalViews={totalViews} />
+      <ActivitySection activity={topPages} totalViews={totalViews} lookbackDays={lookbackDays} />
 
       {/* ── Development Progress ── */}
       <DevelopmentProgressSection />

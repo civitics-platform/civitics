@@ -95,7 +95,8 @@ export type ChordSectionData = {
 };
 
 export type ActivitySectionData = {
-  page_views_24h: number;
+  page_views: number;
+  lookback_days: number;
   top_pages: Array<{ path: string; views: number }>;
 };
 

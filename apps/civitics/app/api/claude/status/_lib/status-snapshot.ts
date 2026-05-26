@@ -165,7 +165,7 @@ export async function computeStatusPayload(
     section(() => timed("ai_costs", () =>
       getAiCosts(dbAsDb, monthStart, sharedAnthropicUsagePromise),
     )),
-    section(() => timed("activity", () => getActivity(dbAsDb, yesterday))),
+    section(() => timed("activity", () => getActivity(dbAsDb, 7))),
     section(() => timed("resource_warnings", () => getResourceWarnings(dbAsDb))),
     section(() => timed("officials_breakdown", () => getOfficialsBreakdown(dbAsDb))),
     section(() => timed("quality", () => getQuality(dbAsDb))),

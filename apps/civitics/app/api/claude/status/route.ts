@@ -71,7 +71,7 @@ export async function GET(request: Request) {
     section(() => getQuality(db)),
     section(() => getSelfTests(db)),
     section(() => getChord(db)),
-    section(() => getActivity(db, yesterday)),
+    section(() => getActivity(db, 7)),
     section(() => getResourceWarnings(db)),
     section(() => getOfficialsBreakdown(db)),
   ]);

@@ -931,20 +931,29 @@ export async function getChord(db: Db) {
   };
 }
 
-// ── 9. Activity: top pages last 24 h ─────────────────────────────────────────
-export async function getActivity(db: Db, yesterday: string) {
+// ── 9. Activity: top pages over rolling window ───────────────────────────────
+// FIX-395: was 24h + .not('page','in','("/","/dashboard")'). At current
+// traffic almost all human hits are / and /dashboard, so the filtered 24h
+// query returned 0 rows and the card rendered empty. Widened to a 7d window
+// and dropped the filter — home/dashboard hits in the list is more useful
+// than an empty card. Payload field renamed page_views_24h → page_views
+// and lookback_days added so the description text stays honest if the
+// window changes again.
+export async function getActivity(db: Db, lookbackDays: number) {
+  const cutoff = new Date(
+    Date.now() - lookbackDays * 24 * 60 * 60 * 1000,
+  ).toISOString();
   const [countRes, pathRes] = await Promise.all([
     db
       .from("page_views")
       .select("*", { count: "exact", head: true })
-      .gt("viewed_at", yesterday)
+      .gt("viewed_at", cutoff)
       .eq("is_bot", false),
     db
       .from("page_views")
       .select("page")
-      .gt("viewed_at", yesterday)
+      .gt("viewed_at", cutoff)
       .eq("is_bot", false)
-      .not("page", "in", `("/","/dashboard")`)
       .limit(500),
   ]);
 
@@ -961,7 +970,8 @@ export async function getActivity(db: Db, yesterday: string) {
     .map(([page, views]) => ({ path: page, views }));
 
   return {
-    page_views_24h: countRes.count ?? 0,
+    page_views: countRes.count ?? 0,
+    lookback_days: lookbackDays,
     top_pages: topPages,
   };
 }
