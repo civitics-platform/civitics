@@ -6,8 +6,7 @@ export const proposalsChecks: Check = async ({ query }) => {
   const proceduralRows = await query<{ id: string; title: string; type: string | null }>(
     `SELECT id, title, type::text AS type
        FROM proposals
-      WHERE title ~* '^on '
-         OR title ~* ' v\\. '`,
+      WHERE title ~* '^on '`,
   );
   out.push({
     category: "proposals.procedural_contamination",
@@ -16,7 +15,7 @@ export const proposalsChecks: Check = async ({ query }) => {
     actual: proceduralRows.length,
     sample: proceduralRows.slice(0, 10),
     detail:
-      "Proposals whose title looks like a procedural-vote subject ('On Passage', 'On the Cloture Motion') or a court case name ('Smith v. Jones'). FIX-A regression test.",
+      "Proposals whose title starts with 'On ' (e.g. 'On Passage', 'On the Cloture Motion') — FIX-A regression test. The ' v.' arm was removed by FIX-319 after producing 100% false positives (courtlistener opinions + legistar lawsuit-settlement ordinances).",
   });
 
   const orphanAgency = await query<{
