@@ -502,3 +502,4 @@
 2026-05-25 | FIX-381 | 3e9fc01a | local-only | docs(merge-template): extend FE FK-rewrite surface to entity_tags + enrichment_queue (FIX-381)
 2026-05-25 | FIX-375 | 609e25aa | local+prod | feat(officials): merge casing-dupe clusters via FIX-325 investigation (FIX-375)
 2026-05-25 | FIX-379 | 355c1a5e | local+prod | feat(financial-entities): merge org-misclassified indiv clusters under relaxed gate (FIX-379)
+2026-05-25 | FIX-319 | c62d53c5 | local+prod | fix(audit): drop ' v.' arm from proposals.procedural_contamination check (FIX-319)
