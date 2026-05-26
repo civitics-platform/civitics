@@ -11,214 +11,57 @@ Clusters where canonical_name matches `isLikelyOrgName()` AND has both an `entit
 
 - Total qualifying tuples: **26**
 - Every tuple has a non-individual row with non-FEC external_source_refs binding: **false**
-- **Gate**: ship merge if tuples < 500 AND every tuple has xsr binding → **DEFER**
+- Every tuple has xsr OR fec_committee_id binding (FIX-379 relaxed): **true** (qualifying=26/26)
+- **Gate FIX-312 (strict)**: ship merge if tuples < 500 AND every tuple has xsr → **DEFER**
+- **Gate FIX-379 (relaxed)**: ship merge if tuples < 500 AND every tuple has xsr OR fec_committee_id → **SHIP**
 
 Top 20 by indiv row count:
 
-| canonical_name | indiv_ids | non_indiv types | xsr/N |
-|---|--:|---|---|
-| `SENATE CONSERVATIVES FUND` | 3 | pac | 0/1 |
-| `PAC FOR GOOD` | 2 | pac | 0/1 |
-| `AMERICANS FOR PROSPERITY` | 2 | nonprofit | 1/1 |
-| `AMERIPAC THE FUND FOR A GREATER AMERICA` | 1 | pac | 0/1 |
-| `ROBINHOOD MARKETS INC` | 1 | pac | 0/1 |
-| `WALMART INC PAC FOR RESPONSIBLE GOVERNMENT` | 1 | pac | 0/1 |
-| `PRIDE MOBILITY PRODUCTS CORP` | 1 | pac | 0/1 |
-| `AVANTUS LLC` | 1 | pac | 0/1 |
-| `AAPI VICTORY FUND` | 1 | pac | 0/1 |
-| `NORFOLK SOUTHERN CORPORATION GOOD GOVERNMENT FUND` | 1 | pac | 0/1 |
-| `SEIU COPE SERVICE EMPLOYEES INTERNATIONAL UNION COMMITTEE ON POLITICAL EDUCATION` | 1 | pac | 0/1 |
-| `SUSAN B ANTHONY LIST INC CANDIDATE FUND DBA SUSAN B ANTHONY PRO LIFE AMERICA CANDIDATE FUND` | 1 | pac | 0/1 |
-| `ARAB AMERICAN DEMOCRATIC ACTION FUND` | 1 | pac | 0/1 |
-| `BRIGHTSTAR GLOBAL SOLUTIONS CORPORATION` | 1 | pac | 0/1 |
-| `INTERNATIONAL ASSOCIATION OF FIRE FIGHTERS` | 1 | other | 1/1 |
-| `WE THE PEOPLE 250 ACTION FUND` | 1 | pac | 1/1 |
-| `NATIONAL ASSOCIATION OF BROADCASTERS POLITICAL ACTION COMMITTEE NABPAC` | 1 | pac | 0/1 |
-| `NATIONAL STONE SAND GRAVEL ASSOCIATION ROCKPAC` | 1 | pac | 0/1 |
-| `CSX CORPORATION GOOD GOVERNMENT FUND` | 1 | pac | 0/1 |
-| `MARCHANT GOOD GOVERNMENT FUND` | 1 | pac | 0/1 |
+| canonical_name | indiv_ids | non_indiv types | xsr/N | fec/N |
+|---|--:|---|---|---|
+| `SENATE CONSERVATIVES FUND` | 3 | pac | 0/1 | 1/1 |
+| `PAC FOR GOOD` | 2 | pac | 0/1 | 1/1 |
+| `AMERICANS FOR PROSPERITY` | 2 | nonprofit | 1/1 | 0/1 |
+| `AMERIPAC THE FUND FOR A GREATER AMERICA` | 1 | pac | 0/1 | 1/1 |
+| `ROBINHOOD MARKETS INC` | 1 | pac | 0/1 | 1/1 |
+| `WALMART INC PAC FOR RESPONSIBLE GOVERNMENT` | 1 | pac | 0/1 | 1/1 |
+| `PRIDE MOBILITY PRODUCTS CORP` | 1 | pac | 0/1 | 1/1 |
+| `AVANTUS LLC` | 1 | pac | 0/1 | 1/1 |
+| `AAPI VICTORY FUND` | 1 | pac | 0/1 | 1/1 |
+| `NORFOLK SOUTHERN CORPORATION GOOD GOVERNMENT FUND` | 1 | pac | 0/1 | 1/1 |
+| `SEIU COPE SERVICE EMPLOYEES INTERNATIONAL UNION COMMITTEE ON POLITICAL EDUCATION` | 1 | pac | 0/1 | 1/1 |
+| `SUSAN B ANTHONY LIST INC CANDIDATE FUND DBA SUSAN B ANTHONY PRO LIFE AMERICA CANDIDATE FUND` | 1 | pac | 0/1 | 1/1 |
+| `ARAB AMERICAN DEMOCRATIC ACTION FUND` | 1 | pac | 0/1 | 1/1 |
+| `BRIGHTSTAR GLOBAL SOLUTIONS CORPORATION` | 1 | pac | 0/1 | 1/1 |
+| `INTERNATIONAL ASSOCIATION OF FIRE FIGHTERS` | 1 | other | 1/1 | 0/1 |
+| `WE THE PEOPLE 250 ACTION FUND` | 1 | pac | 1/1 | 0/1 |
+| `NATIONAL ASSOCIATION OF BROADCASTERS POLITICAL ACTION COMMITTEE NABPAC` | 1 | pac | 0/1 | 1/1 |
+| `NATIONAL STONE SAND GRAVEL ASSOCIATION ROCKPAC` | 1 | pac | 0/1 | 1/1 |
+| `CSX CORPORATION GOOD GOVERNMENT FUND` | 1 | pac | 0/1 | 1/1 |
+| `MARCHANT GOOD GOVERNMENT FUND` | 1 | pac | 0/1 | 1/1 |
 
 ## FIX-313 — LittleSis merged_into scan
 
-- LS entities scanned: **440,048**
-- `merged_into`-shape field detected: `(none)`
-- Records with non-self merged value: **0**
-- Pairs where BOTH ls_ids bound to FE rows on this env: **0**
-- First record's top-level keys (for shape audit): `aliases, blurb, end_date, extensions, id, name, parent_id, primary_ext, start_date, summary, tags, types, updated_at, website`
-- **Gate**: ship merge if field present AND bound-pair count >= 100 → **DEFER**
+Skipped this run (`--skip-ls`). Re-run without the flag to populate.
 
 ## FIX-245 — particle-prefix surname residue
 
-- Total `entity_type='individual'` rows whose `donor_fingerprint` starts with `O ` / `D ` / `DE ` / `ST ` / `MC `: **4264**
+- Total `entity_type='individual'` rows whose `donor_fingerprint` starts with `O ` / `D ` / `DE ` / `ST ` / `MC `: **2**
 - Bullet estimate: ~60. (Always deterministic — ships regardless.)
 
 First 100 samples:
 
 | donor_fingerprint | canonical_name |
 |---|---|
-| `DE JESUS A\|90806` | `A DE JESUS` |
-| `DE LEON A\|22124` | `A DE LEON` |
-| `DE BARTOLOMEO A J\|11030` | `A J DE BARTOLOMEO` |
-| `ST MARTIN A\|98632` | `A ST MARTIN` |
-| `D AARON\|93308` | `AARON D` |
-| `D PARTINGTON AARON\|37027` | `AARON D PARTINGTON` |
-| `D SHIFFMAN AARON\|11215` | `AARON D SHIFFMAN` |
-| `DE BRUYN AARON\|98596` | `AARON DE BRUYN` |
-| `DE TOLEDO AARON\|91423` | `AARON DE TOLEDO` |
-| `O BRIEN AARON\|50220` | `AARON O BRIEN` |
-| `O BRIEN AARON\|51601` | `AARON O BRIEN` |
-| `ST JOHN AARON\|13901` | `AARON ST JOHN` |
-| `DE GEUS AART\|94024` | `AART DE GEUS` |
-| `DE GEUS AART J\|94024` | `AART J DE GEUS` |
-| `DE GEUS AART J\|94043` | `AART J DE GEUS` |
-| `ST ROSE AAZAN\|10017` | `AAZAN ST ROSE` |
-| `ST ROSE AAZAN\|10022` | `AAZAN ST ROSE` |
-| `ST GERMAINE ABBA\|77007` | `ABBA ST GERMAINE` |
-| `D AMES ABBY\|02116` | `ABBY D AMES` |
-| `ST ABBY\|92886` | `ABBY ST` |
-| `DE LA ROSA ABEL\|32456` | `ABEL DE LA ROSA` |
-| `DE LA ESPRIELLA OTERO ABELARDO G\|33156` | `ABELARDO G DE LA ESPRIELLA OTERO` |
-| `ST GERMAIN ABIGAIL\|20002` | `ABIGAIL ST GERMAIN` |
-| `ST PETER ABIGAIL\|48532` | `ABIGAIL ST PETER` |
-| `DE JESUS MARTINEZ ABNER J\|90804` | `ABNER J DE JESUS MARTINEZ` |
-| `O DEMSKI ABRAM\|49508` | `ABRAM O DEMSKI` |
-| `D PADLA ADAM\|07074` | `ADAM D PADLA` |
-| `D SLOAN ADAM\|11363` | `ADAM D SLOAN` |
-| `DE ANGELI ADAM\|48160` | `ADAM DE ANGELI` |
-| `DE BOOR ADAM\|98110` | `ADAM DE BOOR` |
-| `DE HAVENON ADAM\|06824` | `ADAM DE HAVENON` |
-| `DE RITO ADAM\|80645` | `ADAM DE RITO` |
-| `MC CLURE ADAM JAMES\|22030` | `ADAM JAMES MC CLURE` |
-| `O STRUNK ADAM\|80906` | `ADAM O STRUNK` |
-| `DE LOIZAGA ADELA\|06850` | `ADELA DE LOIZAGA` |
-| `DE LANDRI ADRIA\|10003` | `ADRIA DE LANDRI` |
-| `DE MARCO ADRIAN\|08096` | `ADRIAN DE MARCO` |
-| `DE KANTER ADRIANA\|32960` | `ADRIANA DE KANTER` |
-| `DE CABELLO ADRIANA RODRIGUEZ\|78504` | `ADRIANA RODRIGUEZ DE CABELLO` |
-| `DE LA GARZA AGAPITO JR\|78217` | `AGAPITO JR DE LA GARZA` |
-| `DE LABORDE AGNES MUNOZ\|94306` | `AGNES MUNOZ DE LABORDE` |
-| `DE LA FUENTE AIDA\|28226` | `AIDA DE LA FUENTE` |
-| `DE BARTOLOMEO AJ\|94123` | `AJ DE BARTOLOMEO` |
-| `DE BARTOLOMEO AJ\|11030` | `AJ DE BARTOLOMEO` |
-| `DE LAMOLINA AL\|28226` | `AL DE LAMOLINA` |
-| `D MARWICK ALAN\|94901` | `ALAN D MARWICK` |
-| `D PERCY ALAN\|14127` | `ALAN D PERCY` |
-| `DE QUEIROZ ALAN\|95630` | `ALAN DE QUEIROZ` |
-| `MC DONALD ALAN\|20124` | `ALAN MC DONALD` |
-| `O ROURKE ALAN\|02210` | `ALAN O ROURKE` |
-| `O TONEY ALAN\|30328` | `ALAN O TONEY` |
-| `DE BOER ALAN W\|97520` | `ALAN W DE BOER` |
-| `ST AUDE ALANA\|11226` | `ALANA ST AUDE` |
-| `D PERRY ALBERT\|77049` | `ALBERT D PERRY` |
-| `DE CARDENAS ALBERT\|33156` | `ALBERT DE CARDENAS` |
-| `DE LEON ALBERT V\|11215` | `ALBERT V DE LEON` |
-| `DE ARMAS ALBERTO\|33166` | `ALBERTO DE ARMAS` |
-| `DE LA CRUZ ALBERTO\|33134` | `ALBERTO DE LA CRUZ` |
-| `DE LA CRUZ ALBERTO\|00901` | `ALBERTO DE LA CRUZ` |
-| `DE LA CRUZ ALBERTO\|33129` | `ALBERTO DE LA CRUZ` |
-| `DE LA CRUZ RIONDA ALBERTO\|00901` | `ALBERTO DE LA CRUZ RIONDA` |
-| `DE SANDE ALBERTO\|10022` | `ALBERTO DE SANDE` |
-| `DE LA CRUZ ALBERTO G\|11701` | `ALBERTO G DE LA CRUZ` |
-| `DE HOYOS ALBERTO L\|27157` | `ALBERTO L DE HOYOS` |
-| `ST JOHN ALEATHIA\|91601` | `ALEATHIA ST JOHN` |
-| `D ALEC\|80202` | `ALEC D` |
-| `DE REITZES ALEC\|94110` | `ALEC DE REITZES` |
-| `DE ALBA ALEJANDRA\|94114` | `ALEJANDRA DE ALBA` |
-| `DE ALBA CAMPOMANES ALEJANDRA\|94114` | `ALEJANDRA DE ALBA CAMPOMANES` |
-| `D GYVES ALEJANDRO\|48209` | `ALEJANDRO D GYVES` |
-| `DE CASTRO ALEJANDRO\|90402` | `ALEJANDRO DE CASTRO` |
-| `DE LOS REYES ALEJANDRO\|30277` | `ALEJANDRO DE LOS REYES` |
-| `DE LOZA ALEJANDRO\|66101` | `ALEJANDRO DE LOZA` |
-| `DE SIMONE ALEJANDRO\|94109` | `ALEJANDRO DE SIMONE` |
-| `DE WINDT ALEJANDRO\|30253` | `ALEJANDRO DE WINDT` |
-| `DE LEON ALEKSANDRA\|60188` | `ALEKSANDRA DE LEON` |
-| `DE MARTINO ALESSANDRA\|28204` | `ALESSANDRA DE MARTINO` |
-| `DE ROSI ALESSIO\|60091` | `ALESSIO DE ROSI` |
-| `D BHATTACHARJI ALEX\|90041` | `ALEX D BHATTACHARJI` |
-| `DE ALEX\|78654` | `ALEX DE` |
-| `DE CORDOBA ALEX\|90046` | `ALEX DE CORDOBA` |
-| `DE JONG ALEX\|19355` | `ALEX DE JONG` |
-| `DE LA CRUZ ALEX\|33143` | `ALEX DE LA CRUZ` |
-| `DE LA GARZA ALEX\|78209` | `ALEX DE LA GARZA` |
-| `DE LA GARZA ALEX\|85755` | `ALEX DE LA GARZA` |
-| `DE NICOLO ALEX\|95070` | `ALEX DE NICOLO` |
-| `DE OCAMPO ALEX\|90004` | `ALEX DE OCAMPO` |
-| `DE SAINT PHALLE ALEX\|27516` | `ALEX DE SAINT PHALLE` |
-| `DE WINDT ALEX\|30253` | `ALEX DE WINDT` |
-| `DE WINDT ALEX\|02451` | `ALEX DE WINDT` |
-| `ST ANGELO ALEX\|80403` | `ALEX ST ANGELO` |
-| `DE CASTRO ABEGER ALEXANDER\|91316` | `ALEXANDER DE CASTRO ABEGER` |
-| `DE CASTRO ABEGER ALEXANDER\|37203` | `ALEXANDER DE CASTRO ABEGER` |
-| `DE ROECK ALEXANDER\|33175` | `ALEXANDER DE ROECK` |
-| `ST CLAIR ALEXANDER\|22314` | `ALEXANDER ST CLAIR` |
-| `DE BORCHGRAVE ALEXANDRA\|20007` | `ALEXANDRA DE BORCHGRAVE` |
-| `DE CAMPS ALEXANDRA\|10549` | `ALEXANDRA DE CAMPS` |
-| `ST HILAIRE ALEXANDRA\|56301` | `ALEXANDRA ST HILAIRE` |
-| `DE MOURA ALEXANDRE B\|11530` | `ALEXANDRE B DE MOURA` |
-| `DE ALEXANDRE\|11530` | `ALEXANDRE DE` |
+| `DE LAND CO LLC\|92262` | `DE LAND CO LLC` |
+| `O 39 CONNELL GRAHAM\|10017` | `GRAHAM O 39 CONNELL` |
 
 ## FIX-320 — orphan entity_tags
 
-- Total orphans (entity_type='financial_entity', entity_id missing from financial_entities): **170**
+- Total orphans (entity_type='financial_entity', entity_id missing from financial_entities): **0**
 - Breakdown by `generated_by`:
 
-  - `rule`: **170**
 
 - Hand-curated (`generated_by='manual'`) count: **0**
 - **Gate**: path (a) bare DELETE if manual count <= 10 → **PATH (a)**
-
-First 50 orphan samples:
-
-| generated_by | tag_category | tag | display_label | entity_id |
-|---|---|---|---|---|
-| rule | industry | `finance` | Finance | `057c1b54-e58c-4bfc-8e02-369416725cce` |
-| rule | industry | `pharma` | Pharma | `84a1ee09-7f0d-4321-a3f4-144e3c7c3a8c` |
-| rule | industry | `tech` | Tech | `fe9e6e6e-a734-46f7-833f-18969b03e06c` |
-| rule | internal | `pre_vote_timing` | Pre-Vote Timing | `8e800b7a-184b-4be3-b26c-14fb61365a11` |
-| rule | internal | `pre_vote_timing` | Pre-Vote Timing | `cee4e5c5-6c33-4767-ac8a-1fafac458b2a` |
-| rule | internal | `pre_vote_timing` | Pre-Vote Timing | `d2c625b3-1128-4fb7-8f54-4f772c05f1b7` |
-| rule | internal | `pre_vote_timing` | Pre-Vote Timing | `9a1bb40a-f2d9-4996-95eb-29806755fe0f` |
-| rule | internal | `pre_vote_timing` | Pre-Vote Timing | `876fa116-d2b9-406f-b128-c5b0d8673f62` |
-| rule | internal | `pre_vote_timing` | Pre-Vote Timing | `c8a4d280-060d-4d55-8790-788af38976ef` |
-| rule | internal | `pre_vote_timing` | Pre-Vote Timing | `56a48492-f469-411f-a5e3-ab3bf330fd00` |
-| rule | internal | `pre_vote_timing` | Pre-Vote Timing | `1424b02f-560b-469e-b313-4ad3d0c13cc6` |
-| rule | internal | `pre_vote_timing` | Pre-Vote Timing | `1a2f689c-be76-4013-89a8-f3c99e399f45` |
-| rule | internal | `pre_vote_timing` | Pre-Vote Timing | `2895a2d6-e619-4622-adc9-bc5be860592c` |
-| rule | internal | `pre_vote_timing` | Pre-Vote Timing | `d019cc70-3f6e-4c30-b828-457a20f9ff76` |
-| rule | internal | `pre_vote_timing` | Pre-Vote Timing | `25c84e98-c791-4575-a7b1-b7027b686c9b` |
-| rule | internal | `pre_vote_timing` | Pre-Vote Timing | `668f619f-aa03-45bc-b2d8-3a0b0203009a` |
-| rule | internal | `pre_vote_timing` | Pre-Vote Timing | `88ab3cfb-2872-4685-88d1-c5d9b0239d16` |
-| rule | internal | `pre_vote_timing` | Pre-Vote Timing | `e80ec320-083e-46d9-831f-7c50501e0242` |
-| rule | internal | `pre_vote_timing` | Pre-Vote Timing | `e630c21c-b27c-48c0-8855-c3d97ec65b10` |
-| rule | internal | `pre_vote_timing` | Pre-Vote Timing | `370c35a9-70d2-4b6c-abca-f8eafcbcaa39` |
-| rule | internal | `pre_vote_timing` | Pre-Vote Timing | `deab90ea-baf9-457d-81cf-c919e603d779` |
-| rule | internal | `pre_vote_timing` | Pre-Vote Timing | `3a804665-abaf-47e4-8f19-22b18fd9d924` |
-| rule | internal | `pre_vote_timing` | Pre-Vote Timing | `11758c63-508d-4723-ae5d-79320b94e8bb` |
-| rule | size | `medium_donation` | Medium Donation | `75063519-27b6-4f82-abe4-489a92de706f` |
-| rule | size | `medium_donation` | Medium Donation | `ac34a4fa-7366-4e59-a53c-ddc7b55ab3e1` |
-| rule | size | `medium_donation` | Medium Donation | `eceaedeb-c3f8-4b41-a10d-6fec0fb98aaf` |
-| rule | size | `medium_donation` | Medium Donation | `0fdf2073-e1e7-4228-8195-2f2aa48d8d4f` |
-| rule | size | `medium_donation` | Medium Donation | `c0da85da-ec37-4093-8ae1-5ca0a004ac5e` |
-| rule | size | `medium_donation` | Medium Donation | `429a60f2-95ca-45cf-b4f3-4d24fe1b0ef1` |
-| rule | size | `medium_donation` | Medium Donation | `53ab1429-3cd8-46be-83f9-98be7af6ef16` |
-| rule | size | `medium_donation` | Medium Donation | `5bc6fcd0-5cb3-4382-93d2-350386b30bcb` |
-| rule | size | `medium_donation` | Medium Donation | `c6e44dc1-c904-4be2-927e-e3fa984dafb6` |
-| rule | size | `medium_donation` | Medium Donation | `efd3564b-217e-49f5-8c1e-f4926fd3a5eb` |
-| rule | size | `medium_donation` | Medium Donation | `693619a9-6afa-46c0-aa48-91ac1152e45c` |
-| rule | size | `small_donation` | Small Donation | `6d9c6fc1-684c-4446-8113-78b32b0c05d4` |
-| rule | size | `small_donation` | Small Donation | `1a2f689c-be76-4013-89a8-f3c99e399f45` |
-| rule | size | `small_donation` | Small Donation | `1d1a8ae3-c012-4a18-9fbd-f6cb81d632cc` |
-| rule | size | `small_donation` | Small Donation | `cce776fc-c2b0-4f06-a02d-221f529454f5` |
-| rule | size | `small_donation` | Small Donation | `621c07fc-ff74-4627-8c42-7602fd14fce3` |
-| rule | size | `small_donation` | Small Donation | `08ac5630-bc20-49ba-a546-67d90a9589de` |
-| rule | size | `small_donation` | Small Donation | `9e56a406-9c20-4e2c-b0b7-c297323f4374` |
-| rule | size | `small_donation` | Small Donation | `46cd7a14-923e-4306-90c4-17fbd55cedac` |
-| rule | size | `small_donation` | Small Donation | `aa7c7dd1-c627-40e4-bff1-ccbe887fff52` |
-| rule | size | `small_donation` | Small Donation | `87f52ddc-de64-4122-bc65-281a70b86d66` |
-| rule | size | `small_donation` | Small Donation | `bcf5b72a-849b-4e74-a05e-9d8029f8c107` |
-| rule | size | `small_donation` | Small Donation | `6b05f7db-2d0d-4103-8ec6-71a65e78f1fc` |
-| rule | size | `small_donation` | Small Donation | `817829fe-781b-4e87-b9bf-b42eb0c4c68e` |
-| rule | size | `small_donation` | Small Donation | `c2c7d2e5-c53d-4d90-9885-30c0a6d64f9c` |
-| rule | size | `small_donation` | Small Donation | `307a9d54-463f-4407-b3bc-65fae59e2cd7` |
-| rule | size | `small_donation` | Small Donation | `59f3c335-e247-4541-bd0f-4473e397466f` |
 

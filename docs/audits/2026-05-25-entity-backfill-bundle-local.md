@@ -11,28 +11,30 @@ Clusters where canonical_name matches `isLikelyOrgName()` AND has both an `entit
 
 - Total qualifying tuples: **16**
 - Every tuple has a non-individual row with non-FEC external_source_refs binding: **false**
-- **Gate**: ship merge if tuples < 500 AND every tuple has xsr binding → **DEFER**
+- Every tuple has xsr OR fec_committee_id binding (FIX-379 relaxed): **true** (qualifying=16/16)
+- **Gate FIX-312 (strict)**: ship merge if tuples < 500 AND every tuple has xsr → **DEFER**
+- **Gate FIX-379 (relaxed)**: ship merge if tuples < 500 AND every tuple has xsr OR fec_committee_id → **SHIP**
 
 Top 20 by indiv row count:
 
-| canonical_name | indiv_ids | non_indiv types | xsr/N |
-|---|--:|---|---|
-| `SENATE CONSERVATIVES FUND` | 3 | other/pac | 1/2 |
-| `AMERICANS FOR PROSPERITY` | 2 | nonprofit | 1/1 |
-| `HOUSE FREEDOM FUND` | 2 | pac | 0/1 |
-| `AMERICAN SOCIETY OF ANESTHESIOLOGISTS` | 1 | other | 1/3 |
-| `AMERIPAC THE FUND FOR A GREATER AMERICA` | 1 | pac | 0/1 |
-| `DEMOCRACY ENGINE INC` | 1 | pac/other | 1/2 |
-| `INTERNATIONAL ASSOCIATION OF FIRE FIGHTERS` | 1 | other | 1/1 |
-| `MARCHANT GOOD GOVERNMENT FUND` | 1 | pac | 0/1 |
-| `NATIONAL ASSOCIATION OF BROADCASTERS POLITICAL ACTION COMMITTEE NABPAC` | 1 | pac | 0/1 |
-| `NORFOLK SOUTHERN CORPORATION GOOD GOVERNMENT FUND` | 1 | pac | 0/1 |
-| `PHARMACEUTICAL CARE MANAGEMENT ASSOCIATION` | 1 | other | 1/3 |
-| `PRIDE MOBILITY PRODUCTS CORP` | 1 | pac | 0/1 |
-| `ROBINHOOD MARKETS INC` | 1 | pac | 0/1 |
-| `SEIU COPE SERVICE EMPLOYEES INTERNATIONAL UNION COMMITTEE ON POLITICAL EDUCATION` | 1 | pac | 0/1 |
-| `SUSAN B ANTHONY LIST INC CANDIDATE FUND DBA SUSAN B ANTHONY PRO LIFE AMERICA CANDIDATE FUND` | 1 | pac | 0/1 |
-| `WE THE PEOPLE 250 ACTION FUND` | 1 | pac | 1/1 |
+| canonical_name | indiv_ids | non_indiv types | xsr/N | fec/N |
+|---|--:|---|---|---|
+| `SENATE CONSERVATIVES FUND` | 3 | other/pac | 1/2 | 1/2 |
+| `AMERICANS FOR PROSPERITY` | 2 | nonprofit | 1/1 | 0/1 |
+| `HOUSE FREEDOM FUND` | 2 | pac | 0/1 | 1/1 |
+| `AMERICAN SOCIETY OF ANESTHESIOLOGISTS` | 1 | other | 1/3 | 0/3 |
+| `AMERIPAC THE FUND FOR A GREATER AMERICA` | 1 | pac | 0/1 | 1/1 |
+| `DEMOCRACY ENGINE INC` | 1 | other/pac | 1/2 | 1/2 |
+| `INTERNATIONAL ASSOCIATION OF FIRE FIGHTERS` | 1 | other | 1/1 | 0/1 |
+| `MARCHANT GOOD GOVERNMENT FUND` | 1 | pac | 0/1 | 1/1 |
+| `NATIONAL ASSOCIATION OF BROADCASTERS POLITICAL ACTION COMMITTEE NABPAC` | 1 | pac | 0/1 | 1/1 |
+| `NORFOLK SOUTHERN CORPORATION GOOD GOVERNMENT FUND` | 1 | pac | 0/1 | 1/1 |
+| `PHARMACEUTICAL CARE MANAGEMENT ASSOCIATION` | 1 | other | 1/3 | 0/3 |
+| `PRIDE MOBILITY PRODUCTS CORP` | 1 | pac | 0/1 | 1/1 |
+| `ROBINHOOD MARKETS INC` | 1 | pac | 0/1 | 1/1 |
+| `SEIU COPE SERVICE EMPLOYEES INTERNATIONAL UNION COMMITTEE ON POLITICAL EDUCATION` | 1 | pac | 0/1 | 1/1 |
+| `SUSAN B ANTHONY LIST INC CANDIDATE FUND DBA SUSAN B ANTHONY PRO LIFE AMERICA CANDIDATE FUND` | 1 | pac | 0/1 | 1/1 |
+| `WE THE PEOPLE 250 ACTION FUND` | 1 | pac | 1/1 | 0/1 |
 
 ## FIX-313 — LittleSis merged_into scan
 

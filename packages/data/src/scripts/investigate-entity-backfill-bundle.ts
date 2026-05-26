@@ -98,6 +98,9 @@ interface OrgMixCluster {
   non_indiv_ids:  string[];
   // Per non-individual id, does it carry any non-FEC external_source_refs binding?
   non_indiv_has_xsr: boolean[];
+  // FIX-379 relaxed gate: per non-individual id, does it carry a top-level
+  // fec_committee_id binding (PAC attestation)?
+  non_indiv_has_fec: boolean[];
   non_indiv_types:   string[];
 }
 
@@ -161,9 +164,11 @@ async function scopeFix312(client: Client): Promise<OrgMixCluster[]> {
   if (candidates.length === 0) return [];
 
   // For each candidate cluster, check whether each non-individual id has a
-  // non-FEC external_source_refs binding.
+  // non-FEC external_source_refs binding (strict gate) AND whether it carries
+  // a top-level fec_committee_id (FIX-379 relaxed gate).
   const allNonIndivIds = candidates.flatMap((c) => c.non_indiv_ids);
   const xsrSet = new Set<string>();
+  const fecSet = new Set<string>();
   if (allNonIndivIds.length > 0) {
     const xsr = await client.query<{ entity_id: string }>(
       `SELECT DISTINCT entity_id::text
@@ -174,6 +179,15 @@ async function scopeFix312(client: Client): Promise<OrgMixCluster[]> {
       [allNonIndivIds],
     );
     for (const row of xsr.rows) xsrSet.add(row.entity_id);
+
+    const fec = await client.query<{ id: string }>(
+      `SELECT id::text
+         FROM public.financial_entities
+        WHERE id::text = ANY($1::text[])
+          AND fec_committee_id IS NOT NULL`,
+      [allNonIndivIds],
+    );
+    for (const row of fec.rows) fecSet.add(row.id);
   }
 
   return candidates.map((c) => ({
@@ -181,6 +195,7 @@ async function scopeFix312(client: Client): Promise<OrgMixCluster[]> {
     indiv_ids:      c.indiv_ids,
     non_indiv_ids:  c.non_indiv_ids,
     non_indiv_has_xsr: c.non_indiv_ids.map((id) => xsrSet.has(id)),
+    non_indiv_has_fec: c.non_indiv_ids.map((id) => fecSet.has(id)),
     non_indiv_types: c.non_indiv_types,
   }));
 }
@@ -429,13 +444,27 @@ async function main(): Promise<void> {
   console.log(`    ${fix312.length} (canonical, has-org-row, has-individual-row) tuples`);
   for (const c of fix312.slice(0, 10)) {
     const xsrCount = c.non_indiv_has_xsr.filter(Boolean).length;
+    const fecCount = c.non_indiv_has_fec.filter(Boolean).length;
     console.log(
-      `      ${c.canonical_name.padEnd(50)} indiv=${c.indiv_ids.length} non-indiv=${c.non_indiv_ids.length} types=${[...new Set(c.non_indiv_types)].join("/")} xsr=${xsrCount}/${c.non_indiv_ids.length}`,
+      `      ${c.canonical_name.padEnd(50)} indiv=${c.indiv_ids.length} non-indiv=${c.non_indiv_ids.length} types=${[...new Set(c.non_indiv_types)].join("/")} xsr=${xsrCount}/${c.non_indiv_ids.length} fec=${fecCount}/${c.non_indiv_ids.length}`,
     );
   }
+  // FIX-312 strict gate: every tuple has at least one non-individual row
+  // with an xsr binding.
   const allHaveXsr = fix312.every((c) => c.non_indiv_has_xsr.some(Boolean));
   const fix312GateMet = fix312.length < 500 && allHaveXsr && fix312.length > 0;
-  console.log(`    GATE FIX-312: tuples<500 (${fix312.length}<500=${fix312.length < 500}) && every tuple has xsr (${allHaveXsr}) → SHIP=${fix312GateMet}`);
+  console.log(`    GATE FIX-312 (strict): tuples<500 (${fix312.length}<500=${fix312.length < 500}) && every tuple has xsr (${allHaveXsr}) → SHIP=${fix312GateMet}`);
+
+  // FIX-379 relaxed gate: every tuple has at least one non-individual row
+  // with EITHER xsr binding OR fec_committee_id present.
+  const fix379Qualifying = fix312.filter((c) =>
+    c.non_indiv_ids.some(
+      (_, i) => c.non_indiv_has_xsr[i] || c.non_indiv_has_fec[i],
+    ),
+  );
+  const allHaveXsrOrFec = fix312.length > 0 && fix379Qualifying.length === fix312.length;
+  const fix379GateMet = fix312.length < 500 && allHaveXsrOrFec && fix312.length > 0;
+  console.log(`    GATE FIX-379 (relaxed): tuples<500 (${fix312.length}<500=${fix312.length < 500}) && every tuple has xsr OR fec_committee_id (${allHaveXsrOrFec}; qualifying=${fix379Qualifying.length}/${fix312.length}) → SHIP=${fix379GateMet}`);
   console.log("");
 
   // ── FIX-313 ─────────────────────────────────────────────────────────────
@@ -503,16 +532,19 @@ async function main(): Promise<void> {
   md += `Clusters where canonical_name matches \`isLikelyOrgName()\` AND has both an \`entity_type='individual'\` row and a non-individual row.\n\n`;
   md += `- Total qualifying tuples: **${fix312.length}**\n`;
   md += `- Every tuple has a non-individual row with non-FEC external_source_refs binding: **${allHaveXsr}**\n`;
-  md += `- **Gate**: ship merge if tuples < 500 AND every tuple has xsr binding → **${fix312GateMet ? "SHIP" : "DEFER"}**\n\n`;
+  md += `- Every tuple has xsr OR fec_committee_id binding (FIX-379 relaxed): **${allHaveXsrOrFec}** (qualifying=${fix379Qualifying.length}/${fix312.length})\n`;
+  md += `- **Gate FIX-312 (strict)**: ship merge if tuples < 500 AND every tuple has xsr → **${fix312GateMet ? "SHIP" : "DEFER"}**\n`;
+  md += `- **Gate FIX-379 (relaxed)**: ship merge if tuples < 500 AND every tuple has xsr OR fec_committee_id → **${fix379GateMet ? "SHIP" : "DEFER"}**\n\n`;
   if (fix312.length > 0) {
     md += `Top 20 by indiv row count:\n\n`;
-    md += `| canonical_name | indiv_ids | non_indiv types | xsr/N |\n`;
-    md += `|---|--:|---|---|\n`;
+    md += `| canonical_name | indiv_ids | non_indiv types | xsr/N | fec/N |\n`;
+    md += `|---|--:|---|---|---|\n`;
     for (const c of fix312
       .sort((a, b) => b.indiv_ids.length - a.indiv_ids.length)
       .slice(0, 20)) {
       const xsr = c.non_indiv_has_xsr.filter(Boolean).length;
-      md += `| \`${c.canonical_name.replace(/\|/g, "\\|")}\` | ${c.indiv_ids.length} | ${[...new Set(c.non_indiv_types)].join("/")} | ${xsr}/${c.non_indiv_ids.length} |\n`;
+      const fec = c.non_indiv_has_fec.filter(Boolean).length;
+      md += `| \`${c.canonical_name.replace(/\|/g, "\\|")}\` | ${c.indiv_ids.length} | ${[...new Set(c.non_indiv_types)].join("/")} | ${xsr}/${c.non_indiv_ids.length} | ${fec}/${c.non_indiv_ids.length} |\n`;
     }
     md += `\n`;
   }
