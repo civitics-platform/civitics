@@ -17,6 +17,7 @@
  */
 
 import type { createAdminClient } from "@civitics/db";
+import { refreshPrimarySourceForEntities } from "@civitics/db";
 import { canonicalizeEntityName } from "../fec-bulk/writer";
 import type { ParsedFiling, ParsedOfficer, ParsedGrantOut } from "./parse";
 

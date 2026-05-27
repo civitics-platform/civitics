@@ -26,6 +26,7 @@
  */
 
 import type { createAdminClient } from "@civitics/db";
+import { refreshPrimarySourceForEntities } from "@civitics/db";
 import { canonicalizeEntityName } from "../fec-bulk/writer";
 
 type Db = ReturnType<typeof createAdminClient>;
@@ -161,6 +162,12 @@ export async function resolveRecipients(
       });
     if (refErr) {
       console.error(`    usaspending writer: source_refs chunk ${i}-${i + chunk.length}: ${refErr.message}`);
+    }
+
+    // FIX-397: refresh primary_source on the newly-bound financial_entities.
+    const newIds = refRecords.map((r) => r.entity_id);
+    if (newIds.length > 0) {
+      await refreshPrimarySourceForEntities(db, "financial_entity", newIds);
     }
   }
 

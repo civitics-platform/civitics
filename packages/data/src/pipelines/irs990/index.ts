@@ -23,7 +23,7 @@
  * it's a separate opt-in EIN-resolution helper.
  */
 
-import { createAdminClient } from "@civitics/db";
+import { createAdminClient, refreshPrimarySourceForEntities } from "@civitics/db";
 import { startSync, completeSync, failSync, type PipelineResult } from "../sync-log";
 import { SEED_EIN_SET, SEED_NONPROFITS } from "./seed";
 import * as path from "path";
@@ -169,6 +169,9 @@ export async function runIrs990Pipeline(): Promise<PipelineResult> {
 
       const objectIdToRow = new Map(newMatches.map((m) => [m.row.OBJECT_ID, m] as const));
       const needed = new Set(objectIdToRow.keys());
+      // FIX-397: track entity_ids whose xsr binding moved this year so we
+      // can fire a single batched primary_source refresh per year.
+      const refreshedEntityIds = new Set<string>();
 
       const dir = tempDir();
       for (const zipUrl of zipUrls) {
@@ -299,12 +302,20 @@ export async function runIrs990Pipeline(): Promise<PipelineResult> {
           }
 
           console.log(`      [ok]   ${ein}/${objectId} (${orgName.slice(0, 40)}): ${parsed.officers.length} officers, ${parsed.grantsOut.length} grants`);
+          refreshedEntityIds.add(entityId);
         }
       }
 
       if (needed.size > 0) {
         console.warn(`    ${needed.size} filings not found in any ZIP archive (may be in a B/C/D variant not yet listed): ${Array.from(needed).slice(0, 5).join(", ")}${needed.size > 5 ? "..." : ""}`);
         result.failed += needed.size;
+      }
+
+      // FIX-397: refresh primary_source for every financial_entity that just
+      // had xsr written (existing-EIN last_seen bump OR new-EIN bind). Batched
+      // per year so we get one RPC instead of per-filing.
+      if (refreshedEntityIds.size > 0) {
+        await refreshPrimarySourceForEntities(db, "financial_entity", [...refreshedEntityIds]);
       }
 
       // Advance watermark on a successful year (only when ALL matched filings

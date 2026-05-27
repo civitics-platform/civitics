@@ -935,6 +935,10 @@ export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<Nigh
     "prune_kill_switch_events",
     // FIX-297: keep status_snapshot bounded at 24 hours
     "prune_status_snapshot",
+    // FIX-397: nightly safety net — re-derive primary_source from xsr in
+    // case backfill migrations, ad-hoc SQL, or writer-side failures left
+    // any entity row stale.
+    "rebuild_all_primary_sources",
   ]) {
     try {
       const { createAdminClient } = await import("@civitics/db");

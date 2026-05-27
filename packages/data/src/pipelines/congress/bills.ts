@@ -15,6 +15,7 @@
 
 import type { createAdminClient } from "@civitics/db";
 import type { Database } from "@civitics/db";
+import { refreshPrimarySourceForEntities } from "@civitics/db";
 
 type ProposalInsert = Database["public"]["Tables"]["proposals"]["Insert"];
 type ProposalType = Database["public"]["Enums"]["proposal_type"];
@@ -329,11 +330,10 @@ export async function upsertBillProposalsBatch(
   }
 
   // Step 4: batched INSERT of new bills — proposals, then bill_details + refs
+  // insertedIds declared at function scope so the FIX-397 primary_source
+  // refresh below can read it after the if-block completes.
+  const insertedIds: Array<string | null> = [];
   if (toInsert.length > 0) {
-    // Track the returned IDs in the same order as toInsert. Postgres
-    // INSERT ... RETURNING preserves input order within a chunk, so we can
-    // zip back to the args by position.
-    const insertedIds: Array<string | null> = [];
 
     for (let i = 0; i < toInsert.length; i += BILL_CHUNK_SIZE) {
       const chunk = toInsert.slice(i, i + BILL_CHUNK_SIZE);
@@ -412,6 +412,18 @@ export async function upsertBillProposalsBatch(
         console.error(`    bills.ts batch: source_refs chunk ${i}-${i + chunk.length}: ${error.message}`);
       }
     }
+  }
+
+  // FIX-397: refresh primary_source on the proposals that just got xsr
+  // bindings (insert path) or whose xsr last_seen_at moved (update path's
+  // refRecords cover only inserts; update-path proposals stay bound to their
+  // prior winner anyway, but invoking for them is cheap and idempotent).
+  const refreshedIds = [
+    ...toInsert.map((_, idx) => insertedIds[idx]).filter((id): id is string => Boolean(id)),
+    ...toUpdate.map((u) => u.id),
+  ];
+  if (refreshedIds.length > 0) {
+    await refreshPrimarySourceForEntities(db, "proposal", refreshedIds);
   }
 
   return { upserted, failed };

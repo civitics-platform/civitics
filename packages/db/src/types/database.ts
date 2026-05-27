@@ -30,6 +30,9 @@ export type Database = {
           name: string
           parent_agency_id: string | null
           personnel_fte: number | null
+          primary_source: string | null
+          primary_source_last_seen_at: string | null
+          primary_source_url: string | null
           short_name: string | null
           source_ids: Json
           updated_at: string
@@ -53,6 +56,9 @@ export type Database = {
           name: string
           parent_agency_id?: string | null
           personnel_fte?: number | null
+          primary_source?: string | null
+          primary_source_last_seen_at?: string | null
+          primary_source_url?: string | null
           short_name?: string | null
           source_ids?: Json
           updated_at?: string
@@ -76,6 +82,9 @@ export type Database = {
           name?: string
           parent_agency_id?: string | null
           personnel_fte?: number | null
+          primary_source?: string | null
+          primary_source_last_seen_at?: string | null
+          primary_source_url?: string | null
           short_name?: string | null
           source_ids?: Json
           updated_at?: string
@@ -1746,6 +1755,9 @@ export type Database = {
           id: string
           metadata: Json
           parent_entity_id: string | null
+          primary_source: string | null
+          primary_source_last_seen_at: string | null
+          primary_source_url: string | null
           recipient_count: number
           total_contract_cents: number
           total_donated_cents: number
@@ -1764,6 +1776,9 @@ export type Database = {
           id?: string
           metadata?: Json
           parent_entity_id?: string | null
+          primary_source?: string | null
+          primary_source_last_seen_at?: string | null
+          primary_source_url?: string | null
           recipient_count?: number
           total_contract_cents?: number
           total_donated_cents?: number
@@ -1782,6 +1797,9 @@ export type Database = {
           id?: string
           metadata?: Json
           parent_entity_id?: string | null
+          primary_source?: string | null
+          primary_source_last_seen_at?: string | null
+          primary_source_url?: string | null
           recipient_count?: number
           total_contract_cents?: number
           total_donated_cents?: number
@@ -2792,6 +2810,9 @@ export type Database = {
           party: Database["public"]["Enums"]["party"] | null
           phone: string | null
           photo_url: string | null
+          primary_source: string | null
+          primary_source_last_seen_at: string | null
+          primary_source_url: string | null
           role_title: string
           source_ids: Json
           term_end: string | null
@@ -2823,6 +2844,9 @@ export type Database = {
           party?: Database["public"]["Enums"]["party"] | null
           phone?: string | null
           photo_url?: string | null
+          primary_source?: string | null
+          primary_source_last_seen_at?: string | null
+          primary_source_url?: string | null
           role_title: string
           source_ids?: Json
           term_end?: string | null
@@ -2854,6 +2878,9 @@ export type Database = {
           party?: Database["public"]["Enums"]["party"] | null
           phone?: string | null
           photo_url?: string | null
+          primary_source?: string | null
+          primary_source_last_seen_at?: string | null
+          primary_source_url?: string | null
           role_title?: string
           source_ids?: Json
           term_end?: string | null
@@ -3379,6 +3406,9 @@ export type Database = {
           jurisdiction_id: string
           last_action_at: string | null
           metadata: Json
+          primary_source: string | null
+          primary_source_last_seen_at: string | null
+          primary_source_url: string | null
           resolved_at: string | null
           search_vector: unknown
           short_title: string | null
@@ -3402,6 +3432,9 @@ export type Database = {
           jurisdiction_id: string
           last_action_at?: string | null
           metadata?: Json
+          primary_source?: string | null
+          primary_source_last_seen_at?: string | null
+          primary_source_url?: string | null
           resolved_at?: string | null
           search_vector?: unknown
           short_title?: string | null
@@ -3425,6 +3458,9 @@ export type Database = {
           jurisdiction_id?: string
           last_action_at?: string | null
           metadata?: Json
+          primary_source?: string | null
+          primary_source_last_seen_at?: string | null
+          primary_source_url?: string | null
           resolved_at?: string | null
           search_vector?: unknown
           short_title?: string | null
@@ -3719,6 +3755,9 @@ export type Database = {
           id: string
           metadata: Json
           official_id: string
+          primary_source: string | null
+          primary_source_last_seen_at: string | null
+          primary_source_url: string | null
           roll_call_id: string
           session: string | null
           source_url: string | null
@@ -3735,6 +3774,9 @@ export type Database = {
           id?: string
           metadata?: Json
           official_id: string
+          primary_source?: string | null
+          primary_source_last_seen_at?: string | null
+          primary_source_url?: string | null
           roll_call_id: string
           session?: string | null
           source_url?: string | null
@@ -3751,6 +3793,9 @@ export type Database = {
           id?: string
           metadata?: Json
           official_id?: string
+          primary_source?: string | null
+          primary_source_last_seen_at?: string | null
+          primary_source_url?: string | null
           roll_call_id?: string
           session?: string | null
           source_url?: string | null
@@ -4333,6 +4378,11 @@ export type Database = {
         }[]
       }
       get_supabase_auth_mau: { Args: never; Returns: number }
+      get_supabase_cpu_max: {
+        Args: { window_minutes: number }
+        Returns: number
+      }
+      get_supabase_max_connections: { Args: never; Returns: number }
       get_supabase_self_metrics: {
         Args: never
         Returns: {
@@ -4343,6 +4393,10 @@ export type Database = {
       link_federal_reps_to_districts: { Args: never; Returns: number }
       link_officials_to_districts: { Args: never; Returns: number }
       normalize_pv_path: { Args: { p: string }; Returns: string }
+      promote_candidate_to_elected: {
+        Args: { p_candidate_id: string; p_elected_id: string }
+        Returns: Json
+      }
       prune_kill_switch_events: { Args: never; Returns: number }
       prune_platform_usage_snapshot: { Args: never; Returns: number }
       prune_status_snapshot: { Args: never; Returns: number }
@@ -4378,6 +4432,13 @@ export type Database = {
           reaped_at: string
         }[]
       }
+      rebuild_all_primary_sources: {
+        Args: never
+        Returns: {
+          rows_updated: number
+          table_name: string
+        }[]
+      }
       rebuild_entity_connections: {
         Args: never
         Returns: {
@@ -4407,6 +4468,13 @@ export type Database = {
         }[]
       }
       rebuild_entity_connections_donations: {
+        Args: never
+        Returns: {
+          connection_type: string
+          edges_upserted: number
+        }[]
+      }
+      rebuild_entity_connections_donations_full: {
         Args: never
         Returns: {
           connection_type: string
@@ -4455,6 +4523,13 @@ export type Database = {
           edges_upserted: number
         }[]
       }
+      rebuild_entity_connections_votes_full: {
+        Args: never
+        Returns: {
+          connection_type: string
+          edges_upserted: number
+        }[]
+      }
       rebuild_financial_entity_donation_totals: {
         Args: never
         Returns: undefined
@@ -4484,6 +4559,10 @@ export type Database = {
       refresh_homepage_stats_mv: { Args: never; Returns: undefined }
       refresh_official_homepage_stats_mv: { Args: never; Returns: undefined }
       refresh_pipeline_runtime_stats_mv: { Args: never; Returns: undefined }
+      refresh_primary_source_for_entities: {
+        Args: { p_entity_ids: string[]; p_entity_type: string }
+        Returns: number
+      }
       refresh_proposal_popularity: { Args: never; Returns: undefined }
       refresh_proposal_trending: { Args: never; Returns: undefined }
       refresh_spending_totals: { Args: never; Returns: undefined }
@@ -4505,6 +4584,7 @@ export type Database = {
           subtitle: string
         }[]
       }
+      source_priority: { Args: { src: string }; Returns: number }
       treemap_officials_by_donations:
         | {
             Args: { lim?: number }

@@ -221,3 +221,7 @@ export type {
   GitHubUsage,
   GitHubUsageError,
 } from "./github-usage";
+
+// Primary-source materialization helper (FIX-397)
+export { refreshPrimarySourceForEntities } from "./primary-source";
+export type { PrimarySourceEntityType } from "./primary-source";

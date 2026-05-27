@@ -12,6 +12,7 @@
  */
 
 import type { createAdminClient } from "@civitics/db";
+import { refreshPrimarySourceForEntities } from "@civitics/db";
 import { canonicalizeEntityName } from "../fec-bulk/writer";
 import {
   type LittleSisEntity,
@@ -307,6 +308,22 @@ export async function upsertSourceRefs(
     }
     inserted += chunk.length;
   }
+
+  // FIX-397: refresh primary_source for each entity_type touched. LittleSis
+  // writes both 'official' and 'financial_entity' bindings; dispatch per
+  // type so the helper picks the right table.
+  const byType = new Map<string, string[]>();
+  for (const b of bindings) {
+    const list = byType.get(b.entity_type) ?? [];
+    list.push(b.entity_id);
+    byType.set(b.entity_type, list);
+  }
+  for (const [entityType, ids] of byType) {
+    if (entityType === "official" || entityType === "financial_entity") {
+      await refreshPrimarySourceForEntities(db, entityType, ids);
+    }
+  }
+
   return { inserted, failed };
 }
 
