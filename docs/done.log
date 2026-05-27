@@ -511,3 +511,5 @@
 2026-05-26 | FIX-393 | 45105773 | closes-as-superseded | feat(db): materialize primary_source on entity tables (FIX-397)
 2026-05-26 | FIX-397 | 45105773 | local+prod | feat(db): materialize primary_source on entity tables (FIX-397)
 2026-05-26 | FIX-398 | 4d2e3b48 | local+prod | feat(api): surface attribution on detail-page responses (FIX-398)
+2026-05-26 | FIX-403 | 181e2151 | local+prod | feat(data): xsr public-read RLS + Congress officials seed (FIX-403, FIX-408)
+2026-05-26 | FIX-408 | 181e2151 | local+prod | feat(data): xsr public-read RLS + Congress officials seed (FIX-403, FIX-408)
