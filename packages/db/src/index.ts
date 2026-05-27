@@ -244,3 +244,8 @@ export type {
   AttributionDetailSource,
   AttributionDetailResponse,
 } from "./types/attribution";
+
+// Source label + category registry (FIX-399). Label + category only — color
+// classes are presentation and live in the UI layer.
+export { resolveSource } from "./source-registry";
+export type { SourceCategory, SourceRegistryEntry, ResolvedSource } from "./source-registry";

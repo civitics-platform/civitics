@@ -6,6 +6,7 @@ import { CommentDraftSection } from "../components/CommentDraftSection";
 import { AGENCY_FULL_NAMES } from "../components/agencyNames";
 import { AiSummarySection } from "../components/AiSummarySection";
 import { PageViewTracker } from "../../components/PageViewTracker";
+import { SourceBadge } from "../../components/SourceBadge";
 import { CivicComments } from "./components/CivicComments";
 import { PositionWidget } from "./components/PositionWidget";
 import { RelatedInitiatives, type InitiativeLink } from "../components/RelatedInitiatives";
@@ -326,6 +327,7 @@ export default async function ProposalDetailPage({
             {docketId && (
               <span className="text-xs text-gray-400 font-mono">{docketId}</span>
             )}
+            <SourceBadge attribution={proposalRow.attribution} />
           </div>
 
           {/* Title */}

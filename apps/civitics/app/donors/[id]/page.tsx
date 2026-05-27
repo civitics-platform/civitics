@@ -9,6 +9,7 @@ import {
 } from "@civitics/db";
 import { ShareButton } from "../../officials/components/ShareButton";
 import { PageViewTracker } from "../../components/PageViewTracker";
+import { SourceBadge } from "../../components/SourceBadge";
 
 // Donor / PAC / committee / corporation profile. Mirrors the officials page
 // model: public-read RLS, createPublicClient → real ISR (5-min revalidate),
@@ -462,6 +463,7 @@ export default async function DonorProfilePage({
                       FEC {entity.fec_committee_id}
                     </span>
                   )}
+                  <SourceBadge attribution={entity.attribution} />
                 </div>
 
                 <h1 className="text-2xl font-bold text-gray-900 leading-tight">
