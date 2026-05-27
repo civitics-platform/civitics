@@ -225,3 +225,22 @@ export type {
 // Primary-source materialization helper (FIX-397)
 export { refreshPrimarySourceForEntities } from "./primary-source";
 export type { PrimarySourceEntityType } from "./primary-source";
+
+// Data attribution (FIX-398) — shared types + SSR helper for detail pages.
+// The full xsr expansion lives behind /api/attribution/[type]/[id]; this
+// helper returns the cheap (primary + count) shape for the detail-page SSR
+// loaders.
+export { fetchAttributionForEntity } from "./attribution";
+export {
+  SOURCE_URL_TEMPLATES,
+  ATTRIBUTION_ENTITY_TYPES,
+  deriveSourceUrl,
+  attributionDetailEndpoint,
+} from "./types/attribution";
+export type {
+  AttributionEntityType,
+  AttributionPrimary,
+  AttributionShape,
+  AttributionDetailSource,
+  AttributionDetailResponse,
+} from "./types/attribution";

@@ -415,6 +415,7 @@ export default async function OfficialProfilePage({
     jurisdiction_id: (o.jurisdiction_id ?? null) as string | null,
     state_name: (o.jurisdictions?.name ?? null) as string | null,
     chamber: (o.governing_bodies?.short_name ?? null) as string | null,
+    attribution: o.attribution,
   };
 
   // FIX-246: candidate-tier officials skip incumbent-only sections (votes,
@@ -734,6 +735,13 @@ export default async function OfficialProfilePage({
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(officialJsonLd) }}
+      />
+      {/* FIX-398: attribution payload embedded for the FIX-399 SourceBadge
+          hydration hook. Not visually rendered. */}
+      <script
+        type="application/json"
+        data-civitics-attribution="official"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(official.attribution) }}
       />
       <PageViewTracker entityType="official" entityId={params.id} />
 

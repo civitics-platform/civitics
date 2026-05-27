@@ -287,6 +287,13 @@ export default async function ProposalDetailPage({
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(proposalJsonLd) }}
       />
+      {/* FIX-398: attribution payload embedded for the FIX-399 SourceBadge
+          hydration hook. Not visually rendered. */}
+      <script
+        type="application/json"
+        data-civitics-attribution="proposal"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(proposalRow.attribution) }}
+      />
       <PageViewTracker entityType="proposal" entityId={params.id} />
 
       {/* ─── Header ─────────────────────────────────────────────────────────── */}

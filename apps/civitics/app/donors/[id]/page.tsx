@@ -1,7 +1,12 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { cache } from "react";
-import { createPublicClient, fetchIndustryTagsByEntityId } from "@civitics/db";
+import {
+  createPublicClient,
+  fetchIndustryTagsByEntityId,
+  fetchAttributionForEntity,
+  type AttributionShape,
+} from "@civitics/db";
 import { ShareButton } from "../../officials/components/ShareButton";
 import { PageViewTracker } from "../../components/PageViewTracker";
 
@@ -30,6 +35,7 @@ type Entity = {
   total_grant_cents: number;
   donor_fingerprint: string | null;
   metadata: Record<string, unknown> | null;
+  attribution: AttributionShape;
 };
 
 type Relationship = {
@@ -136,7 +142,9 @@ const getCachedDonor = cache(async (id: string): Promise<Entity | null> => {
     )
     .eq("id", id)
     .maybeSingle();
-  return (data as Entity | null) ?? null;
+  if (!data) return null;
+  const attribution = await fetchAttributionForEntity(supabase, "financial_entity", id);
+  return { ...(data as Omit<Entity, "attribution">), attribution };
 });
 
 export async function generateMetadata(
@@ -416,6 +424,13 @@ export default async function DonorProfilePage({
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(donorJsonLd) }}
+      />
+      {/* FIX-398: attribution payload embedded for the FIX-399 SourceBadge
+          hydration hook. Not visually rendered. */}
+      <script
+        type="application/json"
+        data-civitics-attribution="financial_entity"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(entity.attribution) }}
       />
       <PageViewTracker entityType="financial" entityId={entity.id} />
 

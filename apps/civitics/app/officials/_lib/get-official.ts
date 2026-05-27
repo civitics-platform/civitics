@@ -1,5 +1,5 @@
 import { cache } from "react";
-import { createPublicClient } from "@civitics/db";
+import { createPublicClient, fetchAttributionForEntity, type AttributionShape } from "@civitics/db";
 
 // React.cache() dedupes within a single request. generateMetadata() and the
 // page component both fetch the official row; without this wrapper, that's
@@ -33,6 +33,7 @@ export type CachedOfficial = {
   jurisdictions: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   governing_bodies: any;
+  attribution: AttributionShape;
 };
 
 export const getCachedOfficial = cache(
@@ -45,6 +46,8 @@ export const getCachedOfficial = cache(
       )
       .eq("id", id)
       .single();
-    return (data as CachedOfficial | null) ?? null;
+    if (!data) return null;
+    const attribution = await fetchAttributionForEntity(supabase, "official", id);
+    return { ...(data as Omit<CachedOfficial, "attribution">), attribution };
   }
 );

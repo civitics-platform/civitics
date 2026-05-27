@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { cookies } from "next/headers";
 import nextDynamic from "next/dynamic";
-import { createServerClient, createAdminClient } from "@civitics/db";
+import { createServerClient, createAdminClient, fetchAttributionForEntity } from "@civitics/db";
 import { createClient } from "@supabase/supabase-js";
 import { AgencyHierarchyTree } from "./components/AgencyHierarchyTree";
 import { PageViewTracker } from "../../components/PageViewTracker";
@@ -181,6 +181,11 @@ export default async function AgencyProfilePage({
 
   const agency = agencyRes.data;
   if (!agency) notFound();
+
+  // FIX-398: attribution shape for the future SourceBadge (FIX-399). Most
+  // agencies have primary_source IS NULL today; the badge will simply skip
+  // rendering when primary is null.
+  const agencyAttribution = await fetchAttributionForEntity(supabase, "agency", agency.id);
 
   // Step 2: use agency key for proposal queries (metadata->>agency_id stores acronym or name)
   const agencyKey = agency.acronym ?? agency.name;
@@ -409,6 +414,13 @@ export default async function AgencyProfilePage({
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* FIX-398: attribution payload embedded for the FIX-399 SourceBadge
+          hydration hook. Not visually rendered. */}
+      <script
+        type="application/json"
+        data-civitics-attribution="agency"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(agencyAttribution) }}
+      />
       <PageViewTracker entityType="agency" entityId={slug} />
       {/* Top bar */}
       <header className="border-b border-gray-200 bg-white px-5 py-3">
