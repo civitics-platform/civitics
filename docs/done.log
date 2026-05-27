@@ -510,3 +510,4 @@
 2026-05-25 | FIX-396 | fe32ecb4 | local+prod | fix(dashboard): suppress hydration warnings on time-sensitive text
 2026-05-26 | FIX-393 | 45105773 | closes-as-superseded | feat(db): materialize primary_source on entity tables (FIX-397)
 2026-05-26 | FIX-397 | 45105773 | local+prod | feat(db): materialize primary_source on entity tables (FIX-397)
+2026-05-26 | FIX-398 | 4d2e3b48 | local+prod | feat(api): surface attribution on detail-page responses (FIX-398)
