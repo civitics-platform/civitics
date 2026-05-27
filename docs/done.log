@@ -508,3 +508,5 @@
 2026-05-25 | FIX-394 | 3de4b18e | local+prod | fix(dashboard): Site Activity reads page_views.page not path
 2026-05-25 | FIX-395 | 5ac755bb | local+prod | feat(dashboard): widen Site Activity window to 7d, drop home/dashboard filter
 2026-05-25 | FIX-396 | fe32ecb4 | local+prod | fix(dashboard): suppress hydration warnings on time-sensitive text
+2026-05-26 | FIX-393 | 45105773 | closes-as-superseded | feat(db): materialize primary_source on entity tables (FIX-397)
+2026-05-26 | FIX-397 | 45105773 | local+prod | feat(db): materialize primary_source on entity tables (FIX-397)
