@@ -11,10 +11,13 @@
  * The full xsr expansion (sources[]) is intentionally NOT fetched here — the
  * detail page only needs the cheap primary + count. The lazy-loaded popover
  * (FIX-400) hits /api/attribution/[type]/[id] for the full list.
+ *
+ * FIX-408: xsr now carries a public-read RLS policy (xsr_public_read), so
+ * both the entity-table read and the xsr count subquery route through the
+ * single caller-passed client. createAdminClient is no longer required here.
  */
 
-import { createAdminClient } from "./client";
-import type { createPublicClient, createServerClient } from "./client";
+import type { createAdminClient, createPublicClient, createServerClient } from "./client";
 import {
   attributionDetailEndpoint,
   type AttributionEntityType,
@@ -53,12 +56,6 @@ export async function fetchAttributionForEntity(
     return fetchAttributionFromXsrOnly(db, entityType, entityId);
   }
 
-  // xsr has RLS enabled with no policies, so the passed (publishable-key)
-  // client can't see it. Spin up an admin client just for the count step.
-  // The entity-table read uses the caller's client (RLS-respecting). Admin
-  // is instantiated lazily at request time — safe under ISR because
-  // generateStaticParams returns []; never invoked at Vercel build.
-  const admin = createAdminClient();
   const [entityRes, countRes] = await Promise.all([
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (db as any)
@@ -67,7 +64,7 @@ export async function fetchAttributionForEntity(
       .eq("id", entityId)
       .maybeSingle(),
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (admin as any)
+    (db as any)
       .from("external_source_refs")
       .select("id", { count: "exact", head: true })
       .eq("entity_type", entityType)
@@ -96,14 +93,12 @@ export async function fetchAttributionForEntity(
 }
 
 async function fetchAttributionFromXsrOnly(
-  _db: AnyDb,
+  db: AnyDb,
   entityType: AttributionEntityType,
   entityId: string,
 ): Promise<AttributionShape> {
-  // xsr has no public RLS policy — must use admin to read.
-  const admin = createAdminClient();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, count } = await (admin as any)
+  const { data, count } = await (db as any)
     .from("external_source_refs")
     .select("source, source_url, last_seen_at", { count: "exact" })
     .eq("entity_type", entityType)

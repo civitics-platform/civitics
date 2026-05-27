@@ -7,7 +7,7 @@
  * Run standalone:  pnpm --filter @civitics/data data:officials
  */
 
-import { createAdminClient } from "@civitics/db";
+import { createAdminClient, refreshPrimarySourceForEntities } from "@civitics/db";
 import type { Database } from "@civitics/db";
 import {
   fetchAllMembers,
@@ -19,6 +19,10 @@ import { startSync, completeSync, failSync } from "../sync-log";
 import { runCandidateToElectedPromotion } from "./promote-candidates";
 
 type OfficialInsert = Database["public"]["Tables"]["officials"]["Insert"];
+
+// FIX-403: xsr upsert chunk size — mirrors REFS_CHUNK in littlesis/writer.ts.
+// House+Senate is ~565 members, so this is one or two chunks in practice.
+const XSR_CHUNK = 500;
 
 export interface OfficialsPipelineOptions {
   apiKey: string;
@@ -89,6 +93,11 @@ export async function runOfficialsPipeline(
   let updated = 0;
   let skipped = 0;
 
+  // FIX-403: collect (officialId, bioguideId) for every successfully
+  // processed member so we can bulk-upsert external_source_refs after the
+  // main loop and call refreshPrimarySourceForEntities once per run.
+  const processedMembers: Array<{ officialId: string; bioguideId: string }> = [];
+
   // Collect inserts; flush in batches of 50
   const insertBatch: OfficialInsert[] = [];
 
@@ -98,7 +107,10 @@ export async function runOfficialsPipeline(
     const batch = insertBatch.splice(0, insertBatch.length);
 
     try {
-      const { error } = await db.from("officials").insert(batch);
+      const { data, error } = await db
+        .from("officials")
+        .insert(batch)
+        .select("id, source_ids");
 
       if (error) {
         console.error(
@@ -108,6 +120,16 @@ export async function runOfficialsPipeline(
         skipped += batch.length;
       } else {
         inserted += batch.length;
+        // FIX-403: capture bioguideId → official.id for the post-loop xsr write.
+        for (const row of (data ?? []) as Array<{
+          id:         string;
+          source_ids: Record<string, string> | null;
+        }>) {
+          const bioguideId = row.source_ids?.["congress_gov"];
+          if (bioguideId) {
+            processedMembers.push({ officialId: row.id, bioguideId });
+          }
+        }
       }
     } catch (err) {
       console.error(`  Unexpected error inserting batch:`, err);
@@ -179,6 +201,11 @@ export async function runOfficialsPipeline(
           skipped++;
         } else {
           updated++;
+          // FIX-403: track for the post-loop xsr write.
+          processedMembers.push({
+            officialId: existingId,
+            bioguideId: member.bioguideId,
+          });
         }
       } catch (err) {
         console.error(
@@ -204,6 +231,45 @@ export async function runOfficialsPipeline(
   console.log(`Inserted ${inserted}, Updated ${updated} officials`);
   if (skipped > 0) {
     console.log(`Skipped ${skipped} officials due to errors`);
+  }
+
+  // FIX-403: dual-write external_source_refs for every processed member,
+  // then materialize primary_source on the affected officials. Runs BEFORE
+  // promote-candidates so its FK-rewrite step (which covers external_*)
+  // remaps any xsr bindings whose officials get collapsed in the same run.
+  if (processedMembers.length > 0) {
+    const nowIso = new Date().toISOString();
+    let xsrFailed = 0;
+    for (let i = 0; i < processedMembers.length; i += XSR_CHUNK) {
+      const chunk = processedMembers.slice(i, i + XSR_CHUNK);
+      const payload = chunk.map((m) => ({
+        source:       "congress_gov",
+        external_id:  m.bioguideId,
+        entity_type:  "official",
+        entity_id:    m.officialId,
+        source_url:   `https://www.congress.gov/member/${m.bioguideId}`,
+        last_seen_at: nowIso,
+        metadata:     {},
+      }));
+      const { error } = await db
+        .from("external_source_refs")
+        .upsert(payload, { onConflict: "source,external_id" });
+      if (error) {
+        console.error(
+          `  [xsr] external_source_refs chunk ${i}-${i + chunk.length} failed: ${error.message}`
+        );
+        xsrFailed += chunk.length;
+      }
+    }
+    if (xsrFailed > 0) {
+      console.log(`  [xsr] ${xsrFailed} bindings failed to upsert (non-fatal)`);
+    }
+
+    await refreshPrimarySourceForEntities(
+      db,
+      "official",
+      processedMembers.map((m) => m.officialId),
+    );
   }
 
   // FIX-248: unify (Senator|Representative, Candidate for X) pairs that

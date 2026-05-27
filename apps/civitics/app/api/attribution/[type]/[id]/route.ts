@@ -9,16 +9,17 @@
  *   404 — entity does not exist in its target table
  *   200 — { primary, sources: [], source_count } even when xsr is empty
  *
- * Uses createAdminClient because the xsr table is server-only data (RLS
- * exists but the surface is admin-curated). force-dynamic per the
- * "createAdminClient ⇒ force-dynamic" rule.
+ * FIX-408: xsr now carries a public-read RLS policy (xsr_public_read), so
+ * the route reads through the publishable-key client. force-dynamic stays
+ * because the params shape ([type]/[id]) precludes any static-rendering
+ * value, not because admin access is required.
  */
 
 export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import {
-  createAdminClient,
+  createPublicClient,
   ATTRIBUTION_ENTITY_TYPES,
   deriveSourceUrl,
   type AttributionDetailResponse,
@@ -77,7 +78,7 @@ export async function GET(
     return NextResponse.json({ error: "invalid_id" }, { status: 400 });
   }
 
-  const db = createAdminClient();
+  const db = createPublicClient();
   const table = ENTITY_TYPE_TO_TABLE[type];
 
   // 1) Confirm the entity exists. Distinguish "not found" from "DB error" by
