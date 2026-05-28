@@ -1539,6 +1539,86 @@ export type Database = {
         }
         Relationships: []
       }
+      entity_grants: {
+        Row: {
+          created_at: string
+          delegated_from: string | null
+          evidence_id: string | null
+          expires_at: string | null
+          granted_at: string | null
+          granted_by: string | null
+          id: string
+          metadata: Json
+          role: Database["public"]["Enums"]["grant_role"]
+          status: Database["public"]["Enums"]["grant_status"]
+          target_id: string | null
+          target_type: Database["public"]["Enums"]["grant_target_type"]
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          delegated_from?: string | null
+          evidence_id?: string | null
+          expires_at?: string | null
+          granted_at?: string | null
+          granted_by?: string | null
+          id?: string
+          metadata?: Json
+          role: Database["public"]["Enums"]["grant_role"]
+          status?: Database["public"]["Enums"]["grant_status"]
+          target_id?: string | null
+          target_type: Database["public"]["Enums"]["grant_target_type"]
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          delegated_from?: string | null
+          evidence_id?: string | null
+          expires_at?: string | null
+          granted_at?: string | null
+          granted_by?: string | null
+          id?: string
+          metadata?: Json
+          role?: Database["public"]["Enums"]["grant_role"]
+          status?: Database["public"]["Enums"]["grant_status"]
+          target_id?: string | null
+          target_type?: Database["public"]["Enums"]["grant_target_type"]
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "entity_grants_delegated_from_fkey"
+            columns: ["delegated_from"]
+            isOneToOne: false
+            referencedRelation: "entity_grants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "entity_grants_evidence_id_fkey"
+            columns: ["evidence_id"]
+            isOneToOne: false
+            referencedRelation: "grant_evidence"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "entity_grants_granted_by_fkey"
+            columns: ["granted_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "entity_grants_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       entity_tags: {
         Row: {
           ai_model: string | null
@@ -1895,8 +1975,12 @@ export type Database = {
           jurisdiction_id: string
           metadata: Json
           name: string
+          primary_source: string | null
+          primary_source_last_seen_at: string | null
+          primary_source_url: string | null
           seat_count: number | null
           short_name: string | null
+          slug: string | null
           term_length_years: number | null
           type: Database["public"]["Enums"]["governing_body_type"]
           updated_at: string
@@ -1910,8 +1994,12 @@ export type Database = {
           jurisdiction_id: string
           metadata?: Json
           name: string
+          primary_source?: string | null
+          primary_source_last_seen_at?: string | null
+          primary_source_url?: string | null
           seat_count?: number | null
           short_name?: string | null
+          slug?: string | null
           term_length_years?: number | null
           type: Database["public"]["Enums"]["governing_body_type"]
           updated_at?: string
@@ -1925,8 +2013,12 @@ export type Database = {
           jurisdiction_id?: string
           metadata?: Json
           name?: string
+          primary_source?: string | null
+          primary_source_last_seen_at?: string | null
+          primary_source_url?: string | null
           seat_count?: number | null
           short_name?: string | null
+          slug?: string | null
           term_length_years?: number | null
           type?: Database["public"]["Enums"]["governing_body_type"]
           updated_at?: string
@@ -1938,6 +2030,105 @@ export type Database = {
             columns: ["jurisdiction_id"]
             isOneToOne: false
             referencedRelation: "jurisdictions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      grant_events: {
+        Row: {
+          actor_id: string | null
+          event: string
+          grant_id: string
+          id: number
+          metadata: Json
+          notes: string | null
+          occurred_at: string
+        }
+        Insert: {
+          actor_id?: string | null
+          event: string
+          grant_id: string
+          id?: number
+          metadata?: Json
+          notes?: string | null
+          occurred_at?: string
+        }
+        Update: {
+          actor_id?: string | null
+          event?: string
+          grant_id?: string
+          id?: number
+          metadata?: Json
+          notes?: string | null
+          occurred_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "grant_events_actor_id_fkey"
+            columns: ["actor_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "grant_events_grant_id_fkey"
+            columns: ["grant_id"]
+            isOneToOne: false
+            referencedRelation: "entity_grants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      grant_evidence: {
+        Row: {
+          artifact_ref: string | null
+          id: string
+          metadata: Json
+          method: Database["public"]["Enums"]["evidence_method"]
+          notes: string | null
+          outcome: Database["public"]["Enums"]["evidence_outcome"]
+          reviewed_at: string | null
+          reviewer_id: string | null
+          submitted_at: string
+          user_id: string
+        }
+        Insert: {
+          artifact_ref?: string | null
+          id?: string
+          metadata?: Json
+          method: Database["public"]["Enums"]["evidence_method"]
+          notes?: string | null
+          outcome?: Database["public"]["Enums"]["evidence_outcome"]
+          reviewed_at?: string | null
+          reviewer_id?: string | null
+          submitted_at?: string
+          user_id: string
+        }
+        Update: {
+          artifact_ref?: string | null
+          id?: string
+          metadata?: Json
+          method?: Database["public"]["Enums"]["evidence_method"]
+          notes?: string | null
+          outcome?: Database["public"]["Enums"]["evidence_outcome"]
+          reviewed_at?: string | null
+          reviewer_id?: string | null
+          submitted_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "grant_evidence_reviewer_id_fkey"
+            columns: ["reviewer_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "grant_evidence_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
             referencedColumns: ["id"]
           },
         ]
@@ -2082,6 +2273,54 @@ export type Database = {
             columns: ["proposal_id"]
             isOneToOne: true
             referencedRelation: "proposals"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      institution_extensions: {
+        Row: {
+          acronym: string | null
+          created_at: string
+          governing_body_id: string
+          metadata: Json
+          parent_id: string | null
+          updated_at: string
+          usaspending_agency_id: string | null
+          usaspending_subtier_id: string | null
+        }
+        Insert: {
+          acronym?: string | null
+          created_at?: string
+          governing_body_id: string
+          metadata?: Json
+          parent_id?: string | null
+          updated_at?: string
+          usaspending_agency_id?: string | null
+          usaspending_subtier_id?: string | null
+        }
+        Update: {
+          acronym?: string | null
+          created_at?: string
+          governing_body_id?: string
+          metadata?: Json
+          parent_id?: string | null
+          updated_at?: string
+          usaspending_agency_id?: string | null
+          usaspending_subtier_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "institution_extensions_governing_body_id_fkey"
+            columns: ["governing_body_id"]
+            isOneToOne: true
+            referencedRelation: "governing_bodies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "institution_extensions_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "governing_bodies"
             referencedColumns: ["id"]
           },
         ]
@@ -3960,6 +4199,31 @@ export type Database = {
         }
         Relationships: []
       }
+      institutions: {
+        Row: {
+          acronym: string | null
+          contact_email: string | null
+          created_at: string | null
+          id: string | null
+          is_active: boolean | null
+          jurisdiction_id: string | null
+          metadata: Json | null
+          name: string | null
+          parent_id: string | null
+          primary_source: string | null
+          primary_source_last_seen_at: string | null
+          primary_source_url: string | null
+          short_name: string | null
+          slug: string | null
+          source_table: string | null
+          type: string | null
+          updated_at: string | null
+          usaspending_agency_id: string | null
+          usaspending_subtier_id: string | null
+          website_url: string | null
+        }
+        Relationships: []
+      }
       official_homepage_stats_mv: {
         Row: {
           donor_count: number | null
@@ -4390,6 +4654,10 @@ export type Database = {
           storage_bytes: number
         }[]
       }
+      has_active_constituent_grant: {
+        Args: { p_jurisdiction_id: string; p_user_id: string }
+        Returns: boolean
+      }
       link_federal_reps_to_districts: { Args: never; Returns: number }
       link_officials_to_districts: { Args: never; Returns: number }
       normalize_pv_path: { Args: { p: string }; Returns: string }
@@ -4673,6 +4941,8 @@ export type Database = {
         | "party_committee"
         | "small_donor_aggregate"
         | "other"
+      evidence_method: "address_check" | "voter_roll" | "manual_review"
+      evidence_outcome: "pending" | "approved" | "rejected" | "inconclusive"
       financial_relationship_type:
         | "donation"
         | "gift"
@@ -4708,6 +4978,9 @@ export type Database = {
         | "international_body"
         | "other"
         | "committee"
+      grant_role: "constituent" | "platform_admin"
+      grant_status: "pending" | "active" | "revoked" | "expired"
+      grant_target_type: "global" | "jurisdiction"
       initiative_authorship: "individual" | "community"
       initiative_resolution: "sponsored" | "declined" | "withdrawn" | "expired"
       initiative_scope: "federal" | "state" | "local"
@@ -4949,6 +5222,8 @@ export const Constants = {
         "small_donor_aggregate",
         "other",
       ],
+      evidence_method: ["address_check", "voter_roll", "manual_review"],
+      evidence_outcome: ["pending", "approved", "rejected", "inconclusive"],
       financial_relationship_type: [
         "donation",
         "gift",
@@ -4987,6 +5262,9 @@ export const Constants = {
         "other",
         "committee",
       ],
+      grant_role: ["constituent", "platform_admin"],
+      grant_status: ["pending", "active", "revoked", "expired"],
+      grant_target_type: ["global", "jurisdiction"],
       initiative_authorship: ["individual", "community"],
       initiative_resolution: ["sponsored", "declined", "withdrawn", "expired"],
       initiative_scope: ["federal", "state", "local"],
