@@ -70,6 +70,11 @@ export const SOURCE_URL_TEMPLATES: Record<string, Partial<Record<AttributionEnti
   },
   fec: {
     financial_entity: "https://www.fec.gov/data/committee/{external_id}/",
+    official:         "https://www.fec.gov/data/candidate/{external_id}/",
+  },
+  regulations_gov: {
+    proposal: "https://www.regulations.gov/document/{external_id}",
+    agency:   "https://www.regulations.gov/agency/{external_id}",
   },
   littlesis: {
     financial_entity: "https://littlesis.org/entity/{external_id}",
@@ -78,9 +83,6 @@ export const SOURCE_URL_TEMPLATES: Record<string, Partial<Record<AttributionEnti
   openstates: {
     official: "https://openstates.org/person/{external_id}/",
     proposal: "https://openstates.org/bill/{external_id}/",
-  },
-  regulations_gov: {
-    proposal: "https://www.regulations.gov/document/{external_id}",
   },
   courtlistener: {
     proposal: "https://www.courtlistener.com/opinion/{external_id}/",

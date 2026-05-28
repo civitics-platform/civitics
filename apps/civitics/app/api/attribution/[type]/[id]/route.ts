@@ -81,13 +81,18 @@ export async function GET(
   const db = createPublicClient();
   const table = ENTITY_TYPE_TO_TABLE[type];
 
-  // 1) Confirm the entity exists. Distinguish "not found" from "DB error" by
-  // checking error and data separately — withDbTimeout swallows timeouts to
-  // { data: null, error } and logs PostgREST structural codes via prefix.
+  // 1) Confirm the entity exists. For FIX-406 synthetic-source prepend on
+  // financial_entity / official, also pull the FEC key + updated_at so we
+  // don't need a second round-trip.
+  const entitySelect =
+    type === "financial_entity" ? "id, fec_committee_id, updated_at"
+    : type === "official"        ? "id, source_ids, updated_at"
+    :                              "id";
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const entityRes = await withDbTimeout<any>(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (db as any).from(table).select("id").eq("id", id).maybeSingle(),
+    (db as any).from(table).select(entitySelect).eq("id", id).maybeSingle(),
     5000,
     `attribution:entity-check:${type}`,
   );
@@ -99,6 +104,12 @@ export async function GET(
   if (!entityRes?.data) {
     return NextResponse.json({ error: "not_found" }, { status: 404 });
   }
+  const entityRow = entityRes.data as {
+    id: string;
+    fec_committee_id?: string | null;
+    source_ids?: Record<string, unknown> | null;
+    updated_at?: string | null;
+  };
 
   // 2) Fetch xsr rows. Sort client-side by priority then last_seen_at so the
   // first row is "primary". This matches public.source_priority()'s ordering.
@@ -127,21 +138,53 @@ export async function GET(
     metadata:     Record<string, unknown> | null;
   }>;
 
-  const sources: AttributionDetailSource[] = rawRows
-    .map((r) => ({
-      source:       r.source,
-      external_id:  r.external_id,
-      source_url:   deriveSourceUrl(r.source, type, r.external_id, r.source_url),
-      last_seen_at: r.last_seen_at,
-      priority:     sourcePriority(r.source),
+  const sources: AttributionDetailSource[] = rawRows.map((r) => ({
+    source:       r.source,
+    external_id:  r.external_id,
+    source_url:   deriveSourceUrl(r.source, type, r.external_id, r.source_url),
+    last_seen_at: r.last_seen_at,
+    priority:     sourcePriority(r.source),
+    is_primary:   false,
+    metadata:     r.metadata ?? {},
+  }));
+
+  // FIX-406: synthesize a primary_source='fec' entry from the entity's
+  // first-class FEC key (fec_committee_id on financial_entities, source_ids
+  // .fec_candidate_id on officials) when no real fec xsr row is already in
+  // the set. Mirrors the DB-side synthesis in
+  // rebuild_all_primary_sources(); the API needs its own copy because the
+  // detail expansion lists ALL sources, not just primary, and the xsr
+  // surface intentionally has no fec rows.
+  const hasFecXsr = sources.some((s) => s.source === "fec");
+  let fecExternalId: string | null = null;
+  if (!hasFecXsr) {
+    if (type === "financial_entity" && entityRow.fec_committee_id) {
+      fecExternalId = entityRow.fec_committee_id;
+    } else if (
+      type === "official" &&
+      entityRow.source_ids &&
+      typeof entityRow.source_ids["fec_candidate_id"] === "string"
+    ) {
+      fecExternalId = entityRow.source_ids["fec_candidate_id"] as string;
+    }
+  }
+  if (fecExternalId) {
+    sources.push({
+      source:       "fec",
+      external_id:  fecExternalId,
+      source_url:   deriveSourceUrl("fec", type, fecExternalId, null),
+      last_seen_at: entityRow.updated_at ?? new Date().toISOString(),
+      priority:     sourcePriority("fec"),
       is_primary:   false,
-      metadata:     r.metadata ?? {},
-    }))
-    .sort((a, b) => {
-      if (a.priority !== b.priority) return a.priority - b.priority;
-      // Newer first when priority ties.
-      return b.last_seen_at.localeCompare(a.last_seen_at);
+      metadata:     { synthetic: true },
     });
+  }
+
+  sources.sort((a, b) => {
+    if (a.priority !== b.priority) return a.priority - b.priority;
+    // Newer first when priority ties.
+    return b.last_seen_at.localeCompare(a.last_seen_at);
+  });
 
   if (sources.length > 0) {
     sources[0]!.is_primary = true;

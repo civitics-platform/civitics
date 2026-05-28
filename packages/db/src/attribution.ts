@@ -47,15 +47,6 @@ export async function fetchAttributionForEntity(
 ): Promise<AttributionShape> {
   const table = ENTITY_TYPE_TO_TABLE[entityType];
 
-  // governing_bodies doesn't carry primary_source* columns (FIX-397 only
-  // materialized them on 5 tables). Fall back to a pure xsr lookup for that
-  // type — the SSR loaders don't call us with governing_body today, but the
-  // surface is shaped so future callers don't trip a SELECT on a missing
-  // column.
-  if (entityType === "governing_body") {
-    return fetchAttributionFromXsrOnly(db, entityType, entityId);
-  }
-
   const [entityRes, countRes] = await Promise.all([
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (db as any)
@@ -88,34 +79,6 @@ export async function fetchAttributionForEntity(
   return {
     primary,
     source_count:    count,
-    detail_endpoint: attributionDetailEndpoint(entityType, entityId),
-  };
-}
-
-async function fetchAttributionFromXsrOnly(
-  db: AnyDb,
-  entityType: AttributionEntityType,
-  entityId: string,
-): Promise<AttributionShape> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, count } = await (db as any)
-    .from("external_source_refs")
-    .select("source, source_url, last_seen_at", { count: "exact" })
-    .eq("entity_type", entityType)
-    .eq("entity_id", entityId)
-    .order("last_seen_at", { ascending: false });
-
-  const rows = (data ?? []) as Array<{ source: string; source_url: string | null; last_seen_at: string }>;
-  // Without source_priority() composability through PostgREST, pick the
-  // freshest row as primary. governing_body is a low-volume corner today
-  // (~255 rows in prod), so this is fine — re-evaluate when usage grows.
-  const top = rows[0] ?? null;
-
-  return {
-    primary: top
-      ? { source: top.source, source_url: top.source_url, last_seen_at: top.last_seen_at }
-      : null,
-    source_count:    (count ?? rows.length) as number,
     detail_endpoint: attributionDetailEndpoint(entityType, entityId),
   };
 }

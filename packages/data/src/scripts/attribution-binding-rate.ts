@@ -23,6 +23,7 @@ const TABLES = [
   { table: "officials",         entityType: "official"         },
   { table: "proposals",         entityType: "proposal"         },
   { table: "agencies",          entityType: "agency"           },
+  { table: "governing_bodies",  entityType: "governing_body"   },
   { table: "financial_entities", entityType: "financial_entity" },
 ] as const;
 
