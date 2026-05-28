@@ -519,3 +519,4 @@
 2026-05-27 | FIX-402 | cc48c757 | local+prod | feat(data): lift attribution coverage — gb dispatch + FEC synthesis + agencies seed
 2026-05-27 | FIX-406 | cc48c757 | local+prod | feat(data): lift attribution coverage — gb dispatch + FEC synthesis + agencies seed
 2026-05-27 | FIX-410 | cc48c757 | local+prod | feat(data): lift attribution coverage — gb dispatch + FEC synthesis + agencies seed
+2026-05-27 | FIX-404 | f410bab2 | local-only | feat(data): refresh primary_source on write in 5 remaining xsr pipelines
