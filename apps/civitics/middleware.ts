@@ -146,12 +146,28 @@ function rateLimitResponse(retryAfterSec: number): NextResponse {
 // Middleware
 // ---------------------------------------------------------------------------
 
+// FIX-418: /agencies/<uuid> → /institutions/<uuid> as a request-level 308.
+// Doing this in middleware (rather than in the [slug] page's redirect()) gives
+// a true HTTP 308 status — when redirect() runs inside a Suspense boundary, it
+// degrades to a meta-refresh + 200, which Google still honors but the prompt
+// wanted a real permanent HTTP redirect for SEO.
+const AGENCY_UUID_PATH_RE =
+  /^\/agencies\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/?$/i;
+
 export async function middleware(request: NextRequest) {
   const path = request.nextUrl.pathname;
 
   // ── Bot pattern filtering ──────────────────────────────────────────────────
   if (BOT_PATTERNS.some((p) => p.test(path))) {
     return new NextResponse(null, { status: 404 });
+  }
+
+  // ── FIX-418: /agencies/<uuid> → /institutions/<uuid> (308) ────────────────
+  const agencyMatch = AGENCY_UUID_PATH_RE.exec(path);
+  if (agencyMatch) {
+    const dest = request.nextUrl.clone();
+    dest.pathname = `/institutions/${agencyMatch[1]}`;
+    return NextResponse.redirect(dest, 308);
   }
 
   // ── Rate limiting on public API routes ────────────────────────────────────
