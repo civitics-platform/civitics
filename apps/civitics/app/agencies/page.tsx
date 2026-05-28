@@ -1,5 +1,8 @@
 export const dynamic = "force-dynamic";
 
+// TODO: deprecate post Stage 3 — see FIX-418. Stage 3 collapses agencies
+// into governing_bodies; the institutions index page replaces this one.
+
 import { cookies } from "next/headers";
 import { createServerClient, agencyFullName } from "@civitics/db";
 import { withDbTimeout } from "../../src/lib/supabase-check";

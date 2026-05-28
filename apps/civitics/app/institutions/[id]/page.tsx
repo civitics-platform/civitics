@@ -1,0 +1,1333 @@
+// FIX-418: Stage 1 institution unification.
+//
+// Reads from public.institutions (UNION view over governing_bodies + agencies).
+// Branches the render by source_table — agency rows get the full agency
+// profile cribbed from /agencies/[slug]; governing_body rows get a leaner
+// header + officials roster + recent proposals/votes.
+//
+// Param shape: [id]. Accepts a UUID directly or a governing_bodies.slug
+// (governing_bodies side only; agencies side has no slug). Non-UUID values
+// resolve via governing_bodies.slug → permanent-redirect to /institutions/<uuid>.
+import { notFound, permanentRedirect } from "next/navigation";
+import { cookies } from "next/headers";
+import nextDynamic from "next/dynamic";
+import { createServerClient, fetchAttributionForEntity } from "@civitics/db";
+import { createClient } from "@supabase/supabase-js";
+import { AgencyHierarchyTree } from "../../agencies/[slug]/components/AgencyHierarchyTree";
+import { PageViewTracker } from "../../components/PageViewTracker";
+import { FollowButton } from "../../components/FollowButton";
+import { SourceBadge } from "../../components/SourceBadge";
+import { SourceDetailPopover } from "../../components/SourceDetailPopover";
+
+const AgencyGraph = nextDynamic(
+  () => import("../../agencies/[slug]/components/AgencyGraph").then((m) => ({ default: m.AgencyGraph })),
+  { ssr: false, loading: () => <div className="h-[400px] bg-gray-50 rounded-lg" /> }
+);
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+type InstitutionRow = {
+  id: string;
+  jurisdiction_id: string;
+  type: string;
+  name: string;
+  short_name: string | null;
+  website_url: string | null;
+  contact_email: string | null;
+  is_active: boolean;
+  slug: string | null;
+  source_table: "agency" | "governing_body";
+  acronym: string | null;
+  usaspending_agency_id: string | null;
+  usaspending_subtier_id: string | null;
+  parent_id: string | null;
+  primary_source: string | null;
+  primary_source_url: string | null;
+  primary_source_last_seen_at: string | null;
+  metadata: Record<string, unknown> | null;
+};
+
+type Proposal = {
+  id: string;
+  title: string;
+  status: string;
+  type: string;
+  bill_number: string | null;
+  regulations_gov_id: string | null;
+  introduced_at: string | null;
+  comment_period_end: string | null;
+  summary_plain: string | null;
+};
+
+type OfficialLink = {
+  id: string;
+  name: string;
+  title: string;
+  connectionType: string;
+  strength: number;
+  startDate: string | null;
+  endDate: string | null;
+  isCurrent: boolean;
+  evidenceSource: string | null;
+  sourceDate: string | null;
+};
+
+type SpendingRow = {
+  recipient_name: string;
+  award_type: string;
+  amount_cents: number;
+  award_date: string | null;
+};
+
+type SpendingGroup = {
+  recipient: string;
+  awardType: string;
+  totalCents: number;
+  fiscalYear: string;
+};
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+const AGENCY_TYPE_LABELS: Record<string, string> = {
+  federal:       "Federal Agency",
+  state:         "State Agency",
+  local:         "Local Agency",
+  independent:   "Independent Agency",
+  international: "International Body",
+  other:         "Agency",
+};
+
+const AGENCY_TYPE_COLORS: Record<string, string> = {
+  federal:       "bg-blue-50 text-blue-700 border-blue-200",
+  state:         "bg-purple-50 text-purple-700 border-purple-200",
+  local:         "bg-green-50 text-green-700 border-green-200",
+  independent:   "bg-amber-50 text-amber-700 border-amber-200",
+  international: "bg-indigo-50 text-indigo-700 border-indigo-200",
+  other:         "bg-gray-50 text-gray-600 border-gray-200",
+};
+
+const GB_TYPE_LABELS: Record<string, string> = {
+  legislature_upper:       "Upper Chamber",
+  legislature_lower:       "Lower Chamber",
+  legislature_unicameral:  "Legislature",
+  executive:               "Executive",
+  judicial:                "Court",
+  regulatory_agency:       "Regulatory Agency",
+  municipal_council:       "Municipal Council",
+  school_board:            "School Board",
+  special_district:        "Special District",
+  international_body:      "International Body",
+  committee:               "Committee",
+  other:                   "Governing Body",
+};
+
+const GB_TYPE_COLORS: Record<string, string> = {
+  legislature_upper:       "bg-indigo-50 text-indigo-700 border-indigo-200",
+  legislature_lower:       "bg-indigo-50 text-indigo-700 border-indigo-200",
+  legislature_unicameral:  "bg-indigo-50 text-indigo-700 border-indigo-200",
+  executive:               "bg-rose-50 text-rose-700 border-rose-200",
+  judicial:                "bg-amber-50 text-amber-700 border-amber-200",
+  regulatory_agency:       "bg-blue-50 text-blue-700 border-blue-200",
+  municipal_council:       "bg-green-50 text-green-700 border-green-200",
+  school_board:            "bg-green-50 text-green-700 border-green-200",
+  special_district:        "bg-emerald-50 text-emerald-700 border-emerald-200",
+  international_body:      "bg-purple-50 text-purple-700 border-purple-200",
+  committee:               "bg-sky-50 text-sky-700 border-sky-200",
+  other:                   "bg-gray-50 text-gray-600 border-gray-200",
+};
+
+const PROPOSAL_STATUS: Record<string, { color: string; label: string }> = {
+  open_comment:         { color: "bg-emerald-100 text-emerald-800", label: "Open Comment" },
+  introduced:           { color: "bg-amber-100 text-amber-800",     label: "Proposed" },
+  in_committee:         { color: "bg-amber-100 text-amber-800",     label: "In Review" },
+  floor_vote:           { color: "bg-blue-100 text-blue-800",       label: "Floor Vote" },
+  passed_committee:     { color: "bg-blue-100 text-blue-800",       label: "Passed Committee" },
+  comment_closed:       { color: "bg-gray-100 text-gray-700",       label: "Comment Closed" },
+  final_rule:           { color: "bg-green-100 text-green-800",     label: "Final Rule" },
+  enacted:              { color: "bg-green-100 text-green-800",     label: "Enacted" },
+  signed:               { color: "bg-green-100 text-green-800",     label: "Signed" },
+  failed:               { color: "bg-red-100 text-red-800",         label: "Failed" },
+  withdrawn:            { color: "bg-gray-100 text-gray-700",       label: "Withdrawn" },
+};
+
+function formatDate(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function formatDollars(cents: number): string {
+  const dollars = cents / 100;
+  if (dollars >= 1_000_000_000) return `$${(dollars / 1_000_000_000).toFixed(1)}B`;
+  if (dollars >= 1_000_000)     return `$${(dollars / 1_000_000).toFixed(1)}M`;
+  if (dollars >= 1_000)         return `$${(dollars / 1_000).toFixed(0)}K`;
+  return `$${dollars.toFixed(0)}`;
+}
+
+function getFiscalYear(isoDate: string | null): string {
+  if (!isoDate) return "Unknown";
+  const d = new Date(isoDate);
+  const month = d.getMonth();
+  const year  = d.getFullYear();
+  return month >= 9 ? `FY${year + 1}` : `FY${year}`;
+}
+
+function aggregateSpending(rows: SpendingRow[]): SpendingGroup[] {
+  const map = new Map<string, SpendingGroup>();
+  for (const row of rows) {
+    const fy  = getFiscalYear(row.award_date);
+    const key = `${row.recipient_name}|${row.award_type ?? "other"}|${fy}`;
+    if (map.has(key)) {
+      map.get(key)!.totalCents += row.amount_cents;
+    } else {
+      map.set(key, {
+        recipient:  row.recipient_name,
+        awardType:  row.award_type ?? "other",
+        totalCents: row.amount_cents,
+        fiscalYear: fy,
+      });
+    }
+  }
+  return Array.from(map.values())
+    .sort((a, b) => b.totalCents - a.totalCents)
+    .slice(0, 10);
+}
+
+export async function generateStaticParams() {
+  return [];
+}
+
+export const dynamic = "force-dynamic";
+
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  if (!UUID_RE.test(id)) return { title: "Institution" };
+
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
+  );
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data } = await (supabase as any)
+    .from("institutions")
+    .select("name, acronym")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (!data) return { title: "Institution" };
+  const label = data.acronym ? `${data.acronym} — ${data.name}` : data.name;
+  return { title: label };
+}
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
+
+export default async function InstitutionPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await params;
+  const cookieStore = await cookies();
+  const supabase = createServerClient(cookieStore);
+
+  // Slug → UUID resolution. governing_bodies.slug only — agencies have no slug.
+  if (!UUID_RE.test(id)) {
+    const { data: slugRow } = await supabase
+      .from("governing_bodies")
+      .select("id")
+      .eq("slug", id)
+      .maybeSingle();
+    if (!slugRow?.id) notFound();
+    permanentRedirect(`/institutions/${slugRow.id}`);
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const instRes = await (supabase as any)
+    .from("institutions")
+    .select(
+      "id, jurisdiction_id, type, name, short_name, website_url, contact_email, is_active, slug, source_table, acronym, usaspending_agency_id, usaspending_subtier_id, parent_id, primary_source, primary_source_url, primary_source_last_seen_at, metadata"
+    )
+    .eq("id", id)
+    .maybeSingle();
+
+  const institution = instRes.data as InstitutionRow | null;
+  if (!institution) notFound();
+
+  const attributionEntityType: "agency" | "governing_body" = institution.source_table;
+  const attribution = await fetchAttributionForEntity(supabase, attributionEntityType, institution.id);
+
+  return institution.source_table === "agency"
+    ? <AgencyView institution={institution} attribution={attribution} supabase={supabase} />
+    : <GoverningBodyView institution={institution} attribution={attribution} supabase={supabase} />;
+}
+
+// ─── Agency view ──────────────────────────────────────────────────────────────
+// Mirrors /agencies/[slug]/page.tsx — full hierarchy, spending, officials, graph.
+
+async function AgencyView({
+  institution,
+  attribution,
+  supabase,
+}: {
+  institution: InstitutionRow;
+  attribution: Awaited<ReturnType<typeof fetchAttributionForEntity>>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: any;
+}) {
+  const now = new Date().toISOString();
+
+  // Fetch agency-only columns the view doesn't carry (description, founded_year,
+  // personnel_fte, governing_body_id). One round-trip on the underlying table.
+  const { data: agencyExtra } = await supabase
+    .from("agencies")
+    .select("description, founded_year, personnel_fte, governing_body_id, agency_type")
+    .eq("id", institution.id)
+    .maybeSingle();
+
+  const agency = {
+    id:                institution.id,
+    name:              institution.name,
+    short_name:        institution.short_name,
+    acronym:           institution.acronym,
+    agency_type:       agencyExtra?.agency_type ?? institution.type,
+    website_url:       institution.website_url,
+    contact_email:     institution.contact_email,
+    description:       (agencyExtra?.description ?? null) as string | null,
+    governing_body_id: (agencyExtra?.governing_body_id ?? null) as string | null,
+    parent_agency_id:  institution.parent_id,
+    founded_year:      (agencyExtra?.founded_year ?? null) as number | null,
+    personnel_fte:     (agencyExtra?.personnel_fte ?? null) as number | null,
+    metadata:          (institution.metadata ?? {}) as Record<string, string | null>,
+  };
+
+  const agencyKey = agency.acronym ?? agency.name;
+  const proposalSelect =
+    "id, title, status, type, introduced_at, summary_plain, metadata, bill_details(bill_number)";
+
+  const [
+    activeRulesRes,
+    recentRulesRes,
+    spendingRes,
+    totalCountRes,
+    openCountRes,
+  ] = await Promise.all([
+    supabase
+      .from("proposals")
+      .select(proposalSelect)
+      .in("status", ["introduced", "in_committee"])
+      .filter("metadata->>agency_id", "eq", agencyKey)
+      .order("metadata->>comment_period_end", { ascending: true })
+      .limit(20),
+    supabase
+      .from("proposals")
+      .select(proposalSelect)
+      .in("status", ["enacted", "failed", "withdrawn", "tabled"])
+      .filter("metadata->>agency_id", "eq", agencyKey)
+      .order("updated_at", { ascending: false })
+      .limit(5),
+    supabase
+      .from("financial_relationships")
+      .select("to_id, to_type, relationship_type, amount_cents, occurred_at")
+      .in("relationship_type", ["contract", "grant"])
+      .eq("from_type", "agency")
+      .eq("from_id", agency.id)
+      .order("amount_cents", { ascending: false })
+      .limit(100),
+    supabase
+      .from("proposals")
+      .select("id", { count: "exact", head: true })
+      .filter("metadata->>agency_id", "eq", agencyKey),
+    supabase
+      .from("proposals")
+      .select("id", { count: "exact", head: true })
+      .filter("metadata->>agency_id", "eq", agencyKey)
+      .eq("status", "introduced")
+      .gt("metadata->>comment_period_end", now),
+  ]);
+
+  const mapProposal = (row: { id: string; title: string; status: string; type: string; introduced_at: string | null; summary_plain: string | null; metadata: Record<string, unknown> | null; bill_details?: { bill_number?: string | null } | null }): Proposal => ({
+    id: row.id,
+    title: row.title,
+    status: row.status,
+    type: row.type,
+    bill_number: row.bill_details?.bill_number ?? null,
+    regulations_gov_id: ((row.metadata ?? {}) as Record<string, string | null>)["regulations_gov_id"] ?? null,
+    introduced_at: row.introduced_at,
+    comment_period_end: ((row.metadata ?? {}) as Record<string, string | null>)["comment_period_end"] ?? null,
+    summary_plain: row.summary_plain,
+  });
+
+  const activeRules: Proposal[] = (activeRulesRes.data ?? []).map(mapProposal);
+  const recentRules: Proposal[] = (recentRulesRes.data ?? []).map(mapProposal);
+  const totalRules = totalCountRes.count ?? 0;
+  const openRules  = openCountRes.count ?? 0;
+
+  const spendingRows = (spendingRes.data ?? []) as Array<{
+    to_id: string;
+    to_type: string;
+    relationship_type: string;
+    amount_cents: number | null;
+    occurred_at: string | null;
+  }>;
+
+  const entityIds = Array.from(
+    new Set(spendingRows.filter((r) => r.to_type === "financial_entity").map((r) => r.to_id))
+  );
+  const entityNames = new Map<string, string>();
+  if (entityIds.length > 0) {
+    const { data: entityRows } = await supabase
+      .from("financial_entities")
+      .select("id, display_name, canonical_name")
+      .in("id", entityIds);
+    for (const e of (entityRows ?? []) as Array<{ id: string; display_name: string | null; canonical_name: string | null }>) {
+      entityNames.set(e.id, e.display_name || e.canonical_name || "Unknown recipient");
+    }
+  }
+
+  const spendingGroups = aggregateSpending(
+    spendingRows.map<SpendingRow>((r) => ({
+      recipient_name: entityNames.get(r.to_id) ?? "Unknown recipient",
+      award_type: r.relationship_type,
+      amount_cents: r.amount_cents ?? 0,
+      award_date: r.occurred_at,
+    }))
+  );
+
+  const totalSpentCents = spendingGroups.reduce((sum, g) => sum + g.totalCents, 0);
+
+  const { data: connectionRows } = await supabase
+    .from("entity_connections")
+    .select("from_id, from_type, to_id, to_type, connection_type, strength, metadata, evidence_source")
+    .eq("connection_type", "appointment")
+    .or(
+      `and(from_type.eq.official,to_id.eq.${agency.id}),and(to_type.eq.official,from_id.eq.${agency.id})`
+    )
+    .limit(100);
+
+  const officialIds = Array.from(
+    new Set(
+      (connectionRows ?? []).map((r: { from_type: string; from_id: string; to_id: string }) =>
+        r.from_type === "official" ? r.from_id : r.to_id
+      )
+    )
+  );
+
+  const SOURCE_PRIORITY: Record<string, number> = { plum_book: 3, congress_nominations: 2, wikidata: 1 };
+  const connectionByOfficialId = new Map<string, {
+    connectionType: string;
+    positionTitle:  string | null;
+    strength:       number;
+    startDate:      string | null;
+    endDate:        string | null;
+    isCurrent:      boolean;
+    evidenceSource: string | null;
+    sourceDate:     string | null;
+  }>();
+  for (const r of (connectionRows ?? []) as Array<{
+    from_type: string; from_id: string; to_id: string;
+    connection_type: string; strength: number | null;
+    metadata: Record<string, unknown> | null; evidence_source: string | null;
+  }>) {
+    const officialId = r.from_type === "official" ? r.from_id : r.to_id;
+    const meta = (r.metadata ?? {}) as Record<string, unknown>;
+    const incoming = {
+      connectionType: r.connection_type,
+      positionTitle:  typeof meta["position_title"] === "string" ? meta["position_title"] as string : null,
+      strength:       typeof r.strength === "number" ? r.strength : 0,
+      startDate:      typeof meta["start_date"] === "string" ? meta["start_date"] as string : null,
+      endDate:        typeof meta["end_date"]   === "string" ? meta["end_date"]   as string : null,
+      isCurrent:      meta["is_current"] === true,
+      evidenceSource: typeof r.evidence_source === "string" ? r.evidence_source : null,
+      sourceDate:     typeof meta["source_date"] === "string" ? meta["source_date"] as string : null,
+    };
+    const existing = connectionByOfficialId.get(officialId);
+    const inPriority = SOURCE_PRIORITY[incoming.evidenceSource ?? ""] ?? 0;
+    const exPriority = SOURCE_PRIORITY[existing?.evidenceSource ?? ""] ?? 0;
+    if (!existing || inPriority > exPriority) {
+      connectionByOfficialId.set(officialId, incoming);
+    }
+  }
+
+  let officials: OfficialLink[] = [];
+  if (officialIds.length > 0) {
+    const { data: officialRows } = await supabase
+      .from("officials")
+      .select("id, full_name, role_title")
+      .in("id", officialIds);
+    officials = ((officialRows ?? []) as Array<{ id: string; full_name: string; role_title: string | null }>).map((o) => {
+      const conn = connectionByOfficialId.get(o.id) ?? { connectionType: "oversight", positionTitle: null, strength: 0, startDate: null, endDate: null, isCurrent: false, evidenceSource: null, sourceDate: null };
+      return {
+        id:             o.id,
+        name:           o.full_name,
+        title:          conn.positionTitle ?? (o.role_title ?? ""),
+        connectionType: conn.connectionType,
+        strength:       conn.strength,
+        startDate:      conn.startDate,
+        endDate:        conn.endDate,
+        isCurrent:      conn.isCurrent,
+        evidenceSource: conn.evidenceSource,
+        sourceDate:     conn.sourceDate,
+      };
+    });
+    officials.sort((a, b) => {
+      if (a.isCurrent !== b.isCurrent) return a.isCurrent ? -1 : 1;
+      if (a.strength !== b.strength) return b.strength - a.strength;
+      if (a.endDate && b.endDate) return b.endDate.localeCompare(a.endDate);
+      return 0;
+    });
+  }
+
+  const plumStateRes = await supabase
+    .from("pipeline_state")
+    .select("value")
+    .eq("key", "plum_book_state")
+    .maybeSingle();
+  const plumState = plumStateRes.data?.value as Record<string, string> | null;
+  const plumLastChange: string | null = plumState?.last_change?.slice(0, 10) ?? null;
+
+  const [parentRes, childrenRes] = await Promise.all([
+    agency.parent_agency_id
+      ? supabase
+          .from("agencies")
+          .select("id, name, acronym")
+          .eq("id", agency.parent_agency_id)
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
+    supabase
+      .from("agencies")
+      .select("id, name, acronym")
+      .eq("parent_agency_id", agency.id)
+      .eq("is_active", true)
+      .order("name")
+      .limit(30),
+  ]);
+
+  const parentAgency = parentRes.data as { id: string; name: string; acronym: string | null } | null;
+  const childAgencies = (childrenRes.data ?? []) as { id: string; name: string; acronym: string | null }[];
+
+  const typeColor = AGENCY_TYPE_COLORS[agency.agency_type] ?? AGENCY_TYPE_COLORS["other"]!;
+  const typeLabel = AGENCY_TYPE_LABELS[agency.agency_type] ?? "Agency";
+  const displayAcronym = agency.acronym ?? agency.short_name ?? agency.name.slice(0, 5).toUpperCase();
+  const agencyMeta = agency.metadata;
+  const twitterHandle = agencyMeta["twitter_handle"] ?? null;
+  const youtubeHandle = agencyMeta["youtube_handle"] ?? null;
+  const facebookUrl   = agencyMeta["facebook_url"]   ?? null;
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <script
+        type="application/json"
+        data-civitics-attribution="agency"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(attribution) }}
+      />
+      <PageViewTracker entityType="agency" entityId={agency.id} />
+      <header className="border-b border-gray-200 bg-white px-5 py-3">
+        <div className="flex items-center gap-3">
+          <a href="/" className="text-sm font-medium text-gray-400 hover:text-gray-700 transition-colors">
+            ← Civitics
+          </a>
+          <span className="text-gray-200">/</span>
+          <a href="/agencies" className="text-sm font-medium text-gray-400 hover:text-gray-700 transition-colors">
+            Agencies
+          </a>
+          <span className="text-gray-200">/</span>
+          <span className="text-sm font-semibold text-gray-900">{displayAcronym}</span>
+        </div>
+      </header>
+
+      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+        <div className="rounded-lg border border-gray-200 bg-white p-6">
+          <div className="flex items-start gap-5">
+            <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-gray-50 font-mono text-lg font-bold text-gray-700">
+              {displayAcronym.slice(0, 4)}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className={`rounded border px-2 py-0.5 text-xs font-semibold ${typeColor}`}>
+                  {typeLabel}
+                </span>
+                {agency.founded_year && (
+                  <span className="rounded border border-gray-200 bg-gray-50 px-2 py-0.5 text-xs text-gray-500">
+                    Est. {agency.founded_year}
+                  </span>
+                )}
+                <SourceDetailPopover
+                  entityType="agency"
+                  entityId={agency.id}
+                  attribution={attribution}
+                >
+                  <SourceBadge attribution={attribution} />
+                </SourceDetailPopover>
+              </div>
+              <h1 className="mt-1 text-2xl font-bold text-gray-900 leading-tight">
+                {agency.name}
+              </h1>
+              {agency.acronym && agency.acronym !== agency.name && (
+                <p className="text-sm font-medium text-gray-500">{agency.acronym}</p>
+              )}
+              {agency.description && (
+                <p className="mt-2 text-sm text-gray-600 leading-relaxed max-w-3xl">
+                  {agency.description}
+                </p>
+              )}
+              <div className="mt-3 flex flex-wrap items-center gap-4">
+                {agency.website_url && (
+                  <a
+                    href={agency.website_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm text-indigo-600 hover:text-indigo-800 transition-colors"
+                  >
+                    {agency.website_url.replace(/^https?:\/\//, "")} ↗
+                  </a>
+                )}
+                {twitterHandle && (
+                  <a
+                    href={`https://twitter.com/${twitterHandle}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm text-gray-400 hover:text-gray-700 transition-colors"
+                    title={`@${twitterHandle} on X/Twitter`}
+                  >
+                    𝕏 @{twitterHandle}
+                  </a>
+                )}
+                {youtubeHandle && (
+                  <a
+                    href={`https://youtube.com/${youtubeHandle}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm text-gray-400 hover:text-gray-700 transition-colors"
+                    title="YouTube channel"
+                  >
+                    ▶ YouTube
+                  </a>
+                )}
+                {facebookUrl && (
+                  <a
+                    href={facebookUrl.startsWith("http") ? facebookUrl : `https://facebook.com/${facebookUrl}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm text-gray-400 hover:text-gray-700 transition-colors"
+                    title="Facebook"
+                  >
+                    f Facebook
+                  </a>
+                )}
+                {agency.contact_email && (
+                  <a
+                    href={`mailto:${agency.contact_email}`}
+                    className="text-sm text-gray-500 hover:text-gray-700"
+                  >
+                    {agency.contact_email}
+                  </a>
+                )}
+                <FollowButton
+                  entityType="agency"
+                  entityId={agency.id}
+                  entityLabel={agency.name}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-4 grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-gray-200 bg-gray-200 sm:grid-cols-5">
+          <StatBox value={totalRules > 0 ? totalRules.toLocaleString() : "—"} label="Total rules" />
+          <StatBox
+            value={openRules > 0 ? openRules.toLocaleString() : "—"}
+            label="Open comment periods"
+            highlight={openRules > 0}
+          />
+          <StatBox
+            value={totalSpentCents > 0 ? formatDollars(totalSpentCents) : "—"}
+            label="Spending on record"
+          />
+          <StatBox
+            value={agency.personnel_fte ? `~${agency.personnel_fte.toLocaleString()}` : "—"}
+            label="Personnel (FTE)"
+          />
+          <StatBox value="—" label="Promises tracked" note="Phase 2" />
+        </div>
+
+        {(parentAgency || childAgencies.length > 0) && (
+          <div className="mt-6">
+            <AgencyHierarchyTree
+              parent={parentAgency}
+              current={{ id: agency.id, name: agency.name, acronym: agency.acronym ?? null }}
+              children={childAgencies}
+            />
+          </div>
+        )}
+
+        <div className="mt-6 grid gap-6 lg:grid-cols-3">
+          <div className="lg:col-span-2 flex flex-col gap-6">
+            <section>
+              <SectionHeader title="Active Rulemaking" />
+              {activeRules.length === 0 ? (
+                <EmptyState message="No active rulemaking found for this agency." />
+              ) : (
+                <div className="flex flex-col gap-3">
+                  {activeRules.map((rule) => {
+                    const statusStyle = PROPOSAL_STATUS[rule.status] ?? {
+                      color: "bg-gray-100 text-gray-700",
+                      label: rule.status,
+                    };
+                    const isOpen = rule.status === "open_comment";
+                    const isPastDeadline =
+                      rule.comment_period_end &&
+                      new Date(rule.comment_period_end) < new Date();
+                    return (
+                      <div
+                        key={rule.id}
+                        className="rounded-lg border border-gray-200 bg-white p-4"
+                      >
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${statusStyle.color}`}>
+                              {statusStyle.label}
+                            </span>
+                            {rule.bill_number && (
+                              <span className="rounded bg-gray-100 px-2 py-0.5 font-mono text-xs text-gray-600">
+                                {rule.bill_number}
+                              </span>
+                            )}
+                            {rule.regulations_gov_id && (
+                              <span className="rounded bg-gray-100 px-2 py-0.5 font-mono text-xs text-gray-600">
+                                {rule.regulations_gov_id}
+                              </span>
+                            )}
+                          </div>
+                          {rule.comment_period_end && (
+                            <span className={`shrink-0 text-xs ${isPastDeadline ? "text-red-500" : "text-gray-400"}`}>
+                              {isOpen ? "Deadline: " : "Closed: "}
+                              {formatDate(rule.comment_period_end)}
+                            </span>
+                          )}
+                        </div>
+                        <h3 className="mt-2 text-sm font-semibold text-gray-900 leading-snug">
+                          {rule.title}
+                        </h3>
+                        {rule.summary_plain && (
+                          <p className="mt-1.5 line-clamp-2 text-xs leading-relaxed text-gray-500">
+                            {rule.summary_plain}
+                          </p>
+                        )}
+                        {isOpen && !isPastDeadline && (
+                          <div className="mt-3 flex items-center justify-between rounded border border-emerald-200 bg-emerald-50 px-3 py-2">
+                            <p className="text-xs text-emerald-800">
+                              Comment period open. Submitting is free — no account required.
+                            </p>
+                            <a
+                              href="#"
+                              className="ml-3 shrink-0 rounded bg-emerald-600 px-3 py-1 text-xs font-medium text-white hover:bg-emerald-700 transition-colors"
+                            >
+                              Submit comment →
+                            </a>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+
+            {recentRules.length > 0 && (
+              <section>
+                <SectionHeader title="Recent Rules" subtitle="Closed or finalized" />
+                <div className="flex flex-col gap-2">
+                  {recentRules.map((rule) => {
+                    const statusStyle = PROPOSAL_STATUS[rule.status] ?? {
+                      color: "bg-gray-100 text-gray-700",
+                      label: rule.status,
+                    };
+                    return (
+                      <div
+                        key={rule.id}
+                        className="flex items-start justify-between gap-3 rounded-lg border border-gray-200 bg-white px-4 py-3"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium text-gray-800">{rule.title}</p>
+                          <p className="mt-0.5 text-xs text-gray-400">
+                            {rule.bill_number ?? rule.regulations_gov_id ?? rule.type}
+                            {rule.comment_period_end ? ` · ${formatDate(rule.comment_period_end)}` : ""}
+                          </p>
+                        </div>
+                        <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium ${statusStyle.color}`}>
+                          {statusStyle.label}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
+
+            <section>
+              <SectionHeader
+                title="Spending"
+                subtitle="Top contractors and grant recipients"
+              />
+              {spendingGroups.length === 0 ? (
+                <EmptyState message="Spending data syncs weekly from USASpending.gov." />
+              ) : (
+                <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-gray-100 bg-gray-50">
+                        <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
+                          Recipient
+                        </th>
+                        <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
+                          Type
+                        </th>
+                        <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wider text-gray-500">
+                          Amount
+                        </th>
+                        <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wider text-gray-500">
+                          Year
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {spendingGroups.map((g, i) => (
+                        <tr key={i} className="hover:bg-gray-50">
+                          <td className="max-w-xs truncate px-4 py-2.5 text-sm font-medium text-gray-800">
+                            {g.recipient}
+                          </td>
+                          <td className="px-4 py-2.5 text-xs capitalize text-gray-500">
+                            {g.awardType}
+                          </td>
+                          <td className="px-4 py-2.5 text-right font-mono text-sm font-semibold text-gray-900">
+                            {formatDollars(g.totalCents)}
+                          </td>
+                          <td className="px-4 py-2.5 text-right text-xs text-gray-400">
+                            {g.fiscalYear}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
+          </div>
+
+          <div className="flex flex-col gap-6">
+            <section>
+              <SectionHeader title="Leadership" />
+              {officials.length === 0 ? (
+                <div className="rounded-lg border border-gray-200 bg-white px-4 py-5">
+                  <p className="text-sm text-gray-400">No leadership data on record yet.</p>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-3">
+                  {officials.filter(o => o.isCurrent && o.strength >= 0.9).length > 0 && (
+                    <div>
+                      <p className="mb-1.5 text-xs font-medium uppercase tracking-wider text-gray-400">Agency Head</p>
+                      <div className="rounded-lg border border-gray-200 bg-white divide-y divide-gray-100">
+                        {officials.filter(o => o.isCurrent && o.strength >= 0.9).map((o) => (
+                          <OfficialCard key={o.id} official={o} plumLastChange={plumLastChange} />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {officials.filter(o => o.isCurrent && o.strength < 0.9).length > 0 && (
+                    <div>
+                      <p className="mb-1.5 text-xs font-medium uppercase tracking-wider text-gray-400">
+                        {officials.filter(o => o.isCurrent && o.strength >= 0.9).length > 0 ? "Senior Leadership" : "Current"}
+                      </p>
+                      <div className="rounded-lg border border-gray-200 bg-white divide-y divide-gray-100">
+                        {officials.filter(o => o.isCurrent && o.strength < 0.9).map((o) => (
+                          <OfficialCard key={o.id} official={o} plumLastChange={plumLastChange} />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {officials.filter(o => !o.isCurrent).length > 0 && (
+                    <div>
+                      <p className="mb-1.5 text-xs font-medium uppercase tracking-wider text-gray-400">Past</p>
+                      <div className="rounded-lg border border-gray-200 bg-white divide-y divide-gray-100">
+                        {officials.filter(o => !o.isCurrent).slice(0, 5).map((o) => (
+                          <OfficialCard key={o.id} official={o} plumLastChange={plumLastChange} />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  <DataFreshnessNote plumLastChange={plumLastChange} />
+                </div>
+              )}
+            </section>
+
+            <div className="rounded-lg border border-indigo-100 bg-indigo-50 p-4">
+              <p className="text-sm font-semibold text-indigo-900">
+                Your tax dollars fund this agency.
+              </p>
+              <p className="mt-1 text-xs text-indigo-700 leading-relaxed">
+                Comment on proposed rules — free, always. No account, no fees, no exceptions.
+              </p>
+              {openRules > 0 && (
+                <a
+                  href="#active-rulemaking"
+                  className="mt-3 block rounded border border-indigo-300 bg-white px-3 py-2 text-center text-xs font-medium text-indigo-700 hover:bg-indigo-50 transition-colors"
+                >
+                  {openRules} open period{openRules !== 1 ? "s" : ""} — comment now →
+                </a>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-6">
+          <SectionHeader title="Connection Graph" subtitle="Officials, contractors, and oversight relationships" />
+          <div className="mt-3 rounded-lg border border-gray-200 overflow-hidden">
+            <AgencyGraph agencyId={agency.id} agencyName={agency.name} />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Governing-body view ──────────────────────────────────────────────────────
+// Lean Stage-1 render: header + officials roster + recent proposals.
+
+async function GoverningBodyView({
+  institution,
+  attribution,
+  supabase,
+}: {
+  institution: InstitutionRow;
+  attribution: Awaited<ReturnType<typeof fetchAttributionForEntity>>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: any;
+}) {
+  const { data: gbExtra } = await supabase
+    .from("governing_bodies")
+    .select("seat_count, term_length_years")
+    .eq("id", institution.id)
+    .maybeSingle();
+
+  const [
+    officialsRes,
+    activeProposalsRes,
+    recentProposalsRes,
+    totalProposalsRes,
+  ] = await Promise.all([
+    supabase
+      .from("officials")
+      .select("id, full_name, role_title, is_active, metadata")
+      .eq("governing_body_id", institution.id)
+      .eq("is_active", true)
+      .order("full_name")
+      .limit(50),
+    supabase
+      .from("proposals")
+      .select("id, title, status, type, introduced_at, summary_plain, metadata, bill_details(bill_number)")
+      .eq("governing_body_id", institution.id)
+      .in("status", ["introduced", "in_committee", "passed_committee", "floor_vote"])
+      .order("introduced_at", { ascending: false })
+      .limit(15),
+    supabase
+      .from("proposals")
+      .select("id, title, status, type, introduced_at, summary_plain, metadata, bill_details(bill_number)")
+      .eq("governing_body_id", institution.id)
+      .in("status", ["enacted", "signed", "failed", "withdrawn"])
+      .order("updated_at", { ascending: false })
+      .limit(5),
+    supabase
+      .from("proposals")
+      .select("id", { count: "exact", head: true })
+      .eq("governing_body_id", institution.id),
+  ]);
+
+  const officials = ((officialsRes.data ?? []) as Array<{
+    id: string;
+    full_name: string;
+    role_title: string | null;
+    metadata: Record<string, unknown> | null;
+  }>).map((o) => {
+    const meta = (o.metadata ?? {}) as Record<string, unknown>;
+    const state = typeof meta["state"] === "string" ? meta["state"] as string : null;
+    const district = typeof meta["district"] === "string" ? meta["district"] as string : null;
+    return {
+      id: o.id,
+      name: o.full_name,
+      title: o.role_title ?? "",
+      locality: [state, district].filter(Boolean).join(" · "),
+    };
+  });
+
+  const mapProposal = (row: { id: string; title: string; status: string; type: string; introduced_at: string | null; summary_plain: string | null; metadata: Record<string, unknown> | null; bill_details?: { bill_number?: string | null } | null }): Proposal => ({
+    id: row.id,
+    title: row.title,
+    status: row.status,
+    type: row.type,
+    bill_number: row.bill_details?.bill_number ?? null,
+    regulations_gov_id: ((row.metadata ?? {}) as Record<string, string | null>)["regulations_gov_id"] ?? null,
+    introduced_at: row.introduced_at,
+    comment_period_end: ((row.metadata ?? {}) as Record<string, string | null>)["comment_period_end"] ?? null,
+    summary_plain: row.summary_plain,
+  });
+
+  const activeProposals: Proposal[] = (activeProposalsRes.data ?? []).map(mapProposal);
+  const recentProposals: Proposal[] = (recentProposalsRes.data ?? []).map(mapProposal);
+  const totalProposals = totalProposalsRes.count ?? 0;
+
+  const typeColor = GB_TYPE_COLORS[institution.type] ?? GB_TYPE_COLORS["other"]!;
+  const typeLabel = GB_TYPE_LABELS[institution.type] ?? "Governing Body";
+  const displayAcronym = institution.short_name ?? institution.name.split(" ").map((w) => w[0]).join("").slice(0, 5).toUpperCase();
+  const gbMeta = (institution.metadata ?? {}) as Record<string, string | null>;
+  const twitterHandle = gbMeta["twitter_handle"] ?? null;
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <script
+        type="application/json"
+        data-civitics-attribution="governing_body"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(attribution) }}
+      />
+      <PageViewTracker entityType="governing_body" entityId={institution.id} />
+      <header className="border-b border-gray-200 bg-white px-5 py-3">
+        <div className="flex items-center gap-3">
+          <a href="/" className="text-sm font-medium text-gray-400 hover:text-gray-700 transition-colors">
+            ← Civitics
+          </a>
+          <span className="text-gray-200">/</span>
+          <a href="/officials" className="text-sm font-medium text-gray-400 hover:text-gray-700 transition-colors">
+            Officials
+          </a>
+          <span className="text-gray-200">/</span>
+          <span className="text-sm font-semibold text-gray-900">{institution.short_name ?? institution.name}</span>
+        </div>
+      </header>
+
+      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+        <div className="rounded-lg border border-gray-200 bg-white p-6">
+          <div className="flex items-start gap-5">
+            <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-gray-50 font-mono text-lg font-bold text-gray-700">
+              {displayAcronym.slice(0, 4)}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className={`rounded border px-2 py-0.5 text-xs font-semibold ${typeColor}`}>
+                  {typeLabel}
+                </span>
+                <SourceDetailPopover
+                  entityType="governing_body"
+                  entityId={institution.id}
+                  attribution={attribution}
+                >
+                  <SourceBadge attribution={attribution} />
+                </SourceDetailPopover>
+              </div>
+              <h1 className="mt-1 text-2xl font-bold text-gray-900 leading-tight">
+                {institution.name}
+              </h1>
+              {institution.short_name && institution.short_name !== institution.name && (
+                <p className="text-sm font-medium text-gray-500">{institution.short_name}</p>
+              )}
+              <div className="mt-3 flex flex-wrap items-center gap-4">
+                {institution.website_url && (
+                  <a
+                    href={institution.website_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm text-indigo-600 hover:text-indigo-800 transition-colors"
+                  >
+                    {institution.website_url.replace(/^https?:\/\//, "")} ↗
+                  </a>
+                )}
+                {twitterHandle && (
+                  <a
+                    href={`https://twitter.com/${twitterHandle}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm text-gray-400 hover:text-gray-700 transition-colors"
+                  >
+                    𝕏 @{twitterHandle}
+                  </a>
+                )}
+                {institution.contact_email && (
+                  <a
+                    href={`mailto:${institution.contact_email}`}
+                    className="text-sm text-gray-500 hover:text-gray-700"
+                  >
+                    {institution.contact_email}
+                  </a>
+                )}
+                <FollowButton
+                  entityType="agency"
+                  entityId={institution.id}
+                  entityLabel={institution.name}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-4 grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-gray-200 bg-gray-200 sm:grid-cols-4">
+          <StatBox value={officials.length > 0 ? officials.length.toLocaleString() : "—"} label="Active members" />
+          <StatBox
+            value={gbExtra?.seat_count ? (gbExtra.seat_count as number).toLocaleString() : "—"}
+            label="Total seats"
+          />
+          <StatBox
+            value={totalProposals > 0 ? totalProposals.toLocaleString() : "—"}
+            label="Proposals on record"
+          />
+          <StatBox
+            value={gbExtra?.term_length_years ? `${gbExtra.term_length_years} yr` : "—"}
+            label="Term length"
+          />
+        </div>
+
+        <div className="mt-6 grid gap-6 lg:grid-cols-3">
+          <div className="lg:col-span-2 flex flex-col gap-6">
+            <section>
+              <SectionHeader title="Active Proposals" />
+              {activeProposals.length === 0 ? (
+                <EmptyState message="No active proposals on record for this body." />
+              ) : (
+                <div className="flex flex-col gap-3">
+                  {activeProposals.map((p) => {
+                    const statusStyle = PROPOSAL_STATUS[p.status] ?? {
+                      color: "bg-gray-100 text-gray-700",
+                      label: p.status,
+                    };
+                    return (
+                      <a
+                        key={p.id}
+                        href={`/proposals/${p.id}`}
+                        className="block rounded-lg border border-gray-200 bg-white p-4 hover:bg-gray-50 transition-colors"
+                      >
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${statusStyle.color}`}>
+                              {statusStyle.label}
+                            </span>
+                            {p.bill_number && (
+                              <span className="rounded bg-gray-100 px-2 py-0.5 font-mono text-xs text-gray-600">
+                                {p.bill_number}
+                              </span>
+                            )}
+                          </div>
+                          {p.introduced_at && (
+                            <span className="shrink-0 text-xs text-gray-400">
+                              Introduced {formatDate(p.introduced_at)}
+                            </span>
+                          )}
+                        </div>
+                        <h3 className="mt-2 text-sm font-semibold text-gray-900 leading-snug">
+                          {p.title}
+                        </h3>
+                        {p.summary_plain && (
+                          <p className="mt-1.5 line-clamp-2 text-xs leading-relaxed text-gray-500">
+                            {p.summary_plain}
+                          </p>
+                        )}
+                      </a>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+
+            {recentProposals.length > 0 && (
+              <section>
+                <SectionHeader title="Recent Proposals" subtitle="Closed or enacted" />
+                <div className="flex flex-col gap-2">
+                  {recentProposals.map((p) => {
+                    const statusStyle = PROPOSAL_STATUS[p.status] ?? {
+                      color: "bg-gray-100 text-gray-700",
+                      label: p.status,
+                    };
+                    return (
+                      <a
+                        key={p.id}
+                        href={`/proposals/${p.id}`}
+                        className="flex items-start justify-between gap-3 rounded-lg border border-gray-200 bg-white px-4 py-3 hover:bg-gray-50 transition-colors"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium text-gray-800">{p.title}</p>
+                          <p className="mt-0.5 text-xs text-gray-400">
+                            {p.bill_number ?? p.type}
+                            {p.introduced_at ? ` · ${formatDate(p.introduced_at)}` : ""}
+                          </p>
+                        </div>
+                        <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium ${statusStyle.color}`}>
+                          {statusStyle.label}
+                        </span>
+                      </a>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
+          </div>
+
+          <div className="flex flex-col gap-6">
+            <section>
+              <SectionHeader title="Members" />
+              {officials.length === 0 ? (
+                <div className="rounded-lg border border-gray-200 bg-white px-4 py-5">
+                  <p className="text-sm text-gray-400">No active members on record.</p>
+                </div>
+              ) : (
+                <div className="rounded-lg border border-gray-200 bg-white divide-y divide-gray-100">
+                  {officials.slice(0, 25).map((o) => (
+                    <a
+                      key={o.id}
+                      href={`/officials/${o.id}`}
+                      className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors"
+                    >
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gray-100 text-xs font-bold text-gray-600">
+                        {o.name.split(" ").map((w) => w[0]).join("").slice(0, 2)}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-semibold text-gray-900">{o.name}</p>
+                        {(o.title || o.locality) && (
+                          <p className="text-xs text-gray-500">
+                            {o.title}{o.title && o.locality ? " · " : ""}{o.locality}
+                          </p>
+                        )}
+                      </div>
+                      <svg className="h-4 w-4 shrink-0 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                      </svg>
+                    </a>
+                  ))}
+                  {officials.length > 25 && (
+                    <p className="px-4 py-2.5 text-xs text-gray-400">
+                      Showing 25 of {officials.length} — full roster coming in Stage 3.
+                    </p>
+                  )}
+                </div>
+              )}
+            </section>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
+function StatBox({
+  value,
+  label,
+  highlight,
+  note,
+}: {
+  value: string;
+  label: string;
+  highlight?: boolean;
+  note?: string;
+}) {
+  return (
+    <div className="bg-white px-4 py-4 text-center">
+      <p className={`text-xl font-bold ${highlight ? "text-emerald-600" : "text-gray-900"}`}>
+        {value}
+      </p>
+      <p className="mt-0.5 text-xs text-gray-500">{label}</p>
+      {note && <p className="text-[10px] text-gray-300">{note}</p>}
+    </div>
+  );
+}
+
+function SectionHeader({
+  title,
+  subtitle,
+}: {
+  title: string;
+  subtitle?: string;
+}) {
+  return (
+    <div className="mb-3">
+      <h2 className="text-base font-semibold text-gray-900">{title}</h2>
+      {subtitle && <p className="text-xs text-gray-400">{subtitle}</p>}
+    </div>
+  );
+}
+
+function EmptyState({ message }: { message: string }) {
+  return (
+    <div className="rounded-lg border border-gray-200 bg-white px-5 py-8 text-center">
+      <p className="text-sm text-gray-400">{message}</p>
+    </div>
+  );
+}
+
+function formatTenure(startDate: string | null, endDate: string | null): string {
+  const fmt = (iso: string) =>
+    new Date(iso).toLocaleDateString("en-US", { month: "short", year: "numeric" });
+  if (startDate && !endDate) return `${fmt(startDate)} – present`;
+  if (startDate && endDate)  return `${fmt(startDate)} – ${fmt(endDate)}`;
+  if (!startDate && endDate) return `until ${fmt(endDate)}`;
+  return "";
+}
+
+function OfficialCard({
+  official,
+  plumLastChange,
+}: {
+  official: OfficialLink;
+  plumLastChange?: string | null;
+}) {
+  const tenure = formatTenure(official.startDate, official.endDate);
+  const isStale =
+    official.isCurrent &&
+    official.evidenceSource === "plum_book" &&
+    plumLastChange != null &&
+    (Date.now() - new Date(plumLastChange).getTime()) > 60 * 24 * 60 * 60 * 1000;
+  return (
+    <a
+      href={`/officials/${official.id}`}
+      className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors"
+    >
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gray-100 text-xs font-bold text-gray-600">
+        {official.name.split(" ").map((w: string) => w[0]).join("").slice(0, 2)}
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <p className="truncate text-sm font-semibold text-gray-900">{official.name}</p>
+          {official.isCurrent && !isStale && (
+            <span className="shrink-0 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">
+              Current
+            </span>
+          )}
+          {official.isCurrent && isStale && (
+            <span className="shrink-0 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700" title="Data may be outdated — OPM PLUM Book hasn't been updated recently">
+              Current*
+            </span>
+          )}
+        </div>
+        <p className="text-xs text-gray-500">{official.title}</p>
+        {tenure && <p className="text-xs text-gray-400">{tenure}</p>}
+      </div>
+      <svg className="h-4 w-4 shrink-0 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+      </svg>
+    </a>
+  );
+}
+
+function DataFreshnessNote({ plumLastChange }: { plumLastChange: string | null }) {
+  if (!plumLastChange) return null;
+  const date = new Date(plumLastChange);
+  const isStale = (Date.now() - date.getTime()) > 60 * 24 * 60 * 60 * 1000;
+  const formatted = date.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+  return (
+    <p className={`mt-2 text-[11px] ${isStale ? "text-amber-600" : "text-gray-400"}`}>
+      {isStale ? "* " : ""}OPM PLUM Book data as of {formatted}
+      {isStale && " — may not reflect recent changes"}
+    </p>
+  );
+}
