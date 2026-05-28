@@ -25,6 +25,7 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import type { createAdminClient } from "@civitics/db";
+import { refreshPrimarySourceForEntities } from "@civitics/db";
 import {
   bodyToGoverningBodyRow,
   personToOfficialRow,
@@ -172,10 +173,12 @@ export async function upsertBodiesBatch(
 
   // Build refs + map
   const refs: RefRecord[] = [];
+  const newlyBoundIds: string[] = [];
   for (let i = 0; i < toInsert.length; i++) {
     const newId = insertedIds[i];
     if (!newId) continue;
     out.bodyIdMap.set(toInsert[i].BodyId, newId);
+    newlyBoundIds.push(newId);
     refs.push({
       source: sourceKey,
       external_id: String(toInsert[i].BodyId),
@@ -188,6 +191,12 @@ export async function upsertBodiesBatch(
     });
   }
   await upsertRefs(db, refs);
+
+  // FIX-404: refresh primary_source on newly-bound governing_bodies. Existing
+  // matches don't touch xsr (ignoreDuplicates: true) so they don't need refresh.
+  if (newlyBoundIds.length > 0) {
+    await refreshPrimarySourceForEntities(db, "governing_body", newlyBoundIds);
+  }
 
   return out;
 }
@@ -248,10 +257,12 @@ export async function upsertPersonsBatch(
   }
 
   const refs: RefRecord[] = [];
+  const newlyBoundIds: string[] = [];
   for (let i = 0; i < toInsert.length; i++) {
     const newId = insertedIds[i];
     if (!newId) continue;
     out.personIdMap.set(toInsert[i].PersonId, newId);
+    newlyBoundIds.push(newId);
     refs.push({
       source: sourceKey,
       external_id: String(toInsert[i].PersonId),
@@ -261,6 +272,12 @@ export async function upsertPersonsBatch(
     });
   }
   await upsertRefs(db, refs);
+
+  // FIX-404: refresh primary_source on newly-bound officials. Existing
+  // matches don't touch xsr (ignoreDuplicates: true) so they don't need refresh.
+  if (newlyBoundIds.length > 0) {
+    await refreshPrimarySourceForEntities(db, "official", newlyBoundIds);
+  }
 
   return out;
 }
@@ -343,77 +360,88 @@ export async function upsertMattersBatch(
   }
 
   // ── Inserts: proposals → bill_details → external_source_refs ────────────
-  if (toInsert.length === 0) return out;
-
   const insertedIds: Array<string | null> = [];
-  for (let i = 0; i < toInsert.length; i += CHUNK_SIZE) {
-    const chunk = toInsert.slice(i, i + CHUNK_SIZE);
-    const records = chunk.map((m) => {
-      const governingBodyId = m.MatterBodyId
-        ? bodyIdMap.get(m.MatterBodyId) ?? null
-        : null;
-      return matterToProposalRow(
-        m,
-        config.jurisdictionId,
-        governingBodyId,
-        config.client,
-      );
-    });
-    const { data, error } = await db
-      .from("proposals")
-      .insert(records)
-      .select("id");
-    if (error || !data) {
-      console.error(`    legistar writer: proposal insert ${i}-${i + chunk.length}: ${error?.message}`);
-      out.failed += chunk.length;
-      for (let k = 0; k < chunk.length; k++) insertedIds.push(null);
-      continue;
-    }
-    for (const row of data as Array<{ id: string }>) insertedIds.push(row.id);
-    out.inserted += data.length;
-  }
-
-  // bill_details — compound unique on (jurisdiction_id, session, bill_number),
-  // ignoreDuplicates because cities reuse file numbers across years / cycles.
-  const billDetailRecords = toInsert
-    .map((m, idx) => {
-      const proposalId = insertedIds[idx];
-      if (!proposalId) return null;
-      return matterToBillDetailsRow(m, proposalId, config.jurisdictionId);
-    })
-    .filter((r): r is NonNullable<typeof r> => r !== null);
-
-  for (let i = 0; i < billDetailRecords.length; i += CHUNK_SIZE) {
-    const chunk = billDetailRecords.slice(i, i + CHUNK_SIZE);
-    const { error } = await db
-      .from("bill_details")
-      .upsert(chunk, {
-        onConflict: "jurisdiction_id,session,bill_number",
-        ignoreDuplicates: true,
+  if (toInsert.length > 0) {
+    for (let i = 0; i < toInsert.length; i += CHUNK_SIZE) {
+      const chunk = toInsert.slice(i, i + CHUNK_SIZE);
+      const records = chunk.map((m) => {
+        const governingBodyId = m.MatterBodyId
+          ? bodyIdMap.get(m.MatterBodyId) ?? null
+          : null;
+        return matterToProposalRow(
+          m,
+          config.jurisdictionId,
+          governingBodyId,
+          config.client,
+        );
       });
-    if (error) {
-      console.error(`    legistar writer: bill_details ${i}-${i + chunk.length}: ${error.message}`);
+      const { data, error } = await db
+        .from("proposals")
+        .insert(records)
+        .select("id");
+      if (error || !data) {
+        console.error(`    legistar writer: proposal insert ${i}-${i + chunk.length}: ${error?.message}`);
+        out.failed += chunk.length;
+        for (let k = 0; k < chunk.length; k++) insertedIds.push(null);
+        continue;
+      }
+      for (const row of data as Array<{ id: string }>) insertedIds.push(row.id);
+      out.inserted += data.length;
     }
+
+    // bill_details — compound unique on (jurisdiction_id, session, bill_number),
+    // ignoreDuplicates because cities reuse file numbers across years / cycles.
+    const billDetailRecords = toInsert
+      .map((m, idx) => {
+        const proposalId = insertedIds[idx];
+        if (!proposalId) return null;
+        return matterToBillDetailsRow(m, proposalId, config.jurisdictionId);
+      })
+      .filter((r): r is NonNullable<typeof r> => r !== null);
+
+    for (let i = 0; i < billDetailRecords.length; i += CHUNK_SIZE) {
+      const chunk = billDetailRecords.slice(i, i + CHUNK_SIZE);
+      const { error } = await db
+        .from("bill_details")
+        .upsert(chunk, {
+          onConflict: "jurisdiction_id,session,bill_number",
+          ignoreDuplicates: true,
+        });
+      if (error) {
+        console.error(`    legistar writer: bill_details ${i}-${i + chunk.length}: ${error.message}`);
+      }
+    }
+
+    // external_source_refs
+    const refs: RefRecord[] = [];
+    for (let i = 0; i < toInsert.length; i++) {
+      const newId = insertedIds[i];
+      if (!newId) continue;
+      out.matterIdMap.set(toInsert[i].MatterId, newId);
+      refs.push({
+        source: sourceKey,
+        external_id: String(toInsert[i].MatterId),
+        entity_type: "proposal",
+        entity_id: newId,
+        metadata: {
+          matter_file: toInsert[i].MatterFile,
+          matter_type: toInsert[i].MatterTypeName,
+        },
+      });
+    }
+    await upsertRefs(db, refs);
   }
 
-  // external_source_refs
-  const refs: RefRecord[] = [];
-  for (let i = 0; i < toInsert.length; i++) {
-    const newId = insertedIds[i];
-    if (!newId) continue;
-    out.matterIdMap.set(toInsert[i].MatterId, newId);
-    refs.push({
-      source: sourceKey,
-      external_id: String(toInsert[i].MatterId),
-      entity_type: "proposal",
-      entity_id: newId,
-      metadata: {
-        matter_file: toInsert[i].MatterFile,
-        matter_type: toInsert[i].MatterTypeName,
-      },
-    });
+  // FIX-404: refresh primary_source on matters whose xsr was just written
+  // (insert path) or whose proposal row was rewritten (update path). Mirrors
+  // the canonical congress/bills.ts pattern.
+  const refreshedIds = [
+    ...insertedIds.filter((id): id is string => Boolean(id)),
+    ...toUpdate.map((u) => u.id),
+  ];
+  if (refreshedIds.length > 0) {
+    await refreshPrimarySourceForEntities(db, "proposal", refreshedIds);
   }
-  await upsertRefs(db, refs);
 
   return out;
 }

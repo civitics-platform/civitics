@@ -11,7 +11,7 @@
  *   5. Upsert edgar_companies with the bound financial_entity_id.
  */
 
-import { createAdminClient } from "@civitics/db";
+import { createAdminClient, refreshPrimarySourceForEntities } from "@civitics/db";
 import { canonicalizeEntityName } from "../fec-bulk/writer";
 import { edgarFetch } from "./client";
 import { padCik } from "./util";
@@ -242,6 +242,11 @@ export async function syncCompanies(
   const db = createAdminClient() as Db;
   const bindings = await preloadCikBindings(db);
   const records: CompanyRecord[] = [];
+  // FIX-404: collect financial_entity ids whose sec_edgar xsr binding was
+  // freshly written this run, so we can refresh primary_source for them
+  // after the loop. Pre-existing bindings (preloadCikBindings hits) don't
+  // need a refresh — their xsr last_seen_at didn't move.
+  const newlyBoundEntityIds: string[] = [];
 
   const scope = cikLimit
     ? universe.filter((u) => cikLimit.has(u.cik))
@@ -280,6 +285,7 @@ export async function syncCompanies(
       if (financialEntityId) {
         await upsertSourceRef(db, cik, financialEntityId);
         bindings.set(cik, financialEntityId);
+        newlyBoundEntityIds.push(financialEntityId);
       }
     }
 
@@ -302,6 +308,11 @@ export async function syncCompanies(
       financialEntityId,
       recentFilings: meta.recent,
     });
+  }
+
+  // FIX-404: refresh primary_source on freshly-bound financial_entities.
+  if (newlyBoundEntityIds.length > 0) {
+    await refreshPrimarySourceForEntities(db, "financial_entity", newlyBoundEntityIds);
   }
 
   console.log(`  [edgar/companies] ${records.length}/${scope.length} companies synced`);

@@ -21,6 +21,7 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import type { createAdminClient } from "@civitics/db";
+import { refreshPrimarySourceForEntities } from "@civitics/db";
 
 type Db = any;
 
@@ -185,6 +186,8 @@ export async function upsertJudgesBatch(
     else toInsert.push(input);
   }
 
+  const insertedIds: Array<string | null> = [];
+
   // ── Updates: full-row upsert on id (partial records violate NOT NULLs via
   // the INSERT clause of ON CONFLICT DO UPDATE, even when the row exists).
   if (toUpdate.length > 0) {
@@ -205,7 +208,6 @@ export async function upsertJudgesBatch(
 
   // ── Inserts + source_refs
   if (toInsert.length > 0) {
-    const insertedIds: Array<string | null> = [];
     for (let i = 0; i < toInsert.length; i += CHUNK_SIZE) {
       const chunk = toInsert.slice(i, i + CHUNK_SIZE);
       const records = chunk.map(buildJudgeRecord);
@@ -246,6 +248,16 @@ export async function upsertJudgesBatch(
         console.error(`    courtlistener writer: judge source_refs ${i}-${i + chunk.length}: ${error.message}`);
       }
     }
+  }
+
+  // FIX-404: refresh primary_source on judges whose xsr was just written
+  // (insert path) or whose row was rewritten (update path).
+  const refreshedIds = [
+    ...insertedIds.filter((id): id is string => Boolean(id)),
+    ...toUpdate.map((u) => u.id),
+  ];
+  if (refreshedIds.length > 0) {
+    await refreshPrimarySourceForEntities(db, "official", refreshedIds);
   }
 
   return out;
@@ -342,6 +354,8 @@ export async function upsertOpinionsBatch(
     else toInsert.push(input);
   }
 
+  const insertedIds: Array<string | null> = [];
+
   // ── Updates (proposal + case_details)
   if (toUpdate.length > 0) {
     for (let i = 0; i < toUpdate.length; i += CHUNK_SIZE) {
@@ -376,7 +390,6 @@ export async function upsertOpinionsBatch(
 
   // ── Inserts (proposals → case_details → source_refs)
   if (toInsert.length > 0) {
-    const insertedIds: Array<string | null> = [];
     for (let i = 0; i < toInsert.length; i += CHUNK_SIZE) {
       const chunk = toInsert.slice(i, i + CHUNK_SIZE);
       const records = chunk.map(buildOpinionProposalRecord);
@@ -438,6 +451,16 @@ export async function upsertOpinionsBatch(
         console.error(`    courtlistener writer: opinion source_refs ${i}-${i + chunk.length}: ${error.message}`);
       }
     }
+  }
+
+  // FIX-404: refresh primary_source on opinions whose xsr was just written
+  // (insert path) or whose proposal row was rewritten (update path).
+  const refreshedIds = [
+    ...insertedIds.filter((id): id is string => Boolean(id)),
+    ...toUpdate.map((u) => u.id),
+  ];
+  if (refreshedIds.length > 0) {
+    await refreshPrimarySourceForEntities(db, "proposal", refreshedIds);
   }
 
   return out;

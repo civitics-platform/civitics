@@ -25,6 +25,7 @@
 
 import type { createAdminClient } from "@civitics/db";
 import type { Database } from "@civitics/db";
+import { refreshPrimarySourceForEntities } from "@civitics/db";
 
 type Db = ReturnType<typeof createAdminClient>;
 type OfficialInsert = Database["public"]["Tables"]["officials"]["Insert"];
@@ -198,6 +199,8 @@ export async function upsertLegislatorsBatch(
     else toInsert.push(item);
   }
 
+  const insertedIds: Array<string | null> = [];
+
   // Batched update
   if (toUpdate.length > 0) {
     for (let i = 0; i < toUpdate.length; i += CHUNK_SIZE) {
@@ -220,7 +223,6 @@ export async function upsertLegislatorsBatch(
 
   // Batched insert + external_source_refs
   if (toInsert.length > 0) {
-    const insertedIds: Array<string | null> = [];
     for (let i = 0; i < toInsert.length; i += CHUNK_SIZE) {
       const chunk = toInsert.slice(i, i + CHUNK_SIZE);
       const records = chunk.map(buildOfficialInsert);
@@ -267,6 +269,17 @@ export async function upsertLegislatorsBatch(
         console.error(`    openstates writer: source_refs (official) ${i}-${i + chunk.length}: ${error.message}`);
       }
     }
+  }
+
+  // FIX-404: refresh primary_source on officials whose xsr was just written
+  // (insert path) or whose row was rewritten (update path). Mirrors the
+  // canonical congress/bills.ts pattern.
+  const refreshedIds = [
+    ...insertedIds.filter((id): id is string => Boolean(id)),
+    ...toUpdate.map((u) => u.id),
+  ];
+  if (refreshedIds.length > 0) {
+    await refreshPrimarySourceForEntities(db, "official", refreshedIds);
   }
 
   return out;
@@ -355,6 +368,8 @@ export async function upsertStateBillsBatch(
     else toInsert.push(item);
   }
 
+  const insertedIds: Array<string | null> = [];
+
   // Updates
   if (toUpdate.length > 0) {
     for (let i = 0; i < toUpdate.length; i += CHUNK_SIZE) {
@@ -377,7 +392,6 @@ export async function upsertStateBillsBatch(
 
   // Inserts (proposals → bill_details → external_source_refs)
   if (toInsert.length > 0) {
-    const insertedIds: Array<string | null> = [];
     for (let i = 0; i < toInsert.length; i += CHUNK_SIZE) {
       const chunk = toInsert.slice(i, i + CHUNK_SIZE);
       const records = chunk.map(buildBillProposalInsert);
@@ -451,6 +465,16 @@ export async function upsertStateBillsBatch(
         console.error(`    openstates writer: source_refs (bill) ${i}-${i + chunk.length}: ${error.message}`);
       }
     }
+  }
+
+  // FIX-404: refresh primary_source on proposals whose xsr was just written
+  // (insert path) or whose row was rewritten (update path).
+  const refreshedIds = [
+    ...insertedIds.filter((id): id is string => Boolean(id)),
+    ...toUpdate.map((u) => u.id),
+  ];
+  if (refreshedIds.length > 0) {
+    await refreshPrimarySourceForEntities(db, "proposal", refreshedIds);
   }
 
   return out;

@@ -17,7 +17,7 @@
 
 import type { createAdminClient } from "@civitics/db";
 import type { Database } from "@civitics/db";
-import { agencyFullName, AGENCY_NAMES } from "@civitics/db";
+import { agencyFullName, AGENCY_NAMES, refreshPrimarySourceForEntities } from "@civitics/db";
 
 type Db = ReturnType<typeof createAdminClient>;
 type AgencyInsert = Database["public"]["Tables"]["agencies"]["Insert"];
@@ -194,6 +194,8 @@ export async function upsertRegulationProposalsBatch(
     else toInsert.push(item);
   }
 
+  const insertedIds: Array<string | null> = [];
+
   // ── Step 3: batched update via upsert(onConflict='id')
   if (toUpdate.length > 0) {
     for (let i = 0; i < toUpdate.length; i += CHUNK_SIZE) {
@@ -216,8 +218,6 @@ export async function upsertRegulationProposalsBatch(
 
   // ── Step 4: batched insert of new proposals + external_source_refs
   if (toInsert.length > 0) {
-    const insertedIds: Array<string | null> = [];
-
     for (let i = 0; i < toInsert.length; i += CHUNK_SIZE) {
       const chunk = toInsert.slice(i, i + CHUNK_SIZE);
       const records = chunk.map(buildProposalInsert);
@@ -263,6 +263,16 @@ export async function upsertRegulationProposalsBatch(
         console.error(`    regulations writer: source_refs chunk ${i}-${i + chunk.length}: ${error.message}`);
       }
     }
+  }
+
+  // FIX-404: refresh primary_source on proposals whose xsr was just written
+  // (insert path) or whose row was rewritten (update path).
+  const refreshedIds = [
+    ...insertedIds.filter((id): id is string => Boolean(id)),
+    ...toUpdate.map((u) => u.id),
+  ];
+  if (refreshedIds.length > 0) {
+    await refreshPrimarySourceForEntities(db, "proposal", refreshedIds);
   }
 
   return out;
