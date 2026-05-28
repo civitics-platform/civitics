@@ -245,7 +245,13 @@ export type {
   AttributionDetailResponse,
 } from "./types/attribution";
 
-// Source label + category registry (FIX-399). Label + category only — color
-// classes are presentation and live in the UI layer.
-export { resolveSource } from "./source-registry";
+// Source label + category registry (FIX-399 / FIX-400). Label + category
+// only — color classes are presentation and live in the UI layer. FIX-400
+// extended entries with license metadata + the verbatim LittleSis CC-BY-SA
+// attribution text required by FIX-252.
+export {
+  resolveSource,
+  SOURCE_REGISTRY,
+  LITTLESIS_ATTRIBUTION_TEXT,
+} from "./source-registry";
 export type { SourceCategory, SourceRegistryEntry, ResolvedSource } from "./source-registry";

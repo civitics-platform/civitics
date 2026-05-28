@@ -7,6 +7,7 @@ import { AgencyHierarchyTree } from "./components/AgencyHierarchyTree";
 import { PageViewTracker } from "../../components/PageViewTracker";
 import { FollowButton } from "../../components/FollowButton";
 import { SourceBadge } from "../../components/SourceBadge";
+import { SourceDetailPopover } from "../../components/SourceDetailPopover";
 
 // FIX-205: defer the D3 graph chunk off the initial /agencies/[slug] bundle.
 // The graph isn't always the first thing visitors look at — and even when
@@ -458,7 +459,13 @@ export default async function AgencyProfilePage({
                     Est. {agency.founded_year}
                   </span>
                 )}
-                <SourceBadge attribution={agencyAttribution} />
+                <SourceDetailPopover
+                  entityType="agency"
+                  entityId={agency.id}
+                  attribution={agencyAttribution}
+                >
+                  <SourceBadge attribution={agencyAttribution} />
+                </SourceDetailPopover>
               </div>
               <h1 className="mt-1 text-2xl font-bold text-gray-900 leading-tight">
                 {agency.name}

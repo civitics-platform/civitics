@@ -10,6 +10,7 @@ import {
 import { ShareButton } from "../../officials/components/ShareButton";
 import { PageViewTracker } from "../../components/PageViewTracker";
 import { SourceBadge } from "../../components/SourceBadge";
+import { SourceDetailPopover } from "../../components/SourceDetailPopover";
 
 // Donor / PAC / committee / corporation profile. Mirrors the officials page
 // model: public-read RLS, createPublicClient → real ISR (5-min revalidate),
@@ -463,7 +464,13 @@ export default async function DonorProfilePage({
                       FEC {entity.fec_committee_id}
                     </span>
                   )}
-                  <SourceBadge attribution={entity.attribution} />
+                  <SourceDetailPopover
+                    entityType="financial_entity"
+                    entityId={entity.id}
+                    attribution={entity.attribution}
+                  >
+                    <SourceBadge attribution={entity.attribution} />
+                  </SourceDetailPopover>
                 </div>
 
                 <h1 className="text-2xl font-bold text-gray-900 leading-tight">

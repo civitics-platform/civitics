@@ -21,6 +21,7 @@ import { gradeFromRate } from "../../api/officials/[id]/responsiveness/_lib";
 import { PageViewTracker } from "../../components/PageViewTracker";
 import { FollowButton } from "../../components/FollowButton";
 import { SourceBadge } from "../../components/SourceBadge";
+import { SourceDetailPopover } from "../../components/SourceDetailPopover";
 import { getCachedOfficial } from "../_lib/get-official";
 
 const CivicBadge = nextDynamic(
@@ -805,7 +806,13 @@ export default async function OfficialProfilePage({
                       Active
                     </span>
                   )}
-                  <SourceBadge attribution={official.attribution} />
+                  <SourceDetailPopover
+                    entityType="official"
+                    entityId={params.id}
+                    attribution={official.attribution}
+                  >
+                    <SourceBadge attribution={official.attribution} />
+                  </SourceDetailPopover>
                 </div>
 
                 <h1 className="text-2xl font-bold text-gray-900 leading-tight">
