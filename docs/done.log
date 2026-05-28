@@ -514,3 +514,5 @@
 2026-05-26 | FIX-403 | 181e2151 | local+prod | feat(data): xsr public-read RLS + Congress officials seed (FIX-403, FIX-408)
 2026-05-26 | FIX-408 | 181e2151 | local+prod | feat(data): xsr public-read RLS + Congress officials seed (FIX-403, FIX-408)
 2026-05-27 | FIX-399 | c9b91f5d | local+prod | feat(ui): SourceBadge on entity detail pages (FIX-399)
+2026-05-27 | FIX-252 | c44e7be4 | local+prod | feat(ui): SourceDetailPopover + /about/sources (FIX-400, closes FIX-252)
+2026-05-27 | FIX-400 | c44e7be4 | local+prod | feat(ui): SourceDetailPopover + /about/sources (FIX-400, closes FIX-252)
