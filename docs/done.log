@@ -516,3 +516,6 @@
 2026-05-27 | FIX-399 | c9b91f5d | local+prod | feat(ui): SourceBadge on entity detail pages (FIX-399)
 2026-05-27 | FIX-252 | c44e7be4 | local+prod | feat(ui): SourceDetailPopover + /about/sources (FIX-400, closes FIX-252)
 2026-05-27 | FIX-400 | c44e7be4 | local+prod | feat(ui): SourceDetailPopover + /about/sources (FIX-400, closes FIX-252)
+2026-05-27 | FIX-402 | cc48c757 | local+prod | feat(data): lift attribution coverage — gb dispatch + FEC synthesis + agencies seed
+2026-05-27 | FIX-406 | cc48c757 | local+prod | feat(data): lift attribution coverage — gb dispatch + FEC synthesis + agencies seed
+2026-05-27 | FIX-410 | cc48c757 | local+prod | feat(data): lift attribution coverage — gb dispatch + FEC synthesis + agencies seed
