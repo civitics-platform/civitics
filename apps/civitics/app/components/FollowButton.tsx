@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-type EntityType = "official" | "agency";
+type EntityType = "official" | "agency" | "jurisdiction";
 
 interface FollowButtonProps {
   entityType: EntityType;

@@ -4,10 +4,10 @@ import { createServerClient } from "@civitics/db";
 
 export const dynamic = "force-dynamic";
 
-type EntityType = "official" | "agency";
+type EntityType = "official" | "agency" | "jurisdiction";
 
 function isValidType(t: string | null): t is EntityType {
-  return t === "official" || t === "agency";
+  return t === "official" || t === "agency" || t === "jurisdiction";
 }
 
 // GET /api/follows                         → list current user's follows
@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
 
   if (!body.entity_type || !isValidType(body.entity_type) || !body.entity_id) {
     return NextResponse.json(
-      { error: "entity_type (official|agency) and entity_id are required" },
+      { error: "entity_type (official|agency|jurisdiction) and entity_id are required" },
       { status: 400 }
     );
   }
