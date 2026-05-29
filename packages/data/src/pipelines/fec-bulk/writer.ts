@@ -528,7 +528,7 @@ export async function upsertIndependentExpendituresBatch(
   const records = [...merged.values()].map((input) => {
     const occurredAt = input.occurredAt ?? `${input.cycleYear}-01-01`;
     const relationshipType =
-      input.supportOppose === "S" ? "ie_support" : "ie_oppose";
+      input.supportOppose === "S" ? ("ie_support" as const) : ("ie_oppose" as const);
     return {
       relationship_type: relationshipType,
       from_type:         "financial_entity",

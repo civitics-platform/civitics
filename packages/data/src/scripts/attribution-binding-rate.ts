@@ -16,8 +16,7 @@
  *   ( source .env.local.prod && pnpm --filter @civitics/data diag:attribution-coverage )
  */
 
-import { createClient } from "@supabase/supabase-js";
-import { resolveSource } from "@civitics/db";
+import { createAdminClientWith, createPublicClient, resolveSource } from "@civitics/db";
 
 const TABLES = [
   { table: "officials",         entityType: "official"         },
@@ -32,7 +31,6 @@ type Row = { primary_source: string | null };
 async function main() {
   const url    = process.env["NEXT_PUBLIC_SUPABASE_URL"]!;
   const secret = process.env["SUPABASE_SECRET_KEY"]!;
-  const pub    = process.env["NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY"]!;
 
   if (!url || !secret) {
     console.error("Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SECRET_KEY");
@@ -41,8 +39,12 @@ async function main() {
 
   console.log("Target:", url);
 
-  const admin = createClient(url, secret, { auth: { persistSession: false } });
-  const anon  = createClient(url, pub,    { auth: { persistSession: false } });
+  // Read-only diagnostic, intentionally pointed at local OR prod by the
+  // caller's sourced env. createAdminClientWith skips the pipeline guard
+  // (which is write-oriented) — matches the prior raw-createClient behavior
+  // while keeping the import inside @civitics/db per the repo convention.
+  const admin = createAdminClientWith(url, secret);
+  const anon  = createPublicClient();
 
   // ── xsr smoke (FIX-403/408 carry-over) ────────────────────────────────
   const anonXsr = await anon

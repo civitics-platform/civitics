@@ -14,7 +14,7 @@
  *   pnpm --filter @civitics/data data:backfill:individual-canonical
  */
 
-import { Client } from "pg";
+import { Client, type QueryResult } from "pg";
 import { canonicalDonorName } from "../pipelines/fec-bulk/indiv";
 
 const PAGE_SIZE    = 5000;
@@ -65,7 +65,7 @@ async function main() {
   const t0 = Date.now();
 
   while (true) {
-    const pageRes = cursor
+    const pageRes: QueryResult<Row> = cursor
       ? await client.query<Row>(
           `SELECT id::text, display_name, canonical_name
              FROM public.financial_entities
