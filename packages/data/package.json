@@ -3,6 +3,7 @@
   "version": "0.0.1",
   "private": true,
   "scripts": {
+    "typecheck": "tsc --noEmit",
     "data:seed": "tsx --env-file=../../.env.local src/seed.ts",
     "data:officials": "tsx --env-file=../../.env.local src/pipelines/congress/officials.ts",
     "data:executive-seed": "tsx --env-file=../../.env.local src/pipelines/executive/seed.ts",
