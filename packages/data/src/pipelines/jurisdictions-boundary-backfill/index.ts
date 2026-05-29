@@ -21,12 +21,17 @@
  * pipeline also pre-checks the in-memory snapshot and skips the RPC entirely
  * for already-populated rows. Re-running is a no-op.
  *
- * IMPORTANT — only ever backfills EXISTING rows; never creates jurisdictions.
- * As of 2026-05-28 the table holds 50 states, 6 state-equivalents (DC + 5
- * territories, stored type='district'), 4 pilot cities, and 0 counties — so a
- * county run is currently a pure no-op and a place run backfills the 4 pilot
- * metros. The pipeline is written for the full levels so it backfills
- * automatically once county/city rows are seeded (separate FIX).
+ * State / place levels only ever backfill EXISTING rows; they never create
+ * jurisdictions.
+ *
+ * COUNTY level is different (FIX-E): there are 0 county rows, so --levels county
+ * both CREATES county rows and populates their boundary in one pass, via the
+ * upsert_county_jurisdiction RPC (insert-or-update; never overwrites an existing
+ * boundary). Parent state/state-equivalent is resolved by STATEFP. DC
+ * (federal_district) and PR/VI/GU/AS/MP (unincorporated_territory) are valid
+ * county parents — their county-equivalents (e.g. PR municipios) land too.
+ * As of 2026-05-28 the table holds 50 states, 6 state-equivalents (DC +
+ * 5 territories), and 4 pilot cities; a place run backfills the 4 pilot metros.
  *
  * CLI (run via the data:boundaries script so .env.local is loaded):
  *   pnpm --filter @civitics/data data:boundaries -- --levels state --dry-run
@@ -81,6 +86,20 @@ interface Counters {
 
 function emptyCounters(): Counters {
   return { updated: 0, alreadyPopulated: 0, noMatch: 0, ambiguous: 0, parseError: 0 };
+}
+
+// County level CREATES rows (insert-or-backfill), so it carries its own
+// counters distinct from the backfill Counters above.
+interface CountyCounters {
+  inserted: number;          // new county row created (or would be, in dry-run)
+  updatedBoundary: number;   // existing county row whose NULL boundary was filled
+  alreadyComplete: number;   // existing county row already had a boundary → skipped
+  skippedNoParent: number;   // STATEFP didn't resolve to a state/equivalent parent
+  errors: number;            // RPC error
+}
+
+function emptyCountyCounters(): CountyCounters {
+  return { inserted: 0, updatedBoundary: 0, alreadyComplete: 0, skippedNoParent: 0, errors: 0 };
 }
 
 // TIGER attribute fields we read across STATE / COUNTY / PLACE shapefiles.
@@ -193,8 +212,7 @@ interface Snapshot {
   statesByFips: Map<string, Target | typeof AMBIGUOUS>;        // type='state'
   stateEquivByAbbr: Map<string, Target | typeof AMBIGUOUS>;    // DC + territories (type='district', census_geoid NULL)
   stateEquivByFips: Map<string, Target | typeof AMBIGUOUS>;
-  countiesByGeoid: Map<string, Target | typeof AMBIGUOUS>;
-  countiesByParentName: Map<string, Target | typeof AMBIGUOUS>; // key `${parent_id}|${lower(name)}`
+  countiesByGeoid: Map<string, Target | typeof AMBIGUOUS>; // existing county rows by 5-digit GEOID
   citiesByGeoid: Map<string, Target | typeof AMBIGUOUS>;
   citiesByFips: Map<string, Target | typeof AMBIGUOUS>;
   citiesByParentName: Map<string, Target | typeof AMBIGUOUS>;
@@ -204,45 +222,66 @@ function tgt(row: { id: string; boundary_geometry: unknown }): Target {
   return { id: row.id, populated: row.boundary_geometry != null };
 }
 
+// Throw on query error rather than silently treating it as "0 rows". A
+// swallowed snapshot error (e.g. a transient `fetch failed` against local
+// PostgREST) leaves a key map empty, which then surfaces as mass no-parent
+// skips that masquerade as a clean run. Fail loud so the caller re-runs.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function rowsOrThrow(res: { data: any[] | null; error: { message: string } | null }, label: string): any[] {
+  if (res.error) throw new Error(`snapshot ${label} query failed: ${res.error.message}`);
+  return res.data ?? [];
+}
+
 async function loadSnapshot(db: Db): Promise<Snapshot> {
   const snap: Snapshot = {
     statesByFips: new Map(), stateEquivByAbbr: new Map(), stateEquivByFips: new Map(),
-    countiesByGeoid: new Map(), countiesByParentName: new Map(),
+    countiesByGeoid: new Map(),
     citiesByGeoid: new Map(), citiesByFips: new Map(), citiesByParentName: new Map(),
   };
 
   // States (50). FIPS is unique within type='state'; census_geoid is NULL on
   // these rows so it can't be the match key — FIPS / postal abbr only.
-  const { data: states } = await db.from("jurisdictions")
-    .select("id, fips_code, boundary_geometry").eq("type", "state");
-  for (const r of states ?? []) addUnique(snap.statesByFips, r.fips_code, tgt(r));
+  const states = rowsOrThrow(await db.from("jurisdictions")
+    .select("id, fips_code, boundary_geometry").eq("type", "state"), "states");
+  for (const r of states) addUnique(snap.statesByFips, r.fips_code, tgt(r));
 
-  // State-equivalents: DC + 5 territories live as type='district' with a bare
-  // 2-letter short_name and NULL census_geoid. The NULL-geoid filter excludes
-  // the ~6,775 real legislative/congressional districts (which all carry a
-  // census_geoid), so the postal-abbr key is unambiguous.
-  const { data: equivs } = await db.from("jurisdictions")
+  // State-equivalents: DC (federal_district) + 5 territories
+  // (unincorporated_territory). Pre-FIX-E these lived as type='district' with a
+  // bare 2-letter short_name and NULL census_geoid; FIX-E re-typed them off the
+  // catch-all. Query BOTH shapes so the snapshot resolves them whether or not
+  // the re-type migration has run yet — the migration always precedes the
+  // pipeline in the loop, but the dual query keeps the snapshot robust either
+  // way. The NULL-geoid filter on the legacy shape excludes the ~6,775 real
+  // legislative/congressional districts (which all carry a census_geoid).
+  const equivByType = rowsOrThrow(await db.from("jurisdictions")
     .select("id, short_name, fips_code, boundary_geometry")
-    .eq("type", "district").is("census_geoid", null);
-  for (const r of equivs ?? []) {
+    .in("type", ["federal_district", "unincorporated_territory"]), "state-equiv (by type)");
+  const equivLegacy = rowsOrThrow(await db.from("jurisdictions")
+    .select("id, short_name, fips_code, boundary_geometry")
+    .eq("type", "district").is("census_geoid", null), "state-equiv (legacy)");
+  for (const r of [...equivByType, ...equivLegacy]) {
     addUnique(snap.stateEquivByAbbr, r.short_name, tgt(r));
     addUnique(snap.stateEquivByFips, r.fips_code, tgt(r));
   }
 
-  // Counties (0 today). When seeded, match on the 5-digit GEOID, then on
-  // (parent state, "<NAME> County").
-  const { data: counties } = await db.from("jurisdictions")
-    .select("id, census_geoid, parent_id, name, boundary_geometry").eq("type", "county");
-  for (const r of counties ?? []) {
-    addUnique(snap.countiesByGeoid, r.census_geoid, tgt(r));
-    if (r.parent_id && r.name) addUnique(snap.countiesByParentName, `${r.parent_id}|${r.name.toLowerCase()}`, tgt(r));
+  // Existing counties, keyed by 5-digit GEOID. Used by the county-create path
+  // to decide insert-vs-update without a per-feature DB round-trip (mirrors the
+  // backfill pre-check). 0 on first run; ~3,235 on re-runs — past PostgREST's
+  // 1,000-row default cap, so this must paginate or it would under-report
+  // existing counties and needlessly re-call the (idempotent) RPC.
+  for (let from = 0; ; from += 1000) {
+    const page = rowsOrThrow(await db.from("jurisdictions")
+      .select("id, census_geoid, boundary_geometry").eq("type", "county")
+      .order("census_geoid", { ascending: true }).range(from, from + 999), "counties");
+    for (const r of page) addUnique(snap.countiesByGeoid, r.census_geoid, tgt(r));
+    if (page.length < 1000) break;
   }
 
   // Cities (4 pilot metros). fips_code holds the 7-digit place GEOID;
   // census_geoid is NULL. Match census_geoid → fips_code → (parent, name).
-  const { data: cities } = await db.from("jurisdictions")
-    .select("id, census_geoid, fips_code, parent_id, name, boundary_geometry").eq("type", "city");
-  for (const r of cities ?? []) {
+  const cities = rowsOrThrow(await db.from("jurisdictions")
+    .select("id, census_geoid, fips_code, parent_id, name, boundary_geometry").eq("type", "city"), "cities");
+  for (const r of cities) {
     addUnique(snap.citiesByGeoid, r.census_geoid, tgt(r));
     addUnique(snap.citiesByFips, r.fips_code, tgt(r));
     if (r.parent_id && r.name) addUnique(snap.citiesByParentName, `${r.parent_id}|${r.name.toLowerCase()}`, tgt(r));
@@ -264,17 +303,6 @@ function matchState(snap: Snapshot, p: TigerProps): Match {
   return resolve(snap.statesByFips, p.STATEFP)
       ?? resolve(snap.stateEquivByAbbr, p.STUSPS)
       ?? { skip: "noMatch" };
-}
-
-function matchCounty(snap: Snapshot, p: TigerProps): Match {
-  const byGeoid = resolve(snap.countiesByGeoid, p.GEOID);
-  if (byGeoid) return byGeoid;
-  const stateId = parentStateId(snap, p.STATEFP);
-  if (stateId && p.NAME) {
-    const byName = resolve(snap.countiesByParentName, `${stateId}|${(p.NAMELSAD ?? `${p.NAME} County`).toLowerCase()}`);
-    if (byName) return byName;
-  }
-  return { skip: "noMatch" };
 }
 
 function matchPlace(snap: Snapshot, p: TigerProps): Match {
@@ -364,7 +392,16 @@ async function runLevelState(db: Db, snap: Snapshot, opts: Options, counters: Co
   return bytes;
 }
 
-async function runLevelCounty(db: Db, snap: Snapshot, opts: Options, counters: Counters): Promise<number> {
+// County level CREATES rows (the table has 0 today) and backfills their
+// boundary in the same pass, via upsert_county_jurisdiction. Parent
+// state/state-equivalent resolves by STATEFP; a county whose STATEFP doesn't
+// resolve is skipped + logged (never inserted parentless). The RPC inserts on
+// no-match and otherwise fills boundary/centroid only if NULL — never
+// overwrites. Insert-vs-update is decided from the in-memory snapshot so we can
+// skip the RPC entirely for counties already complete.
+async function runLevelCountyCreate(
+  db: Db, snap: Snapshot, opts: Options, counters: Counters, cc: CountyCounters,
+): Promise<number> {
   const fileName = `tl_${TIGER_YEAR}_us_county.zip`;
   console.log(`    downloading national county file (~100 MB)…`);
   const { zipPath, downloaded, bytes } = await getZip(opts, "COUNTY", fileName);
@@ -372,11 +409,62 @@ async function runLevelCounty(db: Db, snap: Snapshot, opts: Options, counters: C
   const paths = await extractZip(zipPath, extractDir);
   if (downloaded) safeUnlink(zipPath);
   if (!paths) { rmDir(extractDir); throw new Error("county: unzip produced no .shp/.dbf"); }
+
   await streamFeatures(paths.shp, paths.dbf, async (f) => {
     const p = f.properties ?? {};
     if (opts.stateFips && p.STATEFP && !opts.stateFips.has(p.STATEFP)) return; // out of requested scope
-    await applyMatch(db, matchCounty(snap, p), f, "county", opts, counters);
+
+    const geoid = p.GEOID;
+    if (!geoid) { cc.errors++; return; }
+
+    const parentId = parentStateId(snap, p.STATEFP);
+    if (!parentId) {
+      cc.skippedNoParent++;
+      console.warn(`    county skipped (no parent) — STATEFP=${p.STATEFP ?? "?"} GEOID=${geoid} NAME=${p.NAMELSAD ?? p.NAME ?? "?"}`);
+      return;
+    }
+
+    // Insert-vs-update from the snapshot; skip the RPC for already-complete rows.
+    const existing = resolve(snap.countiesByGeoid, geoid);
+    const isExisting = existing !== null && !("skip" in existing);
+    if (isExisting && (existing as Target).populated) { cc.alreadyComplete++; return; }
+
+    if (opts.dryRun) {
+      if (isExisting) cc.updatedBoundary++; else cc.inserted++;
+      return;
+    }
+
+    // NAMELSAD is the conventional civic name ("King County", "Adjuntas
+    // Municipio"); NAME is the bare name. Keep TIGER's NAMELSAD authoritative.
+    const name = p.NAMELSAD ?? p.NAME ?? geoid;
+    const shortName = p.NAME ?? name;
+    const args = {
+      p_parent_id: parentId,
+      p_census_geoid: geoid,
+      p_fips_code: geoid,
+      p_name: name,
+      p_short_name: shortName,
+      p_boundary_geojson: JSON.stringify(f.geometry),
+    };
+    // The RPC is idempotent (insert-by-GEOID, COALESCE-fill), so retrying a
+    // transient `fetch failed` is safe. Local PostgREST intermittently resets
+    // sockets under rapid sequential calls — a couple of retries reclaim
+    // counties that would otherwise be orphaned for the next run to mop up.
+    let lastErr: string | null = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const { error } = await db.rpc("upsert_county_jurisdiction" as never, args as never);
+      if (!error) { lastErr = null; break; }
+      lastErr = error.message;
+      await new Promise((r) => setTimeout(r, 150 * (attempt + 1)));
+    }
+    if (lastErr) {
+      cc.errors++;
+      console.warn(`    county rpc error GEOID=${geoid}: ${lastErr}`);
+      return;
+    }
+    if (isExisting) cc.updatedBoundary++; else cc.inserted++;
   }, counters);
+
   rmDir(extractDir);
   return bytes;
 }
@@ -427,6 +515,7 @@ export async function runJurisdictionBoundaryBackfill(opts: Options): Promise<Pi
   const logId = await startSync("jurisdictions_boundary_backfill");
   const db = createAdminClient();
   const counters = emptyCounters();
+  const countyCounters = emptyCountyCounters();
   let bytes = 0;
 
   try {
@@ -443,10 +532,15 @@ export async function runJurisdictionBoundaryBackfill(opts: Options): Promise<Pi
       logLevel("state", counters, before);
     }
     if (opts.levels.includes("county")) {
-      console.log("\n  --- Counties ---");
-      const before = { ...counters };
-      bytes += await runLevelCounty(db, snap, opts, counters);
-      logLevel("county", counters, before);
+      console.log("\n  --- Counties (create + backfill) ---");
+      bytes += await runLevelCountyCreate(db, snap, opts, counters, countyCounters);
+      console.log(
+        `  county: ${countyCounters.inserted} ${opts.dryRun ? "would-insert" : "inserted"} · ` +
+        `${countyCounters.updatedBoundary} boundary-filled · ` +
+        `${countyCounters.alreadyComplete} already-complete · ` +
+        `${countyCounters.skippedNoParent} no-parent · ` +
+        `${countyCounters.errors} errors`,
+      );
     }
     if (opts.levels.includes("place")) {
       console.log("\n  --- Places ---");
@@ -458,9 +552,9 @@ export async function runJurisdictionBoundaryBackfill(opts: Options): Promise<Pi
     rmDir(TMP_DIR);
 
     const result: PipelineResult = {
-      inserted: 0, // never inserts — backfill-only
-      updated: counters.updated,
-      failed: counters.parseError,
+      inserted: countyCounters.inserted, // county-create path; backfill levels never insert
+      updated: counters.updated + countyCounters.updatedBoundary,
+      failed: counters.parseError + countyCounters.errors,
       estimatedMb: +(bytes / 1024 / 1024).toFixed(2),
     };
 
@@ -472,12 +566,19 @@ export async function runJurisdictionBoundaryBackfill(opts: Options): Promise<Pi
     console.log(`  No match:            ${counters.noMatch}`);
     console.log(`  Ambiguous (skipped): ${counters.ambiguous}`);
     console.log(`  Errors:              ${counters.parseError}`);
+    if (opts.levels.includes("county")) {
+      console.log(`  County ${opts.dryRun ? "would-insert" : "inserted"}: ${countyCounters.inserted}`);
+      console.log(`  County boundary-filled: ${countyCounters.updatedBoundary}`);
+      console.log(`  County already-complete: ${countyCounters.alreadyComplete}`);
+      console.log(`  County no-parent (skipped): ${countyCounters.skippedNoParent}`);
+      console.log(`  County errors:          ${countyCounters.errors}`);
+    }
     console.log(`  Downloaded:          ${(bytes / 1024 / 1024).toFixed(1)} MB`);
 
     if (opts.dryRun) {
       // A dry run wrote nothing — mark the sync row skipped, not complete.
       const { skipSync } = await import("../sync-log");
-      await skipSync(logId, `dry-run: would update ${counters.updated}`);
+      await skipSync(logId, `dry-run: would update ${counters.updated}, insert ${countyCounters.inserted} counties`);
     } else {
       await completeSync(logId, result);
     }
@@ -487,7 +588,7 @@ export async function runJurisdictionBoundaryBackfill(opts: Options): Promise<Pi
     console.error("  Boundary backfill fatal error:", msg);
     await failSync(logId, msg);
     rmDir(TMP_DIR);
-    return { inserted: 0, updated: counters.updated, failed: counters.parseError + 1, estimatedMb: +(bytes / 1024 / 1024).toFixed(2) };
+    return { inserted: countyCounters.inserted, updated: counters.updated + countyCounters.updatedBoundary, failed: counters.parseError + countyCounters.errors + 1, estimatedMb: +(bytes / 1024 / 1024).toFixed(2) };
   }
 }
 
