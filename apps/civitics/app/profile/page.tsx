@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { createServerClient } from "@civitics/db";
 import { DistrictPickerForm } from "./DistrictPickerForm";
+import { VerifyConstituentForm } from "./VerifyConstituentForm";
 
 export const dynamic = "force-dynamic";
 
@@ -30,6 +31,39 @@ export default async function ProfilePage() {
     .select("home_state, home_district")
     .eq("user_id", user.id)
     .maybeSingle();
+
+  // Active constituent grants — drives the verify form vs. verified card render.
+  // RLS users_read_own_grants restricts this to the signed-in user's rows.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: activeGrants } = await (supabase as any)
+    .from("entity_grants")
+    .select("id, target_id, expires_at")
+    .eq("user_id", user.id)
+    .eq("role", "constituent")
+    .eq("target_type", "jurisdiction")
+    .eq("status", "active");
+
+  type GrantRow = { id: string; target_id: string; expires_at: string | null };
+  const grants: GrantRow[] = activeGrants ?? [];
+
+  let verifiedJurisdictions: Array<{ id: string; name: string; type: string }> = [];
+  let earliestExpiry: string | null = null;
+  if (grants.length > 0) {
+    const ids = grants.map((g) => g.target_id);
+    const { data: jurs } = await supabase
+      .from("jurisdictions")
+      .select("id, name, type")
+      .in("id", ids);
+    verifiedJurisdictions = (jurs ?? []) as Array<{
+      id: string;
+      name: string;
+      type: string;
+    }>;
+    earliestExpiry = grants
+      .map((g) => g.expires_at)
+      .filter((d): d is string => !!d)
+      .sort()[0] ?? null;
+  }
 
   // Fallback to email-based lookup if no row exists yet (first sign-in edge case)
   let resolvedProfile = profile;
@@ -91,6 +125,28 @@ export default async function ProfilePage() {
           </div>
         </dl>
       </div>
+
+      {/* Constituent verification — form when no active grants, card when verified */}
+      {verifiedJurisdictions.length > 0 ? (
+        <div className="mt-6 rounded-lg border border-green-200 bg-green-50 p-6 shadow-sm">
+          <h3 className="text-base font-semibold text-green-900">Verified constituent</h3>
+          <p className="mt-1 text-sm text-green-800">
+            Verified constituent of {verifiedJurisdictions.map((j) => j.name).join(", ")}.
+            {earliestExpiry && (
+              <>
+                {" "}
+                Expires {new Date(earliestExpiry).toLocaleDateString("en-US", {
+                  year: "numeric",
+                  month: "long",
+                  day: "numeric",
+                })}.
+              </>
+            )}
+          </p>
+        </div>
+      ) : (
+        <VerifyConstituentForm />
+      )}
 
       {/* District picker — sets home_state/home_district for the USER graph node */}
       <DistrictPickerForm

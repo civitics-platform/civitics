@@ -33,7 +33,8 @@ export type KillSwitchName =
   | "ai_narrative"
   | "ai_tagger"
   | "connection_graph_live"
-  | "cron";
+  | "cron"
+  | "mapbox_geocode";
 
 export type KillSwitchState = {
   enabled: boolean;
@@ -72,6 +73,7 @@ const ENV_RULES: Record<KillSwitchName, EnvRule> = {
   ai_tagger:             { envVar: "AI_TAGGER_ENABLED",          off: "false" },
   connection_graph_live: { envVar: "CONNECTIONS_PIPELINE_ENABLED", off: "false" },
   cron:                  { envVar: "CRON_DISABLED",              off: "true"  },
+  mapbox_geocode:        { envVar: "MAPBOX_GEOCODING_ENABLED",   off: "false" },
 };
 
 function envKillSwitchIsOff(name: KillSwitchName): boolean {
