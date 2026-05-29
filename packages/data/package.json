@@ -25,6 +25,7 @@
     "data:states": "tsx --env-file=../../.env.local src/pipelines/openstates-bulk/people.ts",
     "data:states-api": "tsx --env-file=../../.env.local src/pipelines/openstates/index.ts",
     "data:districts": "tsx --env-file=../../.env.local src/pipelines/districts-tiger/index.ts",
+    "data:boundaries": "tsx --env-file=../../.env.local src/pipelines/jurisdictions-boundary-backfill/index.ts",
     "data:pilot-metros": "tsx --env-file=../../.env.local src/jurisdictions/pilot-metros.ts",
     "data:legistar": "tsx --env-file=../../.env.local src/pipelines/legistar/index.ts",
     "data:ai-summaries": "tsx --env-file=../../.env.local src/pipelines/ai-summaries/index.ts",
