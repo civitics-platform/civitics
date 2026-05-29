@@ -524,3 +524,4 @@
 2026-05-28 | FIX-418 | 469f784b | local-only | fix(institutions): issue 308 in middleware for /agencies/<uuid> redirect
 2026-05-28 | FIX-419 | 68b01c2c | local+prod | feat(grants): role/claim spine schema (v1 — constituent + platform_admin)
 2026-05-28 | FIX-420 | ac8d3034 | local-only | feat(grants): Mapbox-backed constituent verification flow (first FIX-419 consumer)
+2026-05-28 | FIX-421 | 3f70b37d | local+prod | feat(data): jurisdiction boundary backfill pipeline (TIGER 2024 states + cities)
