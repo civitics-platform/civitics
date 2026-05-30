@@ -529,3 +529,4 @@
 2026-05-28 | FIX-417 | b9e9199e | local-only | fix(data): clear pre-existing tsc errors in @civitics/data
 2026-05-28 | FIX-423 | 6d45b545 | local-only | build(data): add typecheck script to wire @civitics/data into turbo gate
 2026-05-28 | FIX-424 | bf28e1fd | local+prod | feat(jurisdictions): /jurisdictions/[id] page v1 — full hub with static SVG map
+2026-05-29 | FIX-433 | a897768c | local+prod | fix(jurisdictions): SVG simplification + notFound middleware
