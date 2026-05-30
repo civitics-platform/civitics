@@ -18,6 +18,8 @@ import { PageViewTracker } from "../../components/PageViewTracker";
 import { FollowButton } from "../../components/FollowButton";
 import { SourceBadge } from "../../components/SourceBadge";
 import { SourceDetailPopover } from "../../components/SourceDetailPopover";
+import { OfficialRosterCard, type OfficialRosterData } from "../../components/cards/OfficialRosterCard";
+import { MeetingCard, type MeetingCardData } from "../../components/cards/MeetingCard";
 
 const AgencyGraph = nextDynamic(
   () => import("../../agencies/[slug]/components/AgencyGraph").then((m) => ({ default: m.AgencyGraph })),
@@ -896,7 +898,42 @@ async function AgencyView({
 }
 
 // ─── Governing-body view ──────────────────────────────────────────────────────
-// Lean Stage-1 render: header + officials roster + recent proposals.
+// FIX-H: full legislature treatment — header + breadcrumbs, party-balance bar,
+// members roster (shared OfficialRosterCard), sub-bodies/committees tree,
+// recent votes (party-line + unanimous indicators via get_institution_recent_votes
+// RPC), recent proposals, recent meetings. Non-legislative governing bodies
+// degrade gracefully — sections with no data self-omit.
+
+// Types that get the legislature treatment (party balance bar + votes are most
+// meaningful here). Others (judicial/executive/school_board/etc.) still render
+// the roster, just without the party bar.
+const LEGISLATURE_TYPES = new Set([
+  "legislature_upper",
+  "legislature_lower",
+  "legislature_unicameral",
+  "municipal_council",
+]);
+
+const PARTY_BAR: Array<{ key: string; label: string; color: string }> = [
+  { key: "democrat",    label: "Democrat",    color: "bg-blue-500" },
+  { key: "republican",  label: "Republican",  color: "bg-red-500" },
+  { key: "independent", label: "Independent", color: "bg-purple-500" },
+  { key: "other",       label: "Other",       color: "bg-gray-400" },
+];
+
+type RecentVote = {
+  proposal_id: string | null;
+  proposal_title: string | null;
+  bill_number: string | null;
+  vote_question: string | null;
+  voted_at: string | null;
+  yes_count: number;
+  no_count: number;
+  abstain_count: number;
+  not_voting_count: number;
+  party_line: boolean;
+  unanimous: boolean;
+};
 
 async function GoverningBodyView({
   institution,
@@ -908,25 +945,57 @@ async function GoverningBodyView({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   supabase: any;
 }) {
-  const { data: gbExtra } = await supabase
-    .from("governing_bodies")
-    .select("seat_count, term_length_years")
-    .eq("id", institution.id)
-    .maybeSingle();
+  const now = new Date();
+  const meetingsFrom = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  const meetingsTo   = new Date(now.getTime() + 60 * 24 * 60 * 60 * 1000).toISOString();
+  const isLegislature = LEGISLATURE_TYPES.has(institution.type);
 
   const [
+    gbExtraRes,
+    jurisdictionRes,
+    parentRes,
     officialsRes,
+    partyBalanceRes,
     activeProposalsRes,
     recentProposalsRes,
     totalProposalsRes,
+    subBodyExtRes,
+    meetingsRes,
+    recentVotesRes,
   ] = await Promise.all([
     supabase
+      .from("governing_bodies")
+      .select("seat_count, term_length_years")
+      .eq("id", institution.id)
+      .maybeSingle(),
+    institution.jurisdiction_id
+      ? supabase
+          .from("jurisdictions")
+          .select("id, name")
+          .eq("id", institution.jurisdiction_id)
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
+    institution.parent_id
+      ? supabase
+          .from("institutions")
+          .select("id, name")
+          .eq("id", institution.parent_id)
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
+    supabase
       .from("officials")
-      .select("id, full_name, role_title, is_active, metadata")
+      .select("id, full_name, role_title, party, photo_url, district_name")
       .eq("governing_body_id", institution.id)
       .eq("is_active", true)
-      .order("full_name")
-      .limit(50),
+      .order("role_title")
+      .order("last_name")
+      .limit(500),
+    supabase
+      .from("officials")
+      .select("party")
+      .eq("governing_body_id", institution.id)
+      .eq("is_active", true)
+      .limit(2000),
     supabase
       .from("proposals")
       .select("id, title, status, type, introduced_at, summary_plain, metadata, bill_details(bill_number)")
@@ -945,24 +1014,89 @@ async function GoverningBodyView({
       .from("proposals")
       .select("id", { count: "exact", head: true })
       .eq("governing_body_id", institution.id),
+    // Sub-bodies / committees: children are governing_bodies whose
+    // institution_extensions.parent_id points at this body. Unpopulated today
+    // (institution_extensions is empty) — section self-omits when no children.
+    supabase
+      .from("institution_extensions")
+      .select("governing_body_id")
+      .eq("parent_id", institution.id)
+      .limit(100),
+    supabase
+      .from("meetings")
+      .select("id, title, meeting_type, scheduled_at, agenda_url")
+      .eq("governing_body_id", institution.id)
+      .gte("scheduled_at", meetingsFrom)
+      .lte("scheduled_at", meetingsTo)
+      .order("scheduled_at", { ascending: false })
+      .limit(10),
+    supabase.rpc("get_institution_recent_votes", {
+      p_institution_id: institution.id,
+      p_limit: 10,
+    }),
   ]);
 
-  const officials = ((officialsRes.data ?? []) as Array<{
+  const gbExtra = gbExtraRes.data as { seat_count: number | null; term_length_years: number | null } | null;
+  const jurisdiction = jurisdictionRes.data as { id: string; name: string } | null;
+  const parent = parentRes.data as { id: string; name: string } | null;
+
+  const roster = ((officialsRes.data ?? []) as Array<{
     id: string;
     full_name: string;
     role_title: string | null;
-    metadata: Record<string, unknown> | null;
-  }>).map((o) => {
-    const meta = (o.metadata ?? {}) as Record<string, unknown>;
-    const state = typeof meta["state"] === "string" ? meta["state"] as string : null;
-    const district = typeof meta["district"] === "string" ? meta["district"] as string : null;
-    return {
-      id: o.id,
-      name: o.full_name,
-      title: o.role_title ?? "",
-      locality: [state, district].filter(Boolean).join(" · "),
-    };
-  });
+    party: string | null;
+    photo_url: string | null;
+    district_name: string | null;
+  }>).map<OfficialRosterData>((o) => ({
+    id: o.id,
+    full_name: o.full_name,
+    role_title: o.role_title ?? "Member",
+    party: o.party,
+    photo_url: o.photo_url,
+    district_name: o.district_name,
+  }));
+
+  // Party balance over ALL active members (not just the rendered roster slice).
+  const partyCounts = new Map<string, number>();
+  for (const r of (partyBalanceRes.data ?? []) as Array<{ party: string | null }>) {
+    const bucket =
+      r.party === "democrat" || r.party === "republican" || r.party === "independent"
+        ? r.party
+        : "other";
+    partyCounts.set(bucket, (partyCounts.get(bucket) ?? 0) + 1);
+  }
+  const partyTotal = Array.from(partyCounts.values()).reduce((a, b) => a + b, 0);
+
+  // Resolve sub-body governing_bodies (if any extensions point here).
+  const subBodyIds = ((subBodyExtRes.data ?? []) as Array<{ governing_body_id: string }>).map((r) => r.governing_body_id);
+  let subBodies: Array<{ id: string; name: string; type: string }> = [];
+  if (subBodyIds.length > 0) {
+    const { data: sbRows } = await supabase
+      .from("governing_bodies")
+      .select("id, name, type")
+      .in("id", subBodyIds)
+      .eq("is_active", true)
+      .order("name")
+      .limit(100);
+    subBodies = (sbRows ?? []) as Array<{ id: string; name: string; type: string }>;
+  }
+
+  const meetings = ((meetingsRes.data ?? []) as Array<{
+    id: string;
+    title: string | null;
+    meeting_type: string;
+    scheduled_at: string;
+    agenda_url: string | null;
+  }>).map<MeetingCardData>((m) => ({
+    id: m.id,
+    title: m.title,
+    meeting_type: m.meeting_type,
+    scheduled_at: m.scheduled_at,
+    bodyName: institution.short_name ?? institution.name,
+    agenda_url: m.agenda_url,
+  }));
+
+  const recentVotes = (recentVotesRes.data ?? []) as RecentVote[];
 
   const mapProposal = (row: { id: string; title: string; status: string; type: string; introduced_at: string | null; summary_plain: string | null; metadata: Record<string, unknown> | null; bill_details?: { bill_number?: string | null } | null }): Proposal => ({
     id: row.id,
@@ -985,6 +1119,10 @@ async function GoverningBodyView({
   const displayAcronym = institution.short_name ?? institution.name.split(" ").map((w) => w[0]).join("").slice(0, 5).toUpperCase();
   const gbMeta = (institution.metadata ?? {}) as Record<string, string | null>;
   const twitterHandle = gbMeta["twitter_handle"] ?? null;
+
+  const ROSTER_VISIBLE = 50;
+  const visibleRoster = roster.slice(0, ROSTER_VISIBLE);
+  const hiddenRoster = roster.slice(ROSTER_VISIBLE);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -1027,6 +1165,26 @@ async function GoverningBodyView({
                   <SourceBadge attribution={attribution} />
                 </SourceDetailPopover>
               </div>
+              {(jurisdiction || parent) && (
+                <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-gray-500">
+                  {jurisdiction && (
+                    <a href={`/jurisdictions/${jurisdiction.id}`} className="hover:text-indigo-600 transition-colors">
+                      {jurisdiction.name}
+                    </a>
+                  )}
+                  {parent && (
+                    <>
+                      {jurisdiction && <span className="text-gray-300">·</span>}
+                      <span>
+                        Part of{" "}
+                        <a href={`/institutions/${parent.id}`} className="font-medium hover:text-indigo-600 transition-colors">
+                          {parent.name}
+                        </a>
+                      </span>
+                    </>
+                  )}
+                </div>
+              )}
               <h1 className="mt-1 text-2xl font-bold text-gray-900 leading-tight">
                 {institution.name}
               </h1>
@@ -1073,9 +1231,9 @@ async function GoverningBodyView({
         </div>
 
         <div className="mt-4 grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-gray-200 bg-gray-200 sm:grid-cols-4">
-          <StatBox value={officials.length > 0 ? officials.length.toLocaleString() : "—"} label="Active members" />
+          <StatBox value={partyTotal > 0 ? partyTotal.toLocaleString() : "—"} label="Active members" />
           <StatBox
-            value={gbExtra?.seat_count ? (gbExtra.seat_count as number).toLocaleString() : "—"}
+            value={gbExtra?.seat_count ? gbExtra.seat_count.toLocaleString() : "—"}
             label="Total seats"
           />
           <StatBox
@@ -1088,8 +1246,48 @@ async function GoverningBodyView({
           />
         </div>
 
+        {isLegislature && partyTotal > 0 && (
+          <div className="mt-6">
+            <PartyBalanceBar counts={partyCounts} total={partyTotal} />
+          </div>
+        )}
+
+        {roster.length > 0 && (
+          <section className="mt-6">
+            <SectionHeader title="Members" subtitle={`${partyTotal.toLocaleString()} active`} />
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {visibleRoster.map((o) => (
+                <OfficialRosterCard key={o.id} official={o} />
+              ))}
+            </div>
+            {hiddenRoster.length > 0 && (
+              <details className="mt-3">
+                <summary className="cursor-pointer text-sm font-medium text-indigo-600 hover:text-indigo-800">
+                  Show all {roster.length.toLocaleString()} members
+                </summary>
+                <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {hiddenRoster.map((o) => (
+                    <OfficialRosterCard key={o.id} official={o} />
+                  ))}
+                </div>
+              </details>
+            )}
+          </section>
+        )}
+
         <div className="mt-6 grid gap-6 lg:grid-cols-3">
           <div className="lg:col-span-2 flex flex-col gap-6">
+            {recentVotes.length > 0 && (
+              <section>
+                <SectionHeader title="Recent Votes" subtitle="Latest roll-call votes" />
+                <div className="flex flex-col gap-2">
+                  {recentVotes.map((v, i) => (
+                    <RecentVoteRow key={`${v.proposal_id ?? "x"}-${i}`} vote={v} />
+                  ))}
+                </div>
+              </section>
+            )}
+
             <section>
               <SectionHeader title="Active Proposals" />
               {activeProposals.length === 0 ? (
@@ -1173,48 +1371,126 @@ async function GoverningBodyView({
           </div>
 
           <div className="flex flex-col gap-6">
-            <section>
-              <SectionHeader title="Members" />
-              {officials.length === 0 ? (
-                <div className="rounded-lg border border-gray-200 bg-white px-4 py-5">
-                  <p className="text-sm text-gray-400">No active members on record.</p>
-                </div>
-              ) : (
+            {subBodies.length > 0 && (
+              <section>
+                <SectionHeader title="Committees & Sub-bodies" subtitle={`${subBodies.length} on record`} />
                 <div className="rounded-lg border border-gray-200 bg-white divide-y divide-gray-100">
-                  {officials.slice(0, 25).map((o) => (
+                  {subBodies.map((sb) => (
                     <a
-                      key={o.id}
-                      href={`/officials/${o.id}`}
-                      className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors"
+                      key={sb.id}
+                      href={`/institutions/${sb.id}`}
+                      className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-gray-50 transition-colors"
                     >
-                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gray-100 text-xs font-bold text-gray-600">
-                        {o.name.split(" ").map((w) => w[0]).join("").slice(0, 2)}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-semibold text-gray-900">{o.name}</p>
-                        {(o.title || o.locality) && (
-                          <p className="text-xs text-gray-500">
-                            {o.title}{o.title && o.locality ? " · " : ""}{o.locality}
-                          </p>
-                        )}
-                      </div>
-                      <svg className="h-4 w-4 shrink-0 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                      </svg>
+                      <span className="min-w-0 flex-1 truncate text-sm font-medium text-gray-800">{sb.name}</span>
+                      <span className="shrink-0 text-xs capitalize text-gray-400">
+                        {GB_TYPE_LABELS[sb.type] ?? sb.type.replace(/_/g, " ")}
+                      </span>
                     </a>
                   ))}
-                  {officials.length > 25 && (
-                    <p className="px-4 py-2.5 text-xs text-gray-400">
-                      Showing 25 of {officials.length} — full roster coming in Stage 3.
-                    </p>
-                  )}
                 </div>
-              )}
-            </section>
+              </section>
+            )}
+
+            {meetings.length > 0 && (
+              <section>
+                <SectionHeader title="Meetings" subtitle="Recent & upcoming" />
+                <div className="flex flex-col gap-3">
+                  {meetings.map((m) => (
+                    <MeetingCard key={m.id} meeting={m} />
+                  ))}
+                </div>
+              </section>
+            )}
           </div>
         </div>
       </div>
     </div>
+  );
+}
+
+// ─── Governing-body sub-components ──────────────────────────────────────────────
+
+function PartyBalanceBar({
+  counts,
+  total,
+}: {
+  counts: Map<string, number>;
+  total: number;
+}) {
+  const segments = PARTY_BAR
+    .map((p) => ({ ...p, count: counts.get(p.key) ?? 0 }))
+    .filter((p) => p.count > 0);
+  return (
+    <div className="rounded-lg border border-gray-200 bg-white p-4">
+      <div className="flex h-3 w-full overflow-hidden rounded-full bg-gray-100">
+        {segments.map((s) => (
+          <div
+            key={s.key}
+            className={s.color}
+            style={{ width: `${(s.count / total) * 100}%` }}
+            title={`${s.label}: ${s.count}`}
+          />
+        ))}
+      </div>
+      <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1">
+        {segments.map((s) => (
+          <div key={s.key} className="flex items-center gap-1.5 text-xs">
+            <span className={`h-2.5 w-2.5 rounded-full ${s.color}`} />
+            <span className="font-medium text-gray-700">{s.label}</span>
+            <span className="text-gray-400">
+              {s.count} · {Math.round((s.count / total) * 100)}%
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function voteIndicator(v: RecentVote): { label: string; cls: string } | null {
+  if (v.unanimous) return { label: "Unanimous", cls: "bg-gray-100 text-gray-600" };
+  if (v.party_line) return { label: "Party-line", cls: "bg-rose-100 text-rose-700" };
+  return { label: "Bipartisan", cls: "bg-emerald-100 text-emerald-700" };
+}
+
+function RecentVoteRow({ vote }: { vote: RecentVote }) {
+  const indicator = voteIndicator(vote);
+  const passed = vote.yes_count > vote.no_count;
+  const inner = (
+    <>
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2">
+          {vote.bill_number && (
+            <span className="rounded bg-gray-100 px-2 py-0.5 font-mono text-xs text-gray-600">
+              {vote.bill_number}
+            </span>
+          )}
+          {indicator && (
+            <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${indicator.cls}`}>
+              {indicator.label}
+            </span>
+          )}
+          <span className={`text-xs font-semibold ${passed ? "text-emerald-700" : "text-gray-500"}`}>
+            {passed ? "Passed" : "Failed"} {vote.yes_count}–{vote.no_count}
+            {vote.not_voting_count > 0 ? ` (${vote.not_voting_count} NV)` : ""}
+          </span>
+        </div>
+        <p className="mt-1 truncate text-sm font-medium text-gray-800">
+          {vote.vote_question ?? "Roll-call vote"}
+          {vote.proposal_title ? ` · ${vote.proposal_title}` : ""}
+        </p>
+      </div>
+      <span className="shrink-0 text-xs text-gray-400">{formatDate(vote.voted_at)}</span>
+    </>
+  );
+  const className =
+    "flex items-start justify-between gap-3 rounded-lg border border-gray-200 bg-white px-4 py-3 transition-colors hover:bg-gray-50";
+  return vote.proposal_id ? (
+    <a href={`/proposals/${vote.proposal_id}`} className={className}>
+      {inner}
+    </a>
+  ) : (
+    <div className={className}>{inner}</div>
   );
 }
 

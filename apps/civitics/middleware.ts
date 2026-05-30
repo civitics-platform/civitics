@@ -187,6 +187,18 @@ export async function middleware(request: NextRequest) {
     return new NextResponse(null, { status: 404 });
   }
 
+  // ── FIX-H: same malformed-UUID → 404 guard for the other [id] routes that
+  // pair loading.tsx (Suspense) with a page-level notFound(). Each returns 200
+  // on a malformed path without this. /institutions/[id] is deliberately
+  // EXCLUDED — its page resolves non-UUID slugs to UUIDs via a DB lookup
+  // (governing_bodies.slug → permanentRedirect), so a format guard here would
+  // 404 legitimate slug URLs. The edge can't do that DB lookup, so the page
+  // keeps ownership of /institutions/[id] not-found handling.
+  const idGuardMatch = path.match(/^\/(districts|officials|proposals)\/([^/]+)\/?$/);
+  if (idGuardMatch && !UUID_RE.test(idGuardMatch[2] ?? "")) {
+    return new NextResponse(null, { status: 404 });
+  }
+
   // ── Rate limiting on public API routes ────────────────────────────────────
   const bucket = getRateLimitBucket(path);
   if (bucket) {
