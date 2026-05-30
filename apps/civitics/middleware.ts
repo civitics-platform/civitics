@@ -146,6 +146,11 @@ function rateLimitResponse(retryAfterSec: number): NextResponse {
 // Middleware
 // ---------------------------------------------------------------------------
 
+// Canonical UUID v-any shape, case-insensitive. Shared by the agency redirect
+// (FIX-418) and the jurisdiction 404 guard (FIX-G).
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 // FIX-418: /agencies/<uuid> → /institutions/<uuid> as a request-level 308.
 // Doing this in middleware (rather than in the [slug] page's redirect()) gives
 // a true HTTP 308 status — when redirect() runs inside a Suspense boundary, it
@@ -168,6 +173,18 @@ export async function middleware(request: NextRequest) {
     const dest = request.nextUrl.clone();
     dest.pathname = `/institutions/${agencyMatch[1]}`;
     return NextResponse.redirect(dest, 308);
+  }
+
+  // ── FIX-G: /jurisdictions/<malformed> → true 404 ──────────────────────────
+  // Page-level notFound() degrades to a 200 under loading.tsx Suspense (same
+  // root cause as the FIX-418 redirect). Validating UUID format here, before
+  // streaming starts, returns a real HTTP 404 for malformed paths. A
+  // well-formed UUID with no matching row still falls through to the page and
+  // returns 200 + the not-found UI — by design: edge middleware can't do DB
+  // lookups, and a format check is all we can do without one.
+  const jurisdictionMatch = path.match(/^\/jurisdictions\/([^/]+)\/?$/);
+  if (jurisdictionMatch && !UUID_RE.test(jurisdictionMatch[1] ?? "")) {
+    return new NextResponse(null, { status: 404 });
   }
 
   // ── Rate limiting on public API routes ────────────────────────────────────
