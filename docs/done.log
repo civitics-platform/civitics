@@ -534,3 +534,4 @@
 2026-05-29 | FIX-426 | 44623200 | local+prod | feat(tags): full-data official rule tags via SQL rollups (FIX-426/427)
 2026-05-29 | FIX-427 | 44623200 | local+prod | feat(tags): full-data official rule tags via SQL rollups (FIX-426/427)
 2026-05-29 | FIX-436 | 44623200 | local+prod | feat(tags): full-data official rule tags via SQL rollups (FIX-426/427)
+2026-05-29 | FIX-439 | c9356dbd | local+prod | feat(institutions): governing-body substance + middleware UUID guards
