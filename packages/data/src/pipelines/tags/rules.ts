@@ -843,47 +843,29 @@ async function tagFinancialEntities(db: any): Promise<number> {
 async function tagPreVoteConnections(db: any): Promise<number> {
   console.log("\n  [4/4] Tagging pre-vote timing connections...");
 
-  // Distinct financial entities with ≥1 donation in (0,90] days before any vote
-  // by the recipient official, computed server-side (FIX-437). The donations
-  // (~1.37M) and votes (~592k) both blew the 1,000-row cap, and the old Node
-  // cross-join attempted one upsert per qualifying donation×vote pair (~65M),
-  // all collapsing to a single 'internal' tag per entity (~371k). The rollup
-  // returns those ~371k distinct entity ids directly. No per-pair/per-proposal
-  // detail is persisted — the tag is visibility:internal and read by no consumer
-  // (verified FIX-437) — so the old proposals-title fetch and the cross-join are
-  // dropped. callWithRetry THROWS on exhaustion → no partial load reaches the
-  // DELETE.
-  const entityIds =
-    (await callWithRetry<string[]>("get_pre_vote_timing_entities", () =>
-      db.rpc("get_pre_vote_timing_entities"),
-    )) ?? [];
+  // Fully server-side authoritative rebuild (FIX-437 follow-up). The
+  // 'pre_vote_timing' tag is constant per entity — same tag/label/visibility,
+  // empty metadata — so there is nothing for Node to compute. The original
+  // approach shipped the ~371k qualifying entity ids out as a jsonb array and
+  // re-upserted them, which the local PostgREST/Kong gateway reliably failed on
+  // ("The upstream server is timing out"), leaving fe_internal stuck at 1. The
+  // aggregation itself is ~5s in psql; only the array round-trip was the
+  // problem. rebuild_pre_vote_timing_tags() does the DELETE + INSERT…SELECT in
+  // one statement under a raised statement_timeout and returns just the count —
+  // nothing crosses the gateway but a number. callWithRetry THROWS on
+  // exhaustion. "Qualifying" = a financial_entity with ≥1 donation in (0,90]
+  // days before any vote by the recipient official (sargable range form so the
+  // votes_official_voted_at index applies). Old Node cross-join (~65M pairs) and
+  // proposals-title fetch are gone — the tag persists no per-pair detail and no
+  // consumer reads it (verified FIX-437).
+  const written =
+    (await callWithRetry<number>("rebuild_pre_vote_timing_tags", () =>
+      db.rpc("rebuild_pre_vote_timing_tags"),
+    )) ?? 0;
 
-  const tags: TagInsert[] = entityIds.map((id) => ({
-    entity_type: "financial_entity",
-    entity_id: id,
-    tag: "pre_vote_timing",
-    tag_category: "internal",
-    display_label: "Pre-Vote Timing",
-    display_icon: null,
-    visibility: "internal",
-    generated_by: "rule",
-    confidence: 1.0,
-    pipeline_version: "v1",
-    metadata: {},
-  }));
-
-  // Authoritative rebuild (FIX-437): clear prior pre_vote_timing tags then
-  // reinsert. Scoped to tag_category='internal' so the size/industry tags from
-  // tagFinancialEntities survive. Runs only after the rollup succeeded above.
-  // Same statement_timeout-raised clear RPC as tagFinancialEntities (~371k rows
-  // exceeds the 8s PostgREST ceiling under contention).
-  await callWithRetry<number>("clear_financial_entity_rule_tags(internal)", () =>
-    db.rpc("clear_financial_entity_rule_tags", { p_categories: ["internal"] }),
-  );
-
-  const totalUpserted = await upsertTags(db, tags);
-  console.log(`    Upserted ${totalUpserted} pre-vote timing tags`);
-  return totalUpserted;
+  const total = Number(written);
+  console.log(`    Upserted ${total} pre-vote timing tags`);
+  return total;
 }
 
 // ---------------------------------------------------------------------------
