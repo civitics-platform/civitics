@@ -124,11 +124,25 @@ vote      (not vote_cast)
   NOTE: 'not_voting' uses an underscore, NOT a space. Using 'not voting'
   in queries silently returns zero rows. This bit us in FIX-073.
 voted_at  (not vote_date)
-metadata->>'vote_question'   procedural type string (e.g. "On Passage", "On the Cloture Motion")
-metadata->>'legis_num'       bill number
+bill_proposal_id   THE proposal link (not proposal_id — that column was renamed
+  at promotion and NO LONGER EXISTS). UUID NOT NULL, FK → bill_details(proposal_id).
+  The VALUE equals proposals.id (bill_details.proposal_id == proposals.id), so a
+  vote's bill_proposal_id is a proposals.id — only the column name moved.
+  There is NO direct votes→proposals FK, so a PostgREST embed
+  (`proposals!bill_proposal_id(...)` or `proposals!proposal_id(...)`) does NOT
+  resolve — both error with PGRST200. Use the two-step manual fetch: select
+  bill_proposal_id, then `.in("id", ids)` on proposals (embed bill_details for
+  bill_number). Referencing the dead `proposal_id` via supabase-js is swallowed
+  by `const { data } = …` → silent zero rows (this was FIX-426 and the FIX-438
+  sweep that absorbed it).
+vote_question   FIRST-CLASS COLUMN (text), NOT metadata->>'vote_question'.
+  Procedural type string (e.g. "On Passage", "On the Cloture Motion"). Reading it
+  off metadata returns undefined for every row → fail-open procedural filters.
+metadata->>'legis_num'       bill number (NOTE: unpopulated today; bill_number
+  lives in bill_details(proposal_id))
 ```
 
-Do NOT use vote_cast or vote_date — those columns do not exist.
+Do NOT use vote_cast, vote_date, or proposal_id — those columns do not exist.
 
 When asserting or filtering on an enum value, treat the schema CHECK
 constraint as ground truth. Not CLAUDE.md, not a prior pipeline's

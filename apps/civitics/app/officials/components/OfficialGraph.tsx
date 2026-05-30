@@ -257,11 +257,40 @@ export function OfficialGraph({
         .limit(200),
       supabase
         .from("votes")
-        .select("id, vote, voted_at, roll_call_number, proposals!proposal_id(id, title, bill_number, short_title)")
+        .select("id, vote, voted_at, bill_proposal_id")
         .eq("official_id", id)
         .order("voted_at", { ascending: false })
         .limit(40),
     ]);
+
+    // votes.bill_proposal_id FKs to bill_details(proposal_id); there is no direct
+    // votes→proposals relationship, so a PostgREST embed can't resolve. Two-step:
+    // fetch the proposals separately and attach them. bill_proposal_id IS a proposals.id.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const voteRows = ((voteRes.data as any[]) ?? []) as Array<{ bill_proposal_id: string | null }>;
+    const proposalIds = [...new Set(voteRows.map((v) => v.bill_proposal_id).filter(Boolean) as string[])];
+    const proposalsById = new Map<string, { id: string; title: string | null; short_title: string | null; bill_number: string | null }>();
+    if (proposalIds.length > 0) {
+      const { data: props } = await supabase
+        .from("proposals")
+        .select("id, title, short_title, bill_details(bill_number)")
+        .in("id", proposalIds);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      for (const p of ((props as any[]) ?? [])) {
+        const bd = Array.isArray(p.bill_details) ? p.bill_details[0] : p.bill_details;
+        proposalsById.set(p.id, {
+          id: p.id,
+          title: p.title ?? null,
+          short_title: p.short_title ?? null,
+          bill_number: bd?.bill_number ?? null,
+        });
+      }
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const hydratedVotes = voteRows.map((v: any) => ({
+      ...v,
+      proposals: v.bill_proposal_id ? proposalsById.get(v.bill_proposal_id) ?? null : null,
+    }));
 
     const data = buildGraphData(
       id,
@@ -269,8 +298,7 @@ export function OfficialGraph({
       party,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (connRes.data as any[]) ?? [],
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (voteRes.data as any[]) ?? []
+      hydratedVotes
     );
 
     cache.current.set(id, data);

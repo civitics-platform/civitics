@@ -9,7 +9,6 @@ type RecentVote = {
   id: string;
   vote: string;
   voted_at: string | null;
-  roll_call_number: string | null;
   proposals: {
     id: string;
     title: string | null;
@@ -82,7 +81,7 @@ export function OfficialCard({ official }: { official: OfficialRow }) {
       const [recentRes, mvRes] = await Promise.all([
         supabase
           .from("votes")
-          .select("id, vote, voted_at, roll_call_number, proposals!proposal_id(id, title, bill_number, short_title)")
+          .select("id, vote, voted_at, bill_proposal_id")
           .eq("official_id", official.id)
           .order("voted_at", { ascending: false })
           .limit(10),
@@ -95,8 +94,39 @@ export function OfficialCard({ official }: { official: OfficialRow }) {
 
       if (cancelled) return;
 
+      // votes.bill_proposal_id FKs to bill_details(proposal_id); there is no
+      // direct votes→proposals relationship, so a PostgREST embed can't resolve.
+      // Two-step: fetch the proposals separately and attach them. The
+      // bill_proposal_id value IS a proposals.id (bill_details.proposal_id == proposals.id).
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      setVotes((recentRes.data as any[]) ?? []);
+      const voteRows = ((recentRes.data as any[]) ?? []) as Array<{ bill_proposal_id: string | null }>;
+      const proposalIds = [...new Set(voteRows.map((v) => v.bill_proposal_id).filter(Boolean) as string[])];
+      const proposalsById = new Map<string, RecentVote["proposals"]>();
+      if (proposalIds.length > 0) {
+        const { data: props } = await supabase
+          .from("proposals")
+          .select("id, title, short_title, bill_details(bill_number)")
+          .in("id", proposalIds);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        for (const p of ((props as any[]) ?? [])) {
+          const bd = Array.isArray(p.bill_details) ? p.bill_details[0] : p.bill_details;
+          proposalsById.set(p.id, {
+            id: p.id,
+            title: p.title ?? null,
+            short_title: p.short_title ?? null,
+            bill_number: bd?.bill_number ?? null,
+          });
+        }
+      }
+
+      if (cancelled) return;
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const hydrated: RecentVote[] = voteRows.map((v: any) => ({
+        ...v,
+        proposals: v.bill_proposal_id ? proposalsById.get(v.bill_proposal_id) ?? null : null,
+      }));
+      setVotes(hydrated);
       setVoteCount(mvRes.data?.vote_count ?? 0);
       setDonorCount(mvRes.data?.donor_count ?? 0);
       setTotal(mvRes.data?.total_donations_cents ?? 0);

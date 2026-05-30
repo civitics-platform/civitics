@@ -11,13 +11,16 @@ interface OfficialRow {
   id: string;
   full_name: string;
   party: string | null;
-  state: string | null;
-  chamber: string | null;
+  district_name: string | null;
+  // officials has no `state` / `chamber` column post-cutover — both live in
+  // metadata. Selecting them directly 500s the whole route (oErr fires before
+  // the votes fetch is even read), so derive from metadata instead.
+  metadata: Record<string, unknown> | null;
 }
 
 interface VoteRow {
   official_id: string;
-  proposal_id: string;
+  bill_proposal_id: string;
   vote: string;
 }
 
@@ -105,11 +108,11 @@ export async function GET(req: NextRequest) {
     await Promise.all([
       supabase
         .from("officials")
-        .select("id, full_name, party, state, chamber")
+        .select("id, full_name, party, district_name, metadata")
         .in("id", ids),
       supabase
         .from("votes")
-        .select("official_id, proposal_id, vote")
+        .select("official_id, bill_proposal_id, vote")
         .in("official_id", ids),
     ]);
 
@@ -134,8 +137,8 @@ export async function GET(req: NextRequest) {
       id: r.id,
       name: r.full_name,
       party: r.party,
-      state: r.state,
-      chamber: r.chamber,
+      state: (r.metadata?.state as string | undefined) ?? null,
+      chamber: (r.metadata?.chamber as string | undefined) ?? null,
     }));
 
   if (officials.length < 2) {
@@ -151,10 +154,10 @@ export async function GET(req: NextRequest) {
   for (const row of (voteRows ?? []) as VoteRow[]) {
     const b = bucket(row.vote);
     if (!b) continue;
-    let inner = byProposal.get(row.proposal_id);
+    let inner = byProposal.get(row.bill_proposal_id);
     if (!inner) {
       inner = new Map();
-      byProposal.set(row.proposal_id, inner);
+      byProposal.set(row.bill_proposal_id, inner);
     }
     inner.set(row.official_id, b);
   }

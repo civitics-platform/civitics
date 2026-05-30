@@ -61,21 +61,38 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   if (followedOfficialIds.length > 0) {
     const { data: newVotes } = await db
       .from("votes")
-      .select(
-        "id, official_id, vote, voted_at, proposals!proposal_id(id, title, bill_number)"
-      )
+      .select("id, official_id, vote, voted_at, bill_proposal_id")
       .in("official_id", followedOfficialIds)
       .gt("voted_at", lastRunIso)
       .order("voted_at", { ascending: false })
       .limit(500);
 
+    // votes.bill_proposal_id FKs to bill_details(proposal_id), not proposals, so a
+    // PostgREST embed can't resolve. Two-step: fetch proposals + bill_number
+    // separately. The bill_proposal_id value IS a proposals.id.
+    const newVoteRows = (newVotes ?? []) as Array<{
+      id: string; official_id: string; vote: string; voted_at: string | null; bill_proposal_id: string | null;
+    }>;
+    const followProposalIds = [...new Set(newVoteRows.map((v) => v.bill_proposal_id).filter(Boolean) as string[])];
+    const followProposalsById = new Map<string, { id: string; title: string | null; bill_number: string | null }>();
+    if (followProposalIds.length > 0) {
+      const { data: props } = await db
+        .from("proposals")
+        .select("id, title, bill_details(bill_number)")
+        .in("id", followProposalIds);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      for (const p of ((props ?? []) as any[])) {
+        const bd = Array.isArray(p.bill_details) ? p.bill_details[0] : p.bill_details;
+        followProposalsById.set(p.id, { id: p.id, title: p.title ?? null, bill_number: bd?.bill_number ?? null });
+      }
+    }
+
     const votesByOfficial = new Map<
       string,
       Array<{ title: string; bill_number: string | null; vote: string; proposal_id: string | null }>
     >();
-    for (const v of newVotes ?? []) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const proposal = (v as any).proposals;
+    for (const v of newVoteRows) {
+      const proposal = v.bill_proposal_id ? followProposalsById.get(v.bill_proposal_id) ?? null : null;
       const entry = votesByOfficial.get(v.official_id) ?? [];
       entry.push({
         title:       proposal?.title ?? "Unknown bill",

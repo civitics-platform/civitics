@@ -130,18 +130,21 @@ async function filterProceduralConnections(
 
   const { data: votes, error } = await supabase
     .from("votes")
-    .select("official_id, proposal_id, metadata")
+    .select("official_id, bill_proposal_id, vote_question")
     .in("official_id", [...officialIds])
-    .in("proposal_id", [...proposalIds]);
+    .in("bill_proposal_id", [...proposalIds]);
 
   if (error || !votes) return connections; // fail open — never hide data on lookup error
 
   // For each (official, proposal) pair: true if at least one non-procedural vote exists,
   // false if we saw votes but they were all procedural, missing if no votes were found.
   const hasSubstantive = new Map<string, boolean>();
-  for (const v of votes as { official_id: string; proposal_id: string; metadata: { vote_question?: string } | null }[]) {
-    const key = `${v.official_id}|${v.proposal_id}`;
-    const q = String(v.metadata?.vote_question ?? "").toLowerCase();
+  // vote_question is a first-class votes column (NOT metadata->>'vote_question').
+  // Reading it off metadata returned undefined for every row, so the procedural
+  // filter failed open and treated every vote as substantive.
+  for (const v of votes as { official_id: string; bill_proposal_id: string; vote_question: string | null }[]) {
+    const key = `${v.official_id}|${v.bill_proposal_id}`;
+    const q = String(v.vote_question ?? "").toLowerCase();
     const isProcedural = PROCEDURAL_PREFIXES.some(p => q.startsWith(p));
     if (!isProcedural) hasSubstantive.set(key, true);
     else if (!hasSubstantive.has(key)) hasSubstantive.set(key, false);

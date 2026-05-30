@@ -71,8 +71,11 @@ type VoteRow = {
   vote: string;
   voted_at: string | null;
   roll_call_id: string | null;
+  bill_proposal_id?: string | null;
+  // `proposals` is attached at runtime by the two-step hydration (votes has no
+  // direct FK to proposals), so it's optional on the statically-typed select.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  proposals: any | null;
+  proposals?: any | null;
 };
 
 type DonorRow = {
@@ -284,9 +287,7 @@ export default async function OfficialProfilePage({
         .eq("official_id", params.id),
       supabase
         .from("votes")
-        .select(
-          "id, vote, voted_at, roll_call_id, proposals!bill_proposal_id(id, title, short_title, bill_details(bill_number))"
-        )
+        .select("id, vote, voted_at, roll_call_id, bill_proposal_id")
         .eq("official_id", params.id)
         .order("voted_at", { ascending: false })
         .limit(100),
@@ -320,7 +321,7 @@ export default async function OfficialProfilePage({
         .maybeSingle(),
       supabase
         .from("votes")
-        .select("vote, proposals!bill_proposal_id(id, title, bill_details(bill_number))")
+        .select("vote, bill_proposal_id")
         .eq("official_id", params.id)
         .limit(500),
       supabase
@@ -342,6 +343,47 @@ export default async function OfficialProfilePage({
         .order("window_opened_at", { ascending: false })
         .limit(20),
     ]);
+
+  // votes.bill_proposal_id FKs to bill_details(proposal_id), not proposals, so a
+  // PostgREST embed (proposals!bill_proposal_id) errors → silent empty vote history.
+  // Two-step: fetch the proposals for both vote queries and attach a `proposals`
+  // field so downstream consumers are unchanged. bill_proposal_id IS a proposals.id.
+  {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const voteRowsToHydrate = [
+      ...((votesRes.data ?? []) as any[]),
+      ...((allVotesRes.data ?? []) as any[]),
+    ];
+    const billProposalIds = [
+      ...new Set(voteRowsToHydrate.map((v) => v.bill_proposal_id).filter(Boolean) as string[]),
+    ];
+    if (billProposalIds.length > 0) {
+      const propById = new Map<
+        string,
+        { id: string; title: string | null; short_title: string | null; bill_details: { bill_number: string | null } | null }
+      >();
+      const CHUNK = 300;
+      for (let i = 0; i < billProposalIds.length; i += CHUNK) {
+        const { data: props } = await supabase
+          .from("proposals")
+          .select("id, title, short_title, bill_details(bill_number)")
+          .in("id", billProposalIds.slice(i, i + CHUNK));
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        for (const p of ((props ?? []) as any[])) {
+          const bd = Array.isArray(p.bill_details) ? p.bill_details[0] : p.bill_details;
+          propById.set(p.id, {
+            id: p.id,
+            title: p.title ?? null,
+            short_title: p.short_title ?? null,
+            bill_details: bd ? { bill_number: bd.bill_number ?? null } : null,
+          });
+        }
+      }
+      for (const v of voteRowsToHydrate) {
+        v.proposals = v.bill_proposal_id ? propById.get(v.bill_proposal_id) ?? null : null;
+      }
+    }
+  }
 
   // FIX-270: combined query now returns donation + ie_support + ie_oppose
   // rows in one fetch. Enrich all of them in one pass (same financial_entities
@@ -564,14 +606,14 @@ export default async function OfficialProfilePage({
     .filter((s) => s.total > 0)
     .sort((a, b) => b.total - a.total);
 
-  // Map recent votes for VotesTab display
-  const allVotesForTab = (votesRes.data ?? []).map((v) => ({
+  // Map recent votes for VotesTab display. `proposals` is attached at runtime by
+  // the two-step hydration above; the typed select doesn't include it, so cast.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const allVotesForTab = ((votesRes.data ?? []) as any[]).map((v) => ({
     id: v.id,
     vote: v.vote,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    title: (v.proposals as any)?.title ?? "",
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    proposalId: (v.proposals as any)?.id as string | undefined,
+    title: v.proposals?.title ?? "",
+    proposalId: v.proposals?.id as string | undefined,
     date: v.voted_at ?? undefined,
   }));
 
