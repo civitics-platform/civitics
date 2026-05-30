@@ -37,6 +37,7 @@ import {
   buildProposalSummaryContext,
   buildOfficialSummaryContext,
   loadJurisdictionPriorities,
+  classifyProposalContext,
 } from "../enrichment/queue";
 
 // ---------------------------------------------------------------------------
@@ -52,6 +53,7 @@ type ProposalRow = {
   type: string;
   agency_name: string | null;
   agency_acronym: string | null;
+  latest_action: string | null;
   context_level: ContextLevel;
   jurisdiction_id: string;
   updated_at: string;
@@ -82,10 +84,10 @@ type ProposalStats = {
 // Context classification
 // ---------------------------------------------------------------------------
 
+// Delegates to the shared classifier so the live-API path and the queue path
+// agree on the title-as-summary guard (FIX-434).
 function classifyContext(summaryPlain: string | null, title: string): ContextLevel {
-  if ((summaryPlain?.length ?? 0) > 100) return "full_summary";
-  if (title.trim().length >= 10) return "title_only";
-  return "truly_empty";
+  return classifyProposalContext(summaryPlain, title);
 }
 
 // ---------------------------------------------------------------------------
@@ -179,6 +181,7 @@ export async function fetchOpenProposals(db: ReturnType<typeof createAdminClient
         type: p.type,
         agency_acronym: acronym,
         agency_name: agencyFullName(acronym),
+        latest_action: (p.metadata?.latest_action as string | undefined) ?? null,
         context_level: contextLevel,
         jurisdiction_id: p.jurisdiction_id ?? "",
         updated_at: p.updated_at ?? new Date().toISOString(),
@@ -538,6 +541,7 @@ export async function runAiSummariesPipeline(incremental = false): Promise<void>
           type: p.type,
           agency_name: p.agency_name,
           agency_acronym: p.agency_acronym,
+          latest_action: p.latest_action,
         }),
         priority: jPriority.get(p.jurisdiction_id) ?? 0,
         entity_updated_at: p.updated_at,

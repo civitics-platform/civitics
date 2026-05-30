@@ -37,6 +37,7 @@ Each item is either a `proposal` or an `official`. Handle them differently:
   agency_name: string | null,
   agency_acronym: string | null,
   type: string | null,
+  latest_action: string | null,   // last legislative/regulatory action text, when available
   context_level: "full_summary" | "title_only",
   prompt_template: same as context_level,
   max_tokens: 300 (full_summary) | 200 (title_only)
@@ -47,9 +48,17 @@ Generate a plain-language summary:
 - `context_level === "full_summary"` (has a real summary): **2–3 sentences**
   describing what the proposal does and who it affects. No markdown, no bullet
   points, no headings.
-- `context_level === "title_only"` (nothing but a title): **1–2 sentences**
-  inferred cautiously from title + agency. Hedge where uncertain
-  ("appears to", "would"). No markdown.
+- `context_level === "title_only"` (no real summary — title + maybe an action
+  line): **1–2 sentences**. Ground STRICTLY in the fields provided — `title`,
+  `latest_action` (if non-null), `agency_name`/`agency_acronym`, and `type`.
+  **Do NOT invent any fact not present in those fields** — no specific dollar
+  amounts, dates, section numbers, sponsors, vote tallies, effects, or
+  beneficiaries that aren't literally stated. Restate and lightly clarify what
+  the title and action line say; hedge where the title is vague ("appears to",
+  "would", "concerns"). If `latest_action` is present, you may note the
+  proposal's current status from it (e.g. "has been referred to committee").
+  When the title alone is too thin to say anything beyond paraphrasing it, a
+  one-sentence paraphrase is the correct, honest output — do not pad.
 - Stay within `max_tokens` as a budget (roughly 1 token ≈ 4 chars).
 
 ### When `entity_type === "official"` — `context` has

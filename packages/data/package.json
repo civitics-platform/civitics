@@ -57,6 +57,8 @@
     "data:audit:ci": "tsx src/pipelines/integrity-audit/index.ts --allow-prod",
     "data:audit-cutover-indexes": "tsx --env-file=../../.env.local src/scripts/cutover-index-audit.ts",
     "data:audit-fe-fk-surface": "tsx --env-file=../../.env.local src/scripts/audit-fe-fk-surface.ts",
+    "data:audit-summary-context": "tsx --env-file=../../.env.local src/scripts/audit-summary-context.ts",
+    "data:audit-summary-context:prod": "tsx --env-file=../../.env.local.prod src/scripts/audit-summary-context.ts",
     "data:iowait-diagnosis": "tsx --env-file=../../.env.local src/scripts/iowait-diagnosis.ts",
     "diag:pipeline-history": "tsx --env-file=../../.env.local src/scripts/pipeline-history-shape-check.ts",
     "diag:dc-jurisdiction-damage": "tsx --env-file=../../.env.local src/scripts/audit-dc-jurisdiction-damage.ts",

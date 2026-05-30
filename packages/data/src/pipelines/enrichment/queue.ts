@@ -137,15 +137,34 @@ export type ProposalSummaryInput = {
   type: string | null;
   agency_name: string | null;
   agency_acronym: string | null;
+  // metadata.latest_action — the last legislative/regulatory action text.
+  // Stored by congress (bills.ts) and openstates (writer.ts) ingestion but
+  // historically dropped from the summary context, leaving the worker with
+  // nothing but the title to infer from. Threaded through as grounding for
+  // title_only items (FIX-434). null for sources that don't capture it
+  // (legistar, courtlistener, regulations).
+  latest_action: string | null;
 };
 
 export type ProposalContextLevel = "full_summary" | "title_only" | "truly_empty";
+
+/**
+ * A `summary_plain` that is just a copy of the title is not a real summary —
+ * grounding on it yields title-quality output while falsely claiming
+ * `full_summary`. Treat it as no-summary. (Part A audit 2026-05-30: no source
+ * populates `summary_plain` today, so this guard is defensive — it bites only
+ * if a future ingestion path copies the title into `summary_plain`.)
+ */
+function isTitleMasqueradingAsSummary(summaryPlain: string, title: string): boolean {
+  return summaryPlain.trim().toLowerCase() === title.trim().toLowerCase();
+}
 
 export function classifyProposalContext(
   summaryPlain: string | null,
   title: string,
 ): ProposalContextLevel {
-  if ((summaryPlain?.length ?? 0) > 100) return "full_summary";
+  const sp = (summaryPlain ?? "").trim();
+  if (sp.length > 100 && !isTitleMasqueradingAsSummary(sp, title)) return "full_summary";
   if (title.trim().length >= 10) return "title_only";
   return "truly_empty";
 }
@@ -158,6 +177,7 @@ export function buildProposalSummaryContext(p: ProposalSummaryInput) {
     agency_name: p.agency_name,
     agency_acronym: p.agency_acronym,
     type: p.type,
+    latest_action: p.latest_action,
     context_level,
     prompt_template: context_level, // worker resolves template by name
     max_tokens: context_level === "full_summary" ? 300 : 200,

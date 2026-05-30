@@ -365,6 +365,7 @@ async function main(): Promise<void> {
           type: p.type,
           agency_name: agencyFullName(acronym),
           agency_acronym: acronym,
+          latest_action: (p.metadata?.["latest_action"] as string | undefined) ?? null,
         }),
       };
     });
