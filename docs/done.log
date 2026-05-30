@@ -541,3 +541,4 @@
 2026-05-29 | FIX-441 | a2239c86 | local+prod | feat(navigation): index pages + /meetings/[id] + nav links + breadcrumb fills
 2026-05-30 | FIX-437 | ca36840c | local-only | fix(tags): bound tagFinancialEntities + tagPreVoteConnections via SQL rollups (FIX-437)
 2026-05-30 | FIX-437 | 1d68fee9 | local-only | fix(tags): pre_vote_timing full server-side rebuild + planner pin (FIX-437 follow-up)
+2026-05-30 | FIX-443 | 78c1c7fb | local-only | fix(tags): move financial-entity size tagging server-side (client rollup OOM'd prod)
