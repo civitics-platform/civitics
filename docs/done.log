@@ -539,3 +539,4 @@
 2026-05-29 | FIX-438 | 1c5cc5e0 | local-only | fix(votes): complete proposal_id→bill_proposal_id rename across read paths (FIX-440, FIX-438)
 2026-05-29 | FIX-440 | 1c5cc5e0 | local-only | fix(votes): complete proposal_id→bill_proposal_id rename across read paths (FIX-440, FIX-438)
 2026-05-29 | FIX-441 | a2239c86 | local+prod | feat(navigation): index pages + /meetings/[id] + nav links + breadcrumb fills
+2026-05-30 | FIX-437 | ca36840c | local-only | fix(tags): bound tagFinancialEntities + tagPreVoteConnections via SQL rollups (FIX-437)
