@@ -863,7 +863,16 @@ export default async function OfficialProfilePage({
                 <p className="mt-0.5 text-base text-gray-600">{official.role_title}</p>
                 {official.state_name && (
                   <p className="mt-0.5 text-sm text-gray-500">
-                    {official.state_name}
+                    {official.jurisdiction_id ? (
+                      <a
+                        href={`/jurisdictions/${official.jurisdiction_id}`}
+                        className="hover:text-indigo-600 hover:underline transition-colors"
+                      >
+                        {official.state_name}
+                      </a>
+                    ) : (
+                      official.state_name
+                    )}
                     {official.district_name ? ` · ${official.district_name}` : ""}
                   </p>
                 )}

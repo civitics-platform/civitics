@@ -7,12 +7,13 @@ import { AuthButton } from "./AuthButton";
 import { NotificationsBell } from "./NotificationsBell";
 
 const NAV_ITEMS = [
-  { label: "Officials",   href: "/officials" },
-  { label: "Proposals",   href: "/proposals" },
-  { label: "Initiatives", href: "/initiatives" },
-  { label: "Agencies",    href: "/agencies" },
-  { label: "Graph",       href: "/graph" },
-  { label: "Dashboard",   href: "/dashboard" },
+  { label: "Jurisdictions", href: "/jurisdictions" },
+  { label: "Institutions",  href: "/institutions" },
+  { label: "Officials",     href: "/officials" },
+  { label: "Proposals",     href: "/proposals" },
+  { label: "Initiatives",   href: "/initiatives" },
+  { label: "Graph",         href: "/graph" },
+  { label: "Dashboard",     href: "/dashboard" },
 ];
 
 export function NavBar() {

@@ -225,9 +225,38 @@ export default async function ProposalDetailPage({
     .eq("proposal_id", p.id)
     .limit(5);
 
-  const [votesRes, relatedRes, aiSummaryRes, relatedInitiativesRes] = await Promise.all([
-    votesPromise, relatedQuery, aiSummaryPromise, relatedInitiativesQuery,
+  // FIX-I: jurisdiction → institution breadcrumb so users can navigate upward
+  // from a proposal to its hubs. proposals carries jurisdiction_id +
+  // governing_body_id; resolve both names in the same round-trip batch.
+  const breadcrumbPromise = supabase
+    .from("proposals")
+    .select("jurisdiction_id, governing_body_id")
+    .eq("id", p.id)
+    .maybeSingle();
+
+  const [votesRes, relatedRes, aiSummaryRes, relatedInitiativesRes, breadcrumbRes] = await Promise.all([
+    votesPromise, relatedQuery, aiSummaryPromise, relatedInitiativesQuery, breadcrumbPromise,
   ]);
+
+  // Resolve breadcrumb entity names (jurisdiction + governing body).
+  const bcMeta = (breadcrumbRes.data ?? null) as {
+    jurisdiction_id: string | null;
+    governing_body_id: string | null;
+  } | null;
+  let bcJurisdiction: { id: string; name: string } | null = null;
+  let bcInstitution: { id: string; name: string } | null = null;
+  if (bcMeta?.jurisdiction_id || bcMeta?.governing_body_id) {
+    const [jRes, gRes] = await Promise.all([
+      bcMeta.jurisdiction_id
+        ? supabase.from("jurisdictions").select("id, name").eq("id", bcMeta.jurisdiction_id).maybeSingle()
+        : Promise.resolve({ data: null }),
+      bcMeta.governing_body_id
+        ? supabase.from("institutions").select("id, name").eq("id", bcMeta.governing_body_id).maybeSingle()
+        : Promise.resolve({ data: null }),
+    ]);
+    bcJurisdiction = (jRes.data as { id: string; name: string } | null) ?? null;
+    bcInstitution = (gRes.data as { id: string; name: string } | null) ?? null;
+  }
 
   const votes = (votesRes.data ?? []) as Vote[];
   const related = (relatedRes.data ?? []) as RelatedProposal[];
@@ -302,8 +331,30 @@ export default async function ProposalDetailPage({
       <div className="border-b border-gray-200 bg-white">
         <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
 
-          {/* Breadcrumb */}
-          <nav className="mb-4 flex items-center gap-1.5 text-xs text-gray-400">
+          {/* Breadcrumb — jurisdiction → institution → proposals → this */}
+          <nav className="mb-4 flex flex-wrap items-center gap-1.5 text-xs text-gray-400">
+            {bcJurisdiction && (
+              <>
+                <a
+                  href={`/jurisdictions/${bcJurisdiction.id}`}
+                  className="hover:text-gray-600 transition-colors"
+                >
+                  {bcJurisdiction.name}
+                </a>
+                <span>/</span>
+              </>
+            )}
+            {bcInstitution && (
+              <>
+                <a
+                  href={`/institutions/${bcInstitution.id}`}
+                  className="hover:text-gray-600 transition-colors"
+                >
+                  {bcInstitution.name}
+                </a>
+                <span>/</span>
+              </>
+            )}
             <a href="/proposals" className="hover:text-gray-600 transition-colors">Proposals</a>
             <span>/</span>
             <span className="text-gray-600 truncate max-w-[200px] sm:max-w-none">{p.title}</span>

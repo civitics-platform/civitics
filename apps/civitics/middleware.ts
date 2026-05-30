@@ -194,7 +194,7 @@ export async function middleware(request: NextRequest) {
   // (governing_bodies.slug → permanentRedirect), so a format guard here would
   // 404 legitimate slug URLs. The edge can't do that DB lookup, so the page
   // keeps ownership of /institutions/[id] not-found handling.
-  const idGuardMatch = path.match(/^\/(districts|officials|proposals)\/([^/]+)\/?$/);
+  const idGuardMatch = path.match(/^\/(districts|officials|proposals|meetings)\/([^/]+)\/?$/);
   if (idGuardMatch && !UUID_RE.test(idGuardMatch[2] ?? "")) {
     return new NextResponse(null, { status: 404 });
   }
