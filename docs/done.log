@@ -536,3 +536,5 @@
 2026-05-29 | FIX-436 | 44623200 | local+prod | feat(tags): full-data official rule tags via SQL rollups (FIX-426/427)
 2026-05-29 | FIX-439 | c9356dbd | local+prod | feat(institutions): governing-body substance + middleware UUID guards
 2026-05-29 | FIX-439 | 264c5516 | local+prod | fix(institutions): get_institution_recent_votes v2 — chamber-scope + index
+2026-05-29 | FIX-438 | 1c5cc5e0 | local-only | fix(votes): complete proposal_id→bill_proposal_id rename across read paths (FIX-440, FIX-438)
+2026-05-29 | FIX-440 | 1c5cc5e0 | local-only | fix(votes): complete proposal_id→bill_proposal_id rename across read paths (FIX-440, FIX-438)
