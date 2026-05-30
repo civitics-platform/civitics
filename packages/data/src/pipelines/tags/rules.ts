@@ -693,48 +693,57 @@ function naicsToIndustry(code: string): string | null {
 async function tagFinancialEntities(db: any): Promise<number> {
   console.log("\n  [3/3] Tagging financial entities...");
 
-  // Post-cutover: from_id = financial_entity UUID, to_id = official/agency UUID
-  const { data: relationships, error: relErr } = await db
-    .from("financial_relationships")
-    .select("from_id, to_id, to_type, amount_cents, relationship_type, metadata")
-    .eq("from_type", "financial_entity");
+  // Donation totals + first NAICS per entity computed server-side (FIX-437).
+  // financial_relationships (~1.9M from financial_entity) exceeds the 1,000-row
+  // PostgREST cap; an unbounded select silently truncated to ~0.07% of the data
+  // (size tags were built from 477 rows). The rollup returns one jsonb array — a
+  // SETOF shape would itself be capped, and .range()-paginating it would re-run
+  // the ~1.9M-row aggregation per page. callWithRetry THROWS on exhaustion, so a
+  // partial load never reaches the authoritative DELETE below.
+  const donationRollup =
+    (await callWithRetry<
+      Array<{ entity_id: string; total_cents: number | null; naics_code: string | null }>
+    >("get_financial_entity_donation_totals", () =>
+      db.rpc("get_financial_entity_donation_totals"),
+    )) ?? [];
 
-  if (relErr) {
-    console.error("    Error fetching financial_relationships:", relErr.message);
-    return 0;
-  }
+  const allTags: TagInsert[] = [];
 
-  const { data: entities, error: entErr } = await db
-    .from("financial_entities")
-    .select("id, display_name, entity_type");
-
-  if (entErr) {
-    console.error("    Error fetching financial_entities:", entErr.message);
-    return 0;
-  }
-
-  let totalUpserted = 0;
-
-  // ── Donation size tags — aggregate per financial_entity ─────────────────
-  const donationTotalByEntity = new Map<string, number>();
-  for (const rel of relationships ?? []) {
-    if (rel.relationship_type !== "donation") continue;
-    const id = rel.from_id as string;
-    donationTotalByEntity.set(id, (donationTotalByEntity.get(id) ?? 0) + Number(rel.amount_cents ?? 0));
-  }
-
-  for (const [entityId, totalCents] of donationTotalByEntity.entries()) {
-    const base = { entity_type: "financial_entity", entity_id: entityId, generated_by: "rule" as const, confidence: 1.0, pipeline_version: "v1" };
+  // ── Donation size tags — applies to every donor entity (individuals too) ──
+  // Thresholds/visibility unchanged.
+  for (const r of donationRollup) {
+    if (r.total_cents === null || r.total_cents === undefined) continue; // no donations → no size tag
+    const totalCents = Number(r.total_cents);
+    const base = { entity_type: "financial_entity", entity_id: r.entity_id, generated_by: "rule" as const, confidence: 1.0, pipeline_version: "v1" };
     let tag: string, label: string, icon: string | null, visibility: "primary" | "secondary" | "internal";
     if (totalCents < 500_000)        { tag = "small_donation";  label = "Small Donation";  icon = null;    visibility = "internal"; }
     else if (totalCents < 5_000_000) { tag = "medium_donation"; label = "Medium Donation"; icon = null;    visibility = "secondary"; }
     else if (totalCents < 50_000_000){ tag = "large_donation";  label = "Large Donation";  icon = "💰";   visibility = "primary"; }
     else                              { tag = "major_donation";  label = "Major Donation";  icon = "💰💰"; visibility = "primary"; }
-    totalUpserted += await upsertTags(db, [{ ...base, tag, tag_category: "size", display_label: label, display_icon: icon, visibility, metadata: { total_cents: totalCents } }]);
+    allTags.push({ ...base, tag, tag_category: "size", display_label: label, display_icon: icon, visibility, metadata: { total_cents: totalCents } });
   }
 
-  // ── Industry from display_name keyword matching (FEC PACs / orgs) ────────
-  for (const entity of entities ?? []) {
+  // ── Industry from display_name keyword matching (FEC PACs / orgs) ─────────
+  // Scoped to NON-individual entities (FIX-437). Un-truncating the old select
+  // would keyword-match 1.05M individual donors by surname (e.g. anyone named
+  // "Koch" → oil_gas, "Wells" → finance) — false positives on people. The
+  // ~95k PAC/super_pac/party/union/corp/nonprofit/other rows still exceed the
+  // 1,000-row cap, so this is paginated. Keyword vocab/confidence/visibility
+  // unchanged. fetchAllPaged's callWithRetry THROWS on exhaustion.
+  const entities = await fetchAllPaged<{
+    id: string;
+    display_name: string | null;
+    entity_type: string | null;
+  }>("financial_entities (non-individual)", (from, to) =>
+    db
+      .from("financial_entities")
+      .select("id, display_name, entity_type")
+      .neq("entity_type", "individual")
+      .order("id", { ascending: true })
+      .range(from, to),
+  );
+
+  for (const entity of entities) {
     const nameLower = String(entity.display_name ?? "").toLowerCase();
     const matchedIndustries: string[] = [];
 
@@ -755,7 +764,7 @@ async function tagFinancialEntities(db: any): Promise<number> {
       for (const industry of matchedIndustries) {
         const info = INDUSTRY_LABELS[industry];
         if (!info) continue;
-        totalUpserted += await upsertTags(db, [{
+        allTags.push({
           ...base,
           confidence: baseConfidence,
           tag: industry,
@@ -764,31 +773,25 @@ async function tagFinancialEntities(db: any): Promise<number> {
           display_icon: info.icon,
           visibility: baseConfidence >= 0.8 ? "primary" : "secondary",
           metadata: { matched_count: matchedIndustries.length },
-        }]);
+        });
       }
     }
   }
 
-  // ── NAICS → industry for USASpending contractors ─────────────────────────
-  // Each contract relationship carries naics_code in metadata.
-  // Use the first NAICS found per entity; keyword match takes priority if
-  // already written (upsert is idempotent — same tag+category → no-op).
-  const naicsByEntity = new Map<string, string>();
-  for (const rel of relationships ?? []) {
-    if (rel.relationship_type !== "contract" && rel.relationship_type !== "grant") continue;
-    const naics = (rel.metadata as Record<string, unknown> | null)?.["naics_code"] as string | null;
-    if (!naics || naicsByEntity.has(rel.from_id)) continue;
-    naicsByEntity.set(rel.from_id as string, naics);
-  }
-
-  for (const [entityId, naics] of naicsByEntity.entries()) {
-    const industry = naicsToIndustry(naics);
+  // ── NAICS → industry for USASpending contractors (from the rollup) ────────
+  // First NAICS per entity. Keyword match takes priority on an industry/entity
+  // collision (deduped below — keyword tags are pushed first). Applies to all
+  // entities: NAICS is a real contract industry code, not a name guess (and is
+  // only ~78 rows). Confidence/visibility unchanged.
+  for (const r of donationRollup) {
+    if (!r.naics_code) continue;
+    const industry = naicsToIndustry(r.naics_code);
     if (!industry) continue;
     const info = INDUSTRY_LABELS[industry];
     if (!info) continue;
-    totalUpserted += await upsertTags(db, [{
+    allTags.push({
       entity_type: "financial_entity",
-      entity_id: entityId,
+      entity_id: r.entity_id,
       tag: industry,
       tag_category: "industry",
       display_label: info.label,
@@ -797,10 +800,37 @@ async function tagFinancialEntities(db: any): Promise<number> {
       confidence: 0.85,
       generated_by: "rule",
       pipeline_version: "v1",
-      metadata: { naics_code: naics },
-    }]);
+      metadata: { naics_code: r.naics_code },
+    });
   }
 
+  // Dedupe by (entity_id, tag, tag_category) — keyword + NAICS can both emit the
+  // same industry for one entity, and the batched upsert (ON CONFLICT) cannot
+  // affect the same row twice in one statement. Keyword tags are pushed before
+  // NAICS, so first-wins preserves the keyword tag.
+  const seen = new Set<string>();
+  const deduped = allTags.filter((t) => {
+    const k = `${t.entity_id}|${t.tag}|${t.tag_category}`;
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+
+  // Authoritative rebuild (FIX-437): clear this function's own tag categories,
+  // then insert the freshly-computed set. Scoped to size + industry so the
+  // 'internal' pre_vote_timing tags written by tagPreVoteConnections survive.
+  // Runs only AFTER both loads above succeeded (each throws on failure), so a
+  // partial load can never wipe good tags. The DELETE goes through a
+  // statement_timeout-raised RPC because ~928k rows exceeds the 8s ceiling
+  // pinned on the PostgREST roles under contention (a bare .delete() failed with
+  // "canceling statement due to statement timeout"). callWithRetry THROWS on
+  // exhaustion → a failed clear aborts the rebuild rather than upserting onto a
+  // stale table.
+  await callWithRetry<number>("clear_financial_entity_rule_tags(size,industry)", () =>
+    db.rpc("clear_financial_entity_rule_tags", { p_categories: ["size", "industry"] }),
+  );
+
+  const totalUpserted = await upsertTags(db, deduped);
   console.log(`    Upserted ${totalUpserted} financial entity tags`);
   return totalUpserted;
 }
@@ -813,83 +843,45 @@ async function tagFinancialEntities(db: any): Promise<number> {
 async function tagPreVoteConnections(db: any): Promise<number> {
   console.log("\n  [4/4] Tagging pre-vote timing connections...");
 
-  // Post-cutover: to_id = official UUID, occurred_at replaces contribution_date
-  const { data: relationships, error: relErr } = await db
-    .from("financial_relationships")
-    .select("from_id, to_id, occurred_at")
-    .eq("to_type", "official")
-    .eq("relationship_type", "donation");
+  // Distinct financial entities with ≥1 donation in (0,90] days before any vote
+  // by the recipient official, computed server-side (FIX-437). The donations
+  // (~1.37M) and votes (~592k) both blew the 1,000-row cap, and the old Node
+  // cross-join attempted one upsert per qualifying donation×vote pair (~65M),
+  // all collapsing to a single 'internal' tag per entity (~371k). The rollup
+  // returns those ~371k distinct entity ids directly. No per-pair/per-proposal
+  // detail is persisted — the tag is visibility:internal and read by no consumer
+  // (verified FIX-437) — so the old proposals-title fetch and the cross-join are
+  // dropped. callWithRetry THROWS on exhaustion → no partial load reaches the
+  // DELETE.
+  const entityIds =
+    (await callWithRetry<string[]>("get_pre_vote_timing_entities", () =>
+      db.rpc("get_pre_vote_timing_entities"),
+    )) ?? [];
 
-  if (relErr) {
-    console.error("    Error fetching financial_relationships:", relErr.message);
-    return 0;
-  }
+  const tags: TagInsert[] = entityIds.map((id) => ({
+    entity_type: "financial_entity",
+    entity_id: id,
+    tag: "pre_vote_timing",
+    tag_category: "internal",
+    display_label: "Pre-Vote Timing",
+    display_icon: null,
+    visibility: "internal",
+    generated_by: "rule",
+    confidence: 1.0,
+    pipeline_version: "v1",
+    metadata: {},
+  }));
 
-  // Fetch votes with voted_at
-  // Post-cutover: proposal_id renamed to bill_proposal_id
-  const { data: votes, error: voteErr } = await db
-    .from("votes")
-    .select("id, official_id, bill_proposal_id, vote, voted_at");
+  // Authoritative rebuild (FIX-437): clear prior pre_vote_timing tags then
+  // reinsert. Scoped to tag_category='internal' so the size/industry tags from
+  // tagFinancialEntities survive. Runs only after the rollup succeeded above.
+  // Same statement_timeout-raised clear RPC as tagFinancialEntities (~371k rows
+  // exceeds the 8s PostgREST ceiling under contention).
+  await callWithRetry<number>("clear_financial_entity_rule_tags(internal)", () =>
+    db.rpc("clear_financial_entity_rule_tags", { p_categories: ["internal"] }),
+  );
 
-  if (voteErr) {
-    console.error("    Error fetching votes:", voteErr.message);
-    return 0;
-  }
-
-  // Build donation index: official UUID → [{fromId, date}]
-  const donationsByOfficial = new Map<string, Array<{ fromId: string; date: Date }>>();
-  for (const r of relationships ?? []) {
-    if (!r.to_id || !r.occurred_at) continue;
-    const list = donationsByOfficial.get(r.to_id) ?? [];
-    list.push({ fromId: r.from_id as string, date: new Date(r.occurred_at as string) });
-    donationsByOfficial.set(r.to_id as string, list);
-  }
-
-  // Fetch proposals for titles
-  const { data: proposals } = await db.from("proposals").select("id, title");
-  const proposalTitles = new Map<string, string>();
-  for (const p of proposals ?? []) {
-    proposalTitles.set(p.id, p.title ?? "Unknown");
-  }
-
-  let totalUpserted = 0;
-
-  for (const vote of votes ?? []) {
-    if (!vote.voted_at || !vote.official_id) continue;
-    const voteDate = new Date(vote.voted_at);
-    const donations = donationsByOfficial.get(vote.official_id) ?? [];
-
-    for (const donation of donations) {
-      const daysBefore = daysBetween(donation.date, voteDate);
-      if (daysBefore <= 0 || daysBefore > 90) continue;
-
-      const proposalTitle = proposalTitles.get(vote.bill_proposal_id) ?? "Unknown proposal";
-
-      // Tag the financial entity (from_id) with pre-vote timing
-      const tagRow: TagInsert = {
-        entity_type: "financial_entity",
-        entity_id: donation.fromId,
-        tag: "pre_vote_timing",
-        tag_category: "internal",
-        display_label: "Pre-Vote Timing",
-        display_icon: null,
-        visibility: "internal",
-        generated_by: "rule",
-        confidence: 1.0,
-        pipeline_version: "v1",
-        metadata: {
-          days_before_vote: daysBefore,
-          vote_cast: vote.vote,
-          proposal_id: vote.bill_proposal_id,
-          proposal_title: proposalTitle,
-          vote_id: vote.id,
-          official_id: vote.official_id,
-        },
-      };
-      totalUpserted += await upsertTags(db, [tagRow]);
-    }
-  }
-
+  const totalUpserted = await upsertTags(db, tags);
   console.log(`    Upserted ${totalUpserted} pre-vote timing tags`);
   return totalUpserted;
 }
