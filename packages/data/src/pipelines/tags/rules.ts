@@ -693,35 +693,47 @@ function naicsToIndustry(code: string): string | null {
 async function tagFinancialEntities(db: any): Promise<number> {
   console.log("\n  [3/3] Tagging financial entities...");
 
-  // Donation totals + first NAICS per entity computed server-side (FIX-437).
-  // financial_relationships (~1.9M from financial_entity) exceeds the 1,000-row
-  // PostgREST cap; an unbounded select silently truncated to ~0.07% of the data
-  // (size tags were built from 477 rows). The rollup returns one jsonb array — a
-  // SETOF shape would itself be capped, and .range()-paginating it would re-run
-  // the ~1.9M-row aggregation per page. callWithRetry THROWS on exhaustion, so a
-  // partial load never reaches the authoritative DELETE below.
-  const donationRollup =
-    (await callWithRetry<
-      Array<{ entity_id: string; total_cents: number | null; naics_code: string | null }>
-    >("get_financial_entity_donation_totals", () =>
-      db.rpc("get_financial_entity_donation_totals"),
+  // ── Donation size tags — fully server-side (FIX-443) ─────────────────────
+  // The old path fetched get_financial_entity_donation_totals() — one jsonb_agg
+  // array over EVERY donor entity (derived from prod's ~4.88M donation rows) —
+  // and built size tags client-side. Materializing that single huge Datum +
+  // buffering it through PostgREST OOM'd the prod Pro instance (postmaster
+  // restart 2026-05-30 20:52:17 UTC). rebuild_financial_entity_size_tags() now
+  // does the DELETE('size') + INSERT…SELECT (same four buckets/labels/icons/
+  // visibility) entirely in SQL and returns just a count — nothing but a bigint
+  // crosses the gateway. callWithRetry THROWS on exhaustion. The function clears
+  // only 'size', so the industry/internal tags built below + by the pre-vote
+  // path survive.
+  const sizeResult = await callWithRetry<number>("rebuild_financial_entity_size_tags", () =>
+    db.rpc("rebuild_financial_entity_size_tags"),
+  );
+  // The function ALWAYS returns a bigint (the inserted row count). A null/
+  // undefined/non-number here means PostgREST answered 200 with an empty body —
+  // the schema-cache cold-start race on a just-created function (observed on
+  // FIX-443's first local run: reported 0 while the function had really written
+  // ~909k). callWithRetry only throws on an *errored* response, so without this
+  // guard a cold-cache miss is silently consumed as 0 — and the function's own
+  // DELETE('size') has already cleared the category, so the table would be left
+  // empty. Treat a non-numeric result as a hard failure; on deploy, reload the
+  // PostgREST schema cache (NOTIFY pgrst, 'reload schema') before re-running.
+  if (typeof sizeResult !== "number") {
+    throw new Error(
+      "rebuild_financial_entity_size_tags returned a non-numeric result " +
+        `(${JSON.stringify(sizeResult)}) — PostgREST schema cache is likely cold; ` +
+        "reload it and re-run before trusting the size category.",
+    );
+  }
+  const sizeWritten = sizeResult;
+
+  // NAICS-only rollup (FIX-443): replaces the donation-bearing rollup for the
+  // industry path. One row per contract/grant entity carrying a NAICS code — the
+  // small slice, not the donor universe — so the payload is safe to fetch.
+  const naicsRollup =
+    (await callWithRetry<Array<{ entity_id: string; naics_code: string | null }>>(
+      "get_financial_entity_naics", () => db.rpc("get_financial_entity_naics"),
     )) ?? [];
 
   const allTags: TagInsert[] = [];
-
-  // ── Donation size tags — applies to every donor entity (individuals too) ──
-  // Thresholds/visibility unchanged.
-  for (const r of donationRollup) {
-    if (r.total_cents === null || r.total_cents === undefined) continue; // no donations → no size tag
-    const totalCents = Number(r.total_cents);
-    const base = { entity_type: "financial_entity", entity_id: r.entity_id, generated_by: "rule" as const, confidence: 1.0, pipeline_version: "v1" };
-    let tag: string, label: string, icon: string | null, visibility: "primary" | "secondary" | "internal";
-    if (totalCents < 500_000)        { tag = "small_donation";  label = "Small Donation";  icon = null;    visibility = "internal"; }
-    else if (totalCents < 5_000_000) { tag = "medium_donation"; label = "Medium Donation"; icon = null;    visibility = "secondary"; }
-    else if (totalCents < 50_000_000){ tag = "large_donation";  label = "Large Donation";  icon = "💰";   visibility = "primary"; }
-    else                              { tag = "major_donation";  label = "Major Donation";  icon = "💰💰"; visibility = "primary"; }
-    allTags.push({ ...base, tag, tag_category: "size", display_label: label, display_icon: icon, visibility, metadata: { total_cents: totalCents } });
-  }
 
   // ── Industry from display_name keyword matching (FEC PACs / orgs) ─────────
   // Scoped to NON-individual entities (FIX-437). Un-truncating the old select
@@ -782,8 +794,9 @@ async function tagFinancialEntities(db: any): Promise<number> {
   // First NAICS per entity. Keyword match takes priority on an industry/entity
   // collision (deduped below — keyword tags are pushed first). Applies to all
   // entities: NAICS is a real contract industry code, not a name guess (and is
-  // only ~78 rows). Confidence/visibility unchanged.
-  for (const r of donationRollup) {
+  // only ~78 rows). Confidence/visibility unchanged. Source is now the tiny
+  // NAICS-only RPC (FIX-443), not the OOM-prone donation rollup.
+  for (const r of naicsRollup) {
     if (!r.naics_code) continue;
     const industry = naicsToIndustry(r.naics_code);
     if (!industry) continue;
@@ -816,22 +829,21 @@ async function tagFinancialEntities(db: any): Promise<number> {
     return true;
   });
 
-  // Authoritative rebuild (FIX-437): clear this function's own tag categories,
-  // then insert the freshly-computed set. Scoped to size + industry so the
-  // 'internal' pre_vote_timing tags written by tagPreVoteConnections survive.
-  // Runs only AFTER both loads above succeeded (each throws on failure), so a
-  // partial load can never wipe good tags. The DELETE goes through a
-  // statement_timeout-raised RPC because ~928k rows exceeds the 8s ceiling
-  // pinned on the PostgREST roles under contention (a bare .delete() failed with
-  // "canceling statement due to statement timeout"). callWithRetry THROWS on
-  // exhaustion → a failed clear aborts the rebuild rather than upserting onto a
-  // stale table.
-  await callWithRetry<number>("clear_financial_entity_rule_tags(size,industry)", () =>
-    db.rpc("clear_financial_entity_rule_tags", { p_categories: ["size", "industry"] }),
+  // Authoritative rebuild of the INDUSTRY category only (FIX-443 — 'size' is now
+  // cleared+rebuilt server-side by rebuild_financial_entity_size_tags above).
+  // Runs only AFTER both the keyword fetch and the NAICS rollup succeeded (each
+  // throws on failure), so a partial load can never wipe good tags. The DELETE
+  // goes through a statement_timeout-raised RPC because the 8s ceiling pinned on
+  // the PostgREST roles under contention cancels a bare .delete(). callWithRetry
+  // THROWS on exhaustion → a failed clear aborts the rebuild rather than
+  // upserting onto a stale table.
+  await callWithRetry<number>("clear_financial_entity_rule_tags(industry)", () =>
+    db.rpc("clear_financial_entity_rule_tags", { p_categories: ["industry"] }),
   );
 
-  const totalUpserted = await upsertTags(db, deduped);
-  console.log(`    Upserted ${totalUpserted} financial entity tags`);
+  const industryUpserted = await upsertTags(db, deduped);
+  const totalUpserted = sizeWritten + industryUpserted;
+  console.log(`    Wrote ${sizeWritten} size tags (server-side) + ${industryUpserted} industry tags = ${totalUpserted}`);
   return totalUpserted;
 }
 
