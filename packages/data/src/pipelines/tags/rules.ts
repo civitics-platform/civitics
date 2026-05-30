@@ -244,6 +244,63 @@ async function upsertTags(db: any, tags: TagInsert[]): Promise<number> {
 }
 
 // ---------------------------------------------------------------------------
+// Pagination — several tables here exceed the 1,000-row PostgREST cap
+// (supabase/config.toml max_rows). Unpaginated selects silently truncate to the
+// first 1,000 rows (FIX-427). Mirrors the fetchAll helper in
+// enrichment/seed-backlog.ts. NOTE: set-returning RPCs are ALSO subject to the
+// cap, so the rollup .rpc() calls below paginate through this same helper.
+// ---------------------------------------------------------------------------
+
+const PAGE_SIZE = 500;
+const MAX_ATTEMPTS = 5;
+
+// Retry transient PostgREST/fetch failures. Both the local Kong/PostgREST stack
+// and Pro occasionally drop a connection mid-pipeline ("TypeError: fetch
+// failed"), especially around the heavier rollup RPCs. Crucially this THROWS
+// after MAX_ATTEMPTS rather than returning a short result — a partial load must
+// never be silently consumed as if complete (that is the FIX-426/427 failure
+// mode, and tagOfficials/tagProposals DELETE-then-reinsert on the result).
+async function callWithRetry<T>(
+  label: string,
+  fn: () => Promise<{ data: T | null; error: { message: string } | null }>,
+): Promise<T | null> {
+  let lastErr = "unknown error";
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      const { data, error } = await fn();
+      if (!error) return data;
+      lastErr = error.message;
+    } catch (e) {
+      lastErr = e instanceof Error ? e.message : String(e);
+    }
+    if (attempt < MAX_ATTEMPTS) {
+      await new Promise((r) => setTimeout(r, 500 * Math.pow(2, attempt - 1)));
+    }
+  }
+  throw new Error(`${label} failed after ${MAX_ATTEMPTS} attempts: ${lastErr}`);
+}
+
+async function fetchAllPaged<T>(
+  label: string,
+  loader: (
+    from: number,
+    to: number,
+  ) => Promise<{ data: T[] | null; error: { message: string } | null }>,
+): Promise<T[]> {
+  const out: T[] = [];
+  let from = 0;
+  for (;;) {
+    const to = from + PAGE_SIZE - 1;
+    const rows =
+      (await callWithRetry<T[]>(`${label} page ${from}-${to}`, () => loader(from, to))) ?? [];
+    out.push(...rows);
+    if (rows.length < PAGE_SIZE) break;
+    from += PAGE_SIZE;
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
 // 1. Proposal rules
 // ---------------------------------------------------------------------------
 
@@ -251,22 +308,31 @@ async function upsertTags(db: any, tags: TagInsert[]): Promise<number> {
 async function tagProposals(db: any): Promise<number> {
   console.log("\n  [1/3] Tagging proposals...");
 
-  const { data: proposals, error } = await db
-    .from("proposals")
-    .select("id, title, type, status, introduced_at, created_at, metadata");
+  // Paginated — proposals is ~73k rows, far past the 1,000-row cap (FIX-427).
+  const proposals = await fetchAllPaged<{
+    id: string;
+    title: string | null;
+    type: string | null;
+    status: string | null;
+    introduced_at: string | null;
+    created_at: string | null;
+    metadata: Record<string, unknown> | null;
+  }>("proposals", (from, to) =>
+    db
+      .from("proposals")
+      .select("id, title, type, status, introduced_at, created_at, metadata")
+      .order("id", { ascending: true })
+      .range(from, to),
+  );
 
-  if (error) {
-    console.error("    Error fetching proposals:", error.message);
-    return 0;
-  }
-  if (!proposals || proposals.length === 0) {
+  if (proposals.length === 0) {
     console.log("    No proposals found. Skipping.");
     return 0;
   }
 
   console.log(`    Processing ${proposals.length} proposals`);
   const now = new Date();
-  let totalUpserted = 0;
+  const allTags: TagInsert[] = [];
 
   for (const p of proposals) {
     const tags: TagInsert[] = [];
@@ -347,9 +413,21 @@ async function tagProposals(db: any): Promise<number> {
       });
     }
 
-    totalUpserted += await upsertTags(db, tags);
+    allTags.push(...tags);
   }
 
+  // Authoritative rebuild: clear this function's prior rule tags, then insert
+  // the freshly-computed set. Upsert-only writes would leave stale,
+  // time-sensitive tags — 'urgent'/'closing_soon' from elapsed comment windows
+  // and 'new' tags older than 7 days — accumulating indefinitely.
+  const { error: delErr } = await db
+    .from("entity_tags")
+    .delete()
+    .eq("entity_type", "proposal")
+    .eq("generated_by", "rule");
+  if (delErr) console.error("    Error clearing prior proposal rule tags:", delErr.message);
+
+  const totalUpserted = await upsertTags(db, allTags);
   console.log(`    Upserted ${totalUpserted} proposal tags`);
   return totalUpserted;
 }
@@ -362,80 +440,80 @@ async function tagProposals(db: any): Promise<number> {
 async function tagOfficials(db: any): Promise<number> {
   console.log("\n  [2/3] Tagging officials...");
 
-  const { data: officials, error } = await db
-    .from("officials")
-    .select("id, full_name, party, term_start, term_end, is_active");
+  // Paginated — officials is ~27k rows, past the 1,000-row cap (FIX-427).
+  const officials = await fetchAllPaged<{
+    id: string;
+    full_name: string;
+    party: string | null;
+    term_start: string | null;
+    term_end: string | null;
+    is_active: boolean;
+  }>("officials", (from, to) =>
+    db
+      .from("officials")
+      .select("id, full_name, party, term_start, term_end, is_active")
+      .order("id", { ascending: true })
+      .range(from, to),
+  );
 
-  if (error) {
-    console.error("    Error fetching officials:", error.message);
-    return 0;
-  }
-  if (!officials || officials.length === 0) {
+  if (officials.length === 0) {
     console.log("    No officials found. Skipping.");
     return 0;
   }
 
   console.log(`    Processing ${officials.length} officials`);
   const now = new Date();
-  let totalUpserted = 0;
 
-  // Fetch all votes in batch for bipartisan analysis
-  const { data: allVotes } = await db
-    .from("votes")
-    .select("official_id, proposal_id, vote");
-
-  // Post-cutover: to_id = official UUID, from_type = 'financial_entity'
-  const { data: allFinancials } = await db
-    .from("financial_relationships")
-    .select("to_id, from_id, amount_cents")
-    .eq("to_type", "official")
-    .eq("relationship_type", "donation");
-
-  // Load entity_types for donor entities so we can detect pac_heavy / grassroots
-  const donorIds = [...new Set<string>((allFinancials ?? []).map((f: { from_id: string }) => f.from_id))];
-  const { data: donorEntities } = donorIds.length > 0
-    ? await db.from("financial_entities").select("id, entity_type").in("id", donorIds)
-    : { data: [] };
-  const donorTypeById = new Map<string, string>();
-  for (const e of donorEntities ?? []) donorTypeById.set(e.id as string, e.entity_type as string);
-
-  // Index votes by official_id
-  const votesByOfficial = new Map<string, Array<{ proposal_id: string; vote: string }>>();
-  for (const v of allVotes ?? []) {
-    const list = votesByOfficial.get(v.official_id) ?? [];
-    list.push({ proposal_id: v.proposal_id, vote: v.vote });
-    votesByOfficial.set(v.official_id, list);
+  // Donor + bipartisan rollups computed server-side (FIX-427 / FIX-426). The raw
+  // donations (~1.4M) and votes (~590k) can't be loaded into Node and joined
+  // without re-truncating at the 1,000-row cap, and the old `.in(donorIds)`
+  // lookup would blow the URL-length limit once the donation load was
+  // un-truncated (550k+ distinct donor ids). Each RPC returns its whole result
+  // as one jsonb array — a SETOF shape would itself be capped at 1,000 rows, and
+  // paginating it with .range() would re-run the ~16s aggregation per page.
+  const donorRollup =
+    (await callWithRetry<
+      Array<{
+        official_id: string;
+        total_cents: number;
+        pac_cents: number;
+        individual_cents: number;
+        donor_count: number;
+      }>
+    >("get_official_donor_rollup", () => db.rpc("get_official_donor_rollup"))) ?? [];
+  const donorByOfficial = new Map<string, { total: number; pac: number; count: number }>();
+  for (const r of donorRollup) {
+    donorByOfficial.set(r.official_id, {
+      total: Number(r.total_cents ?? 0),
+      pac: Number(r.pac_cents ?? 0),
+      count: Number(r.donor_count ?? 0),
+    });
   }
 
-  // Index yes-votes by proposal_id → set of official_ids for cross-party lookup
-  const yesVotesByProposal = new Map<string, Set<string>>();
-  for (const v of allVotes ?? []) {
-    if (v.vote === "yes") {
-      const set = yesVotesByProposal.get(v.proposal_id) ?? new Set();
-      set.add(v.official_id);
-      yesVotesByProposal.set(v.proposal_id, set);
-    }
-  }
-
-  // Build party map
-  const partyByOfficial = new Map<string, string>();
-  for (const o of officials) {
-    if (o.party) partyByOfficial.set(o.id, o.party);
-  }
-
-  // Index financials by official UUID (to_id)
-  const financialsByOfficial = new Map<
+  const bipartisanRollup =
+    (await callWithRetry<
+      Array<{
+        official_id: string;
+        total_votes: number;
+        yes_votes: number;
+        bipartisan_yes: number;
+      }>
+    >("get_official_bipartisan_stats", () => db.rpc("get_official_bipartisan_stats"))) ?? [];
+  const voteStatsByOfficial = new Map<
     string,
-    Array<{ donor_type: string; amount_cents: number }>
+    { totalVotes: number; yesVotes: number; bipartisanYes: number }
   >();
-  for (const f of allFinancials ?? []) {
-    const list = financialsByOfficial.get(f.to_id) ?? [];
-    list.push({ donor_type: donorTypeById.get(f.from_id) ?? "other", amount_cents: f.amount_cents ?? 0 });
-    financialsByOfficial.set(f.to_id, list);
+  for (const r of bipartisanRollup) {
+    voteStatsByOfficial.set(r.official_id, {
+      totalVotes: Number(r.total_votes ?? 0),
+      yesVotes: Number(r.yes_votes ?? 0),
+      bipartisanYes: Number(r.bipartisan_yes ?? 0),
+    });
   }
+
+  const allTags: TagInsert[] = [];
 
   for (const official of officials) {
-    const tags: TagInsert[] = [];
     const base = { entity_type: "official", entity_id: official.id as string, generated_by: "rule" as const, confidence: 1.0, pipeline_version: "v1" };
 
     // ── Tenure ───────────────────────────────────────────────────────────
@@ -447,7 +525,7 @@ async function tagOfficials(db: any): Promise<number> {
       else if (years < 12) { tenureTag = "veteran";   tenureLabel = "Veteran"; }
       else                  { tenureTag = "senior";    tenureLabel = "Senior"; }
 
-      tags.push({
+      allTags.push({
         ...base,
         tag: tenureTag,
         tag_category: "pattern",
@@ -459,28 +537,16 @@ async function tagOfficials(db: any): Promise<number> {
     }
 
     // ── Voting pattern (bipartisan/partisan) ─────────────────────────────
-    const officialVotes = votesByOfficial.get(official.id as string) ?? [];
-    const officialParty = partyByOfficial.get(official.id as string);
-    const totalVotes = officialVotes.length;
+    // Thresholds unchanged; inputs now come from the full-data SQL rollup.
+    const voteStats = voteStatsByOfficial.get(official.id as string);
+    const officialParty = official.party;
 
-    if (totalVotes > 0 && officialParty) {
-      const yesVotes = officialVotes.filter((v) => v.vote === "yes");
-      let bipartisanYes = 0;
-
-      for (const yv of yesVotes) {
-        const votersOnProposal = yesVotesByProposal.get(yv.proposal_id) ?? new Set();
-        // Check if any official of different party also voted yes
-        const hasCrossParty = Array.from(votersOnProposal).some((oid) => {
-          const p = partyByOfficial.get(oid);
-          return p && p !== officialParty;
-        });
-        if (hasCrossParty) bipartisanYes++;
-      }
-
-      const bipartisanPct = yesVotes.length > 0 ? bipartisanYes / yesVotes.length : 0;
+    if (voteStats && voteStats.totalVotes > 0 && officialParty) {
+      const bipartisanPct =
+        voteStats.yesVotes > 0 ? voteStats.bipartisanYes / voteStats.yesVotes : 0;
 
       if (bipartisanPct > 0.20) {
-        tags.push({
+        allTags.push({
           ...base,
           tag: "bipartisan",
           tag_category: "pattern",
@@ -489,8 +555,8 @@ async function tagOfficials(db: any): Promise<number> {
           visibility: "primary",
           metadata: { bipartisan_pct: Math.round(bipartisanPct * 100) },
         });
-      } else if (bipartisanPct < 0.05 && totalVotes > 50) {
-        tags.push({
+      } else if (bipartisanPct < 0.05 && voteStats.totalVotes > 50) {
+        allTags.push({
           ...base,
           tag: "partisan",
           tag_category: "pattern",
@@ -503,23 +569,19 @@ async function tagOfficials(db: any): Promise<number> {
     }
 
     // ── Donor pattern ─────────────────────────────────────────────────────
-    const financials = financialsByOfficial.get(official.id as string) ?? [];
-    if (financials.length > 0) {
-      const total = financials.reduce((s, f) => s + f.amount_cents, 0);
-      const pacTotal = financials
-        .filter((f) => f.donor_type === "pac" || f.donor_type === "super_pac")
-        .reduce((s, f) => s + f.amount_cents, 0);
-      const individualTotal = financials
-        .filter((f) => f.donor_type === "individual")
-        .reduce((s, f) => s + f.amount_cents, 0);
-      const donorCount = financials.length;
+    // Thresholds unchanged; totals now come from the full-data SQL rollup.
+    const donor = donorByOfficial.get(official.id as string);
+    if (donor && donor.count > 0) {
+      const total = donor.total;
+      const pacTotal = donor.pac;
+      const donorCount = donor.count;
       const avgDonation = total / donorCount;
 
       if (total > 0) {
         const pacPct = pacTotal / total;
 
         if (pacPct > 0.5) {
-          tags.push({
+          allTags.push({
             ...base,
             tag: "pac_heavy",
             tag_category: "pattern",
@@ -531,7 +593,7 @@ async function tagOfficials(db: any): Promise<number> {
         }
 
         if (avgDonation < 50000 && donorCount > 100) {
-          tags.push({
+          allTags.push({
             ...base,
             tag: "grassroots",
             tag_category: "pattern",
@@ -543,7 +605,7 @@ async function tagOfficials(db: any): Promise<number> {
         }
 
         if (avgDonation > 500000) {
-          tags.push({
+          allTags.push({
             ...base,
             tag: "large_donor_funded",
             tag_category: "pattern",
@@ -553,14 +615,23 @@ async function tagOfficials(db: any): Promise<number> {
             metadata: { avg_donation_cents: Math.round(avgDonation) },
           });
         }
-
-        void individualTotal; // referenced for future use
       }
     }
-
-    totalUpserted += await upsertTags(db, tags);
   }
 
+  // Authoritative rebuild: clear this function's prior rule tags (every official
+  // rule tag is tag_category='pattern'), then insert the freshly-computed set.
+  // Upsert-only writes would leave stale false positives — e.g. large_donor_funded
+  // tags computed from the truncated pre-FIX-427 prefix, or both freshman AND
+  // sophomore once an official crosses a tenure boundary.
+  const { error: delErr } = await db
+    .from("entity_tags")
+    .delete()
+    .eq("entity_type", "official")
+    .eq("generated_by", "rule");
+  if (delErr) console.error("    Error clearing prior official rule tags:", delErr.message);
+
+  const totalUpserted = await upsertTags(db, allTags);
   console.log(`    Upserted ${totalUpserted} official tags`);
   return totalUpserted;
 }
