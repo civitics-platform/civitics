@@ -508,6 +508,29 @@ export async function fetchOfficialsNeedingTags(db: any): Promise<OfficialNeedin
 // Main pipeline
 // ---------------------------------------------------------------------------
 
+// Page through a row-capped PostgREST id projection into a distinct Set. The
+// cost-gate's onlyNew branch needs distinct entity counts (entity_tags carries
+// multiple topic rows per entity), and an unbounded .select() silently truncates
+// at the 1,000-row cap — skewing the untagged estimate (FIX-430).
+async function fetchDistinctIds(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  build: (from: number, to: number) => PromiseLike<{ data: Record<string, string>[] | null; error: { message: string } | null }>,
+  key: string,
+): Promise<Set<string>> {
+  const PAGE = 1000;
+  const ids = new Set<string>();
+  let from = 0;
+  for (;;) {
+    const { data, error } = await build(from, from + PAGE - 1);
+    if (error) throw error;
+    const batch = data ?? [];
+    for (const r of batch) ids.add(r[key]);
+    if (batch.length < PAGE) break;
+    from += PAGE;
+  }
+  return ids;
+}
+
 export async function runAiTagger(options?: {
   maxCostCents?: number;
   onlyNew?: boolean;
@@ -609,18 +632,21 @@ export async function runAiTagger(options?: {
     // so costGate estimate reflects 1,321 untagged rather than 10,108 total.
     let totalEntities: number;
     if (onlyNew) {
-      const [allProposalsRes, taggedProposalRes, allOfficialsRes, taggedOfficialRes] = await Promise.all([
-        db.from("proposals").select("id").limit(2000),
-        db.from("entity_tags").select("entity_id")
-          .eq("entity_type", "proposal").eq("generated_by", "ai").eq("tag_category", "topic"),
-        db.from("officials").select("id").eq("is_active", true),
-        db.from("entity_tags").select("entity_id")
-          .eq("entity_type", "official").eq("generated_by", "ai").eq("tag_category", "topic"),
+      // Paginate the full id sets — proposals (~73k) and the topic-tag rows both
+      // exceed the 1,000-row cap, so the prior .limit(2000)/unbounded loads
+      // truncated and the untagged estimate undercounted (FIX-430).
+      const [allProposals, taggedProposals, allOfficials, taggedOfficials] = await Promise.all([
+        fetchDistinctIds((f, t) => db.from("proposals").select("id").range(f, t), "id"),
+        fetchDistinctIds((f, t) => db.from("entity_tags").select("entity_id")
+          .eq("entity_type", "proposal").eq("generated_by", "ai").eq("tag_category", "topic").range(f, t), "entity_id"),
+        fetchDistinctIds((f, t) => db.from("officials").select("id").eq("is_active", true).range(f, t), "id"),
+        fetchDistinctIds((f, t) => db.from("entity_tags").select("entity_id")
+          .eq("entity_type", "official").eq("generated_by", "ai").eq("tag_category", "topic").range(f, t), "entity_id"),
       ]);
-      const taggedProposals = new Set((taggedProposalRes.data ?? []).map((r: { entity_id: string }) => r.entity_id));
-      const taggedOfficials = new Set((taggedOfficialRes.data ?? []).map((r: { entity_id: string }) => r.entity_id));
-      const untaggedProposals = (allProposalsRes.data ?? []).filter((p: { id: string }) => !taggedProposals.has(p.id)).length;
-      const untaggedOfficials = (allOfficialsRes.data ?? []).filter((o: { id: string }) => !taggedOfficials.has(o.id)).length;
+      let untaggedProposals = 0;
+      for (const id of allProposals) if (!taggedProposals.has(id)) untaggedProposals++;
+      let untaggedOfficials = 0;
+      for (const id of allOfficials) if (!taggedOfficials.has(id)) untaggedOfficials++;
       totalEntities = untaggedProposals + untaggedOfficials;
     } else {
       const [proposalRes, officialRes] = await Promise.all([
