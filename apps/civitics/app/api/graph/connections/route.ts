@@ -20,6 +20,39 @@ export const dynamic = "force-dynamic";
  */
 const MAX_AUTO_EXPAND = 50;
 
+// PostgREST hard row cap (supabase/config.toml db-max-rows). A single .select()
+// — even with .limit(N) for N>1000 — never returns more than this, so any load
+// that consumes its result as the complete set silently truncates past it (FIX-428).
+const MAX_ROWS = 1000;
+
+/**
+ * Page through a row-capped PostgREST query so the full set is assembled rather
+ * than silently truncated at MAX_ROWS (FIX-428). `build(from, to)` must return a
+ * fresh query with `.range(from, to)` applied.
+ *
+ * Returns the accumulated rows plus an `error` (propagated from the first failing
+ * page — never swallowed, FIX-431) and a `truncated` flag set when an optional
+ * `maxRows` safety ceiling was reached before exhaustion.
+ */
+async function fetchAllPaged<T>(
+  build: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
+  opts: { maxRows?: number } = {},
+): Promise<{ rows: T[]; error: { message: string } | null; truncated: boolean }> {
+  const ceiling = opts.maxRows ?? Number.POSITIVE_INFINITY;
+  const rows: T[] = [];
+  let from = 0;
+  for (;;) {
+    const { data, error } = await build(from, from + MAX_ROWS - 1);
+    if (error) return { rows, error, truncated: false };
+    const batch = data ?? [];
+    rows.push(...batch);
+    if (batch.length < MAX_ROWS) break;        // last (short) page → exhausted
+    from += MAX_ROWS;
+    if (rows.length >= ceiling) return { rows, error: null, truncated: true };
+  }
+  return { rows, error: null, truncated: false };
+}
+
 // ── Individual-donor aggregation helpers (FIX-194) ────────────────────────────
 
 /** Normalize FEC employer strings for grouping. "GOLDMAN SACHS & CO" → "GOLDMAN SACHS". */
@@ -183,6 +216,9 @@ export async function GET(request: Request) {
 
     let connections: ConnectionRow[] = [];
     let totalCount = 0;
+    // Set when an edge-hydration load was capped at a safety ceiling — surfaced to
+    // the client so a truncated graph is honest rather than silently incomplete (FIX-428).
+    let partial = false;
 
     // Tracks which neighbor nodes were too large to auto-expand: entityId → connectionCount
     const collapsedNodes = new Map<string, number>();
@@ -224,7 +260,12 @@ export async function GET(request: Request) {
         ),
       ]);
 
+      // Check every edge-type result, not just donations — a votes/oversight
+      // timeout was previously merged blind, silently dropping those edge types
+      // and presenting a partial graph as complete (FIX-431). Fail loud instead.
       if (donationsRes.error) throw donationsRes.error;
+      if (votesRes.error) throw votesRes.error;
+      if (oversightRes.error) throw oversightRes.error;
       const direct: ConnectionRow[] = [
         ...(donationsRes.data ?? []),
         ...(oversightRes.data ?? []),
@@ -237,17 +278,24 @@ export async function GET(request: Request) {
           new Set(direct.map((c) => (c.from_id === entityId ? c.to_id : c.from_id)))
         );
 
-        // Count how many connections each neighbor has (to decide auto-expand vs. collapsed)
+        // Count how many connections each neighbor has (to decide auto-expand vs. collapsed).
+        // Paginate the full set: an unbounded .select() caps at MAX_ROWS, so a neighbor
+        // whose rows fell past the cap was undercounted to 0 → wrongly auto-expanded (FIX-428).
+        // Single-column projections keep the egress small even for high-degree neighbors.
         const [neighborFromCounts, neighborToCounts] = await Promise.all([
-          supabase.from("entity_connections").select("from_id").in("from_id", neighborIds),
-          supabase.from("entity_connections").select("to_id").in("to_id", neighborIds),
+          fetchAllPaged<{ from_id: string }>((f, t) =>
+            supabase.from("entity_connections").select("from_id").in("from_id", neighborIds).range(f, t)),
+          fetchAllPaged<{ to_id: string }>((f, t) =>
+            supabase.from("entity_connections").select("to_id").in("to_id", neighborIds).range(f, t)),
         ]);
+        if (neighborFromCounts.error) throw neighborFromCounts.error;
+        if (neighborToCounts.error) throw neighborToCounts.error;
 
         const neighborConnCounts = new Map<string, number>();
-        for (const r of neighborFromCounts.data ?? []) {
+        for (const r of neighborFromCounts.rows) {
           neighborConnCounts.set(r.from_id, (neighborConnCounts.get(r.from_id) ?? 0) + 1);
         }
-        for (const r of neighborToCounts.data ?? []) {
+        for (const r of neighborToCounts.rows) {
           neighborConnCounts.set(r.to_id, (neighborConnCounts.get(r.to_id) ?? 0) + 1);
         }
 
@@ -263,12 +311,19 @@ export async function GET(request: Request) {
         }
 
         if (autoExpandIds.length > 0) {
+          // Paginate the expansion edges — the neighbors here each have < MAX_AUTO_EXPAND
+          // connections, but their sum can exceed MAX_ROWS, so an unbounded load dropped
+          // edges past the cap from the rendered graph with HTTP 200 (FIX-428).
           const [expandFromRes, expandToRes] = await Promise.all([
-            supabase.from("entity_connections").select("*").in("from_id", autoExpandIds),
-            supabase.from("entity_connections").select("*").in("to_id", autoExpandIds),
+            fetchAllPaged<ConnectionRow>((f, t) =>
+              supabase.from("entity_connections").select("*").in("from_id", autoExpandIds).range(f, t)),
+            fetchAllPaged<ConnectionRow>((f, t) =>
+              supabase.from("entity_connections").select("*").in("to_id", autoExpandIds).range(f, t)),
           ]);
+          if (expandFromRes.error) throw expandFromRes.error;
+          if (expandToRes.error) throw expandToRes.error;
           const connMap = new Map<string, ConnectionRow>();
-          for (const c of [...direct, ...(expandFromRes.data ?? []), ...(expandToRes.data ?? [])]) {
+          for (const c of [...direct, ...expandFromRes.rows, ...expandToRes.rows]) {
             connMap.set(c.id, c);
           }
           connections = [...connMap.values()];
@@ -338,13 +393,25 @@ export async function GET(request: Request) {
         return Response.json({ nodes: [], edges: [], count: totalCount });
       }
 
+      // Top-10 officials are the highest-degree nodes, so this is the egress-sensitive
+      // path the default view is designed to keep small. Cap each direction at a safety
+      // ceiling and signal `partial` when truncated, rather than silently dropping edges
+      // past MAX_ROWS (the prior unbounded load) or fetching the whole table (FIX-428).
+      const TOP10_EDGE_CEILING = MAX_ROWS * 5;
       const [expandFromRes, expandToRes] = await Promise.all([
-        supabase.from("entity_connections").select("*").in("from_id", top10Ids),
-        supabase.from("entity_connections").select("*").in("to_id", top10Ids),
+        fetchAllPaged<ConnectionRow>((f, t) =>
+          supabase.from("entity_connections").select("*").in("from_id", top10Ids).range(f, t),
+          { maxRows: TOP10_EDGE_CEILING }),
+        fetchAllPaged<ConnectionRow>((f, t) =>
+          supabase.from("entity_connections").select("*").in("to_id", top10Ids).range(f, t),
+          { maxRows: TOP10_EDGE_CEILING }),
       ]);
+      if (expandFromRes.error) throw expandFromRes.error;
+      if (expandToRes.error) throw expandToRes.error;
+      if (expandFromRes.truncated || expandToRes.truncated) partial = true;
 
       const connMap = new Map<string, ConnectionRow>();
-      for (const c of [...(expandFromRes.data ?? []), ...(expandToRes.data ?? [])]) {
+      for (const c of [...expandFromRes.rows, ...expandToRes.rows]) {
         connMap.set(c.id, c);
       }
       connections = [...connMap.values()];
@@ -394,6 +461,10 @@ export async function GET(request: Request) {
         finChunks.map(ids => withDbTimeout(supabase.from("financial_entities").select(finSelect).in("id", ids)))
       );
       for (const r of finResults) {
+        // A timed-out/errored chunk previously fell through `data ?? []`, silently
+        // dropping those entities' names so their nodes rendered as "Unknown" with
+        // HTTP 200. Fail loud instead (FIX-431).
+        if (r.error) throw r.error;
         financialData.push(...((r.data ?? []) as unknown as FinRow[]));
       }
     }
@@ -627,7 +698,7 @@ export async function GET(request: Request) {
     // Append synthetic bracket/employer aggregate edges (official endpoints guaranteed in nodeIds)
     edges.push(...bracketEdges);
 
-    return Response.json({ nodes, edges, count: totalCount });
+    return Response.json({ nodes, edges, count: totalCount, ...(partial ? { partial: true } : {}) });
   } catch (err) {
     console.error("[graph/connections]", err);
     return Response.json({ error: "Failed to load graph data" }, { status: 500 });
