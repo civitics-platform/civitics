@@ -564,3 +564,4 @@
 2026-05-31 | FIX-454 | 863bf485 | local+prod | feat(rls): harden RLS + relax is_active gate (2026-05-31 audit remediation)
 2026-05-31 | FIX-455 | 863bf485 | local+prod | feat(rls): harden RLS + relax is_active gate (2026-05-31 audit remediation)
 2026-05-31 | FIX-456 | 863bf485 | local+prod | feat(rls): harden RLS + relax is_active gate (2026-05-31 audit remediation)
+2026-05-31 | FIX-457 | e36338dc | local-only | feat(officials,institutions): mark + filter former/inactive entities (FIX-457)
