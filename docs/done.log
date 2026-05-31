@@ -546,3 +546,4 @@
 2026-05-30 | FIX-437 | 64292e63 | prod-only | chore: record prod verification for FIX-437 (rebuild_pre_vote_timing_tags)
 2026-05-30 | FIX-444 | da64d21e | local+prod | fix(tags): route heavy tagger rebuilds + non-individual scan through direct pg (FIX-444)
 2026-05-30 | FIX-445 | 97297543 | local+prod | feat(openstates): capture bill abstracts into summary_plain (FIX-435 Phase 1)
+2026-05-30 | FIX-446 | 82d0b4f4 | local+prod | chore(db): drop dead get_financial_entity_donation_totals() (FIX-446)
