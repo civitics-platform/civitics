@@ -374,19 +374,23 @@ export async function GET(req: NextRequest) {
 
     let qb = db2
       .from("proposals")
-      .select("id, title, status, type, comment_period_end, metadata, summary_plain", { count: "exact" })
+      .select("id, title, status, type, metadata, summary_plain", { count: "exact" })
       .neq("type", "initiative");
 
+    // comment_period_end is metadata-only post-cutover (no top-level column);
+    // metadata->>comment_period_end is backed by an expression index (FIX-359).
+    // ISO-8601 dates compare correctly as text, so the text comparison stays
+    // index-backed (FIX-425).
     if (filterStatus)       qb = qb.eq("status", filterStatus);
     if (filterProposalType) qb = qb.eq("type", filterProposalType);
-    if (filterDateFrom)     qb = qb.gte("comment_period_end", filterDateFrom);
-    if (filterDateTo)       qb = qb.lte("comment_period_end", filterDateTo);
+    if (filterDateFrom)     qb = qb.gte("metadata->>comment_period_end", filterDateFrom);
+    if (filterDateTo)       qb = qb.lte("metadata->>comment_period_end", filterDateTo);
 
     if (q.length >= 2) {
       qb = qb.or(`title.ilike.%${q}%,summary_plain.ilike.%${q}%`);
     }
 
-    qb = qb.order("comment_period_end", { ascending: false, nullsFirst: false })
+    qb = qb.order("metadata->>comment_period_end", { ascending: false, nullsFirst: false })
            .range(offset, offset + fetchLimit - 1);
 
     const { data: proposalData, count: totalCount } = await qb;
@@ -414,7 +418,7 @@ export async function GET(req: NextRequest) {
       if (p.status === "open_comment") score += 10;
       return {
         id: p.id, title: p.title, status: p.status, type: p.type,
-        comment_period_end: p.comment_period_end ?? null,
+        comment_period_end: p.metadata?.comment_period_end ?? null,
         agency_acronym: p.metadata?.agency_id ?? null,
         ai_summary: summaryMap[p.id] ?? null,
         relevance_score: Math.min(score, 100),

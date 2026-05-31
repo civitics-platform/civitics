@@ -91,7 +91,7 @@ export async function GET(req: NextRequest) {
     if (type === "proposal") {
       const { data } = await db2
         .from("proposals")
-        .select("id, title, status, type, comment_period_end, summary_plain, metadata")
+        .select("id, title, status, type, summary_plain, metadata")
         .eq("id", id)
         .single();
       if (!data) return NextResponse.json(null, { status: 404 });
@@ -111,8 +111,8 @@ export async function GET(req: NextRequest) {
         profile_url: `/proposals/${id}`,
         meta: {
           Status: data.status.replace(/_/g, " "),
-          "Comment deadline": data.comment_period_end
-            ? new Date(data.comment_period_end).toLocaleDateString()
+          "Comment deadline": data.metadata?.comment_period_end
+            ? new Date(data.metadata.comment_period_end).toLocaleDateString()
             : null,
           Agency: data.metadata?.agency_id ?? null,
         },

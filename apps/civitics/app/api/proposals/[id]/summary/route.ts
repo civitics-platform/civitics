@@ -73,18 +73,22 @@ export async function GET(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const proposalRes = await (db as any)
     .from("proposals")
-    .select("id, title, summary_plain, status, comment_period_end, agency_id")
+    .select("id, title, summary_plain, status, metadata")
     .eq("id", id)
     .maybeSingle();
 
   const proposal = proposalRes.data;
   if (!proposal) return NextResponse.json({ summary: null });
 
+  // comment_period_end and agency_id are metadata-only post-cutover (FIX-425).
+  const commentPeriodEnd: string | null = proposal.metadata?.comment_period_end ?? null;
+  const agencyId: string | null = proposal.metadata?.agency_id ?? null;
+
   // Only generate for open proposals
   const isOpen =
     proposal.status === "open_comment" &&
-    proposal.comment_period_end &&
-    new Date(proposal.comment_period_end) > new Date();
+    commentPeriodEnd &&
+    new Date(commentPeriodEnd) > new Date();
 
   if (!isOpen) return NextResponse.json({ summary: null });
 
@@ -96,12 +100,12 @@ export async function GET(
 
   // 4. Fetch agency name
   let agencyLine = "Federal Agency";
-  if (proposal.agency_id) {
+  if (agencyId) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const agencyRes = await (db as any)
       .from("agencies")
       .select("name, acronym")
-      .eq("id", proposal.agency_id)
+      .eq("id", agencyId)
       .maybeSingle();
     if (agencyRes.data) {
       agencyLine = agencyRes.data.name ?? agencyRes.data.acronym ?? "Federal Agency";
