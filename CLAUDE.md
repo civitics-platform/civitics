@@ -385,7 +385,7 @@ Standard autonomous loop after a code change with DB impact:
 
 ```
 supabase migration up --local                # apply migration against local Docker DB
-supabase db push --linked                    # apply migration against Pro (only after local is green)
+pnpm db:push:prod                            # apply migration against Pro via --db-url (after local is green; see below)
 pnpm --filter @civitics/app-civitics build
 git add <files>
 git commit -m "...Fixes: FIX-NNN"
@@ -396,7 +396,48 @@ git commit -m "chore(fixes): sync status after FIX-NNN"
 git push origin main
 ```
 
-`supabase db push --linked` is the only CLI path to Pro. Never run ad-hoc SQL against Pro without explicit user confirmation.
+### Applying migrations to Pro — use `--db-url`, not `--linked` (FIX-392)
+
+`supabase db push --linked` is **unreliable on this CLI** (v2.78.1): it fails
+with a `cli_login_postgres` role-alter error *before* it touches any user
+migration. Confirmed recurring across FIX-375, FIX-379, FIX-385. The reliable
+primary path is `--db-url` with the prod **direct-connection** string, which
+sidesteps the linked-login flow entirely:
+
+```bash
+# Direct-connection string from the dashboard, password substituted in:
+supabase db push --db-url "postgresql://postgres:[PASSWORD]@db.xsazcoxinpgttgquwvuf.supabase.co:5432/postgres"
+```
+
+Or use the wrapper, which reads `SUPABASE_DB_PASSWORD` from `.env.local.prod`,
+injects it into the cached session-pooler URL, and redacts it on print:
+
+```bash
+pnpm db:push:prod                 # apply all pending migrations to Pro
+pnpm db:push:prod -- --dry-run    # list pending migrations, apply nothing
+```
+
+**Where the direct-connection string lives:** Supabase dashboard → Project
+Settings → Database → **Direct connection**. The session-pooler URL the CLI
+cached in `supabase/.temp/pooler-url` works too (it is what `pnpm db:push:prod`
+injects the password into).
+
+**Root cause of the recurring `cli_login_postgres` error — it is NOT "the CLI
+version is broken":** a bare `source .env.local.prod` assigns the vars as
+*shell* variables that are **not exported** to the `supabase` child process, so
+`SUPABASE_DB_PASSWORD` is absent when the CLI runs and it falls back to the
+broken interactive role-alter login. Two fixes:
+
+- **CLI commands that read the password from the env** (including `--linked`, if
+  you must use it): auto-export the source —
+  `set -a && source .env.local.prod && set +a` — so every var reaches child
+  processes. PowerShell has no `source`; on Windows use `pnpm db:push:prod`,
+  which reads the file directly.
+- **`tsx` scripts:** pass `--env-file=.env.local.prod`. dotenv-style loading
+  injects vars into `process.env` directly, so it is immune to the export trap.
+
+`supabase db push --db-url …` is the canonical CLI path to Pro. Never run
+ad-hoc SQL against Pro without explicit user confirmation.
 
 **Fallback (Cowork or any sandboxed environment):** If the active shell can't
 reach `127.0.0.1:54322` (Docker Supabase), Claude cannot run migrations, git,
@@ -432,7 +473,7 @@ Two-tier environment: local Docker Supabase for development, Supabase **Pro** fo
 **Production (Pro):**
 - Studio URL: `https://supabase.com/dashboard/project/xsazcoxinpgttgquwvuf`
 - Connection details in Vercel env vars (`NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SECRET_KEY`).
-- Apply migrations with `supabase db push --linked` (requires prior `supabase link --project-ref xsazcoxinpgttgquwvuf`).
+- Apply migrations with `supabase db push --db-url …` (or `pnpm db:push:prod`) — see the "Claude ↔ Database Access" section. `--linked` is unreliable on this CLI (FIX-392).
 - **Never run ad-hoc destructive SQL against Pro** without explicit user confirmation. If the user asks for a data cleanup, confirm the exact query first.
 - PITR retention is 7 days on Pro — mistakes are recoverable but costly. Still verify twice.
 - App is live at `https://civitics-civitics.vercel.app` — any schema change affects real users.
@@ -452,7 +493,7 @@ Schema and data are propagated to prod by **separate** mechanisms.
 
 **Schema changes** (anything in `supabase/migrations/`):
 - `supabase migration up --local` applies to local
-- `supabase db push --linked` applies to prod
+- `supabase db push --db-url …` (or `pnpm db:push:prod`) applies to prod — see "Claude ↔ Database Access" (`--linked` is unreliable; FIX-392)
 - The standard autonomous loop in "Claude ↔ Database Access" handles both
 
 **Data-state changes** (any runtime DB action that writes data):
