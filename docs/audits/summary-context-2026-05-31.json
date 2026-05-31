@@ -1,0 +1,193 @@
+{
+  "generated_at": "2026-05-31T08:31:39.777Z",
+  "env": "prod",
+  "supabase_url": "https://xsazcoxinpgttgquwvuf.supabase.co",
+  "total_proposals": 78054,
+  "no_source_ref": 16,
+  "context_level_overall": {
+    "full_summary": 2616,
+    "title_only": 75116,
+    "truly_empty": 322
+  },
+  "pseudo_summary": {
+    "full_summary_total": 2616,
+    "title_equals_summary": 0,
+    "title_contains_summary": 618
+  },
+  "by_source": {
+    "congress_gov": {
+      "full_summary": 2078,
+      "title_only": 2020,
+      "truly_empty": 276,
+      "total": 4374
+    },
+    "legistar": {
+      "full_summary": 0,
+      "title_only": 67128,
+      "truly_empty": 27,
+      "total": 67155
+    },
+    "openstates": {
+      "full_summary": 538,
+      "title_only": 3967,
+      "truly_empty": 3,
+      "total": 4508
+    },
+    "regulations_gov": {
+      "full_summary": 0,
+      "title_only": 1302,
+      "truly_empty": 0,
+      "total": 1302
+    },
+    "courtlistener": {
+      "full_summary": 0,
+      "title_only": 699,
+      "truly_empty": 0,
+      "total": 699
+    },
+    "unknown": {
+      "full_summary": 0,
+      "title_only": 0,
+      "truly_empty": 16,
+      "total": 16
+    }
+  },
+  "by_source_and_type": [
+    {
+      "source": "congress_gov",
+      "type": "bill",
+      "total": 2943,
+      "full_summary": 1525,
+      "title_only": 1212,
+      "truly_empty": 206
+    },
+    {
+      "source": "congress_gov",
+      "type": "resolution",
+      "total": 761,
+      "full_summary": 553,
+      "title_only": 138,
+      "truly_empty": 70
+    },
+    {
+      "source": "congress_gov",
+      "type": "appointment",
+      "total": 670,
+      "full_summary": 0,
+      "title_only": 670,
+      "truly_empty": 0
+    },
+    {
+      "source": "courtlistener",
+      "type": "other",
+      "total": 699,
+      "full_summary": 0,
+      "title_only": 699,
+      "truly_empty": 0
+    },
+    {
+      "source": "legistar",
+      "type": "other",
+      "total": 32363,
+      "full_summary": 0,
+      "title_only": 32340,
+      "truly_empty": 23
+    },
+    {
+      "source": "legistar",
+      "type": "resolution",
+      "total": 15854,
+      "full_summary": 0,
+      "title_only": 15853,
+      "truly_empty": 1
+    },
+    {
+      "source": "legistar",
+      "type": "ordinance",
+      "total": 10043,
+      "full_summary": 0,
+      "title_only": 10043,
+      "truly_empty": 0
+    },
+    {
+      "source": "legistar",
+      "type": "appointment",
+      "total": 3458,
+      "full_summary": 0,
+      "title_only": 3458,
+      "truly_empty": 0
+    },
+    {
+      "source": "legistar",
+      "type": "amendment",
+      "total": 3360,
+      "full_summary": 0,
+      "title_only": 3359,
+      "truly_empty": 1
+    },
+    {
+      "source": "legistar",
+      "type": "budget",
+      "total": 2077,
+      "full_summary": 0,
+      "title_only": 2075,
+      "truly_empty": 2
+    },
+    {
+      "source": "openstates",
+      "type": "bill",
+      "total": 3930,
+      "full_summary": 500,
+      "title_only": 3427,
+      "truly_empty": 3
+    },
+    {
+      "source": "openstates",
+      "type": "resolution",
+      "total": 407,
+      "full_summary": 34,
+      "title_only": 373,
+      "truly_empty": 0
+    },
+    {
+      "source": "openstates",
+      "type": "other",
+      "total": 169,
+      "full_summary": 4,
+      "title_only": 165,
+      "truly_empty": 0
+    },
+    {
+      "source": "openstates",
+      "type": "amendment",
+      "total": 2,
+      "full_summary": 0,
+      "title_only": 2,
+      "truly_empty": 0
+    },
+    {
+      "source": "regulations_gov",
+      "type": "regulation",
+      "total": 1302,
+      "full_summary": 0,
+      "title_only": 1302,
+      "truly_empty": 0
+    },
+    {
+      "source": "unknown",
+      "type": "bill",
+      "total": 14,
+      "full_summary": 0,
+      "title_only": 0,
+      "truly_empty": 14
+    },
+    {
+      "source": "unknown",
+      "type": "resolution",
+      "total": 2,
+      "full_summary": 0,
+      "title_only": 0,
+      "truly_empty": 2
+    }
+  ]
+}

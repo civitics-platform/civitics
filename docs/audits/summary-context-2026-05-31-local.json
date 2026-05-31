@@ -1,0 +1,177 @@
+{
+  "generated_at": "2026-05-31T08:31:06.889Z",
+  "env": "local",
+  "supabase_url": "http://127.0.0.1:54321",
+  "total_proposals": 73359,
+  "no_source_ref": 0,
+  "context_level_overall": {
+    "full_summary": 127,
+    "title_only": 72163,
+    "truly_empty": 1069
+  },
+  "pseudo_summary": {
+    "full_summary_total": 127,
+    "title_equals_summary": 0,
+    "title_contains_summary": 13
+  },
+  "by_source": {
+    "legistar": {
+      "full_summary": 0,
+      "title_only": 67121,
+      "truly_empty": 27,
+      "total": 67148
+    },
+    "openstates": {
+      "full_summary": 114,
+      "title_only": 1774,
+      "truly_empty": 3,
+      "total": 1891
+    },
+    "regulations_gov": {
+      "full_summary": 0,
+      "title_only": 1000,
+      "truly_empty": 0,
+      "total": 1000
+    },
+    "congress_gov": {
+      "full_summary": 13,
+      "title_only": 1857,
+      "truly_empty": 1039,
+      "total": 2909
+    },
+    "courtlistener": {
+      "full_summary": 0,
+      "title_only": 408,
+      "truly_empty": 0,
+      "total": 408
+    },
+    "civic_initiatives_public": {
+      "full_summary": 0,
+      "title_only": 3,
+      "truly_empty": 0,
+      "total": 3
+    }
+  },
+  "by_source_and_type": [
+    {
+      "source": "civic_initiatives_public",
+      "type": "initiative",
+      "total": 3,
+      "full_summary": 0,
+      "title_only": 3,
+      "truly_empty": 0
+    },
+    {
+      "source": "congress_gov",
+      "type": "bill",
+      "total": 1449,
+      "full_summary": 13,
+      "title_only": 647,
+      "truly_empty": 789
+    },
+    {
+      "source": "congress_gov",
+      "type": "resolution",
+      "total": 745,
+      "full_summary": 0,
+      "title_only": 495,
+      "truly_empty": 250
+    },
+    {
+      "source": "congress_gov",
+      "type": "appointment",
+      "total": 715,
+      "full_summary": 0,
+      "title_only": 715,
+      "truly_empty": 0
+    },
+    {
+      "source": "courtlistener",
+      "type": "other",
+      "total": 408,
+      "full_summary": 0,
+      "title_only": 408,
+      "truly_empty": 0
+    },
+    {
+      "source": "legistar",
+      "type": "other",
+      "total": 32359,
+      "full_summary": 0,
+      "title_only": 32336,
+      "truly_empty": 23
+    },
+    {
+      "source": "legistar",
+      "type": "resolution",
+      "total": 15854,
+      "full_summary": 0,
+      "title_only": 15853,
+      "truly_empty": 1
+    },
+    {
+      "source": "legistar",
+      "type": "ordinance",
+      "total": 10041,
+      "full_summary": 0,
+      "title_only": 10041,
+      "truly_empty": 0
+    },
+    {
+      "source": "legistar",
+      "type": "appointment",
+      "total": 3457,
+      "full_summary": 0,
+      "title_only": 3457,
+      "truly_empty": 0
+    },
+    {
+      "source": "legistar",
+      "type": "amendment",
+      "total": 3360,
+      "full_summary": 0,
+      "title_only": 3359,
+      "truly_empty": 1
+    },
+    {
+      "source": "legistar",
+      "type": "budget",
+      "total": 2077,
+      "full_summary": 0,
+      "title_only": 2075,
+      "truly_empty": 2
+    },
+    {
+      "source": "openstates",
+      "type": "bill",
+      "total": 1713,
+      "full_summary": 105,
+      "title_only": 1605,
+      "truly_empty": 3
+    },
+    {
+      "source": "openstates",
+      "type": "resolution",
+      "total": 155,
+      "full_summary": 9,
+      "title_only": 146,
+      "truly_empty": 0
+    },
+    {
+      "source": "openstates",
+      "type": "other",
+      "total": 23,
+      "full_summary": 0,
+      "title_only": 23,
+      "truly_empty": 0
+    },
+    {
+      "source": "regulations_gov",
+      "type": "regulation",
+      "total": 1000,
+      "full_summary": 0,
+      "title_only": 1000,
+      "truly_empty": 0
+    }
+  ]
+}
