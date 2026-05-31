@@ -63,6 +63,11 @@ interface OSBillOrg {
   classification: string;  // "upper" | "lower" | "legislature"
 }
 
+interface OSBillAbstract {
+  abstract: string;
+  note?:    string;
+}
+
 interface OSBill {
   id:                          string;   // "ocd-bill/..."
   identifier:                  string;   // "HB 1234"
@@ -73,6 +78,10 @@ interface OSBill {
   latest_action_date:          string | null;
   latest_action_description:   string | null;
   from_organization:           OSBillOrg | null;
+  // Only present when the /bills call passes include=abstracts. Real
+  // plain-language prose for ~2/3 of states (CA/NY/FL/OH populate; TX/PA
+  // don't). Non-AI source for proposals.summary_plain (FIX-435).
+  abstracts?:                  OSBillAbstract[];
 }
 
 interface OSBillList {
@@ -126,6 +135,9 @@ async function fetchBills(
   url.searchParams.set("per_page",     String(BILLS_PER_PAGE));
   url.searchParams.set("page",         String(page));
   url.searchParams.set("sort",         "updated_desc");
+  // include=abstracts rides this same request (no extra API call / quota cost)
+  // and carries the plain-language summary text we land in summary_plain.
+  url.searchParams.set("include",      "abstracts");
   return fetchJson<OSBillList>(url.toString(), {
     headers: { "X-API-KEY": apiKey },
   });
@@ -177,6 +189,19 @@ function mapBillChamber(orgClass: string): "house" | "senate" | null {
   if (orgClass === "upper") return "senate";
   if (orgClass === "lower") return "house";
   return null;
+}
+
+// Pick the longest non-empty abstract as the plain-language summary. Many bills
+// carry a single abstract; multi-abstract bills (e.g. chamber-specific digests)
+// are best served by the fullest one. Returns null when nothing usable. (FIX-435)
+function pickAbstract(abstracts: OSBillAbstract[] | undefined): string | null {
+  if (!abstracts || abstracts.length === 0) return null;
+  let best = "";
+  for (const a of abstracts) {
+    const t = (a.abstract ?? "").trim();
+    if (t.length > best.length) best = t;
+  }
+  return best.length > 0 ? best : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -323,6 +348,7 @@ export async function runOpenStatesPipeline(
             jurisdictionId,
             introducedAt: bill.first_action_date ?? null,
             lastActionAt: bill.latest_action_date ?? null,
+            summaryPlain: pickAbstract(bill.abstracts),
             externalUrl: `https://openstates.org/bills/${bill.id.replace("ocd-bill/", "")}/`,
             metadata: {
               source: "openstates",

@@ -300,6 +300,10 @@ export interface StateBillInput {
   jurisdictionId: string;
   introducedAt: string | null;
   lastActionAt: string | null;
+  // Plain-language summary from the OpenStates abstract (FIX-435). null when
+  // the state doesn't publish abstracts. Owned by source text, never AI — and
+  // the writer never clobbers an existing non-null value (see update path).
+  summaryPlain: string | null;
   externalUrl: string;
   metadata: {
     source: "openstates";
@@ -324,6 +328,8 @@ function buildBillProposalInsert(input: StateBillInput): ProposalInsert {
     external_url: input.externalUrl,
     introduced_at: input.introducedAt,
     last_action_at: input.lastActionAt,
+    // Insert path: nothing to clobber, take the abstract directly (null-safe).
+    summary_plain: input.summaryPlain,
     metadata: input.metadata,
   };
 }
@@ -372,12 +378,37 @@ export async function upsertStateBillsBatch(
 
   // Updates
   if (toUpdate.length > 0) {
+    // Pre-fetch current summary_plain for the update targets. The bulk upsert
+    // below can't express COALESCE, so we resolve don't-clobber-non-null in
+    // code: an existing non-empty summary_plain wins; otherwise the abstract
+    // fills the NULL. (FIX-435 — source text owns this column.)
+    const existingSummary = new Map<string, string | null>();
+    const updateIds = toUpdate.map((u) => u.id);
+    for (let i = 0; i < updateIds.length; i += LOOKUP_CHUNK_SIZE) {
+      const chunk = updateIds.slice(i, i + LOOKUP_CHUNK_SIZE);
+      const { data, error } = await db
+        .from("proposals")
+        .select("id, summary_plain")
+        .in("id", chunk);
+      if (error) {
+        console.error(`    openstates writer: summary_plain prefetch ${i}-${i + chunk.length}: ${error.message}`);
+        continue;
+      }
+      for (const r of (data ?? []) as Array<{ id: string; summary_plain: string | null }>) {
+        existingSummary.set(r.id, r.summary_plain);
+      }
+    }
+
     for (let i = 0; i < toUpdate.length; i += CHUNK_SIZE) {
       const chunk = toUpdate.slice(i, i + CHUNK_SIZE);
-      const records = chunk.map(({ id, item }) => ({
-        id,
-        ...buildBillProposalInsert(item),
-      }));
+      const records = chunk.map(({ id, item }) => {
+        const record = { id, ...buildBillProposalInsert(item) };
+        // Don't-clobber-non-null: keep an existing non-empty summary, else fill.
+        const existing = existingSummary.get(id);
+        record.summary_plain =
+          existing && existing.trim().length > 0 ? existing : item.summaryPlain;
+        return record;
+      });
       const { error } = await db
         .from("proposals")
         .upsert(records, { onConflict: "id" });
