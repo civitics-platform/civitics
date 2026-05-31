@@ -359,10 +359,16 @@ export default async function HomePage({
         2000
       )
     );
+    // On timeout/error withDbTimeout returns { data: null, error } with no `count`,
+    // so `liveDonorRes.count ?? 0` collapsed a timeout into a false 0 → "Coming soon"
+    // even with millions of donor records. Only adopt the live count when the query
+    // actually succeeded; otherwise keep the (missing) MV value rather than asserting
+    // a zero we never measured (FIX-431).
+    const liveDonorCount = liveDonorRes.error ? null : (liveDonorRes.count ?? null);
     mvStats = {
       officials_count:        mvStats?.officials_count        ?? 0,
       active_proposals_count: mvStats?.active_proposals_count ?? 0,
-      donor_records_count:    liveDonorRes.count              ?? 0,
+      donor_records_count:    liveDonorCount ?? mvStats?.donor_records_count ?? null,
       spending_records_count: mvStats?.spending_records_count ?? 0,
     };
   }
