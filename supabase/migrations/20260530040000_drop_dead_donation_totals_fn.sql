@@ -1,0 +1,11 @@
+-- Drop dead get_financial_entity_donation_totals() (unused post-FIX-443/444).
+--
+-- FIX-437 created this function to feed a client-side donation-size rollup.
+-- FIX-443 moved size tagging fully server-side (rebuild_financial_entity_size_tags())
+-- and FIX-444 routed it through direct-pg, leaving this function with zero live
+-- callers. It is also the OOM hazard called out in the FIX-443 migration: it
+-- returns a single jsonb_agg array over every donor entity (~4.88M prod donation
+-- rows), which restarted the prod Pro postmaster on 2026-05-30. Dropping it
+-- removes the footgun. Forward-only — does not edit the shipped 20260530000000
+-- migration that defined it.
+DROP FUNCTION IF EXISTS public.get_financial_entity_donation_totals();
