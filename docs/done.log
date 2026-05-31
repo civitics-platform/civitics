@@ -543,3 +543,5 @@
 2026-05-30 | FIX-437 | 1d68fee9 | local-only | fix(tags): pre_vote_timing full server-side rebuild + planner pin (FIX-437 follow-up)
 2026-05-30 | FIX-443 | 78c1c7fb | local-only | fix(tags): move financial-entity size tagging server-side (client rollup OOM'd prod)
 2026-05-30 | FIX-443 | bf9d28c4 | prod-only | fix(tags): partial covering index for donation size rollup (FIX-443 prod enablement)
+2026-05-30 | FIX-437 | 64292e63 | prod-only | chore: record prod verification for FIX-437 (rebuild_pre_vote_timing_tags)
+2026-05-30 | FIX-444 | da64d21e | local+prod | fix(tags): route heavy tagger rebuilds + non-individual scan through direct pg (FIX-444)
