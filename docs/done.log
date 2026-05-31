@@ -558,3 +558,9 @@
 2026-05-31 | FIX-414 | 9bcbb807 | local+prod | [skip vercel] fix(data): retry transient fetch failures in attribution-coverage diag
 2026-05-31 | FIX-448 | e045d09b | local+prod | [skip vercel] fix(data): stable order on audit-summary-context pagination
 2026-05-31 | FIX-449 | e6552a83 | local-only | [skip vercel] fix(openstates): coerce empty-string API dates to null before insert
+2026-05-31 | FIX-451 | 863bf485 | local+prod | feat(rls): harden RLS + relax is_active gate (2026-05-31 audit remediation)
+2026-05-31 | FIX-452 | 863bf485 | local+prod | feat(rls): harden RLS + relax is_active gate (2026-05-31 audit remediation)
+2026-05-31 | FIX-453 | 863bf485 | local+prod | feat(rls): harden RLS + relax is_active gate (2026-05-31 audit remediation)
+2026-05-31 | FIX-454 | 863bf485 | local+prod | feat(rls): harden RLS + relax is_active gate (2026-05-31 audit remediation)
+2026-05-31 | FIX-455 | 863bf485 | local+prod | feat(rls): harden RLS + relax is_active gate (2026-05-31 audit remediation)
+2026-05-31 | FIX-456 | 863bf485 | local+prod | feat(rls): harden RLS + relax is_active gate (2026-05-31 audit remediation)
