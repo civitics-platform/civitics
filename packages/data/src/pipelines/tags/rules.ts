@@ -15,6 +15,7 @@
 
 import { createAdminClient } from "@civitics/db";
 import { startSync, completeSync, failSync } from "../sync-log";
+import { runHeavyRebuild, selectDirect } from "../../lib/heavy-rebuild";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -701,29 +702,23 @@ async function tagFinancialEntities(db: any): Promise<number> {
   // restart 2026-05-30 20:52:17 UTC). rebuild_financial_entity_size_tags() now
   // does the DELETE('size') + INSERT…SELECT (same four buckets/labels/icons/
   // visibility) entirely in SQL and returns just a count — nothing but a bigint
-  // crosses the gateway. callWithRetry THROWS on exhaustion. The function clears
-  // only 'size', so the industry/internal tags built below + by the pre-vote
-  // path survive.
-  const sizeResult = await callWithRetry<number>("rebuild_financial_entity_size_tags", () =>
-    db.rpc("rebuild_financial_entity_size_tags"),
-  );
-  // The function ALWAYS returns a bigint (the inserted row count). A null/
-  // undefined/non-number here means PostgREST answered 200 with an empty body —
-  // the schema-cache cold-start race on a just-created function (observed on
-  // FIX-443's first local run: reported 0 while the function had really written
-  // ~909k). callWithRetry only throws on an *errored* response, so without this
-  // guard a cold-cache miss is silently consumed as 0 — and the function's own
-  // DELETE('size') has already cleared the category, so the table would be left
-  // empty. Treat a non-numeric result as a hard failure; on deploy, reload the
-  // PostgREST schema cache (NOTIFY pgrst, 'reload schema') before re-running.
-  if (typeof sizeResult !== "number") {
-    throw new Error(
-      "rebuild_financial_entity_size_tags returned a non-numeric result " +
-        `(${JSON.stringify(sizeResult)}) — PostgREST schema cache is likely cold; ` +
-        "reload it and re-run before trusting the size category.",
-    );
-  }
-  const sizeWritten = sizeResult;
+  // crosses the wire. The function clears only 'size', so the industry/internal
+  // tags built below + by the pre-vote path survive.
+  //
+  // FIX-444: invoked over a DIRECT pg.Client, not PostgREST. The size rebuild
+  // inserts the full donor set (>2 min on prod), which blows the ~100s
+  // PostgREST/Cloudflare gateway cap — the call dies at the gateway while the
+  // function keeps running server-side, and callWithRetry then fired retries
+  // while the original still executed, piling up concurrent multi-minute
+  // functions that lock-contend on entity_tags. The function-level ALTER
+  // FUNCTION statement_timeout does NOT extend the outer SELECT (Postgres arms
+  // the top-level timer from the SESSION value), so runHeavyRebuild raises
+  // statement_timeout at the session level over a direct connection and runs a
+  // single attempt — no retry pile-up.
+  const sizeWritten = await runHeavyRebuild("rebuild_financial_entity_size_tags");
+  // (FIX-443's PostgREST cold-cache empty-body guard is gone with FIX-444: a
+  // direct pg query returns the bigint directly — no schema-cache cold-start
+  // race, no 200-with-empty-body failure mode to defend against.)
 
   // NAICS-only rollup (FIX-443): replaces the donation-bearing rollup for the
   // industry path. One row per contract/grant entity carrying a NAICS code — the
@@ -739,20 +734,24 @@ async function tagFinancialEntities(db: any): Promise<number> {
   // Scoped to NON-individual entities (FIX-437). Un-truncating the old select
   // would keyword-match 1.05M individual donors by surname (e.g. anyone named
   // "Koch" → oil_gas, "Wells" → finance) — false positives on people. The
-  // ~95k PAC/super_pac/party/union/corp/nonprofit/other rows still exceed the
-  // 1,000-row cap, so this is paginated. Keyword vocab/confidence/visibility
-  // unchanged. fetchAllPaged's callWithRetry THROWS on exhaustion.
-  const entities = await fetchAllPaged<{
+  // ~78k PAC/super_pac/party/union/corp/nonprofit/other rows.
+  //
+  // FIX-444: fetched over a DIRECT pg.Client (selectDirect), not PostgREST.
+  // OFFSET-paginating `entity_type <> 'individual'` is an index scan over
+  // financial_entities that discards the ~1M interleaved individual rows page by
+  // page; the deep pages measured ~18s on prod — past the 8s PostgREST role
+  // timeout — so the PostgREST path could never complete the keyword pass (the
+  // failure FIX-443's gateway death used to mask). One direct query pulls the
+  // whole non-individual set in a single scan: no 8s role cap, no 1,000-row
+  // max_rows cap, no OFFSET re-scan. Keyword vocab/confidence/visibility below
+  // are unchanged.
+  const entities = await selectDirect<{
     id: string;
     display_name: string | null;
     entity_type: string | null;
-  }>("financial_entities (non-individual)", (from, to) =>
-    db
-      .from("financial_entities")
-      .select("id, display_name, entity_type")
-      .neq("entity_type", "individual")
-      .order("id", { ascending: true })
-      .range(from, to),
+  }>(
+    "SELECT id, display_name, entity_type FROM public.financial_entities " +
+      "WHERE entity_type <> 'individual' ORDER BY id",
   );
 
   for (const entity of entities) {
@@ -864,16 +863,18 @@ async function tagPreVoteConnections(db: any): Promise<number> {
   // aggregation itself is ~5s in psql; only the array round-trip was the
   // problem. rebuild_pre_vote_timing_tags() does the DELETE + INSERT…SELECT in
   // one statement under a raised statement_timeout and returns just the count —
-  // nothing crosses the gateway but a number. callWithRetry THROWS on
-  // exhaustion. "Qualifying" = a financial_entity with ≥1 donation in (0,90]
-  // days before any vote by the recipient official (sargable range form so the
-  // votes_official_voted_at index applies). Old Node cross-join (~65M pairs) and
-  // proposals-title fetch are gone — the tag persists no per-pair detail and no
-  // consumer reads it (verified FIX-437).
-  const written =
-    (await callWithRetry<number>("rebuild_pre_vote_timing_tags", () =>
-      db.rpc("rebuild_pre_vote_timing_tags"),
-    )) ?? 0;
+  // nothing crosses the wire but a number. "Qualifying" = a financial_entity
+  // with ≥1 donation in (0,90] days before any vote by the recipient official
+  // (sargable range form so the votes_official_voted_at index applies). Old Node
+  // cross-join (~65M pairs) and proposals-title fetch are gone — the tag
+  // persists no per-pair detail and no consumer reads it (verified FIX-437).
+  //
+  // FIX-444: invoked over a DIRECT pg.Client (runHeavyRebuild), not PostgREST.
+  // The aggregation runs ~80s on prod — past the ~100s PostgREST/Cloudflare
+  // gateway cap once contended — and the function-level statement_timeout does
+  // not extend the outer SELECT. A session-level timeout over a direct
+  // connection, single attempt (the callWithRetry pile-up was the FIX-444 bug).
+  const written = await runHeavyRebuild("rebuild_pre_vote_timing_tags");
 
   const total = Number(written);
   console.log(`    Upserted ${total} pre-vote timing tags`);
