@@ -147,6 +147,15 @@ async function fetchBills(
 // Field mapping
 // ---------------------------------------------------------------------------
 
+// Coerce empty / whitespace-only API date strings to null. `?? null` only
+// catches null/undefined; an empty string slips through and Postgres rejects
+// it with `invalid input syntax for type date: ""`, killing the whole chunked
+// insert (good rows in the chunk die with the bad one). FIX-449.
+const dateOrNull = (s: string | null | undefined): string | null => {
+  const t = s?.trim();
+  return t ? t : null;
+};
+
 function mapParty(party: string): PartyValue {
   const p = party.toLowerCase();
   if (p.includes("democrat"))    return "democrat";
@@ -288,8 +297,8 @@ export async function runOpenStatesPipeline(
               jurisdictionId,
               party: mapParty(person.party),
               districtName: role.district || null,
-              termStart: role.start_date ?? null,
-              termEnd: role.end_date ?? null,
+              termStart: dateOrNull(role.start_date),
+              termEnd: dateOrNull(role.end_date),
               websiteUrl: person.openstates_url || null,
               metadata: { org_classification: orgClass, state: state.abbr },
             });
@@ -346,8 +355,8 @@ export async function runOpenStatesPipeline(
             type: mapBillType(bill.classification ?? []),
             status: mapBillStatus(bill.latest_action_description),
             jurisdictionId,
-            introducedAt: bill.first_action_date ?? null,
-            lastActionAt: bill.latest_action_date ?? null,
+            introducedAt: dateOrNull(bill.first_action_date),
+            lastActionAt: dateOrNull(bill.latest_action_date),
             summaryPlain: pickAbstract(bill.abstracts),
             externalUrl: `https://openstates.org/bills/${bill.id.replace("ocd-bill/", "")}/`,
             metadata: {
