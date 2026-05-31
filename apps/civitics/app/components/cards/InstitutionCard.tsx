@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { FormerBadge } from "../FormerBadge";
 
 // Presentational card for an institutions-view row (governing body or agency).
 // Used by /jurisdictions/[id]; intended for reuse on future institution lists.
@@ -10,6 +11,7 @@ export type InstitutionCardData = {
   type: string;
   acronym: string | null;
   source_table?: "agency" | "governing_body";
+  is_active?: boolean | null;
 };
 
 const TYPE_LABELS: Record<string, string> = {
@@ -47,6 +49,7 @@ export function InstitutionCard({ institution }: { institution: InstitutionCardD
             {institution.name}
           </h3>
           <p className="mt-0.5 text-xs capitalize text-gray-500">{typeLabel(institution.type)}</p>
+          <FormerBadge isActive={institution.is_active} className="mt-1" />
         </div>
         {institution.acronym && (
           <span className="shrink-0 rounded border border-gray-200 bg-gray-50 px-2 py-0.5 font-mono text-xs font-semibold text-gray-700">

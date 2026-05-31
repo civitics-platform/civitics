@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect, useRef } from "react";
+import Link from "next/link";
 import type { OfficialRow } from "../page";
 import { OfficialCard } from "./OfficialCard";
 import { OfficialGraph } from "./OfficialGraph";
@@ -49,9 +50,11 @@ function initials(name: string) {
 export function OfficialsList({
   officials,
   defaultSelectedId,
+  includeFormer = false,
 }: {
   officials: OfficialRow[];
   defaultSelectedId?: string;
+  includeFormer?: boolean;
 }) {
   const [search, setSearch]         = useState("");
   const [chamberFilter, setChamber] = useState<"all" | "Senate" | "House">("all");
@@ -135,6 +138,26 @@ export function OfficialsList({
               onChange={(e) => setSearch(e.target.value)}
               className="w-full rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm placeholder-gray-400 focus:border-indigo-400 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-400"
             />
+            {/* Active / former toggle (FIX-457) — server round-trip via ?status */}
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-[11px] text-gray-400">Status</span>
+              <Link
+                href="/officials"
+                className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium transition-colors ${
+                  !includeFormer ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                }`}
+              >
+                Active
+              </Link>
+              <Link
+                href="/officials?status=all"
+                className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium transition-colors ${
+                  includeFormer ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                }`}
+              >
+                Include former
+              </Link>
+            </div>
             <div className="flex flex-wrap gap-2">
               {/* Chamber */}
               <select
@@ -273,6 +296,11 @@ export function OfficialsList({
                           <p className={`truncate text-sm font-medium ${isSelected ? "text-indigo-800" : "text-gray-900"}`}>
                             {official.full_name}
                           </p>
+                          {official.is_active === false && (
+                            <span className="shrink-0 rounded-full bg-gray-100 px-1.5 py-0.5 text-[10px] font-semibold text-gray-500">
+                              Former
+                            </span>
+                          )}
                         </div>
                         <p className="mt-0.5 truncate text-xs text-gray-500">
                           {official.role_title}

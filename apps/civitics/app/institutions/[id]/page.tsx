@@ -15,6 +15,7 @@ import { createServerClient, fetchAttributionForEntity } from "@civitics/db";
 import { createClient } from "@supabase/supabase-js";
 import { AgencyHierarchyTree } from "../../agencies/[slug]/components/AgencyHierarchyTree";
 import { PageViewTracker } from "../../components/PageViewTracker";
+import { FormerBadge } from "../../components/FormerBadge";
 import { FollowButton } from "../../components/FollowButton";
 import { SourceBadge } from "../../components/SourceBadge";
 import { SourceDetailPopover } from "../../components/SourceDetailPopover";
@@ -569,6 +570,7 @@ async function AgencyView({
               <h1 className="mt-1 text-2xl font-bold text-gray-900 leading-tight">
                 {agency.name}
               </h1>
+              <FormerBadge isActive={institution.is_active} className="mt-1" />
               {agency.acronym && agency.acronym !== agency.name && (
                 <p className="text-sm font-medium text-gray-500">{agency.acronym}</p>
               )}
@@ -1188,6 +1190,7 @@ async function GoverningBodyView({
               <h1 className="mt-1 text-2xl font-bold text-gray-900 leading-tight">
                 {institution.name}
               </h1>
+              <FormerBadge isActive={institution.is_active} className="mt-1" />
               {institution.short_name && institution.short_name !== institution.name && (
                 <p className="text-sm font-medium text-gray-500">{institution.short_name}</p>
               )}

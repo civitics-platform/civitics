@@ -22,6 +22,7 @@ export type OfficialRow = {
   district_name: string | null;
   term_start: string | null;
   term_end: string | null;
+  is_active: boolean | null;
   state_name: string | null;
   chamber: string | null;
   chamber_type: string | null;
@@ -32,20 +33,26 @@ export type OfficialRow = {
 export default async function OfficialsPage({
   searchParams,
 }: {
-  searchParams: { selected?: string };
+  searchParams: { selected?: string; status?: string };
 }) {
   const supabase = createPublicClient();
+  // FIX-457: default active only; ?status=all opts into former/inactive officials
+  // (now anon-visible after the FIX-456 gate relax). Note: the directory is capped
+  // at PostgREST's 1000-row default, so "Include former" shows the first 1000 by
+  // last name — a UX guard, not an exhaustive former-officials browser.
+  const includeFormer = searchParams.status === "all";
 
-  const { data, error } = await supabase
+  let officialsQuery = supabase
     .from("officials")
     .select(
       `id, full_name, first_name, last_name, role_title, party,
-       photo_url, district_name, term_start, term_end, source_ids,
+       photo_url, district_name, term_start, term_end, is_active, source_ids,
        jurisdictions!jurisdiction_id(name),
        governing_bodies!governing_body_id(short_name, type)`
-    )
-    .eq("is_active", true)
-    .order("last_name");
+    );
+  if (!includeFormer) officialsQuery = officialsQuery.eq("is_active", true);
+
+  const { data, error } = await officialsQuery.order("last_name");
 
   if (error) console.error("officials fetch error:", error.message);
 
@@ -61,6 +68,7 @@ export default async function OfficialsPage({
     district_name: o.district_name ?? null,
     term_start: o.term_start ?? null,
     term_end: o.term_end ?? null,
+    is_active: o.is_active ?? null,
     state_name: o.jurisdictions?.name ?? null,
     chamber: o.governing_bodies?.short_name ?? null,
     chamber_type: o.governing_bodies?.type ?? null,
@@ -106,6 +114,7 @@ export default async function OfficialsPage({
       <OfficialsList
         officials={officials}
         defaultSelectedId={searchParams.selected}
+        includeFormer={includeFormer}
       />
     </main>
   );

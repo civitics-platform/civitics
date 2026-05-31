@@ -44,11 +44,12 @@ function firstParam(v: string | string[] | undefined): string | undefined {
   return Array.isArray(v) ? v[0] : v;
 }
 
-function buildHref(params: { type?: string; jurisdiction?: string; q?: string; page?: number }): string {
+function buildHref(params: { type?: string; jurisdiction?: string; q?: string; status?: string; page?: number }): string {
   const sp = new URLSearchParams();
   if (params.type && params.type !== "all") sp.set("type", params.type);
   if (params.jurisdiction) sp.set("jurisdiction", params.jurisdiction);
   if (params.q) sp.set("q", params.q);
+  if (params.status && params.status !== "active") sp.set("status", params.status);
   if (params.page && params.page > 1) sp.set("page", String(params.page));
   const qs = sp.toString();
   return qs ? `/institutions?${qs}` : "/institutions";
@@ -78,6 +79,10 @@ export default async function InstitutionsIndexPage({
   const jurisdiction = firstParam(sp.jurisdiction)?.trim() ?? "";
   const q = firstParam(sp.q)?.trim() ?? "";
   const page = Math.max(1, parseInt(firstParam(sp.page) ?? "1", 10) || 1);
+  // FIX-457: default to active only; ?status=all opts into former/inactive rows
+  // (the institutions view now surfaces them after the FIX-456 gate relax).
+  const status = firstParam(sp.status) ?? "active";
+  const includeFormer = status === "all";
 
   const supabase = createPublicClient();
 
@@ -98,9 +103,9 @@ export default async function InstitutionsIndexPage({
 
   let query = supabase
     .from("institutions")
-    .select("id, name, short_name, type, acronym, source_table", { count: "exact" })
-    .eq("is_active", true);
+    .select("id, name, short_name, type, acronym, source_table, is_active", { count: "exact" });
 
+  if (!includeFormer) query = query.eq("is_active", true);
   if (type !== "all") query = query.eq("type", type);
   if (jurisdiction && UUID_RE.test(jurisdiction)) query = query.eq("jurisdiction_id", jurisdiction);
   // Sanitize before interpolating into .or() — commas/parens are PostgREST
@@ -134,7 +139,7 @@ export default async function InstitutionsIndexPage({
             <span className="rounded-full bg-indigo-50 px-3 py-1 font-medium text-indigo-700">
               {jurisdictionName ?? "selected jurisdiction"}
             </span>
-            <Link href={buildHref({ type, q })} className="text-xs text-gray-400 hover:text-gray-700">
+            <Link href={buildHref({ type, q, status })} className="text-xs text-gray-400 hover:text-gray-700">
               clear ✕
             </Link>
           </div>
@@ -148,7 +153,7 @@ export default async function InstitutionsIndexPage({
               return (
                 <Link
                   key={pill.value}
-                  href={buildHref({ type: pill.value, jurisdiction, q })}
+                  href={buildHref({ type: pill.value, jurisdiction, q, status })}
                   className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
                     active
                       ? "bg-indigo-600 text-white"
@@ -161,9 +166,34 @@ export default async function InstitutionsIndexPage({
             })}
           </div>
 
+          {/* Active / former toggle (FIX-457) */}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs text-gray-400">Status</span>
+            {[
+              { label: "Active", value: "active" },
+              { label: "Include former", value: "all" },
+            ].map((opt) => {
+              const on = status === opt.value;
+              return (
+                <Link
+                  key={opt.value}
+                  href={buildHref({ type, jurisdiction, q, status: opt.value })}
+                  className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                    on
+                      ? "bg-gray-900 text-white"
+                      : "border border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:text-gray-900"
+                  }`}
+                >
+                  {opt.label}
+                </Link>
+              );
+            })}
+          </div>
+
           <form method="GET" action="/institutions" className="flex gap-2">
             {type !== "all" && <input type="hidden" name="type" value={type} />}
             {jurisdiction && <input type="hidden" name="jurisdiction" value={jurisdiction} />}
+            {includeFormer && <input type="hidden" name="status" value="all" />}
             <input
               type="text"
               name="q"
@@ -201,7 +231,7 @@ export default async function InstitutionsIndexPage({
           <nav className="mt-8 flex items-center justify-between" aria-label="Pagination">
             {page > 1 ? (
               <Link
-                href={buildHref({ type, jurisdiction, q, page: page - 1 })}
+                href={buildHref({ type, jurisdiction, q, status, page: page - 1 })}
                 className="rounded-md border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
               >
                 ← Previous
@@ -214,7 +244,7 @@ export default async function InstitutionsIndexPage({
             </span>
             {page < totalPages ? (
               <Link
-                href={buildHref({ type, jurisdiction, q, page: page + 1 })}
+                href={buildHref({ type, jurisdiction, q, status, page: page + 1 })}
                 className="rounded-md border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
               >
                 Next →
