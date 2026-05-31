@@ -17,6 +17,34 @@ import { notifyFollowers } from "@/lib/notifications";
 
 const STATE_KEY = "notify_followers_last_run";
 
+// PostgREST caps a single .select() at db-max-rows (1000), so an unbounded
+// follower load silently dropped everyone past the first 1000 from the fan-out
+// (FIX-429). Page through the full set instead. Latent today (follow volume < 1k)
+// but a correctness landmine as the platform scales.
+const FOLLOWS_PAGE = 1000;
+
+async function fetchAllFollowedEntityIds(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  db: any,
+  entityType: string,
+): Promise<string[]> {
+  const ids = new Set<string>();
+  let from = 0;
+  for (;;) {
+    const { data, error } = await db
+      .from("user_follows")
+      .select("entity_id")
+      .eq("entity_type", entityType)
+      .range(from, from + FOLLOWS_PAGE - 1);
+    if (error) throw error;
+    const batch: { entity_id: string }[] = data ?? [];
+    for (const r of batch) ids.add(r.entity_id);
+    if (batch.length < FOLLOWS_PAGE) break;
+    from += FOLLOWS_PAGE;
+  }
+  return Array.from(ids);
+}
+
 export async function GET(request: NextRequest): Promise<NextResponse> {
   if (process.env["CRON_DISABLED"] === "true") {
     return NextResponse.json({ skipped: true, reason: "CRON_DISABLED" });
@@ -48,14 +76,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const now = new Date().toISOString();
 
   // ── 1. followed officials: did they vote? ──────────────────────────────────
-  const { data: officialFollows } = await db
-    .from("user_follows")
-    .select("entity_id")
-    .eq("entity_type", "official");
-
-  const followedOfficialIds: string[] = Array.from(
-    new Set<string>((officialFollows ?? []).map((r: { entity_id: string }) => r.entity_id))
-  );
+  const followedOfficialIds = await fetchAllFollowedEntityIds(db, "official");
 
   let officialEventsSent = 0;
   if (followedOfficialIds.length > 0) {
@@ -129,14 +150,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   }
 
   // ── 2. followed agencies: new proposals? ───────────────────────────────────
-  const { data: agencyFollows } = await db
-    .from("user_follows")
-    .select("entity_id")
-    .eq("entity_type", "agency");
-
-  const followedAgencyIds: string[] = Array.from(
-    new Set<string>((agencyFollows ?? []).map((r: { entity_id: string }) => r.entity_id))
-  );
+  const followedAgencyIds = await fetchAllFollowedEntityIds(db, "agency");
 
   let agencyEventsSent = 0;
   if (followedAgencyIds.length > 0) {
