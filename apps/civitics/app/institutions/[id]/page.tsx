@@ -11,7 +11,7 @@
 import { notFound, permanentRedirect } from "next/navigation";
 import { cookies } from "next/headers";
 import nextDynamic from "next/dynamic";
-import { createServerClient, fetchAttributionForEntity } from "@civitics/db";
+import { createServerClient, createAdminClient, fetchAttributionForEntity } from "@civitics/db";
 import { createClient } from "@supabase/supabase-js";
 import { AgencyHierarchyTree } from "../../agencies/[slug]/components/AgencyHierarchyTree";
 import { PageViewTracker } from "../../components/PageViewTracker";
@@ -484,7 +484,13 @@ async function AgencyView({
     });
   }
 
-  const plumStateRes = await supabase
+  // pipeline_state has RLS enabled with zero SELECT policies (internal pipeline
+  // metadata, service-role only), so the RLS-respecting createServerClient read
+  // returned null with no error and plumLastChange was always blank. Read this one
+  // internal row via a lazily-instantiated admin client (FIX-432). The page is
+  // already force-dynamic (see top of file), so the secret key is available.
+  const adminDb = createAdminClient();
+  const plumStateRes = await adminDb
     .from("pipeline_state")
     .select("value")
     .eq("key", "plum_book_state")
