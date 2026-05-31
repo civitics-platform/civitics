@@ -1,0 +1,361 @@
+{
+  "ranAt": "2026-05-26T01:37:13.691Z",
+  "durationMs": 2070,
+  "dbHost": "127.0.0.1:54322",
+  "results": [
+    {
+      "category": "officials.senator_count",
+      "severity": "error",
+      "expected": 100,
+      "actual": 101,
+      "sample": [],
+      "detail": "Active U.S. senators (2 per state × 50 states)."
+    },
+    {
+      "category": "officials.senators_per_state",
+      "severity": "error",
+      "expected": "every state = 2",
+      "actual": "1 states ≠ 2",
+      "sample": [
+        {
+          "state": "Oklahoma",
+          "count": "3"
+        }
+      ],
+      "detail": "States that don't have exactly two active senators."
+    },
+    {
+      "category": "officials.rep_count",
+      "severity": "error",
+      "expected": 441,
+      "actual": 440,
+      "sample": [],
+      "detail": "Active U.S. House: 435 voting + 6 non-voting delegates."
+    },
+    {
+      "category": "officials.president_count",
+      "severity": "info",
+      "expected": 1,
+      "actual": 1,
+      "sample": [],
+      "detail": "Sitting U.S. President."
+    },
+    {
+      "category": "officials.vp_count",
+      "severity": "info",
+      "expected": 1,
+      "actual": 1,
+      "sample": [],
+      "detail": "Sitting U.S. Vice President."
+    },
+    {
+      "category": "officials.duplicate_congress_gov",
+      "severity": "info",
+      "expected": 0,
+      "actual": 0,
+      "sample": [],
+      "detail": "Distinct officials sharing the same source_ids->>'congress_gov' (federal congressional ID)."
+    },
+    {
+      "category": "officials.missing_party",
+      "severity": "info",
+      "expected": 0,
+      "actual": 0,
+      "sample": [],
+      "detail": "Active senators/reps with NULL party. Independents should be 'independent', not NULL."
+    },
+    {
+      "category": "officials.suspicious_elected_tier",
+      "severity": "error",
+      "expected": 0,
+      "actual": 60,
+      "sample": [
+        {
+          "id": "a775045f-cbdd-41f5-bee8-b16c2729ec57",
+          "full_name": "Adam M. Scheinman",
+          "role_title": "Special Representative of the President for Nuclear Nonproliferation, with the rank of Ambassador.",
+          "tier": "elected"
+        },
+        {
+          "id": "64bd4320-e6e0-413b-bc29-e9fe74775618",
+          "full_name": "Adam Scheinman",
+          "role_title": "Special Representative of the President for Nuclear Nonproliferation, with the rank of Ambassador.",
+          "tier": "elected"
+        },
+        {
+          "id": "75c1cde1-5a30-482d-a698-cccab7951588",
+          "full_name": "ADAM SCHEINMAN",
+          "role_title": "SPECIAL REPRESENTATIVE OF THE PRESIDENT FOR NUCLEAR NONPROLIFERATION, WITH THE RANK OF AMBASSADOR",
+          "tier": "elected"
+        },
+        {
+          "id": "06a0f90d-3f85-4c0e-a27f-e2cd0ec08882",
+          "full_name": "Alanna McCargo",
+          "role_title": "President, Government National Mortgage Association",
+          "tier": "elected"
+        },
+        {
+          "id": "b48e2bee-7d0f-4cb3-a574-bc098e2efdfe",
+          "full_name": "Angela Curtis",
+          "role_title": "Vice President, Delivery Operations",
+          "tier": "elected"
+        },
+        {
+          "id": "1525b774-f369-4a1c-aabe-499a21c957cf",
+          "full_name": "Angela Lawson",
+          "role_title": "Vice President, Technology Applications",
+          "tier": "elected"
+        },
+        {
+          "id": "58c11f54-00dd-4ce0-9492-716430f629e0",
+          "full_name": "Benjamin Kuo",
+          "role_title": "Vice President, Facilities",
+          "tier": "elected"
+        },
+        {
+          "id": "0a145bbe-d9eb-4682-8921-4830732245dc",
+          "full_name": "Cara Greene",
+          "role_title": "Vice President, Controller",
+          "tier": "elected"
+        },
+        {
+          "id": "42166189-c8c6-4d14-9967-6f77244c20d1",
+          "full_name": "Dane Coleman",
+          "role_title": "Vice President, Processing and Maintenance Operations",
+          "tier": "elected"
+        },
+        {
+          "id": "2b25c4d0-ccc1-4b9e-a312-4fc8cfd3f768",
+          "full_name": "Deborah E. Lipstadt",
+          "role_title": "Special Envoy to Monitor and Combat Anti-Semitism, with the rank of Ambassador.  (New Position)",
+          "tier": "elected"
+        },
+        {
+          "id": "43a11a1c-5398-4fb2-adb0-d94c8a15f62c",
+          "full_name": "DEBORAH LIPSTADT",
+          "role_title": "SPECIAL ENVOY TO MONITOR AND COMBAT ANTI-SEMITISM, WITH THE RANK OF AMBASSADOR",
+          "tier": "elected"
+        },
+        {
+          "id": "0e2278a9-260d-489a-9fdd-2fb899f5a4ba",
+          "full_name": "Eduardo Ruiz",
+          "role_title": "Vice President, Area Retail & Delivery Operations - WestPac",
+          "tier": "elected"
+        },
+        {
+          "id": "81dee141-bd86-4fb2-b2f0-b1852dadf55a",
+          "full_name": "Elvin Mercado",
+          "role_title": "Vice President, Retail and Post Office Operations",
+          "tier": "elected"
+        },
+        {
+          "id": "014bd2a7-af3a-412f-b5c1-364a283b2562",
+          "full_name": "Eric Henry",
+          "role_title": "Vice President, Area Retail & Delivery Operations - Central",
+          "tier": "elected"
+        },
+        {
+          "id": "d44e0353-75b5-46a9-a24e-538d3d660576",
+          "full_name": "Gary Reblin",
+          "role_title": "Vice President, Innovative Business Technology",
+          "tier": "elected"
+        },
+        {
+          "id": "b2bedb07-a60a-4a1d-9c8c-6041d72cedda",
+          "full_name": "Heather Dyer",
+          "role_title": "Vice President, Chief Information Security Officer",
+          "tier": "elected"
+        },
+        {
+          "id": "98f28cb3-ce8c-499e-9bc0-1003f4c9f271",
+          "full_name": "Isaac Cronkhite",
+          "role_title": "Chief Processing and Distribution Officer and Executive Vice President",
+          "tier": "elected"
+        },
+        {
+          "id": "35167459-be5e-46cb-843a-653073511b15",
+          "full_name": "Jacqueline Krage Strako",
+          "role_title": "Chief Commerce and Business Solutions Officer and Executive Vice President",
+          "tier": "elected"
+        },
+        {
+          "id": "50b63697-bdc9-4718-99ec-f1a4a6a6c72c",
+          "full_name": "Jeffrey Adams",
+          "role_title": "Vice President, Corporate Communications",
+          "tier": "elected"
+        },
+        {
+          "id": "17579220-ee8e-4a4c-a3ce-3a2ac6cf9543",
+          "full_name": "Jennifer Utterback",
+          "role_title": "Vice President, Organization Develoment",
+          "tier": "elected"
+        }
+      ],
+      "detail": "Active officials with tier='elected' but role_title matches a non-elected pattern (USPS exec, institutional president, special representative/envoy). Surfaces upstream tier-mapping drift; file a follow-up FIX to fix the ingest when this trips at volume."
+    },
+    {
+      "category": "proposals.procedural_contamination",
+      "severity": "info",
+      "expected": 0,
+      "actual": 0,
+      "sample": [],
+      "detail": "Proposals whose title starts with 'On ' (e.g. 'On Passage', 'On the Cloture Motion') — FIX-A regression test. The ' v.' arm was removed by FIX-319 after producing 100% false positives (courtlistener opinions + legistar lawsuit-settlement ordinances)."
+    },
+    {
+      "category": "proposals.orphaned_agency_id",
+      "severity": "info",
+      "expected": 0,
+      "actual": 0,
+      "sample": [],
+      "detail": "proposals.metadata->>'agency_id' values that don't resolve to any row in agencies.acronym."
+    },
+    {
+      "category": "votes.orphan_official_id",
+      "severity": "info",
+      "expected": 0,
+      "actual": 0,
+      "sample": [],
+      "detail": "votes.official_id values not present in officials.id."
+    },
+    {
+      "category": "votes.invalid_vote_value",
+      "severity": "info",
+      "expected": 0,
+      "actual": 0,
+      "sample": [],
+      "detail": "votes.vote values outside schema CHECK enum {yes, no, abstain, present, not_voting, paired_yes, paired_no}."
+    },
+    {
+      "category": "referential.orphan_entity_tags",
+      "severity": "error",
+      "expected": 0,
+      "actual": 1996,
+      "sample": [
+        {
+          "id": "d8cee0a1-83e7-4cd9-8135-e9d89f6cd138",
+          "entity_type": "proposal",
+          "entity_id": "2b8d5bd5-d228-454b-a3be-60efdc35b24b"
+        },
+        {
+          "id": "4c8df125-efde-4960-ad0d-a851c6ee42fe",
+          "entity_type": "proposal",
+          "entity_id": "59ebe381-833c-409c-8c1a-28a95a27fcf4"
+        },
+        {
+          "id": "b2a57397-8fee-44dc-9a94-140a6dce006e",
+          "entity_type": "proposal",
+          "entity_id": "4fae3e36-a95c-44ba-80c1-0cfda866d663"
+        },
+        {
+          "id": "b971557b-bb91-41fc-89ea-1397b92c8e57",
+          "entity_type": "proposal",
+          "entity_id": "a2e8591d-3e64-4548-bd11-9461501b0fa6"
+        },
+        {
+          "id": "da37b84a-528b-4064-b862-203c44af4064",
+          "entity_type": "proposal",
+          "entity_id": "7149c8b6-4036-4e1f-a972-768581ff5884"
+        },
+        {
+          "id": "f3970a0a-99d4-4608-8ea8-a405b9428a1b",
+          "entity_type": "proposal",
+          "entity_id": "1c1730f4-bef3-49e8-8621-921702d6810d"
+        },
+        {
+          "id": "36c038f8-f00a-453d-bd42-f6e448e11434",
+          "entity_type": "proposal",
+          "entity_id": "c33596e9-2d1a-47b3-9061-f369e47ba082"
+        },
+        {
+          "id": "795af885-846d-4329-8432-c29f623a7801",
+          "entity_type": "proposal",
+          "entity_id": "c8ebf592-d56b-4289-8a8e-a79f983383c4"
+        },
+        {
+          "id": "1b8207ff-801a-4d93-9ff3-1f528b79280a",
+          "entity_type": "proposal",
+          "entity_id": "b82f53de-697f-4903-b617-6c6d3b3cc5dd"
+        },
+        {
+          "id": "720900e2-44a0-4401-8cf0-3e46cd1ab173",
+          "entity_type": "proposal",
+          "entity_id": "f49894f7-a4cb-426c-9e61-e4d2422ad335"
+        }
+      ],
+      "detail": "entity_tags rows whose (entity_type, entity_id) does not resolve to a row in proposals/officials/agencies."
+    },
+    {
+      "category": "referential.orphan_ai_summary_cache",
+      "severity": "error",
+      "expected": 0,
+      "actual": 117,
+      "sample": [
+        {
+          "id": "2ea921ae-3429-4371-b365-162e3c0e675c",
+          "entity_type": "proposal",
+          "entity_id": "022bfb7a-2b49-4bc1-9938-ad3458627816"
+        },
+        {
+          "id": "2d304fc6-07af-4798-9390-cf7a5c900b92",
+          "entity_type": "proposal",
+          "entity_id": "4019a95b-8257-479e-aa8a-0ac0b0b4f43c"
+        },
+        {
+          "id": "ece209da-c73e-47aa-8476-03ba60e193c9",
+          "entity_type": "proposal",
+          "entity_id": "72360af0-1b48-4259-91f2-f5d7ffedbe04"
+        },
+        {
+          "id": "1dc5f89b-b245-43fa-9f59-74fc733deb05",
+          "entity_type": "proposal",
+          "entity_id": "6497c89d-857a-423d-851e-cf48d44e1609"
+        },
+        {
+          "id": "ad7a573a-3700-4eb8-8506-4515991d20bb",
+          "entity_type": "proposal",
+          "entity_id": "ebababa5-607f-41ea-8203-58f66ab077c4"
+        },
+        {
+          "id": "2a1d5a5d-fc67-471a-b83e-f2f35f9a7f11",
+          "entity_type": "proposal",
+          "entity_id": "25f5d421-17ab-4cde-b509-c722412e6262"
+        },
+        {
+          "id": "e69536e2-6051-4201-9f62-e019d0edcecb",
+          "entity_type": "proposal",
+          "entity_id": "6de6d9e6-54d1-4037-b3f7-11c76726139b"
+        },
+        {
+          "id": "b36d4d4b-1e90-42f0-b34d-b65ab8a2c523",
+          "entity_type": "proposal",
+          "entity_id": "20e39668-34f1-456d-9845-bfe7186c9b1b"
+        },
+        {
+          "id": "7361ceb9-dbb0-44f4-b555-25c436f469d0",
+          "entity_type": "proposal",
+          "entity_id": "66ef73f3-3cc1-4f02-a927-f9302d92c77b"
+        },
+        {
+          "id": "e5170624-81d2-421d-85a1-833813f6b0c7",
+          "entity_type": "proposal",
+          "entity_id": "bcb99501-e29d-4e09-bea4-8da47011bb88"
+        }
+      ],
+      "detail": "ai_summary_cache rows whose (entity_type, entity_id) does not resolve."
+    },
+    {
+      "category": "referential.orphan_enrichment_queue",
+      "severity": "info",
+      "expected": 0,
+      "actual": 0,
+      "sample": [],
+      "detail": "enrichment_queue rows whose (entity_type, entity_id) does not resolve. Note: entity_id is TEXT in this table."
+    }
+  ],
+  "summary": {
+    "total": 15,
+    "errors": 6,
+    "warnings": 0,
+    "infos": 9
+  }
+}
