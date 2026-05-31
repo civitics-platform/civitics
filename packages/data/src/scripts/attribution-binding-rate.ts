@@ -28,6 +28,73 @@ const TABLES = [
 
 type Row = { primary_source: string | null };
 
+// ── Transient-network resilience (FIX-414) ──────────────────────────────
+//
+// Against the local Docker stack (Kong/PostgREST on Windows) and, less often,
+// prod, a single `{ count: "exact", head: true }` or `.range()` call can fail
+// with an undici `TypeError: fetch failed` (ECONNRESET / ETIMEDOUT under the
+// hood). There is no try/catch around any remote call, so one transient blip
+// poisons the whole multi-table diagnostic with zeros/nulls.
+//
+// Wrinkle: supabase-js does NOT throw on a network failure — it resolves the
+// query with `{ data: null, count: null, error: <TypeError> }`. So retrying
+// requires inspecting the resolved `.error` as well as catching thrown
+// exceptions. We retry ONLY transient network classes; a real PGRST/permission
+// error is returned/rethrown immediately (never retried, never swallowed) so
+// the script's existing tolerant behavior is unchanged apart from resilience.
+const TRANSIENT =
+  /fetch failed|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|socket hang up|network|und_err/i;
+const RETRY_ATTEMPTS = 3;
+
+function isTransient(err: unknown): boolean {
+  if (!err) return false;
+  const msg =
+    typeof err === "string" ? err : ((err as { message?: string }).message ?? "");
+  const cause = (err as { cause?: { code?: string; message?: string } }).cause;
+  const causeStr = cause ? `${cause.code ?? ""} ${cause.message ?? ""}` : "";
+  return TRANSIENT.test(msg) || TRANSIENT.test(causeStr);
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Run a Supabase query thunk with retry-on-transient-network-error.
+ * Retries on a thrown transient error OR a resolved result carrying a transient
+ * `.error`. Backoff 500ms → 1s → 2s. Non-transient failures surface immediately
+ * (rethrown if thrown; returned as-is if in `.error`). Transient failures that
+ * outlast all attempts are surfaced the same way (last result/rethrow), so a
+ * genuinely down dependency is never masked.
+ */
+async function withRetry<T extends { error: { message?: string } | null }>(
+  fn: () => PromiseLike<T>,
+  label: string,
+): Promise<T> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      const res = await fn();
+      if (res?.error && isTransient(res.error) && attempt < RETRY_ATTEMPTS) {
+        console.log(
+          `[retry] ${label} attempt ${attempt}/${RETRY_ATTEMPTS}: ${res.error.message}`,
+        );
+        await sleep(500 * 2 ** (attempt - 1));
+        continue;
+      }
+      return res;
+    } catch (e) {
+      if (isTransient(e) && attempt < RETRY_ATTEMPTS) {
+        console.log(
+          `[retry] ${label} attempt ${attempt}/${RETRY_ATTEMPTS}: ${(e as Error).message}`,
+        );
+        await sleep(500 * 2 ** (attempt - 1));
+        continue;
+      }
+      throw e;
+    }
+  }
+}
+
 async function main() {
   const url    = process.env["NEXT_PUBLIC_SUPABASE_URL"]!;
   const secret = process.env["SUPABASE_SECRET_KEY"]!;
@@ -47,9 +114,13 @@ async function main() {
   const anon  = createPublicClient();
 
   // ── xsr smoke (FIX-403/408 carry-over) ────────────────────────────────
-  const anonXsr = await anon
-    .from("external_source_refs")
-    .select("id", { count: "exact", head: true });
+  const anonXsr = await withRetry(
+    () =>
+      anon
+        .from("external_source_refs")
+        .select("id", { count: "exact", head: true }),
+    "xsr anon count",
+  );
   console.log(
     "[xsr] anon read count:", anonXsr.count,
     "error:", anonXsr.error?.message ?? null,
@@ -65,13 +136,18 @@ async function main() {
   const unknownSources = new Map<string, number>();
 
   for (const { table } of TABLES) {
-    const totalRes = await admin
-      .from(table)
-      .select("id", { count: "exact", head: true });
-    const boundRes = await admin
-      .from(table)
-      .select("id", { count: "exact", head: true })
-      .not("primary_source", "is", null);
+    const totalRes = await withRetry(
+      () => admin.from(table).select("id", { count: "exact", head: true }),
+      `${table} total count`,
+    );
+    const boundRes = await withRetry(
+      () =>
+        admin
+          .from(table)
+          .select("id", { count: "exact", head: true })
+          .not("primary_source", "is", null),
+      `${table} bound count`,
+    );
     const total = totalRes.count ?? 0;
     const bound = boundRes.count ?? 0;
     const pct   = total > 0 ? (100 * bound) / total : 0;
@@ -91,11 +167,15 @@ async function main() {
     let offset = 0;
     const cats: Record<string, number> = {};
     while (offset < MAX_ROWS && offset < bound) {
-      const { data, error } = await admin
-        .from(table)
-        .select("primary_source")
-        .not("primary_source", "is", null)
-        .range(offset, offset + PAGE - 1);
+      const { data, error } = await withRetry(
+        () =>
+          admin
+            .from(table)
+            .select("primary_source")
+            .not("primary_source", "is", null)
+            .range(offset, offset + PAGE - 1),
+        `${table} page @${offset}`,
+      );
       if (error) {
         console.warn(`  (paging error on ${table} @ ${offset}: ${error.message})`);
         break;
@@ -143,19 +223,31 @@ async function main() {
   }
 
   // ── Congress.gov sanity carry-over from FIX-403/408 smoke ─────────────
-  const congressTotal = await admin
-    .from("officials")
-    .select("id", { count: "exact", head: true })
-    .filter("source_ids->>congress_gov", "not.is", null);
-  const xsrCongress = await admin
-    .from("external_source_refs")
-    .select("id", { count: "exact", head: true })
-    .eq("source", "congress_gov")
-    .eq("entity_type", "official");
-  const materializedCongress = await admin
-    .from("officials")
-    .select("id", { count: "exact", head: true })
-    .eq("primary_source", "congress_gov");
+  const congressTotal = await withRetry(
+    () =>
+      admin
+        .from("officials")
+        .select("id", { count: "exact", head: true })
+        .filter("source_ids->>congress_gov", "not.is", null),
+    "congress source_ids count",
+  );
+  const xsrCongress = await withRetry(
+    () =>
+      admin
+        .from("external_source_refs")
+        .select("id", { count: "exact", head: true })
+        .eq("source", "congress_gov")
+        .eq("entity_type", "official"),
+    "congress xsr count",
+  );
+  const materializedCongress = await withRetry(
+    () =>
+      admin
+        .from("officials")
+        .select("id", { count: "exact", head: true })
+        .eq("primary_source", "congress_gov"),
+    "congress primary_source count",
+  );
   console.log("\nCongress.gov officials sanity (carried from FIX-403/408 smoke):");
   console.log("  source_ids->>congress_gov  :", congressTotal.count);
   console.log("  xsr rows (source=congress_gov):", xsrCongress.count);
