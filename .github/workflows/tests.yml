@@ -1,0 +1,52 @@
+name: tests
+
+# FIX-407 — Unit tests (node:test via tsx), run on every push to main and every
+# PR. This is the repo's first push/PR-triggered test job.
+#
+# Why a new workflow: the existing workflows (nightly.yml, audit.yml,
+# sync-canary-check.yml, platform-snapshot.yml, rebuild-entity-connections.yml)
+# are all scheduled data-pipeline crons. None ran unit tests, so a drift guard
+# bolted onto one of them would only fire on its cron cadence (daily/weekly) —
+# not on the commit that actually introduces the drift. A drift guard that runs
+# late is nearly worthless, so this runs synchronously with the change.
+#
+# Currently runs the source_priority SQL-vs-TS drift guard
+# (packages/data/src/__tests__/source-priority-drift.test.ts). Add further
+# `tsx --test` suites to the @civitics/data `test` script as they land.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run unit tests
+        run: pnpm --filter @civitics/data test
