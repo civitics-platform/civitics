@@ -555,3 +555,5 @@
 2026-05-30 | FIX-432 | b2e32a47 | local-only | fix(institutions): read pipeline_state via admin client to defeat RLS silent-zero (FIX-432)
 2026-05-30 | FIX-435 | b3a23ecf | local+prod | feat(congress): backfill summary_plain from CRS summaries (FIX-435 Phase 2)
 2026-05-30 | FIX-435 | 5559c86d | local+prod | feat(congress): backfill summary_plain from CRS summaries (FIX-435 Phase 2)
+2026-05-31 | FIX-414 | 9bcbb807 | local+prod | [skip vercel] fix(data): retry transient fetch failures in attribution-coverage diag
+2026-05-31 | FIX-448 | e045d09b | local+prod | [skip vercel] fix(data): stable order on audit-summary-context pagination
