@@ -17,6 +17,7 @@ import {
 } from "./members";
 import { startSync, completeSync, failSync } from "../sync-log";
 import { runCandidateToElectedPromotion } from "./promote-candidates";
+import { runReconcileFormerMembers } from "./reconcile-former-members";
 
 type OfficialInsert = Database["public"]["Tables"]["officials"]["Insert"];
 
@@ -177,6 +178,14 @@ export async function runOfficialsPipeline(
       term_start: termStart,
       term_end: termEnd,
       is_active: true,
+      // FIX-409: keep tier in lockstep with is_active. A member present in the
+      // feed is, by definition, a sitting elected official — so restore
+      // tier='elected' on every upsert. Without this, a member who previously
+      // fell out of the feed (flipped to is_active=false, tier='former' by the
+      // reconciliation pass) and later returned would be re-activated to
+      // is_active=true but stay stuck at tier='former'. Only ever applied to
+      // current congress members, so it can never mislabel a candidate row.
+      tier: "elected",
       is_verified: false,
       website_url: `https://www.congress.gov/member/${member.bioguideId}`,
       source_ids: { congress_gov: member.bioguideId },
@@ -281,6 +290,27 @@ export async function runOfficialsPipeline(
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`  promote-candidates step failed (non-fatal): ${msg}`);
+  }
+
+  // FIX-409: deactivate members who fell out of the Congress.gov feed —
+  // flip them is_active=false, tier='former'. Guarded by a roster-completeness
+  // floor (decision #5): a truncated/failed fetch must never mass-deactivate.
+  // Non-fatal — a failure here doesn't void the upstream ingest. The normal
+  // in-loop path already re-activated every present member, so a returning
+  // member is is_active=true again and won't be flagged here.
+  try {
+    const feedBioguideIds = new Set<string>();
+    for (const m of members) {
+      if (m?.bioguideId) feedBioguideIds.add(m.bioguideId);
+    }
+    await runReconcileFormerMembers({
+      db,
+      feedBioguideIds,
+      feedMemberCount: members.length,
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`  reconcile-former-members step failed (non-fatal): ${msg}`);
   }
 
     const estimatedMb = +(((inserted + updated) * 350) / 1024 / 1024).toFixed(2);
