@@ -571,3 +571,5 @@
 2026-05-31 | FIX-249 | 721e498b | local+prod | [skip vercel] feat(officials): add 'former' tier + backfill from is_active
 2026-05-31 | FIX-409 | 0983f782 | local-only | [skip vercel] fix(congress): deactivate + mark former members who left the feed
 2026-05-31 | FIX-458 | a664490d | local-only | [skip vercel] ci(tests): add typecheck + lint + full unit-test gate on push/PR
+2026-05-31 | FIX-411 | a212ba50 | local+prod | [skip vercel] chore(legistar): record FIX-411 prod apply + verification
+2026-05-31 | FIX-411 | 958933ad | local-only | [skip vercel] fix(legistar): decouple display slug from API client + rewrite existing sources
