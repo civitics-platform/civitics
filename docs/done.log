@@ -574,3 +574,9 @@
 2026-05-31 | FIX-411 | a212ba50 | local+prod | [skip vercel] chore(legistar): record FIX-411 prod apply + verification
 2026-05-31 | FIX-411 | 958933ad | local-only | [skip vercel] fix(legistar): decouple display slug from API client + rewrite existing sources
 2026-05-31 | FIX-459 | 1a8562dc | local-only | [skip vercel] ci(lint): wire eslint presets across packages + promote lint gate to blocking
+2026-06-01 | FIX-425 | reopen | stranded on PR#1 (feature/silent-zero-sweep-tail) — branch SHA not on main; relanding
+2026-06-01 | FIX-428 | reopen | stranded on PR#1 (feature/silent-zero-sweep-tail) — branch SHA not on main; relanding
+2026-06-01 | FIX-429 | reopen | stranded on PR#1 (feature/silent-zero-sweep-tail) — branch SHA not on main; relanding
+2026-06-01 | FIX-430 | reopen | stranded on PR#1 (feature/silent-zero-sweep-tail) — branch SHA not on main; relanding
+2026-06-01 | FIX-431 | reopen | stranded on PR#1 (feature/silent-zero-sweep-tail) — branch SHA not on main; relanding
+2026-06-01 | FIX-432 | reopen | stranded on PR#1 (feature/silent-zero-sweep-tail) — branch SHA not on main; relanding
