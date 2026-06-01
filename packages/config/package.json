@@ -3,6 +3,7 @@
   "version": "0.0.1",
   "private": true,
   "exports": {
+    "./package.json": "./package.json",
     "./typescript/base": "./typescript/base.json",
     "./typescript/nextjs": "./typescript/nextjs.json",
     "./eslint/base": "./eslint/base.js",
@@ -11,8 +12,11 @@
   },
   "devDependencies": {
     "@types/eslint": "^8.56.0",
+    "@typescript-eslint/eslint-plugin": "^8.57.0",
+    "@typescript-eslint/parser": "^8.57.0",
     "eslint": "^8.57.0",
     "eslint-config-next": "^14.2.0",
+    "eslint-plugin-react-hooks": "^4.6.2",
     "typescript": "^5.4.0"
   }
 }

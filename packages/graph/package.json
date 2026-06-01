@@ -8,12 +8,13 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "lint": "eslint src/",
+    "lint": "eslint src --ext .ts,.tsx",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist"
   },
   "devDependencies": {
     "@civitics/config": "workspace:*",
+    "eslint": "^8.57.0",
     "@types/d3": "^7.4.0",
     "@types/d3-sankey": "^0.12.5",
     "@types/react": "^18.0.0",

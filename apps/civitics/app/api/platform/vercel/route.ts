@@ -49,7 +49,7 @@ export async function GET() {
   if (teamId) url.searchParams.set("teamId", teamId);
 
   let res: Response;
-  let usagePromise = getVercelUsage();
+  const usagePromise = getVercelUsage();
   try {
     res = await fetch(url.toString(), {
       headers: {

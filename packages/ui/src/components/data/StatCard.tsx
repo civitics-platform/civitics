@@ -3,7 +3,6 @@
 import * as React from "react";
 import { useState, useEffect } from "react";
 import { formatUSD, formatNumber } from "../../utils";
-import { LoadingSkeleton } from "../feedback/LoadingSkeleton";
 
 interface StatCardProps {
   /** String emoji (legacy) or React node (e.g. Lucide icon) */

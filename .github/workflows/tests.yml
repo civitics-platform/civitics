@@ -17,10 +17,10 @@ name: tests
 #
 # Gate health is baseline-first: only green-across-all-packages steps are blocking.
 #  - typecheck: GREEN across all 10 packages → blocking.
-#  - lint:      the eslint toolchain is not installed (no eslint dep / no config in
-#               any package; next-app `next lint` is uninitialized) → the step is
-#               soft-gated (continue-on-error) and informational ONLY until FIX-459
-#               stands up eslint, at which point flip continue-on-error off.
+#  - lint:      eslint toolchain wired by FIX-459 (@civitics/config presets +
+#               per-package .eslintrc); `turbo run lint` GREEN across all 9
+#               (0 errors, ~76 warnings allowed) → blocking. The warning backlog
+#               ratchet to zero + `--max-warnings 0` is FIX-460.
 #  - unit:      @civitics/data suite (run-tests.mjs discovers every src/**/*.test.ts)
 #               → GREEN → blocking.
 
@@ -63,12 +63,13 @@ jobs:
       - name: Typecheck
         run: pnpm turbo run typecheck
 
-      # Soft-gated (FIX-459). The eslint toolchain is not installed yet, so this
-      # step will fail until FIX-459 lands; continue-on-error keeps it from blocking
-      # merges. Once eslint + config exist, remove continue-on-error to make it block.
+      # Blocking (FIX-459). The eslint toolchain is now wired: @civitics/config
+      # exports the base + next presets, every package/app has an .eslintrc that
+      # extends them, and `turbo run lint` is GREEN across all 9 (0 errors). A
+      # backlog of ~76 warnings remains — allowed for now; driving them to zero
+      # and adding `--max-warnings 0` is the ratchet follow-up (FIX-460).
       - name: Lint
         run: pnpm turbo run lint
-        continue-on-error: true
 
       # Blocking — run-tests.mjs discovers every src/**/*.test.ts under @civitics/data
       # (source-priority drift guard, congress reconcile, fec-bulk indiv fingerprint).

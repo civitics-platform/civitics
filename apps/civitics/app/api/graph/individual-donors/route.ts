@@ -103,7 +103,7 @@ export async function GET(request: Request): Promise<Response> {
       amountLookup.set(r.from_id, r.amount_cents ?? 0);
     }
 
-    let filtered: IndividualDonorRow[] = [];
+    const filtered: IndividualDonorRow[] = [];
 
     for (const [id, entity] of entityLookup) {
       const amountCents = amountLookup.get(id) ?? 0;
