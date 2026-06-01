@@ -192,10 +192,13 @@ export interface LegistarVote {
 // ---------------------------------------------------------------------------
 
 export interface MetroConfig {
-  /** Legistar client slug, e.g. 'seattle', 'sfgov', 'newyork', 'austintexas'. */
+  /** Legistar API client name, e.g. 'seattle', 'sfgov', 'newyork', 'austintexas'. */
   client:       string;
   /** Display name for logging. */
   name:         string;
+  /** Display slug embedded in the xsr source string (`legistar:${slug}`), decoupled
+   *  from the API client name so resolveSource renders clean labels (FIX-411). */
+  slug:         string;
   /** Source string written to external_source_refs. */
   source:       string;
   /** UUID of this city's jurisdiction in our DB (resolved at startup). */

@@ -45,10 +45,16 @@ import {
 // Metro registry (jurisdictionId populated at startup from seedPilotMetros)
 // ---------------------------------------------------------------------------
 
-const METRO_CLIENTS: Array<{ client: string; name: string }> = [
-  { client: "seattle",     name: "Seattle"       },
-  { client: "sfgov",       name: "San Francisco" },
-  { client: "austintexas", name: "Austin"        },
+// `client` is the Legistar API client name (feeds the API URL, the
+// `legistar_${client}_last_run` cursor, source_url, and metadata.legistar_client
+// — never rewrite it). `slug` is the display slug embedded in the xsr source
+// string and rendered by resolveSource (`legistar:${slug}` → "Legistar <Slug>").
+// Decoupled in FIX-411 so ugly API client names ('sfgov', 'austintexas') don't
+// leak into user-visible source labels. Seattle's slug already equals its client.
+const METRO_CLIENTS: Array<{ client: string; name: string; slug: string }> = [
+  { client: "seattle",     name: "Seattle",       slug: "seattle"       },
+  { client: "sfgov",       name: "San Francisco", slug: "san-francisco" },
+  { client: "austintexas", name: "Austin",        slug: "austin"        },
 ];
 
 // How far back to fetch events on first run (days).
@@ -257,7 +263,7 @@ export async function runLegistarPipeline(): Promise<PipelineResult> {
       .map((m) => {
         const jid = jurisdictionMap.get(m.client);
         if (!jid) console.warn(`  ⚠  ${m.name}: jurisdiction not found — skipping`);
-        return jid ? { ...m, source: `legistar:${m.client}`, jurisdictionId: jid } : null;
+        return jid ? { ...m, source: `legistar:${m.slug}`, jurisdictionId: jid } : null;
       })
       .filter((m): m is MetroConfig => m !== null);
 
