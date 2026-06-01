@@ -580,3 +580,9 @@
 2026-06-01 | FIX-430 | reopen | stranded on PR#1 (feature/silent-zero-sweep-tail) — branch SHA not on main; relanding
 2026-06-01 | FIX-431 | reopen | stranded on PR#1 (feature/silent-zero-sweep-tail) — branch SHA not on main; relanding
 2026-06-01 | FIX-432 | reopen | stranded on PR#1 (feature/silent-zero-sweep-tail) — branch SHA not on main; relanding
+2026-05-30 | FIX-425 | 011a43d9 | local-only | fix(search): read comment_period_end/agency_id from metadata, not dropped top-level columns (FIX-425)
+2026-05-30 | FIX-428 | 5e55f681 | local-only | fix(graph): bound entity_connections loads + check timeout/error in connections route (FIX-428, FIX-431)
+2026-05-30 | FIX-429 | 8d621d38 | local-only | fix(cron): paginate user_follows loads in notify-followers (FIX-429)
+2026-05-30 | FIX-430 | 4f608590 | local-only | fix(tags): compute ai-tagger cost-gate cardinality without 1000-row truncation (FIX-430)
+2026-05-30 | FIX-431 | 5e55f681 | local-only | fix(graph): bound entity_connections loads + check timeout/error in connections route (FIX-428, FIX-431)
+2026-06-01 | FIX-432 | 2d0ff729 | local-only | fix(institutions): read pipeline_state via admin client to defeat RLS silent-zero (FIX-432)
