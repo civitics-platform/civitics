@@ -568,3 +568,5 @@
 2026-05-31 | FIX-391 | 9feb46d4 | local+prod | [skip vercel] feat(db): CHECK enrichment_queue.entity_type + refresh stale comment
 2026-05-31 | FIX-392 | a943ad3a | local-only | [skip vercel] docs(db): document db push --db-url + set -a env-export fallback
 2026-05-31 | FIX-407 | bee6d625 | local-only | [skip vercel] test(db): drift guard for source_priority SQL vs TS const
+2026-05-31 | FIX-249 | 721e498b | local+prod | [skip vercel] feat(officials): add 'former' tier + backfill from is_active
+2026-05-31 | FIX-409 | 0983f782 | local-only | [skip vercel] fix(congress): deactivate + mark former members who left the feed
