@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test src/__tests__/source-priority-drift.test.ts src/pipelines/congress/reconcile-former-members.test.ts",
+    "test": "node run-tests.mjs",
     "data:seed": "tsx --env-file=../../.env.local src/seed.ts",
     "data:officials": "tsx --env-file=../../.env.local src/pipelines/congress/officials.ts",
     "data:executive-seed": "tsx --env-file=../../.env.local src/pipelines/executive/seed.ts",
