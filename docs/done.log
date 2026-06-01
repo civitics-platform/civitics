@@ -570,3 +570,4 @@
 2026-05-31 | FIX-407 | bee6d625 | local-only | [skip vercel] test(db): drift guard for source_priority SQL vs TS const
 2026-05-31 | FIX-249 | 721e498b | local+prod | [skip vercel] feat(officials): add 'former' tier + backfill from is_active
 2026-05-31 | FIX-409 | 0983f782 | local-only | [skip vercel] fix(congress): deactivate + mark former members who left the feed
+2026-05-31 | FIX-458 | a664490d | local-only | [skip vercel] ci(tests): add typecheck + lint + full unit-test gate on push/PR
