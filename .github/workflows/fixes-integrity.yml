@@ -1,0 +1,61 @@
+name: fixes-integrity
+
+# FIX-461 guard, split out of tests.yml by FIX-466. The silent-zero-sweep-tail
+# incident (2026-05-31) recorded six FIXes as shipped via a fixes:sync run that
+# scanned an unmerged PR branch — done.log + the archive said "done" while the code
+# sat off-main. `fixes-sync.mjs --check` fails when any completed FIX-ID is backed
+# only by commits that are not ancestors of origin/main, and when FIXES.md checkboxes
+# drift from the trailers.
+#
+# Why its own workflow (FIX-466): the heavy `unit` job in tests.yml now carries
+# `paths-ignore: ['docs/**']` to skip the autonomous loop's docs-only status commits.
+# But a bad fixes:sync lands as a docs-only change to done.log — exactly the commits
+# this guard exists to police — so it must have NO path filter and fire on every push.
+# Path filters are workflow-level, not per-job, hence the split. It's pure Node (no
+# pnpm install), ~2s, so running it on every push is cheap and is the point.
+#
+# Branch-protection caveat: see the tests.yml header — a `paths-ignore`-skipped
+# workflow reports no status; this one never skips, so it has no such gap.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fixes-integrity-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fixes-integrity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout (full history for trunk-ancestry guard)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # origin/main is the trunk the guard compares against. On push-to-main it
+      # already points at the merge; on a PR fetch it explicitly so rev-list has
+      # the ref. If this fails the guard self-skips (no trunk → no false fail).
+      - name: Ensure origin/main ref
+        run: git fetch origin main:refs/remotes/origin/main || true
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # Blocking (FIX-461). --check exits 1 on: (a) FIXES.md out of sync with
+      # trailers, (b) a completed FIX-ID backed only by off-trunk commits.
+      - name: done.log trunk-ancestry + sync guard
+        run: node scripts/fixes-sync.mjs --check
+
+      - name: fixes-sync parser/guard unit tests
+        run: node scripts/test-fixes-sync.mjs

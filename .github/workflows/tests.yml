@@ -23,11 +23,31 @@ name: tests
 #               ratchet to zero + `--max-warnings 0` is FIX-460.
 #  - unit:      @civitics/data suite (run-tests.mjs discovers every src/**/*.test.ts)
 #               → GREEN → blocking.
+#
+# Split (FIX-466): the cheap fixes-integrity guard (FIX-461) moved to its own
+# .github/workflows/fixes-integrity.yml. The autonomous loop pushes many pure
+# docs/status commits (chore(fixes): sync … touching only docs/done.log +
+# docs/FIXES.md), and spinning the heavy `unit` job up for those just to cancel it
+# is wasted runner time. So `unit` now carries `paths-ignore: ['docs/**']` and skips
+# docs-only changes (mixed docs+code commits still run it — paths-ignore only skips
+# when EVERY changed path matches). The guard could NOT share this filter: a bad
+# fixes:sync (the FIX-461 failure mode) lands as a docs-only done.log change, so it
+# must keep firing on exactly the commits this filter skips — hence a separate
+# workflow with no path filter, not a per-job `if:` (path filters are workflow-level).
+#
+# Branch-protection caveat: a workflow skipped by `paths-ignore` reports NO status.
+# Nothing requires these checks today (no branch protection), so this is safe. But if
+# required checks are later enabled, a required `tests / unit` check would sit pending
+# and block docs-only merges — add the standard "skipped→success" companion job then.
 
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - 'docs/**'
   pull_request:
+    paths-ignore:
+      - 'docs/**'
   workflow_dispatch: {}
 
 permissions:
@@ -75,40 +95,3 @@ jobs:
       # (source-priority drift guard, congress reconcile, fec-bulk indiv fingerprint).
       - name: Unit tests
         run: pnpm --filter @civitics/data test
-
-  # FIX-461: done.log integrity guard. The silent-zero-sweep-tail incident
-  # (2026-05-31) recorded six FIXes as shipped via a fixes:sync run that scanned
-  # an unmerged PR branch — done.log + the archive said "done" while the code sat
-  # off-main. `fixes-sync.mjs --check` now fails when any completed FIX-ID is
-  # backed only by commits that are not ancestors of origin/main, and when
-  # FIXES.md checkboxes drift from the trailers. Separate job because it needs the
-  # full history + the origin/main ref (fetch-depth: 0); the other gate steps
-  # run on a shallow checkout. Pure Node (no pnpm install) → fast.
-  fixes-integrity:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-
-    steps:
-      - name: Checkout (full history for trunk-ancestry guard)
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      # origin/main is the trunk the guard compares against. On push-to-main it
-      # already points at the merge; on a PR fetch it explicitly so rev-list has
-      # the ref. If this fails the guard self-skips (no trunk → no false fail).
-      - name: Ensure origin/main ref
-        run: git fetch origin main:refs/remotes/origin/main || true
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      # Blocking (FIX-461). --check exits 1 on: (a) FIXES.md out of sync with
-      # trailers, (b) a completed FIX-ID backed only by off-trunk commits.
-      - name: done.log trunk-ancestry + sync guard
-        run: node scripts/fixes-sync.mjs --check
-
-      - name: fixes-sync parser/guard unit tests
-        run: node scripts/test-fixes-sync.mjs
