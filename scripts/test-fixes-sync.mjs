@@ -13,7 +13,12 @@
 import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { parseCommitTrailers, normalizeVerified } from "./fixes-sync.mjs";
+import {
+  parseCommitTrailers,
+  normalizeVerified,
+  evaluateTrunkViolations,
+  buildCompletingShasById,
+} from "./fixes-sync.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const FIXTURE = resolve(HERE, "__fixtures__/fixes-sync-mixed-verified.txt");
@@ -70,6 +75,46 @@ const strayParsed = parseCommitTrailers(strayBody);
 console.log("\nstray Verified[FIX-NNN] guard:");
 assertEq("perFixVerified (stray dropped)", [...strayParsed.perFixVerified.keys()], []);
 assertEq("warnings (one)", strayParsed.warnings.length, 1);
+
+// FIX-461: trunk-ancestry guard decision core. `evaluateTrunkViolations` and
+// `buildCompletingShasById` are pure (git is injected via `resolve`), so the
+// silent-zero-sweep-tail failure mode is exercised here without touching a repo.
+console.log("\nFIX-461 trunk-ancestry guard:");
+const doneEntries = [
+  // FIX-700: shipped — single on-trunk SHA.
+  { id: "FIX-700", sha: "aaaaaaa" },
+  // FIX-701: the incident shape — recorded against an off-trunk branch SHA,
+  // then reopened, then re-landed on trunk. ANY on-trunk SHA ⇒ passes.
+  { id: "FIX-701", sha: "bbbbbbb" },
+  { id: "FIX-701", sha: "reopen" },
+  { id: "FIX-701", sha: "ccccccc" },
+  // FIX-702: STILL stranded — only off-trunk SHAs. This is the violation.
+  { id: "FIX-702", sha: "ddddddd" },
+  // FIX-703: orphan-plus-landed (FIX-435 shape) — one off-trunk dup + one landed.
+  { id: "FIX-703", sha: "eeeeeee" },
+  { id: "FIX-703", sha: "fffffff" },
+  // FIX-704: closed administratively via a sentinel SHA — skipped, never failed.
+  { id: "FIX-704", sha: "superseded-by-fix-999" },
+];
+const ancestorShas = new Set(["aaaaaaa", "ccccccc", "fffffff"]);
+const offTrunkExists = new Set(["bbbbbbb", "ddddddd", "eeeeeee"]);
+const fakeResolve = (sha) => {
+  if (!/^[0-9a-f]{7,40}$/.test(sha)) return "unknown"; // sentinel
+  if (ancestorShas.has(sha)) return "ancestor";
+  if (offTrunkExists.has(sha)) return "not-ancestor";
+  return "unknown"; // missing object (shallow clone)
+};
+const shasById = buildCompletingShasById(doneEntries);
+assertEq("buildCompletingShasById skips reopen", shasById.get("FIX-701"), ["bbbbbbb", "ccccccc"]);
+assertEq("buildCompletingShasById FIX-704 keeps sentinel", shasById.get("FIX-704"), ["superseded-by-fix-999"]);
+const { violations, skipped } = evaluateTrunkViolations({
+  completedIds: new Set(["FIX-700", "FIX-701", "FIX-702", "FIX-703", "FIX-704"]),
+  completingShasById: shasById,
+  resolve: fakeResolve,
+});
+assertEq("violations = only the still-stranded FIX-702", violations.map((v) => v.id), ["FIX-702"]);
+assertEq("FIX-702 violation reports its off-trunk SHA", violations[0].shas, ["ddddddd"]);
+assertEq("FIX-704 (sentinel-only) is skipped, not failed", skipped.map((s) => s.id), ["FIX-704"]);
 
 if (failures.length) {
   console.error("\nFAIL:\n" + failures.join("\n"));
