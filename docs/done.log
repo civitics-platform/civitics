@@ -591,3 +591,4 @@
 2026-06-01 | FIX-428 | 90214417 | local+prod | [skip vercel] chore(fixes): record prod verification of silent-zero reland
 2026-06-01 | FIX-431 | 90214417 | local+prod | [skip vercel] chore(fixes): record prod verification of silent-zero reland
 2026-06-01 | FIX-432 | 90214417 | local+prod | [skip vercel] chore(fixes): record prod verification of silent-zero reland
+2026-06-01 | FIX-462 | 8769480b | local-only | [skip vercel] fix(nightly): direct-pg FEC indiv upserts + decouple enrichment + running-row (FIX-462)
