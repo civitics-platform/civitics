@@ -587,3 +587,7 @@
 2026-05-30 | FIX-431 | 5e55f681 | local-only | fix(graph): bound entity_connections loads + check timeout/error in connections route (FIX-428, FIX-431)
 2026-06-01 | FIX-432 | 2d0ff729 | local-only | fix(institutions): read pipeline_state via admin client to defeat RLS silent-zero (FIX-432)
 2026-06-01 | FIX-461 | 63d2bc4b | local-only | [skip vercel] ci(fixes): guard done.log against off-trunk completions (FIX-461)
+2026-06-01 | FIX-425 | 90214417 | local+prod | [skip vercel] chore(fixes): record prod verification of silent-zero reland
+2026-06-01 | FIX-428 | 90214417 | local+prod | [skip vercel] chore(fixes): record prod verification of silent-zero reland
+2026-06-01 | FIX-431 | 90214417 | local+prod | [skip vercel] chore(fixes): record prod verification of silent-zero reland
+2026-06-01 | FIX-432 | 90214417 | local+prod | [skip vercel] chore(fixes): record prod verification of silent-zero reland
