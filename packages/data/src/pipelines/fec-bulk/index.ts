@@ -1048,7 +1048,7 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
                 }
 
                 console.log(`    Upserting ${donorInputs.length.toLocaleString()} individual donor entities...`);
-                const donorResult = await upsertIndividualDonorsBatch(db, donorInputs);
+                const donorResult = await upsertIndividualDonorsBatch(donorInputs);
                 indivDonorsUpserted += donorResult.upserted;
                 indivDonorsFailed   += donorResult.failed;
                 console.log(`    Donors — upserted: ${donorResult.upserted}  failed: ${donorResult.failed}`);
@@ -1072,7 +1072,7 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
                 }
 
                 console.log(`    Upserting ${indivRelInputs.length.toLocaleString()} individual → candidate donation relationships...`);
-                const indivRelResult = await upsertIndividualDonationsBatch(db, indivRelInputs);
+                const indivRelResult = await upsertIndividualDonationsBatch(indivRelInputs);
                 indivRelsUpserted += indivRelResult.upserted;
                 indivRelsFailed   += indivRelResult.failed;
                 console.log(`    Donations (→ candidate) — upserted: ${indivRelResult.upserted}  failed: ${indivRelResult.failed}`);
@@ -1150,7 +1150,7 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
                 }
 
                 console.log(`    Upserting ${indivCmteRelInputs.length.toLocaleString()} individual → committee donation relationships...`);
-                const indivCmteRelResult = await upsertIndividualToCommitteeDonationsBatch(db, indivCmteRelInputs);
+                const indivCmteRelResult = await upsertIndividualToCommitteeDonationsBatch(indivCmteRelInputs);
                 indivCmteRelsUpserted += indivCmteRelResult.upserted;
                 indivCmteRelsFailed   += indivCmteRelResult.failed;
                 console.log(`    Donations (→ committee) — upserted: ${indivCmteRelResult.upserted}  failed: ${indivCmteRelResult.failed}`);

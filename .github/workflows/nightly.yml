@@ -81,6 +81,12 @@ jobs:
       - name: Run FEC phase
         run: pnpm --filter @civitics/data data:nightly:fec:ci
 
+      # FIX-462: pass --phase so the kill-detector only considers this phase's
+      # data_sync_log rows. Once enrichment-phase is decoupled (runs even when
+      # fec-phase times out, below), enrichment writes its own terminal
+      # nightly_cron row for the date; without phase-scoping mark-killed would
+      # see that terminal row and wrongly conclude fec-phase finished.
+
       # FIX-290: when this job gets SIGTERM'd by `timeout-minutes`, the FEC
       # phase step above never reaches its completion-row write. The canary
       # then can't tell "never ran" from "ran but killed by workflow
@@ -90,10 +96,21 @@ jobs:
       # gates the job (always exits 0).
       - name: Mark nightly-killed if no completion row
         if: always()
-        run: pnpm --filter @civitics/data data:mark-killed:ci
+        run: pnpm --filter @civitics/data data:mark-killed:ci -- --phase=fec
 
   enrichment-phase:
     needs: fec-phase
+    # FIX-462: decouple from fec-phase outcome. fec-phase overruns its 120-min
+    # budget every Sunday (FEC bulk indiv); with the default `if: success()`,
+    # a fec-phase timeout SKIPPED enrichment entirely → LittleSis/EDGAR/MV
+    # refreshes/AI taggers all went dark weekly. `!cancelled()` runs enrichment
+    # when fec-phase fails OR times out (a timed-out job is not a run-level
+    # cancellation), and skips only if the whole workflow run is cancelled.
+    # `needs: fec-phase` is kept so FEC writes that DID land are flushed before
+    # the LittleSis matcher builds its index (FIX-276 ordering); on an overrun
+    # Sunday the matcher just sees last week's FEC entities for the unlanded
+    # portion — acceptable, next week reconciles.
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 120
 
@@ -137,4 +154,4 @@ jobs:
 
       - name: Mark nightly-killed if no completion row
         if: always()
-        run: pnpm --filter @civitics/data data:mark-killed:ci
+        run: pnpm --filter @civitics/data data:mark-killed:ci -- --phase=enrichment

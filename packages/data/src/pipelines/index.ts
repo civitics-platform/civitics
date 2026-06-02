@@ -411,6 +411,33 @@ export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<Nigh
     console.warn("[nightly] reap_stale_sync_log failed (continuing):", errMsg(err));
   }
 
+  // FIX-462: write a phase-tagged `running` start-row so a workflow-timeout
+  // SIGTERM (every Sunday on fec-phase) registers as `killed`, not `missing`.
+  // Pre-FIX-462 runNightlySync only ever wrote a terminal row, so a kill left
+  // ZERO data_sync_log rows → mark-killed found no orphan → the canary
+  // classified the date `missing`. This row is UPDATEd in place at the terminal
+  // write below (one row per phase per night, not two). metadata.phase scopes
+  // mark-killed so a fec-phase kill is still detected after the now-decoupled
+  // enrichment-phase writes its own terminal row for the same date.
+  let runningRowId = "";
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: runRow, error } = await (db as any)
+      .from("data_sync_log")
+      .insert({
+        pipeline:   "nightly_cron",
+        status:     "running",
+        started_at: startedAt.toISOString(),
+        metadata:   { phase },
+      })
+      .select("id")
+      .single();
+    if (error) throw error;
+    runningRowId = (runRow?.id as string) ?? "";
+  } catch (err) {
+    console.warn("[nightly] could not write running start-row (continuing):", errMsg(err));
+  }
+
   const { federalId, stateIds } = await seedJurisdictions(db);
   const { senateId: senateGovBodyId, houseId: houseGovBodyId } = await seedGoverningBodies(db, federalId);
 
@@ -1039,17 +1066,30 @@ export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<Nigh
     // (LittleSis, EDGAR, USASpending, etc.). The original FIX-307 report
     // misattributed Phase 1's edgar_daily / openstates_bulk_people work to
     // Phase 2; closed as no-op against prod inspection of 5/18-5/23 rows.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (db as any).from("data_sync_log").insert({
-      pipeline:      "nightly_cron",
+    // FIX-462: resolve the `running` start-row in place rather than inserting a
+    // second row. Keeps one nightly_cron row per phase per night and leaves no
+    // orphan for mark-killed/reap to chase on a clean run. Falls back to INSERT
+    // if the start-row write failed (runningRowId empty) so a terminal row is
+    // always recorded.
+    const terminalRow = {
       status:        phaseStatus,
-      started_at:    startedAt.toISOString(),
       completed_at:  results.completed_at.toISOString(),
       rows_inserted: Object.values(results.pipelines).reduce(
         (sum, p) => sum + (p?.rows_added ?? 0), 0
       ),
       metadata: { ...results, peak_rss_mb: captureRssMb(), phase },
-    });
+    };
+    if (runningRowId) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (db as any).from("data_sync_log").update(terminalRow).eq("id", runningRowId);
+    } else {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (db as any).from("data_sync_log").insert({
+        pipeline:   "nightly_cron",
+        started_at: startedAt.toISOString(),
+        ...terminalRow,
+      });
+    }
   } catch (err) {
     console.error("[nightly] failed to record results:", errMsg(err));
   }

@@ -17,6 +17,7 @@
 
 import type { createAdminClient } from "@civitics/db";
 import { canonicalDonorName } from "./indiv";
+import { withDirectClient, bulkUpsert } from "../../lib/direct-pg-upsert";
 
 type Db = ReturnType<typeof createAdminClient>;
 
@@ -181,15 +182,17 @@ export interface IndividualDonorBatchResult {
  * canonical_name carries the searchable normalized name (NO zip), so
  * existing GIN trigram search on canonical_name still finds donors by name.
  */
+// FIX-462: direct-pg, not PostgREST. The 768k-row donor upsert was ~1,500
+// PostgREST round-trips against a million-row table, each chunk capped by the
+// prod ~8s role/statement_timeout — slow chunks were silently dropped and the
+// cumulative ~24 min helped blow the fec-phase budget. Routed through one
+// pooled pg.Client with a raised SESSION statement_timeout instead.
 export async function upsertIndividualDonorsBatch(
-  db:     Db,
   inputs: IndividualDonorInput[],
 ): Promise<IndividualDonorBatchResult> {
   const donorIdByFingerprint = new Map<string, string>();
-  let upserted = 0;
-  let failed   = 0;
 
-  if (inputs.length === 0) return { donorIdByFingerprint, upserted, failed };
+  if (inputs.length === 0) return { donorIdByFingerprint, upserted: 0, failed: 0 };
 
   // Client-side dedupe by fingerprint — Postgres rejects two rows that hit
   // the same conflict arbiter in a single statement. Sum totals so the
@@ -215,50 +218,76 @@ export async function upsertIndividualDonorsBatch(
   // display name (FIX-238). The trgm GIN on canonical_name (migration
   // 20260512000002) backs the search-route ilike. display_name keeps the
   // raw FEC "LAST, FIRST" source-cased form for UI display.
-  const records = [...merged.values()].map((input) => {
-    return {
-      canonical_name:       canonicalDonorName(input.displayName),
-      display_name:         input.displayName,
-      entity_type:          "individual" as const,
-      fec_committee_id:     null,
-      donor_fingerprint:    input.fingerprint,
-      total_donated_cents:  input.totalDonatedCents,
-      total_received_cents: 0,
-      metadata: {
-        city:       input.city       || null,
-        state:      input.state      || null,
-        zip5:       input.zip5       || null,
-        employer:   input.employer   || null,
-        occupation: input.occupation || null,
-        source:     "fec_bulk_indiv",
-      },
-    };
-  });
+  //
+  // Column order must match DONOR_COLUMNS below. metadata is jsonb (cast in the
+  // builder). DO UPDATE updates all non-conflict columns, matching the prior
+  // PostgREST merge-duplicates behavior (incl. resetting total_received_cents=0,
+  // which the indiv path has always done — pas2 owns received-side totals).
+  const rows = [...merged.values()].map((input) => [
+    canonicalDonorName(input.displayName),
+    input.displayName,
+    "individual",
+    null,
+    input.fingerprint,
+    input.totalDonatedCents,
+    0,
+    {
+      city:       input.city       || null,
+      state:      input.state      || null,
+      zip5:       input.zip5       || null,
+      employer:   input.employer   || null,
+      occupation: input.occupation || null,
+      source:     "fec_bulk_indiv",
+    },
+  ]);
 
-  for (let i = 0; i < records.length; i += ENTITY_CHUNK) {
-    const chunk = records.slice(i, i + ENTITY_CHUNK);
+  const { upserted, failed, returned } = await withDirectClient((client) =>
+    bulkUpsert(client, {
+      table:            "financial_entities",
+      label:            "individual-donor",
+      columns:          DONOR_COLUMNS,
+      conflictColumns:  ["donor_fingerprint"],
+      jsonbColumns:     ["metadata"],
+      returningColumns: ["id", "donor_fingerprint"],
+      rows,
+    }),
+  );
 
-    const { data, error } = await db
-      .from("financial_entities")
-      .upsert(chunk, { onConflict: "donor_fingerprint" })
-      .select("id, donor_fingerprint");
-
-    if (error) {
-      console.error(
-        `    individual-donor chunk ${i}-${i + chunk.length} failed: ${error.message}`,
-      );
-      failed += chunk.length;
-      continue;
-    }
-
-    for (const row of (data ?? []) as Array<{ id: string; donor_fingerprint: string | null }>) {
-      if (row.donor_fingerprint) donorIdByFingerprint.set(row.donor_fingerprint, row.id);
-    }
-    upserted += chunk.length;
+  for (const row of returned as Array<{ id: string; donor_fingerprint: string | null }>) {
+    if (row.donor_fingerprint) donorIdByFingerprint.set(row.donor_fingerprint, row.id);
   }
 
   return { donorIdByFingerprint, upserted, failed };
 }
+
+const DONOR_COLUMNS: string[] = [
+  "canonical_name",
+  "display_name",
+  "entity_type",
+  "fec_committee_id",
+  "donor_fingerprint",
+  "total_donated_cents",
+  "total_received_cents",
+  "metadata",
+];
+
+// Shared column order for the two individual-donation relationship writers.
+const REL_COLUMNS: string[] = [
+  "relationship_type",
+  "from_type",
+  "from_id",
+  "to_type",
+  "to_id",
+  "amount_cents",
+  "occurred_at",
+  "started_at",
+  "ended_at",
+  "cycle_year",
+  "source_url",
+  "metadata",
+];
+
+const REL_CONFLICT: string[] = ["relationship_type", "from_id", "to_id", "cycle_year"];
 
 // ---------------------------------------------------------------------------
 // Batched relationship upsert
@@ -386,14 +415,12 @@ export interface IndividualDonationInput {
  * source='fec_bulk_indiv' and embed the donor fingerprint instead of an
  * FEC committee id.
  */
+// FIX-462: direct-pg (see upsertIndividualDonorsBatch). ~590k rows; the prior
+// PostgREST path took ~36 min and dropped ~1,500 rows to statement timeouts.
 export async function upsertIndividualDonationsBatch(
-  db:     Db,
   inputs: IndividualDonationInput[],
 ): Promise<RelationshipBatchResult> {
-  let upserted = 0;
-  let failed   = 0;
-
-  if (inputs.length === 0) return { upserted, failed };
+  if (inputs.length === 0) return { upserted: 0, failed: 0 };
 
   // Same client-side dedup as PAC: collapse rows that would collide on
   // (relationship_type, from_id, to_id, cycle_year). For indiv this only
@@ -415,50 +442,40 @@ export async function upsertIndividualDonationsBatch(
     }
   }
 
-  const records = [...merged.values()].map((input) => {
+  // Column order must match REL_COLUMNS.
+  const rows = [...merged.values()].map((input) => {
     const occurredAt = input.occurredAt ?? `${input.cycleYear}-01-01`;
-    return {
-      relationship_type: "donation" as const,
-      from_type:         "financial_entity",
-      from_id:           input.fromEntityId,
-      to_type:           "official",
-      to_id:             input.toOfficialId,
-      amount_cents:      input.amountCents,
-      occurred_at:       occurredAt,
-      started_at:        null,
-      ended_at:          null,
-      cycle_year:        input.cycleYear,
-      source_url:        "https://www.fec.gov/data/receipts/individual-contributions/",
-      metadata: {
+    return [
+      "donation",
+      "financial_entity",
+      input.fromEntityId,
+      "official",
+      input.toOfficialId,
+      input.amountCents,
+      occurredAt,
+      null,
+      null,
+      input.cycleYear,
+      "https://www.fec.gov/data/receipts/individual-contributions/",
+      {
         donor_fingerprint: input.donorFingerprint,
         tx_count:          input.txCount,
         source:            "fec_bulk_indiv",
         aggregated:        true,
       },
-    };
+    ];
   });
 
-  for (let i = 0; i < records.length; i += RELATIONSHIP_CHUNK) {
-    const chunk = records.slice(i, i + RELATIONSHIP_CHUNK);
-
-    const { error } = await db
-      .from("financial_relationships")
-      .upsert(chunk, {
-        onConflict: "relationship_type,from_id,to_id,cycle_year",
-      });
-
-    if (error) {
-      console.error(
-        `    indiv-donation chunk ${i}-${i + chunk.length} failed: ${error.message}`,
-      );
-      failed += chunk.length;
-      continue;
-    }
-
-    upserted += chunk.length;
-  }
-
-  return { upserted, failed };
+  return withDirectClient((client) =>
+    bulkUpsert(client, {
+      table:           "financial_relationships",
+      label:           "indiv-donation",
+      columns:         REL_COLUMNS,
+      conflictColumns: REL_CONFLICT,
+      jsonbColumns:    ["metadata"],
+      rows,
+    }).then(({ upserted, failed }) => ({ upserted, failed })),
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -598,14 +615,12 @@ export interface IndividualToCommitteeDonationInput {
   txCount:          number;
 }
 
+// FIX-462: direct-pg (see upsertIndividualDonorsBatch). ~533k rows; the prior
+// PostgREST path was the stage being SIGTERM'd mid-stream every Sunday.
 export async function upsertIndividualToCommitteeDonationsBatch(
-  db:     Db,
   inputs: IndividualToCommitteeDonationInput[],
 ): Promise<RelationshipBatchResult> {
-  let upserted = 0;
-  let failed   = 0;
-
-  if (inputs.length === 0) return { upserted, failed };
+  if (inputs.length === 0) return { upserted: 0, failed: 0 };
 
   // Same client-side dedup as the donor→official writer: collapse rows that
   // would collide on the partial unique arbiter
@@ -628,49 +643,40 @@ export async function upsertIndividualToCommitteeDonationsBatch(
     }
   }
 
-  const records = [...merged.values()].map((input) => {
+  // Column order must match REL_COLUMNS. to_type differs from the →official
+  // writer (financial_entity, not official); arbiter + jsonb handling identical.
+  const rows = [...merged.values()].map((input) => {
     const occurredAt = input.occurredAt ?? `${input.cycleYear}-01-01`;
-    return {
-      relationship_type: "donation" as const,
-      from_type:         "financial_entity",
-      from_id:           input.fromEntityId,
-      to_type:           "financial_entity",
-      to_id:             input.toEntityId,
-      amount_cents:      input.amountCents,
-      occurred_at:       occurredAt,
-      started_at:        null,
-      ended_at:          null,
-      cycle_year:        input.cycleYear,
-      source_url:        `https://www.fec.gov/data/committee/${input.cmteId}/`,
-      metadata: {
+    return [
+      "donation",
+      "financial_entity",
+      input.fromEntityId,
+      "financial_entity",
+      input.toEntityId,
+      input.amountCents,
+      occurredAt,
+      null,
+      null,
+      input.cycleYear,
+      `https://www.fec.gov/data/committee/${input.cmteId}/`,
+      {
         donor_fingerprint: input.donorFingerprint,
         fec_committee_id:  input.cmteId,
         tx_count:          input.txCount,
         source:            "fec_bulk_indiv_to_committee",
         aggregated:        true,
       },
-    };
+    ];
   });
 
-  for (let i = 0; i < records.length; i += RELATIONSHIP_CHUNK) {
-    const chunk = records.slice(i, i + RELATIONSHIP_CHUNK);
-
-    const { error } = await db
-      .from("financial_relationships")
-      .upsert(chunk, {
-        onConflict: "relationship_type,from_id,to_id,cycle_year",
-      });
-
-    if (error) {
-      console.error(
-        `    indiv-to-committee chunk ${i}-${i + chunk.length} failed: ${error.message}`,
-      );
-      failed += chunk.length;
-      continue;
-    }
-
-    upserted += chunk.length;
-  }
-
-  return { upserted, failed };
+  return withDirectClient((client) =>
+    bulkUpsert(client, {
+      table:           "financial_relationships",
+      label:           "indiv-to-committee",
+      columns:         REL_COLUMNS,
+      conflictColumns: REL_CONFLICT,
+      jsonbColumns:    ["metadata"],
+      rows,
+    }).then(({ upserted, failed }) => ({ upserted, failed })),
+  );
 }

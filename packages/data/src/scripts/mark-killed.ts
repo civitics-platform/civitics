@@ -39,9 +39,10 @@ import { captureRssMb } from "../pipelines/sync-log";
 
 const KILLED_PIPELINE = "nightly_killed";
 
-function parseArgs(argv: string[]): { pipeline: string; windowHours: number } {
+function parseArgs(argv: string[]): { pipeline: string; windowHours: number; phase?: string } {
   let pipeline = "nightly_cron";
   let windowHours = 4;
+  let phase: string | undefined;
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a.startsWith("--pipeline=")) {
@@ -54,10 +55,15 @@ function parseArgs(argv: string[]): { pipeline: string; windowHours: number } {
     } else if (a === "--window-hours" && argv[i + 1]) {
       windowHours = Number.parseFloat(argv[i + 1]);
       i++;
+    } else if (a.startsWith("--phase=")) {
+      phase = a.slice("--phase=".length);
+    } else if (a === "--phase" && argv[i + 1]) {
+      phase = argv[i + 1];
+      i++;
     }
   }
   if (!Number.isFinite(windowHours) || windowHours <= 0) windowHours = 4;
-  return { pipeline, windowHours };
+  return { pipeline, windowHours, phase };
 }
 
 interface SyncRow {
@@ -65,18 +71,47 @@ interface SyncRow {
   status: string | null;
   started_at: string | null;
   completed_at: string | null;
+  metadata?: { phase?: string } | null;
+}
+
+const TERMINAL_STATUSES = ["complete", "partial", "failed", "skipped"];
+
+/**
+ * FIX-462: pure kill-target selection so it can be unit-tested without a live
+ * DB. When `phase` is given, only rows whose `metadata.phase` matches are
+ * considered — once enrichment-phase is decoupled from fec-phase
+ * (.github/workflows/nightly.yml), both phases write nightly_cron rows for the
+ * same date, so an unscoped scan would see enrichment's terminal row and
+ * wrongly conclude a timed-out fec-phase had finished.
+ *
+ * Returns `{ finished }` if a same-phase run completed in the window (no-op),
+ * else `{ orphan }` if a same-phase `running` row was orphaned (write a marker),
+ * else `{}` (nothing ran).
+ */
+export function selectKillTarget(
+  rows: SyncRow[],
+  phase?: string,
+): { finished?: SyncRow; orphan?: SyncRow } {
+  const scoped = phase
+    ? rows.filter((r) => (r.metadata?.phase ?? undefined) === phase)
+    : rows;
+  const finished = scoped.find((r) => TERMINAL_STATUSES.includes((r.status ?? "").toString()));
+  if (finished) return { finished };
+  const orphan = scoped.find((r) => r.status === "running");
+  return orphan ? { orphan } : {};
 }
 
 async function main(): Promise<void> {
-  const { pipeline, windowHours } = parseArgs(process.argv.slice(2));
+  const { pipeline, windowHours, phase } = parseArgs(process.argv.slice(2));
   const since = new Date(Date.now() - windowHours * 60 * 60 * 1000).toISOString();
+  const phaseLabel = phase ? `${pipeline} phase=${phase}` : pipeline;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = createAdminClient() as any;
 
   const { data, error } = await db
     .from("data_sync_log")
-    .select("id, status, started_at, completed_at")
+    .select("id, status, started_at, completed_at, metadata")
     .eq("pipeline", pipeline)
     .gte("started_at", since)
     .order("started_at", { ascending: false })
@@ -89,19 +124,16 @@ async function main(): Promise<void> {
   }
 
   const rows = (data ?? []) as SyncRow[];
-  const finished = rows.find((r) =>
-    ["complete", "partial", "failed", "skipped"].includes((r.status ?? "").toString()),
-  );
+  const { finished, orphan } = selectKillTarget(rows, phase);
   if (finished) {
     console.log(
-      `[mark-killed] ${pipeline} finished in window (status=${finished.status}, id=${finished.id}) — no-op`,
+      `[mark-killed] ${phaseLabel} finished in window (status=${finished.status}, id=${finished.id}) — no-op`,
     );
     return;
   }
-  const orphan = rows.find((r) => r.status === "running");
   if (!orphan) {
     console.log(
-      `[mark-killed] no '${pipeline}' row in last ${windowHours}h — no-op (workflow may not have started)`,
+      `[mark-killed] no '${phaseLabel}' row in last ${windowHours}h — no-op (workflow may not have started)`,
     );
     return;
   }
@@ -115,6 +147,7 @@ async function main(): Promise<void> {
     error_message: "workflow-timeout-or-sigterm",
     metadata: {
       source_pipeline: pipeline,
+      phase:           phase ?? orphan.metadata?.phase ?? null,
       orphan_row_id:   orphan.id,
       window_hours:    windowHours,
       peak_rss_mb:     captureRssMb(),
@@ -130,10 +163,15 @@ async function main(): Promise<void> {
   );
 }
 
-main()
-  .then(() => process.exit(0))
-  .catch((err) => {
-    // Best-effort: never block CI on this observability step.
-    console.warn("[mark-killed] unexpected error (non-fatal):", err instanceof Error ? err.message : err);
-    process.exit(0);
-  });
+// FIX-462: only run when invoked as a script, not when imported by the unit
+// test (mirrors the require.main guard in pipelines/index.ts). Importing this
+// module to test selectKillTarget must not trigger the DB query or exit.
+if (require.main === module) {
+  main()
+    .then(() => process.exit(0))
+    .catch((err) => {
+      // Best-effort: never block CI on this observability step.
+      console.warn("[mark-killed] unexpected error (non-fatal):", err instanceof Error ? err.message : err);
+      process.exit(0);
+    });
+}
