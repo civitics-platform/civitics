@@ -593,3 +593,4 @@
 2026-06-01 | FIX-432 | 90214417 | local+prod | [skip vercel] chore(fixes): record prod verification of silent-zero reland
 2026-06-01 | FIX-462 | 8769480b | local-only | [skip vercel] fix(nightly): direct-pg FEC indiv upserts + decouple enrichment + running-row (FIX-462)
 2026-06-01 | FIX-464 | 64a85841 | local-only | [skip vercel] chore(tooling): parallel-session collision guards (FIX-464)
+2026-06-01 | FIX-465 | b0ff2058 | local-only | [skip vercel] fix(fixes-sync): case-sensitive trailer parsing (FIX-465)
