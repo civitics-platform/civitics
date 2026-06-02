@@ -1,0 +1,214 @@
+#!/usr/bin/env node
+// scripts/session-worktree.mjs — per-FIX git worktree lifecycle.
+//
+//   pnpm session:worktree <fix-id>        → create  (this file, subcommand "create")
+//   pnpm session:worktree:done <fix-id>   → teardown (this file, subcommand "done")
+//
+// WHY (the model these enforce — see CLAUDE.md "Parallel sessions"):
+// VSCode is always open on the primary checkout, so any agent committing there
+// contends with VSCode's git extension on one `.git` (stale index.lock,
+// corrupted config, the FIX-461 stranded-PR class). So: the primary checkout
+// stays parked on `main` as the human view and agents NEVER commit in it. Each
+// FIX an agent works gets its OWN added worktree on its OWN branch, named for
+// the FIX — the FIX id is the unique slot, so two parallel sessions need zero
+// coordination. `main` only advances by fast-forward from a rebased branch.
+//
+// The worktree lives in a SIBLING dir OUTSIDE the repo
+// (../civitics-worktrees/fix-<id>) so VSCode/git never track it as files.
+// A fresh worktree has neither `.env.local` (gitignored), so create seeds both
+// to LOCAL Docker — a fresh worktree must never silently inherit prod.
+//
+// Dependency-free Node, shell-agnostic (PowerShell / Git Bash / CI alike).
+
+import { spawnSync } from "node:child_process";
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+
+function run(cmd, args, opts = {}) {
+  const res = spawnSync(cmd, args, {
+    encoding: "utf8",
+    // git is a real .exe (no shell needed); pnpm/gh are .cmd shims that do.
+    // Scoping shell to non-git avoids Node's DEP0190 warning on every git call.
+    shell: process.platform === "win32" && cmd !== "git",
+    ...opts,
+  });
+  return {
+    ok: !res.error && res.status === 0,
+    status: res.status,
+    out: (res.stdout || "").trim(),
+    err: (res.stderr || "").trim(),
+    launchFailed: Boolean(res.error),
+  };
+}
+const git = (...args) => run("git", args);
+
+function die(msg) {
+  console.error(`[session:worktree] ✗ ${msg}`);
+  process.exit(1);
+}
+
+// fix-id → canonical token. Accept "FIX-123", "fix-123", "123", "FIX-123abc".
+function normalizeId(raw) {
+  if (!raw) die("missing <fix-id> argument (e.g. FIX-123 or 123)");
+  const token = String(raw)
+    .trim()
+    .replace(/^fix[-_]?/i, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9-]/g, "");
+  if (!token) die(`could not parse a fix id from "${raw}"`);
+  return token; // e.g. "123"
+}
+
+function repoRoot() {
+  const r = git("rev-parse", "--show-toplevel");
+  if (!r.ok) die("not inside a git repository");
+  return r.out;
+}
+
+function readEnvUrl(file) {
+  if (!existsSync(file)) return null;
+  for (const line of readFileSync(file, "utf8").split(/\r?\n/)) {
+    const m = line.match(/^NEXT_PUBLIC_SUPABASE_URL=(.*)$/);
+    if (m) return m[1].trim();
+  }
+  return null;
+}
+
+// ── create ────────────────────────────────────────────────────────────────
+function create(rawId) {
+  const id = normalizeId(rawId);
+  const root = repoRoot();
+  const branch = `feature/fix-${id}`;
+  const wtDir = resolve(root, "..", "civitics-worktrees", `fix-${id}`);
+
+  if (existsSync(wtDir)) die(`worktree dir already exists: ${wtDir}`);
+  if (git("rev-parse", "--verify", "--quiet", branch).ok) {
+    die(`branch ${branch} already exists — pick a fresh fix id or clean it up first.`);
+  }
+
+  console.log(`[session:worktree] fetching origin ...`);
+  if (!git("fetch", "origin", "--quiet").ok) {
+    console.warn("[session:worktree] ⚠ git fetch failed — branching off possibly-stale origin/main.");
+  }
+  const base = git("rev-parse", "--verify", "--quiet", "origin/main").ok ? "origin/main" : "main";
+
+  console.log(`[session:worktree] git worktree add -b ${branch} ${wtDir} ${base}`);
+  const add = git("worktree", "add", "-b", branch, wtDir, base);
+  if (!add.ok) {
+    if (add.out) console.log(add.out);
+    if (add.err) console.error(add.err);
+    die(`git worktree add failed.`);
+  }
+
+  // Seed both .env.local files to LOCAL Docker (both are gitignored → absent in
+  // a fresh worktree). Source: the primary checkout's .env.local.dev template.
+  const tmpl = join(root, ".env.local.dev");
+  const seeds = [
+    join(wtDir, ".env.local"),
+    join(wtDir, "apps", "civitics", ".env.local"),
+  ];
+  if (!existsSync(tmpl)) {
+    console.warn(`[session:worktree] ⚠ ${tmpl} not found — could not seed .env.local. Seed it manually to LOCAL before any data run.`);
+  } else {
+    const body = readFileSync(tmpl, "utf8");
+    for (const dest of seeds) {
+      mkdirSync(dirname(dest), { recursive: true });
+      writeFileSync(dest, body);
+      const url = readEnvUrl(dest) || "(NEXT_PUBLIC_SUPABASE_URL not found)";
+      console.log(`[session:worktree] seeded ${dest}`);
+      console.log(`[session:worktree]   NEXT_PUBLIC_SUPABASE_URL=${url}`);
+    }
+    console.log("[session:worktree] ✓ both .env.local seeded to LOCAL Docker. Confirm the URL above before any pipeline/data run.");
+  }
+
+  console.log(`\n[session:worktree] ✓ worktree ready at ${wtDir} on ${branch}`);
+  console.log(landingRecipe(id));
+}
+
+function landingRecipe(id) {
+  const wt = `../civitics-worktrees/fix-${id}`;
+  return [
+    "",
+    "── Landing recipe (run from INSIDE the worktree) ─────────────────────",
+    `  cd ${wt}`,
+    "  git fetch origin",
+    "  git rebase origin/main                  # replay on latest main, resolve here in isolation",
+    "  pnpm build && pnpm typecheck && pnpm lint   # verify ON the branch, still isolated",
+    `  git push origin feature/fix-${id}:main  # ff main on the remote (rejected if someone landed first → rebase & retry)`,
+    "  git fetch origin && git rebase origin/main",
+    "  pnpm fixes:sync                         # POST-merge ONLY — edits FIXES.md/done.log",
+    `  git commit -am "chore(fixes): sync after FIX-${id}" && git push origin HEAD:main`,
+    `  pnpm session:worktree:done ${id}        # teardown (blocks if somehow unmerged)`,
+    "",
+    "The primary VSCode checkout just runs `git pull --ff-only` to catch up — it never commits.",
+    "(Assumes `main` is push-able. If branch protection is later enabled, the `:main`",
+    " push becomes a PR-merge step.)",
+  ].join("\n");
+}
+
+// ── done ────────────────────────────────────────────────────────────────────
+function done(rawId, argv) {
+  const force = argv.includes("--force");
+  const id = normalizeId(rawId);
+  const root = repoRoot();
+  const branch = `feature/fix-${id}`;
+  const wtDir = resolve(root, "..", "civitics-worktrees", `fix-${id}`);
+
+  console.log(`[session:worktree] fetching origin ...`);
+  git("fetch", "origin", "--quiet");
+
+  const branchExists = git("rev-parse", "--verify", "--quiet", branch).ok;
+
+  // Safety block: refuse to tear down unmerged work unless --force.
+  if (branchExists && git("rev-parse", "--verify", "--quiet", "origin/main").ok) {
+    const merged = git("merge-base", "--is-ancestor", branch, "origin/main").ok;
+    if (!merged) {
+      console.error(`[session:worktree] ✗ ${branch} is NOT an ancestor of origin/main — UNMERGED WORK.`);
+      console.error(`[session:worktree]   Land it via the recipe (pnpm session:worktree printed it), or`);
+      console.error(`[session:worktree]   pass --force to discard the worktree + local branch anyway.`);
+      if (!force) process.exit(1);
+      console.warn(`[session:worktree] ⚠ --force given — removing UNMERGED worktree + branch. Work will be lost.`);
+    }
+  }
+
+  if (existsSync(wtDir)) {
+    // `git worktree remove` refuses a dirty tree without --force; keep that.
+    const rm = git("worktree", "remove", wtDir, ...(force ? ["--force"] : []));
+    if (!rm.ok) {
+      if (rm.err) console.error(rm.err);
+      die(`git worktree remove failed (dirty tree? pass --force). Worktree left intact: ${wtDir}`);
+    }
+    console.log(`[session:worktree] ✓ removed worktree ${wtDir}`);
+  } else {
+    console.log(`[session:worktree] (no worktree dir at ${wtDir} — skipping remove)`);
+  }
+
+  if (branchExists) {
+    const del = git("branch", force ? "-D" : "-d", branch);
+    if (!del.ok) {
+      console.error(del.err || del.out);
+      die(`could not delete local branch ${branch} (unmerged? pass --force).`);
+    }
+    console.log(`[session:worktree] ✓ deleted local branch ${branch}`);
+  }
+
+  // Remote branch deletion is NOT automatic — needs explicit confirmation.
+  console.log(
+    `[session:worktree] note: the remote branch (if pushed) was left in place.\n` +
+    `  To delete it too, run:  git push origin --delete ${branch}`,
+  );
+  console.log(`[session:worktree] ✓ teardown complete for FIX-${id}.`);
+}
+
+// ── dispatch ────────────────────────────────────────────────────────────────
+const [sub, rawId, ...rest] = process.argv.slice(2);
+if (sub === "create") {
+  create(rawId);
+} else if (sub === "done") {
+  done(rawId, rest);
+} else {
+  console.error("Usage:");
+  console.error("  pnpm session:worktree <fix-id>         # create a per-FIX worktree");
+  console.error("  pnpm session:worktree:done <fix-id>    # tear it down (--force to override safety)");
+  process.exit(1);
+}

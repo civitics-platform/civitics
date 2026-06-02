@@ -3,6 +3,10 @@
   "version": "0.0.1",
   "private": true,
   "scripts": {
+    "prepare": "git config core.hooksPath .githooks || true",
+    "session:check": "node scripts/session-check.mjs",
+    "session:worktree": "node scripts/session-worktree.mjs create",
+    "session:worktree:done": "node scripts/session-worktree.mjs done",
     "build": "turbo run build",
     "dev": "turbo run dev",
     "lint": "turbo run lint",

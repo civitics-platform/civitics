@@ -27,9 +27,11 @@ Starting a new session? Read these files before touching any code:
 These are the fastest path to current project state. Git log and code exploration
 are for verification, not orientation.
 
-**First step of every session:** run `pnpm fixes:sync` to pick up any new
-commit-trailer completions since last session, then read `docs/FIXES.md` for the
-current queue. Then verify the active DB before any data work — see "Active
+**First step of every session:** run `pnpm session:check` (read-only — fetches
+and reports stranded branches/worktrees/PRs and runs `fixes:check`; see
+"Parallel sessions" under Deployment), **then** `pnpm fixes:sync` to pick up any
+new commit-trailer completions since last session, then read `docs/FIXES.md` for
+the current queue. Then verify the active DB before any data work — see "Active
 environment check" below.
 
 > **Execution model (as of 2026-04-18):** Claude Code (VS Code extension on
@@ -621,6 +623,36 @@ Run `pnpm build` locally before every push. Vercel uses strict TypeScript. Build
 **Branch model (post-cutover):**
 - `main` — production. Every push auto-deploys to Vercel (unless `[skip vercel]`).
 - `feature/<fix-id>` or `feature/<name>` — work branches. Land via PR or fast-forward merge to `main`.
+
+**Parallel sessions — collision guards (FIX-462+):** VSCode is always open on the
+primary checkout, so an agent committing there contends with VSCode's git
+extension on one `.git` (stale `index.lock`, corrupted `.git/config`, and the
+stranded-PR class where `fixes:sync` records FIXes as shipped while the code sits
+unmerged). Standing rules:
+
+- The **primary VSCode checkout stays parked on `main`** as the human view —
+  **agents never commit there.** It only ever runs `git pull --ff-only` to catch up.
+- **Single small FIX:** serialize-by-default — fine to do it on a short branch.
+  **Anything parallel or long:** give each FIX its **own worktree** via
+  `pnpm session:worktree <fix-id>` (creates `feature/fix-<id>` in a sibling dir
+  `../civitics-worktrees/fix-<id>`, outside the repo, both `.env.local` seeded to
+  LOCAL Docker). The FIX id is the unique slot — two parallel sessions need zero
+  coordination.
+- `main` advances **only by fast-forward from a rebased branch**
+  (`git push origin feature/fix-<id>:main`). That landing is the one serialized
+  step; if two race, the second rebases and retries.
+- **`fixes:sync` runs only AFTER** the fix commits are on `origin/main` — never
+  from a worktree pre-merge (that is the stranded-PR failure mode).
+- A **pre-push hook** (`.githooks/pre-push`, wired via `core.hooksPath` by the
+  root `prepare` script — no husky) runs `pnpm fixes:check` and aborts the push
+  on FIXES.md/done.log drift.
+- Start each session with **`pnpm session:check`** (read-only reconciliation).
+  Tear down a finished worktree with **`pnpm session:worktree:done <fix-id>`**
+  (refuses to remove unmerged work without `--force`).
+
+Full landing recipe is printed by `pnpm session:worktree <fix-id>`. (Assumes
+`main` is push-able; if branch protection is later enabled, the `:main` push
+becomes a PR-merge step.)
 
 **Environments:**
 - **Local dev:** Docker Supabase at `127.0.0.1:54321–54324`. `supabase migration up --local` applies migrations here.
