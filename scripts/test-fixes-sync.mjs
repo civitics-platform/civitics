@@ -76,6 +76,25 @@ console.log("\nstray Verified[FIX-NNN] guard:");
 assertEq("perFixVerified (stray dropped)", [...strayParsed.perFixVerified.keys()], []);
 assertEq("warnings (one)", strayParsed.warnings.length, 1);
 
+// FIX-465: a wrapped prose line beginning with a lowercase "fixes:" (e.g.
+// "fixes:sync recorded ... (FIX-461)") must NOT be parsed as a trailer. Before
+// the case-sensitive fix, the `i` flag + first-match-wins let it shadow the
+// real `Fixes: FIX-464` and attribute the commit to FIX-461.
+const proseShadowBody = [
+  "[skip vercel] chore(tooling): collision guards (FIX-464)",
+  "",
+  "fixes:sync recorded as shipped while the code sat unmerged (FIX-461), stale",
+  "index.lock, and a corrupted .git/config line.",
+  "",
+  "Verified: local",
+  "Fixes: FIX-464",
+  "",
+].join("\n");
+const proseParsed = parseCommitTrailers(proseShadowBody);
+console.log("\nprose-shadow guard (FIX-465):");
+assertEq("fixesIds (real trailer wins, not prose)", [...proseParsed.fixesIds], ["FIX-464"]);
+assertEq("closesIds (none)", [...proseParsed.closesIds], []);
+
 // FIX-461: trunk-ancestry guard decision core. `evaluateTrunkViolations` and
 // `buildCompletingShasById` are pure (git is injected via `resolve`), so the
 // silent-zero-sweep-tail failure mode is exercised here without touching a repo.
