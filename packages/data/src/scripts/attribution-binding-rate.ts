@@ -18,12 +18,21 @@
 
 import { createAdminClientWith, createPublicClient, resolveSource } from "@civitics/db";
 
+// `huge` marks tables where an exact unfiltered COUNT(*) is at risk of the
+// ~8s prod role-read / PostgREST gateway cap (FIX-450). financial_entities is
+// ~2.4M rows on prod; the COUNT intermittently exceeds the cap and resolves to
+// count:null → 0, printing the impossible "bound > total". For these tables the
+// total uses a planner-estimate count instead (see the loop below).
+// `as const` is load-bearing: supabase-js infers the typed table (and thus
+// resolves the .select/.range overloads) from the literal table name. Widening
+// `table` to `string` breaks that inference, so `huge` is carried on every entry
+// rather than via an optional field on a widened type.
 const TABLES = [
-  { table: "officials",         entityType: "official"         },
-  { table: "proposals",         entityType: "proposal"         },
-  { table: "agencies",          entityType: "agency"           },
-  { table: "governing_bodies",  entityType: "governing_body"   },
-  { table: "financial_entities", entityType: "financial_entity" },
+  { table: "officials",          entityType: "official",          huge: false },
+  { table: "proposals",          entityType: "proposal",          huge: false },
+  { table: "agencies",           entityType: "agency",            huge: false },
+  { table: "governing_bodies",   entityType: "governing_body",    huge: false },
+  { table: "financial_entities", entityType: "financial_entity",  huge: true  },
 ] as const;
 
 type Row = { primary_source: string | null };
@@ -135,9 +144,21 @@ async function main() {
   const categoryByTable: Record<string, Record<string, number>> = {};
   const unknownSources = new Map<string, number>();
 
-  for (const { table } of TABLES) {
+  for (const { table, huge } of TABLES) {
+    // Huge tables (financial_entities, ~2.4M rows on prod) use a planner-estimate
+    // count for the unfiltered total: an exact COUNT(*) intermittently blows the
+    // ~8s gateway cap → count:null → 0 → the impossible "bound > total" (FIX-450).
+    // `count:'estimated'` returns pg_class.reltuples via EXPLAIN in milliseconds, so
+    // it cannot time out. PostgREST's estimated mode already falls back to an exact
+    // count for small tables, but we scope it to huge tables anyway — the bound count
+    // is selective enough to stay under the cap, and small tables keep exact counts.
+    // NOT a transient fetch failure (FIX-414 withRetry correctly skips it) — the fix
+    // is the count strategy, not a retry.
     const totalRes = await withRetry(
-      () => admin.from(table).select("id", { count: "exact", head: true }),
+      () =>
+        admin
+          .from(table)
+          .select("id", { count: huge ? "estimated" : "exact", head: true }),
       `${table} total count`,
     );
     const boundRes = await withRetry(
