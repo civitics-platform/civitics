@@ -723,6 +723,23 @@ function DataHealthRow({
   const lastFailed = history.find((r) => r.status === "failed" && r.error_message);
   const q = quality && !isPartial(quality) ? quality : null;
 
+  // FIX-390: non-fatal seed warnings (FIX-386 plumbing) ride on a run's
+  // metadata.seed_warnings (e.g. the jurisdictions_seed row). Surface them as a
+  // yellow sub-status — green-with-warnings, never escalated to red, so they
+  // don't touch rowStatus. Read from the most recent run that carries any.
+  const seedWarnings: string[] = (() => {
+    const runWith = history.find((r) => {
+      const w = (r.metadata as { seed_warnings?: unknown } | null | undefined)
+        ?.seed_warnings;
+      return Array.isArray(w) && w.length > 0;
+    });
+    const raw = (runWith?.metadata as { seed_warnings?: unknown[] } | undefined)
+      ?.seed_warnings;
+    return Array.isArray(raw)
+      ? raw.filter((w): w is string => typeof w === "string")
+      : [];
+  })();
+
   // Right-column timestamp label. For slow cadences we prefix "Current · " on
   // healthy rows so a 16-day-old TIGER doesn't look stale next to a fresh
   // daily pipeline. on_demand with no run reads "Loaded never" to distinguish
@@ -776,6 +793,14 @@ function DataHealthRow({
           </span>
           <StatusSparkline runs={history} />
         </span>
+        {seedWarnings.length > 0 && (
+          <span
+            className="text-[11px] font-medium text-amber-800 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5 shrink-0"
+            title={seedWarnings.join("\n")}
+          >
+            ⚠ {seedWarnings.length} warning{seedWarnings.length === 1 ? "" : "s"}
+          </span>
+        )}
         <StatusBadge status={rowStatus} size="sm" />
         <span className="text-xs text-gray-400 w-28 text-right shrink-0" suppressHydrationWarning>
           {timestampLabel}
@@ -788,6 +813,21 @@ function DataHealthRow({
           {def.note && (
             <div className="rounded-md border border-amber-200 bg-amber-50/60 px-3 py-2 text-xs text-amber-900">
               {def.note}
+            </div>
+          )}
+
+          {/* FIX-390: non-fatal seed warnings (metadata.seed_warnings, FIX-386).
+              Green-with-warnings — listed here, not folded into the row status. */}
+          {seedWarnings.length > 0 && (
+            <div className="rounded-md border border-amber-200 bg-amber-50/60 px-3 py-2 text-xs text-amber-900">
+              <div className="font-medium mb-1">
+                Seed warnings ({seedWarnings.length}) — non-fatal
+              </div>
+              <ul className="list-disc list-inside space-y-0.5">
+                {seedWarnings.map((w, i) => (
+                  <li key={i}>{w}</li>
+                ))}
+              </ul>
             </div>
           )}
 

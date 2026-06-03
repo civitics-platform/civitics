@@ -38,6 +38,10 @@ export type PipelineHistoryRun = {
   rows_failed: number;
   estimated_mb: number;
   error_message: string | null;
+  // FIX-390: non-fatal seed warnings (FIX-386) ride on data_sync_log.metadata
+  // (e.g. metadata.seed_warnings). Free-form JSONB, kept loose. Mirrors the
+  // server-side PipelineHistoryRun in app/api/claude/status/_lib/sections.ts.
+  metadata?: Record<string, unknown> | null;
 };
 
 export type EnrichmentBacklog = {

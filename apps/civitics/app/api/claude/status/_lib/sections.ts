@@ -230,6 +230,10 @@ export type PipelineHistoryRun = {
   rows_failed: number;
   estimated_mb: number;
   error_message: string | null;
+  // FIX-386 writes seed warnings (non-fatal) into metadata.seed_warnings; the
+  // Data Health card renders them as a yellow sub-status (FIX-390). Kept loose
+  // because data_sync_log.metadata is a free-form JSONB blob across pipelines.
+  metadata?: Record<string, unknown> | null;
 };
 
 // Wrapper-bookkeeping rows that write to data_sync_log but aren't operator-
@@ -257,7 +261,7 @@ export async function getPipelines(db: Db) {
     db
       .from("data_sync_log")
       .select(
-        "pipeline, status, started_at, completed_at, rows_inserted, rows_updated, rows_failed, estimated_mb, error_message",
+        "pipeline, status, started_at, completed_at, rows_inserted, rows_updated, rows_failed, estimated_mb, error_message, metadata",
       )
       .gt("completed_at", fourteenMonthsAgo)
       .order("pipeline", { ascending: true })
