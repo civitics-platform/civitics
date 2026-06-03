@@ -600,3 +600,6 @@
 2026-06-02 | FIX-413 | 4a482868 | closes-as-recognized | fix(officials): surface swallowed PostgREST error in getCachedOfficial; close RLS-gate 404s
 2026-06-02 | FIX-415 | af1ac9cf | local+prod | feat(agency-enrichment): Federal Register fallback attribution for sourceless agencies
 2026-06-02 | FIX-450 | 4a66a37c | local+prod | fix(diag): planner-estimate count for huge tables in attribution-coverage
+2026-06-02 | FIX-463 | 751367e3 | local+prod | perf(congress): route promote-candidates + votes skip-check through direct-pg
+2026-06-02 | FIX-463 | 4b85f800 | local+prod | fix(officials): promote_candidate_to_elected unique-collision + orphan handling
+2026-06-02 | FIX-467 | a2d56583 | local+prod | feat(agency-enrichment): idempotent regulations_gov xsr seed for late-added agencies
