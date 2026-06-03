@@ -595,3 +595,8 @@
 2026-06-01 | FIX-464 | 64a85841 | local-only | [skip vercel] chore(tooling): parallel-session collision guards (FIX-464)
 2026-06-01 | FIX-465 | b0ff2058 | local-only | [skip vercel] fix(fixes-sync): case-sensitive trailer parsing (FIX-465)
 2026-06-01 | FIX-466 | fea01c7d | local-only | [skip vercel] ci(workflows): split fixes-integrity out of tests.yml; skip unit on docs-only
+2026-06-02 | FIX-390 | 9e832bc2 | local-only | feat(dashboard): surface data_sync_log seed_warnings as yellow sub-status
+2026-06-02 | FIX-412 | 4a482868 | local+prod | fix(officials): surface swallowed PostgREST error in getCachedOfficial; close RLS-gate 404s
+2026-06-02 | FIX-413 | 4a482868 | closes-as-recognized | fix(officials): surface swallowed PostgREST error in getCachedOfficial; close RLS-gate 404s
+2026-06-02 | FIX-415 | af1ac9cf | local+prod | feat(agency-enrichment): Federal Register fallback attribution for sourceless agencies
+2026-06-02 | FIX-450 | 4a66a37c | local+prod | fix(diag): planner-estimate count for huge tables in attribution-coverage
