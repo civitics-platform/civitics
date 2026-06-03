@@ -32,6 +32,7 @@ import {
 } from "./bills";
 import { XMLParser } from "fast-xml-parser";
 import { startSync, completeSync, failSync } from "../sync-log";
+import { selectDirect } from "../../lib/heavy-rebuild";
 
 // ---------------------------------------------------------------------------
 // Type aliases
@@ -468,34 +469,28 @@ export async function runVotesPipeline(
   const houseRollBuffer: HouseRollItem[] = [];
   const houseBillArgs = new Map<string, BillProposalArgs>();
 
-  // Bulk-load every House roll_call_id we already have for this Congress
-  // so the skip-check is a Set lookup instead of one round trip per roll.
-  // Paginate to break past supabase-js's 1000-row default cap — a fully
-  // backfilled Congress can have ~1,000-2,000 House rolls.
+  // Bulk-load every distinct House roll_call_id we already have for this
+  // Congress so the skip-check is a Set lookup instead of one round trip per
+  // roll. FIX-463: a single `SELECT DISTINCT roll_call_id … LIKE $1` over a
+  // direct pg.Client (selectDirect) — votes has one row per (roll × official),
+  // so the old per-pattern OFFSET pagination over the full ~150k-row match set
+  // (1000-row pages) re-scanned from the start each page (O(n²)) and tripped
+  // the prod ~8s role statement_timeout. DISTINCT returns ~1-2k rows in one
+  // ~200ms pass with no 1000-row cap and no OFFSET re-scan.
   const houseExistingIds = new Set<string>();
   {
     const houseYears = sessions.map((s) => `${s.year}-house-%`);
     for (const pattern of houseYears) {
-      let from = 0;
-      const PAGE = 1000;
-      // eslint-disable-next-line no-constant-condition
-      while (true) {
-        const { data, error } = await db
-          .from("votes")
-          .select("roll_call_id")
-          .like("roll_call_id", pattern)
-          .range(from, from + PAGE - 1);
-        if (error) {
-          console.warn(`  House skip-check load error (${pattern}): ${error.message}`);
-          break;
+      try {
+        const rows = await selectDirect<{ roll_call_id: string | null }>(
+          "SELECT DISTINCT roll_call_id FROM votes WHERE roll_call_id LIKE $1",
+          [pattern],
+        );
+        for (const row of rows) {
+          if (row.roll_call_id) houseExistingIds.add(row.roll_call_id);
         }
-        if (!data || data.length === 0) break;
-        for (const row of data) {
-          const rid = (row as { roll_call_id: string | null }).roll_call_id;
-          if (rid) houseExistingIds.add(rid);
-        }
-        if (data.length < PAGE) break;
-        from += PAGE;
+      } catch (err) {
+        console.warn(`  House skip-check load error (${pattern}): ${err instanceof Error ? err.message : String(err)}`);
       }
     }
     console.log(`  Pre-loaded ${houseExistingIds.size} existing House roll IDs`);
@@ -664,31 +659,23 @@ export async function runVotesPipeline(
   const senateRollBuffer: SenateRollItem[] = [];
   const senateBillArgs = new Map<string, BillProposalArgs>();
 
-  // Bulk-load every Senate roll_call_id we already have for this Congress
-  // (paginated past supabase-js's 1000-row default cap).
+  // Bulk-load every distinct Senate roll_call_id we already have for this
+  // Congress. FIX-463: single-pass `SELECT DISTINCT … LIKE $1` over a direct
+  // pg.Client — same fix as the House loader above (was OFFSET-paginating the
+  // full ~45k-row match set into a Set, tripping the prod 8s role timeout).
   const senateExistingIds = new Set<string>();
   {
     const senatePattern = `senate-${CURRENT_CONGRESS}-%`;
-    let from = 0;
-    const PAGE = 1000;
-    // eslint-disable-next-line no-constant-condition
-    while (true) {
-      const { data, error } = await db
-        .from("votes")
-        .select("roll_call_id")
-        .like("roll_call_id", senatePattern)
-        .range(from, from + PAGE - 1);
-      if (error) {
-        console.warn(`  Senate skip-check load error: ${error.message}`);
-        break;
+    try {
+      const rows = await selectDirect<{ roll_call_id: string | null }>(
+        "SELECT DISTINCT roll_call_id FROM votes WHERE roll_call_id LIKE $1",
+        [senatePattern],
+      );
+      for (const row of rows) {
+        if (row.roll_call_id) senateExistingIds.add(row.roll_call_id);
       }
-      if (!data || data.length === 0) break;
-      for (const row of data) {
-        const rid = (row as { roll_call_id: string | null }).roll_call_id;
-        if (rid) senateExistingIds.add(rid);
-      }
-      if (data.length < PAGE) break;
-      from += PAGE;
+    } catch (err) {
+      console.warn(`  Senate skip-check load error: ${err instanceof Error ? err.message : String(err)}`);
     }
     console.log(`  Pre-loaded ${senateExistingIds.size} existing Senate roll IDs`);
   }

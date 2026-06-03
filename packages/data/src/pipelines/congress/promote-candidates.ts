@@ -28,6 +28,7 @@
  */
 
 import type { createAdminClient } from "@civitics/db";
+import { promoteCandidatesDirect } from "../../lib/heavy-rebuild";
 
 type Db = ReturnType<typeof createAdminClient>;
 
@@ -177,7 +178,13 @@ export async function runCandidateToElectedPromotion(
     candidateIndex.set(key, bucket);
   }
 
-  // ── 4. For each elected row, look for a single candidate match.
+  // ── 4. For each elected row, collect a single unambiguous candidate match.
+  // The promotion itself runs through a direct pg.Client (FIX-463) — the RPC's
+  // ~20-table transactional FK rewrite measures ~17s, past the prod PostgREST
+  // role's ~8s statement_timeout, so a `db.rpc(...)` call dies as a timeout and
+  // the pair never promotes. We collect pairs here, then batch-promote below.
+  type Pair = { electedId: string; candidateId: string; fullName: string; state: string; roleFamily: string };
+  const pairs: Pair[] = [];
   for (const e of electedRows) {
     if (!e.state_short) continue;
     const fam = roleFamilyOf(e.role_title)!;
@@ -188,36 +195,47 @@ export async function runCandidateToElectedPromotion(
     if (cand.id === e.id) continue; // shouldn't happen given the source_ids filters
 
     out.pairsDetected++;
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data, error } = await (db as any).rpc("promote_candidate_to_elected", {
-      p_elected_id:   e.id,
-      p_candidate_id: cand.id,
+    pairs.push({
+      electedId:   e.id,
+      candidateId: cand.id,
+      fullName:    e.full_name,
+      state:       e.state_short.toUpperCase(),
+      roleFamily:  fam,
     });
-    if (error) {
+  }
+
+  // ── 5. Promote each detected pair over a single direct-pg connection with a
+  // raised SESSION statement_timeout (FIX-463). Autocommit per pair, so a data
+  // error on one pair doesn't abort the rest.
+  const outcomes = await promoteCandidatesDirect(
+    pairs.map((p) => ({ electedId: p.electedId, candidateId: p.candidateId })),
+  );
+  const pairByElected = new Map(pairs.map((p) => [p.electedId, p]));
+  for (const o of outcomes) {
+    const p = pairByElected.get(o.electedId)!;
+    if (o.error) {
       out.failed++;
       out.details.push({
-        candidateId: cand.id, electedId: e.id,
-        fullName: e.full_name, state: e.state_short, roleFamily: fam,
-        error: error.message,
+        candidateId: o.candidateId, electedId: o.electedId,
+        fullName: p.fullName, state: p.state, roleFamily: p.roleFamily,
+        error: o.error,
       });
-      console.error(`  promote-candidates: ${e.full_name} (${e.state_short} ${fam}) failed: ${error.message}`);
+      console.error(`  promote-candidates: ${p.fullName} (${p.state} ${p.roleFamily}) failed: ${o.error}`);
       continue;
     }
     out.promoted++;
-    const result = (data ?? {}) as { votes_moved?: number; total_fks_moved?: number };
     out.details.push({
-      candidateId:   cand.id,
-      electedId:     e.id,
-      fullName:      e.full_name,
-      state:         e.state_short,
-      roleFamily:    fam,
-      votesMoved:    result.votes_moved,
-      totalFksMoved: result.total_fks_moved,
+      candidateId:   o.candidateId,
+      electedId:     o.electedId,
+      fullName:      p.fullName,
+      state:         p.state,
+      roleFamily:    p.roleFamily,
+      votesMoved:    o.result?.votes_moved,
+      totalFksMoved: o.result?.total_fks_moved,
     });
     console.log(
-      `  promote-candidates: ${e.full_name} (${e.state_short} ${fam}) — ` +
-      `${result.votes_moved ?? 0} votes + ${result.total_fks_moved ?? 0} total FKs moved`
+      `  promote-candidates: ${p.fullName} (${p.state} ${p.roleFamily}) — ` +
+      `${o.result?.votes_moved ?? 0} votes + ${o.result?.total_fks_moved ?? 0} total FKs moved`
     );
   }
 

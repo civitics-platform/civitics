@@ -113,3 +113,57 @@ export async function selectDirect<T>(sql: string, params?: unknown[]): Promise<
     await client.end();
   }
 }
+
+/**
+ * FIX-463 — direct-pg batch invocation for promote_candidate_to_elected().
+ *
+ * The candidate→elected promotion RPC does ~20 transactional FK rewrites across
+ * votes / financial_relationships / entity_connections / entity_tags / … and a
+ * single call measured ~17s on prod — well past the PostgREST role's ~8s
+ * statement_timeout, so via `db.rpc(...)` every call dies as a timeout and the
+ * pair never promotes (re-detected next nightly → permanent ~22-min sink). This
+ * opens ONE direct session-pooler connection, raises the SESSION
+ * statement_timeout past the cap, and runs each pair's RPC in autocommit so a
+ * data error on one pair doesn't poison the rest. Fixed query text + bound
+ * params — no identifier interpolation. Connection always closed.
+ */
+export interface PromoteCandidateOutcome {
+  electedId:   string;
+  candidateId: string;
+  result?:     { votes_moved?: number; total_fks_moved?: number };
+  error?:      string;
+}
+
+export async function promoteCandidatesDirect(
+  pairs: Array<{ electedId: string; candidateId: string }>,
+): Promise<PromoteCandidateOutcome[]> {
+  if (pairs.length === 0) return [];
+
+  const { Client } = await import("pg");
+  const client = new Client({ connectionString: buildDbUrl() });
+  await client.connect();
+  const outcomes: PromoteCandidateOutcome[] = [];
+  try {
+    await client.query("SET statement_timeout = '90min'");
+    for (const p of pairs) {
+      try {
+        const res = await client.query<{ result: PromoteCandidateOutcome["result"] }>(
+          "SELECT public.promote_candidate_to_elected($1, $2) AS result",
+          [p.electedId, p.candidateId],
+        );
+        outcomes.push({ electedId: p.electedId, candidateId: p.candidateId, result: res.rows[0]?.result });
+      } catch (err) {
+        // Autocommit: a failed call aborts only its own statement; the next
+        // pair proceeds on the same connection.
+        outcomes.push({
+          electedId:   p.electedId,
+          candidateId: p.candidateId,
+          error:       err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+  } finally {
+    await client.end();
+  }
+  return outcomes;
+}
