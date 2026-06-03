@@ -76,6 +76,10 @@ export const SOURCE_URL_TEMPLATES: Record<string, Partial<Record<AttributionEnti
     proposal: "https://www.regulations.gov/document/{external_id}",
     agency:   "https://www.regulations.gov/agency/{external_id}",
   },
+  federal_register: {
+    // external_id is the Federal Register agency slug (FIX-415)
+    agency: "https://www.federalregister.gov/agencies/{external_id}",
+  },
   littlesis: {
     financial_entity: "https://littlesis.org/entity/{external_id}",
     official: "https://littlesis.org/entity/{external_id}",
