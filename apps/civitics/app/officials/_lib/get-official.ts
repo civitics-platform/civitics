@@ -39,13 +39,22 @@ export type CachedOfficial = {
 export const getCachedOfficial = cache(
   async (id: string): Promise<CachedOfficial | null> => {
     const supabase = createPublicClient();
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("officials")
       .select(
         "id, full_name, first_name, last_name, role_title, party, photo_url, email, website_url, phone, district_name, term_start, term_end, is_active, tier, jurisdiction_id, jurisdictions!jurisdiction_id(name), governing_bodies!governing_body_id(short_name)"
       )
       .eq("id", id)
       .single();
+    // Surface the PostgREST error before 404ing. A swallowed error here (a broken
+    // embed join, an RLS regression, or a .single() PGRST116 on >1 matched rows)
+    // is indistinguishable from a genuinely-missing row once we just `return null`,
+    // which is how FIX-412's municipal-official 404s went undiagnosed for so long.
+    // (Same swallowed-error lesson as FIX-394.) PGRST116 = "no rows" is the normal
+    // not-found case and isn't worth logging.
+    if (error && error.code !== "PGRST116") {
+      console.error(`[getCachedOfficial] PostgREST error for official ${id}:`, error);
+    }
     if (!data) return null;
     const attribution = await fetchAttributionForEntity(supabase, "official", id);
     return { ...(data as Omit<CachedOfficial, "attribution">), attribution };

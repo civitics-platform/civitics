@@ -9,8 +9,8 @@
 -- Resolves FIX-412 (officials 404) + FIX-413 (gb visibility). FIX-415 is NOT this
 -- bug (it is NULL primary_source on 8 agencies) and is intentionally untouched.
 --
--- ⚠️  STAGED, NOT YET APPLIED. Apply only on explicit go-ahead, together with the
---     sibling 20260531000000_rls_hardening_safe.sql:
+-- ✅  APPLIED local + prod 2026-05-31 (FIX-456, commit 863bf485), together with the
+--     sibling 20260531000000_rls_hardening_safe.sql. Applied via:
 --       local:  supabase migration up --local
 --       prod :  supabase db push --db-url <prod direct-connection>
 --                 (NOT --linked — cli_login_postgres role-alter bug)
