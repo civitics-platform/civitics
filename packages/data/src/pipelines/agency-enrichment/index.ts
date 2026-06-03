@@ -240,6 +240,11 @@ LIMIT 3000
   const matchFedRegSlug = buildFedRegSlugMatcher(fedRegAgencies);
   // (agency.id, slug) pairs whose primary_source we'll seed from Federal Register
   const fedRegSeeds: Array<{ id: string; slug: string }> = [];
+  // FIX-467: (agency.id, regulations_gov_agency_id) pairs to seed an xsr for, so
+  // agencies created AFTER the one-shot FIX-410 migration (e.g. FHWA, a
+  // regulations.gov insert-on-miss row) still get regulations_gov attribution.
+  // Idempotent upsert — no "missing xsr" pre-check needed.
+  const regulationsGovSeeds: Array<{ id: string; regId: string }> = [];
 
   // ── Apply to each agency ─────────────────────────────────────────────────────
   let wdMatched = 0;
@@ -266,10 +271,17 @@ LIMIT 3000
     // bound via regulations_gov (a higher-priority source), so we leave them be
     // and don't double-stamp a federal_register slug. Genuinely-unmatched EOP
     // offices stay NULL (the don't-guess rule).
-    const hasRegSource =
-      typeof (agency.source_ids as Record<string, unknown> | null)?.[
-        "regulations_gov_agency_id"
-      ] === "string";
+    const regGovId = (agency.source_ids as Record<string, unknown> | null)?.[
+      "regulations_gov_agency_id"
+    ];
+    const hasRegSource = typeof regGovId === "string" && regGovId.trim() !== "";
+    // FIX-467: collect a regulations_gov xsr seed for every agency carrying the
+    // key (idempotent upsert downstream). regulations_gov is priority 5, so it
+    // correctly wins over the federal_register slug (9999) for any agency that
+    // ends up with both — no need to strip the federal_register seed above.
+    if (hasRegSource) {
+      regulationsGovSeeds.push({ id: agency.id, regId: (regGovId as string).trim() });
+    }
     if (!hasRegSource) {
       const slugMatch = matchFedRegSlug(agency);
       if (slugMatch?.slug) {
@@ -341,6 +353,42 @@ LIMIT 3000
       } else {
         console.log(
           `    FIX-415 federal_register attribution: ${fedRegSeeds.length} agencies seeded, ${refreshed ?? 0} primary_source rows materialized`,
+        );
+      }
+    }
+  }
+
+  // ── FIX-467: seed external_source_refs for regulations_gov agencies ──────────
+  // Mirrors the FIX-415 block above. FIX-410 seeded regulations_gov attribution
+  // as a one-shot migration, so any agency created after it applied (FHWA is a
+  // regulations.gov insert-on-miss row) never got an xsr → refresh_* found no
+  // winner. This idempotent re-seed catches those late-added rows on every run.
+  if (regulationsGovSeeds.length > 0) {
+    const nowIso = new Date().toISOString();
+    const xsrRows = regulationsGovSeeds.map((s) => ({
+      source: "regulations_gov",
+      external_id: s.regId,
+      entity_type: "agency",
+      entity_id: s.id,
+      source_url: `https://www.regulations.gov/agency/${s.regId}`,
+      last_seen_at: nowIso,
+      metadata: {},
+    }));
+    const { error: xsrErr } = await db
+      .from("external_source_refs")
+      .upsert(xsrRows, { onConflict: "source,external_id", ignoreDuplicates: true });
+    if (xsrErr) {
+      console.warn(`    FIX-467 regulations_gov xsr seed failed: ${xsrErr.message}`);
+    } else {
+      const { data: refreshed, error: rpcErr } = await db.rpc(
+        "refresh_primary_source_for_entities",
+        { p_entity_type: "agency", p_entity_ids: regulationsGovSeeds.map((s) => s.id) },
+      );
+      if (rpcErr) {
+        console.warn(`    FIX-467 primary_source refresh failed: ${rpcErr.message}`);
+      } else {
+        console.log(
+          `    FIX-467 regulations_gov attribution: ${regulationsGovSeeds.length} agencies seeded, ${refreshed ?? 0} primary_source rows materialized`,
         );
       }
     }
