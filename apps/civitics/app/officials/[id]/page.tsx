@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import nextDynamic from "next/dynamic";
 import { createPublicClient, fetchIndustryTagsByEntityId } from "@civitics/db";
+import { fetchAllRows } from "@/lib/paginate";
 // FIX-205: defer the D3 graph chunk off the initial /officials/[id] bundle.
 // Most visitors land on the profile and never expand the graph; even when
 // they do, the chunk loads on demand.
@@ -303,15 +304,25 @@ export default async function OfficialProfilePage({
       // them through the candidate's FEC ID to the matched official row — no
       // PCC indirection needed. Split client-side on relationship_type so the
       // three are displayed as separate sections rather than conflated.
-      supabase
-        .from("financial_relationships")
-        .select("from_id, amount_cents, metadata, relationship_type")
-        .in("relationship_type", ["donation", "ie_support", "ie_oppose"])
-        .eq("to_type", "official")
-        .eq("to_id", params.id)
-        .eq("from_type", "financial_entity")
-        .order("amount_cents", { ascending: false })
-        .limit(2000),
+      // FIX-476 — donations to this official are SUMmed per donor below, so a
+      // silent cap at PostgREST max_rows (1000; the prior `.limit(2000)` never
+      // raised it) undercut the donor totals for heavily-funded officials. Page
+      // the full set with a stable unique order key.
+      (async () => {
+        const { rows } = await fetchAllRows<{ from_id: string; amount_cents: number | null; metadata: Record<string, unknown> | null; relationship_type: string }>((f, t) =>
+          sb
+            .from("financial_relationships")
+            .select("from_id, amount_cents, metadata, relationship_type")
+            .in("relationship_type", ["donation", "ie_support", "ie_oppose"])
+            .eq("to_type", "official")
+            .eq("to_id", params.id)
+            .eq("from_type", "financial_entity")
+            .order("id", { ascending: true })
+            .range(f, t),
+          { maxRows: 50000 },
+        );
+        return { data: rows };
+      })(),
       sb
         .from("ai_summary_cache")
         .select("summary_text")
@@ -459,6 +470,9 @@ export default async function OfficialProfilePage({
     jurisdiction_id: (o.jurisdiction_id ?? null) as string | null,
     state_name: (o.jurisdictions?.name ?? null) as string | null,
     chamber: (o.governing_bodies?.short_name ?? null) as string | null,
+    // FIX-474 — link the official to their governing body (institution page).
+    governing_body_id: (o.governing_bodies?.id ?? null) as string | null,
+    governing_body_name: (o.governing_bodies?.name ?? o.governing_bodies?.short_name ?? null) as string | null,
     attribution: o.attribution,
   };
 
@@ -861,6 +875,17 @@ export default async function OfficialProfilePage({
                   {official.full_name}
                 </h1>
                 <p className="mt-0.5 text-base text-gray-600">{official.role_title}</p>
+                {/* FIX-474 — link to the official's governing body (institution page) */}
+                {official.governing_body_id && official.governing_body_name && (
+                  <p className="mt-0.5 text-sm text-gray-500">
+                    <a
+                      href={`/institutions/${official.governing_body_id}`}
+                      className="hover:text-indigo-600 hover:underline transition-colors"
+                    >
+                      {official.governing_body_name}
+                    </a>
+                  </p>
+                )}
                 {official.state_name && (
                   <p className="mt-0.5 text-sm text-gray-500">
                     {official.jurisdiction_id ? (
