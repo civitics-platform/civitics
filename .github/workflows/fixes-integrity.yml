@@ -52,10 +52,26 @@ jobs:
         with:
           node-version: 20
 
-      # Blocking (FIX-461). --check exits 1 on: (a) FIXES.md out of sync with
-      # trailers, (b) a completed FIX-ID backed only by off-trunk commits.
-      - name: done.log trunk-ancestry + sync guard
+      # Blocking (FIX-461). Two modes split by event:
+      #
+      #   pull_request → `--check`: exits 1 on EITHER (a) FIXES.md/done.log drift
+      #     from trailers, OR (b) a completed FIX-ID backed only by off-trunk
+      #     commits. A PR branch carries both the code commit and its fixes:sync
+      #     commit, so the drift check is meaningful — it gates an unsynced merge.
+      #
+      #   push to main → `--check-trunk`: exits 1 ONLY on (b). The standard loop
+      #     lands the `Fixes:` code commit and its follow-up `fixes:sync` commit
+      #     as two SEPARATE pushes, so the code-commit push is always transiently
+      #     out of sync (done.log not appended, checkbox not flipped until the
+      #     next commit). Enforcing drift there reds-out every fix; the dangerous
+      #     off-trunk case stays enforced on every push. (FIX split of FIX-461.)
+      - name: done.log trunk-ancestry + drift guard (PRs)
+        if: github.event_name == 'pull_request'
         run: node scripts/fixes-sync.mjs --check
+
+      - name: done.log trunk-ancestry guard (push to main)
+        if: github.event_name != 'pull_request'
+        run: node scripts/fixes-sync.mjs --check-trunk
 
       - name: fixes-sync parser/guard unit tests
         run: node scripts/test-fixes-sync.mjs

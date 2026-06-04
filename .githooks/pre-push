@@ -1,23 +1,32 @@
 #!/bin/sh
-# .githooks/pre-push — block a push when FIXES.md / done.log are out of sync
-# with commit trailers (FIX-461 made `fixes:check` fail on off-trunk done.log
-# completions and FIXES.md/trailer drift). Today that gate only ran in CI, i.e.
-# AFTER a bad sync was already pushed. This moves it BEFORE the push.
+# .githooks/pre-push — block a push when done.log claims a FIX-ID shipped whose
+# code is not an ancestor of trunk (FIX-461 silent-zero-sweep-tail incident).
+# Runs BEFORE the push, not just in CI after a bad sync already landed.
+#
+# Uses `fixes:check:trunk` (--check-trunk), NOT the full `fixes:check`. The
+# standard loop pushes the `Fixes:` code commit and its follow-up `fixes:sync`
+# commit as TWO separate pushes, so the code-commit push is always transiently
+# out of sync (done.log not yet appended, checkbox not yet flipped). The full
+# drift check would abort that first push every single time — exactly the
+# false-positive that reds-out the CI guard. The trunk-ancestry violation is the
+# dangerous case and is what this hook enforces. Drift is gated on PRs in CI
+# (fixes-integrity.yml), where code + sync are evaluated together.
 #
 # Wired via `git config core.hooksPath .githooks` (set by the root package.json
 # `prepare` script — no husky, no extra deps). Git for Windows runs hooks
 # through its bundled `sh`, so this POSIX script works on Craig's Windows box.
 #
-# Bypass (use sparingly, and never to dodge a real drift): `git push --no-verify`.
+# Bypass (use sparingly, and never to dodge a real off-trunk completion):
+# `git push --no-verify`.
 
-echo "[pre-push] running pnpm fixes:check ..."
-if ! pnpm fixes:check; then
+echo "[pre-push] running pnpm fixes:check:trunk ..."
+if ! pnpm fixes:check:trunk; then
   echo ""
-  echo "[pre-push] ✗ fixes:check failed — push aborted."
-  echo "[pre-push]   FIXES.md / done.log are out of sync with commit trailers."
-  echo "[pre-push]   Run \`pnpm fixes:sync\`, commit the diff, then push again."
+  echo "[pre-push] ✗ fixes:check:trunk failed — push aborted."
+  echo "[pre-push]   done.log claims a FIX-ID shipped whose code is not on trunk."
+  echo "[pre-push]   Re-land the code on main, then append the real SHA via fixes:sync."
   exit 1
 fi
 
-echo "[pre-push] ✓ fixes:check clean."
+echo "[pre-push] ✓ fixes:check:trunk clean."
 exit 0
