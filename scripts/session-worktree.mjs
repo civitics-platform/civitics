@@ -172,13 +172,39 @@ function done(rawId, argv) {
   }
 
   if (existsSync(wtDir)) {
-    // `git worktree remove` refuses a dirty tree without --force; keep that.
-    const rm = git("worktree", "remove", wtDir, ...(force ? ["--force"] : []));
+    // `git worktree remove` refuses a tree with ANY local changes without
+    // --force — but a *built* worktree is always "dirty" with gitignored
+    // artifacts (node_modules, .next, the seeded .env.local copies), so the
+    // bare merged-but-built case used to die half-done (FIX-I). Split the two
+    // meanings of force: `git status --porcelain` ignores gitignored files, so
+    // an EMPTY porcelain means nothing removable is unique to this tree (only
+    // disposable ignored artifacts remain) → safe to force automatically. A
+    // NON-empty porcelain means real tracked edits or untracked files → refuse
+    // unless the caller passed --force (the unmerged-work gate above is
+    // separate and untouched).
+    const porcelain = git("-C", wtDir, "status", "--porcelain");
+    const cleanIgnoringArtifacts = porcelain.ok && porcelain.out === "";
+    const forceRemove = force || cleanIgnoringArtifacts;
+
+    if (!forceRemove) {
+      console.error(`[session:worktree] ✗ worktree has uncommitted changes (tracked edits or untracked files):`);
+      console.error(porcelain.out || "(could not read git status)");
+      die(`refusing to remove a dirty worktree. Commit/stash/land it, or pass --force to discard. Worktree left intact: ${wtDir}`);
+    }
+
+    // --force is always passed to git here: when porcelain is clean it's the
+    // gitignored artifacts that would otherwise block removal; when the caller
+    // forced, they've accepted the loss.
+    const rm = git("worktree", "remove", wtDir, "--force");
     if (!rm.ok) {
       if (rm.err) console.error(rm.err);
-      die(`git worktree remove failed (dirty tree? pass --force). Worktree left intact: ${wtDir}`);
+      die(`git worktree remove failed. Worktree left intact: ${wtDir}`);
     }
-    console.log(`[session:worktree] ✓ removed worktree ${wtDir}`);
+    const autoForced = cleanIgnoringArtifacts && !force;
+    console.log(
+      `[session:worktree] ✓ removed worktree ${wtDir}` +
+      (autoForced ? ` (auto-forced: only ignored build artifacts present)` : ``),
+    );
   } else {
     console.log(`[session:worktree] (no worktree dir at ${wtDir} — skipping remove)`);
   }
