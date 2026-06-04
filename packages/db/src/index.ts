@@ -17,6 +17,8 @@ export {
   getGoverningBody,
   listGoverningBodiesByJurisdiction,
   listGoverningBodiesByType,
+  currentGoverningBodyMembers,
+  CURRENT_MEMBER_TIER,
 } from "./queries/governing-bodies";
 
 export {

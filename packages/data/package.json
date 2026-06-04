@@ -69,6 +69,8 @@
     "diag:dc-backfill-verify": "tsx --env-file=../../.env.local src/scripts/verify-fix-backfill.ts",
     "diag:territory-name-mismatch": "tsx --env-file=../../.env.local src/scripts/investigate-territory-name-mismatch.ts",
     "diag:attribution-coverage": "tsx --env-file=../../.env.local src/scripts/attribution-binding-rate.ts",
+    "diag:gb-membership": "tsx --env-file=../../.env.local src/scripts/audit-gb-membership-pollution.ts",
+    "diag:gb-membership:prod": "tsx --env-file=../../.env.local.prod src/scripts/audit-gb-membership-pollution.ts",
     "data:backfill:individual-canonical": "tsx --env-file=../../.env.local src/scripts/backfill-individual-canonical-name.ts",
     "data:backfill-crs-summaries": "tsx --env-file=../../.env.local src/scripts/backfill-crs-summaries.ts",
     "data:retitle-stubs": "tsx --env-file=../../.env.local src/scripts/retitle-procedural-bill-stubs.ts",

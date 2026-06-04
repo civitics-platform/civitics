@@ -11,7 +11,12 @@
 import { notFound, permanentRedirect } from "next/navigation";
 import { cookies } from "next/headers";
 import nextDynamic from "next/dynamic";
-import { createServerClient, createAdminClient, fetchAttributionForEntity } from "@civitics/db";
+import {
+  createServerClient,
+  createAdminClient,
+  fetchAttributionForEntity,
+  currentGoverningBodyMembers,
+} from "@civitics/db";
 import { createClient } from "@supabase/supabase-js";
 import { AgencyHierarchyTree } from "../../agencies/[slug]/components/AgencyHierarchyTree";
 import { PageViewTracker } from "../../components/PageViewTracker";
@@ -990,20 +995,26 @@ async function GoverningBodyView({
           .eq("id", institution.parent_id)
           .maybeSingle()
       : Promise.resolve({ data: null }),
-    supabase
-      .from("officials")
-      .select("id, full_name, role_title, party, photo_url, district_name")
-      .eq("governing_body_id", institution.id)
-      .eq("is_active", true)
+    // Roster + party balance + the "Active members" stat are current members of
+    // the body — is_active AND tier='elected' (FIX-470). Without the tier scope,
+    // the FEC candidate field parked on the body (tier='candidate', FIX-246)
+    // counts as members: prod US House showed 8,880 instead of 436. Shared
+    // predicate so FIX-468 graph group-expansion reuses one definition.
+    currentGoverningBodyMembers(
+      supabase
+        .from("officials")
+        .select("id, full_name, role_title, party, photo_url, district_name")
+        .eq("governing_body_id", institution.id)
+    )
       .order("role_title")
       .order("last_name")
       .limit(500),
-    supabase
-      .from("officials")
-      .select("party")
-      .eq("governing_body_id", institution.id)
-      .eq("is_active", true)
-      .limit(2000),
+    currentGoverningBodyMembers(
+      supabase
+        .from("officials")
+        .select("party")
+        .eq("governing_body_id", institution.id)
+    ).limit(2000),
     supabase
       .from("proposals")
       .select("id, title, status, type, introduced_at, summary_plain, metadata, bill_details(bill_number)")
