@@ -2,6 +2,14 @@
 
 import { useEffect, useState } from "react";
 import type { AnySearchResult } from "./SearchResultCard";
+import { isGraphSeedableKind } from "@/lib/graph-seedable-kinds";
+import {
+  attributionDetailEndpoint,
+  type AttributionEntityType,
+  type AttributionShape,
+} from "@civitics/db";
+import { SourceBadge } from "../../components/SourceBadge";
+import { SourceDetailPopover } from "../../components/SourceDetailPopover";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -18,7 +26,20 @@ interface EntityDetail {
   connection_count: number;
   profile_url: string;
   meta?: Record<string, string | number | null>;
+  // FIX-473 — list-endpoint attribution (primary source only; popover lazy-loads
+  // the full list). Null when the entity's table row carries no primary_source.
+  primary_source?: string | null;
+  primary_source_url?: string | null;
 }
+
+// FIX-473 — search kinds → attribution entity-type (only column-bearing types).
+const KIND_TO_ATTRIBUTION_TYPE: Record<string, AttributionEntityType> = {
+  official:  "official",
+  proposal:  "proposal",
+  agency:    "agency",
+  financial: "financial_entity",
+  institution: "governing_body",
+};
 
 const PARTY_COLOR: Record<string, string> = {
   democrat:    "bg-blue-100 text-blue-700",
@@ -109,6 +130,26 @@ function DetailContent({
 }) {
   const partyBadge = detail.party ? (PARTY_COLOR[detail.party] ?? "bg-gray-100 text-gray-600") : null;
 
+  // FIX-472 — only offer "Seed to graph" for kinds the graph can render.
+  const seedable = isGraphSeedableKind(result.kind);
+
+  // FIX-473 — build a primary-only AttributionShape from the list-endpoint
+  // fields; SourceBadge renders nothing when primary is null, and the popover
+  // lazy-loads the full source list from detail_endpoint on open.
+  const attributionType = KIND_TO_ATTRIBUTION_TYPE[result.kind];
+  const attribution: AttributionShape | null =
+    attributionType && detail.primary_source
+      ? {
+          primary: {
+            source:       detail.primary_source,
+            source_url:   detail.primary_source_url ?? null,
+            last_seen_at: "",
+          },
+          source_count:    0,
+          detail_endpoint: attributionDetailEndpoint(attributionType, detail.id),
+        }
+      : null;
+
   return (
     <div className="flex flex-col h-full overflow-y-auto">
       {/* Header */}
@@ -128,6 +169,18 @@ function DetailContent({
               <span className={`inline-block mt-1 rounded px-1.5 py-0.5 text-[10px] font-semibold ${partyBadge}`}>
                 {detail.party}
               </span>
+            )}
+            {/* FIX-473 — data-provenance pill (renders nothing when no primary source) */}
+            {attribution && attributionType && (
+              <div className="mt-1.5">
+                <SourceDetailPopover
+                  entityType={attributionType}
+                  entityId={detail.id}
+                  attribution={attribution}
+                >
+                  <SourceBadge attribution={attribution} variant="pill" />
+                </SourceDetailPopover>
+              </div>
             )}
           </div>
         </div>
@@ -159,15 +212,21 @@ function DetailContent({
           </svg>
           View full profile
         </a>
-        <button
-          onClick={() => onSeedToGraph(result)}
-          className="flex items-center justify-center gap-1.5 w-full rounded-md bg-indigo-600 px-3 py-2 text-xs font-medium text-white hover:bg-indigo-700 transition-colors"
-        >
-          <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-          </svg>
-          Seed to graph
-        </button>
+        {seedable ? (
+          <button
+            onClick={() => onSeedToGraph(result)}
+            className="flex items-center justify-center gap-1.5 w-full rounded-md bg-indigo-600 px-3 py-2 text-xs font-medium text-white hover:bg-indigo-700 transition-colors"
+          >
+            <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+            </svg>
+            Seed to graph
+          </button>
+        ) : (
+          <p className="text-center text-[11px] text-gray-400 px-2 py-1.5">
+            This kind can&apos;t be shown on the graph yet.
+          </p>
+        )}
       </div>
     </div>
   );

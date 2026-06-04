@@ -44,6 +44,9 @@ interface SearchRow {
   entity_type: string;
   subtitle: string | null;
   party: string | null;
+  // FIX-473 — primary-source provenance read off the entity-table columns.
+  primary_source: string | null;
+  primary_source_url: string | null;
 }
 
 // ── GET /api/graph/entities ────────────────────────────────────────────────────
@@ -78,37 +81,38 @@ export async function GET(request: Request) {
     withDbTimeout(
       supabase
         .from("officials")
-        .select("id, full_name, role_title, party")
+        .select("id, full_name, role_title, party, primary_source, primary_source_url")
         .ilike("full_name", like)
         .limit(20),
     ),
     withDbTimeout(
       supabase
         .from("agencies")
-        .select("id, name, acronym, agency_type")
+        .select("id, name, acronym, agency_type, primary_source, primary_source_url")
         .or(`name.ilike.${like},acronym.ilike.${like}`)
         .limit(20),
     ),
     withDbTimeout(
       supabase
         .from("financial_entities")
-        .select("id, display_name, entity_type")
+        .select("id, display_name, entity_type, primary_source, primary_source_url")
         .ilike("display_name", like)
         .limit(20),
     ),
     withDbTimeout(
       supabase
         .from("proposals")
-        .select("id, title, type")
+        .select("id, title, type, primary_source, primary_source_url")
         .ilike("title", like)
         .limit(20),
     ),
   ]);
 
-  type OfficialRow = { id: string; full_name: string; role_title: string | null; party: string | null };
-  type AgencyRow = { id: string; name: string; acronym: string | null; agency_type: string | null };
-  type FinancialRow = { id: string; display_name: string; entity_type: string | null };
-  type ProposalRow = { id: string; title: string; type: string | null };
+  type Prov = { primary_source: string | null; primary_source_url: string | null };
+  type OfficialRow = { id: string; full_name: string; role_title: string | null; party: string | null } & Prov;
+  type AgencyRow = { id: string; name: string; acronym: string | null; agency_type: string | null } & Prov;
+  type FinancialRow = { id: string; display_name: string; entity_type: string | null } & Prov;
+  type ProposalRow = { id: string; title: string; type: string | null } & Prov;
 
   const financialRows = ((financialRes as { data: FinancialRow[] | null }).data ?? []);
   const industryByEntityId = await fetchIndustryTagsByEntityId(
@@ -118,7 +122,7 @@ export async function GET(request: Request) {
 
   let rows: SearchRow[] = [];
   for (const o of ((officialsRes as { data: OfficialRow[] | null }).data ?? [])) {
-    rows.push({ id: o.id, label: o.full_name, entity_type: "official", subtitle: o.role_title, party: o.party });
+    rows.push({ id: o.id, label: o.full_name, entity_type: "official", subtitle: o.role_title, party: o.party, primary_source: o.primary_source ?? null, primary_source_url: o.primary_source_url ?? null });
   }
   for (const a of ((agenciesRes as { data: AgencyRow[] | null }).data ?? [])) {
     rows.push({
@@ -127,6 +131,8 @@ export async function GET(request: Request) {
       entity_type: "agency",
       subtitle: a.agency_type,
       party: null,
+      primary_source: a.primary_source ?? null,
+      primary_source_url: a.primary_source_url ?? null,
     });
   }
   for (const f of financialRows) {
@@ -136,10 +142,12 @@ export async function GET(request: Request) {
       entity_type: "financial",
       subtitle: industryByEntityId.get(f.id)?.display_label ?? f.entity_type,
       party: null,
+      primary_source: f.primary_source ?? null,
+      primary_source_url: f.primary_source_url ?? null,
     });
   }
   for (const p of ((proposalsRes as { data: ProposalRow[] | null }).data ?? [])) {
-    rows.push({ id: p.id, label: p.title, entity_type: "proposal", subtitle: p.type, party: null });
+    rows.push({ id: p.id, label: p.title, entity_type: "proposal", subtitle: p.type, party: null, primary_source: p.primary_source ?? null, primary_source_url: p.primary_source_url ?? null });
   }
 
   // Optional type filter (post-RPC since the RPC mixes all types)
@@ -210,6 +218,8 @@ export async function GET(request: Request) {
     has_donations: hasDonation.has(r.id),
     has_votes: hasVote.has(r.id),
     top_tags: tagMap.get(r.id) ?? [],
+    primary_source: r.primary_source,          // FIX-473
+    primary_source_url: r.primary_source_url,   // FIX-473
   }));
 
   // Enrich officials with state and detect federal vs state-level

@@ -20,6 +20,11 @@ interface EntityDetail {
   connection_count: number;
   profile_url: string;
   meta?: Record<string, string | number | null>;
+  // FIX-473 — primary-source provenance, read straight off the materialized
+  // entity-table columns (zero extra queries). Null for types whose tables
+  // carry no primary_source* columns (jurisdiction, meeting).
+  primary_source?: string | null;
+  primary_source_url?: string | null;
 }
 
 async function getConnectionCount(
@@ -59,7 +64,7 @@ export async function GET(req: NextRequest) {
     if (type === "official") {
       const { data } = await db2
         .from("officials")
-        .select("id, full_name, role_title, party, photo_url, is_active, metadata")
+        .select("id, full_name, role_title, party, photo_url, is_active, metadata, primary_source, primary_source_url")
         .eq("id", id)
         .single();
       if (!data) return NextResponse.json(null, { status: 404 });
@@ -79,6 +84,8 @@ export async function GET(req: NextRequest) {
         description: aiRes?.data?.summary_text ?? null,
         connection_count,
         profile_url: `/officials/${id}`,
+        primary_source: data.primary_source ?? null,
+        primary_source_url: data.primary_source_url ?? null,
         meta: {
           State: data.metadata?.state ?? null,
           Chamber: data.metadata?.chamber ?? null,
@@ -91,7 +98,7 @@ export async function GET(req: NextRequest) {
     if (type === "proposal") {
       const { data } = await db2
         .from("proposals")
-        .select("id, title, status, type, summary_plain, metadata")
+        .select("id, title, status, type, summary_plain, metadata, primary_source, primary_source_url")
         .eq("id", id)
         .single();
       if (!data) return NextResponse.json(null, { status: 404 });
@@ -109,6 +116,8 @@ export async function GET(req: NextRequest) {
         description: aiRes?.data?.summary_text ?? data.summary_plain ?? null,
         connection_count,
         profile_url: `/proposals/${id}`,
+        primary_source: data.primary_source ?? null,
+        primary_source_url: data.primary_source_url ?? null,
         meta: {
           Status: data.status.replace(/_/g, " "),
           "Comment deadline": data.metadata?.comment_period_end
@@ -123,7 +132,7 @@ export async function GET(req: NextRequest) {
     if (type === "agency") {
       const { data } = await db2
         .from("agencies")
-        .select("id, name, acronym, agency_type, description, website_url, slug")
+        .select("id, name, acronym, agency_type, description, website_url, slug, primary_source, primary_source_url")
         .eq("id", id)
         .single();
       if (!data) return NextResponse.json(null, { status: 404 });
@@ -137,6 +146,8 @@ export async function GET(req: NextRequest) {
         description: data.description ?? null,
         connection_count,
         profile_url: data.slug ? `/agencies/${data.slug}` : `/agencies/${id}`,
+        primary_source: data.primary_source ?? null,
+        primary_source_url: data.primary_source_url ?? null,
         meta: { Type: data.agency_type.replace(/_/g, " ") },
       };
       return NextResponse.json(detail, { headers: CACHE_HEADERS });
@@ -145,7 +156,7 @@ export async function GET(req: NextRequest) {
     if (type === "financial") {
       const { data } = await db2
         .from("financial_entities")
-        .select("id, display_name, entity_type, total_donated_cents, total_received_cents")
+        .select("id, display_name, entity_type, total_donated_cents, total_received_cents, primary_source, primary_source_url")
         .eq("id", id)
         .single();
       if (!data) return NextResponse.json(null, { status: 404 });
@@ -168,6 +179,8 @@ export async function GET(req: NextRequest) {
         description: aiRes?.data?.summary_text ?? null,
         connection_count,
         profile_url: `/donors/${id}`,
+        primary_source: data.primary_source ?? null,
+        primary_source_url: data.primary_source_url ?? null,
         meta: {
           "Total donated": data.total_donated_cents
             ? formatDollars(data.total_donated_cents)
@@ -205,7 +218,7 @@ export async function GET(req: NextRequest) {
     if (type === "institution") {
       const { data } = await db2
         .from("governing_bodies")
-        .select("id, name, short_name, type, is_active")
+        .select("id, name, short_name, type, is_active, primary_source, primary_source_url")
         .eq("id", id)
         .single();
       if (!data) return NextResponse.json(null, { status: 404 });
@@ -218,6 +231,8 @@ export async function GET(req: NextRequest) {
         subtitle: data.short_name ? `${data.short_name} · ${String(data.type).replace(/_/g, " ")}` : String(data.type).replace(/_/g, " "),
         connection_count,
         profile_url: `/institutions/${id}`,
+        primary_source: data.primary_source ?? null,
+        primary_source_url: data.primary_source_url ?? null,
         meta: {
           Type: String(data.type).replace(/_/g, " "),
           Status: data.is_active ? "Active" : "Former",
