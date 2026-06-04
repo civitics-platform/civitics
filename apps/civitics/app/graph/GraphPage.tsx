@@ -19,6 +19,7 @@ import {
   DonorListPanel,
 } from "@civitics/graph";
 import type { VizType, FocusGroup, GroupFilter, GraphNodeV2 as GraphNode, GraphEdgeV2 as GraphEdge, GraphMeta, UserNodeInfo, IndividualDisplayMode } from "@civitics/graph";
+import { isGraphSeedableKind } from "@/lib/graph-seedable-kinds";
 import { SharePanel }      from "./SharePanel";
 import { ScreenshotPanel } from "./ScreenshotPanel";
 import { GhostGraph }      from "./GhostGraph";
@@ -111,18 +112,32 @@ export function GraphPage({ initialCode, aiEnabled = true }: GraphPageProps = {}
 
     const ids   = rawIds.split(",").map((s) => s.trim()).filter(Boolean);
     const types = rawTypes.split(",").map((s) => s.trim()).filter(Boolean);
-    const validTypes = new Set(["official", "agency", "proposal", "financial"]);
     const MAX = 5;
 
+    // FIX-472 — the search UI already filters un-graphable kinds before building
+    // the handoff URL; this whitelist is the backstop for hand-built / stale URLs.
+    // Warn (dev console) instead of dropping silently so a malformed handoff is
+    // visible rather than a mysteriously-empty graph.
+    const dropped: Array<{ id: string; type: string }> = [];
     ids.slice(0, MAX).forEach((id, i) => {
       const type = types[i] ?? "official";
-      if (!validTypes.has(type)) return;
+      if (!isGraphSeedableKind(type)) {
+        dropped.push({ id, type });
+        return;
+      }
       graphHooks.addEntity({
         id,
         name: id, // graph will resolve the real name on data fetch
-        type: type as "official" | "agency" | "proposal" | "financial",
+        type,
       });
     });
+    if (dropped.length > 0) {
+      console.warn(
+        `[graph] add-to-graph: dropped ${dropped.length} un-graphable entit${dropped.length === 1 ? "y" : "ies"} ` +
+          `(the graph can't render these kinds yet):`,
+        dropped,
+      );
+    }
 
     const cleaned = new URL(window.location.href);
     cleaned.searchParams.delete("addEntityIds");

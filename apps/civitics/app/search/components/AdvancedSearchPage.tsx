@@ -15,6 +15,7 @@ import type { SearchFilters } from "./SearchFiltersPanel";
 import { SearchFilterBar } from "./SearchFilterBar";
 import { SearchDetailPanel } from "./SearchDetailPanel";
 import { SearchActionBar } from "./SearchActionBar";
+import { isGraphSeedableKind } from "@/lib/graph-seedable-kinds";
 
 // ---------------------------------------------------------------------------
 // Props
@@ -237,8 +238,13 @@ export function AdvancedSearchPage({
     ? (totals.officials + totals.proposals + totals.jurisdictions + totals.institutions + totals.agencies + totals.financial_entities + totals.initiatives + totals.meetings)
     : (pages[0]?.total ?? 0);
 
+  // FIX-472 — only seed kinds the graph can render; the detail panel disables the
+  // button for un-graphable kinds, and the header button gates on this count.
+  const seedableSelected = selectedResults.filter((r) => isGraphSeedableKind(r.kind));
+
   // ── Graph seed (single entity from detail panel) ───────────────────────────
   function handleSeedToGraph(result: AnySearchResult) {
+    if (!isGraphSeedableKind(result.kind)) return;
     if (mode === "sidebar" && onAddEntity) {
       onAddEntity({
         id:   resultEntityId(result),
@@ -261,8 +267,8 @@ export function AdvancedSearchPage({
 
   // ── Graph action from top header ──────────────────────────────────────────
   function handleAddToGraph() {
-    if (selectedResults.length === 0) return;
-    const toAdd = selectedResults.slice(0, 5);
+    if (seedableSelected.length === 0) return;
+    const toAdd = seedableSelected.slice(0, 5);
     const ids   = toAdd.map((r) => r.data.id).join(",");
     const types = toAdd.map((r) => r.kind).join(",");
     window.location.href = `/graph?addEntityIds=${encodeURIComponent(ids)}&addEntityTypes=${encodeURIComponent(types)}`;
@@ -376,9 +382,14 @@ export function AdvancedSearchPage({
             <div className="relative">
               <button
                 onClick={handleAddToGraph}
-                disabled={selectedResults.length === 0}
+                disabled={seedableSelected.length === 0}
+                title={
+                  seedableSelected.length < selectedResults.length
+                    ? `${seedableSelected.length} of ${selectedResults.length} selected can be graphed`
+                    : undefined
+                }
                 className={`flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium transition-colors
-                  ${selectedResults.length > 0
+                  ${seedableSelected.length > 0
                     ? "border-indigo-300 bg-indigo-50 text-indigo-700 hover:bg-indigo-100"
                     : "border-gray-200 bg-white text-gray-400 cursor-not-allowed"}`}
               >
@@ -386,9 +397,9 @@ export function AdvancedSearchPage({
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                 </svg>
                 Add to graph
-                {selectedResults.length > 0 && (
+                {seedableSelected.length > 0 && (
                   <span className="ml-0.5 rounded-full bg-indigo-600 px-1.5 py-0.5 text-[10px] font-bold text-white">
-                    {selectedResults.length}
+                    {seedableSelected.length}
                   </span>
                 )}
               </button>

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { AnySearchResult } from "./SearchResultCard";
+import { isGraphSeedableKind } from "@/lib/graph-seedable-kinds";
 
 const MAX_INDIVIDUAL = 5;
 
@@ -16,9 +17,15 @@ export function SearchActionBar({ selected, onClear }: SearchActionBarProps) {
 
   if (selected.length === 0) return null;
 
+  // FIX-472 — only kinds the graph can render are eligible to be seeded; the
+  // rest (institutions, jurisdictions, meetings, initiatives) used to be added
+  // to the handoff URL and then silently dropped at /graph.
+  const seedable = selected.filter((r) => isGraphSeedableKind(r.kind));
+
   // ── Path A: add as individual entities ────────────────────────────────────
   function handleAddIndividually() {
-    const toAdd = selected.slice(0, MAX_INDIVIDUAL);
+    if (seedable.length === 0) return;
+    const toAdd = seedable.slice(0, MAX_INDIVIDUAL);
     const ids   = toAdd.map((r) => r.data.id).join(",");
     const types = toAdd.map((r) => r.kind).join(",");
     window.location.href = `/graph?addEntityIds=${encodeURIComponent(ids)}&addEntityTypes=${encodeURIComponent(types)}`;
@@ -43,7 +50,9 @@ export function SearchActionBar({ selected, onClear }: SearchActionBarProps) {
     window.location.href = `/graph?${params.toString()}`;
   }
 
-  const tooMany = selected.length > MAX_INDIVIDUAL;
+  const tooMany = seedable.length > MAX_INDIVIDUAL;
+  const someUnseedable = seedable.length < selected.length;
+  const noneSeedable = seedable.length === 0;
 
   return (
     <>
@@ -61,17 +70,31 @@ export function SearchActionBar({ selected, onClear }: SearchActionBarProps) {
 
         <div className="flex-1" />
 
+        {/* FIX-472 — graphable hint when the selection mixes seedable + un-graphable kinds */}
+        {someUnseedable && (
+          <span className="text-[11px] text-gray-400 shrink-0">
+            {seedable.length} of {selected.length} can be graphed
+          </span>
+        )}
+
         {/* Add individually */}
         <div className="relative group">
           <button
             onClick={handleAddIndividually}
-            className="rounded-md border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 hover:border-indigo-300 hover:text-indigo-700 transition-colors"
+            disabled={noneSeedable}
+            className={`rounded-md border px-3 py-1.5 text-xs font-medium transition-colors ${
+              noneSeedable
+                ? "border-gray-200 text-gray-300 cursor-not-allowed"
+                : "border-gray-200 text-gray-700 hover:border-indigo-300 hover:text-indigo-700"
+            }`}
           >
             Add to graph individually
           </button>
-          {tooMany && (
-            <div className="absolute bottom-full mb-1.5 right-0 hidden group-hover:block z-30 w-52 rounded-md bg-gray-900 px-2.5 py-1.5 text-[11px] text-white shadow-lg">
-              Limited to {MAX_INDIVIDUAL} entities. First {MAX_INDIVIDUAL} will be added.
+          {(tooMany || noneSeedable) && (
+            <div className="absolute bottom-full mb-1.5 right-0 hidden group-hover:block z-30 w-56 rounded-md bg-gray-900 px-2.5 py-1.5 text-[11px] text-white shadow-lg">
+              {noneSeedable
+                ? "None of the selected items can be shown on the graph yet."
+                : `Limited to ${MAX_INDIVIDUAL} graphable entities. First ${MAX_INDIVIDUAL} will be added.`}
             </div>
           )}
         </div>
