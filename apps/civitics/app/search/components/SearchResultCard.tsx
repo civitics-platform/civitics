@@ -6,7 +6,11 @@ import type {
   SearchAgency,
   SearchFinancialEntity,
   SearchInitiative,
+  SearchJurisdiction,
+  SearchInstitution,
+  SearchMeeting,
 } from "../../api/search/route";
+import { FormerBadge } from "../../components/FormerBadge";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -74,11 +78,14 @@ function ConnectionBadge({ count }: { count: number }) {
 // ---------------------------------------------------------------------------
 
 export type AnySearchResult =
-  | { kind: "official";   data: SearchOfficial }
-  | { kind: "proposal";   data: SearchProposal }
-  | { kind: "agency";     data: SearchAgency }
-  | { kind: "financial";  data: SearchFinancialEntity }
-  | { kind: "initiative"; data: SearchInitiative };
+  | { kind: "official";     data: SearchOfficial }
+  | { kind: "proposal";     data: SearchProposal }
+  | { kind: "agency";       data: SearchAgency }
+  | { kind: "financial";    data: SearchFinancialEntity }
+  | { kind: "initiative";   data: SearchInitiative }
+  | { kind: "jurisdiction"; data: SearchJurisdiction }
+  | { kind: "institution";  data: SearchInstitution }
+  | { kind: "meeting";      data: SearchMeeting };
 
 export function resultId(r: AnySearchResult): string {
   return `${r.kind}:${r.data.id}`;
@@ -157,11 +164,14 @@ export function SearchResultCard({
 
       {/* Card content */}
       <div className="flex-1 min-w-0 px-4 py-3">
-        {result.kind === "official"   && <OfficialCardContent   o={result.data} badge={badge} isInGraph={isInGraph} />}
-        {result.kind === "proposal"   && <ProposalCardContent   p={result.data} badge={badge} />}
-        {result.kind === "agency"     && <AgencyCardContent     a={result.data} badge={badge} isInGraph={isInGraph} />}
-        {result.kind === "financial"  && <FinancialCardContent  f={result.data} badge={badge} isInGraph={isInGraph} />}
-        {result.kind === "initiative" && <InitiativeCardContent i={result.data} badge={badge} />}
+        {result.kind === "official"     && <OfficialCardContent     o={result.data} badge={badge} isInGraph={isInGraph} />}
+        {result.kind === "proposal"     && <ProposalCardContent     p={result.data} badge={badge} />}
+        {result.kind === "agency"       && <AgencyCardContent       a={result.data} badge={badge} isInGraph={isInGraph} />}
+        {result.kind === "financial"    && <FinancialCardContent    f={result.data} badge={badge} isInGraph={isInGraph} />}
+        {result.kind === "initiative"   && <InitiativeCardContent   i={result.data} badge={badge} />}
+        {result.kind === "jurisdiction" && <JurisdictionCardContent j={result.data} badge={badge} isInGraph={isInGraph} />}
+        {result.kind === "institution"  && <InstitutionCardContent  g={result.data} badge={badge} isInGraph={isInGraph} />}
+        {result.kind === "meeting"      && <MeetingCardContent      m={result.data} badge={badge} />}
       </div>
     </div>
   );
@@ -328,6 +338,77 @@ function InitiativeCardContent({ i, badge }: { i: SearchInitiative; badge?: bool
       <p className="mt-1.5 text-sm font-semibold text-gray-900 line-clamp-2 leading-snug">
         {i.title}
       </p>
+    </div>
+  );
+}
+
+function JurisdictionCardContent({ j, badge, isInGraph }: { j: SearchJurisdiction; badge?: boolean; isInGraph?: boolean }) {
+  return (
+    <div className="flex items-center gap-3">
+      {badge && <TypeBadge label="Jurisdiction" color="indigo" />}
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded border border-gray-200 bg-gray-50 text-gray-400">
+        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+            d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+        </svg>
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-semibold text-gray-900">{j.name}</p>
+        <p className="truncate text-xs text-gray-500 capitalize">
+          {j.jurisdiction_type}{j.short_name ? ` · ${j.short_name}` : ""}
+        </p>
+      </div>
+      <div className="flex items-center gap-2 shrink-0">
+        {isInGraph && <InGraphBadge />}
+        <ConnectionBadge count={j.connection_count} />
+      </div>
+    </div>
+  );
+}
+
+function InstitutionCardContent({ g, badge, isInGraph }: { g: SearchInstitution; badge?: boolean; isInGraph?: boolean }) {
+  return (
+    <div className="flex items-center gap-3">
+      {badge && <TypeBadge label="Institution" color="indigo" />}
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded border border-gray-200 bg-gray-50 text-gray-400">
+        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+            d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+        </svg>
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-semibold text-gray-900">{g.name}</p>
+        <p className="truncate text-xs text-gray-500 capitalize">
+          {g.institution_type.replace(/_/g, " ")}{g.short_name ? ` · ${g.short_name}` : ""}
+        </p>
+      </div>
+      <div className="flex items-center gap-2 shrink-0">
+        <FormerBadge isActive={g.is_active} />
+        {isInGraph && <InGraphBadge />}
+        <ConnectionBadge count={g.connection_count} />
+      </div>
+    </div>
+  );
+}
+
+function MeetingCardContent({ m, badge }: { m: SearchMeeting; badge?: boolean }) {
+  const dateLabel = m.scheduled_at ? new Date(m.scheduled_at).toLocaleDateString() : null;
+  return (
+    <div>
+      <div className="flex items-center gap-2 flex-wrap">
+        {badge && <TypeBadge label="Meeting" color="gray" />}
+        <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-600 capitalize">
+          {m.meeting_type.replace(/_/g, " ")}
+        </span>
+        {dateLabel && <span className="text-[11px] text-gray-400">{dateLabel}</span>}
+      </div>
+      <p className="mt-1.5 text-sm font-semibold text-gray-900 line-clamp-2 leading-snug">
+        {m.title}
+      </p>
+      {m.governing_body_name && (
+        <p className="mt-0.5 text-xs text-gray-500 truncate">{m.governing_body_name}</p>
+      )}
     </div>
   );
 }

@@ -1,5 +1,5 @@
 /**
- * GET /api/search/entity?id=<uuid>&type=official|proposal|agency|financial
+ * GET /api/search/entity?id=<uuid>&type=official|proposal|agency|financial|jurisdiction|institution|meeting
  *
  * Lightweight entity detail fetch for the SearchDetailPanel.
  */
@@ -173,6 +173,80 @@ export async function GET(req: NextRequest) {
             ? formatDollars(data.total_donated_cents)
             : null,
           Industry: tagRes?.data?.display_label ?? tagRes?.data?.tag ?? null,
+        },
+      };
+      return NextResponse.json(detail, { headers: CACHE_HEADERS });
+    }
+
+    if (type === "jurisdiction") {
+      const { data } = await db2
+        .from("jurisdictions")
+        .select("id, name, short_name, type, population")
+        .eq("id", id)
+        .single();
+      if (!data) return NextResponse.json(null, { status: 404 });
+
+      const connection_count = await getConnectionCount(db2, id);
+
+      const detail: EntityDetail = {
+        id, type,
+        name: data.name,
+        subtitle: data.short_name ? `${data.short_name} · ${data.type}` : String(data.type),
+        connection_count,
+        profile_url: `/jurisdictions/${id}`,
+        meta: {
+          Type: data.type,
+          Population: data.population != null ? Number(data.population).toLocaleString() : null,
+        },
+      };
+      return NextResponse.json(detail, { headers: CACHE_HEADERS });
+    }
+
+    if (type === "institution") {
+      const { data } = await db2
+        .from("governing_bodies")
+        .select("id, name, short_name, type, is_active")
+        .eq("id", id)
+        .single();
+      if (!data) return NextResponse.json(null, { status: 404 });
+
+      const connection_count = await getConnectionCount(db2, id);
+
+      const detail: EntityDetail = {
+        id, type,
+        name: data.name,
+        subtitle: data.short_name ? `${data.short_name} · ${String(data.type).replace(/_/g, " ")}` : String(data.type).replace(/_/g, " "),
+        connection_count,
+        profile_url: `/institutions/${id}`,
+        meta: {
+          Type: String(data.type).replace(/_/g, " "),
+          Status: data.is_active ? "Active" : "Former",
+        },
+      };
+      return NextResponse.json(detail, { headers: CACHE_HEADERS });
+    }
+
+    if (type === "meeting") {
+      const { data } = await db2
+        .from("meetings")
+        .select("id, title, scheduled_at, meeting_type, status, location, governing_bodies(name, short_name)")
+        .eq("id", id)
+        .single();
+      if (!data) return NextResponse.json(null, { status: 404 });
+
+      const gb = Array.isArray(data.governing_bodies) ? data.governing_bodies[0] : data.governing_bodies;
+      const detail: EntityDetail = {
+        id, type,
+        name: data.title ?? "Untitled meeting",
+        subtitle: [gb?.name, data.meeting_type?.replace(/_/g, " ")].filter(Boolean).join(" · "),
+        connection_count: 0,
+        profile_url: `/meetings/${id}`,
+        meta: {
+          "Body": gb?.name ?? null,
+          "Date": data.scheduled_at ? new Date(data.scheduled_at).toLocaleDateString() : null,
+          "Type": data.meeting_type?.replace(/_/g, " ") ?? null,
+          Status: data.status?.replace(/_/g, " ") ?? null,
+          Location: data.location ?? null,
         },
       };
       return NextResponse.json(detail, { headers: CACHE_HEADERS });

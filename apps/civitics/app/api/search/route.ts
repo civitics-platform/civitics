@@ -3,7 +3,7 @@
  *
  * Params:
  *   q               — text query (optional; omit for browse mode)
- *   type            — all|officials|proposals|agencies|financial|initiatives
+ *   type            — all|officials|proposals|jurisdictions|institutions|agencies|financial|initiatives|meetings
  *   cursor          — opaque pagination cursor (base64 JSON {offset})
  *   limit           — override per-page size (max 50, default PAGE_SIZE)
  *   sort            — relevance|name_asc|name_desc|connections_desc|amount_desc
@@ -82,20 +82,60 @@ export type SearchInitiative = {
   connection_count: number;
 };
 
+export type SearchJurisdiction = {
+  id: string;
+  name: string;
+  short_name: string | null;
+  jurisdiction_type: string;
+  relevance_score: number;
+  connection_count: number;
+};
+
+// Institutions search is governing-bodies-only (the agencies section covers the
+// agency half of the public.institutions view, so querying the view here would
+// double-list agencies in the "all" tab). Deep-links to /institutions/[id],
+// which resolves a governing_body id via the institutions view (FIX-442).
+export type SearchInstitution = {
+  id: string;
+  name: string;
+  short_name: string | null;
+  institution_type: string;
+  is_active: boolean;
+  relevance_score: number;
+  connection_count: number;
+};
+
+export type SearchMeeting = {
+  id: string;
+  title: string;
+  scheduled_at: string | null;
+  meeting_type: string;
+  status: string;
+  governing_body_name: string | null;
+  relevance_score: number;
+  connection_count: number;
+};
+
 export type SearchResults = {
   query: string;
   officials: SearchOfficial[];
   proposals: SearchProposal[];
+  jurisdictions: SearchJurisdiction[];
+  institutions: SearchInstitution[];
   agencies: SearchAgency[];
   financial_entities: SearchFinancialEntity[];
   initiatives: SearchInitiative[];
+  meetings: SearchMeeting[];
   total: number;
   totals: {
     officials: number;
     proposals: number;
+    jurisdictions: number;
+    institutions: number;
     agencies: number;
     financial_entities: number;
     initiatives: number;
+    meetings: number;
   };
   timing_ms: number;
   has_more: boolean;
@@ -132,6 +172,14 @@ const ROLE_KEYWORDS: Record<string, string> = {
   senator: "Senator", senators: "Senator",
   representative: "Representative", representatives: "Representative",
   congressman: "Representative", congresswoman: "Representative",
+};
+
+// jurisdiction_level → jurisdiction.type[] — shared by officials, jurisdictions,
+// and institutions searchers (FIX-442).
+const LEVEL_TYPE_MAP: Record<string, string[]> = {
+  federal: ["country"],
+  state:   ["state"],
+  local:   ["county", "city", "district", "precinct", "other"],
 };
 
 // ---------------------------------------------------------------------------
@@ -238,7 +286,12 @@ export async function GET(req: NextRequest) {
   const hasAgencyFilters    = !!filterAgencyType;
   const hasFinancialFilters = !!(filterEntityType || filterIndustry || filterMinAmountCents || filterMaxAmountCents);
   const hasInitiativeFilters = !!filterInitiativeStage;
-  const anyTypeFilter = hasOfficialFilters || hasProposalFilters || hasAgencyFilters || hasFinancialFilters || hasInitiativeFilters;
+  // jurisdiction_level scopes officials, jurisdictions, AND institutions in the
+  // "all" tab (FIX-442); meetings have no dedicated filter dimension.
+  const hasJurisdictionFilters = !!filterJurisdictionLevel;
+  const hasInstitutionFilters  = !!filterJurisdictionLevel;
+  const hasMeetingFilters      = false;
+  const anyTypeFilter = hasOfficialFilters || hasProposalFilters || hasAgencyFilters || hasFinancialFilters || hasInitiativeFilters || hasJurisdictionFilters || hasInstitutionFilters;
 
   // Always use cursor pagination; "all" tab now supports infinite scroll
   const isPaginated = true;
@@ -302,12 +355,7 @@ export async function GET(req: NextRequest) {
 
     // jurisdiction_level filter — two-step subquery: jurisdiction.type → governing_body → official
     if (filterJurisdictionLevel) {
-      const levelTypeMap: Record<string, string[]> = {
-        federal: ["country"],
-        state:   ["state"],
-        local:   ["county", "city", "district", "precinct", "other"],
-      };
-      const jTypes = levelTypeMap[filterJurisdictionLevel];
+      const jTypes = LEVEL_TYPE_MAP[filterJurisdictionLevel];
       if (jTypes) {
         const { data: jRows } = await db2.from("jurisdictions").select("id").in("type", jTypes);
         const jIds = (jRows ?? []).map((j: { id: string }) => j.id);
@@ -620,34 +668,180 @@ export async function GET(req: NextRequest) {
     return { results: applySort(results, (r) => r.title), hasMore, total_count: totalCount ?? 0 };
   };
 
+  // ── Jurisdictions ────────────────────────────────────────────────────────────
+  const searchJurisdictions = async (): Promise<{ results: SearchJurisdiction[]; hasMore: boolean; total_count: number }> => {
+    if (typeFilter !== "all" && typeFilter !== "jurisdictions") return { results: [], hasMore: false, total_count: 0 };
+    if (typeFilter === "all" && anyTypeFilter && !hasJurisdictionFilters) return { results: [], hasMore: false, total_count: 0 };
+
+    let qb = db2
+      .from("jurisdictions")
+      .select("id, name, short_name, type, is_active", { count: "exact" });
+
+    if (filterJurisdictionLevel) {
+      const jTypes = LEVEL_TYPE_MAP[filterJurisdictionLevel];
+      if (jTypes) qb = qb.in("type", jTypes);
+    }
+
+    if (q.length >= 2) {
+      qb = qb.or(`name.ilike.%${q}%,short_name.ilike.%${q}%`);
+    }
+
+    qb = qb.order("name", { ascending: true }).range(offset, offset + fetchLimit - 1);
+
+    const { data, count: totalCount } = await qb;
+    const rows = data ?? [];
+    if (rows.length === 0) return { results: [], hasMore: false, total_count: 0 };
+
+    const hasMore = rows.length > pageSize;
+    const resultRows = rows.slice(0, pageSize);
+    const countMap = await getConnectionCounts(resultRows.map((r: { id: string }) => r.id));
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const results = resultRows.map((j: any) => {
+      const exactShort = j.short_name?.toUpperCase() === q.toUpperCase();
+      let score = q.length >= 2 ? baseRelevance(j.name, q) : 50;
+      if (score === 0) score = DESC_SCORE;
+      if (exactShort) score += 20;
+      return {
+        id: j.id, name: j.name, short_name: j.short_name ?? null,
+        jurisdiction_type: j.type,
+        relevance_score: Math.min(score, 100),
+        connection_count: countMap.get(j.id) ?? 0,
+      };
+    });
+    return { results: applySort(results, (r) => r.name), hasMore, total_count: totalCount ?? 0 };
+  };
+
+  // ── Institutions (governing bodies only — agencies covered by searchAgencies) ─
+  const searchInstitutions = async (): Promise<{ results: SearchInstitution[]; hasMore: boolean; total_count: number }> => {
+    if (typeFilter !== "all" && typeFilter !== "institutions") return { results: [], hasMore: false, total_count: 0 };
+    if (typeFilter === "all" && anyTypeFilter && !hasInstitutionFilters) return { results: [], hasMore: false, total_count: 0 };
+
+    let qb = db2
+      .from("governing_bodies")
+      .select("id, name, short_name, type, is_active, jurisdiction_id", { count: "exact" });
+
+    // jurisdiction_level filter — jurisdiction.type → jurisdiction_id → governing_body
+    if (filterJurisdictionLevel) {
+      const jTypes = LEVEL_TYPE_MAP[filterJurisdictionLevel];
+      if (jTypes) {
+        const { data: jRows } = await db2.from("jurisdictions").select("id").in("type", jTypes);
+        const jIds = (jRows ?? []).map((j: { id: string }) => j.id);
+        if (jIds.length === 0) return { results: [], hasMore: false, total_count: 0 };
+        qb = qb.in("jurisdiction_id", jIds);
+      }
+    }
+
+    if (q.length >= 2) {
+      qb = qb.or(`name.ilike.%${q}%,short_name.ilike.%${q}%`);
+    }
+
+    qb = qb.order("name", { ascending: true }).range(offset, offset + fetchLimit - 1);
+
+    const { data, count: totalCount } = await qb;
+    const rows = data ?? [];
+    if (rows.length === 0) return { results: [], hasMore: false, total_count: 0 };
+
+    const hasMore = rows.length > pageSize;
+    const resultRows = rows.slice(0, pageSize);
+    const countMap = await getConnectionCounts(resultRows.map((r: { id: string }) => r.id));
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const results = resultRows.map((g: any) => {
+      const exactShort = g.short_name?.toUpperCase() === q.toUpperCase();
+      let score = q.length >= 2 ? baseRelevance(g.name, q) : 50;
+      if (score === 0) score = DESC_SCORE;
+      if (exactShort) score += 20;
+      if (g.is_active) score += 5;
+      return {
+        id: g.id, name: g.name, short_name: g.short_name ?? null,
+        institution_type: g.type, is_active: g.is_active,
+        relevance_score: Math.min(score, 100),
+        connection_count: countMap.get(g.id) ?? 0,
+      };
+    });
+    return { results: applySort(results, (r) => r.name), hasMore, total_count: totalCount ?? 0 };
+  };
+
+  // ── Meetings (search-page only — kept out of the nav dropdown) ────────────────
+  const searchMeetings = async (): Promise<{ results: SearchMeeting[]; hasMore: boolean; total_count: number }> => {
+    if (typeFilter !== "all" && typeFilter !== "meetings") return { results: [], hasMore: false, total_count: 0 };
+    if (typeFilter === "all" && anyTypeFilter && !hasMeetingFilters) return { results: [], hasMore: false, total_count: 0 };
+
+    let qb = db2
+      .from("meetings")
+      .select("id, title, scheduled_at, meeting_type, status, governing_body_id, governing_bodies(name, short_name)", { count: "exact" })
+      .not("title", "is", null); // NULL-titled meetings have no searchable label
+
+    if (q.length >= 2) {
+      qb = qb.ilike("title", `%${q}%`);
+    }
+
+    // Rank by most-recent meeting; relevance ties fall back to date desc.
+    qb = qb.order("scheduled_at", { ascending: false, nullsFirst: false })
+           .range(offset, offset + fetchLimit - 1);
+
+    const { data, count: totalCount } = await qb;
+    const rows = data ?? [];
+    if (rows.length === 0) return { results: [], hasMore: false, total_count: 0 };
+
+    const hasMore = rows.length > pageSize;
+    const resultRows = rows.slice(0, pageSize);
+
+    // meetings are not tracked in entity_connections → connection_count is 0.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const results = resultRows.map((m: any) => {
+      const gb = Array.isArray(m.governing_bodies) ? m.governing_bodies[0] : m.governing_bodies;
+      let score = q.length >= 2 ? baseRelevance(m.title ?? "", q) : 50;
+      if (score === 0) score = DESC_SCORE;
+      return {
+        id: m.id, title: m.title, scheduled_at: m.scheduled_at ?? null,
+        meeting_type: m.meeting_type, status: m.status,
+        governing_body_name: gb?.name ?? gb?.short_name ?? null,
+        relevance_score: Math.min(score, 100),
+        connection_count: 0,
+      };
+    });
+    return { results, hasMore, total_count: totalCount ?? 0 };
+  };
+
   // ── Run in parallel ────────────────────────────────────────────────────────
   const [
-    { results: officials,          hasMore: officialsMore,  total_count: officialsTotal },
-    { results: proposals,          hasMore: proposalsMore,  total_count: proposalsTotal },
-    { results: agencies,           hasMore: agenciesMore,   total_count: agenciesTotal },
-    { results: financial_entities, hasMore: financialMore,  total_count: financialTotal },
-    { results: initiatives,        hasMore: initiativesMore, total_count: initiativesTotal },
+    { results: officials,          hasMore: officialsMore,    total_count: officialsTotal },
+    { results: proposals,          hasMore: proposalsMore,    total_count: proposalsTotal },
+    { results: jurisdictions,      hasMore: jurisdictionsMore, total_count: jurisdictionsTotal },
+    { results: institutions,       hasMore: institutionsMore, total_count: institutionsTotal },
+    { results: agencies,           hasMore: agenciesMore,     total_count: agenciesTotal },
+    { results: financial_entities, hasMore: financialMore,    total_count: financialTotal },
+    { results: initiatives,        hasMore: initiativesMore,  total_count: initiativesTotal },
+    { results: meetings,           hasMore: meetingsMore,     total_count: meetingsTotal },
   ] = await Promise.all([
     searchOfficials(),
     searchProposals(),
+    searchJurisdictions(),
+    searchInstitutions(),
     searchAgencies(),
     searchFinancialEntities(),
     searchInitiatives(),
+    searchMeetings(),
   ]);
 
-  const has_more = officialsMore || proposalsMore || agenciesMore || financialMore || initiativesMore;
+  const has_more = officialsMore || proposalsMore || jurisdictionsMore || institutionsMore || agenciesMore || financialMore || initiativesMore || meetingsMore;
   const next_cursor = has_more ? encodeCursor(offset + pageSize) : null;
-  const total = officials.length + proposals.length + agencies.length + financial_entities.length + initiatives.length;
+  const total = officials.length + proposals.length + jurisdictions.length + institutions.length + agencies.length + financial_entities.length + initiatives.length + meetings.length;
 
   return NextResponse.json({
-    query: q, officials, proposals, agencies, financial_entities, initiatives,
+    query: q, officials, proposals, jurisdictions, institutions, agencies, financial_entities, initiatives, meetings,
     total,
     totals: {
       officials: officialsTotal,
       proposals: proposalsTotal,
+      jurisdictions: jurisdictionsTotal,
+      institutions: institutionsTotal,
       agencies: agenciesTotal,
       financial_entities: financialTotal,
       initiatives: initiativesTotal,
+      meetings: meetingsTotal,
     },
     timing_ms: Date.now() - t0, has_more, next_cursor,
   } satisfies SearchResults, {

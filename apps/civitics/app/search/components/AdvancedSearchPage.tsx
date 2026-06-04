@@ -35,12 +35,15 @@ export interface AdvancedSearchPageProps {
 // ---------------------------------------------------------------------------
 
 const TYPE_TABS = [
-  { key: "all",         label: "All" },
-  { key: "officials",   label: "Officials" },
-  { key: "proposals",   label: "Legislation" },
-  { key: "agencies",    label: "Agencies" },
-  { key: "financial",   label: "Money" },
-  { key: "initiatives", label: "Initiatives" },
+  { key: "all",           label: "All" },
+  { key: "officials",     label: "Officials" },
+  { key: "proposals",     label: "Legislation" },
+  { key: "jurisdictions", label: "Jurisdictions" },
+  { key: "institutions",  label: "Institutions" },
+  { key: "agencies",      label: "Agencies" },
+  { key: "financial",     label: "Money" },
+  { key: "initiatives",   label: "Initiatives" },
+  { key: "meetings",      label: "Meetings" },
 ] as const;
 
 function filtersToParams(q: string, filters: SearchFilters): URLSearchParams {
@@ -69,11 +72,14 @@ function filtersToParams(q: string, filters: SearchFilters): URLSearchParams {
 function flattenResults(pages: SearchResults[]): AnySearchResult[] {
   const out: AnySearchResult[] = [];
   for (const page of pages) {
-    for (const o of page.officials)          out.push({ kind: "official",   data: o });
-    for (const p of page.proposals)          out.push({ kind: "proposal",   data: p });
-    for (const a of page.agencies)           out.push({ kind: "agency",     data: a });
-    for (const f of page.financial_entities) out.push({ kind: "financial",  data: f });
-    for (const i of (page.initiatives ?? [])) out.push({ kind: "initiative", data: i });
+    for (const o of page.officials)              out.push({ kind: "official",     data: o });
+    for (const p of page.proposals)              out.push({ kind: "proposal",     data: p });
+    for (const j of (page.jurisdictions ?? []))  out.push({ kind: "jurisdiction", data: j });
+    for (const g of (page.institutions ?? []))   out.push({ kind: "institution",  data: g });
+    for (const a of page.agencies)               out.push({ kind: "agency",       data: a });
+    for (const f of page.financial_entities)     out.push({ kind: "financial",    data: f });
+    for (const i of (page.initiatives ?? []))    out.push({ kind: "initiative",   data: i });
+    for (const m of (page.meetings ?? []))       out.push({ kind: "meeting",      data: m });
   }
   return out;
 }
@@ -81,9 +87,12 @@ function flattenResults(pages: SearchResults[]): AnySearchResult[] {
 function getName(r: AnySearchResult): string {
   if (r.kind === "official")   return r.data.full_name;
   if (r.kind === "proposal")   return r.data.title;
-  if (r.kind === "agency")     return r.data.name;
-  if (r.kind === "financial")  return r.data.name;
-  if (r.kind === "initiative") return (r.data as { title: string }).title;
+  if (r.kind === "agency")       return r.data.name;
+  if (r.kind === "financial")    return r.data.name;
+  if (r.kind === "initiative")   return (r.data as { title: string }).title;
+  if (r.kind === "jurisdiction") return r.data.name;
+  if (r.kind === "institution")  return r.data.name;
+  if (r.kind === "meeting")      return r.data.title;
   return "";
 }
 
@@ -225,7 +234,7 @@ export function AdvancedSearchPage({
   const selectedResults = allResults.filter((r) => selectedIds.has(resultId(r)));
   const totals = pages[0]?.totals;
   const grandTotal = totals
-    ? (totals.officials + totals.proposals + totals.agencies + totals.financial_entities + totals.initiatives)
+    ? (totals.officials + totals.proposals + totals.jurisdictions + totals.institutions + totals.agencies + totals.financial_entities + totals.initiatives + totals.meetings)
     : (pages[0]?.total ?? 0);
 
   // ── Graph seed (single entity from detail panel) ───────────────────────────
@@ -307,11 +316,14 @@ export function AdvancedSearchPage({
           {TYPE_TABS.map((tab) => {
             const active = filters.type === tab.key;
             const count =
-              tab.key === "all"         ? grandTotal
-              : tab.key === "officials" ? (totals?.officials ?? 0)
-              : tab.key === "proposals" ? (totals?.proposals ?? 0)
-              : tab.key === "agencies"  ? (totals?.agencies ?? 0)
-              : tab.key === "financial" ? (totals?.financial_entities ?? 0)
+              tab.key === "all"           ? grandTotal
+              : tab.key === "officials"   ? (totals?.officials ?? 0)
+              : tab.key === "proposals"   ? (totals?.proposals ?? 0)
+              : tab.key === "jurisdictions" ? (totals?.jurisdictions ?? 0)
+              : tab.key === "institutions"  ? (totals?.institutions ?? 0)
+              : tab.key === "agencies"    ? (totals?.agencies ?? 0)
+              : tab.key === "financial"   ? (totals?.financial_entities ?? 0)
+              : tab.key === "meetings"    ? (totals?.meetings ?? 0)
               : (totals?.initiatives ?? 0);
             return (
               <button

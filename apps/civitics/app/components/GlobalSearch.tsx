@@ -19,7 +19,10 @@ import type {
   SearchProposal,
   SearchAgency,
   SearchFinancialEntity,
+  SearchJurisdiction,
+  SearchInstitution,
 } from "../api/search/route";
+import { FormerBadge } from "./FormerBadge";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -57,24 +60,33 @@ function formatDollarsShort(cents: number | null): string {
 // ---------------------------------------------------------------------------
 
 type FlatResult =
-  | { kind: "official";  data: SearchOfficial }
-  | { kind: "proposal";  data: SearchProposal }
-  | { kind: "agency";    data: SearchAgency }
-  | { kind: "financial"; data: SearchFinancialEntity };
+  | { kind: "official";     data: SearchOfficial }
+  | { kind: "proposal";     data: SearchProposal }
+  | { kind: "jurisdiction"; data: SearchJurisdiction }
+  | { kind: "institution";  data: SearchInstitution }
+  | { kind: "agency";       data: SearchAgency }
+  | { kind: "financial";    data: SearchFinancialEntity };
 
+// Section order must match the rendered dropdown order below (keyboard-nav
+// offsets are derived from the same slices). Meetings are deliberately excluded
+// from the dropdown to preserve space — they appear on /search only (FIX-442).
 function flattenResults(results: SearchResults): FlatResult[] {
   const flat: FlatResult[] = [];
-  for (const o of results.officials.slice(0, 3))          flat.push({ kind: "official",  data: o });
-  for (const p of results.proposals.slice(0, 3))          flat.push({ kind: "proposal",  data: p });
-  for (const a of results.agencies.slice(0, 2))           flat.push({ kind: "agency",    data: a });
-  for (const f of results.financial_entities.slice(0, 2)) flat.push({ kind: "financial", data: f });
+  for (const o of results.officials.slice(0, 3))                  flat.push({ kind: "official",     data: o });
+  for (const p of results.proposals.slice(0, 3))                  flat.push({ kind: "proposal",     data: p });
+  for (const j of (results.jurisdictions ?? []).slice(0, 2))      flat.push({ kind: "jurisdiction", data: j });
+  for (const g of (results.institutions ?? []).slice(0, 2))       flat.push({ kind: "institution",  data: g });
+  for (const a of results.agencies.slice(0, 2))                   flat.push({ kind: "agency",       data: a });
+  for (const f of results.financial_entities.slice(0, 2))         flat.push({ kind: "financial",    data: f });
   return flat;
 }
 
 function hrefFor(r: FlatResult): string {
-  if (r.kind === "official")  return `/officials/${r.data.id}`;
-  if (r.kind === "proposal")  return `/proposals/${r.data.id}`;
-  if (r.kind === "financial") return `/donors/${r.data.id}`;
+  if (r.kind === "official")     return `/officials/${r.data.id}`;
+  if (r.kind === "proposal")     return `/proposals/${r.data.id}`;
+  if (r.kind === "jurisdiction") return `/jurisdictions/${r.data.id}`;
+  if (r.kind === "institution")  return `/institutions/${r.data.id}`;
+  if (r.kind === "financial")    return `/donors/${r.data.id}`;
   return `/agencies/${r.data.id}`;
 }
 
@@ -134,6 +146,46 @@ function AgencyResult({ a, selected }: { a: SearchAgency; selected: boolean }) {
         <p className="truncate text-sm font-medium text-gray-900">{a.name}</p>
         {a.acronym && <p className="text-xs text-gray-400">{a.acronym}</p>}
       </div>
+    </div>
+  );
+}
+
+function JurisdictionResult({ j, selected }: { j: SearchJurisdiction; selected: boolean }) {
+  return (
+    <div className={`flex items-center gap-3 px-4 py-2.5 transition-colors ${selected ? "bg-indigo-50" : "hover:bg-gray-50"}`}>
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded border border-gray-200 bg-gray-50 text-gray-400">
+        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+            d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+        </svg>
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium text-gray-900">{j.name}</p>
+        <p className="truncate text-xs text-gray-400 capitalize">
+          {j.jurisdiction_type}{j.short_name ? ` · ${j.short_name}` : ""}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function InstitutionResult({ g, selected }: { g: SearchInstitution; selected: boolean }) {
+  return (
+    <div className={`flex items-center gap-3 px-4 py-2.5 transition-colors ${selected ? "bg-indigo-50" : "hover:bg-gray-50"}`}>
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded border border-gray-200 bg-gray-50 text-gray-400">
+        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+            d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+        </svg>
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium text-gray-900">{g.name}</p>
+        <p className="truncate text-xs text-gray-400 capitalize">
+          {g.institution_type.replace(/_/g, " ")}{g.short_name ? ` · ${g.short_name}` : ""}
+        </p>
+      </div>
+      <FormerBadge isActive={g.is_active} />
     </div>
   );
 }
@@ -271,10 +323,13 @@ export function GlobalSearch({
     ? "w-full rounded-lg border border-gray-300 bg-white px-5 py-3.5 text-base text-gray-900 placeholder-gray-400 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
     : "w-full rounded-full border border-gray-300 bg-white pl-8 pr-3 py-1.5 text-sm text-gray-500 placeholder-gray-400 shadow-sm hover:border-gray-400 hover:shadow focus:border-indigo-400 focus:text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-400/20 cursor-text transition-shadow";
 
-  // Offset indexes for keyboard nav per section
-  const offProposal  = results?.officials.slice(0, 3).length ?? 0;
-  const offAgency    = offProposal + (results?.proposals.slice(0, 3).length ?? 0);
-  const offFinancial = offAgency   + (results?.agencies.slice(0, 2).length ?? 0);
+  // Offset indexes for keyboard nav per section — must track flattenResults order:
+  // officials(3) → proposals(3) → jurisdictions(2) → institutions(2) → agencies(2) → financial(2)
+  const offProposal     = results?.officials.slice(0, 3).length ?? 0;
+  const offJurisdiction = offProposal     + (results?.proposals.slice(0, 3).length ?? 0);
+  const offInstitution  = offJurisdiction + ((results?.jurisdictions ?? []).slice(0, 2).length);
+  const offAgency       = offInstitution  + ((results?.institutions ?? []).slice(0, 2).length);
+  const offFinancial    = offAgency       + (results?.agencies.slice(0, 2).length ?? 0);
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
@@ -361,9 +416,37 @@ export function GlobalSearch({
             </div>
           )}
 
+          {/* Jurisdictions */}
+          {(results.jurisdictions ?? []).length > 0 && (
+            <div className={(results.officials.length > 0 || results.proposals.length > 0) ? "border-t border-gray-100" : ""}>
+              <p className="border-b border-gray-100 bg-gray-50 px-4 py-1.5 text-[10px] font-semibold uppercase tracking-widest text-gray-400">
+                Jurisdictions
+              </p>
+              {(results.jurisdictions ?? []).slice(0, 2).map((j, i) => (
+                <a key={j.id} role="option" aria-selected={selectedIdx === offJurisdiction + i} href={`/jurisdictions/${j.id}`} onClick={() => setOpen(false)}>
+                  <JurisdictionResult j={j} selected={selectedIdx === offJurisdiction + i} />
+                </a>
+              ))}
+            </div>
+          )}
+
+          {/* Institutions */}
+          {(results.institutions ?? []).length > 0 && (
+            <div className={(results.officials.length > 0 || results.proposals.length > 0 || (results.jurisdictions ?? []).length > 0) ? "border-t border-gray-100" : ""}>
+              <p className="border-b border-gray-100 bg-gray-50 px-4 py-1.5 text-[10px] font-semibold uppercase tracking-widest text-gray-400">
+                Institutions
+              </p>
+              {(results.institutions ?? []).slice(0, 2).map((g, i) => (
+                <a key={g.id} role="option" aria-selected={selectedIdx === offInstitution + i} href={`/institutions/${g.id}`} onClick={() => setOpen(false)}>
+                  <InstitutionResult g={g} selected={selectedIdx === offInstitution + i} />
+                </a>
+              ))}
+            </div>
+          )}
+
           {/* Agencies */}
           {results.agencies.length > 0 && (
-            <div className={(results.officials.length > 0 || results.proposals.length > 0) ? "border-t border-gray-100" : ""}>
+            <div className={(results.officials.length > 0 || results.proposals.length > 0 || (results.jurisdictions ?? []).length > 0 || (results.institutions ?? []).length > 0) ? "border-t border-gray-100" : ""}>
               <p className="border-b border-gray-100 bg-gray-50 px-4 py-1.5 text-[10px] font-semibold uppercase tracking-widest text-gray-400">
                 Agencies
               </p>
