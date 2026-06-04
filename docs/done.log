@@ -604,3 +604,4 @@
 2026-06-02 | FIX-463 | 4b85f800 | local+prod | fix(officials): promote_candidate_to_elected unique-collision + orphan handling
 2026-06-02 | FIX-467 | a2d56583 | local+prod | feat(agency-enrichment): idempotent regulations_gov xsr seed for late-added agencies
 2026-06-03 | FIX-442 | 79da1fc3 | local+prod | feat(search): return jurisdictions, institutions, meetings as result types
+2026-06-03 | FIX-469 | a569c469 | local-only | ci(fixes): split fixes-integrity into drift (PR) vs trunk-ancestry (push) guards
