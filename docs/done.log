@@ -606,3 +606,10 @@
 2026-06-03 | FIX-442 | 79da1fc3 | local+prod | feat(search): return jurisdictions, institutions, meetings as result types
 2026-06-03 | FIX-469 | a569c469 | local-only | ci(fixes): split fixes-integrity into drift (PR) vs trunk-ancestry (push) guards
 2026-06-03 | FIX-470 | ed66fbca | local+prod | fix(institutions): tier-scope gb member rosters + membership pollution audit
+2026-06-03 | FIX-416 | d88f458d | closes-as-recognized | docs(fixes): file FIX-472..478 bullets; close FIX-416
+2026-06-03 | FIX-472 | d2e524e8 | local-only | feat(graph): guard un-graphable kinds in add-to-graph
+2026-06-03 | FIX-473 | aae06a39 | local-only | feat(attribution): primary_source on search + graph list endpoints
+2026-06-03 | FIX-474 | 69d91d15 | local-only | feat(officials): link official to its governing body
+2026-06-03 | FIX-475 | 7c0fb0d3 | local+prod | feat(db): backfill governing_bodies slugs (idempotent function)
+2026-06-03 | FIX-476 | d93f4dcc | local+prod | fix(perf): triage .limit(>1000) sites against PostgREST max_rows ceiling
+2026-06-03 | FIX-476 | 69d91d15 | local-only | feat(officials): link official to its governing body
