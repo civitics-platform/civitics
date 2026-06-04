@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { createServerClient, agencyFullName } from "@civitics/db";
 import { withDbTimeout } from "../src/lib/supabase-check";
+import { fetchAllRows } from "../src/lib/paginate";
 import nextDynamic from "next/dynamic";
 const DistrictMap = nextDynamic(
   () => import("./components/DistrictMap").then((m) => m.DistrictMap),
@@ -330,11 +331,21 @@ export default async function HomePage({
       .order("name")
       .limit(4),
     // Top initiatives by upvote count — fetch all upvote rows, count client-side,
-    // then fetch the top-N initiative rows. Small table, fine for now.
-    supabase
-      .from("civic_initiative_upvotes")
-      .select("initiative_id")
-      .limit(5000),
+    // then fetch the top-N initiative rows. FIX-476 — `.limit(5000)` was silently
+    // capped to 1000 by PostgREST max_rows, so once upvotes exceed 1000 the
+    // ranking would be computed from a partial slice. Page the full set with a
+    // stable order key (the table is small; this is one page today).
+    (async () => {
+      const { rows } = await fetchAllRows<{ initiative_id: string }>((f, t) =>
+        supabase
+          .from("civic_initiative_upvotes")
+          .select("initiative_id")
+          .order("id", { ascending: true })
+          .range(f, t),
+        { maxRows: 200000 },
+      );
+      return { data: rows };
+    })(),
   ]));
 
   // Defensive fallback for donor_records_count only — if the MV row is missing

@@ -138,15 +138,25 @@ async function classifyProposal(proposal: {
 async function runProposalAiTagger(db: any, maxCostCents: number, onlyNew: boolean): Promise<number> {
   console.log("\n  [AI 1/2] Classifying proposals...");
 
-  // Fetch proposals without existing AI topic tags
-  let proposalQuery = db
-    .from("proposals")
-    .select("id, title, summary_plain, metadata");
-
-  // Fetch all proposals; filter in-memory to avoid huge .in() URL params
-  const { data: allProposals, error } = await proposalQuery.limit(2000);
-  if (error) { console.error("    Error fetching proposals:", error.message); return 0; }
-  if (!allProposals || allProposals.length === 0) { console.log("    No proposals to classify."); return 0; }
+  // Fetch all proposals; filter in-memory to avoid huge .in() URL params.
+  // FIX-476 — the prior `.limit(2000)` was silently capped at PostgREST
+  // max_rows (1000), so proposals beyond the first 1000 were never classified.
+  // Page the full set with a stable unique order key.
+  const PROPOSAL_PAGE = 1000;
+  type ProposalRow = { id: string; title: string | null; summary_plain: string | null; metadata: Record<string, unknown> | null };
+  const allProposals: ProposalRow[] = [];
+  for (let from = 0; ; from += PROPOSAL_PAGE) {
+    const { data, error } = await db
+      .from("proposals")
+      .select("id, title, summary_plain, metadata")
+      .order("id", { ascending: true })
+      .range(from, from + PROPOSAL_PAGE - 1);
+    if (error) { console.error("    Error fetching proposals:", error.message); return 0; }
+    const batch = (data ?? []) as ProposalRow[];
+    allProposals.push(...batch);
+    if (batch.length < PROPOSAL_PAGE) break;
+  }
+  if (allProposals.length === 0) { console.log("    No proposals to classify."); return 0; }
 
   let proposals = allProposals;
 

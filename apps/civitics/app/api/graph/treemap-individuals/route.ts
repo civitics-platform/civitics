@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { createAdminClient } from "@civitics/db";
 import { supabaseUnavailable, unavailableResponse } from "@/lib/supabase-check";
+import { fetchAllRows } from "@/lib/paginate";
 
 export const dynamic = "force-dynamic";
 
@@ -50,27 +51,27 @@ export async function GET(req: NextRequest) {
   const entityIdRaw = searchParams.get("entityId");
   const entityId = entityIdRaw && UUID_RE.test(entityIdRaw) ? entityIdRaw : null;
 
-  // Step 1: pull donations to either the focused official or globally
-  // (capped to top 5000 by amount when global to keep the response bounded).
-  let donationsQuery = supabase
-    .from("financial_relationships")
-    .select("from_id, amount_cents")
-    .eq("relationship_type", "donation")
-    .eq("from_type", "financial_entity")
-    .eq("to_type", "official")
-    .gt("amount_cents", 0)
-    .order("amount_cents", { ascending: false });
-  if (entityId) {
-    donationsQuery = donationsQuery.eq("to_id", entityId);
-  } else {
-    donationsQuery = donationsQuery.limit(5000);
-  }
-  const { data: donations, error: dErr } = await donationsQuery;
+  // Step 1: pull donations to either the focused official or globally, then sum
+  // per individual donor below. FIX-476 — both paths were silently capped at
+  // PostgREST max_rows (1000): the focused path had NO `.limit()` (still capped)
+  // and the global path's `.limit(5000)` never raised the ceiling, so the
+  // per-donor sums were undercounts. Page the full set with a stable order key;
+  // keep a safety ceiling on the global (unfocused) path to bound the response.
+  const { rows: donationRows, error: dErr } = await fetchAllRows<DonationLite>((f, t) => {
+    let q = supabase
+      .from("financial_relationships")
+      .select("from_id, amount_cents")
+      .eq("relationship_type", "donation")
+      .eq("from_type", "financial_entity")
+      .eq("to_type", "official")
+      .gt("amount_cents", 0);
+    if (entityId) q = q.eq("to_id", entityId);
+    return q.order("id", { ascending: true }).range(f, t);
+  }, { maxRows: entityId ? 100000 : 20000 });
   if (dErr) {
     console.error("[treemap-individuals] donations fetch:", dErr.message);
     return NextResponse.json({ error: dErr.message }, { status: 500 });
   }
-  const donationRows = (donations ?? []) as DonationLite[];
   if (donationRows.length === 0) return NextResponse.json({ name: "Individual donors", children: [] } as ResponseShape);
 
   // Step 2: filter to individual donors only.

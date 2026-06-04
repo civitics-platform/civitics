@@ -363,31 +363,37 @@ export async function GET(request: Request) {
         return Response.json({ nodes: [], edges: [], count: 0 });
       }
 
-      const [fromRes, toRes] = await Promise.all([
-        supabase
-          .from("entity_connections")
-          .select("from_id")
-          .eq("from_type", "official")
-          .limit(3000),
-        supabase
-          .from("entity_connections")
-          .select("to_id")
-          .eq("to_type", "official")
-          .limit(3000),
-      ]);
-
-      const officialCounts = new Map<string, number>();
-      for (const r of fromRes.data ?? []) {
-        officialCounts.set(r.from_id, (officialCounts.get(r.from_id) ?? 0) + 1);
+      // FIX-476 — true top-10 by degree via a GROUP BY RPC. The prior approach
+      // (two `.limit(3000)` selects, no ORDER BY) was silently capped to 1000 by
+      // PostgREST max_rows, so the "top 10" came from an arbitrary slice of the
+      // ~143k-row table. RPCs aren't row-capped. Fall back to the old capped
+      // sample if the RPC is unavailable (e.g. prod schema-cache cold-start).
+      let top10Ids: string[] = [];
+      // Cast: the freshly-added RPC isn't in the generated Database types yet.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const topRes = await (supabase as any).rpc("get_top_connected_officials", { p_limit: 10 });
+      if (!topRes.error && Array.isArray(topRes.data) && topRes.data.length > 0) {
+        top10Ids = (topRes.data as { entity_id: string }[]).map((r) => r.entity_id);
+      } else {
+        if (topRes.error) {
+          console.warn("[graph/connections] get_top_connected_officials unavailable, falling back to capped sample:", topRes.error.message);
+        }
+        const [fromRes, toRes] = await Promise.all([
+          supabase.from("entity_connections").select("from_id").eq("from_type", "official").limit(1000),
+          supabase.from("entity_connections").select("to_id").eq("to_type", "official").limit(1000),
+        ]);
+        const officialCounts = new Map<string, number>();
+        for (const r of fromRes.data ?? []) {
+          officialCounts.set(r.from_id, (officialCounts.get(r.from_id) ?? 0) + 1);
+        }
+        for (const r of toRes.data ?? []) {
+          officialCounts.set(r.to_id, (officialCounts.get(r.to_id) ?? 0) + 1);
+        }
+        top10Ids = [...officialCounts.entries()]
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 10)
+          .map(([id]) => id);
       }
-      for (const r of toRes.data ?? []) {
-        officialCounts.set(r.to_id, (officialCounts.get(r.to_id) ?? 0) + 1);
-      }
-
-      const top10Ids = [...officialCounts.entries()]
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 10)
-        .map(([id]) => id);
 
       if (top10Ids.length === 0) {
         return Response.json({ nodes: [], edges: [], count: totalCount });

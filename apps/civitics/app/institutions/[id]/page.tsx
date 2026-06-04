@@ -1014,7 +1014,10 @@ async function GoverningBodyView({
         .from("officials")
         .select("party")
         .eq("governing_body_id", institution.id)
-    ).limit(2000),
+    ).limit(1000), // FIX-476 — honest ceiling (PostgREST max_rows). FIX-470's
+                   // current-member scoping brought every body's roster <1000,
+                   // so the prior `.limit(2000)` (capped to 1000 anyway) is now
+                   // a no-op; this documents the real ceiling. [[FIX-470]]
     supabase
       .from("proposals")
       .select("id, title, status, type, introduced_at, summary_plain, metadata, bill_details(bill_number)")

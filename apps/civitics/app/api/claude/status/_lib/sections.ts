@@ -7,6 +7,7 @@ import {
   getAnthropicUsage,
   type AnthropicUsageResponse,
 } from "@civitics/db";
+import { fetchAllRows } from "@/lib/paginate";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type Db = ReturnType<typeof createAdminClient> & Record<string, any>;
@@ -258,15 +259,27 @@ export async function getPipelines(db: Db) {
   ).toISOString();
 
   const [recentRunsRes, cronState, queueResults] = await Promise.all([
-    db
-      .from("data_sync_log")
-      .select(
-        "pipeline, status, started_at, completed_at, rows_inserted, rows_updated, rows_failed, estimated_mb, error_message, metadata",
-      )
-      .gt("completed_at", fourteenMonthsAgo)
-      .order("pipeline", { ascending: true })
-      .order("completed_at", { ascending: false, nullsFirst: false })
-      .limit(3000),
+    // FIX-476 — 14 months of run history across ~30 pipelines exceeds PostgREST
+    // max_rows (1000), and the prior `.limit(3000)` never raised that ceiling, so
+    // pipelines late in the (pipeline ASC) ordering lost all run history once the
+    // 1000-row cap was consumed. Page the full set with a unique tiebreaker (id)
+    // appended to the existing sort so `.range()` paging is stable.
+    (async () => {
+      const { rows } = await fetchAllRows<Record<string, unknown>>((f, t) =>
+        db
+          .from("data_sync_log")
+          .select(
+            "pipeline, status, started_at, completed_at, rows_inserted, rows_updated, rows_failed, estimated_mb, error_message, metadata",
+          )
+          .gt("completed_at", fourteenMonthsAgo)
+          .order("pipeline", { ascending: true })
+          .order("completed_at", { ascending: false, nullsFirst: false })
+          .order("id", { ascending: true })
+          .range(f, t),
+        { maxRows: 50000 },
+      );
+      return { data: rows };
+    })(),
     db
       .from("pipeline_state")
       .select("value")

@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient, fetchIndustryTagsByEntityId, fetchEntityIdsByIndustryTag } from "@civitics/db";
 import { supabaseUnavailable, unavailableResponse, withDbTimeout } from "@/lib/supabase-check";
+import { fetchAllRows } from "@/lib/paginate";
 import type { GraphEdgeV2 as GraphEdge, GraphNodeV2 as GraphNode, NodeTypeV2 as NodeType } from "@civitics/graph";
 
 // Local extensions — group route adds metadata and id fields not in base types
@@ -102,17 +103,27 @@ export async function GET(req: NextRequest) {
     for (let i = 0; i < memberIds.length; i += BATCH_SIZE)
       chunks.push(memberIds.slice(i, i + BATCH_SIZE));
 
+    // FIX-476 — these donations are SUMmed per donor below, so a silent cap at
+    // PostgREST max_rows (1000; the prior `.limit(2000)` never raised it) would
+    // undercount donor totals for large groups. Page the full set with a stable
+    // unique order key; keep a safety ceiling against pathological batches.
     const batchResults = await Promise.all(
       chunks.map(batch =>
-        supabase
-          .from("entity_connections")
-          .select("from_id, amount_cents")
-          .eq("connection_type", "donation")
-          .eq("to_type", "official")
-          .in("to_id", batch)
-          .eq("from_type", "financial_entity")
-          .order("amount_cents", { ascending: false })
-          .limit(2000)
+        (async () => {
+          const { rows } = await fetchAllRows<{ from_id: string; amount_cents: number | null }>((f, t) =>
+            supabase
+              .from("entity_connections")
+              .select("from_id, amount_cents")
+              .eq("connection_type", "donation")
+              .eq("to_type", "official")
+              .in("to_id", batch)
+              .eq("from_type", "financial_entity")
+              .order("id", { ascending: true })
+              .range(f, t),
+            { maxRows: 50000 },
+          );
+          return { data: rows };
+        })()
       )
     );
     const allDonationRows: Array<{ from_id: string; amount_cents: number | null }> =
@@ -290,19 +301,26 @@ export async function GET(req: NextRequest) {
       for (let i = 0; i < pacIds.length; i += BATCH)
         pacChunks.push(pacIds.slice(i, i + BATCH));
 
+      // FIX-476 — PAC→official donations, also SUMmed downstream. The prior
+      // `.limit(5000)` was silently capped to 1000 (and had no ORDER BY, so the
+      // kept rows were an arbitrary slice). Page the full set with a stable key.
       const pacResults = await Promise.all(
         pacChunks.map(batch =>
-          supabase
-            .from("entity_connections")
-            .select("to_id, amount_cents")
-            .eq("connection_type", "donation")
-            .eq("from_type", "financial_entity")
-            .in("from_id", batch)
-            .eq("to_type", "official")
-            .limit(5000)
+          fetchAllRows<{ to_id: string; amount_cents: number | null }>((f, t) =>
+            supabase
+              .from("entity_connections")
+              .select("to_id, amount_cents")
+              .eq("connection_type", "donation")
+              .eq("from_type", "financial_entity")
+              .in("from_id", batch)
+              .eq("to_type", "official")
+              .order("id", { ascending: true })
+              .range(f, t),
+            { maxRows: 50000 },
+          )
         )
       );
-      for (const r of pacResults) if (r.data) pacData.push(...r.data);
+      for (const r of pacResults) pacData.push(...r.rows);
     }
 
     const officialMap = new Map<string, {
