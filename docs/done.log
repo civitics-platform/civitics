@@ -613,3 +613,5 @@
 2026-06-03 | FIX-475 | 7c0fb0d3 | local+prod | feat(db): backfill governing_bodies slugs (idempotent function)
 2026-06-03 | FIX-476 | d93f4dcc | local+prod | fix(perf): triage .limit(>1000) sites against PostgREST max_rows ceiling
 2026-06-03 | FIX-476 | 69d91d15 | local-only | feat(officials): link official to its governing body
+2026-06-04 | FIX-477 | c34c37ae | local+prod | feat(attribution): xsr seeding for openstates/congress/courtlistener governing bodies
+2026-06-04 | FIX-479 | 0b52e229 | local-only | fix(scripts): worktree done() auto-forces removal of merged artifact-only trees
