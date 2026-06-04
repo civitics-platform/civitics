@@ -111,6 +111,41 @@ export async function resolveGoverningBodies(
     out.set(mapKey(key.jurisdictionId, key.type), data.id);
   }
 
+  // FIX-477: external_source_refs coverage for governing_bodies, so the
+  // /institutions/[id] SourceBadge + attribution popover have an xsr row to
+  // read. Covers BOTH paths — every gb in `out` (preexisting-row OR
+  // fresh-insert) gets its row refreshed on every run (last_seen_at bump).
+  // external_id is the deterministic synthetic key the FIX-477 backfill script
+  // uses verbatim: gb/<jurisdiction_id>/<gb.type>. (No org id is captured for
+  // these bodies — metadata is {} — and jurisdiction_id is the only stable fact
+  // that is unique per gb; fips/abbr collide on the duplicate-DC-jurisdiction
+  // pollution.) source_url stays null: there's no stable per-chamber openstates
+  // URL and the external_id is a synthetic key — null beats a 404.
+  const gbRefByGbId = new Map<string, GovBodyKey>();
+  for (const key of keys) {
+    const gbId = out.get(mapKey(key.jurisdictionId, key.type));
+    if (gbId) gbRefByGbId.set(gbId, key);
+  }
+  if (gbRefByGbId.size > 0) {
+    const gbRefRecords = [...gbRefByGbId.entries()].map(([gbId, key]) => ({
+      source: "openstates",
+      external_id: `gb/${key.jurisdictionId}/${key.type}`,
+      entity_type: "governing_body",
+      entity_id: gbId,
+      last_seen_at: new Date().toISOString(),
+      metadata: {},
+    }));
+    // Merge-upsert (not ignoreDuplicates) so an existing gb's last_seen_at is
+    // refreshed on every run; entity_id stays the same value either way.
+    const { error } = await db
+      .from("external_source_refs")
+      .upsert(gbRefRecords, { onConflict: "source,external_id" });
+    if (error) {
+      console.error(`    openstates writer: source_refs (governing_body): ${error.message}`);
+    }
+    await refreshPrimarySourceForEntities(db, "governing_body", [...gbRefByGbId.keys()]);
+  }
+
   return out;
 }
 

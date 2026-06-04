@@ -102,6 +102,34 @@ export async function resolveJudicialGovBodies(
     courtMap.set(courtId, inserted.id);
   }
 
+  // FIX-477: external_source_refs coverage for judicial governing_bodies, so
+  // the /institutions/[id] SourceBadge + attribution popover have an xsr row to
+  // read. Covers BOTH paths — every court in courtMap (existing-row OR
+  // fresh-insert) gets its row refreshed on every run (last_seen_at bump).
+  // external_id is the real CourtListener court id (the FIX-477 backfill script
+  // reads the identical value from metadata->>'courtlistener_court_id').
+  // source_url stays null: no confidently-stable per-court public URL — null
+  // beats a 404.
+  if (courtMap.size > 0) {
+    const gbRefRecords = [...courtMap.entries()].map(([courtId, gbId]) => ({
+      source: "courtlistener",
+      external_id: courtId,
+      entity_type: "governing_body",
+      entity_id: gbId,
+      last_seen_at: new Date().toISOString(),
+      metadata: {},
+    }));
+    // Merge-upsert (not ignoreDuplicates) so an existing court's last_seen_at is
+    // refreshed on every run; entity_id stays the same value either way.
+    const { error } = await db
+      .from("external_source_refs")
+      .upsert(gbRefRecords, { onConflict: "source,external_id" });
+    if (error) {
+      console.error(`    courtlistener writer: source_refs (governing_body): ${error.message}`);
+    }
+    await refreshPrimarySourceForEntities(db, "governing_body", [...courtMap.values()]);
+  }
+
   return courtMap;
 }
 

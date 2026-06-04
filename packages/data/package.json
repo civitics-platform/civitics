@@ -71,6 +71,8 @@
     "diag:attribution-coverage": "tsx --env-file=../../.env.local src/scripts/attribution-binding-rate.ts",
     "diag:gb-membership": "tsx --env-file=../../.env.local src/scripts/audit-gb-membership-pollution.ts",
     "diag:gb-membership:prod": "tsx --env-file=../../.env.local.prod src/scripts/audit-gb-membership-pollution.ts",
+    "data:backfill-gb-attribution": "tsx --env-file=../../.env.local src/scripts/backfill-gb-attribution.ts",
+    "data:backfill-gb-attribution:prod": "tsx --env-file=../../.env.local.prod src/scripts/backfill-gb-attribution.ts --allow-prod",
     "data:backfill:individual-canonical": "tsx --env-file=../../.env.local src/scripts/backfill-individual-canonical-name.ts",
     "data:backfill-crs-summaries": "tsx --env-file=../../.env.local src/scripts/backfill-crs-summaries.ts",
     "data:retitle-stubs": "tsx --env-file=../../.env.local src/scripts/retitle-procedural-bill-stubs.ts",
