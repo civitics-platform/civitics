@@ -623,3 +623,6 @@
 2026-06-04 | FIX-482 | e51efa05 | local-only | fix(data): merge duplicate DC jurisdiction + converge resolvers (FIX-482)
 2026-06-04 | FIX-485 | 9bd57874 | local-only | chore(hooks): gate @civitics/data typecheck in pre-push
 2026-06-04 | FIX-486 | f55d95af | local-only | feat(scripts): session:worktree --install + worktree cd allow-rules
+2026-06-04 | FIX-482 | ce006571 | prod-only | chore(data): record prod verification for FIX-482 DC merge
+2026-06-04 | FIX-487 | 44b81c88 | local+prod | fix(data): merge territory jurisdiction dups + STATE_DATA territory types
+2026-06-04 | FIX-488 | 7b47e600 | local+prod | feat(db): fips uniqueness guard for state-level jurisdictions
