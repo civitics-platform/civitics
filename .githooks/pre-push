@@ -19,6 +19,17 @@
 # Bypass (use sparingly, and never to dodge a real off-trunk completion):
 # `git push --no-verify`.
 
+echo "[pre-push] running @civitics/data typecheck ..."
+if ! pnpm --filter @civitics/data typecheck; then
+  echo ""
+  echo "[pre-push] ✗ @civitics/data typecheck failed — push aborted."
+  echo "[pre-push]   The data package has no build step in CI, so a TS error here only"
+  echo "[pre-push]   surfaces when a pipeline runs (FIX-482/FIX-M). Fix the type error,"
+  echo "[pre-push]   or bypass with --no-verify if this is a genuine WIP push."
+  exit 1
+fi
+echo "[pre-push] ✓ @civitics/data typecheck clean."
+
 echo "[pre-push] running pnpm fixes:check:trunk ..."
 if ! pnpm fixes:check:trunk; then
   echo ""
