@@ -620,3 +620,6 @@
 2026-06-04 | FIX-481 | d15e3995 | local+prod | feat(committees): xsr attribution + institution_extensions for congress committees
 2026-06-04 | FIX-483 | 592feda5 | local-only | chore(data): clear ai-tagger tsc debt (TS2345)
 2026-06-04 | FIX-484 | d15e3995 | local-only | feat(committees): xsr attribution + institution_extensions for congress committees
+2026-06-04 | FIX-482 | e51efa05 | local-only | fix(data): merge duplicate DC jurisdiction + converge resolvers (FIX-482)
+2026-06-04 | FIX-485 | 9bd57874 | local-only | chore(hooks): gate @civitics/data typecheck in pre-push
+2026-06-04 | FIX-486 | f55d95af | local-only | feat(scripts): session:worktree --install + worktree cd allow-rules
