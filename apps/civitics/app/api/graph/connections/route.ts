@@ -369,11 +369,9 @@ export async function GET(request: Request) {
       // ~143k-row table. RPCs aren't row-capped. Fall back to the old capped
       // sample if the RPC is unavailable (e.g. prod schema-cache cold-start).
       let top10Ids: string[] = [];
-      // Cast: the freshly-added RPC isn't in the generated Database types yet.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const topRes = await (supabase as any).rpc("get_top_connected_officials", { p_limit: 10 });
+      const topRes = await supabase.rpc("get_top_connected_officials", { p_limit: 10 });
       if (!topRes.error && Array.isArray(topRes.data) && topRes.data.length > 0) {
-        top10Ids = (topRes.data as { entity_id: string }[]).map((r) => r.entity_id);
+        top10Ids = topRes.data.map((r) => r.entity_id);
       } else {
         if (topRes.error) {
           console.warn("[graph/connections] get_top_connected_officials unavailable, falling back to capped sample:", topRes.error.message);

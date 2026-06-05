@@ -14,6 +14,28 @@ function fmt$(cents: number | string | null | undefined): string {
   return "$" + Math.round(c / 100).toLocaleString();
 }
 
+// Local mirror of apps/civitics/src/lib/paginate.ts fetchAllRows (packages/data
+// can't import from apps). Pages a row-capped PostgREST query past the
+// max_rows=1000 ceiling so the full set is summed rather than silently
+// truncated. `build` must apply .range(from,to) on a FRESH query carrying a
+// stable total .order() each call. FIX-476 follow-up — the Wave-1 sweep didn't
+// reach this read-only anchor-verify script (the prior .limit(5000)/.limit(2000)
+// were capped to 1000 by PostgREST, undercounting high-volume anchors).
+const PAGE_SIZE = 1000;
+async function fetchAllRows<T>(
+  build: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
+): Promise<T[]> {
+  const rows: T[] = [];
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await build(from, from + PAGE_SIZE - 1);
+    if (error) { console.warn("    fetchAllRows page error:", error.message); break; }
+    const batch = data ?? [];
+    rows.push(...batch);
+    if (batch.length < PAGE_SIZE) break;
+  }
+  return rows;
+}
+
 async function section(title: string, fn: () => Promise<void>): Promise<void> {
   console.log("\n" + "─".repeat(72));
   console.log(title);
@@ -57,20 +79,22 @@ async function main(): Promise<void> {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data: agg } = await (db as any).rpc("noop_skip");
     void agg;
-    // PostgREST can't group; pull all rows for the entity and sum client-side. Cap at 5000.
+    // PostgREST can't group; pull ALL rows for the entity and sum client-side,
+    // paged past max_rows=1000 (FIX-476) so the aggregate isn't truncated.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: allOut } = await (db as any).from("financial_relationships")
+    const allOut = await fetchAllRows<any>((from, to) => (db as any).from("financial_relationships")
       .select("relationship_type, source, amount_cents")
       .in("from_id", muskIds)
-      .limit(5000);
+      .order("id", { ascending: true })
+      .range(from, to));
     const byType: Record<string, { count: number; sum: number }> = {};
-    for (const r of (allOut ?? [])) {
+    for (const r of allOut) {
       const k = `${r.relationship_type}:${r.source ?? "-"}`;
       if (!byType[k]) byType[k] = { count: 0, sum: 0 };
       byType[k].count++;
       byType[k].sum += Number(r.amount_cents ?? 0);
     }
-    console.log(`  total outflow rows (capped 5000): ${(allOut ?? []).length}`);
+    console.log(`  total outflow rows (full, paged): ${allOut.length}`);
     for (const [k, v] of Object.entries(byType).sort((a, b) => b[1].sum - a[1].sum)) {
       console.log(`    ${k.padEnd(50)} count=${v.count.toString().padStart(5)} sum=${fmt$(v.sum)}`);
     }
@@ -195,20 +219,22 @@ async function main(): Promise<void> {
     if (!off || off.length === 0) return;
     const ids = off.map((o: { id: string }) => o.id);
 
+    // Paged past max_rows=1000 (FIX-476) so the inflow aggregate is complete.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: ins } = await (db as any).from("financial_relationships")
+    const ins = await fetchAllRows<any>((from, to) => (db as any).from("financial_relationships")
       .select("relationship_type, source, amount_cents, cycle_year")
       .in("to_id", ids)
       .eq("to_type", "official")
-      .limit(2000);
+      .order("id", { ascending: true })
+      .range(from, to));
     const byType: Record<string, { count: number; sum: number }> = {};
-    for (const r of (ins ?? [])) {
+    for (const r of ins) {
       const k = `${r.relationship_type}:${r.source ?? "-"}`;
       if (!byType[k]) byType[k] = { count: 0, sum: 0 };
       byType[k].count++;
       byType[k].sum += Number(r.amount_cents ?? 0);
     }
-    console.log(`  inflow rows: ${(ins ?? []).length}`);
+    console.log(`  inflow rows: ${ins.length}`);
     for (const [k, v] of Object.entries(byType).sort((a, b) => b[1].sum - a[1].sum)) {
       console.log(`    ${k.padEnd(50)} count=${v.count.toString().padStart(5)} sum=${fmt$(v.sum)}`);
     }

@@ -4299,6 +4299,11 @@ export type Database = {
       }
     }
     Functions: {
+      backfill_governing_body_slugs: { Args: never; Returns: number }
+      backfill_jurisdiction_boundary: {
+        Args: { p_geojson: string; p_id: string }
+        Returns: boolean
+      }
       canonical_donor_fingerprint: {
         Args: { raw_name: string; zip5: string }
         Returns: string
@@ -4392,6 +4397,7 @@ export type Database = {
           total_cents: number
         }[]
       }
+      civitics_slugify: { Args: { input: string }; Returns: string }
       claim_enrichment_batch: {
         Args: { p_claimed_by: string; p_limit: number; p_task_type: string }
         Returns: {
@@ -4417,6 +4423,10 @@ export type Database = {
           isOneToOne: false
           isSetofReturn: true
         }
+      }
+      clear_financial_entity_rule_tags: {
+        Args: { p_categories: string[] }
+        Returns: number
       }
       compute_alignment_score: {
         Args: { p_official_id: string; p_user_id: string }
@@ -4498,6 +4508,7 @@ export type Database = {
           rule_type: string
         }[]
       }
+      get_financial_entity_naics: { Args: never; Returns: Json }
       get_group_connections: {
         Args: { p_limit?: number; p_member_ids: string[] }
         Returns: {
@@ -4515,6 +4526,34 @@ export type Database = {
           total_usd: number
         }[]
       }
+      get_institution_recent_votes: {
+        Args: { p_institution_id: string; p_limit?: number }
+        Returns: {
+          abstain_count: number
+          bill_number: string
+          no_count: number
+          not_voting_count: number
+          party_line: boolean
+          proposal_id: string
+          proposal_title: string
+          unanimous: boolean
+          vote_question: string
+          voted_at: string
+          yes_count: number
+        }[]
+      }
+      get_jurisdiction_activity: {
+        Args: { p_id: string; p_limit?: number }
+        Returns: {
+          entity_id: string
+          event_type: string
+          occurred_at: string
+          summary: string
+          url: string
+        }[]
+      }
+      get_official_bipartisan_stats: { Args: never; Returns: Json }
+      get_official_donor_rollup: { Args: never; Returns: Json }
       get_official_donors: {
         Args: { p_official_id: string }
         Returns: {
@@ -4654,9 +4693,33 @@ export type Database = {
           storage_bytes: number
         }[]
       }
+      get_top_connected_officials: {
+        Args: { p_limit?: number }
+        Returns: {
+          connection_count: number
+          entity_id: string
+        }[]
+      }
       has_active_constituent_grant: {
         Args: { p_jurisdiction_id: string; p_user_id: string }
         Returns: boolean
+      }
+      jurisdiction_boundary_svg: {
+        Args: { p_height?: number; p_id: string; p_width?: number }
+        Returns: {
+          centroid_x: number
+          centroid_y: number
+          svg_path: string
+          viewbox: string
+        }[]
+      }
+      jurisdictions_containing_point: {
+        Args: { p_lat: number; p_lng: number }
+        Returns: {
+          id: string
+          name: string
+          type: string
+        }[]
       }
       link_federal_reps_to_districts: { Args: never; Returns: number }
       link_officials_to_districts: { Args: never; Returns: number }
@@ -4806,8 +4869,10 @@ export type Database = {
         Args: never
         Returns: undefined
       }
+      rebuild_financial_entity_size_tags: { Args: never; Returns: number }
       rebuild_official_donation_totals: { Args: never; Returns: undefined }
       rebuild_official_donation_totals_full: { Args: never; Returns: undefined }
+      rebuild_pre_vote_timing_tags: { Args: never; Returns: number }
       record_enrichment_failure: {
         Args: { p_error: string; p_queue_id: number }
         Returns: string
@@ -4892,6 +4957,17 @@ export type Database = {
           total_cents: number
         }[]
       }
+      upsert_county_jurisdiction: {
+        Args: {
+          p_boundary_geojson: string
+          p_census_geoid: string
+          p_fips_code: string
+          p_name: string
+          p_parent_id: string
+          p_short_name: string
+        }
+        Returns: string
+      }
       upsert_district_jurisdiction: {
         Args: {
           p_census_geoid: string
@@ -4964,7 +5040,7 @@ export type Database = {
         | "off_topic"
         | "misinformation"
         | "other"
-      follow_entity_type: "official" | "agency"
+      follow_entity_type: "official" | "agency" | "jurisdiction"
       governing_body_type:
         | "legislature_upper"
         | "legislature_lower"
@@ -5002,6 +5078,8 @@ export type Database = {
         | "other"
         | "school_district"
         | "special_district"
+        | "federal_district"
+        | "unincorporated_territory"
       notification_event_type:
         | "official_vote"
         | "new_proposal"
@@ -5247,7 +5325,7 @@ export const Constants = {
         "misinformation",
         "other",
       ],
-      follow_entity_type: ["official", "agency"],
+      follow_entity_type: ["official", "agency", "jurisdiction"],
       governing_body_type: [
         "legislature_upper",
         "legislature_lower",
@@ -5287,6 +5365,8 @@ export const Constants = {
         "other",
         "school_district",
         "special_district",
+        "federal_district",
+        "unincorporated_territory",
       ],
       notification_event_type: [
         "official_vote",
