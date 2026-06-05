@@ -22,6 +22,7 @@ import { parse } from "csv-parse/sync";
 import { createAdminClient } from "@civitics/db";
 import type { Database } from "@civitics/db";
 import { startSync, completeSync, failSync, type PipelineResult } from "../sync-log";
+import { slugifyGoverningBodies } from "../../lib/slugify-governing-bodies";
 import { STATE_DATA, seedJurisdictions } from "../../jurisdictions/us-states";
 import {
   resolveGoverningBodies,
@@ -284,6 +285,10 @@ export async function runBulkPeoplePipeline(
     console.log(`  Failed:           ${failed}`);
     console.log(`  District-linked:  ${linked}`);
     console.log(`  Downloaded:       ${(bytesDownloaded / 1024 / 1024).toFixed(2)} MB`);
+
+    // FIX-492 — slugify ingest invariant: state-chamber gbs resolved/inserted by
+    // resolveGoverningBodies this run get their slug filled. Idempotent.
+    await slugifyGoverningBodies(db);
 
     await completeSync(logId, result);
     return result;

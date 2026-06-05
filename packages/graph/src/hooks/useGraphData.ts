@@ -207,12 +207,25 @@ export function useGraphData(
         if (group.filter.industry) params.set('industry', group.filter.industry);
         if (group.filter.tag)      params.set('tag',      group.filter.tag);
         if (group.filter.committeeId) params.set('committeeId', group.filter.committeeId);
+        if (group.filter.governingBody) params.set('governingBody', group.filter.governingBody);
 
         const res  = await fetch(`/api/graph/group?` + params);
         const data = await res.json();
 
         // Mark as fetched
         fetchedIds.current.add(group.id);
+
+        // FIX-490 — gb groups can be gated (422 gb_not_expandable) or missing
+        // (404). The route error is authoritative; surface it instead of merging
+        // an empty payload and rendering a mysteriously blank group bubble.
+        if (!res.ok || data?.error) {
+          console.warn(
+            `[useGraphData] group ${group.id} not expandable:`,
+            data?.error ?? `HTTP ${res.status}`,
+            data?.reason ?? '',
+          );
+          continue;
+        }
 
         // Track which nodes belong to this group (all nodes except the group node itself)
         const connectedIds = new Set<string>(

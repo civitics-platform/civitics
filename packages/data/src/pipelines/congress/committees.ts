@@ -28,6 +28,7 @@
 import { createAdminClient, refreshPrimarySourceForEntities } from "@civitics/db";
 import type { Database } from "@civitics/db";
 import { startSync, completeSync, failSync, type PipelineResult } from "../sync-log";
+import { slugifyGoverningBodies } from "../../lib/slugify-governing-bodies";
 
 type GoverningBodyInsert = Database["public"]["Tables"]["governing_bodies"]["Insert"];
 type MembershipInsert = Database["public"]["Tables"]["official_committee_memberships"]["Insert"];
@@ -398,6 +399,11 @@ export async function runCommitteesPipeline(
     console.log(`  ${"Committees updated:".padEnd(32)} ${updated}`);
     console.log(`  ${"Memberships inserted:".padEnd(32)} ${membershipsInserted}`);
     console.log(`  ${"Failed:".padEnd(32)} ${failed}`);
+
+    // FIX-492 — slugify ingest invariant: committee gbs just inserted above
+    // would otherwise be stranded slugless (the FIX-475 backfill ran before the
+    // FIX-478 committee wave landed). Idempotent; only touches NULL-slug rows.
+    await slugifyGoverningBodies(db);
 
     await completeSync(logId, result);
     return result;

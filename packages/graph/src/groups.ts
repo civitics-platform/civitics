@@ -25,7 +25,7 @@ export const BUILT_IN_GROUPS: FocusGroup[] = [
     color: '#6366f1',
     filter: {
       entity_type: 'official',
-      chamber: 'senate',
+      governingBody: 'senate',
     },
     isPremade: true,
     description: 'All 100 U.S. Senators',
@@ -38,7 +38,7 @@ export const BUILT_IN_GROUPS: FocusGroup[] = [
     color: '#8b5cf6',
     filter: {
       entity_type: 'official',
-      chamber: 'house',
+      governingBody: 'house',
     },
     isPremade: true,
     description: 'All 435 U.S. Representatives',
@@ -51,7 +51,7 @@ export const BUILT_IN_GROUPS: FocusGroup[] = [
     color: '#3b82f6',
     filter: {
       entity_type: 'official',
-      chamber: 'senate',
+      governingBody: 'senate',
       party: 'democrat',
     },
     isPremade: true,
@@ -65,7 +65,7 @@ export const BUILT_IN_GROUPS: FocusGroup[] = [
     color: '#ef4444',
     filter: {
       entity_type: 'official',
-      chamber: 'senate',
+      governingBody: 'senate',
       party: 'republican',
     },
     isPremade: true,
@@ -79,7 +79,7 @@ export const BUILT_IN_GROUPS: FocusGroup[] = [
     color: '#2563eb',
     filter: {
       entity_type: 'official',
-      chamber: 'house',
+      governingBody: 'house',
       party: 'democrat',
     },
     isPremade: true,
@@ -93,7 +93,7 @@ export const BUILT_IN_GROUPS: FocusGroup[] = [
     color: '#dc2626',
     filter: {
       entity_type: 'official',
-      chamber: 'house',
+      governingBody: 'house',
       party: 'republican',
     },
     isPremade: true,

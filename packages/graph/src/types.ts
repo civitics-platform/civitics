@@ -397,6 +397,15 @@ export interface GroupFilter {
   tag?: string
   /** governing_bodies UUID (type='committee'). official groups only. (FIX-139) */
   committeeId?: string
+  /**
+   * governing_bodies slug (canonical) or UUID (fallback, forever). official
+   * groups only. (FIX-490) The route resolves the gb, gates on its jurisdiction
+   * type, and expands it to the member cohort. Slug is preferred because gb
+   * UUIDs differ local↔prod and slugs make share URLs readable
+   * (`governingBody=senate`); UUID is accepted so synthetic group ids in saved
+   * sessions (`group-gb-<uuid>`) keep resolving indefinitely.
+   */
+  governingBody?: string
   /** Narrows officials by governing_body type: congress|judiciary|cabinet|state_gov */
   official_role?: 'congress' | 'judiciary' | 'cabinet' | 'state_gov'
   /** Narrows financial entities by entity_type enum value */

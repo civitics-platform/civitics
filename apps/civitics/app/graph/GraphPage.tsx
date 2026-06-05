@@ -125,6 +125,22 @@ export function GraphPage({ initialCode, aiEnabled = true }: GraphPageProps = {}
         dropped.push({ id, type });
         return;
       }
+      // FIX-490 (FIX-468 Wave A C1) — institutions become gb-backed GROUPS, not
+      // focus entities. The synthetic group id encodes the gb uuid so the route
+      // resolves it (UUID fallback) and the id persists stably in saved sessions.
+      // Mixed payloads compose: every other kind continues through addEntity.
+      if (type === "institution") {
+        graphHooks.addGroup({
+          id: `group-gb-${id}`,
+          name: "Institution", // server resolves the real name on group fetch
+          type: "group",
+          icon: "🏛",
+          color: "#6366f1",
+          filter: { entity_type: "official", governingBody: id },
+          isPremade: false,
+        });
+        return;
+      }
       graphHooks.addEntity({
         id,
         name: id, // graph will resolve the real name on data fetch

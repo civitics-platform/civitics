@@ -28,6 +28,7 @@
 import { createAdminClient } from "@civitics/db";
 import { sleep } from "../utils";
 import { startSync, completeSync, failSync, type PipelineResult } from "../sync-log";
+import { slugifyGoverningBodies } from "../../lib/slugify-governing-bodies";
 import { seedPilotMetros } from "../../jurisdictions/pilot-metros";
 import { LegistarClient } from "./client";
 import type { LegistarEventItem, MetroConfig } from "./types";
@@ -316,6 +317,10 @@ export async function runLegistarPipeline(): Promise<PipelineResult> {
       failed: failures.length,
       estimatedMb: 0,
     };
+    // FIX-492 — slugify ingest invariant: municipal-council gbs created by the
+    // Legistar writer get their slug filled (needed for /institutions URLs even
+    // though city gbs are outside the graph-expansion allowlist). Idempotent.
+    await slugifyGoverningBodies(db);
     await completeSync(logId, result);
     return result;
   } catch (err) {

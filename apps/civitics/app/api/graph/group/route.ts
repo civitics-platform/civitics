@@ -1,14 +1,30 @@
 export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
-import { createAdminClient, fetchIndustryTagsByEntityId, fetchEntityIdsByIndustryTag } from "@civitics/db";
+import { createAdminClient, fetchIndustryTagsByEntityId, fetchEntityIdsByIndustryTag, currentGoverningBodyMembers } from "@civitics/db";
 import { supabaseUnavailable, unavailableResponse, withDbTimeout } from "@/lib/supabase-check";
 import { fetchAllRows } from "@/lib/paginate";
+import { isGbExpandableJurisdictionType } from "@/lib/graph-seedable-kinds";
 import type { GraphEdgeV2 as GraphEdge, GraphNodeV2 as GraphNode, NodeTypeV2 as NodeType } from "@civitics/graph";
 
 // Local extensions — group route adds metadata and id fields not in base types
 type ResponseNode = GraphNode & { metadata?: Record<string, unknown> };
 type ResponseEdge = GraphEdge & { id?: string; metadata?: Record<string, unknown> };
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// FIX-490 — group identity (icon/color) derived from gb.type, server-side, so a
+// gb group's appearance never depends on (spoofable) groupIcon/groupColor URL
+// params. One map, with a sensible default for any unmapped type.
+const GB_TYPE_VISUAL: Record<string, { icon: string; color: string }> = {
+  legislature_upper:      { icon: "🏛", color: "#6366f1" },
+  legislature_lower:      { icon: "🏛", color: "#8b5cf6" },
+  legislature_unicameral: { icon: "🏛", color: "#6366f1" },
+  executive:              { icon: "🏛", color: "#6366f1" },
+  judicial:               { icon: "⚖️", color: "#475569" },
+  committee:              { icon: "🪪", color: "#0891b2" },
+};
+const GB_TYPE_VISUAL_DEFAULT = { icon: "🏛", color: "#6366f1" };
 
 export async function GET(req: NextRequest) {
   if (supabaseUnavailable()) return unavailableResponse();
@@ -22,6 +38,8 @@ export async function GET(req: NextRequest) {
   const industry   = searchParams.get("industry");
   const tag        = searchParams.get("tag");
   const committeeId = searchParams.get("committeeId");
+  // FIX-490 — gb cohort key. Slug canonical, UUID accepted as fallback forever.
+  const governingBody = searchParams.get("governingBody");
   const groupName  = searchParams.get("groupName")  ?? "Group";
   const groupIcon  = searchParams.get("groupIcon")  ?? "👥";
   const groupColor = searchParams.get("groupColor") ?? "#6366f1";
@@ -38,19 +56,113 @@ export async function GET(req: NextRequest) {
     let memberIds: string[] = [];
     let memberCount: number | null = null;
 
-    if (committeeId) {
-      const { data: memberRows, error: memberErr } = await supabase
-        .from("official_committee_memberships")
-        .select("official_id")
-        .eq("committee_id", committeeId)
-        .is("ended_at", null);
+    // Group identity. For gb groups these are server-resolved from the row and
+    // override the (untrusted) groupName/Icon/Color URL params (FIX-490).
+    let groupNameOut  = groupName;
+    let groupIconOut  = groupIcon;
+    let groupColorOut = groupColor;
+    let seatCanaryTripped = false;
 
-      if (memberErr) {
-        return NextResponse.json({ error: memberErr.message }, { status: 500 });
+    // FIX-490 (FIX-468 Wave A C1) — governing-body cohort branch. A gb expands
+    // to its member cohort: a generalization of the committeeId path (FIX-139).
+    // `governingBody` is slug-canonical with UUID fallback; the legacy
+    // `committeeId` param is an internal alias for the same code path.
+    const gbKey = governingBody ?? committeeId;
+
+    if (gbKey) {
+      const isUuid = UUID_RE.test(gbKey);
+      let gbq = supabase
+        .from("governing_bodies")
+        .select("id, name, short_name, type, seat_count, jurisdiction_id");
+      gbq = isUuid ? gbq.eq("id", gbKey) : gbq.eq("slug", gbKey);
+      const { data: gb, error: gbErr } = await gbq.maybeSingle();
+
+      if (gbErr) {
+        return NextResponse.json({ error: gbErr.message }, { status: 500 });
+      }
+      if (!gb) {
+        return NextResponse.json(
+          { error: "gb_not_found", governingBody: gbKey },
+          { status: 404 },
+        );
       }
 
-      memberIds   = [...new Set((memberRows ?? []).map(r => r.official_id))];
-      memberCount = memberIds.length;
+      // Expansion eligibility gate = jurisdiction-type allowlist (decision 4).
+      // city (FIX-471 Legistar pollution) and federal_district (FIX-489 DC) are
+      // excluded; gated gbs get a structured 422, never a silent empty payload.
+      const { data: juris } = await supabase
+        .from("jurisdictions")
+        .select("type")
+        .eq("id", gb.jurisdiction_id)
+        .maybeSingle();
+      const jurisType = juris?.type ?? null;
+      if (!isGbExpandableJurisdictionType(jurisType)) {
+        return NextResponse.json(
+          {
+            error: "gb_not_expandable",
+            reason: `governing body in '${jurisType ?? "unknown"}' jurisdiction is not graph-expandable`,
+            governingBody: gbKey,
+          },
+          { status: 422 },
+        );
+      }
+
+      // Resolve the cohort by gb.type. committee → active membership join (the
+      // FIX-139 path); every other type → the canonical FIX-470 roster predicate
+      // on officials.governing_body_id (NOT role_title, which counts the FEC
+      // candidate field). `party` composes with both.
+      if (gb.type === "committee") {
+        const { data: memberRows, error: memberErr } = await supabase
+          .from("official_committee_memberships")
+          .select("official_id")
+          .eq("committee_id", gb.id)
+          .is("ended_at", null);
+        if (memberErr) {
+          return NextResponse.json({ error: memberErr.message }, { status: 500 });
+        }
+        memberIds   = [...new Set((memberRows ?? []).map((r) => r.official_id))];
+        memberCount = memberIds.length;
+      } else {
+        let memberQuery = currentGoverningBodyMembers(
+          supabase
+            .from("officials")
+            .select("id", { count: "exact" })
+            .eq("governing_body_id", gb.id),
+        );
+        if (party)
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          memberQuery = memberQuery.eq("party", party as any);
+
+        const { count, data: memberData } = await withDbTimeout<{
+          count: number | null;
+          data: Array<{ id: string }> | null;
+          error: { message: string } | null;
+        }>(memberQuery.limit(1000));
+
+        memberIds   = (memberData ?? []).map((m) => m.id);
+        memberCount = count;
+      }
+
+      // Seats canary (decision 5) — a roster-pollution regression signal, NEVER
+      // a gate (seat_count is NULL on all 101 state-chamber rows). Warn + flag,
+      // still render.
+      if (
+        gb.seat_count != null &&
+        memberCount != null &&
+        memberCount > gb.seat_count * 1.2
+      ) {
+        seatCanaryTripped = true;
+        console.warn(
+          `[graph/group] gb ${gb.id} (${gb.name}) roster ${memberCount} exceeds ` +
+            `seat_count ${gb.seat_count} × 1.2 — possible roster pollution`,
+        );
+      }
+
+      // Server-resolved identity (decision 3).
+      const visual = GB_TYPE_VISUAL[gb.type] ?? GB_TYPE_VISUAL_DEFAULT;
+      groupNameOut  = gb.name;
+      groupIconOut  = visual.icon;
+      groupColorOut = visual.color;
     } else {
       let memberQuery = supabase
         .from("officials")
@@ -88,7 +200,7 @@ export async function GET(req: NextRequest) {
 
     if (memberIds.length === 0) {
       return NextResponse.json({
-        group: { id: groupId, name: groupName, count: 0 },
+        group: { id: groupId, name: groupNameOut, count: 0 },
         nodes: [],
         edges: [],
       });
@@ -207,12 +319,12 @@ export async function GET(req: NextRequest) {
     // Group node represents the whole cohort as a single graph node
     const groupNode: ResponseNode = {
       id: groupId,
-      name: groupName,
+      name: groupNameOut,
       type: "group" as NodeType,
       collapsed: false,
       metadata: {
-        icon: groupIcon,
-        color: groupColor,
+        icon: groupIconOut,
+        color: groupColorOut,
         memberCount: memberCount ?? 0,
         isGroup: true,
       },
@@ -244,11 +356,11 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       group: {
         id: groupId,
-        name: groupName,
-        icon: groupIcon,
-        color: groupColor,
+        name: groupNameOut,
+        icon: groupIconOut,
+        color: groupColorOut,
         count: memberCount ?? 0,
-        filter: { entity_type: entityType, chamber, party, state, committeeId },
+        filter: { entity_type: entityType, chamber, party, state, committeeId, governingBody },
       },
       nodes: [groupNode, ...connectedNodes],
       edges,
@@ -257,6 +369,9 @@ export async function GET(req: NextRequest) {
         donorCount:       donorMap.size,
         topDonorsShown:   topDonors.length,
         totalDonatedUsd:  topDonors.reduce((s, d) => s + d.totalUsd, 0),
+        // FIX-490 — roster-pollution canary; true when resolved members exceed
+        // the gb's seat_count × 1.2. Advisory only (never gates the response).
+        seatCanaryTripped,
       },
     });
   }

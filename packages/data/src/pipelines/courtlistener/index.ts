@@ -20,6 +20,7 @@
 import { createAdminClient } from "@civitics/db";
 import { sleep, fetchJson, QuotaExhaustedError } from "../utils";
 import { startSync, completeSync, failSync, type PipelineResult } from "../sync-log";
+import { slugifyGoverningBodies } from "../../lib/slugify-governing-bodies";
 import {
   resolveJudicialGovBodies,
   upsertJudgesBatch,
@@ -265,6 +266,10 @@ export async function runCourtListenerPipeline(
     console.log(`  ${"Opinions failed:".padEnd(32)} ${opinionRes.failed}`);
     console.log(`  ${"Estimated storage:".padEnd(32)} ~${estimatedMb} MB`);
     if (opinionsQuotaHit) console.log(`  ${"Run ended on quota.".padEnd(32)}`);
+
+    // FIX-492 — slugify ingest invariant: judicial gbs (resolveJudicialGovBodies)
+    // inserted this run get their slug filled. Idempotent.
+    await slugifyGoverningBodies(db);
 
     await completeSync(logId, result);
     return result;

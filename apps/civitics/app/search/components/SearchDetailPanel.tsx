@@ -131,7 +131,15 @@ function DetailContent({
   const partyBadge = detail.party ? (PARTY_COLOR[detail.party] ?? "bg-gray-100 text-gray-600") : null;
 
   // FIX-472 — only offer "Seed to graph" for kinds the graph can render.
-  const seedable = isGraphSeedableKind(result.kind);
+  // FIX-490 — institutions seed as gb-backed groups, but municipal bodies are
+  // outside the expansion allowlist (FIX-471 Legistar pollution; FIX-489 DC).
+  // The detail endpoint surfaces the gb type in meta.Type (underscores→spaces),
+  // so degrade the affordance client-side for the municipal tells instead of
+  // letting the route's 422 surface as a blank graph. Where no signal exists the
+  // route error stays authoritative (handled graph-side in useGraphData).
+  const gbType = result.kind === "institution" ? String(detail.meta?.Type ?? "") : "";
+  const gbNotExpandable = gbType === "municipal council" || gbType === "other";
+  const seedable = isGraphSeedableKind(result.kind) && !gbNotExpandable;
 
   // FIX-473 — build a primary-only AttributionShape from the list-endpoint
   // fields; SourceBadge renders nothing when primary is null, and the popover
@@ -224,7 +232,9 @@ function DetailContent({
           </button>
         ) : (
           <p className="text-center text-[11px] text-gray-400 px-2 py-1.5">
-            This kind can&apos;t be shown on the graph yet.
+            {gbNotExpandable
+              ? "This institution isn’t graph-expandable yet."
+              : "This kind can’t be shown on the graph yet."}
           </p>
         )}
       </div>
