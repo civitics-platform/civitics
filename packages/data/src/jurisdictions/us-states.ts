@@ -15,7 +15,11 @@ interface StateRecord {
   abbr: string;
   fips: string;
   timezone: string;
-  type: "state" | "district";
+  // 'federal_district' is DC only — it is the FIX-422 50-states+1 canonical row,
+  // and matching the existing federal_district row is what keeps every pipeline's
+  // shared stateIds lookup converged on ONE DC jurisdiction (FIX-482). 'district'
+  // is the 5 non-voting-delegate territories (AS/GU/MP/PR/VI).
+  type: "state" | "district" | "federal_district";
 }
 
 // FIX-385: Congress.gov returns `member.state = "Virgin Islands"` for VI's
@@ -37,7 +41,11 @@ export const STATE_DATA: StateRecord[] = [
   { name: "Colorado",             abbr: "CO", fips: "08", timezone: "America/Denver",        type: "state"    },
   { name: "Connecticut",          abbr: "CT", fips: "09", timezone: "America/New_York",      type: "state"    },
   { name: "Delaware",             abbr: "DE", fips: "10", timezone: "America/New_York",      type: "state"    },
-  { name: "District of Columbia", abbr: "DC", fips: "11", timezone: "America/New_York",      type: "district" },
+  // FIX-482: DC is type='federal_district' (the FIX-422 canonical row), NOT
+  // 'district'. As 'district' the (fips_code,type) lookup below never matched the
+  // canonical federal_district row, so seedJurisdictions created/resolved a
+  // SECOND type='district' DC row and pipelines split DC's officials across both.
+  { name: "District of Columbia", abbr: "DC", fips: "11", timezone: "America/New_York",      type: "federal_district" },
   { name: "Florida",              abbr: "FL", fips: "12", timezone: "America/New_York",      type: "state"    },
   { name: "Georgia",              abbr: "GA", fips: "13", timezone: "America/New_York",      type: "state"    },
   { name: "Hawaii",               abbr: "HI", fips: "15", timezone: "Pacific/Honolulu",      type: "state"    },
@@ -162,10 +170,12 @@ export async function seedJurisdictions(
     try {
       // FIX-383: narrow to direct children of the federal jurisdiction. Without
       // parent_id, TIGER sub-districts that inherit a state-equivalent's
-      // fips_code collide with (fips_code, type) for entries with
-      // type='district' (DC + the 5 FIX-376 territories) — e.g. the DC-98
-      // delegate-district row at fips='11', type='district' makes .maybeSingle()
-      // throw PGRST116 against the canonical DC row.
+      // fips_code collide with (fips_code, type) for the 5 FIX-376 territories
+      // (type='district') — e.g. a delegate-district row at fips='11',
+      // type='district' would make .maybeSingle() throw PGRST116. (Since FIX-482
+      // DC is type='federal_district', so the DC select no longer competes with
+      // any 'district' row at all — the parent_id narrowing still guards the
+      // territories.)
       const { data: existing, error: selectErr } = await db
         .from("jurisdictions")
         .select("id")
