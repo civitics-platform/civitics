@@ -21,8 +21,27 @@
 // Dependency-free Node, shell-agnostic (PowerShell / Git Bash / CI alike).
 
 import { spawnSync } from "node:child_process";
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { readFileSync, writeFileSync, existsSync, mkdirSync, rmSync } from "node:fs";
+import { dirname, join, resolve, relative, isAbsolute } from "node:path";
+import { fileURLToPath } from "node:url";
+
+// Dependency-free synchronous sleep (the teardown path below is sync). Atomics
+// blocks the thread without a busy-spin; ms is clamped to a sane ceiling.
+function sleepSync(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, Math.min(ms, 10000));
+}
+
+// FIX-480 containment guard: the fs.rm fallback in done() must only ever delete
+// a path STRICTLY inside the sibling civitics-worktrees dir. path.relative gives
+// us real path resolution (unlike a Bash string-prefix rule, which a `../` in
+// the suffix can escape): a contained target yields a relative path that is
+// non-empty, does not climb out with "..", and isn't absolute (a different
+// Windows drive resolves to an absolute relative). Exported for unit testing.
+export function isContainedWorktreePath(wtDir, root) {
+  const base = resolve(root, "..", "civitics-worktrees");
+  const rel = relative(base, resolve(wtDir));
+  return rel !== "" && !rel.startsWith("..") && !isAbsolute(rel);
+}
 
 function run(cmd, args, opts = {}) {
   const res = spawnSync(cmd, args, {
@@ -195,16 +214,60 @@ function done(rawId, argv) {
     // --force is always passed to git here: when porcelain is clean it's the
     // gitignored artifacts that would otherwise block removal; when the caller
     // forced, they've accepted the loss.
-    const rm = git("worktree", "remove", wtDir, "--force");
+    let rm = git("worktree", "remove", wtDir, "--force");
+
+    // FIX-480: on a freshly-built tree, `git worktree remove` can lose to a
+    // transient lock on a just-written node_modules handle (Windows AV/indexer
+    // still holding it) — the Wave-477 failure looked exactly like this. Retry
+    // once after a short pause before reaching for the heavier fallback.
     if (!rm.ok) {
-      if (rm.err) console.error(rm.err);
-      die(`git worktree remove failed. Worktree left intact: ${wtDir}`);
+      console.warn(
+        `[session:worktree] ⚠ git worktree remove failed (${rm.err || "unknown"}); retrying once in 2s ...`,
+      );
+      sleepSync(2000);
+      rm = git("worktree", "remove", wtDir, "--force");
     }
-    const autoForced = cleanIgnoringArtifacts && !force;
-    console.log(
-      `[session:worktree] ✓ removed worktree ${wtDir}` +
-      (autoForced ? ` (auto-forced: only ignored build artifacts present)` : ``),
-    );
+
+    if (rm.ok) {
+      const autoForced = cleanIgnoringArtifacts && !force;
+      console.log(
+        `[session:worktree] ✓ removed worktree ${wtDir}` +
+        (autoForced ? ` (auto-forced: only ignored build artifacts present)` : ``),
+      );
+    } else {
+      // Still failing → in-process recursive delete, HARD-guarded by the
+      // containment check. The settings deny-list keeps Bash(rm -rf*) (deny
+      // beats allow, and a string-prefix Bash rule can be escaped by a ../ in
+      // the suffix); fs.rm with real path resolution under the already-approved
+      // pnpm command cannot. Refuse and die if wtDir is not strictly inside the
+      // civitics-worktrees sibling dir.
+      if (!isContainedWorktreePath(wtDir, root)) {
+        if (rm.err) console.error(rm.err);
+        die(
+          `git worktree remove failed AND ${resolve(wtDir)} is not strictly inside ` +
+          `${resolve(root, "..", "civitics-worktrees")} — refusing fs.rm fallback. ` +
+          `Worktree left intact.`,
+        );
+      }
+      console.warn(
+        `[session:worktree] ⚠ git worktree remove still failing after retry; ` +
+        `falling back to contained fs.rm of ${wtDir}`,
+      );
+      try {
+        rmSync(resolve(wtDir), { recursive: true, force: true });
+      } catch (e) {
+        die(`fs.rm fallback failed: ${e?.message ?? e}. Worktree left intact: ${wtDir}`);
+      }
+      // git's worktree registry still lists the (now-deleted) entry → prune it
+      // so `git worktree list` and a future create on the same slot stay clean.
+      const pruned = git("worktree", "prune");
+      if (!pruned.ok && pruned.err) {
+        console.warn(`[session:worktree] ⚠ git worktree prune reported: ${pruned.err}`);
+      }
+      console.log(
+        `[session:worktree] ✓ removed worktree via contained fs.rm + git worktree prune: ${wtDir}`,
+      );
+    }
   } else {
     console.log(`[session:worktree] (no worktree dir at ${wtDir} — skipping remove)`);
   }
@@ -227,14 +290,20 @@ function done(rawId, argv) {
 }
 
 // ── dispatch ────────────────────────────────────────────────────────────────
-const [sub, rawId, ...rest] = process.argv.slice(2);
-if (sub === "create") {
-  create(rawId);
-} else if (sub === "done") {
-  done(rawId, rest);
-} else {
-  console.error("Usage:");
-  console.error("  pnpm session:worktree <fix-id>         # create a per-FIX worktree");
-  console.error("  pnpm session:worktree:done <fix-id>    # tear it down (--force to override safety)");
-  process.exit(1);
+// Only dispatch when run directly (so importing this module for unit tests
+// doesn't trigger the CLI). Mirrors the main-guard in scripts/fixes-sync.mjs.
+const invokedDirectly =
+  process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url));
+if (invokedDirectly) {
+  const [sub, rawId, ...rest] = process.argv.slice(2);
+  if (sub === "create") {
+    create(rawId);
+  } else if (sub === "done") {
+    done(rawId, rest);
+  } else {
+    console.error("Usage:");
+    console.error("  pnpm session:worktree <fix-id>         # create a per-FIX worktree");
+    console.error("  pnpm session:worktree:done <fix-id>    # tear it down (--force to override safety)");
+    process.exit(1);
+  }
 }
