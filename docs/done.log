@@ -626,3 +626,6 @@
 2026-06-04 | FIX-482 | ce006571 | prod-only | chore(data): record prod verification for FIX-482 DC merge
 2026-06-04 | FIX-487 | 44b81c88 | local+prod | fix(data): merge territory jurisdiction dups + STATE_DATA territory types
 2026-06-04 | FIX-488 | 7b47e600 | local+prod | feat(db): fips uniqueness guard for state-level jurisdictions
+2026-06-04 | FIX-490 | 87e9dd4a | local+prod | feat(graph): gb group-expansion + gb-backed Congress presets (FIX-468 Wave A)
+2026-06-04 | FIX-491 | 87e9dd4a | local+prod | feat(graph): gb group-expansion + gb-backed Congress presets (FIX-468 Wave A)
+2026-06-04 | FIX-492 | 87e9dd4a | local+prod | feat(graph): gb group-expansion + gb-backed Congress presets (FIX-468 Wave A)
