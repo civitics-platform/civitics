@@ -75,16 +75,16 @@ interface ProposalClassification {
 
 async function classifyProposal(proposal: {
   id: string;
-  title: string;
+  title: string | null;
   summary_plain: string | null;
-  metadata: Record<string, string> | null;
+  metadata: Record<string, unknown> | null;
 }): Promise<ProposalClassification | null> {
-  const agencyId = proposal.metadata?.agency_id ?? "";
+  const agencyId = String(proposal.metadata?.agency_id ?? "");
   const summary = (proposal.summary_plain ?? "").slice(0, 300);
 
   const userMessage =
     `Classify this federal proposal.\n\n` +
-    `Title: ${proposal.title}\n` +
+    `Title: ${proposal.title ?? "(untitled)"}\n` +
     `Agency: ${agencyId}\n` +
     `Summary: ${summary}\n\n` +
     `Return JSON:\n` +
