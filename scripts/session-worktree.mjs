@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 // scripts/session-worktree.mjs — per-FIX git worktree lifecycle.
 //
-//   pnpm session:worktree <fix-id>        → create  (this file, subcommand "create")
-//   pnpm session:worktree:done <fix-id>   → teardown (this file, subcommand "done")
+//   pnpm session:worktree <fix-id>            → create  (this file, subcommand "create")
+//   pnpm session:worktree <fix-id> --install  → create + `pnpm install` in the tree
+//   pnpm session:worktree:done <fix-id>       → teardown (this file, subcommand "done")
 //
 // WHY (the model these enforce — see CLAUDE.md "Parallel sessions"):
 // VSCode is always open on the primary checkout, so any agent committing there
@@ -94,7 +95,8 @@ function readEnvUrl(file) {
 }
 
 // ── create ────────────────────────────────────────────────────────────────
-function create(rawId) {
+function create(rawId, argv = []) {
+  const install = argv.includes("--install");
   const id = normalizeId(rawId);
   const root = repoRoot();
   const branch = `feature/fix-${id}`;
@@ -140,16 +142,37 @@ function create(rawId) {
     console.log("[session:worktree] ✓ both .env.local seeded to LOCAL Docker. Confirm the URL above before any pipeline/data run.");
   }
 
+  // Optional dependency install (--install). pnpm's shared content-addressed
+  // store hardlinks into the fresh worktree, so this is ~40s, not a cold install.
+  // Without it the worktree has no node_modules and tsx/pnpm build fail until the
+  // caller installs by hand — so a buildable tree out of the box is opt-in but
+  // one flag away.
+  if (install) {
+    console.log(`\n[session:worktree] --install given — running 'pnpm install' in ${wtDir} (~40s, shared-store hardlinks) ...`);
+    const res = run("pnpm", ["install"], { cwd: wtDir, stdio: "inherit" });
+    if (res.ok) {
+      console.log(`[session:worktree] ✓ pnpm install complete — worktree is buildable.`);
+    } else {
+      console.warn(
+        `[session:worktree] ⚠ pnpm install failed (${res.err || "see output above"}). ` +
+        `Worktree is created; run 'pnpm -C ${wtDir} install' by hand before building.`,
+      );
+    }
+  }
+
   console.log(`\n[session:worktree] ✓ worktree ready at ${wtDir} on ${branch}`);
-  console.log(landingRecipe(id));
+  console.log(landingRecipe(id, install));
 }
 
-function landingRecipe(id) {
+function landingRecipe(id, installed = false) {
   const wt = `../civitics-worktrees/fix-${id}`;
   return [
     "",
     "── Landing recipe (run from INSIDE the worktree) ─────────────────────",
     `  cd ${wt}`,
+    ...(installed
+      ? []
+      : [`  pnpm install                            # deps not installed (pass --install to do this at create time)`]),
     "  git fetch origin",
     "  git rebase origin/main                  # replay on latest main, resolve here in isolation",
     "  pnpm build && pnpm typecheck && pnpm lint   # verify ON the branch, still isolated",
@@ -158,6 +181,10 @@ function landingRecipe(id) {
     "  pnpm fixes:sync                         # POST-merge ONLY — edits FIXES.md/done.log",
     `  git commit -am "chore(fixes): sync after FIX-${id}" && git push origin HEAD:main`,
     `  pnpm session:worktree:done ${id}        # teardown (blocks if somehow unmerged)`,
+    "",
+    "Migrations from a worktree apply to the SHARED local Docker DB — point the CLI at",
+    `the worktree's migration dir explicitly (cd is not required):`,
+    `  supabase --workdir ${wt} migration up --local`,
     "",
     "The primary VSCode checkout just runs `git pull --ff-only` to catch up — it never commits.",
     "(Assumes `main` is push-able. If branch protection is later enabled, the `:main`",
@@ -297,12 +324,12 @@ const invokedDirectly =
 if (invokedDirectly) {
   const [sub, rawId, ...rest] = process.argv.slice(2);
   if (sub === "create") {
-    create(rawId);
+    create(rawId, rest);
   } else if (sub === "done") {
     done(rawId, rest);
   } else {
     console.error("Usage:");
-    console.error("  pnpm session:worktree <fix-id>         # create a per-FIX worktree");
+    console.error("  pnpm session:worktree <fix-id> [--install]  # create a per-FIX worktree (optionally pnpm install)");
     console.error("  pnpm session:worktree:done <fix-id>    # tear it down (--force to override safety)");
     process.exit(1);
   }
