@@ -25,7 +25,7 @@
  * Run standalone:  pnpm --filter @civitics/data data:committees
  */
 
-import { createAdminClient } from "@civitics/db";
+import { createAdminClient, refreshPrimarySourceForEntities } from "@civitics/db";
 import type { Database } from "@civitics/db";
 import { startSync, completeSync, failSync, type PipelineResult } from "../sync-log";
 
@@ -240,6 +240,63 @@ export async function runCommitteesPipeline(
     }
     console.log(`  Updated ${updated} existing committees`);
 
+    // ── 4b. Attribution + hierarchy sidecar (FIX-478 + FIX-481) ─────────────
+    // For every committee gb that resolved to an id, write:
+    //   (a) external_source_refs (source='congress_gov', external_id=system_code)
+    //       → refresh_primary_source_for_entities materializes primary_source*,
+    //       so the /institutions/[id] SourceBadge + FIX-400 attribution popover
+    //       have a real source row (FIX-481). system_code is the stable congress
+    //       id — no synthetic key needed.
+    //   (b) institution_extensions (parent_id from the subcommittee's parent
+    //       system_code → gb lookup; acronym = thomas_id for parent committees)
+    //       → the FIX-418 "Committees & Sub-bodies" sidebar renders children on a
+    //       parent page and the parent link on a subcommittee page (FIX-478).
+    // Both UPSERT (merge), so re-running is a no-op beyond last_seen_at/updated_at.
+    // source_url stays null: congress.gov 403s verification and has no clean
+    // per-committee landing — null beats a 404 (same rule as FIX-477).
+    // Runs AFTER all inserts+updates so every parent system_code resolves to a gb.
+    const resolvedForAttribution = flatCommittees
+      .map((c) => ({ c, gbId: existingBySystemCode.get(c.systemCode) }))
+      .filter((x): x is { c: (typeof flatCommittees)[number]; gbId: string } => Boolean(x.gbId));
+
+    const committeeXsrRecords = resolvedForAttribution.map(({ c, gbId }) => ({
+      source: "congress_gov",
+      external_id: c.systemCode,
+      entity_type: "governing_body",
+      entity_id: gbId,
+      source_url: null,
+      last_seen_at: new Date().toISOString(),
+      metadata: {},
+    }));
+
+    const committeeExtRecords = resolvedForAttribution.map(({ c, gbId }) => ({
+      governing_body_id: gbId,
+      parent_id: c.parentSystemCode ? existingBySystemCode.get(c.parentSystemCode) ?? null : null,
+      // The feed has no explicit acronym field; a parent's 4-char thomas_id
+      // (e.g. SSAF) reads as the committee's standard shorthand. Subcommittee
+      // 6-char codes (SSAF13) are not acronyms → null.
+      acronym: c.isSubcommittee ? null : c.thomasId,
+    }));
+
+    for (let i = 0; i < committeeXsrRecords.length; i += 500) {
+      const { error } = await db
+        .from("external_source_refs")
+        .upsert(committeeXsrRecords.slice(i, i + 500), { onConflict: "source,external_id" });
+      if (error) console.warn(`    committees xsr upsert @${i}: ${error.message}`);
+    }
+    for (let i = 0; i < committeeExtRecords.length; i += 500) {
+      const { error } = await db
+        .from("institution_extensions")
+        .upsert(committeeExtRecords.slice(i, i + 500), { onConflict: "governing_body_id" });
+      if (error) console.warn(`    committees institution_extensions upsert @${i}: ${error.message}`);
+    }
+    if (resolvedForAttribution.length > 0) {
+      await refreshPrimarySourceForEntities(db, "governing_body", resolvedForAttribution.map((x) => x.gbId));
+    }
+    console.log(
+      `  Attribution: ${committeeXsrRecords.length} xsr + ${committeeExtRecords.length} institution_extensions rows`,
+    );
+
     // ── 5. Build bioguide_id → official UUID lookup ─────────────────────────
     const { data: officialsRows, error: officialsErr } = await db
       .from("officials")
@@ -292,14 +349,21 @@ export async function runCommitteesPipeline(
     // Idempotent strategy: delete existing current (ended_at IS NULL) rows for
     // the committees we're refreshing, then insert the new set. Historical
     // rows (ended_at IS NOT NULL) are preserved for future use.
+    // FIX-484: chunk the .in() — all ~230 committee UUIDs in one PostgREST
+    // delete URL overflows ("URI too long"), which aborted the whole pipeline
+    // before any membership landed. 100 ids/chunk keeps the URL well under the
+    // ~limit (same convention as the openstates writer LOOKUP_CHUNK_SIZE).
     if (committeeIdsTouched.size > 0) {
-      const { error: delErr } = await db
-        .from("official_committee_memberships")
-        .delete()
-        .in("committee_id", Array.from(committeeIdsTouched))
-        .is("ended_at", null);
-
-      if (delErr) throw new Error(`Failed to clear current memberships: ${delErr.message}`);
+      const touchedIds = Array.from(committeeIdsTouched);
+      const DELETE_CHUNK = 100;
+      for (let i = 0; i < touchedIds.length; i += DELETE_CHUNK) {
+        const { error: delErr } = await db
+          .from("official_committee_memberships")
+          .delete()
+          .in("committee_id", touchedIds.slice(i, i + DELETE_CHUNK))
+          .is("ended_at", null);
+        if (delErr) throw new Error(`Failed to clear current memberships @${i}: ${delErr.message}`);
+      }
     }
 
     // Insert in batches of 500

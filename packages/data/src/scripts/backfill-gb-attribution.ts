@@ -38,6 +38,12 @@
  *      Judiciary, a seed SCOTUS with no court id) → LEFT NULL, intentionally.
  *      Seed-created rows with no external source get no badge — that's honest
  *      (same call as the 8 EOP-shaped agencies in FIX-410).
+ *   5. Congress committees (FIX-481, added later) → source='congress_gov',
+ *      external_id = metadata->>'system_code' (real stable id). This cohort ALSO
+ *      backfills institution_extensions (FIX-478) for the committee hierarchy
+ *      sidebar — parent_id derived from system_code, acronym from thomas_id. The
+ *      committees pipeline writes both at upsert time; this covers the existing
+ *      ~230 prod committee gbs without a full pipeline run.
  *
  * source_url is left NULL on every seeded row: there is no confidently-stable
  * public per-chamber/per-court URL for these three sources (openstates'
@@ -109,6 +115,10 @@ const COHORT_LABEL_SQL = `
          AND gb.metadata ? 'courtlistener_court_id'
          AND nullif(gb.metadata->>'courtlistener_court_id','') IS NOT NULL
       THEN 'courtlistener_court'
+    WHEN gb.type = 'committee'
+         AND gb.metadata ? 'system_code'
+         AND nullif(gb.metadata->>'system_code','') IS NOT NULL
+      THEN 'congress_committee'
     ELSE 'other_or_intentional_null'
   END
 `;
@@ -200,7 +210,60 @@ const COHORTS: Cohort[] = [
         DO UPDATE SET last_seen_at = EXCLUDED.last_seen_at
       RETURNING entity_id`,
   },
+  {
+    // FIX-481: congress committee gbs. external_id = metadata->>'system_code'
+    // (real, stable congress id — e.g. ssaf00 / sscm36). The committees pipeline
+    // (committees.ts) writes the same row at upsert time for future coverage;
+    // this cohort covers the ~230 existing committee gbs without a pipeline run.
+    key: "congress_committee",
+    sql: `
+      INSERT INTO public.external_source_refs
+        (source, external_id, entity_type, entity_id, source_url, last_seen_at, metadata)
+      SELECT 'congress_gov',
+             gb.metadata->>'system_code',
+             'governing_body',
+             gb.id,
+             NULL,
+             now(),
+             '{}'::jsonb
+        FROM public.governing_bodies gb
+       WHERE gb.type = 'committee'
+         AND gb.metadata ? 'system_code'
+         AND nullif(gb.metadata->>'system_code','') IS NOT NULL
+      ON CONFLICT (source, external_id)
+        DO UPDATE SET last_seen_at = EXCLUDED.last_seen_at
+      RETURNING entity_id`,
+  },
 ];
+
+// FIX-478: institution_extensions hierarchy backfill for committee gbs. Separate
+// from the xsr COHORTS (those only seed external_source_refs for primary_source
+// materialization) — this populates the FIX-418 "Committees & Sub-bodies"
+// sidebar. parent_id is derived from the subcommittee's system_code: a 6-char
+// code's parent is left(code,4) || '00' (e.g. sscm36 → sscm00), matched to the
+// parent committee gb. acronym = thomas_id for parent committees only (the feed
+// has no acronym field; a 4-char parent thomas_id reads as standard shorthand,
+// subcommittee 6-char codes do not). Idempotent: ON CONFLICT re-derives.
+const COMMITTEE_EXTENSIONS_SQL = `
+  INSERT INTO public.institution_extensions (governing_body_id, parent_id, acronym)
+  SELECT
+    gb.id,
+    parent.id,
+    CASE WHEN gb.metadata->>'is_subcommittee' = 'true' THEN NULL
+         ELSE nullif(gb.metadata->>'thomas_id','') END
+    FROM public.governing_bodies gb
+    LEFT JOIN public.governing_bodies parent
+      ON parent.type = 'committee'
+     AND gb.metadata->>'is_subcommittee' = 'true'
+     AND parent.metadata->>'system_code' = left(gb.metadata->>'system_code', 4) || '00'
+   WHERE gb.type = 'committee'
+     AND gb.metadata ? 'system_code'
+     AND nullif(gb.metadata->>'system_code','') IS NOT NULL
+  ON CONFLICT (governing_body_id)
+    DO UPDATE SET parent_id = EXCLUDED.parent_id,
+                  acronym   = EXCLUDED.acronym,
+                  updated_at = now()
+  RETURNING governing_body_id, parent_id`;
 
 function printCohortTable(title: string, rows: Row[]): void {
   console.log(`\n${title}`);
@@ -268,6 +331,16 @@ async function main(): Promise<void> {
     } else {
       console.log(`\n  (no entity ids touched — skipping refresh)`);
     }
+
+    // FIX-478: committee hierarchy sidecar (institution_extensions). Same
+    // transaction so the xsr + extensions land atomically.
+    const extRes = await client.query(COMMITTEE_EXTENSIONS_SQL);
+    const extWithParent = (extRes.rows as Array<{ parent_id: string | null }>).filter((r) => r.parent_id).length;
+    console.log(
+      `\n  institution_extensions: ${extRes.rows.length} committee row(s) upserted ` +
+      `(${extWithParent} with a parent link, ${extRes.rows.length - extWithParent} top-level)`,
+    );
+
     await client.query("COMMIT");
   } catch (err) {
     await client.query("ROLLBACK");
