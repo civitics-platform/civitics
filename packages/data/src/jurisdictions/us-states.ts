@@ -15,11 +15,14 @@ interface StateRecord {
   abbr: string;
   fips: string;
   timezone: string;
-  // 'federal_district' is DC only — it is the FIX-422 50-states+1 canonical row,
-  // and matching the existing federal_district row is what keeps every pipeline's
-  // shared stateIds lookup converged on ONE DC jurisdiction (FIX-482). 'district'
-  // is the 5 non-voting-delegate territories (AS/GU/MP/PR/VI).
-  type: "state" | "district" | "federal_district";
+  // 'federal_district' is DC only — the FIX-422 50-states+1 canonical row, and
+  // matching the existing federal_district row keeps every pipeline's shared
+  // stateIds lookup converged on ONE DC jurisdiction (FIX-482).
+  // 'unincorporated_territory' is the 5 non-voting-delegate territories
+  // (AS/GU/MP/PR/VI) — the FIX-422 canonical row, converged the same way as DC
+  // by FIX-487 (they were type='district', which split each territory across two
+  // jurisdiction rows exactly like the DC bug).
+  type: "state" | "federal_district" | "unincorporated_territory";
 }
 
 // FIX-385: Congress.gov returns `member.state = "Virgin Islands"` for VI's
@@ -88,17 +91,23 @@ export const STATE_DATA: StateRecord[] = [
   { name: "West Virginia",        abbr: "WV", fips: "54", timezone: "America/New_York",      type: "state"    },
   { name: "Wisconsin",            abbr: "WI", fips: "55", timezone: "America/Chicago",       type: "state"    },
   { name: "Wyoming",              abbr: "WY", fips: "56", timezone: "America/Denver",        type: "state"    },
-  // FIX-321 / FIX-B (2026-05-24): five U.S. territories with non-voting House
-  // delegates. Modeled as type='district' to mirror the existing DC convention
-  // (no 'territory' value in the jurisdiction_type enum). Without these,
-  // congress/officials.ts at stateIds.get(member.state) falls through to the
-  // 'United States' umbrella for AS/GU/MP/PR/VI delegates, leaving
+  // FIX-321 (2026-05-24): five U.S. territories with non-voting House delegates.
+  // Without these, congress/officials.ts at stateIds.get(member.state) falls
+  // through to the 'United States' umbrella for AS/GU/MP/PR/VI delegates, leaving
   // officials.rep_count at 437 instead of 441.
-  { name: "American Samoa",            abbr: "AS", fips: "60", timezone: "Pacific/Pago_Pago", type: "district" },
-  { name: "Guam",                      abbr: "GU", fips: "66", timezone: "Pacific/Guam",      type: "district" },
-  { name: "Northern Mariana Islands",  abbr: "MP", fips: "69", timezone: "Pacific/Saipan",    type: "district" },
-  { name: "Puerto Rico",               abbr: "PR", fips: "72", timezone: "America/Puerto_Rico", type: "district" },
-  { name: "U.S. Virgin Islands",       abbr: "VI", fips: "78", timezone: "America/St_Thomas", type: "district" },
+  // FIX-487 (2026-06-04): flipped type 'district' → 'unincorporated_territory'.
+  // As 'district' the (fips_code,type,parent_id) seed lookup never matched the
+  // canonical FIX-422 unincorporated_territory rows, so seedJurisdictions
+  // created/resolved a SECOND 'district' row per territory and pipelines split
+  // each territory's officials across both (the /jurisdictions territory filter,
+  // which expects unincorporated_territory, then rendered them wrong). The
+  // data-merge half is data:merge-territory-jurisdictions; this type flip stops
+  // data:jurisdictions re-splitting on the next run.
+  { name: "American Samoa",            abbr: "AS", fips: "60", timezone: "Pacific/Pago_Pago", type: "unincorporated_territory" },
+  { name: "Guam",                      abbr: "GU", fips: "66", timezone: "Pacific/Guam",      type: "unincorporated_territory" },
+  { name: "Northern Mariana Islands",  abbr: "MP", fips: "69", timezone: "Pacific/Saipan",    type: "unincorporated_territory" },
+  { name: "Puerto Rico",               abbr: "PR", fips: "72", timezone: "America/Puerto_Rico", type: "unincorporated_territory" },
+  { name: "U.S. Virgin Islands",       abbr: "VI", fips: "78", timezone: "America/St_Thomas", type: "unincorporated_territory" },
 ];
 
 // ---------------------------------------------------------------------------
@@ -170,12 +179,13 @@ export async function seedJurisdictions(
     try {
       // FIX-383: narrow to direct children of the federal jurisdiction. Without
       // parent_id, TIGER sub-districts that inherit a state-equivalent's
-      // fips_code collide with (fips_code, type) for the 5 FIX-376 territories
-      // (type='district') — e.g. a delegate-district row at fips='11',
-      // type='district' would make .maybeSingle() throw PGRST116. (Since FIX-482
-      // DC is type='federal_district', so the DC select no longer competes with
-      // any 'district' row at all — the parent_id narrowing still guards the
-      // territories.)
+      // fips_code collide with (fips_code, type) — e.g. a delegate-district row
+      // at fips='11', type='district' would make .maybeSingle() throw PGRST116.
+      // (Since FIX-482 + FIX-487, neither DC (federal_district) nor the five
+      // territories (unincorporated_territory) are type='district' anymore, so
+      // none of these selects competes with a TIGER 'district' row — the
+      // parent_id narrowing is now belt-and-braces against any future
+      // same-(fips,type) collision.)
       const { data: existing, error: selectErr } = await db
         .from("jurisdictions")
         .select("id")
