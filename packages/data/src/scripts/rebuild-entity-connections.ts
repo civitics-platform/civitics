@@ -156,6 +156,29 @@ async function main(): Promise<void> {
             `  [post] refresh_connection_type_counts — FAILED: ${errMsg(refreshErr)}`,
           );
         }
+        // FIX-500 — refresh the per-cohort donor rollup the graph group route
+        // reads. Donation edges only change when the chunks above run, so this is
+        // the right (and only) cadence — no separate cron. Wrapped so a refresh
+        // failure leaves the prior rollup snapshot in place (the route still reads
+        // it; the next rebuild re-aggregates) rather than masking the rebuild.
+        try {
+          // The function's proconfig statement_timeout is not honored through the
+          // session pooler (the session value governs), so set an explicit budget
+          // here rather than relying on the chunk loop's leftover 90min. The full
+          // re-aggregate measured ~6min on prod under load (519k donor rows), so
+          // 1800s is generous off-path headroom.
+          await client.query("SET statement_timeout = '1800s'");
+          const r = await client.query<{ refresh_group_donor_rollup: unknown }>(
+            "SELECT public.refresh_group_donor_rollup()",
+          );
+          console.log(
+            `  [post] refresh_group_donor_rollup — complete: ${JSON.stringify(r.rows[0]?.refresh_group_donor_rollup ?? {})}`,
+          );
+        } catch (rollupErr) {
+          console.warn(
+            `  [post] refresh_group_donor_rollup — FAILED: ${errMsg(rollupErr)}`,
+          );
+        }
       } finally {
         await client.end();
       }
@@ -177,6 +200,18 @@ async function main(): Promise<void> {
       for (const r of rows) {
         breakdown.push({ ...r, duration_ms: 0 });
         total += Number(r.edges_upserted ?? 0);
+      }
+      // FIX-500 — same rollup refresh on the local-dev umbrella path so
+      // `pnpm data:rebuild-connections` against local Docker also rebuilds the
+      // donor rollup the group route reads. Wrapped (advisory) like the prod path.
+      try {
+        const { error: rollupErr } = await admin.rpc("refresh_group_donor_rollup");
+        if (rollupErr) throw rollupErr;
+        console.log("  [post] refresh_group_donor_rollup — complete");
+      } catch (rollupErr) {
+        console.warn(
+          `  [post] refresh_group_donor_rollup — FAILED: ${errMsg(rollupErr)}`,
+        );
       }
     }
 

@@ -94,6 +94,88 @@ async function fetchPagedConnections<T>(
   return value;
 }
 
+// FIX-500 — per-cohort donor rollup row, as stored by refresh_group_donor_rollup().
+type RollupDonor = {
+  financial_entity_id: string;
+  donor_name: string | null;
+  donor_entity_type: string | null;
+  sector: string | null;
+  total_cents: number | null;
+  member_count: number | null;
+};
+
+// FIX-500 — outcome of the rollup-first read for a materialized cohort.
+//   hit   → cohort is materialized; serve donors from the rollup (donorCount=0 is
+//           a GENUINE zero, e.g. state gbs — FEC is federal-only).
+//   miss  → no summary row → cohort not materialized → caller falls back to the
+//           live OFFSET path. "Not materialized" must never render as "no donors".
+//   error → a read ERROR (not absence). Caller fails closed (donorFetchError +
+//           member bubble, FIX-497) and surfaces `code` as meta.donorFetchErrorCode
+//           (decision 7a) so one curl diagnoses any recurrence of the FIX-499 0.18s
+//           Vercel divergence (PGRST205 = relation not in schema cache; 42501 =
+//           grant; 57014 = statement timeout).
+type RollupRead =
+  | { kind: "miss" }
+  | { kind: "error"; code: string | null }
+  | { kind: "hit"; donorCount: number; totalCents: number; donors: RollupDonor[] };
+
+function pgrstCode(err: { code?: unknown } | null): string | null {
+  const c = err?.code;
+  return typeof c === "string" ? c : null;
+}
+
+/**
+ * FIX-500 — rollup-first read for a materialized cohort. The summary row is read
+ * first BECAUSE its presence is the materialized-vs-not disambiguator: a present
+ * row (even donor_count=0) is a hit; absence is a miss → live fallback. The donor
+ * rows read is a zero-join indexed top-N (group_donor_rollup_read_idx).
+ */
+async function readGroupDonorRollup(
+  supabase: ReturnType<typeof createAdminClient>,
+  gbId: string,
+  partyKey: string,
+  limit: number,
+): Promise<RollupRead> {
+  const summaryRes = await withDbTimeout<{
+    data: { donor_count: number; total_cents: number } | null;
+    error: { message: string; code?: string } | null;
+  }>(
+    supabase
+      .from("group_donor_rollup_summary")
+      .select("donor_count, total_cents")
+      .eq("gb_id", gbId)
+      .eq("party_key", partyKey)
+      .maybeSingle(),
+    DONOR_FETCH_BUDGET_MS,
+    "rollup-summary",
+  );
+  if (summaryRes.error) return { kind: "error", code: pgrstCode(summaryRes.error) };
+  if (!summaryRes.data) return { kind: "miss" };
+
+  const rowsRes = await withDbTimeout<{
+    data: RollupDonor[] | null;
+    error: { message: string; code?: string } | null;
+  }>(
+    supabase
+      .from("group_donor_rollup")
+      .select("financial_entity_id, donor_name, donor_entity_type, sector, total_cents, member_count")
+      .eq("gb_id", gbId)
+      .eq("party_key", partyKey)
+      .order("total_cents", { ascending: false })
+      .limit(limit),
+    DONOR_FETCH_BUDGET_MS,
+    "rollup-rows",
+  );
+  if (rowsRes.error) return { kind: "error", code: pgrstCode(rowsRes.error) };
+
+  return {
+    kind: "hit",
+    donorCount: Number(summaryRes.data.donor_count ?? 0),
+    totalCents: Number(summaryRes.data.total_cents ?? 0),
+    donors: rowsRes.data ?? [],
+  };
+}
+
 export async function GET(req: NextRequest) {
   if (supabaseUnavailable()) return unavailableResponse();
 
@@ -130,6 +212,24 @@ export async function GET(req: NextRequest) {
     let groupIconOut  = groupIcon;
     let groupColorOut = groupColor;
     let seatCanaryTripped = false;
+
+    // FIX-500 — when this group resolves to a governing body, the cohort is
+    // materializable (gb + optional party preset, or committee membership). These
+    // capture the gb identity for the rollup-first read after member resolution;
+    // they stay null on the legacy chamber/state path, which is NOT materialized.
+    let rollupGbId: string | null = null;
+    let rollupGbType: string | null = null;
+
+    // FIX-500 (decision 7a) — the PostgREST error CODE behind any donorFetchError,
+    // surfaced permanently on meta/node so one curl diagnoses a recurrence of the
+    // FIX-499 0.18s Vercel divergence without needing forbidden function logs.
+    let donorFetchErrorCode: string | null = null;
+
+    // FIX-497 — donorFetchError distinguishes "this cohort genuinely has no
+    // institutional donors" from "the donor aggregation timed out / errored".
+    // Hoisted above the FIX-500 rollup-first block (which sets it on a rollup read
+    // error before the live path's own declaration is reached).
+    let donorFetchError = false;
 
     // FIX-490 (FIX-468 Wave A C1) — governing-body cohort branch. A gb expands
     // to its member cohort: a generalization of the committeeId path (FIX-139).
@@ -231,6 +331,10 @@ export async function GET(req: NextRequest) {
       groupNameOut  = gb.name;
       groupIconOut  = visual.icon;
       groupColorOut = visual.color;
+
+      // FIX-500 — this cohort is materialized; capture the gb for the rollup read.
+      rollupGbId   = gb.id;
+      rollupGbType = gb.type;
     } else {
       let memberQuery = supabase
         .from("officials")
@@ -274,6 +378,136 @@ export async function GET(req: NextRequest) {
       });
     }
 
+    // ── FIX-500 — rollup-first read for materialized cohorts ───────────────────
+    // gb cohorts (gb seed, committee, gb+party preset) are pre-aggregated off the
+    // request path by refresh_group_donor_rollup(). A hit serves donors from a
+    // single indexed select (no 305k/649k-row page-and-SUM); a miss falls through
+    // to the live OFFSET path below; a read ERROR fails closed (FIX-497 contract)
+    // carrying the PostgREST code (decision 7a). The legacy chamber/state path has
+    // no gb → rollupGbId stays null → it always uses the live path (decision 6).
+    if (rollupGbId) {
+      // Committee membership is never party-filtered by the route (FIX-139), so a
+      // committee cohort is always party_key='all'. Every other gb type composes
+      // the optional party preset, matching the live member query resolved above.
+      const partyKey = rollupGbType === "committee" ? "all" : (party ?? "all");
+      const rollup = await readGroupDonorRollup(supabase, rollupGbId, partyKey, limit);
+
+      if (rollup.kind === "error") {
+        // Fail closed (decision 5): member bubble + flag + code, never a silent zero.
+        donorFetchError = true;
+        donorFetchErrorCode = rollup.code;
+        const groupNode: ResponseNode = {
+          id: groupId,
+          name: groupNameOut,
+          type: "group" as NodeType,
+          collapsed: false,
+          metadata: {
+            icon: groupIconOut,
+            color: groupColorOut,
+            memberCount: memberCount ?? 0,
+            isGroup: true,
+            donorFetchError,
+            donorFetchErrorCode,
+          },
+        };
+        return NextResponse.json({
+          group: {
+            id: groupId,
+            name: groupNameOut,
+            icon: groupIconOut,
+            color: groupColorOut,
+            count: memberCount ?? 0,
+            filter: { entity_type: entityType, chamber, party, state, committeeId, governingBody },
+          },
+          nodes: [groupNode],
+          edges: [],
+          meta: {
+            memberCount:     memberCount ?? 0,
+            donorCount:      0,
+            topDonorsShown:  0,
+            totalDonatedUsd: 0,
+            donorFetchError,
+            donorFetchErrorCode,
+            seatCanaryTripped,
+          },
+        });
+      }
+
+      if (rollup.kind === "hit") {
+        // donorCount=0 here is a GENUINE zero (state gbs — FEC is federal-only):
+        // render an empty donor set with donorFetchError:false, NOT a fallback.
+        const topDonors = rollup.donors.map((d) => ({
+          donorId:     d.financial_entity_id,
+          donorName:   d.donor_name ?? "Unknown",
+          totalUsd:    Number(d.total_cents ?? 0) / 100,
+          memberCount: Number(d.member_count ?? 0),
+          sector:      d.sector,
+        }));
+
+        const groupNode: ResponseNode = {
+          id: groupId,
+          name: groupNameOut,
+          type: "group" as NodeType,
+          collapsed: false,
+          metadata: {
+            icon: groupIconOut,
+            color: groupColorOut,
+            memberCount: memberCount ?? 0,
+            isGroup: true,
+            donorFetchError: false,
+          },
+        };
+
+        const connectedNodes: ResponseNode[] = topDonors.map((donor) => ({
+          id: `donor-${donor.donorId}`,
+          name: donor.donorName,
+          type: "financial" as NodeType,
+          collapsed: false,
+          metadata: { sector: donor.sector },
+        }));
+
+        const edges: ResponseEdge[] = topDonors.map((donor) => ({
+          id: `edge-${groupId}-${donor.donorId}`,
+          fromId: `donor-${donor.donorId}`,
+          toId: groupId,
+          connectionType: "donation",
+          amountUsd: donor.totalUsd,
+          strength: Math.min(donor.totalUsd / 1_000_000, 1),
+          metadata: {
+            memberCount: donor.memberCount,
+            pctOfGroup: memberCount
+              ? Math.round((donor.memberCount / memberCount) * 100)
+              : 0,
+          },
+        }));
+
+        return NextResponse.json({
+          group: {
+            id: groupId,
+            name: groupNameOut,
+            icon: groupIconOut,
+            color: groupColorOut,
+            count: memberCount ?? 0,
+            filter: { entity_type: entityType, chamber, party, state, committeeId, governingBody },
+          },
+          nodes: [groupNode, ...connectedNodes],
+          edges,
+          meta: {
+            memberCount:     memberCount ?? 0,
+            // FIX-500 — TRUE cohort donor count + full institutional total from the
+            // summary row (decision 5), not the FIX-499-capped / shown-only sums.
+            donorCount:      rollup.donorCount,
+            topDonorsShown:  topDonors.length,
+            totalDonatedUsd: rollup.totalCents / 100,
+            donorFetchError: false,
+            seatCanaryTripped,
+          },
+        });
+      }
+      // rollup.kind === "miss" → cohort not materialized → fall through to the
+      // live OFFSET path below (decision 5: never let a miss render as no donors).
+    }
+
     // Parallel-fetch from entity_connections (pre-aggregated, indexed) rather
     // than financial_relationships (raw source, now bloated by individual donors).
     // entity_connections has one row per (donor, official) pair with amount_cents
@@ -283,11 +517,11 @@ export async function GET(req: NextRequest) {
     for (let i = 0; i < memberIds.length; i += BATCH_SIZE)
       chunks.push(memberIds.slice(i, i + BATCH_SIZE));
 
-    // FIX-497 — donorFetchError distinguishes "this cohort genuinely has no
-    // institutional donors" from "the donor aggregation timed out / errored".
-    // Without it a swallowed page timeout shipped donorCount:0 + 200, reading as
-    // the former (the Senate preset's whole value prop, silently gone under load).
-    let donorFetchError = false;
+    // FIX-497 — donorFetchError (declared above, hoisted for the FIX-500 rollup
+    // block) distinguishes "this cohort genuinely has no institutional donors" from
+    // "the donor aggregation timed out / errored". Without it a swallowed page
+    // timeout shipped donorCount:0 + 200, reading as the former (the Senate preset's
+    // whole value prop, silently gone under load).
 
     // FIX-476 — these donations are SUMmed per donor below, so a silent cap at
     // PostgREST max_rows (1000; the prior `.limit(2000)` never raised it) would
@@ -429,6 +663,8 @@ export async function GET(req: NextRequest) {
         // FIX-497 — surfaced on the node so the renderer can show a degraded
         // "donor data unavailable — retry" state on the bubble itself.
         donorFetchError,
+        // FIX-500 (decision 7a) — PostgREST code behind the failure, if any.
+        donorFetchErrorCode,
       },
     };
 
@@ -475,6 +711,8 @@ export async function GET(req: NextRequest) {
         // client renders a degraded "retry" state instead of treating
         // donorCount:0 as "this group has no donors". memberCount stays valid.
         donorFetchError,
+        // FIX-500 (decision 7a) — PostgREST code behind donorFetchError, if any.
+        donorFetchErrorCode,
         // FIX-490 — roster-pollution canary; true when resolved members exceed
         // the gb's seat_count × 1.2. Advisory only (never gates the response).
         seatCanaryTripped,

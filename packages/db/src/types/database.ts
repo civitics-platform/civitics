@@ -2166,6 +2166,63 @@ export type Database = {
         }
         Relationships: []
       }
+      group_donor_rollup: {
+        Row: {
+          donor_entity_type: string | null
+          donor_name: string | null
+          financial_entity_id: string
+          gb_id: string
+          member_count: number
+          party_key: string
+          sector: string | null
+          total_cents: number
+        }
+        Insert: {
+          donor_entity_type?: string | null
+          donor_name?: string | null
+          financial_entity_id: string
+          gb_id: string
+          member_count: number
+          party_key: string
+          sector?: string | null
+          total_cents: number
+        }
+        Update: {
+          donor_entity_type?: string | null
+          donor_name?: string | null
+          financial_entity_id?: string
+          gb_id?: string
+          member_count?: number
+          party_key?: string
+          sector?: string | null
+          total_cents?: number
+        }
+        Relationships: []
+      }
+      group_donor_rollup_summary: {
+        Row: {
+          donor_count: number
+          gb_id: string
+          party_key: string
+          refreshed_at: string
+          total_cents: number
+        }
+        Insert: {
+          donor_count: number
+          gb_id: string
+          party_key: string
+          refreshed_at?: string
+          total_cents: number
+        }
+        Update: {
+          donor_count?: number
+          gb_id?: string
+          party_key?: string
+          refreshed_at?: string
+          total_cents?: number
+        }
+        Relationships: []
+      }
       industry_codes: {
         Row: {
           code: string
@@ -4519,6 +4576,16 @@ export type Database = {
           to_id: string
         }[]
       }
+      get_group_donor_totals: {
+        Args: { p_official_ids: string[] }
+        Returns: {
+          entity_name: string
+          entity_type: string
+          financial_entity_id: string
+          member_count: number
+          total_cents: number
+        }[]
+      }
       get_group_sector_totals: {
         Args: { p_member_ids: string[]; p_min_usd?: number }
         Returns: {
@@ -4554,16 +4621,6 @@ export type Database = {
       }
       get_official_bipartisan_stats: { Args: never; Returns: Json }
       get_official_donor_rollup: { Args: never; Returns: Json }
-      get_group_donor_totals: {
-        Args: { p_official_ids: string[] }
-        Returns: {
-          financial_entity_id: string
-          entity_name: string
-          entity_type: string
-          total_cents: number
-          member_count: number
-        }[]
-      }
       get_official_donors: {
         Args: { p_official_id: string }
         Returns: {
@@ -4898,6 +4955,7 @@ export type Database = {
       refresh_chord_industry_flows_mv: { Args: never; Returns: undefined }
       refresh_chord_subject_party_flows_mv: { Args: never; Returns: undefined }
       refresh_connection_type_counts: { Args: never; Returns: undefined }
+      refresh_group_donor_rollup: { Args: never; Returns: Json }
       refresh_homepage_agency_counts_mv: { Args: never; Returns: undefined }
       refresh_homepage_stats_mv: { Args: never; Returns: undefined }
       refresh_official_homepage_stats_mv: { Args: never; Returns: undefined }
