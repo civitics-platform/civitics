@@ -274,88 +274,146 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    // FIX-499 — server-side donor aggregation via get_group_donor_totals.
-    // The prior path paged every donation row (House: 649,252 rows over ~180
-    // OFFSET pages per 100-member chunk) and SUMmed in JS, then resolved
-    // financial_entities for all ~292k distinct donors to drop individuals —
-    // blowing the 8s budget on House (donorFetchError) and silently truncating
-    // Senate at the fetchAllRows maxRows:50000 ceiling (the FIX-476 class:
-    // "2,480 donors / $40.5M" was a partial result; the true set is 4,139). The
-    // RPC collapses the per-donor SUM AND the institutional-only filter (exclude
-    // individuals + the PAC/Committee placeholder) into one indexed aggregate —
-    // prod-measured House ~3.8s / Senate ~0.7s, one round-trip. Keyset paging,
-    // the originally-planned fix, was measured 73x SLOWER per page on prod (the
-    // (to_id,id) row-value seek does not compose with to_id = ANY(batch)), so it
-    // was dropped. See migration 20260605000001 + docs/FIXES.md FIX-499.
+    // Parallel-fetch from entity_connections (pre-aggregated, indexed) rather
+    // than financial_relationships (raw source, now bloated by individual donors).
+    // entity_connections has one row per (donor, official) pair with amount_cents
+    // already summed across all FEC cycles and proper (to_type, to_id) indexes.
+    const BATCH_SIZE = 100;
+    const chunks: string[][] = [];
+    for (let i = 0; i < memberIds.length; i += BATCH_SIZE)
+      chunks.push(memberIds.slice(i, i + BATCH_SIZE));
+
+    // FIX-497 — donorFetchError distinguishes "this cohort genuinely has no
+    // institutional donors" from "the donor aggregation timed out / errored".
+    // Without it a swallowed page timeout shipped donorCount:0 + 200, reading as
+    // the former (the Senate preset's whole value prop, silently gone under load).
     let donorFetchError = false;
 
-    // FIX-497 fail-closed contract preserved: the aggregate runs under the same
-    // DONOR_FETCH_BUDGET_MS race, and an RPC error OR a budget overrun sets
-    // donorFetchError + returns a partial-with-flag payload — never a silent
-    // donorCount:0. donorFetchError still distinguishes "this cohort genuinely
-    // has no institutional donors" (empty rows, no error) from "the aggregation
-    // timed out / errored".
-    type DonorTotalsRow = {
-      financial_entity_id: string;
-      entity_name: string;
-      entity_type: string;
-      total_cents: number;
-      member_count: number;
-    };
-    // Async IIFE → a real Promise (supabase's .rpc().then() is only PromiseLike,
-    // which raceWithBudget's Promise<T> param won't accept).
-    const donorWork = (async (): Promise<{ rows: DonorTotalsRow[]; fetchFailed: boolean }> => {
-      const { data, error } = await supabase.rpc("get_group_donor_totals", { p_official_ids: memberIds });
-      if (error) {
-        console.error(`[graph/group] get_group_donor_totals error: ${error.message}`);
-        return { rows: [], fetchFailed: true };
-      }
-      // A PostgREST schema-cache cold-start can return null data with no error —
-      // treat null (NOT []) as a fetch failure, never as "this cohort has no donors".
-      if (data == null) {
-        console.error("[graph/group] get_group_donor_totals returned null (schema-cache cold-start?)");
-        return { rows: [], fetchFailed: true };
-      }
-      return { rows: data as DonorTotalsRow[], fetchFailed: false };
-    })();
-    const { value: donorAgg } = await raceWithBudget<{ rows: DonorTotalsRow[]; fetchFailed: boolean }>(
-      donorWork,
+    // FIX-476 — these donations are SUMmed per donor below, so a silent cap at
+    // PostgREST max_rows (1000; the prior `.limit(2000)` never raised it) would
+    // undercount donor totals for large groups. Page the full set with a stable
+    // unique order key; keep a safety ceiling against pathological batches.
+    // FIX-497 — page errors and a JS-budget overrun now surface via fetchFailed
+    // instead of being dropped by `const { rows } = await fetchAllRows(...)`.
+    const donationFetch = await fetchPagedConnections<{ from_id: string; amount_cents: number | null }>(
+      chunks.map((batch) => (f: number, t: number) =>
+        supabase
+          .from("entity_connections")
+          .select("from_id, amount_cents")
+          .eq("connection_type", "donation")
+          .eq("to_type", "official")
+          .in("to_id", batch)
+          .eq("from_type", "financial_entity")
+          // FIX-497 — order by (to_id, id) to MATCH the partial covering index
+          // entity_connections_donation_to_official_idx (to_id, id). With plain
+          // `ORDER BY id` the planner index-only-scans then re-SORTs every page,
+          // so OFFSET pagination over the 305k-row Senate set was ~11.2s (50
+          // pages). Matching the index order drops the per-page Sort entirely
+          // (deep page 208ms -> 12ms; full route 11.2s -> 3.4s, prod-measured).
+          // Still a stable, total key (id is unique), so fetchAllRows paging is
+          // exact. The per-donor SUM downstream is order-independent.
+          .order("to_id", { ascending: true })
+          .order("id", { ascending: true })
+          .range(f, t),
+      ),
       DONOR_FETCH_BUDGET_MS,
-      "group-donor-totals",
-      () => ({ rows: [], fetchFailed: true }),
+      "official-donations",
     );
-    if (donorAgg.fetchFailed) donorFetchError = true;
-    // The RPC returns EVERY institutional donor (no row cap), already filtered
-    // and ordered by total DESC, so donorRows.length is the exact distinct-
-    // institutional-donor count — no maxRows truncation, no per-donor FE fan-out.
-    const donorRows = donorAgg.rows;
+    if (donationFetch.fetchFailed) donorFetchError = true;
+    const allDonationRows: Array<{ from_id: string; amount_cents: number | null }> = donationFetch.rows;
 
-    // Resolve industry/sector tags for just the displayed top-N (entity_tags,
-    // FIX-167) — not the full donor set. A tag-lookup failure is cosmetic and
-    // must NOT blank the bubble or set donorFetchError: the money totals are
-    // valid; fall through with null sectors.
-    const topDonorRows = donorRows.slice(0, limit);
-    let sectorByEntityId = new Map<string, { tag: string; display_label: string }>();
-    if (topDonorRows.length > 0) {
+    // Resolve donor entity names, industry tags, and entity_type.
+    // Industry comes from `entity_tags` (FIX-167): the legacy
+    // `financial_entities.industry` column was dropped.
+    // entity_type is needed to filter out individual donors —
+    // group summary shows institutional money (PACs, orgs, corps) only;
+    // individual donor detail lives in the DonorListPanel.
+    //
+    // CRITICAL: batch the financial_entities lookup. With ~900+ distinct
+    // donors per group (Full Senate routinely hits this), an unbatched
+    // .in("id", donorIds) blows past PostgREST's URI length cap and
+    // returns silently empty — leaving every donor unresolved and the
+    // group rendering with zero edges. fetchIndustryTagsByEntityId
+    // already batches internally; we just need to match it here.
+    const donorIds = [...new Set(allDonationRows.map((r) => r.from_id))];
+    const donorInfo = new Map<string, { name: string; sector: string | null; entityType: string }>();
+    if (donorIds.length > 0) {
+      const FE_BATCH = 100;
+      const feChunks: string[][] = [];
+      for (let i = 0; i < donorIds.length; i += FE_BATCH) {
+        feChunks.push(donorIds.slice(i, i + FE_BATCH));
+      }
+      // FIX-497 — swallow site #2. A financial_entities chunk error was dropped
+      // by `r.data ?? []`, and fetchIndustryTagsByEntityId THROWS on a chunk
+      // error (would 500, losing the member bubble). Both now collapse into
+      // donorFetchError + a partial payload, never an unresolved-donor empty or
+      // a hard 500.
       try {
-        sectorByEntityId = await fetchIndustryTagsByEntityId(
-          supabase,
-          topDonorRows.map((r) => r.financial_entity_id),
-        );
+        const [feResults, industryByEntityId] = await Promise.all([
+          Promise.all(
+            feChunks.map(batch =>
+              supabase
+                .from("financial_entities")
+                .select("id, display_name, entity_type")
+                .in("id", batch),
+            ),
+          ),
+          fetchIndustryTagsByEntityId(supabase, donorIds),
+        ]);
+        if (feResults.some(r => r.error != null)) {
+          donorFetchError = true;
+          console.error(
+            `[graph/group] financial_entities chunk error: ${feResults.find(r => r.error)?.error?.message}`,
+          );
+        }
+        const entities = feResults.flatMap(r => r.data ?? []);
+        for (const e of entities) {
+          donorInfo.set(e.id, {
+            name:       e.display_name,
+            sector:     industryByEntityId.get(e.id)?.display_label ?? null,
+            entityType: (e as { id: string; display_name: string; entity_type: string }).entity_type,
+          });
+        }
       } catch (err) {
+        donorFetchError = true;
         console.error(
-          `[graph/group] industry tag lookup failed: ${err instanceof Error ? err.message : String(err)}`,
+          `[graph/group] donor resolution failed: ${err instanceof Error ? err.message : String(err)}`,
         );
       }
     }
 
-    const topDonors = topDonorRows.map((r) => ({
-      donorId:     r.financial_entity_id,
-      donorName:   r.entity_name,
-      totalUsd:    (r.total_cents ?? 0) / 100,
-      memberCount: r.member_count,
-      sector:      sectorByEntityId.get(r.financial_entity_id)?.display_label ?? null,
-    }));
+    // Aggregate by donor UUID (not name — distinct donors can share display names).
+    const donorMap = new Map<string, {
+      donorId: string;
+      donorName: string;
+      totalUsd: number;
+      memberCount: number;
+      sector: string | null;
+    }>();
+
+    for (const row of allDonationRows) {
+      const info = donorInfo.get(row.from_id);
+      if (!info) continue;
+      // Group summary = institutional money only — skip individual donors.
+      if (info.entityType === 'individual') continue;
+      // Skip generic "PAC/Committee" aggregate placeholder rows
+      if (/PAC\/Committee/i.test(info.name)) continue;
+
+      const key = row.from_id;  // UUID key — not name
+      const usd = (row.amount_cents ?? 0) / 100;
+
+      if (donorMap.has(key)) {
+        const existing = donorMap.get(key)!;
+        existing.totalUsd    += usd;
+        existing.memberCount += 1;
+      } else {
+        donorMap.set(key, { donorId: row.from_id, donorName: info.name, totalUsd: usd, memberCount: 1, sector: info.sector });
+      }
+    }
+
+    const topDonors = [...donorMap.values()]
+      .sort((a, b) => b.totalUsd - a.totalUsd)
+      .slice(0, limit);
 
     // Group node represents the whole cohort as a single graph node
     const groupNode: ResponseNode = {
@@ -410,10 +468,7 @@ export async function GET(req: NextRequest) {
       edges,
       meta: {
         memberCount:      memberCount ?? 0,
-        // FIX-499 — exact distinct-institutional-donor count straight from the
-        // RPC result set (no maxRows truncation). On a donorFetchError this is 0
-        // and the client must read donorFetchError, not treat 0 as "no donors".
-        donorCount:       donorRows.length,
+        donorCount:       donorMap.size,
         topDonorsShown:   topDonors.length,
         totalDonatedUsd:  topDonors.reduce((s, d) => s + d.totalUsd, 0),
         // FIX-497 — true when the donor aggregation timed out or errored. The
