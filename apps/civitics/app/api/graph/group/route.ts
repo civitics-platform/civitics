@@ -26,6 +26,74 @@ const GB_TYPE_VISUAL: Record<string, { icon: string; color: string }> = {
 };
 const GB_TYPE_VISUAL_DEFAULT = { icon: "🏛", color: "#6366f1" };
 
+// FIX-497 — JS-level budget for the connection-aggregation phase (donations,
+// oversight). The donation queries page entity_connections; under prod IOWait
+// load a single ordered aggregate of one chamber's donors is a ~70s on-disk
+// sort (pre-index EXPLAIN), and fetchAllRows makes ~50 sequential page calls,
+// so the route waited the full Postgres statement_timeout and a mid-paging
+// 57014 (or the cumulative wall) got swallowed into donorCount:0 + 200. This
+// budget makes the route fail FAST and flag, rather than ship a convincing
+// empty. Sized above the 5s member-query timeout (withDbTimeout) because the
+// donation set is the heavy query; post-index it returns in ~0.5s warm, so this
+// is headroom for cold/under-load, not the steady-state cost.
+const DONOR_FETCH_BUDGET_MS = 8000;
+
+/**
+ * Race a work promise against a JS-level timeout. On timeout, resolves with
+ * `onTimeout()` and `timedOut:true` instead of hanging the full Postgres
+ * statement_timeout. Mirrors the withDbTimeout race used by the member query,
+ * but generic over any aggregate work (FIX-497).
+ */
+async function raceWithBudget<T>(
+  work: Promise<T>,
+  budgetMs: number,
+  label: string,
+  onTimeout: () => T,
+): Promise<{ value: T; timedOut: boolean }> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<{ value: T; timedOut: true }>((resolve) => {
+    timer = setTimeout(() => {
+      console.error(`[graph/group] ${label} exceeded ${budgetMs}ms JS budget — flagging donorFetchError`);
+      resolve({ value: onTimeout(), timedOut: true });
+    }, budgetMs);
+  });
+  const wrapped = work.then((value) => ({ value, timedOut: false as const }));
+  const result = await Promise.race([wrapped, timeout]);
+  if (timer) clearTimeout(timer);
+  return result;
+}
+
+/**
+ * Run a set of paged entity_connections fetches under the JS budget. Returns
+ * the flattened rows plus `fetchFailed` — true when ANY page errors (e.g. a
+ * Postgres statement_timeout 57014 surfaced as fetchAllRows' `error`, which the
+ * callers previously discarded by destructuring `{ rows }` only) OR the whole
+ * batch exceeds `budgetMs`. The caller sets meta.donorFetchError and returns a
+ * partial-with-flag payload — never a silent zero (FIX-497).
+ */
+async function fetchPagedConnections<T>(
+  builders: Array<
+    (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>
+  >,
+  budgetMs: number,
+  label: string,
+): Promise<{ rows: T[]; fetchFailed: boolean }> {
+  const work = Promise.all(
+    builders.map((b) => fetchAllRows<T>(b, { maxRows: 50000 })),
+  ).then((results) => {
+    const errored = results.find((r) => r.error != null);
+    if (errored) console.error(`[graph/group] ${label} page error: ${errored.error?.message}`);
+    return { rows: results.flatMap((r) => r.rows), fetchFailed: results.some((r) => r.error != null) };
+  });
+  const { value } = await raceWithBudget(
+    work,
+    budgetMs,
+    label,
+    () => ({ rows: [] as T[], fetchFailed: true }),
+  );
+  return value;
+}
+
 export async function GET(req: NextRequest) {
   if (supabaseUnavailable()) return unavailableResponse();
 
@@ -215,31 +283,44 @@ export async function GET(req: NextRequest) {
     for (let i = 0; i < memberIds.length; i += BATCH_SIZE)
       chunks.push(memberIds.slice(i, i + BATCH_SIZE));
 
+    // FIX-497 — donorFetchError distinguishes "this cohort genuinely has no
+    // institutional donors" from "the donor aggregation timed out / errored".
+    // Without it a swallowed page timeout shipped donorCount:0 + 200, reading as
+    // the former (the Senate preset's whole value prop, silently gone under load).
+    let donorFetchError = false;
+
     // FIX-476 — these donations are SUMmed per donor below, so a silent cap at
     // PostgREST max_rows (1000; the prior `.limit(2000)` never raised it) would
     // undercount donor totals for large groups. Page the full set with a stable
     // unique order key; keep a safety ceiling against pathological batches.
-    const batchResults = await Promise.all(
-      chunks.map(batch =>
-        (async () => {
-          const { rows } = await fetchAllRows<{ from_id: string; amount_cents: number | null }>((f, t) =>
-            supabase
-              .from("entity_connections")
-              .select("from_id, amount_cents")
-              .eq("connection_type", "donation")
-              .eq("to_type", "official")
-              .in("to_id", batch)
-              .eq("from_type", "financial_entity")
-              .order("id", { ascending: true })
-              .range(f, t),
-            { maxRows: 50000 },
-          );
-          return { data: rows };
-        })()
-      )
+    // FIX-497 — page errors and a JS-budget overrun now surface via fetchFailed
+    // instead of being dropped by `const { rows } = await fetchAllRows(...)`.
+    const donationFetch = await fetchPagedConnections<{ from_id: string; amount_cents: number | null }>(
+      chunks.map((batch) => (f: number, t: number) =>
+        supabase
+          .from("entity_connections")
+          .select("from_id, amount_cents")
+          .eq("connection_type", "donation")
+          .eq("to_type", "official")
+          .in("to_id", batch)
+          .eq("from_type", "financial_entity")
+          // FIX-497 — order by (to_id, id) to MATCH the partial covering index
+          // entity_connections_donation_to_official_idx (to_id, id). With plain
+          // `ORDER BY id` the planner index-only-scans then re-SORTs every page,
+          // so OFFSET pagination over the 305k-row Senate set was ~11.2s (50
+          // pages). Matching the index order drops the per-page Sort entirely
+          // (deep page 208ms -> 12ms; full route 11.2s -> 3.4s, prod-measured).
+          // Still a stable, total key (id is unique), so fetchAllRows paging is
+          // exact. The per-donor SUM downstream is order-independent.
+          .order("to_id", { ascending: true })
+          .order("id", { ascending: true })
+          .range(f, t),
+      ),
+      DONOR_FETCH_BUDGET_MS,
+      "official-donations",
     );
-    const allDonationRows: Array<{ from_id: string; amount_cents: number | null }> =
-      batchResults.flatMap(r => r.data ?? []);
+    if (donationFetch.fetchFailed) donorFetchError = true;
+    const allDonationRows: Array<{ from_id: string; amount_cents: number | null }> = donationFetch.rows;
 
     // Resolve donor entity names, industry tags, and entity_type.
     // Industry comes from `entity_tags` (FIX-167): the legacy
@@ -262,24 +343,42 @@ export async function GET(req: NextRequest) {
       for (let i = 0; i < donorIds.length; i += FE_BATCH) {
         feChunks.push(donorIds.slice(i, i + FE_BATCH));
       }
-      const [feResults, industryByEntityId] = await Promise.all([
-        Promise.all(
-          feChunks.map(batch =>
-            supabase
-              .from("financial_entities")
-              .select("id, display_name, entity_type")
-              .in("id", batch),
+      // FIX-497 — swallow site #2. A financial_entities chunk error was dropped
+      // by `r.data ?? []`, and fetchIndustryTagsByEntityId THROWS on a chunk
+      // error (would 500, losing the member bubble). Both now collapse into
+      // donorFetchError + a partial payload, never an unresolved-donor empty or
+      // a hard 500.
+      try {
+        const [feResults, industryByEntityId] = await Promise.all([
+          Promise.all(
+            feChunks.map(batch =>
+              supabase
+                .from("financial_entities")
+                .select("id, display_name, entity_type")
+                .in("id", batch),
+            ),
           ),
-        ),
-        fetchIndustryTagsByEntityId(supabase, donorIds),
-      ]);
-      const entities = feResults.flatMap(r => r.data ?? []);
-      for (const e of entities) {
-        donorInfo.set(e.id, {
-          name:       e.display_name,
-          sector:     industryByEntityId.get(e.id)?.display_label ?? null,
-          entityType: (e as { id: string; display_name: string; entity_type: string }).entity_type,
-        });
+          fetchIndustryTagsByEntityId(supabase, donorIds),
+        ]);
+        if (feResults.some(r => r.error != null)) {
+          donorFetchError = true;
+          console.error(
+            `[graph/group] financial_entities chunk error: ${feResults.find(r => r.error)?.error?.message}`,
+          );
+        }
+        const entities = feResults.flatMap(r => r.data ?? []);
+        for (const e of entities) {
+          donorInfo.set(e.id, {
+            name:       e.display_name,
+            sector:     industryByEntityId.get(e.id)?.display_label ?? null,
+            entityType: (e as { id: string; display_name: string; entity_type: string }).entity_type,
+          });
+        }
+      } catch (err) {
+        donorFetchError = true;
+        console.error(
+          `[graph/group] donor resolution failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
       }
     }
 
@@ -327,6 +426,9 @@ export async function GET(req: NextRequest) {
         color: groupColorOut,
         memberCount: memberCount ?? 0,
         isGroup: true,
+        // FIX-497 — surfaced on the node so the renderer can show a degraded
+        // "donor data unavailable — retry" state on the bubble itself.
+        donorFetchError,
       },
     };
 
@@ -369,6 +471,10 @@ export async function GET(req: NextRequest) {
         donorCount:       donorMap.size,
         topDonorsShown:   topDonors.length,
         totalDonatedUsd:  topDonors.reduce((s, d) => s + d.totalUsd, 0),
+        // FIX-497 — true when the donor aggregation timed out or errored. The
+        // client renders a degraded "retry" state instead of treating
+        // donorCount:0 as "this group has no donors". memberCount stays valid.
+        donorFetchError,
         // FIX-490 — roster-pollution canary; true when resolved members exceed
         // the gb's seat_count × 1.2. Advisory only (never gates the response).
         seatCanaryTripped,
@@ -409,6 +515,9 @@ export async function GET(req: NextRequest) {
 
     // Step 2: pull their donations to officials via entity_connections
     // (pre-aggregated, indexed) rather than financial_relationships.
+    // FIX-497 — same fail-closed contract as the official branch: a swallowed
+    // page timeout must flag, not ship an empty recipient list as "no money".
+    let donorFetchError = false;
     const pacData: Array<{ to_id: string; amount_cents: number | null }> = [];
     if (pacIds.length > 0) {
       const BATCH = 200;
@@ -419,23 +528,27 @@ export async function GET(req: NextRequest) {
       // FIX-476 — PAC→official donations, also SUMmed downstream. The prior
       // `.limit(5000)` was silently capped to 1000 (and had no ORDER BY, so the
       // kept rows were an arbitrary slice). Page the full set with a stable key.
-      const pacResults = await Promise.all(
-        pacChunks.map(batch =>
-          fetchAllRows<{ to_id: string; amount_cents: number | null }>((f, t) =>
-            supabase
-              .from("entity_connections")
-              .select("to_id, amount_cents")
-              .eq("connection_type", "donation")
-              .eq("from_type", "financial_entity")
-              .in("from_id", batch)
-              .eq("to_type", "official")
-              .order("id", { ascending: true })
-              .range(f, t),
-            { maxRows: 50000 },
-          )
-        )
+      // FIX-497 — page errors / JS-budget overrun now surface via fetchFailed
+      // instead of `for (const r of pacResults) pacData.push(...r.rows)` dropping
+      // the per-page error. A timed-out recipient aggregation flags rather than
+      // shipping an empty "no PAC recipients" payload.
+      const pacFetch = await fetchPagedConnections<{ to_id: string; amount_cents: number | null }>(
+        pacChunks.map((batch) => (f: number, t: number) =>
+          supabase
+            .from("entity_connections")
+            .select("to_id, amount_cents")
+            .eq("connection_type", "donation")
+            .eq("from_type", "financial_entity")
+            .in("from_id", batch)
+            .eq("to_type", "official")
+            .order("id", { ascending: true })
+            .range(f, t),
+        ),
+        DONOR_FETCH_BUDGET_MS,
+        "pac-donations",
       );
-      for (const r of pacResults) pacData.push(...r.rows);
+      if (pacFetch.fetchFailed) donorFetchError = true;
+      pacData.push(...pacFetch.rows);
     }
 
     const officialMap = new Map<string, {
@@ -464,12 +577,16 @@ export async function GET(req: NextRequest) {
     const officialIds = topRecipients.map((r) => r.officialId);
 
     type OfficialRow = { id: string; full_name: string; party: string | null; metadata: Record<string, unknown> | null };
-    const { data: officialsData } = officialIds.length > 0
+    const { data: officialsData, error: officialsErr } = officialIds.length > 0
       ? await supabase
           .from("officials")
           .select("id, full_name, party, metadata")
           .in("id", officialIds)
-      : { data: [] as OfficialRow[] };
+      : { data: [] as OfficialRow[], error: null };
+    if (officialsErr) {
+      donorFetchError = true;
+      console.error(`[graph/group] pac recipient lookup error: ${officialsErr.message}`);
+    }
 
     const officialLookup = new Map(
       (officialsData ?? []).map((o) => [o.id, o as OfficialRow])
@@ -486,6 +603,7 @@ export async function GET(req: NextRequest) {
         memberCount: officialMap.size,
         isGroup: true,
         isPacGroup: true,
+        donorFetchError, // FIX-497
       },
     };
 
@@ -529,6 +647,7 @@ export async function GET(req: NextRequest) {
         totalPacDonors:      officialMap.size,
         topRecipientsShown:  topRecipients.length,
         totalDonatedUsd:     topRecipients.reduce((s, r) => s + r.totalUsd, 0),
+        donorFetchError, // FIX-497 — connection aggregation timed out / errored
       },
     });
   }
@@ -615,13 +734,21 @@ export async function GET(req: NextRequest) {
       });
     }
 
+    // FIX-497 — same fail-closed contract for the agency branch's connection
+    // fetch (oversight edges). `donorFetchError` here means "oversight
+    // aggregation timed out / errored", so the client degrades instead of
+    // treating an empty overseer set as "no oversight".
+    let donorFetchError = false;
+
     // Fetch oversight edges for all agencies in parallel batches
     const AG_BATCH = 500;
     const agChunks: string[][] = [];
     for (let i = 0; i < agencyIds.length; i += AG_BATCH)
       agChunks.push(agencyIds.slice(i, i + AG_BATCH));
 
-    const oversightResults = await Promise.all(
+    // Propagate the per-page error (previously dropped by `r.data ?? []`) and
+    // bound the aggregation with the JS budget.
+    const oversightWork = Promise.all(
       agChunks.map(batch =>
         supabase
           .from("entity_connections")
@@ -630,9 +757,22 @@ export async function GET(req: NextRequest) {
           .eq("to_type", "agency")
           .in("to_id", batch)
       )
+    ).then((results) => {
+      const errored = results.find((r) => r.error != null);
+      if (errored) console.error(`[graph/group] agency oversight error: ${errored.error?.message}`);
+      return {
+        rows: results.flatMap((r) => r.data ?? []) as Array<{ from_id: string; strength: number }>,
+        failed: results.some((r) => r.error != null),
+      };
+    });
+    const { value: oversight, timedOut: oversightTimedOut } = await raceWithBudget(
+      oversightWork,
+      DONOR_FETCH_BUDGET_MS,
+      "agency-oversight",
+      () => ({ rows: [] as Array<{ from_id: string; strength: number }>, failed: true }),
     );
-    const oversightRows: Array<{ from_id: string; strength: number }> =
-      oversightResults.flatMap(r => r.data ?? []);
+    if (oversightTimedOut || oversight.failed) donorFetchError = true;
+    const oversightRows: Array<{ from_id: string; strength: number }> = oversight.rows;
 
     // Aggregate by overseer (governing_body): count agencies each oversees
     const overseerMap = new Map<string, { agencyCount: number; totalStrength: number }>();
@@ -652,12 +792,16 @@ export async function GET(req: NextRequest) {
 
     const overseerIds = topOverseers.map(([id]) => id);
     type GovBodyRow = { id: string; name: string; metadata: Record<string, unknown> | null };
-    const { data: overseerData } = overseerIds.length > 0
+    const { data: overseerData, error: overseerErr } = overseerIds.length > 0
       ? await supabase
           .from("governing_bodies")
           .select("id, name, metadata")
           .in("id", overseerIds)
-      : { data: [] as GovBodyRow[] };
+      : { data: [] as GovBodyRow[], error: null };
+    if (overseerErr) {
+      donorFetchError = true;
+      console.error(`[graph/group] overseer lookup error: ${overseerErr.message}`);
+    }
 
     const overseerLookup = new Map(
       (overseerData ?? []).map(g => [g.id, g as GovBodyRow])
@@ -674,6 +818,7 @@ export async function GET(req: NextRequest) {
         memberCount: agencyCount ?? 0,
         isGroup: true,
         isAgencyGroup: true,
+        donorFetchError, // FIX-497
       },
     };
 
@@ -715,6 +860,7 @@ export async function GET(req: NextRequest) {
       meta: {
         agencyCount:      agencyCount ?? 0,
         overseersShown:   topOverseers.length,
+        donorFetchError, // FIX-497 — oversight aggregation timed out / errored
       },
     });
   }

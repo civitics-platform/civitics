@@ -38,6 +38,11 @@ export function useGraphData(
   const [loading, setLoading] = useState(false);
   const [loadingEntityId, setLoadingEntityId] = useState<string | null>(null);
 
+  // FIX-497 — bumping this re-runs the fetch effect on demand. A group whose
+  // donor aggregation failed is deliberately left out of `fetchedIds`, so a
+  // nonce bump re-requests exactly the un-fetched groups (retryGroup below).
+  const [retryNonce, setRetryNonce] = useState(0);
+
   // Track which entity IDs we've already fetched to avoid re-fetching
   const fetchedIds = useRef(new Set<string>());
 
@@ -140,7 +145,7 @@ export function useGraphData(
       fetchedIds.current.clear();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focus.entities, focus.includeProcedural, forceOptions?.individualDisplayMode, forceOptions?.connectorMinRecipients]);
+  }, [focus.entities, focus.includeProcedural, forceOptions?.individualDisplayMode, forceOptions?.connectorMinRecipients, retryNonce]);
 
   async function fetchEntities(entities: FocusEntity[]) {
     setLoading(true);
@@ -212,19 +217,31 @@ export function useGraphData(
         const res  = await fetch(`/api/graph/group?` + params);
         const data = await res.json();
 
-        // Mark as fetched
-        fetchedIds.current.add(group.id);
-
         // FIX-490 — gb groups can be gated (422 gb_not_expandable) or missing
-        // (404). The route error is authoritative; surface it instead of merging
-        // an empty payload and rendering a mysteriously blank group bubble.
+        // (404). The route error is authoritative: mark fetched (a gate is not
+        // retryable) and surface it instead of merging an empty payload and
+        // rendering a mysteriously blank group bubble.
         if (!res.ok || data?.error) {
+          fetchedIds.current.add(group.id);
           console.warn(
             `[useGraphData] group ${group.id} not expandable:`,
             data?.error ?? `HTTP ${res.status}`,
             data?.reason ?? '',
           );
           continue;
+        }
+
+        // FIX-497 — the donor/connection aggregation timed out or errored. The
+        // route still returns the group bubble (+ memberCount) but with
+        // meta.donorFetchError and no donor edges. Merge the bubble so the
+        // member node still renders, but do NOT mark the group fetched — leaving
+        // it un-fetched lets retryGroup() (and the next focus change) re-request
+        // instead of caching a convincing empty.
+        const donorFetchError = Boolean(data?.meta?.donorFetchError);
+        if (!donorFetchError) {
+          fetchedIds.current.add(group.id);
+        } else {
+          console.warn(`[useGraphData] group ${group.id} donor fetch failed — left un-cached for retry`);
         }
 
         // Track which nodes belong to this group (all nodes except the group node itself)
@@ -305,6 +322,13 @@ export function useGraphData(
     refetch: () => {
       fetchedIds.current.clear();
       setNodes([]); setEdges([]);
+    },
+    // FIX-497 — re-request a group whose donor aggregation failed. The group was
+    // left out of fetchedIds, so bumping the nonce re-runs the effect and
+    // re-fetches exactly that group (and any other un-fetched group).
+    retryGroup: (groupId: string) => {
+      fetchedIds.current.delete(groupId);
+      setRetryNonce(n => n + 1);
     },
   };
 }

@@ -288,7 +288,7 @@ export function GraphPage({ initialCode, aiEnabled = true }: GraphPageProps = {}
   }, [initialCode]);
 
   // ── Graph data (nodes + edges for all focused entities) ───────────────────
-  const { nodes, allEdges, loadingEntityId, graphMeta } = useGraphData(
+  const { nodes, allEdges, loadingEntityId, graphMeta, retryGroup } = useGraphData(
     view.focus,
     view.connections,
     view.style.vizOptions?.force
@@ -483,6 +483,13 @@ export function GraphPage({ initialCode, aiEnabled = true }: GraphPageProps = {}
     graphHooks.removeGroup(groupId);
   }
 
+  // FIX-497 — re-request a group whose donor aggregation failed (degraded state
+  // surfaced in the group NodePopup). retryGroup re-runs the data effect for
+  // exactly that un-cached group.
+  function handleRetryGroup(groupId: string) {
+    retryGroup(groupId);
+  }
+
   function handleOpenDonorList(officialId: string, tierOrEmployer: string) {
     const cleanId = officialId.startsWith('official:') ? officialId.slice(9) : officialId;
     const officialNode = displayNodes.find(n => n.id === `official:${cleanId}` || n.id === cleanId);
@@ -603,6 +610,7 @@ export function GraphPage({ initialCode, aiEnabled = true }: GraphPageProps = {}
                   onViewGroupAsChord={handleViewGroupAsChord}
                   onViewGroupAsSunburst={handleViewGroupAsSunburst}
                   onRemoveGroup={handleRemoveGroup}
+                  onRetryGroup={handleRetryGroup}
                   onOpenDonorList={handleOpenDonorList}
                 />
               )}

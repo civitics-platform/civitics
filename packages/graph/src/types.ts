@@ -657,6 +657,8 @@ export interface NodeActions {
   viewGroupAsSunburst?: (groupId: string) => void
   /** Remove the group from focus. Group nodes only. */
   removeGroup?: (groupId: string) => void
+  /** Re-request a group whose donor aggregation failed (FIX-497). Group nodes only. */
+  retryGroup?: (groupId: string) => void
   /** Open the donor list side panel for a bracket node. individual_bracket nodes only. */
   openDonorList?: (officialId: string, tier: string) => void
   /** Pin an individual donor as a real graph node (from DonorListPanel). */

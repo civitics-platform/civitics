@@ -30,6 +30,10 @@ export function NodePopup({ node, onClose, actions, vizType }: NodePopupProps) {
   const memberCount = node.metadata?.memberCount as number | undefined;
   const groupColor  = node.metadata?.color as string | undefined;
   const groupIcon   = node.metadata?.icon as string | undefined;
+  // FIX-497 — donor/connection aggregation timed out or errored server-side. The
+  // bubble still renders (members resolve); donor edges are unavailable. Show a
+  // degraded affordance + retry instead of a silent donor-less expansion.
+  const donorFetchError = node.metadata?.donorFetchError as boolean | undefined;
 
   if (isGroup) {
     return (
@@ -77,6 +81,29 @@ export function NodePopup({ node, onClose, actions, vizType }: NodePopupProps) {
 
           {/* Divider */}
           <div className="border-t border-gray-100 mb-3" />
+
+          {/* FIX-497 — degraded donor state. Member bubble rendered; donor edges
+              failed to load. Offer a retry instead of a silent donor-less group. */}
+          {donorFetchError && (
+            <div className="mb-3 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2">
+              <div className="text-xs font-semibold text-amber-800">
+                Donor data unavailable
+              </div>
+              <div className="text-[11px] text-amber-700 mt-0.5 leading-snug">
+                The donor aggregation timed out. Members are shown; donor connections
+                couldn’t load.
+              </div>
+              <button
+                onClick={() => {
+                  actions.retryGroup?.(node.id);
+                  onClose();
+                }}
+                className="mt-2 w-full text-center px-3 py-1.5 rounded-md text-xs font-medium bg-amber-600 text-white hover:bg-amber-700 transition-colors"
+              >
+                ↻ Retry donor data
+              </button>
+            </div>
+          )}
 
           {/* Explore actions */}
           <div className="text-xs font-medium text-gray-400 uppercase tracking-wide px-1 mb-1">

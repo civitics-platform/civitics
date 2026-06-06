@@ -52,6 +52,7 @@ export interface ForceGraphProps {
   onViewGroupAsChord?: (groupId: string) => void;
   onViewGroupAsSunburst?: (groupId: string) => void;
   onRemoveGroup?: (groupId: string) => void;
+  onRetryGroup?: (groupId: string) => void;
   onOpenDonorList?: (officialId: string, tierOrEmployer: string) => void;
 }
 
@@ -323,6 +324,7 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
       onViewGroupAsChord,
       onViewGroupAsSunburst,
       onRemoveGroup,
+      onRetryGroup,
       onOpenDonorList,
     },
     forwardedRef
@@ -1333,6 +1335,7 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
       viewGroupAsChord: onViewGroupAsChord,
       viewGroupAsSunburst: onViewGroupAsSunburst,
       removeGroup: onRemoveGroup,
+      retryGroup: onRetryGroup,
       openDonorList: onOpenDonorList,
     };
 
