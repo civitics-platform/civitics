@@ -79,6 +79,9 @@ export async function GET(req: NextRequest) {
         .eq("connection_type", "appointment")
         .eq("to_type", "agency")
         .in("to_id", batch)
+        // FIX-503: .range() without a stable sort key can repeat/skip rows
+        // across pages → double-counted appointments. Order by pkey.
+        .order("id", { ascending: true })
         .range(from, from + PAGE - 1);
       if (apptErr) {
         console.error("[agency-staffing] appts error:", apptErr.message);
@@ -103,6 +106,8 @@ export async function GET(req: NextRequest) {
         .eq("from_type", "agency")
         .in("from_id", batch)
         .in("relationship_type", ["contract", "grant"])
+        // FIX-503: stable pkey order so paged sums don't double-count.
+        .order("id", { ascending: true })
         .range(sFrom, sFrom + PAGE - 1);
       if (spendErr) {
         console.error("[agency-staffing] spend error:", spendErr.message);

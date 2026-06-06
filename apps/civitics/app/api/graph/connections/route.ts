@@ -282,21 +282,21 @@ export async function GET(request: Request) {
         // Paginate the full set: an unbounded .select() caps at MAX_ROWS, so a neighbor
         // whose rows fell past the cap was undercounted to 0 → wrongly auto-expanded (FIX-428).
         // Single-column projections keep the egress small even for high-degree neighbors.
-        const [neighborFromCounts, neighborToCounts] = await Promise.all([
-          fetchAllPaged<{ from_id: string }>((f, t) =>
-            supabase.from("entity_connections").select("from_id").in("from_id", neighborIds).range(f, t)),
-          fetchAllPaged<{ to_id: string }>((f, t) =>
-            supabase.from("entity_connections").select("to_id").in("to_id", neighborIds).range(f, t)),
-        ]);
-        if (neighborFromCounts.error) throw neighborFromCounts.error;
-        if (neighborToCounts.error) throw neighborToCounts.error;
-
+        // FIX-503: count neighbor degrees with the get_connection_counts RPC
+        // (from+to UNION ALL GROUP BY, server-side) instead of two fully-
+        // paginated entity_connections scans pulled to the client. The old
+        // approach moved every edge row of every neighbor over the wire and
+        // churned the buffer pool; the RPC returns one count per id. Chunk the
+        // uuid[] arg so a wide neighbor set stays bounded.
         const neighborConnCounts = new Map<string, number>();
-        for (const r of neighborFromCounts.rows) {
-          neighborConnCounts.set(r.from_id, (neighborConnCounts.get(r.from_id) ?? 0) + 1);
-        }
-        for (const r of neighborToCounts.rows) {
-          neighborConnCounts.set(r.to_id, (neighborConnCounts.get(r.to_id) ?? 0) + 1);
+        const RPC_CHUNK = 500;
+        for (let i = 0; i < neighborIds.length; i += RPC_CHUNK) {
+          const chunk = neighborIds.slice(i, i + RPC_CHUNK);
+          const { data, error } = await supabase.rpc("get_connection_counts", { entity_ids: chunk });
+          if (error) throw error;
+          for (const r of (data ?? []) as Array<{ entity_id: string; connection_count: number | string }>) {
+            neighborConnCounts.set(r.entity_id, Number(r.connection_count));
+          }
         }
 
         const autoExpandIds: string[] = [];

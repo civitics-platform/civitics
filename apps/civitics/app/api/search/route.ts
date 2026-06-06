@@ -422,7 +422,10 @@ export async function GET(req: NextRequest) {
 
     let qb = db2
       .from("proposals")
-      .select("id, title, status, type, metadata, summary_plain", { count: "exact" })
+      // FIX-503: total_count is display-only ("about N results"); hasMore is
+      // computed from the page rows, not the count. 'planned' uses the planner
+      // estimate and avoids a full count over the summary_plain ILIKE seq scan.
+      .select("id, title, status, type, metadata, summary_plain", { count: "planned" })
       .neq("type", "initiative");
 
     // comment_period_end is metadata-only post-cutover (no top-level column);
@@ -530,7 +533,9 @@ export async function GET(req: NextRequest) {
 
     let qb = db2
       .from("financial_entities")
-      .select(selectCols, { count: "exact" });
+      // FIX-503: total_count is display-only; 'planned' uses the planner estimate
+      // instead of an exact count over a multi-million-row table.
+      .select(selectCols, { count: "planned" });
 
     // FIX-236: individuals are surfaced whenever the user is actively
     // searching or filtering. The only time we exclude them is the
@@ -556,9 +561,13 @@ export async function GET(req: NextRequest) {
     if (filterIndustry) {
       const { data: tagRows } = await db2
         .from("entity_tags")
+        // FIX-503: industry tags are stored as lowercase slugs (real_estate,
+        // oil_gas, …). An exact .eq matches the same rows as the prior case-
+        // insensitive .ilike but uses idx_entity_tags_tag(tag,tag_category)
+        // instead of a seq scan / filter.
         .select("entity_id")
         .eq("tag_category", "industry")
-        .ilike("tag", filterIndustry);
+        .eq("tag", filterIndustry.toLowerCase());
       const tagIds = (tagRows ?? []).map((r: { entity_id: string }) => r.entity_id);
       if (tagIds.length === 0) return { results: [], hasMore: false, total_count: 0 };
       qb = qb.in("id", tagIds);

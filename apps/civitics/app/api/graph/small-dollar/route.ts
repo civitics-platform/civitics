@@ -77,6 +77,10 @@ export async function GET(req: NextRequest) {
       .eq("to_id", entityId)
       .lt("amount_cents", SMALL_DOLLAR_CENTS_LIMIT)
       .gt("amount_cents", 0)
+      // FIX-503: stable pkey order — the prior comment claimed .lt() prevented
+      // double-counting, but pagination is by .range() (OFFSET); without an
+      // ORDER BY the small-dollar sum could double-count or skip rows.
+      .order("id", { ascending: true })
       .range(from, from + PAGE - 1);
     if (!data || data.length === 0) break;
     allRows = allRows.concat(data as DonationLite[]);

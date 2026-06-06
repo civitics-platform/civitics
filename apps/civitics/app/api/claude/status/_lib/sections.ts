@@ -116,8 +116,10 @@ export async function getDatabase(db: Db, yesterday: string) {
       .select("*", { count: "planned", head: true })
       .in("type", ["bill", "resolution", "amendment"]),
     db
+      // FIX-503: status-page tile — 'planned' (planner estimate) is plenty
+      // accurate and avoids an exact count over all regulation rows.
       .from("proposals")
-      .select("*", { count: "exact", head: true })
+      .select("*", { count: "planned", head: true })
       .eq("type", "regulation"),
     db.from("votes").select("*", { count: "estimated", head: true }),
     db.from("entity_connections").select("*", { count: "estimated", head: true }),

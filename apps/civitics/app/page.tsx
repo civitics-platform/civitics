@@ -365,7 +365,11 @@ export default async function HomePage({
       withDbTimeout(
         supabase
           .from("financial_relationships")
-          .select("id", { count: "exact", head: true })
+          // FIX-503: hero stat — an exact count over millions of donation rows
+          // is the expensive part. 'estimated' (planner reltuples) is accurate
+          // enough for a "N donor records" headline and won't churn the buffer
+          // pool / hit the 2s timeout.
+          .select("id", { count: "estimated", head: true })
           .eq("relationship_type", "donation"),
         2000
       )

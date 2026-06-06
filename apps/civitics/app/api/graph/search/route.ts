@@ -40,7 +40,10 @@ export async function GET(req: Request) {
     withDbTimeout(
       supabase
         .from("financial_entities")
+        // FIX-503: scope to non-individuals so the partial display_name trgm
+        // index serves this ILIKE instead of a seq scan (prod cost 219k→27).
         .select("id, display_name, entity_type")
+        .neq("entity_type", "individual")
         .ilike("display_name", like)
         .limit(20),
     ),

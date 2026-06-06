@@ -111,10 +111,28 @@ interface SearchRow {
   party: string | null;
 }
 
-async function fetchEntityTags(supabase: AdminClient, id: string): Promise<string[]> {
+// FIX-503: entity_tags is indexed on (entity_type, entity_id) — an entity_id-only
+// filter can't use the leading column and falls back to an idx_entity_tags_visibility
+// scan (prod cost 26989 → 2.8 with entity_type). Callers know the resolved type, so
+// thread it through. Map the snapshot's entity_type vocab to entity_tags'.
+const ENTITY_TAG_TYPE: Record<string, string | null> = {
+  official: "official",
+  financial: "financial_entity",
+  proposal: "proposal",
+  agency: null, // no agency rows exist in entity_tags — skip the query
+};
+
+async function fetchEntityTags(
+  supabase: AdminClient,
+  id: string,
+  entityType: string,
+): Promise<string[]> {
+  const tagEntityType = ENTITY_TAG_TYPE[entityType] ?? null;
+  if (!tagEntityType) return [];
   const { data } = await supabase
     .from("entity_tags")
     .select("tag")
+    .eq("entity_type", tagEntityType)
     .eq("entity_id", id)
     .eq("visibility", "primary")
     .gte("confidence", 0.7)
@@ -144,7 +162,10 @@ async function resolveEntityByName(
       .maybeSingle(),
     supabase
       .from("financial_entities")
+      // FIX-503: scope to non-individuals so the partial display_name trgm
+      // index serves this ILIKE instead of a seq scan (prod cost 219k→27).
       .select("id, display_name, entity_type")
+      .neq("entity_type", "individual")
       .ilike("display_name", like)
       .limit(1)
       .maybeSingle(),
@@ -191,7 +212,7 @@ async function resolveEntityByName(
 
   if (!row) return { entity: null, queries };
 
-  const tags = await fetchEntityTags(supabase, row.id);
+  const tags = await fetchEntityTags(supabase, row.id, row.entity_type);
   queries++;
 
   return {
@@ -222,7 +243,7 @@ async function resolveEntityById(
     .maybeSingle();
 
   if (official) {
-    const tags = await fetchEntityTags(supabase, id);
+    const tags = await fetchEntityTags(supabase, id, "official");
     queries++;
     return {
       entity: {

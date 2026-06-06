@@ -72,6 +72,8 @@ export async function GET(req: NextRequest) {
       .eq("to_type", "official")
       .eq("to_id", entityId)
       .gt("amount_cents", 0)
+      // FIX-503: stable pkey order so paged per-donor sums don't double-count.
+      .order("id", { ascending: true })
       .range(from, from + PAGE - 1);
     if (!data || data.length === 0) break;
     for (const d of data as DonationLite[]) {

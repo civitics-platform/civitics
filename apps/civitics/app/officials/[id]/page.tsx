@@ -309,10 +309,15 @@ export default async function OfficialProfilePage({
       // raised it) undercut the donor totals for heavily-funded officials. Page
       // the full set with a stable unique order key.
       (async () => {
-        const { rows } = await fetchAllRows<{ from_id: string; amount_cents: number | null; metadata: Record<string, unknown> | null; relationship_type: string }>((f, t) =>
+        const { rows } = await fetchAllRows<{ from_id: string; amount_cents: number | null; sector: string | null; relationship_type: string }>((f, t) =>
           sb
             .from("financial_relationships")
-            .select("from_id, amount_cents, metadata, relationship_type")
+            // FIX-503: project just the sector key (sector:metadata->>sector)
+            // instead of the whole metadata jsonb over up to 50k donor rows —
+            // sector is the only field read downstream. (NB: the key is
+            // currently unpopulated; see FIX-512 — the industry breakdown falls
+            // back to entity_tags, so this is a payload/buffer win only.)
+            .select("from_id, amount_cents, sector:metadata->>sector, relationship_type")
             .in("relationship_type", ["donation", "ie_support", "ie_oppose"])
             .eq("to_type", "official")
             .eq("to_id", params.id)
@@ -403,7 +408,7 @@ export default async function OfficialProfilePage({
   const inflowRaw = (donorAmtRawRes.data ?? []) as Array<{
     from_id: string;
     amount_cents: number | null;
-    metadata: Record<string, unknown> | null;
+    sector: string | null;
     relationship_type: string;
   }>;
   const fromEntityIds = [...new Set(inflowRaw.map((d) => d.from_id))];
@@ -434,7 +439,7 @@ export default async function OfficialProfilePage({
       donor_type:        info?.entity_type ?? "other",
       industry:          info?.industry ?? null,
       amount_cents:      r.amount_cents,
-      metadata:          r.metadata,
+      sector:            r.sector,
       relationship_type: r.relationship_type,
     };
   });
@@ -546,7 +551,7 @@ export default async function OfficialProfilePage({
   const bySector = new Map<string, number>();
   for (const row of donorAmtRes.data ?? []) {
     const sector =
-      (row.metadata as Record<string, string> | null)?.sector ??
+      row.sector ??
       row.industry ??
       row.donor_type ??
       "Other";
@@ -676,6 +681,11 @@ export default async function OfficialProfilePage({
       .from("financial_relationships")
       .select("id, from_id, to_id, amount_cents, occurred_at, relationship_type, metadata")
       .in("relationship_type", ["contract", "grant"])
+      // FIX-503: amount_cents>0 lets the top-10 use the partial DESC index
+      // financial_relationships_amount (prod cost 371k → 39) instead of a
+      // parallel seq scan + sort, and drops NULL-amount rows that sort first
+      // under DESC and would otherwise crowd out the real top contracts.
+      .gt("amount_cents", 0)
       .order("amount_cents", { ascending: false })
       .limit(10);
     const spendRows = rows ?? [];

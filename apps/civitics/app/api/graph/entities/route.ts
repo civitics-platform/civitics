@@ -95,7 +95,12 @@ export async function GET(request: Request) {
     withDbTimeout(
       supabase
         .from("financial_entities")
+        // FIX-503: scope to non-individuals so the partial display_name trgm
+        // index (financial_entities_display_trgm WHERE entity_type<>'individual')
+        // serves this ILIKE — otherwise it seq-scans (prod cost 219k→27).
+        // Individual donor aggregates aren't meaningful graph nodes here.
         .select("id, display_name, entity_type, primary_source, primary_source_url")
+        .neq("entity_type", "individual")
         .ilike("display_name", like)
         .limit(20),
     ),

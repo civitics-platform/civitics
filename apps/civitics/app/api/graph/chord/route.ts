@@ -489,7 +489,16 @@ export async function GET(req: NextRequest) {
   const entityIdsRaw = searchParams.get('entityIds');
   if (entityIdsRaw) {
     try {
-      const entityIds = entityIdsRaw.split(',').filter(Boolean);
+      // FIX-503: entityIds is a user-supplied CSV and each id drives a separate
+      // per-official donor-breakdown query (fetchDonorsFor). Validate UUID shape
+      // and cap at 12 so a long/garbage list can't fan out into an unbounded
+      // query storm against the cache-starved DB.
+      const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      const entityIds = entityIdsRaw
+        .split(',')
+        .map((s) => s.trim())
+        .filter((s) => UUID_RE.test(s))
+        .slice(0, 12);
       if (entityIds.length === 0) {
         return NextResponse.json({ groups: [], recipients: [], matrix: [], mode: 'compare' });
       }
