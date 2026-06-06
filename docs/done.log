@@ -637,3 +637,4 @@
 2026-06-05 | FIX-499 | reopen | unverified | reverted route to OFFSET — live get_group_donor_totals RPC is load-sensitive (0.7s/4.5s warm but 12-25s cold/under-load → exceeds 8s budget) AND 1000-row-capped via PostgREST max_rows (SETOF); superseded by FIX-500 (per-gb donor-rollup MV). RPC migrations 20260605000001/000002 retained on prod as MV groundwork.
 2026-06-06 | FIX-499 | 90deae79 | local+prod | feat(graph): per-cohort donor rollup materialization for group route (FIX-500)
 2026-06-06 | FIX-500 | 90deae79 | local+prod | feat(graph): per-cohort donor rollup materialization for group route (FIX-500)
+2026-06-06 | FIX-502 | 5bf68bf2 | local+prod | perf(proposals): index introduced_at DESC NULLS LAST to fix list-sort timeout (FIX-502)
