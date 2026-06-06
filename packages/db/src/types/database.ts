@@ -4554,6 +4554,16 @@ export type Database = {
       }
       get_official_bipartisan_stats: { Args: never; Returns: Json }
       get_official_donor_rollup: { Args: never; Returns: Json }
+      get_group_donor_totals: {
+        Args: { p_official_ids: string[] }
+        Returns: {
+          financial_entity_id: string
+          entity_name: string
+          entity_type: string
+          total_cents: number
+          member_count: number
+        }[]
+      }
       get_official_donors: {
         Args: { p_official_id: string }
         Returns: {
