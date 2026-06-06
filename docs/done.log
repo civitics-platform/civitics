@@ -629,3 +629,6 @@
 2026-06-04 | FIX-490 | 87e9dd4a | local+prod | feat(graph): gb group-expansion + gb-backed Congress presets (FIX-468 Wave A)
 2026-06-04 | FIX-491 | 87e9dd4a | local+prod | feat(graph): gb group-expansion + gb-backed Congress presets (FIX-468 Wave A)
 2026-06-04 | FIX-492 | 87e9dd4a | local+prod | feat(graph): gb group-expansion + gb-backed Congress presets (FIX-468 Wave A)
+2026-06-05 | FIX-494 | 4f03b0f9 | closes-as-redirected | fix(graph): stop group route failing open to zero donors under load
+2026-06-05 | FIX-497 | 7247b94f | prod-only | chore(graph): record prod verification of FIX-497 group-route fail-closed fix
+2026-06-05 | FIX-497 | 4f03b0f9 | local-only | fix(graph): stop group route failing open to zero donors under load

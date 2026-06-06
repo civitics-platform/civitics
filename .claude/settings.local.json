@@ -12,7 +12,11 @@
       "WebFetch(*)",
       "mcp__supabase__*",
       "Read(//tmp/**)",
-      "Bash(grep -E --line-buffered \"HALT|WRAPPER EXIT|\\\\\\\\[nightly\\\\\\\\]|threw:|Pipeline failed|FATAL|OOM|Killed|FAILED|FAIL —|Pipeline report|TOTAL|edges|All pipelines completed|Pipeline orchestrator|COMPLETED in|rebuild_entity_connections —|refresh_|^=== |status=failed|fec_bulk|usaspending|courtlistener|openstates|irs990|littlesis|edgar |agency|opm-fte|plum-book|elections|committees|tag-rules|tag-ai|ai-summaries|tag-industry|Got [0-9]+ items|inserted:|updated:|estimatedMb|peak\")"
+      "Bash(grep -E --line-buffered \"HALT|WRAPPER EXIT|\\\\\\\\[nightly\\\\\\\\]|threw:|Pipeline failed|FATAL|OOM|Killed|FAILED|FAIL —|Pipeline report|TOTAL|edges|All pipelines completed|Pipeline orchestrator|COMPLETED in|rebuild_entity_connections —|refresh_|^=== |status=failed|fec_bulk|usaspending|courtlistener|openstates|irs990|littlesis|edgar |agency|opm-fte|plum-book|elections|committees|tag-rules|tag-ai|ai-summaries|tag-industry|Got [0-9]+ items|inserted:|updated:|estimatedMb|peak\")",
+      "Edit(c:/Users/Craig/Documents/Civitics/civitics-worktrees/**)",
+      "Read(c:/Users/Craig/Documents/Civitics/civitics-worktrees/**)",
+      "Bash(cd ../civitics-worktrees/**)",
+      "Bash(cd c:/Users/Craig/Documents/Civitics/civitics-worktrees/**)"
     ],
     "deny": [
       "Bash(git push --force*)",
