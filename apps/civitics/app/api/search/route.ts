@@ -424,7 +424,7 @@ export async function GET(req: NextRequest) {
       .from("proposals")
       // FIX-503: total_count is display-only ("about N results"); hasMore is
       // computed from the page rows, not the count. 'planned' uses the planner
-      // estimate and avoids a full count over the summary_plain ILIKE seq scan.
+      // estimate and avoids a full count over the proposals q-search.
       .select("id, title, status, type, metadata, summary_plain", { count: "planned" })
       .neq("type", "initiative");
 
@@ -438,7 +438,13 @@ export async function GET(req: NextRequest) {
     if (filterDateTo)       qb = qb.lte("metadata->>comment_period_end", filterDateTo);
 
     if (q.length >= 2) {
-      qb = qb.or(`title.ilike.%${q}%,summary_plain.ilike.%${q}%`);
+      // FIX-504: FTS over proposals.search_vector (title A / short_title B /
+      // summary_plain C) instead of summary_plain ILIKE '%q%'. ILIKE seq-scanned
+      // (no trgm on summary_plain; prod cost 20063); websearch uses the restored
+      // proposals_search_vector GIN. Match semantics change from substring to
+      // whole-word lexeme ("healthc" no longer matches "healthcare"), with
+      // websearch syntax (quoted "phrases", -exclusion) now supported.
+      qb = qb.textSearch("search_vector", q, { type: "websearch", config: "english" });
     }
 
     qb = qb.order("metadata->>comment_period_end", { ascending: false, nullsFirst: false })
