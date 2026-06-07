@@ -644,3 +644,6 @@
 2026-06-06 | FIX-504 | d4a2bc1e | local+prod | perf(search): partial browse-sort index + restore proposals FTS GIN (FIX-504)
 2026-06-06 | FIX-505 | 189b4864 | closes-as-redirected | docs(db): correct function-level statement_timeout guidance (FIX-505 closeout)
 2026-06-07 | FIX-509 | 2dc7ec24 | local+prod | perf(graph): entity_connection_stats_mv replaces edge-row count loops (FIX-509)
+2026-06-07 | FIX-513 | b0b8ee2c | local+prod | fix(proposals): crawler hardening + topics filter via RPC (FIX-513, FIX-514, FIX-515)
+2026-06-07 | FIX-514 | b0b8ee2c | local+prod | fix(proposals): crawler hardening + topics filter via RPC (FIX-513, FIX-514, FIX-515)
+2026-06-07 | FIX-515 | b0b8ee2c | local-only | fix(proposals): crawler hardening + topics filter via RPC (FIX-513, FIX-514, FIX-515)
