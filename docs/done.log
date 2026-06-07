@@ -647,3 +647,4 @@
 2026-06-07 | FIX-513 | b0b8ee2c | local+prod | fix(proposals): crawler hardening + topics filter via RPC (FIX-513, FIX-514, FIX-515)
 2026-06-07 | FIX-514 | b0b8ee2c | local+prod | fix(proposals): crawler hardening + topics filter via RPC (FIX-513, FIX-514, FIX-515)
 2026-06-07 | FIX-515 | b0b8ee2c | local-only | fix(proposals): crawler hardening + topics filter via RPC (FIX-513, FIX-514, FIX-515)
+2026-06-07 | FIX-510 | 77c19f5d | local+prod | fix(graph): close 1000-row cap undercounts — matrix agreement RPC + donor pagination (FIX-510)
