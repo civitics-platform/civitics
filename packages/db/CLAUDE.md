@@ -322,24 +322,34 @@ Two reference implementations in the codebase:
   when the helpers must compose route-local imports (`packages/db` can't
   import from `apps`).
 
-### Function-level `statement_timeout`
+### Function-level `statement_timeout` — does NOT raise a PostgREST RPC's ceiling
 
-Any new aggregation RPC over a table > 1 M rows should set its own
-`statement_timeout`. The service_role default (8 s on Pro) times out
-cold-cache GROUP BYs on `entity_connections` / `financial_relationships`.
+`ALTER FUNCTION ... SET statement_timeout` is a **no-op for the timeout of a
+top-level RPC called over PostgREST** — verified both directions in the FIX-512
+session (FIX-505). Postgres arms the cancel-timer for a statement from the
+*session/role* `statement_timeout` at statement start, **before** the function
+body's `SET` takes effect; the function-local value only governs nested or
+subsequent statements, never the call that entered the function. Over PostgREST
+you cannot `SET` at the session level either, so the service_role default (≈8 s
+on Pro) is the hard ceiling regardless of any `ALTER FUNCTION` on the RPC.
 
 ```sql
+-- DEAD PATTERN for request-path RPCs — does not extend the call's own timeout:
 ALTER FUNCTION public.<name>(...) SET statement_timeout = '<budget>';
 ```
 
-Sizing guidance:
-- Aggregation over 5 M rows (cold) → **120 s** (precedent:
-  `get_connection_type_counts`, FIX-298 follow-up).
-- Per-chunk rebuild functions → **90 min** (precedent:
-  `rebuild_entity_connections_donations`, FIX-291).
-
-Set the timeout via `ALTER FUNCTION`, not by rewriting the body — cleaner
-diff and the GUC is what changes.
+What actually works:
+- **Request-path aggregation RPCs:** the durable fix is **materialization**
+  (single-row / per-entity MV with a live-compute fallback) so the read stays
+  under the ~8 s role ceiling — see the materialization pattern earlier in this
+  file. FIX-506/FIX-512 moved the sector/group aggregations onto MVs for exactly
+  this reason.
+- **Long pipeline operations** (chunked rebuilds, backfills): run them over a
+  **direct `pg.Client`** (not PostgREST) and `SET statement_timeout` at the
+  **session** level on that connection before the call. This is valid and is how
+  `rebuild_entity_connections_donations` gets its long budget (FIX-291,
+  `lib/heavy-rebuild.ts`) — session-level SET on a direct connection, not the
+  function-level GUC. Do not remove that.
 
 ### When NOT to materialize
 
