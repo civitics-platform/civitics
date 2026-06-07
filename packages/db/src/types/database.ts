@@ -4788,6 +4788,40 @@ export type Database = {
           entity_id: string
         }[]
       }
+      get_topic_proposal_page: {
+        Args: {
+          p_agency: string
+          p_limit: number
+          p_offset: number
+          p_q: string
+          p_sort: string
+          p_status: string
+          p_tags: string[]
+          p_type: string
+        }
+        Returns: {
+          id: string
+          introduced_at: string
+          metadata: Json
+          status: string
+          summary_model: string
+          summary_plain: string
+          title: string
+          total_count: number
+          type: string
+        }[]
+      }
+      get_vote_agreement_matrix: {
+        Args: { p_official_ids: string[] }
+        Returns: {
+          agreed: number
+          official_a: string
+          official_b: string
+          shared: number
+          yes_a: number
+          yes_b: number
+        }[]
+      }
       has_active_constituent_grant: {
         Args: { p_jurisdiction_id: string; p_user_id: string }
         Returns: boolean

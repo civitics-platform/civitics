@@ -64,32 +64,70 @@ export async function GET(request: Request) {
   // get_official_donors RPC was retired in the shadow→public promotion.
   // Direct query: financial_relationships → aggregate by from_id → join financial_entities.
   if (validEntityId) {
-    let donationsQuery = supabase
-      .from("financial_relationships")
-      .select("from_id, amount_cents")
-      .eq("relationship_type", "donation")
-      .eq("to_type", "official")
-      .eq("to_id", validEntityId)
-      .eq("from_type", "financial_entity");
-
-    if (filterPacIds) donationsQuery = donationsQuery.in("from_id", filterPacIds);
-
-    const { data: donations, error: donationsErr } = await donationsQuery;
-
-    if (donationsErr) {
-      console.error("[graph/treemap/entity] donations error:", donationsErr.message);
-      return Response.json({ error: donationsErr.message }, { status: 500 });
-    }
-
+    // FIX-510 — paginate the donations scan. The previous single unpaged SELECT
+    // was silently capped at 1,000 rows by PostgREST; 447 officials locally have
+    // >1,000 donation rows (max 43,960), so their donor totals were undercounted
+    // by up to ~44×. No .order() — mirroring the filterPacIds loop below: the
+    // selective (to_type,to_id) bitmap scan returns rows in stable heap order
+    // (deterministic per plan, no concurrent writes in a read request), so
+    // range() pages tile the result set without skips/dups. Adding an ORDER BY
+    // here is actively harmful: ORDER BY from_id makes the planner satisfy the
+    // sort with the from_id-led _derivation index and drop the to_id filter
+    // (full 1.9M-row scan, 23s); ORDER BY id forces a per-page external-merge
+    // sort of all ~44k rows (~600ms × 44 pages → statement timeout). Interim
+    // fix — the durable home is the per-(official, donor) rollup MV, FIX-518.
+    const PAGE = 1000;
     const byDonor = new Map<string, number>();
-    for (const d of donations ?? []) {
-      byDonor.set(d.from_id, (byDonor.get(d.from_id) ?? 0) + (d.amount_cents ?? 0));
+    let from = 0;
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      let donationsQuery = supabase
+        .from("financial_relationships")
+        .select("from_id, amount_cents")
+        .eq("relationship_type", "donation")
+        .eq("to_type", "official")
+        .eq("to_id", validEntityId)
+        .eq("from_type", "financial_entity")
+        .range(from, from + PAGE - 1);
+
+      if (filterPacIds) donationsQuery = donationsQuery.in("from_id", filterPacIds);
+
+      const { data: donations, error: donationsErr } = await donationsQuery;
+      if (donationsErr) {
+        console.error("[graph/treemap/entity] donations error:", donationsErr.message);
+        return Response.json({ error: donationsErr.message }, { status: 500 });
+      }
+      if (!donations || donations.length === 0) break;
+      for (const d of donations) {
+        byDonor.set(d.from_id, (byDonor.get(d.from_id) ?? 0) + (d.amount_cents ?? 0));
+      }
+      if (donations.length < PAGE) break;
+      from += PAGE;
+      if (from > 500_000) break; // safety guard
     }
 
-    const donorIds = [...byDonor.keys()];
+    // FIX-510 — the per-donor aggregation above is now complete (no silent row
+    // cap), but an official can have tens of thousands of distinct donors (max
+    // ~38,964 local) — far more than a treemap can render, and one metadata
+    // round-trip per 100–200 of them would be hundreds of sequential queries.
+    // Apply the donation floor, rank by corrected total, and emit only the top
+    // LEAF_CAP donors as leaves (mirrors aggregate mode's slice(0, 500)). The
+    // long tail of small donors is summed correctly into each leaf's total but
+    // isn't emitted as its own cell. Metadata is fetched for the top set only.
+    // (FIX-518's per-(official, donor) rollup MV makes this a point read.)
+    const LEAF_CAP = 1000;
+    const rankedDonors = [...byDonor.entries()]
+      .filter(([, cents]) => cents >= minAmountCents)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, LEAF_CAP);
+
+    const donorIds = rankedDonors.map(([id]) => id);
     const donorInfo = new Map<string, { name: string; entity_type: string | null }>();
     if (donorIds.length > 0) {
-      const BATCH = 300;
+      // Keep .in() id batches <=200 so the PostgREST request URL stays well
+      // under Kong's ~13 KB header limit (356 UUIDs ≈ 13 KB → 400, swallowed by
+      // the destructure → silent empty).
+      const BATCH = 200;
       for (let i = 0; i < donorIds.length; i += BATCH) {
         const batch = donorIds.slice(i, i + BATCH);
         const { data: entities } = await supabase
@@ -107,10 +145,9 @@ export async function GET(request: Request) {
 
     const industryByEntityId = await fetchIndustryTagsByEntityId(supabase, donorIds);
 
+    // rankedDonors is already sorted by amount desc, so rows preserve that order.
     const rows: DonorRow[] = [];
-    for (const [donorId, cents] of byDonor) {
-      // FIX-220 — apply user donation floor before pushing the row.
-      if (cents < minAmountCents) continue;
+    for (const [donorId, cents] of rankedDonors) {
       const info = donorInfo.get(donorId);
       if (!info) continue;
       const industry = industryByEntityId.get(donorId);
@@ -122,7 +159,6 @@ export async function GET(request: Request) {
         entity_type: info.entity_type ?? "financial",
       });
     }
-    rows.sort((a, b) => b.amount_usd - a.amount_usd);
 
     return Response.json(rows, {
       headers: { "Cache-Control": "public, max-age=0, s-maxage=86400, stale-while-revalidate=172800" },

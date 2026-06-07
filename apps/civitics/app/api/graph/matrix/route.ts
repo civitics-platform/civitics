@@ -18,10 +18,13 @@ interface OfficialRow {
   metadata: Record<string, unknown> | null;
 }
 
-interface VoteRow {
-  official_id: string;
-  bill_proposal_id: string;
-  vote: string;
+interface AgreementPairRow {
+  official_a: string;
+  official_b: string;
+  shared: number;
+  agreed: number;
+  yes_a: number;
+  yes_b: number;
 }
 
 export interface MatrixOfficial {
@@ -54,14 +57,10 @@ export interface MatrixResponse {
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_OFFICIALS = 25;
 
-// Normalise vote values into the three buckets we score on. paired_yes/no count
-// as votes; abstain / present / not_voting collapse to "no opinion" and are
-// dropped from agreement math (they're not a yes/no signal).
-function bucket(vote: string): "yes" | "no" | null {
-  if (vote === "yes" || vote === "paired_yes") return "yes";
-  if (vote === "no" || vote === "paired_no") return "no";
-  return null;
-}
+// Vote bucketing (yes/paired_yes -> yes, no/paired_no -> no, everything else
+// dropped) now lives inside the get_vote_agreement_matrix RPC so the pairwise
+// counting happens server-side. See migration
+// 20260607020000_fix510_vote_agreement_matrix_rpc.sql.
 
 // Cohen's kappa for two raters (yes/no on shared proposals). Returns null when
 // one rater has zero variance — kappa is undefined in that case.
@@ -90,7 +89,7 @@ export async function GET(req: NextRequest) {
   const idsParam = searchParams.get("ids") ?? "";
   const ids = idsParam
     .split(",")
-    .map((s) => s.trim())
+    .map((s) => s.trim().toLowerCase())
     .filter((s) => UUID_RE.test(s))
     .slice(0, MAX_OFFICIALS);
 
@@ -104,16 +103,18 @@ export async function GET(req: NextRequest) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const supabase = createAdminClient() as any;
 
-  const [{ data: officialRows, error: oErr }, { data: voteRows, error: vErr }] =
+  const [{ data: officialRows, error: oErr }, { data: pairRows, error: vErr }] =
     await Promise.all([
       supabase
         .from("officials")
         .select("id, full_name, party, district_name, metadata")
         .in("id", ids),
-      supabase
-        .from("votes")
-        .select("official_id, bill_proposal_id, vote")
-        .in("official_id", ids),
+      // FIX-510 — pairwise agreement computed server-side. The old path fetched
+      // every vote row for these officials (votes.official_id = ANY(ids)) and
+      // built the matrix in JS; for 25 high-volume officials that is 59k+ rows,
+      // silently capped at 1,000 by PostgREST → the matrix was built from ~2% of
+      // the data. The RPC returns <=325 rows (one per unordered pair + self).
+      supabase.rpc("get_vote_agreement_matrix", { p_official_ids: ids }),
     ]);
 
   if (oErr) {
@@ -121,7 +122,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: oErr.message }, { status: 500 });
   }
   if (vErr) {
-    console.error("[graph/matrix] votes fetch:", vErr.message);
+    console.error("[graph/matrix] agreement RPC:", vErr.message);
     return NextResponse.json({ error: vErr.message }, { status: 500 });
   }
 
@@ -148,21 +149,21 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  // Build proposal_id → official_id → bucket lookup.
-  // Skip rows whose vote bucket is null (abstain etc.).
-  const byProposal = new Map<string, Map<string, "yes" | "no">>();
-  for (const row of (voteRows ?? []) as VoteRow[]) {
-    const b = bucket(row.vote);
-    if (!b) continue;
-    let inner = byProposal.get(row.bill_proposal_id);
-    if (!inner) {
-      inner = new Map();
-      byProposal.set(row.bill_proposal_id, inner);
+  // FIX-510 — fold the RPC's pair rows into lookup maps. One row per unordered
+  // pair (official_a <= official_b on uuid); self-pairs (official_a =
+  // official_b) carry each official's own bucketed-vote count for the diagonal.
+  // Counts arrive as bigint strings/numbers → Number() them.
+  const N = officials.length;
+  const pairByKey = new Map<string, AgreementPairRow>();
+  const selfShared = new Map<string, number>();
+  for (const r of (pairRows ?? []) as AgreementPairRow[]) {
+    if (r.official_a === r.official_b) {
+      selfShared.set(r.official_a, Number(r.shared));
+    } else {
+      pairByKey.set(`${r.official_a}|${r.official_b}`, r);
     }
-    inner.set(row.official_id, b);
   }
 
-  const N = officials.length;
   const cells: MatrixCell[][] = Array.from({ length: N }, () =>
     Array.from({ length: N }, () => ({
       shared: 0,
@@ -172,39 +173,46 @@ export async function GET(req: NextRequest) {
     })),
   );
 
-  // Per-official yes/no counts on the shared sub-corpus, used for kappa's
-  // chance-agreement term. Recomputed per-pair so the corpus matches.
   for (let i = 0; i < N; i++) {
     const oi = officials[i];
     if (!oi) continue;
     for (let j = i; j < N; j++) {
       const oj = officials[j];
       if (!oj) continue;
-      const a = oi.id;
-      const b = oj.id;
-      let shared = 0;
-      let agreed = 0;
-      let aYes = 0;
-      let aNo = 0;
-      let bYes = 0;
-      let bNo = 0;
-      for (const inner of byProposal.values()) {
-        const va = inner.get(a);
-        const vb = inner.get(b);
-        if (!va || !vb) continue;
-        shared++;
-        if (va === vb) agreed++;
-        if (va === "yes") aYes++;
-        else aNo++;
-        if (vb === "yes") bYes++;
-        else bNo++;
+
+      let cell: MatrixCell;
+      if (i === j) {
+        // Diagonal: an official agrees with themselves on every vote they cast.
+        // shared = that official's own bucketed-vote count.
+        const s = selfShared.get(oi.id) ?? 0;
+        cell = { shared: s, agreed: s, agreement: s > 0 ? 1 : null, kappa: 1 };
+      } else {
+        // Off-diagonal: look the pair up under the uuid-ordered key the RPC
+        // emitted (a <= b), then orient yes_a/yes_b back onto (i, j) so kappa's
+        // per-rater chance term matches the right official.
+        const [lo, hi] = oi.id < oj.id ? [oi.id, oj.id] : [oj.id, oi.id];
+        const pr = pairByKey.get(`${lo}|${hi}`);
+        if (pr) {
+          const shared = Number(pr.shared);
+          const agreed = Number(pr.agreed);
+          const iYes = oi.id === lo ? Number(pr.yes_a) : Number(pr.yes_b);
+          const jYes = oj.id === lo ? Number(pr.yes_a) : Number(pr.yes_b);
+          const agreement = shared > 0 ? agreed / shared : null;
+          const kappa = cohensKappa(
+            agreed,
+            shared,
+            iYes,
+            shared - iYes,
+            jYes,
+            shared - jYes,
+          );
+          cell = { shared, agreed, agreement, kappa };
+        } else {
+          // No row emitted → the pair shares no bucketed roll calls.
+          cell = { shared: 0, agreed: 0, agreement: null, kappa: null };
+        }
       }
-      const agreement = shared > 0 ? agreed / shared : null;
-      const kappa =
-        i === j
-          ? 1
-          : cohensKappa(agreed, shared, aYes, aNo, bYes, bNo);
-      const cell: MatrixCell = { shared, agreed, agreement, kappa };
+
       const rowI = cells[i];
       const rowJ = cells[j];
       if (rowI) rowI[j] = cell;
@@ -212,10 +220,18 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // proposalCount was byProposal.size (distinct proposals with >=1 bucketed
+  // vote among the selected officials). The union of distinct roll calls isn't
+  // derivable from pairwise counts; use the busiest official's own bucketed
+  // count as the informational header value — exact when the officials share a
+  // corpus, a lower bound otherwise. Display-only; no cell math depends on it.
+  const proposalCount =
+    selfShared.size > 0 ? Math.max(...selfShared.values()) : 0;
+
   const response: MatrixResponse = {
     officials,
     cells,
-    proposalCount: byProposal.size,
+    proposalCount,
   };
 
   return NextResponse.json(response, {
