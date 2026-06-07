@@ -225,17 +225,13 @@ export async function GET(request: Request) {
     });
   }
 
-  // FIX-172/177: aggregate donation totals + entity_connections counts per official
-  // in parallel batches. We iterate officialById (the full filtered set) to build
-  // rows so officials with $0 donations still appear — required for "Full Senate"
-  // to render all 100 senators when most have no FEC seed yet. sizeBy controls
-  // (connection_count, vote_count) need real data so users can pick a meaningful
-  // size when donations are sparse.
-  const VOTE_CONN_TYPES = new Set([
-    "vote_yes", "vote_no", "vote_abstain",
-    "nomination_vote_yes", "nomination_vote_no",
-  ]);
-
+  // FIX-172/177: aggregate donation totals + entity_connections counts per official.
+  // We iterate officialById (the full filtered set) to build rows so officials with
+  // $0 donations still appear — required for "Full Senate" to render all 100
+  // senators when most have no FEC seed yet. sizeBy controls (connection_count,
+  // vote_count) need real data so users can pick a meaningful size when donations
+  // are sparse. FIX-509: counts now read from entity_connection_stats_mv (below)
+  // instead of paging entity_connections; the MV folds in the 5-type vote set.
   const totalByOfficial = new Map<string, number>();
   const connByOfficial  = new Map<string, number>();
   const votesByOfficial = new Map<string, number>();
@@ -280,47 +276,36 @@ export async function GET(request: Request) {
     }
   }
 
-  // Connection counts and vote counts — paginate the same way.
+  // FIX-509 — connection + vote counts now come from entity_connection_stats_mv
+  // (one row per entity, both edge directions already folded in; refreshed after
+  // each entity_connections rebuild). This replaces the from/to pagination loops
+  // that issued ~2k sequential edge-row round-trips for the full filtered set
+  // (2026-06-06 buffer-churn audit). The MV's vote_count uses the same 5-type
+  // VOTE_CONN_TYPES set, so the values are identical to the old in-JS tally.
+  // Batch at 200 ids: each id maps to at most one MV row so the 1000-row
+  // PostgREST response cap is never the binding limit, but supabase-js encodes
+  // .in() filters in the request URL — 1000 UUIDs (~37KB) trips PostgREST's
+  // 414 URI-too-long (verified: 356 ids = 13KB → 414, 200 ids → 200 OK). 200
+  // matches the batch size the prior edge-row loop used here. .limit() is
+  // explicit per the read-batching convention.
   if (officialIds.length > 0) {
-    const PAGE = 1000;
     const BATCH = 200;
     for (let i = 0; i < officialIds.length; i += BATCH) {
       const batch = officialIds.slice(i, i + BATCH);
-
-      const accumulate = async (
-        column: "from_id" | "to_id",
-        typeColumn: "from_type" | "to_type",
-        target: Map<string, number>,
-        voteTarget: Map<string, number>,
-      ) => {
-        let from = 0;
-        // eslint-disable-next-line no-constant-condition
-        while (true) {
-          const { data } = await supabase
-            .from("entity_connections")
-            .select(`${column}, connection_type`)
-            .eq(typeColumn, "official")
-            .in(column, batch)
-            .range(from, from + PAGE - 1);
-          if (!data || data.length === 0) break;
-          for (const r of data as Array<Record<string, string>>) {
-            const id = r[column];
-            if (!id) continue;
-            target.set(id, (target.get(id) ?? 0) + 1);
-            if (VOTE_CONN_TYPES.has(r.connection_type as string)) {
-              voteTarget.set(id, (voteTarget.get(id) ?? 0) + 1);
-            }
-          }
-          if (data.length < PAGE) break;
-          from += PAGE;
-          if (from > 200_000) break;
-        }
-      };
-
-      await Promise.all([
-        accumulate("from_id", "from_type", connByOfficial, votesByOfficial),
-        accumulate("to_id",   "to_type",   connByOfficial, votesByOfficial),
-      ]);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data } = await (supabase as any)
+        .from("entity_connection_stats_mv")
+        .select("entity_id, connection_count, vote_count")
+        .in("entity_id", batch)
+        .limit(batch.length);
+      for (const r of (data ?? []) as Array<{
+        entity_id: string;
+        connection_count: number;
+        vote_count: number;
+      }>) {
+        connByOfficial.set(r.entity_id, Number(r.connection_count));
+        votesByOfficial.set(r.entity_id, Number(r.vote_count));
+      }
     }
   }
 

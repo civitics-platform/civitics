@@ -166,33 +166,34 @@ export async function GET(request: Request) {
 
   const allIds = rows.map((r) => r.id);
 
-  // Connection counts + connection type flags in parallel
-  const [fromRes, toRes] = await Promise.all([
-    supabase
-      .from("entity_connections")
-      .select("from_id, connection_type")
-      .in("from_id", allIds),
-    supabase
-      .from("entity_connections")
-      .select("to_id, connection_type")
-      .in("to_id", allIds),
-  ]);
-
+  // FIX-509 / FIX-510 — connection counts + donation/vote flags now read from
+  // entity_connection_stats_mv (one row per entity, both edge directions already
+  // folded in). This replaces the two unpaged entity_connections fetches, which
+  // silently capped count + flags at the PostgREST 1000-row default — the
+  // graph/entities site of FIX-510. allIds is at most ~80 (4 source queries ×
+  // 20), so a single ≤1000-id batch with an explicit .limit() covers it.
+  // has_vote here folds in the broader 5-type vote set (the MV's vote_count),
+  // a slight, intentional improvement over the old vote_yes/vote_no-only flag.
   const countMap = new Map<string, number>();
   const hasDonation = new Set<string>();
   const hasVote = new Set<string>();
 
-  for (const r of (fromRes.data ?? []) as { from_id: string; connection_type: string }[]) {
-    countMap.set(r.from_id, (countMap.get(r.from_id) ?? 0) + 1);
-    if (r.connection_type === "donation") hasDonation.add(r.from_id);
-    if (r.connection_type === "vote_yes" || r.connection_type === "vote_no")
-      hasVote.add(r.from_id);
-  }
-  for (const r of (toRes.data ?? []) as { to_id: string; connection_type: string }[]) {
-    countMap.set(r.to_id, (countMap.get(r.to_id) ?? 0) + 1);
-    if (r.connection_type === "donation") hasDonation.add(r.to_id);
-    if (r.connection_type === "vote_yes" || r.connection_type === "vote_no")
-      hasVote.add(r.to_id);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: statsData } = await (supabase as any)
+    .from("entity_connection_stats_mv")
+    .select("entity_id, connection_count, has_donation, has_vote")
+    .in("entity_id", allIds)
+    .limit(allIds.length);
+
+  for (const r of (statsData ?? []) as {
+    entity_id: string;
+    connection_count: number;
+    has_donation: boolean;
+    has_vote: boolean;
+  }[]) {
+    countMap.set(r.entity_id, Number(r.connection_count));
+    if (r.has_donation) hasDonation.add(r.entity_id);
+    if (r.has_vote) hasVote.add(r.entity_id);
   }
 
   // Fetch top topic tags per entity

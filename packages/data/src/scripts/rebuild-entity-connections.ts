@@ -179,6 +179,20 @@ async function main(): Promise<void> {
             `  [post] refresh_group_donor_rollup — FAILED: ${errMsg(rollupErr)}`,
           );
         }
+        // FIX-509 — refresh the per-entity connection-stats MV the treemap
+        // aggregate + graph entities routes read. Like the rollup above, its
+        // source (entity_connections) only changes when the chunks run, so this
+        // is the right (and only) cadence. Wrapped so a refresh failure leaves
+        // the prior snapshot in place rather than masking a successful rebuild.
+        try {
+          await client.query("SET statement_timeout = '600s'");
+          await client.query("SELECT public.refresh_entity_connection_stats_mv()");
+          console.log("  [post] refresh_entity_connection_stats_mv — complete");
+        } catch (statsErr) {
+          console.warn(
+            `  [post] refresh_entity_connection_stats_mv — FAILED: ${errMsg(statsErr)}`,
+          );
+        }
       } finally {
         await client.end();
       }
@@ -211,6 +225,18 @@ async function main(): Promise<void> {
       } catch (rollupErr) {
         console.warn(
           `  [post] refresh_group_donor_rollup — FAILED: ${errMsg(rollupErr)}`,
+        );
+      }
+      // FIX-509 — same per-entity connection-stats MV refresh on the local-dev
+      // umbrella path so `pnpm data:rebuild-connections` against local Docker
+      // also rebuilds the MV the treemap/entities routes read. Advisory.
+      try {
+        const { error: statsErr } = await admin.rpc("refresh_entity_connection_stats_mv");
+        if (statsErr) throw statsErr;
+        console.log("  [post] refresh_entity_connection_stats_mv — complete");
+      } catch (statsErr) {
+        console.warn(
+          `  [post] refresh_entity_connection_stats_mv — FAILED: ${errMsg(statsErr)}`,
         );
       }
     }

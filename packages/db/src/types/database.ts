@@ -4237,6 +4237,16 @@ export type Database = {
         }
         Relationships: []
       }
+      entity_connection_stats_mv: {
+        Row: {
+          connection_count: number | null
+          entity_id: string | null
+          has_donation: boolean | null
+          has_vote: boolean | null
+          vote_count: number | null
+        }
+        Relationships: []
+      }
       homepage_agency_counts_mv: {
         Row: {
           agency_id: string | null
@@ -4289,6 +4299,17 @@ export type Database = {
           refreshed_at: string | null
           total_donations_cents: number | null
           vote_count: number | null
+        }
+        Relationships: []
+      }
+      official_sector_dollars_mv: {
+        Row: {
+          display_icon: string | null
+          donor_count: number | null
+          official_id: string | null
+          sector_label: string | null
+          sector_tag: string | null
+          total_cents: number | null
         }
         Relationships: []
       }
@@ -4955,10 +4976,12 @@ export type Database = {
       refresh_chord_industry_flows_mv: { Args: never; Returns: undefined }
       refresh_chord_subject_party_flows_mv: { Args: never; Returns: undefined }
       refresh_connection_type_counts: { Args: never; Returns: undefined }
+      refresh_entity_connection_stats_mv: { Args: never; Returns: undefined }
       refresh_group_donor_rollup: { Args: never; Returns: Json }
       refresh_homepage_agency_counts_mv: { Args: never; Returns: undefined }
       refresh_homepage_stats_mv: { Args: never; Returns: undefined }
       refresh_official_homepage_stats_mv: { Args: never; Returns: undefined }
+      refresh_official_sector_dollars_mv: { Args: never; Returns: undefined }
       refresh_pipeline_runtime_stats_mv: { Args: never; Returns: undefined }
       refresh_primary_source_for_entities: {
         Args: { p_entity_ids: string[]; p_entity_type: string }

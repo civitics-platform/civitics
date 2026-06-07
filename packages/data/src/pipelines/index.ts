@@ -953,6 +953,12 @@ export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<Nigh
     // chord_industry_flows_mv (donations + industry tags); serves the chord
     // group/cross-group + sector-vote RPCs as indexed point reads.
     "refresh_official_sector_dollars_mv",
+    // FIX-509: per-entity connection-stats rollup (count/vote_count/has_*).
+    // Serves the treemap aggregate + graph entities routes as point reads
+    // instead of paging every entity_connections edge row. Source rows only
+    // change on the entity_connections rebuild (also refreshed there); the
+    // nightly tick keeps it warm alongside the other MV refreshes.
+    "refresh_entity_connection_stats_mv",
     // FIX-223: homepage hero stats + per-official Wave 3 stats
     "refresh_homepage_stats_mv",
     "refresh_official_homepage_stats_mv",
