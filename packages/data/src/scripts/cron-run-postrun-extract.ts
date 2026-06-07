@@ -90,6 +90,7 @@ async function main(): Promise<void> {
     "chord_donor_type_party_flows_mv",
     "chord_donor_state_party_flows_mv",
     "chord_subject_party_flows_mv",
+    "official_sector_dollars_mv",
     "homepage_stats_mv",
     "official_homepage_stats_mv",
     "pipeline_runtime_stats_mv",

@@ -949,6 +949,10 @@ export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<Nigh
     "refresh_chord_donor_type_party_flows_mv",
     "refresh_chord_donor_state_party_flows_mv",
     "refresh_chord_subject_party_flows_mv",
+    // FIX-506: per-official × sector donation rollup. Same source data as
+    // chord_industry_flows_mv (donations + industry tags); serves the chord
+    // group/cross-group + sector-vote RPCs as indexed point reads.
+    "refresh_official_sector_dollars_mv",
     // FIX-223: homepage hero stats + per-official Wave 3 stats
     "refresh_homepage_stats_mv",
     "refresh_official_homepage_stats_mv",
