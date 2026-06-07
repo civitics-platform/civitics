@@ -639,3 +639,5 @@
 2026-06-06 | FIX-500 | 90deae79 | local+prod | feat(graph): per-cohort donor rollup materialization for group route (FIX-500)
 2026-06-06 | FIX-502 | 5bf68bf2 | local+prod | perf(proposals): index introduced_at DESC NULLS LAST to fix list-sort timeout (FIX-502)
 2026-06-06 | FIX-503 | a3d95d27 | local-only | perf(read-path): index-align hot queries to cut buffer churn (FIX-503)
+2026-06-06 | FIX-506 | bc438722 | local+prod | fix(graph): sector RPCs onto entity_tags + per-official sector MV (FIX-512, FIX-506)
+2026-06-06 | FIX-512 | bc438722 | local+prod | fix(graph): sector RPCs onto entity_tags + per-official sector MV (FIX-512, FIX-506)
