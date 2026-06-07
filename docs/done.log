@@ -641,3 +641,5 @@
 2026-06-06 | FIX-503 | a3d95d27 | local-only | perf(read-path): index-align hot queries to cut buffer churn (FIX-503)
 2026-06-06 | FIX-506 | bc438722 | local+prod | fix(graph): sector RPCs onto entity_tags + per-official sector MV (FIX-512, FIX-506)
 2026-06-06 | FIX-512 | bc438722 | local+prod | fix(graph): sector RPCs onto entity_tags + per-official sector MV (FIX-512, FIX-506)
+2026-06-06 | FIX-504 | d4a2bc1e | local+prod | perf(search): partial browse-sort index + restore proposals FTS GIN (FIX-504)
+2026-06-06 | FIX-505 | 189b4864 | closes-as-redirected | docs(db): correct function-level statement_timeout guidance (FIX-505 closeout)
