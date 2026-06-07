@@ -643,3 +643,4 @@
 2026-06-06 | FIX-512 | bc438722 | local+prod | fix(graph): sector RPCs onto entity_tags + per-official sector MV (FIX-512, FIX-506)
 2026-06-06 | FIX-504 | d4a2bc1e | local+prod | perf(search): partial browse-sort index + restore proposals FTS GIN (FIX-504)
 2026-06-06 | FIX-505 | 189b4864 | closes-as-redirected | docs(db): correct function-level statement_timeout guidance (FIX-505 closeout)
+2026-06-07 | FIX-509 | 2dc7ec24 | local+prod | perf(graph): entity_connection_stats_mv replaces edge-row count loops (FIX-509)
