@@ -4,6 +4,7 @@
 // hit the edge in ~30ms instead of paying the full SSR cost each time.
 export const revalidate = 300;
 
+import type { Metadata } from "next";
 import { createPublicClient } from "@civitics/db";
 import { ProposalCard, type ProposalCardData } from "./components/ProposalCard";
 import { FeaturedSection } from "./components/FeaturedSection";
@@ -92,6 +93,33 @@ function buildCountLabel(
   return `${totalCount.toLocaleString()} total proposals`;
 }
 
+// FIX-513 (crawler hardening): the bare /proposals stays indexable, but any filtered
+// or paginated view gets noindex,follow. ClaudeBot walked the full faceted URL space
+// (every ?status&type&agency&topics&sort&q&page combo is a unique SSR/cache-miss),
+// driving ~430K Vercel invocations on 2026-06-07 (656K of the 1M cap). noindex,follow
+// keeps the facets crawlable-for-links but out of the index so they aren't re-walked.
+export async function generateMetadata({
+  searchParams,
+}: {
+  searchParams: SearchParams;
+}): Promise<Metadata> {
+  const pageNum = parseInt(searchParams.page ?? "1", 10);
+  const isDefaultView =
+    !searchParams.status &&
+    !searchParams.type &&
+    !searchParams.agency &&
+    !searchParams.topics &&
+    !searchParams.sort &&
+    !searchParams.q &&
+    (!searchParams.page || !(pageNum > 1));
+
+  return {
+    title: "Proposals · Civitics",
+    description: "Bills, regulations, and rules open for public comment.",
+    ...(isDefaultView ? {} : { robots: { index: false, follow: true } }),
+  };
+}
+
 export default async function ProposalsPage({
   searchParams,
 }: {
@@ -105,7 +133,9 @@ export default async function ProposalsPage({
   const topicsFilter = searchParams.topics ?? "";
   const sortFilter   = searchParams.sort   ?? "closing_soon";
   const searchQ      = searchParams.q      ?? "";
-  const page         = Math.max(1, parseInt(searchParams.page ?? "1", 10));
+  // FIX-513: clamp page to [1, 500] (no 404, just clamp) so crawlers can't walk an
+  // unbounded paginated URL space. parseInt NaN falls back to 1.
+  const page         = Math.min(500, Math.max(1, parseInt(searchParams.page ?? "1", 10) || 1));
   const offset       = (page - 1) * PAGE_SIZE;
   const activeTopics = topicsFilter ? topicsFilter.split(",").filter(Boolean) : [];
 
@@ -217,22 +247,14 @@ export default async function ProposalsPage({
   // Text search
   if (searchQ) mainQuery = mainQuery.ilike("title", `%${searchQ}%`);
 
-  // Topic filter — if active topics, get matching proposal IDs first
-  if (activeTopics.length > 0) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const sbAny = supabase as any;
-    const { data: tagRows } = await sbAny
-      .from("entity_tags")
-      .select("entity_id")
-      .eq("entity_type", "proposal")
-      .in("tag", activeTopics);
-    const topicFilteredIds = (tagRows ?? []).map((r: { entity_id: string }) => r.entity_id) as string[];
-    if (topicFilteredIds.length > 0) {
-      mainQuery = mainQuery.in("id", topicFilteredIds);
-    }
-  }
+  // Topic filter — FIX-514: when topics are active, the whole main list is served by
+  // the get_topic_proposal_page RPC (entity_tags × proposals joined server-side), so
+  // the request URL stays constant-length. The old two-step fetched up to 1,000 tag
+  // matches and stuffed the UUIDs into `.in("id", …)` — a ~37 KB URL that Kong
+  // rejected with a 400 (swallowed → silent empty page). See the RPC migration.
+  // The non-topics path below keeps the existing PostgREST builder unchanged.
 
-  // Sort and paginate
+  // Sort and paginate (non-topics path only)
   if (sortFilter === "newest") {
     mainQuery = mainQuery.order("introduced_at", { ascending: false, nullsFirst: false });
   } else if (sortFilter === "title") {
@@ -243,6 +265,24 @@ export default async function ProposalsPage({
   }
   mainQuery = mainQuery.range(offset, offset + PAGE_SIZE - 1);
 
+  // FIX-514: topics active → server-side RPC; otherwise the existing builder.
+  const useTopicsRpc = activeTopics.length > 0;
+  // get_topic_proposal_page is not in the generated types — cast to call it.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const sbRpc = supabase as any;
+  const mainListPromise = useTopicsRpc
+    ? sbRpc.rpc("get_topic_proposal_page", {
+        p_tags:   activeTopics,
+        p_status: statusFilter,
+        p_type:   typeFilter,
+        p_agency: agencyFilter,
+        p_q:      searchQ,
+        p_sort:   sortFilter,
+        p_offset: offset,
+        p_limit:  PAGE_SIZE,
+      })
+    : mainQuery;
+
   const [openFeaturedRes, billsRes, mostViewedRes, trendingRes, mostCommentedRes, newestRes, mainRes] = await Promise.all([
     openFeaturedQuery,
     billsQuery,
@@ -250,8 +290,12 @@ export default async function ProposalsPage({
     trendingQuery,
     mostCommentedQuery,
     newestQuery,
-    mainQuery,
+    mainListPromise,
   ]);
+
+  // RPC errors must NOT be swallowed into a fake zero-result. Flag a degraded
+  // state and render the empty block with a "try again" message instead.
+  const topicQueryFailed = useTopicsRpc && Boolean(mainRes?.error);
 
   // Post-promotion, regulations_gov_id / congress_gov_url / comment_period_end
   // live in proposals.metadata — flatten back into the legacy ProposalCardData shape.
@@ -289,7 +333,13 @@ export default async function ProposalsPage({
   const rawMostCommented  = ((mostCommentedRes.data  ?? []) as ProposalRow[]).map(toCardShape);
   const rawNewest         = ((newestRes.data         ?? []) as ProposalRow[]).map(toCardShape);
   const rawMainProposals  = ((mainRes.data           ?? []) as ProposalRow[]).map(toCardShape);
-  const totalCount = mainRes.count ?? 0;
+  // RPC path: total comes from the count(*) OVER() window column on each row (0 rows
+  // → 0 total, the correct zero-match result). Builder path: PostgREST exact count.
+  const totalCount = useTopicsRpc
+    ? Number(
+        (mainRes.data?.[0] as { total_count?: number | string } | undefined)?.total_count ?? 0,
+      )
+    : (mainRes.count ?? 0);
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
 
   // ─── AI summary cache lookup ──────────────────────────────────────────────
@@ -577,8 +627,14 @@ export default async function ProposalsPage({
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
             </div>
-            <p className="text-sm font-semibold text-gray-900">No proposals match your filters.</p>
-            <p className="mt-1 text-sm text-gray-500">Try adjusting the status, type, or topic filters, or clear your search.</p>
+            <p className="text-sm font-semibold text-gray-900">
+              {topicQueryFailed ? "We couldn’t load results for this topic." : "No proposals match your filters."}
+            </p>
+            <p className="mt-1 text-sm text-gray-500">
+              {topicQueryFailed
+                ? "Something went wrong fetching this topic. Please try again in a moment."
+                : "Try adjusting the status, type, or topic filters, or clear your search."}
+            </p>
             <a href="/proposals" className="mt-4 inline-block text-sm font-medium text-indigo-600 hover:underline">
               Clear filters →
             </a>

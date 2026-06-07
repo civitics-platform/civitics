@@ -2,6 +2,11 @@ User-agent: *
 Allow: /
 Disallow: /api/
 Disallow: /dashboard/
+# FIX-513: block all query-string URLs. Every ?status&type&agency&topics&sort&q&page
+# combo is a unique cache-miss SSR; ClaudeBot walking the facet space drove ~430K
+# Vercel invocations on 2026-06-07. Clean (param-free) URLs stay crawlable, and the
+# sitemap below gives crawlers the canonical entity walk instead.
+Disallow: /*?
 
 User-agent: AhrefsBot
 Disallow: /

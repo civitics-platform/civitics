@@ -12,7 +12,12 @@
 -- cannot change return type.
 
 -- Extension: pg_trgm (required for the trigram GIN indexes below; prod missing it).
-CREATE EXTENSION IF NOT EXISTS "pg_trgm" SCHEMA "public";
+-- FIX-515: the trigram index DDL below references "extensions"."gin_trgm_ops", so the
+-- extension must live in the "extensions" schema. The original "public" declaration
+-- made fresh replays fail ("operator class extensions.gin_trgm_ops does not exist")
+-- because 0001 lands pg_trgm in public. Prod already has this migration recorded as
+-- applied and never re-runs it, so this is replay-only in effect.
+CREATE EXTENSION IF NOT EXISTS "pg_trgm" SCHEMA "extensions";
 
 DROP FUNCTION IF EXISTS "public"."treemap_officials_by_donations"(integer) CASCADE;
 
@@ -71,6 +76,16 @@ GRANT ALL ON TABLE platform_usage TO anon, authenticated, service_role;
 -- ═══════════════════════════════════════════════════════════════════════════════
 -- Indexes: search trigram + data_sync_log + graph_snapshots (from 0008/0022/0030)
 -- ═══════════════════════════════════════════════════════════════════════════════
+
+-- FIX-515: belt-and-braces — if a prior migration (0001) put pg_trgm in a schema
+-- other than "extensions", relocate it so the "extensions"."gin_trgm_ops" operator
+-- class below resolves regardless of where the extension originally landed.
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_extension e JOIN pg_namespace n ON n.oid = e.extnamespace
+             WHERE e.extname = 'pg_trgm' AND n.nspname <> 'extensions') THEN
+    ALTER EXTENSION pg_trgm SET SCHEMA extensions;
+  END IF;
+END $$;
 
 CREATE INDEX IF NOT EXISTS "agencies_name_trgm" ON "public"."agencies" USING "gin" ("name" "extensions"."gin_trgm_ops");
 CREATE INDEX IF NOT EXISTS "financial_relationships_donor_name_trgm" ON "public"."financial_relationships" USING "gin" ("donor_name" "extensions"."gin_trgm_ops");
