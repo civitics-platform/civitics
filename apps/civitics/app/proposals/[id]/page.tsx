@@ -10,7 +10,6 @@ import { SourceBadge } from "../../components/SourceBadge";
 import { SourceDetailPopover } from "../../components/SourceDetailPopover";
 import { EntityComments } from "../../components/EntityComments";
 import { PositionSection } from "../../components/PositionSection";
-import { PositionWidget } from "./components/PositionWidget";
 import { RelatedInitiatives, type InitiativeLink } from "../components/RelatedInitiatives";
 import { ProposalShareButton } from "../components/ProposalShareButton";
 import { getCachedProposal } from "../_lib/get-proposal";
@@ -523,9 +522,6 @@ export default async function ProposalDetailPage({
                 </div>
               </section>
             )}
-
-            {/* Community Position */}
-            <PositionWidget proposalId={p.id} />
 
             {/* Position spine (C1) — intensity, rollup, terms of consensus */}
             <PositionSection entityType="proposal" entityId={p.id} lensEnabled />
