@@ -1,206 +1,188 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
+import { randomUUID } from "node:crypto";
 import { createServerClient, createAdminClient } from "@civitics/db";
+import { ALLOWED_KINDS, DEFAULT_KIND } from "@civitics/db";
 
 export const dynamic = "force-dynamic";
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// @deprecated — thin adapter over the unified entity_comments substrate
+// (C0 / FIX-520). New surface: /api/comments. Initiatives are proposals, so
+// arguments are entity_comments rows with entity_type='proposal'. comment_type
+// <-> kind, side <-> stance, the old single-axis vote <-> comment_ratings.valuable.
+// The legacy civic_initiative_arguments table is frozen (read-only).
 
-type ArgumentRow = {
-  id: string;
-  initiative_id: string;
-  parent_id: string | null;
-  side: "for" | "against";
-  body: string;
-  author_id: string | null;
-  is_deleted: boolean;
-  flag_count: number;
-  created_at: string;
-  updated_at: string;
-  vote_count: number;   // injected after fetch
-};
-
-// ─── GET /api/initiatives/[id]/arguments ─────────────────────────────────────
-// Returns all comments for an initiative as a recursive tree.
-// Response: { comments: CommentTree[], total: number }
+function kindToCommentType(kind: string): string | null {
+  return kind === DEFAULT_KIND ? null : kind;
+}
+function stanceToSide(stance: string | null): "for" | "against" | null {
+  return stance === "support" ? "for" : stance === "oppose" ? "against" : null;
+}
+function sideToStance(side: unknown, commentType: unknown): string | null {
+  if (side === "for") return "support";
+  if (side === "against") return "oppose";
+  if (commentType === "support") return "support";
+  if (commentType === "oppose") return "oppose";
+  return null;
+}
+function ratingValuableUp(rs: unknown): number {
+  const obj = rs && typeof rs === "object" && !Array.isArray(rs) ? (rs as Record<string, unknown>) : {};
+  return Number(obj["valuable_up"] ?? 0) || 0;
+}
 
 export async function GET(
   _request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+  { params }: { params: { id: string } },
+): Promise<NextResponse> {
   try {
-    const cookieStore = await cookies();
-    const supabase = createServerClient(cookieStore);
-
-    const { data: initiative } = await supabase
-      .from("initiative_details")
-      .select("proposal_id")
-      .eq("proposal_id", params.id)
-      .maybeSingle();
-
-    if (!initiative) {
-      return NextResponse.json({ error: "Initiative not found" }, { status: 404 });
-    }
-
-    const { data: args, error } = await supabase
-      .from("civic_initiative_arguments")
-      .select("id,initiative_id,parent_id,side,comment_type,body,author_id,is_deleted,flag_count,created_at,updated_at")
-      .eq("initiative_id", params.id)
+    const admin = createAdminClient();
+    const { data: rows, error } = await admin
+      .from("entity_comments")
+      .select("id,entity_id,parent_id,kind,stance,body,author_id,status,rating_summary,created_at,updated_at")
+      .eq("entity_type", "proposal")
+      .eq("entity_id", params.id)
+      .in("status", ["visible", "needs_review", "withdrawn"])
       .order("created_at", { ascending: true });
+    if (error) return NextResponse.json({ error: "Failed to fetch arguments" }, { status: 500 });
 
-    if (error) {
-      return NextResponse.json({ error: "Failed to fetch arguments" }, { status: 500 });
+    type Tree = {
+      id: string;
+      initiative_id: string;
+      parent_id: string | null;
+      side: "for" | "against" | null;
+      comment_type: string | null;
+      body: string;
+      author_id: string | null;
+      is_deleted: boolean;
+      flag_count: number;
+      created_at: string;
+      updated_at: string;
+      vote_count: number;
+      replies: Tree[];
+    };
+
+    const nodes: Record<string, Tree> = {};
+    for (const r of rows ?? []) {
+      const deleted = r.status === "withdrawn";
+      nodes[r.id] = {
+        id: r.id,
+        initiative_id: r.entity_id,
+        parent_id: r.parent_id,
+        side: stanceToSide(r.stance),
+        comment_type: kindToCommentType(r.kind),
+        body: deleted ? "[deleted]" : r.body,
+        author_id: r.author_id,
+        is_deleted: deleted,
+        flag_count: 0,
+        created_at: r.created_at,
+        updated_at: r.updated_at,
+        vote_count: ratingValuableUp(r.rating_summary),
+        replies: [],
+      };
     }
-
-    const rows = args ?? [];
-
-    const argIds = rows.map((a) => a.id);
-    const voteCounts: Record<string, number> = {};
-
-    if (argIds.length > 0) {
-      const { data: voteRows } = await supabase
-        .from("civic_initiative_argument_votes")
-        .select("argument_id")
-        .in("argument_id", argIds);
-
-      for (const v of voteRows ?? []) {
-        voteCounts[v.argument_id] = (voteCounts[v.argument_id] ?? 0) + 1;
-      }
+    const roots: Tree[] = [];
+    for (const node of Object.values(nodes)) {
+      if (node.parent_id && nodes[node.parent_id]) nodes[node.parent_id]!.replies.push(node);
+      else roots.push(node);
     }
-
-    type BaseRow = typeof rows[number] & { vote_count: number };
-    type CommentTree = BaseRow & { replies: CommentTree[] };
-
-    const enriched: BaseRow[] = rows.map((a) => ({
-      ...a,
-      body: a.is_deleted ? "[deleted]" : a.body,
-      vote_count: voteCounts[a.id] ?? 0,
-    }));
-
-    // Build recursive tree using a map
-    const map: Record<string, CommentTree> = {};
-    for (const a of enriched) map[a.id] = { ...a, replies: [] };
-
-    const roots: CommentTree[] = [];
-    for (const a of enriched) {
-      const node = map[a.id]!;
-      if (a.parent_id === null) {
-        roots.push(node);
-      } else {
-        map[a.parent_id]?.replies.push(node);
-      }
-    }
-
-    roots.sort((a, b) => b.vote_count - a.vote_count || new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
-
+    roots.sort(
+      (a, b) =>
+        b.vote_count - a.vote_count ||
+        new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+    );
     return NextResponse.json({ comments: roots, total: roots.length });
   } catch {
     return NextResponse.json({ error: "Failed to fetch arguments" }, { status: 500 });
   }
 }
 
-// ─── POST /api/initiatives/[id]/arguments ────────────────────────────────────
-// Submit a new argument (top-level or reply). Auth required.
-// Body: { side: 'for' | 'against', body: string, parent_id?: string }
-
-export async function POST(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     const cookieStore = await cookies();
     const supabase = createServerClient(cookieStore);
     const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return NextResponse.json({ error: "Sign in to submit an argument" }, { status: 401 });
 
-    if (!user) {
-      return NextResponse.json({ error: "Sign in to submit an argument" }, { status: 401 });
-    }
-
-    // Verify initiative exists and is in deliberate or mobilise stage
     const { data: initiative } = await supabase
       .from("initiative_details")
       .select("proposal_id,stage")
       .eq("proposal_id", params.id)
       .maybeSingle();
-
-    if (!initiative) {
-      return NextResponse.json({ error: "Initiative not found" }, { status: 404 });
-    }
+    if (!initiative) return NextResponse.json({ error: "Initiative not found" }, { status: 404 });
     if (!["problem", "deliberate", "mobilise"].includes(initiative.stage)) {
       return NextResponse.json(
         { error: "Arguments can only be submitted during problem identification, deliberation, or mobilisation." },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
-    const body = await request.json();
-    const { side, body: argBody, parent_id, comment_type } = body;
-
-    const SIDED_TYPES = ["for", "against", "support", "oppose"];
-    const ALL_TYPES = [
-      ...SIDED_TYPES,
-      "concern", "amendment", "question", "evidence", "precedent",
-      "tradeoff", "stakeholder_impact", "experience", "cause", "solution",
-      "discussion",
-    ];
-
-    const resolvedType: string | null = comment_type ?? null;
-    const resolvedSide: string | null = side ?? null;
-
-    if (resolvedType && !ALL_TYPES.includes(resolvedType)) {
-      return NextResponse.json({ error: `Invalid comment_type '${resolvedType}'` }, { status: 400 });
-    }
-    // Side required only when stage demands it (deliberate/mobilise) AND type is sided
-    const stageDemandsSide = initiative.stage !== "problem";
-    const typeDemandsSide = !resolvedType || SIDED_TYPES.includes(resolvedType);
-    if (stageDemandsSide && typeDemandsSide) {
-      if (!resolvedSide || !["for", "against"].includes(resolvedSide)) {
-        return NextResponse.json({ error: "Side must be 'for' or 'against'" }, { status: 400 });
-      }
-    }
-
+    const { side, body: argBody, parent_id, comment_type } = await request.json();
     if (!argBody || typeof argBody !== "string") {
       return NextResponse.json({ error: "Argument body is required" }, { status: 400 });
     }
     if (argBody.trim().length < 10) {
       return NextResponse.json({ error: "Argument must be at least 10 characters" }, { status: 400 });
     }
-    if (argBody.trim().length > 1000) {
-      return NextResponse.json({ error: "Argument must be 1000 characters or fewer" }, { status: 400 });
+    if (argBody.trim().length > 2000) {
+      return NextResponse.json({ error: "Argument must be 2000 characters or fewer" }, { status: 400 });
     }
 
-    // If reply: verify parent exists and belongs to this initiative
-    if (parent_id) {
-      const { data: parent } = await supabase
-        .from("civic_initiative_arguments")
-        .select("id,initiative_id,side,parent_id")
-        .eq("id", parent_id)
-        .single();
-
-      if (!parent || parent.initiative_id !== params.id) {
-        return NextResponse.json({ error: "Parent argument not found" }, { status: 400 });
-      }
+    const kind = typeof comment_type === "string" && comment_type ? comment_type : DEFAULT_KIND;
+    if (!ALLOWED_KINDS.proposal.includes(kind)) {
+      return NextResponse.json({ error: `Invalid comment_type '${kind}'` }, { status: 400 });
     }
+    const stance = sideToStance(side, comment_type);
 
     const admin = createAdminClient();
-    const { data: inserted, error: insertErr } = await admin
-      .from("civic_initiative_arguments")
-      .insert({
-        initiative_id: params.id,
-        parent_id: parent_id ?? null,
-        side: resolvedSide as "for" | "against" | null,
-        comment_type: resolvedType,
-        body: argBody.trim(),
-        author_id: user.id,
-      })
-      .select("id,side,comment_type,body,parent_id,created_at")
-      .single();
 
-    if (insertErr) {
+    let threadRootId = "";
+    if (parent_id) {
+      const { data: parent } = await admin
+        .from("entity_comments")
+        .select("id,entity_id,thread_root_id")
+        .eq("id", parent_id)
+        .maybeSingle();
+      if (!parent || parent.entity_id !== params.id) {
+        return NextResponse.json({ error: "Parent argument not found" }, { status: 400 });
+      }
+      threadRootId = parent.thread_root_id ?? parent.id;
+    }
+
+    const id = randomUUID();
+    if (!threadRootId) threadRootId = id;
+
+    const { data: inserted, error: insertErr } = await admin
+      .from("entity_comments")
+      .insert({
+        id,
+        entity_type: "proposal",
+        entity_id: params.id,
+        parent_id: parent_id ?? null,
+        thread_root_id: threadRootId,
+        author_id: user.id,
+        kind,
+        stance,
+        body: argBody.trim(),
+      })
+      .select("id,parent_id,kind,stance,body,created_at")
+      .single();
+    if (insertErr || !inserted) {
       return NextResponse.json({ error: "Failed to submit argument" }, { status: 500 });
     }
 
-    return NextResponse.json({ comment: inserted }, { status: 201 });
+    return NextResponse.json(
+      {
+        comment: {
+          id: inserted.id,
+          side: stanceToSide(inserted.stance),
+          comment_type: kindToCommentType(inserted.kind),
+          body: inserted.body,
+          parent_id: inserted.parent_id,
+          created_at: inserted.created_at,
+        },
+      },
+      { status: 201 },
+    );
   } catch {
     return NextResponse.json({ error: "Failed to submit argument" }, { status: 500 });
   }

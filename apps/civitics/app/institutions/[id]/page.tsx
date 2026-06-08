@@ -26,6 +26,7 @@ import { SourceBadge } from "../../components/SourceBadge";
 import { SourceDetailPopover } from "../../components/SourceDetailPopover";
 import { OfficialRosterCard, type OfficialRosterData } from "../../components/cards/OfficialRosterCard";
 import { MeetingCard, type MeetingCardData } from "../../components/cards/MeetingCard";
+import { EntityComments } from "../../components/EntityComments";
 
 const AgencyGraph = nextDynamic(
   () => import("../../agencies/[slug]/components/AgencyGraph").then((m) => ({ default: m.AgencyGraph })),
@@ -269,9 +270,22 @@ export default async function InstitutionPage({
   const attributionEntityType: "agency" | "governing_body" = institution.source_table;
   const attribution = await fetchAttributionForEntity(supabase, attributionEntityType, institution.id);
 
-  return institution.source_table === "agency"
-    ? <AgencyView institution={institution} attribution={attribution} supabase={supabase} />
-    : <GoverningBodyView institution={institution} attribution={attribution} supabase={supabase} />;
+  return (
+    <>
+      {institution.source_table === "agency"
+        ? <AgencyView institution={institution} attribution={attribution} supabase={supabase} />
+        : <GoverningBodyView institution={institution} attribution={attribution} supabase={supabase} />}
+      <div className="mx-auto max-w-5xl px-4 pb-12 sm:px-6">
+        <EntityComments
+          entityType="institution"
+          entityId={institution.id}
+          lensEnabled
+          startCollapsed
+          heading="Community comments"
+        />
+      </div>
+    </>
+  );
 }
 
 // ─── Agency view ──────────────────────────────────────────────────────────────

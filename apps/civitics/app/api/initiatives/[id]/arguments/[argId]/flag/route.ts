@@ -1,88 +1,73 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createServerClient, createAdminClient } from "@civitics/db";
+import { type FlagReason } from "@civitics/db";
 
 export const dynamic = "force-dynamic";
 
+// @deprecated — thin adapter over the unified substrate (C0 / FIX-520). Argument
+// flags map to content_flags(content_type='entity_comment'). New surface:
+// POST /api/comments/[id]/flag. Body: { flag_type }.
+
 const VALID_FLAG_TYPES = ["off_topic", "misleading", "duplicate", "other"] as const;
 
-// ─── POST /api/initiatives/[id]/arguments/[argId]/flag ───────────────────────
-// Flag an argument. One flag per user per argument. Idempotent.
-// Body: { flag_type: 'off_topic' | 'misleading' | 'duplicate' | 'other' }
+// argument_flag -> flag_reason (matches the migration backfill mapping).
+function reasonFor(flagType: string): { reason: FlagReason; note: string | null } {
+  switch (flagType) {
+    case "off_topic":
+      return { reason: "off_topic", note: null };
+    case "misleading":
+      return { reason: "misinformation", note: null };
+    case "duplicate":
+      return { reason: "other", note: "duplicate" };
+    default:
+      return { reason: "other", note: null };
+  }
+}
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string; argId: string } }
+  { params }: { params: { id: string; argId: string } },
 ) {
   try {
     const cookieStore = await cookies();
     const supabase = createServerClient(cookieStore);
     const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return NextResponse.json({ error: "Sign in to flag an argument" }, { status: 401 });
 
-    if (!user) {
-      return NextResponse.json({ error: "Sign in to flag an argument" }, { status: 401 });
-    }
-
-    // Verify argument belongs to this initiative
-    const { data: argument } = await supabase
-      .from("civic_initiative_arguments")
-      .select("id,initiative_id,author_id")
+    const admin = createAdminClient();
+    const { data: comment } = await admin
+      .from("entity_comments")
+      .select("id,entity_id,author_id")
       .eq("id", params.argId)
-      .single();
-
-    if (!argument || argument.initiative_id !== params.id) {
+      .maybeSingle();
+    if (!comment || comment.entity_id !== params.id) {
       return NextResponse.json({ error: "Argument not found" }, { status: 404 });
     }
-    if (argument.author_id === user.id) {
+    if (comment.author_id === user.id) {
       return NextResponse.json({ error: "Cannot flag your own argument" }, { status: 400 });
     }
 
-    const body = await request.json();
-    const { flag_type } = body;
-
+    const { flag_type } = await request.json();
     if (!flag_type || !VALID_FLAG_TYPES.includes(flag_type as (typeof VALID_FLAG_TYPES)[number])) {
       return NextResponse.json(
         { error: "flag_type must be one of: off_topic, misleading, duplicate, other" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
-    const admin = createAdminClient();
-
-    // Idempotent — if already flagged, just return success
-    const { data: existing } = await admin
-      .from("civic_initiative_argument_flags")
-      .select("id")
-      .eq("argument_id", params.argId)
-      .eq("user_id", user.id)
-      .single();
-
-    if (existing) {
-      return NextResponse.json({ flagged: true });
-    }
-
-    // Insert flag record
-    const { error } = await admin.from("civic_initiative_argument_flags").insert({
-      argument_id: params.argId,
+    const { reason, note } = reasonFor(flag_type);
+    const { error } = await admin.from("content_flags").insert({
+      content_type: "entity_comment",
+      content_id: params.argId,
       user_id: user.id,
-      flag_type,
+      reason,
+      note,
     });
-
-    if (error) {
+    // 23505 = already flagged by this user; idempotent success.
+    if (error && error.code !== "23505") {
       return NextResponse.json({ error: "Failed to submit flag" }, { status: 500 });
     }
-
-    // Update denormalised flag_count on the argument row
-    const { count: flagCount } = await admin
-      .from("civic_initiative_argument_flags")
-      .select("*", { count: "exact", head: true })
-      .eq("argument_id", params.argId);
-
-    await admin
-      .from("civic_initiative_arguments")
-      .update({ flag_count: flagCount ?? 1 })
-      .eq("id", params.argId);
-
     return NextResponse.json({ flagged: true });
   } catch {
     return NextResponse.json({ error: "Failed to submit flag" }, { status: 500 });

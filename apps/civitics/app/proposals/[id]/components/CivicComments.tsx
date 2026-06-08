@@ -1,5 +1,10 @@
 "use client";
 
+// @deprecated (C0 / FIX-521) — superseded by the unified EntityComments
+// component over the entity_comments substrate. No longer imported by the
+// proposal detail page. Left in place per the no-delete rule; remove in a
+// later cleanup PR.
+
 import { useState, useEffect, useCallback } from "react";
 import { FlagButton } from "../../../components/FlagButton";
 

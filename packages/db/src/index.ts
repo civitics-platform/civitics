@@ -257,3 +257,33 @@ export {
   LITTLESIS_ATTRIBUTION_TEXT,
 } from "./source-registry";
 export type { SourceCategory, SourceRegistryEntry, ResolvedSource } from "./source-registry";
+
+// Unified comment vocabulary (C0 / FIX-520) — allowed kinds per entity_type,
+// initiative per-stage vocab, stances, statuses, flag reasons, rate limits.
+export {
+  ENTITY_COMMENT_TYPES,
+  COMMENT_STANCES,
+  COMMENT_STATUSES,
+  DEFAULT_KIND,
+  KIND_LABELS,
+  ALLOWED_KINDS,
+  INITIATIVE_STAGE_KINDS,
+  FLAG_REASONS,
+  RATE_LIMITS,
+  MAX_THREAD_DEPTH,
+  EDIT_WINDOW_MINUTES,
+  BODY_MIN,
+  BODY_MAX,
+  isEntityCommentType,
+  isAllowedKind,
+  isCommentStance,
+  allowedKindsForStage,
+  kindLabel,
+} from "./comment-kinds";
+export type {
+  EntityCommentType,
+  CommentStance,
+  CommentStatus,
+  InitiativeStage,
+  FlagReason,
+} from "./comment-kinds";

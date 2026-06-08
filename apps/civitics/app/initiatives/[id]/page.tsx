@@ -7,7 +7,8 @@ import { PageViewTracker } from "../../components/PageViewTracker";
 import { UpvoteButton } from "./components/UpvoteButton";
 import { VersionHistory } from "./components/VersionHistory";
 import { InlineEditor } from "./components/InlineEditor";
-import { ArgumentBoard } from "./components/ArgumentBoard";
+import { EntityComments } from "../../components/EntityComments";
+import { INITIATIVE_STAGE_KINDS, type InitiativeStage } from "@civitics/db";
 import { QualityGate } from "./components/QualityGate";
 import { SignaturePanel } from "./components/SignaturePanel";
 import { ResponseWindowStatus, type ResponseRow } from "./components/ResponseWindowStatus";
@@ -372,12 +373,15 @@ export default async function InitiativeDetailPage({
               />
             )}
 
-            {/* Version history */}
-            {/* Argument board */}
-            <ArgumentBoard
-              initiativeId={initiative.id}
-              stage={initiative.stage}
-              currentUserId={user?.id ?? null}
+            {/* Argument board — unified comments substrate (C0), stage-aware vocab */}
+            <EntityComments
+              entityType="proposal"
+              entityId={initiative.id}
+              allowedKinds={[...(INITIATIVE_STAGE_KINDS[initiative.stage as InitiativeStage] ?? ["discussion"])]}
+              stanceGrouped={["deliberate", "mobilise"].includes(initiative.stage)}
+              composerEnabled={["problem", "deliberate", "mobilise"].includes(initiative.stage)}
+              heading="Argument board"
+              subheading="Best-supported comments rise. Rate the reasoning you find valuable."
             />
 
             <VersionHistory initiativeId={initiative.id} />

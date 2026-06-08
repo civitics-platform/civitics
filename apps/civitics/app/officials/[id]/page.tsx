@@ -16,7 +16,7 @@ import { ShareButton } from "../components/ShareButton";
 import { CareerHistory } from "../components/CareerHistory";
 import { PromisesSection } from "../components/PromisesSection";
 import { SpendingSection } from "../components/SpendingSection";
-import { OfficialComments } from "./components/OfficialComments";
+import { EntityComments } from "../../components/EntityComments";
 import { ResponsivenessCard } from "../components/ResponsivenessCard";
 import { gradeFromRate } from "../../api/officials/[id]/responsiveness/_lib";
 import { PageViewTracker } from "../../components/PageViewTracker";
@@ -1323,7 +1323,13 @@ export default async function OfficialProfilePage({
 
         {/* Community Comments */}
         <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
-          <OfficialComments officialId={official.id} />
+          <EntityComments
+            entityType="official"
+            entityId={official.id}
+            allowedKinds={["discussion", "question", "concern", "evidence", "stakeholder_impact"]}
+            stanceEnabled
+            lensEnabled
+          />
         </div>
 
       </main>

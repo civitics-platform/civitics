@@ -8,7 +8,7 @@ import { AiSummarySection } from "../components/AiSummarySection";
 import { PageViewTracker } from "../../components/PageViewTracker";
 import { SourceBadge } from "../../components/SourceBadge";
 import { SourceDetailPopover } from "../../components/SourceDetailPopover";
-import { CivicComments } from "./components/CivicComments";
+import { EntityComments } from "../../components/EntityComments";
 import { PositionWidget } from "./components/PositionWidget";
 import { RelatedInitiatives, type InitiativeLink } from "../components/RelatedInitiatives";
 import { ProposalShareButton } from "../components/ProposalShareButton";
@@ -527,7 +527,13 @@ export default async function ProposalDetailPage({
             <PositionWidget proposalId={p.id} />
 
             {/* Community Comments */}
-            <CivicComments proposalId={p.id} />
+            <EntityComments
+              entityType="proposal"
+              entityId={p.id}
+              allowedKinds={["discussion", "question", "concern", "evidence", "stakeholder_impact"]}
+              stanceEnabled
+              lensEnabled
+            />
 
             {/* Citizen Initiatives linked to this proposal */}
             <RelatedInitiatives initiatives={relatedInitiatives} />

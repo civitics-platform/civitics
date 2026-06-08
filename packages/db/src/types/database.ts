@@ -7,10 +7,30 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
-  __InternalSupabase: {
-    PostgrestVersion: "14.4"
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
   }
   public: {
     Tables: {
@@ -1111,6 +1131,48 @@ export type Database = {
           },
         ]
       }
+      comment_ratings: {
+        Row: {
+          agree: number | null
+          comment_id: string
+          created_at: string
+          rater_id: string
+          updated_at: string
+          valuable: number | null
+        }
+        Insert: {
+          agree?: number | null
+          comment_id: string
+          created_at?: string
+          rater_id: string
+          updated_at?: string
+          valuable?: number | null
+        }
+        Update: {
+          agree?: number | null
+          comment_id?: string
+          created_at?: string
+          rater_id?: string
+          updated_at?: string
+          valuable?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "comment_ratings_comment_id_fkey"
+            columns: ["comment_id"]
+            isOneToOne: false
+            referencedRelation: "entity_comments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "comment_ratings_rater_id_fkey"
+            columns: ["rater_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       connection_type_counts: {
         Row: {
           connection_type: string
@@ -1484,6 +1546,87 @@ export type Database = {
           task_type?: string
         }
         Relationships: []
+      }
+      entity_comments: {
+        Row: {
+          author_id: string
+          body: string
+          bridge_score: number | null
+          conditions_md: string | null
+          constituent_jurisdiction_id: string | null
+          created_at: string
+          entity_id: string
+          entity_type: string
+          id: string
+          kind: string
+          map_x: number | null
+          map_y: number | null
+          metadata: Json
+          parent_id: string | null
+          rating_summary: Json
+          stance: string | null
+          status: string
+          thread_root_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          author_id: string
+          body: string
+          bridge_score?: number | null
+          conditions_md?: string | null
+          constituent_jurisdiction_id?: string | null
+          created_at?: string
+          entity_id: string
+          entity_type: string
+          id?: string
+          kind?: string
+          map_x?: number | null
+          map_y?: number | null
+          metadata?: Json
+          parent_id?: string | null
+          rating_summary?: Json
+          stance?: string | null
+          status?: string
+          thread_root_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          author_id?: string
+          body?: string
+          bridge_score?: number | null
+          conditions_md?: string | null
+          constituent_jurisdiction_id?: string | null
+          created_at?: string
+          entity_id?: string
+          entity_type?: string
+          id?: string
+          kind?: string
+          map_x?: number | null
+          map_y?: number | null
+          metadata?: Json
+          parent_id?: string | null
+          rating_summary?: Json
+          stance?: string | null
+          status?: string
+          thread_root_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "entity_comments_author_id_fkey"
+            columns: ["author_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "entity_comments_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "entity_comments"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       entity_connections: {
         Row: {
@@ -4366,22 +4509,7 @@ export type Database = {
           last_commented_at: string | null
           proposal_id: string | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "civic_comments_proposal_id_fkey"
-            columns: ["proposal_id"]
-            isOneToOne: false
-            referencedRelation: "proposal_trending_24h"
-            referencedColumns: ["proposal_id"]
-          },
-          {
-            foreignKeyName: "civic_comments_proposal_id_fkey"
-            columns: ["proposal_id"]
-            isOneToOne: false
-            referencedRelation: "proposals"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       proposal_popularity_24h: {
         Row: {
@@ -5197,7 +5325,10 @@ export type Database = {
         | "other"
         | "ie_support"
         | "ie_oppose"
-      flag_content_type: "civic_comment" | "official_community_comment"
+      flag_content_type:
+        | "civic_comment"
+        | "official_community_comment"
+        | "entity_comment"
       flag_reason:
         | "spam"
         | "harassment"
@@ -5426,6 +5557,9 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {
       argument_flag: ["off_topic", "misleading", "duplicate", "other"],
@@ -5481,7 +5615,11 @@ export const Constants = {
         "ie_support",
         "ie_oppose",
       ],
-      flag_content_type: ["civic_comment", "official_community_comment"],
+      flag_content_type: [
+        "civic_comment",
+        "official_community_comment",
+        "entity_comment",
+      ],
       flag_reason: [
         "spam",
         "harassment",
@@ -5598,3 +5736,4 @@ export const Constants = {
     },
   },
 } as const
+

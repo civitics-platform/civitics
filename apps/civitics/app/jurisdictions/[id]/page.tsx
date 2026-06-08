@@ -32,6 +32,7 @@ import type { OfficialRosterData } from "../../components/cards/OfficialRosterCa
 import type { MeetingCardData } from "../../components/cards/MeetingCard";
 import type { ProposalCardData } from "../../proposals/components/ProposalCard";
 import type { InitiativeCardData } from "../../initiatives/components/InitiativeCard";
+import { EntityComments } from "../../components/EntityComments";
 
 export const revalidate = 300;
 
@@ -376,6 +377,14 @@ export default async function JurisdictionPage({ params }: { params: Promise<{ i
             <ActivityFeed events={activity} />
           </Section>
         )}
+
+        <EntityComments
+          entityType="jurisdiction"
+          entityId={id}
+          lensEnabled
+          startCollapsed
+          heading="Community comments"
+        />
       </main>
     </div>
   );
