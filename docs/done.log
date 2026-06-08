@@ -667,3 +667,6 @@
 2026-06-08 | FIX-527 | 855bffa0 | local-only | feat(comments): C1 Wave B — bridge scorer, debate map, highlights strip
 2026-06-08 | FIX-528 | 855bffa0 | local-only | feat(comments): C1 Wave B — bridge scorer, debate map, highlights strip
 2026-06-08 | FIX-529 | 855bffa0 | local-only | feat(comments): C1 Wave B — bridge scorer, debate map, highlights strip
+2026-06-08 | FIX-527 | a30eacf6 | prod-only | chore: record prod verification for FIX-527/528/529
+2026-06-08 | FIX-528 | a30eacf6 | prod-only | chore: record prod verification for FIX-527/528/529
+2026-06-08 | FIX-529 | a30eacf6 | prod-only | chore: record prod verification for FIX-527/528/529
