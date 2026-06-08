@@ -652,3 +652,6 @@
 2026-06-07 | FIX-519 | fdd20f47 | local-only | feat(comments): unified entity_comments substrate (C0)
 2026-06-07 | FIX-520 | fdd20f47 | local-only | feat(comments): unified entity_comments substrate (C0)
 2026-06-07 | FIX-521 | fdd20f47 | local-only | feat(comments): unified entity_comments substrate (C0)
+2026-06-07 | FIX-519 | a19a748e | prod-only | chore: record prod verification for FIX-519/520/521
+2026-06-07 | FIX-520 | a19a748e | prod-only | chore: record prod verification for FIX-519/520/521
+2026-06-07 | FIX-521 | a19a748e | prod-only | chore: record prod verification for FIX-519/520/521
