@@ -664,3 +664,6 @@
 2026-06-07 | FIX-525 | 559e35e6 | prod-only | chore: record prod verification for FIX-523/524/525/526
 2026-06-07 | FIX-526 | 559e35e6 | prod-only | chore: record prod verification for FIX-523/524/525/526
 2026-06-07 | FIX-522 | 8fe22f20 | local+prod | chore(cleanup): remove deprecated comment + position UI and legacy adapters (FIX-522)
+2026-06-08 | FIX-527 | 855bffa0 | local-only | feat(comments): C1 Wave B — bridge scorer, debate map, highlights strip
+2026-06-08 | FIX-528 | 855bffa0 | local-only | feat(comments): C1 Wave B — bridge scorer, debate map, highlights strip
+2026-06-08 | FIX-529 | 855bffa0 | local-only | feat(comments): C1 Wave B — bridge scorer, debate map, highlights strip
