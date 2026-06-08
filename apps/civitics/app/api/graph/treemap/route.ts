@@ -1,5 +1,6 @@
 import { createAdminClient, fetchIndustryTagsByEntityId, fetchEntityIdsByIndustryTag } from "@civitics/db";
 import { supabaseUnavailable, unavailableResponse } from "@/lib/supabase-check";
+import { fetchAllRows } from "@/lib/paginate";
 
 export const dynamic = "force-dynamic";
 
@@ -61,36 +62,94 @@ export async function GET(request: Request) {
   const validEntityId = entityId && UUID_RE.test(entityId) ? entityId : null;
 
   // ── Entity mode: donors for one official ─────────────────────────────────
-  // get_official_donors RPC was retired in the shadow→public promotion.
-  // Direct query: financial_relationships → aggregate by from_id → join financial_entities.
+  // FIX-518 — common case (no industry filter): read official_donor_rollup_mv
+  // (relationship_type='donation') — ranked top-1000 donors already ordered by
+  // rank + one tail-bucket row — instead of the FIX-510 interim .range()
+  // pagination (~309 sequential pages for the whale, latent heap-order risk).
+  // The tail row (donor_id NULL) becomes a single "Other (N donors)" leaf so
+  // the displayed total stays the TRUE total. donor_name / entity_type /
+  // industry_label are denormalized in the MV → no donorInfo loop, no
+  // per-render industry fetch.
+  if (validEntityId && !filterPacIds) {
+    // Paginated: 1000 ranked rows + the tail row (rank 1001) is 1001 rows, over
+    // the 1000-row PostgREST cap — an unpaginated read would silently drop the
+    // tail (where most of a small-dollar official's money lives, e.g. the whale:
+    // ~$257M of $268M). rank is a stable unique total order per official.
+    const { rows: rollup, error: rollupErr } = await fetchAllRows<{
+      rank: number;
+      donor_id: string | null;
+      donor_name: string | null;
+      entity_type: string | null;
+      industry_label: string | null;
+      total_cents: number;
+      tail_donor_count: number | null;
+    }>((f, t) =>
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (supabase as any)
+        .from("official_donor_rollup_mv")
+        .select("rank, donor_id, donor_name, entity_type, industry_label, total_cents, tail_donor_count")
+        .eq("official_id", validEntityId)
+        .eq("relationship_type", "donation")
+        .order("rank", { ascending: true })
+        .range(f, t),
+      { maxRows: 5000 },
+    );
+    if (rollupErr) {
+      console.error("[graph/treemap/entity] rollup error:", rollupErr.message);
+      return Response.json({ error: rollupErr.message }, { status: 500 });
+    }
+
+    const rows: DonorRow[] = [];
+    for (const r of rollup) {
+      const cents = Number(r.total_cents ?? 0);
+      if (r.donor_id === null) {
+        // Tail bucket: a per-donor floor hides the small-donor long tail, so
+        // only emit the "Other" leaf when no floor is set.
+        if (minAmountCents > 0 || cents <= 0) continue;
+        rows.push({
+          donor_id: `tail:${validEntityId}`,
+          donor_name: `Other (${Number(r.tail_donor_count ?? 0).toLocaleString()} donors)`,
+          industry_category: "Other",
+          amount_usd: cents / 100,
+          entity_type: "other",
+        });
+        continue;
+      }
+      if (cents < minAmountCents) continue;
+      rows.push({
+        donor_id: r.donor_id,
+        donor_name: r.donor_name ?? "Unknown",
+        industry_category: r.industry_label ?? "Other",
+        amount_usd: cents / 100,
+        entity_type: r.entity_type ?? "financial",
+      });
+    }
+
+    return Response.json(rows, {
+      headers: { "Cache-Control": "public, max-age=0, s-maxage=86400, stale-while-revalidate=172800" },
+    });
+  }
+
+  // FIX-185 cohort×filter (industry_filter + entityId): the rollup MV ranks /
+  // tail-buckets across ALL donors and can't reconstruct an industry-filtered
+  // top-N (the tail can't be decomposed by industry), so this rarer path stays
+  // live. It is NOT the unbounded whale scan the MV replaces — the
+  // .in("from_id", filterPacIds) selectivity bounds it to the tagged PAC set.
   if (validEntityId) {
-    // FIX-510 — paginate the donations scan. The previous single unpaged SELECT
-    // was silently capped at 1,000 rows by PostgREST; 447 officials locally have
-    // >1,000 donation rows (max 43,960), so their donor totals were undercounted
-    // by up to ~44×. No .order() — mirroring the filterPacIds loop below: the
-    // selective (to_type,to_id) bitmap scan returns rows in stable heap order
-    // (deterministic per plan, no concurrent writes in a read request), so
-    // range() pages tile the result set without skips/dups. Adding an ORDER BY
-    // here is actively harmful: ORDER BY from_id makes the planner satisfy the
-    // sort with the from_id-led _derivation index and drop the to_id filter
-    // (full 1.9M-row scan, 23s); ORDER BY id forces a per-page external-merge
-    // sort of all ~44k rows (~600ms × 44 pages → statement timeout). Interim
-    // fix — the durable home is the per-(official, donor) rollup MV, FIX-518.
     const PAGE = 1000;
     const byDonor = new Map<string, number>();
     let from = 0;
     // eslint-disable-next-line no-constant-condition
     while (true) {
-      let donationsQuery = supabase
+      const donationsQuery = supabase
         .from("financial_relationships")
         .select("from_id, amount_cents")
         .eq("relationship_type", "donation")
         .eq("to_type", "official")
         .eq("to_id", validEntityId)
         .eq("from_type", "financial_entity")
+        .in("from_id", filterPacIds!)
         .range(from, from + PAGE - 1);
-
-      if (filterPacIds) donationsQuery = donationsQuery.in("from_id", filterPacIds);
 
       const { data: donations, error: donationsErr } = await donationsQuery;
       if (donationsErr) {
@@ -106,15 +165,6 @@ export async function GET(request: Request) {
       if (from > 500_000) break; // safety guard
     }
 
-    // FIX-510 — the per-donor aggregation above is now complete (no silent row
-    // cap), but an official can have tens of thousands of distinct donors (max
-    // ~38,964 local) — far more than a treemap can render, and one metadata
-    // round-trip per 100–200 of them would be hundreds of sequential queries.
-    // Apply the donation floor, rank by corrected total, and emit only the top
-    // LEAF_CAP donors as leaves (mirrors aggregate mode's slice(0, 500)). The
-    // long tail of small donors is summed correctly into each leaf's total but
-    // isn't emitted as its own cell. Metadata is fetched for the top set only.
-    // (FIX-518's per-(official, donor) rollup MV makes this a point read.)
     const LEAF_CAP = 1000;
     const rankedDonors = [...byDonor.entries()]
       .filter(([, cents]) => cents >= minAmountCents)
@@ -125,8 +175,7 @@ export async function GET(request: Request) {
     const donorInfo = new Map<string, { name: string; entity_type: string | null }>();
     if (donorIds.length > 0) {
       // Keep .in() id batches <=200 so the PostgREST request URL stays well
-      // under Kong's ~13 KB header limit (356 UUIDs ≈ 13 KB → 400, swallowed by
-      // the destructure → silent empty).
+      // under Kong's ~13 KB header limit (356 UUIDs ≈ 13 KB → 400).
       const BATCH = 200;
       for (let i = 0; i < donorIds.length; i += BATCH) {
         const batch = donorIds.slice(i, i + BATCH);
@@ -135,17 +184,13 @@ export async function GET(request: Request) {
           .select("id, display_name, entity_type")
           .in("id", batch);
         for (const e of entities ?? []) {
-          donorInfo.set(e.id, {
-            name: e.display_name,
-            entity_type: e.entity_type,
-          });
+          donorInfo.set(e.id, { name: e.display_name, entity_type: e.entity_type });
         }
       }
     }
 
     const industryByEntityId = await fetchIndustryTagsByEntityId(supabase, donorIds);
 
-    // rankedDonors is already sorted by amount desc, so rows preserve that order.
     const rows: DonorRow[] = [];
     for (const [donorId, cents] of rankedDonors) {
       const info = donorInfo.get(donorId);

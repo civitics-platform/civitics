@@ -4237,6 +4237,19 @@ export type Database = {
         }
         Relationships: []
       }
+      donor_party_rollup_mv: {
+        Row: {
+          donor_id: string | null
+          donor_name: string | null
+          entity_type: string | null
+          industry_label: string | null
+          industry_tag: string | null
+          party_key: string | null
+          total_cents: number | null
+          tx_count: number | null
+        }
+        Relationships: []
+      }
       entity_connection_stats_mv: {
         Row: {
           connection_count: number | null
@@ -4288,6 +4301,22 @@ export type Database = {
           usaspending_agency_id: string | null
           usaspending_subtier_id: string | null
           website_url: string | null
+        }
+        Relationships: []
+      }
+      official_donor_rollup_mv: {
+        Row: {
+          donor_id: string | null
+          donor_name: string | null
+          entity_type: string | null
+          industry_label: string | null
+          industry_tag: string | null
+          official_id: string | null
+          rank: number | null
+          relationship_type: string | null
+          tail_donor_count: number | null
+          total_cents: number | null
+          tx_count: number | null
         }
         Relationships: []
       }
@@ -4675,6 +4704,14 @@ export type Database = {
           total_usd: number
         }[]
       }
+      get_pac_treemap_by_party: {
+        Args: { p_min_cents?: number }
+        Returns: Json
+      }
+      get_pac_treemap_by_sector: {
+        Args: { p_industry?: string; p_min_cents?: number }
+        Returns: Json
+      }
       get_proposal_counts_by_agency: {
         Args: never
         Returns: {
@@ -5010,10 +5047,12 @@ export type Database = {
       refresh_chord_industry_flows_mv: { Args: never; Returns: undefined }
       refresh_chord_subject_party_flows_mv: { Args: never; Returns: undefined }
       refresh_connection_type_counts: { Args: never; Returns: undefined }
+      refresh_donor_party_rollup_mv: { Args: never; Returns: undefined }
       refresh_entity_connection_stats_mv: { Args: never; Returns: undefined }
       refresh_group_donor_rollup: { Args: never; Returns: Json }
       refresh_homepage_agency_counts_mv: { Args: never; Returns: undefined }
       refresh_homepage_stats_mv: { Args: never; Returns: undefined }
+      refresh_official_donor_rollup_mv: { Args: never; Returns: undefined }
       refresh_official_homepage_stats_mv: { Args: never; Returns: undefined }
       refresh_official_sector_dollars_mv: { Args: never; Returns: undefined }
       refresh_pipeline_runtime_stats_mv: { Args: never; Returns: undefined }

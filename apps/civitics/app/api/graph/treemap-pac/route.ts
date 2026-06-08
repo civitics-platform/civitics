@@ -1,4 +1,4 @@
-import { createAdminClient, fetchIndustryTagsByEntityId, fetchEntityIdsByIndustryTag } from "@civitics/db";
+import { createAdminClient } from "@civitics/db";
 import { supabaseUnavailable, unavailableResponse } from "@/lib/supabase-check";
 
 export const dynamic = "force-dynamic";
@@ -20,302 +20,148 @@ interface PacGroup {
 interface PacHierarchy {
   name: string;
   children: PacGroup[];
-  // FIX-179: surface tag-coverage so the UI can warn when a sector view is
-  // partial. Untagged PACs are silently absent from `children`.
-  meta?: {
-    pacsTotal: number;
-    pacsTagged: number;
-    pacsUntagged: number;
-  };
+}
+
+const CACHE_HEADERS = {
+  "Cache-Control": "public, max-age=0, s-maxage=86400, stale-while-revalidate=172800",
+};
+
+// PAC display names that are FEC junk rollup buckets, not real committees.
+function isJunkPacName(name: string | null): boolean {
+  if (!name) return true;
+  const u = name.toUpperCase();
+  return u.includes("PAC/COMMITTEE") || u.includes("COMMITTEE CONTRIBUTIONS");
 }
 
 // ── Route handler ────────────────────────────────────────────────────────────
-
+//
+// FIX-518 — all three aggregation shapes now read the donor-rollup MVs instead
+// of paging financial_relationships per 300-PAC batch (silently capped over
+// 1.9M rows → global totals were WRONG, the last open FIX-510-class surface):
+//   * entityId mode (sector + party) → official_donor_rollup_mv (rollup #1),
+//     the PAC donors to one official, filtered to entity_type IN (pac,
+//     party_committee) and read by rank (≤1000 rows, no request-time sort).
+//   * global sector/party modes → get_pac_treemap_by_{sector,party} RPCs over
+//     donor_party_rollup_mv (rollup #2). The RPCs do the GROUP BY + top-N cap
+//     in-DB and return one jsonb `children` array — cap-proof (a set-returning
+//     read of the ~7.4k-PAC subset would still hit the 1000-row PostgREST cap).
 export async function GET(request: Request) {
   if (supabaseUnavailable()) return unavailableResponse();
   const supabase = createAdminClient();
 
   const { searchParams } = new URL(request.url);
   const groupBy = (searchParams.get("groupBy") ?? "sector") as "sector" | "party";
-  // FIX-173: when an industry filter is provided ("Finance", "Energy", etc.),
-  // restrict the PAC set to that single sector and return one group containing
-  // every matching PAC (no per-sector cap). Without this every industry group
-  // rendered the same global all-sectors view.
+  // Industry filter: the canonical tag the UI sends (e.g. 'finance'), matched
+  // against the MV's industry_tag column. Restricts the PAC set to one sector.
   const industryFilter = searchParams.get("industry");
 
-  // FIX-220 — user-controlled donation floor. Replaces the hardcoded
-  // `> $10k` filter in party mode. Default 0 (show all). Applied
-  // post-aggregation in dollars (per-donor totals).
+  // FIX-220 — user-controlled donation floor (dollars), applied as a cents
+  // threshold on per-donor totals.
   const minAmountUsd = Math.max(0, parseFloat(searchParams.get("minAmountUsd") ?? "0") || 0);
+  const minCents = Math.round(minAmountUsd * 100);
 
-  // FIX-216: when an officialId is provided, restrict the PAC set to those
-  // that donated to that official, and constrain donations to flows touching
-  // that official. Without this, "Ted Cruz > PAC Money by Sector" returned
-  // every PAC in the database — disjoint from sibling presets like "By State"
-  // that DO respect the focused entity.
+  // FIX-216: when an officialId is provided, restrict the PAC set to those that
+  // donated to that official (rollup #1 already holds exactly that, per official).
   const entityIdParam = searchParams.get("entityId");
   const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   const entityId = entityIdParam && UUID_RE.test(entityIdParam) ? entityIdParam : null;
 
-  // Look up the official's display name for the hierarchy title; non-blocking
-  // failure leaves it as the generic title.
-  let officialName: string | null = null;
+  // ── EntityId mode: PAC donors to one official, from rollup #1 ───────────────
   if (entityId) {
+    // Official name (for the title) + party (party-mode grouping is degenerate:
+    // one official has one party).
     const { data: o } = await supabase
       .from("officials")
-      .select("full_name")
+      .select("full_name, party")
       .eq("id", entityId)
       .maybeSingle();
-    officialName = o?.full_name ?? null;
-  }
+    const officialName = o?.full_name ?? null;
+    const officialParty = o?.party ?? "Unknown";
 
-  // ── Sector mode ──────────────────────────────────────────────────────────────
-
-  if (groupBy === "sector") {
-    // Step 1: PAC/party committee entities, joined with their industry tag
-    // from `entity_tags`. The `financial_entities.industry` column was dropped
-    // in FIX-167 — it had been polluted with FEC `CONNECTED_ORG_NM` values
-    // (parent org / candidate / committee names). `entity_tags` is the only
-    // source of truth for industry now.
-    let pacQuery = supabase
-      .from("financial_entities")
-      .select("id, display_name")
-      .in("entity_type", ["pac", "party_committee"]);
-
-    // If an industry filter is set, pre-narrow to PACs tagged with that industry.
-    if (industryFilter) {
-      const taggedIds = await fetchEntityIdsByIndustryTag(supabase, industryFilter);
-      if (taggedIds.length === 0) {
-        return Response.json(
-          { name: industryFilter, children: [] },
-          { headers: { "Cache-Control": "public, max-age=0, s-maxage=86400, stale-while-revalidate=172800" } },
-        );
-      }
-      pacQuery = pacQuery.in("id", taggedIds);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: rollup, error } = await (supabase as any)
+      .from("official_donor_rollup_mv")
+      .select("donor_name, entity_type, industry_tag, industry_label, total_cents, tx_count")
+      .eq("official_id", entityId)
+      .eq("relationship_type", "donation")
+      .in("entity_type", ["pac", "party_committee"])
+      .order("rank", { ascending: true });
+    if (error) {
+      console.error("[treemap-pac/entity] rollup error:", error.message);
+      return Response.json({ error: error.message }, { status: 500 });
     }
 
-    const { data: pacEntities, error: pacErr } = await pacQuery;
+    let rows = ((rollup ?? []) as Array<{
+      donor_name: string | null;
+      entity_type: string | null;
+      industry_tag: string | null;
+      industry_label: string | null;
+      total_cents: number;
+      tx_count: number;
+    }>).filter((r) => !isJunkPacName(r.donor_name) && Number(r.total_cents) >= minCents);
 
-    if (pacErr) {
-      console.error("[treemap-pac/sector] query error:", pacErr.message);
-      return Response.json({ error: pacErr.message }, { status: 500 });
-    }
+    if (industryFilter) rows = rows.filter((r) => r.industry_tag === industryFilter);
 
-    const allIds = (pacEntities ?? []).map((p) => p.id);
-    const industryByEntityId = await fetchIndustryTagsByEntityId(supabase, allIds);
-
-    const pacInfo = new Map<string, { name: string; sector: string }>();
-    let untaggedCount = 0;
-    for (const p of pacEntities ?? []) {
-      const ind = industryByEntityId.get(p.id);
-      if (!ind) {
-        untaggedCount++;
-        continue; // Untagged PACs are silently absent from the treemap (FIX-179).
-      }
-      pacInfo.set(p.id, { name: p.display_name, sector: ind.display_label });
-    }
-    const pacsTotal = (pacEntities ?? []).length;
-    const pacsTagged = pacInfo.size;
-
-    // FIX-216: when an officialId is set, narrow pacInfo to PACs that have
-    // at least one donation to that official. This must run BEFORE the
-    // per-batch donations aggregation so we don't count flows to other officials.
-    if (entityId) {
-      const linkedIds: string[] = [];
-      const allPacIds = [...pacInfo.keys()];
-      const BATCH = 300;
-      for (let i = 0; i < allPacIds.length; i += BATCH) {
-        const batch = allPacIds.slice(i, i + BATCH);
-        const { data: linked } = await supabase
-          .from("financial_relationships")
-          .select("from_id")
-          .eq("relationship_type", "donation")
-          .eq("from_type", "financial_entity")
-          .eq("to_type", "official")
-          .eq("to_id", entityId)
-          .in("from_id", batch);
-        for (const r of linked ?? []) linkedIds.push(r.from_id);
-      }
-      const linkedSet = new Set(linkedIds);
-      for (const id of [...pacInfo.keys()]) {
-        if (!linkedSet.has(id)) pacInfo.delete(id);
-      }
-    }
-
-    // Step 2: their donations.
-    const pacIds = [...pacInfo.keys()];
-    const bySector = new Map<string, Map<string, { totalUsd: number; count: number }>>();
-    if (pacIds.length > 0) {
-      const BATCH = 300;
-      for (let i = 0; i < pacIds.length; i += BATCH) {
-        const batch = pacIds.slice(i, i + BATCH);
-        // FIX-216: when entityId is set, the donations aggregation must only
-        // count flows TO that official — otherwise sector totals would still
-        // include those PACs' donations to other recipients.
-        let donationsQuery = supabase
-          .from("financial_relationships")
-          .select("from_id, amount_cents")
-          .eq("relationship_type", "donation")
-          .eq("from_type", "financial_entity")
-          .in("from_id", batch);
-        if (entityId) donationsQuery = donationsQuery.eq("to_id", entityId);
-        const { data: donations } = await donationsQuery;
-
-        for (const row of donations ?? []) {
-          const info = pacInfo.get(row.from_id);
-          if (!info) continue;
-          const donorUpper = info.name.toUpperCase();
-          if (
-            donorUpper.includes("PAC/COMMITTEE") ||
-            donorUpper.includes("COMMITTEE CONTRIBUTIONS")
-          ) continue;
-          const usd = (row.amount_cents ?? 0) / 100;
-
-          if (!bySector.has(info.sector)) bySector.set(info.sector, new Map());
-          const donors = bySector.get(info.sector)!;
-          const prev = donors.get(info.name) ?? { totalUsd: 0, count: 0 };
-          donors.set(info.name, { totalUsd: prev.totalUsd + usd, count: prev.count + 1 });
-        }
-      }
-    }
-
-    // FIX-174: Build hierarchy. With an industry filter (FIX-173) we want to see
-    // every PAC in that sector, so no per-sector cap. For the global "all
-    // sectors" view we keep top 15 sectors (any more is too noisy) but raise
-    // per-sector PAC cap from 20 → 100; ~5,000 tagged PACs makes a 20-cap
-    // hide most data when the user drills into a sector cell.
-    const PER_SECTOR_CAP = industryFilter ? Number.POSITIVE_INFINITY : 100;
-    const SECTOR_CAP     = industryFilter ? Number.POSITIVE_INFINITY : 15;
-
-    // FIX-220 — apply user donation floor before per-sector cap so the floor
-    // is honored even when sector contents are heavy.
-    const children: PacGroup[] = Array.from(bySector.entries())
-      .map(([sector, donors]) => {
-        const leaves: PacLeaf[] = Array.from(donors.entries())
-          .map(([name, stats]) => ({ name, value: stats.totalUsd, count: stats.count }))
-          .filter(l => l.value >= minAmountUsd)
-          .sort((a, b) => b.value - a.value)
-          .slice(0, PER_SECTOR_CAP);
-
-        return {
-          name:     sector,
-          totalUsd: leaves.reduce((s, l) => s + l.value, 0),
-          children: leaves,
-        };
-      })
-      .filter(g => g.children.length > 0)
-      .sort((a, b) => b.totalUsd - a.totalUsd)
-      .slice(0, SECTOR_CAP);
-
-    const baseName = industryFilter ? `${industryFilter} PACs` : "PAC Money by Sector";
-    const hierarchy: PacHierarchy = {
-      // FIX-216: prefix with the focused official's name so the user can see
-      // the rewrite ("PACs that donated to Ted Cruz, by sector").
-      name: officialName ? `${officialName} — ${baseName}` : baseName,
-      children,
-      meta: { pacsTotal, pacsTagged, pacsUntagged: untaggedCount },
-    };
-    return Response.json(hierarchy, {
-      headers: { "Cache-Control": "public, max-age=0, s-maxage=86400, stale-while-revalidate=172800" },
-    });
-  }
-
-  // ── Party mode ───────────────────────────────────────────────────────────────
-  // get_pac_donations_by_party RPC was retired in the shadow→public promotion.
-  // We reconstruct the aggregation app-side by joining PACs → donations → officials.
-
-  const { data: pacEntities2 } = await supabase
-    .from("financial_entities")
-    .select("id, display_name")
-    .in("entity_type", ["pac", "party_committee"]);
-
-  const pacInfo2 = new Map<string, string>();
-  for (const p of pacEntities2 ?? []) pacInfo2.set(p.id, p.display_name);
-
-  type DonationRow = { from_id: string; to_id: string; amount_cents: number | null };
-  const donations: DonationRow[] = [];
-  const pacIds2 = [...pacInfo2.keys()];
-  if (pacIds2.length > 0) {
-    const BATCH = 300;
-    for (let i = 0; i < pacIds2.length; i += BATCH) {
-      const batch = pacIds2.slice(i, i + BATCH);
-      // FIX-216: party-mode with entityId is degenerate (one official has one
-      // party) but we still constrain so the single-group hierarchy correctly
-      // reports flows TO that official rather than global PAC donations.
-      let q = supabase
-        .from("financial_relationships")
-        .select("from_id, to_id, amount_cents")
-        .eq("relationship_type", "donation")
-        .eq("from_type", "financial_entity")
-        .eq("to_type", "official")
-        .in("from_id", batch);
-      if (entityId) q = q.eq("to_id", entityId);
-      const { data } = await q;
-      if (data) donations.push(...data);
-    }
-  }
-
-  const officialIds = [...new Set(donations.map((d) => d.to_id))];
-  const officialParty = new Map<string, string>();
-  if (officialIds.length > 0) {
-    const BATCH = 300;
-    for (let i = 0; i < officialIds.length; i += BATCH) {
-      const batch = officialIds.slice(i, i + BATCH);
-      const { data: offs } = await supabase
-        .from("officials")
-        .select("id, party")
-        .in("id", batch);
-      for (const o of offs ?? []) officialParty.set(o.id, o.party ?? "Unknown");
-    }
-  }
-
-  // party → donor → { totalUsd, count }
-  const byParty = new Map<string, Map<string, { totalUsd: number; count: number }>>();
-  const donorCombined = new Map<string, { party: string; totalUsd: number; count: number }>();
-
-  for (const row of donations) {
-    const donor = pacInfo2.get(row.from_id);
-    if (!donor) continue;
-    const party = officialParty.get(row.to_id) ?? "Unknown";
-    const usd = (row.amount_cents ?? 0) / 100;
-    const key = `${party}|${donor}`;
-    const prev = donorCombined.get(key) ?? { party, totalUsd: 0, count: 0 };
-    donorCombined.set(key, { party, totalUsd: prev.totalUsd + usd, count: prev.count + 1 });
-  }
-
-  for (const [key, val] of donorCombined) {
-    // FIX-220 — was hardcoded `<= 10000`; now respects user-set floor.
-    if (val.totalUsd < minAmountUsd) continue;
-    const donor = key.slice(val.party.length + 1);
-    const donorUpper = donor.toUpperCase();
-    if (
-      donorUpper.includes("PAC/COMMITTEE") ||
-      donorUpper.includes("COMMITTEE CONTRIBUTIONS")
-    ) continue;
-    if (!byParty.has(val.party)) byParty.set(val.party, new Map());
-    byParty.get(val.party)!.set(donor, { totalUsd: val.totalUsd, count: val.count });
-  }
-
-  // Build hierarchy — top 3 parties, top 50 donors each
-  const children: PacGroup[] = Array.from(byParty.entries())
-    .map(([party, donors]) => {
-      const leaves: PacLeaf[] = Array.from(donors.entries())
-        .map(([name, stats]) => ({ name, value: stats.totalUsd, count: stats.count }))
+    if (groupBy === "party") {
+      const leaves: PacLeaf[] = rows
+        .map((r) => ({ name: r.donor_name as string, value: Number(r.total_cents) / 100, count: Number(r.tx_count) }))
         .sort((a, b) => b.value - a.value)
         .slice(0, 50);
+      const children: PacGroup[] = leaves.length
+        ? [{ name: officialParty, totalUsd: leaves.reduce((s, l) => s + l.value, 0), children: leaves }]
+        : [];
+      const name = officialName ? `${officialName} — PAC Money by Party` : "PAC Money by Party";
+      return Response.json({ name, children } satisfies PacHierarchy, { headers: CACHE_HEADERS });
+    }
 
-      return {
-        name:     party,
-        totalUsd: leaves.reduce((s, l) => s + l.value, 0),
-        children: leaves,
-      };
-    })
-    .sort((a, b) => b.totalUsd - a.totalUsd)
-    .slice(0, 3);
+    // Sector mode: group the official's PAC donors by industry_label.
+    const bySector = new Map<string, PacLeaf[]>();
+    for (const r of rows) {
+      if (!r.industry_label) continue; // untagged PACs absent (FIX-179)
+      const leaf: PacLeaf = { name: r.donor_name as string, value: Number(r.total_cents) / 100, count: Number(r.tx_count) };
+      if (!bySector.has(r.industry_label)) bySector.set(r.industry_label, []);
+      bySector.get(r.industry_label)!.push(leaf);
+    }
+    const PER_SECTOR_CAP = industryFilter ? Number.POSITIVE_INFINITY : 100;
+    const SECTOR_CAP = industryFilter ? Number.POSITIVE_INFINITY : 15;
+    const children: PacGroup[] = Array.from(bySector.entries())
+      .map(([sector, leaves]) => {
+        const top = leaves.sort((a, b) => b.value - a.value).slice(0, PER_SECTOR_CAP);
+        return { name: sector, totalUsd: top.reduce((s, l) => s + l.value, 0), children: top };
+      })
+      .filter((g) => g.children.length > 0)
+      .sort((a, b) => b.totalUsd - a.totalUsd)
+      .slice(0, SECTOR_CAP);
+    const baseName = industryFilter ? `${industryFilter} PACs` : "PAC Money by Sector";
+    const name = officialName ? `${officialName} — ${baseName}` : baseName;
+    return Response.json({ name, children } satisfies PacHierarchy, { headers: CACHE_HEADERS });
+  }
 
-  const partyTitle = officialName ? `${officialName} — PAC Money by Party` : "PAC Money by Party";
-  const hierarchy: PacHierarchy = { name: partyTitle, children };
-  return Response.json(hierarchy, {
-    headers: { "Cache-Control": "public, max-age=0, s-maxage=86400, stale-while-revalidate=172800" },
+  // ── Global party mode: rollup #2 via RPC ───────────────────────────────────
+  if (groupBy === "party") {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data, error } = await (supabase as any).rpc("get_pac_treemap_by_party", {
+      p_min_cents: minCents,
+    });
+    if (error) {
+      console.error("[treemap-pac/party] rpc error:", error.message);
+      return Response.json({ error: error.message }, { status: 500 });
+    }
+    const children = ((data?.children ?? []) as PacGroup[]);
+    return Response.json({ name: "PAC Money by Party", children } satisfies PacHierarchy, { headers: CACHE_HEADERS });
+  }
+
+  // ── Global sector mode: rollup #2 via RPC ──────────────────────────────────
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase as any).rpc("get_pac_treemap_by_sector", {
+    p_industry: industryFilter,
+    p_min_cents: minCents,
   });
+  if (error) {
+    console.error("[treemap-pac/sector] rpc error:", error.message);
+    return Response.json({ error: error.message }, { status: 500 });
+  }
+  const children = ((data?.children ?? []) as PacGroup[]);
+  const name = industryFilter ? `${industryFilter} PACs` : "PAC Money by Sector";
+  return Response.json({ name, children } satisfies PacHierarchy, { headers: CACHE_HEADERS });
 }

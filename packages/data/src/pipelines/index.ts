@@ -953,6 +953,16 @@ export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<Nigh
     // chord_industry_flows_mv (donations + industry tags); serves the chord
     // group/cross-group + sector-vote RPCs as indexed point reads.
     "refresh_official_sector_dollars_mv",
+    // FIX-518: per-(official, relationship_type) top-1000 donor rollup + tail
+    // bucket. Serves officials/[id], treemap entity mode, treemap-pac entityId
+    // mode as indexed point reads (closes the 50k-ceiling whale undercount and
+    // removes the FIX-510 interim pagination). Same donation source as the
+    // sector rollup above.
+    "refresh_official_donor_rollup_mv",
+    // FIX-518: per-(donor, party) donation rollup. Serves treemap-pac global
+    // sector/party modes (the last open FIX-510-class wrong-numbers surface)
+    // via get_pac_treemap_by_{sector,party}.
+    "refresh_donor_party_rollup_mv",
     // FIX-509: per-entity connection-stats rollup (count/vote_count/has_*).
     // Serves the treemap aggregate + graph entities routes as point reads
     // instead of paging every entity_connections edge row. Source rows only

@@ -279,7 +279,7 @@ export default async function OfficialProfilePage({
   // Fetch official + joins in parallel with votes, donor count, donor amounts, AI summary, career history, promises.
   // Official itself comes from the React.cache()-wrapped fetcher so generateMetadata
   // and this page share a single Supabase round-trip.
-  const [officialData, voteCountRes, votesRes, donorCountRes, donorAmtRawRes, aiSummaryRes, allVotesRes, careerHistoryRes, promisesRes, responsivenessRes] =
+  const [officialData, voteCountRes, votesRes, donorRollupRes, aiSummaryRes, allVotesRes, careerHistoryRes, promisesRes, responsivenessRes] =
     await Promise.all([
       getCachedOfficial(params.id),
       supabase
@@ -292,39 +292,40 @@ export default async function OfficialProfilePage({
         .eq("official_id", params.id)
         .order("voted_at", { ascending: false })
         .limit(100),
-      supabase
-        .from("financial_relationships")
-        .select("id", { count: "exact", head: true })
-        .eq("relationship_type", "donation")
-        .eq("to_type", "official")
-        .eq("to_id", params.id),
-      // FIX-270: include super-PAC independent expenditures (FIX-240 Schedule E
-      // rows) alongside direct donations. ie_support and ie_oppose target the
-      // same to_type='official'/to_id since FEC weball matching (FIX-246) maps
-      // them through the candidate's FEC ID to the matched official row — no
-      // PCC indirection needed. Split client-side on relationship_type so the
-      // three are displayed as separate sections rather than conflated.
-      // FIX-476 — donations to this official are SUMmed per donor below, so a
-      // silent cap at PostgREST max_rows (1000; the prior `.limit(2000)` never
-      // raised it) undercut the donor totals for heavily-funded officials. Page
-      // the full set with a stable unique order key.
+      // FIX-518 — donor + IE aggregations read official_donor_rollup_mv: per
+      // (official, relationship_type) the top-1000 donors (rank 1..1000) plus
+      // one tail-bucket row (rank 1001, donor_id NULL, tail_donor_count set),
+      // donor_name/entity_type/industry_label denormalized at refresh time.
+      // Replaces both the donor-count head query and the 50k-row fetchAllRows
+      // donation scan that JS-aggregated per render and silently undercounted
+      // heavily-funded officials at the ceiling (the whale: 308,847 rows /
+      // $268M). relationship_type ∈ ('donation','ie_support','ie_oppose')
+      // (FIX-270). Paginated: up to 3×1001 rows exceeds the 1000-row PostgREST
+      // cap, which would silently drop the donation tail row (rank 1001 — where
+      // most of a small-dollar official's money lives) and the IE rows. The
+      // (official_id, relationship_type, rank) unique key is a stable total
+      // order. ORDER BY rank is materialized — no request-time sort. EXISTS-
+      // gated fallback (below) preserves correctness if the MV is stale/missing.
       (async () => {
-        const { rows } = await fetchAllRows<{ from_id: string; amount_cents: number | null; sector: string | null; relationship_type: string }>((f, t) =>
+        const { rows } = await fetchAllRows<{
+          relationship_type: string;
+          rank: number;
+          donor_id: string | null;
+          donor_name: string | null;
+          entity_type: string | null;
+          industry_label: string | null;
+          total_cents: number;
+          tx_count: number;
+          tail_donor_count: number | null;
+        }>((f, t) =>
           sb
-            .from("financial_relationships")
-            // FIX-503: project just the sector key (sector:metadata->>sector)
-            // instead of the whole metadata jsonb over up to 50k donor rows —
-            // sector is the only field read downstream. (NB: the key is
-            // currently unpopulated; see FIX-512 — the industry breakdown falls
-            // back to entity_tags, so this is a payload/buffer win only.)
-            .select("from_id, amount_cents, sector:metadata->>sector, relationship_type")
-            .in("relationship_type", ["donation", "ie_support", "ie_oppose"])
-            .eq("to_type", "official")
-            .eq("to_id", params.id)
-            .eq("from_type", "financial_entity")
-            .order("id", { ascending: true })
+            .from("official_donor_rollup_mv")
+            .select("relationship_type, rank, donor_id, donor_name, entity_type, industry_label, total_cents, tx_count, tail_donor_count")
+            .eq("official_id", params.id)
+            .order("relationship_type", { ascending: true })
+            .order("rank", { ascending: true })
             .range(f, t),
-          { maxRows: 50000 },
+          { maxRows: 10000 },
         );
         return { data: rows };
       })(),
@@ -401,57 +402,6 @@ export default async function OfficialProfilePage({
     }
   }
 
-  // FIX-270: combined query now returns donation + ie_support + ie_oppose
-  // rows in one fetch. Enrich all of them in one pass (same financial_entities
-  // join), then split downstream so the donations-vs-IE distinction is
-  // preserved in the UI. Industry comes from `entity_tags` (FIX-167).
-  const inflowRaw = (donorAmtRawRes.data ?? []) as Array<{
-    from_id: string;
-    amount_cents: number | null;
-    sector: string | null;
-    relationship_type: string;
-  }>;
-  const fromEntityIds = [...new Set(inflowRaw.map((d) => d.from_id))];
-  const entityInfo = new Map<string, { display_name: string; industry: string | null; entity_type: string | null }>();
-  if (fromEntityIds.length > 0) {
-    const industryByEntityId = await fetchIndustryTagsByEntityId(supabase, fromEntityIds);
-    const BATCH = 300;
-    for (let i = 0; i < fromEntityIds.length; i += BATCH) {
-      const batch = fromEntityIds.slice(i, i + BATCH);
-      const { data: entities } = await supabase
-        .from("financial_entities")
-        .select("id, display_name, entity_type")
-        .in("id", batch);
-      for (const e of entities ?? []) {
-        entityInfo.set(e.id, {
-          display_name: e.display_name,
-          industry:     industryByEntityId.get(e.id)?.display_label ?? null,
-          entity_type:  e.entity_type,
-        });
-      }
-    }
-  }
-  const enrichedInflow = inflowRaw.map((r) => {
-    const info = entityInfo.get(r.from_id);
-    return {
-      from_id:           r.from_id,
-      donor_name:        info?.display_name ?? "Unknown",
-      donor_type:        info?.entity_type ?? "other",
-      industry:          info?.industry ?? null,
-      amount_cents:      r.amount_cents,
-      sector:            r.sector,
-      relationship_type: r.relationship_type,
-    };
-  });
-  // Donations only — preserve existing semantics for total raised, top donors,
-  // and industry breakdown. IEs are uncapped Schedule E spending and have no
-  // meaningful "industry" or "donor" interpretation in the FECA sense.
-  const donorAmtRes = {
-    data: enrichedInflow.filter((r) => r.relationship_type === "donation"),
-  };
-  const ieSupportRows = enrichedInflow.filter((r) => r.relationship_type === "ie_support");
-  const ieOpposeRows  = enrichedInflow.filter((r) => r.relationship_type === "ie_oppose");
-
   if (!officialData) {
     notFound();
   }
@@ -485,86 +435,206 @@ export default async function OfficialProfilePage({
   // committees, promises, career history) since their data is empty by design.
   const isCandidate = official.tier === "candidate";
 
-  // Aggregate donor data in JS (no GROUP BY in PostgREST)
-  const donorMap = new Map<
-    string,
-    { donor_type: string; industry: string | null; total_cents: number; count: number }
-  >();
-  for (const row of donorAmtRes.data ?? []) {
-    const existing = donorMap.get(row.donor_name);
-    if (existing) {
-      existing.total_cents += row.amount_cents ?? 0;
-      existing.count += 1;
-    } else {
-      donorMap.set(row.donor_name, {
-        donor_type: row.donor_type,
-        industry: row.industry ?? null,
-        total_cents: row.amount_cents ?? 0,
-        count: 1,
-      });
-    }
+  // ── Donor + IE view (FIX-518) ───────────────────────────────────────────────
+  // Built from official_donor_rollup_mv (ranked top-1000 donors + tail bucket
+  // per relationship_type). totalDonations / donorCount include the tail so the
+  // headline figures are the TRUE totals past the leaf cap; topDonors and the
+  // industry breakdown render the ranked rows (the tail has no per-donor / per-
+  // industry identity). EXISTS-gated fallback re-runs the pre-FIX-518 live
+  // fetchAllRows aggregation when the MV has no rows for this official but
+  // donations exist (stale/missing refresh) — never an empty list pretending
+  // to be a real zero.
+  type RollupRow = {
+    relationship_type: string;
+    rank: number;
+    donor_id: string | null;
+    donor_name: string | null;
+    entity_type: string | null;
+    industry_label: string | null;
+    total_cents: number;
+    tx_count: number;
+    tail_donor_count: number | null;
+  };
+
+  function buildIeFromRollup(rows: RollupRow[]): { rows: OutsideSpenderRow[]; total: number } {
+    const total = rows.reduce((s, r) => s + Number(r.total_cents ?? 0), 0);
+    const ranked = rows
+      .filter((r) => r.donor_id !== null)
+      .sort((a, b) => a.rank - b.rank)
+      .slice(0, 50)
+      .map((r) => ({
+        spender_id:   r.donor_id as string,
+        spender_name: r.donor_name ?? "Unknown",
+        spender_type: r.entity_type ?? "other",
+        total_cents:  Number(r.total_cents ?? 0),
+        count:        Number(r.tx_count ?? 0),
+      }));
+    return { rows: ranked, total };
   }
-  const topDonors: DonorRow[] = Array.from(donorMap.entries())
-    .map(([donor_name, v]) => ({ donor_name, ...v }))
-    .sort((a, b) => b.total_cents - a.total_cents)
-    .slice(0, 50);
 
-  const totalDonations = (donorAmtRes.data ?? []).reduce(
-    (sum, r) => sum + (r.amount_cents ?? 0),
-    0
-  );
+  let topDonors: DonorRow[] = [];
+  let totalDonations = 0;
+  let donorCount = 0;
+  let industrySummary: { sector: string; totalCents: number; pct: number }[] = [];
+  let ieSupport: { rows: OutsideSpenderRow[]; total: number } = { rows: [], total: 0 };
+  let ieOppose:  { rows: OutsideSpenderRow[]; total: number } = { rows: [], total: 0 };
 
-  // FIX-270: aggregate ie_support and ie_oppose rows by spender. Same shape
-  // as topDonors but keyed by spender_id (the from_id of the spending super-PAC
-  // / committee) instead of name — names can collide, ids cannot.
-  function aggregateOutsideSpenders(
-    rows: typeof enrichedInflow,
-  ): { rows: OutsideSpenderRow[]; total: number } {
-    const map = new Map<string, OutsideSpenderRow>();
-    let total = 0;
-    for (const r of rows) {
-      total += r.amount_cents ?? 0;
-      const existing = map.get(r.from_id);
-      if (existing) {
-        existing.total_cents += r.amount_cents ?? 0;
-        existing.count       += 1;
-      } else {
-        map.set(r.from_id, {
-          spender_id:   r.from_id,
-          spender_name: r.donor_name,
-          spender_type: r.donor_type,
-          total_cents:  r.amount_cents ?? 0,
-          count:        1,
-        });
+  const rollupRows = (donorRollupRes.data ?? []) as RollupRow[];
+
+  if (rollupRows.length > 0) {
+    const donationRows = rollupRows.filter((r) => r.relationship_type === "donation");
+    const rankedDonations = donationRows.filter((r) => r.donor_id !== null);
+
+    totalDonations = donationRows.reduce((s, r) => s + Number(r.total_cents ?? 0), 0);
+    donorCount     = donationRows.reduce((s, r) => s + Number(r.tx_count ?? 0), 0);
+
+    topDonors = rankedDonations
+      .sort((a, b) => a.rank - b.rank)
+      .slice(0, 50)
+      .map((r) => ({
+        donor_name:  r.donor_name ?? "Unknown",
+        donor_type:  r.entity_type ?? "other",
+        industry:    r.industry_label ?? null,
+        total_cents: Number(r.total_cents ?? 0),
+        count:       Number(r.tx_count ?? 0),
+      }));
+
+    const bySector = new Map<string, number>();
+    for (const r of rankedDonations) {
+      const sector = r.industry_label ?? r.entity_type ?? "Other";
+      bySector.set(sector, (bySector.get(sector) ?? 0) + Number(r.total_cents ?? 0));
+    }
+    industrySummary = [...bySector.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 8)
+      .map(([sector, cents]) => ({
+        sector,
+        totalCents: cents,
+        pct: totalDonations > 0 ? Math.round((cents / totalDonations) * 100) : 0,
+      }));
+
+    ieSupport = buildIeFromRollup(rollupRows.filter((r) => r.relationship_type === "ie_support"));
+    ieOppose  = buildIeFromRollup(rollupRows.filter((r) => r.relationship_type === "ie_oppose"));
+  } else {
+    // EXISTS probe (cheap — never COUNT(*), which seq-scans for a whale): does
+    // this official have ANY donation row despite an empty MV? If so the MV is
+    // stale/unrefreshed → fall back to the live aggregation.
+    const { data: probe } = await sb
+      .from("financial_relationships")
+      .select("id")
+      .eq("relationship_type", "donation")
+      .eq("to_type", "official")
+      .eq("to_id", params.id)
+      .limit(1);
+
+    if (probe && probe.length > 0) {
+      const { rows: inflowRaw } = await fetchAllRows<{ from_id: string; amount_cents: number | null; relationship_type: string }>((f, t) =>
+        sb
+          .from("financial_relationships")
+          .select("from_id, amount_cents, relationship_type")
+          .in("relationship_type", ["donation", "ie_support", "ie_oppose"])
+          .eq("to_type", "official")
+          .eq("to_id", params.id)
+          .eq("from_type", "financial_entity")
+          .order("id", { ascending: true })
+          .range(f, t),
+        { maxRows: 50000 },
+      );
+      const fromEntityIds = [...new Set(inflowRaw.map((d) => d.from_id))];
+      const entityInfo = new Map<string, { display_name: string; industry: string | null; entity_type: string | null }>();
+      if (fromEntityIds.length > 0) {
+        const industryByEntityId = await fetchIndustryTagsByEntityId(supabase, fromEntityIds);
+        const BATCH = 300;
+        for (let i = 0; i < fromEntityIds.length; i += BATCH) {
+          const batch = fromEntityIds.slice(i, i + BATCH);
+          const { data: entities } = await supabase
+            .from("financial_entities")
+            .select("id, display_name, entity_type")
+            .in("id", batch);
+          for (const e of entities ?? []) {
+            entityInfo.set(e.id, {
+              display_name: e.display_name,
+              industry:     industryByEntityId.get(e.id)?.display_label ?? null,
+              entity_type:  e.entity_type,
+            });
+          }
+        }
       }
+      const enriched = inflowRaw.map((r) => {
+        const info = entityInfo.get(r.from_id);
+        return {
+          from_id:           r.from_id,
+          donor_name:        info?.display_name ?? "Unknown",
+          donor_type:        info?.entity_type ?? "other",
+          industry:          info?.industry ?? null,
+          amount_cents:      r.amount_cents,
+          relationship_type: r.relationship_type,
+        };
+      });
+      const donations = enriched.filter((r) => r.relationship_type === "donation");
+
+      const donorMap = new Map<string, { donor_type: string; industry: string | null; total_cents: number; count: number }>();
+      for (const row of donations) {
+        const existing = donorMap.get(row.donor_name);
+        if (existing) {
+          existing.total_cents += row.amount_cents ?? 0;
+          existing.count += 1;
+        } else {
+          donorMap.set(row.donor_name, {
+            donor_type: row.donor_type,
+            industry: row.industry ?? null,
+            total_cents: row.amount_cents ?? 0,
+            count: 1,
+          });
+        }
+      }
+      topDonors = Array.from(donorMap.entries())
+        .map(([donor_name, v]) => ({ donor_name, ...v }))
+        .sort((a, b) => b.total_cents - a.total_cents)
+        .slice(0, 50);
+      totalDonations = donations.reduce((sum, r) => sum + (r.amount_cents ?? 0), 0);
+      donorCount = donations.length;
+
+      const bySector = new Map<string, number>();
+      for (const row of donations) {
+        const sector = row.industry ?? row.donor_type ?? "Other";
+        bySector.set(sector, (bySector.get(sector) ?? 0) + (row.amount_cents ?? 0));
+      }
+      industrySummary = [...bySector.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 8)
+        .map(([sector, cents]) => ({
+          sector,
+          totalCents: cents,
+          pct: totalDonations > 0 ? Math.round((cents / totalDonations) * 100) : 0,
+        }));
+
+      function aggregateOutsideSpenders(rows: typeof enriched): { rows: OutsideSpenderRow[]; total: number } {
+        const map = new Map<string, OutsideSpenderRow>();
+        let total = 0;
+        for (const r of rows) {
+          total += r.amount_cents ?? 0;
+          const existing = map.get(r.from_id);
+          if (existing) {
+            existing.total_cents += r.amount_cents ?? 0;
+            existing.count       += 1;
+          } else {
+            map.set(r.from_id, {
+              spender_id:   r.from_id,
+              spender_name: r.donor_name,
+              spender_type: r.donor_type,
+              total_cents:  r.amount_cents ?? 0,
+              count:        1,
+            });
+          }
+        }
+        const aggregated = [...map.values()].sort((a, b) => b.total_cents - a.total_cents).slice(0, 50);
+        return { rows: aggregated, total };
+      }
+      ieSupport = aggregateOutsideSpenders(enriched.filter((r) => r.relationship_type === "ie_support"));
+      ieOppose  = aggregateOutsideSpenders(enriched.filter((r) => r.relationship_type === "ie_oppose"));
     }
-    const aggregated = [...map.values()]
-      .sort((a, b) => b.total_cents - a.total_cents)
-      .slice(0, 50);
-    return { rows: aggregated, total };
   }
-
-  const ieSupport = aggregateOutsideSpenders(ieSupportRows);
-  const ieOppose  = aggregateOutsideSpenders(ieOpposeRows);
-
-  // ── Industry breakdown ───────────────────────────────────────────────────────
-  const bySector = new Map<string, number>();
-  for (const row of donorAmtRes.data ?? []) {
-    const sector =
-      row.sector ??
-      row.industry ??
-      row.donor_type ??
-      "Other";
-    bySector.set(sector, (bySector.get(sector) ?? 0) + (row.amount_cents ?? 0));
-  }
-  const industrySummary = [...bySector.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 8)
-    .map(([sector, cents]) => ({
-      sector,
-      totalCents: cents,
-      pct: totalDonations > 0 ? Math.round((cents / totalDonations) * 100) : 0,
-    }));
 
   // ── Issue tagging + vote breakdown ──────────────────────────────────────────
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -637,7 +707,8 @@ export default async function OfficialProfilePage({
   }));
 
   const voteCount = voteCountRes.count ?? 0;
-  const donorCount = donorCountRes.count ?? 0;
+  // donorCount is derived from the rollup MV above (SUM of tx_count over the
+  // official's donation rows) — see the FIX-518 donor-view block.
   const cachedAiProfile: string | null = aiSummaryRes?.data?.summary_text ?? null;
   // QWEN-ADDED: Extract career history data for CareerHistory component
   const careerHistory = (careerHistoryRes.data ?? []) as Array<{
