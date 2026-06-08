@@ -36,6 +36,9 @@ export const DEFAULT_KIND = "discussion";
 
 // Human labels (semantic, presentation-neutral). Badge colors live in the UI.
 // Lifted verbatim from the legacy ArgumentBoard TYPE_CONFIG labels.
+// NOTE (C1 / FIX-526): 'support'/'oppose' were REMOVED as kinds — stance is the
+// canonical axis now (see COMMENT_STANCES). The labels are retained only so any
+// pre-normalization historical row still renders a friendly label.
 export const KIND_LABELS: Record<string, string> = {
   discussion: "Discussion",
   support: "Support",
@@ -54,10 +57,9 @@ export const KIND_LABELS: Record<string, string> = {
 
 // Full union of every kind any surface can use. Used to validate posts to a
 // `proposal` (initiatives ARE proposals, so this must cover every stage kind).
+// 'support'/'oppose' are NOT kinds (C1 / FIX-526) — they live in stance.
 const ALL_KINDS = [
   "discussion",
-  "support",
-  "oppose",
   "concern",
   "amendment",
   "question",
@@ -76,8 +78,9 @@ const ALL_KINDS = [
 export const ALLOWED_KINDS: Record<EntityCommentType, readonly string[]> = {
   // Initiatives are proposals — must accept the full union for every stage.
   proposal: ALL_KINDS,
-  // Officials get the full typed treatment (decision 4).
-  official: ["discussion", "support", "oppose", "concern", "question", "evidence", "stakeholder_impact"],
+  // Officials get the full typed treatment (decision 4). Support/oppose are a
+  // stance now, not a kind (C1 / FIX-526).
+  official: ["discussion", "concern", "question", "evidence", "stakeholder_impact"],
   jurisdiction: ["discussion", "question", "concern", "evidence", "stakeholder_impact"],
   institution: ["discussion", "question", "concern", "evidence", "stakeholder_impact"],
   // Schema supports these; no UI this PR — keep them minimal but valid.
@@ -91,12 +94,13 @@ export const ALLOWED_KINDS: Record<EntityCommentType, readonly string[]> = {
 export const INITIATIVE_STAGE_KINDS: Record<InitiativeStage, readonly string[]> = {
   problem: ["discussion", "experience", "cause", "solution", "question", "evidence", "stakeholder_impact"],
   draft: [],
+  // C1 / FIX-526: support/oppose are expressed via stance (stanceEnabled), not kind.
   deliberate: [
-    "discussion", "support", "oppose", "concern", "amendment",
+    "discussion", "concern", "amendment",
     "question", "evidence", "precedent", "tradeoff", "stakeholder_impact",
   ],
   mobilise: [
-    "discussion", "support", "oppose", "concern", "amendment",
+    "discussion", "concern", "amendment",
     "question", "evidence", "precedent", "tradeoff", "stakeholder_impact",
   ],
   resolved: [],
@@ -112,6 +116,17 @@ export const RATE_LIMITS = {
   ratings: 200,
   flags: 10,
 } as const;
+
+// ─── C1 position-spine constants (FIX-523) ────────────────────────────────────
+// Mirrored in supabase/migrations/20260607060000_entity_positions_spine.sql.
+// Kept here so Wave B (bridge scorer) reads the same values.
+// Below this many positions, get_entity_position_rollup() returns NULL aggregates
+// (n only) — small-n medians presented as "the community's view" discredit the metric.
+export const MIN_POSITIONS_FOR_ROLLUP = 10;
+// Max attributed (delta) position-change events per user per rolling 24h.
+export const DELTA_DAILY_CAP = 5;
+// Minimum account age (days) before a user may attribute a position change to a comment.
+export const MIN_ACCOUNT_AGE_DAYS = 7;
 
 // App-enforced maximum reply depth (root = 0).
 export const MAX_THREAD_DEPTH = 3;

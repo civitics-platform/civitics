@@ -1762,6 +1762,47 @@ export type Database = {
           },
         ]
       }
+      entity_positions: {
+        Row: {
+          conditions_md: string | null
+          constituent_jurisdiction_id: string | null
+          created_at: string
+          entity_id: string
+          entity_type: string
+          stance: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          conditions_md?: string | null
+          constituent_jurisdiction_id?: string | null
+          created_at?: string
+          entity_id: string
+          entity_type: string
+          stance: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          conditions_md?: string | null
+          constituent_jurisdiction_id?: string | null
+          created_at?: string
+          entity_id?: string
+          entity_type?: string
+          stance?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "entity_positions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       entity_tags: {
         Row: {
           ai_model: string | null
@@ -3610,6 +3651,57 @@ export type Database = {
         }
         Relationships: []
       }
+      position_events: {
+        Row: {
+          attributed_comment_id: string | null
+          created_at: string
+          entity_id: string
+          entity_type: string
+          from_stance: number | null
+          id: string
+          note: string | null
+          to_stance: number
+          user_id: string
+        }
+        Insert: {
+          attributed_comment_id?: string | null
+          created_at?: string
+          entity_id: string
+          entity_type: string
+          from_stance?: number | null
+          id?: string
+          note?: string | null
+          to_stance: number
+          user_id: string
+        }
+        Update: {
+          attributed_comment_id?: string | null
+          created_at?: string
+          entity_id?: string
+          entity_type?: string
+          from_stance?: number | null
+          id?: string
+          note?: string | null
+          to_stance?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "position_events_attributed_comment_id_fkey"
+            columns: ["attributed_comment_id"]
+            isOneToOne: false
+            referencedRelation: "entity_comments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "position_events_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       promises: {
         Row: {
           arweave_tx: string | null
@@ -4743,6 +4835,15 @@ export type Database = {
           rule_type: string
         }[]
       }
+      get_entity_position_rollup: {
+        Args: { p_entity_id: string; p_entity_type: string; p_lens?: string }
+        Returns: {
+          buckets: Json
+          median: number
+          n: number
+          pct_with_conditions: number
+        }[]
+      }
       get_financial_entity_naics: { Args: never; Returns: Json }
       get_group_connections: {
         Args: { p_limit?: number; p_member_ids: string[] }
@@ -5208,6 +5309,32 @@ export type Database = {
           party: string
           subtitle: string
         }[]
+      }
+      set_entity_position: {
+        Args: {
+          p_attributed_comment_id?: string
+          p_conditions_md?: string
+          p_entity_id: string
+          p_entity_type: string
+          p_note?: string
+          p_stance: number
+        }
+        Returns: {
+          conditions_md: string | null
+          constituent_jurisdiction_id: string | null
+          created_at: string
+          entity_id: string
+          entity_type: string
+          stance: number
+          updated_at: string
+          user_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "entity_positions"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       source_priority: { Args: { src: string }; Returns: number }
       treemap_officials_by_donations:

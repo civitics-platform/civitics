@@ -23,6 +23,8 @@ type RatingSummary = {
   valuable_up: number;
   valuable_down: number;
   legacy_upvotes: number;
+  // C1 (FIX-525): count of position changes attributed to this comment.
+  deltas: number;
 };
 
 type Comment = {
@@ -444,6 +446,14 @@ function CommentCard({
               ✓ Constituent
             </span>
           )}
+          {comment.rating_summary.deltas > 0 && (
+            <span
+              className="inline-block rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[10px] font-medium text-violet-700"
+              title="Readers changed their position and credited this comment"
+            >
+              ↺ changed {comment.rating_summary.deltas} {comment.rating_summary.deltas === 1 ? "mind" : "minds"}
+            </span>
+          )}
         </div>
         <span className="shrink-0 text-xs text-gray-300">{formatRelTime(comment.created_at)}</span>
       </div>
@@ -583,9 +593,10 @@ export function EntityComments({
 
   const grouped = useMemo(() => {
     if (!stanceGrouped) return null;
-    // Initiatives express "side" via kind (support/oppose) OR stance — honor both.
-    const isFor = (c: Comment) => c.stance === "support" || c.kind === "support";
-    const isAgainst = (c: Comment) => c.stance === "oppose" || c.kind === "oppose";
+    // C1 (FIX-526): side is derived PURELY from stance now — 'support'/'oppose'
+    // are no longer kinds. Comments without a stance fall into the discussion column.
+    const isFor = (c: Comment) => c.stance === "support";
+    const isAgainst = (c: Comment) => c.stance === "oppose";
     return {
       support: comments.filter(isFor),
       oppose: comments.filter(isAgainst),

@@ -8,6 +8,7 @@ import { UpvoteButton } from "./components/UpvoteButton";
 import { VersionHistory } from "./components/VersionHistory";
 import { InlineEditor } from "./components/InlineEditor";
 import { EntityComments } from "../../components/EntityComments";
+import { PositionSection } from "../../components/PositionSection";
 import { INITIATIVE_STAGE_KINDS, type InitiativeStage } from "@civitics/db";
 import { QualityGate } from "./components/QualityGate";
 import { SignaturePanel } from "./components/SignaturePanel";
@@ -373,11 +374,18 @@ export default async function InitiativeDetailPage({
               />
             )}
 
-            {/* Argument board — unified comments substrate (C0), stage-aware vocab */}
+            {/* Position spine (C1) — hidden on problem/draft; visible from deliberate onward */}
+            {["deliberate", "mobilise", "resolved"].includes(initiative.stage) && (
+              <PositionSection entityType="proposal" entityId={initiative.id} heading="Positions" />
+            )}
+
+            {/* Argument board — unified comments substrate (C0), stage-aware vocab.
+                C1 (FIX-526): side is a stance now, so the composer enables stance. */}
             <EntityComments
               entityType="proposal"
               entityId={initiative.id}
               allowedKinds={[...(INITIATIVE_STAGE_KINDS[initiative.stage as InitiativeStage] ?? ["discussion"])]}
+              stanceEnabled
               stanceGrouped={["deliberate", "mobilise"].includes(initiative.stage)}
               composerEnabled={["problem", "deliberate", "mobilise"].includes(initiative.stage)}
               heading="Argument board"

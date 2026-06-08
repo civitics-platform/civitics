@@ -33,6 +33,7 @@ export type CommentPayload = {
     valuable_up: number;
     valuable_down: number;
     legacy_upvotes: number;
+    deltas: number;
   };
   created_at: string;
   updated_at: string;
@@ -80,6 +81,7 @@ function normalizeSummary(raw: unknown) {
     valuable_up: n("valuable_up"),
     valuable_down: n("valuable_down"),
     legacy_upvotes: n("legacy_upvotes"),
+    deltas: n("deltas"),
   };
 }
 
