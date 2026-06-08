@@ -59,6 +59,9 @@ export function buildDbUrl(): string {
 const ALLOWED_REBUILDS = new Set([
   "rebuild_financial_entity_size_tags",
   "rebuild_pre_vote_timing_tags",
+  // C1 Wave B (FIX-527): nightly comment bridge scorer. A 0-arg call here
+  // (default args NULL/NULL) runs the full sweep and returns #comments scored.
+  "recompute_comment_bridge_scores",
 ]);
 
 /**

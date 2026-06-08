@@ -50,7 +50,10 @@ export async function GET(request: NextRequest) {
     const entityType = sp.get("entity_type");
     const entityId = sp.get("entity_id");
     const lens = sp.get("lens") === "constituents" ? "constituents" : "all";
-    const sort = sp.get("sort") === "top" ? "top" : "newest";
+    // C1 Wave B (FIX-528): default sort is now `bridge` (bridge_score DESC NULLS
+    // LAST). `newest` (keyset-paginated) and `top` remain as explicit options.
+    const sortParam = sp.get("sort");
+    const sort = sortParam === "newest" ? "newest" : sortParam === "top" ? "top" : "bridge";
     const cursor = sp.get("cursor");
     const limit = Math.min(MAX_LIMIT, Math.max(1, parseInt(sp.get("limit") ?? "", 10) || DEFAULT_LIMIT));
 
@@ -79,7 +82,18 @@ export async function GET(request: NextRequest) {
     let roots: any[];
     let nextCursor: string | null = null;
 
-    if (sort === "top") {
+    if (sort === "bridge") {
+      // Real ordered query: bridge_score DESC NULLS LAST, then recency. Single
+      // page (no keyset) — the representation floor lives in the highlights
+      // strip, so the list stays a simple ordered page (decision 6).
+      const { data, error } = await rootsQuery
+        .order("bridge_score", { ascending: false, nullsFirst: false })
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: false })
+        .limit(limit);
+      if (error) return NextResponse.json({ error: "Failed to load comments" }, { status: 500 });
+      roots = data ?? [];
+    } else if (sort === "top") {
       const { data, error } = await rootsQuery
         .order("created_at", { ascending: false })
         .order("id", { ascending: false })

@@ -25,6 +25,7 @@ import { runExecutiveSeed } from "./executive/seed";
 import { runRuleBasedTagger } from "./tags/rules";
 import { runAiTagger } from "./tags/ai-tagger";
 import { runAiSummariesPipeline } from "./ai-summaries";
+import { scoreComments } from "../scripts/score-comments";
 import { runAgenciesHierarchyPipeline } from "./agencies-hierarchy";
 import { runAgencyLeadershipPipeline } from "./agency-leadership";
 import { runAgencyEnrichmentPipeline } from "./agency-enrichment";
@@ -861,6 +862,21 @@ export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<Nigh
     const msg = errMsg(err);
     console.error("[nightly] refresh_proposal_popularity failed:", msg);
     results.errors.push(`Popularity refresh: ${msg}`);
+  }
+
+  // 3b-iii. Comment bridge scorer (FIX-527). Runs immediately after the
+  //   comment-activity MV refresh (proposal_trending_24h) so trending and bridge
+  //   scores are computed against the same comment state. Set-based UPDATE over
+  //   entity_comments via the direct-pg heavy-rebuild path; writes only
+  //   bridge_score/map_x/map_y + the comment_scorer watermark. Cheap full sweep
+  //   at current scale; non-fatal — a scorer failure must not abort the nightly.
+  try {
+    const { scored } = await scoreComments();
+    console.log(`[nightly] comment bridge scorer — ${scored} comment(s) scored`);
+  } catch (err) {
+    const msg = errMsg(err);
+    console.error("[nightly] comment bridge scorer failed:", msg);
+    results.errors.push(`Comment bridge scorer: ${msg}`);
   }
 
   // 3b-ii. Refresh spending totals (total_contract_cents / total_grant_cents on financial_entities)

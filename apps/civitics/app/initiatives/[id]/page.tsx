@@ -9,6 +9,7 @@ import { VersionHistory } from "./components/VersionHistory";
 import { InlineEditor } from "./components/InlineEditor";
 import { EntityComments } from "../../components/EntityComments";
 import { PositionSection } from "../../components/PositionSection";
+import { CommentHighlightsStrip } from "../../components/CommentHighlightsStrip";
 import { INITIATIVE_STAGE_KINDS, type InitiativeStage } from "@civitics/db";
 import { QualityGate } from "./components/QualityGate";
 import { SignaturePanel } from "./components/SignaturePanel";
@@ -378,6 +379,9 @@ export default async function InitiativeDetailPage({
             {["deliberate", "mobilise", "resolved"].includes(initiative.stage) && (
               <PositionSection entityType="proposal" entityId={initiative.id} heading="Positions" />
             )}
+
+            {/* Common-ground / steelman highlights, pinned above list + map */}
+            <CommentHighlightsStrip entityType="proposal" entityId={initiative.id} />
 
             {/* Argument board — unified comments substrate (C0), stage-aware vocab.
                 C1 (FIX-526): side is a stance now, so the composer enables stance. */}

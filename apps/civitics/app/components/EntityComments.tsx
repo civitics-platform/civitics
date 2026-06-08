@@ -3,10 +3,11 @@
 // Unified comments UI (C0 / FIX-521) — one component over the entity_comments
 // substrate, replacing CivicComments / OfficialComments / ArgumentBoard. Typed
 // kind composer, two-axis (agree / valuable) ratings, constituent badge, flag
-// menu, newest/top sort, optional constituent lens, optional stance-grouped
-// (for/against) visual mode for initiatives. Pseudonymous display_name only.
+// menu, bridge/newest/top sort (bridge default), list⇄map view switch (C1 Wave
+// B debate map), optional constituent lens, optional stance-grouped (for/against)
+// visual mode for initiatives. Pseudonymous display_name only.
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   ALLOWED_KINDS,
   DEFAULT_KIND,
@@ -14,6 +15,12 @@ import {
   MAX_THREAD_DEPTH,
   type EntityCommentType,
 } from "@civitics/db";
+import { DebateMap } from "./DebateMap";
+import { FOCUS_COMMENT_EVENT, commentDomId, type FocusCommentDetail } from "./comment-focus";
+
+// C1 Wave B (FIX-529): a comment "bridges divides" when its cross-stance balance
+// (map_y) is high.
+const BRIDGE_MARKER_MIN = 0.6;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -42,6 +49,10 @@ type Comment = {
   author_name: string;
   is_constituent: boolean;
   rating_summary: RatingSummary;
+  // C1 Wave B (FIX-528): nightly bridge scorer output; NULL until scored.
+  bridge_score: number | null;
+  map_x: number | null;
+  map_y: number | null;
   created_at: string;
   updated_at: string;
   replies: Comment[];
@@ -415,6 +426,7 @@ function CommentCard({
   stanceEnabled,
   signInNext,
   onReplyPosted,
+  highlightId,
   depth = 0,
 }: {
   comment: Comment;
@@ -424,13 +436,30 @@ function CommentCard({
   stanceEnabled: boolean;
   signInNext: string;
   onReplyPosted: (parentId: string, reply: Comment) => void;
+  highlightId: string | null;
   depth?: number;
 }) {
   const [showReply, setShowReply] = useState(false);
   const collapsed = comment.status === "needs_review";
+  const selected = highlightId === comment.id;
+  const ref = useRef<HTMLDivElement>(null);
+  const bridges = comment.map_y != null && comment.map_y >= BRIDGE_MARKER_MIN;
+
+  // When the map or highlights strip selects this comment, bring it into view.
+  useEffect(() => {
+    if (selected && ref.current) {
+      ref.current.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, [selected]);
 
   return (
-    <div className={`rounded-lg border bg-white p-3 shadow-sm ${depth > 0 ? "border-gray-100" : "border-gray-200"}`}>
+    <div
+      ref={ref}
+      id={commentDomId(comment.id)}
+      className={`scroll-mt-24 rounded-lg border bg-white p-3 shadow-sm transition-shadow ${
+        selected ? "border-indigo-400 ring-2 ring-indigo-300" : depth > 0 ? "border-gray-100" : "border-gray-200"
+      }`}
+    >
       <div className="mb-1 flex items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-1.5">
           <span className={`inline-block rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${badgeClass(comment.kind)}`}>
@@ -452,6 +481,14 @@ function CommentCard({
               title="Readers changed their position and credited this comment"
             >
               ↺ changed {comment.rating_summary.deltas} {comment.rating_summary.deltas === 1 ? "mind" : "minds"}
+            </span>
+          )}
+          {bridges && (
+            <span
+              className="inline-block rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-medium text-indigo-700"
+              title="Valued by people on both sides of this debate"
+            >
+              ⇄ bridges divides
             </span>
           )}
         </div>
@@ -510,6 +547,7 @@ function CommentCard({
               stanceEnabled={stanceEnabled}
               signInNext={signInNext}
               onReplyPosted={onReplyPosted}
+              highlightId={highlightId}
               depth={depth + 1}
             />
           ))}
@@ -541,10 +579,27 @@ export function EntityComments({
   const [comments, setComments] = useState<Comment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [sort, setSort] = useState<"newest" | "top">("newest");
+  // C1 Wave B (FIX-529): bridge is the default sort; list is the default view.
+  const [sort, setSort] = useState<"bridge" | "newest" | "top">("bridge");
+  const [view, setView] = useState<"list" | "map">("list");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [lens, setLens] = useState<"all" | "constituents">("all");
   const [cursor, setCursor] = useState<string | null>(null);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
+
+  // The map / highlights strip ask the list to select + scroll to a comment.
+  // Switch to the list view and mark the target selected.
+  useEffect(() => {
+    function onFocus(e: Event) {
+      const id = (e as CustomEvent<FocusCommentDetail>).detail?.id;
+      if (!id) return;
+      setView("list");
+      setOpen(true);
+      setSelectedId(id);
+    }
+    window.addEventListener(FOCUS_COMMENT_EVENT, onFocus);
+    return () => window.removeEventListener(FOCUS_COMMENT_EVENT, onFocus);
+  }, []);
 
   const load = useCallback(
     async (reset: boolean) => {
@@ -611,6 +666,7 @@ export function EntityComments({
     stanceEnabled,
     signInNext: next,
     onReplyPosted: handleReplyPosted,
+    highlightId: selectedId,
   };
 
   return (
@@ -639,25 +695,43 @@ export function EntityComments({
                 {lens === "constituents" ? "Constituents only" : "Everyone"}
               </button>
             )}
+            {/* List ⇄ map view switch (list default; map one click away). */}
             <div className="flex rounded-full border border-gray-200">
-              {(["newest", "top"] as const).map((s) => (
+              {(["list", "map"] as const).map((v) => (
                 <button
-                  key={s}
+                  key={v}
                   type="button"
-                  onClick={() => setSort(s)}
-                  className={`rounded-full px-2 py-0.5 capitalize ${sort === s ? "bg-gray-900 text-white" : "text-gray-500"}`}
+                  onClick={() => setView(v)}
+                  className={`rounded-full px-2 py-0.5 capitalize ${view === v ? "bg-indigo-600 text-white" : "text-gray-500"}`}
+                  aria-pressed={view === v}
                 >
-                  {s}
+                  {v}
                 </button>
               ))}
             </div>
+            {view === "list" && (
+              <div className="flex rounded-full border border-gray-200">
+                {(["bridge", "newest", "top"] as const).map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => setSort(s)}
+                    className={`rounded-full px-2 py-0.5 capitalize ${sort === s ? "bg-gray-900 text-white" : "text-gray-500"}`}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>
 
       {subheading && open && <p className="mb-3 text-xs text-gray-500">{subheading}</p>}
 
-      {!open ? null : (
+      {!open ? null : view === "map" ? (
+        <DebateMap entityType={entityType} entityId={entityId} lens={lens} />
+      ) : (
         <>
           {composerEnabled && (
             <div className="mb-5">

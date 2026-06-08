@@ -10,6 +10,7 @@ import { SourceBadge } from "../../components/SourceBadge";
 import { SourceDetailPopover } from "../../components/SourceDetailPopover";
 import { EntityComments } from "../../components/EntityComments";
 import { PositionSection } from "../../components/PositionSection";
+import { CommentHighlightsStrip } from "../../components/CommentHighlightsStrip";
 import { RelatedInitiatives, type InitiativeLink } from "../components/RelatedInitiatives";
 import { ProposalShareButton } from "../components/ProposalShareButton";
 import { getCachedProposal } from "../_lib/get-proposal";
@@ -527,13 +528,17 @@ export default async function ProposalDetailPage({
             <PositionSection entityType="proposal" entityId={p.id} lensEnabled />
 
             {/* Community Comments */}
-            <EntityComments
-              entityType="proposal"
-              entityId={p.id}
-              allowedKinds={["discussion", "question", "concern", "evidence", "stakeholder_impact"]}
-              stanceEnabled
-              lensEnabled
-            />
+            <div className="mt-8">
+              {/* Common-ground / steelman highlights, pinned above list + map */}
+              <CommentHighlightsStrip entityType="proposal" entityId={p.id} />
+              <EntityComments
+                entityType="proposal"
+                entityId={p.id}
+                allowedKinds={["discussion", "question", "concern", "evidence", "stakeholder_impact"]}
+                stanceEnabled
+                lensEnabled
+              />
+            </div>
 
             {/* Citizen Initiatives linked to this proposal */}
             <RelatedInitiatives initiatives={relatedInitiatives} />

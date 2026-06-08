@@ -35,6 +35,10 @@ export type CommentPayload = {
     legacy_upvotes: number;
     deltas: number;
   };
+  // C1 Wave B (FIX-528): nightly bridge scorer output; NULL until scored.
+  bridge_score: number | null;
+  map_x: number | null;
+  map_y: number | null;
   created_at: string;
   updated_at: string;
   replies: CommentPayload[];
@@ -53,9 +57,19 @@ type RawComment = {
   author_id: string;
   constituent_jurisdiction_id: string | null;
   rating_summary: unknown; // jsonb — coerced in normalizeSummary
+  bridge_score: number | string | null; // numeric — PostgREST may serialize as string
+  map_x: number | string | null;
+  map_y: number | string | null;
   created_at: string;
   updated_at: string;
 };
+
+// numeric columns arrive as string (or number) over PostgREST; coerce to number|null.
+function num(v: number | string | null | undefined): number | null {
+  if (v === null || v === undefined) return null;
+  const n = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(n) ? n : null;
+}
 
 function asRecord(raw: unknown): Record<string, unknown> {
   return raw && typeof raw === "object" && !Array.isArray(raw)
@@ -93,7 +107,7 @@ export function topScore(raw: unknown): number {
 
 // The COLUMN_LIST every read selects.
 export const COMMENT_COLUMNS =
-  "id,entity_type,entity_id,parent_id,thread_root_id,kind,stance,body,status,author_id,constituent_jurisdiction_id,rating_summary,created_at,updated_at";
+  "id,entity_type,entity_id,parent_id,thread_root_id,kind,stance,body,status,author_id,constituent_jurisdiction_id,rating_summary,bridge_score,map_x,map_y,created_at,updated_at";
 
 // Map an author_id -> display_name (two-step; entity_comments.author_id IS an
 // FK to users, but we keep the manual fetch so the payload stays explicit and
@@ -126,6 +140,9 @@ export function serialize(row: RawComment, names: Map<string, string>): CommentP
     author_name: names.get(row.author_id) ?? displayNameFor(row.author_id, null),
     is_constituent: row.constituent_jurisdiction_id !== null,
     rating_summary: normalizeSummary(row.rating_summary),
+    bridge_score: num(row.bridge_score),
+    map_x: num(row.map_x),
+    map_y: num(row.map_y),
     created_at: row.created_at,
     updated_at: row.updated_at,
     replies: [],
