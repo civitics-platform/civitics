@@ -659,3 +659,7 @@
 2026-06-07 | FIX-524 | 0a1c484a | local-only | feat(positions): C1 Wave A position spine — entity_positions, deltas, rollup, alignment repoint (FIX-523/524/525/526)
 2026-06-07 | FIX-525 | 0a1c484a | local-only | feat(positions): C1 Wave A position spine — entity_positions, deltas, rollup, alignment repoint (FIX-523/524/525/526)
 2026-06-07 | FIX-526 | 0a1c484a | local-only | feat(positions): C1 Wave A position spine — entity_positions, deltas, rollup, alignment repoint (FIX-523/524/525/526)
+2026-06-07 | FIX-523 | 559e35e6 | prod-only | chore: record prod verification for FIX-523/524/525/526
+2026-06-07 | FIX-524 | 559e35e6 | prod-only | chore: record prod verification for FIX-523/524/525/526
+2026-06-07 | FIX-525 | 559e35e6 | prod-only | chore: record prod verification for FIX-523/524/525/526
+2026-06-07 | FIX-526 | 559e35e6 | prod-only | chore: record prod verification for FIX-523/524/525/526
