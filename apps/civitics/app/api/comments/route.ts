@@ -23,6 +23,7 @@ import {
   topScore,
   type CommentPayload,
 } from "./_lib";
+import { getSlowMode } from "@/lib/slow-mode";
 
 export const dynamic = "force-dynamic";
 
@@ -235,6 +236,13 @@ export async function POST(request: NextRequest) {
     // Constituent badge snapshot (decision 11).
     const constituentJurisdiction = await resolveConstituentBadge(admin, user.id, entityType, entity_id);
 
+    // C1 Wave C (FIX-534): rescore-on-trip. Read slow mode BEFORE the insert; the
+    // insert fires the activity trigger that may flip it on. We do the rescore
+    // from here (not the trigger) because recompute_comment_bridge_scores UPDATEs
+    // entity_comments and firing it inside an AFTER INSERT trigger on the same
+    // table risks recursion / write amplification during the spike (decision 7).
+    const wasSlowMode = await getSlowMode(entityType, entity_id, admin);
+
     const { data: inserted, error: insertErr } = await admin
       .from("entity_comments")
       .insert({
@@ -254,6 +262,20 @@ export async function POST(request: NextRequest) {
 
     if (insertErr || !inserted) {
       return NextResponse.json({ error: "Failed to post comment" }, { status: 500 });
+    }
+
+    // If this comment just tripped slow mode (off→on), refresh the bridge map /
+    // highlights once so they're fresh during the spike. Best-effort: a failure
+    // here must never fail the comment post. Per-entity rescore is cheap.
+    if (!wasSlowMode && (await getSlowMode(entityType, entity_id, admin))) {
+      try {
+        await admin.rpc("recompute_comment_bridge_scores", {
+          p_entity_type: entityType,
+          p_entity_id: entity_id,
+        });
+      } catch {
+        /* non-fatal — nightly scorer will catch up */
+      }
     }
 
     const names = await fetchNameMap(admin, [inserted.author_id]);

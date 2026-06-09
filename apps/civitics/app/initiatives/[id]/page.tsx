@@ -10,6 +10,7 @@ import { InlineEditor } from "./components/InlineEditor";
 import { EntityComments } from "../../components/EntityComments";
 import { PositionSection } from "../../components/PositionSection";
 import { CommentHighlightsStrip } from "../../components/CommentHighlightsStrip";
+import { getSlowMode } from "@/lib/slow-mode";
 import { INITIATIVE_STAGE_KINDS, type InitiativeStage } from "@civitics/db";
 import { QualityGate } from "./components/QualityGate";
 import { SignaturePanel } from "./components/SignaturePanel";
@@ -228,6 +229,9 @@ export default async function InitiativeDetailPage({
 
   const officialResponses = (responses ?? []) as ResponseRow[];
 
+  // C1 Wave C: slow-mode flag (initiatives ARE proposals; cheap PK lookup).
+  const slowMode = await getSlowMode("proposal", initiative.id);
+
   return (
     <div className="min-h-screen bg-gray-50">
       <PageViewTracker entityType="initiative" entityId={id} />
@@ -394,6 +398,8 @@ export default async function InitiativeDetailPage({
               composerEnabled={["problem", "deliberate", "mobilise"].includes(initiative.stage)}
               heading="Argument board"
               subheading="Best-supported comments rise. Rate the reasoning you find valuable."
+              statementsEnabled
+              slowMode={slowMode}
             />
 
             <VersionHistory initiativeId={initiative.id} />

@@ -138,6 +138,28 @@ export const EDIT_WINDOW_MINUTES = 15;
 export const BODY_MIN = 10;
 export const BODY_MAX = 2000;
 
+// ─── C1 Wave C statement-mode + slow-mode constants (FIX-533/534/535) ──────────
+// Mirrored in supabase/migrations/<ts>_statement_mode.sql. Straw values — tune in
+// code, not in a migration. Statements are the Polis-lite agree/disagree/pass
+// primitive; slow mode promotes them when an entity's comment velocity spikes.
+//
+// Statement body length bounds (mirror the entity_statements.body CHECK 10..200).
+export const STATEMENT_MIN_LEN = 10;
+export const STATEMENT_MAX_LEN = 200;
+// Max statements a user may submit per rolling 24h (enforced in submit_statement).
+export const STATEMENT_SUBMIT_DAILY_CAP = 5;
+// Comment-creation velocity (rolling 1h counter) that trips slow mode for an entity.
+export const SLOW_MODE_COMMENTS_PER_HOUR = 20;
+// How long slow mode stays on after a trip (derived expiry: slow_mode_until = now()+this).
+export const SLOW_MODE_DURATION_HOURS = 2;
+
+// Statement vote vocabulary: agree / pass / disagree → +1 / 0 / -1.
+export const STATEMENT_VOTES = [-1, 0, 1] as const;
+export type StatementVote = (typeof STATEMENT_VOTES)[number];
+export function isStatementVote(v: unknown): v is StatementVote {
+  return v === -1 || v === 0 || v === 1;
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 export function isEntityCommentType(v: unknown): v is EntityCommentType {
   return typeof v === "string" && (ENTITY_COMMENT_TYPES as readonly string[]).includes(v);

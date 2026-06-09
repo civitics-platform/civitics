@@ -1547,6 +1547,36 @@ export type Database = {
         }
         Relationships: []
       }
+      entity_activity_state: {
+        Row: {
+          entity_id: string
+          entity_type: string
+          recent_comment_count: number
+          slow_mode: boolean
+          slow_mode_until: string | null
+          updated_at: string
+          window_start: string
+        }
+        Insert: {
+          entity_id: string
+          entity_type: string
+          recent_comment_count?: number
+          slow_mode?: boolean
+          slow_mode_until?: string | null
+          updated_at?: string
+          window_start?: string
+        }
+        Update: {
+          entity_id?: string
+          entity_type?: string
+          recent_comment_count?: number
+          slow_mode?: boolean
+          slow_mode_until?: string | null
+          updated_at?: string
+          window_start?: string
+        }
+        Relationships: []
+      }
       entity_comments: {
         Row: {
           author_id: string
@@ -1799,6 +1829,66 @@ export type Database = {
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      entity_statements: {
+        Row: {
+          author_id: string | null
+          body: string
+          constituent_jurisdiction_id: string | null
+          created_at: string
+          entity_id: string
+          entity_type: string
+          id: string
+          metadata: Json
+          source_comment_id: string | null
+          status: string
+          updated_at: string
+          vote_summary: Json
+        }
+        Insert: {
+          author_id?: string | null
+          body: string
+          constituent_jurisdiction_id?: string | null
+          created_at?: string
+          entity_id: string
+          entity_type: string
+          id?: string
+          metadata?: Json
+          source_comment_id?: string | null
+          status?: string
+          updated_at?: string
+          vote_summary?: Json
+        }
+        Update: {
+          author_id?: string | null
+          body?: string
+          constituent_jurisdiction_id?: string | null
+          created_at?: string
+          entity_id?: string
+          entity_type?: string
+          id?: string
+          metadata?: Json
+          source_comment_id?: string | null
+          status?: string
+          updated_at?: string
+          vote_summary?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "entity_statements_author_id_fkey"
+            columns: ["author_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "entity_statements_source_comment_id_fkey"
+            columns: ["source_comment_id"]
+            isOneToOne: false
+            referencedRelation: "entity_comments"
             referencedColumns: ["id"]
           },
         ]
@@ -4051,6 +4141,45 @@ export type Database = {
         }
         Relationships: []
       }
+      statement_votes: {
+        Row: {
+          created_at: string
+          statement_id: string
+          updated_at: string
+          vote: number
+          voter_id: string
+        }
+        Insert: {
+          created_at?: string
+          statement_id: string
+          updated_at?: string
+          vote: number
+          voter_id: string
+        }
+        Update: {
+          created_at?: string
+          statement_id?: string
+          updated_at?: string
+          vote?: number
+          voter_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "statement_votes_statement_id_fkey"
+            columns: ["statement_id"]
+            isOneToOne: false
+            referencedRelation: "entity_statements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "statement_votes_voter_id_fkey"
+            columns: ["voter_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       status_snapshot: {
         Row: {
           error: string | null
@@ -4835,6 +4964,10 @@ export type Database = {
           rule_type: string
         }[]
       }
+      get_entity_comment_highlights: {
+        Args: { p_entity_id: string; p_entity_type: string; p_lens?: string }
+        Returns: Json
+      }
       get_entity_position_rollup: {
         Args: { p_entity_id: string; p_entity_type: string; p_lens?: string }
         Returns: {
@@ -4843,6 +4976,10 @@ export type Database = {
           n: number
           pct_with_conditions: number
         }[]
+      }
+      get_entity_statements: {
+        Args: { p_entity_id: string; p_entity_type: string; p_lens?: string }
+        Returns: Json
       }
       get_financial_entity_naics: { Args: never; Returns: Json }
       get_group_connections: {
@@ -5261,6 +5398,10 @@ export type Database = {
       rebuild_official_donation_totals: { Args: never; Returns: undefined }
       rebuild_official_donation_totals_full: { Args: never; Returns: undefined }
       rebuild_pre_vote_timing_tags: { Args: never; Returns: number }
+      recompute_comment_bridge_scores: {
+        Args: { p_entity_id?: string; p_entity_type?: string }
+        Returns: number
+      }
       record_enrichment_failure: {
         Args: { p_error: string; p_queue_id: number }
         Returns: string
@@ -5336,7 +5477,39 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      set_statement_vote: {
+        Args: { p_statement_id: string; p_vote: number }
+        Returns: Json
+      }
       source_priority: { Args: { src: string }; Returns: number }
+      submit_statement: {
+        Args: {
+          p_body: string
+          p_entity_id: string
+          p_entity_type: string
+          p_source_comment_id?: string
+        }
+        Returns: {
+          author_id: string | null
+          body: string
+          constituent_jurisdiction_id: string | null
+          created_at: string
+          entity_id: string
+          entity_type: string
+          id: string
+          metadata: Json
+          source_comment_id: string | null
+          status: string
+          updated_at: string
+          vote_summary: Json
+        }
+        SetofOptions: {
+          from: "*"
+          to: "entity_statements"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       treemap_officials_by_donations:
         | {
             Args: { lim?: number }
@@ -5456,6 +5629,7 @@ export type Database = {
         | "civic_comment"
         | "official_community_comment"
         | "entity_comment"
+        | "entity_statement"
       flag_reason:
         | "spam"
         | "harassment"
@@ -5746,6 +5920,7 @@ export const Constants = {
         "civic_comment",
         "official_community_comment",
         "entity_comment",
+        "entity_statement",
       ],
       flag_reason: [
         "spam",
