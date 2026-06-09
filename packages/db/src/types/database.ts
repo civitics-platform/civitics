@@ -4977,6 +4977,10 @@ export type Database = {
           pct_with_conditions: number
         }[]
       }
+      get_entity_questions: {
+        Args: { p_official_id: string; p_lens?: string; p_sort?: string }
+        Returns: Json
+      }
       get_entity_statements: {
         Args: { p_entity_id: string; p_entity_type: string; p_lens?: string }
         Returns: Json
@@ -5227,6 +5231,10 @@ export type Database = {
       }
       has_active_constituent_grant: {
         Args: { p_jurisdiction_id: string; p_user_id: string }
+        Returns: boolean
+      }
+      has_active_official_grant: {
+        Args: { p_official_id: string; p_user_id: string }
         Returns: boolean
       }
       jurisdiction_boundary_svg: {

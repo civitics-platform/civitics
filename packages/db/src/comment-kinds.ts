@@ -46,6 +46,9 @@ export const KIND_LABELS: Record<string, string> = {
   concern: "Concern",
   amendment: "Suggested Change",
   question: "Question",
+  // C1 Wave D (FIX-536): official answer in the Q&A lane. Never user-selectable
+  // — set by the answer action and gated by RLS (decision 11).
+  answer: "Official response",
   evidence: "Evidence / Data",
   precedent: "Precedent",
   tradeoff: "Tradeoff",
@@ -79,8 +82,11 @@ export const ALLOWED_KINDS: Record<EntityCommentType, readonly string[]> = {
   // Initiatives are proposals — must accept the full union for every stage.
   proposal: ALL_KINDS,
   // Officials get the full typed treatment (decision 4). Support/oppose are a
-  // stance now, not a kind (C1 / FIX-526).
-  official: ["discussion", "concern", "question", "evidence", "stakeholder_impact"],
+  // stance now, not a kind (C1 / FIX-526). C1 Wave D (FIX-536): 'answer' is the
+  // official Q&A response — API-valid for officials but NEVER offered in any
+  // composer's selectable list (set by the answer action, gated by RLS to
+  // 'official' grant holders; decision 11).
+  official: ["discussion", "concern", "question", "evidence", "stakeholder_impact", "answer"],
   jurisdiction: ["discussion", "question", "concern", "evidence", "stakeholder_impact"],
   institution: ["discussion", "question", "concern", "evidence", "stakeholder_impact"],
   // Schema supports these; no UI this PR — keep them minimal but valid.

@@ -68,12 +68,17 @@ export async function GET(request: NextRequest) {
     const admin = createAdminClient();
 
     // ── Root comments (parent_id IS NULL) ──
+    // C1 Wave D (FIX-537, decision 8): the discussion list EXCLUDES the Q&A
+    // kinds — questions/answers live only in the Q&A lane read
+    // (get_entity_questions). Excluding question roots here also means their
+    // answer replies are never fetched as descendants below.
     let rootsQuery = admin
       .from("entity_comments")
       .select(COMMENT_COLUMNS)
       .eq("entity_type", entityType)
       .eq("entity_id", entityId)
       .is("parent_id", null)
+      .not("kind", "in", "(question,answer)")
       .in("status", ["visible", "needs_review"]);
 
     if (lens === "constituents") {
@@ -138,6 +143,7 @@ export async function GET(request: NextRequest) {
         .select(COMMENT_COLUMNS)
         .in("thread_root_id", rootIds)
         .not("parent_id", "is", null)
+        .not("kind", "in", "(question,answer)")
         .in("status", ["visible", "needs_review"]);
       descendants = desc ?? [];
     }
@@ -200,6 +206,29 @@ export async function POST(request: NextRequest) {
 
     const admin = createAdminClient();
 
+    // C1 Wave D (FIX-537, decision 4 + 11): answer path. kind='answer' is the
+    // official Q&A response — only a holder of an active 'official' grant for
+    // this official may post it, and it must reply to a question. The DB RLS
+    // WITH CHECK is the true gate (this route writes via the service-role admin
+    // client, which BYPASSES RLS), so we pre-check the grant here to return a
+    // clean 403 instead of letting the insert fail; we also require the parent
+    // question (enforced + verified as kind='question' in the threading block).
+    if (resolvedKind === "answer") {
+      if (entityType !== "official") {
+        return NextResponse.json({ error: "Answers are only valid on officials" }, { status: 400 });
+      }
+      if (typeof parent_id !== "string" || !parent_id) {
+        return NextResponse.json({ error: "An answer must reply to a question" }, { status: 400 });
+      }
+      const { data: canAnswer } = await admin.rpc("has_active_official_grant", {
+        p_user_id: user.id,
+        p_official_id: entity_id,
+      });
+      if (canAnswer !== true) {
+        return NextResponse.json({ error: "Only the verified official can answer" }, { status: 403 });
+      }
+    }
+
     // Rate limit: comments per user per rolling 24h.
     if (await isRateLimited(admin, "entity_comments", "author_id", user.id, RATE_LIMITS.comments)) {
       return NextResponse.json(
@@ -217,11 +246,15 @@ export async function POST(request: NextRequest) {
       }
       const { data: parent } = await admin
         .from("entity_comments")
-        .select("id,entity_type,entity_id,parent_id,thread_root_id,status")
+        .select("id,entity_type,entity_id,parent_id,thread_root_id,status,kind")
         .eq("id", parent_id)
         .maybeSingle();
       if (!parent || parent.entity_type !== entityType || parent.entity_id !== entity_id) {
         return NextResponse.json({ error: "Parent comment not found" }, { status: 400 });
+      }
+      // An answer may only reply to a question (decision 1).
+      if (resolvedKind === "answer" && parent.kind !== "question") {
+        return NextResponse.json({ error: "An answer must reply to a question" }, { status: 400 });
       }
       threadRootId = parent.thread_root_id ?? parent.id;
       const { data: threadRows } = await admin

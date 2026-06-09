@@ -17,6 +17,7 @@ import { CareerHistory } from "../components/CareerHistory";
 import { PromisesSection } from "../components/PromisesSection";
 import { SpendingSection } from "../components/SpendingSection";
 import { EntityComments } from "../../components/EntityComments";
+import { QASection } from "../../components/QASection";
 import { getSlowMode } from "@/lib/slow-mode";
 import { ResponsivenessCard } from "../components/ResponsivenessCard";
 import { gradeFromRate } from "../../api/officials/[id]/responsiveness/_lib";
@@ -1326,12 +1327,19 @@ export default async function OfficialProfilePage({
         {/* QWEN-ADDED: Government Spending Section */}
         <SpendingSection items={spendingRecords} />
 
+        {/* C1 Wave D (FIX-538): citizen↔official Q&A lane. Questions live only
+            here, not in the discussion list (decision 8), so 'question' is
+            dropped from the discussion composer's allowedKinds below. */}
+        <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
+          <QASection entityId={official.id} officialName={official.full_name} />
+        </div>
+
         {/* Community Comments */}
         <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
           <EntityComments
             entityType="official"
             entityId={official.id}
-            allowedKinds={["discussion", "question", "concern", "evidence", "stakeholder_impact"]}
+            allowedKinds={["discussion", "concern", "evidence", "stakeholder_impact"]}
             stanceEnabled
             lensEnabled
             statementsEnabled
