@@ -679,3 +679,6 @@
 2026-06-08 | FIX-536 | 2dcc1745 | local-only | feat(qa): citizen-official Q&A lane over entity_comments (C1 Wave D)
 2026-06-08 | FIX-537 | 2dcc1745 | local-only | feat(qa): citizen-official Q&A lane over entity_comments (C1 Wave D)
 2026-06-08 | FIX-538 | 2dcc1745 | local-only | feat(qa): citizen-official Q&A lane over entity_comments (C1 Wave D)
+2026-06-08 | FIX-536 | e274b50b | prod-only | chore: record prod verification for FIX-536/537/538
+2026-06-08 | FIX-537 | e274b50b | prod-only | chore: record prod verification for FIX-536/537/538
+2026-06-08 | FIX-538 | e274b50b | prod-only | chore: record prod verification for FIX-536/537/538
