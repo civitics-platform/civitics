@@ -673,3 +673,6 @@
 2026-06-08 | FIX-533 | 6250c013 | local-only | feat(comments): C1 Wave C — statement mode + slow mode
 2026-06-08 | FIX-534 | 6250c013 | local-only | feat(comments): C1 Wave C — statement mode + slow mode
 2026-06-08 | FIX-535 | 6250c013 | local-only | feat(comments): C1 Wave C — statement mode + slow mode
+2026-06-08 | FIX-533 | b072a85c | prod-only | chore: record prod verification for FIX-533/534/535
+2026-06-08 | FIX-534 | b072a85c | prod-only | chore: record prod verification for FIX-533/534/535
+2026-06-08 | FIX-535 | b072a85c | prod-only | chore: record prod verification for FIX-533/534/535
