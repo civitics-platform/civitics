@@ -11,6 +11,7 @@ import { SourceDetailPopover } from "../../components/SourceDetailPopover";
 import { EntityComments } from "../../components/EntityComments";
 import { PositionSection } from "../../components/PositionSection";
 import { CommentHighlightsStrip } from "../../components/CommentHighlightsStrip";
+import { getSlowMode } from "@/lib/slow-mode";
 import { RelatedInitiatives, type InitiativeLink } from "../components/RelatedInitiatives";
 import { ProposalShareButton } from "../components/ProposalShareButton";
 import { getCachedProposal } from "../_lib/get-proposal";
@@ -313,6 +314,9 @@ export default async function ProposalDetailPage({
     ...(p.congress_gov_url ? { sameAs: p.congress_gov_url } : {}),
   };
 
+  // C1 Wave C: slow-mode flag (cheap PK lookup; never a request-path aggregation).
+  const slowMode = await getSlowMode("proposal", p.id);
+
   return (
     <div className="min-h-screen bg-gray-50">
       <script
@@ -537,6 +541,8 @@ export default async function ProposalDetailPage({
                 allowedKinds={["discussion", "question", "concern", "evidence", "stakeholder_impact"]}
                 stanceEnabled
                 lensEnabled
+                statementsEnabled
+                slowMode={slowMode}
               />
             </div>
 

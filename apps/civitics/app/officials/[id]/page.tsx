@@ -17,6 +17,7 @@ import { CareerHistory } from "../components/CareerHistory";
 import { PromisesSection } from "../components/PromisesSection";
 import { SpendingSection } from "../components/SpendingSection";
 import { EntityComments } from "../../components/EntityComments";
+import { getSlowMode } from "@/lib/slow-mode";
 import { ResponsivenessCard } from "../components/ResponsivenessCard";
 import { gradeFromRate } from "../../api/officials/[id]/responsiveness/_lib";
 import { PageViewTracker } from "../../components/PageViewTracker";
@@ -869,6 +870,10 @@ export default async function OfficialProfilePage({
       : {}),
   };
 
+  // C1 Wave C: slow-mode flag — the motivating case is a scandal-day official
+  // page. Cheap PK lookup; statements get mode + slow mode but no position card.
+  const slowMode = await getSlowMode("official", official.id);
+
   return (
     <div className="min-h-screen bg-gray-50">
       <script
@@ -1329,6 +1334,8 @@ export default async function OfficialProfilePage({
             allowedKinds={["discussion", "question", "concern", "evidence", "stakeholder_impact"]}
             stanceEnabled
             lensEnabled
+            statementsEnabled
+            slowMode={slowMode}
           />
         </div>
 

@@ -277,9 +277,16 @@ export {
   EDIT_WINDOW_MINUTES,
   BODY_MIN,
   BODY_MAX,
+  STATEMENT_MIN_LEN,
+  STATEMENT_MAX_LEN,
+  STATEMENT_SUBMIT_DAILY_CAP,
+  SLOW_MODE_COMMENTS_PER_HOUR,
+  SLOW_MODE_DURATION_HOURS,
+  STATEMENT_VOTES,
   isEntityCommentType,
   isAllowedKind,
   isCommentStance,
+  isStatementVote,
   allowedKindsForStage,
   kindLabel,
 } from "./comment-kinds";
@@ -289,4 +296,5 @@ export type {
   CommentStatus,
   InitiativeStage,
   FlagReason,
+  StatementVote,
 } from "./comment-kinds";

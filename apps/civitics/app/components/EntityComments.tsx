@@ -16,6 +16,7 @@ import {
   type EntityCommentType,
 } from "@civitics/db";
 import { DebateMap } from "./DebateMap";
+import { StatementMode } from "./StatementMode";
 import { FOCUS_COMMENT_EVENT, commentDomId, type FocusCommentDetail } from "./comment-focus";
 
 // C1 Wave B (FIX-529): a comment "bridges divides" when its cross-stance balance
@@ -73,6 +74,10 @@ export interface EntityCommentsProps {
   /** Start collapsed (jurisdiction / institution pages). */
   startCollapsed?: boolean;
   signInNext?: string;
+  /** C1 Wave C: mount the agree/disagree/pass statement surface alongside comments. */
+  statementsEnabled?: boolean;
+  /** C1 Wave C: slow mode — promote statements + de-emphasize the composer during a spike. */
+  slowMode?: boolean;
 }
 
 // ─── Presentation config (badge colors are presentation → kept in the UI) ─────
@@ -571,6 +576,8 @@ export function EntityComments({
   subheading,
   startCollapsed = false,
   signInNext,
+  statementsEnabled = false,
+  slowMode = false,
 }: EntityCommentsProps) {
   const kinds = allowedKinds ?? ALLOWED_KINDS[entityType];
   const next = signInNext ?? (typeof window !== "undefined" ? window.location.pathname : "/");
@@ -727,6 +734,28 @@ export function EntityComments({
         )}
       </div>
 
+      {/* Slow mode (decision 6): de-emphasize, never censor. A calm banner +
+          statement mode promoted above the comments; the composer collapses
+          behind an expander below. New comments are never blocked or queued. */}
+      {open && statementsEnabled && slowMode && (
+        <>
+          <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            <span className="font-semibold">High activity right now.</span>{" "}
+            Weigh in on the key questions below — a quick agree/disagree take helps more than a long thread when a page is moving fast.
+          </div>
+          <div className="mb-6">
+            <StatementMode
+              entityType={entityType}
+              entityId={entityId}
+              signInNext={next}
+              lens={lens}
+              heading="Where people stand"
+              subheading="High-traffic mode — agree, pass, or disagree on the key questions. 30 seconds, no writing."
+            />
+          </div>
+        </>
+      )}
+
       {subheading && open && <p className="mb-3 text-xs text-gray-500">{subheading}</p>}
 
       {!open ? null : view === "map" ? (
@@ -734,16 +763,35 @@ export function EntityComments({
       ) : (
         <>
           {composerEnabled && (
-            <div className="mb-5">
-              <Composer
-                entityType={entityType}
-                entityId={entityId}
-                allowedKinds={kinds}
-                stanceEnabled={stanceEnabled}
-                signInNext={next}
-                onPosted={handlePosted}
-              />
-            </div>
+            slowMode ? (
+              // Composer collapses behind an expander during slow mode (decision 6).
+              <details className="mb-5 rounded-lg border border-gray-200 bg-white">
+                <summary className="cursor-pointer px-4 py-2 text-xs font-medium text-gray-600 hover:text-gray-900">
+                  Write a full comment
+                </summary>
+                <div className="px-4 pb-4">
+                  <Composer
+                    entityType={entityType}
+                    entityId={entityId}
+                    allowedKinds={kinds}
+                    stanceEnabled={stanceEnabled}
+                    signInNext={next}
+                    onPosted={handlePosted}
+                  />
+                </div>
+              </details>
+            ) : (
+              <div className="mb-5">
+                <Composer
+                  entityType={entityType}
+                  entityId={entityId}
+                  allowedKinds={kinds}
+                  stanceEnabled={stanceEnabled}
+                  signInNext={next}
+                  onPosted={handlePosted}
+                />
+              </div>
+            )
           )}
 
           {loading && comments.length === 0 ? (
@@ -797,6 +845,15 @@ export function EntityComments({
             </div>
           )}
         </>
+      )}
+
+      {/* Secondary statement surface when NOT in slow mode: a below-the-fold
+          block near the comments (decision 6 — statements stay available, just
+          not promoted). In slow mode it's rendered prominently above instead. */}
+      {open && statementsEnabled && !slowMode && (
+        <div className="mt-8">
+          <StatementMode entityType={entityType} entityId={entityId} signInNext={next} lens={lens} />
+        </div>
       )}
     </section>
   );
