@@ -1,14 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { randomUUID } from "node:crypto";
 import { createServerClient, createAdminClient } from "@civitics/db";
 import {
-  ALLOWED_KINDS,
-  COMMENT_STANCES,
   DEFAULT_KIND,
-  RATE_LIMITS,
-  BODY_MIN,
-  BODY_MAX,
   isEntityCommentType,
   type EntityCommentType,
 } from "@civitics/db";
@@ -17,9 +11,6 @@ import {
   fetchNameMap,
   serialize,
   nestReplies,
-  resolveConstituentBadge,
-  isRateLimited,
-  replyDepthExceeded,
   topScore,
   type CommentPayload,
 } from "./_lib";
@@ -162,8 +153,39 @@ export async function GET(request: NextRequest) {
   }
 }
 
+// Map a submit_comment RPC exception (raised with a stable SQLSTATE) to the HTTP
+// status + the existing { error } shape. The RPC is the single enforcement point
+// for auth / answer-gate / kind / stance / body / depth / rate-limit (FIX-539):
+//   28000 → 401 (auth)   42501 → 403 (answer-gate / permission)
+//   53400 → 429 (rate)   22023 / 42704 → 400 (validation / parent-not-found)
+function rpcErrorResponse(error: { code?: string; message?: string }): NextResponse {
+  const msg = error.message || "Failed to post comment";
+  switch (error.code) {
+    case "28000":
+      return NextResponse.json({ error: "Sign in to comment" }, { status: 401 });
+    case "42501":
+      return NextResponse.json({ error: msg }, { status: 403 });
+    case "53400":
+      return NextResponse.json({ error: msg }, { status: 429 });
+    case "22023":
+    case "42704":
+      return NextResponse.json({ error: msg }, { status: 400 });
+    default:
+      return NextResponse.json({ error: "Failed to post comment" }, { status: 500 });
+  }
+}
+
 // ─── POST /api/comments ───────────────────────────────────────────────────────
 // Body: { entity_type, entity_id, body, kind?, stance?, parent_id? }
+//
+// FIX-539: all comment writes go through the SECURITY DEFINER submit_comment RPC
+// (mirrors submit_statement / set_entity_position). The RPC — called with the
+// CALLER's JWT via createServerClient — is the sole insert path and the real
+// enforcement of every rule (auth, answer-gate, kind/stance vocab, body length,
+// thread depth, rate limit, and the SERVER-SIDE constituent-badge stamp, which is
+// impossible to forge because it is not a parameter). The direct .insert() path,
+// its inline badge stamp and answer-gate pre-check are gone. Only light
+// request-shape validation stays here for friendly early 400s.
 export async function POST(request: NextRequest) {
   try {
     const cookieStore = await cookies();
@@ -185,115 +207,33 @@ export async function POST(request: NextRequest) {
     if (typeof entity_id !== "string" || !entity_id) {
       return NextResponse.json({ error: "entity_id is required" }, { status: 400 });
     }
-    if (typeof body !== "string" || body.trim().length < BODY_MIN) {
-      return NextResponse.json({ error: `Comment must be at least ${BODY_MIN} characters` }, { status: 400 });
-    }
-    if (body.trim().length > BODY_MAX) {
-      return NextResponse.json({ error: `Comment must be ${BODY_MAX} characters or fewer` }, { status: 400 });
-    }
-
-    const resolvedKind = typeof kind === "string" && kind ? kind : DEFAULT_KIND;
-    if (!ALLOWED_KINDS[entityType].includes(resolvedKind)) {
-      return NextResponse.json({ error: `Invalid kind '${resolvedKind}' for ${entityType}` }, { status: 400 });
-    }
-    let resolvedStance: string | null = null;
-    if (stance != null && stance !== "") {
-      if (typeof stance !== "string" || !(COMMENT_STANCES as readonly string[]).includes(stance)) {
-        return NextResponse.json({ error: `Invalid stance '${String(stance)}'` }, { status: 400 });
-      }
-      resolvedStance = stance;
+    if (typeof body !== "string") {
+      return NextResponse.json({ error: "Comment body is required" }, { status: 400 });
     }
 
     const admin = createAdminClient();
 
-    // C1 Wave D (FIX-537, decision 4 + 11): answer path. kind='answer' is the
-    // official Q&A response — only a holder of an active 'official' grant for
-    // this official may post it, and it must reply to a question. The DB RLS
-    // WITH CHECK is the true gate (this route writes via the service-role admin
-    // client, which BYPASSES RLS), so we pre-check the grant here to return a
-    // clean 403 instead of letting the insert fail; we also require the parent
-    // question (enforced + verified as kind='question' in the threading block).
-    if (resolvedKind === "answer") {
-      if (entityType !== "official") {
-        return NextResponse.json({ error: "Answers are only valid on officials" }, { status: 400 });
-      }
-      if (typeof parent_id !== "string" || !parent_id) {
-        return NextResponse.json({ error: "An answer must reply to a question" }, { status: 400 });
-      }
-      const { data: canAnswer } = await admin.rpc("has_active_official_grant", {
-        p_user_id: user.id,
-        p_official_id: entity_id,
-      });
-      if (canAnswer !== true) {
-        return NextResponse.json({ error: "Only the verified official can answer" }, { status: 403 });
-      }
-    }
-
-    // Rate limit: comments per user per rolling 24h.
-    if (await isRateLimited(admin, "entity_comments", "author_id", user.id, RATE_LIMITS.comments)) {
-      return NextResponse.json(
-        { error: `Daily comment limit reached (${RATE_LIMITS.comments}). Try again tomorrow.` },
-        { status: 429 },
-      );
-    }
-
-    // Threading: resolve thread_root_id + enforce max depth.
-    const newId: string = randomUUID();
-    let threadRootId: string = newId;
-    if (parent_id != null) {
-      if (typeof parent_id !== "string") {
-        return NextResponse.json({ error: "Invalid parent_id" }, { status: 400 });
-      }
-      const { data: parent } = await admin
-        .from("entity_comments")
-        .select("id,entity_type,entity_id,parent_id,thread_root_id,status,kind")
-        .eq("id", parent_id)
-        .maybeSingle();
-      if (!parent || parent.entity_type !== entityType || parent.entity_id !== entity_id) {
-        return NextResponse.json({ error: "Parent comment not found" }, { status: 400 });
-      }
-      // An answer may only reply to a question (decision 1).
-      if (resolvedKind === "answer" && parent.kind !== "question") {
-        return NextResponse.json({ error: "An answer must reply to a question" }, { status: 400 });
-      }
-      threadRootId = parent.thread_root_id ?? parent.id;
-      const { data: threadRows } = await admin
-        .from("entity_comments")
-        .select("id,parent_id")
-        .eq("thread_root_id", threadRootId);
-      if (replyDepthExceeded(parent.id, (threadRows ?? []) as Array<{ id: string; parent_id: string | null }>)) {
-        return NextResponse.json({ error: "Maximum reply depth reached" }, { status: 400 });
-      }
-    }
-
-    // Constituent badge snapshot (decision 11).
-    const constituentJurisdiction = await resolveConstituentBadge(admin, user.id, entityType, entity_id);
-
     // C1 Wave C (FIX-534): rescore-on-trip. Read slow mode BEFORE the insert; the
-    // insert fires the activity trigger that may flip it on. We do the rescore
-    // from here (not the trigger) because recompute_comment_bridge_scores UPDATEs
-    // entity_comments and firing it inside an AFTER INSERT trigger on the same
-    // table risks recursion / write amplification during the spike (decision 7).
+    // RPC's insert fires the activity trigger that may flip it on. We do the
+    // rescore from here (not the trigger) because recompute_comment_bridge_scores
+    // UPDATEs entity_comments and firing it inside an AFTER INSERT trigger on the
+    // same table risks recursion / write amplification during the spike (FIX-534
+    // decision 7). getSlowMode is a single-PK read, cheap.
     const wasSlowMode = await getSlowMode(entityType, entity_id, admin);
 
-    const { data: inserted, error: insertErr } = await admin
-      .from("entity_comments")
-      .insert({
-        id: newId,
-        entity_type: entityType,
-        entity_id,
-        parent_id: (parent_id as string) ?? null,
-        thread_root_id: threadRootId,
-        author_id: user.id,
-        kind: resolvedKind,
-        stance: resolvedStance,
-        body: body.trim(),
-        constituent_jurisdiction_id: constituentJurisdiction,
-      })
-      .select(COMMENT_COLUMNS)
-      .single();
+    // The single write path. submit_comment validates everything and stamps the
+    // constituent badge server-side; auth.uid() inside resolves from this JWT.
+    const { data: inserted, error: rpcErr } = await supabase.rpc("submit_comment", {
+      p_entity_type: entityType,
+      p_entity_id: entity_id,
+      p_body: body,
+      p_kind: typeof kind === "string" && kind ? kind : DEFAULT_KIND,
+      p_stance: typeof stance === "string" && stance ? stance : undefined,
+      p_parent_id: typeof parent_id === "string" && parent_id ? parent_id : undefined,
+    });
 
-    if (insertErr || !inserted) {
+    if (rpcErr) return rpcErrorResponse(rpcErr);
+    if (!inserted) {
       return NextResponse.json({ error: "Failed to post comment" }, { status: 500 });
     }
 

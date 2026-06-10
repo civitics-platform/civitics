@@ -5490,6 +5490,44 @@ export type Database = {
         Returns: Json
       }
       source_priority: { Args: { src: string }; Returns: number }
+      submit_comment: {
+        Args: {
+          p_body: string
+          p_conditions_md?: string
+          p_entity_id: string
+          p_entity_type: string
+          p_kind?: string
+          p_parent_id?: string
+          p_stance?: string
+        }
+        Returns: {
+          author_id: string
+          body: string
+          bridge_score: number | null
+          conditions_md: string | null
+          constituent_jurisdiction_id: string | null
+          created_at: string
+          entity_id: string
+          entity_type: string
+          id: string
+          kind: string
+          map_x: number | null
+          map_y: number | null
+          metadata: Json
+          parent_id: string | null
+          rating_summary: Json
+          stance: string | null
+          status: string
+          thread_root_id: string | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "entity_comments"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       submit_statement: {
         Args: {
           p_body: string
