@@ -685,3 +685,5 @@
 2026-06-09 | FIX-539 | 0593c06c | local-only | feat(comments): route entity_comments writes through SECURITY DEFINER submit_comment RPC
 2026-06-09 | FIX-539 | e0d73661 | prod-only | chore: record prod verification for FIX-539
 2026-06-09 | FIX-462 | a75e2c9c | prod-only | chore(nightly): record prod verification for FIX-462
+2026-06-09 | FIX-294 | 228c9263 | local+prod | perf(littlesis): load matcher index via direct-pg, not PostgREST pagination
+2026-06-09 | FIX-380 | edc12072 | closes-as-recognized | docs(littlesis): close FIX-380 — 0 intra-source LS×LS dupe clusters on current data
