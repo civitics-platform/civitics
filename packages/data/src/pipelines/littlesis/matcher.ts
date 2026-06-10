@@ -19,11 +19,9 @@
  *            future edge references it
  */
 
-import type { createAdminClient } from "@civitics/db";
 import { canonicalizeEntityName } from "../fec-bulk/writer";
 import { type LittleSisEntity, parseStateHint } from "./util";
-
-type Db = ReturnType<typeof createAdminClient>;
+import { buildDbUrl } from "../../lib/heavy-rebuild";
 
 // ---------------------------------------------------------------------------
 // Row shapes — only the columns we need, pre-narrowed
@@ -75,77 +73,82 @@ export function personSortKey(canonical: string): string {
     .join(" ");
 }
 
-export async function buildMatchIndex(db: Db): Promise<MatchIndex> {
+/**
+ * FIX-294 — load the index via a direct pg.Client, not PostgREST `.range()`
+ * pagination.
+ *
+ * The old path paginated ~2.45M `financial_entities` (+28.6K officials) into
+ * memory through Kong as ~2,480 sequential PostgREST round-trips. Under prod
+ * IOWait that round-trip storm stalls and eats the shared 120-min nightly
+ * enrichment budget, so the GHA job gets cancelled and the orphan reaper marks
+ * the run failed (`reaped_orphan`, 2026-06-07 / 2026-05-17).
+ *
+ * Direct-pg (via `buildDbUrl()` — same resolution local Docker vs prod pooler
+ * used by `selectDirect`/`runHeavyRebuild`) collapses that into a handful of
+ * streamed queries with no 8s role cap and no 1,000-row PostgREST max_rows cap.
+ * The FE scan is keyset-chunked (`WHERE id > $last ORDER BY id LIMIT 100k`) so
+ * peak RSS stays flat rather than buffering 2.45M rows at once.
+ *
+ * Behaviour-preserving: the in-memory Map shapes, the persons-vs-orgs split,
+ * `personSortKey`, and every column read are identical to the paginated path —
+ * only the load mechanism changed. Match outputs are invariant by construction.
+ */
+export async function buildMatchIndex(): Promise<MatchIndex> {
   const officialsByLastName = new Map<string, OfficialRow[]>();
   const personsBySortKey    = new Map<string, FinancialEntityRow[]>();
   const orgsByCanonical     = new Map<string, FinancialEntityRow[]>();
 
-  // ── officials (paginated; ~10k local, ~100k+ with FIX-246 candidates) ────
-  {
-    const PAGE = 1000;
-    let page   = 0;
-    while (true) {
-      const { data } = await (db as unknown as {
-        from: (t: string) => {
-          select: (cols: string) => {
-            range: (from: number, to: number) => Promise<{ data: unknown[] | null }>;
-          };
-        };
-      })
-        .from("officials")
-        .select("id, full_name, first_name, last_name, metadata, role_title")
-        .range(page * PAGE, (page + 1) * PAGE - 1);
-      const rows = (data ?? []) as Array<{
-        id: string; full_name: string;
-        first_name: string | null; last_name: string | null;
-        metadata: Record<string, unknown> | null; role_title: string | null;
-      }>;
-      if (rows.length === 0) break;
-      for (const r of rows) {
-        const last = (r.last_name ?? r.full_name.split(/\s+/).pop() ?? "")
-          .toUpperCase().replace(/[^A-Z]/g, "");
-        if (!last) continue;
-        const stateAbbr =
-          (r.metadata?.["state_abbr"] as string | undefined)
-          ?? (r.metadata?.["state"]      as string | undefined)
-          ?? null;
-        const row: OfficialRow = {
-          id:         r.id,
-          full_name:  r.full_name,
-          first_name: r.first_name,
-          last_name:  r.last_name,
-          state_abbr: stateAbbr ? stateAbbr.toUpperCase() : null,
-          role_title: r.role_title,
-        };
-        const list = officialsByLastName.get(last) ?? [];
-        list.push(row);
-        officialsByLastName.set(last, list);
-      }
-      if (rows.length < PAGE) break;
-      page++;
-    }
-  }
+  const t0 = process.hrtime.bigint();
+  const { Client } = await import("pg");
+  const client = new Client({ connectionString: buildDbUrl() });
+  await client.connect();
+  try {
+    // A few wide reads; the FE scan can take minutes on prod. Raise the
+    // SESSION timeout past the gateway/role caps (mirrors heavy-rebuild.ts).
+    await client.query("SET statement_timeout = '90min'");
 
-  // ── financial_entities, split persons vs orgs ────────────────────────────
-  //
-  // Individuals are ~600k rows on prod (FEC indiv donors); we load them but
-  // only build the sort-key index, not a name-token-prefix index, to keep
-  // memory bounded. Org count is ~30k.
-  {
-    const PAGE = 1000;
-    let page   = 0;
+    // ── officials (single direct query; ~28.6k rows) ─────────────────────
+    const officials = await client.query<{
+      id: string; full_name: string;
+      first_name: string | null; last_name: string | null;
+      metadata: Record<string, unknown> | null; role_title: string | null;
+    }>("SELECT id, full_name, first_name, last_name, metadata, role_title FROM officials");
+    for (const r of officials.rows) {
+      const last = (r.last_name ?? r.full_name.split(/\s+/).pop() ?? "")
+        .toUpperCase().replace(/[^A-Z]/g, "");
+      if (!last) continue;
+      const stateAbbr =
+        (r.metadata?.["state_abbr"] as string | undefined)
+        ?? (r.metadata?.["state"]      as string | undefined)
+        ?? null;
+      const row: OfficialRow = {
+        id:         r.id,
+        full_name:  r.full_name,
+        first_name: r.first_name,
+        last_name:  r.last_name,
+        state_abbr: stateAbbr ? stateAbbr.toUpperCase() : null,
+        role_title: r.role_title,
+      };
+      const list = officialsByLastName.get(last) ?? [];
+      list.push(row);
+      officialsByLastName.set(last, list);
+    }
+
+    // ── financial_entities, keyset-chunked to bound memory (~2.45M rows) ──
+    //
+    // Individuals (~2.37M FEC indiv donors) build only the sort-key index, not
+    // a name-token-prefix index, to keep memory bounded. Org count is ~30k.
+    // Reading in id-ordered chunks keeps peak RSS flat — a single 2.45M-row
+    // buffer would spike past the ~1 GB the paginated path already peaked at.
+    const CHUNK  = 100_000;
+    let   lastId = "00000000-0000-0000-0000-000000000000";
     while (true) {
-      const { data } = await (db as unknown as {
-        from: (t: string) => {
-          select: (cols: string) => {
-            range: (from: number, to: number) => Promise<{ data: unknown[] | null }>;
-          };
-        };
-      })
-        .from("financial_entities")
-        .select("id, canonical_name, entity_type")
-        .range(page * PAGE, (page + 1) * PAGE - 1);
-      const rows = (data ?? []) as FinancialEntityRow[];
+      const page = await client.query<FinancialEntityRow>(
+        "SELECT id, canonical_name, entity_type FROM financial_entities " +
+          "WHERE id > $1 ORDER BY id LIMIT $2",
+        [lastId, CHUNK],
+      );
+      const rows = page.rows;
       if (rows.length === 0) break;
       for (const r of rows) {
         if (!r.canonical_name) continue;
@@ -161,10 +164,19 @@ export async function buildMatchIndex(db: Db): Promise<MatchIndex> {
           orgsByCanonical.set(r.canonical_name, list);
         }
       }
-      if (rows.length < PAGE) break;
-      page++;
+      lastId = rows[rows.length - 1]!.id;
+      if (rows.length < CHUNK) break;
     }
+  } finally {
+    await client.end();
   }
+
+  const secs  = (Number(process.hrtime.bigint() - t0) / 1e9).toFixed(1);
+  const rssMb = Math.round(process.memoryUsage().rss / 1024 / 1024);
+  console.log(
+    `[littlesis] match index built in ${secs}s, rss=${rssMb}MB, ` +
+    `officials=${officialsByLastName.size}, persons=${personsBySortKey.size}, orgs=${orgsByCanonical.size}`,
+  );
 
   return { officialsByLastName, personsBySortKey, orgsByCanonical };
 }

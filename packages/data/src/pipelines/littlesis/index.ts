@@ -105,7 +105,7 @@ export async function runLittleSisPipeline(opts: { force?: boolean } = {}): Prom
 
     // ── Build match index + preload existing bindings ───────────────────
     console.log("  Building match index from Civitics rows...");
-    const idx = await buildMatchIndex(db);
+    const idx = await buildMatchIndex();
     console.log(
       `    officials lastname keys=${idx.officialsByLastName.size}` +
       `, persons sort-keys=${idx.personsBySortKey.size}` +
