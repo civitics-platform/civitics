@@ -25,6 +25,7 @@
     "fixes:archive": "node scripts/fixes-archive.mjs",
     "fixes:archive:dry": "node scripts/fixes-archive.mjs --dry-run",
     "fix:add": "node scripts/fix-add.mjs",
+    "check:reads": "node scripts/check-silent-reads.mjs",
     "db:push:prod": "node scripts/db-push-prod.mjs"
   },
   "devDependencies": {

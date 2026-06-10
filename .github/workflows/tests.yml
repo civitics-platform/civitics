@@ -91,6 +91,13 @@ jobs:
       - name: Lint
         run: pnpm turbo run lint
 
+      # Blocking (FIX-546) — flags `const { data }` PostgREST reads with no
+      # error check in packages/data + packages/db (the FIX-545/FIX-422
+      # silent-zero class). Opt-out per read via a `// reads-ok: <reason>`
+      # comment. Pure grep, no DB or secrets needed.
+      - name: Silent-read guard
+        run: pnpm check:reads
+
       # Blocking — run-tests.mjs discovers every src/**/*.test.ts under @civitics/data
       # (source-priority drift guard, congress reconcile, fec-bulk indiv fingerprint).
       - name: Unit tests
