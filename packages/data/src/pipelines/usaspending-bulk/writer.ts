@@ -26,7 +26,7 @@
  */
 
 import type { createAdminClient } from "@civitics/db";
-import { refreshPrimarySourceForEntities } from "@civitics/db";
+import { refreshPrimarySourceForEntities, rowsOrThrow } from "@civitics/db";
 import { canonicalizeEntityName } from "../fec-bulk/writer";
 
 type Db = ReturnType<typeof createAdminClient>;
@@ -88,19 +88,21 @@ export async function resolveRecipients(
 
   // ── Step 1: batch-lookup existing refs (chunked to stay inside PostgREST's
   // URL length limits — `.in()` with many values explodes the URL).
+  // FIX-545: feeds the new-vs-known split and step 3 is a plain .insert()
+  // into financial_entities — a skipped chunk re-inserted every recipient in
+  // it as a duplicate corporation row. Fail loud.
   for (let i = 0; i < canonicals.length; i += LOOKUP_CHUNK_SIZE) {
     const chunk = canonicals.slice(i, i + LOOKUP_CHUNK_SIZE);
-    const { data, error } = await db
-      .from("external_source_refs")
-      .select("external_id, entity_id")
-      .eq("source", "usaspending_recipient")
-      .eq("entity_type", "financial_entity")
-      .in("external_id", chunk);
-    if (error) {
-      console.error(`    usaspending writer: recipient lookup chunk ${i}-${i + chunk.length}: ${error.message}`);
-      continue;
-    }
-    for (const row of (data ?? []) as Array<{ external_id: string; entity_id: string }>) {
+    const rows = rowsOrThrow(
+      await db
+        .from("external_source_refs")
+        .select("external_id, entity_id")
+        .eq("source", "usaspending_recipient")
+        .eq("entity_type", "financial_entity")
+        .in("external_id", chunk),
+      "usaspending recipient ref lookup",
+    ) as Array<{ external_id: string; entity_id: string }>;
+    for (const row of rows) {
       out.byCanonical.set(row.external_id, row.entity_id);
     }
   }

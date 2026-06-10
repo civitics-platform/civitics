@@ -25,7 +25,7 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import type { createAdminClient } from "@civitics/db";
-import { refreshPrimarySourceForEntities } from "@civitics/db";
+import { refreshPrimarySourceForEntities, rowsOrThrow } from "@civitics/db";
 import {
   bodyToGoverningBodyRow,
   personToOfficialRow,
@@ -74,17 +74,18 @@ async function lookupRefs(
 
   for (let i = 0; i < externalIds.length; i += LOOKUP_CHUNK_SIZE) {
     const chunk = externalIds.slice(i, i + LOOKUP_CHUNK_SIZE);
-    const { data, error } = await db
-      .from("external_source_refs")
-      .select("entity_id, external_id")
-      .eq("source", source)
-      .eq("entity_type", entityType)
-      .in("external_id", chunk);
-    if (error) {
-      console.error(`    legistar writer: ref lookup [${source}/${entityType}] ${i}-${i + chunk.length}: ${error.message}`);
-      continue;
-    }
-    for (const r of (data ?? []) as Array<{ entity_id: string; external_id: string }>) {
+    // FIX-545: this fed the insert-vs-reuse idempotency map; log-and-continue
+    // on a chunk error meant already-bound items looked new and re-inserted.
+    const rows = rowsOrThrow(
+      await db
+        .from("external_source_refs")
+        .select("entity_id, external_id")
+        .eq("source", source)
+        .eq("entity_type", entityType)
+        .in("external_id", chunk),
+      `legistar ref lookup [${source}/${entityType}]`,
+    ) as Array<{ entity_id: string; external_id: string }>;
+    for (const r of rows) {
       existing.set(r.external_id, r.entity_id);
     }
   }
@@ -575,11 +576,14 @@ export async function upsertEventItemsBatch(
   // Seed with existing sequences to avoid colliding with rows from a prior
   // partial run. For small volumes (~20-50 items per meeting) one SELECT is
   // fine; keep it per-batch, not per-row.
-  const { data: existingItems } = await db
-    .from("agenda_items")
-    .select("sequence")
-    .eq("meeting_id", meetingId);
-  for (const r of (existingItems ?? []) as Array<{ sequence: number }>) {
+  const existingItems = rowsOrThrow(
+    await db
+      .from("agenda_items")
+      .select("sequence")
+      .eq("meeting_id", meetingId),
+    "legistar agenda-item sequence preload",
+  ) as Array<{ sequence: number }>;
+  for (const r of existingItems) {
     usedSeqs.add(r.sequence);
   }
 

@@ -25,7 +25,7 @@
 
 import type { createAdminClient } from "@civitics/db";
 import type { Database } from "@civitics/db";
-import { refreshPrimarySourceForEntities } from "@civitics/db";
+import { refreshPrimarySourceForEntities, rowsOrThrow } from "@civitics/db";
 
 type Db = ReturnType<typeof createAdminClient>;
 type OfficialInsert = Database["public"]["Tables"]["officials"]["Insert"];
@@ -207,21 +207,22 @@ export async function upsertLegislatorsBatch(
   const deduped = [...byKey.values()];
   const ids = deduped.map((i) => i.openstatesId);
 
-  // Lookup existing via external_source_refs
+  // Lookup existing via external_source_refs. FIX-545: this feeds the
+  // insert-vs-update split and the insert path is a plain .insert() — a
+  // skipped lookup chunk re-inserted every legislator in it as a duplicate.
   const existingMap = new Map<string, string>();
   for (let i = 0; i < ids.length; i += LOOKUP_CHUNK_SIZE) {
     const chunk = ids.slice(i, i + LOOKUP_CHUNK_SIZE);
-    const { data, error } = await db
-      .from("external_source_refs")
-      .select("entity_id, external_id")
-      .eq("source", "openstates")
-      .eq("entity_type", "official")
-      .in("external_id", chunk);
-    if (error) {
-      console.error(`    openstates writer: official lookup ${i}-${i + chunk.length}: ${error.message}`);
-      continue;
-    }
-    for (const r of (data ?? []) as Array<{ entity_id: string; external_id: string }>) {
+    const rows = rowsOrThrow(
+      await db
+        .from("external_source_refs")
+        .select("entity_id, external_id")
+        .eq("source", "openstates")
+        .eq("entity_type", "official")
+        .in("external_id", chunk),
+      "openstates official ref lookup",
+    ) as Array<{ entity_id: string; external_id: string }>;
+    for (const r of rows) {
       existingMap.set(r.external_id, r.entity_id);
     }
   }
@@ -382,21 +383,21 @@ export async function upsertStateBillsBatch(
   const deduped = [...byKey.values()];
   const ids = deduped.map((i) => i.openstatesId);
 
-  // Lookup existing via external_source_refs
+  // Lookup existing via external_source_refs. FIX-545: same duplicate-insert
+  // hazard as the legislator lookup above — fail loud.
   const existingMap = new Map<string, string>();
   for (let i = 0; i < ids.length; i += LOOKUP_CHUNK_SIZE) {
     const chunk = ids.slice(i, i + LOOKUP_CHUNK_SIZE);
-    const { data, error } = await db
-      .from("external_source_refs")
-      .select("entity_id, external_id")
-      .eq("source", "openstates")
-      .eq("entity_type", "proposal")
-      .in("external_id", chunk);
-    if (error) {
-      console.error(`    openstates writer: bill lookup ${i}-${i + chunk.length}: ${error.message}`);
-      continue;
-    }
-    for (const r of (data ?? []) as Array<{ entity_id: string; external_id: string }>) {
+    const rows = rowsOrThrow(
+      await db
+        .from("external_source_refs")
+        .select("entity_id, external_id")
+        .eq("source", "openstates")
+        .eq("entity_type", "proposal")
+        .in("external_id", chunk),
+      "openstates bill ref lookup",
+    ) as Array<{ entity_id: string; external_id: string }>;
+    for (const r of rows) {
       existingMap.set(r.external_id, r.entity_id);
     }
   }
@@ -417,19 +418,21 @@ export async function upsertStateBillsBatch(
     // below can't express COALESCE, so we resolve don't-clobber-non-null in
     // code: an existing non-empty summary_plain wins; otherwise the abstract
     // fills the NULL. (FIX-435 — source text owns this column.)
+    // FIX-545: a skipped prefetch chunk made every existing summary look
+    // NULL, so the abstract re-clobbered curated summary_plain values — the
+    // exact regression FIX-435 fixed. Fail loud instead.
     const existingSummary = new Map<string, string | null>();
     const updateIds = toUpdate.map((u) => u.id);
     for (let i = 0; i < updateIds.length; i += LOOKUP_CHUNK_SIZE) {
       const chunk = updateIds.slice(i, i + LOOKUP_CHUNK_SIZE);
-      const { data, error } = await db
-        .from("proposals")
-        .select("id, summary_plain")
-        .in("id", chunk);
-      if (error) {
-        console.error(`    openstates writer: summary_plain prefetch ${i}-${i + chunk.length}: ${error.message}`);
-        continue;
-      }
-      for (const r of (data ?? []) as Array<{ id: string; summary_plain: string | null }>) {
+      const rows = rowsOrThrow(
+        await db
+          .from("proposals")
+          .select("id, summary_plain")
+          .in("id", chunk),
+        "openstates summary_plain prefetch",
+      ) as Array<{ id: string; summary_plain: string | null }>;
+      for (const r of rows) {
         existingSummary.set(r.id, r.summary_plain);
       }
     }

@@ -5,6 +5,11 @@ export type { CookieStore } from "./client";
 // Types
 export type { Database, Json } from "./types/database";
 
+// Fail-loud read helpers (FIX-545) — throw-on-error + auto-pagination for
+// PostgREST SELECTs that feed downstream Maps/Sets. See read-helpers.ts.
+export { rowsOrThrow, selectAllOrThrow } from "./read-helpers";
+export type { ReadResult, SelectAllOptions } from "./read-helpers";
+
 // Queries
 export {
   getJurisdiction,

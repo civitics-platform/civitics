@@ -1435,6 +1435,7 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
     console.log(`  ${"Financial data processed:".padEnd(38)} ~${totalFileMb.toFixed(1)} MB`);
 
     // Sanity check — top 10 PAC donors by total contributed (cross-cycle)
+    // reads-ok: end-of-run console report; an empty result prints nothing and must not fail the sync
     const { data: top10pacs } = await db
       .from("financial_entities")
       .select("display_name, total_donated_cents")
@@ -1452,6 +1453,7 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
     }
 
     // Sanity check — federal Senate coverage (the main FIX-178 metric)
+    // reads-ok: end-of-run console report; an empty result prints nothing and must not fail the sync
     const { data: senatorRows } = await db
       .from("officials")
       .select("id, full_name, source_ids")

@@ -15,7 +15,7 @@
 
 import type { createAdminClient } from "@civitics/db";
 import type { Database } from "@civitics/db";
-import { refreshPrimarySourceForEntities } from "@civitics/db";
+import { refreshPrimarySourceForEntities, rowsOrThrow } from "@civitics/db";
 
 type ProposalInsert = Database["public"]["Tables"]["proposals"]["Insert"];
 type ProposalType = Database["public"]["Enums"]["proposal_type"];
@@ -238,6 +238,10 @@ export function chamberForBillType(billType: string): "house" | "senate" {
 // ---------------------------------------------------------------------------
 
 const BILL_CHUNK_SIZE = 500;
+// .in() id-list ceiling — longer lists overflow the Kong/PostgREST URL budget
+// and 400 out (FIX-545). resolveBillsBatch gets the full per-chamber bill
+// buffer, which routinely exceeds 200 keys.
+const RESOLVE_IN_CHUNK = 200;
 
 export interface BillBatchResult {
   /** Successfully inserted or updated proposals. */
@@ -448,20 +452,28 @@ export async function resolveBillsBatch(
 
   const keys = [...billArgsBuffer.keys()];
 
-  const { data: existingRefs, error: lookupErr } = await db
-    .from("external_source_refs")
-    .select("entity_id, external_id")
-    .eq("source", "congress_gov")
-    .eq("entity_type", "proposal")
-    .in("external_id", keys);
-
-  if (lookupErr) {
-    console.error(`    resolveBillsBatch: lookup error: ${lookupErr.message}`);
-    return new Map(keys.map((k) => [k, null]));
-  }
+  // FIX-545: a lookup error used to degrade to an all-null map (every bill
+  // "unresolvable" → the chamber's votes silently skipped); the .in() lists
+  // also ran unchunked past the ~200-id URL cap. Chunk + throw.
+  const lookupRefs = async (lookupKeys: string[], label: string) => {
+    const out: { entity_id: string; external_id: string }[] = [];
+    for (let i = 0; i < lookupKeys.length; i += RESOLVE_IN_CHUNK) {
+      const rows = rowsOrThrow(
+        await db
+          .from("external_source_refs")
+          .select("entity_id, external_id")
+          .eq("source", "congress_gov")
+          .eq("entity_type", "proposal")
+          .in("external_id", lookupKeys.slice(i, i + RESOLVE_IN_CHUNK)),
+        label,
+      );
+      out.push(...(rows as { entity_id: string; external_id: string }[]));
+    }
+    return out;
+  };
 
   const resolved = new Map<string, string | null>(keys.map((k) => [k, null]));
-  for (const r of (existingRefs ?? []) as { entity_id: string; external_id: string }[]) {
+  for (const r of await lookupRefs(keys, "bills resolve existing-refs")) {
     resolved.set(r.external_id, r.entity_id);
   }
 
@@ -471,13 +483,11 @@ export async function resolveBillsBatch(
 
   if (novelArgs.length > 0) {
     await upsertBillProposalsBatch(db, novelArgs);
-    const { data: freshRefs } = await db
-      .from("external_source_refs")
-      .select("entity_id, external_id")
-      .eq("source", "congress_gov")
-      .eq("entity_type", "proposal")
-      .in("external_id", novelArgs.map((a) => a.billKey));
-    for (const r of (freshRefs ?? []) as { entity_id: string; external_id: string }[]) {
+    const freshRefs = await lookupRefs(
+      novelArgs.map((a) => a.billKey),
+      "bills resolve fresh-refs",
+    );
+    for (const r of freshRefs) {
       resolved.set(r.external_id, r.entity_id);
     }
   }

@@ -25,7 +25,7 @@
  *   pnpm --filter @civitics/data data:ai-summaries-new
  */
 
-import { createAdminClient, agencyFullName } from "@civitics/db";
+import { createAdminClient, agencyFullName, rowsOrThrow, selectAllOrThrow } from "@civitics/db";
 import { createAiClient, MODELS } from "@civitics/ai";
 import { costGate } from "@civitics/ai/cost-gate";
 import { sleep } from "../utils";
@@ -144,31 +144,38 @@ export async function fetchOpenProposals(db: ReturnType<typeof createAdminClient
   // Post-cutover, comment_period_end lives in metadata JSONB (not a top-level column).
   // ISO 8601 strings compare lexicographically == chronologically, so .gt() against
   // a fresh now() ISO string still gives "still-open" semantics.
+  // FIX-545: work-list read was log-and-continue (an error read as "no open
+  // proposals" and the step skipped while the run looked clean).
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const result = await (db as any)
-    .from("proposals")
-    .select("id, title, summary_plain, type, metadata, jurisdiction_id, updated_at")
-    .gt("metadata->>comment_period_end", new Date().toISOString())
-    .order("metadata->>comment_period_end", { ascending: true })
-    .limit(200);
+  const proposals = rowsOrThrow(
+    await (db as any)
+      .from("proposals")
+      .select("id, title, summary_plain, type, metadata, jurisdiction_id, updated_at")
+      .gt("metadata->>comment_period_end", new Date().toISOString())
+      .order("metadata->>comment_period_end", { ascending: true })
+      .limit(200),
+    "ai-summaries open-proposals work list",
+  );
 
-  if (result.error || !result.data) {
-    console.error("   ✗ Proposal fetch error:", result.error?.message ?? "no data");
-    return [];
-  }
+  // Filter to those without a cached summary (onlyNew applied here).
+  // FIX-545: the cache read was silent-zero AND truncated at PostgREST's
+  // 1,000-row cap — already-summarized proposals looked unsummarized and
+  // re-burned Anthropic budget. Paginate + throw.
+  const cacheRows = await selectAllOrThrow(
+    "ai-summaries proposal cache preload",
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (from, to) => (db as any)
+      .from("ai_summary_cache")
+      .select("entity_id")
+      .eq("entity_type", "proposal")
+      .eq("summary_type", "plain_language")
+      .order("entity_id")
+      .range(from, to),
+  ) as { entity_id: string }[];
+  const cached = new Set<string>(cacheRows.map((r) => r.entity_id));
 
-  // Filter to those without a cached summary (onlyNew applied here)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const cacheCheck = await (db as any)
-    .from("ai_summary_cache")
-    .select("entity_id")
-    .eq("entity_type", "proposal")
-    .eq("summary_type", "plain_language");
-
-  const cached = new Set<string>((cacheCheck.data ?? []).map((r: { entity_id: string }) => r.entity_id));
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return result.data
+  return proposals
     .filter((p: any) => !cached.has(p.id))
     .slice(0, 100)
     .map((p: any) => {
@@ -309,27 +316,34 @@ async function generateProposalSummaries(
 
 export async function fetchOfficials(db: ReturnType<typeof createAdminClient>): Promise<OfficialRow[]> {
   // Fetch federal officials with the most data, excluding those already cached
+  // FIX-545: work-list read was return-[]-on-error; cache read was
+  // silent-zero + 1,000-row truncated (re-summarizing cached officials).
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const officialsRes = await (db as any)
-    .from("officials")
-    .select("id, full_name, role_title, party, metadata, jurisdiction_id, updated_at")
-    .in("role_title", ["Senator", "Representative"])
-    .eq("is_active", true)
-    .limit(200);
+  const officialRows = rowsOrThrow(
+    await (db as any)
+      .from("officials")
+      .select("id, full_name, role_title, party, metadata, jurisdiction_id, updated_at")
+      .in("role_title", ["Senator", "Representative"])
+      .eq("is_active", true)
+      .limit(200),
+    "ai-summaries officials work list",
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ) as any[];
 
-  if (officialsRes.error || !officialsRes.data) return [];
-
-  // Find which ones already have cached summaries (onlyNew applied here)
+  const cacheRows = await selectAllOrThrow(
+    "ai-summaries official cache preload",
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (from, to) => (db as any)
+      .from("ai_summary_cache")
+      .select("entity_id")
+      .eq("entity_type", "official")
+      .eq("summary_type", "profile")
+      .order("entity_id")
+      .range(from, to),
+  ) as { entity_id: string }[];
+  const cached = new Set<string>(cacheRows.map((r) => r.entity_id));
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const cacheCheck = await (db as any)
-    .from("ai_summary_cache")
-    .select("entity_id")
-    .eq("entity_type", "official")
-    .eq("summary_type", "profile");
-
-  const cached = new Set<string>((cacheCheck.data ?? []).map((r: { entity_id: string }) => r.entity_id));
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const uncached = officialsRes.data.filter((o: any) => !cached.has(o.id));
+  const uncached = officialRows.filter((o: any) => !cached.has(o.id));
   const officialIds = uncached.map((o: { id: string }) => o.id).slice(0, 50);
 
   if (officialIds.length === 0) return [];

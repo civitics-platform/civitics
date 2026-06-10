@@ -50,6 +50,10 @@ import {
   type ShareholderWriteInput,
 } from "./writer";
 
+// .in() id-list ceiling — the ~500-CIK S&P universe overflows the
+// Kong/PostgREST URL budget above ~200 ids (FIX-545).
+const EDGAR_IN_CHUNK = 200;
+
 function selectUniverse(): ReturnType<typeof loadSp500Universe> {
   const all = loadSp500Universe();
   const filter = (process.env["EDGAR_CIKS"] ?? "").trim();
@@ -231,16 +235,23 @@ export async function runEdgarDailyPipeline(): Promise<PipelineResult> {
     // Don't refresh metadata daily — just bind CIK → company_id from edgar_companies.
     const trackedCiks = new Map<string, string>();
     {
-      const { createAdminClient } = await import("@civitics/db");
+      const { createAdminClient, rowsOrThrow } = await import("@civitics/db");
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const db = createAdminClient() as any;
-      const { data } = await db
-        .from("edgar_companies")
-        .select("id, cik, financial_entity_id")
-        .in("cik", universe.map((u) => u.cik));
-      const rows = (data ?? []) as Array<{ id: string; cik: string; financial_entity_id: string | null }>;
-      for (const r of rows) {
-        if (r.financial_entity_id) trackedCiks.set(r.cik, r.id);
+      // FIX-545: silent-zero here mis-skipped the day as "no tracked CIKs" on
+      // a gateway blip; the ~500-CIK universe also overflows the ~200-id .in()
+      // URL cap. Chunk + throw.
+      for (let i = 0; i < universe.length; i += EDGAR_IN_CHUNK) {
+        const rows = rowsOrThrow(
+          await db
+            .from("edgar_companies")
+            .select("id, cik, financial_entity_id")
+            .in("cik", universe.slice(i, i + EDGAR_IN_CHUNK).map((u) => u.cik)),
+          "edgar daily tracked-CIK preload",
+        ) as Array<{ id: string; cik: string; financial_entity_id: string | null }>;
+        for (const r of rows) {
+          if (r.financial_entity_id) trackedCiks.set(r.cik, r.id);
+        }
       }
     }
     if (trackedCiks.size === 0) {
@@ -277,15 +288,21 @@ export async function runEdgarDailyPipeline(): Promise<PipelineResult> {
     // Build CIK → company financial_entity_id lookup.
     const cikToFinancialEntity = new Map<string, string>();
     {
-      const { createAdminClient } = await import("@civitics/db");
+      const { createAdminClient, rowsOrThrow } = await import("@civitics/db");
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const db = createAdminClient() as any;
-      const { data } = await db
-        .from("edgar_companies")
-        .select("cik, financial_entity_id")
-        .in("cik", universe.map((u) => u.cik));
-      for (const row of (data ?? []) as Array<{ cik: string; financial_entity_id: string | null }>) {
-        if (row.financial_entity_id) cikToFinancialEntity.set(row.cik, row.financial_entity_id);
+      // FIX-545: same chunk + throw as the tracked-CIK preload above.
+      for (let i = 0; i < universe.length; i += EDGAR_IN_CHUNK) {
+        const rows = rowsOrThrow(
+          await db
+            .from("edgar_companies")
+            .select("cik, financial_entity_id")
+            .in("cik", universe.slice(i, i + EDGAR_IN_CHUNK).map((u) => u.cik)),
+          "edgar daily financial-entity preload",
+        ) as Array<{ cik: string; financial_entity_id: string | null }>;
+        for (const row of rows) {
+          if (row.financial_entity_id) cikToFinancialEntity.set(row.cik, row.financial_entity_id);
+        }
       }
     }
 

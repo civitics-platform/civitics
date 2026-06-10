@@ -11,7 +11,7 @@
  *   pnpm --filter @civitics/data data:enrich-seed -- --dry-run
  */
 
-import { createAdminClient, agencyFullName } from "@civitics/db";
+import { createAdminClient, agencyFullName, selectAllOrThrow } from "@civitics/db";
 import {
   zeroCounts,
   buildProposalTagContext,
@@ -52,25 +52,15 @@ type Db = any;
 // Pagination helpers
 // ---------------------------------------------------------------------------
 
+// FIX-545: this used to console.error + break on a page error, returning a
+// PARTIAL snapshot — the already-tagged/already-summarized sets would
+// under-count and the seeder would re-enqueue items that were already done.
+// selectAllOrThrow fails the run instead.
 async function fetchAll<T>(
   label: string,
   loader: (from: number, to: number) => Promise<{ data: T[] | null; error: { message: string } | null }>,
 ): Promise<T[]> {
-  const out: T[] = [];
-  let from = 0;
-  for (;;) {
-    const to = from + PAGE - 1;
-    const { data, error } = await loader(from, to);
-    if (error) {
-      console.error(`   ✗ ${label} page ${from}-${to} failed:`, error.message);
-      break;
-    }
-    const rows = data ?? [];
-    out.push(...rows);
-    if (rows.length < PAGE) break;
-    from += PAGE;
-  }
-  return out;
+  return selectAllOrThrow<T>(label, loader, { pageSize: PAGE });
 }
 
 // ---------------------------------------------------------------------------

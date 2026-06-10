@@ -32,6 +32,7 @@ async function main(): Promise<void> {
   const federalId = fed.id;
   console.log(`federalId: ${federalId}\n`);
 
+  // reads-ok: audit report read — zero territories renders visibly in the report output
   const { data: terrs } = await db
     .from("jurisdictions")
     .select("id, short_name, name")

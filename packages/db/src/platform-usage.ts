@@ -110,6 +110,10 @@ export async function getPlatformUsage(
       .eq("period_start", monthStart),
   ]);
 
+  // FIX-545: silent-zero here fed the auto-trip evaluator an empty metric
+  // set, silently skipping the safety pass. Fail the snapshot tick instead.
+  if (limitsRes.error) throw new Error(`platform_limits read: ${limitsRes.error.message}`);
+  if (usageRes.error) throw new Error(`platform_usage read: ${usageRes.error.message}`);
   const limits: PlatformLimit[] = limitsRes.data ?? [];
   const usageRows: PlatformUsage[] = usageRes.data ?? [];
 

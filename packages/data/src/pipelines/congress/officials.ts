@@ -7,7 +7,7 @@
  * Run standalone:  pnpm --filter @civitics/data data:officials
  */
 
-import { createAdminClient, refreshPrimarySourceForEntities } from "@civitics/db";
+import { createAdminClient, refreshPrimarySourceForEntities, selectAllOrThrow } from "@civitics/db";
 import type { Database } from "@civitics/db";
 import {
   fetchAllMembers,
@@ -63,31 +63,30 @@ export async function runOfficialsPipeline(
   // --- Pre-fetch existing officials with a congress_gov source_id ---
   const db = createAdminClient();
 
-  let existingMap = new Map<string, string>(); // bioguideId → official UUID
+  const existingMap = new Map<string, string>(); // bioguideId → official UUID
 
-  try {
-    const { data: existingOfficials, error } = await db
+  // FIX-545: this preload used to log-and-continue ("treat everything as
+  // new") on error — i.e. a transient gateway blip would re-INSERT every
+  // member as a duplicate. Fail the run instead; paginate while we're here
+  // (the congress_gov-bound set grows past 1k as former members accumulate).
+  const existingOfficials = await selectAllOrThrow(
+    "congress officials preload (congress_gov source_ids)",
+    (from, to) => db
       .from("officials")
       .select("id, source_ids")
-      .not("source_ids->>congress_gov", "is", null);
-
-    if (error) {
-      console.error("Error fetching existing officials:", error);
-      // Continue — we'll treat everything as new
-    } else if (existingOfficials) {
-      for (const row of existingOfficials) {
-        const sourceIds = row.source_ids as Record<string, string> | null;
-        if (sourceIds?.congress_gov) {
-          existingMap.set(sourceIds.congress_gov, row.id);
-        }
-      }
-      console.log(
-        `Found ${existingMap.size} existing officials with Congress.gov IDs`
-      );
+      .not("source_ids->>congress_gov", "is", null)
+      .order("id")
+      .range(from, to),
+  );
+  for (const row of existingOfficials) {
+    const sourceIds = row.source_ids as Record<string, string> | null;
+    if (sourceIds?.congress_gov) {
+      existingMap.set(sourceIds.congress_gov, row.id);
     }
-  } catch (err) {
-    console.error("Unexpected error fetching existing officials:", err);
   }
+  console.log(
+    `Found ${existingMap.size} existing officials with Congress.gov IDs`
+  );
 
   // --- Process members ---
   let inserted = 0;

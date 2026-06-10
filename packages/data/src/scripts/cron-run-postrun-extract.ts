@@ -53,6 +53,7 @@ async function main(): Promise<void> {
   console.log("\n=== pipeline_state — FEC + IRS990 + USASpending watermarks ===");
   {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // reads-ok: post-run report extract — empty pipeline_state renders visibly in the JSON report
     const { data } = await (db as any)
       .from("pipeline_state")
       .select("key, value, updated_at");

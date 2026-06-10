@@ -13,7 +13,7 @@
  * Run standalone:  pnpm --filter @civitics/data data:votes
  */
 
-import { createAdminClient } from "@civitics/db";
+import { createAdminClient, rowsOrThrow, selectAllOrThrow } from "@civitics/db";
 import type { Database } from "@civitics/db";
 import {
   fetchCongressApi,
@@ -262,6 +262,11 @@ interface OfficialMaps {
   senatorByNameState: Map<string, string>;
 }
 
+// .in() lists above ~200 ids overflow the Kong/PostgREST URL budget and 400
+// out — which supabase-js surfaces as an error the old code logged and
+// skipped past, leaving the senator map empty (FIX-545).
+const IN_CHUNK = 200;
+
 async function buildOfficialMaps(
   db: ReturnType<typeof createAdminClient>,
   senateGovBodyId: string
@@ -269,56 +274,59 @@ async function buildOfficialMaps(
   const officialMap = new Map<string, string>();
   const senatorByNameState = new Map<string, string>();
 
-  const { data: allOfficials, error: officialsErr } = await db
-    .from("officials")
-    .select("id, source_ids");
-
-  if (officialsErr) {
-    console.error("  Error fetching officials for bioguide map:", officialsErr.message);
-  } else if (allOfficials) {
-    for (const o of allOfficials) {
-      const src = o.source_ids as Record<string, string> | null;
-      const bioguide = src?.["congress_gov"];
-      if (bioguide) {
-        officialMap.set(bioguide, o.id as string);
-      }
+  // FIX-545: this read was both log-and-continue (a transient error left the
+  // bioguide map empty and every House vote unmatched) and unpaginated —
+  // officials holds ~28.6k rows (2026-06-09), so the old single .select()
+  // silently truncated at PostgREST's 1,000-row cap.
+  const allOfficials = await selectAllOrThrow(
+    "votes bioguide-map officials preload",
+    (from, to) => db.from("officials").select("id, source_ids").order("id").range(from, to),
+  );
+  for (const o of allOfficials) {
+    const src = o.source_ids as Record<string, string> | null;
+    const bioguide = src?.["congress_gov"];
+    if (bioguide) {
+      officialMap.set(bioguide, o.id as string);
     }
-    console.log(`  Built bioguide map with ${officialMap.size} entries`);
   }
+  console.log(`  Built bioguide map with ${officialMap.size} entries`);
 
-  const { data: senators, error: senErr } = await db
-    .from("officials")
-    .select("id, last_name, jurisdiction_id")
-    .eq("governing_body_id", senateGovBodyId);
-
-  if (senErr) {
-    console.error("  Error fetching senators:", senErr.message);
-  } else if (senators && senators.length > 0) {
+  // Also past the 1,000-row cap: the Senate governing body carries ~1.9k
+  // officials rows (candidate pollution included), not 100.
+  const senators = await selectAllOrThrow(
+    "votes senator preload",
+    (from, to) => db
+      .from("officials")
+      .select("id, last_name, jurisdiction_id")
+      .eq("governing_body_id", senateGovBodyId)
+      .order("id")
+      .range(from, to),
+  );
+  if (senators.length > 0) {
     const jidSet = new Set(senators.map((s) => s.jurisdiction_id).filter(Boolean));
     const jids = Array.from(jidSet) as string[];
 
-    const { data: jurisdictions, error: jErr } = await db
-      .from("jurisdictions")
-      .select("id, short_name")
-      .in("id", jids);
-
-    if (jErr) {
-      console.error("  Error fetching jurisdictions for senator map:", jErr.message);
-    } else if (jurisdictions) {
-      const jMap = new Map<string, string>(
-        jurisdictions.map((j) => [j.id as string, (j.short_name as string | null) ?? ""])
+    const jMap = new Map<string, string>();
+    for (let i = 0; i < jids.length; i += IN_CHUNK) {
+      const page = rowsOrThrow(
+        await db
+          .from("jurisdictions")
+          .select("id, short_name")
+          .in("id", jids.slice(i, i + IN_CHUNK)),
+        "votes senator-jurisdictions preload",
       );
-
-      for (const s of senators) {
-        const lastName = (s.last_name as string | null) ?? "";
-        const stateAbbr = s.jurisdiction_id ? (jMap.get(s.jurisdiction_id as string) ?? "") : "";
-        if (lastName && stateAbbr) {
-          const key = `${lastName.toLowerCase()}:${stateAbbr.toUpperCase()}`;
-          senatorByNameState.set(key, s.id as string);
-        }
-      }
-      console.log(`  Built senator name:state map with ${senatorByNameState.size} entries`);
+      for (const j of page) jMap.set(j.id as string, (j.short_name as string | null) ?? "");
     }
+
+    for (const s of senators) {
+      const lastName = (s.last_name as string | null) ?? "";
+      const stateAbbr = s.jurisdiction_id ? (jMap.get(s.jurisdiction_id as string) ?? "") : "";
+      if (lastName && stateAbbr) {
+        const key = `${lastName.toLowerCase()}:${stateAbbr.toUpperCase()}`;
+        senatorByNameState.set(key, s.id as string);
+      }
+    }
+    console.log(`  Built senator name:state map with ${senatorByNameState.size} entries`);
   }
 
   return { officialMap, senatorByNameState };

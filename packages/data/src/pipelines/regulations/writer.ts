@@ -17,7 +17,7 @@
 
 import type { createAdminClient } from "@civitics/db";
 import type { Database } from "@civitics/db";
-import { agencyFullName, AGENCY_NAMES, refreshPrimarySourceForEntities } from "@civitics/db";
+import { agencyFullName, AGENCY_NAMES, refreshPrimarySourceForEntities, rowsOrThrow } from "@civitics/db";
 
 type Db = ReturnType<typeof createAdminClient>;
 type AgencyInsert = Database["public"]["Tables"]["agencies"]["Insert"];
@@ -56,17 +56,18 @@ export async function resolveAgencies(
   if (unique.length === 0) return out;
 
   // ── Step 1: batched lookup of existing agencies by acronym ───────────────
+  // FIX-545: fail loud — a skipped chunk made existing agencies look new and
+  // the step-2 upsert re-wrote their seeded fields.
   for (let i = 0; i < unique.length; i += LOOKUP_CHUNK_SIZE) {
     const chunk = unique.slice(i, i + LOOKUP_CHUNK_SIZE);
-    const { data, error } = await db
-      .from("agencies")
-      .select("id, acronym, name")
-      .in("acronym", chunk);
-    if (error) {
-      console.error(`    regulations writer: agency lookup chunk ${i}-${i + chunk.length}: ${error.message}`);
-      continue;
-    }
-    for (const row of (data ?? []) as Array<{ id: string; acronym: string | null; name: string }>) {
+    const rows = rowsOrThrow(
+      await db
+        .from("agencies")
+        .select("id, acronym, name")
+        .in("acronym", chunk),
+      "regulations agency lookup",
+    ) as Array<{ id: string; acronym: string | null; name: string }>;
+    for (const row of rows) {
       if (row.acronym) out.byAcronym.set(row.acronym, row.id);
     }
   }
@@ -167,20 +168,21 @@ export async function upsertRegulationProposalsBatch(
   const regIds = deduped.map((i) => i.regulationsGovId);
 
   // ── Step 1: batched lookup of existing proposals via external_source_refs
+  // FIX-545: feeds the insert-vs-update split and step 4 is a plain
+  // .insert() — a skipped chunk re-inserted its proposals as duplicates.
   const existingMap = new Map<string, string>();
   for (let i = 0; i < regIds.length; i += LOOKUP_CHUNK_SIZE) {
     const chunk = regIds.slice(i, i + LOOKUP_CHUNK_SIZE);
-    const { data, error } = await db
-      .from("external_source_refs")
-      .select("entity_id, external_id")
-      .eq("source", "regulations_gov")
-      .eq("entity_type", "proposal")
-      .in("external_id", chunk);
-    if (error) {
-      console.error(`    regulations writer: lookup chunk ${i}-${i + chunk.length}: ${error.message}`);
-      continue;
-    }
-    for (const r of (data ?? []) as Array<{ entity_id: string; external_id: string }>) {
+    const rows = rowsOrThrow(
+      await db
+        .from("external_source_refs")
+        .select("entity_id, external_id")
+        .eq("source", "regulations_gov")
+        .eq("entity_type", "proposal")
+        .in("external_id", chunk),
+      "regulations proposal ref lookup",
+    ) as Array<{ entity_id: string; external_id: string }>;
+    for (const r of rows) {
       existingMap.set(r.external_id, r.entity_id);
     }
   }

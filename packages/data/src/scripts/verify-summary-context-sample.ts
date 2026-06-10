@@ -16,6 +16,7 @@ async function main() {
   const db = createAdminClientWith(url, key) as any;
 
   for (const src of ["congress_gov", "openstates"]) {
+    // reads-ok: ad-hoc verification sample — empty output is visibly wrong to the operator
     const { data: refs } = await db
       .from("external_source_refs")
       .select("entity_id")
@@ -23,6 +24,7 @@ async function main() {
       .eq("source", src)
       .limit(200);
     const ids = (refs ?? []).map((r: { entity_id: string }) => r.entity_id);
+    // reads-ok: ad-hoc verification sample — empty output is visibly wrong to the operator
     const { data: rows } = await db
       .from("proposals")
       .select("id, title, type, summary_plain, metadata")

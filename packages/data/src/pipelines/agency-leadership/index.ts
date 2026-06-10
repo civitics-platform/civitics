@@ -16,7 +16,7 @@
  *   is_current=true for officials not in the current-holder set are closed.
  */
 
-import { createAdminClient } from "@civitics/db";
+import { createAdminClient, rowsOrThrow, selectAllOrThrow } from "@civitics/db";
 import { completeSync, failSync, startSync, type PipelineResult } from "../sync-log";
 import { sleep } from "../utils";
 
@@ -132,17 +132,22 @@ async function closeStaleConnections(
   if (currentOfficialIds.size === 0) return 0;
 
   const inList = [...currentOfficialIds].join(",");
-  const { data: staleConns } = await db
-    .from("entity_connections")
-    .select("id, metadata")
-    .eq("to_type", "agency")
-    .eq("to_id", agencyId)
-    .eq("from_type", "official")
-    .eq("connection_type", "appointment")
-    .filter("metadata->>is_current", "eq", "true")
-    .not("from_id", "in", `(${inList})`);
+  // FIX-545: silent-zero here made a gateway blip read as "no stale
+  // connections", skipping the is_current cleanup while the run looked clean.
+  const staleConns = rowsOrThrow(
+    await db
+      .from("entity_connections")
+      .select("id, metadata")
+      .eq("to_type", "agency")
+      .eq("to_id", agencyId)
+      .eq("from_type", "official")
+      .eq("connection_type", "appointment")
+      .filter("metadata->>is_current", "eq", "true")
+      .not("from_id", "in", `(${inList})`),
+    "agency-leadership stale-connections",
+  ) as Array<{ id: string; metadata: Record<string, unknown> | null }>;
 
-  if (!staleConns?.length) return 0;
+  if (!staleConns.length) return 0;
 
   let closed = 0;
   for (const conn of staleConns) {
@@ -423,13 +428,20 @@ export async function runAgencyLeadershipPipeline(): Promise<PipelineResult> {
       console.warn("  WARNING: federal jurisdiction (fips_code=00) not found — official inserts will be skipped");
     }
 
-    // Build wikidata_id → official UUID map
-    const { data: existingOfficials } = await db
-      .from("officials")
-      .select("id, source_ids")
-      .not("source_ids->>wikidata_id", "is", null);
+    // Build wikidata_id → official UUID map. FIX-545: silent-zero here meant
+    // a failed preload re-inserted every leader as a new official; paginate
+    // too — the wikidata-bound set grows with each agency pass.
+    const existingOfficials = await selectAllOrThrow(
+      "agency-leadership wikidata officials preload",
+      (from, to) => db
+        .from("officials")
+        .select("id, source_ids")
+        .not("source_ids->>wikidata_id", "is", null)
+        .order("id")
+        .range(from, to),
+    ) as Array<{ id: string; source_ids: Record<string, string> | null }>;
     const officialByWdId = new Map<string, string>();
-    for (const o of existingOfficials ?? []) {
+    for (const o of existingOfficials) {
       const wdId = (o.source_ids as Record<string, string> | null)?.wikidata_id;
       if (wdId) officialByWdId.set(wdId, o.id as string);
     }

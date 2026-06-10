@@ -17,7 +17,7 @@
  */
 
 import type { createAdminClient } from "@civitics/db";
-import { refreshPrimarySourceForEntities } from "@civitics/db";
+import { refreshPrimarySourceForEntities, rowsOrThrow } from "@civitics/db";
 import { canonicalizeEntityName } from "../fec-bulk/writer";
 import type { ParsedFiling, ParsedOfficer, ParsedGrantOut } from "./parse";
 
@@ -528,15 +528,22 @@ export async function writeGrantRelationships(
     const chunk = aggregatedInputs.slice(i, i + REL_CHUNK);
 
     // Pre-check by disclosure_form_id (we encode object_id|toEntityId|amount
-    // there to keep the row uniquely identifiable on re-runs).
+    // there to keep the row uniquely identifiable on re-runs). FIX-545: this
+    // dedup read was silent-zero (an error meant "nothing exists" → duplicate
+    // grant rows on re-run) AND the 500-key .in() list overflowed the ~200-id
+    // URL cap. Sub-chunk + throw.
     const dedupKeys = chunk.map((c) => `irs990:${c.filingObjectId}:${c.toEntityId}:${c.amountCents}`);
-    const { data: existing } = await db
-      .from("financial_relationships")
-      .select("disclosure_form_id")
-      .in("disclosure_form_id", dedupKeys);
-    const existingSet = new Set(
-      (existing as Array<{ disclosure_form_id: string }> | null ?? []).map((r) => r.disclosure_form_id),
-    );
+    const existingSet = new Set<string>();
+    for (let k = 0; k < dedupKeys.length; k += 200) {
+      const rows = rowsOrThrow(
+        await db
+          .from("financial_relationships")
+          .select("disclosure_form_id")
+          .in("disclosure_form_id", dedupKeys.slice(k, k + 200)),
+        "irs990 grant-relationship dedup precheck",
+      ) as Array<{ disclosure_form_id: string }>;
+      for (const r of rows) existingSet.add(r.disclosure_form_id);
+    }
 
     const rows = chunk
       .map((c) => {
@@ -593,11 +600,15 @@ export async function filterUningestedObjectIds(
   const seen = new Set<string>();
   for (let i = 0; i < objectIds.length; i += FILING_CHUNK) {
     const chunk = objectIds.slice(i, i + FILING_CHUNK);
-    const { data } = await db
-      .from("irs990_filings")
-      .select("object_id")
-      .in("object_id", chunk);
-    for (const row of (data as Array<{ object_id: string }> | null ?? [])) {
+    // FIX-545: silent-zero here made every filing look uningested.
+    const rows = rowsOrThrow(
+      await db
+        .from("irs990_filings")
+        .select("object_id")
+        .in("object_id", chunk),
+      "irs990 ingested-filings precheck",
+    ) as Array<{ object_id: string }>;
+    for (const row of rows) {
       seen.add(row.object_id);
     }
   }

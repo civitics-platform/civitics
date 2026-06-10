@@ -8,6 +8,7 @@
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Db = any;
 
+import { rowsOrThrow } from "@civitics/db";
 import { VALID_TOPICS, TOPIC_ICONS, ISSUE_AREAS } from "../tags/topics";
 
 export type EntityType = "proposal" | "official" | "financial_entity";
@@ -70,13 +71,20 @@ export async function loadJurisdictionPriorities(
 ): Promise<Map<string, number>> {
   if (jurisdictionIds.length === 0) return new Map();
   const unique = [...new Set(jurisdictionIds)];
-  const { data } = await db
-    .from("jurisdictions")
-    .select("id, type")
-    .in("id", unique);
   const out = new Map<string, number>();
-  for (const j of (data ?? []) as { id: string; type: string }[]) {
-    out.set(j.id, jurisdictionToPriority(j.type));
+  // FIX-545: was a silent-zero read, and the unique-jurisdiction list from a
+  // proposals snapshot can exceed the ~200-id .in() URL cap. Chunk + throw.
+  for (let i = 0; i < unique.length; i += 200) {
+    const rows = rowsOrThrow(
+      await db
+        .from("jurisdictions")
+        .select("id, type")
+        .in("id", unique.slice(i, i + 200)),
+      "enrichment jurisdiction-priority preload",
+    ) as { id: string; type: string }[];
+    for (const j of rows) {
+      out.set(j.id, jurisdictionToPriority(j.type));
+    }
   }
   return out;
 }

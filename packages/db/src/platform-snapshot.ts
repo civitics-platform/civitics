@@ -20,6 +20,7 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { selectAllOrThrow } from "./read-helpers";
 import {
   getPlatformUsage,
   updateUsage,
@@ -114,15 +115,20 @@ async function getMonthlyAnthropicSpend(
       1,
     ).toISOString();
 
-    const { data: rows } = await db
-      .from("api_usage_logs")
-      .select("input_tokens, output_tokens, cost_cents")
-      .eq("service", "anthropic")
-      .gte("created_at", monthStart);
+    // FIX-545: paginate + throw; the surrounding catch keeps the null
+    // ("unknown") contract and a >1k-row month no longer undercounts.
+    const rows = await selectAllOrThrow<UsageRow>(
+      "platform-snapshot anthropic-spend logs",
+      (from, to) => db
+        .from("api_usage_logs")
+        .select("input_tokens, output_tokens, cost_cents")
+        .eq("service", "anthropic")
+        .gte("created_at", monthStart)
+        .order("created_at")
+        .range(from, to),
+    );
 
-    if (!rows) return null;
-
-    const total = ((rows as UsageRow[]) ?? []).reduce((sum, r) => {
+    const total = rows.reduce((sum, r) => {
       if (r.input_tokens != null && r.output_tokens != null) {
         return sum + (r.input_tokens * 0.25 + r.output_tokens * 1.25) / 1_000_000;
       }

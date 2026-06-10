@@ -20,7 +20,7 @@
  *   pnpm --filter @civitics/data data:plum-book -- --force
  */
 
-import { createAdminClient } from "@civitics/db";
+import { createAdminClient, rowsOrThrow, selectAllOrThrow } from "@civitics/db";
 import { completeSync, failSync, startSync, type PipelineResult } from "../sync-log";
 
 // ---------------------------------------------------------------------------
@@ -224,18 +224,23 @@ async function closeStaleConnections(
   if (currentOfficialIds.size === 0) return 0;
 
   const inList = [...currentOfficialIds].join(",");
-  const { data: staleConns } = await db
-    .from("entity_connections")
-    .select("id, metadata")
-    .eq("to_type", "agency")
-    .eq("to_id", agencyId)
-    .eq("from_type", "official")
-    .eq("connection_type", "appointment")
-    .eq("evidence_source", "plum_book")
-    .filter("metadata->>is_current", "eq", "true")
-    .not("from_id", "in", `(${inList})`);
+  // FIX-545: silent-zero here made a gateway blip read as "no stale
+  // connections", skipping the is_current cleanup while the run looked clean.
+  const staleConns = rowsOrThrow(
+    await db
+      .from("entity_connections")
+      .select("id, metadata")
+      .eq("to_type", "agency")
+      .eq("to_id", agencyId)
+      .eq("from_type", "official")
+      .eq("connection_type", "appointment")
+      .eq("evidence_source", "plum_book")
+      .filter("metadata->>is_current", "eq", "true")
+      .not("from_id", "in", `(${inList})`),
+    "plum-book stale-connections",
+  ) as Array<{ id: string; metadata: Record<string, unknown> | null }>;
 
-  if (!staleConns?.length) return 0;
+  if (!staleConns.length) return 0;
 
   let closed = 0;
   for (const conn of staleConns) {
@@ -325,23 +330,22 @@ export async function runPlumBookPipeline(opts: { force?: boolean } = {}): Promi
     // ── Build official lookup by plum_id (paginated) ──────────────────────
     // PostgREST db-max-rows=1000 cannot be overridden client-side. Paginate
     // explicitly to load all officials regardless of total count.
+    // FIX-545: the page loop was silent-on-error — a mid-loop blip broke out
+    // with a PARTIAL map and every unmatched person re-inserted as new.
     const officialByPlumId = new Map<string, string>();
     {
-      let page = 0;
-      const PAGE = 1000;
-      while (true) {
-        const { data: batch } = await db
+      const allPlumOfficials = await selectAllOrThrow(
+        "plum-book plum_id officials preload",
+        (from: number, to: number) => db
           .from("officials")
           .select("id, source_ids")
           .not("source_ids->>plum_id", "is", null)
-          .range(page * PAGE, (page + 1) * PAGE - 1);
-        if (!batch || batch.length === 0) break;
-        for (const o of batch) {
-          const plumId = (o.source_ids as Record<string, string> | null)?.plum_id;
-          if (plumId) officialByPlumId.set(plumId, o.id as string);
-        }
-        if (batch.length < PAGE) break;
-        page++;
+          .order("id")
+          .range(from, to),
+      );
+      for (const o of allPlumOfficials as Array<{ id: string; source_ids: Record<string, string> | null }>) {
+        const plumId = o.source_ids?.plum_id;
+        if (plumId) officialByPlumId.set(plumId, o.id);
       }
     }
     console.log(`  ${officialByPlumId.size} officials with plum_id already in DB`);
@@ -424,11 +428,15 @@ export async function runPlumBookPipeline(opts: { force?: boolean } = {}): Promi
       const chunk = nameArr.slice(i, i + NAME_BATCH);
       // Build OR filter: full_name.ilike.NAME1,full_name.ilike.NAME2,...
       const orFilter = chunk.map(n => `full_name.ilike.${n}`).join(",");
-      const { data: batch } = await db
-        .from("officials")
-        .select("id, full_name, source_ids")
-        .or(orFilter);
-      for (const o of batch ?? []) {
+      // FIX-545: silent-zero left names unmatched → duplicate officials inserted.
+      const batch = rowsOrThrow(
+        await db
+          .from("officials")
+          .select("id, full_name, source_ids")
+          .or(orFilter),
+        "plum-book name-match preload",
+      ) as Array<{ id: string; full_name: string; source_ids: Record<string, string> | null }>;
+      for (const o of batch) {
         const key = normNameKey(o.full_name as string);
         if (!officialByLowerName.has(key)) {
           officialByLowerName.set(key, {

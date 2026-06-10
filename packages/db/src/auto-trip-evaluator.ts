@@ -73,11 +73,15 @@ export async function evaluateAutoTrips(
   // Load the switch map fresh — don't trust the 30s module cache here because
   // we might have just flipped on a previous wave's tick and the cache could
   // be lying.
-  const { data: row } = await anyDb
+  // FIX-545: a silent read error here looked like "no switches configured"
+  // and the auto-trip safety pass silently skipped the whole tick. Throw —
+  // the cron caller records the failure instead.
+  const { data: row, error: switchErr } = await anyDb
     .from("pipeline_state")
     .select("value")
     .eq("key", "kill_switches")
     .maybeSingle();
+  if (switchErr) throw new Error(`auto-trip kill-switch state read: ${switchErr.message}`);
 
   const switches = (row?.value as Partial<KillSwitchesMap> | null) ?? {};
 

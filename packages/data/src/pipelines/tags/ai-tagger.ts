@@ -161,13 +161,15 @@ async function runProposalAiTagger(db: any, maxCostCents: number, onlyNew: boole
   let proposals = allProposals;
 
   if (onlyNew) {
-    const { data: taggedIds } = await db
-      .from("entity_tags")
-      .select("entity_id")
-      .eq("entity_type", "proposal")
-      .eq("generated_by", "ai")
-      .eq("tag_category", "topic");
-    const alreadyTagged = new Set((taggedIds ?? []).map((r: { entity_id: string }) => r.entity_id));
+    // FIX-545: was a silent-zero AND unpaginated read — the tagged set
+    // truncated at PostgREST's 1,000-row cap, so already-tagged proposals
+    // looked untagged and re-burned Anthropic budget every run.
+    const alreadyTagged = await fetchDistinctIds(
+      (f, t) => db.from("entity_tags").select("entity_id")
+        .eq("entity_type", "proposal").eq("generated_by", "ai").eq("tag_category", "topic")
+        .order("id").range(f, t),
+      "entity_id",
+    );
     proposals = allProposals.filter((p: { id: string }) => !alreadyTagged.has(p.id));
     if (proposals.length === 0) {
       console.log("    All proposals already have AI topic tags. Skipping.");
@@ -325,14 +327,13 @@ async function runOfficialAiTagger(db: any, maxCostCents: number, onlyNew: boole
   let targetOfficials = officials;
 
   if (onlyNew) {
-    const { data: taggedIds } = await db
-      .from("entity_tags")
-      .select("entity_id")
-      .eq("entity_type", "official")
-      .eq("generated_by", "ai")
-      .eq("tag_category", "topic");
-
-    const alreadyTagged = new Set((taggedIds ?? []).map((r: { entity_id: string }) => r.entity_id));
+    // FIX-545: same silent-zero + 1,000-row truncation as the proposal path.
+    const alreadyTagged = await fetchDistinctIds(
+      (f, t) => db.from("entity_tags").select("entity_id")
+        .eq("entity_type", "official").eq("generated_by", "ai").eq("tag_category", "topic")
+        .order("id").range(f, t),
+      "entity_id",
+    );
     targetOfficials = officials.filter((o: { id: string }) => !alreadyTagged.has(o.id));
   }
 
@@ -450,13 +451,13 @@ export async function fetchProposalsNeedingTags(db: any, limit = 2000): Promise<
     .limit(limit);
   if (error || !allProposals || allProposals.length === 0) return [];
 
-  const { data: taggedIds } = await db
-    .from("entity_tags")
-    .select("entity_id")
-    .eq("entity_type", "proposal")
-    .eq("generated_by", "ai")
-    .eq("tag_category", "topic");
-  const alreadyTagged = new Set((taggedIds ?? []).map((r: { entity_id: string }) => r.entity_id));
+  // FIX-545: silent-zero + truncation fixed via the paginating helper.
+  const alreadyTagged = await fetchDistinctIds(
+    (f, t) => db.from("entity_tags").select("entity_id")
+      .eq("entity_type", "proposal").eq("generated_by", "ai").eq("tag_category", "topic")
+      .order("id").range(f, t),
+    "entity_id",
+  );
   return allProposals.filter((p: { id: string }) => !alreadyTagged.has(p.id));
 }
 
@@ -481,13 +482,13 @@ export async function fetchOfficialsNeedingTags(db: any): Promise<OfficialNeedin
     .eq("is_active", true);
   if (error || !officials || officials.length === 0) return [];
 
-  const { data: taggedIds } = await db
-    .from("entity_tags")
-    .select("entity_id")
-    .eq("entity_type", "official")
-    .eq("generated_by", "ai")
-    .eq("tag_category", "topic");
-  const alreadyTagged = new Set((taggedIds ?? []).map((r: { entity_id: string }) => r.entity_id));
+  // FIX-545: silent-zero + truncation fixed via the paginating helper.
+  const alreadyTagged = await fetchDistinctIds(
+    (f, t) => db.from("entity_tags").select("entity_id")
+      .eq("entity_type", "official").eq("generated_by", "ai").eq("tag_category", "topic")
+      .order("id").range(f, t),
+    "entity_id",
+  );
   const targets = officials.filter((o: { id: string }) => !alreadyTagged.has(o.id));
   if (targets.length === 0) return [];
 
@@ -626,6 +627,7 @@ export async function runAiTagger(options?: {
 
   try {
     // Fetch a sample proposal to use for cost estimation
+    // reads-ok: cost-estimate sample only; a hard-coded fallback row below covers the empty case
     const { data: sampleProposals } = await db
       .from("proposals")
       .select("id, title, summary_plain, metadata")

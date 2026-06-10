@@ -214,11 +214,15 @@ export async function applyCounterDelta(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const anyDb = db as any;
 
-  const { data: existing } = await anyDb
+  // FIX-545: a silent read error here looked like "no prior state" and
+  // re-bootstrapped the baseline (zeroing the month-to-date delta). Throw —
+  // the caller's catch converts to the error-shape return.
+  const { data: existing, error: stateErr } = await anyDb
     .from("supabase_prometheus_state")
     .select("metric, baseline_value, baseline_at, last_raw_value")
     .eq("metric", metric)
     .maybeSingle();
+  if (stateErr) throw new Error(`prometheus counter-state read (${metric}): ${stateErr.message}`);
 
   const now = new Date();
   const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
@@ -288,11 +292,13 @@ export async function applyTickDelta(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const anyDb = db as any;
 
-  const { data: existing } = await anyDb
+  // FIX-545: same throw-on-error as applyCounterDelta above.
+  const { data: existing, error: stateErr } = await anyDb
     .from("supabase_prometheus_state")
     .select("metric, baseline_value, baseline_at, last_raw_value")
     .eq("metric", metric)
     .maybeSingle();
+  if (stateErr) throw new Error(`prometheus tick-state read (${metric}): ${stateErr.message}`);
 
   const now = new Date();
 

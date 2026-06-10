@@ -15,7 +15,7 @@
  * Dry-run by default: prints estimates, prompts for confirmation.
  */
 
-import { createAdminClient } from "@civitics/db";
+import { createAdminClient, selectAllOrThrow } from "@civitics/db";
 import { createAiClient } from "@civitics/ai";
 import { costGate } from "@civitics/ai/cost-gate";
 import { startSync, completeSync, failSync } from "../sync-log";
@@ -157,31 +157,35 @@ export async function runAiClassifier(options: { confirmed?: boolean } = {}): Pr
     // 1. Find untagged PACs above the minimum donation threshold.
     // Fetch already-tagged IDs first, then filter in a second query
     // (Supabase JS doesn't support nested subqueries in .not().in()).
-    const { data: taggedIds } = await db
-      .from("entity_tags")
-      .select("entity_id")
-      .eq("entity_type", "financial_entity")
-      .eq("tag_category", "industry");
+    // FIX-545: both reads were capped at PostgREST's 1,000 rows — the tagged
+    // set truncated (re-tagging already-tagged PACs, re-burning AI budget)
+    // and only the top-1,000 PACs were ever considered; the tagged read was
+    // also silent-zero on error. Paginate + throw.
+    const taggedIds = await selectAllOrThrow(
+      "ai-classifier industry-tagged FE preload",
+      (from, to) => db
+        .from("entity_tags")
+        .select("entity_id")
+        .eq("entity_type", "financial_entity")
+        .eq("tag_category", "industry")
+        .order("id")
+        .range(from, to),
+    ) as { entity_id: string }[];
+    const alreadyTagged = new Set<string>(taggedIds.map((r) => r.entity_id));
 
-    const alreadyTagged = new Set<string>(
-      (taggedIds ?? []).map((r: { entity_id: string }) => r.entity_id)
-    );
+    const allPacs = await selectAllOrThrow(
+      "ai-classifier PAC preload",
+      (from, to) => db
+        .from("financial_entities")
+        .select("id, display_name, total_donated_cents")
+        .eq("entity_type", "pac")
+        .gt("total_donated_cents", MIN_DONATION_CENTS)
+        .order("total_donated_cents", { ascending: false })
+        .order("id")
+        .range(from, to),
+    ) as { id: string; display_name: string; total_donated_cents: number }[];
 
-    const { data: allPacs, error: fetchErr } = await db
-      .from("financial_entities")
-      .select("id, display_name, total_donated_cents")
-      .eq("entity_type", "pac")
-      .gt("total_donated_cents", MIN_DONATION_CENTS)
-      .order("total_donated_cents", { ascending: false });
-
-    if (fetchErr) {
-      console.error("  Error fetching PACs:", fetchErr.message);
-      await failSync(logId, fetchErr.message);
-      return { tagged: 0, skipped: 0 };
-    }
-
-    const pacs: UntaggedPac[] = ((allPacs ?? []) as { id: string; display_name: string; total_donated_cents: number }[])
-      .filter((r) => !alreadyTagged.has(r.id));
+    const pacs: UntaggedPac[] = allPacs.filter((r) => !alreadyTagged.has(r.id));
 
     if (pacs.length === 0) {
       console.log("  No untagged PACs found over threshold. Nothing to do.");

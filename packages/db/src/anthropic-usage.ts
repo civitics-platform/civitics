@@ -33,6 +33,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "./client";
+import { selectAllOrThrow } from "./read-helpers";
 
 // Base URL — no org ID in path; admin key determines the org
 const BASE = "https://api.anthropic.com/v1/organizations";
@@ -206,15 +207,23 @@ async function fetchWindowFromLogs(
 ): Promise<AnthropicWindowUsage> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const supabase = createAdminClient() as any;
-  const { data } = await supabase
-    .from("api_usage_logs")
-    .select("input_tokens, output_tokens, cost_cents")
-    .eq("service", "anthropic")
-    .gte("created_at", startingAt)
-    .lte("created_at", endingAt);
+  // FIX-545: was silent-zero (an error rendered as $0 usage) and unpaginated
+  // (a >1k-row month undercounted spend). Throws — the caller's try/catch
+  // converts to the error-shape response.
+  const rows = await selectAllOrThrow<UsageLogRow>(
+    "anthropic usage-log window",
+    (from, to) => supabase
+      .from("api_usage_logs")
+      .select("input_tokens, output_tokens, cost_cents")
+      .eq("service", "anthropic")
+      .gte("created_at", startingAt)
+      .lte("created_at", endingAt)
+      .order("created_at")
+      .range(from, to),
+  );
 
   const window = emptyWindow();
-  for (const row of (data ?? []) as UsageLogRow[]) {
+  for (const row of rows) {
     const inp = row.input_tokens ?? 0;
     const out = row.output_tokens ?? 0;
     window.input_tokens += inp;
@@ -529,15 +538,21 @@ export async function getMonthlyAnthropicSpend(
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const anyDb = db as any;
-    const { data: rows } = await anyDb
-      .from("api_usage_logs")
-      .select("input_tokens, output_tokens, cost_cents")
-      .eq("service", "anthropic")
-      .gte("created_at", monthStart);
+    // FIX-545: paginate + throw; the surrounding catch keeps the null
+    // ("unknown spend") contract for the AI gate, and a >1k-row month no
+    // longer silently undercounts spend.
+    const rows = await selectAllOrThrow<UsageLogSumRow>(
+      "anthropic monthly-spend logs",
+      (from, to) => anyDb
+        .from("api_usage_logs")
+        .select("input_tokens, output_tokens, cost_cents")
+        .eq("service", "anthropic")
+        .gte("created_at", monthStart)
+        .order("created_at")
+        .range(from, to),
+    );
 
-    if (!rows) return null;
-
-    const total = ((rows as UsageLogSumRow[]) ?? []).reduce((sum, r) => {
+    const total = rows.reduce((sum, r) => {
       if (r.input_tokens != null && r.output_tokens != null) {
         return sum + (r.input_tokens * 0.25 + r.output_tokens * 1.25) / 1_000_000;
       }

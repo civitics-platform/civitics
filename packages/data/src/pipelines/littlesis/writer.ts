@@ -11,8 +11,8 @@
  *   external_relationships_review_queue   (ambiguous matches for FIX-252 human review)
  */
 
-import type { createAdminClient } from "@civitics/db";
-import { refreshPrimarySourceForEntities } from "@civitics/db";
+import type { createAdminClient, ReadResult } from "@civitics/db";
+import { refreshPrimarySourceForEntities, selectAllOrThrow } from "@civitics/db";
 import { canonicalizeEntityName } from "../fec-bulk/writer";
 import {
   type LittleSisEntity,
@@ -37,43 +37,46 @@ const KNOWN_LOAD_PAGE  = 1000;
 // ---------------------------------------------------------------------------
 
 export async function preloadKnownLittleSisIds(db: Db): Promise<Map<number, AnchorMatch>> {
-  const out = new Map<number, AnchorMatch>();
-  let page = 0;
-  while (true) {
-    const { data } = await (db as unknown as {
-      from: (t: string) => {
-        select: (cols: string) => {
-          eq: (col: string, v: string) => {
-            range: (from: number, to: number) => Promise<{ data: unknown[] | null }>;
+  type RefRow = {
+    external_id: string; entity_type: string; entity_id: string;
+    metadata: Record<string, unknown> | null;
+  };
+  // FIX-545: this used to destructure `const { data }` with no error check —
+  // a dead gateway returned an empty Map and the matcher re-resolved all
+  // 440k entities from scratch on a run that looked clean. selectAllOrThrow
+  // throws on any page error instead of degrading to known.size === 0.
+  const rows = await selectAllOrThrow<RefRow>(
+    "littlesis known-ids preload (external_source_refs)",
+    (from, to) =>
+      (db as unknown as {
+        from: (t: string) => {
+          select: (cols: string) => {
+            eq: (col: string, v: string) => {
+              range: (from: number, to: number) => PromiseLike<ReadResult<RefRow>>;
+            };
           };
         };
-      };
-    })
-      .from("external_source_refs")
-      .select("external_id, entity_type, entity_id, metadata")
-      .eq("source", "littlesis")
-      .range(page * KNOWN_LOAD_PAGE, (page + 1) * KNOWN_LOAD_PAGE - 1);
-    const rows = (data ?? []) as Array<{
-      external_id: string; entity_type: string; entity_id: string;
-      metadata: Record<string, unknown> | null;
-    }>;
-    if (rows.length === 0) break;
-    for (const r of rows) {
-      const ls = Number(r.external_id);
-      if (!Number.isFinite(ls)) continue;
-      // confidence in storage can be 'high' | 'medium' | 'hop1' | 'canonical_match'
-      // (FIX-280). Collapse anything that isn't 'high' to 'medium' for the
-      // in-memory AnchorMatch shape — edge match_confidence treats medium as
-      // the conservative default and never promotes hop-1 rows to high.
-      const storedConf = r.metadata?.["confidence"];
-      out.set(ls, {
-        civitics_type: r.entity_type as "official" | "financial_entity",
-        civitics_id:   r.entity_id,
-        confidence:    storedConf === "high" ? "high" : "medium",
-      });
-    }
-    if (rows.length < KNOWN_LOAD_PAGE) break;
-    page++;
+      })
+        .from("external_source_refs")
+        .select("external_id, entity_type, entity_id, metadata")
+        .eq("source", "littlesis")
+        .range(from, to),
+    { pageSize: KNOWN_LOAD_PAGE },
+  );
+  const out = new Map<number, AnchorMatch>();
+  for (const r of rows) {
+    const ls = Number(r.external_id);
+    if (!Number.isFinite(ls)) continue;
+    // confidence in storage can be 'high' | 'medium' | 'hop1' | 'canonical_match'
+    // (FIX-280). Collapse anything that isn't 'high' to 'medium' for the
+    // in-memory AnchorMatch shape — edge match_confidence treats medium as
+    // the conservative default and never promotes hop-1 rows to high.
+    const storedConf = r.metadata?.["confidence"];
+    out.set(ls, {
+      civitics_type: r.entity_type as "official" | "financial_entity",
+      civitics_id:   r.entity_id,
+      confidence:    storedConf === "high" ? "high" : "medium",
+    });
   }
   return out;
 }
