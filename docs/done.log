@@ -682,3 +682,4 @@
 2026-06-08 | FIX-536 | e274b50b | prod-only | chore: record prod verification for FIX-536/537/538
 2026-06-08 | FIX-537 | e274b50b | prod-only | chore: record prod verification for FIX-536/537/538
 2026-06-08 | FIX-538 | e274b50b | prod-only | chore: record prod verification for FIX-536/537/538
+2026-06-09 | FIX-539 | 0593c06c | local-only | feat(comments): route entity_comments writes through SECURITY DEFINER submit_comment RPC
