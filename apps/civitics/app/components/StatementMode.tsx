@@ -10,7 +10,12 @@
 // Pseudonymous author display only.
 
 import { useCallback, useEffect, useState } from "react";
-import { STATEMENT_MAX_LEN, STATEMENT_MIN_LEN, type EntityCommentType } from "@civitics/db";
+import {
+  createBrowserClient,
+  STATEMENT_MAX_LEN,
+  STATEMENT_MIN_LEN,
+  type EntityCommentType,
+} from "@civitics/db";
 
 type VoteSummary = { agree: number; disagree: number; pass: number };
 
@@ -152,7 +157,9 @@ function ProposeStatement({
   entityType: EntityCommentType;
   entityId: string;
   signInNext: string;
-  onProposed: () => void;
+  /** FIX-541: passes the posted {id, body} up for an optimistic append; null
+   *  when the POST succeeded but returned no id (caller falls back to load()). */
+  onProposed: (posted: { id: string; body: string } | null) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [body, setBody] = useState("");
@@ -168,11 +175,12 @@ function ProposeStatement({
       return;
     }
     setBusy(true);
+    const trimmed = body.trim();
     try {
       const res = await fetch(`/api/statements`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ entity_type: entityType, entity_id: entityId, body: body.trim() }),
+        body: JSON.stringify({ entity_type: entityType, entity_id: entityId, body: trimmed }),
       });
       if (res.status === 401) return redirectToSignIn(signInNext);
       const data = await res.json().catch(() => ({}));
@@ -183,7 +191,7 @@ function ProposeStatement({
       setBody("");
       setDone(true);
       setOpen(false);
-      onProposed();
+      onProposed(typeof data.id === "string" && data.id ? { id: data.id, body: trimmed } : null);
     } catch {
       setError("Network error. Try again.");
     } finally {
@@ -252,6 +260,9 @@ export function StatementMode({
   const [error, setError] = useState<string | null>(null);
   const [index, setIndex] = useState(0);
   const [busy, setBusy] = useState(false);
+  // FIX-540: keyset cursor from the RPC; Load more appends into the stepper.
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -265,6 +276,7 @@ export function StatementMode({
         return;
       }
       setStatements(data.statements ?? []);
+      setNextCursor(data.nextCursor ?? null);
       setIndex(0);
     } catch {
       setError("Failed to load statements.");
@@ -274,6 +286,75 @@ export function StatementMode({
   }, [entityType, entityId, lens]);
 
   useEffect(() => { void load(); }, [load]);
+
+  async function loadMore() {
+    if (!nextCursor || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const sp = new URLSearchParams({
+        entity_type: entityType,
+        entity_id: entityId,
+        lens,
+        cursor: nextCursor,
+      });
+      const res = await fetch(`/api/statements?${sp.toString()}`);
+      const data = await res.json();
+      if (res.ok) {
+        // Dedupe by id: an optimistically appended statement (zero votes →
+        // sorted last) can legitimately arrive again on a later page.
+        setStatements((prev) => [
+          ...prev,
+          ...((data.statements ?? []) as Statement[]).filter(
+            (s) => !prev.some((p) => p.id === s.id),
+          ),
+        ]);
+        setNextCursor(data.nextCursor ?? null);
+      }
+    } catch {
+      // Leave the cursor in place — the button stays available to retry.
+    } finally {
+      setLoadingMore(false);
+    }
+  }
+
+  // FIX-541: optimistic append — POST /api/statements already returned the new
+  // id, so build the local payload (zeroed votes, no constituent badge until
+  // the next full load) instead of refetching the whole list. The author name
+  // mirrors the server's derivation: users.display_name is seeded from auth
+  // user_metadata.full_name, falling back to the citizen-<id8> pseudonym.
+  // load() stays the error-recovery path.
+  async function handleProposed(posted: { id: string; body: string } | null) {
+    if (!posted) {
+      void load();
+      return;
+    }
+    let authorName = "You";
+    try {
+      const { data: { user } } = await createBrowserClient().auth.getUser();
+      if (user) {
+        const meta = (user.user_metadata?.full_name as string | undefined)?.trim();
+        authorName = meta || `citizen-${user.id.slice(0, 8)}`;
+      }
+    } catch {
+      // keep the fallback
+    }
+    const local: Statement = {
+      id: posted.id,
+      body: posted.body,
+      status: "visible",
+      source_comment_id: null,
+      vote_summary: { agree: 0, disagree: 0, pass: 0 },
+      is_constituent: false,
+      author_name: authorName,
+      my_vote: null,
+      created_at: new Date().toISOString(),
+    };
+    setStatements((prev) =>
+      prev.some((s) => s.id === local.id) ? prev : [...prev, local],
+    );
+    // Step to the new statement so it's visible immediately.
+    setIndex(statements.length);
+  }
 
   async function vote(statement: Statement, value: -1 | 0 | 1) {
     if (busy) return;
@@ -323,7 +404,7 @@ export function StatementMode({
       ) : total === 0 ? (
         <div className="rounded-lg border border-dashed border-gray-200 bg-white px-4 py-6 text-center text-sm text-gray-400">
           No statements yet. <span className="text-gray-500">Propose the first one below.</span>
-          <ProposeStatement entityType={entityType} entityId={entityId} signInNext={signInNext} onProposed={load} />
+          <ProposeStatement entityType={entityType} entityId={entityId} signInNext={signInNext} onProposed={handleProposed} />
         </div>
       ) : current ? (
         <>
@@ -396,11 +477,25 @@ export function StatementMode({
             </div>
           </div>
 
-          {index >= total - 1 && votedCount === total && (
+          {/* FIX-540: at the end of the loaded stepper, pull the next page in. */}
+          {index >= total - 1 && nextCursor && (
+            <div className="mt-3 text-center">
+              <button
+                type="button"
+                onClick={() => void loadMore()}
+                disabled={loadingMore}
+                className="rounded-lg border border-gray-200 px-4 py-1.5 text-xs text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+              >
+                {loadingMore ? "Loading…" : "Load more statements"}
+              </button>
+            </div>
+          )}
+
+          {index >= total - 1 && !nextCursor && votedCount === total && (
             <p className="mt-3 text-center text-xs text-emerald-700">✓ You&apos;ve weighed in on every statement.</p>
           )}
 
-          <ProposeStatement entityType={entityType} entityId={entityId} signInNext={signInNext} onProposed={load} />
+          <ProposeStatement entityType={entityType} entityId={entityId} signInNext={signInNext} onProposed={handleProposed} />
         </>
       ) : null}
     </section>

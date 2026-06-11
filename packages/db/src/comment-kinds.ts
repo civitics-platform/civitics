@@ -117,8 +117,13 @@ export const FLAG_REASONS = ["spam", "harassment", "off_topic", "misinformation"
 export type FlagReason = (typeof FLAG_REASONS)[number];
 
 // ─── C0 rate limits (app-layer, per user per rolling 24h) ─────────────────────
+// comments/answers are enforced in submit_comment (FIX-542 split: the comments
+// cap counts only non-answer rows; kind='answer' posts — answer-gate holders
+// only — have their own cap). Mirrored in the submit_comment migration and
+// guarded by the FIX-543 drift test.
 export const RATE_LIMITS = {
   comments: 20,
+  answers: 100,
   ratings: 200,
   flags: 10,
 } as const;
