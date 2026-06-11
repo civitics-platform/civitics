@@ -11,16 +11,20 @@ import { mapRpcError } from "./_lib";
 
 export const dynamic = "force-dynamic";
 
-// ─── GET /api/statements?entity_type=&entity_id=&lens= ────────────────────────
+// ─── GET /api/statements?entity_type=&entity_id=&lens=&cursor=&limit= ─────────
 // Public ordered list (anon-allowed). Called via the caller's server client so
 // get_entity_statements can surface my_vote for an authenticated reader. Also
 // returns the slow-mode flag so a client refresh can re-read it without SSR.
+// FIX-540: the RPC keysets in SQL and returns { statements, next_cursor };
+// cursor/limit pass through opaquely.
 export async function GET(request: NextRequest) {
   try {
     const sp = request.nextUrl.searchParams;
     const entityType = sp.get("entity_type");
     const entityId = sp.get("entity_id");
     const lens = sp.get("lens") === "constituents" ? "constituents" : "all";
+    const cursor = sp.get("cursor");
+    const limit = Math.min(100, Math.max(1, parseInt(sp.get("limit") ?? "", 10) || 50));
 
     if (!entityType || !isEntityCommentType(entityType)) {
       return NextResponse.json({ error: "Invalid entity_type" }, { status: 400 });
@@ -36,11 +40,18 @@ export async function GET(request: NextRequest) {
       p_entity_type: entityType,
       p_entity_id: entityId,
       p_lens: lens,
+      p_limit: limit,
+      p_cursor: cursor ?? undefined,
     });
     if (error) return NextResponse.json({ error: "Failed to load statements" }, { status: 500 });
 
+    const result = (data as { statements?: unknown; next_cursor?: unknown } | null) ?? {};
     const slowMode = await getSlowMode(entityType, entityId, supabase);
-    return NextResponse.json({ statements: data ?? [], slowMode });
+    return NextResponse.json({
+      statements: Array.isArray(result.statements) ? result.statements : [],
+      nextCursor: typeof result.next_cursor === "string" ? result.next_cursor : null,
+      slowMode,
+    });
   } catch {
     return NextResponse.json({ error: "Failed to load statements" }, { status: 500 });
   }

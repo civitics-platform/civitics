@@ -131,6 +131,14 @@ function redirectToSignIn(next: string) {
   window.location.href = `/auth/sign-in?next=${encodeURIComponent(next)}`;
 }
 
+// Is the comment anywhere in the loaded tree (roots or nested replies)?
+function treeContains(list: Comment[], id: string): boolean {
+  for (const c of list) {
+    if (c.id === id || treeContains(c.replies, id)) return true;
+  }
+  return false;
+}
+
 // ─── Rating controls (two-axis, optimistic, auth-gated) ───────────────────────
 
 function RatingControls({
@@ -591,37 +599,84 @@ export function EntityComments({
   const [view, setView] = useState<"list" | "map">("list");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [lens, setLens] = useState<"all" | "constituents">("all");
-  const [cursor, setCursor] = useState<string | null>(null);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
+  // FIX-532: threads fetched via focus_id when the target wasn't on a loaded
+  // page — rendered pinned above the list with a "jumped to comment" marker.
+  const [pinned, setPinned] = useState<Comment[]>([]);
+
+  // The focus handler subscribes once but needs the CURRENT loaded tree to
+  // decide whether to fetch — mirror state into refs instead of re-subscribing.
+  const commentsRef = useRef<Comment[]>([]);
+  commentsRef.current = comments;
+  const pinnedRef = useRef<Comment[]>([]);
+  pinnedRef.current = pinned;
 
   // The map / highlights strip ask the list to select + scroll to a comment.
-  // Switch to the list view and mark the target selected.
+  // Switch to the list view and mark the target selected. FIX-532: if the
+  // target isn't on a loaded page, fetch just its thread via focus_id (bounded
+  // work no matter how deep it sits), prepend it pinned, then select — the
+  // card's own scroll-on-selected effect handles the scroll on mount.
   useEffect(() => {
     function onFocus(e: Event) {
       const id = (e as CustomEvent<FocusCommentDetail>).detail?.id;
       if (!id) return;
       setView("list");
       setOpen(true);
-      setSelectedId(id);
+      if (treeContains(commentsRef.current, id) || treeContains(pinnedRef.current, id)) {
+        setSelectedId(id);
+        return;
+      }
+      void (async () => {
+        try {
+          const sp = new URLSearchParams({
+            entity_type: entityType,
+            entity_id: entityId,
+            focus_id: id,
+          });
+          const res = await fetch(`/api/comments?${sp.toString()}`);
+          const data = await res.json();
+          if (res.ok && Array.isArray(data.comments) && data.comments.length > 0) {
+            const fetched = data.comments as Comment[];
+            setPinned((prev) => [
+              ...fetched,
+              ...prev.filter((p) => !fetched.some((f) => f.id === p.id)),
+            ]);
+          }
+        } catch {
+          // Selection still happens; without the thread there's just nothing to scroll to.
+        }
+        setSelectedId(id);
+      })();
     }
     window.addEventListener(FOCUS_COMMENT_EVENT, onFocus);
     return () => window.removeEventListener(FOCUS_COMMENT_EVENT, onFocus);
-  }, []);
+  }, [entityType, entityId]);
 
+  // The cursor is an explicit arg (not state): the previous setCursor-then-load
+  // pattern read the stale closure value, so the first Load more re-fetched and
+  // appended page one. The id-dedupe on append is belt-and-braces against a
+  // just-posted comment shifting page boundaries mid-pagination.
   const load = useCallback(
-    async (reset: boolean) => {
+    async (reset: boolean, cursorArg?: string | null) => {
       setLoading(true);
       setError(null);
       try {
         const sp = new URLSearchParams({ entity_type: entityType, entity_id: entityId, sort, lens });
-        if (!reset && cursor) sp.set("cursor", cursor);
+        if (!reset && cursorArg) sp.set("cursor", cursorArg);
         const res = await fetch(`/api/comments?${sp.toString()}`);
         const data = await res.json();
         if (!res.ok) {
           setError(data.error ?? "Failed to load comments.");
           return;
         }
-        setComments((prev) => (reset ? data.comments : [...prev, ...data.comments]));
+        setComments((prev) =>
+          reset
+            ? data.comments
+            : [
+                ...prev,
+                ...(data.comments as Comment[]).filter((c) => !prev.some((p) => p.id === c.id)),
+              ],
+        );
         setNextCursor(data.nextCursor ?? null);
       } catch {
         setError("Failed to load comments.");
@@ -629,12 +684,14 @@ export function EntityComments({
         setLoading(false);
       }
     },
-    [entityType, entityId, sort, lens, cursor],
+    [entityType, entityId, sort, lens],
   );
 
-  // Reload from scratch when sort/lens change.
+  // Reload from scratch when sort/lens change (a focus-pinned thread is scoped
+  // to the view it was jumped into — drop it too).
   useEffect(() => {
-    setCursor(null);
+    setPinned([]);
+    setSelectedId(null);
     void load(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entityType, entityId, sort, lens]);
@@ -653,6 +710,13 @@ export function EntityComments({
     setComments((prev) => addReply(prev, parentId, reply));
   }
 
+  // The main list skips roots already rendered in the pinned block (a focused
+  // thread can also arrive later via Load more).
+  const listed = useMemo(
+    () => (pinned.length === 0 ? comments : comments.filter((c) => !pinned.some((p) => p.id === c.id))),
+    [comments, pinned],
+  );
+
   const grouped = useMemo(() => {
     if (!stanceGrouped) return null;
     // C1 (FIX-526): side is derived PURELY from stance now — 'support'/'oppose'
@@ -660,11 +724,11 @@ export function EntityComments({
     const isFor = (c: Comment) => c.stance === "support";
     const isAgainst = (c: Comment) => c.stance === "oppose";
     return {
-      support: comments.filter(isFor),
-      oppose: comments.filter(isAgainst),
-      other: comments.filter((c) => !isFor(c) && !isAgainst(c)),
+      support: listed.filter(isFor),
+      oppose: listed.filter(isAgainst),
+      other: listed.filter((c) => !isFor(c) && !isAgainst(c)),
     };
-  }, [comments, stanceGrouped]);
+  }, [listed, stanceGrouped]);
 
   const cardProps = {
     entityType,
@@ -794,11 +858,25 @@ export function EntityComments({
             )
           )}
 
+          {/* FIX-532: focus-fetched threads, pinned above the list. */}
+          {pinned.length > 0 && (
+            <div className="mb-3 space-y-3">
+              {pinned.map((c) => (
+                <div key={c.id}>
+                  <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-gray-400">
+                    ↪ Jumped to comment
+                  </p>
+                  <CommentCard comment={c} {...cardProps} />
+                </div>
+              ))}
+            </div>
+          )}
+
           {loading && comments.length === 0 ? (
             <div className="py-8 text-center text-sm text-gray-400">Loading comments…</div>
           ) : error ? (
             <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
-          ) : comments.length === 0 ? (
+          ) : comments.length === 0 && pinned.length === 0 ? (
             <div className="rounded-lg border border-dashed border-gray-200 px-4 py-8 text-center text-sm text-gray-400">
               No comments yet. <span className="text-gray-500">Be the first.</span>
             </div>
@@ -829,18 +907,20 @@ export function EntityComments({
             </div>
           ) : (
             <div className="space-y-3">
-              {comments.map((c) => <CommentCard key={c.id} comment={c} {...cardProps} />)}
+              {listed.map((c) => <CommentCard key={c.id} comment={c} {...cardProps} />)}
             </div>
           )}
 
-          {nextCursor && sort === "newest" && (
+          {/* FIX-540: newest AND bridge keyset-paginate; top never sets a cursor. */}
+          {nextCursor && (
             <div className="mt-4 text-center">
               <button
                 type="button"
-                onClick={() => { setCursor(nextCursor); void load(false); }}
-                className="rounded-lg border border-gray-200 px-4 py-1.5 text-xs text-gray-600 hover:bg-gray-50"
+                onClick={() => void load(false, nextCursor)}
+                disabled={loading}
+                className="rounded-lg border border-gray-200 px-4 py-1.5 text-xs text-gray-600 hover:bg-gray-50 disabled:opacity-50"
               >
-                Load more
+                {loading ? "Loading…" : "Load more"}
               </button>
             </div>
           )}

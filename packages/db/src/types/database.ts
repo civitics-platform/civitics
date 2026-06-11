@@ -4978,11 +4978,23 @@ export type Database = {
         }[]
       }
       get_entity_questions: {
-        Args: { p_official_id: string; p_lens?: string; p_sort?: string }
+        Args: {
+          p_cursor?: string
+          p_official_id: string
+          p_lens?: string
+          p_limit?: number
+          p_sort?: string
+        }
         Returns: Json
       }
       get_entity_statements: {
-        Args: { p_entity_id: string; p_entity_type: string; p_lens?: string }
+        Args: {
+          p_cursor?: string
+          p_entity_id: string
+          p_entity_type: string
+          p_lens?: string
+          p_limit?: number
+        }
         Returns: Json
       }
       get_financial_entity_naics: { Args: never; Returns: Json }

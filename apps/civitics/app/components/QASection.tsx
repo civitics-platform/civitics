@@ -42,6 +42,8 @@ type QuestionsResponse = {
   total: number;
   awaiting: number;
   questions: Question[];
+  // FIX-540: keyset cursor; null when the last page is loaded.
+  nextCursor: string | null;
 };
 
 type SortKey = "wanted" | "newest" | "unanswered";
@@ -460,6 +462,7 @@ export function QASection({ entityId, officialName, signInNext }: QASectionProps
   const next = signInNext ?? (typeof window !== "undefined" ? window.location.pathname : "/");
   const [data, setData] = useState<QuestionsResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sort, setSort] = useState<SortKey>("wanted");
 
@@ -483,6 +486,36 @@ export function QASection({ entityId, officialName, signInNext }: QASectionProps
   }, [entityId, sort]);
 
   useEffect(() => { void load(); }, [load]);
+
+  // FIX-540: append the next keyset page. ask/answer actions still call load()
+  // (full reset to page one) — fine for the rare write, cheap for the read.
+  async function loadMore() {
+    const cursor = data?.nextCursor;
+    if (!cursor || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const sp = new URLSearchParams({ official_id: entityId, sort, cursor });
+      const res = await fetch(`/api/questions?${sp.toString()}`);
+      const json = (await res.json()) as QuestionsResponse;
+      if (res.ok) {
+        setData((prev) =>
+          prev
+            ? {
+                ...json,
+                questions: [
+                  ...prev.questions,
+                  ...json.questions.filter((q) => !prev.questions.some((p) => p.id === q.id)),
+                ],
+              }
+            : json,
+        );
+      }
+    } catch {
+      // Cursor stays — the button remains available to retry.
+    } finally {
+      setLoadingMore(false);
+    }
+  }
 
   const total = data?.total ?? 0;
   const awaiting = data?.awaiting ?? 0;
@@ -527,19 +560,33 @@ export function QASection({ entityId, officialName, signInNext }: QASectionProps
           No questions yet. <span className="text-gray-500">Be the first to ask {officialName} a question.</span>
         </div>
       ) : (
-        <ul className="space-y-3">
-          {questions.map((q) => (
-            <QuestionCard
-              key={q.id}
-              q={q}
-              entityId={entityId}
-              canAnswer={canAnswer}
-              officialName={officialName}
-              signInNext={next}
-              onChanged={load}
-            />
-          ))}
-        </ul>
+        <>
+          <ul className="space-y-3">
+            {questions.map((q) => (
+              <QuestionCard
+                key={q.id}
+                q={q}
+                entityId={entityId}
+                canAnswer={canAnswer}
+                officialName={officialName}
+                signInNext={next}
+                onChanged={load}
+              />
+            ))}
+          </ul>
+          {data?.nextCursor && (
+            <div className="mt-3 text-center">
+              <button
+                type="button"
+                onClick={() => void loadMore()}
+                disabled={loadingMore}
+                className="rounded-lg border border-gray-200 px-4 py-1.5 text-xs text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+              >
+                {loadingMore ? "Loading…" : "Load more questions"}
+              </button>
+            </div>
+          )}
+        </>
       )}
     </section>
   );

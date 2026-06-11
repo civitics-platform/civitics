@@ -4,11 +4,13 @@ import { createServerClient } from "@civitics/db";
 
 export const dynamic = "force-dynamic";
 
-// ─── GET /api/questions?official_id=&lens=&sort= ──────────────────────────────
+// ─── GET /api/questions?official_id=&lens=&sort=&cursor=&limit= ───────────────
 // Q&A lane read (C1 Wave D, FIX-537). Officials-only this wave (decision 2).
 // Anon-allowed. Called via the caller's server client so get_entity_questions
 // can surface the caller's `can_answer` grant flag (decision 9). Returns the RPC
-// object verbatim: { can_answer, total, awaiting, questions[] }.
+// object: { can_answer, total, awaiting, questions[], nextCursor }. FIX-540: the
+// RPC keysets in SQL; cursor/limit pass through opaquely (the cursor is minted
+// per sort — callers reset it on sort change).
 export async function GET(request: NextRequest) {
   try {
     const sp = request.nextUrl.searchParams;
@@ -17,6 +19,8 @@ export async function GET(request: NextRequest) {
     const sortParam = sp.get("sort");
     const sort =
       sortParam === "newest" ? "newest" : sortParam === "unanswered" ? "unanswered" : "wanted";
+    const cursor = sp.get("cursor");
+    const limit = Math.min(100, Math.max(1, parseInt(sp.get("limit") ?? "", 10) || 50));
 
     if (!officialId) {
       return NextResponse.json({ error: "official_id is required" }, { status: 400 });
@@ -29,6 +33,8 @@ export async function GET(request: NextRequest) {
       p_official_id: officialId,
       p_lens: lens,
       p_sort: sort,
+      p_limit: limit,
+      p_cursor: cursor ?? undefined,
     });
     if (error) {
       return NextResponse.json({ error: "Failed to load questions" }, { status: 500 });
@@ -40,6 +46,7 @@ export async function GET(request: NextRequest) {
       total: typeof result.total === "number" ? result.total : 0,
       awaiting: typeof result.awaiting === "number" ? result.awaiting : 0,
       questions: Array.isArray(result.questions) ? result.questions : [],
+      nextCursor: typeof result.next_cursor === "string" ? result.next_cursor : null,
     });
   } catch {
     return NextResponse.json({ error: "Failed to load questions" }, { status: 500 });

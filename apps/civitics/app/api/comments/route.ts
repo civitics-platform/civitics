@@ -35,6 +35,36 @@ function decodeCursor(cursor: string): { createdAt: string; id: string } | null 
   }
 }
 
+// FIX-540: two-region bridge cursor. Region 1 = scored rows, ordered
+// (bridge_score DESC, created_at DESC, id DESC); region 2 = unscored rows
+// (bridge_score IS NULL), ordered (created_at DESC, id DESC). The cursor
+// carries the region tag + the last row's sort values so a single GET can fill
+// a page across the region boundary. Same base64url codec as `newest`, with a
+// region prefix; score kept as its raw PostgREST string so the numeric value
+// round-trips into the seek filter exactly.
+type BridgeCursor =
+  | { region: 1; score: string; createdAt: string; id: string }
+  | { region: 2; createdAt: string; id: string };
+
+function encodeBridgeCursor(c: BridgeCursor): string {
+  const parts =
+    c.region === 1 ? ["b1", c.score, c.createdAt, c.id] : ["b2", "", c.createdAt, c.id];
+  return Buffer.from(parts.join("|")).toString("base64url");
+}
+function decodeBridgeCursor(cursor: string): BridgeCursor | null {
+  try {
+    const [tag, score, createdAt, id] = Buffer.from(cursor, "base64url")
+      .toString("utf8")
+      .split("|");
+    if (!createdAt || !id) return null;
+    if (tag === "b1" && score) return { region: 1, score, createdAt, id };
+    if (tag === "b2") return { region: 2, createdAt, id };
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 // ─── GET /api/comments?entity_type=&entity_id=&lens=&sort=&cursor=&limit= ──────
 export async function GET(request: NextRequest) {
   try {
@@ -47,6 +77,7 @@ export async function GET(request: NextRequest) {
     const sortParam = sp.get("sort");
     const sort = sortParam === "newest" ? "newest" : sortParam === "top" ? "top" : "bridge";
     const cursor = sp.get("cursor");
+    const focusId = sp.get("focus_id");
     const limit = Math.min(MAX_LIMIT, Math.max(1, parseInt(sp.get("limit") ?? "", 10) || DEFAULT_LIMIT));
 
     if (!entityType || !isEntityCommentType(entityType)) {
@@ -63,35 +94,125 @@ export async function GET(request: NextRequest) {
     // kinds — questions/answers live only in the Q&A lane read
     // (get_entity_questions). Excluding question roots here also means their
     // answer replies are never fetched as descendants below.
-    let rootsQuery = admin
-      .from("entity_comments")
-      .select(COMMENT_COLUMNS)
-      .eq("entity_type", entityType)
-      .eq("entity_id", entityId)
-      .is("parent_id", null)
-      .not("kind", "in", "(question,answer)")
-      .in("status", ["visible", "needs_review"]);
+    // Builder (not a shared instance): the bridge sort issues two region
+    // queries and PostgrestFilterBuilder accumulates filters, so each query
+    // needs a fresh chain.
+    const buildRoots = () => {
+      let q = admin
+        .from("entity_comments")
+        .select(COMMENT_COLUMNS)
+        .eq("entity_type", entityType)
+        .eq("entity_id", entityId)
+        .is("parent_id", null)
+        .not("kind", "in", "(question,answer)")
+        .in("status", ["visible", "needs_review"]);
+      if (lens === "constituents") {
+        q = q.not("constituent_jurisdiction_id", "is", null);
+      }
+      return q;
+    };
 
-    if (lens === "constituents") {
-      rootsQuery = rootsQuery.not("constituent_jurisdiction_id", "is", null);
+    // ── focus_id (FIX-532): resolve the target's thread root and return just
+    // that root's tree — bounded work no matter how deep the comment sits in
+    // any sort order. The root keeps the discussion-lane filters so a Q&A row
+    // can never be injected into the discussion list. lens is deliberately not
+    // applied: a focused thread is fetched regardless of the active lens.
+    if (focusId) {
+      const { data: target, error: targetErr } = await admin
+        .from("entity_comments")
+        .select("id,thread_root_id")
+        .eq("entity_type", entityType)
+        .eq("entity_id", entityId)
+        .eq("id", focusId)
+        .in("status", ["visible", "needs_review"])
+        .maybeSingle();
+      if (targetErr) return NextResponse.json({ error: "Failed to load comments" }, { status: 500 });
+      if (!target) return NextResponse.json({ comments: [], nextCursor: null });
+
+      const rootId = target.thread_root_id ?? target.id;
+      const { data: rootRow, error: rootErr } = await admin
+        .from("entity_comments")
+        .select(COMMENT_COLUMNS)
+        .eq("id", rootId)
+        .is("parent_id", null)
+        .not("kind", "in", "(question,answer)")
+        .in("status", ["visible", "needs_review"])
+        .maybeSingle();
+      if (rootErr) return NextResponse.json({ error: "Failed to load comments" }, { status: 500 });
+      if (!rootRow) return NextResponse.json({ comments: [], nextCursor: null });
+
+      const { data: desc } = await admin
+        .from("entity_comments")
+        .select(COMMENT_COLUMNS)
+        .eq("thread_root_id", rootId)
+        .not("parent_id", "is", null)
+        .not("kind", "in", "(question,answer)")
+        .in("status", ["visible", "needs_review"]);
+      const descendants = desc ?? [];
+      const names = await fetchNameMap(admin, [
+        rootRow.author_id,
+        ...descendants.map((d) => d.author_id),
+      ]);
+      const tree = nestReplies([serialize(rootRow, names)], descendants, names);
+      return NextResponse.json({ comments: tree, nextCursor: null });
     }
 
     let roots: any[];
     let nextCursor: string | null = null;
 
     if (sort === "bridge") {
-      // Real ordered query: bridge_score DESC NULLS LAST, then recency. Single
-      // page (no keyset) — the representation floor lives in the highlights
-      // strip, so the list stays a simple ordered page (decision 6).
-      const { data, error } = await rootsQuery
-        .order("bridge_score", { ascending: false, nullsFirst: false })
-        .order("created_at", { ascending: false })
-        .order("id", { ascending: false })
-        .limit(limit);
-      if (error) return NextResponse.json({ error: "Failed to load comments" }, { status: 500 });
-      roots = data ?? [];
+      // Two-region keyset (FIX-540): scored rows first (region 1), then the
+      // bridge_score IS NULL tail (region 2) — together equivalent to the old
+      // single-page NULLS LAST order, but pageable. One GET fills the page
+      // across the boundary: if region 1 comes up short, top up from region 2
+      // in the same request.
+      const c = cursor ? decodeBridgeCursor(cursor) : null;
+      roots = [];
+
+      if (!c || c.region === 1) {
+        let q = buildRoots().not("bridge_score", "is", null);
+        if (c && c.region === 1) {
+          q = q.or(
+            `bridge_score.lt.${c.score},and(bridge_score.eq.${c.score},created_at.lt.${c.createdAt}),and(bridge_score.eq.${c.score},created_at.eq.${c.createdAt},id.lt.${c.id})`,
+          );
+        }
+        const { data, error } = await q
+          .order("bridge_score", { ascending: false })
+          .order("created_at", { ascending: false })
+          .order("id", { ascending: false })
+          .limit(limit);
+        if (error) return NextResponse.json({ error: "Failed to load comments" }, { status: 500 });
+        roots = data ?? [];
+      }
+
+      if (roots.length < limit) {
+        // Region 1 exhausted (or we're already in region 2) — fill from the
+        // unscored tail. A region-1 cursor needs no seek here: region 2 hasn't
+        // been consumed yet.
+        let q = buildRoots().is("bridge_score", null);
+        if (c && c.region === 2) {
+          q = q.or(
+            `created_at.lt.${c.createdAt},and(created_at.eq.${c.createdAt},id.lt.${c.id})`,
+          );
+        }
+        const { data, error } = await q
+          .order("created_at", { ascending: false })
+          .order("id", { ascending: false })
+          .limit(limit - roots.length);
+        if (error) return NextResponse.json({ error: "Failed to load comments" }, { status: 500 });
+        roots = [...roots, ...(data ?? [])];
+      }
+
+      if (roots.length === limit) {
+        const last = roots[roots.length - 1];
+        nextCursor = encodeBridgeCursor(
+          last.bridge_score != null
+            ? { region: 1, score: String(last.bridge_score), createdAt: last.created_at, id: last.id }
+            : { region: 2, createdAt: last.created_at, id: last.id },
+        );
+      }
     } else if (sort === "top") {
-      const { data, error } = await rootsQuery
+      const { data, error } = await buildRoots()
         .order("created_at", { ascending: false })
         .order("id", { ascending: false })
         .limit(TOP_CAP);
@@ -105,6 +226,7 @@ export async function GET(request: NextRequest) {
         .slice(0, limit);
     } else {
       // newest — keyset on (created_at DESC, id DESC)
+      let rootsQuery = buildRoots();
       if (cursor) {
         const c = decodeCursor(cursor);
         if (c) {
