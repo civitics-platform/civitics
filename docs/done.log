@@ -690,3 +690,4 @@
 2026-06-09 | FIX-545 | 63061677 | local-only | fix(data): harden preload reads against silent-zero degradation
 2026-06-09 | FIX-546 | 9e10d08a | local-only | ci(data): guard against new silent-zero PostgREST preload reads
 2026-06-10 | FIX-547 | 43ff8ac2 | local-only | fix(enrichment): restore official financial/vote context via existing rollup RPCs
+2026-06-10 | FIX-547 | 08da8e9e | local+prod | chore(enrichment): delete contextless AI official entries (FIX-547 cleanup)
