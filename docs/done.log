@@ -691,3 +691,9 @@
 2026-06-09 | FIX-546 | 9e10d08a | local-only | ci(data): guard against new silent-zero PostgREST preload reads
 2026-06-10 | FIX-547 | 43ff8ac2 | local-only | fix(enrichment): restore official financial/vote context via existing rollup RPCs
 2026-06-10 | FIX-547 | 08da8e9e | local+prod | chore(enrichment): delete contextless AI official entries (FIX-547 cleanup)
+2026-06-10 | FIX-531 | de461b61 | closes-as-superseded | feat(comments): keyset pagination (bridge/statements/questions) + focus fetch-then-scroll
+2026-06-10 | FIX-532 | de461b61 | local+prod | feat(comments): keyset pagination (bridge/statements/questions) + focus fetch-then-scroll
+2026-06-10 | FIX-540 | de461b61 | local+prod | feat(comments): keyset pagination (bridge/statements/questions) + focus fetch-then-scroll
+2026-06-10 | FIX-541 | 2d068cba | local-only | feat(comments): optimistic statement append + separate official-answer rate limit
+2026-06-10 | FIX-542 | 2d068cba | local+prod | feat(comments): optimistic statement append + separate official-answer rate limit
+2026-06-10 | FIX-543 | 9e77bf4f | local-only | test(comments): submit_comment kind-vocab + rate-constant drift guard
