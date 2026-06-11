@@ -689,3 +689,4 @@
 2026-06-09 | FIX-380 | edc12072 | closes-as-recognized | docs(littlesis): close FIX-380 — 0 intra-source LS×LS dupe clusters on current data
 2026-06-09 | FIX-545 | 63061677 | local-only | fix(data): harden preload reads against silent-zero degradation
 2026-06-09 | FIX-546 | 9e10d08a | local-only | ci(data): guard against new silent-zero PostgREST preload reads
+2026-06-10 | FIX-547 | 43ff8ac2 | local-only | fix(enrichment): restore official financial/vote context via existing rollup RPCs
