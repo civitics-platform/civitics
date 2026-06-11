@@ -36,6 +36,7 @@ import {
   zeroCounts,
   buildProposalSummaryContext,
   buildOfficialSummaryContext,
+  aggregateOfficialStats,
   loadJurisdictionPriorities,
   classifyProposalContext,
 } from "../enrichment/queue";
@@ -348,47 +349,32 @@ export async function fetchOfficials(db: ReturnType<typeof createAdminClient>): 
 
   if (officialIds.length === 0) return [];
 
-  // Get vote counts
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const votesRes = await (db as any)
-    .from("votes")
-    .select("official_id")
-    .in("official_id", officialIds);
-
-  const voteCounts = new Map<string, number>();
-  for (const v of votesRes.data ?? []) {
-    voteCounts.set(v.official_id, (voteCounts.get(v.official_id) ?? 0) + 1);
-  }
-
-  // Get donor counts + totals
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const donorRes = await (db as any)
-    .from("financial_relationships")
-    .select("official_id, amount_cents")
-    .in("official_id", officialIds);
-
-  const donorCounts = new Map<string, number>();
-  const donorTotals = new Map<string, number>();
-  for (const d of donorRes.data ?? []) {
-    donorCounts.set(d.official_id, (donorCounts.get(d.official_id) ?? 0) + 1);
-    donorTotals.set(d.official_id, (donorTotals.get(d.official_id) ?? 0) + (d.amount_cents ?? 0));
-  }
+  // FIX-547: the prior inline reads selected the dead financial_relationships
+  // official_id column (dropped at the 2026-04-22 cutover — the 400 was
+  // silently swallowed) and the votes .in() read truncated at the 1,000-row
+  // cap, so the vote/donor filter below ran on broken counts and silently
+  // dropped officials from the summary pass. Route through the shared
+  // RPC-backed aggregate instead.
+  const stats = await aggregateOfficialStats(db, officialIds);
 
   // Only include officials with votes OR donor records
   return uncached
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    .map((o: any) => ({
-      id: o.id,
-      full_name: o.full_name,
-      role_title: o.role_title,
-      state: o.metadata?.state ?? null,
-      party: o.party ?? null,
-      vote_count: voteCounts.get(o.id) ?? 0,
-      donor_count: donorCounts.get(o.id) ?? 0,
-      total_raised: donorTotals.get(o.id) ?? 0,
-      jurisdiction_id: o.jurisdiction_id ?? "",
-      updated_at: o.updated_at ?? new Date().toISOString(),
-    }))
+    .map((o: any) => {
+      const agg = stats.get(o.id);
+      return {
+        id: o.id,
+        full_name: o.full_name,
+        role_title: o.role_title,
+        state: o.metadata?.state ?? null,
+        party: o.party ?? null,
+        vote_count: agg?.vote_count ?? 0,
+        donor_count: agg?.donor_count ?? 0,
+        total_raised: agg?.total_raised ?? 0,
+        jurisdiction_id: o.jurisdiction_id ?? "",
+        updated_at: o.updated_at ?? new Date().toISOString(),
+      };
+    })
     .filter((o: OfficialRow) => o.vote_count > 0 || o.donor_count > 0)
     .sort((a: OfficialRow, b: OfficialRow) => b.vote_count - a.vote_count)
     .slice(0, 50);

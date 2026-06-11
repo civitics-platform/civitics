@@ -268,7 +268,7 @@ async function classifyOfficial(official: any): Promise<OfficialClassification |
     `State: ${official.state ?? "Unknown"}\n` +
     `Total votes: ${official.vote_count ?? 0}\n` +
     `Total raised: $${((official.total_raised ?? 0) / 100).toLocaleString()}\n` +
-    `Top donor industries: ${official.top_industries ?? "Unknown"}\n\n` +
+    `Donor composition: ${official.top_industries ?? "Unknown"}\n\n` +
     `Return JSON:\n` +
     `{\n` +
     `  "issue_areas": ["area1", "area2"],\n` +
@@ -344,27 +344,13 @@ async function runOfficialAiTagger(db: any, maxCostCents: number, onlyNew: boole
 
   console.log(`    ${targetOfficials.length} officials to classify`);
 
-  // Batch fetch vote counts and totals
+  // Batch fetch vote counts and totals.
+  // FIX-547: the prior inline reads selected financial_relationships columns
+  // dropped at the 2026-04-22 cutover (official_id, donor_type) — a 400 that
+  // was silently swallowed, so officials were tagged with zero financial
+  // context — and the votes .in() read truncated at the 1,000-row cap.
   const officialIds = targetOfficials.map((o: { id: string }) => o.id);
-
-  const [voteCountRes, donorRes] = await Promise.all([
-    db.from("votes").select("official_id").in("official_id", officialIds),
-    db.from("financial_relationships").select("official_id, donor_type, amount_cents").in("official_id", officialIds),
-  ]);
-
-  const voteCountByOfficial = new Map<string, number>();
-  for (const v of voteCountRes.data ?? []) {
-    voteCountByOfficial.set(v.official_id, (voteCountByOfficial.get(v.official_id) ?? 0) + 1);
-  }
-
-  const totalRaisedByOfficial = new Map<string, number>();
-  const donorTypesByOfficial = new Map<string, Map<string, number>>();
-  for (const f of donorRes.data ?? []) {
-    totalRaisedByOfficial.set(f.official_id, (totalRaisedByOfficial.get(f.official_id) ?? 0) + (f.amount_cents ?? 0));
-    const typeMap = donorTypesByOfficial.get(f.official_id) ?? new Map();
-    typeMap.set(f.donor_type, (typeMap.get(f.donor_type) ?? 0) + (f.amount_cents ?? 0));
-    donorTypesByOfficial.set(f.official_id, typeMap);
-  }
+  const stats = await aggregateOfficialStats(db, officialIds);
 
   let tagsInserted = 0;
 
@@ -374,23 +360,14 @@ async function runOfficialAiTagger(db: any, maxCostCents: number, onlyNew: boole
       break;
     }
 
-    const voteCount = voteCountByOfficial.get(official.id) ?? 0;
-    const totalRaised = totalRaisedByOfficial.get(official.id) ?? 0;
-    const typeMap = donorTypesByOfficial.get(official.id) ?? new Map();
-
-    // Top 3 donor industries by amount
-    const topIndustries = Array.from(typeMap.entries())
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 3)
-      .map(([type]) => type)
-      .join(", ");
+    const agg = stats.get(official.id);
 
     const enriched = {
       ...official,
       state: official.metadata?.state ?? "Unknown",
-      vote_count: voteCount,
-      total_raised: totalRaised,
-      top_industries: topIndustries || "Unknown",
+      vote_count: agg?.vote_count ?? 0,
+      total_raised: agg?.total_raised ?? 0,
+      top_industries: agg?.top_industries ?? "Unknown",
     };
 
     const result = await classifyOfficial(enriched);

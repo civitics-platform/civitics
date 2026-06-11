@@ -262,18 +262,63 @@ export function buildFinancialEntityTagContext(fe: FinancialEntityTagInput) {
 }
 
 // ---------------------------------------------------------------------------
-// Batch enrichment for officials — top_industries / vote_count / total_raised
-// aren't on the officials row itself; they come from aggregating votes and
-// financial_relationships. Both the tag-context builder and summary-context
-// builder need this, so compute once per batch.
+// Batch enrichment for officials — vote_count / donor totals / composition
+// aren't on the officials row itself. FIX-547: the prior implementation read
+// votes + financial_relationships over PostgREST with an unchunked .in()
+// (>200-id URL cap) that also truncated at the 1,000-row max_rows cap, so
+// counts were massively under-reported (931k votes / 28.6k officials). Route
+// through the FIX-426/427 server-side GROUP BY rollup RPCs instead — same
+// pattern as tags/rules.ts tagOfficials(). Each RPC returns its whole result
+// as one jsonb array, so nothing is truncated and no per-batch .in() is
+// needed; build the Map once per run and look up per official.
 // ---------------------------------------------------------------------------
 
 export type OfficialAggregate = {
   vote_count: number;
   donor_count: number;
   total_raised: number;
+  pac_cents: number;
+  individual_cents: number;
+  /**
+   * Donor-composition summary (PAC vs individual share of total raised) —
+   * the rollup can't reconstruct a true sector breakdown. Real per-sector
+   * dollars live in official_sector_dollars_mv (FIX-506); wiring that in is
+   * a separate follow-up.
+   */
   top_industries: string;
 };
+
+const RPC_MAX_ATTEMPTS = 5;
+
+// Mirrors callWithRetry in tags/rules.ts: retry transient PostgREST/fetch
+// failures, THROW after the attempts cap — a partial/empty rollup must never
+// be consumed as "official has no votes/donations".
+async function rpcWithRetry<T>(
+  label: string,
+  fn: () => Promise<{ data: T | null; error: { message: string } | null }>,
+): Promise<T | null> {
+  let lastErr = "unknown error";
+  for (let attempt = 1; attempt <= RPC_MAX_ATTEMPTS; attempt++) {
+    try {
+      const { data, error } = await fn();
+      if (!error) return data;
+      lastErr = error.message;
+    } catch (e) {
+      lastErr = e instanceof Error ? e.message : String(e);
+    }
+    if (attempt < RPC_MAX_ATTEMPTS) {
+      await new Promise((r) => setTimeout(r, 500 * Math.pow(2, attempt - 1)));
+    }
+  }
+  throw new Error(`${label} failed after ${RPC_MAX_ATTEMPTS} attempts: ${lastErr}`);
+}
+
+function donorComposition(total: number, pac: number, individual: number): string {
+  if (total <= 0) return "Unknown";
+  const pct = (n: number) => Math.round((n / total) * 100);
+  const dollars = Math.round(total / 100).toLocaleString("en-US");
+  return `PAC ${pct(pac)}%, individual ${pct(individual)}% of $${dollars} raised`;
+}
 
 export async function aggregateOfficialStats(
   db: Db,
@@ -282,39 +327,48 @@ export async function aggregateOfficialStats(
   const out = new Map<string, OfficialAggregate>();
   if (officialIds.length === 0) return out;
 
-  // Post-cutover: to_id = official UUID, no donor_type column on the relationship row
-  const [voteRes, donorRes] = await Promise.all([
-    db.from("votes").select("official_id").in("official_id", officialIds),
-    db
-      .from("financial_relationships")
-      .select("to_id, from_id, amount_cents")
-      .eq("to_type", "official")
-      .eq("relationship_type", "donation")
-      .in("to_id", officialIds),
-  ]);
-
-  const voteCounts = new Map<string, number>();
-  for (const v of (voteRes.data ?? []) as { official_id: string }[]) {
-    voteCounts.set(v.official_id, (voteCounts.get(v.official_id) ?? 0) + 1);
+  const donorRollup =
+    (await rpcWithRetry<
+      Array<{
+        official_id: string;
+        total_cents: number;
+        pac_cents: number;
+        individual_cents: number;
+        donor_count: number;
+      }>
+    >("get_official_donor_rollup", () => db.rpc("get_official_donor_rollup"))) ?? [];
+  const donorByOfficial = new Map<
+    string,
+    { total: number; pac: number; individual: number; count: number }
+  >();
+  for (const r of donorRollup) {
+    donorByOfficial.set(r.official_id, {
+      total: Number(r.total_cents ?? 0),
+      pac: Number(r.pac_cents ?? 0),
+      individual: Number(r.individual_cents ?? 0),
+      count: Number(r.donor_count ?? 0),
+    });
   }
 
-  const donorCounts = new Map<string, number>();
-  const donorTotals = new Map<string, number>();
-  for (const d of (donorRes.data ?? []) as {
-    to_id: string;
-    from_id: string;
-    amount_cents: number | null;
-  }[]) {
-    donorCounts.set(d.to_id, (donorCounts.get(d.to_id) ?? 0) + 1);
-    donorTotals.set(d.to_id, (donorTotals.get(d.to_id) ?? 0) + (d.amount_cents ?? 0));
+  const voteRollup =
+    (await rpcWithRetry<Array<{ official_id: string; total_votes: number }>>(
+      "get_official_bipartisan_stats",
+      () => db.rpc("get_official_bipartisan_stats"),
+    )) ?? [];
+  const votesByOfficial = new Map<string, number>();
+  for (const r of voteRollup) {
+    votesByOfficial.set(r.official_id, Number(r.total_votes ?? 0));
   }
 
   for (const id of officialIds) {
+    const d = donorByOfficial.get(id);
     out.set(id, {
-      vote_count: voteCounts.get(id) ?? 0,
-      donor_count: donorCounts.get(id) ?? 0,
-      total_raised: donorTotals.get(id) ?? 0,
-      top_industries: "Unknown",  // derive from entity_tags once FIX-109 AI pass completes
+      vote_count: votesByOfficial.get(id) ?? 0,
+      donor_count: d?.count ?? 0,
+      total_raised: d?.total ?? 0,
+      pac_cents: d?.pac ?? 0,
+      individual_cents: d?.individual ?? 0,
+      top_industries: donorComposition(d?.total ?? 0, d?.pac ?? 0, d?.individual ?? 0),
     });
   }
   return out;

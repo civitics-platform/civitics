@@ -53,7 +53,8 @@ Also emit one complexity tag.
   state: string | null,
   vote_count: number,
   total_raised: number (cents),
-  top_industries: string (comma-separated),
+  top_industries: string (donor composition — PAC vs individual share,
+                  e.g. "PAC 62%, individual 31% of $1,234,567 raised"),
   issue_areas: string[]           // the ONLY tags you may use
 }
 ```
