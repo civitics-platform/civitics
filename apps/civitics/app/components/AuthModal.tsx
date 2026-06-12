@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { SignInForm } from "./SignInForm";
+import { PorticoMark } from "./brand/PorticoMark";
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -48,40 +49,38 @@ export function AuthModal({ isOpen, onClose, trigger }: AuthModalProps) {
         if (e.target === overlayRef.current) onClose();
       }}
     >
-      <div className="relative w-full max-w-sm rounded-2xl border border-gray-200 bg-white p-6 shadow-xl">
+      <div className="relative w-full max-w-sm border-2 border-ink bg-card p-6 shadow-[0_14px_30px_rgba(28,26,22,0.18)]">
         {/* Close button */}
         <button
           onClick={onClose}
-          className="absolute right-4 top-4 flex h-7 w-7 items-center justify-center rounded-full text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
+          className="absolute right-4 top-4 flex h-7 w-7 items-center justify-center text-ink-soft hover:bg-paper-2 hover:text-ink transition-colors"
           aria-label="Close"
         >
           ✕
         </button>
 
         {/* Logo */}
-        <div className="mb-5 flex flex-col items-center gap-2">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-600">
-            <span className="text-xs font-bold text-white">CV</span>
-          </div>
+        <div className="mb-5 flex flex-col items-center gap-2 text-ink">
+          <PorticoMark size={36} />
         </div>
 
         {/* Heading — generic or contextual */}
         <div className="mb-5 text-center">
           {trigger ? (
             <>
-              <h2 className="text-base font-semibold text-gray-900">
+              <h2 className="font-serif text-lg font-semibold text-ink">
                 {trigger}
               </h2>
-              <p className="mt-1 text-xs text-gray-500">
+              <p className="mt-1 text-xs text-ink-soft">
                 Sign in to continue
               </p>
             </>
           ) : (
             <>
-              <h2 className="text-base font-semibold text-gray-900">
+              <h2 className="font-serif text-lg font-semibold text-ink">
                 Sign in to Civitics
               </h2>
-              <p className="mt-1 text-xs text-gray-500">
+              <p className="mt-1 text-xs text-ink-soft">
                 Track civic engagement, save positions, and follow officials.
               </p>
             </>

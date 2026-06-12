@@ -1,5 +1,5 @@
 import Link from "next/link";
-import type { HomeOfficialCardData } from "../HomeOfficialCard";
+import type { HomeOfficialCardData } from "./types";
 
 const PARTY_SQUARE: Record<string, string> = {
   democrat:   "bg-civic-blue",

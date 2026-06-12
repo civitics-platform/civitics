@@ -12,3 +12,24 @@ export function formatStatCompact(n: number): string {
   if (n >= 1_000) return n.toLocaleString("en-US");
   return String(n);
 }
+
+/**
+ * One row of the homepage officials ledger — shaped in app/page.tsx.
+ * Lived in HomeOfficialCard.tsx until that card was retired (FIX-556);
+ * OfficialsLedger is the surviving consumer.
+ */
+export type HomeOfficialCardData = {
+  id: string;
+  full_name: string;
+  role_title: string;
+  party: string | null;
+  photo_url: string | null;
+  chamber: string | null;
+  district_name: string | null;
+  state_name: string | null;
+  isFederal: boolean;
+  /** Server-fetched stats — no client queries on the homepage. */
+  voteCount: number;
+  donorCount: number;
+  totalDonationsCents: number;
+};

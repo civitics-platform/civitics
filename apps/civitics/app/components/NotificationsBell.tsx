@@ -102,27 +102,27 @@ export function NotificationsBell() {
         onClick={() => setOpen((o) => !o)}
         aria-label={`Notifications${unread > 0 ? ` (${unread} unread)` : ""}`}
         aria-expanded={open}
-        className="relative inline-flex h-9 w-9 items-center justify-center rounded-full text-gray-500 hover:bg-gray-100 hover:text-gray-800 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+        className="relative inline-flex h-9 w-9 items-center justify-center rounded-full text-ink-soft hover:bg-paper-2 hover:text-ink transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
       >
         <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.4-1.4A2 2 0 0118 14.2V11a6 6 0 00-5-5.9V4a1 1 0 10-2 0v1.1A6 6 0 006 11v3.2a2 2 0 01-.6 1.4L4 17h5m6 0a3 3 0 11-6 0m6 0H9" />
         </svg>
         {unread > 0 && (
-          <span className="absolute top-1 right-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white">
+          <span className="absolute top-1 right-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 font-mono text-[9px] font-bold text-paper">
             {unread > 9 ? "9+" : unread}
           </span>
         )}
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full z-50 mt-2 w-80 rounded-lg border border-gray-200 bg-white shadow-lg">
-          <div className="flex items-center justify-between border-b border-gray-100 px-3 py-2">
-            <span className="text-xs font-semibold text-gray-700">Notifications</span>
+        <div className="absolute right-0 top-full z-50 mt-2 w-80 border border-ink bg-card shadow-[0_14px_30px_rgba(28,26,22,0.18)]">
+          <div className="flex items-center justify-between border-b border-rule px-3 py-2">
+            <span className="font-mono text-[9px] font-semibold uppercase tracking-[0.22em] text-accent">Notifications</span>
             {unread > 0 && (
               <button
                 type="button"
                 onClick={markAllRead}
-                className="text-[11px] text-indigo-600 hover:underline"
+                className="text-[11px] font-medium text-accent hover:underline"
               >
                 Mark all read
               </button>
@@ -130,7 +130,7 @@ export function NotificationsBell() {
           </div>
           <div className="max-h-96 overflow-y-auto">
             {items.length === 0 ? (
-              <div className="px-4 py-8 text-center text-xs text-gray-400">
+              <div className="px-4 py-8 text-center text-xs text-ink-soft">
                 No notifications yet. Follow officials and agencies to start getting updates.
               </div>
             ) : (
@@ -139,26 +139,24 @@ export function NotificationsBell() {
                   key={n.id}
                   type="button"
                   onClick={() => onItemClick(n)}
-                  className={`block w-full border-b border-gray-50 px-3 py-2 text-left text-xs hover:bg-gray-50 transition-colors ${
-                    n.is_read ? "" : "bg-indigo-50/40"
-                  }`}
+                  className="block w-full border-b border-rule px-3 py-2 text-left text-xs hover:bg-paper-2 transition-colors"
                 >
                   <div className="flex items-start gap-2">
                     {!n.is_read && (
-                      <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-indigo-500" />
+                      <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />
                     )}
                     <div className="flex-1 min-w-0">
                       <p
                         className={`truncate ${
-                          n.is_read ? "text-gray-600" : "font-medium text-gray-900"
+                          n.is_read ? "text-ink-soft" : "font-medium text-ink"
                         }`}
                       >
                         {n.title}
                       </p>
                       {n.body && (
-                        <p className="mt-0.5 truncate text-[11px] text-gray-500">{n.body}</p>
+                        <p className="mt-0.5 truncate text-[11px] text-ink-soft">{n.body}</p>
                       )}
-                      <p className="mt-0.5 text-[10px] text-gray-400">
+                      <p className="mt-0.5 font-mono text-[10px] text-ink-soft">
                         {formatRelative(n.created_at)}
                       </p>
                     </div>
@@ -169,7 +167,7 @@ export function NotificationsBell() {
           </div>
           <a
             href="/dashboard/notifications"
-            className="block border-t border-gray-100 px-3 py-2 text-center text-[11px] font-medium text-indigo-600 hover:bg-indigo-50"
+            className="block border-t border-rule px-3 py-2 text-center font-mono text-[10.5px] font-semibold uppercase tracking-[0.08em] text-accent transition-colors hover:bg-paper-2"
           >
             View all & manage follows →
           </a>

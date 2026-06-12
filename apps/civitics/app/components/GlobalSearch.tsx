@@ -29,18 +29,18 @@ import { FormerBadge } from "./FormerBadge";
 // ---------------------------------------------------------------------------
 
 const PARTY_BADGE: Record<string, string> = {
-  democrat:    "bg-blue-100 text-blue-800",
-  republican:  "bg-red-100 text-red-800",
-  independent: "bg-purple-100 text-purple-800",
+  democrat:    "bg-civic-blue text-paper",
+  republican:  "bg-accent text-paper",
+  independent: "border border-ink text-ink",
 };
 
 const STATUS_DOT: Record<string, string> = {
-  open_comment: "bg-amber-400",
-  introduced:   "bg-blue-400",
-  in_committee: "bg-blue-400",
-  enacted:      "bg-green-400",
-  signed:       "bg-green-400",
-  failed:       "bg-red-400",
+  open_comment: "bg-amber",
+  introduced:   "bg-civic-blue",
+  in_committee: "bg-civic-blue",
+  enacted:      "bg-term-green",
+  signed:       "bg-term-green",
+  failed:       "bg-accent",
 };
 
 function initials(name: string) {
@@ -95,21 +95,21 @@ function hrefFor(r: FlatResult): string {
 // ---------------------------------------------------------------------------
 
 function OfficialResult({ o, selected }: { o: SearchOfficial; selected: boolean }) {
-  const badge = PARTY_BADGE[o.party ?? ""] ?? "bg-gray-100 text-gray-700";
+  const badge = PARTY_BADGE[o.party ?? ""] ?? "border border-rule bg-paper-2 text-ink-soft";
   return (
-    <div className={`flex items-center gap-3 px-4 py-2.5 transition-colors ${selected ? "bg-indigo-50" : "hover:bg-gray-50"}`}>
-      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gray-100 text-xs font-semibold text-gray-600">
+    <div className={`flex items-center gap-3 px-4 py-2.5 transition-colors ${selected ? "bg-paper-2" : "hover:bg-paper-2"}`}>
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-rule bg-paper-2 text-xs font-semibold text-ink-soft">
         {o.photo_url
           ? <img src={o.photo_url} alt={o.full_name} width={32} height={32} loading="lazy" decoding="async" className="h-8 w-8 rounded-full object-cover" />
           : initials(o.full_name)}
       </div>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium text-gray-900">{o.full_name}</p>
-        <p className="truncate text-xs text-gray-500">
+        <p className={`truncate text-sm font-medium ${selected ? "text-accent" : "text-ink"}`}>{o.full_name}</p>
+        <p className="truncate text-xs text-ink-soft">
           {o.role_title}{o.state ? ` · ${o.state}` : ""}
         </p>
       </div>
-      <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold ${badge}`}>
+      <span className={`shrink-0 px-1.5 py-0.5 font-mono text-[10px] font-semibold ${badge}`}>
         {o.party?.[0]?.toUpperCase() ?? "?"}
       </span>
     </div>
@@ -117,18 +117,18 @@ function OfficialResult({ o, selected }: { o: SearchOfficial; selected: boolean 
 }
 
 function ProposalResult({ p, selected }: { p: SearchProposal; selected: boolean }) {
-  const dot = STATUS_DOT[p.status] ?? "bg-gray-300";
+  const dot = STATUS_DOT[p.status] ?? "bg-rule";
   const isOpen = p.status === "open_comment" && p.comment_period_end && new Date(p.comment_period_end) > new Date();
   return (
-    <div className={`flex items-start gap-3 px-4 py-2.5 transition-colors ${selected ? "bg-indigo-50" : "hover:bg-gray-50"}`}>
+    <div className={`flex items-start gap-3 px-4 py-2.5 transition-colors ${selected ? "bg-paper-2" : "hover:bg-paper-2"}`}>
       <div className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${dot}`} />
       <div className="min-w-0 flex-1">
-        <p className="line-clamp-2 text-sm font-medium text-gray-900 leading-snug">{p.title}</p>
-        <div className="mt-0.5 flex items-center gap-1.5 text-xs text-gray-400">
+        <p className={`line-clamp-2 text-sm font-medium leading-snug ${selected ? "text-accent" : "text-ink"}`}>{p.title}</p>
+        <div className="mt-0.5 flex items-center gap-1.5 text-xs text-ink-soft">
           {p.agency_acronym && <span className="font-mono">{p.agency_acronym}</span>}
           {p.agency_acronym && <span>·</span>}
           {isOpen
-            ? <span className="text-amber-600 font-medium">⏰ Open for Comment</span>
+            ? <span className="font-semibold text-accent">⏰ Open for Comment</span>
             : <span>{p.status.replace(/_/g, " ")}</span>}
         </div>
       </div>
@@ -138,13 +138,13 @@ function ProposalResult({ p, selected }: { p: SearchProposal; selected: boolean 
 
 function AgencyResult({ a, selected }: { a: SearchAgency; selected: boolean }) {
   return (
-    <div className={`flex items-center gap-3 px-4 py-2.5 transition-colors ${selected ? "bg-indigo-50" : "hover:bg-gray-50"}`}>
-      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded border border-gray-200 bg-gray-50 font-mono text-[10px] font-bold text-gray-600">
+    <div className={`flex items-center gap-3 px-4 py-2.5 transition-colors ${selected ? "bg-paper-2" : "hover:bg-paper-2"}`}>
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center border border-rule bg-paper-2 font-mono text-[10px] font-bold text-ink-soft">
         {(a.acronym ?? a.name).slice(0, 4)}
       </div>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium text-gray-900">{a.name}</p>
-        {a.acronym && <p className="text-xs text-gray-400">{a.acronym}</p>}
+        <p className={`truncate text-sm font-medium ${selected ? "text-accent" : "text-ink"}`}>{a.name}</p>
+        {a.acronym && <p className="font-mono text-xs text-ink-soft">{a.acronym}</p>}
       </div>
     </div>
   );
@@ -152,8 +152,8 @@ function AgencyResult({ a, selected }: { a: SearchAgency; selected: boolean }) {
 
 function JurisdictionResult({ j, selected }: { j: SearchJurisdiction; selected: boolean }) {
   return (
-    <div className={`flex items-center gap-3 px-4 py-2.5 transition-colors ${selected ? "bg-indigo-50" : "hover:bg-gray-50"}`}>
-      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded border border-gray-200 bg-gray-50 text-gray-400">
+    <div className={`flex items-center gap-3 px-4 py-2.5 transition-colors ${selected ? "bg-paper-2" : "hover:bg-paper-2"}`}>
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center border border-rule bg-paper-2 text-ink-soft">
         <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
             d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
@@ -161,8 +161,8 @@ function JurisdictionResult({ j, selected }: { j: SearchJurisdiction; selected: 
         </svg>
       </div>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium text-gray-900">{j.name}</p>
-        <p className="truncate text-xs text-gray-400 capitalize">
+        <p className={`truncate text-sm font-medium ${selected ? "text-accent" : "text-ink"}`}>{j.name}</p>
+        <p className="truncate text-xs text-ink-soft capitalize">
           {j.jurisdiction_type}{j.short_name ? ` · ${j.short_name}` : ""}
         </p>
       </div>
@@ -172,16 +172,16 @@ function JurisdictionResult({ j, selected }: { j: SearchJurisdiction; selected: 
 
 function InstitutionResult({ g, selected }: { g: SearchInstitution; selected: boolean }) {
   return (
-    <div className={`flex items-center gap-3 px-4 py-2.5 transition-colors ${selected ? "bg-indigo-50" : "hover:bg-gray-50"}`}>
-      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded border border-gray-200 bg-gray-50 text-gray-400">
+    <div className={`flex items-center gap-3 px-4 py-2.5 transition-colors ${selected ? "bg-paper-2" : "hover:bg-paper-2"}`}>
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center border border-rule bg-paper-2 text-ink-soft">
         <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
             d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
         </svg>
       </div>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium text-gray-900">{g.name}</p>
-        <p className="truncate text-xs text-gray-400 capitalize">
+        <p className={`truncate text-sm font-medium ${selected ? "text-accent" : "text-ink"}`}>{g.name}</p>
+        <p className="truncate text-xs text-ink-soft capitalize">
           {g.institution_type.replace(/_/g, " ")}{g.short_name ? ` · ${g.short_name}` : ""}
         </p>
       </div>
@@ -192,23 +192,23 @@ function InstitutionResult({ g, selected }: { g: SearchInstitution; selected: bo
 
 function FinancialEntityResult({ f, selected }: { f: SearchFinancialEntity; selected: boolean }) {
   return (
-    <div className={`flex items-center gap-3 px-4 py-2.5 transition-colors ${selected ? "bg-indigo-50" : "hover:bg-gray-50"}`}>
+    <div className={`flex items-center gap-3 px-4 py-2.5 transition-colors ${selected ? "bg-paper-2" : "hover:bg-paper-2"}`}>
       {/* Dollar-sign icon instead of photo/acronym */}
-      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded border border-gray-200 bg-green-50 text-green-600">
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center border border-rule bg-paper-2 text-ink-soft">
         <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
             d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
       </div>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium text-gray-900">{f.name}</p>
-        <p className="truncate text-xs text-gray-400">
+        <p className={`truncate text-sm font-medium ${selected ? "text-accent" : "text-ink"}`}>{f.name}</p>
+        <p className="truncate text-xs text-ink-soft">
           {f.entity_type.replace(/_/g, " ")}
           {f.industry ? ` · ${f.industry}` : ""}
         </p>
       </div>
       {f.total_amount_cents != null && (
-        <span className="shrink-0 rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-600">
+        <span className="shrink-0 border border-rule bg-paper-2 px-1.5 py-0.5 font-mono text-[10px] font-semibold tabular-nums text-ink">
           {formatDollarsShort(f.total_amount_cents)}
         </span>
       )}
@@ -318,10 +318,13 @@ export function GlobalSearch({
   }, []);
 
   // ── Styles by variant ──────────────────────────────────────────────────────
+  // Public Record × Terminal (FIX-555): squared corners, ink borders, card
+  // surfaces. Hero gets the bordered-wrapper + attached solid-ink button
+  // pattern from the mockup; nav is the compact 1.5px-ink masthead field.
   const isHero = variant === "hero";
   const inputClass = isHero
-    ? "w-full rounded-lg border border-gray-300 bg-white px-5 py-3.5 text-base text-gray-900 placeholder-gray-400 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-    : "w-full rounded-full border border-gray-300 bg-white pl-8 pr-3 py-1.5 text-sm text-gray-500 placeholder-gray-400 shadow-sm hover:border-gray-400 hover:shadow focus:border-indigo-400 focus:text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-400/20 cursor-text transition-shadow";
+    ? "w-full min-w-0 flex-1 border-0 bg-transparent py-3.5 pr-3 text-[15px] text-ink placeholder:font-mono placeholder:text-[13px] placeholder:text-ink-soft focus:outline-none"
+    : "w-full border-[1.5px] border-ink bg-card py-1.5 text-sm text-ink placeholder:font-mono placeholder:text-[12px] placeholder:text-ink-soft transition-colors hover:border-accent focus:border-accent focus:outline-none cursor-text";
 
   // Offset indexes for keyboard nav per section — must track flattenResults order:
   // officials(3) → proposals(3) → jurisdictions(2) → institutions(2) → agencies(2) → financial(2)
@@ -334,10 +337,10 @@ export function GlobalSearch({
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div ref={containerRef} className={`relative ${isHero ? "w-full max-w-xl" : "w-48 lg:w-64"}`}>
-      <div className="relative">
-        <span className={`pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 ${isHero ? "text-base" : "text-sm"}`}>
+      <div className={isHero ? "relative flex border-2 border-ink bg-card transition-colors focus-within:border-accent" : "relative"}>
+        <span className={`pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-soft ${isHero ? "text-base" : "text-sm"}`}>
           {loading ? (
-            <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-gray-300 border-t-indigo-500" />
+            <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-rule border-t-accent" />
           ) : (
             <svg className={isHero ? "h-5 w-5" : "h-4 w-4"} fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -373,9 +376,21 @@ export function GlobalSearch({
               : ""}
         </div>
         {!isHero && (
-          <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 hidden rounded-full border border-gray-300 bg-gray-100 px-2 py-0.5 text-[10px] font-semibold text-gray-500 lg:block">
+          <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 hidden border border-rule bg-paper-2 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-ink-soft lg:block">
             ⌘K
           </span>
+        )}
+        {isHero && (
+          <button
+            type="button"
+            onClick={() => {
+              // Mirrors the Enter-with-no-selection path exactly.
+              if (query.length >= 2) window.location.href = `/search?q=${encodeURIComponent(query)}`;
+            }}
+            className="shrink-0 bg-ink px-6 text-[13px] font-semibold uppercase tracking-[0.06em] text-paper transition-colors hover:bg-accent focus-visible:outline-none focus-visible:bg-accent"
+          >
+            Search
+          </button>
         )}
       </div>
 
@@ -385,13 +400,13 @@ export function GlobalSearch({
           id="search-results-listbox"
           role="listbox"
           aria-label="Search results"
-          className={`absolute left-0 top-full z-50 mt-1 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg ${isHero ? "w-full" : "w-80"}`}
+          className={`absolute left-0 top-full z-50 mt-1 overflow-hidden border border-ink bg-card shadow-[0_14px_30px_rgba(28,26,22,0.18)] ${isHero ? "w-full" : "w-80"}`}
         >
 
           {/* Officials */}
           {results.officials.length > 0 && (
             <div>
-              <p className="border-b border-gray-100 bg-gray-50 px-4 py-1.5 text-[10px] font-semibold uppercase tracking-widest text-gray-400">
+              <p className="border-b border-rule bg-paper-2 px-4 py-1.5 font-mono text-[9px] font-semibold uppercase tracking-[0.22em] text-accent">
                 Officials
               </p>
               {results.officials.slice(0, 3).map((o, i) => (
@@ -404,8 +419,8 @@ export function GlobalSearch({
 
           {/* Proposals */}
           {results.proposals.length > 0 && (
-            <div className={results.officials.length > 0 ? "border-t border-gray-100" : ""}>
-              <p className="border-b border-gray-100 bg-gray-50 px-4 py-1.5 text-[10px] font-semibold uppercase tracking-widest text-gray-400">
+            <div className={results.officials.length > 0 ? "border-t border-rule" : ""}>
+              <p className="border-b border-rule bg-paper-2 px-4 py-1.5 font-mono text-[9px] font-semibold uppercase tracking-[0.22em] text-accent">
                 Proposals
               </p>
               {results.proposals.slice(0, 3).map((p, i) => (
@@ -418,8 +433,8 @@ export function GlobalSearch({
 
           {/* Jurisdictions */}
           {(results.jurisdictions ?? []).length > 0 && (
-            <div className={(results.officials.length > 0 || results.proposals.length > 0) ? "border-t border-gray-100" : ""}>
-              <p className="border-b border-gray-100 bg-gray-50 px-4 py-1.5 text-[10px] font-semibold uppercase tracking-widest text-gray-400">
+            <div className={(results.officials.length > 0 || results.proposals.length > 0) ? "border-t border-rule" : ""}>
+              <p className="border-b border-rule bg-paper-2 px-4 py-1.5 font-mono text-[9px] font-semibold uppercase tracking-[0.22em] text-accent">
                 Jurisdictions
               </p>
               {(results.jurisdictions ?? []).slice(0, 2).map((j, i) => (
@@ -432,8 +447,8 @@ export function GlobalSearch({
 
           {/* Institutions */}
           {(results.institutions ?? []).length > 0 && (
-            <div className={(results.officials.length > 0 || results.proposals.length > 0 || (results.jurisdictions ?? []).length > 0) ? "border-t border-gray-100" : ""}>
-              <p className="border-b border-gray-100 bg-gray-50 px-4 py-1.5 text-[10px] font-semibold uppercase tracking-widest text-gray-400">
+            <div className={(results.officials.length > 0 || results.proposals.length > 0 || (results.jurisdictions ?? []).length > 0) ? "border-t border-rule" : ""}>
+              <p className="border-b border-rule bg-paper-2 px-4 py-1.5 font-mono text-[9px] font-semibold uppercase tracking-[0.22em] text-accent">
                 Institutions
               </p>
               {(results.institutions ?? []).slice(0, 2).map((g, i) => (
@@ -446,8 +461,8 @@ export function GlobalSearch({
 
           {/* Agencies */}
           {results.agencies.length > 0 && (
-            <div className={(results.officials.length > 0 || results.proposals.length > 0 || (results.jurisdictions ?? []).length > 0 || (results.institutions ?? []).length > 0) ? "border-t border-gray-100" : ""}>
-              <p className="border-b border-gray-100 bg-gray-50 px-4 py-1.5 text-[10px] font-semibold uppercase tracking-widest text-gray-400">
+            <div className={(results.officials.length > 0 || results.proposals.length > 0 || (results.jurisdictions ?? []).length > 0 || (results.institutions ?? []).length > 0) ? "border-t border-rule" : ""}>
+              <p className="border-b border-rule bg-paper-2 px-4 py-1.5 font-mono text-[9px] font-semibold uppercase tracking-[0.22em] text-accent">
                 Agencies
               </p>
               {results.agencies.slice(0, 2).map((a, i) => (
@@ -460,8 +475,8 @@ export function GlobalSearch({
 
           {/* Donors & PACs */}
           {results.financial_entities.length > 0 && (
-            <div className="border-t border-gray-100">
-              <p className="border-b border-gray-100 bg-gray-50 px-4 py-1.5 text-[10px] font-semibold uppercase tracking-widest text-gray-400">
+            <div className="border-t border-rule">
+              <p className="border-b border-rule bg-paper-2 px-4 py-1.5 font-mono text-[9px] font-semibold uppercase tracking-[0.22em] text-accent">
                 Donors & PACs
               </p>
               {results.financial_entities.slice(0, 2).map((f, i) => (
@@ -473,10 +488,10 @@ export function GlobalSearch({
           )}
 
           {/* View all */}
-          <div className="border-t border-gray-100 px-4 py-2">
+          <div className="border-t border-rule px-4 py-2">
             <a
               href={`/search?q=${encodeURIComponent(query)}`}
-              className="block text-center text-xs font-medium text-indigo-600 hover:text-indigo-800 transition-colors py-1"
+              className="block py-1 text-center font-mono text-[11px] font-semibold uppercase tracking-[0.1em] text-accent transition-colors hover:underline"
               onClick={() => setOpen(false)}
             >
               View all results for &ldquo;{query}&rdquo; →
@@ -487,10 +502,10 @@ export function GlobalSearch({
 
       {/* No results */}
       {open && results && results.total === 0 && query.length >= 2 && (
-        <div className={`absolute left-0 top-full z-50 mt-1 rounded-lg border border-gray-200 bg-white shadow-lg ${isHero ? "w-full" : "w-80"}`}>
+        <div className={`absolute left-0 top-full z-50 mt-1 border border-ink bg-card shadow-[0_14px_30px_rgba(28,26,22,0.18)] ${isHero ? "w-full" : "w-80"}`}>
           <div className="px-4 py-6 text-center">
-            <p className="text-sm font-medium text-gray-500">No results for &ldquo;{query}&rdquo;</p>
-            <p className="mt-1 text-xs text-gray-400">
+            <p className="text-sm font-medium text-ink">No results for &ldquo;{query}&rdquo;</p>
+            <p className="mt-1 text-xs text-ink-soft">
               Try an official&apos;s name, agency acronym, or topic
             </p>
           </div>
