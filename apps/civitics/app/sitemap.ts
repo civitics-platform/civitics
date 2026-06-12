@@ -14,17 +14,19 @@ export const revalidate = 86400; // 24h
 const BASE = (process.env["NEXT_PUBLIC_SITE_URL"] ?? "https://civitics.com").replace(/\/+$/, "");
 
 // PostgREST caps any single SELECT at max_rows = 1000 (the publishable/anon client
-// goes through PostgREST), so 1000 is the real per-segment ceiling — a higher
-// .limit() is silently truncated (same cap behind [[FIX-510]]). Decision: publishable
-// client only (no admin), single query per segment, so each segment tops out at 1000.
-// Proposals are ordered newest-first so the 1000 are the most recent. Trade-off worth
-// noting: with robots.txt now blocking ?page= crawling, this sitemap is the primary
-// discovery path, and it covers only the most recent ~1000 of each large set (78k
-// proposals, 27k officials, 10k jurisdictions). See [[FIX-517]] to widen coverage via
-// paginated/admin-side sitemap generation if SEO indexing of older entities matters.
-const LIMITS = { proposals: 1000, officials: 1000, institutions: 1000, jurisdictions: 1000 } as const;
+// goes through PostgREST), so 1000 is the per-REQUEST ceiling — a higher .limit()
+// is silently truncated (same cap behind [[FIX-510]]). FIX-517: each segment now
+// pages past the cap with .range() loops carrying a stable total order on a
+// unique key (unordered range pagination double-counts — the exact bug that
+// inflated audit counts 2.3× pre-FIX-476). The publishable-only decision from
+// the [[FIX-513]] initial ship stands: no admin client, no direct pg here.
+// Per-segment caps are sized so caps + static paths stay under the 10,000-URL
+// ceiling: 5000 newest proposals (of ~78k), 2500 officials (of ~27k), 1000
+// jurisdictions (of ~10k), 1000 institutions (all 716 fit).
+const LIMITS = { proposals: 5000, officials: 2500, institutions: 1000, jurisdictions: 1000 } as const;
 const MAX_URLS = 10000;
 const QUERY_TIMEOUT_MS = 5000;
+const PAGE_SIZE = 1000; // PostgREST max_rows — the real per-request ceiling
 
 // Param-free public listing pages. The faceted variants are noindex (robots.txt
 // Disallow: /*? + generateMetadata), so only these clean URLs belong in the sitemap.
@@ -49,6 +51,26 @@ async function timed(
   ]);
 }
 
+// FIX-517 — page one segment up to `cap` rows. Each page keeps the per-query
+// 5s degrade contract: a timeout/error on page N keeps pages 1..N-1 and stops,
+// never throws. `page` must apply .range(from, to) on a FRESH query carrying a
+// stable total order on a unique key, or pages overlap/skip.
+async function fetchPaged(
+  cap: number,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  page: (from: number, to: number) => PromiseLike<any>,
+): Promise<IdRow[]> {
+  const rows: IdRow[] = [];
+  for (let from = 0; from < cap; from += PAGE_SIZE) {
+    const to = Math.min(from + PAGE_SIZE, cap) - 1;
+    const batch = await timed(page(from, to));
+    if (batch === null) break; // degrade: keep what already loaded
+    rows.push(...batch);
+    if (batch.length < to - from + 1) break; // short page → segment exhausted
+  }
+  return rows.slice(0, cap);
+}
+
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const staticEntries: MetadataRoute.Sitemap = STATIC_PATHS.map((p) => ({
     url: p === "/" ? BASE : `${BASE}${p}`,
@@ -59,16 +81,25 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   try {
     const supabase = createPublicClient();
     const [proposals, officials, institutions, jurisdictions] = await Promise.all([
-      timed(
+      // introduced_at alone is not unique — the id tiebreak makes the order
+      // total so range pages never overlap.
+      fetchPaged(LIMITS.proposals, (f, t) =>
         supabase
           .from("proposals")
           .select("id")
           .order("introduced_at", { ascending: false, nullsFirst: false })
-          .limit(LIMITS.proposals),
+          .order("id", { ascending: true })
+          .range(f, t),
       ),
-      timed(supabase.from("officials").select("id").eq("is_active", true).order("id").limit(LIMITS.officials)),
-      timed(supabase.from("institutions").select("id").eq("is_active", true).order("id").limit(LIMITS.institutions)),
-      timed(supabase.from("jurisdictions").select("id").eq("is_active", true).order("id").limit(LIMITS.jurisdictions)),
+      fetchPaged(LIMITS.officials, (f, t) =>
+        supabase.from("officials").select("id").eq("is_active", true).order("id").range(f, t),
+      ),
+      fetchPaged(LIMITS.institutions, (f, t) =>
+        supabase.from("institutions").select("id").eq("is_active", true).order("id").range(f, t),
+      ),
+      fetchPaged(LIMITS.jurisdictions, (f, t) =>
+        supabase.from("jurisdictions").select("id").eq("is_active", true).order("id").range(f, t),
+      ),
     ]);
 
     const mk = (seg: string, rows: IdRow[] | null, priority: number): MetadataRoute.Sitemap =>
