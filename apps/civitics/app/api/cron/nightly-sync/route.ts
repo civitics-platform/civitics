@@ -38,6 +38,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   }
 
   const startedAt = new Date();
+  let grantsExpired: number | null = null;
+  let grantSweepError: string | null = null;
 
   try {
     const db = createAdminClient();
@@ -70,6 +72,19 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         runner:       "github-actions",
       },
     });
+    // FIX-557: grant-expiry sweep — flips lapsed active entity_grants to
+    // 'expired' (with a grant_events row each). Lives here because the Hobby
+    // plan caps Vercel crons at 2 and both slots are taken. Failure is
+    // reported in the payload but never fails the canary.
+    const { data: expiredCount, error: sweepErr } = await anyDb.rpc(
+      "expire_lapsed_grants"
+    );
+    if (sweepErr) {
+      grantSweepError = sweepErr.message ?? "expire_lapsed_grants failed";
+      console.error("[cron/nightly-sync] grant expiry sweep failed:", grantSweepError);
+    } else {
+      grantsExpired = typeof expiredCount === "number" ? expiredCount : 0;
+    }
   } catch (err) {
     // Non-critical — log but don't fail the response
     console.error(
@@ -82,6 +97,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     triggered:   true,
     triggeredAt: startedAt.toISOString(),
     runner:      "github-actions",
+    grantsExpired,
+    ...(grantSweepError ? { grantSweepError } : {}),
     note: "Canary fired. Actual nightly pipeline runs in .github/workflows/nightly.yml; results written to pipeline_state.cron_last_run.",
   });
 }

@@ -18,6 +18,7 @@ import { PromisesSection } from "../components/PromisesSection";
 import { SpendingSection } from "../components/SpendingSection";
 import { EntityComments } from "../../components/EntityComments";
 import { QASection } from "../../components/QASection";
+import { ClaimProfileSection } from "../components/ClaimProfileSection";
 import { getSlowMode } from "@/lib/slow-mode";
 import { ResponsivenessCard } from "../components/ResponsivenessCard";
 import { gradeFromRate } from "../../api/officials/[id]/responsiveness/_lib";
@@ -1080,6 +1081,11 @@ export default async function OfficialProfilePage({
             />
           </div>
         </div>
+
+        {/* FIX-558: "Is this you?" self-serve profile claim. Client island so
+            the page stays ISR — per-user claim state comes from
+            /api/officials/claim-status at request time. */}
+        <ClaimProfileSection officialId={official.id} officialName={official.full_name} />
 
         {/* QWEN-ADDED: Promises Section - flagship feature, shown below basic info */}
         {/* FIX-246: hide incumbent-only sections for tier='candidate' rows */}

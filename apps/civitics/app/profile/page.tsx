@@ -65,6 +65,41 @@ export default async function ProfilePage() {
       .sort()[0] ?? null;
   }
 
+  // FIX-558: official profile claims — every status, newest first, deduped to
+  // the latest claim per official. Same users_read_own_grants RLS read as the
+  // constituent grants above.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: officialGrantsRaw } = await (supabase as any)
+    .from("entity_grants")
+    .select("id, target_id, status, granted_at, expires_at, created_at")
+    .eq("user_id", user.id)
+    .eq("role", "official")
+    .eq("target_type", "official")
+    .order("created_at", { ascending: false });
+
+  type OfficialClaimRow = {
+    id: string;
+    target_id: string;
+    status: string;
+    granted_at: string | null;
+    expires_at: string | null;
+    created_at: string;
+  };
+  const latestClaimByOfficial = new Map<string, OfficialClaimRow>();
+  for (const g of (officialGrantsRaw ?? []) as OfficialClaimRow[]) {
+    if (!latestClaimByOfficial.has(g.target_id)) latestClaimByOfficial.set(g.target_id, g);
+  }
+  const officialClaims = [...latestClaimByOfficial.values()];
+
+  const officialNameById = new Map<string, string>();
+  if (officialClaims.length > 0) {
+    const { data: claimedOfficials } = await supabase
+      .from("officials")
+      .select("id, full_name")
+      .in("id", officialClaims.map((g) => g.target_id));
+    for (const o of claimedOfficials ?? []) officialNameById.set(o.id, o.full_name);
+  }
+
   // Fallback to email-based lookup if no row exists yet (first sign-in edge case)
   let resolvedProfile = profile;
   if (!resolvedProfile && user.email) {
@@ -146,6 +181,51 @@ export default async function ProfilePage() {
         </div>
       ) : (
         <VerifyConstituentForm />
+      )}
+
+      {/* FIX-558: official profile claim status — one row per claimed official,
+          latest claim wins. Renders nothing for users with no claims. */}
+      {officialClaims.length > 0 && (
+        <div className="mt-6 rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+          <h3 className="text-base font-semibold text-gray-900">Official profile claims</h3>
+          <ul className="mt-3 divide-y divide-gray-100">
+            {officialClaims.map((g) => {
+              const name = officialNameById.get(g.target_id) ?? "Unknown official";
+              return (
+                <li key={g.id} className="flex items-center justify-between gap-3 py-2.5">
+                  <a
+                    href={`/officials/${g.target_id}`}
+                    className="min-w-0 truncate text-sm font-medium text-gray-800 hover:text-indigo-600 hover:underline"
+                  >
+                    {name}
+                  </a>
+                  {g.status === "active" ? (
+                    <span className="shrink-0 rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800">
+                      Verified
+                      {g.expires_at &&
+                        ` · expires ${new Date(g.expires_at).toLocaleDateString("en-US", {
+                          month: "short",
+                          year: "numeric",
+                        })}`}
+                    </span>
+                  ) : g.status === "pending" ? (
+                    <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+                      Under review
+                    </span>
+                  ) : g.status === "expired" ? (
+                    <span className="shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">
+                      Expired
+                    </span>
+                  ) : (
+                    <span className="shrink-0 rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-800">
+                      Declined
+                    </span>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
       )}
 
       {/* District picker — sets home_state/home_district for the USER graph node */}

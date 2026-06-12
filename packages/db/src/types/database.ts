@@ -7,30 +7,10 @@ export type Json =
   | Json[]
 
 export type Database = {
-  graphql_public: {
-    Tables: {
-      [_ in never]: never
-    }
-    Views: {
-      [_ in never]: never
-    }
-    Functions: {
-      graphql: {
-        Args: {
-          extensions?: Json
-          operationName?: string
-          query?: string
-          variables?: Json
-        }
-        Returns: Json
-      }
-    }
-    Enums: {
-      [_ in never]: never
-    }
-    CompositeTypes: {
-      [_ in never]: never
-    }
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
+  __InternalSupabase: {
+    PostgrestVersion: "14.4"
   }
   public: {
     Tables: {
@@ -4904,6 +4884,7 @@ export type Database = {
         }
         Returns: string
       }
+      expire_lapsed_grants: { Args: never; Returns: number }
       find_jurisdictions_by_location: {
         Args: { user_lat: number; user_lng: number }
         Returns: {
@@ -4980,9 +4961,9 @@ export type Database = {
       get_entity_questions: {
         Args: {
           p_cursor?: string
-          p_official_id: string
           p_lens?: string
           p_limit?: number
+          p_official_id: string
           p_sort?: string
         }
         Returns: Json
@@ -5247,6 +5228,10 @@ export type Database = {
       }
       has_active_official_grant: {
         Args: { p_official_id: string; p_user_id: string }
+        Returns: boolean
+      }
+      has_active_platform_admin_grant: {
+        Args: { p_user_id: string }
         Returns: boolean
       }
       jurisdiction_boundary_svg: {
@@ -5667,7 +5652,14 @@ export type Database = {
         | "party_committee"
         | "small_donor_aggregate"
         | "other"
-      evidence_method: "address_check" | "voter_roll" | "manual_review"
+      evidence_method:
+        | "address_check"
+        | "voter_roll"
+        | "manual_review"
+        | "gov_email"
+        | "id_document"
+        | "delegation"
+        | "invitation"
       evidence_outcome: "pending" | "approved" | "rejected" | "inconclusive"
       financial_relationship_type:
         | "donation"
@@ -5708,9 +5700,16 @@ export type Database = {
         | "international_body"
         | "other"
         | "committee"
-      grant_role: "constituent" | "platform_admin"
+      grant_role:
+        | "constituent"
+        | "platform_admin"
+        | "official"
+        | "verified_human"
+        | "staff"
+        | "jurisdiction_admin"
+        | "institution_admin"
       grant_status: "pending" | "active" | "revoked" | "expired"
-      grant_target_type: "global" | "jurisdiction"
+      grant_target_type: "global" | "jurisdiction" | "official" | "institution"
       initiative_authorship: "individual" | "community"
       initiative_resolution: "sponsored" | "declined" | "withdrawn" | "expired"
       initiative_scope: "federal" | "state" | "local"
@@ -5916,9 +5915,6 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
-  graphql_public: {
-    Enums: {},
-  },
   public: {
     Enums: {
       argument_flag: ["off_topic", "misleading", "duplicate", "other"],
@@ -5957,7 +5953,15 @@ export const Constants = {
         "small_donor_aggregate",
         "other",
       ],
-      evidence_method: ["address_check", "voter_roll", "manual_review"],
+      evidence_method: [
+        "address_check",
+        "voter_roll",
+        "manual_review",
+        "gov_email",
+        "id_document",
+        "delegation",
+        "invitation",
+      ],
       evidence_outcome: ["pending", "approved", "rejected", "inconclusive"],
       financial_relationship_type: [
         "donation",
@@ -6002,9 +6006,17 @@ export const Constants = {
         "other",
         "committee",
       ],
-      grant_role: ["constituent", "platform_admin"],
+      grant_role: [
+        "constituent",
+        "platform_admin",
+        "official",
+        "verified_human",
+        "staff",
+        "jurisdiction_admin",
+        "institution_admin",
+      ],
       grant_status: ["pending", "active", "revoked", "expired"],
-      grant_target_type: ["global", "jurisdiction"],
+      grant_target_type: ["global", "jurisdiction", "official", "institution"],
       initiative_authorship: ["individual", "community"],
       initiative_resolution: ["sponsored", "declined", "withdrawn", "expired"],
       initiative_scope: ["federal", "state", "local"],
@@ -6096,4 +6108,3 @@ export const Constants = {
     },
   },
 } as const
-
