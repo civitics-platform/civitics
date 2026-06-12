@@ -24,6 +24,11 @@
 -- Idempotent: WHERE clauses no-op if already correct, so re-applying is
 -- safe. Portable across envs: canonical UUIDs are resolved from the live
 -- DB rather than hardcoded.
+--
+-- FIX-516 (2026-06-11, authorized edit): the sanity-check DO is guarded with a
+-- seed-presence check. The plain UPDATEs need no guard — with no federal
+-- jurisdiction row their WHERE clauses resolve against NULL and match 0 rows.
+-- Recorded as applied on both envs — replay-only effect.
 -- =============================================================================
 
 BEGIN;
@@ -75,6 +80,9 @@ DECLARE
   remaining_plaskett INT;
   federal_id UUID;
 BEGIN
+  -- FIX-516 replay-from-zero guard — seed-presence check; body unchanged.
+  IF EXISTS (SELECT 1 FROM public.jurisdictions WHERE fips_code = '00' AND type = 'country') THEN
+
   SELECT id INTO federal_id FROM public.jurisdictions
   WHERE fips_code = '00' AND type = 'country' LIMIT 1;
 
@@ -92,6 +100,10 @@ BEGIN
   END IF;
   IF remaining_plaskett > 0 THEN
     RAISE EXCEPTION 'FIX-385 backfill incomplete: P000610 (Plaskett) remains on federalId';
+  END IF;
+
+  ELSE
+    RAISE NOTICE '[FIX-516] 20260525223048 sanity check skipped: seed absent (federal jurisdiction)';
   END IF;
 END $$;
 

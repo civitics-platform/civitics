@@ -38,6 +38,14 @@
 -- IS NOT DISTINCT FROM needed). Cross-ref [[FIX-248]] (original RPC),
 -- [[FIX-444]] (direct-pg raised-timeout precedent), [[FIX-462]] (sibling
 -- timeout-sink fix that surfaced this).
+--
+-- FIX-516 (2026-06-11): enumerated in the FIX-516 seed-dependent set but
+-- deliberately NOT guarded. This file is a pure CREATE OR REPLACE FUNCTION —
+-- plpgsql bodies are not resolved against data at definition time, so it
+-- cannot fail on an empty DB. A seed guard here would be actively harmful: a
+-- from-zero replay would skip the upgrade and leave promote_candidate_to_elected
+-- at the FIX-248 definition (from 20260525051720 Block C), reintroducing the
+-- entity_tags collision bug this migration fixes. Replays must always run it.
 
 BEGIN;
 

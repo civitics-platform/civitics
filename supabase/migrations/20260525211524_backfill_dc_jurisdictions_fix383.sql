@@ -13,6 +13,11 @@
 --
 -- Both target groups are precisely identified — no ambiguity, no joins
 -- against external data. Idempotent: WHERE clauses no-op if already correct.
+--
+-- FIX-516 (2026-06-11, authorized edit): the sanity-check DO is guarded with a
+-- seed-presence check (the env-specific jurisdiction UUIDs this file targets).
+-- The plain UPDATEs need no guard — on a from-zero replay neither UUID exists,
+-- so both match 0 rows. Recorded as applied on both envs — replay-only effect.
 -- =============================================================================
 
 BEGIN;
@@ -36,12 +41,21 @@ DO $$
 DECLARE
   remaining INT;
 BEGIN
+  -- FIX-516 replay-from-zero guard — seed-presence check; body unchanged.
+  IF EXISTS (SELECT 1 FROM public.jurisdictions
+              WHERE id IN ('4d2aac54-6d83-4736-b446-2970e98439f5',
+                           'eb075dd5-038f-4b21-82f7-30f5c9e1d49a')) THEN
+
   SELECT COUNT(*) INTO remaining FROM public.officials
   WHERE jurisdiction_id = 'eb075dd5-038f-4b21-82f7-30f5c9e1d49a'
     AND metadata->>'state' = 'DC'
     AND source_ids ? 'fec_candidate_id';
   IF remaining > 0 THEN
     RAISE EXCEPTION 'FIX-389 backfill incomplete: % rows remain on federalId', remaining;
+  END IF;
+
+  ELSE
+    RAISE NOTICE '[FIX-516] 20260525211524 sanity check skipped: seed absent (prod-era jurisdiction UUIDs not present)';
   END IF;
 END $$;
 

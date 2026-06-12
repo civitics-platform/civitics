@@ -7,6 +7,11 @@
 --
 -- One-shot UPDATE only fires if she's currently at the federal umbrella.
 -- Idempotent on re-run; safe locally where she's already correct.
+--
+-- FIX-516 (2026-06-11, authorized edit): guarded with a seed-presence check so
+-- a from-zero replay skips with a NOTICE instead of the '[FIX-377] DC district
+-- jurisdiction not found' EXCEPTION. Recorded as applied on both envs —
+-- replay-only effect.
 
 DO $$
 DECLARE
@@ -14,6 +19,9 @@ DECLARE
   v_dc_id      uuid;
   v_updated    int;
 BEGIN
+  -- FIX-516 replay-from-zero guard — seed-presence check; body unchanged.
+  IF EXISTS (SELECT 1 FROM jurisdictions WHERE fips_code = '11' AND type = 'district') THEN
+
   SELECT id INTO v_federal_id FROM jurisdictions WHERE fips_code='00' AND type='country';
   SELECT id INTO v_dc_id      FROM jurisdictions WHERE fips_code='11' AND type='district';
 
@@ -29,4 +37,8 @@ BEGIN
   GET DIAGNOSTICS v_updated = ROW_COUNT;
 
   RAISE NOTICE '[FIX-377] Norton re-routed: % row(s)', v_updated;
+
+  ELSE
+    RAISE NOTICE '[FIX-516] 20260525053643 skipped: seed absent (DC district jurisdiction, fips=11)';
+  END IF;
 END $$;

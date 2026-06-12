@@ -34,6 +34,11 @@
 -- (supabase/migrations/20260525051720_executive_seed_and_delegate_jurisdictions.sql)
 -- extended with the FIX-381 entity_tags / enrichment_queue / ai_summary_cache
 -- additions (see packages/db/CLAUDE.md "Cross-source merge surface").
+--
+-- FIX-516 (2026-06-11, authorized edit): guarded with a seed-presence check so
+-- a from-zero replay (no pipeline-seeded officials) skips the whole merge —
+-- including the entity_connections TRUNCATE and ANALYZE passes — with a
+-- NOTICE. Recorded as applied on both envs — replay-only effect.
 
 SET statement_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
@@ -51,6 +56,9 @@ DECLARE
   step_rows           bigint;
   total_fks_moved     bigint := 0;
 BEGIN
+  -- FIX-516 replay-from-zero guard — seed-presence check; body unchanged.
+  IF EXISTS (SELECT 1 FROM public.officials WHERE is_active = true) THEN
+
   RAISE NOTICE '[FIX-375] Officials casing-dupe merge start: %', t0;
 
   -- ── 1. Raw clusters ────────────────────────────────────────────────────
@@ -461,4 +469,8 @@ BEGIN
   RAISE NOTICE '[FIX-375] DONE. Wall time: % s. Qualifying clusters: %. Losers deleted: %. Total FKs moved: %.',
                EXTRACT(EPOCH FROM clock_timestamp() - t0)::numeric(10,2),
                qualifying_clusters, losers_count, total_fks_moved;
+
+  ELSE
+    RAISE NOTICE '[FIX-516] 20260525234504 skipped: seed absent (no active officials — nothing to merge on a from-zero replay)';
+  END IF;
 END $$;

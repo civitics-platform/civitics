@@ -34,6 +34,10 @@
 --                   WHERE fe2.canonical_name = fe.canonical_name
 --                     AND fe2.entity_type <> 'individual');
 -- Should drop to 0 (modulo any isLikelyOrgName misses we didn't qualify).
+--
+-- FIX-516 (2026-06-11, authorized edit): guarded with a seed-presence check so
+-- a from-zero replay (no pipeline-seeded financial_entities) skips the whole
+-- merge with a NOTICE. Recorded as applied on both envs — replay-only effect.
 
 SET statement_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
@@ -47,6 +51,9 @@ DECLARE
   step_rows           bigint;
   total_fks_moved     bigint := 0;
 BEGIN
+  -- FIX-516 replay-from-zero guard — seed-presence check; body unchanged.
+  IF EXISTS (SELECT 1 FROM public.financial_entities) THEN
+
   RAISE NOTICE '[FIX-379] Org-misclassified indiv merge start: %', t0;
 
   -- ── 1. Build candidate clusters (canonicals with both indiv + non-indiv) ─
@@ -384,4 +391,8 @@ BEGIN
   RAISE NOTICE '[FIX-379] DONE. Wall time: % s. Qualifying canonicals: %. Losers deleted: %. Total FKs moved: %. FR dedup-deletes (collisions): %.',
                EXTRACT(EPOCH FROM clock_timestamp() - t0)::numeric(10,2),
                qualifying_tuples, losers_count, total_fks_moved, fr_dedup_deletes;
+
+  ELSE
+    RAISE NOTICE '[FIX-516] 20260525235544 skipped: seed absent (no financial_entities — nothing to merge on a from-zero replay)';
+  END IF;
 END $$;

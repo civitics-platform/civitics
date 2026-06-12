@@ -18,6 +18,12 @@
 -- One-shot inline DML; no functions, no triggers. statement_timeout is left
 -- at the session default (5min for the migrations role on Pro) — both blocks
 -- touch <10 rows.
+--
+-- FIX-516 (2026-06-11, authorized edit): Blocks A and B are guarded with
+-- seed-presence checks so a from-zero replay skips them with a NOTICE instead
+-- of RAISE EXCEPTION on the missing pipeline seeds. Recorded as applied on
+-- both envs' schema_migrations, so the guards are replay-only. Block C
+-- (CREATE FUNCTION) is deliberately unguarded — replays need the function.
 
 BEGIN;
 
@@ -32,6 +38,12 @@ DECLARE
   v_potus_id      uuid;
   v_vpotus_id     uuid;
 BEGIN
+  -- FIX-516 replay-from-zero guard — seed-presence check; body unchanged.
+  IF EXISTS (SELECT 1 FROM jurisdictions WHERE fips_code = '00' AND type = 'country')
+     AND EXISTS (SELECT 1 FROM governing_bodies
+                  WHERE name = 'Office of the President of the United States'
+                    AND type = 'executive') THEN
+
   SELECT id INTO v_federal_id
     FROM jurisdictions
    WHERE fips_code = '00' AND type = 'country';
@@ -128,6 +140,10 @@ BEGIN
      WHERE id = v_vpotus_id;
     RAISE NOTICE '[FIX-321] updated existing VPOTUS row (vpotus_current)';
   END IF;
+
+  ELSE
+    RAISE NOTICE '[FIX-516] 20260525051720 Block A skipped: seed absent (federal jurisdiction / presidency governing body) — run seeders, then the executive pipeline seeds POTUS/VPOTUS';
+  END IF;
 END $$;
 
 -- ── Block B: territorial jurisdictions + delegate re-routing ───────────────
@@ -147,6 +163,9 @@ DECLARE
   v_vi_id       uuid;
   v_updated     int;
 BEGIN
+  -- FIX-516 replay-from-zero guard — seed-presence check; body unchanged.
+  IF EXISTS (SELECT 1 FROM jurisdictions WHERE fips_code = '00' AND type = 'country') THEN
+
   SELECT id INTO v_federal_id
     FROM jurisdictions
    WHERE fips_code = '00' AND type = 'country';
@@ -226,6 +245,10 @@ BEGIN
   IF FOUND THEN v_updated := v_updated + 1; END IF;
 
   RAISE NOTICE '[FIX-321] re-routed % of 5 territorial delegate(s)', v_updated;
+
+  ELSE
+    RAISE NOTICE '[FIX-516] 20260525051720 Block B skipped: seed absent (federal jurisdiction) — territorial jurisdictions are seeded by seedJurisdictions on a fresh stack';
+  END IF;
 END $$;
 
 -- ── Block C: promote_candidate_to_elected() RPC (FIX-248) ──────────────────
