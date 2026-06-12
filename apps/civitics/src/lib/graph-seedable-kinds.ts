@@ -41,14 +41,15 @@ export function isGraphSeedableKind(kind: string): kind is GraphSeedableKind {
  * Excluded on purpose:
  *  - `city` — Legistar parks hundreds of cross-municipality officials on shared
  *    gbs (FIX-471, ingest-side, open), so a city gb's roster is polluted.
- *  - `federal_district` — DC's council is mis-modeled as a two-chamber pair
- *    (FIX-489, open).
- * `seat_count` cannot serve as the gate (NULL on all 101 state-chamber rows), so
- * this jurisdiction-type allowlist IS the gate; the seat canary is advisory only.
+ * `federal_district` (DC) was excluded while its council was mis-modeled as a
+ * two-chamber pair; included since the FIX-489/FIX-548 unicameral conversion.
+ * The seat canary is advisory only (the FIX-496 backfill filled state-chamber
+ * seat_count, but the allowlist remains the gate).
  */
 export const GB_EXPANDABLE_JURISDICTION_TYPES = [
   "country",
   "state",
+  "federal_district",
   "unincorporated_territory",
 ] as const;
 

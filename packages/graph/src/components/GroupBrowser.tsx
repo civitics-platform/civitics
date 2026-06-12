@@ -132,6 +132,44 @@ function buildTagGroup(t: TagGroupItem): FocusGroup {
   };
 }
 
+// ── State-legislature gbs (FIX-493) ──────────────────────────────────────────
+
+interface GbListItem {
+  slug: string;
+  name: string;
+  shortName: string | null;
+  type: 'legislature_upper' | 'legislature_lower' | 'legislature_unicameral';
+  stateAbbr: string | null;
+  stateName: string;
+}
+
+// Same id shape as the /search institution handoff (GraphPage), so a chamber
+// added from either entry point shows as active in both.
+function gbGroupId(slug: string): string {
+  return `group-gb-${slug}`;
+}
+
+// Colors mirror the group route's server-resolved GB_TYPE_VISUAL — the route
+// overrides these on fetch (FIX-490), this is just the pre-fetch placeholder.
+const GB_TYPE_COLOR: Record<GbListItem['type'], string> = {
+  legislature_upper: '#6366f1',
+  legislature_lower: '#8b5cf6',
+  legislature_unicameral: '#6366f1',
+};
+
+function buildGbGroup(g: GbListItem): FocusGroup {
+  return {
+    id: gbGroupId(g.slug),
+    name: g.name,
+    type: 'group',
+    icon: '🏛',
+    color: GB_TYPE_COLOR[g.type],
+    filter: { entity_type: 'official', governingBody: g.slug },
+    isPremade: false,
+    description: g.stateName,
+  };
+}
+
 // Deterministic id so a state delegation already in focus shows as active.
 function stateGroupId(abbr: string): string {
   return `group-state-${abbr}`;
@@ -189,6 +227,10 @@ export function GroupBrowser({
 
   function handleCommitteeSelect(c: CommitteeItem) {
     onAddGroup(buildCommitteeGroup(c));
+  }
+
+  function handleGbSelect(g: GbListItem) {
+    onAddGroup(buildGbGroup(g));
   }
 
   function renderNode(node: GroupTreeNode, depth: number, key: string): React.ReactNode {
@@ -264,6 +306,17 @@ export function GroupBrowser({
           depth={depth}
           activeIds={activeGroupIds}
           onSelect={handleCommitteeSelect}
+        />
+      );
+    }
+
+    if (node.kind === 'gb-list') {
+      return (
+        <GbList
+          key={key}
+          depth={depth}
+          activeIds={activeGroupIds}
+          onSelect={handleGbSelect}
         />
       );
     }
@@ -491,6 +544,93 @@ function CommitteeList({
                 </div>
               );
             })}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// FIX-493 — state-legislature chambers, fetched from /api/graph/gb-list
+// (runtime-derived from the slugged legislature_* governing_bodies rows).
+// Each row seeds a gb group through the FIX-490 governingBody route path.
+function GbList({
+  depth,
+  activeIds,
+  onSelect,
+}: {
+  depth: number;
+  activeIds: string[];
+  onSelect: (g: GbListItem) => void;
+}) {
+  const [gbs, setGbs] = useState<GbListItem[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/graph/gb-list')
+      .then(r => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
+      .then(data => { if (!cancelled) setGbs(data.governingBodies ?? []); })
+      .catch(err => { if (!cancelled) setError(err.message); });
+    return () => { cancelled = true; };
+  }, []);
+
+  const padding = `${8 + depth * 12}px`;
+
+  if (error) {
+    return (
+      <div className="py-2 text-[10px] text-red-500" style={{ paddingLeft: padding, paddingRight: '12px' }}>
+        Couldn’t load legislatures: {error}
+      </div>
+    );
+  }
+
+  if (gbs === null) {
+    return (
+      <div className="py-2 text-[10px] text-gray-400" style={{ paddingLeft: padding, paddingRight: '12px' }}>
+        Loading legislatures…
+      </div>
+    );
+  }
+
+  if (gbs.length === 0) {
+    return (
+      <div className="py-2 text-[10px] text-gray-400" style={{ paddingLeft: padding, paddingRight: '12px' }}>
+        No state legislatures ingested yet.
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      {gbs.map(g => {
+        const isActive = activeIds.includes(gbGroupId(g.slug));
+        return (
+          <div
+            key={g.slug}
+            className="flex items-center justify-between py-1.5 hover:bg-gray-50 group/row"
+            style={{ paddingLeft: padding, paddingRight: '12px' }}
+          >
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="text-[10px] font-semibold text-gray-400 shrink-0 w-6 tabular-nums">
+                {g.stateAbbr ?? ''}
+              </span>
+              <span className="text-xs font-medium text-gray-700 truncate" title={g.name}>
+                {g.shortName ?? g.name}
+              </span>
+            </div>
+            <button
+              onClick={() => onSelect(g)}
+              disabled={isActive}
+              title={isActive ? 'Already in focus' : `Add ${g.name} to focus`}
+              className={`shrink-0 ml-2 w-5 h-5 rounded text-xs font-bold transition-colors flex items-center justify-center ${
+                isActive
+                  ? 'bg-indigo-100 text-indigo-400 cursor-default'
+                  : 'bg-gray-100 text-gray-500 hover:bg-indigo-600 hover:text-white group-hover/row:bg-indigo-50 group-hover/row:text-indigo-600'
+              }`}
+            >
+              {isActive ? '✓' : '+'}
+            </button>
           </div>
         );
       })}
@@ -776,6 +916,7 @@ function isLeafRenderable(
   if (node.kind === 'state-list')     return true;
   if (node.kind === 'topic-tag-list') return true;
   if (node.kind === 'committee-list') return true;
+  if (node.kind === 'gb-list')        return true;
   if (node.kind === 'home-location')  return true;
   if (node.kind === 'recent-list')    return true;
   if (node.kind === 'custom-form')    return true;

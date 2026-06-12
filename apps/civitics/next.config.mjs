@@ -49,15 +49,18 @@ const nextConfig = {
       "lucide-react",
       "d3",
     ],
+    // Mapbox + Deck.gl are browser-only; keep them out of the server bundle so
+    // SSR builds don't try to evaluate WebGL/window references. FIX-549: on
+    // Next 14.2 this lives under experimental.serverComponentsExternalPackages
+    // — the top-level serverExternalPackages key is Next 15+ and was silently
+    // unrecognized here. Rename when upgrading to Next 15.
+    serverComponentsExternalPackages: [
+      "mapbox-gl",
+      "@deck.gl/core",
+      "@deck.gl/layers",
+      "@deck.gl/mapbox",
+    ],
   },
-  // Mapbox + Deck.gl are browser-only; keep them out of the server bundle so
-  // SSR builds don't try to evaluate WebGL/window references.
-  serverExternalPackages: [
-    "mapbox-gl",
-    "@deck.gl/core",
-    "@deck.gl/layers",
-    "@deck.gl/mapbox",
-  ],
   images: {
     remotePatterns: [
       // Official photos from Congress.gov

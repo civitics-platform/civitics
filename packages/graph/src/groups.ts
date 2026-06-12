@@ -506,6 +506,7 @@ export type GroupTreeNode =
   | { kind: 'state-list' }
   | { kind: 'topic-tag-list' }
   | { kind: 'committee-list' }
+  | { kind: 'gb-list' }
   | { kind: 'home-location' }
   | { kind: 'recent-list' }
   | { kind: 'custom-form' }
@@ -561,6 +562,15 @@ export const GROUP_TREE: GroupTreeNode[] = [
             icon: '🗺',
             defaultExpanded: false,
             children: [{ kind: 'state-list' }],
+          },
+          {
+            // FIX-493 (FIX-468 Wave B) — state-chamber gb groups, derived at
+            // runtime from the slugged legislature_* governing_bodies rows.
+            kind: 'category',
+            label: 'State legislatures',
+            icon: '🏛',
+            defaultExpanded: false,
+            children: [{ kind: 'gb-list' }],
           },
           {
             kind: 'category',

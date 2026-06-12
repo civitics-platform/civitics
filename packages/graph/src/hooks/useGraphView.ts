@@ -133,6 +133,21 @@ export function useGraphView(initialView?: Partial<GraphView>) {
         });
       }),
 
+    // FIX-498 — patch a focused group in place (e.g. the server-resolved gb
+    // name replacing the synthetic "Institution" placeholder once the group
+    // fetch returns). Deliberately NOT markDirty: a server-side resolution is
+    // not a user modification of the preset — same reasoning as setVizType.
+    updateGroup: (id: string, options: Partial<FocusGroup>) =>
+      setView(v => ({
+        ...v,
+        focus: {
+          ...v.focus,
+          entities: v.focus.entities.map(e =>
+            (e.id === id && isFocusGroup(e)) ? { ...e, ...options } : e
+          ),
+        },
+      })),
+
     removeGroup: (groupId: string) =>
       setView(v => markDirty({
         ...v,

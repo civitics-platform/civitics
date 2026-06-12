@@ -31,7 +31,12 @@ export interface GraphMeta {
 export function useGraphData(
   focus: GraphView['focus'],
   connections: GraphView['connections'],
-  forceOptions?: Pick<ForceOptions, 'individualDisplayMode' | 'connectorMinRecipients'>
+  forceOptions?: Pick<ForceOptions, 'individualDisplayMode' | 'connectorMinRecipients'>,
+  // FIX-498 — fired when a group fetch returns a server-resolved name that
+  // differs from the client-side one (gb groups resolve their real name on the
+  // route). The caller decides whether/which groups to patch — e.g. GraphPage
+  // applies it only to synthetic `group-gb-*` handoff placeholders.
+  onGroupResolved?: (groupId: string, resolvedName: string) => void
 ) {
   const [nodes, setNodes] = useState<GraphNode[]>([]);
   const [edges, setEdges] = useState<GraphEdge[]>([]);
@@ -242,6 +247,13 @@ export function useGraphData(
           fetchedIds.current.add(group.id);
         } else {
           console.warn(`[useGraphData] group ${group.id} donor fetch failed — left un-cached for retry`);
+        }
+
+        // FIX-498 — surface the server-resolved group name so the FOCUS panel
+        // can replace a client-side placeholder once the real name is known.
+        const resolvedName: unknown = data?.group?.name;
+        if (typeof resolvedName === 'string' && resolvedName && resolvedName !== group.name) {
+          onGroupResolved?.(group.id, resolvedName);
         }
 
         // Track which nodes belong to this group (all nodes except the group node itself)

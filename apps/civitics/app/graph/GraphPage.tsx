@@ -288,10 +288,22 @@ export function GraphPage({ initialCode, aiEnabled = true }: GraphPageProps = {}
   }, [initialCode]);
 
   // ── Graph data (nodes + edges for all focused entities) ───────────────────
+  // FIX-498 — gb groups seed with a placeholder name ("Institution" from the
+  // /search handoff above; gb-list entries carry their real name already). When
+  // the group route returns the server-resolved gb name, patch the focus entry
+  // so the FOCUS/ACTIVE panel shows it. Scoped to `group-gb-*` ids: party-
+  // filtered presets like "Senate Democrats" also resolve to the bare gb name
+  // server-side, and must NOT have their preset names overwritten.
+  const handleGroupResolved = (groupId: string, resolvedName: string) => {
+    if (!groupId.startsWith("group-gb-")) return;
+    graphHooks.updateGroup(groupId, { name: resolvedName });
+  };
+
   const { nodes, allEdges, loadingEntityId, graphMeta, retryGroup } = useGraphData(
     view.focus,
     view.connections,
-    view.style.vizOptions?.force
+    view.style.vizOptions?.force,
+    handleGroupResolved
   );
 
   // ── Donor list panel state (bracket node click-through) ───────────────────
