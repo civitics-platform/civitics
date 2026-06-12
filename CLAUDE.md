@@ -480,6 +480,19 @@ Two-tier environment: local Docker Supabase for development, Supabase **Pro** fo
 - PITR retention is 7 days on Pro — mistakes are recoverable but costly. Still verify twice.
 - App is live at `https://civitics-civitics.vercel.app` — any schema change affects real users.
 
+**Supabase CLI version is pinned (FIX-530):** the active CLI is the standalone
+`supabase.exe` at `C:\Users\Craig\bin` (manual install — it never
+self-updates), and the project's expected version is committed at
+`supabase/.cli-version`. `pnpm session:check` compares `supabase --version`
+against that sentinel and WARNS on mismatch (never blocks). The root
+`package.json` devDependency is pinned to the same version (was `"latest"`).
+Why: CLI 2.78.1 once silently bundled a postgres:17 image while
+`supabase/config.toml` still pinned `major_version = 15`, crash-looping local
+on a PG15-volume/PG17-image mismatch (multi-hour prod-clone recovery,
+2026-06-08). When intentionally upgrading the CLI: check the bundled postgres
+image major against `config.toml` `major_version` FIRST, then update the exe,
+the devDependency, and `.cli-version` together.
+
 When a request-path query becomes slow as data grows, the durable fix is
 materialization. See `packages/db/CLAUDE.md` — *Materialization pattern for
 slow request-path aggregations* — for shape options (single-row MV,

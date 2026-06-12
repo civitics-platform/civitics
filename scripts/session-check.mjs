@@ -19,6 +19,7 @@
 // same in PowerShell, Git Bash, and CI.
 
 import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 
 const attention = [];
 
@@ -118,14 +119,47 @@ if (ghVersion.launchFailed || !ghVersion.ok) {
   }
 }
 
-// ── 5. fixes:check ───────────────────────────────────────────────────────
+// ── 5. supabase CLI version vs pinned sentinel (FIX-530) ─────────────────
+// The active CLI is a standalone exe (manual install — never self-updates);
+// the sentinel at supabase/.cli-version is the project's expected version. A
+// silent CLI bump once shipped a bundled PG17 image against a PG15 volume and
+// crash-looped local (multi-hour recovery, 2026-06-08). WARN only, never block.
+section("Supabase CLI version (FIX-530 sentinel)");
+let pinnedCli = null;
+try {
+  pinnedCli = readFileSync(new URL("../supabase/.cli-version", import.meta.url), "utf8").trim();
+} catch {
+  /* sentinel absent — skip below */
+}
+if (!pinnedCli) {
+  console.log("(supabase/.cli-version sentinel missing — skipping)");
+} else {
+  const ver = run("supabase", ["--version"]);
+  // First semver-looking line; the CLI appends an update-nag line on stderr.
+  const installedCli = (ver.out + "\n" + ver.err)
+    .split("\n")
+    .map((l) => l.trim())
+    .find((l) => /^\d+\.\d+\.\d+$/.test(l));
+  if (ver.launchFailed || !installedCli) {
+    console.log("(supabase CLI not found on PATH — skipping)");
+  } else if (installedCli === pinnedCli) {
+    console.log(`✓ supabase CLI ${installedCli} matches pinned ${pinnedCli}`);
+  } else {
+    console.log(`⚠ supabase CLI ${installedCli} ≠ pinned ${pinnedCli} (supabase/.cli-version)`);
+    console.log("  → intentional upgrade? Check bundled PG image major vs config.toml");
+    console.log("    major_version FIRST, then update the sentinel + root devDependency.");
+    attention.push(`supabase CLI ${installedCli} ≠ pinned ${pinnedCli} — see supabase/.cli-version`);
+  }
+}
+
+// ── 6. fixes:check ───────────────────────────────────────────────────────
 section("fixes:check");
 const fc = run("pnpm", ["fixes:check"]);
 if (fc.out) console.log(fc.out);
 if (fc.err) console.log(fc.err);
 if (!fc.ok) attention.push("pnpm fixes:check FAILED — FIXES.md/done.log out of sync with trailers");
 
-// ── 6. summary ───────────────────────────────────────────────────────────
+// ── 7. summary ───────────────────────────────────────────────────────────
 section("Summary");
 if (attention.length === 0) {
   console.log("✓ OK — tree is tidy. No stranded work detected.");

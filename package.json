@@ -29,7 +29,7 @@
     "db:push:prod": "node scripts/db-push-prod.mjs"
   },
   "devDependencies": {
-    "supabase": "latest",
+    "supabase": "2.78.1",
     "turbo": "^2.0.0",
     "typescript": "^5.4.0"
   },
