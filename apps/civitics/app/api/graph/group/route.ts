@@ -235,7 +235,21 @@ export async function GET(req: NextRequest) {
     // to its member cohort: a generalization of the committeeId path (FIX-139).
     // `governingBody` is slug-canonical with UUID fallback; the legacy
     // `committeeId` param is an internal alias for the same code path.
-    const gbKey = governingBody ?? committeeId;
+    let gbKey = governingBody ?? committeeId;
+
+    // FIX-495 — `chamber=` is a legacy alias for the federal gb cohort (slugs
+    // 'senate'/'house'). The role_title predicate it used counted ANY active
+    // official whose source title is literally 'Senator'/'Representative' —
+    // including state legislators whose openstates role.title happens to match
+    // (the prod/local 437th House member was an Arizona STATE representative,
+    // David Marshall, role.title="Representative" verbatim from openstates) —
+    // so the two cohort definitions could never converge. Saved sessions and
+    // old share URLs carrying chamber= now resolve to the same gb+tier cohort
+    // as the presets. `state`/`party` still compose (handled in the gb member
+    // query below), preserving chamber+state group semantics ("TX senators").
+    if (!gbKey && (chamber === "senate" || chamber === "house")) {
+      gbKey = chamber;
+    }
 
     if (gbKey) {
       const isUuid = UUID_RE.test(gbKey);
@@ -300,6 +314,14 @@ export async function GET(req: NextRequest) {
         if (party)
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           memberQuery = memberQuery.eq("party", party as any);
+        if (state)
+          // FIX-495 — `state` composes with the gb cohort so legacy
+          // chamber+state groups ("TX senators") keep their semantics through
+          // the alias. Same metadata.state OR state_abbr match as the legacy
+          // path (FIX-175/FIX-124).
+          memberQuery = memberQuery.or(
+            `metadata->>state.eq.${state},metadata->>state_abbr.eq.${state}`,
+          );
 
         const { count, data: memberData } = await withDbTimeout<{
           count: number | null;
@@ -332,19 +354,22 @@ export async function GET(req: NextRequest) {
       groupIconOut  = visual.icon;
       groupColorOut = visual.color;
 
-      // FIX-500 — this cohort is materialized; capture the gb for the rollup read.
-      rollupGbId   = gb.id;
+      // FIX-500 — this cohort is materialized; capture the gb for the rollup
+      // read. FIX-495 — EXCEPT when a state filter narrows the cohort: the
+      // rollup rows are keyed (gb_id, party_key) over the FULL membership, so
+      // a state-narrowed group must use the live aggregation path instead of
+      // reading the whole chamber's donors.
+      rollupGbId   = state ? null : gb.id;
       rollupGbType = gb.type;
     } else {
+      // Legacy filter path: state- and/or party-only groups (no gb). The old
+      // role_title chamber predicate that lived here was retired by FIX-495 —
+      // chamber= now aliases to the federal gb branch above, so it never
+      // reaches this query.
       let memberQuery = supabase
         .from("officials")
         .select("id", { count: "exact" })
         .eq("is_active", true);
-
-      if (chamber === "senate")
-        memberQuery = memberQuery.eq("role_title", "Senator");
-      else if (chamber === "house")
-        memberQuery = memberQuery.eq("role_title", "Representative");
 
       if (party)
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
