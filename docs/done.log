@@ -704,3 +704,8 @@
 2026-06-11 | FIX-498 | 0a903aad | local+prod | feat(graph): state-legislatures gb-list browser node + FOCUS panel resolved name
 2026-06-11 | FIX-548 | 2eee4284 | local+prod | fix(data): unicameral legislature modeling (DC/NE/GU/VI) — convert-in-place merge + seeder chamber shapes
 2026-06-11 | FIX-549 | 0a903aad | local-only | feat(graph): state-legislatures gb-list browser node + FOCUS panel resolved name
+2026-06-11 | FIX-511 | 6ce723c3 | local+prod | perf(data): pipeline buffer-churn — EXISTS probes, GROUP BY rollups, estimated counts
+2026-06-11 | FIX-516 | 541c4b65 | local-only | chore(db): replay-from-zero guards on 7 seed-dependent migrations (authorized)
+2026-06-11 | FIX-517 | 38031ca8 | local+prod | feat(seo): paginate sitemap segments past the PostgREST cap
+2026-06-11 | FIX-530 | accbb65b | local-only | chore(tooling): pin Supabase CLI + version sentinel in session:check
+2026-06-11 | FIX-550 | 9d0a944a | local+prod | fix(graph): resolve official state via jurisdictions JOIN in group state filter
