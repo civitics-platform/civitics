@@ -697,3 +697,10 @@
 2026-06-10 | FIX-541 | 2d068cba | local-only | feat(comments): optimistic statement append + separate official-answer rate limit
 2026-06-10 | FIX-542 | 2d068cba | local+prod | feat(comments): optimistic statement append + separate official-answer rate limit
 2026-06-10 | FIX-543 | 9e77bf4f | local-only | test(comments): submit_comment kind-vocab + rate-constant drift guard
+2026-06-11 | FIX-489 | 2eee4284 | local+prod | fix(data): unicameral legislature modeling (DC/NE/GU/VI) — convert-in-place merge + seeder chamber shapes
+2026-06-11 | FIX-493 | 0a903aad | local+prod | feat(graph): state-legislatures gb-list browser node + FOCUS panel resolved name
+2026-06-11 | FIX-495 | e2615e4f | local+prod | feat(graph): chamber→gb alias in group route — one cohort definition
+2026-06-11 | FIX-496 | 550583a1 | local+prod | feat(data): state-chamber seat_count backfill from static constants
+2026-06-11 | FIX-498 | 0a903aad | local+prod | feat(graph): state-legislatures gb-list browser node + FOCUS panel resolved name
+2026-06-11 | FIX-548 | 2eee4284 | local+prod | fix(data): unicameral legislature modeling (DC/NE/GU/VI) — convert-in-place merge + seeder chamber shapes
+2026-06-11 | FIX-549 | 0a903aad | local-only | feat(graph): state-legislatures gb-list browser node + FOCUS panel resolved name
