@@ -51,6 +51,12 @@ export interface GovBodyKey {
   stateAbbr: string;
   stateName: string;
   type: GovBodyType;
+  // FIX-548 — proper-name overrides for the insert path. Unicameral chambers
+  // (DC/NE/GU/VI) carry their real names from LEGISLATURE_SHAPES so a fresh
+  // seed creates "Council of the District of Columbia", never "District of
+  // Columbia State Legislature". Absent → the type-derived default below.
+  name?: string;
+  shortName?: string;
 }
 
 /**
@@ -95,8 +101,8 @@ export async function resolveGoverningBodies(
     const row: GovBodyInsert = {
       jurisdiction_id: key.jurisdictionId,
       type: key.type,
-      name: `${key.stateName} State ${chamberLabel}`,
-      short_name: `${key.stateAbbr} ${chamberLabel}`,
+      name: key.name ?? `${key.stateName} State ${chamberLabel}`,
+      short_name: key.shortName ?? `${key.stateAbbr} ${chamberLabel}`,
       is_active: true,
     };
     const { data, error } = await db

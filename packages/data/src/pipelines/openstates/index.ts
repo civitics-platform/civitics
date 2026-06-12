@@ -20,6 +20,7 @@ import type { Database } from "@civitics/db";
 import { sleep, fetchJson, QuotaExhaustedError } from "../utils";
 import { startSync, completeSync, failSync, type PipelineResult } from "../sync-log";
 import { STATE_DATA } from "../../jurisdictions/us-states";
+import { legislatureShapeFor } from "../../jurisdictions/legislature-shapes";
 import {
   resolveGoverningBodies,
   upsertLegislatorsBatch,
@@ -95,6 +96,32 @@ interface OSBillList {
 
 const OS_BASE = "https://v3.openstates.org";
 
+// FIX-548 — the openstates people/bills org_classification values per
+// legislature shape. Unicameral chambers (DC/NE/GU/VI) are exposed ONLY under
+// "legislature" — querying upper/lower returns zero items (live-probed
+// 2026-06-11: NE upper/lower=0, legislature=49). mapChamberType maps
+// "legislature" → legislature_unicameral, so the gb resolution converges on
+// the single converted gb instead of re-creating a State Senate/House pair.
+type OrgClass = "upper" | "lower" | "legislature";
+function orgClassesFor(abbr: string): readonly OrgClass[] {
+  return legislatureShapeFor(abbr).shape === "unicameral"
+    ? (["legislature"] as const)
+    : (["upper", "lower"] as const);
+}
+
+// FIX-548 — OCD jurisdiction ids are typed by division kind, not uniformly
+// "state:". DC is district:dc and the five territories are territory:xx; the
+// previous hardcoded state: prefix made every DC/territory people AND bills
+// fetch return zero items (live-probed 2026-06-11: state:pr=0,
+// territory:pr=28), so their rosters silently stopped updating.
+function ocdJurisdictionId(abbr: string, type: string): string {
+  const kind =
+    type === "federal_district" ? "district" :
+    type === "unincorporated_territory" ? "territory" :
+    "state";
+  return `ocd-jurisdiction/country:us/${kind}:${abbr.toLowerCase()}/government`;
+}
+
 // People endpoint: no documented rate per-minute limit but 429s observed at 100ms.
 const PEOPLE_SLEEP_MS = 1000;
 
@@ -110,7 +137,7 @@ const MAX_BILL_PAGES = 3;
 async function fetchLegislators(
   apiKey: string,
   jurisdictionId: string,
-  orgClass: "upper" | "lower",
+  orgClass: OrgClass,
   page: number,
 ): Promise<OSPersonList> {
   await sleep(PEOPLE_SLEEP_MS);
@@ -231,23 +258,32 @@ export async function runOpenStatesPipeline(
 
   try {
     // ── Phase 0: pre-resolve governing_bodies for every (state × chamber) ───
+    // FIX-548 — chamber shape comes from LEGISLATURE_SHAPES: unicameral
+    // jurisdictions (DC/NE/GU/VI) resolve ONE legislature_unicameral gb (with
+    // its proper name as the insert override); everything else keeps the
+    // upper+lower pair. Phase 0 previously requested upper+lower for every
+    // STATE_DATA entry unconditionally, and the writer inserts misses — that
+    // was the re-split engine that kept re-creating "DC State Senate/House".
     const govBodyKeys: GovBodyKey[] = [];
     for (const state of STATE_DATA) {
       const jurisdictionId = stateIds.get(state.name);
       if (!jurisdictionId) continue;
-      for (const orgClass of ["upper", "lower"] as const) {
+      const shape = legislatureShapeFor(state.abbr);
+      for (const orgClass of orgClassesFor(state.abbr)) {
         govBodyKeys.push({
           jurisdictionId,
           stateAbbr: state.abbr,
           stateName: state.name,
           type: mapChamberType(orgClass),
+          name: orgClass === "legislature" ? shape.unicameralName : undefined,
+          shortName: orgClass === "legislature" ? shape.unicameralShortName : undefined,
         });
       }
     }
     const govBodyMap = await resolveGoverningBodies(db, govBodyKeys);
     console.log(`  Resolved ${govBodyMap.size} state legislative bodies`);
 
-    const govBodyFor = (jurisdictionId: string, orgClass: "upper" | "lower") =>
+    const govBodyFor = (jurisdictionId: string, orgClass: OrgClass) =>
       govBodyMap.get(`${jurisdictionId}|${mapChamberType(orgClass)}`) ?? null;
 
     // ── Phase A: Legislators (per-state, page-by-page, batch per page) ──────
@@ -259,10 +295,10 @@ export async function runOpenStatesPipeline(
         continue;
       }
 
-      const ocdId = `ocd-jurisdiction/country:us/state:${state.abbr.toLowerCase()}/government`;
+      const ocdId = ocdJurisdictionId(state.abbr, state.type);
       let totalLegislators = 0;
 
-      for (const orgClass of ["upper", "lower"] as const) {
+      for (const orgClass of orgClassesFor(state.abbr)) {
         const govBodyId = govBodyFor(jurisdictionId, orgClass);
         if (!govBodyId) {
           console.warn(`    ${state.abbr}: no governing_body for ${orgClass}, skipping`);
@@ -292,7 +328,11 @@ export async function runOpenStatesPipeline(
             pageInputs.push({
               openstatesId: person.id,
               fullName: person.name,
-              roleTitle: role.title || (orgClass === "upper" ? "State Senator" : "State Representative"),
+              roleTitle:
+                role.title ||
+                (orgClass === "upper" ? "State Senator" :
+                 orgClass === "lower" ? "State Representative" :
+                 "Legislator"),
               governingBodyId: govBodyId,
               jurisdictionId,
               party: mapParty(person.party),

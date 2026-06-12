@@ -25,6 +25,13 @@ interface StateRecord {
   type: "state" | "federal_district" | "unincorporated_territory";
 }
 
+// FIX-548 — each jurisdiction's legislature SHAPE (bicameral vs unicameral),
+// chamber seat counts, and unicameral proper names live in
+// ./legislature-shapes.ts, keyed by the abbr column below. The openstates
+// pipeline's governing-body resolution consumes it so DC/NE/GU/VI get a single
+// legislature_unicameral gb instead of the mis-modeled State Senate/House pair
+// (FIX-489), and the FIX-496 seat backfill reads the same table.
+
 // FIX-385: Congress.gov returns `member.state = "Virgin Islands"` for VI's
 // delegate, which does not match STATE_DATA.name = "U.S. Virgin Islands" —
 // the name-keyed lookup misses and the caller falls back to federalId. Other
