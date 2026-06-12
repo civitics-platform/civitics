@@ -9,6 +9,7 @@
  */
 
 import { createAdminClient } from "@civitics/db";
+import { selectDirect } from "../lib/heavy-rebuild";
 
 async function main(): Promise<void> {
   const db = createAdminClient();
@@ -53,21 +54,21 @@ async function main(): Promise<void> {
   }
 
   console.log("\n=== anchor counts ===");
+  // FIX-511 triage — every number here is a delta-baseline magnitude, not a
+  // boolean probe or a precision anchor:
+  //   - table totals + the single entity_type filter → count:'estimated'
+  //     (exact up to max_rows, planner estimate above — no table scan)
+  //   - genuine per-group breakdowns (officials by tier; FR by
+  //     relationship_type and by source) → one direct-pg GROUP BY scan per
+  //     table instead of one exact PostgREST count per value (source is
+  //     unindexed; common relationship_type values plan seq scans — FIX-345)
   const counts: Record<string, number | string> = {};
   for (const [label, q] of [
-    ["officials_total", () => db.from("officials").select("*", { count: "exact", head: true })],
-    ["officials_tier_candidate", () => db.from("officials").select("*", { count: "exact", head: true }).eq("tier", "candidate")],
-    ["officials_tier_elected", () => db.from("officials").select("*", { count: "exact", head: true }).eq("tier", "elected")],
-    ["financial_entities_total", () => db.from("financial_entities").select("*", { count: "exact", head: true })],
-    ["financial_entities_individuals", () => db.from("financial_entities").select("*", { count: "exact", head: true }).eq("entity_type", "individual")],
-    ["financial_relationships_total", () => db.from("financial_relationships").select("*", { count: "exact", head: true })],
-    ["fr_donation", () => db.from("financial_relationships").select("*", { count: "exact", head: true }).eq("relationship_type", "donation")],
-    ["fr_ie_support", () => db.from("financial_relationships").select("*", { count: "exact", head: true }).eq("relationship_type", "ie_support")],
-    ["fr_ie_oppose", () => db.from("financial_relationships").select("*", { count: "exact", head: true }).eq("relationship_type", "ie_oppose")],
-    ["fr_source_fec_bulk_indiv", () => db.from("financial_relationships").select("*", { count: "exact", head: true }).eq("source", "fec_bulk_indiv")],
-    ["fr_source_fec_bulk_indiv_to_committee", () => db.from("financial_relationships").select("*", { count: "exact", head: true }).eq("source", "fec_bulk_indiv_to_committee")],
-    ["fr_source_fec_bulk_ie", () => db.from("financial_relationships").select("*", { count: "exact", head: true }).eq("source", "fec_bulk_ie")],
-    ["entity_connections_total", () => db.from("entity_connections").select("*", { count: "exact", head: true })],
+    ["officials_total_est", () => db.from("officials").select("*", { count: "estimated", head: true })],
+    ["financial_entities_total_est", () => db.from("financial_entities").select("*", { count: "estimated", head: true })],
+    ["financial_entities_individuals_est", () => db.from("financial_entities").select("*", { count: "estimated", head: true }).eq("entity_type", "individual")],
+    ["financial_relationships_total_est", () => db.from("financial_relationships").select("*", { count: "estimated", head: true })],
+    ["entity_connections_total_est", () => db.from("entity_connections").select("*", { count: "estimated", head: true })],
   ] as const) {
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -79,6 +80,37 @@ async function main(): Promise<void> {
     }
   }
   for (const [k, v] of Object.entries(counts)) console.log(`  ${k.padEnd(40)} ${v}`);
+
+  try {
+    const tierRows = await selectDirect<{ tier: string | null; n: string }>(
+      "SELECT tier, count(*) AS n FROM officials GROUP BY tier ORDER BY 1 NULLS LAST",
+    );
+    for (const r of tierRows) console.log(`  ${("officials_tier_" + (r.tier ?? "null")).padEnd(40)} ${r.n}`);
+
+    // `source` is a metadata JSONB key, NOT a column (the prior labels
+    // fr_source_* were PostgREST 42703 errors, not counts).
+    const frRows = await selectDirect<{
+      source: string | null;
+      relationship_type: string | null;
+      n: string;
+      g_source: number;
+      g_type: number;
+    }>(`
+      SELECT metadata->>'source' AS source, relationship_type, count(*) AS n,
+             grouping(metadata->>'source') AS g_source,
+             grouping(relationship_type)   AS g_type
+        FROM financial_relationships
+       GROUP BY GROUPING SETS ((metadata->>'source'), (relationship_type))
+       ORDER BY 1 NULLS LAST, 2 NULLS LAST`);
+    for (const r of frRows.filter((r) => r.g_type === 0)) {
+      console.log(`  ${("fr_type_" + (r.relationship_type ?? "null")).padEnd(40)} ${r.n}`);
+    }
+    for (const r of frRows.filter((r) => r.g_source === 0)) {
+      console.log(`  ${("fr_source_" + (r.source ?? "null")).padEnd(40)} ${r.n}`);
+    }
+  } catch (e) {
+    console.error("  group-by breakdown failed:", e instanceof Error ? e.message : String(e));
+  }
 
   console.log("\n=== pipeline_state — cron_last_run ===");
   {

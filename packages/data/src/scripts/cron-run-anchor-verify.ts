@@ -7,6 +7,15 @@
  */
 
 import { createAdminClient } from "@civitics/db";
+import { selectDirect } from "../lib/heavy-rebuild";
+
+// FIX-511 count-site triage (per-site rationale in the FIX-511 commit body):
+//   - numbers compared against a magnitude anchor ("~1889", "rows present")
+//     → count: 'estimated' (exact ≤ max_rows, planner estimate above — no scan)
+//   - genuine per-group breakdowns (FR by source / by relationship_type)
+//     → one direct-pg GROUPING SETS scan (selectDirect) instead of N counts
+//   - selective indexed lookups (America-PAC chain) → exact counts stay
+//   - count options never read by the code → dropped
 
 function fmt$(cents: number | string | null | undefined): string {
   const c = typeof cents === "string" ? Number(cents) : (cents ?? 0);
@@ -63,7 +72,7 @@ async function main(): Promise<void> {
     // Donations FROM musk to anything
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data: outs, error: outErr } = await (db as any).from("financial_relationships")
-      .select("relationship_type, to_type, to_id, amount_cents, cycle_year, source", { count: "exact" })
+      .select("relationship_type, to_type, to_id, amount_cents, cycle_year, source")
       .in("from_id", muskIds)
       .order("amount_cents", { ascending: false })
       .limit(20);
@@ -180,11 +189,14 @@ async function main(): Promise<void> {
   });
 
   await section("DONOR — high-volume small-donor THOMPSON (FIX-236 anchor — 1,889 matches)", async () => {
+    // FIX-511: magnitude anchor — estimated count. The ilike on individual
+    // donors can't use the partial trgm index (entity_type <> 'individual'),
+    // so an exact count was a full seq scan of financial_entities.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { count, error } = await (db as any).from("financial_entities")
-      .select("id", { count: "exact", head: true })
+      .select("id", { count: "estimated", head: true })
       .ilike("display_name", "THOMPSON,%");
-    console.log(`  entities with display_name starting THOMPSON,: ${count} (expected ~1889)`);
+    console.log(`  entities with display_name starting THOMPSON, (estimated): ${count} (expected ~1889)`);
     if (error) console.log("  error:", error.message);
 
     // pick one and confirm it resolves
@@ -202,17 +214,18 @@ async function main(): Promise<void> {
 
   await section("DONOR — apostrophe surnames (FIX-244 + FIX-245)", async () => {
     for (const surname of ["O'BRIEN", "O'CONNOR", "D'ANGELO", "D'AMICO"]) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { count } = await (db as any).from("financial_entities")
-        .select("id", { count: "exact", head: true })
-        .ilike("display_name", `${surname},%`);
-      console.log(`  ${surname},*  entity count: ${count}`);
+      // FIX-511: boolean-presence anchor ("apostrophe surnames exist and are
+      // unmangled") — the LIMIT 3 sample IS the existence probe; the prior
+      // exact count was a full ilike scan whose number nobody compared.
+      // (count:'estimated' is not an option here: the hosted PostgREST 500s on
+      // EXPLAIN-based counts when the filter value contains an apostrophe.)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       // reads-ok: anchor-verify report read — an empty result renders visibly as a missing anchor in the cron output
       const { data: sample } = await (db as any).from("financial_entities")
         .select("id, display_name, canonical_name")
         .ilike("display_name", `${surname},%`)
         .limit(3);
+      console.log(`  ${surname},*  present: ${(sample ?? []).length > 0 ? "yes" : "NO — anchor missing"}`);
       for (const e of (sample ?? [])) console.log(`    sample: display_name="${e.display_name}" canonical="${e.canonical_name}"`);
     }
   });
@@ -273,18 +286,21 @@ async function main(): Promise<void> {
     for (const e of (ents ?? [])) console.log(`    [${e.id}] display_name="${e.display_name}" fec_cmte=${e.source_ids?.fec_committee_id ?? "-"}`);
 
     // ie_support / ie_oppose total rows in prod
+    // FIX-511: magnitude display — estimated; the exact per-type numbers come
+    // from the GROUPING SETS breakdown section below in the same run.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { count: ieS } = await (db as any).from("financial_relationships").select("id", { count: "exact", head: true }).eq("relationship_type", "ie_support");
+    const { count: ieS } = await (db as any).from("financial_relationships").select("id", { count: "estimated", head: true }).eq("relationship_type", "ie_support");
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { count: ieO } = await (db as any).from("financial_relationships").select("id", { count: "exact", head: true }).eq("relationship_type", "ie_oppose");
-    console.log(`  global ie_support rows: ${ieS}`);
-    console.log(`  global ie_oppose rows:  ${ieO}`);
+    const { count: ieO } = await (db as any).from("financial_relationships").select("id", { count: "estimated", head: true }).eq("relationship_type", "ie_oppose");
+    console.log(`  global ie_support rows (estimated): ${ieS}`);
+    console.log(`  global ie_oppose rows (estimated):  ${ieO}`);
   });
 
   await section("CONNECTION GRAPH — entity_connections totals + Musk/America-PAC chain", async () => {
+    // FIX-511: magnitude display — estimated instead of an exact full count.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { count: total } = await (db as any).from("entity_connections").select("id", { count: "exact", head: true });
-    console.log(`  entity_connections total rows: ${total}`);
+    const { count: total } = await (db as any).from("entity_connections").select("id", { count: "estimated", head: true });
+    console.log(`  entity_connections total rows (estimated): ${total}`);
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     // reads-ok: anchor-verify report read — an empty result renders visibly as a missing anchor in the cron output
@@ -296,6 +312,9 @@ async function main(): Promise<void> {
 
     const apIds = (ap ?? []).map((e: { id: string }) => e.id);
     if (apIds.length > 0) {
+      // FIX-511 triage: exact counts STAY here — both are selective indexed
+      // lookups on specific to_id/from_id values (cheap), and the precise
+      // numbers are the Musk→America-PAC chain anchor.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { count: muskIn } = await (db as any).from("entity_connections")
         .select("id", { count: "exact", head: true })
@@ -313,32 +332,46 @@ async function main(): Promise<void> {
   });
 
   await section("FR source breakdown (FIX-236 indiv-to-committee, FIX-240 ie_*)", async () => {
-    for (const src of ["fec_bulk", "fec_bulk_indiv", "fec_bulk_indiv_to_committee", "fec_bulk_ie", "usaspending_bulk", "irs990", "irs_990"]) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { count, error } = await (db as any).from("financial_relationships")
-        .select("id", { count: "exact", head: true })
-        .eq("source", src);
-      console.log(`  source=${src.padEnd(35)} count=${count ?? "err:" + (error?.message ?? "")}`);
+    // FIX-511: genuine per-group breakdown — one GROUPING SETS scan via direct
+    // pg replaces 12 sequential PostgREST exact head-counts over the
+    // multi-million-row table (common relationship_type values plan seq scans
+    // — FIX-345). NOTE: `source` is a metadata JSONB key, NOT a column — the
+    // prior `.eq("source", …)` loop silently printed a 42703 error per source,
+    // so this also restores the source axis. grouping() flags disambiguate
+    // "grouped by source, type collapsed" from a genuine NULL source value.
+    const rows = await selectDirect<{
+      source: string | null;
+      relationship_type: string | null;
+      n: string;
+      g_source: number;
+      g_type: number;
+    }>(`
+      SELECT metadata->>'source' AS source, relationship_type, count(*) AS n,
+             grouping(metadata->>'source') AS g_source,
+             grouping(relationship_type)   AS g_type
+        FROM financial_relationships
+       GROUP BY GROUPING SETS ((metadata->>'source'), (relationship_type))
+       ORDER BY 1 NULLS LAST, 2 NULLS LAST`);
+    for (const r of rows.filter((r) => r.g_source === 0)) {
+      console.log(`  source=${(r.source ?? "(null)").padEnd(35)} count=${r.n}`);
     }
-    for (const t of ["donation", "ie_support", "ie_oppose", "contract", "grant"]) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { count, error } = await (db as any).from("financial_relationships")
-        .select("id", { count: "exact", head: true })
-        .eq("relationship_type", t);
-      console.log(`  type=${t.padEnd(15)}  count=${count ?? "err:" + (error?.message ?? "")}`);
+    for (const r of rows.filter((r) => r.g_type === 0)) {
+      console.log(`  type=${(r.relationship_type ?? "(null)").padEnd(15)}  count=${r.n}`);
     }
   });
 
   await section("SEARCH — pg_trgm canonical_name (FIX-238 known-issue checkpoint)", async () => {
     for (const q of ["elon musk", "elon", "musk", "JD Vance", "Schwarzman", "STRYKER"]) {
+      // FIX-511: magnitude display — estimated; the exact match total of an
+      // unanchored ilike over financial_entities was a full scan per query.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data, error, count } = await (db as any).from("financial_entities")
-        .select("id, display_name, canonical_name", { count: "exact" })
+        .select("id, display_name, canonical_name", { count: "estimated" })
         .ilike("canonical_name", `%${q.toLowerCase()}%`)
         .limit(3);
       if (error) console.log(`  q="${q.padEnd(15)}"  error: ${error.message}`);
       else {
-        console.log(`  q="${q.padEnd(15)}" matches=${count} examples:`);
+        console.log(`  q="${q.padEnd(15)}" matches≈${count} examples:`);
         for (const r of (data ?? [])) console.log(`    [${r.id}] display_name="${r.display_name}" canonical="${r.canonical_name}"`);
       }
     }

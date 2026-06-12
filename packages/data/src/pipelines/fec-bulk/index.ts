@@ -1464,19 +1464,24 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
     if (senatorRows && senatorRows.length > 0) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const fedSenators = (senatorRows as any[]).filter((s) => s.source_ids?.congress_gov);
-      // Per-senator head:true count — avoids PostgREST's 1000-row default cap
+      // Per-senator existence probe — avoids PostgREST's 1000-row default cap
       // truncating a naive .in() + .select("to_id") query when senators with
       // hundreds of donations exhaust the page before less-funded senators are
-      // sampled. ~100 round-trips, ~20s on Pro.
+      // sampled. ~100 round-trips. FIX-511: the metric only needs "has ≥1
+      // donation", so a LIMIT 1 probe replaces the prior exact head-count,
+      // which walked every (donation → senator) index entry plus heap
+      // visibility checks per senator on the cache-starved Pro instance
+      // (COUNT→EXISTS precedent: FIX-345).
       let withDonations = 0;
       for (const s of fedSenators) {
-        const { count } = await db
+        const { data: probe } = await db
           .from("financial_relationships")
-          .select("*", { count: "exact", head: true })
+          .select("id")
           .eq("relationship_type", "donation")
           .eq("to_type", "official")
-          .eq("to_id", s.id as string);
-        if ((count ?? 0) > 0) withDonations++;
+          .eq("to_id", s.id as string)
+          .limit(1);
+        if ((probe ?? []).length > 0) withDonations++;
       }
       console.log(
         `\n  Senate coverage: ${withDonations}/${fedSenators.length} federal senators have ≥1 donation`,
