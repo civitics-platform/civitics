@@ -714,3 +714,6 @@
 2026-06-11 | FIX-554 | fde05d1e | local-only | feat(design): Public Record × Terminal — tokens, chrome, homepage (phase 1)
 2026-06-12 | FIX-555 | 1c50ea19 | local+prod | feat(design): phase 1.5 polish — search + auth surfaces to Public Record tokens
 2026-06-12 | FIX-556 | 1c50ea19 | local+prod | feat(design): phase 1.5 polish — search + auth surfaces to Public Record tokens
+2026-06-12 | FIX-557 | 8efb497d | local+prod | feat(grants): official self-serve claim flow + admin review queue (v2 spine)
+2026-06-12 | FIX-558 | 8efb497d | local+prod | feat(grants): official self-serve claim flow + admin review queue (v2 spine)
+2026-06-12 | FIX-559 | 8efb497d | local+prod | feat(grants): official self-serve claim flow + admin review queue (v2 spine)
