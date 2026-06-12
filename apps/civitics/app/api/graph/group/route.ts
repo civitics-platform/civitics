@@ -305,23 +305,39 @@ export async function GET(req: NextRequest) {
         memberIds   = [...new Set((memberRows ?? []).map((r) => r.official_id))];
         memberCount = memberIds.length;
       } else {
+        // FIX-550 — `state` resolves through the jurisdictions JOIN
+        // (officials.jurisdiction_id), NOT metadata. Federal officials'
+        // metadata is {} by design (the FIX-318 trap), so the previous
+        // metadata->>state / state_abbr OR-filter silently dropped every
+        // member without a legacy stamp (47/100 senators, 205/436 House —
+        // local, 2026-06-11; Cruz was the tell). All sitting federal and
+        // state legislators carry a state-level jurisdiction_id, and
+        // jurisdictions has both the abbr (short_name='TX') and full name
+        // (name='Texas'), so either param form matches without a us-states
+        // constant. The !inner embed is applied only when filtering so the
+        // unfiltered cohort query keeps its existing plan.
         let memberQuery = currentGoverningBodyMembers(
           supabase
             .from("officials")
-            .select("id", { count: "exact" })
+            // Cast: the union of the two select strings trips the postgrest-js
+            // type parser. Only `id` is read from the rows on either branch.
+            .select((state ? "id, jurisdictions!inner(id)" : "id") as "id", { count: "exact" })
             .eq("governing_body_id", gb.id),
         );
         if (party)
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           memberQuery = memberQuery.eq("party", party as any);
-        if (state)
+        if (state) {
           // FIX-495 — `state` composes with the gb cohort so legacy
           // chamber+state groups ("TX senators") keep their semantics through
-          // the alias. Same metadata.state OR state_abbr match as the legacy
-          // path (FIX-175/FIX-124).
+          // the alias. Values are quoted for PostgREST so full names with
+          // spaces parse; embedded quotes stripped to keep the filter well-formed.
+          const stateSafe = state.replace(/"/g, "");
           memberQuery = memberQuery.or(
-            `metadata->>state.eq.${state},metadata->>state_abbr.eq.${state}`,
+            `short_name.eq."${stateSafe}",name.eq."${stateSafe}"`,
+            { referencedTable: "jurisdictions" },
           );
+        }
 
         const { count, data: memberData } = await withDbTimeout<{
           count: number | null;
