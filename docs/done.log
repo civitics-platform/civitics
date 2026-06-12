@@ -709,3 +709,6 @@
 2026-06-11 | FIX-517 | 38031ca8 | local+prod | feat(seo): paginate sitemap segments past the PostgREST cap
 2026-06-11 | FIX-530 | accbb65b | local-only | chore(tooling): pin Supabase CLI + version sentinel in session:check
 2026-06-11 | FIX-550 | 9d0a944a | local+prod | fix(graph): resolve official state via jurisdictions JOIN in group state filter
+2026-06-11 | FIX-552 | fde05d1e | local-only | feat(design): Public Record × Terminal — tokens, chrome, homepage (phase 1)
+2026-06-11 | FIX-553 | fde05d1e | local-only | feat(design): Public Record × Terminal — tokens, chrome, homepage (phase 1)
+2026-06-11 | FIX-554 | fde05d1e | local-only | feat(design): Public Record × Terminal — tokens, chrome, homepage (phase 1)
