@@ -3,25 +3,72 @@
 @tailwind utilities;
 
 @layer base {
-  /* --font-inter and --font-mono are set on <html> by next/font in
-     app/layout.tsx — don't redeclare them here. */
+  /* --font-inter, --font-mono, and --font-serif are set on <html> by
+     next/font in app/layout.tsx — don't redeclare them here. */
+
+  /* ── "Public Record × Terminal" design tokens (FIX-552) ──────────────
+     Paper mode is the page default: the record & the people. Terminal mode
+     is a component-level dark scope for live instruments — wrap a subtree
+     in data-theme="terminal" and the semantic paper vars re-bind, so the
+     same Tailwind utilities (bg-card, text-ink, border-rule, …) render
+     dark inside it. */
+  :root {
+    --c-paper:    #f7f4ed;
+    --c-paper-2:  #f1ede3;
+    --c-card:     #fffdf8;
+    --c-ink:      #1c1a16;
+    --c-ink-soft: #57534a;
+    --c-rule:     #d8d2c4;
+    --c-accent:   #9d2b2b;
+    --c-blue:     #2b4a8b;
+
+    --c-term-bg:    #0e1117;
+    --c-term-panel: #141925;
+    --c-term-line:  #232b38;
+    --c-term-txt:   #dde3ec;
+    --c-term-dim:   #8b95a7;
+    --c-term-faint: #5b6474;
+    --c-amber:      #f5b942;
+    --c-term-green: #3ddc84;
+    --c-term-red:   #e25555;
+    --c-term-blue:  #5b8def;
+  }
+
+  [data-theme="terminal"] {
+    --c-paper:    var(--c-term-bg);
+    --c-paper-2:  var(--c-term-panel);
+    --c-card:     var(--c-term-panel);
+    --c-ink:      var(--c-term-txt);
+    --c-ink-soft: var(--c-term-dim);
+    --c-rule:     var(--c-term-line);
+    --c-accent:   var(--c-term-red);
+    --c-blue:     var(--c-term-blue);
+  }
 
   html {
     @apply antialiased;
   }
 
   body {
-    @apply bg-white text-gray-900;
+    @apply bg-paper text-ink;
   }
 }
 
 @layer utilities {
   /* Civic app must feel like serious infrastructure, not social media */
   .civic-surface {
-    @apply bg-white border border-gray-200 rounded-lg;
+    @apply bg-card border border-rule rounded-lg;
   }
 
   .civic-surface-elevated {
-    @apply bg-white border border-gray-200 rounded-lg shadow-sm;
+    @apply bg-card border border-rule rounded-lg shadow-sm;
   }
+}
+
+/* Homepage stat ticker — two copies of the track scroll left by 50%, then
+   loop. motion-reduce:animate-none on the track leaves the first copy
+   visible as a static strip. */
+@keyframes ticker-scroll {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
 }

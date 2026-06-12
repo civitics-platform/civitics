@@ -43,7 +43,7 @@ export function AuthButton({ modalTrigger }: AuthButtonProps) {
   // Don't render until client hydration (prevents SSR mismatch)
   if (!mounted) {
     return (
-      <div className="h-8 w-16 animate-pulse rounded-md bg-gray-100" />
+      <div className="h-8 w-16 animate-pulse rounded-md bg-paper-2" />
     );
   }
 
@@ -57,7 +57,7 @@ export function AuthButton({ modalTrigger }: AuthButtonProps) {
           onClick={() => setMenuOpen((o) => !o)}
           aria-expanded={menuOpen}
           aria-haspopup="menu"
-          className="flex h-8 w-8 items-center justify-center rounded-full bg-indigo-100 text-xs font-semibold text-indigo-700 hover:bg-indigo-200 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1"
+          className="flex h-8 w-8 items-center justify-center rounded-full border-[1.5px] border-ink bg-card text-xs font-semibold text-ink hover:bg-paper-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1"
           aria-label="Account menu"
         >
           {initials}
@@ -76,7 +76,7 @@ export function AuthButton({ modalTrigger }: AuthButtonProps) {
       <button
         type="button"
         onClick={() => setModalOpen(true)}
-        className="rounded-md border border-gray-300 bg-white px-4 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1"
+        className="border-[1.5px] border-ink bg-transparent px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.06em] text-ink hover:bg-ink hover:text-paper transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1"
       >
         Sign in
       </button>
