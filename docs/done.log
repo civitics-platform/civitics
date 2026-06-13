@@ -721,3 +721,6 @@
 2026-06-12 | FIX-563 | 3b10a723 | local-only | feat(design): phase 1.6 — officials + proposals to Public Record tokens; alpha-capable tokens; grant UI styled
 2026-06-12 | FIX-564 | 3b10a723 | local-only | feat(design): phase 1.6 — officials + proposals to Public Record tokens; alpha-capable tokens; grant UI styled
 2026-06-12 | FIX-565 | 3b10a723 | local-only | feat(design): phase 1.6 — officials + proposals to Public Record tokens; alpha-capable tokens; grant UI styled
+2026-06-13 | FIX-568 | 1e151438 | local-only | feat(auth): Turnstile front door + auth-send throttles + disposable-email block
+2026-06-13 | FIX-569 | f3cee4f8 | local-only | feat(participation): cap plain position-set + statement-vote, new-account challenge
+2026-06-13 | FIX-570 | 313dad2a | local-only | feat(middleware): durable Upstash edge limiter (fail-open), replacing the in-memory Map
