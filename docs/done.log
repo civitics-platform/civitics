@@ -717,3 +717,4 @@
 2026-06-12 | FIX-557 | 8efb497d | local+prod | feat(grants): official self-serve claim flow + admin review queue (v2 spine)
 2026-06-12 | FIX-558 | 8efb497d | local+prod | feat(grants): official self-serve claim flow + admin review queue (v2 spine)
 2026-06-12 | FIX-559 | 8efb497d | local+prod | feat(grants): official self-serve claim flow + admin review queue (v2 spine)
+2026-06-12 | FIX-562 | 4683f9a4 | local-only | fix(fec-bulk): check error on senate-coverage donation probe (check:reads)
