@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { createBrowserClient } from "@civitics/db";
+import { Turnstile } from "./Turnstile";
+import { checkSignInPreflight } from "../auth/actions";
 
 interface SignInFormProps {
   /** Path to redirect to after sign-in (default: current page) */
@@ -12,12 +14,28 @@ interface SignInFormProps {
 
 type FormState = "idle" | "loading" | "sent" | "verifying" | "error";
 
+// FIX-568: present only when provisioned. Absent (e.g. a preview env without the
+// key) → widget doesn't render and the send proceeds tokenless, so the form keeps
+// working. When present, Supabase's [auth.captcha] enforces the token server-side.
+const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
+
 export function SignInForm({ next = "/", onSent }: SignInFormProps) {
   const [email, setEmail] = useState("");
   const [state, setState] = useState<FormState>("idle");
   const [errorMsg, setErrorMsg] = useState("");
   const [sentEmail, setSentEmail] = useState("");
   const [otpCode, setOtpCode] = useState("");
+  // FIX-568: Turnstile token (managed mode usually auto-solves within ~1s).
+  // `turnstileKey` remounts the widget to mint a fresh single-use token on retry.
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const [turnstileKey, setTurnstileKey] = useState(0);
+
+  const captchaRequired = Boolean(TURNSTILE_SITE_KEY);
+
+  function resetTurnstile() {
+    setCaptchaToken(null);
+    setTurnstileKey((k) => k + 1);
+  }
 
   function getCallbackUrl() {
     const origin =
@@ -28,18 +46,40 @@ export function SignInForm({ next = "/", onSent }: SignInFormProps) {
   async function handleMagicLink(e: React.FormEvent) {
     e.preventDefault();
     if (!email.trim()) return;
+    // When Turnstile is configured, a token is required before Supabase will
+    // accept the send. Managed mode normally has it ready; guard just in case.
+    if (captchaRequired && !captchaToken) {
+      setState("error");
+      setErrorMsg("Please complete the verification, then try again.");
+      return;
+    }
     setState("loading");
     setErrorMsg("");
+
+    // FIX-568 preflight (server-side): disposable-email block + per-IP/email send
+    // throttle. Fails OPEN on limiter trouble; rejects with neutral copy.
+    const preflight = await checkSignInPreflight(email.trim());
+    if (!preflight.ok) {
+      setState("error");
+      setErrorMsg(preflight.error ?? "Could not send the sign-in link. Try again.");
+      resetTurnstile();
+      return;
+    }
 
     const supabase = createBrowserClient();
     const { error } = await supabase.auth.signInWithOtp({
       email: email.trim(),
-      options: { emailRedirectTo: getCallbackUrl() },
+      options: {
+        emailRedirectTo: getCallbackUrl(),
+        ...(captchaToken ? { captchaToken } : {}),
+      },
     });
 
     if (error) {
       setState("error");
       setErrorMsg(error.message);
+      // The token was consumed by the attempt — mint a fresh one for retry.
+      resetTurnstile();
     } else {
       setSentEmail(email.trim());
       setState("sent");
@@ -72,6 +112,9 @@ export function SignInForm({ next = "/", onSent }: SignInFormProps) {
     }
   }
 
+  // OAuth initiation does not flow through GoTrue's captcha-gated endpoints
+  // (supabase-js signInWithOAuth has no captchaToken option), and OAuth is
+  // disabled in config.toml this PR — so no token is threaded here.
   async function handleOAuth(provider: "google" | "github") {
     const supabase = createBrowserClient();
     await supabase.auth.signInWithOAuth({
@@ -85,6 +128,7 @@ export function SignInForm({ next = "/", onSent }: SignInFormProps) {
     setEmail("");
     setOtpCode("");
     setErrorMsg("");
+    resetTurnstile();
   }
 
   if (state === "sent" || state === "verifying") {
@@ -150,9 +194,25 @@ export function SignInForm({ next = "/", onSent }: SignInFormProps) {
           autoFocus
           className="w-full border-[1.5px] border-ink bg-card px-4 py-3 text-sm text-ink placeholder:text-ink-soft focus:border-accent focus:outline-none"
         />
+
+        {/* FIX-568: Turnstile widget (managed/invisible). Rendered only when a
+            site key is provisioned, so envs without it keep a working form. */}
+        {TURNSTILE_SITE_KEY && (
+          <Turnstile
+            key={turnstileKey}
+            siteKey={TURNSTILE_SITE_KEY}
+            action="sign_in"
+            onToken={setCaptchaToken}
+            onExpire={() => setCaptchaToken(null)}
+            // Auth must FAIL CLOSED: a widget error leaves captchaToken null so
+            // the send stays blocked (the front door working as intended).
+            onError={() => setCaptchaToken(null)}
+          />
+        )}
+
         <button
           type="submit"
-          disabled={state === "loading" || !email.trim()}
+          disabled={state === "loading" || !email.trim() || (captchaRequired && !captchaToken)}
           className="w-full bg-ink px-4 py-3 text-sm font-semibold text-paper transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
         >
           {state === "loading" ? "Sending…" : "Send sign-in link →"}

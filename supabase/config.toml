@@ -63,6 +63,36 @@ enable_manual_linking = false
 minimum_password_length = 6
 password_requirements = ""
 
+# ── Bot protection (FIX-568) ────────────────────────────────────────────────
+# Cloudflare Turnstile, enforced SERVER-SIDE by Supabase Auth: sign-up / sign-in
+# / OTP requests without a valid captcha token are rejected by GoTrue — no custom
+# auth gate needed. Mode is managed/invisible (near-zero human friction). Local
+# dev uses Cloudflare's published always-pass TEST keys (secret
+# 1x0000000000000000000000000000000AA) via TURNSTILE_SECRET_KEY in the env the
+# Supabase stack reads; PROD mirrors this block in the dashboard (Authentication →
+# Bot and Abuse Protection) — dashboard config is separate from this file.
+[auth.captcha]
+enabled = true
+provider = "turnstile"
+secret = "env(TURNSTILE_SECRET_KEY)"
+
+# Auth-endpoint throttles (FIX-568). Conservative caps on the send + verify
+# surfaces to blunt email-bomb / enumeration / Supabase email-quota cost. NB:
+# raising email_sent above the platform default requires custom SMTP — the
+# default is conservative, which suits us. Mirror in the prod dashboard
+# (Authentication → Rate Limits). The auth/actions.ts preflight is the
+# app-controlled belt-and-braces layer on top of these.
+[auth.rate_limit]
+# OTP / magic-link emails per hour (project-wide).
+email_sent = 10
+# Per-IP over a 5-minute sliding window:
+sign_in_sign_ups = 30
+token_verifications = 30
+token_refresh = 150
+# Anonymous sign-ins are disabled (enable_anonymous_sign_ins=false) but pin a
+# conservative cap anyway so enabling it later can't silently open a hole.
+anonymous_users = 30
+
 [auth.email]
 enable_signup = true
 double_confirm_changes = true

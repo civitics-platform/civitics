@@ -2,9 +2,69 @@
 
 import { cookies, headers } from "next/headers";
 import { createClient } from "@supabase/supabase-js";
+import { isDisposableEmail } from "@/lib/disposable-email";
+import { checkRateLimit } from "@/lib/ratelimit";
+
+// Neutral copy — never reveals WHICH gate tripped (a probe shouldn't learn
+// whether a domain is blocklisted vs the IP/email is over-limit).
+const NEUTRAL_DISPOSABLE =
+  "Please use a permanent email address to sign in.";
+const NEUTRAL_OVER_LIMIT =
+  "Too many sign-in attempts. Please wait a few minutes and try again.";
+
+function clientIpFrom(headerList: Headers): string {
+  return (
+    headerList.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+    headerList.get("x-real-ip") ??
+    "unknown"
+  );
+}
+
+/**
+ * FIX-568 — OTP-send preflight (server-side). The LIVE send is client-side in
+ * SignInForm (the sendSignInEmail action below is currently unused), so the
+ * disposable-email block + app-side send throttles can only run on a server hop:
+ * SignInForm awaits this BEFORE calling supabase.auth.signInWithOtp.
+ *
+ * Layers, in order: (a) disposable-domain block (vendored list, no network);
+ * (b) per-IP send limit (5 / 10 min) and per-email send limit (3 / hour) via the
+ * FIX-570 Upstash limiter, which FAILS OPEN — an Upstash outage degrades to
+ * "Supabase `[auth.rate_limit]` + Turnstile only", never blocks legitimate sign-in.
+ * Supabase's native captcha + rate-limit remain the unbypassable front door; this
+ * is the app-controlled belt-and-braces layer.
+ */
+export async function checkSignInPreflight(
+  email: string,
+): Promise<{ ok: boolean; error: string | null }> {
+  const normalized = (email ?? "").trim().toLowerCase();
+  if (!normalized || !normalized.includes("@")) {
+    return { ok: false, error: "Enter a valid email address." };
+  }
+
+  if (isDisposableEmail(normalized)) {
+    return { ok: false, error: NEUTRAL_DISPOSABLE };
+  }
+
+  const headerList = await headers();
+  const ip = clientIpFrom(headerList);
+  const [ipLimit, emailLimit] = await Promise.all([
+    checkRateLimit("auth_send_ip", ip),
+    checkRateLimit("auth_send_email", normalized),
+  ]);
+  if (!ipLimit.allowed || !emailLimit.allowed) {
+    return { ok: false, error: NEUTRAL_OVER_LIMIT };
+  }
+
+  return { ok: true, error: null };
+}
 
 /**
  * Server Action: send a magic-link / OTP email.
+ *
+ * NOTE (FIX-568): currently UNUSED — SignInForm performs the send client-side.
+ * It is kept (and hardened: preflight + captchaToken passthrough) so that if any
+ * surface ever routes a send through here, it inherits the same gates rather
+ * than being a second, unprotected send path.
  *
  * We use a plain supabase-js createClient (NOT @supabase/ssr's createServerClient)
  * because createServerClient hard-codes flowType:'pkce', which embeds a PKCE
@@ -29,13 +89,20 @@ import { createClient } from "@supabase/supabase-js";
  */
 export async function sendSignInEmail(
   email: string,
-  next?: string
+  next?: string,
+  captchaToken?: string,
 ): Promise<{ error: string | null }> {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 
   if (!url || !key) {
     return { error: "Supabase environment variables are not configured." };
+  }
+
+  // Same gates as the live client path (disposable + send throttles).
+  const preflight = await checkSignInPreflight(email);
+  if (!preflight.ok) {
+    return { error: preflight.error };
   }
 
   // Cookie fallback for /auth/confirm (token-hash flow).
@@ -69,9 +136,14 @@ export async function sendSignInEmail(
     },
   });
 
+  // captchaToken is required by Supabase when [auth.captcha] is enabled
+  // (config.toml). Passed through so this path stays valid against captcha.
   const { error } = await supabase.auth.signInWithOtp({
     email,
-    options: emailRedirectTo ? { emailRedirectTo } : undefined,
+    options: {
+      ...(emailRedirectTo ? { emailRedirectTo } : {}),
+      ...(captchaToken ? { captchaToken } : {}),
+    },
   });
 
   return { error: error?.message ?? null };
