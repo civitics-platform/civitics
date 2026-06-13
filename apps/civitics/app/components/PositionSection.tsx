@@ -13,6 +13,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import type { EntityCommentType } from "@civitics/db";
+import { challengedFetch } from "@/lib/challenged-fetch";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -269,7 +270,7 @@ function PositionCard({
       setNote(null);
       try {
         const attempt = async (withAttribution: boolean) =>
-          fetch("/api/positions", {
+          challengedFetch("/api/positions", {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({

@@ -15,6 +15,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { BODY_MIN, BODY_MAX } from "@civitics/db";
+import { challengedFetch } from "@/lib/challenged-fetch";
 
 type Answer = {
   id: string;
@@ -173,7 +174,7 @@ function AskComposer({
     }
     setBusy(true);
     try {
-      const res = await fetch(`/api/comments`, {
+      const res = await challengedFetch(`/api/comments`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ entity_type: "official", entity_id: entityId, kind: "question", body: body.trim() }),
@@ -270,7 +271,7 @@ function AnswerComposer({
     }
     setBusy(true);
     try {
-      const res = await fetch(`/api/comments`, {
+      const res = await challengedFetch(`/api/comments`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

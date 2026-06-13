@@ -14,6 +14,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createServerClient } from "@civitics/db";
 import { isEntityCommentType } from "@civitics/db";
+import { challengeRequiredForWrite, verifyTurnstile } from "@/lib/turnstile";
 
 export const dynamic = "force-dynamic";
 
@@ -42,6 +43,7 @@ type SetPayload = {
   conditions_md?: unknown;
   attributed_comment_id?: unknown;
   note?: unknown;
+  captchaToken?: unknown;
 };
 
 async function handleSet(request: NextRequest) {
@@ -57,7 +59,7 @@ async function handleSet(request: NextRequest) {
     return NextResponse.json({ error: "Invalid request body", code: "invalid_input" }, { status: 400 });
   }
 
-  const { entity_type, entity_id, stance, conditions_md, attributed_comment_id, note } = json;
+  const { entity_type, entity_id, stance, conditions_md, attributed_comment_id, note, captchaToken } = json;
 
   if (typeof entity_type !== "string" || !isEntityCommentType(entity_type)) {
     return NextResponse.json({ error: "Invalid entity_type", code: "invalid_input" }, { status: 400 });
@@ -76,6 +78,24 @@ async function handleSet(request: NextRequest) {
   }
   if (note != null && typeof note !== "string") {
     return NextResponse.json({ error: "note must be a string", code: "invalid_input" }, { status: 400 });
+  }
+
+  // FIX-569: new-account first-writes challenge — a 403 at the access layer; the
+  // per-user position cap inside set_entity_position is the primary control.
+  // challengeRequiredForWrite short-circuits on account age (cheap for the common
+  // established-account path).
+  if (await challengeRequiredForWrite(supabase, user)) {
+    const ip =
+      request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+      request.headers.get("x-real-ip") ??
+      undefined;
+    const ok = await verifyTurnstile(typeof captchaToken === "string" ? captchaToken : null, ip);
+    if (!ok) {
+      return NextResponse.json(
+        { error: "Please complete the verification to continue.", code: "challenge_required" },
+        { status: 403 },
+      );
+    }
   }
 
   // Optional RPC params are typed `string | undefined` (they carry SQL DEFAULT

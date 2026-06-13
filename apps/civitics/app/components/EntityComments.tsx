@@ -8,6 +8,7 @@
 // visual mode for initiatives. Pseudonymous display_name only.
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { challengedFetch } from "@/lib/challenged-fetch";
 import {
   ALLOWED_KINDS,
   DEFAULT_KIND,
@@ -336,7 +337,7 @@ function Composer({
     }
     setSaving(true);
     try {
-      const res = await fetch(`/api/comments`, {
+      const res = await challengedFetch(`/api/comments`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

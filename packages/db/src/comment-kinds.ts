@@ -116,16 +116,23 @@ export const INITIATIVE_STAGE_KINDS: Record<InitiativeStage, readonly string[]> 
 export const FLAG_REASONS = ["spam", "harassment", "off_topic", "misinformation", "other"] as const;
 export type FlagReason = (typeof FLAG_REASONS)[number];
 
-// ─── C0 rate limits (app-layer, per user per rolling 24h) ─────────────────────
+// ─── Per-user daily caps (app-layer, per user per rolling 24h) ────────────────
 // comments/answers are enforced in submit_comment (FIX-542 split: the comments
 // cap counts only non-answer rows; kind='answer' posts — answer-gate holders
-// only — have their own cap). Mirrored in the submit_comment migration and
-// guarded by the FIX-543 drift test.
+// only — have their own cap). positions/statement_votes (FIX-569) close the two
+// formerly-uncapped aggregate-skewing write paths (set_entity_position /
+// set_statement_vote): a single account could otherwise set a stance on every
+// entity and vote on every statement → direct aggregate skew. All caps are
+// MIRRORED into the RPC migrations (20260609000000 / 20260610000100 for
+// comments+answers; 20260613000000 for positions+statement_votes) and guarded by
+// the FIX-543 drift test.
 export const RATE_LIMITS = {
   comments: 20,
   answers: 100,
   ratings: 200,
   flags: 10,
+  positions: 60, // plain set_entity_position sets/day (delta attribution keeps DELTA_DAILY_CAP)
+  statement_votes: 200, // set_statement_vote ballots/day (cheap one-tap input; matches ratings)
 } as const;
 
 // ─── C1 position-spine constants (FIX-523) ────────────────────────────────────
@@ -138,6 +145,25 @@ export const MIN_POSITIONS_FOR_ROLLUP = 10;
 export const DELTA_DAILY_CAP = 5;
 // Minimum account age (days) before a user may attribute a position change to a comment.
 export const MIN_ACCOUNT_AGE_DAYS = 7;
+
+// ─── FIX-569 progressive new-account trust (INTERNAL — never shown publicly) ──
+// Reuses the MIN_ACCOUNT_AGE_DAYS precedent; this is NOT a karma score or a
+// public tier (brand rule #3). A "new" account is younger than
+// NEW_ACCOUNT_AGE_HOURS: while new it gets HALVED daily caps (newAccountCap) and
+// must pass a Turnstile challenge on its first writes. The challenge tapers once
+// the account is no longer new OR has accrued ≥ NEW_ACCOUNT_MIN_ACTIONS actions
+// (see requiresChallenge in apps/civitics/src/lib/turnstile.ts). The SQL caps
+// (set_entity_position / set_statement_vote, 20260613000000) key the halving on
+// ACCOUNT AGE alone — one cheap created_at read on the write path; the
+// action-count lower bound is applied only in the app-layer challenge predicate,
+// not the hot RPC. Mirrored as literals in that migration.
+export const NEW_ACCOUNT_AGE_HOURS = 24;
+export const NEW_ACCOUNT_MIN_ACTIONS = 5;
+
+// Halve a daily cap for a new account, flooring at 1 so a cap never hits 0.
+export function newAccountCap(cap: number): number {
+  return Math.max(1, Math.floor(cap / 2));
+}
 
 // App-enforced maximum reply depth (root = 0).
 export const MAX_THREAD_DEPTH = 3;

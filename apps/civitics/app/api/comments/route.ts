@@ -15,6 +15,7 @@ import {
   type CommentPayload,
 } from "./_lib";
 import { getSlowMode } from "@/lib/slow-mode";
+import { challengeRequiredForWrite, verifyTurnstile } from "@/lib/turnstile";
 
 export const dynamic = "force-dynamic";
 
@@ -320,7 +321,8 @@ export async function POST(request: NextRequest) {
     const json = await request.json().catch(() => null);
     if (!json) return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
 
-    const { entity_type, entity_id, body, kind, stance, parent_id } = json as Record<string, unknown>;
+    const { entity_type, entity_id, body, kind, stance, parent_id, captchaToken } =
+      json as Record<string, unknown>;
 
     if (typeof entity_type !== "string" || !isEntityCommentType(entity_type)) {
       return NextResponse.json({ error: "Invalid entity_type" }, { status: 400 });
@@ -331,6 +333,27 @@ export async function POST(request: NextRequest) {
     }
     if (typeof body !== "string") {
       return NextResponse.json({ error: "Comment body is required" }, { status: 400 });
+    }
+
+    // FIX-569: new-account first-writes challenge. Established accounts skip the
+    // Turnstile check; new accounts must pass it before the write — a 403 at the
+    // ACCESS layer (never auto-hide/delete posted content). The gate short-circuits
+    // on account age, so it's cheap on the common (established) path.
+    if (await challengeRequiredForWrite(supabase, user)) {
+      const ip =
+        request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+        request.headers.get("x-real-ip") ??
+        undefined;
+      const ok = await verifyTurnstile(
+        typeof captchaToken === "string" ? captchaToken : null,
+        ip,
+      );
+      if (!ok) {
+        return NextResponse.json(
+          { error: "Please complete the verification to continue.", code: "challenge_required" },
+          { status: 403 },
+        );
+      }
     }
 
     const admin = createAdminClient();

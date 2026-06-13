@@ -7,6 +7,7 @@ import {
   isEntityCommentType,
 } from "@civitics/db";
 import { getSlowMode } from "@/lib/slow-mode";
+import { challengeRequiredForWrite, verifyTurnstile } from "@/lib/turnstile";
 import { mapRpcError } from "./_lib";
 
 export const dynamic = "force-dynamic";
@@ -73,7 +74,7 @@ export async function POST(request: NextRequest) {
     const json = (await request.json().catch(() => null)) as Record<string, unknown> | null;
     if (!json) return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
 
-    const { entity_type, entity_id, body, source_comment_id } = json;
+    const { entity_type, entity_id, body, source_comment_id, captchaToken } = json;
 
     if (typeof entity_type !== "string" || !isEntityCommentType(entity_type)) {
       return NextResponse.json({ error: "Invalid entity_type" }, { status: 400 });
@@ -93,6 +94,22 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: "Invalid source_comment_id" }, { status: 400 });
       }
       sourceCommentId = source_comment_id;
+    }
+
+    // FIX-569: new-account first-writes challenge — 403 at the access layer; the
+    // submit_statement daily cap is the primary control. Established accounts skip it.
+    if (await challengeRequiredForWrite(supabase, user)) {
+      const ip =
+        request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+        request.headers.get("x-real-ip") ??
+        undefined;
+      const ok = await verifyTurnstile(typeof captchaToken === "string" ? captchaToken : null, ip);
+      if (!ok) {
+        return NextResponse.json(
+          { error: "Please complete the verification to continue.", code: "challenge_required" },
+          { status: 403 },
+        );
+      }
     }
 
     const { data, error } = await supabase.rpc("submit_statement", {

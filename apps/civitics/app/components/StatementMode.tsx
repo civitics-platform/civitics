@@ -10,6 +10,7 @@
 // Pseudonymous author display only.
 
 import { useCallback, useEffect, useState } from "react";
+import { challengedFetch } from "@/lib/challenged-fetch";
 import {
   createBrowserClient,
   STATEMENT_MAX_LEN,
@@ -177,7 +178,7 @@ function ProposeStatement({
     setBusy(true);
     const trimmed = body.trim();
     try {
-      const res = await fetch(`/api/statements`, {
+      const res = await challengedFetch(`/api/statements`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ entity_type: entityType, entity_id: entityId, body: trimmed }),

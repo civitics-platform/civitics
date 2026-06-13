@@ -43,15 +43,20 @@ function findRepoRoot(): string {
 const REPO_ROOT = findRepoRoot();
 const TS_REL = join("packages", "db", "src", "comment-kinds.ts");
 
-/** The LAST migration that (re)defines public.submit_comment, sliced to its
- *  LAST definition within that file. */
-function latestSubmitCommentSql(): { file: string; text: string } {
+/** The LAST migration that (re)defines public.<fnName>, sliced to its LAST
+ *  definition within that file. Generalized (FIX-569) so the guard follows
+ *  set_entity_position / set_statement_vote as well as submit_comment — each to
+ *  whichever migration last (re)defines it. */
+function latestMigrationDefining(fnName: string): { file: string; text: string } {
   const migrationsDir = join(REPO_ROOT, "supabase", "migrations");
   const sqlFiles = readdirSync(migrationsDir)
     .filter((f) => f.endsWith(".sql"))
     .sort(); // timestamp-prefixed → lexical sort is chronological
 
-  const defRe = /CREATE\s+OR\s+REPLACE\s+FUNCTION\s+public\.submit_comment\b/gi;
+  const defRe = new RegExp(
+    `CREATE\\s+OR\\s+REPLACE\\s+FUNCTION\\s+public\\.${fnName}\\b`,
+    "gi",
+  );
   for (const file of [...sqlFiles].reverse()) {
     const text = readFileSync(join(migrationsDir, file), "utf8");
     let defIdx = -1;
@@ -59,7 +64,11 @@ function latestSubmitCommentSql(): { file: string; text: string } {
     defRe.lastIndex = 0;
     if (defIdx >= 0) return { file, text: text.slice(defIdx) };
   }
-  throw new Error("no migration defines public.submit_comment()");
+  throw new Error(`no migration defines public.${fnName}()`);
+}
+
+function latestSubmitCommentSql(): { file: string; text: string } {
+  return latestMigrationDefining("submit_comment");
 }
 
 /** Parse the SQL v_allowed CASE arms into entity_type → ordered kind list. */
@@ -87,6 +96,29 @@ function parseSqlCaps(sql: string, file: string): { comments: number; answers: n
   assert.ok(answer, `no answer rate-limit guard found in ${file}`);
   assert.ok(comment, `no comment rate-limit guard found in ${file}`);
   return { comments: Number(comment[1]), answers: Number(answer[1]) };
+}
+
+/** Parse a `<var> := <n>;` cap assignment. The FIX-569 caps live in a local
+ *  variable (halved later), not in the IF guard, so the cap value is the FIRST
+ *  numeric assignment — the `<var> := <var> / 2;` halving line has no digit
+ *  immediately after `:=`, so it never matches. */
+function parseAssignedCap(sql: string, varName: string, file: string): number {
+  const m = sql.match(new RegExp(`${varName}\\s*:=\\s*(\\d+)\\s*;`));
+  assert.ok(m, `no \`${varName} := <n>;\` assignment found in ${file}`);
+  return Number(m[1]);
+}
+
+/** Parse RATE_LIMITS.positions / .statement_votes out of comment-kinds.ts (the
+ *  FIX-569 caps). Line comments are stripped first so prose can't false-match. */
+function parseTsBotCaps(): { positions: number; statement_votes: number } {
+  const text = readFileSync(join(REPO_ROOT, TS_REL), "utf8").replace(/\/\/[^\n]*/g, "");
+  const rateBlock = text.match(/export\s+const\s+RATE_LIMITS\s*=\s*\{([\s\S]*?)\}\s*as\s+const/);
+  assert.ok(rateBlock, `could not locate RATE_LIMITS in ${TS_REL}`);
+  const positions = rateBlock[1].match(/positions:\s*(\d+)/);
+  const statementVotes = rateBlock[1].match(/statement_votes:\s*(\d+)/);
+  assert.ok(positions, `RATE_LIMITS.positions missing in ${TS_REL}`);
+  assert.ok(statementVotes, `RATE_LIMITS.statement_votes missing in ${TS_REL}`);
+  return { positions: Number(positions[1]), statement_votes: Number(statementVotes[1]) };
 }
 
 /** Parse ALL_KINDS + ALLOWED_KINDS + RATE_LIMITS out of comment-kinds.ts as
@@ -166,5 +198,30 @@ test("FIX-543 submit_comment SQL rate caps match RATE_LIMITS", () => {
     `rate-cap drift: SQL guards (${sql.file}) and RATE_LIMITS (${TS_REL}) disagree.\n` +
       `  SQL: ${JSON.stringify(sqlCaps)}\n` +
       `  TS:  ${JSON.stringify(ts.caps)}`,
+  );
+});
+
+test("FIX-569 bot-protection caps (set_entity_position / set_statement_vote) match RATE_LIMITS", () => {
+  // The two caps live in DIFFERENT functions than submit_comment, each in its
+  // own latest-defining migration (20260613000000 today). Follow each by name so
+  // a future redefinition keeps the guard pointed at the live definition.
+  const posSql = latestMigrationDefining("set_entity_position");
+  const voteSql = latestMigrationDefining("set_statement_vote");
+  const ts = parseTsBotCaps();
+
+  const positions = parseAssignedCap(posSql.text, "v_pos_cap", posSql.file);
+  const statementVotes = parseAssignedCap(voteSql.text, "v_vote_cap", voteSql.file);
+
+  assert.equal(
+    positions,
+    ts.positions,
+    `positions-cap drift: set_entity_position (${posSql.file}) v_pos_cap=${positions} ` +
+      `vs RATE_LIMITS.positions=${ts.positions} (${TS_REL}).`,
+  );
+  assert.equal(
+    statementVotes,
+    ts.statement_votes,
+    `statement_votes-cap drift: set_statement_vote (${voteSql.file}) v_vote_cap=${statementVotes} ` +
+      `vs RATE_LIMITS.statement_votes=${ts.statement_votes} (${TS_REL}).`,
   );
 });
