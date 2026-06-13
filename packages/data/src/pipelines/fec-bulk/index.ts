@@ -1473,18 +1473,27 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
       // visibility checks per senator on the cache-starved Pro instance
       // (COUNT→EXISTS precedent: FIX-345).
       let withDonations = 0;
+      let probeErrors = 0;
       for (const s of fedSenators) {
-        const { data: probe } = await db
+        const { data: probe, error: probeError } = await db
           .from("financial_relationships")
           .select("id")
           .eq("relationship_type", "donation")
           .eq("to_type", "official")
           .eq("to_id", s.id as string)
           .limit(1);
+        // A gateway blip mid-loop must not silently read as "senator has no
+        // donations" — that undercounts the FIX-178 coverage metric in a way
+        // that looks legit. Count errors and flag them on the printed line.
+        if (probeError) {
+          probeErrors++;
+          continue;
+        }
         if ((probe ?? []).length > 0) withDonations++;
       }
       console.log(
-        `\n  Senate coverage: ${withDonations}/${fedSenators.length} federal senators have ≥1 donation`,
+        `\n  Senate coverage: ${withDonations}/${fedSenators.length} federal senators have ≥1 donation` +
+        (probeErrors > 0 ? ` (${probeErrors} probe error(s) — coverage undercounted)` : ""),
       );
     }
 
