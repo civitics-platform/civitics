@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { checkRateLimit, type RateLimitBucket } from "@/lib/ratelimit";
 
 // ---------------------------------------------------------------------------
 // Bot pattern filtering
@@ -24,99 +25,42 @@ const BOT_PATTERNS = [
 ];
 
 // ---------------------------------------------------------------------------
-// In-memory rate limiter (sliding window, per-IP)
+// Durable edge rate limiter (FIX-570)
 //
-// Vercel Edge instances share memory within a single instance but not across
-// instances. This gives meaningful per-IP protection in practice — a single
-// client hammering the API will always hit the same edge region.
+// The per-IP counters live in Upstash Redis (src/lib/ratelimit.ts) so they span
+// edge instances/regions and survive cold starts — the distributed upgrade this
+// file's previous in-memory `Map` comment always named. checkRateLimit FAILS
+// OPEN: if the Upstash env is absent or Upstash errors, every check allows the
+// request (the per-user DB caps in FIX-569 are the real integrity control), so
+// middleware builds and serves with UPSTASH_* unset.
 //
-// To upgrade to a distributed rate limiter (multi-region / multi-instance),
-// swap this for @upstash/ratelimit + @upstash/redis.
+// NB on auth: the browser's signInWithOtp call goes straight to Supabase GoTrue,
+// not through this app, so the OTP-send throttle can't live here — it's enforced
+// by the auth/actions.ts preflight (FIX-568) + Supabase `[auth.rate_limit]`.
+// /auth/* requests that DO reach middleware are magic-link callbacks, which must
+// never be throttled, so this limiter intentionally skips them.
 // ---------------------------------------------------------------------------
 
-interface RateLimitEntry {
-  count: number;
-  resetAt: number; // ms timestamp
-}
-
-// Map key: `${ip}:${bucket}` where bucket groups routes into limit tiers
-const rateLimitStore = new Map<string, RateLimitEntry>();
-
-// Periodically clean up expired entries to prevent unbounded memory growth.
-// Edge workers run continuously so this timer stays alive.
-let lastCleanup = Date.now();
-const CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
-
-function pruneExpiredEntries() {
-  const now = Date.now();
-  if (now - lastCleanup < CLEANUP_INTERVAL_MS) return;
-  lastCleanup = now;
-  for (const [key, entry] of rateLimitStore) {
-    if (entry.resetAt < now) rateLimitStore.delete(key);
-  }
-}
-
-interface RateLimitConfig {
-  /** Maximum requests allowed per window */
-  limit: number;
-  /** Window duration in milliseconds */
-  windowMs: number;
-}
+// Participation write surfaces the edge backstops: /api/comments, /api/positions,
+// /api/statements and their nested /[id]/rate, /[id]/flag, /[id]/vote children.
+// Reads of these same paths (GET comment/statement lists) are NOT bucketed — only
+// the mutating verbs are, so normal browsing isn't throttled by the write limit.
+const WRITE_PATH_RE = /^\/api\/(comments|positions|statements)(\/|$)/;
+const WRITE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 /**
- * Check rate limit for the given key.
- * Returns { allowed: true } or { allowed: false, retryAfterSec }.
+ * Classify a request into a rate-limit bucket, or null to skip. Reads are
+ * method-agnostic (preserved from the prior limiter); the `write` bucket applies
+ * only to mutating verbs on the participation routes.
  */
-function checkRateLimit(
-  key: string,
-  config: RateLimitConfig
-): { allowed: boolean; remaining: number; retryAfterSec?: number } {
-  pruneExpiredEntries();
-
-  const now = Date.now();
-  const entry = rateLimitStore.get(key);
-
-  if (!entry || entry.resetAt < now) {
-    // New window
-    rateLimitStore.set(key, { count: 1, resetAt: now + config.windowMs });
-    return { allowed: true, remaining: config.limit - 1 };
-  }
-
-  if (entry.count >= config.limit) {
-    const retryAfterSec = Math.ceil((entry.resetAt - now) / 1000);
-    return { allowed: false, remaining: 0, retryAfterSec };
-  }
-
-  entry.count++;
-  return { allowed: true, remaining: config.limit - entry.count };
-}
-
-// ---------------------------------------------------------------------------
-// Rate limit tiers
-// ---------------------------------------------------------------------------
-
-/**
- * Classify a pathname into a rate-limit bucket.
- * Returns null if the path should not be rate-limited.
- */
-type RateLimitBucket = "search" | "graph_ai" | "graph";
-
-function getRateLimitBucket(path: string): RateLimitBucket | null {
+function getRateLimitBucket(path: string, method: string): RateLimitBucket | null {
   if (path.startsWith("/api/search")) return "search";
-  // AI narrative route is more expensive — stricter limit
+  // AI narrative route is more expensive — stricter limit.
   if (path.startsWith("/api/graph/narrative")) return "graph_ai";
   if (path.startsWith("/api/graph")) return "graph";
+  if (WRITE_METHODS.has(method) && WRITE_PATH_RE.test(path)) return "write";
   return null;
 }
-
-const RATE_LIMIT_CONFIGS: Record<RateLimitBucket, RateLimitConfig> = {
-  // Search: 30 requests per minute per IP
-  search: { limit: 30, windowMs: 60_000 },
-  // Graph AI narrative: 5 requests per minute per IP (Claude API calls)
-  graph_ai: { limit: 5, windowMs: 60_000 },
-  // Other graph routes: 60 requests per minute per IP
-  graph: { limit: 60, windowMs: 60_000 },
-};
 
 function getClientIp(request: NextRequest): string {
   // Vercel sets x-forwarded-for; fall back to a generic key if unavailable
@@ -199,16 +143,15 @@ export async function middleware(request: NextRequest) {
     return new NextResponse(null, { status: 404 });
   }
 
-  // ── Rate limiting on public API routes ────────────────────────────────────
-  const bucket = getRateLimitBucket(path);
+  // ── Rate limiting on public API + participation-write routes (FIX-570) ─────
+  // Durable (Upstash) and fail-open: an Upstash outage/quota allows the request
+  // and logs `[ratelimit]`; the per-user DB caps remain the real backstop.
+  const bucket = getRateLimitBucket(path, request.method);
   if (bucket) {
     const ip = getClientIp(request);
-    const key = `${ip}:${bucket}`;
-    const config = RATE_LIMIT_CONFIGS[bucket];
-    const result = checkRateLimit(key, config);
-
+    const result = await checkRateLimit(bucket, ip);
     if (!result.allowed) {
-      return rateLimitResponse(result.retryAfterSec!);
+      return rateLimitResponse(result.retryAfterSec);
     }
   }
 
