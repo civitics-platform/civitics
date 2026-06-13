@@ -87,7 +87,7 @@ export function FeaturedSection({ closingSoon, bills, mostViewed, trending, most
     <section aria-labelledby="featured-heading" className="mb-12">
       {/* Tab header */}
       <div className="mb-4 flex items-center gap-2 flex-wrap">
-        <span aria-hidden="true" className="h-2 w-2 rounded-full bg-amber-500 animate-pulse shrink-0" />
+        <span aria-hidden="true" className="h-2 w-2 rounded-full bg-amber animate-pulse shrink-0" />
         <h2 id="featured-heading" className="sr-only">Featured proposals</h2>
 
         <div
@@ -106,18 +106,18 @@ export function FeaturedSection({ closingSoon, bills, mostViewed, trending, most
                 aria-controls="featured-tab-panel"
                 type="button"
                 onClick={() => setActiveTab(tab.id)}
-                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1 ${
+                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1 ${
                   isActive
-                    ? "bg-gray-900 text-white"
-                    : "bg-white border border-gray-200 text-gray-600 hover:border-gray-300 hover:text-gray-900"
+                    ? "bg-ink text-paper"
+                    : "bg-card border border-rule text-ink-soft hover:border-accent hover:text-accent"
                 }`}
               >
                 <span aria-hidden="true">{tab.icon}</span>
                 {tab.label}
                 {count && (
                   <span
-                    className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
-                      isActive ? "bg-white/20 text-white" : "bg-gray-100 text-gray-500"
+                    className={`rounded-full px-1.5 py-0.5 font-mono text-[10px] font-semibold tabular-nums ${
+                      isActive ? "bg-paper/20 text-paper" : "bg-ink/5 text-ink-soft"
                     }`}
                   >
                     {count}
@@ -142,8 +142,8 @@ export function FeaturedSection({ closingSoon, bills, mostViewed, trending, most
             ))}
           </div>
         ) : (
-          <div className="rounded-xl border border-dashed border-gray-200 bg-white px-8 py-10 text-center">
-            <p className="text-sm text-gray-400">{activeTabMeta.emptyMsg}</p>
+          <div className="border border-dashed border-rule bg-card px-8 py-10 text-center">
+            <p className="text-sm text-ink-soft/70">{activeTabMeta.emptyMsg}</p>
           </div>
         )}
       </div>

@@ -22,14 +22,15 @@ function formatMonthYear(dateStr: string | null): string | null {
   });
 }
 
+// Independents/modified stay ink-outline \u2014 no purple token exists by design.
 const STATUS_STYLES: Record<PromiseRow['status'], { label: string; cls: string }> = {
-  made:          { label: 'Made',           cls: 'bg-gray-100 text-gray-600' },
-  in_progress:   { label: 'In Progress',    cls: 'bg-blue-100 text-blue-700' },
-  kept:          { label: 'Kept \u2713',    cls: 'bg-green-100 text-green-700' },
-  broken:        { label: 'Broken',         cls: 'bg-red-100 text-red-700' },
-  partially_kept:{ label: 'Partial \u2713', cls: 'bg-orange-100 text-orange-700' },
-  expired:       { label: 'Expired',        cls: 'bg-gray-200 text-gray-500' },
-  modified:      { label: 'Modified',       cls: 'bg-purple-100 text-purple-700' },
+  made:          { label: 'Made',           cls: 'bg-ink/5 text-ink-soft' },
+  in_progress:   { label: 'In Progress',    cls: 'bg-civic-blue/10 text-civic-blue' },
+  kept:          { label: 'Kept \u2713',    cls: 'bg-green-ink/10 text-green-ink' },
+  broken:        { label: 'Broken',         cls: 'bg-accent/10 text-accent' },
+  partially_kept:{ label: 'Partial \u2713', cls: 'bg-amber/25 text-ink' },
+  expired:       { label: 'Expired',        cls: 'bg-ink/5 text-ink-soft/70' },
+  modified:      { label: 'Modified',       cls: 'border border-ink/40 text-ink' },
 };
 
 /**
@@ -46,19 +47,19 @@ export function PromisesSection({ promises }: { promises: PromiseRow[] }) {
   }
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white overflow-hidden mb-6">
+    <div className="border border-rule bg-card overflow-hidden mb-6">
       {/* Header with count badge */}
-      <div className="px-5 py-4 border-b border-gray-100">
+      <div className="px-5 py-4 border-b border-rule">
         <div className="flex items-center gap-2">
-          <h2 className="text-sm font-semibold text-gray-900">Promises</h2>
-          <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold text-gray-500">
+          <h2 className="text-sm font-semibold text-ink">Promises</h2>
+          <span className="rounded-full bg-ink/5 px-2 py-0.5 font-mono text-[10px] font-semibold tabular-nums text-ink-soft">
             {promises.length}
           </span>
         </div>
       </div>
 
       {/* Promise list */}
-      <div className="divide-y divide-gray-100">
+      <div className="divide-y divide-rule/60">
         {promises.map((p) => {
           const style = STATUS_STYLES[p.status] ?? STATUS_STYLES.made;
           const madeDate = formatMonthYear(p.made_at);
@@ -74,23 +75,23 @@ export function PromisesSection({ promises }: { promises: PromiseRow[] }) {
             <div key={p.id} className="px-5 py-4">
               {/* Title + status */}
               <div className="flex flex-wrap items-start gap-2">
-                <span className="text-sm font-semibold text-gray-900 flex-1 min-w-0">
+                <span className="text-sm font-semibold text-ink flex-1 min-w-0">
                   {p.title}
                 </span>
-                <span className={`shrink-0 rounded px-2 py-0.5 text-[10px] font-bold ${style.cls}`}>
+                <span className={`shrink-0 px-2 py-0.5 font-mono text-[10px] font-bold ${style.cls}`}>
                   {style.label}
                 </span>
               </div>
 
               {/* Dates */}
-              <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1.5 text-[10px] text-gray-400">
+              <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1.5 font-mono text-[10px] tabular-nums text-ink-soft/70">
                 {madeDate && <span>Made {madeDate}</span>}
                 {showDeadline && <span>Due {deadlineDate}</span>}
               </div>
 
               {/* Source quote */}
               {truncatedQuote && (
-                <blockquote className="mt-2 text-xs text-gray-500 italic border-l-2 border-gray-200 pl-3 leading-relaxed">
+                <blockquote className="mt-2 text-xs text-ink-soft italic border-l-2 border-rule pl-3 leading-relaxed">
                   &ldquo;{truncatedQuote}&rdquo;
                 </blockquote>
               )}
@@ -101,7 +102,7 @@ export function PromisesSection({ promises }: { promises: PromiseRow[] }) {
                   href={p.source_url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="mt-1.5 inline-block text-[10px] text-indigo-600 hover:text-indigo-800 font-medium"
+                  className="mt-1.5 inline-block text-[10px] text-accent hover:underline font-medium"
                 >
                   Source &rarr;
                 </a>
@@ -113,7 +114,7 @@ export function PromisesSection({ promises }: { promises: PromiseRow[] }) {
 
       {/* Summary row */}
       {(summary.kept > 0 || summary.broken > 0 || summary.in_progress > 0) && (
-        <div className="px-5 py-3 bg-gray-50 border-t border-gray-100 text-xs text-gray-500">
+        <div className="px-5 py-3 bg-paper-2 border-t border-rule text-xs text-ink-soft">
           {[
             summary.kept > 0 && `${summary.kept} kept`,
             summary.broken > 0 && `${summary.broken} broken`,

@@ -1,6 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { StampMark } from "../../components/brand/StampMark";
+
+// Desk-mockup `.stampb` badge idiom (FIX-564): bordered, letterspaced mono
+// caps. Green-ink = verified/claimed, accent red = pending/action-needed.
+const STAMPB =
+  "inline-flex items-center gap-1.5 rounded-[2px] border-[1.5px] px-2.5 py-1 font-mono text-[9.5px] font-bold uppercase tracking-[0.1em]";
 
 // FIX-558: "Is this you?" claim affordance on the otherwise-ISR official
 // page. Per-user claim state is fetched from /api/officials/claim-status at
@@ -121,12 +127,13 @@ export function ClaimProfileSection({
 
   if (status.kind === "active") {
     return (
-      <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3">
-        <p className="text-sm font-semibold text-emerald-900">
-          ✓ You are verified as this official
-        </p>
-        <p className="mt-0.5 text-xs text-emerald-700">
-          You can answer constituent questions on this page.
+      <div className="mt-4 border border-green-ink/30 bg-green-ink/5 px-4 py-3">
+        <span className={`${STAMPB} border-green-ink text-green-ink`}>
+          <StampMark size={12} />
+          Official — Claimed
+        </span>
+        <p className="mt-2 text-xs text-ink-soft">
+          You are verified as this official. You can answer constituent questions on this page.
           {status.expiresAt && <> Verification expires {formatDate(status.expiresAt)}.</>}
         </p>
       </div>
@@ -135,14 +142,17 @@ export function ClaimProfileSection({
 
   if (status.kind === "pending") {
     return (
-      <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
-        <p className="text-sm font-semibold text-amber-900">Claim under review</p>
-        <p className="mt-0.5 text-xs text-amber-700">
+      <div className="mt-4 border border-accent/30 bg-accent/5 px-4 py-3">
+        <span className={`${STAMPB} border-accent text-accent`}>
+          <StampMark size={12} />
+          Claim under review
+        </span>
+        <p className="mt-2 text-xs text-ink-soft">
           Your claim on this profile is awaiting review. You&apos;ll have access
           once it&apos;s approved.
         </p>
         {outcome?.kind === "submitted" && (
-          <p className="mt-1 text-xs text-amber-700">
+          <p className="mt-1 text-xs text-ink-soft">
             Submitted just now — exact-email matches approve instantly; everything
             else is reviewed by a human.
           </p>
@@ -153,11 +163,11 @@ export function ClaimProfileSection({
 
   if (status.kind === "anon") {
     return (
-      <p className="mt-3 text-xs text-gray-400">
+      <p className="mt-3 text-xs text-ink-soft/70">
         Are you {officialName}?{" "}
         <a
           href={`/auth/sign-in?next=/officials/${officialId}`}
-          className="font-medium text-indigo-500 hover:underline"
+          className="font-medium text-accent hover:underline"
         >
           Sign in with your work email to claim this profile.
         </a>
@@ -169,12 +179,12 @@ export function ClaimProfileSection({
   return (
     <div className="mt-3">
       {status.kind === "revoked" && (
-        <p className="mb-1 text-xs text-red-600">
+        <p className="mb-1 text-xs text-accent">
           Your previous claim was declined. You can submit again with more context.
         </p>
       )}
       {status.kind === "expired" && (
-        <p className="mb-1 text-xs text-gray-500">
+        <p className="mb-1 text-xs text-ink-soft">
           Your verification has expired. Re-claim the profile to restore access.
         </p>
       )}
@@ -182,16 +192,16 @@ export function ClaimProfileSection({
       {!formOpen ? (
         <button
           onClick={() => setFormOpen(true)}
-          className="text-xs font-medium text-indigo-600 hover:underline"
+          className="text-xs font-medium text-accent hover:underline"
         >
           Is this you? Claim this profile →
         </button>
       ) : (
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
-          <p className="text-sm font-semibold text-gray-900">
+        <div className="border border-rule bg-card p-4">
+          <p className="font-serif text-sm font-semibold text-ink">
             Claim {officialName}&apos;s profile
           </p>
-          <p className="mt-1 text-xs text-gray-500">
+          <p className="mt-1 text-xs text-ink-soft">
             Your claim is tied to the email you signed in with. If it exactly
             matches this official&apos;s listed email, you&apos;re verified
             instantly — otherwise a reviewer takes a look. Briefly note your
@@ -203,13 +213,13 @@ export function ClaimProfileSection({
             maxLength={JUSTIFICATION_MAX}
             rows={3}
             placeholder="e.g. I am this official — this is my office's public profile. My work email is on my official site."
-            className="mt-3 w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            className="mt-3 w-full border border-rule bg-paper px-3 py-2 text-sm text-ink placeholder:text-ink-soft/60 focus:border-accent focus:bg-card focus:outline-none focus:ring-1 focus:ring-accent"
           />
           <div className="mt-2 flex items-center gap-3">
             <button
               onClick={submitClaim}
               disabled={submitting || !justification.trim()}
-              className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+              className="bg-ink px-3 py-1.5 text-xs font-medium text-paper hover:bg-accent disabled:opacity-50 transition-colors"
             >
               {submitting ? "Submitting…" : "Submit claim"}
             </button>
@@ -219,22 +229,22 @@ export function ClaimProfileSection({
                 setOutcome(null);
               }}
               disabled={submitting}
-              className="text-xs text-gray-500 hover:text-gray-700"
+              className="text-xs text-ink-soft hover:text-ink"
             >
               Cancel
             </button>
-            <span className="ml-auto text-[10px] text-gray-400 tabular-nums">
+            <span className="ml-auto font-mono text-[10px] text-ink-soft/70 tabular-nums">
               {justification.length}/{JUSTIFICATION_MAX}
             </span>
           </div>
           {outcome?.kind === "error" && (
-            <p className="mt-2 text-xs text-red-600">{outcome.message}</p>
+            <p className="mt-2 text-xs text-accent">{outcome.message}</p>
           )}
         </div>
       )}
 
       {outcome?.kind === "approved" && (
-        <p className="mt-2 text-xs font-medium text-emerald-700">
+        <p className="mt-2 text-xs font-medium text-green-ink">
           ✓ Verified — your email exactly matched this official&apos;s listed email.
         </p>
       )}

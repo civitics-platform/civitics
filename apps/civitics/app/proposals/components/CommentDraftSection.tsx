@@ -37,13 +37,13 @@ export function CommentDraftSection({ regulationsGovId, congressGovUrl, title, p
 
   if (!submitHref) {
     return (
-      <div className="rounded-lg border border-gray-200 bg-gray-50 p-5 text-sm text-gray-500">
+      <div className="border border-rule bg-paper-2 p-5 text-sm text-ink-soft">
         Comment submission URL not available for this proposal. Check{" "}
         <a
           href="https://www.regulations.gov"
           target="_blank"
           rel="noopener noreferrer"
-          className="text-indigo-600 hover:underline"
+          className="text-accent hover:underline"
         >
           regulations.gov
         </a>{" "}
@@ -55,16 +55,16 @@ export function CommentDraftSection({ regulationsGovId, congressGovUrl, title, p
   if (submitted) {
     const displayHref = fallbackUrl ?? submitHref;
     return (
-      <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-6 text-center">
-        <p className="text-lg font-semibold text-emerald-800">
+      <div className="border border-green-ink/30 bg-green-ink/5 p-6 text-center">
+        <p className="text-lg font-semibold text-green-ink">
           ✓ Thanks for participating in democracy.
         </p>
         {confirmationNumber ? (
-          <p className="mt-1 text-sm text-emerald-700">
+          <p className="mt-1 text-sm text-green-ink/90">
             Confirmation #: <span className="font-mono font-medium">{confirmationNumber}</span>
           </p>
         ) : (
-          <p className="mt-1 text-sm text-emerald-700">
+          <p className="mt-1 text-sm text-green-ink/90">
             Your comment has been prepared. Paste it into the form at regulations.gov to submit
             officially.
           </p>
@@ -76,7 +76,7 @@ export function CommentDraftSection({ regulationsGovId, congressGovUrl, title, p
                 navigator.clipboard.writeText(text).catch(() => {});
               }
             }}
-            className="rounded-md border border-emerald-300 bg-white px-4 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50 transition-colors"
+            className="border border-green-ink/40 bg-card px-4 py-2 text-sm font-medium text-green-ink hover:bg-green-ink/5 transition-colors"
           >
             Copy comment text
           </button>
@@ -85,7 +85,7 @@ export function CommentDraftSection({ regulationsGovId, congressGovUrl, title, p
               href={displayHref}
               target="_blank"
               rel="noopener noreferrer"
-              className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 transition-colors"
+              className="bg-ink px-4 py-2 text-sm font-medium text-paper hover:bg-accent transition-colors"
             >
               Open regulations.gov →
             </a>
@@ -93,7 +93,7 @@ export function CommentDraftSection({ regulationsGovId, congressGovUrl, title, p
         </div>
         <button
           onClick={() => setSubmitted(false)}
-          className="mt-3 text-xs text-emerald-600 hover:underline"
+          className="mt-3 text-xs text-green-ink hover:underline"
         >
           Edit my comment
         </button>
@@ -105,12 +105,12 @@ export function CommentDraftSection({ regulationsGovId, congressGovUrl, title, p
     <div className="space-y-5">
       {/* Step 1: Draft */}
       <div>
-        <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">
+        <p className="font-mono text-xs font-semibold uppercase tracking-wide text-ink-soft/70 mb-2">
           Step 1 — Draft your comment
         </p>
 
         {/* Tab bar */}
-        <div className="flex gap-1 rounded-lg bg-gray-100 p-1 mb-3 w-fit">
+        <div className="flex gap-1 bg-paper-2 p-1 mb-3 w-fit">
           {(["write", "template"] as const).map((t) => (
             <button
               key={t}
@@ -118,16 +118,16 @@ export function CommentDraftSection({ regulationsGovId, congressGovUrl, title, p
                 setTab(t);
                 if (t === "template" && !text) setText(TEMPLATES.support(title));
               }}
-              className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+              className={`px-3 py-1.5 text-sm font-medium transition-colors ${
                 tab === t
-                  ? "bg-white text-gray-900 shadow-sm"
-                  : "text-gray-500 hover:text-gray-700"
+                  ? "bg-card text-ink shadow-sm"
+                  : "text-ink-soft hover:text-ink"
               }`}
             >
               {t === "write" ? "Write My Own" : "Use Template"}
             </button>
           ))}
-          <span className="rounded-md px-3 py-1.5 text-sm font-medium text-gray-300 cursor-default">
+          <span className="px-3 py-1.5 text-sm font-medium text-ink-soft/50 cursor-default">
             AI Help
             <span className="ml-1 text-[10px] font-normal">(coming soon)</span>
           </span>
@@ -139,7 +139,7 @@ export function CommentDraftSection({ regulationsGovId, congressGovUrl, title, p
               <button
                 key={t}
                 onClick={() => setText(TEMPLATES[t](title))}
-                className="rounded border border-gray-200 bg-white px-2.5 py-1 text-xs font-medium text-gray-600 hover:border-gray-300 hover:bg-gray-50 transition-colors capitalize"
+                className="border border-rule bg-card px-2.5 py-1 text-xs font-medium text-ink-soft hover:border-accent hover:text-accent transition-colors capitalize"
               >
                 {t === "info" ? "Request info" : t}
               </button>
@@ -152,16 +152,16 @@ export function CommentDraftSection({ regulationsGovId, congressGovUrl, title, p
           onChange={(e) => setText(e.target.value)}
           placeholder="Share your perspective on this proposal. What impact will it have on you, your community, or your industry?"
           rows={7}
-          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+          className="w-full border border-rule bg-paper px-3 py-2 text-sm text-ink placeholder:text-ink-soft/60 focus:border-accent focus:bg-card focus:outline-none focus:ring-1 focus:ring-accent"
         />
-        <p className="mt-1 text-right text-xs text-gray-400">
+        <p className="mt-1 text-right font-mono text-xs tabular-nums text-ink-soft/70">
           {text.length} characters
         </p>
       </div>
 
       {/* Step 2: Details */}
       <div>
-        <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">
+        <p className="font-mono text-xs font-semibold uppercase tracking-wide text-ink-soft/70 mb-2">
           Step 2 — Your details (optional)
         </p>
         <div className="grid gap-2 sm:grid-cols-2">
@@ -170,24 +170,24 @@ export function CommentDraftSection({ regulationsGovId, congressGovUrl, title, p
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Name (optional)"
-            className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            className="border border-rule bg-paper px-3 py-2 text-sm text-ink placeholder:text-ink-soft/60 focus:border-accent focus:bg-card focus:outline-none focus:ring-1 focus:ring-accent"
           />
           <input
             type="text"
             value={org}
             onChange={(e) => setOrg(e.target.value)}
             placeholder="Organization (optional)"
-            className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            className="border border-rule bg-paper px-3 py-2 text-sm text-ink placeholder:text-ink-soft/60 focus:border-accent focus:bg-card focus:outline-none focus:ring-1 focus:ring-accent"
           />
         </div>
-        <p className="mt-1.5 text-xs text-gray-400">
+        <p className="mt-1.5 text-xs text-ink-soft/70">
           Anonymous comments are accepted. Your identity is never required.
         </p>
       </div>
 
       {/* Step 3: Submit */}
       <div>
-        <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">
+        <p className="font-mono text-xs font-semibold uppercase tracking-wide text-ink-soft/70 mb-2">
           Step 3 — Submit
         </p>
         <button
@@ -220,11 +220,11 @@ export function CommentDraftSection({ regulationsGovId, congressGovUrl, title, p
               setSubmitted(true);
             }
           }}
-          className="w-full rounded-md bg-indigo-600 px-4 py-3 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          className="w-full bg-ink px-4 py-3 text-sm font-semibold text-paper hover:bg-accent disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         >
           {isSubmitting ? "Submitting..." : "Submit Official Comment →"}
         </button>
-        <p className="mt-2 text-center text-xs text-gray-400">
+        <p className="mt-2 text-center text-xs text-ink-soft/70">
           Opens regulations.gov · Free, always · No account required
         </p>
       </div>

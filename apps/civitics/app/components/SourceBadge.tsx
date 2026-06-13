@@ -18,11 +18,11 @@
 import { resolveSource, type SourceCategory, type AttributionShape } from "@civitics/db";
 
 const SOURCE_CATEGORY_COLORS: Record<SourceCategory, string> = {
-  federal:   "bg-blue-100 text-blue-800",
-  state:     "bg-purple-100 text-purple-800",
-  local:     "bg-green-100 text-green-800",
-  community: "bg-amber-100 text-amber-800",
-  other:     "bg-gray-100 text-gray-700",
+  federal:   "bg-civic-blue/10 text-civic-blue",
+  state:     "bg-ink/10 text-ink",
+  local:     "bg-green-ink/10 text-green-ink",
+  community: "bg-amber/25 text-ink",
+  other:     "bg-ink/5 text-ink-soft",
 };
 
 type Variant = "pill" | "inline" | "icon-only";
@@ -58,7 +58,7 @@ export function SourceBadge({ attribution, variant = "pill", className }: Props)
 
   const wrapperClass = (() => {
     switch (variant) {
-      case "inline":    return [INLINE_BASE, "text-gray-700", className].filter(Boolean).join(" ");
+      case "inline":    return [INLINE_BASE, "text-ink-soft", className].filter(Boolean).join(" ");
       case "icon-only": return [PILL_BASE, colorClass, className].filter(Boolean).join(" ");
       case "pill":
       default:          return [PILL_BASE, colorClass, className].filter(Boolean).join(" ");

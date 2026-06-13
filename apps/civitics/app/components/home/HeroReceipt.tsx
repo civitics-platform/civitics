@@ -24,7 +24,7 @@ export function HeroReceipt({
   ];
 
   return (
-    <aside className="rotate-[0.6deg] border border-rule bg-card px-5 pb-3.5 pt-5 font-mono shadow-[0_1px_0_var(--c-rule),0_10px_26px_rgba(28,26,22,0.10)]">
+    <aside className="rotate-[0.6deg] border border-rule bg-card px-5 pb-3.5 pt-5 font-mono shadow-[0_1px_0_rgb(var(--c-rule)),0_10px_26px_rgba(28,26,22,0.10)]">
       <div className="border-b border-dashed border-rule pb-2.5 text-center">
         <div className="text-[13px] font-bold tracking-[0.2em] text-ink">CIVITICS</div>
         <div className="mt-1 text-[9px] tracking-[0.1em] text-ink-soft">
@@ -51,7 +51,7 @@ export function HeroReceipt({
         className="mx-auto mb-1 mt-3 h-[26px] w-3/4"
         style={{
           background:
-            "repeating-linear-gradient(90deg, var(--c-ink) 0 2px, transparent 2px 5px, var(--c-ink) 5px 6px, transparent 6px 11px, var(--c-ink) 11px 14px, transparent 14px 17px)",
+            "repeating-linear-gradient(90deg, rgb(var(--c-ink)) 0 2px, transparent 2px 5px, rgb(var(--c-ink)) 5px 6px, transparent 6px 11px, rgb(var(--c-ink)) 11px 14px, transparent 14px 17px)",
         }}
       />
       <div className="text-center text-[8.5px] tracking-[0.12em] text-ink-soft">

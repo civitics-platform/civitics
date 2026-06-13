@@ -34,7 +34,7 @@ export function AgenciesRow({ agencies }: { agencies: AgencyRow[] }) {
               <Link
                 key={a.id}
                 href={`/agencies/${a.id}`}
-                className="group flex flex-col border border-rule bg-card p-5 shadow-[0_1px_0_var(--c-rule)] transition-colors hover:border-accent focus-visible:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
+                className="group flex flex-col border border-rule bg-card p-5 shadow-[0_1px_0_rgb(var(--c-rule))] transition-colors hover:border-accent focus-visible:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
               >
                 <span className="w-fit border border-rule bg-paper-2 px-2 py-1 font-mono text-[11px] font-bold text-ink">
                   {(a.acronym ?? a.short_name ?? a.name).slice(0, 5).toUpperCase()}

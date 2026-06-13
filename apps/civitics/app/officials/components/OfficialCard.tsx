@@ -18,25 +18,26 @@ type RecentVote = {
 };
 
 const VOTE_STYLES: Record<string, { label: string; cls: string }> = {
-  yes:         { label: "Yea",      cls: "bg-emerald-100 text-emerald-700" },
-  no:          { label: "Nay",      cls: "bg-red-100 text-red-700" },
-  abstain:     { label: "Abstain",  cls: "bg-gray-100 text-gray-600" },
-  present:     { label: "Present",  cls: "bg-gray-100 text-gray-600" },
-  not_voting:  { label: "No vote",  cls: "bg-gray-50 text-gray-400" },
-  paired_yes:  { label: "Paired+",  cls: "bg-emerald-50 text-emerald-600" },
-  paired_no:   { label: "Paired−",  cls: "bg-red-50 text-red-600" },
+  yes:         { label: "Yea",      cls: "bg-green-ink/10 text-green-ink" },
+  no:          { label: "Nay",      cls: "bg-accent/10 text-accent" },
+  abstain:     { label: "Abstain",  cls: "bg-ink/5 text-ink-soft" },
+  present:     { label: "Present",  cls: "bg-ink/5 text-ink-soft" },
+  not_voting:  { label: "No vote",  cls: "bg-ink/5 text-ink-soft/70" },
+  paired_yes:  { label: "Paired+",  cls: "bg-green-ink/5 text-green-ink/80" },
+  paired_no:   { label: "Paired−",  cls: "bg-accent/5 text-accent/80" },
 };
 
+// Independents stay ink-outline — no purple token exists by design.
 const PARTY_BORDER: Record<string, string> = {
-  democrat:    "border-l-4 border-l-blue-500",
-  republican:  "border-l-4 border-l-red-500",
-  independent: "border-l-4 border-l-purple-500",
+  democrat:    "border-l-4 border-l-civic-blue",
+  republican:  "border-l-4 border-l-accent",
+  independent: "border-l-4 border-l-ink",
 };
 
 const PARTY_BADGE: Record<string, string> = {
-  democrat:    "bg-blue-100 text-blue-800",
-  republican:  "bg-red-100 text-red-800",
-  independent: "bg-purple-100 text-purple-800",
+  democrat:    "bg-civic-blue/10 text-civic-blue",
+  republican:  "bg-accent/10 text-accent",
+  independent: "border border-ink/40 text-ink",
 };
 
 function initials(name: string) {
@@ -137,8 +138,8 @@ export function OfficialCard({ official }: { official: OfficialRow }) {
     return () => { cancelled = true; };
   }, [official.id]);
 
-  const partyBorder = PARTY_BORDER[official.party ?? ""] ?? "border-l-4 border-l-gray-300";
-  const partyBadge  = PARTY_BADGE[official.party ?? ""]  ?? "bg-gray-100 text-gray-700";
+  const partyBorder = PARTY_BORDER[official.party ?? ""] ?? "border-l-4 border-l-rule";
+  const partyBadge  = PARTY_BADGE[official.party ?? ""]  ?? "bg-ink/5 text-ink-soft";
   const partyLabel  = official.party
     ? official.party.charAt(0).toUpperCase() + official.party.slice(1)
     : "Unknown";
@@ -146,7 +147,7 @@ export function OfficialCard({ official }: { official: OfficialRow }) {
   const isFederal = !!(official.source_ids as Record<string, string> | null)?.["congress_gov"];
 
   return (
-    <div className={`bg-white border-b border-gray-200 ${partyBorder}`}>
+    <div className={`bg-card border-b border-rule ${partyBorder}`}>
       {/* Profile header */}
       <div className="px-5 py-5">
         <div className="flex items-start gap-4">
@@ -156,10 +157,10 @@ export function OfficialCard({ official }: { official: OfficialRow }) {
             <img
               src={official.photo_url}
               alt={official.full_name}
-              className="h-16 w-16 shrink-0 rounded-full border-2 border-gray-200 object-cover"
+              className="h-16 w-16 shrink-0 rounded-full border-2 border-rule object-cover"
             />
           ) : (
-            <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full border-2 border-gray-200 bg-gray-100 text-lg font-bold text-gray-500">
+            <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full border-2 border-rule bg-paper-2 font-serif text-lg font-bold text-ink-soft">
               {initials(official.full_name)}
             </div>
           )}
@@ -171,30 +172,30 @@ export function OfficialCard({ official }: { official: OfficialRow }) {
                 {partyLabel}
               </span>
               {official.chamber && (
-                <span className="rounded border border-gray-200 px-1.5 py-0.5 font-mono text-[10px] text-gray-500">
+                <span className="border border-rule px-1.5 py-0.5 font-mono text-[10px] text-ink-soft">
                   {official.chamber.toUpperCase()}
                 </span>
               )}
               {isFederal ? (
-                <span className="rounded border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-600">
+                <span className="border border-civic-blue/30 bg-civic-blue/10 px-1.5 py-0.5 text-[10px] font-semibold text-civic-blue">
                   Federal
                 </span>
               ) : (
-                <span className="rounded border border-gray-200 bg-gray-50 px-1.5 py-0.5 text-[10px] font-semibold text-gray-500">
+                <span className="border border-rule bg-paper-2 px-1.5 py-0.5 text-[10px] font-semibold text-ink-soft">
                   State
                 </span>
               )}
             </div>
-            <h2 className="mt-1 text-xl font-bold text-gray-900 leading-tight">{official.full_name}</h2>
-            <p className="text-sm text-gray-500">{official.role_title}</p>
+            <h2 className="mt-1 font-serif text-xl font-bold text-ink leading-tight">{official.full_name}</h2>
+            <p className="text-sm text-ink-soft">{official.role_title}</p>
             {official.state_name && (
-              <p className="text-sm text-gray-400">
+              <p className="text-sm text-ink-soft/80">
                 {official.state_name}
                 {official.district_name ? ` · ${official.district_name}` : ""}
               </p>
             )}
             {(official.term_start || official.term_end) && (
-              <p className="mt-1 text-xs text-gray-400">
+              <p className="mt-1 font-mono text-xs tabular-nums text-ink-soft/80">
                 Term:{" "}
                 {official.term_start ? formatDate(official.term_start) : "?"} →{" "}
                 {official.term_end ? formatDate(official.term_end) : "present"}
@@ -213,7 +214,7 @@ export function OfficialCard({ official }: { official: OfficialRow }) {
         </div>
 
         {/* Stats bar */}
-        <div className="mt-4 grid grid-cols-3 gap-px rounded overflow-hidden border border-gray-100 bg-gray-100">
+        <div className="mt-4 grid grid-cols-3 gap-px overflow-hidden border border-rule bg-rule">
           <Stat
             value={voteCount !== null ? voteCount.toLocaleString() : "—"}
             label="Votes on record"
@@ -235,38 +236,38 @@ export function OfficialCard({ official }: { official: OfficialRow }) {
       </div>
 
       {/* Recent votes */}
-      <div className="border-t border-gray-100 px-5 py-4">
-        <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-400">
+      <div className="border-t border-rule px-5 py-4">
+        <p className="mb-3 font-mono text-xs font-semibold uppercase tracking-wider text-ink-soft/70">
           Recent Votes
         </p>
 
         {loading ? (
           <div className="space-y-2">
             {[...Array(4)].map((_, i) => (
-              <div key={i} className="h-10 animate-pulse rounded bg-gray-100" />
+              <div key={i} className="h-10 animate-pulse bg-paper-2" />
             ))}
           </div>
         ) : votes.length === 0 ? (
-          <p className="text-sm text-gray-400">
+          <p className="text-sm text-ink-soft">
             Voting record loading — check back as we sync congressional data.
           </p>
         ) : (
           <div className="space-y-1.5">
             {votes.map((v) => {
-              const vs = VOTE_STYLES[v.vote] ?? { label: v.vote, cls: "bg-gray-100 text-gray-600" };
+              const vs = VOTE_STYLES[v.vote] ?? { label: v.vote, cls: "bg-ink/5 text-ink-soft" };
               const proposal = v.proposals;
               const label = proposal?.bill_number ?? proposal?.short_title ?? proposal?.title ?? "Unknown bill";
               return (
                 <div
                   key={v.id}
-                  className="flex items-center gap-2.5 rounded border border-gray-100 bg-gray-50 px-3 py-2"
+                  className="flex items-center gap-2.5 border border-rule/60 bg-paper px-3 py-2"
                 >
-                  <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold ${vs.cls}`}>
+                  <span className={`shrink-0 px-1.5 py-0.5 font-mono text-[10px] font-bold ${vs.cls}`}>
                     {vs.label}
                   </span>
-                  <p className="flex-1 truncate text-xs text-gray-700">{label}</p>
+                  <p className="flex-1 truncate text-xs text-ink">{label}</p>
                   {v.voted_at && (
-                    <span className="shrink-0 text-[10px] text-gray-400">
+                    <span className="shrink-0 font-mono text-[10px] tabular-nums text-ink-soft/70">
                       {new Date(v.voted_at).toLocaleDateString("en-US", { month: "short", year: "2-digit" })}
                     </span>
                   )}
@@ -278,17 +279,17 @@ export function OfficialCard({ official }: { official: OfficialRow }) {
       </div>
 
       {/* Profile link + Phase 2 teaser */}
-      <div className="border-t border-gray-100 px-5 pb-4 space-y-2">
+      <div className="border-t border-rule px-5 pb-4 space-y-2">
         <a
           href={`/officials/${official.id}`}
-          className="mt-3 block w-full rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-center text-xs font-medium text-gray-600 hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 transition-colors"
+          className="mt-3 block w-full border border-rule bg-paper-2 px-3 py-2 text-center text-xs font-medium text-ink hover:border-accent hover:text-accent transition-colors"
         >
           View full profile →
         </a>
         <button
           disabled
           title="Available in Phase 2 with AI credits"
-          className="w-full cursor-not-allowed rounded-md border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs font-medium text-indigo-400"
+          className="w-full cursor-not-allowed border border-rule bg-paper-2 px-3 py-2 text-xs font-medium text-ink-soft/60"
         >
           ✦ AI analysis of this official — Phase 2
         </button>
@@ -309,14 +310,14 @@ function Stat({
   note?: string;
 }) {
   return (
-    <div className="bg-white px-3 py-3 text-center">
+    <div className="bg-card px-3 py-3 text-center">
       {loading ? (
-        <div className="mx-auto h-5 w-12 animate-pulse rounded bg-gray-100" />
+        <div className="mx-auto h-5 w-12 animate-pulse bg-paper-2" />
       ) : (
-        <p className="text-base font-bold text-gray-900">{value}</p>
+        <p className="font-mono text-base font-bold tabular-nums text-ink">{value}</p>
       )}
-      <p className="mt-0.5 text-[10px] text-gray-400">{label}</p>
-      {note && <p className="text-[9px] text-gray-300">{note}</p>}
+      <p className="mt-0.5 text-[10px] text-ink-soft/70">{label}</p>
+      {note && <p className="text-[9px] text-ink-soft/50">{note}</p>}
     </div>
   );
 }

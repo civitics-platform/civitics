@@ -13,7 +13,7 @@ export function GraphBand() {
         viewBox="0 0 560 420"
         fill="none"
       >
-        <g stroke="var(--c-paper)" strokeWidth="1">
+        <g stroke="rgb(var(--c-paper))" strokeWidth="1">
           <line x1="60" y1="80" x2="220" y2="160" />
           <line x1="220" y1="160" x2="380" y2="90" />
           <line x1="220" y1="160" x2="300" y2="300" />
@@ -23,7 +23,7 @@ export function GraphBand() {
           <line x1="140" y1="280" x2="300" y2="300" />
           <line x1="380" y1="90" x2="300" y2="300" />
         </g>
-        <g fill="var(--c-paper)">
+        <g fill="rgb(var(--c-paper))">
           <circle cx="60" cy="80" r="7" />
           <circle cx="220" cy="160" r="11" />
           <circle cx="380" cy="90" r="8" />

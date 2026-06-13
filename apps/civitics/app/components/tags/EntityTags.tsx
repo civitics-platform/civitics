@@ -29,18 +29,21 @@ interface EntityTagsProps {
 // Category → color pill styles
 // ---------------------------------------------------------------------------
 
+// Token palette (FIX-563): four categories keep a color identity
+// (urgency=amber, topic=blue, pattern=accent, industry=green); the rest
+// read as neutral paper pills — no purple/teal tokens exist by design.
 const CATEGORY_STYLES: Record<string, string> = {
-  urgency:  "bg-amber-100 text-amber-800 border border-amber-200",
-  topic:    "bg-blue-100 text-blue-800 border border-blue-200",
-  pattern:  "bg-purple-100 text-purple-800 border border-purple-200",
-  industry: "bg-green-100 text-green-800 border border-green-200",
-  audience: "bg-teal-100 text-teal-800 border border-teal-200",
-  scope:    "bg-gray-100 text-gray-700 border border-gray-200",
-  quality:  "bg-slate-100 text-slate-700 border border-slate-200",
-  size:     "bg-emerald-100 text-emerald-800 border border-emerald-200",
+  urgency:  "bg-amber/25 text-ink border border-amber/60",
+  topic:    "bg-civic-blue/10 text-civic-blue border border-civic-blue/25",
+  pattern:  "bg-accent/10 text-accent border border-accent/25",
+  industry: "bg-green-ink/10 text-green-ink border border-green-ink/25",
+  audience: "bg-ink/5 text-ink-soft border border-rule",
+  scope:    "bg-ink/5 text-ink-soft border border-rule",
+  quality:  "bg-paper-2 text-ink-soft border border-rule",
+  size:     "bg-paper-2 text-ink-soft border border-rule",
 };
 
-const DEFAULT_PILL_STYLE = "bg-gray-100 text-gray-600 border border-gray-200";
+const DEFAULT_PILL_STYLE = "bg-ink/5 text-ink-soft border border-rule";
 
 function pillStyle(category: string): string {
   return CATEGORY_STYLES[category] ?? DEFAULT_PILL_STYLE;
@@ -101,7 +104,7 @@ function TagPill({ tag, muted = false }: { tag: EntityTag; muted?: boolean }) {
   return (
     <span
       className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap ${
-        muted ? "bg-gray-50 text-gray-400 border border-gray-100 text-[10px]" : pillStyle(tag.tag_category)
+        muted ? "bg-paper-2 text-ink-soft/70 border border-rule text-[10px]" : pillStyle(tag.tag_category)
       }`}
       title={`${tag.display_label}${tag.confidence < 1 ? ` (${Math.round(tag.confidence * 100)}% confidence)` : ""}`}
     >
@@ -169,7 +172,7 @@ export function EntityTags({ tags = [], variant = "compact" }: EntityTagsProps) 
         {tier2.length > 0 && !tier2Open && (
           <button
             onClick={() => setTier2Open(true)}
-            className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 transition-colors"
+            className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium text-accent hover:bg-accent/5 transition-colors"
           >
             +{tier2.length} more
           </button>
@@ -191,7 +194,7 @@ export function EntityTags({ tags = [], variant = "compact" }: EntityTagsProps) 
           {tier2Open && tier2.length > 0 && (
             <button
               onClick={() => { setTier2Open(false); setTier3Open(false); }}
-              className="text-[11px] text-gray-400 hover:text-gray-600 transition-colors"
+              className="text-[11px] text-ink-soft/70 hover:text-ink-soft transition-colors"
             >
               ▲ Show less
             </button>
@@ -199,7 +202,7 @@ export function EntityTags({ tags = [], variant = "compact" }: EntityTagsProps) 
           {hasResearchTags && (
             <button
               onClick={handleResearchClick}
-              className="text-[11px] text-gray-400 hover:text-gray-600 transition-colors"
+              className="text-[11px] text-ink-soft/70 hover:text-ink-soft transition-colors"
             >
               {tier3Open ? "⚙ Hide research tags ↑" : "⚙ Research tags"}
             </button>
@@ -209,10 +212,10 @@ export function EntityTags({ tags = [], variant = "compact" }: EntityTagsProps) 
 
       {/* ── Tier 3: research / internal tags ─────────────────────────────── */}
       {tier3Open && (
-        <div className="mt-1 rounded-md border border-gray-100 bg-gray-50 p-3">
+        <div className="mt-1 border border-rule bg-paper-2 p-3">
           {/* Warning blurb — shown until dismissed */}
           {!hasResearchWarningBeenDismissed() && !researchDismissed && (
-            <div className="mb-3 rounded border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-800">
+            <div className="mb-3 border border-amber/60 bg-amber/15 p-2.5 text-xs text-ink">
               <p className="font-semibold mb-1">⚙ Research &amp; Internal Tags</p>
               <p className="text-[11px] leading-relaxed mb-2">
                 These tags include:{" "}
@@ -224,7 +227,7 @@ export function EntityTags({ tags = [], variant = "compact" }: EntityTagsProps) 
               </p>
               <button
                 onClick={handleDismissWarning}
-                className="rounded bg-amber-200 px-2 py-0.5 text-[11px] font-medium text-amber-900 hover:bg-amber-300 transition-colors"
+                className="bg-amber/40 px-2 py-0.5 text-[11px] font-medium text-ink hover:bg-amber/60 transition-colors"
               >
                 Got it
               </button>
@@ -232,14 +235,14 @@ export function EntityTags({ tags = [], variant = "compact" }: EntityTagsProps) 
           )}
 
           {/* Internal tags */}
-          <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+          <p className="mb-1.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-ink-soft/70">
             Research tags
           </p>
           <div className="flex flex-wrap gap-1">
             {tier3.map((tag) => (
               <span
                 key={`${tag.tag}-${tag.tag_category}`}
-                className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-gray-400 bg-white border border-gray-200 font-mono"
+                className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] text-ink-soft bg-card border border-rule font-mono"
                 title={`${tag.tag_category}: ${tag.tag} (confidence: ${tag.confidence})`}
               >
                 {tag.display_icon && <span>{tag.display_icon}</span>}
@@ -253,7 +256,7 @@ export function EntityTags({ tags = [], variant = "compact" }: EntityTagsProps) 
 
           {/* Detail page shows model + pipeline info */}
           {variant === "full" && tier3.some((t) => t.ai_model) && (
-            <p className="mt-2 text-[10px] text-gray-300">
+            <p className="mt-2 text-[10px] text-ink-soft/60">
               AI model: {tier3.find((t) => t.ai_model)?.ai_model ?? "unknown"}
             </p>
           )}

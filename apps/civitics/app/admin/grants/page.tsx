@@ -45,11 +45,11 @@ function formatWhen(iso: string): string {
 }
 
 const EVENT_STYLES: Record<string, string> = {
-  submitted:     "bg-amber-50 text-amber-700",
-  auto_approved: "bg-emerald-50 text-emerald-700",
-  approved:      "bg-emerald-50 text-emerald-700",
-  rejected:      "bg-red-50 text-red-700",
-  expired:       "bg-gray-100 text-gray-500",
+  submitted:     "bg-amber/20 text-ink",
+  auto_approved: "bg-green-ink/10 text-green-ink",
+  approved:      "bg-green-ink/10 text-green-ink",
+  rejected:      "bg-accent/10 text-accent",
+  expired:       "bg-ink/5 text-ink-soft",
 };
 
 export default async function AdminGrantsPage() {
@@ -202,7 +202,7 @@ export default async function AdminGrantsPage() {
   });
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-paper">
       <main id="main-content">
         <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
           <PageHeader
@@ -216,7 +216,7 @@ export default async function AdminGrantsPage() {
           />
 
           <SectionCard noPadding>
-            <div className="p-6 border-b border-gray-100">
+            <div className="p-6 border-b-2 border-ink">
               <SectionHeader
                 title={`Pending claims (${claims.length})`}
                 description="Exact auth-email matches auto-approve and never appear here. Everything below needs a human call — the domain-match flag means the claimant's email domain matches the official's listed email domain."
@@ -224,42 +224,42 @@ export default async function AdminGrantsPage() {
             </div>
 
             {claims.length === 0 ? (
-              <div className="p-8 text-center text-sm text-gray-500">
+              <div className="p-8 text-center text-sm text-ink-soft">
                 No pending claims. New submissions land here when an official
                 claims their profile without an exact email match.
               </div>
             ) : (
-              <div className="divide-y divide-gray-100">
+              <div className="divide-y divide-rule">
                 {claims.map((c) => (
                   <div key={c.id} className="flex flex-col gap-3 p-5 sm:flex-row sm:items-start sm:justify-between">
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-sm font-semibold text-gray-900">
+                        <span className="text-sm font-semibold text-ink">
                           {c.claimant_name || c.claimant_email || "Unknown user"}
                         </span>
                         {c.claimant_name && c.claimant_email && (
-                          <span className="text-xs text-gray-500">{c.claimant_email}</span>
+                          <span className="text-xs text-ink-soft">{c.claimant_email}</span>
                         )}
-                        <span className="rounded border border-gray-200 px-1.5 py-0.5 font-mono text-[10px] text-gray-500">
+                        <span className="border border-rule px-1.5 py-0.5 font-mono text-[10px] text-ink-soft">
                           {c.method ?? "—"}
                         </span>
                         {c.domain && (
-                          <span className="rounded bg-gray-100 px-1.5 py-0.5 font-mono text-[10px] text-gray-600">
+                          <span className="bg-ink/5 px-1.5 py-0.5 font-mono text-[10px] text-ink-soft">
                             @{c.domain}
                           </span>
                         )}
                         {c.domain_match && (
-                          <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-700">
+                          <span className="rounded-full bg-civic-blue/10 px-2 py-0.5 text-[10px] font-medium text-civic-blue">
                             domain match
                           </span>
                         )}
                       </div>
-                      <p className="mt-1 text-xs text-gray-500">
+                      <p className="mt-1 text-xs text-ink-soft">
                         Claiming{" "}
                         {c.official_id ? (
                           <a
                             href={`/officials/${c.official_id}`}
-                            className="font-medium text-indigo-600 hover:underline"
+                            className="font-medium text-accent hover:underline"
                             target="_blank"
                             rel="noopener noreferrer"
                           >
@@ -271,7 +271,7 @@ export default async function AdminGrantsPage() {
                         · submitted {formatWhen(c.created_at)}
                       </p>
                       {c.justification && (
-                        <p className="mt-2 rounded-md bg-gray-50 px-3 py-2 text-xs leading-relaxed text-gray-700 whitespace-pre-wrap">
+                        <p className="mt-2 border border-rule bg-paper-2 px-3 py-2 text-xs leading-relaxed text-ink whitespace-pre-wrap">
                           {c.justification}
                         </p>
                       )}
@@ -285,33 +285,33 @@ export default async function AdminGrantsPage() {
 
           <div className="mt-6">
             <SectionCard noPadding>
-              <div className="p-6 border-b border-gray-100">
+              <div className="p-6 border-b-2 border-ink">
                 <SectionHeader
                   title="Recent grant events"
                   description="Append-only audit trail across all grant types, newest first."
                 />
               </div>
               {events.length === 0 ? (
-                <div className="p-8 text-center text-sm text-gray-500">No grant events yet.</div>
+                <div className="p-8 text-center text-sm text-ink-soft">No grant events yet.</div>
               ) : (
-                <div className="divide-y divide-gray-100">
+                <div className="divide-y divide-rule">
                   {events.map((e) => (
                     <div key={e.id} className="flex items-center gap-3 px-5 py-2.5">
                       <span
-                        className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold ${
-                          EVENT_STYLES[e.event] ?? "bg-gray-100 text-gray-600"
+                        className={`shrink-0 px-1.5 py-0.5 font-mono text-[10px] font-bold ${
+                          EVENT_STYLES[e.event] ?? "bg-ink/5 text-ink-soft"
                         }`}
                       >
                         {e.event}
                       </span>
-                      <p className="flex-1 truncate text-xs text-gray-700">
+                      <p className="flex-1 truncate text-xs text-ink">
                         {e.claimant_email ?? "unknown user"}
                         {e.official_name ? ` → ${e.official_name}` : ""}
                         {e.actor_email && e.actor_email !== e.claimant_email
                           ? ` (by ${e.actor_email})`
                           : ""}
                       </p>
-                      <p className="shrink-0 text-[10px] text-gray-400 tabular-nums">
+                      <p className="shrink-0 font-mono text-[10px] text-ink-soft/70 tabular-nums">
                         {formatWhen(e.occurred_at)}
                       </p>
                     </div>

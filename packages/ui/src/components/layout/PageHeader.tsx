@@ -17,6 +17,11 @@ interface PageHeaderProps {
   badge?: string;
 }
 
+const ACTION_BASE =
+  "inline-flex items-center px-4 py-2 text-sm font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1";
+const ACTION_PRIMARY = "bg-ink text-paper hover:bg-accent";
+const ACTION_SECONDARY = "border border-rule bg-card text-ink hover:border-accent hover:text-accent";
+
 export function PageHeader({
   title,
   description,
@@ -27,20 +32,23 @@ export function PageHeader({
   return (
     <div className="mb-6">
       {breadcrumb && breadcrumb.length > 0 && (
-        <nav aria-label="Breadcrumb" className="mb-2 flex items-center gap-1 text-xs text-gray-500">
+        <nav
+          aria-label="Breadcrumb"
+          className="mb-2 flex items-center gap-1 font-mono text-[10.5px] uppercase tracking-[0.08em] text-ink-soft"
+        >
           <ol className="flex items-center gap-1 list-none p-0 m-0">
             {breadcrumb.map((item, i) => (
               <li key={i} className="flex items-center gap-1">
-                {i > 0 && <span aria-hidden="true" className="text-gray-400">/</span>}
+                {i > 0 && <span aria-hidden="true" className="text-ink-soft/50">/</span>}
                 {item.href ? (
                   <a
                     href={item.href}
-                    className="hover:text-gray-700 transition-colors duration-150 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+                    className="hover:text-accent transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                   >
                     {item.label}
                   </a>
                 ) : (
-                  <span aria-current="page" className="text-gray-700 font-medium">{item.label}</span>
+                  <span aria-current="page" className="text-ink font-semibold">{item.label}</span>
                 )}
               </li>
             ))}
@@ -49,16 +57,16 @@ export function PageHeader({
       )}
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-bold text-gray-900 truncate">{title}</h1>
+          <div className="flex items-center gap-2.5">
+            <h1 className="font-serif text-3xl font-bold text-ink truncate">{title}</h1>
             {badge && (
-              <span className="inline-flex items-center rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-medium text-blue-700">
+              <span className="inline-flex items-center border border-civic-blue px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-[0.1em] text-civic-blue">
                 {badge}
               </span>
             )}
           </div>
           {description && (
-            <p className="mt-1 text-sm text-gray-500">{description}</p>
+            <p className="mt-1 text-sm text-ink-soft">{description}</p>
           )}
         </div>
         {action && (
@@ -67,10 +75,8 @@ export function PageHeader({
               <a
                 href={action.href}
                 className={cn(
-                  "inline-flex items-center rounded-lg px-4 py-2 text-sm font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1",
-                  action.variant === "secondary"
-                    ? "border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
-                    : "bg-blue-600 text-white hover:bg-blue-700"
+                  ACTION_BASE,
+                  action.variant === "secondary" ? ACTION_SECONDARY : ACTION_PRIMARY
                 )}
               >
                 {action.label}
@@ -80,10 +86,8 @@ export function PageHeader({
                 type="button"
                 onClick={action.onClick}
                 className={cn(
-                  "inline-flex items-center rounded-lg px-4 py-2 text-sm font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1",
-                  action.variant === "secondary"
-                    ? "border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
-                    : "bg-blue-600 text-white hover:bg-blue-700"
+                  ACTION_BASE,
+                  action.variant === "secondary" ? ACTION_SECONDARY : ACTION_PRIMARY
                 )}
               >
                 {action.label}

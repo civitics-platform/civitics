@@ -8,7 +8,7 @@ import { fetchAllRows } from "@/lib/paginate";
 // they do, the chunk loads on demand.
 const OfficialGraph = nextDynamic(
   () => import("../components/OfficialGraph").then((m) => ({ default: m.OfficialGraph })),
-  { ssr: false, loading: () => <div className="h-[400px] bg-gray-50 rounded-lg" /> }
+  { ssr: false, loading: () => <div className="h-[400px] bg-paper-2" /> }
 );
 import { AiProfileSection } from "../components/AiProfileSection";
 import { ProfileTabs } from "../components/ProfileTabs";
@@ -240,21 +240,22 @@ function tagIssues(title: string): string[] {
 // ─── Vote display styles ───────────────────────────────────────────────────────
 
 const VOTE_STYLES: Record<string, { label: string; cls: string }> = {
-  yes:        { label: "Yea",     cls: "bg-emerald-100 text-emerald-700" },
-  no:         { label: "Nay",     cls: "bg-red-100 text-red-700" },
-  abstain:    { label: "Abstain", cls: "bg-gray-100 text-gray-600" },
-  present:    { label: "Present", cls: "bg-gray-100 text-gray-600" },
-  not_voting: { label: "No vote", cls: "bg-gray-50 text-gray-400" },
-  paired_yes: { label: "Paired+", cls: "bg-emerald-50 text-emerald-600" },
-  paired_no:  { label: "Paired−", cls: "bg-red-50 text-red-600" },
+  yes:        { label: "Yea",     cls: "bg-green-ink/10 text-green-ink" },
+  no:         { label: "Nay",     cls: "bg-accent/10 text-accent" },
+  abstain:    { label: "Abstain", cls: "bg-ink/5 text-ink-soft" },
+  present:    { label: "Present", cls: "bg-ink/5 text-ink-soft" },
+  not_voting: { label: "No vote", cls: "bg-ink/5 text-ink-soft/70" },
+  paired_yes: { label: "Paired+", cls: "bg-green-ink/5 text-green-ink/80" },
+  paired_no:  { label: "Paired−", cls: "bg-accent/5 text-accent/80" },
 };
 
+// Independents stay ink-outline — no purple token exists by design.
 const PARTY_STYLES: Record<string, { border: string; badge: string; label: string }> = {
-  democrat:    { border: "border-l-4 border-l-blue-500",   badge: "bg-blue-100 text-blue-800",     label: "Democrat" },
-  republican:  { border: "border-l-4 border-l-red-500",    badge: "bg-red-100 text-red-800",       label: "Republican" },
-  independent: { border: "border-l-4 border-l-purple-500", badge: "bg-purple-100 text-purple-800", label: "Independent" },
+  democrat:    { border: "border-l-4 border-l-civic-blue", badge: "bg-civic-blue/10 text-civic-blue", label: "Democrat" },
+  republican:  { border: "border-l-4 border-l-accent",     badge: "bg-accent/10 text-accent",         label: "Republican" },
+  independent: { border: "border-l-4 border-l-ink",        badge: "border border-ink/40 text-ink",    label: "Independent" },
 };
-const DEFAULT_PARTY = { border: "border-l-4 border-l-gray-300", badge: "bg-gray-100 text-gray-700", label: "Unknown" };
+const DEFAULT_PARTY = { border: "border-l-4 border-l-rule", badge: "bg-ink/5 text-ink-soft", label: "Unknown" };
 
 const DONOR_TYPE_LABELS: Record<string, string> = {
   individual:  "Individual",
@@ -877,7 +878,7 @@ export default async function OfficialProfilePage({
   const slowMode = await getSlowMode("official", official.id);
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-paper">
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(officialJsonLd) }}
@@ -894,7 +895,7 @@ export default async function OfficialProfilePage({
       <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
 
         {/* ── HEADER ─────────────────────────────────────────────────────── */}
-        <div className={`rounded-lg border border-gray-200 bg-white overflow-hidden ${party.border}`}>
+        <div className={`border border-rule bg-card overflow-hidden ${party.border}`}>
           <div className="p-6">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:gap-5">
               {/* Avatar + mini badge */}
@@ -904,10 +905,10 @@ export default async function OfficialProfilePage({
                   <img
                     src={official.photo_url}
                     alt={official.full_name}
-                    className="h-20 w-20 rounded-full border-2 border-gray-200 object-cover"
+                    className="h-20 w-20 rounded-full border-2 border-rule object-cover"
                   />
                 ) : (
-                  <div className="flex h-20 w-20 items-center justify-center rounded-full border-2 border-gray-200 bg-gray-100 text-2xl font-bold text-gray-500">
+                  <div className="flex h-20 w-20 items-center justify-center rounded-full border-2 border-rule bg-paper-2 font-serif text-2xl font-bold text-ink-soft">
                     {initials(official.full_name)}
                   </div>
                 )}
@@ -930,23 +931,23 @@ export default async function OfficialProfilePage({
                     {party.label}
                   </span>
                   {isCandidate && (
-                    <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold bg-amber-100 text-amber-900">
+                    <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold bg-amber/25 text-ink">
                       Candidate
                     </span>
                   )}
                   {official.chamber && (
-                    <span className="rounded border border-gray-200 px-1.5 py-0.5 font-mono text-[10px] text-gray-500">
+                    <span className="border border-rule px-1.5 py-0.5 font-mono text-[10px] text-ink-soft">
                       {official.chamber.toUpperCase()}
                     </span>
                   )}
                   {official.is_active === false && (
-                    <span className="rounded-full px-2.5 py-0.5 text-xs font-semibold bg-gray-100 text-gray-500">
+                    <span className="rounded-full px-2.5 py-0.5 text-xs font-semibold bg-ink/5 text-ink-soft">
                       Former
                     </span>
                   )}
                   {official.is_active === true && (
-                    <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium bg-emerald-50 text-emerald-700">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse inline-block" />
+                    <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium bg-green-ink/10 text-green-ink">
+                      <span className="w-1.5 h-1.5 rounded-full bg-green-ink animate-pulse inline-block" />
                       Active
                     </span>
                   )}
@@ -959,27 +960,27 @@ export default async function OfficialProfilePage({
                   </SourceDetailPopover>
                 </div>
 
-                <h1 className="text-2xl font-bold text-gray-900 leading-tight">
+                <h1 className="font-serif text-2xl font-bold text-ink leading-tight">
                   {official.full_name}
                 </h1>
-                <p className="mt-0.5 text-base text-gray-600">{official.role_title}</p>
+                <p className="mt-0.5 text-base text-ink-soft">{official.role_title}</p>
                 {/* FIX-474 — link to the official's governing body (institution page) */}
                 {official.governing_body_id && official.governing_body_name && (
-                  <p className="mt-0.5 text-sm text-gray-500">
+                  <p className="mt-0.5 text-sm text-ink-soft">
                     <a
                       href={`/institutions/${official.governing_body_id}`}
-                      className="hover:text-indigo-600 hover:underline transition-colors"
+                      className="hover:text-accent hover:underline transition-colors"
                     >
                       {official.governing_body_name}
                     </a>
                   </p>
                 )}
                 {official.state_name && (
-                  <p className="mt-0.5 text-sm text-gray-500">
+                  <p className="mt-0.5 text-sm text-ink-soft">
                     {official.jurisdiction_id ? (
                       <a
                         href={`/jurisdictions/${official.jurisdiction_id}`}
-                        className="hover:text-indigo-600 hover:underline transition-colors"
+                        className="hover:text-accent hover:underline transition-colors"
                       >
                         {official.state_name}
                       </a>
@@ -992,7 +993,7 @@ export default async function OfficialProfilePage({
 
                 {/* Term */}
                 {(official.term_start || official.term_end) && (
-                  <p className="mt-2 text-xs text-gray-400">
+                  <p className="mt-2 font-mono text-xs tabular-nums text-ink-soft/80">
                     Term: {formatDate(official.term_start)} → {official.term_end ? formatDate(official.term_end) : "present"}
                   </p>
                 )}
@@ -1002,13 +1003,13 @@ export default async function OfficialProfilePage({
                   {official.email && (
                     <a
                       href={`mailto:${official.email}`}
-                      className="text-xs text-gray-500 hover:text-gray-700 transition-colors"
+                      className="text-xs text-ink-soft hover:text-accent transition-colors"
                     >
                       {official.email}
                     </a>
                   )}
                   {official.phone && (
-                    <span className="text-xs text-gray-500">{official.phone}</span>
+                    <span className="font-mono text-xs tabular-nums text-ink-soft">{official.phone}</span>
                   )}
                 </div>
 
@@ -1016,7 +1017,7 @@ export default async function OfficialProfilePage({
                 <div className="mt-4 flex flex-wrap gap-2">
                   <a
                     href={`/graph?entity=${official.id}`}
-                    className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 transition-colors"
+                    className="inline-flex items-center gap-1.5 bg-ink px-3 py-1.5 text-xs font-medium text-paper hover:bg-accent transition-colors"
                   >
                     <span>◎</span>
                     View in Graph
@@ -1035,7 +1036,7 @@ export default async function OfficialProfilePage({
                       href={official.website_url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 transition-colors"
+                      className="inline-flex items-center gap-1.5 border border-rule px-3 py-1.5 text-xs font-medium text-ink hover:border-accent hover:text-accent transition-colors"
                     >
                       Official site ↗
                     </a>
@@ -1046,7 +1047,7 @@ export default async function OfficialProfilePage({
           </div>
 
           {/* Quick stats */}
-          <div className="grid grid-cols-2 gap-px border-t border-gray-100 bg-gray-100 sm:grid-cols-5">
+          <div className="grid grid-cols-2 gap-px border-t border-rule bg-rule sm:grid-cols-5">
             <StatCell value={voteCount.toLocaleString()} label="Votes on record" />
             <StatCell
               value={donorCount.toLocaleString()}
@@ -1103,9 +1104,9 @@ export default async function OfficialProfilePage({
             <div className="p-6 space-y-6">
               {/* AI Summary */}
               {cachedAiProfile ? (
-                <div className="rounded-md border border-indigo-100 bg-indigo-50 px-4 py-3">
-                  <p className="text-sm text-gray-700 leading-relaxed">{cachedAiProfile}</p>
-                  <p className="mt-1.5 text-[10px] text-indigo-400">Civic profile · AI generated</p>
+                <div className="border border-civic-blue/20 bg-civic-blue/5 px-4 py-3">
+                  <p className="text-sm text-ink leading-relaxed">{cachedAiProfile}</p>
+                  <p className="mt-1.5 font-mono text-[10px] uppercase tracking-[0.08em] text-civic-blue/70">Civic profile · AI generated</p>
                 </div>
               ) : (voteCount > 0 || donorCount > 0) ? (
                 <AiProfileSection officialId={official.id} />
@@ -1120,26 +1121,26 @@ export default async function OfficialProfilePage({
               {/* Quick vote breakdown */}
               {!isCandidate && recentVotes.length > 0 && (
                 <div>
-                  <h3 className="text-sm font-semibold text-gray-900 mb-3">Recent Votes</h3>
-                  <div className="divide-y divide-gray-100 rounded-lg border border-gray-200 overflow-hidden">
+                  <h3 className="text-sm font-semibold text-ink mb-3">Recent Votes</h3>
+                  <div className="divide-y divide-rule/60 border border-rule overflow-hidden">
                     {recentVotes.slice(0, 5).map((v) => {
-                      const vs = VOTE_STYLES[v.vote] ?? { label: v.vote, cls: "bg-gray-100 text-gray-600" };
+                      const vs = VOTE_STYLES[v.vote] ?? { label: v.vote, cls: "bg-ink/5 text-ink-soft" };
                       const proposal = v.proposals;
                       const label = proposal?.short_title ?? proposal?.title ?? "Unknown bill";
                       return (
                         <div key={v.id} className="flex items-center gap-3 px-4 py-3">
-                          <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold ${vs.cls}`}>
+                          <span className={`shrink-0 px-1.5 py-0.5 font-mono text-[10px] font-bold ${vs.cls}`}>
                             {vs.label}
                           </span>
                           {proposal?.id ? (
                             <a
                               href={`/proposals/${proposal.id}`}
-                              className="flex-1 truncate text-xs text-gray-700 hover:text-indigo-600 hover:underline transition-colors"
+                              className="flex-1 truncate text-xs text-ink hover:text-accent hover:underline transition-colors"
                             >
                               {label}
                             </a>
                           ) : (
-                            <p className="flex-1 truncate text-xs text-gray-700">{label}</p>
+                            <p className="flex-1 truncate text-xs text-ink">{label}</p>
                           )}
                         </div>
                       );
@@ -1151,20 +1152,20 @@ export default async function OfficialProfilePage({
               {/* Top donors preview */}
               {topDonors.length > 0 && (
                 <div>
-                  <h3 className="text-sm font-semibold text-gray-900 mb-3">Top Donors</h3>
-                  <div className="divide-y divide-gray-100 rounded-lg border border-gray-200 overflow-hidden">
+                  <h3 className="text-sm font-semibold text-ink mb-3">Top Donors</h3>
+                  <div className="divide-y divide-rule/60 border border-rule overflow-hidden">
                     {topDonors.slice(0, 5).map((d, i) => (
                       <div key={i} className="flex items-center gap-3 px-4 py-3">
-                        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-gray-100 text-[10px] font-bold text-gray-500">
+                        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-ink/5 font-mono text-[10px] font-bold tabular-nums text-ink-soft">
                           {i + 1}
                         </span>
                         <div className="flex-1 min-w-0">
-                          <p className="truncate text-xs font-medium text-gray-800">{d.donor_name}</p>
-                          <p className="truncate text-[10px] text-gray-400">
+                          <p className="truncate text-xs font-medium text-ink">{d.donor_name}</p>
+                          <p className="truncate text-[10px] text-ink-soft/70">
                             {d.industry ?? d.donor_type}
                           </p>
                         </div>
-                        <p className="shrink-0 text-xs font-semibold text-gray-900">
+                        <p className="shrink-0 font-mono text-xs font-semibold tabular-nums text-ink">
                           {formatMoney(d.total_cents)}
                         </p>
                       </div>
@@ -1178,24 +1179,24 @@ export default async function OfficialProfilePage({
             <div>
               {/* Industry breakdown */}
               {industrySummary.length > 0 && (
-                <div className="p-5 border-b border-gray-100">
-                  <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
+                <div className="p-5 border-b border-rule">
+                  <h3 className="font-mono text-xs font-semibold text-ink-soft/70 uppercase tracking-wide mb-3">
                     By Industry/Type
                   </h3>
                   <div className="space-y-2">
                     {industrySummary.map((item) => (
                       <div key={item.sector}>
                         <div className="flex justify-between text-xs mb-1">
-                          <span className="text-gray-700 font-medium truncate max-w-[60%]">
+                          <span className="text-ink font-medium truncate max-w-[60%]">
                             {item.sector}
                           </span>
-                          <span className="text-gray-500 tabular-nums">
+                          <span className="font-mono text-ink-soft tabular-nums">
                             {item.pct}% · {formatMoney(item.totalCents)}
                           </span>
                         </div>
-                        <div className="h-1.5 rounded-full bg-gray-100 overflow-hidden">
+                        <div className="h-1.5 bg-ink/5 overflow-hidden">
                           <div
-                            className="h-full rounded-full bg-indigo-500 transition-all"
+                            className="h-full bg-ink transition-all"
                             style={{ width: `${item.pct}%` }}
                           />
                         </div>
@@ -1205,27 +1206,27 @@ export default async function OfficialProfilePage({
                 </div>
               )}
               {/* Donor list */}
-              <div className="divide-y divide-gray-100">
+              <div className="divide-y divide-rule/60">
                 {topDonors.length === 0 ? (
                   <div className="px-5 py-8 text-center">
-                    <p className="text-sm font-medium text-gray-500">No donor data available</p>
+                    <p className="text-sm font-medium text-ink-soft">No donor data available</p>
                   </div>
                 ) : (
                   topDonors.map((d, i) => (
                     <div key={i} className="flex items-center gap-3 px-5 py-3">
-                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-gray-100 text-[10px] font-bold text-gray-500">
+                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-ink/5 font-mono text-[10px] font-bold tabular-nums text-ink-soft">
                         {i + 1}
                       </span>
                       <div className="flex-1 min-w-0">
-                        <p className="truncate text-xs font-medium text-gray-800">{d.donor_name}</p>
-                        <p className="truncate text-[10px] text-gray-400">
+                        <p className="truncate text-xs font-medium text-ink">{d.donor_name}</p>
+                        <p className="truncate text-[10px] text-ink-soft/70">
                           {DONOR_TYPE_LABELS[d.donor_type] ?? d.donor_type}
                           {d.industry ? ` · ${d.industry}` : ""}
                         </p>
                       </div>
                       <div className="shrink-0 text-right">
-                        <p className="text-xs font-semibold text-gray-900">{formatMoney(d.total_cents)}</p>
-                        <p className="text-[10px] text-gray-400">
+                        <p className="font-mono text-xs font-semibold tabular-nums text-ink">{formatMoney(d.total_cents)}</p>
+                        <p className="font-mono text-[10px] tabular-nums text-ink-soft/70">
                           {d.count} transaction{d.count !== 1 ? "s" : ""}
                         </p>
                       </div>
@@ -1244,14 +1245,14 @@ export default async function OfficialProfilePage({
                 subtitle="Super-PAC IEs supporting this official (uncapped Schedule E)"
                 spenders={ieSupport.rows}
                 total={ieSupport.total}
-                accent="emerald"
+                accent="support"
               />
               <OutsideSpendingList
                 title="Outside spending opposing"
                 subtitle="Super-PAC IEs opposing this official (uncapped Schedule E)"
                 spenders={ieOppose.rows}
                 total={ieOppose.total}
-                accent="rose"
+                accent="oppose"
               />
             </div>
           }
@@ -1264,62 +1265,62 @@ export default async function OfficialProfilePage({
               />
 
               {/* Opponents / Election Data */}
-              <div className="border-t border-gray-100 p-6">
+              <div className="border-t border-rule p-6">
                 <div className="flex items-center justify-between mb-4">
                   <div>
-                    <h3 className="text-sm font-semibold text-gray-900">Election &amp; Opponents</h3>
-                    <p className="text-xs text-gray-400 mt-0.5">Upcoming and recent election data</p>
+                    <h3 className="text-sm font-semibold text-ink">Election &amp; Opponents</h3>
+                    <p className="text-xs text-ink-soft/70 mt-0.5">Upcoming and recent election data</p>
                   </div>
-                  <span className="text-[10px] bg-amber-50 text-amber-600 border border-amber-200 rounded-full px-2 py-0.5 font-medium">
+                  <span className="text-[10px] bg-amber/15 text-ink border border-amber/60 rounded-full px-2 py-0.5 font-medium">
                     Coming soon
                   </span>
                 </div>
 
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   {/* Next election placeholder */}
-                  <div className="rounded-lg border border-dashed border-gray-200 p-4 bg-gray-50/50">
+                  <div className="border border-dashed border-rule p-4 bg-paper-2/50">
                     <div className="flex items-center gap-2 mb-2">
                       <span className="text-lg">🗳</span>
-                      <span className="text-xs font-medium text-gray-600">Next Election</span>
+                      <span className="text-xs font-medium text-ink-soft">Next Election</span>
                     </div>
-                    <p className="text-xs text-gray-400 leading-relaxed">
+                    <p className="text-xs text-ink-soft/70 leading-relaxed">
                       Election date, ballot position, and district info will appear here.
                     </p>
-                    <div className="mt-3 h-1 rounded-full bg-gray-200 overflow-hidden">
-                      <div className="h-full w-0 bg-indigo-400 rounded-full" />
+                    <div className="mt-3 h-1 bg-rule overflow-hidden">
+                      <div className="h-full w-0 bg-civic-blue" />
                     </div>
-                    <p className="text-[10px] text-gray-400 mt-1">Polling data not yet available</p>
+                    <p className="text-[10px] text-ink-soft/70 mt-1">Polling data not yet available</p>
                   </div>
 
                   {/* Opponents placeholder */}
-                  <div className="rounded-lg border border-dashed border-gray-200 p-4 bg-gray-50/50">
+                  <div className="border border-dashed border-rule p-4 bg-paper-2/50">
                     <div className="flex items-center gap-2 mb-2">
                       <span className="text-lg">👥</span>
-                      <span className="text-xs font-medium text-gray-600">Opponents</span>
+                      <span className="text-xs font-medium text-ink-soft">Opponents</span>
                     </div>
-                    <p className="text-xs text-gray-400 leading-relaxed">
+                    <p className="text-xs text-ink-soft/70 leading-relaxed">
                       Declared candidates and challengers will be listed here with their donor networks for comparison.
                     </p>
                     <div className="mt-3 flex gap-2">
                       {[1, 2, 3].map((i) => (
-                        <div key={i} className="h-8 w-8 rounded-full bg-gray-200 animate-pulse" />
+                        <div key={i} className="h-8 w-8 rounded-full bg-rule animate-pulse" />
                       ))}
-                      <div className="h-8 w-8 rounded-full border-2 border-dashed border-gray-300 flex items-center justify-center">
-                        <span className="text-gray-400 text-xs">+</span>
+                      <div className="h-8 w-8 rounded-full border-2 border-dashed border-rule flex items-center justify-center">
+                        <span className="text-ink-soft/70 text-xs">+</span>
                       </div>
                     </div>
                   </div>
                 </div>
 
                 {/* Comparison teaser */}
-                <div className="mt-4 rounded-lg bg-indigo-50 border border-indigo-100 p-4">
+                <div className="mt-4 bg-civic-blue/5 border border-civic-blue/20 p-4">
                   <div className="flex items-center gap-3">
                     <span className="text-2xl">⚖️</span>
                     <div>
-                      <p className="text-xs font-medium text-gray-800">
+                      <p className="text-xs font-medium text-ink">
                         Side-by-side comparison coming soon
                       </p>
-                      <p className="text-xs text-gray-500 mt-0.5">
+                      <p className="text-xs text-ink-soft mt-0.5">
                         Compare donor networks, voting records, and alignment scores between candidates.
                       </p>
                     </div>
@@ -1355,13 +1356,13 @@ export default async function OfficialProfilePage({
 
       </main>
 
-      <footer className="mt-16 border-t border-gray-200 bg-white">
+      <footer className="mt-16 border-t border-rule bg-card">
         <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-sm text-gray-500">
+            <p className="text-sm text-ink-soft">
               Civitics — open civic infrastructure. Beta · All data is public record.
             </p>
-            <a href="/officials" className="text-xs text-gray-400 hover:text-indigo-600 transition-colors">
+            <a href="/officials" className="text-xs text-ink-soft/70 hover:text-accent transition-colors">
               ← Back to all officials
             </a>
           </div>
@@ -1381,10 +1382,10 @@ function StatCell({
   note?: string;
 }) {
   return (
-    <div className="bg-white px-4 py-3 text-center">
-      <p className="text-lg font-bold text-gray-900">{value}</p>
-      <p className="mt-0.5 text-[10px] text-gray-400">{label}</p>
-      {note && <p className="text-[9px] text-gray-300">{note}</p>}
+    <div className="bg-card px-4 py-3 text-center">
+      <p className="font-mono text-lg font-bold tabular-nums text-ink">{value}</p>
+      <p className="mt-0.5 text-[10px] text-ink-soft/70">{label}</p>
+      {note && <p className="text-[9px] text-ink-soft/50">{note}</p>}
     </div>
   );
 }
@@ -1400,45 +1401,45 @@ function OutsideSpendingList({
   subtitle: string;
   spenders: OutsideSpenderRow[];
   total: number;
-  accent: "emerald" | "rose";
+  accent: "support" | "oppose";
 }) {
   if (spenders.length === 0) return null;
   const accentCls =
-    accent === "emerald"
-      ? "border-emerald-100 bg-emerald-50/40"
-      : "border-rose-100 bg-rose-50/40";
-  const totalCls = accent === "emerald" ? "text-emerald-700" : "text-rose-700";
+    accent === "support"
+      ? "border-green-ink/20 bg-green-ink/5"
+      : "border-accent/20 bg-accent/5";
+  const totalCls = accent === "support" ? "text-green-ink" : "text-accent";
   return (
     <div className={`border-t ${accentCls}`}>
       <div className="px-5 py-4 flex items-start justify-between gap-3">
         <div>
-          <h3 className="text-sm font-semibold text-gray-900">{title}</h3>
-          <p className="text-[11px] text-gray-500 mt-0.5">{subtitle}</p>
+          <h3 className="text-sm font-semibold text-ink">{title}</h3>
+          <p className="text-[11px] text-ink-soft mt-0.5">{subtitle}</p>
         </div>
-        <p className={`shrink-0 text-sm font-bold tabular-nums ${totalCls}`}>
+        <p className={`shrink-0 font-mono text-sm font-bold tabular-nums ${totalCls}`}>
           {formatMoney(total)}
         </p>
       </div>
-      <div className="divide-y divide-gray-100 bg-white">
+      <div className="divide-y divide-rule/60 bg-card">
         {spenders.map((s, i) => (
           <div key={s.spender_id} className="flex items-center gap-3 px-5 py-3">
-            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-gray-100 text-[10px] font-bold text-gray-500">
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-ink/5 font-mono text-[10px] font-bold tabular-nums text-ink-soft">
               {i + 1}
             </span>
             <div className="flex-1 min-w-0">
               <a
                 href={`/donors/${s.spender_id}`}
-                className="truncate text-xs font-medium text-gray-800 hover:text-indigo-600 hover:underline transition-colors block"
+                className="truncate text-xs font-medium text-ink hover:text-accent hover:underline transition-colors block"
               >
                 {s.spender_name}
               </a>
-              <p className="truncate text-[10px] text-gray-400">
+              <p className="truncate text-[10px] text-ink-soft/70">
                 {DONOR_TYPE_LABELS[s.spender_type] ?? s.spender_type}
               </p>
             </div>
             <div className="shrink-0 text-right">
-              <p className="text-xs font-semibold text-gray-900">{formatMoney(s.total_cents)}</p>
-              <p className="text-[10px] text-gray-400">
+              <p className="font-mono text-xs font-semibold tabular-nums text-ink">{formatMoney(s.total_cents)}</p>
+              <p className="font-mono text-[10px] tabular-nums text-ink-soft/70">
                 {s.count} expenditure{s.count !== 1 ? "s" : ""}
               </p>
             </div>

@@ -32,11 +32,11 @@ import {
 } from "@civitics/db";
 
 const SOURCE_CATEGORY_COLORS: Record<SourceCategory, string> = {
-  federal:   "bg-blue-100 text-blue-800",
-  state:     "bg-purple-100 text-purple-800",
-  local:     "bg-green-100 text-green-800",
-  community: "bg-amber-100 text-amber-800",
-  other:     "bg-gray-100 text-gray-700",
+  federal:   "bg-civic-blue/10 text-civic-blue",
+  state:     "bg-ink/10 text-ink",
+  local:     "bg-green-ink/10 text-green-ink",
+  community: "bg-amber/25 text-ink",
+  other:     "bg-ink/5 text-ink-soft",
 };
 
 type Props = {
@@ -144,7 +144,7 @@ export function SourceDetailPopover({ entityType: _entityType, entityId: _entity
         aria-expanded={open}
         aria-haspopup="dialog"
         aria-controls={open ? panelId : undefined}
-        className="inline-flex cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1 rounded-full"
+        className="inline-flex cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1 rounded-full"
         onClick={(e) => {
           e.preventDefault();
           e.stopPropagation();
@@ -166,20 +166,20 @@ export function SourceDetailPopover({ entityType: _entityType, entityId: _entity
           id={panelId}
           role="dialog"
           aria-label="Source details"
-          className="absolute left-0 top-full z-30 mt-2 w-[20rem] max-w-[calc(100vw-2rem)] rounded-lg border border-gray-200 bg-white p-3 text-sm shadow-lg sm:w-80"
+          className="absolute left-0 top-full z-30 mt-2 w-[20rem] max-w-[calc(100vw-2rem)] border border-ink bg-card p-3 text-sm shadow-[0_14px_30px_rgba(28,26,22,0.18)] sm:w-80"
         >
           <SourceDetailContent loading={loading} error={error} detail={detail} fallback={attribution} />
-          <div className="mt-3 border-t border-gray-100 pt-2 flex justify-between items-center gap-2">
+          <div className="mt-3 border-t border-rule pt-2 flex justify-between items-center gap-2">
             <a
               href="/about/sources"
-              className="text-xs text-indigo-600 hover:text-indigo-800 transition-colors"
+              className="text-xs text-accent transition-colors hover:underline"
             >
               About our sources →
             </a>
             <button
               type="button"
               onClick={() => { setOpen(false); triggerRef.current?.focus(); }}
-              className="text-xs text-gray-400 hover:text-gray-600 transition-colors"
+              className="text-xs text-ink-soft/70 hover:text-ink-soft transition-colors"
               aria-label="Close source details"
             >
               Close
@@ -201,8 +201,8 @@ function SourceDetailContent({
 }) {
   if (loading) {
     return (
-      <div className="flex items-center gap-2 text-xs text-gray-500">
-        <span className="h-2 w-2 animate-pulse rounded-full bg-gray-300" aria-hidden />
+      <div className="flex items-center gap-2 text-xs text-ink-soft">
+        <span className="h-2 w-2 animate-pulse rounded-full bg-rule" aria-hidden />
         Loading source detail…
       </div>
     );
@@ -211,7 +211,7 @@ function SourceDetailContent({
     // Fallback to the primary-only attribution shape that's already in scope.
     return (
       <>
-        <div className="text-xs text-amber-700 mb-2">
+        <div className="text-xs text-accent mb-2">
           Could not load full source list ({error}). Showing primary source only.
         </div>
         <SourceRow source={fallback.primary!.source} source_url={fallback.primary!.source_url} last_seen_at={fallback.primary!.last_seen_at} is_primary />
@@ -222,7 +222,7 @@ function SourceDetailContent({
 
   if (detail.sources.length === 0) {
     return (
-      <div className="text-xs text-gray-500">
+      <div className="text-xs text-ink-soft">
         No source bindings recorded for this entity.
       </div>
     );
@@ -231,7 +231,7 @@ function SourceDetailContent({
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between gap-2">
-        <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+        <h2 className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-ink-soft">
           {detail.source_count === 1 ? "Source" : `${detail.source_count} sources`}
         </h2>
       </div>
@@ -268,21 +268,21 @@ function SourceRow({
           {resolved.label}
         </span>
         {is_primary && (
-          <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">
+          <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-soft/70">
             primary
           </span>
         )}
       </div>
       <dl className="mt-1.5 grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 text-xs">
-        <dt className="text-gray-400">License</dt>
-        <dd className="text-gray-700">
+        <dt className="text-ink-soft/70">License</dt>
+        <dd className="text-ink">
           {resolved.license ? (
             resolved.license_url ? (
               <a
                 href={resolved.license_url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-indigo-600 hover:text-indigo-800 underline-offset-2 hover:underline"
+                className="text-accent underline-offset-2 hover:underline"
               >
                 {resolved.license}
               </a>
@@ -294,23 +294,23 @@ function SourceRow({
               href={resolved.license_url}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-indigo-600 hover:text-indigo-800 underline-offset-2 hover:underline"
+              className="text-accent underline-offset-2 hover:underline"
             >
               See {resolved.label} terms
             </a>
           ) : (
-            <span className="text-gray-400">Not specified</span>
+            <span className="text-ink-soft/70">Not specified</span>
           )}
         </dd>
         {source_url && (
           <>
-            <dt className="text-gray-400">Link</dt>
+            <dt className="text-ink-soft/70">Link</dt>
             <dd>
               <a
                 href={source_url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-indigo-600 hover:text-indigo-800 underline-offset-2 hover:underline break-all"
+                className="text-accent underline-offset-2 hover:underline break-all"
               >
                 View on {resolved.label} ↗
               </a>
@@ -319,14 +319,14 @@ function SourceRow({
         )}
         {last_seen_at && (
           <>
-            <dt className="text-gray-400">Last seen</dt>
-            <dd className="text-gray-700">{formatDate(last_seen_at)}</dd>
+            <dt className="text-ink-soft/70">Last seen</dt>
+            <dd className="text-ink">{formatDate(last_seen_at)}</dd>
           </>
         )}
         {external_id && (
           <>
-            <dt className="text-gray-400">ID</dt>
-            <dd className="text-gray-500 font-mono text-[11px] break-all">{external_id}</dd>
+            <dt className="text-ink-soft/70">ID</dt>
+            <dd className="text-ink-soft font-mono text-[11px] break-all">{external_id}</dd>
           </>
         )}
       </dl>

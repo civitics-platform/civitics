@@ -207,13 +207,13 @@ function PlaceholderNodes() {
       `}</style>
       {positions.map((p, i) => (
         <g key={i} style={{ animation: `float 3s ease-in-out ${p.delay} infinite` }}>
-          <circle cx={p.cx} cy={p.cy} r={p.r} fill="#e2e8f0" stroke="#94a3b8" strokeWidth="1.5" />
+          <circle cx={p.cx} cy={p.cy} r={p.r} fill="rgb(var(--c-paper-2))" stroke="rgb(var(--c-ink-soft))" strokeWidth="1.5" />
         </g>
       ))}
-      <line x1="30%" y1="35%" x2="65%" y2="25%" stroke="#cbd5e1" strokeWidth="1" strokeDasharray="4,3" />
-      <line x1="65%" y1="25%" x2="75%" y2="60%" stroke="#cbd5e1" strokeWidth="1" strokeDasharray="4,3" />
-      <line x1="30%" y1="35%" x2="20%" y2="65%" stroke="#cbd5e1" strokeWidth="1" strokeDasharray="4,3" />
-      <line x1="75%" y1="60%" x2="45%" y2="70%" stroke="#cbd5e1" strokeWidth="1" strokeDasharray="4,3" />
+      <line x1="30%" y1="35%" x2="65%" y2="25%" stroke="rgb(var(--c-rule))" strokeWidth="1" strokeDasharray="4,3" />
+      <line x1="65%" y1="25%" x2="75%" y2="60%" stroke="rgb(var(--c-rule))" strokeWidth="1" strokeDasharray="4,3" />
+      <line x1="30%" y1="35%" x2="20%" y2="65%" stroke="rgb(var(--c-rule))" strokeWidth="1" strokeDasharray="4,3" />
+      <line x1="75%" y1="60%" x2="45%" y2="70%" stroke="rgb(var(--c-rule))" strokeWidth="1" strokeDasharray="4,3" />
     </svg>
   );
 }
@@ -343,16 +343,16 @@ export function OfficialGraph({
   const availableTypes = Object.keys(typeCounts);
 
   return (
-    <div className="flex flex-col bg-gray-50">
+    <div className="flex flex-col bg-paper">
       {/* Section header */}
-      <div className="border-b border-t border-gray-200 bg-white px-5 py-3">
-        <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">
+      <div className="border-b border-t border-rule bg-card px-5 py-3">
+        <p className="font-mono text-xs font-semibold uppercase tracking-wider text-ink-soft/70">
           Connection Graph
         </p>
       </div>
 
       {/* Preset buttons */}
-      <div className="border-b border-gray-200 bg-white px-5 py-3">
+      <div className="border-b border-rule bg-card px-5 py-3">
         <div className="flex flex-wrap gap-2">
           {PRESETS.map((p) => (
             <button
@@ -363,8 +363,8 @@ export function OfficialGraph({
               }}
               className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
                 activePreset === p.id
-                  ? "border-indigo-400 bg-indigo-600 text-white"
-                  : "border-gray-200 bg-white text-gray-600 hover:border-indigo-300 hover:text-indigo-700"
+                  ? "border-ink bg-ink text-paper"
+                  : "border-rule bg-card text-ink-soft hover:border-accent hover:text-accent"
               }`}
             >
               {p.label}
@@ -392,14 +392,14 @@ export function OfficialGraph({
                       return [...base, type];
                     });
                   }}
-                  className={`flex items-center gap-1 rounded border px-2 py-0.5 text-[10px] font-medium transition-colors ${
+                  className={`flex items-center gap-1 border px-2 py-0.5 text-[10px] font-medium transition-colors ${
                     isActive
-                      ? "border-gray-300 bg-white text-gray-700"
-                      : "border-gray-100 bg-gray-50 text-gray-400"
+                      ? "border-rule bg-card text-ink"
+                      : "border-rule/60 bg-paper text-ink-soft/60"
                   }`}
                 >
                   <span>{EDGE_TYPE_LABELS[type] ?? type}</span>
-                  <span className={`rounded-full px-1 ${isActive ? "bg-gray-100 text-gray-500" : "bg-gray-100 text-gray-300"}`}>
+                  <span className={`rounded-full px-1 font-mono tabular-nums ${isActive ? "bg-ink/5 text-ink-soft" : "bg-ink/5 text-ink-soft/50"}`}>
                     {count}
                   </span>
                 </button>
@@ -414,8 +414,8 @@ export function OfficialGraph({
         {loading ? (
           <div className="flex h-full items-center justify-center">
             <div className="flex flex-col items-center gap-2">
-              <div className="h-5 w-5 animate-spin rounded-full border-2 border-indigo-400 border-t-transparent" />
-              <p className="text-xs text-gray-400">Loading connections…</p>
+              <div className="h-5 w-5 animate-spin rounded-full border-2 border-accent border-t-transparent" />
+              <p className="text-xs text-ink-soft">Loading connections…</p>
             </div>
           </div>
         ) : !hasAnyData ? (
@@ -423,8 +423,8 @@ export function OfficialGraph({
           <div className="relative flex h-full flex-col items-center justify-center">
             <PlaceholderNodes />
             <div className="relative z-10 mx-auto max-w-xs text-center">
-              <p className="text-sm font-medium text-gray-500">Relationship data coming soon</p>
-              <p className="mt-1 text-xs text-gray-400 leading-relaxed">
+              <p className="text-sm font-medium text-ink-soft">Relationship data coming soon</p>
+              <p className="mt-1 text-xs text-ink-soft/70 leading-relaxed">
                 Donor and co-sponsorship connections load as we ingest more data. Vote connections
                 appear above as records are available.
               </p>
@@ -435,10 +435,10 @@ export function OfficialGraph({
           <div className="relative flex h-full flex-col items-center justify-center">
             <PlaceholderNodes />
             <div className="relative z-10 mx-auto max-w-xs text-center">
-              <p className="text-sm font-medium text-gray-500">{preset.emptyMsg}</p>
+              <p className="text-sm font-medium text-ink-soft">{preset.emptyMsg}</p>
               <button
                 onClick={() => { setActivePreset("full_picture"); setActiveFilters([]); }}
-                className="mt-2 text-xs text-indigo-500 hover:underline"
+                className="mt-2 text-xs text-accent hover:underline"
               >
                 Show full picture instead
               </button>
@@ -455,10 +455,10 @@ export function OfficialGraph({
 
       {/* Footer note */}
       {hasAnyData && (
-        <div className="border-t border-gray-200 bg-white px-5 py-2.5">
-          <p className="text-xs text-gray-400">
+        <div className="border-t border-rule bg-card px-5 py-2.5">
+          <p className="font-mono text-xs tabular-nums text-ink-soft">
             {visibleNodes.length} nodes · {visibleEdges.length} connections visible ·{" "}
-            <span className="text-gray-300">Drag to reposition · scroll to zoom · click node for details</span>
+            <span className="text-ink-soft/60">Drag to reposition · scroll to zoom · click node for details</span>
           </p>
         </div>
       )}

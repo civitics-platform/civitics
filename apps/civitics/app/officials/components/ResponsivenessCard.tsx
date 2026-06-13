@@ -3,23 +3,27 @@ import type { ResponsivenessData, ResponsivenessGrade } from "../../api/official
 
 // ─── Grade config ──────────────────────────────────────────────────────────────
 
+// A-F grade gradient compressed onto the token palette: green-ink (good) →
+// amber (middling) → accent red (poor). No orange/distinct-green tokens exist;
+// A/B and C/D differ by tint depth.
 const GRADE_CONFIG: Record<
   ResponsivenessGrade,
   { label: string; color: string; bg: string; border: string; ring: string }
 > = {
-  A: { label: "Highly responsive",     color: "text-emerald-700", bg: "bg-emerald-50", border: "border-emerald-200", ring: "ring-emerald-400" },
-  B: { label: "Generally responsive",  color: "text-green-700",   bg: "bg-green-50",   border: "border-green-200",   ring: "ring-green-400"   },
-  C: { label: "Partially responsive",  color: "text-amber-700",   bg: "bg-amber-50",   border: "border-amber-200",   ring: "ring-amber-400"   },
-  D: { label: "Low responsiveness",    color: "text-orange-700",  bg: "bg-orange-50",  border: "border-orange-200",  ring: "ring-orange-400"  },
-  F: { label: "Non-responsive",        color: "text-red-700",     bg: "bg-red-50",     border: "border-red-200",     ring: "ring-red-400"     },
+  A: { label: "Highly responsive",     color: "text-green-ink", bg: "bg-green-ink/15", border: "border-green-ink/30", ring: "ring-green-ink/40" },
+  B: { label: "Generally responsive",  color: "text-green-ink", bg: "bg-green-ink/8",  border: "border-green-ink/20", ring: "ring-green-ink/30" },
+  C: { label: "Partially responsive",  color: "text-ink",       bg: "bg-amber/25",     border: "border-amber/60",     ring: "ring-amber/60"     },
+  D: { label: "Low responsiveness",    color: "text-ink",       bg: "bg-amber/15",     border: "border-amber/40",     ring: "ring-amber/40"     },
+  F: { label: "Non-responsive",        color: "text-accent",    bg: "bg-accent/10",    border: "border-accent/30",    ring: "ring-accent/40"    },
 };
 
+// Independents/pledge use ink-outline & civic-blue — no purple token by design.
 const RESPONSE_LABELS: Record<string, { label: string; color: string }> = {
-  support:     { label: "Supports",           color: "bg-green-100 text-green-800 border-green-200" },
-  oppose:      { label: "Opposes",            color: "bg-red-100 text-red-800 border-red-200" },
-  pledge:      { label: "Pledged to Sponsor", color: "bg-indigo-100 text-indigo-800 border-indigo-200" },
-  refer:       { label: "Referred",           color: "bg-amber-100 text-amber-800 border-amber-200" },
-  no_response: { label: "No Response",        color: "bg-gray-100 text-gray-500 border-gray-200" },
+  support:     { label: "Supports",           color: "bg-green-ink/10 text-green-ink border-green-ink/30" },
+  oppose:      { label: "Opposes",            color: "bg-accent/10 text-accent border-accent/30" },
+  pledge:      { label: "Pledged to Sponsor", color: "bg-civic-blue/10 text-civic-blue border-civic-blue/30" },
+  refer:       { label: "Referred",           color: "bg-amber/25 text-ink border-amber/60" },
+  no_response: { label: "No Response",        color: "bg-ink/5 text-ink-soft border-rule" },
 };
 
 function formatDate(iso: string): string {
@@ -43,11 +47,11 @@ export function ResponsivenessCard({ data }: ResponsivenessCardProps) {
   if (total_closed === 0 && open === 0) return null;
 
   return (
-    <div className="rounded-lg border border-gray-200 overflow-hidden">
+    <div className="border border-rule overflow-hidden">
       {/* Header */}
-      <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-gray-900">Civic responsiveness</h3>
-        <span className="text-xs text-gray-400">Initiative response windows</span>
+      <div className="px-4 py-3 border-b border-rule flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-ink">Civic responsiveness</h3>
+        <span className="text-xs text-ink-soft/70">Initiative response windows</span>
       </div>
 
       <div className="p-4">
@@ -56,28 +60,28 @@ export function ResponsivenessCard({ data }: ResponsivenessCardProps) {
           {/* Grade badge */}
           {gc ? (
             <div className={`flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-full ring-2 ${gc.ring} ${gc.bg}`}>
-              <span className={`text-2xl font-black ${gc.color}`}>{grade}</span>
+              <span className={`font-serif text-2xl font-black ${gc.color}`}>{grade}</span>
             </div>
           ) : (
-            <div className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-full ring-2 ring-gray-200 bg-gray-50">
-              <span className="text-lg font-bold text-gray-400">—</span>
+            <div className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-full ring-2 ring-rule bg-paper-2">
+              <span className="text-lg font-bold text-ink-soft/70">—</span>
             </div>
           )}
 
           <div>
             {response_rate !== null ? (
               <>
-                <p className={`text-2xl font-bold tabular-nums ${gc?.color ?? "text-gray-900"}`}>
+                <p className={`font-mono text-2xl font-bold tabular-nums ${gc?.color ?? "text-ink"}`}>
                   {response_rate}%
                 </p>
-                <p className="text-xs text-gray-500 mt-0.5">
+                <p className="text-xs text-ink-soft mt-0.5">
                   {gc?.label}
                 </p>
               </>
             ) : (
               <>
-                <p className="text-base font-semibold text-gray-500">No closed windows</p>
-                <p className="text-xs text-gray-400 mt-0.5">
+                <p className="text-base font-semibold text-ink-soft">No closed windows</p>
+                <p className="text-xs text-ink-soft/70 mt-0.5">
                   {open > 0 ? `${open} open window${open !== 1 ? "s" : ""} in progress` : "Score will appear once windows close"}
                 </p>
               </>
@@ -88,15 +92,15 @@ export function ResponsivenessCard({ data }: ResponsivenessCardProps) {
         {/* Breakdown bar */}
         {total_closed > 0 && (
           <div className="mb-4">
-            <div className="flex h-2 w-full overflow-hidden rounded-full bg-gray-100">
+            <div className="flex h-2 w-full overflow-hidden bg-ink/5">
               <div
-                className="h-full bg-emerald-400 transition-all"
+                className="h-full bg-green-ink transition-all"
                 style={{ width: `${Math.round((responded / total_closed) * 100)}%` }}
               />
             </div>
-            <div className="mt-1.5 flex justify-between text-[10px] text-gray-400">
-              <span className="text-emerald-600 font-medium">{responded} responded</span>
-              <span className="text-red-500 font-medium">{no_response} no response</span>
+            <div className="mt-1.5 flex justify-between font-mono text-[10px] tabular-nums text-ink-soft/70">
+              <span className="text-green-ink font-medium">{responded} responded</span>
+              <span className="text-accent font-medium">{no_response} no response</span>
             </div>
           </div>
         )}
@@ -104,17 +108,17 @@ export function ResponsivenessCard({ data }: ResponsivenessCardProps) {
         {/* Stat pills */}
         <div className="mb-4 flex flex-wrap gap-2">
           {responded > 0 && (
-            <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-700">
+            <span className="rounded-full border border-green-ink/30 bg-green-ink/10 px-2.5 py-0.5 text-xs font-medium text-green-ink">
               {responded} responded
             </span>
           )}
           {no_response > 0 && (
-            <span className="rounded-full border border-red-200 bg-red-50 px-2.5 py-0.5 text-xs font-medium text-red-700">
+            <span className="rounded-full border border-accent/30 bg-accent/10 px-2.5 py-0.5 text-xs font-medium text-accent">
               {no_response} no response
             </span>
           )}
           {open > 0 && (
-            <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-700">
+            <span className="rounded-full border border-amber/60 bg-amber/25 px-2.5 py-0.5 text-xs font-medium text-ink">
               {open} open
             </span>
           )}
@@ -123,7 +127,7 @@ export function ResponsivenessCard({ data }: ResponsivenessCardProps) {
         {/* Recent windows */}
         {recent.length > 0 && (
           <div>
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
+            <p className="mb-2 font-mono text-xs font-semibold uppercase tracking-wide text-ink-soft/70">
               Recent windows
             </p>
             <div className="space-y-2">
@@ -135,15 +139,15 @@ export function ResponsivenessCard({ data }: ResponsivenessCardProps) {
                   : null;
 
                 return (
-                  <div key={r.initiative_id} className="flex items-start justify-between gap-2 rounded-md border border-gray-100 bg-gray-50 px-3 py-2">
+                  <div key={r.initiative_id} className="flex items-start justify-between gap-2 border border-rule/60 bg-paper-2 px-3 py-2">
                     <div className="flex-1 min-w-0">
                       <Link
                         href={`/initiatives/${r.initiative_id}`}
-                        className="text-xs font-medium text-indigo-600 hover:underline line-clamp-1"
+                        className="text-xs font-medium text-accent hover:underline line-clamp-1"
                       >
                         {r.initiative_title}
                       </Link>
-                      <p className="text-[10px] text-gray-400 mt-0.5 capitalize">
+                      <p className="font-mono text-[10px] tabular-nums text-ink-soft/70 mt-0.5 capitalize">
                         {r.scope} ·{" "}
                         {r.responded_at
                           ? `Responded ${formatDate(r.responded_at)}`
@@ -165,7 +169,7 @@ export function ResponsivenessCard({ data }: ResponsivenessCardProps) {
 
         {/* Permanence note */}
         {no_response > 0 && (
-          <p className="mt-3 text-[10px] text-gray-400 italic">
+          <p className="mt-3 text-[10px] text-ink-soft/70 italic">
             No Response records are permanent public record. Silence is data.
           </p>
         )}

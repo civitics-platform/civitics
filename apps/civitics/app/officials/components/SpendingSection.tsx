@@ -28,9 +28,9 @@ function formatDate(dateStr: string | null): string {
 }
 
 const AWARD_TYPE_STYLES: Record<string, { label: string; cls: string }> = {
-  contract:  { label: 'Contract', cls: 'bg-gray-100 text-gray-600' },
-  grant:     { label: 'Grant',    cls: 'bg-green-100 text-green-700' },
-  loan:      { label: 'Loan',     cls: 'bg-amber-100 text-amber-700' },
+  contract:  { label: 'Contract', cls: 'bg-ink/5 text-ink-soft' },
+  grant:     { label: 'Grant',    cls: 'bg-green-ink/10 text-green-ink' },
+  loan:      { label: 'Loan',     cls: 'bg-amber/25 text-ink' },
 };
 
 /**
@@ -43,14 +43,14 @@ export function SpendingSection({ items }: { items: SpendingRow[] }) {
   const totalCents = items.reduce((s, r) => s + r.amount_cents, 0);
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white overflow-hidden mb-6">
+    <div className="border border-rule bg-card overflow-hidden mb-6">
       {/* Header */}
-      <div className="px-5 py-4 border-b border-gray-100">
+      <div className="px-5 py-4 border-b-2 border-ink">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <h2 className="text-sm font-semibold text-gray-900">Government Spending</h2>
+            <h2 className="text-sm font-semibold text-ink">Government Spending</h2>
           </div>
-          <span className="text-sm font-bold text-gray-900">{formatMoney(totalCents)}</span>
+          <span className="font-mono text-sm font-bold tabular-nums text-ink">{formatMoney(totalCents)}</span>
         </div>
       </div>
 
@@ -58,33 +58,33 @@ export function SpendingSection({ items }: { items: SpendingRow[] }) {
       <div className="overflow-x-auto">
         <table className="w-full text-xs">
           <thead>
-            <tr className="border-b border-gray-100 bg-gray-50">
-              <th className="text-left px-5 py-2 text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Recipient</th>
-              <th className="text-left px-3 py-2 text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Type</th>
-              <th className="text-right px-3 py-2 text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Amount</th>
-              <th className="text-left px-3 py-2 text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Date</th>
+            <tr className="border-b border-rule bg-paper-2">
+              <th className="text-left px-5 py-2 font-mono text-[10px] font-semibold text-ink-soft/70 uppercase tracking-wide">Recipient</th>
+              <th className="text-left px-3 py-2 font-mono text-[10px] font-semibold text-ink-soft/70 uppercase tracking-wide">Type</th>
+              <th className="text-right px-3 py-2 font-mono text-[10px] font-semibold text-ink-soft/70 uppercase tracking-wide">Amount</th>
+              <th className="text-left px-3 py-2 font-mono text-[10px] font-semibold text-ink-soft/70 uppercase tracking-wide">Date</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-50">
+          <tbody className="divide-y divide-rule/60">
             {items.map((row) => {
-              const typeStyle = AWARD_TYPE_STYLES[row.award_type ?? ''] ?? { label: row.award_type ?? 'Other', cls: 'bg-gray-100 text-gray-600' };
+              const typeStyle = AWARD_TYPE_STYLES[row.award_type ?? ''] ?? { label: row.award_type ?? 'Other', cls: 'bg-ink/5 text-ink-soft' };
               return (
-                <tr key={row.id} className="hover:bg-gray-50/50">
+                <tr key={row.id} className="hover:bg-paper-2/50">
                   <td className="px-5 py-3">
-                    <p className="font-medium text-gray-800 truncate max-w-[200px]">{row.recipient_name}</p>
+                    <p className="font-medium text-ink truncate max-w-[200px]">{row.recipient_name}</p>
                     {row.description && (
-                      <p className="text-[10px] text-gray-400 truncate max-w-[200px] mt-0.5">{row.description}</p>
+                      <p className="text-[10px] text-ink-soft/70 truncate max-w-[200px] mt-0.5">{row.description}</p>
                     )}
                   </td>
                   <td className="px-3 py-3">
-                    <span className={`rounded px-1.5 py-0.5 text-[9px] font-semibold ${typeStyle.cls}`}>
+                    <span className={`px-1.5 py-0.5 font-mono text-[9px] font-semibold ${typeStyle.cls}`}>
                       {typeStyle.label}
                     </span>
                   </td>
-                  <td className="px-3 py-3 text-right font-semibold text-gray-900 tabular-nums">
+                  <td className="px-3 py-3 text-right font-mono font-semibold text-ink tabular-nums">
                     {formatMoney(row.amount_cents)}
                   </td>
-                  <td className="px-3 py-3 text-gray-400 tabular-nums">
+                  <td className="px-3 py-3 font-mono text-ink-soft/70 tabular-nums">
                     {formatDate(row.award_date)}
                   </td>
                 </tr>

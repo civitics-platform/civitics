@@ -22,19 +22,22 @@ export type ProposalCardData = {
   tags?: EntityTag[];
 };
 
+// Status gradient on the token palette: amber (open) → civic-blue (in
+// progress) → green-ink (enacted) → accent (failed) → neutral (closed).
+// passed-both-chambers uses ink outline — no purple/violet token by design.
 const STATUS_BADGE: Record<string, { label: string; color: string }> = {
-  open_comment:         { label: "Open for Comment", color: "bg-amber-100 text-amber-800 border-amber-200" },
-  introduced:           { label: "Introduced",       color: "bg-blue-100 text-blue-800 border-blue-200" },
-  in_committee:         { label: "In Committee",     color: "bg-blue-100 text-blue-800 border-blue-200" },
-  passed_committee:     { label: "Passed Committee", color: "bg-indigo-100 text-indigo-800 border-indigo-200" },
-  floor_vote:           { label: "Floor Vote",       color: "bg-indigo-100 text-indigo-800 border-indigo-200" },
-  passed_chamber:       { label: "Passed Chamber",   color: "bg-indigo-100 text-indigo-800 border-indigo-200" },
-  passed_both_chambers: { label: "Passed Both",      color: "bg-violet-100 text-violet-800 border-violet-200" },
-  signed:               { label: "Signed",           color: "bg-green-100 text-green-800 border-green-200" },
-  enacted:              { label: "Enacted",          color: "bg-green-100 text-green-800 border-green-200" },
-  failed:               { label: "Failed",           color: "bg-red-100 text-red-800 border-red-200" },
-  withdrawn:            { label: "Withdrawn",        color: "bg-gray-100 text-gray-600 border-gray-200" },
-  comment_closed:       { label: "Comment Closed",   color: "bg-gray-100 text-gray-600 border-gray-200" },
+  open_comment:         { label: "Open for Comment", color: "bg-amber/25 text-ink border-amber/60" },
+  introduced:           { label: "Introduced",       color: "bg-civic-blue/10 text-civic-blue border-civic-blue/25" },
+  in_committee:         { label: "In Committee",     color: "bg-civic-blue/10 text-civic-blue border-civic-blue/25" },
+  passed_committee:     { label: "Passed Committee", color: "bg-civic-blue/10 text-civic-blue border-civic-blue/25" },
+  floor_vote:           { label: "Floor Vote",       color: "bg-civic-blue/10 text-civic-blue border-civic-blue/25" },
+  passed_chamber:       { label: "Passed Chamber",   color: "bg-civic-blue/10 text-civic-blue border-civic-blue/25" },
+  passed_both_chambers: { label: "Passed Both",      color: "border-ink/40 text-ink" },
+  signed:               { label: "Signed",           color: "bg-green-ink/10 text-green-ink border-green-ink/25" },
+  enacted:              { label: "Enacted",          color: "bg-green-ink/10 text-green-ink border-green-ink/25" },
+  failed:               { label: "Failed",           color: "bg-accent/10 text-accent border-accent/25" },
+  withdrawn:            { label: "Withdrawn",        color: "bg-ink/5 text-ink-soft border-rule" },
+  comment_closed:       { label: "Comment Closed",   color: "bg-ink/5 text-ink-soft border-rule" },
 };
 
 const TYPE_LABEL: Record<string, string> = {
@@ -66,7 +69,7 @@ function isOpenForComment(p: ProposalCardData): boolean {
 export function ProposalCard({ proposal }: { proposal: ProposalCardData }) {
   const statusBadge = STATUS_BADGE[proposal.status] ?? {
     label: proposal.status,
-    color: "bg-gray-100 text-gray-600 border-gray-200",
+    color: "bg-ink/5 text-ink-soft border-rule",
   };
   const typeLabel = TYPE_LABEL[proposal.type] ?? proposal.type;
   const agencyAcronym = proposal.metadata?.agency_id ?? null;
@@ -84,14 +87,14 @@ export function ProposalCard({ proposal }: { proposal: ProposalCardData }) {
 
   return (
     <div
-      className={`group relative flex flex-col h-full rounded-lg border bg-white p-5 transition-all hover:shadow-md hover:border-gray-300 cursor-pointer ${
-        open ? "border-amber-200" : "border-gray-200"
+      className={`group relative flex flex-col h-full border bg-card p-5 transition-all hover:shadow-sm hover:border-accent cursor-pointer ${
+        open ? "border-amber/60" : "border-rule"
       }`}
     >
       {/* Stretched link — covers whole card, sits below interactive content */}
       <Link
         href={`/proposals/${proposal.id}`}
-        className="absolute inset-0 rounded-lg z-0"
+        className="absolute inset-0 z-0"
         aria-label={proposal.title}
       />
 
@@ -100,26 +103,26 @@ export function ProposalCard({ proposal }: { proposal: ProposalCardData }) {
         {/* Badge row */}
         <div className="flex flex-wrap items-center gap-1.5 mb-3">
           <span
-            className={`rounded border px-2 py-0.5 text-xs font-medium ${statusBadge.color}`}
+            className={`border px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-[0.06em] ${statusBadge.color}`}
           >
             {open ? "⏰ " : ""}{statusBadge.label}
           </span>
           {docType && (
-            <span className="text-xs text-gray-400">{docType}</span>
+            <span className="text-xs text-ink-soft/70">{docType}</span>
           )}
           {!docType && typeLabel && (
-            <span className="text-xs text-gray-400">{typeLabel}</span>
+            <span className="text-xs text-ink-soft/70">{typeLabel}</span>
           )}
         </div>
 
         {/* Agency */}
         {agencyAcronym && (
           <div className="flex items-center gap-1.5 mb-2">
-            <span className="rounded border border-gray-200 bg-gray-50 px-2 py-0.5 text-xs font-mono font-semibold text-gray-700">
+            <span className="border border-rule bg-paper-2 px-2 py-0.5 text-xs font-mono font-semibold text-ink">
               {agencyAcronym}
             </span>
             {proposal.agency_name && (
-              <span className="text-xs text-gray-400 truncate" title={proposal.agency_name}>
+              <span className="text-xs text-ink-soft/70 truncate" title={proposal.agency_name}>
                 ·{" "}
                 {proposal.agency_name.length > 40
                   ? proposal.agency_name.slice(0, 40) + "…"
@@ -130,7 +133,7 @@ export function ProposalCard({ proposal }: { proposal: ProposalCardData }) {
         )}
 
         {/* Title */}
-        <h3 className="text-sm font-semibold text-gray-900 leading-snug line-clamp-2 mb-2 group-hover:text-indigo-700 transition-colors">
+        <h3 className="font-serif text-sm font-semibold text-ink leading-snug line-clamp-2 mb-2 group-hover:text-accent transition-colors">
           {proposal.title}
         </h3>
 
@@ -138,11 +141,11 @@ export function ProposalCard({ proposal }: { proposal: ProposalCardData }) {
         {summaryTruncated && (
           <div className="mb-3">
             {isAiSummary && (
-              <span className="inline-block rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-medium text-indigo-600 mb-1">
+              <span className="inline-block bg-civic-blue/10 px-1.5 py-0.5 font-mono text-[10px] font-medium uppercase tracking-[0.06em] text-civic-blue mb-1">
                 AI summary
               </span>
             )}
-            <p className="text-xs text-gray-500 leading-relaxed line-clamp-3">
+            <p className="text-xs text-ink-soft leading-relaxed line-clamp-3">
               {summaryTruncated}
             </p>
           </div>
@@ -167,7 +170,7 @@ export function ProposalCard({ proposal }: { proposal: ProposalCardData }) {
             />
           )}
           {!open && proposal.introduced_at && (
-            <p className="text-xs text-gray-400">
+            <p className="font-mono text-xs tabular-nums text-ink-soft/70">
               Introduced {formatDate(proposal.introduced_at)}
             </p>
           )}

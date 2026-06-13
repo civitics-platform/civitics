@@ -38,19 +38,19 @@ export function GrantActions({ grantId }: { grantId: string }) {
         <button
           onClick={() => act("approve")}
           disabled={busy !== null}
-          className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50 transition-colors"
+          className="bg-ink px-3 py-1.5 text-xs font-medium text-paper hover:bg-green-ink disabled:opacity-50 transition-colors"
         >
           {busy === "approve" ? "Approving…" : "Approve"}
         </button>
         <button
           onClick={() => act("reject")}
           disabled={busy !== null}
-          className="rounded-md border border-red-200 bg-white px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-50 transition-colors"
+          className="border border-rule bg-card px-3 py-1.5 text-xs font-medium text-accent hover:border-accent hover:bg-accent/5 disabled:opacity-50 transition-colors"
         >
           {busy === "reject" ? "Rejecting…" : "Reject"}
         </button>
       </div>
-      {error && <p className="text-[10px] text-red-600">{error}</p>}
+      {error && <p className="text-[10px] text-accent">{error}</p>}
     </div>
   );
 }

@@ -74,7 +74,7 @@ export function VotesTab({
     const priority = userPriorities.find((p) => p.id === issue);
 
     if (!priority || userPriorities.length === 0) {
-      return { label: "", color: "text-gray-400", bg: "bg-gray-50", icon: "" };
+      return { label: "", color: "text-ink-soft/70", bg: "bg-paper-2", icon: "" };
     }
 
     const importance = priority.importance / 100;
@@ -83,21 +83,21 @@ export function VotesTab({
     if (alignScore >= 50)
       return {
         label: "Aligns with your priorities",
-        color: "text-emerald-700",
-        bg: "bg-emerald-50",
+        color: "text-green-ink",
+        bg: "bg-green-ink/5",
         icon: "✓",
       };
     if (alignScore >= 25)
       return {
         label: "Mixed record",
-        color: "text-amber-700",
-        bg: "bg-amber-50",
+        color: "text-ink",
+        bg: "bg-amber/15",
         icon: "⚠",
       };
     return {
       label: "Conflicts with your priorities",
-      color: "text-red-700",
-      bg: "bg-red-50",
+      color: "text-accent",
+      bg: "bg-accent/5",
       icon: "✗",
     };
   }
@@ -109,42 +109,42 @@ export function VotesTab({
     <div className="p-6 space-y-6">
       {/* Overall breakdown */}
       <div>
-        <h3 className="text-sm font-semibold text-gray-900 mb-3">
+        <h3 className="text-sm font-semibold text-ink mb-3">
           Vote Breakdown
         </h3>
 
         <div className="grid grid-cols-3 gap-3 mb-4">
-          <div className="rounded-lg bg-emerald-50 border border-emerald-100 p-3 text-center">
-            <p className="text-xl font-bold text-emerald-700">
+          <div className="bg-green-ink/5 border border-green-ink/20 p-3 text-center">
+            <p className="font-mono text-xl font-bold tabular-nums text-green-ink">
               {voteBreakdown.yes.toLocaleString()}
             </p>
-            <p className="text-xs text-emerald-600 mt-0.5">Yea votes</p>
+            <p className="text-xs text-green-ink/80 mt-0.5">Yea votes</p>
           </div>
-          <div className="rounded-lg bg-red-50 border border-red-100 p-3 text-center">
-            <p className="text-xl font-bold text-red-700">
+          <div className="bg-accent/5 border border-accent/20 p-3 text-center">
+            <p className="font-mono text-xl font-bold tabular-nums text-accent">
               {voteBreakdown.no.toLocaleString()}
             </p>
-            <p className="text-xs text-red-600 mt-0.5">Nay votes</p>
+            <p className="text-xs text-accent/80 mt-0.5">Nay votes</p>
           </div>
-          <div className="rounded-lg bg-gray-50 border border-gray-100 p-3 text-center">
-            <p className="text-xl font-bold text-gray-600">
+          <div className="bg-paper-2 border border-rule p-3 text-center">
+            <p className="font-mono text-xl font-bold tabular-nums text-ink-soft">
               {voteBreakdown.abstain.toLocaleString()}
             </p>
-            <p className="text-xs text-gray-500 mt-0.5">Abstain/NV</p>
+            <p className="text-xs text-ink-soft mt-0.5">Abstain/NV</p>
           </div>
         </div>
 
         {/* Progress bar */}
         {voteBreakdown.total > 0 && (
-          <div className="h-2 rounded-full bg-gray-100 overflow-hidden flex">
+          <div className="h-2 bg-ink/5 overflow-hidden flex">
             <div
-              className="h-full bg-emerald-500 transition-all"
+              className="h-full bg-green-ink transition-all"
               style={{
                 width: `${(voteBreakdown.yes / voteBreakdown.total) * 100}%`,
               }}
             />
             <div
-              className="h-full bg-red-400"
+              className="h-full bg-accent"
               style={{
                 width: `${(voteBreakdown.no / voteBreakdown.total) * 100}%`,
               }}
@@ -152,7 +152,7 @@ export function VotesTab({
           </div>
         )}
 
-        <p className="text-[10px] text-gray-400 mt-1.5">
+        <p className="font-mono text-[10px] tabular-nums text-ink-soft/70 mt-1.5">
           {voteBreakdown.total.toLocaleString()} total &middot;{" "}
           {voteBreakdown.procedural.toLocaleString()} procedural (filtered)
           &middot; {voteBreakdown.substantive.toLocaleString()} substantive
@@ -163,11 +163,11 @@ export function VotesTab({
       {issueStats.length > 0 && (
         <div>
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-semibold text-gray-900">
+            <h3 className="text-sm font-semibold text-ink">
               Votes by Issue
             </h3>
             {!hasUserPriorities && (
-              <span className="text-[10px] text-indigo-500 bg-indigo-50 px-2 py-1 rounded-full">
+              <span className="text-[10px] text-accent bg-accent/5 px-2 py-1 rounded-full">
                 Set priorities in graph to see alignment
               </span>
             )}
@@ -178,19 +178,19 @@ export function VotesTab({
               const alignment = getAlignment(stat.issue, stat.yesRate);
               const borderColor = hasUserPriorities
                 ? alignment.color.replace("text-", "border-")
-                : "border-gray-200";
+                : "border-rule";
 
               return (
                 <div
                   key={stat.issue}
-                  className={`rounded-lg border p-3 ${
-                    hasUserPriorities ? alignment.bg : "bg-white"
+                  className={`border p-3 ${
+                    hasUserPriorities ? alignment.bg : "bg-card"
                   } ${borderColor}`}
                 >
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
                       <span className="text-base">{stat.icon}</span>
-                      <span className="text-sm font-medium text-gray-900">
+                      <span className="text-sm font-medium text-ink">
                         {stat.label}
                       </span>
                       {hasUserPriorities && alignment.icon && (
@@ -199,13 +199,13 @@ export function VotesTab({
                         </span>
                       )}
                     </div>
-                    <span className="text-xs text-gray-500">
+                    <span className="font-mono text-xs tabular-nums text-ink-soft">
                       {stat.total} bills
                     </span>
                   </div>
 
                   {/* Mini bar */}
-                  <div className="h-1.5 rounded-full bg-gray-100 overflow-hidden flex mb-1.5">
+                  <div className="h-1.5 bg-ink/5 overflow-hidden flex mb-1.5">
                     <div
                       className="h-full"
                       style={{
@@ -216,7 +216,7 @@ export function VotesTab({
                   </div>
 
                   <div className="flex justify-between items-center">
-                    <span className="text-[10px] text-gray-500">
+                    <span className="font-mono text-[10px] tabular-nums text-ink-soft">
                       {stat.yesRate}% YES &middot; {stat.yes} yea / {stat.no}{" "}
                       nay
                     </span>
@@ -231,11 +231,11 @@ export function VotesTab({
 
                   {/* Sample bills */}
                   {stat.recentBills.length > 0 && (
-                    <div className="mt-2 pt-2 border-t border-gray-100">
+                    <div className="mt-2 pt-2 border-t border-rule/60">
                       {stat.recentBills.slice(0, 2).map((bill, i) => (
                         <p
                           key={i}
-                          className="text-[10px] text-gray-400 truncate"
+                          className="text-[10px] text-ink-soft/70 truncate"
                         >
                           &middot; {bill}
                         </p>
@@ -251,10 +251,10 @@ export function VotesTab({
 
       {/* Recent substantive votes */}
       <div>
-        <h3 className="text-sm font-semibold text-gray-900 mb-3">
+        <h3 className="text-sm font-semibold text-ink mb-3">
           Recent Votes
         </h3>
-        <div className="divide-y divide-gray-100 rounded-lg border border-gray-200 overflow-hidden">
+        <div className="divide-y divide-rule/60 border border-rule overflow-hidden">
           {recentVotes.slice(0, 15).map((v, i) => {
             const isYes = v.vote === "yes" || v.vote === "paired_yes";
             const isNo = v.vote === "no" || v.vote === "paired_no";
@@ -265,24 +265,24 @@ export function VotesTab({
                 <button
                   type="button"
                   onClick={() => hasDetail && setExpandedId(isExpanded ? null : v.id)}
-                  className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors ${hasDetail ? "hover:bg-gray-50" : "cursor-default"} ${isExpanded ? "bg-gray-50" : ""}`}
+                  className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors ${hasDetail ? "hover:bg-paper-2" : "cursor-default"} ${isExpanded ? "bg-paper-2" : ""}`}
                 >
                   <span
-                    className={`shrink-0 w-8 text-center rounded px-1 py-0.5 text-[10px] font-bold ${
+                    className={`shrink-0 w-8 text-center px-1 py-0.5 font-mono text-[10px] font-bold ${
                       isYes
-                        ? "bg-emerald-100 text-emerald-700"
+                        ? "bg-green-ink/10 text-green-ink"
                         : isNo
-                        ? "bg-red-100 text-red-700"
-                        : "bg-gray-100 text-gray-600"
+                        ? "bg-accent/10 text-accent"
+                        : "bg-ink/5 text-ink-soft"
                     }`}
                   >
                     {isYes ? "YEA" : isNo ? "NAY" : "ABS"}
                   </span>
-                  <span className="flex-1 text-xs text-gray-700 truncate">
+                  <span className="flex-1 text-xs text-ink truncate">
                     {v.title || "Procedural vote"}
                   </span>
                   {v.date && (
-                    <span className="shrink-0 text-[10px] text-gray-400">
+                    <span className="shrink-0 font-mono text-[10px] tabular-nums text-ink-soft/70">
                       {new Date(v.date).toLocaleDateString("en-US", {
                         month: "short",
                         day: "numeric",
@@ -291,23 +291,23 @@ export function VotesTab({
                     </span>
                   )}
                   {hasDetail && (
-                    <span className="shrink-0 text-[10px] text-gray-400 ml-1" aria-hidden="true">
+                    <span className="shrink-0 text-[10px] text-ink-soft/70 ml-1" aria-hidden="true">
                       {isExpanded ? "▲" : "▼"}
                     </span>
                   )}
                 </button>
                 {isExpanded && (
-                  <div className="px-4 pb-3 pt-1 bg-gray-50 border-t border-gray-100 space-y-1.5">
+                  <div className="px-4 pb-3 pt-1 bg-paper-2 border-t border-rule/60 space-y-1.5">
                     {v.voteQuestion && (
-                      <p className="text-[11px] text-gray-500">
-                        <span className="font-medium text-gray-700">Question: </span>
+                      <p className="text-[11px] text-ink-soft">
+                        <span className="font-medium text-ink">Question: </span>
                         {v.voteQuestion}
                       </p>
                     )}
                     {v.proposalId && (
                       <a
                         href={`/proposals/${v.proposalId}`}
-                        className="inline-flex items-center gap-1 text-[11px] text-indigo-600 hover:underline font-medium"
+                        className="inline-flex items-center gap-1 text-[11px] text-accent hover:underline font-medium"
                       >
                         View proposal →
                       </a>

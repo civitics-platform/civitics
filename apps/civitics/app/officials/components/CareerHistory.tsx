@@ -29,13 +29,13 @@ export function CareerHistory({ items }: { items: CareerHistoryRow[] }) {
 
   return (
     <div>
-      <h3 className="text-sm font-semibold text-gray-900 mb-3">Career History</h3>
+      <h3 className="text-sm font-semibold text-ink mb-3">Career History</h3>
       <div className="space-y-0">
         {items.map((item, idx) => (
           <div
             key={item.id}
             className={`flex gap-4 px-4 py-3 ${
-              idx < items.length - 1 ? "border-b border-gray-100" : ""
+              idx < items.length - 1 ? "border-b border-rule/60" : ""
             }`}
           >
             {/* Timeline dot + line */}
@@ -43,40 +43,40 @@ export function CareerHistory({ items }: { items: CareerHistoryRow[] }) {
               <div
                 className={`w-3 h-3 rounded-full border-2 ${
                   item.revolving_door_flag
-                    ? "border-amber-500 bg-amber-100"
+                    ? "border-amber bg-amber/30"
                     : item.is_government
-                      ? "border-gray-400 bg-gray-100"
-                      : "border-indigo-400 bg-indigo-50"
+                      ? "border-ink-soft bg-ink/10"
+                      : "border-civic-blue bg-civic-blue/10"
                 }`}
               />
               {idx < items.length - 1 && (
-                <div className="w-px flex-1 bg-gray-200 mt-1" />
+                <div className="w-px flex-1 bg-rule mt-1" />
               )}
             </div>
 
             {/* Content */}
             <div className="flex-1 min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-xs font-medium text-gray-800">
+                <span className="text-xs font-medium text-ink">
                   {item.role_title ?? "Employee"}
                 </span>
                 {item.is_government && (
-                  <span className="rounded px-1.5 py-0.5 text-[9px] font-semibold bg-gray-200 text-gray-600">
+                  <span className="px-1.5 py-0.5 font-mono text-[9px] font-semibold bg-ink/10 text-ink-soft">
                     GOV
                   </span>
                 )}
                 {item.revolving_door_flag && (
-                  <span className="rounded px-1.5 py-0.5 text-[9px] font-semibold bg-amber-100 text-amber-700">
+                  <span className="px-1.5 py-0.5 font-mono text-[9px] font-semibold bg-amber/25 text-ink">
                     ⚠ Revolving Door
                   </span>
                 )}
               </div>
-              <p className="text-xs text-gray-500 mt-0.5">{item.organization}</p>
-              <p className="text-[10px] text-gray-400 mt-1">
+              <p className="text-xs text-ink-soft mt-0.5">{item.organization}</p>
+              <p className="font-mono text-[10px] tabular-nums text-ink-soft/70 mt-1">
                 {formatMonthYear(item.started_at)} — {item.ended_at ? formatMonthYear(item.ended_at) : "Present"}
               </p>
               {item.revolving_door_flag && item.revolving_door_explanation && (
-                <p className="text-[10px] text-amber-700 mt-1 leading-relaxed">
+                <p className="text-[10px] text-ink-soft mt-1 leading-relaxed">
                   {item.revolving_door_explanation}
                 </p>
               )}

@@ -32,7 +32,7 @@ export function SubmitCommentButton({
       target="_blank"
       rel="noopener noreferrer"
       onClick={stopPropagation ? (e) => e.stopPropagation() : undefined}
-      className={`inline-flex items-center gap-1.5 rounded-md bg-indigo-600 font-medium text-white hover:bg-indigo-700 transition-colors ${sizeClass}`}
+      className={`inline-flex items-center gap-1.5 bg-ink font-medium text-paper hover:bg-accent transition-colors ${sizeClass}`}
     >
       Submit Comment at Regulations.gov
       <svg

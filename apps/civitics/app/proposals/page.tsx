@@ -431,10 +431,10 @@ export default async function ProposalsPage({
   const countLabel = buildCountLabel(totalCount, statusFilter, searchQ);
 
   return (
-    <main id="main-content" className="min-h-screen bg-gray-50">
+    <main id="main-content" className="min-h-screen bg-paper">
       <PageViewTracker entityType="proposal_list" />
       {/* ─── Header ────────────────────────────────────────────────────────── */}
-      <div className="border-b border-gray-200 bg-white">
+      <div className="border-b border-rule bg-card">
         <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
           <PageHeader
             title="Proposals"
@@ -474,10 +474,10 @@ export default async function ProposalsPage({
           <a
             href={buildUrl(currentParams, { topics: undefined })}
             aria-current={activeTopics.length === 0 ? "true" : undefined}
-            className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1 ${
+            className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1 ${
               activeTopics.length === 0
-                ? "bg-indigo-600 text-white"
-                : "bg-white border border-gray-200 text-gray-600 hover:border-indigo-300 hover:text-indigo-700"
+                ? "bg-ink text-paper"
+                : "bg-card border border-rule text-ink-soft hover:border-accent hover:text-accent"
             }`}
           >
             All
@@ -489,10 +489,10 @@ export default async function ProposalsPage({
                 key={pill.tag}
                 href={toggleTopicInUrl(currentParams, pill.tag)}
                 aria-current={isActive ? "true" : undefined}
-                className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1 ${
+                className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1 ${
                   isActive
-                    ? "bg-indigo-600 text-white"
-                    : "bg-white border border-gray-200 text-gray-600 hover:border-indigo-300 hover:text-indigo-700"
+                    ? "bg-ink text-paper"
+                    : "bg-card border border-rule text-ink-soft hover:border-accent hover:text-accent"
                 }`}
               >
                 <span aria-hidden="true">{pill.icon}</span>
@@ -503,16 +503,16 @@ export default async function ProposalsPage({
         </nav>
 
         {/* ─── Filters ───────────────────────────────────────────────────── */}
-        <div className="mb-6 rounded-lg border border-gray-200 bg-white p-4">
+        <div className="mb-6 border border-rule bg-card p-4">
           <form method="GET" action="/proposals" className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
             {/* Status */}
             <div className="flex flex-col gap-1 w-full sm:w-auto">
-              <label htmlFor="filter-status" className="text-xs font-medium text-gray-500">Status</label>
+              <label htmlFor="filter-status" className="font-mono text-[10px] uppercase tracking-[0.08em] text-ink-soft/70">Status</label>
               <select
                 id="filter-status"
                 name="status"
                 defaultValue={statusFilter}
-                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                className="w-full border border-rule bg-paper px-3 py-2 text-sm text-ink focus:border-accent focus:bg-card focus:outline-none focus:ring-1 focus:ring-accent"
               >
                 <option value="open">Open for Comment</option>
                 <option value="all">All Proposals</option>
@@ -522,12 +522,12 @@ export default async function ProposalsPage({
 
             {/* Type */}
             <div className="flex flex-col gap-1 w-full sm:w-auto">
-              <label htmlFor="filter-type" className="text-xs font-medium text-gray-500">Type</label>
+              <label htmlFor="filter-type" className="font-mono text-[10px] uppercase tracking-[0.08em] text-ink-soft/70">Type</label>
               <select
                 id="filter-type"
                 name="type"
                 defaultValue={typeFilter}
-                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                className="w-full border border-rule bg-paper px-3 py-2 text-sm text-ink focus:border-accent focus:bg-card focus:outline-none focus:ring-1 focus:ring-accent"
               >
                 <option value="">All Types</option>
                 {Object.entries(PROPOSAL_TYPE_LABELS).map(([val, label]) => (
@@ -540,12 +540,12 @@ export default async function ProposalsPage({
 
             {/* Agency */}
             <div className="flex flex-col gap-1 w-full sm:w-auto">
-              <label htmlFor="filter-agency" className="text-xs font-medium text-gray-500">Agency</label>
+              <label htmlFor="filter-agency" className="font-mono text-[10px] uppercase tracking-[0.08em] text-ink-soft/70">Agency</label>
               <select
                 id="filter-agency"
                 name="agency"
                 defaultValue={agencyFilter}
-                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                className="w-full border border-rule bg-paper px-3 py-2 text-sm text-ink focus:border-accent focus:bg-card focus:outline-none focus:ring-1 focus:ring-accent"
               >
                 <option value="">All Agencies</option>
                 {AGENCIES.map((a) => {
@@ -561,12 +561,12 @@ export default async function ProposalsPage({
 
             {/* Sort */}
             <div className="flex flex-col gap-1 w-full sm:w-auto">
-              <label htmlFor="filter-sort" className="text-xs font-medium text-gray-500">Sort by</label>
+              <label htmlFor="filter-sort" className="font-mono text-[10px] uppercase tracking-[0.08em] text-ink-soft/70">Sort by</label>
               <select
                 id="filter-sort"
                 name="sort"
                 defaultValue={sortFilter}
-                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                className="w-full border border-rule bg-paper px-3 py-2 text-sm text-ink focus:border-accent focus:bg-card focus:outline-none focus:ring-1 focus:ring-accent"
               >
                 {SORT_OPTIONS.map((opt) => (
                   <option key={opt.value} value={opt.value}>
@@ -578,20 +578,20 @@ export default async function ProposalsPage({
 
             {/* Search */}
             <div className="flex flex-col gap-1 w-full sm:flex-1 sm:min-w-[180px]">
-              <label htmlFor="filter-search" className="text-xs font-medium text-gray-500">Search</label>
+              <label htmlFor="filter-search" className="font-mono text-[10px] uppercase tracking-[0.08em] text-ink-soft/70">Search</label>
               <input
                 id="filter-search"
                 type="text"
                 name="q"
                 defaultValue={searchQ}
                 placeholder="Search proposals…"
-                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                className="w-full border border-rule bg-paper px-3 py-2 text-sm text-ink placeholder:text-ink-soft/60 focus:border-accent focus:bg-card focus:outline-none focus:ring-1 focus:ring-accent"
               />
             </div>
 
             <button
               type="submit"
-              className="w-full sm:w-auto rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 transition-colors"
+              className="w-full sm:w-auto bg-ink px-4 py-2 text-sm font-medium text-paper hover:bg-accent transition-colors"
             >
               Filter
             </button>
@@ -599,7 +599,7 @@ export default async function ProposalsPage({
             {(statusFilter !== "open" || typeFilter || agencyFilter || topicsFilter || sortFilter !== "closing_soon" || searchQ) && (
               <a
                 href="/proposals"
-                className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                className="border border-rule px-4 py-2 text-sm font-medium text-ink hover:border-accent hover:text-accent transition-colors"
               >
                 Clear
               </a>
@@ -609,11 +609,11 @@ export default async function ProposalsPage({
 
         {/* ─── Results header ─────────────────────────────────────────────── */}
         <div className="mb-4 flex items-center justify-between">
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-ink-soft">
             {totalCount === 0 ? "No proposals found" : countLabel}
           </p>
           {totalPages > 1 && (
-            <p className="text-sm text-gray-400">
+            <p className="font-mono text-sm tabular-nums text-ink-soft/70">
               Page {page} of {totalPages}
             </p>
           )}
@@ -621,21 +621,21 @@ export default async function ProposalsPage({
 
         {/* ─── Proposals grid ─────────────────────────────────────────────── */}
         {mainProposals.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-gray-200 bg-white px-8 py-16 text-center">
-            <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-gray-50">
-              <svg aria-hidden="true" className="h-6 w-6 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <div className="border border-dashed border-rule bg-card px-8 py-16 text-center">
+            <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-paper-2">
+              <svg aria-hidden="true" className="h-6 w-6 text-ink-soft/60" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
             </div>
-            <p className="text-sm font-semibold text-gray-900">
+            <p className="text-sm font-semibold text-ink">
               {topicQueryFailed ? "We couldn’t load results for this topic." : "No proposals match your filters."}
             </p>
-            <p className="mt-1 text-sm text-gray-500">
+            <p className="mt-1 text-sm text-ink-soft">
               {topicQueryFailed
                 ? "Something went wrong fetching this topic. Please try again in a moment."
                 : "Try adjusting the status, type, or topic filters, or clear your search."}
             </p>
-            <a href="/proposals" className="mt-4 inline-block text-sm font-medium text-indigo-600 hover:underline">
+            <a href="/proposals" className="mt-4 inline-block text-sm font-medium text-accent hover:underline">
               Clear filters →
             </a>
           </div>
@@ -653,7 +653,7 @@ export default async function ProposalsPage({
             {page > 1 && (
               <a
                 href={buildUrl(currentParams, { page: String(page - 1) })}
-                className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+                className="border border-rule bg-card px-4 py-2 text-sm font-medium text-ink hover:border-accent hover:text-accent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
               >
                 ← Previous
               </a>
@@ -669,17 +669,17 @@ export default async function ProposalsPage({
               }, [])
               .map((p, i) =>
                 p === "…" ? (
-                  <span key={`ellipsis-${i}`} aria-hidden="true" className="px-1 text-gray-400">…</span>
+                  <span key={`ellipsis-${i}`} aria-hidden="true" className="px-1 text-ink-soft/70">…</span>
                 ) : (
                   <a
                     key={p}
                     href={buildUrl(currentParams, { page: String(p) })}
                     aria-current={p === page ? "page" : undefined}
                     aria-label={p === page ? `Page ${p}, current page` : `Page ${p}`}
-                    className={`rounded-md border px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
+                    className={`border px-3 py-2 font-mono text-sm font-medium tabular-nums transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
                       p === page
-                        ? "border-indigo-600 bg-indigo-600 text-white"
-                        : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+                        ? "border-ink bg-ink text-paper"
+                        : "border-rule bg-card text-ink hover:border-accent hover:text-accent"
                     }`}
                   >
                     {p}
@@ -690,7 +690,7 @@ export default async function ProposalsPage({
             {page < totalPages && (
               <a
                 href={buildUrl(currentParams, { page: String(page + 1) })}
-                className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+                className="border border-rule bg-card px-4 py-2 text-sm font-medium text-ink hover:border-accent hover:text-accent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
               >
                 Next →
               </a>

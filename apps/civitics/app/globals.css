@@ -11,38 +11,45 @@
      is a component-level dark scope for live instruments — wrap a subtree
      in data-theme="terminal" and the semantic paper vars re-bind, so the
      same Tailwind utilities (bg-card, text-ink, border-rule, …) render
-     dark inside it. */
-  :root {
-    --c-paper:    #f7f4ed;
-    --c-paper-2:  #f1ede3;
-    --c-card:     #fffdf8;
-    --c-ink:      #1c1a16;
-    --c-ink-soft: #57534a;
-    --c-rule:     #d8d2c4;
-    --c-accent:   #9d2b2b;
-    --c-blue:     #2b4a8b;
+     dark inside it.
 
-    --c-term-bg:    #0e1117;
-    --c-term-panel: #141925;
-    --c-term-line:  #232b38;
-    --c-term-txt:   #dde3ec;
-    --c-term-dim:   #8b95a7;
-    --c-term-faint: #5b6474;
-    --c-amber:      #f5b942;
-    --c-term-green: #3ddc84;
-    --c-term-red:   #e25555;
-    --c-term-blue:  #5b8def;
+     Values are space-separated RGB channel triplets (FIX-563), not hex:
+     Tailwind maps them as rgb(var(--c-x) / <alpha-value>) so alpha
+     modifiers (bg-ink/5, border-rule/60) work on every token. Any direct
+     CSS/inline consumption must wrap in rgb(var(--c-x)). */
+  :root {
+    --c-paper:     247 244 237; /* #f7f4ed */
+    --c-paper-2:   241 237 227; /* #f1ede3 */
+    --c-card:      255 253 248; /* #fffdf8 */
+    --c-ink:        28  26  22; /* #1c1a16 */
+    --c-ink-soft:   87  83  74; /* #57534a */
+    --c-rule:      216 210 196; /* #d8d2c4 */
+    --c-accent:    157  43  43; /* #9d2b2b */
+    --c-blue:       43  74 139; /* #2b4a8b */
+    --c-green-ink:  29 122  62; /* #1d7a3e — stamp/verified ink (desk mockup) */
+
+    --c-term-bg:     14  17  23; /* #0e1117 */
+    --c-term-panel:  20  25  37; /* #141925 */
+    --c-term-line:   35  43  56; /* #232b38 */
+    --c-term-txt:   221 227 236; /* #dde3ec */
+    --c-term-dim:   139 149 167; /* #8b95a7 */
+    --c-term-faint:  91 100 116; /* #5b6474 */
+    --c-amber:      245 185  66; /* #f5b942 */
+    --c-term-green:  61 220 132; /* #3ddc84 */
+    --c-term-red:   226  85  85; /* #e25555 */
+    --c-term-blue:   91 141 239; /* #5b8def */
   }
 
   [data-theme="terminal"] {
-    --c-paper:    var(--c-term-bg);
-    --c-paper-2:  var(--c-term-panel);
-    --c-card:     var(--c-term-panel);
-    --c-ink:      var(--c-term-txt);
-    --c-ink-soft: var(--c-term-dim);
-    --c-rule:     var(--c-term-line);
-    --c-accent:   var(--c-term-red);
-    --c-blue:     var(--c-term-blue);
+    --c-paper:     var(--c-term-bg);
+    --c-paper-2:   var(--c-term-panel);
+    --c-card:      var(--c-term-panel);
+    --c-ink:       var(--c-term-txt);
+    --c-ink-soft:  var(--c-term-dim);
+    --c-rule:      var(--c-term-line);
+    --c-accent:    var(--c-term-red);
+    --c-blue:      var(--c-term-blue);
+    --c-green-ink: var(--c-term-green);
   }
 
   html {

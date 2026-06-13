@@ -85,19 +85,22 @@ type RelatedProposal = {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+// Status gradient on the token palette: amber (open) → civic-blue (in
+// progress) → green-ink (enacted) → accent (failed) → neutral (closed).
+// passed-both-chambers uses ink outline — no purple/violet token by design.
 const STATUS_BADGE: Record<string, { label: string; color: string }> = {
-  open_comment:         { label: "Open for Comment", color: "bg-amber-100 text-amber-800 border-amber-200" },
-  introduced:           { label: "Introduced",       color: "bg-blue-100 text-blue-800 border-blue-200" },
-  in_committee:         { label: "In Committee",     color: "bg-blue-100 text-blue-800 border-blue-200" },
-  passed_committee:     { label: "Passed Committee", color: "bg-indigo-100 text-indigo-800 border-indigo-200" },
-  floor_vote:           { label: "Floor Vote",       color: "bg-indigo-100 text-indigo-800 border-indigo-200" },
-  passed_chamber:       { label: "Passed Chamber",   color: "bg-indigo-100 text-indigo-800 border-indigo-200" },
-  passed_both_chambers: { label: "Passed Both",      color: "bg-violet-100 text-violet-800 border-violet-200" },
-  signed:               { label: "Signed",           color: "bg-green-100 text-green-800 border-green-200" },
-  enacted:              { label: "Enacted",          color: "bg-green-100 text-green-800 border-green-200" },
-  failed:               { label: "Failed",           color: "bg-red-100 text-red-800 border-red-200" },
-  withdrawn:            { label: "Withdrawn",        color: "bg-gray-100 text-gray-600 border-gray-200" },
-  comment_closed:       { label: "Comment Closed",   color: "bg-gray-100 text-gray-600 border-gray-200" },
+  open_comment:         { label: "Open for Comment", color: "bg-amber/25 text-ink border-amber/60" },
+  introduced:           { label: "Introduced",       color: "bg-civic-blue/10 text-civic-blue border-civic-blue/25" },
+  in_committee:         { label: "In Committee",     color: "bg-civic-blue/10 text-civic-blue border-civic-blue/25" },
+  passed_committee:     { label: "Passed Committee", color: "bg-civic-blue/10 text-civic-blue border-civic-blue/25" },
+  floor_vote:           { label: "Floor Vote",       color: "bg-civic-blue/10 text-civic-blue border-civic-blue/25" },
+  passed_chamber:       { label: "Passed Chamber",   color: "bg-civic-blue/10 text-civic-blue border-civic-blue/25" },
+  passed_both_chambers: { label: "Passed Both",      color: "border-ink/40 text-ink" },
+  signed:               { label: "Signed",           color: "bg-green-ink/10 text-green-ink border-green-ink/25" },
+  enacted:              { label: "Enacted",          color: "bg-green-ink/10 text-green-ink border-green-ink/25" },
+  failed:               { label: "Failed",           color: "bg-accent/10 text-accent border-accent/25" },
+  withdrawn:            { label: "Withdrawn",        color: "bg-ink/5 text-ink-soft border-rule" },
+  comment_closed:       { label: "Comment Closed",   color: "bg-ink/5 text-ink-soft border-rule" },
 };
 
 const TYPE_LABEL: Record<string, string> = {
@@ -110,19 +113,20 @@ const TYPE_LABEL: Record<string, string> = {
 };
 
 const VOTE_STYLES: Record<string, { label: string; color: string }> = {
-  yes:        { label: "Yes",        color: "bg-green-100 text-green-800 border-green-200" },
-  no:         { label: "No",         color: "bg-red-100 text-red-800 border-red-200" },
-  abstain:    { label: "Abstain",    color: "bg-gray-100 text-gray-600 border-gray-200" },
-  present:    { label: "Present",    color: "bg-gray-100 text-gray-600 border-gray-200" },
-  not_voting: { label: "Not Voting", color: "bg-gray-100 text-gray-500 border-gray-200" },
-  paired_yes: { label: "Paired Yes", color: "bg-emerald-100 text-emerald-800 border-emerald-200" },
-  paired_no:  { label: "Paired No",  color: "bg-orange-100 text-orange-800 border-orange-200" },
+  yes:        { label: "Yes",        color: "bg-green-ink/10 text-green-ink border-green-ink/25" },
+  no:         { label: "No",         color: "bg-accent/10 text-accent border-accent/25" },
+  abstain:    { label: "Abstain",    color: "bg-ink/5 text-ink-soft border-rule" },
+  present:    { label: "Present",    color: "bg-ink/5 text-ink-soft border-rule" },
+  not_voting: { label: "Not Voting", color: "bg-ink/5 text-ink-soft/70 border-rule" },
+  paired_yes: { label: "Paired Yes", color: "bg-green-ink/5 text-green-ink/80 border-green-ink/20" },
+  paired_no:  { label: "Paired No",  color: "bg-amber/20 text-ink border-amber/50" },
 };
 
+// Independents stay ink — no purple token exists by design.
 const PARTY_DOT: Record<string, string> = {
-  democrat:    "bg-blue-500",
-  republican:  "bg-red-500",
-  independent: "bg-purple-500",
+  democrat:    "bg-civic-blue",
+  republican:  "bg-accent",
+  independent: "bg-ink",
 };
 
 function formatDate(iso: string | null): string {
@@ -173,7 +177,7 @@ export default async function ProposalDetailPage({
     metadata:           rawMeta,
   };
   const open = isOpenForComment(p);
-  const statusBadge = STATUS_BADGE[p.status] ?? { label: p.status, color: "bg-gray-100 text-gray-600 border-gray-200" };
+  const statusBadge = STATUS_BADGE[p.status] ?? { label: p.status, color: "bg-ink/5 text-ink-soft border-rule" };
   const typeLabel = TYPE_LABEL[p.type] ?? p.type;
   const agencyAcronym = p.metadata?.agency_id ?? null;
   const docType = p.metadata?.document_type ?? null;
@@ -318,7 +322,7 @@ export default async function ProposalDetailPage({
   const slowMode = await getSlowMode("proposal", p.id);
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-paper">
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(proposalJsonLd) }}
@@ -333,16 +337,16 @@ export default async function ProposalDetailPage({
       <PageViewTracker entityType="proposal" entityId={params.id} />
 
       {/* ─── Header ─────────────────────────────────────────────────────────── */}
-      <div className="border-b border-gray-200 bg-white">
+      <div className="border-b border-rule bg-card">
         <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
 
           {/* Breadcrumb — jurisdiction → institution → proposals → this */}
-          <nav className="mb-4 flex flex-wrap items-center gap-1.5 text-xs text-gray-400">
+          <nav className="mb-4 flex flex-wrap items-center gap-1.5 font-mono text-[10.5px] uppercase tracking-[0.08em] text-ink-soft">
             {bcJurisdiction && (
               <>
                 <a
                   href={`/jurisdictions/${bcJurisdiction.id}`}
-                  className="hover:text-gray-600 transition-colors"
+                  className="hover:text-accent transition-colors"
                 >
                   {bcJurisdiction.name}
                 </a>
@@ -353,36 +357,36 @@ export default async function ProposalDetailPage({
               <>
                 <a
                   href={`/institutions/${bcInstitution.id}`}
-                  className="hover:text-gray-600 transition-colors"
+                  className="hover:text-accent transition-colors"
                 >
                   {bcInstitution.name}
                 </a>
                 <span>/</span>
               </>
             )}
-            <a href="/proposals" className="hover:text-gray-600 transition-colors">Proposals</a>
+            <a href="/proposals" className="hover:text-accent transition-colors">Proposals</a>
             <span>/</span>
-            <span className="text-gray-600 truncate max-w-[200px] sm:max-w-none">{p.title}</span>
+            <span className="text-ink truncate max-w-[200px] sm:max-w-none">{p.title}</span>
           </nav>
 
           {/* Badge row */}
           <div className="flex flex-wrap items-center gap-2 mb-4">
-            <span className={`rounded border px-2.5 py-1 text-xs font-semibold ${statusBadge.color}`}>
+            <span className={`border px-2.5 py-1 font-mono text-[10px] font-bold uppercase tracking-[0.06em] ${statusBadge.color}`}>
               {open ? "⏰ " : ""}{statusBadge.label}
             </span>
             {agencyAcronym && (
-              <span className="inline-flex items-center gap-1.5 rounded border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs">
-                <span className="font-mono font-semibold text-gray-700">{agencyAcronym}</span>
+              <span className="inline-flex items-center gap-1.5 border border-rule bg-paper-2 px-2.5 py-1 text-xs">
+                <span className="font-mono font-semibold text-ink">{agencyAcronym}</span>
                 {agencyFullName && (
-                  <span className="text-gray-400">· {agencyFullName}</span>
+                  <span className="text-ink-soft/70">· {agencyFullName}</span>
                 )}
               </span>
             )}
-            <span className="rounded border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs font-medium text-gray-600">
+            <span className="border border-rule bg-paper-2 px-2.5 py-1 text-xs font-medium text-ink-soft">
               {docType ?? typeLabel}
             </span>
             {docketId && (
-              <span className="text-xs text-gray-400 font-mono">{docketId}</span>
+              <span className="text-xs text-ink-soft/70 font-mono">{docketId}</span>
             )}
             <SourceDetailPopover
               entityType="proposal"
@@ -394,24 +398,24 @@ export default async function ProposalDetailPage({
           </div>
 
           {/* Title */}
-          <h1 className="text-2xl font-bold tracking-tight text-gray-900 sm:text-3xl leading-snug max-w-4xl">
+          <h1 className="font-serif text-2xl font-bold tracking-tight text-ink sm:text-3xl leading-snug max-w-4xl">
             {p.title}
           </h1>
 
           {/* Meta row */}
-          <div className="mt-3 flex flex-wrap items-center gap-4 text-sm text-gray-500">
+          <div className="mt-3 flex flex-wrap items-center gap-4 text-sm text-ink-soft">
             {p.introduced_at && (
-              <span>Introduced {formatDate(p.introduced_at)}</span>
+              <span className="font-mono tabular-nums">Introduced {formatDate(p.introduced_at)}</span>
             )}
             {p.comment_period_end && (
-              <span>Comment period ends {formatDate(p.comment_period_end)}</span>
+              <span className="font-mono tabular-nums">Comment period ends {formatDate(p.comment_period_end)}</span>
             )}
             {p.regulations_gov_id && (
               <a
                 href={`https://www.regulations.gov/document/${p.regulations_gov_id}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-indigo-600 hover:text-indigo-800 transition-colors"
+                className="text-accent hover:underline transition-colors"
               >
                 View on regulations.gov ↗
               </a>
@@ -421,7 +425,7 @@ export default async function ProposalDetailPage({
                 href={p.congress_gov_url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-indigo-600 hover:text-indigo-800 transition-colors"
+                className="text-accent hover:underline transition-colors"
               >
                 View on congress.gov ↗
               </a>
@@ -445,12 +449,12 @@ export default async function ProposalDetailPage({
             {/* What This Means — AI plain language summary */}
             {cachedAiSummary ? (
               <section>
-                <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-400">
+                <h2 className="mb-3 font-mono text-xs font-semibold uppercase tracking-wide text-ink-soft/70">
                   What This Means
                 </h2>
-                <div className="rounded-lg border border-indigo-100 bg-white p-5">
-                  <p className="text-sm text-gray-700 leading-relaxed">{cachedAiSummary}</p>
-                  <p className="mt-3 text-[10px] text-gray-400">
+                <div className="border border-civic-blue/20 bg-card p-5">
+                  <p className="text-sm text-ink leading-relaxed">{cachedAiSummary}</p>
+                  <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.08em] text-ink-soft/70">
                     Plain language summary generated by AI · Civitics
                   </p>
                 </div>
@@ -459,11 +463,11 @@ export default async function ProposalDetailPage({
               <AiSummarySection proposalId={p.id} />
             ) : p.summary_plain ? (
               <section>
-                <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-400">
+                <h2 className="mb-3 font-mono text-xs font-semibold uppercase tracking-wide text-ink-soft/70">
                   What This Means
                 </h2>
-                <div className="rounded-lg border border-gray-200 bg-white p-5">
-                  <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-line">
+                <div className="border border-rule bg-card p-5">
+                  <p className="text-sm text-ink leading-relaxed whitespace-pre-line">
                     {p.summary_plain}
                   </p>
                 </div>
@@ -473,16 +477,16 @@ export default async function ProposalDetailPage({
             {/* Vote Record — congressional bills only */}
             {p.type === "bill" && votes.length > 0 && (
               <section>
-                <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-400">
+                <h2 className="mb-3 font-mono text-xs font-semibold uppercase tracking-wide text-ink-soft/70">
                   Vote Record
                 </h2>
 
                 {/* Tally */}
                 <div className="mb-4 flex flex-wrap gap-3">
                   {Object.entries(tally).map(([val, count]) => {
-                    const style = VOTE_STYLES[val] ?? { label: val, color: "bg-gray-100 text-gray-600 border-gray-200" };
+                    const style = VOTE_STYLES[val] ?? { label: val, color: "bg-ink/5 text-ink-soft border-rule" };
                     return (
-                      <span key={val} className={`rounded border px-3 py-1 text-sm font-semibold ${style.color}`}>
+                      <span key={val} className={`border px-3 py-1 font-mono text-sm font-semibold tabular-nums ${style.color}`}>
                         {style.label}: {count}
                       </span>
                     );
@@ -490,11 +494,11 @@ export default async function ProposalDetailPage({
                 </div>
 
                 {/* Individual votes */}
-                <div className="rounded-lg border border-gray-200 bg-white divide-y divide-gray-100">
+                <div className="border border-rule bg-card divide-y divide-rule/60">
                   {votes.map((v) => {
-                    const voteStyle = VOTE_STYLES[v.vote] ?? { label: v.vote, color: "bg-gray-100 text-gray-600 border-gray-200" };
+                    const voteStyle = VOTE_STYLES[v.vote] ?? { label: v.vote, color: "bg-ink/5 text-ink-soft border-rule" };
                     const partyKey = v.official?.party?.toLowerCase() ?? "";
-                    const dot = PARTY_DOT[partyKey] ?? "bg-gray-400";
+                    const dot = PARTY_DOT[partyKey] ?? "bg-rule";
                     return (
                       <div key={v.id} className="flex items-center justify-between px-4 py-2.5 gap-4">
                         <div className="flex items-center gap-2 min-w-0">
@@ -502,23 +506,23 @@ export default async function ProposalDetailPage({
                           {v.official?.id ? (
                             <a
                               href={`/officials/${v.official.id}`}
-                              className="text-sm text-gray-900 truncate hover:text-indigo-600 hover:underline transition-colors"
+                              className="text-sm text-ink truncate hover:text-accent hover:underline transition-colors"
                             >
                               {v.official.full_name}
                             </a>
                           ) : (
-                            <span className="text-sm text-gray-900 truncate">
+                            <span className="text-sm text-ink truncate">
                               {v.official?.full_name ?? "Unknown"}
                             </span>
                           )}
                           {v.official?.district_name && (
-                            <span className="text-xs text-gray-400">{v.official.district_name}</span>
+                            <span className="text-xs text-ink-soft/70">{v.official.district_name}</span>
                           )}
                           {v.official?.role_title && (
-                            <span className="text-xs text-gray-400">{v.official.role_title}</span>
+                            <span className="text-xs text-ink-soft/70">{v.official.role_title}</span>
                           )}
                         </div>
-                        <span className={`flex-shrink-0 rounded border px-2 py-0.5 text-xs font-medium ${voteStyle.color}`}>
+                        <span className={`flex-shrink-0 border px-2 py-0.5 font-mono text-xs font-medium ${voteStyle.color}`}>
                           {voteStyle.label}
                         </span>
                       </div>
@@ -552,33 +556,33 @@ export default async function ProposalDetailPage({
             {/* Related Proposals */}
             {related.length > 0 && (
               <section>
-                <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-400">
+                <h2 className="mb-3 font-mono text-xs font-semibold uppercase tracking-wide text-ink-soft/70">
                   {agencyAcronym ? `Other Open ${agencyAcronym} Proposals` : "Related Proposals"}
                 </h2>
                 <div className="space-y-2">
                   {related.map((r) => {
-                    const rStatus = STATUS_BADGE[r.status] ?? { label: r.status, color: "bg-gray-100 text-gray-600 border-gray-200" };
+                    const rStatus = STATUS_BADGE[r.status] ?? { label: r.status, color: "bg-ink/5 text-ink-soft border-rule" };
                     const rAgency = r.metadata?.agency_id ?? null;
                     return (
                       <a
                         key={r.id}
                         href={`/proposals/${r.id}`}
-                        className="flex items-start gap-3 rounded-lg border border-gray-200 bg-white p-4 hover:border-indigo-200 hover:shadow-sm transition-all"
+                        className="flex items-start gap-3 border border-rule bg-card p-4 hover:border-accent hover:shadow-sm transition-all"
                       >
                         <div className="flex-1 min-w-0">
                           <div className="flex flex-wrap items-center gap-1.5 mb-1">
-                            <span className={`rounded border px-1.5 py-0.5 text-xs font-medium ${rStatus.color}`}>
+                            <span className={`border px-1.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-[0.06em] ${rStatus.color}`}>
                               {rStatus.label}
                             </span>
                             {rAgency && (
-                              <span className="text-xs font-mono text-gray-500">{rAgency}</span>
+                              <span className="text-xs font-mono text-ink-soft">{rAgency}</span>
                             )}
                           </div>
-                          <p className="text-sm font-medium text-gray-900 line-clamp-2 leading-snug">
+                          <p className="font-serif text-sm font-medium text-ink line-clamp-2 leading-snug">
                             {r.title}
                           </p>
                         </div>
-                        <span className="flex-shrink-0 text-indigo-600 text-sm">→</span>
+                        <span className="flex-shrink-0 text-accent text-sm">→</span>
                       </a>
                     );
                   })}
@@ -592,11 +596,11 @@ export default async function ProposalDetailPage({
 
             {/* Submit Comment */}
             <section>
-              <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-400">
+              <h2 className="mb-3 font-mono text-xs font-semibold uppercase tracking-wide text-ink-soft/70">
                 {open ? "Submit Your Comment" : "Comment Period"}
               </h2>
               {open ? (
-                <div className="rounded-lg border border-amber-200 bg-white p-5">
+                <div className="border border-amber/60 bg-card p-5">
                   <CommentDraftSection
                     regulationsGovId={p.regulations_gov_id}
                     congressGovUrl={p.congress_gov_url}
@@ -605,7 +609,7 @@ export default async function ProposalDetailPage({
                   />
                 </div>
               ) : (
-                <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-500">
+                <div className="border border-rule bg-paper-2 p-4 text-sm text-ink-soft">
                   {p.status === "comment_closed"
                     ? "The public comment period for this proposal has closed."
                     : "This proposal is not currently open for public comment."}
@@ -615,10 +619,10 @@ export default async function ProposalDetailPage({
 
             {/* Proposal details */}
             <section>
-              <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-400">
+              <h2 className="mb-3 font-mono text-xs font-semibold uppercase tracking-wide text-ink-soft/70">
                 Details
               </h2>
-              <div className="rounded-lg border border-gray-200 bg-white p-4 space-y-3">
+              <div className="border border-rule bg-card p-4 space-y-3">
                 <DetailRow label="Type" value={typeLabel} />
                 {agencyAcronym && (
                   <DetailRow
@@ -641,7 +645,7 @@ export default async function ProposalDetailPage({
 
             {/* Official comment CTA (if open, remind below the draft form) */}
             {open && p.regulations_gov_id && (
-              <p className="text-center text-xs text-gray-400 leading-relaxed">
+              <p className="text-center text-xs text-ink-soft/70 leading-relaxed">
                 Official comments are submitted directly to the federal agency via
                 regulations.gov — always free, no account required.
               </p>
@@ -665,8 +669,8 @@ function DetailRow({
 }) {
   return (
     <div className="flex items-start justify-between gap-3 text-sm">
-      <span className="text-gray-400 flex-shrink-0">{label}</span>
-      <span className={`text-gray-900 text-right ${mono ? "font-mono text-xs break-all" : ""}`}>
+      <span className="text-ink-soft/70 flex-shrink-0">{label}</span>
+      <span className={`text-ink text-right ${mono ? "font-mono text-xs break-all" : ""}`}>
         {value}
       </span>
     </div>

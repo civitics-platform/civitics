@@ -54,8 +54,8 @@ export function AiProfileSection({ officialId }: Props) {
 
   if (loading) {
     return (
-      <div className="mt-3 flex items-center gap-2 text-xs text-indigo-400">
-        <span className="inline-block h-2.5 w-2.5 animate-spin rounded-full border-2 border-indigo-200 border-t-indigo-500" />
+      <div className="mt-3 flex items-center gap-2 text-xs text-ink-soft">
+        <span className="inline-block h-2.5 w-2.5 animate-spin rounded-full border-2 border-rule border-t-accent" />
         Generating civic profile…
       </div>
     );
@@ -64,9 +64,9 @@ export function AiProfileSection({ officialId }: Props) {
   if (!summary) return null;
 
   return (
-    <div className="mt-3 rounded-md border border-indigo-100 bg-indigo-50 px-4 py-3">
-      <p className="text-sm text-gray-700 leading-relaxed">{summary}</p>
-      <p className="mt-1.5 text-[10px] text-indigo-400">Civic profile · AI generated</p>
+    <div className="mt-3 border border-civic-blue/20 bg-civic-blue/5 px-4 py-3">
+      <p className="text-sm text-ink leading-relaxed">{summary}</p>
+      <p className="mt-1.5 font-mono text-[10px] uppercase tracking-[0.08em] text-civic-blue/70">Civic profile · AI generated</p>
     </div>
   );
 }

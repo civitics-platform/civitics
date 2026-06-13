@@ -11,7 +11,7 @@ export function SectionCard({ children, className, noPadding }: SectionCardProps
   return (
     <div
       className={cn(
-        "bg-white rounded-xl border border-gray-200 overflow-hidden",
+        "bg-card border border-rule overflow-hidden",
         !noPadding && "p-6",
         className
       )}

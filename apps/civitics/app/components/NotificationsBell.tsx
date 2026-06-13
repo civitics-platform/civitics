@@ -139,7 +139,9 @@ export function NotificationsBell() {
                   key={n.id}
                   type="button"
                   onClick={() => onItemClick(n)}
-                  className="block w-full border-b border-rule px-3 py-2 text-left text-xs hover:bg-paper-2 transition-colors"
+                  className={`block w-full border-b border-rule px-3 py-2 text-left text-xs transition-colors hover:bg-paper-2 ${
+                    n.is_read ? "" : "bg-accent/5"
+                  }`}
                 >
                   <div className="flex items-start gap-2">
                     {!n.is_read && (

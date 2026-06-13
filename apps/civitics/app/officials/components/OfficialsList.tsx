@@ -25,12 +25,14 @@ const PATTERN_PILLS = [
   { tag: "partisan",   label: "Partisan",    icon: null },
 ];
 
+// Party reads as red/blue ink, never a wash; independents stay ink-outline
+// (no purple token exists by design — FIX-552 precedent).
 const PARTY_STYLES: Record<string, { border: string; badge: string; dot: string }> = {
-  democrat:    { border: "border-l-blue-500",   badge: "bg-blue-50 text-blue-700",   dot: "bg-blue-500" },
-  republican:  { border: "border-l-red-500",    badge: "bg-red-50 text-red-700",     dot: "bg-red-500" },
-  independent: { border: "border-l-purple-500", badge: "bg-purple-50 text-purple-700", dot: "bg-purple-500" },
+  democrat:    { border: "border-l-civic-blue", badge: "bg-civic-blue/10 text-civic-blue", dot: "bg-civic-blue" },
+  republican:  { border: "border-l-accent",     badge: "bg-accent/10 text-accent",         dot: "bg-accent" },
+  independent: { border: "border-l-ink",        badge: "border border-ink/40 text-ink",    dot: "bg-ink" },
 };
-const DEFAULT_PARTY = { border: "border-l-gray-300", badge: "bg-gray-50 text-gray-600", dot: "bg-gray-400" };
+const DEFAULT_PARTY = { border: "border-l-rule", badge: "bg-ink/5 text-ink-soft", dot: "bg-rule" };
 
 function partyStyle(party: string | null) {
   return PARTY_STYLES[party ?? ""] ?? DEFAULT_PARTY;
@@ -107,16 +109,16 @@ export function OfficialsList({
   );
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-gray-50">
+    <div className="flex h-screen flex-col overflow-hidden bg-paper">
       {/* Top bar */}
-      <header className="shrink-0 border-b border-gray-200 bg-white px-5 py-3">
+      <header className="shrink-0 border-b border-rule bg-card px-5 py-3">
         <div className="flex items-center gap-3">
-          <a href="/" className="text-sm font-medium text-gray-400 hover:text-gray-700 transition-colors">
+          <a href="/" className="text-sm font-medium text-ink-soft hover:text-accent transition-colors">
             ← Civitics
           </a>
-          <span className="text-gray-200">/</span>
-          <span className="text-sm font-semibold text-gray-900">Officials</span>
-          <span className="ml-1 rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500">
+          <span className="text-rule">/</span>
+          <span className="font-serif text-sm font-semibold text-ink">Officials</span>
+          <span className="ml-1 rounded-full bg-ink/5 px-2 py-0.5 font-mono text-xs font-medium tabular-nums text-ink-soft">
             {officials.length.toLocaleString()} members
           </span>
         </div>
@@ -126,25 +128,25 @@ export function OfficialsList({
       <div className="flex flex-1 overflow-hidden">
 
         {/* ── LEFT PANEL ─────────────────────────────────────────────────── */}
-        <div className="flex w-full flex-col border-r border-gray-200 bg-white lg:w-2/5">
+        <div className="flex w-full flex-col border-r border-rule bg-card lg:w-2/5">
 
           {/* Search + filters */}
-          <div className="shrink-0 border-b border-gray-100 px-4 py-3 space-y-2">
+          <div className="shrink-0 border-b border-rule px-4 py-3 space-y-2">
             <input
               type="search"
               aria-label="Search officials by name"
               placeholder="Search by name…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm placeholder-gray-400 focus:border-indigo-400 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-400"
+              className="w-full border border-rule bg-paper px-3 py-2 text-sm placeholder:text-ink-soft/60 focus:border-accent focus:bg-card focus:outline-none focus:ring-1 focus:ring-accent"
             />
             {/* Active / former toggle (FIX-457) — server round-trip via ?status */}
             <div className="flex flex-wrap items-center gap-1.5">
-              <span className="text-[11px] text-gray-400">Status</span>
+              <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-ink-soft/70">Status</span>
               <Link
                 href="/officials"
                 className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium transition-colors ${
-                  !includeFormer ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                  !includeFormer ? "bg-ink text-paper" : "bg-ink/5 text-ink-soft hover:bg-ink/10"
                 }`}
               >
                 Active
@@ -152,7 +154,7 @@ export function OfficialsList({
               <Link
                 href="/officials?status=all"
                 className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium transition-colors ${
-                  includeFormer ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                  includeFormer ? "bg-ink text-paper" : "bg-ink/5 text-ink-soft hover:bg-ink/10"
                 }`}
               >
                 Include former
@@ -164,7 +166,7 @@ export function OfficialsList({
                 aria-label="Filter by chamber"
                 value={chamberFilter}
                 onChange={(e) => setChamber(e.target.value as typeof chamberFilter)}
-                className="rounded border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                className="border border-rule bg-card px-2 py-1 text-xs text-ink focus:outline-none focus:ring-1 focus:ring-accent"
               >
                 <option value="all">All chambers</option>
                 <option value="Senate">Senate</option>
@@ -176,7 +178,7 @@ export function OfficialsList({
                 aria-label="Filter by party"
                 value={partyFilter}
                 onChange={(e) => setParty(e.target.value as typeof partyFilter)}
-                className="rounded border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                className="border border-rule bg-card px-2 py-1 text-xs text-ink focus:outline-none focus:ring-1 focus:ring-accent"
               >
                 <option value="all">All parties</option>
                 <option value="democrat">Democrat</option>
@@ -189,7 +191,7 @@ export function OfficialsList({
                 aria-label="Filter by state"
                 value={stateFilter}
                 onChange={(e) => setState(e.target.value)}
-                className="rounded border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                className="border border-rule bg-card px-2 py-1 text-xs text-ink focus:outline-none focus:ring-1 focus:ring-accent"
               >
                 {states.map((s) => (
                   <option key={s} value={s}>{s === "all" ? "All states" : s}</option>
@@ -204,10 +206,10 @@ export function OfficialsList({
                   type="button"
                   aria-pressed={issueFilter === pill.tag}
                   onClick={() => setIssue(issueFilter === pill.tag ? null : pill.tag)}
-                  className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 ${
+                  className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1 ${
                     issueFilter === pill.tag
-                      ? "bg-blue-600 text-white"
-                      : "bg-gray-100 text-gray-600 hover:bg-blue-50 hover:text-blue-700"
+                      ? "bg-ink text-paper"
+                      : "bg-ink/5 text-ink-soft hover:bg-ink/10 hover:text-ink"
                   }`}
                 >
                   {pill.icon} {pill.label}
@@ -223,10 +225,10 @@ export function OfficialsList({
                   type="button"
                   aria-pressed={patternFilter === pill.tag}
                   onClick={() => setPattern(patternFilter === pill.tag ? null : pill.tag)}
-                  className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:ring-offset-1 ${
+                  className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1 ${
                     patternFilter === pill.tag
-                      ? "bg-purple-600 text-white"
-                      : "bg-gray-100 text-gray-600 hover:bg-purple-50 hover:text-purple-700"
+                      ? "bg-ink text-paper"
+                      : "bg-ink/5 text-ink-soft hover:bg-ink/10 hover:text-ink"
                   }`}
                 >
                   {pill.icon && <span aria-hidden="true">{pill.icon}</span>} {pill.label}
@@ -235,7 +237,7 @@ export function OfficialsList({
             </div>
 
             {filtered.length !== officials.length && (
-              <p className="text-xs text-gray-400">
+              <p className="font-mono text-xs tabular-nums text-ink-soft">
                 {filtered.length.toLocaleString()} of {officials.length.toLocaleString()} shown
               </p>
             )}
@@ -244,17 +246,17 @@ export function OfficialsList({
           {/* Scrollable list */}
           <div ref={listRef} className="flex-1 overflow-y-auto">
             {filtered.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-gray-200 bg-white px-8 py-16 text-center mx-4 my-8">
-                <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-gray-50">
-                  <svg aria-hidden="true" className="h-6 w-6 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <div className="border border-dashed border-rule bg-card px-8 py-16 text-center mx-4 my-8">
+                <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-paper-2">
+                  <svg aria-hidden="true" className="h-6 w-6 text-ink-soft/60" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                   </svg>
                 </div>
-                <p className="text-sm font-semibold text-gray-900">No officials match your filters.</p>
-                <p className="mt-1 text-sm text-gray-500">Try adjusting your search, party, chamber, or state filter.</p>
+                <p className="text-sm font-semibold text-ink">No officials match your filters.</p>
+                <p className="mt-1 text-sm text-ink-soft">Try adjusting your search, party, chamber, or state filter.</p>
                 <button
                   onClick={() => { setSearch(""); setChamber("all"); setParty("all"); setState("all"); setIssue(null); setPattern(null); }}
-                  className="mt-4 inline-block text-sm font-medium text-indigo-600 hover:underline"
+                  className="mt-4 inline-block text-sm font-medium text-accent hover:underline"
                 >
                   Clear all filters
                 </button>
@@ -271,17 +273,17 @@ export function OfficialsList({
                     aria-pressed={isSelected}
                     aria-label={`${official.full_name}, ${official.role_title}${official.state_name ? `, ${official.state_name}` : ""}`}
                     onClick={() => setSelectedId(isSelected ? null : official.id)}
-                    className={`w-full border-b border-gray-100 border-l-4 px-4 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500 ${ps.border} ${
+                    className={`w-full border-b border-rule/60 border-l-4 px-4 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent ${ps.border} ${
                       isSelected
-                        ? "bg-indigo-50 hover:bg-indigo-50"
-                        : "bg-white hover:bg-gray-50"
+                        ? "bg-accent/5 hover:bg-accent/5"
+                        : "bg-card hover:bg-paper-2"
                     }`}
                   >
                     <div className="flex items-center gap-3">
                       {/* Avatar */}
                       <div
-                        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-2 text-xs font-semibold ${
-                          isSelected ? "border-indigo-400 bg-indigo-100 text-indigo-700" : "border-gray-200 bg-gray-100 text-gray-600"
+                        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-2 font-serif text-xs font-semibold ${
+                          isSelected ? "border-accent/50 bg-accent/10 text-accent" : "border-rule bg-paper-2 text-ink-soft"
                         }`}
                       >
                         {initials(official.full_name)}
@@ -290,19 +292,19 @@ export function OfficialsList({
                       {/* Name + role */}
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-1.5">
-                          <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold ${ps.badge}`}>
+                          <span className={`shrink-0 rounded px-1.5 py-0.5 font-mono text-[10px] font-bold ${ps.badge}`}>
                             {partyLabel(official.party)}
                           </span>
-                          <p className={`truncate text-sm font-medium ${isSelected ? "text-indigo-800" : "text-gray-900"}`}>
+                          <p className={`truncate text-sm font-medium ${isSelected ? "text-accent" : "text-ink"}`}>
                             {official.full_name}
                           </p>
                           {official.is_active === false && (
-                            <span className="shrink-0 rounded-full bg-gray-100 px-1.5 py-0.5 text-[10px] font-semibold text-gray-500">
+                            <span className="shrink-0 rounded-full bg-ink/5 px-1.5 py-0.5 text-[10px] font-semibold text-ink-soft">
                               Former
                             </span>
                           )}
                         </div>
-                        <p className="mt-0.5 truncate text-xs text-gray-500">
+                        <p className="mt-0.5 truncate text-xs text-ink-soft">
                           {official.role_title}
                           {official.state_name ? ` · ${official.state_name}` : ""}
                           {official.district_name ? ` · ${official.district_name}` : ""}
@@ -311,7 +313,7 @@ export function OfficialsList({
 
                       {/* Chamber badge */}
                       {official.chamber && (
-                        <span className="shrink-0 rounded border border-gray-200 bg-gray-50 px-1.5 py-0.5 font-mono text-[10px] text-gray-500">
+                        <span className="shrink-0 border border-rule bg-paper-2 px-1.5 py-0.5 font-mono text-[10px] text-ink-soft">
                           {official.chamber === "Senate" ? "SEN" : "REP"}
                         </span>
                       )}
@@ -342,10 +344,10 @@ export function OfficialsList({
 
       {/* Mobile: show selected below list (full-width overlay) */}
       {selected && (
-        <div className="lg:hidden border-t border-gray-200 bg-white">
-          <div className="flex items-center justify-between px-4 py-2 border-b border-gray-100">
-            <span className="text-sm font-semibold text-gray-900">{selected.full_name}</span>
-            <button onClick={() => setSelectedId(null)} className="text-xs text-gray-400 hover:text-gray-600">
+        <div className="lg:hidden border-t border-rule bg-card">
+          <div className="flex items-center justify-between px-4 py-2 border-b border-rule">
+            <span className="font-serif text-sm font-semibold text-ink">{selected.full_name}</span>
+            <button onClick={() => setSelectedId(null)} className="text-xs text-ink-soft/70 hover:text-ink-soft">
               ✕ Close
             </button>
           </div>
@@ -364,14 +366,14 @@ export function OfficialsList({
 function EmptyRight() {
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-3 py-20 text-center">
-      <div className="flex h-16 w-16 items-center justify-center rounded-full border-2 border-dashed border-gray-200">
-        <svg className="h-7 w-7 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <div className="flex h-16 w-16 items-center justify-center rounded-full border-2 border-dashed border-rule">
+        <svg className="h-7 w-7 text-rule" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
         </svg>
       </div>
       <div>
-        <p className="text-sm font-medium text-gray-500">Select an official</p>
-        <p className="mt-1 text-xs text-gray-400">Profile, vote record, and connection graph will appear here</p>
+        <p className="text-sm font-medium text-ink-soft">Select an official</p>
+        <p className="mt-1 text-xs text-ink-soft/70">Profile, vote record, and connection graph will appear here</p>
       </div>
     </div>
   );

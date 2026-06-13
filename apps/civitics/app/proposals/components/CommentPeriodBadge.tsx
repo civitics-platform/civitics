@@ -24,10 +24,10 @@ export function CommentPeriodBadge({ commentPeriodEnd, compact = false }: Props)
 
   const urgency =
     days <= 7
-      ? { bg: "bg-red-50", border: "border-red-200", text: "text-red-700", dot: "bg-red-500" }
+      ? { bg: "bg-accent/5", border: "border-accent/30", text: "text-accent", dot: "bg-accent" }
       : days <= 14
-      ? { bg: "bg-amber-50", border: "border-amber-200", text: "text-amber-700", dot: "bg-amber-500" }
-      : { bg: "bg-emerald-50", border: "border-emerald-200", text: "text-emerald-700", dot: "bg-emerald-500" };
+      ? { bg: "bg-amber/20", border: "border-amber/60", text: "text-ink", dot: "bg-amber" }
+      : { bg: "bg-green-ink/5", border: "border-green-ink/30", text: "text-green-ink", dot: "bg-green-ink" };
 
   const label =
     days === 1
@@ -49,10 +49,10 @@ export function CommentPeriodBadge({ commentPeriodEnd, compact = false }: Props)
 
   return (
     <div
-      className={`flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-sm ${urgency.bg} ${urgency.border} ${urgency.text}`}
+      className={`flex items-center justify-between gap-3 border px-3 py-2 text-sm ${urgency.bg} ${urgency.border} ${urgency.text}`}
     >
       <span className="font-medium">💬 {label}</span>
-      <span className="opacity-75">Deadline: {formatDate(commentPeriodEnd)}</span>
+      <span className="font-mono tabular-nums opacity-75">Deadline: {formatDate(commentPeriodEnd)}</span>
     </div>
   );
 }

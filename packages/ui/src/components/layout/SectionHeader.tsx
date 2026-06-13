@@ -14,9 +14,9 @@ interface SectionHeaderProps {
 }
 
 const statusDot: Record<NonNullable<SectionHeaderProps["status"]>, string> = {
-  ok: "bg-emerald-500",
-  warning: "bg-amber-500",
-  error: "bg-rose-500",
+  ok: "bg-green-ink",
+  warning: "bg-amber",
+  error: "bg-accent",
 };
 
 export function SectionHeader({
@@ -33,9 +33,9 @@ export function SectionHeader({
           {icon && (
             typeof icon === "string"
               ? <span className="text-base">{icon}</span>
-              : <span className="text-gray-500 flex-shrink-0">{icon}</span>
+              : <span className="text-ink-soft flex-shrink-0">{icon}</span>
           )}
-          <h2 className="text-base font-semibold text-gray-900">{title}</h2>
+          <h2 className="text-base font-semibold text-ink">{title}</h2>
           {status && (
             <span
               className={`inline-block h-2 w-2 rounded-full ${statusDot[status]}`}
@@ -44,7 +44,7 @@ export function SectionHeader({
           )}
         </div>
         {description && (
-          <p className="mt-0.5 text-sm text-gray-500">{description}</p>
+          <p className="mt-0.5 text-sm text-ink-soft">{description}</p>
         )}
       </div>
       {action && (
@@ -52,14 +52,14 @@ export function SectionHeader({
           {action.href ? (
             <a
               href={action.href}
-              className="text-sm font-medium text-blue-600 hover:text-blue-700 transition-colors duration-150"
+              className="text-sm font-medium text-accent hover:underline transition-colors duration-150"
             >
               {action.label} →
             </a>
           ) : (
             <button
               onClick={action.onClick}
-              className="text-sm font-medium text-blue-600 hover:text-blue-700 transition-colors duration-150"
+              className="text-sm font-medium text-accent hover:underline transition-colors duration-150"
             >
               {action.label} →
             </button>
