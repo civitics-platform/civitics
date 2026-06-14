@@ -727,3 +727,5 @@
 2026-06-13 | FIX-568 | 5134a7ae | prod-only | [skip vercel] chore: record FIX-568/569/570 prod confirmation
 2026-06-13 | FIX-569 | 5134a7ae | prod-only | [skip vercel] chore: record FIX-568/569/570 prod confirmation
 2026-06-13 | FIX-570 | 5134a7ae | prod-only | [skip vercel] chore: record FIX-568/569/570 prod confirmation
+2026-06-14 | FIX-577 | 31b7fdfc | local-only | feat(investigations): schema + write RPCs + per-user caps (PR1 DB layer)
+2026-06-14 | FIX-578 | 6289170b | local-only | feat(investigations): read/write API routes over the RPCs (PR1 API layer)
