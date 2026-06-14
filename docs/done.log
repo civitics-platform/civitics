@@ -732,3 +732,4 @@
 2026-06-14 | FIX-577 | 62bfee11 | prod-only | [skip vercel] chore: record FIX-577 prod confirmation
 2026-06-14 | FIX-579 | 51604079 | local-only | feat(investigations): index + case-file pages + C1 discussion mount (PR2)
 2026-06-14 | FIX-580 | 0eb21829 | local-only | feat(investigations): evidence composer + tier-1/2 citation pickers + rating (PR2)
+2026-06-14 | FIX-582 | e6f90e15 | local-only | build(worktree): install deps by default in session:worktree (--no-install to skip)
