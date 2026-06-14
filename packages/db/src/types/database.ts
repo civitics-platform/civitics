@@ -448,6 +448,47 @@ export type Database = {
           },
         ]
       }
+      citations: {
+        Row: {
+          citation_type: string
+          created_at: string
+          evidence_card_id: string
+          excerpt: string | null
+          external_url: string | null
+          id: string
+          target_id: string | null
+          target_type: string | null
+        }
+        Insert: {
+          citation_type: string
+          created_at?: string
+          evidence_card_id: string
+          excerpt?: string | null
+          external_url?: string | null
+          id?: string
+          target_id?: string | null
+          target_type?: string | null
+        }
+        Update: {
+          citation_type?: string
+          created_at?: string
+          evidence_card_id?: string
+          excerpt?: string | null
+          external_url?: string | null
+          id?: string
+          target_id?: string | null
+          target_type?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "citations_evidence_card_id_fkey"
+            columns: ["evidence_card_id"]
+            isOneToOne: false
+            referencedRelation: "evidence_cards"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       civic_comments: {
         Row: {
           body: string
@@ -1924,6 +1965,120 @@ export type Database = {
         }
         Relationships: []
       }
+      evidence_cards: {
+        Row: {
+          author_id: string
+          claim_text: string
+          claim_type: string
+          created_at: string
+          from_id: string | null
+          from_type: string | null
+          id: string
+          investigation_id: string
+          metadata: Json
+          rating_summary: Json
+          relationship_kind: string | null
+          status: string
+          subject_is_private_person: boolean
+          to_id: string | null
+          to_type: string | null
+          updated_at: string
+        }
+        Insert: {
+          author_id: string
+          claim_text: string
+          claim_type: string
+          created_at?: string
+          from_id?: string | null
+          from_type?: string | null
+          id?: string
+          investigation_id: string
+          metadata?: Json
+          rating_summary?: Json
+          relationship_kind?: string | null
+          status?: string
+          subject_is_private_person?: boolean
+          to_id?: string | null
+          to_type?: string | null
+          updated_at?: string
+        }
+        Update: {
+          author_id?: string
+          claim_text?: string
+          claim_type?: string
+          created_at?: string
+          from_id?: string | null
+          from_type?: string | null
+          id?: string
+          investigation_id?: string
+          metadata?: Json
+          rating_summary?: Json
+          relationship_kind?: string | null
+          status?: string
+          subject_is_private_person?: boolean
+          to_id?: string | null
+          to_type?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "evidence_cards_author_id_fkey"
+            columns: ["author_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "evidence_cards_investigation_id_fkey"
+            columns: ["investigation_id"]
+            isOneToOne: false
+            referencedRelation: "investigations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      evidence_ratings: {
+        Row: {
+          agree: number
+          created_at: string
+          evidence_id: string
+          rater_id: string
+          updated_at: string
+          valuable: number
+        }
+        Insert: {
+          agree?: number
+          created_at?: string
+          evidence_id: string
+          rater_id: string
+          updated_at?: string
+          valuable?: number
+        }
+        Update: {
+          agree?: number
+          created_at?: string
+          evidence_id?: string
+          rater_id?: string
+          updated_at?: string
+          valuable?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "evidence_ratings_evidence_id_fkey"
+            columns: ["evidence_id"]
+            isOneToOne: false
+            referencedRelation: "evidence_cards"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "evidence_ratings_rater_id_fkey"
+            columns: ["rater_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       external_relationships: {
         Row: {
           amount_cents: number | null
@@ -2632,6 +2787,65 @@ export type Database = {
             columns: ["parent_id"]
             isOneToOne: false
             referencedRelation: "governing_bodies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      investigations: {
+        Row: {
+          created_at: string
+          created_by: string
+          findings_md: string | null
+          id: string
+          is_featured: boolean
+          is_seeded: boolean
+          metadata: Json
+          question: string | null
+          scope_id: string | null
+          scope_note: string | null
+          scope_type: string | null
+          status: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          findings_md?: string | null
+          id?: string
+          is_featured?: boolean
+          is_seeded?: boolean
+          metadata?: Json
+          question?: string | null
+          scope_id?: string | null
+          scope_note?: string | null
+          scope_type?: string | null
+          status?: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          findings_md?: string | null
+          id?: string
+          is_featured?: boolean
+          is_seeded?: boolean
+          metadata?: Json
+          question?: string | null
+          scope_id?: string | null
+          scope_note?: string | null
+          scope_type?: string | null
+          status?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "investigations_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
             referencedColumns: ["id"]
           },
         ]
@@ -4735,6 +4949,72 @@ export type Database = {
       }
     }
     Functions: {
+      add_citation: {
+        Args: {
+          p_citation_type: string
+          p_evidence_card_id: string
+          p_excerpt?: string
+          p_target_id?: string
+          p_target_type?: string
+        }
+        Returns: {
+          citation_type: string
+          created_at: string
+          evidence_card_id: string
+          excerpt: string | null
+          external_url: string | null
+          id: string
+          target_id: string | null
+          target_type: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "citations"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      add_evidence_card: {
+        Args: {
+          p_citation_excerpt?: string
+          p_citation_target_id?: string
+          p_citation_target_type?: string
+          p_citation_type?: string
+          p_claim_text: string
+          p_claim_type: string
+          p_from_id?: string
+          p_from_type?: string
+          p_investigation_id: string
+          p_relationship_kind?: string
+          p_subject_is_private_person?: boolean
+          p_to_id?: string
+          p_to_type?: string
+        }
+        Returns: {
+          author_id: string
+          claim_text: string
+          claim_type: string
+          created_at: string
+          from_id: string | null
+          from_type: string | null
+          id: string
+          investigation_id: string
+          metadata: Json
+          rating_summary: Json
+          relationship_kind: string | null
+          status: string
+          subject_is_private_person: boolean
+          to_id: string | null
+          to_type: string | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "evidence_cards"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       backfill_governing_body_slugs: { Args: never; Returns: number }
       backfill_jurisdiction_boundary: {
         Args: { p_geojson: string; p_id: string }
@@ -4872,6 +5152,37 @@ export type Database = {
           total_votes: number
           vote_details: Json
         }[]
+      }
+      create_investigation: {
+        Args: {
+          p_question?: string
+          p_scope_id?: string
+          p_scope_note?: string
+          p_scope_type?: string
+          p_title: string
+        }
+        Returns: {
+          created_at: string
+          created_by: string
+          findings_md: string | null
+          id: string
+          is_featured: boolean
+          is_seeded: boolean
+          metadata: Json
+          question: string | null
+          scope_id: string | null
+          scope_note: string | null
+          scope_type: string | null
+          status: string
+          title: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "investigations"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       enqueue_enrichment: {
         Args: {
@@ -5234,6 +5545,14 @@ export type Database = {
         Args: { p_user_id: string }
         Returns: boolean
       }
+      investigation_citation_target_exists: {
+        Args: {
+          p_citation_type: string
+          p_target_id: string
+          p_target_type: string
+        }
+        Returns: boolean
+      }
       jurisdiction_boundary_svg: {
         Args: { p_height?: number; p_id: string; p_width?: number }
         Returns: {
@@ -5284,6 +5603,10 @@ export type Database = {
           short_name: string
           state_abbr: string
         }[]
+      }
+      rate_evidence: {
+        Args: { p_agree: number; p_evidence_id: string; p_valuable: number }
+        Returns: Json
       }
       reap_stale_sync_log: {
         Args: { stale_minutes?: number }
@@ -5478,6 +5801,35 @@ export type Database = {
         SetofOptions: {
           from: "*"
           to: "entity_positions"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      set_investigation_findings: {
+        Args: {
+          p_findings_md?: string
+          p_investigation_id: string
+          p_new_status?: string
+        }
+        Returns: {
+          created_at: string
+          created_by: string
+          findings_md: string | null
+          id: string
+          is_featured: boolean
+          is_seeded: boolean
+          metadata: Json
+          question: string | null
+          scope_id: string | null
+          scope_note: string | null
+          scope_type: string | null
+          status: string
+          title: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "investigations"
           isOneToOne: true
           isSetofReturn: false
         }
@@ -5680,6 +6032,7 @@ export type Database = {
         | "official_community_comment"
         | "entity_comment"
         | "entity_statement"
+        | "investigation_evidence"
       flag_reason:
         | "spam"
         | "harassment"
@@ -5983,6 +6336,7 @@ export const Constants = {
         "official_community_comment",
         "entity_comment",
         "entity_statement",
+        "investigation_evidence",
       ],
       flag_reason: [
         "spam",
@@ -6108,3 +6462,4 @@ export const Constants = {
     },
   },
 } as const
+

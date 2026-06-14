@@ -17,6 +17,10 @@ export const ENTITY_COMMENT_TYPES = [
   "institution",
   "financial_entity",
   "district",
+  // Investigations MVP PR1 (FIX-577): discussion ABOUT a case file rides the C1
+  // substrate. Mirror points: the entity_comments entity_type CHECK, ALLOWED_KINDS
+  // below, and submit_comment's v_allowed CASE (guarded by the FIX-543 drift test).
+  "investigation",
 ] as const;
 export type EntityCommentType = (typeof ENTITY_COMMENT_TYPES)[number];
 
@@ -92,6 +96,10 @@ export const ALLOWED_KINDS: Record<EntityCommentType, readonly string[]> = {
   // Schema supports these; no UI this PR — keep them minimal but valid.
   financial_entity: ["discussion"],
   district: ["discussion"],
+  // Investigations MVP PR1 (FIX-577): discussion ABOUT a case file. Mirrored in
+  // submit_comment's v_allowed CASE (20260614000100) — same order, guarded by the
+  // FIX-543 drift test.
+  investigation: ["discussion", "question", "concern", "evidence"],
 };
 
 // Initiative per-stage vocab, preserved verbatim from the legacy STAGE_TYPES
@@ -133,6 +141,11 @@ export const RATE_LIMITS = {
   flags: 10,
   positions: 60, // plain set_entity_position sets/day (delta attribution keeps DELTA_DAILY_CAP)
   statement_votes: 200, // set_statement_vote ballots/day (cheap one-tap input; matches ratings)
+  // Investigations MVP PR1 (FIX-577): daily creation caps. Mirrored as literals in
+  // the RPC migration (20260614000100: create_investigation v_daily_cap,
+  // add_evidence_card v_card_daily_cap) and guarded by the FIX-543 drift test.
+  investigations: 3, // create_investigation/day
+  evidence_cards: 30, // add_evidence_card/day
 } as const;
 
 // ─── C1 position-spine constants (FIX-523) ────────────────────────────────────
@@ -159,6 +172,14 @@ export const MIN_ACCOUNT_AGE_DAYS = 7;
 // not the hot RPC. Mirrored as literals in that migration.
 export const NEW_ACCOUNT_AGE_HOURS = 24;
 export const NEW_ACCOUNT_MIN_ACTIONS = 5;
+
+// ─── Investigations MVP PR1 constants (FIX-577) ───────────────────────────────
+// Per-user cap on simultaneously-OPEN investigations (the primary spam control;
+// the daily creation cap RATE_LIMITS.investigations is a secondary throttle).
+// platform_admin / staff are exempt; new accounts (< NEW_ACCOUNT_AGE_HOURS) get the
+// halved cap via newAccountCap(). Mirrored as a literal in create_investigation
+// (v_open_cap, 20260614000100) and guarded by the FIX-543 drift test.
+export const MAX_OPEN_INVESTIGATIONS_PER_USER = 3;
 
 // Halve a daily cap for a new account, flooring at 1 so a cap never hits 0.
 export function newAccountCap(cap: number): number {

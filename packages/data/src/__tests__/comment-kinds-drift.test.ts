@@ -225,3 +225,58 @@ test("FIX-569 bot-protection caps (set_entity_position / set_statement_vote) mat
       `vs RATE_LIMITS.statement_votes=${ts.statement_votes} (${TS_REL}).`,
   );
 });
+
+/** Parse RATE_LIMITS.investigations / .evidence_cards + the
+ *  MAX_OPEN_INVESTIGATIONS_PER_USER const out of comment-kinds.ts (FIX-577).
+ *  Line comments are stripped first so prose can't false-match. */
+function parseTsInvestigationCaps(): {
+  investigations: number;
+  evidence_cards: number;
+  open: number;
+} {
+  const text = readFileSync(join(REPO_ROOT, TS_REL), "utf8").replace(/\/\/[^\n]*/g, "");
+  const rateBlock = text.match(/export\s+const\s+RATE_LIMITS\s*=\s*\{([\s\S]*?)\}\s*as\s+const/);
+  assert.ok(rateBlock, `could not locate RATE_LIMITS in ${TS_REL}`);
+  const inv = rateBlock[1].match(/investigations:\s*(\d+)/);
+  const card = rateBlock[1].match(/evidence_cards:\s*(\d+)/);
+  const open = text.match(/MAX_OPEN_INVESTIGATIONS_PER_USER\s*=\s*(\d+)/);
+  assert.ok(inv, `RATE_LIMITS.investigations missing in ${TS_REL}`);
+  assert.ok(card, `RATE_LIMITS.evidence_cards missing in ${TS_REL}`);
+  assert.ok(open, `MAX_OPEN_INVESTIGATIONS_PER_USER missing in ${TS_REL}`);
+  return { investigations: Number(inv[1]), evidence_cards: Number(card[1]), open: Number(open[1]) };
+}
+
+test("FIX-577 investigations caps (create_investigation / add_evidence_card) match comment-kinds.ts", () => {
+  // The investigation caps live in their own latest-defining migrations
+  // (20260614000100 today). Follow each RPC by name so a future redefinition keeps
+  // the guard on the live definition. v_open_cap / v_daily_cap live in
+  // create_investigation; v_card_daily_cap in add_evidence_card — parseAssignedCap
+  // takes the FIRST `<var> := <n>;` so the `v_open_cap := v_open_cap / 2;` halving
+  // line (no digit after :=) never matches.
+  const invSql = latestMigrationDefining("create_investigation");
+  const cardSql = latestMigrationDefining("add_evidence_card");
+  const ts = parseTsInvestigationCaps();
+
+  const sqlOpen = parseAssignedCap(invSql.text, "v_open_cap", invSql.file);
+  const sqlInvDaily = parseAssignedCap(invSql.text, "v_daily_cap", invSql.file);
+  const sqlCardDaily = parseAssignedCap(cardSql.text, "v_card_daily_cap", cardSql.file);
+
+  assert.equal(
+    sqlOpen,
+    ts.open,
+    `open-investigation cap drift: create_investigation (${invSql.file}) v_open_cap=${sqlOpen} ` +
+      `vs MAX_OPEN_INVESTIGATIONS_PER_USER=${ts.open} (${TS_REL}).`,
+  );
+  assert.equal(
+    sqlInvDaily,
+    ts.investigations,
+    `investigations daily-cap drift: create_investigation (${invSql.file}) v_daily_cap=${sqlInvDaily} ` +
+      `vs RATE_LIMITS.investigations=${ts.investigations} (${TS_REL}).`,
+  );
+  assert.equal(
+    sqlCardDaily,
+    ts.evidence_cards,
+    `evidence_cards daily-cap drift: add_evidence_card (${cardSql.file}) v_card_daily_cap=${sqlCardDaily} ` +
+      `vs RATE_LIMITS.evidence_cards=${ts.evidence_cards} (${TS_REL}).`,
+  );
+});
