@@ -100,6 +100,70 @@ interface ChunkResult {
   duration_ms: number;
 }
 
+// FIX-588 — full donation rebuild, windowed by from_id across SEPARATE
+// top-level statements. The monolithic rebuild_entity_connections_donations_full()
+// ran as one statement and hit the 90min session statement_timeout on prod (run
+// 27496446207, 2026-06-14) — the ~4M-edge INSERT into a 9-index table plus the
+// recipient_count UPDATE can't finish under a single per-statement cap. Each
+// prepare/window/finalize call below is its own SELECT → its own fresh timeout,
+// so total wall-clock can exceed any single cap (bounded by the 4h GHA budget).
+// from_id is a uuid; these 16 nibble windows partition the whole space and the
+// aggregate GROUP BYs on from_id, so the windowed result is identical to the
+// monolith (verified local vs ground-truth aggregation, FIX-588).
+const DONATION_WINDOW_BOUNDS: (string | null)[] = [
+  "00000000-0000-0000-0000-000000000000",
+  "10000000-0000-0000-0000-000000000000",
+  "20000000-0000-0000-0000-000000000000",
+  "30000000-0000-0000-0000-000000000000",
+  "40000000-0000-0000-0000-000000000000",
+  "50000000-0000-0000-0000-000000000000",
+  "60000000-0000-0000-0000-000000000000",
+  "70000000-0000-0000-0000-000000000000",
+  "80000000-0000-0000-0000-000000000000",
+  "90000000-0000-0000-0000-000000000000",
+  "a0000000-0000-0000-0000-000000000000",
+  "b0000000-0000-0000-0000-000000000000",
+  "c0000000-0000-0000-0000-000000000000",
+  "d0000000-0000-0000-0000-000000000000",
+  "e0000000-0000-0000-0000-000000000000",
+  "f0000000-0000-0000-0000-000000000000",
+  null, // final window runs to the end of the uuid space
+];
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function runDonationsFullWindowed(client: any): Promise<number> {
+  await client.query("SELECT public.rebuild_ec_donations_full_prepare()");
+  let total = 0;
+  for (let i = 0; i < DONATION_WINDOW_BOUNDS.length - 1; i++) {
+    const lo = DONATION_WINDOW_BOUNDS[i]!;     // only the final bound is null
+    const hi = DONATION_WINDOW_BOUNDS[i + 1];  // null on the last window
+    const wStart = Date.now();
+    try {
+      const r = await client.query(
+        "SELECT public.rebuild_ec_donations_full_window($1, $2) AS n",
+        [lo, hi],
+      );
+      const n = Number(r.rows[0]?.n ?? 0);
+      total += n;
+      console.log(
+        `    [donations] window ${i + 1}/16 [${lo.slice(0, 8)}..${hi ? hi.slice(0, 8) : "end"}) — ${n} edges in ${((Date.now() - wStart) / 1000).toFixed(1)}s`,
+      );
+    } catch (err) {
+      // Re-throw with window context. Donations is the graph's backbone — a
+      // window failure must surface as a hard chunk failure (non-zero exit via
+      // chunkFailures), never a silent partial. (Prepare already cleared the
+      // old edges, so a mid-rebuild failure leaves donations short until the
+      // next run — the failure signal is what makes that visible.)
+      throw new Error(`donations window ${i + 1}/16 [${lo}..${hi ?? "end"}): ${errMsg(err)}`);
+    }
+  }
+  const fin = await client.query("SELECT public.rebuild_ec_donations_full_finalize() AS n");
+  console.log(
+    `    [donations] finalize — recipient_count updated for ${Number(fin.rows[0]?.n ?? 0)} individual donors`,
+  );
+  return total;
+}
+
 async function main(): Promise<void> {
   const t0 = Date.now();
   const mode = parseMode(process.argv.slice(2));
@@ -120,6 +184,12 @@ async function main(): Promise<void> {
       const client = new Client({ connectionString: dbUrl });
       await client.connect();
       try {
+        // FIX-588 — raise work_mem for the rebuild session so the donation
+        // aggregate's HashAggregate and the recipient_count GROUP BY don't
+        // thrash at prod's tiny default (work_mem=3.4MB → 9 hash batches /
+        // 23MB temp on a 1/16 sample). One off-peak single-connection session,
+        // safe on the 2GB Pro Small.
+        await client.query("SET work_mem = '256MB'");
         for (const fn of fns) {
           const chunkStart = Date.now();
           try {
@@ -130,11 +200,22 @@ async function main(): Promise<void> {
             // FIX-291 raises the donations chunk's function-level timeout
             // from 60min → 90min.
             await client.query("SET statement_timeout = '90min'");
-            const res = await client.query<{ connection_type: string; edges_upserted: string | number }>(
-              `SELECT * FROM public.${fn}()`,
-            );
+            let rows: { connection_type: string; edges_upserted: string | number }[];
+            if (fn === "rebuild_entity_connections_donations_full") {
+              // FIX-588 — windowed sequence (prepare + 16 from_id windows +
+              // finalize) instead of the single monolithic call that hit the
+              // 90min cap. The 90min statement_timeout set above governs each
+              // individual prepare/window/finalize SELECT.
+              const n = await runDonationsFullWindowed(client);
+              rows = [{ connection_type: "donation", edges_upserted: n }];
+            } else {
+              const res = await client.query<{ connection_type: string; edges_upserted: string | number }>(
+                `SELECT * FROM public.${fn}()`,
+              );
+              rows = res.rows;
+            }
             const chunkDur = Date.now() - chunkStart;
-            for (const r of res.rows) {
+            for (const r of rows) {
               breakdown.push({ ...r, duration_ms: chunkDur });
               total += Number(r.edges_upserted ?? 0);
             }
