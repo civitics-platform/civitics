@@ -12,7 +12,8 @@
  */
 
 import type { createAdminClient, ReadResult } from "@civitics/db";
-import { refreshPrimarySourceForEntities, selectAllOrThrow } from "@civitics/db";
+import { selectAllOrThrow } from "@civitics/db";
+import { withDirectPool, refreshPrimarySourceDirect } from "../../lib/direct-pg-upsert";
 import { canonicalizeEntityName } from "../fec-bulk/writer";
 import {
   type LittleSisEntity,
@@ -130,9 +131,12 @@ interface UpsertHop1Result {
   matchedLsIds: Set<number>;
 }
 
+// FIX-586: runs over a direct-pg Pool (raised session timeout) instead of the
+// admin PostgREST client. The per-entity resolve_entity_by_canonical RPC and
+// the single-row INSERT both timed out at the 8s role cap on prod 2026-06-14
+// (`resolve_entity_by_canonical failed for LS:...`) as financial_entities grew.
 async function resolveOrInsertHop1(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  db: any,
+  pool: import("pg").Pool,
   ent: LittleSisEntity,
 ): Promise<{ id: string; created: boolean; rpcError: boolean } | null> {
   const canonical = canonicalizeEntityName(ent.name);
@@ -143,49 +147,54 @@ async function resolveOrInsertHop1(
     : littleSisOrgEntityType(ent.types);
   const rpcType = entityType === "individual" ? "individual" : null;
 
-  const { data: matchedId, error: rpcErr } = await db.rpc(
-    "resolve_entity_by_canonical",
-    { p_canonical_name: canonical, p_entity_type: rpcType, p_state: null },
-  );
+  // Positional args follow the declared order
+  // resolve_entity_by_canonical(p_canonical_name, p_entity_type, p_state).
+  let matchedId: string | null = null;
   let rpcError = false;
-  if (rpcErr) {
-    console.warn(`  [littlesis] resolve_entity_by_canonical failed for LS:${ent.id}: ${rpcErr.message}`);
+  try {
+    const res = await pool.query<{ id: string | null }>(
+      "SELECT public.resolve_entity_by_canonical($1, $2, $3) AS id",
+      [canonical, rpcType, null],
+    );
+    matchedId = res.rows[0]?.id ?? null;
+  } catch (err) {
+    console.warn(`  [littlesis] resolve_entity_by_canonical failed for LS:${ent.id}: ${err instanceof Error ? err.message : String(err)}`);
     rpcError = true;
     // Fall through to INSERT in degraded mode.
-  } else if (matchedId) {
+  }
+  if (matchedId) {
     console.log(`  [littlesis] LS:${ent.id} canonical-bound to existing entity ${matchedId} (canonical="${canonical}", entity_type=${entityType})`);
-    return { id: matchedId as string, created: false, rpcError: false };
+    return { id: matchedId, created: false, rpcError: false };
   }
 
-  const { data: ins, error: insErr } = await db
-    .from("financial_entities")
-    .insert({
-      canonical_name:       canonical,
-      display_name:         (ent.name ?? "").slice(0, 255),
-      entity_type:          entityType,
-      fec_committee_id:     null,
-      total_donated_cents:  0,
-      total_received_cents: 0,
-      metadata: {
-        source:        "littlesis",
-        littlesis_id:  ent.id,
-        blurb:         ent.blurb ?? null,
-        website:       ent.website ?? null,
-        types:         ent.types ?? [],
-        aliases:       ent.aliases ?? [],
-      },
-    })
-    .select("id")
-    .single();
-  if (insErr) {
-    console.warn(`  [littlesis] financial_entities insert failed for LS:${ent.id}: ${insErr.message}`);
+  const metadata = {
+    source:        "littlesis",
+    littlesis_id:  ent.id,
+    blurb:         ent.blurb ?? null,
+    website:       ent.website ?? null,
+    types:         ent.types ?? [],
+    aliases:       ent.aliases ?? [],
+  };
+  try {
+    const ins = await pool.query<{ id: string }>(
+      `INSERT INTO public.financial_entities
+         (canonical_name, display_name, entity_type, fec_committee_id, total_donated_cents, total_received_cents, metadata)
+       VALUES ($1, $2, $3, NULL, 0, 0, $4::jsonb)
+       RETURNING id`,
+      [canonical, (ent.name ?? "").slice(0, 255), entityType, JSON.stringify(metadata)],
+    );
+    const id = ins.rows[0]?.id;
+    if (!id) return null;
+    return { id, created: true, rpcError };
+  } catch (err) {
+    console.warn(`  [littlesis] financial_entities insert failed for LS:${ent.id}: ${err instanceof Error ? err.message : String(err)}`);
     return null;
   }
-  return { id: (ins as { id: string }).id, created: true, rpcError };
 }
 
+// FIX-586: no `db` param — all writes go through the direct-pg pool opened
+// inside (resolve_entity_by_canonical RPC + financial_entities INSERT).
 export async function upsertHop1FinancialEntities(
-  db: Db,
   entities: LittleSisEntity[],
 ): Promise<UpsertHop1Result> {
   const idMap        = new Map<number, string>();
@@ -224,29 +233,34 @@ export async function upsertHop1FinancialEntities(
     console.log(`  [littlesis] intra-source dedupe: ${entities.length} entities → ${representatives.length} groups (${dupesCollapsed} duplicates folded)`);
   }
 
-  for (let i = 0; i < representatives.length; i += RESOLVE_BATCH) {
-    const chunk = representatives.slice(i, i + RESOLVE_BATCH);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const results = await Promise.all(chunk.map((ent) => resolveOrInsertHop1(db as any, ent)));
-    for (let j = 0; j < chunk.length; j++) {
-      const rep = chunk[j]!;
-      const res = results[j];
-      if (res === null) { failed++; continue; }
-      // Map every LS-id in the rep's group to the resolved/inserted entity.
-      const canonical = canonicalizeEntityName(rep.name);
-      const entityType = rep.primary_ext === "Person"
-        ? "individual"
-        : littleSisOrgEntityType(rep.types);
-      const group = groups.get(`${canonical}|${entityType}`) ?? [rep];
-      for (const member of group) {
-        idMap.set(member.id, res.id);
-        if (!res.created) matchedLsIds.add(member.id);
+  // FIX-586: resolve/insert over a direct-pg Pool. RESOLVE_BATCH-wide
+  // Promise.all keeps `max` connections in flight (a single Client would
+  // serialise them); each connection carries the raised session timeout so the
+  // per-entity RPC + INSERT no longer die at the 8s PostgREST role cap.
+  await withDirectPool(async (pool) => {
+    for (let i = 0; i < representatives.length; i += RESOLVE_BATCH) {
+      const chunk = representatives.slice(i, i + RESOLVE_BATCH);
+      const results = await Promise.all(chunk.map((ent) => resolveOrInsertHop1(pool, ent)));
+      for (let j = 0; j < chunk.length; j++) {
+        const rep = chunk[j]!;
+        const res = results[j];
+        if (res === null) { failed++; continue; }
+        // Map every LS-id in the rep's group to the resolved/inserted entity.
+        const canonical = canonicalizeEntityName(rep.name);
+        const entityType = rep.primary_ext === "Person"
+          ? "individual"
+          : littleSisOrgEntityType(rep.types);
+        const group = groups.get(`${canonical}|${entityType}`) ?? [rep];
+        for (const member of group) {
+          idMap.set(member.id, res.id);
+          if (!res.created) matchedLsIds.add(member.id);
+        }
+        if (res.created) inserted++;
+        else            matched++;
+        if (res.rpcError) rpcErrors++;
       }
-      if (res.created) inserted++;
-      else            matched++;
-      if (res.rpcError) rpcErrors++;
     }
-  }
+  }, 10);
 
   return { idMap, inserted, matched, failed, rpcErrors, matchedLsIds };
 }
@@ -321,9 +335,11 @@ export async function upsertSourceRefs(
     list.push(b.entity_id);
     byType.set(b.entity_type, list);
   }
+  // FIX-586: direct-pg refresh — the financial_entity refresh (n=90484) timed
+  // out at the 8s role cap via the admin path on prod 2026-06-14.
   for (const [entityType, ids] of byType) {
     if (entityType === "official" || entityType === "financial_entity") {
-      await refreshPrimarySourceForEntities(db, entityType, ids);
+      await refreshPrimarySourceDirect(entityType, ids);
     }
   }
 

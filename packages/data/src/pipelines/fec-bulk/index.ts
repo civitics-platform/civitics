@@ -100,6 +100,7 @@ import {
   loadOfficialsByFecIds,
 } from "./candidates";
 import { seedJurisdictions, seedGoverningBodies } from "../../jurisdictions/us-states";
+import { runHeavyRebuild } from "../../lib/heavy-rebuild";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -1358,11 +1359,20 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
     // ie_oppose/contract/grant/lobbying — only relationship_type='donation'
     // counts toward this column. Pattern mirrors rebuild_official_donation_totals.
     console.log("\n  Recomputing financial_entities.total_donated_cents from live financial_relationships...");
-    const { error: rebuildErr } = await db.rpc("rebuild_financial_entity_donation_totals");
-    if (rebuildErr) {
-      console.warn(`    rebuild_financial_entity_donation_totals failed: ${rebuildErr.message}`);
-    } else {
+    // FIX-586: route through the direct-pg path. The full-table UPDATE ran
+    // >100s on prod and died at the PostgREST gateway cap (`upstream request
+    // timeout`) via admin.rpc(); runHeavyRebuild raises the SESSION timeout
+    // past the cap. Advisory — a failure here leaves stale totals the next
+    // cycle recomputes; it must not abort the rest of the FEC pipeline.
+    try {
+      await runHeavyRebuild("rebuild_financial_entity_donation_totals");
       console.log("    ✓ donor totals recomputed from financial_relationships");
+    } catch (rebuildErr) {
+      console.warn(
+        `    rebuild_financial_entity_donation_totals failed: ${
+          rebuildErr instanceof Error ? rebuildErr.message : String(rebuildErr)
+        }`,
+      );
     }
 
     // ── Persist indiv Last-Modified watermark (FIX-193) ─────────────────────

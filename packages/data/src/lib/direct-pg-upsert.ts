@@ -52,6 +52,64 @@ export async function withDirectClient<T>(fn: (client: Client) => Promise<T>): P
   }
 }
 
+// 90 minutes in ms — the session statement_timeout applied to every pooled
+// connection (node-postgres runs `SET statement_timeout` on connect from this
+// config value). Matches the withDirectClient ceiling above.
+const DIRECT_TIMEOUT_MS = 90 * 60 * 1000;
+
+/**
+ * FIX-586 — like withDirectClient but a small connection Pool, for callers that
+ * fan a bounded number of concurrent per-row queries (e.g. the LittleSis
+ * resolve-or-insert loop, RESOLVE_BATCH=50). A single Client serialises queued
+ * queries, collapsing that concurrency; a Pool keeps `max` in flight. Each
+ * connection gets the raised statement_timeout via pg's `statement_timeout`
+ * config option. The pool is always drained in `finally`.
+ */
+export async function withDirectPool<T>(
+  fn: (pool: import("pg").Pool) => Promise<T>,
+  max = 8,
+): Promise<T> {
+  const { Pool } = await import("pg");
+  const pool = new Pool({
+    connectionString: buildDbUrl(),
+    statement_timeout: DIRECT_TIMEOUT_MS,
+    max,
+  });
+  try {
+    return await fn(pool);
+  } finally {
+    await pool.end();
+  }
+}
+
+/**
+ * FIX-586 — refresh primary_source for a batch of entities over a direct
+ * connection (raised timeout), instead of the admin PostgREST path whose 8s
+ * role cap timed out the financial_entity refresh (n=90484) on prod
+ * 2026-06-14. Advisory: callers swallow failures (the nightly
+ * rebuild_all_primary_sources() safety net covers drift), so this only logs.
+ */
+export async function refreshPrimarySourceDirect(
+  entityType: string,
+  entityIds: string[],
+): Promise<void> {
+  if (entityIds.length === 0) return;
+  try {
+    await withDirectClient((client) =>
+      client.query(`SELECT public.refresh_primary_source_for_entities($1, $2::uuid[])`, [
+        entityType,
+        entityIds,
+      ]),
+    );
+  } catch (err) {
+    console.warn(
+      `  [primary-source] refresh failed (${entityType}, n=${entityIds.length}): ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  }
+}
+
 export interface BulkUpsertSpec {
   /** Bare table name in the `public` schema. */
   table: string;

@@ -156,7 +156,7 @@ export async function runLittleSisPipeline(opts: { force?: boolean } = {}): Prom
       if (ent) hop1Entities.push(ent);
     }
     console.log(`  Materializing ${hop1Entities.length} hop-1 entities...`);
-    const hop1Upsert = await upsertHop1FinancialEntities(db, hop1Entities);
+    const hop1Upsert = await upsertHop1FinancialEntities(hop1Entities);
     console.log(
       `    inserted=${hop1Upsert.inserted} matched=${hop1Upsert.matched}` +
       ` failed=${hop1Upsert.failed} rpcErrors=${hop1Upsert.rpcErrors}`,

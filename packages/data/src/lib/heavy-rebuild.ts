@@ -62,6 +62,11 @@ const ALLOWED_REBUILDS = new Set([
   // C1 Wave B (FIX-527): nightly comment bridge scorer. A 0-arg call here
   // (default args NULL/NULL) runs the full sweep and returns #comments scored.
   "recompute_comment_bridge_scores",
+  // FIX-586: FEC post-cycle donor-total recompute (returns void → count 0).
+  // The full-table UPDATE over financial_relationships ran >100s on prod and
+  // died at the PostgREST gateway cap (`upstream request timeout`, 2026-06-14)
+  // when called via admin.rpc(); the direct-pg path sidesteps both caps.
+  "rebuild_financial_entity_donation_totals",
 ]);
 
 /**

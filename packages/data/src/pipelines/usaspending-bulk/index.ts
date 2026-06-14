@@ -56,6 +56,7 @@ import {
   upsertSpendingRelationshipsBatch,
   type SpendingRelationshipInput,
 } from "./writer";
+import { withDirectClient } from "../../lib/direct-pg-upsert";
 import { canonicalizeEntityName } from "../fec-bulk/writer";
 
 // ---------------------------------------------------------------------------
@@ -486,7 +487,6 @@ async function processCsvFile(
   cfg:       CategoryConfig,
   csvPath:   string,
   agencyMap: Map<string, string>,
-  db:        ReturnType<typeof createAdminClient>,
 ): Promise<FileResult> {
   const result: FileResult = { upserted: 0, failed: 0, skipped: 0, skippedNonGrant: 0 };
 
@@ -506,104 +506,112 @@ async function processCsvFile(
   let rowsRead = 0;
   let rowsMatched = 0;
 
-  const flushBatch = async (): Promise<void> => {
-    if (batch.length === 0) return;
+  // FIX-586: open ONE direct session-pooler client for the whole file. Every
+  // flush writes through it with the raised 90min session statement_timeout,
+  // sidestepping the 8s PostgREST role cap that produced the 2026-06-14
+  // chunk-timeout retry storm. One connection per file (not per flush) avoids
+  // reconnect churn across the streaming loop; bulkUpsert chunks are autocommit
+  // so a mid-file drop only loses the in-flight chunk.
+  await withDirectClient(async (client) => {
+    const flushBatch = async (): Promise<void> => {
+      if (batch.length === 0) return;
 
-    const recipientInputs = batch.map((r) => ({ displayName: r.recipientName }));
-    const { byCanonical } = await resolveRecipients(db, recipientInputs);
+      const recipientInputs = batch.map((r) => ({ displayName: r.recipientName }));
+      const { byCanonical } = await resolveRecipients(client, recipientInputs);
 
-    const relInputs: SpendingRelationshipInput[] = [];
-    for (const row of batch) {
-      const canonical = canonicalizeEntityName(row.recipientName);
-      const recipientEntityId = byCanonical.get(canonical);
-      if (!recipientEntityId) { result.failed++; continue; }
+      const relInputs: SpendingRelationshipInput[] = [];
+      for (const row of batch) {
+        const canonical = canonicalizeEntityName(row.recipientName);
+        const recipientEntityId = byCanonical.get(canonical);
+        if (!recipientEntityId) { result.failed++; continue; }
 
-      relInputs.push({
-        agencyId:           row.agencyId,
-        recipientEntityId,
-        relationshipType:   cfg.relationshipType,
-        amountCents:        row.amountCents,
-        occurredAt:         row.actionDate,
-        usaspendingAwardId: row.uniqueKey,
-        naicsCode:          row.naicsCode,
-        cfdaNumber:         row.cfdaNumber,
-        description:        row.description,
-        sourceUrl:          `https://www.usaspending.gov/award/${encodeURIComponent(row.uniqueKey)}/`,
+        relInputs.push({
+          agencyId:           row.agencyId,
+          recipientEntityId,
+          relationshipType:   cfg.relationshipType,
+          amountCents:        row.amountCents,
+          occurredAt:         row.actionDate,
+          usaspendingAwardId: row.uniqueKey,
+          naicsCode:          row.naicsCode,
+          cfdaNumber:         row.cfdaNumber,
+          description:        row.description,
+          sourceUrl:          `https://www.usaspending.gov/award/${encodeURIComponent(row.uniqueKey)}/`,
+        });
+      }
+
+      const batchResult = await upsertSpendingRelationshipsBatch(client, relInputs);
+      result.upserted += batchResult.upserted;
+      result.failed   += batchResult.failed;
+      batch = [];
+    };
+
+    for await (const row of parser as AsyncIterable<CsvRow>) {
+      rowsRead++;
+
+      // Assistance: skip rows that aren't grant-shaped (loans, insurance, direct
+      // payments) — the financial_relationships enum has no row for them.
+      if (cfg.category === "assistance") {
+        const code = (row.assistance_type_code ?? "").trim();
+        if (!GRANT_ASSISTANCE_TYPE_CODES.has(code)) {
+          result.skippedNonGrant++;
+          continue;
+        }
+      }
+
+      const subRaw  = (row.awarding_sub_agency_name ?? "").toUpperCase().trim();
+      const subKey  = subRaw.replace(/^U\.S\.\s+/, "");
+      const agRaw   = (row.awarding_agency_name ?? "").toUpperCase().trim();
+      const agKey   = agRaw.replace(/^U\.S\.\s+/, "");
+      const agencyId = (subKey ? agencyMap.get(subKey) ?? agencyMap.get(subRaw) : undefined)
+                       ?? agencyMap.get(agKey)
+                       ?? agencyMap.get(agRaw);
+      if (!agencyId) { result.skipped++; continue; }
+
+      // Use the category's transaction-level unique key; fall back to the
+      // category's award_id column when the primary is missing.
+      const primaryKey  = (row[cfg.uniqueKeyColumn]   ?? "").trim();
+      const fallbackKey = (row[cfg.fallbackKeyColumn] ?? "").trim();
+      const uniqueKey   = primaryKey || fallbackKey;
+      if (!uniqueKey) { result.skipped++; continue; }
+
+      const recipientName = (row.recipient_name ?? "").trim();
+      if (!recipientName) { result.skipped++; continue; }
+
+      const amount = parseFloat((row.federal_action_obligation ?? "").trim());
+      // Skip zero and negative obligations (de-obligations / cancellations)
+      if (isNaN(amount) || amount <= 0) { result.skipped++; continue; }
+
+      // Archive uses ISO YYYY-MM-DD dates
+      const actionDate = (row.action_date ?? "").trim().slice(0, 10);
+      if (!actionDate || actionDate.length < 10) { result.skipped++; continue; }
+
+      batch.push({
+        uniqueKey,
+        recipientName,
+        agencyId,
+        amountCents: Math.round(amount * 100),
+        actionDate,
+        naicsCode:   cfg.category === "contracts" ? ((row.naics_code  ?? "").trim() || null) : null,
+        cfdaNumber:  cfg.category === "assistance" ? ((row.cfda_number ?? "").trim() || null) : null,
+        description: (row.award_description ?? "").trim().slice(0, 500) || null,
       });
-    }
+      rowsMatched++;
 
-    const batchResult = await upsertSpendingRelationshipsBatch(db, relInputs);
-    result.upserted += batchResult.upserted;
-    result.failed   += batchResult.failed;
-    batch = [];
-  };
+      if (batch.length >= BATCH_SIZE) {
+        await flushBatch();
+      }
 
-  for await (const row of parser as AsyncIterable<CsvRow>) {
-    rowsRead++;
-
-    // Assistance: skip rows that aren't grant-shaped (loans, insurance, direct
-    // payments) — the financial_relationships enum has no row for them.
-    if (cfg.category === "assistance") {
-      const code = (row.assistance_type_code ?? "").trim();
-      if (!GRANT_ASSISTANCE_TYPE_CODES.has(code)) {
-        result.skippedNonGrant++;
-        continue;
+      if (rowsRead % 100_000 === 0) {
+        console.log(
+          `    ... ${rowsRead.toLocaleString()} rows read,` +
+          ` ${rowsMatched.toLocaleString()} matched,` +
+          ` ${result.upserted.toLocaleString()} upserted`,
+        );
       }
     }
 
-    const subRaw  = (row.awarding_sub_agency_name ?? "").toUpperCase().trim();
-    const subKey  = subRaw.replace(/^U\.S\.\s+/, "");
-    const agRaw   = (row.awarding_agency_name ?? "").toUpperCase().trim();
-    const agKey   = agRaw.replace(/^U\.S\.\s+/, "");
-    const agencyId = (subKey ? agencyMap.get(subKey) ?? agencyMap.get(subRaw) : undefined)
-                     ?? agencyMap.get(agKey)
-                     ?? agencyMap.get(agRaw);
-    if (!agencyId) { result.skipped++; continue; }
-
-    // Use the category's transaction-level unique key; fall back to the
-    // category's award_id column when the primary is missing.
-    const primaryKey  = (row[cfg.uniqueKeyColumn]   ?? "").trim();
-    const fallbackKey = (row[cfg.fallbackKeyColumn] ?? "").trim();
-    const uniqueKey   = primaryKey || fallbackKey;
-    if (!uniqueKey) { result.skipped++; continue; }
-
-    const recipientName = (row.recipient_name ?? "").trim();
-    if (!recipientName) { result.skipped++; continue; }
-
-    const amount = parseFloat((row.federal_action_obligation ?? "").trim());
-    // Skip zero and negative obligations (de-obligations / cancellations)
-    if (isNaN(amount) || amount <= 0) { result.skipped++; continue; }
-
-    // Archive uses ISO YYYY-MM-DD dates
-    const actionDate = (row.action_date ?? "").trim().slice(0, 10);
-    if (!actionDate || actionDate.length < 10) { result.skipped++; continue; }
-
-    batch.push({
-      uniqueKey,
-      recipientName,
-      agencyId,
-      amountCents: Math.round(amount * 100),
-      actionDate,
-      naicsCode:   cfg.category === "contracts" ? ((row.naics_code  ?? "").trim() || null) : null,
-      cfdaNumber:  cfg.category === "assistance" ? ((row.cfda_number ?? "").trim() || null) : null,
-      description: (row.award_description ?? "").trim().slice(0, 500) || null,
-    });
-    rowsMatched++;
-
-    if (batch.length >= BATCH_SIZE) {
-      await flushBatch();
-    }
-
-    if (rowsRead % 100_000 === 0) {
-      console.log(
-        `    ... ${rowsRead.toLocaleString()} rows read,` +
-        ` ${rowsMatched.toLocaleString()} matched,` +
-        ` ${result.upserted.toLocaleString()} upserted`,
-      );
-    }
-  }
-
-  await flushBatch();
+    await flushBatch();
+  });
 
   console.log(`    Rows read:          ${rowsRead.toLocaleString()}`);
   console.log(`    Matched agencies:   ${rowsMatched.toLocaleString()}`);
@@ -744,7 +752,7 @@ export async function runUsaSpendingBulkPipeline(
         }
 
         // Process the CSV stream
-        const fileResult = await processCsvFile(cfg, csvPath, agencyMap, db);
+        const fileResult = await processCsvFile(cfg, csvPath, agencyMap);
         totalUpserted += fileResult.upserted;
         totalFailed   += fileResult.failed;
 
