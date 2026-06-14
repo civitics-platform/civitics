@@ -738,3 +738,4 @@
 2026-06-14 | FIX-585 | 463667e6 | local-only | feat(graph): admin promotion review UI + distinct investigation edge render (PR3)
 2026-06-14 | FIX-586 | d13388b2 | local-only | fix(pipelines): route USASpending/LittleSis/FEC-totals writes through direct-pg
 2026-06-14 | FIX-587 | d13388b2 | local-only | fix(pipelines): route USASpending/LittleSis/FEC-totals writes through direct-pg
+2026-06-14 | FIX-588 | cbc81ebf | local-only | fix(rebuild): window donations_full + index-only votes_full so the full rebuild fits 4h
