@@ -736,3 +736,5 @@
 2026-06-14 | FIX-583 | f2b78a6c | local+prod | feat(investigations): corroboration + admin promotion state machine + audit (PR3)
 2026-06-14 | FIX-584 | 130267dd | local+prod | feat(graph): investigation rebuild pass + evidence_source plumbing (PR3)
 2026-06-14 | FIX-585 | 463667e6 | local-only | feat(graph): admin promotion review UI + distinct investigation edge render (PR3)
+2026-06-14 | FIX-586 | d13388b2 | local-only | fix(pipelines): route USASpending/LittleSis/FEC-totals writes through direct-pg
+2026-06-14 | FIX-587 | d13388b2 | local-only | fix(pipelines): route USASpending/LittleSis/FEC-totals writes through direct-pg
