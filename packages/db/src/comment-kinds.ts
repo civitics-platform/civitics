@@ -181,6 +181,14 @@ export const NEW_ACCOUNT_MIN_ACTIONS = 5;
 // (v_open_cap, 20260614000100) and guarded by the FIX-543 drift test.
 export const MAX_OPEN_INVESTIGATIONS_PER_USER = 3;
 
+// ─── Investigations MVP PR3 constants (FIX-583) ────────────────────────────────
+// Corroboration threshold: an edge card flips 'proposed' → 'corroborated' (PROMOTION
+// ELIGIBILITY, never promotion itself) once ≥ this many INDEPENDENT edge cards assert
+// the same edge — "independent" = distinct author_id AND distinct citation target
+// (design §5 decision 2). Mirrored as a literal in the corroboration trigger +
+// count_independent_corroborations() (supabase/migrations/<ts>_investigation_promotion.sql).
+export const CORROBORATION_THRESHOLD = 2;
+
 // Halve a daily cap for a new account, flooring at 1 so a cap never hits 0.
 export function newAccountCap(cap: number): number {
   return Math.max(1, Math.floor(cap / 2));

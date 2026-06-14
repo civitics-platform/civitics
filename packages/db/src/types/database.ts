@@ -2791,6 +2791,51 @@ export type Database = {
           },
         ]
       }
+      investigation_edge_audit: {
+        Row: {
+          actor_id: string | null
+          event: string
+          evidence_card_id: string
+          id: number
+          metadata: Json
+          notes: string | null
+          occurred_at: string
+        }
+        Insert: {
+          actor_id?: string | null
+          event: string
+          evidence_card_id: string
+          id?: number
+          metadata?: Json
+          notes?: string | null
+          occurred_at?: string
+        }
+        Update: {
+          actor_id?: string | null
+          event?: string
+          evidence_card_id?: string
+          id?: number
+          metadata?: Json
+          notes?: string | null
+          occurred_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "investigation_edge_audit_actor_id_fkey"
+            columns: ["actor_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "investigation_edge_audit_evidence_card_id_fkey"
+            columns: ["evidence_card_id"]
+            isOneToOne: false
+            referencedRelation: "evidence_cards"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       investigations: {
         Row: {
           created_at: string
@@ -5144,6 +5189,33 @@ export type Database = {
         Args: { p_categories: string[] }
         Returns: number
       }
+      clear_private_person_card: {
+        Args: { p_actor_id?: string; p_card_id: string }
+        Returns: {
+          author_id: string
+          claim_text: string
+          claim_type: string
+          created_at: string
+          from_id: string | null
+          from_type: string | null
+          id: string
+          investigation_id: string
+          metadata: Json
+          rating_summary: Json
+          relationship_kind: string | null
+          status: string
+          subject_is_private_person: boolean
+          to_id: string | null
+          to_type: string | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "evidence_cards"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       compute_alignment_score: {
         Args: { p_official_id: string; p_user_id: string }
         Returns: {
@@ -5152,6 +5224,10 @@ export type Database = {
           total_votes: number
           vote_details: Json
         }[]
+      }
+      count_independent_corroborations: {
+        Args: { p_card_id: string }
+        Returns: number
       }
       create_investigation: {
         Args: {
@@ -5577,6 +5653,33 @@ export type Database = {
         Args: { p_candidate_id: string; p_elected_id: string }
         Returns: Json
       }
+      promote_evidence_edge: {
+        Args: { p_actor_id?: string; p_card_id: string }
+        Returns: {
+          author_id: string
+          claim_text: string
+          claim_type: string
+          created_at: string
+          from_id: string | null
+          from_type: string | null
+          id: string
+          investigation_id: string
+          metadata: Json
+          rating_summary: Json
+          relationship_kind: string | null
+          status: string
+          subject_is_private_person: boolean
+          to_id: string | null
+          to_type: string | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "evidence_cards"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       prune_kill_switch_events: { Args: never; Returns: number }
       prune_platform_usage_snapshot: { Args: never; Returns: number }
       prune_status_snapshot: { Args: never; Returns: number }
@@ -5686,6 +5789,13 @@ export type Database = {
           edges_upserted: number
         }[]
       }
+      rebuild_entity_connections_investigation: {
+        Args: never
+        Returns: {
+          connection_type: string
+          edges_upserted: number
+        }[]
+      }
       rebuild_entity_connections_lobbying: {
         Args: never
         Returns: {
@@ -5761,6 +5871,33 @@ export type Database = {
       refresh_proposal_popularity: { Args: never; Returns: undefined }
       refresh_proposal_trending: { Args: never; Returns: undefined }
       refresh_spending_totals: { Args: never; Returns: undefined }
+      reject_evidence_edge: {
+        Args: { p_actor_id?: string; p_card_id: string }
+        Returns: {
+          author_id: string
+          claim_text: string
+          claim_type: string
+          created_at: string
+          from_id: string | null
+          from_type: string | null
+          id: string
+          investigation_id: string
+          metadata: Json
+          rating_summary: Json
+          relationship_kind: string | null
+          status: string
+          subject_is_private_person: boolean
+          to_id: string | null
+          to_type: string | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "evidence_cards"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       resolve_entity_by_canonical: {
         Args: {
           p_canonical_name: string
@@ -5943,6 +6080,33 @@ export type Database = {
           naics_code: string
           total_cents: number
         }[]
+      }
+      unpromote_evidence_edge: {
+        Args: { p_actor_id?: string; p_card_id: string }
+        Returns: {
+          author_id: string
+          claim_text: string
+          claim_type: string
+          created_at: string
+          from_id: string | null
+          from_type: string | null
+          id: string
+          investigation_id: string
+          metadata: Json
+          rating_summary: Json
+          relationship_kind: string | null
+          status: string
+          subject_is_private_person: boolean
+          to_id: string | null
+          to_type: string | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "evidence_cards"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       upsert_county_jurisdiction: {
         Args: {
