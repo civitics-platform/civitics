@@ -234,7 +234,7 @@ export async function GET(request: Request) {
       ] as const;
       const OVERSIGHT_TYPES = ["oversight", "appointment", "co_sponsorship", "revolving_door", "contract_award"] as const;
 
-      const [donationsRes, votesRes, oversightRes] = await Promise.all([
+      const [donationsRes, votesRes, oversightRes, investigationRes] = await Promise.all([
         withDbTimeout(
           supabase
             .from("entity_connections")
@@ -258,6 +258,19 @@ export async function GET(request: Request) {
             .in("connection_type", OVERSIGHT_TYPES)
             .or(`from_id.eq.${entityId},to_id.eq.${entityId}`)
         ),
+        // FIX-584 — investigation-sourced edges by source, not connection_type:
+        // a promoted edge card can carry any of the 16 assertable relationship_kinds
+        // (member_of / owns / lobbying / family / …), most of which fall outside the
+        // type-bucketed fetches above. Fetching by evidence_source guarantees every
+        // promoted edge touching this entity surfaces. The set is tiny (hand-curated),
+        // so no pagination.
+        withDbTimeout(
+          supabase
+            .from("entity_connections")
+            .select("*")
+            .eq("evidence_source", "investigation")
+            .or(`from_id.eq.${entityId},to_id.eq.${entityId}`)
+        ),
       ]);
 
       // Check every edge-type result, not just donations — a votes/oversight
@@ -266,10 +279,12 @@ export async function GET(request: Request) {
       if (donationsRes.error) throw donationsRes.error;
       if (votesRes.error) throw votesRes.error;
       if (oversightRes.error) throw oversightRes.error;
+      if (investigationRes.error) throw investigationRes.error;
       const direct: ConnectionRow[] = [
         ...(donationsRes.data ?? []),
         ...(oversightRes.data ?? []),
         ...(votesRes.data ?? []),
+        ...(investigationRes.data ?? []),
       ];
 
       if (depth >= 2 && direct.length > 0) {
@@ -682,6 +697,39 @@ export async function GET(request: Request) {
 
     const nodeIds = new Set(nodes.map((n) => n.id));
 
+    // ── Investigation-edge attribution lookup (FIX-585) ──────────────────────
+    // An investigation-sourced edge carries evidence_ids = the promoting evidence
+    // card id(s). The attribution popover links the CASE FILE (/investigations/[id]),
+    // so resolve card id → investigation_id + title + reviewed-at. Small set
+    // (hand-curated promotions), one extra round-trip only when present.
+    const investAttr = new Map<string, { investigationId: string; title: string; reviewedAt: string }>();
+    const investCardIds = Array.from(
+      new Set(
+        connections
+          .filter((c) => c.evidence_source === "investigation" && c.evidence_ids?.[0])
+          .map((c) => c.evidence_ids[0] as string),
+      ),
+    );
+    if (investCardIds.length > 0) {
+      const { data: invCards } = await supabase
+        .from("evidence_cards")
+        .select("id, investigation_id, updated_at")
+        .in("id", investCardIds);
+      const invIds = Array.from(new Set((invCards ?? []).map((c) => c.investigation_id as string)));
+      const titleById = new Map<string, string>();
+      if (invIds.length > 0) {
+        const { data: invs } = await supabase.from("investigations").select("id, title").in("id", invIds);
+        for (const i of invs ?? []) titleById.set(i.id as string, i.title as string);
+      }
+      for (const c of invCards ?? []) {
+        investAttr.set(c.id as string, {
+          investigationId: c.investigation_id as string,
+          title: titleById.get(c.investigation_id as string) ?? "Investigation",
+          reviewedAt: c.updated_at as string,
+        });
+      }
+    }
+
     // ── Build edges ────────────────────────────────────────────────────────
     const edges: GraphEdge[] = [];
     for (const c of connections) {
@@ -690,6 +738,10 @@ export async function GET(request: Request) {
       const sourceKey = `${c.from_type}:${c.from_id}`;
       const targetKey = `${c.to_type}:${c.to_id}`;
       if (!nodeIds.has(sourceKey) || !nodeIds.has(targetKey)) continue;
+      // FIX-584/585 — surface evidence_source so investigation-promoted edges render
+      // distinctly + filterable, plus the resolved case-file attribution so the
+      // popover can render "asserted by [title], reviewed [date]" and deep-link it.
+      const attr = c.evidence_source === "investigation" ? investAttr.get(c.evidence_ids?.[0] as string) : undefined;
       edges.push({
         fromId: sourceKey,
         toId: targetKey,
@@ -697,6 +749,10 @@ export async function GET(request: Request) {
         amountUsd: c.amount_cents != null ? c.amount_cents / 100 : undefined,
         occurredAt: c.occurred_at ?? undefined,
         strength: Number(c.strength),
+        ...(c.evidence_source ? { evidenceSource: c.evidence_source } : {}),
+        ...(attr
+          ? { investigationId: attr.investigationId, investigationTitle: attr.title, reviewedAt: attr.reviewedAt }
+          : {}),
       });
     }
     // Append synthetic bracket/employer aggregate edges (official endpoints guaranteed in nodeIds)

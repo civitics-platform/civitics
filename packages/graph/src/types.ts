@@ -80,6 +80,18 @@ export interface GraphEdge {
   strength: number
   /** ISO date string */
   occurredAt?: string
+  /** Provenance tag from entity_connections.evidence_source. The narrow slice this
+   *  package cares about is 'investigation' — a community claim promoted to the graph
+   *  (FIX-584/585) — which renders distinctly, filterable, and attributed. Other
+   *  derived sources (financial_relationships, votes, …) pass through untouched. */
+  evidenceSource?: string
+  /** Investigation (case-file) id backing an evidence_source==='investigation' edge —
+   *  for the attribution popover deep-link to /investigations/[investigationId]. */
+  investigationId?: string
+  /** Title of that investigation, for the attribution popover. */
+  investigationTitle?: string
+  /** ISO date the promoting card was last reviewed (status change), for the popover. */
+  reviewedAt?: string
   /** Extra data — group edges use memberCount, pctOfGroup */
   metadata?: Record<string, unknown>
 }

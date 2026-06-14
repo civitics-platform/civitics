@@ -75,6 +75,11 @@ function chunkFns(mode: Mode): string[] {
     "rebuild_entity_connections_contracts",
     "rebuild_entity_connections_lobbying",
     "rebuild_entity_connections_external",
+    // FIX-584 — re-project promoted investigation evidence_cards. MUST stay last:
+    // like _external it's an ON CONFLICT DO NOTHING pass, so every authoritative
+    // pass must populate its (from,to,type) tuples first (a community assertion
+    // never overrides a derived edge).
+    "rebuild_entity_connections_investigation",
   ];
 }
 
