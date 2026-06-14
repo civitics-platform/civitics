@@ -78,7 +78,17 @@ type SimLink = {
   fromId: string;
   toId: string;
   metadata?: Record<string, unknown>;
+  // FIX-585 — investigation-promoted edges render distinctly + filterable + attributed.
+  evidenceSource?: string;
+  investigationId?: string;
+  investigationTitle?: string;
+  reviewedAt?: string;
 };
+
+// FIX-585 — distinct color for community-asserted edges promoted to the graph. A
+// saturated fuchsia not used by CONNECTION_TYPE_REGISTRY, so investigation edges
+// read as "asserted, under review" rather than any derived source.
+const INVESTIGATION_EDGE_COLOR = "#c026d3";
 
 // ── Visual constants ──────────────────────────────────────────────────────────
 
@@ -305,6 +315,42 @@ function AlignmentEdgeTooltip({
   );
 }
 
+// FIX-585 — attribution popover for an investigation-promoted edge.
+function InvestigationEdgeTooltip({
+  title, investigationId, reviewedAt, relationship, x, y,
+}: {
+  title: string;
+  investigationId?: string;
+  reviewedAt?: string;
+  relationship: string;
+  x: number;
+  y: number;
+}) {
+  const TOOLTIP_W = 260;
+  const safeX = Math.min(x + 14, (typeof window !== "undefined" ? window.innerWidth : 1024) - TOOLTIP_W - 8);
+  const reviewed = reviewedAt ? new Date(reviewedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : null;
+  return (
+    <div
+      className="absolute z-50 bg-white border rounded-lg shadow-lg px-3 py-3 text-sm"
+      style={{ left: safeX, top: y - 8, width: TOOLTIP_W, borderColor: INVESTIGATION_EDGE_COLOR }}
+    >
+      <div className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: INVESTIGATION_EDGE_COLOR }}>
+        Community claim · promoted
+      </div>
+      <div className="mt-0.5 text-xs text-gray-600">{relationship} relationship asserted in</div>
+      {investigationId ? (
+        <a href={`/investigations/${investigationId}`} target="_blank" rel="noopener noreferrer"
+          className="font-semibold text-gray-900 leading-tight hover:underline">
+          {title} ↗
+        </a>
+      ) : (
+        <div className="font-semibold text-gray-900 leading-tight">{title}</div>
+      )}
+      {reviewed && <div className="text-gray-500 text-xs mt-1">Reviewed {reviewed}</div>}
+    </div>
+  );
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
@@ -352,6 +398,19 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
     }
     const [alignTooltip, setAlignTooltip] = useState<AlignTooltipState | null>(null);
 
+    // FIX-585 — investigation edge attribution popover + show/hide toggle.
+    interface InvestTooltipState {
+      title: string;
+      investigationId?: string;
+      reviewedAt?: string;
+      relationship: string;
+      x: number;
+      y: number;
+    }
+    const [investTooltip, setInvestTooltip] = useState<InvestTooltipState | null>(null);
+    const [showInvestigation, setShowInvestigation] = useState(true);
+    const hasInvestigationEdges = edges.some((e) => e.evidenceSource === "investigation");
+
     // ── Category C — data change: full re-init preserving positions ───────────
     useEffect(() => {
       const svgEl = svgRef.current;
@@ -395,6 +454,10 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
         amountUsd: e.amountUsd,
         strength: e.strength,
         metadata: e.metadata,
+        evidenceSource: e.evidenceSource,
+        investigationId: e.investigationId,
+        investigationTitle: e.investigationTitle,
+        reviewedAt: e.reviewedAt,
         source: (nodeById.get(e.fromId) ?? simNodes[0]!) as SimNode,
         target: (nodeById.get(e.toId)   ?? simNodes[0]!) as SimNode,
       }));
@@ -452,6 +515,8 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
       const focusIds = new Set(focusEntities.map((fe) => fe.id));
 
       function edgeColor(d: SimLink): string {
+        // FIX-585 — source wins over connection_type for the distinct investigation render.
+        if (d.evidenceSource === "investigation") return INVESTIGATION_EDGE_COLOR;
         if (d.connectionType === "alignment") {
           return alignmentEdgeColor(d.metadata?.alignmentRatio as number | null);
         }
@@ -498,7 +563,12 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
         .attr("stroke", edgeColor)
         .attr("stroke-width", edgeWidthFn)
         .attr("stroke-opacity", edgeOpacityFn)
+        // FIX-585 — dash investigation edges so they read as asserted-not-derived.
+        .attr("stroke-dasharray", (d) => (d.evidenceSource === "investigation" ? "5 3" : null))
         .style("display", (d) => {
+          // FIX-585 — investigation edges have their own toggle (independent of the
+          // connection-type filter, since they carry a real connection_type).
+          if (d.evidenceSource === "investigation") return showInvestigation ? "block" : "none";
           if (!hasConnectionFilter) return "block";
           const conn = connections[d.connectionType];
           if (!conn) return "block";           // unknown type: show
@@ -532,6 +602,30 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
         .on("mouseleave.align", (_event: MouseEvent, d: SimLink) => {
           if (d.connectionType !== "alignment") return;
           setAlignTooltip(null);
+        });
+
+      // FIX-585 — investigation edge attribution popover on hover.
+      link
+        .on("mouseenter.invest", function (event: MouseEvent, d: SimLink) {
+          if (d.evidenceSource !== "investigation") return;
+          const rect = svgEl.getBoundingClientRect();
+          setInvestTooltip({
+            title: d.investigationTitle ?? "Investigation",
+            investigationId: d.investigationId,
+            reviewedAt: d.reviewedAt,
+            relationship: (CONNECTION_TYPE_REGISTRY[d.connectionType]?.label ?? d.connectionType ?? "").replace(/_/g, " "),
+            x: event.clientX - rect.left,
+            y: event.clientY - rect.top,
+          });
+        })
+        .on("mousemove.invest", function (event: MouseEvent, d: SimLink) {
+          if (d.evidenceSource !== "investigation") return;
+          const rect = svgEl.getBoundingClientRect();
+          setInvestTooltip((prev) => (prev ? { ...prev, x: event.clientX - rect.left, y: event.clientY - rect.top } : prev));
+        })
+        .on("mouseleave.invest", (_event: MouseEvent, d: SimLink) => {
+          if (d.evidenceSource !== "investigation") return;
+          setInvestTooltip(null);
         });
 
       // Edge labels (shown on hover)
@@ -1010,6 +1104,8 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
       const hasConnectionFilter = connections && Object.keys(connections).length > 0;
 
       const edgeVisible = (d: SimLink): boolean => {
+        // FIX-585 — investigation edges follow their own toggle, not the type filter.
+        if (d.evidenceSource === "investigation") return showInvestigation;
         if (!hasConnectionFilter) return true;
         const conn = connections[d.connectionType];
         if (!conn) return true;
@@ -1018,7 +1114,9 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
 
       link
         .style("display", (d: SimLink) => (edgeVisible(d) ? "block" : "none"))
+        .attr("stroke-dasharray", (d: SimLink) => (d.evidenceSource === "investigation" ? "5 3" : null))
         .attr("stroke", (d: SimLink) => {
+          if (d.evidenceSource === "investigation") return INVESTIGATION_EDGE_COLOR;
           if (d.connectionType === "alignment") {
             return alignmentEdgeColor(d.metadata?.alignmentRatio as number | null);
           }
@@ -1065,7 +1163,7 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
           return visibleNodeIds.has(n.id) ? null : "none";
         });
       }
-    }, [connections, focusEntities]);
+    }, [connections, focusEntities, showInvestigation]);
 
     // ── Category A — Node highlight for focus entities ─────────────────────────
     useEffect(() => {
@@ -1370,6 +1468,40 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
             x={alignTooltip.x}
             y={alignTooltip.y}
           />
+        )}
+
+        {/* FIX-585 — investigation edge attribution popover */}
+        {investTooltip && (
+          <InvestigationEdgeTooltip
+            title={investTooltip.title}
+            investigationId={investTooltip.investigationId}
+            reviewedAt={investTooltip.reviewedAt}
+            relationship={investTooltip.relationship}
+            x={investTooltip.x}
+            y={investTooltip.y}
+          />
+        )}
+
+        {/* FIX-585 — investigation-edge filter toggle (shown only when present) */}
+        {hasInvestigationEdges && (
+          <button
+            type="button"
+            onClick={() => setShowInvestigation((v) => !v)}
+            className="absolute top-4 right-4 flex items-center gap-1.5 rounded-full border bg-white/90 px-2.5 py-1 text-[11px] font-medium shadow-sm backdrop-blur-sm"
+            style={{ borderColor: INVESTIGATION_EDGE_COLOR, color: INVESTIGATION_EDGE_COLOR }}
+            title="Community claims promoted to the graph"
+          >
+            <span
+              className="inline-block h-2 w-4 rounded-full"
+              style={{
+                background: showInvestigation
+                  ? `repeating-linear-gradient(90deg, ${INVESTIGATION_EDGE_COLOR} 0 5px, transparent 5px 8px)`
+                  : "transparent",
+                border: `1px solid ${INVESTIGATION_EDGE_COLOR}`,
+              }}
+            />
+            Investigation edges {showInvestigation ? "on" : "off"}
+          </button>
         )}
 
         <NodePopup

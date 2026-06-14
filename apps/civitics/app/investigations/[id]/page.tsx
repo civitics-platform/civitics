@@ -17,6 +17,7 @@ import {
 } from "../_lib/presentation";
 import { EvidenceRating } from "../components/EvidenceRating";
 import { EvidenceComposer } from "../components/EvidenceComposer";
+import { EvidenceCardAdminActions } from "../components/EvidenceCardAdminActions";
 import { PageViewTracker } from "../../components/PageViewTracker";
 import { EntityComments } from "../../components/EntityComments";
 
@@ -90,6 +91,12 @@ function EvidenceCardView({ card, signInNext }: { card: EvidenceCard; signInNext
               Private individual
             </span>
           )}
+          {/* Admin-only promote/unpromote/reject/clear (FIX-585). Non-admins see only the badge. */}
+          <EvidenceCardAdminActions
+            cardId={card.id}
+            status={card.status}
+            subjectIsPrivatePerson={card.subject_is_private_person}
+          />
         </div>
         <span className="text-xs text-ink-soft">
           {card.author_name || "Contributor"}
