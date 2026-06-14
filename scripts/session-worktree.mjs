@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 // scripts/session-worktree.mjs — per-FIX git worktree lifecycle.
 //
-//   pnpm session:worktree <fix-id>            → create  (this file, subcommand "create")
-//   pnpm session:worktree <fix-id> --install  → create + `pnpm install` in the tree
-//   pnpm session:worktree:done <fix-id>       → teardown (this file, subcommand "done")
+//   pnpm session:worktree <fix-id>               → create + `pnpm install` (default)
+//   pnpm session:worktree <fix-id> --no-install  → create, skip the install
+//   pnpm session:worktree:done <fix-id>          → teardown (this file, subcommand "done")
 //
 // WHY (the model these enforce — see CLAUDE.md "Parallel sessions"):
 // VSCode is always open on the primary checkout, so any agent committing there
@@ -96,7 +96,7 @@ function readEnvUrl(file) {
 
 // ── create ────────────────────────────────────────────────────────────────
 function create(rawId, argv = []) {
-  const install = argv.includes("--install");
+  const install = !argv.includes("--no-install");
   const id = normalizeId(rawId);
   const root = repoRoot();
   const branch = `feature/fix-${id}`;
@@ -142,21 +142,38 @@ function create(rawId, argv = []) {
     console.log("[session:worktree] ✓ both .env.local seeded to LOCAL Docker. Confirm the URL above before any pipeline/data run.");
   }
 
-  // Optional dependency install (--install). pnpm's shared content-addressed
-  // store hardlinks into the fresh worktree, so this is ~40s, not a cold install.
-  // Without it the worktree has no node_modules and tsx/pnpm build fail until the
-  // caller installs by hand — so a buildable tree out of the box is opt-in but
-  // one flag away.
+  // Dependency install runs by DEFAULT (pass --no-install to skip). pnpm's
+  // shared content-addressed store hardlinks into the fresh worktree, so this is
+  // ~40s, not a cold install. Without it the worktree has no node_modules and
+  // tsx/pnpm build fail until the caller installs by hand — and a by-hand
+  // `pnpm install` is denied to agents (settings.local.json), so default-on is
+  // what makes a fresh worktree usable out of the box.
+  //
+  // --frozen-lockfile is the load-bearing guardrail: it makes the install
+  // provably unable to add a package or mutate pnpm-lock.yaml — new third-party
+  // code can still only enter via `pnpm add` / `npm i` / `yarn add`, which stay
+  // denied. --prefer-offline leans on the shared store to keep it fast.
   if (install) {
-    console.log(`\n[session:worktree] --install given — running 'pnpm install' in ${wtDir} (~40s, shared-store hardlinks) ...`);
-    const res = run("pnpm", ["install"], { cwd: wtDir, stdio: "inherit" });
+    console.log(`\n[session:worktree] installing deps — 'pnpm install --frozen-lockfile' in ${wtDir} (~40s, shared-store hardlinks; --no-install to skip) ...`);
+    const res = run("pnpm", ["install", "--frozen-lockfile", "--prefer-offline"], { cwd: wtDir, stdio: "inherit" });
     if (res.ok) {
       console.log(`[session:worktree] ✓ pnpm install complete — worktree is buildable.`);
     } else {
-      console.warn(
-        `[session:worktree] ⚠ pnpm install failed (${res.err || "see output above"}). ` +
-        `Worktree is created; run 'pnpm -C ${wtDir} install' by hand before building.`,
-      );
+      const outdatedLockfile =
+        /ERR_PNPM_OUTDATED_LOCKFILE/i.test(res.err) || /lockfile.*(out of date|outdated)/i.test(res.err);
+      if (outdatedLockfile) {
+        console.warn(
+          `[session:worktree] ⚠ pnpm install --frozen-lockfile failed: pnpm-lock.yaml is OUT OF SYNC ` +
+          `with the package manifests (ERR_PNPM_OUTDATED_LOCKFILE). NOT retrying without --frozen-lockfile — ` +
+          `a drifted lockfile is worth knowing about. Fix the lockfile on main (an unfrozen 'pnpm install' there, ` +
+          `committed), then re-run; or run 'pnpm -C ${wtDir} install --frozen-lockfile' by hand once it's in sync.`,
+        );
+      } else {
+        console.warn(
+          `[session:worktree] ⚠ pnpm install failed (${res.err || "see output above"}). ` +
+          `Worktree is created; run 'pnpm -C ${wtDir} install --frozen-lockfile' by hand before building.`,
+        );
+      }
     }
   }
 
@@ -172,7 +189,7 @@ function landingRecipe(id, installed = false) {
     `  cd ${wt}`,
     ...(installed
       ? []
-      : [`  pnpm install                            # deps not installed (pass --install to do this at create time)`]),
+      : [`  pnpm install --frozen-lockfile          # deps skipped via --no-install; install runs by default at create time`]),
     "  git fetch origin",
     "  git rebase origin/main                  # replay on latest main, resolve here in isolation",
     "  pnpm build && pnpm typecheck && pnpm lint   # verify ON the branch, still isolated",
@@ -329,7 +346,7 @@ if (invokedDirectly) {
     done(rawId, rest);
   } else {
     console.error("Usage:");
-    console.error("  pnpm session:worktree <fix-id> [--install]  # create a per-FIX worktree (optionally pnpm install)");
+    console.error("  pnpm session:worktree <fix-id> [--no-install]  # create a per-FIX worktree (installs deps by default)");
     console.error("  pnpm session:worktree:done <fix-id>    # tear it down (--force to override safety)");
     process.exit(1);
   }
