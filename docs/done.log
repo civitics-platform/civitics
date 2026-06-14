@@ -733,3 +733,6 @@
 2026-06-14 | FIX-579 | 51604079 | local-only | feat(investigations): index + case-file pages + C1 discussion mount (PR2)
 2026-06-14 | FIX-580 | 0eb21829 | local-only | feat(investigations): evidence composer + tier-1/2 citation pickers + rating (PR2)
 2026-06-14 | FIX-582 | e6f90e15 | local-only | build(worktree): install deps by default in session:worktree (--no-install to skip)
+2026-06-14 | FIX-583 | f2b78a6c | local+prod | feat(investigations): corroboration + admin promotion state machine + audit (PR3)
+2026-06-14 | FIX-584 | 130267dd | local+prod | feat(graph): investigation rebuild pass + evidence_source plumbing (PR3)
+2026-06-14 | FIX-585 | 463667e6 | local-only | feat(graph): admin promotion review UI + distinct investigation edge render (PR3)
