@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { createServerClient } from "@civitics/db";
-import { mapRpcError, fallbackName } from "../_lib";
+import { createServerClient, createAdminClient } from "@civitics/db";
+import { mapRpcError } from "../_lib";
+import { fetchNameMap } from "../../comments/_lib";
 
 export const dynamic = "force-dynamic";
 
@@ -52,22 +53,15 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
     }
 
     // Contributor list: distinct authors of visible cards + the creator. Resolve
-    // display names best-effort; fall back to a presentation-neutral citizen label
-    // if the users row is not readable to the caller.
+    // display names via the SHARED comments admin resolver (fetchNameMap) — the same
+    // server-side pattern the comment list uses to bypass the own-row users RLS
+    // without leaking email. fetchNameMap already falls back to displayNameFor's
+    // presentation-neutral citizen label for any unresolved id.
     const contributorIds = Array.from(
       new Set<string>([investigation.created_by as string, ...cardRows.map((c) => c.author_id as string)]),
     );
-    const nameById = new Map<string, string>();
-    if (contributorIds.length > 0) {
-      const { data: users } = await supabase
-        .from("users")
-        .select("id, display_name")
-        .in("id", contributorIds);
-      for (const u of users ?? []) {
-        const dn = typeof u.display_name === "string" ? u.display_name.trim() : "";
-        if (dn) nameById.set(u.id as string, dn);
-      }
-    }
+    const admin = createAdminClient();
+    const nameById = await fetchNameMap(admin as never, contributorIds);
     const cardCountByAuthor = new Map<string, number>();
     for (const c of cardRows) {
       const a = c.author_id as string;
@@ -75,7 +69,7 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
     }
     const contributors = contributorIds.map((id) => ({
       user_id: id,
-      name: nameById.get(id) ?? fallbackName(id),
+      name: nameById.get(id) ?? "",
       card_count: cardCountByAuthor.get(id) ?? 0,
       is_creator: id === investigation.created_by,
     }));

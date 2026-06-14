@@ -30,8 +30,9 @@ const NAV_GROUPS: NavGroup[] = [
     label: "Civic",
     heading: "The People",
     items: [
-      { label: "Initiatives", href: "/initiatives", note: "citizen-led" },
-      { label: "Meetings",    href: "/meetings",    note: "public sessions" },
+      { label: "Initiatives",    href: "/initiatives",    note: "citizen-led" },
+      { label: "Investigations", href: "/investigations", note: "cited case files" },
+      { label: "Meetings",       href: "/meetings",       note: "public sessions" },
     ],
   },
   {
