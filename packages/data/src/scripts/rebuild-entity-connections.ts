@@ -190,6 +190,21 @@ async function main(): Promise<void> {
         // 23MB temp on a 1/16 sample). One off-peak single-connection session,
         // safe on the 2GB Pro Small.
         await client.query("SET work_mem = '256MB'");
+        // FIX-590 — pause autovacuum on entity_connections for the full rebuild.
+        // The donations prepare() DELETE leaves ~2.7M dead tuples; with FIX-331's
+        // aggressive autovacuum_vacuum_scale_factor=0.05 that trips autovacuum
+        // MID-rebuild, and its VACUUM I/O competes with the window INSERTs on the
+        // cache-starved Pro Small. On the 2026-06-14 full run that turned donation
+        // windows 14-16 from ~4min into 40-57min each (3h08m donations total →
+        // 4h budget blown). Disable for the run; re-enable + one manual VACUUM
+        // ANALYZE after (success path below) and a belt-and-braces re-enable in
+        // the finally so a mid-run failure never leaves it off.
+        if (mode === "full") {
+          await client.query(
+            "ALTER TABLE public.entity_connections SET (autovacuum_enabled = false)",
+          );
+          console.log("  [rebuild] autovacuum paused on entity_connections (full rebuild)");
+        }
         for (const fn of fns) {
           const chunkStart = Date.now();
           try {
@@ -279,7 +294,34 @@ async function main(): Promise<void> {
             `  [post] refresh_entity_connection_stats_mv — FAILED: ${errMsg(statsErr)}`,
           );
         }
+        // FIX-590 — re-enable autovacuum and do ONE manual VACUUM ANALYZE now
+        // that the churn is done, instead of letting autovacuum compete during
+        // the rebuild. Wrapped so a VACUUM failure doesn't mask a good rebuild;
+        // the finally below re-enables autovacuum regardless.
+        if (mode === "full") {
+          try {
+            await client.query(
+              "ALTER TABLE public.entity_connections SET (autovacuum_enabled = true)",
+            );
+            await client.query("SET statement_timeout = '30min'");
+            await client.query("VACUUM (ANALYZE) public.entity_connections");
+            console.log("  [post] autovacuum re-enabled + VACUUM ANALYZE entity_connections — complete");
+          } catch (vacErr) {
+            console.warn(`  [post] post-rebuild VACUUM — FAILED: ${errMsg(vacErr)}`);
+          }
+        }
       } finally {
+        // FIX-590 — ensure autovacuum is back on even if the rebuild threw
+        // mid-way (a cancelled/failed full run must never strand it disabled).
+        if (mode === "full") {
+          try {
+            await client.query(
+              "ALTER TABLE public.entity_connections SET (autovacuum_enabled = true)",
+            );
+          } catch {
+            /* connection may already be dead — manual re-enable then needed */
+          }
+        }
         await client.end();
       }
     } else {
