@@ -66,20 +66,20 @@ function ResultBar({ summary }: { summary: VoteSummary }) {
   return (
     <div className="mt-3">
       <div
-        className="flex h-2 w-full overflow-hidden rounded-full bg-gray-100"
+        className="flex h-2 w-full overflow-hidden rounded-full bg-paper-2"
         role="img"
         aria-label={`${a}% agree, ${p}% pass, ${d}% disagree, ${total} ${total === 1 ? "vote" : "votes"}`}
       >
-        <div className="bg-emerald-500" style={{ width: `${a}%` }} />
-        <div className="bg-gray-300" style={{ width: `${p}%` }} />
-        <div className="bg-red-500" style={{ width: `${d}%` }} />
+        <div className="bg-green-ink" style={{ width: `${a}%` }} />
+        <div className="bg-ink/30" style={{ width: `${p}%` }} />
+        <div className="bg-accent" style={{ width: `${d}%` }} />
       </div>
-      <div className="mt-1 flex justify-between text-[11px] tabular-nums text-gray-500">
-        <span className="text-emerald-700">{a}% agree</span>
+      <div className="mt-1 flex justify-between text-[11px] tabular-nums text-ink-soft">
+        <span className="text-green-ink">{a}% agree</span>
         <span>{p}% pass</span>
-        <span className="text-red-700">{d}% disagree</span>
+        <span className="text-accent">{d}% disagree</span>
       </div>
-      <p className="mt-0.5 text-[10px] text-gray-400">{total} {total === 1 ? "vote" : "votes"}</p>
+      <p className="mt-0.5 text-[10px] text-ink-soft/60">{total} {total === 1 ? "vote" : "votes"}</p>
     </div>
   );
 }
@@ -91,7 +91,7 @@ function FlagMenu({ statementId, signInNext }: { statementId: string; signInNext
   const [reason, setReason] = useState("spam");
   const [busy, setBusy] = useState(false);
 
-  if (done) return <span className="text-[10px] text-gray-400">Flagged · thanks</span>;
+  if (done) return <span className="text-[10px] text-ink-soft/60">Flagged · thanks</span>;
 
   async function submit() {
     if (busy) return;
@@ -117,17 +117,17 @@ function FlagMenu({ statementId, signInNext }: { statementId: string; signInNext
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="text-[10px] text-gray-300 hover:text-red-600"
+        className="text-[10px] text-ink-soft/50 hover:text-accent"
         aria-label="Flag statement"
       >
         ⚑ Flag
       </button>
       {open && (
-        <div className="absolute right-0 top-5 z-20 w-52 rounded-lg border border-gray-200 bg-white p-3 shadow-lg">
+        <div className="absolute right-0 top-5 z-20 w-52 border border-rule bg-card p-3 shadow-lg">
           <select
             value={reason}
             onChange={(e) => setReason(e.target.value)}
-            className="w-full rounded border border-gray-300 bg-white px-2 py-1 text-xs"
+            className="w-full border border-rule bg-card px-2 py-1 text-xs text-ink"
             aria-label="Flag reason"
           >
             {FLAG_REASONS.map((r) => (
@@ -135,10 +135,10 @@ function FlagMenu({ statementId, signInNext }: { statementId: string; signInNext
             ))}
           </select>
           <div className="mt-2 flex justify-end gap-2">
-            <button type="button" onClick={() => setOpen(false)} className="rounded border border-gray-200 px-2 py-1 text-[11px] text-gray-600 hover:bg-gray-50">
+            <button type="button" onClick={() => setOpen(false)} className="border border-rule px-2 py-1 text-[11px] text-ink-soft hover:bg-paper-2">
               Cancel
             </button>
-            <button type="button" onClick={submit} disabled={busy} className="rounded bg-red-600 px-2 py-1 text-[11px] font-medium text-white hover:bg-red-700 disabled:opacity-50">
+            <button type="button" onClick={submit} disabled={busy} className="bg-accent px-2 py-1 text-[11px] font-medium text-paper hover:bg-accent/90 disabled:opacity-50">
               {busy ? "…" : "Submit"}
             </button>
           </div>
@@ -205,7 +205,7 @@ function ProposeStatement({
       <button
         type="button"
         onClick={() => { setOpen(true); setDone(false); }}
-        className="mt-3 rounded-lg border border-dashed border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-600 hover:border-indigo-300 hover:text-indigo-700"
+        className="mt-3 border border-dashed border-rule px-3 py-1.5 text-xs font-medium text-ink-soft hover:border-ink hover:text-ink"
       >
         {done ? "Propose another statement" : "+ Propose a statement"}
       </button>
@@ -213,8 +213,8 @@ function ProposeStatement({
   }
 
   return (
-    <form onSubmit={submit} className="mt-3 rounded-lg border border-gray-200 bg-white p-3">
-      <label className="mb-1 block text-xs font-medium text-gray-600">
+    <form onSubmit={submit} className="mt-3 border border-rule bg-card p-3">
+      <label className="mb-1 block text-xs font-medium text-ink-soft">
         Propose a short, voteable proposition
       </label>
       <textarea
@@ -223,26 +223,26 @@ function ProposeStatement({
         onChange={(e) => setBody(e.target.value.slice(0, STATEMENT_MAX_LEN))}
         maxLength={STATEMENT_MAX_LEN}
         placeholder="e.g. This proposal should include a sunset clause."
-        className="block w-full resize-none rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-indigo-400 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-400"
+        className="block w-full resize-none border border-rule bg-paper-2 px-3 py-2 text-sm text-ink placeholder:text-ink-soft/50 focus:border-ink focus:bg-card focus:outline-none focus:ring-1 focus:ring-ink"
       />
       <div className="mt-1 flex items-center justify-between">
-        <span className={`text-xs tabular-nums ${body.length > STATEMENT_MAX_LEN - 20 ? "text-amber-500" : "text-gray-400"}`}>
+        <span className={`text-xs tabular-nums ${body.length > STATEMENT_MAX_LEN - 20 ? "text-accent" : "text-ink-soft/60"}`}>
           {body.length}/{STATEMENT_MAX_LEN}
         </span>
         <div className="flex gap-2">
-          <button type="button" onClick={() => setOpen(false)} className="rounded-lg border border-gray-200 px-3 py-1 text-xs text-gray-500 hover:bg-gray-50">
+          <button type="button" onClick={() => setOpen(false)} className="border border-rule px-3 py-1 text-xs text-ink-soft hover:bg-paper-2">
             Cancel
           </button>
           <button
             type="submit"
             disabled={busy || body.trim().length < STATEMENT_MIN_LEN}
-            className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
+            className="bg-ink px-3 py-1.5 text-xs font-semibold text-paper hover:bg-accent disabled:opacity-50 transition-colors"
           >
             {busy ? "Submitting…" : "Submit"}
           </button>
         </div>
       </div>
-      {error && <p className="mt-1 text-xs text-red-500">{error}</p>}
+      {error && <p className="mt-1 text-xs text-accent">{error}</p>}
     </form>
   );
 }
@@ -387,54 +387,54 @@ export function StatementMode({
   const votedCount = statements.filter((s) => s.my_vote != null).length;
 
   return (
-    <section className="rounded-xl border border-gray-200 bg-gray-50/60 p-4">
+    <section className="border border-rule bg-paper-2 p-4">
       <div className="mb-1 flex items-center justify-between">
-        <h3 className="text-sm font-bold text-gray-900">{heading}</h3>
+        <h3 className="text-sm font-bold text-ink">{heading}</h3>
         {total > 0 && (
-          <span className="text-[11px] tabular-nums text-gray-400">
+          <span className="text-[11px] tabular-nums text-ink-soft/60">
             {votedCount}/{total} voted
           </span>
         )}
       </div>
-      <p className="mb-3 text-xs text-gray-500">{subheading}</p>
+      <p className="mb-3 text-xs text-ink-soft">{subheading}</p>
 
       {loading ? (
-        <div className="py-6 text-center text-sm text-gray-400">Loading…</div>
+        <div className="py-6 text-center text-sm text-ink-soft/60">Loading…</div>
       ) : error ? (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
+        <div className="border border-accent/25 bg-accent/10 px-4 py-3 text-sm text-accent">{error}</div>
       ) : total === 0 ? (
-        <div className="rounded-lg border border-dashed border-gray-200 bg-white px-4 py-6 text-center text-sm text-gray-400">
-          No statements yet. <span className="text-gray-500">Propose the first one below.</span>
+        <div className="border border-dashed border-rule bg-card px-4 py-6 text-center text-sm text-ink-soft/60">
+          No statements yet. <span className="text-ink-soft">Propose the first one below.</span>
           <ProposeStatement entityType={entityType} entityId={entityId} signInNext={signInNext} onProposed={handleProposed} />
         </div>
       ) : current ? (
         <>
-          <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+          <div className="border border-rule bg-card p-4">
             <div className="mb-2 flex items-center gap-1.5">
               {current.status === "needs_review" && (
-                <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700">
+                <span className="rounded-full border border-amber/60 bg-amber/25 px-2 py-0.5 text-[10px] font-medium text-ink">
                   Under review
                 </span>
               )}
               {current.is_constituent && (
-                <span className="rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-700" title="Proposed by a verified constituent">
+                <span className="rounded-full border border-civic-blue/25 bg-civic-blue/10 px-2 py-0.5 text-[10px] font-medium text-civic-blue" title="Proposed by a verified constituent">
                   ✓ Constituent
                 </span>
               )}
               {current.source_comment_id && (
-                <span className="rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 text-[10px] font-medium text-gray-500" title="Promoted from a comment">
+                <span className="rounded-full border border-rule bg-paper-2 px-2 py-0.5 text-[10px] font-medium text-ink-soft" title="Promoted from a comment">
                   ↑ from a comment
                 </span>
               )}
             </div>
 
-            <p className="text-base font-medium leading-relaxed text-gray-900">{current.body}</p>
+            <p className="text-base font-medium leading-relaxed text-ink">{current.body}</p>
 
             <div className="mt-3 grid grid-cols-3 gap-2">
               {([
-                { v: 1 as const, label: "Agree", on: "bg-emerald-600 text-white border-emerald-600", off: "border-emerald-200 text-emerald-700 hover:bg-emerald-50" },
-                { v: 0 as const, label: "Pass", on: "bg-gray-600 text-white border-gray-600", off: "border-gray-200 text-gray-600 hover:bg-gray-100" },
-                { v: -1 as const, label: "Disagree", on: "bg-red-600 text-white border-red-600", off: "border-red-200 text-red-700 hover:bg-red-50" },
+                { v: 1 as const, label: "Agree", on: "bg-green-ink text-paper border-green-ink", off: "border-green-ink/25 text-green-ink hover:bg-green-ink/10" },
+                { v: 0 as const, label: "Pass", on: "bg-ink text-paper border-ink", off: "border-rule text-ink-soft hover:bg-paper-2" },
+                { v: -1 as const, label: "Disagree", on: "bg-accent text-paper border-accent", off: "border-accent/25 text-accent hover:bg-accent/10" },
               ]).map((b) => (
                 <button
                   key={b.v}
@@ -443,7 +443,7 @@ export function StatementMode({
                   disabled={busy}
                   aria-pressed={current.my_vote === b.v}
                   aria-label={b.label}
-                  className={`rounded-lg border px-3 py-2 text-sm font-semibold transition-colors disabled:opacity-50 ${current.my_vote === b.v ? b.on : b.off}`}
+                  className={`border px-3 py-2 text-sm font-semibold transition-colors disabled:opacity-50 ${current.my_vote === b.v ? b.on : b.off}`}
                 >
                   {b.label}
                 </button>
@@ -453,12 +453,12 @@ export function StatementMode({
             {current.my_vote != null && <ResultBar summary={current.vote_summary} />}
 
             <div className="mt-3 flex items-center justify-between">
-              <div className="flex items-center gap-2 text-xs text-gray-400">
+              <div className="flex items-center gap-2 text-xs text-ink-soft/60">
                 <button
                   type="button"
                   onClick={() => setIndex((i) => Math.max(0, i - 1))}
                   disabled={index === 0}
-                  className="rounded px-1.5 py-0.5 hover:bg-gray-100 disabled:opacity-30"
+                  className="px-1.5 py-0.5 hover:bg-paper-2 disabled:opacity-30"
                   aria-label="Previous statement"
                 >
                   ← Prev
@@ -468,7 +468,7 @@ export function StatementMode({
                   type="button"
                   onClick={() => setIndex((i) => Math.min(total - 1, i + 1))}
                   disabled={index >= total - 1}
-                  className="rounded px-1.5 py-0.5 hover:bg-gray-100 disabled:opacity-30"
+                  className="px-1.5 py-0.5 hover:bg-paper-2 disabled:opacity-30"
                   aria-label="Next statement"
                 >
                   Next →
@@ -485,7 +485,7 @@ export function StatementMode({
                 type="button"
                 onClick={() => void loadMore()}
                 disabled={loadingMore}
-                className="rounded-lg border border-gray-200 px-4 py-1.5 text-xs text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                className="border border-rule px-4 py-1.5 text-xs text-ink-soft hover:bg-paper-2 disabled:opacity-50"
               >
                 {loadingMore ? "Loading…" : "Load more statements"}
               </button>
@@ -493,7 +493,7 @@ export function StatementMode({
           )}
 
           {index >= total - 1 && !nextCursor && votedCount === total && (
-            <p className="mt-3 text-center text-xs text-emerald-700">✓ You&apos;ve weighed in on every statement.</p>
+            <p className="mt-3 text-center text-xs text-green-ink">✓ You&apos;ve weighed in on every statement.</p>
           )}
 
           <ProposeStatement entityType={entityType} entityId={entityId} signInNext={signInNext} onProposed={handleProposed} />

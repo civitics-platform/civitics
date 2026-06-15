@@ -66,14 +66,14 @@ const STOP_LABEL: Record<number, string> = {
   [3]: "Strongly support",
 };
 function stopColor(s: number): string {
-  if (s < 0) return "bg-red-500";
-  if (s > 0) return "bg-emerald-500";
-  return "bg-gray-400";
+  if (s < 0) return "bg-accent";
+  if (s > 0) return "bg-green-ink";
+  return "bg-ink/40";
 }
 function stopTextColor(s: number): string {
-  if (s < 0) return "text-red-700";
-  if (s > 0) return "text-emerald-700";
-  return "text-gray-600";
+  if (s < 0) return "text-accent";
+  if (s > 0) return "text-green-ink";
+  return "text-ink-soft";
 }
 
 function redirectToSignIn(next: string) {
@@ -108,15 +108,15 @@ function PositionRollupStrip({
   }, [rollup]);
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+    <div className="border border-rule bg-card p-4">
       <div className="mb-2 flex items-center justify-between">
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">Where people stand</h3>
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-ink-soft">Where people stand</h3>
         {lensEnabled && (
           <button
             type="button"
             onClick={() => onLens(lens === "all" ? "constituents" : "all")}
             className={`rounded-full border px-2 py-0.5 text-[11px] ${
-              lens === "constituents" ? "border-blue-300 bg-blue-50 text-blue-700" : "border-gray-200 text-gray-500"
+              lens === "constituents" ? "border-civic-blue/30 bg-civic-blue/10 text-civic-blue" : "border-rule text-ink-soft"
             }`}
           >
             {lens === "constituents" ? "Verified constituents" : "Everyone"}
@@ -125,10 +125,10 @@ function PositionRollupStrip({
       </div>
 
       {belowMin ? (
-        <div className="rounded-lg border border-dashed border-gray-200 px-3 py-5 text-center text-xs text-gray-400">
+        <div className="border border-dashed border-rule px-3 py-5 text-center text-xs text-ink-soft/60">
           Not enough positions yet — be one of the first.
           {rollup && rollup.n > 0 && (
-            <span className="ml-1 text-gray-400">({rollup.n} so far)</span>
+            <span className="ml-1 text-ink-soft/60">({rollup.n} so far)</span>
           )}
         </div>
       ) : (
@@ -139,17 +139,17 @@ function PositionRollupStrip({
               const h = Math.round((c / maxCount) * 48) + 2;
               return (
                 <div key={s} className="flex flex-1 flex-col items-center gap-1">
-                  <span className="text-[10px] tabular-nums text-gray-400">{c}</span>
+                  <span className="text-[10px] tabular-nums text-ink-soft/60">{c}</span>
                   <div className={`w-full rounded-sm ${stopColor(s)}`} style={{ height: `${h}px` }} />
-                  <span className="text-[10px] tabular-nums text-gray-400">{s > 0 ? `+${s}` : s}</span>
+                  <span className="text-[10px] tabular-nums text-ink-soft/60">{s > 0 ? `+${s}` : s}</span>
                 </div>
               );
             })}
           </div>
-          <div className="mt-3 flex items-center justify-between text-xs text-gray-500">
+          <div className="mt-3 flex items-center justify-between text-xs text-ink-soft">
             <span>
               Median{" "}
-              <span className="font-semibold tabular-nums text-gray-800">
+              <span className="font-semibold tabular-nums text-ink">
                 {rollup!.median!.toFixed(1)}
               </span>
             </span>
@@ -187,14 +187,14 @@ function AttributionPicker({
   }, [comments, q]);
 
   return (
-    <div className="mt-3 rounded-lg border border-violet-200 bg-violet-50/50 p-3">
+    <div className="mt-3 border border-ink/30 bg-ink/5 p-3">
       <div className="mb-2 flex items-center justify-between">
-        <p className="text-xs font-semibold text-violet-800">Did a comment change your mind?</p>
+        <p className="text-xs font-semibold text-ink">Did a comment change your mind?</p>
         <button
           type="button"
           onClick={onSkip}
           disabled={saving}
-          className="rounded-md border border-violet-200 bg-white px-2.5 py-1 text-[11px] font-medium text-violet-700 hover:bg-violet-50 disabled:opacity-50"
+          className="border border-rule bg-card px-2.5 py-1 text-[11px] font-medium text-ink-soft hover:bg-paper-2 disabled:opacity-50"
         >
           {saving ? "Saving…" : "Skip"}
         </button>
@@ -203,11 +203,11 @@ function AttributionPicker({
         value={q}
         onChange={(e) => setQ(e.target.value)}
         placeholder="Search comments…"
-        className="mb-2 w-full rounded-md border border-violet-200 bg-white px-2 py-1 text-xs"
+        className="mb-2 w-full border border-rule bg-card px-2 py-1 text-xs text-ink placeholder:text-ink-soft/50"
       />
       <div className="max-h-48 space-y-1.5 overflow-y-auto">
         {filtered.length === 0 ? (
-          <p className="px-1 py-2 text-[11px] text-gray-400">No comments to credit.</p>
+          <p className="px-1 py-2 text-[11px] text-ink-soft/60">No comments to credit.</p>
         ) : (
           filtered.slice(0, 30).map((c) => (
             <button
@@ -215,9 +215,9 @@ function AttributionPicker({
               type="button"
               onClick={() => onPick(c.id)}
               disabled={saving}
-              className="block w-full rounded-md border border-gray-200 bg-white px-2 py-1.5 text-left text-[11px] text-gray-700 hover:border-violet-300 hover:bg-violet-50 disabled:opacity-50"
+              className="block w-full border border-rule bg-card px-2 py-1.5 text-left text-[11px] text-ink-soft hover:border-ink hover:bg-paper-2 disabled:opacity-50"
             >
-              <span className="font-medium text-gray-500">{c.author_name}: </span>
+              <span className="font-medium text-ink-soft">{c.author_name}: </span>
               {c.body.length > 120 ? `${c.body.slice(0, 120)}…` : c.body}
             </button>
           ))
@@ -322,9 +322,9 @@ function PositionCard({
   }
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-      <h3 className="mb-1 text-sm font-bold text-gray-900">Your position</h3>
-      <p className="mb-3 text-xs text-gray-500">
+    <div className="border border-rule bg-card p-4">
+      <h3 className="mb-1 text-sm font-bold text-ink">Your position</h3>
+      <p className="mb-3 text-xs text-ink-soft">
         Set once per item. Softening counts — moving from strong to mild opposition is most persuasion.
       </p>
 
@@ -340,10 +340,10 @@ function PositionCard({
               aria-label={STOP_LABEL[s]}
               title={STOP_LABEL[s]}
               onClick={() => setStance(s)}
-              className={`flex-1 rounded-md border py-2 text-center text-xs font-semibold transition-colors ${
+              className={`flex-1 border py-2 text-center text-xs font-semibold transition-colors ${
                 active
-                  ? `${stopColor(s)} border-transparent text-white`
-                  : `border-gray-200 bg-white ${stopTextColor(s)} hover:bg-gray-50`
+                  ? `${stopColor(s)} border-transparent text-paper`
+                  : `border-rule bg-card ${stopTextColor(s)} hover:bg-paper-2`
               } ${s === 0 ? "mx-0.5" : ""}`}
             >
               {s > 0 ? `+${s}` : s}
@@ -351,21 +351,21 @@ function PositionCard({
           );
         })}
       </div>
-      <div className="mt-1 flex justify-between text-[10px] text-gray-400">
+      <div className="mt-1 flex justify-between text-[10px] text-ink-soft/60">
         <span>Strong oppose</span>
         <span>Neutral</span>
         <span>Strong support</span>
       </div>
 
       <label className="mt-3 block">
-        <span className="text-xs font-medium text-gray-600">What would change your mind? (optional)</span>
+        <span className="text-xs font-medium text-ink-soft">What would change your mind? (optional)</span>
         <textarea
           rows={2}
           value={conditions}
           onChange={(e) => setConditions(e.target.value)}
           maxLength={1000}
           placeholder="e.g. I'd support this if it included a sunset clause."
-          className="mt-1 block w-full resize-none rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-indigo-400 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-400"
+          className="mt-1 block w-full resize-none border border-rule bg-paper-2 px-3 py-2 text-sm text-ink placeholder:text-ink-soft/50 focus:border-ink focus:bg-card focus:outline-none focus:ring-1 focus:ring-ink"
         />
       </label>
 
@@ -379,7 +379,7 @@ function PositionCard({
       )}
 
       <div className="mt-3 flex items-center justify-between gap-2">
-        <span className="text-xs text-gray-400">
+        <span className="text-xs text-ink-soft/60">
           {own ? `You: ${STOP_LABEL[own.stance]}` : "No position set"}
         </span>
         {!pickerOpen && (
@@ -387,14 +387,14 @@ function PositionCard({
             type="button"
             onClick={handleSaveClick}
             disabled={saving || stance === null || !dirty}
-            className="rounded-lg bg-indigo-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
+            className="bg-ink px-4 py-1.5 text-xs font-semibold text-paper hover:bg-accent disabled:opacity-50 transition-colors"
           >
             {saving ? "Saving…" : own ? "Update position" : "Set position"}
           </button>
         )}
       </div>
-      {error && <p className="mt-1 text-xs text-red-500">{error}</p>}
-      {note && <p className="mt-1 text-xs text-gray-500">{note}</p>}
+      {error && <p className="mt-1 text-xs text-accent">{error}</p>}
+      {note && <p className="mt-1 text-xs text-ink-soft">{note}</p>}
     </div>
   );
 }
@@ -421,39 +421,39 @@ function TermsOfConsensusPanel({
   if (!hasContent) return null;
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
+    <div className="border border-rule bg-card">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
         className="flex w-full items-center justify-between px-4 py-3 text-left"
         aria-expanded={open}
       >
-        <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+        <span className="text-xs font-semibold uppercase tracking-wide text-ink-soft">
           Terms of consensus
         </span>
-        <span className="text-xs text-gray-400">{open ? "▲" : "▼"}</span>
+        <span className="text-xs text-ink-soft/60">{open ? "▲" : "▼"}</span>
       </button>
       {open && (
-        <div className="border-t border-gray-100 px-4 py-3">
+        <div className="border-t border-rule px-4 py-3">
           {pct != null && rollup && (
-            <p className="mb-2 text-xs text-gray-500">
+            <p className="mb-2 text-xs text-ink-soft">
               {Math.round(pct * 100)}% of {rollup.n} positions name a condition that would move them.
             </p>
           )}
           <div className="space-y-2">
             {top.map((c) => (
-              <div key={c.id} className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
-                <div className="mb-0.5 flex items-center gap-1.5 text-[10px] text-gray-400">
+              <div key={c.id} className="border border-rule bg-paper-2 px-3 py-2">
+                <div className="mb-0.5 flex items-center gap-1.5 text-[10px] text-ink-soft/60">
                   <span className="font-semibold uppercase tracking-wide">
                     {c.stance === "conditional" ? "Conditional" : c.kind_label}
                   </span>
                   <span>· {c.author_name}</span>
                 </div>
-                <p className="text-sm text-gray-800">{c.body}</p>
+                <p className="text-sm text-ink">{c.body}</p>
               </div>
             ))}
             {top.length === 0 && (
-              <p className="text-xs text-gray-400">No specific terms proposed yet.</p>
+              <p className="text-xs text-ink-soft/60">No specific terms proposed yet.</p>
             )}
           </div>
         </div>
@@ -520,7 +520,7 @@ export function PositionSection({
 
   return (
     <section className="mt-8">
-      <h2 className="mb-3 text-base font-bold text-gray-900">{heading}</h2>
+      <h2 className="mb-3 text-base font-bold text-ink">{heading}</h2>
       <div className="space-y-3">
         <PositionRollupStrip rollup={rollup} lens={lens} lensEnabled={lensEnabled} onLens={setLens} />
         <PositionCard

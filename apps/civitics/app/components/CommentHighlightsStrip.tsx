@@ -38,9 +38,9 @@ export interface CommentHighlightsStripProps {
 }
 
 const STANCE_META: Record<string, { label: string; cls: string }> = {
-  support: { label: "Strongest for", cls: "border-emerald-200 bg-emerald-50 text-emerald-800" },
-  oppose: { label: "Strongest against", cls: "border-red-200 bg-red-50 text-red-800" },
-  conditional: { label: "Strongest condition", cls: "border-amber-200 bg-amber-50 text-amber-800" },
+  support: { label: "Strongest for", cls: "border-green-ink/25 bg-green-ink/10 text-green-ink" },
+  oppose: { label: "Strongest against", cls: "border-accent/25 bg-accent/10 text-accent" },
+  conditional: { label: "Strongest condition", cls: "border-amber/60 bg-amber/25 text-ink" },
 };
 
 function HighlightCard({
@@ -58,16 +58,16 @@ function HighlightCard({
     <button
       type="button"
       onClick={() => focusComment(c.id)}
-      className="block w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-left transition-colors hover:border-indigo-300 hover:bg-indigo-50/40"
+      className="block w-full border border-rule bg-card px-3 py-2 text-left transition-colors hover:border-accent hover:bg-paper-2"
     >
       <div className="mb-1 flex items-center justify-between gap-2">
         <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${badgeCls}`}>
           {badge}
         </span>
-        {trailing && <span className="shrink-0 text-[10px] tabular-nums text-gray-400">{trailing}</span>}
+        {trailing && <span className="shrink-0 text-[10px] tabular-nums text-ink-soft/60">{trailing}</span>}
       </div>
-      <p className="text-xs leading-relaxed text-gray-800">{c.snippet}</p>
-      <div className="mt-1 text-[10px] text-gray-400">{c.author_name}</div>
+      <p className="text-xs leading-relaxed text-ink">{c.snippet}</p>
+      <div className="mt-1 text-[10px] text-ink-soft/60">{c.author_name}</div>
     </button>
   );
 }
@@ -101,12 +101,12 @@ export function CommentHighlightsStrip({ entityType, entityId, lens = "all" }: C
   if (common.length === 0 && steelEntries.length === 0) return null;
 
   return (
-    <section className="mb-5 rounded-xl border border-gray-200 bg-gray-50/60 p-4">
-      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Highlights</h3>
+    <section className="mb-5 border border-rule bg-paper-2 p-4">
+      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-soft">Highlights</h3>
 
       {common.length > 0 && (
         <div className="mb-3">
-          <p className="mb-1.5 text-[11px] font-medium text-indigo-700">
+          <p className="mb-1.5 text-[11px] font-medium text-civic-blue">
             Common ground — valued across the divide
           </p>
           <div className="grid gap-2 sm:grid-cols-3">
@@ -115,7 +115,7 @@ export function CommentHighlightsStrip({ entityType, entityId, lens = "all" }: C
                 key={c.id}
                 c={c}
                 badge="Bridges divides"
-                badgeCls="border-indigo-200 bg-indigo-50 text-indigo-700"
+                badgeCls="border-civic-blue/25 bg-civic-blue/10 text-civic-blue"
                 trailing={c.bridge_score != null ? `bridge ${c.bridge_score.toFixed(2)}` : undefined}
               />
             ))}
@@ -125,7 +125,7 @@ export function CommentHighlightsStrip({ entityType, entityId, lens = "all" }: C
 
       {steelEntries.length > 0 && (
         <div>
-          <p className="mb-1.5 text-[11px] font-medium text-gray-600">Strongest from each side</p>
+          <p className="mb-1.5 text-[11px] font-medium text-ink-soft">Strongest from each side</p>
           <div className="grid gap-2 sm:grid-cols-3">
             {(["support", "oppose", "conditional"] as const).map((k) => {
               const c = steel[k];

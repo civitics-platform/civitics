@@ -92,7 +92,7 @@ function FlagMenu({ questionId, signInNext }: { questionId: string; signInNext: 
   const [reason, setReason] = useState("spam");
   const [busy, setBusy] = useState(false);
 
-  if (done) return <span className="text-[10px] text-gray-400">Flagged · thanks</span>;
+  if (done) return <span className="text-[10px] text-ink-soft/60">Flagged · thanks</span>;
 
   async function submit() {
     if (busy) return;
@@ -118,17 +118,17 @@ function FlagMenu({ questionId, signInNext }: { questionId: string; signInNext: 
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="text-[10px] text-gray-300 hover:text-red-600"
+        className="text-[10px] text-ink-soft/50 hover:text-accent"
         aria-label="Flag question"
       >
         ⚑ Flag
       </button>
       {open && (
-        <div className="absolute right-0 top-5 z-20 w-52 rounded-lg border border-gray-200 bg-white p-3 shadow-lg">
+        <div className="absolute right-0 top-5 z-20 w-52 border border-rule bg-card p-3 shadow-lg">
           <select
             value={reason}
             onChange={(e) => setReason(e.target.value)}
-            className="w-full rounded border border-gray-300 bg-white px-2 py-1 text-xs"
+            className="w-full border border-rule bg-card px-2 py-1 text-xs text-ink"
             aria-label="Flag reason"
           >
             {FLAG_REASONS.map((r) => (
@@ -136,10 +136,10 @@ function FlagMenu({ questionId, signInNext }: { questionId: string; signInNext: 
             ))}
           </select>
           <div className="mt-2 flex justify-end gap-2">
-            <button type="button" onClick={() => setOpen(false)} className="rounded border border-gray-200 px-2 py-1 text-[11px] text-gray-600 hover:bg-gray-50">
+            <button type="button" onClick={() => setOpen(false)} className="border border-rule px-2 py-1 text-[11px] text-ink-soft hover:bg-paper-2">
               Cancel
             </button>
-            <button type="button" onClick={submit} disabled={busy} className="rounded bg-red-600 px-2 py-1 text-[11px] font-medium text-white hover:bg-red-700 disabled:opacity-50">
+            <button type="button" onClick={submit} disabled={busy} className="bg-accent px-2 py-1 text-[11px] font-medium text-paper hover:bg-accent/90 disabled:opacity-50">
               {busy ? "…" : "Submit"}
             </button>
           </div>
@@ -201,7 +201,7 @@ function AskComposer({
       <button
         type="button"
         onClick={() => { setOpen(true); setDone(false); }}
-        className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700"
+        className="bg-ink px-3 py-1.5 text-xs font-semibold text-paper hover:bg-accent transition-colors"
       >
         {done ? "Ask another question" : "Ask a question"}
       </button>
@@ -209,8 +209,8 @@ function AskComposer({
   }
 
   return (
-    <form onSubmit={submit} className="rounded-lg border border-gray-200 bg-white p-3">
-      <label className="mb-1 block text-xs font-medium text-gray-600">
+    <form onSubmit={submit} className="border border-rule bg-card p-3">
+      <label className="mb-1 block text-xs font-medium text-ink-soft">
         Ask {`a public question`} — it stays on the record whether or not it&apos;s answered.
       </label>
       <textarea
@@ -219,26 +219,26 @@ function AskComposer({
         onChange={(e) => setBody(e.target.value.slice(0, BODY_MAX))}
         maxLength={BODY_MAX}
         placeholder="e.g. Will you support the transit funding bill this session?"
-        className="block w-full resize-none rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-indigo-400 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-400"
+        className="block w-full resize-none border border-rule bg-paper-2 px-3 py-2 text-sm text-ink placeholder:text-ink-soft/50 focus:border-ink focus:bg-card focus:outline-none focus:ring-1 focus:ring-ink"
       />
       <div className="mt-1 flex items-center justify-between">
-        <span className={`text-xs tabular-nums ${body.length > BODY_MAX - 100 ? "text-amber-500" : "text-gray-400"}`}>
+        <span className={`text-xs tabular-nums ${body.length > BODY_MAX - 100 ? "text-accent" : "text-ink-soft/60"}`}>
           {body.length}/{BODY_MAX}
         </span>
         <div className="flex gap-2">
-          <button type="button" onClick={() => setOpen(false)} className="rounded-lg border border-gray-200 px-3 py-1 text-xs text-gray-500 hover:bg-gray-50">
+          <button type="button" onClick={() => setOpen(false)} className="border border-rule px-3 py-1 text-xs text-ink-soft hover:bg-paper-2">
             Cancel
           </button>
           <button
             type="submit"
             disabled={busy || body.trim().length < BODY_MIN}
-            className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
+            className="bg-ink px-3 py-1.5 text-xs font-semibold text-paper hover:bg-accent disabled:opacity-50 transition-colors"
           >
             {busy ? "Posting…" : "Post question"}
           </button>
         </div>
       </div>
-      {error && <p className="mt-1 text-xs text-red-500">{error}</p>}
+      {error && <p className="mt-1 text-xs text-accent">{error}</p>}
     </form>
   );
 }
@@ -303,7 +303,7 @@ function AnswerComposer({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="mt-2 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-800 hover:bg-emerald-100"
+        className="mt-2 border border-green-ink/30 bg-green-ink/10 px-3 py-1 text-xs font-semibold text-green-ink hover:bg-green-ink/20"
       >
         Answer as {officialName}
       </button>
@@ -311,8 +311,8 @@ function AnswerComposer({
   }
 
   return (
-    <form onSubmit={submit} className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50/60 p-3">
-      <label className="mb-1 block text-xs font-medium text-emerald-800">
+    <form onSubmit={submit} className="mt-2 border border-green-ink/25 bg-green-ink/5 p-3">
+      <label className="mb-1 block text-xs font-medium text-green-ink">
         Official response — posted on the record as {officialName}
       </label>
       <textarea
@@ -320,21 +320,21 @@ function AnswerComposer({
         value={body}
         onChange={(e) => setBody(e.target.value.slice(0, BODY_MAX))}
         maxLength={BODY_MAX}
-        className="block w-full resize-none rounded-lg border border-emerald-200 bg-white px-3 py-2 text-sm text-gray-900 focus:border-emerald-400 focus:outline-none focus:ring-1 focus:ring-emerald-400"
+        className="block w-full resize-none border border-green-ink/25 bg-card px-3 py-2 text-sm text-ink focus:border-green-ink focus:outline-none focus:ring-1 focus:ring-green-ink"
       />
       <div className="mt-1 flex items-center justify-end gap-2">
-        <button type="button" onClick={() => setOpen(false)} className="rounded-lg border border-gray-200 px-3 py-1 text-xs text-gray-500 hover:bg-gray-50">
+        <button type="button" onClick={() => setOpen(false)} className="border border-rule px-3 py-1 text-xs text-ink-soft hover:bg-paper-2">
           Cancel
         </button>
         <button
           type="submit"
           disabled={busy || body.trim().length < BODY_MIN}
-          className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+          className="bg-green-ink px-3 py-1.5 text-xs font-semibold text-paper hover:bg-green-ink/90 disabled:opacity-50"
         >
           {busy ? "Posting…" : "Post answer"}
         </button>
       </div>
-      {error && <p className="mt-1 text-xs text-red-500">{error}</p>}
+      {error && <p className="mt-1 text-xs text-accent">{error}</p>}
     </form>
   );
 }
@@ -381,30 +381,30 @@ function QuestionCard({
   }
 
   return (
-    <li className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+    <li className="border border-rule bg-card p-4">
       <div className="mb-1 flex flex-wrap items-center gap-1.5">
         {q.answered ? (
-          <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+          <span className="rounded-full border border-green-ink/25 bg-green-ink/10 px-2 py-0.5 text-[10px] font-semibold text-green-ink">
             ✓ Answered
           </span>
         ) : (
-          <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700">
+          <span className="rounded-full border border-amber/60 bg-amber/25 px-2 py-0.5 text-[10px] font-medium text-ink">
             Awaiting response since {formatDate(q.created_at)}
           </span>
         )}
         {q.status === "needs_review" && (
-          <span className="rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 text-[10px] font-medium text-gray-500">
+          <span className="rounded-full border border-rule bg-paper-2 px-2 py-0.5 text-[10px] font-medium text-ink-soft">
             Under review
           </span>
         )}
       </div>
 
-      <p className="text-sm font-medium leading-relaxed text-gray-900">{q.body}</p>
+      <p className="text-sm font-medium leading-relaxed text-ink">{q.body}</p>
 
-      <div className="mt-1.5 flex items-center gap-1.5 text-[11px] text-gray-500">
+      <div className="mt-1.5 flex items-center gap-1.5 text-[11px] text-ink-soft">
         <span>Asked by {q.asker_name}</span>
         {q.is_constituent && (
-          <span className="rounded-full border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-700" title="Asked by a verified constituent">
+          <span className="rounded-full border border-civic-blue/25 bg-civic-blue/10 px-1.5 py-0.5 text-[10px] font-medium text-civic-blue" title="Asked by a verified constituent">
             ✓ Constituent
           </span>
         )}
@@ -414,15 +414,15 @@ function QuestionCard({
       {q.answers.length > 0 && (
         <div className="mt-3 space-y-2">
           {q.answers.map((a) => (
-            <div key={a.id} className="rounded-lg border-l-4 border-emerald-400 bg-emerald-50/50 p-3">
+            <div key={a.id} className="border-l-4 border-green-ink bg-green-ink/5 p-3">
               <div className="mb-1 flex items-center gap-1.5">
-                <span className="rounded-full bg-emerald-600 px-2 py-0.5 text-[10px] font-semibold text-white">
+                <span className="rounded-full bg-green-ink px-2 py-0.5 text-[10px] font-semibold text-paper">
                   Official response
                 </span>
-                <span className="text-[11px] text-emerald-800">{a.author_name}</span>
-                <span className="text-[10px] text-gray-400">· {formatDate(a.created_at)}</span>
+                <span className="text-[11px] text-green-ink">{a.author_name}</span>
+                <span className="text-[10px] text-ink-soft/60">· {formatDate(a.created_at)}</span>
               </div>
-              <p className="whitespace-pre-wrap text-sm leading-relaxed text-gray-800">{a.body}</p>
+              <p className="whitespace-pre-wrap text-sm leading-relaxed text-ink">{a.body}</p>
             </div>
           ))}
         </div>
@@ -436,8 +436,8 @@ function QuestionCard({
           aria-pressed={wanted}
           className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors disabled:opacity-50 ${
             wanted
-              ? "border-indigo-600 bg-indigo-600 text-white"
-              : "border-indigo-200 text-indigo-700 hover:bg-indigo-50"
+              ? "border-ink bg-ink text-paper"
+              : "border-rule text-ink-soft hover:bg-paper-2"
           }`}
         >
           ▲ I want this answered · {wantCount}
@@ -524,12 +524,12 @@ export function QASection({ entityId, officialName, signInNext }: QASectionProps
   const questions = data?.questions ?? [];
 
   return (
-    <section className="rounded-xl border border-gray-200 bg-gray-50/60 p-4">
+    <section className="border border-rule bg-paper-2 p-4">
       <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-sm font-bold text-gray-900">Questions for {officialName}</h3>
+        <h3 className="text-sm font-bold text-ink">Questions for {officialName}</h3>
         <AskComposer entityId={entityId} signInNext={next} onAsked={load} />
       </div>
-      <p className="mb-3 text-xs text-gray-500">
+      <p className="mb-3 text-xs text-ink-soft">
         {total > 0
           ? `${total} ${total === 1 ? "question" : "questions"} · ${awaiting} awaiting response`
           : "Ask this official a public question — on the record, answered or not."}
@@ -543,7 +543,7 @@ export function QASection({ entityId, officialName, signInNext }: QASectionProps
               type="button"
               onClick={() => setSort(s.key)}
               className={`rounded-full px-2.5 py-1 text-[11px] font-medium ${
-                sort === s.key ? "bg-gray-800 text-white" : "bg-white text-gray-600 border border-gray-200 hover:bg-gray-100"
+                sort === s.key ? "bg-ink text-paper" : "bg-card text-ink-soft border border-rule hover:bg-paper-2"
               }`}
             >
               {s.label}
@@ -553,12 +553,12 @@ export function QASection({ entityId, officialName, signInNext }: QASectionProps
       )}
 
       {loading ? (
-        <div className="py-6 text-center text-sm text-gray-400">Loading…</div>
+        <div className="py-6 text-center text-sm text-ink-soft/60">Loading…</div>
       ) : error ? (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
+        <div className="border border-accent/25 bg-accent/10 px-4 py-3 text-sm text-accent">{error}</div>
       ) : questions.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-gray-200 bg-white px-4 py-8 text-center text-sm text-gray-400">
-          No questions yet. <span className="text-gray-500">Be the first to ask {officialName} a question.</span>
+        <div className="border border-dashed border-rule bg-card px-4 py-8 text-center text-sm text-ink-soft/60">
+          No questions yet. <span className="text-ink-soft">Be the first to ask {officialName} a question.</span>
         </div>
       ) : (
         <>
@@ -581,7 +581,7 @@ export function QASection({ entityId, officialName, signInNext }: QASectionProps
                 type="button"
                 onClick={() => void loadMore()}
                 disabled={loadingMore}
-                className="rounded-lg border border-gray-200 px-4 py-1.5 text-xs text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                className="border border-rule px-4 py-1.5 text-xs text-ink-soft hover:bg-paper-2 disabled:opacity-50"
               >
                 {loadingMore ? "Loading…" : "Load more questions"}
               </button>

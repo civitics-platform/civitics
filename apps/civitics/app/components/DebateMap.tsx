@@ -42,6 +42,9 @@ const PAD_B = 40;
 const PLOT_W = W - PAD_L - PAD_R;
 const PLOT_H = H - PAD_T - PAD_B;
 
+// Categorical data-viz palette for the scatter dots — retained as-is per
+// FIX-566 decision 4 (the chrome takes the Public Record token pass; the
+// stance-dot palette is data-viz and stays). Re-coloring lives with FIX-567.
 const STANCE_FILL: Record<string, string> = {
   support: "#10b981", // emerald-500
   oppose: "#ef4444", // red-500
@@ -93,23 +96,23 @@ export function DebateMap({ entityType, entityId, lens }: DebateMapProps) {
 
   if (loading) {
     return (
-      <div className="rounded-xl border border-gray-200 bg-white p-6 text-center text-sm text-gray-400 shadow-sm">
+      <div className="border border-rule bg-card p-6 text-center text-sm text-ink-soft/60">
         Loading the debate map…
       </div>
     );
   }
   if (error) {
     return (
-      <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+      <div className="border border-accent/25 bg-accent/10 px-4 py-3 text-sm text-accent">
         {error}
       </div>
     );
   }
   if (points.length === 0) {
     return (
-      <div className="rounded-xl border border-dashed border-gray-200 bg-white px-4 py-10 text-center text-sm text-gray-400 shadow-sm">
+      <div className="border border-dashed border-rule bg-card px-4 py-10 text-center text-sm text-ink-soft/60">
         The map appears once comments have enough ratings.
-        <div className="mt-1 text-xs text-gray-400">
+        <div className="mt-1 text-xs text-ink-soft/60">
           A comment is plotted after at least 5 ratings with both sides weighing in.
         </div>
       </div>
@@ -123,7 +126,7 @@ export function DebateMap({ entityType, entityId, lens }: DebateMapProps) {
     `valued by both sides (top). The same comments are listed below.`;
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
+    <div className="border border-rule bg-card p-3">
       <div className="relative">
         <svg
           viewBox={`0 0 ${W} ${H}`}
@@ -135,37 +138,37 @@ export function DebateMap({ entityType, entityId, lens }: DebateMapProps) {
           <title>{summary}</title>
 
           {/* Plot frame */}
-          <rect x={PAD_L} y={PAD_T} width={PLOT_W} height={PLOT_H} fill="#fafafa" stroke="#e5e7eb" />
+          <rect x={PAD_L} y={PAD_T} width={PLOT_W} height={PLOT_H} className="fill-paper-2 stroke-rule" />
           {/* Center vertical (map_x = 0) */}
-          <line x1={px(0)} y1={PAD_T} x2={px(0)} y2={PAD_T + PLOT_H} stroke="#e5e7eb" strokeDasharray="3 3" />
+          <line x1={px(0)} y1={PAD_T} x2={px(0)} y2={PAD_T + PLOT_H} className="stroke-rule" strokeDasharray="3 3" />
           {/* High-bridge band (map_y >= 0.6) */}
           <line
             x1={PAD_L}
             y1={py(0.6)}
             x2={PAD_L + PLOT_W}
             y2={py(0.6)}
-            stroke="#c7d2fe"
+            className="stroke-civic-blue/40"
             strokeDasharray="2 4"
           />
 
           {/* Zone labels */}
-          <text x={W / 2} y={PAD_T - 9} textAnchor="middle" className="fill-indigo-500" fontSize="9" fontWeight="600">
+          <text x={W / 2} y={PAD_T - 9} textAnchor="middle" className="fill-civic-blue" fontSize="9" fontWeight="600">
             Common ground
           </text>
-          <text x={PAD_L + 4} y={PAD_T + PLOT_H + 14} textAnchor="start" className="fill-red-500" fontSize="8">
+          <text x={PAD_L + 4} y={PAD_T + PLOT_H + 14} textAnchor="start" className="fill-accent" fontSize="8">
             ◄ Opposers’ rallying cry
           </text>
-          <text x={PAD_L + PLOT_W - 4} y={PAD_T + PLOT_H + 14} textAnchor="end" className="fill-emerald-600" fontSize="8">
+          <text x={PAD_L + PLOT_W - 4} y={PAD_T + PLOT_H + 14} textAnchor="end" className="fill-green-ink" fontSize="8">
             Supporters’ rallying cry ►
           </text>
-          <text x={W / 2} y={PAD_T + PLOT_H + 26} textAnchor="middle" className="fill-gray-400" fontSize="8">
+          <text x={W / 2} y={PAD_T + PLOT_H + 26} textAnchor="middle" className="fill-ink-soft/60" fontSize="8">
             ← opposers · supporters →
           </text>
           {/* y-axis hints */}
-          <text x={10} y={py(0.97)} className="fill-gray-400" fontSize="8" transform={`rotate(-90 10 ${py(0.97)})`} textAnchor="start">
+          <text x={10} y={py(0.97)} className="fill-ink-soft/60" fontSize="8" transform={`rotate(-90 10 ${py(0.97)})`} textAnchor="start">
             cross-stance ↑
           </text>
-          <text x={10} y={py(0.03)} className="fill-gray-400" fontSize="8" transform={`rotate(-90 10 ${py(0.03)})`} textAnchor="end">
+          <text x={10} y={py(0.03)} className="fill-ink-soft/60" fontSize="8" transform={`rotate(-90 10 ${py(0.03)})`} textAnchor="end">
             one-sided ↓
           </text>
 
@@ -190,24 +193,25 @@ export function DebateMap({ entityType, entityId, lens }: DebateMapProps) {
         </svg>
 
         {hover && (
-          <div className="pointer-events-none absolute left-2 top-2 max-w-[70%] rounded-md border border-gray-200 bg-white/95 px-2 py-1 text-[11px] text-gray-700 shadow">
+          <div className="pointer-events-none absolute left-2 top-2 max-w-[70%] border border-rule bg-card/95 px-2 py-1 text-[11px] text-ink-soft shadow">
             <span className="font-medium capitalize">{hover.stance ?? "discussion"}</span>
             {" · "}
-            <span className="tabular-nums text-gray-400">bridge {hover.bridge_score.toFixed(2)}</span>
-            <div className="mt-0.5 text-gray-600">{hover.snippet}</div>
+            <span className="tabular-nums text-ink-soft/60">bridge {hover.bridge_score.toFixed(2)}</span>
+            <div className="mt-0.5 text-ink-soft">{hover.snippet}</div>
           </div>
         )}
       </div>
 
       {/* Legend */}
-      <div className="mt-2 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[10px] text-gray-500">
+      <div className="mt-2 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[10px] text-ink-soft">
         {(["support", "oppose", "conditional", "neutral"] as const).map((s) => (
           <span key={s} className="flex items-center gap-1">
+            {/* swatch references the retained data-viz palette (decision 4) */}
             <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: STANCE_FILL[s] }} />
             <span className="capitalize">{s}</span>
           </span>
         ))}
-        <span className="text-gray-400">· dot size = rating volume · click a dot to read it</span>
+        <span className="text-ink-soft/60">· dot size = rating volume · click a dot to read it</span>
       </div>
     </div>
   );

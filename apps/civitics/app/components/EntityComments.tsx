@@ -83,20 +83,24 @@ export interface EntityCommentsProps {
 
 // ─── Presentation config (badge colors are presentation → kept in the UI) ─────
 
+// Public Record token map (FIX-566). The constrained semantic palette has no
+// categorical hue per kind, so stance-bearing kinds take their semantic token
+// (support→green-ink, oppose→accent, concern/tradeoff→amber, question/amendment
+// →civic-blue) and the remainder fall to neutral ink. No purple/violet.
 const KIND_BADGE: Record<string, string> = {
-  discussion: "bg-gray-50 text-gray-600 border-gray-200",
-  support: "bg-emerald-100 text-emerald-800 border-emerald-200",
-  oppose: "bg-red-100 text-red-800 border-red-200",
-  concern: "bg-amber-100 text-amber-800 border-amber-200",
-  amendment: "bg-indigo-100 text-indigo-800 border-indigo-200",
-  question: "bg-gray-100 text-gray-700 border-gray-200",
-  evidence: "bg-slate-100 text-slate-800 border-slate-200",
-  precedent: "bg-stone-100 text-stone-800 border-stone-200",
-  tradeoff: "bg-pink-100 text-pink-800 border-pink-200",
-  stakeholder_impact: "bg-teal-100 text-teal-800 border-teal-200",
-  experience: "bg-sky-100 text-sky-800 border-sky-200",
-  cause: "bg-orange-100 text-orange-800 border-orange-200",
-  solution: "bg-violet-100 text-violet-800 border-violet-200",
+  discussion: "bg-ink/5 text-ink-soft border-rule",
+  support: "bg-green-ink/10 text-green-ink border-green-ink/25",
+  oppose: "bg-accent/10 text-accent border-accent/25",
+  concern: "bg-amber/25 text-ink border-amber/60",
+  amendment: "bg-civic-blue/10 text-civic-blue border-civic-blue/25",
+  question: "bg-civic-blue/10 text-civic-blue border-civic-blue/25",
+  evidence: "bg-ink/5 text-ink-soft border-rule",
+  precedent: "bg-ink/5 text-ink-soft border-rule",
+  tradeoff: "bg-amber/20 text-ink border-amber/50",
+  stakeholder_impact: "bg-ink/10 text-ink border-rule",
+  experience: "bg-ink/5 text-ink-soft border-rule",
+  cause: "bg-ink/5 text-ink-soft border-rule",
+  solution: "bg-green-ink/10 text-green-ink border-green-ink/25",
 };
 
 const STANCE_LABEL: Record<string, string> = {
@@ -125,7 +129,7 @@ function formatRelTime(iso: string): string {
 }
 
 function badgeClass(kind: string): string {
-  return KIND_BADGE[kind] ?? "bg-gray-100 text-gray-700 border-gray-200";
+  return KIND_BADGE[kind] ?? "bg-ink/5 text-ink-soft border-rule";
 }
 
 function redirectToSignIn(next: string) {
@@ -192,17 +196,17 @@ function RatingControls({
           type="button"
           onClick={() => toggle("agree", 1)}
           disabled={busy}
-          className={`rounded px-1 ${myAgree === 1 ? "bg-emerald-100 text-emerald-700" : "text-gray-400 hover:text-emerald-600"}`}
+          className={`px-1 ${myAgree === 1 ? "bg-green-ink/10 text-green-ink" : "text-ink-soft/60 hover:text-green-ink"}`}
           aria-label="Agree"
         >
           ▲
         </button>
-        <span className="tabular-nums text-gray-500">{agreeNet}</span>
+        <span className="tabular-nums text-ink-soft">{agreeNet}</span>
         <button
           type="button"
           onClick={() => toggle("agree", -1)}
           disabled={busy}
-          className={`rounded px-1 ${myAgree === -1 ? "bg-red-100 text-red-700" : "text-gray-400 hover:text-red-600"}`}
+          className={`px-1 ${myAgree === -1 ? "bg-accent/10 text-accent" : "text-ink-soft/60 hover:text-accent"}`}
           aria-label="Disagree"
         >
           ▼
@@ -212,7 +216,7 @@ function RatingControls({
         type="button"
         onClick={() => toggle("valuable", 1)}
         disabled={busy}
-        className={`flex items-center gap-1 rounded px-1.5 py-0.5 ${myValuable === 1 ? "bg-indigo-100 text-indigo-700" : "text-gray-400 hover:text-indigo-600"}`}
+        className={`flex items-center gap-1 px-1.5 py-0.5 ${myValuable === 1 ? "bg-civic-blue/10 text-civic-blue" : "text-ink-soft/60 hover:text-civic-blue"}`}
         title="Valuable to the discussion (even if you disagree)"
       >
         ★ <span className="tabular-nums">{valuableNet}</span>
@@ -230,7 +234,7 @@ function FlagMenu({ commentId, signInNext }: { commentId: string; signInNext: st
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
 
-  if (done) return <span className="text-[10px] text-gray-400">Flagged · thanks</span>;
+  if (done) return <span className="text-[10px] text-ink-soft/60">Flagged · thanks</span>;
 
   async function submit() {
     if (busy) return;
@@ -259,17 +263,17 @@ function FlagMenu({ commentId, signInNext }: { commentId: string; signInNext: st
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="text-[10px] text-gray-300 hover:text-red-600"
+        className="text-[10px] text-ink-soft/50 hover:text-accent"
         aria-label="Flag comment"
       >
         ⚑ Flag
       </button>
       {open && (
-        <div className="absolute right-0 top-5 z-20 w-60 rounded-lg border border-gray-200 bg-white p-3 shadow-lg">
+        <div className="absolute right-0 top-5 z-20 w-60 border border-rule bg-card p-3 shadow-lg">
           <select
             value={reason}
             onChange={(e) => setReason(e.target.value)}
-            className="w-full rounded border border-gray-300 bg-white px-2 py-1 text-xs"
+            className="w-full border border-rule bg-card px-2 py-1 text-xs text-ink"
           >
             {FLAG_REASON_OPTIONS.map((r) => (
               <option key={r.value} value={r.value}>{r.label}</option>
@@ -281,13 +285,13 @@ function FlagMenu({ commentId, signInNext }: { commentId: string; signInNext: st
             rows={2}
             maxLength={500}
             placeholder="Add context (optional)"
-            className="mt-2 w-full rounded border border-gray-300 bg-white px-2 py-1 text-xs resize-none"
+            className="mt-2 w-full border border-rule bg-card px-2 py-1 text-xs text-ink placeholder:text-ink-soft/50 resize-none"
           />
           <div className="mt-2 flex justify-end gap-2">
-            <button type="button" onClick={() => setOpen(false)} className="rounded border border-gray-200 px-2 py-1 text-[11px] text-gray-600 hover:bg-gray-50">
+            <button type="button" onClick={() => setOpen(false)} className="border border-rule px-2 py-1 text-[11px] text-ink-soft hover:bg-paper-2">
               Cancel
             </button>
-            <button type="button" onClick={submit} disabled={busy} className="rounded bg-red-600 px-2 py-1 text-[11px] font-medium text-white hover:bg-red-700 disabled:opacity-50">
+            <button type="button" onClick={submit} disabled={busy} className="bg-accent px-2 py-1 text-[11px] font-medium text-paper hover:bg-accent/90 disabled:opacity-50">
               {busy ? "…" : "Submit"}
             </button>
           </div>
@@ -370,7 +374,7 @@ function Composer({
   }
 
   return (
-    <form onSubmit={submit} className={compact ? "mt-2" : "rounded-xl border border-gray-200 bg-white p-4 shadow-sm"}>
+    <form onSubmit={submit} className={compact ? "mt-2" : "border border-rule bg-card p-4"}>
       {kinds.length > 1 && (
         <div className="mb-2 flex flex-wrap gap-1.5">
           {kinds.map((k) => (
@@ -379,7 +383,7 @@ function Composer({
               type="button"
               onClick={() => setKind(k)}
               className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
-                kind === k ? "border-indigo-400 bg-indigo-50 text-indigo-700" : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
+                kind === k ? "border-ink bg-ink/5 text-ink" : "border-rule bg-card text-ink-soft hover:bg-paper-2"
               }`}
             >
               {kindLabel(k)}
@@ -391,7 +395,7 @@ function Composer({
         <select
           value={stance}
           onChange={(e) => setStance(e.target.value)}
-          className="mb-2 block rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700"
+          className="mb-2 block border border-rule bg-card px-2 py-1 text-xs text-ink-soft"
         >
           <option value="">No stance</option>
           <option value="support">Support</option>
@@ -406,26 +410,26 @@ function Composer({
         onChange={(e) => setBody(e.target.value)}
         maxLength={2000}
         placeholder={parentId ? "Write a reply… (10–2000 characters)" : "Add a comment… (10–2000 characters)"}
-        className="block w-full resize-none rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-indigo-400 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-400"
+        className="block w-full resize-none border border-rule bg-paper-2 px-3 py-2 text-sm text-ink placeholder:text-ink-soft/50 focus:border-ink focus:bg-card focus:outline-none focus:ring-1 focus:ring-ink"
       />
       <div className="mt-1 flex items-center justify-between">
-        <span className={`text-xs tabular-nums ${body.length > 1900 ? "text-red-400" : "text-gray-400"}`}>{body.length}/2000</span>
+        <span className={`text-xs tabular-nums ${body.length > 1900 ? "text-accent" : "text-ink-soft/60"}`}>{body.length}/2000</span>
         <div className="flex gap-2">
           {onCancel && (
-            <button type="button" onClick={onCancel} className="rounded-lg border border-gray-200 px-3 py-1 text-xs text-gray-500 hover:bg-gray-50">
+            <button type="button" onClick={onCancel} className="border border-rule px-3 py-1 text-xs text-ink-soft hover:bg-paper-2">
               Cancel
             </button>
           )}
           <button
             type="submit"
             disabled={saving || body.trim().length < 10}
-            className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
+            className="bg-ink px-3 py-1.5 text-xs font-semibold text-paper hover:bg-accent disabled:opacity-50 transition-colors"
           >
             {saving ? "Posting…" : parentId ? "Reply" : "Post"}
           </button>
         </div>
       </div>
-      {error && <p className="mt-1 text-xs text-red-500">{error}</p>}
+      {error && <p className="mt-1 text-xs text-accent">{error}</p>}
     </form>
   );
 }
@@ -470,8 +474,8 @@ function CommentCard({
     <div
       ref={ref}
       id={commentDomId(comment.id)}
-      className={`scroll-mt-24 rounded-lg border bg-white p-3 shadow-sm transition-shadow ${
-        selected ? "border-indigo-400 ring-2 ring-indigo-300" : depth > 0 ? "border-gray-100" : "border-gray-200"
+      className={`scroll-mt-24 border bg-card p-3 ${
+        selected ? "border-accent ring-2 ring-accent/30" : depth > 0 ? "border-rule/60" : "border-rule"
       }`}
     >
       <div className="mb-1 flex items-center justify-between gap-2">
@@ -480,18 +484,18 @@ function CommentCard({
             {comment.kind_label}
           </span>
           {comment.stance && STANCE_LABEL[comment.stance] && (
-            <span className="inline-block rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 text-[10px] font-medium text-gray-600">
+            <span className="inline-block rounded-full border border-rule bg-paper-2 px-2 py-0.5 text-[10px] font-medium text-ink-soft">
               {STANCE_LABEL[comment.stance]}
             </span>
           )}
           {comment.is_constituent && (
-            <span className="inline-block rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-700" title="Verified constituent at post time">
+            <span className="inline-block rounded-full border border-civic-blue/25 bg-civic-blue/10 px-2 py-0.5 text-[10px] font-medium text-civic-blue" title="Verified constituent at post time">
               ✓ Constituent
             </span>
           )}
           {comment.rating_summary.deltas > 0 && (
             <span
-              className="inline-block rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[10px] font-medium text-violet-700"
+              className="inline-block rounded-full border border-ink/40 bg-ink/5 px-2 py-0.5 text-[10px] font-medium text-ink"
               title="Readers changed their position and credited this comment"
             >
               ↺ changed {comment.rating_summary.deltas} {comment.rating_summary.deltas === 1 ? "mind" : "minds"}
@@ -499,32 +503,32 @@ function CommentCard({
           )}
           {bridges && (
             <span
-              className="inline-block rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-medium text-indigo-700"
+              className="inline-block rounded-full border border-civic-blue/25 bg-civic-blue/10 px-2 py-0.5 text-[10px] font-medium text-civic-blue"
               title="Valued by people on both sides of this debate"
             >
               ⇄ bridges divides
             </span>
           )}
         </div>
-        <span className="shrink-0 text-xs text-gray-300">{formatRelTime(comment.created_at)}</span>
+        <span className="shrink-0 text-xs text-ink-soft/50">{formatRelTime(comment.created_at)}</span>
       </div>
 
-      <div className="mb-1 text-xs font-medium text-gray-500">{comment.author_name}</div>
+      <div className="mb-1 text-xs font-medium text-ink-soft">{comment.author_name}</div>
 
       {collapsed ? (
         <details className="text-sm">
-          <summary className="cursor-pointer text-xs text-amber-600">This comment was flagged and is under review — show anyway</summary>
-          <p className="mt-1 whitespace-pre-wrap leading-relaxed text-gray-800">{comment.body}</p>
+          <summary className="cursor-pointer text-xs text-ink-soft hover:text-accent">This comment was flagged and is under review — show anyway</summary>
+          <p className="mt-1 whitespace-pre-wrap leading-relaxed text-ink">{comment.body}</p>
         </details>
       ) : (
-        <p className="whitespace-pre-wrap text-sm leading-relaxed text-gray-800">{comment.body}</p>
+        <p className="whitespace-pre-wrap text-sm leading-relaxed text-ink">{comment.body}</p>
       )}
 
       <div className="mt-2 flex items-center justify-between gap-2">
         <div className="flex items-center gap-3">
           <RatingControls comment={comment} signInNext={signInNext} />
           {depth < MAX_THREAD_DEPTH && (
-            <button onClick={() => setShowReply((v) => !v)} className="text-xs text-gray-400 hover:text-gray-600">
+            <button onClick={() => setShowReply((v) => !v)} className="text-xs text-ink-soft/60 hover:text-ink">
               Reply
             </button>
           )}
@@ -550,7 +554,7 @@ function CommentCard({
       )}
 
       {comment.replies.length > 0 && (
-        <div className="mt-3 space-y-2 border-l-2 border-gray-100 pl-3">
+        <div className="mt-3 space-y-2 border-l-2 border-rule/60 pl-3">
           {comment.replies.map((r) => (
             <CommentCard
               key={r.id}
@@ -750,11 +754,11 @@ export function EntityComments({
           className="flex items-center gap-2 text-left"
           aria-expanded={open}
         >
-          <h2 className="text-base font-bold text-gray-900">{heading}</h2>
-          <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-semibold text-gray-600">
+          <h2 className="text-base font-bold text-ink">{heading}</h2>
+          <span className="rounded-full bg-paper-2 px-2 py-0.5 text-xs font-semibold text-ink-soft tabular-nums">
             {comments.length}
           </span>
-          {startCollapsed && <span className="text-xs text-gray-400">{open ? "▲" : "▼"}</span>}
+          {startCollapsed && <span className="text-xs text-ink-soft/60">{open ? "▲" : "▼"}</span>}
         </button>
         {open && (
           <div className="flex items-center gap-2 text-xs">
@@ -762,19 +766,19 @@ export function EntityComments({
               <button
                 type="button"
                 onClick={() => setLens((l) => (l === "all" ? "constituents" : "all"))}
-                className={`rounded-full border px-2 py-0.5 ${lens === "constituents" ? "border-blue-300 bg-blue-50 text-blue-700" : "border-gray-200 text-gray-500"}`}
+                className={`rounded-full border px-2 py-0.5 ${lens === "constituents" ? "border-civic-blue/30 bg-civic-blue/10 text-civic-blue" : "border-rule text-ink-soft"}`}
               >
                 {lens === "constituents" ? "Constituents only" : "Everyone"}
               </button>
             )}
             {/* List ⇄ map view switch (list default; map one click away). */}
-            <div className="flex rounded-full border border-gray-200">
+            <div className="flex rounded-full border border-rule">
               {(["list", "map"] as const).map((v) => (
                 <button
                   key={v}
                   type="button"
                   onClick={() => setView(v)}
-                  className={`rounded-full px-2 py-0.5 capitalize ${view === v ? "bg-indigo-600 text-white" : "text-gray-500"}`}
+                  className={`rounded-full px-2 py-0.5 capitalize ${view === v ? "bg-ink text-paper" : "text-ink-soft"}`}
                   aria-pressed={view === v}
                 >
                   {v}
@@ -782,13 +786,13 @@ export function EntityComments({
               ))}
             </div>
             {view === "list" && (
-              <div className="flex rounded-full border border-gray-200">
+              <div className="flex rounded-full border border-rule">
                 {(["bridge", "newest", "top"] as const).map((s) => (
                   <button
                     key={s}
                     type="button"
                     onClick={() => setSort(s)}
-                    className={`rounded-full px-2 py-0.5 capitalize ${sort === s ? "bg-gray-900 text-white" : "text-gray-500"}`}
+                    className={`rounded-full px-2 py-0.5 capitalize ${sort === s ? "bg-ink text-paper" : "text-ink-soft"}`}
                   >
                     {s}
                   </button>
@@ -804,7 +808,7 @@ export function EntityComments({
           behind an expander below. New comments are never blocked or queued. */}
       {open && statementsEnabled && slowMode && (
         <>
-          <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <div className="mb-4 border border-amber/60 bg-amber/25 px-4 py-3 text-sm text-ink">
             <span className="font-semibold">High activity right now.</span>{" "}
             Weigh in on the key questions below — a quick agree/disagree take helps more than a long thread when a page is moving fast.
           </div>
@@ -821,7 +825,7 @@ export function EntityComments({
         </>
       )}
 
-      {subheading && open && <p className="mb-3 text-xs text-gray-500">{subheading}</p>}
+      {subheading && open && <p className="mb-3 text-xs text-ink-soft">{subheading}</p>}
 
       {!open ? null : view === "map" ? (
         <DebateMap entityType={entityType} entityId={entityId} lens={lens} />
@@ -830,8 +834,8 @@ export function EntityComments({
           {composerEnabled && (
             slowMode ? (
               // Composer collapses behind an expander during slow mode (decision 6).
-              <details className="mb-5 rounded-lg border border-gray-200 bg-white">
-                <summary className="cursor-pointer px-4 py-2 text-xs font-medium text-gray-600 hover:text-gray-900">
+              <details className="mb-5 border border-rule bg-card">
+                <summary className="cursor-pointer px-4 py-2 text-xs font-medium text-ink-soft hover:text-ink">
                   Write a full comment
                 </summary>
                 <div className="px-4 pb-4">
@@ -864,7 +868,7 @@ export function EntityComments({
             <div className="mb-3 space-y-3">
               {pinned.map((c) => (
                 <div key={c.id}>
-                  <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-gray-400">
+                  <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-ink-soft/60">
                     ↪ Jumped to comment
                   </p>
                   <CommentCard comment={c} {...cardProps} />
@@ -874,32 +878,32 @@ export function EntityComments({
           )}
 
           {loading && comments.length === 0 ? (
-            <div className="py-8 text-center text-sm text-gray-400">Loading comments…</div>
+            <div className="py-8 text-center text-sm text-ink-soft/60">Loading comments…</div>
           ) : error ? (
-            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
+            <div className="border border-accent/25 bg-accent/10 px-4 py-3 text-sm text-accent">{error}</div>
           ) : comments.length === 0 && pinned.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-gray-200 px-4 py-8 text-center text-sm text-gray-400">
-              No comments yet. <span className="text-gray-500">Be the first.</span>
+            <div className="border border-dashed border-rule px-4 py-8 text-center text-sm text-ink-soft/60">
+              No comments yet. <span className="text-ink-soft">Be the first.</span>
             </div>
           ) : grouped ? (
             <div className="grid gap-4 md:grid-cols-2">
               <div>
-                <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-emerald-700">For</h3>
+                <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-green-ink">For</h3>
                 <div className="space-y-2">
                   {grouped.support.map((c) => <CommentCard key={c.id} comment={c} {...cardProps} />)}
-                  {grouped.support.length === 0 && <p className="text-xs text-gray-400">None yet.</p>}
+                  {grouped.support.length === 0 && <p className="text-xs text-ink-soft/60">None yet.</p>}
                 </div>
               </div>
               <div>
-                <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-red-700">Against</h3>
+                <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-accent">Against</h3>
                 <div className="space-y-2">
                   {grouped.oppose.map((c) => <CommentCard key={c.id} comment={c} {...cardProps} />)}
-                  {grouped.oppose.length === 0 && <p className="text-xs text-gray-400">None yet.</p>}
+                  {grouped.oppose.length === 0 && <p className="text-xs text-ink-soft/60">None yet.</p>}
                 </div>
               </div>
               {grouped.other.length > 0 && (
                 <div className="md:col-span-2">
-                  <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Discussion</h3>
+                  <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-soft">Discussion</h3>
                   <div className="space-y-2">
                     {grouped.other.map((c) => <CommentCard key={c.id} comment={c} {...cardProps} />)}
                   </div>
@@ -919,7 +923,7 @@ export function EntityComments({
                 type="button"
                 onClick={() => void load(false, nextCursor)}
                 disabled={loading}
-                className="rounded-lg border border-gray-200 px-4 py-1.5 text-xs text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                className="border border-rule px-4 py-1.5 text-xs text-ink-soft hover:bg-paper-2 disabled:opacity-50"
               >
                 {loading ? "Loading…" : "Load more"}
               </button>

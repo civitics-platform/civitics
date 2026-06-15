@@ -129,16 +129,16 @@ function CommentPanelInner({
   if (submitted) {
     const displayHref = fallbackUrl ?? submitHref;
     return (
-      <div className="mt-6 rounded-xl border border-emerald-200 bg-emerald-50 p-6">
-        <p className="text-center text-lg font-semibold text-emerald-800">
+      <div className="mt-6 border border-green-ink/25 bg-green-ink/10 p-6">
+        <p className="text-center text-lg font-semibold text-green-ink">
           ✓ Thanks for participating in democracy.
         </p>
         {confirmNum ? (
-          <p className="mt-1 text-center text-sm text-emerald-700">
+          <p className="mt-1 text-center text-sm text-green-ink">
             Confirmation #: <span className="font-mono font-medium">{confirmNum}</span>
           </p>
         ) : (
-          <p className="mt-1 text-center text-sm text-emerald-700">
+          <p className="mt-1 text-center text-sm text-green-ink">
             Your comment is ready — paste it into the form at regulations.gov to submit officially.
           </p>
         )}
@@ -146,7 +146,7 @@ function CommentPanelInner({
           <button
             type="button"
             onClick={() => { navigator.clipboard?.writeText(text).catch(() => {}); }}
-            className="rounded-md border border-emerald-300 bg-white px-4 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50 transition-colors"
+            className="border border-green-ink/30 bg-card px-4 py-2 text-sm font-medium text-green-ink hover:bg-green-ink/10 transition-colors"
           >
             Copy comment
           </button>
@@ -155,7 +155,7 @@ function CommentPanelInner({
               href={displayHref}
               target="_blank"
               rel="noopener noreferrer"
-              className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 transition-colors"
+              className="bg-ink px-4 py-2 text-sm font-medium text-paper hover:bg-accent transition-colors"
             >
               Open regulations.gov →
             </a>
@@ -164,7 +164,7 @@ function CommentPanelInner({
         <button
           type="button"
           onClick={() => setSubmitted(false)}
-          className="mt-4 block w-full text-center text-xs text-emerald-600 hover:underline"
+          className="mt-4 block w-full text-center text-xs text-green-ink hover:underline"
         >
           Edit my comment
         </button>
@@ -174,20 +174,20 @@ function CommentPanelInner({
 
   // ── Draft state ──────────────────────────────────────────────────────────
   return (
-    <div className="mt-6 rounded-xl border border-blue-200 bg-white p-5 shadow-sm">
+    <div className="mt-6 border border-civic-blue/20 bg-card p-5">
       {/* Header */}
       <div className="mb-4 flex items-start justify-between gap-3">
         <div>
-          <h3 className="text-sm font-bold text-gray-900">Submit an official comment</h3>
-          <p className="mt-0.5 text-xs text-gray-500">
+          <h3 className="text-sm font-bold text-ink">Submit an official comment</h3>
+          <p className="mt-0.5 text-xs text-ink-soft">
             Your initiative can trigger a formal public comment to the responsible agency — free, always.
           </p>
         </div>
         {daysLeft !== null && (
           <span className={`flex-shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${
             daysLeft <= 7
-              ? "bg-red-100 text-red-700"
-              : "bg-amber-100 text-amber-700"
+              ? "bg-accent/10 text-accent"
+              : "bg-amber/25 text-ink"
           }`}>
             {daysLeft}d left
           </span>
@@ -197,7 +197,7 @@ function CommentPanelInner({
       {/* Proposal selector (shown when multiple eligible) */}
       {proposals.length > 1 && (
         <div className="mb-4">
-          <label className="mb-1 block text-xs font-semibold text-gray-500 uppercase tracking-wide">
+          <label className="mb-1 block text-xs font-semibold text-ink-soft uppercase tracking-wide">
             Comment on which proposal?
           </label>
           <div className="space-y-1">
@@ -206,15 +206,15 @@ function CommentPanelInner({
                 key={p.id}
                 type="button"
                 onClick={() => setSelectedIdx(i)}
-                className={`w-full rounded-lg border px-3 py-2 text-left text-xs transition-colors ${
+                className={`w-full border px-3 py-2 text-left text-xs transition-colors ${
                   i === selectedIdx
-                    ? "border-indigo-300 bg-indigo-50 text-indigo-800 font-semibold"
-                    : "border-gray-200 bg-white text-gray-600 hover:border-gray-300"
+                    ? "border-ink bg-ink/5 text-ink font-semibold"
+                    : "border-rule bg-card text-ink-soft hover:border-ink"
                 }`}
               >
                 {proposalLabel(p)}
                 {p.comment_period_end && (
-                  <span className="ml-1.5 text-gray-400">
+                  <span className="ml-1.5 text-ink-soft/60">
                     · ends {new Date(p.comment_period_end).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
                   </span>
                 )}
@@ -226,18 +226,18 @@ function CommentPanelInner({
 
       {/* Selected proposal pill */}
       {proposals.length === 1 && (
-        <div className="mb-4 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
-          <p className="text-xs text-gray-500">
+        <div className="mb-4 border border-rule bg-paper-2 px-3 py-2">
+          <p className="text-xs text-ink-soft">
             Related proposal:{" "}
             <a
               href={`/proposals/${selected.id}`}
-              className="font-medium text-indigo-600 hover:underline"
+              className="font-medium text-accent hover:underline"
             >
               {proposalLabel(selected)}
             </a>
           </p>
           {selected.comment_period_end && (
-            <p className="mt-0.5 text-[11px] text-gray-400">
+            <p className="mt-0.5 text-[11px] text-ink-soft/60">
               Comment period closes {new Date(selected.comment_period_end).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
             </p>
           )}
@@ -247,21 +247,21 @@ function CommentPanelInner({
       {/* Step 1: Draft */}
       <div className="space-y-4">
         <div>
-          <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-gray-400">
+          <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-ink-soft/70">
             Step 1 — Draft your comment
           </p>
           <textarea
             value={text}
             onChange={(e) => setText(e.target.value)}
             rows={8}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            className="w-full border border-rule px-3 py-2 text-sm text-ink placeholder:text-ink-soft/50 focus:border-ink focus:outline-none focus:ring-1 focus:ring-ink"
           />
-          <p className="mt-1 text-right text-xs text-gray-400">{text.length} characters</p>
+          <p className="mt-1 text-right text-xs text-ink-soft/60">{text.length} characters</p>
         </div>
 
         {/* Step 2: Details */}
         <div>
-          <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-gray-400">
+          <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-ink-soft/70">
             Step 2 — Your details (optional)
           </p>
           <div className="grid gap-2 sm:grid-cols-2">
@@ -270,35 +270,35 @@ function CommentPanelInner({
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="Name (optional)"
-              className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              className="border border-rule px-3 py-2 text-sm text-ink placeholder:text-ink-soft/50 focus:border-ink focus:outline-none focus:ring-1 focus:ring-ink"
             />
             <input
               type="text"
               value={org}
               onChange={(e) => setOrg(e.target.value)}
               placeholder="Organization (optional)"
-              className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              className="border border-rule px-3 py-2 text-sm text-ink placeholder:text-ink-soft/50 focus:border-ink focus:outline-none focus:ring-1 focus:ring-ink"
             />
           </div>
-          <p className="mt-1.5 text-xs text-gray-400">
+          <p className="mt-1.5 text-xs text-ink-soft/60">
             Anonymous comments are accepted. Your identity is never required.
           </p>
         </div>
 
         {/* Step 3: Submit */}
         <div>
-          <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-gray-400">
+          <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-ink-soft/70">
             Step 3 — Submit
           </p>
           <button
             type="button"
             disabled={!text.trim() || submitting}
             onClick={handleSubmit}
-            className="w-full rounded-md bg-indigo-600 px-4 py-3 text-sm font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-40 transition-colors"
+            className="w-full bg-ink px-4 py-3 text-sm font-semibold text-paper hover:bg-accent disabled:cursor-not-allowed disabled:opacity-40 transition-colors"
           >
             {submitting ? "Submitting…" : "Submit Official Comment →"}
           </button>
-          <p className="mt-2 text-center text-xs text-gray-400">
+          <p className="mt-2 text-center text-xs text-ink-soft/60">
             Submits to regulations.gov · Free, always · No account required
           </p>
         </div>
