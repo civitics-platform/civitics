@@ -990,6 +990,10 @@ export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<Nigh
     "refresh_official_homepage_stats_mv",
     // FIX-330: per-agency proposal counts (replaces FIX-303 RPC on request path)
     "refresh_homepage_agency_counts_mv",
+    // FIX-594: cross-entity Commons "discussion ledger" MV. Runs after the
+    // comment bridge scorer (scoreComments, step 3b-iii above) so it ranks on
+    // fresh bridge_score. Read MV-only by the homepage Commons module (FIX-595).
+    "refresh_commons_active_threads_mv",
     // FIX-233 (part 1): p50/p95/max duration per pipeline over last 30 days
     "refresh_pipeline_runtime_stats_mv",
     // FIX-281: keep platform_usage_snapshot bounded at 30 days
