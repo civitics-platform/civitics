@@ -180,9 +180,77 @@ async function main(): Promise<void> {
 
   try {
     if (dbUrl) {
+      const dsn = dbUrl; // narrowed non-null for the signal-handler closure
       const { Client } = await import("pg");
-      const client = new Client({ connectionString: dbUrl });
+      // FIX-591 — tag the connection so the startup reconcile and signal handler
+      // can find THIS run's backend (and a prior run's orphan) by application_name.
+      const APP_NAME = "entity_connections_rebuild";
+      const client = new Client({ connectionString: dsn, application_name: APP_NAME });
       await client.connect();
+
+      // Our backend pid — the signal handler cancels this exact backend.
+      const pidRes = await client.query<{ pid: number }>("SELECT pg_backend_pid() AS pid");
+      const myPid = pidRes.rows[0]?.pid;
+
+      // FIX-591 — SIGTERM/SIGINT handler. GHA cancellation AND the timeout-minutes
+      // cap both deliver SIGTERM (then SIGKILL after a grace window). Without this,
+      // the node client dies but Postgres keeps running our in-flight DELETE/INSERT
+      // as an ORPHANED backend that hammers prod for up to the session
+      // statement_timeout (observed 1h10m on the 2026-06-14 run), and a SIGKILL
+      // skips the finally so autovacuum is left disabled. On signal we open a
+      // FRESH connection (the main one is busy), pg_cancel_backend our own pid, and
+      // re-enable autovacuum — best-effort within the grace window. The next run's
+      // startup reconcile (below) is the backstop if this can't finish in time.
+      let cleaningUp = false;
+      const onSignal = (sig: string): void => {
+        if (cleaningUp) return;
+        cleaningUp = true;
+        console.error(`  [rebuild] received ${sig} — cancelling in-flight query + re-enabling autovacuum`);
+        void (async () => {
+          try {
+            const { Client: CleanupClient } = await import("pg");
+            const cleanup = new CleanupClient({ connectionString: dsn, application_name: `${APP_NAME}_cleanup` });
+            await cleanup.connect();
+            if (myPid) await cleanup.query("SELECT pg_cancel_backend($1)", [myPid]);
+            await cleanup.query("ALTER TABLE public.entity_connections SET (autovacuum_enabled = true)");
+            await cleanup.end();
+            console.error("  [rebuild] signal cleanup complete");
+          } catch (e) {
+            console.error(`  [rebuild] signal cleanup failed (next run's startup reconcile will recover): ${errMsg(e)}`);
+          } finally {
+            process.exit(1);
+          }
+        })();
+      };
+      process.on("SIGTERM", () => onSignal("SIGTERM"));
+      process.on("SIGINT", () => onSignal("SIGINT"));
+
+      // FIX-591 — startup reconcile: self-heal whatever a prior run left behind
+      // when it was cancelled/timed out/SIGKILLed. The workflow concurrency group
+      // is cancel-in-progress:false, so any OTHER backend carrying our
+      // application_name is a leftover orphan, never a peer run — cancel then
+      // terminate it. Also unconditionally re-enable autovacuum on
+      // entity_connections in case a prior run's finally was skipped. Cheap and
+      // idempotent; makes a clean run recover even after a dirty exit.
+      try {
+        const orphans = await client.query<{ pid: number }>(
+          "SELECT pid FROM pg_stat_activity WHERE application_name = $1 AND pid <> $2 AND state <> 'idle'",
+          [APP_NAME, myPid ?? 0],
+        );
+        if (orphans.rows.length > 0) {
+          console.warn(`  [rebuild] startup reconcile: found ${orphans.rows.length} orphaned backend(s) from a prior run — cancelling`);
+          for (const o of orphans.rows) await client.query("SELECT pg_cancel_backend($1)", [o.pid]);
+          await new Promise((r) => setTimeout(r, 3000));
+          await client.query(
+            "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE application_name = $1 AND pid <> $2 AND state <> 'idle'",
+            [APP_NAME, myPid ?? 0],
+          );
+        }
+        await client.query("ALTER TABLE public.entity_connections SET (autovacuum_enabled = true)");
+      } catch (reconcileErr) {
+        console.warn(`  [rebuild] startup reconcile warning: ${errMsg(reconcileErr)}`);
+      }
+
       try {
         // FIX-588 — raise work_mem for the rebuild session so the donation
         // aggregate's HashAggregate and the recipient_count GROUP BY don't
