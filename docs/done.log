@@ -742,3 +742,5 @@
 2026-06-14 | FIX-590 | e33b6b4b | local-only | fix(rebuild): pause autovacuum on entity_connections during the full rebuild
 2026-06-14 | FIX-591 | f5ccc553 | local-only | fix(rebuild): self-heal orphaned backends + stranded autovacuum on cancel/timeout
 2026-06-14 | FIX-566 | afa8f574 | local-only | style(comments): reskin deliberation subsystem to Public Record tokens
+2026-06-14 | FIX-594 | efcf02c0 | local-only | feat(commons): nightly active-threads MV + refresh hook (PR1 backend)
+2026-06-14 | FIX-595 | 4d72c4d0 | local-only | feat(commons): homepage discussion-ledger module (PR1 frontend)
