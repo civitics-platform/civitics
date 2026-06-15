@@ -740,3 +740,4 @@
 2026-06-14 | FIX-587 | d13388b2 | local-only | fix(pipelines): route USASpending/LittleSis/FEC-totals writes through direct-pg
 2026-06-14 | FIX-588 | cbc81ebf | local-only | fix(rebuild): window donations_full + index-only votes_full so the full rebuild fits 4h
 2026-06-14 | FIX-590 | e33b6b4b | local-only | fix(rebuild): pause autovacuum on entity_connections during the full rebuild
+2026-06-14 | FIX-591 | f5ccc553 | local-only | fix(rebuild): self-heal orphaned backends + stranded autovacuum on cancel/timeout
