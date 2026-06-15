@@ -14,6 +14,25 @@ export function formatStatCompact(n: number): string {
 }
 
 /**
+ * One Commons thread row — the homepage "discussion ledger" (FIX-595).
+ * Shaped in app/page.tsx from commons_active_threads (FIX-594) + a per-type
+ * entity resolution. `chip` is the entity-type label (PROPOSAL/OFFICIAL/…);
+ * `href` already carries the #comment-<id> anchor.
+ */
+export type CommonsThread = {
+  commentId: string;
+  excerpt: string;
+  chip: string;
+  href: string;
+  label: string;
+  isQuestion: boolean;
+  isAnswered: boolean;
+  replyCount: number;
+  raterCount: number;
+  lastActivityAt: string;
+};
+
+/**
  * One row of the homepage officials ledger — shaped in app/page.tsx.
  * Lived in HomeOfficialCard.tsx until that card was retired (FIX-556);
  * OfficialsLedger is the surviving consumer.

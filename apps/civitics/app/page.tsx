@@ -10,9 +10,10 @@ import { Ticker } from "./components/home/Ticker";
 import { HeroReceipt } from "./components/home/HeroReceipt";
 import { ClosingSoonPanel } from "./components/home/ClosingSoonPanel";
 import { OfficialsLedger } from "./components/home/OfficialsLedger";
+import { Commons } from "./components/home/Commons";
 import { GraphBand } from "./components/home/GraphBand";
 import { AgenciesRow } from "./components/home/AgenciesRow";
-import type { HomeStats, HomeOfficialCardData } from "./components/home/types";
+import type { HomeStats, HomeOfficialCardData, CommonsThread } from "./components/home/types";
 import type { ProposalCardData } from "./proposals/components/ProposalCard";
 import type { AgencyRow } from "./agencies/page";
 import type { EntityTag } from "./components/tags/EntityTags";
@@ -350,6 +351,87 @@ export default async function HomePage({
   );
   const topOfficials = rawOfficials.slice(0, 4);
 
+  // ── Commons: cross-entity discussion ledger (FIX-595) ──────────────────────
+  // MV-only + fail-soft read of the most bridging root threads platform-wide
+  // (commons_active_threads, FIX-594 — already bridge-ranked + capped at 50).
+  // Re-apply the ranking ORDER on the read; resolve each row's entity to a
+  // label + href with one batched query per present entity_type. Never blocks
+  // the page — on timeout/empty the module renders its sparse state.
+  const COMMONS_ENTITY = {
+    proposal:         { chip: "PROPOSAL",     table: "proposals",          col: "title",        base: "/proposals" },
+    official:         { chip: "OFFICIAL",     table: "officials",          col: "full_name",    base: "/officials" },
+    jurisdiction:     { chip: "JURISDICTION", table: "jurisdictions",      col: "name",         base: "/jurisdictions" },
+    institution:      { chip: "INSTITUTION",  table: "institutions",       col: "name",         base: "/institutions" },
+    financial_entity: { chip: "DONOR",        table: "financial_entities", col: "display_name", base: "/donors" },
+    district:         { chip: "DISTRICT",     table: "jurisdictions",      col: "name",         base: "/districts" },
+    investigation:    { chip: "INVESTIGATION", table: "investigations",    col: "title",        base: "/investigations" },
+  } as const;
+  type CommonsEntityType = keyof typeof COMMONS_ENTITY;
+  type CommonsRow = {
+    comment_id: string;
+    entity_type: string;
+    entity_id: string;
+    excerpt: string;
+    kind: string;
+    has_answer: boolean;
+    reply_count: number;
+    rater_count: number;
+    last_activity_at: string;
+  };
+  const commonsRes = await timed("wave_commons", () =>
+    withDbTimeout(
+      sbAny
+        .from("commons_active_threads")
+        .select(
+          "comment_id,entity_type,entity_id,excerpt,kind,has_answer,reply_count,rater_count,last_activity_at"
+        )
+        .order("bridge_score", { ascending: false, nullsFirst: false })
+        .order("last_activity_at", { ascending: false })
+        .limit(8),
+      2000
+    )
+  );
+  const commonsRows = ((commonsRes as { data: CommonsRow[] | null }).data ?? []).filter(
+    (r): r is CommonsRow & { entity_type: CommonsEntityType } => r.entity_type in COMMONS_ENTITY
+  );
+  // One batched label query per present entity_type.
+  const commonsIdsByType = new Map<CommonsEntityType, Set<string>>();
+  for (const r of commonsRows) {
+    const set = commonsIdsByType.get(r.entity_type) ?? new Set<string>();
+    set.add(r.entity_id);
+    commonsIdsByType.set(r.entity_type, set);
+  }
+  const commonsLabels = new Map<string, string>(); // `${type}:${id}` -> label
+  await Promise.all(
+    [...commonsIdsByType.entries()].map(async ([et, ids]) => {
+      const cfg = COMMONS_ENTITY[et];
+      const { data } = await sbAny.from(cfg.table).select(`id,${cfg.col}`).in("id", [...ids]);
+      for (const row of (data ?? []) as Record<string, string>[]) {
+        const label = row[cfg.col];
+        if (label) commonsLabels.set(`${et}:${row.id}`, label);
+      }
+    })
+  );
+  const commonsThreads: CommonsThread[] = [];
+  for (const r of commonsRows) {
+    if (commonsThreads.length >= 6) break;
+    const cfg = COMMONS_ENTITY[r.entity_type];
+    const label = commonsLabels.get(`${r.entity_type}:${r.entity_id}`);
+    if (!label) continue; // unresolved entity → skip rather than link to a 404
+    commonsThreads.push({
+      commentId: r.comment_id,
+      excerpt: r.excerpt,
+      chip: cfg.chip,
+      href: `${cfg.base}/${r.entity_id}#comment-${r.comment_id}`,
+      label: label.length > 60 ? `${label.slice(0, 57)}…` : label,
+      isQuestion: r.kind === "question",
+      isAnswered: r.has_answer === true,
+      replyCount: Number(r.reply_count ?? 0),
+      raterCount: Number(r.rater_count ?? 0),
+      lastActivityAt: r.last_activity_at,
+    });
+  }
+
   // ─── Shape data ────────────────────────────────────────────────────────────
 
   const stats: HomeStats = {
@@ -434,6 +516,7 @@ export default async function HomePage({
         <PledgeBand />
         <ClosingSoonPanel proposals={featuredProposals} nowIso={now} activeCount={stats.proposals} />
         <OfficialsLedger officials={featuredOfficials} totalOfficials={stats.officials} />
+        <Commons threads={commonsThreads} nowIso={now} />
         <GraphBand />
         <AgenciesRow agencies={featuredAgencies} />
       </main>
