@@ -749,3 +749,6 @@
 2026-06-15 | FIX-596 | 012dbdb9 | local-only | feat(desk): get_user_receipts() union RPC — the citizen receipts ledger
 2026-06-15 | FIX-597 | 22d6e90a | local-only | feat(desk): /desk citizen workspace shell + read modules (PR2)
 2026-06-15 | FIX-598 | 16f79a70 | local-only | feat(desk): migrate /profile to /desk (redirect + repoint links)
+2026-06-15 | FIX-596 | 93515926 | local+prod | chore(desk): record prod verification for Commons/Desk PR2 (FIX-596..598)
+2026-06-15 | FIX-597 | 93515926 | local+prod | chore(desk): record prod verification for Commons/Desk PR2 (FIX-596..598)
+2026-06-15 | FIX-598 | 93515926 | local+prod | chore(desk): record prod verification for Commons/Desk PR2 (FIX-596..598)
