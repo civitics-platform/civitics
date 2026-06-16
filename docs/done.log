@@ -746,3 +746,6 @@
 2026-06-14 | FIX-595 | 4d72c4d0 | local-only | feat(commons): homepage discussion-ledger module (PR1 frontend)
 2026-06-14 | FIX-594 | dc507332 | local+prod | chore(commons): record prod verification for active-threads MV (FIX-594)
 2026-06-14 | FIX-595 | 5dea1beb | local+prod | chore(commons): record prod verification for homepage module (FIX-595)
+2026-06-15 | FIX-596 | 012dbdb9 | local-only | feat(desk): get_user_receipts() union RPC — the citizen receipts ledger
+2026-06-15 | FIX-597 | 22d6e90a | local-only | feat(desk): /desk citizen workspace shell + read modules (PR2)
+2026-06-15 | FIX-598 | 16f79a70 | local-only | feat(desk): migrate /profile to /desk (redirect + repoint links)
