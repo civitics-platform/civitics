@@ -25,7 +25,7 @@ function pathIcon(page: string): string {
   if (page.startsWith("/graph")) return "🔗";
   if (page.startsWith("/search")) return "🔍";
   if (page.startsWith("/dashboard")) return "📊";
-  if (page.startsWith("/profile")) return "👋";
+  if (page.startsWith("/desk") || page.startsWith("/profile")) return "👋";
   return "📄";
 }
 

@@ -92,20 +92,20 @@ export function DistrictPickerForm({ initialState, initialDistrict }: Props) {
   };
 
   return (
-    <div className="mt-6 rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
-      <h3 className="text-sm font-semibold text-gray-900">Your Congressional District</h3>
-      <p className="mt-1 text-sm text-gray-500">
+    <div className="mt-6 border border-rule bg-paper p-6">
+      <h3 className="font-serif text-base font-semibold text-ink">Your Congressional District</h3>
+      <p className="mt-1 text-sm text-ink-soft">
         Set your home district to see your representatives in the connection graph.
       </p>
 
       <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
         {/* State picker */}
         <div className="flex-1">
-          <label className="block text-xs font-medium text-gray-500 mb-1">State</label>
+          <label className="block text-xs font-medium text-ink-soft mb-1">State</label>
           <select
             value={homeState}
             onChange={e => setHomeState(e.target.value)}
-            className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            className="w-full border border-rule bg-paper px-3 py-2 text-sm text-ink focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
           >
             <option value="">Select state…</option>
             {US_STATES.map(([abbr, name]) => (
@@ -116,12 +116,12 @@ export function DistrictPickerForm({ initialState, initialDistrict }: Props) {
 
         {/* District picker */}
         <div className="flex-1">
-          <label className="block text-xs font-medium text-gray-500 mb-1">House District</label>
+          <label className="block text-xs font-medium text-ink-soft mb-1">House District</label>
           <select
             value={homeDistrict}
             onChange={e => setHomeDistrict(e.target.value === "" ? "" : parseInt(e.target.value, 10))}
             disabled={!homeState || districts.length === 0}
-            className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:bg-gray-50 disabled:text-gray-400"
+            className="w-full border border-rule bg-paper px-3 py-2 text-sm text-ink focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent disabled:bg-paper-2 disabled:text-ink-soft/50"
           >
             <option value="">Select district…</option>
             {districts.map(d => (
@@ -134,7 +134,7 @@ export function DistrictPickerForm({ initialState, initialDistrict }: Props) {
         <button
           onClick={handleSave}
           disabled={!homeState || saving}
-          className="shrink-0 rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="shrink-0 border-[1.5px] border-ink bg-ink px-4 py-2 text-sm font-semibold text-paper transition-colors hover:border-accent hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {saving ? "Saving…" : saved ? "Saved" : "Save"}
         </button>
@@ -142,19 +142,19 @@ export function DistrictPickerForm({ initialState, initialDistrict }: Props) {
 
       {/* Representatives preview */}
       {reps.length > 0 && (
-        <div className="mt-4 border-t border-gray-100 pt-4">
-          <p className="text-xs font-medium text-gray-500 mb-2">Your federal representatives</p>
+        <div className="mt-4 border-t border-rule pt-4">
+          <p className="text-xs font-medium text-ink-soft mb-2">Your federal representatives</p>
           <ul className="space-y-1.5">
             {reps.map(rep => (
               <li key={rep.id} className="flex items-center gap-2 text-sm">
                 <span className={`font-medium ${partyColor(rep.party)}`}>
                   {rep.name}
                 </span>
-                <span className="text-gray-400">&middot; {rep.role}</span>
+                <span className="text-ink-soft/60">&middot; {rep.role}</span>
               </li>
             ))}
           </ul>
-          <p className="mt-3 text-xs text-gray-400">
+          <p className="mt-3 text-xs text-ink-soft/60">
             Your alignment with these representatives will appear on the connection graph.
           </p>
         </div>

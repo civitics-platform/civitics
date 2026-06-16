@@ -57,10 +57,10 @@ const ROUTES: Route[] = [
     description: "Live platform stats, pipelines, costs, and data quality.",
   },
   {
-    href: "/profile",
+    href: "/desk",
     icon: "👋",
-    title: "Your Profile",
-    description: "Saved positions, drafts, initiatives, and preferences.",
+    title: "Your Desk",
+    description: "Receipts, inbox, watchlist, and constituent verification.",
   },
   {
     href: "/proposals/problem",

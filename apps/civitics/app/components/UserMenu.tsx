@@ -11,7 +11,7 @@ interface UserMenuProps {
 
 // Phase 1 — real working links
 const PHASE1_LINKS = [
-  { label: "My Profile",     href: "/profile"            },
+  { label: "My Desk",        href: "/desk"               },
   { label: "My Initiatives", href: "/initiatives?mine=1" },
 ];
 

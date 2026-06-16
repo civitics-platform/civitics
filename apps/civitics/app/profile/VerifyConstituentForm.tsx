@@ -74,9 +74,9 @@ export function VerifyConstituentForm() {
   const submitting = status.kind === "submitting";
 
   return (
-    <div className="mt-6 rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
-      <h3 className="text-base font-semibold text-gray-900">Verify as a constituent</h3>
-      <p className="mt-1 text-sm text-gray-500">
+    <div className="mt-6 border border-rule bg-paper p-6">
+      <h3 className="font-serif text-base font-semibold text-ink">Verify as a constituent</h3>
+      <p className="mt-1 text-sm text-ink-soft">
         Confirm your name and home address to be recognized as a constituent in your
         jurisdictions. Your address is used once to determine your jurisdictions and is
         not stored.
@@ -84,7 +84,7 @@ export function VerifyConstituentForm() {
 
       <form onSubmit={handleSubmit} className="mt-4 space-y-3">
         <div>
-          <label htmlFor="vc-name" className="block text-sm font-medium text-gray-700">
+          <label htmlFor="vc-name" className="block text-sm font-medium text-ink">
             Full name
           </label>
           <input
@@ -95,12 +95,12 @@ export function VerifyConstituentForm() {
             maxLength={120}
             required
             disabled={submitting}
-            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            className="mt-1 block w-full border border-rule bg-paper px-3 py-2 text-sm text-ink focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
           />
         </div>
 
         <div>
-          <label htmlFor="vc-address" className="block text-sm font-medium text-gray-700">
+          <label htmlFor="vc-address" className="block text-sm font-medium text-ink">
             Home address
           </label>
           <input
@@ -112,14 +112,14 @@ export function VerifyConstituentForm() {
             placeholder="123 Main St, City, State ZIP"
             required
             disabled={submitting}
-            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            className="mt-1 block w-full border border-rule bg-paper px-3 py-2 text-sm text-ink focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
           />
         </div>
 
         <button
           type="submit"
           disabled={submitting || !name.trim() || !address.trim()}
-          className="inline-flex items-center rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+          className="inline-flex items-center border-[1.5px] border-ink bg-ink px-4 py-2 text-sm font-semibold text-paper transition-colors hover:border-accent hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
         >
           {submitting ? "Verifying…" : "Verify"}
         </button>
