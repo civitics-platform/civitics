@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { createServerClient, agencyFullName } from "@civitics/db";
 import { withDbTimeout } from "../src/lib/supabase-check";
+import { resolveEntityLabels, isCommonsEntityType } from "../src/lib/entity-labels";
 import { GlobalSearch } from "./components/GlobalSearch";
 import { PageViewTracker } from "./components/PageViewTracker";
 import { Ticker } from "./components/home/Ticker";
@@ -355,18 +356,9 @@ export default async function HomePage({
   // MV-only + fail-soft read of the most bridging root threads platform-wide
   // (commons_active_threads, FIX-594 — already bridge-ranked + capped at 50).
   // Re-apply the ranking ORDER on the read; resolve each row's entity to a
-  // label + href with one batched query per present entity_type. Never blocks
-  // the page — on timeout/empty the module renders its sparse state.
-  const COMMONS_ENTITY = {
-    proposal:         { chip: "PROPOSAL",     table: "proposals",          col: "title",        base: "/proposals" },
-    official:         { chip: "OFFICIAL",     table: "officials",          col: "full_name",    base: "/officials" },
-    jurisdiction:     { chip: "JURISDICTION", table: "jurisdictions",      col: "name",         base: "/jurisdictions" },
-    institution:      { chip: "INSTITUTION",  table: "institutions",       col: "name",         base: "/institutions" },
-    financial_entity: { chip: "DONOR",        table: "financial_entities", col: "display_name", base: "/donors" },
-    district:         { chip: "DISTRICT",     table: "jurisdictions",      col: "name",         base: "/districts" },
-    investigation:    { chip: "INVESTIGATION", table: "investigations",    col: "title",        base: "/investigations" },
-  } as const;
-  type CommonsEntityType = keyof typeof COMMONS_ENTITY;
+  // label + href via the shared resolver (FIX-597, src/lib/entity-labels — one
+  // batched query per present entity_type). Never blocks the page — on
+  // timeout/empty the module renders its sparse state.
   type CommonsRow = {
     comment_id: string;
     entity_type: string;
@@ -392,38 +384,23 @@ export default async function HomePage({
     )
   );
   const commonsRows = ((commonsRes as { data: CommonsRow[] | null }).data ?? []).filter(
-    (r): r is CommonsRow & { entity_type: CommonsEntityType } => r.entity_type in COMMONS_ENTITY
+    (r): r is CommonsRow => isCommonsEntityType(r.entity_type)
   );
-  // One batched label query per present entity_type.
-  const commonsIdsByType = new Map<CommonsEntityType, Set<string>>();
-  for (const r of commonsRows) {
-    const set = commonsIdsByType.get(r.entity_type) ?? new Set<string>();
-    set.add(r.entity_id);
-    commonsIdsByType.set(r.entity_type, set);
-  }
-  const commonsLabels = new Map<string, string>(); // `${type}:${id}` -> label
-  await Promise.all(
-    [...commonsIdsByType.entries()].map(async ([et, ids]) => {
-      const cfg = COMMONS_ENTITY[et];
-      const { data } = await sbAny.from(cfg.table).select(`id,${cfg.col}`).in("id", [...ids]);
-      for (const row of (data ?? []) as Record<string, string>[]) {
-        const label = row[cfg.col];
-        if (label) commonsLabels.set(`${et}:${row.id}`, label);
-      }
-    })
-  );
+  // Shared resolver (FIX-597): one batched label query per present entity_type.
+  const commonsLabels = await resolveEntityLabels(sbAny, commonsRows);
   const commonsThreads: CommonsThread[] = [];
   for (const r of commonsRows) {
     if (commonsThreads.length >= 6) break;
-    const cfg = COMMONS_ENTITY[r.entity_type];
-    const label = commonsLabels.get(`${r.entity_type}:${r.entity_id}`);
-    if (!label) continue; // unresolved entity → skip rather than link to a 404
+    const resolved = commonsLabels.get(`${r.entity_type}:${r.entity_id}`);
+    if (!resolved) continue; // unresolved entity → skip rather than link to a 404
     commonsThreads.push({
       commentId: r.comment_id,
       excerpt: r.excerpt,
-      chip: cfg.chip,
-      href: `${cfg.base}/${r.entity_id}#comment-${r.comment_id}`,
-      label: label.length > 60 ? `${label.slice(0, 57)}…` : label,
+      chip: resolved.chip,
+      // Commons links to the specific comment — append the anchor the shared
+      // resolver deliberately omits (entity href only).
+      href: `${resolved.href}#comment-${r.comment_id}`,
+      label: resolved.label.length > 60 ? `${resolved.label.slice(0, 57)}…` : resolved.label,
       isQuestion: r.kind === "question",
       isAnswered: r.has_answer === true,
       replyCount: Number(r.reply_count ?? 0),
