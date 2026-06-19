@@ -763,3 +763,6 @@
 2026-06-19 | FIX-602 | 02a615fb | local-only | feat(platform-costs): honest egress, threshold alerts, vercel pro wiring
 2026-06-19 | FIX-604 | 02a615fb | local-only | feat(platform-costs): honest egress, threshold alerts, vercel pro wiring
 2026-06-19 | FIX-605 | 02a615fb | local-only | feat(platform-costs): honest egress, threshold alerts, vercel pro wiring
+2026-06-19 | FIX-602 | 144ad8c9 | local+prod | chore(platform-costs): record prod verification for FIX-602, FIX-604, FIX-605
+2026-06-19 | FIX-604 | 144ad8c9 | local+prod | chore(platform-costs): record prod verification for FIX-602, FIX-604, FIX-605
+2026-06-19 | FIX-605 | 144ad8c9 | local+prod | chore(platform-costs): record prod verification for FIX-602, FIX-604, FIX-605
