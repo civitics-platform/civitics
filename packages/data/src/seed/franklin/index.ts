@@ -26,10 +26,12 @@
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { ALLOWED_KINDS, DEFAULT_KIND, type EntityCommentType } from "@civitics/db";
 import { Client } from "pg";
 import {
   LOCAL_DB_URL,
   MONEY_DATE,
+  SEED_EPOCH,
   SeedCtx,
   VOTE_DATE,
   grantStaff,
@@ -100,7 +102,13 @@ interface Citizens {
   citizens: Array<Json & { seed_key: string; handle: string }>;
 }
 interface Positions {
-  positions: Array<Json & { seed_key: string; author: string; proposal: string; stance: string; statement: string }>;
+  // S1/S2 carry `statement` (a free rationale, stored in conditions_md for lack of
+  // a dedicated column). The horizontal positions-plus file adds an explicit
+  // `conditions` key (nullable) for genuine conditional support — when present it
+  // takes precedence so the rollup's pct_with_conditions aggregate stays honest.
+  positions: Array<
+    Json & { seed_key: string; author: string; proposal: string; stance: string; statement: string; conditions?: string | null }
+  >;
 }
 interface Threads {
   comments: Array<
@@ -182,6 +190,58 @@ interface Fixtures {
   >;
 }
 
+// ── Horizontal-coverage logical shapes (FIX-613) ────────────────────────────
+// A persuasion delta: seed a prior stance, then an attributed stance change that
+// credits a comment (bumps that comment's rating_summary.deltas via the trigger).
+interface PositionDeltas {
+  deltas: Array<
+    Json & {
+      seed_key: string;
+      author: string;
+      proposal: string;
+      from_stance: string;
+      to_stance: string;
+      attributed_comment: string;
+      note?: string;
+    }
+  >;
+}
+// Polis-lite statements. vote_summary is AUTHORED display only (no real ballots —
+// synthetic votes confer no standing); source_comment optionally promotes a comment.
+interface Statements {
+  statements: Array<
+    Json & {
+      seed_key: string;
+      entity_id: string;
+      author: string;
+      source_comment: string | null;
+      body: string;
+      vote_summary: { agree: number; pass: number; disagree: number };
+    }
+  >;
+}
+// Citizen↔official Q&A. Questions are kind='question' on an official entity;
+// answers (kind='answer', author=off-*) post through submit_comment as that
+// official's synthetic office-account grant holder.
+interface QA {
+  qa: Array<
+    Json & {
+      seed_key: string;
+      kind: string;
+      author: string;
+      entity_id: string;
+      parent: string | null;
+      body: string;
+      want_count?: number;
+    }
+  >;
+}
+// Follows: per-entity follower counts + Desk Watching. Data-only INSERTs.
+interface Follows {
+  user_follows: Array<Json & { user: string; entity_type: string; entity: string }>;
+  initiative_follows: Array<Json & { user: string; initiative: string }>;
+}
+
 // ---------------------------------------------------------------------------
 // Mapping helpers (logical -> physical).
 // ---------------------------------------------------------------------------
@@ -200,6 +260,20 @@ function stanceToSmallint(stance: string): number {
   if (stance === "support") return 2;
   if (stance === "oppose") return -2;
   return 0; // mixed
+}
+// Resolve a logical comment `kind` to a valid entity_comments.kind. Legacy S1/S2
+// threads (+ fixtures) carry the sentinel "comment" (and the horizontal file
+// omits/sets real kinds); both "comment" and empty/missing collapse to the
+// DEFAULT_KIND. Any other value is validated strictly against the per-entity-type
+// ALLOWED_KINDS (the same allowlist submit_comment enforces) and throws on a
+// typo rather than silently coercing it.
+function resolveKind(raw: string | undefined, entityType: EntityCommentType, seedKey: string): string {
+  const k = (raw ?? "").trim();
+  if (k === "" || k === "comment") return DEFAULT_KIND;
+  if (!ALLOWED_KINDS[entityType].includes(k)) {
+    throw new Error(`franklin seed: comment ${seedKey} has kind "${k}" not allowed for entity_type "${entityType}"`);
+  }
+  return k;
 }
 // Map a logical edge relationship_kind to the assertable connection_type subset
 // the add_evidence_card RPC accepts. S1's money-flow kinds ("funds",
@@ -581,12 +655,16 @@ async function seedPositions(ctx: SeedCtx, pos: Positions): Promise<void> {
     }
     // Citizen positions: entity_positions, keyed by (user, entity). No uuid id, so
     // not tracked in the seed_map — reset deletes by synthetic author.
+    // conditions_md: the explicit `conditions` key wins when present (horizontal
+    // positions-plus, where null means "no conditions" → honest NULL in the
+    // aggregate); legacy rows without the key fall back to `statement`.
+    const conditionsMd = "conditions" in p ? (p.conditions ?? null) : p.statement;
     await ctx.query(
       `INSERT INTO public.entity_positions (user_id, entity_type, entity_id, stance, conditions_md)
        VALUES ($1, 'proposal', $2, $3, $4)
        ON CONFLICT (user_id, entity_type, entity_id)
          DO UPDATE SET stance = EXCLUDED.stance, conditions_md = EXCLUDED.conditions_md`,
-      [ctx.id(p.author), ctx.id(p.proposal), stanceToSmallint(p.stance), p.statement],
+      [ctx.id(p.author), ctx.id(p.proposal), stanceToSmallint(p.stance), conditionsMd],
     );
   }
 }
@@ -616,16 +694,183 @@ async function seedThread(ctx: SeedCtx, t: Threads, hb14: string): Promise<void>
         parent_id: parentId,
         thread_root_id: threadRoot,
         author_id: ctx.id(c.author),
-        kind: "discussion",
+        kind: resolveKind(c.kind, "proposal", c.seed_key),
         body: c.body,
         status: "visible",
-        bridge_score: c.bridge_score,
+        bridge_score: c.bridge_score ?? null,
         map_x: c.map_x ?? null,
         map_y: c.map_y ?? null,
         rating_summary: jb(c.authored_raters ?? {}),
         metadata: jb({ seed_key: c.seed_key, is_bridge_moment: c.is_bridge_moment ?? null, note: c.note ?? null }),
       },
       new Set(["rating_summary", "metadata"]),
+    );
+  }
+}
+
+// ── Horizontal coverage (FIX-613) ──────────────────────────────────────────
+
+// Persuasion deltas: drive a real attributed position change through
+// set_entity_position so its trigger bumps the credited comment's
+// rating_summary.deltas. Must run AFTER seedThread (the attributed comment must
+// exist). Idempotent via a seed_map key on the resulting position_event.
+async function seedDeltas(ctx: SeedCtx, d: PositionDeltas): Promise<void> {
+  for (const delta of d.deltas) {
+    const userId = ctx.id(delta.author);
+    const entityId = ctx.id(delta.proposal);
+    const commentId = ctx.id(delta.attributed_comment);
+    if (!ctx.has(delta.seed_key)) {
+      // append-only event — create once. Both calls in one impersonated tx:
+      // establish the prior stance (required for attribution), then the attributed
+      // change that credits the comment (its trigger bumps rating_summary.deltas).
+      const fromStance = stanceToSmallint(delta.from_stance);
+      const toStance = stanceToSmallint(delta.to_stance);
+      await ctx.withAuthor(userId, async () => {
+        await ctx.query(`SELECT public.set_entity_position('proposal', $1, $2::smallint)`, [entityId, fromStance]);
+        await ctx.query(
+          `SELECT public.set_entity_position('proposal', $1, $2::smallint, NULL, $3, $4)`,
+          [entityId, toStance, commentId, delta.note ?? null],
+        );
+      });
+      const ev = await ctx.one<{ id: string }>(
+        `SELECT id FROM public.position_events
+          WHERE user_id = $1 AND entity_id = $2 AND attributed_comment_id = $3
+          ORDER BY created_at DESC LIMIT 1`,
+        [userId, entityId, commentId],
+      );
+      await ctx.record(delta.seed_key, "position_events", ev.id);
+    }
+    // Self-heal the denormalized deltas EVERY run: seedThread re-runs UPDATE the
+    // attributed comment's rating_summary wholesale from authored_raters, which
+    // clobbers the trigger-maintained deltas key (project_rating_summary_trigger_
+    // clobbers_keys). Re-derive it from the true attributed-event count so a
+    // re-seed never loses the showcase delta. Idempotent regardless of order.
+    await ctx.query(
+      `UPDATE public.entity_comments
+          SET rating_summary = jsonb_set(
+                COALESCE(rating_summary, '{}'::jsonb), '{deltas}',
+                to_jsonb((SELECT count(*) FROM public.position_events
+                           WHERE attributed_comment_id = $1)::int), true)
+        WHERE id = $1`,
+      [commentId],
+    );
+  }
+}
+
+// Polis-lite statements: direct entity_statements insert (seed_key-keyed). The
+// vote_summary trigger only fires on statement_votes, so authored counts persist
+// untouched — synthetic votes confer no standing (same rule as bridge scores).
+async function seedStatements(ctx: SeedCtx, s: Statements): Promise<void> {
+  for (const st of s.statements) {
+    const vs = st.vote_summary;
+    await upsertById(
+      ctx,
+      st.seed_key,
+      "entity_statements",
+      {
+        entity_type: "proposal",
+        entity_id: ctx.id(st.entity_id),
+        body: st.body,
+        author_id: ctx.id(st.author),
+        source_comment_id: st.source_comment ? ctx.id(st.source_comment) : null,
+        status: "visible",
+        vote_summary: jb({ agree: vs.agree, disagree: vs.disagree, pass: vs.pass }),
+        metadata: jb({ seed_key: st.seed_key, authored_votes: true }),
+      },
+      new Set(["vote_summary", "metadata"]),
+    );
+  }
+}
+
+// Citizen↔official Q&A. Questions: direct entity_comments insert on the OFFICIAL
+// entity (want_count → rating_summary.valuable_up, which get_entity_questions
+// reads). Answers: posted through submit_comment as a synthetic office-account
+// user that holds an active 'official' grant — exercising the real answer-gate
+// rather than bypassing it.
+async function seedQA(ctx: SeedCtx, qa: QA): Promise<void> {
+  // Pass 1 — questions (must exist before their answers reply to them).
+  for (const item of qa.qa) {
+    if (item.kind !== "question") continue;
+    await upsertById(
+      ctx,
+      item.seed_key,
+      "entity_comments",
+      {
+        entity_type: "official",
+        entity_id: ctx.id(item.entity_id),
+        parent_id: null,
+        thread_root_id: null,
+        author_id: ctx.id(item.author),
+        kind: "question",
+        body: item.body,
+        status: "visible",
+        bridge_score: null,
+        // want-answered signal: get_entity_questions reads rating_summary.valuable_up.
+        rating_summary: jb(item.want_count != null ? { valuable_up: item.want_count } : {}),
+        metadata: jb({ seed_key: item.seed_key }),
+      },
+      new Set(["rating_summary", "metadata"]),
+    );
+  }
+  // Pass 2 — answers via the office-account grant holder + submit_comment.
+  for (const item of qa.qa) {
+    if (item.kind !== "answer") continue;
+    if (ctx.has(item.seed_key)) continue; // submit_comment generates the id once
+    if (!item.parent) throw new Error(`franklin seed: answer ${item.seed_key} has no parent question`);
+    const officialId = ctx.id(item.entity_id); // answer.entity_id IS the official
+    const officeUserId = await ensureOfficeAccount(ctx, item.author, officialId);
+    const parentId = ctx.id(item.parent);
+    const row = await ctx.withAuthor(officeUserId, async () =>
+      ctx.one<{ id: string }>(
+        `SELECT (public.submit_comment('official', $1, $2, 'answer', NULL, $3, NULL)).id AS id`,
+        [officialId, item.body, parentId],
+      ),
+    );
+    await ctx.record(item.seed_key, "entity_comments", row.id);
+    await ctx.query(`UPDATE public.entity_comments SET metadata = metadata || $2::jsonb WHERE id = $1`, [
+      row.id,
+      jb({ seed_key: item.seed_key }),
+    ]);
+  }
+}
+
+// A synthetic per-official "office account" user holding an active 'official'
+// grant — the seed stand-in for the verified official who answers questions
+// (officials aren't users). Keyed on the official's seed_key so re-runs reuse it.
+async function ensureOfficeAccount(ctx: SeedCtx, officialSeedKey: string, officialId: string): Promise<string> {
+  const officeKey = `office:${officialSeedKey}`;
+  const name = await ctx.one<{ full_name: string }>(`SELECT full_name FROM public.officials WHERE id = $1`, [officialId]);
+  const userId = await upsertUser(ctx, officeKey, name.full_name, {
+    office_account: true,
+    official_seed_key: officialSeedKey,
+  });
+  await ctx.query(
+    `INSERT INTO public.entity_grants (user_id, target_type, target_id, role, status, granted_at)
+     VALUES ($1, 'official', $2, 'official', 'active', $3)
+     ON CONFLICT (user_id, role, target_type, target_id) WHERE status = 'active' DO NOTHING`,
+    [userId, officialId, SEED_EPOCH],
+  );
+  return userId;
+}
+
+// Follows: per-entity follower counts + Desk Watching. Data-only idempotent
+// inserts (composite PK / UNIQUE → ON CONFLICT DO NOTHING; reset cascades via the
+// synthetic users / proposals deletes).
+async function seedFollows(ctx: SeedCtx, f: Follows): Promise<void> {
+  for (const fl of f.user_follows) {
+    await ctx.query(
+      `INSERT INTO public.user_follows (user_id, entity_type, entity_id)
+       VALUES ($1, $2::follow_entity_type, $3)
+       ON CONFLICT (user_id, entity_type, entity_id) DO NOTHING`,
+      [ctx.id(fl.user), fl.entity_type, ctx.id(fl.entity)],
+    );
+  }
+  for (const fl of f.initiative_follows) {
+    await ctx.query(
+      `INSERT INTO public.civic_initiative_follows (initiative_id, user_id)
+       VALUES ($1, $2)
+       ON CONFLICT (initiative_id, user_id) DO NOTHING`,
+      [ctx.id(fl.initiative), ctx.id(fl.user)],
     );
   }
 }
@@ -921,6 +1166,9 @@ async function main(): Promise<void> {
       comments: [
         ...loadJson<Threads>("threads.json").comments,
         ...loadJson<Threads>("s2/threads.json").comments,
+        // Horizontal coverage (FIX-613): the 10 distinct comment KINDS. Same
+        // Threads shape (per-comment entity_id + kind); seedThread reads kind now.
+        ...loadJson<Threads>("horizontal/comments-kinds.json").comments,
       ],
     };
     const investigations: Investigations = {
@@ -936,6 +1184,15 @@ async function main(): Promise<void> {
       ],
     };
 
+    // Horizontal-coverage files (FIX-613) — additive surfaces over S1/S2 entities.
+    const positionDeltas = loadJson<PositionDeltas>("horizontal/positions-plus.json");
+    const statements = loadJson<Statements>("horizontal/statements.json");
+    const qa = loadJson<QA>("horizontal/qa-officials.json");
+    const follows = loadJson<Follows>("horizontal/follows.json");
+    // positions-plus also carries additional citizen positions (to cross the
+    // rollup min-n) under `positions` — fold them into the positions set.
+    positions.positions.push(...loadJson<Positions>("horizontal/positions-plus.json").positions);
+
     console.log("1-4  entities (jurisdictions, bodies, agencies, officials)…");
     await seedEntities(ctx, entities);
     console.log("5-6  money graph (entities + relationships)…");
@@ -949,8 +1206,16 @@ async function main(): Promise<void> {
     await seedInitiative(ctx, initiatives);
     console.log("11   positions…");
     await seedPositions(ctx, positions);
-    console.log("12   threads (HB-14 B-1; S2 CM-22/HB-09/CM-15/CM-19 B-2/B-3/B-4)…");
+    console.log("12   threads (HB-14 B-1; S2 CM-22/HB-09/CM-15/CM-19 B-2/B-3/B-4; +10 kinds)…");
     await seedThread(ctx, threads, ctx.id("prop-hb14"));
+    console.log("12b  position deltas (attributed persuasion → comment.deltas)…");
+    await seedDeltas(ctx, positionDeltas);
+    console.log("12c  statements (Polis-lite quick-takes + authored vote_summary)…");
+    await seedStatements(ctx, statements);
+    console.log("12d  Q&A lane (citizen questions + office-account official answers)…");
+    await seedQA(ctx, qa);
+    console.log("12e  follows (user_follows + civic_initiative_follows)…");
+    await seedFollows(ctx, follows);
     console.log("13   moderation fixtures + content_flags (≥3 → needs_review)…");
     await seedFixtures(ctx, fixtures);
     console.log("14   Investigations #1 + #2 (evidence cards + citations + promotion)…");

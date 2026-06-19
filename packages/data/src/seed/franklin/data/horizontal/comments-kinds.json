@@ -1,0 +1,31 @@
+{
+  "_meta": {
+    "purpose": "Horizontal coverage — exercise every selectable comment KIND at least once (Franklin currently uses only 'discussion'). ADDITIVE; references S1/S2 proposals + citizens by seed_key.",
+    "LOADER CHANGE REQUIRED": "The seed loader hardcodes kind:'discussion' (index.ts ~L619/L653). It must read `kind` per comment from this file. Allowed kinds per entity_type are enforced in packages/db/src/comment-kinds.ts — proposals accept all; officials/jurisdictions/investigations are a subset. Every comment here targets a proposal, where all kinds are allowed.",
+    "kinds_covered": "concern, evidence, question, experience, stakeholder_impact, solution, tradeoff, amendment, precedent, cause — the 10 user-selectable non-default kinds (discussion already covered S1/S2; 'answer' is official-only and seeded via the Q&A file).",
+    "authors": "existing S1 citizens by seed_key."
+  },
+
+  "comments": [
+    { "seed_key": "cmt-h-concern", "author": "cit-ridgelinerose", "entity_id": "prop-hb14", "parent": null, "kind": "concern",
+      "body": "My concern isn't the towers in the abstract — it's Title I's setback language. Two miles reads like a number someone picked to fit a map, not to fit a ridgeline. Show me the siting study before I trust it." },
+    { "seed_key": "cmt-h-evidence", "author": "cit-openledgero", "entity_id": "prop-hb14", "parent": null, "kind": "evidence",
+      "body": "For the record: the FPUC docket lists the transmission cost recovery at roughly $0.04/kWh over 12 years before Okafor's cap, $0.02 after. That's the actual ratepayer number both sides keep rounding." },
+    { "seed_key": "cmt-h-question", "author": "cit-newtothehollow", "entity_id": "prop-hb14", "parent": null, "kind": "question",
+      "body": "Genuine question: if the Just-Transition Fund is front-loaded, where does that money come from in year one — the bond, the general fund, or the cost recovery itself? The titles don't say and it changes everything." },
+    { "seed_key": "cmt-h-experience", "author": "cit-plateaupride", "entity_id": "prop-hb14", "parent": null, "kind": "experience",
+      "body": "My experience: in '09 they closed the Number 4 seam and promised retraining. The classes were 40 miles away, ran for six weeks, and certified us for jobs that didn't exist here. 'Funded first' has to mean more than a press release this time." },
+    { "seed_key": "cmt-h-stakeholder", "author": "cit-twokidstwoinhalers", "entity_id": "prop-hb14", "parent": null, "kind": "stakeholder_impact",
+      "body": "Who's affected and never in the room: the kids. Iron Ridge has the highest pediatric asthma rate in the state. They don't vote, they don't comment, and they breathe whatever the Assembly decides." },
+    { "seed_key": "cmt-h-solution", "author": "cit-clerkemeritus", "entity_id": "prop-hb14", "parent": null, "kind": "solution",
+      "body": "Proposed fix that costs nobody a vote: escrow the first three years of the Just-Transition Fund on passage, release it on a published county-by-county schedule, and tie tower construction permits to the escrow milestones. Trust, made mechanical." },
+    { "seed_key": "cmt-h-tradeoff", "author": "cit-cautiouscarla", "entity_id": "prop-hb14", "parent": null, "kind": "tradeoff",
+      "body": "The honest tradeoff nobody's stating: cap the cost recovery low enough to protect ratepayers and the bond gets more expensive to float, which slows the build. You can have it cheap or you can have it fast. Pick, and say which." },
+    { "seed_key": "cmt-h-amendment", "author": "cit-oldgrowthowen", "entity_id": "prop-hb14", "parent": null, "kind": "amendment",
+      "body": "Suggested change to Title I: replace the flat two-mile setback with a viewshed-based standard keyed to the trail corridors, and add a decommissioning bond so a dead turbine isn't the plateau's problem in 25 years." },
+    { "seed_key": "cmt-h-precedent", "author": "cit-farmbureaufran", "entity_id": "prop-hb09", "parent": null, "kind": "precedent",
+      "body": "Precedent worth remembering: the 2019 Pigeon River relicensing already set a minimum-flow floor and the farms didn't dry up — the metering just made everyone's draw legible. HB-09 is that, scaled to the whole valley." },
+    { "seed_key": "cmt-h-cause", "author": "cit-remoterraywfh", "entity_id": "prop-cm22", "parent": null, "kind": "cause",
+      "body": "Root cause of the rural gap isn't reluctance — it's the math. A carrier earns back fiber to a Watauga block in two years and to my holler in forty. The bond exists to fix that specific economics; if it doesn't reach the holler it hasn't fixed anything." }
+  ]
+}

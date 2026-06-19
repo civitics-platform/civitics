@@ -1,0 +1,28 @@
+{
+  "_meta": {
+    "purpose": "Horizontal coverage — the citizen↔official Q&A lane (QASection on officials pages), kind=question → kind=answer. ADDITIVE. NOTE: distinct from the deferred S2 s2/qa.json (that one targets an AGENCY, where no Q&A surface exists yet — FIX-610). The Q&A lane DOES exist for OFFICIALS, so these are anchored on official entities.",
+    "LOADER CHANGES REQUIRED": "(1) insert kind='question' comments on the official entity (once per-comment kind is supported). (2) The answer (kind='answer') is RLS-gated to official-grant holders and inserted server-side — so seed a synthetic official-answerer: a user holding an official grant on the target official entity, then insert the kind='answer' reply via the answer path (or a privileged INSERT). This is the seed-only Q&A the bible specifies (AI officials answer only seeded questions; per SF-P7 a REAL user's question gets the 'demo officials don't answer' note).",
+    "want_signal": "Optional: authored 'want answered' counts (valuable=+1) on the questions, like other authored rating_summary values."
+  },
+
+  "qa": [
+    {
+      "seed_key": "qa-h-q1", "kind": "question", "author": "cit-newtothehollow", "entity_id": "off-reyes-combs", "parent": null,
+      "body": "Delegate Reyes-Combs — you co-sponsored the Ridgeline Act, but your own Greenbrier tourism base is scared of the transmission towers. How do you square representing them with sponsoring this?",
+      "want_count": 14
+    },
+    {
+      "seed_key": "qa-h-a1", "kind": "answer", "author": "off-reyes-combs", "entity_id": "off-reyes-combs", "parent": "qa-h-q1",
+      "body": "I don't square it by pretending the towers won't be visible — they will. I square it two ways. Title I keys the setbacks to the trail corridors specifically, because I asked for that. And the honest part: a brittle grid and a hotter climate hurt the high country's tourism economy more, and sooner, than a sited line does. I'd rather lead that trade-off out loud than have it happen to us."
+    },
+    {
+      "seed_key": "qa-h-q2", "kind": "question", "author": "cit-cautiouscarla", "entity_id": "off-okafor", "parent": null,
+      "body": "Delegate Okafor — your cost cap is the only reason I'm a yes. What stops it from getting quietly traded away before the final vote?",
+      "want_count": 21
+    },
+    {
+      "seed_key": "qa-h-a2", "kind": "answer", "author": "off-okafor", "entity_id": "off-okafor", "parent": "qa-h-q2",
+      "body": "Nothing stops it except the math, and the math is enough. Without Title IV the bill doesn't have my vote, and it doesn't have the Governor's signature — she's said as much. So the cap isn't a bargaining chip I can afford to spend; it's the price of the bill existing at all. If it comes out, the bill dies, and everyone counting votes knows it."
+    }
+  ]
+}

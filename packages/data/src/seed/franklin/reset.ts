@@ -65,6 +65,10 @@ async function main(): Promise<void> {
     // content flags on synthetic comments or by synthetic flaggers
     `DELETE FROM public.content_flags WHERE user_id IN ${SYN_USERS}
        OR (content_type = 'entity_comment' AND content_id IN (SELECT id FROM public.entity_comments WHERE author_id IN ${SYN_USERS}))`,
+    // entity_statements.author_id is ON DELETE SET NULL (survives author deletion
+    // as anonymous crowd content), so it must be deleted explicitly while the
+    // synthetic authors still resolve. statement_votes cascade from it.
+    `DELETE FROM public.entity_statements WHERE author_id IN ${SYN_USERS}`,
     `DELETE FROM public.entity_comments WHERE author_id IN ${SYN_USERS}`,
     `DELETE FROM public.entity_positions WHERE user_id IN ${SYN_USERS}`,
     // investigations cascade -> evidence_cards -> citations + edge audit

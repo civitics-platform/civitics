@@ -1,0 +1,28 @@
+{
+  "_meta": {
+    "purpose": "Horizontal coverage — the follow/watch surfaces (Desk 'Watching' + per-entity follow counts), unseeded today. ADDITIVE.",
+    "LOADER CHANGE REQUIRED": "Insert user_follows (user_id, entity_type ∈ official|agency|jurisdiction, entity_id) + civic_initiative_follows (user_id, initiative_id). Data-only INSERTs once seed_keys resolve. These populate follow counts on entity pages and the synthetic users' Desk Watching module.",
+    "note": "Desk modules render for a logged-in user over THEIR follows; synthetic users won't have live sessions, so the visible payoff is the per-entity follower counts + that the surface is exercised/non-empty in the data."
+  },
+
+  "user_follows": [
+    { "user": "cit-maziek", "entity_type": "official", "entity": "off-reyes-combs" },
+    { "user": "cit-maziek", "entity_type": "official", "entity": "off-okafor" },
+    { "user": "cit-openledgero", "entity_type": "official", "entity": "off-reyes-combs" },
+    { "user": "cit-twokidstwoinhalers", "entity_type": "official", "entity": "off-whitfield" },
+    { "user": "cit-twokidstwoinhalers", "entity_type": "agency", "entity": "ag-fdeq" },
+    { "user": "cit-ridgelinerose", "entity_type": "agency", "entity": "ag-fdeq" },
+    { "user": "cit-ridgelinerose", "entity_type": "official", "entity": "off-reyes-combs" },
+    { "user": "cit-cautiouscarla", "entity_type": "official", "entity": "off-okafor" },
+    { "user": "cit-remoterraywfh", "entity_type": "official", "entity": "off-bell" }
+  ],
+
+  "initiative_follows": [
+    { "user": "cit-maziek", "initiative": "init-plateau-first" },
+    { "user": "cit-plateaupride", "initiative": "init-plateau-first" },
+    { "user": "cit-clerkemeritus", "initiative": "init-plateau-first" },
+    { "user": "cit-openledgero", "initiative": "init-open-books" },
+    { "user": "cit-gradstudentgus", "initiative": "init-open-books" },
+    { "user": "cit-twokidstwoinhalers", "initiative": "init-open-books" }
+  ]
+}

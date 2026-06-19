@@ -1,0 +1,26 @@
+{
+  "_meta": {
+    "purpose": "Horizontal coverage — make the Position surfaces actually render. ADDITIVE; references S1/S2 by seed_key.",
+    "why": "PositionSection rollup is min-n gated at 10. HB-14 had only 9 citizen positions (officials' stances went to votes.metadata, not entity_positions), so the rollup was hidden. This adds positions to cross 10, plus the two unexercised position features: conditions_md (conditional support) and a persuasion DELTA.",
+    "LOADER CHANGES REQUIRED": "(1) read optional `conditions` → entity_positions.conditions_md. (2) support a `deltas` block: seed an initial position then a changed position attributed to a comment (set_entity_position with p_attributed_comment_id, or seed position_events with attributed_comment_id) so the comment's rating_summary.deltas increments. Guards: author ≥7d old (all synthetic seed users predate this), prior position required."
+  },
+
+  "positions": [
+    { "seed_key": "pos-h-hb14-gus", "author": "cit-gradstudentgus", "proposal": "prop-hb14", "stance": "support", "conditions": null, "statement": "The plateau's kids and the climate both lose if we stall. Build it, fund the transition, done." },
+    { "seed_key": "pos-h-hb14-tina", "author": "cit-transittina", "proposal": "prop-hb14", "stance": "support", "conditions": null, "statement": "Watauga needs the power and the plateau needs the jobs. This is the rare bill that does both." },
+    { "seed_key": "pos-h-hb14-hal", "author": "cit-hillcountryhal", "proposal": "prop-hb14", "stance": "mixed", "conditions": "Yes IF the decommissioning bond and a real cost cap are both in. Otherwise it's a future liability dressed as progress.", "statement": "Conditional. Put the cleanup money up front, not just the construction money." },
+    { "seed_key": "pos-h-hb14-cafe", "author": "cit-fifthstreetcafe", "proposal": "prop-hb14", "stance": "support", "conditions": "Support as long as Title IV's cost cap survives to the final vote — strip the cap and I'm off it.", "statement": "My shop runs on that grid. I'm in, with the cap." }
+  ],
+
+  "deltas": [
+    {
+      "seed_key": "delta-h-fran-hb09",
+      "author": "cit-farmbureaufran",
+      "proposal": "prop-hb09",
+      "from_stance": "oppose",
+      "to_stance": "mixed",
+      "attributed_comment": "cmt-hb09-b3",
+      "note": "The showcase persuasion delta: FarmBureauFran came in opposed to HB-09, then OldGrowthOwen's B-3 comment ('a guaranteed minimum in-stream flow protects YOUR water in a drought year too') changed her mind to conditional. Her position S2 record (pos-hb09-fran) is the resulting 'mixed' stance; this records the CHANGE and attributes it to B-3, so B-3's rating_summary.deltas increments and the debate map shows a comment that measurably moved someone."
+    }
+  ]
+}

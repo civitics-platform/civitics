@@ -1,0 +1,35 @@
+{
+  "_meta": {
+    "purpose": "Horizontal coverage — the StatementMode 'quick takes' surface (Polis-lite), entirely unseeded today. Short propositions (10–200 chars) the crowd votes agree/pass/disagree on. ADDITIVE.",
+    "LOADER CHANGE REQUIRED": "New seedStatements(): insert entity_statements (body, author_id, entity, optional source_comment_id) + statement_votes. vote_summary here is AUTHORED display (agree/pass/disagree counts) — synthetic votes confer no standing, same rule as authored bridge scores. Some statements are promoted from a comment (source_comment → entity_statements.source_comment_id).",
+    "rules": "10–200 chars enforced; vote ∈ -1(disagree)|0(pass)|+1(agree). Officials don't vote on statements (users only)."
+  },
+
+  "statements": [
+    { "seed_key": "stmt-hb14-fundfirst", "entity_id": "prop-hb14", "author": "cit-maziek", "source_comment": "cmt-hb14-maziek",
+      "body": "Fund the plateau's transition before the first tower goes up.",
+      "vote_summary": { "agree": 41, "pass": 6, "disagree": 8 } },
+    { "seed_key": "stmt-hb14-ratepayer", "entity_id": "prop-hb14", "author": "cit-nonewtaxesned", "source_comment": null,
+      "body": "Ratepayers shouldn't shoulder the cost of power that flows to the corridor.",
+      "vote_summary": { "agree": 22, "pass": 9, "disagree": 19 } },
+    { "seed_key": "stmt-hb14-skyline", "entity_id": "prop-hb14", "author": "cit-oldgrowthowen", "source_comment": null,
+      "body": "Ridge-top turbines are worth the change to our skyline.",
+      "vote_summary": { "agree": 18, "pass": 7, "disagree": 24 } },
+    { "seed_key": "stmt-hb14-setback", "entity_id": "prop-hb14", "author": "cit-ridgelinerose", "source_comment": "cmt-h-concern",
+      "body": "A two-mile setback is too weak to protect the trail corridors.",
+      "vote_summary": { "agree": 27, "pass": 11, "disagree": 9 } },
+    { "seed_key": "stmt-hb14-jobs", "entity_id": "prop-hb14", "author": "cit-plateaupride", "source_comment": null,
+      "body": "Clean-energy jobs will actually replace the coal jobs we lost.",
+      "vote_summary": { "agree": 14, "pass": 13, "disagree": 23 } },
+    { "seed_key": "stmt-hb14-cap", "entity_id": "prop-hb14", "author": "cit-cautiouscarla", "source_comment": null,
+      "body": "Cap the ratepayer cost and the whole bill becomes something I can support.",
+      "vote_summary": { "agree": 33, "pass": 8, "disagree": 6 } },
+
+    { "seed_key": "stmt-cm22-countyline", "entity_id": "prop-cm22", "author": "cit-remoterraywfh", "source_comment": "cmt-cm22-b2",
+      "body": "Municipal broadband should reach the county lines or not be funded at all.",
+      "vote_summary": { "agree": 29, "pass": 5, "disagree": 7 } },
+    { "seed_key": "stmt-cm22-subsidy", "entity_id": "prop-cm22", "author": "cit-builditbell", "source_comment": null,
+      "body": "Watauga taxpayers shouldn't subsidize fiber the city core already has.",
+      "vote_summary": { "agree": 16, "pass": 8, "disagree": 18 } }
+  ]
+}

@@ -1,8 +1,8 @@
 {
-  "ranAt": "2026-06-19T20:36:22.601Z",
-  "durationMs": 518,
+  "ranAt": "2026-06-19T22:20:16.221Z",
+  "durationMs": 867,
   "dbHost": "127.0.0.1:54322",
-  "sha": "5b4fb596",
+  "sha": "3213ceb7",
   "rows": [
     {
       "fixtureId": "F1",
@@ -143,8 +143,8 @@
   "pollution": [
     {
       "table": "entity_comments",
-      "before": 64,
-      "after": 64,
+      "before": 78,
+      "after": 78,
       "delta": 0
     },
     {
@@ -161,14 +161,14 @@
     },
     {
       "table": "entity_positions",
-      "before": 15,
-      "after": 15,
+      "before": 19,
+      "after": 19,
       "delta": 0
     },
     {
       "table": "position_events",
-      "before": 0,
-      "after": 0,
+      "before": 2,
+      "after": 2,
       "delta": 0
     },
     {
