@@ -755,3 +755,4 @@
 2026-06-18 | FIX-572 | 480405b2 | local-only | feat(integrity): is_synthetic + abuse quarantine predicate
 2026-06-18 | FIX-572 | 69dc7c3c | local+prod | chore(integrity): record prod verification for FIX-572 (SF-P1 quarantine)
 2026-06-18 | FIX-599 | 5329b2df | local-only | feat(integrity): persistent synthetic labeling + Commons MV quarantine (SF-P2)
+2026-06-18 | FIX-599 | 2272599c | prod-only | chore(integrity): record prod verification for FIX-599 (SF-P2)
