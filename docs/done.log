@@ -767,3 +767,4 @@
 2026-06-19 | FIX-604 | 144ad8c9 | local+prod | chore(platform-costs): record prod verification for FIX-602, FIX-604, FIX-605
 2026-06-19 | FIX-605 | 144ad8c9 | local+prod | chore(platform-costs): record prod verification for FIX-602, FIX-604, FIX-605
 2026-06-19 | FIX-607 | c48c4613 | local-only | feat(seed): data:seed:franklin pipeline + S1 Ridgeline slice
+2026-06-19 | FIX-607 | 4e3b8fd9 | local-only | feat(seed): franklin seed refreshes only commons MV by default (--refresh-all-mvs)
