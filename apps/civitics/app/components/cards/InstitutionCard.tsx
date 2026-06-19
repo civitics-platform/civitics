@@ -6,11 +6,10 @@ import { SyntheticMark } from "../integrity/Synthetic";
 // Used by /jurisdictions/[id]; intended for reuse on future institution lists.
 // Data fetching stays in the page — this only renders.
 //
-// NOTE (SF-P2): is_synthetic is rendered when present, but the `institutions`
-// DB VIEW does NOT currently expose the column (it has an explicit column list,
-// not `*`). Feeders that read `.from("institutions")` cannot supply it until the
-// view is amended to SELECT gb.is_synthetic / a.is_synthetic on both UNION
-// branches. Feeders that read governing_bodies/agencies directly can pass it.
+// NOTE (SF-P2 → FIX-600): the `institutions` DB VIEW now exposes is_synthetic on
+// both UNION branches (migration 20260618010000), and both feeders select it —
+// /institutions (institutions/page.tsx) and the jurisdictions/[id] institutions
+// section — so the mark lights up for synthetic governing_bodies/agencies.
 export type InstitutionCardData = {
   id: string;
   name: string;

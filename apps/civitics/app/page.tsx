@@ -192,7 +192,23 @@ export default async function HomePage({
     // even with millions of donor records. Only adopt the live count when the query
     // actually succeeded; otherwise keep the (missing) MV value rather than asserting
     // a zero we never measured (FIX-431).
-    const liveDonorCount = liveDonorRes.error ? null : (liveDonorRes.count ?? null);
+    const liveDonorGross = liveDonorRes.error ? null : (liveDonorRes.count ?? null);
+    // FIX-600 (SF-P1): the estimate above is unfilterable (planner reltuples), so
+    // subtract the EXACT count of synthetic donor records — the gated MV value
+    // already excludes them, and this keeps the fallback path from re-advertising
+    // fakes. Cheap RPC (driven from the tiny synthetic set); behavior-neutral
+    // today (returns 0). On RPC error we subtract nothing rather than drop the stat.
+    let liveDonorCount = liveDonorGross;
+    if (liveDonorGross !== null) {
+      const synthDonorRes = await timed("wave1_donor_synthetic", () =>
+        withDbTimeout<{ data: number | string | null; error: { message: string } | null }>(
+          sbAny.rpc("count_synthetic_donor_records"),
+          2000
+        )
+      );
+      const synthDonorCount = synthDonorRes.error ? 0 : Number(synthDonorRes.data ?? 0);
+      liveDonorCount = Math.max(0, liveDonorGross - synthDonorCount);
+    }
     mvStats = {
       officials_count:        mvStats?.officials_count        ?? 0,
       active_proposals_count: mvStats?.active_proposals_count ?? 0,
