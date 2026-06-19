@@ -1,0 +1,88 @@
+{
+  "_meta": {
+    "slice": "S2 — broadband / dam / STR + stadium + breadth. ADDITIVE to S1 (same Franklin; references S1 entities by seed_key). Pipeline loads s1 then s2.",
+    "shape": "LOGICAL, same conventions as S1. Council measures (CM-*) are voted by Watauga councilmembers (off-finch…off-tanner + mayor off-bell); state bills (HB-*) by the 10 delegates. Open/closing-soon proposals have NO final vote (in deliberation); closed proposals carry a roll call.",
+    "storylines": "CM-22 broadband = cross-level (B-2); HB-09 dam = slow deliberation + FDEQ Q&A (B-3, see qa.json); CM-15 STR = heated-but-civil local (B-4). CM-19 stadium = the light one. HB-21/HB-18/HB-07/CM-11/CM-24 = breadth (records + light positions, window-state variety)."
+  },
+
+  "proposals": [
+    {
+      "seed_key": "prop-cm22", "bill_number": "CM-22", "title": "Watauga Broadband Measure", "type": "measure", "status": "open_comment", "comment_window": "closing_soon",
+      "sponsor": "off-bell", "cosponsors": ["off-okonkwo"], "chamber": "Watauga City Council",
+      "summary_plain": "A municipal broadband bond, paired with a state-subsidy match, to build fiber across Watauga and out to the county lines. The cross-level question: does the city match reach the rural plateau, or just re-wire neighborhoods that already have service?",
+      "sections": [
+        "Title I — Municipal bond for a city fiber backbone.",
+        "Title II — State-subsidy match (links to a Franklin appropriation; the cross-level graph edge).",
+        "Title III — Build-out requirement: open question whether to tie the match to county-line coverage."
+      ],
+      "outcome": "Pending council vote.", "cross_level_link": "juris-franklin (state subsidy) ↔ juris-watauga (city rollout)"
+    },
+    {
+      "seed_key": "prop-hb09", "bill_number": "HB-09", "title": "Valley Water Rights Act", "type": "bill", "status": "open_comment", "comment_window": "closing_soon",
+      "sponsor": "off-hale", "cosponsors": [], "chamber": "Franklin General Assembly",
+      "summary_plain": "Allocates Nolichucky and French Broad withdrawal rights among farms, Watauga municipal supply, and in-stream conservation flow. The slow, technical deliberation — and the policy backdrop to the Pigeon River dam relicensing FDEQ is running.",
+      "sections": [
+        "Title I — Agricultural withdrawal allocations + metering.",
+        "Title II — Municipal supply guarantees for Watauga.",
+        "Title III — Minimum in-stream flow for conservation + fisheries."
+      ],
+      "outcome": "In committee (pending)."
+    },
+    {
+      "seed_key": "prop-cm15", "bill_number": "CM-15", "title": "Short-Term Rental Ordinance", "type": "measure", "status": "open_comment", "comment_window": "open",
+      "sponsor": "off-finch", "cosponsors": [], "chamber": "Watauga City Council",
+      "summary_plain": "Caps short-term rentals in downtown Watauga. A heated-but-civil local fight: housing cost and neighborhood character vs. small-business and homeowner income. Ward interests split (Coley/Massey resist).",
+      "sections": ["Title I — Downtown STR cap + permit cap.", "Title II — Primary-residence carve-out (the B-4 compromise hinge)."],
+      "outcome": "Pending."
+    },
+    {
+      "seed_key": "prop-cm19", "bill_number": "CM-19", "title": "Riverside Stadium & Parks Bond", "type": "measure", "status": "open_comment", "comment_window": "open",
+      "sponsor": "off-tanner", "cosponsors": [], "chamber": "Watauga City Council",
+      "summary_plain": "A bond for a riverside stadium and parks package. The light one — high-volume, low-stakes, some humor. Realistic home for routine noise (and showcase fixtures).",
+      "sections": ["Title I — Stadium bond.", "Title II — Riverwalk + parks."],
+      "outcome": "Pending."
+    },
+    {
+      "seed_key": "prop-hb21", "bill_number": "HB-21", "title": "Lobbying Disclosure Act", "type": "bill", "status": "open_comment", "comment_window": "open",
+      "sponsor": "off-reyes-combs", "cosponsors": ["off-okonkwo"], "chamber": "Franklin General Assembly",
+      "summary_plain": "Requires PACs to disclose donors above a threshold. The in-world version of what Civitics itself does; quietly opposed by the PACs. The Watauga Open Books initiative drives it (see initiatives.json).",
+      "outcome": "Pending; quietly opposed by Cumberland Energy Action Fund and Greater Watauga Forward."
+    },
+    {
+      "seed_key": "prop-hb18", "bill_number": "HB-18", "title": "Clean Air Monitoring Act", "type": "bill", "status": "open_comment", "comment_window": "open",
+      "sponsor": "off-whitfield", "cosponsors": [], "chamber": "Franklin General Assembly",
+      "summary_plain": "Places air-quality sensors across the plateau, including Boyd's Iron Ridge. Cross-pressure: helps Boyd's constituents even though he's a NO on energy.",
+      "outcome": "Pending."
+    },
+    {
+      "seed_key": "prop-hb07", "bill_number": "HB-07", "title": "Coal Heritage Workforce Act", "type": "bill", "status": "closed", "comment_window": "closed",
+      "sponsor": "off-crane", "cosponsors": ["off-sevier"], "chamber": "Franklin General Assembly",
+      "summary_plain": "Retraining + heritage tourism for plateau coal counties. A low-controversy consensus bill — the contrast to HB-14's split.",
+      "outcome": "Passed broadly (consensus).",
+      "votes": [
+        {"official": "off-boyd","vote":"yes"},{"official":"off-tipton","vote":"yes"},{"official":"off-crane","vote":"yes"},{"official":"off-hale","vote":"yes"},{"official":"off-sevier","vote":"yes"},{"official":"off-reyes-combs","vote":"yes"},{"official":"off-whitfield","vote":"yes"},{"official":"off-okafor","vote":"yes"},{"official":"off-park","vote":"yes"},{"official":"off-nandakumar","vote":"yes"}
+      ],
+      "vote_question": "On Passage"
+    },
+    {
+      "seed_key": "prop-cm11", "bill_number": "CM-11", "title": "Participatory Budget Pilot", "type": "measure", "status": "closed", "comment_window": "closed",
+      "sponsor": "off-okonkwo", "cosponsors": [], "chamber": "Watauga City Council",
+      "summary_plain": "Open-data + a small participatory-budgeting pilot. Meta-civic; a finished, archived success.",
+      "outcome": "Passed.",
+      "votes": [
+        {"official":"off-finch","vote":"yes"},{"official":"off-massey","vote":"no"},{"official":"off-okonkwo","vote":"yes"},{"official":"off-coley","vote":"no"},{"official":"off-sofia-reyes","vote":"yes"},{"official":"off-hutchins","vote":"yes"},{"official":"off-brooks","vote":"yes"},{"official":"off-tanner","vote":"yes"}
+      ],
+      "vote_question": "On Adoption"
+    },
+    {
+      "seed_key": "prop-cm24", "bill_number": "CM-24", "title": "Mill District Rezoning (Ward 4)", "type": "measure", "status": "closed", "comment_window": "closed",
+      "sponsor": "ag-watauga-planning", "cosponsors": [], "chamber": "Watauga City Council",
+      "summary_plain": "Rezones the Ward 4 mill district. Jurisdiction-admin archived decision + an evidence-cited land-use fight; demonstrates the closed-window archive view.",
+      "outcome": "Decided (rezoning adopted with conditions).",
+      "votes": [
+        {"official":"off-finch","vote":"yes"},{"official":"off-massey","vote":"yes"},{"official":"off-okonkwo","vote":"no"},{"official":"off-coley","vote":"yes"},{"official":"off-sofia-reyes","vote":"yes"},{"official":"off-hutchins","vote":"yes"},{"official":"off-brooks","vote":"no"},{"official":"off-tanner","vote":"yes"}
+      ],
+      "vote_question": "On Adoption"
+    }
+  ]
+}

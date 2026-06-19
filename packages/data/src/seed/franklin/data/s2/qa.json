@@ -1,0 +1,26 @@
+{
+  "_meta": {
+    "slice": "S2 — FDEQ dam-relicensing Q&A (Storyline C). ADDITIVE to S1. Demonstrates the agency Q&A surface (QASection / get_entity_questions). Anchored on the FDEQ agency entity (ag-fdeq).",
+    "answerer": "FDEQ answers are seed-only (the pipeline maps the answerer to a synthetic agency-rep holding a grant on ag-fdeq; agencies aren't users). Per SF-P7, a REAL user's question to FDEQ gets the 'demo officials don't answer' note instead — only seeded questions get seeded answers.",
+    "shape": "LOGICAL. kind ∈ question|answer; answers reference their question by parent seed_key. Anchored on entity ag-fdeq."
+  },
+
+  "qa": [
+    {
+      "seed_key": "qa-dam-q1", "kind": "question", "author": "cit-ridgelinerose", "entity_id": "ag-fdeq", "parent": null,
+      "body": "FDEQ — the Pigeon River dam relicensing: will the new license set an enforceable minimum in-stream flow and fish passage, or is that still 'under study'? And when does the comment window actually close?"
+    },
+    {
+      "seed_key": "qa-dam-a1", "kind": "answer", "author": "ag-fdeq", "entity_id": "ag-fdeq", "parent": "qa-dam-q1",
+      "body": "The draft license includes a proposed minimum in-stream flow tied to the same gauge data the Valley Water Rights Act (HB-09) would use; fish passage is in the draft, not deferred. The public comment window is open through the posted closing date on this page, and comments citing specific flow figures carry the most weight in the record."
+    },
+    {
+      "seed_key": "qa-dam-q2", "kind": "question", "author": "cit-farmbureaufran", "entity_id": "ag-fdeq", "parent": null,
+      "body": "Does the relicensing touch agricultural withdrawals upstream, or is that strictly an HB-09 question? I don't want to comment in the wrong place and have it ignored."
+    },
+    {
+      "seed_key": "qa-dam-a2", "kind": "answer", "author": "ag-fdeq", "entity_id": "ag-fdeq", "parent": "qa-dam-q2",
+      "body": "The license governs dam operations, not withdrawal allocations — those sit with HB-09 at the Assembly. But the two share the same flow record, so a comment here about drought-year flows is read alongside the HB-09 deliberation. Filing in both is not redundant; it's the thorough thing to do."
+    }
+  ]
+}

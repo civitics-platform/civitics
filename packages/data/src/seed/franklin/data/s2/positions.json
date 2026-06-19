@@ -1,0 +1,26 @@
+{
+  "_meta": {
+    "slice": "S2 — stances on the storyline proposals. ADDITIVE to S1. stance ∈ support|oppose|mixed. Officials' stances map to votes.metadata.statement (officials aren't users — the S1 mapping lesson); citizen stances map to entity_positions. Passive officials (Crane/Sterns) post none.",
+    "scope": "CM-22 broadband, HB-09 water, CM-15 STR get stances; the breadth bills + the light stadium are left to organic comments / volume."
+  },
+
+  "positions": [
+    { "seed_key": "pos-cm22-bell", "author": "off-bell", "proposal": "prop-cm22", "stance": "support", "statement": "A city that works needs a network that works — and a state match means we build it once, for everyone, not twice." },
+    { "seed_key": "pos-cm22-okonkwo", "author": "off-okonkwo", "proposal": "prop-cm22", "stance": "support", "statement": "Tie the match to a published coverage map. Fiber we can't audit is a promise, not a plan." },
+    { "seed_key": "pos-cm22-massey", "author": "off-massey", "proposal": "prop-cm22", "stance": "oppose", "statement": "Riverside already pays the highest rates in the city. I won't bond us deeper to wire blocks the carriers should be wiring themselves." },
+    { "seed_key": "pos-cm22-hutchins", "author": "off-hutchins", "proposal": "prop-cm22", "stance": "mixed", "statement": "I'm the swing here and I'll say it plainly: build-out-to-the-county-line language earns my yes. Without it, I'm a no." },
+
+    { "seed_key": "pos-hb09-hale", "author": "off-hale", "proposal": "prop-hb09", "stance": "support", "statement": "Senior agricultural rights honored, verified metering for all, and a drought floor the river never drops below. That's the deal." },
+    { "seed_key": "pos-hb09-reyes-combs", "author": "off-reyes-combs", "proposal": "prop-hb09", "stance": "support", "statement": "Minimum in-stream flow isn't anti-farm — it's the insurance the whole valley draws on in a dry year." },
+
+    { "seed_key": "pos-cm15-finch", "author": "off-finch", "proposal": "prop-cm15", "stance": "support", "statement": "Downtown is becoming a hotel with no front desk. A cap plus a primary-residence carve-out keeps neighborhoods as neighborhoods." },
+    { "seed_key": "pos-cm15-coley", "author": "off-coley", "proposal": "prop-cm15", "stance": "oppose", "statement": "Ward 4 families rent rooms to make the mortgage. Don't fix a downtown problem by taxing the people barely holding on." },
+
+    { "seed_key": "pos-cm22-transittina", "author": "cit-transittina", "proposal": "prop-cm22", "stance": "support", "statement": "Yes. Three providers, none working past 6pm. Build it." },
+    { "seed_key": "pos-cm22-ray", "author": "cit-remoterraywfh", "proposal": "prop-cm22", "stance": "mixed", "statement": "Support — but only if the match reaches the county lines. The city doesn't need it; the mountain does." },
+    { "seed_key": "pos-hb09-fran", "author": "cit-farmbureaufran", "proposal": "prop-hb09", "stance": "mixed", "statement": "Came in opposed. If senior rights are honored and the floor is real, I can live with metering." },
+    { "seed_key": "pos-hb09-dell", "author": "cit-dell-r", "proposal": "prop-hb09", "stance": "oppose", "statement": "A Watauga meter on my family's ninety-year withdrawal? Show me the senior-rights language first." },
+    { "seed_key": "pos-cm15-marie", "author": "cit-milltownmarie", "proposal": "prop-cm15", "stance": "support", "statement": "Half my block is lockboxes. Cap the investor units." },
+    { "seed_key": "pos-cm15-cafe", "author": "cit-fifthstreetcafe", "proposal": "prop-cm15", "stance": "mixed", "statement": "Primary-residence carve-out, cap the pure investor units. The middle is right there." }
+  ]
+}

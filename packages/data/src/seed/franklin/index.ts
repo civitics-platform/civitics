@@ -1,6 +1,13 @@
 /**
- * data:seed:franklin — idempotent seed of the State of Franklin S1 (Ridgeline)
- * demonstration slice (FIX-607).
+ * data:seed:franklin — idempotent seed of the State of Franklin demonstration
+ * place: S1 (Ridgeline) + S2 (broadband / water / STR + stadium + breadth).
+ * FIX-607 (S1) extended for S2.
+ *
+ * S2 is ADDITIVE: it references S1 entities by seed_key and only extends the
+ * proposals / positions / threads / investigations / initiatives slices. The
+ * loader ingests S1 then S2 in one merged pass, keyed on seed_key via
+ * franklin_seed_map, so re-runs stay idempotent. s2/qa.json (agency Q&A) is
+ * DEFERRED until an agency Q&A surface exists (FIX-610).
  *
  * The FIRST synthetic content on the platform: every entity row carries
  * is_synthetic=true and every author is a synthetic user, so this run is also
@@ -66,15 +73,22 @@ interface Proposals {
       bill_number: string;
       title: string;
       type: string;
+      // S1: 'open_comment' | 'closed'. S2 adds council 'measure' rows; the
+      // physical proposal_type is always 'bill' so the proposal page's
+      // type==='bill'-gated vote + bill_details section renders for measures too.
       status: string;
       comment_window: string;
+      // S2 CM-24 is sponsored by an agency (ag-watauga-planning); only off-*
+      // sponsors map to bill_details.primary_sponsor_id (an officials FK).
       sponsor: string;
-      cosponsors: string[];
+      cosponsors?: string[];
       summary_plain: string;
       sections?: string[];
       outcome?: string;
-      votes: Array<{ official: string; vote: string; note?: string }>;
-      vote_question: string;
+      // Open / in-deliberation proposals (S2 CM-22, HB-09, CM-15, …) carry NO
+      // votes; closed ones carry a roll call whose tally decides enacted/failed.
+      votes?: Array<{ official: string; vote: string; note?: string }>;
+      vote_question?: string;
       chamber: string;
     }
   >;
@@ -92,6 +106,9 @@ interface Threads {
       author: string;
       parent: string | null;
       kind: string;
+      // S1 comments all anchor on prop-hb14 (no entity_id field → fallback);
+      // S2 comments carry an explicit per-comment entity_id (prop-cm22, …).
+      entity_id?: string;
       body: string;
       bridge_score: number | null;
       map_x?: number;
@@ -112,6 +129,10 @@ interface Investigations {
       scope_jurisdiction: string;
       created_by: string;
       status: string;
+      // S2 inv-2 carries living_individual sensitivity (narrative-level; the
+      // schema has no sensitivity column — un-promotability is enforced by
+      // status='proposed', recorded in metadata for the record).
+      subject_sensitivity?: string;
       findings: string;
       evidence_cards: Array<
         Json & {
@@ -123,6 +144,7 @@ interface Investigations {
           relationship_kind?: string;
           cites: string[];
           status: string;
+          sensitivity?: string;
         }
       >;
     }
@@ -136,10 +158,15 @@ interface Initiatives {
       authorship_type: string;
       scope: string;
       stage: string;
-      linked_proposal: string;
-      resolution_type: string;
+      linked_proposal: string | null;
+      // null for a live 'mobilise' drive (S2 init-open-books) — only set once
+      // the initiative resolves (sponsored | declined | withdrawn | expired).
+      resolution_type: string | null;
       primary_author: string;
       summary: string;
+      issue_area_tags?: string[];
+      signature_threshold?: number;
+      mobilise_started_at?: string;
       signatures: Array<{ user: string; verification_tier: string; district?: string }>;
       responses: Array<{ official: string; response_type: string; body: string }>;
     }
@@ -171,10 +198,46 @@ function stanceToSmallint(stance: string): number {
   if (stance === "oppose") return -2;
   return 0; // mixed
 }
-// edge-card relationship kinds in the logical money graph ("funds",
-// "contributes_to") are all donation-shaped money flow; the assertable graph
-// enum names that 'donation'.
-const EDGE_KIND = "donation";
+// Map a logical edge relationship_kind to the assertable connection_type subset
+// the add_evidence_card RPC accepts. S1's money-flow kinds ("funds",
+// "contributes_to") are 'donation'; S2's revolving-door board seat
+// ("board_member", off-sterns → Aerie Grid) is 'revolving_door'.
+function edgeRelationshipKind(kind: string | undefined): string {
+  switch (kind) {
+    case "board_member":
+      return "revolving_door";
+    case "funds":
+    case "contributes_to":
+    default:
+      return "donation";
+  }
+}
+
+// A proposal's chamber string resolves the governing body + jurisdiction it
+// belongs to. S2 introduces council measures (CM-*) voted at the Watauga City
+// Council; S1 bills (HB-*) sit at the unicameral General Assembly.
+const CHAMBER_TO_BODY: Record<string, { gb: string; juris: string }> = {
+  "Franklin General Assembly": { gb: "gb-assembly", juris: "juris-franklin" },
+  "Watauga City Council": { gb: "gb-watauga-council", juris: "juris-watauga" },
+};
+
+// closed proposals: enacted if the roll call passed (yes > no), else failed.
+// open proposals keep 'open_comment'. Backward-compatible with S1 (HB-03's
+// 4–6 → failed; HB-14 is open_comment so untouched).
+function proposalStatus(status: string, votes: Array<{ vote: string }>): string {
+  if (status === "open_comment") return "open_comment";
+  const yes = votes.filter((v) => v.vote === "yes").length;
+  const no = votes.filter((v) => v.vote === "no").length;
+  return yes > no ? "enacted" : "failed";
+}
+
+// comment-window label → a concrete comment_period_end. closing_soon is a near
+// future date (live but ending); closed is in the past.
+function commentPeriodEnd(window: string): string {
+  if (window === "open") return "2026-12-31";
+  if (window === "closing_soon") return "2026-07-15";
+  return "2026-04-10"; // 'closed' (and any unknown) → past
+}
 
 function isProdUrl(url: string): boolean {
   return /supabase\.(co|com)/i.test(url);
@@ -356,9 +419,17 @@ async function seedMoney(ctx: SeedCtx, m: MoneyGraph): Promise<void> {
   }
 }
 
-async function seedProposalsAndVotes(ctx: SeedCtx, p: Proposals, franklinJuris: string, assemblyGb: string): Promise<void> {
+async function seedProposalsAndVotes(ctx: SeedCtx, p: Proposals): Promise<void> {
   for (const prop of p.proposals) {
-    const status = prop.status === "open_comment" ? "open_comment" : "failed";
+    const votes = prop.votes ?? [];
+    const body = CHAMBER_TO_BODY[prop.chamber] ?? CHAMBER_TO_BODY["Franklin General Assembly"];
+    const jurisId = ctx.id(body.juris);
+    const gbId = ctx.id(body.gb);
+    // Only official sponsors map to the bill_details.primary_sponsor_id FK; an
+    // agency sponsor (CM-24 → ag-watauga-planning) is null there but preserved
+    // in proposal metadata.sponsor.
+    const sponsorId = prop.sponsor.startsWith("off-") ? ctx.id(prop.sponsor) : null;
+    const status = proposalStatus(prop.status, votes);
     const propId = await upsertById(
       ctx,
       prop.seed_key,
@@ -366,8 +437,8 @@ async function seedProposalsAndVotes(ctx: SeedCtx, p: Proposals, franklinJuris: 
       {
         type: "bill",
         status,
-        jurisdiction_id: franklinJuris,
-        governing_body_id: assemblyGb,
+        jurisdiction_id: jurisId,
+        governing_body_id: gbId,
         title: prop.title,
         summary_plain: prop.summary_plain,
         introduced_at: "2026-02-01",
@@ -381,8 +452,7 @@ async function seedProposalsAndVotes(ctx: SeedCtx, p: Proposals, franklinJuris: 
           sponsor: prop.sponsor,
           cosponsors: prop.cosponsors ?? [],
           comment_window: prop.comment_window,
-          // open comment windows surface as "open"; future end keeps it live.
-          comment_period_end: prop.comment_window === "open" ? "2026-12-31" : "2026-04-10",
+          comment_period_end: commentPeriodEnd(prop.comment_window),
         }),
       },
       new Set(["metadata"]),
@@ -395,12 +465,12 @@ async function seedProposalsAndVotes(ctx: SeedCtx, p: Proposals, franklinJuris: 
        ON CONFLICT (proposal_id) DO UPDATE
          SET bill_number = EXCLUDED.bill_number, chamber = EXCLUDED.chamber,
              primary_sponsor_id = EXCLUDED.primary_sponsor_id`,
-      [propId, prop.bill_number, prop.chamber, franklinJuris, ctx.id(prop.sponsor)],
+      [propId, prop.bill_number, prop.chamber, jurisId, sponsorId],
     );
     await ctx.record(`${prop.seed_key}:bill_details`, "bill_details", propId);
 
     const rollCallId = `franklin-${prop.seed_key}-passage`;
-    for (const v of prop.votes) {
+    for (const v of votes) {
       const voteKey = `${prop.seed_key}:vote:${v.official}`;
       await upsertById(
         ctx,
@@ -412,7 +482,7 @@ async function seedProposalsAndVotes(ctx: SeedCtx, p: Proposals, franklinJuris: 
           vote: v.vote,
           voted_at: VOTE_DATE,
           roll_call_id: rollCallId,
-          vote_question: prop.vote_question,
+          vote_question: prop.vote_question ?? "On Passage",
           chamber: prop.chamber,
           session: "2026",
           metadata: jb({ seed_key: voteKey, note: v.note ?? null }),
@@ -458,6 +528,9 @@ async function seedPositions(ctx: SeedCtx, pos: Positions): Promise<void> {
 
 async function seedThread(ctx: SeedCtx, t: Threads, hb14: string): Promise<void> {
   for (const c of t.comments) {
+    // S1 comments have no entity_id (all anchor on HB-14); S2 comments carry
+    // their own per-comment entity_id (the four S2 proposal threads).
+    const entityId = c.entity_id ? ctx.id(c.entity_id) : hb14;
     const parentId = c.parent ? ctx.id(c.parent) : null;
     // thread_root_id: roots are null at insert; replies inherit the root.
     let threadRoot: string | null = null;
@@ -474,7 +547,7 @@ async function seedThread(ctx: SeedCtx, t: Threads, hb14: string): Promise<void>
       "entity_comments",
       {
         entity_type: "proposal",
-        entity_id: hb14,
+        entity_id: entityId,
         parent_id: parentId,
         thread_root_id: threadRoot,
         author_id: ctx.id(c.author),
@@ -564,10 +637,10 @@ async function seedInitiative(ctx: SeedCtx, init: Initiatives): Promise<void> {
         ctx.id(it.primary_author),
         it.scope,
         it.summary,
-        it.resolution_type,
-        25,
-        ["energy", "just-transition"],
-        "2026-03-15",
+        it.resolution_type, // null for a live 'mobilise' drive
+        it.signature_threshold ?? 25,
+        it.issue_area_tags ?? [],
+        it.mobilise_started_at ?? "2026-03-15",
       ],
     );
     await ctx.record(`${it.seed_key}:details`, "initiative_details", propId);
@@ -617,8 +690,11 @@ async function seedInvestigation(ctx: SeedCtx, inv: Investigations): Promise<voi
       await ctx.query(`SELECT public.set_investigation_findings($1, $2, 'open')`, [invId, investigation.findings]);
     });
     await ctx.query(
-      `UPDATE public.investigations SET is_synthetic = true, is_seeded = true, is_featured = true WHERE id = $1`,
-      [invId],
+      `UPDATE public.investigations
+         SET is_synthetic = true, is_seeded = true, is_featured = true,
+             metadata = metadata || $2::jsonb
+       WHERE id = $1`,
+      [invId, jb({ seed_key: investigation.seed_key, subject_sensitivity: investigation.subject_sensitivity ?? null })],
     );
 
     for (const card of investigation.evidence_cards) {
@@ -633,11 +709,13 @@ async function seedInvestigation(ctx: SeedCtx, inv: Investigations): Promise<voi
             invId,
             card.claim,
             card.claim_type,
-            isEdge ? "financial_entity" : null,
+            // from_type is derived (S2 ec-23's source is an official, not a
+            // financial_entity) — not hardcoded.
+            isEdge ? edgeToType(card.from!) : null,
             isEdge && card.from ? ctx.id(card.from) : null,
             isEdge ? edgeToType(card.to!) : null,
             isEdge && card.to ? ctx.id(card.to) : null,
-            isEdge ? EDGE_KIND : null,
+            isEdge ? edgeRelationshipKind(card.relationship_kind) : null,
             targets[0].type,
             targets[0].id,
             null,
@@ -650,7 +728,10 @@ async function seedInvestigation(ctx: SeedCtx, inv: Investigations): Promise<voi
         return row.id;
       });
       await ctx.record(card.seed_key, "evidence_cards", cardId);
-      await ctx.query(`UPDATE public.evidence_cards SET is_synthetic = true WHERE id = $1`, [cardId]);
+      await ctx.query(
+        `UPDATE public.evidence_cards SET is_synthetic = true, metadata = metadata || $2::jsonb WHERE id = $1`,
+        [cardId, jb({ seed_key: card.seed_key, sensitivity: card.sensitivity ?? null })],
+      );
 
       // Authored end-state status (bible §9.3 precedent: seed sets display state).
       if (isEdge && card.status === "promoted") {
@@ -744,22 +825,58 @@ async function main(): Promise<void> {
   try {
     await ctx.loadMap();
 
+    // S1 + S2 are ingested through one pass over the merged logical set; the
+    // franklin_seed_map keys every row on its seed_key, so order within a slice
+    // and re-runs are both idempotent. S2 is ADDITIVE: it reuses S1 entities,
+    // money, citizens, and fixtures (no new files for those) and only extends
+    // proposals / positions / threads / investigations / initiatives.
+    //
+    // s2/qa.json (agency Q&A) is DEFERRED (FIX-610): no agency Q&A surface
+    // exists yet (get_entity_questions + QASection + the /api routes are
+    // officials-only). Seeding it today would be invisible. The file is
+    // co-located here, ready to wire once the surface ships.
     const entities = loadJson<Entities>("entities.json");
     const money = loadJson<MoneyGraph>("money-graph.json");
-    const proposals = loadJson<Proposals>("proposals.json");
     const citizens = loadJson<Citizens>("citizens.json");
-    const positions = loadJson<Positions>("positions.json");
-    const threads = loadJson<Threads>("threads.json");
-    const investigations = loadJson<Investigations>("investigations.json");
-    const initiatives = loadJson<Initiatives>("initiatives.json");
     const fixtures = loadJson<Fixtures>("fixtures.json");
+
+    const proposals: Proposals = {
+      proposals: [
+        ...loadJson<Proposals>("proposals.json").proposals,
+        ...loadJson<Proposals>("s2/proposals.json").proposals,
+      ],
+    };
+    const positions: Positions = {
+      positions: [
+        ...loadJson<Positions>("positions.json").positions,
+        ...loadJson<Positions>("s2/positions.json").positions,
+      ],
+    };
+    const threads: Threads = {
+      comments: [
+        ...loadJson<Threads>("threads.json").comments,
+        ...loadJson<Threads>("s2/threads.json").comments,
+      ],
+    };
+    const investigations: Investigations = {
+      investigations: [
+        ...loadJson<Investigations>("investigations.json").investigations,
+        ...loadJson<Investigations>("s2/investigations.json").investigations,
+      ],
+    };
+    const initiatives: Initiatives = {
+      initiatives: [
+        ...loadJson<Initiatives>("initiatives.json").initiatives,
+        ...loadJson<Initiatives>("s2/initiatives.json").initiatives,
+      ],
+    };
 
     console.log("1-4  entities (jurisdictions, bodies, agencies, officials)…");
     await seedEntities(ctx, entities);
     console.log("5-6  money graph (entities + relationships)…");
     await seedMoney(ctx, money);
-    console.log("7-8  proposals + bill_details + votes…");
-    await seedProposalsAndVotes(ctx, proposals, ctx.id("juris-franklin"), ctx.id("gb-assembly"));
+    console.log("7-8  proposals + bill_details + votes (assembly + council)…");
+    await seedProposalsAndVotes(ctx, proposals);
     console.log("10   citizen + curator + fixture-author users…");
     await upsertUser(ctx, "user-curator", "Franklin Commons", { role: "curator", is_curator: true });
     await seedCitizens(ctx, citizens);
@@ -767,11 +884,11 @@ async function main(): Promise<void> {
     await seedInitiative(ctx, initiatives);
     console.log("11   positions…");
     await seedPositions(ctx, positions);
-    console.log("12   HB-14 thread (curator opener, roots, replies, B-1 bridge)…");
+    console.log("12   threads (HB-14 B-1; S2 CM-22/HB-09/CM-15/CM-19 B-2/B-3/B-4)…");
     await seedThread(ctx, threads, ctx.id("prop-hb14"));
     console.log("13   moderation fixtures + content_flags (≥3 → needs_review)…");
     await seedFixtures(ctx, fixtures);
-    console.log("14   Investigation #1 (evidence cards + citations + promotion)…");
+    console.log("14   Investigations #1 + #2 (evidence cards + citations + promotion)…");
     await seedInvestigation(ctx, investigations);
     console.log("16   refresh materialized views…");
     await refreshMvs(ctx, refreshAllMvs);

@@ -1,8 +1,8 @@
 {
-  "ranAt": "2026-06-19T09:50:16.053Z",
-  "durationMs": 1235,
+  "ranAt": "2026-06-19T19:30:21.607Z",
+  "durationMs": 478,
   "dbHost": "127.0.0.1:54322",
-  "sha": "aa867606",
+  "sha": "376c2a17",
   "rows": [
     {
       "fixtureId": "F1",
@@ -134,8 +134,8 @@
   "pollution": [
     {
       "table": "entity_comments",
-      "before": 47,
-      "after": 47,
+      "before": 64,
+      "after": 64,
       "delta": 0
     },
     {
@@ -152,8 +152,8 @@
     },
     {
       "table": "entity_positions",
-      "before": 9,
-      "after": 9,
+      "before": 15,
+      "after": 15,
       "delta": 0
     },
     {
@@ -164,20 +164,20 @@
     },
     {
       "table": "evidence_cards",
-      "before": 17,
-      "after": 17,
+      "before": 22,
+      "after": 22,
       "delta": 0
     },
     {
       "table": "citations",
-      "before": 21,
-      "after": 21,
+      "before": 27,
+      "after": 27,
       "delta": 0
     },
     {
       "table": "investigations",
-      "before": 3,
-      "after": 3,
+      "before": 4,
+      "after": 4,
       "delta": 0
     }
   ],

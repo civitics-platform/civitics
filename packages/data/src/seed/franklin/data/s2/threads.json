@@ -1,0 +1,53 @@
+{
+  "_meta": {
+    "slice": "S2 — broadband / dam / STR / stadium threads. ADDITIVE to S1. Same entity_comments shape; authors are S1 citizens (by seed_key); curator = user-curator. Authored bridge values are display-only (bible §9.3).",
+    "bridge_moments": "B-2 (CM-22): a Confluence author makes the RURAL case. B-3 (HB-09): a farmer + a conservationist converge. B-4 (CM-15): a small-business owner + a homeowner converge. Each earns its authored score via cross-stance endorsement, matching the real scorer's map_y logic.",
+    "stadium": "CM-19 is the deliberately-light thread — routine, low-stakes, a little humor. Realistic backdrop; the hard fixtures stay in fixtures.json."
+  },
+
+  "comments": [
+    { "seed_key": "cmt-cm22-opener", "author": "user-curator", "parent": null, "kind": "comment", "entity_id": "prop-cm22",
+      "body": "The Watauga Broadband Measure's window closes soon. The bond builds fiber — the open question is how far it reaches. Where should the line stop?", "bridge_score": null },
+    { "seed_key": "cmt-cm22-tina", "author": "cit-transittina", "parent": null, "kind": "comment", "entity_id": "prop-cm22",
+      "body": "Yes to the bond. My block has three providers and none of them work after 6pm. Fix the city first.", "bridge_score": null },
+    { "seed_key": "cmt-cm22-ray", "author": "cit-remoterraywfh", "parent": null, "kind": "comment", "entity_id": "prop-cm22",
+      "body": "I moved up the mountain for the quiet and now I drive to a McDonald's lot to take calls. The county lines are where the need actually is.", "bridge_score": null },
+    { "seed_key": "cmt-cm22-b2", "author": "cit-builditbell", "parent": null, "kind": "comment", "entity_id": "prop-cm22",
+      "body": "I build in Watauga and I'll say it against my own interest: the city already has fiber. Tie the state match to a build-out requirement that reaches the county lines, or this is just a subsidy for people who already have Comcast. Fund the edges, not the core.",
+      "is_bridge_moment": "B-2", "bridge_score": 0.83, "map_x": -0.03, "map_y": 0.88,
+      "authored_raters": { "total": 10, "valuable_up": 9, "endorsers_support_side": 5, "endorsers_oppose_side": 5 } },
+    { "seed_key": "cmt-cm22-b2-reply-hollow", "author": "cit-newtothehollow", "parent": "cmt-cm22-b2", "kind": "comment", "entity_id": "prop-cm22",
+      "body": "Didn't expect a Watauga developer to make the case for Stony Fork. Thank you. Build-out-to-the-line and I'm in.", "bridge_score": null },
+
+    { "seed_key": "cmt-hb09-opener", "author": "user-curator", "parent": null, "kind": "comment", "entity_id": "prop-hb09",
+      "body": "The Valley Water Rights Act is in committee. It splits three ways — farms, Watauga's tap, and the rivers themselves. This is a slow one; take your time.", "bridge_score": null },
+    { "seed_key": "cmt-hb09-fran", "author": "cit-farmbureaufran", "parent": null, "kind": "comment", "entity_id": "prop-hb09",
+      "body": "My family has drawn from the Nolichucky for ninety years. I'm not handing our withdrawal to a Watauga water meter and a fish count.", "bridge_score": null },
+    { "seed_key": "cmt-hb09-b3", "author": "cit-oldgrowthowen", "parent": null, "kind": "comment", "entity_id": "prop-hb09",
+      "body": "Here's the thing, Fran — a guaranteed minimum in-stream flow protects YOUR water in a drought year too, not just the trout. Verified metering for everyone, a floor the river never drops below, and senior ag rights honored above new municipal draw. That's a deal a farmer and a fish guy can both sign.",
+      "is_bridge_moment": "B-3", "bridge_score": 0.81, "map_x": 0.06, "map_y": 0.85,
+      "authored_raters": { "total": 9, "valuable_up": 8, "endorsers_support_side": 4, "endorsers_oppose_side": 5 } },
+    { "seed_key": "cmt-hb09-b3-reply-fran", "author": "cit-farmbureaufran", "parent": "cmt-hb09-b3", "kind": "comment", "entity_id": "prop-hb09",
+      "body": "...senior rights honored and a floor I can count on in August. Alright. Put it in writing and I'll stop fighting it.", "bridge_score": null },
+
+    { "seed_key": "cmt-cm15-opener", "author": "user-curator", "parent": null, "kind": "comment", "entity_id": "prop-cm15",
+      "body": "The Short-Term Rental Ordinance is open for comment. Caps downtown rentals. Housing and neighborhood character on one side, income and small business on the other. What's the line?", "bridge_score": null },
+    { "seed_key": "cmt-cm15-marie", "author": "cit-milltownmarie", "parent": null, "kind": "comment", "entity_id": "prop-cm15",
+      "body": "Half my block is lockboxes now. I don't know my neighbors, I know cleaning crews. Cap it.", "bridge_score": null },
+    { "seed_key": "cmt-cm15-b4", "author": "cit-fifthstreetcafe", "parent": null, "kind": "comment", "entity_id": "prop-cm15",
+      "body": "A flat ban kills the widow down the street who rents her spare room to keep the house. But Marie's right about the lockbox blocks. Carve out primary residences, cap the pure investor units, and you protect the neighborhood AND the people barely hanging onto theirs. The ban-vs-nothing fight is missing the obvious middle.",
+      "is_bridge_moment": "B-4", "bridge_score": 0.80, "map_x": 0.02, "map_y": 0.84,
+      "authored_raters": { "total": 9, "valuable_up": 8, "endorsers_support_side": 4, "endorsers_oppose_side": 5 } },
+    { "seed_key": "cmt-cm15-b4-reply-marie", "author": "cit-milltownmarie", "parent": "cmt-cm15-b4", "kind": "comment", "entity_id": "prop-cm15",
+      "body": "Primary-residence carve-out I can live with. It's the investor blocks I want gone, not my neighbor's spare room. Fine.", "bridge_score": null },
+
+    { "seed_key": "cmt-cm19-opener", "author": "user-curator", "parent": null, "kind": "comment", "entity_id": "prop-cm19",
+      "body": "The Riverside Stadium & Parks Bond is open. Big-ticket, fun to argue about. Worth it?", "bridge_score": null },
+    { "seed_key": "cmt-cm19-stan", "author": "cit-stadiumstan", "parent": null, "kind": "comment", "entity_id": "prop-cm19",
+      "body": "FINALLY. Watauga deserves a real ballpark. Build it and they will come (and pay parking).", "bridge_score": null },
+    { "seed_key": "cmt-cm19-hal", "author": "cit-hillcountryhal", "parent": null, "kind": "comment", "entity_id": "prop-cm19",
+      "body": "Love a stadium. Love it less when it's my property tax buying the naming rights for someone else's LLC. The parks half, though? That I'll vote for.", "bridge_score": null },
+    { "seed_key": "cmt-cm19-quiet", "author": "cit-quietcommute", "parent": null, "kind": "comment", "entity_id": "prop-cm19",
+      "body": "Split the bond. Parks now, stadium when someone shows me the traffic study. I sit on that bridge every night already.", "bridge_score": null }
+  ]
+}

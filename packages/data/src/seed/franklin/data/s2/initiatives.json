@@ -1,0 +1,52 @@
+{
+  "_meta": {
+    "slice": "S2 — the two remaining initiatives. ADDITIVE to S1. Same shape as S1 initiatives.json; synthetic-ness derives from primary_author → users.is_synthetic.",
+    "lifecycle_coverage": "Open Books = stage 'mobilise' (an ACTIVE drive, no resolution yet) → demonstrates a live initiative. Dog Park = stage 'resolved' / resolution 'expired' → the honest non-success + local scope. Together with S1's 'resolved/sponsored' (Fund the Plateau First), the seed now exercises the full lifecycle + all the interesting resolutions."
+  },
+
+  "initiatives": [
+    {
+      "seed_key": "init-open-books",
+      "title": "Watauga Open Books",
+      "authorship_type": "community",
+      "scope": "state",
+      "stage": "mobilise",
+      "linked_proposal": "prop-hb21",
+      "resolution_type": null,
+      "primary_author": "cit-openledgero",
+      "issue_area_tags": ["transparency", "campaign-finance", "government"],
+      "summary": "Pass the Lobbying Disclosure Act (HB-21): require every PAC active in Franklin to disclose its donors above a threshold. If a Cumberland or a Greater Watauga is shaping our votes, we should be able to see it. Sign to move HB-21 out of committee.",
+      "legislative_vehicle": "prop-hb21 (Reyes-Combs's bill is the vehicle; the initiative is the public pressure behind it).",
+      "signatures": [
+        { "user": "cit-openledgero", "verification_tier": "district", "district": "Watauga City" },
+        { "user": "cit-gradstudentgus", "verification_tier": "district", "district": "Ward 3 (Watauga)" },
+        { "user": "cit-clerkemeritus", "verification_tier": "district", "district": "Cherokee Foothills" },
+        { "user": "cit-fifthstreetcafe", "verification_tier": "email", "district": "Watauga City" },
+        { "user": "cit-twokidstwoinhalers", "verification_tier": "email", "district": "Iron Ridge" },
+        { "user": "cit-hillcountryhal", "verification_tier": "district", "district": "Ward 6 (Watauga)" },
+        { "user": "cit-oldgrowthowen", "verification_tier": "district", "district": "Greenbrier Highlands" },
+        { "user": "cit-newtothehollow", "verification_tier": "unverified", "district": "Stony Fork" }
+      ],
+      "responses": []
+    },
+    {
+      "seed_key": "init-dog-park",
+      "title": "A Dog Park for the Riverwalk",
+      "authorship_type": "individual",
+      "scope": "local",
+      "stage": "resolved",
+      "linked_proposal": null,
+      "resolution_type": "expired",
+      "primary_author": "cit-stadiumstan",
+      "issue_area_tags": ["parks", "local"],
+      "summary": "Add a fenced dog park to the Riverwalk parks plan. Good for dogs, good for downtown. (Earnest, low-stakes — and it never reached the signature threshold before the window closed.)",
+      "signatures": [
+        { "user": "cit-stadiumstan", "verification_tier": "district", "district": "Ward 8 (Watauga)" },
+        { "user": "cit-transittina", "verification_tier": "email", "district": "Ward 5 (Watauga)" },
+        { "user": "cit-fifthstreetcafe", "verification_tier": "unverified", "district": "Watauga City" }
+      ],
+      "responses": [],
+      "note": "Expired below threshold — the honest 'not everything wins' case + the only local-scope initiative in the seed."
+    }
+  ]
+}

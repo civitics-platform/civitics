@@ -1,0 +1,28 @@
+{
+  "_meta": {
+    "slice": "S2 — Investigation #2 (the careful one). ADDITIVE to S1. Same atomic add_evidence_card rule: every card cites a CITABLE record (financial_relationships fr-*, or a vote) — NEVER entity_positions (the ec-07 lesson).",
+    "purpose": "Demonstrates RESTRAINT, the counterpart to Investigation #1's clean trace. The donations + vote + board seat are all real and disclosed; the IMPLICATION of a quid pro quo is alleged and stays un-promotable. Models how to map a real conflict-of-interest WITHOUT asserting corruption — the anti-conspiracy norm as editorial judgment.",
+    "sensitivity": "Implies wrongdoing by a named (fictional) individual (Speaker Nandakumar) → living-individual sensitivity path: multi-source + review before any promotion. Disclosed edges are promotable; the alleged inference is not."
+  },
+
+  "investigations": [
+    {
+      "seed_key": "inv-2",
+      "title": "Did the transmission bidder back the Ridgeline Act's supporters?",
+      "question": "Aerie Grid Partners is bidding to BUILD HB-14's transmission line and funds the PAC backing Speaker Nandakumar, who scheduled and voted for the bill. Coincidence, or conflict?",
+      "scope_entity": "prop-hb14",
+      "scope_jurisdiction": "juris-franklin",
+      "created_by": "cit-openledgero",
+      "status": "open",
+      "subject_sensitivity": "living_individual",
+      "findings": "The pieces are real and disclosed: Aerie Grid funds Greater Watauga Forward, which funds Speaker Nandakumar, who scheduled and voted YES on HB-14 — and a former delegate now sits on Aerie Grid's board. That is a genuine conflict-of-interest SHAPE. It is not proof of a quid pro quo, and this case does not assert one. The disclosed money edges are corroborated and promotable; the inference that the donations bought the vote is alleged and stays un-promotable absent independent evidence.",
+      "evidence_cards": [
+        { "seed_key": "ec-21", "claim_type": "edge", "claim": "Aerie Grid Partners funds the Greater Watauga Forward PAC.", "from": "donor-aerie-grid", "to": "pac-greater-watauga", "relationship_kind": "funds", "cites": ["fr-11"], "status": "promoted", "sensitivity": "none" },
+        { "seed_key": "ec-22", "claim_type": "edge", "claim": "Greater Watauga Forward contributes to Speaker Priya Nandakumar.", "from": "pac-greater-watauga", "to": "off-nandakumar", "relationship_kind": "contributes_to", "cites": ["fr-12"], "status": "promoted", "sensitivity": "none" },
+        { "seed_key": "ec-23", "claim_type": "edge", "claim": "Former Delegate Wade Sterns sits on Aerie Grid Partners' board.", "from": "off-sterns", "to": "donor-aerie-grid", "relationship_kind": "board_member", "cites": ["fr-14"], "status": "promoted", "sensitivity": "none", "note": "The revolving-door edge — disclosed and true." },
+        { "seed_key": "ec-24", "claim_type": "context", "claim": "Speaker Nandakumar scheduled HB-14 for a floor vote and voted YES; Aerie Grid is bidding to build the line the bill authorizes.", "cites": ["prop-hb14:vote:off-nandakumar", "fr-11"], "status": "corroborated", "sensitivity": "living_individual", "note": "Context, not an accusation — states the disclosed facts and the timing, nothing more." },
+        { "seed_key": "ec-25", "claim_type": "context", "claim": "The pattern suggests the contributions may have influenced the Speaker's handling of the bill.", "cites": ["fr-12"], "status": "proposed", "sensitivity": "living_individual", "note": "ALLEGED inference — held un-promotable. There is no independent evidence of a quid pro quo; the case explicitly declines to assert one. This is the restraint demo (the Investigation #2 analogue of inv-1's ec-06)." }
+      ]
+    }
+  ]
+}
