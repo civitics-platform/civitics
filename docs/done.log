@@ -758,3 +758,4 @@
 2026-06-18 | FIX-599 | 2272599c | prod-only | chore(integrity): record prod verification for FIX-599 (SF-P2)
 2026-06-18 | FIX-600 | a301c9c1 | local-only | feat(integrity): exclude synthetic from platform counts + finish projection coverage
 2026-06-18 | FIX-600 | e370c01b | prod-only | chore(integrity): record prod verification for FIX-600
+2026-06-19 | FIX-601 | 5035d09b | local-only | feat(integrity): SF-P3 shadow moderation harness
