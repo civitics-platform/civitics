@@ -776,3 +776,4 @@
 2026-06-19 | FIX-609 | 6c0a8f0b | local+prod | chore(integrity): record prod verification for FIX-609 (Franklin S1+S2 seed)
 2026-06-19 | FIX-611 | 53315188 | local-only | fix(seed): source prod password from env + redact conn-string logs
 2026-06-19 | FIX-612 | 1bcb6e74 | local+prod | feat(integrity): SF-P5 bridge-score anti-gaming (rater trust + cross-stance floor)
+2026-06-19 | FIX-613 | ff9cb941 | local+prod | feat(seed): Franklin horizontal coverage — kinds, statements, Q&A, positions, follows
