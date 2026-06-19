@@ -23,6 +23,9 @@
  * state-of-franklin-bible §13.1 (dependencies first).
  */
 
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { Client } from "pg";
 import {
   LOCAL_DB_URL,
@@ -250,6 +253,58 @@ function host(url: string): string {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Prod connection string (FIX-611) — sourced from env, never the CLI.
+//
+// Passing the prod password as a --db-url CLI arg leaks it into terminal
+// scrollback, shell history, and the session log. Mirror the db:push:prod
+// wrapper instead: read SUPABASE_DB_PASSWORD from .env.local.prod and inject it
+// into the CLI-cached session-pooler URL inside this process. --db-url remains a
+// fallback; redactDbUrl() scrubs the password from anything we print.
+// ---------------------------------------------------------------------------
+const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../../../..");
+const PROD_ENV_FILE = join(REPO_ROOT, ".env.local.prod");
+const POOLER_FILE = join(REPO_ROOT, "supabase", ".temp", "pooler-url");
+const PROD_PROJECT_REF = "xsazcoxinpgttgquwvuf";
+const POOLER_FALLBACK = `postgresql://postgres.${PROD_PROJECT_REF}@aws-0-us-west-2.pooler.supabase.com:5432/postgres`;
+
+function readEnvVar(file: string, key: string): string | null {
+  if (!existsSync(file)) return null;
+  for (const line of readFileSync(file, "utf8").split(/\r?\n/)) {
+    const m = line.match(/^([A-Z0-9_]+)=(.*)$/);
+    if (m && m[1] === key) return m[2].trim();
+  }
+  return null;
+}
+
+/** Replace the password component of a postgres URL with **** for safe logging. */
+function redactDbUrl(url: string): string {
+  return url.replace(/(postgresql:\/\/[^/@:]+:)[^@]+(@)/i, "$1****$2");
+}
+
+/**
+ * Build the prod connection string from .env.local.prod (password) injected into
+ * the cached session-pooler URL. Throws if the password is absent so a prod run
+ * fails loudly rather than silently falling back to local.
+ */
+function buildProdDbUrl(): string {
+  const password = readEnvVar(PROD_ENV_FILE, "SUPABASE_DB_PASSWORD");
+  if (!password) {
+    throw new Error(
+      `--allow-prod set but SUPABASE_DB_PASSWORD not found in ${PROD_ENV_FILE}.\n` +
+        "Cannot build the prod connection string from env. Either populate that file or\n" +
+        "pass --db-url explicitly (the password will then appear on the CLI — avoid that).",
+    );
+  }
+  const baseUrl = existsSync(POOLER_FILE) ? readFileSync(POOLER_FILE, "utf8").trim() : POOLER_FALLBACK;
+  // Insert the password between user and host: scheme://user@host → scheme://user:pass@host
+  const url = baseUrl.replace(/^(postgresql:\/\/[^/@:]+)@/, `$1:${encodeURIComponent(password)}@`);
+  if (!url.includes("@") || url === baseUrl) {
+    throw new Error(`could not inject password into pooler URL: ${redactDbUrl(baseUrl)}`);
+  }
+  return url;
+}
+
 interface Args {
   dbUrl: string;
   allowProd: boolean;
@@ -257,19 +312,29 @@ interface Args {
 }
 function parseArgs(argv: string[]): Args {
   const args = argv.slice(2);
-  let dbUrl = process.env.SUPABASE_DB_URL ?? LOCAL_DB_URL;
+  let explicitDbUrl: string | null = process.env.SUPABASE_DB_URL ?? null;
   let allowProd = false;
   let refreshAllMvs = false;
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
-    if (a === "--db-url" && args[i + 1]) dbUrl = args[++i];
+    if (a === "--db-url" && args[i + 1]) explicitDbUrl = args[++i];
     else if (a === "--allow-prod") allowProd = true;
     else if (a === "--refresh-all-mvs") refreshAllMvs = true;
     else if (a === "--help" || a === "-h") {
-      console.log("Usage: data:seed:franklin [--db-url <url>] [--allow-prod] [--refresh-all-mvs]");
+      console.log("Usage: data:seed:franklin [--allow-prod] [--db-url <url>] [--refresh-all-mvs]");
+      console.log("  --allow-prod   seed PRODUCTION; password is read from .env.local.prod (never the CLI)");
+      console.log("  --db-url <url> explicit connection string (fallback; password appears on the CLI — avoid)");
       process.exit(0);
     }
   }
+  // Connection-string precedence (FIX-611):
+  //   1. explicit --db-url / SUPABASE_DB_URL — fallback override, redacted in logs
+  //   2. --allow-prod — build prod URL from .env.local.prod (password never on CLI)
+  //   3. default — local Docker
+  let dbUrl: string;
+  if (explicitDbUrl) dbUrl = explicitDbUrl;
+  else if (allowProd) dbUrl = buildProdDbUrl();
+  else dbUrl = LOCAL_DB_URL;
   return { dbUrl, allowProd, refreshAllMvs };
 }
 
@@ -912,6 +977,9 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
-  console.error(err);
+  // Defensive: scrub any postgres://user:pass@ that leaks into an error string
+  // (pg connect errors, our own thrown messages) before it reaches the log.
+  const msg = err instanceof Error ? (err.stack ?? err.message) : String(err);
+  console.error(redactDbUrl(msg));
   process.exit(1);
 });
