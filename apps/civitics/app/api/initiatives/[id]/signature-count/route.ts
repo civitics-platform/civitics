@@ -15,21 +15,18 @@ export async function GET(
     const cookieStore = await cookies();
     const supabase = createServerClient(cookieStore);
 
-    const [totalRes, verifiedRes] = await Promise.all([
-      supabase
-        .from("civic_initiative_signatures")
-        .select("*", { count: "exact", head: true })
-        .eq("initiative_id", params.id),
-      supabase
-        .from("civic_initiative_signatures")
-        .select("*", { count: "exact", head: true })
-        .eq("initiative_id", params.id)
-        .eq("verification_tier", "district"),
-    ]);
+    // SF-P1 (FIX-572): counts go through count_initiative_signatures, which applies
+    // the shared quarantine predicate (author_excluded_from_standing) so synthetic
+    // and confirmed-abuse signers never count toward real signature standing.
+    const { data, error } = await supabase
+      .rpc("count_initiative_signatures", { p_initiative_id: params.id })
+      .single();
+
+    if (error) throw error; // never log-and-continue — a swallowed error here mis-reports standing
 
     return NextResponse.json({
-      total: totalRes.count ?? 0,
-      constituent_verified: verifiedRes.count ?? 0,
+      total: data?.total ?? 0,
+      constituent_verified: data?.constituent_verified ?? 0,
     });
   } catch {
     return NextResponse.json(

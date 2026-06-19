@@ -255,13 +255,36 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  const hydrated = flagRows.map((f) => {
-    const content =
-      f.content_type === "civic_comment"
-        ? civicLookup.get(f.content_id) ?? null
-        : officialLookup.get(f.content_id) ?? null;
-    return { ...f, content };
-  });
+  // SF-P1 (FIX-572): moderation half of the quarantine — exclude SYNTHETIC authors
+  // only. Confirmed-abuse and real authors are RETAINED (a real person's post still
+  // needs human review, even on a synthetic entity — the moderation floor applies in
+  // the sandbox). Behavior-neutral today (no synthetic authors exist yet).
+  const authorIds = Array.from(
+    new Set([
+      ...[...civicLookup.values()].map((v) => v.user_id),
+      ...[...officialLookup.values()].map((v) => v.user_id),
+    ]),
+  );
+  const syntheticAuthors = new Set<string>();
+  if (authorIds.length > 0) {
+    const { data: synthRows, error: synthErr } = await db
+      .from("users")
+      .select("id")
+      .in("id", authorIds)
+      .eq("is_synthetic", true);
+    if (synthErr) throw synthErr; // never swallow — a failure here must not silently surface synthetic content
+    for (const u of synthRows ?? []) syntheticAuthors.add(u.id);
+  }
+
+  const hydrated = flagRows
+    .map((f) => {
+      const content =
+        f.content_type === "civic_comment"
+          ? civicLookup.get(f.content_id) ?? null
+          : officialLookup.get(f.content_id) ?? null;
+      return { ...f, content };
+    })
+    .filter((row) => !row.content || !syntheticAuthors.has(row.content.user_id));
 
   return NextResponse.json({ flags: hydrated });
 }

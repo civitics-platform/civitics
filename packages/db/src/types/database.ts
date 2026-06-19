@@ -25,6 +25,7 @@ export type Database = {
           governing_body_id: string | null
           id: string
           is_active: boolean
+          is_synthetic: boolean
           jurisdiction_id: string
           metadata: Json
           name: string
@@ -51,6 +52,7 @@ export type Database = {
           governing_body_id?: string | null
           id?: string
           is_active?: boolean
+          is_synthetic?: boolean
           jurisdiction_id: string
           metadata?: Json
           name: string
@@ -77,6 +79,7 @@ export type Database = {
           governing_body_id?: string | null
           id?: string
           is_active?: boolean
+          is_synthetic?: boolean
           jurisdiction_id?: string
           metadata?: Json
           name?: string
@@ -1182,6 +1185,13 @@ export type Database = {
             foreignKeyName: "comment_ratings_comment_id_fkey"
             columns: ["comment_id"]
             isOneToOne: false
+            referencedRelation: "commons_active_threads"
+            referencedColumns: ["comment_id"]
+          },
+          {
+            foreignKeyName: "comment_ratings_comment_id_fkey"
+            columns: ["comment_id"]
+            isOneToOne: false
             referencedRelation: "entity_comments"
             referencedColumns: ["id"]
           },
@@ -1674,6 +1684,13 @@ export type Database = {
             foreignKeyName: "entity_comments_parent_id_fkey"
             columns: ["parent_id"]
             isOneToOne: false
+            referencedRelation: "commons_active_threads"
+            referencedColumns: ["comment_id"]
+          },
+          {
+            foreignKeyName: "entity_comments_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
             referencedRelation: "entity_comments"
             referencedColumns: ["id"]
           },
@@ -1909,6 +1926,13 @@ export type Database = {
             foreignKeyName: "entity_statements_source_comment_id_fkey"
             columns: ["source_comment_id"]
             isOneToOne: false
+            referencedRelation: "commons_active_threads"
+            referencedColumns: ["comment_id"]
+          },
+          {
+            foreignKeyName: "entity_statements_source_comment_id_fkey"
+            columns: ["source_comment_id"]
+            isOneToOne: false
             referencedRelation: "entity_comments"
             referencedColumns: ["id"]
           },
@@ -1975,6 +1999,7 @@ export type Database = {
           from_type: string | null
           id: string
           investigation_id: string
+          is_synthetic: boolean
           metadata: Json
           rating_summary: Json
           relationship_kind: string | null
@@ -1993,6 +2018,7 @@ export type Database = {
           from_type?: string | null
           id?: string
           investigation_id: string
+          is_synthetic?: boolean
           metadata?: Json
           rating_summary?: Json
           relationship_kind?: string | null
@@ -2011,6 +2037,7 @@ export type Database = {
           from_type?: string | null
           id?: string
           investigation_id?: string
+          is_synthetic?: boolean
           metadata?: Json
           rating_summary?: Json
           relationship_kind?: string | null
@@ -2242,6 +2269,7 @@ export type Database = {
           entity_type: string
           fec_committee_id: string | null
           id: string
+          is_synthetic: boolean
           metadata: Json
           parent_entity_id: string | null
           primary_source: string | null
@@ -2263,6 +2291,7 @@ export type Database = {
           entity_type: string
           fec_committee_id?: string | null
           id?: string
+          is_synthetic?: boolean
           metadata?: Json
           parent_entity_id?: string | null
           primary_source?: string | null
@@ -2284,6 +2313,7 @@ export type Database = {
           entity_type?: string
           fec_committee_id?: string | null
           id?: string
+          is_synthetic?: boolean
           metadata?: Json
           parent_entity_id?: string | null
           primary_source?: string | null
@@ -2381,6 +2411,7 @@ export type Database = {
           created_at: string
           id: string
           is_active: boolean
+          is_synthetic: boolean
           jurisdiction_id: string
           metadata: Json
           name: string
@@ -2400,6 +2431,7 @@ export type Database = {
           created_at?: string
           id?: string
           is_active?: boolean
+          is_synthetic?: boolean
           jurisdiction_id: string
           metadata?: Json
           name: string
@@ -2419,6 +2451,7 @@ export type Database = {
           created_at?: string
           id?: string
           is_active?: boolean
+          is_synthetic?: boolean
           jurisdiction_id?: string
           metadata?: Json
           name?: string
@@ -2844,6 +2877,7 @@ export type Database = {
           id: string
           is_featured: boolean
           is_seeded: boolean
+          is_synthetic: boolean
           metadata: Json
           question: string | null
           scope_id: string | null
@@ -2860,6 +2894,7 @@ export type Database = {
           id?: string
           is_featured?: boolean
           is_seeded?: boolean
+          is_synthetic?: boolean
           metadata?: Json
           question?: string | null
           scope_id?: string | null
@@ -2876,6 +2911,7 @@ export type Database = {
           id?: string
           is_featured?: boolean
           is_seeded?: boolean
+          is_synthetic?: boolean
           metadata?: Json
           question?: string | null
           scope_id?: string | null
@@ -3076,6 +3112,7 @@ export type Database = {
           fips_code: string | null
           id: string
           is_active: boolean
+          is_synthetic: boolean
           metadata: Json
           name: string
           parent_id: string | null
@@ -3097,6 +3134,7 @@ export type Database = {
           fips_code?: string | null
           id?: string
           is_active?: boolean
+          is_synthetic?: boolean
           metadata?: Json
           name: string
           parent_id?: string | null
@@ -3118,6 +3156,7 @@ export type Database = {
           fips_code?: string | null
           id?: string
           is_active?: boolean
+          is_synthetic?: boolean
           metadata?: Json
           name?: string
           parent_id?: string | null
@@ -3608,6 +3647,7 @@ export type Database = {
           governing_body_id: string | null
           id: string
           is_active: boolean
+          is_synthetic: boolean
           is_up_for_election: boolean
           is_verified: boolean
           jurisdiction_id: string
@@ -3642,6 +3682,7 @@ export type Database = {
           governing_body_id?: string | null
           id?: string
           is_active?: boolean
+          is_synthetic?: boolean
           is_up_for_election?: boolean
           is_verified?: boolean
           jurisdiction_id: string
@@ -3676,6 +3717,7 @@ export type Database = {
           governing_body_id?: string | null
           id?: string
           is_active?: boolean
+          is_synthetic?: boolean
           is_up_for_election?: boolean
           is_verified?: boolean
           jurisdiction_id?: string
@@ -4019,6 +4061,13 @@ export type Database = {
             foreignKeyName: "position_events_attributed_comment_id_fkey"
             columns: ["attributed_comment_id"]
             isOneToOne: false
+            referencedRelation: "commons_active_threads"
+            referencedColumns: ["comment_id"]
+          },
+          {
+            foreignKeyName: "position_events_attributed_comment_id_fkey"
+            columns: ["attributed_comment_id"]
+            isOneToOne: false
             referencedRelation: "entity_comments"
             referencedColumns: ["id"]
           },
@@ -4263,6 +4312,7 @@ export type Database = {
           governing_body_id: string | null
           id: string
           introduced_at: string | null
+          is_synthetic: boolean
           jurisdiction_id: string
           last_action_at: string | null
           metadata: Json
@@ -4289,6 +4339,7 @@ export type Database = {
           governing_body_id?: string | null
           id?: string
           introduced_at?: string | null
+          is_synthetic?: boolean
           jurisdiction_id: string
           last_action_at?: string | null
           metadata?: Json
@@ -4315,6 +4366,7 @@ export type Database = {
           governing_body_id?: string | null
           id?: string
           introduced_at?: string | null
+          is_synthetic?: boolean
           jurisdiction_id?: string
           last_action_at?: string | null
           metadata?: Json
@@ -4613,6 +4665,8 @@ export type Database = {
           email: string | null
           id: string
           is_active: boolean | null
+          is_confirmed_abuse: boolean
+          is_synthetic: boolean
           last_seen: string | null
           metadata: Json | null
           updated_at: string | null
@@ -4626,6 +4680,8 @@ export type Database = {
           email?: string | null
           id: string
           is_active?: boolean | null
+          is_confirmed_abuse?: boolean
+          is_synthetic?: boolean
           last_seen?: string | null
           metadata?: Json | null
           updated_at?: string | null
@@ -4639,6 +4695,8 @@ export type Database = {
           email?: string | null
           id?: string
           is_active?: boolean | null
+          is_confirmed_abuse?: boolean
+          is_synthetic?: boolean
           last_seen?: string | null
           metadata?: Json | null
           updated_at?: string | null
@@ -4839,6 +4897,31 @@ export type Database = {
           vote_count: number | null
         }
         Relationships: []
+      }
+      commons_active_threads: {
+        Row: {
+          author_id: string | null
+          bridge_score: number | null
+          comment_id: string | null
+          created_at: string | null
+          entity_id: string | null
+          entity_type: string | null
+          excerpt: string | null
+          has_answer: boolean | null
+          kind: string | null
+          last_activity_at: string | null
+          rater_count: number | null
+          reply_count: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "entity_comments_author_id_fkey"
+            columns: ["author_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       donor_party_rollup_mv: {
         Row: {
@@ -5044,6 +5127,7 @@ export type Database = {
           from_type: string | null
           id: string
           investigation_id: string
+          is_synthetic: boolean
           metadata: Json
           rating_summary: Json
           relationship_kind: string | null
@@ -5060,6 +5144,11 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      author_excluded_from_standing: {
+        Args: { p_user_id: string }
+        Returns: boolean
+      }
+      author_is_synthetic: { Args: { p_user_id: string }; Returns: boolean }
       backfill_governing_body_slugs: { Args: never; Returns: number }
       backfill_jurisdiction_boundary: {
         Args: { p_geojson: string; p_id: string }
@@ -5200,6 +5289,7 @@ export type Database = {
           from_type: string | null
           id: string
           investigation_id: string
+          is_synthetic: boolean
           metadata: Json
           rating_summary: Json
           relationship_kind: string | null
@@ -5229,6 +5319,13 @@ export type Database = {
         Args: { p_card_id: string }
         Returns: number
       }
+      count_initiative_signatures: {
+        Args: { p_initiative_id: string }
+        Returns: {
+          constituent_verified: number
+          total: number
+        }[]
+      }
       create_investigation: {
         Args: {
           p_question?: string
@@ -5244,6 +5341,7 @@ export type Database = {
           id: string
           is_featured: boolean
           is_seeded: boolean
+          is_synthetic: boolean
           metadata: Json
           question: string | null
           scope_id: string | null
@@ -5598,6 +5696,17 @@ export type Database = {
           type: string
         }[]
       }
+      get_user_receipts: {
+        Args: { p_limit?: number }
+        Returns: {
+          action_type: string
+          created_at: string
+          detail: Json
+          entity_id: string
+          entity_type: string
+          ref_id: string
+        }[]
+      }
       get_vote_agreement_matrix: {
         Args: { p_official_ids: string[] }
         Returns: {
@@ -5627,6 +5736,10 @@ export type Database = {
           p_target_id: string
           p_target_type: string
         }
+        Returns: boolean
+      }
+      is_synthetic_entity: {
+        Args: { p_entity_id: string; p_entity_type: string }
         Returns: boolean
       }
       jurisdiction_boundary_svg: {
@@ -5664,6 +5777,7 @@ export type Database = {
           from_type: string | null
           id: string
           investigation_id: string
+          is_synthetic: boolean
           metadata: Json
           rating_summary: Json
           relationship_kind: string | null
@@ -5725,6 +5839,12 @@ export type Database = {
           rows_updated: number
           table_name: string
         }[]
+      }
+      rebuild_ec_donations_full_finalize: { Args: never; Returns: number }
+      rebuild_ec_donations_full_prepare: { Args: never; Returns: undefined }
+      rebuild_ec_donations_full_window: {
+        Args: { p_hi: string; p_lo: string }
+        Returns: number
       }
       rebuild_entity_connections: {
         Args: never
@@ -5854,6 +5974,7 @@ export type Database = {
       }
       refresh_chord_industry_flows_mv: { Args: never; Returns: undefined }
       refresh_chord_subject_party_flows_mv: { Args: never; Returns: undefined }
+      refresh_commons_active_threads_mv: { Args: never; Returns: undefined }
       refresh_connection_type_counts: { Args: never; Returns: undefined }
       refresh_donor_party_rollup_mv: { Args: never; Returns: undefined }
       refresh_entity_connection_stats_mv: { Args: never; Returns: undefined }
@@ -5882,6 +6003,7 @@ export type Database = {
           from_type: string | null
           id: string
           investigation_id: string
+          is_synthetic: boolean
           metadata: Json
           rating_summary: Json
           relationship_kind: string | null
@@ -5955,6 +6077,7 @@ export type Database = {
           id: string
           is_featured: boolean
           is_seeded: boolean
+          is_synthetic: boolean
           metadata: Json
           question: string | null
           scope_id: string | null
@@ -6092,6 +6215,7 @@ export type Database = {
           from_type: string | null
           id: string
           investigation_id: string
+          is_synthetic: boolean
           metadata: Json
           rating_summary: Json
           relationship_kind: string | null
@@ -6432,6 +6556,9 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {
       argument_flag: ["off_topic", "misleading", "duplicate", "other"],
