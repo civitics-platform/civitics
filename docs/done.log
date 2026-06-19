@@ -774,3 +774,4 @@
 2026-06-19 | FIX-608 | e3dddde7 | local+prod | chore(integrity): record prod verification for FIX-608 (SF-P4 brigade detector)
 2026-06-19 | FIX-609 | 89851d46 | local-only | feat(seed): Franklin S2 slice (broadband/water/STR + stadium + breadth)
 2026-06-19 | FIX-609 | 6c0a8f0b | local+prod | chore(integrity): record prod verification for FIX-609 (Franklin S1+S2 seed)
+2026-06-19 | FIX-611 | 53315188 | local-only | fix(seed): source prod password from env + redact conn-string logs
