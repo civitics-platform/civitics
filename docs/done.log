@@ -752,3 +752,4 @@
 2026-06-15 | FIX-596 | 93515926 | local+prod | chore(desk): record prod verification for Commons/Desk PR2 (FIX-596..598)
 2026-06-15 | FIX-597 | 93515926 | local+prod | chore(desk): record prod verification for Commons/Desk PR2 (FIX-596..598)
 2026-06-15 | FIX-598 | 93515926 | local+prod | chore(desk): record prod verification for Commons/Desk PR2 (FIX-596..598)
+2026-06-18 | FIX-572 | 480405b2 | local-only | feat(integrity): is_synthetic + abuse quarantine predicate
