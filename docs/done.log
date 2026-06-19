@@ -760,3 +760,6 @@
 2026-06-18 | FIX-600 | e370c01b | prod-only | chore(integrity): record prod verification for FIX-600
 2026-06-19 | FIX-601 | 5035d09b | local-only | feat(integrity): SF-P3 shadow moderation harness
 2026-06-19 | FIX-601 | bdbaea26 | prod-only | chore(integrity): record prod verification for FIX-601
+2026-06-19 | FIX-602 | 02a615fb | local-only | feat(platform-costs): honest egress, threshold alerts, vercel pro wiring
+2026-06-19 | FIX-604 | 02a615fb | local-only | feat(platform-costs): honest egress, threshold alerts, vercel pro wiring
+2026-06-19 | FIX-605 | 02a615fb | local-only | feat(platform-costs): honest egress, threshold alerts, vercel pro wiring
