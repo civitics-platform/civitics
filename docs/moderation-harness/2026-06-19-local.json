@@ -1,0 +1,173 @@
+{
+  "ranAt": "2026-06-19T07:29:31.789Z",
+  "durationMs": 403,
+  "dbHost": "127.0.0.1:54322",
+  "sha": "cb7a162a",
+  "rows": [
+    {
+      "fixtureId": "F1",
+      "ruleId": "entity_comments_flag_autotrip",
+      "expectation": "handled",
+      "expectedVerdict": "status visible→needs_review (never auto-hidden)",
+      "computedVerdict": "status=needs_review",
+      "match": true,
+      "notes": null
+    },
+    {
+      "fixtureId": "F2",
+      "ruleId": "recompute_comment_bridge_scores",
+      "expectation": "partial",
+      "expectedVerdict": "steelman bridge_score > insult bridge_score",
+      "computedVerdict": "steelman=1.00000000000000000000 insult=null",
+      "match": true,
+      "notes": "Evaluable: cross-stance valuable→bridge_score ranks synthesis over the uncited insult. The ad-hominem-detection semantic itself is not automated."
+    },
+    {
+      "fixtureId": "F3",
+      "ruleId": "add_evidence_card (citation target must resolve)",
+      "expectation": "handled",
+      "expectedVerdict": "RAISE 42704 — citation target does not resolve",
+      "computedVerdict": "rejected (42704)",
+      "match": true,
+      "notes": null
+    },
+    {
+      "fixtureId": "F4",
+      "ruleId": "add_evidence_card (tier-1/2 only)",
+      "expectation": "handled",
+      "expectedVerdict": "RAISE 22023 — tier-3 citations not enabled yet",
+      "computedVerdict": "rejected (22023)",
+      "match": true,
+      "notes": null
+    },
+    {
+      "fixtureId": "F5",
+      "ruleId": "add_evidence_card subject_is_private_person + corroboration gate",
+      "expectation": "partial",
+      "expectedVerdict": "private-person flag recorded; single-source card stays 'proposed'",
+      "computedVerdict": "private_person=true status=proposed",
+      "match": true,
+      "notes": "Evaluable: the private-person flag persists and a single-source card does NOT advance to 'corroborated'/display. The human review jury does not exist yet — automated defamation detection is out of scope (manual admin path)."
+    },
+    {
+      "fixtureId": "F6",
+      "ruleId": "set_entity_position (positions cap, new-account halving)",
+      "expectation": "partial",
+      "expectedVerdict": "RAISE 53400 at the halved (30) cap for a new account",
+      "computedVerdict": "capped (53400)",
+      "match": true,
+      "notes": "Evaluable: the always-on DB cap (halved to 30 for accounts < 24h old) blocks the burst. The Turnstile challenge layer is app-side and dormant (no keys) — not evaluable in a DB harness."
+    },
+    {
+      "fixtureId": "F7",
+      "ruleId": "submit_comment (comments cap 20/day)",
+      "expectation": "handled",
+      "expectedVerdict": "RAISE 53400 — daily comment limit reached (20/day)",
+      "computedVerdict": "capped (53400)",
+      "match": true,
+      "notes": null
+    },
+    {
+      "fixtureId": "F8",
+      "ruleId": "brigade detector (does not exist)",
+      "expectation": "gap",
+      "expectedVerdict": "should flag a coordinated cluster",
+      "computedVerdict": "not_detected",
+      "match": false,
+      "notes": "GAP (SF-P4): no coordinated-cluster detector. 9 same-direction ratings in a tight window go unflagged. Permanent MISMATCH until the detector ships."
+    },
+    {
+      "fixtureId": "F9",
+      "ruleId": "brigade detector — temporal (does not exist)",
+      "expectation": "gap",
+      "expectedVerdict": "should flag low-and-slow coordination",
+      "computedVerdict": "not_detected",
+      "match": false,
+      "notes": "GAP (SF-P4 temporal): low-and-slow coordination under the per-window rate limit is invisible to the always-on caps. Permanent MISMATCH until shipped."
+    },
+    {
+      "fixtureId": "F10",
+      "ruleId": "recompute_comment_bridge_scores (no anti-gaming)",
+      "expectation": "gap",
+      "expectedVerdict": "scorer should resist farming (low / no score)",
+      "computedVerdict": "farmed bridge_score=1.00000000000000000000",
+      "match": false,
+      "notes": "GAP (SF-P5): bridge_score is farmable via coordinated balanced cross-bloc valuable=+1 votes. Achieved score=1.00000000000000000000 with zero genuine disagreement. No anti-gaming layer. Permanent MISMATCH until the scorer is hardened."
+    },
+    {
+      "fixtureId": "F11",
+      "ruleId": "count_independent_corroborations (dedup by author AND target)",
+      "expectation": "partial",
+      "expectedVerdict": "same-author cards count as 1 → card stays 'proposed'",
+      "computedVerdict": "independent=1 status=proposed",
+      "match": true,
+      "notes": "Evaluable: the author-dedup leg rejects same-account self-corroboration (LEAST(authors=1, targets=2)=1 < 2). Multi-account sockpuppets sharing one human identity are not detectable here — that's SF-P6 (identity)."
+    },
+    {
+      "fixtureId": "F12",
+      "ruleId": "— (no automated signal by design)",
+      "expectation": "gap",
+      "expectedVerdict": "should surface persistent bad-faith questioning",
+      "computedVerdict": "not_detected",
+      "match": false,
+      "notes": "GAP (SF-P10): sealioning slips past automation by design. Requires an explicit policy decision — manual/community-signal only, or a documented won't-fix. Permanent MISMATCH until that decision is recorded."
+    }
+  ],
+  "pollution": [
+    {
+      "table": "entity_comments",
+      "before": 35,
+      "after": 35,
+      "delta": 0
+    },
+    {
+      "table": "content_flags",
+      "before": 6,
+      "after": 6,
+      "delta": 0
+    },
+    {
+      "table": "comment_ratings",
+      "before": 0,
+      "after": 0,
+      "delta": 0
+    },
+    {
+      "table": "entity_positions",
+      "before": 0,
+      "after": 0,
+      "delta": 0
+    },
+    {
+      "table": "position_events",
+      "before": 0,
+      "after": 0,
+      "delta": 0
+    },
+    {
+      "table": "evidence_cards",
+      "before": 10,
+      "after": 10,
+      "delta": 0
+    },
+    {
+      "table": "citations",
+      "before": 11,
+      "after": 11,
+      "delta": 0
+    },
+    {
+      "table": "investigations",
+      "before": 2,
+      "after": 2,
+      "delta": 0
+    }
+  ],
+  "summary": {
+    "total": 12,
+    "matches": 8,
+    "mismatches": 4,
+    "regressions": 0,
+    "knownFailing": 4
+  }
+}
