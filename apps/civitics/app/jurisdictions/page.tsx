@@ -109,7 +109,7 @@ export default async function JurisdictionsIndexPage({
   if (showFeatured) {
     const { data } = await supabase
       .from("jurisdictions")
-      .select("id, name, short_name, type, population, parent_id")
+      .select("id, name, short_name, type, population, parent_id, is_synthetic")
       .in("type", ["country", "federal_district", "city"])
       .eq("is_active", true)
       .order("type", { ascending: true })
@@ -127,6 +127,7 @@ export default async function JurisdictionsIndexPage({
       type: r.type,
       population: r.population,
       parentName: r.parent_id ? parentMap.get(r.parent_id) ?? null : null,
+      is_synthetic: r.is_synthetic ?? false,
     }));
   }
 
@@ -137,7 +138,7 @@ export default async function JurisdictionsIndexPage({
 
   let query = supabase
     .from("jurisdictions")
-    .select("id, name, short_name, type, population, parent_id", { count: "exact" })
+    .select("id, name, short_name, type, population, parent_id, is_synthetic", { count: "exact" })
     .eq("is_active", true);
 
   if (types) query = query.in("type", types);

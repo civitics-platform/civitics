@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createServerClient, createAdminClient } from "@civitics/db";
 import { BODY_MIN, BODY_MAX, EDIT_WINDOW_MINUTES } from "@civitics/db";
-import { COMMENT_COLUMNS, fetchNameMap, serialize } from "../_lib";
+import { COMMENT_COLUMNS, fetchAuthorMeta, serialize } from "../_lib";
 
 export const dynamic = "force-dynamic";
 
@@ -71,7 +71,7 @@ export async function PATCH(
       .single();
     if (error || !updated) return NextResponse.json({ error: "Failed to update" }, { status: 500 });
 
-    const names = await fetchNameMap(admin, [updated.author_id]);
+    const names = await fetchAuthorMeta(admin, [updated.author_id]);
     return NextResponse.json({ comment: serialize(updated, names) });
   } catch {
     return NextResponse.json({ error: "Failed to update comment" }, { status: 500 });

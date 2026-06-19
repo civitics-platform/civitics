@@ -37,6 +37,7 @@ export type SearchOfficial = {
   relevance_score: number;
   connection_count: number;
   total_received_cents: number | null;
+  is_synthetic: boolean;
 };
 
 export type SearchProposal = {
@@ -49,6 +50,7 @@ export type SearchProposal = {
   ai_summary: string | null;
   relevance_score: number;
   connection_count: number;
+  is_synthetic: boolean;
 };
 
 export type SearchAgency = {
@@ -60,6 +62,7 @@ export type SearchAgency = {
   description: string | null;
   relevance_score: number;
   connection_count: number;
+  is_synthetic: boolean;
 };
 
 export type SearchFinancialEntity = {
@@ -71,6 +74,7 @@ export type SearchFinancialEntity = {
   amount_label: "contract" | "grant" | "donation";
   relevance_score: number;
   connection_count: number;
+  is_synthetic: boolean;
 };
 
 export type SearchInitiative = {
@@ -89,6 +93,7 @@ export type SearchJurisdiction = {
   jurisdiction_type: string;
   relevance_score: number;
   connection_count: number;
+  is_synthetic: boolean;
 };
 
 // Institutions search is governing-bodies-only (the agencies section covers the
@@ -103,6 +108,7 @@ export type SearchInstitution = {
   is_active: boolean;
   relevance_score: number;
   connection_count: number;
+  is_synthetic: boolean;
 };
 
 export type SearchMeeting = {
@@ -114,6 +120,9 @@ export type SearchMeeting = {
   governing_body_name: string | null;
   relevance_score: number;
   connection_count: number;
+  // NOTE: the `meetings` table has NO is_synthetic column (FIX-572 added it to
+  // officials/proposals/agencies/governing_bodies/jurisdictions/financial_entities
+  // only), so meetings carry no synthetic mark.
 };
 
 export type SearchResults = {
@@ -326,7 +335,7 @@ export async function GET(req: NextRequest) {
 
     let qb = db2
       .from("officials")
-      .select("id, full_name, role_title, party, photo_url, is_active, metadata, source_ids, total_received_cents", { count: "exact" });
+      .select("id, full_name, role_title, party, photo_url, is_active, metadata, source_ids, total_received_cents, is_synthetic", { count: "exact" });
 
     if (filterIsActive && !filterOfficialRole) qb = qb.eq("is_active", true);
     if (filterParty)    qb = qb.eq("party", filterParty);
@@ -385,6 +394,7 @@ export async function GET(req: NextRequest) {
     const rows: Array<{
       id: string; full_name: string; role_title: string; party: string | null;
       photo_url: string | null; is_active: boolean; total_received_cents: number | null;
+      is_synthetic: boolean;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       metadata: any; source_ids: Record<string, string> | null;
     }> = data ?? [];
@@ -410,6 +420,7 @@ export async function GET(req: NextRequest) {
         relevance_score: Math.min(score, 100),
         connection_count: connCount,
         total_received_cents: o.total_received_cents ?? null,
+        is_synthetic: o.is_synthetic ?? false,
       };
     });
     return { results: applySort(results, (r) => r.full_name), hasMore, total_count: totalCount ?? 0 };
@@ -425,7 +436,7 @@ export async function GET(req: NextRequest) {
       // FIX-503: total_count is display-only ("about N results"); hasMore is
       // computed from the page rows, not the count. 'planned' uses the planner
       // estimate and avoids a full count over the proposals q-search.
-      .select("id, title, status, type, metadata, summary_plain", { count: "planned" })
+      .select("id, title, status, type, metadata, summary_plain, is_synthetic", { count: "planned" })
       .neq("type", "initiative");
 
     // comment_period_end is metadata-only post-cutover (no top-level column);
@@ -480,6 +491,7 @@ export async function GET(req: NextRequest) {
         ai_summary: summaryMap[p.id] ?? null,
         relevance_score: Math.min(score, 100),
         connection_count: countMap.get(p.id) ?? 0,
+        is_synthetic: p.is_synthetic ?? false,
       };
     });
     return { results: applySort(results, (r) => r.title), hasMore, total_count: totalCount ?? 0 };
@@ -492,7 +504,7 @@ export async function GET(req: NextRequest) {
 
     let qb = db2
       .from("agencies")
-      .select("id, name, slug, acronym, agency_type, description", { count: "exact" })
+      .select("id, name, slug, acronym, agency_type, description, is_synthetic", { count: "exact" })
       .eq("is_active", true);
 
     if (filterAgencyType) qb = qb.eq("agency_type", filterAgencyType);
@@ -522,6 +534,7 @@ export async function GET(req: NextRequest) {
         agency_type: a.agency_type, description: a.description ?? null,
         relevance_score: Math.min(score, 100),
         connection_count: countMap.get(a.id) ?? 0,
+        is_synthetic: a.is_synthetic ?? false,
       };
     }).sort((a: SearchAgency, b: SearchAgency) => b.relevance_score - a.relevance_score);
     return { results: applySort(results, (r) => r.name), hasMore, total_count: totalCount ?? 0 };
@@ -534,8 +547,8 @@ export async function GET(req: NextRequest) {
 
     const spendingCols = await checkSpendingCols(db);
     const selectCols = spendingCols
-      ? "id, display_name, entity_type, total_donated_cents, total_contract_cents, total_grant_cents"
-      : "id, display_name, entity_type, total_donated_cents";
+      ? "id, display_name, entity_type, total_donated_cents, total_contract_cents, total_grant_cents, is_synthetic"
+      : "id, display_name, entity_type, total_donated_cents, is_synthetic";
 
     let qb = db2
       .from("financial_entities")
@@ -630,6 +643,7 @@ export async function GET(req: NextRequest) {
         amount_label: amountLabel,
         relevance_score: Math.min(score, 100),
         connection_count: countMap.get(f.id) ?? 0,
+        is_synthetic: f.is_synthetic ?? false,
       };
     });
     return { results: applySort(results, (r) => r.name), hasMore, total_count: totalCount ?? 0 };
@@ -690,7 +704,7 @@ export async function GET(req: NextRequest) {
 
     let qb = db2
       .from("jurisdictions")
-      .select("id, name, short_name, type, is_active", { count: "exact" });
+      .select("id, name, short_name, type, is_active, is_synthetic", { count: "exact" });
 
     if (filterJurisdictionLevel) {
       const jTypes = LEVEL_TYPE_MAP[filterJurisdictionLevel];
@@ -722,6 +736,7 @@ export async function GET(req: NextRequest) {
         jurisdiction_type: j.type,
         relevance_score: Math.min(score, 100),
         connection_count: countMap.get(j.id) ?? 0,
+        is_synthetic: j.is_synthetic ?? false,
       };
     });
     return { results: applySort(results, (r) => r.name), hasMore, total_count: totalCount ?? 0 };
@@ -734,7 +749,7 @@ export async function GET(req: NextRequest) {
 
     let qb = db2
       .from("governing_bodies")
-      .select("id, name, short_name, type, is_active, jurisdiction_id", { count: "exact" });
+      .select("id, name, short_name, type, is_active, jurisdiction_id, is_synthetic", { count: "exact" });
 
     // jurisdiction_level filter — jurisdiction.type → jurisdiction_id → governing_body
     if (filterJurisdictionLevel) {
@@ -773,6 +788,7 @@ export async function GET(req: NextRequest) {
         institution_type: g.type, is_active: g.is_active,
         relevance_score: Math.min(score, 100),
         connection_count: countMap.get(g.id) ?? 0,
+        is_synthetic: g.is_synthetic ?? false,
       };
     });
     return { results: applySort(results, (r) => r.name), hasMore, total_count: totalCount ?? 0 };

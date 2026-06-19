@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { SyntheticMark } from "../integrity/Synthetic";
 
 // Presentational card for a jurisdiction row. Used by the /jurisdictions index
 // and reusable on any jurisdiction list surface. Data fetching stays in the
@@ -10,6 +11,7 @@ export type JurisdictionCardData = {
   type: string;
   population: number | null;
   parentName: string | null;
+  is_synthetic?: boolean;
 };
 
 const TYPE_LABELS: Record<string, string> = {
@@ -46,6 +48,7 @@ export function JurisdictionCard({ jurisdiction }: { jurisdiction: JurisdictionC
         <div className="min-w-0">
           <h3 className="truncate text-sm font-semibold text-gray-900 group-hover:text-indigo-700">
             {jurisdiction.name}
+            {jurisdiction.is_synthetic && <SyntheticMark size="xs" className="ml-1.5" />}
           </h3>
           {jurisdiction.parentName && (
             <p className="mt-0.5 truncate text-xs text-gray-400">{jurisdiction.parentName}</p>

@@ -148,14 +148,14 @@ export default async function HomePage({
     ),
     supabase
       .from("proposals")
-      .select("id,title,type,status,summary_plain,summary_model,introduced_at,metadata")
+      .select("id,title,type,status,summary_plain,summary_model,introduced_at,metadata,is_synthetic")
       .eq("status", "open_comment")
       .gt("metadata->>comment_period_end", now)
       .order("metadata->>comment_period_end", { ascending: true })
       .limit(3),
     supabase
       .from("agencies")
-      .select("id,name,short_name,acronym,agency_type,website_url,description,metadata")
+      .select("id,name,short_name,acronym,agency_type,website_url,description,metadata,is_synthetic")
       .eq("is_active", true)
       .order("name")
       .limit(4),
@@ -212,6 +212,7 @@ export default async function HomePage({
     summary_model: string | null;
     introduced_at: string | null;
     metadata: Record<string, string> | null;
+    is_synthetic?: boolean | null;
   };
   function toCardShape(r: ProposalRow): ProposalCardData {
     const meta = (r.metadata ?? {}) as Record<string, string>;
@@ -227,6 +228,7 @@ export default async function HomePage({
       summary_model:      r.summary_model,
       introduced_at:      r.introduced_at,
       metadata:           meta,
+      is_synthetic:       r.is_synthetic ?? false,
     };
   }
 
@@ -235,7 +237,7 @@ export default async function HomePage({
   if (rawProposals.length === 0) {
     const { data: fallback } = await supabase
       .from("proposals")
-      .select("id,title,type,status,summary_plain,summary_model,introduced_at,metadata")
+      .select("id,title,type,status,summary_plain,summary_model,introduced_at,metadata,is_synthetic")
       .order("introduced_at", { ascending: false, nullsFirst: false })
       .limit(3);
     rawProposals = ((fallback ?? []) as ProposalRow[]).map(toCardShape);
@@ -369,13 +371,14 @@ export default async function HomePage({
     reply_count: number;
     rater_count: number;
     last_activity_at: string;
+    author_is_synthetic: boolean;
   };
   const commonsRes = await timed("wave_commons", () =>
     withDbTimeout(
       sbAny
         .from("commons_active_threads")
         .select(
-          "comment_id,entity_type,entity_id,excerpt,kind,has_answer,reply_count,rater_count,last_activity_at"
+          "comment_id,entity_type,entity_id,excerpt,kind,has_answer,reply_count,rater_count,last_activity_at,author_is_synthetic"
         )
         .order("bridge_score", { ascending: false, nullsFirst: false })
         .order("last_activity_at", { ascending: false })
@@ -406,6 +409,7 @@ export default async function HomePage({
       replyCount: Number(r.reply_count ?? 0),
       raterCount: Number(r.rater_count ?? 0),
       lastActivityAt: r.last_activity_at,
+      authorIsSynthetic: r.author_is_synthetic === true,
     });
   }
 
@@ -479,6 +483,7 @@ export default async function HomePage({
       totalProposals: counts.total,
       openProposals: counts.open,
       isFeatured: meta?.["is_whitehouse"] === true,
+      is_synthetic: (agency as { is_synthetic?: boolean }).is_synthetic ?? false,
     };
   });
 

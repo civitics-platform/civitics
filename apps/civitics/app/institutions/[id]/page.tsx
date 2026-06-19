@@ -27,6 +27,7 @@ import { SourceDetailPopover } from "../../components/SourceDetailPopover";
 import { OfficialRosterCard, type OfficialRosterData } from "../../components/cards/OfficialRosterCard";
 import { MeetingCard, type MeetingCardData } from "../../components/cards/MeetingCard";
 import { EntityComments } from "../../components/EntityComments";
+import { SyntheticMark, SyntheticBanner } from "../../components/integrity/Synthetic";
 
 const AgencyGraph = nextDynamic(
   () => import("../../agencies/[slug]/components/AgencyGraph").then((m) => ({ default: m.AgencyGraph })),
@@ -56,6 +57,9 @@ type InstitutionRow = {
   primary_source_url: string | null;
   primary_source_last_seen_at: string | null;
   metadata: Record<string, unknown> | null;
+  // SF-P2 (FIX-599): exposed from the underlying gb/agency via the recreated
+  // institutions view (entity marker).
+  is_synthetic: boolean;
 };
 
 type Proposal = {
@@ -259,7 +263,7 @@ export default async function InstitutionPage({
   const instRes = await (supabase as any)
     .from("institutions")
     .select(
-      "id, jurisdiction_id, type, name, short_name, website_url, contact_email, is_active, slug, source_table, acronym, usaspending_agency_id, usaspending_subtier_id, parent_id, primary_source, primary_source_url, primary_source_last_seen_at, metadata"
+      "id, jurisdiction_id, type, name, short_name, website_url, contact_email, is_active, slug, source_table, acronym, usaspending_agency_id, usaspending_subtier_id, parent_id, primary_source, primary_source_url, primary_source_last_seen_at, metadata, is_synthetic"
     )
     .eq("id", id)
     .maybeSingle();
@@ -594,6 +598,7 @@ async function AgencyView({
               </div>
               <h1 className="mt-1 text-2xl font-bold text-gray-900 leading-tight">
                 {agency.name}
+                {institution.is_synthetic && <SyntheticMark withIcon className="ml-2 align-middle" />}
               </h1>
               <FormerBadge isActive={institution.is_active} className="mt-1" />
               {agency.acronym && agency.acronym !== agency.name && (
@@ -998,7 +1003,7 @@ async function GoverningBodyView({
     institution.jurisdiction_id
       ? supabase
           .from("jurisdictions")
-          .select("id, name")
+          .select("id, name, is_synthetic")
           .eq("id", institution.jurisdiction_id)
           .maybeSingle()
       : Promise.resolve({ data: null }),
@@ -1017,7 +1022,7 @@ async function GoverningBodyView({
     currentGoverningBodyMembers(
       supabase
         .from("officials")
-        .select("id, full_name, role_title, party, photo_url, district_name")
+        .select("id, full_name, role_title, party, photo_url, district_name, is_synthetic")
         .eq("governing_body_id", institution.id)
     )
       .order("role_title")
@@ -1060,7 +1065,7 @@ async function GoverningBodyView({
       .limit(100),
     supabase
       .from("meetings")
-      .select("id, title, meeting_type, scheduled_at, agenda_url")
+      .select("id, title, meeting_type, scheduled_at, agenda_url, governing_bodies!inner(is_synthetic)")
       .eq("governing_body_id", institution.id)
       .gte("scheduled_at", meetingsFrom)
       .lte("scheduled_at", meetingsTo)
@@ -1073,7 +1078,7 @@ async function GoverningBodyView({
   ]);
 
   const gbExtra = gbExtraRes.data as { seat_count: number | null; term_length_years: number | null } | null;
-  const jurisdiction = jurisdictionRes.data as { id: string; name: string } | null;
+  const jurisdiction = jurisdictionRes.data as { id: string; name: string; is_synthetic?: boolean } | null;
   const parent = parentRes.data as { id: string; name: string } | null;
 
   const roster = ((officialsRes.data ?? []) as Array<{
@@ -1083,6 +1088,7 @@ async function GoverningBodyView({
     party: string | null;
     photo_url: string | null;
     district_name: string | null;
+    is_synthetic?: boolean | null;
   }>).map<OfficialRosterData>((o) => ({
     id: o.id,
     full_name: o.full_name,
@@ -1090,6 +1096,7 @@ async function GoverningBodyView({
     party: o.party,
     photo_url: o.photo_url,
     district_name: o.district_name,
+    is_synthetic: o.is_synthetic ?? false,
   }));
 
   // Party balance over ALL active members (not just the rendered roster slice).
@@ -1123,14 +1130,19 @@ async function GoverningBodyView({
     meeting_type: string;
     scheduled_at: string;
     agenda_url: string | null;
-  }>).map<MeetingCardData>((m) => ({
-    id: m.id,
-    title: m.title,
-    meeting_type: m.meeting_type,
-    scheduled_at: m.scheduled_at,
-    bodyName: institution.short_name ?? institution.name,
-    agenda_url: m.agenda_url,
-  }));
+    governing_bodies?: { is_synthetic?: boolean | null } | { is_synthetic?: boolean | null }[] | null;
+  }>).map<MeetingCardData>((m) => {
+    const gb = Array.isArray(m.governing_bodies) ? m.governing_bodies[0] : m.governing_bodies;
+    return {
+      id: m.id,
+      title: m.title,
+      meeting_type: m.meeting_type,
+      scheduled_at: m.scheduled_at,
+      bodyName: institution.short_name ?? institution.name,
+      agenda_url: m.agenda_url,
+      is_synthetic: gb?.is_synthetic ?? false,
+    };
+  });
 
   const recentVotes = (recentVotesRes.data ?? []) as RecentVote[];
 
@@ -1190,6 +1202,9 @@ async function GoverningBodyView({
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex flex-wrap items-center gap-2">
+                {jurisdiction?.is_synthetic && !institution.is_synthetic && (
+                  <SyntheticBanner scope="entity" className="w-full" />
+                )}
                 <span className={`rounded border px-2 py-0.5 text-xs font-semibold ${typeColor}`}>
                   {typeLabel}
                 </span>
@@ -1223,6 +1238,7 @@ async function GoverningBodyView({
               )}
               <h1 className="mt-1 text-2xl font-bold text-gray-900 leading-tight">
                 {institution.name}
+                {institution.is_synthetic && <SyntheticMark withIcon className="ml-2 align-middle" />}
               </h1>
               <FormerBadge isActive={institution.is_active} className="mt-1" />
               {institution.short_name && institution.short_name !== institution.name && (

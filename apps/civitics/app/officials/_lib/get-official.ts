@@ -28,6 +28,8 @@ export type CachedOfficial = {
   term_end: string | null;
   is_active: boolean;
   tier: string | null;
+  // SF-P2 (FIX-599): the official's own synthetic flag (entity marker).
+  is_synthetic: boolean;
   jurisdiction_id: string | null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   jurisdictions: any;
@@ -42,7 +44,7 @@ export const getCachedOfficial = cache(
     const { data, error } = await supabase
       .from("officials")
       .select(
-        "id, full_name, first_name, last_name, role_title, party, photo_url, email, website_url, phone, district_name, term_start, term_end, is_active, tier, jurisdiction_id, jurisdictions!jurisdiction_id(name), governing_bodies!governing_body_id(id, name, short_name)"
+        "id, full_name, first_name, last_name, role_title, party, photo_url, email, website_url, phone, district_name, term_start, term_end, is_active, tier, is_synthetic, jurisdiction_id, jurisdictions!jurisdiction_id(name, is_synthetic), governing_bodies!governing_body_id(id, name, short_name)"
       )
       .eq("id", id)
       .single();

@@ -25,6 +25,7 @@ export type AgencyRow = {
   description: string | null;
   totalProposals: number;
   openProposals: number;
+  is_synthetic?: boolean;
 };
 
 export default async function AgenciesPage() {
@@ -34,13 +35,13 @@ export default async function AgenciesPage() {
   const [{ data: agencyRows, error }, { data: featuredRow }] = await Promise.all([
     supabase
       .from("agencies")
-      .select("id, name, short_name, acronym, agency_type, website_url, description")
+      .select("id, name, short_name, acronym, agency_type, website_url, description, is_synthetic")
       .eq("is_active", true)
       .order("name")
       .limit(200),
     supabase
       .from("agencies")
-      .select("id, name, short_name, acronym, agency_type, website_url, description")
+      .select("id, name, short_name, acronym, agency_type, website_url, description, is_synthetic")
       .filter("metadata->>featured", "eq", "true")
       .limit(1)
       .maybeSingle(),
@@ -94,6 +95,7 @@ export default async function AgenciesPage() {
       description: agency.description ?? null,
       totalProposals: counts.total,
       openProposals: counts.open,
+      is_synthetic: agency.is_synthetic ?? false,
     };
   });
 
@@ -108,6 +110,7 @@ export default async function AgenciesPage() {
         description:    featuredRow.description ?? null,
         totalProposals: agencies.find((a) => a.id === featuredRow.id)?.totalProposals ?? 0,
         openProposals:  agencies.find((a) => a.id === featuredRow.id)?.openProposals ?? 0,
+        is_synthetic:   featuredRow.is_synthetic ?? false,
       }
     : null;
 

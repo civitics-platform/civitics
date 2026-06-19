@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { createBrowserClient } from "@civitics/db";
 import type { OfficialRow } from "../page";
 import { EntityTags } from "../../components/tags/EntityTags";
+import { SyntheticMark } from "../../components/integrity/Synthetic";
 
 type RecentVote = {
   id: string;
@@ -186,7 +187,10 @@ export function OfficialCard({ official }: { official: OfficialRow }) {
                 </span>
               )}
             </div>
-            <h2 className="mt-1 font-serif text-xl font-bold text-ink leading-tight">{official.full_name}</h2>
+            <h2 className="mt-1 font-serif text-xl font-bold text-ink leading-tight">
+              {official.full_name}
+              {official.is_synthetic && <SyntheticMark size="xs" className="ml-1.5" />}
+            </h2>
             <p className="text-sm text-ink-soft">{official.role_title}</p>
             {official.state_name && (
               <p className="text-sm text-ink-soft/80">

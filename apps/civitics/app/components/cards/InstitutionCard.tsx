@@ -1,9 +1,16 @@
 import Link from "next/link";
 import { FormerBadge } from "../FormerBadge";
+import { SyntheticMark } from "../integrity/Synthetic";
 
 // Presentational card for an institutions-view row (governing body or agency).
 // Used by /jurisdictions/[id]; intended for reuse on future institution lists.
 // Data fetching stays in the page — this only renders.
+//
+// NOTE (SF-P2): is_synthetic is rendered when present, but the `institutions`
+// DB VIEW does NOT currently expose the column (it has an explicit column list,
+// not `*`). Feeders that read `.from("institutions")` cannot supply it until the
+// view is amended to SELECT gb.is_synthetic / a.is_synthetic on both UNION
+// branches. Feeders that read governing_bodies/agencies directly can pass it.
 export type InstitutionCardData = {
   id: string;
   name: string;
@@ -12,6 +19,7 @@ export type InstitutionCardData = {
   acronym: string | null;
   source_table?: "agency" | "governing_body";
   is_active?: boolean | null;
+  is_synthetic?: boolean;
 };
 
 const TYPE_LABELS: Record<string, string> = {
@@ -47,6 +55,7 @@ export function InstitutionCard({ institution }: { institution: InstitutionCardD
         <div className="min-w-0">
           <h3 className="truncate text-sm font-semibold text-gray-900 group-hover:text-indigo-700">
             {institution.name}
+            {institution.is_synthetic && <SyntheticMark size="xs" className="ml-1.5" />}
           </h3>
           <p className="mt-0.5 text-xs capitalize text-gray-500">{typeLabel(institution.type)}</p>
           <FormerBadge isActive={institution.is_active} className="mt-1" />

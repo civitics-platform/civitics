@@ -103,7 +103,7 @@ export default async function InstitutionsIndexPage({
 
   let query = supabase
     .from("institutions")
-    .select("id, name, short_name, type, acronym, source_table, is_active", { count: "exact" });
+    .select("id, name, short_name, type, acronym, source_table, is_active, is_synthetic", { count: "exact" });
 
   if (!includeFormer) query = query.eq("is_active", true);
   if (type !== "all") query = query.eq("type", type);

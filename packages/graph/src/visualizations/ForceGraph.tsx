@@ -982,6 +982,32 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
             .attr("pointer-events", "none")
             .text("+");
         }
+
+        // Synthetic badge — persistent on-canvas mark for AI-generated
+        // demonstration entities (node.isSynthetic, FIX-572 / SF-P2). Amber
+        // dashed ring + "S", placed top-left so it never collides with the
+        // top-right collapsed "+" badge. 0 nodes synthetic today.
+        if (d.isSynthetic) {
+          el.append("circle")
+            .attr("cx", -(r - 2)).attr("cy", -(r - 2))
+            .attr("r", 9)
+            .attr("fill", "#fef3c7")
+            .attr("stroke", "#d97706")
+            .attr("stroke-width", 1.5)
+            .attr("stroke-dasharray", "2,1.5")
+            .attr("pointer-events", "none");
+          const synthLabel = el.append("text")
+            .attr("x", -(r - 2)).attr("y", -(r - 2))
+            .attr("text-anchor", "middle")
+            .attr("dominant-baseline", "central")
+            .attr("font-size", "11px")
+            .attr("font-weight", "800")
+            .attr("fill", "#92400e")
+            .attr("pointer-events", "none")
+            .text("S");
+          synthLabel.append("title")
+            .text("Synthetic — AI-generated demonstration content");
+        }
       });
 
       // ── Interactions ──────────────────────────────────────────────────────

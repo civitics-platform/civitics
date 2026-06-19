@@ -2,8 +2,9 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { cookies } from "next/headers";
-import { createServerClient } from "@civitics/db";
+import { createServerClient, createAdminClient } from "@civitics/db";
 import { PageViewTracker } from "../../components/PageViewTracker";
+import { SyntheticMark } from "../../components/integrity/Synthetic";
 import { UpvoteButton } from "./components/UpvoteButton";
 import { VersionHistory } from "./components/VersionHistory";
 import { InlineEditor } from "./components/InlineEditor";
@@ -70,6 +71,9 @@ type InitiativeDetail = {
   scope: "federal" | "state" | "local";
   authorship_type: "individual" | "community";
   primary_author_id: string | null;
+  // SF-P2 (FIX-599): an initiative is synthetic when its primary author is
+  // synthetic (or the underlying proposal row is flagged).
+  is_synthetic: boolean;
   issue_area_tags: string[];
   target_district: string | null;
   quality_gate_score: Record<string, unknown>;
@@ -178,6 +182,21 @@ export default async function InitiativeDetailPage({
     ? proposal.initiative_details[0]
     : proposal.initiative_details;
 
+  // SF-P2 (FIX-599): an initiative inherits synthetic-ness from its primary
+  // author (bible: civic_initiatives has no own column). The author's
+  // users.is_synthetic is RLS-protected for other users, so resolve it via the
+  // admin client. OR in the proposal row's own flag as a belt-and-braces.
+  let initiativeIsSynthetic = (proposal as { is_synthetic?: boolean }).is_synthetic === true;
+  if (!initiativeIsSynthetic && details.primary_author_id) {
+    const { data: authorRow, error: authorErr } = await createAdminClient()
+      .from("users")
+      .select("is_synthetic")
+      .eq("id", details.primary_author_id)
+      .maybeSingle();
+    if (authorErr) throw authorErr; // never silently drop the label
+    initiativeIsSynthetic = (authorRow as { is_synthetic?: boolean } | null)?.is_synthetic === true;
+  }
+
   const initiative: InitiativeDetail = {
     id:                   proposal.id,
     title:                proposal.title,
@@ -187,6 +206,7 @@ export default async function InitiativeDetailPage({
     scope:                details.scope,
     authorship_type:      details.authorship_type,
     primary_author_id:    details.primary_author_id,
+    is_synthetic:         initiativeIsSynthetic,
     issue_area_tags:      details.issue_area_tags ?? [],
     target_district:      details.target_district,
     quality_gate_score:   details.quality_gate_score ?? {},
@@ -277,6 +297,7 @@ export default async function InitiativeDetailPage({
               <div className="flex items-start justify-between gap-3">
                 <h1 className="text-2xl font-bold text-gray-900 leading-tight">
                   {initiative.title}
+                  {initiative.is_synthetic && <SyntheticMark withIcon className="ml-2 align-middle" />}
                 </h1>
                 {canEdit && (
                   <div className="relative flex-shrink-0 pt-0.5">

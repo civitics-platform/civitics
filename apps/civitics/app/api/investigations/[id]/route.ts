@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createServerClient, createAdminClient } from "@civitics/db";
 import { mapRpcError } from "../_lib";
-import { fetchNameMap } from "../../comments/_lib";
+import { fetchAuthorMeta } from "../../comments/_lib";
 
 export const dynamic = "force-dynamic";
 
@@ -61,7 +61,7 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
       new Set<string>([investigation.created_by as string, ...cardRows.map((c) => c.author_id as string)]),
     );
     const admin = createAdminClient();
-    const nameById = await fetchNameMap(admin as never, contributorIds);
+    const metaById = await fetchAuthorMeta(admin as never, contributorIds);
     const cardCountByAuthor = new Map<string, number>();
     for (const c of cardRows) {
       const a = c.author_id as string;
@@ -69,13 +69,15 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
     }
     const contributors = contributorIds.map((id) => ({
       user_id: id,
-      name: nameById.get(id) ?? "",
+      name: metaById.get(id)?.name ?? "",
       card_count: cardCountByAuthor.get(id) ?? 0,
       is_creator: id === investigation.created_by,
+      is_synthetic: metaById.get(id)?.isSynthetic ?? false,
     }));
 
     const evidence = cardRows.map((c) => ({
       ...c,
+      author_is_synthetic: metaById.get(c.author_id as string)?.isSynthetic ?? false,
       citations: citationsByCard.get(c.id as string) ?? [],
     }));
 

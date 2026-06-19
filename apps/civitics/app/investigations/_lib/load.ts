@@ -10,7 +10,7 @@
 // ever evaluated in a client bundle.
 import { cookies } from "next/headers";
 import { createServerClient, createAdminClient } from "@civitics/db";
-import { fetchNameMap } from "../../api/comments/_lib";
+import { fetchAuthorMeta } from "../../api/comments/_lib";
 import type {
   Investigation,
   EvidenceCard,
@@ -20,7 +20,7 @@ import type {
 } from "./presentation";
 
 const INVESTIGATION_COLS =
-  "id, title, question, scope_type, scope_id, scope_note, status, findings_md, created_by, is_seeded, is_featured, created_at, updated_at";
+  "id, title, question, scope_type, scope_id, scope_note, status, findings_md, created_by, is_seeded, is_featured, is_synthetic, created_at, updated_at";
 
 const CARD_COLS =
   "id, investigation_id, author_id, claim_text, claim_type, from_type, from_id, to_type, to_id, relationship_kind, status, subject_is_private_person, rating_summary, created_at, updated_at";
@@ -133,11 +133,12 @@ export async function loadCaseFile(id: string): Promise<CaseFile | null> {
     new Set<string>([investigation.created_by, ...cards.map((c) => c.author_id)]),
   );
   const admin = createAdminClient();
-  const nameMap = await fetchNameMap(admin as never, contributorIds);
+  const metaMap = await fetchAuthorMeta(admin as never, contributorIds);
 
   const evidence: EvidenceCard[] = cards.map((c) => ({
     ...c,
-    author_name: nameMap.get(c.author_id) ?? "",
+    author_name: metaMap.get(c.author_id)?.name ?? "",
+    author_is_synthetic: metaMap.get(c.author_id)?.isSynthetic ?? false,
     rating_summary: normSummary(c.rating_summary),
     citations: (citationsByCard.get(c.id) ?? []).sort(
       (a, b) => a.created_at.localeCompare(b.created_at),
@@ -149,9 +150,10 @@ export async function loadCaseFile(id: string): Promise<CaseFile | null> {
 
   const contributors: Contributor[] = contributorIds.map((uid) => ({
     user_id: uid,
-    name: nameMap.get(uid) ?? "",
+    name: metaMap.get(uid)?.name ?? "",
     card_count: cardCountByAuthor.get(uid) ?? 0,
     is_creator: uid === investigation.created_by,
+    is_synthetic: metaMap.get(uid)?.isSynthetic ?? false,
   }));
 
   return { investigation, evidence, contributors };

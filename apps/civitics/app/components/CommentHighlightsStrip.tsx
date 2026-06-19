@@ -11,6 +11,7 @@
 import { useEffect, useState } from "react";
 import { focusComment } from "./comment-focus";
 import type { EntityCommentType } from "@civitics/db";
+import { SyntheticMark } from "./integrity/Synthetic";
 
 type HighlightComment = {
   id: string;
@@ -20,6 +21,7 @@ type HighlightComment = {
   bridge_score: number | null;
   valuable_net: number;
   author_name: string;
+  author_is_synthetic?: boolean;
 };
 
 type Highlights = {
@@ -67,7 +69,10 @@ function HighlightCard({
         {trailing && <span className="shrink-0 text-[10px] tabular-nums text-ink-soft/60">{trailing}</span>}
       </div>
       <p className="text-xs leading-relaxed text-ink">{c.snippet}</p>
-      <div className="mt-1 text-[10px] text-ink-soft/60">{c.author_name}</div>
+      <div className="mt-1 flex items-center gap-1.5 text-[10px] text-ink-soft/60">
+        <span>{c.author_name}</span>
+        {c.author_is_synthetic && <SyntheticMark size="xs" />}
+      </div>
     </button>
   );
 }

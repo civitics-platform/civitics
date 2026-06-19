@@ -11,6 +11,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { challengedFetch } from "@/lib/challenged-fetch";
+import { SyntheticMark } from "./integrity/Synthetic";
 import {
   createBrowserClient,
   STATEMENT_MAX_LEN,
@@ -28,6 +29,7 @@ type Statement = {
   vote_summary: VoteSummary;
   is_constituent: boolean;
   author_name: string;
+  author_is_synthetic?: boolean;
   my_vote: number | null;
   created_at: string;
 };
@@ -426,6 +428,7 @@ export function StatementMode({
                   ↑ from a comment
                 </span>
               )}
+              {current.author_is_synthetic && <SyntheticMark size="xs" />}
             </div>
 
             <p className="text-base font-medium leading-relaxed text-ink">{current.body}</p>

@@ -18,6 +18,7 @@ import {
 } from "@civitics/db";
 import { DebateMap } from "./DebateMap";
 import { StatementMode } from "./StatementMode";
+import { SyntheticMark } from "./integrity/Synthetic";
 import { FOCUS_COMMENT_EVENT, commentDomId, type FocusCommentDetail } from "./comment-focus";
 
 // C1 Wave B (FIX-529): a comment "bridges divides" when its cross-stance balance
@@ -49,6 +50,7 @@ type Comment = {
   status: string;
   author_id: string;
   author_name: string;
+  author_is_synthetic: boolean;
   is_constituent: boolean;
   rating_summary: RatingSummary;
   // C1 Wave B (FIX-528): nightly bridge scorer output; NULL until scored.
@@ -513,7 +515,10 @@ function CommentCard({
         <span className="shrink-0 text-xs text-ink-soft/50">{formatRelTime(comment.created_at)}</span>
       </div>
 
-      <div className="mb-1 text-xs font-medium text-ink-soft">{comment.author_name}</div>
+      <div className="mb-1 flex items-center gap-1.5 text-xs font-medium text-ink-soft">
+        <span>{comment.author_name}</span>
+        {comment.author_is_synthetic && <SyntheticMark size="xs" />}
+      </div>
 
       {collapsed ? (
         <details className="text-sm">

@@ -15,6 +15,7 @@ import { getSlowMode } from "@/lib/slow-mode";
 import { RelatedInitiatives, type InitiativeLink } from "../components/RelatedInitiatives";
 import { ProposalShareButton } from "../components/ProposalShareButton";
 import { getCachedProposal } from "../_lib/get-proposal";
+import { SyntheticMark, SyntheticBanner } from "../../components/integrity/Synthetic";
 
 // Public proposal detail; no auth dependency, RLS allows anon SELECT on
 // proposals + votes + ai_summary_cache + civic_initiative_proposal_links.
@@ -60,6 +61,7 @@ type Proposal = {
   summary_plain: string | null;
   introduced_at: string | null;
   metadata: Record<string, string>;
+  is_synthetic: boolean;
 };
 
 type Vote = {
@@ -175,6 +177,7 @@ export default async function ProposalDetailPage({
     summary_plain:      proposalRow.summary_plain,
     introduced_at:      proposalRow.introduced_at,
     metadata:           rawMeta,
+    is_synthetic:       proposalRow.is_synthetic ?? false,
   };
   const open = isOpenForComment(p);
   const statusBadge = STATUS_BADGE[p.status] ?? { label: p.status, color: "bg-ink/5 text-ink-soft border-rule" };
@@ -249,18 +252,18 @@ export default async function ProposalDetailPage({
     jurisdiction_id: string | null;
     governing_body_id: string | null;
   } | null;
-  let bcJurisdiction: { id: string; name: string } | null = null;
+  let bcJurisdiction: { id: string; name: string; is_synthetic?: boolean } | null = null;
   let bcInstitution: { id: string; name: string } | null = null;
   if (bcMeta?.jurisdiction_id || bcMeta?.governing_body_id) {
     const [jRes, gRes] = await Promise.all([
       bcMeta.jurisdiction_id
-        ? supabase.from("jurisdictions").select("id, name").eq("id", bcMeta.jurisdiction_id).maybeSingle()
+        ? supabase.from("jurisdictions").select("id, name, is_synthetic").eq("id", bcMeta.jurisdiction_id).maybeSingle()
         : Promise.resolve({ data: null }),
       bcMeta.governing_body_id
         ? supabase.from("institutions").select("id, name").eq("id", bcMeta.governing_body_id).maybeSingle()
         : Promise.resolve({ data: null }),
     ]);
-    bcJurisdiction = (jRes.data as { id: string; name: string } | null) ?? null;
+    bcJurisdiction = (jRes.data as { id: string; name: string; is_synthetic?: boolean } | null) ?? null;
     bcInstitution = (gRes.data as { id: string; name: string } | null) ?? null;
   }
 
@@ -369,6 +372,12 @@ export default async function ProposalDetailPage({
             <span className="text-ink truncate max-w-[200px] sm:max-w-none">{p.title}</span>
           </nav>
 
+          {/* SF-P2 (FIX-599): inherited demonstration banner when this proposal
+              is scoped under a synthetic jurisdiction. */}
+          {bcJurisdiction?.is_synthetic && (
+            <SyntheticBanner scope="entity" className="mb-4" />
+          )}
+
           {/* Badge row */}
           <div className="flex flex-wrap items-center gap-2 mb-4">
             <span className={`border px-2.5 py-1 font-mono text-[10px] font-bold uppercase tracking-[0.06em] ${statusBadge.color}`}>
@@ -400,6 +409,7 @@ export default async function ProposalDetailPage({
           {/* Title */}
           <h1 className="font-serif text-2xl font-bold tracking-tight text-ink sm:text-3xl leading-snug max-w-4xl">
             {p.title}
+            {p.is_synthetic && <SyntheticMark withIcon className="ml-2 align-middle" />}
           </h1>
 
           {/* Meta row */}

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@civitics/db";
 import { isEntityCommentType } from "@civitics/db";
+import { fetchAuthorMeta } from "../_lib";
 
 // C1 Wave B (FIX-528): dedicated lightweight endpoint backing the debate-map
 // scatter (decision 7). The scatter needs the whole scored set at once, so it
@@ -12,7 +13,7 @@ const MAP_CAP = 500;
 
 // Columns the scatter needs — lighter than the full comment payload.
 const MAP_COLUMNS =
-  "id,stance,kind,body,bridge_score,map_x,map_y,rating_summary,status,constituent_jurisdiction_id";
+  "id,stance,kind,body,bridge_score,map_x,map_y,rating_summary,status,constituent_jurisdiction_id,author_id";
 
 function num(v: unknown): number {
   const n = typeof v === "number" ? v : Number(v);
@@ -65,6 +66,14 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Failed to load map" }, { status: 500 });
     }
 
+    // SF-P2 (FIX-599): resolve author is_synthetic for the per-utterance mark.
+    // Throw on error rather than silently dropping labels (the dangerous way).
+    const rows = (data ?? []) as Array<{ author_id: string | null }>;
+    const meta = await fetchAuthorMeta(
+      admin as never,
+      rows.map((c) => c.author_id).filter((x): x is string => !!x),
+    );
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const points = (data ?? []).map((c: any) => ({
       id: c.id,
@@ -74,6 +83,7 @@ export async function GET(request: NextRequest) {
       stance: c.stance ?? null,
       kind: c.kind,
       n: ratingVolume(c.rating_summary),
+      author_is_synthetic: c.author_id ? (meta.get(c.author_id)?.isSynthetic ?? false) : false,
       snippet:
         typeof c.body === "string" && c.body.length > 120
           ? `${c.body.slice(0, 120)}…`

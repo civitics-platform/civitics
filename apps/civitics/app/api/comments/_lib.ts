@@ -26,6 +26,9 @@ export type CommentPayload = {
   status: string;
   author_id: string;
   author_name: string;
+  // SF-P2 (FIX-599): author's users.is_synthetic, for the persistent SYNTHETIC
+  // per-utterance mark. Resolved alongside the display name in fetchAuthorMeta.
+  author_is_synthetic: boolean;
   is_constituent: boolean;
   rating_summary: {
     agree_up: number;
@@ -109,22 +112,40 @@ export function topScore(raw: unknown): number {
 export const COMMENT_COLUMNS =
   "id,entity_type,entity_id,parent_id,thread_root_id,kind,stance,body,status,author_id,constituent_jurisdiction_id,rating_summary,bridge_score,map_x,map_y,created_at,updated_at";
 
-// Map an author_id -> display_name (two-step; entity_comments.author_id IS an
-// FK to users, but we keep the manual fetch so the payload stays explicit and
-// never leaks email).
-export async function fetchNameMap(admin: Admin, ids: string[]): Promise<Map<string, string>> {
-  const map = new Map<string, string>();
+// Author display name + SF-P2 synthetic flag, resolved together.
+export type AuthorMeta = { name: string; isSynthetic: boolean };
+
+// Map an author_id -> { name, isSynthetic } (two-step; entity_comments.author_id
+// IS an FK to users, but we keep the manual fetch so the payload stays explicit
+// and never leaks email). is_synthetic (FIX-572) drives the persistent SYNTHETIC
+// mark — throw on query error rather than silently dropping labels (the
+// dangerous direction: unlabeled fiction would render as real).
+export async function fetchAuthorMeta(admin: Admin, ids: string[]): Promise<Map<string, AuthorMeta>> {
+  const map = new Map<string, AuthorMeta>();
   const unique = Array.from(new Set(ids));
   if (unique.length === 0) return map;
-  const { data } = await admin.from("users").select("id,display_name").in("id", unique);
-  for (const u of (data ?? []) as Array<{ id: string; display_name: string | null }>) {
-    map.set(u.id, displayNameFor(u.id, u.display_name));
+  const { data, error } = await admin
+    .from("users")
+    .select("id,display_name,is_synthetic")
+    .in("id", unique);
+  if (error) throw error;
+  for (const u of (data ?? []) as Array<{ id: string; display_name: string | null; is_synthetic: boolean | null }>) {
+    map.set(u.id, { name: displayNameFor(u.id, u.display_name), isSynthetic: u.is_synthetic === true });
   }
-  for (const id of unique) if (!map.has(id)) map.set(id, displayNameFor(id, null));
+  for (const id of unique)
+    if (!map.has(id)) map.set(id, { name: displayNameFor(id, null), isSynthetic: false });
   return map;
 }
 
-export function serialize(row: RawComment, names: Map<string, string>): CommentPayload {
+// Back-compat name-only view over fetchAuthorMeta (one query, no extra round-trip).
+export async function fetchNameMap(admin: Admin, ids: string[]): Promise<Map<string, string>> {
+  const meta = await fetchAuthorMeta(admin, ids);
+  const names = new Map<string, string>();
+  for (const [id, m] of meta) names.set(id, m.name);
+  return names;
+}
+
+export function serialize(row: RawComment, names: Map<string, AuthorMeta>): CommentPayload {
   return {
     id: row.id,
     entity_type: row.entity_type,
@@ -137,7 +158,8 @@ export function serialize(row: RawComment, names: Map<string, string>): CommentP
     body: row.body,
     status: row.status,
     author_id: row.author_id,
-    author_name: names.get(row.author_id) ?? displayNameFor(row.author_id, null),
+    author_name: names.get(row.author_id)?.name ?? displayNameFor(row.author_id, null),
+    author_is_synthetic: names.get(row.author_id)?.isSynthetic ?? false,
     is_constituent: row.constituent_jurisdiction_id !== null,
     rating_summary: normalizeSummary(row.rating_summary),
     bridge_score: num(row.bridge_score),
@@ -153,7 +175,7 @@ export function serialize(row: RawComment, names: Map<string, string>): CommentP
 export function nestReplies(
   roots: CommentPayload[],
   descendants: RawComment[],
-  names: Map<string, string>,
+  names: Map<string, AuthorMeta>,
 ): CommentPayload[] {
   const byId = new Map<string, CommentPayload>();
   for (const r of roots) byId.set(r.id, r);

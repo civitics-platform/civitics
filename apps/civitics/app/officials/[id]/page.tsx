@@ -27,6 +27,11 @@ import { FollowButton } from "../../components/FollowButton";
 import { SourceBadge } from "../../components/SourceBadge";
 import { SourceDetailPopover } from "../../components/SourceDetailPopover";
 import { getCachedOfficial } from "../_lib/get-official";
+import {
+  SyntheticMark,
+  SyntheticBanner,
+  PassiveOfficialDisclaimer,
+} from "../../components/integrity/Synthetic";
 
 const CivicBadge = nextDynamic(
   () => import("@civitics/graph").then((m) => ({ default: m.CivicBadge })),
@@ -426,6 +431,10 @@ export default async function OfficialProfilePage({
     term_end: (o.term_end ?? null) as string | null,
     is_active: (o.is_active ?? null) as boolean | null,
     tier: (o.tier ?? "elected") as string,
+    // SF-P2 (FIX-599): the official's own synthetic flag + the parent
+    // jurisdiction's, for the entity marker and the inherited scope banner.
+    is_synthetic: (o.is_synthetic ?? false) as boolean,
+    jurisdiction_is_synthetic: (o.jurisdictions?.is_synthetic ?? false) as boolean,
     jurisdiction_id: (o.jurisdiction_id ?? null) as string | null,
     state_name: (o.jurisdictions?.name ?? null) as string | null,
     chamber: (o.governing_bodies?.short_name ?? null) as string | null,
@@ -438,6 +447,22 @@ export default async function OfficialProfilePage({
   // FIX-246: candidate-tier officials skip incumbent-only sections (votes,
   // committees, promises, career history) since their data is empty by design.
   const isCandidate = official.tier === "candidate";
+
+  // SF-P11 (FIX-599): a synthetic official that has never answered a question is
+  // "records-only / non-participating" (bible §4.6) → show the passive-official
+  // disclaimer. The count runs ONLY for synthetic officials (≈0 cost; 0 such
+  // rows today), so real officials add no extra query.
+  let isPassiveSynthetic = false;
+  if (official.is_synthetic) {
+    const { count: answerCount } = await sb
+      .from("entity_comments")
+      .select("id", { count: "exact", head: true })
+      .eq("entity_type", "official")
+      .eq("entity_id", official.id)
+      .eq("kind", "answer")
+      .eq("status", "visible");
+    isPassiveSynthetic = (answerCount ?? 0) === 0;
+  }
 
   // ── Donor + IE view (FIX-518) ───────────────────────────────────────────────
   // Built from official_donor_rollup_mv (ranked top-1000 donors + tail bucket
@@ -894,6 +919,12 @@ export default async function OfficialProfilePage({
 
       <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
 
+        {/* SF-P2 (FIX-599): inherited demonstration banner when this official is
+            scoped under a synthetic jurisdiction (the State of Franklin). */}
+        {official.jurisdiction_is_synthetic && (
+          <SyntheticBanner scope="entity" className="mb-4" />
+        )}
+
         {/* ── HEADER ─────────────────────────────────────────────────────── */}
         <div className={`border border-rule bg-card overflow-hidden ${party.border}`}>
           <div className="p-6">
@@ -962,6 +993,7 @@ export default async function OfficialProfilePage({
 
                 <h1 className="font-serif text-2xl font-bold text-ink leading-tight">
                   {official.full_name}
+                  {official.is_synthetic && <SyntheticMark withIcon className="ml-2" />}
                 </h1>
                 <p className="mt-0.5 text-base text-ink-soft">{official.role_title}</p>
                 {/* FIX-474 — link to the official's governing body (institution page) */}
@@ -1082,6 +1114,11 @@ export default async function OfficialProfilePage({
             />
           </div>
         </div>
+
+        {/* SF-P11 (FIX-599): synthetic records-only officials carry the
+            demonstration disclaimer alongside (not instead of) the claim +
+            responsiveness framing. */}
+        {isPassiveSynthetic && <PassiveOfficialDisclaimer />}
 
         {/* FIX-558: "Is this you?" self-serve profile claim. Client island so
             the page stays ISR — per-user claim state comes from

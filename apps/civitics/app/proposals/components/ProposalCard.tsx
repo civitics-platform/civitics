@@ -3,6 +3,7 @@ import { CommentPeriodBadge } from "./CommentPeriodBadge";
 import { SubmitCommentButton } from "./SubmitCommentButton";
 import { EntityTags, type EntityTag } from "../../components/tags/EntityTags";
 import { ProposalShareButton } from "./ProposalShareButton";
+import { SyntheticMark } from "../../components/integrity/Synthetic";
 
 export type ProposalCardData = {
   id: string;
@@ -16,6 +17,7 @@ export type ProposalCardData = {
   summary_model: string | null;
   introduced_at: string | null;
   metadata: Record<string, string>;
+  is_synthetic?: boolean;
   // Resolved at query time by the page
   agency_name?: string | null;
   ai_summary?: string | null;
@@ -135,6 +137,7 @@ export function ProposalCard({ proposal }: { proposal: ProposalCardData }) {
         {/* Title */}
         <h3 className="font-serif text-sm font-semibold text-ink leading-snug line-clamp-2 mb-2 group-hover:text-accent transition-colors">
           {proposal.title}
+          {proposal.is_synthetic && <SyntheticMark size="xs" className="ml-1.5" />}
         </h3>
 
         {/* Summary */}

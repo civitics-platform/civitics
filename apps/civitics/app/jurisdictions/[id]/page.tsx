@@ -11,6 +11,7 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
 import { JurisdictionHeader } from "./components/JurisdictionHeader";
+import { SyntheticBanner } from "../../components/integrity/Synthetic";
 import { BoundarySvg, type BoundarySvgData } from "./components/BoundarySvg";
 import { VerifyConstituentSection } from "./components/VerifyConstituentSection";
 import {
@@ -116,7 +117,7 @@ export default async function JurisdictionPage({ params }: { params: Promise<{ i
 
   const { data: jurisdiction } = await supabase
     .from("jurisdictions")
-    .select("id, name, short_name, type, parent_id, population, timezone, fips_code")
+    .select("id, name, short_name, type, parent_id, population, timezone, fips_code, is_synthetic")
     .eq("id", id)
     .maybeSingle();
 
@@ -151,7 +152,7 @@ export default async function JurisdictionPage({ params }: { params: Promise<{ i
       .limit(1000),
     supabase
       .from("institutions")
-      .select("id, name, short_name, type, acronym, source_table")
+      .select("id, name, short_name, type, acronym, source_table, is_synthetic")
       .eq("jurisdiction_id", id)
       .eq("is_active", true)
       .order("type", { ascending: true })
@@ -159,7 +160,7 @@ export default async function JurisdictionPage({ params }: { params: Promise<{ i
       .limit(200),
     supabase
       .from("officials")
-      .select("id, full_name, role_title, party, photo_url, district_name")
+      .select("id, full_name, role_title, party, photo_url, district_name, is_synthetic")
       .eq("jurisdiction_id", id)
       .eq("is_active", true)
       .order("role_title", { ascending: true })
@@ -167,14 +168,14 @@ export default async function JurisdictionPage({ params }: { params: Promise<{ i
       .limit(OFFICIALS_LIMIT + 1),
     supabase
       .from("proposals")
-      .select("id, title, type, status, summary_plain, summary_model, introduced_at, external_url, metadata")
+      .select("id, title, type, status, summary_plain, summary_model, introduced_at, external_url, metadata, is_synthetic")
       .eq("jurisdiction_id", id)
       .neq("type", "initiative")
       .order("introduced_at", { ascending: false, nullsFirst: false })
       .limit(10),
     supabase
       .from("meetings")
-      .select("id, title, meeting_type, scheduled_at, agenda_url, governing_bodies!inner(name, jurisdiction_id)")
+      .select("id, title, meeting_type, scheduled_at, agenda_url, governing_bodies!inner(name, jurisdiction_id, is_synthetic)")
       .eq("governing_bodies.jurisdiction_id", id)
       .gte("scheduled_at", meetWindowStart)
       .lte("scheduled_at", meetWindowEnd)
@@ -220,6 +221,7 @@ export default async function JurisdictionPage({ params }: { params: Promise<{ i
       summary_model: p.summary_model,
       introduced_at: p.introduced_at,
       metadata: meta,
+      is_synthetic: p.is_synthetic ?? false,
     };
   });
 
@@ -233,6 +235,7 @@ export default async function JurisdictionPage({ params }: { params: Promise<{ i
       scheduled_at: m.scheduled_at,
       bodyName: gb?.name ?? null,
       agenda_url: m.agenda_url ?? null,
+      is_synthetic: gb?.is_synthetic ?? false,
     };
   });
 
@@ -318,6 +321,11 @@ export default async function JurisdictionPage({ params }: { params: Promise<{ i
   return (
     <div className="min-h-screen bg-gray-50">
       <main id="main-content" className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
+        {/* SF-P2 (FIX-599): persistent demonstration banner for a synthetic
+            jurisdiction (the State of Franklin). Everything scoped under it is
+            AI-generated; sub-entity pages inherit a one-line variant. */}
+        {jurisdiction.is_synthetic && <SyntheticBanner className="mb-4" />}
+
         <JurisdictionHeader jurisdiction={jurisdiction} parent={parent} />
 
         {boundary && (

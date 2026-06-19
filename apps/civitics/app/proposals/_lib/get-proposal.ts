@@ -18,6 +18,8 @@ export type CachedProposalRow = {
   summary_plain: string | null;
   introduced_at: string | null;
   metadata: Record<string, string> | null;
+  // SF-P2 (FIX-599): the proposal's own synthetic flag (entity marker).
+  is_synthetic: boolean;
   attribution: AttributionShape;
 };
 
@@ -26,7 +28,7 @@ export const getCachedProposal = cache(
     const supabase = createPublicClient();
     const { data } = await supabase
       .from("proposals")
-      .select("id,title,type,status,summary_plain,introduced_at,metadata")
+      .select("id,title,type,status,summary_plain,introduced_at,metadata,is_synthetic")
       .eq("id", id)
       .single();
     if (!data) return null;

@@ -28,6 +28,7 @@ export type OfficialRow = {
   chamber_type: string | null;
   tags?: EntityTag[];
   source_ids: Record<string, string>;
+  is_synthetic?: boolean;
 };
 
 export default async function OfficialsPage({
@@ -46,7 +47,7 @@ export default async function OfficialsPage({
     .from("officials")
     .select(
       `id, full_name, first_name, last_name, role_title, party,
-       photo_url, district_name, term_start, term_end, is_active, source_ids,
+       photo_url, district_name, term_start, term_end, is_active, source_ids, is_synthetic,
        jurisdictions!jurisdiction_id(name),
        governing_bodies!governing_body_id(short_name, type)`
     );
@@ -74,6 +75,7 @@ export default async function OfficialsPage({
     chamber_type: o.governing_bodies?.type ?? null,
     tags: [],
     source_ids: o.source_ids ?? {},
+    is_synthetic: o.is_synthetic ?? false,
   }));
 
   // Pre-fetch tags for all officials

@@ -14,6 +14,7 @@
 import { useEffect, useState } from "react";
 import { focusComment } from "./comment-focus";
 import type { EntityCommentType } from "@civitics/db";
+import { SyntheticMark } from "./integrity/Synthetic";
 
 type MapPoint = {
   id: string;
@@ -24,6 +25,7 @@ type MapPoint = {
   kind: string;
   n: number;
   snippet: string;
+  author_is_synthetic?: boolean;
 };
 
 export interface DebateMapProps {
@@ -172,7 +174,8 @@ export function DebateMap({ entityType, entityId, lens }: DebateMapProps) {
             one-sided ↓
           </text>
 
-          {/* Dots */}
+          {/* Dots — synthetic-authored comments (SF-P2/FIX-599) get a dashed
+              ink ring so AI-generated points are visibly distinct on the map. */}
           {points.map((p) => (
             <circle
               key={p.id}
@@ -181,13 +184,14 @@ export function DebateMap({ entityType, entityId, lens }: DebateMapProps) {
               r={radius(p.n)}
               fill={fillFor(p.stance)}
               fillOpacity={0.65}
-              stroke={fillFor(p.stance)}
-              strokeWidth={1}
+              stroke={p.author_is_synthetic ? "#1c1a16" : fillFor(p.stance)}
+              strokeWidth={p.author_is_synthetic ? 1.5 : 1}
+              strokeDasharray={p.author_is_synthetic ? "2 1.5" : undefined}
               className="cursor-pointer transition-opacity hover:fill-opacity-90"
               onMouseEnter={() => setHover(p)}
               onClick={() => focusComment(p.id)}
             >
-              <title>{p.snippet}</title>
+              <title>{p.author_is_synthetic ? `[SYNTHETIC] ${p.snippet}` : p.snippet}</title>
             </circle>
           ))}
         </svg>
@@ -197,6 +201,7 @@ export function DebateMap({ entityType, entityId, lens }: DebateMapProps) {
             <span className="font-medium capitalize">{hover.stance ?? "discussion"}</span>
             {" · "}
             <span className="tabular-nums text-ink-soft/60">bridge {hover.bridge_score.toFixed(2)}</span>
+            {hover.author_is_synthetic && <> · <SyntheticMark size="xs" /></>}
             <div className="mt-0.5 text-ink-soft">{hover.snippet}</div>
           </div>
         )}

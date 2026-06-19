@@ -11,6 +11,7 @@ import { ShareButton } from "../../officials/components/ShareButton";
 import { PageViewTracker } from "../../components/PageViewTracker";
 import { SourceBadge } from "../../components/SourceBadge";
 import { SourceDetailPopover } from "../../components/SourceDetailPopover";
+import { SyntheticMark } from "../../components/integrity/Synthetic";
 
 // Donor / PAC / committee / corporation profile. Mirrors the officials page
 // model: public-read RLS, createPublicClient → real ISR (5-min revalidate),
@@ -37,6 +38,8 @@ type Entity = {
   total_grant_cents: number;
   donor_fingerprint: string | null;
   metadata: Record<string, unknown> | null;
+  // SF-P2 (FIX-599): the financial entity's own synthetic flag (entity marker).
+  is_synthetic: boolean;
   attribution: AttributionShape;
 };
 
@@ -140,7 +143,7 @@ const getCachedDonor = cache(async (id: string): Promise<Entity | null> => {
   const { data } = await sb
     .from("financial_entities")
     .select(
-      "id, display_name, canonical_name, entity_type, fec_committee_id, parent_entity_id, total_donated_cents, total_received_cents, total_contract_cents, total_grant_cents, donor_fingerprint, metadata"
+      "id, display_name, canonical_name, entity_type, fec_committee_id, parent_entity_id, total_donated_cents, total_received_cents, total_contract_cents, total_grant_cents, donor_fingerprint, metadata, is_synthetic"
     )
     .eq("id", id)
     .maybeSingle();
@@ -475,6 +478,7 @@ export default async function DonorProfilePage({
 
                 <h1 className="text-2xl font-bold text-gray-900 leading-tight">
                   {entity.display_name}
+                  {entity.is_synthetic && <SyntheticMark withIcon className="ml-2 align-middle" />}
                 </h1>
                 {parentName && (
                   <p className="mt-0.5 text-sm text-gray-500">

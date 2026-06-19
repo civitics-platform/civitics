@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import type { AgencyRow } from "../page";
+import { SyntheticMark } from "../../components/integrity/Synthetic";
 
 // ─── Style tables (shared with AgenciesList slide-over) ──────────────────────
 
@@ -111,6 +112,7 @@ export function AgencyCard({
           </div>
           <p className="text-sm font-semibold leading-tight text-gray-900 group-hover:text-indigo-700 line-clamp-2">
             {agency.name}
+            {agency.is_synthetic && <SyntheticMark size="xs" className="ml-1.5" />}
           </p>
         </div>
       </div>

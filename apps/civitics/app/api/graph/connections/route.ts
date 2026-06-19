@@ -465,13 +465,13 @@ export async function GET(request: Request) {
     // Financial entities can number in the thousands (e.g. Sanders ~5k individual donors).
     // PostgREST sends IN filters as query-string params; at >~500 UUIDs the URL exceeds
     // nginx's header buffer limit and the query silently returns empty. Chunk to 500.
-    type FinRow = { id: string; display_name: string; entity_type: string; recipient_count?: number; metadata?: Record<string, unknown> | null };
+    type FinRow = { id: string; display_name: string; entity_type: string; recipient_count?: number; metadata?: Record<string, unknown> | null; is_synthetic?: boolean };
     const FIN_CHUNK = 500;
     const financialData: FinRow[] = [];
     if (financialIds.length > 0) {
       const finSelect = individualMode === 'employer'
-        ? "id, display_name, entity_type, recipient_count, metadata"
-        : "id, display_name, entity_type, recipient_count";
+        ? "id, display_name, entity_type, recipient_count, metadata, is_synthetic"
+        : "id, display_name, entity_type, recipient_count, is_synthetic";
       const finChunks: string[][] = [];
       for (let i = 0; i < financialIds.length; i += FIN_CHUNK) {
         finChunks.push(financialIds.slice(i, i + FIN_CHUNK));
@@ -490,20 +490,20 @@ export async function GET(request: Request) {
 
     const [officialsRes, agenciesRes, proposalsRes, billDetailsRes, gbRes] = await Promise.all([
       officialIds.length
-        ? supabase.from("officials").select("id, full_name, party").in("id", officialIds)
-        : Promise.resolve({ data: [] as { id: string; full_name: string; party: string | null }[] }),
+        ? supabase.from("officials").select("id, full_name, party, is_synthetic").in("id", officialIds)
+        : Promise.resolve({ data: [] as { id: string; full_name: string; party: string | null; is_synthetic: boolean }[] }),
       agencyIds.length
-        ? supabase.from("agencies").select("id, name, acronym").in("id", agencyIds)
-        : Promise.resolve({ data: [] as { id: string; name: string; acronym: string | null }[] }),
+        ? supabase.from("agencies").select("id, name, acronym, is_synthetic").in("id", agencyIds)
+        : Promise.resolve({ data: [] as { id: string; name: string; acronym: string | null; is_synthetic: boolean }[] }),
       proposalIds.length
-        ? supabase.from("proposals").select("id, title").in("id", proposalIds)
-        : Promise.resolve({ data: [] as { id: string; title: string }[] }),
+        ? supabase.from("proposals").select("id, title, is_synthetic").in("id", proposalIds)
+        : Promise.resolve({ data: [] as { id: string; title: string; is_synthetic: boolean }[] }),
       proposalIds.length
         ? supabase.from("bill_details").select("proposal_id, bill_number").in("proposal_id", proposalIds)
         : Promise.resolve({ data: [] as { proposal_id: string; bill_number: string }[] }),
       gbIds.length
-        ? supabase.from("governing_bodies").select("id, name").in("id", gbIds)
-        : Promise.resolve({ data: [] as { id: string; name: string }[] }),
+        ? supabase.from("governing_bodies").select("id, name, is_synthetic").in("id", gbIds)
+        : Promise.resolve({ data: [] as { id: string; name: string; is_synthetic: boolean }[] }),
     ]);
 
     const billNumberByProposal = new Map<string, string>();
@@ -512,9 +512,9 @@ export async function GET(request: Request) {
     }
 
     // ── Build name lookup ───────────────────────────────────────────────────
-    const nameMap = new Map<string, { label: string; party?: string; subType?: string; role?: string }>();
-    for (const o of officialsRes.data ?? []) nameMap.set(o.id, { label: o.full_name, party: o.party ?? undefined });
-    for (const a of agenciesRes.data ?? []) nameMap.set(a.id, { label: a.acronym ?? a.name });
+    const nameMap = new Map<string, { label: string; party?: string; subType?: string; role?: string; isSynthetic?: boolean }>();
+    for (const o of officialsRes.data ?? []) nameMap.set(o.id, { label: o.full_name, party: o.party ?? undefined, isSynthetic: o.is_synthetic ?? false });
+    for (const a of agenciesRes.data ?? []) nameMap.set(a.id, { label: a.acronym ?? a.name, isSynthetic: a.is_synthetic ?? false });
     for (const p of proposalsRes.data ?? []) {
       // FIX-123: bill_number ("HR 1234") goes into role so the tooltip subtitle
       // shows it. Title stays as the primary name. If title is missing, fall
@@ -523,14 +523,15 @@ export async function GET(request: Request) {
       nameMap.set(p.id, {
         label: p.title || billNumber || "Untitled bill",
         role: billNumber,
+        isSynthetic: p.is_synthetic ?? false,
       });
     }
-    for (const g of gbRes.data ?? []) nameMap.set(g.id, { label: g.name });
+    for (const g of gbRes.data ?? []) nameMap.set(g.id, { label: g.name, isSynthetic: g.is_synthetic ?? false });
 
     // Track individual-donor extra data for bracket/employer aggregation (FIX-194)
     const individualMeta = new Map<string, { recipientCount: number; employer?: string }>();
     for (const f of financialData) {
-      nameMap.set(f.id, { label: f.display_name, subType: f.entity_type });
+      nameMap.set(f.id, { label: f.display_name, subType: f.entity_type, isSynthetic: f.is_synthetic ?? false });
       if (f.entity_type === 'individual') {
         const meta = f.metadata as Record<string, string> | null;
         individualMeta.set(f.id, {
@@ -686,6 +687,7 @@ export async function GET(request: Request) {
         name: info.label,
         party: info.party as GraphNode["party"],
         ...(info.role ? { role: info.role } : {}),
+        ...(info.isSynthetic ? { isSynthetic: true } : {}),
         ...(donationTotalCents != null ? { donationTotal: donationTotalCents } : {}),
         ...(isCollapsed
           ? { collapsed: true, connectionCount: collapsedNodes.get(id) }

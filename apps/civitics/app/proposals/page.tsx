@@ -144,7 +144,7 @@ export default async function ProposalsPage({
   // ─── Featured section queries (all three tabs) ────────────────────────────
   const openFeaturedQuery = supabase
     .from("proposals")
-    .select("id,title,type,status,summary_plain,summary_model,introduced_at,metadata")
+    .select("id,title,type,status,summary_plain,summary_model,introduced_at,metadata,is_synthetic")
     .eq("status", "open_comment")
     .gt("metadata->>comment_period_end", now)
     .order("metadata->>comment_period_end", { ascending: true })
@@ -152,7 +152,7 @@ export default async function ProposalsPage({
 
   const billsQuery = supabase
     .from("proposals")
-    .select("id,title,type,status,summary_plain,summary_model,introduced_at,metadata")
+    .select("id,title,type,status,summary_plain,summary_model,introduced_at,metadata,is_synthetic")
     .eq("type", "bill")
     .order("introduced_at", { ascending: false, nullsFirst: false })
     .limit(6);
@@ -175,7 +175,7 @@ export default async function ProposalsPage({
     topProposalIds.length > 0
       ? supabase
           .from("proposals")
-          .select("id,title,type,status,summary_plain,summary_model,introduced_at,metadata")
+          .select("id,title,type,status,summary_plain,summary_model,introduced_at,metadata,is_synthetic")
           .in("id", topProposalIds)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       : Promise.resolve({ data: [] as any[], error: null });
@@ -200,7 +200,7 @@ export default async function ProposalsPage({
   const trendingQuery = trendingIds.length > 0
     ? supabase
         .from("proposals")
-        .select("id,title,type,status,summary_plain,summary_model,introduced_at,metadata")
+        .select("id,title,type,status,summary_plain,summary_model,introduced_at,metadata,is_synthetic")
         .in("id", trendingIds)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     : Promise.resolve({ data: [] as any[], error: null });
@@ -208,14 +208,14 @@ export default async function ProposalsPage({
   const mostCommentedQuery = mostCommentedIds.length > 0
     ? supabase
         .from("proposals")
-        .select("id,title,type,status,summary_plain,summary_model,introduced_at,metadata")
+        .select("id,title,type,status,summary_plain,summary_model,introduced_at,metadata,is_synthetic")
         .in("id", mostCommentedIds)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     : Promise.resolve({ data: [] as any[], error: null });
 
   const newestQuery = supabase
     .from("proposals")
-    .select("id,title,type,status,summary_plain,summary_model,introduced_at,metadata")
+    .select("id,title,type,status,summary_plain,summary_model,introduced_at,metadata,is_synthetic")
     .order("introduced_at", { ascending: false, nullsFirst: false })
     .limit(6);
 
@@ -223,7 +223,7 @@ export default async function ProposalsPage({
   let mainQuery = supabase
     .from("proposals")
     .select(
-      "id,title,type,status,summary_plain,summary_model,introduced_at,metadata",
+      "id,title,type,status,summary_plain,summary_model,introduced_at,metadata,is_synthetic",
       { count: "exact" },
     );
 
@@ -308,6 +308,7 @@ export default async function ProposalsPage({
     summary_model: string | null;
     introduced_at: string | null;
     metadata: Record<string, string> | null;
+    is_synthetic?: boolean | null;
   };
   function toCardShape(r: ProposalRow): ProposalCardData {
     const meta = (r.metadata ?? {}) as Record<string, string>;
@@ -323,6 +324,7 @@ export default async function ProposalsPage({
       summary_model:      r.summary_model,
       introduced_at:      r.introduced_at,
       metadata:           meta,
+      is_synthetic:       r.is_synthetic ?? false,
     };
   }
 

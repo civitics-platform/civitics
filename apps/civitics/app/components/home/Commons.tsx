@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { CommonsThread } from "./types";
+import { SyntheticMark } from "../integrity/Synthetic";
 
 // Relative "Nd ago" against the page's request-time nowIso. Both server and
 // client receive the same nowIso, so the computed string matches at hydration
@@ -87,6 +88,7 @@ export function Commons({
                   {t.isAnswered && (
                     <span className={`${CHIP} border-accent text-accent`}>Answered</span>
                   )}
+                  {t.authorIsSynthetic && <SyntheticMark size="xs" />}
                   <span className="font-mono text-[10.5px] text-ink-soft/70">· {t.label}</span>
                 </div>
                 <Link

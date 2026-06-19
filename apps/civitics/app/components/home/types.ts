@@ -30,6 +30,9 @@ export type CommonsThread = {
   replyCount: number;
   raterCount: number;
   lastActivityAt: string;
+  // SF-P2 (FIX-599): thread author's users.is_synthetic. Commons surfaces
+  // synthetic exemplars (Option 2) WITH the persistent SYNTHETIC mark.
+  authorIsSynthetic: boolean;
 };
 
 /**

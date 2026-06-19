@@ -20,6 +20,7 @@ import { EvidenceComposer } from "../components/EvidenceComposer";
 import { EvidenceCardAdminActions } from "../components/EvidenceCardAdminActions";
 import { PageViewTracker } from "../../components/PageViewTracker";
 import { EntityComments } from "../../components/EntityComments";
+import { SyntheticMark } from "../../components/integrity/Synthetic";
 
 // Reads go through the caller's cookie client (RLS does private-person filtering),
 // so this page renders per request.
@@ -98,8 +99,9 @@ function EvidenceCardView({ card, signInNext }: { card: EvidenceCard; signInNext
             subjectIsPrivatePerson={card.subject_is_private_person}
           />
         </div>
-        <span className="text-xs text-ink-soft">
+        <span className="inline-flex items-center gap-1.5 text-xs text-ink-soft">
           {card.author_name || "Contributor"}
+          {card.author_is_synthetic && <SyntheticMark size="xs" />}
         </span>
       </div>
 
@@ -201,7 +203,10 @@ export default async function CaseFilePage({ params }: { params: { id: string } 
             </span>
           </div>
 
-          <h1 className="mt-2 font-serif text-2xl leading-tight text-ink">{investigation.title}</h1>
+          <h1 className="mt-2 font-serif text-2xl leading-tight text-ink">
+            {investigation.title}
+            {investigation.is_synthetic && <SyntheticMark withIcon className="ml-2 align-middle" />}
+          </h1>
           {investigation.question && (
             <p className="mt-2 text-sm leading-relaxed text-ink-soft">{investigation.question}</p>
           )}
@@ -224,6 +229,7 @@ export default async function CaseFilePage({ params }: { params: { id: string } 
                   title={c.is_creator ? "Creator" : undefined}
                 >
                   {c.name || "Contributor"}
+                  {c.is_synthetic && <SyntheticMark size="xs" className="ml-1" />}
                   {c.is_creator && <span className="ml-1 text-ink-soft">· creator</span>}
                   {c.card_count > 0 && <span className="ml-1 text-ink-soft">· {c.card_count}</span>}
                 </li>

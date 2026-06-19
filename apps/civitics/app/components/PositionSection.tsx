@@ -14,6 +14,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import type { EntityCommentType } from "@civitics/db";
 import { challengedFetch } from "@/lib/challenged-fetch";
+import { SyntheticMark } from "./integrity/Synthetic";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -37,6 +38,7 @@ type CommentLite = {
   id: string;
   body: string;
   author_name: string;
+  author_is_synthetic?: boolean;
   kind: string;
   kind_label: string;
   stance: string | null;
@@ -218,6 +220,7 @@ function AttributionPicker({
               className="block w-full border border-rule bg-card px-2 py-1.5 text-left text-[11px] text-ink-soft hover:border-ink hover:bg-paper-2 disabled:opacity-50"
             >
               <span className="font-medium text-ink-soft">{c.author_name}: </span>
+              {c.author_is_synthetic && <SyntheticMark size="xs" className="mr-1" />}
               {c.body.length > 120 ? `${c.body.slice(0, 120)}…` : c.body}
             </button>
           ))
@@ -448,6 +451,7 @@ function TermsOfConsensusPanel({
                     {c.stance === "conditional" ? "Conditional" : c.kind_label}
                   </span>
                   <span>· {c.author_name}</span>
+                  {c.author_is_synthetic && <SyntheticMark size="xs" />}
                 </div>
                 <p className="text-sm text-ink">{c.body}</p>
               </div>

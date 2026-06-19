@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { SyntheticMark } from "../integrity/Synthetic";
 
 // Slim presentational roster card (name + role + party). Deliberately lighter
 // than the directory's client-side OfficialCard (which fetches votes/donations);
@@ -10,6 +11,7 @@ export type OfficialRosterData = {
   party: string | null;
   photo_url: string | null;
   district_name: string | null;
+  is_synthetic?: boolean;
 };
 
 const PARTY_STYLES: Record<string, string> = {
@@ -53,6 +55,7 @@ export function OfficialRosterCard({ official }: { official: OfficialRosterData 
       <div className="min-w-0 flex-1">
         <h3 className="truncate text-sm font-semibold text-gray-900 group-hover:text-indigo-700">
           {official.full_name}
+          {official.is_synthetic && <SyntheticMark size="xs" className="ml-1.5" />}
         </h3>
         <p className="truncate text-xs text-gray-500">
           {official.role_title}

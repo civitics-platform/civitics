@@ -11,6 +11,7 @@ import type {
   SearchMeeting,
 } from "../../api/search/route";
 import { FormerBadge } from "../../components/FormerBadge";
+import { SyntheticMark } from "../../components/integrity/Synthetic";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -201,7 +202,10 @@ function OfficialCardContent({ o, badge, isInGraph }: { o: SearchOfficial; badge
           : initials(o.full_name)}
       </div>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-semibold text-gray-900">{o.full_name}</p>
+        <p className="truncate text-sm font-semibold text-gray-900">
+          {o.full_name}
+          {o.is_synthetic && <SyntheticMark size="xs" className="ml-1.5" />}
+        </p>
         <p className="truncate text-xs text-gray-500">
           {o.role_title}{o.state ? ` · ${o.state}` : ""}
         </p>
@@ -246,6 +250,7 @@ function ProposalCardContent({ p, badge }: { p: SearchProposal; badge?: boolean 
       </div>
       <p className="mt-1.5 text-sm font-semibold text-gray-900 line-clamp-2 leading-snug">
         {p.title}
+        {p.is_synthetic && <SyntheticMark size="xs" className="ml-1.5" />}
       </p>
       {p.ai_summary && (
         <p className="mt-1 text-xs text-gray-500 line-clamp-1">{p.ai_summary}</p>
@@ -262,7 +267,10 @@ function AgencyCardContent({ a, badge, isInGraph }: { a: SearchAgency; badge?: b
         {(a.acronym ?? a.name).slice(0, 4)}
       </div>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-semibold text-gray-900">{a.name}</p>
+        <p className="truncate text-sm font-semibold text-gray-900">
+          {a.name}
+          {a.is_synthetic && <SyntheticMark size="xs" className="ml-1.5" />}
+        </p>
         {a.acronym && <p className="text-xs text-gray-400">{a.acronym}</p>}
       </div>
       <div className="flex items-center gap-2 shrink-0">
@@ -298,7 +306,10 @@ function FinancialCardContent({ f, badge, isInGraph }: { f: SearchFinancialEntit
         </svg>
       </div>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-semibold text-gray-900">{f.name}</p>
+        <p className="truncate text-sm font-semibold text-gray-900">
+          {f.name}
+          {f.is_synthetic && <SyntheticMark size="xs" className="ml-1.5" />}
+        </p>
         <p className="truncate text-xs text-gray-500">
           {f.entity_type.replace(/_/g, " ")}
           {f.industry ? ` · ${f.industry}` : ""}
@@ -354,7 +365,10 @@ function JurisdictionCardContent({ j, badge, isInGraph }: { j: SearchJurisdictio
         </svg>
       </div>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-semibold text-gray-900">{j.name}</p>
+        <p className="truncate text-sm font-semibold text-gray-900">
+          {j.name}
+          {j.is_synthetic && <SyntheticMark size="xs" className="ml-1.5" />}
+        </p>
         <p className="truncate text-xs text-gray-500 capitalize">
           {j.jurisdiction_type}{j.short_name ? ` · ${j.short_name}` : ""}
         </p>
@@ -378,7 +392,10 @@ function InstitutionCardContent({ g, badge, isInGraph }: { g: SearchInstitution;
         </svg>
       </div>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-semibold text-gray-900">{g.name}</p>
+        <p className="truncate text-sm font-semibold text-gray-900">
+          {g.name}
+          {g.is_synthetic && <SyntheticMark size="xs" className="ml-1.5" />}
+        </p>
         <p className="truncate text-xs text-gray-500 capitalize">
           {g.institution_type.replace(/_/g, " ")}{g.short_name ? ` · ${g.short_name}` : ""}
         </p>

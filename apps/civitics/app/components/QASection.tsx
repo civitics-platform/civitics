@@ -16,6 +16,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { BODY_MIN, BODY_MAX } from "@civitics/db";
 import { challengedFetch } from "@/lib/challenged-fetch";
+import { SyntheticMark } from "./integrity/Synthetic";
 
 type Answer = {
   id: string;
@@ -23,6 +24,7 @@ type Answer = {
   created_at: string;
   is_official: boolean;
   author_name: string;
+  author_is_synthetic?: boolean;
 };
 
 type Question = {
@@ -35,6 +37,7 @@ type Question = {
   answered_at: string | null;
   is_constituent: boolean;
   asker_name: string;
+  asker_is_synthetic?: boolean;
   answers: Answer[];
 };
 
@@ -403,6 +406,7 @@ function QuestionCard({
 
       <div className="mt-1.5 flex items-center gap-1.5 text-[11px] text-ink-soft">
         <span>Asked by {q.asker_name}</span>
+        {q.asker_is_synthetic && <SyntheticMark size="xs" />}
         {q.is_constituent && (
           <span className="rounded-full border border-civic-blue/25 bg-civic-blue/10 px-1.5 py-0.5 text-[10px] font-medium text-civic-blue" title="Asked by a verified constituent">
             ✓ Constituent
@@ -420,6 +424,7 @@ function QuestionCard({
                   Official response
                 </span>
                 <span className="text-[11px] text-green-ink">{a.author_name}</span>
+                {a.author_is_synthetic && <SyntheticMark size="xs" />}
                 <span className="text-[10px] text-ink-soft/60">· {formatDate(a.created_at)}</span>
               </div>
               <p className="whitespace-pre-wrap text-sm leading-relaxed text-ink">{a.body}</p>

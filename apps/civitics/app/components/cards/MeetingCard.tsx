@@ -1,10 +1,15 @@
 import Link from "next/link";
+import { SyntheticMark } from "../integrity/Synthetic";
 
 // First meeting card in the app. Presentational only — created shared from the
 // start for reuse once a meetings index / detail surface exists.
 //
 // NOTE: /meetings/[id] does NOT exist yet (v1). The link is intentionally a
 // documented dead-end; remove this comment when the detail route ships.
+//
+// is_synthetic is governing-body-scoped: the meetings table has no is_synthetic
+// column of its own, so feeders pass the parent governing_bodies.is_synthetic
+// through (e.g. via a `governing_bodies(is_synthetic)` embed).
 export type MeetingCardData = {
   id: string;
   title: string | null;
@@ -12,6 +17,7 @@ export type MeetingCardData = {
   scheduled_at: string;
   bodyName: string | null;
   agenda_url: string | null;
+  is_synthetic?: boolean;
 };
 
 const MEETING_TYPE_LABELS: Record<string, string> = {
@@ -45,6 +51,7 @@ export function MeetingCard({ meeting }: { meeting: MeetingCardData }) {
       </div>
       <h3 className="mt-2 line-clamp-2 text-sm font-semibold text-gray-900 group-hover:text-indigo-700">
         {meeting.title ?? `${typeLabel} meeting`}
+        {meeting.is_synthetic && <SyntheticMark size="xs" className="ml-1.5" />}
       </h3>
       {meeting.bodyName && (
         <p className="mt-0.5 truncate text-xs text-gray-500">{meeting.bodyName}</p>

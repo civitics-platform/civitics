@@ -57,6 +57,12 @@ export interface GraphNode {
   /** True when this node has 50+ connections and is collapsed (force graph only). */
   collapsed?: boolean
   /**
+   * True when the backing entity is AI-generated demonstration content
+   * (entity.is_synthetic, FIX-572). Drives the persistent SYNTHETIC mark on the
+   * node + in NodePopup (SF-P2). 0 rows true today — behavior-neutral wiring.
+   */
+  isSynthetic?: boolean
+  /**
    * Extra data from API.
    * - group nodes:            isGroup, icon, color, memberCount
    * - individual_bracket:     isBracketNode, tier (BracketTier['id']), donorCount, officialId

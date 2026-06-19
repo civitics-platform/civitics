@@ -35,6 +35,8 @@ export type EvidenceCard = {
   investigation_id: string;
   author_id: string;
   author_name: string;
+  // SF-P2 (FIX-599): card author's users.is_synthetic, for the SYNTHETIC mark.
+  author_is_synthetic: boolean;
   claim_text: string;
   claim_type: "edge" | "context";
   from_type: string | null;
@@ -62,6 +64,8 @@ export type Investigation = {
   created_by: string;
   is_seeded: boolean;
   is_featured: boolean;
+  // SF-P2 (FIX-599): the investigation's own synthetic flag (entity marker).
+  is_synthetic: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -71,6 +75,8 @@ export type Contributor = {
   name: string;
   card_count: number;
   is_creator: boolean;
+  // SF-P2 (FIX-599): crew member's users.is_synthetic, for the SYNTHETIC mark.
+  is_synthetic: boolean;
 };
 
 // ─── Tiers ────────────────────────────────────────────────────────────────────

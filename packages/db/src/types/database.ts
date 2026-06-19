@@ -4901,6 +4901,7 @@ export type Database = {
       commons_active_threads: {
         Row: {
           author_id: string | null
+          author_is_synthetic: boolean | null
           bridge_score: number | null
           comment_id: string | null
           created_at: string | null
@@ -4972,6 +4973,7 @@ export type Database = {
           created_at: string | null
           id: string | null
           is_active: boolean | null
+          is_synthetic: boolean | null
           jurisdiction_id: string | null
           metadata: Json | null
           name: string | null

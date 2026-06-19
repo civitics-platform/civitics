@@ -8,7 +8,7 @@ import {
 } from "@civitics/db";
 import {
   COMMENT_COLUMNS,
-  fetchNameMap,
+  fetchAuthorMeta,
   serialize,
   nestReplies,
   topScore,
@@ -150,7 +150,7 @@ export async function GET(request: NextRequest) {
         .not("kind", "in", "(question,answer)")
         .in("status", ["visible", "needs_review"]);
       const descendants = desc ?? [];
-      const names = await fetchNameMap(admin, [
+      const names = await fetchAuthorMeta(admin, [
         rootRow.author_id,
         ...descendants.map((d) => d.author_id),
       ]);
@@ -262,7 +262,7 @@ export async function GET(request: NextRequest) {
       descendants = desc ?? [];
     }
 
-    const names = await fetchNameMap(admin, [
+    const names = await fetchAuthorMeta(admin, [
       ...roots.map((r) => r.author_id),
       ...descendants.map((d) => d.author_id),
     ]);
@@ -396,7 +396,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const names = await fetchNameMap(admin, [inserted.author_id]);
+    const names = await fetchAuthorMeta(admin, [inserted.author_id]);
     return NextResponse.json({ comment: serialize(inserted, names) }, { status: 201 });
   } catch {
     return NextResponse.json({ error: "Failed to post comment" }, { status: 500 });

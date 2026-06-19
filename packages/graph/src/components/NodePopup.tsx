@@ -17,6 +17,24 @@ export interface NodePopupProps {
   vizType: VizType;
 }
 
+/**
+ * SYNTHETIC mark — persistent label for AI-generated demonstration entities
+ * (entity.is_synthetic, FIX-572 / SF-P2). The app's shared SyntheticMark lives
+ * in apps/civitics and isn't importable from this package, so this is a
+ * self-contained twin styled off the same amber dashed `.stampb` idiom. Render
+ * it next to any synthetic node's name.
+ */
+function SyntheticMark() {
+  return (
+    <span
+      className="inline-flex items-center rounded-[2px] border-[1.5px] border-dashed border-amber-500/70 bg-amber-100/60 px-1.5 py-0 font-mono text-[8.5px] font-bold uppercase tracking-[0.1em] text-amber-900 align-middle"
+      title="AI-generated demonstration content — not a real person, body, or statement."
+    >
+      Synthetic
+    </span>
+  );
+}
+
 export function NodePopup({ node, onClose, actions, vizType }: NodePopupProps) {
   if (!node) return null;
 
@@ -293,6 +311,7 @@ export function NodePopup({ node, onClose, actions, vizType }: NodePopupProps) {
           <div>
             <div className="font-semibold text-gray-900 leading-tight text-sm">
               {displayName}
+              {node.isSynthetic && <span className="ml-1.5"><SyntheticMark /></span>}
             </div>
             {node.role && (
               <div className="text-xs text-gray-500 mt-0.5">{node.role}</div>
