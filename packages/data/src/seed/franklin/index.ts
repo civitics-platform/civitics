@@ -190,21 +190,24 @@ function host(url: string): string {
 interface Args {
   dbUrl: string;
   allowProd: boolean;
+  refreshAllMvs: boolean;
 }
 function parseArgs(argv: string[]): Args {
   const args = argv.slice(2);
   let dbUrl = process.env.SUPABASE_DB_URL ?? LOCAL_DB_URL;
   let allowProd = false;
+  let refreshAllMvs = false;
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
     if (a === "--db-url" && args[i + 1]) dbUrl = args[++i];
     else if (a === "--allow-prod") allowProd = true;
+    else if (a === "--refresh-all-mvs") refreshAllMvs = true;
     else if (a === "--help" || a === "-h") {
-      console.log("Usage: data:seed:franklin [--db-url <url>] [--allow-prod]");
+      console.log("Usage: data:seed:franklin [--db-url <url>] [--allow-prod] [--refresh-all-mvs]");
       process.exit(0);
     }
   }
-  return { dbUrl, allowProd };
+  return { dbUrl, allowProd, refreshAllMvs };
 }
 
 // ---------------------------------------------------------------------------
@@ -682,17 +685,25 @@ function resolveCitation(ctx: SeedCtx, pointer: string): CiteTarget | null {
   return null;
 }
 
-async function refreshMvs(ctx: SeedCtx): Promise<void> {
-  const fns = [
-    "refresh_commons_active_threads_mv",
-    "refresh_homepage_stats_mv",
-    "refresh_homepage_agency_counts_mv",
-    "refresh_official_homepage_stats_mv",
-    "refresh_entity_connection_stats_mv",
-    "refresh_official_donor_rollup_mv",
-    "refresh_official_sector_dollars_mv",
-    "refresh_donor_party_rollup_mv",
-  ];
+async function refreshMvs(ctx: SeedCtx, all: boolean): Promise<void> {
+  // commons_active_threads is the only MV that surfaces synthetic content (the
+  // HB-14 thread, Option-2 include+label). Every other MV here is a platform-
+  // wide aggregate that EXCLUDES synthetic (FIX-600), so refreshing it after a
+  // synthetic-only seed is a no-op — and on prod they scan millions of rows and
+  // can saturate Pro I/O. Default to the one that matters; --refresh-all-mvs
+  // opts into the full set (local convenience only).
+  const fns = all
+    ? [
+        "refresh_commons_active_threads_mv",
+        "refresh_homepage_stats_mv",
+        "refresh_homepage_agency_counts_mv",
+        "refresh_official_homepage_stats_mv",
+        "refresh_entity_connection_stats_mv",
+        "refresh_official_donor_rollup_mv",
+        "refresh_official_sector_dollars_mv",
+        "refresh_donor_party_rollup_mv",
+      ]
+    : ["refresh_commons_active_threads_mv"];
   for (const fn of fns) {
     try {
       await ctx.query(`SELECT public.${fn}()`);
@@ -707,7 +718,7 @@ async function refreshMvs(ctx: SeedCtx): Promise<void> {
 // Main
 // ---------------------------------------------------------------------------
 async function main(): Promise<void> {
-  const { dbUrl, allowProd } = parseArgs(process.argv);
+  const { dbUrl, allowProd, refreshAllMvs } = parseArgs(process.argv);
   const h = host(dbUrl);
   const prod = isProdUrl(dbUrl);
   if (prod && !allowProd) {
@@ -763,7 +774,7 @@ async function main(): Promise<void> {
     console.log("14   Investigation #1 (evidence cards + citations + promotion)…");
     await seedInvestigation(ctx, investigations);
     console.log("16   refresh materialized views…");
-    await refreshMvs(ctx);
+    await refreshMvs(ctx, refreshAllMvs);
 
     const counts = await ctx.one<Record<string, string>>(
       `SELECT
