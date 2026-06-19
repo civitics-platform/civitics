@@ -6,6 +6,8 @@
     "typecheck": "tsc --noEmit",
     "test": "node run-tests.mjs",
     "data:seed": "tsx --env-file=../../.env.local src/seed.ts",
+    "data:seed:franklin": "tsx --env-file=../../.env.local src/seed/franklin/index.ts",
+    "data:seed:franklin:reset": "tsx --env-file=../../.env.local src/seed/franklin/reset.ts",
     "data:officials": "tsx --env-file=../../.env.local src/pipelines/congress/officials.ts",
     "data:executive-seed": "tsx --env-file=../../.env.local src/pipelines/executive/seed.ts",
     "data:investigate-officials-casing-dupes": "tsx --env-file=../../.env.local src/scripts/investigate-officials-casing-dupes.ts",

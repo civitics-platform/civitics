@@ -1,0 +1,31 @@
+{
+  "_meta": {
+    "slice": "S1 — Ridgeline storyline",
+    "shape": "LOGICAL. Pipeline maps → investigations + evidence_cards + citations. CRITICAL: the live citation rule (add_evidence_card) is atomic (card + first citation together) and tier-1/2 only — so every card here MUST cite an internal record (a money-graph edge fr-NN or an HB-14 vote) that the pipeline has already seeded. Seed citation targets BEFORE the cards.",
+    "claim_type": "edge = asserts a promotable relationship (from/to/kind) | context = enriches the case, never promotable.",
+    "status": "proposed | corroborated | promoted | disputed. Promotion is admin-gated (until C2 juries); seed the clean chain as corroborated/promoted, the inferred link as proposed (needs corroboration), and keep the control note as context.",
+    "narrative": "Models an investigation that RESISTS its own narrative — 3 of the 4 NO votes trace to Cumberland money; the 4th (Hale) explicitly does not. 'Not all opposition is bought.'"
+  },
+
+  "investigations": [
+    {
+      "seed_key": "inv-1",
+      "title": "Who funds the opposition to the Ridgeline Act?",
+      "question": "Four delegates voted NO on HB-14 against their districts' air-quality and just-transition interests. Is there a money pattern behind the opposition?",
+      "scope_entity": "prop-hb14",
+      "scope_jurisdiction": "juris-franklin",
+      "created_by": "cit-openledgero",
+      "status": "open",
+      "findings": "A corroborated donor→PAC→vote pattern accounts for three of the four NO votes: Ridge Coal Legacy Trust (and, pending corroboration, Blackwater Holdings) fund the Cumberland Energy Action Fund, which contributes to Boyd, Tipton, and Crane — all three NO. The fourth NO, Delegate Hale, takes no Cumberland money; his opposition rests on Title I's land and water provisions. The money explains the bloc, not the whole vote — not all opposition is bought.",
+      "evidence_cards": [
+        { "seed_key": "ec-01", "claim_type": "edge", "claim": "Ridge Coal Legacy Trust funds the Cumberland Energy Action Fund.", "from": "donor-ridge-coal", "to": "pac-cumberland", "relationship_kind": "funds", "cites": ["fr-01"], "status": "promoted", "sensitivity": "none" },
+        { "seed_key": "ec-02", "claim_type": "edge", "claim": "Cumberland Energy Action Fund contributes to Delegate Harlan Boyd.", "from": "pac-cumberland", "to": "off-boyd", "relationship_kind": "contributes_to", "cites": ["fr-03"], "status": "promoted", "sensitivity": "none" },
+        { "seed_key": "ec-03", "claim_type": "edge", "claim": "Cumberland Energy Action Fund contributes to Delegate Eli Tipton.", "from": "pac-cumberland", "to": "off-tipton", "relationship_kind": "contributes_to", "cites": ["fr-04", "fr-06"], "status": "promoted", "sensitivity": "none" },
+        { "seed_key": "ec-04", "claim_type": "edge", "claim": "Cumberland Energy Action Fund contributes to Delegate Theo Crane.", "from": "pac-cumberland", "to": "off-crane", "relationship_kind": "contributes_to", "cites": ["fr-05"], "status": "promoted", "sensitivity": "none" },
+        { "seed_key": "ec-05", "claim_type": "context", "claim": "Boyd, Tipton, and Crane — the three Cumberland-funded delegates — all voted NO on HB-14.", "cites": ["prop-hb14:vote:off-boyd", "prop-hb14:vote:off-tipton", "prop-hb14:vote:off-crane"], "status": "corroborated", "sensitivity": "none" },
+        { "seed_key": "ec-06", "claim_type": "context", "claim": "Blackwater Holdings LLC shares an officer, Dell Aldridge, with the Cumberland Energy Action Fund — suggesting a second, indirect funding path.", "cites": ["fr-02"], "status": "proposed", "sensitivity": "none", "note": "INFERRED link — held un-promotable pending independent corroboration. Demonstrates the citation discipline: a plausible claim that the system will not let advance to a graph edge on one inferred source." },
+        { "seed_key": "ec-07", "claim_type": "context", "claim": "The fourth NO vote, Delegate Marcus Hale, takes no Cumberland money; his stated opposition is to Title I's land and water provisions.", "cites": ["pos-hb14-hale", "prop-hb14:vote:off-hale"], "status": "corroborated", "sensitivity": "none", "note": "The control case — the money explains the bloc, not Hale. Keeps the investigation honest." }
+      ]
+    }
+  ]
+}

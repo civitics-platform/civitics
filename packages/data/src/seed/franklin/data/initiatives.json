@@ -1,0 +1,36 @@
+{
+  "_meta": {
+    "slice": "S1 — Ridgeline storyline",
+    "shape": "LOGICAL. Pipeline maps → civic_initiatives + civic_initiative_signatures + civic_initiative_responses. civic_initiatives has NO is_synthetic column — synthetic-ness derives from primary_author_id → users.is_synthetic (all seed authors are synthetic). Signatures are authored display-only; synthetic signatures never count toward real standing (FIX-572/FIX-600).",
+    "lifecycle": "stage draft→deliberate→mobilise→resolved; resolution sponsored|declined|withdrawn|expired. This one is resolved/sponsored — the full arc.",
+    "tie_in": "The marquee cross-surface link: the same just-transition demand appears as this INITIATIVE (signatures), as ClerkEmeritus's B-1 COMMENT (threads.json), and as Okafor's cost-cap AMENDMENT (proposals.json Title IV). One idea, three surfaces, one graph."
+  },
+
+  "initiatives": [
+    {
+      "seed_key": "init-plateau-first",
+      "title": "Fund the Plateau First",
+      "authorship_type": "community",
+      "scope": "state",
+      "stage": "resolved",
+      "linked_proposal": "prop-hb14",
+      "resolution_type": "sponsored",
+      "primary_author": "cit-maziek",
+      "summary": "Before a single Ridgeline tower goes up, fully fund and front-load HB-14's Title III Just-Transition Fund — retraining, bridge wages, and tax-base backfill for the plateau coal counties. Build trust by funding first.",
+      "signatures": [
+        { "user": "cit-maziek", "verification_tier": "district", "district": "Iron Ridge" },
+        { "user": "cit-plateaupride", "verification_tier": "district", "district": "Cumberland Plateau North" },
+        { "user": "cit-twokidstwoinhalers", "verification_tier": "email", "district": "Iron Ridge" },
+        { "user": "cit-cautiouscarla", "verification_tier": "district", "district": "Tellico Bend" },
+        { "user": "cit-clerkemeritus", "verification_tier": "district", "district": "Cherokee Foothills" },
+        { "user": "cit-ridgelinerose", "verification_tier": "email", "district": "Greenbrier Highlands" },
+        { "user": "cit-oldgrowthowen", "verification_tier": "district", "district": "Greenbrier Highlands" },
+        { "user": "cit-dell-r", "verification_tier": "district", "district": "Nolichucky Valley" },
+        { "user": "cit-newtothehollow", "verification_tier": "unverified", "district": "Stony Fork" }
+      ],
+      "responses": [
+        { "official": "off-okafor", "response_type": "sponsored", "body": "I took this initiative's demand straight into Title IV: cap the ratepayer cost and fund the plateau's transition before construction. The signatures here are the constituency behind that amendment — and the reason HB-14 could pass at all." }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  "_meta": {
+    "slice": "S1 — Ridgeline storyline",
+    "shape": "LOGICAL. The pipeline maps financial_entities → the financial_entities table (display_name) and edges → financial_relationships (polymorphic from/to; from_type/to_type ∈ financial_entity|official). All synthetic. Amounts are invented, plausible, round.",
+    "confidence": "disclosed = a filed contribution (promotable) | inferred = linked via shared officer/address (needs corroboration before promotion) | alleged = asserted in an evidence card only (not used here).",
+    "chains": "Chain 1 (Investigation #1, clean): Ridge Coal + Blackwater → Cumberland Energy Action Fund (Dell Aldridge) → Boyd/Tipton/Crane → their NO votes. Chain 2 (Investigation #2, ambiguous): Aerie Grid (transmission bidder) → Greater Watauga Forward → Nandakumar (+ the Sterns board seat)."
+  },
+
+  "financial_entities": [
+    { "seed_key": "pac-cumberland", "display_name": "Cumberland Energy Action Fund", "kind": "pac", "officer": "Dell Aldridge", "note": "The anti-Ridgeline money. Chaired by Gov. Aldridge's estranged brother." },
+    { "seed_key": "pac-clean-watauga", "display_name": "Clean Watauga Coalition", "kind": "pac", "note": "Pro-Ridgeline; environmental + small-dollar." },
+    { "seed_key": "pac-greater-watauga", "display_name": "Greater Watauga Forward", "kind": "pac", "note": "Developer/growth money; includes the transmission bidder." },
+    { "seed_key": "donor-ridge-coal", "display_name": "Ridge Coal Legacy Trust", "kind": "organization", "note": "Legacy coal money." },
+    { "seed_key": "donor-blackwater", "display_name": "Blackwater Holdings LLC", "kind": "organization", "officer": "Dell Aldridge", "note": "Holding company; shares officer Dell Aldridge with Cumberland Energy Action Fund (the inferred link)." },
+    { "seed_key": "donor-headwaters-fund", "display_name": "Headwaters Conservancy Fund", "kind": "organization", "note": "Conservation funder (counter-money / control case)." },
+    { "seed_key": "donor-tellico", "display_name": "Tellico Development Partners", "kind": "organization", "note": "Developer." },
+    { "seed_key": "donor-aerie-grid", "display_name": "Aerie Grid Partners", "kind": "organization", "note": "Bidding to BUILD the HB-14 transmission line. Funds Greater Watauga Forward; former Delegate Wade Sterns sits on its board." }
+  ],
+
+  "financial_relationships": [
+    { "seed_key": "fr-01", "from": "donor-ridge-coal", "to": "pac-cumberland", "kind": "contribution", "amount_usd": 250000, "confidence": "disclosed", "feeds": "investigation-1" },
+    { "seed_key": "fr-02", "from": "donor-blackwater", "to": "pac-cumberland", "kind": "contribution", "amount_usd": 180000, "confidence": "inferred", "feeds": "investigation-1", "note": "Inferred via shared officer Dell Aldridge — corroboration needed before promotion." },
+    { "seed_key": "fr-03", "from": "pac-cumberland", "to": "off-boyd", "kind": "contribution", "amount_usd": 45000, "confidence": "disclosed", "feeds": "investigation-1" },
+    { "seed_key": "fr-04", "from": "pac-cumberland", "to": "off-tipton", "kind": "contribution", "amount_usd": 38000, "confidence": "disclosed", "feeds": "investigation-1" },
+    { "seed_key": "fr-05", "from": "pac-cumberland", "to": "off-crane", "kind": "contribution", "amount_usd": 52000, "confidence": "disclosed", "feeds": "investigation-1" },
+    { "seed_key": "fr-06", "from": "donor-ridge-coal", "to": "off-tipton", "kind": "contribution", "amount_usd": 15000, "confidence": "disclosed", "feeds": "investigation-1", "note": "Direct donor→official, on top of the PAC money." },
+
+    { "seed_key": "fr-07", "from": "donor-headwaters-fund", "to": "pac-clean-watauga", "kind": "contribution", "amount_usd": 120000, "confidence": "disclosed", "feeds": null },
+    { "seed_key": "fr-08", "from": "pac-clean-watauga", "to": "off-reyes-combs", "kind": "contribution", "amount_usd": 30000, "confidence": "disclosed", "feeds": null },
+    { "seed_key": "fr-09", "from": "pac-clean-watauga", "to": "off-whitfield", "kind": "contribution", "amount_usd": 22000, "confidence": "disclosed", "feeds": null },
+
+    { "seed_key": "fr-10", "from": "donor-tellico", "to": "pac-greater-watauga", "kind": "contribution", "amount_usd": 90000, "confidence": "disclosed", "feeds": "investigation-2" },
+    { "seed_key": "fr-11", "from": "donor-aerie-grid", "to": "pac-greater-watauga", "kind": "contribution", "amount_usd": 75000, "confidence": "disclosed", "feeds": "investigation-2" },
+    { "seed_key": "fr-12", "from": "pac-greater-watauga", "to": "off-nandakumar", "kind": "contribution", "amount_usd": 40000, "confidence": "disclosed", "feeds": "investigation-2" },
+    { "seed_key": "fr-13", "from": "pac-greater-watauga", "to": "off-park", "kind": "contribution", "amount_usd": 28000, "confidence": "disclosed", "feeds": null },
+    { "seed_key": "fr-14", "from": "donor-aerie-grid", "to": "off-sterns", "kind": "board_affiliation", "amount_usd": null, "confidence": "disclosed", "feeds": "investigation-2", "note": "Board seat, not a contribution — the revolving door. Former delegate now governs the transmission bidder." }
+  ]
+}

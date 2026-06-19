@@ -1,0 +1,73 @@
+{
+  "_meta": {
+    "slice": "S1 — Ridgeline storyline",
+    "shape": "LOGICAL, not physical. The data:seed:franklin pipeline maps these fields to the real schema (verifying column names). Every record is synthetic; the pipeline sets is_synthetic=true on entities and on the citizen users. seed_key is the stable idempotency handle.",
+    "blocs": "Homestead | Confluence | Headwaters | independent (ink-outline, no party token). 'bloc' is the fictional party; pipeline maps to party/metadata.",
+    "ridgeline_vote": "the locked HB-14 roll call (bible §4.2). Used to seed votes + must match each official's seeded position.",
+    "funded_by_pacs": "references money-graph.json financial_entity seed_keys; Hale/Okafor/Sevier deliberately have none (control + small-dollar).",
+    "is_passive": "true = records-only / non-participating (bible §4.6): authors NO positions/comments/answers; appears only via votes, money, investigations. Gets the PassiveOfficialDisclaimer."
+  },
+
+  "jurisdictions": [
+    { "seed_key": "juris-franklin", "name": "State of Franklin", "level": "state", "parent": null, "abbr": "FR", "notes": "Alt-history present-day 14th state, southern Appalachian highlands; capital Watauga City. Carries the 'Demonstration — populated by AI' banner; all sub-entities inherit it." },
+    { "seed_key": "juris-watauga", "name": "Watauga City", "level": "city", "parent": "juris-franklin", "notes": "Capital; the one modeled municipality." }
+  ],
+
+  "governing_bodies": [
+    { "seed_key": "gb-assembly", "name": "Franklin General Assembly", "type": "legislature_unicameral", "jurisdiction": "juris-franklin", "notes": "Unicameral; 10 delegates + a Speaker (Nandakumar)." },
+    { "seed_key": "gb-watauga-council", "name": "Watauga City Council", "type": "city_council", "jurisdiction": "juris-watauga", "notes": "8 wards + mayor." }
+  ],
+
+  "agencies": [
+    { "seed_key": "ag-fdeq", "name": "Franklin Department of Environmental Quality", "acronym": "FDEQ", "jurisdiction": "juris-franklin", "role": "Runs the Pigeon River dam-relicensing comment window + constituent Q&A (Storyline C; not exercised in S1 but seeded as a graph node)." },
+    { "seed_key": "ag-fpuc", "name": "Franklin Public Utilities Commission", "acronym": "FPUC", "jurisdiction": "juris-franklin", "role": "Ratepayer + transmission oversight; the regulator the HB-14 transmission line answers to." },
+    { "seed_key": "ag-watauga-planning", "name": "Watauga City Planning Office", "acronym": "WCPO", "jurisdiction": "juris-watauga", "role": "Publishes municipal comment windows ('regulations.gov for cities')." }
+  ],
+
+  "officials": [
+    {
+      "seed_key": "off-aldridge", "full_name": "Mara Aldridge", "role": "Governor",
+      "jurisdiction": "juris-franklin", "governing_body": null, "district": null,
+      "bloc": "independent", "is_passive": false,
+      "top_issues": ["transparency", "fiscal caution", "rural reliability"],
+      "funded_by_pacs": [], "funding_note": "Independent; takes no PAC money. Her estranged brother Dell Aldridge chairs the anti-Ridgeline Cumberland Energy Action Fund.",
+      "signature_item": "Open-Books transparency push",
+      "ridgeline_vote": "signs after the just-transition cost-cap amendment",
+      "tension": "Signs HB-14 over the public opposition of her own brother's PAC.",
+      "bio": "Former Cherokee County clerk; ran on 'Keep the lights on and the books open.'"
+    },
+
+    { "seed_key": "off-boyd", "full_name": "Harlan Boyd", "role": "Delegate", "jurisdiction": "juris-franklin", "governing_body": "gb-assembly", "district": "Iron Ridge", "bloc": "Homestead", "is_passive": false, "top_issues": ["coal jobs", "property rights", "ratepayers"], "funded_by_pacs": ["pac-cumberland"], "funding_note": "Cumberland Energy money.", "signature_item": "Ratepayer Protection Act (HB-03)", "ridgeline_vote": "NO", "tension": "His district has the state's worst air; his grandkids have asthma." },
+
+    { "seed_key": "off-tipton", "full_name": "Eli Tipton", "role": "Delegate", "jurisdiction": "juris-franklin", "governing_body": "gb-assembly", "district": "Stony Fork", "bloc": "Homestead", "is_passive": false, "top_issues": ["anti-tax", "viewshed/land", "roads"], "funded_by_pacs": ["pac-cumberland"], "funding_note": "Small rural donors + direct Ridge Coal Legacy Trust money (donor-ridge-coal).", "signature_item": "Open Roads (no-toll) bill", "ridgeline_vote": "NO", "tension": "Quietly relies on the broadband subsidy he votes against." },
+
+    { "seed_key": "off-crane", "full_name": "Theo Crane", "role": "Delegate", "jurisdiction": "juris-franklin", "governing_body": "gb-assembly", "district": "Cumberland Plateau North", "bloc": "Homestead", "is_passive": true, "top_issues": ["energy", "plateau economy"], "funded_by_pacs": ["pac-cumberland"], "funding_note": "Cumberland Energy money.", "signature_item": "Coal Heritage Workforce Act (HB-07)", "ridgeline_vote": "NO", "tension": "Privately courting a solar-leasing offer for his own land.", "passive_note": "Records-only: appears in Investigation #1 as a PAC recipient with a NO vote; never posts. Demonstrates a sitting official who is all data, no voice." },
+
+    { "seed_key": "off-hale", "full_name": "Marcus Hale", "role": "Delegate", "jurisdiction": "juris-franklin", "governing_body": "gb-assembly", "district": "Nolichucky Valley", "bloc": "Homestead", "is_passive": false, "top_issues": ["water rights", "farms", "property"], "funded_by_pacs": [], "funding_note": "Farm-bureau small-dollar. NOT a Cumberland recipient — the Investigation #1 control case ('not all opposition is bought').", "signature_item": "Valley Water Rights Act (HB-09)", "ridgeline_vote": "NO", "tension": "Persuadable — the bill's water provisions actually help his farmers." },
+
+    { "seed_key": "off-reyes-combs", "full_name": "Dolores Reyes-Combs", "role": "Delegate", "jurisdiction": "juris-franklin", "governing_body": "gb-assembly", "district": "Greenbrier Highlands", "bloc": "Headwaters", "is_passive": false, "top_issues": ["environment", "transparency", "tourism economy"], "funded_by_pacs": ["pac-clean-watauga"], "funding_note": "Clean Watauga Coalition + small-dollar.", "signature_item": "HB-14 co-sponsor; Lobbying Disclosure Act (HB-21)", "ridgeline_vote": "YES", "tension": "Her own tourism base fears the transmission towers — she has to bridge it.", "role_note": "The bridge exemplar; her comments model good-faith." },
+
+    { "seed_key": "off-whitfield", "full_name": "Joan Whitfield", "role": "Delegate", "jurisdiction": "juris-franklin", "governing_body": "gb-assembly", "district": "French Broad Crossing", "bloc": "Headwaters", "is_passive": false, "top_issues": ["public health", "clean air"], "funded_by_pacs": ["pac-clean-watauga"], "funding_note": "Health-sector small-dollar + Clean Watauga Coalition.", "signature_item": "Clean Air Monitoring Act (HB-18)", "ridgeline_vote": "YES", "tension": null },
+
+    { "seed_key": "off-nandakumar", "full_name": "Priya Nandakumar", "role": "Delegate (Speaker)", "jurisdiction": "juris-franklin", "governing_body": "gb-assembly", "district": "Watauga City", "bloc": "Confluence", "is_passive": false, "top_issues": ["development", "transit", "jobs"], "funded_by_pacs": ["pac-greater-watauga"], "funding_note": "Greater Watauga Forward, which includes Aerie Grid Partners — the firm bidding to build the HB-14 transmission line (Investigation #2 conflict).", "signature_item": "Watauga Transit Bond", "ridgeline_vote": "YES", "tension": "A top donor is the transmission bidder; she scheduled and voted for the bill." },
+
+    { "seed_key": "off-park", "full_name": "Lena Park", "role": "Delegate", "jurisdiction": "juris-franklin", "governing_body": "gb-assembly", "district": "Pigeon Forge Gap", "bloc": "Confluence", "is_passive": false, "top_issues": ["tourism", "jobs", "small business"], "funded_by_pacs": ["pac-greater-watauga"], "funding_note": "Hospitality donors + Greater Watauga Forward.", "signature_item": "Tourism Corridor Act", "ridgeline_vote": "YES", "tension": null },
+
+    { "seed_key": "off-okafor", "full_name": "Sam Okafor", "role": "Delegate", "jurisdiction": "juris-franklin", "governing_body": "gb-assembly", "district": "Tellico Bend", "bloc": "Confluence", "is_passive": false, "top_issues": ["cost of living", "taxes", "fiscal caution"], "funded_by_pacs": [], "funding_note": "Suburban small-dollar.", "signature_item": "The just-transition cost-cap amendment", "ridgeline_vote": "YES — only after his cost-cap amendment", "tension": "The swing vote; his amendment is what makes the bill pass and gets it signed." },
+
+    { "seed_key": "off-sevier", "full_name": "Ruth Sevier", "role": "Delegate", "jurisdiction": "juris-franklin", "governing_body": "gb-assembly", "district": "Cherokee Foothills", "bloc": "independent", "is_passive": false, "top_issues": ["local control", "pragmatism"], "funded_by_pacs": [], "funding_note": "Mixed / unaffiliated.", "signature_item": "Ex-Coal County Reinvestment Act", "ridgeline_vote": "YES", "tension": "Party-less, courted by both sides; provides the comfortable margin.", "easter_egg": "Surname nods to historical Gov. John Sevier." },
+
+    { "seed_key": "off-bell", "full_name": "Cyrus Bell", "role": "Mayor", "jurisdiction": "juris-watauga", "governing_body": "gb-watauga-council", "district": null, "bloc": "Confluence", "is_passive": false, "top_issues": ["broadband", "transit", "a city that works"], "funded_by_pacs": [], "funding_note": null, "signature_item": "Watauga Broadband Measure (CM-22)", "ridgeline_vote": null, "tension": null },
+
+    { "seed_key": "off-finch", "full_name": "Ada Finch", "role": "Councilmember", "jurisdiction": "juris-watauga", "governing_body": "gb-watauga-council", "district": "Ward 1 (downtown)", "bloc": "Confluence", "is_passive": false, "top_issues": ["short-term rentals"], "funded_by_pacs": [], "signature_item": "STR Ordinance (CM-15)", "ridgeline_vote": null, "tension": null },
+    { "seed_key": "off-massey", "full_name": "Roy Massey", "role": "Councilmember", "jurisdiction": "juris-watauga", "governing_body": "gb-watauga-council", "district": "Ward 2 (riverside)", "bloc": "Homestead-lean", "is_passive": false, "top_issues": ["broadband bond cost"], "funded_by_pacs": [], "signature_item": null, "ridgeline_vote": null, "tension": null },
+    { "seed_key": "off-okonkwo", "full_name": "Inez Okonkwo", "role": "Councilmember", "jurisdiction": "juris-watauga", "governing_body": "gb-watauga-council", "district": "Ward 3 (university)", "bloc": "Headwaters", "is_passive": false, "top_issues": ["open data", "participatory budget"], "funded_by_pacs": [], "signature_item": "Participatory Budget Pilot (CM-11)", "ridgeline_vote": null, "tension": null },
+    { "seed_key": "off-coley", "full_name": "Bus Coley", "role": "Councilmember", "jurisdiction": "juris-watauga", "governing_body": "gb-watauga-council", "district": "Ward 4 (mill district)", "bloc": "Homestead-lean", "is_passive": false, "top_issues": ["jobs", "anti-STR-crackdown"], "funded_by_pacs": [], "signature_item": null, "ridgeline_vote": null, "tension": null },
+    { "seed_key": "off-sofia-reyes", "full_name": "Sofia Reyes", "role": "Councilmember", "jurisdiction": "juris-watauga", "governing_body": "gb-watauga-council", "district": "Ward 5 (suburb)", "bloc": "Confluence", "is_passive": false, "top_issues": ["transit", "sidewalks"], "funded_by_pacs": [], "signature_item": null, "ridgeline_vote": null, "tension": null },
+    { "seed_key": "off-hutchins", "full_name": "Dale Hutchins", "role": "Councilmember", "jurisdiction": "juris-watauga", "governing_body": "gb-watauga-council", "district": "Ward 6 (hills)", "bloc": "independent", "is_passive": false, "top_issues": ["pragmatism"], "funded_by_pacs": [], "signature_item": null, "ridgeline_vote": null, "tension": "The deciding council vote on most measures." },
+    { "seed_key": "off-brooks", "full_name": "Nadia Brooks", "role": "Councilmember", "jurisdiction": "juris-watauga", "governing_body": "gb-watauga-council", "district": "Ward 7 (south)", "bloc": "Headwaters", "is_passive": false, "top_issues": ["air quality", "parks"], "funded_by_pacs": [], "signature_item": null, "ridgeline_vote": null, "tension": null },
+    { "seed_key": "off-tanner", "full_name": "Cliff Tanner", "role": "Councilmember", "jurisdiction": "juris-watauga", "governing_body": "gb-watauga-council", "district": "Ward 8 (industrial)", "bloc": "Confluence", "is_passive": false, "top_issues": ["stadium/parks bond"], "funded_by_pacs": [], "signature_item": "Riverside Stadium & Parks Bond (CM-19)", "ridgeline_vote": null, "tension": null },
+
+    { "seed_key": "off-sterns", "full_name": "Wade Sterns", "role": "Former Delegate", "jurisdiction": "juris-franklin", "governing_body": null, "district": null, "bloc": "Homestead", "is_passive": true, "top_issues": [], "funded_by_pacs": [], "funding_note": "Now VP / board member at Aerie Grid Partners (donor-aerie-grid) — the revolving-door node for Investigation #2.", "signature_item": null, "ridgeline_vote": null, "tension": "Left the Assembly; now sits on the transmission bidder's board.", "passive_note": "Pure graph node: a past-office official record + a financial_relationship to Aerie Grid. Never participates." }
+  ]
+}

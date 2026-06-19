@@ -1,0 +1,69 @@
+{
+  "_meta": {
+    "slice": "S1 — Ridgeline storyline",
+    "shape": "LOGICAL. Pipeline maps proposals → proposals table (title/type/status/summary_plain/metadata/is_synthetic) and votes → votes (vote, voted_at, bill_proposal_id=proposals.id, vote_question, chamber). All synthetic.",
+    "roll_call": "HB-14 passes 6–4 (locked, bible §4.2). HB-03 is the mirror: fails 4–6. Each vote's official seed_key must match its entities.json ridgeline_vote.",
+    "vote_enum": "Use the schema CHECK values: yes | no | abstain | present | not_voting | paired_yes | paired_no. Map support→yes, oppose→no."
+  },
+
+  "proposals": [
+    {
+      "seed_key": "prop-hb14",
+      "bill_number": "HB-14",
+      "title": "Ridgeline Clean Energy Act",
+      "type": "bill",
+      "status": "open_comment",
+      "comment_window": "open",
+      "sponsor": "off-reyes-combs",
+      "cosponsors": ["off-whitfield"],
+      "summary_plain": "Authorizes ridge-top wind and solar on designated state land, a 90-mile transmission line to carry it to the Watauga corridor, and a Just-Transition Fund for coal-county workers and tax bases. Cost recovery is capped under the Okafor amendment.",
+      "sections": [
+        "Title I — Generation: leases ridge-top wind/solar on designated state land, with viewshed setbacks and county opt-in.",
+        "Title II — Transmission: authorizes a 90-mile line under FPUC oversight; competitive build contract.",
+        "Title III — Just-Transition Fund: retraining, bridge wages, and tax-base backfill for plateau coal counties.",
+        "Title IV (Okafor amendment) — Ratepayer cost cap: caps cost recovery passed to ratepayers and front-loads the Just-Transition Fund before construction."
+      ],
+      "outcome": "Passed 6–4; signed by Gov. Aldridge after the Title IV cost-cap amendment.",
+      "votes": [
+        { "official": "off-reyes-combs", "vote": "yes" },
+        { "official": "off-whitfield", "vote": "yes" },
+        { "official": "off-nandakumar", "vote": "yes" },
+        { "official": "off-park", "vote": "yes" },
+        { "official": "off-okafor", "vote": "yes", "note": "Flipped to yes only after his Title IV cost-cap amendment carried." },
+        { "official": "off-sevier", "vote": "yes" },
+        { "official": "off-boyd", "vote": "no" },
+        { "official": "off-tipton", "vote": "no" },
+        { "official": "off-crane", "vote": "no" },
+        { "official": "off-hale", "vote": "no", "note": "Land/water grounds, not donor-driven — the Investigation #1 control case." }
+      ],
+      "vote_question": "On Passage",
+      "chamber": "Franklin General Assembly"
+    },
+    {
+      "seed_key": "prop-hb03",
+      "bill_number": "HB-03",
+      "title": "Ratepayer Protection Act",
+      "type": "bill",
+      "status": "closed",
+      "comment_window": "closed",
+      "sponsor": "off-boyd",
+      "cosponsors": [],
+      "summary_plain": "Would cap utility rate increases and slow cost recovery on new transmission — the mirror image of HB-14's coalition. Failed.",
+      "outcome": "Failed 4–6 (the inverse of HB-14: the four Ridgeline NO votes supported it; the six YES opposed).",
+      "votes": [
+        { "official": "off-boyd", "vote": "yes" },
+        { "official": "off-tipton", "vote": "yes" },
+        { "official": "off-crane", "vote": "yes" },
+        { "official": "off-hale", "vote": "yes" },
+        { "official": "off-reyes-combs", "vote": "no" },
+        { "official": "off-whitfield", "vote": "no" },
+        { "official": "off-nandakumar", "vote": "no" },
+        { "official": "off-park", "vote": "no" },
+        { "official": "off-okafor", "vote": "no" },
+        { "official": "off-sevier", "vote": "no" }
+      ],
+      "vote_question": "On Passage",
+      "chamber": "Franklin General Assembly"
+    }
+  ]
+}

@@ -1,0 +1,49 @@
+{
+  "_meta": {
+    "slice": "S1 — Ridgeline storyline",
+    "purpose": "The SHOWCASE bad-behavior examples for the tour — persistent, labeled, PRE-FOLDED so visitors see the moderation floor working in context (bible §11.3, SF-P2 explainer). Distinct from the SF-P3 harness, which evaluates the full F1–F12 set ephemerally against the live rules.",
+    "shape": "LOGICAL. Pipeline maps fixture comments → entity_comments with the authored status + flags; fixture authors are synthetic users created inline. is_synthetic renders the SYNTHETIC mark; status=needs_review renders folded.",
+    "floor_rule": "Bad in FORM, never harmful in SUBSTANCE (bible §10.3): incivility aimed at competence/character or spam — never slurs, protected-class attacks, threats, or real targets. These are exactly the de-amplifiable kind the floor folds.",
+    "f3_note": "F3 (uncited conspiracy claim) has NO seedable artifact — a rejected evidence card cannot exist (the citation rule blocks creation). Its demonstration is the citation rule itself + Investigation #1's ec-06 (an inferred claim held un-promotable) + the explainer below."
+  },
+
+  "fixture_authors": [
+    { "seed_key": "fix-author-shouty", "handle": "RidgeRanter", "note": "Throwaway synthetic author for the incivility fixture — kept out of the realistic chorus roster." },
+    { "seed_key": "fix-author-spam", "handle": "GridDealsDaily", "note": "Throwaway synthetic author for the spam/bot-pattern fixture." }
+  ],
+
+  "fixtures": [
+    {
+      "seed_key": "fix-f1-namecalling",
+      "casebook_id": "F1",
+      "author": "fix-author-shouty",
+      "entity_type": "proposal",
+      "entity_id": "prop-hb14",
+      "kind": "comment",
+      "body": "Anyone backing this is a brain-dead Watauga shill who couldn't read a power bill if it was stapled to their forehead. Clowns, the lot of you.",
+      "authored_status": "needs_review",
+      "authored_flags": 3,
+      "expected_rule": "entity_comments_flag_autotrip(): ≥3 unresolved content_flags → visible→needs_review (never auto-hidden).",
+      "tour_caption": "Folded by the floor: three neighbors flagged this, so it's held for review — de-amplified, not deleted. The point survives; the insult doesn't carry."
+    },
+    {
+      "seed_key": "fix-spam-copypaste",
+      "casebook_id": "F6 (content-side)",
+      "author": "fix-author-spam",
+      "entity_type": "proposal",
+      "entity_id": "prop-hb14",
+      "kind": "comment",
+      "body": "⚡ SLASH YOUR POWER BILL 70% — GridDealsDaily has the secret the utilities HATE. Click now: grid-deals-daily dot example. Repost everywhere!! ⚡",
+      "authored_status": "needs_review",
+      "authored_flags": 3,
+      "expected_rule": "Spam/link-pattern flagged + folded; most bot traffic dies earlier at the gate (Turnstile + rate caps) — this is the content-side residue.",
+      "tour_caption": "Spam folds the same way. The gate stops most bots before they post; what slips through gets flagged and held."
+    }
+  ],
+
+  "explainer": {
+    "heading": "How Franklin keeps the floor fair",
+    "body": "Franklin is a court of record, not a feed. We rank by bridge — comments that earn trust across blocs — never by volume or heat. When neighbors flag a comment, it's held for review and de-amplified, not erased: you can still read it, folded. Claims in an investigation can't be filed without citing a real record. And everything here is labeled SYNTHETIC, because this is a demonstration populated by AI.",
+    "references": ["fix-f1-namecalling", "fix-spam-copypaste", "inv-1:ec-06"]
+  }
+}

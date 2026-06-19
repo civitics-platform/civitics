@@ -1,0 +1,66 @@
+{
+  "_meta": {
+    "slice": "S1 — Ridgeline storyline",
+    "shape": "LOGICAL. Pipeline maps → entity_comments (author_id, entity_type='proposal', entity_id=prop-hb14, parent_id, body, kind, status, bridge_score, map_x, map_y). All author users are synthetic (the per-utterance SYNTHETIC mark renders). Replies reference parent by seed_key.",
+    "curator": "user-curator = a synthetic 'Franklin Commons' curator account the pipeline creates (bible §2.4). It seeds the opener only.",
+    "authored_bridge": "Per bible §9.3, seed bridge scores are AUTHORED display-only (the live scorer excludes synthetic authors/raters). B-1 carries the high authored score; its cross-bloc endorsement (a Homesteader AND a Headwaters reader both affirming) is why — matching the real scorer's map_y logic. Leave bridge_score null where not specified.",
+    "floor_note": "NoNewTaxesNed is snark-that-folds (low/None bridge), NOT a flagged fixture — the hard F1 name-calling fixture lives in fixtures.json with its 3 flags."
+  },
+
+  "comments": [
+    {
+      "seed_key": "cmt-hb14-opener", "author": "user-curator", "parent": null, "kind": "comment",
+      "body": "HB-14's comment window is open. The Ridgeline Act doesn't split along the usual lines — it's less ridge-vs-river than everyone weighing towers, jobs, air, and cost differently. If you could change one thing to make this bill better, what is it?",
+      "bridge_score": null
+    },
+    {
+      "seed_key": "cmt-hb14-maziek", "author": "cit-maziek", "parent": null, "kind": "comment",
+      "body": "Front-load the transition fund. We've heard 'retraining' before and got a brochure. Show me Title III is funded before a single tower goes up and Iron Ridge can live with the rest.",
+      "bridge_score": null
+    },
+    {
+      "seed_key": "cmt-hb14-ned", "author": "cit-nonewtaxesned", "parent": null, "kind": "comment",
+      "body": "Translation: another Watauga slush fund with our names on the invoice. Hard pass.",
+      "bridge_score": null,
+      "note": "Snark that the floor de-amplifies (low bridge, no cross-stance endorsement). Civil-enough to stay visible; not the flagged F1 fixture."
+    },
+    {
+      "seed_key": "cmt-hb14-rose", "author": "cit-ridgelinerose", "parent": null, "kind": "comment",
+      "body": "I've walked these ridges my whole life and the towers will hurt to see. I've also read Title I's setbacks and lived through three bad fire seasons. I'm genuinely torn.",
+      "bridge_score": null
+    },
+    {
+      "seed_key": "cmt-hb14-twokids", "author": "cit-twokidstwoinhalers", "parent": null, "kind": "comment",
+      "body": "Both my kids carry inhalers up here. Whatever the towers cost the view, I'll pay it for a clear breath.",
+      "bridge_score": null
+    },
+    {
+      "seed_key": "cmt-hb14-b1", "author": "cit-clerkemeritus", "parent": null, "kind": "comment",
+      "body": "I'll never love the towers on our ridge. But read Title IV. Cap the ratepayer cost the way Okafor wants, fund the plateau's retraining FIRST, and only then build. That isn't a Watauga bill or a plateau bill — it's the compromise already written into the text, and both sides are arguing past it.",
+      "is_bridge_moment": "B-1",
+      "bridge_score": 0.86, "map_x": 0.04, "map_y": 0.91,
+      "authored_raters": { "total": 11, "valuable_up": 10, "endorsers_support_side": 5, "endorsers_oppose_side": 6 },
+      "note": "The exemplar. Authored high bridge: balanced cross-stance endorsement (Homestead + Headwaters), high valuable_rate. The pipeline seeds these authored values directly on the comment row (display-only; the live scorer never computes synthetic)."
+    },
+    {
+      "seed_key": "cmt-hb14-b1-reply-plateau", "author": "cit-plateaupride", "parent": "cmt-hb14-b1", "kind": "comment",
+      "body": "I came here to argue. But this is the first version of 'transition' that puts us first in line instead of last. If it's funded first, I can sell that at home.",
+      "bridge_score": null
+    },
+    {
+      "seed_key": "cmt-hb14-b1-reply-owen", "author": "cit-oldgrowthowen", "parent": "cmt-hb14-b1", "kind": "comment",
+      "body": "A conservationist and a coal town agreeing on the sequencing — that's the bill working. Cap it, fund them first, build it right.",
+      "bridge_score": null
+    },
+    {
+      "seed_key": "cmt-hb14-b1-reply-rose", "author": "cit-ridgelinerose", "parent": "cmt-hb14-b1", "kind": "comment",
+      "body": "Alright. Fund-first plus the Title I setbacks, and I can carry this to the trail association without feeling like a sellout.",
+      "bridge_score": null
+    },
+    {
+      "seed_key": "cmt-hb14-plateaupride-root", "author": "cit-plateaupride", "parent": null, "kind": "comment",
+      "body": "Coal built these towns and fed my family for three generations. I'm not against the future. I'm against being told my whole past was a mistake.",
+      "bridge_score": null
+    }
+  ]
+}

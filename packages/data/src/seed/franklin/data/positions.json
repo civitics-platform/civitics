@@ -1,0 +1,30 @@
+{
+  "_meta": {
+    "slice": "S1 — Ridgeline storyline",
+    "shape": "LOGICAL. Pipeline maps → entity_positions (user_id=author, entity_type='proposal', entity_id=prop-hb14, stance, + statement to metadata/comment). stance ∈ support|oppose|mixed (pipeline maps to the real enum).",
+    "passive_rule": "Crane (passive) posts NO position — his opposition exists only as a vote (proposals.json). That absence IS the demonstration. Statements match each official's locked HB-14 vote.",
+    "bridge_setup": "ClerkEmeritus's stance is 'mixed' and his B-1 comment (threads.json) is the cross-bloc synthesis that earns the authored high bridge score."
+  },
+
+  "positions": [
+    { "seed_key": "pos-hb14-reyes-combs", "author": "off-reyes-combs", "proposal": "prop-hb14", "stance": "support", "statement": "Franklin's high country IS our economy. Clean generation plus the Just-Transition Fund is how the plateau shares in the upside instead of just bearing the cost." },
+    { "seed_key": "pos-hb14-whitfield", "author": "off-whitfield", "proposal": "prop-hb14", "stance": "support", "statement": "The plateau breathes the state's worst air. Pairing this with air monitoring is overdue public health, not ideology." },
+    { "seed_key": "pos-hb14-nandakumar", "author": "off-nandakumar", "proposal": "prop-hb14", "stance": "support", "statement": "Transmission is grid reliability and jobs for the corridor. We build Franklin's energy future or we keep importing it at a premium." },
+    { "seed_key": "pos-hb14-park", "author": "off-park", "proposal": "prop-hb14", "stance": "support", "statement": "Tourism runs on a working grid and a living landscape. Both point to yes." },
+    { "seed_key": "pos-hb14-okafor", "author": "off-okafor", "proposal": "prop-hb14", "stance": "mixed", "statement": "I'm a yes the moment ratepayer cost recovery is capped and the transition fund is front-loaded ahead of construction. That's my Title IV amendment — earn it and you have my vote." },
+    { "seed_key": "pos-hb14-sevier", "author": "off-sevier", "proposal": "prop-hb14", "stance": "support", "statement": "Cherokee Foothills is an ex-coal county. The reinvestment piece is the first real offer Watauga has put on our table. Yes." },
+    { "seed_key": "pos-hb14-boyd", "author": "off-boyd", "proposal": "prop-hb14", "stance": "oppose", "statement": "I won't trade Iron Ridge's property values and ratepayers for towers whose benefit flows past us to the corridor." },
+    { "seed_key": "pos-hb14-tipton", "author": "off-tipton", "proposal": "prop-hb14", "stance": "oppose", "statement": "Nobody up on the ridge was asked what our skyline should look like. This is Watauga deciding for Stony Fork." },
+    { "seed_key": "pos-hb14-hale", "author": "off-hale", "proposal": "prop-hb14", "stance": "oppose", "statement": "My quarrel isn't with clean power — it's Title I's land and water provisions. Fix the withdrawal and setback language and we can talk." },
+
+    { "seed_key": "pos-hb14-maziek", "author": "cit-maziek", "proposal": "prop-hb14", "stance": "mixed", "statement": "Yes — IF the transition fund comes first. The plateau has been promised retraining before and got a brochure." },
+    { "seed_key": "pos-hb14-ridgelinerose", "author": "cit-ridgelinerose", "proposal": "prop-hb14", "stance": "mixed", "statement": "I love these ridges and towers on them break my heart. But I read Title I's setbacks, and a heating climate breaks them worse." },
+    { "seed_key": "pos-hb14-oldgrowthowen", "author": "cit-oldgrowthowen", "proposal": "prop-hb14", "stance": "support", "statement": "Our forests lose far more to a warming climate than to a carefully sited line. Support." },
+    { "seed_key": "pos-hb14-twokids", "author": "cit-twokidstwoinhalers", "proposal": "prop-hb14", "stance": "support", "statement": "Both my kids carry inhalers up here. I will take the towers, gladly." },
+    { "seed_key": "pos-hb14-plateaupride", "author": "cit-plateaupride", "proposal": "prop-hb14", "stance": "mixed", "statement": "Coal built these towns and fed my family. Don't bury that under 'transition' slideshows — show me the fund is real." },
+    { "seed_key": "pos-hb14-nonewtaxesned", "author": "cit-nonewtaxesned", "proposal": "prop-hb14", "stance": "oppose", "statement": "Another Watauga boondoggle dressed up as 'just transition.' Hard pass." },
+    { "seed_key": "pos-hb14-cautiouscarla", "author": "cit-cautiouscarla", "proposal": "prop-hb14", "stance": "mixed", "statement": "With Okafor's cost cap I'm a yes. Without it the ratepayer exposure is too open-ended." },
+    { "seed_key": "pos-hb14-dell-r", "author": "cit-dell-r", "proposal": "prop-hb14", "stance": "oppose", "statement": "Title I reaches into valley water rights. That's a no until it isn't." },
+    { "seed_key": "pos-hb14-clerkemeritus", "author": "cit-clerkemeritus", "proposal": "prop-hb14", "stance": "mixed", "statement": "Read Title IV. The cost cap plus fund-first sequencing is the compromise already sitting in the bill — both sides are arguing past it." }
+  ]
+}
