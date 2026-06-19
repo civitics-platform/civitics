@@ -1,8 +1,8 @@
 {
-  "ranAt": "2026-06-19T07:29:31.789Z",
-  "durationMs": 403,
+  "ranAt": "2026-06-19T09:50:16.053Z",
+  "durationMs": 1235,
   "dbHost": "127.0.0.1:54322",
-  "sha": "cb7a162a",
+  "sha": "aa867606",
   "rows": [
     {
       "fixtureId": "F1",
@@ -69,21 +69,39 @@
     },
     {
       "fixtureId": "F8",
-      "ruleId": "brigade detector (does not exist)",
-      "expectation": "gap",
-      "expectedVerdict": "should flag a coordinated cluster",
-      "computedVerdict": "not_detected",
-      "match": false,
-      "notes": "GAP (SF-P4): no coordinated-cluster detector. 9 same-direction ratings in a tight window go unflagged. Permanent MISMATCH until the detector ships."
+      "ruleId": "detect_brigade_candidates (fast)",
+      "expectation": "handled",
+      "expectedVerdict": "flags a coordinated cluster",
+      "computedVerdict": "flagged fast cluster (n=9, score=0.8000)",
+      "match": true,
+      "notes": "SF-P4 fast detector flagged the coordinated pile-on. Detection only — no consequence."
     },
     {
       "fixtureId": "F9",
-      "ruleId": "brigade detector — temporal (does not exist)",
-      "expectation": "gap",
-      "expectedVerdict": "should flag low-and-slow coordination",
-      "computedVerdict": "not_detected",
-      "match": false,
-      "notes": "GAP (SF-P4 temporal): low-and-slow coordination under the per-window rate limit is invisible to the always-on caps. Permanent MISMATCH until shipped."
+      "ruleId": "detect_brigade_candidates (slow)",
+      "expectation": "handled",
+      "expectedVerdict": "flags low-and-slow cross-target coordination",
+      "computedVerdict": "flagged slow cluster (n=6, score=0.7467)",
+      "match": true,
+      "notes": "SF-P4 slow detector flagged repeated cross-target co-occurrence below the burst window."
+    },
+    {
+      "fixtureId": "F8N",
+      "ruleId": "detect_brigade_candidates (fast) — false-positive guard",
+      "expectation": "handled",
+      "expectedVerdict": "no brigade candidate (legitimate civic coordination)",
+      "computedVerdict": "not_flagged (organic surge cleared)",
+      "match": true,
+      "notes": "FP guard: established accounts in an organic surge must not read as a brigade. No persisted verified-constituent flag exists (signal gap, cf FIX-571); account age is the available discriminator."
+    },
+    {
+      "fixtureId": "F8S",
+      "ruleId": "detect_brigade_candidates — author_excluded_from_standing",
+      "expectation": "handled",
+      "expectedVerdict": "no brigade candidate (synthetic authors excluded)",
+      "computedVerdict": "not_flagged (synthetic excluded)",
+      "match": true,
+      "notes": "author_excluded_from_standing() keeps the State of Franklin seed (coordinated by design) out of the candidate set even at a 9-account pile-on."
     },
     {
       "fixtureId": "F10",
@@ -116,14 +134,14 @@
   "pollution": [
     {
       "table": "entity_comments",
-      "before": 35,
-      "after": 35,
+      "before": 47,
+      "after": 47,
       "delta": 0
     },
     {
       "table": "content_flags",
-      "before": 6,
-      "after": 6,
+      "before": 12,
+      "after": 12,
       "delta": 0
     },
     {
@@ -134,8 +152,8 @@
     },
     {
       "table": "entity_positions",
-      "before": 0,
-      "after": 0,
+      "before": 9,
+      "after": 9,
       "delta": 0
     },
     {
@@ -146,28 +164,28 @@
     },
     {
       "table": "evidence_cards",
-      "before": 10,
-      "after": 10,
+      "before": 17,
+      "after": 17,
       "delta": 0
     },
     {
       "table": "citations",
-      "before": 11,
-      "after": 11,
+      "before": 21,
+      "after": 21,
       "delta": 0
     },
     {
       "table": "investigations",
-      "before": 2,
-      "after": 2,
+      "before": 3,
+      "after": 3,
       "delta": 0
     }
   ],
   "summary": {
-    "total": 12,
-    "matches": 8,
-    "mismatches": 4,
+    "total": 14,
+    "matches": 12,
+    "mismatches": 2,
     "regressions": 0,
-    "knownFailing": 4
+    "knownFailing": 2
   }
 }

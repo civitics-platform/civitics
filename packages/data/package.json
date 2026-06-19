@@ -59,6 +59,7 @@
     "data:audit": "tsx --env-file=../../.env.local src/pipelines/integrity-audit/index.ts",
     "data:audit:ci": "tsx src/pipelines/integrity-audit/index.ts --allow-prod",
     "data:moderation-harness": "tsx --env-file=../../.env.local src/pipelines/moderation-harness/index.ts",
+    "data:brigade-scan": "tsx --env-file=../../.env.local src/pipelines/brigade-detector/index.ts",
     "data:audit-cutover-indexes": "tsx --env-file=../../.env.local src/scripts/cutover-index-audit.ts",
     "data:audit-fe-fk-surface": "tsx --env-file=../../.env.local src/scripts/audit-fe-fk-surface.ts",
     "data:audit-summary-context": "tsx --env-file=../../.env.local src/scripts/audit-summary-context.ts",

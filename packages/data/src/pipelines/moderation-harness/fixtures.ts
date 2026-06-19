@@ -35,6 +35,32 @@ async function detectorExists(
   return Number(rows[0]?.n ?? "0") > 0;
 }
 
+// Create an ephemeral, NON-synthetic user with an explicit account age (the
+// `created_at` is the brigade detector's established-vs-new discriminator).
+// Rolled back with the txn. Used by the SF-P4 fixtures (F8N / F9).
+async function createAgedUser(tx: TxContext, ageDays: number): Promise<string> {
+  const rows = await tx.query<{ id: string }>(
+    `WITH a AS (INSERT INTO auth.users (id) VALUES (gen_random_uuid()) RETURNING id),
+          u AS (INSERT INTO public.users (id, is_synthetic, created_at)
+                SELECT id, false, now() - make_interval(days => $1) FROM a RETURNING id)
+     SELECT id FROM u`,
+    [ageDays],
+  );
+  return rows[0].id;
+}
+
+// Create an ephemeral SYNTHETIC user (is_synthetic = true) — the State of Franklin
+// seed shape. The detector must exclude these via author_excluded_from_standing.
+async function createSyntheticUser(tx: TxContext): Promise<string> {
+  const rows = await tx.query<{ id: string }>(
+    `WITH a AS (INSERT INTO auth.users (id) VALUES (gen_random_uuid()) RETURNING id),
+          u AS (INSERT INTO public.users (id, is_synthetic)
+                SELECT id, true FROM a RETURNING id)
+     SELECT id FROM u`,
+  );
+  return rows[0].id;
+}
+
 // Insert an entity_comment directly (controls all columns; entity_id is
 // polymorphic with no FK, so a random uuid is a valid non-synthetic target).
 async function insertComment(
@@ -305,16 +331,16 @@ export const FIXTURES: Fixture[] = [
     },
   },
 
-  // ──────────────── F8 — coordinated brigade (GAP) ────────────────
+  // ──────────────── F8 — coordinated pile-on (HANDLED, SF-P4) ────────────────
   {
     id: "F8",
     title: "Coordinated pile-on: N accounts, same direction, tight timing",
-    ruleId: "brigade detector (does not exist)",
-    expectation: "gap",
-    expectedVerdict: "should flag a coordinated cluster",
+    ruleId: "detect_brigade_candidates (fast)",
+    expectation: "handled",
+    expectedVerdict: "flags a coordinated cluster",
     async run(tx) {
-      // Instantiate the bad behavior so the row is honest: 9 same-direction
-      // ratings in a tight window on one comment.
+      // 9 brand-new accounts rate one comment same-direction in a tight window —
+      // the canonical fast pile-on. The SF-P4 detector should flag it.
       const author = await tx.createUser("f8-author");
       const entityId = randomUUID();
       const target = await insertComment(tx, author, "proposal", entityId);
@@ -326,32 +352,148 @@ export const FIXTURES: Fixture[] = [
           [target, r],
         );
       }
-      const exists = await detectorExists(tx, "brigade", "coordinat", "cluster");
+      const hits = await tx.query<{ cluster_size: number; score: string }>(
+        `SELECT cluster_size, score
+           FROM public.detect_brigade_candidates('fast', ARRAY[$1]::uuid[])`,
+        [target],
+      );
+      const hit = hits[0];
       return {
-        computedVerdict: exists ? "detector present" : "not_detected",
-        match: false, // known-failing until SF-P4 lands
-        notes:
-          "GAP (SF-P4): no coordinated-cluster detector. 9 same-direction ratings " +
-          "in a tight window go unflagged. Permanent MISMATCH until the detector ships.",
+        computedVerdict: hit
+          ? `flagged fast cluster (n=${hit.cluster_size}, score=${hit.score})`
+          : "not_detected",
+        match: Boolean(hit),
+        notes: hit
+          ? "SF-P4 fast detector flagged the coordinated pile-on. Detection only — no consequence."
+          : "REGRESSION: SF-P4 fast detector did not flag 9 same-direction ratings in a tight window.",
       };
     },
   },
 
-  // ──────────────── F9 — slow-burn brigade (GAP) ────────────────
+  // ──────────────── F9 — slow-burn brigade (HANDLED, SF-P4) ────────────────
   {
     id: "F9",
     title: "Slow-burn brigade: coordinated, under any per-window burst rate",
-    ruleId: "brigade detector — temporal (does not exist)",
-    expectation: "gap",
-    expectedVerdict: "should flag low-and-slow coordination",
+    ruleId: "detect_brigade_candidates (slow)",
+    expectation: "handled",
+    expectedVerdict: "flags low-and-slow cross-target coordination",
     async run(tx) {
-      const exists = await detectorExists(tx, "brigade", "temporal", "coordinat");
+      // 6 accounts co-rate the SAME direction across 4 targets, each target's
+      // ratings spread >60 min apart — below any burst window, so the fast path
+      // can't see it. Only cross-target co-occurrence reveals the coordination.
+      const author = await tx.createUser("f9-author");
+      const brig: string[] = [];
+      for (let i = 0; i < 6; i++) brig.push(await tx.createUser(`f9-brig-${i}`));
+      const targets: string[] = [];
+      for (let j = 0; j < 4; j++) {
+        const t = await insertComment(tx, author, "proposal", randomUUID());
+        for (let k = 0; k < brig.length; k++) {
+          // Spread within the target across days+minutes so no single 60-min
+          // window holds the cluster (k*20 min ⇒ up to 100-min span).
+          await tx.query(
+            `INSERT INTO public.comment_ratings (comment_id, rater_id, valuable, agree, created_at)
+             VALUES ($1,$2,1,1, now() - make_interval(days => $3, mins => $4))`,
+            [t, brig[k], j + 1, k * 20],
+          );
+        }
+        targets.push(t);
+      }
+      const hits = await tx.query<{ cluster_size: number; score: string }>(
+        `SELECT cluster_size, score
+           FROM public.detect_brigade_candidates('slow', $1::uuid[])`,
+        [targets],
+      );
+      const hit = hits[0];
       return {
-        computedVerdict: exists ? "detector present" : "not_detected",
-        match: false,
+        computedVerdict: hit
+          ? `flagged slow cluster (n=${hit.cluster_size}, score=${hit.score})`
+          : "not_detected",
+        match: Boolean(hit),
+        notes: hit
+          ? "SF-P4 slow detector flagged repeated cross-target co-occurrence below the burst window."
+          : "REGRESSION: SF-P4 slow detector missed the cross-target co-occurrence cluster.",
+      };
+    },
+  },
+
+  // ──────── F8N — NEGATIVE: legitimate coordinated surge must NOT flag ────────
+  {
+    id: "F8N",
+    title: "Organic surge by established accounts must NOT be flagged (FP guard)",
+    ruleId: "detect_brigade_candidates (fast) — false-positive guard",
+    expectation: "handled",
+    expectedVerdict: "no brigade candidate (legitimate civic coordination)",
+    async run(tx) {
+      // The shape of a real signature drive / comment-period mobilization: a
+      // same-day surge of same-direction ratings by ESTABLISHED accounts. The
+      // established-account ratio is the FP guard — the detector must clear it.
+      const author = await createAgedUser(tx, 500);
+      const entityId = randomUUID();
+      const target = await insertComment(tx, author, "proposal", entityId);
+      for (let i = 0; i < 8; i++) {
+        const r = await createAgedUser(tx, 400);
+        await tx.query(
+          `INSERT INTO public.comment_ratings (comment_id, rater_id, valuable, agree)
+           VALUES ($1,$2,1,1)`,
+          [target, r],
+        );
+      }
+      const flagged =
+        (
+          await tx.query(
+            `SELECT 1 FROM public.detect_brigade_candidates('fast', ARRAY[$1]::uuid[])`,
+            [target],
+          )
+        ).length > 0;
+      return {
+        computedVerdict: flagged
+          ? "FALSE POSITIVE: flagged an organic established-account surge"
+          : "not_flagged (organic surge cleared)",
+        match: !flagged,
         notes:
-          "GAP (SF-P4 temporal): low-and-slow coordination under the per-window rate " +
-          "limit is invisible to the always-on caps. Permanent MISMATCH until shipped.",
+          "FP guard: established accounts in an organic surge must not read as a brigade. " +
+          "No persisted verified-constituent flag exists (signal gap, cf FIX-571); account " +
+          "age is the available discriminator.",
+      };
+    },
+  },
+
+  // ──────── F8S — synthetic seed (coordinated by design) must be excluded ─────
+  {
+    id: "F8S",
+    title: "Synthetic seed pile-on (coordinated by design) must be excluded",
+    ruleId: "detect_brigade_candidates — author_excluded_from_standing",
+    expectation: "handled",
+    expectedVerdict: "no brigade candidate (synthetic authors excluded)",
+    async run(tx) {
+      // Same shape as F8, but every rater is_synthetic — the State of Franklin
+      // seed. The SF-P1 exclusion predicate must keep it out of the candidate set.
+      const author = await createSyntheticUser(tx);
+      const entityId = randomUUID();
+      const target = await insertComment(tx, author, "proposal", entityId);
+      for (let i = 0; i < 9; i++) {
+        const r = await createSyntheticUser(tx);
+        await tx.query(
+          `INSERT INTO public.comment_ratings (comment_id, rater_id, valuable, agree)
+           VALUES ($1,$2,1,1)`,
+          [target, r],
+        );
+      }
+      const flagged =
+        (
+          await tx.query(
+            `SELECT 1 FROM public.detect_brigade_candidates('fast', ARRAY[$1]::uuid[])`,
+            [target],
+          )
+        ).length > 0;
+      return {
+        computedVerdict: flagged
+          ? "LEAK: synthetic cluster surfaced as a candidate"
+          : "not_flagged (synthetic excluded)",
+        match: !flagged,
+        notes:
+          "author_excluded_from_standing() keeps the State of Franklin seed (coordinated " +
+          "by design) out of the candidate set even at a 9-account pile-on.",
       };
     },
   },
