@@ -771,3 +771,4 @@
 2026-06-19 | FIX-607 | 1184a342 | prod-only | chore(fixes): record prod verification for FIX-607
 2026-06-19 | FIX-606 | aa9f6d0c | prod-only | chore(platform-costs): close FIX-606 — Vercel usage flows after token + redeploy
 2026-06-19 | FIX-608 | 8757b7ce | local-only | feat(integrity): SF-P4 brigade detector (shadow, F8/F9)
+2026-06-19 | FIX-608 | e3dddde7 | local+prod | chore(integrity): record prod verification for FIX-608 (SF-P4 brigade detector)
