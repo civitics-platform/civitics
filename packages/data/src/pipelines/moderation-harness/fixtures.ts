@@ -128,8 +128,12 @@ export const FIXTURES: Fixture[] = [
       const insult = await insertComment(tx, author, entityType, entityId);
       // 6 cross-stance raters: all find the steelman valuable (+1) from both
       // sides; the insult draws no cross-stance value (rated valuable=-1).
+      // SF-P5 (FIX-612): raters are ESTABLISHED accounts (aged), so the per-side
+      // trusted-mass floor is cleared — a legitimate steelman endorsement scores.
+      // (Brand-new raters here would be mechanically identical to the F10 farm and
+      // correctly score NULL under the anti-gaming floor; F2 asserts the legit case.)
       for (let i = 0; i < 6; i++) {
-        const rater = await tx.createUser(`f2-rater-${i}`);
+        const rater = await createAgedUser(tx, 60);
         const stance = i % 2 === 0 ? 2 : -2;
         await tx.query(
           `INSERT INTO public.entity_positions (user_id, entity_type, entity_id, stance)
@@ -498,19 +502,21 @@ export const FIXTURES: Fixture[] = [
     },
   },
 
-  // ──────────────── F10 — bridge gaming (GAP, with evidence) ────────────────
+  // ──────────────── F10 — bridge gaming (HANDLED, SF-P5) ────────────────
   {
     id: "F10",
-    title: "Bridge-gaming: fake cross-bloc agreement farms bridge_score",
-    ruleId: "recompute_comment_bridge_scores (no anti-gaming)",
-    expectation: "gap",
-    expectedVerdict: "scorer should resist farming (low / no score)",
+    title: "Bridge-gaming: fake cross-bloc agreement must NOT farm bridge_score",
+    ruleId: "recompute_comment_bridge_scores (SF-P5 trusted-mass floor)",
+    expectation: "handled",
+    expectedVerdict: "scorer resists farming → low / null score",
     async run(tx) {
       const author = await tx.createUser("f10-author");
       const entityType = "proposal";
       const entityId = randomUUID();
       const gamed = await insertComment(tx, author, entityType, entityId);
-      // Coordinated raters fake a perfectly balanced cross-bloc endorsement.
+      // The attack: a ring of brand-NEW throwaway accounts faking a perfectly
+      // balanced cross-bloc endorsement (pos=neg, all valuable=+1). Non-synthetic,
+      // so SF-P1 exclusion does not touch them — the whole point of SF-P5.
       for (let i = 0; i < 6; i++) {
         const r = await tx.createUser(`f10-puppet-${i}`);
         const stance = i % 2 === 0 ? 2 : -2;
@@ -533,16 +539,70 @@ export const FIXTURES: Fixture[] = [
         `SELECT bridge_score AS s FROM public.entity_comments WHERE id = $1`,
         [gamed],
       );
-      // "Resisted" would mean a low/null score. A balanced fake cross-vote farms
-      // a high score → not resisted → MISMATCH (known-failing).
+      // SF-P5: the trusted-mass floor (least(tw_pos,tw_neg) >= 1.0) is unmet — all
+      // raters are fresh accounts with trust=0 — so the comment does NOT qualify
+      // and bridge_score stays NULL. "Resisted" = null or low.
       const resisted = s == null || Number(s) < 0.5;
       return {
-        computedVerdict: `farmed bridge_score=${s}`,
+        computedVerdict: `bridge_score=${s} (resisted=${resisted})`,
         match: resisted,
         notes:
-          "GAP (SF-P5): bridge_score is farmable via coordinated balanced cross-bloc " +
-          `valuable=+1 votes. Achieved score=${s} with zero genuine disagreement. ` +
-          "No anti-gaming layer. Permanent MISMATCH until the scorer is hardened.",
+          "SF-P5 (FIX-612): the balanced fake cross-vote by brand-new accounts no " +
+          `longer farms a score — bridge_score=${s}. The per-side account-age ` +
+          "trusted-mass floor denies the farm while real cross-bloc endorsement (F10P) scores.",
+      };
+    },
+  },
+
+  // ──────── F10P — POSITIVE CONTROL: real cross-bloc endorsement must STILL score ────────
+  {
+    id: "F10P",
+    title: "Legitimate cross-bloc endorsement by trusted, varied accounts scores",
+    ruleId: "recompute_comment_bridge_scores (SF-P5 false-positive guard)",
+    expectation: "handled",
+    expectedVerdict: "genuine bridge by aged/varied accounts → high bridge_score",
+    async run(tx) {
+      const author = await createAgedUser(tx, 120);
+      const entityType = "proposal";
+      const entityId = randomUUID();
+      const bridge = await insertComment(tx, author, entityType, entityId);
+      // A real bridge moment: ESTABLISHED accounts of VARIED ages on BOTH stance
+      // sides genuinely find the comment valuable. This is what the anti-gaming
+      // floor must NOT punish — the conservative FP guard that ships with SF-P5.
+      const ages = [35, 90, 200, 45, 150, 300]; // all >= established; varied
+      for (let i = 0; i < ages.length; i++) {
+        const r = await createAgedUser(tx, ages[i]);
+        const stance = i % 2 === 0 ? 2 : -2; // 3 support / 3 oppose
+        await tx.query(
+          `INSERT INTO public.entity_positions (user_id, entity_type, entity_id, stance)
+           VALUES ($1,$2,$3,$4)`,
+          [r, entityType, entityId, stance],
+        );
+        await tx.query(
+          `INSERT INTO public.comment_ratings (comment_id, rater_id, valuable, agree)
+           VALUES ($1,$2,1,$3)`,
+          [bridge, r, stance > 0 ? 1 : -1],
+        );
+      }
+      await tx.query(`SELECT public.recompute_comment_bridge_scores($1,$2)`, [
+        entityType,
+        entityId,
+      ]);
+      const [{ s }] = await tx.query<{ s: number | null }>(
+        `SELECT bridge_score AS s FROM public.entity_comments WHERE id = $1`,
+        [bridge],
+      );
+      // Trusted mass on each side ≥ 3.0 ≥ floor → qualifies; balanced + all
+      // valuable=+1 → high score. A FP (null/low here) would mean the floor is
+      // tanking real bridges.
+      const scoredWell = s != null && Number(s) >= 0.5;
+      return {
+        computedVerdict: `bridge_score=${s} (scoredWell=${scoredWell})`,
+        match: scoredWell,
+        notes:
+          "SF-P5 FP guard: a genuine cross-bloc endorsement by trusted, varied, " +
+          `established accounts still scores (bridge_score=${s}). The anti-gaming ` +
+          "floor denies the F10 farm without nuking real bridges.",
       };
     },
   },

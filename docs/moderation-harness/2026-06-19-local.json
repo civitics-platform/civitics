@@ -1,8 +1,8 @@
 {
-  "ranAt": "2026-06-19T19:30:21.607Z",
-  "durationMs": 478,
+  "ranAt": "2026-06-19T20:36:22.601Z",
+  "durationMs": 518,
   "dbHost": "127.0.0.1:54322",
-  "sha": "376c2a17",
+  "sha": "5b4fb596",
   "rows": [
     {
       "fixtureId": "F1",
@@ -105,12 +105,21 @@
     },
     {
       "fixtureId": "F10",
-      "ruleId": "recompute_comment_bridge_scores (no anti-gaming)",
-      "expectation": "gap",
-      "expectedVerdict": "scorer should resist farming (low / no score)",
-      "computedVerdict": "farmed bridge_score=1.00000000000000000000",
-      "match": false,
-      "notes": "GAP (SF-P5): bridge_score is farmable via coordinated balanced cross-bloc valuable=+1 votes. Achieved score=1.00000000000000000000 with zero genuine disagreement. No anti-gaming layer. Permanent MISMATCH until the scorer is hardened."
+      "ruleId": "recompute_comment_bridge_scores (SF-P5 trusted-mass floor)",
+      "expectation": "handled",
+      "expectedVerdict": "scorer resists farming → low / null score",
+      "computedVerdict": "bridge_score=null (resisted=true)",
+      "match": true,
+      "notes": "SF-P5 (FIX-612): the balanced fake cross-vote by brand-new accounts no longer farms a score — bridge_score=null. The per-side account-age trusted-mass floor denies the farm while real cross-bloc endorsement (F10P) scores."
+    },
+    {
+      "fixtureId": "F10P",
+      "ruleId": "recompute_comment_bridge_scores (SF-P5 false-positive guard)",
+      "expectation": "handled",
+      "expectedVerdict": "genuine bridge by aged/varied accounts → high bridge_score",
+      "computedVerdict": "bridge_score=1.00000000000000000000 (scoredWell=true)",
+      "match": true,
+      "notes": "SF-P5 FP guard: a genuine cross-bloc endorsement by trusted, varied, established accounts still scores (bridge_score=1.00000000000000000000). The anti-gaming floor denies the F10 farm without nuking real bridges."
     },
     {
       "fixtureId": "F11",
@@ -182,10 +191,10 @@
     }
   ],
   "summary": {
-    "total": 14,
-    "matches": 12,
-    "mismatches": 2,
+    "total": 15,
+    "matches": 14,
+    "mismatches": 1,
     "regressions": 0,
-    "knownFailing": 2
+    "knownFailing": 1
   }
 }
