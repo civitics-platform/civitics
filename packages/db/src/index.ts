@@ -192,6 +192,8 @@ export type {
 export {
   getSupabasePrometheusMetrics,
   clearSupabasePrometheusCache,
+  parsePrometheusText,
+  NETWORK_VIRTUAL_DEVICES,
 } from "./supabase-prometheus";
 export type {
   SupabasePrometheusMetrics,

@@ -261,7 +261,13 @@ export async function computePlatformUsagePayload(
     const prom = await getSupabasePrometheusMetrics(db);
     if (!("error" in prom)) {
       await Promise.all([
-        updateUsage(db, "supabase", "egress_bytes", prom.egress_bytes_month_to_date, "api"),
+        // FIX-α: egress is raw NIC transmit (node_network_transmit_bytes_total),
+        // an UPPER BOUND on billable egress — it includes replication, PITR/WAL,
+        // and intra-AWS traffic, not just bytes to clients. Supabase exposes no
+        // public API for billable egress (Management API probed 2026-06-19: every
+        // egress endpoint 404s). Write it as "estimated" so the card shows the
+        // gray "~ Est." badge and it is excluded from critical/warning alerting.
+        updateUsage(db, "supabase", "egress_bytes", prom.egress_bytes_month_to_date, "estimated"),
         updateUsage(db, "supabase", "db_connections", prom.db_connections_active, "api"),
         updateUsage(db, "supabase", "disk_used_bytes", prom.disk_used_bytes, "api"),
         updateUsage(db, "supabase", "cpu_pct", prom.cpu_pct_current, "api"),
@@ -444,14 +450,19 @@ export async function computePlatformUsagePayload(
     .sort((a, b) => b.overage_cost - a.overage_cost || b.pct - a.pct)
     .slice(0, 3);
 
-  const anyCritical = metricsWithValues.some((m) => m.status === "critical");
-  const anyWarning = metricsWithValues.some((m) => m.status === "warning");
+  // FIX-α: "estimated" metrics (e.g. supabase.egress_bytes — a raw-NIC upper
+  // bound, not billable egress) must not trip the banner or escalation tallies.
+  // They can sit above 100% of a billable-egress limit without being real spend.
+  const alertable = metricsWithValues.filter((m) => m.source !== "estimated");
+
+  const anyCritical = alertable.some((m) => m.status === "critical");
+  const anyWarning = alertable.some((m) => m.status === "warning");
   const needsVerification = metricsWithValues.some(
     (m) => m.source_display.needsVerification,
   );
 
-  const criticalCount = metricsWithValues.filter((m) => m.status === "critical").length;
-  const warningCount = metricsWithValues.filter((m) => m.status === "warning").length;
+  const criticalCount = alertable.filter((m) => m.status === "critical").length;
+  const warningCount = alertable.filter((m) => m.status === "warning").length;
   const unverifiedCount = metricsWithValues.filter(
     (m) => m.source_display.needsVerification,
   ).length;

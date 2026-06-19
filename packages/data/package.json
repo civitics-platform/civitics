@@ -84,6 +84,8 @@
     "data:merge-unicameral-legislatures:prod": "tsx --env-file=../../.env.local.prod src/scripts/merge-unicameral-legislatures.ts --allow-prod --confirm",
     "data:backfill-gb-seat-counts": "tsx --env-file=../../.env.local src/scripts/backfill-gb-seat-counts.ts",
     "data:backfill-gb-seat-counts:prod": "tsx --env-file=../../.env.local.prod src/scripts/backfill-gb-seat-counts.ts --allow-prod",
+    "data:set-vercel-plan-pro": "tsx --env-file=../../.env.local src/scripts/set-vercel-plan-pro.ts",
+    "data:set-vercel-plan-pro:prod": "tsx --env-file=../../.env.local.prod src/scripts/set-vercel-plan-pro.ts --allow-prod",
     "data:backfill-gb-attribution": "tsx --env-file=../../.env.local src/scripts/backfill-gb-attribution.ts",
     "data:backfill-gb-attribution:prod": "tsx --env-file=../../.env.local.prod src/scripts/backfill-gb-attribution.ts --allow-prod",
     "data:backfill:individual-canonical": "tsx --env-file=../../.env.local src/scripts/backfill-individual-canonical-name.ts",

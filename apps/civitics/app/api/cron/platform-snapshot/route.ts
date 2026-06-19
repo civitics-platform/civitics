@@ -22,11 +22,98 @@
 export const dynamic = "force-dynamic";
 
 import { NextResponse, type NextRequest } from "next/server";
-import { createAdminClient, writePlatformUsageSnapshot } from "@civitics/db";
+import {
+  createAdminClient,
+  writePlatformUsageSnapshot,
+  type PlatformUsagePayload,
+} from "@civitics/db";
 import { writeStatusSnapshot } from "../../claude/status/_lib/status-snapshot";
-import { sendEmail, renderKillSwitchEmail } from "@/lib/email";
+import { sendEmail, renderKillSwitchEmail, renderMetricAlertEmail } from "@/lib/email";
 
 const SITE_URL_FALLBACK = "https://civitics-civitics.vercel.app";
+
+// Status ordering for escalation detection. We email only when a metric moves
+// UP this scale (healthy→warning, healthy→critical, warning→critical); a missing
+// prior row is treated as "healthy".
+const STATUS_RANK: Record<string, number> = { healthy: 0, warning: 1, critical: 2 };
+
+/**
+ * FIX-γ — edge-triggered per-metric threshold alerts.
+ *
+ * Compares each metric's current status against platform_alert_state.last_status
+ * and emails the admin only on ESCALATION, then records the new status so the
+ * 10-min cron doesn't re-page while the metric sits in the same band. Metrics
+ * with source='estimated' (e.g. the NIC egress upper-bound proxy) are skipped so
+ * they never alert. Best-effort: all failures are logged, never thrown.
+ */
+async function emailMetricThresholdAlerts(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  db: any,
+  payload: PlatformUsagePayload,
+  adminEmail: string,
+  siteUrl: string,
+): Promise<void> {
+  // Load prior states once; we compare every metric's current status against it.
+  const { data: priorRows, error: readErr } = await db
+    .from("platform_alert_state")
+    .select("metric_key, last_status");
+  if (readErr) {
+    console.warn(`[metric alert] could not read platform_alert_state: ${readErr.message}`);
+  }
+  const prior = new Map<string, string>(
+    (priorRows ?? []).map((r: { metric_key: string; last_status: string }) => [
+      r.metric_key,
+      r.last_status,
+    ]),
+  );
+
+  const nowIso = new Date().toISOString();
+
+  // Update state for EVERY non-estimated metric (so de-escalations are recorded),
+  // but only email on escalation.
+  const alertable = payload.metrics.filter(
+    (m) => m.value !== null && m.source !== "estimated",
+  );
+
+  await Promise.allSettled(
+    alertable.map(async (m) => {
+      const key = `${m.service}.${m.metric}`;
+      const prevRank = STATUS_RANK[prior.get(key) ?? "healthy"] ?? 0;
+      const currRank = STATUS_RANK[m.status] ?? 0;
+      const escalated = currRank > prevRank;
+
+      if (escalated && (m.status === "warning" || m.status === "critical")) {
+        const { subject, html } = renderMetricAlertEmail({
+          service: m.service,
+          metric: m.metric,
+          display_label: m.display_label ?? m.metric,
+          value: m.value as number,
+          limit: m.included_limit,
+          unit: m.unit,
+          pct: m.pct,
+          status: m.status,
+          siteUrl,
+        });
+        const sendResult = await sendEmail({ to: adminEmail, subject, html });
+        if (!sendResult.sent) {
+          console.warn(`[metric alert] not sent (${key}): ${sendResult.reason}`);
+        }
+      }
+
+      // Record current status regardless of direction so the next escalation is
+      // measured from the right baseline. Only bump last_alerted_at on a send.
+      const upsertRow = escalated
+        ? { metric_key: key, last_status: m.status, last_alerted_at: nowIso }
+        : { metric_key: key, last_status: m.status };
+      const { error: upsertErr } = await db
+        .from("platform_alert_state")
+        .upsert(upsertRow, { onConflict: "metric_key" });
+      if (upsertErr) {
+        console.warn(`[metric alert] state upsert failed (${key}): ${upsertErr.message}`);
+      }
+    }),
+  );
+}
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const authHeader = request.headers.get("authorization");
@@ -82,6 +169,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
           }
         }),
       );
+
+      // FIX-γ: edge-triggered per-metric threshold alerts (separate from the
+      // kill-switch flips above). Debounced via platform_alert_state so we only
+      // page once per escalation, not every 10-min tick.
+      await emailMetricThresholdAlerts(db, result.payload, adminEmail, siteUrl);
     }
   }
 

@@ -157,3 +157,59 @@ export function renderKillSwitchEmail(event: {
 
   return { subject, html };
 }
+
+/**
+ * Render a per-metric threshold-crossing alert email (FIX-γ).
+ *
+ * Distinct from the kill-switch flip email: this fires when a Platform Costs
+ * metric ESCALATES past its warning/critical threshold (healthy→warning,
+ * healthy→critical, warning→critical), debounced by platform_alert_state so the
+ * 10-min cron doesn't re-send while the metric sits in the same band. The
+ * snapshot caller is responsible for skipping source='estimated' rows (e.g. the
+ * NIC egress proxy) before calling this.
+ */
+export function renderMetricAlertEmail(args: {
+  service: string;
+  metric: string;
+  display_label: string;
+  value: number;
+  limit: number;
+  unit: string;
+  pct: number;
+  status: "warning" | "critical";
+  siteUrl: string;
+}): { subject: string; html: string } {
+  const { service, display_label, value, limit, unit, pct, status, siteUrl } = args;
+
+  const serviceLabel = service.charAt(0).toUpperCase() + service.slice(1);
+  const pctRounded = Math.round(pct);
+  const emoji = status === "critical" ? "🔴" : "⚠️";
+
+  const subject = `${emoji} ${serviceLabel} ${display_label} at ${pctRounded}% (${status})`;
+  const title = `${serviceLabel} · ${display_label} crossed ${status} threshold`;
+  const limitLabel = limit > 0 ? `${formatUsage(limit, unit)} limit` : "no fixed limit";
+  const body =
+    `${display_label} is at ${pctRounded}% — ${formatUsage(value, unit)} of ${limitLabel}. ` +
+    `Open the Operations tab to review usage and projected overage.`;
+
+  const html = renderNotificationEmail({
+    title,
+    body,
+    link: "/dashboard?tab=operations",
+    siteUrl,
+  });
+
+  return { subject, html };
+}
+
+/** Compact human-readable usage formatting for alert bodies. */
+function formatUsage(value: number, unit: string): string {
+  if (unit === "bytes") {
+    const gb = value / 1024 ** 3;
+    if (gb >= 1024) return `${(gb / 1024).toFixed(2)} TB`;
+    if (gb >= 1) return `${gb.toFixed(2)} GB`;
+    return `${(value / 1024 ** 2).toFixed(1)} MB`;
+  }
+  if (unit === "usd") return `$${value.toFixed(2)}`;
+  return `${Math.round(value).toLocaleString()} ${unit}`;
+}

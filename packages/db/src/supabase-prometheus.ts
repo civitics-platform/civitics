@@ -77,6 +77,18 @@ const METRICS_URL =
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const EGRESS_METRIC = "node_network_transmit_bytes_total";
 
+// Virtual/loopback network interfaces to exclude from the egress counter sum.
+// node_network_transmit_bytes_total is reported per `device=`; summing every
+// device would fold loopback and container-bridge traffic into "egress".
+// Matched as label substrings (open-ended for the numbered veth*/br*/cni* set).
+export const NETWORK_VIRTUAL_DEVICES = [
+  'device="lo"',
+  'device="docker',
+  'device="veth',
+  'device="br',
+  'device="cni',
+];
+
 // CPU counter state-table keys. These match the metric names used in
 // supabase_prometheus_state — applyCounterDelta keys off them.
 const CPU_BUSY_METRIC = "cpu_busy_seconds_total";
@@ -152,6 +164,14 @@ type PromMatch = {
   name: string;
   /** Optional label-substring predicate to pick a specific mount/device row. */
   labelContains?: string;
+  /**
+   * Optional list of label substrings to EXCLUDE. A row whose label blob
+   * contains any of these is skipped before summing. Used to keep virtual
+   * interfaces (lo/docker/veth/br/cni) out of the network egress counter,
+   * which would otherwise inflate it. Prefer this over hardcoding a single
+   * `device="ens5"` match — the physical interface name varies by host/tier.
+   */
+  labelExcludes?: string[];
 };
 
 export function parsePrometheusText(
@@ -181,6 +201,9 @@ export function parsePrometheusText(
     for (const w of wants) {
       if (w.name !== name) continue;
       if (w.labelContains && !labelBlob.includes(w.labelContains)) continue;
+      if (w.labelExcludes && w.labelExcludes.some((ex) => labelBlob.includes(ex))) {
+        continue;
+      }
       // Sum across matching rows so multi-device counters aggregate cleanly.
       out.set(
         keyOf(w),
@@ -375,7 +398,10 @@ export async function getSupabasePrometheusMetrics(
     const text = await res.text();
 
     const wants: PromMatch[] = [
-      { name: EGRESS_METRIC },
+      // Exclude virtual interfaces so only physical NIC transmit is summed.
+      // Today prod exposes a single device="ens5", but the endpoint can expose
+      // lo/docker/veth/br/cni on other tiers/hosts, which would inflate egress.
+      { name: EGRESS_METRIC, labelExcludes: NETWORK_VIRTUAL_DEVICES },
       { name: "pg_stat_database_num_backends" },
       {
         name: "node_filesystem_size_bytes",
