@@ -787,3 +787,4 @@
 2026-06-20 | FIX-619 | 3984963f | local+prod | feat(officials): engagement badges + most-engaged sort, backed by entity engagement rollup
 2026-06-20 | FIX-619 | 6114fdb4 | local+prod | fix(officials): attach engagement via one unfiltered rollup fetch, not a 1000-id in()
 2026-06-20 | FIX-619 | 016336ea | local+prod | fix(officials): pull engagement-signal officials into the index payload past the 1000-row cap
+2026-06-20 | FIX-621 | 685768d8 | local+prod | feat(franklin): narrative spine (HB-14), money trail, and Commons strip
