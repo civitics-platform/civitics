@@ -22,6 +22,27 @@ import { OfficialRosterCard, type OfficialRosterData } from "../components/cards
 import { InstitutionCard, type InstitutionCardData } from "../components/cards/InstitutionCard";
 import { ProposalCard, type ProposalCardData } from "../proposals/components/ProposalCard";
 import { InitiativeCard, type InitiativeCardData } from "../initiatives/components/InitiativeCard";
+import type { MeetingCardData } from "../components/cards/MeetingCard";
+import { StorySpine, type ResolvedStop } from "./components/StorySpine";
+import { MoneyFlow, type MoneyDonor } from "./components/MoneyFlow";
+import { CommonsStrip, type CommonsPosition } from "./components/CommonsStrip";
+import {
+  FRANKLIN_SPINE,
+  FRANKLIN_BILL_NUMBER,
+  OPPOSITION_PAC_NAME,
+  RIDGELINE_INVESTIGATION_TITLES,
+  PLATEAU_INITIATIVE_TITLE,
+} from "./spine";
+
+const PROPOSAL_STATUS_LABEL: Record<string, string> = {
+  open_comment: "Open for comment",
+  introduced: "Introduced",
+  in_committee: "In committee",
+  passed: "Passed",
+  enacted: "Signed into law",
+  failed: "Failed",
+  closed: "Closed",
+};
 
 export const revalidate = 300;
 
@@ -212,7 +233,7 @@ export default async function FranklinHubPage() {
   }>;
   const jurisdictionIds = [stateId, ...children.map((c) => c.id)];
 
-  const [instRes, offRes, propRes, initRes, investRes, qaRes] = await Promise.all([
+  const [instRes, offRes, propRes, initRes, investRes, qaRes, finEntRes, gbRes, bdRes] = await Promise.all([
     supabase
       .from("institutions")
       .select("id, name, short_name, type, acronym, source_table, is_synthetic")
@@ -266,6 +287,28 @@ export default async function FranklinHubPage() {
       p_sort: "wanted",
       p_limit: 5,
     }),
+    // Spine "money" stop + Follow-the-money flow: the synthetic finance graph.
+    // is_synthetic returns only Franklin's seeded entities (decision 2 — resolve
+    // the PAC by display_name, never franklin_seed_map).
+    supabase
+      .from("financial_entities")
+      .select("id, display_name, entity_type, is_synthetic")
+      .eq("is_synthetic", true)
+      .limit(50),
+    // Governing bodies under Franklin — ids scope the upcoming-meetings query
+    // (meetings link via governing_body_id, not jurisdiction_id).
+    supabase
+      .from("governing_bodies")
+      .select("id")
+      .in("jurisdiction_id", jurisdictionIds)
+      .eq("is_active", true),
+    // bill_number lives on bill_details, NOT proposals (the promotion moved it —
+    // see CLAUDE.md). bill_details carries jurisdiction_id, so resolve HB-14's
+    // proposal id here without a dependent round-trip.
+    supabase
+      .from("bill_details")
+      .select("proposal_id, bill_number")
+      .in("jurisdiction_id", jurisdictionIds),
   ]);
 
   // ── Institutions ────────────────────────────────────────────────────────────
@@ -349,6 +392,237 @@ export default async function FranklinHubPage() {
   const qaHighlight =
     qaQuestions.find((q) => q.answered && q.answers && q.answers.length > 0) ?? null;
 
+  // ── "Follow HB-14" spine + money flow + Commons strip (FIX-621) ─────────────
+  // Resolve each spine stop to a LIVE record (decision 1 & 2): natural keys only,
+  // never franklin_seed_map (RLS-blocked for anon). Most stops resolve out of the
+  // data already fetched above; a small dependent wave fills in the few live facts
+  // that need ids (the vote split, evidence counts, the finance edges, the top
+  // bridge comment, the position rollup, upcoming meetings).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const proposalsRaw = (propRes.data ?? []) as any[];
+  const billNumByProp = new Map<string, string>();
+  for (const bd of (bdRes.data ?? []) as Array<{ proposal_id: string; bill_number: string | null }>) {
+    if (bd.bill_number) billNumByProp.set(bd.proposal_id, bd.bill_number);
+  }
+  const hb14PropId =
+    [...billNumByProp.entries()].find(([, bn]) => bn === FRANKLIN_BILL_NUMBER)?.[0] ?? null;
+  const hb14 = hb14PropId ? proposalsRaw.find((p) => p.id === hb14PropId) ?? null : null;
+  const ridgelineInvs = investigations.filter((inv) =>
+    RIDGELINE_INVESTIGATION_TITLES.includes(inv.title)
+  );
+  const initiativeRow = initiatives.find((i) => i.title === PLATEAU_INITIATIVE_TITLE) ?? null;
+
+  const finEntities = (finEntRes.data ?? []) as Array<{ id: string; display_name: string }>;
+  const finById = new Map(finEntities.map((e) => [e.id, e]));
+  const oppositionPac = finEntities.find((e) => e.display_name === OPPOSITION_PAC_NAME) ?? null;
+  const gbIds = ((gbRes.data ?? []) as Array<{ id: string }>).map((g) => g.id);
+
+  const nowIso = new Date().toISOString();
+  const [votesRes, evidRes, donRes, commentRes, rollupRes, meetingRes] = await Promise.all([
+    hb14
+      ? supabase.from("votes").select("vote, official_id").eq("bill_proposal_id", hb14.id)
+      : Promise.resolve({ data: [] }),
+    ridgelineInvs.length
+      ? supabase
+          .from("evidence_cards")
+          .select("investigation_id")
+          .in("investigation_id", ridgelineInvs.map((i) => i.id))
+      : Promise.resolve({ data: [] }),
+    finEntities.length
+      ? supabase
+          .from("financial_relationships")
+          .select("from_id, to_id, to_type, amount_cents")
+          .eq("relationship_type", "donation")
+          .eq("from_type", "financial_entity")
+          .in("from_id", finEntities.map((e) => e.id))
+      : Promise.resolve({ data: [] }),
+    hb14
+      ? supabase
+          .from("entity_comments")
+          .select("id, body, bridge_score", { count: "exact" })
+          .eq("entity_type", "proposal")
+          .eq("entity_id", hb14.id)
+          .not("kind", "in", "(question,answer)")
+          .order("bridge_score", { ascending: false, nullsFirst: false })
+          .limit(1)
+      : Promise.resolve({ data: [], count: 0 }),
+    hb14
+      ? supabase.rpc("get_position_rollup_display", {
+          p_entity_type: "proposal",
+          p_entity_id: hb14.id,
+          p_lens: "all",
+        })
+      : Promise.resolve({ data: null }),
+    gbIds.length
+      ? supabase
+          .from("meetings")
+          .select("id, title, meeting_type, scheduled_at, agenda_url, governing_bodies(name)")
+          .in("governing_body_id", gbIds)
+          .gte("scheduled_at", nowIso)
+          .order("scheduled_at", { ascending: true })
+          .limit(3)
+      : Promise.resolve({ data: [] }),
+  ]);
+
+  // Vote split (live).
+  const voteRows = (votesRes.data ?? []) as Array<{ vote: string; official_id: string }>;
+  const yesCount = voteRows.filter((v) => v.vote === "yes").length;
+  const noCount = voteRows.filter((v) => v.vote === "no").length;
+  const noVoterIds = new Set(
+    voteRows.filter((v) => v.vote === "no").map((v) => v.official_id)
+  );
+  const votePassed = yesCount > noCount;
+
+  // Evidence-card count across the cited investigations (live).
+  const evidenceTotal = ((evidRes.data ?? []) as unknown[]).length;
+
+  // Finance edges among the synthetic entities (live).
+  const donations = (donRes.data ?? []) as Array<{
+    from_id: string;
+    to_id: string;
+    to_type: string;
+    amount_cents: number | null;
+  }>;
+  let moneyData:
+    | {
+        pacId: string;
+        pacName: string;
+        donors: MoneyDonor[];
+        donorsTotalCents: number;
+        noVotesFunded: number;
+        noVotesTotal: number;
+      }
+    | null = null;
+  if (oppositionPac) {
+    const pacId = oppositionPac.id;
+    const donorMap = new Map<string, number>();
+    for (const d of donations) {
+      if (d.to_type === "financial_entity" && d.to_id === pacId) {
+        donorMap.set(d.from_id, (donorMap.get(d.from_id) ?? 0) + (d.amount_cents ?? 0));
+      }
+    }
+    const donors: MoneyDonor[] = [...donorMap.entries()]
+      .map(([id, cents]) => ({
+        id,
+        name: finById.get(id)?.display_name ?? "Donor",
+        amountCents: cents,
+      }))
+      .sort((a, b) => (b.amountCents ?? 0) - (a.amountCents ?? 0));
+    const donorsTotalCents = donors.reduce((s, d) => s + (d.amountCents ?? 0), 0);
+    // The 3-of-4 figure, computed: NO-voters who took money from this PAC.
+    const fundedNoVoters = new Set(
+      donations
+        .filter((d) => d.from_id === pacId && d.to_type === "official" && noVoterIds.has(d.to_id))
+        .map((d) => d.to_id)
+    );
+    moneyData = {
+      pacId,
+      pacName: oppositionPac.display_name,
+      donors,
+      donorsTotalCents,
+      noVotesFunded: fundedNoVoters.size,
+      noVotesTotal: noCount,
+    };
+  }
+
+  // Top bridge-scored comment + total discussion comments (live).
+  const commentRows = (commentRes.data ?? []) as Array<{
+    id: string;
+    body: string;
+    bridge_score: number | null;
+  }>;
+  const topComment = commentRows[0]
+    ? { body: commentRows[0].body, bridgeScore: commentRows[0].bridge_score }
+    : null;
+  const commentTotal =
+    typeof (commentRes as { count?: number }).count === "number"
+      ? (commentRes as { count?: number }).count!
+      : 0;
+
+  // Where-people-stand bar from the display rollup (no recompute, decision 6).
+  const rollupRow = (Array.isArray(rollupRes.data) ? rollupRes.data[0] : rollupRes.data) as
+    | { buckets: Record<string, number> | null; n: number | null; synthetic?: boolean }
+    | null
+    | undefined;
+  let commonsPosition: CommonsPosition | null = null;
+  if (rollupRow && rollupRow.buckets) {
+    const b = rollupRow.buckets;
+    const sum = (keys: string[]) => keys.reduce((s, k) => s + (Number(b[k]) || 0), 0);
+    const oppose = sum(["-3", "-2", "-1"]);
+    const mixed = sum(["0"]);
+    const support = sum(["1", "2", "3"]);
+    const n = Number(rollupRow.n) || oppose + mixed + support;
+    if (n > 0) {
+      commonsPosition = { oppose, mixed, support, n, synthetic: !!rollupRow.synthetic };
+    }
+  }
+
+  // Upcoming meetings (none seeded for Franklin today → panel omits gracefully).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const meetings: MeetingCardData[] = ((meetingRes.data ?? []) as any[]).map((m) => {
+    const gb = Array.isArray(m.governing_bodies) ? m.governing_bodies[0] : m.governing_bodies;
+    return {
+      id: m.id,
+      title: m.title,
+      meeting_type: m.meeting_type,
+      scheduled_at: m.scheduled_at,
+      bodyName: gb?.name ?? null,
+      agenda_url: m.agenda_url ?? null,
+      is_synthetic: true, // every Franklin record is synthetic
+    };
+  });
+
+  // Resolve the declarative spine into rendered stops (skip any that can't resolve).
+  const proposalHref = hb14 ? `/proposals/${hb14.id}` : null;
+  const investigationHref = ridgelineInvs[0] ? `/investigations/${ridgelineInvs[0].id}` : null;
+  const resolvedStops: ResolvedStop[] = [];
+  for (const stop of FRANKLIN_SPINE) {
+    const base = { id: stop.id, kicker: stop.kicker, connective: stop.connective, cta: stop.cta };
+    if (stop.metric === "bill_status" && hb14 && proposalHref) {
+      resolvedStops.push({
+        ...base,
+        value: PROPOSAL_STATUS_LABEL[hb14.status] ?? hb14.status,
+        detail: hb14.title,
+        href: proposalHref,
+      });
+    } else if (stop.metric === "vote_split" && hb14 && proposalHref && voteRows.length > 0) {
+      resolvedStops.push({
+        ...base,
+        value: `${votePassed ? "Passed" : "Failed"} ${yesCount}–${noCount}`,
+        detail: "Roll call on the Assembly floor",
+        href: proposalHref,
+      });
+    } else if (stop.metric === "pac_no_votes" && moneyData) {
+      resolvedStops.push({
+        ...base,
+        value: moneyData.pacName,
+        detail: `funded ${moneyData.noVotesFunded} of ${moneyData.noVotesTotal} NO votes`,
+        href: `/donors/${moneyData.pacId}`,
+      });
+    } else if (stop.metric === "evidence_count" && investigationHref) {
+      resolvedStops.push({
+        ...base,
+        value: `${ridgelineInvs.length} investigation${ridgelineInvs.length === 1 ? "" : "s"}`,
+        detail: `${evidenceTotal} evidence cards`,
+        href: investigationHref,
+      });
+    } else if (stop.metric === "comment_count" && proposalHref) {
+      resolvedStops.push({
+        ...base,
+        value: commentTotal > 0 ? `${commentTotal} comment${commentTotal === 1 ? "" : "s"}` : "Open thread",
+        detail: "Bridge-ranked, both sides",
+        href: proposalHref,
+      });
+    } else if (stop.metric === "initiative" && initiativeRow) {
+      resolvedStops.push({
+        ...base,
+        value: initiativeRow.title,
+        detail: "Citizen-sponsored",
+        href: `/initiatives/${initiativeRow.id}`,
+      });
+    }
+  }
+
   // ── Hero stat strip (real counts from what was fetched) ─────────────────────
   const stats: Array<{ n: string; l: string }> = [
     { n: String(jurisdictionIds.length), l: "Jurisdictions" },
@@ -404,6 +678,22 @@ export default async function FranklinHubPage() {
             ))}
           </div>
         </section>
+
+        {/* ── 1b. Start with the story — the HB-14 spine (FIX-621) ── */}
+        {resolvedStops.length > 0 && hb14 && (
+          <HubSection
+            kicker="Start with the story"
+            title="Follow HB-14 all the way through"
+            subtitle="The Ridgeline Clean Energy Act threads every surface together — one click each."
+            meta="Guided spine"
+          >
+            <StorySpine
+              billLabel={billNumByProp.get(hb14.id) ?? FRANKLIN_BILL_NUMBER}
+              billTitle={hb14.title}
+              stops={resolvedStops}
+            />
+          </HubSection>
+        )}
 
         {/* ── 2. The place ── */}
         <HubSection
@@ -533,6 +823,27 @@ export default async function FranklinHubPage() {
           </HubSection>
         )}
 
+        {/* ── 7b. Follow the money (FIX-621) ── */}
+        {moneyData && (
+          <HubSection
+            kicker="Campaign finance"
+            title="Follow the money"
+            subtitle="Donors → the opposition PAC → the HB-14 NO votes. Every edge is a record; the cited claim lives in the investigation."
+            meta={`${moneyData.donors.length} donors · graph-linked`}
+          >
+            <MoneyFlow
+              pacId={moneyData.pacId}
+              pacName={moneyData.pacName}
+              donors={moneyData.donors}
+              donorsTotalCents={moneyData.donorsTotalCents}
+              noVotesFunded={moneyData.noVotesFunded}
+              noVotesTotal={moneyData.noVotesTotal}
+              graphHref="/graph"
+              investigationHref={investigationHref}
+            />
+          </HubSection>
+        )}
+
         {/* ── 8. Q&A highlight (the discoverability fix) ── */}
         {qaHighlight && (
           <HubSection
@@ -545,6 +856,23 @@ export default async function FranklinHubPage() {
               entityHref={`/jurisdictions/${stateId}`}
               entityLabel={stateLabel}
               total={qaTotal}
+            />
+          </HubSection>
+        )}
+
+        {/* ── 9. The Commons (FIX-621) ── */}
+        {(topComment || (commonsPosition && commonsPosition.n > 0) || meetings.length > 0) && hb14 && (
+          <HubSection
+            kicker="The people"
+            title="The Commons"
+            subtitle="Discussion anchored to the record — where people stand, and what's next."
+          >
+            <CommonsStrip
+              topComment={topComment}
+              commentTotal={commentTotal}
+              position={commonsPosition}
+              proposalHref={proposalHref ?? "/proposals"}
+              meetings={meetings}
             />
           </HubSection>
         )}
