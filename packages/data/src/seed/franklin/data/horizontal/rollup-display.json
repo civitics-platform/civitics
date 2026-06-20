@@ -1,0 +1,36 @@
+{
+  "_meta": {
+    "purpose": "FIX-614 — authored position-rollup distributions for synthetic proposals. DISPLAY-ONLY, mirroring authored bridge scores / Commons MV Option 2. The live get_entity_position_rollup still EXCLUDES synthetic (no standing); this feeds a separate, clearly-labeled display path so the rollup strip renders on Franklin's proposals.",
+    "ISOLATION (critical)": "These values must be read ONLY by the PositionRollupStrip display for synthetic entities. They must NOT feed compute_alignment_score, user_civic_stats, the choropleth, or any computation that confers standing/consequence — exactly like bridge_score on synthetic comments is ignored by the live scorer. Label SYNTHETIC on the strip (SF-P2).",
+    "shape": "7-stop stance buckets -3..+3 (strong oppose … strong support); `n` = total; `median` = the median stance stop; optional `constituent` = the constituent-lens subset (for the toggle). Distributions are authored to cohere with each proposal's storyline lean + the seeded individual positions (just at a fuller n, like statements' authored vote counts).",
+    "coverage": "The 4 active-deliberation proposals with threads/positions. Others can be added later; absent = rollup simply stays gated for that entity."
+  },
+
+  "rollups": [
+    {
+      "entity_id": "prop-hb14",
+      "note": "Contested marquee — bimodal (strong support AND strong oppose both real), net lean support after the cost-cap/bridge convergence. Mirrors the 6–4 Assembly split at public scale.",
+      "buckets": { "-3": 14, "-2": 12, "-1": 10, "0": 18, "1": 22, "2": 26, "3": 28 },
+      "median": 1, "n": 130,
+      "constituent": { "note": "Plateau + valley constituents only — more polarized, slightly more oppose.", "buckets": { "-3": 11, "-2": 8, "-1": 6, "0": 9, "1": 8, "2": 9, "3": 9 }, "median": 0, "n": 60 }
+    },
+    {
+      "entity_id": "prop-cm22",
+      "note": "Broadband — leans support, especially with the county-line build-out framing (B-2).",
+      "buckets": { "-3": 4, "-2": 5, "-1": 7, "0": 11, "1": 18, "2": 22, "3": 18 },
+      "median": 2, "n": 85
+    },
+    {
+      "entity_id": "prop-hb09",
+      "note": "Water rights — split + technical; the B-3 convergence pulled several toward conditional/neutral.",
+      "buckets": { "-3": 6, "-2": 8, "-1": 9, "0": 16, "1": 13, "2": 10, "3": 8 },
+      "median": 0, "n": 70
+    },
+    {
+      "entity_id": "prop-cm15",
+      "note": "Short-term rentals — genuinely split; the primary-residence carve-out (B-4) is the hinge.",
+      "buckets": { "-3": 8, "-2": 7, "-1": 8, "0": 12, "1": 10, "2": 8, "3": 7 },
+      "median": 0, "n": 60
+    }
+  ]
+}

@@ -5455,6 +5455,16 @@ export type Database = {
         }
         Returns: Json
       }
+      get_position_rollup_display: {
+        Args: { p_entity_id: string; p_entity_type: string; p_lens?: string }
+        Returns: {
+          buckets: Json
+          median: number
+          n: number
+          pct_with_conditions: number
+          synthetic: boolean
+        }[]
+      }
       get_entity_statements: {
         Args: {
           p_cursor?: string

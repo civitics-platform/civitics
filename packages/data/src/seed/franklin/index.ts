@@ -241,6 +241,21 @@ interface Follows {
   user_follows: Array<Json & { user: string; entity_type: string; entity: string }>;
   initiative_follows: Array<Json & { user: string; initiative: string }>;
 }
+// Authored position-rollup display distributions (FIX-614). DISPLAY-ONLY: written
+// to synthetic_position_rollup, read ONLY by get_position_rollup_display for
+// synthetic entities. Confers no standing — the live get_entity_position_rollup
+// still excludes synthetic. Mirrors authored bridge_score on synthetic comments.
+interface RollupDisplay {
+  rollups: Array<
+    Json & {
+      entity_id: string;
+      buckets: Record<string, number>;
+      median: number;
+      n: number;
+      constituent?: { buckets: Record<string, number>; median: number; n: number } | null;
+    }
+  >;
+}
 
 // ---------------------------------------------------------------------------
 // Mapping helpers (logical -> physical).
@@ -875,6 +890,27 @@ async function seedFollows(ctx: SeedCtx, f: Follows): Promise<void> {
   }
 }
 
+// Authored position-rollup display rows (FIX-614). DISPLAY-ONLY, synthetic-only.
+// Idempotent via the (entity_type, entity_id) PK. The authored distribution is
+// read ONLY by get_position_rollup_display; it must never reach a standing
+// computation (same isolation as authored bridge_score on synthetic comments).
+async function seedRollupDisplay(ctx: SeedCtx, r: RollupDisplay): Promise<void> {
+  for (const rollup of r.rollups) {
+    const entityId = ctx.id(rollup.entity_id); // synthetic proposal
+    const constituent = rollup.constituent
+      ? jb({ buckets: rollup.constituent.buckets, median: rollup.constituent.median, n: rollup.constituent.n })
+      : null;
+    await ctx.query(
+      `INSERT INTO public.synthetic_position_rollup (entity_type, entity_id, buckets, median, n, constituent)
+       VALUES ('proposal', $1, $2::jsonb, $3, $4, $5::jsonb)
+       ON CONFLICT (entity_type, entity_id) DO UPDATE
+         SET buckets = EXCLUDED.buckets, median = EXCLUDED.median,
+             n = EXCLUDED.n, constituent = EXCLUDED.constituent`,
+      [entityId, jb(rollup.buckets), rollup.median, rollup.n, constituent],
+    );
+  }
+}
+
 async function seedFixtures(ctx: SeedCtx, f: Fixtures): Promise<void> {
   for (const fa of f.fixture_authors) {
     const { seed_key, handle, ...rest } = fa;
@@ -1189,6 +1225,7 @@ async function main(): Promise<void> {
     const statements = loadJson<Statements>("horizontal/statements.json");
     const qa = loadJson<QA>("horizontal/qa-officials.json");
     const follows = loadJson<Follows>("horizontal/follows.json");
+    const rollupDisplay = loadJson<RollupDisplay>("horizontal/rollup-display.json");
     // positions-plus also carries additional citizen positions (to cross the
     // rollup min-n) under `positions` — fold them into the positions set.
     positions.positions.push(...loadJson<Positions>("horizontal/positions-plus.json").positions);
@@ -1216,6 +1253,8 @@ async function main(): Promise<void> {
     await seedQA(ctx, qa);
     console.log("12e  follows (user_follows + civic_initiative_follows)…");
     await seedFollows(ctx, follows);
+    console.log("12f  position-rollup display (authored, synthetic-only, FIX-614)…");
+    await seedRollupDisplay(ctx, rollupDisplay);
     console.log("13   moderation fixtures + content_flags (≥3 → needs_review)…");
     await seedFixtures(ctx, fixtures);
     console.log("14   Investigations #1 + #2 (evidence cards + citations + promotion)…");

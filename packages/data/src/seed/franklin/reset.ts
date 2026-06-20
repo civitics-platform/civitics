@@ -71,6 +71,9 @@ async function main(): Promise<void> {
     `DELETE FROM public.entity_statements WHERE author_id IN ${SYN_USERS}`,
     `DELETE FROM public.entity_comments WHERE author_id IN ${SYN_USERS}`,
     `DELETE FROM public.entity_positions WHERE user_id IN ${SYN_USERS}`,
+    // authored display-only rollups (FIX-614) — table is synthetic-only by
+    // construction, so a wholesale delete is correct + FK-safe (no deps).
+    `DELETE FROM public.synthetic_position_rollup`,
     // investigations cascade -> evidence_cards -> citations + edge audit
     `DELETE FROM public.investigations WHERE is_synthetic`,
     // graph edges promoted from synthetic investigation evidence

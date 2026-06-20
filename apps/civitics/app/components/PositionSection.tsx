@@ -32,6 +32,9 @@ type Rollup = {
   median: number | null;
   pct_with_conditions: number | null;
   buckets: Record<string, number> | null;
+  // FIX-614: true when the distribution is an AUTHORED, display-only rollup for a
+  // synthetic entity (renders the SYNTHETIC label). Confers no standing.
+  synthetic?: boolean;
 };
 
 type CommentLite = {
@@ -112,7 +115,10 @@ function PositionRollupStrip({
   return (
     <div className="border border-rule bg-card p-4">
       <div className="mb-2 flex items-center justify-between">
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-ink-soft">Where people stand</h3>
+        <h3 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-ink-soft">
+          Where people stand
+          {rollup?.synthetic && <SyntheticMark size="xs" />}
+        </h3>
         {lensEnabled && (
           <button
             type="button"

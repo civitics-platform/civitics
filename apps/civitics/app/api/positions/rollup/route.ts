@@ -1,10 +1,15 @@
 // Position rollup API (C1 / FIX-524) — aggregate-only public read over the
 // entity_positions spine (FIX-523).
 //
-// Calls get_entity_position_rollup() (GRANT EXECUTE to anon) which returns the
-// 7-bucket distribution, median, pct_with_conditions and n — all NULL except n
-// below MIN_POSITIONS_FOR_ROLLUP (10). No user data, so anon is fine; kept
-// dynamic (premature caching of near-empty aggregates isn't worth header tuning).
+// Calls get_position_rollup_display() (GRANT EXECUTE to anon), the FIX-614
+// display seam: for a SYNTHETIC entity it returns an AUTHORED, display-only
+// distribution (flagged synthetic=true → strip renders the SYNTHETIC label);
+// for a real entity it delegates to the unchanged get_entity_position_rollup()
+// (still synthetic-gated, no standing). The authored rollup confers nothing —
+// no standing computation reads it. Returns the 7-bucket distribution, median,
+// pct_with_conditions and n — all NULL except n below MIN_POSITIONS_FOR_ROLLUP
+// (10) for the live path. No user data, so anon is fine; kept dynamic (premature
+// caching of near-empty aggregates isn't worth header tuning).
 
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
@@ -18,6 +23,7 @@ type Rollup = {
   median: number | null;
   pct_with_conditions: number | null;
   buckets: Record<string, number> | null;
+  synthetic: boolean;
 };
 
 export async function GET(request: NextRequest) {
@@ -37,7 +43,7 @@ export async function GET(request: NextRequest) {
     const cookieStore = await cookies();
     const supabase = createServerClient(cookieStore);
 
-    const { data, error } = await supabase.rpc("get_entity_position_rollup", {
+    const { data, error } = await supabase.rpc("get_position_rollup_display", {
       p_entity_type: entityType,
       p_entity_id: entityId,
       p_lens: lens,
@@ -49,7 +55,13 @@ export async function GET(request: NextRequest) {
 
     // The function returns a single-row TABLE → array with one element.
     const row = (Array.isArray(data) ? data[0] : data) as Rollup | undefined;
-    const rollup: Rollup = row ?? { n: 0, median: null, pct_with_conditions: null, buckets: null };
+    const rollup: Rollup = row ?? {
+      n: 0,
+      median: null,
+      pct_with_conditions: null,
+      buckets: null,
+      synthetic: false,
+    };
     return NextResponse.json({ rollup, lens }, { status: 200 });
   } catch {
     return NextResponse.json({ error: "Failed to load rollup" }, { status: 500 });
