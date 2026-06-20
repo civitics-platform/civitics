@@ -60,6 +60,7 @@ async function main(): Promise<void> {
   const SYN_PROPS = `(SELECT id FROM public.proposals WHERE is_synthetic)`;
   const SYN_FE = `(SELECT entity_id FROM public.synthetic_entities WHERE entity_type = 'financial_entity')`;
   const SYN_OFF = `(SELECT entity_id FROM public.synthetic_entities WHERE entity_type = 'official')`;
+  const SYN_GB = `(SELECT id FROM public.governing_bodies WHERE is_synthetic)`;
 
   const stmts: string[] = [
     // content flags on synthetic comments or by synthetic flaggers
@@ -96,6 +97,11 @@ async function main(): Promise<void> {
     `DELETE FROM public.officials WHERE is_synthetic`,
     `DELETE FROM public.financial_entities WHERE is_synthetic`,
     `DELETE FROM public.agencies WHERE is_synthetic`,
+    // meetings (FIX-622): no is_synthetic column — scope by synthetic governing
+    // body. agenda_items cascade from meetings, but delete them explicitly first
+    // (FK order + clarity); meetings must go before the governing-body delete.
+    `DELETE FROM public.agenda_items WHERE meeting_id IN (SELECT id FROM public.meetings WHERE governing_body_id IN ${SYN_GB})`,
+    `DELETE FROM public.meetings WHERE governing_body_id IN ${SYN_GB}`,
     `DELETE FROM public.governing_bodies WHERE is_synthetic`,
     `DELETE FROM public.jurisdictions WHERE is_synthetic`,
     `DELETE FROM public.entity_grants WHERE user_id IN ${SYN_USERS}`,

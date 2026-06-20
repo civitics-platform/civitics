@@ -190,6 +190,36 @@ interface Fixtures {
   >;
 }
 
+// Governing-body meetings + agenda items (FIX-622). Powers the Commons "Public
+// meetings" panel on /franklin. offset_days is RELATIVE to run-time so re-runs
+// keep the upcoming rows in the future; quarantine rides the synthetic
+// governing_body_id (the meetings table has no is_synthetic column).
+interface Meetings {
+  meetings: Array<
+    Json & {
+      seed_key: string;
+      governing_body: string;
+      meeting_type: string;
+      status: string;
+      offset_days: number;
+      title: string;
+      location?: string | null;
+      agenda_url?: string | null;
+      minutes_url?: string | null;
+      agenda_items: Array<
+        Json & {
+          seed_key: string;
+          proposal?: string | null;
+          sequence: number;
+          title: string;
+          item_type?: string | null;
+          description?: string | null;
+        }
+      >;
+    }
+  >;
+}
+
 // ── Horizontal-coverage logical shapes (FIX-613) ────────────────────────────
 // A persuasion delta: seed a prior stance, then an attributed stance change that
 // credits a comment (bumps that comment's rating_summary.deltas via the trigger).
@@ -651,6 +681,52 @@ async function seedProposalsAndVotes(ctx: SeedCtx, p: Proposals): Promise<void> 
           chamber: prop.chamber,
           session: "2026",
           metadata: jb({ seed_key: voteKey, note: v.note ?? null }),
+        },
+        new Set(["metadata"]),
+      );
+    }
+  }
+}
+
+// Governing-body meetings + agenda items (FIX-622). Idempotent via seed_key;
+// scheduled_at is computed RELATIVE to run-time (now + offset_days) so a re-seed
+// refreshes the demo — upcoming rows stay future, the past row stays past. Runs
+// after entities (governing_body_id FK) and proposals (agenda_items.proposal_id
+// FK). Quarantine is by the synthetic governing_body_id — no is_synthetic column.
+async function seedMeetings(ctx: SeedCtx, m: Meetings): Promise<void> {
+  const DAY_MS = 86_400_000;
+  for (const mtg of m.meetings) {
+    const scheduledAt = new Date(Date.now() + mtg.offset_days * DAY_MS).toISOString();
+    const meetingId = await upsertById(
+      ctx,
+      mtg.seed_key,
+      "meetings",
+      {
+        governing_body_id: ctx.id(mtg.governing_body),
+        meeting_type: mtg.meeting_type,
+        title: mtg.title,
+        scheduled_at: scheduledAt,
+        location: mtg.location ?? null,
+        status: mtg.status,
+        agenda_url: mtg.agenda_url ?? null,
+        minutes_url: mtg.minutes_url ?? null,
+        metadata: jb({ seed_key: mtg.seed_key, offset_days: mtg.offset_days }),
+      },
+      new Set(["metadata"]),
+    );
+    for (const item of mtg.agenda_items) {
+      await upsertById(
+        ctx,
+        item.seed_key,
+        "agenda_items",
+        {
+          meeting_id: meetingId,
+          proposal_id: item.proposal ? ctx.id(item.proposal) : null,
+          sequence: item.sequence,
+          title: item.title,
+          item_type: item.item_type ?? null,
+          description: item.description ?? null,
+          metadata: jb({ seed_key: item.seed_key }),
         },
         new Set(["metadata"]),
       );
@@ -1262,6 +1338,7 @@ async function main(): Promise<void> {
     const money = loadJson<MoneyGraph>("money-graph.json");
     const citizens = loadJson<Citizens>("citizens.json");
     const fixtures = loadJson<Fixtures>("fixtures.json");
+    const meetings = loadJson<Meetings>("meetings.json");
 
     const proposals: Proposals = {
       proposals: [
@@ -1322,6 +1399,8 @@ async function main(): Promise<void> {
     await seedMoney(ctx, money);
     console.log("7-8  proposals + bill_details + votes (assembly + council)…");
     await seedProposalsAndVotes(ctx, proposals);
+    console.log("8b   meetings + agenda items (Commons 'Public meetings' panel)…");
+    await seedMeetings(ctx, meetings);
     console.log("10   citizen + curator + fixture-author users…");
     await upsertUser(ctx, "user-curator", "Franklin Commons", { role: "curator", is_curator: true });
     await seedCitizens(ctx, citizens);

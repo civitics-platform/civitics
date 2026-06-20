@@ -417,7 +417,10 @@ export default async function FranklinHubPage() {
   const oppositionPac = finEntities.find((e) => e.display_name === OPPOSITION_PAC_NAME) ?? null;
   const gbIds = ((gbRes.data ?? []) as Array<{ id: string }>).map((g) => g.id);
 
-  const nowIso = new Date().toISOString();
+  // Meetings window (FIX-622): include recently-completed sessions (record side:
+  // minutes) as well as upcoming ones, so a meeting doesn't vanish the instant it
+  // passes. Real-data-or-empty still holds — the panel omits when zero rows.
+  const meetingWindowStart = new Date(Date.now() - 14 * 86_400_000).toISOString();
   const [votesRes, evidRes, donRes, commentRes, rollupRes, meetingRes] = await Promise.all([
     hb14
       ? supabase.from("votes").select("vote, official_id").eq("bill_proposal_id", hb14.id)
@@ -458,7 +461,7 @@ export default async function FranklinHubPage() {
           .from("meetings")
           .select("id, title, meeting_type, scheduled_at, agenda_url, governing_bodies(name)")
           .in("governing_body_id", gbIds)
-          .gte("scheduled_at", nowIso)
+          .gte("scheduled_at", meetingWindowStart)
           .order("scheduled_at", { ascending: true })
           .limit(3)
       : Promise.resolve({ data: [] }),

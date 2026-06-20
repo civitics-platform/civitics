@@ -1,0 +1,67 @@
+{
+  "_note": "Franklin governing-body meetings for the Commons 'Public meetings' panel (FIX-622). offset_days is RELATIVE to seed run-time (now() + offset_days); negative = past. Upcoming rows use status='scheduled'; the past row uses 'completed' and carries a placeholder minutes_url. Meetings attach to synthetic governing bodies by seed handle (gb-assembly / gb-watauga-council) — quarantine rides the synthetic governing_body_id (the meetings table has no is_synthetic column). agenda_items tie a meeting to a real synthetic proposal by seed handle.",
+  "meetings": [
+    {
+      "seed_key": "mtg-council-str",
+      "governing_body": "gb-watauga-council",
+      "meeting_type": "hearing",
+      "status": "scheduled",
+      "offset_days": 3,
+      "title": "Short-Term Rental Ordinance — Public Hearing",
+      "location": "Watauga City Hall — Council Chambers",
+      "agenda_url": "https://watauga.demo.gov/council/agendas/str-hearing",
+      "minutes_url": null,
+      "agenda_items": [
+        {
+          "seed_key": "agenda-council-str-cm15",
+          "proposal": "prop-cm15",
+          "sequence": 1,
+          "title": "Public hearing — Short-Term Rental Ordinance",
+          "item_type": "public_hearing",
+          "description": "Open public comment on the proposed Short-Term Rental Ordinance before the Council's first reading."
+        }
+      ]
+    },
+    {
+      "seed_key": "mtg-assembly-floor",
+      "governing_body": "gb-assembly",
+      "meeting_type": "regular",
+      "status": "scheduled",
+      "offset_days": 6,
+      "title": "Floor session — energy & water",
+      "location": "Assembly Hall, Watauga City",
+      "agenda_url": "https://franklin.demo.gov/assembly/agendas/floor-energy-water",
+      "minutes_url": null,
+      "agenda_items": [
+        {
+          "seed_key": "agenda-assembly-hb14",
+          "proposal": "prop-hb14",
+          "sequence": 1,
+          "title": "Public hearing — Ridgeline Energy & Water Act",
+          "item_type": "public_hearing",
+          "description": "Scheduled public hearing on the Ridgeline measure while its comment window is open."
+        },
+        {
+          "seed_key": "agenda-assembly-hb09",
+          "proposal": "prop-hb09",
+          "sequence": 2,
+          "title": "Second reading",
+          "item_type": "reading",
+          "description": "Second reading and debate."
+        }
+      ]
+    },
+    {
+      "seed_key": "mtg-assembly-past",
+      "governing_body": "gb-assembly",
+      "meeting_type": "regular",
+      "status": "completed",
+      "offset_days": -9,
+      "title": "Floor session",
+      "location": "Assembly Hall, Watauga City",
+      "agenda_url": "https://franklin.demo.gov/assembly/agendas/floor-2026",
+      "minutes_url": "https://franklin.demo.gov/assembly/minutes/floor-2026",
+      "agenda_items": []
+    }
+  ]
+}
