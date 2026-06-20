@@ -17,10 +17,9 @@
       "Read(c:/Users/Craig/Documents/Civitics/civitics-worktrees/**)",
       "Write(c:/Users/Craig/Documents/Civitics/civitics-worktrees/**)",
       "Bash(cd ../civitics-worktrees/**)",
-      "Bash(cd c:/Users/Craig/Documents/Civitics/civitics-worktrees/**)"
-    ],
-    "ask": [
-      "Bash(pnpm install*)"
+      "Bash(cd c:/Users/Craig/Documents/Civitics/civitics-worktrees/**)",
+      "Edit(C:/Users/Craig/.claude/**)",
+      "Read(C:/Users/Craig/.claude/**)"
     ],
     "deny": [
       "Bash(git push --force*)",
@@ -32,6 +31,9 @@
       "Bash(npm install*)",
       "Bash(npm i *)",
       "Bash(yarn add*)"
+    ],
+    "ask": [
+      "Bash(pnpm install*)"
     ]
   },
   "disabledMcpjsonServers": [
