@@ -9,7 +9,7 @@ import { PageViewTracker } from "../components/PageViewTracker";
 import { PageHeader } from "@civitics/ui";
 import type { EntityTag } from "../components/tags/EntityTags";
 import {
-  fetchEngagementRollup,
+  fetchAllEngagementRollup,
   EMPTY_ENGAGEMENT,
   type EngagementRollup,
 } from "../lib/engagement";
@@ -88,24 +88,26 @@ export default async function OfficialsPage({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const officials: OfficialRow[] = (data ?? []).map(mapOfficial);
 
-  // FIX-619: the index loads only the first 1000 officials by last_name
-  // (PostgREST's default cap; there are ~27k active officials). Officials that
-  // carry an engagement signal — the whole point of the badges + "Most engaged"
-  // sort — are sparse and almost always sort PAST that window (e.g. the synthetic
-  // Franklin officials). A client-side sort can't order rows it never fetched, so
-  // explicitly pull the (tiny) set of officials with a rollup row into the payload
-  // when they aren't already present. Without this the sort is a no-op for exactly
-  // the officials it exists to surface.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const sbAny = supabase as any;
+
+  // FIX-618/619: the display-only engagement rollup. The MV only holds rows for
+  // officials with an engagement signal (a claim or any Q&A/comment activity), so
+  // this is a small, bounded fetch — NOT one row per official. We fetch the whole
+  // official slice ONCE and use it for two things below: (a) merging in officials
+  // that sort past the index's 1000-row cap, and (b) attaching the rollup to each
+  // card. We deliberately do NOT filter by the ~1000 loaded ids — that builds a
+  // ~40KB in(...) URL the gateway rejects, silently zeroing every badge.
+  const engagementByOfficial = await fetchAllEngagementRollup(supabase, "official");
+
+  // The index loads only the first 1000 officials by last_name (PostgREST's
+  // default cap; ~27k active officials). Officials carrying an engagement signal
+  // are sparse and almost always sort PAST that window (e.g. the synthetic
+  // Franklin officials), and a client-side sort can't order rows it never
+  // fetched. Pull the few missing rollup officials into the payload so the badges
+  // + "Most engaged" sort surface exactly the officials they exist for.
   const present = new Set(officials.map((o) => o.id));
-  const { data: engagedIdRows } = await sbAny
-    .from("entity_engagement_rollup_mv")
-    .select("entity_id")
-    .eq("entity_type", "official");
-  const missingEngagedIds = ((engagedIdRows ?? []) as { entity_id: string }[])
-    .map((r) => r.entity_id)
-    .filter((id) => !present.has(id));
+  const missingEngagedIds = [...engagementByOfficial.keys()].filter((id) => !present.has(id));
   if (missingEngagedIds.length > 0) {
     let extraQuery = supabase.from("officials").select(OFFICIAL_SELECT).in("id", missingEngagedIds);
     // Match the active/former view so "Active" doesn't surprise-show a former
@@ -135,15 +137,14 @@ export default async function OfficialsPage({
     for (const o of officials) {
       o.tags = tagsByOfficial[o.id] ?? [];
     }
+  }
 
-    // FIX-618: batch-fetch the display-only engagement rollup and attach it so
-    // the client-side "Most engaged" sort + OfficialCard badges read from the
-    // payload (same shape as the entity_tags batch above). Officials missing
-    // from the MV fall back to EMPTY_ENGAGEMENT (no badges, sorts last).
-    const engagement = await fetchEngagementRollup(supabase, "official", officialIds);
-    for (const o of officials) {
-      o.engagement = engagement.get(o.id) ?? EMPTY_ENGAGEMENT;
-    }
+  // FIX-618: attach the display-only engagement rollup (fetched above) so the
+  // client-side "Most engaged" sort + OfficialCard badges read from the payload.
+  // Officials with no rollup row fall back to EMPTY_ENGAGEMENT (no badges, sorts
+  // last). Runs for the merged set, including officials pulled past the cap.
+  for (const o of officials) {
+    o.engagement = engagementByOfficial.get(o.id) ?? EMPTY_ENGAGEMENT;
   }
 
   return (

@@ -99,13 +99,54 @@ export function hasAnyBadge(e: EngagementRollup): boolean {
   return e.isClaimed || engagedTier(e) !== null || communityTier(e) !== null;
 }
 
+const ROLLUP_COLUMNS =
+  "entity_id, is_claimed, answers_count, questions_count, answered_rate, last_answer_at, community_count_30d, last_activity_at";
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
+function toRollup(r: any): EngagementRollup {
+  return {
+    isClaimed: r.is_claimed ?? false,
+    answersCount: r.answers_count ?? 0,
+    questionsCount: r.questions_count ?? 0,
+    answeredRate: typeof r.answered_rate === "number" ? r.answered_rate : Number(r.answered_rate ?? 0),
+    lastAnswerAt: r.last_answer_at ?? null,
+    communityCount30d: r.community_count_30d ?? 0,
+    lastActivityAt: r.last_activity_at ?? null,
+  };
+}
+
 /**
- * Fetch engagement rollup rows for a set of entity ids of one type. Returns a
- * Map keyed by entity_id. Missing ids simply aren't in the map (→ EMPTY).
- * Mirrors how OfficialsPage batch-fetches entity_tags. `supabase` is any-typed
- * because entity_engagement_rollup_mv isn't in the generated DB types yet (same
- * cast the entity_tags fetch uses).
+ * Fetch ALL rollup rows for one entity type (no id filter). Returns a Map keyed
+ * by entity_id. The rollup only ever holds rows for entities with an engagement
+ * signal (a claim or any Q&A/comment activity), so this set is small and bounded
+ * — NOT one row per official. Use this for the officials INDEX, where filtering
+ * by the ~1000 loaded ids would build a ~40KB `in(...)` URL that the gateway
+ * rejects (silently zeroing every badge). `supabase` is any-typed because the MV
+ * isn't in the generated DB types yet (same cast the entity_tags fetch uses).
+ */
+export async function fetchAllEngagementRollup(
+  supabase: any,
+  entityType: EngagementEntityType,
+): Promise<Map<string, EngagementRollup>> {
+  const out = new Map<string, EngagementRollup>();
+  const { data, error } = await supabase
+    .from("entity_engagement_rollup_mv")
+    .select(ROLLUP_COLUMNS)
+    .eq("entity_type", entityType);
+  if (error) {
+    // Display-only signal — never break the page over a missing/stale MV.
+    console.error("engagement rollup fetch error:", error.message);
+    return out;
+  }
+  for (const r of (data ?? []) as any[]) out.set(r.entity_id as string, toRollup(r));
+  return out;
+}
+
+/**
+ * Fetch rollup rows for a SMALL set of entity ids (e.g. a single detail page, or
+ * PR B2's institution/jurisdiction cards). Do NOT call with the full officials
+ * index id list — see fetchAllEngagementRollup for why. Returns a Map keyed by
+ * entity_id; missing ids simply aren't in the map (→ EMPTY).
  */
 export async function fetchEngagementRollup(
   supabase: any,
@@ -117,28 +158,15 @@ export async function fetchEngagementRollup(
 
   const { data, error } = await supabase
     .from("entity_engagement_rollup_mv")
-    .select(
-      "entity_id, is_claimed, answers_count, questions_count, answered_rate, last_answer_at, community_count_30d, last_activity_at",
-    )
+    .select(ROLLUP_COLUMNS)
     .eq("entity_type", entityType)
     .in("entity_id", entityIds);
 
   if (error) {
-    // Display-only signal — never break the page over a missing/stale MV.
     console.error("engagement rollup fetch error:", error.message);
     return out;
   }
 
-  for (const r of (data ?? []) as any[]) {
-    out.set(r.entity_id as string, {
-      isClaimed: r.is_claimed ?? false,
-      answersCount: r.answers_count ?? 0,
-      questionsCount: r.questions_count ?? 0,
-      answeredRate: typeof r.answered_rate === "number" ? r.answered_rate : Number(r.answered_rate ?? 0),
-      lastAnswerAt: r.last_answer_at ?? null,
-      communityCount30d: r.community_count_30d ?? 0,
-      lastActivityAt: r.last_activity_at ?? null,
-    });
-  }
+  for (const r of (data ?? []) as any[]) out.set(r.entity_id as string, toRollup(r));
   return out;
 }
