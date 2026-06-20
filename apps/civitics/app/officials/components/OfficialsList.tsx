@@ -5,6 +5,9 @@ import Link from "next/link";
 import type { OfficialRow } from "../page";
 import { OfficialCard } from "./OfficialCard";
 import { OfficialGraph } from "./OfficialGraph";
+import { compareEngagement, EMPTY_ENGAGEMENT } from "../../lib/engagement";
+
+type SortMode = "default" | "engaged";
 
 // Issue area filter pills
 const ISSUE_PILLS = [
@@ -64,6 +67,7 @@ export function OfficialsList({
   const [stateFilter, setState]     = useState("all");
   const [issueFilter, setIssue]     = useState<string | null>(null);
   const [patternFilter, setPattern] = useState<string | null>(null);
+  const [sortMode, setSortMode]     = useState<SortMode>("default");
   const [selectedId, setSelectedId] = useState<string | null>(defaultSelectedId ?? null);
   const listRef = useRef<HTMLDivElement>(null);
 
@@ -95,13 +99,23 @@ export function OfficialsList({
         return true;
       })
       .sort((a, b) => {
+        // FIX-618: "Most engaged" orders by the display-only engagement rollup
+        // (responsiveness → community → recency); falls back to party→name on
+        // ties so the list is stable when engagement is sparse/absent.
+        if (sortMode === "engaged") {
+          const cmp = compareEngagement(
+            a.engagement ?? EMPTY_ENGAGEMENT,
+            b.engagement ?? EMPTY_ENGAGEMENT,
+          );
+          if (cmp !== 0) return cmp;
+        }
         const pa = PARTY_ORDER[a.party ?? ""] ?? 3;
         const pb = PARTY_ORDER[b.party ?? ""] ?? 3;
         if (pa !== pb) return pa - pb;
         return a.full_name.localeCompare(b.full_name);
       });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [officials, search, chamberFilter, partyFilter, stateFilter, issueFilter, patternFilter]);
+  }, [officials, search, chamberFilter, partyFilter, stateFilter, issueFilter, patternFilter, sortMode]);
 
   const selected = useMemo(
     () => officials.find((o) => o.id === selectedId) ?? null,
@@ -196,6 +210,17 @@ export function OfficialsList({
                 {states.map((s) => (
                   <option key={s} value={s}>{s === "all" ? "All states" : s}</option>
                 ))}
+              </select>
+
+              {/* Sort (FIX-618) */}
+              <select
+                aria-label="Sort officials"
+                value={sortMode}
+                onChange={(e) => setSortMode(e.target.value as SortMode)}
+                className="border border-rule bg-card px-2 py-1 text-xs text-ink focus:outline-none focus:ring-1 focus:ring-accent"
+              >
+                <option value="default">Party &amp; name</option>
+                <option value="engaged">Most engaged</option>
               </select>
             </div>
             {/* Issue area pills */}

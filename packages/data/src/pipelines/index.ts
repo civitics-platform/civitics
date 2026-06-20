@@ -988,6 +988,10 @@ export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<Nigh
     // FIX-223: homepage hero stats + per-official Wave 3 stats
     "refresh_homepage_stats_mv",
     "refresh_official_homepage_stats_mv",
+    // FIX-618: per-entity DISPLAY-ONLY engagement rollup (claimed/engaged/
+    // active-community badges) over official|institution|jurisdiction. Never
+    // feeds standing; nightly cadence matches the badge's freshness needs.
+    "refresh_entity_engagement_rollup_mv",
     // FIX-330: per-agency proposal counts (replaces FIX-303 RPC on request path)
     "refresh_homepage_agency_counts_mv",
     // FIX-594: cross-entity Commons "discussion ledger" MV. Runs after the

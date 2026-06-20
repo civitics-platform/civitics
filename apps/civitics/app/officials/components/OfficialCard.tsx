@@ -5,6 +5,8 @@ import { createBrowserClient } from "@civitics/db";
 import type { OfficialRow } from "../page";
 import { EntityTags } from "../../components/tags/EntityTags";
 import { SyntheticMark } from "../../components/integrity/Synthetic";
+import { EngagementBadges } from "../../components/EngagementBadges";
+import { engagedTier, communityTier, EMPTY_ENGAGEMENT } from "../../lib/engagement";
 
 type RecentVote = {
   id: string;
@@ -139,6 +141,8 @@ export function OfficialCard({ official }: { official: OfficialRow }) {
     return () => { cancelled = true; };
   }, [official.id]);
 
+  // FIX-618: display-only engagement rollup attached server-side in page.tsx.
+  const engagement = official.engagement ?? EMPTY_ENGAGEMENT;
   const partyBorder = PARTY_BORDER[official.party ?? ""] ?? "border-l-4 border-l-rule";
   const partyBadge  = PARTY_BADGE[official.party ?? ""]  ?? "bg-ink/5 text-ink-soft";
   const partyLabel  = official.party
@@ -205,6 +209,14 @@ export function OfficialCard({ official }: { official: OfficialRow }) {
                 {official.term_end ? formatDate(official.term_end) : "present"}
               </p>
             )}
+            {/* Engagement badges (FIX-618) — display-only claimed/engaged/community */}
+            <EngagementBadges
+              className="mt-2"
+              entityType="official"
+              isClaimed={engagement.isClaimed}
+              engaged={engagedTier(engagement)}
+              community={communityTier(engagement)}
+            />
             {/* Tags */}
             {official.tags && official.tags.length > 0 && (
               <EntityTags

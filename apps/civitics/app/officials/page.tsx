@@ -8,6 +8,11 @@ import { OfficialsList } from "./components/OfficialsList";
 import { PageViewTracker } from "../components/PageViewTracker";
 import { PageHeader } from "@civitics/ui";
 import type { EntityTag } from "../components/tags/EntityTags";
+import {
+  fetchEngagementRollup,
+  EMPTY_ENGAGEMENT,
+  type EngagementRollup,
+} from "../lib/engagement";
 
 export const metadata = { title: "Officials" };
 
@@ -29,6 +34,9 @@ export type OfficialRow = {
   tags?: EntityTag[];
   source_ids: Record<string, string>;
   is_synthetic?: boolean;
+  // FIX-618: DISPLAY-ONLY engagement rollup (claimed/engaged/active-community).
+  // Attached server-side so the client "Most engaged" sort can order the full set.
+  engagement?: EngagementRollup;
 };
 
 export default async function OfficialsPage({
@@ -97,6 +105,15 @@ export default async function OfficialsPage({
     }
     for (const o of officials) {
       o.tags = tagsByOfficial[o.id] ?? [];
+    }
+
+    // FIX-618: batch-fetch the display-only engagement rollup and attach it so
+    // the client-side "Most engaged" sort + OfficialCard badges read from the
+    // payload (same shape as the entity_tags batch above). Officials missing
+    // from the MV fall back to EMPTY_ENGAGEMENT (no badges, sorts last).
+    const engagement = await fetchEngagementRollup(supabase, "official", officialIds);
+    for (const o of officials) {
+      o.engagement = engagement.get(o.id) ?? EMPTY_ENGAGEMENT;
     }
   }
 

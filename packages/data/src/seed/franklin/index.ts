@@ -1198,8 +1198,16 @@ async function refreshMvs(ctx: SeedCtx, all: boolean): Promise<void> {
         "refresh_official_donor_rollup_mv",
         "refresh_official_sector_dollars_mv",
         "refresh_donor_party_rollup_mv",
+        // FIX-618: display-only engagement rollup. The synthetic Franklin
+        // officials hold answerer grants + Q&A, so they exhibit the badges.
+        "refresh_entity_engagement_rollup_mv",
       ]
-    : ["refresh_commons_active_threads_mv"];
+    : [
+        "refresh_commons_active_threads_mv",
+        // FIX-618: surfaces synthetic content (claimed/engaged badges on the
+        // Franklin officials), so it must run on the default seed path too.
+        "refresh_entity_engagement_rollup_mv",
+      ];
   for (const fn of fns) {
     try {
       await ctx.query(`SELECT public.${fn}()`);
