@@ -785,3 +785,5 @@
 2026-06-20 | FIX-617 | 31c9c7a0 | local+prod | fix(initiatives): name initiative_details→proposals FK so Civic initiatives render
 2026-06-20 | FIX-618 | 3984963f | local+prod | feat(officials): engagement badges + most-engaged sort, backed by entity engagement rollup
 2026-06-20 | FIX-619 | 3984963f | local+prod | feat(officials): engagement badges + most-engaged sort, backed by entity engagement rollup
+2026-06-20 | FIX-619 | 6114fdb4 | local+prod | fix(officials): attach engagement via one unfiltered rollup fetch, not a 1000-id in()
+2026-06-20 | FIX-619 | 016336ea | local+prod | fix(officials): pull engagement-signal officials into the index payload past the 1000-row cap
