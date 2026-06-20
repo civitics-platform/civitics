@@ -783,3 +783,5 @@
 2026-06-19 | FIX-615 | c30b9736 | local+prod | feat(integrity): FIX-615 light TermsOfConsensus on synthetic proposals
 2026-06-20 | FIX-616 | 8381daa9 | local+prod | feat(franklin): add /franklin hub page + nav/homepage entry points
 2026-06-20 | FIX-617 | 31c9c7a0 | local+prod | fix(initiatives): name initiative_details→proposals FK so Civic initiatives render
+2026-06-20 | FIX-618 | 3984963f | local+prod | feat(officials): engagement badges + most-engaged sort, backed by entity engagement rollup
+2026-06-20 | FIX-619 | 3984963f | local+prod | feat(officials): engagement badges + most-engaged sort, backed by entity engagement rollup
