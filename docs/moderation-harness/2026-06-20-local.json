@@ -1,8 +1,8 @@
 {
-  "ranAt": "2026-06-20T02:41:47.069Z",
-  "durationMs": 485,
+  "ranAt": "2026-06-20T04:18:32.281Z",
+  "durationMs": 612,
   "dbHost": "127.0.0.1:54322",
-  "sha": "695988dd",
+  "sha": "0e0d0908",
   "rows": [
     {
       "fixtureId": "F1",
@@ -143,8 +143,8 @@
   "pollution": [
     {
       "table": "entity_comments",
-      "before": 86,
-      "after": 86,
+      "before": 89,
+      "after": 89,
       "delta": 0
     },
     {

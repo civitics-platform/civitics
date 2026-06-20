@@ -26,6 +26,12 @@
     { "seed_key": "cmt-h-precedent", "author": "cit-farmbureaufran", "entity_id": "prop-hb09", "parent": null, "kind": "precedent",
       "body": "Precedent worth remembering: the 2019 Pigeon River relicensing already set a minimum-flow floor and the farms didn't dry up — the metering just made everyone's draw legible. HB-09 is that, scaled to the whole valley." },
     { "seed_key": "cmt-h-cause", "author": "cit-remoterraywfh", "entity_id": "prop-cm22", "parent": null, "kind": "cause",
-      "body": "Root cause of the rural gap isn't reluctance — it's the math. A carrier earns back fiber to a Watauga block in two years and to my holler in forty. The bond exists to fix that specific economics; if it doesn't reach the holler it hasn't fixed anything." }
+      "body": "Root cause of the rural gap isn't reluctance — it's the math. A carrier earns back fiber to a Watauga block in two years and to my holler in forty. The bond exists to fix that specific economics; if it doesn't reach the holler it hasn't fixed anything." },
+    { "seed_key": "cmt-h-amendment-cm22", "author": "cit-remoterraywfh", "entity_id": "prop-cm22", "parent": null, "kind": "amendment",
+      "body": "Suggested change: condition every dollar of the state match on a build-out-to-the-county-line clause with a published coverage map, so the bond can't quietly stop at the last profitable block. Fund the holler or don't claim the match." },
+    { "seed_key": "cmt-h-amendment-hb09", "author": "cit-dell-r", "entity_id": "prop-hb09", "parent": null, "kind": "amendment",
+      "body": "Amendment I could live with: write the senior agricultural rights in by name, set a guaranteed minimum in-stream flow the river never drops below, and make metering verification apply to every draw equally. Senior rights honored, drought floor real — then meter me." },
+    { "seed_key": "cmt-h-amendment-cm15", "author": "cit-milltownmarie", "entity_id": "prop-cm15", "parent": null, "kind": "amendment",
+      "body": "Suggested change to the cap: exempt owner-occupied primary residences renting a single room, and apply the cap to whole-unit investor listings only. That keeps the Ward 4 families who rent to make the mortgage and still caps the lockbox blocks downtown." }
   ]
 }

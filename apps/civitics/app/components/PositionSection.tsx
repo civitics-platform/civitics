@@ -437,8 +437,9 @@ function TermsOfConsensusPanel({
         className="flex w-full items-center justify-between px-4 py-3 text-left"
         aria-expanded={open}
       >
-        <span className="text-xs font-semibold uppercase tracking-wide text-ink-soft">
+        <span className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-ink-soft">
           Terms of consensus
+          {rollup?.synthetic && <SyntheticMark size="xs" />}
         </span>
         <span className="text-xs text-ink-soft/60">{open ? "▲" : "▼"}</span>
       </button>

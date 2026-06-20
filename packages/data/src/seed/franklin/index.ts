@@ -254,7 +254,16 @@ interface RollupDisplay {
       buckets: Record<string, number>;
       median: number;
       n: number;
-      constituent?: { buckets: Record<string, number>; median: number; n: number } | null;
+      // FIX-615: authored fraction (0..1) of positions naming a condition —
+      // feeds the TermsOfConsensus % line. DISPLAY-ONLY, same isolation as the
+      // rest of this row.
+      pct_with_conditions?: number | null;
+      constituent?: {
+        buckets: Record<string, number>;
+        median: number;
+        n: number;
+        pct_with_conditions?: number | null;
+      } | null;
     }
   >;
 }
@@ -951,15 +960,22 @@ async function seedRollupDisplay(ctx: SeedCtx, r: RollupDisplay): Promise<void> 
   for (const rollup of r.rollups) {
     const entityId = ctx.id(rollup.entity_id); // synthetic proposal
     const constituent = rollup.constituent
-      ? jb({ buckets: rollup.constituent.buckets, median: rollup.constituent.median, n: rollup.constituent.n })
+      ? jb({
+          buckets: rollup.constituent.buckets,
+          median: rollup.constituent.median,
+          n: rollup.constituent.n,
+          // FIX-615: optional per-constituent pct (display-only).
+          pct_with_conditions: rollup.constituent.pct_with_conditions ?? null,
+        })
       : null;
     await ctx.query(
-      `INSERT INTO public.synthetic_position_rollup (entity_type, entity_id, buckets, median, n, constituent)
-       VALUES ('proposal', $1, $2::jsonb, $3, $4, $5::jsonb)
+      `INSERT INTO public.synthetic_position_rollup (entity_type, entity_id, buckets, median, n, pct_with_conditions, constituent)
+       VALUES ('proposal', $1, $2::jsonb, $3, $4, $5, $6::jsonb)
        ON CONFLICT (entity_type, entity_id) DO UPDATE
          SET buckets = EXCLUDED.buckets, median = EXCLUDED.median,
-             n = EXCLUDED.n, constituent = EXCLUDED.constituent`,
-      [entityId, jb(rollup.buckets), rollup.median, rollup.n, constituent],
+             n = EXCLUDED.n, pct_with_conditions = EXCLUDED.pct_with_conditions,
+             constituent = EXCLUDED.constituent`,
+      [entityId, jb(rollup.buckets), rollup.median, rollup.n, rollup.pct_with_conditions ?? null, constituent],
     );
   }
 }
