@@ -1,17 +1,22 @@
 "use client";
 
-// C1 Wave D (FIX-538): citizen↔official Q&A lane.
+// C1 Wave D (FIX-538): citizen↔answerer Q&A lane.
 //
-// The first citizen↔official surface. Citizens ask a public question; the
-// verified official (a holder of an active 'official' grant — issued manually in
-// beta) answers on the record. "Awaiting response" is itself a visible record:
-// the archive and the silence signal work with zero official engagement.
+// Citizens ask a public question; the verified answerer (a holder of the active
+// answerer grant for that entity — issued manually in beta) answers on the
+// record. "Awaiting response" is itself a visible record: the archive and the
+// silence signal work with zero answerer engagement.
 //
 // Q&A is a MODE over entity_comments, not new tables (decision 1): a question is
-// kind='question'; an official answer is a reply with kind='answer', gated by
-// RLS to grant holders. Want-answered reuses the comment rating (valuable=+1 —
-// decision 6); flagging reuses the comment flag. Officials-only this wave
-// (decision 2). Pseudonymous display names only (decision 10).
+// kind='question'; an answer is a reply with kind='answer', gated server-side
+// (submit_comment's has_active_answerer_grant) to the per-type grant holder.
+// Want-answered reuses the comment rating (valuable=+1 — decision 6); flagging
+// reuses the comment flag. Pseudonymous display names only (decision 10).
+//
+// FIX-610: generalized from officials-only to every entity_type that can hold an
+// answerer grant — official, institution (agencies + governing bodies), and
+// jurisdiction. The entity_type is threaded through so the question/answer posts
+// and the read RPC target the right entity + answerer role.
 
 import { useCallback, useEffect, useState } from "react";
 import { BODY_MIN, BODY_MAX } from "@civitics/db";
@@ -52,9 +57,15 @@ type QuestionsResponse = {
 
 type SortKey = "wanted" | "newest" | "unanswered";
 
+// The entity_types the Q&A lane supports (mirrors the answerer-grant mapping in
+// submit_comment / has_active_answerer_grant). All accept kind='question'; an
+// answer requires the matching answerer grant.
+export type QAEntityType = "official" | "institution" | "jurisdiction";
+
 export interface QASectionProps {
   entityId: string;
-  officialName: string;
+  entityType: QAEntityType;
+  entityName: string;
   signInNext?: string;
 }
 
@@ -155,10 +166,12 @@ function FlagMenu({ questionId, signInNext }: { questionId: string; signInNext: 
 // ─── Ask composer (kind='question') ───────────────────────────────────────────
 function AskComposer({
   entityId,
+  entityType,
   signInNext,
   onAsked,
 }: {
   entityId: string;
+  entityType: QAEntityType;
   signInNext: string;
   onAsked: () => void;
 }) {
@@ -180,7 +193,7 @@ function AskComposer({
       const res = await challengedFetch(`/api/comments`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ entity_type: "official", entity_id: entityId, kind: "question", body: body.trim() }),
+        body: JSON.stringify({ entity_type: entityType, entity_id: entityId, kind: "question", body: body.trim() }),
       });
       if (res.status === 401) return redirectToSignIn(signInNext);
       const data = await res.json().catch(() => ({}));
@@ -249,14 +262,16 @@ function AskComposer({
 // ─── Official answer composer (only rendered when can_answer) ──────────────────
 function AnswerComposer({
   entityId,
+  entityType,
   questionId,
-  officialName,
+  entityName,
   signInNext,
   onAnswered,
 }: {
   entityId: string;
+  entityType: QAEntityType;
   questionId: string;
-  officialName: string;
+  entityName: string;
   signInNext: string;
   onAnswered: () => void;
 }) {
@@ -278,7 +293,7 @@ function AnswerComposer({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          entity_type: "official",
+          entity_type: entityType,
           entity_id: entityId,
           kind: "answer",
           parent_id: questionId,
@@ -308,7 +323,7 @@ function AnswerComposer({
         onClick={() => setOpen(true)}
         className="mt-2 border border-green-ink/30 bg-green-ink/10 px-3 py-1 text-xs font-semibold text-green-ink hover:bg-green-ink/20"
       >
-        Answer as {officialName}
+        Answer as {entityName}
       </button>
     );
   }
@@ -316,7 +331,7 @@ function AnswerComposer({
   return (
     <form onSubmit={submit} className="mt-2 border border-green-ink/25 bg-green-ink/5 p-3">
       <label className="mb-1 block text-xs font-medium text-green-ink">
-        Official response — posted on the record as {officialName}
+        Official response — posted on the record as {entityName}
       </label>
       <textarea
         rows={3}
@@ -346,15 +361,17 @@ function AnswerComposer({
 function QuestionCard({
   q,
   entityId,
+  entityType,
   canAnswer,
-  officialName,
+  entityName,
   signInNext,
   onChanged,
 }: {
   q: Question;
   entityId: string;
+  entityType: QAEntityType;
   canAnswer: boolean;
-  officialName: string;
+  entityName: string;
   signInNext: string;
   onChanged: () => void;
 }) {
@@ -453,8 +470,9 @@ function QuestionCard({
       {canAnswer && (
         <AnswerComposer
           entityId={entityId}
+          entityType={entityType}
           questionId={q.id}
-          officialName={officialName}
+          entityName={entityName}
           signInNext={signInNext}
           onAnswered={onChanged}
         />
@@ -464,7 +482,7 @@ function QuestionCard({
 }
 
 // ─── QASection ─────────────────────────────────────────────────────────────────
-export function QASection({ entityId, officialName, signInNext }: QASectionProps) {
+export function QASection({ entityId, entityType, entityName, signInNext }: QASectionProps) {
   const next = signInNext ?? (typeof window !== "undefined" ? window.location.pathname : "/");
   const [data, setData] = useState<QuestionsResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -476,7 +494,7 @@ export function QASection({ entityId, officialName, signInNext }: QASectionProps
     setLoading(true);
     setError(null);
     try {
-      const sp = new URLSearchParams({ official_id: entityId, sort });
+      const sp = new URLSearchParams({ entity_type: entityType, entity_id: entityId, sort });
       const res = await fetch(`/api/questions?${sp.toString()}`);
       const json = await res.json();
       if (!res.ok) {
@@ -489,7 +507,7 @@ export function QASection({ entityId, officialName, signInNext }: QASectionProps
     } finally {
       setLoading(false);
     }
-  }, [entityId, sort]);
+  }, [entityId, entityType, sort]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -500,7 +518,7 @@ export function QASection({ entityId, officialName, signInNext }: QASectionProps
     if (!cursor || loadingMore) return;
     setLoadingMore(true);
     try {
-      const sp = new URLSearchParams({ official_id: entityId, sort, cursor });
+      const sp = new URLSearchParams({ entity_type: entityType, entity_id: entityId, sort, cursor });
       const res = await fetch(`/api/questions?${sp.toString()}`);
       const json = (await res.json()) as QuestionsResponse;
       if (res.ok) {
@@ -531,13 +549,13 @@ export function QASection({ entityId, officialName, signInNext }: QASectionProps
   return (
     <section className="border border-rule bg-paper-2 p-4">
       <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-sm font-bold text-ink">Questions for {officialName}</h3>
-        <AskComposer entityId={entityId} signInNext={next} onAsked={load} />
+        <h3 className="text-sm font-bold text-ink">Questions for {entityName}</h3>
+        <AskComposer entityId={entityId} entityType={entityType} signInNext={next} onAsked={load} />
       </div>
       <p className="mb-3 text-xs text-ink-soft">
         {total > 0
           ? `${total} ${total === 1 ? "question" : "questions"} · ${awaiting} awaiting response`
-          : "Ask this official a public question — on the record, answered or not."}
+          : "Ask a public question — on the record, answered or not."}
       </p>
 
       {total > 0 && (
@@ -563,7 +581,7 @@ export function QASection({ entityId, officialName, signInNext }: QASectionProps
         <div className="border border-accent/25 bg-accent/10 px-4 py-3 text-sm text-accent">{error}</div>
       ) : questions.length === 0 ? (
         <div className="border border-dashed border-rule bg-card px-4 py-8 text-center text-sm text-ink-soft/60">
-          No questions yet. <span className="text-ink-soft">Be the first to ask {officialName} a question.</span>
+          No questions yet. <span className="text-ink-soft">Be the first to ask {entityName} a question.</span>
         </div>
       ) : (
         <>
@@ -573,8 +591,9 @@ export function QASection({ entityId, officialName, signInNext }: QASectionProps
                 key={q.id}
                 q={q}
                 entityId={entityId}
+                entityType={entityType}
                 canAnswer={canAnswer}
-                officialName={officialName}
+                entityName={entityName}
                 signInNext={next}
                 onChanged={load}
               />

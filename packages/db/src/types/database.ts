@@ -5448,9 +5448,10 @@ export type Database = {
       get_entity_questions: {
         Args: {
           p_cursor?: string
+          p_entity_id: string
+          p_entity_type: string
           p_lens?: string
           p_limit?: number
-          p_official_id: string
           p_sort?: string
         }
         Returns: Json
@@ -5729,6 +5730,10 @@ export type Database = {
           yes_a: number
           yes_b: number
         }[]
+      }
+      has_active_answerer_grant: {
+        Args: { p_entity_id: string; p_entity_type: string; p_user_id: string }
+        Returns: boolean
       }
       has_active_constituent_grant: {
         Args: { p_jurisdiction_id: string; p_user_id: string }

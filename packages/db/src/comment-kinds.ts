@@ -91,8 +91,13 @@ export const ALLOWED_KINDS: Record<EntityCommentType, readonly string[]> = {
   // composer's selectable list (set by the answer action, gated by RLS to
   // 'official' grant holders; decision 11).
   official: ["discussion", "concern", "question", "evidence", "stakeholder_impact", "answer"],
-  jurisdiction: ["discussion", "question", "concern", "evidence", "stakeholder_impact"],
-  institution: ["discussion", "question", "concern", "evidence", "stakeholder_impact"],
+  // FIX-610: 'answer' added — the Q&A lane is now generalized to institutions
+  // (agencies + governing bodies) and jurisdictions. Like officials, 'answer' is
+  // never user-selectable: set by the answer action and gated by submit_comment's
+  // generalized answer-gate (has_active_answerer_grant) to the per-type answerer
+  // grant holder (official / institution_admin / jurisdiction_admin).
+  jurisdiction: ["discussion", "question", "concern", "evidence", "stakeholder_impact", "answer"],
+  institution: ["discussion", "question", "concern", "evidence", "stakeholder_impact", "answer"],
   // Schema supports these; no UI this PR — keep them minimal but valid.
   financial_entity: ["discussion"],
   district: ["discussion"],

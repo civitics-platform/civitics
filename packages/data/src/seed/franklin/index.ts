@@ -220,9 +220,11 @@ interface Statements {
     }
   >;
 }
-// Citizen↔official Q&A. Questions are kind='question' on an official entity;
-// answers (kind='answer', author=off-*) post through submit_comment as that
-// official's synthetic office-account grant holder.
+// Citizen↔answerer Q&A (FIX-610: generalized from officials-only). Questions are
+// kind='question' on an official / agency(institution) / jurisdiction entity;
+// answers (kind='answer') post through submit_comment as that entity's synthetic
+// answerer office-account, which holds the per-type answerer grant. The entity_id
+// prefix (off- / ag- / juris-) selects the entity_type + answerer role.
 interface QA {
   qa: Array<
     Json & {
@@ -797,21 +799,24 @@ async function seedStatements(ctx: SeedCtx, s: Statements): Promise<void> {
   }
 }
 
-// Citizen↔official Q&A. Questions: direct entity_comments insert on the OFFICIAL
-// entity (want_count → rating_summary.valuable_up, which get_entity_questions
-// reads). Answers: posted through submit_comment as a synthetic office-account
-// user that holds an active 'official' grant — exercising the real answer-gate
-// rather than bypassing it.
+// Citizen↔answerer Q&A (FIX-610). Questions: direct entity_comments insert on the
+// target entity (want_count → rating_summary.valuable_up, which
+// get_entity_questions reads). Answers: posted through submit_comment as a
+// synthetic answerer office-account holding the per-type grant — exercising the
+// real generalized answer-gate (has_active_answerer_grant) rather than bypassing
+// it. Per SF-P7, a REAL user's question to one of these synthetic entities stays
+// "awaiting response" (no real grant holder answers) — the honest demo state.
 async function seedQA(ctx: SeedCtx, qa: QA): Promise<void> {
   // Pass 1 — questions (must exist before their answers reply to them).
   for (const item of qa.qa) {
     if (item.kind !== "question") continue;
+    const { entityType } = qaEntityKind(item.entity_id);
     await upsertById(
       ctx,
       item.seed_key,
       "entity_comments",
       {
-        entity_type: "official",
+        entity_type: entityType,
         entity_id: ctx.id(item.entity_id),
         parent_id: null,
         thread_root_id: null,
@@ -827,18 +832,19 @@ async function seedQA(ctx: SeedCtx, qa: QA): Promise<void> {
       new Set(["rating_summary", "metadata"]),
     );
   }
-  // Pass 2 — answers via the office-account grant holder + submit_comment.
+  // Pass 2 — answers via the answerer office-account grant holder + submit_comment.
   for (const item of qa.qa) {
     if (item.kind !== "answer") continue;
     if (ctx.has(item.seed_key)) continue; // submit_comment generates the id once
     if (!item.parent) throw new Error(`franklin seed: answer ${item.seed_key} has no parent question`);
-    const officialId = ctx.id(item.entity_id); // answer.entity_id IS the official
-    const officeUserId = await ensureOfficeAccount(ctx, item.author, officialId);
+    const { entityType } = qaEntityKind(item.entity_id);
+    const entityId = ctx.id(item.entity_id); // answer.entity_id IS the answered entity
+    const officeUserId = await ensureAnswererAccount(ctx, item.author, entityType, entityId);
     const parentId = ctx.id(item.parent);
     const row = await ctx.withAuthor(officeUserId, async () =>
       ctx.one<{ id: string }>(
-        `SELECT (public.submit_comment('official', $1, $2, 'answer', NULL, $3, NULL)).id AS id`,
-        [officialId, item.body, parentId],
+        `SELECT (public.submit_comment($1, $2, $3, 'answer', NULL, $4, NULL)).id AS id`,
+        [entityType, entityId, item.body, parentId],
       ),
     );
     await ctx.record(item.seed_key, "entity_comments", row.id);
@@ -849,23 +855,70 @@ async function seedQA(ctx: SeedCtx, qa: QA): Promise<void> {
   }
 }
 
-// A synthetic per-official "office account" user holding an active 'official'
-// grant — the seed stand-in for the verified official who answers questions
-// (officials aren't users). Keyed on the official's seed_key so re-runs reuse it.
-async function ensureOfficeAccount(ctx: SeedCtx, officialSeedKey: string, officialId: string): Promise<string> {
-  const officeKey = `office:${officialSeedKey}`;
-  const name = await ctx.one<{ full_name: string }>(`SELECT full_name FROM public.officials WHERE id = $1`, [officialId]);
-  const userId = await upsertUser(ctx, officeKey, name.full_name, {
+// Map a Q&A entity seed_key prefix to its entity_type + the answerer grant
+// (role, target_type) — mirrors has_active_answerer_grant in the SQL gate.
+//   off-*   → official     answered by an 'official' grant
+//   ag-*    → institution   answered by an 'institution_admin' grant (agencies ride
+//             the institutions UNION view; agency.id == institution.id)
+//   juris-* → jurisdiction  answered by a 'jurisdiction_admin' grant (the clerk role)
+function qaEntityKind(entityKey: string): {
+  entityType: EntityCommentType;
+  role: string;
+  targetType: string;
+} {
+  if (entityKey.startsWith("off-")) return { entityType: "official", role: "official", targetType: "official" };
+  if (entityKey.startsWith("ag-")) return { entityType: "institution", role: "institution_admin", targetType: "institution" };
+  if (entityKey.startsWith("juris-")) return { entityType: "jurisdiction", role: "jurisdiction_admin", targetType: "jurisdiction" };
+  throw new Error(`franklin seed: Q&A entity "${entityKey}" has no answerer-role mapping (expected off-/ag-/juris-)`);
+}
+
+// A synthetic answerer "office account" user holding the active per-type answerer
+// grant — the seed stand-in for the verified official / agency-rep / clerk who
+// answers questions (these entities aren't users). Keyed on the entity's seed_key
+// so re-runs reuse it. Resolves the display name from the underlying entity.
+async function ensureAnswererAccount(
+  ctx: SeedCtx,
+  entitySeedKey: string,
+  entityType: EntityCommentType,
+  entityId: string,
+): Promise<string> {
+  const { role, targetType } = qaEntityKind(entitySeedKey);
+  const officeKey = `office:${entitySeedKey}`;
+  const displayName = await answererDisplayName(ctx, entityType, entityId);
+  const userId = await upsertUser(ctx, officeKey, displayName, {
     office_account: true,
-    official_seed_key: officialSeedKey,
+    answerer_seed_key: entitySeedKey,
+    answerer_entity_type: entityType,
   });
+  // target_type/role cast from text literals (same pattern as the official grant).
   await ctx.query(
     `INSERT INTO public.entity_grants (user_id, target_type, target_id, role, status, granted_at)
-     VALUES ($1, 'official', $2, 'official', 'active', $3)
+     VALUES ($1, $2::grant_target_type, $3, $4::grant_role, 'active', $5)
      ON CONFLICT (user_id, role, target_type, target_id) WHERE status = 'active' DO NOTHING`,
-    [userId, officialId, SEED_EPOCH],
+    [userId, targetType, entityId, role, SEED_EPOCH],
   );
   return userId;
+}
+
+// The answer author's display name (shown on the green "Official response" lane).
+//   official     → the official's full_name
+//   institution  → the agency/body name (the institutions view carries `name`)
+//   jurisdiction → "Office of the {name} Clerk" (the regulations.gov-style clerk)
+async function answererDisplayName(
+  ctx: SeedCtx,
+  entityType: EntityCommentType,
+  entityId: string,
+): Promise<string> {
+  if (entityType === "official") {
+    const r = await ctx.one<{ full_name: string }>(`SELECT full_name FROM public.officials WHERE id = $1`, [entityId]);
+    return r.full_name;
+  }
+  if (entityType === "institution") {
+    const r = await ctx.one<{ name: string }>(`SELECT name FROM public.institutions WHERE id = $1`, [entityId]);
+    return r.name;
+  }
+  const r = await ctx.one<{ name: string }>(`SELECT name FROM public.jurisdictions WHERE id = $1`, [entityId]);
+  return `Office of the ${r.name} Clerk`;
 }
 
 // Follows: per-entity follower counts + Desk Watching. Data-only idempotent
@@ -1177,10 +1230,10 @@ async function main(): Promise<void> {
     // money, citizens, and fixtures (no new files for those) and only extends
     // proposals / positions / threads / investigations / initiatives.
     //
-    // s2/qa.json (agency Q&A) is DEFERRED (FIX-610): no agency Q&A surface
-    // exists yet (get_entity_questions + QASection + the /api routes are
-    // officials-only). Seeding it today would be invisible. The file is
-    // co-located here, ready to wire once the surface ships.
+    // FIX-610: the Q&A surface is now generalized to official | institution |
+    // jurisdiction, so s2/qa.json (FDEQ agency Q&A) and horizontal/qa-jurisdiction
+    // (Franklin/Watauga clerk Q&A) are wired alongside horizontal/qa-officials
+    // (see the merged `qa` set below).
     const entities = loadJson<Entities>("entities.json");
     const money = loadJson<MoneyGraph>("money-graph.json");
     const citizens = loadJson<Citizens>("citizens.json");
@@ -1223,7 +1276,16 @@ async function main(): Promise<void> {
     // Horizontal-coverage files (FIX-613) — additive surfaces over S1/S2 entities.
     const positionDeltas = loadJson<PositionDeltas>("horizontal/positions-plus.json");
     const statements = loadJson<Statements>("horizontal/statements.json");
-    const qa = loadJson<QA>("horizontal/qa-officials.json");
+    // FIX-610: the generalized Q&A lane — officials + the FDEQ agency (S2) + the
+    // Franklin/Watauga jurisdiction clerks, in one merged set (seedQA derives the
+    // entity_type + answerer role per item from the entity_id prefix).
+    const qa: QA = {
+      qa: [
+        ...loadJson<QA>("horizontal/qa-officials.json").qa,
+        ...loadJson<QA>("s2/qa.json").qa,
+        ...loadJson<QA>("horizontal/qa-jurisdiction.json").qa,
+      ],
+    };
     const follows = loadJson<Follows>("horizontal/follows.json");
     const rollupDisplay = loadJson<RollupDisplay>("horizontal/rollup-display.json");
     // positions-plus also carries additional citizen positions (to cross the

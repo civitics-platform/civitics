@@ -34,6 +34,7 @@ import type { MeetingCardData } from "../../components/cards/MeetingCard";
 import type { ProposalCardData } from "../../proposals/components/ProposalCard";
 import type { InitiativeCardData } from "../../initiatives/components/InitiativeCard";
 import { EntityComments } from "../../components/EntityComments";
+import { QASection } from "../../components/QASection";
 
 export const revalidate = 300;
 
@@ -385,6 +386,13 @@ export default async function JurisdictionPage({ params }: { params: Promise<{ i
             <ActivityFeed events={activity} />
           </Section>
         )}
+
+        {/* FIX-610: citizen↔answerer Q&A lane. Anyone may ask; answers require an
+            active jurisdiction_admin grant on this jurisdiction (the clerk role) —
+            unclaimed real jurisdictions show the honest "awaiting response" state. */}
+        <div className="mt-8">
+          <QASection entityId={id} entityType="jurisdiction" entityName={jurisdiction.short_name ?? jurisdiction.name} />
+        </div>
 
         <EntityComments
           entityType="jurisdiction"

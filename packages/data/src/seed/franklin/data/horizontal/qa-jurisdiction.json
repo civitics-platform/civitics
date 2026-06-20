@@ -1,0 +1,28 @@
+{
+  "_meta": {
+    "slice": "FIX-610 horizontal coverage — the citizen↔clerk Q&A lane on JURISDICTION entities (the 'regulations.gov for cities' clerk role). ADDITIVE. Demonstrates the generalized Q&A surface (QASection / get_entity_questions) on jurisdictions, anchored on juris-franklin (State of Franklin) and juris-watauga (Watauga City).",
+    "answerer": "Jurisdiction answers are seed-only: the loader maps the answerer to a synthetic 'Office of the <name> Clerk' account holding a jurisdiction_admin grant on the jurisdiction (jurisdictions aren't users). Per SF-P7, a REAL user's question to a synthetic jurisdiction gets the 'demonstration — doesn't answer' state instead — only seeded questions get seeded answers.",
+    "shape": "LOGICAL. kind ∈ question|answer; answers reference their question by parent seed_key. entity_id is a juris-* key → entity_type='jurisdiction', answered via a jurisdiction_admin grant."
+  },
+
+  "qa": [
+    {
+      "seed_key": "qa-juris-q1", "kind": "question", "author": "cit-saveourrivernow", "entity_id": "juris-franklin", "parent": null,
+      "body": "State of Franklin — where does the public record live for a state rulemaking like the Valley Water Rights Act? If I submit a comment, can I see that it was actually received and read into the record, or does it vanish into an inbox?",
+      "want_count": 18
+    },
+    {
+      "seed_key": "qa-juris-a1", "kind": "answer", "author": "juris-franklin", "entity_id": "juris-franklin", "parent": "qa-juris-q1",
+      "body": "Every open comment window for a state proceeding is posted on this page with its closing date, and comments filed through it become part of the official record — timestamped, attributed, and visible to anyone, not buried in an inbox. That public-by-default record is the whole point: a comment you can point to later is a comment that counts."
+    },
+    {
+      "seed_key": "qa-juris-q2", "kind": "question", "author": "cit-stadiumstan", "entity_id": "juris-watauga", "parent": null,
+      "body": "Watauga City — the stadium measure and the short-term-rental rules are both moving at once. Which one is actually open for public comment right now, and how do I make sure I'm filing on the correct one so it isn't ruled out of scope?",
+      "want_count": 12
+    },
+    {
+      "seed_key": "qa-juris-a2", "kind": "answer", "author": "juris-watauga", "entity_id": "juris-watauga", "parent": "qa-juris-q2",
+      "body": "Both appear under this jurisdiction with their own status and comment window, so file on the specific measure you mean — the page tells you which is open and which has closed. A comment on the STR ordinance and a comment on the stadium financing are read into two different records; putting each in the right place is what keeps it in scope and on the record."
+    }
+  ]
+}

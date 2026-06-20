@@ -1375,7 +1375,7 @@ export default async function OfficialProfilePage({
             here, not in the discussion list (decision 8), so 'question' is
             dropped from the discussion composer's allowedKinds below. */}
         <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
-          <QASection entityId={official.id} officialName={official.full_name} />
+          <QASection entityId={official.id} entityType="official" entityName={official.full_name} />
         </div>
 
         {/* Community Comments */}

@@ -27,6 +27,7 @@ import { SourceDetailPopover } from "../../components/SourceDetailPopover";
 import { OfficialRosterCard, type OfficialRosterData } from "../../components/cards/OfficialRosterCard";
 import { MeetingCard, type MeetingCardData } from "../../components/cards/MeetingCard";
 import { EntityComments } from "../../components/EntityComments";
+import { QASection } from "../../components/QASection";
 import { SyntheticMark, SyntheticBanner } from "../../components/integrity/Synthetic";
 
 const AgencyGraph = nextDynamic(
@@ -279,6 +280,12 @@ export default async function InstitutionPage({
       {institution.source_table === "agency"
         ? <AgencyView institution={institution} attribution={attribution} supabase={supabase} />
         : <GoverningBodyView institution={institution} attribution={attribution} supabase={supabase} />}
+      {/* FIX-610: citizen↔answerer Q&A lane. Anyone may ask; answers require an
+          active institution_admin grant on this institution (= agency/gb id) —
+          unclaimed real institutions show the honest "awaiting response" state. */}
+      <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
+        <QASection entityId={institution.id} entityType="institution" entityName={institution.short_name ?? institution.name} />
+      </div>
       <div className="mx-auto max-w-5xl px-4 pb-12 sm:px-6">
         <EntityComments
           entityType="institution"
