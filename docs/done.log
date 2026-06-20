@@ -780,3 +780,4 @@
 2026-06-19 | FIX-614 | cc94eb88 | local+prod | feat(integrity): FIX-614 authored position-rollup display seam (synthetic only)
 2026-06-19 | FIX-610 | 268fafec | local-only | feat(qa): FIX-610 generalize the Q&A lane to institutions + jurisdictions
 2026-06-19 | FIX-610 | dd1726f0 | local+prod | chore(fixes): record FIX-610 prod verification
+2026-06-19 | FIX-615 | c30b9736 | local+prod | feat(integrity): FIX-615 light TermsOfConsensus on synthetic proposals
