@@ -51,22 +51,14 @@ export default async function OfficialsPage({
   // last name — a UX guard, not an exhaustive former-officials browser.
   const includeFormer = searchParams.status === "all";
 
-  let officialsQuery = supabase
-    .from("officials")
-    .select(
-      `id, full_name, first_name, last_name, role_title, party,
-       photo_url, district_name, term_start, term_end, is_active, source_ids, is_synthetic,
-       jurisdictions!jurisdiction_id(name),
-       governing_bodies!governing_body_id(short_name, type)`
-    );
-  if (!includeFormer) officialsQuery = officialsQuery.eq("is_active", true);
-
-  const { data, error } = await officialsQuery.order("last_name");
-
-  if (error) console.error("officials fetch error:", error.message);
+  const OFFICIAL_SELECT =
+    `id, full_name, first_name, last_name, role_title, party,
+     photo_url, district_name, term_start, term_end, is_active, source_ids, is_synthetic,
+     jurisdictions!jurisdiction_id(name),
+     governing_bodies!governing_body_id(short_name, type)`;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const officials: OfficialRow[] = (data ?? []).map((o: any) => ({
+  const mapOfficial = (o: any): OfficialRow => ({
     id: o.id,
     full_name: o.full_name,
     first_name: o.first_name ?? null,
@@ -84,13 +76,50 @@ export default async function OfficialsPage({
     tags: [],
     source_ids: o.source_ids ?? {},
     is_synthetic: o.is_synthetic ?? false,
-  }));
+  });
+
+  let officialsQuery = supabase.from("officials").select(OFFICIAL_SELECT);
+  if (!includeFormer) officialsQuery = officialsQuery.eq("is_active", true);
+
+  const { data, error } = await officialsQuery.order("last_name");
+
+  if (error) console.error("officials fetch error:", error.message);
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const officials: OfficialRow[] = (data ?? []).map(mapOfficial);
+
+  // FIX-619: the index loads only the first 1000 officials by last_name
+  // (PostgREST's default cap; there are ~27k active officials). Officials that
+  // carry an engagement signal — the whole point of the badges + "Most engaged"
+  // sort — are sparse and almost always sort PAST that window (e.g. the synthetic
+  // Franklin officials). A client-side sort can't order rows it never fetched, so
+  // explicitly pull the (tiny) set of officials with a rollup row into the payload
+  // when they aren't already present. Without this the sort is a no-op for exactly
+  // the officials it exists to surface.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const sbAny = supabase as any;
+  const present = new Set(officials.map((o) => o.id));
+  const { data: engagedIdRows } = await sbAny
+    .from("entity_engagement_rollup_mv")
+    .select("entity_id")
+    .eq("entity_type", "official");
+  const missingEngagedIds = ((engagedIdRows ?? []) as { entity_id: string }[])
+    .map((r) => r.entity_id)
+    .filter((id) => !present.has(id));
+  if (missingEngagedIds.length > 0) {
+    let extraQuery = supabase.from("officials").select(OFFICIAL_SELECT).in("id", missingEngagedIds);
+    // Match the active/former view so "Active" doesn't surprise-show a former
+    // official; an engaged former official appears only under ?status=all.
+    if (!includeFormer) extraQuery = extraQuery.eq("is_active", true);
+    const { data: extra } = await extraQuery;
+    for (const o of (extra ?? []) as unknown[]) {
+      officials.push(mapOfficial(o));
+    }
+  }
 
   // Pre-fetch tags for all officials
   if (officials.length > 0) {
     const officialIds = officials.map((o) => o.id);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const sbAny = supabase as any;
     const { data: tagRows } = await sbAny
       .from("entity_tags")
       .select("entity_id,tag,tag_category,display_label,display_icon,visibility,confidence,generated_by,ai_model")
