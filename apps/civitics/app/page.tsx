@@ -13,6 +13,7 @@ import { ClosingSoonPanel } from "./components/home/ClosingSoonPanel";
 import { OfficialsLedger } from "./components/home/OfficialsLedger";
 import { Commons } from "./components/home/Commons";
 import { GraphBand } from "./components/home/GraphBand";
+import { FranklinBand } from "./components/home/FranklinBand";
 import { AgenciesRow } from "./components/home/AgenciesRow";
 import type { HomeStats, HomeOfficialCardData, CommonsThread } from "./components/home/types";
 import type { ProposalCardData } from "./proposals/components/ProposalCard";
@@ -516,6 +517,7 @@ export default async function HomePage({
         <OfficialsLedger officials={featuredOfficials} totalOfficials={stats.officials} />
         <Commons threads={commonsThreads} nowIso={now} />
         <GraphBand />
+        <FranklinBand />
         <AgenciesRow agencies={featuredAgencies} />
       </main>
       {/* FIX-223: per-phase timings (ms). Inspect with
