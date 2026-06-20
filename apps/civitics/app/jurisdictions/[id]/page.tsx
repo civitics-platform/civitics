@@ -185,7 +185,11 @@ export default async function JurisdictionPage({ params }: { params: Promise<{ i
     supabase
       .from("initiative_details")
       .select(
-        "proposal_id, stage, scope, authorship_type, issue_area_tags, target_district, mobilise_started_at, proposals!inner(id, title, summary_plain, created_at, resolved_at, type, jurisdiction_id)"
+        // initiative_details has TWO FKs to proposals (proposal_id +
+        // promoted_to_proposal_id), so the embed must name the FK explicitly or
+        // PostgREST PGRST201s → supabase-js swallows it to null → section
+        // renders silently empty (latent twin of the FIX-616 franklin fix).
+        "proposal_id, stage, scope, authorship_type, issue_area_tags, target_district, mobilise_started_at, proposals!initiative_details_proposal_id_fkey!inner(id, title, summary_plain, created_at, resolved_at, type, jurisdiction_id)"
       )
       .eq("proposals.type", "initiative")
       .eq("proposals.jurisdiction_id", id)

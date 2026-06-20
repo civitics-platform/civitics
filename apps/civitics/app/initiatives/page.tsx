@@ -58,7 +58,9 @@ export default async function InitiativesPage({
   let query = supabase
     .from("initiative_details")
     .select(
-      "proposal_id,stage,scope,authorship_type,issue_area_tags,target_district,mobilise_started_at,primary_author_id,proposals!inner(id,title,summary_plain,created_at,updated_at,resolved_at,type)",
+      // initiative_details has TWO FKs to proposals; name the FK or PostgREST
+      // PGRST201s and supabase-js swallows it to null (FIX-616 twin).
+      "proposal_id,stage,scope,authorship_type,issue_area_tags,target_district,mobilise_started_at,primary_author_id,proposals!initiative_details_proposal_id_fkey!inner(id,title,summary_plain,created_at,updated_at,resolved_at,type)",
       { count: "exact" }
     )
     .eq("proposals.type", "initiative");
