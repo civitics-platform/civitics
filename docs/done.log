@@ -778,3 +778,4 @@
 2026-06-19 | FIX-612 | 1bcb6e74 | local+prod | feat(integrity): SF-P5 bridge-score anti-gaming (rater trust + cross-stance floor)
 2026-06-19 | FIX-613 | ff9cb941 | local+prod | feat(seed): Franklin horizontal coverage — kinds, statements, Q&A, positions, follows
 2026-06-19 | FIX-614 | cc94eb88 | local+prod | feat(integrity): FIX-614 authored position-rollup display seam (synthetic only)
+2026-06-19 | FIX-610 | 268fafec | local-only | feat(qa): FIX-610 generalize the Q&A lane to institutions + jurisdictions
