@@ -24,6 +24,8 @@ import { ProposalCard, type ProposalCardData } from "../proposals/components/Pro
 import { InitiativeCard, type InitiativeCardData } from "../initiatives/components/InitiativeCard";
 import type { MeetingCardData } from "../components/cards/MeetingCard";
 import { StorySpine, type ResolvedStop } from "./components/StorySpine";
+import { TourLauncher } from "./components/TourLauncher";
+import { TOUR_HERO_ANCHOR, TOUR_FOOTER_ANCHOR } from "./components/GuidedTour";
 import { MoneyFlow, type MoneyDonor } from "./components/MoneyFlow";
 import { CommonsStrip, type CommonsPosition } from "./components/CommonsStrip";
 import {
@@ -644,7 +646,7 @@ export default async function FranklinHubPage() {
         <SyntheticBanner className="mb-6" />
 
         {/* ── Hero / Start here ── */}
-        <section className="pb-6">
+        <section id={TOUR_HERO_ANCHOR} className="scroll-mt-24 pb-6">
           <div className="flex items-center gap-2.5">
             <span className="text-ink">
               <PorticoMark size={30} />
@@ -666,6 +668,17 @@ export default async function FranklinHubPage() {
             populated, in one place. It is fictional and populated by AI; real people can
             reply in place, but nothing here counts toward real standing.
           </p>
+
+          {/* A2 guided tour (FIX-A): click-launched walkthrough of the HB-14 spine. */}
+          {resolvedStops.length > 0 && hb14 && (
+            <div className="mt-6">
+              <TourLauncher
+                billLabel={billNumByProp.get(hb14.id) ?? FRANKLIN_BILL_NUMBER}
+                billTitle={hb14.title}
+                stops={resolvedStops}
+              />
+            </div>
+          )}
 
           <div className="mt-6 grid grid-cols-2 overflow-hidden rounded-sm border border-rule bg-card sm:grid-cols-3 lg:grid-cols-6">
             {stats.map((s, i) => (
@@ -695,6 +708,15 @@ export default async function FranklinHubPage() {
               billTitle={hb14.title}
               stops={resolvedStops}
             />
+            <div className="mt-3">
+              <TourLauncher
+                billLabel={billNumByProp.get(hb14.id) ?? FRANKLIN_BILL_NUMBER}
+                billTitle={hb14.title}
+                stops={resolvedStops}
+                label="Take the guided tour"
+                className="inline-block font-mono text-[11px] text-accent hover:underline"
+              />
+            </div>
           </HubSection>
         )}
 
@@ -881,7 +903,10 @@ export default async function FranklinHubPage() {
         )}
 
         {/* ── Footer CTA ── */}
-        <section className="mt-8 border border-rule bg-ink px-6 py-7 text-paper">
+        <section
+          id={TOUR_FOOTER_ANCHOR}
+          className="mt-8 scroll-mt-24 border border-rule bg-ink px-6 py-7 text-paper"
+        >
           <h3 className="font-serif text-xl font-semibold">
             This is a demonstration. Now explore the real record.
           </h3>

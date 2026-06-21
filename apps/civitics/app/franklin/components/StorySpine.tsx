@@ -42,7 +42,9 @@ export function StorySpine({
 
       <ol className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {stops.map((s, i) => (
-          <li key={s.id} className="relative">
+          // id is the A2 guided-tour scroll+highlight target (GuidedTour.tsx);
+          // scroll-mt keeps the card clear of the top chrome when scrolled to.
+          <li key={s.id} id={`tour-stop-${s.id}`} className="relative scroll-mt-24">
             <Link
               href={s.href}
               className="group flex h-full flex-col border border-rule bg-paper p-3.5 transition-colors hover:border-accent"

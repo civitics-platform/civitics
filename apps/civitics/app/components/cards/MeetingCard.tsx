@@ -1,11 +1,9 @@
 import Link from "next/link";
 import { SyntheticMark } from "../integrity/Synthetic";
 
-// First meeting card in the app. Presentational only — created shared from the
-// start for reuse once a meetings index / detail surface exists.
-//
-// NOTE: /meetings/[id] does NOT exist yet (v1). The link is intentionally a
-// documented dead-end; remove this comment when the detail route ships.
+// First meeting card in the app. Presentational only — shared for reuse across
+// meeting surfaces. The card links to the live /meetings/[id] detail route
+// (apps/civitics/app/meetings/[id]/page.tsx).
 //
 // is_synthetic is governing-body-scoped: the meetings table has no is_synthetic
 // column of its own, so feeders pass the parent governing_bodies.is_synthetic
