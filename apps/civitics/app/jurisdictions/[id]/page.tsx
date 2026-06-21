@@ -116,103 +116,51 @@ export default async function JurisdictionPage({ params }: { params: Promise<{ i
 
   const supabase = anonClient();
 
-  const { data: jurisdiction } = await supabase
-    .from("jurisdictions")
-    .select("id, name, short_name, type, parent_id, population, timezone, fips_code, is_synthetic")
-    .eq("id", id)
-    .maybeSingle();
+  // FIX-634: ONE consolidating RPC replaces the ~11-query request-path fan-out
+  // (parent, boundary, children, institutions, officials, proposals, meetings,
+  // initiatives, activity, + two spending queries). The 2026-06-21 incident was
+  // a crawl across hundreds of unique ids — every hit a full cache-miss render
+  // firing ~37 Supabase calls, which blew past the connection pool (522 → 504s).
+  // One call = one connection. Each section below mirrors the exact shape the
+  // old per-section queries returned, so the downstream .map() shaping is
+  // unchanged.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let payload: any = null;
+  {
+    const { data } = await supabase.rpc("get_jurisdiction_page", { p_id: id });
+    payload = data ?? null;
+  }
 
+  // Safe fallback: a DB hiccup must not 500 the page. If the RPC errored, still
+  // resolve the base jurisdiction row so the shell renders (sections empty);
+  // only notFound() when the jurisdiction genuinely doesn't exist.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let jurisdiction: any = payload?.jurisdiction ?? null;
+  if (!jurisdiction) {
+    const { data: base } = await supabase
+      .from("jurisdictions")
+      .select("id, name, short_name, type, parent_id, population, timezone, fips_code, is_synthetic")
+      .eq("id", id)
+      .maybeSingle();
+    jurisdiction = base ?? null;
+  }
   if (!jurisdiction) notFound();
 
-  const now = Date.now();
-  const meetWindowStart = new Date(now - 30 * 86_400_000).toISOString();
-  const meetWindowEnd = new Date(now + 60 * 86_400_000).toISOString();
-
-  const [
-    parentRes,
-    boundaryRes,
-    childrenRes,
-    instRes,
-    offRes,
-    propRes,
-    meetRes,
-    initRes,
-    activityRes,
-  ] = await Promise.all([
-    jurisdiction.parent_id
-      ? supabase.from("jurisdictions").select("id, name").eq("id", jurisdiction.parent_id).maybeSingle()
-      : Promise.resolve({ data: null }),
-    supabase.rpc("jurisdiction_boundary_svg", { p_id: id }),
-    supabase
-      .from("jurisdictions")
-      .select("id, name, short_name, type")
-      .eq("parent_id", id)
-      .eq("is_active", true)
-      .order("type", { ascending: true })
-      .order("name", { ascending: true })
-      .limit(1000),
-    supabase
-      .from("institutions")
-      .select("id, name, short_name, type, acronym, source_table, is_synthetic")
-      .eq("jurisdiction_id", id)
-      .eq("is_active", true)
-      .order("type", { ascending: true })
-      .order("name", { ascending: true })
-      .limit(200),
-    supabase
-      .from("officials")
-      .select("id, full_name, role_title, party, photo_url, district_name, is_synthetic")
-      .eq("jurisdiction_id", id)
-      .eq("is_active", true)
-      .order("role_title", { ascending: true })
-      .order("last_name", { ascending: true })
-      .limit(OFFICIALS_LIMIT + 1),
-    supabase
-      .from("proposals")
-      .select("id, title, type, status, summary_plain, summary_model, introduced_at, external_url, metadata, is_synthetic")
-      .eq("jurisdiction_id", id)
-      .neq("type", "initiative")
-      .order("introduced_at", { ascending: false, nullsFirst: false })
-      .limit(10),
-    supabase
-      .from("meetings")
-      .select("id, title, meeting_type, scheduled_at, agenda_url, governing_bodies!inner(name, jurisdiction_id, is_synthetic)")
-      .eq("governing_bodies.jurisdiction_id", id)
-      .gte("scheduled_at", meetWindowStart)
-      .lte("scheduled_at", meetWindowEnd)
-      .order("scheduled_at", { ascending: false })
-      .limit(10),
-    supabase
-      .from("initiative_details")
-      .select(
-        // initiative_details has TWO FKs to proposals (proposal_id +
-        // promoted_to_proposal_id), so the embed must name the FK explicitly or
-        // PostgREST PGRST201s → supabase-js swallows it to null → section
-        // renders silently empty (latent twin of the FIX-616 franklin fix).
-        "proposal_id, stage, scope, authorship_type, issue_area_tags, target_district, mobilise_started_at, proposals!initiative_details_proposal_id_fkey!inner(id, title, summary_plain, created_at, resolved_at, type, jurisdiction_id)"
-      )
-      .eq("proposals.type", "initiative")
-      .eq("proposals.jurisdiction_id", id)
-      .neq("stage", "draft")
-      .limit(20),
-    supabase.rpc("get_jurisdiction_activity", { p_id: id, p_limit: 20 }),
-  ]);
-
   // ── Shape section data ──────────────────────────────────────────────────────
-  const parent = (parentRes.data ?? null) as { id: string; name: string } | null;
+  const parent = (payload?.parent ?? null) as { id: string; name: string } | null;
 
-  const boundary = ((boundaryRes.data ?? [])[0] ?? null) as BoundarySvgData | null;
+  const boundary = (payload?.boundary ?? null) as BoundarySvgData | null;
 
-  const children = (childrenRes.data ?? []) as ChildJurisdiction[];
+  const children = (payload?.children ?? []) as ChildJurisdiction[];
 
-  const institutions = (instRes.data ?? []) as Array<InstitutionCardData & { source_table?: string }>;
+  const institutions = (payload?.institutions ?? []) as Array<InstitutionCardData & { source_table?: string }>;
 
-  const officialsRows = (offRes.data ?? []) as OfficialRosterData[];
+  const officialsRows = (payload?.officials ?? []) as OfficialRosterData[];
   const officialsHasMore = officialsRows.length > OFFICIALS_LIMIT;
   const officials = officialsRows.slice(0, OFFICIALS_LIMIT);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const proposals: ProposalCardData[] = ((propRes.data ?? []) as any[]).map((p) => {
+  const proposals: ProposalCardData[] = ((payload?.proposals ?? []) as any[]).map((p) => {
     const meta = (p.metadata ?? {}) as Record<string, string>;
     return {
       id: p.id,
@@ -231,7 +179,7 @@ export default async function JurisdictionPage({ params }: { params: Promise<{ i
   });
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const meetings: MeetingCardData[] = ((meetRes.data ?? []) as any[]).map((m) => {
+  const meetings: MeetingCardData[] = ((payload?.meetings ?? []) as any[]).map((m) => {
     const gb = Array.isArray(m.governing_bodies) ? m.governing_bodies[0] : m.governing_bodies;
     return {
       id: m.id,
@@ -245,7 +193,7 @@ export default async function JurisdictionPage({ params }: { params: Promise<{ i
   });
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const initiatives: InitiativeCardData[] = ((initRes.data ?? []) as any[])
+  const initiatives: InitiativeCardData[] = ((payload?.initiatives ?? []) as any[])
     .map((row) => {
       const p = Array.isArray(row.proposals) ? row.proposals[0] : row.proposals;
       return {
@@ -265,60 +213,19 @@ export default async function JurisdictionPage({ params }: { params: Promise<{ i
     .sort((a, b) => (b.created_at ?? "").localeCompare(a.created_at ?? ""))
     .slice(0, 10);
 
-  const activity = ((activityRes.data ?? []) as ActivityEvent[]);
+  const activity = ((payload?.activity ?? []) as ActivityEvent[]);
 
-  // ── Spending: financial_relationships from agencies in this jurisdiction ──────
-  const agencyIds = institutions
-    .filter((i) => i.source_table === "agency")
-    .map((i) => i.id)
-    .slice(0, 300);
-
-  let spendingGroups: SpendingGroup[] = [];
-  if (agencyIds.length > 0) {
-    const { data: relRows } = await supabase
-      .from("financial_relationships")
-      .select("to_id, to_type, relationship_type, amount_cents, occurred_at")
-      .in("relationship_type", ["contract", "grant"])
-      .eq("from_type", "agency")
-      .in("from_id", agencyIds)
-      .order("amount_cents", { ascending: false })
-      .limit(100);
-
-    const rels = (relRows ?? []) as Array<{
-      to_id: string;
-      to_type: string;
-      relationship_type: string;
-      amount_cents: number | null;
-      occurred_at: string | null;
-    }>;
-
-    const entityIds = Array.from(
-      new Set(rels.filter((r) => r.to_type === "financial_entity").map((r) => r.to_id))
-    );
-    const names = new Map<string, string>();
-    if (entityIds.length > 0) {
-      const { data: ents } = await supabase
-        .from("financial_entities")
-        .select("id, display_name, canonical_name")
-        .in("id", entityIds);
-      for (const e of (ents ?? []) as Array<{
-        id: string;
-        display_name: string | null;
-        canonical_name: string | null;
-      }>) {
-        names.set(e.id, e.display_name || e.canonical_name || "Unknown recipient");
-      }
-    }
-
-    spendingGroups = aggregateSpending(
-      rels.map((r) => ({
-        recipient: names.get(r.to_id) ?? "Unknown recipient",
-        awardType: r.relationship_type,
-        amountCents: r.amount_cents ?? 0,
-        date: r.occurred_at,
-      }))
-    );
-  }
+  // ── Spending: rows pre-resolved (recipient name + award type + amount + date)
+  // by get_jurisdiction_page; aggregated here by the same aggregateSpending the
+  // page has always used (group by recipient|awardType|fiscalYear, top 10). ─────
+  const spendingGroups: SpendingGroup[] = aggregateSpending(
+    (payload?.spending ?? []) as Array<{
+      recipient: string;
+      awardType: string;
+      amountCents: number;
+      date: string | null;
+    }>
+  );
 
   // NOTE: the jurisdictions table carries no primary_source* columns (unlike
   // agencies/officials), so there is no SourceBadge attribution to render here.

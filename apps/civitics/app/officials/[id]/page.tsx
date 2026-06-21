@@ -273,6 +273,13 @@ const DONOR_TYPE_LABELS: Record<string, string> = {
   foreign:     "Foreign Entity",
 };
 
+// FIX-635: hard cap on the stale-MV donor fallback. When
+// official_donor_rollup_mv has no rows for an official but donations exist, the
+// request path reads at most this many financial_relationships rows (top by
+// amount) — never the old up-to-50,000-row live scan that detonated under a
+// stale MV. The result is explicitly marked partial in the UI.
+const DONOR_FALLBACK_LIMIT = 200;
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default async function OfficialProfilePage({
@@ -507,6 +514,9 @@ export default async function OfficialProfilePage({
   let industrySummary: { sector: string; totalCents: number; pct: number }[] = [];
   let ieSupport: { rows: OutsideSpenderRow[]; total: number } = { rows: [], total: 0 };
   let ieOppose:  { rows: OutsideSpenderRow[]; total: number } = { rows: [], total: 0 };
+  // FIX-635: true when the donor view came from the bounded stale-MV fallback
+  // (top-N only, sums are lower bounds), so the UI can mark the data partial.
+  let donorDataPartial = false;
 
   const rollupRows = (donorRollupRes.data ?? []) as RollupRow[];
 
@@ -547,7 +557,7 @@ export default async function OfficialProfilePage({
   } else {
     // EXISTS probe (cheap — never COUNT(*), which seq-scans for a whale): does
     // this official have ANY donation row despite an empty MV? If so the MV is
-    // stale/unrefreshed → fall back to the live aggregation.
+    // stale/unrefreshed → fall back to a BOUNDED top-N read.
     const { data: probe } = await sb
       .from("financial_relationships")
       .select("id")
@@ -557,36 +567,42 @@ export default async function OfficialProfilePage({
       .limit(1);
 
     if (probe && probe.length > 0) {
-      const { rows: inflowRaw } = await fetchAllRows<{ from_id: string; amount_cents: number | null; relationship_type: string }>((f, t) =>
-        sb
-          .from("financial_relationships")
-          .select("from_id, amount_cents, relationship_type")
-          .in("relationship_type", ["donation", "ie_support", "ie_oppose"])
-          .eq("to_type", "official")
-          .eq("to_id", params.id)
-          .eq("from_type", "financial_entity")
-          .order("id", { ascending: true })
-          .range(f, t),
-        { maxRows: 50000 },
-      );
+      // FIX-635: this branch previously ran fetchAllRows up to 50,000
+      // financial_relationships rows (plus chunked financial_entities) PER
+      // PUBLIC RENDER. A stale/empty MV — exactly what the failed 2026-06-21
+      // refresh left — turned every funded official's page into that 50k-row
+      // scan and was a co-factor in the connection-pool exhaustion. We now read
+      // only a BOUNDED top-N by amount (amount_cents>0 uses the FIX-503 partial
+      // DESC index instead of a parallel seq scan) and mark the result partial.
+      // The MV is the source of truth; its refresh restores exact totals. A
+      // stale MV must degrade gracefully, never detonate.
+      donorDataPartial = true;
+      const { data: boundedRaw } = await sb
+        .from("financial_relationships")
+        .select("from_id, amount_cents, relationship_type")
+        .in("relationship_type", ["donation", "ie_support", "ie_oppose"])
+        .eq("to_type", "official")
+        .eq("to_id", params.id)
+        .eq("from_type", "financial_entity")
+        .gt("amount_cents", 0)
+        .order("amount_cents", { ascending: false })
+        .limit(DONOR_FALLBACK_LIMIT);
+      const inflowRaw = (boundedRaw ?? []) as Array<{ from_id: string; amount_cents: number | null; relationship_type: string }>;
       const fromEntityIds = [...new Set(inflowRaw.map((d) => d.from_id))];
       const entityInfo = new Map<string, { display_name: string; industry: string | null; entity_type: string | null }>();
       if (fromEntityIds.length > 0) {
         const industryByEntityId = await fetchIndustryTagsByEntityId(supabase, fromEntityIds);
-        const BATCH = 300;
-        for (let i = 0; i < fromEntityIds.length; i += BATCH) {
-          const batch = fromEntityIds.slice(i, i + BATCH);
-          const { data: entities } = await supabase
-            .from("financial_entities")
-            .select("id, display_name, entity_type")
-            .in("id", batch);
-          for (const e of entities ?? []) {
-            entityInfo.set(e.id, {
-              display_name: e.display_name,
-              industry:     industryByEntityId.get(e.id)?.display_label ?? null,
-              entity_type:  e.entity_type,
-            });
-          }
+        // ≤ DONOR_FALLBACK_LIMIT distinct ids — a single bounded .in(), no chunk loop.
+        const { data: entities } = await supabase
+          .from("financial_entities")
+          .select("id, display_name, entity_type")
+          .in("id", fromEntityIds);
+        for (const e of entities ?? []) {
+          entityInfo.set(e.id, {
+            display_name: e.display_name,
+            industry:     industryByEntityId.get(e.id)?.display_label ?? null,
+            entity_type:  e.entity_type,
+          });
         }
       }
       const enriched = inflowRaw.map((r) => {
@@ -1214,6 +1230,16 @@ export default async function OfficialProfilePage({
           }
           donations={
             <div>
+              {/* FIX-635: stale-MV fallback served a bounded top-N, not the true
+                  aggregate — say so plainly rather than imply these are totals. */}
+              {donorDataPartial && (
+                <div className="px-5 py-3 border-b border-amber/60 bg-amber/10">
+                  <p className="text-xs text-ink">
+                    <span className="font-semibold">Partial — donor data refreshing.</span>{" "}
+                    Showing the top {DONOR_FALLBACK_LIMIT} contributions by amount; full totals return after the next finance sync.
+                  </p>
+                </div>
+              )}
               {/* Industry breakdown */}
               {industrySummary.length > 0 && (
                 <div className="p-5 border-b border-rule">
