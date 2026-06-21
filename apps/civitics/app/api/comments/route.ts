@@ -12,6 +12,7 @@ import {
   serialize,
   nestReplies,
   topScore,
+  hasRecordLink,
   type CommentPayload,
 } from "./_lib";
 import { getSlowMode } from "@/lib/slow-mode";
@@ -105,7 +106,7 @@ export async function GET(request: NextRequest) {
         .eq("entity_type", entityType)
         .eq("entity_id", entityId)
         .is("parent_id", null)
-        .not("kind", "in", "(question,answer)")
+        .not("kind", "in", "(question,answer,community_note)")
         .in("status", ["visible", "needs_review"]);
       if (lens === "constituents") {
         q = q.not("constituent_jurisdiction_id", "is", null);
@@ -136,7 +137,7 @@ export async function GET(request: NextRequest) {
         .select(COMMENT_COLUMNS)
         .eq("id", rootId)
         .is("parent_id", null)
-        .not("kind", "in", "(question,answer)")
+        .not("kind", "in", "(question,answer,community_note)")
         .in("status", ["visible", "needs_review"])
         .maybeSingle();
       if (rootErr) return NextResponse.json({ error: "Failed to load comments" }, { status: 500 });
@@ -147,7 +148,7 @@ export async function GET(request: NextRequest) {
         .select(COMMENT_COLUMNS)
         .eq("thread_root_id", rootId)
         .not("parent_id", "is", null)
-        .not("kind", "in", "(question,answer)")
+        .not("kind", "in", "(question,answer,community_note)")
         .in("status", ["visible", "needs_review"]);
       const descendants = desc ?? [];
       const names = await fetchAuthorMeta(admin, [
@@ -257,7 +258,7 @@ export async function GET(request: NextRequest) {
         .select(COMMENT_COLUMNS)
         .in("thread_root_id", rootIds)
         .not("parent_id", "is", null)
-        .not("kind", "in", "(question,answer)")
+        .not("kind", "in", "(question,answer,community_note)")
         .in("status", ["visible", "needs_review"]);
       descendants = desc ?? [];
     }
@@ -333,6 +334,16 @@ export async function POST(request: NextRequest) {
     }
     if (typeof body !== "string") {
       return NextResponse.json({ error: "Comment body is required" }, { status: 400 });
+    }
+
+    // Q&A v2 PR-1 (FIX-626): friendly citation pre-check for community context. The
+    // RPC is the hard enforcement (same two-pattern test); this just yields a
+    // nicer message than the raw RPC exception text.
+    if (kind === "community_note" && !hasRecordLink(body)) {
+      return NextResponse.json(
+        { error: "Add a link to the record — a vote, statement, or page — so others can verify." },
+        { status: 400 },
+      );
     }
 
     // FIX-569: new-account first-writes challenge. Established accounts skip the

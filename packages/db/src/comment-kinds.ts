@@ -53,6 +53,11 @@ export const KIND_LABELS: Record<string, string> = {
   // C1 Wave D (FIX-536): official answer in the Q&A lane. Never user-selectable
   // — set by the answer action and gated by RLS (decision 11).
   answer: "Official response",
+  // Q&A v2 PR-1 (FIX-625): any signed-in user's sourced, from-the-record response
+  // to a question. NOT the official's voice — labeled, citation-required, ranked
+  // by bridge score, surfaced below the official answer. Valid on the same three
+  // answerer entity types (official / institution / jurisdiction), NOT proposals.
+  community_note: "Community context",
   evidence: "Evidence / Data",
   precedent: "Precedent",
   tradeoff: "Tradeoff",
@@ -90,14 +95,18 @@ export const ALLOWED_KINDS: Record<EntityCommentType, readonly string[]> = {
   // official Q&A response — API-valid for officials but NEVER offered in any
   // composer's selectable list (set by the answer action, gated by RLS to
   // 'official' grant holders; decision 11).
-  official: ["discussion", "concern", "question", "evidence", "stakeholder_impact", "answer"],
+  // Q&A v2 PR-1 (FIX-625): 'community_note' appended at the END — any signed-in
+  // user's sourced response to a question (gated by submit_comment's citation
+  // check, not the answerer grant). Order-sensitive: the FIX-543 drift test
+  // deep-equals this arm against submit_comment's v_allowed (same trailing slot).
+  official: ["discussion", "concern", "question", "evidence", "stakeholder_impact", "answer", "community_note"],
   // FIX-610: 'answer' added — the Q&A lane is now generalized to institutions
   // (agencies + governing bodies) and jurisdictions. Like officials, 'answer' is
   // never user-selectable: set by the answer action and gated by submit_comment's
   // generalized answer-gate (has_active_answerer_grant) to the per-type answerer
   // grant holder (official / institution_admin / jurisdiction_admin).
-  jurisdiction: ["discussion", "question", "concern", "evidence", "stakeholder_impact", "answer"],
-  institution: ["discussion", "question", "concern", "evidence", "stakeholder_impact", "answer"],
+  jurisdiction: ["discussion", "question", "concern", "evidence", "stakeholder_impact", "answer", "community_note"],
+  institution: ["discussion", "question", "concern", "evidence", "stakeholder_impact", "answer", "community_note"],
   // Schema supports these; no UI this PR — keep them minimal but valid.
   financial_entity: ["discussion"],
   district: ["discussion"],

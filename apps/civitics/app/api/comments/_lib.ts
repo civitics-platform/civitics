@@ -102,6 +102,15 @@ function normalizeSummary(raw: unknown) {
   };
 }
 
+// Q&A v2 PR-1 (FIX-626): community-context citation soft-validation. A community_note
+// body must contain ≥1 link — an absolute http(s):// URL OR an in-app record path.
+// Mirrors submit_comment's SQL check (the RPC is the HARD enforcement; this is the
+// route's friendly early-400). Keep the two regexes in lockstep with the SQL.
+const RECORD_LINK_RE = /https?:\/\/|\/(proposals|officials|votes|jurisdictions|institutions|investigations)\//i;
+export function hasRecordLink(body: string): boolean {
+  return RECORD_LINK_RE.test(body);
+}
+
 // "top" score: (valuable_up − valuable_down) with legacy_upvotes as seed (decision 13).
 export function topScore(raw: unknown): number {
   const s = normalizeSummary(raw);
