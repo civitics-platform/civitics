@@ -800,3 +800,5 @@
 2026-06-21 | FIX-630 | 63eaad42 | local+prod | feat(qa): official endorsement of community notes (Q&A v2 PR-2b)
 2026-06-21 | FIX-631 | 63eaad42 | local+prod | feat(qa): official endorsement of community notes (Q&A v2 PR-2b)
 2026-06-21 | FIX-632 | 63eaad42 | local+prod | feat(qa): official endorsement of community notes (Q&A v2 PR-2b)
+2026-06-21 | FIX-634 | 398b3b87 | local+prod | perf(jurisdictions,officials): collapse request-path N+1 (FIX-634, FIX-635)
+2026-06-21 | FIX-635 | 398b3b87 | local+prod | perf(jurisdictions,officials): collapse request-path N+1 (FIX-634, FIX-635)
