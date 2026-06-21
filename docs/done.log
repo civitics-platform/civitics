@@ -796,3 +796,7 @@
 2026-06-20 | FIX-627 | 87b4bed7 | local+prod | feat(qa): community context lane (Q&A v2 PR-1)
 2026-06-21 | FIX-628 | 2090cd7e | local+prod | feat(qa): community Q&A on proposals (Q&A v2 PR-2a)
 2026-06-21 | FIX-629 | 2090cd7e | local+prod | feat(qa): community Q&A on proposals (Q&A v2 PR-2a)
+2026-06-21 | FIX-620 | 63eaad42 | closes-as-recognized | feat(qa): official endorsement of community notes (Q&A v2 PR-2b)
+2026-06-21 | FIX-630 | 63eaad42 | local+prod | feat(qa): official endorsement of community notes (Q&A v2 PR-2b)
+2026-06-21 | FIX-631 | 63eaad42 | local+prod | feat(qa): official endorsement of community notes (Q&A v2 PR-2b)
+2026-06-21 | FIX-632 | 63eaad42 | local+prod | feat(qa): official endorsement of community notes (Q&A v2 PR-2b)
