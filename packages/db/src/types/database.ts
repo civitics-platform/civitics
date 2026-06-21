@@ -6116,6 +6116,10 @@ export type Database = {
         Returns: Json
       }
       source_priority: { Args: { src: string }; Returns: number }
+      set_community_note_endorsement: {
+        Args: { p_endorsed: boolean; p_note_id: string }
+        Returns: Json
+      }
       submit_comment: {
         Args: {
           p_body: string

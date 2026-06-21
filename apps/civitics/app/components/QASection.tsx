@@ -44,6 +44,9 @@ type CommunityNote = {
   is_constituent: boolean;
   author_name: string;
   author_is_synthetic?: boolean;
+  // Q&A v2 PR-2b (FIX-C): the office has endorsed this note ("confirms it reflects
+  // the record"). Endorsed notes sort first and resolve the question (answered).
+  is_endorsed: boolean;
 };
 
 type Question = {
@@ -597,17 +600,76 @@ function AddContextComposer({
   );
 }
 
+// ─── Endorse control (grant-holders only) ─────────────────────────────────────
+// Q&A v2 PR-2b (FIX-C): a one-click "the office confirms this reflects the record"
+// for a community note. Toggles endorsed/withdrawn via the gated RPC; on success a
+// full reload (onChanged) re-derives the question's "✓ Answered" badge + ordering.
+function EndorseControl({
+  note,
+  signInNext,
+  onChanged,
+}: {
+  note: CommunityNote;
+  signInNext: string;
+  onChanged: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+
+  async function toggle() {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const res = await challengedFetch(`/api/comments/${note.id}/endorse`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ endorsed: !note.is_endorsed }),
+      });
+      if (res.status === 401) return redirectToSignIn(signInNext);
+      if (res.ok) onChanged();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (note.is_endorsed) {
+    return (
+      <button
+        type="button"
+        onClick={toggle}
+        disabled={busy}
+        className="text-[11px] font-medium text-green-ink hover:text-accent disabled:opacity-50"
+        title="Withdraw the office's endorsement"
+      >
+        {busy ? "…" : "Endorsed ✓ · Withdraw"}
+      </button>
+    );
+  }
+  return (
+    <button
+      type="button"
+      onClick={toggle}
+      disabled={busy}
+      className="border border-green-ink/30 bg-green-ink/10 px-2 py-0.5 text-[11px] font-semibold text-green-ink hover:bg-green-ink/20 disabled:opacity-50"
+      title="Confirm this note reflects the record — resolves the question"
+    >
+      {busy ? "…" : "Endorse"}
+    </button>
+  );
+}
+
 // ─── Community-context lane (below the official answer, neutral chrome) ────────
 function CommunityContext({
   q,
   entityId,
   entityType,
+  canAnswer,
   signInNext,
   onChanged,
 }: {
   q: Question;
   entityId: string;
   entityType: QAEntityType;
+  canAnswer: boolean;
   signInNext: string;
   onChanged: () => void;
 }) {
@@ -642,7 +704,22 @@ function CommunityContext({
       {notes.length > 0 && (
         <ul className="space-y-2">
           {notes.map((n) => (
-            <li key={n.id} className="border border-rule bg-card p-3">
+            <li
+              key={n.id}
+              className={`border bg-card p-3 ${
+                n.is_endorsed ? "border-green-ink/40 border-l-4 border-l-green-ink" : "border-rule"
+              }`}
+            >
+              {/* Q&A v2 PR-2b: endorsed = the office vouches this reflects the record.
+                  Still a community note (vouched), distinct from the green official
+                  ANSWER block above. */}
+              {n.is_endorsed && (
+                <div className="mb-1.5">
+                  <span className="rounded-full border border-green-ink/25 bg-green-ink/10 px-2 py-0.5 text-[10px] font-semibold text-green-ink" title="The office confirms this note reflects the record">
+                    ✓ Endorsed by the office
+                  </span>
+                </div>
+              )}
               <NoteBody body={n.body} />
               <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px] text-ink-soft">
                 <span>{n.author_name}</span>
@@ -656,7 +733,12 @@ function CommunityContext({
               </div>
               <div className="mt-2 flex items-center justify-between">
                 <NoteRatingControls noteId={n.id} initialSummary={n.rating_summary} signInNext={signInNext} />
-                <FlagMenu commentId={n.id} signInNext={signInNext} />
+                <div className="flex items-center gap-3">
+                  {canAnswer && (
+                    <EndorseControl note={n} signInNext={signInNext} onChanged={onChanged} />
+                  )}
+                  <FlagMenu commentId={n.id} signInNext={signInNext} />
+                </div>
               </div>
             </li>
           ))}
@@ -825,6 +907,7 @@ function QuestionCard({
         q={q}
         entityId={entityId}
         entityType={entityType}
+        canAnswer={canAnswer}
         signInNext={signInNext}
         onChanged={onChanged}
       />
