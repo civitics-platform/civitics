@@ -791,3 +791,6 @@
 2026-06-20 | FIX-622 | bc51560c | local+prod | feat(franklin): seed governing-body meetings + agenda items for the Commons panel
 2026-06-20 | FIX-623 | 67db3b86 | local+prod | feat(franklin): guided tour overlay over the HB-14 spine
 2026-06-20 | FIX-624 | 67db3b86 | local+prod | feat(franklin): guided tour overlay over the HB-14 spine
+2026-06-20 | FIX-625 | 87b4bed7 | local+prod | feat(qa): community context lane (Q&A v2 PR-1)
+2026-06-20 | FIX-626 | 87b4bed7 | local+prod | feat(qa): community context lane (Q&A v2 PR-1)
+2026-06-20 | FIX-627 | 87b4bed7 | local+prod | feat(qa): community context lane (Q&A v2 PR-1)
