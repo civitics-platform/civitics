@@ -789,3 +789,5 @@
 2026-06-20 | FIX-619 | 016336ea | local+prod | fix(officials): pull engagement-signal officials into the index payload past the 1000-row cap
 2026-06-20 | FIX-621 | 685768d8 | local+prod | feat(franklin): narrative spine (HB-14), money trail, and Commons strip
 2026-06-20 | FIX-622 | bc51560c | local+prod | feat(franklin): seed governing-body meetings + agenda items for the Commons panel
+2026-06-20 | FIX-623 | 67db3b86 | local+prod | feat(franklin): guided tour overlay over the HB-14 spine
+2026-06-20 | FIX-624 | 67db3b86 | local+prod | feat(franklin): guided tour overlay over the HB-14 spine
