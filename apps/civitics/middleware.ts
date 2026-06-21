@@ -48,10 +48,21 @@ const BOT_PATTERNS = [
 const WRITE_PATH_RE = /^\/api\/(comments|positions|statements)(\/|$)/;
 const WRITE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
+// SSR entity DETAIL pages (FIX-637). Each of these renders the full per-entity
+// fan-out, and the 2026-06-21 crawl walked hundreds of distinct IDs across them.
+// Matches a collection prefix followed by at least one more path segment, so the
+// per-entity detail page (and its sub-routes) is bucketed but the cheap, few
+// param-free list pages (/officials, /jurisdictions, …) are NOT. agencies uses a
+// [slug] segment; the rest are [id]. donors/initiatives/investigations are the
+// same render-fan-out class as the enumerated routes, so they're bucketed too.
+const ENTITY_PAGE_RE =
+  /^\/(jurisdictions|officials|proposals|institutions|agencies|districts|meetings|donors|initiatives|investigations)\/[^/]+/;
+
 /**
  * Classify a request into a rate-limit bucket, or null to skip. Reads are
  * method-agnostic (preserved from the prior limiter); the `write` bucket applies
- * only to mutating verbs on the participation routes.
+ * only to mutating verbs on the participation routes; `entity_pages` applies only
+ * to GETs of the per-entity detail pages.
  */
 function getRateLimitBucket(path: string, method: string): RateLimitBucket | null {
   if (path.startsWith("/api/search")) return "search";
@@ -59,6 +70,9 @@ function getRateLimitBucket(path: string, method: string): RateLimitBucket | nul
   if (path.startsWith("/api/graph/narrative")) return "graph_ai";
   if (path.startsWith("/api/graph")) return "graph";
   if (WRITE_METHODS.has(method) && WRITE_PATH_RE.test(path)) return "write";
+  // Coarse per-IP cap on SSR entity detail-page renders (FIX-637). GET only — a
+  // crawl is GETs; never bucket a participation POST behind this read limit.
+  if (method === "GET" && ENTITY_PAGE_RE.test(path)) return "entity_pages";
   return null;
 }
 

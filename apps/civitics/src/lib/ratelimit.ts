@@ -31,6 +31,13 @@ export type RateLimitBucket =
   // caps (FIX-569) remain the PRIMARY integrity control; this only blunts raw
   // per-IP volume. Applied only to write verbs (see getRateLimitBucket).
   | "write"
+  // SSR entity DETAIL pages (FIX-637). The 2026-06-21 crawl walked hundreds of
+  // distinct /jurisdictions/[id], /officials/[id], … URLs — each a full render
+  // fan-out — and the buckets above don't cover page routes, only /api + writes.
+  // A coarse per-IP cap on the per-entity detail pages returns 429 at the edge
+  // BEFORE any Supabase query fires. Per-IP only: a distributed crawl evades it
+  // (the Vercel/Cloudflare front door is the volumetric complement).
+  | "entity_pages"
   // Auth-send throttles (FIX-568). NB: the browser's signInWithOtp call goes
   // straight to Supabase GoTrue, not through this app — so these buckets are
   // enforced in the auth/actions.ts preflight, not in middleware.
@@ -48,6 +55,10 @@ const BUCKET_LIMITS: Record<RateLimitBucket, { tokens: number; window: Window }>
   graph_ai: { tokens: 5, window: "1 m" },
   graph: { tokens: 60, window: "1 m" },
   write: { tokens: 30, window: "1 m" },
+  // Generous: a real reader almost never opens >120 distinct entity pages in a
+  // minute, but a crawler walking distinct IDs blows past it. Tune up if a power
+  // user (or a tab-restore burst) trips it; tune down if a crawl still gets through.
+  entity_pages: { tokens: 120, window: "1 m" },
   auth_send_ip: { tokens: 5, window: "10 m" },
   auth_send_email: { tokens: 3, window: "1 h" },
 };
