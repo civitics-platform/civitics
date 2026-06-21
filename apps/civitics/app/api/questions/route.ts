@@ -4,10 +4,12 @@ import { createServerClient } from "@civitics/db";
 
 export const dynamic = "force-dynamic";
 
-// The entity_types the Q&A lane supports (mirrors has_active_answerer_grant /
-// the QASection QAEntityType). All accept kind='question'; an answer requires the
-// matching answerer grant.
-const QA_ENTITY_TYPES = new Set(["official", "institution", "jurisdiction"]);
+// The entity_types the Q&A lane supports (mirrors the QASection QAEntityType).
+// All accept kind='question'. official/institution/jurisdiction can hold an
+// answerer grant (an official answer); 'proposal' (Q&A v2 PR-2a, FIX-628) is
+// community-only — no official answerer exists for a bill, so can_answer is
+// always false there and notes ARE the answer path.
+const QA_ENTITY_TYPES = new Set(["official", "institution", "jurisdiction", "proposal"]);
 
 // ─── GET /api/questions?entity_type=&entity_id=&lens=&sort=&cursor=&limit= ────
 // Q&A lane read (C1 Wave D, FIX-537; generalized FIX-610 to official | institution

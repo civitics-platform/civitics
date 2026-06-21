@@ -55,8 +55,9 @@ export const KIND_LABELS: Record<string, string> = {
   answer: "Official response",
   // Q&A v2 PR-1 (FIX-625): any signed-in user's sourced, from-the-record response
   // to a question. NOT the official's voice — labeled, citation-required, ranked
-  // by bridge score, surfaced below the official answer. Valid on the same three
-  // answerer entity types (official / institution / jurisdiction), NOT proposals.
+  // by bridge score, surfaced below the official answer. Q&A v2 PR-2a (FIX-628):
+  // now also valid on proposals — the one Q&A surface with no official answerer
+  // (a bill is not a grant-holding office), so notes ARE the community answer path.
   community_note: "Community context",
   evidence: "Evidence / Data",
   precedent: "Precedent",
@@ -70,6 +71,12 @@ export const KIND_LABELS: Record<string, string> = {
 // Full union of every kind any surface can use. Used to validate posts to a
 // `proposal` (initiatives ARE proposals, so this must cover every stage kind).
 // 'support'/'oppose' are NOT kinds (C1 / FIX-526) — they live in stance.
+// Q&A v2 PR-2a (FIX-628): 'community_note' appended at the END — proposals are a
+// community-only Q&A surface (no official answerer exists for a bill), so any
+// signed-in user answers a question with a sourced, citation-required note. This
+// flows into ALLOWED_KINDS.proposal (= ALL_KINDS). Order-sensitive: the FIX-543
+// drift test deep-equals this against submit_comment's 'proposal' v_allowed arm
+// (same trailing slot).
 const ALL_KINDS = [
   "discussion",
   "concern",
@@ -82,6 +89,7 @@ const ALL_KINDS = [
   "experience",
   "cause",
   "solution",
+  "community_note",
 ] as const;
 
 // Allowed kinds per entity_type (the API allowlist). The UI may present a

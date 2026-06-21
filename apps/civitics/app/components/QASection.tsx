@@ -74,10 +74,12 @@ type QuestionsResponse = {
 
 type SortKey = "wanted" | "newest" | "unanswered";
 
-// The entity_types the Q&A lane supports (mirrors the answerer-grant mapping in
-// submit_comment / has_active_answerer_grant). All accept kind='question'; an
-// answer requires the matching answerer grant.
-export type QAEntityType = "official" | "institution" | "jurisdiction";
+// The entity_types the Q&A lane supports. official/institution/jurisdiction can
+// hold an answerer grant (an official answer); kind='question' is valid on all.
+// Q&A v2 PR-2a (FIX-629): 'proposal' is community-only — a bill has no official
+// answerer, so can_answer is always false and community notes ARE the answer path
+// (the official lane is suppressed in the UI; see `officialLane` below).
+export type QAEntityType = "official" | "institution" | "jurisdiction" | "proposal";
 
 export interface QASectionProps {
   entityId: string;
@@ -686,6 +688,7 @@ function QuestionCard({
   entityId,
   entityType,
   canAnswer,
+  officialLane,
   entityName,
   signInNext,
   onChanged,
@@ -694,6 +697,7 @@ function QuestionCard({
   entityId: string;
   entityType: QAEntityType;
   canAnswer: boolean;
+  officialLane: boolean;
   entityName: string;
   signInNext: string;
   onChanged: () => void;
@@ -726,15 +730,25 @@ function QuestionCard({
   return (
     <li className="border border-rule bg-card p-4">
       <div className="mb-1 flex flex-wrap items-center gap-1.5">
-        {q.answered ? (
-          <span className="rounded-full border border-green-ink/25 bg-green-ink/10 px-2 py-0.5 text-[10px] font-semibold text-green-ink">
-            ✓ Answered
-          </span>
+        {officialLane ? (
+          q.answered ? (
+            <span className="rounded-full border border-green-ink/25 bg-green-ink/10 px-2 py-0.5 text-[10px] font-semibold text-green-ink">
+              ✓ Answered
+            </span>
+          ) : (
+            <span className="rounded-full border border-amber/60 bg-amber/25 px-2 py-0.5 text-[10px] font-medium text-ink">
+              {q.community_note_count > 0
+                ? `Awaiting official response · ${q.community_note_count} community ${q.community_note_count === 1 ? "note" : "notes"}`
+                : `Awaiting response since ${formatDate(q.created_at)}`}
+            </span>
+          )
         ) : (
-          <span className="rounded-full border border-amber/60 bg-amber/25 px-2 py-0.5 text-[10px] font-medium text-ink">
+          // Q&A v2 PR-2a (FIX-629): no official lane on proposals — show the
+          // community-note count, never "Answered" / "Awaiting official response".
+          <span className="rounded-full border border-rule bg-paper-2 px-2 py-0.5 text-[10px] font-medium text-ink-soft">
             {q.community_note_count > 0
-              ? `Awaiting official response · ${q.community_note_count} community ${q.community_note_count === 1 ? "note" : "notes"}`
-              : `Awaiting response since ${formatDate(q.created_at)}`}
+              ? `${q.community_note_count} community ${q.community_note_count === 1 ? "note" : "notes"}`
+              : "No answers yet — add context from the record."}
           </span>
         )}
         {q.status === "needs_review" && (
@@ -756,8 +770,8 @@ function QuestionCard({
         )}
       </div>
 
-      {/* Official-response lane */}
-      {q.answers.length > 0 && (
+      {/* Official-response lane (never on proposals — no official answerer) */}
+      {officialLane && q.answers.length > 0 && (
         <div className="mt-3 space-y-2">
           {q.answers.map((a) => (
             <div key={a.id} className="border-l-4 border-green-ink bg-green-ink/5 p-3">
@@ -792,7 +806,9 @@ function QuestionCard({
         <FlagMenu commentId={q.id} signInNext={signInNext} />
       </div>
 
-      {canAnswer && (
+      {/* Official answer affordance — suppressed on proposals (officialLane=false);
+          can_answer is already false from the RPC, this is belt-and-braces. */}
+      {officialLane && canAnswer && (
         <AnswerComposer
           entityId={entityId}
           entityType={entityType}
@@ -880,17 +896,27 @@ export function QASection({ entityId, entityType, entityName, signInNext }: QASe
   const awaiting = data?.awaiting ?? 0;
   const canAnswer = data?.can_answer ?? false;
   const questions = data?.questions ?? [];
+  // Q&A v2 PR-2a (FIX-629): proposals have no official answerer — suppress the
+  // official lane and reframe the "awaiting official response" copy as a
+  // community answer path ("the community answers from the record").
+  const officialLane = entityType !== "proposal";
 
   return (
     <section className="border border-rule bg-paper-2 p-4">
       <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-sm font-bold text-ink">Questions for {entityName}</h3>
+        <h3 className="text-sm font-bold text-ink">
+          {officialLane ? `Questions for ${entityName}` : "Questions about this bill"}
+        </h3>
         <AskComposer entityId={entityId} entityType={entityType} signInNext={next} onAsked={load} />
       </div>
       <p className="mb-3 text-xs text-ink-soft">
         {total > 0
-          ? `${total} ${total === 1 ? "question" : "questions"} · ${awaiting} awaiting response`
-          : "Ask a public question — on the record, answered or not."}
+          ? officialLane
+            ? `${total} ${total === 1 ? "question" : "questions"} · ${awaiting} awaiting response`
+            : `${total} ${total === 1 ? "question" : "questions"} — the community answers from the record`
+          : officialLane
+            ? "Ask a public question — on the record, answered or not."
+            : "Ask a question about this bill — the community answers from the record."}
       </p>
 
       {total > 0 && (
@@ -916,7 +942,12 @@ export function QASection({ entityId, entityType, entityName, signInNext }: QASe
         <div className="border border-accent/25 bg-accent/10 px-4 py-3 text-sm text-accent">{error}</div>
       ) : questions.length === 0 ? (
         <div className="border border-dashed border-rule bg-card px-4 py-8 text-center text-sm text-ink-soft/60">
-          No questions yet. <span className="text-ink-soft">Be the first to ask {entityName} a question.</span>
+          No questions yet.{" "}
+          <span className="text-ink-soft">
+            {officialLane
+              ? `Be the first to ask ${entityName} a question.`
+              : "Ask a question about this bill — the community answers from the record."}
+          </span>
         </div>
       ) : (
         <>
@@ -928,6 +959,7 @@ export function QASection({ entityId, entityType, entityName, signInNext }: QASe
                 entityId={entityId}
                 entityType={entityType}
                 canAnswer={canAnswer}
+                officialLane={officialLane}
                 entityName={entityName}
                 signInNext={next}
                 onChanged={load}

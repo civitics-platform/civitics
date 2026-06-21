@@ -9,6 +9,7 @@ import { PageViewTracker } from "../../components/PageViewTracker";
 import { SourceBadge } from "../../components/SourceBadge";
 import { SourceDetailPopover } from "../../components/SourceDetailPopover";
 import { EntityComments } from "../../components/EntityComments";
+import { QASection } from "../../components/QASection";
 import { PositionSection } from "../../components/PositionSection";
 import { CommentHighlightsStrip } from "../../components/CommentHighlightsStrip";
 import { getSlowMode } from "@/lib/slow-mode";
@@ -558,6 +559,13 @@ export default async function ProposalDetailPage({
                 statementsEnabled
                 slowMode={slowMode}
               />
+            </div>
+
+            {/* Q&A v2 PR-2a (FIX-629): community Q&A on this bill. No official
+                answerer exists for a proposal — questions are answered by the
+                community with sourced, citation-required notes "from the record". */}
+            <div className="mt-8">
+              <QASection entityType="proposal" entityId={p.id} entityName={p.title} />
             </div>
 
             {/* Citizen Initiatives linked to this proposal */}
