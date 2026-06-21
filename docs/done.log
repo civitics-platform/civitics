@@ -804,3 +804,4 @@
 2026-06-21 | FIX-635 | 398b3b87 | local+prod | perf(jurisdictions,officials): collapse request-path N+1 (FIX-634, FIX-635)
 2026-06-21 | FIX-636 | 72719c75 | local-only | perf(officials): direct-pg helper to refresh donor rollup MV (FIX-636)
 2026-06-21 | FIX-636 | 7c1aed1a | local+prod | chore(ops): record FIX-636 prod donor-MV refresh (runtime verification)
+2026-06-21 | FIX-637 | fabe1a85 | local+prod | feat(edge): per-IP rate-limit on SSR entity detail pages (FIX-637)
