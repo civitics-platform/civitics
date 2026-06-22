@@ -378,11 +378,12 @@ export async function computePlatformUsagePayload(
         updateUsage(db, "vercel", "web_analytics_events", v.web_analytics_events, "api"),
         updateUsage(db, "vercel", "isr_reads", v.isr_reads, "api"),
         updateUsage(db, "vercel", "fluid_memory_gb_hrs", v.fluid_memory_gb_hrs, "api"),
-        // FIX-642: persist the BilledCost total so the Platform Costs card has
-        // a live spend figure (vs the 9 quantity metrics). 0 on Hobby / on Pro
-        // with no in-cycle charges; the platform_limits row (free+pro) gives it
-        // a threshold ladder anchored on the $10 Spend-Management cap.
-        updateUsage(db, "vercel", "monthly_spend_usd", v.charges_total_usd, "api"),
+        // FIX-642 / FIX-644: persist EffectiveCost (the real monthly run-rate —
+        // list-price value of all consumption incl. the prorated Pro base), NOT
+        // BilledCost (charges_total_usd), which sits at $0 until plan-allotment
+        // overage and is already watched by Vercel's native $10 Spend-Management
+        // cap. effective_cost_usd is the leading "what are we spending" signal.
+        updateUsage(db, "vercel", "monthly_spend_usd", v.effective_cost_usd, "api"),
       ]);
     } else {
       if (!/VERCEL_API_TOKEN/i.test(v.error) && !/plan_upgrade_required|Plan not found/i.test(v.error)) {

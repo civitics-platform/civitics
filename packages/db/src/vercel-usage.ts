@@ -1,33 +1,31 @@
 /**
  * Vercel current-cycle usage metrics — for the Platform Costs card.
  *
- * Two endpoints attempted in order:
+ * PRIMARY source: GET /v1/billing/charges?from=<iso-ms>&to=<iso-ms>[&teamId=...]
+ *   FOCUS-format charges, one JSON object per line (JSONL). Each line carries
+ *   ServiceName + ConsumedQuantity + ConsumedUnit (the metered amount) and
+ *   BilledCost + EffectiveCost (the dollars). This endpoint returns BOTH the
+ *   quantities AND the costs, so it is the authoritative source.
  *
- *   1. GET /v1/usage?from=<iso-ms>&to=<iso-ms>[&teamId=...]
- *        Returns quantities only — function invocations, edge requests, fluid
- *        CPU seconds, etc. The "Usage" view in the Vercel dashboard.
- *        Pro / Enterprise only — Hobby tier responds with
- *        { error: { code: "plan_upgrade_required" } }.
+ * FALLBACK: GET /v1/usage?from=<iso-ms>&to=<iso-ms>[&teamId=...]
+ *   Quantities only, no costs. Pro/Enterprise only — and as of 2026-06 it
+ *   responds 400 invalid_time_range for every range we send, so it is dead in
+ *   practice. Kept as a best-effort quantity-only fallback in case charges ever
+ *   regresses; it never short-circuits the charges path (which has the costs).
  *
- *   2. GET /v1/billing/charges?from=<iso-ms>&to=<iso-ms>[&teamId=...]
- *        Returns FOCUS-format charges (JSONL, one charge per line). Each line
- *        carries UsageQuantity + BilledCost per ChargeDescription. Used here
- *        as a fallback so teams with at least one paid charge in-cycle still
- *        get quantity numbers even without the Pro Usage endpoint.
- *        Hobby tier with no plan responds with
- *        { error: { code: "not_found", message: "Plan not found." } }.
- *
- * On Hobby tier today both calls fail — the snapshot cron will log
- * "vercel: plan_upgrade_required" and leave platform_usage's vercel.* rows on
- * their last-known value (manual). Upgrading to Pro flips both calls on
- * without code changes.
+ * FIX-644 — the previous implementation keyed extractFromCharges() on
+ * c["ChargeDescription"] + c["UsageQuantity"], neither of which exists in the
+ * response (the fields are ServiceName + ConsumedQuantity). Every metric
+ * therefore wrote 0 with source='api' — the snapshot WAS running, the token IS
+ * valid; the parser just never matched a line. This was misfiled as FIX-606
+ * ("regenerate the token"). Real FOCUS field names confirmed against prod
+ * 2026-06-21.
  *
  * 5-minute in-memory cache (matches Supabase + Cloudflare helpers).
  *
  * Date format: Vercel's billing endpoints require ISO 8601 with millisecond
  * precision and a "Z" suffix — exactly what `Date.prototype.toISOString()`
- * produces. YYYY-MM-DD and Unix timestamps are rejected with
- * "invalid_from_date".
+ * produces.
  */
 
 const BASE = "https://api.vercel.com";
@@ -35,10 +33,10 @@ const CACHE_TTL_MS = 5 * 60 * 1000;
 
 // ── Public types ──────────────────────────────────────────────────────────────
 //
-// Keys are the platform_limits.metric values for service='vercel'. Every key
-// is present in every successful response — a metric not returned by the API
-// is set to 0 so the downstream updateUsage() calls always have a number to
-// write.
+// Quantity keys are the platform_limits.metric values for service='vercel'.
+// Every key is present in every successful response — a metric not returned by
+// the API is set to 0 so the downstream updateUsage() calls always have a
+// number to write.
 
 export type VercelUsage = {
   fluid_cpu_seconds: number;
@@ -50,16 +48,26 @@ export type VercelUsage = {
   web_analytics_events: number;
   isr_reads: number;
   fluid_memory_gb_hrs: number;
-  /** Sub-cents-precise dollar total of in-cycle charges (from billing/charges).
-   *  0 on Hobby + on Pro accounts with no billable usage in the period. */
+  /** Sum of BilledCost across all charge lines — the dollars Vercel actually
+   *  bills (overage above plan allotments). 0 while everything is within the
+   *  Pro plan. Vercel's native Spend-Management cap watches THIS; we surface it
+   *  for completeness but alert on effective_cost_usd (the leading signal). */
   charges_total_usd: number;
-  /** "usage" if the Pro /v1/usage endpoint provided the quantities,
-   *  "charges" if they came from /v1/billing/charges. */
+  /** Sum of EffectiveCost — the list-price value of ALL consumption (incl.
+   *  within-allotment usage + the prorated "Pro" base line). This is the real
+   *  monthly run-rate spend and is what we persist as vercel.monthly_spend_usd. */
+  effective_cost_usd: number;
+  /** "charges" if the billing/charges endpoint provided the data (the normal
+   *  path), "usage" if only the quantity-only /v1/usage fallback succeeded. */
   source: "usage" | "charges";
   fetched_at: string;
 };
 
 export type VercelUsageError = { error: string };
+
+type CostFields = "charges_total_usd" | "effective_cost_usd";
+type QuantityMetrics = Omit<VercelUsage, "source" | "fetched_at" | CostFields>;
+type AllMetrics = Omit<VercelUsage, "source" | "fetched_at">;
 
 // ── In-memory cache ───────────────────────────────────────────────────────────
 
@@ -73,7 +81,7 @@ export function clearVercelUsageCache(): void {
 
 // ── Empty metric template ─────────────────────────────────────────────────────
 
-function emptyMetrics(): Omit<VercelUsage, "source" | "fetched_at"> {
+function emptyMetrics(): AllMetrics {
   return {
     fluid_cpu_seconds: 0,
     function_invocations: 0,
@@ -85,41 +93,110 @@ function emptyMetrics(): Omit<VercelUsage, "source" | "fetched_at"> {
     isr_reads: 0,
     fluid_memory_gb_hrs: 0,
     charges_total_usd: 0,
+    effective_cost_usd: 0,
   };
 }
 
-// ── Description → metric-key mapping ──────────────────────────────────────────
-//
-// Vercel's billing charges identify each metric via the ChargeDescription
-// (and sometimes ResourceName) string. These are stable user-facing labels
-// from the FOCUS export — they don't change with API version bumps.
+const BYTES_PER_GB = 1024 ** 3;
 
-function chargeDescriptionToMetricKey(
-  desc: string,
-): keyof ReturnType<typeof emptyMetrics> | null {
-  const d = desc.toLowerCase();
-  if (d.includes("fluid") && d.includes("cpu")) return "fluid_cpu_seconds";
-  if (d.includes("fluid") && d.includes("memory")) return "fluid_memory_gb_hrs";
-  if (d.includes("function invocation")) return "function_invocations";
-  if (d.includes("edge request")) return "edge_requests";
-  if (d.includes("edge cpu") || d.includes("edge function cpu")) return "edge_cpu_ms";
-  if (d.includes("origin transfer") || d.includes("fast origin")) return "origin_transfer_bytes";
-  if (d.includes("build minute") || d.includes("build time")) return "build_minutes";
-  if (d.includes("isr read") || d.includes("isr requests")) return "isr_reads";
-  if (d.includes("web analytics") || d.includes("analytics event")) return "web_analytics_events";
+// ── ServiceName → metric mapping (FIX-644) ────────────────────────────────────
+//
+// Maps a FOCUS charge line's ServiceName to one of our quantity metrics and
+// converts ConsumedQuantity (in its native ConsumedUnit) to the metric's unit.
+// ServiceName strings are stable user-facing labels from the FOCUS export.
+// Order matters: more-specific matches (e.g. edge CPU duration) are checked
+// before the generic "edge request" match. Returns null for service lines we
+// don't track (Blob, Queues, Speed Insights, Observability, the "Pro" base
+// line, etc.) — those still contribute to the cost sums, just not a quantity.
+
+function mapChargeQuantity(
+  serviceName: string,
+  qty: number,
+): { key: keyof QuantityMetrics; value: number } | null {
+  const d = serviceName.toLowerCase();
+
+  // Fast Origin Transfer — billed in gigabytes; our metric is bytes.
+  if (d.includes("fast origin transfer")) {
+    return { key: "origin_transfer_bytes", value: qty * BYTES_PER_GB };
+  }
+  // Fluid Active CPU — billed in hours; our metric is seconds.
+  if (d.includes("fluid") && d.includes("cpu")) {
+    return { key: "fluid_cpu_seconds", value: qty * 3600 };
+  }
+  // Fluid Provisioned Memory — billed in gigabyte-hours; metric matches.
+  if (d.includes("fluid") && d.includes("memory")) {
+    return { key: "fluid_memory_gb_hrs", value: qty };
+  }
+  if (d.includes("function invocation")) {
+    return { key: "function_invocations", value: qty };
+  }
+  // Edge CPU duration ("Edge Requests - Additional CPU Duration", billed in
+  // hours) → ms. Checked before the generic edge-request match below.
+  if (d.includes("edge") && d.includes("cpu duration")) {
+    return { key: "edge_cpu_ms", value: qty * 3_600_000 };
+  }
+  if (d.includes("edge request")) {
+    return { key: "edge_requests", value: qty };
+  }
+  // "Build Minutes" and/or "Build CPU Minutes" — both fold into build_minutes.
+  if (d.includes("build") && d.includes("minute")) {
+    return { key: "build_minutes", value: qty };
+  }
+  if (d.includes("isr read")) {
+    return { key: "isr_reads", value: qty };
+  }
+  if (d.includes("web analytics")) {
+    return { key: "web_analytics_events", value: qty };
+  }
   return null;
 }
 
-// ── /v1/usage attempt (Pro+ only) ─────────────────────────────────────────────
+// ── /v1/billing/charges parsing (primary) ─────────────────────────────────────
+
+type ChargeLine = Record<string, unknown>;
+
+function parseChargesBody(text: string): ChargeLine[] {
+  return text
+    .trim()
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => {
+      try {
+        return JSON.parse(line) as ChargeLine;
+      } catch {
+        return null;
+      }
+    })
+    .filter(Boolean) as ChargeLine[];
+}
+
+function num(v: unknown): number {
+  const n = typeof v === "number" ? v : parseFloat(String(v ?? ""));
+  return Number.isFinite(n) ? n : 0;
+}
+
+function extractFromCharges(charges: ChargeLine[]): AllMetrics {
+  const out = emptyMetrics();
+  for (const c of charges) {
+    const serviceName = typeof c["ServiceName"] === "string" ? (c["ServiceName"] as string) : "";
+    const qty = num(c["ConsumedQuantity"]);
+    const mapped = mapChargeQuantity(serviceName, qty);
+    if (mapped) out[mapped.key] += mapped.value;
+    out.charges_total_usd += num(c["BilledCost"]);
+    out.effective_cost_usd += num(c["EffectiveCost"]);
+  }
+  return out;
+}
+
+// ── /v1/usage parsing (quantity-only fallback) ────────────────────────────────
 //
-// The response shape from /v1/usage isn't documented in the public Vercel REST
-// reference, so we treat the body as opaque JSON and look for keys that match
-// our platform_limits.metric names (with snake-case fallback to camelCase
-// alternatives). On 4xx return null so the caller tries billing/charges.
+// The /v1/usage response shape isn't in the public REST reference, so we treat
+// the body as opaque JSON and look for keys matching our metric names. Costs
+// are not available here, so charges_total_usd / effective_cost_usd stay 0.
 
 type UsageResponse = Record<string, unknown>;
 
-const USAGE_KEY_ALIASES: Record<keyof ReturnType<typeof emptyMetrics>, string[]> = {
+const USAGE_KEY_ALIASES: Record<keyof QuantityMetrics, string[]> = {
   fluid_cpu_seconds: ["fluidCpuSeconds", "fluidComputeCpuSeconds", "fluid_cpu_seconds"],
   function_invocations: ["functionInvocations", "function_invocations", "invocations"],
   origin_transfer_bytes: ["originTransferBytes", "fastOriginTransferBytes", "bandwidth"],
@@ -129,18 +206,12 @@ const USAGE_KEY_ALIASES: Record<keyof ReturnType<typeof emptyMetrics>, string[]>
   web_analytics_events: ["webAnalyticsEvents", "analyticsEvents", "web_analytics_events"],
   isr_reads: ["isrReads", "isr_reads"],
   fluid_memory_gb_hrs: ["fluidMemoryGbHours", "fluidMemoryGbHrs", "fluid_memory_gb_hrs"],
-  charges_total_usd: [],
 };
 
-function extractFromUsageBody(
-  body: UsageResponse,
-): Omit<VercelUsage, "source" | "fetched_at"> {
+function extractFromUsageBody(body: UsageResponse): AllMetrics {
   const out = emptyMetrics();
-  // Vercel may wrap quantities under different top-level keys depending on the
-  // schema version — scan the body recursively for matching aliases.
   const candidates = flattenNumeric(body);
-  for (const key of Object.keys(out) as Array<keyof typeof out>) {
-    if (key === "charges_total_usd") continue;
+  for (const key of Object.keys(USAGE_KEY_ALIASES) as Array<keyof QuantityMetrics>) {
     for (const alias of USAGE_KEY_ALIASES[key]) {
       const v = candidates.get(alias.toLowerCase());
       if (typeof v === "number" && v > 0) {
@@ -163,45 +234,10 @@ function flattenNumeric(
   }
   for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
     if (typeof v === "number") {
-      // Last one wins; usage responses don't repeat keys at conflicting depths.
       out.set(k.toLowerCase(), v);
     } else {
       flattenNumeric(v, out);
     }
-  }
-  return out;
-}
-
-// ── /v1/billing/charges fallback ──────────────────────────────────────────────
-
-type ChargeLine = Record<string, string | undefined>;
-
-function parseChargesBody(text: string): ChargeLine[] {
-  return text
-    .trim()
-    .split("\n")
-    .filter(Boolean)
-    .map((line) => {
-      try {
-        return JSON.parse(line) as ChargeLine;
-      } catch {
-        return null;
-      }
-    })
-    .filter(Boolean) as ChargeLine[];
-}
-
-function extractFromCharges(
-  charges: ChargeLine[],
-): Omit<VercelUsage, "source" | "fetched_at"> {
-  const out = emptyMetrics();
-  for (const c of charges) {
-    const desc = c["ChargeDescription"] ?? c["ResourceName"] ?? "";
-    const key = chargeDescriptionToMetricKey(desc);
-    if (key) {
-      out[key] += Number(c["UsageQuantity"]) || 0;
-    }
-    out.charges_total_usd += parseFloat(c["BilledCost"] ?? "0") || 0;
   }
   return out;
 }
@@ -226,18 +262,57 @@ export async function getVercelUsage(): Promise<VercelUsage | VercelUsageError> 
     "Accept-Encoding": "gzip",
   };
 
-  // ── Attempt 1: /v1/usage ────────────────────────────────────────────────────
+  const fetchOpts = {
+    headers,
+    cache: "no-store",
+  } as RequestInit & {
+    cache?: "default" | "force-cache" | "no-cache" | "no-store" | "only-if-cached" | "reload";
+  };
+
+  // ── Primary: /v1/billing/charges (quantities + costs) ───────────────────────
+  let chargesErr: string | null = null;
+  try {
+    const u = new URL(`${BASE}/v1/billing/charges`);
+    u.searchParams.set("from", from);
+    u.searchParams.set("to", to);
+    if (teamId) u.searchParams.set("teamId", teamId);
+
+    const res = await fetch(u.toString(), fetchOpts);
+    if (res.ok) {
+      const text = await res.text();
+      const metrics = extractFromCharges(parseChargesBody(text));
+      const result: VercelUsage = {
+        ...metrics,
+        source: "charges",
+        fetched_at: new Date().toISOString(),
+      };
+      cached = result;
+      cacheExpiresAt = Date.now() + CACHE_TTL_MS;
+      return result;
+    }
+    const body = await res.text().catch(() => res.statusText);
+    let msg = body.slice(0, 200);
+    try {
+      const parsed = JSON.parse(body) as { error?: { code?: string; message?: string } };
+      if (parsed.error?.code) {
+        msg = `${parsed.error.code}${parsed.error.message ? ": " + parsed.error.message : ""}`;
+      }
+    } catch {
+      // body wasn't JSON, keep the raw slice
+    }
+    chargesErr = `HTTP ${res.status}: ${msg}`;
+  } catch (err) {
+    chargesErr = err instanceof Error ? err.message : String(err);
+  }
+
+  // ── Fallback: /v1/usage (quantity-only; costs stay 0) ───────────────────────
   try {
     const u = new URL(`${BASE}/v1/usage`);
     u.searchParams.set("from", from);
     u.searchParams.set("to", to);
     if (teamId) u.searchParams.set("teamId", teamId);
 
-    const res = await fetch(u.toString(), {
-      headers,
-      cache: "no-store",
-    } as RequestInit & { cache?: "default" | "force-cache" | "no-cache" | "no-store" | "only-if-cached" | "reload" });
-
+    const res = await fetch(u.toString(), fetchOpts);
     if (res.ok) {
       const body = (await res.json()) as UsageResponse;
       const metrics = extractFromUsageBody(body);
@@ -250,51 +325,9 @@ export async function getVercelUsage(): Promise<VercelUsage | VercelUsageError> 
       cacheExpiresAt = Date.now() + CACHE_TTL_MS;
       return result;
     }
-    // Non-2xx → try the charges fallback. Capture the error body for later if
-    // both attempts fail, so the dashboard sees the more informative message.
   } catch {
-    // fall through to charges
+    // fall through to the charges error below
   }
 
-  // ── Attempt 2: /v1/billing/charges ─────────────────────────────────────────
-  try {
-    const u = new URL(`${BASE}/v1/billing/charges`);
-    u.searchParams.set("from", from);
-    u.searchParams.set("to", to);
-    if (teamId) u.searchParams.set("teamId", teamId);
-
-    const res = await fetch(u.toString(), {
-      headers,
-      cache: "no-store",
-    } as RequestInit & { cache?: "default" | "force-cache" | "no-cache" | "no-store" | "only-if-cached" | "reload" });
-
-    if (!res.ok) {
-      const body = await res.text().catch(() => res.statusText);
-      let msg = body.slice(0, 200);
-      try {
-        const parsed = JSON.parse(body) as { error?: { code?: string; message?: string } };
-        if (parsed.error?.code) {
-          msg = `${parsed.error.code}${parsed.error.message ? ": " + parsed.error.message : ""}`;
-        }
-      } catch {
-        // body wasn't JSON, keep the raw slice
-      }
-      return { error: `HTTP ${res.status}: ${msg}` };
-    }
-
-    const text = await res.text();
-    const charges = parseChargesBody(text);
-    const metrics = extractFromCharges(charges);
-
-    const result: VercelUsage = {
-      ...metrics,
-      source: "charges",
-      fetched_at: new Date().toISOString(),
-    };
-    cached = result;
-    cacheExpiresAt = Date.now() + CACHE_TTL_MS;
-    return result;
-  } catch (err) {
-    return { error: err instanceof Error ? err.message : String(err) };
-  }
+  return { error: chargesErr ?? "vercel: billing/charges and usage both failed" };
 }
