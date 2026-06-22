@@ -9,6 +9,7 @@
 import { notFound, permanentRedirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { createServerClient } from "@civitics/db";
+import { withDbTimeout } from "../../../src/lib/supabase-check";
 
 export const dynamic = "force-dynamic";
 
@@ -26,11 +27,15 @@ export default async function AgencyRedirect({
   const cookieStore = await cookies();
   const supabase = createServerClient(cookieStore);
 
-  const { data } = await supabase
-    .from("agencies")
-    .select("id")
-    .eq("id", slug)
-    .maybeSingle();
+  const { data } = await withDbTimeout(
+    supabase
+      .from("agencies")
+      .select("id")
+      .eq("id", slug)
+      .maybeSingle(),
+    3000,
+    "agencies:redirect-lookup",
+  );
 
   if (!data?.id) notFound();
 

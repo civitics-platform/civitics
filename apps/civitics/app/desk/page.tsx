@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { createServerClient } from "@civitics/db";
+import { withDbTimeout } from "@/lib/supabase-check";
 import { resolveEntityLabels } from "../../src/lib/entity-labels";
 import { InboxModule, type InboxNotification } from "./components/InboxModule";
 import { WatchingModule, type WatchingItem } from "./components/WatchingModule";
@@ -28,6 +29,12 @@ export default async function DeskPage() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const sbAny = supabase as any;
 
+  // withDbTimeout infers its generic T from the query builder; an `any`-typed
+  // builder collapses T to `unknown`, so annotate the result shape explicitly.
+  // Consumers cast `.data` downstream, so a permissive shape is sufficient.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  type DbRes = { data: any; error: any; count?: number | null };
+
   // ── Wave 1: identity + grants + the read-only module sources (parallel) ──────
   const [
     profileRes,
@@ -39,64 +46,100 @@ export default async function DeskPage() {
     receiptsRes,
     openInvestigationsRes,
     proposedCardsRes,
-  ] = await Promise.all([
-    supabase
-      .from("users")
-      .select("id, display_name, email, civic_credits_balance, created_at")
-      .eq("id", user.id)
-      .maybeSingle(),
-    sbAny
-      .from("user_preferences")
-      .select("home_state, home_district")
-      .eq("user_id", user.id)
-      .maybeSingle(),
-    sbAny
-      .from("entity_grants")
-      .select("id, role, target_type, target_id, status, granted_at, expires_at, created_at")
-      .eq("user_id", user.id),
-    sbAny
-      .from("notifications")
-      .select("id, title, body, link, is_read, created_at")
-      .eq("user_id", user.id)
-      .order("created_at", { ascending: false })
-      .limit(30),
-    sbAny
-      .from("notifications")
-      .select("id", { count: "exact", head: true })
-      .eq("user_id", user.id)
-      .eq("is_read", false),
-    sbAny
-      .from("user_follows")
-      .select("id, entity_type, entity_id, created_at")
-      .eq("user_id", user.id)
-      .order("created_at", { ascending: false }),
-    sbAny.rpc("get_user_receipts", { p_limit: RECEIPTS_LIMIT }),
-    sbAny
-      .from("investigations")
-      .select("id, title")
-      .eq("created_by", user.id)
-      .eq("status", "open")
-      .order("updated_at", { ascending: false })
-      .limit(10),
-    sbAny
-      .from("evidence_cards")
-      .select("id, investigation_id, claim_text, created_at")
-      .eq("author_id", user.id)
-      .eq("status", "proposed")
-      .order("created_at", { ascending: false })
-      .limit(15),
-  ]);
+  ] = (await Promise.all([
+    withDbTimeout(
+      supabase
+        .from("users")
+        .select("id, display_name, email, civic_credits_balance, created_at")
+        .eq("id", user.id)
+        .maybeSingle(),
+      3000,
+      "desk:profile"
+    ),
+    withDbTimeout(
+      sbAny
+        .from("user_preferences")
+        .select("home_state, home_district")
+        .eq("user_id", user.id)
+        .maybeSingle(),
+      3000,
+      "desk:prefs"
+    ),
+    withDbTimeout(
+      sbAny
+        .from("entity_grants")
+        .select("id, role, target_type, target_id, status, granted_at, expires_at, created_at")
+        .eq("user_id", user.id),
+      3000,
+      "desk:grants"
+    ),
+    withDbTimeout(
+      sbAny
+        .from("notifications")
+        .select("id, title, body, link, is_read, created_at")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(30),
+      3000,
+      "desk:notifications"
+    ),
+    withDbTimeout(
+      sbAny
+        .from("notifications")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", user.id)
+        .eq("is_read", false),
+      3000,
+      "desk:unread-count"
+    ),
+    withDbTimeout(
+      sbAny
+        .from("user_follows")
+        .select("id, entity_type, entity_id, created_at")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false }),
+      3000,
+      "desk:follows"
+    ),
+    withDbTimeout(sbAny.rpc("get_user_receipts", { p_limit: RECEIPTS_LIMIT }), 3000, "desk:receipts"),
+    withDbTimeout(
+      sbAny
+        .from("investigations")
+        .select("id, title")
+        .eq("created_by", user.id)
+        .eq("status", "open")
+        .order("updated_at", { ascending: false })
+        .limit(10),
+      3000,
+      "desk:open-investigations"
+    ),
+    withDbTimeout(
+      sbAny
+        .from("evidence_cards")
+        .select("id, investigation_id, claim_text, created_at")
+        .eq("author_id", user.id)
+        .eq("status", "proposed")
+        .order("created_at", { ascending: false })
+        .limit(15),
+      3000,
+      "desk:proposed-cards"
+    ),
+  ])) as [DbRes, DbRes, DbRes, DbRes, DbRes, DbRes, DbRes, DbRes, DbRes];
 
   // ── Identity ────────────────────────────────────────────────────────────────
   let profile = profileRes.data as
     | { id: string; display_name: string | null; email: string | null; civic_credits_balance: number | null; created_at: string | null }
     | null;
   if (!profile && user.email) {
-    const { data: emailMatch } = await supabase
-      .from("users")
-      .select("id, display_name, email, civic_credits_balance, created_at")
-      .eq("email", user.email)
-      .maybeSingle();
+    const { data: emailMatch } = await withDbTimeout(
+      supabase
+        .from("users")
+        .select("id, display_name, email, civic_credits_balance, created_at")
+        .eq("email", user.email)
+        .maybeSingle(),
+      3000,
+      "desk:profile-by-email"
+    );
     profile = emailMatch ?? null;
   }
   const displayName = profile?.display_name || user.email || "Anonymous";
@@ -170,7 +213,11 @@ export default async function DeskPage() {
   const invTitleById = new Map<string, string>(openInvestigations.map((i) => [i.id, i.title]));
   const missingInvIds = cardInvIds.filter((id) => !invTitleById.has(id));
   if (missingInvIds.length > 0) {
-    const { data: invs } = await sbAny.from("investigations").select("id, title").in("id", missingInvIds);
+    const { data: invs } = (await withDbTimeout(
+      sbAny.from("investigations").select("id, title").in("id", missingInvIds),
+      3000,
+      "desk:missing-inv-titles"
+    )) as DbRes;
     for (const inv of (invs ?? []) as { id: string; title: string }[]) invTitleById.set(inv.id, inv.title);
   }
   const evidenceCards: ResumeEvidenceCard[] = proposedCards.map((c) => ({

@@ -1,4 +1,5 @@
 import { createAdminClient } from "@civitics/db";
+import { withDbTimeout } from "@/lib/supabase-check";
 import { notFound } from "next/navigation";
 
 export const dynamic = "force-dynamic";
@@ -11,11 +12,15 @@ export default async function EmbedPage({ params }: Props) {
   const { code } = await params;
 
   const supabase = createAdminClient();
-  const { data: snapshot } = await supabase
-    .from("graph_snapshots")
-    .select("*")
-    .eq("code", code)
-    .maybeSingle();
+  const { data: snapshot } = await withDbTimeout(
+    supabase
+      .from("graph_snapshots")
+      .select("*")
+      .eq("code", code)
+      .maybeSingle(),
+    3000,
+    "graph-embed:snapshot",
+  );
 
   if (!snapshot) notFound();
 

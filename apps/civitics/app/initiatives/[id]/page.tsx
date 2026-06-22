@@ -12,6 +12,7 @@ import { EntityComments } from "../../components/EntityComments";
 import { PositionSection } from "../../components/PositionSection";
 import { CommentHighlightsStrip } from "../../components/CommentHighlightsStrip";
 import { getSlowMode } from "@/lib/slow-mode";
+import { withDbTimeout } from "@/lib/supabase-check";
 import { INITIATIVE_STAGE_KINDS, type InitiativeStage } from "@civitics/db";
 import { QualityGate } from "./components/QualityGate";
 import { SignaturePanel } from "./components/SignaturePanel";
@@ -32,12 +33,16 @@ export async function generateMetadata(
 ): Promise<Metadata> {
   const cookieStore = await cookies();
   const supabase = createServerClient(cookieStore);
-  const { data: proposal } = await supabase
-    .from("proposals")
-    .select("title, summary_plain, initiative_details(stage, scope)")
-    .eq("id", params.id)
-    .eq("type", "initiative")
-    .maybeSingle();
+  const { data: proposal } = await withDbTimeout(
+    supabase
+      .from("proposals")
+      .select("title, summary_plain, initiative_details(stage, scope)")
+      .eq("id", params.id)
+      .eq("type", "initiative")
+      .maybeSingle(),
+    3000,
+    "initiatives:metadata"
+  );
 
   if (!proposal || !proposal.initiative_details) return { title: "Initiative | Civitics" };
 
@@ -141,35 +146,59 @@ export default async function InitiativeDetailPage({
   // Fetch initiative + counts in parallel
   const [proposalRes, { data: { user } }, totalSigsRes, verifiedSigsRes, upvoteRes, followRes, linkedProposalsRes] =
     await Promise.all([
-      supabase
-        .from("proposals")
-        .select("*, initiative_details(*)")
-        .eq("id", id)
-        .eq("type", "initiative")
-        .maybeSingle(),
+      withDbTimeout(
+        supabase
+          .from("proposals")
+          .select("*, initiative_details(*)")
+          .eq("id", id)
+          .eq("type", "initiative")
+          .maybeSingle(),
+        3000,
+        "initiatives:detail"
+      ),
       supabase.auth.getUser(),
-      supabase
-        .from("civic_initiative_signatures")
-        .select("*", { count: "exact", head: true })
-        .eq("initiative_id", id),
-      supabase
-        .from("civic_initiative_signatures")
-        .select("*", { count: "exact", head: true })
-        .eq("initiative_id", id)
-        .eq("verification_tier", "district"),
-      supabase
-        .from("civic_initiative_upvotes")
-        .select("*", { count: "exact", head: true })
-        .eq("initiative_id", id),
-      supabase
-        .from("civic_initiative_follows")
-        .select("*", { count: "exact", head: true })
-        .eq("initiative_id", id),
-      supabase
-        .from("civic_initiative_proposal_links")
-        .select("proposal_id, proposals!proposal_id(id, title, short_title, status, metadata, bill_details(bill_number))")
-        .eq("initiative_id", id)
-        .limit(10),
+      withDbTimeout(
+        supabase
+          .from("civic_initiative_signatures")
+          .select("*", { count: "exact", head: true })
+          .eq("initiative_id", id),
+        3000,
+        "initiatives:total-sigs"
+      ),
+      withDbTimeout(
+        supabase
+          .from("civic_initiative_signatures")
+          .select("*", { count: "exact", head: true })
+          .eq("initiative_id", id)
+          .eq("verification_tier", "district"),
+        3000,
+        "initiatives:verified-sigs"
+      ),
+      withDbTimeout(
+        supabase
+          .from("civic_initiative_upvotes")
+          .select("*", { count: "exact", head: true })
+          .eq("initiative_id", id),
+        3000,
+        "initiatives:upvotes"
+      ),
+      withDbTimeout(
+        supabase
+          .from("civic_initiative_follows")
+          .select("*", { count: "exact", head: true })
+          .eq("initiative_id", id),
+        3000,
+        "initiatives:follows"
+      ),
+      withDbTimeout(
+        supabase
+          .from("civic_initiative_proposal_links")
+          .select("proposal_id, proposals!proposal_id(id, title, short_title, status, metadata, bill_details(bill_number))")
+          .eq("initiative_id", id)
+          .limit(10),
+        3000,
+        "initiatives:linked-proposals"
+      ),
     ]);
 
   if (proposalRes.error || !proposalRes.data || !proposalRes.data.initiative_details) {
@@ -188,12 +217,21 @@ export default async function InitiativeDetailPage({
   // admin client. OR in the proposal row's own flag as a belt-and-braces.
   let initiativeIsSynthetic = (proposal as { is_synthetic?: boolean }).is_synthetic === true;
   if (!initiativeIsSynthetic && details.primary_author_id) {
-    const { data: authorRow, error: authorErr } = await createAdminClient()
-      .from("users")
-      .select("is_synthetic")
-      .eq("id", details.primary_author_id)
-      .maybeSingle();
-    if (authorErr) throw authorErr; // never silently drop the label
+    const { data: authorRow, error: authorErr } = await withDbTimeout(
+      createAdminClient()
+        .from("users")
+        .select("is_synthetic")
+        .eq("id", details.primary_author_id)
+        .maybeSingle(),
+      3000,
+      "initiatives:author-synthetic"
+    );
+    // A timeout returns { data: null, error: Error("…timed out…") } — degrade
+    // the synthetic label to false rather than crashing the render (Vercel cost
+    // defense). A genuine query error still throws so we never silently drop the
+    // label on a real schema fault.
+    const isTimeout = authorErr instanceof Error && /timed out/.test(authorErr.message);
+    if (authorErr && !isTimeout) throw authorErr; // never silently drop the label
     initiativeIsSynthetic = (authorRow as { is_synthetic?: boolean } | null)?.is_synthetic === true;
   }
 
@@ -242,10 +280,14 @@ export default async function InitiativeDetailPage({
     .filter(Boolean) as CommentableProposal[];
 
   // Fetch official responses
-  const { data: responses } = await supabase
-    .from("civic_initiative_responses")
-    .select("id,official_id,response_type,body_text,committee_referred,window_opened_at,window_closes_at,responded_at,is_verified_staff")
-    .eq("initiative_id", id);
+  const { data: responses } = await withDbTimeout(
+    supabase
+      .from("civic_initiative_responses")
+      .select("id,official_id,response_type,body_text,committee_referred,window_opened_at,window_closes_at,responded_at,is_verified_staff")
+      .eq("initiative_id", id),
+    3000,
+    "initiatives:responses"
+  );
 
   const officialResponses = (responses ?? []) as ResponseRow[];
 

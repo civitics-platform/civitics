@@ -6,6 +6,7 @@ export const dynamic = "force-dynamic";
 import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
 import { createServerClient, createAdminClient } from "@civitics/db";
+import { withDbTimeout } from "@/lib/supabase-check";
 import { PageHeader, SectionCard, SectionHeader } from "@civitics/ui";
 
 export const metadata = { title: "Pipeline Health | Admin" };
@@ -78,12 +79,17 @@ export default async function PipelineHealthPage() {
   // Cast to any: pipeline_runtime_stats_mv is a new MV not yet in generated TS
   // types. The shape is fully covered by PipelineStatRow above. A type
   // regeneration follow-up after the migration lands on prod is on the list.
-  const { data, error } = await admin
-    .from("pipeline_runtime_stats_mv")
-    .select(
-      "pipeline,runs_30d,successful_runs_30d,success_rate_pct,p50_duration_ms,p95_duration_ms,max_duration_ms,last_run_at,max_peak_rss_mb,p95_peak_rss_mb"
-    )
-    .order("p95_duration_ms", { ascending: false, nullsFirst: false });
+  const { data, error } = await withDbTimeout<{ data: PipelineStatRow[] | null; error: { message: string } | null }>(
+    admin
+      // db-timeout-exempt: wrapped — generic-typed withDbTimeout<…>( the lexical guard's regex misses
+      .from("pipeline_runtime_stats_mv")
+      .select(
+        "pipeline,runs_30d,successful_runs_30d,success_rate_pct,p50_duration_ms,p95_duration_ms,max_duration_ms,last_run_at,max_peak_rss_mb,p95_peak_rss_mb"
+      )
+      .order("p95_duration_ms", { ascending: false, nullsFirst: false }),
+    3000,
+    "admin-pipeline-health:stats",
+  );
 
   const rows: PipelineStatRow[] = error ? [] : (data ?? []);
 

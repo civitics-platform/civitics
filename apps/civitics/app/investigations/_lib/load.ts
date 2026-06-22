@@ -10,6 +10,7 @@
 // ever evaluated in a client bundle.
 import { cookies } from "next/headers";
 import { createServerClient, createAdminClient } from "@civitics/db";
+import { withDbTimeout } from "@/lib/supabase-check";
 import { fetchAuthorMeta } from "../../api/comments/_lib";
 import type {
   Investigation,
@@ -51,21 +52,29 @@ export async function listInvestigations(): Promise<InvestigationListItem[]> {
   const cookieStore = await cookies();
   const supabase = createServerClient(cookieStore);
 
-  const { data: rows } = await supabase
-    .from("investigations")
-    .select(INVESTIGATION_COLS)
-    .order("is_featured", { ascending: false })
-    .order("created_at", { ascending: false })
-    .limit(100);
+  const { data: rows } = await withDbTimeout(
+    supabase
+      .from("investigations")
+      .select(INVESTIGATION_COLS)
+      .order("is_featured", { ascending: false })
+      .order("created_at", { ascending: false })
+      .limit(100),
+    3000,
+    "investigations:list",
+  );
 
   const investigations = (rows ?? []) as unknown as Investigation[];
   if (investigations.length === 0) return [];
 
   const ids = investigations.map((i) => i.id);
-  const { data: cards } = await supabase
-    .from("evidence_cards")
-    .select("investigation_id, author_id")
-    .in("investigation_id", ids);
+  const { data: cards } = await withDbTimeout(
+    supabase
+      .from("evidence_cards")
+      .select("investigation_id, author_id")
+      .in("investigation_id", ids),
+    3000,
+    "investigations:list-cards",
+  );
 
   const evidenceCount = new Map<string, number>();
   const authorSet = new Map<string, Set<string>>();
@@ -97,19 +106,27 @@ export async function loadCaseFile(id: string): Promise<CaseFile | null> {
   const cookieStore = await cookies();
   const supabase = createServerClient(cookieStore);
 
-  const { data: invRow } = await supabase
-    .from("investigations")
-    .select(INVESTIGATION_COLS)
-    .eq("id", id)
-    .maybeSingle();
+  const { data: invRow } = await withDbTimeout(
+    supabase
+      .from("investigations")
+      .select(INVESTIGATION_COLS)
+      .eq("id", id)
+      .maybeSingle(),
+    3000,
+    "investigations:case-file",
+  );
   if (!invRow) return null;
   const investigation = invRow as unknown as Investigation;
 
-  const { data: cardRows } = await supabase
-    .from("evidence_cards")
-    .select(CARD_COLS)
-    .eq("investigation_id", id)
-    .order("created_at", { ascending: true });
+  const { data: cardRows } = await withDbTimeout(
+    supabase
+      .from("evidence_cards")
+      .select(CARD_COLS)
+      .eq("investigation_id", id)
+      .order("created_at", { ascending: true }),
+    3000,
+    "investigations:case-file-cards",
+  );
   const cards = (cardRows ?? []) as unknown as Array<Omit<EvidenceCard, "author_name" | "citations" | "rating_summary"> & {
     rating_summary: unknown;
   }>;
@@ -117,10 +134,14 @@ export async function loadCaseFile(id: string): Promise<CaseFile | null> {
   const cardIds = cards.map((c) => c.id);
   const citationsByCard = new Map<string, Citation[]>();
   if (cardIds.length > 0) {
-    const { data: citations } = await supabase
-      .from("citations")
-      .select(CITATION_COLS)
-      .in("evidence_card_id", cardIds);
+    const { data: citations } = await withDbTimeout(
+      supabase
+        .from("citations")
+        .select(CITATION_COLS)
+        .in("evidence_card_id", cardIds),
+      3000,
+      "investigations:case-file-citations",
+    );
     for (const c of (citations ?? []) as unknown as Citation[]) {
       const list = citationsByCard.get(c.evidence_card_id) ?? [];
       list.push(c);
@@ -175,11 +196,15 @@ export async function viewerCapState(): Promise<ViewerCapState> {
   } = await supabase.auth.getUser();
   if (!user) return { signedIn: false, openCount: 0, cap: 3 };
 
-  const { count } = await supabase
-    .from("investigations")
-    .select("id", { count: "exact", head: true })
-    .eq("created_by", user.id)
-    .eq("status", "open");
+  const { count } = await withDbTimeout(
+    supabase
+      .from("investigations")
+      .select("id", { count: "exact", head: true })
+      .eq("created_by", user.id)
+      .eq("status", "open"),
+    3000,
+    "investigations:viewer-cap",
+  );
 
   return { signedIn: true, openCount: count ?? 0, cap: 3 };
 }

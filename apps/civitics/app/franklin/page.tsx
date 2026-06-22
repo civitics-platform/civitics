@@ -15,7 +15,9 @@
 // resolved at request time (is_synthetic + type='state') — never hardcoded.
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@civitics/db";
+import { withDbTimeout } from "@/lib/supabase-check";
 import { SyntheticBanner, SyntheticMark } from "../components/integrity/Synthetic";
 import { PorticoMark } from "../components/brand/PorticoMark";
 import { OfficialRosterCard, type OfficialRosterData } from "../components/cards/OfficialRosterCard";
@@ -51,9 +53,8 @@ export const revalidate = 300;
 const OFFICIALS_SHOWN = 6;
 const PROPOSALS_SHOWN = 6;
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function anonClient(): any {
-  return createClient(
+function anonClient(): SupabaseClient<Database> {
+  return createClient<Database>(
     process.env["NEXT_PUBLIC_SUPABASE_URL"]!,
     process.env["NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY"]!
   );
@@ -199,19 +200,27 @@ export default async function FranklinHubPage() {
   const supabase = anonClient();
 
   // Resolve the Franklin jurisdiction at request time (id differs local vs prod).
-  let { data: franklin } = await supabase
-    .from("jurisdictions")
-    .select("id, name, short_name, type, parent_id, is_synthetic")
-    .eq("is_synthetic", true)
-    .eq("type", "state")
-    .limit(1)
-    .maybeSingle();
-  if (!franklin) {
-    const fallback = await supabase
+  let { data: franklin } = await withDbTimeout(
+    supabase
       .from("jurisdictions")
       .select("id, name, short_name, type, parent_id, is_synthetic")
-      .eq("name", "State of Franklin")
-      .maybeSingle();
+      .eq("is_synthetic", true)
+      .eq("type", "state")
+      .limit(1)
+      .maybeSingle(),
+    3000,
+    "franklin:resolve-state"
+  );
+  if (!franklin) {
+    const fallback = await withDbTimeout(
+      supabase
+        .from("jurisdictions")
+        .select("id, name, short_name, type, parent_id, is_synthetic")
+        .eq("name", "State of Franklin")
+        .maybeSingle(),
+      3000,
+      "franklin:resolve-state-fallback"
+    );
     franklin = fallback.data;
   }
   if (!franklin) notFound();
@@ -220,13 +229,17 @@ export default async function FranklinHubPage() {
 
   // Children first — their ids widen the institution/official/proposal scope so
   // the hub shows the city alongside the state.
-  const { data: childrenData } = await supabase
-    .from("jurisdictions")
-    .select("id, name, short_name, type")
-    .eq("parent_id", stateId)
-    .eq("is_active", true)
-    .order("type", { ascending: true })
-    .order("name", { ascending: true });
+  const { data: childrenData } = await withDbTimeout(
+    supabase
+      .from("jurisdictions")
+      .select("id, name, short_name, type")
+      .eq("parent_id", stateId)
+      .eq("is_active", true)
+      .order("type", { ascending: true })
+      .order("name", { ascending: true }),
+    3000,
+    "franklin:children"
+  );
   const children = (childrenData ?? []) as Array<{
     id: string;
     name: string;
@@ -236,81 +249,117 @@ export default async function FranklinHubPage() {
   const jurisdictionIds = [stateId, ...children.map((c) => c.id)];
 
   const [instRes, offRes, propRes, initRes, investRes, qaRes, finEntRes, gbRes, bdRes] = await Promise.all([
-    supabase
-      .from("institutions")
-      .select("id, name, short_name, type, acronym, source_table, is_synthetic")
-      .in("jurisdiction_id", jurisdictionIds)
-      .eq("is_active", true)
-      .order("source_table", { ascending: true })
-      .order("name", { ascending: true })
-      .limit(50),
-    supabase
-      .from("officials")
-      .select("id, full_name, role_title, party, photo_url, district_name, is_synthetic")
-      .in("jurisdiction_id", jurisdictionIds)
-      .eq("is_active", true)
-      .order("role_title", { ascending: true })
-      .order("last_name", { ascending: true })
-      .limit(50),
-    supabase
-      .from("proposals")
-      .select("id, title, type, status, summary_plain, summary_model, introduced_at, external_url, metadata, is_synthetic")
-      .in("jurisdiction_id", jurisdictionIds)
-      .neq("type", "initiative")
-      .order("introduced_at", { ascending: false, nullsFirst: false })
-      .limit(50),
+    withDbTimeout(
+      supabase
+        .from("institutions")
+        .select("id, name, short_name, type, acronym, source_table, is_synthetic")
+        .in("jurisdiction_id", jurisdictionIds)
+        .eq("is_active", true)
+        .order("source_table", { ascending: true })
+        .order("name", { ascending: true })
+        .limit(50),
+      3000,
+      "franklin:institutions"
+    ),
+    withDbTimeout(
+      supabase
+        .from("officials")
+        .select("id, full_name, role_title, party, photo_url, district_name, is_synthetic")
+        .in("jurisdiction_id", jurisdictionIds)
+        .eq("is_active", true)
+        .order("role_title", { ascending: true })
+        .order("last_name", { ascending: true })
+        .limit(50),
+      3000,
+      "franklin:officials"
+    ),
+    withDbTimeout(
+      supabase
+        .from("proposals")
+        .select("id, title, type, status, summary_plain, summary_model, introduced_at, external_url, metadata, is_synthetic")
+        .in("jurisdiction_id", jurisdictionIds)
+        .neq("type", "initiative")
+        .order("introduced_at", { ascending: false, nullsFirst: false })
+        .limit(50),
+      3000,
+      "franklin:proposals"
+    ),
     // initiative_details has TWO FKs to proposals (proposal_id +
     // promoted_to_proposal_id), so the embed must name the FK explicitly or
     // PostgREST 300s with PGRST201 (the older jurisdictions/[id] page predates
     // the second FK and embeds the now-ambiguous `proposals!inner`).
-    supabase
-      .from("initiative_details")
-      .select(
-        "proposal_id, stage, scope, authorship_type, issue_area_tags, target_district, mobilise_started_at, proposals!initiative_details_proposal_id_fkey!inner(id, title, summary_plain, created_at, resolved_at, type, jurisdiction_id)"
-      )
-      .eq("proposals.type", "initiative")
-      .in("proposals.jurisdiction_id", jurisdictionIds)
-      .neq("stage", "draft")
-      .limit(20),
-    supabase
-      .from("investigations")
-      .select("id, title, question, status, scope_note")
-      .eq("is_synthetic", true)
-      .neq("status", "archived")
-      .order("is_featured", { ascending: false })
-      .order("created_at", { ascending: false })
-      .limit(6),
+    withDbTimeout(
+      supabase
+        .from("initiative_details")
+        .select(
+          "proposal_id, stage, scope, authorship_type, issue_area_tags, target_district, mobilise_started_at, proposals!initiative_details_proposal_id_fkey!inner(id, title, summary_plain, created_at, resolved_at, type, jurisdiction_id)"
+        )
+        .eq("proposals.type", "initiative")
+        .in("proposals.jurisdiction_id", jurisdictionIds)
+        .neq("stage", "draft")
+        .limit(20),
+      3000,
+      "franklin:initiatives"
+    ),
+    withDbTimeout(
+      supabase
+        .from("investigations")
+        .select("id, title, question, status, scope_note")
+        .eq("is_synthetic", true)
+        .neq("status", "archived")
+        .order("is_featured", { ascending: false })
+        .order("created_at", { ascending: false })
+        .limit(6),
+      3000,
+      "franklin:investigations"
+    ),
     // Q&A highlight: reuse the canonical read RPC so name resolution + want counts
     // match the live QASection exactly (decision 8).
-    supabase.rpc("get_entity_questions", {
-      p_entity_type: "jurisdiction",
-      p_entity_id: stateId,
-      p_lens: "all",
-      p_sort: "wanted",
-      p_limit: 5,
-    }),
+    withDbTimeout(
+      supabase.rpc("get_entity_questions", {
+        p_entity_type: "jurisdiction",
+        p_entity_id: stateId,
+        p_lens: "all",
+        p_sort: "wanted",
+        p_limit: 5,
+      }),
+      3000,
+      "franklin:qa"
+    ),
     // Spine "money" stop + Follow-the-money flow: the synthetic finance graph.
     // is_synthetic returns only Franklin's seeded entities (decision 2 — resolve
     // the PAC by display_name, never franklin_seed_map).
-    supabase
-      .from("financial_entities")
-      .select("id, display_name, entity_type, is_synthetic")
-      .eq("is_synthetic", true)
-      .limit(50),
+    withDbTimeout(
+      supabase
+        .from("financial_entities")
+        .select("id, display_name, entity_type, is_synthetic")
+        .eq("is_synthetic", true)
+        .limit(50),
+      3000,
+      "franklin:financial-entities"
+    ),
     // Governing bodies under Franklin — ids scope the upcoming-meetings query
     // (meetings link via governing_body_id, not jurisdiction_id).
-    supabase
-      .from("governing_bodies")
-      .select("id")
-      .in("jurisdiction_id", jurisdictionIds)
-      .eq("is_active", true),
+    withDbTimeout(
+      supabase
+        .from("governing_bodies")
+        .select("id")
+        .in("jurisdiction_id", jurisdictionIds)
+        .eq("is_active", true),
+      3000,
+      "franklin:governing-bodies"
+    ),
     // bill_number lives on bill_details, NOT proposals (the promotion moved it —
     // see CLAUDE.md). bill_details carries jurisdiction_id, so resolve HB-14's
     // proposal id here without a dependent round-trip.
-    supabase
-      .from("bill_details")
-      .select("proposal_id, bill_number")
-      .in("jurisdiction_id", jurisdictionIds),
+    withDbTimeout(
+      supabase
+        .from("bill_details")
+        .select("proposal_id, bill_number")
+        .in("jurisdiction_id", jurisdictionIds),
+      3000,
+      "franklin:bill-details"
+    ),
   ]);
 
   // ── Institutions ────────────────────────────────────────────────────────────
@@ -324,12 +373,16 @@ export default async function FranklinHubPage() {
   // parallel wave above.
   let answererIds = new Set<string>();
   if (officialIds.length > 0) {
-    const { data: ans } = await supabase
-      .from("entity_comments")
-      .select("entity_id")
-      .eq("entity_type", "official")
-      .eq("kind", "answer")
-      .in("entity_id", officialIds);
+    const { data: ans } = await withDbTimeout(
+      supabase
+        .from("entity_comments")
+        .select("entity_id")
+        .eq("entity_type", "official")
+        .eq("kind", "answer")
+        .in("entity_id", officialIds),
+      3000,
+      "franklin:answerers"
+    );
     answererIds = new Set((ans ?? []).map((r: { entity_id: string }) => r.entity_id));
   }
   const officials = [...officialsAll]
@@ -425,47 +478,71 @@ export default async function FranklinHubPage() {
   const meetingWindowStart = new Date(Date.now() - 14 * 86_400_000).toISOString();
   const [votesRes, evidRes, donRes, commentRes, rollupRes, meetingRes] = await Promise.all([
     hb14
-      ? supabase.from("votes").select("vote, official_id").eq("bill_proposal_id", hb14.id)
+      ? withDbTimeout(
+          supabase.from("votes").select("vote, official_id").eq("bill_proposal_id", hb14.id),
+          3000,
+          "franklin:votes"
+        )
       : Promise.resolve({ data: [] }),
     ridgelineInvs.length
-      ? supabase
-          .from("evidence_cards")
-          .select("investigation_id")
-          .in("investigation_id", ridgelineInvs.map((i) => i.id))
+      ? withDbTimeout(
+          supabase
+            .from("evidence_cards")
+            .select("investigation_id")
+            .in("investigation_id", ridgelineInvs.map((i) => i.id)),
+          3000,
+          "franklin:evidence"
+        )
       : Promise.resolve({ data: [] }),
     finEntities.length
-      ? supabase
-          .from("financial_relationships")
-          .select("from_id, to_id, to_type, amount_cents")
-          .eq("relationship_type", "donation")
-          .eq("from_type", "financial_entity")
-          .in("from_id", finEntities.map((e) => e.id))
+      ? withDbTimeout(
+          supabase
+            .from("financial_relationships")
+            .select("from_id, to_id, to_type, amount_cents")
+            .eq("relationship_type", "donation")
+            .eq("from_type", "financial_entity")
+            .in("from_id", finEntities.map((e) => e.id)),
+          3000,
+          "franklin:donations"
+        )
       : Promise.resolve({ data: [] }),
     hb14
-      ? supabase
-          .from("entity_comments")
-          .select("id, body, bridge_score", { count: "exact" })
-          .eq("entity_type", "proposal")
-          .eq("entity_id", hb14.id)
-          .not("kind", "in", "(question,answer)")
-          .order("bridge_score", { ascending: false, nullsFirst: false })
-          .limit(1)
+      ? withDbTimeout(
+          supabase
+            .from("entity_comments")
+            .select("id, body, bridge_score", { count: "exact" })
+            .eq("entity_type", "proposal")
+            .eq("entity_id", hb14.id)
+            .not("kind", "in", "(question,answer)")
+            .order("bridge_score", { ascending: false, nullsFirst: false })
+            .limit(1),
+          3000,
+          "franklin:top-comment"
+        )
       : Promise.resolve({ data: [], count: 0 }),
     hb14
-      ? supabase.rpc("get_position_rollup_display", {
-          p_entity_type: "proposal",
-          p_entity_id: hb14.id,
-          p_lens: "all",
-        })
+      ? withDbTimeout(
+          supabase.rpc("get_position_rollup_display", {
+            p_entity_type: "proposal",
+            p_entity_id: hb14.id,
+            p_lens: "all",
+          }),
+          3000,
+          "franklin:position-rollup"
+        )
       : Promise.resolve({ data: null }),
     gbIds.length
-      ? supabase
-          .from("meetings")
-          .select("id, title, meeting_type, scheduled_at, agenda_url, governing_bodies(name)")
-          .in("governing_body_id", gbIds)
-          .gte("scheduled_at", meetingWindowStart)
-          .order("scheduled_at", { ascending: true })
-          .limit(3)
+      ? withDbTimeout(
+          supabase
+            .from("meetings")
+            .select("id, title, meeting_type, scheduled_at, agenda_url, governing_bodies(name)")
+            .in("governing_body_id", gbIds)
+            .gte("scheduled_at", meetingWindowStart)
+            .order("scheduled_at", { ascending: true })
+            .limit(3),
+          3000,
+          "franklin:meetings"
+        )
       : Promise.resolve({ data: [] }),
   ]);
 

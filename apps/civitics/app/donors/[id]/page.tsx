@@ -7,6 +7,7 @@ import {
   fetchAttributionForEntity,
   type AttributionShape,
 } from "@civitics/db";
+import { withDbTimeout } from "@/lib/supabase-check";
 import { ShareButton } from "../../officials/components/ShareButton";
 import { PageViewTracker } from "../../components/PageViewTracker";
 import { SourceBadge } from "../../components/SourceBadge";
@@ -86,6 +87,13 @@ type SpendingRow = {
   description: string | null;
 };
 
+// withDbTimeout infers its generic T from the query builder; an `any`-typed
+// builder (the `sb` cast below) collapses T to `unknown`, so annotate the
+// result shape explicitly. Consumers cast `.data` downstream, so a permissive
+// shape is sufficient.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type DbRes = { data: any; error: any; count?: number | null };
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function formatMoney(cents: number | null | undefined): string {
@@ -140,13 +148,17 @@ const getCachedDonor = cache(async (id: string): Promise<Entity | null> => {
   const supabase = createPublicClient();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const sb = supabase as any;
-  const { data } = await sb
-    .from("financial_entities")
-    .select(
-      "id, display_name, canonical_name, entity_type, fec_committee_id, parent_entity_id, total_donated_cents, total_received_cents, total_contract_cents, total_grant_cents, donor_fingerprint, metadata, is_synthetic"
-    )
-    .eq("id", id)
-    .maybeSingle();
+  const { data } = (await withDbTimeout(
+    sb
+      .from("financial_entities")
+      .select(
+        "id, display_name, canonical_name, entity_type, fec_committee_id, parent_entity_id, total_donated_cents, total_received_cents, total_contract_cents, total_grant_cents, donor_fingerprint, metadata, is_synthetic"
+      )
+      .eq("id", id)
+      .maybeSingle(),
+    3000,
+    "donors:entity"
+  )) as DbRes;
   if (!data) return null;
   const attribution = await fetchAttributionForEntity(supabase, "financial_entity", id);
   return { ...(data as Omit<Entity, "attribution">), attribution };
@@ -190,45 +202,69 @@ export default async function DonorProfilePage({
   // Parallel fetches: outbound donations, inbound donations, contracts/grants
   // received, AI summary, industry tag, parent entity name.
   const [outboundRes, inboundRes, spendingRes, aiSummaryRes, recipientCountRes, donorCountRes] =
-    await Promise.all([
-      sb.from("financial_relationships")
-        .select("id, from_type, from_id, to_type, to_id, amount_cents, occurred_at, cycle_year, relationship_type, metadata")
-        .eq("from_type", "financial_entity")
-        .eq("from_id", entity.id)
-        .eq("relationship_type", "donation")
-        .order("amount_cents", { ascending: false })
-        .limit(1000),
-      sb.from("financial_relationships")
-        .select("id, from_type, from_id, to_type, to_id, amount_cents, occurred_at, cycle_year, relationship_type, metadata")
-        .eq("to_type", "financial_entity")
-        .eq("to_id", entity.id)
-        .eq("relationship_type", "donation")
-        .order("amount_cents", { ascending: false })
-        .limit(1000),
-      sb.from("financial_relationships")
-        .select("id, from_type, from_id, to_type, to_id, amount_cents, occurred_at, cycle_year, relationship_type, metadata")
-        .eq("to_type", "financial_entity")
-        .eq("to_id", entity.id)
-        .in("relationship_type", ["contract", "grant"])
-        .order("amount_cents", { ascending: false })
-        .limit(50),
-      sb.from("ai_summary_cache")
-        .select("summary_text")
-        .eq("entity_id", entity.id)
-        .eq("entity_type", "financial")
-        .eq("summary_type", "profile")
-        .maybeSingle(),
-      sb.from("financial_relationships")
-        .select("to_id", { count: "exact", head: true })
-        .eq("from_type", "financial_entity")
-        .eq("from_id", entity.id)
-        .eq("relationship_type", "donation"),
-      sb.from("financial_relationships")
-        .select("from_id", { count: "exact", head: true })
-        .eq("to_type", "financial_entity")
-        .eq("to_id", entity.id)
-        .eq("relationship_type", "donation"),
-    ]);
+    (await Promise.all([
+      withDbTimeout(
+        sb.from("financial_relationships")
+          .select("id, from_type, from_id, to_type, to_id, amount_cents, occurred_at, cycle_year, relationship_type, metadata")
+          .eq("from_type", "financial_entity")
+          .eq("from_id", entity.id)
+          .eq("relationship_type", "donation")
+          .order("amount_cents", { ascending: false })
+          .limit(1000),
+        3000,
+        "donors:outbound"
+      ),
+      withDbTimeout(
+        sb.from("financial_relationships")
+          .select("id, from_type, from_id, to_type, to_id, amount_cents, occurred_at, cycle_year, relationship_type, metadata")
+          .eq("to_type", "financial_entity")
+          .eq("to_id", entity.id)
+          .eq("relationship_type", "donation")
+          .order("amount_cents", { ascending: false })
+          .limit(1000),
+        3000,
+        "donors:inbound"
+      ),
+      withDbTimeout(
+        sb.from("financial_relationships")
+          .select("id, from_type, from_id, to_type, to_id, amount_cents, occurred_at, cycle_year, relationship_type, metadata")
+          .eq("to_type", "financial_entity")
+          .eq("to_id", entity.id)
+          .in("relationship_type", ["contract", "grant"])
+          .order("amount_cents", { ascending: false })
+          .limit(50),
+        3000,
+        "donors:spending"
+      ),
+      withDbTimeout(
+        sb.from("ai_summary_cache")
+          .select("summary_text")
+          .eq("entity_id", entity.id)
+          .eq("entity_type", "financial")
+          .eq("summary_type", "profile")
+          .maybeSingle(),
+        3000,
+        "donors:ai-summary"
+      ),
+      withDbTimeout(
+        sb.from("financial_relationships")
+          .select("to_id", { count: "exact", head: true })
+          .eq("from_type", "financial_entity")
+          .eq("from_id", entity.id)
+          .eq("relationship_type", "donation"),
+        3000,
+        "donors:recipient-count"
+      ),
+      withDbTimeout(
+        sb.from("financial_relationships")
+          .select("from_id", { count: "exact", head: true })
+          .eq("to_type", "financial_entity")
+          .eq("to_id", entity.id)
+          .eq("relationship_type", "donation"),
+        3000,
+        "donors:donor-count"
+      ),
+    ])) as [DbRes, DbRes, DbRes, DbRes, DbRes, DbRes];
 
   const outbound = (outboundRes.data ?? []) as Relationship[];
   const inbound = (inboundRes.data ?? []) as Relationship[];
@@ -241,11 +277,15 @@ export default async function DonorProfilePage({
   // Parent entity (if subsidiary) — single lookup.
   let parentName: string | null = null;
   if (entity.parent_entity_id) {
-    const { data: parentRow } = await sb
-      .from("financial_entities")
-      .select("id, display_name")
-      .eq("id", entity.parent_entity_id)
-      .maybeSingle();
+    const { data: parentRow } = (await withDbTimeout(
+      sb
+        .from("financial_entities")
+        .select("id, display_name")
+        .eq("id", entity.parent_entity_id)
+        .maybeSingle(),
+      3000,
+      "donors:parent"
+    )) as DbRes;
     parentName = parentRow?.display_name ?? null;
   }
 
@@ -258,10 +298,14 @@ export default async function DonorProfilePage({
     const BATCH = 200;
     for (let i = 0; i < officialIds.length; i += BATCH) {
       const batch = officialIds.slice(i, i + BATCH);
-      const { data } = await sb
-        .from("officials")
-        .select("id, full_name, role_title, party")
-        .in("id", batch);
+      const { data } = (await withDbTimeout(
+        sb
+          .from("officials")
+          .select("id, full_name, role_title, party")
+          .in("id", batch),
+        3000,
+        "donors:recipient-officials"
+      )) as DbRes;
       for (const o of data ?? []) {
         officialInfo.set(o.id, {
           full_name:  o.full_name,
@@ -277,10 +321,14 @@ export default async function DonorProfilePage({
     const BATCH = 200;
     for (let i = 0; i < recipientEntityIds.length; i += BATCH) {
       const batch = recipientEntityIds.slice(i, i + BATCH);
-      const { data } = await sb
-        .from("financial_entities")
-        .select("id, display_name, entity_type")
-        .in("id", batch);
+      const { data } = (await withDbTimeout(
+        sb
+          .from("financial_entities")
+          .select("id, display_name, entity_type")
+          .in("id", batch),
+        3000,
+        "donors:recipient-entities"
+      )) as DbRes;
       for (const e of data ?? []) {
         recipientEntityInfo.set(e.id, {
           display_name: e.display_name,
@@ -343,10 +391,14 @@ export default async function DonorProfilePage({
     const BATCH = 200;
     for (let i = 0; i < inboundDonorIds.length; i += BATCH) {
       const batch = inboundDonorIds.slice(i, i + BATCH);
-      const { data } = await sb
-        .from("financial_entities")
-        .select("id, display_name, entity_type")
-        .in("id", batch);
+      const { data } = (await withDbTimeout(
+        sb
+          .from("financial_entities")
+          .select("id, display_name, entity_type")
+          .in("id", batch),
+        3000,
+        "donors:inbound-donor-entities"
+      )) as DbRes;
       for (const e of data ?? []) {
         donorEntityInfo.set(e.id, {
           display_name: e.display_name,
@@ -383,10 +435,14 @@ export default async function DonorProfilePage({
   const agencyIds = [...new Set(spending.map((r) => r.from_id))];
   const agencyName = new Map<string, string>();
   if (agencyIds.length > 0) {
-    const { data } = await sb
-      .from("agencies")
-      .select("id, name")
-      .in("id", agencyIds);
+    const { data } = (await withDbTimeout(
+      sb
+        .from("agencies")
+        .select("id, name")
+        .in("id", agencyIds),
+      3000,
+      "donors:agencies"
+    )) as DbRes;
     for (const a of data ?? []) agencyName.set(a.id, a.name);
   }
   const spendingRows: SpendingRow[] = spending.map((r) => ({

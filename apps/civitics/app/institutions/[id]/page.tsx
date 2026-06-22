@@ -29,6 +29,7 @@ import { MeetingCard, type MeetingCardData } from "../../components/cards/Meetin
 import { EntityComments } from "../../components/EntityComments";
 import { QASection } from "../../components/QASection";
 import { SyntheticMark, SyntheticBanner } from "../../components/integrity/Synthetic";
+import { withDbTimeout } from "@/lib/supabase-check";
 
 const AgencyGraph = nextDynamic(
   () => import("../../agencies/[slug]/components/AgencyGraph").then((m) => ({ default: m.AgencyGraph })),
@@ -227,11 +228,15 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
   );
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data } = await (supabase as any)
-    .from("institutions")
-    .select("name, acronym")
-    .eq("id", id)
-    .maybeSingle();
+  const { data } = (await withDbTimeout(
+    (supabase as any)
+      .from("institutions")
+      .select("name, acronym")
+      .eq("id", id)
+      .maybeSingle(),
+    3000,
+    "institutions:metadata"
+  )) as any;
 
   if (!data) return { title: "Institution" };
   const label = data.acronym ? `${data.acronym} — ${data.name}` : data.name;
@@ -251,23 +256,31 @@ export default async function InstitutionPage({
 
   // Slug → UUID resolution. governing_bodies.slug only — agencies have no slug.
   if (!UUID_RE.test(id)) {
-    const { data: slugRow } = await supabase
-      .from("governing_bodies")
-      .select("id")
-      .eq("slug", id)
-      .maybeSingle();
+    const { data: slugRow } = await withDbTimeout(
+      supabase
+        .from("governing_bodies")
+        .select("id")
+        .eq("slug", id)
+        .maybeSingle(),
+      3000,
+      "institutions:slug-resolve"
+    );
     if (!slugRow?.id) notFound();
     permanentRedirect(`/institutions/${slugRow.id}`);
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const instRes = await (supabase as any)
-    .from("institutions")
-    .select(
-      "id, jurisdiction_id, type, name, short_name, website_url, contact_email, is_active, slug, source_table, acronym, usaspending_agency_id, usaspending_subtier_id, parent_id, primary_source, primary_source_url, primary_source_last_seen_at, metadata, is_synthetic"
-    )
-    .eq("id", id)
-    .maybeSingle();
+  const instRes = (await withDbTimeout(
+    (supabase as any)
+      .from("institutions")
+      .select(
+        "id, jurisdiction_id, type, name, short_name, website_url, contact_email, is_active, slug, source_table, acronym, usaspending_agency_id, usaspending_subtier_id, parent_id, primary_source, primary_source_url, primary_source_last_seen_at, metadata, is_synthetic"
+      )
+      .eq("id", id)
+      .maybeSingle(),
+    3000,
+    "institutions:detail"
+  )) as any;
 
   const institution = instRes.data as InstitutionRow | null;
   if (!institution) notFound();
@@ -316,11 +329,15 @@ async function AgencyView({
 
   // Fetch agency-only columns the view doesn't carry (description, founded_year,
   // personnel_fte, governing_body_id). One round-trip on the underlying table.
-  const { data: agencyExtra } = await supabase
-    .from("agencies")
-    .select("description, founded_year, personnel_fte, governing_body_id, agency_type")
-    .eq("id", institution.id)
-    .maybeSingle();
+  const { data: agencyExtra } = (await withDbTimeout(
+    supabase
+      .from("agencies")
+      .select("description, founded_year, personnel_fte, governing_body_id, agency_type")
+      .eq("id", institution.id)
+      .maybeSingle(),
+    3000,
+    "institutions:agency-extra"
+  )) as any;
 
   const agency = {
     id:                institution.id,
@@ -348,40 +365,60 @@ async function AgencyView({
     spendingRes,
     totalCountRes,
     openCountRes,
-  ] = await Promise.all([
-    supabase
-      .from("proposals")
-      .select(proposalSelect)
-      .in("status", ["introduced", "in_committee"])
-      .filter("metadata->>agency_id", "eq", agencyKey)
-      .order("metadata->>comment_period_end", { ascending: true })
-      .limit(20),
-    supabase
-      .from("proposals")
-      .select(proposalSelect)
-      .in("status", ["enacted", "failed", "withdrawn", "tabled"])
-      .filter("metadata->>agency_id", "eq", agencyKey)
-      .order("updated_at", { ascending: false })
-      .limit(5),
-    supabase
-      .from("financial_relationships")
-      .select("to_id, to_type, relationship_type, amount_cents, occurred_at")
-      .in("relationship_type", ["contract", "grant"])
-      .eq("from_type", "agency")
-      .eq("from_id", agency.id)
-      .order("amount_cents", { ascending: false })
-      .limit(100),
-    supabase
-      .from("proposals")
-      .select("id", { count: "exact", head: true })
-      .filter("metadata->>agency_id", "eq", agencyKey),
-    supabase
-      .from("proposals")
-      .select("id", { count: "exact", head: true })
-      .filter("metadata->>agency_id", "eq", agencyKey)
-      .eq("status", "introduced")
-      .gt("metadata->>comment_period_end", now),
-  ]);
+  ] = (await Promise.all([
+    withDbTimeout(
+      supabase
+        .from("proposals")
+        .select(proposalSelect)
+        .in("status", ["introduced", "in_committee"])
+        .filter("metadata->>agency_id", "eq", agencyKey)
+        .order("metadata->>comment_period_end", { ascending: true })
+        .limit(20),
+      3000,
+      "institutions:agency-active-rules"
+    ),
+    withDbTimeout(
+      supabase
+        .from("proposals")
+        .select(proposalSelect)
+        .in("status", ["enacted", "failed", "withdrawn", "tabled"])
+        .filter("metadata->>agency_id", "eq", agencyKey)
+        .order("updated_at", { ascending: false })
+        .limit(5),
+      3000,
+      "institutions:agency-recent-rules"
+    ),
+    withDbTimeout(
+      supabase
+        .from("financial_relationships")
+        .select("to_id, to_type, relationship_type, amount_cents, occurred_at")
+        .in("relationship_type", ["contract", "grant"])
+        .eq("from_type", "agency")
+        .eq("from_id", agency.id)
+        .order("amount_cents", { ascending: false })
+        .limit(100),
+      3000,
+      "institutions:agency-spending"
+    ),
+    withDbTimeout(
+      supabase
+        .from("proposals")
+        .select("id", { count: "exact", head: true })
+        .filter("metadata->>agency_id", "eq", agencyKey),
+      3000,
+      "institutions:agency-total-count"
+    ),
+    withDbTimeout(
+      supabase
+        .from("proposals")
+        .select("id", { count: "exact", head: true })
+        .filter("metadata->>agency_id", "eq", agencyKey)
+        .eq("status", "introduced")
+        .gt("metadata->>comment_period_end", now),
+      3000,
+      "institutions:agency-open-count"
+    ),
+  ])) as any[];
 
   const mapProposal = (row: { id: string; title: string; status: string; type: string; introduced_at: string | null; summary_plain: string | null; metadata: Record<string, unknown> | null; bill_details?: { bill_number?: string | null } | null }): Proposal => ({
     id: row.id,
@@ -413,10 +450,14 @@ async function AgencyView({
   );
   const entityNames = new Map<string, string>();
   if (entityIds.length > 0) {
-    const { data: entityRows } = await supabase
-      .from("financial_entities")
-      .select("id, display_name, canonical_name")
-      .in("id", entityIds);
+    const { data: entityRows } = (await withDbTimeout(
+      supabase
+        .from("financial_entities")
+        .select("id, display_name, canonical_name")
+        .in("id", entityIds),
+      3000,
+      "institutions:financial-entities"
+    )) as any;
     for (const e of (entityRows ?? []) as Array<{ id: string; display_name: string | null; canonical_name: string | null }>) {
       entityNames.set(e.id, e.display_name || e.canonical_name || "Unknown recipient");
     }
@@ -433,14 +474,18 @@ async function AgencyView({
 
   const totalSpentCents = spendingGroups.reduce((sum, g) => sum + g.totalCents, 0);
 
-  const { data: connectionRows } = await supabase
-    .from("entity_connections")
-    .select("from_id, from_type, to_id, to_type, connection_type, strength, metadata, evidence_source")
-    .eq("connection_type", "appointment")
-    .or(
-      `and(from_type.eq.official,to_id.eq.${agency.id}),and(to_type.eq.official,from_id.eq.${agency.id})`
-    )
-    .limit(100);
+  const { data: connectionRows } = (await withDbTimeout(
+    supabase
+      .from("entity_connections")
+      .select("from_id, from_type, to_id, to_type, connection_type, strength, metadata, evidence_source")
+      .eq("connection_type", "appointment")
+      .or(
+        `and(from_type.eq.official,to_id.eq.${agency.id}),and(to_type.eq.official,from_id.eq.${agency.id})`
+      )
+      .limit(100),
+    3000,
+    "institutions:agency-connections"
+  )) as any;
 
   const officialIds = Array.from(
     new Set(
@@ -488,10 +533,14 @@ async function AgencyView({
 
   let officials: OfficialLink[] = [];
   if (officialIds.length > 0) {
-    const { data: officialRows } = await supabase
-      .from("officials")
-      .select("id, full_name, role_title")
-      .in("id", officialIds);
+    const { data: officialRows } = (await withDbTimeout(
+      supabase
+        .from("officials")
+        .select("id, full_name, role_title")
+        .in("id", officialIds),
+      3000,
+      "institutions:agency-officials"
+    )) as any;
     officials = ((officialRows ?? []) as Array<{ id: string; full_name: string; role_title: string | null }>).map((o) => {
       const conn = connectionByOfficialId.get(o.id) ?? { connectionType: "oversight", positionTitle: null, strength: 0, startDate: null, endDate: null, isCurrent: false, evidenceSource: null, sourceDate: null };
       return {
@@ -521,30 +570,42 @@ async function AgencyView({
   // internal row via a lazily-instantiated admin client (FIX-432). The page is
   // already force-dynamic (see top of file), so the secret key is available.
   const adminDb = createAdminClient();
-  const plumStateRes = await adminDb
-    .from("pipeline_state")
-    .select("value")
-    .eq("key", "plum_book_state")
-    .maybeSingle();
+  const plumStateRes = await withDbTimeout(
+    adminDb
+      .from("pipeline_state")
+      .select("value")
+      .eq("key", "plum_book_state")
+      .maybeSingle(),
+    3000,
+    "institutions:plum-state"
+  );
   const plumState = plumStateRes.data?.value as Record<string, string> | null;
   const plumLastChange: string | null = plumState?.last_change?.slice(0, 10) ?? null;
 
-  const [parentRes, childrenRes] = await Promise.all([
+  const [parentRes, childrenRes] = (await Promise.all([
     agency.parent_agency_id
-      ? supabase
-          .from("agencies")
-          .select("id, name, acronym")
-          .eq("id", agency.parent_agency_id)
-          .maybeSingle()
+      ? withDbTimeout(
+          supabase
+            .from("agencies")
+            .select("id, name, acronym")
+            .eq("id", agency.parent_agency_id)
+            .maybeSingle(),
+          3000,
+          "institutions:agency-parent"
+        )
       : Promise.resolve({ data: null }),
-    supabase
-      .from("agencies")
-      .select("id, name, acronym")
-      .eq("parent_agency_id", agency.id)
-      .eq("is_active", true)
-      .order("name")
-      .limit(30),
-  ]);
+    withDbTimeout(
+      supabase
+        .from("agencies")
+        .select("id, name, acronym")
+        .eq("parent_agency_id", agency.id)
+        .eq("is_active", true)
+        .order("name")
+        .limit(30),
+      3000,
+      "institutions:agency-children"
+    ),
+  ])) as any[];
 
   const parentAgency = parentRes.data as { id: string; name: string; acronym: string | null } | null;
   const childAgencies = (childrenRes.data ?? []) as { id: string; name: string; acronym: string | null }[];
@@ -1001,88 +1062,132 @@ async function GoverningBodyView({
     subBodyExtRes,
     meetingsRes,
     recentVotesRes,
-  ] = await Promise.all([
-    supabase
-      .from("governing_bodies")
-      .select("seat_count, term_length_years")
-      .eq("id", institution.id)
-      .maybeSingle(),
+  ] = (await Promise.all([
+    withDbTimeout(
+      supabase
+        .from("governing_bodies")
+        .select("seat_count, term_length_years")
+        .eq("id", institution.id)
+        .maybeSingle(),
+      3000,
+      "institutions:gb-extra"
+    ),
     institution.jurisdiction_id
-      ? supabase
-          .from("jurisdictions")
-          .select("id, name, is_synthetic")
-          .eq("id", institution.jurisdiction_id)
-          .maybeSingle()
+      ? withDbTimeout(
+          supabase
+            .from("jurisdictions")
+            .select("id, name, is_synthetic")
+            .eq("id", institution.jurisdiction_id)
+            .maybeSingle(),
+          3000,
+          "institutions:gb-jurisdiction"
+        )
       : Promise.resolve({ data: null }),
     institution.parent_id
-      ? supabase
-          .from("institutions")
-          .select("id, name")
-          .eq("id", institution.parent_id)
-          .maybeSingle()
+      ? withDbTimeout(
+          supabase
+            .from("institutions")
+            .select("id, name")
+            .eq("id", institution.parent_id)
+            .maybeSingle(),
+          3000,
+          "institutions:gb-parent"
+        )
       : Promise.resolve({ data: null }),
     // Roster + party balance + the "Active members" stat are current members of
     // the body — is_active AND tier='elected' (FIX-470). Without the tier scope,
     // the FEC candidate field parked on the body (tier='candidate', FIX-246)
     // counts as members: prod US House showed 8,880 instead of 436. Shared
     // predicate so FIX-468 graph group-expansion reuses one definition.
-    currentGoverningBodyMembers(
+    withDbTimeout(
+      currentGoverningBodyMembers(
+        supabase
+          .from("officials")
+          .select("id, full_name, role_title, party, photo_url, district_name, is_synthetic")
+          .eq("governing_body_id", institution.id)
+      )
+        .order("role_title")
+        .order("last_name")
+        .limit(500),
+      3000,
+      "institutions:gb-roster"
+    ),
+    withDbTimeout(
+      currentGoverningBodyMembers(
+        supabase
+          .from("officials")
+          .select("party")
+          .eq("governing_body_id", institution.id)
+      ).limit(1000), // FIX-476 — honest ceiling (PostgREST max_rows). FIX-470's
+                     // current-member scoping brought every body's roster <1000,
+                     // so the prior `.limit(2000)` (capped to 1000 anyway) is now
+                     // a no-op; this documents the real ceiling. [[FIX-470]]
+      3000,
+      "institutions:gb-party-balance"
+    ),
+    withDbTimeout(
       supabase
-        .from("officials")
-        .select("id, full_name, role_title, party, photo_url, district_name, is_synthetic")
+        .from("proposals")
+        .select("id, title, status, type, introduced_at, summary_plain, metadata, bill_details(bill_number)")
         .eq("governing_body_id", institution.id)
-    )
-      .order("role_title")
-      .order("last_name")
-      .limit(500),
-    currentGoverningBodyMembers(
+        .in("status", ["introduced", "in_committee", "passed_committee", "floor_vote"])
+        .order("introduced_at", { ascending: false })
+        .limit(15),
+      3000,
+      "institutions:gb-active-proposals"
+    ),
+    withDbTimeout(
       supabase
-        .from("officials")
-        .select("party")
+        .from("proposals")
+        .select("id, title, status, type, introduced_at, summary_plain, metadata, bill_details(bill_number)")
         .eq("governing_body_id", institution.id)
-    ).limit(1000), // FIX-476 — honest ceiling (PostgREST max_rows). FIX-470's
-                   // current-member scoping brought every body's roster <1000,
-                   // so the prior `.limit(2000)` (capped to 1000 anyway) is now
-                   // a no-op; this documents the real ceiling. [[FIX-470]]
-    supabase
-      .from("proposals")
-      .select("id, title, status, type, introduced_at, summary_plain, metadata, bill_details(bill_number)")
-      .eq("governing_body_id", institution.id)
-      .in("status", ["introduced", "in_committee", "passed_committee", "floor_vote"])
-      .order("introduced_at", { ascending: false })
-      .limit(15),
-    supabase
-      .from("proposals")
-      .select("id, title, status, type, introduced_at, summary_plain, metadata, bill_details(bill_number)")
-      .eq("governing_body_id", institution.id)
-      .in("status", ["enacted", "signed", "failed", "withdrawn"])
-      .order("updated_at", { ascending: false })
-      .limit(5),
-    supabase
-      .from("proposals")
-      .select("id", { count: "exact", head: true })
-      .eq("governing_body_id", institution.id),
+        .in("status", ["enacted", "signed", "failed", "withdrawn"])
+        .order("updated_at", { ascending: false })
+        .limit(5),
+      3000,
+      "institutions:gb-recent-proposals"
+    ),
+    withDbTimeout(
+      supabase
+        .from("proposals")
+        .select("id", { count: "exact", head: true })
+        .eq("governing_body_id", institution.id),
+      3000,
+      "institutions:gb-total-proposals"
+    ),
     // Sub-bodies / committees: children are governing_bodies whose
     // institution_extensions.parent_id points at this body. Unpopulated today
     // (institution_extensions is empty) — section self-omits when no children.
-    supabase
-      .from("institution_extensions")
-      .select("governing_body_id")
-      .eq("parent_id", institution.id)
-      .limit(100),
-    supabase
-      .from("meetings")
-      .select("id, title, meeting_type, scheduled_at, agenda_url, governing_bodies!inner(is_synthetic)")
-      .eq("governing_body_id", institution.id)
-      .gte("scheduled_at", meetingsFrom)
-      .lte("scheduled_at", meetingsTo)
-      .order("scheduled_at", { ascending: false })
-      .limit(10),
-    supabase.rpc("get_institution_recent_votes", {
-      p_institution_id: institution.id,
-      p_limit: 10,
-    }),
-  ]);
+    withDbTimeout(
+      supabase
+        .from("institution_extensions")
+        .select("governing_body_id")
+        .eq("parent_id", institution.id)
+        .limit(100),
+      3000,
+      "institutions:gb-subbody-ext"
+    ),
+    withDbTimeout(
+      supabase
+        .from("meetings")
+        .select("id, title, meeting_type, scheduled_at, agenda_url, governing_bodies!inner(is_synthetic)")
+        .eq("governing_body_id", institution.id)
+        .gte("scheduled_at", meetingsFrom)
+        .lte("scheduled_at", meetingsTo)
+        .order("scheduled_at", { ascending: false })
+        .limit(10),
+      3000,
+      "institutions:gb-meetings"
+    ),
+    withDbTimeout(
+      supabase.rpc("get_institution_recent_votes", {
+        p_institution_id: institution.id,
+        p_limit: 10,
+      }),
+      3000,
+      "institutions:gb-recent-votes"
+    ),
+  ])) as any[];
 
   const gbExtra = gbExtraRes.data as { seat_count: number | null; term_length_years: number | null } | null;
   const jurisdiction = jurisdictionRes.data as { id: string; name: string; is_synthetic?: boolean } | null;
@@ -1121,13 +1226,17 @@ async function GoverningBodyView({
   const subBodyIds = ((subBodyExtRes.data ?? []) as Array<{ governing_body_id: string }>).map((r) => r.governing_body_id);
   let subBodies: Array<{ id: string; name: string; type: string }> = [];
   if (subBodyIds.length > 0) {
-    const { data: sbRows } = await supabase
-      .from("governing_bodies")
-      .select("id, name, type")
-      .in("id", subBodyIds)
-      .eq("is_active", true)
-      .order("name")
-      .limit(100);
+    const { data: sbRows } = (await withDbTimeout(
+      supabase
+        .from("governing_bodies")
+        .select("id, name, type")
+        .in("id", subBodyIds)
+        .eq("is_active", true)
+        .order("name")
+        .limit(100),
+      3000,
+      "institutions:gb-subbodies"
+    )) as any;
     subBodies = (sbRows ?? []) as Array<{ id: string; name: string; type: string }>;
   }
 

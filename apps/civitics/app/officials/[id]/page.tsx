@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import nextDynamic from "next/dynamic";
 import { createPublicClient, fetchIndustryTagsByEntityId } from "@civitics/db";
 import { fetchAllRows } from "@/lib/paginate";
+import { withDbTimeout } from "@/lib/supabase-check";
 // FIX-205: defer the D3 graph chunk off the initial /officials/[id] bundle.
 // Most visitors land on the profile and never expand the graph; even when
 // they do, the chunk loads on demand.
@@ -298,16 +299,24 @@ export default async function OfficialProfilePage({
   const [officialData, voteCountRes, votesRes, donorRollupRes, aiSummaryRes, allVotesRes, careerHistoryRes, promisesRes, responsivenessRes] =
     await Promise.all([
       getCachedOfficial(params.id),
-      supabase
-        .from("votes")
-        .select("id", { count: "exact", head: true })
-        .eq("official_id", params.id),
-      supabase
-        .from("votes")
-        .select("id, vote, voted_at, roll_call_id, bill_proposal_id")
-        .eq("official_id", params.id)
-        .order("voted_at", { ascending: false })
-        .limit(100),
+      withDbTimeout(
+        supabase
+          .from("votes")
+          .select("id", { count: "exact", head: true })
+          .eq("official_id", params.id),
+        3000,
+        "officials:vote-count"
+      ),
+      withDbTimeout(
+        supabase
+          .from("votes")
+          .select("id, vote, voted_at, roll_call_id, bill_proposal_id")
+          .eq("official_id", params.id)
+          .order("voted_at", { ascending: false })
+          .limit(100),
+        3000,
+        "officials:votes"
+      ),
       // FIX-518 — donor + IE aggregations read official_donor_rollup_mv: per
       // (official, relationship_type) the top-1000 donors (rank 1..1000) plus
       // one tail-bucket row (rank 1001, donor_id NULL, tail_donor_count set),
@@ -334,47 +343,71 @@ export default async function OfficialProfilePage({
           tx_count: number;
           tail_donor_count: number | null;
         }>((f, t) =>
-          sb
-            .from("official_donor_rollup_mv")
-            .select("relationship_type, rank, donor_id, donor_name, entity_type, industry_label, total_cents, tx_count, tail_donor_count")
-            .eq("official_id", params.id)
-            .order("relationship_type", { ascending: true })
-            .order("rank", { ascending: true })
-            .range(f, t),
+          withDbTimeout(
+            sb
+              .from("official_donor_rollup_mv")
+              .select("relationship_type, rank, donor_id, donor_name, entity_type, industry_label, total_cents, tx_count, tail_donor_count")
+              .eq("official_id", params.id)
+              .order("relationship_type", { ascending: true })
+              .order("rank", { ascending: true })
+              .range(f, t),
+            3000,
+            "officials:donor-rollup",
+          ),
           { maxRows: 10000 },
         );
         return { data: rows };
       })(),
-      sb
-        .from("ai_summary_cache")
-        .select("summary_text")
-        .eq("entity_type", "official")
-        .eq("entity_id", params.id)
-        .eq("summary_type", "profile")
-        .maybeSingle(),
-      supabase
-        .from("votes")
-        .select("vote, bill_proposal_id")
-        .eq("official_id", params.id)
-        .limit(500),
-      supabase
-        .from("career_history")
-        .select("id, organization, role_title, started_at, ended_at, is_government, revolving_door_flag, revolving_door_explanation")
-        .eq("official_id", params.id)
-        .order("started_at", { ascending: false })
-        .limit(20),
-      supabase
-        .from("promises")
-        .select("id, title, description, status, made_at, deadline, resolved_at, source_url, source_quote")
-        .eq("official_id", params.id)
-        .order("made_at", { ascending: false })
-        .limit(10),
-      supabase
-        .from("civic_initiative_responses")
-        .select("id, initiative_id, response_type, responded_at, window_closes_at, window_opened_at, proposals!initiative_id(id, title, type, initiative_details(scope))")
-        .eq("official_id", params.id)
-        .order("window_opened_at", { ascending: false })
-        .limit(20),
+      withDbTimeout(
+        sb
+          .from("ai_summary_cache")
+          .select("summary_text")
+          .eq("entity_type", "official")
+          .eq("entity_id", params.id)
+          .eq("summary_type", "profile")
+          .maybeSingle() as PromiseLike<{ data: { summary_text: string | null } | null }>,
+        3000,
+        "officials:ai-summary"
+      ),
+      withDbTimeout(
+        supabase
+          .from("votes")
+          .select("vote, bill_proposal_id")
+          .eq("official_id", params.id)
+          .limit(500),
+        3000,
+        "officials:all-votes"
+      ),
+      withDbTimeout(
+        supabase
+          .from("career_history")
+          .select("id, organization, role_title, started_at, ended_at, is_government, revolving_door_flag, revolving_door_explanation")
+          .eq("official_id", params.id)
+          .order("started_at", { ascending: false })
+          .limit(20),
+        3000,
+        "officials:career-history"
+      ),
+      withDbTimeout(
+        supabase
+          .from("promises")
+          .select("id, title, description, status, made_at, deadline, resolved_at, source_url, source_quote")
+          .eq("official_id", params.id)
+          .order("made_at", { ascending: false })
+          .limit(10),
+        3000,
+        "officials:promises"
+      ),
+      withDbTimeout(
+        supabase
+          .from("civic_initiative_responses")
+          .select("id, initiative_id, response_type, responded_at, window_closes_at, window_opened_at, proposals!initiative_id(id, title, type, initiative_details(scope))")
+          .eq("official_id", params.id)
+          .order("window_opened_at", { ascending: false })
+          .limit(20),
+        3000,
+        "officials:civic-responses"
+      ),
     ]);
 
   // votes.bill_proposal_id FKs to bill_details(proposal_id), not proposals, so a
@@ -397,10 +430,14 @@ export default async function OfficialProfilePage({
       >();
       const CHUNK = 300;
       for (let i = 0; i < billProposalIds.length; i += CHUNK) {
-        const { data: props } = await supabase
-          .from("proposals")
-          .select("id, title, short_title, bill_details(bill_number)")
-          .in("id", billProposalIds.slice(i, i + CHUNK));
+        const { data: props } = await withDbTimeout(
+          supabase
+            .from("proposals")
+            .select("id, title, short_title, bill_details(bill_number)")
+            .in("id", billProposalIds.slice(i, i + CHUNK)),
+          3000,
+          "officials:vote-proposals"
+        );
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         for (const p of ((props ?? []) as any[])) {
           const bd = Array.isArray(p.bill_details) ? p.bill_details[0] : p.bill_details;
@@ -461,13 +498,17 @@ export default async function OfficialProfilePage({
   // rows today), so real officials add no extra query.
   let isPassiveSynthetic = false;
   if (official.is_synthetic) {
-    const { count: answerCount } = await sb
-      .from("entity_comments")
-      .select("id", { count: "exact", head: true })
-      .eq("entity_type", "official")
-      .eq("entity_id", official.id)
-      .eq("kind", "answer")
-      .eq("status", "visible");
+    const { count: answerCount } = await withDbTimeout(
+      sb
+        .from("entity_comments")
+        .select("id", { count: "exact", head: true })
+        .eq("entity_type", "official")
+        .eq("entity_id", official.id)
+        .eq("kind", "answer")
+        .eq("status", "visible") as PromiseLike<{ count: number | null }>,
+      3000,
+      "officials:passive-answer-count"
+    );
     isPassiveSynthetic = (answerCount ?? 0) === 0;
   }
 
@@ -558,13 +599,17 @@ export default async function OfficialProfilePage({
     // EXISTS probe (cheap — never COUNT(*), which seq-scans for a whale): does
     // this official have ANY donation row despite an empty MV? If so the MV is
     // stale/unrefreshed → fall back to a BOUNDED top-N read.
-    const { data: probe } = await sb
-      .from("financial_relationships")
-      .select("id")
-      .eq("relationship_type", "donation")
-      .eq("to_type", "official")
-      .eq("to_id", params.id)
-      .limit(1);
+    const { data: probe } = await withDbTimeout(
+      sb
+        .from("financial_relationships")
+        .select("id")
+        .eq("relationship_type", "donation")
+        .eq("to_type", "official")
+        .eq("to_id", params.id)
+        .limit(1) as PromiseLike<{ data: Array<{ id: string }> | null }>,
+      3000,
+      "officials:donor-fallback-probe"
+    );
 
     if (probe && probe.length > 0) {
       // FIX-635: this branch previously ran fetchAllRows up to 50,000
@@ -577,26 +622,34 @@ export default async function OfficialProfilePage({
       // The MV is the source of truth; its refresh restores exact totals. A
       // stale MV must degrade gracefully, never detonate.
       donorDataPartial = true;
-      const { data: boundedRaw } = await sb
-        .from("financial_relationships")
-        .select("from_id, amount_cents, relationship_type")
-        .in("relationship_type", ["donation", "ie_support", "ie_oppose"])
-        .eq("to_type", "official")
-        .eq("to_id", params.id)
-        .eq("from_type", "financial_entity")
-        .gt("amount_cents", 0)
-        .order("amount_cents", { ascending: false })
-        .limit(DONOR_FALLBACK_LIMIT);
+      const { data: boundedRaw } = await withDbTimeout(
+        sb
+          .from("financial_relationships")
+          .select("from_id, amount_cents, relationship_type")
+          .in("relationship_type", ["donation", "ie_support", "ie_oppose"])
+          .eq("to_type", "official")
+          .eq("to_id", params.id)
+          .eq("from_type", "financial_entity")
+          .gt("amount_cents", 0)
+          .order("amount_cents", { ascending: false })
+          .limit(DONOR_FALLBACK_LIMIT) as PromiseLike<{ data: Array<{ from_id: string; amount_cents: number | null; relationship_type: string }> | null }>,
+        3000,
+        "officials:donor-fallback-bounded"
+      );
       const inflowRaw = (boundedRaw ?? []) as Array<{ from_id: string; amount_cents: number | null; relationship_type: string }>;
       const fromEntityIds = [...new Set(inflowRaw.map((d) => d.from_id))];
       const entityInfo = new Map<string, { display_name: string; industry: string | null; entity_type: string | null }>();
       if (fromEntityIds.length > 0) {
         const industryByEntityId = await fetchIndustryTagsByEntityId(supabase, fromEntityIds);
         // ≤ DONOR_FALLBACK_LIMIT distinct ids — a single bounded .in(), no chunk loop.
-        const { data: entities } = await supabase
-          .from("financial_entities")
-          .select("id, display_name, entity_type")
-          .in("id", fromEntityIds);
+        const { data: entities } = await withDbTimeout(
+          supabase
+            .from("financial_entities")
+            .select("id, display_name, entity_type")
+            .in("id", fromEntityIds),
+          3000,
+          "officials:donor-fallback-entities"
+        );
         for (const e of entities ?? []) {
           entityInfo.set(e.id, {
             display_name: e.display_name,
@@ -793,26 +846,38 @@ export default async function OfficialProfilePage({
     awarding_agency: string;
   }> = [];
   if (official.jurisdiction_id) {
-    const { data: rows } = await supabase
-      .from("financial_relationships")
-      .select("id, from_id, to_id, amount_cents, occurred_at, relationship_type, metadata")
-      .in("relationship_type", ["contract", "grant"])
-      // FIX-503: amount_cents>0 lets the top-10 use the partial DESC index
-      // financial_relationships_amount (prod cost 371k → 39) instead of a
-      // parallel seq scan + sort, and drops NULL-amount rows that sort first
-      // under DESC and would otherwise crowd out the real top contracts.
-      .gt("amount_cents", 0)
-      .order("amount_cents", { ascending: false })
-      .limit(10);
+    const { data: rows } = await withDbTimeout(
+      supabase
+        .from("financial_relationships")
+        .select("id, from_id, to_id, amount_cents, occurred_at, relationship_type, metadata")
+        .in("relationship_type", ["contract", "grant"])
+        // FIX-503: amount_cents>0 lets the top-10 use the partial DESC index
+        // financial_relationships_amount (prod cost 371k → 39) instead of a
+        // parallel seq scan + sort, and drops NULL-amount rows that sort first
+        // under DESC and would otherwise crowd out the real top contracts.
+        .gt("amount_cents", 0)
+        .order("amount_cents", { ascending: false })
+        .limit(10),
+      3000,
+      "officials:spending"
+    );
     const spendRows = rows ?? [];
     const agencyIds    = [...new Set(spendRows.map((r) => r.from_id))];
     const recipientIds = [...new Set(spendRows.map((r) => r.to_id))];
     const [agenciesRes, recipientsRes] = await Promise.all([
       agencyIds.length > 0
-        ? supabase.from("agencies").select("id, name").in("id", agencyIds)
+        ? withDbTimeout(
+            supabase.from("agencies").select("id, name").in("id", agencyIds) as PromiseLike<{ data: Array<{ id: string; name: string }> | null }>,
+            3000,
+            "officials:spending-agencies"
+          )
         : Promise.resolve({ data: [] as Array<{ id: string; name: string }> }),
       recipientIds.length > 0
-        ? supabase.from("financial_entities").select("id, display_name").in("id", recipientIds)
+        ? withDbTimeout(
+            supabase.from("financial_entities").select("id, display_name").in("id", recipientIds) as PromiseLike<{ data: Array<{ id: string; display_name: string }> | null }>,
+            3000,
+            "officials:spending-recipients"
+          )
         : Promise.resolve({ data: [] as Array<{ id: string; display_name: string }> }),
     ]);
     const agencyName = new Map<string, string>();

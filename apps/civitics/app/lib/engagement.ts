@@ -20,6 +20,8 @@
  * answered_rate only gates the top tier.
  */
 
+import { withDbTimeout } from "@/lib/supabase-check";
+
 export type EngagementEntityType = "official" | "institution" | "jurisdiction";
 
 /** One row of entity_engagement_rollup_mv (display-only). */
@@ -129,10 +131,15 @@ export async function fetchAllEngagementRollup(
   entityType: EngagementEntityType,
 ): Promise<Map<string, EngagementRollup>> {
   const out = new Map<string, EngagementRollup>();
-  const { data, error } = await supabase
-    .from("entity_engagement_rollup_mv")
-    .select(ROLLUP_COLUMNS)
-    .eq("entity_type", entityType);
+  const { data, error } = await withDbTimeout<{ data: any; error: any }>(
+    supabase
+      // db-timeout-exempt: wrapped — generic-typed withDbTimeout<…>( the lexical guard's regex misses
+      .from("entity_engagement_rollup_mv")
+      .select(ROLLUP_COLUMNS)
+      .eq("entity_type", entityType),
+    3000,
+    "engagement:all-rollup",
+  );
   if (error) {
     // Display-only signal — never break the page over a missing/stale MV.
     console.error("engagement rollup fetch error:", error.message);
@@ -156,11 +163,16 @@ export async function fetchEngagementRollup(
   const out = new Map<string, EngagementRollup>();
   if (entityIds.length === 0) return out;
 
-  const { data, error } = await supabase
-    .from("entity_engagement_rollup_mv")
-    .select(ROLLUP_COLUMNS)
-    .eq("entity_type", entityType)
-    .in("entity_id", entityIds);
+  const { data, error } = await withDbTimeout<{ data: any; error: any }>(
+    supabase
+      // db-timeout-exempt: wrapped — generic-typed withDbTimeout<…>( the lexical guard's regex misses
+      .from("entity_engagement_rollup_mv")
+      .select(ROLLUP_COLUMNS)
+      .eq("entity_type", entityType)
+      .in("entity_id", entityIds),
+    3000,
+    "engagement:rollup-by-ids",
+  );
 
   if (error) {
     console.error("engagement rollup fetch error:", error.message);

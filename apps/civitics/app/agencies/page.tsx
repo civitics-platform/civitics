@@ -33,18 +33,26 @@ export default async function AgenciesPage() {
   const supabase = createServerClient(cookieStore);
 
   const [{ data: agencyRows, error }, { data: featuredRow }] = await Promise.all([
-    supabase
-      .from("agencies")
-      .select("id, name, short_name, acronym, agency_type, website_url, description, is_synthetic")
-      .eq("is_active", true)
-      .order("name")
-      .limit(200),
-    supabase
-      .from("agencies")
-      .select("id, name, short_name, acronym, agency_type, website_url, description, is_synthetic")
-      .filter("metadata->>featured", "eq", "true")
-      .limit(1)
-      .maybeSingle(),
+    withDbTimeout(
+      supabase
+        .from("agencies")
+        .select("id, name, short_name, acronym, agency_type, website_url, description, is_synthetic")
+        .eq("is_active", true)
+        .order("name")
+        .limit(200),
+      3000,
+      "agencies:list",
+    ),
+    withDbTimeout(
+      supabase
+        .from("agencies")
+        .select("id, name, short_name, acronym, agency_type, website_url, description, is_synthetic")
+        .filter("metadata->>featured", "eq", "true")
+        .limit(1)
+        .maybeSingle(),
+      3000,
+      "agencies:featured",
+    ),
   ]);
 
   if (error) console.error("agencies fetch error:", error.message);
@@ -60,6 +68,7 @@ export default async function AgenciesPage() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const sbAny = supabase as any;
   const countsMvRes = await withDbTimeout<{ data: AgencyCountRow[] | null; error: { message: string } | null }>(
+    // db-timeout-exempt: already wrapped — generic-typed withDbTimeout<…>( form the lexical guard's regex misses
     sbAny.from("homepage_agency_counts_mv").select("agency_id,total,open"),
     1000
   );
@@ -69,6 +78,7 @@ export default async function AgenciesPage() {
     // FIX-330 fallback — MV missing or empty. Falls back to the FIX-303 RPC
     // at its prior 5000ms request-path budget.
     const countsRes = await withDbTimeout<{ data: AgencyCountRow[] | null; error: { message: string } | null }>(
+      // db-timeout-exempt: already wrapped — generic-typed withDbTimeout<…>( form the lexical guard's regex misses
       sbAny.rpc("get_proposal_counts_by_agency"),
       5000
     );

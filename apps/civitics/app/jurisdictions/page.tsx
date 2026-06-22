@@ -9,6 +9,7 @@
 import Link from "next/link";
 import { createPublicClient } from "@civitics/db";
 import { JurisdictionCard, type JurisdictionCardData } from "../components/cards/JurisdictionCard";
+import { withDbTimeout } from "@/lib/supabase-check";
 
 export const revalidate = 300;
 
@@ -75,10 +76,13 @@ async function loadParentNames(
 ): Promise<Map<string, string>> {
   const map = new Map<string, string>();
   if (parentIds.length === 0) return map;
-  const { data } = await supabase
-    .from("jurisdictions")
-    .select("id, name")
-    .in("id", parentIds);
+  const { data } = await withDbTimeout(
+    supabase.from("jurisdictions").select("id, name").in("id", parentIds) as PromiseLike<{
+      data: { id: string; name: string }[] | null;
+    }>,
+    3000,
+    "jurisdictions:parent-names",
+  );
   for (const r of (data ?? []) as Array<{ id: string; name: string }>) {
     map.set(r.id, r.name);
   }
@@ -107,13 +111,18 @@ export default async function JurisdictionsIndexPage({
   const showFeatured = type === DEFAULT_TYPE && q === "" && page === 1;
   let featured: JurisdictionCardData[] = [];
   if (showFeatured) {
-    const { data } = await supabase
-      .from("jurisdictions")
-      .select("id, name, short_name, type, population, parent_id, is_synthetic")
-      .in("type", ["country", "federal_district", "city"])
-      .eq("is_active", true)
-      .order("type", { ascending: true })
-      .limit(20);
+    const { data } = await withDbTimeout(
+      supabase
+        .from("jurisdictions")
+        .select("id, name, short_name, type, population, parent_id, is_synthetic")
+        .in("type", ["country", "federal_district", "city"])
+        .eq("is_active", true)
+        .order("type", { ascending: true })
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .limit(20) as PromiseLike<{ data: any[] | null }>,
+      3000,
+      "jurisdictions:featured",
+    );
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const rows = (data ?? []) as any[];
     const parentMap = await loadParentNames(
@@ -137,6 +146,7 @@ export default async function JurisdictionsIndexPage({
   const to = from + PAGE_SIZE - 1;
 
   let query = supabase
+    // db-timeout-exempt: builder assigned here, wrapped in withDbTimeout(query, …) at the .range() await below — split across a variable assignment the guard's lexical enclosure check can't see.
     .from("jurisdictions")
     .select("id, name, short_name, type, population, parent_id, is_synthetic", { count: "exact" })
     .eq("is_active", true);
@@ -147,10 +157,15 @@ export default async function JurisdictionsIndexPage({
   const safeQ = q.replace(/[,()\\*]/g, " ").trim();
   if (safeQ) query = query.or(`name.ilike.%${safeQ}%,short_name.ilike.%${safeQ}%`);
 
-  const { data, count } = await query
-    .order("population", { ascending: false, nullsFirst: false })
-    .order("name", { ascending: true })
-    .range(from, to);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, count } = await withDbTimeout<{ data: any[] | null; count: number | null }>(
+    query
+      .order("population", { ascending: false, nullsFirst: false })
+      .order("name", { ascending: true })
+      .range(from, to),
+    3000,
+    "jurisdictions:list",
+  );
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const rows = (data ?? []) as any[];

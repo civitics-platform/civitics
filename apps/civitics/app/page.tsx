@@ -147,19 +147,27 @@ export default async function HomePage({
         .maybeSingle(),
       2000
     ),
-    supabase
-      .from("proposals")
-      .select("id,title,type,status,summary_plain,summary_model,introduced_at,metadata,is_synthetic")
-      .eq("status", "open_comment")
-      .gt("metadata->>comment_period_end", now)
-      .order("metadata->>comment_period_end", { ascending: true })
-      .limit(3),
-    supabase
-      .from("agencies")
-      .select("id,name,short_name,acronym,agency_type,website_url,description,metadata,is_synthetic")
-      .eq("is_active", true)
-      .order("name")
-      .limit(4),
+    withDbTimeout(
+      supabase
+        .from("proposals")
+        .select("id,title,type,status,summary_plain,summary_model,introduced_at,metadata,is_synthetic")
+        .eq("status", "open_comment")
+        .gt("metadata->>comment_period_end", now)
+        .order("metadata->>comment_period_end", { ascending: true })
+        .limit(3),
+      3000,
+      "home:open-proposals",
+    ),
+    withDbTimeout(
+      supabase
+        .from("agencies")
+        .select("id,name,short_name,acronym,agency_type,website_url,description,metadata,is_synthetic")
+        .eq("is_active", true)
+        .order("name")
+        .limit(4),
+      3000,
+      "home:agencies",
+    ),
   ]));
 
   // Defensive fallback for donor_records_count only — if the MV row is missing
@@ -202,7 +210,10 @@ export default async function HomePage({
     let liveDonorCount = liveDonorGross;
     if (liveDonorGross !== null) {
       const synthDonorRes = await timed("wave1_donor_synthetic", () =>
+        // Already wrapped — the guard's wrapSpan regex doesn't match the
+        // generic-typed withDbTimeout<...>( form, so it mis-reports this read.
         withDbTimeout<{ data: number | string | null; error: { message: string } | null }>(
+          // db-timeout-exempt: enclosed in the generic-typed withDbTimeout<...>( above.
           sbAny.rpc("count_synthetic_donor_records"),
           2000
         )
@@ -252,11 +263,15 @@ export default async function HomePage({
   // ── Proposal fallback: if no open comment periods, show most recent ────────
   let rawProposals: ProposalCardData[] = ((openProposalsRes.data ?? []) as ProposalRow[]).map(toCardShape);
   if (rawProposals.length === 0) {
-    const { data: fallback } = await supabase
-      .from("proposals")
-      .select("id,title,type,status,summary_plain,summary_model,introduced_at,metadata,is_synthetic")
-      .order("introduced_at", { ascending: false, nullsFirst: false })
-      .limit(3);
+    const { data: fallback } = await withDbTimeout(
+      supabase
+        .from("proposals")
+        .select("id,title,type,status,summary_plain,summary_model,introduced_at,metadata,is_synthetic")
+        .order("introduced_at", { ascending: false, nullsFirst: false })
+        .limit(3),
+      3000,
+      "home:proposals-fallback",
+    );
     rawProposals = ((fallback ?? []) as ProposalRow[]).map(toCardShape);
   }
 
@@ -265,30 +280,46 @@ export default async function HomePage({
   const agencyRows = agencyRowsRes.data ?? [];
 
   const [officialsRes, summaryRes, tagsRes, agencyCountsMvRes] = await timed("wave2", () => Promise.all([
-    supabase
-      .from("officials")
-      .select(
-        "id,full_name,role_title,party,photo_url,district_name,source_ids,jurisdictions!jurisdiction_id(name),governing_bodies!governing_body_id(short_name)"
-      )
-      .eq("is_active", true)
-      .in("role_title", ["Senator", "Representative"])
-      .filter("source_ids->>congress_gov", "not.is", null)
-      .limit(20),
+    withDbTimeout(
+      supabase
+        .from("officials")
+        .select(
+          "id,full_name,role_title,party,photo_url,district_name,source_ids,jurisdictions!jurisdiction_id(name),governing_bodies!governing_body_id(short_name)"
+        )
+        .eq("is_active", true)
+        .in("role_title", ["Senator", "Representative"])
+        .filter("source_ids->>congress_gov", "not.is", null)
+        .limit(20),
+      3000,
+      "home:officials",
+    ),
     proposalIds.length > 0
-      ? sbAny
-          .from("ai_summary_cache")
-          .select("entity_id,summary_text")
-          .eq("entity_type", "proposal")
-          .in("entity_id", proposalIds)
+      ? withDbTimeout(
+          sbAny
+            .from("ai_summary_cache")
+            .select("entity_id,summary_text")
+            .eq("entity_type", "proposal")
+            .in("entity_id", proposalIds) as PromiseLike<{
+            data: { entity_id: string; summary_text: string }[] | null;
+          }>,
+          3000,
+          "home:proposal-summaries",
+        )
       : Promise.resolve({ data: [] as { entity_id: string; summary_text: string }[] }),
     proposalIds.length > 0
-      ? sbAny
-          .from("entity_tags")
-          .select(
-            "entity_id,tag,tag_category,display_label,display_icon,visibility,confidence,generated_by,ai_model,metadata"
-          )
-          .eq("entity_type", "proposal")
-          .in("entity_id", proposalIds)
+      ? withDbTimeout(
+          sbAny
+            .from("entity_tags")
+            .select(
+              "entity_id,tag,tag_category,display_label,display_icon,visibility,confidence,generated_by,ai_model,metadata"
+            )
+            .eq("entity_type", "proposal")
+            .in("entity_id", proposalIds) as PromiseLike<{
+            data: (EntityTag & { entity_id: string })[] | null;
+          }>,
+          3000,
+          "home:proposal-tags",
+        )
       : Promise.resolve({ data: [] as EntityTag[] }),
     // FIX-330 — read from homepage_agency_counts_mv (refreshed nightly).
     // Replaces the FIX-303 RPC on the request path. Sub-millisecond on warm
@@ -297,6 +328,7 @@ export default async function HomePage({
     // FIX-303 RPC below if the MV returns 0 rows.
     withDbTimeout<{ data: { agency_id: string; total: number | string; open: number | string }[] | null; error: { message: string } | null }>(
       sbAny
+        // db-timeout-exempt: enclosed in the generic-typed withDbTimeout<...>( above (regex can't see it).
         .from("homepage_agency_counts_mv")
         .select("agency_id,total,open"),
       1000
@@ -311,6 +343,7 @@ export default async function HomePage({
     // FIX-330 fallback — MV missing or empty (fresh DB, post-truncate, etc.).
     // Falls back to the FIX-303 RPC at its prior 2000ms request-path budget.
     const agencyCountsRes = await withDbTimeout<{ data: { agency_id: string; total: number | string; open: number | string }[] | null; error: { message: string } | null }>(
+      // db-timeout-exempt: enclosed in the generic-typed withDbTimeout<...>( above (regex can't see it).
       sbAny.rpc("get_proposal_counts_by_agency"),
       2000
     );

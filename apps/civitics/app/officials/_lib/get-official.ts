@@ -1,5 +1,6 @@
 import { cache } from "react";
 import { createPublicClient, fetchAttributionForEntity, type AttributionShape } from "@civitics/db";
+import { withDbTimeout } from "@/lib/supabase-check";
 
 // React.cache() dedupes within a single request. generateMetadata() and the
 // page component both fetch the official row; without this wrapper, that's
@@ -41,13 +42,17 @@ export type CachedOfficial = {
 export const getCachedOfficial = cache(
   async (id: string): Promise<CachedOfficial | null> => {
     const supabase = createPublicClient();
-    const { data, error } = await supabase
-      .from("officials")
-      .select(
-        "id, full_name, first_name, last_name, role_title, party, photo_url, email, website_url, phone, district_name, term_start, term_end, is_active, tier, is_synthetic, jurisdiction_id, jurisdictions!jurisdiction_id(name, is_synthetic), governing_bodies!governing_body_id(id, name, short_name)"
-      )
-      .eq("id", id)
-      .single();
+    const { data, error } = await withDbTimeout(
+      supabase
+        .from("officials")
+        .select(
+          "id, full_name, first_name, last_name, role_title, party, photo_url, email, website_url, phone, district_name, term_start, term_end, is_active, tier, is_synthetic, jurisdiction_id, jurisdictions!jurisdiction_id(name, is_synthetic), governing_bodies!governing_body_id(id, name, short_name)"
+        )
+        .eq("id", id)
+        .single(),
+      3000,
+      "officials:cached-official"
+    );
     // Surface the PostgREST error before 404ing. A swallowed error here (a broken
     // embed join, an RLS regression, or a .single() PGRST116 on >1 matched rows)
     // is indistinguishable from a genuinely-missing row once we just `return null`,

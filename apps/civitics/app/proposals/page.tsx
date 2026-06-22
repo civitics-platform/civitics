@@ -6,6 +6,7 @@ export const revalidate = 300;
 
 import type { Metadata } from "next";
 import { createPublicClient } from "@civitics/db";
+import { withDbTimeout } from "@/lib/supabase-check";
 import { ProposalCard, type ProposalCardData } from "./components/ProposalCard";
 import { FeaturedSection } from "./components/FeaturedSection";
 import { AGENCY_FULL_NAMES } from "./components/agencyNames";
@@ -142,85 +143,127 @@ export default async function ProposalsPage({
   const now = new Date().toISOString();
 
   // ─── Featured section queries (all three tabs) ────────────────────────────
-  const openFeaturedQuery = supabase
-    .from("proposals")
-    .select("id,title,type,status,summary_plain,summary_model,introduced_at,metadata,is_synthetic")
-    .eq("status", "open_comment")
-    .gt("metadata->>comment_period_end", now)
-    .order("metadata->>comment_period_end", { ascending: true })
-    .limit(6);
+  const openFeaturedQuery = withDbTimeout(
+    supabase
+      .from("proposals")
+      .select("id,title,type,status,summary_plain,summary_model,introduced_at,metadata,is_synthetic")
+      .eq("status", "open_comment")
+      .gt("metadata->>comment_period_end", now)
+      .order("metadata->>comment_period_end", { ascending: true })
+      .limit(6),
+    3000,
+    "proposals:featured-open",
+  );
 
-  const billsQuery = supabase
-    .from("proposals")
-    .select("id,title,type,status,summary_plain,summary_model,introduced_at,metadata,is_synthetic")
-    .eq("type", "bill")
-    .order("introduced_at", { ascending: false, nullsFirst: false })
-    .limit(6);
+  const billsQuery = withDbTimeout(
+    supabase
+      .from("proposals")
+      .select("id,title,type,status,summary_plain,summary_model,introduced_at,metadata,is_synthetic")
+      .eq("type", "bill")
+      .order("introduced_at", { ascending: false, nullsFirst: false })
+      .limit(6),
+    3000,
+    "proposals:featured-bills",
+  );
 
   // FIX-200: replaced the per-request page_views scan + JS aggregation with
   // the proposal_popularity_24h materialized view. Refreshed nightly via
   // refresh_proposal_popularity().
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const sbAny2 = supabase as any;
-  const topViewedIdsRes = await sbAny2
-    .from("proposal_popularity_24h")
-    .select("proposal_id")
-    .order("view_count", { ascending: false })
-    .limit(6);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const topViewedIdsRes: any = await withDbTimeout(
+    sbAny2
+      .from("proposal_popularity_24h")
+      .select("proposal_id")
+      .order("view_count", { ascending: false })
+      .limit(6),
+    3000,
+    "proposals:top-viewed-ids",
+  );
   const topProposalIds: string[] = (topViewedIdsRes.data ?? []).map(
     (r: { proposal_id: string }) => r.proposal_id
   );
 
   const mostViewedQuery =
     topProposalIds.length > 0
-      ? supabase
-          .from("proposals")
-          .select("id,title,type,status,summary_plain,summary_model,introduced_at,metadata,is_synthetic")
-          .in("id", topProposalIds)
+      ? withDbTimeout(
+          supabase
+            .from("proposals")
+            .select("id,title,type,status,summary_plain,summary_model,introduced_at,metadata,is_synthetic")
+            .in("id", topProposalIds),
+          3000,
+          "proposals:featured-most-viewed",
+        )
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       : Promise.resolve({ data: [] as any[], error: null });
 
   // ─── Trending / Most Commented / New queries (FIX-029) ────────────────────
   // Trending uses the proposal_trending_24h materialized view (nightly refresh).
   // Most commented uses the proposal_comment_stats live view.
-  const trendingIdsRes = await sbAny2
-    .from("proposal_trending_24h")
-    .select("proposal_id, trending_score")
-    .order("trending_score", { ascending: false, nullsFirst: false })
-    .limit(6);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const trendingIdsRes: any = await withDbTimeout(
+    sbAny2
+      .from("proposal_trending_24h")
+      .select("proposal_id, trending_score")
+      .order("trending_score", { ascending: false, nullsFirst: false })
+      .limit(6),
+    3000,
+    "proposals:trending-ids",
+  );
   const trendingIds = (trendingIdsRes.data ?? []).map((r: { proposal_id: string }) => r.proposal_id);
 
-  const mostCommentedIdsRes = await sbAny2
-    .from("proposal_comment_stats")
-    .select("proposal_id, comment_count")
-    .order("comment_count", { ascending: false, nullsFirst: false })
-    .limit(6);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const mostCommentedIdsRes: any = await withDbTimeout(
+    sbAny2
+      .from("proposal_comment_stats")
+      .select("proposal_id, comment_count")
+      .order("comment_count", { ascending: false, nullsFirst: false })
+      .limit(6),
+    3000,
+    "proposals:most-commented-ids",
+  );
   const mostCommentedIds = (mostCommentedIdsRes.data ?? []).map((r: { proposal_id: string }) => r.proposal_id);
 
   const trendingQuery = trendingIds.length > 0
-    ? supabase
-        .from("proposals")
-        .select("id,title,type,status,summary_plain,summary_model,introduced_at,metadata,is_synthetic")
-        .in("id", trendingIds)
+    ? withDbTimeout(
+        supabase
+          .from("proposals")
+          .select("id,title,type,status,summary_plain,summary_model,introduced_at,metadata,is_synthetic")
+          .in("id", trendingIds),
+        3000,
+        "proposals:featured-trending",
+      )
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     : Promise.resolve({ data: [] as any[], error: null });
 
   const mostCommentedQuery = mostCommentedIds.length > 0
-    ? supabase
-        .from("proposals")
-        .select("id,title,type,status,summary_plain,summary_model,introduced_at,metadata,is_synthetic")
-        .in("id", mostCommentedIds)
+    ? withDbTimeout(
+        supabase
+          .from("proposals")
+          .select("id,title,type,status,summary_plain,summary_model,introduced_at,metadata,is_synthetic")
+          .in("id", mostCommentedIds),
+        3000,
+        "proposals:featured-most-commented",
+      )
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     : Promise.resolve({ data: [] as any[], error: null });
 
-  const newestQuery = supabase
-    .from("proposals")
-    .select("id,title,type,status,summary_plain,summary_model,introduced_at,metadata,is_synthetic")
-    .order("introduced_at", { ascending: false, nullsFirst: false })
-    .limit(6);
+  const newestQuery = withDbTimeout(
+    supabase
+      .from("proposals")
+      .select("id,title,type,status,summary_plain,summary_model,introduced_at,metadata,is_synthetic")
+      .order("introduced_at", { ascending: false, nullsFirst: false })
+      .limit(6),
+    3000,
+    "proposals:featured-newest",
+  );
 
   // ─── Filtered main list ───────────────────────────────────────────────────
-  let mainQuery = supabase
+  // PostgREST builder mutated across the filter/sort block below; wrapped in
+  // withDbTimeout at the mainListPromise ternary (the guard's lexical enclosure
+  // check can't span the let-reassignment).
+  let mainQuery = supabase // db-timeout-exempt: wrapped at mainListPromise ternary below
     .from("proposals")
     .select(
       "id,title,type,status,summary_plain,summary_model,introduced_at,metadata,is_synthetic",
@@ -270,19 +313,26 @@ export default async function ProposalsPage({
   // get_topic_proposal_page is not in the generated types — cast to call it.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const sbRpc = supabase as any;
-  const mainListPromise = useTopicsRpc
-    ? sbRpc.rpc("get_topic_proposal_page", {
-        p_tags:   activeTopics,
-        p_status: statusFilter,
-        p_type:   typeFilter,
-        p_agency: agencyFilter,
-        p_q:      searchQ,
-        p_sort:   sortFilter,
-        p_offset: offset,
-        p_limit:  PAGE_SIZE,
-      })
-    : mainQuery;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const mainListPromise: Promise<any> = useTopicsRpc
+    ? withDbTimeout(
+        sbRpc.rpc("get_topic_proposal_page", {
+          p_tags:   activeTopics,
+          p_status: statusFilter,
+          p_type:   typeFilter,
+          p_agency: agencyFilter,
+          p_q:      searchQ,
+          p_sort:   sortFilter,
+          p_offset: offset,
+          p_limit:  PAGE_SIZE,
+        }),
+        3000,
+        "proposals:list-topics-rpc",
+      )
+    : withDbTimeout(mainQuery, 3000, "proposals:list");
 
+  // Each query const is already raced through withDbTimeout at its declaration
+  // (and mainListPromise at its ternary), so they're passed through here as-is.
   const [openFeaturedRes, billsRes, mostViewedRes, trendingRes, mostCommentedRes, newestRes, mainRes] = await Promise.all([
     openFeaturedQuery,
     billsQuery,
@@ -359,22 +409,32 @@ export default async function ProposalsPage({
   // ai_summary_cache may not be in generated types — cast to bypass
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const sb = supabase as any;
-  const [summaryRes, tagsRes] = await Promise.all([
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [summaryRes, tagsRes] = (await Promise.all([
     allProposalIds.length > 0
-      ? sb
-          .from("ai_summary_cache")
-          .select("entity_id,summary_text")
-          .eq("entity_type", "proposal")
-          .in("entity_id", allProposalIds)
+      ? withDbTimeout(
+          sb
+            .from("ai_summary_cache")
+            .select("entity_id,summary_text")
+            .eq("entity_type", "proposal")
+            .in("entity_id", allProposalIds),
+          3000,
+          "proposals:summaries",
+        )
       : Promise.resolve({ data: [] }),
     allProposalIds.length > 0
-      ? sb
-          .from("entity_tags")
-          .select("entity_id,tag,tag_category,display_label,display_icon,visibility,confidence,generated_by,ai_model,metadata")
-          .eq("entity_type", "proposal")
-          .in("entity_id", allProposalIds)
+      ? withDbTimeout(
+          sb
+            .from("entity_tags")
+            .select("entity_id,tag,tag_category,display_label,display_icon,visibility,confidence,generated_by,ai_model,metadata")
+            .eq("entity_type", "proposal")
+            .in("entity_id", allProposalIds),
+          3000,
+          "proposals:tags",
+        )
       : Promise.resolve({ data: [] }),
-  ]);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ])) as [any, any];
 
   const summaryMap: Record<string, string> = {};
   for (const s of summaryRes.data ?? []) {

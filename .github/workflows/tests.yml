@@ -98,6 +98,16 @@ jobs:
       - name: Silent-read guard
         run: pnpm check:reads
 
+      # Blocking — flags page-render PostgREST reads under apps/civitics/app/**
+      # (excl. api routes, client components, generateStaticParams, build-time
+      # metadata routes) that aren't wrapped in withDbTimeout. Vercel bills
+      # provisioned memory while a function is blocked on I/O, so an unwrapped
+      # slow query makes a render hang and accrue GB-hours — the P0 cost defense.
+      # Opt-out per read via `// db-timeout-exempt: <reason>`. Pure grep, no DB
+      # or secrets needed.
+      - name: Render-timeout guard
+        run: pnpm check:render-timeouts
+
       # Blocking — run-tests.mjs discovers every src/**/*.test.ts under @civitics/data
       # (source-priority drift guard, congress reconcile, fec-bulk indiv fingerprint).
       - name: Unit tests

@@ -35,6 +35,7 @@ import type { ProposalCardData } from "../../proposals/components/ProposalCard";
 import type { InitiativeCardData } from "../../initiatives/components/InitiativeCard";
 import { EntityComments } from "../../components/EntityComments";
 import { QASection } from "../../components/QASection";
+import { withDbTimeout } from "@/lib/supabase-check";
 
 export const revalidate = 300;
 
@@ -78,7 +79,12 @@ export async function generateStaticParams(): Promise<Array<{ id: string }>> {
   try {
     const supabase = anonClient();
     const result = await Promise.race([
+      // build-time generateStaticParams — already has its own 5s Promise.race +
+      // degrade-to-[]; the guard mis-scopes its body span because the return-type
+      // annotation `Promise<Array<{ id: string }>>` contains the first `{` it
+      // brace-matches from, so it never sees this read as build-time.
       supabase
+        // db-timeout-exempt: build-time generateStaticParams; not a request-path read.
         .from("jurisdictions")
         .select("id")
         .in("type", ["country", "state"])
@@ -99,11 +105,13 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   const { id } = await params;
   if (!UUID_RE.test(id)) return { title: "Jurisdiction · Civitics" };
   const supabase = anonClient();
-  const { data } = await supabase
-    .from("jurisdictions")
-    .select("name, type")
-    .eq("id", id)
-    .maybeSingle();
+  const { data } = await withDbTimeout(
+    supabase.from("jurisdictions").select("name, type").eq("id", id).maybeSingle() as PromiseLike<{
+      data: { name: string; type: string } | null;
+    }>,
+    3000,
+    "jurisdiction:metadata",
+  );
   if (!data) return { title: "Jurisdiction · Civitics" };
   return { title: `${data.name} · Civitics` };
 }
@@ -127,7 +135,12 @@ export default async function JurisdictionPage({ params }: { params: Promise<{ i
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let payload: any = null;
   {
-    const { data } = await supabase.rpc("get_jurisdiction_page", { p_id: id });
+    const { data } = await withDbTimeout(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      supabase.rpc("get_jurisdiction_page", { p_id: id }) as PromiseLike<{ data: any }>,
+      3000,
+      "jurisdiction:page-rpc",
+    );
     payload = data ?? null;
   }
 
@@ -137,11 +150,16 @@ export default async function JurisdictionPage({ params }: { params: Promise<{ i
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let jurisdiction: any = payload?.jurisdiction ?? null;
   if (!jurisdiction) {
-    const { data: base } = await supabase
-      .from("jurisdictions")
-      .select("id, name, short_name, type, parent_id, population, timezone, fips_code, is_synthetic")
-      .eq("id", id)
-      .maybeSingle();
+    const { data: base } = await withDbTimeout(
+      supabase
+        .from("jurisdictions")
+        .select("id, name, short_name, type, parent_id, population, timezone, fips_code, is_synthetic")
+        .eq("id", id)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .maybeSingle() as PromiseLike<{ data: any }>,
+      3000,
+      "jurisdiction:base-fallback",
+    );
     jurisdiction = base ?? null;
   }
   if (!jurisdiction) notFound();

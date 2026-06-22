@@ -1,4 +1,5 @@
 import { createAdminClient } from "@civitics/db";
+import { withDbTimeout } from "@/lib/supabase-check";
 import { GraphPage } from "../GraphPage";
 
 export const dynamic = "force-dynamic";
@@ -28,11 +29,15 @@ export default async function SharedGraphPage({ params }: Props) {
   }
 
   const supabase = createAdminClient();
-  const { data } = await supabase
-    .from("graph_snapshots")
-    .select("code, state, title, created_at")
-    .eq("code", code)
-    .maybeSingle();
+  const { data } = await withDbTimeout(
+    supabase
+      .from("graph_snapshots")
+      .select("code, state, title, created_at")
+      .eq("code", code)
+      .maybeSingle(),
+    3000,
+    "graph-shared:snapshot",
+  );
 
   if (!data) {
     return <InvalidCode code={code} />;
@@ -40,7 +45,7 @@ export default async function SharedGraphPage({ params }: Props) {
 
   // Increment view count (fire-and-forget).
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  void (supabase as any).rpc("increment_snapshot_view", { p_code: code });
+  void withDbTimeout((supabase as any).rpc("increment_snapshot_view", { p_code: code }), 3000, "graph-shared:increment-view");
 
   const aiEnabled = process.env["AI_NARRATIVE_ENABLED"] !== "false";
 

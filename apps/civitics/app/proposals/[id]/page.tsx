@@ -13,6 +13,7 @@ import { QASection } from "../../components/QASection";
 import { PositionSection } from "../../components/PositionSection";
 import { CommentHighlightsStrip } from "../../components/CommentHighlightsStrip";
 import { getSlowMode } from "@/lib/slow-mode";
+import { withDbTimeout } from "@/lib/supabase-check";
 import { RelatedInitiatives, type InitiativeLink } from "../components/RelatedInitiatives";
 import { ProposalShareButton } from "../components/ProposalShareButton";
 import { getCachedProposal } from "../_lib/get-proposal";
@@ -192,17 +193,21 @@ export default async function ProposalDetailPage({
   // Votes (for congressional bills). Post-promotion, votes.proposal_id was
   // renamed to votes.bill_proposal_id.
   const votesPromise = p.type === "bill"
-    ? supabase
-        .from("votes")
-        .select("id,vote,voted_at,official:officials(id,full_name,party,district_name,role_title)")
-        .eq("bill_proposal_id", p.id)
-        .order("voted_at", { ascending: false })
-        .limit(100)
+    ? withDbTimeout(
+        supabase
+          .from("votes")
+          .select("id,vote,voted_at,official:officials(id,full_name,party,district_name,role_title)")
+          .eq("bill_proposal_id", p.id)
+          .order("voted_at", { ascending: false })
+          .limit(100),
+        3000,
+        "proposals:detail-votes",
+      )
     : Promise.resolve({ data: [] });
 
   // Related proposals (same agency or type, excluding current). comment_period_end
   // now lives in metadata — pulled client-side after fetch.
-  const relatedQuery = supabase
+  const relatedQuery = supabase // db-timeout-exempt: builder mutated below; wrapped at the Promise.all site
     .from("proposals")
     .select("id,title,type,status,metadata")
     .neq("id", p.id)
@@ -219,33 +224,49 @@ export default async function ProposalDetailPage({
   // Cached AI summary for "What This Means" section
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const sb = supabase as any;
-  const aiSummaryPromise = sb
-    .from("ai_summary_cache")
-    .select("summary_text")
-    .eq("entity_type", "proposal")
-    .eq("entity_id", p.id)
-    .maybeSingle();
+  const aiSummaryPromise = withDbTimeout(
+    sb
+      .from("ai_summary_cache")
+      .select("summary_text")
+      .eq("entity_type", "proposal")
+      .eq("entity_id", p.id)
+      .maybeSingle(),
+    3000,
+    "proposals:detail-ai-summary",
+  );
 
   // Initiatives that linked this proposal. Post-promotion, civic_initiative_proposal_links
   // still uses `initiative_id` but that FK now targets proposals(id). Pull the initiative
   // proposal row + its initiative_details satellite in one nested join.
-  const relatedInitiativesQuery = supabase
-    .from("civic_initiative_proposal_links")
-    .select("proposals!initiative_id(id, title, initiative_details(stage, scope, issue_area_tags))")
-    .eq("proposal_id", p.id)
-    .limit(5);
+  const relatedInitiativesQuery = withDbTimeout(
+    supabase
+      .from("civic_initiative_proposal_links")
+      .select("proposals!initiative_id(id, title, initiative_details(stage, scope, issue_area_tags))")
+      .eq("proposal_id", p.id)
+      .limit(5),
+    3000,
+    "proposals:detail-initiatives",
+  );
 
   // FIX-I: jurisdiction → institution breadcrumb so users can navigate upward
   // from a proposal to its hubs. proposals carries jurisdiction_id +
   // governing_body_id; resolve both names in the same round-trip batch.
-  const breadcrumbPromise = supabase
-    .from("proposals")
-    .select("jurisdiction_id, governing_body_id")
-    .eq("id", p.id)
-    .maybeSingle();
+  const breadcrumbPromise = withDbTimeout(
+    supabase
+      .from("proposals")
+      .select("jurisdiction_id, governing_body_id")
+      .eq("id", p.id)
+      .maybeSingle(),
+    3000,
+    "proposals:detail-breadcrumb",
+  );
 
   const [votesRes, relatedRes, aiSummaryRes, relatedInitiativesRes, breadcrumbRes] = await Promise.all([
-    votesPromise, relatedQuery, aiSummaryPromise, relatedInitiativesQuery, breadcrumbPromise,
+    votesPromise,
+    withDbTimeout(relatedQuery, 3000, "proposals:detail-related"),
+    aiSummaryPromise,
+    relatedInitiativesQuery,
+    breadcrumbPromise,
   ]);
 
   // Resolve breadcrumb entity names (jurisdiction + governing body).
@@ -258,10 +279,18 @@ export default async function ProposalDetailPage({
   if (bcMeta?.jurisdiction_id || bcMeta?.governing_body_id) {
     const [jRes, gRes] = await Promise.all([
       bcMeta.jurisdiction_id
-        ? supabase.from("jurisdictions").select("id, name, is_synthetic").eq("id", bcMeta.jurisdiction_id).maybeSingle()
+        ? withDbTimeout(
+            supabase.from("jurisdictions").select("id, name, is_synthetic").eq("id", bcMeta.jurisdiction_id).maybeSingle(),
+            3000,
+            "proposals:detail-bc-jurisdiction",
+          )
         : Promise.resolve({ data: null }),
       bcMeta.governing_body_id
-        ? supabase.from("institutions").select("id, name").eq("id", bcMeta.governing_body_id).maybeSingle()
+        ? withDbTimeout(
+            supabase.from("institutions").select("id, name").eq("id", bcMeta.governing_body_id).maybeSingle(),
+            3000,
+            "proposals:detail-bc-institution",
+          )
         : Promise.resolve({ data: null }),
     ]);
     bcJurisdiction = (jRes.data as { id: string; name: string; is_synthetic?: boolean } | null) ?? null;
@@ -270,7 +299,8 @@ export default async function ProposalDetailPage({
 
   const votes = (votesRes.data ?? []) as Vote[];
   const related = (relatedRes.data ?? []) as RelatedProposal[];
-  const cachedAiSummary: string | null = aiSummaryRes?.data?.summary_text ?? null;
+  const cachedAiSummary: string | null =
+    (aiSummaryRes as { data?: { summary_text?: string | null } | null } | null)?.data?.summary_text ?? null;
   // Flatten proposals + initiative_details join back into the legacy InitiativeLink shape.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const relatedInitiatives = ((relatedInitiativesRes.data ?? []) as any[])

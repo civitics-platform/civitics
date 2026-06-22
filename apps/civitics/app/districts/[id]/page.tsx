@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 import { createServerClient } from "@civitics/db";
 import type { MultiPolygon, Polygon } from "geojson";
 import { DeferredDistrictMap } from "../components/DeferredDistrictMap";
+import { withDbTimeout } from "@/lib/supabase-check";
 
 export const dynamic = "force-dynamic";
 
@@ -41,30 +42,46 @@ async function loadDistrict(id: string): Promise<{
   const cookieStore = await cookies();
   const supabase = createServerClient(cookieStore);
 
-  const { data: district } = await supabase
-    .from("jurisdictions")
-    .select("id, name, short_name, parent_id, metadata")
-    .eq("id", id)
-    .eq("type", "district")
-    .single<DistrictRow>();
+  const { data: district } = await withDbTimeout(
+    supabase
+      .from("jurisdictions")
+      .select("id, name, short_name, parent_id, metadata")
+      .eq("id", id)
+      .eq("type", "district")
+      .single<DistrictRow>(),
+    3000,
+    "district:detail",
+  );
   if (!district) return null;
 
   const [parentRes, officialsRes, geomRes] = await Promise.all([
     district.parent_id
-      ? supabase.from("jurisdictions").select("name").eq("id", district.parent_id).single<ParentRow>()
+      ? withDbTimeout(
+          supabase.from("jurisdictions").select("name").eq("id", district.parent_id).single<ParentRow>(),
+          3000,
+          "district:parent",
+        )
       : Promise.resolve({ data: null }),
-    supabase
-      .from("officials")
-      .select("id, full_name, role_title, party, district_name")
-      .filter("metadata->>district_jurisdiction_id", "eq", id)
-      .eq("is_active", true)
-      .order("full_name"),
-    supabase.rpc("query_districts" as never, {
-      p_id: id,
-      p_simplify_tolerance: 0.0005,
-      p_limit: 1,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } as any),
+    withDbTimeout(
+      supabase
+        .from("officials")
+        .select("id, full_name, role_title, party, district_name")
+        .filter("metadata->>district_jurisdiction_id", "eq", id)
+        .eq("is_active", true)
+        .order("full_name"),
+      3000,
+      "district:officials",
+    ),
+    withDbTimeout(
+      supabase.rpc("query_districts" as never, {
+        p_id: id,
+        p_simplify_tolerance: 0.0005,
+        p_limit: 1,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any),
+      3000,
+      "district:geometry",
+    ),
   ]);
 
   type Row = { id: string; geom_geojson: string | null };

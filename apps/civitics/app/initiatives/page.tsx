@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { createServerClient } from "@civitics/db";
+import { withDbTimeout } from "@/lib/supabase-check";
 import { PageViewTracker } from "../components/PageViewTracker";
 import { InitiativeCard, type InitiativeCardData } from "./components/InitiativeCard";
 
@@ -55,7 +56,10 @@ export default async function InitiativesPage({
   const isMine = mine && !!user;
 
   // Build query — join initiative_details with parent proposals for title/summary/created_at
+  // db-timeout-exempt: builder assigned to `query`; the awaited terminal (.range) IS wrapped
+  // in withDbTimeout below — the guard's lexical enclosure check can't span the assignment.
   let query = supabase
+    // db-timeout-exempt: see above — terminal .range() is wrapped in withDbTimeout.
     .from("initiative_details")
     .select(
       // initiative_details has TWO FKs to proposals; name the FK or PostgREST
@@ -85,8 +89,11 @@ export default async function InitiativesPage({
       .order("mobilise_started_at", { ascending: false, nullsFirst: false });
   }
 
-  const { data, count } = await query
-    .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
+  const { data, count } = await withDbTimeout(
+    query.range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1),
+    3000,
+    "initiatives:list"
+  );
 
   // Flatten to legacy civic_initiatives shape
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

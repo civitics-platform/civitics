@@ -7,6 +7,7 @@
 // still paginated defensively via .range() (PostgREST 1k cap).
 import Link from "next/link";
 import { createPublicClient } from "@civitics/db";
+import { withDbTimeout } from "@/lib/supabase-check";
 import { InstitutionCard, type InstitutionCardData } from "../components/cards/InstitutionCard";
 
 export const revalidate = 300;
@@ -90,19 +91,25 @@ export default async function InstitutionsIndexPage({
   // here with ?jurisdiction=<uuid>).
   let jurisdictionName: string | null = null;
   if (jurisdiction && UUID_RE.test(jurisdiction)) {
-    const { data } = await supabase
-      .from("jurisdictions")
-      .select("name")
-      .eq("id", jurisdiction)
-      .maybeSingle();
+    const { data } = await withDbTimeout(
+      supabase
+        .from("jurisdictions")
+        .select("name")
+        .eq("id", jurisdiction)
+        .maybeSingle(),
+      3000,
+      "institutions:jurisdiction-name",
+    );
     jurisdictionName = (data as { name: string } | null)?.name ?? null;
   }
 
   const from = (page - 1) * PAGE_SIZE;
   const to = from + PAGE_SIZE - 1;
 
+  // builder defined here, conditionally filtered below, then awaited inside
+  // withDbTimeout at the .range() call site (line ~124).
   let query = supabase
-    .from("institutions")
+    .from("institutions") // db-timeout-exempt: wrapped at the .range() await below; assignment splits the lexical enclosure check
     .select("id, name, short_name, type, acronym, source_table, is_active, is_synthetic", { count: "exact" });
 
   if (!includeFormer) query = query.eq("is_active", true);
@@ -113,10 +120,14 @@ export default async function InstitutionsIndexPage({
   const safeQ = q.replace(/[,()\\*]/g, " ").trim();
   if (safeQ) query = query.or(`name.ilike.%${safeQ}%,short_name.ilike.%${safeQ}%`);
 
-  const { data, count } = await query
-    .order("type", { ascending: true })
-    .order("name", { ascending: true })
-    .range(from, to);
+  const { data, count } = await withDbTimeout(
+    query
+      .order("type", { ascending: true })
+      .order("name", { ascending: true })
+      .range(from, to),
+    3000,
+    "institutions:list",
+  );
 
   const institutions = (data ?? []) as InstitutionCardData[];
   const total = count ?? 0;

@@ -7,6 +7,7 @@ export const dynamic = "force-dynamic";
 
 import { notFound } from "next/navigation";
 import { createAdminClient } from "@civitics/db";
+import { withDbTimeout } from "@/lib/supabase-check";
 import { PageHeader, SectionCard, SectionHeader } from "@civitics/ui";
 import { requireGrantsAdmin } from "../../api/admin/grants/_lib";
 import { GrantActions } from "./GrantActions";
@@ -61,15 +62,26 @@ export default async function AdminGrantsPage() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const admin = createAdminClient() as any;
 
+  // withDbTimeout's generic can't infer a useful shape from the any-typed admin
+  // client (T → unknown), so every wrapped read below pins this loose result
+  // shape — matching the cast-free `.data ?? []` consumers further down.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  type DbRes = { data: any; error: any };
+
   // Pending official claims (entity_grants_pending_idx covers the scan).
-  const { data: pendingRaw } = await admin
-    .from("entity_grants")
-    .select("id, user_id, target_id, evidence_id, created_at")
-    .eq("status", "pending")
-    .eq("role", "official")
-    .eq("target_type", "official")
-    .order("created_at", { ascending: true })
-    .limit(100);
+  const { data: pendingRaw } = await withDbTimeout<DbRes>(
+    admin
+      // db-timeout-exempt: wrapped — generic-typed withDbTimeout<…>( the lexical guard's regex misses
+      .from("entity_grants")
+      .select("id, user_id, target_id, evidence_id, created_at")
+      .eq("status", "pending")
+      .eq("role", "official")
+      .eq("target_type", "official")
+      .order("created_at", { ascending: true })
+      .limit(100),
+    3000,
+    "admin-grants:pending",
+  );
 
   type PendingRow = {
     id: string;
@@ -81,11 +93,16 @@ export default async function AdminGrantsPage() {
   const pendingRows: PendingRow[] = pendingRaw ?? [];
 
   // Recent audit trail across all grant kinds, newest first.
-  const { data: eventsRaw } = await admin
-    .from("grant_events")
-    .select("id, grant_id, event, actor_id, occurred_at")
-    .order("occurred_at", { ascending: false })
-    .limit(25);
+  const { data: eventsRaw } = await withDbTimeout<DbRes>(
+    admin
+      // db-timeout-exempt: wrapped — generic-typed withDbTimeout<…>( the lexical guard's regex misses
+      .from("grant_events")
+      .select("id, grant_id, event, actor_id, occurred_at")
+      .order("occurred_at", { ascending: false })
+      .limit(25),
+    3000,
+    "admin-grants:events",
+  );
 
   type RawEvent = {
     id: number;
@@ -99,10 +116,15 @@ export default async function AdminGrantsPage() {
   // Bulk-hydrate users / officials / evidence for both lists.
   const eventGrantIds = [...new Set(eventRows.map((e) => e.grant_id))];
   const { data: eventGrantsRaw } = eventGrantIds.length
-    ? await admin
-        .from("entity_grants")
-        .select("id, user_id, target_type, target_id")
-        .in("id", eventGrantIds)
+    ? await withDbTimeout<DbRes>(
+        admin
+          // db-timeout-exempt: wrapped — generic-typed withDbTimeout<…>( the lexical guard's regex misses
+          .from("entity_grants")
+          .select("id, user_id, target_type, target_id")
+          .in("id", eventGrantIds),
+        3000,
+        "admin-grants:event-grants",
+      )
     : { data: [] };
   type GrantRef = { id: string; user_id: string; target_type: string; target_id: string | null };
   const grantById = new Map<string, GrantRef>(
@@ -131,16 +153,31 @@ export default async function AdminGrantsPage() {
 
   const [usersRes, officialsRes, evidenceRes] = await Promise.all([
     userIds.length
-      ? admin.from("users").select("id, email, display_name").in("id", userIds)
+      ? withDbTimeout<DbRes>(
+          // db-timeout-exempt: wrapped — generic-typed withDbTimeout<…>( the lexical guard's regex misses
+          admin.from("users").select("id, email, display_name").in("id", userIds),
+          3000,
+          "admin-grants:users",
+        )
       : Promise.resolve({ data: [] }),
     officialIds.length
-      ? admin.from("officials").select("id, full_name").in("id", officialIds)
+      ? withDbTimeout<DbRes>(
+          // db-timeout-exempt: wrapped — generic-typed withDbTimeout<…>( the lexical guard's regex misses
+          admin.from("officials").select("id, full_name").in("id", officialIds),
+          3000,
+          "admin-grants:officials",
+        )
       : Promise.resolve({ data: [] }),
     evidenceIds.length
-      ? admin
-          .from("grant_evidence")
-          .select("id, method, notes, metadata")
-          .in("id", evidenceIds)
+      ? withDbTimeout<DbRes>(
+          admin
+            // db-timeout-exempt: wrapped — generic-typed withDbTimeout<…>( the lexical guard's regex misses
+            .from("grant_evidence")
+            .select("id, method, notes, metadata")
+            .in("id", evidenceIds),
+          3000,
+          "admin-grants:evidence",
+        )
       : Promise.resolve({ data: [] }),
   ]);
 

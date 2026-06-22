@@ -51,6 +51,43 @@ Changes to `src/app/` are silently ignored at build time and will never appear o
 
 ---
 
+## Request-path queries MUST use withDbTimeout
+
+**Every PostgREST read on a page-render path must be wrapped in `withDbTimeout`**
+(`@/lib/supabase-check`). This is a COST defense, not just correctness: Vercel
+bills provisioned fluid-compute memory for the *entire* time a function is
+blocked on I/O. An unwrapped `await supabase.from(...).select(...)` against a
+slow or degraded DB makes the render hang and accrue GB-hours while it waits —
+and it's the only defense against a low-and-slow crawl that evades the IP rate
+limiters. `withDbTimeout` races the query against a timeout (default 5s; prefer
+**3s** on the request path) and returns `{ data: null, error }` instead of
+hanging, so a degraded DB yields a fast degraded render.
+
+```ts
+import { withDbTimeout } from "@/lib/supabase-check";
+
+const { data } = await withDbTimeout(
+  supabase.from("officials").select("id,full_name").eq("id", id),
+  3000,
+  "officials:detail",      // greppable route:purpose label
+);
+// data can now be null — the call site MUST degrade gracefully (data ?? [],
+// data?.foo, if (!data) notFound()). Never .map/.length a timeout-null; never
+// throw on it. Inside Promise.all([...]) wrap EACH element individually.
+```
+
+**Enforced by CI.** `pnpm check:render-timeouts` (`scripts/check-render-timeouts.mjs`,
+blocking step in `.github/workflows/tests.yml`) fails when a render-path read
+under `apps/civitics/app/**` isn't wrapped. It excludes api routes, client
+components, `generateStaticParams`, and build-time metadata routes
+(`sitemap.ts`/`robots.ts`/`manifest.ts` — those carry their own `Promise.race`
+timeout). Detection is lexical; the documented escape hatch for the rare
+legitimate case (e.g. a builder defined on one line and wrapped on the next, or
+a genuinely build-time-only path) is a `// db-timeout-exempt: <reason>` comment
+on the read line or the line above. Keep exemptions rare and justified.
+
+---
+
 ## Hydration Safety
 
 React hydration errors mean the server-rendered HTML doesn't match what the client renders.

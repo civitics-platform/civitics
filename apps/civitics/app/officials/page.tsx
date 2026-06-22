@@ -4,6 +4,7 @@
 export const revalidate = 300;
 
 import { createPublicClient } from "@civitics/db";
+import { withDbTimeout } from "@/lib/supabase-check";
 import { OfficialsList } from "./components/OfficialsList";
 import { PageViewTracker } from "../components/PageViewTracker";
 import { PageHeader } from "@civitics/ui";
@@ -78,10 +79,16 @@ export default async function OfficialsPage({
     is_synthetic: o.is_synthetic ?? false,
   });
 
+  // Builder split across variable assignment; the awaited
+  // db-timeout-exempt: `officialsQuery.order(...)` IS wrapped in withDbTimeout below.
   let officialsQuery = supabase.from("officials").select(OFFICIAL_SELECT);
   if (!includeFormer) officialsQuery = officialsQuery.eq("is_active", true);
 
-  const { data, error } = await officialsQuery.order("last_name");
+  const { data, error } = await withDbTimeout(
+    officialsQuery.order("last_name"),
+    3000,
+    "officials:directory"
+  );
 
   if (error) console.error("officials fetch error:", error.message);
 
@@ -109,11 +116,17 @@ export default async function OfficialsPage({
   const present = new Set(officials.map((o) => o.id));
   const missingEngagedIds = [...engagementByOfficial.keys()].filter((id) => !present.has(id));
   if (missingEngagedIds.length > 0) {
+    // Builder split across variable assignment; the awaited `extraQuery`
+    // db-timeout-exempt: IS wrapped in withDbTimeout below.
     let extraQuery = supabase.from("officials").select(OFFICIAL_SELECT).in("id", missingEngagedIds);
     // Match the active/former view so "Active" doesn't surprise-show a former
     // official; an engaged former official appears only under ?status=all.
     if (!includeFormer) extraQuery = extraQuery.eq("is_active", true);
-    const { data: extra } = await extraQuery;
+    const { data: extra } = await withDbTimeout(
+      extraQuery,
+      3000,
+      "officials:directory-engaged-extra"
+    );
     for (const o of (extra ?? []) as unknown[]) {
       officials.push(mapOfficial(o));
     }
@@ -122,11 +135,15 @@ export default async function OfficialsPage({
   // Pre-fetch tags for all officials
   if (officials.length > 0) {
     const officialIds = officials.map((o) => o.id);
-    const { data: tagRows } = await sbAny
-      .from("entity_tags")
-      .select("entity_id,tag,tag_category,display_label,display_icon,visibility,confidence,generated_by,ai_model")
-      .eq("entity_type", "official")
-      .in("entity_id", officialIds);
+    const { data: tagRows } = await withDbTimeout(
+      sbAny
+        .from("entity_tags")
+        .select("entity_id,tag,tag_category,display_label,display_icon,visibility,confidence,generated_by,ai_model")
+        .eq("entity_type", "official")
+        .in("entity_id", officialIds) as PromiseLike<{ data: Array<EntityTag & { entity_id: string }> | null }>,
+      3000,
+      "officials:directory-tags"
+    );
 
     const tagsByOfficial: Record<string, EntityTag[]> = {};
     for (const t of tagRows ?? []) {

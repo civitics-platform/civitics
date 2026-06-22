@@ -11,6 +11,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@supabase/supabase-js";
 import { createPublicClient } from "@civitics/db";
+import { withDbTimeout } from "@/lib/supabase-check";
 import { PageViewTracker } from "../../components/PageViewTracker";
 
 export const revalidate = 300;
@@ -73,6 +74,10 @@ export async function generateStaticParams(): Promise<Array<{ id: string }>> {
   try {
     const supabase = anonClient();
     const result = await Promise.race([
+      // generateStaticParams is build-time only and already carries its own
+      // Promise.race 5s timeout + try/catch degrade-to-[]. The guard's build-time
+      // skip misses it because the `Promise<Array<{...}>>` return-type brace
+      // db-timeout-exempt: defeats its function-body brace match.
       supabase.from("meetings").select("id").order("scheduled_at", { ascending: false }).limit(50),
       new Promise<{ data: null }>((resolve) => setTimeout(() => resolve({ data: null }), 5000)),
     ]);
@@ -87,11 +92,15 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   const { id } = await params;
   if (!UUID_RE.test(id)) return { title: "Meeting · Civitics" };
   const supabase = createPublicClient();
-  const { data } = await supabase
-    .from("meetings")
-    .select("title, meeting_type, scheduled_at")
-    .eq("id", id)
-    .maybeSingle();
+  const { data } = await withDbTimeout(
+    supabase
+      .from("meetings")
+      .select("title, meeting_type, scheduled_at")
+      .eq("id", id)
+      .maybeSingle(),
+    3000,
+    "meetings:metadata"
+  );
   if (!data) return { title: "Meeting · Civitics" };
   const m = data as { title: string | null; meeting_type: string; scheduled_at: string };
   const t = m.title ?? `${typeLabel(m.meeting_type)} meeting · ${formatDateTime(m.scheduled_at)}`;
@@ -114,13 +123,17 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
 
   const supabase = createPublicClient();
 
-  const { data: meetingData } = await supabase
-    .from("meetings")
-    .select(
-      "id, governing_body_id, meeting_type, title, scheduled_at, location, status, agenda_url, minutes_url, video_url"
-    )
-    .eq("id", id)
-    .maybeSingle();
+  const { data: meetingData } = await withDbTimeout(
+    supabase
+      .from("meetings")
+      .select(
+        "id, governing_body_id, meeting_type, title, scheduled_at, location, status, agenda_url, minutes_url, video_url"
+      )
+      .eq("id", id)
+      .maybeSingle(),
+    3000,
+    "meetings:detail"
+  );
 
   if (!meetingData) notFound();
 
@@ -128,27 +141,39 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
   const meeting = meetingData as any;
 
   const [bodyRes, agendaRes] = await Promise.all([
-    supabase
-      .from("institutions")
-      .select("id, name, jurisdiction_id")
-      .eq("id", meeting.governing_body_id)
-      .maybeSingle(),
-    supabase
-      .from("agenda_items")
-      .select("id, sequence, title, item_type, description, outcome, proposal_id")
-      .eq("meeting_id", id)
-      .order("sequence", { ascending: true }),
+    withDbTimeout(
+      supabase
+        .from("institutions")
+        .select("id, name, jurisdiction_id")
+        .eq("id", meeting.governing_body_id)
+        .maybeSingle(),
+      3000,
+      "meetings:body"
+    ),
+    withDbTimeout(
+      supabase
+        .from("agenda_items")
+        .select("id, sequence, title, item_type, description, outcome, proposal_id")
+        .eq("meeting_id", id)
+        .order("sequence", { ascending: true }),
+      3000,
+      "meetings:agenda"
+    ),
   ]);
 
   const body = (bodyRes.data ?? null) as { id: string; name: string; jurisdiction_id: string | null } | null;
 
   let jurisdiction: { id: string; name: string } | null = null;
   if (body?.jurisdiction_id) {
-    const { data } = await supabase
-      .from("jurisdictions")
-      .select("id, name")
-      .eq("id", body.jurisdiction_id)
-      .maybeSingle();
+    const { data } = await withDbTimeout(
+      supabase
+        .from("jurisdictions")
+        .select("id, name")
+        .eq("id", body.jurisdiction_id)
+        .maybeSingle(),
+      3000,
+      "meetings:jurisdiction"
+    );
     jurisdiction = (data as { id: string; name: string } | null) ?? null;
   }
 
@@ -160,10 +185,14 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
   );
   const proposalTitles = new Map<string, string>();
   if (proposalIds.length > 0) {
-    const { data: props } = await supabase
-      .from("proposals")
-      .select("id, title")
-      .in("id", proposalIds);
+    const { data: props } = await withDbTimeout(
+      supabase
+        .from("proposals")
+        .select("id, title")
+        .in("id", proposalIds),
+      3000,
+      "meetings:proposal-titles"
+    );
     for (const p of (props ?? []) as Array<{ id: string; title: string }>) {
       proposalTitles.set(p.id, p.title);
     }

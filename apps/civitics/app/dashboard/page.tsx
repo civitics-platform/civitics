@@ -43,14 +43,18 @@ async function getOpenProposals(): Promise<OpenProposal[]> {
     const db = createAdminClient() as any;
     const now = new Date().toISOString();
     const in30 = new Date(Date.now() + 30 * 86_400_000).toISOString();
-    const { data } = await db
-      .from("proposals")
-      .select("id,title,metadata")
-      .eq("status", "open_comment")
-      .gt("metadata->>comment_period_end", now)
-      .lt("metadata->>comment_period_end", in30)
-      .order("metadata->>comment_period_end", { ascending: true })
-      .limit(3);
+    const { data } = await withDbTimeout(
+      db
+        .from("proposals")
+        .select("id,title,metadata")
+        .eq("status", "open_comment")
+        .gt("metadata->>comment_period_end", now)
+        .lt("metadata->>comment_period_end", in30)
+        .order("metadata->>comment_period_end", { ascending: true })
+        .limit(3) as PromiseLike<{ data: { id: string; title: string; metadata: Record<string, unknown> | null }[] | null }>,
+      3000,
+      "dashboard:open-proposals",
+    );
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return (data ?? []).map((p: any) => ({
       id: p.id as string,
@@ -70,11 +74,15 @@ async function getOpenProposalCount(): Promise<number> {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const db = createAdminClient() as any;
     const now = new Date().toISOString();
-    const { count } = await db
-      .from("proposals")
-      .select("*", { count: "planned", head: true })
-      .eq("status", "open_comment")
-      .gt("metadata->>comment_period_end", now);
+    const { count } = await withDbTimeout(
+      db
+        .from("proposals")
+        .select("*", { count: "planned", head: true })
+        .eq("status", "open_comment")
+        .gt("metadata->>comment_period_end", now) as PromiseLike<{ count: number | null }>,
+      3000,
+      "dashboard:open-proposal-count",
+    );
     return count ?? 0;
   } catch {
     return 0;
@@ -185,8 +193,20 @@ async function getBrowsingFlows(): Promise<{
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const db = createAdminClient() as any;
     const [{ data: tRows }, { data: eRows }] = await Promise.all([
-      db.rpc("get_pv_top_transitions", { lim: 12, min_count: 3, days: 30 }),
-      db.rpc("get_pv_entry_pages", { lim: 6, days: 30 }),
+      withDbTimeout(
+        db.rpc("get_pv_top_transitions", { lim: 12, min_count: 3, days: 30 }) as PromiseLike<{
+          data: { from_page: string; to_page: string; sessions: number | string }[] | null;
+        }>,
+        3000,
+        "dashboard:pv-top-transitions",
+      ),
+      withDbTimeout(
+        db.rpc("get_pv_entry_pages", { lim: 6, days: 30 }) as PromiseLike<{
+          data: { page: string; sessions: number | string }[] | null;
+        }>,
+        3000,
+        "dashboard:pv-entry-pages",
+      ),
     ]);
     type TRow = { from_page: string; to_page: string; sessions: number | string };
     type ERow = { page: string; sessions: number | string };

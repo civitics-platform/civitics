@@ -1,5 +1,6 @@
 import { cache } from "react";
 import { createPublicClient, fetchAttributionForEntity, type AttributionShape } from "@civitics/db";
+import { withDbTimeout } from "@/lib/supabase-check";
 
 // React.cache() dedupes within a single request. generateMetadata() and the
 // page component both fetch the proposal row; without this wrapper, that's
@@ -26,11 +27,15 @@ export type CachedProposalRow = {
 export const getCachedProposal = cache(
   async (id: string): Promise<CachedProposalRow | null> => {
     const supabase = createPublicClient();
-    const { data } = await supabase
-      .from("proposals")
-      .select("id,title,type,status,summary_plain,introduced_at,metadata,is_synthetic")
-      .eq("id", id)
-      .single();
+    const { data } = await withDbTimeout(
+      supabase
+        .from("proposals")
+        .select("id,title,type,status,summary_plain,introduced_at,metadata,is_synthetic")
+        .eq("id", id)
+        .single(),
+      3000,
+      "proposals:detail-row",
+    );
     if (!data) return null;
     const attribution = await fetchAttributionForEntity(supabase, "proposal", id);
     return { ...(data as Omit<CachedProposalRow, "attribution">), attribution };
