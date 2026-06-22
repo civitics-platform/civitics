@@ -1,13 +1,23 @@
 import type { Metadata } from "next";
-import { cookies } from "next/headers";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { createServerClient } from "@civitics/db";
+import { createPublicClient } from "@civitics/db";
 import type { MultiPolygon, Polygon } from "geojson";
 import { DeferredDistrictMap } from "../components/DeferredDistrictMap";
 import { withDbTimeout } from "@/lib/supabase-check";
 
-export const dynamic = "force-dynamic";
+// FIX-645: this page reads only public (RLS USING(true)) data and emits no
+// per-user content, so force-dynamic was pure overhead — every hit fully
+// re-rendered. Switch to ISR via the publishable client (no cookies() → no
+// static opt-out), matching the jurisdictions/[id] pattern (FIX-634).
+export const revalidate = 300;
+
+// Empty list → on-demand ISR (no build-time prerender), but marks the route as
+// statically-optimized so revalidate actually caches between hits. Without this
+// a dynamic [id] segment renders fresh every request even with revalidate set.
+export async function generateStaticParams() {
+  return [];
+}
 
 const PARTY_BADGE: Record<string, string> = {
   democrat:    "bg-blue-100 text-blue-800",
@@ -39,8 +49,7 @@ async function loadDistrict(id: string): Promise<{
   officials: OfficialRow[];
   geometry: Polygon | MultiPolygon | null;
 } | null> {
-  const cookieStore = await cookies();
-  const supabase = createServerClient(cookieStore);
+  const supabase = createPublicClient();
 
   const { data: district } = await withDbTimeout(
     supabase

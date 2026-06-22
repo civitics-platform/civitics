@@ -9,11 +9,9 @@
 // (governing_bodies side only; agencies side has no slug). Non-UUID values
 // resolve via governing_bodies.slug → permanent-redirect to /institutions/<uuid>.
 import { notFound, permanentRedirect } from "next/navigation";
-import { cookies } from "next/headers";
 import nextDynamic from "next/dynamic";
 import {
-  createServerClient,
-  createAdminClient,
+  createPublicClient,
   fetchAttributionForEntity,
   currentGoverningBodyMembers,
 } from "@civitics/db";
@@ -217,7 +215,12 @@ export async function generateStaticParams() {
   return [];
 }
 
-export const dynamic = "force-dynamic";
+// FIX-645: this page emits no per-user server content (follow/comment UI are
+// client islands). Its only dynamic dependency was a createAdminClient() read of
+// the service-role-only plum_book_state row — now exposed via the
+// get_plum_book_last_change() RPC (FIX-645). With that gone it renders on the
+// publishable client, so switch force-dynamic → ISR off the per-hit render path.
+export const revalidate = 300;
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -251,8 +254,7 @@ export default async function InstitutionPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const cookieStore = await cookies();
-  const supabase = createServerClient(cookieStore);
+  const supabase = createPublicClient();
 
   // Slug → UUID resolution. governing_bodies.slug only — agencies have no slug.
   if (!UUID_RE.test(id)) {
@@ -564,23 +566,19 @@ async function AgencyView({
     });
   }
 
-  // pipeline_state has RLS enabled with zero SELECT policies (internal pipeline
-  // metadata, service-role only), so the RLS-respecting createServerClient read
-  // returned null with no error and plumLastChange was always blank. Read this one
-  // internal row via a lazily-instantiated admin client (FIX-432). The page is
-  // already force-dynamic (see top of file), so the secret key is available.
-  const adminDb = createAdminClient();
-  const plumStateRes = await withDbTimeout(
-    adminDb
-      .from("pipeline_state")
-      .select("value")
-      .eq("key", "plum_book_state")
-      .maybeSingle(),
+  // pipeline_state.plum_book_state is RLS service-role-only. FIX-432 read it via
+  // createAdminClient to show a freshness date on official cards; that admin read
+  // forced force-dynamic. FIX-645 exposes ONLY the last_change date via the
+  // get_plum_book_last_change() SECURITY DEFINER RPC, so the publishable client
+  // can fetch it and the page can be ISR'd.
+  const plumStateRes = (await withDbTimeout(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (supabase as any).rpc("get_plum_book_last_change"),
     3000,
     "institutions:plum-state"
-  );
-  const plumState = plumStateRes.data?.value as Record<string, string> | null;
-  const plumLastChange: string | null = plumState?.last_change?.slice(0, 10) ?? null;
+  )) as { data: string | null };
+  const plumLastChange: string | null =
+    typeof plumStateRes.data === "string" ? plumStateRes.data.slice(0, 10) : null;
 
   const [parentRes, childrenRes] = (await Promise.all([
     agency.parent_agency_id
