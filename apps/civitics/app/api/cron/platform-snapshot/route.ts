@@ -115,6 +115,86 @@ async function emailMetricThresholdAlerts(
   );
 }
 
+/**
+ * FIX-642 — leading-signal early-warning alert.
+ *
+ * The emailMetricThresholdAlerts path above tracks monthly CUMULATIVE usage —
+ * a LAGGING indicator — and is gated behind EMAIL_ALERTS_ENABLED. This is the
+ * leading layer: a low-threshold page on a FAST-moving signal (Supabase
+ * db_connections nearing the 60 ceiling → connection exhaustion → live-site
+ * 503s) that fires regardless of the EMAIL_ALERTS_ENABLED master toggle, so a
+ * real spike pages even when cumulative-cost alerting is intentionally muted.
+ *
+ * Debounced on a dedicated platform_alert_state key (rising-edge only) so it
+ * pages once per spike, not every cron tick. Threshold is env-overridable
+ * (LEADING_DB_CONN_THRESHOLD, default 45 = 75% of the 60-connection ceiling —
+ * below the platform_limits 80% warning band so it genuinely leads the standard
+ * alert). Set it low in a verify run to confirm firing. Best-effort: never
+ * throws. db_connections is source='api' (not 'estimated'), so the FIX-α
+ * estimated-skip does not apply here.
+ */
+async function emailLeadingSignalAlerts(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  db: any,
+  payload: PlatformUsagePayload,
+  adminEmail: string,
+  siteUrl: string,
+): Promise<void> {
+  const threshold = Number(process.env["LEADING_DB_CONN_THRESHOLD"] ?? 45);
+  const metric = payload.metrics.find(
+    (m) => m.service === "supabase" && m.metric === "db_connections",
+  );
+  // Only act on a live (source='api') numeric reading — a stale manual/estimated
+  // value isn't a real-time spike signal.
+  if (!metric || metric.value === null || metric.source !== "api") return;
+
+  const alertKey = "leading.supabase.db_connections";
+  const elevated = metric.value >= threshold;
+
+  const { data: priorRow, error: readErr } = await db
+    .from("platform_alert_state")
+    .select("last_status")
+    .eq("metric_key", alertKey)
+    .maybeSingle();
+  if (readErr) {
+    console.warn(`[leading alert] could not read state (${alertKey}): ${readErr.message}`);
+  }
+  const prevElevated = priorRow?.last_status === "elevated";
+
+  // Rising edge into the danger zone → page once.
+  if (elevated && !prevElevated) {
+    const { subject, html } = renderMetricAlertEmail({
+      service: "supabase",
+      metric: "db_connections",
+      display_label: "DB Connections (leading signal)",
+      value: metric.value,
+      limit: metric.included_limit,
+      unit: metric.unit,
+      pct: metric.pct,
+      status: metric.status === "critical" ? "critical" : "warning",
+      siteUrl,
+    });
+    const sendResult = await sendEmail({ to: adminEmail, subject, html });
+    if (!sendResult.sent) {
+      console.warn(`[leading alert] not sent (${alertKey}): ${sendResult.reason}`);
+    }
+  }
+
+  // Record the current band so the next page only fires on a fresh
+  // normal→elevated transition. Bump last_alerted_at only on the rising edge.
+  const nowIso = new Date().toISOString();
+  const upsertRow =
+    elevated && !prevElevated
+      ? { metric_key: alertKey, last_status: "elevated", last_alerted_at: nowIso }
+      : { metric_key: alertKey, last_status: elevated ? "elevated" : "normal" };
+  const { error: upsertErr } = await db
+    .from("platform_alert_state")
+    .upsert(upsertRow, { onConflict: "metric_key" });
+  if (upsertErr) {
+    console.warn(`[leading alert] state upsert failed (${alertKey}): ${upsertErr.message}`);
+  }
+}
+
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const authHeader = request.headers.get("authorization");
   const expected = `Bearer ${process.env["CRON_SECRET"] ?? ""}`;
@@ -174,6 +254,23 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       // kill-switch flips above). Debounced via platform_alert_state so we only
       // page once per escalation, not every 10-min tick.
       await emailMetricThresholdAlerts(db, result.payload, adminEmail, siteUrl);
+    }
+  }
+
+  // FIX-642: leading-signal alert runs OUTSIDE the EMAIL_ALERTS_ENABLED gate —
+  // connection exhaustion takes the live site down, so it pages whenever a
+  // recipient is configured even with cumulative-cost alerting muted. sendEmail
+  // still no-ops without RESEND keys, so this is safe to leave always-on.
+  if (platformOutcome.status === "fulfilled") {
+    const adminEmail = process.env["ADMIN_EMAIL"];
+    if (adminEmail) {
+      const siteUrl = process.env["NEXT_PUBLIC_SITE_URL"] ?? SITE_URL_FALLBACK;
+      await emailLeadingSignalAlerts(
+        db,
+        platformOutcome.value.payload,
+        adminEmail,
+        siteUrl,
+      );
     }
   }
 

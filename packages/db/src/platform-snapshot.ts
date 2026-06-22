@@ -378,6 +378,11 @@ export async function computePlatformUsagePayload(
         updateUsage(db, "vercel", "web_analytics_events", v.web_analytics_events, "api"),
         updateUsage(db, "vercel", "isr_reads", v.isr_reads, "api"),
         updateUsage(db, "vercel", "fluid_memory_gb_hrs", v.fluid_memory_gb_hrs, "api"),
+        // FIX-642: persist the BilledCost total so the Platform Costs card has
+        // a live spend figure (vs the 9 quantity metrics). 0 on Hobby / on Pro
+        // with no in-cycle charges; the platform_limits row (free+pro) gives it
+        // a threshold ladder anchored on the $10 Spend-Management cap.
+        updateUsage(db, "vercel", "monthly_spend_usd", v.charges_total_usd, "api"),
       ]);
     } else {
       if (!/VERCEL_API_TOKEN/i.test(v.error) && !/plan_upgrade_required|Plan not found/i.test(v.error)) {
