@@ -281,6 +281,22 @@ const DONOR_TYPE_LABELS: Record<string, string> = {
 // stale MV. The result is explicitly marked partial in the UI.
 const DONOR_FALLBACK_LIMIT = 200;
 
+// FIX-646: shape returned by get_official_page(uuid). Sections arrive pre-shaped
+// to match what the render code already consumes (votes carry `proposals`
+// inline, so the old two-step hydration is gone). Loosely typed — downstream
+// code re-casts each section to its concrete row type.
+type GetOfficialPage = {
+  vote_count: number;
+  recent_votes: unknown[];
+  all_votes: unknown[];
+  ai_summary: { summary_text: string | null } | null;
+  career_history: unknown[];
+  promises: unknown[];
+  civic_responses: unknown[];
+  passive_answer_count: number;
+  spending: unknown[];
+};
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default async function OfficialProfilePage({
@@ -296,26 +312,19 @@ export default async function OfficialProfilePage({
   // Fetch official + joins in parallel with votes, donor count, donor amounts, AI summary, career history, promises.
   // Official itself comes from the React.cache()-wrapped fetcher so generateMetadata
   // and this page share a single Supabase round-trip.
-  const [officialData, voteCountRes, votesRes, donorRollupRes, aiSummaryRes, allVotesRes, careerHistoryRes, promisesRes, responsivenessRes] =
+  // Fetch official (React.cache-shared with generateMetadata) + the consolidated
+  // page sections (get_official_page, FIX-646) + the donor rollup in parallel.
+  // get_official_page collapses ~13 render-path reads (vote count, recent/all
+  // votes with proposal hydration done in SQL, AI summary, career, promises,
+  // civic responses, synthetic answer-count, spending) into one RPC. The donor
+  // rollup MV read + FIX-635 fallback stay separate to avoid a ~10k-row payload.
+  const [officialData, pageRes, donorRollupRes] =
     await Promise.all([
       getCachedOfficial(params.id),
       withDbTimeout(
-        supabase
-          .from("votes")
-          .select("id", { count: "exact", head: true })
-          .eq("official_id", params.id),
-        3000,
-        "officials:vote-count"
-      ),
-      withDbTimeout(
-        supabase
-          .from("votes")
-          .select("id, vote, voted_at, roll_call_id, bill_proposal_id")
-          .eq("official_id", params.id)
-          .order("voted_at", { ascending: false })
-          .limit(100),
-        3000,
-        "officials:votes"
+        sb.rpc("get_official_page", { p_id: params.id }),
+        5000,
+        "officials:page-rpc",
       ),
       // FIX-518 — donor + IE aggregations read official_donor_rollup_mv: per
       // (official, relationship_type) the top-1000 donors (rank 1..1000) plus
@@ -358,102 +367,19 @@ export default async function OfficialProfilePage({
         );
         return { data: rows };
       })(),
-      withDbTimeout(
-        sb
-          .from("ai_summary_cache")
-          .select("summary_text")
-          .eq("entity_type", "official")
-          .eq("entity_id", params.id)
-          .eq("summary_type", "profile")
-          .maybeSingle() as PromiseLike<{ data: { summary_text: string | null } | null }>,
-        3000,
-        "officials:ai-summary"
-      ),
-      withDbTimeout(
-        supabase
-          .from("votes")
-          .select("vote, bill_proposal_id")
-          .eq("official_id", params.id)
-          .limit(500),
-        3000,
-        "officials:all-votes"
-      ),
-      withDbTimeout(
-        supabase
-          .from("career_history")
-          .select("id, organization, role_title, started_at, ended_at, is_government, revolving_door_flag, revolving_door_explanation")
-          .eq("official_id", params.id)
-          .order("started_at", { ascending: false })
-          .limit(20),
-        3000,
-        "officials:career-history"
-      ),
-      withDbTimeout(
-        supabase
-          .from("promises")
-          .select("id, title, description, status, made_at, deadline, resolved_at, source_url, source_quote")
-          .eq("official_id", params.id)
-          .order("made_at", { ascending: false })
-          .limit(10),
-        3000,
-        "officials:promises"
-      ),
-      withDbTimeout(
-        supabase
-          .from("civic_initiative_responses")
-          .select("id, initiative_id, response_type, responded_at, window_closes_at, window_opened_at, proposals!initiative_id(id, title, type, initiative_details(scope))")
-          .eq("official_id", params.id)
-          .order("window_opened_at", { ascending: false })
-          .limit(20),
-        3000,
-        "officials:civic-responses"
-      ),
     ]);
 
-  // votes.bill_proposal_id FKs to bill_details(proposal_id), not proposals, so a
-  // PostgREST embed (proposals!bill_proposal_id) errors → silent empty vote history.
-  // Two-step: fetch the proposals for both vote queries and attach a `proposals`
-  // field so downstream consumers are unchanged. bill_proposal_id IS a proposals.id.
-  {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const voteRowsToHydrate = [
-      ...((votesRes.data ?? []) as any[]),
-      ...((allVotesRes.data ?? []) as any[]),
-    ];
-    const billProposalIds = [
-      ...new Set(voteRowsToHydrate.map((v) => v.bill_proposal_id).filter(Boolean) as string[]),
-    ];
-    if (billProposalIds.length > 0) {
-      const propById = new Map<
-        string,
-        { id: string; title: string | null; short_title: string | null; bill_details: { bill_number: string | null } | null }
-      >();
-      const CHUNK = 300;
-      for (let i = 0; i < billProposalIds.length; i += CHUNK) {
-        const { data: props } = await withDbTimeout(
-          supabase
-            .from("proposals")
-            .select("id, title, short_title, bill_details(bill_number)")
-            .in("id", billProposalIds.slice(i, i + CHUNK)),
-          3000,
-          "officials:vote-proposals"
-        );
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        for (const p of ((props ?? []) as any[])) {
-          const bd = Array.isArray(p.bill_details) ? p.bill_details[0] : p.bill_details;
-          propById.set(p.id, {
-            id: p.id,
-            title: p.title ?? null,
-            short_title: p.short_title ?? null,
-            bill_details: bd ? { bill_number: bd.bill_number ?? null } : null,
-          });
-        }
-      }
-      for (const v of voteRowsToHydrate) {
-        v.proposals = v.bill_proposal_id ? propById.get(v.bill_proposal_id) ?? null : null;
-      }
-    }
-  }
+  // Shim the get_official_page payload back into the per-section result shapes the
+  // render code already consumes. recent/all votes arrive with `proposals`
+  // pre-attached by the RPC, so the old two-step proposal hydration is removed.
+  const page = ((pageRes as { data: GetOfficialPage | null }).data ?? {}) as Partial<GetOfficialPage>;
+  const voteCountRes = { count: page.vote_count ?? 0 };
+  const votesRes = { data: page.recent_votes ?? [] };
+  const allVotesRes = { data: page.all_votes ?? [] };
+  const aiSummaryRes = { data: page.ai_summary ?? null };
+  const careerHistoryRes = { data: page.career_history ?? [] };
+  const promisesRes = { data: page.promises ?? [] };
+  const responsivenessRes = { data: page.civic_responses ?? [] };
 
   if (!officialData) {
     notFound();
@@ -496,21 +422,10 @@ export default async function OfficialProfilePage({
   // "records-only / non-participating" (bible §4.6) → show the passive-official
   // disclaimer. The count runs ONLY for synthetic officials (≈0 cost; 0 such
   // rows today), so real officials add no extra query.
-  let isPassiveSynthetic = false;
-  if (official.is_synthetic) {
-    const { count: answerCount } = await withDbTimeout(
-      sb
-        .from("entity_comments")
-        .select("id", { count: "exact", head: true })
-        .eq("entity_type", "official")
-        .eq("entity_id", official.id)
-        .eq("kind", "answer")
-        .eq("status", "visible") as PromiseLike<{ count: number | null }>,
-      3000,
-      "officials:passive-answer-count"
-    );
-    isPassiveSynthetic = (answerCount ?? 0) === 0;
-  }
+  // FIX-646: passive-synthetic disclaimer signal now comes from get_official_page
+  // (passive_answer_count). The page still gates on is_synthetic.
+  const isPassiveSynthetic =
+    official.is_synthetic && (page.passive_answer_count ?? 0) === 0;
 
   // ── Donor + IE view (FIX-518) ───────────────────────────────────────────────
   // Built from official_donor_rollup_mv (ranked top-1000 donors + tail bucket
@@ -833,10 +748,11 @@ export default async function OfficialProfilePage({
     source_quote: string | null;
   }>;
 
-  // QWEN-ADDED: Fetch spending records — after shadow→public promotion these live
-  // in financial_relationships with relationship_type IN ('contract','grant').
-  // Donor = awarding_agency (from_type='agency'), recipient = financial_entity.
-  let spendingRecords: Array<{
+  // FIX-646: spending records (top-10 contracts/grants, gated on jurisdiction_id
+  // inside the RPC, agency/recipient names pre-resolved) now come from
+  // get_official_page — was a 3-query fan-out (financial_relationships + agencies
+  // + financial_entities) per render.
+  const spendingRecords = (page.spending ?? []) as Array<{
     id: string;
     recipient_name: string;
     award_type: string | null;
@@ -844,56 +760,7 @@ export default async function OfficialProfilePage({
     award_date: string | null;
     description: string | null;
     awarding_agency: string;
-  }> = [];
-  if (official.jurisdiction_id) {
-    const { data: rows } = await withDbTimeout(
-      supabase
-        .from("financial_relationships")
-        .select("id, from_id, to_id, amount_cents, occurred_at, relationship_type, metadata")
-        .in("relationship_type", ["contract", "grant"])
-        // FIX-503: amount_cents>0 lets the top-10 use the partial DESC index
-        // financial_relationships_amount (prod cost 371k → 39) instead of a
-        // parallel seq scan + sort, and drops NULL-amount rows that sort first
-        // under DESC and would otherwise crowd out the real top contracts.
-        .gt("amount_cents", 0)
-        .order("amount_cents", { ascending: false })
-        .limit(10),
-      3000,
-      "officials:spending"
-    );
-    const spendRows = rows ?? [];
-    const agencyIds    = [...new Set(spendRows.map((r) => r.from_id))];
-    const recipientIds = [...new Set(spendRows.map((r) => r.to_id))];
-    const [agenciesRes, recipientsRes] = await Promise.all([
-      agencyIds.length > 0
-        ? withDbTimeout(
-            supabase.from("agencies").select("id, name").in("id", agencyIds) as PromiseLike<{ data: Array<{ id: string; name: string }> | null }>,
-            3000,
-            "officials:spending-agencies"
-          )
-        : Promise.resolve({ data: [] as Array<{ id: string; name: string }> }),
-      recipientIds.length > 0
-        ? withDbTimeout(
-            supabase.from("financial_entities").select("id, display_name").in("id", recipientIds) as PromiseLike<{ data: Array<{ id: string; display_name: string }> | null }>,
-            3000,
-            "officials:spending-recipients"
-          )
-        : Promise.resolve({ data: [] as Array<{ id: string; display_name: string }> }),
-    ]);
-    const agencyName = new Map<string, string>();
-    for (const a of agenciesRes.data ?? []) agencyName.set(a.id, a.name);
-    const recipientName = new Map<string, string>();
-    for (const r of recipientsRes.data ?? []) recipientName.set(r.id, r.display_name);
-    spendingRecords = spendRows.map((r) => ({
-      id:              r.id,
-      recipient_name:  recipientName.get(r.to_id) ?? "Unknown recipient",
-      award_type:      r.relationship_type,
-      amount_cents:    r.amount_cents ?? 0,
-      award_date:      r.occurred_at,
-      description:     ((r.metadata ?? {}) as Record<string, string>)?.description ?? null,
-      awarding_agency: agencyName.get(r.from_id) ?? "Unknown agency",
-    }));
-  }
+  }>;
 
   // ── Responsiveness score ──────────────────────────────────────────────────────
   const now = new Date();
