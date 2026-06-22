@@ -34,7 +34,7 @@ import {
 } from "./supabase-usage";
 import { getSupabasePrometheusMetrics } from "./supabase-prometheus";
 import { getCloudflareR2Usage } from "./cloudflare-usage";
-import { getVercelUsage } from "./vercel-usage";
+import { getVercelUsage, type VercelUsage } from "./vercel-usage";
 import { getGitHubUsage } from "./github-usage";
 import {
   evaluateAutoTrips,
@@ -83,6 +83,14 @@ export type PlatformUsagePayload = {
     max_1h_pct: number;
     max_24h_pct: number;
     core_count: number;
+  };
+  // FIX-648: per-ServiceName Vercel EffectiveCost, projected to a monthly
+  // run-rate (descending). The "what spiked" breakdown — surfaced on the card
+  // and read by the leading fluid-cost alert. `window_days` is the trailing
+  // billing window the projection was extrapolated from (typically ~7).
+  vercel_breakdown?: {
+    window_days: number;
+    services: { service: string; usd: number }[];
   };
   timestamp: string;
 };
@@ -361,30 +369,55 @@ export async function computePlatformUsagePayload(
     errors.push(`github: ${err instanceof Error ? err.message : String(err)}`);
   }
 
-  // Vercel current-cycle usage → platform_usage. The /v1/usage endpoint is
-  // Pro+ only; Hobby tier returns plan_upgrade_required and the rows stay on
-  // their last manual value. We log it as a non-blocking errors entry rather
-  // than a partial-flag trip so the snapshot still completes cleanly.
+  // Vercel current-cycle usage → platform_usage.
+  //
+  // FIX-648: /v1/billing/charges only ever returns a trailing ~window_days-day
+  // window (it ignores `from`), so every quantity/cost is a sum over that window
+  // — NOT month-to-date. We project each to a 30-day run-rate and persist with
+  // source='estimated' (honest gray "~Est." badge; excluded from hard
+  // escalation). The un-projected window value rides along in the metric
+  // metadata (stitched below) for a "last Nd" sub-label, and the per-service
+  // breakdown is projected the same way for the card + leading fluid alert.
+  let vercelUsage: VercelUsage | null = null;
+  let vercelBreakdown: PlatformUsagePayload["vercel_breakdown"] = undefined;
   try {
     const v = await getVercelUsage();
     if (!("error" in v)) {
+      vercelUsage = v;
+      const now = new Date();
+      const daysInMonth = new Date(
+        now.getFullYear(),
+        now.getMonth() + 1,
+        0,
+      ).getDate();
+      // Extrapolate a window total to a full month at the window's daily rate.
+      // window_days===0 (the quantity-only fallback) → pass the value through.
+      const project = (raw: number): number =>
+        v.window_days > 0 ? (raw / v.window_days) * daysInMonth : raw;
+
       await Promise.all([
-        updateUsage(db, "vercel", "fluid_cpu_seconds", v.fluid_cpu_seconds, "api"),
-        updateUsage(db, "vercel", "function_invocations", v.function_invocations, "api"),
-        updateUsage(db, "vercel", "origin_transfer_bytes", v.origin_transfer_bytes, "api"),
-        updateUsage(db, "vercel", "edge_requests", v.edge_requests, "api"),
-        updateUsage(db, "vercel", "edge_cpu_ms", v.edge_cpu_ms, "api"),
-        updateUsage(db, "vercel", "build_minutes", v.build_minutes, "api"),
-        updateUsage(db, "vercel", "web_analytics_events", v.web_analytics_events, "api"),
-        updateUsage(db, "vercel", "isr_reads", v.isr_reads, "api"),
-        updateUsage(db, "vercel", "fluid_memory_gb_hrs", v.fluid_memory_gb_hrs, "api"),
-        // FIX-642 / FIX-644: persist EffectiveCost (the real monthly run-rate —
-        // list-price value of all consumption incl. the prorated Pro base), NOT
-        // BilledCost (charges_total_usd), which sits at $0 until plan-allotment
-        // overage and is already watched by Vercel's native $10 Spend-Management
-        // cap. effective_cost_usd is the leading "what are we spending" signal.
-        updateUsage(db, "vercel", "monthly_spend_usd", v.effective_cost_usd, "api"),
+        updateUsage(db, "vercel", "fluid_cpu_seconds", project(v.fluid_cpu_seconds), "estimated"),
+        updateUsage(db, "vercel", "function_invocations", project(v.function_invocations), "estimated"),
+        updateUsage(db, "vercel", "origin_transfer_bytes", project(v.origin_transfer_bytes), "estimated"),
+        updateUsage(db, "vercel", "edge_requests", project(v.edge_requests), "estimated"),
+        updateUsage(db, "vercel", "edge_cpu_ms", project(v.edge_cpu_ms), "estimated"),
+        updateUsage(db, "vercel", "build_minutes", project(v.build_minutes), "estimated"),
+        updateUsage(db, "vercel", "web_analytics_events", project(v.web_analytics_events), "estimated"),
+        updateUsage(db, "vercel", "isr_reads", project(v.isr_reads), "estimated"),
+        updateUsage(db, "vercel", "fluid_memory_gb_hrs", project(v.fluid_memory_gb_hrs), "estimated"),
+        // Projected monthly run-rate of EffectiveCost (list value of all
+        // consumption incl. the prorated $20 Pro base). NOT BilledCost
+        // (charges_total_usd ≈ $0 within plan, watched by Vercel's native
+        // Spend-Management cap) — that rides as a metadata sub-label below.
+        updateUsage(db, "vercel", "monthly_spend_usd", project(v.effective_cost_usd), "estimated"),
       ]);
+
+      vercelBreakdown = {
+        window_days: v.window_days,
+        services: v.cost_breakdown
+          .map((b) => ({ service: b.service, usd: project(b.effective_usd) }))
+          .slice(0, 8),
+      };
     } else {
       if (!/VERCEL_API_TOKEN/i.test(v.error) && !/plan_upgrade_required|Plan not found/i.test(v.error)) {
         errors.push(`vercel: ${v.error}`);
@@ -436,6 +469,41 @@ export async function computePlatformUsagePayload(
           cpu_max_24h: supabaseCpuPayload.max_24h_pct,
         };
       }
+    }
+  }
+
+  // FIX-648: stitch the un-projected trailing-window truth onto each vercel
+  // metric so the card can show "last Nd: <raw>" beneath the projected headline.
+  // monthly_spend_usd additionally carries the BilledCost ($ the spend cap
+  // watches) and the per-service spend breakdown.
+  if (vercelUsage) {
+    const rawByMetric: Record<string, number> = {
+      fluid_cpu_seconds: vercelUsage.fluid_cpu_seconds,
+      function_invocations: vercelUsage.function_invocations,
+      origin_transfer_bytes: vercelUsage.origin_transfer_bytes,
+      edge_requests: vercelUsage.edge_requests,
+      edge_cpu_ms: vercelUsage.edge_cpu_ms,
+      build_minutes: vercelUsage.build_minutes,
+      web_analytics_events: vercelUsage.web_analytics_events,
+      isr_reads: vercelUsage.isr_reads,
+      fluid_memory_gb_hrs: vercelUsage.fluid_memory_gb_hrs,
+      monthly_spend_usd: vercelUsage.effective_cost_usd,
+    };
+    for (const m of finalMetrics) {
+      if (m.service !== "vercel") continue;
+      const raw = rawByMetric[m.metric];
+      if (raw === undefined) continue;
+      m.metadata = {
+        is_projected: true,
+        window_days: vercelUsage.window_days,
+        raw_window_value: raw,
+        ...(m.metric === "monthly_spend_usd"
+          ? {
+              billed_window_usd: vercelUsage.charges_total_usd,
+              cost_breakdown: vercelBreakdown?.services ?? [],
+            }
+          : {}),
+      };
     }
   }
 
@@ -507,6 +575,7 @@ export async function computePlatformUsagePayload(
     },
     auto_trip_decisions: autoTripDecisions,
     ...(supabaseCpuPayload ? { supabase_cpu: supabaseCpuPayload } : {}),
+    ...(vercelBreakdown ? { vercel_breakdown: vercelBreakdown } : {}),
     timestamp: new Date().toISOString(),
   };
 

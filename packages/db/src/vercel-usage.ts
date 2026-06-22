@@ -57,6 +57,21 @@ export type VercelUsage = {
    *  within-allotment usage + the prorated "Pro" base line). This is the real
    *  monthly run-rate spend and is what we persist as vercel.monthly_spend_usd. */
   effective_cost_usd: number;
+  /** FIX-648: number of distinct billing days (ChargePeriodStart) in the
+   *  response. billing/charges only ever returns a trailing ~7-day window — it
+   *  ignores `from` (a 90-day request returns the same days) and 404s on
+   *  historical-only ranges. Every quantity/cost above is therefore a sum over
+   *  THIS many days, NOT month-to-date. The snapshot writer projects them to a
+   *  30-day run-rate using this divisor. 0 from the quantity-only fallback. */
+  window_days: number;
+  /** Earliest / latest ChargePeriodStart in the window (ISO), or null. */
+  window_start: string | null;
+  window_end: string | null;
+  /** FIX-648: per-ServiceName EffectiveCost over the window (non-zero only,
+   *  descending). The "what spiked" breakdown — the snapshot writer projects
+   *  each to a monthly run-rate and surfaces the top entries on the card and to
+   *  the leading fluid-cost alert. Empty from the quantity-only fallback. */
+  cost_breakdown: { service: string; effective_usd: number }[];
   /** "charges" if the billing/charges endpoint provided the data (the normal
    *  path), "usage" if only the quantity-only /v1/usage fallback succeeded. */
   source: "usage" | "charges";
@@ -66,8 +81,10 @@ export type VercelUsage = {
 export type VercelUsageError = { error: string };
 
 type CostFields = "charges_total_usd" | "effective_cost_usd";
-type QuantityMetrics = Omit<VercelUsage, "source" | "fetched_at" | CostFields>;
-type AllMetrics = Omit<VercelUsage, "source" | "fetched_at">;
+// FIX-648: window + breakdown are response-level metadata, not metric quantities.
+type WindowFields = "window_days" | "window_start" | "window_end" | "cost_breakdown";
+type QuantityMetrics = Omit<VercelUsage, "source" | "fetched_at" | CostFields | WindowFields>;
+type AllMetrics = Omit<VercelUsage, "source" | "fetched_at" | WindowFields>;
 
 // ── In-memory cache ───────────────────────────────────────────────────────────
 
@@ -175,17 +192,48 @@ function num(v: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-function extractFromCharges(charges: ChargeLine[]): AllMetrics {
+type ChargesExtract = {
+  metrics: AllMetrics;
+  window_days: number;
+  window_start: string | null;
+  window_end: string | null;
+  cost_breakdown: { service: string; effective_usd: number }[];
+};
+
+function extractFromCharges(charges: ChargeLine[]): ChargesExtract {
   const out = emptyMetrics();
+  const days = new Set<string>();
+  const byService = new Map<string, number>();
   for (const c of charges) {
     const serviceName = typeof c["ServiceName"] === "string" ? (c["ServiceName"] as string) : "";
     const qty = num(c["ConsumedQuantity"]);
     const mapped = mapChargeQuantity(serviceName, qty);
     if (mapped) out[mapped.key] += mapped.value;
-    out.charges_total_usd += num(c["BilledCost"]);
-    out.effective_cost_usd += num(c["EffectiveCost"]);
+    const billed = num(c["BilledCost"]);
+    const effective = num(c["EffectiveCost"]);
+    out.charges_total_usd += billed;
+    out.effective_cost_usd += effective;
+    // FIX-648: window + per-service breakdown. Lines are per (day, region)
+    // leaves (e.g. Fluid Provisioned Memory = 7 days x 21 regions = 147 lines),
+    // so distinct ChargePeriodStart is the true day count and summing per
+    // ServiceName aggregates regions correctly.
+    const day = c["ChargePeriodStart"];
+    if (typeof day === "string") days.add(day);
+    if (serviceName && effective !== 0) {
+      byService.set(serviceName, (byService.get(serviceName) ?? 0) + effective);
+    }
   }
-  return out;
+  const sortedDays = [...days].sort();
+  const cost_breakdown = [...byService.entries()]
+    .map(([service, effective_usd]) => ({ service, effective_usd }))
+    .sort((a, b) => b.effective_usd - a.effective_usd);
+  return {
+    metrics: out,
+    window_days: days.size,
+    window_start: sortedDays[0] ?? null,
+    window_end: sortedDays[sortedDays.length - 1] ?? null,
+    cost_breakdown,
+  };
 }
 
 // ── /v1/usage parsing (quantity-only fallback) ────────────────────────────────
@@ -280,9 +328,13 @@ export async function getVercelUsage(): Promise<VercelUsage | VercelUsageError> 
     const res = await fetch(u.toString(), fetchOpts);
     if (res.ok) {
       const text = await res.text();
-      const metrics = extractFromCharges(parseChargesBody(text));
+      const ex = extractFromCharges(parseChargesBody(text));
       const result: VercelUsage = {
-        ...metrics,
+        ...ex.metrics,
+        window_days: ex.window_days,
+        window_start: ex.window_start,
+        window_end: ex.window_end,
+        cost_breakdown: ex.cost_breakdown,
         source: "charges",
         fetched_at: new Date().toISOString(),
       };
@@ -318,6 +370,13 @@ export async function getVercelUsage(): Promise<VercelUsage | VercelUsageError> 
       const metrics = extractFromUsageBody(body);
       const result: VercelUsage = {
         ...metrics,
+        // Quantity-only fallback has no daily granularity or cost lines, so the
+        // window/breakdown are unknown — projection is skipped downstream when
+        // window_days is 0.
+        window_days: 0,
+        window_start: null,
+        window_end: null,
+        cost_breakdown: [],
         source: "usage",
         fetched_at: new Date().toISOString(),
       };

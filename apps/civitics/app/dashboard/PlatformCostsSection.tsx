@@ -224,6 +224,32 @@ function MetricRow({
             : "—"}
         </div>
       )}
+      {/* FIX-648: Vercel run-rate projection context. The headline value is a
+          30-day run-rate projected from a trailing ~Nd billing window; show the
+          un-projected truth so it's verifiable against the Vercel dashboard. */}
+      {metric.metadata?.is_projected && metric.metadata.raw_window_value != null && (
+        <div className="text-xs text-gray-400 mt-0.5">
+          ~est. monthly run-rate · last {metric.metadata.window_days ?? "?"}d:{" "}
+          {formatMetricValue(metric.metadata.raw_window_value, metric.unit)}
+          {metric.metric === "monthly_spend_usd" &&
+            metric.metadata.billed_window_usd != null && (
+              <> · billed overage (cap): {fmtUsd(metric.metadata.billed_window_usd)}</>
+            )}
+        </div>
+      )}
+      {metric.metric === "monthly_spend_usd" &&
+        metric.metadata?.cost_breakdown &&
+        metric.metadata.cost_breakdown.length > 0 && (
+          <div className="text-xs text-gray-500 mt-1">
+            <div className="font-medium text-gray-400 mb-0.5">By service (run-rate $/mo)</div>
+            {metric.metadata.cost_breakdown.slice(0, 6).map((b) => (
+              <div key={b.service} className="flex justify-between py-0.5">
+                <span className="truncate max-w-[180px]">{b.service}</span>
+                <span className="tabular-nums">{fmtUsd(b.usd)}</span>
+              </div>
+            ))}
+          </div>
+        )}
       <div className="flex items-center justify-between mt-1">
         {metric.source !== null ? (
           <SourceIndicator display={metric.source_display} />
@@ -472,7 +498,11 @@ function ServiceCard({
   const totalCost =
     service === "anthropic"
       ? (anthropicDetail?.this_month?.cost_usd ?? aiCosts?.monthly_spent_usd ?? 0)
-      : metrics.reduce((sum, m) => sum + (m.overage_cost ?? 0), 0);
+      : service === "vercel"
+        ? // FIX-648: Vercel rows carry no overage_unit_cost (Pro is credit-based),
+          // so overage_cost is $0 — the real figure is the projected monthly_spend.
+          (metrics.find((m) => m.metric === "monthly_spend_usd")?.value ?? 0)
+        : metrics.reduce((sum, m) => sum + (m.overage_cost ?? 0), 0);
 
   // For Anthropic: override the collapsed bar to reflect total account spend, not just app spend
   const anthropicBarPct =
@@ -780,7 +810,11 @@ export function PlatformCostsSection({
     .filter(([svc]) => svc !== "anthropic")
     .flatMap(([, metrics]) => metrics)
     .reduce((sum, m) => sum + (m.overage_cost ?? 0), 0);
-  const totalMonthlyCost = anthropicCost + otherOverages;
+  // FIX-648: Vercel's run-rate spend isn't an overage_cost (credit-based rows),
+  // so fold its projected monthly_spend into the headline total explicitly.
+  const vercelSpend =
+    (by_service["vercel"] ?? []).find((m) => m.metric === "monthly_spend_usd")?.value ?? 0;
+  const totalMonthlyCost = anthropicCost + otherOverages + vercelSpend;
 
   // Alert banners
   const banners: Array<{ level: "error" | "warning" | "info"; message: string; detail?: string }> =

@@ -64,6 +64,17 @@ export interface PlatformMetric extends PlatformLimit {
   metadata?: {
     cpu_max_1h?: number;
     cpu_max_24h?: number;
+    // FIX-648: Vercel run-rate projection context. billing/charges only returns
+    // a trailing ~N-day window, so `value` is that window's total PROJECTED to a
+    // 30-day run-rate; these carry the un-projected truth for an honest sub-label.
+    is_projected?: boolean;
+    window_days?: number;
+    raw_window_value?: number;
+    // monthly_spend_usd only: the BilledCost (actual overage the Spend-Management
+    // cap watches; $0 within plan) over the window, and the per-service spend
+    // breakdown ("what spiked"), each projected to a monthly run-rate.
+    billed_window_usd?: number;
+    cost_breakdown?: { service: string; usd: number }[];
   };
 }
 

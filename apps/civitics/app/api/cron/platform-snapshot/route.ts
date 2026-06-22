@@ -195,6 +195,82 @@ async function emailLeadingSignalAlerts(
   }
 }
 
+/**
+ * FIX-648 — leading-signal alert on the Vercel fluid-compute cost driver.
+ *
+ * Provisioned fluid memory bills during I/O wait, so a fan-out / low-and-slow
+ * crawl spikes its DOLLAR cost before any quantity hits a plan limit (Vercel Pro
+ * is credit-based — there is no GB-hr allotment to breach). This pages on the
+ * projected monthly run-rate of fluid memory + fluid CPU dollars (from
+ * payload.vercel_breakdown) crossing LEADING_FLUID_USD_THRESHOLD (default 8 =
+ * 40% of the $20 Pro credit) — BEFORE the dollar cap trips. Ungated (mirrors the
+ * db_connections leading alert, FIX-643) and rising-edge debounced via a
+ * dedicated platform_alert_state key so it pages once per spike. Set the env low
+ * in a verify run to confirm firing.
+ */
+async function emailLeadingFluidCostAlerts(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  db: any,
+  payload: PlatformUsagePayload,
+  adminEmail: string,
+  siteUrl: string,
+): Promise<void> {
+  const breakdown = payload.vercel_breakdown;
+  if (!breakdown || breakdown.services.length === 0) return;
+
+  const find = (needle: string): number =>
+    breakdown.services.find((s) => s.service.toLowerCase().includes(needle))?.usd ?? 0;
+  const memUsd = find("provisioned memory"); // "Fluid Provisioned Memory"
+  const cpuUsd = find("active cpu"); // "Fluid Active CPU"
+  const fluidUsd = memUsd + cpuUsd;
+
+  const threshold = Number(process.env["LEADING_FLUID_USD_THRESHOLD"] ?? 8);
+  const CREDIT = 20; // $20 Pro monthly credit — the real fluid ceiling.
+  const alertKey = "leading.vercel.fluid_compute_usd";
+  const elevated = fluidUsd >= threshold;
+
+  const { data: priorRow, error: readErr } = await db
+    .from("platform_alert_state")
+    .select("last_status")
+    .eq("metric_key", alertKey)
+    .maybeSingle();
+  if (readErr) {
+    console.warn(`[leading fluid] could not read state (${alertKey}): ${readErr.message}`);
+  }
+  const prevElevated = priorRow?.last_status === "elevated";
+
+  if (elevated && !prevElevated) {
+    const pct = (fluidUsd / CREDIT) * 100;
+    const { subject, html } = renderMetricAlertEmail({
+      service: "vercel",
+      metric: "fluid_compute_usd",
+      display_label: `Fluid compute run-rate (mem $${memUsd.toFixed(2)} + cpu $${cpuUsd.toFixed(2)}/mo)`,
+      value: fluidUsd,
+      limit: CREDIT,
+      unit: "usd",
+      pct,
+      status: pct >= 90 ? "critical" : "warning",
+      siteUrl,
+    });
+    const sendResult = await sendEmail({ to: adminEmail, subject, html });
+    if (!sendResult.sent) {
+      console.warn(`[leading fluid] not sent (${alertKey}): ${sendResult.reason}`);
+    }
+  }
+
+  const nowIso = new Date().toISOString();
+  const upsertRow =
+    elevated && !prevElevated
+      ? { metric_key: alertKey, last_status: "elevated", last_alerted_at: nowIso }
+      : { metric_key: alertKey, last_status: elevated ? "elevated" : "normal" };
+  const { error: upsertErr } = await db
+    .from("platform_alert_state")
+    .upsert(upsertRow, { onConflict: "metric_key" });
+  if (upsertErr) {
+    console.warn(`[leading fluid] state upsert failed (${alertKey}): ${upsertErr.message}`);
+  }
+}
+
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const authHeader = request.headers.get("authorization");
   const expected = `Bearer ${process.env["CRON_SECRET"] ?? ""}`;
@@ -266,6 +342,13 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     if (adminEmail) {
       const siteUrl = process.env["NEXT_PUBLIC_SITE_URL"] ?? SITE_URL_FALLBACK;
       await emailLeadingSignalAlerts(
+        db,
+        platformOutcome.value.payload,
+        adminEmail,
+        siteUrl,
+      );
+      // FIX-648: leading alert on the Vercel fluid-compute cost driver (dollars).
+      await emailLeadingFluidCostAlerts(
         db,
         platformOutcome.value.payload,
         adminEmail,
