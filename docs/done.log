@@ -811,3 +811,5 @@
 2026-06-21 | FIX-640 | 5b45cc9e | local+prod | docs(cleanup): retire SESSION_LOG; log 2b rebuild; clear orphan sync-log row
 2026-06-21 | FIX-640 | backfill | prod-only | ops: 2b prod entity_connections rebuild (run-rebuild-chunks-prod.ts, ~18min, exit 0, entity_connections ~2.5M, donation edges 1,398,864)
 2026-06-21 | FIX-641 | 746f4e11 | local-only | perf(cron): refresh donor-rollup MV via direct-pg in rebuild cron, off the capped nightly path (FIX-641)
+2026-06-21 | FIX-642 | 6dc72ed7 | local-only | feat(platform-costs): persist Vercel monthly spend + leading-signal db_connections alert
+2026-06-21 | FIX-643 | 6dc72ed7 | local-only | feat(platform-costs): persist Vercel monthly spend + leading-signal db_connections alert
