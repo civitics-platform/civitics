@@ -813,3 +813,5 @@
 2026-06-21 | FIX-641 | 746f4e11 | local-only | perf(cron): refresh donor-rollup MV via direct-pg in rebuild cron, off the capped nightly path (FIX-641)
 2026-06-21 | FIX-642 | 6dc72ed7 | local-only | feat(platform-costs): persist Vercel monthly spend + leading-signal db_connections alert
 2026-06-21 | FIX-643 | 6dc72ed7 | local-only | feat(platform-costs): persist Vercel monthly spend + leading-signal db_connections alert
+2026-06-21 | FIX-606 | 72dbb902 | closes-as-redirected | fix(platform-costs): parse Vercel charges by ServiceName/ConsumedQuantity (was all 0)
+2026-06-21 | FIX-644 | 72dbb902 | local+prod | fix(platform-costs): parse Vercel charges by ServiceName/ConsumedQuantity (was all 0)
