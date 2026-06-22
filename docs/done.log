@@ -816,3 +816,4 @@
 2026-06-21 | FIX-606 | 72dbb902 | closes-as-redirected | fix(platform-costs): parse Vercel charges by ServiceName/ConsumedQuantity (was all 0)
 2026-06-21 | FIX-644 | 72dbb902 | local+prod | fix(platform-costs): parse Vercel charges by ServiceName/ConsumedQuantity (was all 0)
 2026-06-21 | FIX-645 | 7a735605 | local+prod | perf(pages): ISR districts/[id] + institutions/[id] off the per-hit render path
+2026-06-21 | FIX-646 | 83b45f04 | local+prod | perf(officials): collapse render N+1 into get_official_page RPC
