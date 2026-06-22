@@ -13,7 +13,6 @@ import nextDynamic from "next/dynamic";
 import {
   createPublicClient,
   fetchAttributionForEntity,
-  currentGoverningBodyMembers,
 } from "@civitics/db";
 import { createClient } from "@supabase/supabase-js";
 import { AgencyHierarchyTree } from "../../agencies/[slug]/components/AgencyHierarchyTree";
@@ -327,19 +326,33 @@ async function AgencyView({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   supabase: any;
 }) {
-  const now = new Date().toISOString();
-
-  // Fetch agency-only columns the view doesn't carry (description, founded_year,
-  // personnel_fte, governing_body_id). One round-trip on the underlying table.
-  const { data: agencyExtra } = (await withDbTimeout(
-    supabase
-      .from("agencies")
-      .select("description, founded_year, personnel_fte, governing_body_id, agency_type")
-      .eq("id", institution.id)
-      .maybeSingle(),
+  // FIX-647: ONE consolidating RPC replaces the agency branch's ~14-query
+  // request-path fan-out (agency extras, active/recent rules, spending +
+  // recipient-name resolution, total/open counts, appointment connections +
+  // officials, plum freshness, parent/children). The page is already ISR
+  // (FIX-645) + withDbTimeout-wrapped (FIX-638); this collapses the cache-miss
+  // render cost. Each payload section mirrors the exact shape the old
+  // per-section query returned, so the JS shaping below (aggregateSpending, the
+  // SOURCE_PRIORITY dedup, mapProposal) is unchanged — it just reads the payload.
+  // withDbTimeout<T> infers T=unknown on an any builder, so cast locally rather
+  // than pass a type arg (the FIX-639 render-timeout guard still sees the wrap).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: rpcData } = (await withDbTimeout(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (supabase as any).rpc("get_agency_page", { p_id: institution.id }),
     3000,
-    "institutions:agency-extra"
-  )) as any;
+    "institutions:agency-page"
+  )) as { data: unknown };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const payload = (rpcData ?? null) as any;
+
+  const agencyExtra = (payload?.agency_extra ?? null) as {
+    description: string | null;
+    founded_year: number | null;
+    personnel_fte: number | null;
+    governing_body_id: string | null;
+    agency_type: string | null;
+  } | null;
 
   const agency = {
     id:                institution.id,
@@ -357,71 +370,6 @@ async function AgencyView({
     metadata:          (institution.metadata ?? {}) as Record<string, string | null>,
   };
 
-  const agencyKey = agency.acronym ?? agency.name;
-  const proposalSelect =
-    "id, title, status, type, introduced_at, summary_plain, metadata, bill_details(bill_number)";
-
-  const [
-    activeRulesRes,
-    recentRulesRes,
-    spendingRes,
-    totalCountRes,
-    openCountRes,
-  ] = (await Promise.all([
-    withDbTimeout(
-      supabase
-        .from("proposals")
-        .select(proposalSelect)
-        .in("status", ["introduced", "in_committee"])
-        .filter("metadata->>agency_id", "eq", agencyKey)
-        .order("metadata->>comment_period_end", { ascending: true })
-        .limit(20),
-      3000,
-      "institutions:agency-active-rules"
-    ),
-    withDbTimeout(
-      supabase
-        .from("proposals")
-        .select(proposalSelect)
-        .in("status", ["enacted", "failed", "withdrawn", "tabled"])
-        .filter("metadata->>agency_id", "eq", agencyKey)
-        .order("updated_at", { ascending: false })
-        .limit(5),
-      3000,
-      "institutions:agency-recent-rules"
-    ),
-    withDbTimeout(
-      supabase
-        .from("financial_relationships")
-        .select("to_id, to_type, relationship_type, amount_cents, occurred_at")
-        .in("relationship_type", ["contract", "grant"])
-        .eq("from_type", "agency")
-        .eq("from_id", agency.id)
-        .order("amount_cents", { ascending: false })
-        .limit(100),
-      3000,
-      "institutions:agency-spending"
-    ),
-    withDbTimeout(
-      supabase
-        .from("proposals")
-        .select("id", { count: "exact", head: true })
-        .filter("metadata->>agency_id", "eq", agencyKey),
-      3000,
-      "institutions:agency-total-count"
-    ),
-    withDbTimeout(
-      supabase
-        .from("proposals")
-        .select("id", { count: "exact", head: true })
-        .filter("metadata->>agency_id", "eq", agencyKey)
-        .eq("status", "introduced")
-        .gt("metadata->>comment_period_end", now),
-      3000,
-      "institutions:agency-open-count"
-    ),
-  ])) as any[];
-
   const mapProposal = (row: { id: string; title: string; status: string; type: string; introduced_at: string | null; summary_plain: string | null; metadata: Record<string, unknown> | null; bill_details?: { bill_number?: string | null } | null }): Proposal => ({
     id: row.id,
     title: row.title,
@@ -434,60 +382,24 @@ async function AgencyView({
     summary_plain: row.summary_plain,
   });
 
-  const activeRules: Proposal[] = (activeRulesRes.data ?? []).map(mapProposal);
-  const recentRules: Proposal[] = (recentRulesRes.data ?? []).map(mapProposal);
-  const totalRules = totalCountRes.count ?? 0;
-  const openRules  = openCountRes.count ?? 0;
+  const activeRules: Proposal[] = (payload?.active_rules ?? []).map(mapProposal);
+  const recentRules: Proposal[] = (payload?.recent_rules ?? []).map(mapProposal);
+  const totalRules = payload?.total_rules ?? 0;
+  const openRules  = payload?.open_rules ?? 0;
 
-  const spendingRows = (spendingRes.data ?? []) as Array<{
-    to_id: string;
-    to_type: string;
-    relationship_type: string;
-    amount_cents: number | null;
-    occurred_at: string | null;
-  }>;
-
-  const entityIds = Array.from(
-    new Set(spendingRows.filter((r) => r.to_type === "financial_entity").map((r) => r.to_id))
-  );
-  const entityNames = new Map<string, string>();
-  if (entityIds.length > 0) {
-    const { data: entityRows } = (await withDbTimeout(
-      supabase
-        .from("financial_entities")
-        .select("id, display_name, canonical_name")
-        .in("id", entityIds),
-      3000,
-      "institutions:financial-entities"
-    )) as any;
-    for (const e of (entityRows ?? []) as Array<{ id: string; display_name: string | null; canonical_name: string | null }>) {
-      entityNames.set(e.id, e.display_name || e.canonical_name || "Unknown recipient");
-    }
-  }
-
-  const spendingGroups = aggregateSpending(
-    spendingRows.map<SpendingRow>((r) => ({
-      recipient_name: entityNames.get(r.to_id) ?? "Unknown recipient",
-      award_type: r.relationship_type,
-      amount_cents: r.amount_cents ?? 0,
-      award_date: r.occurred_at,
-    }))
-  );
+  // Spending rows arrive recipient-resolved in SpendingRow shape from the RPC
+  // (financial_entity recipients named, everything else "Unknown recipient" —
+  // identical to the old two-step name resolution). aggregateSpending is unchanged.
+  const spendingGroups = aggregateSpending((payload?.spending ?? []) as SpendingRow[]);
 
   const totalSpentCents = spendingGroups.reduce((sum, g) => sum + g.totalCents, 0);
 
-  const { data: connectionRows } = (await withDbTimeout(
-    supabase
-      .from("entity_connections")
-      .select("from_id, from_type, to_id, to_type, connection_type, strength, metadata, evidence_source")
-      .eq("connection_type", "appointment")
-      .or(
-        `and(from_type.eq.official,to_id.eq.${agency.id}),and(to_type.eq.official,from_id.eq.${agency.id})`
-      )
-      .limit(100),
-    3000,
-    "institutions:agency-connections"
-  )) as any;
+  // Raw appointment connections (same select shape as before) for the dedup below.
+  const connectionRows = (payload?.connections ?? []) as Array<{
+    from_id: string; from_type: string; to_id: string; to_type: string;
+    connection_type: string; strength: number | null;
+    metadata: Record<string, unknown> | null; evidence_source: string | null;
+  }>;
 
   const officialIds = Array.from(
     new Set(
@@ -535,15 +447,8 @@ async function AgencyView({
 
   let officials: OfficialLink[] = [];
   if (officialIds.length > 0) {
-    const { data: officialRows } = (await withDbTimeout(
-      supabase
-        .from("officials")
-        .select("id, full_name, role_title")
-        .in("id", officialIds),
-      3000,
-      "institutions:agency-officials"
-    )) as any;
-    officials = ((officialRows ?? []) as Array<{ id: string; full_name: string; role_title: string | null }>).map((o) => {
+    const officialRows = (payload?.officials ?? []) as Array<{ id: string; full_name: string; role_title: string | null }>;
+    officials = officialRows.map((o) => {
       const conn = connectionByOfficialId.get(o.id) ?? { connectionType: "oversight", positionTitle: null, strength: 0, startDate: null, endDate: null, isCurrent: false, evidenceSource: null, sourceDate: null };
       return {
         id:             o.id,
@@ -566,47 +471,14 @@ async function AgencyView({
     });
   }
 
-  // pipeline_state.plum_book_state is RLS service-role-only. FIX-432 read it via
-  // createAdminClient to show a freshness date on official cards; that admin read
-  // forced force-dynamic. FIX-645 exposes ONLY the last_change date via the
-  // get_plum_book_last_change() SECURITY DEFINER RPC, so the publishable client
-  // can fetch it and the page can be ISR'd.
-  const plumStateRes = (await withDbTimeout(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (supabase as any).rpc("get_plum_book_last_change"),
-    3000,
-    "institutions:plum-state"
-  )) as { data: string | null };
+  // plum_book_state freshness date, delegated through get_agency_page →
+  // get_plum_book_last_change() (the SECURITY DEFINER RPC FIX-645 added so the
+  // publishable client can read this without force-dynamic). Same slice(0,10).
   const plumLastChange: string | null =
-    typeof plumStateRes.data === "string" ? plumStateRes.data.slice(0, 10) : null;
+    typeof payload?.plum_last_change === "string" ? payload.plum_last_change.slice(0, 10) : null;
 
-  const [parentRes, childrenRes] = (await Promise.all([
-    agency.parent_agency_id
-      ? withDbTimeout(
-          supabase
-            .from("agencies")
-            .select("id, name, acronym")
-            .eq("id", agency.parent_agency_id)
-            .maybeSingle(),
-          3000,
-          "institutions:agency-parent"
-        )
-      : Promise.resolve({ data: null }),
-    withDbTimeout(
-      supabase
-        .from("agencies")
-        .select("id, name, acronym")
-        .eq("parent_agency_id", agency.id)
-        .eq("is_active", true)
-        .order("name")
-        .limit(30),
-      3000,
-      "institutions:agency-children"
-    ),
-  ])) as any[];
-
-  const parentAgency = parentRes.data as { id: string; name: string; acronym: string | null } | null;
-  const childAgencies = (childrenRes.data ?? []) as { id: string; name: string; acronym: string | null }[];
+  const parentAgency = (payload?.parent_agency ?? null) as { id: string; name: string; acronym: string | null } | null;
+  const childAgencies = (payload?.child_agencies ?? []) as { id: string; name: string; acronym: string | null }[];
 
   const typeColor = AGENCY_TYPE_COLORS[agency.agency_type] ?? AGENCY_TYPE_COLORS["other"]!;
   const typeLabel = AGENCY_TYPE_LABELS[agency.agency_type] ?? "Agency";
@@ -1043,155 +915,34 @@ async function GoverningBodyView({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   supabase: any;
 }) {
-  const now = new Date();
-  const meetingsFrom = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
-  const meetingsTo   = new Date(now.getTime() + 60 * 24 * 60 * 60 * 1000).toISOString();
   const isLegislature = LEGISLATURE_TYPES.has(institution.type);
 
-  const [
-    gbExtraRes,
-    jurisdictionRes,
-    parentRes,
-    officialsRes,
-    partyBalanceRes,
-    activeProposalsRes,
-    recentProposalsRes,
-    totalProposalsRes,
-    subBodyExtRes,
-    meetingsRes,
-    recentVotesRes,
-  ] = (await Promise.all([
-    withDbTimeout(
-      supabase
-        .from("governing_bodies")
-        .select("seat_count, term_length_years")
-        .eq("id", institution.id)
-        .maybeSingle(),
-      3000,
-      "institutions:gb-extra"
-    ),
-    institution.jurisdiction_id
-      ? withDbTimeout(
-          supabase
-            .from("jurisdictions")
-            .select("id, name, is_synthetic")
-            .eq("id", institution.jurisdiction_id)
-            .maybeSingle(),
-          3000,
-          "institutions:gb-jurisdiction"
-        )
-      : Promise.resolve({ data: null }),
-    institution.parent_id
-      ? withDbTimeout(
-          supabase
-            .from("institutions")
-            .select("id, name")
-            .eq("id", institution.parent_id)
-            .maybeSingle(),
-          3000,
-          "institutions:gb-parent"
-        )
-      : Promise.resolve({ data: null }),
-    // Roster + party balance + the "Active members" stat are current members of
-    // the body — is_active AND tier='elected' (FIX-470). Without the tier scope,
-    // the FEC candidate field parked on the body (tier='candidate', FIX-246)
-    // counts as members: prod US House showed 8,880 instead of 436. Shared
-    // predicate so FIX-468 graph group-expansion reuses one definition.
-    withDbTimeout(
-      currentGoverningBodyMembers(
-        supabase
-          .from("officials")
-          .select("id, full_name, role_title, party, photo_url, district_name, is_synthetic")
-          .eq("governing_body_id", institution.id)
-      )
-        .order("role_title")
-        .order("last_name")
-        .limit(500),
-      3000,
-      "institutions:gb-roster"
-    ),
-    withDbTimeout(
-      currentGoverningBodyMembers(
-        supabase
-          .from("officials")
-          .select("party")
-          .eq("governing_body_id", institution.id)
-      ).limit(1000), // FIX-476 — honest ceiling (PostgREST max_rows). FIX-470's
-                     // current-member scoping brought every body's roster <1000,
-                     // so the prior `.limit(2000)` (capped to 1000 anyway) is now
-                     // a no-op; this documents the real ceiling. [[FIX-470]]
-      3000,
-      "institutions:gb-party-balance"
-    ),
-    withDbTimeout(
-      supabase
-        .from("proposals")
-        .select("id, title, status, type, introduced_at, summary_plain, metadata, bill_details(bill_number)")
-        .eq("governing_body_id", institution.id)
-        .in("status", ["introduced", "in_committee", "passed_committee", "floor_vote"])
-        .order("introduced_at", { ascending: false })
-        .limit(15),
-      3000,
-      "institutions:gb-active-proposals"
-    ),
-    withDbTimeout(
-      supabase
-        .from("proposals")
-        .select("id, title, status, type, introduced_at, summary_plain, metadata, bill_details(bill_number)")
-        .eq("governing_body_id", institution.id)
-        .in("status", ["enacted", "signed", "failed", "withdrawn"])
-        .order("updated_at", { ascending: false })
-        .limit(5),
-      3000,
-      "institutions:gb-recent-proposals"
-    ),
-    withDbTimeout(
-      supabase
-        .from("proposals")
-        .select("id", { count: "exact", head: true })
-        .eq("governing_body_id", institution.id),
-      3000,
-      "institutions:gb-total-proposals"
-    ),
-    // Sub-bodies / committees: children are governing_bodies whose
-    // institution_extensions.parent_id points at this body. Unpopulated today
-    // (institution_extensions is empty) — section self-omits when no children.
-    withDbTimeout(
-      supabase
-        .from("institution_extensions")
-        .select("governing_body_id")
-        .eq("parent_id", institution.id)
-        .limit(100),
-      3000,
-      "institutions:gb-subbody-ext"
-    ),
-    withDbTimeout(
-      supabase
-        .from("meetings")
-        .select("id, title, meeting_type, scheduled_at, agenda_url, governing_bodies!inner(is_synthetic)")
-        .eq("governing_body_id", institution.id)
-        .gte("scheduled_at", meetingsFrom)
-        .lte("scheduled_at", meetingsTo)
-        .order("scheduled_at", { ascending: false })
-        .limit(10),
-      3000,
-      "institutions:gb-meetings"
-    ),
-    withDbTimeout(
-      supabase.rpc("get_institution_recent_votes", {
-        p_institution_id: institution.id,
-        p_limit: 10,
-      }),
-      3000,
-      "institutions:gb-recent-votes"
-    ),
-  ])) as any[];
+  // FIX-647: ONE consolidating RPC replaces the governing-body branch's ~11-query
+  // request-path fan-out (gb extras, jurisdiction, parent, roster, party balance,
+  // active/recent/total proposals, sub-bodies, meetings, recent votes — the last
+  // delegated to get_institution_recent_votes, FIX-439). The page is already ISR
+  // (FIX-645) + withDbTimeout-wrapped (FIX-638); this collapses the cache-miss
+  // render cost. The roster/party current-member scope (is_active AND
+  // tier='elected', FIX-470/FIX-476) and the meeting window (now ±30/60d) live in
+  // the RPC now; each section mirrors the old query's exact shape so the JS
+  // shaping below (roster/party/meeting reshape, mapProposal) is unchanged.
+  // withDbTimeout<T> infers T=unknown on an any builder, so cast locally rather
+  // than pass a type arg (the FIX-639 render-timeout guard still sees the wrap).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: rpcData } = (await withDbTimeout(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (supabase as any).rpc("get_gb_page", { p_id: institution.id }),
+    3000,
+    "institutions:gb-page"
+  )) as { data: unknown };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const payload = (rpcData ?? null) as any;
 
-  const gbExtra = gbExtraRes.data as { seat_count: number | null; term_length_years: number | null } | null;
-  const jurisdiction = jurisdictionRes.data as { id: string; name: string; is_synthetic?: boolean } | null;
-  const parent = parentRes.data as { id: string; name: string } | null;
+  const gbExtra = (payload?.gb_extra ?? null) as { seat_count: number | null; term_length_years: number | null } | null;
+  const jurisdiction = (payload?.jurisdiction ?? null) as { id: string; name: string; is_synthetic?: boolean } | null;
+  const parent = (payload?.parent ?? null) as { id: string; name: string } | null;
 
-  const roster = ((officialsRes.data ?? []) as Array<{
+  const roster = ((payload?.roster ?? []) as Array<{
     id: string;
     full_name: string;
     role_title: string | null;
@@ -1211,7 +962,7 @@ async function GoverningBodyView({
 
   // Party balance over ALL active members (not just the rendered roster slice).
   const partyCounts = new Map<string, number>();
-  for (const r of (partyBalanceRes.data ?? []) as Array<{ party: string | null }>) {
+  for (const r of (payload?.party_balance ?? []) as Array<{ party: string | null }>) {
     const bucket =
       r.party === "democrat" || r.party === "republican" || r.party === "independent"
         ? r.party
@@ -1220,25 +971,13 @@ async function GoverningBodyView({
   }
   const partyTotal = Array.from(partyCounts.values()).reduce((a, b) => a + b, 0);
 
-  // Resolve sub-body governing_bodies (if any extensions point here).
-  const subBodyIds = ((subBodyExtRes.data ?? []) as Array<{ governing_body_id: string }>).map((r) => r.governing_body_id);
-  let subBodies: Array<{ id: string; name: string; type: string }> = [];
-  if (subBodyIds.length > 0) {
-    const { data: sbRows } = (await withDbTimeout(
-      supabase
-        .from("governing_bodies")
-        .select("id, name, type")
-        .in("id", subBodyIds)
-        .eq("is_active", true)
-        .order("name")
-        .limit(100),
-      3000,
-      "institutions:gb-subbodies"
-    )) as any;
-    subBodies = (sbRows ?? []) as Array<{ id: string; name: string; type: string }>;
-  }
+  // Sub-bodies / committees: the RPC folds the old two-step (institution_extensions
+  // → governing_bodies) into one join, returning resolved {id,name,type} rows
+  // (is_active, ordered by name, limit 100). Empty today — institution_extensions
+  // is unpopulated — so the section self-omits.
+  const subBodies = (payload?.sub_bodies ?? []) as Array<{ id: string; name: string; type: string }>;
 
-  const meetings = ((meetingsRes.data ?? []) as Array<{
+  const meetings = ((payload?.meetings ?? []) as Array<{
     id: string;
     title: string | null;
     meeting_type: string;
@@ -1258,7 +997,7 @@ async function GoverningBodyView({
     };
   });
 
-  const recentVotes = (recentVotesRes.data ?? []) as RecentVote[];
+  const recentVotes = (payload?.recent_votes ?? []) as RecentVote[];
 
   const mapProposal = (row: { id: string; title: string; status: string; type: string; introduced_at: string | null; summary_plain: string | null; metadata: Record<string, unknown> | null; bill_details?: { bill_number?: string | null } | null }): Proposal => ({
     id: row.id,
@@ -1272,9 +1011,9 @@ async function GoverningBodyView({
     summary_plain: row.summary_plain,
   });
 
-  const activeProposals: Proposal[] = (activeProposalsRes.data ?? []).map(mapProposal);
-  const recentProposals: Proposal[] = (recentProposalsRes.data ?? []).map(mapProposal);
-  const totalProposals = totalProposalsRes.count ?? 0;
+  const activeProposals: Proposal[] = (payload?.active_proposals ?? []).map(mapProposal);
+  const recentProposals: Proposal[] = (payload?.recent_proposals ?? []).map(mapProposal);
+  const totalProposals = payload?.total_proposals ?? 0;
 
   const typeColor = GB_TYPE_COLORS[institution.type] ?? GB_TYPE_COLORS["other"]!;
   const typeLabel = GB_TYPE_LABELS[institution.type] ?? "Governing Body";
