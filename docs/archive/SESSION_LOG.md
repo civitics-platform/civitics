@@ -1,5 +1,8 @@
 # Session Log
 
+> RETIRED 2026-06-21 — superseded by docs/done.log (shipped record) +
+> docs/FIXES.md (backlog). Kept for historical reference only.
+
 ---
 
 ## 2026-05-17 (FIX-290 + FIX-291 — split rebuild_entity_connections out of nightly, accept partial in canary)

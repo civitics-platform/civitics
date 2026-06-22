@@ -304,7 +304,7 @@ const PIPELINES: PipelineDef[] = [
     display: "AI Summaries",
     aliases: ["ai_summaries"],
     // Background work lives in enrichment_queue, drained by subagent
-    // sessions (see docs/SESSION_LOG.md). The pipeline name rarely writes
+    // sessions (see docs/done.log). The pipeline name rarely writes
     // to data_sync_log itself, so `continuous` would always show red.
     // `on_demand` treats "any run logged" as healthy.
     cadence: "on_demand",

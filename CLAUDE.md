@@ -18,9 +18,8 @@ Starting a new session? Read these files before touching any code:
 
 | File | What it tells you |
 |---|---|
-| `docs/SESSION_LOG.md` | What happened last session, what's unblocked, what's next |
-| `docs/FIXES.md` | Bug and improvement backlog, each bullet has a stable `FIX-NNN` ID |
-| `docs/done.log` | Source of truth for what's actually shipped (append-only) |
+| `docs/done.log` | Source of truth for what's actually shipped — per-FIX completion record (append-only). Start here for "what happened recently / what's done" |
+| `docs/FIXES.md` | Bug and improvement backlog, each bullet has a stable `FIX-NNN` ID — what's unblocked / what's next |
 | `docs/PHASE_GOALS.md` | Phase 1 completion picture |
 | `.env.local` (whichever was last copied) | **Which DB you're hitting** — `grep ^NEXT_PUBLIC_SUPABASE_URL .env.local` |
 
@@ -36,8 +35,9 @@ environment check" below.
 
 > **Execution model (as of 2026-04-18):** Claude Code (VS Code extension on
 > Windows) runs the full loop autonomously: migrate → build → commit → push →
-> `pnpm fixes:sync` → commit → push. No SESSION_LOG ⚠️ hand-off required for
-> local migrations. `docs/QWEN_PROMPTS.md` is preserved as historical archive.
+> `pnpm fixes:sync` → commit → push. No cross-session hand-off doc required for
+> local migrations. `docs/QWEN_PROMPTS.md` and `docs/archive/SESSION_LOG.md` are
+> preserved as historical archives.
 
 ---
 
@@ -447,7 +447,7 @@ or pnpm locally. In that case:
 
 1. Write the migration file to `supabase/migrations/` and any code changes.
 2. **Emit a ready-to-paste Claude Code prompt** at the end of the session —
-   not a SESSION_LOG ⚠️ bullet — that Craig can drop into the VS Code Claude
+   not a hand-off-doc bullet — that Craig can drop into the VS Code Claude
    Code extension to execute the loop above end-to-end. Example format:
 
    ```
