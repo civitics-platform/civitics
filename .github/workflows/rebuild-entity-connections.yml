@@ -91,6 +91,22 @@ jobs:
       - name: Rebuild entity_connections (mode=${{ steps.mode.outputs.mode }})
         run: pnpm --filter @civitics/data data:rebuild-connections:ci -- --mode=${{ steps.mode.outputs.mode }}
 
+      # FIX-641: refresh official_donor_rollup_mv off the capped PostgREST path.
+      # This MV was refreshed nightly via admin.rpc() (enrichment phase, step 7
+      # MV loop) but is large enough that the ~8s/100s PostgREST/gateway caps
+      # timed it out — staling the MV and dropping officials/[id] into its
+      # 50k-row live-scan fallback. The direct-pg refresher (FIX-636) raises
+      # statement_timeout on its own session and REFRESHes CONCURRENTLY, so it
+      # completes reliably. Runs here (08:00 UTC window, off-peak) because the
+      # MV source (FEC donations in financial_relationships) only updates on the
+      # Sunday nightly — twice-weekly is ample. Independent of the rebuild's
+      # outcome (different source table), so `!cancelled()` runs it even if the
+      # rebuild step failed; reads SUPABASE_DB_PASSWORD + NEXT_PUBLIC_SUPABASE_URL
+      # from the job env, no --env-file.
+      - name: Refresh donor-rollup MV (direct-pg)
+        if: ${{ !cancelled() }}
+        run: pnpm --filter @civitics/data data:refresh-donor-mv:ci
+
       # FIX-290: if the workflow exceeds timeout-minutes mid-rebuild, the
       # entity_connections_rebuild data_sync_log row strands at
       # status='running' and the rebuild step above never reaches its
