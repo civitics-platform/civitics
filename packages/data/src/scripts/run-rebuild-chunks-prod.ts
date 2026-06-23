@@ -53,6 +53,22 @@ async function main(): Promise<void> {
   let grandTotalEdges = 0;
   const t0 = Date.now();
   try {
+    // FIX-650 — startup reconcile: heal a stranded autovacuum_enabled=false on
+    // entity_connections before doing any churn. This script is the manual "2b"
+    // recovery path operators run after a GHA full rebuild is cancelled/SIGKILLed
+    // at the 4h cap (the FIX-591 dirty-exit case). The full rebuild
+    // (rebuild-entity-connections.ts) pauses autovacuum (FIX-590) and re-enables
+    // it in a finally + startup reconcile — but a SIGKILL skips the finally, and
+    // THIS recovery script never managed autovacuum, so the flag stayed off and
+    // the DELETE+INSERT churn's dead tuples were never reaped (entity_connections
+    // sat at ~70% dead tuples, FIX-650). Re-enabling here is idempotent and cheap;
+    // it never sets the flag false, so this path can only heal, never strand.
+    try {
+      await client.query("ALTER TABLE public.entity_connections SET (autovacuum_enabled = true)");
+      console.log("  [reconcile] autovacuum_enabled=true on entity_connections (idempotent heal)");
+    } catch (reErr) {
+      console.warn(`  [reconcile] autovacuum re-enable warning: ${reErr instanceof Error ? reErr.message : String(reErr)}`);
+    }
     for (const fn of chunkFns) {
       const chunkStart = Date.now();
       console.log(`\n[${new Date().toISOString()}] running ${fn}()`);
@@ -85,7 +101,30 @@ async function main(): Promise<void> {
     );
     console.log(`\nPer-type breakdown:`);
     for (const r of breakdown.rows) console.log(`  ${r.connection_type}: ${Number(r.n).toLocaleString()}`);
+
+    // FIX-650 — reap the dead tuples this rebuild's DELETE+INSERT churn produced,
+    // now that the chunks are done. Mirrors the FIX-590 post-rebuild VACUUM tail
+    // in rebuild-entity-connections.ts. Plain VACUUM (ANALYZE) is online (SHARE
+    // UPDATE EXCLUSIVE — does not block graph reads/writes) and refreshes the
+    // planner stats + visibility map. Wrapped so a VACUUM failure doesn't mask a
+    // good rebuild. (It does NOT shrink the on-disk file — that needs VACUUM FULL
+    // / pg_repack, a separate gated decision.)
+    try {
+      await client.query("SET statement_timeout = '30min'");
+      await client.query("VACUUM (ANALYZE) public.entity_connections");
+      console.log("  [post] VACUUM (ANALYZE) entity_connections — complete");
+    } catch (vacErr) {
+      console.warn(`  [post] post-rebuild VACUUM — FAILED: ${vacErr instanceof Error ? vacErr.message : String(vacErr)}`);
+    }
   } finally {
+    // FIX-650 — belt-and-braces: ensure autovacuum is on even if a chunk threw
+    // mid-run. This script never disables it, but a future edit might, and an
+    // operator killing the run must never leave it stranded (the FIX-650 incident).
+    try {
+      await client.query("ALTER TABLE public.entity_connections SET (autovacuum_enabled = true)");
+    } catch {
+      /* connection may already be dead — manual re-enable then needed */
+    }
     await client.end();
   }
 }

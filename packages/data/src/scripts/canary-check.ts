@@ -109,7 +109,36 @@ async function fetchKilledDates(daysBack: number): Promise<Set<string>> {
   return set;
 }
 
-async function writeMetaRow(missing: string[], killed: string[]): Promise<void> {
+// FIX-650 — read-only detector: is any rebuild-toggled table (entity_connections)
+// sitting at autovacuum_enabled=false outside an active rebuild? The full rebuild
+// pauses autovacuum (FIX-590) and re-enables it on exit (FIX-591), but a SIGKILL
+// at the GHA 4h cap skips the finally and the manual 2b recovery path historically
+// didn't manage the flag — so on 2026-06-21 entity_connections was stranded at
+// autovacuum-off and bloated to ~70% dead tuples (FIX-650). The canary runs at
+// 05:00 UTC, never inside the Sun/Wed 08:00 rebuild window, so it's the morning-
+// after detector that would have caught this. Returns the stranded relnames.
+async function fetchStrandedAutovacuum(): Promise<string[]> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = createAdminClient() as any;
+  const { data, error } = await db.rpc("check_rebuild_autovacuum_status");
+  if (error) {
+    // Non-fatal: belt-and-braces detector. A missing RPC (env not yet migrated)
+    // or a transient error must never fail the nightly canary's primary job.
+    console.warn(`[canary-check] autovacuum detector query failed (non-fatal): ${error.message}`);
+    return [];
+  }
+  const result = (data ?? {}) as { rebuild_active?: boolean; stranded?: string[] };
+  // The RPC already excludes an in-flight rebuild via rebuild_active; this is a
+  // second guard in case the shape changes.
+  if (result.rebuild_active) return [];
+  return Array.isArray(result.stranded) ? result.stranded : [];
+}
+
+async function writeMetaRow(
+  missing: string[],
+  killed: string[],
+  strandedAutovacuum: string[],
+): Promise<void> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = createAdminClient() as any;
   const now = new Date().toISOString();
@@ -125,6 +154,8 @@ async function writeMetaRow(missing: string[], killed: string[]): Promise<void> 
       missing_dates:    missing,
       killed_count:     killed.length,
       killed_dates:     killed,
+      // FIX-650 — rebuild-toggled tables stranded at autovacuum_enabled=false.
+      stranded_autovacuum: strandedAutovacuum,
       peak_rss_mb:      captureRssMb(),
     },
   });
@@ -136,6 +167,7 @@ async function writeMetaRow(missing: string[], killed: string[]): Promise<void> 
 async function sendAlert(
   missing: string[],
   killed: string[],
+  strandedAutovacuum: string[],
   to: string,
   apiKey: string,
 ): Promise<void> {
@@ -147,14 +179,13 @@ async function sendAlert(
   // FIX-290: distinguish "didn't run at all" from "ran but got SIGTERM'd."
   // Killed-only is a softer signal — the workflow started and the post-step
   // wrote a synthetic row, so the runner + GHA scheduling are healthy.
-  let subject: string;
-  if (missing.length > 0 && killed.length > 0) {
-    subject = `[Civitics] Nightly sync missed ${missing.length} day(s), killed ${killed.length} day(s)`;
-  } else if (missing.length > 0) {
-    subject = `[Civitics] Nightly sync missed ${missing.length} day(s)`;
-  } else {
-    subject = `⚠️ Nightly killed by workflow timeout (${killed.length} day(s))`;
-  }
+  // FIX-650: a third, independent signal — a rebuild-toggled table stranded at
+  // autovacuum-off. Build the subject additively across whichever signals fired.
+  const parts: string[] = [];
+  if (missing.length > 0) parts.push(`missed ${missing.length} day(s)`);
+  if (killed.length > 0) parts.push(`killed ${killed.length} day(s)`);
+  if (strandedAutovacuum.length > 0) parts.push(`autovacuum stranded off on ${strandedAutovacuum.join(", ")}`);
+  const subject = `[Civitics] Nightly canary — ${parts.join("; ")}`;
 
   const sections: string[] = [];
   if (missing.length > 0) {
@@ -170,6 +201,17 @@ async function sendAlert(
         `the workflow ran but exceeded timeout-minutes before reaching the ` +
         `completion-row write in runNightlySync:\n` +
         killed.map((d) => `  - ${d}`).join("\n"),
+    );
+  }
+  if (strandedAutovacuum.length > 0) {
+    sections.push(
+      `Autovacuum stranded OFF (FIX-650) — the full entity_connections rebuild ` +
+        `pauses autovacuum and re-enables it on exit, but a SIGKILL at the GHA ` +
+        `cap (or a recovery path that didn't manage the flag) left it disabled. ` +
+        `Dead tuples accumulate unbounded until re-enabled:\n` +
+        strandedAutovacuum.map((t) => `  - ${t}`).join("\n") +
+        `\n\nRemediate at low traffic: ALTER TABLE public.<table> SET ` +
+        `(autovacuum_enabled = true); VACUUM (ANALYZE) public.<table>;`,
     );
   }
   const body = sections.join("\n\n") + `\n\nWorkflow runs: ${NIGHTLY_RUN_URL}\n`;
@@ -188,6 +230,9 @@ async function main(): Promise<void> {
   const expected = expectedDates(now, CHECK_DAYS);
   const actual   = await fetchActualDates(CHECK_DAYS);
   const killedSet = await fetchKilledDates(CHECK_DAYS);
+  // FIX-650 — point-in-time check (not a 7-day window): is a rebuild-toggled
+  // table stranded at autovacuum-off right now, outside an active rebuild?
+  const strandedAutovacuum = await fetchStrandedAutovacuum();
   // "missing" = no nightly_cron row AND no nightly_killed row for that date.
   // "killed" = no nightly_cron row but a nightly_killed synthetic row exists.
   const missing  = expected.filter((d) => !actual.has(d) && !killedSet.has(d));
@@ -198,10 +243,10 @@ async function main(): Promise<void> {
   const resendKey  = process.env["RESEND_API_KEY"];
   const inCi       = process.env["GITHUB_ACTIONS"] === "true";
   const sendReal   = process.argv.includes("--send-real");
-  const hasAlert   = missing.length > 0 || killed.length > 0;
+  const hasAlert   = missing.length > 0 || killed.length > 0 || strandedAutovacuum.length > 0;
   if (hasAlert && adminEmail && resendKey) {
     if (inCi || sendReal) {
-      await sendAlert(missing, killed, adminEmail, resendKey);
+      await sendAlert(missing, killed, strandedAutovacuum, adminEmail, resendKey);
       alertSent = true;
     } else {
       console.log(
@@ -210,14 +255,15 @@ async function main(): Promise<void> {
     }
   }
 
-  await writeMetaRow(missing, killed);
+  await writeMetaRow(missing, killed, strandedAutovacuum);
 
   console.log(
     JSON.stringify({
-      checked_days:  CHECK_DAYS,
-      missing_dates: missing,
-      killed_dates:  killed,
-      alert_sent:    alertSent,
+      checked_days:        CHECK_DAYS,
+      missing_dates:       missing,
+      killed_dates:        killed,
+      stranded_autovacuum: strandedAutovacuum,
+      alert_sent:          alertSent,
     })
   );
 }
