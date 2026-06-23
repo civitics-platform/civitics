@@ -821,3 +821,4 @@
 2026-06-21 | FIX-648 | 4fc6558a | local+prod | fix(platform-costs): correct Vercel run-rate numbers + watch fluid cost driver
 2026-06-22 | FIX-650 | ddb1a443 | local+prod | fix(graph): re-enable autovacuum on entity_connections + guard re-strand (FIX-650)
 2026-06-22 | FIX-651 | da5992ce | local+prod | perf(enrichment): route nightly timeout-cascade callsites to direct-pg (FIX-651)
+2026-06-22 | FIX-652 | ef3880d8 | local-only | perf(tags): gate size-tag rebuild on donation source-change + tune entity_tags autovacuum (FIX-652)
