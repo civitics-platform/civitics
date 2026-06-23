@@ -207,6 +207,46 @@ family / FIX-581) and would speed pipeline scans — it is "would help broadly,"
 
 ---
 
+## 4b. FIX-650 remediation EXECUTED (2026-06-23, calm prod window)
+
+Runtime remediation against prod (SELECT-only confirm → re-enable → VACUUM →
+gated VACUUM FULL). Craig greenlit the calm window + the FULL reclaim in-session.
+
+| Metric | Before | After plain VACUUM | After VACUUM FULL |
+|---|---|---|---|
+| `autovacuum_enabled` | **false (stranded)** | true | true |
+| `n_dead_tup` | 5,755,294 | 0 | 0 |
+| `n_live_tup` | 2,496,534 | 2,512,258 | 2,502,628 |
+| pct dead | 69.7% | 0% | 0% |
+| total size | 4079 MB | 4079 MB | **1064 MB** |
+| heap | 1621 MB | 1621 MB | 525 MB |
+| indexes | 2457 MB | 2457 MB | 539 MB |
+
+- Re-enable + plain `VACUUM (ANALYZE)` (online, SHARE UPDATE EXCLUSIVE) ran in
+  ~99s, reaped 5.74M dead index pointers, refreshed stats/visibility map — but
+  did not shrink the file (expected).
+- `VACUUM (FULL, ANALYZE)` (ACCESS EXCLUSIVE, ~82s in the calm window) reclaimed
+  **~2.95 GB** (4079 → 1064 MB). The EC contribution to the hot working set drops
+  from 4.1 GB to ~1.06 GB — the audit's ~13.9 GB set falls to ~10.9 GB,
+  materially easing the FIX-589 cache-starvation premise.
+- FIX-331 tuning (`autovacuum_vacuum_scale_factor=0.05`,
+  `autovacuum_analyze_scale_factor=0.02`) survived the whole sequence.
+- Graph-read smoke clean after each step (`/graph` 200 in 0.24s post-FULL).
+- **Stranding root cause:** the 06-21 11:16 GHA full rebuild (which sets
+  `autovacuum_enabled=false`, FIX-590) was SIGTERM/SIGKILLed at the 4h cap —
+  FIX-591's re-enable couldn't finish in the grace window, and the next full
+  rebuild's startup reconcile (the backstop) wasn't due until Wed. The manual 2b
+  recovery (`run-rebuild-chunks-prod.ts`, FIX-640) that finished donations
+  never managed the flag, so it stayed off through 06-22.
+
+**Guard (committed, FIX-650):** `run-rebuild-chunks-prod.ts` now re-enables
+autovacuum at startup + post-VACUUM + `finally` (heal-only, never sets false);
+new RPC `check_rebuild_autovacuum_status()` + a `canary-check.ts` detector
+warns/emails the morning after if a rebuild-toggled table is stranded
+autovacuum-off outside an active rebuild. Migration applied to prod.
+
+---
+
 ## 5. Finding → FIX map
 
 | Finding | Disposition |
