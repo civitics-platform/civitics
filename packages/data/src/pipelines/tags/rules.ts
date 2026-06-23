@@ -15,7 +15,8 @@
 
 import { createAdminClient } from "@civitics/db";
 import { startSync, completeSync, failSync } from "../sync-log";
-import { runHeavyRebuild, selectDirect } from "../../lib/heavy-rebuild";
+import { runHeavyRebuild, selectDirect, rollupJsonbDirect } from "../../lib/heavy-rebuild";
+import { withDirectClient, bulkUpsert } from "../../lib/direct-pg-upsert";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -202,6 +203,22 @@ const INDUSTRY_LABELS: Record<string, { label: string; icon: string }> = {
 // Helpers
 // ---------------------------------------------------------------------------
 
+// FIX-651: lightweight phase timing. The 2026-06-22 nightly's rule tagger
+// burned ~96 min before dying; the rollup reads are now confirmed+lifted (donor
+// 34.6s, bipartisan 113.9s on prod, both direct-pg), but whether the remaining
+// budget is the entity_tags upserts (2.4 GB / 3.39M rows, capped PostgREST
+// path) or the paginated reads is the open deliverable-C question. These logs
+// let the next nightly answer it without guessing. Cheap (one Date.now pair per
+// phase) — safe to leave in.
+async function timed<T>(label: string, fn: () => Promise<T>): Promise<T> {
+  const t0 = Date.now();
+  try {
+    return await fn();
+  } finally {
+    console.log(`    [timing] ${label}: ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+  }
+}
+
 function daysBetween(a: Date, b: Date): number {
   return Math.floor((b.getTime() - a.getTime()) / (1000 * 60 * 60 * 24));
 }
@@ -210,37 +227,43 @@ function yearsBetween(a: Date, b: Date): number {
   return (b.getTime() - a.getTime()) / (1000 * 60 * 60 * 24 * 365.25);
 }
 
-const TAG_CHUNK_SIZE = 500;
+// TagInsert field order — the row arrays handed to bulkUpsert align to this.
+const TAG_COLUMNS = [
+  "entity_type", "entity_id", "tag", "tag_category",
+  "display_label", "display_icon", "visibility",
+  "generated_by", "confidence", "pipeline_version", "metadata",
+] as const;
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function upsertTagChunkWithRetry(db: any, chunk: TagInsert[], maxRetries = 3): Promise<boolean> {
-  for (let i = 0; i < maxRetries; i++) {
-    const { error } = await db.from("entity_tags").upsert(chunk, {
-      onConflict: "entity_type,entity_id,tag,tag_category",
-    });
-    if (!error) return true;
-    if (i < maxRetries - 1) {
-      // Exponential backoff: 500ms, 1000ms, 2000ms — schema cache errors resolve with a short wait
-      const wait = 500 * Math.pow(2, i);
-      await new Promise((r) => setTimeout(r, wait));
-    }
-  }
-  return false;
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function upsertTags(db: any, tags: TagInsert[]): Promise<number> {
+// FIX-651: direct-pg bulk upsert (was PostgREST .upsert in 500-row chunks with a
+// 3× backoff). The financial-industry write measured 92.7s for ~21k rows on
+// local Docker (uncapped); on prod's 2.4 GB / 3.39M-row entity_tags under the 8s
+// service_role cap the same chunked PostgREST path is slower and retry-prone —
+// a material share of the 2026-06-22 rule-tagger 96-min burn. bulkUpsert
+// collapses ~N/500 capped round-trips into ~N/4000 uncapped ones over one
+// session-statement_timeout-raised connection (the FIX-462 pattern). Conflict
+// arbiter is the full unique constraint
+// entity_tags_entity_type_entity_id_tag_tag_category_key (verified via \d),
+// so ON CONFLICT (cols) DO UPDATE matches PostgREST merge-duplicates byte-for-
+// byte. A non-zero `failed` now signals a real data/constraint problem rather
+// than a swallowed timeout drop.
+async function upsertTags(tags: TagInsert[]): Promise<number> {
   if (tags.length === 0) return 0;
-  let upserted = 0;
-  for (let i = 0; i < tags.length; i += TAG_CHUNK_SIZE) {
-    const chunk = tags.slice(i, i + TAG_CHUNK_SIZE);
-    const ok = await upsertTagChunkWithRetry(db, chunk);
-    if (ok) {
-      upserted += chunk.length;
-    } else {
-      console.error(`    Tag upsert chunk ${i}-${i + chunk.length} failed after retries`);
-    }
-  }
+  const rows = tags.map((t) => [
+    t.entity_type, t.entity_id, t.tag, t.tag_category,
+    t.display_label, t.display_icon, t.visibility,
+    t.generated_by, t.confidence, t.pipeline_version, t.metadata,
+  ]);
+  const { upserted, failed } = await withDirectClient((client) =>
+    bulkUpsert(client, {
+      table: "entity_tags",
+      columns: [...TAG_COLUMNS],
+      conflictColumns: ["entity_type", "entity_id", "tag", "tag_category"],
+      jsonbColumns: ["metadata"],
+      rows,
+      label: "entity_tags",
+    }),
+  );
+  if (failed > 0) console.error(`    entity_tags bulk upsert: ${failed} row(s) failed`);
   return upserted;
 }
 
@@ -428,7 +451,9 @@ async function tagProposals(db: any): Promise<number> {
     .eq("generated_by", "rule");
   if (delErr) console.error("    Error clearing prior proposal rule tags:", delErr.message);
 
-  const totalUpserted = await upsertTags(db, allTags);
+  const totalUpserted = await timed(`proposal tags upsert (n=${allTags.length})`, () =>
+    upsertTags(allTags),
+  );
   console.log(`    Upserted ${totalUpserted} proposal tags`);
   return totalUpserted;
 }
@@ -442,19 +467,21 @@ async function tagOfficials(db: any): Promise<number> {
   console.log("\n  [2/3] Tagging officials...");
 
   // Paginated — officials is ~27k rows, past the 1,000-row cap (FIX-427).
-  const officials = await fetchAllPaged<{
-    id: string;
-    full_name: string;
-    party: string | null;
-    term_start: string | null;
-    term_end: string | null;
-    is_active: boolean;
-  }>("officials", (from, to) =>
-    db
-      .from("officials")
-      .select("id, full_name, party, term_start, term_end, is_active")
-      .order("id", { ascending: true })
-      .range(from, to),
+  const officials = await timed("officials fetch (paged)", () =>
+    fetchAllPaged<{
+      id: string;
+      full_name: string;
+      party: string | null;
+      term_start: string | null;
+      term_end: string | null;
+      is_active: boolean;
+    }>("officials", (from, to) =>
+      db
+        .from("officials")
+        .select("id, full_name, party, term_start, term_end, is_active")
+        .order("id", { ascending: true })
+        .range(from, to),
+    ),
   );
 
   if (officials.length === 0) {
@@ -471,17 +498,28 @@ async function tagOfficials(db: any): Promise<number> {
   // lookup would blow the URL-length limit once the donation load was
   // un-truncated (550k+ distinct donor ids). Each RPC returns its whole result
   // as one jsonb array — a SETOF shape would itself be capped at 1,000 rows, and
-  // paginating it with .range() would re-run the ~16s aggregation per page.
-  const donorRollup =
-    (await callWithRetry<
-      Array<{
-        official_id: string;
-        total_cents: number;
-        pac_cents: number;
-        individual_cents: number;
-        donor_count: number;
-      }>
-    >("get_official_donor_rollup", () => db.rpc("get_official_donor_rollup"))) ?? [];
+  // paginating it with .range() would re-run the aggregation per page.
+  //
+  // FIX-651: both rollups run over a DIRECT pg.Client (rollupJsonbDirect), not
+  // the capped admin.rpc()+callWithRetry path. Measured on prod 2026-06-22:
+  // get_official_donor_rollup 34.6s (> the 8s service_role cap) and
+  // get_official_bipartisan_stats 113.9s (> the ~100s gateway cap). On
+  // admin.rpc() the latter blew the gateway on every one of its 5 retries while
+  // the 114s function kept running server-side ×5, lock-contending on votes —
+  // the core of the enrichment statement_timeout cascade. The per-function
+  // ALTER FUNCTION statement_timeout=300s does not re-arm the outer statement's
+  // timer; only a session-level raise over a direct connection does.
+  // rollupJsonbDirect THROWS on error (no silent partial), preserving the
+  // FIX-426/427 contract that tagOfficials DELETE-then-reinserts on the result.
+  const donorRollup = await timed("get_official_donor_rollup (direct-pg)", () =>
+    rollupJsonbDirect<{
+      official_id: string;
+      total_cents: number;
+      pac_cents: number;
+      individual_cents: number;
+      donor_count: number;
+    }>("get_official_donor_rollup"),
+  );
   const donorByOfficial = new Map<string, { total: number; pac: number; count: number }>();
   for (const r of donorRollup) {
     donorByOfficial.set(r.official_id, {
@@ -491,15 +529,14 @@ async function tagOfficials(db: any): Promise<number> {
     });
   }
 
-  const bipartisanRollup =
-    (await callWithRetry<
-      Array<{
-        official_id: string;
-        total_votes: number;
-        yes_votes: number;
-        bipartisan_yes: number;
-      }>
-    >("get_official_bipartisan_stats", () => db.rpc("get_official_bipartisan_stats"))) ?? [];
+  const bipartisanRollup = await timed("get_official_bipartisan_stats (direct-pg)", () =>
+    rollupJsonbDirect<{
+      official_id: string;
+      total_votes: number;
+      yes_votes: number;
+      bipartisan_yes: number;
+    }>("get_official_bipartisan_stats"),
+  );
   const voteStatsByOfficial = new Map<
     string,
     { totalVotes: number; yesVotes: number; bipartisanYes: number }
@@ -632,7 +669,9 @@ async function tagOfficials(db: any): Promise<number> {
     .eq("generated_by", "rule");
   if (delErr) console.error("    Error clearing prior official rule tags:", delErr.message);
 
-  const totalUpserted = await upsertTags(db, allTags);
+  const totalUpserted = await timed(`official tags upsert (n=${allTags.length})`, () =>
+    upsertTags(allTags),
+  );
   console.log(`    Upserted ${totalUpserted} official tags`);
   return totalUpserted;
 }
@@ -840,7 +879,9 @@ async function tagFinancialEntities(db: any): Promise<number> {
     db.rpc("clear_financial_entity_rule_tags", { p_categories: ["industry"] }),
   );
 
-  const industryUpserted = await upsertTags(db, deduped);
+  const industryUpserted = await timed(`financial industry tags upsert (n=${deduped.length})`, () =>
+    upsertTags(deduped),
+  );
   const totalUpserted = sizeWritten + industryUpserted;
   console.log(`    Wrote ${sizeWritten} size tags (server-side) + ${industryUpserted} industry tags = ${totalUpserted}`);
   return totalUpserted;
@@ -892,10 +933,10 @@ export async function runRuleBasedTagger(): Promise<{ tagsCreated: number }> {
   const db = createAdminClient() as any;
 
   try {
-    const proposalTags     = await tagProposals(db);
-    const officialTags     = await tagOfficials(db);
-    const financialTags    = await tagFinancialEntities(db);
-    const preVoteTags      = await tagPreVoteConnections(db);
+    const proposalTags     = await timed("phase: tagProposals", () => tagProposals(db));
+    const officialTags     = await timed("phase: tagOfficials", () => tagOfficials(db));
+    const financialTags    = await timed("phase: tagFinancialEntities", () => tagFinancialEntities(db));
+    const preVoteTags      = await timed("phase: tagPreVoteConnections", () => tagPreVoteConnections(db));
     const tagsCreated      = proposalTags + officialTags + financialTags + preVoteTags;
 
     console.log("\n  ─────────────────────────────────────────────────");

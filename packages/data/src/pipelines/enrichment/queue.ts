@@ -10,6 +10,7 @@ type Db = any;
 
 import { rowsOrThrow } from "@civitics/db";
 import { VALID_TOPICS, TOPIC_ICONS, ISSUE_AREAS } from "../tags/topics";
+import { rollupJsonbDirect } from "../../lib/heavy-rebuild";
 
 export type EntityType = "proposal" | "official" | "financial_entity";
 export type TaskType = "tag" | "summary";
@@ -288,31 +289,6 @@ export type OfficialAggregate = {
   top_industries: string;
 };
 
-const RPC_MAX_ATTEMPTS = 5;
-
-// Mirrors callWithRetry in tags/rules.ts: retry transient PostgREST/fetch
-// failures, THROW after the attempts cap — a partial/empty rollup must never
-// be consumed as "official has no votes/donations".
-async function rpcWithRetry<T>(
-  label: string,
-  fn: () => Promise<{ data: T | null; error: { message: string } | null }>,
-): Promise<T | null> {
-  let lastErr = "unknown error";
-  for (let attempt = 1; attempt <= RPC_MAX_ATTEMPTS; attempt++) {
-    try {
-      const { data, error } = await fn();
-      if (!error) return data;
-      lastErr = error.message;
-    } catch (e) {
-      lastErr = e instanceof Error ? e.message : String(e);
-    }
-    if (attempt < RPC_MAX_ATTEMPTS) {
-      await new Promise((r) => setTimeout(r, 500 * Math.pow(2, attempt - 1)));
-    }
-  }
-  throw new Error(`${label} failed after ${RPC_MAX_ATTEMPTS} attempts: ${lastErr}`);
-}
-
 function donorComposition(total: number, pac: number, individual: number): string {
   if (total <= 0) return "Unknown";
   const pct = (n: number) => Math.round((n / total) * 100);
@@ -327,16 +303,20 @@ export async function aggregateOfficialStats(
   const out = new Map<string, OfficialAggregate>();
   if (officialIds.length === 0) return out;
 
-  const donorRollup =
-    (await rpcWithRetry<
-      Array<{
-        official_id: string;
-        total_cents: number;
-        pac_cents: number;
-        individual_cents: number;
-        donor_count: number;
-      }>
-    >("get_official_donor_rollup", () => db.rpc("get_official_donor_rollup"))) ?? [];
+  // FIX-651: both rollups run over a DIRECT pg.Client (rollupJsonbDirect), not
+  // the capped admin.rpc()+rpcWithRetry path — same fix as tags/rules.ts
+  // tagOfficials(). Measured on prod 2026-06-22: donor 34.6s (> 8s role cap),
+  // bipartisan 113.9s (> ~100s gateway cap); the latter's 5 retries each blew
+  // the gateway while the function kept running server-side, driving the
+  // enrichment statement_timeout cascade. rollupJsonbDirect THROWS on error so a
+  // partial/empty rollup is never consumed as "official has no votes/donations".
+  const donorRollup = await rollupJsonbDirect<{
+    official_id: string;
+    total_cents: number;
+    pac_cents: number;
+    individual_cents: number;
+    donor_count: number;
+  }>("get_official_donor_rollup");
   const donorByOfficial = new Map<
     string,
     { total: number; pac: number; individual: number; count: number }
@@ -350,11 +330,9 @@ export async function aggregateOfficialStats(
     });
   }
 
-  const voteRollup =
-    (await rpcWithRetry<Array<{ official_id: string; total_votes: number }>>(
-      "get_official_bipartisan_stats",
-      () => db.rpc("get_official_bipartisan_stats"),
-    )) ?? [];
+  const voteRollup = await rollupJsonbDirect<{ official_id: string; total_votes: number }>(
+    "get_official_bipartisan_stats",
+  );
   const votesByOfficial = new Map<string, number>();
   for (const r of voteRollup) {
     votesByOfficial.set(r.official_id, Number(r.total_votes ?? 0));

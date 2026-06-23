@@ -67,6 +67,12 @@ const ALLOWED_REBUILDS = new Set([
   // died at the PostgREST gateway cap (`upstream request timeout`, 2026-06-14)
   // when called via admin.rpc(); the direct-pg path sidesteps both caps.
   "rebuild_financial_entity_donation_totals",
+  // FIX-651: nightly spending-totals refresh (step 3b-ii, returns void → count
+  // 0). The set-based UPDATE over financial_relationships (contract+grant) timed
+  // out on prod 2026-06-22 ("canceling statement due to statement timeout") on
+  // the capped admin.rpc() path, triggering the enrichment-phase cascade. Same
+  // direct-pg lift as the donation-total recompute above.
+  "refresh_spending_totals",
 ]);
 
 /**
@@ -93,6 +99,51 @@ export async function runHeavyRebuild(fn: string): Promise<number> {
       `SELECT public.${fn}() AS count`,
     );
     return Number(res.rows[0]?.count ?? 0);
+  } finally {
+    await client.end();
+  }
+}
+
+// FIX-651 — jsonb-array rollup RPCs lifted off the capped PostgREST path. Each
+// returns its whole result set as ONE jsonb row (see
+// 20260529130000_official_tag_rollups_426_427.sql), so the direct-pg call is
+// `SELECT fn() AS result` and node-postgres hands back the parsed array. The
+// admin.rpc() path runs these under the 8s service_role / 100s gateway caps; the
+// nightly rule tagger + enrichment aggregator retried them 5× into the
+// 2026-06-22 statement_timeout cascade. The per-function ALTER FUNCTION
+// statement_timeout=300s does NOT re-arm the outer statement's timer (same
+// reason runHeavyRebuild exists), so the durable fix is a session-level raise
+// over a direct connection.
+const ALLOWED_JSONB_ROLLUPS = new Set([
+  "get_official_donor_rollup",
+  "get_official_bipartisan_stats",
+]);
+
+/**
+ * Run an allow-listed jsonb-array rollup function over a direct session-pooler
+ * connection with a raised SESSION statement_timeout, returning the parsed
+ * array. THROWS on any connection/query error (pg rejects) — a partial or empty
+ * rollup must never be silently consumed as "this official has no
+ * votes/donations" (the FIX-426/427 contract the callers' callWithRetry/
+ * rpcWithRetry used to enforce). Single attempt: the retry pile-up against a
+ * still-running server-side function is the failure mode being removed, not a
+ * resilience feature. Connection always closed.
+ */
+export async function rollupJsonbDirect<T>(fn: string): Promise<T[]> {
+  if (!ALLOWED_JSONB_ROLLUPS.has(fn)) {
+    throw new Error(`rollupJsonbDirect: '${fn}' is not an allow-listed jsonb rollup`);
+  }
+  const { Client } = await import("pg");
+  const client = new Client({ connectionString: buildDbUrl() });
+  await client.connect();
+  try {
+    await client.query("SET statement_timeout = '90min'");
+    const res = await client.query<{ result: T[] | null }>(
+      `SELECT public.${fn}() AS result`,
+    );
+    // Both functions COALESCE to '[]'::jsonb, so result is never null; the ??
+    // is belt-and-braces against a future signature change.
+    return (res.rows[0]?.result ?? []) as T[];
   } finally {
     await client.end();
   }

@@ -26,6 +26,7 @@ import { runRuleBasedTagger } from "./tags/rules";
 import { runAiTagger } from "./tags/ai-tagger";
 import { runAiSummariesPipeline } from "./ai-summaries";
 import { scoreComments } from "../scripts/score-comments";
+import { runHeavyRebuild } from "../lib/heavy-rebuild";
 import { runAgenciesHierarchyPipeline } from "./agencies-hierarchy";
 import { runAgencyLeadershipPipeline } from "./agency-leadership";
 import { runAgencyEnrichmentPipeline } from "./agency-enrichment";
@@ -880,14 +881,21 @@ export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<Nigh
   }
 
   // 3b-ii. Refresh spending totals (total_contract_cents / total_grant_cents on financial_entities)
-  // Cheap single-query aggregate update; runs nightly so any weekly USASpending ingestion
-  // is reflected immediately rather than waiting for the next weekly run.
+  // Set-based aggregate UPDATE over financial_relationships (contract+grant).
+  // Runs nightly so any weekly USASpending ingestion is reflected immediately
+  // rather than waiting for the next weekly run.
+  //
+  // FIX-651: routed through the direct-pg heavy-rebuild path. The admin.rpc()
+  // call hit the prod statement_timeout cap on 2026-06-22 ("canceling statement
+  // due to statement timeout") — the set-based UPDATE over the regrown
+  // financial_relationships table no longer fits the 8s role budget — and that
+  // timeout was the first domino of the enrichment-phase cascade. Direct-pg
+  // raises the session statement_timeout past the cap. Still non-fatal: a
+  // refresh failure must not abort the nightly.
   {
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { error } = await (db as any).rpc("refresh_spending_totals");
-      if (error) console.warn("[nightly] refresh_spending_totals warning:", error.message);
-      else console.log("[nightly] refresh_spending_totals — complete");
+      await runHeavyRebuild("refresh_spending_totals");
+      console.log("[nightly] refresh_spending_totals — complete");
     } catch (err) {
       console.warn("[nightly] refresh_spending_totals failed (non-fatal):", errMsg(err));
     }
