@@ -754,10 +754,73 @@ async function tagFinancialEntities(db: any): Promise<number> {
   // the top-level timer from the SESSION value), so runHeavyRebuild raises
   // statement_timeout at the session level over a direct connection and runs a
   // single attempt — no retry pile-up.
-  const sizeWritten = await runHeavyRebuild("rebuild_financial_entity_size_tags");
   // (FIX-443's PostgREST cold-cache empty-body guard is gone with FIX-444: a
   // direct pg query returns the bigint directly — no schema-cache cold-start
   // race, no 200-with-empty-body failure mode to defend against.)
+  //
+  // FIX-652 — source-change gate. The rebuild DELETEs ~2.33M 'size' tags and
+  // re-INSERTs them by aggregating ~4.9M donation rows every night, but donation
+  // rows only change on the weekly Sunday FEC ingest (FEC bulk is the sole writer
+  // of relationship_type='donation', and it runs in the earlier 'fec' phase
+  // before this enrichment phase). 6 of 7 nights the rebuild deletes and
+  // re-inserts byte-identical rows for zero change — ~80 min of wasted nightly
+  // budget on the cache-starved Pro box. Gate it on a signature of the donation
+  // source: skip when count + max(created_at) + max(updated_at) over the donation
+  // rows is unchanged since the last build.
+  //
+  // The signature is read over a DIRECT pg.Client (selectDirect, 90-min session
+  // timeout). count()+max() with no usable index is a full scan (~50s on the
+  // donor set) — it blows the 8s PostgREST role cap, so it cannot ride the
+  // admin.rpc/supabase-js path. Even at ~50s it is a fraction of the 80-min
+  // rebuild it gates, and on skip nights it replaces (scan + 2.33M DELETE + 2.33M
+  // INSERT + index churn + concurrent autovacuum) with a single scan.
+  //
+  // Watermark stored in pipeline_state (same key/value/updated_at shape as the
+  // FEC + IRS990 watermarks). Fail-safe direction is "rebuild": a missing or
+  // unreadable watermark, or a watermark-save failure after a rebuild, all force
+  // the next run to rebuild — the gate never wrongly skips. The rebuild SQL is
+  // untouched, so final tag state is byte-identical whether the rebuild ran this
+  // night or last (FIX-443 correctness invariant preserved).
+  const DONATION_WATERMARK_KEY = "size_tags:donation_watermark";
+  const [sig] = await selectDirect<{ cnt: string; max_created: string; max_updated: string }>(
+    `SELECT count(*)::text AS cnt,
+            COALESCE(max(created_at), 'epoch'::timestamptz)::text AS max_created,
+            COALESCE(max(updated_at), 'epoch'::timestamptz)::text AS max_updated
+       FROM public.financial_relationships
+      WHERE from_type = 'financial_entity' AND relationship_type = 'donation'`,
+  );
+  const currentSig = `${sig.cnt}|${sig.max_created}|${sig.max_updated}`;
+
+  let storedSig: string | null = null;
+  try {
+    const { data } = await db
+      .from("pipeline_state")
+      .select("value")
+      .eq("key", DONATION_WATERMARK_KEY)
+      .maybeSingle();
+    storedSig = (data?.value as { sig?: string } | null)?.sig ?? null;
+  } catch {
+    storedSig = null; // unreadable watermark → rebuild (fail-safe)
+  }
+
+  let sizeWritten = 0;
+  if (storedSig !== null && storedSig === currentSig) {
+    console.log(
+      `    [size] donation source unchanged (sig=${currentSig}) — skipping rebuild_financial_entity_size_tags`,
+    );
+  } else {
+    sizeWritten = await runHeavyRebuild("rebuild_financial_entity_size_tags");
+    try {
+      await db.from("pipeline_state").upsert(
+        { key: DONATION_WATERMARK_KEY, value: { sig: currentSig }, updated_at: new Date().toISOString() },
+        { onConflict: "key" },
+      );
+    } catch (err) {
+      // Watermark save failed → next run re-detects a mismatch and rebuilds.
+      // Idempotent, so re-running is safe; just lose the skip on the next night.
+      console.warn("    [size] watermark save failed:", err instanceof Error ? err.message : err);
+    }
+  }
 
   // NAICS-only rollup (FIX-443): replaces the donation-bearing rollup for the
   // industry path. One row per contract/grant entity carrying a NAICS code — the
