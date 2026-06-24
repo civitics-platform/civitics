@@ -6,6 +6,11 @@
 // the JSON body. This matches the design's "surface on the challenged write and
 // resubmit" without a visible modal (managed mode).
 //
+// FIX-576: when Cloudflare ESCALATES to an interactive challenge, an off-screen
+// widget can't be solved — the invisible attempt would just time out and the
+// write would silently fail. So on escalation we hand off to a visible modal
+// (via the challenge-controller bridge) and replay once the user solves it.
+//
 // Cost shape: ESTABLISHED accounts never receive the 403, so they never load the
 // Turnstile script — only brand-new accounts pay the cost, only on a write. When
 // NEXT_PUBLIC_TURNSTILE_SITE_KEY is absent the wrapper is a plain fetch (the
@@ -15,6 +20,8 @@
 // Use for content-CREATE writes only: POST /api/comments, POST|PUT /api/positions,
 // POST /api/statements. Do NOT use for ratings / statement-votes / flags — those
 // are not challenged (too noisy, by design).
+
+import { requestInteractiveChallenge } from "./challenge-controller";
 
 const SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
 const SCRIPT_SRC =
@@ -53,18 +60,31 @@ function loadScript(): Promise<void> {
   return scriptPromise;
 }
 
+// Outcome of the invisible (off-screen) attempt.
+//   token !== null            → auto-solved, replay straight away (the common case)
+//   token === null, escalated → Cloudflare wants interaction; hand off to the modal
+//   token === null, !escalated→ genuine error / no key → fail-safe, surface the 403
+interface InvisibleResult {
+  token: string | null;
+  escalated: boolean;
+}
+
 // Render a transient off-screen managed widget and resolve with its token.
-// Resolves null on no-site-key / error / timeout so the caller surfaces the
-// original 403 rather than hanging.
-async function getTurnstileToken(timeoutMs = 8000): Promise<string | null> {
-  if (!SITE_KEY || typeof window === "undefined") return null;
+// `escalated` is set when Cloudflare signals it needs user interaction
+// (`before-interactive-callback`), when the interactive challenge can't be
+// solved off-screen in time (`timeout-callback`), or when our own watchdog
+// fires — all symptoms of an escalation an invisible widget can't satisfy, so
+// the caller should retry via the visible modal. A genuine `error-callback`,
+// missing key, or script-load failure leaves `escalated` false (fail-safe).
+async function getInvisibleToken(timeoutMs = 8000): Promise<InvisibleResult> {
+  if (!SITE_KEY || typeof window === "undefined") return { token: null, escalated: false };
   try {
     await loadScript();
   } catch {
-    return null;
+    return { token: null, escalated: false };
   }
   const api = turnstileApi();
-  if (!api) return null;
+  if (!api) return { token: null, escalated: false };
 
   const container = document.createElement("div");
   container.style.position = "fixed";
@@ -72,10 +92,10 @@ async function getTurnstileToken(timeoutMs = 8000): Promise<string | null> {
   container.style.bottom = "0";
   document.body.appendChild(container);
 
-  return new Promise<string | null>((resolve) => {
+  return new Promise<InvisibleResult>((resolve) => {
     let settled = false;
     let widgetId: string | undefined;
-    const finish = (token: string | null) => {
+    const finish = (result: InvisibleResult) => {
       if (settled) return;
       settled = true;
       try {
@@ -84,29 +104,33 @@ async function getTurnstileToken(timeoutMs = 8000): Promise<string | null> {
         /* widget already gone */
       }
       container.remove();
-      resolve(token);
+      resolve(result);
     };
-    const timer = setTimeout(() => finish(null), timeoutMs);
+    const timer = setTimeout(() => finish({ token: null, escalated: true }), timeoutMs);
     try {
       widgetId = api.render(container, {
         sitekey: SITE_KEY,
         appearance: "interaction-only",
         callback: (token: string) => {
           clearTimeout(timer);
-          finish(token);
+          finish({ token, escalated: false });
         },
-        "error-callback": () => {
+        "before-interactive-callback": () => {
           clearTimeout(timer);
-          finish(null);
+          finish({ token: null, escalated: true });
         },
         "timeout-callback": () => {
           clearTimeout(timer);
-          finish(null);
+          finish({ token: null, escalated: true });
+        },
+        "error-callback": () => {
+          clearTimeout(timer);
+          finish({ token: null, escalated: false });
         },
       });
     } catch {
       clearTimeout(timer);
-      finish(null);
+      finish({ token: null, escalated: false });
     }
   });
 }
@@ -129,8 +153,13 @@ export async function challengedFetch(url: string, init: RequestInit): Promise<R
   }
   if (code !== "challenge_required") return res;
 
-  const token = await getTurnstileToken();
-  if (!token) return res; // no key / failed → surface the original 403
+  // Try the invisible fast path first; on escalation, fall back to the modal.
+  const invisible = await getInvisibleToken();
+  let token = invisible.token;
+  if (!token && invisible.escalated) {
+    token = await requestInteractiveChallenge();
+  }
+  if (!token) return res; // no key / dismissed / failed → surface the original 403
 
   let body: Record<string, unknown> = {};
   if (typeof init.body === "string") {

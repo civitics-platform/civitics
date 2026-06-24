@@ -3,6 +3,7 @@ import { Fraunces, Inter, JetBrains_Mono } from "next/font/google";
 import { Analytics } from "@vercel/analytics/react";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { AuthHashHandler } from "./components/AuthHashHandler";
+import { ChallengeModal } from "./components/ChallengeModal";
 import { Footer } from "./components/Footer";
 import { NavBar } from "./components/NavBar";
 import { WebVitalsReporter } from "./components/WebVitalsReporter";
@@ -63,6 +64,7 @@ export default function RootLayout({
         {children}
         <Footer />
         <AuthHashHandler />
+        <ChallengeModal />
         <WebVitalsReporter />
         <Analytics />
         <SpeedInsights />
