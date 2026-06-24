@@ -113,10 +113,15 @@ content_path = "./supabase/templates/magic_link.html"
 enable_signup = false
 enable_confirmations = false
 
+# FIX-573: Google OAuth — cheaper to farm-resist than email OTP, and lowers
+# email-OTP send volume. Creds are env-driven so secrets stay out of this
+# committed file (local reads .env.local; PROD is configured in the Supabase
+# dashboard, which does NOT read this file). GitHub stays disabled — dev
+# audience, not the civic user base; each provider is a separate creds burden.
 [auth.external.google]
-enabled = false
-client_id = ""
-secret = ""
+enabled = true
+client_id = "env(SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID)"
+secret = "env(SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET)"
 redirect_uri = ""
 url = ""
 skip_nonce_check = false
