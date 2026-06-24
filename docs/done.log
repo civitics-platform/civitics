@@ -823,3 +823,5 @@
 2026-06-22 | FIX-651 | da5992ce | local+prod | perf(enrichment): route nightly timeout-cascade callsites to direct-pg (FIX-651)
 2026-06-22 | FIX-652 | ef3880d8 | local-only | perf(tags): gate size-tag rebuild on donation source-change + tune entity_tags autovacuum (FIX-652)
 2026-06-23 | FIX-576 | c9a07f61 | local-only | feat(challenge): visible Turnstile modal on interactive escalation
+2026-06-23 | FIX-573 | 95b1938f | local-only | feat(auth): Google OAuth sign-in + full disposable-email blocklist
+2026-06-23 | FIX-575 | 95b1938f | local-only | feat(auth): Google OAuth sign-in + full disposable-email blocklist
