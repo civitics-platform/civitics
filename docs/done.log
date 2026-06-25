@@ -825,3 +825,4 @@
 2026-06-23 | FIX-576 | c9a07f61 | local-only | feat(challenge): visible Turnstile modal on interactive escalation
 2026-06-23 | FIX-573 | 95b1938f | local-only | feat(auth): Google OAuth sign-in + full disposable-email blocklist
 2026-06-23 | FIX-575 | 95b1938f | local-only | feat(auth): Google OAuth sign-in + full disposable-email blocklist
+2026-06-24 | FIX-574 | 1243238b | local-only | feat(lens): default the constituent lens to match the viewer
