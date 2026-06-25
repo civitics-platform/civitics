@@ -11,9 +11,10 @@
 // Public reads are aggregates only; the card writes through /api/positions, which
 // calls set_entity_position() as the caller (every anti-collusion guard server-side).
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import type { EntityCommentType } from "@civitics/db";
 import { challengedFetch } from "@/lib/challenged-fetch";
+import { useConstituentDefaultLens } from "@/lib/use-constituent-default-lens";
 import { SyntheticMark } from "./integrity/Synthetic";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -56,6 +57,9 @@ export interface PositionSectionProps {
   signInNext?: string;
   /** Show the constituent lens toggle on the rollup strip. */
   lensEnabled?: boolean;
+  /** FIX-574: the entity's jurisdiction — a verified constituent of it defaults
+   *  the rollup to the constituent lens (when that view clears the n≥10 floor). */
+  constituentJurisdictionId?: string | null;
 }
 
 // ─── Stance vocabulary (presentation) ─────────────────────────────────────────
@@ -481,12 +485,40 @@ export function PositionSection({
   heading = "Positions",
   signInNext,
   lensEnabled = false,
+  constituentJurisdictionId = null,
 }: PositionSectionProps) {
   const next = signInNext ?? (typeof window !== "undefined" ? window.location.pathname : "/");
   const [own, setOwn] = useState<OwnPosition>(null);
   const [rollup, setRollup] = useState<Rollup | null>(null);
   const [comments, setComments] = useState<CommentLite[]>([]);
   const [lens, setLens] = useState<"all" | "constituents">("all");
+
+  // FIX-574: open on the constituent lens for a verified constituent — but only
+  // if that view clears the rollup floor (median non-null ⇔ n ≥ 10), else stay
+  // on "all" rather than greet them with "not enough positions yet".
+  const probe = useCallback(
+    async (signal: AbortSignal) => {
+      const sp = new URLSearchParams({ entity_type: entityType, entity_id: entityId, lens: "constituents" });
+      const res = await fetch(`/api/positions/rollup?${sp.toString()}`, { signal });
+      const data = await res.json().catch(() => ({}));
+      return res.ok && !!data.rollup && data.rollup.median !== null;
+    },
+    [entityType, entityId],
+  );
+  const { defaultLens, resolved } = useConstituentDefaultLens(
+    lensEnabled ? constituentJurisdictionId : null,
+    probe,
+  );
+  // Once a manual toggle has happened, the async default must never clobber it.
+  const lensOverridden = useRef(false);
+  const setLensManual = useCallback((l: "all" | "constituents") => {
+    lensOverridden.current = true;
+    setLens(l);
+  }, []);
+  useEffect(() => {
+    if (lensOverridden.current) return;
+    if (resolved && defaultLens === "constituents") setLens("constituents");
+  }, [resolved, defaultLens]);
 
   const loadRollup = useCallback(async () => {
     try {
@@ -533,7 +565,7 @@ export function PositionSection({
     <section className="mt-8">
       <h2 className="mb-3 text-base font-bold text-ink">{heading}</h2>
       <div className="space-y-3">
-        <PositionRollupStrip rollup={rollup} lens={lens} lensEnabled={lensEnabled} onLens={setLens} />
+        <PositionRollupStrip rollup={rollup} lens={lens} lensEnabled={lensEnabled} onLens={setLensManual} />
         <PositionCard
           entityType={entityType}
           entityId={entityId}

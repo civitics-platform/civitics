@@ -8,9 +8,10 @@
 // Hidden entirely when the RPC returns nothing. Clicking a card asks the list to
 // select + scroll to that comment (focusComment).
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { focusComment } from "./comment-focus";
 import type { EntityCommentType } from "@civitics/db";
+import { useConstituentDefaultLens } from "@/lib/use-constituent-default-lens";
 import { SyntheticMark } from "./integrity/Synthetic";
 
 type HighlightComment = {
@@ -37,6 +38,10 @@ export interface CommentHighlightsStripProps {
   entityType: EntityCommentType;
   entityId: string;
   lens?: "all" | "constituents";
+  /** FIX-574: the entity's jurisdiction — a verified constituent opens this
+   *  strip on the constituent lens (when it has ≥1 highlight). The strip has no
+   *  toggle of its own; the comments cluster below carries the manual control. */
+  constituentJurisdictionId?: string | null;
 }
 
 const STANCE_META: Record<string, { label: string; cls: string }> = {
@@ -77,8 +82,36 @@ function HighlightCard({
   );
 }
 
-export function CommentHighlightsStrip({ entityType, entityId, lens = "all" }: CommentHighlightsStripProps) {
+export function CommentHighlightsStrip({
+  entityType,
+  entityId,
+  lens: lensProp = "all",
+  constituentJurisdictionId = null,
+}: CommentHighlightsStripProps) {
   const [data, setData] = useState<Highlights | null>(null);
+  const [lens, setLens] = useState<"all" | "constituents">(lensProp);
+
+  // FIX-574: open on the constituent lens for a verified constituent — but only
+  // if it has ≥1 highlight (decision 6). No manual toggle here, so nothing to
+  // override; the constituent view only ever ADDS to what's shown.
+  const probe = useCallback(
+    async (signal: AbortSignal) => {
+      const sp = new URLSearchParams({ entity_type: entityType, entity_id: entityId, lens: "constituents" });
+      const res = await fetch(`/api/comments/highlights?${sp.toString()}`, { signal });
+      const json = await res.json().catch(() => ({}));
+      const h = json.highlights as Highlights | undefined;
+      if (!h) return false;
+      const common = h.common_ground ?? [];
+      const steel = h.steelman ?? { support: null, oppose: null, conditional: null };
+      const steelCount = (["support", "oppose", "conditional"] as const).filter((k) => steel[k]).length;
+      return common.length >= 1 || steelCount >= 1;
+    },
+    [entityType, entityId],
+  );
+  const { defaultLens, resolved } = useConstituentDefaultLens(constituentJurisdictionId, probe);
+  useEffect(() => {
+    if (resolved && defaultLens === "constituents") setLens("constituents");
+  }, [resolved, defaultLens]);
 
   useEffect(() => {
     let cancelled = false;

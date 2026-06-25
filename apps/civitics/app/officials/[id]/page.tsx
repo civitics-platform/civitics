@@ -1344,6 +1344,7 @@ export default async function OfficialProfilePage({
             allowedKinds={["discussion", "concern", "evidence", "stakeholder_impact"]}
             stanceEnabled
             lensEnabled
+            constituentJurisdictionId={official.jurisdiction_id ?? null}
             statementsEnabled
             slowMode={slowMode}
           />

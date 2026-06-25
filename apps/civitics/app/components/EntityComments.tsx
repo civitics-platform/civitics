@@ -9,6 +9,7 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { challengedFetch } from "@/lib/challenged-fetch";
+import { useConstituentDefaultLens } from "@/lib/use-constituent-default-lens";
 import {
   ALLOWED_KINDS,
   DEFAULT_KIND,
@@ -68,6 +69,9 @@ export interface EntityCommentsProps {
   allowedKinds?: readonly string[];
   stanceEnabled?: boolean;
   lensEnabled?: boolean;
+  /** FIX-574: the entity's jurisdiction — a verified constituent of it defaults
+   *  the comments lens to "constituents" (when that lens has ≥1 comment). */
+  constituentJurisdictionId?: string | null;
   /** Initiative-style for/against grouped layout. */
   stanceGrouped?: boolean;
   /** Read-only stages hide the composer. */
@@ -588,6 +592,7 @@ export function EntityComments({
   allowedKinds,
   stanceEnabled = false,
   lensEnabled = false,
+  constituentJurisdictionId = null,
   stanceGrouped = false,
   composerEnabled = true,
   heading = "Community comments",
@@ -610,6 +615,33 @@ export function EntityComments({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [lens, setLens] = useState<"all" | "constituents">("all");
   const [nextCursor, setNextCursor] = useState<string | null>(null);
+
+  // FIX-574: open on the constituent lens for a verified constituent — but only
+  // if that lens actually has a comment, else stay on "all" (decision 6). The
+  // manual toggle below sets lensOverridden so this async default never yanks a
+  // user who toggled first (decision 4).
+  const lensProbe = useCallback(
+    async (signal: AbortSignal) => {
+      const sp = new URLSearchParams({ entity_type: entityType, entity_id: entityId, lens: "constituents", sort: "bridge" });
+      const res = await fetch(`/api/comments?${sp.toString()}`, { signal });
+      const data = await res.json().catch(() => ({}));
+      return res.ok && Array.isArray(data.comments) && data.comments.length >= 1;
+    },
+    [entityType, entityId],
+  );
+  const { defaultLens, resolved: lensResolved } = useConstituentDefaultLens(
+    lensEnabled ? constituentJurisdictionId : null,
+    lensProbe,
+  );
+  const lensOverridden = useRef(false);
+  const toggleLens = useCallback(() => {
+    lensOverridden.current = true;
+    setLens((l) => (l === "all" ? "constituents" : "all"));
+  }, []);
+  useEffect(() => {
+    if (lensOverridden.current) return;
+    if (lensResolved && defaultLens === "constituents") setLens("constituents");
+  }, [lensResolved, defaultLens]);
   // FIX-532: threads fetched via focus_id when the target wasn't on a loaded
   // page — rendered pinned above the list with a "jumped to comment" marker.
   const [pinned, setPinned] = useState<Comment[]>([]);
@@ -770,7 +802,7 @@ export function EntityComments({
             {lensEnabled && (
               <button
                 type="button"
-                onClick={() => setLens((l) => (l === "all" ? "constituents" : "all"))}
+                onClick={toggleLens}
                 className={`rounded-full border px-2 py-0.5 ${lens === "constituents" ? "border-civic-blue/30 bg-civic-blue/10 text-civic-blue" : "border-rule text-ink-soft"}`}
               >
                 {lens === "constituents" ? "Constituents only" : "Everyone"}

@@ -305,6 +305,7 @@ export default async function InstitutionPage({
           entityType="institution"
           entityId={institution.id}
           lensEnabled
+          constituentJurisdictionId={institution.jurisdiction_id ?? null}
           startCollapsed
           heading="Community comments"
         />

@@ -327,6 +327,7 @@ export default async function JurisdictionPage({ params }: { params: Promise<{ i
           entityType="jurisdiction"
           entityId={id}
           lensEnabled
+          constituentJurisdictionId={id}
           startCollapsed
           heading="Community comments"
         />

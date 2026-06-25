@@ -574,18 +574,28 @@ export default async function ProposalDetailPage({
             )}
 
             {/* Position spine (C1) — intensity, rollup, terms of consensus */}
-            <PositionSection entityType="proposal" entityId={p.id} lensEnabled />
+            <PositionSection
+              entityType="proposal"
+              entityId={p.id}
+              lensEnabled
+              constituentJurisdictionId={bcMeta?.jurisdiction_id ?? null}
+            />
 
             {/* Community Comments */}
             <div className="mt-8">
               {/* Common-ground / steelman highlights, pinned above list + map */}
-              <CommentHighlightsStrip entityType="proposal" entityId={p.id} />
+              <CommentHighlightsStrip
+                entityType="proposal"
+                entityId={p.id}
+                constituentJurisdictionId={bcMeta?.jurisdiction_id ?? null}
+              />
               <EntityComments
                 entityType="proposal"
                 entityId={p.id}
                 allowedKinds={["discussion", "question", "concern", "evidence", "stakeholder_impact"]}
                 stanceEnabled
                 lensEnabled
+                constituentJurisdictionId={bcMeta?.jurisdiction_id ?? null}
                 statementsEnabled
                 slowMode={slowMode}
               />
