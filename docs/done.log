@@ -828,3 +828,4 @@
 2026-06-24 | FIX-574 | 1243238b | local-only | feat(lens): default the constituent lens to match the viewer
 2026-06-24 | FIX-573 | 7d506d63 | local+prod | chore(ops): record FIX-573/575 prod verification [skip vercel]
 2026-06-24 | FIX-575 | 7d506d63 | local+prod | chore(ops): record FIX-573/575 prod verification [skip vercel]
+2026-06-25 | FIX-659 | bf4d599c | local-only | feat(dev): local auth test harness — mint a logged-in session [skip vercel]
