@@ -835,3 +835,5 @@
 2026-06-26 | FIX-649 | 3ba31ece | local+prod | chore(platform): delete dead /api/platform/vercel route
 2026-06-27 | FIX-661 | f4a670d8 | local+prod | perf(jurisdictions): LATERAL-rewrite + index get_jurisdiction_page agency spend, align caps
 2026-06-27 | FIX-662 | f4a670d8 | local+prod | perf(jurisdictions): LATERAL-rewrite + index get_jurisdiction_page agency spend, align caps
+2026-06-27 | FIX-664 | ad4ec70b | local+prod | perf(institutions): align get_agency_page agency-spend to the FIX-661 ordered index + sibling RPC caps
+2026-06-27 | FIX-665 | ad4ec70b | local+prod | perf(institutions): align get_agency_page agency-spend to the FIX-661 ordered index + sibling RPC caps
