@@ -829,3 +829,7 @@
 2026-06-24 | FIX-573 | 7d506d63 | local+prod | chore(ops): record FIX-573/575 prod verification [skip vercel]
 2026-06-24 | FIX-575 | 7d506d63 | local+prod | chore(ops): record FIX-573/575 prod verification [skip vercel]
 2026-06-25 | FIX-659 | bf4d599c | local-only | feat(dev): local auth test harness — mint a logged-in session [skip vercel]
+2026-06-26 | FIX-551 | 7da5430c | local-only | fix(data): alias donor-anchor source from metadata not dead column
+2026-06-26 | FIX-581 | 68d9fc04 | local-only | chore(build): raise staticPageGenerationTimeout to 120s (FIX-581)
+2026-06-26 | FIX-633 | 7af4b384 | local+prod | feat(engagement): count endorsed community notes toward the rollup
+2026-06-26 | FIX-649 | 3ba31ece | local+prod | chore(platform): delete dead /api/platform/vercel route
