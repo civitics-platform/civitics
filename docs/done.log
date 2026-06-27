@@ -837,3 +837,6 @@
 2026-06-27 | FIX-662 | f4a670d8 | local+prod | perf(jurisdictions): LATERAL-rewrite + index get_jurisdiction_page agency spend, align caps
 2026-06-27 | FIX-664 | ad4ec70b | local+prod | perf(institutions): align get_agency_page agency-spend to the FIX-661 ordered index + sibling RPC caps
 2026-06-27 | FIX-665 | ad4ec70b | local+prod | perf(institutions): align get_agency_page agency-spend to the FIX-661 ordered index + sibling RPC caps
+2026-06-27 | FIX-666 | b489ac3f | local+prod | feat(donors): materialize super-PAC independent-expenditure totals
+2026-06-27 | FIX-667 | 5f0d5345 | local+prod | feat(search): surface independent-expenditure spending as the search amount
+2026-06-27 | FIX-668 | 6049969f | local+prod | feat(donors): show independent-expenditure spending + targets on profile page
