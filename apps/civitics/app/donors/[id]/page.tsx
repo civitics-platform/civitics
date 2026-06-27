@@ -37,6 +37,9 @@ type Entity = {
   total_received_cents: number;
   total_contract_cents: number;
   total_grant_cents: number;
+  // FIX-666: materialized Schedule E independent-expenditure totals.
+  total_ie_support_cents: number;
+  total_ie_oppose_cents: number;
   donor_fingerprint: string | null;
   metadata: Record<string, unknown> | null;
   // SF-P2 (FIX-599): the financial entity's own synthetic flag (entity marker).
@@ -67,6 +70,18 @@ type RecipientRow = {
   count: number;
   cycles: Set<number>;
   href: string | null;
+};
+
+// FIX-668: one aggregated row per (target official × support|oppose direction).
+type IeTargetRow = {
+  id: string;
+  name: string;
+  subtitle: string | null;
+  party: string | null;
+  href: string | null;
+  direction: "support" | "oppose";
+  total_cents: number;
+  count: number;
 };
 
 type DonorRow = {
@@ -152,7 +167,7 @@ const getCachedDonor = cache(async (id: string): Promise<Entity | null> => {
     sb
       .from("financial_entities")
       .select(
-        "id, display_name, canonical_name, entity_type, fec_committee_id, parent_entity_id, total_donated_cents, total_received_cents, total_contract_cents, total_grant_cents, donor_fingerprint, metadata, is_synthetic"
+        "id, display_name, canonical_name, entity_type, fec_committee_id, parent_entity_id, total_donated_cents, total_received_cents, total_contract_cents, total_grant_cents, total_ie_support_cents, total_ie_oppose_cents, donor_fingerprint, metadata, is_synthetic"
       )
       .eq("id", id)
       .maybeSingle(),
@@ -201,7 +216,7 @@ export default async function DonorProfilePage({
 
   // Parallel fetches: outbound donations, inbound donations, contracts/grants
   // received, AI summary, industry tag, parent entity name.
-  const [outboundRes, inboundRes, spendingRes, aiSummaryRes, recipientCountRes, donorCountRes] =
+  const [outboundRes, inboundRes, spendingRes, aiSummaryRes, recipientCountRes, donorCountRes, ieRes] =
     (await Promise.all([
       withDbTimeout(
         sb.from("financial_relationships")
@@ -264,11 +279,27 @@ export default async function DonorProfilePage({
         3000,
         "donors:donor-count"
       ),
-    ])) as [DbRes, DbRes, DbRes, DbRes, DbRes, DbRes];
+      // FIX-666/FIX-668: outbound Schedule E independent expenditures. IE rows
+      // are from_type='financial_entity' → to_type='official' with
+      // relationship_type ie_support / ie_oppose. One combined fetch (mirrors
+      // the contracts+grants .in() fetch above); split by direction in code.
+      withDbTimeout(
+        sb.from("financial_relationships")
+          .select("id, from_type, from_id, to_type, to_id, amount_cents, occurred_at, cycle_year, relationship_type, metadata")
+          .eq("from_type", "financial_entity")
+          .eq("from_id", entity.id)
+          .in("relationship_type", ["ie_support", "ie_oppose"])
+          .order("amount_cents", { ascending: false })
+          .limit(500),
+        3000,
+        "donors:ie"
+      ),
+    ])) as [DbRes, DbRes, DbRes, DbRes, DbRes, DbRes, DbRes];
 
   const outbound = (outboundRes.data ?? []) as Relationship[];
   const inbound = (inboundRes.data ?? []) as Relationship[];
   const spending = (spendingRes.data ?? []) as Relationship[];
+  const ieRows = (ieRes.data ?? []) as Relationship[];
 
   // Industry tag for this donor.
   const industryMap = await fetchIndustryTagsByEntityId(supabase, [entity.id]);
@@ -290,7 +321,12 @@ export default async function DonorProfilePage({
   }
 
   // ── Enrich recipients (outbound donations) ────────────────────────────────
-  const officialIds = [...new Set(outbound.filter((r) => r.to_type === "official").map((r) => r.to_id))];
+  // IE targets are also officials — fold their ids into the same lookup so the
+  // ie support/oppose section (below) resolves names from one officials fetch.
+  const officialIds = [...new Set([
+    ...outbound.filter((r) => r.to_type === "official").map((r) => r.to_id),
+    ...ieRows.filter((r) => r.to_type === "official").map((r) => r.to_id),
+  ])];
   const recipientEntityIds = [...new Set(outbound.filter((r) => r.to_type === "financial_entity").map((r) => r.to_id))];
 
   const officialInfo = new Map<string, { full_name: string; role_title: string; party: string | null }>();
@@ -384,6 +420,32 @@ export default async function DonorProfilePage({
   const recipients = [...recipientMap.values()].sort((a, b) => b.total_cents - a.total_cents);
   const topRecipients = recipients.slice(0, 50);
 
+  // ── Aggregate independent expenditures by (target × direction) (FIX-668) ──
+  const ieTargetMap = new Map<string, IeTargetRow>();
+  for (const r of ieRows) {
+    const direction: IeTargetRow["direction"] =
+      r.relationship_type === "ie_oppose" ? "oppose" : "support";
+    const key = `${r.to_id}|${direction}`;
+    const existing = ieTargetMap.get(key);
+    if (existing) {
+      existing.total_cents += r.amount_cents ?? 0;
+      existing.count += 1;
+    } else {
+      const info = officialInfo.get(r.to_id);
+      ieTargetMap.set(key, {
+        id: r.to_id,
+        name: info?.full_name ?? "Unknown",
+        subtitle: info?.role_title ?? null,
+        party: info?.party ?? null,
+        href: info ? `/officials/${r.to_id}` : null,
+        direction,
+        total_cents: r.amount_cents ?? 0,
+        count: 1,
+      });
+    }
+  }
+  const ieTargets = [...ieTargetMap.values()].sort((a, b) => b.total_cents - a.total_cents);
+
   // ── Enrich donors (inbound donations) ──────────────────────────────────────
   const inboundDonorIds = [...new Set(inbound.map((r) => r.from_id))];
   const donorEntityInfo = new Map<string, { display_name: string; entity_type: string }>();
@@ -461,6 +523,11 @@ export default async function DonorProfilePage({
   const cyclesActive = cycleSet.size;
 
   const totalSpendingCents = (entity.total_contract_cents ?? 0) + (entity.total_grant_cents ?? 0);
+  // FIX-668: materialized Schedule E totals drive the stat cell + section gate.
+  const ieSupportCents = entity.total_ie_support_cents ?? 0;
+  const ieOpposeCents  = entity.total_ie_oppose_cents ?? 0;
+  const totalIeCents   = ieSupportCents + ieOpposeCents;
+  const showIe         = totalIeCents > 0;
   const recipientTxCount = recipientCountRes.count ?? 0;
   const donorTxCount = donorCountRes.count ?? 0;
   const uniqueRecipients = recipients.length;
@@ -566,9 +633,16 @@ export default async function DonorProfilePage({
           </div>
 
           {/* Quick stats */}
-          <div className="grid grid-cols-2 gap-px border-t border-gray-100 bg-gray-100 sm:grid-cols-5">
+          <div className={`grid grid-cols-2 gap-px border-t border-gray-100 bg-gray-100 ${showIe ? "sm:grid-cols-6" : "sm:grid-cols-5"}`}>
             <StatCell value={formatMoney(entity.total_donated_cents)} label="Total donated" />
             <StatCell value={formatMoney(entity.total_received_cents)} label="Total received" />
+            {showIe && (
+              <StatCell
+                value={formatMoney(totalIeCents)}
+                label="Ind. expenditures"
+                note={`${formatMoney(ieSupportCents)} support · ${formatMoney(ieOpposeCents)} oppose`}
+              />
+            )}
             <StatCell
               value={totalSpendingCents > 0 ? formatMoney(totalSpendingCents) : "—"}
               label="Federal spending"
@@ -668,6 +742,75 @@ export default async function DonorProfilePage({
             </div>
           )}
         </div>
+
+        {/* ── INDEPENDENT EXPENDITURES (Schedule E) ─────────────────────── */}
+        {showIe && (
+          <div className="mt-6 rounded-lg border border-gray-200 bg-white overflow-hidden">
+            <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+              <div>
+                <h2 className="text-sm font-semibold text-gray-900">Independent expenditures</h2>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  Schedule E spending to support or oppose candidates — not coordinated with any campaign
+                </p>
+              </div>
+              <span className="text-[10px] text-gray-400">
+                {formatMoney(ieSupportCents)} support · {formatMoney(ieOpposeCents)} oppose
+              </span>
+            </div>
+            {ieTargets.length === 0 ? (
+              <div className="px-5 py-8 text-center">
+                <p className="text-sm font-medium text-gray-500">
+                  No itemized independent-expenditure targets on record
+                </p>
+              </div>
+            ) : (
+              <div className="divide-y divide-gray-100">
+                {ieTargets.map((t, i) => {
+                  const partyCls = t.party ? PARTY_BADGE[t.party] : undefined;
+                  const isOppose = t.direction === "oppose";
+                  return (
+                    <div key={`${t.id}-${t.direction}`} className="flex items-center gap-3 px-5 py-3">
+                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-gray-100 text-[10px] font-bold text-gray-500">
+                        {i + 1}
+                      </span>
+                      <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase ${
+                        isOppose ? "bg-red-100 text-red-700" : "bg-emerald-100 text-emerald-700"
+                      }`}>
+                        {isOppose ? "Opposes" : "Supports"}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        {t.href ? (
+                          <a
+                            href={t.href}
+                            className="truncate text-xs font-medium text-gray-800 hover:text-indigo-600 hover:underline transition-colors block"
+                          >
+                            {t.name}
+                          </a>
+                        ) : (
+                          <p className="truncate text-xs font-medium text-gray-800">{t.name}</p>
+                        )}
+                        {t.subtitle && (
+                          <p className="truncate text-[10px] text-gray-400">{t.subtitle}</p>
+                        )}
+                      </div>
+                      {partyCls && t.party && t.party.length > 0 && (
+                        <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold ${partyCls}`}>
+                          {t.party.charAt(0).toUpperCase()}
+                        </span>
+                      )}
+                      <div className="shrink-0 text-right">
+                        <p className="text-xs font-semibold text-gray-900">{formatMoney(t.total_cents)}</p>
+                        <p className="text-[10px] text-gray-400">
+                          {t.count} transaction{t.count === 1 ? "" : "s"}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* ── TOP DONORS (inbound) ───────────────────────────────────────── */}
         {topDonors.length > 0 && (
