@@ -19,7 +19,12 @@
       "Bash(cd ../civitics-worktrees/**)",
       "Bash(cd c:/Users/Craig/Documents/Civitics/civitics-worktrees/**)",
       "Edit(C:/Users/Craig/.claude/**)",
-      "Read(C:/Users/Craig/.claude/**)"
+      "Read(C:/Users/Craig/.claude/**)",
+      "Bash(node -e ' *)",
+      "Bash(pnpm --filter @civitics/data exec tsx --env-file=/c/Users/Craig/Documents/Civitics/App/.env.local.prod /c/Users/Craig/Documents/Civitics/App/packages/data/src/scripts/explain-spend-variants.ts)",
+      "Bash(psql postgresql://postgres:postgres@127.0.0.1:54322/postgres -c '\\\\timing on' -c 'SELECT public.refresh_jurisdiction_page_cache\\(\\) AS cached_rows;')",
+      "Bash(grep -nE '^#{2,3} ' docs/FIXES.md)",
+      "Bash(psql postgresql://postgres:postgres@127.0.0.1:54322/postgres -c 'select 1 as up;')"
     ],
     "deny": [
       "Bash(git push --force*)",
@@ -34,6 +39,16 @@
     ],
     "ask": [
       "Bash(pnpm install*)"
+    ]
+    
+  },"hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          { "type": "command", "command": "node \"C:/Users/Craig/Documents/Civitics/App/.claude/hooks/compound-allow-hook.mjs\"" }
+        ]
+      }
     ]
   },
   "disabledMcpjsonServers": [
