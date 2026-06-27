@@ -847,3 +847,5 @@
 2026-06-27 | FIX-673 | 8b35c35d | local-only | chore(fec): instrument + measure unmatched-target IE drop
 2026-06-27 | FIX-675 | da5ff1b5 | local-only | feat(donors): materialize total_received_cents + explain IE-only recipients empty state
 2026-06-27 | FIX-676 | da5ff1b5 | local-only | feat(donors): materialize total_received_cents + explain IE-only recipients empty state
+2026-06-27 | FIX-675 | ad0178fe | local+prod | chore(fixes): record prod verification for FIX-675/FIX-676 [skip vercel]
+2026-06-27 | FIX-676 | ad0178fe | local+prod | chore(fixes): record prod verification for FIX-675/FIX-676 [skip vercel]
