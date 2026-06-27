@@ -841,3 +841,5 @@
 2026-06-27 | FIX-667 | 5f0d5345 | local+prod | feat(search): surface independent-expenditure spending as the search amount
 2026-06-27 | FIX-668 | 6049969f | local+prod | feat(donors): show independent-expenditure spending + targets on profile page
 2026-06-27 | FIX-663 | 48d9376c | local+prod | perf(jurisdictions): cache get_jurisdiction_page payload for content-bearing jurisdictions
+2026-06-27 | FIX-669 | 33e57e8d | local+prod | fix(fec): map IE-only committee types U + I to super_pac + backfill mistyped entities
+2026-06-27 | FIX-671 | 33e57e8d | closes-as-no-op | fix(fec): map IE-only committee types U + I to super_pac + backfill mistyped entities
