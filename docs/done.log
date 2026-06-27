@@ -833,3 +833,5 @@
 2026-06-26 | FIX-581 | 68d9fc04 | local-only | chore(build): raise staticPageGenerationTimeout to 120s (FIX-581)
 2026-06-26 | FIX-633 | 7af4b384 | local+prod | feat(engagement): count endorsed community notes toward the rollup
 2026-06-26 | FIX-649 | 3ba31ece | local+prod | chore(platform): delete dead /api/platform/vercel route
+2026-06-27 | FIX-661 | f4a670d8 | local+prod | perf(jurisdictions): LATERAL-rewrite + index get_jurisdiction_page agency spend, align caps
+2026-06-27 | FIX-662 | f4a670d8 | local+prod | perf(jurisdictions): LATERAL-rewrite + index get_jurisdiction_page agency spend, align caps
