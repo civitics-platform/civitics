@@ -362,6 +362,27 @@ async function main(): Promise<void> {
             `  [post] refresh_entity_connection_stats_mv — FAILED: ${errMsg(statsErr)}`,
           );
         }
+        // FIX-663 — refresh the per-jurisdiction page cache. The payload bakes in
+        // the freshly-rebuilt derived data (officials/institutions/activity/spend),
+        // so the nightly tail — after entity_connections + the MVs above — is the
+        // right place. 62 content-bearing jurisdictions × up to a few seconds cold
+        // can exceed the ~100s PostgREST/Kong gateway, so this runs direct-pg with
+        // its own generous session timeout. Wrapped (advisory): a refresh failure
+        // leaves the prior cache snapshot in place (still served; next run
+        // re-materializes) and misses fall back to live-compute regardless.
+        try {
+          await client.query("SET statement_timeout = '600s'");
+          const r = await client.query<{ refresh_jurisdiction_page_cache: number }>(
+            "SELECT public.refresh_jurisdiction_page_cache()",
+          );
+          console.log(
+            `  [post] refresh_jurisdiction_page_cache — complete: ${r.rows[0]?.refresh_jurisdiction_page_cache ?? 0} rows`,
+          );
+        } catch (jpcErr) {
+          console.warn(
+            `  [post] refresh_jurisdiction_page_cache — FAILED: ${errMsg(jpcErr)}`,
+          );
+        }
         // FIX-590 — re-enable autovacuum and do ONE manual VACUUM ANALYZE now
         // that the churn is done, instead of letting autovacuum compete during
         // the rebuild. Wrapped so a VACUUM failure doesn't mask a good rebuild;
@@ -433,6 +454,18 @@ async function main(): Promise<void> {
       } catch (statsErr) {
         console.warn(
           `  [post] refresh_entity_connection_stats_mv — FAILED: ${errMsg(statsErr)}`,
+        );
+      }
+      // FIX-663 — same per-jurisdiction page-cache refresh on the local-dev
+      // umbrella path so `pnpm data:rebuild-connections` against local Docker also
+      // materializes the cache the jurisdiction page reads. Advisory.
+      try {
+        const { error: jpcErr } = await admin.rpc("refresh_jurisdiction_page_cache");
+        if (jpcErr) throw jpcErr;
+        console.log("  [post] refresh_jurisdiction_page_cache — complete");
+      } catch (jpcErr) {
+        console.warn(
+          `  [post] refresh_jurisdiction_page_cache — FAILED: ${errMsg(jpcErr)}`,
         );
       }
     }
