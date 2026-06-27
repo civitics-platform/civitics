@@ -29,7 +29,10 @@ const nextConfig = {
   // Note: `output: "standalone"` would shrink the Vercel cold-start image but
   // breaks `pnpm build` on Windows (EPERM on symlink without Developer Mode).
   // Re-enable once Windows Dev Mode is on or builds move to Linux/CI only.
-  staticPageGenerationTimeout: 30,
+  // raised per FIX-581 — insurance so one slow build-time jurisdiction render
+  // can't fail the whole deploy (structural fix already landed via FIX-634
+  // single RPC + withDbTimeout + the generateStaticParams discipline).
+  staticPageGenerationTimeout: 120,
   transpilePackages: [
     "@civitics/ui",
     "@civitics/db",
