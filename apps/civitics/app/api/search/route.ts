@@ -71,7 +71,7 @@ export type SearchFinancialEntity = {
   entity_type: string;
   industry: string | null;
   total_amount_cents: number | null;
-  amount_label: "contract" | "grant" | "donation";
+  amount_label: "contract" | "grant" | "donation" | "independent_expenditure";
   relevance_score: number;
   connection_count: number;
   is_synthetic: boolean;
@@ -234,6 +234,19 @@ async function checkSpendingCols(db: ReturnType<typeof createAdminClient>): Prom
   const { error } = await (db as any).from("financial_entities").select("total_contract_cents").limit(1);
   _spendingColsAvailable = !error;
   return _spendingColsAvailable;
+}
+
+// FIX-666/FIX-667: IE (Schedule E) totals were added in a later migration than
+// the spending columns, so probe them independently — there's a brief window
+// where total_contract_cents exists but the IE columns don't.
+let _ieColsAvailable: boolean | null = null;
+
+async function checkIeCols(db: ReturnType<typeof createAdminClient>): Promise<boolean> {
+  if (_ieColsAvailable !== null) return _ieColsAvailable;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (db as any).from("financial_entities").select("total_ie_support_cents").limit(1);
+  _ieColsAvailable = !error;
+  return _ieColsAvailable;
 }
 
 // ---------------------------------------------------------------------------
@@ -545,10 +558,11 @@ export async function GET(req: NextRequest) {
     if (typeFilter !== "all" && typeFilter !== "financial") return { results: [], hasMore: false, total_count: 0 };
     if (typeFilter === "all" && anyTypeFilter && !hasFinancialFilters) return { results: [], hasMore: false, total_count: 0 };
 
-    const spendingCols = await checkSpendingCols(db);
-    const selectCols = spendingCols
+    const [spendingCols, ieCols] = await Promise.all([checkSpendingCols(db), checkIeCols(db)]);
+    const ieSelect = ieCols ? ", total_ie_support_cents, total_ie_oppose_cents" : "";
+    const selectCols = (spendingCols
       ? "id, display_name, entity_type, total_donated_cents, total_contract_cents, total_grant_cents, is_synthetic"
-      : "id, display_name, entity_type, total_donated_cents, is_synthetic";
+      : "id, display_name, entity_type, total_donated_cents, is_synthetic") + ieSelect;
 
     let qb = db2
       .from("financial_entities")
@@ -624,15 +638,24 @@ export async function GET(req: NextRequest) {
       const contractCents = (f.total_contract_cents as number | null | undefined) ?? 0;
       const grantCents    = (f.total_grant_cents    as number | null | undefined) ?? 0;
       const donationCents = (f.total_donated_cents  as number | null) ?? 0;
+      const ieCents       = ((f.total_ie_support_cents as number | null | undefined) ?? 0)
+                          + ((f.total_ie_oppose_cents  as number | null | undefined) ?? 0);
       const spendingCents = contractCents + grantCents;
 
-      // Corps/orgs: show federal spending if present; PACs/individuals: show donations.
-      const showSpending = spendingCents > 0 &&
+      // Precedence (FIX-667): independent expenditures dominate when present —
+      // an IE-only super PAC makes no direct donations, so its "spending" IS its
+      // Schedule E outlay. Gated on IE>0 (not entity_type) because FEC committee
+      // type 'U' falls through to entity_type='other'. Then the existing rule:
+      // corps/orgs show federal spending; everyone else shows donations.
+      const showIe       = ieCents > 0;
+      const showSpending = !showIe && spendingCents > 0 &&
         (f.entity_type === "corporation" || f.entity_type === "organization");
-      const dominantAmount = showSpending ? spendingCents : donationCents;
-      const amountLabel: SearchFinancialEntity["amount_label"] = showSpending
-        ? (contractCents >= grantCents ? "contract" : "grant")
-        : "donation";
+      const dominantAmount = showIe ? ieCents : showSpending ? spendingCents : donationCents;
+      const amountLabel: SearchFinancialEntity["amount_label"] = showIe
+        ? "independent_expenditure"
+        : showSpending
+          ? (contractCents >= grantCents ? "contract" : "grant")
+          : "donation";
 
       let score = q.length >= 2 ? baseRelevance(f.display_name, q) : 50;
       if (dominantAmount > 100_000_00) score += 5;

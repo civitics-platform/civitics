@@ -323,6 +323,7 @@ function FinancialCardContent({ f, badge, isInGraph }: { f: SearchFinancialEntit
             {formatDollars(f.total_amount_cents!)} · {
               f.amount_label === "contract" ? "Contracts"
               : f.amount_label === "grant"  ? "Grants"
+              : f.amount_label === "independent_expenditure" ? "Ind. expenditures"
               : "Donations"
             }
           </span>
