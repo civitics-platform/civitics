@@ -3,6 +3,12 @@
  * (entity_engagement_rollup_mv). Powers the Claimed / Engaged / Active-community
  * badges and the "Most engaged" officials sort.
  *
+ * FIX-633: the rollup now also carries endorsed_count — questions resolved by an
+ * endorsed community note rather than a written answer. answers_count stays
+ * written-answers-only, so the base "Responsive" tier fires on a written answer
+ * OR an endorsement, while the high "Highly responsive" tier stays
+ * written-answers-only to keep it distinct.
+ *
  * DISPLAY-ONLY: nothing here feeds standing or integrity. It is a read over a
  * nightly MV plus pure label/sort helpers. Generic over the three accountable
  * entity types so PR B2 (institutions/jurisdictions) reuses it unchanged.
@@ -30,6 +36,7 @@ export type EngagementRollup = {
   answersCount: number;
   questionsCount: number;
   answeredRate: number; // 0..1
+  endorsedCount: number; // FIX-633: questions resolved by an endorsed community note
   lastAnswerAt: string | null;
   communityCount30d: number;
   lastActivityAt: string | null;
@@ -40,6 +47,7 @@ export const EMPTY_ENGAGEMENT: EngagementRollup = {
   answersCount: 0,
   questionsCount: 0,
   answeredRate: 0,
+  endorsedCount: 0,
   lastAnswerAt: null,
   communityCount30d: 0,
   lastActivityAt: null,
@@ -60,7 +68,10 @@ export function engagedTier(e: EngagementRollup): EngagedTier {
   if (e.answersCount >= ENGAGED_HIGH_MIN && e.answeredRate >= ENGAGED_HIGH_RATE) {
     return { level: "high", label: "Highly responsive" };
   }
-  if (e.answersCount >= ENGAGED_RESPONSIVE_MIN) {
+  // FIX-633: endorsing a community note is an official act of responsiveness
+  // ("✓ Endorsed by the office"), so it lifts the base Responsive badge — but NOT
+  // the high tier, which stays written-answers-only to keep that tier distinct.
+  if (e.answersCount >= ENGAGED_RESPONSIVE_MIN || e.endorsedCount >= 1) {
     return { level: "base", label: "Responsive" };
   }
   return null;
@@ -81,13 +92,19 @@ export function communityTier(e: EngagementRollup): CommunityTier {
  * "Most engaged" ordering. Returns <0 when `a` should sort before `b`.
  * Display-only; not a standing score.
  *
- * Order: absolute responsiveness (answers_count) → surrounding activity
- * (community_count_30d) → answered_rate → recency of last answer. answered_rate
+ * Order: total responses (answers_count + endorsed_count, FIX-633) → written
+ * answers as the tie-break → surrounding activity (community_count_30d) →
+ * answered_rate → recency of last answer. answered_rate
  * sits BELOW community on purpose: with a tied small answers_count, a 1-of-1
  * office (rate 1.0) must not outrank a busier 1-of-7 office with a large active
  * community — the same small-sample guard the Engaged tier applies.
  */
 export function compareEngagement(a: EngagementRollup, b: EngagementRollup): number {
+  // FIX-633: total responses (written answers + endorsements) leads; among equal
+  // totals, more written answers wins.
+  const ra = a.answersCount + a.endorsedCount;
+  const rb = b.answersCount + b.endorsedCount;
+  if (ra !== rb) return rb - ra;
   if (a.answersCount !== b.answersCount) return b.answersCount - a.answersCount;
   if (a.communityCount30d !== b.communityCount30d) return b.communityCount30d - a.communityCount30d;
   if (a.answeredRate !== b.answeredRate) return b.answeredRate - a.answeredRate;
@@ -102,7 +119,7 @@ export function hasAnyBadge(e: EngagementRollup): boolean {
 }
 
 const ROLLUP_COLUMNS =
-  "entity_id, is_claimed, answers_count, questions_count, answered_rate, last_answer_at, community_count_30d, last_activity_at";
+  "entity_id, is_claimed, answers_count, questions_count, answered_rate, endorsed_count, last_answer_at, community_count_30d, last_activity_at";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 function toRollup(r: any): EngagementRollup {
@@ -111,6 +128,7 @@ function toRollup(r: any): EngagementRollup {
     answersCount: r.answers_count ?? 0,
     questionsCount: r.questions_count ?? 0,
     answeredRate: typeof r.answered_rate === "number" ? r.answered_rate : Number(r.answered_rate ?? 0),
+    endorsedCount: r.endorsed_count ?? 0,
     lastAnswerAt: r.last_answer_at ?? null,
     communityCount30d: r.community_count_30d ?? 0,
     lastActivityAt: r.last_activity_at ?? null,
