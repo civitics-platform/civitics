@@ -63,7 +63,14 @@ export type FinancialEntityType =
 
 export function cmteTypeToEntityType(cmteType: string): FinancialEntityType {
   const c = (cmteType ?? "").trim().toUpperCase();
-  if (c === "O") return "super_pac";
+  // Independent-expenditure-only filers all bucket as super_pac (FIX-669):
+  //   O = qualified IE-only committee (Super PAC)
+  //   U = single-candidate independent-expenditure committee
+  //   I = independent-expenditure filer (FEC Form 5; not a registered committee)
+  // U + I previously fell through to 'other', mistyping ~147 IE spenders.
+  // Candidate committees (H/S/P) that occasionally appear as Schedule E
+  // spenders are deliberately NOT mapped here — they are not super PACs.
+  if (["O", "U", "I"].includes(c)) return "super_pac";
   if (["X", "Y", "Z"].includes(c)) return "party_committee";
   if (["N", "Q", "V", "W"].includes(c)) return "pac";
   return "other";
