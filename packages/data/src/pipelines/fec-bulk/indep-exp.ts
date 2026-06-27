@@ -25,6 +25,24 @@ import * as fs   from "fs";
 import { parse } from "csv-parse";
 
 // ---------------------------------------------------------------------------
+// Upper sanity bound on a single Schedule E transaction (FIX-A)
+// ---------------------------------------------------------------------------
+//
+// FEC's public Schedule E corpus carries vexatious / fake filings — e.g. fake
+// committees ("THE COURT OF DIVINE JUSTICE", "THE COMMITTEE OF 300",
+// "Republican Emo Girl") and a serial prankster filing $1B–$9.98B
+// "independent expenditures" under names like "Bettis, Shawn" / "Warren Buffet
+// Apple Inc". These are genuine source rows — NOT a parse error; the CSV
+// columns align cleanly (zero wrong-width rows) and exp_amo literally holds the
+// billion-dollar value — so the only durable defense is an amount sanity bound.
+// The largest *real* single 2024 Schedule E disbursement is ~$30M (Make America
+// Great Again Inc.); the junk starts at $114M/row. $50M sits cleanly in that
+// gap: it rejects every observed junk row while preserving the realistic
+// ceiling. Rejected rows are counted and surfaced in the run log so any future
+// junk above the bound stays visible.
+const MAX_IE_AMOUNT_DOLLARS = 50_000_000;
+
+// ---------------------------------------------------------------------------
 // Public types
 // ---------------------------------------------------------------------------
 
@@ -40,12 +58,23 @@ export interface IndepExpAggregation {
 export interface IndepExpStreamResult {
   /** Key = `${spendingCmteId}|${candId}|${supportOppose}`. */
   aggregations: Map<string, IndepExpAggregation>;
+  /**
+   * Per-cand dropped totals (cents). Populated only when
+   * `opts.collectDroppedByCand` is set — used by the `data:analyze:ie-drop`
+   * diagnostic (FIX-B) to surface which unmatched target candidates hide the
+   * most IE money. Key = raw FEC cand_id.
+   */
+  droppedByCand?: Map<string, number>;
   stats: {
-    rowsRead:        number;
-    passedSupOpp:    number; // sup_opp ∈ {S, O}
-    passedCmteCand:  number; // both spe_id + cand_id present
-    passedAmount:    number; // exp_amo parses to > 0
-    passedCand:      number; // cand_id ∈ candidateSet
+    rowsRead:              number;
+    passedSupOpp:          number; // sup_opp ∈ {S, O}
+    passedCmteCand:        number; // both spe_id + cand_id present
+    rejectedHighAmount:    number; // count of exp_amo > MAX_IE_AMOUNT_DOLLARS — junk (FIX-A)
+    rejectedHighCents:     number; // Σ amount of those junk rows               (FIX-A)
+    passedAmount:          number; // exp_amo parses to > 0 AND ≤ bound
+    passedCand:            number; // cand_id ∈ candidateSet
+    keptCents:             number; // Σ amount for rows passing candidateSet     (FIX-B)
+    droppedUnmatchedCents: number; // Σ amount for valid rows w/ cand_id ∉ set   (FIX-B)
   };
 }
 
@@ -95,14 +124,22 @@ interface IeRow {
 export async function streamIndependentExpenditures(
   csvPath:      string,
   candidateSet: Set<string>,
+  opts:         { collectDroppedByCand?: boolean } = {},
 ): Promise<IndepExpStreamResult> {
   const aggregations = new Map<string, IndepExpAggregation>();
 
-  let rowsRead       = 0;
-  let passedSupOpp   = 0;
-  let passedCmteCand = 0;
-  let passedAmount   = 0;
-  let passedCand     = 0;
+  let rowsRead              = 0;
+  let passedSupOpp          = 0;
+  let passedCmteCand        = 0;
+  let rejectedHighAmount    = 0;
+  let rejectedHighCents     = 0;
+  let passedAmount          = 0;
+  let passedCand            = 0;
+  let keptCents             = 0;
+  let droppedUnmatchedCents = 0;
+  const droppedByCand = opts.collectDroppedByCand
+    ? new Map<string, number>()
+    : undefined;
 
   const parser = fs.createReadStream(csvPath).pipe(
     parse({
@@ -134,13 +171,31 @@ export async function streamIndependentExpenditures(
 
     const amt = parseFloat((row.exp_amo ?? "").trim());
     if (isNaN(amt) || amt <= 0) continue;
+    // Upper sanity bound — reject vexatious / fake billion-dollar filings (FIX-A).
+    if (amt > MAX_IE_AMOUNT_DOLLARS) {
+      rejectedHighAmount++;
+      rejectedHighCents += Math.round(amt * 100);
+      continue;
+    }
     passedAmount++;
 
-    if (!candidateSet.has(candId)) continue;
+    const amtCents = Math.round(amt * 100);
+
+    // FIX-B instrumentation: quantify how much *valid* IE money the
+    // matched-official filter hides. droppedUnmatchedCents accumulates rows
+    // that are well-formed (valid amount, present cmte + cand) but whose
+    // target candidate isn't one of our matched officials.
+    if (!candidateSet.has(candId)) {
+      droppedUnmatchedCents += amtCents;
+      if (droppedByCand) {
+        droppedByCand.set(candId, (droppedByCand.get(candId) ?? 0) + amtCents);
+      }
+      continue;
+    }
     passedCand++;
+    keptCents += amtCents;
 
     const dateIso = parseDdMonYy(row.exp_date);
-    const amtCents = Math.round(amt * 100);
     const key      = `${spendingCmteId}|${candId}|${supOpp}`;
 
     const existing = aggregations.get(key);
@@ -162,15 +217,32 @@ export async function streamIndependentExpenditures(
     }
   }
 
+  const usd = (cents: number) =>
+    `$${(cents / 100).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+
   console.log(`    Rows read:                 ${rowsRead.toLocaleString()}`);
   console.log(`    Passed sup_opp filter:     ${passedSupOpp.toLocaleString()}`);
   console.log(`    Passed cmte+cand filter:   ${passedCmteCand.toLocaleString()}`);
-  console.log(`    Passed amount > 0 filter:  ${passedAmount.toLocaleString()}`);
+  console.log(`    Rejected exp_amo > $${(MAX_IE_AMOUNT_DOLLARS / 1e6).toFixed(0)}M:  ${rejectedHighAmount.toLocaleString()}`);
+  console.log(`    Passed amount filter:      ${passedAmount.toLocaleString()}`);
   console.log(`    Passed candidateSet:       ${passedCand.toLocaleString()}`);
+  console.log(`    Kept $ (matched officials):   ${usd(keptCents)}`);
+  console.log(`    Dropped $ (unmatched target): ${usd(droppedUnmatchedCents)}`);
   console.log(`    Unique (cmte × cand × S/O): ${aggregations.size.toLocaleString()}`);
 
   return {
     aggregations,
-    stats: { rowsRead, passedSupOpp, passedCmteCand, passedAmount, passedCand },
+    droppedByCand,
+    stats: {
+      rowsRead,
+      passedSupOpp,
+      passedCmteCand,
+      rejectedHighAmount,
+      rejectedHighCents,
+      passedAmount,
+      passedCand,
+      keptCents,
+      droppedUnmatchedCents,
+    },
   };
 }

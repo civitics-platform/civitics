@@ -204,7 +204,7 @@ function r2KeyFor(cycle: string, fileName: string): string {
   return `fec/${cycle}/${fileName}`;
 }
 
-function downloadFile(url: string, destPath: string): Promise<void> {
+export function downloadFile(url: string, destPath: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const follow = (targetUrl: string): void => {
       const file = fs.createWriteStream(destPath);
@@ -312,7 +312,7 @@ function normalizeLastName(name: string | null): string {
 // Match FEC rows to our officials
 // ---------------------------------------------------------------------------
 
-async function loadOfficials(
+export async function loadOfficials(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   db: any
 ): Promise<OfficialRecord[]> {
@@ -350,7 +350,7 @@ interface MatchIndex {
   byLastName: Map<string, OfficialRecord[]>; // normalizedLast → officials
 }
 
-function buildMatchIndex(officials: OfficialRecord[]): MatchIndex {
+export function buildMatchIndex(officials: OfficialRecord[]): MatchIndex {
   const byFecId    = new Map<string, string>();
   const byLastName = new Map<string, OfficialRecord[]>();
 
