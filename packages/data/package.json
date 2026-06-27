@@ -103,6 +103,7 @@
     "data:score-comments": "tsx --env-file=../../.env.local src/scripts/score-comments.ts",
     "data:refresh-donor-mv": "tsx --env-file=../../.env.local src/scripts/refresh-donor-rollup-mv.ts",
     "data:rebuild:ie-totals": "tsx --env-file=../../.env.local src/scripts/rebuild-ie-totals.ts",
+    "data:analyze:ie-drop": "tsx --env-file=../../.env.local src/scripts/analyze-ie-drop.ts",
     "data:refresh-donor-mv:ci": "tsx src/scripts/refresh-donor-rollup-mv.ts",
     "data:rebuild-connections": "tsx --env-file=../../.env.local src/scripts/rebuild-entity-connections.ts",
     "data:rebuild-connections:ci": "tsx src/scripts/rebuild-entity-connections.ts --allow-prod",
