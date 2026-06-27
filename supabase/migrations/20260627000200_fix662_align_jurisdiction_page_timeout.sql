@@ -1,0 +1,31 @@
+-- =============================================================================
+-- 20260627000200_fix662_align_jurisdiction_page_timeout.sql
+-- FIX-662 — align get_jurisdiction_page's statement_timeout with the page's
+-- client-side withDbTimeout.
+--
+-- The page (apps/civitics/app/jurisdictions/[id]/page.tsx) wraps the RPC in
+-- withDbTimeout(..., 3000) — a 3s JS race that returns the degraded shell and
+-- proceeds. But the function's own cap was 8s (FIX-634). The JS race only
+-- controls when the RENDER proceeds; it does NOT cancel the in-flight backend.
+-- So on a slow call the user got the degraded shell at 3s while the DB kept
+-- working up to ~5s more, holding its pooled connection — re-creating the pool
+-- pressure FIX-634 set out to remove, just with fewer longer-held connections.
+-- The lever that actually frees the connection is the FUNCTION statement_timeout.
+--
+-- With FIX-661 the heavy (federal) page is ~60-80ms warm; the only calls that
+-- still exceed a few seconds are fully-cold renders dominated by IOWait on the
+-- cache-starved Pro Small instance (e.g. Rhode Island cold ~9.5s, warm ~110ms) —
+-- and those are ALREADY abandoned by the 3s client race today. There is no
+-- legitimate render the 3s client would keep that an >3s DB budget would rescue,
+-- so the function should stop working no later than the client gives up.
+--
+-- Invariant: get_jurisdiction_page statement_timeout <= the page's client
+-- withDbTimeout (3s). Set them equal (3s) so the DB cancels and frees the
+-- connection in lockstep with the client abandoning the render. ALTER only —
+-- the function body is left exactly as FIX-661 wrote it (no CREATE OR REPLACE,
+-- so no risk of reverting that rewrite). The cold-render IOWait itself is the
+-- durable-MV follow-up (FIX-663), not this cap change.
+-- =============================================================================
+
+ALTER FUNCTION public.get_jurisdiction_page(uuid)
+  SET statement_timeout = '3s';
