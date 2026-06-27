@@ -67,6 +67,11 @@ const ALLOWED_REBUILDS = new Set([
   // died at the PostgREST gateway cap (`upstream request timeout`, 2026-06-14)
   // when called via admin.rpc(); the direct-pg path sidesteps both caps.
   "rebuild_financial_entity_donation_totals",
+  // FIX-666: nightly super-PAC independent-expenditure (Schedule E) totals
+  // (returns void → count 0). The temp-table pivot over financial_relationships
+  // ie_support/ie_oppose rows runs on the same direct-pg lift as the donation
+  // total above so it can't die at the PostgREST gateway cap on prod.
+  "rebuild_financial_entity_ie_totals",
   // FIX-651: nightly spending-totals refresh (step 3b-ii, returns void → count
   // 0). The set-based UPDATE over financial_relationships (contract+grant) timed
   // out on prod 2026-06-22 ("canceling statement due to statement timeout") on

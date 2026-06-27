@@ -1375,6 +1375,24 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
       );
     }
 
+    // ── IE (Schedule E) total recompute (FIX-666) ───────────────────────────
+    // total_donated_cents deliberately excludes ie_support/ie_oppose, so IE-only
+    // super PACs need their own materialized totals (total_ie_support_cents /
+    // total_ie_oppose_cents) for the search + donor-page read surfaces. Same
+    // direct-pg lift as the donation recompute. Advisory — a failure here leaves
+    // stale IE totals the next cycle recomputes; it must not abort the pipeline.
+    console.log("\n  Recomputing financial_entities IE (Schedule E) totals from live financial_relationships...");
+    try {
+      await runHeavyRebuild("rebuild_financial_entity_ie_totals");
+      console.log("    ✓ IE support/oppose totals recomputed from financial_relationships");
+    } catch (rebuildErr) {
+      console.warn(
+        `    rebuild_financial_entity_ie_totals failed: ${
+          rebuildErr instanceof Error ? rebuildErr.message : String(rebuildErr)
+        }`,
+      );
+    }
+
     // ── Persist indiv Last-Modified watermark (FIX-193) ─────────────────────
     if (Object.keys(indivWatermark).length > 0) {
       try {

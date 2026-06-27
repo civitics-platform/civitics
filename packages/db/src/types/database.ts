@@ -327,6 +327,48 @@ export type Database = {
           },
         ]
       }
+      brigade_candidates: {
+        Row: {
+          account_ids: string[]
+          cluster_size: number
+          detected_at: string
+          id: number
+          metadata: Json
+          mode: string
+          notes: string | null
+          score: number
+          sha: string | null
+          signals: Json
+          target_id: string | null
+        }
+        Insert: {
+          account_ids: string[]
+          cluster_size: number
+          detected_at?: string
+          id?: number
+          metadata?: Json
+          mode: string
+          notes?: string | null
+          score: number
+          sha?: string | null
+          signals?: Json
+          target_id?: string | null
+        }
+        Update: {
+          account_ids?: string[]
+          cluster_size?: number
+          detected_at?: string
+          id?: number
+          metadata?: Json
+          mode?: string
+          notes?: string | null
+          score?: number
+          sha?: string | null
+          signals?: Json
+          target_id?: string | null
+        }
+        Relationships: []
+      }
       career_history: {
         Row: {
           created_at: string
@@ -2279,6 +2321,8 @@ export type Database = {
           total_contract_cents: number
           total_donated_cents: number
           total_grant_cents: number
+          total_ie_oppose_cents: number
+          total_ie_support_cents: number
           total_received_cents: number
           updated_at: string
         }
@@ -2301,6 +2345,8 @@ export type Database = {
           total_contract_cents?: number
           total_donated_cents?: number
           total_grant_cents?: number
+          total_ie_oppose_cents?: number
+          total_ie_support_cents?: number
           total_received_cents?: number
           updated_at?: string
         }
@@ -2323,6 +2369,8 @@ export type Database = {
           total_contract_cents?: number
           total_donated_cents?: number
           total_grant_cents?: number
+          total_ie_oppose_cents?: number
+          total_ie_support_cents?: number
           total_received_cents?: number
           updated_at?: string
         }
@@ -2402,6 +2450,27 @@ export type Database = {
           to_type?: string
           updated_at?: string
           usaspending_award_id?: string | null
+        }
+        Relationships: []
+      }
+      franklin_seed_map: {
+        Row: {
+          created_at: string
+          row_id: string
+          seed_key: string
+          table_name: string
+        }
+        Insert: {
+          created_at?: string
+          row_id: string
+          seed_key: string
+          table_name: string
+        }
+        Update: {
+          created_at?: string
+          row_id?: string
+          seed_key?: string
+          table_name?: string
         }
         Relationships: []
       }
@@ -3406,6 +3475,48 @@ export type Database = {
           },
         ]
       }
+      moderation_audit: {
+        Row: {
+          computed_verdict: string
+          expectation: string
+          expected_verdict: string
+          fixture_id: string
+          id: number
+          match: boolean
+          metadata: Json
+          notes: string | null
+          rule_id: string
+          run_at: string
+          sha: string | null
+        }
+        Insert: {
+          computed_verdict: string
+          expectation?: string
+          expected_verdict: string
+          fixture_id: string
+          id?: number
+          match: boolean
+          metadata?: Json
+          notes?: string | null
+          rule_id: string
+          run_at?: string
+          sha?: string | null
+        }
+        Update: {
+          computed_verdict?: string
+          expectation?: string
+          expected_verdict?: string
+          fixture_id?: string
+          id?: number
+          match?: boolean
+          metadata?: Json
+          notes?: string | null
+          rule_id?: string
+          run_at?: string
+          sha?: string | null
+        }
+        Relationships: []
+      }
       notifications: {
         Row: {
           body: string | null
@@ -3878,6 +3989,24 @@ export type Database = {
           key?: string
           updated_at?: string | null
           value?: Json
+        }
+        Relationships: []
+      }
+      platform_alert_state: {
+        Row: {
+          last_alerted_at: string
+          last_status: string
+          metric_key: string
+        }
+        Insert: {
+          last_alerted_at?: string
+          last_status: string
+          metric_key: string
+        }
+        Update: {
+          last_alerted_at?: string
+          last_status?: string
+          metric_key?: string
         }
         Relationships: []
       }
@@ -4522,6 +4651,39 @@ export type Database = {
         }
         Relationships: []
       }
+      synthetic_position_rollup: {
+        Row: {
+          buckets: Json
+          constituent: Json | null
+          created_at: string
+          entity_id: string
+          entity_type: string
+          median: number
+          n: number
+          pct_with_conditions: number | null
+        }
+        Insert: {
+          buckets: Json
+          constituent?: Json | null
+          created_at?: string
+          entity_id: string
+          entity_type: string
+          median: number
+          n: number
+          pct_with_conditions?: number | null
+        }
+        Update: {
+          buckets?: Json
+          constituent?: Json | null
+          created_at?: string
+          entity_id?: string
+          entity_type?: string
+          median?: number
+          n?: number
+          pct_with_conditions?: number | null
+        }
+        Relationships: []
+      }
       user_custom_groups: {
         Row: {
           color: string | null
@@ -4947,6 +5109,22 @@ export type Database = {
         }
         Relationships: []
       }
+      entity_engagement_rollup_mv: {
+        Row: {
+          answered_rate: number | null
+          answers_count: number | null
+          community_count_30d: number | null
+          endorsed_count: number | null
+          entity_id: string | null
+          entity_type: string | null
+          is_claimed: boolean | null
+          last_activity_at: string | null
+          last_answer_at: string | null
+          questions_count: number | null
+          refreshed_at: string | null
+        }
+        Relationships: []
+      }
       homepage_agency_counts_mv: {
         Row: {
           agency_id: string | null
@@ -5077,6 +5255,13 @@ export type Database = {
         }
         Relationships: []
       }
+      synthetic_entities: {
+        Row: {
+          entity_id: string | null
+          entity_type: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       add_citation: {
@@ -5160,6 +5345,7 @@ export type Database = {
         Args: { raw_name: string; zip5: string }
         Returns: string
       }
+      check_rebuild_autovacuum_status: { Args: never; Returns: Json }
       chord_contract_flows: {
         Args: never
         Returns: {
@@ -5328,6 +5514,11 @@ export type Database = {
           total: number
         }[]
       }
+      count_synthetic_donor_records: { Args: never; Returns: number }
+      count_synthetic_financial_records: {
+        Args: { p_rel_types: string[] }
+        Returns: number
+      }
       create_investigation: {
         Args: {
           p_question?: string
@@ -5359,6 +5550,27 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      detect_brigade_candidates: {
+        Args: {
+          p_established_days?: number
+          p_horizon_days?: number
+          p_min_cluster?: number
+          p_min_cooccur_targets?: number
+          p_mode?: string
+          p_new_account_days?: number
+          p_score_threshold?: number
+          p_target_ids?: string[]
+          p_window_minutes?: number
+        }
+        Returns: {
+          account_ids: string[]
+          cluster_size: number
+          mode: string
+          score: number
+          signals: Json
+          target_id: string
+        }[]
       }
       enqueue_enrichment: {
         Args: {
@@ -5392,6 +5604,7 @@ export type Database = {
           role_title: string
         }[]
       }
+      get_agency_page: { Args: { p_id: string }; Returns: Json }
       get_connection_counts: {
         Args: { entity_ids: string[] }
         Returns: {
@@ -5456,16 +5669,6 @@ export type Database = {
         }
         Returns: Json
       }
-      get_position_rollup_display: {
-        Args: { p_entity_id: string; p_entity_type: string; p_lens?: string }
-        Returns: {
-          buckets: Json
-          median: number
-          n: number
-          pct_with_conditions: number
-          synthetic: boolean
-        }[]
-      }
       get_entity_statements: {
         Args: {
           p_cursor?: string
@@ -5477,6 +5680,7 @@ export type Database = {
         Returns: Json
       }
       get_financial_entity_naics: { Args: never; Returns: Json }
+      get_gb_page: { Args: { p_id: string }; Returns: Json }
       get_group_connections: {
         Args: { p_limit?: number; p_member_ids: string[] }
         Returns: {
@@ -5530,6 +5734,7 @@ export type Database = {
           url: string
         }[]
       }
+      get_jurisdiction_page: { Args: { p_id: string }; Returns: Json }
       get_official_bipartisan_stats: { Args: never; Returns: Json }
       get_official_donor_rollup: { Args: never; Returns: Json }
       get_official_donors: {
@@ -5543,6 +5748,7 @@ export type Database = {
           transaction_count: number
         }[]
       }
+      get_official_page: { Args: { p_id: string }; Returns: Json }
       get_officials_breakdown: {
         Args: never
         Returns: {
@@ -5572,6 +5778,17 @@ export type Database = {
       get_pac_treemap_by_sector: {
         Args: { p_industry?: string; p_min_cents?: number }
         Returns: Json
+      }
+      get_plum_book_last_change: { Args: never; Returns: string }
+      get_position_rollup_display: {
+        Args: { p_entity_id: string; p_entity_type: string; p_lens?: string }
+        Returns: {
+          buckets: Json
+          median: number
+          n: number
+          pct_with_conditions: number
+          synthetic: boolean
+        }[]
       }
       get_proposal_counts_by_agency: {
         Args: never
@@ -5700,6 +5917,7 @@ export type Database = {
         Returns: {
           id: string
           introduced_at: string
+          is_synthetic: boolean
           metadata: Json
           status: string
           summary_model: string
@@ -5969,6 +6187,7 @@ export type Database = {
         Args: never
         Returns: undefined
       }
+      rebuild_financial_entity_ie_totals: { Args: never; Returns: undefined }
       rebuild_financial_entity_size_tags: { Args: never; Returns: number }
       rebuild_official_donation_totals: { Args: never; Returns: undefined }
       rebuild_official_donation_totals_full: { Args: never; Returns: undefined }
@@ -5995,6 +6214,7 @@ export type Database = {
       refresh_connection_type_counts: { Args: never; Returns: undefined }
       refresh_donor_party_rollup_mv: { Args: never; Returns: undefined }
       refresh_entity_connection_stats_mv: { Args: never; Returns: undefined }
+      refresh_entity_engagement_rollup_mv: { Args: never; Returns: undefined }
       refresh_group_donor_rollup: { Args: never; Returns: Json }
       refresh_homepage_agency_counts_mv: { Args: never; Returns: undefined }
       refresh_homepage_stats_mv: { Args: never; Returns: undefined }
@@ -6054,6 +6274,10 @@ export type Database = {
           party: string
           subtitle: string
         }[]
+      }
+      set_community_note_endorsement: {
+        Args: { p_endorsed: boolean; p_note_id: string }
+        Returns: Json
       }
       set_entity_position: {
         Args: {
@@ -6116,10 +6340,6 @@ export type Database = {
         Returns: Json
       }
       source_priority: { Args: { src: string }; Returns: number }
-      set_community_note_endorsement: {
-        Args: { p_endorsed: boolean; p_note_id: string }
-        Returns: Json
-      }
       submit_comment: {
         Args: {
           p_body: string
@@ -6577,9 +6797,6 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
-  graphql_public: {
-    Enums: {},
-  },
   public: {
     Enums: {
       argument_flag: ["off_topic", "misleading", "duplicate", "other"],
@@ -6774,4 +6991,3 @@ export const Constants = {
     },
   },
 } as const
-
