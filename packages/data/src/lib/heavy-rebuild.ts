@@ -72,6 +72,12 @@ const ALLOWED_REBUILDS = new Set([
   // ie_support/ie_oppose rows runs on the same direct-pg lift as the donation
   // total above so it can't die at the PostgREST gateway cap on prod.
   "rebuild_financial_entity_ie_totals",
+  // FIX-675: nightly inbound-donation total recompute (total_received_cents,
+  // returns void → count 0). The to_id mirror of rebuild_financial_entity_
+  // donation_totals above — same ~2M-row temp-table pivot over
+  // financial_relationships, so it rides the same direct-pg lift to clear the
+  // PostgREST gateway cap on prod.
+  "rebuild_financial_entity_received_totals",
   // FIX-651: nightly spending-totals refresh (step 3b-ii, returns void → count
   // 0). The set-based UPDATE over financial_relationships (contract+grant) timed
   // out on prod 2026-06-22 ("canceling statement due to statement timeout") on

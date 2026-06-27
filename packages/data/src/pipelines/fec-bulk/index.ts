@@ -1393,6 +1393,25 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
       );
     }
 
+    // ── Inbound donation total recompute (FIX-675) ──────────────────────────
+    // total_received_cents is hardcoded to 0 when the indiv path pre-upserts
+    // recipient committee rows, so committees that received itemized individual
+    // contributions (super PACs, party/other PACs) show $0 "Total received" on
+    // the donor page. This is the to_id mirror of the donation recompute above —
+    // same direct-pg lift. Advisory — a failure leaves stale totals the next
+    // cycle recomputes; it must not abort the pipeline.
+    console.log("\n  Recomputing financial_entities.total_received_cents (inbound donations) from live financial_relationships...");
+    try {
+      await runHeavyRebuild("rebuild_financial_entity_received_totals");
+      console.log("    ✓ inbound (received) totals recomputed from financial_relationships");
+    } catch (rebuildErr) {
+      console.warn(
+        `    rebuild_financial_entity_received_totals failed: ${
+          rebuildErr instanceof Error ? rebuildErr.message : String(rebuildErr)
+        }`,
+      );
+    }
+
     // ── Persist indiv Last-Modified watermark (FIX-193) ─────────────────────
     if (Object.keys(indivWatermark).length > 0) {
       try {

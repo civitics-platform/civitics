@@ -692,7 +692,18 @@ export default async function DonorProfilePage({
           </div>
           {topRecipients.length === 0 ? (
             <div className="px-5 py-8 text-center">
-              <p className="text-sm font-medium text-gray-500">No outbound donations on record</p>
+              {showIe ? (
+                /* FIX-676: an IE-only super PAC legally makes no direct
+                   candidate contributions — the empty list is correct, so
+                   explain the structure rather than implying missing data. */
+                <p className="mx-auto max-w-md text-sm text-gray-500">
+                  Independent-expenditure-only committee (super PAC) — by law it spends
+                  to support or oppose candidates rather than contributing to them
+                  directly. See Independent expenditures below.
+                </p>
+              ) : (
+                <p className="text-sm font-medium text-gray-500">No outbound donations on record</p>
+              )}
             </div>
           ) : (
             <div className="divide-y divide-gray-100">
