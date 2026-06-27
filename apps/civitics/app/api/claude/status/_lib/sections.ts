@@ -292,12 +292,12 @@ export async function getPipelines(db: Db) {
         .from("enrichment_queue")
         .select("*", { count: "exact", head: true })
         .eq("status", "pending")
-        .eq("enrichment_type", "tag"),
+        .eq("task_type", "tag"),
       db
         .from("enrichment_queue")
         .select("*", { count: "exact", head: true })
         .eq("status", "pending")
-        .eq("enrichment_type", "summarize"),
+        .eq("task_type", "summary"),
       db
         .from("enrichment_queue")
         .select("*", { count: "exact", head: true })

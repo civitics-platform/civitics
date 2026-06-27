@@ -56,7 +56,6 @@ export type SearchProposal = {
 export type SearchAgency = {
   id: string;
   name: string;
-  slug: string | null;
   acronym: string | null;
   agency_type: string;
   description: string | null;
@@ -517,7 +516,7 @@ export async function GET(req: NextRequest) {
 
     let qb = db2
       .from("agencies")
-      .select("id, name, slug, acronym, agency_type, description, is_synthetic", { count: "exact" })
+      .select("id, name, acronym, agency_type, description, is_synthetic", { count: "exact" })
       .eq("is_active", true);
 
     if (filterAgencyType) qb = qb.eq("agency_type", filterAgencyType);
@@ -543,7 +542,7 @@ export async function GET(req: NextRequest) {
       if (score === 0) score = DESC_SCORE;
       if (exactAcronym) score += 20;
       return {
-        id: a.id, name: a.name, slug: a.slug ?? null, acronym: a.acronym ?? null,
+        id: a.id, name: a.name, acronym: a.acronym ?? null,
         agency_type: a.agency_type, description: a.description ?? null,
         relevance_score: Math.min(score, 100),
         connection_count: countMap.get(a.id) ?? 0,
