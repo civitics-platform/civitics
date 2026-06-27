@@ -72,7 +72,7 @@ async function main(): Promise<void> {
     // Donations FROM musk to anything
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data: outs, error: outErr } = await (db as any).from("financial_relationships")
-      .select("relationship_type, to_type, to_id, amount_cents, cycle_year, source")
+      .select("relationship_type, to_type, to_id, amount_cents, cycle_year, source:metadata->>source")
       .in("from_id", muskIds)
       .order("amount_cents", { ascending: false })
       .limit(20);
@@ -93,7 +93,7 @@ async function main(): Promise<void> {
     // paged past max_rows=1000 (FIX-476) so the aggregate isn't truncated.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const allOut = await fetchAllRows<any>((from, to) => (db as any).from("financial_relationships")
-      .select("relationship_type, source, amount_cents")
+      .select("relationship_type, source:metadata->>source, amount_cents")
       .in("from_id", muskIds)
       .order("id", { ascending: true })
       .range(from, to));
@@ -138,7 +138,7 @@ async function main(): Promise<void> {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     // reads-ok: anchor-verify report read — an empty result renders visibly as a missing anchor in the cron output
     const { data: rels } = await (db as any).from("financial_relationships")
-      .select("relationship_type, source, amount_cents, cycle_year, to_id")
+      .select("relationship_type, source:metadata->>source, amount_cents, cycle_year, to_id")
       .in("from_id", ids)
       .in("to_id", dcccIds);
     let sum = 0;
@@ -169,7 +169,7 @@ async function main(): Promise<void> {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     // reads-ok: anchor-verify report read — an empty result renders visibly as a missing anchor in the cron output
     const { data: rels } = await (db as any).from("financial_relationships")
-      .select("relationship_type, source, amount_cents, cycle_year")
+      .select("relationship_type, source:metadata->>source, amount_cents, cycle_year")
       .in("from_id", ids)
       .in("to_id", dcccIds);
     let sum = 0;
@@ -246,7 +246,7 @@ async function main(): Promise<void> {
     // Paged past max_rows=1000 (FIX-476) so the inflow aggregate is complete.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const ins = await fetchAllRows<any>((from, to) => (db as any).from("financial_relationships")
-      .select("relationship_type, source, amount_cents, cycle_year")
+      .select("relationship_type, source:metadata->>source, amount_cents, cycle_year")
       .in("to_id", ids)
       .eq("to_type", "official")
       .order("id", { ascending: true })
