@@ -414,6 +414,27 @@ async function main(): Promise<void> {
             `  [post] refresh_gb_page_cache — FAILED: ${errMsg(gpcErr)}`,
           );
         }
+        // FIX-685 — materialize the content-bearing official-id set the sitemap's
+        // officials segment reads. Must run AFTER entity_connections is rebuilt —
+        // the predicate (official_is_content_bearing) depends on it. Direct-pg with
+        // an explicit session statement_timeout because the function's proconfig cap
+        // is NOT honored through the session pooler (FIX-500). Advisory: a miss
+        // leaves the prior set in place (the sitemap degrades to [] on a stale read,
+        // never 500s). REPLACES the set, so officials that lost their last edge in
+        // this rebuild drop out.
+        try {
+          await client.query("SET statement_timeout = '600s'");
+          const r = await client.query<{ refresh_official_content_ids: number }>(
+            "SELECT public.refresh_official_content_ids()",
+          );
+          console.log(
+            `  [post] refresh_official_content_ids — complete: ${r.rows[0]?.refresh_official_content_ids ?? 0} rows`,
+          );
+        } catch (ociErr) {
+          console.warn(
+            `  [post] refresh_official_content_ids — FAILED: ${errMsg(ociErr)}`,
+          );
+        }
         // FIX-590 — re-enable autovacuum and do ONE manual VACUUM ANALYZE now
         // that the churn is done, instead of letting autovacuum compete during
         // the rebuild. Wrapped so a VACUUM failure doesn't mask a good rebuild;
@@ -518,6 +539,18 @@ async function main(): Promise<void> {
       } catch (gpcErr) {
         console.warn(
           `  [post] refresh_gb_page_cache — FAILED: ${errMsg(gpcErr)}`,
+        );
+      }
+      // FIX-685 — same content-bearing official-id refresh on the local-dev
+      // umbrella path so `pnpm data:rebuild-connections` against local Docker also
+      // materializes the set the sitemap reads. Advisory.
+      try {
+        const { error: ociErr } = await admin.rpc("refresh_official_content_ids");
+        if (ociErr) throw ociErr;
+        console.log("  [post] refresh_official_content_ids — complete");
+      } catch (ociErr) {
+        console.warn(
+          `  [post] refresh_official_content_ids — FAILED: ${errMsg(ociErr)}`,
         );
       }
     }
