@@ -36,7 +36,11 @@ jobs:
 
   fec-phase:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    # FIX-689 (stopgap): raised 120→150. The Sunday FEC-bulk indiv stage
+    # routinely overruns 120 min on the Pro Micro. Interim cushion until the
+    # ingest-resumability PR (watermark-resumable Vercel Workflow ingest) lands
+    # the durable fix; well below GHA's 6h job cap.
+    timeout-minutes: 150
 
     env:
       NEXT_PUBLIC_SUPABASE_URL: https://xsazcoxinpgttgquwvuf.supabase.co
