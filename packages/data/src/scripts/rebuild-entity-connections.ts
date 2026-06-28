@@ -383,6 +383,37 @@ async function main(): Promise<void> {
             `  [post] refresh_jurisdiction_page_cache — FAILED: ${errMsg(jpcErr)}`,
           );
         }
+        // FIX-681 — same materialization for the agency + gb page caches (the
+        // bounded ~121/~418 active sets). Direct-pg with an explicit session
+        // statement_timeout because the function's proconfig cap is NOT honored
+        // through the session pooler (FIX-500/663). Each wrapped (advisory):
+        // misses fall back to live-compute regardless.
+        try {
+          await client.query("SET statement_timeout = '300s'");
+          const r = await client.query<{ refresh_agency_page_cache: number }>(
+            "SELECT public.refresh_agency_page_cache()",
+          );
+          console.log(
+            `  [post] refresh_agency_page_cache — complete: ${r.rows[0]?.refresh_agency_page_cache ?? 0} rows`,
+          );
+        } catch (apcErr) {
+          console.warn(
+            `  [post] refresh_agency_page_cache — FAILED: ${errMsg(apcErr)}`,
+          );
+        }
+        try {
+          await client.query("SET statement_timeout = '300s'");
+          const r = await client.query<{ refresh_gb_page_cache: number }>(
+            "SELECT public.refresh_gb_page_cache()",
+          );
+          console.log(
+            `  [post] refresh_gb_page_cache — complete: ${r.rows[0]?.refresh_gb_page_cache ?? 0} rows`,
+          );
+        } catch (gpcErr) {
+          console.warn(
+            `  [post] refresh_gb_page_cache — FAILED: ${errMsg(gpcErr)}`,
+          );
+        }
         // FIX-590 — re-enable autovacuum and do ONE manual VACUUM ANALYZE now
         // that the churn is done, instead of letting autovacuum compete during
         // the rebuild. Wrapped so a VACUUM failure doesn't mask a good rebuild;
@@ -466,6 +497,27 @@ async function main(): Promise<void> {
       } catch (jpcErr) {
         console.warn(
           `  [post] refresh_jurisdiction_page_cache — FAILED: ${errMsg(jpcErr)}`,
+        );
+      }
+      // FIX-681 — same agency + gb page-cache refresh on the local-dev umbrella
+      // path so `pnpm data:rebuild-connections` against local Docker materializes
+      // them too. Advisory.
+      try {
+        const { error: apcErr } = await admin.rpc("refresh_agency_page_cache");
+        if (apcErr) throw apcErr;
+        console.log("  [post] refresh_agency_page_cache — complete");
+      } catch (apcErr) {
+        console.warn(
+          `  [post] refresh_agency_page_cache — FAILED: ${errMsg(apcErr)}`,
+        );
+      }
+      try {
+        const { error: gpcErr } = await admin.rpc("refresh_gb_page_cache");
+        if (gpcErr) throw gpcErr;
+        console.log("  [post] refresh_gb_page_cache — complete");
+      } catch (gpcErr) {
+        console.warn(
+          `  [post] refresh_gb_page_cache — FAILED: ${errMsg(gpcErr)}`,
         );
       }
     }
