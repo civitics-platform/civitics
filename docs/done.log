@@ -858,3 +858,7 @@
 2026-06-27 | FIX-685 | 18f887e4 | local+prod | perf(sitemap): materialize content-bearing official ids; re-add officials segment (FIX-685)
 2026-06-27 | FIX-677 | 93cb345a | local-only | fix(fec-bulk): capture super-PAC individual receipts (tx type 10) (FIX-677)
 2026-06-28 | FIX-686 | 3e0f4adf | local-only | fix(fec-bulk): retry+throw chunk upserts; add unresolved counter (FIX-686)
+2026-06-28 | FIX-687 | c3f95a26 | local-only | feat(data): port entity_connections rebuild into a pg_cron SQL procedure
+2026-06-28 | FIX-688 | 632f1d3f | local-only | feat(infra): schedule entity_connections rebuild via pg_cron, de-stack to Monday
+2026-06-28 | FIX-689 | ba4e3c8e | local-only | chore(infra): raise nightly-sync fec-phase timeout-minutes 120 to 150 (stopgap)
+2026-06-28 | FIX-690 | 51147e1c | local-only | feat(infra): RAM-safe workflow_dispatch FEC backfill against prod
