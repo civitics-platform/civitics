@@ -857,3 +857,4 @@
 2026-06-27 | FIX-683 | 88ce1706 | local+prod | fix(sitemap): drop officials segment — request-time content filter times out on prod (FIX-683)
 2026-06-27 | FIX-685 | 18f887e4 | local+prod | perf(sitemap): materialize content-bearing official ids; re-add officials segment (FIX-685)
 2026-06-27 | FIX-677 | 93cb345a | local-only | fix(fec-bulk): capture super-PAC individual receipts (tx type 10) (FIX-677)
+2026-06-28 | FIX-686 | 3e0f4adf | local-only | fix(fec-bulk): retry+throw chunk upserts; add unresolved counter (FIX-686)
