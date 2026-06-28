@@ -21,6 +21,7 @@
     "data:status": "tsx --env-file=../../.env.local src/pipelines/index.ts status",
     "data:regulations": "tsx --env-file=../../.env.local src/pipelines/regulations/index.ts",
     "data:fec-bulk": "tsx --env-file=../../.env.local src/pipelines/fec-bulk/index.ts",
+    "data:fec-bulk:ci": "tsx src/pipelines/fec-bulk/index.ts --allow-prod",
     "data:irs990": "tsx --env-file=../../.env.local src/pipelines/irs990/index.ts",
     "data:littlesis": "tsx --env-file=../../.env.local src/pipelines/littlesis/index.ts",
     "data:edgar": "tsx --env-file=../../.env.local src/pipelines/edgar/index.ts",

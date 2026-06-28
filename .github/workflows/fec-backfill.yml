@@ -1,0 +1,95 @@
+name: fec-backfill
+
+# FIX-690 — RAM-safe, on-demand FEC bulk backfill against PROD.
+#
+# Purpose: re-ingest historical FEC cycles (notably the FIX-677 super-PAC
+# individual receipts, tx type 10) that the local box can't run — the indiv
+# stage needs ~12 GB heap for a presidential cycle and Craig's machine is
+# RAM-blocked (12 GB indiv heap + local Docker overcommit on 16 GB). A
+# 16 GB ubuntu-latest runner fits it (proven by the nightly fec-phase).
+#
+# This is NOT on the Sunday-gated nightly path: runFecBulkPipeline() has no
+# day-gate (the gate lives only in the nightly orchestrator's weekly block), so
+# `data:fec-bulk:ci` runs the full bulk pipeline — including the indiv stage —
+# for whatever FEC_CYCLES is passed, any day. `--allow-prod` (in the :ci script)
+# satisfies the createAdminClient prod-write guard; the prod URL + secret come
+# from the same env block nightly.yml's fec-phase uses.
+#
+# Manual only (`workflow_dispatch`). The heavy run is a deliberate, observed
+# load-test of the Micro under its heaviest write path — see the FIX-687 runbook.
+# It also seeds the data that FIX-687's `full` pg_cron rebuild then reconciles.
+
+on:
+  workflow_dispatch:
+    inputs:
+      cycles:
+        description: "Comma-separated FEC cycles to backfill (indiv stage runs for each)"
+        required: true
+        default: "2020,2022,2024,2026"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fec-backfill
+  cancel-in-progress: false
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    # Multi-cycle indiv ingest on the Micro is slow (IOWait-bound). 350 min
+    # leaves headroom under GHA's 6h job cap. Unlike the nightly, this is not a
+    # recurring budget — it's a one-off operator action.
+    timeout-minutes: 350
+
+    # Env block mirrors nightly.yml's fec-phase verbatim (GHA has no YAML
+    # anchors, so the duplication is explicit). 12 GB heap ceiling is what the
+    # presidential-cycle indiv stage needs (packages/data/CLAUDE.md).
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: https://xsazcoxinpgttgquwvuf.supabase.co
+      SUPABASE_SECRET_KEY:      ${{ secrets.SUPABASE_SECRET_KEY }}
+      SUPABASE_DB_PASSWORD:     ${{ secrets.SUPABASE_DB_PASSWORD }}
+      CONGRESS_API_KEY:         ${{ secrets.CONGRESS_API_KEY }}
+      OPENSTATES_API_KEY:       ${{ secrets.OPENSTATES_API_KEY }}
+      COURTLISTENER_API_KEY:    ${{ secrets.COURTLISTENER_API_KEY }}
+      REGULATIONS_API_KEY:      ${{ secrets.REGULATIONS_API_KEY }}
+      CIVITICS_ANTHROPIC_API_KEY: ${{ secrets.CIVITICS_ANTHROPIC_API_KEY }}
+      AUTONOMOUS:               "true"
+      CIVITICS_ENRICHMENT_MODE: queue
+      NODE_OPTIONS: --max-old-space-size=12288
+      CLOUDFLARE_ACCOUNT_ID:           ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_R2_ACCESS_KEY_ID:     ${{ secrets.CLOUDFLARE_R2_ACCESS_KEY_ID }}
+      CLOUDFLARE_R2_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_R2_SECRET_ACCESS_KEY }}
+      CLOUDFLARE_R2_BUCKET_CACHE:      civitics-cache
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run FEC bulk backfill (cycles=${{ inputs.cycles }})
+        # FEC_CYCLES drives the cycle loop; FEC_INDIV_CYCLES defaults to it, so
+        # the indiv stage runs for every requested cycle. :ci passes --allow-prod
+        # (prod-write guard) and reads env from this job (no --env-file).
+        env:
+          FEC_CYCLES: ${{ inputs.cycles }}
+        run: pnpm --filter @civitics/data data:fec-bulk:ci
+
+      # Same kill-detector backstop the nightly uses: if the job is SIGTERM'd by
+      # timeout-minutes mid-run, the fec_bulk data_sync_log row strands at
+      # status='running'. Observability only; never gates the job.
+      - name: Mark killed if no completion row
+        if: always()
+        run: pnpm --filter @civitics/data data:mark-killed:ci -- --pipeline=fec_bulk
