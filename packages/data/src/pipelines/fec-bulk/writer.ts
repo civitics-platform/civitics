@@ -18,6 +18,7 @@
 import type { createAdminClient } from "@civitics/db";
 import { canonicalDonorName } from "./indiv";
 import { withDirectClient, bulkUpsert } from "../../lib/direct-pg-upsert";
+import { retryWithBackoff } from "../utils";
 
 type Db = ReturnType<typeof createAdminClient>;
 
@@ -108,7 +109,7 @@ export async function upsertPacEntitiesBatch(
 ): Promise<EntityBatchResult> {
   const entityIdByCmte = new Map<string, string>();
   let upserted = 0;
-  let failed = 0;
+  const failed = 0; // FIX-686: writers now throw on chunk failure; never incremented
 
   if (inputs.length === 0) return { entityIdByCmte, upserted, failed };
 
@@ -132,18 +133,33 @@ export async function upsertPacEntitiesBatch(
   for (let i = 0; i < records.length; i += ENTITY_CHUNK) {
     const chunk = records.slice(i, i + ENTITY_CHUNK);
 
-    const { data, error } = await db
-      .from("financial_entities")
-      .upsert(chunk, { onConflict: "fec_committee_id" })
-      .select("id, fec_committee_id");
-
-    if (error) {
-      console.error(
-        `    financial_entities chunk ${i}-${i + chunk.length} failed: ${error.message}`,
+    // Retry transient chunk failures (IO / autovacuum contention on Pro Small
+    // times a chunk out mid-write) with backoff, then THROW if still failing.
+    // The old path counted-failed-and-continued, which silently dropped the
+    // chunk's committees from entityIdByCmte → their donors' donations were
+    // then skipped downstream with a clean count (the 500-committee silent
+    // partial that motivated FIX-686). `failed` therefore stays 0 here or the
+    // function throws; the loud abort lets the (idempotent) run be re-tried.
+    const data = await retryWithBackoff(
+      async () => {
+        const { data, error } = await db
+          .from("financial_entities")
+          .upsert(chunk, { onConflict: "fec_committee_id" })
+          .select("id, fec_committee_id");
+        if (error) throw new Error(error.message);
+        return data;
+      },
+      {
+        onRetry: (attempt, err) =>
+          console.warn(
+            `    financial_entities chunk ${i}-${i + chunk.length} attempt ${attempt} failed: ${err.message} — retrying`,
+          ),
+      },
+    ).catch((err: Error) => {
+      throw new Error(
+        `financial_entities chunk ${i}-${i + chunk.length} failed after retries: ${err.message}`,
       );
-      failed += chunk.length;
-      continue;
-    }
+    });
 
     for (const row of (data ?? []) as Array<{ id: string; fec_committee_id: string | null }>) {
       if (row.fec_committee_id) entityIdByCmte.set(row.fec_committee_id, row.id);
@@ -327,7 +343,7 @@ export async function upsertDonationRelationshipsBatch(
   inputs: DonationRelationshipInput[],
 ): Promise<RelationshipBatchResult> {
   let upserted = 0;
-  let failed = 0;
+  const failed = 0; // FIX-686: writers now throw on chunk failure; never incremented
 
   if (inputs.length === 0) return { upserted, failed };
 
@@ -382,19 +398,29 @@ export async function upsertDonationRelationshipsBatch(
   for (let i = 0; i < records.length; i += RELATIONSHIP_CHUNK) {
     const chunk = records.slice(i, i + RELATIONSHIP_CHUNK);
 
-    const { error } = await db
-      .from("financial_relationships")
-      .upsert(chunk, {
-        onConflict: "relationship_type,from_id,to_id,cycle_year",
-      });
-
-    if (error) {
-      console.error(
-        `    financial_relationships chunk ${i}-${i + chunk.length} failed: ${error.message}`,
+    // Retry transient chunk failures with backoff, then THROW (FIX-686). Same
+    // silent-partial bug class as upsertPacEntitiesBatch: count-failed-and-
+    // continue silently dropped donation rows. `failed` stays 0 or we throw.
+    await retryWithBackoff(
+      async () => {
+        const { error } = await db
+          .from("financial_relationships")
+          .upsert(chunk, {
+            onConflict: "relationship_type,from_id,to_id,cycle_year",
+          });
+        if (error) throw new Error(error.message);
+      },
+      {
+        onRetry: (attempt, err) =>
+          console.warn(
+            `    financial_relationships chunk ${i}-${i + chunk.length} attempt ${attempt} failed: ${err.message} — retrying`,
+          ),
+      },
+    ).catch((err: Error) => {
+      throw new Error(
+        `financial_relationships chunk ${i}-${i + chunk.length} failed after retries: ${err.message}`,
       );
-      failed += chunk.length;
-      continue;
-    }
+    });
 
     upserted += chunk.length;
   }
@@ -524,7 +550,7 @@ export async function upsertIndependentExpendituresBatch(
   inputs: IndependentExpenditureInput[],
 ): Promise<RelationshipBatchResult> {
   let upserted = 0;
-  let failed   = 0;
+  const failed = 0; // FIX-686: throws on chunk failure; never incremented
 
   if (inputs.length === 0) return { upserted, failed };
 
@@ -578,19 +604,29 @@ export async function upsertIndependentExpendituresBatch(
   for (let i = 0; i < records.length; i += RELATIONSHIP_CHUNK) {
     const chunk = records.slice(i, i + RELATIONSHIP_CHUNK);
 
-    const { error } = await db
-      .from("financial_relationships")
-      .upsert(chunk, {
-        onConflict: "relationship_type,from_id,to_id,cycle_year",
-      });
-
-    if (error) {
-      console.error(
-        `    indep-exp chunk ${i}-${i + chunk.length} failed: ${error.message}`,
+    // Retry transient chunk failures with backoff, then THROW (FIX-686). Same
+    // silent-partial bug class as upsertPacEntitiesBatch. `failed` stays 0 or
+    // we throw — the (idempotent) cycle can then be re-run.
+    await retryWithBackoff(
+      async () => {
+        const { error } = await db
+          .from("financial_relationships")
+          .upsert(chunk, {
+            onConflict: "relationship_type,from_id,to_id,cycle_year",
+          });
+        if (error) throw new Error(error.message);
+      },
+      {
+        onRetry: (attempt, err) =>
+          console.warn(
+            `    indep-exp chunk ${i}-${i + chunk.length} attempt ${attempt} failed: ${err.message} — retrying`,
+          ),
+      },
+    ).catch((err: Error) => {
+      throw new Error(
+        `indep-exp chunk ${i}-${i + chunk.length} failed after retries: ${err.message}`,
       );
-      failed += chunk.length;
-      continue;
-    }
+    });
 
     upserted += chunk.length;
   }

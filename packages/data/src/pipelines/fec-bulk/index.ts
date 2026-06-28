@@ -567,6 +567,10 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
   let indivDonorsUpserted = 0, indivDonorsFailed = 0;
   let indivRelsUpserted = 0, indivRelsFailed = 0;
   let indivCmteRelsUpserted = 0, indivCmteRelsFailed = 0; // FIX-236
+  // FIX-686 integrity counter: donor→committee rows skipped because an entity id
+  // failed to resolve. With the retry+throw writers this must read 0; a nonzero
+  // value means a committee/donor entity silently went missing — re-run the cycle.
+  let indivCmteSkippedUnresolved = 0;
   let indivCyclesProcessed = 0, indivCyclesSkipped = 0;
   let ieRelsUpserted = 0, ieRelsFailed = 0;               // FIX-240
   let ieSupportRows = 0, ieOpposeRows = 0;                // FIX-240
@@ -1135,9 +1139,9 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
                 const indivCmteRelInputs: IndividualToCommitteeDonationInput[] = [];
                 for (const agg of indivResult.committeeAggregations.values()) {
                   const fromEntityId = donorResult.donorIdByFingerprint.get(agg.donorFingerprint);
-                  if (!fromEntityId) continue;
+                  if (!fromEntityId) { indivCmteSkippedUnresolved++; continue; } // FIX-686
                   const toEntityId = entityIdByCmteAcc.get(agg.cmteId);
-                  if (!toEntityId) continue;
+                  if (!toEntityId) { indivCmteSkippedUnresolved++; continue; } // FIX-686
                   indivCmteRelInputs.push({
                     fromEntityId,
                     toEntityId,
@@ -1155,6 +1159,7 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
                 indivCmteRelsUpserted += indivCmteRelResult.upserted;
                 indivCmteRelsFailed   += indivCmteRelResult.failed;
                 console.log(`    Donations (→ committee) — upserted: ${indivCmteRelResult.upserted}  failed: ${indivCmteRelResult.failed}`);
+                console.log(`    Donations (→ committee) — skipped_unresolved: ${indivCmteSkippedUnresolved} (FIX-686; should be 0)`);
 
                 // FIX-193 watermark advance: record the FEC Last-Modified we
                 // just successfully processed. Next run sees this and short-
@@ -1472,6 +1477,7 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
       console.log(`  ${"Indiv → cand rels failed:".padEnd(38)} ${indivRelsFailed}`);
       console.log(`  ${"Indiv → cmte rels upserted:".padEnd(38)} ${indivCmteRelsUpserted}`);
       console.log(`  ${"Indiv → cmte rels failed:".padEnd(38)} ${indivCmteRelsFailed}`);
+      console.log(`  ${"Indiv → cmte skipped_unresolved:".padEnd(38)} ${indivCmteSkippedUnresolved} (FIX-686; done-gate: 0)`);
     }
     console.log(`  ${"IE cycles processed / skipped:".padEnd(38)} ${ieCyclesProcessed} / ${ieCyclesSkipped}`);
     console.log(`  ${"IE new spenders pre-upserted:".padEnd(38)} ${ieSpendersUpserted}`);

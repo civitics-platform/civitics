@@ -96,6 +96,45 @@ export async function postJson<T>(
   );
 }
 
+/**
+ * Run `fn`, retrying on any thrown error with exponential backoff. THROWS the
+ * last error once `attempts` is exhausted — callers get either a successful
+ * result or a thrown error, never a silent partial.
+ *
+ * Intended for transient DB-write failures (IO / autovacuum contention on Pro
+ * Small times a chunk out mid-write) where a short backoff recovers the chunk.
+ * `fn` must throw to signal a retry — Supabase's `{ data, error }` shape returns
+ * errors instead of throwing, so wrap such calls to `throw new Error(error.message)`.
+ */
+export async function retryWithBackoff<T>(
+  fn: () => Promise<T>,
+  opts: {
+    attempts?: number;
+    baseMs?: number;
+    maxMs?: number;
+    onRetry?: (attempt: number, err: Error) => void;
+  } = {},
+): Promise<T> {
+  const attempts = opts.attempts ?? 4;
+  const baseMs = opts.baseMs ?? 500;
+  const maxMs = opts.maxMs ?? 8_000;
+
+  let lastErr: Error | null = null;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastErr = err instanceof Error ? err : new Error(String(err));
+      if (attempt < attempts - 1) {
+        const backoffMs = Math.min(baseMs * Math.pow(2, attempt), maxMs);
+        opts.onRetry?.(attempt + 1, lastErr);
+        await sleep(backoffMs);
+      }
+    }
+  }
+  throw lastErr ?? new Error("retryWithBackoff: exhausted with no error");
+}
+
 /** Chunk an array into batches of size n. */
 export function chunk<T>(arr: T[], n: number): T[][] {
   const out: T[][] = [];
