@@ -853,3 +853,4 @@
 2026-06-27 | FIX-679 | 17c080ab | local-only | fix(api): drop dead enrichment_type + agencies.slug PostgREST refs
 2026-06-27 | FIX-680 | 83fc2436 | closes-as-redirected | perf(db): cache agency + gb page RPCs; redirect jurisdiction timeout to bot-shed
 2026-06-27 | FIX-681 | 83fc2436 | local+prod | perf(db): cache agency + gb page RPCs; redirect jurisdiction timeout to bot-shed
+2026-06-27 | FIX-683 | f7c5093d | local-only | perf(crawler): shed empty-leaf jurisdiction/district/official crawl load (FIX-683)
