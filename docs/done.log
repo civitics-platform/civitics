@@ -854,3 +854,4 @@
 2026-06-27 | FIX-680 | 83fc2436 | closes-as-redirected | perf(db): cache agency + gb page RPCs; redirect jurisdiction timeout to bot-shed
 2026-06-27 | FIX-681 | 83fc2436 | local+prod | perf(db): cache agency + gb page RPCs; redirect jurisdiction timeout to bot-shed
 2026-06-27 | FIX-683 | f7c5093d | local-only | perf(crawler): shed empty-leaf jurisdiction/district/official crawl load (FIX-683)
+2026-06-27 | FIX-683 | 88ce1706 | local+prod | fix(sitemap): drop officials segment — request-time content filter times out on prod (FIX-683)
