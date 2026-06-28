@@ -36,6 +36,7 @@ import type { InitiativeCardData } from "../../initiatives/components/Initiative
 import { EntityComments } from "../../components/EntityComments";
 import { QASection } from "../../components/QASection";
 import { withDbTimeout } from "@/lib/supabase-check";
+import { lookupJurisdictionCache } from "@/lib/jurisdiction-cache";
 
 export const revalidate = 300;
 
@@ -105,15 +106,25 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   const { id } = await params;
   if (!UUID_RE.test(id)) return { title: "Jurisdiction · Civitics" };
   const supabase = anonClient();
-  const { data } = await withDbTimeout(
-    supabase.from("jurisdictions").select("name, type").eq("id", id).maybeSingle() as PromiseLike<{
-      data: { name: string; type: string } | null;
-    }>,
-    3000,
-    "jurisdiction:metadata",
-  );
+  const [{ data }, lookup] = await Promise.all([
+    withDbTimeout(
+      supabase.from("jurisdictions").select("name, type").eq("id", id).maybeSingle() as PromiseLike<{
+        data: { name: string; type: string } | null;
+      }>,
+      3000,
+      "jurisdiction:metadata",
+    ),
+    lookupJurisdictionCache(supabase, id),
+  ]);
   if (!data) return { title: "Jurisdiction · Civitics" };
-  return { title: `${data.name} · Civitics` };
+  return {
+    title: `${data.name} · Civitics`,
+    // FIX-683: an empty county/district leaf (not in jurisdiction_page_cache) is
+    // noindex,nofollow — the sitemap already drops it; this deindexes the ~10k
+    // shells already crawled. Content jurisdictions (isMember true) and any cache
+    // hiccup (isMember null → fail open) stay indexed.
+    ...(lookup.isMember === false ? { robots: { index: false, follow: false } } : {}),
+  };
 }
 
 // ─── Page ────────────────────────────────────────────────────────────────────
@@ -132,16 +143,32 @@ export default async function JurisdictionPage({ params }: { params: Promise<{ i
   // One call = one connection. Each section below mirrors the exact shape the
   // old per-section queries returned, so the downstream .map() shaping is
   // unchanged.
+  //
+  // FIX-683 (item 4): the empty district/county leaves (~10k, not in
+  // jurisdiction_page_cache) were the ones a crawl hammered, and on a cache miss
+  // get_jurisdiction_page falls back to _live — which still fires the expensive
+  // boundary PostGIS/geometry read. We now read the cache table BY PK directly:
+  //   * member with cached payload → render from it (skips the RPC wrapper).
+  //   * empty leaf (definite miss)  → leave payload null → the base-row shell
+  //     below renders WITHOUT ever cold-reading the geometry.
+  //   * cache lookup degraded       → fall back to the RPC wrapper (handles a
+  //     cold cache + _live), preserving correctness on a hiccup.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let payload: any = null;
   {
-    const { data } = await withDbTimeout(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      supabase.rpc("get_jurisdiction_page", { p_id: id }) as PromiseLike<{ data: any }>,
-      3000,
-      "jurisdiction:page-rpc",
-    );
-    payload = data ?? null;
+    const lookup = await lookupJurisdictionCache(supabase, id, true);
+    if (lookup.payload) {
+      payload = lookup.payload;
+    } else if (lookup.isMember === null) {
+      const { data } = await withDbTimeout(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        supabase.rpc("get_jurisdiction_page", { p_id: id }) as PromiseLike<{ data: any }>,
+        3000,
+        "jurisdiction:page-rpc",
+      );
+      payload = data ?? null;
+    }
+    // else: empty leaf → payload stays null → base-row shell renders below.
   }
 
   // Safe fallback: a DB hiccup must not 500 the page. If the RPC errored, still

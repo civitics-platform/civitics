@@ -58,6 +58,14 @@ const WRITE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 const ENTITY_PAGE_RE =
   /^\/(jurisdictions|officials|proposals|institutions|agencies|districts|meetings|donors|initiatives|investigations)\/[^/]+/;
 
+// FIX-683: the high-cardinality LEAF families — /jurisdictions/*, /districts/*,
+// /officials/* — carry the ~10k empty district/county/official shells a
+// non-compliant crawler walks id-by-id, each cold-reading the heavy
+// get_jurisdiction_page/get_official_page RPC. They get the STRICTER entity_leaf
+// bucket instead of (not in addition to) entity_pages, so a leaf GET costs one
+// Upstash check, not two.
+const LEAF_PAGE_RE = /^\/(jurisdictions|districts|officials)\/[^/]+/;
+
 /**
  * Classify a request into a rate-limit bucket, or null to skip. Reads are
  * method-agnostic (preserved from the prior limiter); the `write` bucket applies
@@ -72,7 +80,12 @@ function getRateLimitBucket(path: string, method: string): RateLimitBucket | nul
   if (WRITE_METHODS.has(method) && WRITE_PATH_RE.test(path)) return "write";
   // Coarse per-IP cap on SSR entity detail-page renders (FIX-637). GET only — a
   // crawl is GETs; never bucket a participation POST behind this read limit.
-  if (method === "GET" && ENTITY_PAGE_RE.test(path)) return "entity_pages";
+  // FIX-683: the leaf families get the stricter entity_leaf bucket first; the
+  // rest fall through to entity_pages. Order matters — leaf check precedes.
+  if (method === "GET") {
+    if (LEAF_PAGE_RE.test(path)) return "entity_leaf";
+    if (ENTITY_PAGE_RE.test(path)) return "entity_pages";
+  }
   return null;
 }
 

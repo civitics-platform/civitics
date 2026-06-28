@@ -28,6 +28,7 @@ import { FollowButton } from "../../components/FollowButton";
 import { SourceBadge } from "../../components/SourceBadge";
 import { SourceDetailPopover } from "../../components/SourceDetailPopover";
 import { getCachedOfficial } from "../_lib/get-official";
+import { getOfficialContentBearing } from "../_lib/get-official-content";
 import {
   SyntheticMark,
   SyntheticBanner,
@@ -54,7 +55,10 @@ export async function generateStaticParams() {
 export async function generateMetadata(
   { params }: { params: { id: string } }
 ): Promise<Metadata> {
-  const data = await getCachedOfficial(params.id);
+  const [data, contentBearing] = await Promise.all([
+    getCachedOfficial(params.id),
+    getOfficialContentBearing(params.id),
+  ]);
   if (!data) return { title: "Official | Civitics" };
 
   const description = [
@@ -71,6 +75,11 @@ export async function generateMetadata(
       description,
       ...(data.photo_url ? { images: [{ url: data.photo_url }] } : {}),
     },
+    // FIX-683: a recordless official (no votes / donations / connections) is an
+    // empty shell — noindex,nofollow so crawlers stop cold-reading the heavy
+    // get_official_page RPC on it. Officials with any record (and any cache
+    // hiccup → fail open) stay indexed.
+    ...(contentBearing ? {} : { robots: { index: false, follow: false } }),
   };
 }
 
@@ -309,6 +318,14 @@ export default async function OfficialProfilePage({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const sb = supabase as any;
 
+  // FIX-683 (item 4): skip the heavy get_official_page RPC + donor rollup for an
+  // empty official (no votes / donations / connections) — they'd return only
+  // empty sections anyway, and a crawl walking the ~17k recordless shells was
+  // cold-reading the RPC on every one. React.cache shares this with
+  // generateMetadata (which ran first → warm hit). Fails open to true, so a real
+  // official never loses its sections on a DB hiccup.
+  const contentBearing = await getOfficialContentBearing(params.id);
+
   // Fetch official + joins in parallel with votes, donor count, donor amounts, AI summary, career history, promises.
   // Official itself comes from the React.cache()-wrapped fetcher so generateMetadata
   // and this page share a single Supabase round-trip.
@@ -321,11 +338,15 @@ export default async function OfficialProfilePage({
   const [officialData, pageRes, donorRollupRes] =
     await Promise.all([
       getCachedOfficial(params.id),
-      withDbTimeout(
-        sb.rpc("get_official_page", { p_id: params.id }),
-        5000,
-        "officials:page-rpc",
-      ),
+      // FIX-683: empty official → skip the RPC; page.* all default to []/null/0
+      // below, so every section renders its empty state.
+      contentBearing
+        ? withDbTimeout(
+            sb.rpc("get_official_page", { p_id: params.id }),
+            5000,
+            "officials:page-rpc",
+          )
+        : Promise.resolve({ data: null }),
       // FIX-518 — donor + IE aggregations read official_donor_rollup_mv: per
       // (official, relationship_type) the top-1000 donors (rank 1..1000) plus
       // one tail-bucket row (rank 1001, donor_id NULL, tail_donor_count set),
@@ -340,7 +361,11 @@ export default async function OfficialProfilePage({
       // (official_id, relationship_type, rank) unique key is a stable total
       // order. ORDER BY rank is materialized — no request-time sort. EXISTS-
       // gated fallback (below) preserves correctness if the MV is stale/missing.
-      (async () => {
+      // FIX-683: a non-content-bearing official has no financial_relationships by
+      // definition, so the rollup is empty — skip the read entirely.
+      !contentBearing
+        ? Promise.resolve({ data: [] })
+        : (async () => {
         const { rows } = await fetchAllRows<{
           relationship_type: string;
           rank: number;
@@ -510,7 +535,10 @@ export default async function OfficialProfilePage({
 
     ieSupport = buildIeFromRollup(rollupRows.filter((r) => r.relationship_type === "ie_support"));
     ieOppose  = buildIeFromRollup(rollupRows.filter((r) => r.relationship_type === "ie_oppose"));
-  } else {
+  } else if (contentBearing) {
+    // FIX-683: only probe the stale-MV fallback for content-bearing officials —
+    // a non-content-bearing official provably has no financial_relationships, so
+    // the probe would always come back empty.
     // EXISTS probe (cheap — never COUNT(*), which seq-scans for a whale): does
     // this official have ANY donation row despite an empty MV? If so the MV is
     // stale/unrefreshed → fall back to a BOUNDED top-N read.

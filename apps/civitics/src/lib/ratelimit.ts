@@ -38,6 +38,14 @@ export type RateLimitBucket =
   // BEFORE any Supabase query fires. Per-IP only: a distributed crawl evades it
   // (the Vercel/Cloudflare front door is the volumetric complement).
   | "entity_pages"
+  // High-cardinality LEAF route families (FIX-683): /jurisdictions/*,
+  // /districts/*, /officials/* — the ~10k empty district/county/official shells a
+  // non-compliant crawler walks id-by-id, each cold-reading get_jurisdiction_page
+  // /get_official_page (the 8s statement-timeout cancels on Pro Small). A stricter
+  // per-IP bucket than entity_pages, applied to JUST these three families.
+  // Mutually exclusive with entity_pages (one check per request — keeps the
+  // Upstash free-tier command budget cheap), so a leaf hit counts only here.
+  | "entity_leaf"
   // Auth-send throttles (FIX-568). NB: the browser's signInWithOtp call goes
   // straight to Supabase GoTrue, not through this app — so these buckets are
   // enforced in the auth/actions.ts preflight, not in middleware.
@@ -59,6 +67,12 @@ const BUCKET_LIMITS: Record<RateLimitBucket, { tokens: number; window: Window }>
   // minute, but a crawler walking distinct IDs blows past it. Tune up if a power
   // user (or a tab-restore burst) trips it; tune down if a crawl still gets through.
   entity_pages: { tokens: 120, window: "1 m" },
+  // Stricter than entity_pages (FIX-683): 45 distinct leaf pages/min = one every
+  // ~1.3s sustained for a full minute — above any real reader (these are dense
+  // civic profiles humans dwell on), well below a crawler walking thousands of
+  // empty district/county/official shells. Tune down if a crawl still gets
+  // through; tune up if a power-user tab-restore burst trips it.
+  entity_leaf: { tokens: 45, window: "1 m" },
   auth_send_ip: { tokens: 5, window: "10 m" },
   auth_send_email: { tokens: 3, window: "1 h" },
 };

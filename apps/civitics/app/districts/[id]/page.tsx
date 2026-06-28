@@ -5,6 +5,7 @@ import { createPublicClient } from "@civitics/db";
 import type { MultiPolygon, Polygon } from "geojson";
 import { DeferredDistrictMap } from "../components/DeferredDistrictMap";
 import { withDbTimeout } from "@/lib/supabase-check";
+import { lookupJurisdictionCache } from "@/lib/jurisdiction-cache";
 
 // FIX-645: this page reads only public (RLS USING(true)) data and emits no
 // per-user content, so force-dynamic was pure overhead — every hit fully
@@ -110,7 +111,13 @@ async function loadDistrict(id: string): Promise<{
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const { id } = await params;
-  const data = await loadDistrict(id);
+  // FIX-683: a district is a jurisdictions row, so the same jurisdiction_page_cache
+  // membership test gates its noindex. Run it alongside loadDistrict (no extra
+  // latency on the critical path).
+  const [data, lookup] = await Promise.all([
+    loadDistrict(id),
+    lookupJurisdictionCache(createPublicClient(), id),
+  ]);
   if (!data) return { title: "District not found" };
   const stateName = data.parent?.name ?? "";
   const chamber = (data.district.metadata?.["chamber"] as string | undefined) ?? "";
@@ -118,6 +125,10 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   return {
     title,
     description: `Boundary, representatives, and election info for ${title} (${chamber} chamber).`,
+    // Empty-leaf districts (no officials/proposals/etc. → not in the cache) are
+    // noindex,nofollow; content-bearing ones (and any cache hiccup → fail open)
+    // stay indexed.
+    ...(lookup.isMember === false ? { robots: { index: false, follow: false } } : {}),
   };
 }
 
