@@ -68,10 +68,21 @@ const CCL_COL = {
 } as const;
 
 // Transaction types we keep:
-//   '15'  direct individual contribution
+//   '15'  direct individual contribution to a non-super-PAC committee
 //   '15E' earmarked through a conduit (ActBlue, WinRed, etc.) — still attributed to individual
-// Excluded: '15J' memo, '15T' passthrough (would double-count), refunds, transfers.
-const KEEP_TX_TYPES = new Set(["15", "15E"]);
+//   '10'  direct individual contribution to an independent-expenditure-only
+//         committee (Super PAC) or Hybrid PAC non-contribution account — the
+//         super-PAC analog of '15' (FEC: "Contribution to Independent
+//         Expenditure-Only Committees (Super PACs)... from a person"). FIX-677:
+//         omitting it silently dropped ~all super-PAC individual receipts —
+//         e.g. United Democracy Project (C00799031) showed $0 received despite
+//         1,337 itemized type-10 contributions totaling ~$86M; across all super
+//         PACs in indiv24 it was 84,301 rows / $3.79B dropped. '10' is a direct
+//         receipt (counterpart to '15'), NOT a passthrough memo, so there is no
+//         double-count risk.
+// Excluded: '15I'/'15T'/'24I'/'24T' earmark passthrough memos (would
+//   double-count), '15J' memo, '20Y'/'22Y' refunds, transfers.
+const KEEP_TX_TYPES = new Set(["15", "15E", "10"]);
 
 // FEC's itemization floor. Same threshold the pas2 pipeline uses post-FIX-182.
 const MIN_AMT_DOLLARS = 200;
@@ -438,7 +449,7 @@ export async function streamIndiv(
   }
 
   console.log(`    Lines read:                ${linesRead.toLocaleString()}`);
-  console.log(`    Passed 15/15E filter:      ${passedTxType.toLocaleString()}`);
+  console.log(`    Passed 15/15E/10 filter:   ${passedTxType.toLocaleString()}`);
   console.log(`    Passed cmte lookup:        ${passedCmte.toLocaleString()}`);
   console.log(`      → candidate path:        ${passedCand.toLocaleString()}`);
   console.log(`      → committee path:        ${passedCommittee.toLocaleString()}`);

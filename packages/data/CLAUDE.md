@@ -78,7 +78,7 @@ Step 2b (PAC contributions):
 Step 2c (individual contributions, FIX-181 + FIX-236):
 - Parses ccl into a `CMTE_ID → CAND_ID` lookup, restricted to principal ('P') and authorized ('A') committees
 - Parses cm into a second `CMTE_ID → CMTE_TP` lookup, restricted to super PACs (`O`), party committees (`X`/`Y`/`Z`), and other PACs (`N`/`Q`/`V`/`W`) NOT already in ccl P/A — this is the recipient set that captures Form 3X Schedule A flow (Musk → America PAC etc.). Joint-fundraising (`J`), leadership (`D`), and `B` stay excluded — their money is re-itemized via downstream transfers and would double-count.
-- Streams indiv line-by-line, filtering to transaction types `15` and `15E`, amount ≥ $200, and recipient CMTE_ID present in EITHER lookup
+- Streams indiv line-by-line, filtering to transaction types `15`, `15E`, and `10`, amount ≥ $200, and recipient CMTE_ID present in EITHER lookup. `10` is FEC's "contribution to an Independent-Expenditure-Only committee (Super PAC) from a person" — the super-PAC analog of `15`. It was added by FIX-677; before that, super-PAC individual receipts (which are filed as type `10`, not `15`) were systematically dropped (e.g. United Democracy Project showed $0 received despite ~$86M / 1,337 itemized type-10 contributions; ~$3.79B across all super PACs in the 2024 file). Earmark passthrough memos (`15I`/`15T`/`24I`/`24T`) and refunds (`20Y`/`22Y`) stay excluded.
 - Donor identity is `fingerprint = upper(NAME) + "|" + ZIP5` (FEC's standard near-duplicate convention). No donor IDs exist in FEC data
 - Aggregates two maps in memory:
   - `(donor × candidate × cycle)` tuples for ccl-mapped lines → donor → official donations
