@@ -1,5 +1,15 @@
 name: rebuild-entity-connections
 
+# FIX-688 — the rebuild schedule moved to pg_cron (Mon 08:00 full / Wed 08:00
+# incremental, CALL public.run_entity_connections_rebuild(...)). Running it
+# in-DB makes it un-killable by an external runner: it is governed by the chunk
+# functions' statement_timeout, not this workflow's `timeout-minutes` budget,
+# which was timing out ~3 of 4 weeks (FIX-589 IOWait on Pro Micro). The
+# `schedule:` triggers below were therefore removed. This workflow is kept as
+# MANUAL BREAK-GLASS ONLY (`workflow_dispatch`) — e.g. to force a rebuild from a
+# GHA runner if pg_cron is ever disabled. See migrations
+# 20260628000100/...000200 for the in-DB path.
+#
 # FIX-291 — rebuild_entity_connections (chunked, FIX-263) moved out of the
 # daily nightly so the donations chunk (~90 min wall-clock) doesn't push the
 # nightly past `timeout-minutes: 120`. Daily nightly stays light and
@@ -18,9 +28,8 @@ name: rebuild-entity-connections
 # 4-of-7-nights-fail baseline that came from cramming the rebuild into the
 # nightly.
 on:
-  schedule:
-    - cron: "0 8 * * 0"   # Sunday    — full rebuild
-    - cron: "0 8 * * 3"   # Wednesday — incremental rebuild
+  # FIX-688: schedule moved to pg_cron (Mon full / Wed incremental). Manual
+  # break-glass only now.
   workflow_dispatch:
     inputs:
       mode:
