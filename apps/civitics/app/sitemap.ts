@@ -21,21 +21,16 @@ const BASE = (process.env["NEXT_PUBLIC_SITE_URL"] ?? "https://civitics.com").rep
 // inflated audit counts 2.3× pre-FIX-476). The publishable-only decision from
 // the [[FIX-513]] initial ship stands: no admin client, no direct pg here.
 // Per-segment caps are sized so caps + static paths stay under the 10,000-URL
-// ceiling: 5000 newest proposals (of ~78k), 2500 officials, 1000 institutions
-// (all 716 fit).
+// ceiling: 5000 newest proposals (of ~78k), 1000 institutions (all 716 fit).
 //
 // FIX-683 — stop advertising the ~10k EMPTY leaf shells (district/county
-// jurisdictions, recordless officials) that drive crawlers into the heavy
-// get_jurisdiction_page/get_official_page cold reads. Only CONTENT-BEARING leaves
-// belong here:
-//   * jurisdictions + districts → membership in jurisdiction_page_cache (FIX-663),
-//     the exact refresh predicate (type IN country/state OR has officials/
-//     institutions/proposals/active child/meetings). PK set, always in sync; ~62
-//     today, all comfortably under the cap (no paging needed).
-//   * officials → get_sitemap_official_ids (has >=1 vote / financial_relationship
-//     / entity_connection); 64% of active officials are empty shells and are
-//     dropped. Still capped at 2500.
-const LIMITS = { proposals: 5000, officials: 2500, institutions: 1000 } as const;
+// jurisdictions) that drive crawlers into the heavy get_jurisdiction_page cold
+// reads. Only CONTENT-BEARING jurisdictions/districts belong here: membership in
+// jurisdiction_page_cache (FIX-663), the exact refresh predicate (type IN
+// country/state OR has officials/institutions/proposals/active child/meetings).
+// PK set, always in sync; ~62 today, all comfortably under the cap (no paging
+// needed). Officials are deliberately omitted (see the segment comment below).
+const LIMITS = { proposals: 5000, institutions: 1000 } as const;
 const MAX_URLS = 10000;
 const QUERY_TIMEOUT_MS = 5000;
 const PAGE_SIZE = 1000; // PostgREST max_rows — the real per-request ceiling
@@ -83,24 +78,6 @@ async function fetchPaged(
   return rows.slice(0, cap);
 }
 
-// FIX-683 — resolve a jsonb-array-returning RPC (get_sitemap_official_ids) to
-// IdRow[]. Same 5s degrade contract as timed(): timeout/error → null → mk()
-// renders the segment empty, never throws.
-async function timedIds(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  query: PromiseLike<any>,
-): Promise<IdRow[] | null> {
-  return Promise.race<IdRow[] | null>([
-    Promise.resolve(query)
-      .then((r) => {
-        const ids = (r?.data ?? null) as string[] | null;
-        return ids ? ids.map((id) => ({ id })) : null;
-      })
-      .catch(() => null),
-    new Promise<IdRow[] | null>((resolve) => setTimeout(() => resolve(null), QUERY_TIMEOUT_MS)),
-  ]);
-}
-
 type CacheMember = { id: string; type: string };
 
 // FIX-683 — content-bearing jurisdictions/districts via jurisdiction_page_cache
@@ -143,7 +120,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   try {
     const supabase = createPublicClient();
-    const [proposals, institutions, officials, cacheMembers] = await Promise.all([
+    const [proposals, institutions, cacheMembers] = await Promise.all([
       // introduced_at alone is not unique — the id tiebreak makes the order
       // total so range pages never overlap.
       fetchPaged(LIMITS.proposals, (f, t) =>
@@ -157,20 +134,22 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       fetchPaged(LIMITS.institutions, (f, t) =>
         supabase.from("institutions").select("id").eq("is_active", true).order("id").range(f, t),
       ),
-      // FIX-683 — content-bearing officials only (get_sitemap_official_ids returns
-      // a bounded jsonb array of ids, so it dodges the 1000-row SETOF cap). Degrade
-      // to [] on timeout/error like every other segment.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      timedIds(
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (supabase as any).rpc("get_sitemap_official_ids", { p_limit: LIMITS.officials }),
-      ),
       // FIX-683 — content-bearing jurisdictions + districts = jurisdiction_page_cache
       // membership. Embed the type so districts route to /districts/[id] and the
       // rest to /jurisdictions/[id]. ~62 rows today; the default 1000-row page is
       // plenty (no .range() loop needed).
       fetchCacheMembers(supabase),
     ]);
+
+    // FIX-683 — officials are intentionally NOT enumerated here. Filtering the
+    // ~27k officials to the content-bearing subset at request time costs ~3s on
+    // the cache-starved Pro Small (get_sitemap_official_ids EXPLAINs at 3.0–3.5s),
+    // which exceeds the anon role's statement_timeout — every daily regen would
+    // log a `canceling statement` and drop officials to [] anyway (the very crawl
+    // noise this FIX cuts). Content officials stay discoverable via internal links
+    // (jurisdiction rosters + institution pages, both in this sitemap) and empty
+    // officials are deindexed by the per-id noindex (FIX-683 item 3). A bounded
+    // sitemap list needs a materialized content-bearing-id table → FIX-685.
 
     const mk = (seg: string, rows: IdRow[] | null, priority: number): MetadataRoute.Sitemap =>
       (rows ?? []).map((r) => ({
@@ -188,7 +167,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     return [
       ...staticEntries,
       ...mk("proposals", proposals, 0.6),
-      ...mk("officials", officials, 0.6),
       ...mk("institutions", institutions, 0.5),
       ...mk("jurisdictions", jurisdictionMembers, 0.5),
       ...mk("districts", districtMembers, 0.4),
