@@ -1,0 +1,232 @@
+{
+  "ranAt": "2026-06-29T09:00:31.763Z",
+  "durationMs": 135245,
+  "dbHost": "aws-0-us-west-2.pooler.supabase.com:5432",
+  "results": [
+    {
+      "category": "officials.senator_count",
+      "severity": "info",
+      "expected": 100,
+      "actual": 100,
+      "sample": [],
+      "detail": "Active U.S. senators (2 per state × 50 states)."
+    },
+    {
+      "category": "officials.rep_count",
+      "severity": "error",
+      "expected": 441,
+      "actual": 437,
+      "sample": [],
+      "detail": "Active U.S. House: 435 voting + 6 non-voting delegates."
+    },
+    {
+      "category": "officials.president_count",
+      "severity": "info",
+      "expected": 1,
+      "actual": 1,
+      "sample": [],
+      "detail": "Sitting U.S. President."
+    },
+    {
+      "category": "officials.vp_count",
+      "severity": "info",
+      "expected": 1,
+      "actual": 1,
+      "sample": [],
+      "detail": "Sitting U.S. Vice President."
+    },
+    {
+      "category": "officials.duplicate_congress_gov",
+      "severity": "info",
+      "expected": 0,
+      "actual": 0,
+      "sample": [],
+      "detail": "Distinct officials sharing the same source_ids->>'congress_gov' (federal congressional ID)."
+    },
+    {
+      "category": "officials.missing_party",
+      "severity": "info",
+      "expected": 0,
+      "actual": 0,
+      "sample": [],
+      "detail": "Active senators/reps with NULL party. Independents should be 'independent', not NULL."
+    },
+    {
+      "category": "officials.suspicious_elected_tier",
+      "severity": "error",
+      "expected": 0,
+      "actual": 51,
+      "sample": [
+        {
+          "id": "2995c56b-fdbb-459c-95f9-a7bc6bd1e6b3",
+          "full_name": "ADAM SCHEINMAN",
+          "role_title": "SPECIAL REPRESENTATIVE OF THE PRESIDENT FOR NUCLEAR NONPROLIFERATION, WITH THE RANK OF AMBASSADOR",
+          "tier": "elected"
+        },
+        {
+          "id": "8fed0342-5a2e-44a2-ab9f-955a93cd938d",
+          "full_name": "Angela Curtis",
+          "role_title": "Vice President, Delivery Operations",
+          "tier": "elected"
+        },
+        {
+          "id": "20fa3861-8684-432e-8fb2-5b4c3152754a",
+          "full_name": "Angela Lawson",
+          "role_title": "Vice President, Technology Applications",
+          "tier": "elected"
+        },
+        {
+          "id": "cfc5d4c8-4f9f-463b-adc5-723f79b399b2",
+          "full_name": "Benjamin Kuo",
+          "role_title": "Vice President, Facilities",
+          "tier": "elected"
+        },
+        {
+          "id": "8b6918bd-4122-4360-94bf-0a98e2c9c05b",
+          "full_name": "Cara Greene",
+          "role_title": "Vice President, Controller",
+          "tier": "elected"
+        },
+        {
+          "id": "6e1aab60-d3f5-46a1-97ec-3f60ce34de36",
+          "full_name": "Dane Coleman",
+          "role_title": "Vice President, Processing and Maintenance Operations",
+          "tier": "elected"
+        },
+        {
+          "id": "6332cfda-3e92-4092-9532-a8822677f561",
+          "full_name": "DEBORAH LIPSTADT",
+          "role_title": "SPECIAL ENVOY TO MONITOR AND COMBAT ANTI-SEMITISM, WITH THE RANK OF AMBASSADOR",
+          "tier": "elected"
+        },
+        {
+          "id": "f42513d9-3494-4581-b32a-c1043af48146",
+          "full_name": "Eduardo Ruiz",
+          "role_title": "Vice President, Area Retail & Delivery Operations - WestPac",
+          "tier": "elected"
+        },
+        {
+          "id": "b69542d4-34ac-4a9b-ae94-573eeb6baf90",
+          "full_name": "Elvin Mercado",
+          "role_title": "Vice President, Retail and Post Office Operations",
+          "tier": "elected"
+        },
+        {
+          "id": "ddda1862-62cf-4034-8bee-344b9217f1be",
+          "full_name": "Eric Henry",
+          "role_title": "Vice President, Area Retail & Delivery Operations - Central",
+          "tier": "elected"
+        },
+        {
+          "id": "fa3b2b2a-3bb9-448d-aa80-b8da635f5c99",
+          "full_name": "Gary Reblin",
+          "role_title": "Vice President, Innovative Business Technology",
+          "tier": "elected"
+        },
+        {
+          "id": "e70a0e07-36f9-4af0-a48c-1501281fa23e",
+          "full_name": "Heather Dyer",
+          "role_title": "Vice President, Chief Information Security Officer",
+          "tier": "elected"
+        },
+        {
+          "id": "edb771b1-f25b-4583-ab41-c933b1f7f654",
+          "full_name": "Isaac Cronkhite",
+          "role_title": "Chief Processing and Distribution Officer and Executive Vice President",
+          "tier": "elected"
+        },
+        {
+          "id": "8483b84e-6138-48b4-a180-52685c33c746",
+          "full_name": "Jacqueline Krage Strako",
+          "role_title": "Chief Commerce and Business Solutions Officer and Executive Vice President",
+          "tier": "elected"
+        },
+        {
+          "id": "82254dbd-60c5-4496-9865-5e3e40602566",
+          "full_name": "Jeffrey Adams",
+          "role_title": "Vice President, Corporate Communications",
+          "tier": "elected"
+        },
+        {
+          "id": "9b7c9779-2e84-49e1-a281-39bf8ab3a62e",
+          "full_name": "Jennifer Utterback",
+          "role_title": "Vice President, Organization Develoment",
+          "tier": "elected"
+        },
+        {
+          "id": "9bafa974-1b33-4c91-876c-cfea7ce114e7",
+          "full_name": "John DiPeri",
+          "role_title": "Vice President, Regional Processing Operations - Western",
+          "tier": "elected"
+        },
+        {
+          "id": "6eb136d3-cea7-47f7-a04c-4eaf103e1252",
+          "full_name": "John Dunlop",
+          "role_title": "Vice President, Plant and Process Modernization",
+          "tier": "elected"
+        },
+        {
+          "id": "6fb366f5-8ea7-47be-bfc2-a67c25a259e5",
+          "full_name": "Joseph Corbett",
+          "role_title": "Chief Financial Officer and Executive Vice President",
+          "tier": "elected"
+        },
+        {
+          "id": "10ca3cc3-f939-483e-a27f-42a7b92a334d",
+          "full_name": "JOSEPH GORMLEY",
+          "role_title": "EXECUTIVE VICE PRESIDENT AND CHIEF OPERATING OFFICER",
+          "tier": "elected"
+        }
+      ],
+      "detail": "Active officials with tier='elected' but role_title matches a non-elected pattern (USPS exec, institutional president, special representative/envoy). Surfaces upstream tier-mapping drift; file a follow-up FIX to fix the ingest when this trips at volume."
+    },
+    {
+      "category": "proposals.procedural_contamination",
+      "severity": "info",
+      "expected": 0,
+      "actual": 0,
+      "sample": [],
+      "detail": "Proposals whose title starts with 'On ' (e.g. 'On Passage', 'On the Cloture Motion') — FIX-A regression test. The ' v.' arm was removed by FIX-319 after producing 100% false positives (courtlistener opinions + legistar lawsuit-settlement ordinances)."
+    },
+    {
+      "category": "proposals.orphaned_agency_id",
+      "severity": "info",
+      "expected": 0,
+      "actual": 0,
+      "sample": [],
+      "detail": "proposals.metadata->>'agency_id' values that don't resolve to any row in agencies.acronym."
+    },
+    {
+      "category": "votes.orphan_official_id",
+      "severity": "info",
+      "expected": 0,
+      "actual": 0,
+      "sample": [],
+      "detail": "votes.official_id values not present in officials.id."
+    },
+    {
+      "category": "votes.invalid_vote_value",
+      "severity": "info",
+      "expected": 0,
+      "actual": 0,
+      "sample": [],
+      "detail": "votes.vote values outside schema CHECK enum {yes, no, abstain, present, not_voting, paired_yes, paired_no}."
+    },
+    {
+      "category": "referential.failed_to_run",
+      "severity": "error",
+      "expected": "ran cleanly",
+      "actual": "threw",
+      "sample": [
+        "error: canceling statement due to statement timeout"
+      ],
+      "detail": "Check group 'referential' threw: canceling statement due to statement timeout"
+    }
+  ],
+  "summary": {
+    "total": 12,
+    "errors": 3,
+    "warnings": 0,
+    "infos": 9
+  }
+}
