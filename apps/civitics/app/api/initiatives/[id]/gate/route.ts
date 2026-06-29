@@ -22,7 +22,7 @@ export async function GET(
     // Verify initiative exists — join initiative_details for stage/scope, proposals for jurisdiction_id
     const { data: proposal } = await supabase
       .from("proposals")
-      .select("id, jurisdiction_id, initiative_details(stage, mobilise_started_at, scope)")
+      .select("id, jurisdiction_id, initiative_details!initiative_details_proposal_id_fkey(stage, mobilise_started_at, scope)")
       .eq("id", params.id)
       .eq("type", "initiative")
       .maybeSingle();

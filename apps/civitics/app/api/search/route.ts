@@ -678,7 +678,7 @@ export async function GET(req: NextRequest) {
 
     let qb = db2
       .from("proposals")
-      .select("id, title, status, initiative_details!inner(stage)", { count: "exact" })
+      .select("id, title, status, initiative_details!initiative_details_proposal_id_fkey!inner(stage)", { count: "exact" })
       .eq("type", "initiative");
 
     if (filterInitiativeStage) {

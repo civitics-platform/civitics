@@ -59,7 +59,7 @@ async function main(): Promise<void> {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     // reads-ok: anchor-verify report read — an empty result renders visibly as a missing anchor in the cron output
     const { data: ents } = await (db as any).from("financial_entities")
-      .select("id, display_name, canonical_name, entity_type, total_donated_cents, source_ids, metadata")
+      .select("id, display_name, canonical_name, entity_type, total_donated_cents, metadata")
       .ilike("display_name", "%MUSK%ELON%")
       .or("display_name.ilike.%ELON%MUSK%")
       .limit(10);
@@ -279,11 +279,11 @@ async function main(): Promise<void> {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     // reads-ok: anchor-verify report read — an empty result renders visibly as a missing anchor in the cron output
     const { data: ents } = await (db as any).from("financial_entities")
-      .select("id, display_name, source_ids")
+      .select("id, display_name, fec_committee_id")
       .ilike("display_name", "%SENATE MAJORITY PAC%")
       .limit(5);
     console.log(`  SMP entities: ${(ents ?? []).length}`);
-    for (const e of (ents ?? [])) console.log(`    [${e.id}] display_name="${e.display_name}" fec_cmte=${e.source_ids?.fec_committee_id ?? "-"}`);
+    for (const e of (ents ?? [])) console.log(`    [${e.id}] display_name="${e.display_name}" fec_cmte=${e.fec_committee_id ?? "-"}`);
 
     // ie_support / ie_oppose total rows in prod
     // FIX-511: magnitude display — estimated; the exact per-type numbers come

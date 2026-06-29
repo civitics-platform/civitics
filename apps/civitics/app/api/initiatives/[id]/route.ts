@@ -24,7 +24,7 @@ export async function GET(
     // Fetch proposal + initiative_details
     const { data: proposal, error: fetchErr } = await supabase
       .from("proposals")
-      .select("*, initiative_details(*)")
+      .select("*, initiative_details!initiative_details_proposal_id_fkey(*)")
       .eq("id", params.id)
       .eq("type", "initiative")
       .maybeSingle();
@@ -128,7 +128,7 @@ export async function PATCH(
     // Fetch current initiative — must be author, and stage must be draft or deliberate
     const { data: current, error: fetchErr } = await supabase
       .from("proposals")
-      .select("id, title, summary_plain, initiative_details(body_md, stage, primary_author_id)")
+      .select("id, title, summary_plain, initiative_details!initiative_details_proposal_id_fkey(body_md, stage, primary_author_id)")
       .eq("id", params.id)
       .eq("type", "initiative")
       .maybeSingle();
@@ -228,7 +228,7 @@ export async function PATCH(
 
     const { data: updated } = await admin
       .from("proposals")
-      .select("id, title, updated_at, initiative_details(stage)")
+      .select("id, title, updated_at, initiative_details!initiative_details_proposal_id_fkey(stage)")
       .eq("id", params.id)
       .single();
 

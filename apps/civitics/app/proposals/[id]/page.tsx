@@ -241,7 +241,7 @@ export default async function ProposalDetailPage({
   const relatedInitiativesQuery = withDbTimeout(
     supabase
       .from("civic_initiative_proposal_links")
-      .select("proposals!initiative_id(id, title, initiative_details(stage, scope, issue_area_tags))")
+      .select("proposals!initiative_id(id, title, initiative_details!initiative_details_proposal_id_fkey(stage, scope, issue_area_tags))")
       .eq("proposal_id", p.id)
       .limit(5),
     3000,

@@ -32,8 +32,8 @@ export async function listOpenForComment(
     .from("proposals")
     .select("*")
     .eq("status", "open_comment" satisfies ProposalStatus)
-    .gt("comment_period_end", new Date().toISOString())
-    .order("comment_period_end");
+    .gt("metadata->>comment_period_end", new Date().toISOString())
+    .order("metadata->>comment_period_end");
 
   if (jurisdictionId) {
     query = query.eq("jurisdiction_id", jurisdictionId);
@@ -102,7 +102,7 @@ export async function getProposalByRegulationsGovId(
   const { data, error } = await db
     .from("proposals")
     .select("*")
-    .eq("regulations_gov_id", regulationsGovId)
+    .eq("metadata->>regulations_gov_id", regulationsGovId)
     .maybeSingle();
   if (error) throw error;
   return data;

@@ -164,13 +164,19 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       const key = a.acronym ?? a.name;
       const { data: newProposals } = await db
         .from("proposals")
-        .select("id, title, bill_number, introduced_at, created_at")
+        .select("id, title, bill_details(bill_number), introduced_at, created_at")
         .filter("metadata->>agency_id", "eq", key)
         .gt("created_at", lastRunIso)
         .order("created_at", { ascending: false })
         .limit(10);
 
-      const rows = newProposals ?? [];
+      // proposals has no bill_number column — it lives in bill_details (FK). Unwrap
+      // the embed array-vs-object the same way the followed-officials block does (l.106).
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const rows = ((newProposals ?? []) as any[]).map((p) => ({
+        ...p,
+        bill_number: (Array.isArray(p.bill_details) ? p.bill_details[0] : p.bill_details)?.bill_number ?? null,
+      }));
       if (rows.length === 0) continue;
 
       const first = rows[0]!;

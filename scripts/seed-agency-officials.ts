@@ -153,7 +153,6 @@ async function run() {
         to_id: agencyId,
         connection_type: row.type,
         strength: row.strength,
-        is_verified: false,
         metadata: { source: "seed-script", seed_version: "v1" },
       },
       { onConflict: "from_id,to_id,connection_type", ignoreDuplicates: true }

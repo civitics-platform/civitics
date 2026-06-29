@@ -36,7 +36,7 @@ export async function generateMetadata(
   const { data: proposal } = await withDbTimeout(
     supabase
       .from("proposals")
-      .select("title, summary_plain, initiative_details(stage, scope)")
+      .select("title, summary_plain, initiative_details!initiative_details_proposal_id_fkey(stage, scope)")
       .eq("id", params.id)
       .eq("type", "initiative")
       .maybeSingle(),
@@ -149,7 +149,7 @@ export default async function InitiativeDetailPage({
       withDbTimeout(
         supabase
           .from("proposals")
-          .select("*, initiative_details(*)")
+          .select("*, initiative_details!initiative_details_proposal_id_fkey(*)")
           .eq("id", id)
           .eq("type", "initiative")
           .maybeSingle(),

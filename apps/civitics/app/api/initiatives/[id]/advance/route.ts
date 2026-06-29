@@ -31,7 +31,7 @@ export async function POST(
     // Fetch initiative — core (proposals) + initiative-specific (initiative_details).
     const { data: proposal } = await supabase
       .from("proposals")
-      .select("id, jurisdiction_id, initiative_details(stage, primary_author_id, mobilise_started_at, scope)")
+      .select("id, jurisdiction_id, initiative_details!initiative_details_proposal_id_fkey(stage, primary_author_id, mobilise_started_at, scope)")
       .eq("id", params.id)
       .eq("type", "initiative")
       .single();
