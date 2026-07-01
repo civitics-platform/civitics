@@ -57,6 +57,23 @@
  * Run standalone:
  *   pnpm --filter @civitics/data data:fec-bulk
  *   FEC_CYCLES=2022,2024 pnpm --filter @civitics/data data:fec-bulk
+ *
+ * Surgical / scoped re-runs (FIX-700) — three independent knobs, each defaulting
+ * to today's full-run behavior when unset:
+ *   FEC_CYCLES=2024              — which cycles to process (existing)
+ *   FEC_INDIV_TX_TYPES=10        — override the 15,15E,10 tx-type filter (indiv.ts)
+ *   FEC_INDIV_STAGES=...         — comma allow-list of indiv sub-stages (scope.ts):
+ *                                  donor-entities, indiv-to-candidate,
+ *                                  recipient-entities, indiv-to-committee,
+ *                                  independent-expenditures, totals
+ * When FEC_INDIV_TX_TYPES narrows below the default OR FEC_INDIV_STAGES excludes
+ * a stage, the run is "scoped": the donor/recipient entity upserts stop
+ * overwriting total_donated_cents / total_received_cents (a partial slice must
+ * not clobber a full aggregate), and the authoritative values are re-derived by
+ * the `totals` stage. ALWAYS run the totals rebuild after any scoped
+ * relationship-writing run. Example — the FIX-677 super-PAC (type-10) finish:
+ *   FEC_CYCLES=2024 FEC_INDIV_TX_TYPES=10 pnpm --filter @civitics/data data:fec-bulk
+ *   # then, if `totals` was excluded, run rebuild_financial_entity_*_totals
  */
 
 import * as https    from "https";
@@ -93,7 +110,14 @@ import {
   parseLastModified,
   type FecHead,
 } from "./util";
-import { parseCcl, streamIndiv } from "./indiv";
+import { parseCcl, streamIndiv, parseKeepTxTypes, isIndivTxScoped } from "./indiv";
+import {
+  parseIndivStages,
+  stageEnabled,
+  isStagesScoped,
+  INDIV_STAGE_NAMES,
+  type IndivStageName,
+} from "./scope";
 import { streamIndependentExpenditures } from "./indep-exp";
 import {
   streamCandidates,
@@ -591,6 +615,33 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
   const indivCycleSet = new Set(INDIV_CYCLES);
   console.log(`  Indiv cycles:      ${INDIV_CYCLES.join(", ")}`);
 
+  // FIX-700: surgical scope filters for the (expensive) indiv stage. Two axes,
+  // each defaulting to full-run behavior when unset (see the header comment):
+  //   FEC_INDIV_TX_TYPES — override KEEP_TX_TYPES (default 15,15E,10)
+  //   FEC_INDIV_STAGES   — allow-list of indiv sub-stages (default = all)
+  // Only the indiv stage is scoped; cn/weball/pas2 always run in full.
+  const keepTxTypes = parseKeepTxTypes();
+  const { set: indivStageSet, unknown: unknownStages } = parseIndivStages();
+  if (unknownStages.length > 0) {
+    console.warn(
+      `  FEC_INDIV_STAGES has unknown stage name(s): ${unknownStages.join(", ")} ` +
+        `— valid: ${INDIV_STAGE_NAMES.join(", ")}`,
+    );
+  }
+  const stageOn = (name: IndivStageName): boolean => stageEnabled(indivStageSet, name);
+  // A scoped run must NOT overwrite entity aggregate columns — a partial slice
+  // (e.g. tx-type 10 only) would clobber a mixed donor's real total. The totals
+  // rebuild re-derives the authoritative values afterward (writer.ts).
+  const isScoped = isIndivTxScoped(keepTxTypes) || isStagesScoped(indivStageSet);
+  if (isScoped) {
+    console.log(
+      `  ⚠ SCOPED RUN — tx_types=[${[...keepTxTypes].join(",")}] ` +
+        `stages=[${indivStageSet.size ? [...indivStageSet].join(",") : "all"}] ` +
+        `cycles=[${INDIV_CYCLES.join(", ")}]; entity aggregates will NOT be overwritten — ` +
+        `run the totals rebuild after (this run ${stageOn("totals") ? "INCLUDES" : "SKIPS"} the totals stage)`,
+    );
+  }
+
   let pacEntitiesUpserted = 0, pacEntitiesFailed = 0;
   let pacRelsUpserted = 0, pacRelsFailed = 0;
   let indivDonorsUpserted = 0, indivDonorsFailed = 0;
@@ -1040,7 +1091,7 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
               if (cmteToCand.size === 0 && nonCandCmtes.size === 0) {
                 console.warn("    No committees mapped to candidates or non-cand recipients — skipping indiv stage");
               } else {
-                const indivResult = await streamIndiv(indivPath, cmteToCand, candidateSet, nonCandCmtes, TMP_DIR);
+                const indivResult = await streamIndiv(indivPath, cmteToCand, candidateSet, nonCandCmtes, TMP_DIR, keepTxTypes);
 
                 // Build per-cycle donor totals from BOTH aggregation maps —
                 // candidate-path and committee-path. A donor who gives to
@@ -1074,35 +1125,57 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
                   });
                 }
 
-                console.log(`    Upserting ${donorInputs.length.toLocaleString()} individual donor entities...`);
-                const donorResult = await upsertIndividualDonorsBatch(donorInputs);
-                indivDonorsUpserted += donorResult.upserted;
-                indivDonorsFailed   += donorResult.failed;
-                console.log(`    Donors — upserted: ${donorResult.upserted}  failed: ${donorResult.failed}`);
-
-                // Build relationship inputs — one per (donor × candidate × cycle)
-                const indivRelInputs: IndividualDonationInput[] = [];
-                for (const agg of indivResult.aggregations.values()) {
-                  const fromEntityId = donorResult.donorIdByFingerprint.get(agg.donorFingerprint);
-                  if (!fromEntityId) continue;
-                  const toOfficialId = index.byFecId.get(agg.candId);
-                  if (!toOfficialId) continue;
-                  indivRelInputs.push({
-                    fromEntityId,
-                    toOfficialId,
-                    cycleYear:        parseInt(CYCLE, 10),
-                    amountCents:      agg.totalCents,
-                    occurredAt:       agg.latestDate ? parseFecDate(agg.latestDate) : null,
-                    donorFingerprint: agg.donorFingerprint,
-                    txCount:          agg.txCount,
-                  });
+                // FIX-700 stage: donor-entities. Skipping it leaves
+                // donorIdByFingerprint empty, so the two indiv relationship
+                // stages below resolve no from_id (they log skipped_unresolved).
+                // For the type-10 finish this stage runs.
+                let donorResult: Awaited<ReturnType<typeof upsertIndividualDonorsBatch>> = {
+                  upserted: 0,
+                  failed: 0,
+                  donorIdByFingerprint: new Map<string, string>(),
+                };
+                if (stageOn("donor-entities")) {
+                  console.log(`    Upserting ${donorInputs.length.toLocaleString()} individual donor entities...`);
+                  // isScoped ⇒ omit total_donated_cents/total_received_cents so a
+                  // partial-slice run doesn't clobber existing donor aggregates.
+                  donorResult = await upsertIndividualDonorsBatch(donorInputs, isScoped);
+                  indivDonorsUpserted += donorResult.upserted;
+                  indivDonorsFailed   += donorResult.failed;
+                  console.log(`    Donors — upserted: ${donorResult.upserted}  failed: ${donorResult.failed}`);
+                } else {
+                  console.log(`    [donor-entities] — skipped (not in FEC_INDIV_STAGES)`);
                 }
 
-                console.log(`    Upserting ${indivRelInputs.length.toLocaleString()} individual → candidate donation relationships...`);
-                const indivRelResult = await upsertIndividualDonationsBatch(indivRelInputs);
-                indivRelsUpserted += indivRelResult.upserted;
-                indivRelsFailed   += indivRelResult.failed;
-                console.log(`    Donations (→ candidate) — upserted: ${indivRelResult.upserted}  failed: ${indivRelResult.failed}`);
+                // FIX-700 stage: indiv-to-candidate. (A tx-type-10-only run yields
+                // no candidate-path rows — type 10 flows to super PACs — so this
+                // stage upserts 0 in the FIX-677 finish, harmlessly.)
+                if (stageOn("indiv-to-candidate")) {
+                  // Build relationship inputs — one per (donor × candidate × cycle)
+                  const indivRelInputs: IndividualDonationInput[] = [];
+                  for (const agg of indivResult.aggregations.values()) {
+                    const fromEntityId = donorResult.donorIdByFingerprint.get(agg.donorFingerprint);
+                    if (!fromEntityId) continue;
+                    const toOfficialId = index.byFecId.get(agg.candId);
+                    if (!toOfficialId) continue;
+                    indivRelInputs.push({
+                      fromEntityId,
+                      toOfficialId,
+                      cycleYear:        parseInt(CYCLE, 10),
+                      amountCents:      agg.totalCents,
+                      occurredAt:       agg.latestDate ? parseFecDate(agg.latestDate) : null,
+                      donorFingerprint: agg.donorFingerprint,
+                      txCount:          agg.txCount,
+                    });
+                  }
+
+                  console.log(`    Upserting ${indivRelInputs.length.toLocaleString()} individual → candidate donation relationships...`);
+                  const indivRelResult = await upsertIndividualDonationsBatch(indivRelInputs);
+                  indivRelsUpserted += indivRelResult.upserted;
+                  indivRelsFailed   += indivRelResult.failed;
+                  console.log(`    Donations (→ candidate) — upserted: ${indivRelResult.upserted}  failed: ${indivRelResult.failed}`);
+                } else {
+                  console.log(`    [indiv-to-candidate] — skipped (not in FEC_INDIV_STAGES)`);
+                }
 
                 // ── FIX-236: donor → non-candidate committee donations ──
                 // Pre-upsert the recipient committee entities so we can
@@ -1147,41 +1220,56 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
                   if (!cmteInfoSeen.has(agg.cmteId)) cmteInfoSeen.set(agg.cmteId, info);
                 }
 
-                if (cmteEntityInputs.length > 0) {
-                  console.log(`    Pre-upserting ${cmteEntityInputs.length.toLocaleString()} non-candidate-committee recipient entities...`);
-                  const cmteEntityResult = await upsertPacEntitiesBatch(db, cmteEntityInputs);
-                  pacEntitiesUpserted += cmteEntityResult.upserted;
-                  pacEntitiesFailed   += cmteEntityResult.failed;
-                  for (const [cmteId, id] of cmteEntityResult.entityIdByCmte.entries()) {
-                    entityIdByCmteAcc.set(cmteId, id);
+                // FIX-700 stage: recipient-entities. The cmteInfoSeen seeding above
+                // is intentionally OUTSIDE the gate — the cross-cycle final pass
+                // and IE stage depend on it. Only the upsert (which populates
+                // entityIdByCmteAcc, the to_id source for indiv-to-committee) is
+                // gated. isScoped ⇒ omit aggregate columns (skip-overwrite).
+                if (stageOn("recipient-entities")) {
+                  if (cmteEntityInputs.length > 0) {
+                    console.log(`    Pre-upserting ${cmteEntityInputs.length.toLocaleString()} non-candidate-committee recipient entities...`);
+                    const cmteEntityResult = await upsertPacEntitiesBatch(db, cmteEntityInputs, isScoped);
+                    pacEntitiesUpserted += cmteEntityResult.upserted;
+                    pacEntitiesFailed   += cmteEntityResult.failed;
+                    for (const [cmteId, id] of cmteEntityResult.entityIdByCmte.entries()) {
+                      entityIdByCmteAcc.set(cmteId, id);
+                    }
+                    console.log(`    Recipient committees — upserted: ${cmteEntityResult.upserted}  failed: ${cmteEntityResult.failed}`);
                   }
-                  console.log(`    Recipient committees — upserted: ${cmteEntityResult.upserted}  failed: ${cmteEntityResult.failed}`);
+                } else {
+                  console.log(`    [recipient-entities] — skipped (not in FEC_INDIV_STAGES)`);
                 }
 
-                const indivCmteRelInputs: IndividualToCommitteeDonationInput[] = [];
-                for (const agg of indivResult.committeeAggregations.values()) {
-                  const fromEntityId = donorResult.donorIdByFingerprint.get(agg.donorFingerprint);
-                  if (!fromEntityId) { indivCmteSkippedUnresolved++; continue; } // FIX-686
-                  const toEntityId = entityIdByCmteAcc.get(agg.cmteId);
-                  if (!toEntityId) { indivCmteSkippedUnresolved++; continue; } // FIX-686
-                  indivCmteRelInputs.push({
-                    fromEntityId,
-                    toEntityId,
-                    cycleYear:        parseInt(CYCLE, 10),
-                    amountCents:      agg.totalCents,
-                    occurredAt:       agg.latestDate ? parseFecDate(agg.latestDate) : null,
-                    donorFingerprint: agg.donorFingerprint,
-                    cmteId:           agg.cmteId,
-                    txCount:          agg.txCount,
-                  });
-                }
+                // FIX-700 stage: indiv-to-committee. This is the path that lands
+                // the FIX-677 super-PAC (type-10) receipts — the finish's target.
+                if (stageOn("indiv-to-committee")) {
+                  const indivCmteRelInputs: IndividualToCommitteeDonationInput[] = [];
+                  for (const agg of indivResult.committeeAggregations.values()) {
+                    const fromEntityId = donorResult.donorIdByFingerprint.get(agg.donorFingerprint);
+                    if (!fromEntityId) { indivCmteSkippedUnresolved++; continue; } // FIX-686
+                    const toEntityId = entityIdByCmteAcc.get(agg.cmteId);
+                    if (!toEntityId) { indivCmteSkippedUnresolved++; continue; } // FIX-686
+                    indivCmteRelInputs.push({
+                      fromEntityId,
+                      toEntityId,
+                      cycleYear:        parseInt(CYCLE, 10),
+                      amountCents:      agg.totalCents,
+                      occurredAt:       agg.latestDate ? parseFecDate(agg.latestDate) : null,
+                      donorFingerprint: agg.donorFingerprint,
+                      cmteId:           agg.cmteId,
+                      txCount:          agg.txCount,
+                    });
+                  }
 
-                console.log(`    Upserting ${indivCmteRelInputs.length.toLocaleString()} individual → committee donation relationships...`);
-                const indivCmteRelResult = await upsertIndividualToCommitteeDonationsBatch(indivCmteRelInputs);
-                indivCmteRelsUpserted += indivCmteRelResult.upserted;
-                indivCmteRelsFailed   += indivCmteRelResult.failed;
-                console.log(`    Donations (→ committee) — upserted: ${indivCmteRelResult.upserted}  failed: ${indivCmteRelResult.failed}`);
-                console.log(`    Donations (→ committee) — skipped_unresolved: ${indivCmteSkippedUnresolved} (FIX-686; should be 0)`);
+                  console.log(`    Upserting ${indivCmteRelInputs.length.toLocaleString()} individual → committee donation relationships...`);
+                  const indivCmteRelResult = await upsertIndividualToCommitteeDonationsBatch(indivCmteRelInputs);
+                  indivCmteRelsUpserted += indivCmteRelResult.upserted;
+                  indivCmteRelsFailed   += indivCmteRelResult.failed;
+                  console.log(`    Donations (→ committee) — upserted: ${indivCmteRelResult.upserted}  failed: ${indivCmteRelResult.failed}`);
+                  console.log(`    Donations (→ committee) — skipped_unresolved: ${indivCmteSkippedUnresolved} (FIX-686; should be 0)`);
+                } else {
+                  console.log(`    [indiv-to-committee] — skipped (not in FEC_INDIV_STAGES)`);
+                }
 
                 // FIX-193 watermark advance: record the FEC Last-Modified we
                 // just successfully processed. Next run sees this and short-
@@ -1216,7 +1304,9 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
       // pas2. Tolerant of FEC outages: failure here is logged and the
       // cycle still wraps up cleanly with PAC + indiv data already landed.
       console.log(`  [${CYCLE} 6/7] Independent expenditures (Schedule E) stage...`);
-      {
+      if (!stageOn("independent-expenditures")) {
+        console.log(`    [independent-expenditures] — skipped (not in FEC_INDIV_STAGES)`);
+      } else {
         const ieName = `independent_expenditure_${CYCLE}.csv`;
         const ieUrl  = `https://www.fec.gov/files/bulk-downloads/${CYCLE}/${ieName}`;
         const iePath = path.join(TMP_DIR, ieName);
@@ -1377,6 +1467,13 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
     const finalResult = await upsertPacEntitiesBatch(db, finalEntityInputs);
     console.log(`    Cross-cycle entity totals — upserted: ${finalResult.upserted}  failed: ${finalResult.failed}`);
 
+    // ── FIX-700 stage: totals — end-of-run authoritative aggregate recomputes ─
+    // Gateable via FEC_INDIV_STAGES. After ANY scoped relationship-writing run
+    // this MUST run (here, or a later standalone rebuild) — it re-derives the
+    // aggregates the writers deliberately left un-overwritten. The cross-cycle
+    // finalResult upsert above is NOT part of this gate (it is pas2's own inline
+    // recompute, itself corrected by these SQL rebuilds).
+    if (stageOn("totals")) {
     // ── Cross-cycle individual-donor total recompute (FIX-269) ──────────────
     // Per-cycle indiv upsert overwrites total_donated_cents (onConflict on
     // donor_fingerprint), so multi-cycle donors carry only the last cycle's
@@ -1436,6 +1533,13 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
         `    rebuild_financial_entity_received_totals failed: ${
           rebuildErr instanceof Error ? rebuildErr.message : String(rebuildErr)
         }`,
+      );
+    }
+    } else {
+      console.log(
+        "\n  [totals] — skipped (not in FEC_INDIV_STAGES); run the totals rebuild " +
+          "(rebuild_financial_entity_donation_totals / _ie_totals / _received_totals) " +
+          "separately before trusting aggregates",
       );
     }
 

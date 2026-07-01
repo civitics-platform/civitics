@@ -27,6 +27,20 @@ on:
         required: true
         default: "2020,2022,2024,2026"
         type: string
+      # FIX-700 — surgical scope filters. Empty ⇒ default ⇒ current full-run
+      # behavior. Narrowing either marks the run "scoped" (entity aggregates are
+      # NOT overwritten; re-derived by the totals stage). The FIX-677 super-PAC
+      # finish uses cycles=2024, tx_types=10.
+      tx_types:
+        description: "Override indiv tx-type filter (comma list, e.g. 10). Empty = default 15,15E,10."
+        required: false
+        default: ""
+        type: string
+      stages:
+        description: "Indiv sub-stage allow-list (comma list: donor-entities,indiv-to-candidate,recipient-entities,indiv-to-committee,independent-expenditures,totals). Empty = all."
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: read
@@ -83,8 +97,15 @@ jobs:
         # FEC_CYCLES drives the cycle loop; FEC_INDIV_CYCLES defaults to it, so
         # the indiv stage runs for every requested cycle. :ci passes --allow-prod
         # (prod-write guard) and reads env from this job (no --env-file).
+        #
+        # FIX-700: tx_types/stages pass through to the scope filters. An empty
+        # input yields an empty env value, which parseKeepTxTypes/parseIndivStages
+        # treat identically to unset — i.e. the default full-run behavior — so
+        # there is no need for a shell-side "set only when non-empty" conditional.
         env:
           FEC_CYCLES: ${{ inputs.cycles }}
+          FEC_INDIV_TX_TYPES: ${{ inputs.tx_types }}
+          FEC_INDIV_STAGES: ${{ inputs.stages }}
         run: pnpm --filter @civitics/data data:fec-bulk:ci
 
       # Same kill-detector backstop the nightly uses: if the job is SIGTERM'd by

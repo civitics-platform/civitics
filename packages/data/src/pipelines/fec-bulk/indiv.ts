@@ -67,7 +67,7 @@ const CCL_COL = {
   CMTE_DSGN: 5,
 } as const;
 
-// Transaction types we keep:
+// Transaction types we keep (the DEFAULT set):
 //   '15'  direct individual contribution to a non-super-PAC committee
 //   '15E' earmarked through a conduit (ActBlue, WinRed, etc.) — still attributed to individual
 //   '10'  direct individual contribution to an independent-expenditure-only
@@ -82,7 +82,62 @@ const CCL_COL = {
 //         double-count risk.
 // Excluded: '15I'/'15T'/'24I'/'24T' earmark passthrough memos (would
 //   double-count), '15J' memo, '20Y'/'22Y' refunds, transfers.
-const KEEP_TX_TYPES = new Set(["15", "15E", "10"]);
+//
+// FIX-700: the active set is overridable via FEC_INDIV_TX_TYPES so a surgical
+// re-run can process just one type (the FIX-677 finish re-ingests only type 10).
+// A narrowed set marks the run "scoped" (see isIndivTxScoped) which suppresses
+// entity-aggregate overwrite in the writers — the totals rebuild re-derives the
+// authoritative values afterward.
+export const DEFAULT_INDIV_TX_TYPES = ["15", "15E", "10"] as const;
+
+// Known FEC receipt-side transaction types — used only to WARN on a likely typo
+// in FEC_INDIV_TX_TYPES (individual contributions, earmarks, refunds, memos).
+// Not exhaustive of every FEC code; unknowns pass through with a warning, never
+// a hard error. Ref: FEC transaction-type-code table.
+const KNOWN_INDIV_TX_TYPES: ReadonlySet<string> = new Set([
+  "10", "10J", "11", "11J",
+  "15", "15C", "15E", "15F", "15I", "15J", "15T", "15Z",
+  "18G", "18H", "18J", "18K", "18L", "18U",
+  "19", "19J",
+  "20", "20A", "20B", "20C", "20D", "20F", "20G", "20R", "20V", "20Y",
+  "21Y",
+  "22H", "22J", "22K", "22L", "22R", "22U", "22X", "22Y", "22Z",
+  "23Y",
+  "24I", "24T",
+  "30", "30T", "31", "31T", "32", "32T",
+]);
+
+/**
+ * Resolve the active indiv transaction-type filter set. Reads
+ * FEC_INDIV_TX_TYPES (comma-separated, case-insensitive); falls back to the
+ * default 15/15E/10 when unset or empty. Warns on unrecognized codes but keeps
+ * them (the KNOWN set is not exhaustive). Uppercased so it matches the raw
+ * FEC file values ("15E", "10", …) which are always uppercase.
+ */
+export function parseKeepTxTypes(raw: string | undefined = process.env.FEC_INDIV_TX_TYPES): Set<string> {
+  const parts = (raw ?? "")
+    .split(",")
+    .map((s) => s.trim().toUpperCase())
+    .filter(Boolean);
+  if (parts.length === 0) return new Set(DEFAULT_INDIV_TX_TYPES);
+  const unknown = parts.filter((p) => !KNOWN_INDIV_TX_TYPES.has(p));
+  if (unknown.length > 0) {
+    console.warn(
+      `    [fec-bulk:indiv] FEC_INDIV_TX_TYPES has unrecognized FEC tx type(s): ${unknown.join(", ")} ` +
+        `— proceeding, but verify against the FEC transaction-type-code list`,
+    );
+  }
+  return new Set(parts);
+}
+
+/**
+ * A run is tx-scoped when the active set NARROWS below the full default — i.e.
+ * omits any of 15/15E/10. Widening (adding extra types) is NOT scoped. Scoped
+ * runs skip entity-aggregate overwrite in the writers (see writer.ts).
+ */
+export function isIndivTxScoped(active: Set<string> = parseKeepTxTypes()): boolean {
+  return !DEFAULT_INDIV_TX_TYPES.every((t) => active.has(t));
+}
 
 // FEC's itemization floor. Same threshold the pas2 pipeline uses post-FIX-182.
 const MIN_AMT_DOLLARS = 200;
@@ -308,6 +363,9 @@ export async function streamIndiv(
   candidateSet:   Set<string>,
   nonCandCmtes:   Set<string>,    // FIX-236: super PAC / party / other-PAC CMTE_IDs (not in ccl P/A)
   tempDir:        string,
+  // FIX-700: active tx-type filter. Defaults to FEC_INDIV_TX_TYPES / 15,15E,10.
+  // index.ts passes the already-resolved set so the parse + warning run once.
+  keepTxTypes:    Set<string> = parseKeepTxTypes(),
 ): Promise<IndivStreamResult> {
   const txtPath = path.join(tempDir, "indiv-extracted.txt");
   const found = await extractZipEntryToDisk(
@@ -321,6 +379,7 @@ export async function streamIndiv(
 
   const txtMb = (fs.statSync(txtPath).size / 1024 / 1024).toFixed(0);
   console.log(`    Extracted indiv text (${txtMb} MB) — streaming line by line...`);
+  console.log(`    Tx-type filter: [${[...keepTxTypes].join(",")}]`);
 
   const aggregations          = new Map<string, IndivAggregation>();
   const committeeAggregations = new Map<string, IndivCommitteeAggregation>();
@@ -352,7 +411,7 @@ export async function streamIndiv(
 
     const cols   = line.split("|");
     const txType = (cols[INDIV_COL.TRANSACTION_TP] ?? "").trim();
-    if (!KEEP_TX_TYPES.has(txType)) continue;
+    if (!keepTxTypes.has(txType)) continue;
     passedTxType++;
 
     const cmteId = (cols[INDIV_COL.CMTE_ID] ?? "").trim();
@@ -449,7 +508,7 @@ export async function streamIndiv(
   }
 
   console.log(`    Lines read:                ${linesRead.toLocaleString()}`);
-  console.log(`    Passed 15/15E/10 filter:   ${passedTxType.toLocaleString()}`);
+  console.log(`    Passed tx-type filter [${[...keepTxTypes].join(",")}]: ${passedTxType.toLocaleString()}`);
   console.log(`    Passed cmte lookup:        ${passedCmte.toLocaleString()}`);
   console.log(`      → candidate path:        ${passedCand.toLocaleString()}`);
   console.log(`      → committee path:        ${passedCommittee.toLocaleString()}`);

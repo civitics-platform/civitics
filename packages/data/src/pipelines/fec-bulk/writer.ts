@@ -106,6 +106,12 @@ export interface EntityBatchResult {
 export async function upsertPacEntitiesBatch(
   db: Db,
   inputs: PacEntityInput[],
+  // FIX-700: on a scoped run, OMIT total_donated_cents / total_received_cents from
+  // the payload entirely. PostgREST then leaves them at the column default on
+  // insert (both are BIGINT NOT NULL DEFAULT 0) and unchanged on conflict — so a
+  // partial-slice re-run can't clobber a committee's real aggregate. The totals
+  // rebuild re-derives the authoritative values afterward.
+  skipAggregateOverwrite = false,
 ): Promise<EntityBatchResult> {
   const entityIdByCmte = new Map<string, string>();
   let upserted = 0;
@@ -116,18 +122,23 @@ export async function upsertPacEntitiesBatch(
   const records = inputs.map((input) => {
     const entityType = cmteTypeToEntityType(input.cmteType);
     const displayName = (input.name || input.cmteId).trim();
-    return {
+    const base = {
       canonical_name: canonicalizeEntityName(displayName),
       display_name: displayName,
       entity_type: entityType,
       fec_committee_id: input.cmteId,
-      total_donated_cents: input.totalDonatedCents,
-      total_received_cents: 0,
       metadata: {
         fec_cmte_type_raw: input.cmteType,
         fec_connected_org_nm: input.connectedOrg?.trim() || null,
       },
     };
+    return skipAggregateOverwrite
+      ? base
+      : {
+          ...base,
+          total_donated_cents: input.totalDonatedCents,
+          total_received_cents: 0,
+        };
   });
 
   for (let i = 0; i < records.length; i += ENTITY_CHUNK) {
@@ -212,6 +223,13 @@ export interface IndividualDonorBatchResult {
 // pooled pg.Client with a raised SESSION statement_timeout instead.
 export async function upsertIndividualDonorsBatch(
   inputs: IndividualDonorInput[],
+  // FIX-700: on a scoped run, OMIT total_donated_cents / total_received_cents from
+  // the INSERT column list so existing donors keep their current aggregate (the
+  // ON CONFLICT DO UPDATE set can't touch a column that isn't inserted) and new
+  // donors take the BIGINT NOT NULL DEFAULT 0. A tx-type-10-only run would
+  // otherwise overwrite a mixed donor's real total with just their super-PAC
+  // slice; the totals rebuild re-derives the authoritative value afterward.
+  skipAggregateOverwrite = false,
 ): Promise<IndividualDonorBatchResult> {
   const donorIdByFingerprint = new Map<string, string>();
 
@@ -246,29 +264,43 @@ export async function upsertIndividualDonorsBatch(
   // builder). DO UPDATE updates all non-conflict columns, matching the prior
   // PostgREST merge-duplicates behavior (incl. resetting total_received_cents=0,
   // which the indiv path has always done — pas2 owns received-side totals).
-  const rows = [...merged.values()].map((input) => [
-    canonicalDonorName(input.displayName),
-    input.displayName,
-    "individual",
-    null,
-    input.fingerprint,
-    input.totalDonatedCents,
-    0,
-    {
+  // FIX-700: scoped runs use the reduced column set (aggregate columns omitted).
+  const columns = skipAggregateOverwrite ? DONOR_COLUMNS_SCOPED : DONOR_COLUMNS;
+  const rows = [...merged.values()].map((input) => {
+    const meta = {
       city:       input.city       || null,
       state:      input.state      || null,
       zip5:       input.zip5       || null,
       employer:   input.employer   || null,
       occupation: input.occupation || null,
       source:     "fec_bulk_indiv",
-    },
-  ]);
+    };
+    return skipAggregateOverwrite
+      ? [
+          canonicalDonorName(input.displayName),
+          input.displayName,
+          "individual",
+          null,
+          input.fingerprint,
+          meta,
+        ]
+      : [
+          canonicalDonorName(input.displayName),
+          input.displayName,
+          "individual",
+          null,
+          input.fingerprint,
+          input.totalDonatedCents,
+          0,
+          meta,
+        ];
+  });
 
   const { upserted, failed, returned } = await withDirectClient((client) =>
     bulkUpsert(client, {
       table:            "financial_entities",
       label:            "individual-donor",
-      columns:          DONOR_COLUMNS,
+      columns,
       conflictColumns:  ["donor_fingerprint"],
       jsonbColumns:     ["metadata"],
       returningColumns: ["id", "donor_fingerprint"],
@@ -293,6 +325,13 @@ const DONOR_COLUMNS: string[] = [
   "total_received_cents",
   "metadata",
 ];
+
+// FIX-700: scoped-run column set — aggregate columns dropped so a partial-slice
+// re-run leaves existing donor totals intact (insert → DEFAULT 0, conflict →
+// unchanged). Row builder above must emit tuples aligned to this order.
+const DONOR_COLUMNS_SCOPED: string[] = DONOR_COLUMNS.filter(
+  (c) => c !== "total_donated_cents" && c !== "total_received_cents",
+);
 
 // Shared column order for the two individual-donation relationship writers.
 const REL_COLUMNS: string[] = [

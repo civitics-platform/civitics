@@ -12,7 +12,12 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { donorFingerprint } from "./indiv";
+import {
+  donorFingerprint,
+  parseKeepTxTypes,
+  isIndivTxScoped,
+  DEFAULT_INDIV_TX_TYPES,
+} from "./indiv";
 
 // Convenience: assert the produced fingerprint equals an exact string.
 function fp(name: string, zip5: string): string {
@@ -203,4 +208,60 @@ test("missing zip5 emits name-only fingerprint", () => {
 test("zip5 truncates to first 5 chars (ZIP+4 input)", () => {
   // "20007-1234" should land as the 5-digit prefix.
   assert.equal(fp("DOE, JOHN", "20007-1234"), "DOE JOHN|20007");
+});
+
+// ── FIX-700: tx-type scope filter (FEC_INDIV_TX_TYPES) ────────────────────────
+//
+// The streamer keeps a row iff its TRANSACTION_TP ∈ the active set. Testing the
+// resolved Set membership is equivalent to "which rows pass the filter": a row
+// of type T passes iff the set has T. Uses the raw-arg overload so no process.env
+// mutation is needed.
+
+test("FIX-700 default tx-type set is 15/15E/10 when FEC_INDIV_TX_TYPES unset", () => {
+  const set = parseKeepTxTypes(undefined);
+  assert.deepEqual([...set].sort(), [...DEFAULT_INDIV_TX_TYPES].sort());
+  // Rows of types 15/15E/10 pass; 22/24 do not.
+  for (const t of ["15", "15E", "10"]) assert.ok(set.has(t), `${t} must pass by default`);
+  for (const t of ["22", "24"]) assert.ok(!set.has(t), `${t} must not pass by default`);
+  assert.equal(isIndivTxScoped(set), false, "default set is not scoped");
+});
+
+test("FIX-700 empty / blank FEC_INDIV_TX_TYPES falls back to default", () => {
+  assert.deepEqual([...parseKeepTxTypes("")].sort(), [...DEFAULT_INDIV_TX_TYPES].sort());
+  assert.deepEqual([...parseKeepTxTypes("   ")].sort(), [...DEFAULT_INDIV_TX_TYPES].sort());
+  assert.equal(isIndivTxScoped(parseKeepTxTypes("")), false);
+});
+
+test("FIX-700 FEC_INDIV_TX_TYPES=10 passes only type-10 rows and marks the run scoped", () => {
+  const set = parseKeepTxTypes("10");
+  assert.deepEqual([...set], ["10"]);
+  // Feed rows of 10/15/22/24 — only 10 passes.
+  assert.ok(set.has("10"), "type-10 rows pass");
+  for (const t of ["15", "15E", "22", "24"]) assert.ok(!set.has(t), `${t} must be filtered out`);
+  assert.equal(isIndivTxScoped(set), true, "a narrowed set is scoped");
+});
+
+test("FIX-700 tx-types parse is case-insensitive and trims whitespace", () => {
+  const set = parseKeepTxTypes(" 15e , 10 ");
+  assert.deepEqual([...set].sort(), ["10", "15E"].sort());
+  // Missing "15" ⇒ scoped.
+  assert.equal(isIndivTxScoped(set), true);
+});
+
+test("FIX-700 widening (superset of default) is NOT scoped", () => {
+  const set = parseKeepTxTypes("15,15E,10,24");
+  assert.equal(isIndivTxScoped(set), false, "adding extra types does not narrow the default");
+});
+
+test("FIX-700 env var wiring: process.env.FEC_INDIV_TX_TYPES is honored", () => {
+  const prev = process.env.FEC_INDIV_TX_TYPES;
+  try {
+    process.env.FEC_INDIV_TX_TYPES = "10";
+    const set = parseKeepTxTypes();
+    assert.deepEqual([...set], ["10"]);
+    assert.equal(isIndivTxScoped(), true);
+  } finally {
+    if (prev === undefined) delete process.env.FEC_INDIV_TX_TYPES;
+    else process.env.FEC_INDIV_TX_TYPES = prev;
+  }
 });
