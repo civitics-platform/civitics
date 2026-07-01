@@ -132,9 +132,10 @@ interface OfficialRecord {
 }
 
 /** Committee master (cm24) entry */
-interface CommitteeInfo {
+export interface CommitteeInfo {
   name:         string;  // CMTE_NM
   type:         string;  // CMTE_TP raw code (N/Q/V/W/X/Y/Z/O)
+  designation:  string;  // CMTE_DSGN raw code (J=joint-fundraising, D=leadership, B, P=principal, A=authorized, U=unauthorized)
   connectedOrg: string;  // CONNECTED_ORG_NM (parent company / union / etc)
 }
 
@@ -174,6 +175,7 @@ const COL = {
 const CM_COL = {
   CMTE_ID:          0,
   CMTE_NM:          1,
+  CMTE_DSGN:        8,  // designation (J=joint-fundraising, D=leadership, B, P/A/U) — col before CMTE_TP
   CMTE_TP:          9,
   CONNECTED_ORG_NM: 13,
 } as const;
@@ -423,7 +425,7 @@ function matchRow(row: WeBallRow, index: MatchIndex): MatchResult | null {
 // Parse cm24 committee master (in-memory — ~2 MB uncompressed)
 // ---------------------------------------------------------------------------
 
-function parseCm24(buffer: Buffer): Map<string, CommitteeInfo> {
+export function parseCm24(buffer: Buffer): Map<string, CommitteeInfo> {
   const lookup = new Map<string, CommitteeInfo>();
   for (const line of buffer.toString("latin1").split(/\r?\n/)) {
     if (!line.trim()) continue;
@@ -433,10 +435,37 @@ function parseCm24(buffer: Buffer): Map<string, CommitteeInfo> {
     lookup.set(cmteId, {
       name:         (cols[CM_COL.CMTE_NM]          ?? "").trim(),
       type:         (cols[CM_COL.CMTE_TP]          ?? "").trim().toUpperCase(),
+      designation:  (cols[CM_COL.CMTE_DSGN]        ?? "").trim().toUpperCase(),
       connectedOrg: (cols[CM_COL.CONNECTED_ORG_NM] ?? "").trim(),
     });
   }
   return lookup;
+}
+
+// Non-candidate-committee recipient capture set (FIX-236 + FIX-698).
+//
+// CMTE_TP we want as individual→committee recipients: super PAC (O), party
+// (X/Y/Z), other PAC (N/Q/V/W). CMTE_DSGN ∈ {J,D,B} is excluded REGARDLESS of
+// type — joint-fundraising (J), leadership (D) and "B" committees re-itemize
+// their receipts to participants via downstream transfers, so counting the
+// individual→JFC leg double-counts the same dollars. Before FIX-698 the
+// designation filter was only documented, never applied (CMTE_DSGN was never
+// parsed), so JFCs filed as CMTE_TP='N' (Harris Victory Fund, the Trump JFCs)
+// slipped through.
+export const NON_CAND_KEEP_TYPES = new Set(["O", "X", "Y", "Z", "N", "Q", "V", "W"]);
+export const EXCLUDE_DESIGNATIONS = new Set(["J", "D", "B"]);
+
+export function buildNonCandRecipientSet(
+  cmLookup: Map<string, CommitteeInfo>,
+  cmteToCand: Map<string, string>,
+): Set<string> {
+  const nonCandCmtes = new Set<string>();
+  for (const [cmteId, info] of cmLookup.entries()) {
+    if (cmteToCand.has(cmteId)) continue;                       // already a candidate-authorized recipient
+    if (EXCLUDE_DESIGNATIONS.has(info.designation)) continue;   // JFC / leadership / B — double-count guard
+    if (NON_CAND_KEEP_TYPES.has(info.type)) nonCandCmtes.add(cmteId);
+  }
+  return nonCandCmtes;
 }
 
 // ---------------------------------------------------------------------------
@@ -1001,19 +1030,12 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
               }
               console.log(`    ccl: ${cclLookupAll.size.toLocaleString()} all committees, ${cmteToCand.size.toLocaleString()} mapped to our candidates`);
 
-              // FIX-236: build the non-candidate-committee recipient set —
-              // every committee in cmLookup with a CMTE_TP we want to capture
-              // (super PAC O, party X/Y/Z, other PAC N/Q/V/W) that is NOT
-              // already in the candidate-authorized ccl set. Joint-fundraising
-              // (J), leadership (D), and "B" stay excluded — their money is
-              // re-itemized via downstream transfers and would double-count.
-              const NON_CAND_KEEP_TYPES = new Set(["O", "X", "Y", "Z", "N", "Q", "V", "W"]);
-              const nonCandCmtes = new Set<string>();
-              for (const [cmteId, info] of cmLookup.entries()) {
-                if (cmteToCand.has(cmteId)) continue;
-                if (NON_CAND_KEEP_TYPES.has(info.type)) nonCandCmtes.add(cmteId);
-              }
-              console.log(`    Non-candidate committees to capture (super PAC + party + other PAC): ${nonCandCmtes.size.toLocaleString()}`);
+              // FIX-236 + FIX-698: build the non-candidate-committee recipient
+              // set (super PAC / party / other PAC, excluding the JFC/leadership
+              // designations that would double-count). See
+              // buildNonCandRecipientSet for the full rationale.
+              const nonCandCmtes = buildNonCandRecipientSet(cmLookup, cmteToCand);
+              console.log(`    Non-candidate committees to capture (super PAC + party + other PAC, excl. JFC/leadership): ${nonCandCmtes.size.toLocaleString()}`);
 
               if (cmteToCand.size === 0 && nonCandCmtes.size === 0) {
                 console.warn("    No committees mapped to candidates or non-cand recipients — skipping indiv stage");
