@@ -865,3 +865,6 @@
 2026-06-30 | FIX-697 | 03c3df2e | local-only | fix(db): raise statement_timeout for the postgres role so pg_cron rebuild survives COMMITs
 2026-06-30 | FIX-698 | 1d89715b | local-only | fix(fec): exclude joint-fundraising committees (CMTE_DSGN J/D/B) from indiv recipients
 2026-06-30 | FIX-700 | 38ed716b | local-only | feat(fec): scope filters for surgical indiv re-runs (tx-type / stage / cycle)
+2026-07-01 | FIX-677 | 2c901e81 | local+prod | prod runtime verify (FIX-677 finish): type-10 super-PAC receipts backfilled clean — UDP 70.55M/704, MAGA Inc 375M, SMP 254M, America PAC 249M; JFCs excluded
+2026-07-01 | FIX-698 | 2c901e81 | local+prod | prod verify: type-10 backfill did not re-add J/D/B (0 JFC rows) + purged 997,608 stale J/D/B rows (2.60B, cycle 2024)
+2026-07-01 | FIX-700 | 2c901e81 | local+prod | prod verify: SCOPED run tx_types=10 engaged — skipAggregateOverwrite honored, received/IE totals re-derived (donation totals blocked by FIX-702)
