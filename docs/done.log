@@ -864,3 +864,4 @@
 2026-06-28 | FIX-690 | 51147e1c | local-only | feat(infra): RAM-safe workflow_dispatch FEC backfill against prod
 2026-06-30 | FIX-697 | 03c3df2e | local-only | fix(db): raise statement_timeout for the postgres role so pg_cron rebuild survives COMMITs
 2026-06-30 | FIX-698 | 1d89715b | local-only | fix(fec): exclude joint-fundraising committees (CMTE_DSGN J/D/B) from indiv recipients
+2026-06-30 | FIX-700 | 38ed716b | local-only | feat(fec): scope filters for surgical indiv re-runs (tx-type / stage / cycle)
