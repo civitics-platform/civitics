@@ -151,9 +151,10 @@ async function runDonationsFullWindowed(client: any): Promise<number> {
     } catch (err) {
       // Re-throw with window context. Donations is the graph's backbone — a
       // window failure must surface as a hard chunk failure (non-zero exit via
-      // chunkFailures), never a silent partial. (Prepare already cleared the
-      // old edges, so a mid-rebuild failure leaves donations short until the
-      // next run — the failure signal is what makes that visible.)
+      // chunkFailures), never a silent partial. (FIX-703: each window now
+      // range-scopes its own delete+insert, so a mid-rebuild failure leaves
+      // un-processed windows' PRIOR edges intact — complete-if-stale, never
+      // missing; the failure signal still flags that a retry is needed.)
       throw new Error(`donations window ${i + 1}/16 [${lo}..${hi ?? "end"}): ${errMsg(err)}`);
     }
   }
