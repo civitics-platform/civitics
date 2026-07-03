@@ -870,3 +870,4 @@
 2026-07-01 | FIX-700 | 2c901e81 | local+prod | prod verify: SCOPED run tx_types=10 engaged — skipAggregateOverwrite honored, received/IE totals re-derived (donation totals blocked by FIX-702)
 2026-07-01 | FIX-703 | 49b66330 | local-only | fix(db): survive Micro donations-rebuild wall — per-window COMMIT + 6h CALL budget (FIX-703)
 2026-07-03 | FIX-704 | 4c7f1605 | local-only | feat(db): incremental donor-rollup table + decouple recipient_count (no full-refresh OOM)
+2026-07-03 | FIX-704 | 4c7f1605 | local+prod | prod verify: supervised bootstrap via one-off pg_cron 26m05s 53 chunks 698,612 rows 0 failures, no OOM/no wedge; super-PAC recipients live (FF PAC $507M, MAGA Inc $375M); FIX-672 junk debris purged (58,369 rows -> FIX-705); SUM invariant + PostgREST reads green; all 5 jobs re-enabled
