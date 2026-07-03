@@ -977,15 +977,16 @@ export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<Nigh
     // chord_industry_flows_mv (donations + industry tags); serves the chord
     // group/cross-group + sector-vote RPCs as indexed point reads.
     "refresh_official_sector_dollars_mv",
-    // FIX-641: refresh_official_donor_rollup_mv was here, but this MV is large
+    // FIX-641: refresh_official_donor_rollup_mv was here, but the MV was large
     // enough that the admin.rpc() PostgREST path (~8s/100s caps) timed out and
     // staled it nightly — dropping officials/[id] into its 50k-row live-scan
-    // fallback (a cost driver). Moved to a direct-pg step in
-    // rebuild-entity-connections.yml (08:00 UTC Sun+Wed) via
-    // `pnpm data:refresh-donor-mv:ci`. Cadence drops daily→twice-weekly, but
-    // the MV source (FEC donations in financial_relationships) only updates
-    // Sunday, so there is no staleness regression. The other MVs in this loop
-    // are small enough to refresh fine over PostgREST and stay here.
+    // fallback (a cost driver). FIX-704 then converted it to an incrementally-
+    // maintained TABLE with its own watermark, refreshed by the pg_cron job
+    // donor-rollup-refresh (Tue 08:00 UTC — its source, FEC donations in
+    // financial_relationships, only updates Sunday). Manual/break-glass:
+    // `pnpm data:refresh-donor-mv` (CALLs the chunked procedure direct-pg).
+    // The other MVs in this loop are small enough to refresh fine over
+    // PostgREST and stay here.
     // FIX-518: per-(donor, party) donation rollup. Serves treemap-pac global
     // sector/party modes (the last open FIX-510-class wrong-numbers surface)
     // via get_pac_treemap_by_{sector,party}.

@@ -158,10 +158,11 @@ async function runDonationsFullWindowed(client: any): Promise<number> {
       throw new Error(`donations window ${i + 1}/16 [${lo}..${hi ?? "end"}): ${errMsg(err)}`);
     }
   }
-  const fin = await client.query("SELECT public.rebuild_ec_donations_full_finalize() AS n");
-  console.log(
-    `    [donations] finalize — recipient_count updated for ${Number(fin.rows[0]?.n ?? 0)} individual donors`,
-  );
+  // FIX-704: no finalize step — the recipient_count recompute-all ran here for
+  // ~4h against a stale visibility map (autovacuum paused during the rebuild).
+  // recipient_count is now reconciled out-of-band by reconcile_recipient_count()
+  // (monthly pg_cron, after a VACUUM) and stays dirty-scoped in the incremental
+  // donations path.
   return total;
 }
 

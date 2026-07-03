@@ -1,24 +1,29 @@
 /**
- * One-shot: REFRESH MATERIALIZED VIEW CONCURRENTLY official_donor_rollup_mv
- * against the active DB via a DIRECT postgres connection.
+ * One-shot: CALL public.refresh_official_donor_rollup_incremental() against
+ * the active DB via a DIRECT postgres connection.
  *
- * Why direct-pg and not a .rpc() call: an in-body / function-level
- * `SET statement_timeout` does NOT raise the top-level PostgREST/gateway
- * limit. The service_role admin client is effectively ~8s-capped and the
- * gateway ~100s, so refreshing this ~1M-row MV through PostgREST times out.
- * A direct session with statement_timeout raised is the only reliable path
- * (same pattern run-rebuild-chunks-prod.ts uses).
+ * FIX-704 — official_donor_rollup_mv is now an incrementally-maintained TABLE
+ * (the name kept its `_mv` suffix for read compat). The old
+ * `REFRESH MATERIALIZED VIEW CONCURRENTLY` here built a full second copy of
+ * the donor set and OOM-wedged prod Micro (2026-07-01 incident); the chunked
+ * procedure (dirty recipients since the donor_rollup_watermark, 200 per chunk,
+ * COMMIT per chunk, bounded work_mem) replaces it. NULL watermark → full
+ * chunked bootstrap over every recipient.
  *
- * CONCURRENTLY is non-blocking for readers; the required unique index on
- * official_donor_rollup_mv already exists. A stale MV is what drops the
- * officials page into its 50k-row live-scan fallback — this refresh is the
- * fix for that.
+ * Why direct-pg and not a .rpc() call: the service_role admin client is
+ * effectively ~8s-capped and the gateway ~100s (FIX-444), and PostgREST can't
+ * CALL a COMMIT-ing procedure usefully anyway. The `SET statement_timeout` as
+ * its OWN top-level statement BEFORE the CALL is the one mechanism that arms
+ * the CALL's budget (FIX-703 — in-procedure SET / per-COMMIT / proconfig are
+ * all no-ops on the already-armed timer).
  *
  * Run:
  *   # local Docker (active .env.local points local)
  *   pnpm --filter @civitics/data data:refresh-donor-mv
  *
- *   # prod (off-peak only — see CLAUDE.md "no heavy prod ops during active hours")
+ *   # prod (off-peak only — see CLAUDE.md "no heavy prod ops during active hours").
+ *   # Prefer a one-off pg_cron job for the prod BOOTSTRAP (survives disconnect —
+ *   # the 2026-07-01 orphaning lesson); this script is fine for incremental runs.
  *   pnpm --filter @civitics/data exec tsx --env-file=<ABS>/.env.local.prod \
  *     <ABS>/src/scripts/refresh-donor-rollup-mv.ts
  *
@@ -53,21 +58,33 @@ async function main(): Promise<void> {
   await client.connect();
 
   try {
-    const before = await client.query<{ count: string }>(
-      "SELECT count(*)::text AS count FROM official_donor_rollup_mv"
+    const before = await client.query<{ count: string; watermark: string | null }>(
+      "SELECT count(*)::text AS count, " +
+        "(SELECT value->>'last_indexed_at' FROM pipeline_state WHERE key = 'donor_rollup_watermark') AS watermark " +
+        "FROM official_donor_rollup_mv"
     );
-    console.log(`Before: official_donor_rollup_mv = ${Number(before.rows[0]!.count).toLocaleString()} rows`);
+    console.log(
+      `Before: official_donor_rollup_mv = ${Number(before.rows[0]!.count).toLocaleString()} rows, ` +
+        `watermark = ${before.rows[0]!.watermark ?? "NULL (bootstrap)"}`
+    );
 
-    await client.query("SET statement_timeout = '30min'");
+    // Top-level SET before the CALL is what arms the CALL's runtime budget
+    // (FIX-703). 6h covers the full chunked bootstrap on a cache-starved Micro.
+    await client.query("SET statement_timeout = '6h'");
     const t0 = Date.now();
-    console.log(`[${new Date().toISOString()}] REFRESH MATERIALIZED VIEW CONCURRENTLY official_donor_rollup_mv ...`);
-    await client.query("REFRESH MATERIALIZED VIEW CONCURRENTLY public.official_donor_rollup_mv");
+    console.log(`[${new Date().toISOString()}] CALL public.refresh_official_donor_rollup_incremental() ...`);
+    await client.query("CALL public.refresh_official_donor_rollup_incremental()");
     const dur = ((Date.now() - t0) / 1000).toFixed(1);
 
-    const after = await client.query<{ count: string }>(
-      "SELECT count(*)::text AS count FROM official_donor_rollup_mv"
+    const after = await client.query<{ count: string; watermark: string | null }>(
+      "SELECT count(*)::text AS count, " +
+        "(SELECT value->>'last_indexed_at' FROM pipeline_state WHERE key = 'donor_rollup_watermark') AS watermark " +
+        "FROM official_donor_rollup_mv"
     );
-    console.log(`After:  official_donor_rollup_mv = ${Number(after.rows[0]!.count).toLocaleString()} rows (${dur}s)`);
+    console.log(
+      `After:  official_donor_rollup_mv = ${Number(after.rows[0]!.count).toLocaleString()} rows, ` +
+        `watermark = ${after.rows[0]!.watermark ?? "NULL"} (${dur}s)`
+    );
     console.log(`Done.`);
   } finally {
     await client.end();
