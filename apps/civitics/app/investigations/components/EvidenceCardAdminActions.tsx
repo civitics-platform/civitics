@@ -60,7 +60,7 @@ export function EvidenceCardAdminActions({
       )}
       {status === "promoted" && (
         <button type="button" onClick={() => run("unpromote")} disabled={busy}
-          className={`${btn} border-rule bg-white text-ink-soft hover:bg-ink/5`}>
+          className={`${btn} border-rule bg-card text-ink-soft hover:bg-ink/5`}>
           Unpromote
         </button>
       )}

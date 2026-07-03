@@ -56,28 +56,28 @@ export function FollowButton({ initiativeId, initialCount }: FollowButtonProps) 
     <div>
       {following === null ? (
         // Skeleton while checking state
-        <div className="h-9 animate-pulse rounded-lg bg-gray-100" />
+        <div className="h-9 animate-pulse bg-ink/5" />
       ) : following ? (
         <button
           onClick={handleFollow}
           disabled={loading}
-          className="flex w-full items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
+          className="flex w-full items-center justify-center gap-2 border border-green-ink/40 bg-green-ink/10 px-4 py-2 text-sm font-medium text-green-ink transition-colors hover:border-green-ink disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
         >
-          <span className="text-indigo-500">★</span>
+          <span>★</span>
           {loading ? "Updating…" : `Following · ${count.toLocaleString()}`}
         </button>
       ) : (
         <button
           onClick={handleFollow}
           disabled={loading}
-          className="flex w-full items-center justify-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-4 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 disabled:opacity-50"
+          className="flex w-full items-center justify-center gap-2 border border-ink/40 bg-card px-4 py-2 text-sm font-medium text-ink transition-colors hover:border-accent hover:text-accent disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
         >
-          <span className="text-gray-400">☆</span>
+          <span className="text-ink-soft">☆</span>
           {loading ? "Updating…" : count > 0 ? `Follow · ${count.toLocaleString()}` : "Follow"}
         </button>
       )}
       {error && (
-        <p className="mt-1 text-xs text-red-600">{error}</p>
+        <p className="mt-1 text-xs text-accent">{error}</p>
       )}
     </div>
   );

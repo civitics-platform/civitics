@@ -43,6 +43,7 @@ const NAV_GROUPS: NavGroup[] = [
       { label: "Search",             href: "/search",    note: "⌘K" },
       { label: "Connection Graph",   href: "/graph" },
       { label: "Platform Dashboard", href: "/dashboard" },
+      { label: "Sources & Data",     href: "/about/sources", note: "provenance" },
     ],
   },
 ];

@@ -1,4 +1,5 @@
 import { SignInForm } from "../../components/SignInForm";
+import { PorticoMark } from "../../components/brand/PorticoMark";
 
 export const metadata = {
   title: "Sign in",
@@ -14,24 +15,30 @@ export default async function SignInPage({
   const hasError = params.error === "auth";
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
+    <div className="flex min-h-screen items-center justify-center bg-paper px-4">
       <div className="w-full max-w-sm">
-        {/* Logo + wordmark */}
-        <div className="mb-8 flex flex-col items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-indigo-600">
-            <span className="text-sm font-bold text-white">CV</span>
-          </div>
-          <span className="text-lg font-semibold tracking-tight text-gray-900">
-            Civitics
+        {/* Mark + wordmark — mirrors the NavBar masthead treatment */}
+        <a
+          href="/"
+          className="mb-8 flex flex-col items-center gap-3 text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
+        >
+          <PorticoMark size={44} />
+          <span className="flex flex-col items-center">
+            <span className="font-serif text-[22px] font-black uppercase leading-none tracking-[0.12em]">
+              Civitics
+            </span>
+            <span className="mt-1 font-mono text-[9px] font-medium uppercase tracking-[0.18em] text-ink-soft">
+              The Public Ledger
+            </span>
           </span>
-        </div>
+        </a>
 
         {/* Heading */}
         <div className="mb-6 text-center">
-          <h1 className="text-xl font-semibold text-gray-900">
+          <h1 className="text-xl font-semibold text-ink">
             Sign in to Civitics
           </h1>
-          <p className="mt-2 text-sm text-gray-500 leading-relaxed">
+          <p className="mt-2 text-sm text-ink-soft leading-relaxed">
             Track your civic engagement, save positions, and follow the
             officials who represent you.
           </p>
@@ -39,22 +46,22 @@ export default async function SignInPage({
 
         {/* Auth error banner */}
         {hasError && (
-          <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3">
-            <p className="text-sm text-red-700">
+          <div className="mb-4 border border-accent/40 bg-accent/10 px-4 py-3">
+            <p className="text-sm text-accent">
               That sign-in link has expired or is invalid. Please try again.
             </p>
           </div>
         )}
 
         {/* Sign-in form (client component) */}
-        <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+        <div className="border border-rule bg-card p-6">
           <SignInForm next={next} />
         </div>
 
         {/* Back link */}
-        <p className="mt-6 text-center text-xs text-gray-400">
-          <a href="/" className="hover:text-gray-600 underline">
-            ← Back to Civitics
+        <p className="mt-6 text-center font-mono text-[11px] uppercase tracking-[0.08em] text-ink-soft">
+          <a href="/" className="transition-colors hover:text-accent">
+            ← Back to the ledger
           </a>
         </p>
       </div>

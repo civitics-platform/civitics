@@ -1,57 +1,49 @@
 // Custom 404 page — rendered by Next.js App Router for notFound() calls and missing routes.
 // No "use client" — server component. No NavBar or data-fetching imports.
 
+import { StampMark } from "./components/brand/StampMark";
+
 export default function NotFound() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
-      <div className="w-full max-w-lg rounded-xl border border-gray-200 bg-white p-10 text-center shadow-sm">
+    <div className="flex min-h-screen items-center justify-center bg-paper px-4">
+      <div className="w-full max-w-lg border border-rule bg-card p-10 text-center">
+        <div className="mb-6 flex justify-center text-accent">
+          <StampMark size={56} />
+        </div>
 
-        {/* Large 404 number */}
-        <p className="text-8xl font-extrabold text-gray-100 select-none leading-none mb-6">
-          404
+        <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.22em] text-ink-soft">
+          Error 404 — No such filing
         </p>
-
-        <h1 className="text-xl font-bold text-gray-900 mb-2">
-          Page not found
+        <h1 className="mt-3 font-serif text-3xl font-black uppercase tracking-[0.06em] text-accent">
+          Record Not Found
         </h1>
-        <p className="text-sm text-gray-500 mb-8">
-          The page you&apos;re looking for doesn&apos;t exist or has been moved.
+        <p className="mt-4 text-sm leading-relaxed text-ink-soft">
+          The page you&apos;re looking for isn&apos;t in the record. It may have
+          been moved, or it never existed.
         </p>
 
-        {/* Quick-link grid */}
-        <div className="grid grid-cols-2 gap-3 mb-8">
+        <div className="mt-8 border-t border-rule pt-6">
           <a
-            href="/officials"
-            className="rounded-lg border border-gray-200 px-4 py-3 text-sm font-medium text-gray-700 hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 transition-colors"
+            href="/"
+            className="text-sm font-medium text-accent hover:underline"
           >
-            👤 Officials
-          </a>
-          <a
-            href="/proposals"
-            className="rounded-lg border border-gray-200 px-4 py-3 text-sm font-medium text-gray-700 hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 transition-colors"
-          >
-            📋 Proposals
-          </a>
-          <a
-            href="/agencies"
-            className="rounded-lg border border-gray-200 px-4 py-3 text-sm font-medium text-gray-700 hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 transition-colors"
-          >
-            🏛 Agencies
-          </a>
-          <a
-            href="/initiatives"
-            className="rounded-lg border border-gray-200 px-4 py-3 text-sm font-medium text-gray-700 hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 transition-colors"
-          >
-            ✊ Initiatives
+            Return to the ledger →
           </a>
         </div>
 
-        <a
-          href="/"
-          className="text-sm font-medium text-indigo-600 hover:text-indigo-800 transition-colors"
-        >
-          ← Back to Civitics
-        </a>
+        <p className="mt-4 font-mono text-[10px] uppercase tracking-[0.12em] text-ink-soft">
+          <a href="/officials" className="transition-colors hover:text-accent">
+            Officials
+          </a>
+          <span className="mx-2">·</span>
+          <a href="/proposals" className="transition-colors hover:text-accent">
+            Proposals
+          </a>
+          <span className="mx-2">·</span>
+          <a href="/search" className="transition-colors hover:text-accent">
+            Search
+          </a>
+        </p>
       </div>
     </div>
   );

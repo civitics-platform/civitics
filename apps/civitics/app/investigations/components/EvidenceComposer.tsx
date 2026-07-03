@@ -233,7 +233,7 @@ export function EvidenceComposer({
   const canSubmit = claimText.trim().length >= 10 && citations.length > 0 && !saving;
 
   return (
-    <form onSubmit={submit} className="rounded-lg border border-rule bg-white/70 p-4">
+    <form onSubmit={submit} className="rounded-lg border border-rule bg-card/70 p-4">
       <h3 className="font-serif text-base text-ink">Add an evidence card</h3>
       <p className="mt-1 text-xs text-ink-soft">
         Every card must cite at least one record. Tiers 1–2 only (internal records and imported
@@ -314,7 +314,7 @@ export function EvidenceComposer({
               id="rel-kind"
               value={relationshipKind}
               onChange={(e) => setRelationshipKind(e.target.value)}
-              className="mt-1 w-full rounded border border-rule bg-white px-3 py-2 text-sm text-ink focus:border-civic-blue focus:outline-none"
+              className="mt-1 w-full rounded border border-rule bg-card px-3 py-2 text-sm text-ink focus:border-civic-blue focus:outline-none"
             >
               <option value="">Select a relationship…</option>
               {RELATIONSHIP_KINDS.map((k) => (
@@ -339,7 +339,7 @@ export function EvidenceComposer({
           maxLength={2000}
           rows={3}
           placeholder="State the claim plainly. The citation must back it up."
-          className="mt-1 w-full rounded border border-rule bg-white px-3 py-2 text-sm text-ink focus:border-civic-blue focus:outline-none"
+          className="mt-1 w-full rounded border border-rule bg-card px-3 py-2 text-sm text-ink focus:border-civic-blue focus:outline-none"
         />
       </div>
 
@@ -373,7 +373,7 @@ export function EvidenceComposer({
             {citations.map((c, i) => (
               <li
                 key={`${c.target_type}:${c.target_id}:${i}`}
-                className="flex items-center justify-between gap-2 rounded border border-rule bg-white px-2 py-1.5 text-sm"
+                className="flex items-center justify-between gap-2 rounded border border-rule bg-card px-2 py-1.5 text-sm"
               >
                 <span className="min-w-0 truncate text-ink">
                   <span className="text-[11px] text-ink-soft">
@@ -422,7 +422,7 @@ export function EvidenceComposer({
 
           <div className="mt-2">
             {draftPick ? (
-              <div className="flex items-center justify-between gap-2 rounded border border-rule bg-white px-2 py-1.5 text-sm">
+              <div className="flex items-center justify-between gap-2 rounded border border-rule bg-card px-2 py-1.5 text-sm">
                 <span className="truncate text-ink">
                   {draftPick.name} <span className="text-[11px] text-ink-soft">· {draftPick.kindLabel}</span>
                 </span>
@@ -450,7 +450,7 @@ export function EvidenceComposer({
             onChange={(e) => setDraftExcerpt(e.target.value)}
             placeholder="Optional excerpt / quote"
             maxLength={500}
-            className="mt-2 w-full rounded border border-rule bg-white px-3 py-1.5 text-sm text-ink focus:border-civic-blue focus:outline-none"
+            className="mt-2 w-full rounded border border-rule bg-card px-3 py-1.5 text-sm text-ink focus:border-civic-blue focus:outline-none"
           />
 
           <button

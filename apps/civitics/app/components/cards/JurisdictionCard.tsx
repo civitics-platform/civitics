@@ -42,24 +42,24 @@ export function JurisdictionCard({ jurisdiction }: { jurisdiction: JurisdictionC
   return (
     <Link
       href={`/jurisdictions/${jurisdiction.id}`}
-      className="group block rounded-lg border border-gray-200 bg-white p-4 transition-all hover:border-gray-300 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+      className="group block border border-rule bg-card p-4 transition-colors hover:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h3 className="truncate text-sm font-semibold text-gray-900 group-hover:text-indigo-700">
+          <h3 className="truncate text-sm font-semibold text-ink transition-colors group-hover:text-accent">
             {jurisdiction.name}
             {jurisdiction.is_synthetic && <SyntheticMark size="xs" className="ml-1.5" />}
           </h3>
           {jurisdiction.parentName && (
-            <p className="mt-0.5 truncate text-xs text-gray-400">{jurisdiction.parentName}</p>
+            <p className="mt-0.5 truncate text-xs text-ink-soft">{jurisdiction.parentName}</p>
           )}
         </div>
-        <span className="shrink-0 rounded border border-gray-200 bg-gray-50 px-2 py-0.5 text-xs font-medium capitalize text-gray-600">
+        <span className="shrink-0 rounded border border-rule bg-paper-2 px-2 py-0.5 text-xs font-medium capitalize text-ink-soft">
           {typeLabel(jurisdiction.type)}
         </span>
       </div>
       {jurisdiction.population != null && jurisdiction.population > 0 && (
-        <p className="mt-2 text-xs text-gray-500">
+        <p className="mt-2 font-mono text-xs tabular-nums text-ink-soft">
           Pop. {formatPopulation(jurisdiction.population)}
         </p>
       )}

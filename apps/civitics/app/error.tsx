@@ -4,6 +4,7 @@
 // app may be broken.
 
 import { useEffect } from "react";
+import { StampMark } from "./components/brand/StampMark";
 
 interface ErrorPageProps {
   error: Error & { digest?: string };
@@ -17,38 +18,42 @@ export default function Error({ error, reset }: ErrorPageProps) {
   }, [error]);
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
-      <div className="w-full max-w-lg rounded-xl border border-gray-200 bg-white p-10 text-center shadow-sm">
+    <div className="flex min-h-screen items-center justify-center bg-paper px-4">
+      <div className="w-full max-w-lg border border-rule bg-card p-10 text-center">
+        <div className="mb-6 flex justify-center text-accent">
+          <StampMark size={56} />
+        </div>
 
-        {/* Icon */}
-        <p className="text-5xl mb-6">⚠️</p>
-
-        <h1 className="text-xl font-bold text-gray-900 mb-2">
-          Something went wrong
+        <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.22em] text-ink-soft">
+          Unexpected fault — nothing was lost
+        </p>
+        <h1 className="mt-3 font-serif text-3xl font-black uppercase tracking-[0.06em] text-accent">
+          Filing Error
         </h1>
-        <p className="text-sm text-gray-500 mb-8">
-          An unexpected error occurred. Try refreshing the page or head back home.
+        <p className="mt-4 text-sm leading-relaxed text-ink-soft">
+          Something went wrong while preparing this page. Try again, or head
+          back to the ledger.
         </p>
 
         {/* Error digest — safe to show in prod, does not expose stack traces */}
         {error.digest && (
-          <p className="mb-6 rounded bg-gray-50 px-3 py-2 font-mono text-xs text-gray-400">
+          <p className="mx-auto mt-6 inline-block border border-rule bg-paper-2 px-3 py-2 font-mono text-xs text-ink-soft">
             Error code: {error.digest}
           </p>
         )}
 
-        <div className="flex items-center justify-center gap-3">
+        <div className="mt-8 flex items-center justify-center gap-3 border-t border-rule pt-6">
           <button
             onClick={reset}
-            className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 transition-colors"
+            className="bg-ink px-4 py-2 text-sm font-medium text-paper transition-colors hover:bg-ink/85 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           >
             Try again
           </button>
           <a
             href="/"
-            className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+            className="border border-rule bg-card px-4 py-2 text-sm font-medium text-ink transition-colors hover:border-accent hover:text-accent"
           >
-            Go home
+            Return to the ledger →
           </a>
         </div>
       </div>

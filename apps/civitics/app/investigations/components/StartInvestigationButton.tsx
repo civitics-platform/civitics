@@ -134,7 +134,7 @@ export function StartInvestigationButton({
               required
               autoFocus
               placeholder="e.g. Who funds the committee chairs blocking the rail bill?"
-              className="mt-1 w-full rounded border border-rule bg-white px-3 py-2 text-sm text-ink focus:border-civic-blue focus:outline-none"
+              className="mt-1 w-full rounded border border-rule bg-card px-3 py-2 text-sm text-ink focus:border-civic-blue focus:outline-none"
             />
 
             <label className="mt-4 block text-sm font-medium text-ink" htmlFor="inv-question">
@@ -147,7 +147,7 @@ export function StartInvestigationButton({
               maxLength={2000}
               rows={3}
               placeholder="What, specifically, are you trying to establish?"
-              className="mt-1 w-full rounded border border-rule bg-white px-3 py-2 text-sm text-ink focus:border-civic-blue focus:outline-none"
+              className="mt-1 w-full rounded border border-rule bg-card px-3 py-2 text-sm text-ink focus:border-civic-blue focus:outline-none"
             />
 
             <label className="mt-4 block text-sm font-medium text-ink" htmlFor="inv-scope">
@@ -159,7 +159,7 @@ export function StartInvestigationButton({
               onChange={(e) => setScopeNote(e.target.value)}
               maxLength={2000}
               placeholder="Jurisdiction, time window, or entities this concerns"
-              className="mt-1 w-full rounded border border-rule bg-white px-3 py-2 text-sm text-ink focus:border-civic-blue focus:outline-none"
+              className="mt-1 w-full rounded border border-rule bg-card px-3 py-2 text-sm text-ink focus:border-civic-blue focus:outline-none"
             />
 
             {error && <p className="mt-3 text-sm text-accent">{error}</p>}

@@ -39,20 +39,22 @@ export function MeetingCard({ meeting }: { meeting: MeetingCardData }) {
   return (
     <Link
       href={`/meetings/${meeting.id}`}
-      className="group block rounded-lg border border-gray-200 bg-white p-4 transition-all hover:border-gray-300 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+      className="group block border border-rule bg-card p-4 transition-colors hover:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
     >
       <div className="flex items-center gap-2">
-        <span className="rounded border border-gray-200 bg-gray-50 px-2 py-0.5 text-xs font-medium capitalize text-gray-600">
+        <span className="rounded border border-rule bg-paper-2 px-2 py-0.5 text-xs font-medium capitalize text-ink-soft">
           {typeLabel}
         </span>
-        <span className="text-xs text-gray-400">{formatDateTime(meeting.scheduled_at)}</span>
+        <span className="font-mono text-[11px] tabular-nums text-ink-soft">
+          {formatDateTime(meeting.scheduled_at)}
+        </span>
       </div>
-      <h3 className="mt-2 line-clamp-2 text-sm font-semibold text-gray-900 group-hover:text-indigo-700">
+      <h3 className="mt-2 line-clamp-2 text-sm font-semibold text-ink transition-colors group-hover:text-accent">
         {meeting.title ?? `${typeLabel} meeting`}
         {meeting.is_synthetic && <SyntheticMark size="xs" className="ml-1.5" />}
       </h3>
       {meeting.bodyName && (
-        <p className="mt-0.5 truncate text-xs text-gray-500">{meeting.bodyName}</p>
+        <p className="mt-0.5 truncate text-xs text-ink-soft">{meeting.bodyName}</p>
       )}
     </Link>
   );

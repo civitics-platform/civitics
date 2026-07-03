@@ -73,12 +73,12 @@ export function FollowButton({ entityType, entityId, entityLabel }: FollowButton
 
   if (following === null) {
     return (
-      <span className="inline-block h-7 w-20 animate-pulse rounded-lg bg-gray-100" />
+      <span className="inline-block h-7 w-20 animate-pulse bg-ink/5" />
     );
   }
 
   const baseCls =
-    "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-50";
+    "inline-flex items-center gap-1.5 border px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent";
 
   return (
     <div className="inline-flex flex-col items-start gap-1">
@@ -94,8 +94,8 @@ export function FollowButton({ entityType, entityId, entityLabel }: FollowButton
         }
         className={
           following
-            ? `${baseCls} border border-gray-200 bg-white text-gray-700 hover:bg-gray-50`
-            : `${baseCls} bg-indigo-600 text-white hover:bg-indigo-700`
+            ? `${baseCls} border-green-ink/40 bg-green-ink/10 text-green-ink hover:border-green-ink`
+            : `${baseCls} border-ink/40 bg-card text-ink hover:border-accent hover:text-accent`
         }
       >
         <span>{following ? "✓" : "+"}</span>
@@ -104,7 +104,7 @@ export function FollowButton({ entityType, entityId, entityLabel }: FollowButton
       {needsAuth && (
         <a
           href="/auth/sign-in"
-          className="text-[10px] text-indigo-600 hover:underline"
+          className="text-[10px] text-accent hover:underline"
         >
           Sign in to follow
         </a>

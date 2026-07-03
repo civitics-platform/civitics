@@ -14,12 +14,14 @@ export type OfficialRosterData = {
   is_synthetic?: boolean;
 };
 
+// Party reads as blue/red ink, never a wash; independents stay ink-outline
+// (no purple token exists by design — FIX-552 precedent).
 const PARTY_STYLES: Record<string, string> = {
-  democratic: "bg-blue-50 text-blue-700",
-  democrat: "bg-blue-50 text-blue-700",
-  republican: "bg-red-50 text-red-700",
-  independent: "bg-purple-50 text-purple-700",
-  nonpartisan: "bg-gray-50 text-gray-600",
+  democratic: "bg-civic-blue/10 text-civic-blue",
+  democrat: "bg-civic-blue/10 text-civic-blue",
+  republican: "bg-accent/10 text-accent",
+  independent: "border border-ink/40 text-ink",
+  nonpartisan: "bg-ink/5 text-ink-soft",
 };
 
 function initials(name: string): string {
@@ -32,13 +34,13 @@ function initials(name: string): string {
 
 export function OfficialRosterCard({ official }: { official: OfficialRosterData }) {
   const partyCls = official.party
-    ? PARTY_STYLES[official.party.toLowerCase()] ?? "bg-gray-50 text-gray-600"
+    ? PARTY_STYLES[official.party.toLowerCase()] ?? "bg-ink/5 text-ink-soft"
     : null;
 
   return (
     <Link
       href={`/officials/${official.id}`}
-      className="group flex items-center gap-3 rounded-lg border border-gray-200 bg-white p-3 transition-all hover:border-gray-300 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+      className="group flex items-center gap-3 border border-rule bg-card p-3 transition-colors hover:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
     >
       {official.photo_url ? (
         // eslint-disable-next-line @next/next/no-img-element
@@ -48,16 +50,16 @@ export function OfficialRosterCard({ official }: { official: OfficialRosterData 
           className="h-10 w-10 shrink-0 rounded-full object-cover"
         />
       ) : (
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gray-100 text-xs font-semibold text-gray-500">
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-ink/5 font-mono text-xs font-semibold text-ink-soft">
           {initials(official.full_name)}
         </span>
       )}
       <div className="min-w-0 flex-1">
-        <h3 className="truncate text-sm font-semibold text-gray-900 group-hover:text-indigo-700">
+        <h3 className="truncate text-sm font-semibold text-ink transition-colors group-hover:text-accent">
           {official.full_name}
           {official.is_synthetic && <SyntheticMark size="xs" className="ml-1.5" />}
         </h3>
-        <p className="truncate text-xs text-gray-500">
+        <p className="truncate text-xs text-ink-soft">
           {official.role_title}
           {official.district_name ? ` · ${official.district_name}` : ""}
         </p>

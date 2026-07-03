@@ -48,19 +48,19 @@ export function InstitutionCard({ institution }: { institution: InstitutionCardD
   return (
     <Link
       href={`/institutions/${institution.id}`}
-      className="group block rounded-lg border border-gray-200 bg-white p-4 transition-all hover:border-gray-300 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+      className="group block border border-rule bg-card p-4 transition-colors hover:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h3 className="truncate text-sm font-semibold text-gray-900 group-hover:text-indigo-700">
+          <h3 className="truncate text-sm font-semibold text-ink transition-colors group-hover:text-accent">
             {institution.name}
             {institution.is_synthetic && <SyntheticMark size="xs" className="ml-1.5" />}
           </h3>
-          <p className="mt-0.5 text-xs capitalize text-gray-500">{typeLabel(institution.type)}</p>
+          <p className="mt-0.5 text-xs capitalize text-ink-soft">{typeLabel(institution.type)}</p>
           <FormerBadge isActive={institution.is_active} className="mt-1" />
         </div>
         {institution.acronym && (
-          <span className="shrink-0 rounded border border-gray-200 bg-gray-50 px-2 py-0.5 font-mono text-xs font-semibold text-gray-700">
+          <span className="shrink-0 rounded border border-rule bg-paper-2 px-2 py-0.5 font-mono text-xs font-semibold text-ink">
             {institution.acronym}
           </span>
         )}

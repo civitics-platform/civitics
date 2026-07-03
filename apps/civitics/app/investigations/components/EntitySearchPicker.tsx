@@ -94,11 +94,11 @@ export function EntitySearchPicker({
         value={q}
         onChange={(e) => setQ(e.target.value)}
         placeholder={placeholder ?? "Search records…"}
-        className="w-full rounded border border-rule bg-white px-3 py-2 text-sm text-ink focus:border-civic-blue focus:outline-none"
+        className="w-full rounded border border-rule bg-card px-3 py-2 text-sm text-ink focus:border-civic-blue focus:outline-none"
         aria-label={placeholder ?? "Search records"}
       />
       {q.trim().length >= 2 && (
-        <div className="mt-1 max-h-56 overflow-y-auto rounded border border-rule bg-white">
+        <div className="mt-1 max-h-56 overflow-y-auto rounded border border-rule bg-card">
           {loading && results.length === 0 ? (
             <p className="px-3 py-2 text-xs text-ink-soft">Searching…</p>
           ) : results.length === 0 ? (
