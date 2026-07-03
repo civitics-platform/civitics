@@ -5,6 +5,8 @@
 !.claude/agents/**
 !.claude/commands/
 !.claude/commands/**
+!.claude/hooks/
+!.claude/hooks/**
 !.claude/settings.local.json
 
 node_modules/
