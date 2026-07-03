@@ -78,3 +78,6 @@ packages/data/.usaspending-bulk-state.json
 # Enrichment-drain wave artifacts (see CLAUDE.md "Enrichment Queue Drain — Runbook").
 .drain-tmp/
 
+
+.vercel
+.env*
