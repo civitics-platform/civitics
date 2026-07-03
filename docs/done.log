@@ -876,3 +876,5 @@
 2026-07-03 | FIX-567 | 356a6137 | local-only | feat(design): --c-viz token ramp + officials bars (FIX-567); desk instrument panels; skeletons
 2026-07-03 | FIX-709 | 356a6137 | local-only | feat(design): --c-viz token ramp + officials bars (FIX-567); desk instrument panels; skeletons
 2026-07-03 | FIX-710 | 356a6137 | local-only | feat(design): --c-viz token ramp + officials bars (FIX-567); desk instrument panels; skeletons
+2026-07-03 | FIX-711 | 983eec24 | local-only | feat(home): investigations case-file band + /commons index (record surfaces)
+2026-07-03 | FIX-712 | 983eec24 | local-only | feat(home): investigations case-file band + /commons index (record surfaces)
