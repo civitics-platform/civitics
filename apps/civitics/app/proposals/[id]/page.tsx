@@ -18,6 +18,7 @@ import { RelatedInitiatives, type InitiativeLink } from "../components/RelatedIn
 import { ProposalShareButton } from "../components/ProposalShareButton";
 import { getCachedProposal } from "../_lib/get-proposal";
 import { SyntheticMark, SyntheticBanner } from "../../components/integrity/Synthetic";
+import { PrintLetterhead, PrintProvenance } from "../../components/print/PrintRecord";
 
 // Public proposal detail; no auth dependency, RLS allows anon SELECT on
 // proposals + votes + ai_summary_cache + civic_initiative_proposal_links.
@@ -374,6 +375,9 @@ export default async function ProposalDetailPage({
       <div className="border-b border-rule bg-card">
         <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
 
+          {/* Print-only letterhead — proposal pages print as filed public records (FIX-713). */}
+          <PrintLetterhead />
+
           {/* Breadcrumb — jurisdiction → institution → proposals → this */}
           <nav className="mb-4 flex flex-wrap items-center gap-1.5 font-mono text-[10.5px] uppercase tracking-[0.08em] text-ink-soft">
             {bcJurisdiction && (
@@ -574,15 +578,17 @@ export default async function ProposalDetailPage({
             )}
 
             {/* Position spine (C1) — intensity, rollup, terms of consensus */}
-            <PositionSection
-              entityType="proposal"
-              entityId={p.id}
-              lensEnabled
-              constituentJurisdictionId={bcMeta?.jurisdiction_id ?? null}
-            />
+            <div className="print:hidden">
+              <PositionSection
+                entityType="proposal"
+                entityId={p.id}
+                lensEnabled
+                constituentJurisdictionId={bcMeta?.jurisdiction_id ?? null}
+              />
+            </div>
 
             {/* Community Comments */}
-            <div className="mt-8">
+            <div className="mt-8 print:hidden">
               {/* Common-ground / steelman highlights, pinned above list + map */}
               <CommentHighlightsStrip
                 entityType="proposal"
@@ -604,16 +610,18 @@ export default async function ProposalDetailPage({
             {/* Q&A v2 PR-2a (FIX-629): community Q&A on this bill. No official
                 answerer exists for a proposal — questions are answered by the
                 community with sourced, citation-required notes "from the record". */}
-            <div className="mt-8">
+            <div className="mt-8 print:hidden">
               <QASection entityType="proposal" entityId={p.id} entityName={p.title} />
             </div>
 
             {/* Citizen Initiatives linked to this proposal */}
-            <RelatedInitiatives initiatives={relatedInitiatives} />
+            <div className="print:hidden">
+              <RelatedInitiatives initiatives={relatedInitiatives} />
+            </div>
 
             {/* Related Proposals */}
             {related.length > 0 && (
-              <section>
+              <section className="print:hidden">
                 <h2 className="mb-3 font-mono text-xs font-semibold uppercase tracking-wide text-ink-soft/70">
                   {agencyAcronym ? `Other Open ${agencyAcronym} Proposals` : "Related Proposals"}
                 </h2>
@@ -652,8 +660,8 @@ export default async function ProposalDetailPage({
           {/* ─── Sidebar ──────────────────────────────────────────────────── */}
           <div className="space-y-6">
 
-            {/* Submit Comment */}
-            <section>
+            {/* Submit Comment — interactive composer, hidden on the printed record. */}
+            <section className="print:hidden">
               <h2 className="mb-3 font-mono text-xs font-semibold uppercase tracking-wide text-ink-soft/70">
                 {open ? "Submit Your Comment" : "Comment Period"}
               </h2>
@@ -703,7 +711,7 @@ export default async function ProposalDetailPage({
 
             {/* Official comment CTA (if open, remind below the draft form) */}
             {open && p.regulations_gov_id && (
-              <p className="text-center text-xs text-ink-soft/70 leading-relaxed">
+              <p className="text-center text-xs text-ink-soft/70 leading-relaxed print:hidden">
                 Official comments are submitted directly to the federal agency via
                 regulations.gov — always free, no account required.
               </p>
@@ -711,6 +719,9 @@ export default async function ProposalDetailPage({
 
           </div>
         </div>
+
+        {/* Print-only provenance footer — stamps the record's URL + print date. */}
+        <PrintProvenance />
       </div>
     </div>
   );

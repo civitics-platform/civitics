@@ -21,6 +21,7 @@ import { EvidenceCardAdminActions } from "../components/EvidenceCardAdminActions
 import { PageViewTracker } from "../../components/PageViewTracker";
 import { EntityComments } from "../../components/EntityComments";
 import { SyntheticMark } from "../../components/integrity/Synthetic";
+import { PrintLetterhead, PrintProvenance } from "../../components/print/PrintRecord";
 
 // Reads go through the caller's cookie client (RLS does private-person filtering),
 // so this page renders per request.
@@ -148,7 +149,7 @@ function EvidenceCardView({ card, signInNext }: { card: EvidenceCard; signInNext
         </ul>
       </div>
 
-      <div className="mt-3 border-t border-rule pt-3">
+      <div className="mt-3 border-t border-rule pt-3 print:hidden">
         <EvidenceRating evidenceId={card.id} summary={card.rating_summary} signInNext={signInNext} />
       </div>
     </article>
@@ -182,9 +183,12 @@ export default async function CaseFilePage({ params }: { params: { id: string } 
     <div className="min-h-screen bg-paper">
       <PageViewTracker />
       <main id="main-content" className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
-        <Link href="/investigations" className="text-xs text-ink-soft hover:text-ink">
+        <Link href="/investigations" className="text-xs text-ink-soft hover:text-ink print:hidden">
           ← All investigations
         </Link>
+
+        {/* Print-only letterhead — case files print as filed public records (FIX-713). */}
+        <PrintLetterhead />
 
         <header className="mt-3 border-b border-rule pb-6">
           <div className="flex flex-wrap items-center gap-2">
@@ -281,14 +285,14 @@ export default async function CaseFilePage({ params }: { params: { id: string } 
               This investigation is archived — evidence is read-only.
             </p>
           ) : (
-            <div className="mt-6">
+            <div className="mt-6 print:hidden">
               <EvidenceComposer investigationId={investigation.id} signInNext={signInNext} />
             </div>
           )}
         </section>
 
         {/* Discussion — C1 EntityComments, discussion-only (no stance / statement mode). */}
-        <section className="mt-12 border-t border-rule pt-8">
+        <section className="mt-12 border-t border-rule pt-8 print:hidden">
           <EntityComments
             entityType="investigation"
             entityId={investigation.id}
@@ -298,6 +302,9 @@ export default async function CaseFilePage({ params }: { params: { id: string } 
             subheading="Talk through the case file. Evidence claims go in cards above; this is the conversation around them."
           />
         </section>
+
+        {/* Print-only provenance footer — stamps the record's URL + print date. */}
+        <PrintProvenance />
       </main>
     </div>
   );

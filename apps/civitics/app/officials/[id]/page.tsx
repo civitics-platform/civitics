@@ -34,6 +34,7 @@ import {
   SyntheticBanner,
   PassiveOfficialDisclaimer,
 } from "../../components/integrity/Synthetic";
+import { PrintLetterhead, PrintProvenance } from "../../components/print/PrintRecord";
 
 const CivicBadge = nextDynamic(
   () => import("@civitics/graph").then((m) => ({ default: m.CivicBadge })),
@@ -895,6 +896,9 @@ export default async function OfficialProfilePage({
 
       <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
 
+        {/* Print-only letterhead — record pages print as filed public documents (FIX-713). */}
+        <PrintLetterhead />
+
         {/* SF-P2 (FIX-599): inherited demonstration banner when this official is
             scoped under a synthetic jurisdiction (the State of Franklin). */}
         {official.jurisdiction_is_synthetic && (
@@ -902,7 +906,7 @@ export default async function OfficialProfilePage({
         )}
 
         {/* ── HEADER ─────────────────────────────────────────────────────── */}
-        <div className={`border border-rule bg-card overflow-hidden ${party.border}`}>
+        <div className={`border border-rule bg-card overflow-hidden print:break-inside-avoid ${party.border}`}>
           <div className="p-6">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:gap-5">
               {/* Avatar + mini badge */}
@@ -1021,8 +1025,8 @@ export default async function OfficialProfilePage({
                   )}
                 </div>
 
-                {/* Action buttons */}
-                <div className="mt-4 flex flex-wrap gap-2">
+                {/* Action buttons — interactive chrome, hidden on the printed record. */}
+                <div className="mt-4 flex flex-wrap gap-2 print:hidden">
                   <a
                     href={`/graph?entity=${official.id}`}
                     className="inline-flex items-center gap-1.5 bg-ink px-3 py-1.5 text-xs font-medium text-paper hover:bg-accent transition-colors"
@@ -1099,7 +1103,9 @@ export default async function OfficialProfilePage({
         {/* FIX-558: "Is this you?" self-serve profile claim. Client island so
             the page stays ISR — per-user claim state comes from
             /api/officials/claim-status at request time. */}
-        <ClaimProfileSection officialId={official.id} officialName={official.full_name} />
+        <div className="print:hidden">
+          <ClaimProfileSection officialId={official.id} officialName={official.full_name} />
+        </div>
 
         {/* QWEN-ADDED: Promises Section - flagship feature, shown below basic info */}
         {/* FIX-246: hide incumbent-only sections for tier='candidate' rows */}
@@ -1360,12 +1366,12 @@ export default async function OfficialProfilePage({
         {/* C1 Wave D (FIX-538): citizen↔official Q&A lane. Questions live only
             here, not in the discussion list (decision 8), so 'question' is
             dropped from the discussion composer's allowedKinds below. */}
-        <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
+        <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 print:hidden">
           <QASection entityId={official.id} entityType="official" entityName={official.full_name} />
         </div>
 
         {/* Community Comments */}
-        <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
+        <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 print:hidden">
           <EntityComments
             entityType="official"
             entityId={official.id}
@@ -1378,9 +1384,12 @@ export default async function OfficialProfilePage({
           />
         </div>
 
+        {/* Print-only provenance footer — stamps the record's URL + print date. */}
+        <PrintProvenance />
+
       </main>
 
-      <footer className="mt-16 border-t border-rule bg-card">
+      <footer className="mt-16 border-t border-rule bg-card print:hidden">
         <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-sm text-ink-soft">

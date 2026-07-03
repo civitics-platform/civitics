@@ -35,6 +35,9 @@ const fraunces = Fraunces({
 });
 
 export const metadata: Metadata = {
+  // metadataBase resolves the static app/opengraph-image.png and every dynamic
+  // opengraph-image route to an absolute URL for share cards (FIX-714).
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "https://civitics.com"),
   title: {
     default: "Civitics",
     template: "%s | Civitics",
