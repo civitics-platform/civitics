@@ -873,3 +873,6 @@
 2026-07-03 | FIX-704 | 4c7f1605 | local+prod | prod verify: supervised bootstrap via one-off pg_cron 26m05s 53 chunks 698,612 rows 0 failures, no OOM/no wedge; super-PAC recipients live (FF PAC $507M, MAGA Inc $375M); FIX-672 junk debris purged (58,369 rows -> FIX-705); SUM invariant + PostgREST reads green; all 5 jobs re-enabled
 2026-07-03 | FIX-706 | b826f75e | local-only | feat(design): reskin shared cards + FollowButton; auth and error brand pages
 2026-07-03 | FIX-707 | b826f75e | local-only | feat(design): reskin shared cards + FollowButton; auth and error brand pages
+2026-07-03 | FIX-567 | 356a6137 | local-only | feat(design): --c-viz token ramp + officials bars (FIX-567); desk instrument panels; skeletons
+2026-07-03 | FIX-709 | 356a6137 | local-only | feat(design): --c-viz token ramp + officials bars (FIX-567); desk instrument panels; skeletons
+2026-07-03 | FIX-710 | 356a6137 | local-only | feat(design): --c-viz token ramp + officials bars (FIX-567); desk instrument panels; skeletons
