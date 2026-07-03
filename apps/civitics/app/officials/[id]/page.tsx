@@ -177,7 +177,7 @@ const ISSUE_KEYWORDS: Record<
   healthcare: {
     label: "Healthcare",
     icon: "🏥",
-    color: "#10b981",
+    color: "rgb(var(--c-viz-1))",
     keywords: [
       "health", "medicare", "medicaid", "hospital", "prescription", "drug",
       "pharma", "insurance", "care act", "patient", "medical", "mental health",
@@ -187,7 +187,7 @@ const ISSUE_KEYWORDS: Record<
   climate: {
     label: "Climate & Energy",
     icon: "⚡",
-    color: "#06b6d4",
+    color: "rgb(var(--c-viz-2))",
     keywords: [
       "climate", "clean energy", "renewable", "carbon", "emission",
       "environment", "pollution", "solar", "wind energy", "fossil", "oil",
@@ -198,7 +198,7 @@ const ISSUE_KEYWORDS: Record<
   economy: {
     label: "Economy",
     icon: "💼",
-    color: "#f59e0b",
+    color: "rgb(var(--c-viz-3))",
     keywords: [
       "tax", "budget", "spending", "economic", "inflation", "trade", "tariff",
       "jobs", "employment", "wage", "financial", "bank", "housing", "debt",
@@ -208,7 +208,7 @@ const ISSUE_KEYWORDS: Record<
   education: {
     label: "Education",
     icon: "📚",
-    color: "#8b5cf6",
+    color: "rgb(var(--c-viz-4))",
     keywords: [
       "education", "school", "student", "teacher", "college", "university",
       "loan", "learning", "child", "youth", "early childhood",
@@ -217,7 +217,7 @@ const ISSUE_KEYWORDS: Record<
   defense: {
     label: "Defense & Security",
     icon: "🛡",
-    color: "#64748b",
+    color: "rgb(var(--c-viz-5))",
     keywords: [
       "defense", "military", "national security", "armed forces", "veteran",
       "army", "navy", "air force", "pentagon", "nato", "authorization act",
@@ -227,7 +227,7 @@ const ISSUE_KEYWORDS: Record<
   immigration: {
     label: "Immigration",
     icon: "🌎",
-    color: "#f97316",
+    color: "rgb(var(--c-viz-6))",
     keywords: [
       "immigration", "border", "asylum", "refugee", "citizenship", "visa",
       "daca", "migrant", "deportation", "undocumented",
@@ -236,7 +236,7 @@ const ISSUE_KEYWORDS: Record<
   justice: {
     label: "Justice & Rights",
     icon: "⚖️",
-    color: "#a855f7",
+    color: "rgb(var(--c-viz-7))",
     keywords: [
       "justice", "civil rights", "voting rights", "police", "criminal",
       "prison", "court", "constitutional", "amendment", "equal",

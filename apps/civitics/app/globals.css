@@ -38,6 +38,32 @@
     --c-term-green:  61 220 132; /* #3ddc84 */
     --c-term-red:   226  85  85; /* #e25555 */
     --c-term-blue:   91 141 239; /* #5b8def */
+
+    /* ── Categorical data-viz ramp --c-viz-1..7 (FIX-567) ────────────────
+       A shared 7-hue categorical set for chart/bar fills (officials issue
+       bars today; graph-package palettes fold in here in the graph terminal
+       wave — derive from this set, never per-surface hex). Anchored on the
+       brand hues (green-ink, civic blue, amber→ochre, accent red→wine) and
+       extended with earthy-editorial hues (teal, steel-slate, terracotta);
+       NOT neon/pastel Tailwind defaults. Each paper-mode value is a fill that
+       reads on --c-paper at ≥3:1 contrast and is distinguishable from its
+       neighbours. Terminal mode re-binds to luminous variants that read on
+       --c-term-bg (see the [data-theme="terminal"] block below).
+
+         viz-1  #1d7a3e  green-ink   (brand)   ~4.9:1   healthcare
+         viz-2  #167e88  teal        (earthy)  ~4.4:1   climate
+         viz-3  #b8791f  ochre-gold  (amber)   ~3.3:1   economy
+         viz-4  #2b4a8b  civic blue  (brand)   ~7.8:1   education
+         viz-5  #5f6673  steel-slate (earthy)  ~5.3:1   defense
+         viz-6  #bf5a34  terracotta  (earthy)  ~4.1:1   immigration
+         viz-7  #8f3050  wine        (brand)   ~7.1:1   justice        */
+    --c-viz-1:  29 122  62; /* #1d7a3e green-ink */
+    --c-viz-2:  22 126 136; /* #167e88 teal */
+    --c-viz-3: 184 121  31; /* #b8791f ochre-gold */
+    --c-viz-4:  43  74 139; /* #2b4a8b civic blue */
+    --c-viz-5:  95 102 115; /* #5f6673 steel-slate */
+    --c-viz-6: 191  90  52; /* #bf5a34 terracotta */
+    --c-viz-7: 143  48  80; /* #8f3050 wine */
   }
 
   [data-theme="terminal"] {
@@ -50,6 +76,15 @@
     --c-accent:    var(--c-term-red);
     --c-blue:      var(--c-term-blue);
     --c-green-ink: var(--c-term-green);
+
+    /* Luminous viz variants — same 7 hues lifted to read on --c-term-bg. */
+    --c-viz-1:  79 209 138; /* #4fd18a green */
+    --c-viz-2:  56 198 207; /* #38c6cf teal */
+    --c-viz-3: 224 165  60; /* #e0a53c ochre-gold */
+    --c-viz-4: 111 156 232; /* #6f9ce8 civic blue */
+    --c-viz-5: 151 160 176; /* #97a0b0 steel-slate */
+    --c-viz-6: 229 122  77; /* #e57a4d terracotta */
+    --c-viz-7: 215 106 144; /* #d76a90 wine */
   }
 
   html {

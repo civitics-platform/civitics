@@ -45,6 +45,15 @@ module.exports = {
         "term-green": "rgb(var(--c-term-green) / <alpha-value>)",
         "term-red":   "rgb(var(--c-term-red) / <alpha-value>)",
         "term-blue":  "rgb(var(--c-term-blue) / <alpha-value>)",
+        // Categorical data-viz ramp (FIX-567) — 7 mutually-distinguishable
+        // hues for chart/bar fills; terminal-scope re-binds to luminous variants.
+        "viz-1": "rgb(var(--c-viz-1) / <alpha-value>)",
+        "viz-2": "rgb(var(--c-viz-2) / <alpha-value>)",
+        "viz-3": "rgb(var(--c-viz-3) / <alpha-value>)",
+        "viz-4": "rgb(var(--c-viz-4) / <alpha-value>)",
+        "viz-5": "rgb(var(--c-viz-5) / <alpha-value>)",
+        "viz-6": "rgb(var(--c-viz-6) / <alpha-value>)",
+        "viz-7": "rgb(var(--c-viz-7) / <alpha-value>)",
       },
       fontFamily: {
         sans: ["var(--font-inter)", "system-ui", "sans-serif"],
