@@ -869,3 +869,4 @@
 2026-07-01 | FIX-698 | 2c901e81 | local+prod | prod verify: type-10 backfill did not re-add J/D/B (0 JFC rows) + purged 997,608 stale J/D/B rows (2.60B, cycle 2024)
 2026-07-01 | FIX-700 | 2c901e81 | local+prod | prod verify: SCOPED run tx_types=10 engaged — skipAggregateOverwrite honored, received/IE totals re-derived (donation totals blocked by FIX-702)
 2026-07-01 | FIX-703 | 49b66330 | local-only | fix(db): survive Micro donations-rebuild wall — per-window COMMIT + 6h CALL budget (FIX-703)
+2026-07-03 | FIX-704 | 4c7f1605 | local-only | feat(db): incremental donor-rollup table + decouple recipient_count (no full-refresh OOM)
