@@ -79,6 +79,7 @@ export function Commons({
             </a>
           </div>
         ) : (
+          <>
           <ul className="divide-y divide-rule border-y border-rule">
             {threads.map((t) => (
               <li key={t.commentId} className="group py-4 hover:bg-paper-2">
@@ -111,6 +112,15 @@ export function Commons({
               </li>
             ))}
           </ul>
+          <div className="mt-5 flex justify-end">
+            <a
+              href="/commons"
+              className="font-mono text-[11.5px] font-semibold uppercase tracking-[0.1em] text-accent hover:underline"
+            >
+              All threads →
+            </a>
+          </div>
+          </>
         )}
       </div>
     </section>

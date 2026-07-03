@@ -12,9 +12,11 @@ import { HeroReceipt } from "./components/home/HeroReceipt";
 import { ClosingSoonPanel } from "./components/home/ClosingSoonPanel";
 import { OfficialsLedger } from "./components/home/OfficialsLedger";
 import { Commons } from "./components/home/Commons";
+import { InvestigationsBand } from "./components/home/InvestigationsBand";
 import { GraphBand } from "./components/home/GraphBand";
 import { FranklinBand } from "./components/home/FranklinBand";
 import { AgenciesRow } from "./components/home/AgenciesRow";
+import { listInvestigationsForHome } from "./investigations/_lib/load";
 import type { HomeStats, HomeOfficialCardData, CommonsThread } from "./components/home/types";
 import type { ProposalCardData } from "./proposals/components/ProposalCard";
 import type { AgencyRow } from "./agencies/page";
@@ -463,6 +465,13 @@ export default async function HomePage({
     });
   }
 
+  // ── Investigations: cited case-file band (FIX-711) ─────────────────────────
+  // Capped reuse of the /investigations index query shape (no new MV/RPC).
+  // Fail-soft like every other module: on timeout the loader returns [] and the
+  // band renders its empty state. Franklin's synthetic case files are labeled,
+  // not excluded (SF-P2).
+  const investigations = await timed("wave_investigations", () => listInvestigationsForHome(4));
+
   // ─── Shape data ────────────────────────────────────────────────────────────
 
   const stats: HomeStats = {
@@ -548,6 +557,7 @@ export default async function HomePage({
         <PledgeBand />
         <ClosingSoonPanel proposals={featuredProposals} nowIso={now} activeCount={stats.proposals} />
         <OfficialsLedger officials={featuredOfficials} totalOfficials={stats.officials} />
+        <InvestigationsBand items={investigations} />
         <Commons threads={commonsThreads} nowIso={now} />
         <GraphBand />
         <FranklinBand />

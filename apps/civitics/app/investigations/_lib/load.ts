@@ -96,6 +96,90 @@ export async function listInvestigations(): Promise<InvestigationListItem[]> {
   });
 }
 
+// ── Homepage band (FIX-711) ────────────────────────────────────────────────
+// Reuses the index query shape (same investigations + evidence_cards tables,
+// same anon-readable cookie-client reads, same is_featured DESC / created_at
+// DESC ordering) but capped to a handful of rows for the homepage budget, plus
+// a third capped read for the per-file citation count the mockup asks for. No
+// new MV/RPC. Synthetic case files are INCLUDED and labeled by the caller — the
+// homepage surfaces Franklin's seeded files with the SYNTHETIC mark (SF-P2),
+// never excluded.
+export type HomeInvestigation = {
+  id: string;
+  title: string;
+  /** the investigative question — the one-line summary shown on the card */
+  summary: string | null;
+  status: Investigation["status"];
+  isSynthetic: boolean;
+  evidenceCount: number;
+  citationCount: number;
+};
+
+export async function listInvestigationsForHome(limit = 4): Promise<HomeInvestigation[]> {
+  const cookieStore = await cookies();
+  const supabase = createServerClient(cookieStore);
+
+  const { data: rows } = await withDbTimeout(
+    supabase
+      .from("investigations")
+      .select("id, title, question, status, is_synthetic")
+      .order("is_featured", { ascending: false })
+      .order("created_at", { ascending: false })
+      .limit(limit),
+    3000,
+    "investigations:home",
+  );
+  const investigations = (rows ?? []) as unknown as Array<{
+    id: string;
+    title: string;
+    question: string | null;
+    status: Investigation["status"];
+    is_synthetic: boolean | null;
+  }>;
+  if (investigations.length === 0) return [];
+
+  const ids = investigations.map((i) => i.id);
+  const { data: cards } = await withDbTimeout(
+    supabase.from("evidence_cards").select("id, investigation_id").in("investigation_id", ids),
+    3000,
+    "investigations:home-cards",
+  );
+  const cardRows = (cards ?? []) as Array<{ id: string; investigation_id: string }>;
+
+  const evidenceCount = new Map<string, number>();
+  const investigationByCard = new Map<string, string>();
+  for (const c of cardRows) {
+    evidenceCount.set(c.investigation_id, (evidenceCount.get(c.investigation_id) ?? 0) + 1);
+    investigationByCard.set(c.id, c.investigation_id);
+  }
+
+  // Citation count rolls up citations → their card → the card's investigation.
+  const citationCount = new Map<string, number>();
+  const cardIds = cardRows.map((c) => c.id);
+  if (cardIds.length > 0) {
+    const { data: cites } = await withDbTimeout(
+      supabase.from("citations").select("evidence_card_id").in("evidence_card_id", cardIds),
+      3000,
+      "investigations:home-citations",
+    );
+    for (const ct of (cites ?? []) as Array<{ evidence_card_id: string }>) {
+      const invId = investigationByCard.get(ct.evidence_card_id);
+      if (!invId) continue;
+      citationCount.set(invId, (citationCount.get(invId) ?? 0) + 1);
+    }
+  }
+
+  return investigations.map((inv) => ({
+    id: inv.id,
+    title: inv.title,
+    summary: inv.question,
+    status: inv.status,
+    isSynthetic: inv.is_synthetic ?? false,
+    evidenceCount: evidenceCount.get(inv.id) ?? 0,
+    citationCount: citationCount.get(inv.id) ?? 0,
+  }));
+}
+
 export type CaseFile = {
   investigation: Investigation;
   evidence: EvidenceCard[];
