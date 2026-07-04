@@ -892,3 +892,5 @@
 2026-07-04 | FIX-722 | 6001f6d1 | local-only | fix(fec): bypass the FIX-193 indiv watermark on scoped runs
 2026-07-04 | FIX-723 | 449a681f | local-only | feat(search): full-terminal conversion; document @civitics/ui token system
 2026-07-04 | FIX-724 | 449a681f | local-only | feat(search): full-terminal conversion; document @civitics/ui token system
+2026-07-04 | FIX-701 | c053a24b | local+prod | chore(fixes): record prod verification for FIX-701/FIX-722 [skip vercel]
+2026-07-04 | FIX-722 | c053a24b | local+prod | chore(fixes): record prod verification for FIX-701/FIX-722 [skip vercel]
