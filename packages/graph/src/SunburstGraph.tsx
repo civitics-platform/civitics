@@ -6,6 +6,7 @@ import type { RefObject } from "react";
 import type { GraphNode as NewGraphNode, NodeActions, SunburstOptions, FocusGroup } from "./types";
 import { Tooltip, useTooltip } from "./components/Tooltip";
 import { NodePopup } from "./components/NodePopup";
+import { resolveColor, resolveToken, withAlpha } from "./tokens";
 
 interface SunburstNode {
   name: string;
@@ -31,24 +32,22 @@ export interface SunburstGraphProps {
   badgeSize?: 'full' | 'large' | 'medium' | 'small' | 'tiny';
 }
 
-const TYPE_PALETTE: Record<string, { bright: string; dark: string; glow: string }> = {
-  vote_yes:            { bright: "#4ade80", dark: "#14532d", glow: "#22c55e" },
-  vote_no:             { bright: "#f87171", dark: "#7f1d1d", glow: "#ef4444" },
-  donation:            { bright: "#fbbf24", dark: "#78350f", glow: "#f59e0b" },
-  oversight:           { bright: "#c084fc", dark: "#4a1d96", glow: "#a855f7" },
-  nomination_vote_yes: { bright: "#34d399", dark: "#064e3b", glow: "#10b981" },
-  nomination_vote_no:  { bright: "#fca5a5", dark: "#7f1d1d", glow: "#f87171" },
-  appointment:         { bright: "#a78bfa", dark: "#2e1065", glow: "#8b5cf6" },
-  revolving_door:      { bright: "#fb923c", dark: "#7c2d12", glow: "#f97316" },
-  lobbying:            { bright: "#fde047", dark: "#713f12", glow: "#eab308" },
-  co_sponsorship:      { bright: "#22d3ee", dark: "#164e63", glow: "#06b6d4" },
-  other:               { bright: "#94a3b8", dark: "#1e293b", glow: "#64748b" },
+// FIX-729 — one token hue per connection type; the bright/dark/glow triple is
+// derived from the resolved hue at render time (brighter/darker), replacing
+// the legacy per-type hex triples. All 11 types keep distinct hues.
+const TYPE_HUE: Record<string, string> = {
+  vote_yes:            "rgb(var(--c-green-ink))",
+  vote_no:             "rgb(var(--c-accent))",
+  donation:            "rgb(var(--c-amber))",
+  oversight:           "rgb(var(--c-viz-7))", // was purple — wine; no purple in the token system
+  nomination_vote_yes: "rgb(var(--c-viz-8))", // olive — distinct from vote_yes green
+  nomination_vote_no:  "rgb(var(--c-viz-9))", // bronze — distinct from vote_no red
+  appointment:         "rgb(var(--c-viz-4))", // was violet — civic blue
+  revolving_door:      "rgb(var(--c-viz-6))", // terracotta
+  lobbying:            "rgb(var(--c-viz-3))", // ochre-gold — distinct from donation amber
+  co_sponsorship:      "rgb(var(--c-viz-2))", // teal
+  other:               "rgb(var(--c-viz-5))", // steel-slate
 };
-
-function getPalette(typeName: string) {
-  const key = typeName.toLowerCase().replace(/ /g, "_");
-  return TYPE_PALETTE[key] ?? TYPE_PALETTE.other!;
-}
 
 type D3HierarchyNode = d3.HierarchyRectangularNode<SunburstNode>;
 
@@ -141,11 +140,40 @@ export function SunburstGraph({ entityId, entityLabel, className = "", svgRef: e
       .join("")
       .toUpperCase() || "?";
 
+    // FIX-729 — resolve design tokens against the svg's scope at render time;
+    // d3 .attr()/gradient stops need concrete colors, not var().
+    const T = {
+      bg:      resolveToken("--c-term-bg", svg),
+      panel:   resolveToken("--c-term-panel", svg),
+      ink:     resolveToken("--c-ink", svg),
+      inkSoft: resolveToken("--c-ink-soft", svg),
+      faint:   resolveToken("--c-term-faint", svg),
+      amber:   resolveToken("--c-amber", svg),
+      blue:    resolveToken("--c-blue", svg),
+      accent:  resolveToken("--c-accent", svg),
+    };
+    // Per-type bright/dark/glow shades derived from the single token hue.
+    const TYPE_PALETTE: Record<string, { bright: string; dark: string; glow: string }> =
+      Object.fromEntries(
+        Object.entries(TYPE_HUE).map(([type, hue]): [string, { bright: string; dark: string; glow: string }] => {
+          const c = d3.color(resolveColor(hue, svg)) ?? d3.rgb(0, 0, 0);
+          return [type, {
+            bright: c.brighter(0.7).formatRgb(),
+            dark:   c.darker(2).formatRgb(),
+            glow:   c.formatRgb(),
+          }];
+        }),
+      );
+    const getPalette = (typeName: string) => {
+      const key = typeName.toLowerCase().replace(/ /g, "_");
+      return TYPE_PALETTE[key] ?? TYPE_PALETTE.other!;
+    };
+
     // ── Dark background ──────────────────────────────────────────────────────
     const svgSel = d3.select(svg)
       .attr("width", width)
       .attr("height", height)
-      .style("background", "#030712");
+      .style("background", T.bg);
 
     // ── Defs ─────────────────────────────────────────────────────────────────
     const defs = svgSel.append("defs");
@@ -170,22 +198,18 @@ export function SunburstGraph({ entityId, entityLabel, className = "", svgRef: e
         .attr("stop-opacity", 0.85);
     });
 
-    // Center glow gradient — color reflects party or group
+    // Center glow gradient — color reflects party or group. The neutral/group
+    // center (formerly indigo) uses the terminal's amber brand highlight.
     const meta = centerMetaRef.current;
     const centerColor = meta.isGroup
-      ? "#6366f1"
+      ? T.amber
       : meta.party === "democrat"
-      ? "#3b82f6"
+      ? T.blue
       : meta.party === "republican"
-      ? "#ef4444"
-      : "#6366f1";
-    const centerColorDark = meta.isGroup
-      ? "#1e1b4b"
-      : meta.party === "democrat"
-      ? "#1e3a8a"
-      : meta.party === "republican"
-      ? "#7f1d1d"
-      : "#1e1b4b";
+      ? T.accent
+      : T.amber;
+    const centerColorDark =
+      (d3.color(centerColor) ?? d3.rgb(0, 0, 0)).darker(2).formatRgb();
 
     const centerGrad = defs.append("radialGradient")
       .attr("id", "center-glow")
@@ -212,8 +236,8 @@ export function SunburstGraph({ entityId, entityLabel, className = "", svgRef: e
       .attr("r", radius * 1.2)
       .attr("gradientUnits", "userSpaceOnUse");
 
-    bgGrad.append("stop").attr("offset", "0%").attr("stop-color", "#0f172a");
-    bgGrad.append("stop").attr("offset", "100%").attr("stop-color", "#030712");
+    bgGrad.append("stop").attr("offset", "0%").attr("stop-color", T.panel);
+    bgGrad.append("stop").attr("offset", "100%").attr("stop-color", T.bg);
 
     // Glow blur filter
     const filter = defs.append("filter")
@@ -269,7 +293,7 @@ export function SunburstGraph({ entityId, entityLabel, className = "", svgRef: e
       g.append("text")
         .attr("text-anchor", "middle")
         .attr("dominant-baseline", "central")
-        .attr("fill", "white")
+        .attr("fill", T.ink)
         .attr("font-size", radius * 0.5 + "px")
         .attr("font-weight", "700")
         .style("pointer-events", "none")
@@ -303,7 +327,7 @@ export function SunburstGraph({ entityId, entityLabel, className = "", svgRef: e
         const typeName = (ancestor.data.type ?? ancestor.data.name ?? "other")
           .toLowerCase().replace(/ /g, "_");
         if (d.depth === 1) return `url(#grad-${typeName})`;
-        return getPalette(typeName).dark + "cc";
+        return withAlpha(getPalette(typeName).dark, 0.8, svg); // was hex + "cc"
       })
       .attr("fill-opacity", (d) =>
         d.x1 - d.x0 > 0.001 ? (d.depth === 1 ? 1.0 : 0.75) : 0)
@@ -399,7 +423,7 @@ export function SunburstGraph({ entityId, entityLabel, className = "", svgRef: e
         .attr("href", (_, i) => `#arc-path-${i}`)
         .attr("startOffset", "50%")
         .attr("text-anchor", "middle")
-        .attr("fill", "#f1f5f9")
+        .attr("fill", T.ink)
         .attr("font-size", (d) => {
           const arcWidth = d.y1 - d.y0;
           return Math.min(arcWidth * 0.35, 11) + "px";
@@ -433,7 +457,7 @@ export function SunburstGraph({ entityId, entityLabel, className = "", svgRef: e
           return r * Math.sin(angle);
         })
         .attr("font-size", "8px")
-        .attr("fill", "#6b7280")
+        .attr("fill", T.inkSoft)
         .attr("opacity", 0)
         .style("pointer-events", "none")
         .style("user-select", "none")
@@ -475,7 +499,7 @@ export function SunburstGraph({ entityId, entityLabel, className = "", svgRef: e
       g.append("text")
         .attr("text-anchor", "middle")
         .attr("dy", `${centerRadius * 0.55}px`)
-        .attr("fill", "#a5b4fc")
+        .attr("fill", T.inkSoft)
         .attr("font-size", Math.max(centerRadius * 0.2, 9) + "px")
         .style("pointer-events", "none")
         .style("user-select", "none")
@@ -487,7 +511,7 @@ export function SunburstGraph({ entityId, entityLabel, className = "", svgRef: e
         g.append("text")
           .attr("text-anchor", "middle")
           .attr("dy", "-0.1em")
-          .attr("fill", "#e0e7ff")
+          .attr("fill", T.ink)
           .attr("font-size", Math.max(centerRadius * 0.5, 14) + "px")
           .attr("font-weight", "700")
           .attr("letter-spacing", "0.05em")
@@ -498,7 +522,7 @@ export function SunburstGraph({ entityId, entityLabel, className = "", svgRef: e
         g.append("text")
           .attr("text-anchor", "middle")
           .attr("dy", "1.2em")
-          .attr("fill", "#a5b4fc")
+          .attr("fill", T.inkSoft)
           .attr("font-size", Math.max(centerRadius * 0.2, 9) + "px")
           .style("pointer-events", "none")
           .style("user-select", "none")
@@ -507,7 +531,7 @@ export function SunburstGraph({ entityId, entityLabel, className = "", svgRef: e
         g.append("text")
           .attr("text-anchor", "middle")
           .attr("dy", "0.35em")
-          .attr("fill", "#e0e7ff")
+          .attr("fill", T.ink)
           .attr("font-size", Math.max(centerRadius * 0.3, 11) + "px")
           .attr("font-weight", "600")
           .style("pointer-events", "none")
@@ -532,7 +556,7 @@ export function SunburstGraph({ entityId, entityLabel, className = "", svgRef: e
       g.append("text")
         .attr("text-anchor", "middle")
         .attr("dy", centerRadius * 0.35 + "px")
-        .attr("fill", "#4b5563")
+        .attr("fill", T.faint)
         .attr("font-size", "8px")
         .style("pointer-events", "none")
         .style("user-select", "none")
@@ -548,7 +572,7 @@ export function SunburstGraph({ entityId, entityLabel, className = "", svgRef: e
           return [borderR * Math.cos(angle), borderR * Math.sin(angle)].join(',');
         }).join(' '))
         .attr('fill', 'none')
-        .attr('stroke', '#4338ca')
+        .attr('stroke', T.amber) // was indigo — amber is the terminal brand highlight
         .attr('stroke-width', 2)
         .attr('stroke-opacity', 0.6)
         .attr('filter', 'url(#glow)');
@@ -759,7 +783,7 @@ export function SunburstGraph({ entityId, entityLabel, className = "", svgRef: e
     <div ref={containerRef} className={`relative w-full h-full flex flex-col ${className}`}>
       {/* Breadcrumb trail — only shown when drilled in */}
       {status === "ok" && breadcrumbs.length > 1 && (
-        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1 bg-gray-900/90 backdrop-blur-sm border border-gray-700/50 rounded-full px-3 py-1.5 shadow-lg">
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1 bg-card/90 backdrop-blur-sm border border-rule/50 rounded-full px-3 py-1.5 shadow-lg">
           {/* Back button */}
           <button
             onClick={() => {
@@ -767,15 +791,15 @@ export function SunburstGraph({ entityId, entityLabel, className = "", svgRef: e
               const { width, height } = containerRef.current.getBoundingClientRect();
               zoom(rootRef.current, width || 600, height || 500);
             }}
-            className="text-indigo-400 hover:text-indigo-300 text-xs font-medium flex items-center gap-1 transition-colors mr-1"
+            className="text-accent hover:text-accent/80 text-xs font-medium flex items-center gap-1 transition-colors mr-1"
           >
             ← Back
           </button>
-          <span className="text-gray-600 text-xs">|</span>
+          <span className="text-ink-soft text-xs">|</span>
           {breadcrumbs.map((crumb, i) => (
             <React.Fragment key={i}>
-              {i > 0 && <span className="text-gray-600 text-xs">›</span>}
-              <span className={`text-xs transition-colors ${i === breadcrumbs.length - 1 ? "text-white font-medium" : "text-gray-400"}`}>
+              {i > 0 && <span className="text-ink-soft text-xs">›</span>}
+              <span className={`text-xs transition-colors ${i === breadcrumbs.length - 1 ? "text-ink font-medium" : "text-ink-soft"}`}>
                 {crumb.length > 16 ? crumb.slice(0, 14) + "…" : crumb}
               </span>
             </React.Fragment>
@@ -785,14 +809,14 @@ export function SunburstGraph({ entityId, entityLabel, className = "", svgRef: e
 
       {status === "idle" && (
         <div className="flex flex-col items-center justify-center flex-1">
-          <div className="text-center max-w-sm px-8 py-10 rounded-2xl bg-gray-900/80 border border-gray-800">
-            <div className="w-10 h-10 mx-auto mb-4 rounded-full border border-gray-700 flex items-center justify-center">
-              <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="text-center max-w-sm px-8 py-10 rounded-2xl bg-card/80 border border-rule">
+            <div className="w-10 h-10 mx-auto mb-4 rounded-full border border-rule flex items-center justify-center">
+              <svg className="w-5 h-5 text-ink-soft" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707m12.728 0l-.707-.707M6.343 6.343l-.707-.707" />
               </svg>
             </div>
-            <p className="text-gray-300 text-sm font-medium">Select an official</p>
-            <p className="text-gray-500 text-xs mt-2 leading-relaxed">
+            <p className="text-ink text-sm font-medium">Select an official</p>
+            <p className="text-ink-soft text-xs mt-2 leading-relaxed">
               Click any official node in the graph to see their full connection sunburst.
             </p>
           </div>
@@ -801,15 +825,15 @@ export function SunburstGraph({ entityId, entityLabel, className = "", svgRef: e
 
       {status === "loading" && (
         <div className="flex flex-col items-center justify-center flex-1 gap-3">
-          <div className="w-10 h-10 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin" />
-          <p className="text-gray-500 text-sm">Building network map…</p>
+          <div className="w-10 h-10 rounded-full border-2 border-accent border-t-transparent animate-spin" />
+          <p className="text-ink-soft text-sm">Building network map…</p>
         </div>
       )}
 
       {status === "error" && (
         <div className="flex flex-col items-center justify-center flex-1 text-center">
-          <p className="text-red-400 text-sm">Failed to load sunburst data.</p>
-          <button onClick={() => setStatus("idle")} className="mt-3 text-xs text-indigo-400 hover:underline">
+          <p className="text-accent text-sm">Failed to load sunburst data.</p>
+          <button onClick={() => setStatus("idle")} className="mt-3 text-xs text-accent hover:underline">
             Reset
           </button>
         </div>
@@ -817,8 +841,8 @@ export function SunburstGraph({ entityId, entityLabel, className = "", svgRef: e
 
       {status === "empty" && (
         <div className="flex flex-col items-center justify-center flex-1">
-          <div className="text-center max-w-sm px-8 py-10 rounded-2xl bg-gray-900/80 border border-gray-800">
-            <p className="text-gray-300 text-sm font-medium">
+          <div className="text-center max-w-sm px-8 py-10 rounded-2xl bg-card/80 border border-rule">
+            <p className="text-ink text-sm font-medium">
               No network data for {entityLabel ?? "this entity"}.
             </p>
           </div>

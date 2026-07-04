@@ -112,7 +112,7 @@ export const VIZ_REGISTRY: VizRegistryEntry[] = [
       layout: 'force_directed',
       nodeSizeEncoding: 'connection_count',
       nodeColorEncoding: 'entity_type',
-      singleColor: '#3b82f6',
+      singleColor: 'rgb(var(--c-blue))',
       edgeThicknessEncoding: 'amount_proportional',
       edgeOpacity: 0.7,
       theme: 'dark',

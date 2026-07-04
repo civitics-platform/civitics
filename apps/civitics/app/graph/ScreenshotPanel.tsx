@@ -109,6 +109,52 @@ export function ScreenshotPanel({ svgRef, shareCode, onClose }: ScreenshotPanelP
 
 // ── Export logic ────────────────────────────────────────────────────────────
 
+// FIX-729 — export inlining. The graph renders with design-token colors
+// (rgb(var(--c-x)) in style attributes, Tailwind classes on labels). CSS
+// custom properties and stylesheet rules do NOT survive XMLSerializer — a
+// serialized clone rendered via <img> has no :root vars, so every var()
+// resolves to nothing and paints black. Fix: walk the live SVG alongside the
+// clone (cloneNode preserves element order) and pin each element's COMPUTED
+// paint/text properties as inline styles on the clone.
+const INLINE_PROPS = [
+  "fill",
+  "fill-opacity",
+  "stroke",
+  "stroke-opacity",
+  "stroke-width",
+  "stroke-dasharray",
+  "opacity",
+  "color",
+  "font-family",
+  "font-size",
+  "font-weight",
+  "text-anchor",
+  "dominant-baseline",
+] as const;
+
+function inlineComputedStyles(src: SVGSVGElement, clone: SVGSVGElement): void {
+  const srcEls: Element[] = [src, ...Array.from(src.querySelectorAll("*"))];
+  const cloneEls: Element[] = [clone, ...Array.from(clone.querySelectorAll("*"))];
+  const n = Math.min(srcEls.length, cloneEls.length);
+  for (let i = 0; i < n; i++) {
+    const cloneEl = cloneEls[i]!;
+    if (!(cloneEl instanceof SVGElement)) continue;
+    const cs = getComputedStyle(srcEls[i]!);
+    for (const prop of INLINE_PROPS) {
+      const v = cs.getPropertyValue(prop);
+      if (v) cloneEl.style.setProperty(prop, v);
+    }
+  }
+}
+
+/** Resolve a --c-* token from the live DOM to a concrete color. The hex
+ * fallback is intentional (documented export-inlining hex — the export path
+ * must produce a color even if the token lookup fails). */
+function resolveExportToken(el: Element, name: string, fallback: string): string {
+  const triplet = getComputedStyle(el).getPropertyValue(name).trim();
+  return triplet ? `rgb(${triplet})` : fallback;
+}
+
 async function exportGraphPng(
   svgEl: SVGSVGElement,
   scale: ExportScale,
@@ -127,11 +173,15 @@ async function exportGraphPng(
   clone.setAttribute("height", String(srcH));
   clone.setAttribute("viewBox", `0 0 ${srcW} ${srcH}`);
 
-  // Set background on clone (the real SVG is transparent over the dark page)
+  // Pin computed token colors onto the clone before serialization (FIX-729).
+  inlineComputedStyles(svgEl, clone);
+
+  // Set background on clone (the real SVG is transparent over the dark page).
+  const exportBg = resolveExportToken(svgEl, "--c-term-bg", "#0e1117");
   const bgRect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
   bgRect.setAttribute("width", "100%");
   bgRect.setAttribute("height", "100%");
-  bgRect.setAttribute("fill", "#030712");
+  bgRect.setAttribute("fill", exportBg);
   clone.insertBefore(bgRect, clone.firstChild);
 
   const svgData = new XMLSerializer().serializeToString(clone);
@@ -150,7 +200,7 @@ async function exportGraphPng(
         if (!ctx) { reject(new Error("No 2d context")); return; }
 
         // Draw dark background (belt-and-suspenders)
-        ctx.fillStyle = "#030712";
+        ctx.fillStyle = exportBg;
         ctx.fillRect(0, 0, outW, outH);
 
         // Draw the graph
@@ -182,6 +232,9 @@ async function exportGraphPng(
   });
 }
 
+// Watermark colors are literal (documented export-path hex): the watermark is
+// drawn on a raster canvas after serialization, outside the token stylesheet,
+// and must render identically regardless of theme.
 function drawWatermark(
   ctx: CanvasRenderingContext2D,
   width: number,

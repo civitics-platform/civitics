@@ -16,15 +16,18 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 // FIX-490 — group identity (icon/color) derived from gb.type, server-side, so a
 // gb group's appearance never depends on (spoofable) groupIcon/groupColor URL
 // params. One map, with a sensible default for any unmapped type.
+// Colors are rgb(var(--c-x)) design-token strings (FIX-729), resolved
+// client-side per scope. Upper chambers mirror Full Senate (steel-slate),
+// lower chambers Full House (terracotta), judicial the judiciary wine.
 const GB_TYPE_VISUAL: Record<string, { icon: string; color: string }> = {
-  legislature_upper:      { icon: "🏛", color: "#6366f1" },
-  legislature_lower:      { icon: "🏛", color: "#8b5cf6" },
-  legislature_unicameral: { icon: "🏛", color: "#6366f1" },
-  executive:              { icon: "🏛", color: "#6366f1" },
-  judicial:               { icon: "⚖️", color: "#475569" },
-  committee:              { icon: "🪪", color: "#0891b2" },
+  legislature_upper:      { icon: "🏛", color: "rgb(var(--c-viz-5))" },
+  legislature_lower:      { icon: "🏛", color: "rgb(var(--c-viz-6))" },
+  legislature_unicameral: { icon: "🏛", color: "rgb(var(--c-viz-5))" },
+  executive:              { icon: "🏛", color: "rgb(var(--c-viz-6))" },
+  judicial:               { icon: "⚖️", color: "rgb(var(--c-viz-7))" },
+  committee:              { icon: "🪪", color: "rgb(var(--c-blue))" },
 };
-const GB_TYPE_VISUAL_DEFAULT = { icon: "🏛", color: "#6366f1" };
+const GB_TYPE_VISUAL_DEFAULT = { icon: "🏛", color: "rgb(var(--c-viz-5))" };
 
 // FIX-497 — JS-level budget for the connection-aggregation phase (donations,
 // oversight). The donation queries page entity_connections; under prod IOWait

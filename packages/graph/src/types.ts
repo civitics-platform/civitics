@@ -135,15 +135,17 @@ export interface BracketTier {
   shortLabel: string
   minCents: number
   maxCents: number | null
-  /** Hex fill color for this tier's node */
+  /** Fill color for this tier's node — `rgb(var(--c-x))` token string (FIX-729) */
   color: string
 }
 
+// Warm intensity ladder: bronze (heaviest) → terracotta → ochre → amber.
+// Resolve with resolveColor()/withAlpha() from ./tokens in SVG attr contexts.
 export const BRACKET_TIERS: BracketTier[] = [
-  { id: 'mega',  label: 'Mega ($10k+)',        shortLabel: 'Mega',  minCents: 1_000_000, maxCents: null,    color: '#b45309' },
-  { id: 'major', label: 'Major ($2.5k–$10k)',  shortLabel: 'Major', minCents:   250_000, maxCents: 999_999, color: '#d97706' },
-  { id: 'mid',   label: 'Mid ($500–$2.5k)',    shortLabel: 'Mid',   minCents:    50_000, maxCents: 249_999, color: '#f59e0b' },
-  { id: 'small', label: 'Small ($200–$500)',   shortLabel: 'Small', minCents:    20_000, maxCents:  49_999, color: '#fbbf24' },
+  { id: 'mega',  label: 'Mega ($10k+)',        shortLabel: 'Mega',  minCents: 1_000_000, maxCents: null,    color: 'rgb(var(--c-viz-9))' },
+  { id: 'major', label: 'Major ($2.5k–$10k)',  shortLabel: 'Major', minCents:   250_000, maxCents: 999_999, color: 'rgb(var(--c-viz-6))' },
+  { id: 'mid',   label: 'Mid ($500–$2.5k)',    shortLabel: 'Mid',   minCents:    50_000, maxCents: 249_999, color: 'rgb(var(--c-viz-3))' },
+  { id: 'small', label: 'Small ($200–$500)',   shortLabel: 'Small', minCents:    20_000, maxCents:  49_999, color: 'rgb(var(--c-amber))' },
 ]
 
 // ── Viz-Specific Style Options ─────────────────────────────────────────────────

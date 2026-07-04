@@ -19,6 +19,7 @@ import {
 } from "d3-sankey";
 import type { RefObject } from "react";
 import type { SankeyOptions } from "./types";
+import { resolveToken, resolveColor } from "./tokens";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -56,29 +57,33 @@ interface SLink extends SankeyLinkMinimal<SNode, SLink> {
 const ROOT_NODE_ID = "root:federal";
 
 // Sector palette — same buckets as chord/spending so colors stay consistent.
+// Token strings (FIX-729) built from the 9-hue viz ramp + brand hues; the
+// original 18 Tailwind hexes collapse near-neighbour pairs (violet/violet-400,
+// amber/amber-400, red/rose, blue/sky, cyan/teal) onto the same token. Wrap
+// with resolveColor(…, svgEl) at d3 .attr() sites.
 const SECTOR_COLORS: Record<string, string> = {
-  "Manufacturing":         "#3b82f6",
-  "Information Technology": "#8b5cf6",
-  "Professional Services":  "#06b6d4",
-  "Health Care":           "#ec4899",
-  "Construction":          "#f59e0b",
-  "Transportation":        "#14b8a6",
-  "Finance":               "#10b981",
-  "Education":             "#6366f1",
-  "Real Estate":           "#84cc16",
-  "Mining":                "#ef4444",
-  "Retail":                "#f97316",
-  "Agriculture":           "#22c55e",
-  "Wholesale Trade":       "#a78bfa",
-  "Utilities":             "#fbbf24",
-  "Entertainment":         "#e11d48",
-  "Public Administration": "#0ea5e9",
-  "Other Services":        "#94a3b8",
-  "Other":                 "#475569",
+  "Manufacturing":         "rgb(var(--c-viz-4))",     // was blue → civic blue
+  "Information Technology": "rgb(var(--c-viz-7))",    // was violet → wine
+  "Professional Services":  "rgb(var(--c-viz-2))",    // was cyan → teal
+  "Health Care":           "rgb(var(--c-viz-9))",     // was pink → bronze
+  "Construction":          "rgb(var(--c-amber))",     // was amber
+  "Transportation":        "rgb(var(--c-viz-2))",     // was teal → teal
+  "Finance":               "rgb(var(--c-green-ink))", // was emerald
+  "Education":             "rgb(var(--c-blue))",      // was indigo → blue
+  "Real Estate":           "rgb(var(--c-viz-8))",     // was lime → olive
+  "Mining":                "rgb(var(--c-accent))",    // was red
+  "Retail":                "rgb(var(--c-viz-6))",     // was orange → terracotta
+  "Agriculture":           "rgb(var(--c-viz-1))",     // was green
+  "Wholesale Trade":       "rgb(var(--c-viz-7))",     // was violet-400 → wine
+  "Utilities":             "rgb(var(--c-viz-3))",     // was amber-400 → ochre-gold
+  "Entertainment":         "rgb(var(--c-accent))",    // was rose → accent
+  "Public Administration": "rgb(var(--c-viz-4))",     // was sky → civic blue
+  "Other Services":        "rgb(var(--c-ink-soft))",  // neutral
+  "Other":                 "rgb(var(--c-viz-5))",     // was slate → steel-slate
 };
 
 function sectorColor(sector: string): string {
-  return SECTOR_COLORS[sector] ?? "#475569";
+  return SECTOR_COLORS[sector] ?? "rgb(var(--c-viz-5))";
 }
 
 function fmtMoney(cents: number): string {
@@ -250,6 +255,17 @@ export function SankeyGraph({ className = "", svgRef: externalSvgRef, vizOptions
     d3.select(svg).selectAll("*").remove();
     d3.select(svg).attr("width", width).attr("height", height);
 
+    // SVG presentation attributes can't carry var() — resolve tokens to
+    // concrete colors against the svg's scope at draw time (FIX-729).
+    const T = {
+      viz4:      resolveToken("--c-viz-4", svg),
+      viz5:      resolveToken("--c-viz-5", svg),
+      viz7:      resolveToken("--c-viz-7", svg),
+      termBg:    resolveToken("--c-term-bg", svg),
+      termPanel: resolveToken("--c-term-panel", svg),
+      ink:       resolveToken("--c-ink", svg),
+    };
+
     const margin = { top: 24, right: 200, bottom: 24, left: 80 };
 
     const sankey = d3Sankey<SNode, SLink>()
@@ -289,9 +305,9 @@ export function SankeyGraph({ className = "", svgRef: externalSvgRef, vizOptions
         // Colour by sector when a sector exists in the path; else neutral.
         const tgt = d.target as SNode;
         const src = d.source as SNode;
-        if (tgt.tier === "sector") return sectorColor(tgt.label);
-        if (src.tier === "sector") return sectorColor(src.label);
-        return "#475569";
+        if (tgt.tier === "sector") return resolveColor(sectorColor(tgt.label), svg);
+        if (src.tier === "sector") return resolveColor(sectorColor(src.label), svg);
+        return T.viz5;
       })
       .attr("stroke-opacity", 0.45)
       .attr("stroke-width", (d) => Math.max(1, d.width ?? 1))
@@ -317,12 +333,12 @@ export function SankeyGraph({ className = "", svgRef: externalSvgRef, vizOptions
       .attr("width", (d) => (d.x1 ?? 0) - (d.x0 ?? 0))
       .attr("height", (d) => Math.max(1, (d.y1 ?? 0) - (d.y0 ?? 0)))
       .attr("fill", (d) => {
-        if (d.tier === "root") return "#a855f7";
-        if (d.tier === "sector") return sectorColor(d.label);
-        if (d.tier === "agency") return "#3b82f6";
-        return "#1e293b"; // vendor
+        if (d.tier === "root") return T.viz7; // was purple → wine
+        if (d.tier === "sector") return resolveColor(sectorColor(d.label), svg);
+        if (d.tier === "agency") return T.viz4;
+        return T.termPanel; // vendor — neutral well
       })
-      .attr("stroke", "#0f172a")
+      .attr("stroke", T.termBg)
       .attr("stroke-width", 1)
       .style("cursor", "pointer")
       .append("title")
@@ -350,7 +366,7 @@ export function SankeyGraph({ className = "", svgRef: externalSvgRef, vizOptions
         })
         .attr("font-size", (d) => (d.tier === "root" ? 13 : 11))
         .attr("font-family", "system-ui, sans-serif")
-        .attr("fill", "#e2e8f0")
+        .attr("fill", T.ink)
         .text((d) => {
           const max = d.tier === "vendor" ? 28 : 22;
           if (d.label.length > max) return d.label.slice(0, max - 1) + "…";
@@ -375,8 +391,8 @@ export function SankeyGraph({ className = "", svgRef: externalSvgRef, vizOptions
     return (
       <div className={`flex items-center justify-center ${className}`}>
         <div className="text-center">
-          <div className="w-8 h-8 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin mx-auto mb-3" />
-          <p className="text-gray-500 text-sm">Loading contract flows…</p>
+          <div className="w-8 h-8 rounded-full border-2 border-accent border-t-transparent animate-spin mx-auto mb-3" />
+          <p className="text-ink-soft text-sm">Loading contract flows…</p>
         </div>
       </div>
     );
@@ -385,7 +401,7 @@ export function SankeyGraph({ className = "", svgRef: externalSvgRef, vizOptions
   if (error) {
     return (
       <div className={`flex items-center justify-center ${className}`}>
-        <p className="text-red-400 text-sm">Failed to load Sankey: {error}</p>
+        <p className="text-accent text-sm">Failed to load Sankey: {error}</p>
       </div>
     );
   }
@@ -393,7 +409,7 @@ export function SankeyGraph({ className = "", svgRef: externalSvgRef, vizOptions
   if (!graph) {
     return (
       <div className={`flex items-center justify-center ${className}`}>
-        <p className="text-gray-500 text-sm">No contract flows match the current filters.</p>
+        <p className="text-ink-soft text-sm">No contract flows match the current filters.</p>
       </div>
     );
   }
@@ -401,10 +417,10 @@ export function SankeyGraph({ className = "", svgRef: externalSvgRef, vizOptions
   return (
     <div ref={containerRef} className={`relative overflow-hidden flex flex-col ${className}`}>
       <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 pointer-events-none">
-        <span className="text-xs text-gray-400 bg-gray-950/70 px-2 py-0.5 rounded-full">
+        <span className="text-xs text-ink-soft bg-term-bg/70 px-2 py-0.5 rounded-full">
           {data && data.totalCents > 0 && (
             <>
-              <span className="text-emerald-400 font-medium">{fmtMoney(data.totalCents)}</span>
+              <span className="text-green-ink font-medium">{fmtMoney(data.totalCents)}</span>
               <span className="ml-1">in {data.scannedRows.toLocaleString()} contracts</span>
             </>
           )}

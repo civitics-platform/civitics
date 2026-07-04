@@ -15,6 +15,7 @@ import { useEffect, useRef, useState } from "react";
 import * as d3 from "d3";
 import type { RefObject } from "react";
 import type { GanttOptions } from "./types";
+import { resolveToken, resolveColor } from "./tokens";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -36,13 +37,15 @@ export interface GanttGraphProps {
   primaryEntityName?: string | null;
 }
 
-// Party color
+// Party color — token strings (FIX-729); wine (viz-7) stands in for
+// independents (no purple in the token system). Wrap with
+// resolveColor(…, svgEl) at d3 .attr() sites.
 function partyColor(p: string | null): string {
   switch ((p ?? "").toLowerCase()) {
-    case "democrat":    return "#2563eb";
-    case "republican":  return "#dc2626";
-    case "independent": return "#7c3aed";
-    default:            return "#94a3b8";
+    case "democrat":    return "rgb(var(--c-blue))";
+    case "republican":  return "rgb(var(--c-accent))";
+    case "independent": return "rgb(var(--c-viz-7))";
+    default:            return "rgb(var(--c-ink-soft))";
   }
 }
 
@@ -84,8 +87,18 @@ export function GanttGraph({
 
   useEffect(() => {
     if (!svgRef.current || rows.length === 0) return;
-    const svg = d3.select(svgRef.current);
+    const svgEl = svgRef.current;
+    const svg = d3.select(svgEl);
     svg.selectAll("*").remove();
+
+    // SVG presentation attributes can't carry var() — resolve tokens to
+    // concrete colors against the svg's scope at draw time (FIX-729).
+    const T = {
+      ink:     resolveToken("--c-ink", svgEl),
+      inkSoft: resolveToken("--c-ink-soft", svgEl),
+      amber:   resolveToken("--c-amber", svgEl),
+      termBg:  resolveToken("--c-term-bg", svgEl),
+    };
 
     const visible = showCurrent ? rows : rows.filter(r => !r.isCurrent);
     if (visible.length === 0) return;
@@ -120,7 +133,7 @@ export function GanttGraph({
     g.append("g")
       .attr("transform", `translate(0,-10)`)
       .call(d3.axisTop(xScale).ticks(8))
-      .selectAll("text").attr("fill", "#94a3b8");
+      .selectAll("text").attr("fill", T.inkSoft);
 
     // Y labels — left
     g.append("g")
@@ -130,7 +143,7 @@ export function GanttGraph({
       .attr("x", -10)
       .attr("y", d => (yScale(d) ?? 0) + (yScale.bandwidth() / 2) + 4)
       .attr("text-anchor", "end")
-      .attr("fill", "#cbd5e1")
+      .attr("fill", T.ink)
       .attr("font-size", 11)
       .text(d => d.length > 28 ? `${d.slice(0, 26)}…` : d);
 
@@ -145,9 +158,9 @@ export function GanttGraph({
         .attr("y", y)
         .attr("width", d => Math.max(2, xScale(parseDate(d.endDate) ?? new Date()) - xScale(parseDate(d.startDate) ?? minDate)))
         .attr("height", yScale.bandwidth())
-        .attr("fill", d => partyColor(d.party))
+        .attr("fill", d => resolveColor(partyColor(d.party), svgEl))
         .attr("fill-opacity", d => d.isCurrent ? 0.85 : 0.55)
-        .attr("stroke", d => d.isCurrent ? "#facc15" : "transparent")
+        .attr("stroke", d => d.isCurrent ? T.amber : "transparent")
         .attr("stroke-width", d => d.isCurrent ? 1.5 : 0)
         .attr("stroke-dasharray", d => d.isCurrent ? "0" : "0")
         .style("cursor", "pointer")
@@ -168,7 +181,7 @@ export function GanttGraph({
           .attr("x", d => xScale(parseDate(d.startDate) ?? minDate) + 4)
           .attr("y", y + (yScale.bandwidth() / 2) + 3)
           .attr("font-size", 9)
-          .attr("fill", "#0f172a")
+          .attr("fill", T.termBg)
           .text(d => {
             const start = parseDate(d.startDate) ?? minDate;
             const end   = parseDate(d.endDate) ?? new Date();
@@ -185,35 +198,35 @@ export function GanttGraph({
         .attr("y", 18)
         .attr("font-size", 13)
         .attr("font-weight", 600)
-        .attr("fill", "#cbd5e1")
+        .attr("fill", T.ink)
         .text(`${primaryEntityName} — Leadership Tenure`);
     }
   }, [rows, groupBy, showCurrent, showLabels, primaryEntityName, svgRef]);
 
   if (!primaryEntityId) {
     return (
-      <div className={`flex items-center justify-center h-full text-gray-400 text-sm ${className}`}>
+      <div className={`flex items-center justify-center h-full text-ink-soft text-sm ${className}`}>
         Add an agency to view its leadership tenure
       </div>
     );
   }
   if (error) {
     return (
-      <div className={`flex items-center justify-center h-full text-red-400 text-sm ${className}`}>
+      <div className={`flex items-center justify-center h-full text-accent text-sm ${className}`}>
         Tenure error: {error}
       </div>
     );
   }
   if (loading) {
     return (
-      <div className={`flex items-center justify-center h-full text-gray-400 text-sm ${className}`}>
+      <div className={`flex items-center justify-center h-full text-ink-soft text-sm ${className}`}>
         Loading appointment data…
       </div>
     );
   }
   if (rows.length === 0) {
     return (
-      <div className={`flex items-center justify-center h-full text-gray-400 text-sm ${className}`}>
+      <div className={`flex items-center justify-center h-full text-ink-soft text-sm ${className}`}>
         No leadership data on file for this agency
       </div>
     );

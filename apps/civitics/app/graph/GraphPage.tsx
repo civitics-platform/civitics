@@ -136,7 +136,7 @@ export function GraphPage({ initialCode, aiEnabled = true }: GraphPageProps = {}
           name: "Institution", // server resolves the real name on group fetch
           type: "group",
           icon: "🏛",
-          color: "#6366f1",
+          color: "rgb(var(--c-viz-5))",
           filter: { entity_type: "official", governingBody: id },
           isPremade: false,
         });

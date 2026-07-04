@@ -1,30 +1,36 @@
+// Token-native party classes (FIX-729). The Badge component variants are the
+// reference implementation; wine (viz-7) stands in for independents — the
+// token system has no purple. For color VALUES (SVG/canvas/d3), the canonical
+// map is PARTY_COLORS in @civitics/graph (rgb(var(--c-x)) strings).
+// Amber contrast rule: "other" uses bg-amber/20 + text-ink tints — bare amber
+// text is unreadable on paper.
 export const PARTY_COLORS = {
   democrat: {
-    text: "text-blue-600",
-    bg: "bg-blue-50",
-    border: "border-blue-200",
-    dot: "bg-blue-600",
-    badge: "bg-blue-100 text-blue-700",
+    text: "text-civic-blue",
+    bg: "bg-civic-blue/10",
+    border: "border-civic-blue/25",
+    dot: "bg-civic-blue",
+    badge: "bg-civic-blue/10 text-civic-blue",
   },
   republican: {
-    text: "text-red-600",
-    bg: "bg-red-50",
-    border: "border-red-200",
-    dot: "bg-red-600",
-    badge: "bg-red-100 text-red-700",
+    text: "text-accent",
+    bg: "bg-accent/10",
+    border: "border-accent/25",
+    dot: "bg-accent",
+    badge: "bg-accent/10 text-accent",
   },
   independent: {
-    text: "text-purple-600",
-    bg: "bg-purple-50",
-    border: "border-purple-200",
-    dot: "bg-purple-600",
-    badge: "bg-purple-100 text-purple-700",
+    text: "text-viz-7",
+    bg: "bg-viz-7/10",
+    border: "border-viz-7/25",
+    dot: "bg-viz-7",
+    badge: "bg-viz-7/10 text-viz-7",
   },
   other: {
-    text: "text-amber-600",
-    bg: "bg-amber-50",
-    border: "border-amber-200",
-    dot: "bg-amber-600",
-    badge: "bg-amber-100 text-amber-700",
+    text: "text-ink",
+    bg: "bg-amber/20",
+    border: "border-amber/40",
+    dot: "bg-amber",
+    badge: "bg-amber/20 text-ink",
   },
 } as const;

@@ -48,6 +48,11 @@ export { MAX_FOCUS_ENTITIES, isFocusGroup, isFocusEntity, BRACKET_TIERS } from "
 export { DEFAULT_GRAPH_VIEW, BUILT_IN_PRESETS, applyPreset, markDirty } from "./presets";
 export { CONNECTION_TYPE_REGISTRY, DEFAULT_CONNECTION_STATE } from "./connections";
 
+// ── Design-token helpers (FIX-729) ──────────────────────────────────────────
+export { resolveToken, resolvePaperToken, resolveColor, withAlpha, toHexColor } from "./tokens";
+
+import { CONNECTION_TYPE_REGISTRY } from "./connections";
+
 // ── Groups ──────────────────────────────────────────────────────────────────
 export {
   BUILT_IN_GROUPS,
@@ -222,36 +227,50 @@ export interface GraphEdge {
   strength: number;
 }
 
+// ── Token palettes (FIX-729) ────────────────────────────────────────────────
+// Values are `rgb(var(--c-x))` design-token strings. In SVG apply via style=/
+// d3 .style(), or resolve with resolveColor()/resolveToken() from ./tokens for
+// .attr()/interpolator/export contexts. Node FILLS are paper-family on purpose
+// ("records on the terminal") — resolve them from :root (no scope element) so
+// they stay light chips on the dark instrument.
+
 export const NODE_COLORS: Record<NodeType, { fill: string; stroke: string }> = {
-  official:       { fill: "#f8fafc", stroke: "#6366f1" },
-  governing_body: { fill: "#f5f3ff", stroke: "#7c3aed" },
-  proposal:       { fill: "#fffbeb", stroke: "#f59e0b" },
-  initiative:     { fill: "#ecfdf5", stroke: "#059669" },   // emerald — civic grassroots energy
-  corporation:    { fill: "#f0fdf4", stroke: "#16a34a" },
-  pac:            { fill: "#fff7ed", stroke: "#ea580c" },
-  individual:     { fill: "#eff6ff", stroke: "#3b82f6" },
+  official:       { fill: "rgb(var(--c-card))", stroke: "rgb(var(--c-blue))" },
+  governing_body: { fill: "rgb(var(--c-card))", stroke: "rgb(var(--c-viz-5))" },
+  proposal:       { fill: "rgb(var(--c-card))", stroke: "rgb(var(--c-amber))" },
+  initiative:     { fill: "rgb(var(--c-card))", stroke: "rgb(var(--c-green-ink))" },
+  corporation:    { fill: "rgb(var(--c-card))", stroke: "rgb(var(--c-green-ink))" },
+  pac:            { fill: "rgb(var(--c-card))", stroke: "rgb(var(--c-viz-6))" },
+  individual:     { fill: "rgb(var(--c-card))", stroke: "rgb(var(--c-blue))" },
 };
 
+// Canonical party palette (value form). The Badge component in @civitics/ui is
+// the class-form reference. Wine (viz-7) stands in for independents — the
+// token system has no purple (FIX-719).
 export const PARTY_COLORS: Record<string, string> = {
-  democrat:    "#3b82f6",
-  republican:  "#ef4444",
-  independent: "#a855f7",
-  nonpartisan: "#94a3b8",
+  democrat:    "rgb(var(--c-blue))",
+  republican:  "rgb(var(--c-accent))",
+  independent: "rgb(var(--c-viz-7))",
+  nonpartisan: "rgb(var(--c-ink-soft))",
 };
 
+// Derived from CONNECTION_TYPE_REGISTRY — the registry is the single
+// authoritative edge palette (FIX-729). `lobbying` is a legacy edge type with
+// no registry entry (no derived data writes it today); it keeps a ramp hue
+// here so old consumers stay total over EdgeType.
 export const EDGE_COLORS: Record<EdgeType, string> = {
-  donation:            "#22c55e",
-  vote_yes:            "#3b82f6",
-  vote_no:             "#ef4444",
-  vote_abstain:        "#94a3b8",
-  nomination_vote_yes: "#8b5cf6",
-  nomination_vote_no:  "#db2777",
-  appointment:         "#a855f7",
-  revolving_door:      "#f97316",
-  oversight:           "#94a3b8",
-  lobbying:            "#eab308",
-  co_sponsorship:      "#06b6d4",
-  contract_award:      "#14b8a6",
+  donation:            CONNECTION_TYPE_REGISTRY['donation']!.color,
+  vote_yes:            CONNECTION_TYPE_REGISTRY['vote_yes']!.color,
+  vote_no:             CONNECTION_TYPE_REGISTRY['vote_no']!.color,
+  vote_abstain:        CONNECTION_TYPE_REGISTRY['vote_abstain']!.color,
+  nomination_vote_yes: CONNECTION_TYPE_REGISTRY['nomination_vote_yes']!.color,
+  nomination_vote_no:  CONNECTION_TYPE_REGISTRY['nomination_vote_no']!.color,
+  appointment:         CONNECTION_TYPE_REGISTRY['appointment']!.color,
+  revolving_door:      CONNECTION_TYPE_REGISTRY['revolving_door']!.color,
+  oversight:           CONNECTION_TYPE_REGISTRY['oversight']!.color,
+  lobbying:            "rgb(var(--c-viz-3))",
+  co_sponsorship:      CONNECTION_TYPE_REGISTRY['co_sponsorship']!.color,
+  contract_award:      CONNECTION_TYPE_REGISTRY['contract_award']!.color,
 };
 
 export function edgeWidth(edge: Pick<GraphEdge, "type" | "amountCents">): number {
@@ -274,7 +293,7 @@ export interface VisualConfig {
 export const DEFAULT_VISUAL_CONFIG: VisualConfig = {
   nodeSizeEncoding: "connection_count",
   nodeColorEncoding: "entity_type",
-  singleColor: "#3b82f6",
+  singleColor: "rgb(var(--c-blue))",
   edgeThicknessEncoding: "amount_proportional",
   edgeOpacity: 0.7,
   layout: "force",

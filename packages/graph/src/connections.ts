@@ -11,32 +11,41 @@ import { isFocusGroup } from './types'
 
 // ── Registry ───────────────────────────────────────────────────────────────────
 
+// Colors are `rgb(var(--c-x))` design-token strings (FIX-729) — they re-bind
+// per scope (terminal instrument vs paper embed). Apply in SVG via `style=` /
+// d3 `.style()`, or resolve to concrete values with resolveColor() from
+// ./tokens for `.attr()`/interpolator/export contexts. Semantics:
+//   donation → amber          vote_yes → green-ink     vote_no → accent
+//   vote_abstain → ink-soft   oversight → civic blue   contract → teal
+//   nomination yes/no → ochre-gold/wine   appointment → terracotta
+//   co-sponsorship → olive    revolving door → bronze  alignment → steel-slate
+//     (alignment legend only — its edges render dynamically by ratio)
 export const CONNECTION_TYPE_REGISTRY: Record<string, ConnectionTypeDefinition> = {
   donation: {
     label: 'Donations',
     icon: '💰',
-    color: '#f59e0b',
+    color: 'rgb(var(--c-amber))',
     description: 'PAC and individual donor contributions',
     hasAmount: true,
   },
   vote_yes: {
     label: 'Voted Yes',
     icon: '✓',
-    color: '#22c55e',
+    color: 'rgb(var(--c-green-ink))',
     description: 'Affirmative votes on legislation',
     hasAmount: false,
   },
   vote_no: {
     label: 'Voted No',
     icon: '✗',
-    color: '#ef4444',
+    color: 'rgb(var(--c-accent))',
     description: 'Negative votes on legislation',
     hasAmount: false,
   },
   vote_abstain: {
     label: 'Abstained',
     icon: '○',
-    color: '#94a3b8',
+    color: 'rgb(var(--c-ink-soft))',
     description: 'Present / not voting',
     hasAmount: false,
   },
@@ -46,56 +55,56 @@ export const CONNECTION_TYPE_REGISTRY: Record<string, ConnectionTypeDefinition> 
   nomination_vote_yes: {
     label: 'Confirmed',
     icon: '⭐',
-    color: '#8b5cf6',
+    color: 'rgb(var(--c-viz-3))',
     description: 'Voted to confirm nomination',
     hasAmount: false,
   },
   nomination_vote_no: {
     label: 'Rejected',
     icon: '✗',
-    color: '#ec4899',
+    color: 'rgb(var(--c-viz-7))',
     description: 'Voted against confirmation',
     hasAmount: false,
   },
   oversight: {
     label: 'Oversight',
     icon: '👁',
-    color: '#06b6d4',
+    color: 'rgb(var(--c-blue))',
     description: 'Committee oversight relationships',
     hasAmount: false,
   },
   co_sponsorship: {
     label: 'Co-Sponsored',
     icon: '🤝',
-    color: '#84cc16',
+    color: 'rgb(var(--c-viz-8))',
     description: 'Bill co-sponsorship',
     hasAmount: false,
   },
   appointment: {
     label: 'Appointment',
     icon: '🪪',
-    color: '#d97706',
+    color: 'rgb(var(--c-viz-6))',
     description: 'Cabinet- and agency-leadership appointments (official → agency)',
     hasAmount: false,
   },
   revolving_door: {
     label: 'Revolving Door',
     icon: '🔁',
-    color: '#ec4899',
+    color: 'rgb(var(--c-viz-9))',
     description: 'Official ↔ corporation movement via career history',
     hasAmount: false,
   },
   contract_award: {
     label: 'Contracts',
     icon: '💵',
-    color: '#14b8a6',
+    color: 'rgb(var(--c-viz-2))',
     description: 'Federal contracts and grants flowing from agencies to vendors',
     hasAmount: true,
   },
   alignment: {
     label: 'Alignment',
     icon: '≈',
-    color: '#8b5cf6',
+    color: 'rgb(var(--c-viz-5))',
     description: 'Alignment between your civic positions and representative votes',
     hasAmount: false,
   },

@@ -15,6 +15,7 @@ import { useEffect, useRef, useState } from "react";
 import * as d3 from "d3";
 import type { RefObject } from "react";
 import type { ScatterOptions, FocusGroup } from "./types";
+import { resolveToken, resolveColor } from "./tokens";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -40,13 +41,15 @@ export interface ScatterGraphProps {
 
 // ── Color palette by agency type ──────────────────────────────────────────────
 
+// Token strings from the categorical viz ramp (FIX-729) — wrap with
+// resolveColor(…, svgEl) at d3 .attr() sites.
 const TYPE_COLORS: Record<string, string> = {
-  federal:     "#06b6d4",
-  independent: "#a855f7",
-  cabinet:     "#3b82f6",
-  state:       "#22c55e",
-  local:       "#f97316",
-  default:     "#6b7280",
+  federal:     "rgb(var(--c-viz-2))",    // was cyan → teal
+  independent: "rgb(var(--c-viz-7))",    // was purple → wine
+  cabinet:     "rgb(var(--c-viz-4))",    // was blue → civic blue
+  state:       "rgb(var(--c-viz-1))",    // was green
+  local:       "rgb(var(--c-viz-6))",    // was orange → terracotta
+  default:     "rgb(var(--c-ink-soft))", // neutral
 };
 
 function colorForType(t: string): string {
@@ -90,8 +93,18 @@ export function ScatterGraph({
 
   useEffect(() => {
     if (!svgRef.current || rows.length === 0) return;
-    const svg = d3.select(svgRef.current);
+    const svgEl = svgRef.current;
+    const svg = d3.select(svgEl);
     svg.selectAll("*").remove();
+
+    // SVG presentation attributes can't carry var() — resolve tokens to
+    // concrete colors against the svg's scope at draw time (FIX-729).
+    const T = {
+      ink:     resolveToken("--c-ink", svgEl),
+      inkSoft: resolveToken("--c-ink-soft", svgEl),
+      amber:   resolveToken("--c-amber", svgEl),
+      termBg:  resolveToken("--c-term-bg", svgEl),
+    };
 
     const container = containerRef.current;
     const width  = container?.clientWidth  ?? 800;
@@ -130,17 +143,17 @@ export function ScatterGraph({
     g.append("g")
       .attr("transform", `translate(0,${innerH})`)
       .call(d3.axisBottom(xScale).ticks(6, "~s"))
-      .selectAll("text").attr("fill", "#94a3b8");
+      .selectAll("text").attr("fill", T.inkSoft);
     g.append("g")
       .call(d3.axisLeft(yScale).ticks(6, "~s"))
-      .selectAll("text").attr("fill", "#94a3b8");
+      .selectAll("text").attr("fill", T.inkSoft);
 
     // Axis labels
     g.append("text")
       .attr("x", innerW / 2)
       .attr("y", innerH + 38)
       .attr("text-anchor", "middle")
-      .attr("fill", "#94a3b8")
+      .attr("fill", T.inkSoft)
       .attr("font-size", 12)
       .text(axisLabel(xAxis));
     g.append("text")
@@ -148,7 +161,7 @@ export function ScatterGraph({
       .attr("x", -innerH / 2)
       .attr("y", -50)
       .attr("text-anchor", "middle")
-      .attr("fill", "#94a3b8")
+      .attr("fill", T.inkSoft)
       .attr("font-size", 12)
       .text(axisLabel(yAxis));
 
@@ -160,9 +173,9 @@ export function ScatterGraph({
       .attr("cx", d => xScale(xValue(d)))
       .attr("cy", d => yScale(yValue(d)))
       .attr("r",  d => rScale(sValue(d)))
-      .attr("fill", d => colorForType(d.agencyType))
+      .attr("fill", d => resolveColor(colorForType(d.agencyType), svgEl))
       .attr("fill-opacity", d => d.agencyId === primaryEntityId ? 0.9 : 0.55)
-      .attr("stroke", d => d.agencyId === primaryEntityId ? "#facc15" : "#0f172a")
+      .attr("stroke", d => d.agencyId === primaryEntityId ? T.amber : T.termBg)
       .attr("stroke-width", d => d.agencyId === primaryEntityId ? 2.5 : 0.75)
       .style("cursor", "pointer");
 
@@ -183,28 +196,28 @@ export function ScatterGraph({
         .attr("x", d => xScale(xValue(d)) + rScale(sValue(d)) + 4)
         .attr("y", d => yScale(yValue(d)) + 3)
         .attr("font-size", 10)
-        .attr("fill", "#cbd5e1")
+        .attr("fill", T.ink)
         .text(d => d.agencyAcronym ?? d.agencyName);
     }
   }, [rows, xAxis, yAxis, sizeBy, showLabels, logXAxis, logYAxis, primaryEntityId, svgRef]);
 
   if (error) {
     return (
-      <div className={`flex items-center justify-center h-full text-red-400 text-sm ${className}`}>
+      <div className={`flex items-center justify-center h-full text-accent text-sm ${className}`}>
         Scatter error: {error}
       </div>
     );
   }
   if (loading) {
     return (
-      <div className={`flex items-center justify-center h-full text-gray-400 text-sm ${className}`}>
+      <div className={`flex items-center justify-center h-full text-ink-soft text-sm ${className}`}>
         Loading agency data…
       </div>
     );
   }
   if (rows.length === 0) {
     return (
-      <div className={`flex items-center justify-center h-full text-gray-400 text-sm ${className}`}>
+      <div className={`flex items-center justify-center h-full text-ink-soft text-sm ${className}`}>
         No agency staffing data available
       </div>
     );

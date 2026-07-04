@@ -12,6 +12,7 @@ import { useState } from 'react';
 import type { GraphView } from '../types';
 import type { ConnectionTypeDefinition } from '../types';
 import { TreeNode } from './TreeNode';
+import { toHexColor } from '../tokens';
 
 export type ConnectionTypeSettings = GraphView['connections'][string];
 
@@ -83,7 +84,9 @@ export function ConnectionStyleRow({ type, def, settings, onChange, count }: Con
               />
               <input
                 type="color"
-                value={settings.color}
+                // color inputs reject rgb(var(--c-x)) token strings — resolve
+                // to concrete hex (FIX-729). User picks write back plain hex.
+                value={toHexColor(settings.color)}
                 onChange={e => set('color', e.target.value)}
                 className="sr-only"
               />

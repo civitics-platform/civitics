@@ -6,6 +6,7 @@ import type { RefObject } from "react";
 import type { GraphNode as NewGraphNode, NodeActions, ChordOptions, FocusGroup } from "./types";
 import { Tooltip, useTooltip } from "./components/Tooltip";
 import { NodePopup } from "./components/NodePopup";
+import { resolveColor, resolveToken } from "./tokens";
 
 interface DynamicGroup {
   label: string;
@@ -52,65 +53,75 @@ export interface ChordGraphProps {
 // server so the user can drag the slider without firing new requests.
 const MAX_PAC_ARCS = 50;
 
-// Industry arc colors — enough for up to 13 industries
+// Industry arc colors — enough for up to 13 industries. Built from the
+// 9-hue categorical viz ramp (--c-viz-1..9), cycling for slots 10–13
+// (FIX-729). Length must stay 13 — industryColor() hashes mod length.
 const INDUSTRY_COLORS = [
-  "#ec4899", "#f97316", "#06b6d4", "#6366f1", "#64748b",
-  "#a78bfa", "#fbbf24", "#4ade80", "#94a3b8", "#f43f5e",
-  "#10b981", "#8b5cf6", "#0ea5e9",
+  "rgb(var(--c-viz-1))", "rgb(var(--c-viz-2))", "rgb(var(--c-viz-3))",
+  "rgb(var(--c-viz-4))", "rgb(var(--c-viz-5))", "rgb(var(--c-viz-6))",
+  "rgb(var(--c-viz-7))", "rgb(var(--c-viz-8))", "rgb(var(--c-viz-9))",
+  "rgb(var(--c-viz-1))", "rgb(var(--c-viz-2))", "rgb(var(--c-viz-3))",
+  "rgb(var(--c-viz-4))",
 ];
 
 // Party arc colors keyed to API party_chamber values.
 // Includes both the legacy underscore form ("dem_senate") and the
 // post-cutover space form ("Democrat Senate") emitted by the new RPCs.
+// Token strings (FIX-729) — the per-chamber shade split (blue-500 senate vs
+// blue-600 house) collapses to one hue per party; chamber is still legible
+// from the arc labels.
 const PARTY_COLORS: Record<string, string> = {
   // Legacy
-  dem_senate:  "#3b82f6",
-  rep_senate:  "#ef4444",
-  dem_house:   "#2563eb",
-  rep_house:   "#dc2626",
-  independent: "#a855f7",
+  dem_senate:  "rgb(var(--c-blue))",
+  rep_senate:  "rgb(var(--c-accent))",
+  dem_house:   "rgb(var(--c-blue))",
+  rep_house:   "rgb(var(--c-accent))",
+  independent: "rgb(var(--c-viz-7))",
   // Post-cutover party_chamber strings
-  "Democrat Senate":     "#3b82f6",
-  "Republican Senate":   "#ef4444",
-  "Democrat House":      "#2563eb",
-  "Republican House":    "#dc2626",
-  "Independent Senate":  "#a855f7",
-  "Independent House":   "#a855f7",
-  "Other Senate":        "#9ca3af",
-  "Other House":         "#9ca3af",
+  "Democrat Senate":     "rgb(var(--c-blue))",
+  "Republican Senate":   "rgb(var(--c-accent))",
+  "Democrat House":      "rgb(var(--c-blue))",
+  "Republican House":    "rgb(var(--c-accent))",
+  "Independent Senate":  "rgb(var(--c-viz-7))",
+  "Independent House":   "rgb(var(--c-viz-7))",
+  "Other Senate":        "rgb(var(--c-ink-soft))",
+  "Other House":         "rgb(var(--c-ink-soft))",
 };
 
 // Vote-outcome arc colors — green for affirmative, red for negative,
 // neutral grey for abstain / present / not-voting.
 const VOTE_OUTCOME_COLORS: Record<string, string> = {
-  yes:   "#22c55e",
-  no:    "#ef4444",
-  other: "#94a3b8",
+  yes:   "rgb(var(--c-green-ink))",
+  no:    "rgb(var(--c-accent))",
+  other: "rgb(var(--c-ink-soft))",
 };
 
 // Donor-type arc colors — distinct hues for the financial_entities.entity_type
 // enum (individual / pac / super_pac / corporation / union / party_committee /
 // small_donor_aggregate / tribal / 527 / other).
 const DONOR_TYPE_COLORS: Record<string, string> = {
-  individual:            "#fbbf24",
-  pac:                   "#f97316",
-  super_pac:             "#dc2626",
-  corporation:           "#0891b2",
-  union:                 "#10b981",
-  party_committee:       "#6366f1",
-  small_donor_aggregate: "#84cc16",
-  tribal:                "#a855f7",
-  '527':                 "#ec4899",
-  other:                 "#94a3b8",
+  individual:            "rgb(var(--c-amber))",     // was amber
+  pac:                   "rgb(var(--c-viz-6))",     // was orange → terracotta
+  super_pac:             "rgb(var(--c-accent))",    // was red
+  corporation:           "rgb(var(--c-viz-2))",     // was cyan → teal
+  union:                 "rgb(var(--c-green-ink))", // was emerald
+  party_committee:       "rgb(var(--c-viz-4))",     // was indigo → civic blue
+  small_donor_aggregate: "rgb(var(--c-viz-8))",     // was lime → olive
+  tribal:                "rgb(var(--c-viz-7))",     // was purple → wine
+  '527':                 "rgb(var(--c-viz-9))",     // was pink → bronze
+  other:                 "rgb(var(--c-ink-soft))",  // neutral
 };
 
 // Donor-bracket arc colors — match BRACKET_TIERS in types.ts so chord and
 // force graph speak the same visual language for donor size brackets.
+// Was a 4-step amber-monochrome ramp (amber-700 → amber-400); the token
+// system has one amber, so the tiers now step through the warm viz hues
+// dark→bright: bronze → terracotta → ochre-gold → amber (FIX-729).
 const BRACKET_COLORS: Record<string, string> = {
-  mega:  "#b45309",
-  major: "#d97706",
-  mid:   "#f59e0b",
-  small: "#fbbf24",
+  mega:  "rgb(var(--c-viz-9))",
+  major: "rgb(var(--c-viz-6))",
+  mid:   "rgb(var(--c-viz-3))",
+  small: "rgb(var(--c-amber))",
 };
 
 // Stable colorhash for industry tags so each industry maps to the same
@@ -119,7 +130,7 @@ const BRACKET_COLORS: Record<string, string> = {
 function industryColor(tag: string): string {
   let h = 0;
   for (let i = 0; i < tag.length; i++) h = (h * 31 + tag.charCodeAt(i)) | 0;
-  return INDUSTRY_COLORS[Math.abs(h) % INDUSTRY_COLORS.length] ?? "#94a3b8";
+  return INDUSTRY_COLORS[Math.abs(h) % INDUSTRY_COLORS.length] ?? "rgb(var(--c-ink-soft))";
 }
 
 /**
@@ -136,7 +147,7 @@ function colorForArc(
   // Recipient-side palettes override INDUSTRY_COLORS
   if (group.kind === 'recipient') {
     if (dataMode === 'sector-vote' && group.id) {
-      return VOTE_OUTCOME_COLORS[group.id] ?? "#6b7280";
+      return VOTE_OUTCOME_COLORS[group.id] ?? "rgb(var(--c-ink-soft))";
     }
     const partyColor = PARTY_COLORS[group.id ?? ''];
     if (partyColor) return partyColor;
@@ -144,24 +155,24 @@ function colorForArc(
     // Hash to a stable INDUSTRY_COLORS slot so each official gets a
     // distinct color across re-renders.
     if (group.id) return industryColor(group.id);
-    return "#6b7280";
+    return "rgb(var(--c-ink-soft))";
   }
   // Donor-side palettes
   if (granularity === 'by-bracket' && group.id) {
-    return BRACKET_COLORS[group.id] ?? "#94a3b8";
+    return BRACKET_COLORS[group.id] ?? "rgb(var(--c-ink-soft))";
   }
   if (granularity === 'top-pacs') {
     // Color each PAC arc by its industry so PACs cluster visually by sector.
     return industryColor(group.industry ?? 'untagged');
   }
   if (dataMode === 'donor-type-party' && group.id) {
-    return DONOR_TYPE_COLORS[group.id] ?? "#6b7280";
+    return DONOR_TYPE_COLORS[group.id] ?? "rgb(var(--c-ink-soft))";
   }
   if (dataMode === 'industry-party' || dataMode === 'industry-official') {
     // Use the industry tag (group.id) for stable per-industry colors.
     return industryColor(group.id ?? `idx-${index}`);
   }
-  return INDUSTRY_COLORS[index % INDUSTRY_COLORS.length] ?? "#94a3b8";
+  return INDUSTRY_COLORS[index % INDUSTRY_COLORS.length] ?? "rgb(var(--c-ink-soft))";
 }
 
 function formatDollars(usd: number): string {
@@ -184,6 +195,13 @@ function draw(
 ) {
   d3.select(svgEl).selectAll("*").remove();
 
+  // SVG presentation attributes can't carry var() — resolve tokens to
+  // concrete colors against the svg's scope at draw time (FIX-729).
+  const T = {
+    bg:      resolveToken("--c-term-bg", svgEl),
+    inkSoft: resolveToken("--c-ink-soft", svgEl),
+  };
+
   if (width < 100 || height < 100) {
     d3.select(svgEl)
       .attr("width", width)
@@ -192,7 +210,7 @@ function draw(
       .attr("x", width / 2)
       .attr("y", height / 2)
       .attr("text-anchor", "middle")
-      .attr("fill", "#9ca3af")
+      .attr("fill", T.inkSoft)
       .attr("font-size", "12px")
       .text("Expand panel to see chord diagram");
     return;
@@ -222,8 +240,8 @@ function draw(
     .join("g");
 
   group.append("path")
-    .attr("fill", (d) => allGroups[d.index]?.color ?? "#6b7280")
-    .attr("stroke", "#111827")
+    .attr("fill", (d) => resolveColor(allGroups[d.index]?.color ?? T.inkSoft, svgEl))
+    .attr("stroke", T.bg)
     .attr("stroke-width", 1)
     .attr("d", arc)
     .style("cursor", "pointer")
@@ -259,7 +277,7 @@ function draw(
         return `rotate(${rotate}) translate(${outerR + 8},0)${flip ? " rotate(180)" : ""}`;
       })
       .attr("text-anchor", (d) => ((d.startAngle + d.endAngle) / 2 > Math.PI ? "end" : "start"))
-      .attr("fill", "#9ca3af")
+      .attr("fill", T.inkSoft)
       .attr("font-size", "10px")
       .text((d) => {
         const grp = allGroups[d.index];
@@ -274,8 +292,8 @@ function draw(
     .join("path")
     .attr("class", "ribbon")
     .attr("d", ribbon)
-    .attr("fill", (d) => allGroups[d.source.index]?.color ?? "#6b7280")
-    .attr("stroke", "#111827")
+    .attr("fill", (d) => resolveColor(allGroups[d.source.index]?.color ?? T.inkSoft, svgEl))
+    .attr("stroke", T.bg)
     .attr("stroke-width", 0.5)
     .style("cursor", "pointer")
     .on("mouseover", (_event: MouseEvent, d) => {
@@ -610,17 +628,17 @@ export function ChordGraph({ className = "", svgRef: externalSvgRef, vizOptions,
     <div ref={containerRef} className={`relative w-full h-full flex items-center justify-center ${className}`}>
       {status === "loading" && (
         <div className="flex flex-col items-center gap-3">
-          <div className="w-10 h-10 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin" />
-          <p className="text-gray-500 text-sm">Loading donation flows…</p>
+          <div className="w-10 h-10 rounded-full border-2 border-accent border-t-transparent animate-spin" />
+          <p className="text-ink-soft text-sm">Loading donation flows…</p>
         </div>
       )}
 
       {status === "error" && (
         <div className="text-center">
-          <p className="text-red-400 text-sm">Failed to load chord data.</p>
+          <p className="text-accent text-sm">Failed to load chord data.</p>
           <button
             onClick={() => window.location.reload()}
-            className="mt-3 text-xs text-indigo-400 hover:underline"
+            className="mt-3 text-xs text-accent hover:underline"
           >
             Retry
           </button>
@@ -628,14 +646,14 @@ export function ChordGraph({ className = "", svgRef: externalSvgRef, vizOptions,
       )}
 
       {status === "empty" && (
-        <div className="text-center max-w-sm px-8 py-10 rounded-2xl bg-gray-900/80 border border-gray-800">
-          <div className="w-10 h-10 mx-auto mb-4 rounded-full border border-gray-700 flex items-center justify-center">
-            <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div className="text-center max-w-sm px-8 py-10 rounded-2xl bg-card/80 border border-rule">
+          <div className="w-10 h-10 mx-auto mb-4 rounded-full border border-rule flex items-center justify-center">
+            <svg className="w-5 h-5 text-term-faint" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
             </svg>
           </div>
-          <p className="text-gray-300 text-sm font-medium">No donation flow data available.</p>
-          <p className="text-gray-500 text-xs mt-2 leading-relaxed">
+          <p className="text-ink text-sm font-medium">No donation flow data available.</p>
+          <p className="text-ink-soft text-xs mt-2 leading-relaxed">
             Data is being processed. Industry-to-party donation flows will appear here once the pipeline completes.
           </p>
         </div>
@@ -645,7 +663,7 @@ export function ChordGraph({ className = "", svgRef: externalSvgRef, vizOptions,
         <>
           <svg id="chord-diagram-svg" ref={svgRef} className="w-full h-full" />
           <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 pointer-events-none">
-            <span className="text-xs text-gray-400 bg-gray-950/70 px-2 py-0.5 rounded-full">
+            <span className="text-xs text-ink-soft bg-term-bg/70 px-2 py-0.5 rounded-full">
               {(() => {
                 const focusName = entityName ?? primaryGroup?.name ?? null;
                 const compareCount = focusedOfficials?.length ?? 0;

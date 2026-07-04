@@ -97,7 +97,7 @@ function buildCommitteeGroup(c: CommitteeItem): FocusGroup {
     name: c.name,
     type: 'group',
     icon: '🪪',
-    color: '#0ea5e9',
+    color: 'rgb(var(--c-blue))',
     filter: { entity_type: 'official', committeeId: c.id },
     isPremade: false,
     description: `${c.memberCount} members`,
@@ -124,7 +124,7 @@ function buildTagGroup(t: TagGroupItem): FocusGroup {
     name: `${t.label} bills`,
     type: 'group',
     icon: t.icon ?? '🏷',
-    color: '#a855f7',
+    color: 'rgb(var(--c-blue))',
     filter: { entity_type: 'proposal', tag: t.tag },
     isPremade: false,
     description: `${t.count.toLocaleString()} proposals tagged ${t.label}`,
@@ -152,9 +152,9 @@ function gbGroupId(slug: string): string {
 // Colors mirror the group route's server-resolved GB_TYPE_VISUAL — the route
 // overrides these on fetch (FIX-490), this is just the pre-fetch placeholder.
 const GB_TYPE_COLOR: Record<GbListItem['type'], string> = {
-  legislature_upper: '#6366f1',
-  legislature_lower: '#8b5cf6',
-  legislature_unicameral: '#6366f1',
+  legislature_upper: 'rgb(var(--c-viz-5))',
+  legislature_lower: 'rgb(var(--c-viz-6))',
+  legislature_unicameral: 'rgb(var(--c-viz-5))',
 };
 
 function buildGbGroup(g: GbListItem): FocusGroup {
@@ -181,7 +181,7 @@ function buildStateGroup(abbr: string, name: string): FocusGroup {
     name: `${name} Delegation`,
     type: 'group',
     icon: '🗺',
-    color: '#6366f1',
+    color: 'rgb(var(--c-viz-5))',
     filter: { entity_type: 'official', state: abbr },
     isPremade: false,
     description: `Officials representing ${name}`,

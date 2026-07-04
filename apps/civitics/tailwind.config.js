@@ -58,6 +58,8 @@ module.exports = {
         "viz-5": "rgb(var(--c-viz-5) / <alpha-value>)",
         "viz-6": "rgb(var(--c-viz-6) / <alpha-value>)",
         "viz-7": "rgb(var(--c-viz-7) / <alpha-value>)",
+        "viz-8": "rgb(var(--c-viz-8) / <alpha-value>)",
+        "viz-9": "rgb(var(--c-viz-9) / <alpha-value>)",
       },
       fontFamily: {
         sans: ["var(--font-inter)", "system-ui", "sans-serif"],

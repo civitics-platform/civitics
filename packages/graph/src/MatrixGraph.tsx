@@ -14,6 +14,7 @@ import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import * as d3 from "d3";
 import type { RefObject } from "react";
 import type { MatrixOptions } from "./types";
+import { resolveColor, resolveToken } from "./tokens";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -38,17 +39,18 @@ interface MatrixApiResponse {
   proposalCount: number;
 }
 
+// Token strings (FIX-729) — resolve via resolveColor() at d3 attr sites.
 const PARTY_COLORS: Record<string, string> = {
-  D: "#2563eb",
-  R: "#dc2626",
-  I: "#7c3aed",
-  L: "#a855f7",
-  G: "#16a34a",
+  D: "rgb(var(--c-blue))",
+  R: "rgb(var(--c-accent))",
+  I: "rgb(var(--c-viz-7))",
+  L: "rgb(var(--c-viz-7))",
+  G: "rgb(var(--c-green-ink))",
 };
 
 function partyColor(party: string | null): string {
-  if (!party) return "#94a3b8";
-  return PARTY_COLORS[party.toUpperCase().charAt(0)] ?? "#94a3b8";
+  if (!party) return "rgb(var(--c-ink-soft))";
+  return PARTY_COLORS[party.toUpperCase().charAt(0)] ?? "rgb(var(--c-ink-soft))";
 }
 
 function partyRank(party: string | null): number {
@@ -203,6 +205,18 @@ export function MatrixGraph({
     d3.select(svg).selectAll("*").remove();
     d3.select(svg).attr("width", width).attr("height", height);
 
+    // SVG presentation attributes can't carry var() — resolve tokens to
+    // concrete colors against the svg's scope at draw time (FIX-729).
+    const T = {
+      bg:       resolveToken("--c-term-bg", svg),
+      panel:    resolveToken("--c-term-panel", svg),
+      ink:      resolveToken("--c-ink", svg),
+      inkSoft:  resolveToken("--c-ink-soft", svg),
+      accent:   resolveToken("--c-accent", svg),
+      ochre:    resolveToken("--c-viz-3", svg),
+      greenInk: resolveToken("--c-green-ink", svg),
+    };
+
     const officials = data.officials;
     const cells = data.cells;
     const N = officials.length;
@@ -223,11 +237,14 @@ export function MatrixGraph({
       .attr("transform", `translate(${margin.left},${margin.top})`);
 
     // Cell colour scale — diverging around 0.5 for agreement, around 0 for kappa.
+    // Token-endpoint ramps (FIX-729): accent → ochre-gold → green-ink replaces
+    // interpolateRdYlGn (yellow mid), accent → panel → green-ink replaces
+    // interpolateRdBu. Domains unchanged.
     const colorAgreement = d3
-      .scaleSequential<string>(d3.interpolateRdYlGn)
+      .scaleSequential<string>(d3.piecewise(d3.interpolateRgb, [T.accent, T.ochre, T.greenInk]))
       .domain([0, 1]);
     const colorKappa = d3
-      .scaleSequential<string>(d3.interpolateRdBu)
+      .scaleSequential<string>(d3.piecewise(d3.interpolateRgb, [T.accent, T.panel, T.greenInk]))
       .domain([-1, 1]);
 
     function cellValue(i: number, j: number): number | null {
@@ -237,7 +254,7 @@ export function MatrixGraph({
     }
 
     function fillFor(value: number | null, shared: number): string {
-      if (value === null || shared === 0) return "#1e293b";
+      if (value === null || shared === 0) return T.panel;
       return metric === "kappa" ? colorKappa(value) : colorAgreement(value);
     }
 
@@ -268,7 +285,7 @@ export function MatrixGraph({
       .attr("width", Math.max(1, cellSize - 1))
       .attr("height", Math.max(1, cellSize - 1))
       .attr("fill", (d) => fillFor(metric === "kappa" ? d.cell.kappa : d.cell.agreement, d.cell.shared))
-      .attr("stroke", "#0f172a")
+      .attr("stroke", T.bg)
       .attr("stroke-width", 0.5)
       .style("cursor", "pointer");
 
@@ -281,7 +298,7 @@ export function MatrixGraph({
         .attr("dominant-baseline", "central")
         .attr("font-size", Math.max(8, Math.min(14, cellSize / 4)))
         .attr("font-family", "system-ui, sans-serif")
-        .attr("fill", "#0f172a")
+        .attr("fill", T.bg)
         .attr("pointer-events", "none")
         .text((d) => {
           const v = metric === "kappa" ? d.cell.kappa : d.cell.agreement;
@@ -318,7 +335,7 @@ export function MatrixGraph({
         .attr("cx", -8)
         .attr("cy", 0)
         .attr("r", 3)
-        .attr("fill", (d) => partyColor(officials[d]?.party ?? null));
+        .attr("fill", (d) => resolveColor(partyColor(officials[d]?.party ?? null), svg));
 
       rowLabels
         .append("text")
@@ -328,7 +345,7 @@ export function MatrixGraph({
         .attr("dominant-baseline", "central")
         .attr("font-size", 11)
         .attr("font-family", "system-ui, sans-serif")
-        .attr("fill", "#e2e8f0")
+        .attr("fill", T.ink)
         .text((d) => {
           const name = officials[d]?.name ?? "";
           return name.length > 24 ? name.slice(0, 22) + "…" : name;
@@ -351,7 +368,7 @@ export function MatrixGraph({
         .attr("dominant-baseline", "central")
         .attr("font-size", 11)
         .attr("font-family", "system-ui, sans-serif")
-        .attr("fill", (d) => partyColor(officials[d]?.party ?? null))
+        .attr("fill", (d) => resolveColor(partyColor(officials[d]?.party ?? null), svg))
         .text((d) => {
           const name = officials[d]?.name ?? "";
           // Top labels — last name only to keep them short.
@@ -391,14 +408,14 @@ export function MatrixGraph({
       .attr("width", legendW)
       .attr("height", legendH)
       .attr("fill", `url(#${gradId})`)
-      .attr("stroke", "#1e293b");
+      .attr("stroke", T.panel);
 
     legendG
       .append("text")
       .attr("x", 0)
       .attr("y", legendH + 12)
       .attr("font-size", 10)
-      .attr("fill", "#94a3b8")
+      .attr("fill", T.inkSoft)
       .text(metric === "kappa" ? "−1" : "0%");
 
     legendG
@@ -407,7 +424,7 @@ export function MatrixGraph({
       .attr("y", legendH + 12)
       .attr("text-anchor", "end")
       .attr("font-size", 10)
-      .attr("fill", "#94a3b8")
+      .attr("fill", T.inkSoft)
       .text(metric === "kappa" ? "+1" : "100%");
   }, [data, order, metric, labelLimit, svgRef]);
 
@@ -427,8 +444,8 @@ export function MatrixGraph({
     return (
       <div className={`flex items-center justify-center ${className}`}>
         <div className="text-center max-w-sm px-6">
-          <p className="text-gray-300 text-sm font-medium">Add at least 2 officials to focus</p>
-          <p className="text-gray-500 text-xs mt-2 leading-relaxed">
+          <p className="text-ink text-sm font-medium">Add at least 2 officials to focus</p>
+          <p className="text-ink-soft text-xs mt-2 leading-relaxed">
             Matrix shows how often each pair voted the same way on shared bills.
           </p>
         </div>
@@ -440,8 +457,8 @@ export function MatrixGraph({
     return (
       <div className={`flex items-center justify-center ${className}`}>
         <div className="text-center">
-          <div className="w-8 h-8 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin mx-auto mb-3" />
-          <p className="text-gray-500 text-sm">Computing vote agreement…</p>
+          <div className="w-8 h-8 rounded-full border-2 border-accent border-t-transparent animate-spin mx-auto mb-3" />
+          <p className="text-ink-soft text-sm">Computing vote agreement…</p>
         </div>
       </div>
     );
@@ -450,7 +467,7 @@ export function MatrixGraph({
   if (error) {
     return (
       <div className={`flex items-center justify-center ${className}`}>
-        <p className="text-red-400 text-sm">Failed to load matrix: {error}</p>
+        <p className="text-accent text-sm">Failed to load matrix: {error}</p>
       </div>
     );
   }
@@ -458,7 +475,7 @@ export function MatrixGraph({
   if (!data || data.officials.length < 2) {
     return (
       <div className={`flex items-center justify-center ${className}`}>
-        <p className="text-gray-500 text-sm">No vote data available for these officials.</p>
+        <p className="text-ink-soft text-sm">No vote data available for these officials.</p>
       </div>
     );
   }
@@ -466,7 +483,7 @@ export function MatrixGraph({
   return (
     <div ref={containerRef} className={`relative overflow-hidden flex flex-col ${className}`}>
       <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 pointer-events-none">
-        <span className="text-xs text-gray-400 bg-gray-950/70 px-2 py-0.5 rounded-full">
+        <span className="text-xs text-ink-soft bg-term-bg/70 px-2 py-0.5 rounded-full">
           Vote agreement · {data.proposalCount} proposals across {data.officials.length} officials
         </span>
       </div>

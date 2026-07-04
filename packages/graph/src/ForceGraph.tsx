@@ -14,6 +14,7 @@ import {
 import type { GraphNode as NewGraphNode, GraphView, NodeActions } from "./types";
 import { Tooltip, useTooltip } from "./components/Tooltip";
 import { NodePopup } from "./components/NodePopup";
+import { resolveToken, resolvePaperToken, resolveColor } from "./tokens";
 
 export interface ForceGraphProps {
   nodes: OldGraphNode[];
@@ -113,6 +114,19 @@ function ForceGraph(
     const svg = d3.select(svgEl);
     svg.selectAll("*").remove();
 
+    // SVG presentation attributes can't carry var() — resolve tokens to
+    // concrete colors at draw time (FIX-729). Canvas chrome resolves against
+    // the svg's scope; node FILLS and on-chip text are paper-locked light
+    // chips ("records on the terminal") — resolved with no scope arg.
+    const pal = {
+      inkSoft:  resolveToken("--c-ink-soft", svgEl),
+      accent:   resolveToken("--c-accent", svgEl),
+      viz6:     resolveToken("--c-viz-6", svgEl),
+      termBg:   resolveToken("--c-term-bg", svgEl),
+      cardFill: resolvePaperToken("--c-card"),
+      paperInk: resolvePaperToken("--c-ink"),
+    };
+
     // ── defs: arrowhead markers per edge type ──────────────────────────────
     const defs = svg.append("defs");
     (Object.keys(EDGE_COLORS) as OldGraphEdge["type"][]).forEach((type) => {
@@ -127,7 +141,7 @@ function ForceGraph(
         .attr("orient", "auto")
         .append("path")
         .attr("d", "M0,-5L10,0L0,5")
-        .attr("fill", EDGE_COLORS[type])
+        .attr("fill", resolveColor(EDGE_COLORS[type], svgEl))
         .attr("opacity", 0.75);
     });
 
@@ -136,7 +150,7 @@ function ForceGraph(
     shadow.append("feDropShadow")
       .attr("dx", 0).attr("dy", 2)
       .attr("stdDeviation", 4)
-      .attr("flood-color", "#6366f1")
+      .attr("flood-color", pal.accent) // was indigo → accent
       .attr("flood-opacity", 0.35);
 
     // ── zoom layer ─────────────────────────────────────────────────────────
@@ -164,8 +178,13 @@ function ForceGraph(
     }));
 
     // ── edge color/opacity/width from connectionSettings ───────────────────
+    // Palette values are token strings; user-picked connection colors may be
+    // hex — resolveColor handles both (FIX-729).
     const edgeColor = (d: SimLink): string =>
-      connectionSettingsRef.current?.[d.type]?.color ?? EDGE_COLORS[d.type] ?? "#94a3b8";
+      resolveColor(
+        connectionSettingsRef.current?.[d.type]?.color ?? EDGE_COLORS[d.type] ?? "rgb(var(--c-ink-soft))",
+        svgEl,
+      );
 
     const edgeOpacity = (d: SimLink): number =>
       connectionSettingsRef.current?.[d.type]?.opacity ?? (visualConfig?.edgeOpacity ?? 0.55);
@@ -240,15 +259,20 @@ function ForceGraph(
     node.each(function (d) {
       const el = d3.select(this);
       const colors = NODE_COLORS[d.type] ?? NODE_COLORS.official!;
-      const stroke =
+      // Fill is paper-locked (no scope arg — light chip in every scope);
+      // stroke hue resolves against the svg's scope (FIX-729).
+      const fill = resolveColor(colors.fill);
+      const stroke = resolveColor(
         d.type === "official" && d.party
           ? (PARTY_COLORS[d.party.toLowerCase()] ?? colors.stroke)
-          : colors.stroke;
+          : colors.stroke,
+        svgEl,
+      );
 
       if (d.type === "official") {
         el.append("circle")
           .attr("r", getNodeRadius("official", visualConfig?.nodeSizeEncoding))
-          .attr("fill", colors.fill)
+          .attr("fill", fill)
           .attr("stroke", stroke)
           .attr("stroke-width", 3);
         el.append("text")
@@ -256,7 +280,7 @@ function ForceGraph(
           .attr("dominant-baseline", "central")
           .attr("font-size", "11px")
           .attr("font-weight", "700")
-          .attr("fill", "#374151")
+          .attr("fill", pal.paperInk)
           .attr("pointer-events", "none")
           .text(initials((d as unknown as { name: string }).name ?? d.id));
       } else if (d.type === "governing_body") {
@@ -264,7 +288,7 @@ function ForceGraph(
           .attr("x", -30).attr("y", -18)
           .attr("width", 60).attr("height", 36)
           .attr("rx", 5)
-          .attr("fill", colors.fill)
+          .attr("fill", fill)
           .attr("stroke", stroke)
           .attr("stroke-width", 2);
         el.append("text")
@@ -272,7 +296,7 @@ function ForceGraph(
           .attr("dominant-baseline", "central")
           .attr("font-size", "9px")
           .attr("font-weight", "600")
-          .attr("fill", "#374151")
+          .attr("fill", pal.paperInk)
           .attr("pointer-events", "none")
           .text(truncate((d as unknown as { name: string }).name ?? "", 11));
       } else if (d.type === "proposal") {
@@ -280,7 +304,7 @@ function ForceGraph(
           .attr("x", -28).attr("y", -20)
           .attr("width", 56).attr("height", 40)
           .attr("rx", 2)
-          .attr("fill", colors.fill)
+          .attr("fill", fill)
           .attr("stroke", stroke)
           .attr("stroke-width", 2);
         el.append("path")
@@ -293,13 +317,13 @@ function ForceGraph(
           .attr("dominant-baseline", "central")
           .attr("font-size", "8px")
           .attr("font-weight", "600")
-          .attr("fill", "#92400e")
+          .attr("fill", pal.paperInk)
           .attr("pointer-events", "none")
           .text(truncate((d as unknown as { name: string }).name ?? "", 10));
       } else if (d.type === "corporation") {
         el.append("path")
           .attr("d", "M0,-24 L24,0 L0,24 L-24,0 Z")
-          .attr("fill", colors.fill)
+          .attr("fill", fill)
           .attr("stroke", stroke)
           .attr("stroke-width", 2);
         el.append("text")
@@ -307,13 +331,13 @@ function ForceGraph(
           .attr("dominant-baseline", "central")
           .attr("font-size", "8px")
           .attr("font-weight", "600")
-          .attr("fill", "#14532d")
+          .attr("fill", pal.paperInk)
           .attr("pointer-events", "none")
           .text(truncate((d as unknown as { name: string }).name ?? "", 9));
       } else if (d.type === "pac") {
         el.append("path")
           .attr("d", "M0,-22 L22,18 L-22,18 Z")
-          .attr("fill", colors.fill)
+          .attr("fill", fill)
           .attr("stroke", stroke)
           .attr("stroke-width", 2);
         el.append("text")
@@ -321,14 +345,14 @@ function ForceGraph(
           .attr("y", "5")
           .attr("font-size", "7px")
           .attr("font-weight", "700")
-          .attr("fill", "#7c2d12")
+          .attr("fill", pal.paperInk)
           .attr("pointer-events", "none")
           .text(truncate((d as unknown as { name: string }).name ?? "", 8));
       } else {
         // individual — small filled circle, steel blue
         el.append("circle")
           .attr("r", getNodeRadius("individual", visualConfig?.nodeSizeEncoding))
-          .attr("fill", colors.fill)
+          .attr("fill", fill)
           .attr("stroke", stroke)
           .attr("stroke-width", 1.5)
           .attr("stroke-dasharray", "3,2");
@@ -337,7 +361,7 @@ function ForceGraph(
           .attr("dominant-baseline", "central")
           .attr("font-size", "9px")
           .attr("font-weight", "600")
-          .attr("fill", "#1e40af")
+          .attr("fill", pal.paperInk)
           .attr("pointer-events", "none")
           .text(initials((d as unknown as { name: string }).name ?? ""));
       }
@@ -352,7 +376,7 @@ function ForceGraph(
         .attr("y", labelY)
         .attr("text-anchor", "middle")
         .attr("font-size", "10px")
-        .attr("fill", "#6b7280")
+        .attr("fill", pal.inkSoft)
         .attr("pointer-events", "none")
         .text(truncate((d as unknown as { name: string }).name ?? "", 22));
 
@@ -368,8 +392,8 @@ function ForceGraph(
         el.append("circle")
           .attr("cx", bx).attr("cy", by)
           .attr("r", 9)
-          .attr("fill", "#f97316")
-          .attr("stroke", "#111827")
+          .attr("fill", pal.viz6) // was orange → terracotta
+          .attr("stroke", pal.termBg)
           .attr("stroke-width", 1.5)
           .attr("pointer-events", "none");
         el.append("text")
@@ -378,7 +402,7 @@ function ForceGraph(
           .attr("dominant-baseline", "central")
           .attr("font-size", "13px")
           .attr("font-weight", "800")
-          .attr("fill", "white")
+          .attr("fill", pal.cardFill)
           .attr("pointer-events", "none")
           .text("+");
       }
@@ -473,9 +497,13 @@ function ForceGraph(
     const link = linkSelRef.current;
     if (!link) return;
     const settings = connectionSettings;
+    const svgEl = svgRef.current;
     link
       .attr("stroke", (d: SimLink) =>
-        settings?.[d.type]?.color ?? EDGE_COLORS[d.type] ?? "#94a3b8"
+        resolveColor(
+          settings?.[d.type]?.color ?? EDGE_COLORS[d.type] ?? "rgb(var(--c-ink-soft))",
+          svgEl,
+        )
       )
       .attr("stroke-opacity", (d: SimLink) =>
         settings?.[d.type]?.opacity ?? 0.55

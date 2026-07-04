@@ -15,6 +15,7 @@ import { useEffect, useMemo, useRef, useCallback } from "react";
 import * as d3 from "d3";
 import type { RefObject } from "react";
 import type { AlignmentOptions, GraphNode, GraphEdge } from "./types";
+import { resolveToken, resolveColor } from "./tokens";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -28,16 +29,18 @@ interface RepDatum {
   total: number;
 }
 
+// Token strings (FIX-729) — wine (viz-7) stands in for independents; the token
+// system has no purple. Wrap with resolveColor(…, svgEl) at d3 .attr() sites.
 const PARTY_COLORS: Record<string, string> = {
-  democrat:    "#2563eb",
-  republican:  "#dc2626",
-  independent: "#7c3aed",
-  nonpartisan: "#94a3b8",
+  democrat:    "rgb(var(--c-blue))",
+  republican:  "rgb(var(--c-accent))",
+  independent: "rgb(var(--c-viz-7))",
+  nonpartisan: "rgb(var(--c-ink-soft))",
 };
 
 function partyColor(party: string | undefined): string {
-  if (!party) return "#94a3b8";
-  return PARTY_COLORS[party.toLowerCase()] ?? "#94a3b8";
+  if (!party) return "rgb(var(--c-ink-soft))";
+  return PARTY_COLORS[party.toLowerCase()] ?? "rgb(var(--c-ink-soft))";
 }
 
 function partyRank(party: string | undefined): number {
@@ -48,13 +51,20 @@ function partyRank(party: string | undefined): number {
   return 2;
 }
 
-function ratioColor(ratio: number | null, base: string, gradient: boolean): string {
-  if (ratio === null) return "#475569";
+function ratioColor(
+  ratio: number | null,
+  base: string,
+  gradient: boolean,
+  noData: string,
+  diverging: (t: number) => string,
+): string {
+  if (ratio === null) return noData;
   if (!gradient) return base;
   // Low alignment leans red, high alignment leans green. Useful when the user
   // explicitly wants to see who's most + least aligned at a glance regardless
-  // of party.
-  return d3.interpolateRdYlGn(ratio);
+  // of party. Was d3.interpolateRdYlGn — now the token-native alignment ramp
+  // accent → amber → green-ink, resolved per scope (FIX-729).
+  return diverging(ratio);
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -146,6 +156,25 @@ export function AlignmentGraph({
     d3.select(svg).selectAll("*").remove();
     d3.select(svg).attr("width", width).attr("height", height);
 
+    // SVG presentation attributes can't carry var() — resolve tokens to
+    // concrete colors against the svg's scope at draw time (FIX-729).
+    const T = {
+      ink:       resolveToken("--c-ink", svg),
+      inkSoft:   resolveToken("--c-ink-soft", svg),
+      accent:    resolveToken("--c-accent", svg),
+      amber:     resolveToken("--c-amber", svg),
+      greenInk:  resolveToken("--c-green-ink", svg),
+      viz7:      resolveToken("--c-viz-7", svg),
+      termBg:    resolveToken("--c-term-bg", svg),
+      termPanel: resolveToken("--c-term-panel", svg),
+      termLine:  resolveToken("--c-term-line", svg),
+      termFaint: resolveToken("--c-term-faint", svg),
+    };
+    // Gradient fill mode: misaligned → mixed → aligned.
+    const diverging = d3.piecewise(d3.interpolateRgb, [T.accent, T.amber, T.greenInk]) as (
+      t: number,
+    ) => string;
+
     const cx = width / 2;
     const cy = height / 2;
 
@@ -170,7 +199,7 @@ export function AlignmentGraph({
         .append("circle")
         .attr("r", radius)
         .attr("fill", "none")
-        .attr("stroke", "#1e293b")
+        .attr("stroke", T.termLine)
         .attr("stroke-width", 1)
         .attr("stroke-dasharray", r === 1 ? "0" : "2 4");
       guides
@@ -180,7 +209,7 @@ export function AlignmentGraph({
         .attr("dy", -3)
         .attr("text-anchor", "middle")
         .attr("font-size", 9)
-        .attr("fill", "#475569")
+        .attr("fill", T.termFaint)
         .attr("font-family", "system-ui, sans-serif")
         .text(`${Math.round(r * 100)}%`);
     }
@@ -190,15 +219,15 @@ export function AlignmentGraph({
     userG
       .append("circle")
       .attr("r", innerR - 4)
-      .attr("fill", "#0f172a")
-      .attr("stroke", "#a855f7")
+      .attr("fill", T.termBg)
+      .attr("stroke", T.viz7) // was purple → wine
       .attr("stroke-width", 2);
     userG
       .append("text")
       .attr("text-anchor", "middle")
       .attr("dominant-baseline", "central")
       .attr("font-size", 11)
-      .attr("fill", "#e2e8f0")
+      .attr("fill", T.ink)
       .attr("font-family", "system-ui, sans-serif")
       .text("YOU");
 
@@ -236,14 +265,22 @@ export function AlignmentGraph({
     barG
       .append("path")
       .attr("d", trackArc)
-      .attr("fill", "#1e293b")
+      .attr("fill", T.termPanel)
       .attr("opacity", 0.6);
 
     // Bar (ratio-filled).
     barG
       .append("path")
       .attr("d", arcGen)
-      .attr("fill", (d) => ratioColor(d.ratio, partyColor(d.party), fillMode === "gradient"));
+      .attr("fill", (d) =>
+        ratioColor(
+          d.ratio,
+          resolveColor(partyColor(d.party), svg),
+          fillMode === "gradient",
+          T.inkSoft,
+          diverging,
+        ),
+      );
 
     // Native <title> tooltip on the whole bar group — picks up either the
     // track or the fill.
@@ -274,7 +311,7 @@ export function AlignmentGraph({
         .attr("dominant-baseline", "central")
         .attr("font-size", N <= 6 ? 12 : N <= 12 ? 11 : 10)
         .attr("font-family", "system-ui, sans-serif")
-        .attr("fill", (d) => partyColor(d.party))
+        .attr("fill", (d) => resolveColor(partyColor(d.party), svg))
         .text((d) => {
           const last = d.name.split(/\s+/).slice(-1)[0] ?? d.name;
           return last.length > 16 ? last.slice(0, 14) + "…" : last;
@@ -294,7 +331,7 @@ export function AlignmentGraph({
           .attr("dominant-baseline", "central")
           .attr("font-size", 10)
           .attr("font-family", "system-ui, sans-serif")
-          .attr("fill", "#0f172a")
+          .attr("fill", T.termBg)
           .attr("pointer-events", "none")
           .text((d) => (d.ratio === null ? "" : `${Math.round(d.ratio * 100)}%`));
       }
@@ -317,8 +354,8 @@ export function AlignmentGraph({
     return (
       <div className={`flex items-center justify-center ${className}`}>
         <div className="text-center max-w-sm px-6">
-          <p className="text-gray-300 text-sm font-medium">Set your home district</p>
-          <p className="text-gray-500 text-xs mt-2 leading-relaxed">
+          <p className="text-ink text-sm font-medium">Set your home district</p>
+          <p className="text-ink-soft text-xs mt-2 leading-relaxed">
             Add your address in the Profile to see how well your reps vote with you.
           </p>
         </div>
@@ -330,8 +367,8 @@ export function AlignmentGraph({
     return (
       <div className={`flex items-center justify-center ${className}`}>
         <div className="text-center max-w-sm px-6">
-          <p className="text-gray-300 text-sm font-medium">No alignment data yet</p>
-          <p className="text-gray-500 text-xs mt-2 leading-relaxed">
+          <p className="text-ink text-sm font-medium">No alignment data yet</p>
+          <p className="text-ink-soft text-xs mt-2 leading-relaxed">
             We need at least one tracked vote to score alignment with each rep.
           </p>
         </div>
@@ -346,10 +383,10 @@ export function AlignmentGraph({
   return (
     <div ref={containerRef} className={`relative overflow-hidden flex flex-col ${className}`}>
       <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 pointer-events-none">
-        <span className="text-xs text-gray-400 bg-gray-950/70 px-2 py-0.5 rounded-full">
+        <span className="text-xs text-ink-soft bg-term-bg/70 px-2 py-0.5 rounded-full">
           {reps.length} {reps.length === 1 ? "rep" : "reps"}
           {avg !== null && (
-            <span className="ml-2 text-emerald-400 font-medium">
+            <span className="ml-2 text-green-ink font-medium">
               avg {Math.round(avg * 100)}% aligned
             </span>
           )}

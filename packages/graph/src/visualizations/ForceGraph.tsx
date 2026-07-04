@@ -26,6 +26,7 @@ import { CONNECTION_TYPE_REGISTRY } from "../connections";
 import { BRACKET_TIERS } from "../types";
 import { Tooltip, useTooltip } from "../components/Tooltip";
 import { NodePopup } from "../components/NodePopup";
+import { resolveToken, resolvePaperToken, resolveColor, withAlpha } from "../tokens";
 
 // ── Props ──────────────────────────────────────────────────────────────────────
 
@@ -85,45 +86,36 @@ type SimLink = {
   reviewedAt?: string;
 };
 
-// FIX-585 — distinct color for community-asserted edges promoted to the graph. A
-// saturated fuchsia not used by CONNECTION_TYPE_REGISTRY, so investigation edges
-// read as "asserted, under review" rather than any derived source.
-const INVESTIGATION_EDGE_COLOR = "#c026d3";
+// FIX-585 — distinct color for community-asserted edges promoted to the graph.
+// FIX-729 — ink: investigation edges read as hand-annotations on the record;
+// the dash pattern stays their distinguisher. Token string — wrap with
+// resolveColor() at d3 .attr() sites; CSS/style contexts consume it directly.
+const INVESTIGATION_EDGE_COLOR = "rgb(var(--c-ink))";
 
 // ── Visual constants ──────────────────────────────────────────────────────────
-
-const NODE_FILL: Record<string, string> = {
-  official:           "#f8fafc",
-  agency:             "#f5f3ff",
-  proposal:           "#fffbeb",
-  financial:          "#f0fdf4",
-  organization:       "#eff6ff",
-  corporation:        "#f0fdf4",
-  pac:                "#fff7ed",
-  individual:         "#eff6ff",
-  individual_bracket: "#fffbeb", // tier color applied dynamically
-  group:              "#1e1b4b",
-  user:               "#f3e8ff",
-};
+// FIX-729 — node FILLS are paper-family light chips in every scope ("records on
+// the terminal"): resolved at render via resolvePaperToken("--c-card"). Group and
+// individual_bracket fills are data-driven (metadata/tier color) at the draw
+// site. STROKES below are token strings — resolveColor() them at .attr() sites.
 
 const NODE_STROKE: Record<string, string> = {
-  official:           "#6366f1",
-  agency:             "#7c3aed",
-  proposal:           "#f59e0b",
-  financial:          "#16a34a",
-  organization:       "#0891b2",
-  corporation:        "#16a34a",
-  pac:                "#ea580c",
-  individual:         "#3b82f6",
-  individual_bracket: "#d97706", // overridden per-tier at render time
-  group:              "#818cf8",
-  user:               "#8b5cf6",
+  official:           "rgb(var(--c-blue))",
+  agency:             "rgb(var(--c-viz-5))",
+  proposal:           "rgb(var(--c-amber))",
+  financial:          "rgb(var(--c-green-ink))",
+  organization:       "rgb(var(--c-viz-2))",
+  corporation:        "rgb(var(--c-green-ink))",
+  pac:                "rgb(var(--c-viz-6))",
+  individual:         "rgb(var(--c-blue))",
+  individual_bracket: "rgb(var(--c-viz-3))", // overridden per-tier at render time
+  group:              "rgb(var(--c-viz-5))",
+  user:               "rgb(var(--c-amber))",
 };
 
 const PARTY_STROKE: Record<string, string> = {
-  democrat:    "#2563eb",
-  republican:  "#dc2626",
-  independent: "#7c3aed",
+  democrat:    "rgb(var(--c-blue))",
+  republican:  "rgb(var(--c-accent))",
+  independent: "rgb(var(--c-viz-7))", // wine — the token system has no purple
 };
 
 // ── Type-cluster angles ───────────────────────────────────────────────────────
@@ -230,11 +222,12 @@ function getBaseRadius(node: GraphNode): number {
   return BASE[node.type] ?? 20;
 }
 
+// Returns token strings — wrap in resolveColor(…, svgEl) at .attr() sites (FIX-729).
 function alignmentEdgeColor(ratio: number | null | undefined): string {
-  if (ratio == null) return "#6b7280";   // no overlap yet — gray
-  if (ratio >= 0.6)  return "#16a34a";   // aligned — green
-  if (ratio >= 0.4)  return "#f59e0b";   // mixed — amber
-  return "#dc2626";                       // misaligned — red
+  if (ratio == null) return "rgb(var(--c-ink-soft))";  // no overlap yet — muted
+  if (ratio >= 0.6)  return "rgb(var(--c-green-ink))"; // aligned
+  if (ratio >= 0.4)  return "rgb(var(--c-amber))";     // mixed
+  return "rgb(var(--c-accent))";                       // misaligned
 }
 
 function getNodeRadius(node: GraphNode, sizeBy: string | undefined): number {
@@ -275,35 +268,37 @@ function AlignmentEdgeTooltip({
   officialName, ratio, matchedVotes, totalVotes, voteDetails, x, y,
 }: AlignmentEdgeTooltipProps) {
   const pct = ratio != null ? Math.round(ratio * 100) : null;
+  // Paper-safe token classes — this HTML renders inside the terminal-scoped
+  // graph page AND on paper embeds (FIX-729). Mixed reads as plain ink.
   const color =
-    pct == null  ? "text-gray-500"  :
-    pct >= 60    ? "text-green-600" :
-    pct >= 40    ? "text-amber-500" : "text-red-600";
+    pct == null  ? "text-ink-soft"  :
+    pct >= 60    ? "text-green-ink" :
+    pct >= 40    ? "text-ink" : "text-accent";
 
   const TOOLTIP_W = 260;
   const safeX = Math.min(x + 14, (typeof window !== "undefined" ? window.innerWidth : 1024) - TOOLTIP_W - 8);
 
   return (
     <div
-      className="absolute z-50 pointer-events-none bg-white border border-gray-200 rounded-lg shadow-lg px-3 py-3 text-sm"
+      className="absolute z-50 pointer-events-none bg-card border border-rule rounded-lg shadow-lg px-3 py-3 text-sm"
       style={{ left: safeX, top: y - 8, width: TOOLTIP_W }}
     >
-      <div className="font-semibold text-gray-900 leading-tight mb-1">{officialName}</div>
+      <div className="font-semibold text-ink leading-tight mb-1">{officialName}</div>
       {pct != null ? (
         <div className={`text-2xl font-bold ${color}`}>{pct}% aligned</div>
       ) : (
-        <div className="text-gray-400 text-xs">No overlapping votes yet</div>
+        <div className="text-ink-soft text-xs">No overlapping votes yet</div>
       )}
       {totalVotes > 0 && (
-        <div className="text-gray-500 text-xs mt-0.5">
+        <div className="text-ink-soft text-xs mt-0.5">
           {matchedVotes} of {totalVotes} overlapping votes match
         </div>
       )}
       {voteDetails.length > 0 && (
-        <ul className="mt-2 space-y-1 border-t border-gray-100 pt-2">
+        <ul className="mt-2 space-y-1 border-t border-rule pt-2">
           {voteDetails.map((v, i) => (
-            <li key={i} className="flex items-start gap-1.5 text-xs text-gray-600">
-              <span className={v.aligned ? "text-green-500 shrink-0" : "text-red-400 shrink-0"}>
+            <li key={i} className="flex items-start gap-1.5 text-xs text-ink-soft">
+              <span className={v.aligned ? "text-green-ink shrink-0" : "text-accent shrink-0"}>
                 {v.aligned ? "✓" : "✗"}
               </span>
               <span className="truncate">{v.title ?? "Untitled"}</span>
@@ -331,22 +326,22 @@ function InvestigationEdgeTooltip({
   const reviewed = reviewedAt ? new Date(reviewedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : null;
   return (
     <div
-      className="absolute z-50 bg-white border rounded-lg shadow-lg px-3 py-3 text-sm"
+      className="absolute z-50 bg-card border rounded-lg shadow-lg px-3 py-3 text-sm"
       style={{ left: safeX, top: y - 8, width: TOOLTIP_W, borderColor: INVESTIGATION_EDGE_COLOR }}
     >
       <div className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: INVESTIGATION_EDGE_COLOR }}>
         Community claim · promoted
       </div>
-      <div className="mt-0.5 text-xs text-gray-600">{relationship} relationship asserted in</div>
+      <div className="mt-0.5 text-xs text-ink-soft">{relationship} relationship asserted in</div>
       {investigationId ? (
         <a href={`/investigations/${investigationId}`} target="_blank" rel="noopener noreferrer"
-          className="font-semibold text-gray-900 leading-tight hover:underline">
+          className="font-semibold text-ink leading-tight hover:underline">
           {title} ↗
         </a>
       ) : (
-        <div className="font-semibold text-gray-900 leading-tight">{title}</div>
+        <div className="font-semibold text-ink leading-tight">{title}</div>
       )}
-      {reviewed && <div className="text-gray-500 text-xs mt-1">Reviewed {reviewed}</div>}
+      {reviewed && <div className="text-ink-soft text-xs mt-1">Reviewed {reviewed}</div>}
     </div>
   );
 }
@@ -419,6 +414,23 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
       const width  = svgEl.clientWidth  || 900;
       const height = svgEl.clientHeight || 600;
 
+      // FIX-729 — resolve the scope-aware palette once per rebuild. Strokes and
+      // canvas chrome resolve against the svg's scope (terminal → luminous
+      // values; paper embeds → ink values). Node fills and on-chip text are
+      // paper-locked — "records on the terminal".
+      const pal = {
+        inkSoft:   resolveToken("--c-ink-soft", svgEl),
+        amber:     resolveToken("--c-amber", svgEl),
+        greenInk:  resolveToken("--c-green-ink", svgEl),
+        accent:    resolveToken("--c-accent", svgEl),
+        blue:      resolveToken("--c-blue", svgEl),
+        viz6:      resolveToken("--c-viz-6", svgEl),
+        termBg:    resolveToken("--c-term-bg", svgEl),
+        termPanel: resolveToken("--c-term-panel", svgEl),
+        cardFill:  resolvePaperToken("--c-card"),
+        paperInk:  resolvePaperToken("--c-ink"),
+      };
+
       // Stop previous simulation
       simRef.current?.stop();
 
@@ -470,9 +482,12 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
       const defs = svg.append("defs");
 
       Object.keys(CONNECTION_TYPE_REGISTRY).forEach((type) => {
-        const color = connections[type]?.color
-          ?? CONNECTION_TYPE_REGISTRY[type]?.color
-          ?? "#94a3b8";
+        const color = resolveColor(
+          connections[type]?.color
+            ?? CONNECTION_TYPE_REGISTRY[type]?.color
+            ?? pal.inkSoft,
+          svgEl
+        );
         defs
           .append("marker")
           .attr("id", `arrow-${type}`)
@@ -490,7 +505,7 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
       shadow.append("feDropShadow")
         .attr("dx", 0).attr("dy", 2)
         .attr("stdDeviation", 4)
-        .attr("flood-color", "#6366f1")
+        .attr("flood-color", pal.amber)
         .attr("flood-opacity", 0.35);
 
       // ── Zoom layer ────────────────────────────────────────────────────────
@@ -516,13 +531,16 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
 
       function edgeColor(d: SimLink): string {
         // FIX-585 — source wins over connection_type for the distinct investigation render.
-        if (d.evidenceSource === "investigation") return INVESTIGATION_EDGE_COLOR;
+        if (d.evidenceSource === "investigation") return resolveColor(INVESTIGATION_EDGE_COLOR, svgEl);
         if (d.connectionType === "alignment") {
-          return alignmentEdgeColor(d.metadata?.alignmentRatio as number | null);
+          return resolveColor(alignmentEdgeColor(d.metadata?.alignmentRatio as number | null), svgEl);
         }
-        return connections[d.connectionType]?.color
-          ?? CONNECTION_TYPE_REGISTRY[d.connectionType]?.color
-          ?? "#94a3b8";
+        return resolveColor(
+          connections[d.connectionType]?.color
+            ?? CONNECTION_TYPE_REGISTRY[d.connectionType]?.color
+            ?? pal.inkSoft,
+          svgEl
+        );
       }
 
       function edgeOpacityFn(d: SimLink): number {
@@ -679,15 +697,21 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
       nodeGrp.each(function (d) {
         const el     = d3.select(this);
         const r      = getNodeRadius(d, sizeBy);
-        // Group nodes use their metadata color; others use the type registry
-        const fill = d.type === "group" && d.metadata?.color
-          ? (d.metadata.color as string) + "33"  // 20% opacity
-          : (NODE_FILL[d.type] ?? "#f8fafc");
-        const stroke = d.type === "group" && d.metadata?.color
-          ? (d.metadata.color as string)
-          : d.type === "official" && d.party
-            ? (PARTY_STROKE[d.party.toLowerCase()] ?? NODE_STROKE[d.type] ?? "#6366f1")
-            : (NODE_STROKE[d.type] ?? "#94a3b8");
+        // Group nodes use their metadata color; others get the paper-locked
+        // light chip fill in every scope (FIX-729 "records on the terminal").
+        const fill = d.type === "group"
+          ? (d.metadata?.color
+              ? withAlpha(d.metadata.color as string, 0.2, svgEl)
+              : pal.termPanel)
+          : pal.cardFill;
+        const stroke = resolveColor(
+          d.type === "group" && d.metadata?.color
+            ? (d.metadata.color as string)
+            : d.type === "official" && d.party
+              ? (PARTY_STROKE[d.party.toLowerCase()] ?? NODE_STROKE[d.type] ?? "rgb(var(--c-blue))")
+              : (NODE_STROKE[d.type] ?? "rgb(var(--c-ink-soft))"),
+          svgEl
+        );
 
         // Store baseRadius for focus highlight effect
         (d as SimNode).baseRadius = r;
@@ -715,8 +739,8 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
               .attr("r", 9)
               .attr("cx", r * 0.7)
               .attr("cy", -r * 0.7)
-              .attr("fill", "#4f46e5")
-              .attr("stroke", "#312e81")
+              .attr("fill", pal.blue)
+              .attr("stroke", pal.termBg)
               .attr("stroke-width", 1)
               .attr("pointer-events", "none");
             el.append("text")
@@ -743,7 +767,7 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
             .attr("dominant-baseline", "central")
             .attr("font-size", d.type === "official" ? "11px" : "9px")
             .attr("font-weight", "700")
-            .attr("fill", d.type === "official" ? "#374151" : "#1e40af")
+            .attr("fill", pal.paperInk)
             .attr("pointer-events", "none")
             .text(initials(d.name));
         } else if (d.type === "agency" || d.type === "organization") {
@@ -760,7 +784,7 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
             .attr("dominant-baseline", "central")
             .attr("font-size", "9px")
             .attr("font-weight", "600")
-            .attr("fill", "#374151")
+            .attr("fill", pal.paperInk)
             .attr("pointer-events", "none")
             .text(truncate(d.name, 11));
         } else if (d.type === "proposal") {
@@ -782,7 +806,7 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
             .attr("dominant-baseline", "central")
             .attr("font-size", "8px")
             .attr("font-weight", "600")
-            .attr("fill", "#92400e")
+            .attr("fill", pal.paperInk)
             .attr("pointer-events", "none")
             .text(truncate(d.name, 10));
         } else if (d.type === "financial" || d.type === "corporation") {
@@ -798,7 +822,7 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
             .attr("dominant-baseline", "central")
             .attr("font-size", "8px")
             .attr("font-weight", "600")
-            .attr("fill", "#14532d")
+            .attr("fill", pal.paperInk)
             .attr("pointer-events", "none")
             .text(truncate(d.name, 9));
         } else if (d.type === "pac") {
@@ -814,7 +838,7 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
             .attr("y", "4")
             .attr("font-size", "7px")
             .attr("font-weight", "700")
-            .attr("fill", "#7c2d12")
+            .attr("fill", pal.paperInk)
             .attr("pointer-events", "none")
             .text(truncate(d.name, 8));
         } else if (d.type === "individual_bracket") {
@@ -823,8 +847,9 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
           const tierMeta = d.metadata?.tier as string | undefined;
           const isEmployer = d.metadata?.isEmployerNode as boolean | undefined;
           const tierDef = BRACKET_TIERS.find(t => t.id === tierMeta);
-          const tierColor = tierDef?.color ?? "#d97706";
-          const tierFill = tierColor + "22"; // ~13% opacity fill
+          const tierColor  = tierDef?.color ?? "rgb(var(--c-viz-3))";
+          const tierStroke = resolveColor(tierColor, svgEl);
+          const tierFill   = withAlpha(tierColor, 0.13, svgEl); // ~13% opacity fill
 
           // Back diamond (offset -3,-3), mid diamond (offset -1.5,-1.5), front diamond
           const offsets: [number, number][] = [[-3, -3], [-1.5, -1.5], [0, 0]];
@@ -834,7 +859,7 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
               .attr("class", idx === 2 ? "node-circle" : null)
               .attr("d", `M${ox},${oy - r} L${ox + r},${oy} L${ox},${oy + r} L${ox - r},${oy} Z`)
               .attr("fill", idx === 2 ? tierFill : "none")
-              .attr("stroke", tierColor)
+              .attr("stroke", tierStroke)
               .attr("stroke-width", idx === 2 ? 2 : 1)
               .attr("opacity", opacity)
               .attr("pointer-events", idx === 2 ? null : "none");
@@ -854,8 +879,8 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
             el.append("circle")
               .attr("cx", r * 0.65).attr("cy", -r * 0.65)
               .attr("r", 9)
-              .attr("fill", tierColor)
-              .attr("stroke", "#111827")
+              .attr("fill", tierStroke)
+              .attr("stroke", pal.termBg)
               .attr("stroke-width", 1)
               .attr("pointer-events", "none");
             el.append("text")
@@ -872,8 +897,8 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
           // YOU node: distinct visual (FIX-120)
           //   - Larger than typical official nodes (baseRadius=28)
           //   - Outer ring color reflects aggregate alignment across reps:
-          //       green ≥ 0.6, red < 0.4, gray otherwise
-          //   - Inner circle stays purple to read as "this is YOU"
+          //       green-ink ≥ 0.6, accent < 0.4, ink-soft otherwise
+          //   - Inner circle keeps the amber user stroke to read as "this is YOU"
           const alignmentRatios = simLinks
             .filter(e => e.fromId === d.id && e.connectionType === "alignment")
             .map(e => e.metadata?.alignmentRatio as number | null)
@@ -882,10 +907,10 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
             ? alignmentRatios.reduce((a, b) => a + b, 0) / alignmentRatios.length
             : null;
           const ringColor =
-            avgRatio == null ? "#9ca3af" :  // gray
-            avgRatio >= 0.6  ? "#16a34a" :  // green
-            avgRatio <  0.4  ? "#dc2626" :  // red
-                               "#9ca3af";   // mixed → gray
+            avgRatio == null ? pal.inkSoft :  // no signal
+            avgRatio >= 0.6  ? pal.greenInk : // aligned
+            avgRatio <  0.4  ? pal.accent :   // misaligned
+                               pal.inkSoft;   // mixed → muted
           el.append("circle")
             .attr("r", r + 8)
             .attr("fill", "none")
@@ -911,7 +936,7 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
             .attr("dominant-baseline", "central")
             .attr("font-size", "10px")
             .attr("font-weight", "800")
-            .attr("fill", "#6d28d9")
+            .attr("fill", pal.paperInk)
             .attr("pointer-events", "none")
             .text("YOU");
         } else {
@@ -948,7 +973,7 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
           .attr("y", labelY)
           .attr("text-anchor", "middle")
           .attr("font-size", "10px")
-          .attr("fill", "#6b7280")
+          .attr("fill", pal.inkSoft)
           .attr("pointer-events", "none")
           .text(labelText);
 
@@ -957,7 +982,7 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
           .attr("class", "node-loading-ring")
           .attr("r", r + 6)
           .attr("fill", "none")
-          .attr("stroke", "#6366f1")
+          .attr("stroke", pal.amber)
           .attr("stroke-width", 2)
           .attr("stroke-dasharray", "12,8")
           .style("display", "none")
@@ -968,8 +993,8 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
           el.append("circle")
             .attr("cx", r - 2).attr("cy", -(r - 2))
             .attr("r", 9)
-            .attr("fill", "#f97316")
-            .attr("stroke", "#111827")
+            .attr("fill", pal.viz6)
+            .attr("stroke", pal.termBg)
             .attr("stroke-width", 1.5)
             .attr("pointer-events", "none");
           el.append("text")
@@ -991,8 +1016,8 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
           el.append("circle")
             .attr("cx", -(r - 2)).attr("cy", -(r - 2))
             .attr("r", 9)
-            .attr("fill", "#fef3c7")
-            .attr("stroke", "#d97706")
+            .attr("fill", pal.cardFill)
+            .attr("stroke", pal.amber)
             .attr("stroke-width", 1.5)
             .attr("stroke-dasharray", "2,1.5")
             .attr("pointer-events", "none");
@@ -1002,7 +1027,7 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
             .attr("dominant-baseline", "central")
             .attr("font-size", "11px")
             .attr("font-weight", "800")
-            .attr("fill", "#92400e")
+            .attr("fill", pal.paperInk)
             .attr("pointer-events", "none")
             .text("S");
           synthLabel.append("title")
@@ -1125,6 +1150,9 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
       const link = linkSelRef.current;
       const nodeGrp = nodeGrpRef.current;
       if (!link) return;
+      // FIX-729 — scope-aware token resolution for SVG presentation attrs
+      // (var() fails in .attr(); resolve to concrete rgb() first).
+      const svgEl = svgRef.current;
 
       const focusIds = new Set(focusEntities.map((fe) => fe.id));
       const hasConnectionFilter = connections && Object.keys(connections).length > 0;
@@ -1142,13 +1170,16 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
         .style("display", (d: SimLink) => (edgeVisible(d) ? "block" : "none"))
         .attr("stroke-dasharray", (d: SimLink) => (d.evidenceSource === "investigation" ? "5 3" : null))
         .attr("stroke", (d: SimLink) => {
-          if (d.evidenceSource === "investigation") return INVESTIGATION_EDGE_COLOR;
+          if (d.evidenceSource === "investigation") return resolveColor(INVESTIGATION_EDGE_COLOR, svgEl);
           if (d.connectionType === "alignment") {
-            return alignmentEdgeColor(d.metadata?.alignmentRatio as number | null);
+            return resolveColor(alignmentEdgeColor(d.metadata?.alignmentRatio as number | null), svgEl);
           }
-          return connections[d.connectionType]?.color
-            ?? CONNECTION_TYPE_REGISTRY[d.connectionType]?.color
-            ?? "#94a3b8";
+          return resolveColor(
+            connections[d.connectionType]?.color
+              ?? CONNECTION_TYPE_REGISTRY[d.connectionType]?.color
+              ?? "rgb(var(--c-ink-soft))",
+            svgEl
+          );
         })
         .attr("stroke-opacity", (d: SimLink) => {
           const isShared =
@@ -1195,6 +1226,8 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
     useEffect(() => {
       const nodeGrp = nodeGrpRef.current;
       if (!nodeGrp) return;
+      // FIX-729 — resolve tokens against the svg's scope for presentation attrs.
+      const svgEl = svgRef.current;
 
       const focusIds = new Set(focusEntities.map((fe) => fe.id));
 
@@ -1203,14 +1236,17 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
         .attr("stroke", (d: SimNode) => {
           if (focusIds.has(d.id)) {
             switch (d.party?.toLowerCase()) {
-              case "democrat":   return "#2563eb";
-              case "republican": return "#dc2626";
-              default:           return "#7c3aed";
+              case "democrat":   return resolveToken("--c-blue", svgEl);
+              case "republican": return resolveToken("--c-accent", svgEl);
+              default:           return resolveToken("--c-viz-7", svgEl); // wine — no purple in the token system
             }
           }
-          return d.type === "official" && d.party
-            ? (PARTY_STROKE[d.party.toLowerCase()] ?? NODE_STROKE[d.type] ?? "#6366f1")
-            : (NODE_STROKE[d.type] ?? "#94a3b8");
+          return resolveColor(
+            d.type === "official" && d.party
+              ? (PARTY_STROKE[d.party.toLowerCase()] ?? NODE_STROKE[d.type] ?? "rgb(var(--c-blue))")
+              : (NODE_STROKE[d.type] ?? "rgb(var(--c-ink-soft))"),
+            svgEl
+          );
         })
         .attr("stroke-width", (d: SimNode) => (focusIds.has(d.id) ? 3 : d.type === "official" ? 3 : 2));
     }, [focusEntities]);
@@ -1513,7 +1549,7 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
           <button
             type="button"
             onClick={() => setShowInvestigation((v) => !v)}
-            className="absolute top-4 right-4 flex items-center gap-1.5 rounded-full border bg-white/90 px-2.5 py-1 text-[11px] font-medium shadow-sm backdrop-blur-sm"
+            className="absolute top-4 right-4 flex items-center gap-1.5 rounded-full border bg-card/90 px-2.5 py-1 text-[11px] font-medium shadow-sm backdrop-blur-sm"
             style={{ borderColor: INVESTIGATION_EDGE_COLOR, color: INVESTIGATION_EDGE_COLOR }}
             title="Community claims promoted to the graph"
           >
@@ -1549,12 +1585,12 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
           );
           if (!items.length) return null;
           return (
-            <div className="absolute bottom-4 left-4 bg-white/90 backdrop-blur-sm border border-gray-200 rounded-lg px-2.5 py-2 shadow-sm pointer-events-none">
-              <div className="text-[9px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Type sectors</div>
+            <div className="absolute bottom-4 left-4 bg-card/90 backdrop-blur-sm border border-rule rounded-lg px-2.5 py-2 shadow-sm pointer-events-none">
+              <div className="text-[9px] font-semibold text-ink-soft uppercase tracking-wide mb-1.5">Type sectors</div>
               <div className="space-y-0.5">
                 {items.map(k => (
-                  <div key={k} className="flex items-center gap-1.5 text-[10px] text-gray-600">
-                    <span className="w-4 text-center text-gray-400 font-medium">{TYPE_LEGEND[k]!.compass}</span>
+                  <div key={k} className="flex items-center gap-1.5 text-[10px] text-ink">
+                    <span className="w-4 text-center text-ink-soft font-medium">{TYPE_LEGEND[k]!.compass}</span>
                     <span>{TYPE_LEGEND[k]!.label}</span>
                   </div>
                 ))}
@@ -1573,16 +1609,16 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
           ];
           const maxR = BASE + Math.sqrt(10_000_000 / 100_000) * 2;
           return (
-            <div className="absolute bottom-4 right-4 bg-white/90 backdrop-blur-sm border border-gray-200 rounded-lg px-2.5 py-2 shadow-sm pointer-events-none">
-              <div className="text-[9px] font-semibold text-gray-400 uppercase tracking-wide mb-2">Node size</div>
+            <div className="absolute bottom-4 right-4 bg-card/90 backdrop-blur-sm border border-rule rounded-lg px-2.5 py-2 shadow-sm pointer-events-none">
+              <div className="text-[9px] font-semibold text-ink-soft uppercase tracking-wide mb-2">Node size</div>
               <div className="space-y-1.5">
                 {entries.map(({ amt, label }) => {
                   const r = BASE + Math.sqrt(amt / 100_000) * 2;
                   const px = Math.round(r * 1.4);
                   return (
-                    <div key={amt} className="flex items-center gap-2 text-[10px] text-gray-600">
+                    <div key={amt} className="flex items-center gap-2 text-[10px] text-ink">
                       <div className="flex items-center justify-center" style={{ width: Math.round(maxR * 1.4) + 2 }}>
-                        <div className="rounded-full bg-indigo-50 border border-indigo-300" style={{ width: px, height: px }} />
+                        <div className="rounded-full bg-amber/10 border border-amber" style={{ width: px, height: px }} />
                       </div>
                       <span>{label}</span>
                     </div>

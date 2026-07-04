@@ -19,6 +19,7 @@ import type { RefObject } from "react";
 import type { GraphNode as NewGraphNode, NodeActions, HierarchyOptions } from "./types";
 import { Tooltip, useTooltip } from "./components/Tooltip";
 import { NodePopup } from "./components/NodePopup";
+import { resolveToken } from "./tokens";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -202,6 +203,18 @@ export function HierarchyGraph({
     d3.select(svg).selectAll("*").remove();
     d3.select(svg).attr("width", width).attr("height", height);
 
+    // SVG presentation attributes can't carry var() — resolve tokens to
+    // concrete colors against the svg's scope at draw time (FIX-729).
+    const T = {
+      bg:    resolveToken("--c-term-bg", svg),
+      panel: resolveToken("--c-term-panel", svg),
+      line:  resolveToken("--c-term-line", svg),
+      ink:   resolveToken("--c-ink", svg),
+      amber: resolveToken("--c-amber", svg),
+      steel: resolveToken("--c-viz-5", svg),
+      wine:  resolveToken("--c-viz-7", svg),
+    };
+
     const root = d3.hierarchy<TreeDatum>(tree, (d) => d.children);
 
     // Node size encoding — scale leaf radii based on budget / award count / uniform.
@@ -271,7 +284,7 @@ export function HierarchyGraph({
       .join("path")
       .attr("class", "link")
       .attr("fill", "none")
-      .attr("stroke", "#475569")
+      .attr("stroke", T.line)
       .attr("stroke-opacity", 0.5)
       .attr("stroke-width", 1)
       .attr("d", (d) => linkGen(d));
@@ -288,11 +301,11 @@ export function HierarchyGraph({
     nodeG
       .append("circle")
       .attr("r", (d) => radiusFor(d))
-      .attr("fill", (d) => (d.data._children ? "#1e3a5f" : "#0f172a"))
+      .attr("fill", (d) => (d.data._children ? T.panel : T.bg))
       .attr("stroke", (d) => {
-        if (d.data._children) return "#fbbf24";
-        if (d.depth === 0) return "#a855f7";
-        return "#3b82f6";
+        if (d.data._children) return T.amber; // collapsed — has hidden children
+        if (d.depth === 0) return T.wine;     // root (was purple → wine)
+        return T.steel;                       // institutional nodes → steel-slate
       })
       .attr("stroke-width", (d) => (d.depth === 0 ? 2 : 1.25))
       .on("mouseenter", function (event: MouseEvent, d) {
@@ -362,7 +375,7 @@ export function HierarchyGraph({
         })
         .attr("font-size", compact ? 9 : 11)
         .attr("font-family", "system-ui, sans-serif")
-        .attr("fill", "#e2e8f0")
+        .attr("fill", T.ink)
         .attr("pointer-events", "none")
         .style("user-select", "none")
         .style("-webkit-user-select", "none")
@@ -402,8 +415,8 @@ export function HierarchyGraph({
     return (
       <div className={`flex items-center justify-center ${className}`}>
         <div className="text-center">
-          <div className="w-8 h-8 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin mx-auto mb-3" />
-          <p className="text-gray-500 text-sm">Loading agency hierarchy…</p>
+          <div className="w-8 h-8 rounded-full border-2 border-accent border-t-transparent animate-spin mx-auto mb-3" />
+          <p className="text-ink-soft text-sm">Loading agency hierarchy…</p>
         </div>
       </div>
     );
@@ -412,7 +425,7 @@ export function HierarchyGraph({
   if (error) {
     return (
       <div className={`flex items-center justify-center ${className}`}>
-        <p className="text-red-400 text-sm">Failed to load hierarchy: {error}</p>
+        <p className="text-accent text-sm">Failed to load hierarchy: {error}</p>
       </div>
     );
   }
@@ -420,7 +433,7 @@ export function HierarchyGraph({
   if (!tree) {
     return (
       <div className={`flex items-center justify-center ${className}`}>
-        <p className="text-gray-500 text-sm">No agencies available.</p>
+        <p className="text-ink-soft text-sm">No agencies available.</p>
       </div>
     );
   }
@@ -429,14 +442,14 @@ export function HierarchyGraph({
     <div ref={containerRef} className={`relative overflow-hidden flex flex-col ${className}`}>
       {!compact && (
         <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 pointer-events-none">
-          <span className="text-xs text-gray-400 bg-gray-950/70 px-2 py-0.5 rounded-full">
+          <span className="text-xs text-ink-soft bg-term-bg/70 px-2 py-0.5 rounded-full">
             {tree.id === "root"
               ? "Federal Government"
               : tree.acronym
                 ? `${tree.name} (${tree.acronym})`
                 : tree.name}
             {totalBudget > 0 && tree.id === "root" && (
-              <span className="ml-2 text-emerald-400 font-medium">
+              <span className="ml-2 text-green-ink font-medium">
                 {fmtMoney(totalBudget)} contracted
               </span>
             )}
@@ -464,8 +477,8 @@ export function HierarchyGraph({
       )}
 
       {!compact && (
-        <div className="absolute bottom-3 right-3 flex items-center gap-3 bg-gray-950/80 rounded-lg px-3 py-1.5">
-          <span className="text-[10px] text-gray-500">
+        <div className="absolute bottom-3 right-3 flex items-center gap-3 bg-term-bg/80 rounded-lg px-3 py-1.5">
+          <span className="text-[10px] text-ink-soft">
             Click node to {nodeSizeBy === "uniform" ? "open" : "expand/collapse"} · Color = depth
           </span>
         </div>

@@ -56,7 +56,9 @@
          viz-4  #2b4a8b  civic blue  (brand)   ~7.8:1   education
          viz-5  #5f6673  steel-slate (earthy)  ~5.3:1   defense
          viz-6  #bf5a34  terracotta  (earthy)  ~4.1:1   immigration
-         viz-7  #8f3050  wine        (brand)   ~7.1:1   justice        */
+         viz-7  #8f3050  wine        (brand)   ~7.1:1   justice
+         viz-8  #6f7a24  olive       (earthy)  ~4.4:1   co-sponsorship (FIX-729)
+         viz-9  #7a5230  bronze      (earthy)  ~6.0:1   revolving door (FIX-729) */
     --c-viz-1:  29 122  62; /* #1d7a3e green-ink */
     --c-viz-2:  22 126 136; /* #167e88 teal */
     --c-viz-3: 184 121  31; /* #b8791f ochre-gold */
@@ -64,6 +66,8 @@
     --c-viz-5:  95 102 115; /* #5f6673 steel-slate */
     --c-viz-6: 191  90  52; /* #bf5a34 terracotta */
     --c-viz-7: 143  48  80; /* #8f3050 wine */
+    --c-viz-8: 111 122  36; /* #6f7a24 olive — added for the graph edge palette (FIX-729) */
+    --c-viz-9: 122  82  48; /* #7a5230 bronze — added for the graph edge palette (FIX-729) */
   }
 
   [data-theme="terminal"] {
@@ -77,7 +81,7 @@
     --c-blue:      var(--c-term-blue);
     --c-green-ink: var(--c-term-green);
 
-    /* Luminous viz variants — same 7 hues lifted to read on --c-term-bg. */
+    /* Luminous viz variants — same 9 hues lifted to read on --c-term-bg. */
     --c-viz-1:  79 209 138; /* #4fd18a green */
     --c-viz-2:  56 198 207; /* #38c6cf teal */
     --c-viz-3: 224 165  60; /* #e0a53c ochre-gold */
@@ -85,6 +89,8 @@
     --c-viz-5: 151 160 176; /* #97a0b0 steel-slate */
     --c-viz-6: 229 122  77; /* #e57a4d terracotta */
     --c-viz-7: 215 106 144; /* #d76a90 wine */
+    --c-viz-8: 181 201  92; /* #b5c95c olive (FIX-729) */
+    --c-viz-9: 201 154 103; /* #c99a67 bronze (FIX-729) */
   }
 
   html {

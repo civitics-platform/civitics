@@ -19,6 +19,7 @@ import { useEffect, useRef, useState } from "react";
 import * as d3 from "d3";
 import type { RefObject } from "react";
 import type { ChoroplethOptions } from "./types";
+import { resolveToken } from "./tokens";
 
 interface DistrictRow {
   districtId: string;
@@ -93,14 +94,31 @@ export function ChoroplethGraph({
       .fitSize([width, height], collection);
     const path = d3.geoPath(projection);
 
-    // Color scale on the measure
+    // Color scale on the measure. d3's stock interpolators emit per-datum rgb
+    // strings in JS, so CSS vars can't flow through — build interpolators from
+    // token endpoints resolved at render time instead (FIX-729). Resolving from
+    // svgEl keeps them scope-aware (terminal luminous vs paper ink).
+    const T = {
+      panel:  resolveToken("--c-term-panel", svgRef.current),
+      teal:   resolveToken("--c-viz-2", svgRef.current),
+      accent: resolveToken("--c-accent", svgRef.current),
+      blue:   resolveToken("--c-blue", svgRef.current),
+      line:   resolveToken("--c-term-line", svgRef.current),
+      amber:  resolveToken("--c-amber", svgRef.current),
+      bg:     resolveToken("--c-term-bg", svgRef.current),
+      dim:    resolveToken("--c-term-dim", svgRef.current),
+    };
     const measureValues = rows
       .map(r => r.measureValue)
       .filter((v): v is number => typeof v === "number");
     const ext = d3.extent(measureValues) as [number, number];
     const colorFn = colorScale === "diverging"
-      ? d3.scaleDiverging<string>(d3.interpolateRdBu).domain([ext[0], (ext[0] + ext[1]) / 2, ext[1]])
-      : d3.scaleSequential<string>(d3.interpolateBlues).domain(ext);
+      // accent → panel → civic-blue replaces interpolateRdBu
+      ? d3.scaleDiverging<string>(
+          d3.piecewise(d3.interpolateRgb, [T.accent, T.panel, T.blue])
+        ).domain([ext[0], (ext[0] + ext[1]) / 2, ext[1]])
+      // panel → teal replaces interpolateBlues
+      : d3.scaleSequential<string>(d3.interpolateRgb(T.panel, T.teal)).domain(ext);
 
     svg.attr("viewBox", `0 0 ${width} ${height}`);
 
@@ -113,13 +131,13 @@ export function ChoroplethGraph({
       .attr("d", d => path(d) ?? "")
       .attr("fill", d => {
         const v = (d.properties as DistrictRow).measureValue;
-        return v == null ? "#1f2937" : colorFn(v);
+        return v == null ? T.line : colorFn(v);
       })
       .attr("stroke", d => {
         const props = d.properties as DistrictRow;
         return primaryEntityId && props.officialIds.includes(primaryEntityId)
-          ? "#facc15"
-          : "#0f172a";
+          ? T.amber
+          : T.bg;
       })
       .attr("stroke-width", d => {
         const props = d.properties as DistrictRow;
@@ -149,35 +167,35 @@ export function ChoroplethGraph({
     }
     lg.append("text")
       .attr("x", 0).attr("y", -4)
-      .attr("font-size", 10).attr("fill", "#94a3b8")
+      .attr("font-size", 10).attr("fill", T.dim)
       .text(labelFor(measure));
     lg.append("text")
       .attr("x", 0).attr("y", legendH + 12)
-      .attr("font-size", 9).attr("fill", "#94a3b8")
+      .attr("font-size", 9).attr("fill", T.dim)
       .text(`${(ext[0] * 100).toFixed(0)}%`);
     lg.append("text")
       .attr("x", legendW).attr("y", legendH + 12).attr("text-anchor", "end")
-      .attr("font-size", 9).attr("fill", "#94a3b8")
+      .attr("font-size", 9).attr("fill", T.dim)
       .text(`${(ext[1] * 100).toFixed(0)}%`);
   }, [rows, measure, colorScale, primaryEntityId, svgRef]);
 
   if (error) {
     return (
-      <div className={`flex items-center justify-center h-full text-red-400 text-sm ${className}`}>
+      <div className={`flex items-center justify-center h-full text-accent text-sm ${className}`}>
         Choropleth error: {error}
       </div>
     );
   }
   if (loading) {
     return (
-      <div className={`flex items-center justify-center h-full text-gray-400 text-sm ${className}`}>
+      <div className={`flex items-center justify-center h-full text-ink-soft text-sm ${className}`}>
         Loading district data…
       </div>
     );
   }
   if (rows.length === 0) {
     return (
-      <div className={`flex items-center justify-center h-full text-gray-400 text-sm ${className}`}>
+      <div className={`flex items-center justify-center h-full text-ink-soft text-sm ${className}`}>
         No district boundary data loaded — run pnpm data:districts to seed
       </div>
     );

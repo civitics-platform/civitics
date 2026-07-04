@@ -6,6 +6,7 @@ import type { RefObject } from "react";
 import type { GraphNode as NewGraphNode, NodeActions, TreemapOptions, FocusGroup, FocusEntity } from "./types";
 import { Tooltip, useTooltip } from "./components/Tooltip";
 import { NodePopup } from "./components/NodePopup";
+import { resolveColor, resolveToken } from "./tokens";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -67,40 +68,38 @@ interface CompareEntry {
 }
 
 // ── Industry colors (entity mode) ─────────────────────────────────────────────
+// FIX-729 — strokes cycle the 9-hue viz ramp; the dark cell fill is derived
+// from the stroke hue at render time (see fillOf in render), replacing the
+// legacy parallel *_FILL hex palette. Same 13-slot length / index logic.
 
-const INDUSTRY_FILL_PALETTE = [
-  "#1a2a3a", "#1a3a2a", "#2a1a3a", "#3a2a1a", "#1a3a3a",
-  "#3a1a2a", "#2a3a1a", "#1a2a2a", "#2a2a1a", "#1a1a3a",
-  "#3a1a1a", "#2a1a2a", "#1a3a1a",
-];
-const INDUSTRY_STROKE_PALETTE = [
-  "#06b6d4", "#22c55e", "#a855f7", "#f97316", "#14b8a6",
-  "#ec4899", "#84cc16", "#0ea5e9", "#eab308", "#6366f1",
-  "#ef4444", "#8b5cf6", "#10b981",
+const VIZ_RAMP = [
+  "rgb(var(--c-viz-1))",
+  "rgb(var(--c-viz-2))",
+  "rgb(var(--c-viz-3))",
+  "rgb(var(--c-viz-4))",
+  "rgb(var(--c-viz-5))",
+  "rgb(var(--c-viz-6))",
+  "rgb(var(--c-viz-7))",
+  "rgb(var(--c-viz-8))",
+  "rgb(var(--c-viz-9))",
 ];
 
-function getIndustryFill(index: number): string {
-  return INDUSTRY_FILL_PALETTE[index % INDUSTRY_FILL_PALETTE.length] ?? "#1e3040";
-}
+const INDUSTRY_STROKE_PALETTE = Array.from(
+  { length: 13 },
+  (_, i) => VIZ_RAMP[i % VIZ_RAMP.length]!,
+);
 
 function getIndustryStroke(index: number): string {
-  return INDUSTRY_STROKE_PALETTE[index % INDUSTRY_STROKE_PALETTE.length] ?? "#64748b";
+  return INDUSTRY_STROKE_PALETTE[index % INDUSTRY_STROKE_PALETTE.length] ?? "rgb(var(--c-ink-soft))";
 }
 
 // ── Party colors ──────────────────────────────────────────────────────────────
 
-const PARTY_FILL: Record<string, string> = {
-  democrat:    "#1e3a5f",
-  republican:  "#5f1e1e",
-  independent: "#3b1e5f",
-  nonpartisan: "#1e3040",
-};
-
 const PARTY_STROKE: Record<string, string> = {
-  democrat:    "#3b82f6",
-  republican:  "#ef4444",
-  independent: "#a855f7",
-  nonpartisan: "#64748b",
+  democrat:    "rgb(var(--c-blue))",
+  republican:  "rgb(var(--c-accent))",
+  independent: "rgb(var(--c-viz-7))", // wine — no purple in the token system
+  nonpartisan: "rgb(var(--c-ink-soft))",
 };
 
 const PARTY_LABEL: Record<string, string> = {
@@ -112,16 +111,10 @@ const PARTY_LABEL: Record<string, string> = {
 
 // ── Chamber colors ────────────────────────────────────────────────────────────
 
-const CHAMBER_FILL: Record<string, string> = {
-  senate: "#1e2f4f",
-  house:  "#2f1e4f",
-  unknown: "#1e3040",
-};
-
 const CHAMBER_STROKE: Record<string, string> = {
-  senate: "#60a5fa",
-  house:  "#c084fc",
-  unknown: "#64748b",
+  senate: "rgb(var(--c-blue))",
+  house:  "rgb(var(--c-viz-7))", // was purple — wine per token vocabulary
+  unknown: "rgb(var(--c-ink-soft))",
 };
 
 const CHAMBER_LABEL: Record<string, string> = {
@@ -130,14 +123,9 @@ const CHAMBER_LABEL: Record<string, string> = {
   unknown: "Unknown",
 };
 
-function getFill(key: string, colorBy: 'party' | 'chamber'): string {
-  if (colorBy === 'chamber') return CHAMBER_FILL[key] ?? "#1e3040";
-  return PARTY_FILL[key] ?? "#1e3040";
-}
-
 function getStroke(key: string, colorBy: 'party' | 'chamber'): string {
-  if (colorBy === 'chamber') return CHAMBER_STROKE[key] ?? "#64748b";
-  return PARTY_STROKE[key] ?? "#64748b";
+  if (colorBy === 'chamber') return CHAMBER_STROKE[key] ?? "rgb(var(--c-ink-soft))";
+  return PARTY_STROKE[key] ?? "rgb(var(--c-ink-soft))";
 }
 
 function getGroupLabel(key: string, groupBy: TreemapOptions['groupBy']): string {
@@ -460,6 +448,18 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
     const height = container.clientHeight;
     if (width === 0 || height === 0) return;
 
+    // FIX-729 — resolve design tokens against the svg's scope (terminal vs
+    // paper) at render time; d3 .attr() needs concrete colors, not var().
+    const R = (c: string) => resolveColor(c, svg);
+    const T = {
+      panel:   resolveToken("--c-term-panel", svg),
+      ink:     resolveToken("--c-ink", svg),
+      inkSoft: resolveToken("--c-ink-soft", svg),
+    };
+    // Dark cell fill derived from the stroke hue — replaces the legacy
+    // parallel *_FILL hex palettes (same hue pairing, panel-anchored).
+    const fillOf = (stroke: string) => d3.interpolateRgb(T.panel, R(stroke))(0.35);
+
     let root: GroupDatum;
 
     if (isCompareMode) {
@@ -588,11 +588,11 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
       .attr("y", (d) => d.y0)
       .attr("width", (d) => d.x1 - d.x0)
       .attr("height", (d) => d.y1 - d.y0)
-      .attr("fill", (d) => (isPacSectorMode || isEntityMode || isCompareMode)
-        ? getIndustryFill(d.data.industryIndex ?? 0)
+      .attr("fill", (d) => fillOf((isPacSectorMode || isEntityMode || isCompareMode)
+        ? getIndustryStroke(d.data.industryIndex ?? 0)
         : isPacPartyMode
-          ? (PARTY_FILL[d.data.name.toLowerCase()] ?? "#1e3040")
-          : getFill(d.data.name, colorBy as 'party' | 'chamber'))
+          ? (PARTY_STROKE[d.data.name.toLowerCase()] ?? "rgb(var(--c-ink-soft))")
+          : getStroke(d.data.name, colorBy as 'party' | 'chamber')))
       .attr("rx", 3)
       .style("cursor", (d) =>
         !drillNode && d.data.children?.length ? "zoom-in" : "default")
@@ -609,11 +609,11 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
       .attr("class", "group-label")
       .attr("x", (d) => d.x0 + 6)
       .attr("y", (d) => d.y0 + 14)
-      .attr("fill", (d) => (isPacSectorMode || isEntityMode || isCompareMode)
+      .attr("fill", (d) => R((isPacSectorMode || isEntityMode || isCompareMode)
         ? getIndustryStroke(d.data.industryIndex ?? 0)
         : isPacPartyMode
-          ? (PARTY_STROKE[d.data.name.toLowerCase()] ?? "#64748b")
-          : getStroke(d.data.name, colorBy as 'party' | 'chamber'))
+          ? (PARTY_STROKE[d.data.name.toLowerCase()] ?? "rgb(var(--c-ink-soft))")
+          : getStroke(d.data.name, colorBy as 'party' | 'chamber')))
       .attr("font-size", 11)
       .attr("font-weight", "600")
       .attr("font-family", "system-ui, sans-serif")
@@ -635,7 +635,7 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
         .attr("x", (d) => d.x0 + 6)
         .attr("y", (d) => d.y0 + 26)
         .attr("font-size", 8)
-        .attr("fill", "#64748b")
+        .attr("fill", T.inkSoft)
         .attr("font-family", "system-ui, sans-serif")
         .attr("pointer-events", "none")
         .style("user-select", "none")
@@ -663,22 +663,22 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
       .append("rect")
       .attr("width",  (d) => Math.max(0, d.x1 - d.x0 - 1))
       .attr("height", (d) => Math.max(0, d.y1 - d.y0 - 1))
-      .attr("fill",   (d) => (isPacSectorMode || isEntityMode || isCompareMode)
-        ? getIndustryFill(d.data.industryIndex ?? 0)
-        : isPacPartyMode
-          ? (PARTY_FILL[(d.data.donor?.industry_category ?? "").toLowerCase()] ?? "#1e3040")
-          : (() => {
-              const key = d.data.official ? getGroupKey(d.data.official, colorBy === 'chamber' ? 'chamber' : 'party') : 'nonpartisan';
-              return getFill(key, colorBy as 'party' | 'chamber');
-            })())
-      .attr("stroke", (d) => (isPacSectorMode || isEntityMode || isCompareMode)
+      .attr("fill",   (d) => fillOf((isPacSectorMode || isEntityMode || isCompareMode)
         ? getIndustryStroke(d.data.industryIndex ?? 0)
         : isPacPartyMode
-          ? (PARTY_STROKE[(d.data.donor?.industry_category ?? "").toLowerCase()] ?? "#64748b")
+          ? (PARTY_STROKE[(d.data.donor?.industry_category ?? "").toLowerCase()] ?? "rgb(var(--c-ink-soft))")
           : (() => {
               const key = d.data.official ? getGroupKey(d.data.official, colorBy === 'chamber' ? 'chamber' : 'party') : 'nonpartisan';
               return getStroke(key, colorBy as 'party' | 'chamber');
-            })())
+            })()))
+      .attr("stroke", (d) => R((isPacSectorMode || isEntityMode || isCompareMode)
+        ? getIndustryStroke(d.data.industryIndex ?? 0)
+        : isPacPartyMode
+          ? (PARTY_STROKE[(d.data.donor?.industry_category ?? "").toLowerCase()] ?? "rgb(var(--c-ink-soft))")
+          : (() => {
+              const key = d.data.official ? getGroupKey(d.data.official, colorBy === 'chamber' ? 'chamber' : 'party') : 'nonpartisan';
+              return getStroke(key, colorBy as 'party' | 'chamber');
+            })()))
       // FIX-186: shared donors in compare mode get a thicker stroke so the
       // overlap reads as a "they both took money from this donor" signal.
       .attr("stroke-width", (d) => isCompareMode && d.data.shared ? 1.5 : 0.5)
@@ -761,7 +761,7 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
         if (w < 40 || h < 20) return 0;
         return Math.min(11, Math.max(8, Math.sqrt(w * h) / 8));
       })
-      .attr("fill", "#e2e8f0")
+      .attr("fill", T.ink)
       .attr("font-family", "system-ui, sans-serif")
       .attr("pointer-events", "none")
       .style("user-select", "none")
@@ -780,7 +780,7 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
       .attr("x", 4)
       .attr("y", 26)
       .attr("font-size", 9)
-      .attr("fill", "#94a3b8")
+      .attr("fill", T.inkSoft)
       .attr("font-family", "system-ui, sans-serif")
       .attr("pointer-events", "none")
       .style("user-select", "none")
@@ -821,14 +821,14 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
   function renderLegend() {
     if (isPacMode) {
       return (
-        <span className="text-[10px] text-gray-500">
+        <span className="text-[10px] text-ink-soft">
           Color = {dataMode === 'pac_sector' ? 'industry' : 'party'} · Size = total donated
         </span>
       );
     }
     if (isEntityMode) {
       return (
-        <span className="text-[10px] text-gray-500">
+        <span className="text-[10px] text-ink-soft">
           Color = industry · Size = donation amount
         </span>
       );
@@ -839,10 +839,10 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
           {Object.entries(CHAMBER_LABEL).map(([key, label]) => (
             <div key={key} className="flex items-center gap-1">
               <span className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: CHAMBER_STROKE[key] }} />
-              <span className="text-[10px] text-gray-400">{label}</span>
+              <span className="text-[10px] text-ink-soft">{label}</span>
             </div>
           ))}
-          <span className="text-[10px] text-gray-600 border-l border-gray-700 pl-3 ml-1">
+          <span className="text-[10px] text-ink-soft border-l border-rule pl-3 ml-1">
             Color = chamber
           </span>
         </>
@@ -853,10 +853,10 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
         {Object.entries(PARTY_LABEL).map(([key, label]) => (
           <div key={key} className="flex items-center gap-1">
             <span className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: PARTY_STROKE[key] }} />
-            <span className="text-[10px] text-gray-400">{label}</span>
+            <span className="text-[10px] text-ink-soft">{label}</span>
           </div>
         ))}
-        <span className="text-[10px] text-gray-600 border-l border-gray-700 pl-3 ml-1">
+        <span className="text-[10px] text-ink-soft border-l border-rule pl-3 ml-1">
           Size = donations ({sizeScale === 'linear' ? 'linear' : 'log scale'})
         </span>
       </>
@@ -867,8 +867,8 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
     return (
       <div className={`flex items-center justify-center ${className}`}>
         <div className="text-center">
-          <div className="w-8 h-8 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin mx-auto mb-3" />
-          <p className="text-gray-500 text-sm">Loading donation data…</p>
+          <div className="w-8 h-8 rounded-full border-2 border-accent border-t-transparent animate-spin mx-auto mb-3" />
+          <p className="text-ink-soft text-sm">Loading donation data…</p>
         </div>
       </div>
     );
@@ -877,7 +877,7 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
   if (error) {
     return (
       <div className={`flex items-center justify-center ${className}`}>
-        <p className="text-red-400 text-sm">Failed to load treemap: {error}</p>
+        <p className="text-accent text-sm">Failed to load treemap: {error}</p>
       </div>
     );
   }
@@ -892,7 +892,7 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
   if (!hasData) {
     return (
       <div className={`flex items-center justify-center ${className}`}>
-        <p className="text-gray-500 text-sm">No donation data available yet.</p>
+        <p className="text-ink-soft text-sm">No donation data available yet.</p>
       </div>
     );
   }
@@ -921,18 +921,18 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
     <div ref={containerRef} className={`relative overflow-hidden flex flex-col ${className}`}>
       {/* Breadcrumb bar — shown only when drilled into a group */}
       {drillNode && (
-        <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-900/80 border-b border-gray-700 text-xs shrink-0 z-10">
+        <div className="flex items-center gap-2 px-3 py-1.5 bg-card/80 border-b border-rule text-xs shrink-0 z-10">
           <button
             onClick={() => setDrillNode(null)}
-            className="text-indigo-400 hover:text-indigo-300 transition-colors flex items-center gap-1"
+            className="text-accent hover:text-accent/80 transition-colors flex items-center gap-1"
           >
             ← All
           </button>
-          <span className="text-gray-500">/</span>
-          <span className="text-gray-200 font-medium">
+          <span className="text-ink-soft">/</span>
+          <span className="text-ink font-medium">
             {getGroupLabel(drillNode.name, groupBy)}
           </span>
-          <span className="text-gray-500 ml-auto">
+          <span className="text-ink-soft ml-auto">
             {drillNode.children?.length ?? 0} officials
             {(() => {
               // drillNode.value is the log-scaled treemap area, not a dollar
@@ -952,7 +952,7 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
       {/* Context label */}
       {!drillNode && (
         <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 pointer-events-none">
-          <span className="text-xs text-gray-400 bg-gray-950/70 px-2 py-0.5 rounded-full">
+          <span className="text-xs text-ink-soft bg-card/70 px-2 py-0.5 rounded-full">
             {contextLabel}
           </span>
         </div>
@@ -978,7 +978,7 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
       />
 
       {/* Legend */}
-      <div className="absolute bottom-3 right-3 flex items-center gap-3 bg-gray-950/80 rounded-lg px-3 py-1.5">
+      <div className="absolute bottom-3 right-3 flex items-center gap-3 bg-card/80 rounded-lg px-3 py-1.5">
         {renderLegend()}
       </div>
     </div>
