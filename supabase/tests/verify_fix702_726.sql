@@ -22,8 +22,10 @@
 \echo '── fixture setup ─────────────────────────────────────────────────────────'
 -- Clean any residue from a prior run.
 DELETE FROM public.financial_relationships
- WHERE from_id::text LIKE 'f1702726-%' OR to_id::text LIKE 'f1702726-%';
-DELETE FROM public.financial_entities WHERE id::text LIKE 'f1702726-%';
+ WHERE (from_id >= 'f1702726-0000-0000-0000-000000000000'::uuid AND from_id < 'f1702727-0000-0000-0000-000000000000'::uuid)
+    OR (to_id   >= 'f1702726-0000-0000-0000-000000000000'::uuid AND to_id   < 'f1702727-0000-0000-0000-000000000000'::uuid);
+DELETE FROM public.financial_entities
+ WHERE id >= 'f1702726-0000-0000-0000-000000000000'::uuid AND id < 'f1702727-0000-0000-0000-000000000000'::uuid;
 
 -- D1 donor, R1 + R1b recipient committees. OFF1 is a to_type='official' sink
 -- (no entity row needed) exercising that the DONOR total counts to-official
@@ -87,21 +89,34 @@ BEGIN
   RAISE NOTICE 'PASS test1: donor=180000 recip1=100000 recip2=50000; control unchanged; watermark advanced';
 END $$;
 
-\echo '── test: parity vs authoritative full rebuild ────────────────────────────'
--- The old temp-table full rebuilds recompute EVERY entity from live FR. If the
--- incremental is correct, the fixture totals do not move.
-SELECT public.rebuild_financial_entity_donation_totals();
-SELECT public.rebuild_financial_entity_received_totals();
+\echo '── test: parity vs the authoritative live SUM ────────────────────────────'
+-- The materialized totals must equal the direct live SUM over FR — the same
+-- value any correct full rebuild produces. (We assert against the direct SUM
+-- rather than running the old whole-table rebuild_financial_entity_*_totals(),
+-- which is a multi-minute temp-table pass over all 5M rows — exactly the cost
+-- the incremental replaces.)
 DO $$
-DECLARE d bigint; r1 bigint; r2 bigint;
+DECLARE d bigint; r1 bigint; r2 bigint; exp_d bigint; exp_r1 bigint; exp_r2 bigint;
 BEGIN
   SELECT total_donated_cents INTO d   FROM public.financial_entities WHERE id='f1702726-0000-0000-0000-000000000001';
   SELECT total_received_cents INTO r1 FROM public.financial_entities WHERE id='f1702726-0000-0000-0000-000000000002';
   SELECT total_received_cents INTO r2 FROM public.financial_entities WHERE id='f1702726-0000-0000-0000-000000000003';
-  IF d IS DISTINCT FROM 180000 OR r1 IS DISTINCT FROM 100000 OR r2 IS DISTINCT FROM 50000 THEN
-    RAISE EXCEPTION 'FAIL parity: full rebuild disagrees (d=% r1=% r2=%)', d, r1, r2;
+
+  SELECT COALESCE(SUM(amount_cents),0) INTO exp_d FROM public.financial_relationships
+   WHERE from_type='financial_entity' AND relationship_type='donation'
+     AND from_id='f1702726-0000-0000-0000-000000000001';
+  SELECT COALESCE(SUM(amount_cents),0) INTO exp_r1 FROM public.financial_relationships
+   WHERE to_type='financial_entity' AND relationship_type='donation'
+     AND to_id='f1702726-0000-0000-0000-000000000002';
+  SELECT COALESCE(SUM(amount_cents),0) INTO exp_r2 FROM public.financial_relationships
+   WHERE to_type='financial_entity' AND relationship_type='donation'
+     AND to_id='f1702726-0000-0000-0000-000000000003';
+
+  IF d IS DISTINCT FROM exp_d OR r1 IS DISTINCT FROM exp_r1 OR r2 IS DISTINCT FROM exp_r2 THEN
+    RAISE EXCEPTION 'FAIL parity: materialized (d=% r1=% r2=%) <> live SUM (d=% r1=% r2=%)',
+      d, r1, r2, exp_d, exp_r1, exp_r2;
   END IF;
-  RAISE NOTICE 'PASS parity: incremental == authoritative full rebuild on the fixture';
+  RAISE NOTICE 'PASS parity: materialized totals == live FR SUM (d=% r1=% r2=%)', d, r1, r2;
 END $$;
 
 \echo '── test 3: incremental re-derives the whole key on an FR UPDATE ───────────'
@@ -160,7 +175,9 @@ ORDER BY started_at DESC LIMIT 5;
 
 \echo '── cleanup ───────────────────────────────────────────────────────────────'
 DELETE FROM public.financial_relationships
- WHERE from_id::text LIKE 'f1702726-%' OR to_id::text LIKE 'f1702726-%';
-DELETE FROM public.financial_entities WHERE id::text LIKE 'f1702726-%';
+ WHERE (from_id >= 'f1702726-0000-0000-0000-000000000000'::uuid AND from_id < 'f1702727-0000-0000-0000-000000000000'::uuid)
+    OR (to_id   >= 'f1702726-0000-0000-0000-000000000000'::uuid AND to_id   < 'f1702727-0000-0000-0000-000000000000'::uuid);
+DELETE FROM public.financial_entities
+ WHERE id >= 'f1702726-0000-0000-0000-000000000000'::uuid AND id < 'f1702727-0000-0000-0000-000000000000'::uuid;
 
 \echo '✓ ALL FIX-702/726 ASSERTIONS PASSED'
