@@ -1046,11 +1046,21 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
         // is unchanged from the stored watermark, skip the whole stage. We
         // tolerate HEAD failures (null head → fall through to download path,
         // which is the pre-FIX-193 behavior).
+        //
+        // FIX-701: a SCOPED run (tx-type / stage / recipient-committee filter)
+        // is an EXPLICIT surgical re-ingest — its intent is to re-capture rows
+        // regardless of whether FEC's file moved. A closed cycle's indiv file
+        // never changes again, so the freshness watermark would ALWAYS short-
+        // circuit a scoped re-run into a silent no-op — which is exactly what
+        // defeated the first 2024 D/B re-capture dispatch (the indiv stage was
+        // skipped, so zero D/B rows were restored). Bypass the watermark whenever
+        // isScoped; the un-scoped nightly still short-circuits as before.
         const headProbe = await headFecFile(indivUrl);
         const stored    = indivWatermark[CYCLE];
         const probeLm   = parseLastModified(headProbe?.lastModified);
         const storedLm  = parseLastModified(stored?.last_modified);
-        if (probeLm && storedLm && probeLm.getTime() <= storedLm.getTime()) {
+        const watermarkUnchanged = !!(probeLm && storedLm && probeLm.getTime() <= storedLm.getTime());
+        if (watermarkUnchanged && !isScoped) {
           console.log(
             `    ↺ Indiv ${indivName} unchanged since last run ` +
             `(FEC Last-Modified ${headProbe?.lastModified} ≤ watermark ${stored?.last_modified}) — skipping cycle ${CYCLE}`,
@@ -1059,6 +1069,11 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
           // branch at the bottom of the indiv block — single source of truth for
           // the skipped counter avoids double-counting.
           indivFailed = true;
+        } else if (watermarkUnchanged && isScoped) {
+          console.log(
+            `    ⇢ Indiv ${indivName} unchanged since last run, but SCOPED run — ` +
+            `bypassing the FIX-193 watermark to re-ingest cycle ${CYCLE} (FIX-701)`,
+          );
         }
 
         if (!indivFailed) {
