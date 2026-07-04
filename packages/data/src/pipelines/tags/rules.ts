@@ -4,10 +4,12 @@
  * All rule-based tags have confidence: 1.0 and generated_by: 'rule'.
  * No AI calls — deterministic, zero cost, runs on every nightly sync.
  *
- * Covers three entity types:
+ * Covers three entity types (Node-side taggers only — the two heavy SQL
+ * rebuilds, financial-entity size buckets + pre-vote timing, moved to the
+ * pg_cron procedure run_rule_taggers in FIX-716):
  *   proposal       — urgency, agency sector, scope
  *   official       — tenure, voting pattern, donor pattern
- *   financial_entity — donation size buckets, industry from name matching
+ *   financial_entity — industry from name / NAICS matching
  *
  * Run standalone:
  *   pnpm --filter @civitics/data data:tag-rules
@@ -15,7 +17,7 @@
 
 import { createAdminClient } from "@civitics/db";
 import { startSync, completeSync, failSync } from "../sync-log";
-import { runHeavyRebuild, selectDirect, rollupJsonbDirect } from "../../lib/heavy-rebuild";
+import { selectDirect, rollupJsonbDirect } from "../../lib/heavy-rebuild";
 import { withDirectClient, bulkUpsert } from "../../lib/direct-pg-upsert";
 
 // ---------------------------------------------------------------------------
@@ -726,101 +728,23 @@ function naicsToIndustry(code: string): string | null {
 }
 
 // ---------------------------------------------------------------------------
-// 3. Financial entity rules (donation size + industry)
+// 3. Financial entity rules (industry — size buckets moved to pg_cron, FIX-716)
 // ---------------------------------------------------------------------------
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function tagFinancialEntities(db: any): Promise<number> {
   console.log("\n  [3/3] Tagging financial entities...");
 
-  // ── Donation size tags — fully server-side (FIX-443) ─────────────────────
-  // The old path fetched get_financial_entity_donation_totals() — one jsonb_agg
-  // array over EVERY donor entity (derived from prod's ~4.88M donation rows) —
-  // and built size tags client-side. Materializing that single huge Datum +
-  // buffering it through PostgREST OOM'd the prod Pro instance (postmaster
-  // restart 2026-05-30 20:52:17 UTC). rebuild_financial_entity_size_tags() now
-  // does the DELETE('size') + INSERT…SELECT (same four buckets/labels/icons/
-  // visibility) entirely in SQL and returns just a count — nothing but a bigint
-  // crosses the wire. The function clears only 'size', so the industry/internal
-  // tags built below + by the pre-vote path survive.
-  //
-  // FIX-444: invoked over a DIRECT pg.Client, not PostgREST. The size rebuild
-  // inserts the full donor set (>2 min on prod), which blows the ~100s
-  // PostgREST/Cloudflare gateway cap — the call dies at the gateway while the
-  // function keeps running server-side, and callWithRetry then fired retries
-  // while the original still executed, piling up concurrent multi-minute
-  // functions that lock-contend on entity_tags. The function-level ALTER
-  // FUNCTION statement_timeout does NOT extend the outer SELECT (Postgres arms
-  // the top-level timer from the SESSION value), so runHeavyRebuild raises
-  // statement_timeout at the session level over a direct connection and runs a
-  // single attempt — no retry pile-up.
-  // (FIX-443's PostgREST cold-cache empty-body guard is gone with FIX-444: a
-  // direct pg query returns the bigint directly — no schema-cache cold-start
-  // race, no 200-with-empty-body failure mode to defend against.)
-  //
-  // FIX-652 — source-change gate. The rebuild DELETEs ~2.33M 'size' tags and
-  // re-INSERTs them by aggregating ~4.9M donation rows every night, but donation
-  // rows only change on the weekly Sunday FEC ingest (FEC bulk is the sole writer
-  // of relationship_type='donation', and it runs in the earlier 'fec' phase
-  // before this enrichment phase). 6 of 7 nights the rebuild deletes and
-  // re-inserts byte-identical rows for zero change — ~80 min of wasted nightly
-  // budget on the cache-starved Pro box. Gate it on a signature of the donation
-  // source: skip when count + max(created_at) + max(updated_at) over the donation
-  // rows is unchanged since the last build.
-  //
-  // The signature is read over a DIRECT pg.Client (selectDirect, 90-min session
-  // timeout). count()+max() with no usable index is a full scan (~50s on the
-  // donor set) — it blows the 8s PostgREST role cap, so it cannot ride the
-  // admin.rpc/supabase-js path. Even at ~50s it is a fraction of the 80-min
-  // rebuild it gates, and on skip nights it replaces (scan + 2.33M DELETE + 2.33M
-  // INSERT + index churn + concurrent autovacuum) with a single scan.
-  //
-  // Watermark stored in pipeline_state (same key/value/updated_at shape as the
-  // FEC + IRS990 watermarks). Fail-safe direction is "rebuild": a missing or
-  // unreadable watermark, or a watermark-save failure after a rebuild, all force
-  // the next run to rebuild — the gate never wrongly skips. The rebuild SQL is
-  // untouched, so final tag state is byte-identical whether the rebuild ran this
-  // night or last (FIX-443 correctness invariant preserved).
-  const DONATION_WATERMARK_KEY = "size_tags:donation_watermark";
-  const [sig] = await selectDirect<{ cnt: string; max_created: string; max_updated: string }>(
-    `SELECT count(*)::text AS cnt,
-            COALESCE(max(created_at), 'epoch'::timestamptz)::text AS max_created,
-            COALESCE(max(updated_at), 'epoch'::timestamptz)::text AS max_updated
-       FROM public.financial_relationships
-      WHERE from_type = 'financial_entity' AND relationship_type = 'donation'`,
-  );
-  const currentSig = `${sig.cnt}|${sig.max_created}|${sig.max_updated}`;
-
-  let storedSig: string | null = null;
-  try {
-    const { data } = await db
-      .from("pipeline_state")
-      .select("value")
-      .eq("key", DONATION_WATERMARK_KEY)
-      .maybeSingle();
-    storedSig = (data?.value as { sig?: string } | null)?.sig ?? null;
-  } catch {
-    storedSig = null; // unreadable watermark → rebuild (fail-safe)
-  }
-
-  let sizeWritten = 0;
-  if (storedSig !== null && storedSig === currentSig) {
-    console.log(
-      `    [size] donation source unchanged (sig=${currentSig}) — skipping rebuild_financial_entity_size_tags`,
-    );
-  } else {
-    sizeWritten = await runHeavyRebuild("rebuild_financial_entity_size_tags");
-    try {
-      await db.from("pipeline_state").upsert(
-        { key: DONATION_WATERMARK_KEY, value: { sig: currentSig }, updated_at: new Date().toISOString() },
-        { onConflict: "key" },
-      );
-    } catch (err) {
-      // Watermark save failed → next run re-detects a mismatch and rebuilds.
-      // Idempotent, so re-running is safe; just lose the skip on the next night.
-      console.warn("    [size] watermark save failed:", err instanceof Error ? err.message : err);
-    }
-  }
+  // ── Donation size tags — RELOCATED to pg_cron (FIX-716) ──────────────────
+  // rebuild_financial_entity_size_tags() (the DELETE('size') + INSERT…SELECT of
+  // ~2.33M size tags) and its FIX-652 donation-signature skip gate moved to the
+  // pg_cron procedure run_rule_taggers('weekly') — donation-derived, off this
+  // nightly critical path, under the 6h role-default budget. The SQL gate reads
+  // the SAME pipeline_state key ('size_tags:donation_watermark') with the SAME
+  // count+max(created_at)+max(updated_at) signature shape, so continuity holds.
+  // This function now writes only the INDUSTRY tags below (keyword + NAICS); the
+  // 'size' category is owned entirely by the pg_cron procedure. See
+  // supabase/migrations/20260703000100_fix716_rule_taggers_pgcron.sql.
 
   // NAICS-only rollup (FIX-443): replaces the donation-bearing rollup for the
   // industry path. One row per contract/grant entity carrying a NAICS code — the
@@ -945,45 +869,19 @@ async function tagFinancialEntities(db: any): Promise<number> {
   const industryUpserted = await timed(`financial industry tags upsert (n=${deduped.length})`, () =>
     upsertTags(deduped),
   );
-  const totalUpserted = sizeWritten + industryUpserted;
-  console.log(`    Wrote ${sizeWritten} size tags (server-side) + ${industryUpserted} industry tags = ${totalUpserted}`);
-  return totalUpserted;
+  // [FIX-716] size tags moved to pg_cron run_rule_taggers('weekly'); this
+  // function now returns only the industry tag count.
+  console.log(`    Wrote ${industryUpserted} industry tags (size tags now on pg_cron)`);
+  return industryUpserted;
 }
 
 // ---------------------------------------------------------------------------
-// 4. Pre-vote timing flags (donation connections within 90 days before a vote)
+// 4. Pre-vote timing flags — RELOCATED to pg_cron (FIX-716)
 // ---------------------------------------------------------------------------
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function tagPreVoteConnections(db: any): Promise<number> {
-  console.log("\n  [4/4] Tagging pre-vote timing connections...");
-
-  // Fully server-side authoritative rebuild (FIX-437 follow-up). The
-  // 'pre_vote_timing' tag is constant per entity — same tag/label/visibility,
-  // empty metadata — so there is nothing for Node to compute. The original
-  // approach shipped the ~371k qualifying entity ids out as a jsonb array and
-  // re-upserted them, which the local PostgREST/Kong gateway reliably failed on
-  // ("The upstream server is timing out"), leaving fe_internal stuck at 1. The
-  // aggregation itself is ~5s in psql; only the array round-trip was the
-  // problem. rebuild_pre_vote_timing_tags() does the DELETE + INSERT…SELECT in
-  // one statement under a raised statement_timeout and returns just the count —
-  // nothing crosses the wire but a number. "Qualifying" = a financial_entity
-  // with ≥1 donation in (0,90] days before any vote by the recipient official
-  // (sargable range form so the votes_official_voted_at index applies). Old Node
-  // cross-join (~65M pairs) and proposals-title fetch are gone — the tag
-  // persists no per-pair detail and no consumer reads it (verified FIX-437).
-  //
-  // FIX-444: invoked over a DIRECT pg.Client (runHeavyRebuild), not PostgREST.
-  // The aggregation runs ~80s on prod — past the ~100s PostgREST/Cloudflare
-  // gateway cap once contended — and the function-level statement_timeout does
-  // not extend the outer SELECT. A session-level timeout over a direct
-  // connection, single attempt (the callWithRetry pile-up was the FIX-444 bug).
-  const written = await runHeavyRebuild("rebuild_pre_vote_timing_tags");
-
-  const total = Number(written);
-  console.log(`    Upserted ${total} pre-vote timing tags`);
-  return total;
-}
+// rebuild_pre_vote_timing_tags() (the DELETE + INSERT…SELECT of the
+// 'pre_vote_timing' tags) moved to the pg_cron procedure run_rule_taggers('daily')
+// — vote-derived, off this nightly critical path under the 6h role-default
+// budget. See supabase/migrations/20260703000100_fix716_rule_taggers_pgcron.sql.
 
 // ---------------------------------------------------------------------------
 // Main pipeline
@@ -999,8 +897,8 @@ export async function runRuleBasedTagger(): Promise<{ tagsCreated: number }> {
     const proposalTags     = await timed("phase: tagProposals", () => tagProposals(db));
     const officialTags     = await timed("phase: tagOfficials", () => tagOfficials(db));
     const financialTags    = await timed("phase: tagFinancialEntities", () => tagFinancialEntities(db));
-    const preVoteTags      = await timed("phase: tagPreVoteConnections", () => tagPreVoteConnections(db));
-    const tagsCreated      = proposalTags + officialTags + financialTags + preVoteTags;
+    // [FIX-716] pre-vote timing tags moved to pg_cron run_rule_taggers('daily').
+    const tagsCreated      = proposalTags + officialTags + financialTags;
 
     console.log("\n  ─────────────────────────────────────────────────");
     console.log("  Rule-based tagger report");
@@ -1008,7 +906,6 @@ export async function runRuleBasedTagger(): Promise<{ tagsCreated: number }> {
     console.log(`  ${"Proposal tags:".padEnd(32)} ${proposalTags}`);
     console.log(`  ${"Official tags:".padEnd(32)} ${officialTags}`);
     console.log(`  ${"Financial entity tags:".padEnd(32)} ${financialTags}`);
-    console.log(`  ${"Pre-vote timing tags:".padEnd(32)} ${preVoteTags}`);
     console.log(`  ${"Total:".padEnd(32)} ${tagsCreated}`);
 
     await completeSync(logId, { inserted: tagsCreated, updated: 0, failed: 0, estimatedMb: 0 });
