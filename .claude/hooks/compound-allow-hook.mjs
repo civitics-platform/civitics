@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /*
- * Claude Code PreToolUse hook — auto-approve SAFE compound Bash commands. (v6)
+ * Claude Code PreToolUse hook — auto-approve SAFE compound Bash commands. (v7)
  *
  * WHY: a Claude Code security fix (the `cd && <anything>` bypass) made wildcard
  * allow-rules like `Bash(*)` stop auto-approving any command containing a shell
@@ -30,6 +30,11 @@
  *       disposable) and SQL keywords in prose (fix:add bodies) stop prompting.
  *       Added netstat/sleep/jq/taskkill/kill to SAFE, plus host-scoped curl
  *       (localhost + our supabase/vercel hosts, read methods only).
+ *   v7  join backslash-newline continuations before splitting (multi-line
+ *       `psql -c … \<nl> -c …` no longer defers on a `-c` leading word). Added
+ *       supabase/gh/python/python3 to SAFE, with NON_SQL_DANGER guards that keep
+ *       outward/prod-mutating verbs deferring (supabase db push/reset/link, gh
+ *       workflow run / run cancel / pr merge / release / secret / api -X POST).
  *
  * The shell-PARSING classes (quotes, pipes, redirects, ${VAR}, $(...), nesting)
  * are now handled. If something still prompts, it's almost always a real leading
@@ -63,6 +68,10 @@ const SAFE = new Set([
   "netstat", "sleep", "jq",
   // process kill (recoverable; clears orphaned dev servers) + curl (host-guarded below):
   "taskkill", "kill", "curl",
+  // CLIs whose read/monitor subcommands dominate — their outward/mutating verbs
+  // (supabase db push/reset, gh workflow run / pr merge / api -X POST, …) are
+  // gated in NON_SQL_DANGER below. python -c is arbitrary-code, same as node -e.
+  "supabase", "gh", "python", "python3",
 ]);
 
 // If any of these appears ANYWHERE in the raw command, never auto-approve.
@@ -76,6 +85,18 @@ const NON_SQL_DANGER = [
   /git\s+checkout\s+--/,
   /\bnpm\s+(install|i|ci|update)\b/, /\bpnpm\s+(add|dlx|install)\b/, /\byarn\s+add\b/,
   /--no-verify/,
+  // supabase/gh: read + local-migration subcommands ride SAFE; these outward or
+  // prod-mutating verbs defer to a prompt. (pnpm db:push:prod is the sanctioned
+  // prod-apply wrapper and carries no literal "supabase db push", so it's unaffected.)
+  /\bsupabase\s+db\s+(push|reset|remote)\b/i, /\bsupabase\s+(link|unlink)\b/i,
+  /\bsupabase\s+(secrets|projects|orgs)\b/i, /\bsupabase\s+functions\s+deploy\b/i,
+  /\bgh\s+workflow\s+run\b/i, /\bgh\s+run\s+(cancel|rerun|delete)\b/i,
+  /\bgh\s+pr\s+(create|merge|close|edit|comment|review|ready)\b/i,
+  /\bgh\s+release\s+(create|delete|edit|upload)\b/i,
+  /\bgh\s+repo\s+(create|delete|archive|edit|sync)\b/i,
+  /\bgh\s+(secret|variable)\s+(set|delete|remove)\b/i,
+  /\bgh\s+issue\s+(create|close|edit|comment|delete|reopen)\b/i,
+  /\bgh\s+api\b[^\n]*(-X\s*(POST|PUT|PATCH|DELETE)|--method[ =](POST|PUT|PATCH|DELETE))/i,
 ];
 
 // SQL write / DDL. These only pose a risk when a raw `psql` is aimed at a
@@ -188,8 +209,12 @@ let input;
 try { input = JSON.parse(readFileSync(0, "utf8")); } catch { defer(); }
 
 if (!input || input.tool_name !== "Bash") defer();
-const cmd = (input.tool_input && input.tool_input.command) || "";
-if (!cmd.trim()) defer();
+const rawCmd = (input.tool_input && input.tool_input.command) || "";
+if (!rawCmd.trim()) defer();
+// Join backslash-newline line continuations (the shell removes them) so a
+// wrapped command — e.g. a psql with several `-c`/`-f` args across lines — is
+// one logical line instead of segments that lead with `-c`/`-f` (not in SAFE).
+const cmd = rawCmd.replace(/\\\r?\n/g, " ");
 if (TRICKY.test(cmd)) defer();
 if (NON_SQL_DANGER.some((re) => re.test(cmd))) defer();
 
@@ -229,4 +254,4 @@ while (true) {
 }
 
 if (!allSegmentsSafe(work)) defer();
-allow(`compound-allow v6: all segments + $() inners in safe list (heredocs stripped)`);
+allow(`compound-allow v7: all segments + $() inners in safe list (heredocs stripped)`);
