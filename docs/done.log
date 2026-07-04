@@ -880,3 +880,7 @@
 2026-07-03 | FIX-712 | 983eec24 | local-only | feat(home): investigations case-file band + /commons index (record surfaces)
 2026-07-03 | FIX-713 | 16373323 | local-only | feat(brand): print stylesheet for record pages + OG share images
 2026-07-03 | FIX-714 | 16373323 | local-only | feat(brand): print stylesheet for record pages + OG share images
+2026-07-03 | FIX-653 | 89e70458 | closes-as-superseded | feat(db): move rule taggers (size-tags + pre-vote) to pg_cron with the FIX-652 gate
+2026-07-03 | FIX-654 | 89e70458 | closes-as-superseded | feat(db): move rule taggers (size-tags + pre-vote) to pg_cron with the FIX-652 gate
+2026-07-03 | FIX-715 | 2bf9c80f | local-only | feat(db): move enrichment MV-refresh tail to pg_cron (decouple from the 120min GHA budget)
+2026-07-03 | FIX-716 | 89e70458 | local-only | feat(db): move rule taggers (size-tags + pre-vote) to pg_cron with the FIX-652 gate
