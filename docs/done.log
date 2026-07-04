@@ -886,3 +886,4 @@
 2026-07-03 | FIX-716 | 89e70458 | local-only | feat(db): move rule taggers (size-tags + pre-vote) to pg_cron with the FIX-652 gate
 2026-07-03 | FIX-715 | 0d3dd5eb | local+prod | chore(fixes): record prod verification for FIX-715/FIX-716 [skip vercel]
 2026-07-03 | FIX-716 | 0d3dd5eb | local+prod | chore(fixes): record prod verification for FIX-715/FIX-716 [skip vercel]
+2026-07-03 | FIX-701 | 9f6b2cfb | local-only | fix(fec): exclude only J (JFC) not D/B, and add a recipient-committee scope axis
