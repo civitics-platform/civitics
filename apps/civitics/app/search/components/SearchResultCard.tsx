@@ -17,10 +17,12 @@ import { SyntheticMark } from "../../components/integrity/Synthetic";
 // Helpers
 // ---------------------------------------------------------------------------
 
+// Party hues are categorical — viz-7 (wine) stands in for the independent
+// purple, matching the @civitics/ui Badge convention (FIX-719).
 const PARTY_BADGE: Record<string, string> = {
-  democrat:    "bg-blue-100 text-blue-800",
-  republican:  "bg-red-100 text-red-800",
-  independent: "bg-purple-100 text-purple-800",
+  democrat:    "bg-civic-blue/10 text-civic-blue",
+  republican:  "bg-accent/10 text-accent",
+  independent: "bg-viz-7/10 text-viz-7",
 };
 
 const STATUS_LABEL: Record<string, string> = {
@@ -38,20 +40,24 @@ const STATUS_LABEL: Record<string, string> = {
   comment_closed:       "Comment Closed",
 };
 
+// Wave-1 status semantics: live/positive → green-ink, pending → amber,
+// terminal-negative → accent, unlisted → rule tint (via the ?? fallback).
+// Bare text-amber is fine here — this file renders terminal-scoped only.
 const STATUS_COLOR: Record<string, string> = {
-  open_comment:  "bg-emerald-100 text-emerald-800",
-  introduced:    "bg-amber-100 text-amber-800",
-  in_committee:  "bg-amber-100 text-amber-800",
-  enacted:       "bg-green-100 text-green-800",
-  signed:        "bg-green-100 text-green-800",
-  failed:        "bg-red-100 text-red-800",
+  open_comment:  "bg-green-ink/15 text-green-ink",
+  introduced:    "bg-amber/20 text-amber",
+  in_committee:  "bg-amber/20 text-amber",
+  enacted:       "bg-green-ink/15 text-green-ink",
+  signed:        "bg-green-ink/15 text-green-ink",
+  failed:        "bg-accent/15 text-accent",
 };
 
+// Tokenized to align with the FIX-706 initiative stage pills.
 const STAGE_COLOR: Record<string, string> = {
-  draft:      "bg-gray-100 text-gray-600",
-  deliberate: "bg-blue-100 text-blue-700",
-  mobilise:   "bg-emerald-100 text-emerald-700",
-  resolved:   "bg-gray-100 text-gray-500",
+  draft:      "bg-rule/60 text-ink-soft",
+  deliberate: "bg-civic-blue/10 text-civic-blue",
+  mobilise:   "bg-green-ink/15 text-green-ink",
+  resolved:   "bg-rule/60 text-ink-soft",
 };
 
 function initials(name: string) {
@@ -68,7 +74,7 @@ function formatDollars(cents: number): string {
 function ConnectionBadge({ count }: { count: number }) {
   if (count === 0) return null;
   return (
-    <span className="shrink-0 rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-500 tabular-nums">
+    <span className="shrink-0 rounded bg-ink/10 px-1.5 py-0.5 text-[10px] font-medium text-ink-soft tabular-nums">
       🔗 {count.toLocaleString()}
     </span>
   );
@@ -140,24 +146,24 @@ export function SearchResultCard({
 
   return (
     <div
-      className={`relative flex items-stretch rounded-lg border bg-white transition-all cursor-pointer
+      className={`relative flex items-stretch rounded-lg border bg-card transition-all cursor-pointer
         ${isSelected
-          ? "border-indigo-400 shadow-sm ring-1 ring-indigo-300"
-          : "border-gray-200 hover:border-indigo-300 hover:shadow-sm"}`}
+          ? "border-accent/70 shadow-sm ring-1 ring-accent/50"
+          : "border-rule hover:border-accent/50 hover:shadow-sm"}`}
       onClick={handleCardClick}
     >
       {/* Checkbox */}
       {showCheckbox && (
         <div
           data-checkbox
-          className="flex items-center px-3 border-r border-gray-100 shrink-0"
+          className="flex items-center px-3 border-r border-rule/60 shrink-0"
           onClick={(e) => e.stopPropagation()}
         >
           <input
             type="checkbox"
             checked={isSelected}
             onChange={handleCheckboxChange}
-            className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+            className="h-4 w-4 rounded border-rule text-accent focus:ring-accent cursor-pointer"
             aria-label="Select this item"
           />
         </div>
@@ -184,36 +190,36 @@ export function SearchResultCard({
 
 function InGraphBadge() {
   return (
-    <span className="shrink-0 rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-medium text-indigo-500">
+    <span className="shrink-0 rounded bg-civic-blue/10 px-1.5 py-0.5 text-[10px] font-medium text-civic-blue">
       ⊙ in graph
     </span>
   );
 }
 
 function OfficialCardContent({ o, badge, isInGraph }: { o: SearchOfficial; badge?: boolean; isInGraph?: boolean }) {
-  const partyBadge = PARTY_BADGE[o.party ?? ""] ?? "bg-gray-100 text-gray-700";
+  const partyBadge = PARTY_BADGE[o.party ?? ""] ?? "bg-ink/10 text-ink-soft";
   return (
     <div className="flex items-center gap-3">
       {badge && <TypeBadge label="Official" color="indigo" />}
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gray-100 text-xs font-semibold text-gray-600 overflow-hidden">
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-ink/10 text-xs font-semibold text-ink-soft overflow-hidden">
         {o.photo_url
           // eslint-disable-next-line @next/next/no-img-element
           ? <img src={o.photo_url} alt={o.full_name} width={36} height={36} loading="lazy" decoding="async" className="h-9 w-9 rounded-full object-cover" />
           : initials(o.full_name)}
       </div>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-semibold text-gray-900">
+        <p className="truncate text-sm font-semibold text-ink">
           {o.full_name}
           {o.is_synthetic && <SyntheticMark size="xs" className="ml-1.5" />}
         </p>
-        <p className="truncate text-xs text-gray-500">
+        <p className="truncate text-xs text-ink-soft">
           {o.role_title}{o.state ? ` · ${o.state}` : ""}
         </p>
       </div>
       <div className="flex items-center gap-2 shrink-0">
         {isInGraph && <InGraphBadge />}
         {o.total_received_cents != null && o.total_received_cents > 0 && (
-          <span className="shrink-0 rounded bg-green-50 px-1.5 py-0.5 text-[10px] font-medium text-green-700 tabular-nums">
+          <span className="shrink-0 rounded bg-green-ink/15 px-1.5 py-0.5 font-mono text-[10px] font-medium text-green-ink tabular-nums">
             {formatDollars(o.total_received_cents)} raised
           </span>
         )}
@@ -227,7 +233,7 @@ function OfficialCardContent({ o, badge, isInGraph }: { o: SearchOfficial; badge
 }
 
 function ProposalCardContent({ p, badge }: { p: SearchProposal; badge?: boolean }) {
-  const color = STATUS_COLOR[p.status] ?? "bg-gray-100 text-gray-700";
+  const color = STATUS_COLOR[p.status] ?? "bg-rule/60 text-ink-soft";
   const label = STATUS_LABEL[p.status] ?? p.status.replace(/_/g, " ");
   const isOpen = p.status === "open_comment" && p.comment_period_end &&
     new Date(p.comment_period_end) > new Date();
@@ -237,23 +243,23 @@ function ProposalCardContent({ p, badge }: { p: SearchProposal; badge?: boolean 
         {badge && <TypeBadge label="Proposal" color="amber" />}
         <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${color}`}>{label}</span>
         {isOpen && (
-          <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
+          <span className="rounded-full bg-green-ink/15 px-2 py-0.5 text-[11px] font-medium text-green-ink">
             Comment open
           </span>
         )}
         {p.agency_acronym && (
-          <span className="font-mono text-[11px] text-gray-400">{p.agency_acronym}</span>
+          <span className="font-mono text-[11px] text-ink-soft">{p.agency_acronym}</span>
         )}
         <div className="ml-auto shrink-0">
           <ConnectionBadge count={p.connection_count} />
         </div>
       </div>
-      <p className="mt-1.5 text-sm font-semibold text-gray-900 line-clamp-2 leading-snug">
+      <p className="mt-1.5 text-sm font-semibold text-ink line-clamp-2 leading-snug">
         {p.title}
         {p.is_synthetic && <SyntheticMark size="xs" className="ml-1.5" />}
       </p>
       {p.ai_summary && (
-        <p className="mt-1 text-xs text-gray-500 line-clamp-1">{p.ai_summary}</p>
+        <p className="mt-1 text-xs text-ink-soft line-clamp-1">{p.ai_summary}</p>
       )}
     </div>
   );
@@ -263,20 +269,20 @@ function AgencyCardContent({ a, badge, isInGraph }: { a: SearchAgency; badge?: b
   return (
     <div className="flex items-center gap-3">
       {badge && <TypeBadge label="Agency" color="gray" />}
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded border border-gray-200 bg-gray-50 font-mono text-[10px] font-bold text-gray-600">
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded border border-rule bg-paper-2 font-mono text-[10px] font-bold text-ink-soft">
         {(a.acronym ?? a.name).slice(0, 4)}
       </div>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-semibold text-gray-900">
+        <p className="truncate text-sm font-semibold text-ink">
           {a.name}
           {a.is_synthetic && <SyntheticMark size="xs" className="ml-1.5" />}
         </p>
-        {a.acronym && <p className="text-xs text-gray-400">{a.acronym}</p>}
+        {a.acronym && <p className="text-xs text-ink-soft">{a.acronym}</p>}
       </div>
       <div className="flex items-center gap-2 shrink-0">
         {isInGraph && <InGraphBadge />}
         <ConnectionBadge count={a.connection_count} />
-        <span className="rounded bg-gray-100 px-2 py-0.5 text-[11px] text-gray-500 capitalize">
+        <span className="rounded bg-ink/10 px-2 py-0.5 text-[11px] text-ink-soft capitalize">
           {a.agency_type.replace(/_/g, " ")}
         </span>
       </div>
@@ -299,18 +305,18 @@ function FinancialCardContent({ f, badge, isInGraph }: { f: SearchFinancialEntit
   return (
     <div className="flex items-center gap-3">
       {badge && <TypeBadge label={badgeLabel} color="green" />}
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded border border-gray-200 bg-gray-50 text-gray-400">
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded border border-rule bg-paper-2 text-ink-soft">
         <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
             d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
       </div>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-semibold text-gray-900">
+        <p className="truncate text-sm font-semibold text-ink">
           {f.name}
           {f.is_synthetic && <SyntheticMark size="xs" className="ml-1.5" />}
         </p>
-        <p className="truncate text-xs text-gray-500">
+        <p className="truncate text-xs text-ink-soft">
           {f.entity_type.replace(/_/g, " ")}
           {f.industry ? ` · ${f.industry}` : ""}
         </p>
@@ -319,7 +325,7 @@ function FinancialCardContent({ f, badge, isInGraph }: { f: SearchFinancialEntit
         {isInGraph && <InGraphBadge />}
         <ConnectionBadge count={f.connection_count} />
         {showAmt && (
-          <span className="rounded bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-600">
+          <span className="rounded bg-ink/10 px-2 py-0.5 font-mono text-[11px] font-medium tabular-nums text-ink-soft">
             {formatDollars(f.total_amount_cents!)} · {
               f.amount_label === "contract" ? "Contracts"
               : f.amount_label === "grant"  ? "Grants"
@@ -334,7 +340,7 @@ function FinancialCardContent({ f, badge, isInGraph }: { f: SearchFinancialEntit
 }
 
 function InitiativeCardContent({ i, badge }: { i: SearchInitiative; badge?: boolean }) {
-  const stageColor = STAGE_COLOR[i.stage ?? ""] ?? "bg-gray-100 text-gray-600";
+  const stageColor = STAGE_COLOR[i.stage ?? ""] ?? "bg-rule/60 text-ink-soft";
   const stageLabel = i.stage ? (i.stage.charAt(0).toUpperCase() + i.stage.slice(1)) : "Draft";
   return (
     <div>
@@ -347,7 +353,7 @@ function InitiativeCardContent({ i, badge }: { i: SearchInitiative; badge?: bool
           <ConnectionBadge count={i.connection_count} />
         </div>
       </div>
-      <p className="mt-1.5 text-sm font-semibold text-gray-900 line-clamp-2 leading-snug">
+      <p className="mt-1.5 text-sm font-semibold text-ink line-clamp-2 leading-snug">
         {i.title}
       </p>
     </div>
@@ -358,7 +364,7 @@ function JurisdictionCardContent({ j, badge, isInGraph }: { j: SearchJurisdictio
   return (
     <div className="flex items-center gap-3">
       {badge && <TypeBadge label="Jurisdiction" color="indigo" />}
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded border border-gray-200 bg-gray-50 text-gray-400">
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded border border-rule bg-paper-2 text-ink-soft">
         <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
             d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
@@ -366,11 +372,11 @@ function JurisdictionCardContent({ j, badge, isInGraph }: { j: SearchJurisdictio
         </svg>
       </div>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-semibold text-gray-900">
+        <p className="truncate text-sm font-semibold text-ink">
           {j.name}
           {j.is_synthetic && <SyntheticMark size="xs" className="ml-1.5" />}
         </p>
-        <p className="truncate text-xs text-gray-500 capitalize">
+        <p className="truncate text-xs text-ink-soft capitalize">
           {j.jurisdiction_type}{j.short_name ? ` · ${j.short_name}` : ""}
         </p>
       </div>
@@ -386,18 +392,18 @@ function InstitutionCardContent({ g, badge, isInGraph }: { g: SearchInstitution;
   return (
     <div className="flex items-center gap-3">
       {badge && <TypeBadge label="Institution" color="indigo" />}
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded border border-gray-200 bg-gray-50 text-gray-400">
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded border border-rule bg-paper-2 text-ink-soft">
         <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
             d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
         </svg>
       </div>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-semibold text-gray-900">
+        <p className="truncate text-sm font-semibold text-ink">
           {g.name}
           {g.is_synthetic && <SyntheticMark size="xs" className="ml-1.5" />}
         </p>
-        <p className="truncate text-xs text-gray-500 capitalize">
+        <p className="truncate text-xs text-ink-soft capitalize">
           {g.institution_type.replace(/_/g, " ")}{g.short_name ? ` · ${g.short_name}` : ""}
         </p>
       </div>
@@ -416,27 +422,28 @@ function MeetingCardContent({ m, badge }: { m: SearchMeeting; badge?: boolean })
     <div>
       <div className="flex items-center gap-2 flex-wrap">
         {badge && <TypeBadge label="Meeting" color="gray" />}
-        <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-600 capitalize">
+        <span className="rounded-full bg-rule/60 px-2 py-0.5 text-[11px] font-medium text-ink-soft capitalize">
           {m.meeting_type.replace(/_/g, " ")}
         </span>
-        {dateLabel && <span className="text-[11px] text-gray-400">{dateLabel}</span>}
+        {dateLabel && <span className="text-[11px] text-ink-soft">{dateLabel}</span>}
       </div>
-      <p className="mt-1.5 text-sm font-semibold text-gray-900 line-clamp-2 leading-snug">
+      <p className="mt-1.5 text-sm font-semibold text-ink line-clamp-2 leading-snug">
         {m.title}
       </p>
       {m.governing_body_name && (
-        <p className="mt-0.5 text-xs text-gray-500 truncate">{m.governing_body_name}</p>
+        <p className="mt-0.5 text-xs text-ink-soft truncate">{m.governing_body_name}</p>
       )}
     </div>
   );
 }
 
 function TypeBadge({ label, color }: { label: string; color: string }) {
+  // Keys are legacy hue handles from the call sites; values are tokens.
   const cls: Record<string, string> = {
-    indigo: "bg-indigo-50 text-indigo-500",
-    amber:  "bg-amber-50 text-amber-600",
-    gray:   "bg-gray-100 text-gray-500",
-    green:  "bg-green-50 text-green-600",
+    indigo: "bg-civic-blue/10 text-civic-blue",
+    amber:  "bg-amber/20 text-amber",
+    gray:   "bg-ink/10 text-ink-soft",
+    green:  "bg-green-ink/15 text-green-ink",
   };
   return (
     <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold ${cls[color] ?? cls.gray}`}>

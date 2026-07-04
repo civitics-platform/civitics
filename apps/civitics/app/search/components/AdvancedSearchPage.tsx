@@ -281,28 +281,33 @@ export function AdvancedSearchPage({
   const isPage = mode === "page";
 
   return (
-    <div className={`flex flex-col ${isPage ? "h-screen" : "h-full"} bg-gray-50 overflow-hidden`}>
+    // Terminal Wave 2 (FIX-723): everything below the site masthead is a dark
+    // live instrument, mirroring the dashboard scope (FIX-720). text-ink must
+    // be restated alongside bg-paper — the inherited body color does not
+    // re-resolve inside the scope. Sidebar mode stays unscoped; the graph
+    // terminal wave owns that surface.
+    <div
+      data-theme={isPage ? "terminal" : undefined}
+      className={`flex flex-col ${isPage ? "h-screen" : "h-full"} bg-paper text-ink overflow-hidden`}
+    >
 
       {/* ── Top bar ── */}
-      <div className={`shrink-0 bg-white border-b border-gray-200 ${isPage ? "px-4" : "px-3"}`}>
+      <div className={`shrink-0 bg-card border-b border-rule ${isPage ? "px-4" : "px-3"}`}>
 
-        {/* Page header with logo (page mode only) */}
+        {/* Live-instrument kicker (page mode only) — the site masthead brands
+            the page, so no in-page logo/wordmark here. */}
         {isPage && (
-          <div className="flex items-center gap-4 h-14 border-b border-gray-100">
-            <a href="/" className="flex items-center gap-2 shrink-0">
-              <div className="flex h-8 w-8 items-center justify-center rounded bg-indigo-600">
-                <span className="text-xs font-bold text-white">CV</span>
-              </div>
-              <span className="text-lg font-semibold tracking-tight text-gray-900">Civitics</span>
-            </a>
-          </div>
+          <p className="flex items-center gap-2 pt-3 font-mono text-[10.5px] font-semibold uppercase tracking-[0.22em] text-amber">
+            <span className="h-[7px] w-[7px] animate-pulse rounded-full bg-amber motion-reduce:animate-none" />
+            Advanced search — Full index
+          </p>
         )}
 
         {/* Search bar */}
         <div className={`flex items-center gap-3 ${isPage ? "py-3" : "py-2"}`}>
           <div className="relative flex-1">
             <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2">
-              <svg className="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="h-4 w-4 text-ink-soft" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
             </span>
@@ -311,7 +316,7 @@ export function AdvancedSearchPage({
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search officials, proposals, agencies, donors…"
-              className="w-full rounded-md border border-gray-200 bg-gray-50 pl-9 pr-4 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-indigo-400 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-400"
+              className="w-full rounded-md border border-term-line bg-paper pl-9 pr-4 py-2 text-sm text-ink placeholder:font-mono placeholder:text-[13px] placeholder:text-ink-soft focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
               autoFocus={!query}
             />
           </div>
@@ -337,13 +342,13 @@ export function AdvancedSearchPage({
                 onClick={() => applyFilters({ type: tab.key })}
                 className={`flex items-center gap-1 px-3 py-2 text-xs font-medium border-b-2 -mb-px transition-colors whitespace-nowrap
                   ${active
-                    ? "border-indigo-600 text-indigo-600"
-                    : "border-transparent text-gray-500 hover:text-gray-700"}`}
+                    ? "border-accent text-accent"
+                    : "border-transparent text-ink-soft hover:text-ink"}`}
               >
                 {tab.label}
                 {count > 0 && (
-                  <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold
-                    ${active ? "bg-indigo-100 text-indigo-700" : "bg-gray-100 text-gray-500"}`}>
+                  <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold tabular-nums
+                    ${active ? "bg-accent/15 text-accent" : "bg-ink/10 text-ink-soft"}`}>
                     {count}
                   </span>
                 )}
@@ -377,7 +382,7 @@ export function AdvancedSearchPage({
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden relative">
 
           {/* Pinned results header */}
-          <div className="shrink-0 border-b border-gray-200 bg-white px-4 py-2 flex items-center gap-3">
+          <div className="shrink-0 border-b border-rule bg-card px-4 py-2 flex items-center gap-3">
             {/* Add to Graph button */}
             <div className="relative">
               <button
@@ -390,15 +395,15 @@ export function AdvancedSearchPage({
                 }
                 className={`flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium transition-colors
                   ${seedableSelected.length > 0
-                    ? "border-indigo-300 bg-indigo-50 text-indigo-700 hover:bg-indigo-100"
-                    : "border-gray-200 bg-white text-gray-400 cursor-not-allowed"}`}
+                    ? "border-accent/60 bg-accent/15 text-accent hover:bg-accent/25"
+                    : "border-term-line bg-card text-ink-soft/60 cursor-not-allowed"}`}
               >
                 <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                 </svg>
                 Add to graph
                 {seedableSelected.length > 0 && (
-                  <span className="ml-0.5 rounded-full bg-indigo-600 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                  <span className="ml-0.5 rounded-full bg-accent px-1.5 py-0.5 text-[10px] font-bold text-paper tabular-nums">
                     {seedableSelected.length}
                   </span>
                 )}
@@ -406,11 +411,11 @@ export function AdvancedSearchPage({
             </div>
 
             {/* Result count */}
-            <span className="text-xs text-gray-500">
+            <span className="text-xs text-ink-soft">
               {loading && pages.length === 0
                 ? "Loading…"
                 : grandTotal > 0
-                  ? <><span className="font-semibold text-gray-700">{allResults.length.toLocaleString()}</span> of <span className="font-semibold text-gray-700">{grandTotal.toLocaleString()}</span> results{debouncedQuery ? ` for "${debouncedQuery}"` : ""}</>
+                  ? <><span className="font-semibold tabular-nums text-ink">{allResults.length.toLocaleString()}</span> of <span className="font-semibold tabular-nums text-ink">{grandTotal.toLocaleString()}</span> results{debouncedQuery ? ` for "${debouncedQuery}"` : ""}</>
                   : pages.length > 0
                     ? "No results"
                     : ""}
@@ -420,7 +425,7 @@ export function AdvancedSearchPage({
             {selectedResults.length > 0 && (
               <button
                 onClick={() => setSelectedIds(new Set())}
-                className="ml-auto text-xs text-gray-400 hover:text-gray-600 transition-colors"
+                className="ml-auto text-xs text-ink-soft hover:text-ink transition-colors"
               >
                 Clear selection
               </button>
@@ -447,7 +452,7 @@ export function AdvancedSearchPage({
             {/* Empty state */}
             {!loading && pages.length > 0 && allResults.length === 0 && (
               <div className="py-16 text-center">
-                <p className="text-sm text-gray-400">
+                <p className="text-sm text-ink-soft">
                   No results match these filters
                 </p>
               </div>
@@ -457,7 +462,7 @@ export function AdvancedSearchPage({
             {loading && pages.length === 0 && (
               <div className="space-y-2">
                 {[...Array(6)].map((_, i) => (
-                  <div key={i} className="h-14 rounded-lg bg-gray-100 animate-pulse" />
+                  <div key={i} className="h-14 rounded-lg bg-rule/50 animate-pulse" />
                 ))}
               </div>
             )}
@@ -468,7 +473,7 @@ export function AdvancedSearchPage({
             {/* Bottom loader */}
             {loading && pages.length > 0 && (
               <div className="py-4 text-center">
-                <span className="text-xs text-gray-400">Loading more…</span>
+                <span className="text-xs text-ink-soft">Loading more…</span>
               </div>
             )}
           </div>

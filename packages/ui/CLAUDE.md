@@ -2,333 +2,132 @@
 
 ## Purpose
 
-Shared React component library
-for all Civitics products.
-
-These components are used by:
-  apps/civitics (main web app)
-  Future: social app
-  Future: mobile app
-  Future: embed pages
+Shared React component library for all Civitics products. Used by
+`apps/civitics` today; future social app / mobile / embed surfaces.
 
 ## The One Rule
 
-A component belongs in packages/ui
-if and only if it passes ALL of:
+A component belongs in packages/ui if and only if it passes ALL of:
 
-  ✓ Pure React — no framework deps
-  ✓ No Supabase imports ever
-  ✓ No Next.js imports ever
-  ✓ No business logic or DB queries
-  ✓ Props-driven — data passed in,
-    never fetched internally
-  ✓ Could run in a React Native
-    app with minimal changes
+- Pure React — no framework deps
+- No Supabase imports ever
+- No Next.js imports ever
+- No business logic or DB queries
+- Props-driven — data passed in, never fetched internally
 
-If it fails any check:
-  Keep it in apps/civitics/
-  components/ instead
+If it fails any check: keep it in `apps/civitics/app/components/` instead.
 
-## Design System
+## Design System — "Public Record × Terminal" semantic tokens
 
-Civitics visual language:
-  Font: system-ui / Inter
-  Radius: rounded-lg (8px) default
-           rounded-xl (12px) for cards
-           rounded-full for badges/pills
-  Shadow: shadow-sm for cards
-          shadow-lg for popups/modals
-  Border: border border-gray-200
+The old blue-600/gray palette is gone. Everything renders through the
+semantic token set (FIX-552), defined as CSS custom properties in
+`apps/civitics/app/globals.css` and mapped to Tailwind utilities in
+`apps/civitics/tailwind.config.js`.
 
-  Spacing: 4px base unit (Tailwind)
+**Mechanics (FIX-563):** each `--c-*` var holds a space-separated RGB
+channel triplet (`157 43 43`, not hex). Tailwind maps them as
+`rgb(var(--c-x) / <alpha-value>)`, so alpha modifiers work on every token:
+`bg-ink/5`, `border-rule/60`, `bg-accent/15`.
 
-  Motion: transition-all duration-150
-    for hover states
-    duration-200 for panel opens
-    No motion if prefers-reduced-motion
+**Tokens (paper-mode meaning):**
 
-Colors (never hardcode hex —
-always use Tailwind classes):
+```
+bg:      paper (page)   paper-2 (inset)   card (surface)
+text:    ink (primary)  ink-soft (secondary)
+lines:   rule
+hues:    accent (brand red — active/selected/error)
+         civic-blue     green-ink (verified/positive)
+         amber (live/warning — see contrast rule)
+viz:     viz-1..viz-7 — categorical chart ramp (FIX-567)
+```
 
-  Brand:
-    Primary:   blue-600 (#2563eb)
-    Secondary: gray-900
-    Accent:    amber-500
+**Terminal scope re-bind:** wrapping a subtree in `data-theme="terminal"`
+re-binds every semantic token to its dark value, so the SAME utilities
+(`bg-card`, `text-ink`, `border-rule`) render dark inside live-instrument
+panels. Print mode re-binds the same tokens to grayscale (FIX-713). The
+scope wrapper must restate `text-ink` alongside `bg-paper` — the inherited
+body color does not re-resolve inside the scope.
 
-  Party:
-    Democrat:   blue-600
-    Republican: red-600
-    Independent: purple-600
-    Other:      amber-600
+**The shared-component rule: semantic tokens ONLY — never `term-*` in
+packages/ui.** `term-bg`/`term-txt`/`term-line`/etc. are raw dark values
+that do NOT re-bind; a shared component styled with them breaks on paper
+pages. Terminal-only app code may use them; shared components may not.
 
-  Status:
-    Success:  green-500
-    Warning:  amber-500
-    Error:    red-500
-    Info:     blue-500
-    Neutral:  gray-400
+**Status map (Wave 1, FIX-719 — see StatusBadge):**
 
-  Pipeline status colors:
-    complete:     green-500 ✓
-    running:      blue-500 ⟳
-    interrupted:  amber-500 ⚠
-    failed:       red-500 ✗
-    pending:      gray-400 ○
+```
+ok / complete / positive   text-green-ink  bg-green-ink/10
+warning / interrupted      text-ink        bg-amber/20
+error / failed             text-accent     bg-accent/10
+pending / neutral          text-ink-soft   bg-rule/40
+```
 
-Typography scale:
-  Page title:    text-2xl font-bold
-  Section title: text-lg font-semibold
-  Card title:    text-base font-semibold
-  Body:          text-sm text-gray-700
-  Caption:       text-xs text-gray-500
-  Stat number:   text-3xl font-bold
-                 tabular-nums
+**Amber contrast rule:** amber TEXT is unreadable on paper. Shared and
+paper-visible components use `bg-amber/20 text-ink` tints. Bare
+`text-amber` is allowed only in code that renders exclusively inside a
+terminal scope.
+
+**Party colors are categorical, not status.** The semantic set has no
+purple — viz-7 (wine) stands in for independents (FIX-719). The `Badge`
+component variants are the reference implementation:
+
+```
+democrat      border-civic-blue/60  text-civic-blue  bg-civic-blue/10
+republican    border-accent/60      text-accent      bg-accent/10
+independent   border-viz-7/60       text-viz-7       bg-viz-7/10
+```
+
+`colors.ts` `PARTY_COLORS` still carries the legacy blue-600/purple-600
+classes — it is consumed by graph-adjacent surfaces and folds into the
+token system in the graph terminal wave. Don't model new code on it.
+
+**SVG constraint:** `var()` fails in SVG presentation attributes
+(`fill="var(--c-x)"` silently breaks). Pass `rgb(var(--c-x))` via
+`style=` instead — Sparkline is the in-package example.
+
+**Never hardcode hex, and never use raw Tailwind palette colors
+(`gray-200`, `blue-600`, `indigo-*`) — tokens only.**
 
 ## Component Inventory
 
-### Data Display
+```
+data/        StatCard  PipelineRow  Sparkline  DataQualityBar
+             ActivityItem  ConnectionHighlight  CommentPeriodCard
+layout/      SectionCard  SectionHeader  PageHeader  StatsRow
+feedback/    StatusBadge  AlertBanner  LoadingSkeleton  EmptyState
+navigation/  Breadcrumb  TabBar
+root:        Badge  Button
+```
 
-StatCard
-  The primary metric card used
-  across all dashboard views.
-  Shows a single number with
-  label, trend, and optional
-  action link.
+Consistency rules: every page header is `PageHeader`; every section card
+is `SectionCard`; every async section shows `LoadingSkeleton`; every empty
+list uses `EmptyState`; every status pill is `StatusBadge` (never raw
+colored dots). TabBar's active convention is `border-accent text-accent` —
+mirror it for any tab-like control in app code.
 
-PipelineRow
-  One row in a pipeline status
-  list. Shows name, status badge,
-  timestamp, row count, delta flag.
+## Utilities (`utils.ts`)
 
-Sparkline
-  Tiny inline SVG chart for
-  7-day or 30-day trends.
-  No axes, no labels — just
-  the shape of the data.
-
-DataQualityBar
-  Horizontal progress bar showing
-  coverage percentage with label.
-  e.g. "FEC coverage: 86.1%"
-
-ActivityItem
-  One item in an activity feed.
-  Icon, description, timestamp,
-  optional link.
-
-ConnectionHighlight
-  A single "A → B: $X" flow
-  with party colors and graph link.
-
-CommentPeriodCard
-  A regulation with open comment
-  period. Title, agency, deadline
-  countdown, submit button.
-
-### Layout
-
-SectionCard
-  Consistent card wrapper used
-  by every dashboard section.
-  White bg, border, rounded-xl,
-  shadow-sm, padding.
-  Has header slot and body slot.
-
-SectionHeader
-  Title + optional description
-  + optional action button.
-  Used inside SectionCard header.
-
-PageHeader
-  Top of every page.
-  Title, breadcrumb, optional CTA.
-  Consistent across all pages.
-
-### Feedback
-
-StatusBadge
-  Pill badge for pipeline status,
-  data freshness, system health.
-  Colors from design system above.
-
-AlertBanner
-  Full-width banner for warnings,
-  errors, or info messages.
-  Dismissible. Levels: info,
-  warning, error, success.
-
-LoadingSkeleton
-  Animated gray placeholder
-  matching the shape of the
-  content it replaces.
-  Used during data fetching.
-
-EmptyState
-  Centered illustration + message
-  for empty lists/sections.
-  Optional action button.
-
-### Navigation
-
-Breadcrumb
-  Simple path navigation.
-  Used on all interior pages.
-
-TabBar
-  Horizontal tab navigation.
-  Used on official/proposal
-  detail pages.
-
-## Consistency Rules
-
-HEADERS — every page uses PageHeader:
-  Never build a one-off header
-  Always use PageHeader component
-  Breadcrumb always present on
-  interior pages
-
-CARDS — every section uses SectionCard:
-  Never style a raw <div> as a card
-  Always use SectionCard
-  Consistent padding, border,
-  shadow across all pages
-
-LOADING — every async section:
-  Always show LoadingSkeleton
-  while data is fetching
-  Never show blank/empty space
-  Never show raw "Loading..."
-  text — use the skeleton
-
-EMPTY — every list:
-  Always use EmptyState component
-  Never show blank lists
-  Always explain why it's empty
-  Always offer an action
-
-STATUS — every pipeline/data item:
-  Always use StatusBadge
-  Never use raw colored dots
-  or custom status text
-
-## File Structure
-
-packages/ui/src/
-  index.ts              ← exports everything
-
-  components/
-    data/
-      StatCard.tsx
-      PipelineRow.tsx
-      Sparkline.tsx
-      DataQualityBar.tsx
-      ActivityItem.tsx
-      ConnectionHighlight.tsx
-      CommentPeriodCard.tsx
-
-    layout/
-      SectionCard.tsx
-      SectionHeader.tsx
-      PageHeader.tsx
-
-    feedback/
-      StatusBadge.tsx
-      AlertBanner.tsx
-      LoadingSkeleton.tsx
-      EmptyState.tsx
-
-    navigation/
-      Breadcrumb.tsx
-      TabBar.tsx
-
-  types.ts              ← shared prop types
-  colors.ts             ← color constants
-  utils.ts              ← formatters:
-                          formatUSD()
-                          formatNumber()
-                          formatRelativeTime()
-                          formatPipelineStatus()
-
-## Utility Functions
-
-Always use these — never
-inline format logic in components:
-
-formatUSD(cents: number): string
-  -- 1234567 → "$12,345"
-  -- Always cents input
-  -- Never raw dollars
-
-formatNumber(n: number): string
-  -- 8251 → "8,251"
-  -- 143077 → "143,077"
-  -- 1750385520 → "$1.75B" (if USD)
-
-formatRelativeTime(iso: string): string
-  -- "2026-03-22T02:00:00Z"
-  -- → "2 hours ago"
-  -- → "just now"
-  -- → "3 days ago"
-
-formatPipelineStatus(
-  status: string
-): { label: string, color: string,
-     icon: string }
-  -- 'complete' → { label: 'Complete',
-  --   color: 'green', icon: '✓' }
-  -- 'running'  → { label: 'Running',
-  --   color: 'blue', icon: '⟳' }
-  -- 'interrupted' → { label: 'Interrupted',
-  --   color: 'amber', icon: '⚠' }
-  -- 'failed'   → { label: 'Failed',
-  --   color: 'red', icon: '✗' }
+Always use these — never inline format logic: `formatUSD(cents)`,
+`formatNumber(n)`, `formatRelativeTime(iso)`, `formatPipelineStatus(status)`.
 
 ## Hydration
 
-✗ Never nest <a> inside <a>
-
-  If a card has href AND contains
-  a clickable badge/button with
-  its own href:
-    Card outer: <a> or <div onClick>
-    Inner link: <span role="link">
-      with onClick + stopPropagation
-
-  This applies to:
-    StatCard
-    ActivityItem  
-    CommentPeriodCard
-    PipelineRow
-    Any future card component
+Never nest `<a>` (or `<button>`/`<input>`) inside `<a>`. Card with an href
+that contains its own clickable elements: outer `<div>` + stretched-link
+pattern, inner content on a higher z-index. See
+`apps/civitics/CLAUDE.md` → Hydration Safety for the full patterns.
 
 ## What NOT To Do
 
-✗ Never import from Supabase
-✗ Never import from Next.js
-✗ Never fetch data inside
-  a component — always props
-✗ Never hardcode colors as hex
-  — always Tailwind classes
-✗ Never build one-off card
-  styles — always SectionCard
-✗ Never build one-off headers
-  — always PageHeader
-✗ Never show blank loading states
-  — always LoadingSkeleton
-✗ Never use inline styles
-  except for dynamic values
-  (chart dimensions, positions)
-✗ Never duplicate a component
-  that already exists here
-  — check index.ts first
+- Never import from Supabase or Next.js
+- Never fetch data inside a component — always props
+- Never hardcode colors as hex, and never raw palette classes — tokens only
+- Never use `term-*` tokens in shared components
+- Never build one-off card/header styles — SectionCard / PageHeader
+- Never duplicate a component that already exists — check `index.ts` first
 
 ## Usage
 
-  import {
-    StatCard,
-    SectionCard,
-    PipelineRow,
-    StatusBadge,
-    formatRelativeTime,
-    formatUSD
-  } from '@civitics/ui'
+```ts
+import { StatCard, SectionCard, StatusBadge, Badge, formatUSD } from "@civitics/ui";
+```

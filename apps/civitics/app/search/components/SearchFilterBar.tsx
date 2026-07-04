@@ -6,10 +6,12 @@ import type { SearchFilters } from "./SearchFiltersPanel";
 // Constants
 // ---------------------------------------------------------------------------
 
+// Party hues are categorical — viz-7 (wine) stands in for the independent
+// purple, matching the @civitics/ui Badge convention (FIX-719).
 const PARTIES = [
-  { value: "democrat",    label: "Democrat",    color: "bg-blue-100 border-blue-300 text-blue-700" },
-  { value: "republican",  label: "Republican",  color: "bg-red-100 border-red-300 text-red-700" },
-  { value: "independent", label: "Independent", color: "bg-purple-100 border-purple-300 text-purple-700" },
+  { value: "democrat",    label: "Democrat",    color: "bg-civic-blue/15 border-civic-blue/60 text-civic-blue" },
+  { value: "republican",  label: "Republican",  color: "bg-accent/15 border-accent/60 text-accent" },
+  { value: "independent", label: "Independent", color: "bg-viz-7/15 border-viz-7/60 text-viz-7" },
 ];
 
 const CHAMBERS = [
@@ -18,7 +20,7 @@ const CHAMBERS = [
 ];
 
 const PROPOSAL_STATUSES = [
-  { value: "open_comment",     label: "Open Comment",     color: "bg-emerald-100 border-emerald-300 text-emerald-700" },
+  { value: "open_comment",     label: "Open Comment",     color: "bg-green-ink/15 border-green-ink/60 text-green-ink" },
   { value: "introduced",       label: "Introduced" },
   { value: "in_committee",     label: "In Committee" },
   { value: "passed_committee", label: "Passed Committee" },
@@ -98,11 +100,12 @@ export function SearchFilterBar({ filters, onFiltersChange, sort, onSortChange }
   const showFinancial  = t === "all" || t === "financial";
   const showAmountInputs = t === "financial" || t === "all";
 
+  // Accent marks active/selected — amber is reserved for live/warning.
   function pill(
     label: string,
     active: boolean,
     onClick: () => void,
-    activeColor = "bg-indigo-100 border-indigo-300 text-indigo-700",
+    activeColor = "bg-accent/15 border-accent/60 text-accent",
   ) {
     return (
       <button
@@ -111,7 +114,7 @@ export function SearchFilterBar({ filters, onFiltersChange, sort, onSortChange }
         className={`shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors whitespace-nowrap
           ${active
             ? activeColor
-            : "bg-white border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50"}`}
+            : "bg-card border-term-line text-ink-soft hover:border-ink-soft/50 hover:bg-ink/5"}`}
       >
         {label}
       </button>
@@ -139,13 +142,13 @@ export function SearchFilterBar({ filters, onFiltersChange, sort, onSortChange }
   }
 
   return (
-    <div className="shrink-0 bg-white border-b border-gray-200 px-4 py-2 flex flex-wrap items-center gap-2">
+    <div className="shrink-0 bg-card border-b border-rule px-4 py-2 flex flex-wrap items-center gap-2">
 
       {/* Sort select */}
       <select
         value={sort}
         onChange={(e) => onSortChange(e.target.value)}
-        className="shrink-0 rounded border border-gray-200 bg-gray-50 px-2 py-1 text-[11px] font-medium text-gray-700 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400 h-7"
+        className="shrink-0 rounded border border-term-line bg-paper px-2 py-1 text-[11px] font-medium text-ink focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent h-7"
       >
         {SORT_OPTIONS.map(({ value, label }) => (
           <option key={value} value={value}>{label}</option>
@@ -153,7 +156,7 @@ export function SearchFilterBar({ filters, onFiltersChange, sort, onSortChange }
       </select>
 
       {/* Divider */}
-      <div className="shrink-0 h-4 w-px bg-gray-200" />
+      <div className="shrink-0 h-4 w-px bg-rule" />
 
       {/* Open for Comment quick chip — always visible */}
       {(showProposals || t === "all") && pill(
@@ -163,7 +166,7 @@ export function SearchFilterBar({ filters, onFiltersChange, sort, onSortChange }
           const next = filters.status === "open_comment" ? undefined : "open_comment";
           onFiltersChange({ status: next, type: next ? "proposals" : filters.type });
         },
-        "bg-emerald-100 border-emerald-300 text-emerald-700",
+        "bg-green-ink/15 border-green-ink/60 text-green-ink",
       )}
 
       {/* Officials: Jurisdiction level pills */}
@@ -175,7 +178,7 @@ export function SearchFilterBar({ filters, onFiltersChange, sort, onSortChange }
               () => onFiltersChange({ jurisdiction_level: filters.jurisdiction_level === value ? undefined : value }),
             );
           })}
-          <div className="shrink-0 h-4 w-px bg-gray-200" />
+          <div className="shrink-0 h-4 w-px bg-rule" />
         </>
       )}
 
@@ -199,7 +202,7 @@ export function SearchFilterBar({ filters, onFiltersChange, sort, onSortChange }
         <select
           value={filters.state ?? ""}
           onChange={(e) => onFiltersChange({ state: e.target.value || undefined })}
-          className="shrink-0 rounded border border-gray-200 bg-gray-50 px-2 py-1 text-[11px] font-medium text-gray-700 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400 h-7"
+          className="shrink-0 rounded border border-term-line bg-paper px-2 py-1 text-[11px] font-medium text-ink focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent h-7"
         >
           <option value="">All states</option>
           {US_STATES.map(([abbr, name]) => (
@@ -209,7 +212,7 @@ export function SearchFilterBar({ filters, onFiltersChange, sort, onSortChange }
       )}
 
       {/* Proposals: Status pills (section divider only in "All" tab) */}
-      {showProposals && t === "all" && <div className="shrink-0 h-4 w-px bg-gray-200" />}
+      {showProposals && t === "all" && <div className="shrink-0 h-4 w-px bg-rule" />}
       {showProposals && PROPOSAL_STATUSES.slice(1).map(({ value, label }) =>
         pill(label, filters.status === value,
           () => onFiltersChange({ status: filters.status === value ? undefined : value }),
@@ -219,7 +222,7 @@ export function SearchFilterBar({ filters, onFiltersChange, sort, onSortChange }
       {/* Proposals: Type pills */}
       {showProposals && (
         <>
-          <div className="shrink-0 h-4 w-px bg-gray-200" />
+          <div className="shrink-0 h-4 w-px bg-rule" />
           {PROPOSAL_TYPES.map(({ value, label }) =>
             pill(label, filters.proposal_type === value,
               () => onFiltersChange({ proposal_type: filters.proposal_type === value ? undefined : value }),
@@ -229,7 +232,7 @@ export function SearchFilterBar({ filters, onFiltersChange, sort, onSortChange }
       )}
 
       {/* Agencies: Type pills (section divider only in "All" tab) */}
-      {showAgencies && t === "all" && <div className="shrink-0 h-4 w-px bg-gray-200" />}
+      {showAgencies && t === "all" && <div className="shrink-0 h-4 w-px bg-rule" />}
       {showAgencies && AGENCY_TYPES.map(({ value, label }) =>
         pill(label, filters.agency_type === value,
           () => onFiltersChange({ agency_type: filters.agency_type === value ? undefined : value }),
@@ -237,7 +240,7 @@ export function SearchFilterBar({ filters, onFiltersChange, sort, onSortChange }
       )}
 
       {/* Financial: Entity type pills (section divider only in "All" tab) */}
-      {showFinancial && t === "all" && <div className="shrink-0 h-4 w-px bg-gray-200" />}
+      {showFinancial && t === "all" && <div className="shrink-0 h-4 w-px bg-rule" />}
       {showFinancial && FINANCIAL_ENTITY_TYPES.map(({ value, label }) =>
         pill(label, (filters.financial_type ?? filters.entity_type) === value,
           () => onFiltersChange({
@@ -250,14 +253,14 @@ export function SearchFilterBar({ filters, onFiltersChange, sort, onSortChange }
       {/* Financial: Amount range (only on dedicated financial tab) */}
       {showAmountInputs && (
         <>
-          <div className="shrink-0 h-4 w-px bg-gray-200" />
+          <div className="shrink-0 h-4 w-px bg-rule" />
           <input
             type="number"
             min={0}
             placeholder="Min $"
             value={filters.min_amount ?? ""}
             onChange={(e) => onFiltersChange({ min_amount: e.target.value || undefined })}
-            className="shrink-0 w-20 rounded border border-gray-200 bg-gray-50 px-2 py-1 text-[11px] text-gray-700 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400 h-7"
+            className="shrink-0 w-20 rounded border border-term-line bg-paper px-2 py-1 font-mono text-[11px] tabular-nums text-ink placeholder:text-ink-soft focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent h-7"
           />
           <input
             type="number"
@@ -265,7 +268,7 @@ export function SearchFilterBar({ filters, onFiltersChange, sort, onSortChange }
             placeholder="Max $"
             value={filters.max_amount ?? ""}
             onChange={(e) => onFiltersChange({ max_amount: e.target.value || undefined })}
-            className="shrink-0 w-20 rounded border border-gray-200 bg-gray-50 px-2 py-1 text-[11px] text-gray-700 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400 h-7"
+            className="shrink-0 w-20 rounded border border-term-line bg-paper px-2 py-1 font-mono text-[11px] tabular-nums text-ink placeholder:text-ink-soft focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent h-7"
           />
         </>
       )}
@@ -273,10 +276,10 @@ export function SearchFilterBar({ filters, onFiltersChange, sort, onSortChange }
       {/* Clear all — shown when any active filter */}
       {activeCount > 0 && (
         <>
-          <div className="shrink-0 h-4 w-px bg-gray-200" />
+          <div className="shrink-0 h-4 w-px bg-rule" />
           <button
             onClick={clearAll}
-            className="shrink-0 rounded-full border border-gray-200 px-2.5 py-1 text-[11px] font-medium text-gray-400 hover:border-red-300 hover:text-red-500 transition-colors whitespace-nowrap"
+            className="shrink-0 rounded-full border border-term-line px-2.5 py-1 text-[11px] font-medium text-ink-soft hover:border-accent/60 hover:text-accent transition-colors whitespace-nowrap"
           >
             Clear ({activeCount})
           </button>
