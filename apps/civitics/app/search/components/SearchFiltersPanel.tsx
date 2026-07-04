@@ -138,12 +138,9 @@ export function SearchFiltersPanel({ filters, onFiltersChange }: SearchFiltersPa
   return (
     <div className="h-full flex flex-col overflow-hidden border-r border-rule bg-card">
       <div className="flex-1 overflow-y-auto">
-        {/* GroupBrowser is graph-owned (out of scope until the graph terminal
-            wave) and still paints gray-* text on a transparent background,
-            which is illegible inside the terminal scope. The arbitrary-variant
-            remaps below re-point just its text/hover grays at semantic tokens
-            from this render site — delete them when packages/graph tokenizes. */}
-        <div className="pt-2 pb-2 [&_.text-gray-900]:text-ink [&_.text-gray-700]:text-ink [&_.text-gray-600]:text-ink-soft [&_.text-gray-500]:text-ink-soft [&_.text-gray-400]:text-ink-soft [&_.hover\:bg-gray-50:hover]:bg-ink/5">
+        {/* GroupBrowser is token-native as of the graph terminal wave (FIX-728)
+            — the render-site gray remaps that used to live here are gone. */}
+        <div className="pt-2 pb-2">
           <GroupBrowser
             onAddGroup={handleGroupSelect}
             activeGroupIds={activeGroupId ? [activeGroupId] : []}

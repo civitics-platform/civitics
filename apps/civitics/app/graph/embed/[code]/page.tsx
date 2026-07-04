@@ -31,16 +31,16 @@ export default async function EmbedPage({ params }: Props) {
     .eq("code", code);
 
   return (
-    <div className="flex flex-col h-screen bg-gray-950 overflow-hidden">
+    <div data-theme="terminal" className="flex flex-col h-screen bg-paper text-ink overflow-hidden">
       {/* Minimal chrome — just the graph */}
       <div className="flex-1 relative overflow-hidden">
         {/* Placeholder for the embedded graph */}
-        <div className="w-full h-full flex items-center justify-center text-gray-600">
+        <div className="w-full h-full flex items-center justify-center text-ink-soft/60">
           <div className="text-center">
-            <div className="text-lg font-semibold text-gray-400 mb-2">
+            <div className="text-lg font-semibold text-ink mb-2">
               {(snapshot as { title?: string }).title ?? `Graph ${code}`}
             </div>
-            <div className="text-sm text-gray-600">Embedded graph</div>
+            <div className="text-sm text-ink-soft/60">Embedded graph</div>
           </div>
         </div>
 
@@ -50,10 +50,10 @@ export default async function EmbedPage({ params }: Props) {
             href={`https://civitics.com/graph/${code}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-1.5 bg-gray-900/90 border border-gray-800 rounded px-2.5 py-1.5 text-xs text-indigo-400 hover:text-indigo-300 transition-colors"
+            className="flex items-center gap-1.5 bg-card/90 border border-rule rounded px-2.5 py-1.5 text-xs text-accent hover:text-accent/80 transition-colors"
           >
             <span className="font-medium">Civitics</span>
-            <span className="text-gray-600">↗</span>
+            <span className="text-ink-soft/60">↗</span>
           </a>
         </div>
       </div>

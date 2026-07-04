@@ -3,6 +3,10 @@ module.exports = {
   content: [
     "./app/**/*.{ts,tsx,js,jsx}",
     "../../packages/ui/src/**/*.{ts,tsx,js,jsx}",
+    // FIX-728: the graph package is token-native — its classes must be scanned.
+    // Previously graph-only Tailwind classes compiled only when they happened
+    // to coincide with app/ui usage.
+    "../../packages/graph/src/**/*.{ts,tsx,js,jsx}",
   ],
   theme: {
     extend: {

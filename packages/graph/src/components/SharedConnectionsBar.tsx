@@ -90,16 +90,16 @@ export interface SharedConnectionsBarProps {
 }
 
 const TYPE_DOT_COLORS: Record<string, string> = {
-  official: "#3b82f6",
-  agency: "#7c3aed",
-  proposal: "#f59e0b",
-  financial: "#16a34a",
-  pac: "#ea580c",
-  corporation: "#16a34a",
-  organization: "#3b82f6",
-  individual: "#3b82f6",
-  user: "#a855f7",
-  group: "#94a3b8",
+  official: "rgb(var(--c-blue))",
+  agency: "rgb(var(--c-viz-7))",
+  proposal: "rgb(var(--c-amber))",
+  financial: "rgb(var(--c-green-ink))",
+  pac: "rgb(var(--c-viz-6))",
+  corporation: "rgb(var(--c-green-ink))",
+  organization: "rgb(var(--c-blue))",
+  individual: "rgb(var(--c-blue))",
+  user: "rgb(var(--c-viz-7))",
+  group: "rgb(var(--c-ink-soft))",
 };
 
 export function SharedConnectionsBar({
@@ -148,13 +148,13 @@ export function SharedConnectionsBar({
       role="region"
       aria-label="Shared connections"
     >
-      <div className="shrink-0 text-[11px] text-gray-300 bg-gray-950/85 backdrop-blur-sm border border-gray-800 rounded-full px-3 py-1">
-        <span className="font-semibold text-emerald-400">{shared.length}</span>{" "}
+      <div className="shrink-0 text-[11px] text-ink-soft bg-card backdrop-blur-sm border border-rule rounded-full px-3 py-1">
+        <span className="font-semibold text-green-ink">{shared.length}</span>{" "}
         shared {headline}
       </div>
 
       {visible.map((s) => {
-        const dot = TYPE_DOT_COLORS[s.type] ?? "#94a3b8";
+        const dot = TYPE_DOT_COLORS[s.type] ?? "rgb(var(--c-ink-soft))";
         const active = s.id === highlightedNodeId;
         return (
           <button
@@ -164,8 +164,8 @@ export function SharedConnectionsBar({
             className={[
               "shrink-0 inline-flex items-center gap-1.5 text-[11px] rounded-full px-2.5 py-1 transition-colors",
               active
-                ? "bg-emerald-500 text-gray-950 border border-emerald-400"
-                : "bg-gray-900/80 text-gray-200 border border-gray-700 hover:bg-gray-800",
+                ? "bg-green-ink text-paper border border-green-ink"
+                : "bg-card text-ink border border-rule hover:bg-ink/10",
             ].join(" ")}
             title={`${s.name} — connected to ${s.focusCount} focused entities`}
           >
@@ -182,7 +182,7 @@ export function SharedConnectionsBar({
       })}
 
       {hidden > 0 && (
-        <span className="shrink-0 text-[11px] text-gray-500">+{hidden} more</span>
+        <span className="shrink-0 text-[11px] text-ink-soft/60">+{hidden} more</span>
       )}
     </div>
   );

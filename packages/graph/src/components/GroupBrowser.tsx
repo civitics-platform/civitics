@@ -241,7 +241,6 @@ export function GroupBrowser({
         <TreeSection
           key={key}
           label={node.label}
-          icon={node.icon}
           defaultExpanded={node.defaultExpanded ?? false}
           separator={false}
           depth={depth}
@@ -365,17 +364,20 @@ function GroupRow({
 }) {
   return (
     <div
-      className="flex items-center justify-between py-1.5 hover:bg-gray-50 group/row"
+      className="flex items-center justify-between py-1.5 hover:bg-ink/5 group/row"
       style={{ paddingLeft: `${8 + depth * 12}px`, paddingRight: '12px' }}
     >
       <div className="flex items-center gap-2 min-w-0">
-        <span className="text-sm shrink-0">{group.icon}</span>
+        <span
+          className="inline-block h-2 w-2 shrink-0"
+          style={{ backgroundColor: group.color }}
+        />
         <div className="min-w-0">
-          <div className="text-xs font-medium text-gray-700 truncate">
+          <div className="text-xs font-medium text-ink truncate">
             {group.name}
           </div>
           {group.description && (
-            <div className="text-[10px] text-gray-400 truncate">
+            <div className="text-[10px] text-ink-soft/60 truncate">
               {group.description}
             </div>
           )}
@@ -387,8 +389,8 @@ function GroupRow({
         title={isActive ? 'Already in focus' : `Add ${group.name} to focus`}
         className={`shrink-0 ml-2 w-5 h-5 rounded text-xs font-bold transition-colors flex items-center justify-center ${
           isActive
-            ? 'bg-indigo-100 text-indigo-400 cursor-default'
-            : 'bg-gray-100 text-gray-500 hover:bg-indigo-600 hover:text-white group-hover/row:bg-indigo-50 group-hover/row:text-indigo-600'
+            ? 'bg-green-ink/10 text-green-ink cursor-default'
+            : 'bg-ink/5 text-ink-soft hover:bg-accent hover:text-paper group-hover/row:bg-accent/10 group-hover/row:text-accent'
         }`}
       >
         {isActive ? '✓' : '+'}
@@ -413,14 +415,14 @@ function StateList({
         return (
           <div
             key={s.abbr}
-            className="flex items-center justify-between py-1.5 hover:bg-gray-50 group/row"
+            className="flex items-center justify-between py-1.5 hover:bg-ink/5 group/row"
             style={{ paddingLeft: `${8 + depth * 12}px`, paddingRight: '12px' }}
           >
             <div className="flex items-center gap-2 min-w-0">
-              <span className="text-[10px] font-semibold text-gray-400 shrink-0 w-6 tabular-nums">
+              <span className="text-[10px] font-semibold text-ink-soft/60 shrink-0 w-6 tabular-nums">
                 {s.abbr}
               </span>
-              <span className="text-xs font-medium text-gray-700 truncate">
+              <span className="text-xs font-medium text-ink truncate">
                 {s.name}
               </span>
             </div>
@@ -430,8 +432,8 @@ function StateList({
               title={isActive ? 'Already in focus' : `Add ${s.name} delegation to focus`}
               className={`shrink-0 ml-2 w-5 h-5 rounded text-xs font-bold transition-colors flex items-center justify-center ${
                 isActive
-                  ? 'bg-indigo-100 text-indigo-400 cursor-default'
-                  : 'bg-gray-100 text-gray-500 hover:bg-indigo-600 hover:text-white group-hover/row:bg-indigo-50 group-hover/row:text-indigo-600'
+                  ? 'bg-green-ink/10 text-green-ink cursor-default'
+                  : 'bg-ink/5 text-ink-soft hover:bg-accent hover:text-paper group-hover/row:bg-accent/10 group-hover/row:text-accent'
               }`}
             >
               {isActive ? '✓' : '+'}
@@ -468,7 +470,7 @@ function CommitteeList({
 
   if (error) {
     return (
-      <div className="py-2 text-[10px] text-red-500" style={{ paddingLeft: padding, paddingRight: '12px' }}>
+      <div className="py-2 text-[10px] text-accent" style={{ paddingLeft: padding, paddingRight: '12px' }}>
         Couldn’t load committees: {error}
       </div>
     );
@@ -476,7 +478,7 @@ function CommitteeList({
 
   if (committees === null) {
     return (
-      <div className="py-2 text-[10px] text-gray-400" style={{ paddingLeft: padding, paddingRight: '12px' }}>
+      <div className="py-2 text-[10px] text-ink-soft/60" style={{ paddingLeft: padding, paddingRight: '12px' }}>
         Loading committees…
       </div>
     );
@@ -484,7 +486,7 @@ function CommitteeList({
 
   if (committees.length === 0) {
     return (
-      <div className="py-2 text-[10px] text-gray-400" style={{ paddingLeft: padding, paddingRight: '12px' }}>
+      <div className="py-2 text-[10px] text-ink-soft/60" style={{ paddingLeft: padding, paddingRight: '12px' }}>
         No committees ingested yet.
       </div>
     );
@@ -508,7 +510,7 @@ function CommitteeList({
         return (
           <div key={key}>
             <div
-              className="text-[10px] uppercase tracking-wide text-gray-400 font-semibold pt-2 pb-0.5"
+              className="text-[10px] uppercase tracking-wide text-ink-soft/60 font-semibold pt-2 pb-0.5"
               style={{ paddingLeft: padding, paddingRight: '12px' }}
             >
               {CHAMBER_LABEL[key] ?? key}
@@ -518,14 +520,14 @@ function CommitteeList({
               return (
                 <div
                   key={c.id}
-                  className="flex items-center justify-between py-1.5 hover:bg-gray-50 group/row"
+                  className="flex items-center justify-between py-1.5 hover:bg-ink/5 group/row"
                   style={{ paddingLeft: padding, paddingRight: '12px' }}
                 >
                   <div className="flex items-center gap-2 min-w-0">
-                    <span className="text-xs font-medium text-gray-700 truncate">
+                    <span className="text-xs font-medium text-ink truncate">
                       {c.name}
                     </span>
-                    <span className="shrink-0 text-[10px] text-gray-400 tabular-nums">
+                    <span className="shrink-0 text-[10px] text-ink-soft/60 tabular-nums">
                       {c.memberCount}
                     </span>
                   </div>
@@ -535,8 +537,8 @@ function CommitteeList({
                     title={isActive ? 'Already in focus' : `Add ${c.name} to focus`}
                     className={`shrink-0 ml-2 w-5 h-5 rounded text-xs font-bold transition-colors flex items-center justify-center ${
                       isActive
-                        ? 'bg-indigo-100 text-indigo-400 cursor-default'
-                        : 'bg-gray-100 text-gray-500 hover:bg-indigo-600 hover:text-white group-hover/row:bg-indigo-50 group-hover/row:text-indigo-600'
+                        ? 'bg-green-ink/10 text-green-ink cursor-default'
+                        : 'bg-ink/5 text-ink-soft hover:bg-accent hover:text-paper group-hover/row:bg-accent/10 group-hover/row:text-accent'
                     }`}
                   >
                     {isActive ? '✓' : '+'}
@@ -579,7 +581,7 @@ function GbList({
 
   if (error) {
     return (
-      <div className="py-2 text-[10px] text-red-500" style={{ paddingLeft: padding, paddingRight: '12px' }}>
+      <div className="py-2 text-[10px] text-accent" style={{ paddingLeft: padding, paddingRight: '12px' }}>
         Couldn’t load legislatures: {error}
       </div>
     );
@@ -587,7 +589,7 @@ function GbList({
 
   if (gbs === null) {
     return (
-      <div className="py-2 text-[10px] text-gray-400" style={{ paddingLeft: padding, paddingRight: '12px' }}>
+      <div className="py-2 text-[10px] text-ink-soft/60" style={{ paddingLeft: padding, paddingRight: '12px' }}>
         Loading legislatures…
       </div>
     );
@@ -595,7 +597,7 @@ function GbList({
 
   if (gbs.length === 0) {
     return (
-      <div className="py-2 text-[10px] text-gray-400" style={{ paddingLeft: padding, paddingRight: '12px' }}>
+      <div className="py-2 text-[10px] text-ink-soft/60" style={{ paddingLeft: padding, paddingRight: '12px' }}>
         No state legislatures ingested yet.
       </div>
     );
@@ -608,14 +610,14 @@ function GbList({
         return (
           <div
             key={g.slug}
-            className="flex items-center justify-between py-1.5 hover:bg-gray-50 group/row"
+            className="flex items-center justify-between py-1.5 hover:bg-ink/5 group/row"
             style={{ paddingLeft: padding, paddingRight: '12px' }}
           >
             <div className="flex items-center gap-2 min-w-0">
-              <span className="text-[10px] font-semibold text-gray-400 shrink-0 w-6 tabular-nums">
+              <span className="text-[10px] font-semibold text-ink-soft/60 shrink-0 w-6 tabular-nums">
                 {g.stateAbbr ?? ''}
               </span>
-              <span className="text-xs font-medium text-gray-700 truncate" title={g.name}>
+              <span className="text-xs font-medium text-ink truncate" title={g.name}>
                 {g.shortName ?? g.name}
               </span>
             </div>
@@ -625,8 +627,8 @@ function GbList({
               title={isActive ? 'Already in focus' : `Add ${g.name} to focus`}
               className={`shrink-0 ml-2 w-5 h-5 rounded text-xs font-bold transition-colors flex items-center justify-center ${
                 isActive
-                  ? 'bg-indigo-100 text-indigo-400 cursor-default'
-                  : 'bg-gray-100 text-gray-500 hover:bg-indigo-600 hover:text-white group-hover/row:bg-indigo-50 group-hover/row:text-indigo-600'
+                  ? 'bg-green-ink/10 text-green-ink cursor-default'
+                  : 'bg-ink/5 text-ink-soft hover:bg-accent hover:text-paper group-hover/row:bg-accent/10 group-hover/row:text-accent'
               }`}
             >
               {isActive ? '✓' : '+'}
@@ -675,7 +677,7 @@ function RecentList({
 
   if (recent === null) {
     return (
-      <div className="py-2 text-[10px] text-gray-400" style={{ paddingLeft: padding, paddingRight: '12px' }}>
+      <div className="py-2 text-[10px] text-ink-soft/60" style={{ paddingLeft: padding, paddingRight: '12px' }}>
         Loading recent entities…
       </div>
     );
@@ -683,7 +685,7 @@ function RecentList({
 
   if (recent.length === 0) {
     return (
-      <div className="py-2 text-[10px] text-gray-400" style={{ paddingLeft: padding, paddingRight: '12px' }}>
+      <div className="py-2 text-[10px] text-ink-soft/60" style={{ paddingLeft: padding, paddingRight: '12px' }}>
         Entities you focus will appear here.
       </div>
     );
@@ -695,11 +697,11 @@ function RecentList({
         className="flex items-center justify-between pt-1 pb-1"
         style={{ paddingLeft: padding, paddingRight: '12px' }}
       >
-        <span className="text-[10px] text-gray-400">{recent.length} of 20</span>
+        <span className="text-[10px] text-ink-soft/60">{recent.length} of 20</span>
         <button
           type="button"
           onClick={handleClear}
-          className="text-[10px] text-gray-400 hover:text-red-500 transition-colors"
+          className="text-[10px] text-ink-soft/60 hover:text-accent transition-colors"
         >
           Clear
         </button>
@@ -709,17 +711,16 @@ function RecentList({
         return (
           <div
             key={r.id}
-            className="flex items-center justify-between py-1.5 hover:bg-gray-50 group/row"
+            className="flex items-center justify-between py-1.5 hover:bg-ink/5 group/row"
             style={{ paddingLeft: padding, paddingRight: '12px' }}
           >
             <div className="flex items-center gap-2 min-w-0">
-              <span className="text-sm shrink-0">{ICON_BY_TYPE[r.type] ?? '◦'}</span>
               <div className="min-w-0">
-                <div className="text-xs font-medium text-gray-700 truncate">
+                <div className="text-xs font-medium text-ink truncate">
                   {r.name}
                 </div>
                 {r.role && (
-                  <div className="text-[10px] text-gray-400 truncate">
+                  <div className="text-[10px] text-ink-soft/60 truncate">
                     {r.role}
                   </div>
                 )}
@@ -731,8 +732,8 @@ function RecentList({
               title={isActive ? 'Already in focus' : `Add ${r.name} back to focus`}
               className={`shrink-0 ml-2 w-5 h-5 rounded text-xs font-bold transition-colors flex items-center justify-center ${
                 isActive
-                  ? 'bg-indigo-100 text-indigo-400 cursor-default'
-                  : 'bg-gray-100 text-gray-500 hover:bg-indigo-600 hover:text-white group-hover/row:bg-indigo-50 group-hover/row:text-indigo-600'
+                  ? 'bg-green-ink/10 text-green-ink cursor-default'
+                  : 'bg-ink/5 text-ink-soft hover:bg-accent hover:text-paper group-hover/row:bg-accent/10 group-hover/row:text-accent'
               }`}
             >
               {isActive ? '✓' : '+'}
@@ -743,13 +744,6 @@ function RecentList({
     </div>
   );
 }
-
-const ICON_BY_TYPE: Record<string, string> = {
-  official:  '👤',
-  agency:    '🏛',
-  proposal:  '📜',
-  financial: '💰',
-};
 
 function HomeLocationRow({
   depth,
@@ -786,16 +780,15 @@ function HomeLocationRow({
   const isActive = activeIds.includes(stateGroupId(home.abbr));
   return (
     <div
-      className="flex items-center justify-between py-1.5 hover:bg-violet-50/50 group/row border-l-2 border-violet-300"
+      className="flex items-center justify-between py-1.5 hover:bg-accent/5 group/row border-l-2 border-accent"
       style={{ paddingLeft: `${8 + depth * 12}px`, paddingRight: '12px' }}
     >
       <div className="flex items-center gap-2 min-w-0">
-        <span className="text-sm shrink-0">📍</span>
         <div className="min-w-0">
-          <div className="text-xs font-medium text-violet-700 truncate">
+          <div className="text-xs font-medium text-accent truncate">
             My state’s reps
           </div>
-          <div className="text-[10px] text-gray-400 truncate">
+          <div className="text-[10px] text-ink-soft/60 truncate">
             {home.name} ({home.abbr})
           </div>
         </div>
@@ -806,8 +799,8 @@ function HomeLocationRow({
         title={isActive ? 'Already in focus' : `Add ${home.name} delegation to focus`}
         className={`shrink-0 ml-2 w-5 h-5 rounded text-xs font-bold transition-colors flex items-center justify-center ${
           isActive
-            ? 'bg-violet-100 text-violet-400 cursor-default'
-            : 'bg-gray-100 text-gray-500 hover:bg-violet-600 hover:text-white group-hover/row:bg-violet-50 group-hover/row:text-violet-600'
+            ? 'bg-green-ink/10 text-green-ink cursor-default'
+            : 'bg-ink/5 text-ink-soft hover:bg-accent hover:text-paper group-hover/row:bg-accent/10 group-hover/row:text-accent'
         }`}
       >
         {isActive ? '✓' : '+'}
@@ -841,7 +834,7 @@ function TopicTagList({
 
   if (error) {
     return (
-      <div className="py-2 text-[10px] text-red-500" style={{ paddingLeft: padding, paddingRight: '12px' }}>
+      <div className="py-2 text-[10px] text-accent" style={{ paddingLeft: padding, paddingRight: '12px' }}>
         Couldn’t load tags: {error}
       </div>
     );
@@ -849,7 +842,7 @@ function TopicTagList({
 
   if (tags === null) {
     return (
-      <div className="py-2 text-[10px] text-gray-400" style={{ paddingLeft: padding, paddingRight: '12px' }}>
+      <div className="py-2 text-[10px] text-ink-soft/60" style={{ paddingLeft: padding, paddingRight: '12px' }}>
         Loading topic tags…
       </div>
     );
@@ -857,7 +850,7 @@ function TopicTagList({
 
   if (tags.length === 0) {
     return (
-      <div className="py-2 text-[10px] text-gray-400" style={{ paddingLeft: padding, paddingRight: '12px' }}>
+      <div className="py-2 text-[10px] text-ink-soft/60" style={{ paddingLeft: padding, paddingRight: '12px' }}>
         No topic tags available yet.
       </div>
     );
@@ -870,15 +863,14 @@ function TopicTagList({
         return (
           <div
             key={t.tag}
-            className="flex items-center justify-between py-1.5 hover:bg-gray-50 group/row"
+            className="flex items-center justify-between py-1.5 hover:bg-ink/5 group/row"
             style={{ paddingLeft: padding, paddingRight: '12px' }}
           >
             <div className="flex items-center gap-2 min-w-0">
-              <span className="text-sm shrink-0">{t.icon ?? '🏷'}</span>
-              <span className="text-xs font-medium text-gray-700 truncate">
+              <span className="text-xs font-medium text-ink truncate">
                 {t.label}
               </span>
-              <span className="shrink-0 text-[10px] text-gray-400 tabular-nums">
+              <span className="shrink-0 text-[10px] text-ink-soft/60 tabular-nums">
                 {t.count}
               </span>
             </div>
@@ -888,8 +880,8 @@ function TopicTagList({
               title={isActive ? 'Already in focus' : `Add ${t.label} bills to focus`}
               className={`shrink-0 ml-2 w-5 h-5 rounded text-xs font-bold transition-colors flex items-center justify-center ${
                 isActive
-                  ? 'bg-indigo-100 text-indigo-400 cursor-default'
-                  : 'bg-gray-100 text-gray-500 hover:bg-indigo-600 hover:text-white group-hover/row:bg-indigo-50 group-hover/row:text-indigo-600'
+                  ? 'bg-green-ink/10 text-green-ink cursor-default'
+                  : 'bg-ink/5 text-ink-soft hover:bg-accent hover:text-paper group-hover/row:bg-accent/10 group-hover/row:text-accent'
               }`}
             >
               {isActive ? '✓' : '+'}

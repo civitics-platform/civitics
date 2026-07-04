@@ -13,6 +13,7 @@
  */
 
 import { useState, useEffect, useRef } from 'react';
+import type { ReactNode } from 'react';
 import type { GraphView, VizType, VizApplicabilityMeta } from '../types';
 import { VIZ_REGISTRY, getVizApplicability } from '../visualizations/registry';
 import { AiNarrative } from '../AiNarrative';
@@ -30,6 +31,13 @@ export interface GraphHeaderProps {
   aiEnabled?: boolean;
   /** Loaded-data summary used to gate the viz dropdown by applicability (FIX-129). */
   graphMeta?: VizApplicabilityMeta;
+  /**
+   * Brand mark slot (FIX-728). /graph has no site masthead, so the header
+   * carries the brand — the app passes PorticoMark + wordmark here (the mark
+   * lives app-side; this package can't import it). Falls back to a plain
+   * wordmark link.
+   */
+  brand?: ReactNode;
 }
 
 interface EntityResult {
@@ -40,10 +48,12 @@ interface EntityResult {
   party?: string;
 }
 
+// rgb(var(--c-x)) strings re-bind per scope — wine (viz-7) stands in for
+// independents; the token system has no purple.
 const PARTY_DOT: Record<string, string> = {
-  democrat:    '#3b82f6',
-  republican:  '#ef4444',
-  independent: '#a855f7',
+  democrat:    'rgb(var(--c-blue))',
+  republican:  'rgb(var(--c-accent))',
+  independent: 'rgb(var(--c-viz-7))',
 };
 
 export function GraphHeader({
@@ -55,6 +65,7 @@ export function GraphHeader({
   onFullscreen,
   aiEnabled = true,
   graphMeta,
+  brand,
 }: GraphHeaderProps) {
   const activeViz = VIZ_REGISTRY.find(v => v.id === view.style.vizType);
 
@@ -151,49 +162,57 @@ export function GraphHeader({
   }
 
   return (
-    <header className="shrink-0 h-12 flex items-center px-3 bg-white/95 backdrop-blur-sm border-b border-gray-200 z-50">
+    <header className="shrink-0 h-12 flex items-center px-3 bg-card/95 backdrop-blur-sm border-b border-rule z-50">
 
-      {/* ── Left cluster: logo + viz dropdown (FIX-133) ─────────────────── */}
-      <div className="flex items-center gap-2 shrink-0 pr-3 border-r border-gray-200">
+      {/* ── Left cluster: brand + kicker + viz dropdown (FIX-133 / FIX-728) ── */}
+      <div className="flex items-center gap-2.5 shrink-0 pr-3 border-r border-rule">
 
-      {/* Civitics mark */}
-      <a
-        href="/"
-        className="text-xs font-bold text-indigo-600 tracking-tight shrink-0 hover:text-indigo-700 transition-colors"
-      >
-        Civitics
-      </a>
+      {/* Brand — no site masthead on /graph, so the header carries it */}
+      {brand ?? (
+        <a
+          href="/"
+          className="shrink-0 font-mono text-[11px] font-bold tracking-[0.18em] text-ink hover:text-accent transition-colors"
+        >
+          CIVITICS
+        </a>
+      )}
+
+      {/* Live-instrument kicker — dashboard/search idiom */}
+      <span className="hidden lg:flex items-center gap-1.5 shrink-0 font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-amber">
+        <span className="h-[6px] w-[6px] animate-pulse rounded-full bg-amber motion-reduce:animate-none" />
+        Connection graph
+      </span>
 
       {/* Viz dropdown + entity focus indicator */}
       <div className="flex items-center gap-1.5 shrink-0">
       <div className="relative" ref={vizMenuRef}>
         <button
           onClick={() => setShowVizMenu(v => !v)}
-          className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md hover:bg-gray-100 transition-colors text-gray-700"
+          className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md hover:bg-ink/10 transition-colors text-ink"
         >
           <span>{activeViz?.label ?? 'Graph'}</span>
-          <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-3 h-3 text-ink-soft" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
           </svg>
         </button>
 
         {showVizMenu && (
-          <div className="absolute top-full left-0 mt-1 w-56 bg-white border border-gray-200 rounded-lg shadow-lg z-50 overflow-hidden">
+          <div className="absolute top-full left-0 mt-1 w-56 bg-card border border-rule rounded-lg shadow-lg z-50 overflow-hidden">
             {/* Available group (FIX-129) */}
             {availableViz.length > 0 && (
               <>
-                <p className="px-3 py-1.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wider bg-gray-50 border-b border-gray-100">
+                <p className="px-3 py-1.5 text-[10px] font-semibold text-ink-soft/70 uppercase tracking-wider bg-paper-2 border-b border-rule/60">
                   Available
                 </p>
                 {availableViz.map(({ viz }) => (
                   <button
                     key={viz.id}
                     onClick={() => { onVizChange(viz.id); setShowVizMenu(false); }}
-                    className="w-full flex items-center justify-between px-3 py-2 text-xs hover:bg-gray-50 transition-colors text-gray-700"
+                    className="w-full flex items-center justify-between px-3 py-2 text-xs hover:bg-ink/5 transition-colors text-ink"
                   >
                     <span>{viz.label}</span>
                     {view.style.vizType === viz.id && (
-                      <span className="text-indigo-600 font-bold">✓</span>
+                      <span className="text-accent font-bold">✓</span>
                     )}
                   </button>
                 ))}
@@ -203,7 +222,7 @@ export function GraphHeader({
             {/* Not yet applicable group (FIX-129) — greyed; click surfaces the reason. */}
             {inapplicableViz.length > 0 && (
               <>
-                <p className="px-3 py-1.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wider bg-gray-50 border-t border-b border-gray-100">
+                <p className="px-3 py-1.5 text-[10px] font-semibold text-ink-soft/70 uppercase tracking-wider bg-paper-2 border-t border-b border-rule/60">
                   Not yet applicable
                 </p>
                 {inapplicableViz.map(({ viz, result }) => {
@@ -216,10 +235,10 @@ export function GraphHeader({
                         setShowVizMenu(false);
                       }}
                       title={reason}
-                      className="w-full flex flex-col items-start px-3 py-2 text-xs text-gray-400 hover:bg-gray-50 transition-colors text-left"
+                      className="w-full flex flex-col items-start px-3 py-2 text-xs text-ink-soft/60 hover:bg-ink/5 transition-colors text-left"
                     >
                       <span>{viz.label}</span>
-                      <span className="text-[10px] text-gray-400 truncate w-full">{reason}</span>
+                      <span className="text-[10px] text-ink-soft/60 truncate w-full">{reason}</span>
                     </button>
                   );
                 })}
@@ -229,24 +248,24 @@ export function GraphHeader({
             {/* Coming soon group */}
             {comingSoonViz.length > 0 && (
               <>
-                <p className="px-3 py-1.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wider bg-gray-50 border-t border-b border-gray-100">
+                <p className="px-3 py-1.5 text-[10px] font-semibold text-ink-soft/70 uppercase tracking-wider bg-paper-2 border-t border-b border-rule/60">
                   Coming Soon
                 </p>
                 {comingSoonViz.map(viz => (
                   <div
                     key={viz.id}
-                    className="flex items-center justify-between px-3 py-2 text-xs text-gray-400 cursor-not-allowed"
+                    className="flex items-center justify-between px-3 py-2 text-xs text-ink-soft/60 cursor-not-allowed"
                   >
                     <span>{viz.label}</span>
-                    <span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">Soon</span>
+                    <span className="text-[10px] bg-ink/10 text-ink-soft px-1.5 py-0.5 rounded">Soon</span>
                   </div>
                 ))}
               </>
             )}
 
             {/* Custom group */}
-            <div className="border-t border-gray-100">
-              <p className="px-3 py-1.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wider bg-gray-50">
+            <div className="border-t border-rule/60">
+              <p className="px-3 py-1.5 text-[10px] font-semibold text-ink-soft/70 uppercase tracking-wider bg-paper-2">
                 Custom
               </p>
               <button
@@ -257,7 +276,7 @@ export function GraphHeader({
                     alert('Create custom view — coming in a future update');
                   }
                 }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-gray-50 transition-colors text-gray-500"
+                className="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-ink/5 transition-colors text-ink-soft"
               >
                 <span>+</span>
                 <span>Create new view</span>
@@ -270,7 +289,7 @@ export function GraphHeader({
       {/* Entity focus indicator — shown next to viz selector for entity-aware viz types */}
       {view.focus.entities.length > 0 &&
        ['chord', 'treemap', 'sunburst'].includes(view.style.vizType) && (
-        <span className="text-xs text-indigo-400 truncate max-w-[140px]" title={`Focused on ${view.focus.entities[0]!.name}`}>
+        <span className="text-xs text-ink-soft truncate max-w-[140px]" title={`Focused on ${view.focus.entities[0]!.name}`}>
           · {view.focus.entities[0]!.name}
         </span>
       )}
@@ -278,13 +297,13 @@ export function GraphHeader({
       </div>
 
       {/* ── Center cluster: search + Path + AI Explain (FIX-133) ─────────── */}
-      <div className="flex items-center gap-1.5 flex-1 px-3 border-r border-gray-200 min-w-0">
+      <div className="flex items-center gap-1.5 flex-1 px-3 border-r border-rule min-w-0">
 
       {/* Entity search */}
       <div className="relative flex-1 max-w-72" ref={searchRef}>
         <div className="relative">
           <svg
-            className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none"
+            className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-ink-soft pointer-events-none"
             fill="none" stroke="currentColor" viewBox="0 0 24 24"
           >
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -295,32 +314,32 @@ export function GraphHeader({
             onChange={e => setQuery(e.target.value)}
             onFocus={() => results.length > 0 && setSearchOpen(true)}
             placeholder="Add to graph…"
-            className="w-full pl-8 pr-3 py-1.5 text-xs bg-gray-50 border border-gray-200 rounded-md text-gray-700 placeholder-gray-400 focus:outline-none focus:border-indigo-400 focus:bg-white transition-colors"
+            className="w-full pl-8 pr-3 py-1.5 text-xs bg-paper border border-rule rounded-md text-ink placeholder:text-ink-soft focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors"
           />
           {searching && (
-            <div className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3 h-3 rounded-full border border-gray-400 border-t-transparent animate-spin" />
+            <div className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3 h-3 rounded-full border border-ink-soft border-t-transparent animate-spin" />
           )}
         </div>
 
         {searchOpen && results.length > 0 && (
-          <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-60 overflow-y-auto">
+          <div className="absolute top-full left-0 right-0 mt-1 bg-card border border-rule rounded-lg shadow-lg z-50 max-h-60 overflow-y-auto">
             {results.map(r => (
               <button
                 key={r.id}
                 onMouseDown={e => { e.preventDefault(); selectEntity(r); }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-gray-50 transition-colors text-left"
+                className="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-ink/5 transition-colors text-left"
               >
                 <span
                   className="w-2 h-2 rounded-full shrink-0"
                   style={{
                     backgroundColor: r.party
-                      ? (PARTY_DOT[r.party.toLowerCase()] ?? '#94a3b8')
-                      : '#d1d5db',
+                      ? (PARTY_DOT[r.party.toLowerCase()] ?? 'rgb(var(--c-ink-soft))')
+                      : 'rgb(var(--c-rule))',
                   }}
                 />
-                <span className="text-gray-800 font-medium truncate flex-1">{r.label}</span>
+                <span className="text-ink font-medium truncate flex-1">{r.label}</span>
                 {r.subtitle && (
-                  <span className="text-gray-400 text-[10px] truncate max-w-[120px]">{r.subtitle}</span>
+                  <span className="text-ink-soft/70 text-[10px] truncate max-w-[120px]">{r.subtitle}</span>
                 )}
               </button>
             ))}
@@ -332,7 +351,7 @@ export function GraphHeader({
       <button
         onClick={() => setPathOpen(p => !p)}
         title="Find shortest path between two entities"
-        className={`shrink-0 px-2.5 py-1.5 text-xs font-medium rounded-md transition-colors ${pathOpen ? 'bg-indigo-50 text-indigo-700' : 'hover:bg-gray-100 text-gray-600'}`}
+        className={`shrink-0 px-2.5 py-1.5 text-xs font-medium rounded-md transition-colors ${pathOpen ? 'bg-accent/10 text-accent' : 'hover:bg-ink/10 text-ink-soft'}`}
       >
         🔗 Path
       </button>
@@ -343,7 +362,7 @@ export function GraphHeader({
         title={aiEnabled
           ? "AI-generated summary of the current graph"
           : "AI summaries are temporarily disabled"}
-        className="shrink-0 px-2.5 py-1.5 text-xs font-medium rounded-md hover:bg-gray-100 transition-colors text-gray-600 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+        className="shrink-0 px-2.5 py-1.5 text-xs font-medium rounded-md hover:bg-ink/10 transition-colors text-ink-soft disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
       >
         ✨ Explain
       </button>
@@ -354,14 +373,14 @@ export function GraphHeader({
       <div className="flex items-center gap-1 shrink-0 pl-3">
         <button
           onClick={onShare}
-          className="px-2.5 py-1.5 text-xs font-medium rounded-md hover:bg-gray-100 transition-colors text-gray-600"
+          className="px-2.5 py-1.5 text-xs font-medium rounded-md hover:bg-ink/10 transition-colors text-ink-soft"
         >
           Share
         </button>
 
         <button
           onClick={onScreenshot}
-          className="px-2.5 py-1.5 text-xs font-medium rounded-md hover:bg-gray-100 transition-colors text-gray-600"
+          className="px-2.5 py-1.5 text-xs font-medium rounded-md hover:bg-ink/10 transition-colors text-ink-soft"
         >
           Screenshot
         </button>
@@ -369,7 +388,7 @@ export function GraphHeader({
         <button
           onClick={handleFullscreen}
           title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
-          className="w-8 h-8 flex items-center justify-center rounded-md hover:bg-gray-100 transition-colors text-gray-600"
+          className="w-8 h-8 flex items-center justify-center rounded-md hover:bg-ink/10 transition-colors text-ink-soft"
         >
           {isFullscreen ? (
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -397,15 +416,15 @@ export function GraphHeader({
           — the overlay needs to escape the 48px-tall header). */}
       {pathOpen && (
         <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-30 w-full max-w-md px-4">
-          <div className="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800">
+          <div className="bg-card border border-rule rounded-xl shadow-2xl overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-rule/60">
               <div className="flex items-center gap-2">
                 <span className="text-sm">🔗</span>
-                <span className="text-xs font-semibold text-gray-200">Path Finder</span>
+                <span className="text-xs font-semibold text-ink">Path Finder</span>
               </div>
               <button
                 onClick={() => setPathOpen(false)}
-                className="text-gray-500 hover:text-white transition-colors text-sm leading-none"
+                className="text-ink-soft hover:text-ink transition-colors text-sm leading-none"
                 title="Close"
               >
                 ×
@@ -414,8 +433,8 @@ export function GraphHeader({
             <div className="px-4 py-3">
               <PathFinder />
             </div>
-            <div className="px-4 py-2 border-t border-gray-800 bg-gray-950/60">
-              <p className="text-[10px] text-gray-600">
+            <div className="px-4 py-2 border-t border-rule/60 bg-paper/60">
+              <p className="text-[10px] text-ink-soft/70">
                 Path edges highlight on the Force graph.
               </p>
             </div>
@@ -431,7 +450,7 @@ export function GraphHeader({
         <div
           role="status"
           aria-live="polite"
-          className="fixed top-14 left-1/2 -translate-x-1/2 px-3 py-1.5 bg-gray-900 text-white text-xs rounded-md shadow-lg pointer-events-none z-50"
+          className="fixed top-14 left-1/2 -translate-x-1/2 px-3 py-1.5 bg-card border border-rule text-ink text-xs rounded-md shadow-lg pointer-events-none z-50"
         >
           {vizToast}
         </div>

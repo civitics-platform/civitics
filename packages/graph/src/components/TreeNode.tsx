@@ -35,13 +35,13 @@ export interface TreeNodeProps {
   variant?: TreeNodeVariant;
   /** Depth for indentation: depth * 12px */
   depth?: number;
-  /** Gray pill badge shown to the right of the label */
+  /** Muted pill badge shown to the right of the label */
   count?: number;
   /** Replaces expand arrow with spinner when true */
   loading?: boolean;
   /** Shows orange dot on label when true */
   dirty?: boolean;
-  /** Highlights label in indigo */
+  /** Highlights label in the accent color */
   active?: boolean;
   /** Whether this node can be expanded/collapsed */
   collapsible?: boolean;
@@ -64,15 +64,18 @@ export interface TreeNodeProps {
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
+// Semantic-token ring colors — re-bind per scope via CSS vars, applied through
+// --tw-ring-color inline (packages/graph isn't in the tailwind content globs,
+// so ring-civic-blue etc. wouldn't be generated as classes).
 const PARTY_RING: Record<string, string> = {
-  democrat:    'ring-blue-500',
-  republican:  'ring-red-500',
-  independent: 'ring-purple-500',
+  democrat:    'rgb(var(--c-blue))',
+  republican:  'rgb(var(--c-accent))',
+  independent: 'rgb(var(--c-viz-7))',
 };
 
-function partyRingClass(party?: string): string {
-  if (!party) return 'ring-gray-300';
-  return PARTY_RING[party.toLowerCase()] ?? 'ring-gray-300';
+function partyRingColor(party?: string): string {
+  if (!party) return 'rgb(var(--c-ink-soft))';
+  return PARTY_RING[party.toLowerCase()] ?? 'rgb(var(--c-ink-soft))';
 }
 
 function initials(name: string): string {
@@ -118,12 +121,12 @@ export function TreeNode({
     <div>
       {/* Separator above sections */}
       {isSection && separator && (
-        <div className="h-px bg-gray-100 mx-2 mt-1" />
+        <div className="h-px bg-rule/60 mx-2 mt-1" />
       )}
 
       {/* Row */}
       <div
-        className={`group flex items-center gap-1.5 px-2 py-1.5 cursor-pointer transition-colors select-none ${active ? 'bg-indigo-100 hover:bg-indigo-200 border-l-2 border-indigo-500' : 'hover:bg-gray-50 border-l-2 border-transparent'}`}
+        className={`group flex items-center gap-1.5 px-2 py-1.5 cursor-pointer transition-colors select-none ${active ? 'bg-accent/10 hover:bg-accent/20 border-l-2 border-accent' : 'hover:bg-ink/5 border-l-2 border-transparent'}`}
         style={{ paddingLeft: `${8 + depth * 12}px` }}
         onClick={handleRowClick}
       >
@@ -131,10 +134,10 @@ export function TreeNode({
         <div className="w-3 h-3 shrink-0 flex items-center justify-center">
           {hasChildren ? (
             loading ? (
-              <div className="w-3 h-3 border border-gray-400 border-t-transparent rounded-full animate-spin" />
+              <div className="w-3 h-3 border border-ink-soft border-t-transparent rounded-full animate-spin" />
             ) : (
               <svg
-                className={`w-3 h-3 text-gray-400 transition-transform duration-150 ${expanded ? 'rotate-90' : ''}`}
+                className={`w-3 h-3 text-ink-soft/60 transition-transform duration-150 ${expanded ? 'rotate-90' : ''}`}
                 fill="none" stroke="currentColor" viewBox="0 0 24 24"
               >
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -145,11 +148,14 @@ export function TreeNode({
 
         {/* Entity avatar */}
         {variant === 'entity' && (
-          <div className={`w-6 h-6 shrink-0 rounded-full ring-2 ${partyRingClass(party)} overflow-hidden flex items-center justify-center bg-gray-100`}>
+          <div
+            className="w-6 h-6 shrink-0 rounded-full ring-2 overflow-hidden flex items-center justify-center bg-ink/10"
+            style={{ '--tw-ring-color': partyRingColor(party) } as React.CSSProperties}
+          >
             {photoUrl ? (
               <img src={photoUrl} alt={typeof label === 'string' ? label : ''} className="w-full h-full object-cover" />
             ) : (
-              <span className="text-[9px] font-semibold text-gray-600">{typeof label === 'string' ? initials(label) : '?'}</span>
+              <span className="text-[9px] font-semibold text-ink-soft">{typeof label === 'string' ? initials(label) : '?'}</span>
             )}
           </div>
         )}
@@ -172,20 +178,20 @@ export function TreeNode({
           className={[
             'flex-1 min-w-0 truncate text-xs leading-tight',
             isSection
-              ? 'font-semibold text-gray-900 uppercase tracking-wide'
-              : 'font-normal text-gray-700',
-            active ? 'text-indigo-700 font-semibold' : '',
+              ? 'font-semibold text-ink uppercase tracking-wide'
+              : 'font-normal text-ink',
+            active ? 'text-accent font-semibold' : '',
           ].join(' ')}
         >
           {label}
           {dirty && (
-            <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 ml-1 mb-0.5 align-middle" />
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber ml-1 mb-0.5 align-middle" />
           )}
         </span>
 
         {/* Count badge */}
         {count != null && (
-          <span className="shrink-0 px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500 text-[10px] leading-none">
+          <span className="shrink-0 px-1.5 py-0.5 rounded-full bg-ink/5 text-ink-soft text-[10px] leading-none">
             {count}
           </span>
         )}
@@ -198,7 +204,7 @@ export function TreeNode({
                 key={i}
                 title={action.label}
                 onClick={e => { e.stopPropagation(); action.onClick(); }}
-                className="w-5 h-5 flex items-center justify-center rounded hover:bg-gray-200 text-gray-500 hover:text-gray-700 transition-colors text-xs leading-none"
+                className="w-5 h-5 flex items-center justify-center rounded hover:bg-accent/10 text-ink-soft hover:text-accent transition-colors text-xs leading-none"
               >
                 {action.icon}
               </button>

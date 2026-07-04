@@ -20,6 +20,7 @@ import {
 } from "@civitics/graph";
 import type { VizType, FocusGroup, GroupFilter, GraphNodeV2 as GraphNode, GraphEdgeV2 as GraphEdge, GraphMeta, UserNodeInfo, IndividualDisplayMode } from "@civitics/graph";
 import { isGraphSeedableKind } from "@/lib/graph-seedable-kinds";
+import { PorticoMark }     from "../components/brand/PorticoMark";
 import { SharePanel }      from "./SharePanel";
 import { ScreenshotPanel } from "./ScreenshotPanel";
 import { GhostGraph }      from "./GhostGraph";
@@ -548,7 +549,10 @@ export function GraphPage({ initialCode, aiEnabled = true }: GraphPageProps = {}
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <div className="flex flex-col h-screen bg-gray-950 text-white">
+    // Terminal Wave 3 (FIX-728): /graph is a fullscreen instrument with no site
+    // masthead — the whole page is a terminal scope. text-ink must be restated
+    // alongside bg-paper (inherited body color doesn't re-resolve in scope).
+    <div data-theme="terminal" className="flex flex-col h-screen bg-paper text-ink">
 
       {/* ── Header ────────────────────────────────────────────────────────── */}
       <GraphHeader
@@ -560,6 +564,16 @@ export function GraphPage({ initialCode, aiEnabled = true }: GraphPageProps = {}
         onFullscreen={handleFullscreen}
         aiEnabled={aiEnabled}
         graphMeta={displayGraphMeta}
+        brand={
+          <a
+            href="/"
+            aria-label="Civitics home"
+            className="flex items-center gap-1.5 shrink-0 text-ink hover:text-accent transition-colors"
+          >
+            <PorticoMark size={18} />
+            <span className="font-mono text-[11px] font-bold tracking-[0.18em]">CIVITICS</span>
+          </a>
+        }
       />
 
       {/* ── Three-column body ────────────────────────────────────────────── */}
@@ -591,15 +605,15 @@ export function GraphPage({ initialCode, aiEnabled = true }: GraphPageProps = {}
                 <div className="relative w-full h-full">
                   <GhostGraph className="w-full h-full absolute inset-0 opacity-30" />
                   <div className="absolute inset-0 flex flex-col items-center justify-center z-10">
-                    <div className="max-w-md w-full mx-4 px-8 py-8 rounded-2xl bg-gray-950/80 backdrop-blur-sm border border-gray-800">
+                    <div className="max-w-md w-full mx-4 px-8 py-8 rounded-2xl bg-paper/80 backdrop-blur-sm border border-rule">
                       <div className="text-center">
-                        <div className="w-10 h-10 mx-auto mb-4 rounded-full border border-gray-700 flex items-center justify-center">
-                          <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <div className="w-10 h-10 mx-auto mb-4 rounded-full border border-rule flex items-center justify-center">
+                          <svg className="w-5 h-5 text-ink-soft/60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                           </svg>
                         </div>
-                        <p className="text-gray-300 text-sm font-medium">Search to start exploring</p>
-                        <p className="text-gray-500 text-xs mt-2 leading-relaxed">
+                        <p className="text-ink text-sm font-medium">Search to start exploring</p>
+                        <p className="text-ink-soft text-xs mt-2 leading-relaxed">
                           Use the left panel to add officials, agencies, or proposals to the graph.
                         </p>
                       </div>

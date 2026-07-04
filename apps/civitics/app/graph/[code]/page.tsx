@@ -60,13 +60,13 @@ export default async function SharedGraphPage({ params }: Props) {
 
 function InvalidCode({ code }: { code: string }) {
   return (
-    <main className="min-h-screen bg-gray-950 flex items-center justify-center">
+    <main data-theme="terminal" className="min-h-screen bg-paper text-ink flex items-center justify-center">
       <div className="text-center">
-        <p className="text-gray-400 text-sm mb-1">Share code not found</p>
-        <p className="text-gray-600 text-xs font-mono mb-6">{code}</p>
+        <p className="text-ink-soft text-sm mb-1">Share code not found</p>
+        <p className="text-ink-soft/60 text-xs font-mono mb-6">{code}</p>
         <a
           href="/graph"
-          className="px-4 py-2 text-xs font-medium rounded bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white transition-colors"
+          className="px-4 py-2 text-xs font-medium rounded bg-ink/10 hover:bg-ink/20 text-ink transition-colors"
         >
           ← Open Connection Graph
         </a>

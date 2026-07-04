@@ -89,17 +89,17 @@ export function NodeContextMenu({
       {/* Menu */}
       <div
         ref={menuRef}
-        className="absolute z-50 w-48 rounded-lg border border-gray-200 bg-white shadow-lg py-1 text-sm"
+        className="absolute z-50 w-48 rounded-lg border border-rule bg-card shadow-lg py-1 text-sm"
         style={{ left: flipX, top: flipY }}
         onMouseDown={(e) => e.stopPropagation()}
       >
         {/* Header — entity name */}
-        <div className="px-3 py-2 border-b border-gray-100">
-          <p className="font-medium text-gray-900 truncate text-xs leading-tight">
+        <div className="px-3 py-2 border-b border-rule/60">
+          <p className="font-medium text-ink truncate text-xs leading-tight">
             {node.name ?? "Unknown"}
           </p>
           {node.role && (
-            <p className="text-[10px] text-gray-400 truncate mt-0.5">{node.role}</p>
+            <p className="text-[10px] text-ink-soft/60 truncate mt-0.5">{node.role}</p>
           )}
         </div>
 
@@ -143,7 +143,7 @@ export function NodeContextMenu({
           />
 
           {/* Divider before destructive */}
-          <div className="border-t border-gray-100 my-1" />
+          <div className="border-t border-rule/60 my-1" />
 
           {/* Hide */}
           <MenuButton
@@ -175,8 +175,8 @@ function MenuButton({
       onClick={onClick}
       className={`w-full flex items-center gap-2.5 px-3 py-1.5 text-left text-xs transition-colors ${
         variant === "danger"
-          ? "text-red-500 hover:bg-red-50"
-          : "text-gray-700 hover:bg-gray-50 hover:text-gray-900"
+          ? "text-accent hover:bg-accent/10"
+          : "text-ink hover:bg-ink/5"
       }`}
     >
       <span className="w-4 text-center flex-shrink-0 text-[11px]">{icon}</span>

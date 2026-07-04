@@ -66,11 +66,11 @@ function MiniEntitySearch({ placeholder, selected, onSelect, onClear, searchFn }
   return (
     <div className="relative">
       {selected && !query ? (
-        <div className="flex items-center gap-1.5 px-2 py-1.5 bg-gray-800 border border-gray-700 rounded text-xs">
-          <span className="text-indigo-400 truncate flex-1">{selected.label}</span>
+        <div className="flex items-center gap-1.5 px-2 py-1.5 bg-ink/5 border border-rule rounded text-xs">
+          <span className="text-accent truncate flex-1">{selected.label}</span>
           <button
             onClick={onClear}
-            className="text-gray-600 hover:text-gray-400 shrink-0"
+            className="text-ink-soft/60 hover:text-ink-soft shrink-0"
             title="Clear"
           >
             ✕
@@ -85,24 +85,24 @@ function MiniEntitySearch({ placeholder, selected, onSelect, onClear, searchFn }
             onFocus={() => results.length > 0 && setOpen(true)}
             onBlur={() => setTimeout(() => setOpen(false), 150)}
             placeholder={placeholder}
-            className="w-full px-2 py-1.5 text-xs bg-gray-800 border border-gray-700 rounded text-gray-300 placeholder-gray-600 focus:outline-none focus:border-indigo-500"
+            className="w-full px-2 py-1.5 text-xs bg-ink/5 border border-rule rounded text-ink placeholder:text-ink-soft/60 focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent"
           />
           {loading && (
-            <div className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 rounded-full border border-gray-500 border-t-transparent animate-spin" />
+            <div className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 rounded-full border border-ink-soft border-t-transparent animate-spin" />
           )}
         </div>
       )}
 
       {open && results.length > 0 && (
-        <div className="absolute top-full left-0 right-0 z-50 bg-gray-900 border border-gray-700 rounded-b shadow-xl max-h-40 overflow-y-auto">
+        <div className="absolute top-full left-0 right-0 z-50 bg-card border border-rule rounded-b shadow-xl max-h-40 overflow-y-auto">
           {results.map((r) => (
             <button
               key={r.id}
               onMouseDown={(e) => { e.preventDefault(); handleSelect(r); }}
-              className="w-full flex items-center gap-1.5 px-2.5 py-1.5 text-xs hover:bg-gray-800 transition-colors text-left"
+              className="w-full flex items-center gap-1.5 px-2.5 py-1.5 text-xs hover:bg-ink/10 transition-colors text-left"
             >
-              <span className="text-gray-300 truncate flex-1">{r.label}</span>
-              {r.subtitle && <span className="text-gray-600 truncate text-[10px]">{r.subtitle}</span>}
+              <span className="text-ink truncate flex-1">{r.label}</span>
+              {r.subtitle && <span className="text-ink-soft/60 truncate text-[10px]">{r.subtitle}</span>}
             </button>
           ))}
         </div>
@@ -160,7 +160,7 @@ export function PathFinder({ searchFn = defaultSearchFn, onPathFound }: PathFind
   return (
     <div className="space-y-2">
       <div>
-        <p className="text-[10px] text-gray-600 mb-1">From</p>
+        <p className="text-[10px] text-ink-soft/60 mb-1">From</p>
         <MiniEntitySearch
           placeholder="Search start entity…"
           selected={fromEntity}
@@ -171,7 +171,7 @@ export function PathFinder({ searchFn = defaultSearchFn, onPathFound }: PathFind
       </div>
 
       <div>
-        <p className="text-[10px] text-gray-600 mb-1">To</p>
+        <p className="text-[10px] text-ink-soft/60 mb-1">To</p>
         <MiniEntitySearch
           placeholder="Search end entity…"
           selected={toEntity}
@@ -184,37 +184,37 @@ export function PathFinder({ searchFn = defaultSearchFn, onPathFound }: PathFind
       <button
         onClick={findPath}
         disabled={!fromEntity || !toEntity || searching}
-        className="w-full py-1.5 text-xs font-medium rounded bg-indigo-700 hover:bg-indigo-600 disabled:bg-gray-800 disabled:text-gray-600 text-white transition-colors"
+        className="w-full py-1.5 text-xs font-medium rounded bg-accent hover:bg-accent/85 disabled:bg-ink/10 disabled:text-ink-soft/60 text-paper transition-colors"
       >
         {searching ? (
           <span className="flex items-center justify-center gap-1.5">
-            <span className="w-3 h-3 rounded-full border border-white border-t-transparent animate-spin" />
+            <span className="w-3 h-3 rounded-full border border-current border-t-transparent animate-spin" />
             Searching…
           </span>
         ) : "Find shortest path"}
       </button>
 
       {error && (
-        <p className="text-xs text-red-400">{error}</p>
+        <p className="text-xs text-accent">{error}</p>
       )}
 
       {notFound && (
-        <div className="text-xs text-gray-500 bg-gray-900 border border-gray-800 rounded px-2.5 py-2">
+        <div className="text-xs text-ink-soft bg-card border border-rule rounded px-2.5 py-2">
           No connection found within 4 hops.
         </div>
       )}
 
       {result && (
-        <div className="bg-gray-900 border border-gray-800 rounded px-2.5 py-2">
-          <p className="text-[10px] text-gray-500 mb-1.5 uppercase tracking-wider">
+        <div className="bg-card border border-rule rounded px-2.5 py-2">
+          <p className="text-[10px] text-ink-soft mb-1.5 uppercase tracking-wider">
             {result.hops} hop{result.hops !== 1 ? "s" : ""}
           </p>
           <div className="flex flex-wrap items-center gap-1">
             {result.entityLabels.map((label, i) => (
               <React.Fragment key={i}>
-                <span className="text-[11px] text-indigo-400 font-medium">{label}</span>
+                <span className="text-[11px] text-accent font-medium">{label}</span>
                 {i < result.connectionTypes.length && (
-                  <span className="text-[10px] text-gray-600">
+                  <span className="text-[10px] text-ink-soft/60">
                     {" "}{result.connectionTypes[i]}{" "}
                   </span>
                 )}

@@ -70,15 +70,15 @@ export function EmptyStatePresets({ hooks }: EmptyStatePresetsProps) {
         <button
           key={card.presetId}
           onClick={() => applyCard(card)}
-          className="group flex flex-col items-stretch p-2 rounded-lg border border-gray-700 bg-gray-900/60 hover:bg-gray-800 hover:border-indigo-500 transition-colors text-left"
+          className="group flex flex-col items-stretch p-2 rounded-lg border border-rule bg-card/60 hover:bg-ink/10 hover:border-accent transition-colors text-left"
         >
-          <div className="h-12 w-full rounded bg-gray-950 border border-gray-800 flex items-center justify-center overflow-hidden">
+          <div className="h-12 w-full rounded bg-paper-2 border border-rule flex items-center justify-center overflow-hidden">
             {card.thumbnail}
           </div>
-          <span className="mt-2 text-[10px] uppercase tracking-wider text-indigo-400 font-semibold">
+          <span className="mt-2 text-[10px] uppercase tracking-wider text-amber font-semibold">
             {card.vizLabel}
           </span>
-          <span className="text-[11px] text-gray-200 leading-tight mt-0.5 group-hover:text-white">
+          <span className="text-[11px] text-ink leading-tight mt-0.5">
             {card.title}
           </span>
         </button>
@@ -96,16 +96,16 @@ export function EmptyStatePresets({ hooks }: EmptyStatePresetsProps) {
 function ForceThumbnail() {
   return (
     <svg viewBox="0 0 64 40" className="w-full h-full">
-      <line x1="20" y1="14" x2="32" y2="20" stroke="#6366f1" strokeWidth="0.7" opacity="0.6" />
-      <line x1="32" y1="20" x2="46" y2="14" stroke="#6366f1" strokeWidth="0.7" opacity="0.6" />
-      <line x1="32" y1="20" x2="44" y2="28" stroke="#6366f1" strokeWidth="0.7" opacity="0.6" />
-      <line x1="32" y1="20" x2="20" y2="28" stroke="#6366f1" strokeWidth="0.7" opacity="0.6" />
-      <line x1="20" y1="28" x2="44" y2="28" stroke="#6366f1" strokeWidth="0.7" opacity="0.4" />
-      <circle cx="32" cy="20" r="3.5" fill="#818cf8" />
-      <circle cx="20" cy="14" r="2.2" fill="#3b82f6" />
-      <circle cx="46" cy="14" r="2.2" fill="#ef4444" />
-      <circle cx="20" cy="28" r="2.2" fill="#22c55e" />
-      <circle cx="44" cy="28" r="2.2" fill="#f59e0b" />
+      <line x1="20" y1="14" x2="32" y2="20" style={{ stroke: "rgb(var(--c-term-blue))" }} strokeWidth="0.7" opacity="0.6" />
+      <line x1="32" y1="20" x2="46" y2="14" style={{ stroke: "rgb(var(--c-term-blue))" }} strokeWidth="0.7" opacity="0.6" />
+      <line x1="32" y1="20" x2="44" y2="28" style={{ stroke: "rgb(var(--c-term-blue))" }} strokeWidth="0.7" opacity="0.6" />
+      <line x1="32" y1="20" x2="20" y2="28" style={{ stroke: "rgb(var(--c-term-blue))" }} strokeWidth="0.7" opacity="0.6" />
+      <line x1="20" y1="28" x2="44" y2="28" style={{ stroke: "rgb(var(--c-term-blue))" }} strokeWidth="0.7" opacity="0.4" />
+      <circle cx="32" cy="20" r="3.5" style={{ fill: "rgb(var(--c-blue))" }} />
+      <circle cx="20" cy="14" r="2.2" style={{ fill: "rgb(var(--c-blue))" }} />
+      <circle cx="46" cy="14" r="2.2" style={{ fill: "rgb(var(--c-accent))" }} />
+      <circle cx="20" cy="28" r="2.2" style={{ fill: "rgb(var(--c-green-ink))" }} />
+      <circle cx="44" cy="28" r="2.2" style={{ fill: "rgb(var(--c-amber))" }} />
     </svg>
   );
 }
@@ -113,13 +113,13 @@ function ForceThumbnail() {
 function TreemapThumbnail() {
   return (
     <svg viewBox="0 0 64 40" className="w-full h-full">
-      <rect x="2"  y="2"  width="28" height="22" fill="#3b82f6" opacity="0.8" />
-      <rect x="32" y="2"  width="14" height="14" fill="#ef4444" opacity="0.8" />
-      <rect x="48" y="2"  width="14" height="14" fill="#a855f7" opacity="0.8" />
-      <rect x="32" y="18" width="30" height="6"  fill="#22c55e" opacity="0.8" />
-      <rect x="2"  y="26" width="18" height="12" fill="#f59e0b" opacity="0.8" />
-      <rect x="22" y="26" width="20" height="12" fill="#06b6d4" opacity="0.8" />
-      <rect x="44" y="26" width="18" height="12" fill="#84cc16" opacity="0.8" />
+      <rect x="2"  y="2"  width="28" height="22" style={{ fill: "rgb(var(--c-blue))" }} opacity="0.8" />
+      <rect x="32" y="2"  width="14" height="14" style={{ fill: "rgb(var(--c-accent))" }} opacity="0.8" />
+      <rect x="48" y="2"  width="14" height="14" style={{ fill: "rgb(var(--c-viz-7))" }} opacity="0.8" />
+      <rect x="32" y="18" width="30" height="6"  style={{ fill: "rgb(var(--c-green-ink))" }} opacity="0.8" />
+      <rect x="2"  y="26" width="18" height="12" style={{ fill: "rgb(var(--c-amber))" }} opacity="0.8" />
+      <rect x="22" y="26" width="20" height="12" style={{ fill: "rgb(var(--c-viz-2))" }} opacity="0.8" />
+      <rect x="44" y="26" width="18" height="12" style={{ fill: "rgb(var(--c-viz-1))" }} opacity="0.8" />
     </svg>
   );
 }
@@ -129,16 +129,16 @@ function ChordThumbnail() {
     <svg viewBox="0 0 64 40" className="w-full h-full">
       <g transform="translate(32 20)">
         {/* Outer ring sectors */}
-        <path d="M -16 0 A 16 16 0 0 1 -5 -15" stroke="#3b82f6" strokeWidth="3" fill="none" />
-        <path d="M -5 -15 A 16 16 0 0 1 12 -10" stroke="#ef4444" strokeWidth="3" fill="none" />
-        <path d="M 12 -10 A 16 16 0 0 1 16 0" stroke="#a855f7" strokeWidth="3" fill="none" />
-        <path d="M 16 0 A 16 16 0 0 1 5 15" stroke="#f59e0b" strokeWidth="3" fill="none" />
-        <path d="M 5 15 A 16 16 0 0 1 -12 10" stroke="#22c55e" strokeWidth="3" fill="none" />
-        <path d="M -12 10 A 16 16 0 0 1 -16 0" stroke="#06b6d4" strokeWidth="3" fill="none" />
+        <path d="M -16 0 A 16 16 0 0 1 -5 -15" style={{ stroke: "rgb(var(--c-blue))" }} strokeWidth="3" fill="none" />
+        <path d="M -5 -15 A 16 16 0 0 1 12 -10" style={{ stroke: "rgb(var(--c-accent))" }} strokeWidth="3" fill="none" />
+        <path d="M 12 -10 A 16 16 0 0 1 16 0" style={{ stroke: "rgb(var(--c-viz-7))" }} strokeWidth="3" fill="none" />
+        <path d="M 16 0 A 16 16 0 0 1 5 15" style={{ stroke: "rgb(var(--c-amber))" }} strokeWidth="3" fill="none" />
+        <path d="M 5 15 A 16 16 0 0 1 -12 10" style={{ stroke: "rgb(var(--c-green-ink))" }} strokeWidth="3" fill="none" />
+        <path d="M -12 10 A 16 16 0 0 1 -16 0" style={{ stroke: "rgb(var(--c-viz-2))" }} strokeWidth="3" fill="none" />
         {/* Chord ribbons */}
-        <path d="M -14 -5 Q 0 0 10 -10" stroke="#818cf8" strokeWidth="0.8" fill="none" opacity="0.7" />
-        <path d="M -3 -14 Q 0 0 14 4" stroke="#fb7185" strokeWidth="0.8" fill="none" opacity="0.7" />
-        <path d="M 14 4 Q 0 0 -8 12" stroke="#fde68a" strokeWidth="0.8" fill="none" opacity="0.7" />
+        <path d="M -14 -5 Q 0 0 10 -10" style={{ stroke: "rgb(var(--c-term-blue))" }} strokeWidth="0.8" fill="none" opacity="0.7" />
+        <path d="M -3 -14 Q 0 0 14 4" style={{ stroke: "rgb(var(--c-accent))" }} strokeWidth="0.8" fill="none" opacity="0.7" />
+        <path d="M 14 4 Q 0 0 -8 12" style={{ stroke: "rgb(var(--c-amber))" }} strokeWidth="0.8" fill="none" opacity="0.7" />
       </g>
     </svg>
   );

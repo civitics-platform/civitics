@@ -86,13 +86,13 @@ function LabeledSlider({
       className={`flex items-center gap-2 px-3 py-1 ${disabled ? 'opacity-50' : ''}`}
       title={tooltipFor(disabledReason)}
     >
-      <span aria-hidden="true" className="text-[10px] text-gray-500 w-20 shrink-0">{label}</span>
+      <span aria-hidden="true" className="text-[10px] text-ink-soft w-20 shrink-0">{label}</span>
       <input
         type="range" min={min} max={max} step={step} value={value}
         aria-label={label}
         disabled={disabled}
         onChange={e => onChange(parseFloat(e.target.value))}
-        className="flex-1 h-1 accent-indigo-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1 rounded disabled:cursor-not-allowed"
+        className="flex-1 h-1 accent-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1 rounded disabled:cursor-not-allowed"
       />
     </div>
   );
@@ -139,7 +139,7 @@ function DonationFloorControl({ view, hooks, label = 'Donation floor' }: {
   return (
     <>
       <div className="flex items-center gap-2 px-3 py-1">
-        <span className="text-[10px] text-gray-500 w-20 shrink-0">{label}</span>
+        <span className="text-[10px] text-ink-soft w-20 shrink-0">{label}</span>
         <input
           type="range"
           min={0}
@@ -153,13 +153,13 @@ function DonationFloorControl({ view, hooks, label = 'Donation floor' }: {
             const value = DONATION_FLOOR_STOPS[safe]!;
             hooks.setConnectionMinAmount('donation', value);
           }}
-          className="flex-1 h-1 accent-indigo-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1 rounded"
+          className="flex-1 h-1 accent-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1 rounded"
         />
-        <span className="text-[10px] text-gray-500 w-10 text-right tabular-nums">
+        <span className="text-[10px] text-ink-soft w-10 text-right tabular-nums">
           {formatDollars(dollars)}
         </span>
       </div>
-      <div className="px-3 pb-1 text-[9px] text-gray-400 italic leading-tight">
+      <div className="px-3 pb-1 text-[9px] text-ink-soft italic leading-tight">
         {dollars === 0
           ? 'Showing all donations'
           : `Hiding donations below ${formatDollars(dollars)}`}
@@ -183,13 +183,13 @@ function LabeledSelect({
       className={`flex items-center gap-2 px-3 py-1 ${disabled ? 'opacity-50' : ''}`}
       title={tooltipFor(disabledReason)}
     >
-      <span aria-hidden="true" className="text-[10px] text-gray-500 w-20 shrink-0">{label}</span>
+      <span aria-hidden="true" className="text-[10px] text-ink-soft w-20 shrink-0">{label}</span>
       <select
         aria-label={label}
         value={value}
         disabled={disabled}
         onChange={e => onChange(e.target.value)}
-        className="flex-1 text-xs text-gray-900 border border-gray-200 rounded px-1.5 py-0.5 bg-white focus:outline-none focus:border-indigo-400 focus-visible:ring-2 focus-visible:ring-indigo-500 disabled:cursor-not-allowed disabled:bg-gray-50"
+        className="flex-1 text-xs text-ink border border-rule rounded px-1.5 py-0.5 bg-card focus:outline-none focus:border-accent focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-not-allowed disabled:bg-paper-2"
       >
         {options.map(o => (
           <option
@@ -220,9 +220,9 @@ function LabeledToggle({
       className={`flex items-center justify-between px-3 py-1 ${disabled ? 'opacity-50' : ''}`}
       title={tooltipFor(disabledReason)}
     >
-      <span aria-hidden="true" className="text-[10px] text-gray-500">{label}</span>
+      <span aria-hidden="true" className="text-[10px] text-ink-soft">{label}</span>
       <div className="flex items-center gap-1.5">
-        <span aria-hidden="true" className="text-[9px] text-gray-400">{value ? 'On' : 'Off'}</span>
+        <span aria-hidden="true" className="text-[9px] text-ink-soft">{value ? 'On' : 'Off'}</span>
         <button
           type="button"
           role="switch"
@@ -230,9 +230,9 @@ function LabeledToggle({
           aria-label={label}
           disabled={disabled}
           onClick={() => onChange(!value)}
-          className={`w-7 h-4 rounded-full transition-colors relative focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1 disabled:cursor-not-allowed ${value ? 'bg-indigo-500' : 'bg-gray-300'}`}
+          className={`w-7 h-4 rounded-full transition-colors relative focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1 disabled:cursor-not-allowed ${value ? 'bg-accent' : 'bg-ink/20'}`}
         >
-          <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow transition-transform ${value ? 'translate-x-3.5' : 'translate-x-0.5'}`} />
+          <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-paper shadow transition-transform ${value ? 'translate-x-3.5' : 'translate-x-0.5'}`} />
         </button>
       </div>
     </div>
@@ -331,7 +331,7 @@ function ForceSettings({ view, hooks, graphMeta }: { view: GraphView; hooks: Use
         ]}
         onChange={v => set('labels', v)}
       />
-      <div className="px-3 pt-1 pb-0.5 text-[9px] font-semibold text-gray-400 uppercase tracking-wide">Physics</div>
+      <div className="px-3 pt-1 pb-0.5 text-[9px] font-semibold text-ink-soft uppercase tracking-wide">Physics</div>
       <LabeledSlider label="Charge" min={-1000} max={-50} step={50} value={opts?.charge ?? -300} onChange={v => set('charge', v)} />
       <LabeledSlider label="Link dist" min={50} max={500} step={10} value={opts?.linkDistance ?? 150} onChange={v => set('linkDistance', v)} />
       <LabeledSlider label="Gravity" min={0} max={1} step={0.05} value={opts?.gravity ?? 0.1} onChange={v => set('gravity', v)} />
@@ -348,7 +348,7 @@ function ForceSettings({ view, hooks, graphMeta }: { view: GraphView; hooks: Use
           onChange={v => set('typeClusterStrength', v)}
         />
       )}
-      <div className="px-3 pt-2 pb-0.5 text-[9px] font-semibold text-gray-400 uppercase tracking-wide">Filters</div>
+      <div className="px-3 pt-2 pb-0.5 text-[9px] font-semibold text-ink-soft uppercase tracking-wide">Filters</div>
       {/* FIX-220 — same control as treemap so the floor is consistent
           across viz switches. Writes to view.connections.donation.minAmount. */}
       <DonationFloorControl view={view} hooks={hooks} />
@@ -358,7 +358,7 @@ function ForceSettings({ view, hooks, graphMeta }: { view: GraphView; hooks: Use
         value={opts?.strengthFilter ?? 0}
         onChange={v => set('strengthFilter', v)}
       />
-      <div className="px-3 pb-0.5 text-[9px] text-gray-400 italic leading-tight">
+      <div className="px-3 pb-0.5 text-[9px] text-ink-soft italic leading-tight">
         {(() => {
           const v = opts?.strengthFilter ?? 0;
           if (v === 0)       return 'Showing all connections';
@@ -368,7 +368,7 @@ function ForceSettings({ view, hooks, graphMeta }: { view: GraphView; hooks: Use
           return 'Showing $500K+ connections';
         })()}
       </div>
-      <div className="px-3 pt-2 pb-0.5 text-[9px] font-semibold text-gray-400 uppercase tracking-wide">Individual Donors</div>
+      <div className="px-3 pt-2 pb-0.5 text-[9px] font-semibold text-ink-soft uppercase tracking-wide">Individual Donors</div>
       <div className="px-3 pb-1 space-y-1">
         {(['bracket', 'connector', 'employer', 'off'] as IndividualDisplayMode[]).map(mode => (
           <label key={mode} className="flex items-center gap-2 cursor-pointer">
@@ -378,9 +378,9 @@ function ForceSettings({ view, hooks, graphMeta }: { view: GraphView; hooks: Use
               value={mode}
               checked={(opts?.individualDisplayMode ?? 'bracket') === mode}
               onChange={() => set('individualDisplayMode', mode)}
-              className="accent-indigo-500 cursor-pointer"
+              className="accent-accent cursor-pointer"
             />
-            <span className="text-[10px] text-gray-700">
+            <span className="text-[10px] text-ink">
               {mode === 'bracket'   && 'Bracket (default)'}
               {mode === 'connector' && 'Connector (2+ officials)'}
               {mode === 'employer'  && 'By Employer'}
@@ -391,14 +391,14 @@ function ForceSettings({ view, hooks, graphMeta }: { view: GraphView; hooks: Use
       </div>
       {(opts?.individualDisplayMode ?? 'bracket') === 'connector' && (
         <div className="flex items-center gap-2 px-3 py-1">
-          <span className="text-[10px] text-gray-500 w-20 shrink-0">Min officials</span>
+          <span className="text-[10px] text-ink-soft w-20 shrink-0">Min officials</span>
           <input
             type="number"
             min={2}
             max={10}
             value={opts?.connectorMinRecipients ?? 2}
             onChange={e => set('connectorMinRecipients', Math.max(2, Math.min(10, parseInt(e.target.value) || 2)))}
-            className="w-14 text-xs text-gray-900 border border-gray-200 rounded px-1.5 py-0.5 bg-white focus:outline-none focus:border-indigo-400"
+            className="w-14 text-xs text-ink border border-rule rounded px-1.5 py-0.5 bg-card focus:outline-none focus:border-accent"
           />
         </div>
       )}
@@ -529,7 +529,7 @@ function ChordSettings({ view, hooks, graphMeta }: { view: GraphView; hooks: Use
       {granularity === 'top-pacs' && granularitySupported && (
         <>
           <div className="flex items-center gap-2 px-3 py-1">
-            <span className="text-[10px] text-gray-500 w-20 shrink-0">Top N</span>
+            <span className="text-[10px] text-ink-soft w-20 shrink-0">Top N</span>
             <input
               type="range"
               min={1}
@@ -538,13 +538,13 @@ function ChordSettings({ view, hooks, graphMeta }: { view: GraphView; hooks: Use
               value={opts?.topPacsLimit ?? 12}
               aria-label="Top N PACs"
               onChange={e => set('topPacsLimit', parseInt(e.target.value, 10))}
-              className="flex-1 h-1 accent-indigo-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded"
+              className="flex-1 h-1 accent-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded"
             />
-            <span className="text-[10px] text-gray-500 w-10 text-right tabular-nums">
+            <span className="text-[10px] text-ink-soft w-10 text-right tabular-nums">
               {opts?.topPacsLimit ?? 12}
             </span>
           </div>
-          <div className="px-3 pb-1 text-[9px] text-gray-400 italic leading-tight">
+          <div className="px-3 pb-1 text-[9px] text-ink-soft italic leading-tight">
             Total PAC arcs (combined across focused officials)
           </div>
         </>
@@ -601,7 +601,7 @@ function ChordMinFlowControl({ value, onChange }: {
   return (
     <>
       <div className="flex items-center gap-2 px-3 py-1">
-        <span className="text-[10px] text-gray-500 w-20 shrink-0">Min flow</span>
+        <span className="text-[10px] text-ink-soft w-20 shrink-0">Min flow</span>
         <input
           type="range"
           min={0}
@@ -614,13 +614,13 @@ function ChordMinFlowControl({ value, onChange }: {
             const safe = Math.max(0, Math.min(CHORD_MIN_FLOW_STOPS.length - 1, next));
             onChange(CHORD_MIN_FLOW_STOPS[safe]!);
           }}
-          className="flex-1 h-1 accent-indigo-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded"
+          className="flex-1 h-1 accent-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded"
         />
-        <span className="text-[10px] text-gray-500 w-12 text-right tabular-nums">
+        <span className="text-[10px] text-ink-soft w-12 text-right tabular-nums">
           {chordFormatDollars(dollars)}
         </span>
       </div>
-      <div className="px-3 pb-1 text-[9px] text-gray-400 italic leading-tight">
+      <div className="px-3 pb-1 text-[9px] text-ink-soft italic leading-tight">
         {dollars === 0
           ? 'Showing all flows'
           : `Hiding flows below ${chordFormatDollars(dollars)}`}
@@ -1113,13 +1113,13 @@ export function GraphConfigPanel({ view, hooks, collapsed, onCollapse, onSavePre
   // Collapsed: 40px icon strip — FIX-134: each icon expands and scrolls to its section.
   if (collapsed) {
     return (
-      <div className="h-full w-10 flex flex-col items-center py-2 gap-3 border-l border-gray-200 bg-white shrink-0">
+      <div className="h-full w-10 flex flex-col items-center py-2 gap-3 border-l border-rule bg-card shrink-0">
         <button
           type="button"
           title="Open Visualization section"
           aria-label="Open graph config — visualization"
           onClick={() => jumpTo('viz')}
-          className="w-8 h-8 flex items-center justify-center rounded hover:bg-gray-100 transition-colors text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+          className="w-8 h-8 flex items-center justify-center rounded hover:bg-ink/10 transition-colors text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
         >
           <span aria-hidden="true">⬡</span>
         </button>
@@ -1128,7 +1128,7 @@ export function GraphConfigPanel({ view, hooks, collapsed, onCollapse, onSavePre
           title="Open Presets section"
           aria-label="Open graph config — presets"
           onClick={() => jumpTo('presets')}
-          className="w-8 h-8 flex items-center justify-center rounded hover:bg-gray-100 transition-colors text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+          className="w-8 h-8 flex items-center justify-center rounded hover:bg-ink/10 transition-colors text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
         >
           <span aria-hidden="true">📋</span>
         </button>
@@ -1137,7 +1137,7 @@ export function GraphConfigPanel({ view, hooks, collapsed, onCollapse, onSavePre
           title="Open Settings section"
           aria-label="Open graph config — settings"
           onClick={() => jumpTo('settings')}
-          className="w-8 h-8 flex items-center justify-center rounded hover:bg-gray-100 transition-colors text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+          className="w-8 h-8 flex items-center justify-center rounded hover:bg-ink/10 transition-colors text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
         >
           <span aria-hidden="true">⚙</span>
         </button>
@@ -1147,11 +1147,11 @@ export function GraphConfigPanel({ view, hooks, collapsed, onCollapse, onSavePre
 
   // Expanded: 220px panel
   return (
-    <div className="h-full w-[220px] flex flex-col border-l border-gray-200 bg-white overflow-hidden shrink-0">
+    <div className="h-full w-[220px] flex flex-col border-l border-rule bg-card overflow-hidden shrink-0">
 
       {/* Header */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-gray-100 shrink-0">
-        <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">
+      <div className="flex items-center justify-between px-3 py-2 border-b border-rule/60 shrink-0">
+        <span className="text-[10px] font-semibold text-ink-soft uppercase tracking-wide">
           Graph Config
         </span>
         <button
@@ -1159,7 +1159,7 @@ export function GraphConfigPanel({ view, hooks, collapsed, onCollapse, onSavePre
           onClick={onCollapse}
           title="Collapse panel  (] shortcut)"
           aria-label="Collapse config panel"
-          className="w-6 h-6 flex items-center justify-center rounded hover:bg-gray-100 transition-colors text-gray-400 hover:text-gray-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+          className="w-6 h-6 flex items-center justify-center rounded hover:bg-ink/10 transition-colors text-ink-soft hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
         >
           <svg aria-hidden="true" className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -1211,11 +1211,11 @@ export function GraphConfigPanel({ view, hooks, collapsed, onCollapse, onSavePre
                         <div
                           key={v.id}
                           title={reason}
-                          className="flex flex-col px-3 py-2 text-xs text-gray-400 cursor-not-allowed"
+                          className="flex flex-col px-3 py-2 text-xs text-ink-soft/60 cursor-not-allowed"
                           style={{ paddingLeft: '32px' }}
                         >
                           <span>{v.label}</span>
-                          <span className="text-[10px] text-gray-400 leading-tight truncate">
+                          <span className="text-[10px] text-ink-soft/60 leading-tight truncate">
                             {reason}
                           </span>
                         </div>
@@ -1250,7 +1250,7 @@ export function GraphConfigPanel({ view, hooks, collapsed, onCollapse, onSavePre
         <div data-section="presets">
         <TreeSection label="Presets" defaultExpanded separator>
           {partitionedPresets.native.length === 0 && partitionedPresets.adapted.length === 0 && (
-            <div className="px-3 py-2 text-xs text-gray-400">
+            <div className="px-3 py-2 text-xs text-ink-soft">
               No presets for this visualization
             </div>
           )}
@@ -1297,7 +1297,7 @@ export function GraphConfigPanel({ view, hooks, collapsed, onCollapse, onSavePre
             </TreeSection>
           )}
 
-          <div className="h-px bg-gray-100 mx-2 my-1" />
+          <div className="h-px bg-rule mx-2 my-1" />
 
           <TreeNode
             label="Save current…"
@@ -1319,7 +1319,7 @@ export function GraphConfigPanel({ view, hooks, collapsed, onCollapse, onSavePre
           label={
             <span className="flex items-center gap-2">
               <span>Settings</span>
-              <span className="text-[10px] text-indigo-500 font-medium capitalize">{vizType}</span>
+              <span className="text-[10px] text-accent font-medium capitalize">{vizType}</span>
             </span>
           }
           separator
@@ -1341,10 +1341,10 @@ export function GraphConfigPanel({ view, hooks, collapsed, onCollapse, onSavePre
       </div>
 
       {/* Footer */}
-      <div className="border-t border-gray-100 px-3 py-2 shrink-0">
+      <div className="border-t border-rule/60 px-3 py-2 shrink-0">
         <button
           onClick={onSavePreset}
-          className="w-full flex items-center justify-center gap-1.5 py-1.5 text-xs font-medium rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 transition-colors border border-indigo-100"
+          className="w-full flex items-center justify-center gap-1.5 py-1.5 text-xs font-medium rounded-lg bg-accent/10 hover:bg-accent/20 text-accent transition-colors border border-accent/30"
         >
           <span>💾</span>
           <span>{isDirty ? 'Save changes' : 'Save preset'}</span>

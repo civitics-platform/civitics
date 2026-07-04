@@ -52,12 +52,13 @@ const STATUS_COLOR: Record<string, string> = {
   failed:        "bg-accent/15 text-accent",
 };
 
-// Tokenized to align with the FIX-706 initiative stage pills.
+// Hues match the FIX-706 initiative stage pills (InitiativeCard STAGE_META):
+// deliberate=amber, mobilise=civic-blue, resolved=green-ink, draft=rule.
 const STAGE_COLOR: Record<string, string> = {
-  draft:      "bg-rule/60 text-ink-soft",
-  deliberate: "bg-civic-blue/10 text-civic-blue",
-  mobilise:   "bg-green-ink/15 text-green-ink",
-  resolved:   "bg-rule/60 text-ink-soft",
+  draft:      "bg-ink/5 text-ink-soft",
+  deliberate: "bg-amber/25 text-ink",
+  mobilise:   "bg-civic-blue/10 text-civic-blue",
+  resolved:   "bg-green-ink/10 text-green-ink",
 };
 
 function initials(name: string) {

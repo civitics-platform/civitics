@@ -59,8 +59,8 @@ function DepthButtons({
           onClick={e => { e.stopPropagation(); onChange(d); }}
           className={`w-6 h-5 text-[10px] font-medium rounded border transition-colors ${
             value === d
-              ? 'bg-indigo-600 border-indigo-600 text-white'
-              : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'
+              ? 'bg-accent border-accent text-paper'
+              : 'bg-card border-rule text-ink-soft hover:border-accent'
           }`}
         >
           {DEPTH_LABELS[d]}
@@ -121,9 +121,8 @@ export function FocusTree({
       {/* Empty state — only when nothing is focused AND the YOU row isn't surfaced */}
       {entities.length === 0 && !showUserRow && (
         <div className="px-4 py-5 text-center">
-          <div className="text-2xl mb-2">🔍</div>
-          <p className="text-xs font-medium text-gray-600">Search to add entities</p>
-          <p className="text-[10px] text-gray-400 mt-1 leading-relaxed">
+          <p className="text-xs font-medium text-ink-soft">Search to add entities</p>
+          <p className="text-[10px] text-ink-soft/60 mt-1 leading-relaxed">
             Explore how officials, donors, and legislation connect
           </p>
         </div>
@@ -148,24 +147,23 @@ export function FocusTree({
             return (
             <div
               key={item.id}
-              className="flex items-center justify-between px-3 py-2 bg-indigo-50/50 border-b border-gray-100"
+              className="flex items-center justify-between px-3 py-2 bg-accent/5 border-b border-rule/60"
             >
               <div className="flex items-center gap-2 min-w-0">
                 <span
-                  className="w-2 h-2 rounded-full shrink-0"
+                  className="inline-block h-2 w-2 shrink-0"
                   style={{ backgroundColor: item.color }}
                 />
-                <span className="text-sm shrink-0">{item.icon}</span>
                 <div className="min-w-0">
-                  <div className="text-xs font-medium text-gray-800 truncate flex items-center gap-1.5">
+                  <div className="text-xs font-medium text-ink truncate flex items-center gap-1.5">
                     {item.name}
                     {isPrimary && (
-                      <span className="text-[9px] uppercase tracking-wide text-amber-600 bg-amber-100 px-1 rounded">
+                      <span className="text-[9px] uppercase tracking-wide bg-amber/20 text-ink px-1 rounded">
                         Primary
                       </span>
                     )}
                   </div>
-                  <div className="text-[10px] text-gray-400">
+                  <div className="text-[10px] text-ink-soft/60">
                     Group{item.count ? ` · ${item.count} members` : ''}
                   </div>
                 </div>
@@ -173,14 +171,14 @@ export function FocusTree({
               <div className="flex items-center gap-1 shrink-0 ml-2">
                 <button
                   onClick={() => hooks.togglePrimary(item.id)}
-                  className={`text-sm transition-colors ${isPrimary ? 'text-amber-500 hover:text-amber-600' : 'text-gray-300 hover:text-amber-500'}`}
+                  className={`text-sm transition-colors ${isPrimary ? 'text-amber hover:text-amber/80' : 'text-ink-soft/40 hover:text-amber'}`}
                   title={isPrimary ? 'Unset primary group' : 'Pin as primary group (drives treemap / sunburst / chord)'}
                 >
                   {isPrimary ? '★' : '☆'}
                 </button>
                 <button
                   onClick={() => hooks.removeGroup(item.id)}
-                  className="text-gray-300 hover:text-red-400 text-xs transition-colors"
+                  className="text-ink-soft/40 hover:text-accent text-xs transition-colors"
                   title="Remove group"
                 >
                   ×
@@ -194,12 +192,12 @@ export function FocusTree({
           {taggedGroups.map(([tag, members]) => (
             <div key={tag}>
               <div className="px-3 py-1 flex items-center justify-between">
-                <span className="text-[10px] text-gray-500">
+                <span className="text-[10px] text-ink-soft">
                   {tag} group ({members.length})
                 </span>
                 <button
                   onClick={() => hooks.removeGroup(tag)}
-                  className="text-[10px] text-gray-400 hover:text-red-500"
+                  className="text-[10px] text-ink-soft/60 hover:text-accent"
                 >
                   Remove all
                 </button>
@@ -219,7 +217,7 @@ export function FocusTree({
 
       {/* Max entities warning */}
       {atMax && (
-        <p className="px-3 py-1 text-[10px] text-amber-600">
+        <p className="px-3 py-1 text-[10px] text-amber">
           Maximum {MAX_FOCUS_ENTITIES} entities reached
         </p>
       )}
@@ -290,7 +288,7 @@ export function FocusTree({
           className="flex items-center gap-2 px-2 py-1.5"
           style={{ paddingLeft: '32px' }}
         >
-          <span className="text-[10px] text-gray-500 shrink-0 w-12">Depth</span>
+          <span className="text-[10px] text-ink-soft shrink-0 w-12">Depth</span>
           <DepthButtons value={depth} onChange={hooks.setDepth} />
         </div>
 
@@ -299,11 +297,11 @@ export function FocusTree({
           className="flex items-center gap-2 px-2 py-1.5"
           style={{ paddingLeft: '32px' }}
         >
-          <span className="text-[10px] text-gray-500 shrink-0 w-12">Scope</span>
+          <span className="text-[10px] text-ink-soft shrink-0 w-12">Scope</span>
           <select
             value={scope}
             onChange={e => hooks.setScope(e.target.value as GraphView['focus']['scope'])}
-            className="flex-1 text-xs border border-gray-200 rounded px-1.5 py-0.5 bg-white focus:outline-none focus:border-indigo-400"
+            className="flex-1 text-xs border border-rule rounded px-1.5 py-0.5 bg-card text-ink focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent"
           >
             {SCOPE_OPTIONS.map(o => (
               <option key={o.value} value={o.value}>{o.label}</option>
@@ -319,10 +317,10 @@ export function FocusTree({
 // ── UserNodeRow ────────────────────────────────────────────────────────────────
 
 function alignmentBadge(ratio: number | null): { label: string; color: string } {
-  if (ratio == null)  return { label: 'No data', color: 'text-gray-400' };
-  if (ratio >= 0.6)   return { label: `${Math.round(ratio * 100)}% aligned`, color: 'text-green-600' };
-  if (ratio >= 0.4)   return { label: `${Math.round(ratio * 100)}% mixed`,   color: 'text-amber-500' };
-  return                     { label: `${Math.round(ratio * 100)}% misaligned`, color: 'text-red-600' };
+  if (ratio == null)  return { label: 'No data', color: 'text-ink-soft/60' };
+  if (ratio >= 0.6)   return { label: `${Math.round(ratio * 100)}% aligned`, color: 'text-green-ink' };
+  if (ratio >= 0.4)   return { label: `${Math.round(ratio * 100)}% mixed`,   color: 'text-amber' };
+  return                     { label: `${Math.round(ratio * 100)}% misaligned`, color: 'text-accent' };
 }
 
 function UserNodeRow({
@@ -334,13 +332,10 @@ function UserNodeRow({
 }) {
   const badge = alignmentBadge(userNode.alignmentRatio);
   return (
-    <div className="flex items-center justify-between px-3 py-2 bg-violet-50/60 border-b border-gray-100">
+    <div className="flex items-center justify-between px-3 py-2 bg-accent/5 border-b border-rule/60">
       <div className="flex items-center gap-2 min-w-0">
-        <span className="w-6 h-6 rounded-full bg-violet-100 border border-violet-300 flex items-center justify-center shrink-0 text-sm">
-          👤
-        </span>
         <div className="min-w-0">
-          <div className="text-xs font-medium text-gray-800 truncate">You</div>
+          <div className="text-xs font-medium text-ink truncate">You</div>
           <div className={`text-[10px] ${badge.color}`}>
             {userNode.repCount > 0 ? badge.label : 'Set home district to score alignment'}
           </div>
@@ -353,9 +348,9 @@ function UserNodeRow({
         aria-label={userNode.visible ? 'Hide YOU node' : 'Show YOU node'}
         onClick={onToggle}
         disabled={!onToggle}
-        className={`shrink-0 ml-2 w-7 h-4 rounded-full transition-colors relative focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-1 ${userNode.visible ? 'bg-violet-500' : 'bg-gray-300'} ${onToggle ? '' : 'opacity-50 cursor-not-allowed'}`}
+        className={`shrink-0 ml-2 w-7 h-4 rounded-full transition-colors relative focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1 ${userNode.visible ? 'bg-accent' : 'bg-ink/20'} ${onToggle ? '' : 'opacity-50 cursor-not-allowed'}`}
       >
-        <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow transition-transform ${userNode.visible ? 'translate-x-3.5' : 'translate-x-0.5'}`} />
+        <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-paper shadow transition-transform ${userNode.visible ? 'translate-x-3.5' : 'translate-x-0.5'}`} />
       </button>
     </div>
   );
@@ -378,11 +373,11 @@ function EntityRow({
     <span className="flex items-center gap-1">
       {entity.name}
       {isPrimary && (
-        <span className="text-[9px] uppercase tracking-wide text-amber-600 bg-amber-100 px-1 rounded">
+        <span className="text-[9px] uppercase tracking-wide bg-amber/20 text-ink px-1 rounded">
           Primary
         </span>
       )}
-      <span className="text-[9px] bg-gray-100 text-gray-500 px-1 rounded">
+      <span className="text-[9px] bg-ink/5 text-ink-soft px-1 rounded">
         {entity.groupTag}
       </span>
     </span>
@@ -390,7 +385,7 @@ function EntityRow({
     <span className="flex items-center gap-1">
       {entity.name}
       {isPrimary && (
-        <span className="text-[9px] uppercase tracking-wide text-amber-600 bg-amber-100 px-1 rounded">
+        <span className="text-[9px] uppercase tracking-wide bg-amber/20 text-ink px-1 rounded">
           Primary
         </span>
       )}
@@ -433,7 +428,7 @@ function EntityRow({
         className="flex items-center gap-2 px-2 py-1"
         style={{ paddingLeft: '32px' }}
       >
-        <span className="text-[10px] text-gray-500 shrink-0">Depth</span>
+        <span className="text-[10px] text-ink-soft shrink-0">Depth</span>
         <DepthButtons
           value={(entity.depth ?? depth) as 1 | 2 | 3}
           onChange={d => hooks.updateEntity(entity.id, { depth: d })}
@@ -445,12 +440,12 @@ function EntityRow({
         className="flex items-center justify-between px-2 py-1"
         style={{ paddingLeft: '32px' }}
       >
-        <span className="text-[10px] text-gray-500">Highlight</span>
+        <span className="text-[10px] text-ink-soft">Highlight</span>
         <button
           onClick={() => hooks.updateEntity(entity.id, { highlight: !entity.highlight })}
-          className={`w-7 h-4 rounded-full transition-colors relative ${(entity.highlight ?? true) ? 'bg-indigo-500' : 'bg-gray-200'}`}
+          className={`w-7 h-4 rounded-full transition-colors relative ${(entity.highlight ?? true) ? 'bg-accent' : 'bg-ink/20'}`}
         >
-          <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow transition-transform ${(entity.highlight ?? true) ? 'translate-x-3.5' : 'translate-x-0.5'}`} />
+          <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-paper shadow transition-transform ${(entity.highlight ?? true) ? 'translate-x-3.5' : 'translate-x-0.5'}`} />
         </button>
       </div>
 
@@ -459,12 +454,12 @@ function EntityRow({
         className="flex items-center justify-between px-2 py-1"
         style={{ paddingLeft: '32px' }}
       >
-        <span className="text-[10px] text-gray-500">Pin position</span>
+        <span className="text-[10px] text-ink-soft">Pin position</span>
         <button
           onClick={() => hooks.updateEntity(entity.id, { pinned: !entity.pinned })}
-          className={`w-7 h-4 rounded-full transition-colors relative ${entity.pinned ? 'bg-indigo-500' : 'bg-gray-200'}`}
+          className={`w-7 h-4 rounded-full transition-colors relative ${entity.pinned ? 'bg-accent' : 'bg-ink/20'}`}
         >
-          <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow transition-transform ${entity.pinned ? 'translate-x-3.5' : 'translate-x-0.5'}`} />
+          <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-paper shadow transition-transform ${entity.pinned ? 'translate-x-3.5' : 'translate-x-0.5'}`} />
         </button>
       </div>
     </TreeNode>

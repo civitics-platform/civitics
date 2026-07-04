@@ -101,7 +101,7 @@ export function ConnectionsTree({
           );
         })}
         {enabledTypes.length === 0 && (
-          <div className="px-3 py-2 text-xs text-gray-400">No active connection types</div>
+          <div className="px-3 py-2 text-xs text-ink-soft/60">No active connection types</div>
         )}
       </TreeSection>
 
@@ -124,7 +124,7 @@ export function ConnectionsTree({
                   <span className="flex items-center gap-1 flex-1 min-w-0">
                     <span className="truncate">{def.label}</span>
                     {count != null && count > 0 && (
-                      <span className="text-[9px] text-gray-400 ml-auto shrink-0">{count}</span>
+                      <span className="text-[9px] text-ink-soft/60 ml-auto shrink-0">{count}</span>
                     )}
                   </span>
                 }
@@ -170,12 +170,12 @@ export function ConnectionsTree({
                 label={
                   <span className="flex flex-col gap-0.5 flex-1 min-w-0">
                     <span className="flex items-center gap-1 min-w-0">
-                      <span className="truncate text-gray-500">{def.label}</span>
+                      <span className="truncate text-ink-soft">{def.label}</span>
                       {count != null && count > 0 && (
-                        <span className="text-[9px] text-gray-400 ml-auto shrink-0">{count}</span>
+                        <span className="text-[9px] text-ink-soft/60 ml-auto shrink-0">{count}</span>
                       )}
                     </span>
-                    <span className="text-[9px] text-gray-400 leading-tight truncate">
+                    <span className="text-[9px] text-ink-soft/60 leading-tight truncate">
                       {reason}
                     </span>
                   </span>
@@ -200,7 +200,7 @@ export function ConnectionsTree({
 
       {/* Info banner for chord/treemap */}
       {donationOnlyViz && (
-        <div className="mx-3 my-1.5 px-2 py-1.5 bg-blue-50 border border-blue-100 rounded text-[10px] text-blue-600 leading-relaxed">
+        <div className="mx-3 my-1.5 px-2 py-1.5 bg-civic-blue/10 border border-civic-blue/20 rounded text-[10px] text-civic-blue leading-relaxed">
           Switch to Force Graph to configure vote connections
         </div>
       )}
@@ -218,8 +218,8 @@ export function ConnectionsTree({
             style={{ paddingLeft: '32px' }}
           >
             <div className="min-w-0 pr-2">
-              <div className="text-[11px] text-gray-700">Include procedural votes</div>
-              <div className="text-[9px] text-gray-400 leading-tight">Cloture, passage motions, etc.</div>
+              <div className="text-[11px] text-ink">Include procedural votes</div>
+              <div className="text-[9px] text-ink-soft/60 leading-tight">Cloture, passage motions, etc.</div>
             </div>
             <button
               type="button"
@@ -227,9 +227,9 @@ export function ConnectionsTree({
               aria-checked={!!includeProcedural}
               aria-label="Include procedural votes"
               onClick={hooks.toggleIncludeProcedural}
-              className={`w-7 h-4 rounded-full transition-colors relative shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1 ${includeProcedural ? 'bg-indigo-500' : 'bg-gray-300'}`}
+              className={`w-7 h-4 rounded-full transition-colors relative shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1 ${includeProcedural ? 'bg-accent' : 'bg-ink/20'}`}
             >
-              <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow transition-transform ${includeProcedural ? 'translate-x-3.5' : 'translate-x-0.5'}`} />
+              <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-paper shadow transition-transform ${includeProcedural ? 'translate-x-3.5' : 'translate-x-0.5'}`} />
             </button>
           </div>
         </TreeSection>

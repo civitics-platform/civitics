@@ -139,8 +139,8 @@ export function CustomGroupForm({
             }}
             className={`flex-1 py-0.5 text-[10px] rounded capitalize transition-colors ${
               type === t
-                ? 'bg-indigo-600 text-white'
-                : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                ? 'bg-accent text-paper'
+                : 'bg-ink/5 text-ink-soft hover:bg-ink/10'
             }`}
           >
             {t === 'official' ? '👤 Officials' : t === 'pac' ? '💼 PACs' : '🏛 Agencies'}
@@ -154,7 +154,7 @@ export function CustomGroupForm({
           <select
             value={chamber}
             onChange={e => setChamber(e.target.value)}
-            className="w-full text-xs border border-gray-200 rounded px-2 py-1 bg-white text-gray-600 focus:outline-none focus:border-indigo-400"
+            className="w-full text-xs border border-rule rounded px-2 py-1 bg-card text-ink-soft focus:outline-none focus:border-accent"
           >
             <option value="">Any chamber</option>
             <option value="senate">Senate</option>
@@ -163,7 +163,7 @@ export function CustomGroupForm({
           <select
             value={party}
             onChange={e => setParty(e.target.value)}
-            className="w-full text-xs border border-gray-200 rounded px-2 py-1 bg-white text-gray-600 focus:outline-none focus:border-indigo-400"
+            className="w-full text-xs border border-rule rounded px-2 py-1 bg-card text-ink-soft focus:outline-none focus:border-accent"
           >
             <option value="">Any party</option>
             <option value="democrat">Democrat</option>
@@ -173,7 +173,7 @@ export function CustomGroupForm({
           <select
             value={state}
             onChange={e => setState(e.target.value)}
-            className="w-full text-xs border border-gray-200 rounded px-2 py-1 bg-white text-gray-600 focus:outline-none focus:border-indigo-400"
+            className="w-full text-xs border border-rule rounded px-2 py-1 bg-card text-ink-soft focus:outline-none focus:border-accent"
           >
             <option value="">Any state</option>
             {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
@@ -186,7 +186,7 @@ export function CustomGroupForm({
         <select
           value={industry}
           onChange={e => setIndustry(e.target.value)}
-          className="w-full text-xs border border-gray-200 rounded px-2 py-1 bg-white text-gray-600 focus:outline-none focus:border-indigo-400"
+          className="w-full text-xs border border-rule rounded px-2 py-1 bg-card text-ink-soft focus:outline-none focus:border-accent"
         >
           <option value="">Any industry</option>
           {PAC_INDUSTRIES.map(ind => <option key={ind} value={ind}>{ind}</option>)}
@@ -195,7 +195,7 @@ export function CustomGroupForm({
 
       {/* Agency: no extra filters yet — count is just total active agencies. */}
       {type === 'agency' && (
-        <p className="text-[10px] text-gray-400 px-1">
+        <p className="text-[10px] text-ink-soft/60 px-1">
           All active federal agencies. Industry/department filters coming soon.
         </p>
       )}
@@ -207,11 +207,11 @@ export function CustomGroupForm({
         onChange={e => setName(e.target.value)}
         placeholder={suggestedName(filter)}
         maxLength={80}
-        className="w-full text-xs border border-gray-200 rounded px-2 py-1 bg-white text-gray-700 placeholder-gray-400 focus:outline-none focus:border-indigo-400"
+        className="w-full text-xs border border-rule rounded px-2 py-1 bg-card text-ink placeholder:text-ink-soft/60 focus:outline-none focus:border-accent"
       />
 
       {/* Live count */}
-      <div className="flex items-center justify-between text-[10px] px-1 text-gray-500">
+      <div className="flex items-center justify-between text-[10px] px-1 text-ink-soft">
         <span>
           {countLoading
             ? 'Counting…'
@@ -228,7 +228,8 @@ export function CustomGroupForm({
                 setPersist(e.target.checked);
                 onPersistChange?.(e.target.checked);
               }}
-              className="w-3 h-3 accent-indigo-600"
+              className="w-3 h-3"
+              style={{ accentColor: 'rgb(var(--c-accent))' }}
             />
             <span>Save to my groups</span>
           </label>
@@ -240,7 +241,7 @@ export function CustomGroupForm({
         type="button"
         onClick={handleSave}
         disabled={saveLoading || (count !== null && count === 0)}
-        className="w-full py-1.5 text-xs font-medium bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white rounded transition-colors"
+        className="w-full py-1.5 text-xs font-medium bg-accent hover:bg-accent/85 disabled:opacity-50 disabled:cursor-not-allowed text-paper rounded transition-colors"
       >
         {saveLoading ? 'Saving…' : `${saveLabel} "${effectiveName}"`}
       </button>

@@ -71,7 +71,7 @@ export function GhostGraph({ className }: GhostGraphProps) {
             key={i}
             className="ge"
             x1={x1} y1={y1} x2={x2} y2={y2}
-            stroke="#6b7280"
+            style={{ stroke: "rgb(var(--c-term-faint))" }}
             strokeWidth="1.5"
             strokeDasharray="6 4"
           />
@@ -86,27 +86,27 @@ export function GhostGraph({ className }: GhostGraphProps) {
         return (
           <g key={i} className="gn">
             {n.shape === "circle" && (
-              <circle cx={cx} cy={cy} r={r} fill="#374151" stroke="#4b5563" strokeWidth="2" />
+              <circle cx={cx} cy={cy} r={r} style={{ fill: "rgb(var(--c-term-panel))", stroke: "rgb(var(--c-term-line))" }} strokeWidth="2" />
             )}
             {n.shape === "rect" && (
               <rect
                 x={cx - r * 1.4} y={cy - r * 0.75}
                 width={r * 2.8} height={r * 1.5}
                 rx="5"
-                fill="#374151" stroke="#4b5563" strokeWidth="2"
+                style={{ fill: "rgb(var(--c-term-panel))", stroke: "rgb(var(--c-term-line))" }} strokeWidth="2"
               />
             )}
             {n.shape === "diamond" && (
               <path
                 d={`M${cx},${cy - r} L${cx + r},${cy} L${cx},${cy + r} L${cx - r},${cy} Z`}
-                fill="#374151" stroke="#4b5563" strokeWidth="2"
+                style={{ fill: "rgb(var(--c-term-panel))", stroke: "rgb(var(--c-term-line))" }} strokeWidth="2"
               />
             )}
             {/* Ghost label bar */}
             <rect
               x={cx - r * 0.9} y={cy + r + 6}
               width={r * 1.8} height={5}
-              rx="2" fill="#374151"
+              rx="2" style={{ fill: "rgb(var(--c-term-panel))" }}
             />
           </g>
         );

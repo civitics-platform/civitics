@@ -192,7 +192,7 @@ function BrowseCategory({
         value={sort}
         onChange={e => setSort(e.target.value as SortKey)}
         onClick={e => e.stopPropagation()}
-        className="text-xs text-gray-500 border-0 bg-transparent cursor-pointer focus:outline-none hover:text-gray-700"
+        className="text-xs text-ink-soft border-0 bg-transparent cursor-pointer focus:outline-none hover:text-ink"
       >
         <option value="name">A-Z</option>
         <option value="party">Party</option>
@@ -204,11 +204,11 @@ function BrowseCategory({
   return (
     <TreeSection label={sectionLabel} defaultExpanded={false} separator={false} depth={1}>
       {loading ? (
-        <div className="px-3 py-1 text-xs text-gray-400">Loading…</div>
+        <div className="px-3 py-1 text-xs text-ink-soft/60">Loading…</div>
       ) : entities.length === 0 ? (
-        <div className="px-3 py-1 text-xs text-gray-400">None available</div>
+        <div className="px-3 py-1 text-xs text-ink-soft/60">None available</div>
       ) : (
-        <div className="max-h-48 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-200">
+        <div className="max-h-48 overflow-y-auto">
           {sorted.map(entity => (
             <TreeNode
               key={entity.id}

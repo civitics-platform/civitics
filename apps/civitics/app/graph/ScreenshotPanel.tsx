@@ -28,11 +28,11 @@ export function ScreenshotPanel({ svgRef, shareCode, onClose }: ScreenshotPanelP
   }
 
   return (
-    <div className="w-80 bg-gray-900 border border-gray-700 rounded-xl shadow-2xl overflow-hidden">
+    <div className="w-80 bg-card border border-rule rounded-xl shadow-2xl overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800">
-        <h3 className="text-sm font-semibold text-white">Download Screenshot</h3>
-        <button onClick={onClose} className="text-gray-500 hover:text-white transition-colors">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-rule">
+        <h3 className="text-sm font-semibold text-ink">Download Screenshot</h3>
+        <button onClick={onClose} className="text-ink-soft hover:text-ink transition-colors">
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
           </svg>
@@ -42,27 +42,27 @@ export function ScreenshotPanel({ svgRef, shareCode, onClose }: ScreenshotPanelP
       <div className="p-4 space-y-4">
         {/* Share code nudge */}
         {!shareCode && (
-          <div className="flex items-start gap-2.5 rounded-lg bg-amber-950/40 border border-amber-800/40 px-3 py-2.5">
-            <svg className="w-3.5 h-3.5 text-amber-500 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="flex items-start gap-2.5 rounded-lg bg-amber/10 border border-amber/30 px-3 py-2.5">
+            <svg className="w-3.5 h-3.5 text-amber mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
             </svg>
-            <p className="text-xs text-amber-400/90 leading-relaxed">
+            <p className="text-xs text-ink leading-relaxed">
               Generate a share code first so the watermark URL links back to this graph.
             </p>
           </div>
         )}
 
         {/* Watermark preview */}
-        <div className="rounded-lg bg-gray-800/60 border border-gray-700/50 overflow-hidden">
-          <div className="px-3 py-2 border-b border-gray-700/50">
-            <p className="text-xs text-gray-500">Watermark included on every export</p>
+        <div className="rounded-lg bg-ink/5 border border-rule overflow-hidden">
+          <div className="px-3 py-2 border-b border-rule">
+            <p className="text-xs text-ink-soft">Watermark included on every export</p>
           </div>
           <div className="px-3 py-2.5 space-y-1">
-            <p className="text-xs font-mono text-gray-300">
+            <p className="text-xs font-mono text-ink">
               civitics.com/graph/{shareCode ?? "—"}
             </p>
-            <p className="text-xs font-mono text-gray-500">Data: {DATA_SOURCES}</p>
-            <p className="text-xs font-mono text-gray-500">
+            <p className="text-xs font-mono text-ink-soft">Data: {DATA_SOURCES}</p>
+            <p className="text-xs font-mono text-ink-soft">
               Generated: {new Date().toLocaleDateString("en-US", {
                 year: "numeric", month: "short", day: "numeric",
               })}
@@ -70,7 +70,7 @@ export function ScreenshotPanel({ svgRef, shareCode, onClose }: ScreenshotPanelP
           </div>
         </div>
 
-        <p className="text-xs text-gray-500 leading-relaxed">
+        <p className="text-xs text-ink-soft leading-relaxed">
           Every shared screenshot carries a URL back to this graph.
           That link is how new users discover the platform.
         </p>
@@ -80,7 +80,7 @@ export function ScreenshotPanel({ svgRef, shareCode, onClose }: ScreenshotPanelP
           <button
             onClick={() => handleDownload(1)}
             disabled={exporting !== null}
-            className="w-full py-2.5 text-xs font-medium rounded-lg bg-gray-700 hover:bg-gray-600 disabled:opacity-50 text-white transition-colors flex items-center justify-center gap-2"
+            className="w-full py-2.5 text-xs font-medium rounded-lg bg-ink/10 hover:bg-ink/20 disabled:opacity-50 text-ink transition-colors flex items-center justify-center gap-2"
           >
             {exporting === 1 ? <Spinner /> : <DownloadIcon />}
             Download PNG — 1× (screen)
@@ -88,7 +88,7 @@ export function ScreenshotPanel({ svgRef, shareCode, onClose }: ScreenshotPanelP
           <button
             onClick={() => handleDownload(2)}
             disabled={exporting !== null}
-            className="w-full py-2.5 text-xs font-medium rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white transition-colors flex items-center justify-center gap-2"
+            className="w-full py-2.5 text-xs font-medium rounded-lg bg-accent hover:bg-accent/85 disabled:opacity-50 text-paper transition-colors flex items-center justify-center gap-2"
           >
             {exporting === 2 ? <Spinner /> : <DownloadIcon />}
             Download PNG — 2× (retina)
@@ -96,7 +96,7 @@ export function ScreenshotPanel({ svgRef, shareCode, onClose }: ScreenshotPanelP
           <button
             onClick={() => handleDownload(4)}
             disabled={exporting !== null}
-            className="w-full py-2.5 text-xs font-medium rounded-lg bg-gray-800 hover:bg-gray-700 disabled:opacity-50 text-gray-400 hover:text-white transition-colors flex items-center justify-center gap-2"
+            className="w-full py-2.5 text-xs font-medium rounded-lg bg-ink/5 hover:bg-ink/10 disabled:opacity-50 text-ink-soft hover:text-ink transition-colors flex items-center justify-center gap-2"
           >
             {exporting === 4 ? <Spinner /> : <DownloadIcon />}
             Download PNG — 4× (print quality)

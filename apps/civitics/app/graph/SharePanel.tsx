@@ -73,11 +73,11 @@ export function SharePanel({ graphState, onCodeGenerated, onClose }: SharePanelP
   }
 
   return (
-    <div className="w-80 bg-gray-900 border border-gray-700 rounded-xl shadow-2xl overflow-hidden">
+    <div className="w-80 bg-card border border-rule rounded-xl shadow-2xl overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800">
-        <h3 className="text-sm font-semibold text-white">Share this graph</h3>
-        <button onClick={onClose} className="text-gray-500 hover:text-white transition-colors">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-rule">
+        <h3 className="text-sm font-semibold text-ink">Share this graph</h3>
+        <button onClick={onClose} className="text-ink-soft hover:text-ink transition-colors">
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
           </svg>
@@ -87,31 +87,31 @@ export function SharePanel({ graphState, onCodeGenerated, onClose }: SharePanelP
       <div className="p-4">
         {state !== "done" && (
           <>
-            <p className="text-xs text-gray-400 leading-relaxed mb-4">
+            <p className="text-xs text-ink-soft leading-relaxed mb-4">
               Generate a permanent code for this graph view. Anyone with the code
               can restore it exactly — preset, filters, and all.
             </p>
 
             {/* Current state summary */}
-            <div className="rounded-lg bg-gray-800/60 border border-gray-700/50 px-3 py-2.5 mb-4 space-y-1.5">
+            <div className="rounded-lg bg-ink/5 border border-rule px-3 py-2.5 mb-4 space-y-1.5">
               <div className="flex items-center justify-between text-xs">
-                <span className="text-gray-500">Preset</span>
-                <span className="text-gray-300 capitalize">
+                <span className="text-ink-soft">Preset</span>
+                <span className="text-ink capitalize">
                   {graphState.preset.replace(/_/g, " ")}
                 </span>
               </div>
               <div className="flex items-center justify-between text-xs">
-                <span className="text-gray-500">Entities</span>
-                <span className="text-gray-300">{graphState.nodeCount}</span>
+                <span className="text-ink-soft">Entities</span>
+                <span className="text-ink">{graphState.nodeCount}</span>
               </div>
               <div className="flex items-center justify-between text-xs">
-                <span className="text-gray-500">Connections</span>
-                <span className="text-gray-300">{graphState.edgeCount}</span>
+                <span className="text-ink-soft">Connections</span>
+                <span className="text-ink">{graphState.edgeCount}</span>
               </div>
             </div>
 
             {state === "error" && (
-              <p className="text-xs text-red-400 mb-3">
+              <p className="text-xs text-accent mb-3">
                 Something went wrong. Try again.
               </p>
             )}
@@ -119,11 +119,11 @@ export function SharePanel({ graphState, onCodeGenerated, onClose }: SharePanelP
             <button
               onClick={handleGenerate}
               disabled={state === "loading"}
-              className="w-full py-2.5 text-xs font-medium rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white transition-colors flex items-center justify-center gap-2"
+              className="w-full py-2.5 text-xs font-medium rounded-lg bg-accent hover:bg-accent/85 disabled:opacity-50 disabled:cursor-not-allowed text-paper transition-colors flex items-center justify-center gap-2"
             >
               {state === "loading" ? (
                 <>
-                  <div className="w-3.5 h-3.5 rounded-full border border-white border-t-transparent animate-spin" />
+                  <div className="w-3.5 h-3.5 rounded-full border border-current border-t-transparent animate-spin" />
                   Generating…
                 </>
               ) : (
@@ -137,25 +137,25 @@ export function SharePanel({ graphState, onCodeGenerated, onClose }: SharePanelP
           <div className="space-y-4">
             {/* Code display */}
             <div className="text-center">
-              <p className="text-xs text-gray-500 mb-2">Your share code</p>
-              <div className="inline-block px-5 py-2.5 rounded-lg bg-gray-800 border border-gray-700">
-                <span className="text-lg font-mono font-bold text-indigo-300 tracking-widest">
+              <p className="text-xs text-ink-soft mb-2">Your share code</p>
+              <div className="inline-block px-5 py-2.5 rounded-lg bg-ink/5 border border-rule">
+                <span className="text-lg font-mono font-bold text-accent tracking-widest">
                   {code}
                 </span>
               </div>
             </div>
 
             {/* Copy URL */}
-            <div className="rounded-lg bg-gray-800/60 border border-gray-700/50 px-3 py-2">
-              <p className="text-xs text-gray-500 font-mono truncate">{url}</p>
+            <div className="rounded-lg bg-ink/5 border border-rule px-3 py-2">
+              <p className="text-xs text-ink-soft font-mono truncate">{url}</p>
             </div>
 
             <button
               onClick={handleCopy}
               className={`w-full py-2.5 text-xs font-medium rounded-lg transition-all flex items-center justify-center gap-2 ${
                 copied
-                  ? "bg-green-700 text-white"
-                  : "bg-gray-700 hover:bg-gray-600 text-gray-200 hover:text-white"
+                  ? "bg-green-ink/20 text-green-ink"
+                  : "bg-ink/10 hover:bg-ink/20 text-ink"
               }`}
             >
               {copied ? (
@@ -175,7 +175,7 @@ export function SharePanel({ graphState, onCodeGenerated, onClose }: SharePanelP
               )}
             </button>
 
-            <p className="text-xs text-gray-600 text-center leading-relaxed">
+            <p className="text-xs text-ink-soft/60 text-center leading-relaxed">
               This link is permanent. The graph state is stored on our servers
               and will load exactly as it appears now.
             </p>
@@ -185,10 +185,10 @@ export function SharePanel({ graphState, onCodeGenerated, onClose }: SharePanelP
 
       {/* Embed code section — shown after code generated */}
       {state === "done" && code && (
-        <div className="border-t border-gray-800 px-4 py-3">
-          <p className="text-xs text-gray-600 mb-2">Embed code</p>
-          <div className="rounded bg-gray-800/60 border border-gray-700/30 px-2.5 py-2">
-            <code className="text-xs text-gray-500 font-mono break-all">
+        <div className="border-t border-rule px-4 py-3">
+          <p className="text-xs text-ink-soft/60 mb-2">Embed code</p>
+          <div className="rounded bg-ink/5 border border-rule px-2.5 py-2">
+            <code className="text-xs text-ink-soft font-mono break-all">
               {`<iframe src="${url}" width="800" height="500" frameborder="0" />`}
             </code>
           </div>

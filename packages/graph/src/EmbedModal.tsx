@@ -45,16 +45,16 @@ export function EmbedModal({ shareCode, onClose }: EmbedModalProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
+      <div className="bg-card border border-rule rounded-xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-800">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-rule">
           <div className="flex items-center gap-2">
-            <span className="text-sm font-mono text-gray-400">&lt;/&gt;</span>
-            <span className="text-sm font-semibold text-gray-200">Embed this graph</span>
+            <span className="text-sm font-mono text-ink-soft">&lt;/&gt;</span>
+            <span className="text-sm font-semibold text-ink">Embed this graph</span>
           </div>
           <button
             onClick={onClose}
-            className="text-gray-500 hover:text-white transition-colors text-lg leading-none"
+            className="text-ink-soft hover:text-ink transition-colors text-lg leading-none"
             title="Close"
           >
             ×
@@ -64,8 +64,8 @@ export function EmbedModal({ shareCode, onClose }: EmbedModalProps) {
         <div className="px-5 py-4 space-y-4">
           {!shareCode ? (
             <div className="text-center py-6">
-              <p className="text-gray-400 text-sm">Save a share link first before embedding.</p>
-              <p className="text-gray-600 text-xs mt-2">
+              <p className="text-ink-soft text-sm">Save a share link first before embedding.</p>
+              <p className="text-ink-soft/60 text-xs mt-2">
                 Use the "Share / Get link" button to generate a share code, then come back to embed.
               </p>
             </div>
@@ -73,9 +73,9 @@ export function EmbedModal({ shareCode, onClose }: EmbedModalProps) {
             <>
               {/* Preview dimensions */}
               <div>
-                <p className="text-[11px] text-gray-500 uppercase tracking-wider mb-2">Dimensions preview</p>
+                <p className="text-[11px] text-ink-soft uppercase tracking-wider mb-2">Dimensions preview</p>
                 <div
-                  className="border border-gray-700 rounded bg-gray-950 flex items-center justify-center text-xs text-gray-600"
+                  className="border border-rule rounded bg-paper-2 flex items-center justify-center text-xs text-ink-soft/60"
                   style={{
                     width: "100%",
                     height: "80px",
@@ -87,7 +87,7 @@ export function EmbedModal({ shareCode, onClose }: EmbedModalProps) {
 
               {/* Size presets */}
               <div>
-                <p className="text-[11px] text-gray-500 uppercase tracking-wider mb-2">Size</p>
+                <p className="text-[11px] text-ink-soft uppercase tracking-wider mb-2">Size</p>
                 <div className="grid grid-cols-2 gap-1.5">
                   {(Object.entries(SIZE_PRESETS) as [Exclude<SizePreset, "custom">, typeof SIZE_PRESETS[Exclude<SizePreset, "custom">]][]).map(([key, val]) => (
                     <button
@@ -95,8 +95,8 @@ export function EmbedModal({ shareCode, onClose }: EmbedModalProps) {
                       onClick={() => setPreset(key)}
                       className={`py-1.5 text-[11px] rounded border transition-colors ${
                         preset === key
-                          ? "bg-indigo-700 border-indigo-600 text-white"
-                          : "bg-gray-800 border-gray-700 text-gray-400 hover:text-white"
+                          ? "bg-accent border-accent text-paper"
+                          : "bg-ink/10 border-rule text-ink-soft hover:text-ink"
                       }`}
                     >
                       {val.label}
@@ -106,8 +106,8 @@ export function EmbedModal({ shareCode, onClose }: EmbedModalProps) {
                     onClick={() => setPreset("custom")}
                     className={`py-1.5 text-[11px] rounded border transition-colors ${
                       preset === "custom"
-                        ? "bg-indigo-700 border-indigo-600 text-white"
-                        : "bg-gray-800 border-gray-700 text-gray-400 hover:text-white"
+                        ? "bg-accent border-accent text-paper"
+                        : "bg-ink/10 border-rule text-ink-soft hover:text-ink"
                     }`}
                   >
                     Custom
@@ -117,22 +117,22 @@ export function EmbedModal({ shareCode, onClose }: EmbedModalProps) {
                 {preset === "custom" && (
                   <div className="flex items-center gap-2 mt-2">
                     <div className="flex-1">
-                      <label className="text-[10px] text-gray-600 mb-0.5 block">Width</label>
+                      <label className="text-[10px] text-ink-soft/60 mb-0.5 block">Width</label>
                       <input
                         type="number"
                         value={customWidth}
                         onChange={(e) => setCustomWidth(Math.max(100, parseInt(e.target.value) || 400))}
-                        className="w-full px-2 py-1 text-xs bg-gray-800 border border-gray-700 rounded text-gray-300 focus:outline-none focus:border-indigo-500"
+                        className="w-full px-2 py-1 text-xs bg-ink/5 border border-rule rounded text-ink focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent"
                       />
                     </div>
-                    <span className="text-gray-600 text-xs mt-4">×</span>
+                    <span className="text-ink-soft/60 text-xs mt-4">×</span>
                     <div className="flex-1">
-                      <label className="text-[10px] text-gray-600 mb-0.5 block">Height</label>
+                      <label className="text-[10px] text-ink-soft/60 mb-0.5 block">Height</label>
                       <input
                         type="number"
                         value={customHeight}
                         onChange={(e) => setCustomHeight(Math.max(100, parseInt(e.target.value) || 300))}
-                        className="w-full px-2 py-1 text-xs bg-gray-800 border border-gray-700 rounded text-gray-300 focus:outline-none focus:border-indigo-500"
+                        className="w-full px-2 py-1 text-xs bg-ink/5 border border-rule rounded text-ink focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent"
                       />
                     </div>
                   </div>
@@ -141,8 +141,8 @@ export function EmbedModal({ shareCode, onClose }: EmbedModalProps) {
 
               {/* Iframe code */}
               <div>
-                <p className="text-[11px] text-gray-500 uppercase tracking-wider mb-2">Embed code</p>
-                <pre className="bg-gray-950 border border-gray-800 rounded p-3 text-[10px] text-green-400 font-mono overflow-x-auto whitespace-pre">
+                <p className="text-[11px] text-ink-soft uppercase tracking-wider mb-2">Embed code</p>
+                <pre className="bg-paper-2 border border-rule rounded p-3 text-[10px] text-green-ink font-mono overflow-x-auto whitespace-pre">
                   {iframeCode}
                 </pre>
               </div>
@@ -152,8 +152,8 @@ export function EmbedModal({ shareCode, onClose }: EmbedModalProps) {
                 onClick={handleCopy}
                 className={`w-full py-2 text-xs font-medium rounded transition-colors ${
                   copied
-                    ? "bg-green-800 text-green-200"
-                    : "bg-indigo-700 hover:bg-indigo-600 text-white"
+                    ? "bg-green-ink/20 text-green-ink"
+                    : "bg-accent hover:bg-accent/85 text-paper"
                 }`}
               >
                 {copied ? "Copied ✓" : "Copy embed code"}

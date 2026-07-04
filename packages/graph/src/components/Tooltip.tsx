@@ -30,29 +30,29 @@ export function Tooltip({ node, x, y, visible, containerWidth }: TooltipProps) {
 
   return (
     <div
-      className="absolute z-50 pointer-events-none bg-white border border-gray-200 rounded-lg shadow-lg px-3 py-2 text-sm max-w-[240px]"
+      className="absolute z-50 pointer-events-none bg-card border border-rule rounded-lg shadow-lg px-3 py-2 text-sm max-w-[240px]"
       style={{
         left: safeX,
         top: safeY,
       }}
     >
       {/* Name — bold */}
-      <div className="font-semibold text-gray-900 leading-tight">
+      <div className="font-semibold text-ink leading-tight">
         {node.name}
       </div>
 
       {/* Subtitle — role/type */}
       {(node.role || node.party) && (
-        <div className="text-gray-500 text-xs mt-0.5">
+        <div className="text-ink-soft text-xs mt-0.5">
           {node.role}
           {node.party && (
             <span
               className={
                 node.party === 'democrat'
-                  ? 'text-blue-600'
+                  ? 'text-civic-blue'
                   : node.party === 'republican'
-                  ? 'text-red-600'
-                  : 'text-purple-600'
+                  ? 'text-accent'
+                  : 'text-viz-7'
               }
             >
               {node.role ? ' · ' : ''}
@@ -63,10 +63,10 @@ export function Tooltip({ node, x, y, visible, containerWidth }: TooltipProps) {
       )}
 
       {/* Divider */}
-      <div className="border-t border-gray-100 my-1.5" />
+      <div className="border-t border-rule/60 my-1.5" />
 
       {/* Stats */}
-      <div className="space-y-0.5 text-xs text-gray-600">
+      <div className="space-y-0.5 text-xs text-ink-soft">
         {node.connectionCount != null && (
           <div>{node.connectionCount} connections</div>
         )}
@@ -78,7 +78,7 @@ export function Tooltip({ node, x, y, visible, containerWidth }: TooltipProps) {
       </div>
 
       {/* Hint */}
-      <div className="text-gray-400 text-xs mt-1.5 italic">Click for more</div>
+      <div className="text-ink-soft/60 text-xs mt-1.5 italic">Click for more</div>
     </div>
   );
 }

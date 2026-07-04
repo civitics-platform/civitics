@@ -11,12 +11,12 @@ interface IssueAlignment {
 }
 
 const DEFAULT_ISSUES: IssueAlignment[] = [
-  { id: "healthcare",  label: "Healthcare",  icon: "🏥", importance: 50, color: "#10b981" },
-  { id: "climate",     label: "Climate",     icon: "⚡", importance: 50, color: "#06b6d4" },
-  { id: "economy",     label: "Economy",     icon: "💼", importance: 50, color: "#f59e0b" },
-  { id: "education",   label: "Education",   icon: "📚", importance: 50, color: "#8b5cf6" },
-  { id: "defense",     label: "Defense",     icon: "🛡", importance: 50, color: "#64748b" },
-  { id: "immigration", label: "Immigration", icon: "🌎", importance: 50, color: "#f97316" },
+  { id: "healthcare",  label: "Healthcare",  icon: "🏥", importance: 50, color: "rgb(var(--c-viz-1))" },
+  { id: "climate",     label: "Climate",     icon: "⚡", importance: 50, color: "rgb(var(--c-viz-2))" },
+  { id: "economy",     label: "Economy",     icon: "💼", importance: 50, color: "rgb(var(--c-viz-3))" },
+  { id: "education",   label: "Education",   icon: "📚", importance: 50, color: "rgb(var(--c-viz-7))" },
+  { id: "defense",     label: "Defense",     icon: "🛡", importance: 50, color: "rgb(var(--c-viz-5))" },
+  { id: "immigration", label: "Immigration", icon: "🌎", importance: 50, color: "rgb(var(--c-viz-6))" },
 ];
 
 export interface AlignmentPanelProps {
@@ -45,11 +45,11 @@ export function AlignmentPanel({ initialIssues, onAlignmentChange }: AlignmentPa
   );
 
   return (
-    <div className="border-t border-gray-800 mt-2 pt-2">
+    <div className="border-t border-rule mt-2 pt-2">
       {/* Header */}
       <button
         onClick={() => setExpanded((e) => !e)}
-        className="w-full flex items-center justify-between px-3 py-2 text-xs text-gray-400 hover:text-gray-300 transition-colors"
+        className="w-full flex items-center justify-between px-3 py-2 text-xs text-ink-soft hover:text-ink transition-colors"
       >
         <div className="flex items-center gap-2">
           <span>🧭</span>
@@ -67,14 +67,14 @@ export function AlignmentPanel({ initialIssues, onAlignmentChange }: AlignmentPa
 
       {expanded && (
         <div className="px-3 pb-2 space-y-2">
-          <p className="text-[10px] text-gray-500 mb-3 leading-relaxed">
+          <p className="text-[10px] text-ink-soft mb-3 leading-relaxed">
             Set how much each issue matters to you. This will power your civic alignment profile.
           </p>
 
           {issues.map((issue) => (
             <div key={issue.id}>
               <div className="flex items-center justify-between mb-1">
-                <div className="flex items-center gap-1.5 text-xs text-gray-400">
+                <div className="flex items-center gap-1.5 text-xs text-ink-soft">
                   <span>{issue.icon}</span>
                   <span>{issue.label}</span>
                 </div>
@@ -94,15 +94,15 @@ export function AlignmentPanel({ initialIssues, onAlignmentChange }: AlignmentPa
                 className="w-full h-1 rounded-full appearance-none cursor-pointer"
                 style={{
                   accentColor: issue.color,
-                  background: `linear-gradient(to right, ${issue.color} ${issue.importance}%, #1f2937 ${issue.importance}%)`,
+                  background: `linear-gradient(to right, ${issue.color} ${issue.importance}%, rgb(var(--c-ink) / 0.15) ${issue.importance}%)`,
                 }}
               />
             </div>
           ))}
 
           {/* Mini alignment preview */}
-          <div className="mt-3 pt-2 border-t border-gray-800">
-            <p className="text-[10px] text-gray-500 mb-2">Your priority profile:</p>
+          <div className="mt-3 pt-2 border-t border-rule">
+            <p className="text-[10px] text-ink-soft mb-2">Your priority profile:</p>
             <div className="flex gap-1 items-end h-8">
               {sortedIssues.map((issue) => (
                 <div
@@ -121,7 +121,7 @@ export function AlignmentPanel({ initialIssues, onAlignmentChange }: AlignmentPa
               {sortedIssues.map((issue) => (
                 <div
                   key={issue.id}
-                  className="flex-1 text-center text-[8px] text-gray-600 truncate"
+                  className="flex-1 text-center text-[8px] text-ink-soft/60 truncate"
                 >
                   {issue.icon}
                 </div>
@@ -129,7 +129,7 @@ export function AlignmentPanel({ initialIssues, onAlignmentChange }: AlignmentPa
             </div>
           </div>
 
-          <p className="text-[9px] text-gray-600 mt-2 text-center">
+          <p className="text-[9px] text-ink-soft/60 mt-2 text-center">
             Full alignment quiz coming soon
           </p>
         </div>

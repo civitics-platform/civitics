@@ -46,19 +46,19 @@ export function CollapsiblePanel({
   }
 
   return (
-    <div className="border-b border-gray-800 last:border-b-0">
+    <div className="border-b border-rule last:border-b-0">
       <button
         onClick={toggle}
-        className="w-full flex items-center justify-between px-3 py-2.5 text-left hover:bg-gray-800/50 transition-colors"
+        className="w-full flex items-center justify-between px-3 py-2.5 text-left hover:bg-ink/5 transition-colors"
       >
         <div className="flex items-center gap-2">
-          <span className="text-gray-400 w-4 h-4 flex items-center justify-center shrink-0">
+          <span className="text-ink-soft w-4 h-4 flex items-center justify-center shrink-0">
             {icon}
           </span>
-          <span className="text-xs font-medium text-gray-300">{label}</span>
+          <span className="text-xs font-medium text-ink">{label}</span>
         </div>
         <svg
-          className={`w-3 h-3 text-gray-600 transition-transform duration-200 ${open ? "rotate-180" : ""}`}
+          className={`w-3 h-3 text-ink-soft/60 transition-transform duration-200 ${open ? "rotate-180" : ""}`}
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"

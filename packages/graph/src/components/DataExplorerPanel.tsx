@@ -69,13 +69,13 @@ export function DataExplorerPanel({ view, hooks, collapsed, onCollapse, graphMet
   // Collapsed: 40px icon strip — FIX-134: each icon expands and scrolls to its section.
   if (collapsed) {
     return (
-      <div className="h-full w-10 flex flex-col items-center py-2 gap-3 border-r border-gray-200 bg-white shrink-0">
+      <div className="h-full w-10 flex flex-col items-center py-2 gap-3 border-r border-rule bg-card shrink-0">
         {(['focus', 'connections'] as Section[]).map(section => (
           <button
             key={section}
             title={section === 'focus' ? 'Open Focus section' : 'Open Connections section'}
             onClick={() => jumpTo(section)}
-            className="w-8 h-8 flex items-center justify-center rounded hover:bg-gray-100 transition-colors text-base"
+            className="w-8 h-8 flex items-center justify-center rounded hover:bg-ink/10 transition-colors text-base"
           >
             {SECTION_ICONS[section]}
           </button>
@@ -86,17 +86,17 @@ export function DataExplorerPanel({ view, hooks, collapsed, onCollapse, graphMet
 
   // Expanded: 260px panel
   return (
-    <div className="h-full w-[260px] flex flex-col border-r border-gray-200 bg-white overflow-hidden shrink-0 min-w-0">
+    <div className="h-full w-[260px] flex flex-col border-r border-rule bg-card overflow-hidden shrink-0 min-w-0">
 
       {/* Panel header */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-gray-100 shrink-0">
-        <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">
+      <div className="flex items-center justify-between px-3 py-2 border-b border-rule/60 shrink-0">
+        <span className="text-[10px] font-semibold text-ink-soft uppercase tracking-wide">
           Data Explorer
         </span>
         <button
           onClick={onCollapse}
           title="Collapse panel  ([ shortcut)"
-          className="w-6 h-6 flex items-center justify-center rounded hover:bg-gray-100 transition-colors text-gray-400 hover:text-gray-600"
+          className="w-6 h-6 flex items-center justify-center rounded hover:bg-ink/10 transition-colors text-ink-soft hover:text-ink"
         >
           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
