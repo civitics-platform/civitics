@@ -896,3 +896,5 @@
 2026-07-04 | FIX-722 | c053a24b | local+prod | chore(fixes): record prod verification for FIX-701/FIX-722 [skip vercel]
 2026-07-04 | FIX-728 | 35279f05 | local-only | feat(graph): terminal chrome conversion + wave-2 ride-alongs
 2026-07-04 | FIX-729 | 91b5fcc9 | local-only | feat(graph): tokenize palettes across all vizzes; consolidate edge/party colors
+2026-07-04 | FIX-702 | 5b65451d | local-only | feat(db): incremental dirty-scoped financial_entity totals (no full-rebuild saturation)
+2026-07-04 | FIX-726 | 5b65451d | local-only | feat(db): incremental dirty-scoped financial_entity totals (no full-rebuild saturation)
