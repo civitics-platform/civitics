@@ -1540,22 +1540,18 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
     // recipients (FIX-181 + FIX-236) in one pass. Excludes ie_support/
     // ie_oppose/contract/grant/lobbying — only relationship_type='donation'
     // counts toward this column. Pattern mirrors rebuild_official_donation_totals.
-    console.log("\n  Recomputing financial_entities.total_donated_cents from live financial_relationships...");
-    // FIX-586: route through the direct-pg path. The full-table UPDATE ran
-    // >100s on prod and died at the PostgREST gateway cap (`upstream request
-    // timeout`) via admin.rpc(); runHeavyRebuild raises the SESSION timeout
-    // past the cap. Advisory — a failure here leaves stale totals the next
-    // cycle recomputes; it must not abort the rest of the FEC pipeline.
-    try {
-      await runHeavyRebuild("rebuild_financial_entity_donation_totals");
-      console.log("    ✓ donor totals recomputed from financial_relationships");
-    } catch (rebuildErr) {
-      console.warn(
-        `    rebuild_financial_entity_donation_totals failed: ${
-          rebuildErr instanceof Error ? rebuildErr.message : String(rebuildErr)
-        }`,
-      );
-    }
+    // ── total_donated_cents / total_received_cents: MOVED to pg_cron (FIX-702/726) ─
+    // The heavy full-table rebuilds (rebuild_financial_entity_donation_totals /
+    // _received_totals) that used to run HERE saturated Pro Small during the
+    // FIX-701 re-capture → live-site RPC timeouts (the FIX-726 incident). Both are
+    // now incremental, dirty-scoped, chunked+committed pg_cron jobs aggregating
+    // financial_relationships directly:
+    //   * financial-entity-totals-incremental  (weekly, Tue) — dirty from_id /
+    //     to_id only, per-chunk COMMIT, bounded work_mem;
+    //   * financial-entity-totals-reconcile    (monthly)     — hard-delete sweep.
+    // See supabase/migrations/20260704000000_fix702_726_incremental_financial_
+    // entity_totals.sql. The old SQL functions remain as break-glass full
+    // rebuilds; only these pipeline calls are removed so the FEC phase stays light.
 
     // ── IE (Schedule E) total recompute (FIX-666) ───────────────────────────
     // total_donated_cents deliberately excludes ie_support/ie_oppose, so IE-only
@@ -1575,29 +1571,15 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
       );
     }
 
-    // ── Inbound donation total recompute (FIX-675) ──────────────────────────
-    // total_received_cents is hardcoded to 0 when the indiv path pre-upserts
-    // recipient committee rows, so committees that received itemized individual
-    // contributions (super PACs, party/other PACs) show $0 "Total received" on
-    // the donor page. This is the to_id mirror of the donation recompute above —
-    // same direct-pg lift. Advisory — a failure leaves stale totals the next
-    // cycle recomputes; it must not abort the pipeline.
-    console.log("\n  Recomputing financial_entities.total_received_cents (inbound donations) from live financial_relationships...");
-    try {
-      await runHeavyRebuild("rebuild_financial_entity_received_totals");
-      console.log("    ✓ inbound (received) totals recomputed from financial_relationships");
-    } catch (rebuildErr) {
-      console.warn(
-        `    rebuild_financial_entity_received_totals failed: ${
-          rebuildErr instanceof Error ? rebuildErr.message : String(rebuildErr)
-        }`,
-      );
-    }
+    // total_received_cents (FIX-675) is likewise handled by the FIX-702/726
+    // pg_cron jobs above — the to_id mirror of the donation total, same weekly
+    // incremental + monthly reconcile. No inline rebuild here.
     } else {
       console.log(
-        "\n  [totals] — skipped (not in FEC_INDIV_STAGES); run the totals rebuild " +
-          "(rebuild_financial_entity_donation_totals / _ie_totals / _received_totals) " +
-          "separately before trusting aggregates",
+        "\n  [totals] — skipped (not in FEC_INDIV_STAGES); IE totals rebuild " +
+          "(rebuild_financial_entity_ie_totals) not run. Donation/received totals " +
+          "are maintained out-of-band by the financial-entity-totals pg_cron jobs " +
+          "(FIX-702/726).",
       );
     }
 
