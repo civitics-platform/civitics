@@ -27,10 +27,11 @@ on:
         required: true
         default: "2020,2022,2024,2026"
         type: string
-      # FIX-700 — surgical scope filters. Empty ⇒ default ⇒ current full-run
-      # behavior. Narrowing either marks the run "scoped" (entity aggregates are
-      # NOT overwritten; re-derived by the totals stage). The FIX-677 super-PAC
-      # finish uses cycles=2024, tx_types=10.
+      # FIX-700/701 — surgical scope filters. Empty ⇒ default ⇒ current full-run
+      # behavior. Narrowing any of them marks the run "scoped" (entity aggregates
+      # are NOT overwritten; re-derived by the totals stage). The FIX-677 super-PAC
+      # finish uses cycles=2024, tx_types=10. The FIX-701 2024 D/B re-capture uses
+      # cycles=2024, recipient_cmtes=<D/B committee list>.
       tx_types:
         description: "Override indiv tx-type filter (comma list, e.g. 10). Empty = default 15,15E,10."
         required: false
@@ -38,6 +39,14 @@ on:
         type: string
       stages:
         description: "Indiv sub-stage allow-list (comma list: donor-entities,indiv-to-candidate,recipient-entities,indiv-to-committee,independent-expenditures,totals). Empty = all."
+        required: false
+        default: ""
+        type: string
+      # FIX-701 — recipient-committee allow-list. When set, only donations to
+      # these committees are captured (marks the run scoped). Used for the 2024
+      # D/B re-capture: pass the leadership-PAC (D) + SSF (B) committee IDs.
+      recipient_cmtes:
+        description: "Recipient FEC committee ID allow-list (comma list, e.g. C00…,C00…). Empty = all recipients."
         required: false
         default: ""
         type: string
@@ -98,14 +107,16 @@ jobs:
         # the indiv stage runs for every requested cycle. :ci passes --allow-prod
         # (prod-write guard) and reads env from this job (no --env-file).
         #
-        # FIX-700: tx_types/stages pass through to the scope filters. An empty
-        # input yields an empty env value, which parseKeepTxTypes/parseIndivStages
-        # treat identically to unset — i.e. the default full-run behavior — so
-        # there is no need for a shell-side "set only when non-empty" conditional.
+        # FIX-700/701: tx_types/stages/recipient_cmtes pass through to the scope
+        # filters. An empty input yields an empty env value, which
+        # parseKeepTxTypes/parseIndivStages/parseRecipientCmtes treat identically
+        # to unset — i.e. the default full-run behavior — so there is no need for
+        # a shell-side "set only when non-empty" conditional.
         env:
           FEC_CYCLES: ${{ inputs.cycles }}
           FEC_INDIV_TX_TYPES: ${{ inputs.tx_types }}
           FEC_INDIV_STAGES: ${{ inputs.stages }}
+          FEC_INDIV_RECIPIENT_CMTES: ${{ inputs.recipient_cmtes }}
         run: pnpm --filter @civitics/data data:fec-bulk:ci
 
       # Same kill-detector backstop the nightly uses: if the job is SIGTERM'd by

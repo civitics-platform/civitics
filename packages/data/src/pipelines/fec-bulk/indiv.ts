@@ -15,9 +15,12 @@
  *      Form 3X Schedule A — Musk → America PAC, Soros → Democracy PAC, etc.
  *      Pre-FIX-236 these contributions were silently dropped.
  *
- * Leadership/joint-fundraising designations (D/B/J) stay excluded — their
- * money is split downstream and re-itemized via transfers, so capturing
- * them at the source would double-count.
+ * Joint-fundraising committees (CMTE_DSGN='J') stay excluded — their money is
+ * split downstream and re-itemized via JFC→participant transfers, so capturing
+ * them at the source would double-count. FIX-701: leadership PACs (D) and SSFs
+ * (B) are NOT double-counts and are captured as their own committee entities
+ * (see buildNonCandRecipientSet in index.ts); they are correctly kept OUT of the
+ * candidate-attribution path below (parseCcl), which is a P/A allow-list.
  *
  * Donor identity: indiv has no donor ID. We dedupe on
  *   fingerprint = upper(NAME) collapsed + "|" + ZIP5
@@ -139,6 +142,63 @@ export function isIndivTxScoped(active: Set<string> = parseKeepTxTypes()): boole
   return !DEFAULT_INDIV_TX_TYPES.every((t) => active.has(t));
 }
 
+// ---------------------------------------------------------------------------
+// FIX-701: recipient-committee scope axis (FEC_INDIV_RECIPIENT_CMTES).
+//
+// A third surgical axis alongside FEC_INDIV_TX_TYPES / FEC_INDIV_STAGES. D/B
+// donations are type-15 (the bulk of ALL individual donations), so tx-type
+// scoping cannot isolate them — the recipient committee is the only handle. When
+// this allow-list is set, the indiv stage captures ONLY donations whose recipient
+// committee is in the list (both the candidate-attribution and the non-candidate
+// committee paths are narrowed to it). Empty ⇒ unset ⇒ every recipient (today's
+// full-run behavior). Genuinely reusable: "re-run donations to these specific
+// committees". Its surfacing use is the FIX-701 2024 D/B re-capture (the rows the
+// FIX-677 finish's Phase-1 cleanup over-deleted).
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolve the recipient-committee allow-list from FEC_INDIV_RECIPIENT_CMTES
+ * (comma-separated FEC committee IDs, case-insensitive). Empty Set ⇒ no filter.
+ * FEC committee IDs are uppercase alphanumeric (C00XXXXXX), so uppercasing is
+ * safe and matches the raw cm/ccl file values.
+ */
+export function parseRecipientCmtes(
+  raw: string | undefined = process.env.FEC_INDIV_RECIPIENT_CMTES,
+): Set<string> {
+  return new Set(
+    (raw ?? "")
+      .split(",")
+      .map((s) => s.trim().toUpperCase())
+      .filter(Boolean),
+  );
+}
+
+/** A run is recipient-scoped when the allow-list is non-empty. */
+export function isRecipientScoped(allow: Set<string> = parseRecipientCmtes()): boolean {
+  return allow.size > 0;
+}
+
+/**
+ * Apply the recipient-committee allow-list to the two recipient collections
+ * IN PLACE. Empty allow-list ⇒ no-op (full run). Pure aside from the in-place
+ * mutation the caller owns; returns the surviving counts for logging.
+ */
+export function applyRecipientCmteScope(
+  cmteToCand:   Map<string, string>,
+  nonCandCmtes: Set<string>,
+  allow:        Set<string> = parseRecipientCmtes(),
+): { candKept: number; nonCandKept: number } {
+  if (allow.size > 0) {
+    for (const cmteId of [...cmteToCand.keys()]) {
+      if (!allow.has(cmteId)) cmteToCand.delete(cmteId);
+    }
+    for (const cmteId of [...nonCandCmtes]) {
+      if (!allow.has(cmteId)) nonCandCmtes.delete(cmteId);
+    }
+  }
+  return { candKept: cmteToCand.size, nonCandKept: nonCandCmtes.size };
+}
+
 // FEC's itemization floor. Same threshold the pas2 pipeline uses post-FIX-182.
 const MIN_AMT_DOLLARS = 200;
 
@@ -196,9 +256,14 @@ export interface IndivStreamResult {
  * principal + several authorized) all collapse to the same CAND_ID, so an
  * indiv contribution to any of those committees attributes correctly.
  *
- * Excludes joint-fundraising and leadership committees (CMTE_DSGN ∈ {J, D, B})
- * because their donations are split downstream and would double-count if we
- * also pulled them in here.
+ * This is an ALLOW-list of P (principal campaign committee) and A (authorized
+ * committee) designations only — the committees a candidate has authorized for
+ * their OWN campaign. Everything else (J/D/B and any other designation) is left
+ * out on purpose: a donation to a leadership PAC (D) or SSF (B) is real money to
+ * THAT committee, not to the sponsoring candidate's campaign, so attributing it
+ * here would be wrong. Those receipts are captured as their own committee
+ * entities via buildNonCandRecipientSet (FIX-701). JFCs (J) stay out of both
+ * paths — they double-count (see the file header).
  */
 export function parseCcl(buffer: Buffer): Map<string, string> {
   const lookup = new Map<string, string>();

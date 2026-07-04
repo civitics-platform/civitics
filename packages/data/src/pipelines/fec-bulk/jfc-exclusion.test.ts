@@ -1,12 +1,16 @@
 /**
- * FIX-698 — joint-fundraising committees (CMTE_DSGN ∈ {J,D,B}) must NOT enter
- * the individual→committee recipient set.
+ * FIX-698 + FIX-701 — only joint-fundraising committees (CMTE_DSGN='J') must be
+ * excluded from the individual→committee recipient set.
  *
  * Before FIX-698, nonCandCmtes was built from CMTE_TP alone, so JFCs filed as
  * CMTE_TP='N' / CMTE_DSGN='J' (Harris Victory Fund, the Trump JFCs, ~$1.4B+)
  * were captured as individual→committee donations AND re-itemized to
- * participants via JFC→participant transfers — a straight double-count. This
- * pins the parse of CMTE_DSGN (cm24 col 8) and the J/D/B exclusion.
+ * participants via JFC→participant transfers — a straight double-count.
+ *
+ * FIX-698 over-corrected by excluding {J,D,B}. FIX-701 narrows the exclusion to
+ * {J} only: leadership PACs (D) and SSF / connected PACs (B) are legitimate
+ * distinct recipients, not double-counts, and must be KEPT. This pins the parse
+ * of CMTE_DSGN (cm24 col 8) and the J-only exclusion.
  *
  * Runs via:  tsx --test src/pipelines/fec-bulk/jfc-exclusion.test.ts
  */
@@ -44,9 +48,9 @@ const fixture = Buffer.from(
     cmRow("C00010001", "LEGIT SUPER PAC", "U", "O"),
     // a legitimate non-JFC "other PAC" (type N, unauthorized) — must be KEPT
     cmRow("C00010002", "LEGIT OTHER PAC", "U", "N"),
-    // a leadership PAC (designation D) — must be EXCLUDED even though type Q is kept
+    // a leadership PAC (designation D) — FIX-701: now KEPT (distinct recipient)
     cmRow("C00010003", "SOME LEADERSHIP PAC", "D", "Q"),
-    // a "B" designation committee — must be EXCLUDED
+    // a "B" designation committee (SSF) — FIX-701: now KEPT (distinct recipient)
     cmRow("C00010004", "SOME B COMMITTEE", "B", "N"),
   ].join("\n"),
   "latin1",
@@ -75,11 +79,11 @@ test("FIX-698 legitimate super PAC and non-JFC other PAC are kept", () => {
   assert.ok(nonCand.has("C00010002"), "type-N non-JFC PAC must be captured");
 });
 
-test("FIX-698 leadership (D) and B designations are also excluded", () => {
+test("FIX-701 leadership (D) and B designations are now KEPT (only J is excluded)", () => {
   const cm = parseCm24(fixture);
   const nonCand = buildNonCandRecipientSet(cm, new Map());
-  assert.ok(!nonCand.has("C00010003"), "leadership PAC (DSGN=D) must be excluded");
-  assert.ok(!nonCand.has("C00010004"), "B-designation committee must be excluded");
+  assert.ok(nonCand.has("C00010003"), "leadership PAC (DSGN=D) must be captured — legit distinct recipient");
+  assert.ok(nonCand.has("C00010004"), "B-designation committee (SSF) must be captured — legit distinct recipient");
 });
 
 test("FIX-698 a candidate-authorized committee is skipped (handled by ccl path)", () => {

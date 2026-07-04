@@ -58,21 +58,28 @@
  *   pnpm --filter @civitics/data data:fec-bulk
  *   FEC_CYCLES=2022,2024 pnpm --filter @civitics/data data:fec-bulk
  *
- * Surgical / scoped re-runs (FIX-700) — three independent knobs, each defaulting
- * to today's full-run behavior when unset:
+ * Surgical / scoped re-runs (FIX-700 + FIX-701) — four independent knobs, each
+ * defaulting to today's full-run behavior when unset:
  *   FEC_CYCLES=2024              — which cycles to process (existing)
  *   FEC_INDIV_TX_TYPES=10        — override the 15,15E,10 tx-type filter (indiv.ts)
  *   FEC_INDIV_STAGES=...         — comma allow-list of indiv sub-stages (scope.ts):
  *                                  donor-entities, indiv-to-candidate,
  *                                  recipient-entities, indiv-to-committee,
  *                                  independent-expenditures, totals
+ *   FEC_INDIV_RECIPIENT_CMTES=…  — comma allow-list of recipient FEC committee
+ *                                  IDs (indiv.ts). When set, only donations to
+ *                                  those committees are captured. Type-15 D/B
+ *                                  donations can't be isolated by tx-type, so
+ *                                  this is the handle for the FIX-701 2024 D/B
+ *                                  re-capture.
  * When FEC_INDIV_TX_TYPES narrows below the default OR FEC_INDIV_STAGES excludes
- * a stage, the run is "scoped": the donor/recipient entity upserts stop
- * overwriting total_donated_cents / total_received_cents (a partial slice must
- * not clobber a full aggregate), and the authoritative values are re-derived by
- * the `totals` stage. ALWAYS run the totals rebuild after any scoped
- * relationship-writing run. Example — the FIX-677 super-PAC (type-10) finish:
+ * a stage OR FEC_INDIV_RECIPIENT_CMTES is set, the run is "scoped": the
+ * donor/recipient entity upserts stop overwriting total_donated_cents /
+ * total_received_cents (a partial slice must not clobber a full aggregate), and
+ * the authoritative values are re-derived by the `totals` stage. ALWAYS run the
+ * totals rebuild after any scoped relationship-writing run. Examples:
  *   FEC_CYCLES=2024 FEC_INDIV_TX_TYPES=10 pnpm --filter @civitics/data data:fec-bulk
+ *   FEC_CYCLES=2024 FEC_INDIV_RECIPIENT_CMTES=C00…,C00… pnpm … data:fec-bulk
  *   # then, if `totals` was excluded, run rebuild_financial_entity_*_totals
  */
 
@@ -110,7 +117,15 @@ import {
   parseLastModified,
   type FecHead,
 } from "./util";
-import { parseCcl, streamIndiv, parseKeepTxTypes, isIndivTxScoped } from "./indiv";
+import {
+  parseCcl,
+  streamIndiv,
+  parseKeepTxTypes,
+  isIndivTxScoped,
+  parseRecipientCmtes,
+  isRecipientScoped,
+  applyRecipientCmteScope,
+} from "./indiv";
 import {
   parseIndivStages,
   stageEnabled,
@@ -466,18 +481,26 @@ export function parseCm24(buffer: Buffer): Map<string, CommitteeInfo> {
   return lookup;
 }
 
-// Non-candidate-committee recipient capture set (FIX-236 + FIX-698).
+// Non-candidate-committee recipient capture set (FIX-236 + FIX-698 + FIX-701).
 //
 // CMTE_TP we want as individual→committee recipients: super PAC (O), party
-// (X/Y/Z), other PAC (N/Q/V/W). CMTE_DSGN ∈ {J,D,B} is excluded REGARDLESS of
-// type — joint-fundraising (J), leadership (D) and "B" committees re-itemize
-// their receipts to participants via downstream transfers, so counting the
-// individual→JFC leg double-counts the same dollars. Before FIX-698 the
-// designation filter was only documented, never applied (CMTE_DSGN was never
-// parsed), so JFCs filed as CMTE_TP='N' (Harris Victory Fund, the Trump JFCs)
-// slipped through.
+// (X/Y/Z), other PAC (N/Q/V/W). CMTE_DSGN='J' (joint-fundraising) is excluded
+// REGARDLESS of type — a JFC re-itemizes its receipts to participants via
+// JFC→participant transfers, so counting the individual→JFC leg double-counts
+// the same dollars. Before FIX-698 the designation filter was only documented,
+// never applied (CMTE_DSGN was never parsed), so JFCs filed as CMTE_TP='N'
+// (Harris Victory Fund, the Trump JFCs) slipped through.
+//
+// FIX-701: the exclusion was WRONGLY broadened to {J,D,B} in FIX-698. Only J is
+// a true double-count. Leadership PACs (D) and SSF / connected PACs (B) are
+// legitimate DISTINCT recipients — a donation to a leadership PAC is real money
+// to that PAC, not a re-itemized transfer — so they belong in the recipient set.
+// Narrowed back to {J}. (The candidate-attribution ccl path in indiv.ts is a
+// P/A allow-list, not a J/D/B exclusion — leaving D/B out of THAT path is
+// correct, since leadership-PAC receipts must not be attributed to the sponsor's
+// campaign; they surface here as their own committee entity instead.)
 export const NON_CAND_KEEP_TYPES = new Set(["O", "X", "Y", "Z", "N", "Q", "V", "W"]);
-export const EXCLUDE_DESIGNATIONS = new Set(["J", "D", "B"]);
+export const EXCLUDE_DESIGNATIONS = new Set(["J"]);
 
 export function buildNonCandRecipientSet(
   cmLookup: Map<string, CommitteeInfo>,
@@ -486,7 +509,7 @@ export function buildNonCandRecipientSet(
   const nonCandCmtes = new Set<string>();
   for (const [cmteId, info] of cmLookup.entries()) {
     if (cmteToCand.has(cmteId)) continue;                       // already a candidate-authorized recipient
-    if (EXCLUDE_DESIGNATIONS.has(info.designation)) continue;   // JFC / leadership / B — double-count guard
+    if (EXCLUDE_DESIGNATIONS.has(info.designation)) continue;   // JFC (J) only — the true double-count (FIX-701)
     if (NON_CAND_KEEP_TYPES.has(info.type)) nonCandCmtes.add(cmteId);
   }
   return nonCandCmtes;
@@ -621,6 +644,10 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
   //   FEC_INDIV_STAGES   — allow-list of indiv sub-stages (default = all)
   // Only the indiv stage is scoped; cn/weball/pas2 always run in full.
   const keepTxTypes = parseKeepTxTypes();
+  // FIX-701: recipient-committee allow-list (FEC_INDIV_RECIPIENT_CMTES). Empty ⇒
+  // no filter. Parsed once so the log line runs a single time; applied per-cycle
+  // to both recipient maps just before streamIndiv.
+  const recipientCmtes = parseRecipientCmtes();
   const { set: indivStageSet, unknown: unknownStages } = parseIndivStages();
   if (unknownStages.length > 0) {
     console.warn(
@@ -632,11 +659,15 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
   // A scoped run must NOT overwrite entity aggregate columns — a partial slice
   // (e.g. tx-type 10 only) would clobber a mixed donor's real total. The totals
   // rebuild re-derives the authoritative values afterward (writer.ts).
-  const isScoped = isIndivTxScoped(keepTxTypes) || isStagesScoped(indivStageSet);
+  const isScoped =
+    isIndivTxScoped(keepTxTypes) ||
+    isStagesScoped(indivStageSet) ||
+    isRecipientScoped(recipientCmtes);
   if (isScoped) {
     console.log(
       `  ⚠ SCOPED RUN — tx_types=[${[...keepTxTypes].join(",")}] ` +
         `stages=[${indivStageSet.size ? [...indivStageSet].join(",") : "all"}] ` +
+        `recipient_cmtes=[${recipientCmtes.size ? `${recipientCmtes.size} committee(s)` : "all"}] ` +
         `cycles=[${INDIV_CYCLES.join(", ")}]; entity aggregates will NOT be overwritten — ` +
         `run the totals rebuild after (this run ${stageOn("totals") ? "INCLUDES" : "SKIPS"} the totals stage)`,
     );
@@ -1086,7 +1117,19 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
               // designations that would double-count). See
               // buildNonCandRecipientSet for the full rationale.
               const nonCandCmtes = buildNonCandRecipientSet(cmLookup, cmteToCand);
-              console.log(`    Non-candidate committees to capture (super PAC + party + other PAC, excl. JFC/leadership): ${nonCandCmtes.size.toLocaleString()}`);
+              console.log(`    Non-candidate committees to capture (super PAC + party + other PAC + leadership/SSF, excl. JFC): ${nonCandCmtes.size.toLocaleString()}`);
+
+              // FIX-701: narrow both recipient maps to FEC_INDIV_RECIPIENT_CMTES
+              // when set (the 2024 D/B re-capture passes the D/B committee list).
+              // No-op when the allow-list is empty.
+              if (recipientCmtes.size > 0) {
+                const candBefore = cmteToCand.size, nonCandBefore = nonCandCmtes.size;
+                const { candKept, nonCandKept } = applyRecipientCmteScope(cmteToCand, nonCandCmtes, recipientCmtes);
+                console.log(
+                  `    FEC_INDIV_RECIPIENT_CMTES scope: ${recipientCmtes.size} committee(s) allow-listed — ` +
+                    `cand recipients ${candBefore}→${candKept}, non-cand recipients ${nonCandBefore}→${nonCandKept}`,
+                );
+              }
 
               if (cmteToCand.size === 0 && nonCandCmtes.size === 0) {
                 console.warn("    No committees mapped to candidates or non-cand recipients — skipping indiv stage");
