@@ -27,18 +27,18 @@ const badgeVariantStyles: Record<
   NonNullable<StatCardProps["badge"]>["variant"] & string,
   string
 > = {
-  info: "bg-blue-100 text-blue-700",
-  warning: "bg-amber-100 text-amber-700",
-  success: "bg-green-100 text-green-700",
+  info: "bg-civic-blue/10 text-civic-blue",
+  warning: "bg-amber/20 text-ink",
+  success: "bg-green-ink/10 text-green-ink",
 };
 
 const trendStyles: Record<
   NonNullable<StatCardProps["trendDirection"]>,
   string
 > = {
-  up: "text-green-600",
-  down: "text-red-600",
-  neutral: "text-gray-500",
+  up: "text-green-ink",
+  down: "text-accent",
+  neutral: "text-ink-soft",
 };
 
 const trendIcons: Record<NonNullable<StatCardProps["trendDirection"]>, string> = {
@@ -78,9 +78,9 @@ function CardInner({
           {icon && (
             typeof icon === "string"
               ? <span className="text-base" aria-hidden="true">{icon}</span>
-              : <span className="text-gray-500 flex-shrink-0" aria-hidden="true">{icon}</span>
+              : <span className="text-ink-soft flex-shrink-0" aria-hidden="true">{icon}</span>
           )}
-          <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+          <span className="text-xs font-medium text-ink-soft uppercase tracking-wide">
             {label}
           </span>
         </div>
@@ -118,11 +118,11 @@ function CardInner({
       </div>
 
       <div className="flex-1">
-        <div className="text-3xl font-bold tabular-nums text-gray-900">
+        <div className="text-3xl font-bold tabular-nums text-ink">
           {formatted}
         </div>
         {sublabel && (
-          <div className="mt-0.5 text-xs text-gray-500">{sublabel}</div>
+          <div className="mt-0.5 text-xs text-ink-soft">{sublabel}</div>
         )}
       </div>
 
@@ -133,12 +133,12 @@ function CardInner({
               {trendIcons[trendDirection]} {trend}
             </span>
           ) : trend ? (
-            <span className="text-xs text-gray-500">{trend}</span>
+            <span className="text-xs text-ink-soft">{trend}</span>
           ) : (
             <span />
           )}
           {href && (
-            <span className="text-sm text-gray-400 group-hover:text-blue-600 transition-colors duration-150">
+            <span className="text-sm text-ink-soft/70 group-hover:text-accent transition-colors duration-150">
               →
             </span>
           )}
@@ -157,9 +157,9 @@ export function StatCard(props: StatCardProps) {
 
   if (!mounted || props.loading) {
     return (
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 animate-pulse">
-        <div className="h-4 bg-gray-100 rounded w-24 mb-4" />
-        <div className="h-8 bg-gray-100 rounded w-16" />
+      <div className="bg-card rounded-xl border border-rule shadow-sm p-6 animate-pulse">
+        <div className="h-4 bg-rule/60 rounded w-24 mb-4" />
+        <div className="h-8 bg-rule/60 rounded w-16" />
       </div>
     );
   }
@@ -170,7 +170,7 @@ export function StatCard(props: StatCardProps) {
     return (
       <div
         onClick={props.onClick}
-        className="group block bg-white rounded-xl border border-gray-200 shadow-sm p-6 cursor-pointer hover:border-blue-200 hover:shadow-md transition-all duration-150"
+        className="group block bg-card rounded-xl border border-rule shadow-sm p-6 cursor-pointer hover:border-accent/40 hover:shadow-md transition-all duration-150"
       >
         {inner}
       </div>
@@ -181,7 +181,7 @@ export function StatCard(props: StatCardProps) {
     return (
       <a
         href={props.href}
-        className="group block bg-white rounded-xl border border-gray-200 shadow-sm p-6 hover:border-blue-200 hover:shadow-md transition-all duration-150"
+        className="group block bg-card rounded-xl border border-rule shadow-sm p-6 hover:border-accent/40 hover:shadow-md transition-all duration-150"
       >
         {inner}
       </a>
@@ -189,7 +189,7 @@ export function StatCard(props: StatCardProps) {
   }
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+    <div className="bg-card rounded-xl border border-rule shadow-sm p-6">
       {inner}
     </div>
   );

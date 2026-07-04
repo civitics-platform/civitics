@@ -19,9 +19,9 @@ function fmtUsd(n: number): string {
 // ── Source badge ────────────────────────────────────────────────────────────
 
 function SourceBadge({ source }: { source: string }) {
-  if (source === "api") return <span className="text-xs text-green-600">● Live</span>;
-  if (source === "unavailable") return <span className="text-xs text-gray-400">○ No admin key</span>;
-  return <span className="text-xs text-amber-600">⚠ Estimated</span>;
+  if (source === "api") return <span className="text-xs text-green-ink">● Live</span>;
+  if (source === "unavailable") return <span className="text-xs text-ink-soft/80">○ No admin key</span>;
+  return <span className="text-xs text-amber">⚠ Estimated</span>;
 }
 
 // ── Props ───────────────────────────────────────────────────────────────────
@@ -58,17 +58,17 @@ export function AnthropicCard({ aiCosts }: AnthropicCardProps) {
           <LoadingSkeleton variant="card" />
         </div>
       ) : !isLive && source !== "api_usage_logs" ? (
-        <div className="mt-4 rounded-lg bg-gray-50 p-4 text-sm text-gray-600">
-          <p className="font-medium text-gray-900 mb-1">
+        <div className="mt-4 rounded-lg bg-paper-2 p-4 text-sm text-ink-soft">
+          <p className="font-medium text-ink mb-1">
             Add ANTHROPIC_ADMIN_API_KEY to see live usage data
           </p>
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-ink-soft">
             Generate one at{" "}
             <a
               href="https://console.anthropic.com/settings/admin-keys"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-blue-600 hover:underline"
+              className="text-accent hover:underline"
             >
               console.anthropic.com
             </a>{" "}
@@ -79,19 +79,19 @@ export function AnthropicCard({ aiCosts }: AnthropicCardProps) {
         <div className="mt-4">
           {/* Budget bar */}
           <div className="mb-4">
-            <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+            <div className="h-2 bg-rule/30 rounded-full overflow-hidden">
               <div
                 className={`h-full rounded-full ${
                   aiCosts!.budget_used_pct > 95
-                    ? "bg-red-500"
+                    ? "bg-accent"
                     : aiCosts!.budget_used_pct > 80
-                      ? "bg-amber-500"
-                      : "bg-green-500"
+                      ? "bg-amber"
+                      : "bg-green-ink"
                 }`}
                 style={{ width: `${Math.min(aiCosts!.budget_used_pct, 100)}%` }}
               />
             </div>
-            <div className="flex justify-between mt-1 text-xs text-gray-400">
+            <div className="flex justify-between mt-1 text-xs text-ink-soft/80">
               <span>{fmtUsd(aiCosts!.monthly_spent_usd)} spent</span>
               <span>
                 {fmtUsd(Math.max(0, aiCosts!.monthly_budget_usd - aiCosts!.monthly_spent_usd))}{" "}
@@ -103,41 +103,41 @@ export function AnthropicCard({ aiCosts }: AnthropicCardProps) {
           {/* Summary rows */}
           {(aiCosts!.last_hour_tokens != null || aiCosts!.last_24h_tokens != null) && (
             <div className="space-y-2">
-              <div className="flex items-center pb-1.5 border-b border-gray-100 text-xs font-medium text-gray-500">
+              <div className="flex items-center pb-1.5 border-b border-rule/60 text-xs font-medium text-ink-soft">
                 <span className="flex-1" />
                 <span className="w-24 text-right">Tokens</span>
                 <span className="w-16 text-right">Cost</span>
               </div>
               {aiCosts!.last_hour_tokens != null && (
                 <div className="flex items-center text-sm">
-                  <span className="flex-1 text-gray-700">Last hour</span>
-                  <span className="w-24 text-right tabular-nums text-gray-900">
+                  <span className="flex-1 text-ink-soft">Last hour</span>
+                  <span className="w-24 text-right tabular-nums text-ink">
                     {fmtTokens(aiCosts!.last_hour_tokens)}
                   </span>
-                  <span className="w-16 text-right tabular-nums text-gray-400">—</span>
+                  <span className="w-16 text-right tabular-nums text-ink-soft/70">—</span>
                 </div>
               )}
               {aiCosts!.last_24h_tokens != null && (
                 <div className="flex items-center text-sm">
-                  <span className="flex-1 text-gray-700">Last 24h</span>
-                  <span className="w-24 text-right tabular-nums text-gray-900">
+                  <span className="flex-1 text-ink-soft">Last 24h</span>
+                  <span className="w-24 text-right tabular-nums text-ink">
                     {fmtTokens(aiCosts!.last_24h_tokens)}
                   </span>
-                  <span className="w-16 text-right tabular-nums text-gray-900">
+                  <span className="w-16 text-right tabular-nums text-ink">
                     {aiCosts!.last_24h_cost_usd != null
                       ? fmtUsd(aiCosts!.last_24h_cost_usd)
                       : "—"}
                   </span>
                 </div>
               )}
-              <div className="flex items-center text-sm border-t border-gray-50 pt-2">
-                <span className="flex-1 text-gray-700">This month</span>
-                <span className="w-24 text-right tabular-nums text-gray-900">
+              <div className="flex items-center text-sm border-t border-rule/40 pt-2">
+                <span className="flex-1 text-ink-soft">This month</span>
+                <span className="w-24 text-right tabular-nums text-ink">
                   {aiCosts!.this_month_total_tokens != null
                     ? fmtTokens(aiCosts!.this_month_total_tokens)
                     : "—"}
                 </span>
-                <span className="w-16 text-right tabular-nums text-gray-900">
+                <span className="w-16 text-right tabular-nums text-ink">
                   {fmtUsd(aiCosts!.monthly_spent_usd)}
                 </span>
               </div>
@@ -147,15 +147,15 @@ export function AnthropicCard({ aiCosts }: AnthropicCardProps) {
           {/* Token detail toggle */}
           <button
             onClick={() => setShowTokens(!showTokens)}
-            className="text-xs text-gray-400 hover:text-gray-600 mt-2"
+            className="text-xs text-ink-soft/80 hover:text-ink mt-2"
           >
             {showTokens ? "▲ Show less" : "▾ Show token details"}
           </button>
 
           {showTokens && (
-            <table className="w-full text-xs mt-2 text-gray-600">
+            <table className="w-full text-xs mt-2 text-ink-soft">
               <thead>
-                <tr className="text-gray-400 border-b border-gray-100">
+                <tr className="text-ink-soft/80 border-b border-rule/60">
                   <th className="text-left py-1">Metric</th>
                   <th className="text-right py-1">1h</th>
                   <th className="text-right py-1">24h</th>
@@ -181,7 +181,7 @@ export function AnthropicCard({ aiCosts }: AnthropicCardProps) {
                   <td className="text-right">{fmtTokens(aiCosts!.last_24h?.cache_read_tokens ?? 0)}</td>
                   <td className="text-right">{fmtTokens(aiCosts!.this_month?.cache_read_tokens ?? 0)}</td>
                 </tr>
-                <tr className="border-t border-gray-100 font-medium">
+                <tr className="border-t border-rule/60 font-medium">
                   <td>Cost</td>
                   <td className="text-right">{fmtUsd(aiCosts!.last_hour?.cost_usd ?? 0)}</td>
                   <td className="text-right">{fmtUsd(aiCosts!.last_24h?.cost_usd ?? 0)}</td>

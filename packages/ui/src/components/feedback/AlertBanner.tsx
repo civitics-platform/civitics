@@ -16,28 +16,30 @@ const levelStyles: Record<
   AlertBannerProps["level"],
   { bg: string; border: string; text: string; icon: string }
 > = {
+  // Warning text stays ink — amber text is unreadable on paper; the amber
+  // border/tint carries the semantics in both modes (FIX-719).
   info: {
-    bg: "bg-blue-50",
-    border: "border-blue-200",
-    text: "text-blue-800",
+    bg: "bg-civic-blue/10",
+    border: "border-civic-blue/30",
+    text: "text-civic-blue",
     icon: "ℹ",
   },
   warning: {
-    bg: "bg-amber-50",
-    border: "border-amber-200",
-    text: "text-amber-800",
+    bg: "bg-amber/15",
+    border: "border-amber/60",
+    text: "text-ink",
     icon: "⚠",
   },
   error: {
-    bg: "bg-red-50",
-    border: "border-red-200",
-    text: "text-red-800",
+    bg: "bg-accent/10",
+    border: "border-accent/30",
+    text: "text-accent",
     icon: "✗",
   },
   success: {
-    bg: "bg-green-50",
-    border: "border-green-200",
-    text: "text-green-800",
+    bg: "bg-green-ink/10",
+    border: "border-green-ink/30",
+    text: "text-green-ink",
     icon: "✓",
   },
 };

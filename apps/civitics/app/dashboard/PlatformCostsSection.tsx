@@ -31,21 +31,21 @@ function fmtUsd(n: number): string {
 function AnthropicSourceBadge({ source }: { source?: string }) {
   if (source === "api")
     return (
-      <span className="inline-flex items-center gap-1.5 text-xs text-green-600">
-        <span className="w-1.5 h-1.5 bg-green-500 rounded-full inline-block animate-pulse" />
+      <span className="inline-flex items-center gap-1.5 text-xs text-green-ink">
+        <span className="w-1.5 h-1.5 bg-green-ink rounded-full inline-block animate-pulse" />
         Live · Anthropic Admin API
       </span>
     );
   if (source === "api_usage_logs")
     return (
-      <span className="inline-flex items-center gap-1.5 text-xs text-blue-600">
-        <span className="w-1.5 h-1.5 bg-blue-500 rounded-full inline-block" />
+      <span className="inline-flex items-center gap-1.5 text-xs text-civic-blue">
+        <span className="w-1.5 h-1.5 bg-civic-blue rounded-full inline-block" />
         From local usage logs
       </span>
     );
   return (
-    <span className="inline-flex items-center gap-1.5 text-xs text-amber-600">
-      <span className="w-1.5 h-1.5 bg-amber-500 rounded-full inline-block" />
+    <span className="inline-flex items-center gap-1.5 text-xs text-amber">
+      <span className="w-1.5 h-1.5 bg-amber rounded-full inline-block" />
       Estimated
     </span>
   );
@@ -56,10 +56,10 @@ function AnthropicSourceBadge({ source }: { source?: string }) {
 function SourceIndicator({ display }: { display: SourceDisplay }) {
   const colorClass =
     display.color === "green"
-      ? "text-green-600"
+      ? "text-green-ink"
       : display.color === "amber"
-        ? "text-amber-600"
-        : "text-gray-400";
+        ? "text-amber"
+        : "text-ink-soft/80";
 
   return (
     <span className={`text-xs ${colorClass} whitespace-nowrap`} title={display.tooltip}>
@@ -78,12 +78,12 @@ function DataAge({
   source?: string | null;
 }) {
   if (!recordedAt && !source) {
-    return <span className="text-xs text-gray-300">&#9675; No data</span>;
+    return <span className="text-xs text-ink-soft/60">&#9675; No data</span>;
   }
 
   if (!recordedAt) {
     return (
-      <span className="text-xs text-gray-400">
+      <span className="text-xs text-ink-soft/80">
         {source === "manual"
           ? "✓ Manual entry"
           : source === "estimated"
@@ -114,12 +114,12 @@ function DataAge({
 
   const colorClass =
     source === "api" && !isStale
-      ? "text-green-600"
+      ? "text-green-ink"
       : source === "api" && isStale
-        ? "text-amber-500"
+        ? "text-amber"
         : source === "manual"
-          ? "text-blue-500"
-          : "text-gray-400";
+          ? "text-civic-blue"
+          : "text-ink-soft/80";
 
   return (
     <span suppressHydrationWarning className={`text-xs ${colorClass}`}>
@@ -153,14 +153,14 @@ const SERVICE_LINKS: Record<string, string> = {
 
 function StatusDot({ status }: { status: string }) {
   const colors = {
-    healthy: "bg-green-500",
-    warning: "bg-amber-500",
-    critical: "bg-red-500",
+    healthy: "bg-green-ink",
+    warning: "bg-amber",
+    critical: "bg-accent",
   };
   return (
     <span
       className={`w-1.5 h-1.5 rounded-full inline-block ${
-        colors[status as keyof typeof colors] ?? "bg-gray-300"
+        colors[status as keyof typeof colors] ?? "bg-rule/60"
       }`}
     />
   );
@@ -182,18 +182,18 @@ function MetricRow({
   const pct = metric.included_limit === -1 ? 0 : (metric.pct ?? 0);
   const barColor =
     metric.status === "critical"
-      ? "bg-red-500"
+      ? "bg-accent"
       : metric.status === "warning"
-        ? "bg-amber-500"
-        : "bg-green-500";
+        ? "bg-amber"
+        : "bg-green-ink";
 
   return (
     <div>
       <div className="flex justify-between text-xs mb-1">
-        <span className="text-gray-600 font-medium">
+        <span className="text-ink-soft font-medium">
           {metric.display_label ?? metric.metric}
         </span>
-        <span className="text-gray-500 tabular-nums">
+        <span className="text-ink-soft tabular-nums">
           {metric.value != null
             ? `${formatMetricValue(metric.value, metric.unit)} / ${
                 metric.included_limit === -1
@@ -203,7 +203,7 @@ function MetricRow({
             : "No data"}
         </span>
       </div>
-      <div className="h-1.5 bg-gray-100 rounded-full">
+      <div className="h-1.5 bg-rule/30 rounded-full">
         {metric.included_limit !== -1 && metric.value !== null && (
           <div
             className={`h-full rounded-full ${barColor}`}
@@ -212,10 +212,10 @@ function MetricRow({
         )}
       </div>
       {pct > 0 && (
-        <div className="text-xs text-gray-400 mt-0.5 text-right">{Math.round(pct)}%</div>
+        <div className="text-xs text-ink-soft/80 mt-0.5 text-right">{Math.round(pct)}%</div>
       )}
       {metric.metric === "cpu_pct" && metric.metadata && (
-        <div className="text-xs text-gray-500 mt-0.5">
+        <div className="text-xs text-ink-soft mt-0.5">
           max 1h: {metric.metadata.cpu_max_1h != null
             ? `${Math.round(metric.metadata.cpu_max_1h)}%`
             : "—"}
@@ -228,7 +228,7 @@ function MetricRow({
           30-day run-rate projected from a trailing ~Nd billing window; show the
           un-projected truth so it's verifiable against the Vercel dashboard. */}
       {metric.metadata?.is_projected && metric.metadata.raw_window_value != null && (
-        <div className="text-xs text-gray-400 mt-0.5">
+        <div className="text-xs text-ink-soft/80 mt-0.5">
           ~est. monthly run-rate · last {metric.metadata.window_days ?? "?"}d:{" "}
           {formatMetricValue(metric.metadata.raw_window_value, metric.unit)}
           {metric.metric === "monthly_spend_usd" &&
@@ -240,8 +240,8 @@ function MetricRow({
       {metric.metric === "monthly_spend_usd" &&
         metric.metadata?.cost_breakdown &&
         metric.metadata.cost_breakdown.length > 0 && (
-          <div className="text-xs text-gray-500 mt-1">
-            <div className="font-medium text-gray-400 mb-0.5">By service (run-rate $/mo)</div>
+          <div className="text-xs text-ink-soft mt-1">
+            <div className="font-medium text-ink-soft/80 mb-0.5">By service (run-rate $/mo)</div>
             {metric.metadata.cost_breakdown.slice(0, 6).map((b) => (
               <div key={b.service} className="flex justify-between py-0.5">
                 <span className="truncate max-w-[180px]">{b.service}</span>
@@ -254,14 +254,14 @@ function MetricRow({
         {metric.source !== null ? (
           <SourceIndicator display={metric.source_display} />
         ) : (
-          <span className="text-xs text-gray-300">No data</span>
+          <span className="text-xs text-ink-soft/60">No data</span>
         )}
         {isAdmin && (
           <div className="flex gap-2">
             {metric.source_display.needsVerification && onVerify && (
               <button
                 onClick={() => onVerify(metric)}
-                className="text-xs text-amber-600 hover:text-amber-800 font-medium"
+                className="text-xs text-amber hover:text-amber/80 font-medium"
               >
                 Verify
               </button>
@@ -269,7 +269,7 @@ function MetricRow({
             {onUpdate && (
               <button
                 onClick={() => onUpdate(metric)}
-                className="text-xs text-gray-400 hover:text-gray-700"
+                className="text-xs text-ink-soft/80 hover:text-ink"
               >
                 Update
               </button>
@@ -325,24 +325,24 @@ function AnthropicDetailPanel({
       {displayMetric && (
         <div>
           <div className="flex justify-between text-xs mb-1">
-            <span className="text-gray-600 font-medium">
+            <span className="text-ink-soft font-medium">
               {displayMetric.display_label ?? displayMetric.metric}
             </span>
-            <span className="text-gray-500 tabular-nums">
+            <span className="text-ink-soft tabular-nums">
               {displayMetric.value != null
                 ? `${fmtUsd(displayMetric.value)} / ${fmtUsd(displayMetric.included_limit)}`
                 : "No data"}
             </span>
           </div>
-          <div className="h-1.5 bg-gray-100 rounded-full">
+          <div className="h-1.5 bg-rule/30 rounded-full">
             {displayMetric.included_limit !== -1 && displayMetric.value !== null && (
               <div
                 className={`h-full rounded-full ${
                   displayMetric.status === "critical"
-                    ? "bg-red-500"
+                    ? "bg-accent"
                     : displayMetric.status === "warning"
-                      ? "bg-amber-500"
-                      : "bg-green-500"
+                      ? "bg-amber"
+                      : "bg-green-ink"
                 }`}
                 style={{ width: `${Math.min(displayMetric.pct ?? 0, 100)}%` }}
               />
@@ -355,7 +355,7 @@ function AnthropicDetailPanel({
                 {displayMetric.source_display.needsVerification && onVerify && (
                   <button
                     onClick={() => onVerify(displayMetric)}
-                    className="text-xs text-amber-600 hover:text-amber-800 font-medium"
+                    className="text-xs text-amber hover:text-amber/80 font-medium"
                   >
                     Verify
                   </button>
@@ -363,7 +363,7 @@ function AnthropicDetailPanel({
                 {onUpdate && (
                   <button
                     onClick={() => onUpdate(displayMetric)}
-                    className="text-xs text-gray-400 hover:text-gray-700"
+                    className="text-xs text-ink-soft/80 hover:text-ink"
                   >
                     Update
                   </button>
@@ -372,7 +372,7 @@ function AnthropicDetailPanel({
             )}
           </div>
           {showSubLabel && (
-            <div className="flex justify-between text-xs text-gray-400 mt-1">
+            <div className="flex justify-between text-xs text-ink-soft/80 mt-1">
               <span>${appOnlyCost.toFixed(2)} from Civitics app</span>
               <span>${((totalCost ?? 0) - appOnlyCost).toFixed(2)} other tools</span>
             </div>
@@ -381,41 +381,41 @@ function AnthropicDetailPanel({
       )}
 
       {/* Token breakdown table */}
-      <table className="w-full text-xs text-gray-600">
+      <table className="w-full text-xs text-ink-soft">
         <thead>
-          <tr className="text-gray-400 border-b border-gray-100 text-right">
+          <tr className="text-ink-soft/80 border-b border-rule/60 text-right">
             <th className="text-left pb-1.5 font-medium">Tokens</th>
             <th className="pb-1.5 font-medium">1h</th>
             <th className="pb-1.5 font-medium">24h</th>
             <th className="pb-1.5 font-medium">Month</th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-gray-50">
+        <tbody className="divide-y divide-rule/40">
           <tr className="text-right">
             <td className="text-left py-1.5">Input</td>
-            <td className="tabular-nums text-gray-400">—</td>
-            <td className="tabular-nums text-gray-400">—</td>
+            <td className="tabular-nums text-ink-soft/70">—</td>
+            <td className="tabular-nums text-ink-soft/70">—</td>
             <td className="tabular-nums">
               {fmtTokens(anthropicDetail?.this_month?.input_tokens ?? 0)}
             </td>
           </tr>
           <tr className="text-right">
             <td className="text-left py-1.5">Output</td>
-            <td className="tabular-nums text-gray-400">—</td>
-            <td className="tabular-nums text-gray-400">—</td>
+            <td className="tabular-nums text-ink-soft/70">—</td>
+            <td className="tabular-nums text-ink-soft/70">—</td>
             <td className="tabular-nums">
               {fmtTokens(anthropicDetail?.this_month?.output_tokens ?? 0)}
             </td>
           </tr>
           <tr className="text-right">
             <td className="text-left py-1.5">Cache hits</td>
-            <td className="tabular-nums text-gray-400">—</td>
-            <td className="tabular-nums text-gray-400">—</td>
+            <td className="tabular-nums text-ink-soft/70">—</td>
+            <td className="tabular-nums text-ink-soft/70">—</td>
             <td className="tabular-nums">
               {fmtTokens(anthropicDetail?.this_month?.cache_read_tokens ?? 0)}
             </td>
           </tr>
-          <tr className="text-right font-medium border-t border-gray-100">
+          <tr className="text-right font-medium border-t border-rule/60">
             <td className="text-left py-1.5">Total</td>
             <td className="tabular-nums">{fmtTokens(aiCosts?.last_hour_tokens ?? 0)}</td>
             <td className="tabular-nums">{fmtTokens(aiCosts?.last_24h_tokens ?? 0)}</td>
@@ -424,8 +424,8 @@ function AnthropicDetailPanel({
             </td>
           </tr>
           <tr className="text-right">
-            <td className="text-left py-1.5 text-gray-500">Cost</td>
-            <td className="tabular-nums text-gray-400">—</td>
+            <td className="text-left py-1.5 text-ink-soft">Cost</td>
+            <td className="tabular-nums text-ink-soft/70">—</td>
             <td className="tabular-nums">{fmtUsd(aiCosts?.last_24h_cost_usd ?? 0)}</td>
             <td className="tabular-nums font-medium">
               {fmtUsd(
@@ -439,11 +439,11 @@ function AnthropicDetailPanel({
       {/* By model breakdown */}
       {anthropicDetail?.this_month?.by_model &&
         anthropicDetail.this_month.by_model.length > 0 && (
-          <div className="text-xs text-gray-500">
-            <div className="font-medium text-gray-400 mb-1">By model</div>
+          <div className="text-xs text-ink-soft">
+            <div className="font-medium text-ink-soft/80 mb-1">By model</div>
             {anthropicDetail.this_month.by_model.map((m) => (
               <div key={m.model} className="flex justify-between py-0.5">
-                <span className="font-mono text-gray-400 truncate max-w-[180px]">
+                <span className="font-mono text-ink-soft/80 truncate max-w-[180px]">
                   {m.model.replace("claude-", "")}
                 </span>
                 <span className="tabular-nums">
@@ -533,23 +533,23 @@ function ServiceCard({
     Math.abs(anthropicDetail.this_month.cost_usd - appOnlyCost) > 0.01;
 
   return (
-    <div className="border border-gray-200 rounded-xl overflow-hidden bg-white">
+    <div className="border border-rule rounded-xl overflow-hidden bg-card">
       {/* Collapsed header — always visible */}
       <div className="p-4">
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
             <span>{meta.icon}</span>
-            <span className="font-medium text-sm text-gray-900">{meta.label}</span>
+            <span className="font-medium text-sm text-ink">{meta.label}</span>
             <StatusDot status={serviceStatus} />
           </div>
-          <span className="text-sm font-medium text-gray-700">
+          <span className="text-sm font-medium text-ink tabular-nums">
             ${totalCost.toFixed(2)}/mo
           </span>
         </div>
 
         {/* Top metric label */}
         {topMetric && (
-          <div className="text-xs text-gray-500 mb-1.5">
+          <div className="text-xs text-ink-soft mb-1.5">
             {topMetric.display_label ?? topMetric.metric}
           </div>
         )}
@@ -557,20 +557,20 @@ function ServiceCard({
         {/* Single progress bar */}
         {topMetric && (
           <>
-            <div className="h-1.5 bg-gray-100 rounded-full mb-2">
+            <div className="h-1.5 bg-rule/30 rounded-full mb-2">
               <div
                 className={`h-full rounded-full ${
                   displayBarStatus === "critical"
-                    ? "bg-red-500"
+                    ? "bg-accent"
                     : displayBarStatus === "warning"
-                      ? "bg-amber-500"
-                      : "bg-green-500"
+                      ? "bg-amber"
+                      : "bg-green-ink"
                 }`}
                 style={{ width: `${Math.min(displayBarPct, 100)}%` }}
               />
             </div>
             {showAnthropicSubLabel && (
-              <div className="flex justify-between text-xs text-gray-400 mt-1 mb-1">
+              <div className="flex justify-between text-xs text-ink-soft/80 mt-1 mb-1">
                 <span>${appOnlyCost.toFixed(2)} from Civitics app</span>
                 <span>
                   ${((anthropicDetail!.this_month!.cost_usd) - appOnlyCost).toFixed(2)} other tools
@@ -583,7 +583,7 @@ function ServiceCard({
         {/* Show/hide button */}
         <button
           onClick={() => setExpanded((e) => !e)}
-          className="text-xs text-gray-400 hover:text-gray-600 transition-colors flex items-center gap-1"
+          className="text-xs text-ink-soft/80 hover:text-ink transition-colors flex items-center gap-1"
         >
           <span>{expanded ? "▲" : "▾"}</span>
           {expanded ? "Hide details" : "Show details"}
@@ -609,7 +609,7 @@ function ServiceCard({
 
       {/* Expanded details */}
       {expanded && (
-        <div className="border-t border-gray-100 p-4 space-y-4 bg-gray-50/50">
+        <div className="border-t border-rule/60 p-4 space-y-4 bg-paper-2/50">
           {service === "anthropic" ? (
             <AnthropicDetailPanel
               aiCosts={aiCosts}
@@ -667,11 +667,11 @@ function UpdateModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-sm">
-        <h2 className="text-base font-semibold text-gray-900 mb-1">
+      <div className="bg-card rounded-xl shadow-xl p-6 w-full max-w-sm">
+        <h2 className="text-base font-semibold text-ink mb-1">
           Update {metric.display_label ?? metric.metric}
         </h2>
-        <p className="text-xs text-gray-500 mb-4">
+        <p className="text-xs text-ink-soft mb-4">
           Source will be set to <span className="font-medium">manual</span>.
           {link && (
             <>
@@ -681,7 +681,7 @@ function UpdateModal({
                 href={link}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-blue-600 hover:underline"
+                className="text-accent hover:underline"
               >
                 {metric.service} dashboard
               </a>{" "}
@@ -690,18 +690,18 @@ function UpdateModal({
           )}
         </p>
         <div className="mb-4">
-          <label className="text-xs font-medium text-gray-700 block mb-1">
+          <label className="text-xs font-medium text-ink-soft block mb-1">
             Value ({metric.unit})
           </label>
           <input
             type="number"
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
-            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full border border-rule bg-card text-ink rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
             autoFocus
           />
           {metric.value !== null && (
-            <p className="text-xs text-gray-400 mt-1">
+            <p className="text-xs text-ink-soft/80 mt-1">
               Current: {formatMetricValue(metric.value, metric.unit)}
             </p>
           )}
@@ -709,14 +709,14 @@ function UpdateModal({
         <div className="flex justify-end gap-3">
           <button
             onClick={onClose}
-            className="text-sm text-gray-500 hover:text-gray-700 px-3 py-1.5"
+            className="text-sm text-ink-soft hover:text-ink px-3 py-1.5"
           >
             Cancel
           </button>
           <button
             onClick={handleSave}
             disabled={saving}
-            className="text-sm bg-blue-600 text-white px-4 py-1.5 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+            className="text-sm bg-ink text-paper px-4 py-1.5 rounded-lg hover:bg-accent disabled:opacity-50"
           >
             {saving ? "Saving…" : "Save"}
           </button>
@@ -792,7 +792,7 @@ export function PlatformCostsSection({
         <SectionHeader icon="💰" title="Platform Costs" />
         <div className="mt-4">
           {!mounted ? (
-            <div className="animate-pulse bg-white rounded-xl border border-gray-200 shadow-sm h-48" />
+            <div className="animate-pulse bg-card rounded-xl border border-rule shadow-sm h-48" />
           ) : (
             <LoadingSkeleton variant="card" />
           )}
@@ -858,11 +858,11 @@ export function PlatformCostsSection({
         <div className="flex justify-between items-center mb-4 px-1 mt-4">
           <span className="text-2xl font-bold tabular-nums">
             ${totalMonthlyCost.toFixed(2)}
-            <span className="text-sm font-normal text-gray-500 ml-1">/month</span>
+            <span className="text-sm font-normal text-ink-soft ml-1">/month</span>
           </span>
-          <span className="text-xs text-gray-400">
+          <span className="text-xs text-ink-soft/80">
             On {platformUsage.plan} plan ·{" "}
-            <button className="underline hover:text-gray-600">Upgrade</button>
+            <button className="underline hover:text-ink">Upgrade</button>
           </span>
         </div>
 
@@ -891,7 +891,7 @@ export function PlatformCostsSection({
         </div>
 
         {/* Footer */}
-        <p className="text-xs text-center text-gray-400 mt-4">
+        <p className="text-xs text-center text-ink-soft/80 mt-4">
           Running a civic accountability platform tracking{" "}
           {chordTotalFlowUsd >= 1_000_000_000
             ? `$${(chordTotalFlowUsd / 1_000_000_000).toFixed(2)}B`

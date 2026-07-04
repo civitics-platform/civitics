@@ -166,7 +166,7 @@ export function ModerationSection() {
       type="button"
       onClick={() => setQueue(id)}
       className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
-        queue === id ? "bg-indigo-600 text-white" : "text-gray-600 hover:text-gray-900"
+        queue === id ? "bg-ink text-paper" : "text-ink-soft hover:text-ink"
       }`}
     >
       {label}
@@ -174,13 +174,13 @@ export function ModerationSection() {
   );
 
   return (
-    <section className="rounded-lg border border-gray-200 bg-white p-5">
+    <section className="rounded-lg border border-rule bg-card p-5">
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h2 className="text-sm font-semibold text-gray-900">Content Moderation</h2>
-          <p className="text-xs text-gray-400">User reports + investigation evidence review. Admin-only.</p>
+          <h2 className="text-sm font-semibold text-ink">Content Moderation</h2>
+          <p className="text-xs text-ink-soft/80">User reports + investigation evidence review. Admin-only.</p>
         </div>
-        <div className="flex gap-1 rounded-lg border border-gray-200 p-1">
+        <div className="flex gap-1 rounded-lg border border-rule p-1">
           <QueueBtn id="comments" label="Comments" />
           <QueueBtn id="promotion" label="Promotion" />
           <QueueBtn id="disputes" label="Disputes" />
@@ -189,14 +189,14 @@ export function ModerationSection() {
 
       {/* pending/resolved sub-toggle applies to comments + disputes */}
       {queue !== "promotion" && (
-        <div className="mb-3 flex gap-1 rounded-lg border border-gray-200 p-1 w-fit">
+        <div className="mb-3 flex gap-1 rounded-lg border border-rule p-1 w-fit">
           {(["pending", "resolved"] as const).map((t) => (
             <button
               key={t}
               type="button"
               onClick={() => setTab(t)}
               className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
-                tab === t ? "bg-gray-800 text-white" : "text-gray-600 hover:text-gray-900"
+                tab === t ? "bg-ink text-paper" : "text-ink-soft hover:text-ink"
               }`}
             >
               {t === "pending" ? "Pending" : "Resolved"}
@@ -208,9 +208,9 @@ export function ModerationSection() {
       {/* ── Comments queue (unchanged behavior) ── */}
       {queue === "comments" &&
         (flags === null ? (
-          <div className="text-xs text-gray-400">Loading…</div>
+          <div className="text-xs text-ink-soft/80">Loading…</div>
         ) : flags.length === 0 ? (
-          <div className="text-xs text-gray-400 py-4 text-center">
+          <div className="text-xs text-ink-soft/80 py-4 text-center">
             {tab === "pending" ? "No pending flags." : "No resolved flags yet."}
           </div>
         ) : (
@@ -219,36 +219,36 @@ export function ModerationSection() {
               const link = contextLink(f);
               const body = f.content?.body ?? "(content unavailable)";
               return (
-                <li key={f.id} className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                <li key={f.id} className="rounded-lg border border-rule bg-paper-2 p-3">
                   <div className="flex items-start justify-between gap-3 mb-2">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700">
+                      <span className="rounded-full bg-accent/15 px-2 py-0.5 text-[10px] font-semibold text-accent">
                         {REASON_LABELS[f.reason] ?? f.reason}
                       </span>
-                      <span className="text-[10px] text-gray-500">
+                      <span className="text-[10px] text-ink-soft">
                         {f.content_type === "civic_comment" ? "Proposal comment" : "Official comment"}
                       </span>
-                      <span className="text-[10px] text-gray-400">{formatDate(f.created_at)}</span>
+                      <span className="text-[10px] text-ink-soft/70">{formatDate(f.created_at)}</span>
                       {f.content?.is_deleted && (
-                        <span className="rounded bg-gray-200 px-1.5 py-0.5 text-[10px] text-gray-600">already deleted</span>
+                        <span className="rounded bg-rule/60 px-1.5 py-0.5 text-[10px] text-ink-soft">already deleted</span>
                       )}
                     </div>
                     {link && (
-                      <a href={link} target="_blank" rel="noopener noreferrer" className="text-[10px] text-indigo-600 hover:underline">
+                      <a href={link} target="_blank" rel="noopener noreferrer" className="text-[10px] text-accent hover:underline">
                         open context ↗
                       </a>
                     )}
                   </div>
-                  <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">{body}</p>
-                  {f.note && <p className="mt-2 text-[11px] text-gray-500 italic">Reporter note: {f.note}</p>}
+                  <p className="text-sm text-ink whitespace-pre-wrap leading-relaxed">{body}</p>
+                  {f.note && <p className="mt-2 text-[11px] text-ink-soft italic">Reporter note: {f.note}</p>}
                   {!f.resolved && (
                     <div className="mt-3 flex gap-2">
                       <button type="button" onClick={() => act(f.id, "dismiss")} disabled={busy === f.id}
-                        className="rounded border border-gray-300 bg-white px-2.5 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50">
+                        className="rounded border border-rule bg-card px-2.5 py-1 text-[11px] text-ink-soft hover:bg-ink/5 disabled:opacity-50">
                         Dismiss
                       </button>
                       <button type="button" onClick={() => act(f.id, "delete")} disabled={busy === f.id || f.content?.is_deleted}
-                        className="rounded bg-red-600 px-2.5 py-1 text-[11px] font-medium text-white hover:bg-red-700 disabled:opacity-50">
+                        className="rounded bg-accent px-2.5 py-1 text-[11px] font-medium text-paper hover:bg-accent/85 disabled:opacity-50">
                         {busy === f.id ? "…" : "Delete comment"}
                       </button>
                     </div>
@@ -262,50 +262,50 @@ export function ModerationSection() {
       {/* ── Promotion-review queue ── */}
       {queue === "promotion" &&
         (promotion === null ? (
-          <div className="text-xs text-gray-400">Loading…</div>
+          <div className="text-xs text-ink-soft/80">Loading…</div>
         ) : promotion.length === 0 ? (
-          <div className="text-xs text-gray-400 py-4 text-center">No cards awaiting promotion review.</div>
+          <div className="text-xs text-ink-soft/80 py-4 text-center">No cards awaiting promotion review.</div>
         ) : (
           <ul className="space-y-3">
             {promotion.map((c) => (
-              <li key={c.id} className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+              <li key={c.id} className="rounded-lg border border-rule bg-paper-2 p-3">
                 <div className="flex flex-wrap items-center gap-2 mb-2">
-                  <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-semibold text-blue-700">
+                  <span className="rounded-full bg-civic-blue/15 px-2 py-0.5 text-[10px] font-semibold text-civic-blue">
                     {c.status === "promoted" ? "Promoted · disputed" : "Corroborated"}
                   </span>
-                  <span className="text-[10px] text-gray-500">{c.corroboration_count} independent · {c.citation_count} citations</span>
+                  <span className="text-[10px] text-ink-soft">{c.corroboration_count} independent · {c.citation_count} citations</span>
                   {c.subject_is_private_person && (
-                    <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800">private individual</span>
+                    <span className="rounded bg-amber/20 px-1.5 py-0.5 text-[10px] font-semibold text-amber">private individual</span>
                   )}
                   <a href={`/investigations/${c.investigation_id}`} target="_blank" rel="noopener noreferrer"
-                    className="ml-auto text-[10px] text-indigo-600 hover:underline">
+                    className="ml-auto text-[10px] text-accent hover:underline">
                     {c.investigation_title || "case file"} ↗
                   </a>
                 </div>
-                <p className="text-[11px] font-medium text-gray-500">
-                  {c.from_name || c.from_type} <span className="text-gray-400">—{(c.relationship_kind ?? "").replace(/_/g, " ")}→</span> {c.to_name || c.to_type}
+                <p className="text-[11px] font-medium text-ink-soft">
+                  {c.from_name || c.from_type} <span className="text-ink-soft/70">—{(c.relationship_kind ?? "").replace(/_/g, " ")}→</span> {c.to_name || c.to_type}
                 </p>
-                <p className="mt-1 text-sm text-gray-800 leading-relaxed">{c.claim_text}</p>
+                <p className="mt-1 text-sm text-ink leading-relaxed">{c.claim_text}</p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {c.status === "corroborated" && (
                     <button type="button" onClick={() => cardAct(c.id, "promote")} disabled={busy === c.id}
-                      className="rounded bg-green-700 px-2.5 py-1 text-[11px] font-medium text-white hover:bg-green-800 disabled:opacity-50">
+                      className="rounded bg-green-ink px-2.5 py-1 text-[11px] font-medium text-paper hover:bg-green-ink/85 disabled:opacity-50">
                       {busy === c.id ? "…" : "Approve → promote"}
                     </button>
                   )}
                   {c.status === "promoted" && (
                     <button type="button" onClick={() => cardAct(c.id, "unpromote")} disabled={busy === c.id}
-                      className="rounded border border-gray-300 bg-white px-2.5 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50">
+                      className="rounded border border-rule bg-card px-2.5 py-1 text-[11px] text-ink-soft hover:bg-ink/5 disabled:opacity-50">
                       Unpromote
                     </button>
                   )}
                   <button type="button" onClick={() => cardAct(c.id, "reject")} disabled={busy === c.id}
-                    className="rounded bg-red-600 px-2.5 py-1 text-[11px] font-medium text-white hover:bg-red-700 disabled:opacity-50">
+                    className="rounded bg-accent px-2.5 py-1 text-[11px] font-medium text-paper hover:bg-accent/85 disabled:opacity-50">
                     Reject
                   </button>
                   {c.subject_is_private_person && (
                     <button type="button" onClick={() => cardAct(c.id, "clear")} disabled={busy === c.id}
-                      className="rounded border border-amber-400 bg-white px-2.5 py-1 text-[11px] text-amber-800 hover:bg-amber-50 disabled:opacity-50">
+                      className="rounded border border-amber/60 bg-card px-2.5 py-1 text-[11px] text-amber hover:bg-amber/10 disabled:opacity-50">
                       Clear private-person
                     </button>
                   )}
@@ -318,40 +318,40 @@ export function ModerationSection() {
       {/* ── Disputes queue ── */}
       {queue === "disputes" &&
         (disputes === null ? (
-          <div className="text-xs text-gray-400">Loading…</div>
+          <div className="text-xs text-ink-soft/80">Loading…</div>
         ) : disputes.length === 0 ? (
-          <div className="text-xs text-gray-400 py-4 text-center">
+          <div className="text-xs text-ink-soft/80 py-4 text-center">
             {tab === "pending" ? "No open disputes." : "No resolved disputes yet."}
           </div>
         ) : (
           <ul className="space-y-3">
             {disputes.map((d) => (
-              <li key={d.id} className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+              <li key={d.id} className="rounded-lg border border-rule bg-paper-2 p-3">
                 <div className="flex flex-wrap items-center gap-2 mb-2">
-                  <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700">
+                  <span className="rounded-full bg-accent/15 px-2 py-0.5 text-[10px] font-semibold text-accent">
                     {REASON_LABELS[d.reason] ?? d.reason}
                   </span>
                   {d.card && (
-                    <span className="text-[10px] text-gray-500">card status: {d.card.status}</span>
+                    <span className="text-[10px] text-ink-soft">card status: {d.card.status}</span>
                   )}
-                  <span className="text-[10px] text-gray-400">{formatDate(d.created_at)}</span>
+                  <span className="text-[10px] text-ink-soft/70">{formatDate(d.created_at)}</span>
                   {d.card && (
                     <a href={`/investigations/${d.card.investigation_id}`} target="_blank" rel="noopener noreferrer"
-                      className="ml-auto text-[10px] text-indigo-600 hover:underline">
+                      className="ml-auto text-[10px] text-accent hover:underline">
                       {d.card.investigation_title || "case file"} ↗
                     </a>
                   )}
                 </div>
-                <p className="text-sm text-gray-800 leading-relaxed">{d.card?.claim_text ?? "(card unavailable)"}</p>
-                {d.note && <p className="mt-2 text-[11px] text-gray-500 italic">Reporter note: {d.note}</p>}
+                <p className="text-sm text-ink leading-relaxed">{d.card?.claim_text ?? "(card unavailable)"}</p>
+                {d.note && <p className="mt-2 text-[11px] text-ink-soft italic">Reporter note: {d.note}</p>}
                 {d.card && d.card.status !== "rejected" && (
                   <div className="mt-3 flex gap-2">
                     <button type="button" onClick={() => cardAct(d.content_id, "dismiss_flags")} disabled={busy === d.content_id}
-                      className="rounded border border-gray-300 bg-white px-2.5 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50">
+                      className="rounded border border-rule bg-card px-2.5 py-1 text-[11px] text-ink-soft hover:bg-ink/5 disabled:opacity-50">
                       Dismiss flags
                     </button>
                     <button type="button" onClick={() => cardAct(d.content_id, "reject")} disabled={busy === d.content_id}
-                      className="rounded bg-red-600 px-2.5 py-1 text-[11px] font-medium text-white hover:bg-red-700 disabled:opacity-50">
+                      className="rounded bg-accent px-2.5 py-1 text-[11px] font-medium text-paper hover:bg-accent/85 disabled:opacity-50">
                       {busy === d.content_id ? "…" : "Reject card"}
                     </button>
                   </div>

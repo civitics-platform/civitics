@@ -23,26 +23,26 @@ const extraStatusMap: Partial<
 > = {
   pending: {
     label: "Pending",
-    color: "text-gray-600",
-    bgColor: "bg-gray-50",
+    color: "text-ink-soft",
+    bgColor: "bg-rule/40",
     icon: "○",
   },
   ok: {
     label: "OK",
-    color: "text-green-700",
-    bgColor: "bg-green-50",
+    color: "text-green-ink",
+    bgColor: "bg-green-ink/10",
     icon: "✓",
   },
   warning: {
     label: "Warning",
-    color: "text-amber-700",
-    bgColor: "bg-amber-50",
+    color: "text-ink",
+    bgColor: "bg-amber/20",
     icon: "⚠",
   },
   error: {
     label: "Error",
-    color: "text-red-700",
-    bgColor: "bg-red-50",
+    color: "text-accent",
+    bgColor: "bg-accent/10",
     icon: "✗",
   },
 };

@@ -8,13 +8,13 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
 
 const variantClasses: Record<NonNullable<ButtonProps["variant"]>, string> = {
   primary:
-    "bg-civic-600 text-white hover:bg-civic-700 focus-visible:ring-civic-500",
+    "bg-ink text-paper hover:bg-accent focus-visible:ring-accent",
   secondary:
-    "bg-white text-civic-900 border border-gray-300 hover:bg-gray-50 focus-visible:ring-civic-500",
+    "bg-card text-ink border border-rule hover:border-accent hover:text-accent focus-visible:ring-accent",
   ghost:
-    "text-civic-700 hover:bg-civic-50 focus-visible:ring-civic-500",
+    "text-accent hover:bg-ink/5 focus-visible:ring-accent",
   destructive:
-    "bg-red-600 text-white hover:bg-red-700 focus-visible:ring-red-500",
+    "bg-accent text-paper hover:bg-accent/85 focus-visible:ring-accent",
 };
 
 const sizeClasses: Record<NonNullable<ButtonProps["size"]>, string> = {

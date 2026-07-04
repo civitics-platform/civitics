@@ -254,10 +254,19 @@ export default async function DashboardPage({
   ]);
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    // Terminal Wave 1 (FIX-720): everything below the site masthead is a dark
+    // live instrument. The data-theme scope re-binds every semantic token, so
+    // bg-paper renders as term-bg and the tokenized @civitics/ui components
+    // (FIX-719) go dark without forking. text-ink must be restated here so the
+    // inherited body color re-resolves inside the scope.
+    <div data-theme="terminal" className="min-h-screen bg-paper text-ink">
       <PageViewTracker entityType="dashboard" />
       <main id="main-content">
         <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+          <p className="mb-3 flex items-center gap-2 font-mono text-[10.5px] font-semibold uppercase tracking-[0.22em] text-amber">
+            <span className="h-[7px] w-[7px] animate-pulse rounded-full bg-amber motion-reduce:animate-none" />
+            Platform transparency — Live
+          </p>
           <PageHeader
             title="Platform Transparency"
             description="Live data on what Civitics tracks, how pipelines are performing, and what the platform costs to run. This page is our receipt."

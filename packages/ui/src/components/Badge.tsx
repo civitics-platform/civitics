@@ -5,13 +5,15 @@ export interface BadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
   variant?: "democrat" | "republican" | "independent" | "neutral" | "agency" | "proposal";
 }
 
+// Party hues are categorical, not status — viz-7 (wine) stands in for the
+// independent purple since the semantic set has no purple (FIX-719).
 const variantClasses: Record<NonNullable<BadgeProps["variant"]>, string> = {
-  democrat: "border-blue-500 text-blue-700 bg-blue-50",
-  republican: "border-red-500 text-red-700 bg-red-50",
-  independent: "border-purple-500 text-purple-700 bg-purple-50",
-  neutral: "border-gray-300 text-gray-700 bg-gray-50",
-  agency: "border-gray-400 text-gray-800 bg-gray-100",
-  proposal: "border-amber-400 text-amber-800 bg-amber-50",
+  democrat: "border-civic-blue/60 text-civic-blue bg-civic-blue/10",
+  republican: "border-accent/60 text-accent bg-accent/10",
+  independent: "border-viz-7/60 text-viz-7 bg-viz-7/10",
+  neutral: "border-rule text-ink-soft bg-paper-2",
+  agency: "border-rule text-ink bg-paper-2",
+  proposal: "border-amber/60 text-ink bg-amber/20",
 };
 
 export function Badge({ className, variant = "neutral", ...props }: BadgeProps) {

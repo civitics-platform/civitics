@@ -43,15 +43,15 @@ export function PipelineRow({
       : "pending";
 
   return (
-    <div className="flex items-center gap-3 py-3 px-4 hover:bg-gray-50 transition-colors duration-150">
+    <div className="flex items-center gap-3 py-3 px-4 hover:bg-ink/5 transition-colors duration-150">
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-gray-900 truncate">
+          <span className="text-sm font-medium text-ink truncate">
             {label}
           </span>
           {isDelta && (
             <span
-              className="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium bg-purple-50 text-purple-700"
+              className="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium bg-civic-blue/10 text-civic-blue"
               title="Delta mode — only new data processed"
             >
               δ
@@ -63,25 +63,25 @@ export function PipelineRow({
       <StatusBadge status={validStatus} size="sm" />
 
       {completedAt && (
-        <span className="text-xs text-gray-400 w-20 text-right shrink-0">
+        <span className="text-xs text-ink-soft/80 w-20 text-right shrink-0">
           {formatRelativeTime(completedAt)}
         </span>
       )}
 
       {typeof rowsInserted === "number" && (
-        <span className="text-xs text-gray-500 w-16 text-right shrink-0">
+        <span className="text-xs text-ink-soft w-16 text-right shrink-0">
           {formatNumber(rowsInserted, { compact: true })} rows
         </span>
       )}
 
       {typeof duration === "number" && duration > 0 && (
-        <span className="text-xs text-gray-400 w-14 text-right shrink-0">
+        <span className="text-xs text-ink-soft/80 w-14 text-right shrink-0">
           {formatDuration(duration)}
         </span>
       )}
 
       {typeof cost === "number" && cost > 0 && (
-        <span className="text-xs text-gray-400 w-10 text-right shrink-0">
+        <span className="text-xs text-ink-soft/80 w-10 text-right shrink-0">
           ${cost.toFixed(2)}
         </span>
       )}

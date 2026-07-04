@@ -18,13 +18,15 @@ function deriveUrgency(deadline: string): CommentPeriodCardProps["urgency"] {
   return "normal";
 }
 
+// "soon" text stays ink — amber text is unreadable on paper; the amber tint
+// carries the urgency (FIX-719).
 const urgencyStyles: Record<
   NonNullable<CommentPeriodCardProps["urgency"]>,
   string
 > = {
-  critical: "text-red-700 bg-red-50",
-  soon: "text-amber-700 bg-amber-50",
-  normal: "text-gray-600 bg-gray-100",
+  critical: "text-accent bg-accent/10",
+  soon: "text-ink bg-amber/20",
+  normal: "text-ink-soft bg-rule/40",
 };
 
 export function CommentPeriodCard({
@@ -39,12 +41,12 @@ export function CommentPeriodCard({
   const countdown = formatCountdown(deadline);
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 flex flex-col gap-3">
+    <div className="bg-card rounded-xl border border-rule shadow-sm p-4 flex flex-col gap-3">
       <div>
-        <span className="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-700 mb-2">
+        <span className="inline-flex items-center rounded-full bg-paper-2 px-2.5 py-0.5 text-xs font-medium text-ink-soft mb-2">
           {agency}
         </span>
-        <p className="text-sm font-medium text-gray-900 line-clamp-2">{title}</p>
+        <p className="text-sm font-medium text-ink line-clamp-2">{title}</p>
       </div>
       <div className="flex items-center justify-between gap-2 mt-auto">
         <span
@@ -54,7 +56,7 @@ export function CommentPeriodCard({
         </span>
         <a
           href={href}
-          className="inline-flex items-center rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 transition-colors duration-150 shrink-0"
+          className="inline-flex items-center rounded-lg bg-ink px-3 py-1.5 text-xs font-medium text-paper hover:bg-accent transition-colors duration-150 shrink-0"
         >
           Comment →
         </a>

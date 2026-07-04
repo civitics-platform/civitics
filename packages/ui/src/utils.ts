@@ -54,40 +54,43 @@ export function formatPipelineStatus(status: string): {
   bgColor: string;
   icon: string;
 } {
+  // Semantic status map (FIX-719): green-ink / civic-blue / amber / accent.
+  // Warning-tier text stays ink (amber text is unreadable on paper — the
+  // amber tint on the chrome carries the semantics in both modes).
   switch (status) {
     case "complete":
       return {
         label: "Complete",
-        color: "text-green-700",
-        bgColor: "bg-green-50",
+        color: "text-green-ink",
+        bgColor: "bg-green-ink/10",
         icon: "✓",
       };
     case "running":
       return {
         label: "Running",
-        color: "text-blue-700",
-        bgColor: "bg-blue-50",
+        color: "text-civic-blue",
+        bgColor: "bg-civic-blue/10",
         icon: "⟳",
       };
     case "interrupted":
       return {
         label: "Interrupted",
-        color: "text-amber-700",
-        bgColor: "bg-amber-50",
+        color: "text-ink",
+        bgColor: "bg-amber/20",
         icon: "⚠",
       };
     case "failed":
       return {
         label: "Failed",
-        color: "text-red-700",
-        bgColor: "bg-red-50",
+        color: "text-accent",
+        bgColor: "bg-accent/10",
         icon: "✗",
       };
     default:
       return {
         label: status,
-        color: "text-gray-600",
-        bgColor: "bg-gray-50",
+        color: "text-ink-soft",
+        bgColor: "bg-rule/40",
         icon: "○",
       };
   }

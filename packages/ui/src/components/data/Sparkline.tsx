@@ -10,7 +10,9 @@ interface SparklineProps {
 
 export function Sparkline({
   data,
-  color = "#2563eb",
+  // Default follows the semantic civic-blue var so terminal scopes re-bind it;
+  // callers can still pass any CSS color (FIX-719).
+  color = "rgb(var(--c-blue))",
   height = 32,
   width = 80,
   showArea = false,
@@ -51,10 +53,12 @@ export function Sparkline({
       viewBox={`0 0 ${width} ${height}`}
       aria-hidden="true"
     >
+      {/* Colors go through style= — var() isn't valid in SVG presentation
+          attributes, but works as a CSS property. */}
       {showArea && (
-        <path d={areaPath} fill={color} fillOpacity={0.1} stroke="none" />
+        <path d={areaPath} style={{ fill: color }} fillOpacity={0.1} stroke="none" />
       )}
-      <path d={linePath} fill="none" stroke={color} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
+      <path d={linePath} fill="none" style={{ stroke: color }} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }

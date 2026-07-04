@@ -9,13 +9,15 @@ interface DataQualityBarProps {
   color?: "green" | "blue" | "amber";
 }
 
+// Amber pct text stays ink — amber text is unreadable on paper; the amber
+// bar fill carries the semantics (FIX-719).
 const colorStyles: Record<
   NonNullable<DataQualityBarProps["color"]>,
   { bar: string; text: string }
 > = {
-  green: { bar: "bg-green-500", text: "text-green-700" },
-  blue: { bar: "bg-blue-500", text: "text-blue-700" },
-  amber: { bar: "bg-amber-500", text: "text-amber-700" },
+  green: { bar: "bg-green-ink", text: "text-green-ink" },
+  blue: { bar: "bg-civic-blue", text: "text-civic-blue" },
+  amber: { bar: "bg-amber", text: "text-ink" },
 };
 
 export function DataQualityBar({
@@ -31,19 +33,19 @@ export function DataQualityBar({
   return (
     <div>
       <div className="flex items-center justify-between mb-1">
-        <span className="text-sm text-gray-700">{label}</span>
+        <span className="text-sm text-ink-soft">{label}</span>
         <span className={`text-sm font-medium tabular-nums ${styles.text}`}>
           {clampedPct.toFixed(1)}%
         </span>
       </div>
-      <div className="h-2 w-full rounded-full bg-gray-100 overflow-hidden">
+      <div className="h-2 w-full rounded-full bg-rule/40 overflow-hidden">
         <div
           className={`h-full rounded-full transition-all duration-200 ${styles.bar}`}
           style={{ width: `${clampedPct}%` }}
         />
       </div>
       {total !== undefined && (
-        <div className="mt-0.5 text-xs text-gray-400">
+        <div className="mt-0.5 text-xs text-ink-soft/80">
           {formatNumber(value)} of {formatNumber(total)}
         </div>
       )}

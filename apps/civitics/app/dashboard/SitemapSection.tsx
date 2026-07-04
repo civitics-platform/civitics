@@ -83,7 +83,7 @@ export function SitemapSection() {
           <a
             key={r.href}
             href={r.href}
-            className="group rounded-lg border border-gray-200 bg-white p-4 transition-colors duration-150 hover:border-blue-300 hover:bg-blue-50/40"
+            className="group rounded-lg border border-rule bg-card p-4 transition-colors duration-150 hover:border-accent/50 hover:bg-ink/5"
           >
             <div className="flex items-start gap-3">
               <span className="text-xl leading-none" aria-hidden="true">
@@ -91,20 +91,20 @@ export function SitemapSection() {
               </span>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
-                  <h3 className="text-sm font-semibold text-gray-900 group-hover:text-blue-700">
+                  <h3 className="text-sm font-semibold text-ink group-hover:text-accent">
                     {r.title}
                   </h3>
-                  <code className="truncate rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-mono text-gray-600">
+                  <code className="truncate rounded bg-ink/10 px-1.5 py-0.5 text-[10px] font-mono text-ink-soft">
                     {r.href}
                   </code>
                 </div>
-                <p className="mt-1 text-xs leading-relaxed text-gray-600">
+                <p className="mt-1 text-xs leading-relaxed text-ink-soft">
                   {r.description}
                 </p>
               </div>
               <span
                 aria-hidden="true"
-                className="text-xs text-gray-300 transition-colors duration-150 group-hover:text-blue-500"
+                className="text-xs text-ink-soft/50 transition-colors duration-150 group-hover:text-accent"
               >
                 →
               </span>
@@ -112,8 +112,8 @@ export function SitemapSection() {
           </a>
         ))}
       </div>
-      <p className="mt-4 text-xs text-gray-500">
-        New here? Start with <a href="/proposals" className="text-blue-600 hover:underline">Proposals</a> to see what&apos;s open for comment, or explore the <a href="/graph" className="text-blue-600 hover:underline">Connection Graph</a> to follow the money.
+      <p className="mt-4 text-xs text-ink-soft">
+        New here? Start with <a href="/proposals" className="text-accent hover:underline">Proposals</a> to see what&apos;s open for comment, or explore the <a href="/graph" className="text-accent hover:underline">Connection Graph</a> to follow the money.
       </p>
     </SectionCard>
   );

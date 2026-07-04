@@ -347,12 +347,14 @@ const PIPELINES: PipelineDef[] = [
   },
 ];
 
+// Semantic status map (FIX-720) — re-binds to term-green/term-blue/amber/
+// term-red inside the dashboard's terminal scope.
 const PIPELINE_STATUS_COLOR: Record<string, string> = {
-  complete: "bg-green-500",
-  running: "bg-blue-500",
-  interrupted: "bg-amber-500",
-  failed: "bg-red-500",
-  pending: "bg-gray-300",
+  complete: "bg-green-ink",
+  running: "bg-civic-blue",
+  interrupted: "bg-amber",
+  failed: "bg-accent",
+  pending: "bg-rule/60",
 };
 
 // Lookup: writer-side alias → canonical PipelineDef (used to bucket history
@@ -551,9 +553,9 @@ function CommentPeriodsSection({ openProposals }: { openProposals: OpenProposal[
                 />
               ))}
             </div>
-            <p className="mt-4 text-xs text-gray-500">
+            <p className="mt-4 text-xs text-ink-soft">
               Submitting a comment is free and always will be.{" "}
-              <a href="/proposals?status=open" className="text-blue-600 hover:underline">
+              <a href="/proposals?status=open" className="text-accent hover:underline">
                 View all open proposals →
               </a>
             </p>
@@ -585,7 +587,7 @@ function StatusSparkline({ runs }: { runs: PipelineHistoryRun[] }) {
               : "no run"
           }
           className={`block h-3 w-3 rounded-sm ${
-            run ? PIPELINE_STATUS_COLOR[run.status] ?? "bg-gray-300" : "bg-gray-100"
+            run ? PIPELINE_STATUS_COLOR[run.status] ?? "bg-rule/60" : "bg-rule/30"
           }`}
         />
       ))}
@@ -604,19 +606,21 @@ function HealthMetricTile({
   sub?: React.ReactNode;
   tone?: "ok" | "warning" | "error" | "neutral";
 }) {
+  // text-amber is fine here — this tile only renders inside the dashboard's
+  // terminal scope, where amber reads on the dark panel.
   const toneCls =
     tone === "ok"
-      ? "text-green-700"
+      ? "text-green-ink"
       : tone === "warning"
-      ? "text-amber-700"
+      ? "text-amber"
       : tone === "error"
-      ? "text-red-700"
-      : "text-gray-900";
+      ? "text-accent"
+      : "text-ink";
   return (
-    <div className="flex-1 min-w-[140px] rounded-lg border border-gray-100 bg-gray-50/60 px-4 py-3">
-      <div className="text-[11px] uppercase tracking-wide text-gray-500">{label}</div>
+    <div className="flex-1 min-w-[140px] rounded-lg border border-rule/60 bg-paper-2/60 px-4 py-3">
+      <div className="font-mono text-[11px] uppercase tracking-wide text-ink-soft">{label}</div>
       <div className={`mt-1 text-lg font-semibold tabular-nums ${toneCls}`}>{value}</div>
-      {sub && <div className="text-xs text-gray-500 mt-0.5">{sub}</div>}
+      {sub && <div className="text-xs text-ink-soft mt-0.5">{sub}</div>}
     </div>
   );
 }
@@ -754,18 +758,18 @@ function DataHealthRow({
   }
 
   return (
-    <div className="border-t border-gray-100 first:border-t-0">
+    <div className="border-t border-rule/60 first:border-t-0">
       <button
         type="button"
         onClick={() => setExpanded((e) => !e)}
         aria-expanded={expanded}
-        className="w-full flex items-center gap-3 px-6 py-3 hover:bg-gray-50 transition-colors text-left"
+        className="w-full flex items-center gap-3 px-6 py-3 hover:bg-ink/5 transition-colors text-left"
       >
-        <span className="text-gray-400 text-xs w-3 shrink-0">
+        <span className="text-ink-soft/70 text-xs w-3 shrink-0">
           {expanded ? "▾" : "▸"}
         </span>
         <span className="flex-1 min-w-0 flex items-center gap-3">
-          <span className="text-sm font-medium text-gray-900 truncate w-40 shrink-0">
+          <span className="text-sm font-medium text-ink truncate w-40 shrink-0">
             {def.display}
           </span>
           {/* Total entities — the primary fact for this row. Show the first
@@ -773,17 +777,17 @@ function DataHealthRow({
               count under FEC) appear in the expanded panel. */}
           {primaryTotal ? (
             <span className="tabular-nums w-52 shrink-0">
-              <span className="text-sm font-semibold text-gray-900">
+              <span className="text-sm font-semibold text-ink">
                 {formatNumber(primaryTotal.value)}
               </span>{" "}
-              <span className="text-xs text-gray-500">{primaryTotal.label}</span>
+              <span className="text-xs text-ink-soft">{primaryTotal.label}</span>
             </span>
           ) : (
-            <span className="text-xs text-gray-400 w-52 shrink-0">no DB mapping</span>
+            <span className="text-xs text-ink-soft/70 w-52 shrink-0">no DB mapping</span>
           )}
           <span
             className={`text-xs tabular-nums w-20 shrink-0 ${
-              delta > 0 ? "text-green-700" : delta < 0 ? "text-rose-700" : "text-gray-400"
+              delta > 0 ? "text-green-ink" : delta < 0 ? "text-accent" : "text-ink-soft/70"
             }`}
             title="Δ rows_inserted vs prior run"
           >
@@ -795,23 +799,23 @@ function DataHealthRow({
         </span>
         {seedWarnings.length > 0 && (
           <span
-            className="text-[11px] font-medium text-amber-800 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5 shrink-0"
+            className="text-[11px] font-medium text-amber bg-amber/15 border border-amber/40 rounded px-1.5 py-0.5 shrink-0"
             title={seedWarnings.join("\n")}
           >
             ⚠ {seedWarnings.length} warning{seedWarnings.length === 1 ? "" : "s"}
           </span>
         )}
         <StatusBadge status={rowStatus} size="sm" />
-        <span className="text-xs text-gray-400 w-28 text-right shrink-0" suppressHydrationWarning>
+        <span className="text-xs text-ink-soft/80 w-28 text-right shrink-0" suppressHydrationWarning>
           {timestampLabel}
         </span>
       </button>
 
       {expanded && (
-        <div className="bg-gray-50/60 border-t border-gray-100 px-6 py-4 space-y-4">
+        <div className="bg-paper-2/60 border-t border-rule/60 px-6 py-4 space-y-4">
           {/* Author note (e.g. "no startSync writer yet") if present */}
           {def.note && (
-            <div className="rounded-md border border-amber-200 bg-amber-50/60 px-3 py-2 text-xs text-amber-900">
+            <div className="rounded-md border border-amber/40 bg-amber/10 px-3 py-2 text-xs text-ink">
               {def.note}
             </div>
           )}
@@ -819,7 +823,7 @@ function DataHealthRow({
           {/* FIX-390: non-fatal seed warnings (metadata.seed_warnings, FIX-386).
               Green-with-warnings — listed here, not folded into the row status. */}
           {seedWarnings.length > 0 && (
-            <div className="rounded-md border border-amber-200 bg-amber-50/60 px-3 py-2 text-xs text-amber-900">
+            <div className="rounded-md border border-amber/40 bg-amber/10 px-3 py-2 text-xs text-ink">
               <div className="font-medium mb-1">
                 Seed warnings ({seedWarnings.length}) — non-fatal
               </div>
@@ -835,11 +839,11 @@ function DataHealthRow({
           {totals.length > 1 && (
             <div className="flex flex-wrap gap-x-6 gap-y-2">
               {totals.slice(1).map((t) => (
-                <div key={t.label} className="text-xs text-gray-600">
-                  <span className="font-semibold text-gray-900 tabular-nums">
+                <div key={t.label} className="text-xs text-ink-soft">
+                  <span className="font-semibold text-ink tabular-nums">
                     {formatNumber(t.value)}
                   </span>{" "}
-                  <span className="text-gray-500">{t.label}</span>
+                  <span className="text-ink-soft">{t.label}</span>
                 </div>
               ))}
             </div>
@@ -855,7 +859,7 @@ function DataHealthRow({
                 total={q.fec_coverage.total}
                 color="green"
               />
-              <div className="text-xs text-gray-600 self-end">
+              <div className="text-xs text-ink-soft self-end">
                 Missing state metadata:{" "}
                 <span className="font-medium tabular-nums">
                   {formatNumber(q.missing_state)}
@@ -893,12 +897,12 @@ function DataHealthRow({
               the rollup down. */}
           {def.aliases.length > 1 && (
             <div>
-              <div className="text-xs font-medium text-gray-700 mb-1.5">
+              <div className="text-xs font-medium text-ink-soft mb-1.5">
                 Sub-pipelines ({def.aliases.length}):
               </div>
-              <div className="overflow-hidden rounded-md border border-gray-100 bg-white">
+              <div className="overflow-hidden rounded-md border border-rule/60 bg-card">
                 <table className="w-full text-xs">
-                  <tbody className="divide-y divide-gray-100">
+                  <tbody className="divide-y divide-rule/60">
                     {aliasStates.map((s) => {
                       const propagating =
                         s.alias === worstAlias && aliasStates.length > 1;
@@ -913,18 +917,18 @@ function DataHealthRow({
                         : ((s.latest.status as RowStatus) ?? "pending");
                       return (
                         <tr key={s.alias}>
-                          <td className="px-3 py-1.5 font-mono text-[11px] text-gray-700">
+                          <td className="px-3 py-1.5 font-mono text-[11px] text-ink-soft">
                             {s.alias}
                           </td>
                           <td className="px-3 py-1.5">
                             <StatusBadge status={subStatus} size="sm" />
                           </td>
-                          <td className="px-3 py-1.5 text-gray-500 tabular-nums" suppressHydrationWarning>
+                          <td className="px-3 py-1.5 text-ink-soft tabular-nums" suppressHydrationWarning>
                             {s.latest?.completed_at
                               ? formatRelativeTime(s.latest.completed_at)
                               : "(no runs in window)"}
                           </td>
-                          <td className="px-3 py-1.5 text-amber-700 text-[11px]">
+                          <td className="px-3 py-1.5 text-amber text-[11px]">
                             {propagating ? "← propagating" : ""}
                           </td>
                         </tr>
@@ -939,10 +943,10 @@ function DataHealthRow({
           {/* Last 5 runs */}
           {history.length > 0 ? (
             <div>
-              <div className="text-xs font-medium text-gray-700 mb-1.5">Recent runs</div>
-              <div className="overflow-hidden rounded-md border border-gray-100">
+              <div className="text-xs font-medium text-ink-soft mb-1.5">Recent runs</div>
+              <div className="overflow-hidden rounded-md border border-rule/60">
                 <table className="w-full text-xs">
-                  <thead className="bg-gray-100 text-gray-600">
+                  <thead className="bg-paper-2 text-ink-soft">
                     <tr>
                       <th className="text-left font-medium px-3 py-1.5">Started</th>
                       <th className="text-right font-medium px-3 py-1.5">Inserted</th>
@@ -952,10 +956,10 @@ function DataHealthRow({
                       <th className="text-left font-medium px-3 py-1.5">Status</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-100 bg-white">
+                  <tbody className="divide-y divide-rule/60 bg-card">
                     {history.slice(0, 5).map((r, i) => (
                       <tr key={`${r.completed_at ?? r.started_at}-${i}`}>
-                        <td className="px-3 py-1.5 text-gray-700" suppressHydrationWarning>
+                        <td className="px-3 py-1.5 text-ink-soft" suppressHydrationWarning>
                           {r.started_at
                             ? new Date(r.started_at).toLocaleString("en-US", {
                                 month: "short",
@@ -968,17 +972,17 @@ function DataHealthRow({
                         <td className="px-3 py-1.5 text-right tabular-nums">
                           {formatNumber(r.rows_inserted ?? 0)}
                         </td>
-                        <td className="px-3 py-1.5 text-right tabular-nums text-gray-600">
+                        <td className="px-3 py-1.5 text-right tabular-nums text-ink-soft">
                           {formatNumber(r.rows_updated ?? 0)}
                         </td>
                         <td
                           className={`px-3 py-1.5 text-right tabular-nums ${
-                            (r.rows_failed ?? 0) > 0 ? "text-rose-700" : "text-gray-400"
+                            (r.rows_failed ?? 0) > 0 ? "text-accent" : "text-ink-soft/70"
                           }`}
                         >
                           {formatNumber(r.rows_failed ?? 0)}
                         </td>
-                        <td className="px-3 py-1.5 text-right tabular-nums text-gray-500">
+                        <td className="px-3 py-1.5 text-right tabular-nums text-ink-soft">
                           {r.estimated_mb != null
                             ? Math.round(Number(r.estimated_mb) * 10) / 10
                             : "—"}
@@ -1003,15 +1007,15 @@ function DataHealthRow({
               </div>
             </div>
           ) : (
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-ink-soft">
               No runs logged in <code>data_sync_log</code> for this pipeline.
             </p>
           )}
 
           {/* Most recent error */}
           {lastFailed?.error_message && (
-            <div className="rounded-md border border-rose-200 bg-rose-50/60 px-3 py-2">
-              <div className="text-xs font-medium text-rose-800 mb-0.5">
+            <div className="rounded-md border border-accent/40 bg-accent/10 px-3 py-2">
+              <div className="text-xs font-medium text-accent mb-0.5">
                 Latest failure ·{" "}
                 <span suppressHydrationWarning>
                   {lastFailed.completed_at
@@ -1019,32 +1023,32 @@ function DataHealthRow({
                     : "unknown time"}
                 </span>
               </div>
-              <pre className="text-[11px] text-rose-900 whitespace-pre-wrap break-words font-mono">
+              <pre className="text-[11px] text-ink whitespace-pre-wrap break-words font-mono">
                 {lastFailed.error_message}
               </pre>
             </div>
           )}
 
           {/* Footer: source link + retry hint */}
-          <div className="flex flex-wrap items-center gap-3 pt-1 text-xs text-gray-600">
+          <div className="flex flex-wrap items-center gap-3 pt-1 text-xs text-ink-soft">
             {def.source && (
               <a
                 href={def.source.href}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center rounded-full border border-gray-200 bg-white px-2.5 py-0.5 font-medium hover:border-blue-300 hover:text-blue-700 transition-colors"
+                className="inline-flex items-center rounded-full border border-rule bg-card px-2.5 py-0.5 font-medium hover:border-accent/50 hover:text-accent transition-colors"
               >
                 {def.source.label} ↗
               </a>
             )}
             {def.retryCmd && (
-              <span className="font-mono text-[11px] text-gray-500">
+              <span className="font-mono text-[11px] text-ink-soft">
                 ↻ <code>{def.retryCmd}</code>
               </span>
             )}
             {def.aliases.length > 1 && (
               <span
-                className="text-[11px] text-gray-400"
+                className="text-[11px] text-ink-soft/70"
                 title="data_sync_log writer-side names that get merged into this row"
               >
                 aliases: {def.aliases.join(", ")}
@@ -1085,7 +1089,7 @@ function DataHealthSection({
     return (
       <SectionCard>
         <SectionHeader icon={<RefreshCw size={16} />} title="Data Health" status="error" />
-        <p className="mt-3 text-sm text-rose-600">{pipelines.error}</p>
+        <p className="mt-3 text-sm text-accent">{pipelines.error}</p>
       </SectionCard>
     );
   }
@@ -1226,8 +1230,8 @@ function DataHealthSection({
             label="Enrichment backlog"
             value={
               <>
-                {formatNumber(backlog.pending_tag)} <span className="text-gray-400 text-sm">tag</span> ·{" "}
-                {formatNumber(backlog.pending_summary)} <span className="text-gray-400 text-sm">sum</span>
+                {formatNumber(backlog.pending_tag)} <span className="text-ink-soft/80 text-sm">tag</span> ·{" "}
+                {formatNumber(backlog.pending_summary)} <span className="text-ink-soft/80 text-sm">sum</span>
               </>
             }
             sub={
@@ -1323,7 +1327,7 @@ function ConnectionHighlightsSection({
         description="Top donation flows this cycle"
         action={{ label: "Explore graph", href: "/graph?preset=follow-the-money" }}
       />
-      <div className="mt-3 divide-y divide-gray-100">
+      <div className="mt-3 divide-y divide-rule/60">
         {topFlows.map((flow, i) => (
           <ConnectionHighlight
             key={i}
@@ -1358,7 +1362,7 @@ function ActivitySection({
         title="Site Activity"
         description={`${formatNumber(totalViews)} human page views in the last ${lookbackDays} days`}
       />
-      <div className="mt-3 divide-y divide-gray-100">
+      <div className="mt-3 divide-y divide-rule/60">
         {activity.length === 0 ? (
           <EmptyState title="No activity data" description="Page view data will appear here." />
         ) : (
@@ -1399,16 +1403,16 @@ function DevelopmentProgressSection() {
         {phases.map((phase) => (
           <div key={phase.name}>
             <div className="mb-1 flex items-center justify-between">
-              <span className="text-sm font-medium text-gray-900">
+              <span className="text-sm font-medium text-ink">
                 {phase.name} — {phase.label}
-                {phase.done && <span className="ml-2 text-emerald-600">✓</span>}
+                {phase.done && <span className="ml-2 text-green-ink">✓</span>}
               </span>
-              <span className="tabular-nums text-sm text-gray-600">{phase.pct}%</span>
+              <span className="tabular-nums text-sm text-ink-soft">{phase.pct}%</span>
             </div>
-            <div className="h-2 w-full overflow-hidden rounded-full bg-gray-100">
+            <div className="h-2 w-full overflow-hidden rounded-full bg-rule/30">
               <div
                 className={`h-full rounded-full transition-all duration-200 ${
-                  phase.done ? "bg-emerald-500" : phase.pct > 0 ? "bg-blue-500" : "bg-gray-200"
+                  phase.done ? "bg-green-ink" : phase.pct > 0 ? "bg-civic-blue" : "bg-rule/60"
                 }`}
                 style={{ width: `${phase.pct}%` }}
               />
@@ -1416,20 +1420,20 @@ function DevelopmentProgressSection() {
           </div>
         ))}
       </div>
-      <div className="mt-6 border-t border-gray-100 pt-4">
-        <p className="mb-2 text-xs font-semibold text-gray-700">Phase 1 Tasks</p>
+      <div className="mt-6 border-t border-rule/60 pt-4">
+        <p className="mb-2 text-xs font-semibold text-ink-soft">Phase 1 Tasks</p>
         <ul className="space-y-1">
           {PHASE1_TASKS.map((task) => (
             <li key={task.label} className="flex items-start gap-2">
               <span
                 className={`mt-0.5 shrink-0 text-xs ${
-                  task.done ? "text-emerald-600" : "text-gray-400"
+                  task.done ? "text-green-ink" : "text-ink-soft/60"
                 }`}
               >
                 {task.done ? "✓" : "○"}
               </span>
               <span
-                className={`text-xs ${task.done ? "text-gray-700" : "text-gray-500"}`}
+                className={`text-xs ${task.done ? "text-ink" : "text-ink-soft"}`}
               >
                 {task.label}
               </span>
@@ -1472,25 +1476,25 @@ function PlatformStorySection({
           db ? `${formatNumber(db.officials)} officials across federal, state, and judiciary` : "Officials across all levels",
           db ? `${formatNumber(db.entity_connections)} mapped connections` : "Connections mapped",
         ].map((line, i) => (
-          <p key={i} className="text-sm text-gray-700">
+          <p key={i} className="text-sm text-ink-soft">
             {line}
           </p>
         ))}
       </div>
-      <div className="mt-6 border-t border-gray-100 pt-4 space-y-1.5">
-        <p className="text-xs text-gray-500">All data is public record.</p>
-        <p className="text-xs text-gray-500">All source code is open.</p>
-        <p className="text-xs text-gray-500">All civic actions are free.</p>
+      <div className="mt-6 border-t border-rule/60 pt-4 space-y-1.5">
+        <p className="text-xs text-ink-soft">All data is public record.</p>
+        <p className="text-xs text-ink-soft">All source code is open.</p>
+        <p className="text-xs text-ink-soft">All civic actions are free.</p>
       </div>
       <div className="mt-4 flex flex-wrap gap-3">
-        <a href="/proposals" className="text-sm font-medium text-blue-600 hover:underline">
+        <a href="/proposals" className="text-sm font-medium text-accent hover:underline">
           View data sources →
         </a>
         <a
           href="https://github.com"
           target="_blank"
           rel="noopener noreferrer"
-          className="text-sm font-medium text-blue-600 hover:underline"
+          className="text-sm font-medium text-accent hover:underline"
         >
           GitHub →
         </a>
@@ -1510,7 +1514,7 @@ function SelfTestsSection({
     return (
       <SectionCard>
         <SectionHeader icon={<CircleCheck size={16} />} title="System Self-Tests" />
-        <p className="mt-3 text-sm text-rose-600">{selfTests.error}</p>
+        <p className="mt-3 text-sm text-accent">{selfTests.error}</p>
       </SectionCard>
     );
   }
@@ -1536,7 +1540,7 @@ function SelfTestsSection({
           return (
             <li key={test.name} className="flex items-start gap-2">
               <span
-                className={`shrink-0 mt-0.5 ${test.passed ? "text-emerald-600" : "text-rose-600"}`}
+                className={`shrink-0 mt-0.5 ${test.passed ? "text-green-ink" : "text-accent"}`}
                 title={test.detail}
               >
                 {test.passed
@@ -1544,7 +1548,7 @@ function SelfTestsSection({
                   : <CircleX size={14} />}
               </span>
               <span
-                className={`text-sm ${test.passed ? "text-gray-700" : "text-rose-700 font-medium"}`}
+                className={`text-sm ${test.passed ? "text-ink-soft" : "text-accent font-medium"}`}
               >
                 {displayLabel}
               </span>
@@ -1552,7 +1556,7 @@ function SelfTestsSection({
           );
         })}
       </ul>
-      <p className="mt-4 text-xs text-gray-500">
+      <p className="mt-4 text-xs text-ink-soft">
         {allPassed ? "All systems operational" : "Issues detected — investigating"}
       </p>
     </SectionCard>
@@ -1640,7 +1644,7 @@ export function DashboardClient({
   // Refresh timestamp + admin button (shown on operations tab)
   const opsHeader = mounted && data ? (
     <div className="flex items-center justify-between">
-      <p className="text-xs text-gray-400" suppressHydrationWarning>
+      <p className="font-mono text-xs tabular-nums text-ink-soft/80" suppressHydrationWarning>
         Updated {new Date(data.status.meta.timestamp).toLocaleTimeString()} ·
         {data.status.meta.query_time_ms}ms
       </p>
@@ -1648,7 +1652,7 @@ export function DashboardClient({
         onClick={handleAdminRefresh}
         disabled={refreshing}
         title="Force refresh all platform data"
-        className="text-xs bg-gray-800 text-gray-300 hover:bg-gray-700 hover:text-white px-2 py-1 rounded transition-colors disabled:opacity-50"
+        className="text-xs bg-ink/10 text-ink-soft hover:bg-ink/15 hover:text-ink px-2 py-1 rounded transition-colors disabled:opacity-50"
       >
         {refreshing ? "⟳" : "↺ Refresh"}
       </button>

@@ -56,7 +56,7 @@ export function BrowsingFlowsSection({ transitions, entryPages }: Props) {
 
       {/* Entry pages */}
       <div className="mt-4">
-        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+        <p className="mb-2 font-mono text-xs font-semibold uppercase tracking-wide text-ink-soft">
           Where visitors start
         </p>
         {entryPages.length === 0 ? (
@@ -70,17 +70,17 @@ export function BrowsingFlowsSection({ transitions, entryPages }: Props) {
               const pct = Math.round((e.sessions / maxEntry) * 100);
               const isTemplate = e.page.includes(":id");
               const rowClass =
-                "relative flex items-center justify-between gap-3 rounded px-2 py-1.5 text-sm hover:bg-blue-100/40";
+                "relative flex items-center justify-between gap-3 rounded px-2 py-1.5 text-sm hover:bg-civic-blue/10";
               const inner = (
                 <>
                   <span className="flex min-w-0 items-center gap-2">
                     <span aria-hidden="true">{pathIcon(e.page)}</span>
-                    <span className="truncate font-medium text-gray-800">{pathLabel(e.page)}</span>
-                    <code className="hidden truncate text-[10px] font-mono text-gray-400 sm:inline">
+                    <span className="truncate font-medium text-ink">{pathLabel(e.page)}</span>
+                    <code className="hidden truncate text-[10px] font-mono text-ink-soft/70 sm:inline">
                       {e.page}
                     </code>
                   </span>
-                  <span className="tabular-nums text-xs text-gray-600">
+                  <span className="tabular-nums text-xs text-ink-soft">
                     {e.sessions.toLocaleString()} sessions
                   </span>
                 </>
@@ -88,7 +88,7 @@ export function BrowsingFlowsSection({ transitions, entryPages }: Props) {
               return (
                 <li key={e.page} className="relative">
                   <div
-                    className="absolute inset-y-0 left-0 rounded bg-blue-50"
+                    className="absolute inset-y-0 left-0 rounded bg-civic-blue/15"
                     style={{ width: `${pct}%` }}
                     aria-hidden="true"
                   />
@@ -109,8 +109,8 @@ export function BrowsingFlowsSection({ transitions, entryPages }: Props) {
       </div>
 
       {/* Top transitions */}
-      <div className="mt-6 border-t border-gray-100 pt-4">
-        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+      <div className="mt-6 border-t border-rule/60 pt-4">
+        <p className="mb-2 font-mono text-xs font-semibold uppercase tracking-wide text-ink-soft">
           Common next steps
         </p>
         {transitions.length === 0 ? (
@@ -125,19 +125,19 @@ export function BrowsingFlowsSection({ transitions, entryPages }: Props) {
               return (
                 <li key={i} className="relative">
                   <div
-                    className="absolute inset-y-0 left-0 rounded bg-indigo-50"
+                    className="absolute inset-y-0 left-0 rounded bg-civic-blue/10"
                     style={{ width: `${pct}%` }}
                     aria-hidden="true"
                   />
                   <div className="relative flex items-center justify-between gap-3 rounded px-2 py-1.5 text-sm">
                     <span className="flex min-w-0 flex-1 items-center gap-2">
                       <span aria-hidden="true">{pathIcon(t.from_page)}</span>
-                      <span className="truncate text-gray-700">{pathLabel(t.from_page)}</span>
-                      <span className="shrink-0 text-gray-300" aria-hidden="true">→</span>
+                      <span className="truncate text-ink-soft">{pathLabel(t.from_page)}</span>
+                      <span className="shrink-0 text-ink-soft/50" aria-hidden="true">→</span>
                       <span aria-hidden="true">{pathIcon(t.to_page)}</span>
-                      <span className="truncate font-medium text-gray-900">{pathLabel(t.to_page)}</span>
+                      <span className="truncate font-medium text-ink">{pathLabel(t.to_page)}</span>
                     </span>
-                    <span className="tabular-nums text-xs text-gray-600">
+                    <span className="tabular-nums text-xs text-ink-soft">
                       {t.sessions.toLocaleString()}
                     </span>
                   </div>
@@ -148,7 +148,7 @@ export function BrowsingFlowsSection({ transitions, entryPages }: Props) {
         )}
       </div>
 
-      <p className="mt-4 border-t border-gray-100 pt-3 text-xs leading-relaxed text-gray-500">
+      <p className="mt-4 border-t border-rule/60 pt-3 text-xs leading-relaxed text-ink-soft">
         Aggregate only. We store no IP, no user ID, and only ephemeral session
         IDs. Paths with fewer than 3 sessions are hidden to prevent
         re-identification.
