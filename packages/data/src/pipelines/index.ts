@@ -26,7 +26,6 @@ import { runRuleBasedTagger } from "./tags/rules";
 import { runAiTagger } from "./tags/ai-tagger";
 import { runAiSummariesPipeline } from "./ai-summaries";
 import { scoreComments } from "../scripts/score-comments";
-import { runHeavyRebuild } from "../lib/heavy-rebuild";
 import { runAgenciesHierarchyPipeline } from "./agencies-hierarchy";
 import { runAgencyLeadershipPipeline } from "./agency-leadership";
 import { runAgencyEnrichmentPipeline } from "./agency-enrichment";
@@ -838,32 +837,10 @@ export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<Nigh
   // writes are visible to downstream MV refreshes.
   if (runEnrichment) {
 
-  // 3b. Refresh derived MVs that back the proposals list page.
-  //  - proposal_trending_24h (FIX-029): comment-activity scoring for the
-  //    Trending tab.
-  //  - proposal_popularity_24h (FIX-200): page-view counts for the
-  //    Most-Viewed tab. Replaces a hot-path JS aggregation that scanned
-  //    page_views on every page load.
-  try {
-    const { createAdminClient } = await import("@civitics/db");
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const admin = createAdminClient() as any;
-    await admin.rpc("refresh_proposal_trending");
-  } catch (err) {
-    const msg = errMsg(err);
-    console.error("[nightly] refresh_proposal_trending failed:", msg);
-    results.errors.push(`Trending refresh: ${msg}`);
-  }
-  try {
-    const { createAdminClient } = await import("@civitics/db");
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const admin = createAdminClient() as any;
-    await admin.rpc("refresh_proposal_popularity");
-  } catch (err) {
-    const msg = errMsg(err);
-    console.error("[nightly] refresh_proposal_popularity failed:", msg);
-    results.errors.push(`Popularity refresh: ${msg}`);
-  }
+  // 3b. [FIX-715] proposal_trending_24h + proposal_popularity_24h refreshes moved
+  //     to the pg_cron procedure refresh_derived_mvs('daily') — off the 120-min
+  //     enrichment budget (2026-06-29: this tail SIGTERMd and went dark). See
+  //     supabase/migrations/20260703000000_fix715_refresh_derived_mvs_pgcron.sql.
 
   // 3b-iii. Comment bridge scorer (FIX-527). Runs immediately after the
   //   comment-activity MV refresh (proposal_trending_24h) so trending and bridge
@@ -880,42 +857,29 @@ export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<Nigh
     results.errors.push(`Comment bridge scorer: ${msg}`);
   }
 
-  // 3b-ii. Refresh spending totals (total_contract_cents / total_grant_cents on financial_entities)
-  // Set-based aggregate UPDATE over financial_relationships (contract+grant).
-  // Runs nightly so any weekly USASpending ingestion is reflected immediately
-  // rather than waiting for the next weekly run.
-  //
-  // FIX-651: routed through the direct-pg heavy-rebuild path. The admin.rpc()
-  // call hit the prod statement_timeout cap on 2026-06-22 ("canceling statement
-  // due to statement timeout") — the set-based UPDATE over the regrown
-  // financial_relationships table no longer fits the 8s role budget — and that
-  // timeout was the first domino of the enrichment-phase cascade. Direct-pg
-  // raises the session statement_timeout past the cap. Still non-fatal: a
-  // refresh failure must not abort the nightly.
-  {
-    try {
-      await runHeavyRebuild("refresh_spending_totals");
-      console.log("[nightly] refresh_spending_totals — complete");
-    } catch (err) {
-      console.warn("[nightly] refresh_spending_totals failed (non-fatal):", errMsg(err));
-    }
-  }
+  // 3b-ii. [FIX-715] refresh_spending_totals (total_contract_cents /
+  //     total_grant_cents on financial_entities) moved to the pg_cron procedure
+  //     refresh_derived_mvs('weekly') — its source (USASpending) is a weekly
+  //     Sunday ingest, so weekly cadence matches. Was a direct-pg heavy rebuild
+  //     here (FIX-651, to clear the 8s role cap); now a committed unit under the
+  //     pg_cron 6h role-default budget.
 
-  // 3c. rebuild_entity_connections has moved to its own GHA workflow
-  //     (.github/workflows/rebuild-entity-connections.yml, Sun + Wed 08:00 UTC,
-  //     FIX-291). The donations chunk alone routinely exceeds 60 min on prod,
-  //     so cramming it into the nightly's 120-min budget caused the 5/10,
-  //     5/14, 5/17 GHA SIGTERMs (docs/audits/missing-nightlies-2026-05-10-to-16.md).
-  //     The umbrella rebuild_entity_connections() RPC is preserved for local
-  //     dev callers; the standalone pipeline lives at
+  // 3c. rebuild_entity_connections now runs IN-DB on pg_cron (FIX-687/703/704,
+  //     jobs rebuild-ec-full Mon + rebuild-ec-incremental Wed 08:00 UTC) — it is
+  //     no longer a GHA workflow. The umbrella rebuild_entity_connections() RPC
+  //     is preserved for local dev callers; the standalone pipeline lives at
   //     packages/data/src/scripts/rebuild-entity-connections.ts.
-  //     entity_connections + MVs derived from it (homepage_stats_mv etc.)
-  //     reflect whatever the last rebuild left behind. Step 7 below still
-  //     refreshes those MVs nightly — they're cheap reads of an unchanging
-  //     table during the in-between days, then catch the new edges on
-  //     rebuild day.
+  //     Most MVs derived from entity_connections moved to refresh_derived_mvs on
+  //     pg_cron (FIX-715). The two large ones — entity_connection_stats_mv and
+  //     donor_party_rollup_mv — are DEFERRED (a full REFRESH is in the FIX-704
+  //     OOM class on Micro) and still refresh in step 7 below until they get a
+  //     FIX-704-style incremental conversion.
 
-  // 4. Rule-based tags (all new/updated entities)
+  // 4. Rule-based tags — the Node-side taggers only: proposal urgency/scope,
+  //    official tenure/voting/donor patterns, financial-entity industry keywords.
+  //    [FIX-716] the two heavy SQL rebuilds it used to run (size-tags + pre-vote
+  //    timing) moved to the pg_cron procedure run_rule_taggers; runRuleBasedTagger
+  //    no longer calls them.
   try {
     await runRuleBasedTagger();
     results.ai.tag_rules = { status: "complete" };
@@ -950,78 +914,26 @@ export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<Nigh
     results.errors.push(`AI summaries: ${msg}`);
   }
 
-  // 7. Refresh chord MVs. Runs last so industry tags from steps 4 + 5 are
-  //    current. Each base query is a multi-second full-table scan that
-  //    used to time out the live RPC at the 5s ceiling; here they run
-  //    once nightly against the session timeout, then the RPCs serve
-  //    cached rows the rest of the day.
-  //    - chord_industry_flows_mv (FIX-207): industry × party
-  //    - chord_donor_type_party_flows_mv (FIX-222): donor entity_type × party
-  //    - chord_donor_state_party_flows_mv (FIX-222): donor state × party
-  //    - chord_subject_party_flows_mv (FIX-222): bill topic × party (yes votes)
-  try {
-    const { createAdminClient } = await import("@civitics/db");
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const admin = createAdminClient() as any;
-    await admin.rpc("refresh_chord_industry_flows_mv");
-  } catch (err) {
-    const msg = errMsg(err);
-    console.error("[nightly] refresh_chord_industry_flows_mv failed:", msg);
-    results.errors.push(`Chord industry MV refresh: ${msg}`);
-  }
+  // 7. [FIX-715] The MV-refresh tail that used to live here — the 4 chord MVs,
+  //    refresh_official_sector_dollars_mv, homepage/official-homepage stats,
+  //    entity_engagement_rollup, homepage_agency_counts, commons_active_threads,
+  //    pipeline_runtime_stats — plus rebuild_all_primary_sources and the three
+  //    retention prunes all moved to the pg_cron procedure refresh_derived_mvs
+  //    (daily + weekly, cadence-matched to source). See
+  //    supabase/migrations/20260703000000_fix715_refresh_derived_mvs_pgcron.sql.
+  //
+  //    What REMAINS here is the two DEFERRED MVs. A full REFRESH of either is in
+  //    the FIX-704 OOM class on Micro (entity_connection_stats_mv 2.4M/264MB,
+  //    donor_party_rollup_mv 1.29M/186MB — official_donor_rollup was 276MB/770k
+  //    when it OOM-restarted Micro), so they are NOT relocated to pg_cron's 6h
+  //    budget (where a refresh runs to completion → OOM). They stay on this
+  //    capped admin.rpc() path, which cuts a too-heavy refresh off at the ~100s
+  //    gateway (stale-but-safe), until a FIX-704-style incremental conversion
+  //    lands (follow-up FIXes). Non-fatal: a stale refresh must not abort the
+  //    nightly.
   for (const fn of [
-    "refresh_chord_donor_type_party_flows_mv",
-    "refresh_chord_donor_state_party_flows_mv",
-    "refresh_chord_subject_party_flows_mv",
-    // FIX-506: per-official × sector donation rollup. Same source data as
-    // chord_industry_flows_mv (donations + industry tags); serves the chord
-    // group/cross-group + sector-vote RPCs as indexed point reads.
-    "refresh_official_sector_dollars_mv",
-    // FIX-641: refresh_official_donor_rollup_mv was here, but the MV was large
-    // enough that the admin.rpc() PostgREST path (~8s/100s caps) timed out and
-    // staled it nightly — dropping officials/[id] into its 50k-row live-scan
-    // fallback (a cost driver). FIX-704 then converted it to an incrementally-
-    // maintained TABLE with its own watermark, refreshed by the pg_cron job
-    // donor-rollup-refresh (Tue 08:00 UTC — its source, FEC donations in
-    // financial_relationships, only updates Sunday). Manual/break-glass:
-    // `pnpm data:refresh-donor-mv` (CALLs the chunked procedure direct-pg).
-    // The other MVs in this loop are small enough to refresh fine over
-    // PostgREST and stay here.
-    // FIX-518: per-(donor, party) donation rollup. Serves treemap-pac global
-    // sector/party modes (the last open FIX-510-class wrong-numbers surface)
-    // via get_pac_treemap_by_{sector,party}.
     "refresh_donor_party_rollup_mv",
-    // FIX-509: per-entity connection-stats rollup (count/vote_count/has_*).
-    // Serves the treemap aggregate + graph entities routes as point reads
-    // instead of paging every entity_connections edge row. Source rows only
-    // change on the entity_connections rebuild (also refreshed there); the
-    // nightly tick keeps it warm alongside the other MV refreshes.
     "refresh_entity_connection_stats_mv",
-    // FIX-223: homepage hero stats + per-official Wave 3 stats
-    "refresh_homepage_stats_mv",
-    "refresh_official_homepage_stats_mv",
-    // FIX-618: per-entity DISPLAY-ONLY engagement rollup (claimed/engaged/
-    // active-community badges) over official|institution|jurisdiction. Never
-    // feeds standing; nightly cadence matches the badge's freshness needs.
-    "refresh_entity_engagement_rollup_mv",
-    // FIX-330: per-agency proposal counts (replaces FIX-303 RPC on request path)
-    "refresh_homepage_agency_counts_mv",
-    // FIX-594: cross-entity Commons "discussion ledger" MV. Runs after the
-    // comment bridge scorer (scoreComments, step 3b-iii above) so it ranks on
-    // fresh bridge_score. Read MV-only by the homepage Commons module (FIX-595).
-    "refresh_commons_active_threads_mv",
-    // FIX-233 (part 1): p50/p95/max duration per pipeline over last 30 days
-    "refresh_pipeline_runtime_stats_mv",
-    // FIX-281: keep platform_usage_snapshot bounded at 30 days
-    "prune_platform_usage_snapshot",
-    // FIX-287: keep kill_switch_events bounded at 90 days
-    "prune_kill_switch_events",
-    // FIX-297: keep status_snapshot bounded at 24 hours
-    "prune_status_snapshot",
-    // FIX-397: nightly safety net — re-derive primary_source from xsr in
-    // case backfill migrations, ad-hoc SQL, or writer-side failures left
-    // any entity row stale.
-    "rebuild_all_primary_sources",
   ]) {
     try {
       const { createAdminClient } = await import("@civitics/db");
