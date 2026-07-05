@@ -40,7 +40,7 @@ export function DeferredDistrictMap({ geometry }: SingleDistrictMapProps) {
 
   if (!Map) {
     return (
-      <div className="w-full h-[400px] rounded-lg border border-gray-200 bg-gray-50 animate-pulse" />
+      <div className="w-full h-[400px] rounded-lg border border-rule bg-paper-2 animate-pulse" />
     );
   }
   return <Map geometry={geometry} />;

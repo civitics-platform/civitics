@@ -16,32 +16,32 @@ export const AGENCY_TYPE_LABELS: Record<string, string> = {
 };
 
 export const AGENCY_TYPE_COLORS: Record<string, string> = {
-  federal:       "bg-blue-50 text-blue-700 border-blue-200",
-  state:         "bg-purple-50 text-purple-700 border-purple-200",
-  local:         "bg-green-50 text-green-700 border-green-200",
-  independent:   "bg-amber-50 text-amber-700 border-amber-200",
-  international: "bg-indigo-50 text-indigo-700 border-indigo-200",
-  other:         "bg-gray-50 text-gray-600 border-gray-200",
+  federal:       "bg-civic-blue/10 text-civic-blue border-civic-blue/25",
+  state:         "bg-viz-7/10 text-viz-7 border-viz-7/60",
+  local:         "bg-green-ink/10 text-green-ink border-green-ink/25",
+  independent:   "bg-amber/20 text-ink border-amber/60",
+  international: "bg-accent/10 text-accent border-accent",
+  other:         "bg-paper-2 text-ink-soft border-rule",
 };
 
 // ─── Sector tag inference ────────────────────────────────────────────────────
 
 const SECTOR_RULES: [RegExp, string, string][] = [
-  [/environment|forest|land|wildlife|ocean|fish|park|nature|conservation|reclamation|mines|geology|weather|atmospheric|noaa/i, "Environment", "bg-emerald-50 text-emerald-700"],
-  [/defense|army|navy|air force|marine|coast guard|military|pentagon|veteran|national guard/i, "Defense", "bg-slate-100 text-slate-700"],
-  [/health|disease|cancer|drug|food|fda|cdc|nih|medicare|medicaid|substance|mental|elder|disability/i, "Health", "bg-rose-50 text-rose-700"],
-  [/financial|banking|securities|exchange|treasury|budget|fiscal|currency|fed|reserve|cftc|fdic|consumer financial/i, "Finance", "bg-amber-50 text-amber-700"],
-  [/transport|highway|aviation|rail|transit|maritime|pipeline|fhwa|faa|fra|fta|fmcsa/i, "Transportation", "bg-sky-50 text-sky-700"],
-  [/energy|nuclear|power|petroleum|oil|gas|electric|ferc|doe|nrc/i, "Energy", "bg-orange-50 text-orange-700"],
-  [/education|school|student|college|university|learning|title/i, "Education", "bg-violet-50 text-violet-700"],
-  [/labor|worker|wage|safety|osha|mine safety|employment|pension|benefit/i, "Labor", "bg-cyan-50 text-cyan-700"],
-  [/agriculture|farm|crop|food safety|rural|animal|plant health|commodity/i, "Agriculture", "bg-lime-50 text-lime-700"],
-  [/justice|law|court|civil rights|atf|dea|fbi|prison|correctional|alcohol|tobacco|firearms/i, "Justice", "bg-purple-50 text-purple-700"],
-  [/housing|urban|community|hud|mortgage|rural development/i, "Housing", "bg-teal-50 text-teal-700"],
-  [/immigration|customs|border|citizenship|visa|ice\b/i, "Immigration", "bg-indigo-50 text-indigo-700"],
-  [/space|nasa|aeronaut/i, "Space", "bg-blue-50 text-blue-700"],
-  [/trade|commerce|export|import|international trade|census|patent|copyright/i, "Commerce", "bg-yellow-50 text-yellow-700"],
-  [/communication|broadcast|fcc|telecom|internet|spectrum/i, "Communications", "bg-pink-50 text-pink-700"],
+  [/environment|forest|land|wildlife|ocean|fish|park|nature|conservation|reclamation|mines|geology|weather|atmospheric|noaa/i, "Environment", "bg-green-ink/10 text-green-ink"],
+  [/defense|army|navy|air force|marine|coast guard|military|pentagon|veteran|national guard/i, "Defense", "bg-paper-2 text-ink-soft"],
+  [/health|disease|cancer|drug|food|fda|cdc|nih|medicare|medicaid|substance|mental|elder|disability/i, "Health", "bg-accent/10 text-accent"],
+  [/financial|banking|securities|exchange|treasury|budget|fiscal|currency|fed|reserve|cftc|fdic|consumer financial/i, "Finance", "bg-amber/20 text-ink"],
+  [/transport|highway|aviation|rail|transit|maritime|pipeline|fhwa|faa|fra|fta|fmcsa/i, "Transportation", "bg-civic-blue/10 text-civic-blue"],
+  [/energy|nuclear|power|petroleum|oil|gas|electric|ferc|doe|nrc/i, "Energy", "bg-amber/20 text-ink"],
+  [/education|school|student|college|university|learning|title/i, "Education", "bg-viz-7/10 text-viz-7"],
+  [/labor|worker|wage|safety|osha|mine safety|employment|pension|benefit/i, "Labor", "bg-civic-blue/10 text-civic-blue"],
+  [/agriculture|farm|crop|food safety|rural|animal|plant health|commodity/i, "Agriculture", "bg-green-ink/10 text-green-ink"],
+  [/justice|law|court|civil rights|atf|dea|fbi|prison|correctional|alcohol|tobacco|firearms/i, "Justice", "bg-viz-7/10 text-viz-7"],
+  [/housing|urban|community|hud|mortgage|rural development/i, "Housing", "bg-green-ink/10 text-green-ink"],
+  [/immigration|customs|border|citizenship|visa|ice\b/i, "Immigration", "bg-accent/10 text-accent"],
+  [/space|nasa|aeronaut/i, "Space", "bg-civic-blue/10 text-civic-blue"],
+  [/trade|commerce|export|import|international trade|census|patent|copyright/i, "Commerce", "bg-amber/20 text-ink"],
+  [/communication|broadcast|fcc|telecom|internet|spectrum/i, "Communications", "bg-accent/10 text-accent"],
 ];
 
 export const ALL_SECTORS = SECTOR_RULES.map(([, label]) => label);
@@ -90,7 +90,7 @@ export function AgencyCard({
     <div className="flex flex-col flex-1 p-4">
       {/* Header row */}
       <div className="flex items-start gap-3">
-        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded border border-gray-200 bg-gray-50 font-mono text-xs font-bold text-gray-700">
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded border border-rule bg-paper-2 font-mono text-xs font-bold text-ink-soft">
           {displayAcronym.slice(0, 5)}
         </div>
         <div className="min-w-0 flex-1">
@@ -110,7 +110,7 @@ export function AgencyCard({
               </span>
             ))}
           </div>
-          <p className="text-sm font-semibold leading-tight text-gray-900 group-hover:text-indigo-700 line-clamp-2">
+          <p className="text-sm font-semibold leading-tight text-ink group-hover:text-accent line-clamp-2">
             {agency.name}
             {agency.is_synthetic && <SyntheticMark size="xs" className="ml-1.5" />}
           </p>
@@ -119,7 +119,7 @@ export function AgencyCard({
 
       {/* Description */}
       {agency.description && (
-        <p className="mt-2.5 line-clamp-2 text-xs leading-relaxed text-gray-500">
+        <p className="mt-2.5 line-clamp-2 text-xs leading-relaxed text-ink-soft/70">
           {agency.description}
         </p>
       )}
@@ -127,22 +127,22 @@ export function AgencyCard({
       <div className="flex-1" />
 
       {/* Stats */}
-      <div className="mt-3 grid grid-cols-2 gap-px overflow-hidden rounded border border-gray-100 bg-gray-100">
-        <div className="bg-white px-3 py-2 text-center">
-          <p className="text-sm font-bold text-gray-900">
+      <div className="mt-3 grid grid-cols-2 gap-px overflow-hidden rounded border border-rule bg-paper-2">
+        <div className="bg-card px-3 py-2 text-center">
+          <p className="text-sm font-bold text-ink">
             {agency.totalProposals > 0 ? agency.totalProposals.toLocaleString() : "—"}
           </p>
-          <p className="text-[10px] text-gray-400">Total rules</p>
+          <p className="text-[10px] text-ink-soft/70">Total rules</p>
         </div>
-        <div className="bg-white px-3 py-2 text-center">
+        <div className="bg-card px-3 py-2 text-center">
           <p
             className={`text-sm font-bold ${
-              agency.openProposals > 0 ? "text-emerald-600" : "text-gray-400"
+              agency.openProposals > 0 ? "text-green-ink" : "text-ink-soft/70"
             }`}
           >
             {agency.openProposals > 0 ? agency.openProposals.toLocaleString() : "—"}
           </p>
-          <p className="text-[10px] text-gray-400">Open now</p>
+          <p className="text-[10px] text-ink-soft/70">Open now</p>
         </div>
       </div>
     </div>
@@ -150,11 +150,11 @@ export function AgencyCard({
 
   // ── Footer strip (stopPropagation on inner links) ──────────────────────────
   const footer = (
-    <div className="flex items-center gap-1 border-t border-gray-100 bg-gray-50 px-3 py-2">
+    <div className="flex items-center gap-1 border-t border-rule bg-paper-2 px-3 py-2">
       <Link
         href={`/graph?entity=${agency.id}`}
         onClick={(e) => e.stopPropagation()}
-        className="flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium text-gray-500 hover:bg-white hover:text-indigo-600 transition-colors"
+        className="flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium text-ink-soft/70 hover:bg-card hover:text-accent transition-colors"
         title="Explore in connection graph"
       >
         <svg
@@ -180,7 +180,7 @@ export function AgencyCard({
           target="_blank"
           rel="noopener noreferrer"
           onClick={(e) => e.stopPropagation()}
-          className="flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium text-gray-500 hover:bg-white hover:text-indigo-600 transition-colors"
+          className="flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium text-ink-soft/70 hover:bg-card hover:text-accent transition-colors"
           title="Official website"
         >
           <svg
@@ -201,7 +201,7 @@ export function AgencyCard({
         </a>
       )}
 
-      <span className="ml-auto text-[11px] font-medium text-gray-400 group-hover:text-indigo-500 transition-colors">
+      <span className="ml-auto text-[11px] font-medium text-ink-soft/70 group-hover:text-accent transition-colors">
         Details →
       </span>
     </div>
@@ -209,7 +209,7 @@ export function AgencyCard({
 
   // ── Shared shell ──
   const sharedClass =
-    "group flex flex-col rounded-lg border border-gray-200 bg-white hover:border-indigo-300 hover:shadow-sm transition-all overflow-hidden cursor-pointer text-left w-full h-full";
+    "group flex flex-col border border-rule bg-card hover:border-accent hover:shadow-sm transition-all overflow-hidden cursor-pointer text-left w-full h-full";
 
   // ── Button variant (opens slide-over) ──
   if (onClick) {
@@ -237,7 +237,7 @@ export function AgencyCard({
   // Footer contains its own <Link>/<a> elements, so the outer wrapper must be
   // a <div> — nested <a> tags are invalid HTML and cause hydration mismatches.
   return (
-    <div className={`${sharedClass} focus-within:ring-2 focus-within:ring-indigo-500 focus-within:ring-offset-2`}>
+    <div className={`${sharedClass} focus-within:ring-2 focus-within:ring-accent focus-within:ring-offset-2`}>
       <Link
         href={`/agencies/${agency.id}`}
         aria-label={agency.name}

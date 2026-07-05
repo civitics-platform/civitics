@@ -50,17 +50,17 @@ export function VerifyConstituentSection({ jurisdictionId }: { jurisdictionId: s
   }, [jurisdictionId]);
 
   if (status.kind === "loading") {
-    return <div className="h-20 animate-pulse rounded-lg border border-gray-200 bg-white" />;
+    return <div className="h-20 animate-pulse border border-rule bg-card" />;
   }
 
   if (status.kind === "verified") {
     return (
-      <div className="rounded-lg border border-green-200 bg-green-50 p-4">
+      <div className="border border-green-ink/25 bg-green-ink/10 p-4">
         <div className="flex items-center gap-2">
-          <span className="text-green-600">✓</span>
-          <span className="text-sm font-semibold text-green-800">Verified constituent</span>
+          <span className="text-green-ink">✓</span>
+          <span className="text-sm font-semibold text-green-ink">Verified constituent</span>
         </div>
-        <p className="mt-1 text-xs text-green-700">
+        <p className="mt-1 text-xs text-green-ink">
           {status.grantedAt && <>Verified {formatDate(status.grantedAt)}. </>}
           {status.expiresAt ? <>Expires {formatDate(status.expiresAt)}.</> : <>No expiry.</>}
         </p>
@@ -70,9 +70,9 @@ export function VerifyConstituentSection({ jurisdictionId }: { jurisdictionId: s
 
   if (status.kind === "anon") {
     return (
-      <div className="rounded-lg border border-gray-200 bg-white p-4">
-        <p className="text-sm text-gray-600">
-          <a href="/auth/sign-in" className="font-medium text-indigo-600 hover:underline">
+      <div className="border border-rule bg-card p-4">
+        <p className="text-sm text-ink-soft">
+          <a href="/auth/sign-in" className="font-medium text-accent hover:underline">
             Sign in
           </a>{" "}
           to verify as a constituent of this jurisdiction.
@@ -83,8 +83,8 @@ export function VerifyConstituentSection({ jurisdictionId }: { jurisdictionId: s
 
   // unverified
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-4">
-      <p className="mb-3 text-sm text-gray-600">
+    <div className="border border-rule bg-card p-4">
+      <p className="mb-3 text-sm text-ink-soft">
         Verify your address to unlock constituent features for the jurisdictions you live in.
       </p>
       <VerifyConstituentForm />

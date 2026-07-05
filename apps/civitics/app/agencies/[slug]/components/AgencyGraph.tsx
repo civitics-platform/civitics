@@ -37,13 +37,19 @@ function PlaceholderNodes() {
       `}</style>
       {positions.map((p, i) => (
         <g key={i} style={{ animation: `float 3s ease-in-out ${p.delay} infinite` }}>
-          <circle cx={p.cx} cy={p.cy} r={p.r} fill="#e2e8f0" stroke="#94a3b8" strokeWidth="1.5" />
+          <circle
+            cx={p.cx}
+            cy={p.cy}
+            r={p.r}
+            strokeWidth="1.5"
+            style={{ fill: "rgb(var(--c-rule))", stroke: "rgb(var(--c-ink-soft))" }}
+          />
         </g>
       ))}
-      <line x1="30%" y1="35%" x2="65%" y2="25%" stroke="#cbd5e1" strokeWidth="1" strokeDasharray="4,3" />
-      <line x1="65%" y1="25%" x2="75%" y2="60%" stroke="#cbd5e1" strokeWidth="1" strokeDasharray="4,3" />
-      <line x1="30%" y1="35%" x2="20%" y2="65%" stroke="#cbd5e1" strokeWidth="1" strokeDasharray="4,3" />
-      <line x1="75%" y1="60%" x2="45%" y2="70%" stroke="#cbd5e1" strokeWidth="1" strokeDasharray="4,3" />
+      <line x1="30%" y1="35%" x2="65%" y2="25%" strokeWidth="1" strokeDasharray="4,3" style={{ stroke: "rgb(var(--c-rule))" }} />
+      <line x1="65%" y1="25%" x2="75%" y2="60%" strokeWidth="1" strokeDasharray="4,3" style={{ stroke: "rgb(var(--c-rule))" }} />
+      <line x1="30%" y1="35%" x2="20%" y2="65%" strokeWidth="1" strokeDasharray="4,3" style={{ stroke: "rgb(var(--c-rule))" }} />
+      <line x1="75%" y1="60%" x2="45%" y2="70%" strokeWidth="1" strokeDasharray="4,3" style={{ stroke: "rgb(var(--c-rule))" }} />
     </svg>
   );
 }
@@ -132,22 +138,22 @@ export function AgencyGraph({
   const hasData = edges.length > 0;
 
   return (
-    <div className="flex flex-col bg-gray-50">
+    <div className="flex flex-col bg-paper-2">
       {/* Graph area */}
       <div className="relative" style={{ height: 380 }}>
         {loading ? (
           <div className="flex h-full items-center justify-center">
             <div className="flex flex-col items-center gap-2">
-              <div className="h-5 w-5 animate-spin rounded-full border-2 border-indigo-400 border-t-transparent" />
-              <p className="text-xs text-gray-400">Loading connections…</p>
+              <div className="h-5 w-5 animate-spin rounded-full border-2 border-accent border-t-transparent" />
+              <p className="text-xs text-ink-soft/70">Loading connections…</p>
             </div>
           </div>
         ) : !hasData ? (
           <div className="relative flex h-full flex-col items-center justify-center">
             <PlaceholderNodes />
             <div className="relative z-10 mx-auto max-w-xs text-center">
-              <p className="text-sm font-medium text-gray-500">No connections on record yet</p>
-              <p className="mt-1 text-xs leading-relaxed text-gray-400">
+              <p className="text-sm font-medium text-ink-soft/70">No connections on record yet</p>
+              <p className="mt-1 text-xs leading-relaxed text-ink-soft/70">
                 Oversight officials, contractors, and regulatory connections appear here as data is
                 ingested.
               </p>
@@ -159,10 +165,10 @@ export function AgencyGraph({
       </div>
 
       {hasData && (
-        <div className="border-t border-gray-200 bg-white px-5 py-2.5">
-          <p className="text-xs text-gray-400">
+        <div className="border-t border-rule bg-card px-5 py-2.5">
+          <p className="text-xs text-ink-soft/70">
             {nodes.length} nodes · {edges.length} connections ·{" "}
-            <span className="text-gray-300">Drag to reposition · scroll to zoom</span>
+            <span className="text-ink-soft/70">Drag to reposition · scroll to zoom</span>
           </p>
         </div>
       )}

@@ -5,10 +5,10 @@ function Chip({ agency, isCurrent }: { agency: AgencyRef; isCurrent?: boolean })
 
   if (isCurrent) {
     return (
-      <div className="flex items-center gap-2 rounded-lg border-2 border-indigo-300 bg-indigo-50 px-3 py-2">
-        <span className="font-mono text-xs font-bold text-indigo-600">{label}</span>
-        <span className="text-sm font-semibold text-indigo-900 truncate">{agency.name}</span>
-        <span className="ml-auto shrink-0 rounded bg-indigo-100 px-1.5 py-0.5 text-[10px] font-semibold text-indigo-600">
+      <div className="flex items-center gap-2 rounded-lg border-2 border-accent bg-accent/10 px-3 py-2">
+        <span className="font-mono text-xs font-bold text-accent">{label}</span>
+        <span className="text-sm font-semibold text-accent truncate">{agency.name}</span>
+        <span className="ml-auto shrink-0 rounded bg-accent/10 px-1.5 py-0.5 text-[10px] font-semibold text-accent">
           This agency
         </span>
       </div>
@@ -18,12 +18,12 @@ function Chip({ agency, isCurrent }: { agency: AgencyRef; isCurrent?: boolean })
   return (
     <a
       href={`/agencies/${agency.id}`}
-      className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 hover:border-indigo-300 hover:shadow-sm transition-all"
+      className="flex items-center gap-2 rounded-lg border border-rule bg-card px-3 py-2 hover:border-accent hover:shadow-sm transition-all"
     >
-      <span className="font-mono text-xs font-bold text-gray-500">{label}</span>
-      <span className="text-sm font-medium text-gray-800 truncate">{agency.name}</span>
+      <span className="font-mono text-xs font-bold text-ink-soft/70">{label}</span>
+      <span className="text-sm font-medium text-ink-soft truncate">{agency.name}</span>
       <svg
-        className="ml-auto h-3.5 w-3.5 shrink-0 text-gray-300"
+        className="ml-auto h-3.5 w-3.5 shrink-0 text-ink-soft/70"
         fill="none"
         viewBox="0 0 24 24"
         stroke="currentColor"
@@ -45,8 +45,8 @@ export function AgencyHierarchyTree({
   children: AgencyRef[];
 }) {
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-4">
-      <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-400">
+    <div className="border border-rule bg-card p-4">
+      <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-ink-soft/70">
         Agency Hierarchy
       </p>
 
@@ -62,8 +62,8 @@ export function AgencyHierarchyTree({
         <div className={parent ? "flex gap-2" : undefined}>
           {parent && (
             <div className="flex w-5 shrink-0 flex-col items-center">
-              <div className="mt-0 w-px flex-1 bg-gray-200" />
-              <div className="mb-1 h-3 w-3 rounded-sm border-b-2 border-l-2 border-gray-200" />
+              <div className="mt-0 w-px flex-1 bg-rule/40" />
+              <div className="mb-1 h-3 w-3 rounded-sm border-b-2 border-l-2 border-rule" />
             </div>
           )}
           <div className="flex-1">
@@ -75,14 +75,14 @@ export function AgencyHierarchyTree({
         {children.length > 0 && (
           <div className="flex gap-2">
             <div className="flex w-5 shrink-0 flex-col items-center">
-              <div className="mt-0 w-px flex-1 bg-gray-200" />
+              <div className="mt-0 w-px flex-1 bg-rule/40" />
             </div>
             <div className="flex-1 space-y-1.5">
               {children.map((child) => (
                 <div key={child.id} className="flex gap-2">
                   <div className="flex w-4 shrink-0 flex-col items-center">
-                    <div className="mt-0 w-px flex-1 bg-gray-200" />
-                    <div className="mb-1 h-3 w-3 rounded-sm border-b-2 border-l-2 border-gray-200" />
+                    <div className="mt-0 w-px flex-1 bg-rule/40" />
+                    <div className="mb-1 h-3 w-3 rounded-sm border-b-2 border-l-2 border-rule" />
                   </div>
                   <div className="flex-1">
                     <Chip agency={child} />
@@ -95,7 +95,7 @@ export function AgencyHierarchyTree({
       </div>
 
       {children.length > 0 && (
-        <p className="mt-2 text-[11px] text-gray-400">
+        <p className="mt-2 text-[11px] text-ink-soft/70">
           {children.length} sub-{children.length === 1 ? "agency" : "agencies"}
         </p>
       )}

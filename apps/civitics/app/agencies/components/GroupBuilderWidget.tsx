@@ -42,9 +42,9 @@ export function GroupBuilderWidget() {
   }
 
   return (
-    <aside className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
-      <h2 className="text-sm font-semibold text-gray-900 mb-1">Build a custom group</h2>
-      <p className="text-xs text-gray-500 mb-3 leading-snug">
+    <aside className="border border-rule bg-card p-4 shadow-sm">
+      <h2 className="text-sm font-semibold text-ink mb-1">Build a custom group</h2>
+      <p className="text-xs text-ink-soft/70 mb-3 leading-snug">
         Pick filters to define a cohort of officials, PACs, or agencies — then
         open it in the connection graph.
       </p>

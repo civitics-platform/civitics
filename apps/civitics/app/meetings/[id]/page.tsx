@@ -27,19 +27,19 @@ const MEETING_TYPE_LABELS: Record<string, string> = {
 };
 
 const STATUS_BADGE: Record<string, { label: string; color: string }> = {
-  scheduled: { label: "Scheduled", color: "bg-blue-50 text-blue-700 border-blue-200" },
-  in_progress: { label: "In Progress", color: "bg-amber-50 text-amber-800 border-amber-200" },
-  completed: { label: "Completed", color: "bg-emerald-50 text-emerald-700 border-emerald-200" },
-  cancelled: { label: "Cancelled", color: "bg-gray-100 text-gray-500 border-gray-200" },
-  postponed: { label: "Postponed", color: "bg-orange-50 text-orange-700 border-orange-200" },
+  scheduled: { label: "Scheduled", color: "bg-civic-blue/10 text-civic-blue border-civic-blue/25" },
+  in_progress: { label: "In Progress", color: "bg-amber/20 text-ink border-amber/60" },
+  completed: { label: "Completed", color: "bg-green-ink/10 text-green-ink border-green-ink/25" },
+  cancelled: { label: "Cancelled", color: "bg-paper-2 text-ink-soft/70 border-rule" },
+  postponed: { label: "Postponed", color: "bg-amber/20 text-ink border-amber/60" },
 };
 
 const OUTCOME_BADGE: Record<string, { label: string; color: string }> = {
-  passed: { label: "Passed", color: "bg-emerald-50 text-emerald-700" },
-  failed: { label: "Failed", color: "bg-red-50 text-red-700" },
-  tabled: { label: "Tabled", color: "bg-gray-100 text-gray-600" },
-  continued: { label: "Continued", color: "bg-blue-50 text-blue-700" },
-  withdrawn: { label: "Withdrawn", color: "bg-gray-100 text-gray-500" },
+  passed: { label: "Passed", color: "bg-green-ink/10 text-green-ink" },
+  failed: { label: "Failed", color: "bg-accent/10 text-accent" },
+  tabled: { label: "Tabled", color: "bg-paper-2 text-ink-soft" },
+  continued: { label: "Continued", color: "bg-civic-blue/10 text-civic-blue" },
+  withdrawn: { label: "Withdrawn", color: "bg-paper-2 text-ink-soft/70" },
 };
 
 function formatDateTime(iso: string): string {
@@ -200,7 +200,7 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
 
   const status = STATUS_BADGE[meeting.status] ?? {
     label: meeting.status,
-    color: "bg-gray-100 text-gray-600 border-gray-200",
+    color: "bg-paper-2 text-ink-soft border-rule",
   };
   const headerTitle =
     meeting.title ??
@@ -213,19 +213,19 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
   ].filter(Boolean) as Array<{ label: string; href: string }>;
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-paper-2">
       <PageViewTracker entityType="meeting" entityId={id} />
 
       {/* ─── Header ─────────────────────────────────────────────────────────── */}
-      <div className="border-b border-gray-200 bg-white">
+      <div className="border-b border-rule bg-card">
         <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6">
           {/* Breadcrumb */}
-          <nav className="mb-4 flex flex-wrap items-center gap-1.5 text-xs text-gray-400">
+          <nav className="mb-4 flex flex-wrap items-center gap-1.5 text-xs text-ink-soft/70">
             {jurisdiction && (
               <>
                 <Link
                   href={`/jurisdictions/${jurisdiction.id}`}
-                  className="hover:text-gray-700 transition-colors"
+                  className="hover:text-ink-soft transition-colors"
                 >
                   {jurisdiction.name}
                 </Link>
@@ -236,19 +236,19 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
               <>
                 <Link
                   href={`/institutions/${body.id}`}
-                  className="hover:text-gray-700 transition-colors"
+                  className="hover:text-ink-soft transition-colors"
                 >
                   {body.name}
                 </Link>
                 <span>/</span>
               </>
             )}
-            <span className="text-gray-600">Meeting</span>
+            <span className="text-ink-soft">Meeting</span>
           </nav>
 
           {/* Badge row */}
           <div className="mb-3 flex flex-wrap items-center gap-2">
-            <span className="rounded border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs font-medium capitalize text-gray-600">
+            <span className="rounded border border-rule bg-paper-2 px-2.5 py-1 text-xs font-medium capitalize text-ink-soft">
               {typeLabel(meeting.meeting_type)}
             </span>
             <span className={`rounded border px-2.5 py-1 text-xs font-semibold ${status.color}`}>
@@ -256,11 +256,11 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
             </span>
           </div>
 
-          <h1 className="text-2xl font-bold tracking-tight text-gray-900 sm:text-3xl leading-snug">
+          <h1 className="text-2xl font-bold tracking-tight text-ink sm:text-3xl leading-snug">
             {headerTitle}
           </h1>
 
-          <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-500">
+          <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-ink-soft/70">
             <span>
               {formatDateTime(meeting.scheduled_at)} · {formatTime(meeting.scheduled_at)}
             </span>
@@ -276,7 +276,7 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
                   href={a.href}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="rounded-md border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-indigo-600 hover:border-indigo-300 hover:bg-indigo-50 transition-colors"
+                  className="rounded-md border border-rule bg-card px-3 py-1.5 text-sm font-medium text-accent hover:border-accent hover:bg-accent/10 transition-colors"
                 >
                   {a.label} ↗
                 </a>
@@ -290,7 +290,7 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
       <main id="main-content" className="mx-auto max-w-4xl px-4 py-8 sm:px-6">
         {agendaItems.length > 0 ? (
           <section>
-            <h2 className="mb-4 text-lg font-semibold text-gray-900">Agenda</h2>
+            <h2 className="mb-4 text-lg font-semibold text-ink">Agenda</h2>
             <ol className="space-y-3">
               {agendaItems.map((item) => {
                 const outcome = item.outcome ? OUTCOME_BADGE[item.outcome] : null;
@@ -298,32 +298,32 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
                 return (
                   <li
                     key={item.id}
-                    className="rounded-lg border border-gray-200 bg-white p-4"
+                    className="border border-rule bg-card p-4"
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
                           {item.sequence != null && (
-                            <span className="font-mono text-xs text-gray-400">
+                            <span className="font-mono text-xs text-ink-soft/70">
                               {item.sequence}.
                             </span>
                           )}
-                          <h3 className="text-sm font-semibold text-gray-900">
+                          <h3 className="text-sm font-semibold text-ink">
                             {item.title ?? "Agenda item"}
                           </h3>
                           {item.item_type && (
-                            <span className="rounded border border-gray-200 bg-gray-50 px-1.5 py-0.5 text-[10px] font-medium capitalize text-gray-500">
+                            <span className="rounded border border-rule bg-paper-2 px-1.5 py-0.5 text-[10px] font-medium capitalize text-ink-soft/70">
                               {item.item_type.replace(/_/g, " ")}
                             </span>
                           )}
                         </div>
                         {item.description && (
-                          <p className="mt-1 text-sm text-gray-600">{item.description}</p>
+                          <p className="mt-1 text-sm text-ink-soft">{item.description}</p>
                         )}
                         {item.proposal_id && (
                           <Link
                             href={`/proposals/${item.proposal_id}`}
-                            className="mt-1 inline-block text-xs font-medium text-indigo-600 hover:text-indigo-800"
+                            className="mt-1 inline-block text-xs font-medium text-accent hover:text-accent"
                           >
                             {linkedTitle ?? "View proposal"} →
                           </Link>
@@ -343,7 +343,7 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
             </ol>
           </section>
         ) : (
-          <div className="rounded-lg border border-dashed border-gray-200 bg-white p-8 text-center text-sm text-gray-500">
+          <div className="border border-dashed border-rule bg-card p-8 text-center text-sm text-ink-soft/70">
             No agenda items on record for this meeting.
           </div>
         )}

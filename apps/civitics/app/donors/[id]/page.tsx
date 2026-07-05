@@ -143,18 +143,18 @@ const ENTITY_TYPE_LABEL: Record<string, string> = {
 };
 
 const ENTITY_TYPE_BADGE: Record<string, string> = {
-  individual:      "bg-emerald-100 text-emerald-800",
-  pac:             "bg-indigo-100 text-indigo-800",
-  super_pac:       "bg-purple-100 text-purple-800",
-  corporation:     "bg-amber-100 text-amber-800",
-  union:           "bg-orange-100 text-orange-800",
-  party_committee: "bg-blue-100 text-blue-800",
+  individual:      "bg-green-ink/10 text-green-ink",
+  pac:             "bg-accent/10 text-accent",
+  super_pac:       "bg-viz-7/10 text-viz-7",
+  corporation:     "bg-amber/20 text-ink",
+  union:           "bg-amber/20 text-ink",
+  party_committee: "bg-civic-blue/10 text-civic-blue",
 };
 
 const PARTY_BADGE: Record<string, string> = {
-  democrat:    "bg-blue-100 text-blue-800",
-  republican:  "bg-red-100 text-red-800",
-  independent: "bg-purple-100 text-purple-800",
+  democrat:    "bg-civic-blue/10 text-civic-blue",
+  republican:  "bg-accent/10 text-accent",
+  independent: "bg-viz-7/10 text-viz-7",
 };
 
 // React.cache() dedupes the entity fetch between generateMetadata and the
@@ -535,7 +535,7 @@ export default async function DonorProfilePage({
   const cachedAiSummary: string | null = aiSummaryRes?.data?.summary_text ?? null;
 
   const typeLabel = ENTITY_TYPE_LABEL[entity.entity_type] ?? entity.entity_type;
-  const typeBadgeCls = ENTITY_TYPE_BADGE[entity.entity_type] ?? "bg-gray-100 text-gray-700";
+  const typeBadgeCls = ENTITY_TYPE_BADGE[entity.entity_type] ?? "bg-paper-2 text-ink-soft";
 
   const isIndividual = entity.entity_type === "individual";
   const baseUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://civitics.com";
@@ -548,7 +548,7 @@ export default async function DonorProfilePage({
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-paper-2">
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(donorJsonLd) }}
@@ -564,11 +564,11 @@ export default async function DonorProfilePage({
 
       <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
         {/* ── HEADER ─────────────────────────────────────────────────────── */}
-        <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
+        <div className="border border-rule bg-card overflow-hidden">
           <div className="p-6">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:gap-5">
               {/* Dollar-sign avatar */}
-              <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-full border-2 border-gray-200 bg-green-50 text-green-600">
+              <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-full border-2 border-rule bg-green-ink/10 text-green-ink">
                 <svg className="h-10 w-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                     d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -581,12 +581,12 @@ export default async function DonorProfilePage({
                     {typeLabel}
                   </span>
                   {industry && (
-                    <span className="rounded-full px-2.5 py-0.5 text-xs font-medium bg-gray-100 text-gray-700">
+                    <span className="rounded-full px-2.5 py-0.5 text-xs font-medium bg-paper-2 text-ink-soft">
                       {industry}
                     </span>
                   )}
                   {entity.fec_committee_id && (
-                    <span className="rounded border border-gray-200 px-1.5 py-0.5 font-mono text-[10px] text-gray-500">
+                    <span className="rounded border border-rule px-1.5 py-0.5 font-mono text-[10px] text-ink-soft/70">
                       FEC {entity.fec_committee_id}
                     </span>
                   )}
@@ -599,16 +599,16 @@ export default async function DonorProfilePage({
                   </SourceDetailPopover>
                 </div>
 
-                <h1 className="text-2xl font-bold text-gray-900 leading-tight">
+                <h1 className="text-2xl font-bold text-ink leading-tight">
                   {entity.display_name}
                   {entity.is_synthetic && <SyntheticMark withIcon className="ml-2 align-middle" />}
                 </h1>
                 {parentName && (
-                  <p className="mt-0.5 text-sm text-gray-500">
+                  <p className="mt-0.5 text-sm text-ink-soft/70">
                     Subsidiary of{" "}
                     <a
                       href={`/donors/${entity.parent_entity_id}`}
-                      className="text-indigo-600 hover:underline"
+                      className="text-accent hover:underline"
                     >
                       {parentName}
                     </a>
@@ -618,7 +618,7 @@ export default async function DonorProfilePage({
                 <div className="mt-4 flex flex-wrap gap-2">
                   <a
                     href={`/graph?entity=${entity.id}`}
-                    className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 transition-colors"
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent transition-colors"
                   >
                     <span>◎</span>
                     View in Graph
@@ -633,7 +633,7 @@ export default async function DonorProfilePage({
           </div>
 
           {/* Quick stats */}
-          <div className={`grid grid-cols-2 gap-px border-t border-gray-100 bg-gray-100 ${showIe ? "sm:grid-cols-6" : "sm:grid-cols-5"}`}>
+          <div className={`grid grid-cols-2 gap-px border-t border-rule bg-rule/40 ${showIe ? "sm:grid-cols-6" : "sm:grid-cols-5"}`}>
             <StatCell value={formatMoney(entity.total_donated_cents)} label="Total donated" />
             <StatCell value={formatMoney(entity.total_received_cents)} label="Total received" />
             {showIe && (
@@ -669,23 +669,23 @@ export default async function DonorProfilePage({
 
         {/* AI summary */}
         {cachedAiSummary && (
-          <div className="mt-6 rounded-md border border-indigo-100 bg-indigo-50 px-4 py-3">
-            <p className="text-sm text-gray-700 leading-relaxed">{cachedAiSummary}</p>
-            <p className="mt-1.5 text-[10px] text-indigo-400">Civic profile · AI generated</p>
+          <div className="mt-6 rounded-md border border-accent bg-accent/10 px-4 py-3">
+            <p className="text-sm text-ink-soft leading-relaxed">{cachedAiSummary}</p>
+            <p className="mt-1.5 text-[10px] text-accent">Civic profile · AI generated</p>
           </div>
         )}
 
         {/* ── RECIPIENTS ─────────────────────────────────────────────────── */}
-        <div className="mt-6 rounded-lg border border-gray-200 bg-white overflow-hidden">
-          <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+        <div className="mt-6 border border-rule bg-card overflow-hidden">
+          <div className="px-5 py-4 border-b border-rule flex items-center justify-between">
             <div>
-              <h2 className="text-sm font-semibold text-gray-900">Top recipients</h2>
-              <p className="text-xs text-gray-400 mt-0.5">
+              <h2 className="text-sm font-semibold text-ink">Top recipients</h2>
+              <p className="text-xs text-ink-soft/70 mt-0.5">
                 Where this {typeLabel.toLowerCase()}&apos;s donations went
               </p>
             </div>
             {recipients.length > topRecipients.length && (
-              <span className="text-[10px] text-gray-400">
+              <span className="text-[10px] text-ink-soft/70">
                 Showing top {topRecipients.length} of {recipients.length} unique
               </span>
             )}
@@ -696,17 +696,17 @@ export default async function DonorProfilePage({
                 /* FIX-676: an IE-only super PAC legally makes no direct
                    candidate contributions — the empty list is correct, so
                    explain the structure rather than implying missing data. */
-                <p className="mx-auto max-w-md text-sm text-gray-500">
+                <p className="mx-auto max-w-md text-sm text-ink-soft/70">
                   Independent-expenditure-only committee (super PAC) — by law it spends
                   to support or oppose candidates rather than contributing to them
                   directly. See Independent expenditures below.
                 </p>
               ) : (
-                <p className="text-sm font-medium text-gray-500">No outbound donations on record</p>
+                <p className="text-sm font-medium text-ink-soft/70">No outbound donations on record</p>
               )}
             </div>
           ) : (
-            <div className="divide-y divide-gray-100">
+            <div className="divide-y divide-rule">
               {topRecipients.map((r, i) => {
                 const partyCls = r.party ? PARTY_BADGE[r.party] : undefined;
                 const cycles = [...r.cycles].sort();
@@ -717,21 +717,21 @@ export default async function DonorProfilePage({
                     : `${cycles[0]}–${cycles[cycles.length - 1]}`;
                 return (
                   <div key={r.id} className="flex items-center gap-3 px-5 py-3">
-                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-gray-100 text-[10px] font-bold text-gray-500">
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-paper-2 text-[10px] font-bold text-ink-soft/70">
                       {i + 1}
                     </span>
                     <div className="flex-1 min-w-0">
                       {r.href ? (
                         <a
                           href={r.href}
-                          className="truncate text-xs font-medium text-gray-800 hover:text-indigo-600 hover:underline transition-colors block"
+                          className="truncate text-xs font-medium text-ink-soft hover:text-accent hover:underline transition-colors block"
                         >
                           {r.name}
                         </a>
                       ) : (
-                        <p className="truncate text-xs font-medium text-gray-800">{r.name}</p>
+                        <p className="truncate text-xs font-medium text-ink-soft">{r.name}</p>
                       )}
-                      <p className="truncate text-[10px] text-gray-400">
+                      <p className="truncate text-[10px] text-ink-soft/70">
                         {r.subtitle ?? r.to_type.replace(/_/g, " ")}
                         {cycleLabel ? ` · ${cycleLabel}` : ""}
                       </p>
@@ -742,8 +742,8 @@ export default async function DonorProfilePage({
                       </span>
                     )}
                     <div className="shrink-0 text-right">
-                      <p className="text-xs font-semibold text-gray-900">{formatMoney(r.total_cents)}</p>
-                      <p className="text-[10px] text-gray-400">
+                      <p className="text-xs font-semibold text-ink">{formatMoney(r.total_cents)}</p>
+                      <p className="text-[10px] text-ink-soft/70">
                         {r.count} transaction{r.count === 1 ? "" : "s"}
                       </p>
                     </div>
@@ -756,36 +756,36 @@ export default async function DonorProfilePage({
 
         {/* ── INDEPENDENT EXPENDITURES (Schedule E) ─────────────────────── */}
         {showIe && (
-          <div className="mt-6 rounded-lg border border-gray-200 bg-white overflow-hidden">
-            <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+          <div className="mt-6 border border-rule bg-card overflow-hidden">
+            <div className="px-5 py-4 border-b border-rule flex items-center justify-between">
               <div>
-                <h2 className="text-sm font-semibold text-gray-900">Independent expenditures</h2>
-                <p className="text-xs text-gray-400 mt-0.5">
+                <h2 className="text-sm font-semibold text-ink">Independent expenditures</h2>
+                <p className="text-xs text-ink-soft/70 mt-0.5">
                   Schedule E spending to support or oppose candidates — not coordinated with any campaign
                 </p>
               </div>
-              <span className="text-[10px] text-gray-400">
+              <span className="text-[10px] text-ink-soft/70">
                 {formatMoney(ieSupportCents)} support · {formatMoney(ieOpposeCents)} oppose
               </span>
             </div>
             {ieTargets.length === 0 ? (
               <div className="px-5 py-8 text-center">
-                <p className="text-sm font-medium text-gray-500">
+                <p className="text-sm font-medium text-ink-soft/70">
                   No itemized independent-expenditure targets on record
                 </p>
               </div>
             ) : (
-              <div className="divide-y divide-gray-100">
+              <div className="divide-y divide-rule">
                 {ieTargets.map((t, i) => {
                   const partyCls = t.party ? PARTY_BADGE[t.party] : undefined;
                   const isOppose = t.direction === "oppose";
                   return (
                     <div key={`${t.id}-${t.direction}`} className="flex items-center gap-3 px-5 py-3">
-                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-gray-100 text-[10px] font-bold text-gray-500">
+                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-paper-2 text-[10px] font-bold text-ink-soft/70">
                         {i + 1}
                       </span>
                       <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase ${
-                        isOppose ? "bg-red-100 text-red-700" : "bg-emerald-100 text-emerald-700"
+                        isOppose ? "bg-accent/10 text-accent" : "bg-green-ink/10 text-green-ink"
                       }`}>
                         {isOppose ? "Opposes" : "Supports"}
                       </span>
@@ -793,15 +793,15 @@ export default async function DonorProfilePage({
                         {t.href ? (
                           <a
                             href={t.href}
-                            className="truncate text-xs font-medium text-gray-800 hover:text-indigo-600 hover:underline transition-colors block"
+                            className="truncate text-xs font-medium text-ink-soft hover:text-accent hover:underline transition-colors block"
                           >
                             {t.name}
                           </a>
                         ) : (
-                          <p className="truncate text-xs font-medium text-gray-800">{t.name}</p>
+                          <p className="truncate text-xs font-medium text-ink-soft">{t.name}</p>
                         )}
                         {t.subtitle && (
-                          <p className="truncate text-[10px] text-gray-400">{t.subtitle}</p>
+                          <p className="truncate text-[10px] text-ink-soft/70">{t.subtitle}</p>
                         )}
                       </div>
                       {partyCls && t.party && t.party.length > 0 && (
@@ -810,8 +810,8 @@ export default async function DonorProfilePage({
                         </span>
                       )}
                       <div className="shrink-0 text-right">
-                        <p className="text-xs font-semibold text-gray-900">{formatMoney(t.total_cents)}</p>
-                        <p className="text-[10px] text-gray-400">
+                        <p className="text-xs font-semibold text-ink">{formatMoney(t.total_cents)}</p>
+                        <p className="text-[10px] text-ink-soft/70">
                           {t.count} transaction{t.count === 1 ? "" : "s"}
                         </p>
                       </div>
@@ -825,34 +825,34 @@ export default async function DonorProfilePage({
 
         {/* ── TOP DONORS (inbound) ───────────────────────────────────────── */}
         {topDonors.length > 0 && (
-          <div className="mt-6 rounded-lg border border-gray-200 bg-white overflow-hidden">
-            <div className="px-5 py-4 border-b border-gray-100">
-              <h2 className="text-sm font-semibold text-gray-900">Top donors</h2>
-              <p className="text-xs text-gray-400 mt-0.5">
+          <div className="mt-6 border border-rule bg-card overflow-hidden">
+            <div className="px-5 py-4 border-b border-rule">
+              <h2 className="text-sm font-semibold text-ink">Top donors</h2>
+              <p className="text-xs text-ink-soft/70 mt-0.5">
                 Who funded this {typeLabel.toLowerCase()}
               </p>
             </div>
-            <div className="divide-y divide-gray-100">
+            <div className="divide-y divide-rule">
               {topDonors.map((d, i) => (
                 <div key={d.id} className="flex items-center gap-3 px-5 py-3">
-                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-gray-100 text-[10px] font-bold text-gray-500">
+                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-paper-2 text-[10px] font-bold text-ink-soft/70">
                     {i + 1}
                   </span>
                   <div className="flex-1 min-w-0">
                     <a
                       href={`/donors/${d.id}`}
-                      className="truncate text-xs font-medium text-gray-800 hover:text-indigo-600 hover:underline transition-colors block"
+                      className="truncate text-xs font-medium text-ink-soft hover:text-accent hover:underline transition-colors block"
                     >
                       {d.name}
                     </a>
-                    <p className="truncate text-[10px] text-gray-400">
+                    <p className="truncate text-[10px] text-ink-soft/70">
                       {ENTITY_TYPE_LABEL[d.donor_type] ?? d.donor_type}
                       {d.industry ? ` · ${d.industry}` : ""}
                     </p>
                   </div>
                   <div className="shrink-0 text-right">
-                    <p className="text-xs font-semibold text-gray-900">{formatMoney(d.total_cents)}</p>
-                    <p className="text-[10px] text-gray-400">
+                    <p className="text-xs font-semibold text-ink">{formatMoney(d.total_cents)}</p>
+                    <p className="text-[10px] text-ink-soft/70">
                       {d.count} transaction{d.count === 1 ? "" : "s"}
                     </p>
                   </div>
@@ -864,32 +864,32 @@ export default async function DonorProfilePage({
 
         {/* ── FEDERAL SPENDING (contracts + grants received) ────────────── */}
         {spendingRows.length > 0 && (
-          <div className="mt-6 rounded-lg border border-gray-200 bg-white overflow-hidden">
-            <div className="px-5 py-4 border-b border-gray-100">
-              <h2 className="text-sm font-semibold text-gray-900">Federal spending awards</h2>
-              <p className="text-xs text-gray-400 mt-0.5">
+          <div className="mt-6 border border-rule bg-card overflow-hidden">
+            <div className="px-5 py-4 border-b border-rule">
+              <h2 className="text-sm font-semibold text-ink">Federal spending awards</h2>
+              <p className="text-xs text-ink-soft/70 mt-0.5">
                 Government contracts and grants received
               </p>
             </div>
-            <div className="divide-y divide-gray-100">
+            <div className="divide-y divide-rule">
               {spendingRows.map((s) => (
                 <div key={s.id} className="flex items-center gap-3 px-5 py-3">
                   <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase ${
                     s.award_type === "contract"
-                      ? "bg-blue-100 text-blue-700"
-                      : "bg-emerald-100 text-emerald-700"
+                      ? "bg-civic-blue/10 text-civic-blue"
+                      : "bg-green-ink/10 text-green-ink"
                   }`}>
                     {s.award_type}
                   </span>
                   <div className="flex-1 min-w-0">
-                    <p className="truncate text-xs font-medium text-gray-800">{s.agency_name}</p>
+                    <p className="truncate text-xs font-medium text-ink-soft">{s.agency_name}</p>
                     {s.description && (
-                      <p className="truncate text-[10px] text-gray-400">{s.description}</p>
+                      <p className="truncate text-[10px] text-ink-soft/70">{s.description}</p>
                     )}
                   </div>
                   <div className="shrink-0 text-right">
-                    <p className="text-xs font-semibold text-gray-900">{formatMoney(s.amount_cents)}</p>
-                    <p className="text-[10px] text-gray-400">{formatDate(s.occurred_at)}</p>
+                    <p className="text-xs font-semibold text-ink">{formatMoney(s.amount_cents)}</p>
+                    <p className="text-[10px] text-ink-soft/70">{formatDate(s.occurred_at)}</p>
                   </div>
                 </div>
               ))}
@@ -898,13 +898,13 @@ export default async function DonorProfilePage({
         )}
       </main>
 
-      <footer className="mt-16 border-t border-gray-200 bg-white">
+      <footer className="mt-16 border-t border-rule bg-card">
         <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-sm text-gray-500">
+            <p className="text-sm text-ink-soft/70">
               Civitics — open civic infrastructure. Beta · All data is public record.
             </p>
-            <a href="/search?type=financial" className="text-xs text-gray-400 hover:text-indigo-600 transition-colors">
+            <a href="/search?type=financial" className="text-xs text-ink-soft/70 hover:text-accent transition-colors">
               ← Back to donors &amp; PACs
             </a>
           </div>
@@ -924,10 +924,10 @@ function StatCell({
   note?: string;
 }) {
   return (
-    <div className="bg-white px-4 py-3 text-center">
-      <p className="text-lg font-bold text-gray-900">{value}</p>
-      <p className="mt-0.5 text-[10px] text-gray-400">{label}</p>
-      {note && <p className="text-[9px] text-gray-300">{note}</p>}
+    <div className="bg-card px-4 py-3 text-center">
+      <p className="text-lg font-bold text-ink">{value}</p>
+      <p className="mt-0.5 text-[10px] text-ink-soft/70">{label}</p>
+      {note && <p className="text-[9px] text-ink-soft/70">{note}</p>}
     </div>
   );
 }

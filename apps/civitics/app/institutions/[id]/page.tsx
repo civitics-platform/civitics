@@ -30,7 +30,7 @@ import { withDbTimeout } from "@/lib/supabase-check";
 
 const AgencyGraph = nextDynamic(
   () => import("../../agencies/[slug]/components/AgencyGraph").then((m) => ({ default: m.AgencyGraph })),
-  { ssr: false, loading: () => <div className="h-[400px] bg-gray-50 rounded-lg" /> }
+  { ssr: false, loading: () => <div className="h-[400px] bg-paper-2 rounded-lg" /> }
 );
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -112,12 +112,12 @@ const AGENCY_TYPE_LABELS: Record<string, string> = {
 };
 
 const AGENCY_TYPE_COLORS: Record<string, string> = {
-  federal:       "bg-blue-50 text-blue-700 border-blue-200",
-  state:         "bg-purple-50 text-purple-700 border-purple-200",
-  local:         "bg-green-50 text-green-700 border-green-200",
-  independent:   "bg-amber-50 text-amber-700 border-amber-200",
-  international: "bg-indigo-50 text-indigo-700 border-indigo-200",
-  other:         "bg-gray-50 text-gray-600 border-gray-200",
+  federal:       "bg-civic-blue/10 text-civic-blue border-civic-blue/25",
+  state:         "bg-viz-7/10 text-viz-7 border-viz-7/25",
+  local:         "bg-green-ink/10 text-green-ink border-green-ink/25",
+  independent:   "bg-amber/20 text-ink border-amber/60",
+  international: "bg-accent/10 text-accent border-accent/25",
+  other:         "bg-paper-2 text-ink-soft border-rule",
 };
 
 const GB_TYPE_LABELS: Record<string, string> = {
@@ -136,32 +136,32 @@ const GB_TYPE_LABELS: Record<string, string> = {
 };
 
 const GB_TYPE_COLORS: Record<string, string> = {
-  legislature_upper:       "bg-indigo-50 text-indigo-700 border-indigo-200",
-  legislature_lower:       "bg-indigo-50 text-indigo-700 border-indigo-200",
-  legislature_unicameral:  "bg-indigo-50 text-indigo-700 border-indigo-200",
-  executive:               "bg-rose-50 text-rose-700 border-rose-200",
-  judicial:                "bg-amber-50 text-amber-700 border-amber-200",
-  regulatory_agency:       "bg-blue-50 text-blue-700 border-blue-200",
-  municipal_council:       "bg-green-50 text-green-700 border-green-200",
-  school_board:            "bg-green-50 text-green-700 border-green-200",
-  special_district:        "bg-emerald-50 text-emerald-700 border-emerald-200",
-  international_body:      "bg-purple-50 text-purple-700 border-purple-200",
-  committee:               "bg-sky-50 text-sky-700 border-sky-200",
-  other:                   "bg-gray-50 text-gray-600 border-gray-200",
+  legislature_upper:       "bg-accent/10 text-accent border-accent/25",
+  legislature_lower:       "bg-accent/10 text-accent border-accent/25",
+  legislature_unicameral:  "bg-accent/10 text-accent border-accent/25",
+  executive:               "bg-accent/10 text-accent border-accent/25",
+  judicial:                "bg-amber/20 text-ink border-amber/60",
+  regulatory_agency:       "bg-civic-blue/10 text-civic-blue border-civic-blue/25",
+  municipal_council:       "bg-green-ink/10 text-green-ink border-green-ink/25",
+  school_board:            "bg-green-ink/10 text-green-ink border-green-ink/25",
+  special_district:        "bg-green-ink/10 text-green-ink border-green-ink/25",
+  international_body:      "bg-viz-7/10 text-viz-7 border-viz-7/25",
+  committee:               "bg-civic-blue/10 text-civic-blue border-civic-blue/25",
+  other:                   "bg-paper-2 text-ink-soft border-rule",
 };
 
 const PROPOSAL_STATUS: Record<string, { color: string; label: string }> = {
-  open_comment:         { color: "bg-emerald-100 text-emerald-800", label: "Open Comment" },
-  introduced:           { color: "bg-amber-100 text-amber-800",     label: "Proposed" },
-  in_committee:         { color: "bg-amber-100 text-amber-800",     label: "In Review" },
-  floor_vote:           { color: "bg-blue-100 text-blue-800",       label: "Floor Vote" },
-  passed_committee:     { color: "bg-blue-100 text-blue-800",       label: "Passed Committee" },
-  comment_closed:       { color: "bg-gray-100 text-gray-700",       label: "Comment Closed" },
-  final_rule:           { color: "bg-green-100 text-green-800",     label: "Final Rule" },
-  enacted:              { color: "bg-green-100 text-green-800",     label: "Enacted" },
-  signed:               { color: "bg-green-100 text-green-800",     label: "Signed" },
-  failed:               { color: "bg-red-100 text-red-800",         label: "Failed" },
-  withdrawn:            { color: "bg-gray-100 text-gray-700",       label: "Withdrawn" },
+  open_comment:         { color: "bg-green-ink/10 text-green-ink", label: "Open Comment" },
+  introduced:           { color: "bg-amber/20 text-ink",     label: "Proposed" },
+  in_committee:         { color: "bg-amber/20 text-ink",     label: "In Review" },
+  floor_vote:           { color: "bg-civic-blue/10 text-civic-blue",       label: "Floor Vote" },
+  passed_committee:     { color: "bg-civic-blue/10 text-civic-blue",       label: "Passed Committee" },
+  comment_closed:       { color: "bg-paper-2 text-ink-soft",       label: "Comment Closed" },
+  final_rule:           { color: "bg-green-ink/10 text-green-ink",     label: "Final Rule" },
+  enacted:              { color: "bg-green-ink/10 text-green-ink",     label: "Enacted" },
+  signed:               { color: "bg-green-ink/10 text-green-ink",     label: "Signed" },
+  failed:               { color: "bg-accent/10 text-accent",         label: "Failed" },
+  withdrawn:            { color: "bg-paper-2 text-ink-soft",       label: "Withdrawn" },
 };
 
 function formatDate(iso: string | null | undefined): string {
@@ -490,31 +490,31 @@ async function AgencyView({
   const facebookUrl   = agencyMeta["facebook_url"]   ?? null;
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-paper-2">
       <script
         type="application/json"
         data-civitics-attribution="agency"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(attribution) }}
       />
       <PageViewTracker entityType="agency" entityId={agency.id} />
-      <header className="border-b border-gray-200 bg-white px-5 py-3">
+      <header className="border-b border-rule bg-card px-5 py-3">
         <div className="flex items-center gap-3">
-          <a href="/" className="text-sm font-medium text-gray-400 hover:text-gray-700 transition-colors">
+          <a href="/" className="text-sm font-medium text-ink-soft/70 hover:text-ink-soft transition-colors">
             ← Civitics
           </a>
-          <span className="text-gray-200">/</span>
-          <a href="/agencies" className="text-sm font-medium text-gray-400 hover:text-gray-700 transition-colors">
+          <span className="text-rule">/</span>
+          <a href="/agencies" className="text-sm font-medium text-ink-soft/70 hover:text-ink-soft transition-colors">
             Agencies
           </a>
-          <span className="text-gray-200">/</span>
-          <span className="text-sm font-semibold text-gray-900">{displayAcronym}</span>
+          <span className="text-rule">/</span>
+          <span className="text-sm font-semibold text-ink">{displayAcronym}</span>
         </div>
       </header>
 
       <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-        <div className="rounded-lg border border-gray-200 bg-white p-6">
+        <div className="border border-rule bg-card p-6">
           <div className="flex items-start gap-5">
-            <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-gray-50 font-mono text-lg font-bold text-gray-700">
+            <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg border border-rule bg-paper-2 font-mono text-lg font-bold text-ink-soft">
               {displayAcronym.slice(0, 4)}
             </div>
             <div className="flex-1 min-w-0">
@@ -523,7 +523,7 @@ async function AgencyView({
                   {typeLabel}
                 </span>
                 {agency.founded_year && (
-                  <span className="rounded border border-gray-200 bg-gray-50 px-2 py-0.5 text-xs text-gray-500">
+                  <span className="rounded border border-rule bg-paper-2 px-2 py-0.5 text-xs text-ink-soft/70">
                     Est. {agency.founded_year}
                   </span>
                 )}
@@ -535,16 +535,16 @@ async function AgencyView({
                   <SourceBadge attribution={attribution} />
                 </SourceDetailPopover>
               </div>
-              <h1 className="mt-1 text-2xl font-bold text-gray-900 leading-tight">
+              <h1 className="mt-1 text-2xl font-bold text-ink leading-tight">
                 {agency.name}
                 {institution.is_synthetic && <SyntheticMark withIcon className="ml-2 align-middle" />}
               </h1>
               <FormerBadge isActive={institution.is_active} className="mt-1" />
               {agency.acronym && agency.acronym !== agency.name && (
-                <p className="text-sm font-medium text-gray-500">{agency.acronym}</p>
+                <p className="text-sm font-medium text-ink-soft/70">{agency.acronym}</p>
               )}
               {agency.description && (
-                <p className="mt-2 text-sm text-gray-600 leading-relaxed max-w-3xl">
+                <p className="mt-2 text-sm text-ink-soft leading-relaxed max-w-3xl">
                   {agency.description}
                 </p>
               )}
@@ -554,7 +554,7 @@ async function AgencyView({
                     href={agency.website_url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-sm text-indigo-600 hover:text-indigo-800 transition-colors"
+                    className="text-sm text-accent hover:text-accent transition-colors"
                   >
                     {agency.website_url.replace(/^https?:\/\//, "")} ↗
                   </a>
@@ -564,7 +564,7 @@ async function AgencyView({
                     href={`https://twitter.com/${twitterHandle}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-sm text-gray-400 hover:text-gray-700 transition-colors"
+                    className="text-sm text-ink-soft/70 hover:text-ink-soft transition-colors"
                     title={`@${twitterHandle} on X/Twitter`}
                   >
                     𝕏 @{twitterHandle}
@@ -575,7 +575,7 @@ async function AgencyView({
                     href={`https://youtube.com/${youtubeHandle}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-sm text-gray-400 hover:text-gray-700 transition-colors"
+                    className="text-sm text-ink-soft/70 hover:text-ink-soft transition-colors"
                     title="YouTube channel"
                   >
                     ▶ YouTube
@@ -586,7 +586,7 @@ async function AgencyView({
                     href={facebookUrl.startsWith("http") ? facebookUrl : `https://facebook.com/${facebookUrl}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-sm text-gray-400 hover:text-gray-700 transition-colors"
+                    className="text-sm text-ink-soft/70 hover:text-ink-soft transition-colors"
                     title="Facebook"
                   >
                     f Facebook
@@ -595,7 +595,7 @@ async function AgencyView({
                 {agency.contact_email && (
                   <a
                     href={`mailto:${agency.contact_email}`}
-                    className="text-sm text-gray-500 hover:text-gray-700"
+                    className="text-sm text-ink-soft/70 hover:text-ink-soft"
                   >
                     {agency.contact_email}
                   </a>
@@ -610,7 +610,7 @@ async function AgencyView({
           </div>
         </div>
 
-        <div className="mt-4 grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-gray-200 bg-gray-200 sm:grid-cols-5">
+        <div className="mt-4 grid grid-cols-2 gap-px overflow-hidden border border-rule bg-rule/40 sm:grid-cols-5">
           <StatBox value={totalRules > 0 ? totalRules.toLocaleString() : "—"} label="Total rules" />
           <StatBox
             value={openRules > 0 ? openRules.toLocaleString() : "—"}
@@ -648,7 +648,7 @@ async function AgencyView({
                 <div className="flex flex-col gap-3">
                   {activeRules.map((rule) => {
                     const statusStyle = PROPOSAL_STATUS[rule.status] ?? {
-                      color: "bg-gray-100 text-gray-700",
+                      color: "bg-paper-2 text-ink-soft",
                       label: rule.status,
                     };
                     const isOpen = rule.status === "open_comment";
@@ -658,7 +658,7 @@ async function AgencyView({
                     return (
                       <div
                         key={rule.id}
-                        className="rounded-lg border border-gray-200 bg-white p-4"
+                        className="border border-rule bg-card p-4"
                       >
                         <div className="flex flex-wrap items-start justify-between gap-2">
                           <div className="flex flex-wrap items-center gap-2">
@@ -666,39 +666,39 @@ async function AgencyView({
                               {statusStyle.label}
                             </span>
                             {rule.bill_number && (
-                              <span className="rounded bg-gray-100 px-2 py-0.5 font-mono text-xs text-gray-600">
+                              <span className="rounded bg-paper-2 px-2 py-0.5 font-mono text-xs text-ink-soft">
                                 {rule.bill_number}
                               </span>
                             )}
                             {rule.regulations_gov_id && (
-                              <span className="rounded bg-gray-100 px-2 py-0.5 font-mono text-xs text-gray-600">
+                              <span className="rounded bg-paper-2 px-2 py-0.5 font-mono text-xs text-ink-soft">
                                 {rule.regulations_gov_id}
                               </span>
                             )}
                           </div>
                           {rule.comment_period_end && (
-                            <span className={`shrink-0 text-xs ${isPastDeadline ? "text-red-500" : "text-gray-400"}`}>
+                            <span className={`shrink-0 text-xs ${isPastDeadline ? "text-accent" : "text-ink-soft/70"}`}>
                               {isOpen ? "Deadline: " : "Closed: "}
                               {formatDate(rule.comment_period_end)}
                             </span>
                           )}
                         </div>
-                        <h3 className="mt-2 text-sm font-semibold text-gray-900 leading-snug">
+                        <h3 className="mt-2 text-sm font-semibold text-ink leading-snug">
                           {rule.title}
                         </h3>
                         {rule.summary_plain && (
-                          <p className="mt-1.5 line-clamp-2 text-xs leading-relaxed text-gray-500">
+                          <p className="mt-1.5 line-clamp-2 text-xs leading-relaxed text-ink-soft/70">
                             {rule.summary_plain}
                           </p>
                         )}
                         {isOpen && !isPastDeadline && (
-                          <div className="mt-3 flex items-center justify-between rounded border border-emerald-200 bg-emerald-50 px-3 py-2">
-                            <p className="text-xs text-emerald-800">
+                          <div className="mt-3 flex items-center justify-between rounded border border-green-ink/25 bg-green-ink/10 px-3 py-2">
+                            <p className="text-xs text-green-ink">
                               Comment period open. Submitting is free — no account required.
                             </p>
                             <a
                               href="#"
-                              className="ml-3 shrink-0 rounded bg-emerald-600 px-3 py-1 text-xs font-medium text-white hover:bg-emerald-700 transition-colors"
+                              className="ml-3 shrink-0 rounded bg-green-ink px-3 py-1 text-xs font-medium text-white hover:bg-green-ink transition-colors"
                             >
                               Submit comment →
                             </a>
@@ -717,17 +717,17 @@ async function AgencyView({
                 <div className="flex flex-col gap-2">
                   {recentRules.map((rule) => {
                     const statusStyle = PROPOSAL_STATUS[rule.status] ?? {
-                      color: "bg-gray-100 text-gray-700",
+                      color: "bg-paper-2 text-ink-soft",
                       label: rule.status,
                     };
                     return (
                       <div
                         key={rule.id}
-                        className="flex items-start justify-between gap-3 rounded-lg border border-gray-200 bg-white px-4 py-3"
+                        className="flex items-start justify-between gap-3 border border-rule bg-card px-4 py-3"
                       >
                         <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-medium text-gray-800">{rule.title}</p>
-                          <p className="mt-0.5 text-xs text-gray-400">
+                          <p className="truncate text-sm font-medium text-ink-soft">{rule.title}</p>
+                          <p className="mt-0.5 text-xs text-ink-soft/70">
                             {rule.bill_number ?? rule.regulations_gov_id ?? rule.type}
                             {rule.comment_period_end ? ` · ${formatDate(rule.comment_period_end)}` : ""}
                           </p>
@@ -750,37 +750,37 @@ async function AgencyView({
               {spendingGroups.length === 0 ? (
                 <EmptyState message="Spending data syncs weekly from USASpending.gov." />
               ) : (
-                <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
+                <div className="overflow-hidden border border-rule bg-card">
                   <table className="w-full text-sm">
                     <thead>
-                      <tr className="border-b border-gray-100 bg-gray-50">
-                        <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
+                      <tr className="border-b border-rule bg-paper-2">
+                        <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-ink-soft/70">
                           Recipient
                         </th>
-                        <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
+                        <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-ink-soft/70">
                           Type
                         </th>
-                        <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wider text-gray-500">
+                        <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wider text-ink-soft/70">
                           Amount
                         </th>
-                        <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wider text-gray-500">
+                        <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wider text-ink-soft/70">
                           Year
                         </th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-100">
+                    <tbody className="divide-y divide-rule">
                       {spendingGroups.map((g, i) => (
-                        <tr key={i} className="hover:bg-gray-50">
-                          <td className="max-w-xs truncate px-4 py-2.5 text-sm font-medium text-gray-800">
+                        <tr key={i} className="hover:bg-paper-2">
+                          <td className="max-w-xs truncate px-4 py-2.5 text-sm font-medium text-ink-soft">
                             {g.recipient}
                           </td>
-                          <td className="px-4 py-2.5 text-xs capitalize text-gray-500">
+                          <td className="px-4 py-2.5 text-xs capitalize text-ink-soft/70">
                             {g.awardType}
                           </td>
-                          <td className="px-4 py-2.5 text-right font-mono text-sm font-semibold text-gray-900">
+                          <td className="px-4 py-2.5 text-right font-mono text-sm font-semibold text-ink">
                             {formatDollars(g.totalCents)}
                           </td>
-                          <td className="px-4 py-2.5 text-right text-xs text-gray-400">
+                          <td className="px-4 py-2.5 text-right text-xs text-ink-soft/70">
                             {g.fiscalYear}
                           </td>
                         </tr>
@@ -796,15 +796,15 @@ async function AgencyView({
             <section>
               <SectionHeader title="Leadership" />
               {officials.length === 0 ? (
-                <div className="rounded-lg border border-gray-200 bg-white px-4 py-5">
-                  <p className="text-sm text-gray-400">No leadership data on record yet.</p>
+                <div className="border border-rule bg-card px-4 py-5">
+                  <p className="text-sm text-ink-soft/70">No leadership data on record yet.</p>
                 </div>
               ) : (
                 <div className="flex flex-col gap-3">
                   {officials.filter(o => o.isCurrent && o.strength >= 0.9).length > 0 && (
                     <div>
-                      <p className="mb-1.5 text-xs font-medium uppercase tracking-wider text-gray-400">Agency Head</p>
-                      <div className="rounded-lg border border-gray-200 bg-white divide-y divide-gray-100">
+                      <p className="mb-1.5 text-xs font-medium uppercase tracking-wider text-ink-soft/70">Agency Head</p>
+                      <div className="border border-rule bg-card divide-y divide-rule">
                         {officials.filter(o => o.isCurrent && o.strength >= 0.9).map((o) => (
                           <OfficialCard key={o.id} official={o} plumLastChange={plumLastChange} />
                         ))}
@@ -813,10 +813,10 @@ async function AgencyView({
                   )}
                   {officials.filter(o => o.isCurrent && o.strength < 0.9).length > 0 && (
                     <div>
-                      <p className="mb-1.5 text-xs font-medium uppercase tracking-wider text-gray-400">
+                      <p className="mb-1.5 text-xs font-medium uppercase tracking-wider text-ink-soft/70">
                         {officials.filter(o => o.isCurrent && o.strength >= 0.9).length > 0 ? "Senior Leadership" : "Current"}
                       </p>
-                      <div className="rounded-lg border border-gray-200 bg-white divide-y divide-gray-100">
+                      <div className="border border-rule bg-card divide-y divide-rule">
                         {officials.filter(o => o.isCurrent && o.strength < 0.9).map((o) => (
                           <OfficialCard key={o.id} official={o} plumLastChange={plumLastChange} />
                         ))}
@@ -825,8 +825,8 @@ async function AgencyView({
                   )}
                   {officials.filter(o => !o.isCurrent).length > 0 && (
                     <div>
-                      <p className="mb-1.5 text-xs font-medium uppercase tracking-wider text-gray-400">Past</p>
-                      <div className="rounded-lg border border-gray-200 bg-white divide-y divide-gray-100">
+                      <p className="mb-1.5 text-xs font-medium uppercase tracking-wider text-ink-soft/70">Past</p>
+                      <div className="border border-rule bg-card divide-y divide-rule">
                         {officials.filter(o => !o.isCurrent).slice(0, 5).map((o) => (
                           <OfficialCard key={o.id} official={o} plumLastChange={plumLastChange} />
                         ))}
@@ -838,17 +838,17 @@ async function AgencyView({
               )}
             </section>
 
-            <div className="rounded-lg border border-indigo-100 bg-indigo-50 p-4">
-              <p className="text-sm font-semibold text-indigo-900">
+            <div className="border border-accent bg-accent/10 p-4">
+              <p className="text-sm font-semibold text-accent">
                 Your tax dollars fund this agency.
               </p>
-              <p className="mt-1 text-xs text-indigo-700 leading-relaxed">
+              <p className="mt-1 text-xs text-accent leading-relaxed">
                 Comment on proposed rules — free, always. No account, no fees, no exceptions.
               </p>
               {openRules > 0 && (
                 <a
                   href="#active-rulemaking"
-                  className="mt-3 block rounded border border-indigo-300 bg-white px-3 py-2 text-center text-xs font-medium text-indigo-700 hover:bg-indigo-50 transition-colors"
+                  className="mt-3 block rounded border border-accent bg-card px-3 py-2 text-center text-xs font-medium text-accent hover:bg-accent/10 transition-colors"
                 >
                   {openRules} open period{openRules !== 1 ? "s" : ""} — comment now →
                 </a>
@@ -859,7 +859,7 @@ async function AgencyView({
 
         <div className="mt-6">
           <SectionHeader title="Connection Graph" subtitle="Officials, contractors, and oversight relationships" />
-          <div className="mt-3 rounded-lg border border-gray-200 overflow-hidden">
+          <div className="mt-3 border border-rule overflow-hidden">
             <AgencyGraph agencyId={agency.id} agencyName={agency.name} />
           </div>
         </div>
@@ -886,10 +886,10 @@ const LEGISLATURE_TYPES = new Set([
 ]);
 
 const PARTY_BAR: Array<{ key: string; label: string; color: string }> = [
-  { key: "democrat",    label: "Democrat",    color: "bg-blue-500" },
-  { key: "republican",  label: "Republican",  color: "bg-red-500" },
-  { key: "independent", label: "Independent", color: "bg-purple-500" },
-  { key: "other",       label: "Other",       color: "bg-gray-400" },
+  { key: "democrat",    label: "Democrat",    color: "bg-civic-blue" },
+  { key: "republican",  label: "Republican",  color: "bg-accent" },
+  { key: "independent", label: "Independent", color: "bg-viz-7" },
+  { key: "other",       label: "Other",       color: "bg-ink-soft/70" },
 ];
 
 type RecentVote = {
@@ -1027,31 +1027,31 @@ async function GoverningBodyView({
   const hiddenRoster = roster.slice(ROSTER_VISIBLE);
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-paper-2">
       <script
         type="application/json"
         data-civitics-attribution="governing_body"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(attribution) }}
       />
       <PageViewTracker entityType="governing_body" entityId={institution.id} />
-      <header className="border-b border-gray-200 bg-white px-5 py-3">
+      <header className="border-b border-rule bg-card px-5 py-3">
         <div className="flex items-center gap-3">
-          <a href="/" className="text-sm font-medium text-gray-400 hover:text-gray-700 transition-colors">
+          <a href="/" className="text-sm font-medium text-ink-soft/70 hover:text-ink-soft transition-colors">
             ← Civitics
           </a>
-          <span className="text-gray-200">/</span>
-          <a href="/officials" className="text-sm font-medium text-gray-400 hover:text-gray-700 transition-colors">
+          <span className="text-rule">/</span>
+          <a href="/officials" className="text-sm font-medium text-ink-soft/70 hover:text-ink-soft transition-colors">
             Officials
           </a>
-          <span className="text-gray-200">/</span>
-          <span className="text-sm font-semibold text-gray-900">{institution.short_name ?? institution.name}</span>
+          <span className="text-rule">/</span>
+          <span className="text-sm font-semibold text-ink">{institution.short_name ?? institution.name}</span>
         </div>
       </header>
 
       <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-        <div className="rounded-lg border border-gray-200 bg-white p-6">
+        <div className="border border-rule bg-card p-6">
           <div className="flex items-start gap-5">
-            <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-gray-50 font-mono text-lg font-bold text-gray-700">
+            <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg border border-rule bg-paper-2 font-mono text-lg font-bold text-ink-soft">
               {displayAcronym.slice(0, 4)}
             </div>
             <div className="flex-1 min-w-0">
@@ -1071,18 +1071,18 @@ async function GoverningBodyView({
                 </SourceDetailPopover>
               </div>
               {(jurisdiction || parent) && (
-                <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-gray-500">
+                <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-ink-soft/70">
                   {jurisdiction && (
-                    <a href={`/jurisdictions/${jurisdiction.id}`} className="hover:text-indigo-600 transition-colors">
+                    <a href={`/jurisdictions/${jurisdiction.id}`} className="hover:text-accent transition-colors">
                       {jurisdiction.name}
                     </a>
                   )}
                   {parent && (
                     <>
-                      {jurisdiction && <span className="text-gray-300">·</span>}
+                      {jurisdiction && <span className="text-rule">·</span>}
                       <span>
                         Part of{" "}
-                        <a href={`/institutions/${parent.id}`} className="font-medium hover:text-indigo-600 transition-colors">
+                        <a href={`/institutions/${parent.id}`} className="font-medium hover:text-accent transition-colors">
                           {parent.name}
                         </a>
                       </span>
@@ -1090,13 +1090,13 @@ async function GoverningBodyView({
                   )}
                 </div>
               )}
-              <h1 className="mt-1 text-2xl font-bold text-gray-900 leading-tight">
+              <h1 className="mt-1 text-2xl font-bold text-ink leading-tight">
                 {institution.name}
                 {institution.is_synthetic && <SyntheticMark withIcon className="ml-2 align-middle" />}
               </h1>
               <FormerBadge isActive={institution.is_active} className="mt-1" />
               {institution.short_name && institution.short_name !== institution.name && (
-                <p className="text-sm font-medium text-gray-500">{institution.short_name}</p>
+                <p className="text-sm font-medium text-ink-soft/70">{institution.short_name}</p>
               )}
               <div className="mt-3 flex flex-wrap items-center gap-4">
                 {institution.website_url && (
@@ -1104,7 +1104,7 @@ async function GoverningBodyView({
                     href={institution.website_url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-sm text-indigo-600 hover:text-indigo-800 transition-colors"
+                    className="text-sm text-accent hover:text-accent transition-colors"
                   >
                     {institution.website_url.replace(/^https?:\/\//, "")} ↗
                   </a>
@@ -1114,7 +1114,7 @@ async function GoverningBodyView({
                     href={`https://twitter.com/${twitterHandle}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-sm text-gray-400 hover:text-gray-700 transition-colors"
+                    className="text-sm text-ink-soft/70 hover:text-ink-soft transition-colors"
                   >
                     𝕏 @{twitterHandle}
                   </a>
@@ -1122,7 +1122,7 @@ async function GoverningBodyView({
                 {institution.contact_email && (
                   <a
                     href={`mailto:${institution.contact_email}`}
-                    className="text-sm text-gray-500 hover:text-gray-700"
+                    className="text-sm text-ink-soft/70 hover:text-ink-soft"
                   >
                     {institution.contact_email}
                   </a>
@@ -1137,7 +1137,7 @@ async function GoverningBodyView({
           </div>
         </div>
 
-        <div className="mt-4 grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-gray-200 bg-gray-200 sm:grid-cols-4">
+        <div className="mt-4 grid grid-cols-2 gap-px overflow-hidden border border-rule bg-rule/40 sm:grid-cols-4">
           <StatBox value={partyTotal > 0 ? partyTotal.toLocaleString() : "—"} label="Active members" />
           <StatBox
             value={gbExtra?.seat_count ? gbExtra.seat_count.toLocaleString() : "—"}
@@ -1169,7 +1169,7 @@ async function GoverningBodyView({
             </div>
             {hiddenRoster.length > 0 && (
               <details className="mt-3">
-                <summary className="cursor-pointer text-sm font-medium text-indigo-600 hover:text-indigo-800">
+                <summary className="cursor-pointer text-sm font-medium text-accent hover:text-accent">
                   Show all {roster.length.toLocaleString()} members
                 </summary>
                 <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -1203,14 +1203,14 @@ async function GoverningBodyView({
                 <div className="flex flex-col gap-3">
                   {activeProposals.map((p) => {
                     const statusStyle = PROPOSAL_STATUS[p.status] ?? {
-                      color: "bg-gray-100 text-gray-700",
+                      color: "bg-paper-2 text-ink-soft",
                       label: p.status,
                     };
                     return (
                       <a
                         key={p.id}
                         href={`/proposals/${p.id}`}
-                        className="block rounded-lg border border-gray-200 bg-white p-4 hover:bg-gray-50 transition-colors"
+                        className="block border border-rule bg-card p-4 hover:bg-paper-2 transition-colors"
                       >
                         <div className="flex flex-wrap items-start justify-between gap-2">
                           <div className="flex flex-wrap items-center gap-2">
@@ -1218,22 +1218,22 @@ async function GoverningBodyView({
                               {statusStyle.label}
                             </span>
                             {p.bill_number && (
-                              <span className="rounded bg-gray-100 px-2 py-0.5 font-mono text-xs text-gray-600">
+                              <span className="rounded bg-paper-2 px-2 py-0.5 font-mono text-xs text-ink-soft">
                                 {p.bill_number}
                               </span>
                             )}
                           </div>
                           {p.introduced_at && (
-                            <span className="shrink-0 text-xs text-gray-400">
+                            <span className="shrink-0 text-xs text-ink-soft/70">
                               Introduced {formatDate(p.introduced_at)}
                             </span>
                           )}
                         </div>
-                        <h3 className="mt-2 text-sm font-semibold text-gray-900 leading-snug">
+                        <h3 className="mt-2 text-sm font-semibold text-ink leading-snug">
                           {p.title}
                         </h3>
                         {p.summary_plain && (
-                          <p className="mt-1.5 line-clamp-2 text-xs leading-relaxed text-gray-500">
+                          <p className="mt-1.5 line-clamp-2 text-xs leading-relaxed text-ink-soft/70">
                             {p.summary_plain}
                           </p>
                         )}
@@ -1250,18 +1250,18 @@ async function GoverningBodyView({
                 <div className="flex flex-col gap-2">
                   {recentProposals.map((p) => {
                     const statusStyle = PROPOSAL_STATUS[p.status] ?? {
-                      color: "bg-gray-100 text-gray-700",
+                      color: "bg-paper-2 text-ink-soft",
                       label: p.status,
                     };
                     return (
                       <a
                         key={p.id}
                         href={`/proposals/${p.id}`}
-                        className="flex items-start justify-between gap-3 rounded-lg border border-gray-200 bg-white px-4 py-3 hover:bg-gray-50 transition-colors"
+                        className="flex items-start justify-between gap-3 border border-rule bg-card px-4 py-3 hover:bg-paper-2 transition-colors"
                       >
                         <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-medium text-gray-800">{p.title}</p>
-                          <p className="mt-0.5 text-xs text-gray-400">
+                          <p className="truncate text-sm font-medium text-ink-soft">{p.title}</p>
+                          <p className="mt-0.5 text-xs text-ink-soft/70">
                             {p.bill_number ?? p.type}
                             {p.introduced_at ? ` · ${formatDate(p.introduced_at)}` : ""}
                           </p>
@@ -1281,15 +1281,15 @@ async function GoverningBodyView({
             {subBodies.length > 0 && (
               <section>
                 <SectionHeader title="Committees & Sub-bodies" subtitle={`${subBodies.length} on record`} />
-                <div className="rounded-lg border border-gray-200 bg-white divide-y divide-gray-100">
+                <div className="border border-rule bg-card divide-y divide-rule">
                   {subBodies.map((sb) => (
                     <a
                       key={sb.id}
                       href={`/institutions/${sb.id}`}
-                      className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-gray-50 transition-colors"
+                      className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-paper-2 transition-colors"
                     >
-                      <span className="min-w-0 flex-1 truncate text-sm font-medium text-gray-800">{sb.name}</span>
-                      <span className="shrink-0 text-xs capitalize text-gray-400">
+                      <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink-soft">{sb.name}</span>
+                      <span className="shrink-0 text-xs capitalize text-ink-soft/70">
                         {GB_TYPE_LABELS[sb.type] ?? sb.type.replace(/_/g, " ")}
                       </span>
                     </a>
@@ -1328,8 +1328,8 @@ function PartyBalanceBar({
     .map((p) => ({ ...p, count: counts.get(p.key) ?? 0 }))
     .filter((p) => p.count > 0);
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-4">
-      <div className="flex h-3 w-full overflow-hidden rounded-full bg-gray-100">
+    <div className="border border-rule bg-card p-4">
+      <div className="flex h-3 w-full overflow-hidden rounded-full bg-paper-2">
         {segments.map((s) => (
           <div
             key={s.key}
@@ -1343,8 +1343,8 @@ function PartyBalanceBar({
         {segments.map((s) => (
           <div key={s.key} className="flex items-center gap-1.5 text-xs">
             <span className={`h-2.5 w-2.5 rounded-full ${s.color}`} />
-            <span className="font-medium text-gray-700">{s.label}</span>
-            <span className="text-gray-400">
+            <span className="font-medium text-ink-soft">{s.label}</span>
+            <span className="text-ink-soft/70">
               {s.count} · {Math.round((s.count / total) * 100)}%
             </span>
           </div>
@@ -1355,9 +1355,9 @@ function PartyBalanceBar({
 }
 
 function voteIndicator(v: RecentVote): { label: string; cls: string } | null {
-  if (v.unanimous) return { label: "Unanimous", cls: "bg-gray-100 text-gray-600" };
-  if (v.party_line) return { label: "Party-line", cls: "bg-rose-100 text-rose-700" };
-  return { label: "Bipartisan", cls: "bg-emerald-100 text-emerald-700" };
+  if (v.unanimous) return { label: "Unanimous", cls: "bg-paper-2 text-ink-soft" };
+  if (v.party_line) return { label: "Party-line", cls: "bg-accent/10 text-accent" };
+  return { label: "Bipartisan", cls: "bg-green-ink/10 text-green-ink" };
 }
 
 function RecentVoteRow({ vote }: { vote: RecentVote }) {
@@ -1368,7 +1368,7 @@ function RecentVoteRow({ vote }: { vote: RecentVote }) {
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
           {vote.bill_number && (
-            <span className="rounded bg-gray-100 px-2 py-0.5 font-mono text-xs text-gray-600">
+            <span className="rounded bg-paper-2 px-2 py-0.5 font-mono text-xs text-ink-soft">
               {vote.bill_number}
             </span>
           )}
@@ -1377,21 +1377,21 @@ function RecentVoteRow({ vote }: { vote: RecentVote }) {
               {indicator.label}
             </span>
           )}
-          <span className={`text-xs font-semibold ${passed ? "text-emerald-700" : "text-gray-500"}`}>
+          <span className={`text-xs font-semibold ${passed ? "text-green-ink" : "text-ink-soft/70"}`}>
             {passed ? "Passed" : "Failed"} {vote.yes_count}–{vote.no_count}
             {vote.not_voting_count > 0 ? ` (${vote.not_voting_count} NV)` : ""}
           </span>
         </div>
-        <p className="mt-1 truncate text-sm font-medium text-gray-800">
+        <p className="mt-1 truncate text-sm font-medium text-ink-soft">
           {vote.vote_question ?? "Roll-call vote"}
           {vote.proposal_title ? ` · ${vote.proposal_title}` : ""}
         </p>
       </div>
-      <span className="shrink-0 text-xs text-gray-400">{formatDate(vote.voted_at)}</span>
+      <span className="shrink-0 text-xs text-ink-soft/70">{formatDate(vote.voted_at)}</span>
     </>
   );
   const className =
-    "flex items-start justify-between gap-3 rounded-lg border border-gray-200 bg-white px-4 py-3 transition-colors hover:bg-gray-50";
+    "flex items-start justify-between gap-3 border border-rule bg-card px-4 py-3 transition-colors hover:bg-paper-2";
   return vote.proposal_id ? (
     <a href={`/proposals/${vote.proposal_id}`} className={className}>
       {inner}
@@ -1415,12 +1415,12 @@ function StatBox({
   note?: string;
 }) {
   return (
-    <div className="bg-white px-4 py-4 text-center">
-      <p className={`text-xl font-bold ${highlight ? "text-emerald-600" : "text-gray-900"}`}>
+    <div className="bg-card px-4 py-4 text-center">
+      <p className={`text-xl font-bold ${highlight ? "text-green-ink" : "text-ink"}`}>
         {value}
       </p>
-      <p className="mt-0.5 text-xs text-gray-500">{label}</p>
-      {note && <p className="text-[10px] text-gray-300">{note}</p>}
+      <p className="mt-0.5 text-xs text-ink-soft/70">{label}</p>
+      {note && <p className="text-[10px] text-ink-soft/70">{note}</p>}
     </div>
   );
 }
@@ -1434,16 +1434,16 @@ function SectionHeader({
 }) {
   return (
     <div className="mb-3">
-      <h2 className="text-base font-semibold text-gray-900">{title}</h2>
-      {subtitle && <p className="text-xs text-gray-400">{subtitle}</p>}
+      <h2 className="text-base font-semibold text-ink">{title}</h2>
+      {subtitle && <p className="text-xs text-ink-soft/70">{subtitle}</p>}
     </div>
   );
 }
 
 function EmptyState({ message }: { message: string }) {
   return (
-    <div className="rounded-lg border border-gray-200 bg-white px-5 py-8 text-center">
-      <p className="text-sm text-gray-400">{message}</p>
+    <div className="border border-rule bg-card px-5 py-8 text-center">
+      <p className="text-sm text-ink-soft/70">{message}</p>
     </div>
   );
 }
@@ -1473,29 +1473,29 @@ function OfficialCard({
   return (
     <a
       href={`/officials/${official.id}`}
-      className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors"
+      className="flex items-center gap-3 px-4 py-3 hover:bg-paper-2 transition-colors"
     >
-      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gray-100 text-xs font-bold text-gray-600">
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-paper-2 text-xs font-bold text-ink-soft">
         {official.name.split(" ").map((w: string) => w[0]).join("").slice(0, 2)}
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <p className="truncate text-sm font-semibold text-gray-900">{official.name}</p>
+          <p className="truncate text-sm font-semibold text-ink">{official.name}</p>
           {official.isCurrent && !isStale && (
-            <span className="shrink-0 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">
+            <span className="shrink-0 rounded-full bg-green-ink/10 px-1.5 py-0.5 text-[10px] font-semibold text-green-ink">
               Current
             </span>
           )}
           {official.isCurrent && isStale && (
-            <span className="shrink-0 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700" title="Data may be outdated — OPM PLUM Book hasn't been updated recently">
+            <span className="shrink-0 rounded-full bg-amber/20 px-1.5 py-0.5 text-[10px] font-semibold text-ink" title="Data may be outdated — OPM PLUM Book hasn't been updated recently">
               Current*
             </span>
           )}
         </div>
-        <p className="text-xs text-gray-500">{official.title}</p>
-        {tenure && <p className="text-xs text-gray-400">{tenure}</p>}
+        <p className="text-xs text-ink-soft/70">{official.title}</p>
+        {tenure && <p className="text-xs text-ink-soft/70">{tenure}</p>}
       </div>
-      <svg className="h-4 w-4 shrink-0 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <svg className="h-4 w-4 shrink-0 text-rule" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
       </svg>
     </a>
@@ -1508,7 +1508,7 @@ function DataFreshnessNote({ plumLastChange }: { plumLastChange: string | null }
   const isStale = (Date.now() - date.getTime()) > 60 * 24 * 60 * 60 * 1000;
   const formatted = date.toLocaleDateString("en-US", { month: "long", year: "numeric" });
   return (
-    <p className={`mt-2 text-[11px] ${isStale ? "text-amber-600" : "text-gray-400"}`}>
+    <p className={`mt-2 text-[11px] ${isStale ? "text-ink" : "text-ink-soft/70"}`}>
       {isStale ? "* " : ""}OPM PLUM Book data as of {formatted}
       {isStale && " — may not reflect recent changes"}
     </p>

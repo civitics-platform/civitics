@@ -8,16 +8,33 @@ import type { FeatureCollection } from "geojson";
 type MapState = "placeholder" | "address_input" | "loading" | "active";
 type LayerKey = "upper" | "lower";
 
+// The map is a WebGL canvas — Tailwind `var()` tokens can't reach paint
+// properties, so chamber fills/lines and DOM markers are resolved to literal
+// color strings at layer-add time via tokenRgb() below. Upper chamber →
+// civic-blue, lower chamber → green-ink, location markers → accent.
 interface SldLayerProps {
   source: string;
-  fillColor: string;
-  lineColor: string;
+  fillVar: string;
+  lineVar: string;
 }
 
 const SLD_LAYERS: Record<LayerKey, SldLayerProps> = {
-  upper: { source: "sld-upper", fillColor: "#6366f1", lineColor: "#4338ca" },
-  lower: { source: "sld-lower", fillColor: "#10b981", lineColor: "#047857" },
+  upper: { source: "sld-upper", fillVar: "--c-blue",      lineVar: "--c-blue" },
+  lower: { source: "sld-lower", fillVar: "--c-green-ink", lineVar: "--c-green-ink" },
 };
+
+// Resolve a semantic token var to a comma-form rgb() string. MapLibre's color
+// parser predates CSS Color 4, so the space-separated triplet the vars hold
+// ("43 74 139") must be emitted as "rgb(43, 74, 139)". Self-contained on
+// purpose (see packages/graph tokens.ts for the same idea) — the map stays
+// dependency-free.
+function tokenRgb(varName: string): string {
+  if (typeof window === "undefined") return "rgb(0, 0, 0)";
+  const triplet = getComputedStyle(document.documentElement)
+    .getPropertyValue(varName)
+    .trim();
+  return `rgb(${triplet.split(/\s+/).join(", ")})`;
+}
 
 type Representative = {
   id: string;
@@ -28,9 +45,9 @@ type Representative = {
 };
 
 const PARTY_BADGE: Record<string, string> = {
-  democrat: "bg-blue-100 text-blue-800",
-  republican: "bg-red-100 text-red-800",
-  independent: "bg-purple-100 text-purple-800",
+  democrat: "bg-civic-blue/10 text-civic-blue",
+  republican: "bg-accent/10 text-accent",
+  independent: "bg-viz-7/10 text-viz-7",
 };
 
 function track(metric: string) {
@@ -76,11 +93,11 @@ export function DistrictMap() {
         map.addSource(cfg.source, { type: "geojson", data: fc });
         map.addLayer({
           id: `${cfg.source}-fill`, type: "fill", source: cfg.source,
-          paint: { "fill-color": cfg.fillColor, "fill-opacity": 0.15 },
+          paint: { "fill-color": tokenRgb(cfg.fillVar), "fill-opacity": 0.15 },
         });
         map.addLayer({
           id: `${cfg.source}-line`, type: "line", source: cfg.source,
-          paint: { "line-color": cfg.lineColor, "line-width": 1 },
+          paint: { "line-color": tokenRgb(cfg.lineVar), "line-width": 1 },
         });
         // Click → district detail page. Add once, when the layer is created.
         map.on("click", `${cfg.source}-fill`, (ev) => {
@@ -121,9 +138,12 @@ export function DistrictMap() {
       markersRef.current.forEach((m) => m.remove());
       markersRef.current = [];
 
+      const accent = tokenRgb("--c-accent");
+      const inkSoft = tokenRgb("--c-ink-soft");
+
       const userEl = document.createElement("div");
       userEl.style.cssText =
-        "width:14px;height:14px;background:#4f46e5;border:2px solid white;border-radius:50%;box-shadow:0 1px 4px rgba(0,0,0,.3)";
+        `width:14px;height:14px;background:${accent};border:2px solid white;border-radius:50%;box-shadow:0 1px 4px rgba(0,0,0,.3)`;
       new mapboxgl.Marker({ element: userEl }).setLngLat([lng, lat]).addTo(map);
 
       reps.forEach((rep, i) => {
@@ -135,15 +155,15 @@ export function DistrictMap() {
         const popup = new mapboxgl.Popup({ offset: 28, closeButton: false }).setHTML(
           `<div style="font:13px/1.4 system-ui,sans-serif;padding:2px 0">` +
             `<p style="font-weight:600;margin:0 0 2px">${rep.full_name}</p>` +
-            `<p style="color:#555;margin:0 0 2px;font-size:11px">${rep.role_title}</p>` +
+            `<p style="color:${inkSoft};margin:0 0 2px;font-size:11px">${rep.role_title}</p>` +
             (rep.party
-              ? `<p style="color:#777;margin:0 0 6px;font-size:11px">${rep.party}</p>`
+              ? `<p style="color:${inkSoft};margin:0 0 6px;font-size:11px">${rep.party}</p>`
               : "") +
-            `<a href="/officials/${rep.id}" style="color:#4f46e5;font-size:11px;font-weight:500">View profile →</a>` +
+            `<a href="/officials/${rep.id}" style="color:${accent};font-size:11px;font-weight:500">View profile →</a>` +
             `</div>`
         );
 
-        const marker = new mapboxgl.Marker({ color: "#6366f1" })
+        const marker = new mapboxgl.Marker({ color: accent })
           .setLngLat([rLng, rLat])
           .setPopup(popup)
           .addTo(map);
@@ -322,7 +342,7 @@ export function DistrictMap() {
           strokeWidth="1.5"
           strokeLinecap="round"
           strokeLinejoin="round"
-          className="w-12 h-12 text-gray-300"
+          className="w-12 h-12 text-ink-soft/40"
           aria-hidden="true"
         >
           <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" />
@@ -330,10 +350,10 @@ export function DistrictMap() {
         </svg>
 
         <div>
-          <p className="text-base font-semibold text-gray-700">
+          <p className="text-base font-semibold text-ink-soft">
             Find Your Representatives
           </p>
-          <p className="mt-1 text-sm text-gray-400 max-w-xs">
+          <p className="mt-1 text-sm text-ink-soft/70 max-w-xs">
             Enter your address to see every elected official who represents
             you — federal, state, and local.
           </p>
@@ -345,7 +365,7 @@ export function DistrictMap() {
               track("map_activated");
               setMapState("address_input");
             }}
-            className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 transition-colors"
+            className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent/90 transition-colors"
           >
             Search by Address
           </button>
@@ -354,13 +374,13 @@ export function DistrictMap() {
               track("map_activated");
               setMapState("active");
             }}
-            className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+            className="rounded-md border border-rule bg-card px-4 py-2 text-sm font-medium text-ink-soft hover:bg-paper-2 transition-colors"
           >
             Browse the Map
           </button>
         </div>
 
-        <p className="text-xs text-gray-400">
+        <p className="text-xs text-ink-soft/70">
           Your location is never stored. Coordinates are coarsened to district level.
         </p>
       </div>
@@ -370,24 +390,24 @@ export function DistrictMap() {
   function renderAddressInput() {
     return (
       <div className="h-full flex flex-col items-center justify-center gap-4 px-6">
-        <p className="text-base font-semibold text-gray-700">
+        <p className="text-base font-semibold text-ink-soft">
           Find Your Representatives
         </p>
 
         {error && (
-          <p className="text-sm text-red-600 text-center max-w-sm">{error}</p>
+          <p className="text-sm text-accent text-center max-w-sm">{error}</p>
         )}
 
         {/* Use My Location */}
         <button
           onClick={handleGeolocate}
           disabled={geolocating}
-          className="w-full max-w-sm flex items-center justify-center gap-2 rounded-md border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 transition-colors"
+          className="w-full max-w-sm flex items-center justify-center gap-2 rounded-md border border-rule bg-card px-4 py-2.5 text-sm font-medium text-ink-soft hover:bg-paper-2 disabled:opacity-50 transition-colors"
         >
           {geolocating ? (
             <>
               <svg
-                className="animate-spin h-4 w-4 text-indigo-500"
+                className="animate-spin h-4 w-4 text-accent"
                 xmlns="http://www.w3.org/2000/svg"
                 fill="none"
                 viewBox="0 0 24 24"
@@ -415,7 +435,7 @@ export function DistrictMap() {
                 xmlns="http://www.w3.org/2000/svg"
                 viewBox="0 0 24 24"
                 fill="currentColor"
-                className="w-4 h-4 text-indigo-500"
+                className="w-4 h-4 text-accent"
                 aria-hidden="true"
               >
                 <path
@@ -431,9 +451,9 @@ export function DistrictMap() {
 
         {/* OR separator */}
         <div className="w-full max-w-sm flex items-center gap-2">
-          <div className="flex-1 h-px bg-gray-200" />
-          <span className="text-xs text-gray-400">or enter address</span>
-          <div className="flex-1 h-px bg-gray-200" />
+          <div className="flex-1 h-px bg-rule" />
+          <span className="text-xs text-ink-soft/70">or enter address</span>
+          <div className="flex-1 h-px bg-rule" />
         </div>
 
         {/* Address form */}
@@ -446,24 +466,24 @@ export function DistrictMap() {
             value={address}
             onChange={(e) => setAddress(e.target.value)}
             placeholder="123 Main St, City, State"
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            className="w-full rounded-md border border-rule px-3 py-2 text-sm text-ink placeholder-ink-soft/60 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
           />
           <button
             type="submit"
-            className="w-full rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 transition-colors"
+            className="w-full rounded-md bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent/90 transition-colors"
           >
             Find Representatives →
           </button>
         </form>
 
-        <p className="text-xs text-gray-400 text-center max-w-sm">
+        <p className="text-xs text-ink-soft/70 text-center max-w-sm">
           🔒 Your address is used only to find your district. Never stored on
           our servers.
         </p>
 
         <button
           onClick={() => setMapState(mapRef.current ? "active" : "placeholder")}
-          className="text-xs text-gray-400 hover:text-gray-600 transition-colors"
+          className="text-xs text-ink-soft/70 hover:text-ink-soft transition-colors"
         >
           {mapRef.current ? "← Back to map" : "← Back"}
         </button>
@@ -474,9 +494,9 @@ export function DistrictMap() {
   function renderLoading() {
     return (
       <div className="h-full flex items-center justify-center">
-        <div className="flex items-center gap-2 text-sm text-gray-400">
+        <div className="flex items-center gap-2 text-sm text-ink-soft/70">
           <svg
-            className="animate-spin h-4 w-4 text-indigo-500"
+            className="animate-spin h-4 w-4 text-accent"
             xmlns="http://www.w3.org/2000/svg"
             fill="none"
             viewBox="0 0 24 24"
@@ -512,10 +532,10 @@ export function DistrictMap() {
   return (
     <section>
       <div className="mb-4">
-        <h2 className="text-xl font-semibold text-gray-900">
+        <h2 className="text-xl font-semibold text-ink">
           Find your representatives
         </h2>
-        <p className="mt-1 text-sm text-gray-500">
+        <p className="mt-1 text-sm text-ink-soft">
           Enter your address to see who represents you — federal, state, and local.
         </p>
       </div>
@@ -527,7 +547,7 @@ export function DistrictMap() {
       */}
       <div
         ref={containerRef}
-        className="relative w-full h-[400px] md:h-[500px] rounded-lg border border-gray-200 overflow-hidden"
+        className="relative w-full h-[400px] md:h-[500px] rounded-lg border border-rule overflow-hidden"
       >
         {/* Inactive overlay (placeholder / address_input / loading) — fades out */}
         <div
@@ -537,9 +557,9 @@ export function DistrictMap() {
               : "opacity-100"
           }`}
           style={{
-            backgroundColor: "#f9fafb",
+            backgroundColor: "rgb(var(--c-paper-2))",
             backgroundImage:
-              "radial-gradient(circle, #e5e7eb 1px, transparent 1px)",
+              "radial-gradient(circle, rgb(var(--c-rule)) 1px, transparent 1px)",
             backgroundSize: "24px 24px",
           }}
         >
@@ -553,29 +573,29 @@ export function DistrictMap() {
           <div className="absolute top-2 left-2 z-10 flex flex-col gap-2">
             <button
               onClick={() => setMapState("address_input")}
-              className="rounded-md bg-white/90 backdrop-blur-sm border border-gray-200 px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-white shadow-sm transition-colors"
+              className="rounded-md bg-card/90 backdrop-blur-sm border border-rule px-2.5 py-1.5 text-xs font-medium text-ink-soft hover:bg-card shadow-sm transition-colors"
             >
               Change address
             </button>
-            <div className="rounded-md bg-white/90 backdrop-blur-sm border border-gray-200 shadow-sm p-2 flex flex-col gap-1">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Layers</p>
-              <label className="flex items-center gap-1.5 text-xs text-gray-700 cursor-pointer">
+            <div className="rounded-md bg-card/90 backdrop-blur-sm border border-rule shadow-sm p-2 flex flex-col gap-1">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-soft">Layers</p>
+              <label className="flex items-center gap-1.5 text-xs text-ink-soft cursor-pointer">
                 <input
                   type="checkbox"
                   checked={activeLayers.upper}
                   onChange={() => toggleLayer("upper")}
-                  className="rounded text-indigo-600 focus:ring-indigo-500"
+                  className="rounded text-accent focus:ring-accent"
                 />
-                <span className="inline-block w-2 h-2 rounded-sm bg-indigo-500" /> State Senate
+                <span className="inline-block w-2 h-2 rounded-sm bg-civic-blue" /> State Senate
               </label>
-              <label className="flex items-center gap-1.5 text-xs text-gray-700 cursor-pointer">
+              <label className="flex items-center gap-1.5 text-xs text-ink-soft cursor-pointer">
                 <input
                   type="checkbox"
                   checked={activeLayers.lower}
                   onChange={() => toggleLayer("lower")}
-                  className="rounded text-emerald-600 focus:ring-emerald-500"
+                  className="rounded text-accent focus:ring-accent"
                 />
-                <span className="inline-block w-2 h-2 rounded-sm bg-emerald-500" /> State House
+                <span className="inline-block w-2 h-2 rounded-sm bg-green-ink" /> State House
               </label>
             </div>
           </div>
@@ -584,10 +604,10 @@ export function DistrictMap() {
 
       {/* Below-map metadata */}
       {placeName && mapState === "active" && (
-        <p className="mt-1.5 text-xs text-gray-400">{placeName}</p>
+        <p className="mt-1.5 text-xs text-ink-soft/70">{placeName}</p>
       )}
       {lastMethod && mapState === "active" && (
-        <p className="mt-1 text-xs text-gray-400">{privacyNote}</p>
+        <p className="mt-1 text-xs text-ink-soft/70">{privacyNote}</p>
       )}
 
       {/* Representative cards */}
@@ -596,15 +616,15 @@ export function DistrictMap() {
           {representatives.map((rep) => {
             const badge =
               PARTY_BADGE[rep.party?.toLowerCase() ?? ""] ??
-              "bg-gray-100 text-gray-700";
+              "bg-rule/40 text-ink-soft";
             return (
               <a
                 key={rep.id}
                 href={`/officials/${rep.id}`}
-                className="block rounded-lg border border-gray-200 bg-white p-3 hover:border-indigo-300 hover:shadow-sm transition-all"
+                className="block border border-rule bg-card p-3 hover:border-accent hover:shadow-sm transition-all"
               >
                 <div className="flex items-start justify-between gap-2">
-                  <p className="text-sm font-semibold text-gray-900 leading-tight">
+                  <p className="text-sm font-semibold text-ink leading-tight">
                     {rep.full_name}
                   </p>
                   {rep.party && (
@@ -615,13 +635,13 @@ export function DistrictMap() {
                     </span>
                   )}
                 </div>
-                <p className="mt-0.5 text-xs text-gray-500">{rep.role_title}</p>
+                <p className="mt-0.5 text-xs text-ink-soft">{rep.role_title}</p>
                 {rep.jurisdiction && (
-                  <p className="mt-0.5 text-xs text-gray-400">
+                  <p className="mt-0.5 text-xs text-ink-soft/70">
                     {rep.jurisdiction}
                   </p>
                 )}
-                <p className="mt-2 text-xs font-medium text-indigo-600">
+                <p className="mt-2 text-xs font-medium text-accent">
                   View profile →
                 </p>
               </a>
@@ -631,7 +651,7 @@ export function DistrictMap() {
       )}
 
       {representatives.length === 0 && lastMethod && mapState === "active" && (
-        <p className="mt-3 text-sm text-gray-500">
+        <p className="mt-3 text-sm text-ink-soft">
           No representatives found for this location. District boundary data may
           not be fully loaded yet — check back soon.
         </p>

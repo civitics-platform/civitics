@@ -130,7 +130,7 @@ export default async function AgenciesPage() {
     .map((a) => ({ name: a.name, acronym: a.acronym, count: a.totalProposals }));
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-paper-2">
       <PageViewTracker entityType="agency_list" />
       <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
         <PageHeader

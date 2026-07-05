@@ -29,8 +29,8 @@ export function Section({
   return (
     <section className="mt-8">
       <div className="mb-3">
-        <h2 className="text-lg font-semibold text-gray-900">{title}</h2>
-        {subtitle && <p className="text-sm text-gray-500">{subtitle}</p>}
+        <h2 className="text-lg font-semibold text-ink">{title}</h2>
+        {subtitle && <p className="text-sm text-ink-soft/70">{subtitle}</p>}
       </div>
       {children}
     </section>
@@ -79,24 +79,24 @@ export function ChildJurisdictionsNav({ items }: { items: ChildJurisdiction[] })
           <Link
             key={c.id}
             href={`/jurisdictions/${c.id}`}
-            className="rounded-full border border-gray-200 bg-white px-2.5 py-0.5 text-xs text-gray-700 hover:border-indigo-300 hover:text-indigo-700"
+            className="rounded-full border border-rule bg-card px-2.5 py-0.5 text-xs text-ink-soft hover:border-accent hover:text-accent"
           >
             {c.short_name ?? c.name}
           </Link>
         ));
 
         return (
-          <div key={type} className="rounded-lg border border-gray-200 bg-white p-4">
+          <div key={type} className="border border-rule bg-card p-4">
             {items.length > 20 ? (
               <details>
-                <summary className="cursor-pointer text-sm font-medium text-gray-700">
+                <summary className="cursor-pointer text-sm font-medium text-ink-soft">
                   {heading}
                 </summary>
                 <div className="mt-3 flex flex-wrap gap-1.5">{links}</div>
               </details>
             ) : (
               <>
-                <p className="mb-3 text-sm font-medium text-gray-700">{heading}</p>
+                <p className="mb-3 text-sm font-medium text-ink-soft">{heading}</p>
                 <div className="flex flex-wrap gap-1.5">{links}</div>
               </>
             )}
@@ -129,7 +129,7 @@ export function InstitutionsList({ institutions }: { institutions: InstitutionCa
     <div className="space-y-4">
       {Array.from(byType.entries()).map(([type, items]) => (
         <div key={type}>
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-400">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-ink-soft/70">
             {type.replace(/_/g, " ")}
           </p>
           <div className="grid gap-3 sm:grid-cols-2">
@@ -160,7 +160,7 @@ export function OfficialsRoster({
         ))}
       </div>
       {hasMore && (
-        <p className="mt-3 text-xs text-gray-400">
+        <p className="mt-3 text-xs text-ink-soft/70">
           Showing the first {officials.length}. More officials are on record for this jurisdiction.
         </p>
       )}
@@ -180,7 +180,7 @@ export function ProposalsSection({ proposals }: { proposals: ProposalCardData[] 
       </div>
       <Link
         href="/proposals"
-        className="mt-3 inline-block text-sm font-medium text-indigo-600 hover:underline"
+        className="mt-3 inline-block text-sm font-medium text-accent hover:underline"
       >
         View all proposals →
       </Link>
@@ -223,35 +223,35 @@ export type SpendingGroup = {
 
 export function SpendingSection({ groups }: { groups: SpendingGroup[] }) {
   return (
-    <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
+    <div className="overflow-hidden border border-rule bg-card">
       <table className="w-full text-sm">
         <thead>
-          <tr className="border-b border-gray-100 bg-gray-50">
-            <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
+          <tr className="border-b border-rule bg-paper-2">
+            <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-ink-soft/70">
               Recipient
             </th>
-            <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
+            <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-ink-soft/70">
               Type
             </th>
-            <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wider text-gray-500">
+            <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wider text-ink-soft/70">
               Amount
             </th>
-            <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wider text-gray-500">
+            <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wider text-ink-soft/70">
               Year
             </th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-gray-100">
+        <tbody className="divide-y divide-rule">
           {groups.map((g, i) => (
-            <tr key={i} className="hover:bg-gray-50">
-              <td className="max-w-xs truncate px-4 py-2.5 text-sm font-medium text-gray-800">
+            <tr key={i} className="hover:bg-paper-2">
+              <td className="max-w-xs truncate px-4 py-2.5 text-sm font-medium text-ink-soft">
                 {g.recipient}
               </td>
-              <td className="px-4 py-2.5 text-xs capitalize text-gray-500">{g.awardType}</td>
-              <td className="px-4 py-2.5 text-right font-mono text-sm font-semibold text-gray-900">
+              <td className="px-4 py-2.5 text-xs capitalize text-ink-soft/70">{g.awardType}</td>
+              <td className="px-4 py-2.5 text-right font-mono text-sm font-semibold text-ink">
                 {formatDollars(g.totalCents)}
               </td>
-              <td className="px-4 py-2.5 text-right text-xs text-gray-400">{g.fiscalYear}</td>
+              <td className="px-4 py-2.5 text-right text-xs text-ink-soft/70">{g.fiscalYear}</td>
             </tr>
           ))}
         </tbody>
@@ -278,18 +278,18 @@ const EVENT_ICON: Record<string, string> = {
 
 export function ActivityFeed({ events }: { events: ActivityEvent[] }) {
   return (
-    <ol className="overflow-hidden rounded-lg border border-gray-200 bg-white">
+    <ol className="overflow-hidden border border-rule bg-card">
       {events.map((e, i) => (
-        <li key={`${e.entity_id}-${i}`} className="border-b border-gray-100 last:border-0">
+        <li key={`${e.entity_id}-${i}`} className="border-b border-rule last:border-0">
           <Link
             href={e.url}
-            className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50"
+            className="flex items-center gap-3 px-4 py-3 hover:bg-paper-2"
           >
             <span aria-hidden className="text-base">
               {EVENT_ICON[e.event_type] ?? "•"}
             </span>
-            <span className="min-w-0 flex-1 truncate text-sm text-gray-800">{e.summary}</span>
-            <span className="shrink-0 text-xs text-gray-400">{formatDate(e.occurred_at)}</span>
+            <span className="min-w-0 flex-1 truncate text-sm text-ink-soft">{e.summary}</span>
+            <span className="shrink-0 text-xs text-ink-soft/70">{formatDate(e.occurred_at)}</span>
           </Link>
         </li>
       ))}

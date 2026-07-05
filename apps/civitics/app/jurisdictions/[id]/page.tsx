@@ -276,7 +276,7 @@ export default async function JurisdictionPage({ params }: { params: Promise<{ i
   // agencies/officials), so there is no SourceBadge attribution to render here.
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-paper-2">
       <main id="main-content" className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
         {/* SF-P2 (FIX-599): persistent demonstration banner for a synthetic
             jurisdiction (the State of Franklin). Everything scoped under it is

@@ -9,6 +9,16 @@ interface Props {
   geometry: Polygon | MultiPolygon | null;
 }
 
+// Resolve a semantic token var to comma-form rgb() for MapLibre, whose color
+// parser predates CSS Color 4 space-separated syntax. Vars hold "R G B".
+function tokenRgb(varName: string): string {
+  if (typeof window === "undefined") return "rgb(0, 0, 0)";
+  const triplet = getComputedStyle(document.documentElement)
+    .getPropertyValue(varName)
+    .trim();
+  return `rgb(${triplet.split(/\s+/).join(", ")})`;
+}
+
 export function SingleDistrictMap({ geometry }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
@@ -41,13 +51,13 @@ export function SingleDistrictMap({ geometry }: Props) {
         id: "district-fill",
         type: "fill",
         source: "district-boundary",
-        paint: { "fill-color": "#6366f1", "fill-opacity": 0.2 },
+        paint: { "fill-color": tokenRgb("--c-blue"), "fill-opacity": 0.2 },
       });
       map.addLayer({
         id: "district-line",
         type: "line",
         source: "district-boundary",
-        paint: { "line-color": "#4338ca", "line-width": 2 },
+        paint: { "line-color": tokenRgb("--c-blue"), "line-width": 2 },
       });
 
       const bbox = computeBbox(geometry);
@@ -63,7 +73,7 @@ export function SingleDistrictMap({ geometry }: Props) {
   return (
     <div
       ref={containerRef}
-      className="w-full h-[400px] rounded-lg border border-gray-200 overflow-hidden"
+      className="w-full h-[400px] rounded-lg border border-rule overflow-hidden"
     />
   );
 }

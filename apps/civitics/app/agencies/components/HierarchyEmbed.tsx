@@ -10,23 +10,23 @@ import Link from "next/link";
  */
 export function HierarchyEmbed() {
   return (
-    <div className="mb-8 rounded-xl border border-gray-200 bg-gray-950 p-5">
+    <div className="mb-8 border border-rule bg-ink p-5">
       <div className="mb-3 flex items-center justify-between">
         <div>
           <h2 className="text-sm font-semibold text-white">Department Org Chart</h2>
-          <p className="text-xs text-gray-400">
+          <p className="text-xs text-ink-soft/70">
             Federal departments and sub-agencies, sized by FY contract budget.
           </p>
         </div>
         <Link
           href="/graph?viz=hierarchy"
-          className="text-[11px] font-medium text-indigo-400 hover:text-indigo-300 transition-colors"
+          className="text-[11px] font-medium text-accent hover:text-accent transition-colors"
         >
           Open in Graph →
         </Link>
       </div>
 
-      <div className="rounded-lg border border-gray-800 bg-gray-900/50" style={{ height: 320 }}>
+      <div className="rounded-lg border border-rule bg-ink" style={{ height: 320 }}>
         <HierarchyGraph
           className="w-full h-full"
           compact
