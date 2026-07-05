@@ -902,3 +902,5 @@
 2026-07-04 | FIX-702 | 14aaa055 | local-only | perf(db): bound the financial_entity totals full-reconcile (partial idx + range-scoped anti-join)
 2026-07-04 | FIX-726 | 2b3faf38 | local+prod | chore(fixes): FIX-702/726 prod bootstrap complete; file FIX-734 (monthly reconcile perf) [skip vercel]
 2026-07-04 | FIX-726 | 14aaa055 | local-only | perf(db): bound the financial_entity totals full-reconcile (partial idx + range-scoped anti-join)
+2026-07-04 | FIX-705 | ba35d54b | local-only | fix(db): single-anti-join monthly orphan sweeps for totals + donor-rollup
+2026-07-04 | FIX-734 | ba35d54b | local-only | fix(db): single-anti-join monthly orphan sweeps for totals + donor-rollup
