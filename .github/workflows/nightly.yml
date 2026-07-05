@@ -4,7 +4,18 @@ on:
   schedule:
     # 02:00 UTC daily — matches the Vercel cron canary in apps/civitics/vercel.json
     - cron: "0 2 * * *"
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      # FIX-743: force the Sunday-only heavy ingest block (FEC bulk, IRS-990,
+      # LittleSis, EDGAR-weekly, OpenStates API, agencies/OPM/PLUM/elections/
+      # committees/agency-*, tag-industry) to run off-Sunday. HEAVY, prod-writing,
+      # IOWait-heavy on the Pro Micro — run SUPERVISED in a low-traffic window
+      # only. Default false → scheduled cron + plain dispatches are unchanged.
+      force_weekly:
+        description: "Force weekly/heavy ingest stages (supervised off-peak run only)"
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: read
@@ -53,6 +64,9 @@ jobs:
       CIVITICS_ANTHROPIC_API_KEY: ${{ secrets.CIVITICS_ANTHROPIC_API_KEY }}
       AUTONOMOUS:               "true"
       CIVITICS_ENRICHMENT_MODE: queue
+      # FIX-743: forwarded to runNightlySync's computeRunWeekly gate. On a
+      # scheduled run `inputs.force_weekly` is empty → falsey → today's behavior.
+      NIGHTLY_FORCE_WEEKLY:     ${{ inputs.force_weekly }}
       # FEC indiv stage (FIX-236) doubles peak heap vs. FIX-181 alone. 8 GB
       # OOMs mid-stream on presidential cycles (2024/2028) — observed in the
       # 2026-05-12 run. 12 GB matches packages/data/CLAUDE.md's
@@ -139,6 +153,9 @@ jobs:
       CIVITICS_ANTHROPIC_API_KEY: ${{ secrets.CIVITICS_ANTHROPIC_API_KEY }}
       AUTONOMOUS:               "true"
       CIVITICS_ENRICHMENT_MODE: queue
+      # FIX-743: forwarded to runNightlySync's computeRunWeekly gate. On a
+      # scheduled run `inputs.force_weekly` is empty → falsey → today's behavior.
+      NIGHTLY_FORCE_WEEKLY:     ${{ inputs.force_weekly }}
       # LittleSis bulk + matcher index build is RAM-heavy; keep the 12 GB ceiling.
       NODE_OPTIONS: --max-old-space-size=12288
       CLOUDFLARE_ACCOUNT_ID:           ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -194,6 +211,9 @@ jobs:
       CIVITICS_ANTHROPIC_API_KEY: ${{ secrets.CIVITICS_ANTHROPIC_API_KEY }}
       AUTONOMOUS:               "true"
       CIVITICS_ENRICHMENT_MODE: queue
+      # FIX-743: forwarded to runNightlySync's computeRunWeekly gate. On a
+      # scheduled run `inputs.force_weekly` is empty → falsey → today's behavior.
+      NIGHTLY_FORCE_WEEKLY:     ${{ inputs.force_weekly }}
       NODE_OPTIONS: --max-old-space-size=12288
       CLOUDFLARE_ACCOUNT_ID:           ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       CLOUDFLARE_R2_ACCESS_KEY_ID:     ${{ secrets.CLOUDFLARE_R2_ACCESS_KEY_ID }}

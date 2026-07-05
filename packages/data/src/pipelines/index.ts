@@ -34,6 +34,7 @@ import { runPlumBookPipeline } from "./plum-book";
 import { runElectionsPipeline } from "./elections";
 import { runAiClassifier } from "./tags/ai-classifier";
 import { seedJurisdictions, seedGoverningBodies } from "../jurisdictions/us-states";
+import { computeRunWeekly } from "./weekly-gate";
 
 // Supabase RPC errors come back as plain objects ({ code, message, details, hint })
 // — not Error instances — so String(err) → "[object Object]". Unwrap them so
@@ -403,7 +404,22 @@ export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<Nigh
   console.log("╚══════════════════════════════════════════╝");
   console.log(`  Started: ${startedAt.toISOString()}  phase=${phase}`);
 
-  const isWeekly = new Date().getDay() === 0; // Sunday
+  // FIX-743: `runWeekly = isSunday || NIGHTLY_FORCE_WEEKLY==="true"`. Named
+  // isWeekly downstream (results.is_weekly, the `if (isWeekly)` heavy block, the
+  // merge logic) so a forced run correctly reports/executes the weekly stages.
+  const { runWeekly: isWeekly, mode: weeklyMode } = computeRunWeekly(
+    new Date(),
+    process.env["NIGHTLY_FORCE_WEEKLY"],
+  );
+  console.log(
+    `  [nightly] weekly stages: ${
+      weeklyMode === "forced"
+        ? "FORCED (NIGHTLY_FORCE_WEEKLY=true)"
+        : weeklyMode === "sunday"
+          ? "Sunday"
+          : "skipped (weekday)"
+    }`,
+  );
 
   const results: NightlySyncResults = {
     started_at: startedAt,
