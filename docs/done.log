@@ -909,3 +909,4 @@
 2026-07-05 | FIX-708 | 577ba158 | local-only | feat(design): reskin initiatives interior to Public Record tokens
 2026-07-05 | FIX-737 | db8311a7 | local-only | feat(design): reskin government record pages (agencies/jurisdictions/institutions/donors/districts/meetings)
 2026-07-05 | FIX-738 | ae6fffbe | local-only | feat(design): reskin close-out — long tail + remove legacy civic palette
+2026-07-05 | FIX-736 | f86a34a0 | local-only | fix(db): derive recipient_count from financial_relationships, not entity_connections
