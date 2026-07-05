@@ -360,12 +360,28 @@ export interface NightlySyncResults {
 // Nightly sync — used by Vercel cron and standalone scheduler
 // ---------------------------------------------------------------------------
 
-// FIX-292: nightly is split across two GHA jobs. Phase 1 ('fec') runs
-// regulations → IRS 990 inside a 120-min budget; Phase 2 ('enrichment') runs
-// LittleSis → tag-industry → refresh_* under its own 120-min budget after
-// Phase 1 completes. 'all' preserves the pre-split behavior for manual /
-// ad-hoc invocations and for the Vercel cron canary path.
-export type NightlyPhase = "fec" | "enrichment" | "all";
+// FIX-292: nightly is split across GHA jobs. Phase 1 ('fec') runs
+// regulations → IRS 990 inside its own budget; Phase 2 ('enrichment') runs the
+// enrichment ingest + derived-refresh tail under its own budget after Phase 1.
+// 'all' preserves the pre-split behavior for manual / ad-hoc invocations and
+// for the Vercel cron canary path.
+//
+// FIX-740: the enrichment phase itself is now split into two sub-budgets after
+// it hit its 120-min cutoff on cumulative ingest overrun (2026-07-05). LittleSis
+// (~35 min) is the 'enrichment-heavy' sub-job; everything else (EDGAR +
+// CourtListener + OpenStates + agencies/OPM/PLUM/elections/committees/agency-*
+// + tag-industry + the daily MV-refresh/rule+AI-tagger/AI-summaries tail) is
+// 'enrichment-light'. USASpending's 2 GB first-run was PULLED OUT of the phase
+// entirely into its own workflow_dispatch (see runUsaSpendingBulk +
+// usaspending-bulk.yml; checkpoint/resume is the deferred FIX-739). Plain
+// 'enrichment' still runs both sub-phases so 'all' and the canary path are
+// unchanged.
+export type NightlyPhase =
+  | "fec"
+  | "enrichment"
+  | "enrichment-heavy"
+  | "enrichment-light"
+  | "all";
 
 export interface RunNightlyOptions {
   phase?: NightlyPhase;
@@ -374,7 +390,12 @@ export interface RunNightlyOptions {
 export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<NightlySyncResults> {
   const phase: NightlyPhase = opts.phase ?? "all";
   const runFec = phase === "fec" || phase === "all";
-  const runEnrichment = phase === "enrichment" || phase === "all";
+  // FIX-740: 'enrichment' (unsplit) and 'all' run BOTH sub-phases; the split
+  // GHA jobs pass 'enrichment-heavy' / 'enrichment-light' to run exactly one.
+  const runEnrichmentHeavy =
+    phase === "enrichment" || phase === "enrichment-heavy" || phase === "all";
+  const runEnrichmentLight =
+    phase === "enrichment" || phase === "enrichment-light" || phase === "all";
 
   const startedAt = new Date();
   console.log("\n╔══════════════════════════════════════════╗");
@@ -612,11 +633,13 @@ export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<Nigh
 
     } // end Phase 1 weekly stages (FIX-292)
 
-    // FIX-292: Phase 2 ('enrichment') weekly stages — LittleSis through
-    // tag-industry. Depends on Phase 1's FEC + IRS-990 writes having flushed
-    // (job 2 needs job 1 in nightly.yml; FIX-276 ordering is now an explicit
-    // job dependency rather than implicit orchestrator sequencing).
-    if (runEnrichment) {
+    // FIX-292 / FIX-740: Phase 2 weekly stages, now split into two sub-budgets.
+    // 'enrichment-heavy' = LittleSis (~35 min on its own); 'enrichment-light' =
+    // EDGAR through tag-industry. Both depend on Phase 1's FEC + IRS-990 writes
+    // having flushed (each GHA sub-job `needs:` the fec-phase; FIX-276 ordering
+    // is an explicit job dependency). USASpending's 2 GB first-run was removed
+    // from this block entirely — it runs via its own workflow_dispatch now
+    // (runUsaSpendingBulk / usaspending-bulk.yml; FIX-740, deferred FIX-739).
 
     // FIX-251: LittleSis bulk (relationship graph, CC-BY-SA 4.0). Runs after
     // FEC + IRS-990 so the match index sees fresh PAC / nonprofit entities
@@ -624,7 +647,7 @@ export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<Nigh
     // makes this a no-op (skipSync='dumps_unchanged') until LittleSis
     // publishes new dumps — typically every few months — so weekly cadence
     // is safe.
-    {
+    if (runEnrichmentHeavy) {
       const t0 = Date.now();
       try {
         const r = await runLittleSisPipeline();
@@ -636,6 +659,8 @@ export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<Nigh
         results.errors.push(`LittleSis: ${msg}`);
       }
     }
+
+    if (runEnrichmentLight) {
 
     // FIX-253: SEC EDGAR weekly DEF 14A reconciliation (officer rosters +
     // donor matching). Runs after FEC so the matcher's donor lookup sees
@@ -653,24 +678,12 @@ export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<Nigh
       }
     }
 
-    {
-      const t0 = Date.now();
-      try {
-        // Sequential — each archive file is 300 MB–1 GB; parallel would double peak disk usage.
-        const contracts  = await runUsaSpendingBulkPipeline({ category: "contracts" });
-        const assistance = await runUsaSpendingBulkPipeline({ category: "assistance" });
-        results.pipelines.usaspending = {
-          status: "complete",
-          rows_added: contracts.inserted + assistance.inserted,
-          duration_ms: Date.now() - t0,
-        };
-      } catch (err) {
-        const msg = errMsg(err);
-        console.error("[nightly] usaspending failed:", msg);
-        results.pipelines.usaspending = { status: "failed", error: msg };
-        results.errors.push(`USASpending: ${msg}`);
-      }
-    }
+    // FIX-740: USASpending removed from the enrichment phase. The 2 GB "full"
+    // first-run never checkpointed within the 120-min budget — it restarted as
+    // a first-run every night and cumulatively pushed the phase past its wall
+    // clock. It now runs via its own workflow_dispatch (usaspending-bulk.yml →
+    // runUsaSpendingBulk). Checkpoint/resume is the deferred durable fix
+    // (FIX-739).
 
     if (clKey) {
       const t0 = Date.now();
@@ -828,14 +841,14 @@ export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<Nigh
       }
     }
 
-    } // end Phase 2 weekly stages (FIX-292)
+    } // end Phase 2 weekly light stages (FIX-292 / FIX-740)
   }
 
-  // FIX-292: Phase 2 ('enrichment') daily stages — MV refreshes, rule + AI
-  // taggers, AI summaries, chord/homepage/runtime MV refreshes, prune jobs.
-  // These run after the Phase 2 weekly block (when active) so tag-industry
-  // writes are visible to downstream MV refreshes.
-  if (runEnrichment) {
+  // FIX-292 / FIX-740: Phase 2 daily stages — MV refreshes, rule + AI taggers,
+  // AI summaries, chord/homepage/runtime MV refreshes, prune jobs. These belong
+  // to the 'enrichment-light' sub-phase (they run after the weekly light block,
+  // when active, so tag-industry writes are visible to downstream MV refreshes).
+  if (runEnrichmentLight) {
 
   // 3b. [FIX-715] proposal_trending_24h + proposal_popularity_24h refreshes moved
   //     to the pg_cron procedure refresh_derived_mvs('daily') — off the 120-min
@@ -947,7 +960,7 @@ export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<Nigh
     }
   }
 
-  } // end Phase 2 daily stages (FIX-292)
+  } // end Phase 2 daily stages (FIX-292 / FIX-740 — enrichment-light)
 
   results.completed_at = new Date();
   results.duration_ms = results.completed_at.getTime() - startedAt.getTime();
@@ -1066,6 +1079,37 @@ export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<Nigh
 }
 
 // ---------------------------------------------------------------------------
+// USASpending bulk — standalone runner (FIX-740)
+//
+// Pulled out of the nightly enrichment phase (the 2 GB first-run never
+// checkpointed within the phase budget, restarting from zero every night and
+// starving the rest of enrichment). Now invoked only via its own
+// workflow_dispatch (usaspending-bulk.yml → `pnpm data:usaspending-bulk:ci`),
+// mirroring the `data:fec-bulk:ci` shape. Runs both categories sequentially —
+// each archive is 300 MB–1 GB, so parallel would double peak disk. Each
+// category self-logs to data_sync_log via its own startSync/completeSync, so
+// no nightly results object is threaded through here. Checkpoint/resume for the
+// full first-run is the deferred durable fix (FIX-739).
+// ---------------------------------------------------------------------------
+
+export async function runUsaSpendingBulk(): Promise<void> {
+  const startTime = Date.now();
+  console.log("\n╔══════════════════════════════════════════╗");
+  console.log("║   USASpending bulk (contracts + assistance) ║");
+  console.log("╚══════════════════════════════════════════╝");
+
+  const contracts  = await runUsaSpendingBulkPipeline({ category: "contracts" });
+  const assistance = await runUsaSpendingBulkPipeline({ category: "assistance" });
+
+  const mins = ((Date.now() - startTime) / 1000 / 60).toFixed(1);
+  console.log(
+    `\n  USASpending done in ${mins} min — ` +
+    `contracts: inserted=${contracts.inserted} failed=${contracts.failed}; ` +
+    `assistance: inserted=${assistance.inserted} failed=${assistance.failed}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Standalone entry points
 // ---------------------------------------------------------------------------
 
@@ -1076,16 +1120,26 @@ if (require.main === module) {
     printStatus()
       .then(() => { setTimeout(() => process.exit(0), 500); })
       .catch((e) => { console.error("Pipeline failed:", e); setTimeout(() => process.exit(1), 500); });
+  } else if (command === "usaspending") {
+    // FIX-740: standalone USASpending bulk entry (usaspending-bulk.yml →
+    // data:usaspending-bulk:ci). Mirrors the `data:fec-bulk:ci` shape — the
+    // --allow-prod flag on the :ci script satisfies createAdminClient's
+    // prod-write guard.
+    runUsaSpendingBulk()
+      .then(() => { setTimeout(() => process.exit(0), 500); })
+      .catch((e) => { console.error("Pipeline failed:", e); setTimeout(() => process.exit(1), 500); });
   } else if (command === "nightly") {
-    // FIX-292: optional --phase=<fec|enrichment|all>. Default 'all' preserves
-    // pre-split behavior for `pnpm data:nightly` (local) and the Vercel cron
-    // canary. GHA invokes each phase explicitly via :ci scripts.
+    // FIX-292 / FIX-740: optional --phase. Default 'all' preserves pre-split
+    // behavior for `pnpm data:nightly` (local) and the Vercel cron canary. GHA
+    // invokes each phase explicitly via :ci scripts (fec / enrichment-heavy /
+    // enrichment-light).
     const phaseArg = process.argv.find((a) => a.startsWith("--phase="));
     const phase: NightlyPhase = phaseArg
       ? (phaseArg.slice("--phase=".length) as NightlyPhase)
       : "all";
-    if (!["fec", "enrichment", "all"].includes(phase)) {
-      console.error(`Invalid --phase value: ${phase}. Must be one of: fec, enrichment, all.`);
+    const VALID_PHASES = ["fec", "enrichment", "enrichment-heavy", "enrichment-light", "all"];
+    if (!VALID_PHASES.includes(phase)) {
+      console.error(`Invalid --phase value: ${phase}. Must be one of: ${VALID_PHASES.join(", ")}.`);
       process.exit(2);
     }
     runNightlySync({ phase })

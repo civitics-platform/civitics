@@ -102,21 +102,31 @@ jobs:
         if: always()
         run: pnpm --filter @civitics/data data:mark-killed:ci -- --phase=fec
 
-  enrichment-phase:
+  # FIX-740: the single enrichment-phase job hit timeout-minutes: 120 on
+  # cumulative INGEST overrun (2026-07-05) — LittleSis (~35 min) + EDGAR +
+  # USASpending's 2 GB never-checkpointing first-run stacked past the budget.
+  # USASpending was pulled OUT into usaspending-bulk.yml (workflow_dispatch);
+  # the remainder is split into two sub-budget jobs (the FIX-292 pattern applied
+  # a level down): enrichment-heavy-phase (LittleSis alone) → enrichment-light-
+  # phase (everything else). Each `needs:` the prior + `if: !cancelled()` so a
+  # sub-job timing out doesn't SKIP the next (a timed-out job is not a run-level
+  # cancellation). Both share fec-phase's env block (GHA has no YAML anchors).
+
+  enrichment-heavy-phase:
     needs: fec-phase
-    # FIX-462: decouple from fec-phase outcome. fec-phase overruns its 120-min
-    # budget every Sunday (FEC bulk indiv); with the default `if: success()`,
-    # a fec-phase timeout SKIPPED enrichment entirely → LittleSis/EDGAR/MV
-    # refreshes/AI taggers all went dark weekly. `!cancelled()` runs enrichment
-    # when fec-phase fails OR times out (a timed-out job is not a run-level
-    # cancellation), and skips only if the whole workflow run is cancelled.
-    # `needs: fec-phase` is kept so FEC writes that DID land are flushed before
+    # FIX-462/FIX-740: decouple from fec-phase outcome — fec-phase overruns its
+    # budget every Sunday (FEC bulk indiv). `!cancelled()` still runs the
+    # enrichment ingest when fec-phase fails OR times out, skipping only on a
+    # whole-run cancellation. `needs: fec-phase` keeps FEC writes flushed before
     # the LittleSis matcher builds its index (FIX-276 ordering); on an overrun
     # Sunday the matcher just sees last week's FEC entities for the unlanded
     # portion — acceptable, next week reconciles.
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    # LittleSis is the ~35-min stage (17-min match-index build + stream 1.9M
+    # rels + direct-pg upsert 601k external_relationships, FIX-741). 90 min is
+    # generous headroom well under the pre-split 120.
+    timeout-minutes: 90
 
     env:
       NEXT_PUBLIC_SUPABASE_URL: https://xsazcoxinpgttgquwvuf.supabase.co
@@ -129,8 +139,7 @@ jobs:
       CIVITICS_ANTHROPIC_API_KEY: ${{ secrets.CIVITICS_ANTHROPIC_API_KEY }}
       AUTONOMOUS:               "true"
       CIVITICS_ENRICHMENT_MODE: queue
-      # Heap headroom matches fec-phase. LittleSis bulk + matcher index
-      # build is RAM-heavy too; keeping the 12 GB ceiling avoids surprises.
+      # LittleSis bulk + matcher index build is RAM-heavy; keep the 12 GB ceiling.
       NODE_OPTIONS: --max-old-space-size=12288
       CLOUDFLARE_ACCOUNT_ID:           ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       CLOUDFLARE_R2_ACCESS_KEY_ID:     ${{ secrets.CLOUDFLARE_R2_ACCESS_KEY_ID }}
@@ -153,9 +162,63 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Run enrichment phase
-        run: pnpm --filter @civitics/data data:nightly:enrichment:ci
+      - name: Run enrichment-heavy phase (LittleSis)
+        run: pnpm --filter @civitics/data data:nightly:enrichment-heavy:ci
 
       - name: Mark nightly-killed if no completion row
         if: always()
-        run: pnpm --filter @civitics/data data:mark-killed:ci -- --phase=enrichment
+        run: pnpm --filter @civitics/data data:mark-killed:ci -- --phase=enrichment-heavy
+
+  enrichment-light-phase:
+    needs: enrichment-heavy-phase
+    # Chained after heavy (serialize the two DB writers on the Micro) but
+    # decoupled from its outcome: `!cancelled()` runs the light stages even when
+    # heavy times out, so EDGAR / MV refreshes / AI taggers never go dark just
+    # because LittleSis overran.
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    # EDGAR (~6 min) + CourtListener + OpenStates + agencies/OPM/PLUM/elections/
+    # committees/agency-* + tag-industry + the daily MV-refresh/rule+AI-tagger/
+    # AI-summaries tail. Much lighter than the pre-split phase (no LittleSis, no
+    # USASpending); keep the proven 120-min ceiling as headroom.
+    timeout-minutes: 120
+
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: https://xsazcoxinpgttgquwvuf.supabase.co
+      SUPABASE_SECRET_KEY:      ${{ secrets.SUPABASE_SECRET_KEY }}
+      SUPABASE_DB_PASSWORD:     ${{ secrets.SUPABASE_DB_PASSWORD }}
+      CONGRESS_API_KEY:         ${{ secrets.CONGRESS_API_KEY }}
+      OPENSTATES_API_KEY:       ${{ secrets.OPENSTATES_API_KEY }}
+      COURTLISTENER_API_KEY:    ${{ secrets.COURTLISTENER_API_KEY }}
+      REGULATIONS_API_KEY:      ${{ secrets.REGULATIONS_API_KEY }}
+      CIVITICS_ANTHROPIC_API_KEY: ${{ secrets.CIVITICS_ANTHROPIC_API_KEY }}
+      AUTONOMOUS:               "true"
+      CIVITICS_ENRICHMENT_MODE: queue
+      NODE_OPTIONS: --max-old-space-size=12288
+      CLOUDFLARE_ACCOUNT_ID:           ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_R2_ACCESS_KEY_ID:     ${{ secrets.CLOUDFLARE_R2_ACCESS_KEY_ID }}
+      CLOUDFLARE_R2_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_R2_SECRET_ACCESS_KEY }}
+      CLOUDFLARE_R2_BUCKET_CACHE:      civitics-cache
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run enrichment-light phase
+        run: pnpm --filter @civitics/data data:nightly:enrichment-light:ci
+
+      - name: Mark nightly-killed if no completion row
+        if: always()
+        run: pnpm --filter @civitics/data data:mark-killed:ci -- --phase=enrichment-light

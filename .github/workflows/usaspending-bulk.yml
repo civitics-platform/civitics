@@ -1,0 +1,83 @@
+name: usaspending-bulk
+
+# FIX-740 — USASpending bulk ingest, pulled out of the nightly enrichment phase.
+#
+# Why its own workflow: the "full" contract archive is ~2 GB compressed. A
+# first-run never completed inside the enrichment phase's 120-min budget — it
+# processed ~200k rows, got SIGTERM'd at the cutoff, wrote no checkpoint, and
+# restarted as a "first run — no prior state" every night, cumulatively starving
+# the rest of enrichment (LittleSis, EDGAR, the MV-refresh/tagger tail). Moving
+# it here stops that starvation; a scheduled + checkpointed version is the
+# deferred durable fix (FIX-739 — needs FEC-backfill-style resumability).
+#
+# Manual only (`workflow_dispatch`). Runs both categories (contracts then
+# assistance) sequentially against PROD via `data:usaspending-bulk:ci`
+# (index.ts `usaspending` command → runUsaSpendingBulk). `--allow-prod` on the
+# :ci script satisfies createAdminClient's prod-write guard; the prod URL +
+# secret come from the same env block nightly.yml's fec-phase uses (GHA has no
+# YAML anchors, so the duplication is explicit). Each category self-logs to
+# data_sync_log via its own startSync/completeSync — check there + this run's
+# log to size the FIX-739 checkpoint work (how far the 2 GB first-run gets).
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: usaspending-bulk
+  cancel-in-progress: false
+
+jobs:
+  usaspending-bulk:
+    runs-on: ubuntu-latest
+    # The 2 GB full first-run is slow (stream + per-row filter/upsert). 350 min
+    # leaves headroom under GHA's 6h job cap — same one-off ceiling fec-backfill
+    # uses. This is a supervised operator action, not a recurring budget.
+    timeout-minutes: 350
+
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: https://xsazcoxinpgttgquwvuf.supabase.co
+      SUPABASE_SECRET_KEY:      ${{ secrets.SUPABASE_SECRET_KEY }}
+      SUPABASE_DB_PASSWORD:     ${{ secrets.SUPABASE_DB_PASSWORD }}
+      CONGRESS_API_KEY:         ${{ secrets.CONGRESS_API_KEY }}
+      OPENSTATES_API_KEY:       ${{ secrets.OPENSTATES_API_KEY }}
+      COURTLISTENER_API_KEY:    ${{ secrets.COURTLISTENER_API_KEY }}
+      REGULATIONS_API_KEY:      ${{ secrets.REGULATIONS_API_KEY }}
+      CIVITICS_ANTHROPIC_API_KEY: ${{ secrets.CIVITICS_ANTHROPIC_API_KEY }}
+      AUTONOMOUS:               "true"
+      CIVITICS_ENRICHMENT_MODE: queue
+      NODE_OPTIONS: --max-old-space-size=12288
+      CLOUDFLARE_ACCOUNT_ID:           ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_R2_ACCESS_KEY_ID:     ${{ secrets.CLOUDFLARE_R2_ACCESS_KEY_ID }}
+      CLOUDFLARE_R2_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_R2_SECRET_ACCESS_KEY }}
+      CLOUDFLARE_R2_BUCKET_CACHE:      civitics-cache
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run USASpending bulk (contracts + assistance)
+        run: pnpm --filter @civitics/data data:usaspending-bulk:ci
+
+      # Same kill-detector backstop the nightly/backfill use: if SIGTERM'd by
+      # timeout-minutes mid-run, the contracts data_sync_log row strands at
+      # status='running' (pipeline='usaspending_bulk' — the 2 GB first-run is the
+      # stage that overruns; assistance is smaller). Observability only; never
+      # gates the job.
+      - name: Mark killed if no completion row
+        if: always()
+        run: pnpm --filter @civitics/data data:mark-killed:ci -- --pipeline=usaspending_bulk
