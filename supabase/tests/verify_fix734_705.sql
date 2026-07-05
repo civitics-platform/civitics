@@ -7,8 +7,10 @@
 --      totals untouched, and does NOT advance the totals watermark.
 --   2. reconcile_donor_rollup_orphans() DELETEs rollup rows for a recipient with
 --      no qualifying FR, leaves a live recipient's rollup rows intact.
---   3. reconcile_recipient_count() zeros an individual's orphan recipient_count
---      (positive count, no surviving donation edge), leaves a live donor's count.
+--   3. reconcile_recipient_count() is BUMP-ONLY (FIX-734 revert): it recomputes
+--      live donors' counts from entity_connections and does NOT zero a no-edge
+--      "orphan" (that EC-based zeroing was unsound — EC donation edges are
+--      incomplete for individual→committee; see the revert migration / FIX-735/736).
 --
 -- Run:  psql "$LOCAL_DB" -f supabase/tests/verify_fix734_705.sql
 -- Exits non-zero on any failed assertion (ON_ERROR_STOP + RAISE EXCEPTION).
@@ -116,16 +118,24 @@ BEGIN
   RAISE NOTICE 'PASS test2: orphan rollup deleted, live rollup row kept';
 END $$;
 
-\echo '── test 3: recipient_count orphan zero-out, live count kept ───────────────'
+\echo '── test 3: recipient_count reconcile is BUMP-ONLY (no unsound EC zeroing) ──'
+-- ORPHAN_DONOR (...01) has recipient_count=5 and no donation edge. The reverted
+-- bump-only reconcile must NOT zero it (zeroing from EC is unsound — EC is
+-- incomplete for individual→committee). LIVE_DONOR (...03) has 1 edge and
+-- recipient_count=1, so the bump recomputes 1 (unchanged).
+UPDATE public.financial_entities SET recipient_count = 5
+ WHERE id = 'f7340705-0000-0000-0000-000000000001';
 CALL public.reconcile_recipient_count();
 DO $$
 DECLARE orphan_cnt smallint; live_cnt smallint;
 BEGIN
   SELECT recipient_count INTO orphan_cnt FROM public.financial_entities WHERE id='f7340705-0000-0000-0000-000000000001';
   SELECT recipient_count INTO live_cnt   FROM public.financial_entities WHERE id='f7340705-0000-0000-0000-000000000003';
-  IF orphan_cnt IS DISTINCT FROM 0 THEN RAISE EXCEPTION 'FAIL orphan recipient_count not zeroed: got %', orphan_cnt; END IF;
-  IF live_cnt   IS DISTINCT FROM 1 THEN RAISE EXCEPTION 'FAIL live recipient_count moved: got %, want 1', live_cnt; END IF;
-  RAISE NOTICE 'PASS test3: orphan recipient_count zeroed, live count kept (1)';
+  IF orphan_cnt IS DISTINCT FROM 5 THEN
+    RAISE EXCEPTION 'FAIL bump-only reconcile zeroed a no-edge orphan (got %, want 5 — the unsound EC sweep is supposed to be reverted)', orphan_cnt;
+  END IF;
+  IF live_cnt IS DISTINCT FROM 1 THEN RAISE EXCEPTION 'FAIL live recipient_count moved: got %, want 1', live_cnt; END IF;
+  RAISE NOTICE 'PASS test3: bump-only — no-edge orphan left at 5 (not zeroed), live count kept (1)';
 END $$;
 
 \echo '── observability: sync-log rows written ──────────────────────────────────'
