@@ -904,3 +904,5 @@
 2026-07-04 | FIX-726 | 14aaa055 | local-only | perf(db): bound the financial_entity totals full-reconcile (partial idx + range-scoped anti-join)
 2026-07-04 | FIX-705 | ba35d54b | local-only | fix(db): single-anti-join monthly orphan sweeps for totals + donor-rollup
 2026-07-04 | FIX-734 | ba35d54b | local-only | fix(db): single-anti-join monthly orphan sweeps for totals + donor-rollup
+2026-07-04 | FIX-705 | 5ae9c680 | local+prod | fix(db): revert unsound EC-based recipient_count orphan sweep; file FIX-735/736
+2026-07-04 | FIX-734 | 5ae9c680 | local+prod | fix(db): revert unsound EC-based recipient_count orphan sweep; file FIX-735/736
