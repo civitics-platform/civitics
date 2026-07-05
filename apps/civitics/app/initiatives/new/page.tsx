@@ -21,17 +21,17 @@ export default async function NewInitiativePage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-paper-2">
       <main className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
         {/* Breadcrumb */}
-        <nav className="mb-6 flex items-center gap-2 text-sm text-gray-500">
-          <Link href="/initiatives" className="hover:text-gray-900">Initiatives</Link>
+        <nav className="mb-6 flex items-center gap-2 text-sm text-ink-soft/70">
+          <Link href="/initiatives" className="hover:text-ink">Initiatives</Link>
           <span>/</span>
-          <span className="text-gray-900">New initiative</span>
+          <span className="text-ink">New initiative</span>
         </nav>
 
-        <h1 className="mb-2 text-2xl font-bold text-gray-900">Start a civic initiative</h1>
-        <p className="mb-8 text-sm text-gray-500">
+        <h1 className="mb-2 text-2xl font-bold text-ink">Start a civic initiative</h1>
+        <p className="mb-8 text-sm text-ink-soft/70">
           Draft a proposal for community deliberation. It stays in draft until you&apos;re ready
           to open it for discussion.
         </p>

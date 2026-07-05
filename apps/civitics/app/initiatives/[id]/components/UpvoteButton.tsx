@@ -52,8 +52,8 @@ export function UpvoteButton({ initiativeId, initialCount }: UpvoteButtonProps) 
       disabled={loading}
       className={`flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition-all disabled:opacity-60 ${
         upvoted
-          ? "border-indigo-400 bg-indigo-50 text-indigo-700 hover:bg-indigo-100"
-          : "border-gray-300 bg-white text-gray-700 hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700"
+          ? "border-accent bg-accent/10 text-accent hover:bg-accent/10"
+          : "border-rule bg-card text-ink-soft hover:border-accent hover:bg-accent/10 hover:text-accent"
       }`}
     >
       <svg

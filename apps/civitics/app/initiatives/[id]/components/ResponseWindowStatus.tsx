@@ -26,11 +26,11 @@ interface ResponseWindowStatusProps {
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 
 const RESPONSE_STYLES: Record<ResponseType, { label: string; color: string }> = {
-  support:     { label: "Supports",           color: "bg-green-100 text-green-800 border-green-200" },
-  oppose:      { label: "Opposes",            color: "bg-red-100 text-red-800 border-red-200" },
-  pledge:      { label: "Pledged to Sponsor", color: "bg-indigo-100 text-indigo-800 border-indigo-200" },
-  refer:       { label: "Referred to Cmte",  color: "bg-amber-100 text-amber-800 border-amber-200" },
-  no_response: { label: "No Response",        color: "bg-gray-100 text-gray-600 border-gray-200" },
+  support:     { label: "Supports",           color: "bg-green-ink/10 text-green-ink border-green-ink/25" },
+  oppose:      { label: "Opposes",            color: "bg-accent/10 text-accent border-accent/25" },
+  pledge:      { label: "Pledged to Sponsor", color: "bg-accent/10 text-accent border-accent/25" },
+  refer:       { label: "Referred to Cmte",  color: "bg-amber/20 text-ink border-amber/60" },
+  no_response: { label: "No Response",        color: "bg-paper-2 text-ink-soft border-rule" },
 };
 
 function formatDate(iso: string): string {
@@ -58,9 +58,9 @@ function WindowRow({ r }: { r: ResponseRow }) {
 
   return (
     <div className={`rounded-lg border p-4 ${
-      hasResponse ? "border-gray-200 bg-white" :
-      isOpen      ? "border-amber-200 bg-amber-50" :
-                    "border-gray-200 bg-gray-50"
+      hasResponse ? "border-rule bg-card" :
+      isOpen      ? "border-amber/60 bg-amber/20" :
+                    "border-rule bg-paper-2"
     }`}>
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
@@ -68,17 +68,17 @@ function WindowRow({ r }: { r: ResponseRow }) {
             {rs.label}
           </span>
           {r.is_verified_staff && (
-            <span className="rounded-full bg-blue-50 border border-blue-200 px-2 py-0.5 text-xs text-blue-700">
+            <span className="rounded-full bg-civic-blue/10 border border-civic-blue/25 px-2 py-0.5 text-xs text-civic-blue">
               ✓ Verified staff
             </span>
           )}
           {isOpen && (
-            <span className="rounded-full bg-amber-100 border border-amber-300 px-2 py-0.5 text-xs font-medium text-amber-800">
+            <span className="rounded-full bg-amber/20 border border-amber/60 px-2 py-0.5 text-xs font-medium text-ink">
               ⏳ {daysUntil(r.window_closes_at)}d remaining
             </span>
           )}
           {isExpired && (
-            <span className="rounded-full bg-gray-100 border border-gray-300 px-2 py-0.5 text-xs text-gray-500">
+            <span className="rounded-full bg-paper-2 border border-rule px-2 py-0.5 text-xs text-ink-soft/70">
               Expired {daysAgo(r.window_closes_at)}d ago
             </span>
           )}
@@ -87,7 +87,7 @@ function WindowRow({ r }: { r: ResponseRow }) {
         {hasResponse && r.response_type !== "no_response" && r.body_text && (
           <button
             onClick={() => setExpanded((v) => !v)}
-            className="text-xs text-indigo-600 hover:text-indigo-800"
+            className="text-xs text-accent hover:text-accent"
           >
             {expanded ? "Hide" : "Read response"}
           </button>
@@ -96,17 +96,17 @@ function WindowRow({ r }: { r: ResponseRow }) {
 
       {/* Response body */}
       {hasResponse && expanded && r.body_text && (
-        <p className="mt-3 text-sm text-gray-700 leading-relaxed border-t border-gray-100 pt-3">
+        <p className="mt-3 text-sm text-ink-soft leading-relaxed border-t border-rule pt-3">
           {r.body_text}
         </p>
       )}
 
       {r.committee_referred && (
-        <p className="mt-1 text-xs text-gray-500">Referred to: {r.committee_referred}</p>
+        <p className="mt-1 text-xs text-ink-soft/70">Referred to: {r.committee_referred}</p>
       )}
 
       {/* Footer */}
-      <p className="mt-2 text-xs text-gray-400">
+      <p className="mt-2 text-xs text-ink-soft/70">
         {hasResponse
           ? <>Responded {formatDate(r.responded_at!)} · Window closed {formatDate(r.window_closes_at)}</>
           : isOpen
@@ -149,22 +149,22 @@ export function ResponseWindowStatus({ initiativeId, responses }: ResponseWindow
     <div className="mt-8">
       {/* Header */}
       <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-base font-semibold text-gray-900">Official response windows</h2>
+        <h2 className="text-base font-semibold text-ink">Official response windows</h2>
 
         {/* Summary chips */}
         <div className="flex items-center gap-2">
           {responded.length > 0 && (
-            <span className="rounded-full bg-green-100 border border-green-200 px-2.5 py-0.5 text-xs font-medium text-green-800">
+            <span className="rounded-full bg-green-ink/10 border border-green-ink/25 px-2.5 py-0.5 text-xs font-medium text-green-ink">
               {responded.length} responded
             </span>
           )}
           {openWindows.length > 0 && (
-            <span className="rounded-full bg-amber-100 border border-amber-300 px-2.5 py-0.5 text-xs font-medium text-amber-800">
+            <span className="rounded-full bg-amber/20 border border-amber/60 px-2.5 py-0.5 text-xs font-medium text-ink">
               {openWindows.length} open
             </span>
           )}
           {expired.length > 0 && (
-            <span className="rounded-full bg-gray-100 border border-gray-200 px-2.5 py-0.5 text-xs text-gray-500">
+            <span className="rounded-full bg-paper-2 border border-rule px-2.5 py-0.5 text-xs text-ink-soft/70">
               {expired.length} no response
             </span>
           )}
@@ -173,23 +173,23 @@ export function ResponseWindowStatus({ initiativeId, responses }: ResponseWindow
 
       {/* Open window notice */}
       {earliestClose && (
-        <div className="mb-4 flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
-          <svg className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <div className="mb-4 flex items-start gap-3 rounded-lg border border-amber/60 bg-amber/20 px-4 py-3">
+          <svg className="mt-0.5 h-4 w-4 flex-shrink-0 text-ink" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
           <div>
-            <p className="text-sm font-semibold text-amber-900">
+            <p className="text-sm font-semibold text-ink">
               {openWindows.length} official{openWindows.length !== 1 ? "s" : ""} ha{openWindows.length !== 1 ? "ve" : "s"} an open 30-day response window
             </p>
-            <p className="mt-0.5 text-xs text-amber-700">
+            <p className="mt-0.5 text-xs text-ink-soft">
               Earliest deadline: {formatDate(earliestClose.window_closes_at)} ({daysUntil(earliestClose.window_closes_at)} days). Officials who don&apos;t respond receive a permanent <strong>No Response</strong> on their profile.
             </p>
             {/* Respond link for officials */}
-            <p className="mt-1.5 text-xs text-amber-700">
+            <p className="mt-1.5 text-xs text-ink-soft">
               Are you an official with a response window?{" "}
               <a
                 href={`/initiatives/${initiativeId}/respond`}
-                className="font-semibold underline hover:text-amber-900"
+                className="font-semibold underline hover:text-ink"
               >
                 Submit your response →
               </a>
@@ -208,7 +208,7 @@ export function ResponseWindowStatus({ initiativeId, responses }: ResponseWindow
       {sorted.length > 3 && (
         <button
           onClick={() => setShowAll((v) => !v)}
-          className="mt-3 text-xs text-indigo-600 hover:text-indigo-800"
+          className="mt-3 text-xs text-accent hover:text-accent"
         >
           {showAll ? "Show fewer" : `Show all ${sorted.length} windows`}
         </button>
@@ -216,7 +216,7 @@ export function ResponseWindowStatus({ initiativeId, responses }: ResponseWindow
 
       {/* Permanence note */}
       {expired.length > 0 && (
-        <p className="mt-3 text-xs text-gray-400 italic">
+        <p className="mt-3 text-xs text-ink-soft/70 italic">
           No Response records are permanent and appear on official profiles. Silence is data.
         </p>
       )}

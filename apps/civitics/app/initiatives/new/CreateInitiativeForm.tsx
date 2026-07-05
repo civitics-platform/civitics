@@ -96,10 +96,10 @@ export function CreateInitiativeForm() {
     <form onSubmit={handleSubmit} className="space-y-8">
       {/* ── Title ────────────────────────────────────────────────────── */}
       <div>
-        <label htmlFor="title" className="block text-sm font-semibold text-gray-900">
-          Title <span className="text-red-500">*</span>
+        <label htmlFor="title" className="block text-sm font-semibold text-ink">
+          Title <span className="text-accent">*</span>
         </label>
-        <p className="mt-0.5 text-xs text-gray-500">
+        <p className="mt-0.5 text-xs text-ink-soft/70">
           A clear, specific statement of what this initiative calls for. (10–120 chars)
         </p>
         <div className="relative mt-2">
@@ -110,11 +110,11 @@ export function CreateInitiativeForm() {
             onChange={(e) => setTitle(e.target.value)}
             maxLength={120}
             placeholder="e.g. Require disclosure of campaign donations within 48 hours of receipt"
-            className="block w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm text-gray-900 shadow-sm placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            className="block w-full rounded-lg border border-rule bg-card px-4 py-2.5 text-sm text-ink shadow-sm placeholder:text-ink-soft/70 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
           />
           <span
             className={`absolute right-3 top-1/2 -translate-y-1/2 text-xs tabular-nums ${
-              titleLen < 10 || titleLen > 120 ? "text-red-400" : "text-gray-400"
+              titleLen < 10 || titleLen > 120 ? "text-accent" : "text-ink-soft/70"
             }`}
           >
             {titleLen}/120
@@ -124,10 +124,10 @@ export function CreateInitiativeForm() {
 
       {/* ── Summary ──────────────────────────────────────────────────── */}
       <div>
-        <label htmlFor="summary" className="block text-sm font-semibold text-gray-900">
-          One-line summary <span className="text-gray-400 font-normal">(optional)</span>
+        <label htmlFor="summary" className="block text-sm font-semibold text-ink">
+          One-line summary <span className="text-ink-soft/70 font-normal">(optional)</span>
         </label>
-        <p className="mt-0.5 text-xs text-gray-500">
+        <p className="mt-0.5 text-xs text-ink-soft/70">
           Plain-language description shown in cards and lists. Up to 500 characters.
         </p>
         <div className="relative mt-2">
@@ -138,9 +138,9 @@ export function CreateInitiativeForm() {
             onChange={(e) => setSummary(e.target.value)}
             maxLength={500}
             placeholder="In plain language, what does this initiative ask for and why does it matter?"
-            className="block w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm text-gray-900 shadow-sm placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 resize-none"
+            className="block w-full rounded-lg border border-rule bg-card px-4 py-2.5 text-sm text-ink shadow-sm placeholder:text-ink-soft/70 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent resize-none"
           />
-          <span className={`absolute bottom-2 right-3 text-xs tabular-nums ${summaryLen > 500 ? "text-red-400" : "text-gray-400"}`}>
+          <span className={`absolute bottom-2 right-3 text-xs tabular-nums ${summaryLen > 500 ? "text-accent" : "text-ink-soft/70"}`}>
             {summaryLen}/500
           </span>
         </div>
@@ -148,18 +148,18 @@ export function CreateInitiativeForm() {
 
       {/* ── Proposal body ────────────────────────────────────────────── */}
       <div>
-        <label htmlFor="body_md" className="block text-sm font-semibold text-gray-900">
-          Proposal <span className="text-red-500">*</span>
+        <label htmlFor="body_md" className="block text-sm font-semibold text-ink">
+          Proposal <span className="text-accent">*</span>
         </label>
-        <p className="mt-0.5 text-xs text-gray-500">
+        <p className="mt-0.5 text-xs text-ink-soft/70">
           The full proposal text. Include the problem, proposed action, and intended outcome.
           Markdown is supported.
         </p>
-        <div className="mt-2 rounded-lg border border-gray-300 bg-white shadow-sm focus-within:border-indigo-500 focus-within:ring-1 focus-within:ring-indigo-500">
+        <div className="mt-2 rounded-lg border border-rule bg-card shadow-sm focus-within:border-accent focus-within:ring-1 focus-within:ring-accent">
           {/* Toolbar hint */}
-          <div className="flex items-center gap-2 border-b border-gray-200 px-3 py-1.5">
-            <span className="text-xs text-gray-400">Markdown supported</span>
-            <span className="ml-auto text-xs text-gray-400">**bold** _italic_ # Heading</span>
+          <div className="flex items-center gap-2 border-b border-rule px-3 py-1.5">
+            <span className="text-xs text-ink-soft/70">Markdown supported</span>
+            <span className="ml-auto text-xs text-ink-soft/70">**bold** _italic_ # Heading</span>
           </div>
           <textarea
             id="body_md"
@@ -167,17 +167,17 @@ export function CreateInitiativeForm() {
             value={bodyMd}
             onChange={(e) => setBodyMd(e.target.value)}
             placeholder={`## Problem\n\nDescribe the problem this initiative addresses...\n\n## Proposed Action\n\nWhat specifically should happen...\n\n## Intended Outcome\n\nWhat will change if this succeeds...`}
-            className="block w-full rounded-b-lg px-4 py-3 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none resize-y font-mono"
+            className="block w-full rounded-b-lg px-4 py-3 text-sm text-ink placeholder:text-ink-soft/70 focus:outline-none resize-y font-mono"
           />
         </div>
       </div>
 
       {/* ── Scope ────────────────────────────────────────────────────── */}
       <div>
-        <label className="block text-sm font-semibold text-gray-900">
-          Scope <span className="text-red-500">*</span>
+        <label className="block text-sm font-semibold text-ink">
+          Scope <span className="text-accent">*</span>
         </label>
-        <p className="mt-0.5 text-xs text-gray-500">Which level of government does this target?</p>
+        <p className="mt-0.5 text-xs text-ink-soft/70">Which level of government does this target?</p>
         <div className="mt-2 grid grid-cols-3 gap-3">
           {SCOPE_OPTIONS.map((opt) => (
             <button
@@ -186,14 +186,14 @@ export function CreateInitiativeForm() {
               onClick={() => setScope(opt.value)}
               className={`rounded-lg border p-3 text-left transition-colors ${
                 scope === opt.value
-                  ? "border-indigo-500 bg-indigo-50"
-                  : "border-gray-200 bg-white hover:border-gray-300"
+                  ? "border-accent bg-accent/10"
+                  : "border-rule bg-card hover:border-rule"
               }`}
             >
-              <div className={`text-sm font-semibold ${scope === opt.value ? "text-indigo-700" : "text-gray-900"}`}>
+              <div className={`text-sm font-semibold ${scope === opt.value ? "text-accent" : "text-ink"}`}>
                 {opt.label}
               </div>
-              <div className="mt-0.5 text-xs text-gray-500">{opt.description}</div>
+              <div className="mt-0.5 text-xs text-ink-soft/70">{opt.description}</div>
             </button>
           ))}
         </div>
@@ -201,10 +201,10 @@ export function CreateInitiativeForm() {
 
       {/* ── Issue tags ───────────────────────────────────────────────── */}
       <div>
-        <label className="block text-sm font-semibold text-gray-900">
-          Issue areas <span className="text-gray-400 font-normal">(optional)</span>
+        <label className="block text-sm font-semibold text-ink">
+          Issue areas <span className="text-ink-soft/70 font-normal">(optional)</span>
         </label>
-        <p className="mt-0.5 text-xs text-gray-500">
+        <p className="mt-0.5 text-xs text-ink-soft/70">
           Select all that apply. Helps citizens find this initiative by topic.
         </p>
         <div className="mt-2 flex flex-wrap gap-2">
@@ -215,8 +215,8 @@ export function CreateInitiativeForm() {
               onClick={() => toggleTag(tag)}
               className={`rounded-full border px-3 py-1 text-xs font-medium capitalize transition-colors ${
                 selectedTags.includes(tag)
-                  ? "border-indigo-400 bg-indigo-50 text-indigo-700"
-                  : "border-gray-200 bg-white text-gray-600 hover:border-gray-300"
+                  ? "border-accent bg-accent/10 text-accent"
+                  : "border-rule bg-card text-ink-soft hover:border-rule"
               }`}
             >
               {tag.replace(/_/g, " ")}
@@ -227,14 +227,14 @@ export function CreateInitiativeForm() {
 
       {/* ── Error ────────────────────────────────────────────────────── */}
       {error && (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div className="rounded-lg border border-accent/25 bg-accent/10 px-4 py-3 text-sm text-accent">
           {error}
         </div>
       )}
 
       {/* ── Quality gate notice ──────────────────────────────────────── */}
-      <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
-        <p className="text-xs text-amber-800">
+      <div className="rounded-lg border border-amber/60 bg-amber/20 px-4 py-3">
+        <p className="text-xs text-ink">
           <span className="font-semibold">Starts as a draft.</span> Your initiative will be saved in
           draft mode. When you&apos;re ready, open it for community deliberation — the community
           will then shape and refine the proposal before it can advance to mobilisation.
@@ -242,14 +242,14 @@ export function CreateInitiativeForm() {
       </div>
 
       {/* ── Submit ───────────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between gap-4 border-t border-gray-200 pt-6">
-        <a href="/initiatives" className="text-sm text-gray-500 hover:text-gray-700">
+      <div className="flex items-center justify-between gap-4 border-t border-rule pt-6">
+        <a href="/initiatives" className="text-sm text-ink-soft/70 hover:text-ink-soft">
           Cancel
         </a>
         <button
           type="submit"
           disabled={submitting || title.trim().length < 10 || bodyMd.trim().length === 0}
-          className="rounded-lg bg-indigo-600 px-6 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          className="rounded-lg bg-accent px-6 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-accent focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
           {submitting ? "Saving…" : "Save draft"}
         </button>

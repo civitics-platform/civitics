@@ -69,12 +69,12 @@ function MilestoneRow({
   const hit     = current >= milestone.count;
 
   return (
-    <div className={`rounded-lg border p-2.5 ${hit ? "border-emerald-200 bg-emerald-50" : "border-gray-200 bg-white"}`}>
+    <div className={`rounded-lg border p-2.5 ${hit ? "border-green-ink/25 bg-green-ink/10" : "border-rule bg-card"}`}>
       <div className="flex items-start gap-2">
         {/* Icon / checkmark */}
         <div className="mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center">
           {hit ? (
-            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 text-white text-xs font-bold">
+            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-green-ink text-white text-xs font-bold">
               ✓
             </span>
           ) : (
@@ -85,27 +85,27 @@ function MilestoneRow({
         <div className="flex-1 min-w-0">
           {/* Label + count */}
           <div className="flex items-baseline justify-between gap-1">
-            <p className={`text-xs font-semibold ${hit ? "text-emerald-800" : "text-gray-700"}`}>
+            <p className={`text-xs font-semibold ${hit ? "text-green-ink" : "text-ink-soft"}`}>
               {milestone.label}
             </p>
-            <span className={`flex-shrink-0 text-xs tabular-nums ${hit ? "text-emerald-700 font-semibold" : "text-gray-400"}`}>
+            <span className={`flex-shrink-0 text-xs tabular-nums ${hit ? "text-green-ink font-semibold" : "text-ink-soft/70"}`}>
               {current.toLocaleString()} / {milestone.count.toLocaleString()}
               {milestone.metric === "constituent" && (
-                <span className="ml-0.5 text-gray-300">✓</span>
+                <span className="ml-0.5 text-ink-soft/70">✓</span>
               )}
             </span>
           </div>
 
           {/* Description */}
-          <p className="text-xs text-gray-400 mt-0.5 leading-snug">
+          <p className="text-xs text-ink-soft/70 mt-0.5 leading-snug">
             {milestone.description}
           </p>
 
           {/* Progress bar (only shown when not yet hit) */}
           {!hit && (
-            <div className="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-gray-100">
+            <div className="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-paper-2">
               <div
-                className="h-full rounded-full bg-indigo-400 transition-all duration-700"
+                className="h-full rounded-full bg-accent transition-all duration-700"
                 style={{ width: `${pct}%` }}
               />
             </div>
@@ -204,12 +204,12 @@ export function SignaturePanel({
     : null;
 
   return (
-    <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-5 shadow-sm">
+    <div className="rounded-xl border border-accent bg-accent/10 p-5 shadow-sm">
       {/* Header */}
       <div className="mb-4 flex items-baseline justify-between">
-        <p className="text-sm font-bold text-indigo-900">Signatures</p>
+        <p className="text-sm font-bold text-accent">Signatures</p>
         {daysMobilising !== null && (
-          <span className="text-xs text-indigo-500">
+          <span className="text-xs text-accent">
             Day {daysMobilising + 1} of mobilising
           </span>
         )}
@@ -217,19 +217,19 @@ export function SignaturePanel({
 
       {/* Count grid */}
       <div className="mb-4 grid grid-cols-2 gap-3">
-        <div className="rounded-lg border border-indigo-200 bg-white p-3 text-center">
-          <p className="text-2xl font-bold tabular-nums text-indigo-900">
+        <div className="rounded-lg border border-accent bg-card p-3 text-center">
+          <p className="text-2xl font-bold tabular-nums text-accent">
             {total.toLocaleString()}
           </p>
-          <p className="text-xs text-indigo-600 mt-0.5">Total signed</p>
+          <p className="text-xs text-accent mt-0.5">Total signed</p>
         </div>
-        <div className="rounded-lg border border-indigo-200 bg-white p-3 text-center">
-          <p className="text-2xl font-bold tabular-nums text-indigo-900">
+        <div className="rounded-lg border border-accent bg-card p-3 text-center">
+          <p className="text-2xl font-bold tabular-nums text-accent">
             {constituent.toLocaleString()}
           </p>
-          <p className="text-xs text-indigo-600 mt-0.5">
+          <p className="text-xs text-accent mt-0.5">
             District-verified
-            <span className="ml-0.5 text-indigo-400">✓</span>
+            <span className="ml-0.5 text-accent">✓</span>
           </p>
         </div>
       </div>
@@ -237,12 +237,12 @@ export function SignaturePanel({
       {/* Sign button */}
       {signed === null ? (
         // Checking signed state — show skeleton
-        <div className="h-10 animate-pulse rounded-lg bg-indigo-200" />
+        <div className="h-10 animate-pulse rounded-lg bg-accent/20" />
       ) : signed ? (
         <button
           onClick={handleSign}
           disabled={signing}
-          className="w-full rounded-lg border-2 border-emerald-500 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-700 transition-colors hover:bg-emerald-100 disabled:opacity-50"
+          className="w-full rounded-lg border-2 border-green-ink bg-green-ink/10 px-4 py-2 text-sm font-semibold text-green-ink transition-colors hover:bg-green-ink/10 disabled:opacity-50"
         >
           {signing ? "Removing…" : "✓ You signed this — click to unsign"}
         </button>
@@ -250,7 +250,7 @@ export function SignaturePanel({
         <button
           onClick={handleSign}
           disabled={signing}
-          className="w-full rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-indigo-700 active:bg-indigo-800 disabled:opacity-50"
+          className="w-full rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-accent active:bg-accent disabled:opacity-50"
         >
           {signing ? "Signing…" : "Sign this initiative"}
         </button>
@@ -258,17 +258,17 @@ export function SignaturePanel({
 
       {/* Error feedback */}
       {error && (
-        <p className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs text-red-700">
+        <p className="mt-2 rounded-lg border border-accent/25 bg-accent/10 px-3 py-1.5 text-xs text-accent">
           {error}
         </p>
       )}
 
       {/* Milestone ladder */}
       <div className="mt-5 space-y-2">
-        <p className="text-xs font-semibold uppercase tracking-wide text-indigo-700">
+        <p className="text-xs font-semibold uppercase tracking-wide text-accent">
           Milestones
         </p>
-        <p className="text-xs text-indigo-500 -mt-1">
+        <p className="text-xs text-accent -mt-1">
           ✓ = district-verified signatures
         </p>
         {MILESTONES.map((m) => (

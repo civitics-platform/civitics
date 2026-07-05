@@ -93,11 +93,11 @@ type InitiativeDetail = {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const STAGE_STYLES: Record<string, { label: string; color: string; description: string }> = {
-  problem:    { label: "Problem",      color: "bg-orange-100 text-orange-700 border-orange-200", description: "Open problem — seeking community input" },
-  draft:      { label: "Draft",        color: "bg-gray-100 text-gray-700 border-gray-200",   description: "Private draft — only visible to you" },
-  deliberate: { label: "Deliberating", color: "bg-amber-100 text-amber-700 border-amber-200", description: "Open for community deliberation" },
-  mobilise:   { label: "Mobilising",   color: "bg-indigo-100 text-indigo-700 border-indigo-200", description: "Gathering signatures" },
-  resolved:   { label: "Resolved",     color: "bg-green-100 text-green-700 border-green-200", description: "Resolved" },
+  problem:    { label: "Problem",      color: "bg-accent/10 text-accent border-accent/25", description: "Open problem — seeking community input" },
+  draft:      { label: "Draft",        color: "bg-ink/5 text-ink-soft border-rule",   description: "Private draft — only visible to you" },
+  deliberate: { label: "Deliberating", color: "bg-amber/25 text-ink border-amber/60", description: "Open for community deliberation" },
+  mobilise:   { label: "Mobilising",   color: "bg-civic-blue/10 text-civic-blue border-civic-blue/25", description: "Gathering signatures" },
+  resolved:   { label: "Resolved",     color: "bg-green-ink/10 text-green-ink border-green-ink/25", description: "Resolved" },
 };
 
 
@@ -117,16 +117,16 @@ function renderMarkdown(md: string): string {
   return md
     .split("\n")
     .map((line) => {
-      if (/^### /.test(line)) return `<h3 class="text-base font-bold text-gray-900 mt-5 mb-1">${line.slice(4)}</h3>`;
-      if (/^## /.test(line))  return `<h2 class="text-lg font-bold text-gray-900 mt-6 mb-2">${line.slice(3)}</h2>`;
-      if (/^# /.test(line))   return `<h1 class="text-xl font-bold text-gray-900 mt-6 mb-2">${line.slice(2)}</h1>`;
-      if (/^- /.test(line))   return `<li class="ml-4 text-gray-700">${line.slice(2)}</li>`;
+      if (/^### /.test(line)) return `<h3 class="text-base font-bold text-ink mt-5 mb-1">${line.slice(4)}</h3>`;
+      if (/^## /.test(line))  return `<h2 class="text-lg font-bold text-ink mt-6 mb-2">${line.slice(3)}</h2>`;
+      if (/^# /.test(line))   return `<h1 class="text-xl font-bold text-ink mt-6 mb-2">${line.slice(2)}</h1>`;
+      if (/^- /.test(line))   return `<li class="ml-4 text-ink-soft">${line.slice(2)}</li>`;
       if (line.trim() === "") return "<br/>";
       // Bold + italic inline
       const processed = line
         .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
         .replace(/_(.+?)_/g, "<em>$1</em>");
-      return `<p class="text-gray-700 leading-relaxed">${processed}</p>`;
+      return `<p class="text-ink-soft leading-relaxed">${processed}</p>`;
     })
     .join("\n");
 }
@@ -295,15 +295,15 @@ export default async function InitiativeDetailPage({
   const slowMode = await getSlowMode("proposal", initiative.id);
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-paper-2">
       <PageViewTracker entityType="initiative" entityId={id} />
 
       <main className="mx-auto max-w-4xl px-4 py-8 sm:px-6">
         {/* Breadcrumb */}
-        <nav className="mb-6 flex items-center gap-2 text-sm text-gray-500">
-          <Link href="/initiatives" className="hover:text-gray-900">Initiatives</Link>
+        <nav className="mb-6 flex items-center gap-2 text-sm text-ink-soft/70">
+          <Link href="/initiatives" className="hover:text-ink">Initiatives</Link>
           <span>/</span>
-          <span className="line-clamp-1 text-gray-900">{initiative.title}</span>
+          <span className="line-clamp-1 text-ink">{initiative.title}</span>
         </nav>
 
         <div className="lg:grid lg:grid-cols-[1fr_280px] lg:gap-8">
@@ -316,11 +316,11 @@ export default async function InitiativeDetailPage({
                 <span className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold ${stageStyle.color}`}>
                   {stageStyle.label}
                 </span>
-                <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-600 capitalize">
+                <span className="rounded-full bg-paper-2 px-2.5 py-0.5 text-xs font-medium text-ink-soft capitalize">
                   {initiative.scope}
                 </span>
                 {initiative.authorship_type === "community" && (
-                  <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-700">
+                  <span className="rounded-full bg-green-ink/10 px-2.5 py-0.5 text-xs font-medium text-green-ink">
                     Community
                   </span>
                 )}
@@ -328,7 +328,7 @@ export default async function InitiativeDetailPage({
                   <Link
                     key={t}
                     href={`/initiatives?tag=${t}`}
-                    className="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs text-gray-600 capitalize hover:bg-gray-200"
+                    className="rounded-full bg-paper-2 px-2.5 py-0.5 text-xs text-ink-soft capitalize hover:bg-rule/40"
                   >
                     {t.replace(/_/g, " ")}
                   </Link>
@@ -337,7 +337,7 @@ export default async function InitiativeDetailPage({
 
               {/* Title + edit button */}
               <div className="flex items-start justify-between gap-3">
-                <h1 className="text-2xl font-bold text-gray-900 leading-tight">
+                <h1 className="text-2xl font-bold text-ink leading-tight">
                   {initiative.title}
                   {initiative.is_synthetic && <SyntheticMark withIcon className="ml-2 align-middle" />}
                 </h1>
@@ -357,13 +357,13 @@ export default async function InitiativeDetailPage({
 
               {/* Summary */}
               {initiative.summary && (
-                <p className="mt-2 text-base text-gray-600 leading-relaxed">
+                <p className="mt-2 text-base text-ink-soft leading-relaxed">
                   {initiative.summary}
                 </p>
               )}
 
               {/* Meta */}
-              <p className="mt-3 text-xs text-gray-400">
+              <p className="mt-3 text-xs text-ink-soft/70">
                 Started {formatDate(initiative.created_at)}
                 {initiative.updated_at !== initiative.created_at && (
                   <> · Updated {formatDate(initiative.updated_at)}</>
@@ -376,11 +376,11 @@ export default async function InitiativeDetailPage({
 
             {/* Stage description banner */}
             {initiative.stage === "draft" && isAuthor && (
-              <div className="mb-6 flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
-                <svg className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <div className="mb-6 flex items-start gap-3 rounded-lg border border-amber/60 bg-amber/20 px-4 py-3">
+                <svg className="mt-0.5 h-4 w-4 flex-shrink-0 text-ink" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                <p className="text-sm text-amber-800">
+                <p className="text-sm text-ink">
                   <span className="font-semibold">This is a private draft.</span> Only you can see it.
                   Edit the proposal until you&apos;re ready to open it for deliberation.
                 </p>
@@ -389,14 +389,14 @@ export default async function InitiativeDetailPage({
 
             {/* Problem stage — public but no solution yet */}
             {initiative.stage === "problem" && (
-              <div className="mb-6 rounded-lg border border-orange-200 bg-orange-50 px-4 py-4">
+              <div className="mb-6 rounded-lg border border-amber/60 bg-amber/20 px-4 py-4">
                 <div className="flex items-start gap-3">
-                  <svg className="mt-0.5 h-4 w-4 flex-shrink-0 text-orange-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <svg className="mt-0.5 h-4 w-4 flex-shrink-0 text-ink" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.347.347A3.977 3.977 0 0112 15.75a3.977 3.977 0 01-2.79-1.153l-.347-.347z" />
                   </svg>
                   <div className="flex-1">
-                    <p className="text-sm font-semibold text-orange-800">Open problem — community input welcome</p>
-                    <p className="mt-0.5 text-xs text-orange-700">
+                    <p className="text-sm font-semibold text-ink">Open problem — community input welcome</p>
+                    <p className="mt-0.5 text-xs text-ink-soft">
                       This is a problem statement, not a full proposal. The community can discuss
                       causes, share experiences, and help develop solutions.
                     </p>
@@ -417,8 +417,8 @@ export default async function InitiativeDetailPage({
             )}
 
             {/* Proposal / problem body */}
-            <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-              <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-gray-400">
+            <div className="border border-rule bg-card p-6 shadow-sm">
+              <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-ink-soft/70">
                 {initiative.stage === "problem" ? "Problem description" : "Proposal"}
               </h2>
               <div
@@ -471,15 +471,15 @@ export default async function InitiativeDetailPage({
           {/* ── Sidebar ──────────────────────────────────────────────── */}
           <aside className="mt-8 space-y-4 lg:mt-0">
             {/* Upvote + follow card */}
-            <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-              <p className="mb-3 text-sm font-semibold text-gray-900">Support this initiative</p>
+            <div className="border border-rule bg-card p-5 shadow-sm">
+              <p className="mb-3 text-sm font-semibold text-ink">Support this initiative</p>
               <UpvoteButton initiativeId={initiative.id} initialCount={upvoteCount} />
-              <p className="mt-2 text-xs text-gray-400">
+              <p className="mt-2 text-xs text-ink-soft/70">
                 Upvotes help advance to deliberation.
               </p>
-              <div className="mt-3 border-t border-gray-100 pt-3">
+              <div className="mt-3 border-t border-rule pt-3">
                 <FollowButton initiativeId={initiative.id} initialCount={followCount} />
-                <p className="mt-1.5 text-xs text-gray-400">
+                <p className="mt-1.5 text-xs text-ink-soft/70">
                   Follow to get updates on this initiative.
                 </p>
               </div>
@@ -496,49 +496,49 @@ export default async function InitiativeDetailPage({
             )}
 
             {/* Meta card */}
-            <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-              <p className="mb-3 text-sm font-semibold text-gray-900">Details</p>
+            <div className="border border-rule bg-card p-5 shadow-sm">
+              <p className="mb-3 text-sm font-semibold text-ink">Details</p>
               <dl className="space-y-2 text-sm">
                 <div className="flex justify-between">
-                  <dt className="text-gray-500">Stage</dt>
-                  <dd className="font-medium text-gray-900 capitalize">{initiative.stage}</dd>
+                  <dt className="text-ink-soft/70">Stage</dt>
+                  <dd className="font-medium text-ink capitalize">{initiative.stage}</dd>
                 </div>
                 <div className="flex justify-between">
-                  <dt className="text-gray-500">Scope</dt>
-                  <dd className="font-medium text-gray-900 capitalize">{initiative.scope}</dd>
+                  <dt className="text-ink-soft/70">Scope</dt>
+                  <dd className="font-medium text-ink capitalize">{initiative.scope}</dd>
                 </div>
                 <div className="flex justify-between">
-                  <dt className="text-gray-500">Authorship</dt>
-                  <dd className="font-medium text-gray-900 capitalize">{initiative.authorship_type}</dd>
+                  <dt className="text-ink-soft/70">Authorship</dt>
+                  <dd className="font-medium text-ink capitalize">{initiative.authorship_type}</dd>
                 </div>
                 {initiative.target_district && (
                   <div className="flex justify-between">
-                    <dt className="text-gray-500">District</dt>
-                    <dd className="font-medium text-gray-900">{initiative.target_district}</dd>
+                    <dt className="text-ink-soft/70">District</dt>
+                    <dd className="font-medium text-ink">{initiative.target_district}</dd>
                   </div>
                 )}
                 <div className="flex justify-between">
-                  <dt className="text-gray-500">Started</dt>
-                  <dd className="font-medium text-gray-900">{formatDate(initiative.created_at)}</dd>
+                  <dt className="text-ink-soft/70">Started</dt>
+                  <dd className="font-medium text-ink">{formatDate(initiative.created_at)}</dd>
                 </div>
               </dl>
             </div>
             {/* Linked proposals */}
             {linkedProposals.length > 0 && (
-              <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-                <p className="mb-3 text-sm font-semibold text-gray-900">Linked legislation</p>
+              <div className="border border-rule bg-card p-5 shadow-sm">
+                <p className="mb-3 text-sm font-semibold text-ink">Linked legislation</p>
                 <div className="space-y-2">
                   {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
                   {linkedProposals.map((p: any) => (
                     <a
                       key={p.id}
                       href={`/proposals/${p.id}`}
-                      className="block rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-xs transition-colors hover:border-indigo-200 hover:bg-indigo-50"
+                      className="block rounded-lg border border-rule bg-paper-2 px-3 py-2 text-xs transition-colors hover:border-accent hover:bg-accent/10"
                     >
-                      <span className="font-medium text-gray-800 line-clamp-2">
+                      <span className="font-medium text-ink-soft line-clamp-2">
                         {p.bill_number ? `${p.bill_number} · ` : ""}{p.short_title ?? p.title}
                       </span>
-                      <span className="mt-0.5 block capitalize text-gray-400">{p.status?.replace(/_/g, " ")}</span>
+                      <span className="mt-0.5 block capitalize text-ink-soft/70">{p.status?.replace(/_/g, " ")}</span>
                     </a>
                   ))}
                 </div>

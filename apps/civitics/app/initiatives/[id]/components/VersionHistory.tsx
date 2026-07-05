@@ -51,7 +51,7 @@ export function VersionHistory({ initiativeId }: VersionHistoryProps) {
     <div className="mt-8">
       <button
         onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-2 text-sm font-medium text-gray-500 hover:text-gray-800 transition-colors"
+        className="flex items-center gap-2 text-sm font-medium text-ink-soft/70 hover:text-ink transition-colors"
       >
         <svg
           className={`h-4 w-4 transition-transform ${open ? "rotate-90" : ""}`}
@@ -66,25 +66,25 @@ export function VersionHistory({ initiativeId }: VersionHistoryProps) {
       </button>
 
       {open && (
-        <div className="mt-3 rounded-lg border border-gray-200 bg-white">
+        <div className="mt-3 rounded-lg border border-rule bg-card">
           {loading ? (
-            <div className="px-5 py-8 text-center text-sm text-gray-400">Loading…</div>
+            <div className="px-5 py-8 text-center text-sm text-ink-soft/70">Loading…</div>
           ) : versions.length === 0 ? (
-            <div className="px-5 py-8 text-center text-sm text-gray-400">
+            <div className="px-5 py-8 text-center text-sm text-ink-soft/70">
               No previous versions — this proposal has not been edited yet.
             </div>
           ) : (
-            <div className="divide-y divide-gray-100">
+            <div className="divide-y divide-rule">
               {versions.map((v) => (
                 <div key={v.id} className="flex items-center justify-between px-5 py-3">
                   <div>
-                    <span className="text-xs font-semibold text-gray-600 mr-2">v{v.version_number}</span>
-                    <span className="text-sm text-gray-800 line-clamp-1">{v.title}</span>
-                    <span className="ml-2 text-xs text-gray-400">{formatDateTime(v.created_at)}</span>
+                    <span className="text-xs font-semibold text-ink-soft mr-2">v{v.version_number}</span>
+                    <span className="text-sm text-ink-soft line-clamp-1">{v.title}</span>
+                    <span className="ml-2 text-xs text-ink-soft/70">{formatDateTime(v.created_at)}</span>
                   </div>
                   <button
                     onClick={() => setSelected(selected?.id === v.id ? null : v)}
-                    className="ml-4 flex-shrink-0 text-xs text-indigo-600 hover:text-indigo-800 font-medium"
+                    className="ml-4 flex-shrink-0 text-xs text-accent hover:text-accent font-medium"
                   >
                     {selected?.id === v.id ? "Hide" : "View"}
                   </button>
@@ -95,20 +95,20 @@ export function VersionHistory({ initiativeId }: VersionHistoryProps) {
 
           {/* Expanded version viewer */}
           {selected && (
-            <div className="border-t border-indigo-100 bg-indigo-50 px-5 py-4">
+            <div className="border-t border-accent bg-accent/10 px-5 py-4">
               <div className="mb-2 flex items-center justify-between">
-                <span className="text-xs font-semibold text-indigo-700">
+                <span className="text-xs font-semibold text-accent">
                   Version {selected.version_number} — {formatDateTime(selected.created_at)}
                 </span>
                 <button
                   onClick={() => setSelected(null)}
-                  className="text-xs text-indigo-500 hover:text-indigo-700"
+                  className="text-xs text-accent hover:text-accent"
                 >
                   Close ×
                 </button>
               </div>
-              <h3 className="mb-2 text-sm font-bold text-gray-900">{selected.title}</h3>
-              <pre className="whitespace-pre-wrap text-xs text-gray-700 font-sans leading-relaxed max-h-60 overflow-y-auto">
+              <h3 className="mb-2 text-sm font-bold text-ink">{selected.title}</h3>
+              <pre className="whitespace-pre-wrap text-xs text-ink-soft font-sans leading-relaxed max-h-60 overflow-y-auto">
                 {selected.body_md}
               </pre>
             </div>

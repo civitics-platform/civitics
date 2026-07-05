@@ -130,28 +130,28 @@ export default async function InitiativesPage({
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-paper-2">
       <PageViewTracker />
 
       <main id="main-content" className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
         {/* ── Page header ──────────────────────────────────────────────── */}
         <div className="mb-8 flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Civic Initiatives</h1>
-            <p className="mt-1 text-sm text-gray-500">
+            <h1 className="text-2xl font-bold text-ink">Civic Initiatives</h1>
+            <p className="mt-1 text-sm text-ink-soft/70">
               Citizen-led proposals — from deliberation to official accountability.
             </p>
           </div>
           <div className="flex flex-shrink-0 items-center gap-2">
             <Link
               href="/initiatives/problem"
-              className="rounded-lg border border-orange-300 bg-orange-50 px-4 py-2 text-sm font-semibold text-orange-700 shadow-sm hover:bg-orange-100 focus:outline-none focus:ring-2 focus:ring-orange-400"
+              className="rounded-lg border border-amber/60 bg-amber/20 px-4 py-2 text-sm font-semibold text-ink shadow-sm hover:bg-amber/25 focus:outline-none focus:ring-2 focus:ring-amber/60"
             >
               Post a problem
             </Link>
             <Link
               href="/initiatives/new"
-              className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-accent focus:outline-none focus:ring-2 focus:ring-accent"
             >
               + New initiative
             </Link>
@@ -159,15 +159,15 @@ export default async function InitiativesPage({
         </div>
 
         {/* ── Stage / view tabs ────────────────────────────────────────── */}
-        <div className="mb-6 flex gap-1 overflow-x-auto rounded-lg border border-gray-200 bg-white p-1">
+        <div className="mb-6 flex gap-1 overflow-x-auto rounded-lg border border-rule bg-card p-1">
           {STAGE_TABS.map((tab) => (
             <Link
               key={tab.value}
               href={buildUrl({ stage: tab.value, mine: "", page: "1" })}
               className={`flex-shrink-0 rounded-md px-4 py-1.5 text-sm font-medium transition-colors ${
                 !isMine && stage === tab.value
-                  ? "bg-indigo-600 text-white shadow-sm"
-                  : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+                  ? "bg-accent text-white shadow-sm"
+                  : "text-ink-soft hover:bg-paper-2 hover:text-ink"
               }`}
             >
               {tab.label}
@@ -179,8 +179,8 @@ export default async function InitiativesPage({
               href={`/initiatives?mine=1`}
               className={`ml-auto flex-shrink-0 rounded-md px-4 py-1.5 text-sm font-medium transition-colors ${
                 isMine
-                  ? "bg-indigo-600 text-white shadow-sm"
-                  : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+                  ? "bg-accent text-white shadow-sm"
+                  : "text-ink-soft hover:bg-paper-2 hover:text-ink"
               }`}
             >
               My initiatives
@@ -201,8 +201,8 @@ export default async function InitiativesPage({
               href={buildUrl({ scope: opt.value, page: "1" })}
               className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
                 scope === opt.value
-                  ? "border-indigo-400 bg-indigo-50 text-indigo-700"
-                  : "border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:text-gray-900"
+                  ? "border-accent bg-accent/10 text-accent"
+                  : "border-rule bg-card text-ink-soft hover:border-rule hover:text-ink"
               }`}
             >
               {opt.label}
@@ -212,7 +212,7 @@ export default async function InitiativesPage({
 
         {/* ── Sort row ─────────────────────────────────────────────────── */}
         <div className="mb-4 flex items-center gap-3">
-          <span className="text-xs font-medium text-gray-500">Sort by</span>
+          <span className="text-xs font-medium text-ink-soft/70">Sort by</span>
           <div className="flex gap-1">
             {SORT_OPTIONS.map((opt) => (
               <Link
@@ -220,8 +220,8 @@ export default async function InitiativesPage({
                 href={buildUrl({ sort: opt.value, page: "1" })}
                 className={`rounded-lg border px-3 py-1 text-xs font-medium transition-colors ${
                   sort === opt.value
-                    ? "border-indigo-400 bg-indigo-50 text-indigo-700"
-                    : "border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:text-gray-900"
+                    ? "border-accent bg-accent/10 text-accent"
+                    : "border-rule bg-card text-ink-soft hover:border-rule hover:text-ink"
                 }`}
               >
                 {opt.label}
@@ -236,8 +236,8 @@ export default async function InitiativesPage({
             href={buildUrl({ tag: "", page: "1" })}
             className={`rounded-full border px-2.5 py-0.5 text-xs font-medium transition-colors ${
               !tag
-                ? "border-indigo-400 bg-indigo-50 text-indigo-700"
-                : "border-gray-200 bg-white text-gray-500 hover:border-gray-300 hover:text-gray-900"
+                ? "border-accent bg-accent/10 text-accent"
+                : "border-rule bg-card text-ink-soft/70 hover:border-rule hover:text-ink"
             }`}
           >
             All topics
@@ -248,8 +248,8 @@ export default async function InitiativesPage({
               href={buildUrl({ tag: t, page: "1" })}
               className={`rounded-full border px-2.5 py-0.5 text-xs font-medium capitalize transition-colors ${
                 tag === t
-                  ? "border-indigo-400 bg-indigo-50 text-indigo-700"
-                  : "border-gray-200 bg-white text-gray-500 hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700"
+                  ? "border-accent bg-accent/10 text-accent"
+                  : "border-rule bg-card text-ink-soft/70 hover:border-accent hover:bg-accent/10 hover:text-accent"
               }`}
             >
               {t.replace(/_/g, " ")}
@@ -258,7 +258,7 @@ export default async function InitiativesPage({
         </div>
 
         {/* ── Results header ───────────────────────────────────────────── */}
-        <div className="mb-4 flex items-center justify-between text-sm text-gray-500">
+        <div className="mb-4 flex items-center justify-between text-sm text-ink-soft/70">
           <span>
             {total === 0
               ? "No initiatives found"
@@ -268,22 +268,22 @@ export default async function InitiativesPage({
 
         {/* ── Initiative cards ─────────────────────────────────────────── */}
         {initiatives.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-gray-300 bg-white px-8 py-16 text-center">
-            <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-indigo-50">
-              <svg className="h-6 w-6 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <div className="rounded-xl border border-dashed border-rule bg-card px-8 py-16 text-center">
+            <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-accent/10">
+              <svg className="h-6 w-6 text-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
                   d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
             </div>
-            <p className="text-sm font-medium text-gray-900">
+            <p className="text-sm font-medium text-ink">
               {isMine ? "You haven't started any initiatives yet" : "No initiatives yet"}
             </p>
-            <p className="mt-1 text-sm text-gray-500">
+            <p className="mt-1 text-sm text-ink-soft/70">
               {isMine ? "Draft your first initiative and open it for community deliberation." : "Be the first — start a civic initiative."}
             </p>
             <Link
               href="/initiatives/new"
-              className="mt-4 inline-block rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700"
+              className="mt-4 inline-block rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent"
             >
               Start an initiative
             </Link>
@@ -302,16 +302,16 @@ export default async function InitiativesPage({
             {page > 1 && (
               <Link
                 href={buildUrl({ page: String(page - 1) })}
-                className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                className="rounded-lg border border-rule bg-card px-4 py-2 text-sm font-medium text-ink-soft hover:bg-paper-2"
               >
                 ← Previous
               </Link>
             )}
-            <span className="text-sm text-gray-500">Page {page} of {totalPages}</span>
+            <span className="text-sm text-ink-soft/70">Page {page} of {totalPages}</span>
             {page < totalPages && (
               <Link
                 href={buildUrl({ page: String(page + 1) })}
-                className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                className="rounded-lg border border-rule bg-card px-4 py-2 text-sm font-medium text-ink-soft hover:bg-paper-2"
               >
                 Next →
               </Link>
