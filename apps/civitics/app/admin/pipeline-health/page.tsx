@@ -30,10 +30,10 @@ const RED_MS   = 50 * 60 * 1000; // 50 min — within 10 min of the cap
 const AMBER_MS = 30 * 60 * 1000; // 30 min — halfway to the cap
 
 function p95ClassName(ms: number | null): string {
-  if (ms == null) return "text-gray-400";
-  if (ms >= RED_MS)   return "text-red-600 font-semibold tabular-nums";
-  if (ms >= AMBER_MS) return "text-amber-600 font-medium tabular-nums";
-  return "text-gray-700 tabular-nums";
+  if (ms == null) return "text-ink-soft/70";
+  if (ms >= RED_MS)   return "text-accent font-semibold tabular-nums";
+  if (ms >= AMBER_MS) return "text-ink font-medium tabular-nums";
+  return "text-ink-soft tabular-nums";
 }
 
 function formatDuration(ms: number | null): string {
@@ -94,7 +94,7 @@ export default async function PipelineHealthPage() {
   const rows: PipelineStatRow[] = error ? [] : (data ?? []);
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-paper-2">
       <main id="main-content">
         <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
           <PageHeader
@@ -108,7 +108,7 @@ export default async function PipelineHealthPage() {
           />
 
           <SectionCard noPadding>
-            <div className="p-6 border-b border-gray-100">
+            <div className="p-6 border-b border-rule">
               <SectionHeader
                 title="30-day runtime stats"
                 description={
@@ -121,14 +121,14 @@ export default async function PipelineHealthPage() {
             </div>
 
             {rows.length === 0 ? (
-              <div className="p-8 text-center text-sm text-gray-500">
+              <div className="p-8 text-center text-sm text-ink-soft/70">
                 No pipeline runs in the last 30 days. The MV may not have been refreshed yet —
-                run <code className="px-1 py-0.5 bg-gray-100 rounded text-xs">SELECT refresh_pipeline_runtime_stats_mv();</code> or wait for the nightly cron.
+                run <code className="px-1 py-0.5 bg-paper-2 rounded text-xs">SELECT refresh_pipeline_runtime_stats_mv();</code> or wait for the nightly cron.
               </div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead className="bg-gray-50 text-xs uppercase tracking-wider text-gray-500">
+                  <thead className="bg-paper-2 text-xs uppercase tracking-wider text-ink-soft/70">
                     <tr>
                       <th className="px-4 py-3 text-left font-medium">Pipeline</th>
                       <th className="px-4 py-3 text-right font-medium">Last run</th>
@@ -140,21 +140,21 @@ export default async function PipelineHealthPage() {
                       <th className="px-4 py-3 text-right font-medium">p95 RSS</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-100">
+                  <tbody className="divide-y divide-rule">
                     {rows.map((r) => (
-                      <tr key={r.pipeline} className="hover:bg-gray-50">
-                        <td className="px-4 py-3 font-medium text-gray-900">{r.pipeline}</td>
-                        <td className="px-4 py-3 text-right text-gray-600 tabular-nums">{formatLastRun(r.last_run_at)}</td>
-                        <td className="px-4 py-3 text-right text-gray-700 tabular-nums">{r.runs_30d ?? "—"}</td>
-                        <td className="px-4 py-3 text-right text-gray-700 tabular-nums">
+                      <tr key={r.pipeline} className="hover:bg-paper-2">
+                        <td className="px-4 py-3 font-medium text-ink">{r.pipeline}</td>
+                        <td className="px-4 py-3 text-right text-ink-soft tabular-nums">{formatLastRun(r.last_run_at)}</td>
+                        <td className="px-4 py-3 text-right text-ink-soft tabular-nums">{r.runs_30d ?? "—"}</td>
+                        <td className="px-4 py-3 text-right text-ink-soft tabular-nums">
                           {r.success_rate_pct == null ? "—" : `${r.success_rate_pct}%`}
                         </td>
-                        <td className="px-4 py-3 text-right text-gray-700 tabular-nums">{formatDuration(r.p50_duration_ms)}</td>
+                        <td className="px-4 py-3 text-right text-ink-soft tabular-nums">{formatDuration(r.p50_duration_ms)}</td>
                         <td className={`px-4 py-3 text-right ${p95ClassName(r.p95_duration_ms)}`}>
                           {formatDuration(r.p95_duration_ms)}
                         </td>
-                        <td className="px-4 py-3 text-right text-gray-700 tabular-nums">{formatDuration(r.max_duration_ms)}</td>
-                        <td className="px-4 py-3 text-right text-gray-600 tabular-nums">{formatRss(r.p95_peak_rss_mb)}</td>
+                        <td className="px-4 py-3 text-right text-ink-soft tabular-nums">{formatDuration(r.max_duration_ms)}</td>
+                        <td className="px-4 py-3 text-right text-ink-soft tabular-nums">{formatRss(r.p95_peak_rss_mb)}</td>
                       </tr>
                     ))}
                   </tbody>

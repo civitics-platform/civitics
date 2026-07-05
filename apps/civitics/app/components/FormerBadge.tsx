@@ -14,7 +14,7 @@ export function FormerBadge({
   if (isActive !== false) return null;
   return (
     <span
-      className={`inline-flex items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-semibold text-gray-500 ${className}`}
+      className={`inline-flex items-center rounded-full bg-paper-2 px-2.5 py-0.5 text-xs font-semibold text-ink-soft/70 ${className}`}
       title="No longer in office / inactive record"
     >
       Former

@@ -99,23 +99,23 @@ export function NotificationsClient() {
   return (
     <div className="mt-6 grid gap-6 lg:grid-cols-2">
       {/* Notifications list */}
-      <section className="rounded-lg border border-gray-200 bg-white p-5">
+      <section className="border border-rule bg-card p-5">
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-gray-900">Recent activity</h2>
+          <h2 className="text-sm font-semibold text-ink">Recent activity</h2>
           {notifications.some((n) => !n.is_read) && (
             <button
               type="button"
               onClick={markAllRead}
-              className="text-xs text-indigo-600 hover:underline"
+              className="text-xs text-accent hover:underline"
             >
               Mark all read
             </button>
           )}
         </div>
         {loading ? (
-          <p className="text-xs text-gray-400">Loading…</p>
+          <p className="text-xs text-ink-soft">Loading…</p>
         ) : notifications.length === 0 ? (
-          <p className="text-xs text-gray-400 py-4 text-center">
+          <p className="text-xs text-ink-soft py-4 text-center">
             No notifications yet. Follow officials or agencies to start receiving updates.
           </p>
         ) : (
@@ -123,24 +123,24 @@ export function NotificationsClient() {
             {notifications.map((n) => (
               <li
                 key={n.id}
-                className={`rounded-lg border border-gray-100 p-3 ${
-                  n.is_read ? "bg-white" : "bg-indigo-50/50"
+                className={`border border-rule p-3 ${
+                  n.is_read ? "bg-transparent" : "bg-accent/10"
                 }`}
               >
                 <p
                   className={`text-sm ${
-                    n.is_read ? "text-gray-600" : "font-medium text-gray-900"
+                    n.is_read ? "text-ink-soft" : "font-medium text-ink"
                   }`}
                 >
                   {n.title}
                 </p>
-                {n.body && <p className="mt-1 text-xs text-gray-500">{n.body}</p>}
+                {n.body && <p className="mt-1 text-xs text-ink-soft">{n.body}</p>}
                 <div className="mt-1 flex items-center gap-3">
-                  <span className="text-[10px] text-gray-400">
+                  <span className="text-[10px] text-ink-soft/70">
                     {formatRelative(n.created_at)}
                   </span>
                   {n.link && (
-                    <a href={n.link} className="text-[11px] text-indigo-600 hover:underline">
+                    <a href={n.link} className="text-[11px] text-accent hover:underline">
                       Open →
                     </a>
                   )}
@@ -152,12 +152,12 @@ export function NotificationsClient() {
       </section>
 
       {/* Following list */}
-      <section className="rounded-lg border border-gray-200 bg-white p-5">
-        <h2 className="mb-3 text-sm font-semibold text-gray-900">You're following</h2>
+      <section className="border border-rule bg-card p-5">
+        <h2 className="mb-3 text-sm font-semibold text-ink">You&apos;re following</h2>
         {loading ? (
-          <p className="text-xs text-gray-400">Loading…</p>
+          <p className="text-xs text-ink-soft">Loading…</p>
         ) : follows.length === 0 ? (
-          <p className="text-xs text-gray-400 py-4 text-center">
+          <p className="text-xs text-ink-soft py-4 text-center">
             Not following anyone yet. Visit any official or agency to follow them.
           </p>
         ) : (
@@ -170,24 +170,24 @@ export function NotificationsClient() {
               return (
                 <li
                   key={f.id}
-                  className="flex items-center justify-between rounded-lg border border-gray-100 p-3"
+                  className="flex items-center justify-between border border-rule p-3"
                 >
                   <div className="min-w-0 flex-1">
                     <a
                       href={url}
-                      className="truncate text-sm font-medium text-gray-800 hover:text-indigo-600"
+                      className="truncate text-sm font-medium text-ink hover:text-accent"
                     >
                       {f.entity_type === "official" ? "Official" : "Agency"}{" · "}
-                      <span className="font-mono text-xs text-gray-500">
+                      <span className="font-mono text-xs text-ink-soft">
                         {f.entity_id.slice(0, 8)}
                       </span>
                     </a>
-                    <p className="text-[10px] text-gray-400">
+                    <p className="text-[10px] text-ink-soft/70">
                       Following since {new Date(f.created_at).toLocaleDateString()}
                     </p>
                   </div>
                   <div className="flex items-center gap-3">
-                    <label className="flex items-center gap-1 text-[11px] text-gray-500">
+                    <label className="flex items-center gap-1 text-[11px] text-ink-soft">
                       <input
                         type="checkbox"
                         checked={f.email_enabled}
@@ -199,7 +199,7 @@ export function NotificationsClient() {
                     <button
                       type="button"
                       onClick={() => unfollow(f)}
-                      className="text-[11px] text-red-600 hover:underline"
+                      className="text-[11px] text-accent hover:underline"
                     >
                       Unfollow
                     </button>

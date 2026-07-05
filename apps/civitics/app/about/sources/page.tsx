@@ -41,11 +41,11 @@ const CATEGORY_LABELS: Record<SourceCategory, string> = {
 };
 
 const CATEGORY_COLORS: Record<SourceCategory, string> = {
-  federal:   "bg-blue-100 text-blue-800",
-  state:     "bg-purple-100 text-purple-800",
-  local:     "bg-green-100 text-green-800",
-  community: "bg-amber-100 text-amber-800",
-  other:     "bg-gray-100 text-gray-700",
+  federal:   "bg-civic-blue/10 text-civic-blue",
+  state:     "bg-accent/10 text-accent",
+  local:     "bg-green-ink/10 text-green-ink",
+  community: "bg-amber/20 text-ink border border-amber/60",
+  other:     "bg-paper-2 text-ink-soft",
 };
 
 const CC_BY_SA_DEED = "https://creativecommons.org/licenses/by-sa/4.0/";
@@ -75,14 +75,14 @@ export default function DataSourcesPage() {
 
   return (
     <main className="mx-auto max-w-3xl px-4 py-10 sm:px-6 lg:py-14">
-      <header className="mb-10 border-b border-gray-200 pb-8">
-        <p className="text-xs font-semibold uppercase tracking-wider text-indigo-600">
+      <header className="mb-10 border-b border-rule pb-8">
+        <p className="text-xs font-semibold uppercase tracking-wider text-accent">
           Transparency
         </p>
-        <h1 className="mt-2 text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl">
+        <h1 className="mt-2 text-3xl font-bold tracking-tight text-ink sm:text-4xl">
           Data sources &amp; licenses
         </h1>
-        <p className="mt-3 text-base leading-relaxed text-gray-600">
+        <p className="mt-3 text-base leading-relaxed text-ink-soft">
           Civitics aggregates public information about government from federal,
           state, local, and community-run data sources. This page lists every
           source we ingest, with its license terms and any citation the source
@@ -94,18 +94,18 @@ export default function DataSourcesPage() {
       {/* ─── CC-BY-SA 4.0 / LittleSis verbatim attribution block ────────────── */}
       <section
         aria-labelledby="littlesis-attribution"
-        className="mb-12 rounded-lg border border-amber-200 bg-amber-50 p-5"
+        className="mb-12 border border-amber/60 bg-amber/20 p-5"
       >
         <h2
           id="littlesis-attribution"
-          className="text-sm font-semibold uppercase tracking-wide text-amber-900"
+          className="text-sm font-semibold uppercase tracking-wide text-ink"
         >
           LittleSis attribution
         </h2>
-        <p className="mt-3 text-sm leading-relaxed text-amber-950">
+        <p className="mt-3 text-sm leading-relaxed text-ink">
           {LITTLESIS_ATTRIBUTION_TEXT}
         </p>
-        <p className="mt-3 text-xs text-amber-800">
+        <p className="mt-3 text-xs text-ink-soft">
           Full license text:{" "}
           <a
             href={CC_BY_SA_DEED}
@@ -119,8 +119,8 @@ export default function DataSourcesPage() {
       </section>
 
       {/* ─── License-method note ────────────────────────────────────────────── */}
-      <section className="mb-10 rounded-lg border border-gray-200 bg-gray-50 p-5 text-sm text-gray-700">
-        <h2 className="text-sm font-semibold text-gray-900">About these licenses</h2>
+      <section className="mb-10 border border-rule bg-paper-2 p-5 text-sm text-ink-soft">
+        <h2 className="text-sm font-semibold text-ink">About these licenses</h2>
         <p className="mt-2 leading-relaxed">
           We list a license string only when we have confirmed it. Federal
           government works are not subject to copyright under{" "}
@@ -128,7 +128,7 @@ export default function DataSourcesPage() {
             href="https://www.law.cornell.edu/uscode/text/17/105"
             target="_blank"
             rel="noopener noreferrer"
-            className="text-indigo-600 underline-offset-2 hover:underline"
+            className="text-accent underline-offset-2 hover:underline"
           >
             17 U.S.C. § 105
           </a>{" "}
@@ -137,12 +137,12 @@ export default function DataSourcesPage() {
             href={CC_BY_SA_DEED}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-indigo-600 underline-offset-2 hover:underline"
+            className="text-accent underline-offset-2 hover:underline"
           >
             CC-BY-SA 4.0
           </a>
           . For other sources whose current terms we have not re-verified, we
-          link to the source's own terms page rather than risk asserting a wrong
+          link to the source&apos;s own terms page rather than risk asserting a wrong
           license.
         </p>
       </section>
@@ -162,12 +162,12 @@ export default function DataSourcesPage() {
                 </span>
                 <h2
                   id={`cat-${cat}`}
-                  className="text-xs font-semibold uppercase tracking-wide text-gray-500"
+                  className="text-xs font-semibold uppercase tracking-wide text-ink-soft/70"
                 >
                   {entries.length} {entries.length === 1 ? "source" : "sources"}
                 </h2>
               </div>
-              <ul className="flex flex-col divide-y divide-gray-100 rounded-lg border border-gray-200 bg-white">
+              <ul className="flex flex-col divide-y divide-rule border border-rule bg-card">
                 {entries.map((entry) => (
                   <li key={entry.key} className="p-4">
                     <SourceRow entry={entry} />
@@ -180,12 +180,12 @@ export default function DataSourcesPage() {
       </div>
 
       {/* ─── Footer note ─────────────────────────────────────────────────────── */}
-      <footer className="mt-12 border-t border-gray-100 pt-6 text-xs text-gray-500">
+      <footer className="mt-12 border-t border-rule pt-6 text-xs text-ink-soft/70">
         <p>
           Notice an issue with how a source is described or attributed?{" "}
           <a
             href="mailto:civitics.platform@gmail.com"
-            className="text-indigo-600 underline-offset-2 hover:underline"
+            className="text-accent underline-offset-2 hover:underline"
           >
             Let us know
           </a>{" "}
@@ -200,28 +200,28 @@ function SourceRow({ entry }: { entry: GroupedEntry }) {
   return (
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h3 className="text-base font-semibold text-gray-900">{entry.label}</h3>
+        <h3 className="text-base font-semibold text-ink">{entry.label}</h3>
         {entry.homepage_url && (
           <a
             href={entry.homepage_url}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-xs text-indigo-600 underline-offset-2 hover:underline"
+            className="text-xs text-accent underline-offset-2 hover:underline"
           >
             {hostname(entry.homepage_url)} ↗
           </a>
         )}
       </div>
       <dl className="grid grid-cols-[7rem_1fr] gap-x-3 gap-y-1 text-sm">
-        <dt className="text-gray-500">License</dt>
-        <dd className="text-gray-800">
+        <dt className="text-ink-soft/70">License</dt>
+        <dd className="text-ink-soft">
           {entry.license ? (
             entry.license_url ? (
               <a
                 href={entry.license_url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-indigo-600 underline-offset-2 hover:underline"
+                className="text-accent underline-offset-2 hover:underline"
               >
                 {entry.license}
               </a>
@@ -233,18 +233,18 @@ function SourceRow({ entry }: { entry: GroupedEntry }) {
               href={entry.license_url}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-indigo-600 underline-offset-2 hover:underline"
+              className="text-accent underline-offset-2 hover:underline"
             >
               See {entry.label} terms ↗
             </a>
           ) : (
-            <span className="text-gray-400">Not specified</span>
+            <span className="text-ink-soft/70">Not specified</span>
           )}
         </dd>
         {entry.citation && (
           <>
-            <dt className="text-gray-500">Citation</dt>
-            <dd className="text-gray-700 leading-relaxed">{entry.citation}</dd>
+            <dt className="text-ink-soft/70">Citation</dt>
+            <dd className="text-ink-soft leading-relaxed">{entry.citation}</dd>
           </>
         )}
       </dl>

@@ -86,9 +86,9 @@ export function DistrictPickerForm({ initialState, initialDistrict }: Props) {
   }
 
   const partyColor = (party?: string) => {
-    if (party === "democrat") return "text-blue-600";
-    if (party === "republican") return "text-red-600";
-    return "text-purple-600";
+    if (party === "democrat") return "text-civic-blue";
+    if (party === "republican") return "text-accent";
+    return "text-viz-7";
   };
 
   return (

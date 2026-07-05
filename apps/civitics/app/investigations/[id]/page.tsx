@@ -82,7 +82,7 @@ function CitationRow({ citation }: { citation: Citation }) {
 function EvidenceCardView({ card, signInNext }: { card: EvidenceCard; signInNext: string }) {
   const status = CARD_STATUS_BADGE[card.status];
   return (
-    <article className="rounded-lg border border-rule bg-white/60 p-4">
+    <article className="border border-rule bg-card p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2 text-xs">
           <span className={`rounded border px-1.5 py-0.5 font-medium ${status.className}`}>
@@ -229,7 +229,7 @@ export default async function CaseFilePage({ params }: { params: { id: string } 
               {contributors.map((c) => (
                 <li
                   key={c.user_id}
-                  className="rounded-full border border-rule bg-white px-2 py-0.5 text-xs text-ink"
+                  className="rounded-full border border-rule bg-card px-2 py-0.5 text-xs text-ink"
                   title={c.is_creator ? "Creator" : undefined}
                 >
                   {c.name || "Contributor"}
@@ -242,7 +242,7 @@ export default async function CaseFilePage({ params }: { params: { id: string } 
           </div>
 
           {investigation.findings_md && (
-            <section className="mt-5 rounded-lg border border-rule bg-white/60 p-4">
+            <section className="mt-5 border border-rule bg-card p-4">
               <h2 className="text-sm font-semibold text-ink">Findings</h2>
               <div className="mt-1.5 whitespace-pre-wrap text-sm leading-relaxed text-ink">
                 {investigation.findings_md}
