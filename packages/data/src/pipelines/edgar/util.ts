@@ -47,7 +47,24 @@ export function parseUsdCents(raw: string | null | undefined): number | null {
   if (!cleaned) return null;
   const n = Number(cleaned);
   if (!Number.isFinite(n)) return null;
-  return Math.round(n * 100);
+  const cents = Math.round(n * 100);
+  // FIX-742: a mis-parsed / oversized comp cell (concatenated table numbers,
+  // scientific-notation source like "8.49e+22") yields a value past
+  // Number.MAX_SAFE_INTEGER. JS then serializes it as scientific notation, which
+  // Postgres rejects on the total_compensation_cents BIGINT column
+  // ("invalid input syntax for type bigint: \"8.49e+22\"") — and because the
+  // officers are written as a single 500-row upsert chunk, that ONE bad value
+  // failed the whole chunk and dropped real officer rows + 339 filings alongside
+  // it (2026-07-05). Reject anything that isn't a safe integer (which is also
+  // strictly within bigint range) so the garbage value is skipped and the chunk
+  // lands. Legit exec comp maxes ~$100M (1e10 cents) — far under the guard.
+  if (!Number.isSafeInteger(cents)) {
+    console.warn(
+      `  [edgar/util] parseUsdCents: dropping out-of-range value ${JSON.stringify(raw)} (=${cents}) — exceeds safe bigint range`,
+    );
+    return null;
+  }
+  return cents;
 }
 
 /** Parse a percentage string ("7.3%", "7.3") to a numeric. Null on failure. */
