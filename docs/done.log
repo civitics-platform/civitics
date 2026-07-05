@@ -906,3 +906,6 @@
 2026-07-04 | FIX-734 | ba35d54b | local-only | fix(db): single-anti-join monthly orphan sweeps for totals + donor-rollup
 2026-07-04 | FIX-705 | 5ae9c680 | local+prod | fix(db): revert unsound EC-based recipient_count orphan sweep; file FIX-735/736
 2026-07-04 | FIX-734 | 5ae9c680 | local+prod | fix(db): revert unsound EC-based recipient_count orphan sweep; file FIX-735/736
+2026-07-05 | FIX-708 | 577ba158 | local-only | feat(design): reskin initiatives interior to Public Record tokens
+2026-07-05 | FIX-737 | db8311a7 | local-only | feat(design): reskin government record pages (agencies/jurisdictions/institutions/donors/districts/meetings)
+2026-07-05 | FIX-738 | ae6fffbe | local-only | feat(design): reskin close-out — long tail + remove legacy civic palette
