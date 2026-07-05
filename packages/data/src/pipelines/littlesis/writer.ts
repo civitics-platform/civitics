@@ -13,7 +13,7 @@
 
 import type { createAdminClient, ReadResult } from "@civitics/db";
 import { selectAllOrThrow } from "@civitics/db";
-import { withDirectPool, refreshPrimarySourceDirect } from "../../lib/direct-pg-upsert";
+import { withDirectClient, withDirectPool, bulkUpsert, refreshPrimarySourceDirect } from "../../lib/direct-pg-upsert";
 import { canonicalizeEntityName } from "../fec-bulk/writer";
 import {
   type LittleSisEntity,
@@ -27,10 +27,12 @@ import type { AnchorMatch, AmbiguousMatch } from "./expand";
 type Db = ReturnType<typeof createAdminClient>;
 
 const RESOLVE_BATCH    = 50;     // FIX-280 — RPC + INSERT bounded concurrency per chunk
-const REL_CHUNK        = 500;
-const REVIEW_CHUNK     = 500;
 const REFS_CHUNK       = 500;
 const KNOWN_LOAD_PAGE  = 1000;
+// FIX-741: external_relationships is 18 columns; 18 × 3000 = 54000 bind params
+// stays under Postgres' 65535/statement cap while collapsing ~1,200 PostgREST
+// round-trips into a handful of direct-pg statements.
+const REL_DIRECT_CHUNK = 3000;
 
 // ---------------------------------------------------------------------------
 // Pre-load existing LittleSis ↔ Civitics bindings from external_source_refs
@@ -364,12 +366,15 @@ interface ExternalRelInput {
   match_confidence: "high" | "medium";   // weakest endpoint confidence
 }
 
+// FIX-741: no `db` param — routes through the direct-pg client (raised session
+// statement_timeout) instead of PostgREST 500-row .upsert() chunks. On prod the
+// PostgREST path hit the ~8s role cap on slow chunks and SILENTLY dropped them
+// (failed += chunk, ~4,000 external_relationships lost on 2026-07-05) — the same
+// FIX-462 chunk-upsert bug class the FEC indiv path already fixed.
 export async function upsertExternalRelationships(
-  db: Db,
   edges: ExternalRelInput[],
 ): Promise<{ inserted: number; failed: number }> {
-  let inserted = 0, failed = 0;
-  if (edges.length === 0) return { inserted, failed };
+  if (edges.length === 0) return { inserted: 0, failed: 0 };
 
   // Client-side de-dup on source_id (LittleSis sometimes duplicates rel ids
   // when the dump straddles a record update — keep the highest source_updated_at).
@@ -417,32 +422,55 @@ export async function upsertExternalRelationships(
     };
   });
 
-  for (let i = 0; i < records.length; i += REL_CHUNK) {
-    const chunk = records.slice(i, i + REL_CHUNK);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { error } = await (db as any)
-      .from("external_relationships")
-      .upsert(chunk, { onConflict: "source,source_id" });
-    if (error) {
-      console.error(`  [littlesis] external_relationships chunk ${i}-${i + chunk.length} failed: ${error.message}`);
-      failed += chunk.length;
-      continue;
-    }
-    inserted += chunk.length;
-  }
-  return { inserted, failed };
+  // Column order the direct-pg rows align to. ON CONFLICT (source,source_id)
+  // DO UPDATE (bulkUpsert default: every non-conflict column) reproduces the
+  // PostgREST merge-duplicates resolution byte-for-byte.
+  const REL_COLUMNS = [
+    "source", "source_id", "source_url", "source_updated_at",
+    "from_type", "from_id", "to_type", "to_id",
+    "connection_type", "raw_category", "raw_category_name",
+    "description", "amount_cents", "occurred_at", "ended_at",
+    "is_current", "match_confidence", "metadata",
+  ];
+  const rows: unknown[][] = records.map((r) => [
+    r.source, r.source_id, r.source_url, r.source_updated_at,
+    r.from_type, r.from_id, r.to_type, r.to_id,
+    r.connection_type, r.raw_category, r.raw_category_name,
+    r.description, r.amount_cents, r.occurred_at, r.ended_at,
+    r.is_current, r.match_confidence, r.metadata,
+  ]);
+
+  const { upserted, failed } = await withDirectClient((client) =>
+    bulkUpsert(client, {
+      table:           "external_relationships",
+      label:           "littlesis-external_relationships",
+      columns:         REL_COLUMNS,
+      conflictColumns: ["source", "source_id"],
+      jsonbColumns:    ["metadata"],
+      chunkSize:       REL_DIRECT_CHUNK,
+      rows,
+    }),
+  );
+  // Preserve the {inserted, failed} counter shape (FIX-686): with the raised
+  // session timeout `failed > 0` now signals a real constraint problem, not a
+  // silent timeout drop.
+  return { inserted: upserted, failed };
 }
 
 // ---------------------------------------------------------------------------
 // review queue upsert (ambiguous matches)
 // ---------------------------------------------------------------------------
 
+// FIX-741: no `db` param — routes through the direct-pg client, same as
+// upsertExternalRelationships. source_relationship_id is NULL for LittleSis
+// rows, so ON CONFLICT (source,source_entity_id,source_relationship_id) never
+// fires (Postgres treats NULLs as distinct) — this reproduces the insert-only
+// behavior the prior PostgREST NULL-conflict fallback relied on, minus the 8s
+// role cap that was dropping chunks.
 export async function upsertReviewQueue(
-  db: Db,
   rows: AmbiguousMatch[],
 ): Promise<{ inserted: number; failed: number }> {
-  let inserted = 0, failed = 0;
-  if (rows.length === 0) return { inserted, failed };
+  if (rows.length === 0) return { inserted: 0, failed: 0 };
 
   const records = rows.map((r) => ({
     source:                 "littlesis",
@@ -454,26 +482,24 @@ export async function upsertReviewQueue(
     status:                 "pending",
   }));
 
-  for (let i = 0; i < records.length; i += REVIEW_CHUNK) {
-    const chunk = records.slice(i, i + REVIEW_CHUNK);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { error } = await (db as any)
-      .from("external_relationships_review_queue")
-      .upsert(chunk, { onConflict: "source,source_entity_id,source_relationship_id" });
-    if (error) {
-      // PostgREST won't accept a NULL component of the conflict target via
-      // upsert; fall back to insert-then-ignore via the unique constraint.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { error: err2 } = await (db as any)
-        .from("external_relationships_review_queue")
-        .insert(chunk);
-      if (err2 && !err2.message?.includes("duplicate key")) {
-        console.warn(`  [littlesis] review_queue chunk failed: ${err2.message}`);
-        failed += chunk.length;
-        continue;
-      }
-    }
-    inserted += chunk.length;
-  }
-  return { inserted, failed };
+  const QUEUE_COLUMNS = [
+    "source", "source_entity_id", "source_relationship_id",
+    "source_payload", "candidate_matches", "reason", "status",
+  ];
+  const dataRows: unknown[][] = records.map((r) => [
+    r.source, r.source_entity_id, r.source_relationship_id,
+    r.source_payload, r.candidate_matches, r.reason, r.status,
+  ]);
+
+  const { upserted, failed } = await withDirectClient((client) =>
+    bulkUpsert(client, {
+      table:           "external_relationships_review_queue",
+      label:           "littlesis-review_queue",
+      columns:         QUEUE_COLUMNS,
+      conflictColumns: ["source", "source_entity_id", "source_relationship_id"],
+      jsonbColumns:    ["source_payload", "candidate_matches"],
+      rows:            dataRows,
+    }),
+  );
+  return { inserted: upserted, failed };
 }

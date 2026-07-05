@@ -212,7 +212,7 @@ export async function runLittleSisPipeline(opts: { force?: boolean } = {}): Prom
     // ── Build edge inputs + upsert ───────────────────────────────────────
     const edgeInputs = buildEdgeInputs([...p2.zeroHopEdges, ...p3.twoHopEdges], resolver);
     console.log(`  Upserting ${edgeInputs.length} external_relationships...`);
-    const relUpsert = await upsertExternalRelationships(db, edgeInputs);
+    const relUpsert = await upsertExternalRelationships(edgeInputs);
     console.log(`    inserted=${relUpsert.inserted} failed=${relUpsert.failed}`);
     result.inserted += relUpsert.inserted;
     result.failed   += relUpsert.failed;
@@ -220,7 +220,7 @@ export async function runLittleSisPipeline(opts: { force?: boolean } = {}): Prom
     // ── Review queue ─────────────────────────────────────────────────────
     if (p1.ambiguous.length > 0) {
       console.log(`  Queueing ${p1.ambiguous.length} ambiguous entity matches for review...`);
-      const queue = await upsertReviewQueue(db, p1.ambiguous);
+      const queue = await upsertReviewQueue(p1.ambiguous);
       console.log(`    queued=${queue.inserted} failed=${queue.failed}`);
     }
 
