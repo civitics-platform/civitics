@@ -911,3 +911,6 @@
 2026-07-05 | FIX-738 | ae6fffbe | local-only | feat(design): reskin close-out — long tail + remove legacy civic palette
 2026-07-05 | FIX-736 | f86a34a0 | local-only | fix(db): derive recipient_count from financial_relationships, not entity_connections
 2026-07-05 | FIX-736 | 5250d02b | local+prod | chore(fixes): FIX-736 recipient_count FR-derived — prod verification complete
+2026-07-05 | FIX-740 | 510e232e | local-only | feat(infra): split enrichment into heavy/light sub-jobs + pull USASpending out
+2026-07-05 | FIX-741 | 6fdd97b2 | local-only | fix(littlesis): route external_relationships/review_queue upserts through direct-pg
+2026-07-05 | FIX-742 | 7ba97f25 | local-only | fix(edgar): defensive bigint parse for oversized/scientific-notation officer values
