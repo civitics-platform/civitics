@@ -367,21 +367,29 @@ export interface NightlySyncResults {
 // 'all' preserves the pre-split behavior for manual / ad-hoc invocations and
 // for the Vercel cron canary path.
 //
-// FIX-740: the enrichment phase itself is now split into two sub-budgets after
-// it hit its 120-min cutoff on cumulative ingest overrun (2026-07-05). LittleSis
-// (~35 min) is the 'enrichment-heavy' sub-job; everything else (EDGAR +
+// FIX-740: the enrichment phase itself is now split into sub-budgets after it
+// hit its 120-min cutoff on cumulative ingest overrun (2026-07-05). LittleSis
+// (~35 min) is the 'enrichment-heavy' sub-job; the weekly ingests (EDGAR +
 // CourtListener + OpenStates + agencies/OPM/PLUM/elections/committees/agency-*
-// + tag-industry + the daily MV-refresh/rule+AI-tagger/AI-summaries tail) is
-// 'enrichment-light'. USASpending's 2 GB first-run was PULLED OUT of the phase
-// entirely into its own workflow_dispatch (see runUsaSpendingBulk +
-// usaspending-bulk.yml; checkpoint/resume is the deferred FIX-739). Plain
-// 'enrichment' still runs both sub-phases so 'all' and the canary path are
-// unchanged.
+// + tag-industry) are 'enrichment-light'. USASpending's 2 GB first-run was
+// PULLED OUT of the phase entirely into its own workflow_dispatch (see
+// runUsaSpendingBulk + usaspending-bulk.yml; checkpoint/resume is the deferred
+// FIX-739).
+//
+// FIX-746: the daily derivation tail (comment bridge scorer, rule + AI taggers,
+// AI summaries, the two deferred MV refreshes) is now its own 'enrichment-tail'
+// sub-job. FIX-743's forced-weekly run proved 'enrichment-light' was squeezed
+// past its budget on Sunday by the weekly ingest block + this tail stacked
+// together (SIGTERM'd mid-tag_rules → ai_summaries + the two MV refreshes never
+// ran). The tail reads DB state written by the (prior job's) light phase, so it
+// runs cleanly on its own budget. Plain 'enrichment' still runs all three
+// sub-phases so 'all' and the canary path are unchanged.
 export type NightlyPhase =
   | "fec"
   | "enrichment"
   | "enrichment-heavy"
   | "enrichment-light"
+  | "enrichment-tail"
   | "all";
 
 export interface RunNightlyOptions {
@@ -391,12 +399,15 @@ export interface RunNightlyOptions {
 export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<NightlySyncResults> {
   const phase: NightlyPhase = opts.phase ?? "all";
   const runFec = phase === "fec" || phase === "all";
-  // FIX-740: 'enrichment' (unsplit) and 'all' run BOTH sub-phases; the split
-  // GHA jobs pass 'enrichment-heavy' / 'enrichment-light' to run exactly one.
+  // FIX-740/746: 'enrichment' (unsplit) and 'all' run ALL sub-phases; the split
+  // GHA jobs pass 'enrichment-heavy' / 'enrichment-light' / 'enrichment-tail' to
+  // run exactly one.
   const runEnrichmentHeavy =
     phase === "enrichment" || phase === "enrichment-heavy" || phase === "all";
   const runEnrichmentLight =
     phase === "enrichment" || phase === "enrichment-light" || phase === "all";
+  const runEnrichmentTail =
+    phase === "enrichment" || phase === "enrichment-tail" || phase === "all";
 
   const startedAt = new Date();
   console.log("\n╔══════════════════════════════════════════╗");
@@ -860,11 +871,16 @@ export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<Nigh
     } // end Phase 2 weekly light stages (FIX-292 / FIX-740)
   }
 
-  // FIX-292 / FIX-740: Phase 2 daily stages — MV refreshes, rule + AI taggers,
-  // AI summaries, chord/homepage/runtime MV refreshes, prune jobs. These belong
-  // to the 'enrichment-light' sub-phase (they run after the weekly light block,
-  // when active, so tag-industry writes are visible to downstream MV refreshes).
-  if (runEnrichmentLight) {
+  // FIX-292 / FIX-740 / FIX-746: Phase 2 daily stages — comment bridge scorer,
+  // rule + AI taggers, AI summaries, and the two deferred MV refreshes. These
+  // are the 'enrichment-tail' sub-phase (FIX-746): split out of enrichment-light
+  // so the daily derivation tail no longer competes with the weekly ingest block
+  // for the same budget (FIX-743 proved light was SIGTERM'd mid-tag_rules on
+  // Sunday). The tail reads DB state (tag-industry writes etc.) landed by the
+  // prior enrichment-light job, so cross-phase ordering holds via the DB, not
+  // in-process. On the unsplit 'enrichment'/'all' path this still runs in-process
+  // right after the light block, so ordering holds there too.
+  if (runEnrichmentTail) {
 
   // 3b. [FIX-715] proposal_trending_24h + proposal_popularity_24h refreshes moved
   //     to the pg_cron procedure refresh_derived_mvs('daily') — off the 120-min
@@ -976,7 +992,7 @@ export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<Nigh
     }
   }
 
-  } // end Phase 2 daily stages (FIX-292 / FIX-740 — enrichment-light)
+  } // end Phase 2 daily stages (FIX-292 / FIX-740 / FIX-746 — enrichment-tail)
 
   results.completed_at = new Date();
   results.duration_ms = results.completed_at.getTime() - startedAt.getTime();
@@ -1145,15 +1161,15 @@ if (require.main === module) {
       .then(() => { setTimeout(() => process.exit(0), 500); })
       .catch((e) => { console.error("Pipeline failed:", e); setTimeout(() => process.exit(1), 500); });
   } else if (command === "nightly") {
-    // FIX-292 / FIX-740: optional --phase. Default 'all' preserves pre-split
-    // behavior for `pnpm data:nightly` (local) and the Vercel cron canary. GHA
-    // invokes each phase explicitly via :ci scripts (fec / enrichment-heavy /
-    // enrichment-light).
+    // FIX-292 / FIX-740 / FIX-746: optional --phase. Default 'all' preserves
+    // pre-split behavior for `pnpm data:nightly` (local) and the Vercel cron
+    // canary. GHA invokes each phase explicitly via :ci scripts (fec /
+    // enrichment-heavy / enrichment-light / enrichment-tail).
     const phaseArg = process.argv.find((a) => a.startsWith("--phase="));
     const phase: NightlyPhase = phaseArg
       ? (phaseArg.slice("--phase=".length) as NightlyPhase)
       : "all";
-    const VALID_PHASES = ["fec", "enrichment", "enrichment-heavy", "enrichment-light", "all"];
+    const VALID_PHASES = ["fec", "enrichment", "enrichment-heavy", "enrichment-light", "enrichment-tail", "all"];
     if (!VALID_PHASES.includes(phase)) {
       console.error(`Invalid --phase value: ${phase}. Must be one of: ${VALID_PHASES.join(", ")}.`);
       process.exit(2);

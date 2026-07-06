@@ -47,6 +47,7 @@
     "data:nightly:enrichment:ci": "tsx src/pipelines/index.ts nightly --phase=enrichment --allow-prod",
     "data:nightly:enrichment-heavy:ci": "tsx src/pipelines/index.ts nightly --phase=enrichment-heavy --allow-prod",
     "data:nightly:enrichment-light:ci": "tsx src/pipelines/index.ts nightly --phase=enrichment-light --allow-prod",
+    "data:nightly:enrichment-tail:ci": "tsx src/pipelines/index.ts nightly --phase=enrichment-tail --allow-prod",
     "data:usaspending-bulk:ci": "tsx src/pipelines/index.ts usaspending --allow-prod",
     "data:agencies-hierarchy": "tsx --env-file=../../.env.local src/pipelines/agencies-hierarchy/index.ts",
     "data:agency-enrichment": "tsx --env-file=../../.env.local src/pipelines/agency-enrichment/index.ts",
