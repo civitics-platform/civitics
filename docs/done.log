@@ -919,3 +919,5 @@
 2026-07-05 | FIX-746 | 41ebe5c6 | local-only | feat(infra): extract the daily derivation tail into an enrichment-tail sub-job
 2026-07-05 | FIX-735 | 2d39b2fc | closes-as-no-op | feat(graph): add opposition (ie_oppose) as a distinct, filterable edge class
 2026-07-05 | FIX-747 | 2d39b2fc | local-only | feat(graph): add opposition (ie_oppose) as a distinct, filterable edge class
+2026-07-05 | FIX-748 | f215286e | local+prod | feat(browse): entity_search_index + facet rollup + /api/browse (W0)
+2026-07-05 | FIX-749 | f215286e | local+prod | feat(browse): entity_search_index + facet rollup + /api/browse (W0)
