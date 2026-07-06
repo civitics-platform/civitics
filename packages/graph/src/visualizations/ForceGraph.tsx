@@ -582,7 +582,10 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
         .attr("stroke-width", edgeWidthFn)
         .attr("stroke-opacity", edgeOpacityFn)
         // FIX-585 — dash investigation edges so they read as asserted-not-derived.
-        .attr("stroke-dasharray", (d) => (d.evidenceSource === "investigation" ? "5 3" : null))
+        // FIX-747 — dash opposition (IE-against) edges so red opposition spend
+        // reads as distinct from support money and from solid-red vote_no.
+        .attr("stroke-dasharray", (d) =>
+          d.evidenceSource === "investigation" ? "5 3" : d.connectionType === "opposition" ? "6 4" : null)
         .style("display", (d) => {
           // FIX-585 — investigation edges have their own toggle (independent of the
           // connection-type filter, since they carry a real connection_type).
@@ -1168,7 +1171,8 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
 
       link
         .style("display", (d: SimLink) => (edgeVisible(d) ? "block" : "none"))
-        .attr("stroke-dasharray", (d: SimLink) => (d.evidenceSource === "investigation" ? "5 3" : null))
+        .attr("stroke-dasharray", (d: SimLink) =>
+          d.evidenceSource === "investigation" ? "5 3" : d.connectionType === "opposition" ? "6 4" : null)
         .attr("stroke", (d: SimLink) => {
           if (d.evidenceSource === "investigation") return resolveColor(INVESTIGATION_EDGE_COLOR, svgEl);
           if (d.connectionType === "alignment") {

@@ -98,7 +98,7 @@ function mapNodeType(dbType: string, subType?: string): NodeType {
 /** Map DB connection_type string → GraphEdge type */
 function mapEdgeType(dbType: string): EdgeType {
   const valid: EdgeType[] = [
-    "donation", "vote_yes", "vote_no", "vote_abstain",
+    "donation", "opposition", "vote_yes", "vote_no", "vote_abstain",
     "nomination_vote_yes", "nomination_vote_no",
     "appointment", "revolving_door", "oversight", "lobbying", "co_sponsorship",
     "contract_award",
@@ -234,12 +234,23 @@ export async function GET(request: Request) {
       ] as const;
       const OVERSIGHT_TYPES = ["oversight", "appointment", "co_sponsorship", "revolving_door", "contract_award"] as const;
 
-      const [donationsRes, votesRes, oversightRes, investigationRes] = await Promise.all([
+      const [donationsRes, oppositionRes, votesRes, oversightRes, investigationRes] = await Promise.all([
         withDbTimeout(
           supabase
             .from("entity_connections")
             .select("*")
             .eq("connection_type", "donation")
+            .or(`from_id.eq.${entityId},to_id.eq.${entityId}`)
+        ),
+        // FIX-747 — opposition (IE-against) edges are financial→official, fetched
+        // in full like donations (bounded per entity); their own bucket so they
+        // surface on a focused official/PAC graph, not just the depth-2/default
+        // unfiltered `select("*")` paths.
+        withDbTimeout(
+          supabase
+            .from("entity_connections")
+            .select("*")
+            .eq("connection_type", "opposition")
             .or(`from_id.eq.${entityId},to_id.eq.${entityId}`)
         ),
         withDbTimeout(
@@ -277,11 +288,13 @@ export async function GET(request: Request) {
       // timeout was previously merged blind, silently dropping those edge types
       // and presenting a partial graph as complete (FIX-431). Fail loud instead.
       if (donationsRes.error) throw donationsRes.error;
+      if (oppositionRes.error) throw oppositionRes.error;
       if (votesRes.error) throw votesRes.error;
       if (oversightRes.error) throw oversightRes.error;
       if (investigationRes.error) throw investigationRes.error;
       const direct: ConnectionRow[] = [
         ...(donationsRes.data ?? []),
+        ...(oppositionRes.data ?? []),
         ...(oversightRes.data ?? []),
         ...(votesRes.data ?? []),
         ...(investigationRes.data ?? []),

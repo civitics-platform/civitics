@@ -190,6 +190,7 @@ export type NodeType =
 
 export type EdgeType =
   | "donation"
+  | "opposition"
   | "vote_yes"
   | "vote_no"
   | "vote_abstain"
@@ -260,6 +261,7 @@ export const PARTY_COLORS: Record<string, string> = {
 // here so old consumers stay total over EdgeType.
 export const EDGE_COLORS: Record<EdgeType, string> = {
   donation:            CONNECTION_TYPE_REGISTRY['donation']!.color,
+  opposition:          CONNECTION_TYPE_REGISTRY['opposition']!.color,
   vote_yes:            CONNECTION_TYPE_REGISTRY['vote_yes']!.color,
   vote_no:             CONNECTION_TYPE_REGISTRY['vote_no']!.color,
   vote_abstain:        CONNECTION_TYPE_REGISTRY['vote_abstain']!.color,

@@ -6524,6 +6524,7 @@ export type Database = {
         | "owns"
         | "parent_of"
         | "affiliated_with"
+        | "opposition"
       donor_type:
         | "individual"
         | "pac"
@@ -6824,6 +6825,7 @@ export const Constants = {
         "owns",
         "parent_of",
         "affiliated_with",
+        "opposition",
       ],
       donor_type: [
         "individual",

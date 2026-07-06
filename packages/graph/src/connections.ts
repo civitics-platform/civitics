@@ -28,6 +28,17 @@ export const CONNECTION_TYPE_REGISTRY: Record<string, ConnectionTypeDefinition> 
     description: 'PAC and individual donor contributions',
     hasAmount: true,
   },
+  // FIX-747 — super-PAC independent expenditures made AGAINST a candidate
+  // (FEC Schedule E "O" / financial_relationships.ie_oppose). Rendered red +
+  // dashed (see ForceGraph) so opposition spend reads as distinct from support
+  // money and from solid-red vote_no; toggleable like any other type.
+  opposition: {
+    label: 'Opposition',
+    icon: '🚫',
+    color: 'rgb(var(--c-accent))',
+    description: 'Independent expenditures spent against a candidate (IE against)',
+    hasAmount: true,
+  },
   vote_yes: {
     label: 'Voted Yes',
     icon: '✓',
@@ -123,6 +134,13 @@ export const DEFAULT_CONNECTION_STATE: GraphView['connections'] = {
     enabled: true,
     color: CONNECTION_TYPE_REGISTRY.donation!.color,
     opacity: 0.8,
+    thickness: 0.7,
+    minAmount: 0,
+  },
+  opposition: {
+    enabled: true,               // FIX-747 — default shown; users can hide it
+    color: CONNECTION_TYPE_REGISTRY.opposition!.color,
+    opacity: 0.85,
     thickness: 0.7,
     minAmount: 0,
   },
@@ -245,6 +263,7 @@ export function applicableConnectionTypes(
   const out = new Set<string>();
 
   if (hasOfficial || hasFinancial) out.add('donation');
+  if (hasOfficial || hasFinancial) out.add('opposition');   // FIX-747
 
   if (hasOfficial || hasProposal) {
     out.add('vote_yes');
@@ -274,7 +293,7 @@ export function applicableConnectionTypes(
  * current focus. Returned reason is short enough to fit as a row subtitle.
  */
 export function inapplicableReason(connectionType: string): string {
-  if (connectionType === 'donation') {
+  if (connectionType === 'donation' || connectionType === 'opposition') {
     return 'Add an official or PAC to enable';
   }
   if (

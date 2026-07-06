@@ -102,6 +102,26 @@ evidence      (JSONB array of source URLs)
 The original CLAUDE.md spec used `entity_a_id` / `entity_b_id` — **those names are wrong**.
 All API routes, queries, and pipelines must use `from_id` / `from_type` / `to_id` / `to_type`.
 
+**`connection_type` values for money:** `'donation'` (direct donations +
+`ie_support` super-PAC spend FOR a candidate — lumped, a pre-existing product
+choice) and `'opposition'` (FIX-747 — `ie_oppose` super-PAC spend AGAINST a
+candidate, rendered as a distinct red/dashed graph edge). Both derive from
+`financial_relationships` in the EC donation rebuild.
+
+**⚠️ FIX-735 lag invariant — `entity_connections` is a display cache, not truth.**
+Donation/opposition edges are rebuilt on a **schedule** (pg_cron `full` Monday,
+`incremental` Wednesday; `run_entity_connections_rebuild`, FIX-703/687). They
+therefore **lag** the ~1.5 days between the weekend FEC ingest and the next
+rebuild — an individual→committee pair from the current weekend legitimately has
+no edge until Monday, then self-heals. **"No EC edge" NEVER means "no donation."**
+The FR-derived aggregates (`financial_entities.recipient_count` /
+`total_donated_cents` / `total_received_cents`; FIX-702/726/736) are recomputed
+directly from `financial_relationships` and are effectively real-time. Query
+`financial_relationships` for authoritative presence/counts; never build an
+"EC-presence-implies-truth" assumption (that was the FIX-736 bug — an EC-derived
+`recipient_count` under-counted during the lag window). FIX-735 investigated the
+"edge gap" and closed it working-as-designed on exactly this reasoning.
+
 ## users table — design notes
 
 `id` is the Supabase Auth UUID — same UUID shared between `auth.users` and `public.users`.
