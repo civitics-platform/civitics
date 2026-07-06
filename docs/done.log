@@ -916,3 +916,4 @@
 2026-07-05 | FIX-742 | 7ba97f25 | local-only | fix(edgar): defensive bigint parse for oversized/scientific-notation officer values
 2026-07-05 | FIX-743 | cf18a44f | local-only | feat(infra): force_weekly dispatch knob for on-demand supervised heavy nightly
 2026-07-05 | FIX-745 | ffb0d027 | local+prod | fix(data): covering index for ai-classifier entity_tags industry preload
+2026-07-05 | FIX-746 | 41ebe5c6 | local-only | feat(infra): extract the daily derivation tail into an enrichment-tail sub-job
