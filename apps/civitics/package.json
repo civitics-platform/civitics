@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
+    "test": "node run-tests.mjs",
     "clean": "rm -rf .next"
   },
   "dependencies": {
