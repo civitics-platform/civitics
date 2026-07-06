@@ -921,3 +921,5 @@
 2026-07-05 | FIX-747 | 2d39b2fc | local-only | feat(graph): add opposition (ie_oppose) as a distinct, filterable edge class
 2026-07-05 | FIX-748 | f215286e | local+prod | feat(browse): entity_search_index + facet rollup + /api/browse (W0)
 2026-07-05 | FIX-749 | f215286e | local+prod | feat(browse): entity_search_index + facet rollup + /api/browse (W0)
+2026-07-06 | FIX-751 | 673e7254 | local+prod | feat(search): explorer browse page over /api/browse (W1)
+2026-07-06 | FIX-752 | 673e7254 | local+prod | feat(search): explorer browse page over /api/browse (W1)
