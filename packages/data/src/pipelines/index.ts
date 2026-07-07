@@ -41,24 +41,9 @@ import { runAiClassifier } from "./tags/ai-classifier";
 import { seedJurisdictions, seedGoverningBodies } from "../jurisdictions/us-states";
 import { computeRunWeekly } from "./weekly-gate";
 
-// Supabase RPC errors come back as plain objects ({ code, message, details, hint })
-// — not Error instances — so String(err) → "[object Object]". Unwrap them so
-// catch sites get a useful message.
-function errMsg(err: unknown): string {
-  if (err instanceof Error) return err.message;
-  if (err && typeof err === "object") {
-    const obj = err as { message?: unknown; code?: unknown; details?: unknown; hint?: unknown };
-    if (typeof obj.message === "string") {
-      const parts: string[] = [obj.message];
-      if (obj.code)    parts.push(`(${String(obj.code)})`);
-      if (obj.details) parts.push(`details=${String(obj.details)}`);
-      if (obj.hint)    parts.push(`hint=${String(obj.hint)}`);
-      return parts.join(" ");
-    }
-    try { return JSON.stringify(err); } catch { return "<unserializable error>"; }
-  }
-  return String(err);
-}
+// errMsg moved to ./utils (FIX-756) so fec-bulk's catch sites can share it
+// without importing this module (which imports fec-bulk — cycle).
+import { errMsg } from "./utils";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -1205,7 +1190,21 @@ if (require.main === module) {
       process.exit(2);
     }
     runNightlySync({ phase })
-      .then(() => { setTimeout(() => process.exit(0), 500); })
+      .then((results) => {
+        // FIX-757: a phase with any failed pipeline (phaseStatus 'partial')
+        // must not exit 0 — the GHA job would show a failed ingest green
+        // (the 2026-07-05 fec_bulk fatal). Same rule as the phaseStatus
+        // derivation above: red iff results.errors is non-empty. FIX-727
+        // covers the standalone fec-bulk entrypoint the same way.
+        if (results.errors.length > 0) {
+          console.error(
+            `Nightly phase '${phase}' completed with ${results.errors.length} error(s) — exiting 1 (FIX-757)`,
+          );
+          setTimeout(() => process.exit(1), 500);
+        } else {
+          setTimeout(() => process.exit(0), 500);
+        }
+      })
       .catch((e) => { console.error("Pipeline failed:", e); setTimeout(() => process.exit(1), 500); });
   } else {
     runAllPipelines()
