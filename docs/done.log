@@ -925,3 +925,6 @@
 2026-07-06 | FIX-752 | 673e7254 | local+prod | feat(search): explorer browse page over /api/browse (W1)
 2026-07-06 | FIX-727 | 6f15cb12 | local-only | feat(fec): checkpoint/resume for the fec_bulk indiv ingest across nightly runs
 2026-07-06 | FIX-754 | 6f15cb12 | local-only | feat(fec): checkpoint/resume for the fec_bulk indiv ingest across nightly runs
+2026-07-06 | FIX-755 | 02eb5e7b | local-only | fix(congress): stop the nightly source_ids clobber that regenerated whole-chamber promotions (FIX-755)
+2026-07-06 | FIX-756 | 843b780a | local-only | perf(fec-bulk): route pas2 entity/relationship + IE writers through direct-pg (FIX-756)
+2026-07-06 | FIX-757 | 2dd25600 | local-only | fix(nightly): exit 1 when a phase completes partial (any results.errors) (FIX-757)
