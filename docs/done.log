@@ -923,3 +923,5 @@
 2026-07-05 | FIX-749 | f215286e | local+prod | feat(browse): entity_search_index + facet rollup + /api/browse (W0)
 2026-07-06 | FIX-751 | 673e7254 | local+prod | feat(search): explorer browse page over /api/browse (W1)
 2026-07-06 | FIX-752 | 673e7254 | local+prod | feat(search): explorer browse page over /api/browse (W1)
+2026-07-06 | FIX-727 | 6f15cb12 | local-only | feat(fec): checkpoint/resume for the fec_bulk indiv ingest across nightly runs
+2026-07-06 | FIX-754 | 6f15cb12 | local-only | feat(fec): checkpoint/resume for the fec_bulk indiv ingest across nightly runs
