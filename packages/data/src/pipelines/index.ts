@@ -13,6 +13,11 @@ import { createAdminClient } from "@civitics/db";
 import { getDbSizeMb, getLastSync, captureRssMb } from "./sync-log";
 import { runRegulationsPipeline } from "./regulations";
 import { runFecBulkPipeline } from "./fec-bulk";
+import {
+  loadRunState as loadFecRunState,
+  describeRunState as describeFecRunState,
+  type FecBulkRunState,
+} from "./fec-bulk/run-state";
 import { runIrs990Pipeline } from "./irs990";
 import { runLittleSisPipeline } from "./littlesis";
 import { runEdgarPipeline, runEdgarDailyPipeline } from "./edgar";
@@ -594,15 +599,23 @@ export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<Nigh
 
   } // end Phase 1 daily pipelines (FIX-292)
 
-  // 2. Weekly pipelines (Sunday only) — FEC bulk, USASpending, CourtListener, OpenStates
-  if (isWeekly) {
-    const clKey  = process.env["COURTLISTENER_API_KEY"];
-    const osKey  = process.env["OPENSTATES_API_KEY"];
+  // FIX-754: resume trigger. A killed Sunday fec_bulk leaves
+  // pipeline_state.fec_bulk_run_state behind; the next (weekday) nightly picks
+  // it up and finishes the pending cycle only, so Monday/Tuesday auto-complete
+  // Sunday's work with monotonic progress. Cheap single-row read; Sundays
+  // resume through the normal weekly invocation without this check.
+  let fecResumeState: FecBulkRunState | null = null;
+  if (runFec && !isWeekly) {
+    fecResumeState = await loadFecRunState(db);
+    if (fecResumeState) {
+      console.log(`[nightly] RESUMING fec_bulk (FIX-754): ${describeFecRunState(fecResumeState)}`);
+    }
+  }
 
-    // FIX-292: Phase 1 ('fec') weekly stages — FEC bulk + IRS 990. These flush
-    // before the Phase 2 enrichment job picks up the LittleSis matcher index.
-    if (runFec) {
-
+  // 2a. FEC bulk — weekly (Sunday block), or any nightly with a pending
+  // FIX-754 resume state. Everything else weekly (IRS-990 onward) stays
+  // Sunday-gated below.
+  if (runFec && (isWeekly || fecResumeState !== null)) {
     {
       const t0 = Date.now();
       // Weekly cron only refreshes the current + prior cycle for the PAC
@@ -622,7 +635,13 @@ export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<Nigh
       // re-adds them here.
       const prevFecCycles      = process.env["FEC_CYCLES"];
       const prevFecIndivCycles = process.env["FEC_INDIV_CYCLES"];
-      if (!prevFecCycles || !prevFecIndivCycles) {
+      if (fecResumeState && !isWeekly) {
+        // FIX-754 resume mode: touch ONLY the pending cycle. Explicit env
+        // overrides still win, matching the weekly narrowing below.
+        if (!prevFecCycles)      process.env["FEC_CYCLES"]       = fecResumeState.cycle;
+        if (!prevFecIndivCycles) process.env["FEC_INDIV_CYCLES"] = fecResumeState.cycle;
+        console.log(`[nightly] fec_bulk resume: cycles narrowed to pending cycle ${fecResumeState.cycle} (FIX-754)`);
+      } else if (!prevFecCycles || !prevFecIndivCycles) {
         const yr = new Date().getFullYear();
         const currentCycle = yr % 2 === 0 ? yr : yr + 1;
         if (!prevFecCycles)      process.env["FEC_CYCLES"]       = `${currentCycle - 2},${currentCycle}`;
@@ -641,6 +660,17 @@ export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<Nigh
         if (!prevFecIndivCycles) delete process.env["FEC_INDIV_CYCLES"];
       }
     }
+  }
+
+  // 2. Weekly pipelines (Sunday only) — IRS 990, USASpending, CourtListener, OpenStates
+  if (isWeekly) {
+    const clKey  = process.env["COURTLISTENER_API_KEY"];
+    const osKey  = process.env["OPENSTATES_API_KEY"];
+
+    // FIX-292: Phase 1 ('fec') weekly stages — IRS 990 (FEC bulk moved above
+    // for the FIX-754 resume trigger). These flush before the Phase 2
+    // enrichment job picks up the LittleSis matcher index.
+    if (runFec) {
 
     // FIX-250: IRS 990 bulk (officers + grants-out, seed list only — NOT donors).
     // Runs after FEC so resolveGrantRecipient can see fec-bulk's PAC entities

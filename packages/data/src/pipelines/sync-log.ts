@@ -17,6 +17,10 @@ export interface PipelineResult {
   // so the Data Health dashboard can surface them as a yellow sub-status.
   // Pipelines that don't seed (or whose seed was clean) just omit this field.
   seed_warnings?: string[];
+  // FIX-727: set when the pipeline caught a fatal error and failSync fired.
+  // Standalone entrypoints inspect it to exit nonzero so CI status is
+  // trustworthy; the nightly orchestrator keeps its own try/catch semantics.
+  fatal_error?: string;
 }
 
 // FIX-255: best-effort failSync on abnormal exit so data_sync_log rows don't

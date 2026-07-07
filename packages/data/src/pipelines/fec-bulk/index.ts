@@ -103,10 +103,28 @@ import {
   upsertIndividualDonationsBatch,
   upsertIndividualToCommitteeDonationsBatch,
   upsertIndependentExpendituresBatch,
+  fetchDonorIdsByFingerprint,
+  fetchEntityIdsByCmteId,
+  type WriterResume,
   type IndividualDonationInput,
   type IndividualToCommitteeDonationInput,
   type IndependentExpenditureInput,
 } from "./writer";
+import {
+  planCycleResume,
+  createRunState,
+  stageIsComplete,
+  markStageComplete,
+  updateStageCursor,
+  describeRunState,
+  sameLastModified,
+  loadRunState,
+  saveRunState,
+  clearRunState,
+  type FecBulkRunState,
+  type TrackedStage,
+  type CursoredStage,
+} from "./run-state";
 import {
   extractZipEntryToDisk,
   parseFecDate,
@@ -736,6 +754,36 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
       // Non-fatal: missing pipeline_state row, RLS hiccup, etc.
     }
 
+    // FIX-754: pending checkpoint/resume state for the indiv stage. Scoped runs
+    // bypass the machinery entirely — cursors from a partial slice must not
+    // resume into a different scope, and a scoped run must not clobber pending
+    // unscoped state (mirrors the FIX-701 watermark bypass).
+    let runState: FecBulkRunState | null = null;
+    if (!isScoped) {
+      runState = await loadRunState(db);
+      if (runState) {
+        console.log(`  ⟳ Pending fec_bulk_run_state: ${describeRunState(runState)}`);
+        // Self-guard: narrow the indiv cycle set to the pending cycle so a
+        // multi-cycle manual run can't start a second cycle's indiv work and
+        // clobber the single state slot. Other cycles' indiv files are
+        // watermark-guarded anyway, so this is behavior-preserving in practice.
+        // (The nightly orchestrator narrows the env before invoking us; this
+        // guards the standalone `pnpm data:fec-bulk` path.)
+        if (indivCycleSet.has(runState.cycle) && indivCycleSet.size > 1) {
+          console.log(
+            `  ⟳ FIX-754 self-guard: narrowing indiv cycles [${[...indivCycleSet].join(",")}] → ` +
+              `[${runState.cycle}] while resume is pending`,
+          );
+          for (const c of [...indivCycleSet]) {
+            if (c !== runState.cycle) indivCycleSet.delete(c);
+          }
+        }
+      }
+    }
+    // Cycle whose indiv work fully completed this run — gates the end-of-run
+    // state clear (after the watermark persist, per the FIX-754 ordering).
+    let runStateCompletedCycle: string | null = null;
+
     // FIX-246: seed jurisdictions + governing bodies for the cn{yy} stage's
     //          candidate-row inserts. Idempotent — re-seed defensively when
     //          fec-bulk runs standalone (orchestrator path already seeds).
@@ -763,6 +811,10 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
     // ── Per-cycle loop ──────────────────────────────────────────────────────
     for (const CYCLE of CYCLES) {
       console.log(`\n────────── Cycle ${CYCLE} ──────────`);
+
+      // FIX-754: non-null while this cycle's indiv stage runs with checkpoint
+      // machinery active; also read by the IE stage's skip/marker below.
+      let cycleActiveState: FecBulkRunState | null = null;
 
       // Step 1: Download bulk files for this cycle
       console.log(`  [${CYCLE} 1/5] Downloading FEC bulk files...`);
@@ -1076,7 +1128,61 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
           );
         }
 
-        if (!indivFailed) {
+        // FIX-754: stale bookkeeping — the watermark already covers this cycle
+        // but the state was never cleared (kill landed between the watermark
+        // persist and the state clear). Clear it here so the nightly
+        // orchestrator stops re-triggering resume runs.
+        if (indivFailed && runState?.cycle === CYCLE) {
+          console.log(
+            `    ⟳ clearing fec_bulk_run_state — watermark already current for cycle ${CYCLE} (FIX-754)`,
+          );
+          await clearRunState(db);
+          runState = null;
+        }
+
+        // FIX-754: resume plan for this cycle. Identity = FEC HEAD Last-Modified
+        // vs the stored state — see run-state.ts for the decision table.
+        let indivStateSkip = false;
+        if (!indivFailed && !isScoped && runState) {
+          const plan = planCycleResume(runState, CYCLE, headProbe?.lastModified ?? null);
+          if (plan === "resume" || plan === "skip-indiv") {
+            cycleActiveState = runState;
+            console.log(
+              `    ⟳ RESUMING fec_bulk cycle=${CYCLE} (FIX-754): ${describeRunState(runState)}`,
+            );
+            if (plan === "skip-indiv") {
+              // Every indiv writer stage landed in a prior run — skip
+              // download/extract/stream entirely; only the IE stage, totals,
+              // and the watermark persist remain.
+              indivStateSkip = true;
+              indivWatermark[CYCLE] = {
+                last_modified: runState.fec_last_modified,
+                etag:          runState.fec_etag,
+              };
+              runStateCompletedCycle = CYCLE;
+              console.log(
+                `    ⟳ all indiv writer stages complete — skipping download/stream for cycle ${CYCLE}`,
+              );
+            }
+          } else if (plan === "stale") {
+            console.warn(
+              `    ⟳ fec_bulk_run_state is stale — FEC published a new drop ` +
+                `(stored "${runState.fec_last_modified}" vs FEC "${headProbe?.lastModified}"); ` +
+                `discarding and starting cycle ${CYCLE} fresh (FIX-754)`,
+            );
+            await clearRunState(db);
+            runState = null;
+          } else if (plan === "unverifiable") {
+            console.warn(
+              `    ⟳ FEC HEAD failed — cannot verify fec_bulk_run_state identity; running ` +
+                `cycle ${CYCLE} WITHOUT checkpointing (state kept for a later verifiable run) (FIX-754)`,
+            );
+          }
+          // plan === "other-cycle": the state belongs to a different cycle; this
+          // cycle runs un-checkpointed so the single state slot isn't clobbered.
+        }
+
+        if (!indivFailed && !indivStateSkip) {
           console.log(`    Downloading ${cclName}...`);
           try {
             const r2KeyCcl = r2KeyFor(CYCLE, cclName);
@@ -1091,7 +1197,7 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
           }
         }
 
-        if (!indivFailed) {
+        if (!indivFailed && !indivStateSkip) {
           console.log(`    Downloading ${indivName} (~2 GB)...`);
           try {
             const r2KeyIndiv = r2KeyFor(CYCLE, indivName);
@@ -1108,7 +1214,26 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
           }
         }
 
-        if (!indivFailed) {
+        // FIX-754: re-verify identity against the download's own HEAD — closes
+        // the rare race where FEC publishes between the resume probe and the GET.
+        if (
+          cycleActiveState && !indivStateSkip && !indivFailed &&
+          !sameLastModified(cycleActiveState.fec_last_modified, indivFecHead?.lastModified)
+        ) {
+          console.warn(
+            `    ⟳ downloaded ${indivName} Last-Modified "${indivFecHead?.lastModified}" != ` +
+              `state "${cycleActiveState.fec_last_modified}" — discarding state, running cycle ${CYCLE} fresh (FIX-754)`,
+          );
+          await clearRunState(db);
+          runState = null;
+          cycleActiveState = null;
+        }
+
+        if (indivStateSkip) {
+          // FIX-754 fast path: prior run already landed every indiv writer
+          // stage; nothing streamed or upserted this run.
+          indivCyclesSkipped++;
+        } else if (!indivFailed) {
           try {
             // Parse ccl: build CMTE_ID → CAND_ID lookup, then narrow to committees
             // owned by candidates in our index.byFecId.
@@ -1151,6 +1276,40 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
               } else {
                 const indivResult = await streamIndiv(indivPath, cmteToCand, candidateSet, nonCandCmtes, TMP_DIR, keepTxTypes);
 
+                // FIX-754: establish fresh checkpoint state (resume runs arrive
+                // here with cycleActiveState already set). Requires a verifiable
+                // file identity — mirrors the watermark's non-null-LM rule. The
+                // !runState guard keeps another cycle's pending state (and the
+                // "unverifiable" mode) from being clobbered.
+                if (!isScoped && !cycleActiveState && !runState && indivFecHead?.lastModified) {
+                  cycleActiveState = createRunState(CYCLE, indivFecHead.lastModified, indivFecHead.etag ?? null);
+                  runState = cycleActiveState;
+                  await saveRunState(db, cycleActiveState);
+                  console.log(
+                    `    ⟳ checkpoint state established for cycle ${CYCLE} (lm="${indivFecHead.lastModified}") (FIX-754)`,
+                  );
+                }
+
+                // FIX-754 helpers: per-chunk cursor persistence + stage markers.
+                // No-ops when the checkpoint machinery is inactive (scoped run,
+                // unverifiable identity, another cycle's state pending).
+                const stageResume = (stage: CursoredStage): WriterResume | undefined => {
+                  const st = cycleActiveState;
+                  if (!st) return undefined;
+                  return {
+                    progress: st.stages[stage],
+                    onProgress: async (processedRows, totalRows) => {
+                      updateStageCursor(st, stage, processedRows, totalRows);
+                      await saveRunState(db, st); // best-effort — warns, never throws
+                    },
+                  };
+                };
+                const completeStage = async (stage: TrackedStage): Promise<void> => {
+                  if (!cycleActiveState) return;
+                  markStageComplete(cycleActiveState, stage);
+                  await saveRunState(db, cycleActiveState);
+                };
+
                 // Build per-cycle donor totals from BOTH aggregation maps —
                 // candidate-path and committee-path. A donor who gives to
                 // both a candidate AND a super PAC counts both contributions
@@ -1192,14 +1351,47 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
                   failed: 0,
                   donorIdByFingerprint: new Map<string, string>(),
                 };
-                if (stageOn("donor-entities")) {
+                if (stageOn("donor-entities") && cycleActiveState && stageIsComplete(cycleActiveState, "donor-entities")) {
+                  // FIX-754: prior run landed every donor — rebuild the id map
+                  // via batched direct-pg reads instead of re-upserting 780k rows.
+                  console.log(
+                    `    ⟳ [donor-entities] complete in prior run — rebuilding donor id map ` +
+                      `via direct-pg read (${donorInputs.length.toLocaleString()} fingerprints) (FIX-754)...`,
+                  );
+                  donorResult = {
+                    upserted: 0,
+                    failed:   0,
+                    donorIdByFingerprint: await fetchDonorIdsByFingerprint(donorInputs.map((d) => d.fingerprint)),
+                  };
+                  console.log(
+                    `    ⟳ [donor-entities] resolved ${donorResult.donorIdByFingerprint.size.toLocaleString()}` +
+                      `/${donorInputs.length.toLocaleString()} fingerprints`,
+                  );
+                } else if (stageOn("donor-entities")) {
                   console.log(`    Upserting ${donorInputs.length.toLocaleString()} individual donor entities...`);
                   // isScoped ⇒ omit total_donated_cents/total_received_cents so a
                   // partial-slice run doesn't clobber existing donor aggregates.
-                  donorResult = await upsertIndividualDonorsBatch(donorInputs, isScoped);
+                  donorResult = await upsertIndividualDonorsBatch(donorInputs, isScoped, stageResume("donor-entities"));
                   indivDonorsUpserted += donorResult.upserted;
                   indivDonorsFailed   += donorResult.failed;
                   console.log(`    Donors — upserted: ${donorResult.upserted}  failed: ${donorResult.failed}`);
+                  // FIX-754: a cursor-resumed upsert only RETURNs ids from the
+                  // start offset on — backfill the rows the prior run committed
+                  // so the two relationship stages can resolve every from_id.
+                  if (cycleActiveState && donorResult.donorIdByFingerprint.size < donorInputs.length) {
+                    const missing = donorInputs
+                      .map((d) => d.fingerprint)
+                      .filter((fp) => !donorResult.donorIdByFingerprint.has(fp));
+                    if (missing.length > 0) {
+                      console.log(
+                        `    ⟳ [donor-entities] backfilling ${missing.length.toLocaleString()} donor ids ` +
+                          `committed by the prior run (FIX-754)...`,
+                      );
+                      const fetched = await fetchDonorIdsByFingerprint(missing);
+                      for (const [fp, id] of fetched) donorResult.donorIdByFingerprint.set(fp, id);
+                    }
+                  }
+                  await completeStage("donor-entities");
                 } else {
                   console.log(`    [donor-entities] — skipped (not in FEC_INDIV_STAGES)`);
                 }
@@ -1207,7 +1399,9 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
                 // FIX-700 stage: indiv-to-candidate. (A tx-type-10-only run yields
                 // no candidate-path rows — type 10 flows to super PACs — so this
                 // stage upserts 0 in the FIX-677 finish, harmlessly.)
-                if (stageOn("indiv-to-candidate")) {
+                if (stageOn("indiv-to-candidate") && cycleActiveState && stageIsComplete(cycleActiveState, "indiv-to-candidate")) {
+                  console.log(`    ⟳ [indiv-to-candidate] complete in prior run — skipping (FIX-754)`);
+                } else if (stageOn("indiv-to-candidate")) {
                   // Build relationship inputs — one per (donor × candidate × cycle)
                   const indivRelInputs: IndividualDonationInput[] = [];
                   for (const agg of indivResult.aggregations.values()) {
@@ -1227,10 +1421,11 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
                   }
 
                   console.log(`    Upserting ${indivRelInputs.length.toLocaleString()} individual → candidate donation relationships...`);
-                  const indivRelResult = await upsertIndividualDonationsBatch(indivRelInputs);
+                  const indivRelResult = await upsertIndividualDonationsBatch(indivRelInputs, stageResume("indiv-to-candidate"));
                   indivRelsUpserted += indivRelResult.upserted;
                   indivRelsFailed   += indivRelResult.failed;
                   console.log(`    Donations (→ candidate) — upserted: ${indivRelResult.upserted}  failed: ${indivRelResult.failed}`);
+                  await completeStage("indiv-to-candidate");
                 } else {
                   console.log(`    [indiv-to-candidate] — skipped (not in FEC_INDIV_STAGES)`);
                 }
@@ -1283,7 +1478,23 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
                 // and IE stage depend on it. Only the upsert (which populates
                 // entityIdByCmteAcc, the to_id source for indiv-to-committee) is
                 // gated. isScoped ⇒ omit aggregate columns (skip-overwrite).
-                if (stageOn("recipient-entities")) {
+                if (stageOn("recipient-entities") && cycleActiveState && stageIsComplete(cycleActiveState, "recipient-entities")) {
+                  // FIX-754: prior run pre-upserted the recipient committees —
+                  // rebuild the cmte→entity id map the indiv-to-committee stage
+                  // resolves to_id from, without re-running the upsert.
+                  if (cmteEntityInputs.length > 0) {
+                    console.log(
+                      `    ⟳ [recipient-entities] complete in prior run — rebuilding ` +
+                        `${cmteEntityInputs.length.toLocaleString()} committee ids via direct-pg read (FIX-754)...`,
+                    );
+                    const fetched = await fetchEntityIdsByCmteId(cmteEntityInputs.map((i) => i.cmteId));
+                    for (const [cmteId, id] of fetched) entityIdByCmteAcc.set(cmteId, id);
+                    console.log(
+                      `    ⟳ [recipient-entities] resolved ${fetched.size.toLocaleString()}` +
+                        `/${cmteEntityInputs.length.toLocaleString()} committees`,
+                    );
+                  }
+                } else if (stageOn("recipient-entities")) {
                   if (cmteEntityInputs.length > 0) {
                     console.log(`    Pre-upserting ${cmteEntityInputs.length.toLocaleString()} non-candidate-committee recipient entities...`);
                     const cmteEntityResult = await upsertPacEntitiesBatch(db, cmteEntityInputs, isScoped);
@@ -1294,13 +1505,16 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
                     }
                     console.log(`    Recipient committees — upserted: ${cmteEntityResult.upserted}  failed: ${cmteEntityResult.failed}`);
                   }
+                  await completeStage("recipient-entities");
                 } else {
                   console.log(`    [recipient-entities] — skipped (not in FEC_INDIV_STAGES)`);
                 }
 
                 // FIX-700 stage: indiv-to-committee. This is the path that lands
                 // the FIX-677 super-PAC (type-10) receipts — the finish's target.
-                if (stageOn("indiv-to-committee")) {
+                if (stageOn("indiv-to-committee") && cycleActiveState && stageIsComplete(cycleActiveState, "indiv-to-committee")) {
+                  console.log(`    ⟳ [indiv-to-committee] complete in prior run — skipping (FIX-754)`);
+                } else if (stageOn("indiv-to-committee")) {
                   const indivCmteRelInputs: IndividualToCommitteeDonationInput[] = [];
                   for (const agg of indivResult.committeeAggregations.values()) {
                     const fromEntityId = donorResult.donorIdByFingerprint.get(agg.donorFingerprint);
@@ -1320,11 +1534,12 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
                   }
 
                   console.log(`    Upserting ${indivCmteRelInputs.length.toLocaleString()} individual → committee donation relationships...`);
-                  const indivCmteRelResult = await upsertIndividualToCommitteeDonationsBatch(indivCmteRelInputs);
+                  const indivCmteRelResult = await upsertIndividualToCommitteeDonationsBatch(indivCmteRelInputs, stageResume("indiv-to-committee"));
                   indivCmteRelsUpserted += indivCmteRelResult.upserted;
                   indivCmteRelsFailed   += indivCmteRelResult.failed;
                   console.log(`    Donations (→ committee) — upserted: ${indivCmteRelResult.upserted}  failed: ${indivCmteRelResult.failed}`);
                   console.log(`    Donations (→ committee) — skipped_unresolved: ${indivCmteSkippedUnresolved} (FIX-686; should be 0)`);
+                  await completeStage("indiv-to-committee");
                 } else {
                   console.log(`    [indiv-to-committee] — skipped (not in FEC_INDIV_STAGES)`);
                 }
@@ -1340,6 +1555,10 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
                     etag:          indivFecHead.etag,
                   };
                 }
+
+                // FIX-754: the cycle's indiv writer work is fully landed — the
+                // end-of-run block persists the watermark then clears the state.
+                if (cycleActiveState) runStateCompletedCycle = CYCLE;
 
                 indivCyclesProcessed++;
               }
@@ -1364,6 +1583,11 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
       console.log(`  [${CYCLE} 6/7] Independent expenditures (Schedule E) stage...`);
       if (!stageOn("independent-expenditures")) {
         console.log(`    [independent-expenditures] — skipped (not in FEC_INDIV_STAGES)`);
+      } else if (cycleActiveState && stageIsComplete(cycleActiveState, "independent-expenditures")) {
+        // FIX-754: a kill can land between the IE stage and the end-of-run
+        // watermark persist — the marker keeps the resumed run from re-running IE.
+        console.log(`    ⟳ [independent-expenditures] complete in prior run — skipping for cycle ${CYCLE} (FIX-754)`);
+        ieCyclesSkipped++;
       } else {
         const ieName = `independent_expenditure_${CYCLE}.csv`;
         const ieUrl  = `https://www.fec.gov/files/bulk-downloads/${CYCLE}/${ieName}`;
@@ -1461,6 +1685,13 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
             console.log(`    IE relationships — upserted: ${ieWriteResult.upserted}  failed: ${ieWriteResult.failed}`);
 
             ieCyclesProcessed++;
+
+            // FIX-754: mark IE done for this cycle so a kill during totals /
+            // the watermark persist doesn't re-run it on resume.
+            if (cycleActiveState) {
+              markStageComplete(cycleActiveState, "independent-expenditures");
+              await saveRunState(db, cycleActiveState);
+            }
           } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
             console.warn(`    IE stage failed: ${msg} — continuing without IE data for cycle ${CYCLE}`);
@@ -1584,6 +1815,7 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
     }
 
     // ── Persist indiv Last-Modified watermark (FIX-193) ─────────────────────
+    let watermarkPersisted = false;
     if (Object.keys(indivWatermark).length > 0) {
       try {
         await db
@@ -1596,10 +1828,27 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
             },
             { onConflict: "key" },
           );
+        watermarkPersisted = true;
         console.log(`  Persisted indiv watermark for cycles: ${Object.keys(indivWatermark).join(", ")}`);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         console.warn(`  Failed to persist indiv watermark: ${msg}`);
+      }
+    }
+
+    // ── Clear checkpoint state (FIX-754) ────────────────────────────────────
+    // Ordering: final stage completes → watermark persisted → state cleared.
+    // A failed watermark persist keeps the state so the next nightly retries
+    // the (cheap) completion path instead of stranding an unpersisted advance.
+    if (runStateCompletedCycle) {
+      if (watermarkPersisted) {
+        await clearRunState(db);
+        console.log(`  ⟳ Cleared fec_bulk_run_state — cycle ${runStateCompletedCycle} complete (FIX-754)`);
+      } else {
+        console.warn(
+          `  ⟳ cycle ${runStateCompletedCycle} complete but the watermark persist failed — ` +
+            `keeping fec_bulk_run_state so the next nightly retries (FIX-754)`,
+        );
       }
     }
 
@@ -1736,6 +1985,7 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
       updated:  0,
       failed:   pacEntitiesFailed   + pacRelsFailed,
       estimatedMb: 0,
+      fatal_error: msg, // FIX-727: standalone entrypoint exits 1 on this
     };
   }
 }
@@ -1746,7 +1996,17 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
 
 if (require.main === module) {
   runFecBulkPipeline()
-    .then(() => { setTimeout(() => process.exit(0), 500); })
+    .then((result) => {
+      // FIX-727: a caught fatal (failSync fired) must not exit 0 — the GHA step
+      // (fec-backfill.yml / nightly fec-phase) would show a failed run green.
+      // Keep the graceful 500ms cleanup delay either way.
+      if (result.fatal_error) {
+        console.error(`Pipeline failed (fatal): ${result.fatal_error}`);
+        setTimeout(() => process.exit(1), 500);
+      } else {
+        setTimeout(() => process.exit(0), 500);
+      }
+    })
     .catch((err) => {
       console.error("Pipeline failed:", err);
       setTimeout(() => process.exit(1), 500);

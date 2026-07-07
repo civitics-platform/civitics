@@ -12,7 +12,8 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildUpsertStatement } from "./direct-pg-upsert";
+import type { Client } from "pg";
+import { buildUpsertStatement, bulkUpsert } from "./direct-pg-upsert";
 
 const DONOR_COLUMNS = [
   "canonical_name",
@@ -146,4 +147,99 @@ test("rejects zero rows / empty columns", () => {
       }),
     /columns is empty/,
   );
+});
+
+// ---------------------------------------------------------------------------
+// FIX-754 — resume cursor support (startRowOffset + onChunkProcessed)
+// ---------------------------------------------------------------------------
+
+/** Fake pg client that records the first bind param of each query. */
+function fakeClient(): { client: Client; firstParams: unknown[] } {
+  const firstParams: unknown[] = [];
+  const client = {
+    query: async (_sql: string, params: unknown[]) => {
+      firstParams.push(params[0]);
+      return { rows: [] };
+    },
+  } as unknown as Client;
+  return { client, firstParams };
+}
+
+test("FIX-754 startRowOffset skips already-committed rows and reports the delta", async () => {
+  const { client, firstParams } = fakeClient();
+  const rows = Array.from({ length: 10 }, (_, i) => [`row-${i}`]);
+
+  const res = await bulkUpsert(client, {
+    table: "t",
+    columns: ["a"],
+    conflictColumns: ["a"],
+    rows,
+    chunkSize: 3,
+    startRowOffset: 6,
+  });
+
+  assert.equal(res.upserted, 4, "only rows 6..9 processed this run");
+  assert.deepEqual(firstParams, ["row-6", "row-9"], "chunks start at the offset (3+1 rows)");
+});
+
+test("FIX-754 startRowOffset clamps: negative → 0, past the end → no-op", async () => {
+  const rows = [["a"], ["b"]];
+  {
+    const { client } = fakeClient();
+    const res = await bulkUpsert(client, {
+      table: "t", columns: ["a"], conflictColumns: ["a"], rows, startRowOffset: -5,
+    });
+    assert.equal(res.upserted, 2);
+  }
+  {
+    const { client, firstParams } = fakeClient();
+    const res = await bulkUpsert(client, {
+      table: "t", columns: ["a"], conflictColumns: ["a"], rows, startRowOffset: 99,
+    });
+    assert.equal(res.upserted, 0, "everything already committed");
+    assert.equal(firstParams.length, 0, "no query issued");
+  }
+});
+
+test("FIX-754 onChunkProcessed is awaited with the absolute row offset after every chunk", async () => {
+  const { client } = fakeClient();
+  const rows = Array.from({ length: 10 }, (_, i) => [i]);
+  const offsets: number[] = [];
+
+  await bulkUpsert(client, {
+    table: "t",
+    columns: ["a"],
+    conflictColumns: ["a"],
+    rows,
+    chunkSize: 4,
+    startRowOffset: 4,
+    onChunkProcessed: async (n) => { offsets.push(n); },
+  });
+
+  assert.deepEqual(offsets, [8, 10], "absolute offsets, resumed from 4");
+});
+
+test("FIX-754 onChunkProcessed still fires when a chunk fails (cursor matches live accounting)", async () => {
+  let call = 0;
+  const client = {
+    query: async () => {
+      call++;
+      if (call === 1) throw new Error("boom");
+      return { rows: [] };
+    },
+  } as unknown as Client;
+
+  const offsets: number[] = [];
+  const res = await bulkUpsert(client, {
+    table: "t",
+    columns: ["a"],
+    conflictColumns: ["a"],
+    rows: Array.from({ length: 6 }, (_, i) => [i]),
+    chunkSize: 3,
+    onChunkProcessed: (n) => { offsets.push(n); },
+  });
+
+  assert.equal(res.failed, 3, "first chunk counted failed");
+  assert.equal(res.upserted, 3, "second chunk landed");
+  assert.deepEqual(offsets, [3, 6], "cursor advances past the failed chunk — it is not retried on resume");
 });

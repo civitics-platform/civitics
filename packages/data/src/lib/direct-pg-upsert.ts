@@ -133,6 +133,15 @@ export interface BulkUpsertSpec {
   rows: unknown[][];
   /** Override the default chunk size. */
   chunkSize?: number;
+  /** FIX-754: absolute row offset to start from — rows before it were already
+   *  committed by a prior (killed) run. Clamped to [0, rows.length]. */
+  startRowOffset?: number;
+  /** FIX-754: awaited after every chunk attempt with the absolute row offset
+   *  now processed (success and failure alike — a failed chunk is counted and
+   *  not retried on resume, matching the live-run accounting). The hook must
+   *  swallow its own errors; a cursor-persistence hiccup must not fail the
+   *  upsert. */
+  onChunkProcessed?: (processedRows: number) => Promise<void> | void;
 }
 
 export interface BulkUpsertResult {
@@ -212,7 +221,16 @@ export async function bulkUpsert(client: Client, spec: BulkUpsertSpec): Promise<
   let failed = 0;
   const returned: Record<string, unknown>[] = [];
 
-  for (let i = 0; i < spec.rows.length; i += chunkSize) {
+  // FIX-754: resume support. `upserted`/`failed`/`returned` cover only the rows
+  // processed THIS run — rows before the offset already landed in a prior run.
+  const startRowOffset = Math.min(Math.max(0, spec.startRowOffset ?? 0), spec.rows.length);
+  if (startRowOffset > 0) {
+    console.log(
+      `    ${label} resuming at row ${startRowOffset.toLocaleString()}/${spec.rows.length.toLocaleString()} (FIX-754)`,
+    );
+  }
+
+  for (let i = startRowOffset; i < spec.rows.length; i += chunkSize) {
     const chunk = spec.rows.slice(i, i + chunkSize);
     if (chunk.length === 0) continue;
 
@@ -247,6 +265,8 @@ export async function bulkUpsert(client: Client, spec: BulkUpsertSpec): Promise<
       );
       failed += chunk.length;
     }
+
+    if (spec.onChunkProcessed) await spec.onChunkProcessed(i + chunk.length);
   }
 
   return { upserted, failed, returned };

@@ -18,12 +18,46 @@
 import type { createAdminClient } from "@civitics/db";
 import { canonicalDonorName } from "./indiv";
 import { withDirectClient, bulkUpsert } from "../../lib/direct-pg-upsert";
+import { resolveResumeCursor, type StageProgress } from "./run-state";
 import { retryWithBackoff } from "../utils";
 
 type Db = ReturnType<typeof createAdminClient>;
 
 const ENTITY_CHUNK = 500;
 const RELATIONSHIP_CHUNK = 500;
+
+// ---------------------------------------------------------------------------
+// FIX-754 — resume plumbing for the three cursored indiv writers
+// ---------------------------------------------------------------------------
+
+/** `progress` is the stored stage progress (cursor + recorded rows total);
+ *  `onProgress` is awaited with (processedRows, totalRows) once at stage start
+ *  and again after every chunk attempt, so the run-state cursor is durable
+ *  before the next chunk begins. Only unscoped runs pass this. */
+export interface WriterResume {
+  progress: StageProgress | undefined;
+  onProgress: (processedRows: number, totalRows: number) => Promise<void> | void;
+}
+
+/** Resolve the start offset for a cursored writer and record the stage as
+ *  in-progress. Logs the FIX-754 defensive reset when the rebuilt rows array
+ *  no longer matches the stored total. */
+async function beginCursoredStage(
+  resume: WriterResume | undefined,
+  label: string,
+  totalRows: number,
+): Promise<number> {
+  if (!resume) return 0;
+  const { start, reset } = resolveResumeCursor(resume.progress, totalRows);
+  if (reset) {
+    console.warn(
+      `    [fec-resume] ${label} rebuilt rows=${totalRows.toLocaleString()} != stored total=` +
+        `${resume.progress?.total_rows?.toLocaleString() ?? "?"} — cursor reset to 0 (idempotent re-upsert)`,
+    );
+  }
+  await resume.onProgress(start, totalRows);
+  return start;
+}
 
 // ---------------------------------------------------------------------------
 // Name canonicalization
@@ -230,6 +264,8 @@ export async function upsertIndividualDonorsBatch(
   // otherwise overwrite a mixed donor's real total with just their super-PAC
   // slice; the totals rebuild re-derives the authoritative value afterward.
   skipAggregateOverwrite = false,
+  // FIX-754: checkpoint cursor for killed-run resume. Unscoped runs only.
+  resume?: WriterResume,
 ): Promise<IndividualDonorBatchResult> {
   const donorIdByFingerprint = new Map<string, string>();
 
@@ -296,6 +332,8 @@ export async function upsertIndividualDonorsBatch(
         ];
   });
 
+  const startRowOffset = await beginCursoredStage(resume, "individual-donor", rows.length);
+
   const { upserted, failed, returned } = await withDirectClient((client) =>
     bulkUpsert(client, {
       table:            "financial_entities",
@@ -305,6 +343,8 @@ export async function upsertIndividualDonorsBatch(
       jsonbColumns:     ["metadata"],
       returningColumns: ["id", "donor_fingerprint"],
       rows,
+      startRowOffset,
+      onChunkProcessed: resume ? (n) => resume.onProgress(n, rows.length) : undefined,
     }),
   );
 
@@ -491,6 +531,8 @@ export interface IndividualDonationInput {
 // PostgREST path took ~36 min and dropped ~1,500 rows to statement timeouts.
 export async function upsertIndividualDonationsBatch(
   inputs: IndividualDonationInput[],
+  // FIX-754: checkpoint cursor for killed-run resume. Unscoped runs only.
+  resume?: WriterResume,
 ): Promise<RelationshipBatchResult> {
   if (inputs.length === 0) return { upserted: 0, failed: 0 };
 
@@ -538,6 +580,8 @@ export async function upsertIndividualDonationsBatch(
     ];
   });
 
+  const startRowOffset = await beginCursoredStage(resume, "indiv-donation", rows.length);
+
   return withDirectClient((client) =>
     bulkUpsert(client, {
       table:           "financial_relationships",
@@ -546,6 +590,8 @@ export async function upsertIndividualDonationsBatch(
       conflictColumns: REL_CONFLICT,
       jsonbColumns:    ["metadata"],
       rows,
+      startRowOffset,
+      onChunkProcessed: resume ? (n) => resume.onProgress(n, rows.length) : undefined,
     }).then(({ upserted, failed }) => ({ upserted, failed })),
   );
 }
@@ -701,6 +747,8 @@ export interface IndividualToCommitteeDonationInput {
 // PostgREST path was the stage being SIGTERM'd mid-stream every Sunday.
 export async function upsertIndividualToCommitteeDonationsBatch(
   inputs: IndividualToCommitteeDonationInput[],
+  // FIX-754: checkpoint cursor for killed-run resume. Unscoped runs only.
+  resume?: WriterResume,
 ): Promise<RelationshipBatchResult> {
   if (inputs.length === 0) return { upserted: 0, failed: 0 };
 
@@ -751,6 +799,8 @@ export async function upsertIndividualToCommitteeDonationsBatch(
     ];
   });
 
+  const startRowOffset = await beginCursoredStage(resume, "indiv-to-committee", rows.length);
+
   return withDirectClient((client) =>
     bulkUpsert(client, {
       table:           "financial_relationships",
@@ -759,6 +809,57 @@ export async function upsertIndividualToCommitteeDonationsBatch(
       conflictColumns: REL_CONFLICT,
       jsonbColumns:    ["metadata"],
       rows,
+      startRowOffset,
+      onChunkProcessed: resume ? (n) => resume.onProgress(n, rows.length) : undefined,
     }).then(({ upserted, failed }) => ({ upserted, failed })),
   );
+}
+
+// ---------------------------------------------------------------------------
+// FIX-754 — resume-time id-map rebuilds
+//
+// When a resumed run finds a writer stage already complete, it must NOT re-run
+// the upsert just to recover the RETURNING id map. These batched direct-pg
+// reads rebuild the maps instead — `= ANY($1)` over the streamed keys, because
+// a PostgREST `.in()` caps out far below these sizes (~784k fingerprints).
+// A key with no matching row (e.g. its chunk failed in the prior run) is
+// simply absent from the map, matching live-run behavior downstream.
+// ---------------------------------------------------------------------------
+
+const RESUME_READ_BATCH = 10_000;
+
+export async function fetchDonorIdsByFingerprint(
+  fingerprints: string[],
+): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  if (fingerprints.length === 0) return map;
+  await withDirectClient(async (client) => {
+    for (let i = 0; i < fingerprints.length; i += RESUME_READ_BATCH) {
+      const res = await client.query(
+        `SELECT id, donor_fingerprint FROM public.financial_entities WHERE donor_fingerprint = ANY($1)`,
+        [fingerprints.slice(i, i + RESUME_READ_BATCH)],
+      );
+      for (const row of res.rows as Array<{ id: string; donor_fingerprint: string }>) {
+        map.set(row.donor_fingerprint, row.id);
+      }
+    }
+  });
+  return map;
+}
+
+export async function fetchEntityIdsByCmteId(cmteIds: string[]): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  if (cmteIds.length === 0) return map;
+  await withDirectClient(async (client) => {
+    for (let i = 0; i < cmteIds.length; i += RESUME_READ_BATCH) {
+      const res = await client.query(
+        `SELECT id, fec_committee_id FROM public.financial_entities WHERE fec_committee_id = ANY($1)`,
+        [cmteIds.slice(i, i + RESUME_READ_BATCH)],
+      );
+      for (const row of res.rows as Array<{ id: string; fec_committee_id: string }>) {
+        map.set(row.fec_committee_id, row.id);
+      }
+    }
+  });
+  return map;
 }
