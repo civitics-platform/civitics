@@ -194,11 +194,20 @@ export async function runOfficialsPipeline(
     const existingId = existingMap.get(member.bioguideId);
 
     if (existingId) {
-      // Update existing record
+      // FIX-755: omit source_ids from the UPDATE payload. `.update()` replaces
+      // the whole jsonb, and this row was matched BY source_ids->>congress_gov,
+      // so re-sending `{ congress_gov }` adds nothing while wholesale-stripping
+      // every key other writers merged in — promotion's fec_candidate_id
+      // (FIX-248) and fec_bulk's weball fec_id persist. That nightly strip made
+      // every cn{yy} ingest re-insert ~278 candidate rows for sitting members,
+      // and the next nightly re-promote them (~2h of FK rewrites, new UUIDs for
+      // most of Congress every week). Insert path below still sets it.
+      const updateData = { ...officialData };
+      delete updateData.source_ids;
       try {
         const { error } = await db
           .from("officials")
-          .update(officialData)
+          .update(updateData)
           .eq("id", existingId);
 
         if (error) {

@@ -71,6 +71,10 @@ function normName(s: string | null): string {
   return s.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
+// FIX-755: per-run promotion cap — see the step-5 comment below. ~17s/pair
+// keeps a capped run under ~8 min of the daily fec-phase budget.
+const PROMOTION_CAP = 25;
+
 export async function runCandidateToElectedPromotion(
   opts: { db: Db }
 ): Promise<PromoteCandidatesResult> {
@@ -204,11 +208,29 @@ export async function runCandidateToElectedPromotion(
     });
   }
 
-  // ── 5. Promote each detected pair over a single direct-pg connection with a
+  // ── 5. Cap, then promote each pair over a single direct-pg connection with a
   // raised SESSION statement_timeout (FIX-463). Autocommit per pair, so a data
   // error on one pair doesn't abort the rest.
+  //
+  // FIX-755: per-run promotion cap. Each promotion is ~17s of transactional FK
+  // rewrites across ~20 tables; an uncapped run promoted 278 pairs on
+  // 2026-07-05 and burned 2h04m of the fec-phase budget before fec_bulk
+  // started. A mass event now drains across nights — and loudly. Legit bursts
+  // above the cap exist (a new Congress seats ~60-100 freshmen every 2 years);
+  // anything whole-chamber-scale means a generator bug (the FIX-755 source_ids
+  // clobber was one), so investigate before assuming backlog.
+  if (pairs.length > PROMOTION_CAP) {
+    console.warn(
+      `  ⚠ promote-candidates: detected=${pairs.length} exceeds the per-run cap (${PROMOTION_CAP}) — ` +
+        `promoting ${PROMOTION_CAP} this run, deferring ${pairs.length - PROMOTION_CAP} to future nights (FIX-755)`,
+    );
+  }
+  const toPromote = [...pairs]
+    .sort((a, b) => a.fullName.localeCompare(b.fullName)) // deterministic drain order across nights
+    .slice(0, PROMOTION_CAP);
+
   const outcomes = await promoteCandidatesDirect(
-    pairs.map((p) => ({ electedId: p.electedId, candidateId: p.candidateId })),
+    toPromote.map((p) => ({ electedId: p.electedId, candidateId: p.candidateId })),
   );
   const pairByElected = new Map(pairs.map((p) => [p.electedId, p]));
   for (const o of outcomes) {
@@ -239,8 +261,10 @@ export async function runCandidateToElectedPromotion(
     );
   }
 
+  const deferred = pairs.length - toPromote.length;
   console.log(
-    `  promote-candidates: detected=${out.pairsDetected} promoted=${out.promoted} failed=${out.failed}`
+    `  promote-candidates: detected=${out.pairsDetected} promoted=${out.promoted} failed=${out.failed}` +
+      (deferred > 0 ? ` deferred=${deferred} (cap ${PROMOTION_CAP}, FIX-755)` : "")
   );
   return out;
 }
