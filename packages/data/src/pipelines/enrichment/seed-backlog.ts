@@ -80,6 +80,9 @@ async function taggedEntityIds(
         .eq("entity_type", entityType)
         .eq("generated_by", "ai")
         .eq("tag_category", "topic")
+        // FIX-760: stable unique order — unordered .range() pagination can
+        // skip/duplicate rows as page boundaries shift between queries.
+        .order("id")
         .range(from, to),
   );
   return new Set(rows.map((r) => r.entity_id));
@@ -95,6 +98,7 @@ async function industryTaggedFinancialEntityIds(db: Db): Promise<Set<string>> {
         .select("entity_id")
         .eq("entity_type", "financial_entity")
         .eq("tag_category", "industry")
+        .order("id") // FIX-760
         .range(from, to),
   );
   return new Set(rows.map((r) => r.entity_id));
@@ -113,6 +117,7 @@ async function summarizedEntityIds(
         .select("entity_id")
         .eq("entity_type", entityType)
         .eq("summary_type", summaryType)
+        .order("id") // FIX-760
         .range(from, to),
   );
   return new Set(rows.map((r) => r.entity_id));
@@ -140,6 +145,7 @@ async function fetchAllProposals(db: Db): Promise<ProposalRow[]> {
       .select("id, title, summary_plain, type, metadata, jurisdiction_id, updated_at")
       .not("title", "ilike", "On %")
       .filter("title", "not.ilike", "% v. %")
+      .order("id") // FIX-760
       .range(from, to),
   );
 }
@@ -164,6 +170,7 @@ async function fetchAllActiveOfficials(db: Db): Promise<OfficialRow[]> {
       .from("officials")
       .select("id, full_name, role_title, party, metadata, jurisdiction_id, updated_at")
       .eq("is_active", true)
+      .order("id") // FIX-760
       .range(from, to),
   );
 }
@@ -191,6 +198,7 @@ async function fetchQueueSnapshot(
         .select("entity_id, status, retry_count")
         .eq("entity_type", entityType)
         .eq("task_type", taskType)
+        .order("id") // FIX-760
         .range(from, to),
   );
   const out: QueueSnapshot = new Map();
@@ -448,6 +456,7 @@ async function main(): Promise<void> {
       let q = db
         .from("financial_entities")
         .select("id, display_name, entity_type, total_donated_cents, updated_at")
+        .order("id") // FIX-760
         .range(from, to);
       if (PACS_ONLY) q = q.in("entity_type", ["pac", "party_committee"]);
       return q;

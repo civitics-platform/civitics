@@ -104,6 +104,9 @@ export async function runCandidateToElectedPromotion(
         .select("id, full_name, role_title, source_ids, jurisdictions(short_name)")
         .filter("source_ids->>congress_gov", "not.is", null)
         .eq("is_active", true)
+        // FIX-760: stable unique order — unordered .range() pagination can
+        // skip/duplicate rows as page boundaries shift between queries.
+        .order("id")
         .range(offset, offset + PAGE - 1);
       if (error) throw new Error(`promote-candidates: elected load: ${error.message}`);
       const rows = (data ?? []) as unknown as Array<{
@@ -147,6 +150,8 @@ export async function runCandidateToElectedPromotion(
         .select("id, full_name, role_title, metadata" as any)
         .filter("tier", "eq", "candidate")
         .filter("source_ids->>fec_candidate_id", "not.is", null)
+        // FIX-760: stable unique order (see elected load above).
+        .order("id")
         .range(offset, offset + PAGE - 1);
       if (error) throw new Error(`promote-candidates: candidate load: ${error.message}`);
       const rows = (data ?? []) as unknown as Array<{

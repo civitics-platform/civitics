@@ -152,6 +152,9 @@ async function loadExistingCandidateNames(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .select("id, first_name, last_name, full_name, source_ids, tier" as any)
       .eq("tier", "candidate")
+      // FIX-760: stable unique order — unordered .range() pagination can
+      // skip/duplicate rows as page boundaries shift between queries.
+      .order("id")
       .range(offset, offset + PAGE - 1);
     if (error) throw new Error(`loadExistingCandidateNames: ${error.message}`);
     const rows = (data ?? []) as unknown as Array<{
@@ -401,6 +404,8 @@ export async function loadOfficialsByFecIds(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .select("id, tier, role_title, source_ids" as any)
       .or("source_ids->>fec_candidate_id.not.is.null,source_ids->>fec_id.not.is.null")
+      // FIX-760: stable unique order (see loadExistingCandidateNames).
+      .order("id")
       .range(offset, offset + PAGE - 1);
     if (error) throw new Error(`loadOfficialsByFecIds: ${error.message}`);
     const rows = (data ?? []) as unknown as Array<{

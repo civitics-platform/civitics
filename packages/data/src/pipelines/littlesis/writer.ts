@@ -55,7 +55,9 @@ export async function preloadKnownLittleSisIds(db: Db): Promise<Map<number, Anch
         from: (t: string) => {
           select: (cols: string) => {
             eq: (col: string, v: string) => {
-              range: (from: number, to: number) => PromiseLike<ReadResult<RefRow>>;
+              order: (col: string) => {
+                range: (from: number, to: number) => PromiseLike<ReadResult<RefRow>>;
+              };
             };
           };
         };
@@ -63,6 +65,9 @@ export async function preloadKnownLittleSisIds(db: Db): Promise<Map<number, Anch
         .from("external_source_refs")
         .select("external_id, entity_type, entity_id, metadata")
         .eq("source", "littlesis")
+        // FIX-760: stable unique order — unordered .range() pagination can
+        // skip/duplicate rows as page boundaries shift between queries.
+        .order("id")
         .range(from, to),
     { pageSize: KNOWN_LOAD_PAGE },
   );

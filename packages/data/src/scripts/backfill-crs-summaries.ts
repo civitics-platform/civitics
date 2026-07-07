@@ -152,6 +152,7 @@ async function main(): Promise<void> {
       .select("entity_id, external_id")
       .eq("source", "congress_gov")
       .eq("entity_type", "proposal")
+      .order("id") // FIX-760: stable unique order for .range() pagination
       .range(from, from + 999);
     if (error) {
       console.error(`external_source_refs page ${from}: ${error.message}`);

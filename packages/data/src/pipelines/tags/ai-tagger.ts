@@ -624,13 +624,15 @@ export async function runAiTagger(options?: {
       // Paginate the full id sets — proposals (~73k) and the topic-tag rows both
       // exceed the 1,000-row cap, so the prior .limit(2000)/unbounded loads
       // truncated and the untagged estimate undercounted (FIX-430).
+      // FIX-760: .order("id") on every builder — unordered .range() pagination
+      // can skip/duplicate rows as page boundaries shift between queries.
       const [allProposals, taggedProposals, allOfficials, taggedOfficials] = await Promise.all([
-        fetchDistinctIds((f, t) => db.from("proposals").select("id").range(f, t), "id"),
+        fetchDistinctIds((f, t) => db.from("proposals").select("id").order("id").range(f, t), "id"),
         fetchDistinctIds((f, t) => db.from("entity_tags").select("entity_id")
-          .eq("entity_type", "proposal").eq("generated_by", "ai").eq("tag_category", "topic").range(f, t), "entity_id"),
-        fetchDistinctIds((f, t) => db.from("officials").select("id").eq("is_active", true).range(f, t), "id"),
+          .eq("entity_type", "proposal").eq("generated_by", "ai").eq("tag_category", "topic").order("id").range(f, t), "entity_id"),
+        fetchDistinctIds((f, t) => db.from("officials").select("id").eq("is_active", true).order("id").range(f, t), "id"),
         fetchDistinctIds((f, t) => db.from("entity_tags").select("entity_id")
-          .eq("entity_type", "official").eq("generated_by", "ai").eq("tag_category", "topic").range(f, t), "entity_id"),
+          .eq("entity_type", "official").eq("generated_by", "ai").eq("tag_category", "topic").order("id").range(f, t), "entity_id"),
       ]);
       let untaggedProposals = 0;
       for (const id of allProposals) if (!taggedProposals.has(id)) untaggedProposals++;

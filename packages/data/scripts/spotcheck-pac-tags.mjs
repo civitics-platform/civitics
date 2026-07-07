@@ -45,7 +45,9 @@ async function fetchAll(client, table, sel, builder) {
   const out = [];
   let from = 0;
   for (;;) {
-    let q = client.from(table).select(sel).range(from, from + SIZE - 1);
+    // FIX-760: stable unique order — unordered .range() pagination can
+    // skip/duplicate rows as page boundaries shift between queries.
+    let q = client.from(table).select(sel).order("id").range(from, from + SIZE - 1);
     q = builder(q);
     const { data, error } = await q;
     if (error) { console.error(`[${table}]`, error.message); break; }

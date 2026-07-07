@@ -260,6 +260,9 @@ export async function loadOfficialsByCanonicalName(
     const { data, error } = await db
       .from("officials")
       .select("id, full_name, first_name, last_name")
+      // FIX-760: stable unique order — unordered .range() pagination can
+      // skip/duplicate rows as page boundaries shift between queries.
+      .order("id")
       .range(offset, offset + PAGE - 1);
     if (error) throw new Error(`officials load failed: ${error.message}`);
     if (!data || data.length === 0) break;

@@ -16,6 +16,7 @@
  * rebuild_entity_connections() SQL function handles donation edges.
  */
 
+import type { Client } from "pg";
 import { canonicalDonorName } from "./indiv";
 import { withDirectClient, bulkUpsert } from "../../lib/direct-pg-upsert";
 import { resolveResumeCursor, type StageProgress } from "./run-state";
@@ -842,4 +843,36 @@ export async function fetchEntityIdsByCmteId(cmteIds: string[]): Promise<Map<str
     }
   });
   return map;
+}
+
+// ---------------------------------------------------------------------------
+// FIX-759 — end-of-run FEC ID persist (officials.source_ids)
+// ---------------------------------------------------------------------------
+
+export interface NewFecIdRow {
+  officialId: string;
+  fecId:      string;
+  storageKey: "fec_id" | "fec_candidate_id";
+}
+
+/**
+ * Merge newly discovered FEC IDs into officials.source_ids SERVER-SIDE.
+ *
+ * The old inline loop wrote `{ ...o.source_ids, [storageKey]: fecId }` from
+ * the pipeline-START officials snapshot — hours stale by the end of a Sunday
+ * run — so it silently dropped any source_ids key another writer merged in
+ * mid-run (the congress nightly, promotion's fec_candidate_id merge). The
+ * `||` merge reads the row's LIVE value inside the UPDATE, so there is no
+ * lost-update window at all. Tens of rows per run — per-row statements over
+ * one direct-pg connection are fine.
+ */
+export async function persistNewFecIds(client: Client, ids: NewFecIdRow[]): Promise<void> {
+  for (const { officialId, fecId, storageKey } of ids) {
+    await client.query(
+      `UPDATE public.officials
+          SET source_ids = COALESCE(source_ids, '{}'::jsonb) || jsonb_build_object($1::text, $2::text)
+        WHERE id = $3::uuid`,
+      [storageKey, fecId, officialId],
+    );
+  }
 }

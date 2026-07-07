@@ -194,6 +194,7 @@ async function main() {
             .from(table)
             .select("primary_source")
             .not("primary_source", "is", null)
+            .order("id") // FIX-760: stable unique order for .range() pagination
             .range(offset, offset + PAGE - 1),
         `${table} page @${offset}`,
       );

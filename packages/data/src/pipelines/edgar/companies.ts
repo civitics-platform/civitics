@@ -98,6 +98,9 @@ async function preloadCikBindings(db: Db): Promise<Map<string, string>> {
       .select("external_id, entity_id")
       .eq("source", "sec_edgar")
       .eq("entity_type", "financial_entity")
+      // FIX-760: stable unique order — unordered .range() pagination can
+      // skip/duplicate rows as page boundaries shift between queries.
+      .order("id")
       .range(page * PAGE, (page + 1) * PAGE - 1);
     if (error) throw new Error(`preloadCikBindings: ${error.message}`);
     const rows = (data ?? []) as Array<{ external_id: string; entity_id: string }>;

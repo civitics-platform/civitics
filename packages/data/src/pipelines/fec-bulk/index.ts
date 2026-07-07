@@ -105,6 +105,7 @@ import {
   upsertIndependentExpendituresBatch,
   fetchDonorIdsByFingerprint,
   fetchEntityIdsByCmteId,
+  persistNewFecIds,
   type WriterResume,
   type IndividualDonationInput,
   type IndividualToCommitteeDonationInput,
@@ -158,6 +159,7 @@ import {
 } from "./candidates";
 import { seedJurisdictions, seedGoverningBodies } from "../../jurisdictions/us-states";
 import { runHeavyRebuild } from "../../lib/heavy-rebuild";
+import { withDirectClient } from "../../lib/direct-pg-upsert";
 import { errMsg } from "../utils";
 
 // ---------------------------------------------------------------------------
@@ -384,6 +386,9 @@ export async function loadOfficials(
       .from("officials")
       .select("id, full_name, first_name, last_name, role_title, source_ids, jurisdictions!jurisdiction_id(short_name)")
       .eq("is_active", true)
+      // FIX-760: stable unique order — unordered .range() pagination can
+      // skip/duplicate rows as page boundaries shift between queries.
+      .order("id")
       .range(offset, offset + PAGE - 1);
 
     if (error) throw new Error(`Could not load officials: ${error.message}`);
@@ -805,7 +810,6 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
     console.log("\n  Loading officials and building match index...");
     const officials   = await loadOfficials(db);
     const index       = buildMatchIndex(officials);
-    const officialMap = new Map(officials.map((o) => [o.id, o]));
     console.log(`    Loaded ${officials.length} active officials`);
     console.log(`    Initial FEC ID index size: ${index.byFecId.size}`);
 
@@ -1725,16 +1729,13 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
     } // end per-cycle loop
 
     // ── Persist newly discovered FEC IDs ────────────────────────────────────
+    // FIX-759: server-side jsonb merge (writer.ts persistNewFecIds), not the
+    // old client spread off the pipeline-START officials snapshot — that was a
+    // stale read-modify-write that dropped any source_ids key another writer
+    // merged in mid-run.
     if (newFecIds.length > 0) {
       console.log(`\n  Storing ${newFecIds.length} FEC ID associations across cycles...`);
-      for (const { officialId, fecId, storageKey } of newFecIds) {
-        const o = officialMap.get(officialId);
-        if (!o) continue;
-        await db
-          .from("officials")
-          .update({ source_ids: { ...o.source_ids, [storageKey]: fecId } })
-          .eq("id", officialId);
-      }
+      await withDirectClient((client) => persistNewFecIds(client, newFecIds));
     }
 
     // ── Cross-cycle entity total recompute ──────────────────────────────────
