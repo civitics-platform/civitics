@@ -141,3 +141,23 @@ export function chunk<T>(arr: T[], n: number): T[][] {
   for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n));
   return out;
 }
+
+// Supabase RPC errors come back as plain objects ({ code, message, details, hint })
+// — not Error instances — so String(err) → "[object Object]". Unwrap them so
+// catch sites get a useful message. (Lived in pipelines/index.ts pre-FIX-756;
+// shared here so fec-bulk's catch sites can use it without an import cycle.)
+export function errMsg(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (err && typeof err === "object") {
+    const obj = err as { message?: unknown; code?: unknown; details?: unknown; hint?: unknown };
+    if (typeof obj.message === "string") {
+      const parts: string[] = [obj.message];
+      if (obj.code)    parts.push(`(${String(obj.code)})`);
+      if (obj.details) parts.push(`details=${String(obj.details)}`);
+      if (obj.hint)    parts.push(`hint=${String(obj.hint)}`);
+      return parts.join(" ");
+    }
+    try { return JSON.stringify(err); } catch { return "<unserializable error>"; }
+  }
+  return String(err);
+}

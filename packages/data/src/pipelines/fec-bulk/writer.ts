@@ -6,25 +6,19 @@
  *   public.financial_relationships   (dedup via financial_relationships_donation_unique
  *                                     partial index, added in 20260423000000)
  *
- * All writes go through `upsert` with `onConflict` so a full run collapses to
- * O(chunks) round-trips instead of O(rows). Earlier revision did SELECT +
- * INSERT per row; on local Docker that was fine, but against Pro with ~100ms
- * RTT, 33k round-trips put one run at ~55 min. Batched it's under a minute.
+ * All writes go through direct-pg `bulkUpsert` (multi-row INSERT ... ON
+ * CONFLICT over one pooled connection with a raised SESSION statement_timeout)
+ * — the indiv writers moved off PostgREST in FIX-462/FIX-741; the pas2 entity/
+ * relationship and IE writers followed in FIX-756 after the 2026-07-05 nightly
+ * died in the pas2 writer under a PostgREST ~8s statement-timeout storm.
  *
  * entity_connections is NOT written here. Per L5 it's derivation-only; the
  * rebuild_entity_connections() SQL function handles donation edges.
  */
 
-import type { createAdminClient } from "@civitics/db";
 import { canonicalDonorName } from "./indiv";
 import { withDirectClient, bulkUpsert } from "../../lib/direct-pg-upsert";
 import { resolveResumeCursor, type StageProgress } from "./run-state";
-import { retryWithBackoff } from "../utils";
-
-type Db = ReturnType<typeof createAdminClient>;
-
-const ENTITY_CHUNK = 500;
-const RELATIONSHIP_CHUNK = 500;
 
 // ---------------------------------------------------------------------------
 // FIX-754 — resume plumbing for the three cursored indiv writers
@@ -131,89 +125,99 @@ export interface EntityBatchResult {
 }
 
 /**
- * Upsert every committee in one batched call per chunk.
+ * Upsert every committee in batched multi-row statements.
  *
- * Dedup via `financial_entities.fec_committee_id` UNIQUE. PostgREST returns
- * all columns we ask for from the upsert, including id, so we can build the
- * cmte→id map from a single round-trip per chunk.
+ * Dedup via `financial_entities.fec_committee_id` UNIQUE. RETURNING gives us
+ * id + fec_committee_id per row, so the cmte→id map costs no extra round-trip.
  */
+// FIX-756: direct-pg, not PostgREST (see upsertIndividualDonorsBatch / FIX-462).
+// This was one of the three writers still on the admin PostgREST path, each
+// chunk subject to the prod ~8s role/statement_timeout — the 2026-07-05 nightly
+// died fatally here-adjacent (pas2 writer) under a timeout storm while the
+// whole-chamber promotion (FIX-755) saturated the Micro.
 export async function upsertPacEntitiesBatch(
-  db: Db,
   inputs: PacEntityInput[],
   // FIX-700: on a scoped run, OMIT total_donated_cents / total_received_cents from
-  // the payload entirely. PostgREST then leaves them at the column default on
-  // insert (both are BIGINT NOT NULL DEFAULT 0) and unchanged on conflict — so a
+  // the INSERT column list entirely. They then take the column default on insert
+  // (both BIGINT NOT NULL DEFAULT 0) and stay unchanged on conflict — so a
   // partial-slice re-run can't clobber a committee's real aggregate. The totals
   // rebuild re-derives the authoritative values afterward.
   skipAggregateOverwrite = false,
 ): Promise<EntityBatchResult> {
   const entityIdByCmte = new Map<string, string>();
-  let upserted = 0;
-  const failed = 0; // FIX-686: writers now throw on chunk failure; never incremented
 
-  if (inputs.length === 0) return { entityIdByCmte, upserted, failed };
+  if (inputs.length === 0) return { entityIdByCmte, upserted: 0, failed: 0 };
 
-  const records = inputs.map((input) => {
+  // Column order must match PAC_ENTITY_COLUMNS below; metadata is jsonb.
+  // FIX-700: scoped runs use the reduced column set (aggregate columns omitted).
+  const columns = skipAggregateOverwrite ? PAC_ENTITY_COLUMNS_SCOPED : PAC_ENTITY_COLUMNS;
+  const rows = inputs.map((input) => {
     const entityType = cmteTypeToEntityType(input.cmteType);
     const displayName = (input.name || input.cmteId).trim();
-    const base = {
-      canonical_name: canonicalizeEntityName(displayName),
-      display_name: displayName,
-      entity_type: entityType,
-      fec_committee_id: input.cmteId,
-      metadata: {
-        fec_cmte_type_raw: input.cmteType,
-        fec_connected_org_nm: input.connectedOrg?.trim() || null,
-      },
+    const meta = {
+      fec_cmte_type_raw: input.cmteType,
+      fec_connected_org_nm: input.connectedOrg?.trim() || null,
     };
     return skipAggregateOverwrite
-      ? base
-      : {
-          ...base,
-          total_donated_cents: input.totalDonatedCents,
-          total_received_cents: 0,
-        };
+      ? [canonicalizeEntityName(displayName), displayName, entityType, input.cmteId, meta]
+      : [
+          canonicalizeEntityName(displayName),
+          displayName,
+          entityType,
+          input.cmteId,
+          input.totalDonatedCents,
+          0,
+          meta,
+        ];
   });
 
-  for (let i = 0; i < records.length; i += ENTITY_CHUNK) {
-    const chunk = records.slice(i, i + ENTITY_CHUNK);
+  const { upserted, failed, returned } = await withDirectClient((client) =>
+    bulkUpsert(client, {
+      table:            "financial_entities",
+      label:            "pac-entity",
+      columns,
+      conflictColumns:  ["fec_committee_id"],
+      jsonbColumns:     ["metadata"],
+      returningColumns: ["id", "fec_committee_id"],
+      rows,
+    }),
+  );
 
-    // Retry transient chunk failures (IO / autovacuum contention on Pro Small
-    // times a chunk out mid-write) with backoff, then THROW if still failing.
-    // The old path counted-failed-and-continued, which silently dropped the
-    // chunk's committees from entityIdByCmte → their donors' donations were
-    // then skipped downstream with a clean count (the 500-committee silent
-    // partial that motivated FIX-686). `failed` therefore stays 0 here or the
-    // function throws; the loud abort lets the (idempotent) run be re-tried.
-    const data = await retryWithBackoff(
-      async () => {
-        const { data, error } = await db
-          .from("financial_entities")
-          .upsert(chunk, { onConflict: "fec_committee_id" })
-          .select("id, fec_committee_id");
-        if (error) throw new Error(error.message);
-        return data;
-      },
-      {
-        onRetry: (attempt, err) =>
-          console.warn(
-            `    financial_entities chunk ${i}-${i + chunk.length} attempt ${attempt} failed: ${err.message} — retrying`,
-          ),
-      },
-    ).catch((err: Error) => {
-      throw new Error(
-        `financial_entities chunk ${i}-${i + chunk.length} failed after retries: ${err.message}`,
-      );
-    });
+  // FIX-686 loud-abort contract, preserved across the FIX-756 rewrite:
+  // bulkUpsert counts a failed chunk and continues, but a silently dropped
+  // entity chunk means missing entityIdByCmte entries → those committees'
+  // donations are skipped downstream with a clean count (the 500-committee
+  // silent partial that motivated FIX-686). THROW so the (idempotent) run
+  // is re-tried instead.
+  if (failed > 0) {
+    throw new Error(
+      `pac-entity upsert: ${failed}/${rows.length} rows failed after direct-pg chunking — aborting (FIX-686)`,
+    );
+  }
 
-    for (const row of (data ?? []) as Array<{ id: string; fec_committee_id: string | null }>) {
-      if (row.fec_committee_id) entityIdByCmte.set(row.fec_committee_id, row.id);
-    }
-    upserted += chunk.length;
+  for (const row of returned as Array<{ id: string; fec_committee_id: string | null }>) {
+    if (row.fec_committee_id) entityIdByCmte.set(row.fec_committee_id, row.id);
   }
 
   return { entityIdByCmte, upserted, failed };
 }
+
+const PAC_ENTITY_COLUMNS: string[] = [
+  "canonical_name",
+  "display_name",
+  "entity_type",
+  "fec_committee_id",
+  "total_donated_cents",
+  "total_received_cents",
+  "metadata",
+];
+
+// FIX-700: scoped-run column set — aggregate columns dropped so a partial-slice
+// re-run leaves existing committee totals intact (insert → DEFAULT 0, conflict →
+// unchanged). Row builder above must emit tuples aligned to this order.
+const PAC_ENTITY_COLUMNS_SCOPED: string[] = PAC_ENTITY_COLUMNS.filter(
+  (c) => c !== "total_donated_cents" && c !== "total_received_cents",
+);
 
 // ---------------------------------------------------------------------------
 // Batched individual-donor entity upsert (FIX-181)
@@ -413,18 +417,16 @@ export interface RelationshipBatchResult {
 /**
  * Upsert every donation aggregate in batched calls.
  *
- * Dedup via the partial unique index `financial_relationships_donation_unique`
- * on (relationship_type, from_id, to_id, cycle_year) WHERE relationship_type
- * = 'donation' AND cycle_year IS NOT NULL. Migration 20260423000000 adds it.
+ * Dedup via the full unique index on (relationship_type, from_id, to_id,
+ * cycle_year) — the same arbiter the indiv relationship writers use.
  */
+// FIX-756: direct-pg (see upsertPacEntitiesBatch). This is the writer the
+// 2026-07-05 nightly died in — cycle-2024 pas2, PostgREST statement-timeout
+// storm, retries exhausted.
 export async function upsertDonationRelationshipsBatch(
-  db: Db,
   inputs: DonationRelationshipInput[],
 ): Promise<RelationshipBatchResult> {
-  let upserted = 0;
-  const failed = 0; // FIX-686: writers now throw on chunk failure; never incremented
-
-  if (inputs.length === 0) return { upserted, failed };
+  if (inputs.length === 0) return { upserted: 0, failed: 0 };
 
   // Client-side dedupe by (from_id, to_id, cycle_year). Duplicates arise when
   // one official holds multiple FEC candidate IDs (a House fec_candidate_id
@@ -448,60 +450,50 @@ export async function upsertDonationRelationshipsBatch(
     }
   }
 
-  const records = [...merged.values()].map((input) => {
-    // occurred_at fallback — the CHECK constraint requires exactly one of
-    // (occurred_at) / (started_at). When FEC txn date is blank we pin to
-    // Jan 1 of the cycle so the row validates.
+  // Column order must match REL_COLUMNS. occurred_at fallback — the CHECK
+  // constraint requires exactly one of (occurred_at) / (started_at). When FEC
+  // txn date is blank we pin to Jan 1 of the cycle so the row validates.
+  const rows = [...merged.values()].map((input) => {
     const occurredAt = input.occurredAt ?? `${input.cycleYear}-01-01`;
-    return {
-      relationship_type: "donation" as const,
-      from_type: "financial_entity",
-      from_id: input.fromEntityId,
-      to_type: "official",
-      to_id: input.toOfficialId,
-      amount_cents: input.amountCents,
-      occurred_at: occurredAt,
-      started_at: null,
-      ended_at: null,
-      cycle_year: input.cycleYear,
-      source_url: `https://www.fec.gov/data/committee/${input.cmteId}/`,
-      metadata: {
+    return [
+      "donation",
+      "financial_entity",
+      input.fromEntityId,
+      "official",
+      input.toOfficialId,
+      input.amountCents,
+      occurredAt,
+      null,
+      null,
+      input.cycleYear,
+      `https://www.fec.gov/data/committee/${input.cmteId}/`,
+      {
         fec_committee_id: input.cmteId,
         tx_count: input.txCount,
         source: "fec_bulk_pac",
         aggregated: true,
       },
-    };
+    ];
   });
 
-  for (let i = 0; i < records.length; i += RELATIONSHIP_CHUNK) {
-    const chunk = records.slice(i, i + RELATIONSHIP_CHUNK);
+  const { upserted, failed } = await withDirectClient((client) =>
+    bulkUpsert(client, {
+      table:           "financial_relationships",
+      label:           "pac-donation",
+      columns:         REL_COLUMNS,
+      conflictColumns: REL_CONFLICT,
+      jsonbColumns:    ["metadata"],
+      rows,
+    }),
+  );
 
-    // Retry transient chunk failures with backoff, then THROW (FIX-686). Same
-    // silent-partial bug class as upsertPacEntitiesBatch: count-failed-and-
-    // continue silently dropped donation rows. `failed` stays 0 or we throw.
-    await retryWithBackoff(
-      async () => {
-        const { error } = await db
-          .from("financial_relationships")
-          .upsert(chunk, {
-            onConflict: "relationship_type,from_id,to_id,cycle_year",
-          });
-        if (error) throw new Error(error.message);
-      },
-      {
-        onRetry: (attempt, err) =>
-          console.warn(
-            `    financial_relationships chunk ${i}-${i + chunk.length} attempt ${attempt} failed: ${err.message} — retrying`,
-          ),
-      },
-    ).catch((err: Error) => {
-      throw new Error(
-        `financial_relationships chunk ${i}-${i + chunk.length} failed after retries: ${err.message}`,
-      );
-    });
-
-    upserted += chunk.length;
+  // FIX-686 loud-abort contract (same silent-partial bug class as
+  // upsertPacEntitiesBatch): a dropped chunk silently loses donation rows
+  // with a clean count. THROW so the (idempotent) run is re-tried.
+  if (failed > 0) {
+    throw new Error(
+      `pac-donation upsert: ${failed}/${rows.length} rows failed after direct-pg chunking — aborting (FIX-686)`,
+    );
   }
 
   return { upserted, failed };
@@ -630,14 +622,12 @@ export interface IndependentExpenditureInput {
   txCount:        number;
 }
 
+// FIX-756: direct-pg (see upsertPacEntitiesBatch) — last of the three
+// PostgREST-exposed fec-bulk writers.
 export async function upsertIndependentExpendituresBatch(
-  db:     Db,
   inputs: IndependentExpenditureInput[],
 ): Promise<RelationshipBatchResult> {
-  let upserted = 0;
-  const failed = 0; // FIX-686: throws on chunk failure; never incremented
-
-  if (inputs.length === 0) return { upserted, failed };
+  if (inputs.length === 0) return { upserted: 0, failed: 0 };
 
   // Client-side dedup. Two aggregations for the same (cmte, cand, cycle,
   // S/O) shouldn't arise from a single pipeline run because we aggregate
@@ -660,60 +650,50 @@ export async function upsertIndependentExpendituresBatch(
     }
   }
 
-  const records = [...merged.values()].map((input) => {
+  // Column order must match REL_COLUMNS. relationship_type carries the S/O
+  // direction (ie_support / ie_oppose) — the existing 4-col arbiter naturally
+  // keeps support and oppose as distinct rows.
+  const rows = [...merged.values()].map((input) => {
     const occurredAt = input.occurredAt ?? `${input.cycleYear}-01-01`;
-    const relationshipType =
-      input.supportOppose === "S" ? ("ie_support" as const) : ("ie_oppose" as const);
-    return {
-      relationship_type: relationshipType,
-      from_type:         "financial_entity",
-      from_id:           input.fromEntityId,
-      to_type:           "official",
-      to_id:             input.toOfficialId,
-      amount_cents:      input.amountCents,
-      occurred_at:       occurredAt,
-      started_at:        null,
-      ended_at:          null,
-      cycle_year:        input.cycleYear,
-      source_url:        `https://www.fec.gov/data/committee/${input.spendingCmteId}/`,
-      metadata: {
+    return [
+      input.supportOppose === "S" ? "ie_support" : "ie_oppose",
+      "financial_entity",
+      input.fromEntityId,
+      "official",
+      input.toOfficialId,
+      input.amountCents,
+      occurredAt,
+      null,
+      null,
+      input.cycleYear,
+      `https://www.fec.gov/data/committee/${input.spendingCmteId}/`,
+      {
         fec_committee_id: input.spendingCmteId,
         support_oppose:   input.supportOppose, // raw 'S' or 'O' from FEC
         tx_count:         input.txCount,
         source:           "fec_bulk_ie",
         aggregated:       true,
       },
-    };
+    ];
   });
 
-  for (let i = 0; i < records.length; i += RELATIONSHIP_CHUNK) {
-    const chunk = records.slice(i, i + RELATIONSHIP_CHUNK);
+  const { upserted, failed } = await withDirectClient((client) =>
+    bulkUpsert(client, {
+      table:           "financial_relationships",
+      label:           "indep-exp",
+      columns:         REL_COLUMNS,
+      conflictColumns: REL_CONFLICT,
+      jsonbColumns:    ["metadata"],
+      rows,
+    }),
+  );
 
-    // Retry transient chunk failures with backoff, then THROW (FIX-686). Same
-    // silent-partial bug class as upsertPacEntitiesBatch. `failed` stays 0 or
-    // we throw — the (idempotent) cycle can then be re-run.
-    await retryWithBackoff(
-      async () => {
-        const { error } = await db
-          .from("financial_relationships")
-          .upsert(chunk, {
-            onConflict: "relationship_type,from_id,to_id,cycle_year",
-          });
-        if (error) throw new Error(error.message);
-      },
-      {
-        onRetry: (attempt, err) =>
-          console.warn(
-            `    indep-exp chunk ${i}-${i + chunk.length} attempt ${attempt} failed: ${err.message} — retrying`,
-          ),
-      },
-    ).catch((err: Error) => {
-      throw new Error(
-        `indep-exp chunk ${i}-${i + chunk.length} failed after retries: ${err.message}`,
-      );
-    });
-
-    upserted += chunk.length;
+  // FIX-686 loud-abort contract — same silent-partial bug class as the other
+  // writers. THROW so the (idempotent) cycle is re-run.
+  if (failed > 0) {
+    throw new Error(
+      `indep-exp upsert: ${failed}/${rows.length} rows failed after direct-pg chunking — aborting (FIX-686)`,
+    );
   }
 
   return { upserted, failed };

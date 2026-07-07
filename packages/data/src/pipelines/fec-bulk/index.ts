@@ -158,6 +158,7 @@ import {
 } from "./candidates";
 import { seedJurisdictions, seedGoverningBodies } from "../../jurisdictions/us-states";
 import { runHeavyRebuild } from "../../lib/heavy-rebuild";
+import { errMsg } from "../utils";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -838,7 +839,7 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
           console.log(`    ✓ ${f.name} (${sizeMb} MB, source=${res.source})`);
           if (res.r2UploadPromise) cycleR2Uploads.push(res.r2UploadPromise);
         } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err);
+          const msg = errMsg(err);
           console.warn(`    ✗ ${f.name} unavailable: ${msg} — skipping cycle ${CYCLE}`);
           downloadFailed = true;
           break;
@@ -867,7 +868,7 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
         console.log(`    ✓ ${cnZipName} (${sizeMb} MB, source=${res.source})`);
         if (res.r2UploadPromise) cycleR2Uploads.push(res.r2UploadPromise);
       } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
+        const msg = errMsg(err);
         console.warn(`    ✗ ${cnZipName} unavailable: ${msg} — continuing without candidate ingest for ${CYCLE}`);
         cnDownloadOk = false;
       }
@@ -1035,7 +1036,7 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
         });
       }
 
-      const entityResult = await upsertPacEntitiesBatch(db, entityInputs);
+      const entityResult = await upsertPacEntitiesBatch(entityInputs);
       pacEntitiesUpserted += entityResult.upserted;
       pacEntitiesFailed   += entityResult.failed;
       for (const [cmteId, id] of entityResult.entityIdByCmte.entries()) {
@@ -1060,7 +1061,7 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
         });
       }
 
-      const relResult = await upsertDonationRelationshipsBatch(db, relInputs);
+      const relResult = await upsertDonationRelationshipsBatch(relInputs);
       pacRelsUpserted += relResult.upserted;
       pacRelsFailed   += relResult.failed;
       console.log(`    Relationships — upserted: ${relResult.upserted}  failed: ${relResult.failed}`);
@@ -1191,7 +1192,7 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
             console.log(`    ✓ ${cclName} (${sizeMb} MB, source=${res.source})`);
             if (res.r2UploadPromise) cycleR2Uploads.push(res.r2UploadPromise);
           } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
+            const msg = errMsg(err);
             console.warn(`    ✗ ${cclName} unavailable: ${msg} — skipping indiv stage`);
             indivFailed = true;
           }
@@ -1208,7 +1209,7 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
             indivFecHead = res.fecHead ?? headProbe;
             if (res.r2UploadPromise) cycleR2Uploads.push(res.r2UploadPromise);
           } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
+            const msg = errMsg(err);
             console.warn(`    ✗ ${indivName} unavailable: ${msg} — skipping indiv stage`);
             indivFailed = true;
           }
@@ -1497,7 +1498,7 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
                 } else if (stageOn("recipient-entities")) {
                   if (cmteEntityInputs.length > 0) {
                     console.log(`    Pre-upserting ${cmteEntityInputs.length.toLocaleString()} non-candidate-committee recipient entities...`);
-                    const cmteEntityResult = await upsertPacEntitiesBatch(db, cmteEntityInputs, isScoped);
+                    const cmteEntityResult = await upsertPacEntitiesBatch(cmteEntityInputs, isScoped);
                     pacEntitiesUpserted += cmteEntityResult.upserted;
                     pacEntitiesFailed   += cmteEntityResult.failed;
                     for (const [cmteId, id] of cmteEntityResult.entityIdByCmte.entries()) {
@@ -1564,7 +1565,7 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
               }
             }
           } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
+            const msg = errMsg(err);
             console.warn(`    indiv stage failed: ${msg} — continuing without indiv data for cycle ${CYCLE}`);
             indivCyclesSkipped++;
           }
@@ -1602,7 +1603,7 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
           totalFileMb += parseFloat(sizeMb);
           if (res.r2UploadPromise) cycleR2Uploads.push(res.r2UploadPromise);
         } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err);
+          const msg = errMsg(err);
           console.warn(`    ✗ ${ieName} unavailable: ${msg} — skipping IE stage for cycle ${CYCLE}`);
           ieFailed = true;
         }
@@ -1647,7 +1648,7 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
               ieSpendersOrphaned += orphanCount;
 
               if (newSpenderInputs.length > 0) {
-                const spenderResult = await upsertPacEntitiesBatch(db, newSpenderInputs);
+                const spenderResult = await upsertPacEntitiesBatch(newSpenderInputs);
                 pacEntitiesUpserted += spenderResult.upserted;
                 pacEntitiesFailed   += spenderResult.failed;
                 ieSpendersUpserted  += spenderResult.upserted;
@@ -1679,7 +1680,7 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
             }
 
             console.log(`    Upserting ${ieInputs.length.toLocaleString()} IE relationships (S: ${ieSupportRows}, O: ${ieOpposeRows})...`);
-            const ieWriteResult = await upsertIndependentExpendituresBatch(db, ieInputs);
+            const ieWriteResult = await upsertIndependentExpendituresBatch(ieInputs);
             ieRelsUpserted += ieWriteResult.upserted;
             ieRelsFailed   += ieWriteResult.failed;
             console.log(`    IE relationships — upserted: ${ieWriteResult.upserted}  failed: ${ieWriteResult.failed}`);
@@ -1693,7 +1694,7 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
               await saveRunState(db, cycleActiveState);
             }
           } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
+            const msg = errMsg(err);
             console.warn(`    IE stage failed: ${msg} — continuing without IE data for cycle ${CYCLE}`);
             ieCyclesSkipped++;
           }
@@ -1753,7 +1754,7 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
         totalDonatedCents: totalCents,
       });
     }
-    const finalResult = await upsertPacEntitiesBatch(db, finalEntityInputs);
+    const finalResult = await upsertPacEntitiesBatch(finalEntityInputs);
     console.log(`    Cross-cycle entity totals — upserted: ${finalResult.upserted}  failed: ${finalResult.failed}`);
 
     // ── FIX-700 stage: totals — end-of-run authoritative aggregate recomputes ─
@@ -1795,11 +1796,7 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
       await runHeavyRebuild("rebuild_financial_entity_ie_totals");
       console.log("    ✓ IE support/oppose totals recomputed from financial_relationships");
     } catch (rebuildErr) {
-      console.warn(
-        `    rebuild_financial_entity_ie_totals failed: ${
-          rebuildErr instanceof Error ? rebuildErr.message : String(rebuildErr)
-        }`,
-      );
+      console.warn(`    rebuild_financial_entity_ie_totals failed: ${errMsg(rebuildErr)}`);
     }
 
     // total_received_cents (FIX-675) is likewise handled by the FIX-702/726
@@ -1831,7 +1828,7 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
         watermarkPersisted = true;
         console.log(`  Persisted indiv watermark for cycles: ${Object.keys(indivWatermark).join(", ")}`);
       } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
+        const msg = errMsg(err);
         console.warn(`  Failed to persist indiv watermark: ${msg}`);
       }
     }
@@ -1976,7 +1973,7 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
     return result;
 
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+    const msg = errMsg(err);
     console.error("  FEC bulk pipeline fatal error:", msg);
     deleteTmpDir(); // best-effort cleanup even on error
     await failSync(logId, msg);
