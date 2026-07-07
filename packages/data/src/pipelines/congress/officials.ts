@@ -202,8 +202,16 @@ export async function runOfficialsPipeline(
       // every cn{yy} ingest re-insert ~278 candidate rows for sitting members,
       // and the next nightly re-promote them (~2h of FK rewrites, new UUIDs for
       // most of Congress every week). Insert path below still sets it.
+      //
+      // FIX-758: same rule for metadata. This pipeline owns NO metadata keys
+      // (the payload is literally `{}`), yet sending it wiped keys other
+      // writers merged in — link_federal_reps_to_districts()'s
+      // district_jurisdiction_id (FIX-217) vanished for all 437 House reps
+      // nightly. Any jsonb column an update doesn't own is omitted, never
+      // replaced. Insert path below still sets both.
       const updateData = { ...officialData };
       delete updateData.source_ids;
+      delete updateData.metadata;
       try {
         const { error } = await db
           .from("officials")
