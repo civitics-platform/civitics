@@ -928,3 +928,7 @@
 2026-07-06 | FIX-755 | 02eb5e7b | local-only | fix(congress): stop the nightly source_ids clobber that regenerated whole-chamber promotions (FIX-755)
 2026-07-06 | FIX-756 | 843b780a | local-only | perf(fec-bulk): route pas2 entity/relationship + IE writers through direct-pg (FIX-756)
 2026-07-06 | FIX-757 | 2dd25600 | local-only | fix(nightly): exit 1 when a phase completes partial (any results.errors) (FIX-757)
+2026-07-06 | FIX-758 | 42ecba1a | local+prod | fix(congress): stop the nightly metadata clobber that wiped district_jurisdiction_id for all House reps (FIX-758)
+2026-07-06 | FIX-759 | 14a37b60 | local-only | fix(fec-bulk): server-side source_ids merge + stable-order pagination sweep (FIX-759, FIX-760)
+2026-07-06 | FIX-760 | 14a37b60 | local-only | fix(fec-bulk): server-side source_ids merge + stable-order pagination sweep (FIX-759, FIX-760)
+2026-07-06 | FIX-761 | d437552b | local+prod | fix(congress): extend promote_candidate_to_elected FK rewrite to all post-FIX-463 official surfaces (FIX-761)
