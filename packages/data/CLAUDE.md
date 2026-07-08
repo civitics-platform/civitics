@@ -156,10 +156,11 @@ Override default tax years via `IRS990_TAX_YEARS=2022,2023,2024`. Default is `[C
   - **Contracts** (procurement) — `data:usaspending-bulk`
   - **Assistance** (grants 02/03/04/05/11) — `data:usaspending-bulk-assistance` (FIX-114). Loans/insurance/direct payments are skipped because the `financial_relationships` enum has no row for them.
 - First run per category: Full file (`FY{year}_All_{Contracts|Assistance}_Full_{YYYYMMDD}.zip`, 300 MB–1 GB compressed)
-- Subsequent runs: Delta files since last processed date (much smaller)
-- State tracked in `packages/data/.usaspending-bulk-state.json` per-category (gitignored, not committed). Pre-FIX-114 single-shape state migrates into the `contracts` slot on first read.
+- Subsequent runs: Delta files since last completed archive date (much smaller)
+- **Each Full zip holds MULTIPLE 1,000,000-row CSV parts** (FY2026 contracts = 3, assistance = 4). `usaspending-bulk/zip.ts` `openCsvParts` enumerates every part via the central directory; the loop extracts → processes → deletes one part at a time (FIX-766). Taking only the first `.csv` was a silent ~1/N truncation latent since inception (the "exactly 1,000,000 rows read" tell). A full run is ~90–105 min / ~3M contracts + ~4M assistance rows.
+- State lives in `pipeline_state.usaspending_bulk_state` (DB, JSONB per-category — FIX-739; see `usaspending-bulk/state.ts`). Was a runner-local `.usaspending-bulk-state.json` that died with each ephemeral CI runner, so every dispatch re-ran Full and delta mode was dead in CI. Each DB holds its own state; a one-time lift migrates the legacy file's active-env slice on first run. Full runs checkpoint per completed CSV part, so a killed dispatch resumes the same archive (idempotent on `*_award_unique_key`) instead of restarting at part 1; a different archive date discards the partial.
 - No API key required
-- Update schedule: weekly via nightly orchestrator (Sunday-only block); Full file refreshes weekly, Deltas thereafter
+- Update schedule: **manual `workflow_dispatch` only** (`usaspending-bulk.yml`, FIX-740) — pulled out of the nightly enrichment phase, its own 350-min budget. The now-cheap delta path rejoining the nightly is a possible future call.
 - Force full re-run: append `-- --force` (e.g. `pnpm … data:usaspending-bulk -- --force`)
 - Underlying script accepts `--category=contracts|assistance --force` directly: `pnpm --filter @civitics/data data:usaspending-bulk -- --category=assistance --force`
 

@@ -15,8 +15,12 @@
  *   - Static files — no rate limits, no async polling
  *
  * Strategy:
- *   - First run (no prior state): Full file FY{year}_All_{Category}_Full_{YYYYMMDD}.zip
- *   - Subsequent runs: Delta files since last processed date
+ *   - First run (no prior baseline): Full file FY{year}_All_{Category}_Full_{YYYYMMDD}.zip
+ *   - Subsequent runs: Delta files since last completed archive date
+ *   - Each Full archive holds MULTIPLE 1,000,000-row CSV parts inside one zip
+ *     (FY2026 contracts = 3 parts, assistance = 4); ./zip.ts enumerates every
+ *     part and we process → delete one at a time (FIX-766). Taking only the
+ *     first part was a silent ~1/N truncation latent since inception.
  *   - Filters rows to agencies present in public.agencies (by name match)
  *   - resolveRecipients + upsertSpendingRelationshipsBatch live in ./writer.ts
  *   - Dedup key: contract_award_unique_key / assistance_award_unique_key
@@ -24,11 +28,13 @@
  *     loans, insurance, and direct payments are skipped because the
  *     financial_relationships enum has no row for them.
  *
- * State: packages/data/.usaspending-bulk-state.json (gitignored, not committed).
- *        Keyed `envs.{supabase-url-host}.{category}` (FIX-166) so local and
- *        prod runs progress independently. Legacy shapes are migrated under
- *        whichever env is active at first read; the other env starts fresh
- *        and needs one Full run before deltas resume.
+ * State: pipeline_state.usaspending_bulk_state (DB, JSONB per-category — FIX-739;
+ *        see ./state.ts). Was a runner-local .usaspending-bulk-state.json that
+ *        died with each ephemeral CI runner, so every dispatch re-ran Full and
+ *        delta mode was dead in CI. Each DB holds its own state; a one-time lift
+ *        migrates the legacy file's active-env slice on first run. Full runs
+ *        checkpoint per completed CSV part so a killed dispatch resumes the same
+ *        archive instead of restarting from part 1.
  *
  * Run standalone:
  *   pnpm --filter @civitics/data data:usaspending-bulk
@@ -42,7 +48,6 @@ import * as http     from "http";
 import * as fs       from "fs";
 import * as path     from "path";
 import * as os       from "os";
-import * as unzipper from "unzipper";
 import { parse }     from "csv-parse";
 import { createAdminClient } from "@civitics/db";
 import {
@@ -58,6 +63,19 @@ import {
 } from "./writer";
 import { withDirectClient } from "../../lib/direct-pg-upsert";
 import { canonicalizeEntityName } from "../fec-bulk/writer";
+import { openCsvParts } from "./zip";
+import {
+  loadState,
+  saveState,
+  getBaseline,
+  startFullRun,
+  isPartComplete,
+  markPartComplete,
+  completeFullRun,
+  completeDeltaRun,
+  describeState,
+  partKey,
+} from "./state";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -65,7 +83,6 @@ import { canonicalizeEntityName } from "../fec-bulk/writer";
 
 const TMP_DIR           = path.join(os.tmpdir(), "usaspending-bulk");
 const ARCHIVE_INDEX_URL = "https://files.usaspending.gov/award_data_archive/";
-const STATE_FILE        = path.join(__dirname, "../../../.usaspending-bulk-state.json");
 const BATCH_SIZE        = 1_000;   // rows per DB write batch
 
 // Assistance type codes that map cleanly to relationship_type='grant'.
@@ -110,121 +127,6 @@ const CATEGORY_CONFIGS: Record<BulkCategory, CategoryConfig> = {
     fallbackKeyColumn: "award_id_fain",
   },
 };
-
-// ---------------------------------------------------------------------------
-// State management (delta tracking, per-env per-category)
-// ---------------------------------------------------------------------------
-
-interface CategoryState {
-  /** YYYYMMDD of the latest archive file processed on the last successful run. */
-  lastArchiveDate: string;
-  lastRunType:     "full" | "delta";
-  lastRunAt:       string;
-}
-
-interface EnvState {
-  contracts?:  CategoryState;
-  assistance?: CategoryState;
-}
-
-interface PipelineState {
-  envs?: Record<string, EnvState>;
-  // v1 legacy (post-FIX-114, pre-FIX-166): per-category at root.
-  contracts?:  CategoryState;
-  assistance?: CategoryState;
-  // v0 legacy (pre-FIX-114): single CategoryState at the root, contracts only.
-  lastArchiveDate?: string;
-  lastRunType?:     "full" | "delta";
-  lastRunAt?:       string;
-}
-
-/**
- * Stable env identifier derived from the active Supabase URL.
- * Uses URL.host so the dev port is captured (`127.0.0.1:54321`).
- */
-function envKey(): string {
-  const url = process.env["NEXT_PUBLIC_SUPABASE_URL"];
-  if (!url) return "unknown";
-  try { return new URL(url).host; } catch { return "unknown"; }
-}
-
-function readStateFile(): PipelineState {
-  try {
-    if (!fs.existsSync(STATE_FILE)) return {};
-    return JSON.parse(fs.readFileSync(STATE_FILE, "utf8")) as PipelineState;
-  } catch {
-    return {};
-  }
-}
-
-/**
- * Lift legacy v0/v1 root state under a specific env key. The legacy file
- * carries no env attribution, so on migration we attribute it to whichever
- * env is active at the moment of the first read; the other env will start
- * fresh on its next invocation.
- */
-function liftLegacyIntoEnv(raw: PipelineState, key: string): PipelineState {
-  const next: PipelineState = { envs: { ...(raw.envs ?? {}) } };
-  const legacyEnv: EnvState = { ...(next.envs![key] ?? {}) };
-
-  if (raw.contracts && !legacyEnv.contracts) {
-    legacyEnv.contracts = raw.contracts;
-  }
-  if (raw.assistance && !legacyEnv.assistance) {
-    legacyEnv.assistance = raw.assistance;
-  }
-  // v0: single contracts state at the root.
-  if (!legacyEnv.contracts && raw.lastArchiveDate) {
-    legacyEnv.contracts = {
-      lastArchiveDate: raw.lastArchiveDate,
-      lastRunType:     raw.lastRunType ?? "full",
-      lastRunAt:       raw.lastRunAt   ?? new Date().toISOString(),
-    };
-  }
-
-  if (legacyEnv.contracts || legacyEnv.assistance) {
-    next.envs![key] = legacyEnv;
-  }
-  return next;
-}
-
-function loadCategoryState(category: BulkCategory): CategoryState | null {
-  const raw = readStateFile();
-  const key = envKey();
-
-  const fresh = raw.envs?.[key]?.[category];
-  if (fresh) return fresh;
-
-  // Legacy fallback — apply the lift in-memory so the same pre-migration
-  // file gives the same answer on a second read.
-  const lifted = liftLegacyIntoEnv(raw, key);
-  const lifedCat = lifted.envs?.[key]?.[category] ?? null;
-  if (lifedCat) {
-    console.log(
-      `  [state] Migrating legacy state under env "${key}" — ` +
-      `the other env will need a Full re-run (use --force) on next invocation.`,
-    );
-  }
-  return lifedCat;
-}
-
-function saveCategoryState(category: BulkCategory, next: CategoryState): void {
-  try {
-    const raw    = readStateFile();
-    const key    = envKey();
-    const lifted = liftLegacyIntoEnv(raw, key);
-
-    const envs   = { ...(lifted.envs ?? {}) };
-    const env    = { ...(envs[key] ?? {}) };
-    env[category] = next;
-    envs[key]    = env;
-
-    // Drop any v0/v1 legacy keys from the persisted shape — keep only `envs`.
-    fs.writeFileSync(STATE_FILE, JSON.stringify({ envs }, null, 2), "utf8");
-  } catch (err) {
-    console.warn("  [state] Could not save state:", err instanceof Error ? err.message : err);
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Fiscal year helper
@@ -369,37 +271,10 @@ function downloadFile(url: string, destPath: string): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// ZIP → CSV extraction (streaming, no full-zip buffer)
+// ZIP → CSV extraction lives in ./zip.ts (openCsvParts — enumerates every CSV
+// part via the central directory; FIX-766). The main loop extracts, processes,
+// and deletes one part at a time to bound disk.
 // ---------------------------------------------------------------------------
-
-/**
- * Extract the first .csv entry from a zip file to disk via pipe.
- * Never loads the full zip into memory — identical to the FEC bulk approach.
- */
-async function extractCsvFromZip(zipPath: string, destPath: string): Promise<boolean> {
-  return new Promise((resolve, reject) => {
-    let found = false;
-
-    fs.createReadStream(zipPath)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .pipe((unzipper as any).Parse())
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .on("entry", (entry: any) => {
-        const name = (entry.path as string).toLowerCase();
-        if (!found && name.endsWith(".csv")) {
-          found = true;
-          const out = fs.createWriteStream(destPath);
-          entry.pipe(out);
-          out.on("finish", () => resolve(true));
-          out.on("error", reject);
-        } else {
-          entry.autodrain();
-        }
-      })
-      .on("finish", () => { if (!found) resolve(false); })
-      .on("error", reject);
-  });
-}
 
 // ---------------------------------------------------------------------------
 // Agency map
@@ -669,8 +544,12 @@ export async function runUsaSpendingBulkPipeline(
   try {
     // ── [1/5] Discover archive files via S3 prefix queries ────────────────
     console.log("\n  [1/5] Discovering archive files...");
-    const fy    = currentFy();
-    const state = opts.force ? null : loadCategoryState(cfg.category);
+    const fy = currentFy();
+
+    // FIX-739: DB-backed state (one-time lift from the legacy file on first run).
+    const state    = await loadState(db);
+    console.log(`  State: ${describeState(state, cfg.category)}`);
+    const baseline = opts.force ? null : getBaseline(state, cfg.category);
 
     // Fetch Full listing unconditionally (needed whether we run Full or to
     // determine the latest Full date for delta-mode display). Delta listing
@@ -689,26 +568,43 @@ export async function runUsaSpendingBulkPipeline(
 
     let filesToProcess: ArchiveFile[];
     let runMode: "full" | "delta";
+    let fullArchiveDate = "";
 
-    if (!state) {
-      filesToProcess = latestFullSet(fullFiles);
-      runMode = "full";
-      console.log(
-        `  ${opts.force ? "Forced full re-run" : "No prior state — first run"}:` +
-        ` Full file dated ${filesToProcess[0]!.date}`,
-      );
+    if (!baseline) {
+      filesToProcess  = latestFullSet(fullFiles);
+      runMode         = "full";
+      fullArchiveDate = filesToProcess[0]!.date;
+
+      // FIX-739: begin or resume the Full run in DB state. A matching in-progress
+      // archive resumes (skip completed parts); a different date discards the
+      // partial and restarts. Persist immediately so a resume is visible even if
+      // this dispatch dies before the first part completes.
+      const plan = startFullRun(state, cfg.category, fullArchiveDate);
+      await saveState(db, state);
+      if (plan.discardedDate) {
+        console.log(
+          `  Discarded in-progress Full for ${plan.discardedDate} — ` +
+          `newer archive ${fullArchiveDate} available`,
+        );
+      }
+      const how = opts.force
+        ? "Forced full re-run"
+        : plan.resumed
+          ? `Resuming Full run (${plan.completedParts.length} CSV part(s) already complete — skipping)`
+          : "No prior baseline — first run";
+      console.log(`  ${how}: Full archive dated ${fullArchiveDate}`);
     } else {
       const deltaFiles = await discoverDeltaFiles(cfg);
       console.log(`  Delta files available: ${deltaFiles.length}`);
-      filesToProcess = deltasSince(deltaFiles, state.lastArchiveDate);
+      filesToProcess = deltasSince(deltaFiles, baseline.lastArchiveDate);
       runMode = "delta";
       if (filesToProcess.length === 0) {
-        console.log(`  No new Delta files since ${state.lastArchiveDate} — nothing to do`);
+        console.log(`  No new Delta files since ${baseline.lastArchiveDate} — nothing to do`);
         await completeSync(logId, { inserted: 0, updated: 0, failed: 0, estimatedMb: 0 });
         return { inserted: 0, updated: 0, failed: 0, estimatedMb: 0 };
       }
       console.log(
-        `  Delta mode: ${filesToProcess.length} file(s) since ${state.lastArchiveDate}`,
+        `  Delta mode: ${filesToProcess.length} file(s) since ${baseline.lastArchiveDate}`,
       );
     }
 
@@ -724,13 +620,12 @@ export async function runUsaSpendingBulkPipeline(
     console.log("\n  [4/5] Processing archive files...");
     ensureTmpDir();
 
-    let lastProcessedDate = state?.lastArchiveDate ?? "";
+    let lastProcessedDate = runMode === "delta" ? (baseline?.lastArchiveDate ?? "") : "";
 
     for (const archiveFile of filesToProcess) {
       console.log(`\n  Processing ${archiveFile.name}...`);
 
       const zipPath = path.join(TMP_DIR, archiveFile.name);
-      const csvPath = path.join(TMP_DIR, path.basename(archiveFile.name, ".zip") + ".csv");
 
       try {
         // Download ZIP (can be 300 MB – 1 GB)
@@ -739,31 +634,54 @@ export async function runUsaSpendingBulkPipeline(
         const zipMb = (fs.statSync(zipPath).size / 1024 / 1024).toFixed(0);
         console.log(`    Downloaded ${zipMb} MB`);
 
-        // Extract inner CSV to disk (streaming — never buffers full zip)
-        console.log("    Extracting CSV from ZIP...");
-        const found = await extractCsvFromZip(zipPath, csvPath);
-
-        // ZIP no longer needed — delete immediately to free disk space
-        try { fs.unlinkSync(zipPath); } catch { /* best effort */ }
-
-        if (!found) {
+        // FIX-766: enumerate EVERY CSV part via the central directory, then
+        // extract → process → delete one part at a time to bound disk.
+        const parts = await openCsvParts(zipPath);
+        if (parts.length === 0) {
           console.warn(`    No .csv found inside ${archiveFile.name} — skipping`);
           continue;
         }
+        console.log(`    ${parts.length} CSV part(s) in ${archiveFile.name}`);
 
-        // Process the CSV stream
-        const fileResult = await processCsvFile(cfg, csvPath, agencyMap);
-        totalUpserted += fileResult.upserted;
-        totalFailed   += fileResult.failed;
+        for (let k = 0; k < parts.length; k++) {
+          const part  = parts[k]!;
+          const label = `part ${k + 1}/${parts.length}`;
+          const key   = partKey(archiveFile.name, part.path);
+
+          // FIX-739: skip parts a prior (killed) dispatch already completed for
+          // this same Full archive. Delta parts are not checkpointed — deltas
+          // are small and a killed delta simply reprocesses (idempotent).
+          if (runMode === "full" && isPartComplete(state, cfg.category, key)) {
+            console.log(`    ── ${label} (${part.path}) already complete — skipping`);
+            continue;
+          }
+
+          console.log(`\n    ═══════ ${label}: ${part.path} ═══════`);
+          const csvPath = path.join(TMP_DIR, path.basename(part.path));
+          try {
+            await part.extractTo(csvPath);
+            const fileResult = await processCsvFile(cfg, csvPath, agencyMap);
+            totalUpserted += fileResult.upserted;
+            totalFailed   += fileResult.failed;
+          } finally {
+            try { if (fs.existsSync(csvPath)) fs.unlinkSync(csvPath); } catch { /* ok */ }
+          }
+
+          // Checkpoint this part immediately — GHA SIGTERM gives no grace window,
+          // so persistence must be incremental, never a shutdown handler.
+          if (runMode === "full") {
+            markPartComplete(state, cfg.category, key);
+            await saveState(db, state);
+          }
+        }
 
         if (archiveFile.date > lastProcessedDate) {
           lastProcessedDate = archiveFile.date;
         }
 
       } finally {
-        // Best-effort cleanup — don't let stray temp files accumulate
+        // ZIP no longer needed once all its parts are done — free disk.
         try { if (fs.existsSync(zipPath)) fs.unlinkSync(zipPath); } catch { /* ok */ }
-        try { if (fs.existsSync(csvPath)) fs.unlinkSync(csvPath); } catch { /* ok */ }
       }
     }
 
@@ -789,14 +707,16 @@ export async function runUsaSpendingBulkPipeline(
 
     await completeSync(logId, result);
 
-    // Persist state for next run's delta logic
-    if (lastProcessedDate) {
-      saveCategoryState(cfg.category, {
-        lastArchiveDate: lastProcessedDate,
-        lastRunType:     runMode,
-        lastRunAt:       new Date().toISOString(),
-      });
+    // FIX-739: advance the baseline only on a fully-completed run. A Full keys
+    // on its archive date (which is always set — never the max-processed date,
+    // so an all-parts-already-complete resume still finalizes) and clears the
+    // in-progress partial; a Delta advances to the newest processed delta date.
+    if (runMode === "full") {
+      if (fullArchiveDate) completeFullRun(state, cfg.category, fullArchiveDate);
+    } else if (lastProcessedDate) {
+      completeDeltaRun(state, cfg.category, lastProcessedDate);
     }
+    await saveState(db, state);
 
     return result;
 
