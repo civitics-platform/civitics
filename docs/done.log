@@ -932,3 +932,6 @@
 2026-07-06 | FIX-759 | 14a37b60 | local-only | fix(fec-bulk): server-side source_ids merge + stable-order pagination sweep (FIX-759, FIX-760)
 2026-07-06 | FIX-760 | 14a37b60 | local-only | fix(fec-bulk): server-side source_ids merge + stable-order pagination sweep (FIX-759, FIX-760)
 2026-07-06 | FIX-761 | d437552b | local+prod | fix(congress): extend promote_candidate_to_elected FK rewrite to all post-FIX-463 official surfaces (FIX-761)
+2026-07-07 | FIX-762 | eb75bdec | local+prod | feat(graph): unified browser sidebar mount + saved views v2 (W2)
+2026-07-07 | FIX-763 | eb75bdec | local+prod | feat(graph): unified browser sidebar mount + saved views v2 (W2)
+2026-07-07 | FIX-764 | eb75bdec | local+prod | feat(graph): unified browser sidebar mount + saved views v2 (W2)
