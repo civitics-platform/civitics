@@ -38,13 +38,13 @@ test("sort normalization: relevance + unknown → default (connections_desc)", (
 test("unknown facet key for the scope kind → error", () => {
   const { errors } = parse("scope=people&f_industry=tech"); // industry is financial-only
   assert.equal(errors.length, 1);
-  assert.match(errors[0], /Unknown facet key/);
+  assert.match(errors[0] ?? "", /Unknown facet key/);
 });
 
 test("unknown scope segment → error", () => {
   const { errors } = parse("scope=people/officials/martians");
   assert.equal(errors.length >= 1, true);
-  assert.match(errors[0], /Unknown scope segment/);
+  assert.match(errors[0] ?? "", /Unknown scope segment/);
 });
 
 test("serialize → parse round-trips (default sort omitted)", () => {

@@ -42,7 +42,7 @@ export interface ScopeRailProps {
   onToggleFacet: (key: string, value: string) => void;
 }
 
-export function ScopeRail(props: ScopeRailProps) {
+export function ScopeRail({ savedViewsSlot, ...props }: ScopeRailProps & { savedViewsSlot?: React.ReactNode }) {
   return (
     <div className="flex h-full flex-col overflow-y-auto border-r border-rule bg-card px-2 pb-6 pt-3">
       <h5 className="px-2 pb-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.16em] text-ink-soft/70">
@@ -53,14 +53,8 @@ export function ScopeRail(props: ScopeRailProps) {
       <h5 className="mt-4 px-2 pb-1 font-mono text-[10px] font-semibold uppercase tracking-[0.16em] text-ink-soft/70">
         Saved
       </h5>
-      {/* W2 ships saved-view persistence; this row is a deliberate disabled affordance. */}
-      <div
-        className="cursor-not-allowed px-2 py-1 font-mono text-[11px] text-ink-soft/50"
-        title="Coming with saved views"
-        aria-disabled="true"
-      >
-        + save current view
-      </div>
+      {/* FIX-763 — the W1 disabled stub is replaced by the saved-views rail. */}
+      {savedViewsSlot}
 
       <FacetBlocks {...props} />
     </div>
@@ -68,8 +62,9 @@ export function ScopeRail(props: ScopeRailProps) {
 }
 
 // ── Scope tree ─────────────────────────────────────────────────────────────────
+// Exported for the graph sidebar mount (FIX-762) — same tree, same semantics.
 
-function ScopeTree({ scope, kind, facetCounts, totalsCount, onScope }: ScopeRailProps) {
+export function ScopeTree({ scope, kind, facetCounts, totalsCount, onScope }: ScopeRailProps) {
   // Expanded paths — auto-expand ancestors of the active scope, keep the
   // user's manual toggles otherwise.
   const [expanded, setExpanded] = useState<Set<string>>(() => ancestorsOf(scope));
@@ -174,8 +169,9 @@ function ancestorsOf(scope: string): Set<string> {
 }
 
 // ── Facet blocks ───────────────────────────────────────────────────────────────
+// Exported for the graph sidebar mount (FIX-762) — same refine semantics.
 
-function FacetBlocks({ kind, scopeFacets, facets, facetCounts, universe, totalsCount, scopeLabel, onToggleFacet }: ScopeRailProps) {
+export function FacetBlocks({ kind, scopeFacets, facets, facetCounts, universe, totalsCount, scopeLabel, onToggleFacet }: ScopeRailProps) {
   if (!kind) return null;
   const defs = BROWSE_REGISTRY[kind].facets.filter((f) => !(f.key in scopeFacets));
   if (defs.length === 0) return null;

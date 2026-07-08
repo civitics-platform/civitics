@@ -6,8 +6,15 @@
  * Renders the FOCUS section of DataExplorerPanel.
  * Shows active focus entities with per-entity options,
  * search input, browse by category, and global options.
+ *
+ * FIX-762 — when the host app passes `browserSlot` (the unified browse
+ * sidebar mount, app-side because it depends on app lib/route code this
+ * package can't import), it replaces the legacy Find Entity + Browse Groups
+ * sections. Without the slot the legacy stack still renders (embed and any
+ * host that hasn't wired the browser yet).
  */
 
+import type { ReactNode } from 'react';
 import type { FocusEntity, GraphView } from '../types';
 import { isFocusEntity, isFocusGroup, MAX_FOCUS_ENTITIES } from '../types';
 import type { UseGraphViewReturn } from '../hooks/useGraphView';
@@ -40,6 +47,8 @@ export interface FocusTreeProps {
   userNode?: UserNodeInfo | null;
   /** Toggle USER node visibility independent of follows (FIX-120). */
   onToggleUserNode?: () => void;
+  /** FIX-762 — unified browser sidebar mount; replaces Find Entity + Browse Groups. */
+  browserSlot?: ReactNode;
 }
 
 const DEPTH_LABELS: Record<number, string> = { 1: '1', 2: '2', 3: '3' };
@@ -85,6 +94,7 @@ export function FocusTree({
   graphMeta: _graphMeta,
   userNode,
   onToggleUserNode,
+  browserSlot,
 }: FocusTreeProps) {
   const { entities, depth, scope } = focus;
   // Procedural-votes toggle now lives in ConnectionsTree (vote-level filter, not focus-level).
@@ -222,47 +232,62 @@ export function FocusTree({
         </p>
       )}
 
-      {/* Find entity search */}
-      <TreeSection
-        label="Find Entity"
-        defaultExpanded={entities.length === 0}
-        separator={false}
-        depth={1}
-      >
-        <EntitySearchInput
-          onSelect={entity => {
-            if (hooks.atMaxFocus) return;
-            hooks.addEntity(entity);
-          }}
-          disabled={atMax}
-        />
-      </TreeSection>
+      {/* FIX-762 — unified browser sidebar mount (app-provided) replaces the
+          legacy Find Entity + Browse Groups stack when the host wires it. */}
+      {browserSlot ? (
+        <TreeSection
+          label="Browse & Add"
+          defaultExpanded={entities.length === 0}
+          separator={false}
+          depth={1}
+        >
+          {browserSlot}
+        </TreeSection>
+      ) : (
+        <>
+          {/* Find entity search */}
+          <TreeSection
+            label="Find Entity"
+            defaultExpanded={entities.length === 0}
+            separator={false}
+            depth={1}
+          >
+            <EntitySearchInput
+              onSelect={entity => {
+                if (hooks.atMaxFocus) return;
+                hooks.addEntity(entity);
+              }}
+              disabled={atMax}
+            />
+          </TreeSection>
 
-      {/* Browse groups */}
-      <TreeSection
-        label="Browse Groups"
-        defaultExpanded={false}
-        separator={false}
-        depth={1}
-      >
-        <GroupBrowser
-          onAddGroup={group => hooks.addGroup(group)}
-          onAddEntity={entity => {
-            if (hooks.atMaxFocus) return;
-            hooks.addEntity(entity);
-          }}
-          activeGroupIds={
-            focus.entities
-              .filter(isFocusGroup)
-              .map(g => g.id)
-          }
-          activeEntityIds={
-            focus.entities
-              .filter(isFocusEntity)
-              .map(e => e.id)
-          }
-        />
-      </TreeSection>
+          {/* Browse groups */}
+          <TreeSection
+            label="Browse Groups"
+            defaultExpanded={false}
+            separator={false}
+            depth={1}
+          >
+            <GroupBrowser
+              onAddGroup={group => hooks.addGroup(group)}
+              onAddEntity={entity => {
+                if (hooks.atMaxFocus) return;
+                hooks.addEntity(entity);
+              }}
+              activeGroupIds={
+                focus.entities
+                  .filter(isFocusGroup)
+                  .map(g => g.id)
+              }
+              activeEntityIds={
+                focus.entities
+                  .filter(isFocusEntity)
+                  .map(e => e.id)
+              }
+            />
+          </TreeSection>
+        </>
+      )}
 
       {/* Path Finder */}
       <TreeSection

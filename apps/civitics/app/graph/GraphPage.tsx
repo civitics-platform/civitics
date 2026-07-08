@@ -20,6 +20,7 @@ import {
 } from "@civitics/graph";
 import type { VizType, FocusGroup, GroupFilter, GraphNodeV2 as GraphNode, GraphEdgeV2 as GraphEdge, GraphMeta, UserNodeInfo, IndividualDisplayMode } from "@civitics/graph";
 import { isGraphSeedableKind } from "@/lib/graph-seedable-kinds";
+import { SidebarBrowser } from "../search/components/explorer/SidebarBrowser";
 import { PorticoMark }     from "../components/brand/PorticoMark";
 import { SharePanel }      from "./SharePanel";
 import { ScreenshotPanel } from "./ScreenshotPanel";
@@ -95,6 +96,11 @@ export function GraphPage({ initialCode, aiEnabled = true }: GraphPageProps = {}
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialCode]);
 
+  // FIX-764 — visible notice when the handoff decode drops non-seedable kinds.
+  // The FIX-472 whitelist only console.warn'd, which is silent in prod — a
+  // hand-built or stale URL read as a mysteriously-empty graph.
+  const [handoffNotice, setHandoffNotice] = useState<string | null>(null);
+
   // ── Entity handoff from /search (multi-select "Add individually") ──────────
   // /search navigates to /graph?addEntityIds=uuid1,uuid2&addEntityTypes=official,agency
   // Decode once on mount, add each entity, strip the params.
@@ -153,6 +159,12 @@ export function GraphPage({ initialCode, aiEnabled = true }: GraphPageProps = {}
         `[graph] add-to-graph: dropped ${dropped.length} un-graphable entit${dropped.length === 1 ? "y" : "ies"} ` +
           `(the graph can't render these kinds yet):`,
         dropped,
+      );
+      // FIX-764 — surface the drop to the user, not just the dev console.
+      const kinds = [...new Set(dropped.map((d) => d.type))].join(", ");
+      setHandoffNotice(
+        `${dropped.length} item${dropped.length === 1 ? "" : "s"} couldn't be added — ` +
+          `the graph can't render ${kinds} records yet.`,
       );
     }
 
@@ -547,6 +559,23 @@ export function GraphPage({ initialCode, aiEnabled = true }: GraphPageProps = {}
       .map(e => e.id);
   }, [view.focus.entities]);
 
+  // ── Unified browser sidebar mount (FIX-762) ────────────────────────────────
+  // App-side because it depends on @/lib/browse + explorer components the
+  // graph package can't import; FocusTree renders it in place of the legacy
+  // Find Entity + Browse Groups sections.
+  const browserSlot = (
+    <SidebarBrowser
+      onAddEntity={(entity) => {
+        if (graphHooks.atMaxFocus) return;
+        graphHooks.addEntity(entity);
+      }}
+      onAddGroup={(group) => graphHooks.addGroup(group)}
+      activeEntityIds={focusEntityList.map((e) => e.id)}
+      activeGroupIds={focusGroupList.map((g) => g.id)}
+      atMaxFocus={graphHooks.atMaxFocus}
+    />
+  );
+
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     // Terminal Wave 3 (FIX-728): /graph is a fullscreen instrument with no site
@@ -588,10 +617,25 @@ export function GraphPage({ initialCode, aiEnabled = true }: GraphPageProps = {}
           graphMeta={displayGraphMeta}
           userNode={userNodeInfo}
           onToggleUserNode={() => setUserNodeVisible(v => !v)}
+          browserSlot={browserSlot}
         />
 
         {/* CANVAS */}
         <div className="flex-1 overflow-hidden relative">
+
+          {/* FIX-764 — dropped-handoff notice (dismissible) */}
+          {handoffNotice && (
+            <div className="absolute top-3 left-1/2 z-30 flex max-w-[90%] -translate-x-1/2 items-center gap-3 rounded-[2px] border border-amber/50 bg-card px-3 py-2 shadow-lg">
+              <span className="font-mono text-[11px] text-amber">{handoffNotice}</span>
+              <button
+                onClick={() => setHandoffNotice(null)}
+                aria-label="Dismiss notice"
+                className="font-mono text-[11px] text-ink-soft transition-colors hover:text-ink focus-visible:outline-none focus-visible:text-accent"
+              >
+                ✕
+              </button>
+            </div>
+          )}
 
           {/* Active viz only — see FIX-205 import block at the top for why.
               The previous "all 9 mounted with opacity:0" pattern kept the D3

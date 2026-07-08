@@ -6,22 +6,24 @@
  * to the URL on every change (shareable/bookmarkable) and both rails are pure
  * views over it.
  *
- * Fetch hygiene (FIX-752): q debounced 300ms; facet/scope/sort changes
- * coalesced ~250ms; in-flight fetches aborted on supersession; rows and facet
- * counts fetched as SEPARATE requests on the same settle so the slow narrowed
- * facet path never blocks rows (facet failure → counts_mode omitted).
+ * FIX-762 — the state + fetch orchestration now lives in useBrowseExplorer
+ * (shared with the graph's sidebar mount) so the settled interaction semantics
+ * stay identical across surfaces; this component keeps only what is
+ * page-shaped: URL/history sync, view toggle, selection, and the detail rail.
+ * FIX-763 — the ScopeRail's Saved section renders the live SavedViewsRail
+ * (replacing the W1 disabled stub).
  *
  * Terminal Wave 2 scope (FIX-723) is preserved: everything below the site
  * masthead is a dark live instrument (data-theme=terminal, text-ink restated).
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { BrowseCountsMode, BrowseResponse, BrowseRow, BrowseSort, BrowseState, FacetMap } from "@/lib/browse/types";
+import type { BrowseResponse, BrowseRow, BrowseState } from "@/lib/browse/types";
 import { serializeBrowseState } from "@/lib/browse/browse-state";
 import { resolveBrowseParams } from "@/lib/browse/legacy";
-import { compileScope, scopeCrumbs } from "@/lib/browse/scope-tree";
-import { sortsFor } from "@/lib/browse/registry";
+import { useBrowseExplorer } from "./useBrowseExplorer";
 import { ScopeRail } from "./ScopeRail";
+import { SavedViewsRail } from "./SavedViewsRail";
 import { CrumbBar } from "./CrumbBar";
 import { ToolRow, type BrowseView } from "./ToolRow";
 import { LedgerTable } from "./LedgerTable";
@@ -31,8 +33,6 @@ import { ExplorerActionBar } from "./ExplorerActionBar";
 import { formatCountCompact, rowKey } from "./format";
 
 const PAGE_LIMIT = 48;
-const FACET_COALESCE_MS = 250;
-const Q_DEBOUNCE_MS = 300;
 const VIEW_STORAGE_KEY = "civitics:browse:view";
 
 export interface ExplorerPageProps {
@@ -44,152 +44,18 @@ export interface ExplorerPageProps {
 }
 
 export function ExplorerPage({ initialState, initialView, initialData }: ExplorerPageProps) {
-  // ── The one state object ────────────────────────────────────────────────────
-  const [scope, setScopeRaw] = useState(initialState.scope);
-  const [facets, setFacets] = useState<FacetMap>(initialState.facets);
-  const [qInput, setQInput] = useState(initialState.q);
-  const [q, setQ] = useState(initialState.q);
-  const [sort, setSort] = useState<BrowseSort>(initialState.sort);
+  // ── Shared explorer state + fetch orchestration (FIX-762) ───────────────────
+  const ex = useBrowseExplorer({ initialState, initialData, pageLimit: PAGE_LIMIT });
+  const {
+    scope, facets, qInput, q, sort, kind, compiled, scopeLabel,
+    rows, cursor, facetCounts, totals, countsMode, refreshedAt,
+    loading, loadingMore, error,
+  } = ex;
+
+  // ── Page-shaped state ───────────────────────────────────────────────────────
   const [view, setView] = useState<BrowseView>(initialView ?? "table");
-
-  // ── Result state ────────────────────────────────────────────────────────────
-  const [rows, setRows] = useState<BrowseRow[]>(initialData?.rows ?? []);
-  const [cursor, setCursor] = useState<string | null>(initialData?.cursor ?? null);
-  const [facetCounts, setFacetCounts] = useState<Record<string, Record<string, number>>>(initialData?.facets ?? {});
-  const [totals, setTotals] = useState<{ count: number | null }>(initialData?.totals ?? { count: null });
-  const [countsMode, setCountsMode] = useState<BrowseCountsMode>(initialData?.counts_mode ?? "omitted");
-  const [refreshedAt, setRefreshedAt] = useState<string | null>(initialData?.refreshed_at ?? null);
-  const [loading, setLoading] = useState(initialData == null);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
   const [selection, setSelection] = useState<Map<string, BrowseRow>>(new Map());
   const [detailRow, setDetailRow] = useState<BrowseRow | null>(null);
-
-  // ── Derived ─────────────────────────────────────────────────────────────────
-  const compiled = useMemo(() => {
-    try { return compileScope(scope); } catch { return { kind: null, facets: {} as FacetMap }; }
-  }, [scope]);
-  const kind = compiled.kind;
-
-  const crumbs = useMemo(() => {
-    try { return scopeCrumbs(scope); } catch { return []; }
-  }, [scope]);
-  const scopeLabel = crumbs.length > 0 ? (crumbs[crumbs.length - 1]?.label ?? null) : null;
-
-  const stateKey = useMemo(() => JSON.stringify([scope, facets, q, sort]), [scope, facets, q, sort]);
-  const selectionScopeKey = useMemo(() => JSON.stringify([scope, facets, q]), [scope, facets, q]);
-
-  // Per-kind facet value universe — first exact counts seen per kind, so blocks
-  // keep their value rows when the live counts are narrowed/omitted.
-  const universeRef = useRef<Record<string, Record<string, string[]>>>({});
-  const rememberUniverse = useCallback((k: string | null, counts: Record<string, Record<string, number>>, mode: BrowseCountsMode) => {
-    if (!k || mode !== "exact") return;
-    const perKind = (universeRef.current[k] ??= {});
-    for (const [key, values] of Object.entries(counts)) {
-      const existing = new Set(perKind[key] ?? []);
-      for (const v of Object.keys(values)) existing.add(v);
-      perKind[key] = [...existing];
-    }
-  }, []);
-  const universeInitRef = useRef(false);
-  if (!universeInitRef.current) {
-    universeInitRef.current = true;
-    if (initialData) rememberUniverse(initialData.query.kind, initialData.facets, initialData.counts_mode);
-  }
-
-  // ── q debounce (300ms) ──────────────────────────────────────────────────────
-  useEffect(() => {
-    const t = setTimeout(() => setQ(qInput.trim()), Q_DEBOUNCE_MS);
-    return () => clearTimeout(t);
-  }, [qInput]);
-
-  // ── Fetch orchestration ─────────────────────────────────────────────────────
-  const lastFetchedKeyRef = useRef<string | null>(initialData ? stateKey : null);
-  const lastQRef = useRef(q);
-  const fetchSeqRef = useRef(0);
-  const rowsAbortRef = useRef<AbortController | null>(null);
-  const facetsAbortRef = useRef<AbortController | null>(null);
-
-  const doFetch = useCallback((key: string, state: BrowseState, k: string | null) => {
-    lastFetchedKeyRef.current = key;
-    const seq = ++fetchSeqRef.current;
-    rowsAbortRef.current?.abort();
-    facetsAbortRef.current?.abort();
-    const rowsCtl = new AbortController();
-    const facetsCtl = new AbortController();
-    rowsAbortRef.current = rowsCtl;
-    facetsAbortRef.current = facetsCtl;
-
-    setLoading(true);
-    setError(null);
-
-    // Rows first — never blocked on facet counting (FIX-752).
-    const rowsSp = serializeBrowseState(state);
-    rowsSp.set("only", "rows");
-    rowsSp.set("limit", String(PAGE_LIMIT));
-    fetch(`/api/browse?${rowsSp.toString()}`, { signal: rowsCtl.signal })
-      .then(async (res) => {
-        if (seq !== fetchSeqRef.current) return;
-        if (!res.ok) {
-          setRows([]); setCursor(null); setLoading(false);
-          setError(`Browse request failed (${res.status})`);
-          return;
-        }
-        const data: BrowseResponse = await res.json();
-        if (seq !== fetchSeqRef.current) return;
-        setRows(data.rows);
-        setCursor(data.cursor);
-        setRefreshedAt(data.refreshed_at);
-        setLoading(false);
-      })
-      .catch((e) => {
-        if (rowsCtl.signal.aborted || seq !== fetchSeqRef.current) return;
-        setRows([]); setCursor(null); setLoading(false);
-        setError(e instanceof Error ? e.message : "Browse request failed");
-      });
-
-    // Facet counts as the secondary request on the same settle.
-    if (k) {
-      const facetsSp = serializeBrowseState(state);
-      facetsSp.set("only", "facets");
-      fetch(`/api/browse?${facetsSp.toString()}`, { signal: facetsCtl.signal })
-        .then(async (res) => {
-          if (seq !== fetchSeqRef.current) return;
-          if (!res.ok) { setFacetCounts({}); setTotals({ count: null }); setCountsMode("omitted"); return; }
-          const data: BrowseResponse = await res.json();
-          if (seq !== fetchSeqRef.current) return;
-          setFacetCounts(data.facets);
-          setTotals(data.totals);
-          setCountsMode(data.counts_mode);
-          rememberUniverse(k, data.facets, data.counts_mode);
-        })
-        .catch(() => {
-          if (facetsCtl.signal.aborted || seq !== fetchSeqRef.current) return;
-          setFacetCounts({}); setTotals({ count: null }); setCountsMode("omitted");
-        });
-    } else {
-      setFacetCounts({}); setTotals({ count: null }); setCountsMode("omitted");
-    }
-  }, [rememberUniverse]);
-
-  useEffect(() => {
-    if (lastFetchedKeyRef.current === stateKey) return;
-    const qChanged = lastQRef.current !== q;
-    lastQRef.current = q;
-    // q is pre-debounced; everything else coalesces so a burst of facet clicks
-    // fires ONE fetch. First-ever fetch (no SSR data) goes immediately.
-    const delay = qChanged || lastFetchedKeyRef.current === null ? 0 : FACET_COALESCE_MS;
-    const state: BrowseState = { scope, facets, q, sort, cursor: null };
-    const t = setTimeout(() => doFetch(stateKey, state, kind), delay);
-    return () => clearTimeout(t);
-  }, [stateKey, scope, facets, q, sort, kind, doFetch]);
-
-  // Abort in-flight work on unmount.
-  useEffect(() => () => {
-    rowsAbortRef.current?.abort();
-    facetsAbortRef.current?.abort();
-  }, []);
 
   // Selection + detail reset when the result set changes (sort excluded — the
   // set is the same rows reordered).
@@ -198,32 +64,7 @@ export function ExplorerPage({ initialState, initialView, initialData }: Explore
     if (selectionInitRef.current) { selectionInitRef.current = false; return; }
     setSelection(new Map());
     setDetailRow(null);
-  }, [selectionScopeKey]);
-
-  // ── Infinite scroll ─────────────────────────────────────────────────────────
-  const loadMore = useCallback(() => {
-    if (!cursor || loadingMore || loading) return;
-    setLoadingMore(true);
-    const seq = fetchSeqRef.current;
-    const sp = serializeBrowseState({ scope, facets, q, sort, cursor });
-    sp.set("only", "rows");
-    sp.set("limit", String(PAGE_LIMIT));
-    const ctl = new AbortController();
-    rowsAbortRef.current = ctl;
-    fetch(`/api/browse?${sp.toString()}`, { signal: ctl.signal })
-      .then(async (res) => {
-        if (seq !== fetchSeqRef.current) return; // filters changed mid-flight
-        if (!res.ok) { setLoadingMore(false); return; }
-        const data: BrowseResponse = await res.json();
-        if (seq !== fetchSeqRef.current) return;
-        setRows((prev) => [...prev, ...data.rows]);
-        setCursor(data.cursor);
-        setLoadingMore(false);
-      })
-      .catch(() => {
-        if (!ctl.signal.aborted) setLoadingMore(false);
-      });
-  }, [cursor, loadingMore, loading, scope, facets, q, sort]);
+  }, [ex.selectionScopeKey]);
 
   // ── URL sync (decision 4) + history navigation ──────────────────────────────
   const popRestoreRef = useRef(false);
@@ -251,21 +92,18 @@ export function ExplorerPage({ initialState, initialView, initialData }: Explore
     lastSyncedScopeRef.current = scope;
   }, [scope, facets, q, sort, view]);
 
+  const applyState = ex.applyState;
   useEffect(() => {
     function onPop() {
       const sp = new URLSearchParams(window.location.search);
       const { state } = resolveBrowseParams(sp);
       popRestoreRef.current = true;
-      setScopeRaw(state.scope);
-      setFacets(state.facets);
-      setQ(state.q);
-      setQInput(state.q);
-      setSort(state.sort);
+      applyState(state);
       setView(sp.get("view") === "cards" ? "cards" : "table");
     }
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
-  }, []);
+  }, [applyState]);
 
   // View persistence: URL param wins on load; otherwise localStorage restores.
   useEffect(() => {
@@ -277,39 +115,6 @@ export function ExplorerPage({ initialState, initialView, initialData }: Explore
   }, []);
 
   // ── Handlers ────────────────────────────────────────────────────────────────
-  const handleScope = useCallback((path: string) => {
-    setScopeRaw(path);
-    setFacets({});
-    setSort((prev) => {
-      let nextKind = null;
-      try { nextKind = compileScope(path).kind; } catch { /* stays all-kinds */ }
-      const valid = nextKind ? sortsFor(nextKind) : (["connections_desc", "name_asc", "name_desc"] as BrowseSort[]);
-      return valid.includes(prev) ? prev : "connections_desc";
-    });
-  }, []);
-
-  const handleToggleFacet = useCallback((key: string, value: string) => {
-    setFacets((prev) => {
-      const next: FacetMap = { ...prev };
-      const current = prev[key];
-      const values = current == null ? [] : Array.isArray(current) ? [...current] : [current];
-      const at = values.indexOf(value);
-      if (at >= 0) values.splice(at, 1);
-      else values.push(value);
-      if (values.length === 0) delete next[key];
-      else next[key] = values.length === 1 ? (values[0] as string) : values;
-      return next;
-    });
-  }, []);
-
-  const handleRemoveFacet = handleToggleFacet; // removing = toggling off an active value
-
-  const handlePivot = useCallback((key: string, value: string) => {
-    setFacets({ [key]: value });
-    setQ("");
-    setQInput("");
-  }, []);
-
   const handleViewChange = useCallback((v: BrowseView) => {
     setView(v);
     try { window.localStorage.setItem(VIEW_STORAGE_KEY, v); } catch { /* storage unavailable */ }
@@ -330,15 +135,7 @@ export function ExplorerPage({ initialState, initialView, initialData }: Explore
     window.location.href = `/graph?${params.toString()}`;
   }, []);
 
-  const handleRetry = useCallback(() => {
-    lastFetchedKeyRef.current = null;
-    doFetch(stateKey, { scope, facets, q, sort, cursor: null }, kind);
-  }, [doFetch, stateKey, scope, facets, q, sort, kind]);
-
-  const searchEverywhere = useCallback(() => {
-    setScopeRaw("");
-    setFacets({});
-  }, []);
+  const handleRemoveFacet = ex.handleToggleFacet; // removing = toggling off an active value
 
   // ── Render pieces ───────────────────────────────────────────────────────────
   const detailKey = detailRow ? rowKey(detailRow) : null;
@@ -350,7 +147,7 @@ export function ExplorerPage({ initialState, initialView, initialData }: Explore
   const escapeHatch = showEscapeHatch ? (
     <div className="border-t border-rule/60 px-4 py-3">
       <button
-        onClick={searchEverywhere}
+        onClick={ex.searchEverywhere}
         className="w-full rounded-[2px] border border-dashed border-term-line px-3 py-2 text-center font-mono text-[11.5px] text-ink-soft transition-colors hover:border-amber/50 hover:text-amber focus-visible:outline-none focus-visible:border-accent focus-visible:text-accent"
       >
         SEARCH EVERYWHERE FOR “{q}” →
@@ -371,7 +168,7 @@ export function ExplorerPage({ initialState, initialView, initialData }: Explore
     <div className="px-6 py-16 text-center">
       <p className="font-mono text-[12px] text-accent">{error}</p>
       <button
-        onClick={handleRetry}
+        onClick={ex.handleRetry}
         className="mt-3 rounded-[2px] border border-term-line px-3 py-1.5 font-mono text-[11px] text-ink transition-colors hover:border-accent/60 hover:text-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
       >
         RETRY
@@ -386,7 +183,7 @@ export function ExplorerPage({ initialState, initialView, initialData }: Explore
       </p>
       {facetChipCount > 0 && (
         <button
-          onClick={() => setFacets({})}
+          onClick={() => ex.setFacets({})}
           className="mt-3 font-mono text-[11px] text-ink-soft underline decoration-dotted underline-offset-2 transition-colors hover:text-amber focus-visible:outline-none focus-visible:text-accent"
         >
           clear filters
@@ -395,7 +192,7 @@ export function ExplorerPage({ initialState, initialView, initialData }: Explore
       {q && scope && (
         <div className="mx-auto mt-4 max-w-sm">
           <button
-            onClick={searchEverywhere}
+            onClick={ex.searchEverywhere}
             className="w-full rounded-[2px] border border-dashed border-term-line px-3 py-2 font-mono text-[11.5px] text-ink-soft transition-colors hover:border-amber/50 hover:text-amber focus-visible:outline-none focus-visible:text-accent"
           >
             SEARCH EVERYWHERE FOR “{q}” →
@@ -411,7 +208,7 @@ export function ExplorerPage({ initialState, initialView, initialData }: Explore
     onDetail: setDetailRow,
     hasMore: cursor != null,
     loadingMore,
-    onLoadMore: loadMore,
+    onLoadMore: ex.loadMore,
     loading,
     empty,
     trailer,
@@ -437,7 +234,7 @@ export function ExplorerPage({ initialState, initialView, initialData }: Explore
       </div>
 
       <div className="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-[264px_minmax(0,1fr)] xl:grid-cols-[264px_minmax(0,1fr)_292px]">
-        {/* LEFT — scope tree + facets */}
+        {/* LEFT — scope tree + saved views + facets */}
         <div className="hidden min-h-0 md:block">
           <ScopeRail
             scope={scope}
@@ -445,11 +242,17 @@ export function ExplorerPage({ initialState, initialView, initialData }: Explore
             scopeFacets={compiled.facets}
             facets={facets}
             facetCounts={facetCounts}
-            universe={kind ? (universeRef.current[kind] ?? {}) : {}}
+            universe={ex.universe}
             totalsCount={countsMode === "exact" ? totals.count : null}
             scopeLabel={scopeLabel ?? "all"}
-            onScope={handleScope}
-            onToggleFacet={handleToggleFacet}
+            onScope={ex.handleScope}
+            onToggleFacet={ex.handleToggleFacet}
+            savedViewsSlot={
+              <SavedViewsRail
+                currentState={ex.currentState}
+                onApply={(state) => ex.applyState(state)}
+              />
+            }
           />
         </div>
 
@@ -459,27 +262,27 @@ export function ExplorerPage({ initialState, initialView, initialData }: Explore
             scope={scope}
             kind={kind}
             facets={facets}
-            onScope={handleScope}
+            onScope={ex.handleScope}
             onRemoveFacet={handleRemoveFacet}
-            onClearFacets={() => setFacets({})}
+            onClearFacets={() => ex.setFacets({})}
           />
           <ToolRow
             q={qInput}
-            onQChange={setQInput}
+            onQChange={ex.setQInput}
             scopeLabel={scopeLabel}
             view={view}
             onViewChange={handleViewChange}
             kind={kind}
             sort={sort}
-            onSortChange={setSort}
+            onSortChange={ex.setSort}
           />
 
           {view === "table" ? (
             <LedgerTable
               {...viewProps}
               sort={sort}
-              onSortChange={setSort}
-              resetKey={stateKey}
+              onSortChange={ex.setSort}
+              resetKey={ex.stateKey}
               onEscape={() => setSelection(new Map())}
             />
           ) : (
@@ -504,7 +307,7 @@ export function ExplorerPage({ initialState, initialView, initialData }: Explore
         <div className="hidden min-h-0 xl:block">
           <DetailRail
             row={detailRow}
-            onPivot={handlePivot}
+            onPivot={ex.handlePivot}
             onSeedToGraph={handleSeedToGraph}
             onAddToSelection={handleToggleSelect}
             isSelected={detailKey != null && selection.has(detailKey)}

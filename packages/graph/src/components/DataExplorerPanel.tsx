@@ -27,6 +27,8 @@ export interface DataExplorerPanelProps {
   userNode?: UserNodeInfo | null;
   /** Toggle USER node visibility (FIX-120). */
   onToggleUserNode?: () => void;
+  /** FIX-762 — unified browser sidebar mount, forwarded to FocusTree. */
+  browserSlot?: React.ReactNode;
 }
 
 const userNodeIsVisible = (info?: UserNodeInfo | null): boolean =>
@@ -39,7 +41,7 @@ const SECTION_ICONS: Record<Section, string> = {
   connections: '🔗',
 };
 
-export function DataExplorerPanel({ view, hooks, collapsed, onCollapse, graphMeta, userNode, onToggleUserNode }: DataExplorerPanelProps) {
+export function DataExplorerPanel({ view, hooks, collapsed, onCollapse, graphMeta, userNode, onToggleUserNode, browserSlot }: DataExplorerPanelProps) {
   const [savedAlignment, setSavedAlignment] = useState(null);
 
   // FIX-134: section-jump — collapsed strip icons set a target before expanding,
@@ -113,6 +115,7 @@ export function DataExplorerPanel({ view, hooks, collapsed, onCollapse, graphMet
           graphMeta={graphMeta}
           userNode={userNode}
           onToggleUserNode={onToggleUserNode}
+          browserSlot={browserSlot}
         />
         </div>
         <div data-section="connections">

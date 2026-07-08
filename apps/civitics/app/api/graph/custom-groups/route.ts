@@ -1,14 +1,24 @@
 /**
- * /api/graph/custom-groups — FIX-126
+ * /api/graph/custom-groups — FIX-126, FIX-763
  *
  * GET    list — own groups + any public groups, newest first
- * POST   create — owned by signed-in user; payload mirrors FocusGroup minus id/type
+ * POST   create — owned by signed-in user. Two accepted filter shapes:
+ *          v2 (FIX-763): { v: 2, scope, facets, q, sort } — a saved BrowseState;
+ *            the write path for everything W2+ (both /search and graph mounts).
+ *          v1 (legacy):  { entity_type, chamber?, party?, state?, industry? } —
+ *            kept for GroupBuilderWidget back-compat; read paths up-compile.
  * DELETE remove by ?id=<uuid> — RLS enforces own-only
  */
 
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createServerClient } from "@civitics/db";
+import {
+  buildSavedViewPayload,
+  parseSavedViewFilter,
+  InvalidSavedViewError,
+  UnknownIndustryTokenError,
+} from "@/lib/browse/graph-compiler";
 
 export const dynamic = "force-dynamic";
 
@@ -92,8 +102,28 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "name must be 1-80 chars" }, { status: 400 });
   }
 
-  const filter = parseFilter(body.filter);
-  if ("error" in filter) return NextResponse.json({ error: filter.error }, { status: 400 });
+  // v2 saved-view payload (FIX-763) or legacy v1 GroupFilter — v2 is detected
+  // by its `v: 2` marker; v1 keeps the original strict parse. Stored v2 rows
+  // are re-serialized through buildSavedViewPayload so only the canonical keys
+  // ({v, scope, facets, q, sort}) land in the JSONB.
+  let filter: unknown;
+  const raw = body.filter as Record<string, unknown> | null | undefined;
+  if (raw && typeof raw === "object" && raw["v"] === 2) {
+    try {
+      const parsed = parseSavedViewFilter(raw);
+      filter = buildSavedViewPayload(parsed.state);
+    } catch (e) {
+      const message =
+        e instanceof InvalidSavedViewError || e instanceof UnknownIndustryTokenError
+          ? e.message
+          : "invalid saved-view filter";
+      return NextResponse.json({ error: message }, { status: 400 });
+    }
+  } else {
+    const v1 = parseFilter(body.filter);
+    if ("error" in v1) return NextResponse.json({ error: v1.error }, { status: 400 });
+    filter = v1;
+  }
 
   const icon  = typeof body.icon  === "string" ? body.icon  : null;
   const color = typeof body.color === "string" ? body.color : null;
