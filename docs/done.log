@@ -937,3 +937,5 @@
 2026-07-07 | FIX-764 | eb75bdec | local+prod | feat(graph): unified browser sidebar mount + saved views v2 (W2)
 2026-07-07 | FIX-739 | 7772b232 | local-only | fix(usaspending): enumerate all CSV parts + move run state to pipeline_state (FIX-766, FIX-739)
 2026-07-07 | FIX-766 | 7772b232 | local-only | fix(usaspending): enumerate all CSV parts + move run state to pipeline_state (FIX-766, FIX-739)
+2026-07-08 | FIX-739 | 2278c291 | local+prod | chore(fixes): record prod verification for FIX-766/FIX-739 [skip vercel]
+2026-07-08 | FIX-766 | 2278c291 | local+prod | chore(fixes): record prod verification for FIX-766/FIX-739 [skip vercel]
