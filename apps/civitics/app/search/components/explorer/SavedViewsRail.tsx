@@ -135,6 +135,9 @@ export function SavedViewsRail({
   const [savingOpen, setSavingOpen] = useState(false);
   const [saveName, setSaveName] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
+  // FIX-782 — set when the most recent reload GET failed and we chose to keep
+  // the rows we already have rather than wipe them. Surfaces a quiet stale hint.
+  const [stale, setStale] = useState(false);
 
   const mountedRef = useRef(true);
   const reloadSeq = useRef(0);
@@ -150,15 +153,34 @@ export function SavedViewsRail({
   // in-session re-fetch after a save never serves a stale list (FIX-770). A
   // sequence guard keeps the latest reload authoritative when several fire in
   // quick succession (save → notify → reload racing an in-flight one).
+  //
+  // NB: `items` holds only server-persisted rows; anon/session-only fallback
+  // rows live in the separate `sessionItems` state that reload never touches,
+  // so they survive every refetch (FIX-782). The server is authoritative for
+  // persisted rows here (so a delete on another surface propagates), which is
+  // why the success path replaces rather than merges `items`.
   const reload = useCallback(() => {
     const seq = ++reloadSeq.current;
     fetch("/api/graph/custom-groups", { credentials: "include", cache: "no-store" })
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
       .then((data: { groups?: ServerRow[] }) => {
-        if (mountedRef.current && seq === reloadSeq.current) setItems((data.groups ?? []).map(toItem));
+        if (mountedRef.current && seq === reloadSeq.current) {
+          setItems((data.groups ?? []).map(toItem));
+          setStale(false);
+        }
       })
       .catch(() => {
-        if (mountedRef.current && seq === reloadSeq.current) setItems([]);
+        // FIX-782 — a failed/empty refetch must NEVER wipe rows we already have.
+        // FIX-770's bus fans a reload to every mounted rail on each save/delete,
+        // so the old `setItems([])` here turned one transient GET failure (prod:
+        // the 8s authenticator role-read timeout under cache starvation) into a
+        // wipe of the just-saved view on every surface. Keep prior rows; fall
+        // back to [] only on the very first load (nothing to lose) and flag the
+        // list stale so the UI can hint that it may be out of date.
+        if (mountedRef.current && seq === reloadSeq.current) {
+          setItems((prev) => prev ?? []);
+          setStale(true);
+        }
       });
   }, []);
 
@@ -253,6 +275,14 @@ export function SavedViewsRail({
 
       {notice && (
         <p className="px-2 py-1 font-mono text-[10px] text-amber">{notice}</p>
+      )}
+
+      {stale && (
+        // FIX-782 — the last refetch failed; we kept the prior rows rather than
+        // wipe them. Quiet hint so the list isn't silently presented as fresh.
+        <p className="px-2 py-1 font-mono text-[10px] text-ink-soft/50">
+          couldn’t refresh — showing last known views
+        </p>
       )}
 
       {items === null && (
