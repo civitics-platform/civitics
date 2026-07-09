@@ -904,7 +904,7 @@ export default async function DonorProfilePage({
             <p className="text-sm text-ink-soft/70">
               Civitics — open civic infrastructure. Beta · All data is public record.
             </p>
-            <a href="/search?type=financial" className="text-xs text-ink-soft/70 hover:text-accent transition-colors">
+            <a href="/search?scope=money" className="text-xs text-ink-soft/70 hover:text-accent transition-colors">
               ← Back to donors &amp; PACs
             </a>
           </div>

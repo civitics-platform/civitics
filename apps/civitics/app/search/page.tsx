@@ -14,6 +14,8 @@ export const dynamic = "force-dynamic";
 
 import { PageViewTracker } from "../components/PageViewTracker";
 import { ExplorerPage } from "./components/explorer/ExplorerPage";
+import { BrowseLanding } from "./components/landing/BrowseLanding";
+import { getLandingData, type LandingData } from "./components/landing/landing-data";
 import { resolveBrowseParams } from "@/lib/browse/legacy";
 import { serializeBrowseState } from "@/lib/browse/browse-state";
 import type { BrowseResponse } from "@/lib/browse/types";
@@ -21,6 +23,11 @@ import { executeBrowse } from "../api/browse/execute";
 
 const SSR_TIMEOUT_MS = 5000;
 const SSR_PAGE_LIMIT = 48; // mirror the client's page size so cursors line up
+
+const EMPTY_LANDING: LandingData = {
+  refreshedAt: null, totalCount: 0, kindCounts: {}, subCounts: {},
+  closing: [], recent: [], connected: [],
+};
 
 export default async function SearchPage({
   searchParams,
@@ -35,8 +42,32 @@ export default async function SearchPage({
   }
 
   const { state } = resolveBrowseParams(sp);
+  const rootParam = sp.get("root"); // discovery-path root for the explorer (FIX-768)
   const viewParam = sp.get("view");
   const initialView = viewParam === "cards" ? "cards" as const : viewParam === "table" ? "table" as const : null;
+
+  // Zero-query /search → the cheap browse landing (FIX-767), NOT the W1 48-row
+  // scoped-browse SSR. A q / scope / facet / discovery root all mean "explore".
+  const isLanding =
+    !rootParam &&
+    state.scope === "" &&
+    state.q.trim() === "" &&
+    Object.keys(state.facets).length === 0;
+
+  if (isLanding) {
+    let landing: LandingData = EMPTY_LANDING;
+    try {
+      landing = await getLandingData();
+    } catch {
+      // Degrade to an empty landing (zeros + empty strips still render).
+    }
+    return (
+      <>
+        <PageViewTracker entityType="search" />
+        <BrowseLanding data={landing} />
+      </>
+    );
+  }
 
   let initialData: BrowseResponse | null = null;
   try {
@@ -54,7 +85,7 @@ export default async function SearchPage({
   return (
     <>
       <PageViewTracker entityType="search" />
-      <ExplorerPage initialState={state} initialView={initialView} initialData={initialData} />
+      <ExplorerPage initialState={state} initialView={initialView} initialData={initialData} initialRoot={rootParam} />
     </>
   );
 }

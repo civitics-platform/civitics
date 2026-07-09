@@ -60,8 +60,10 @@ export function EntitySearchPicker({
             });
           }
         } else if (kinds) {
+          // FIX-769 — cheap typeahead (per-kind entity_search_index trigram),
+          // same SearchResults-keyed envelope /api/search returned.
           const res = await fetch(
-            `/api/search?q=${encodeURIComponent(query)}&type=all&limit=8`,
+            `/api/browse/typeahead?q=${encodeURIComponent(query)}`,
           );
           const data = (await res.json().catch(() => ({}))) as SearchResponse;
           for (const kind of kinds) {

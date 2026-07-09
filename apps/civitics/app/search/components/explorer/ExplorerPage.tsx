@@ -19,6 +19,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { BrowseResponse, BrowseRow, BrowseState } from "@/lib/browse/types";
+import type { DiscoveryRootKey } from "@/lib/browse/discovery";
 import { serializeBrowseState } from "@/lib/browse/browse-state";
 import { resolveBrowseParams } from "@/lib/browse/legacy";
 import { useBrowseExplorer } from "./useBrowseExplorer";
@@ -41,9 +42,15 @@ export interface ExplorerPageProps {
   initialView: BrowseView | null;
   /** SSR first fetch (rows + facets in one pass); null → client fetches on mount. */
   initialData: BrowseResponse | null;
+  /** Discovery-path root from the URL (?root=place|topic) — FIX-768. */
+  initialRoot?: string | null;
 }
 
-export function ExplorerPage({ initialState, initialView, initialData }: ExplorerPageProps) {
+function normalizeRoot(raw: string | null | undefined): DiscoveryRootKey {
+  return raw === "place" || raw === "topic" ? raw : "branch";
+}
+
+export function ExplorerPage({ initialState, initialView, initialData, initialRoot }: ExplorerPageProps) {
   // ── Shared explorer state + fetch orchestration (FIX-762) ───────────────────
   const ex = useBrowseExplorer({ initialState, initialData, pageLimit: PAGE_LIMIT });
   const {
@@ -54,6 +61,7 @@ export function ExplorerPage({ initialState, initialView, initialData }: Explore
 
   // ── Page-shaped state ───────────────────────────────────────────────────────
   const [view, setView] = useState<BrowseView>(initialView ?? "table");
+  const [root, setRoot] = useState<DiscoveryRootKey>(() => normalizeRoot(initialRoot));
   const [selection, setSelection] = useState<Map<string, BrowseRow>>(new Map());
   const [detailRow, setDetailRow] = useState<BrowseRow | null>(null);
 
@@ -73,6 +81,7 @@ export function ExplorerPage({ initialState, initialView, initialData }: Explore
   useEffect(() => {
     const sp = serializeBrowseState({ scope, facets, q, sort, cursor: null });
     if (view === "cards") sp.set("view", "cards");
+    if (root !== "branch") sp.set("root", root); // keep the discovery root shareable (FIX-768)
     const qs = sp.toString();
     const url = qs ? `/search?${qs}` : "/search";
     const current = window.location.search.replace(/^\?/, "");
@@ -90,7 +99,7 @@ export function ExplorerPage({ initialState, initialView, initialData }: Explore
     else window.history.pushState(null, "", url);
     firstSyncRef.current = false;
     lastSyncedScopeRef.current = scope;
-  }, [scope, facets, q, sort, view]);
+  }, [scope, facets, q, sort, view, root]);
 
   const applyState = ex.applyState;
   useEffect(() => {
@@ -100,6 +109,7 @@ export function ExplorerPage({ initialState, initialView, initialData }: Explore
       popRestoreRef.current = true;
       applyState(state);
       setView(sp.get("view") === "cards" ? "cards" : "table");
+      setRoot(normalizeRoot(sp.get("root")));
     }
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
@@ -247,6 +257,8 @@ export function ExplorerPage({ initialState, initialView, initialData }: Explore
             scopeLabel={scopeLabel ?? "all"}
             onScope={ex.handleScope}
             onToggleFacet={ex.handleToggleFacet}
+            root={root}
+            onRootChange={setRoot}
             savedViewsSlot={
               <SavedViewsRail
                 currentState={ex.currentState}

@@ -1,6 +1,17 @@
 /**
  * GET /api/search
  *
+ * @deprecated FIX-769 — the search/browse redesign (W0–W3) retired this
+ * 8-searcher fan-out. No live consumer remains: /search renders the W1 explorer
+ * + FIX-767 landing over /api/browse; the ⌘K GlobalSearch and the investigations
+ * EntitySearchPicker now read /api/browse/typeahead; the only other callers
+ * (AdvancedSearchPage, packages/graph EntityBrowse) are already-unmounted legacy
+ * components tracked for retirement in FIX-773 (the W3 consolidated cleanup,
+ * with FIX-753 / FIX-765). The route + its exported SearchResults types stay until
+ * those components are deleted — do NOT delete here (no-deletion standing rule).
+ * NOTE: /api/search/entity is NOT deprecated — the detail rail still uses it
+ * (FIX-751 decision 7).
+ *
  * Params:
  *   q               — text query (optional; omit for browse mode)
  *   type            — all|officials|proposals|jurisdictions|institutions|agencies|financial|initiatives|meetings

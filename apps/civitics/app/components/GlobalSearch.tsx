@@ -10,6 +10,11 @@
  * - Click outside to close
  * - Groups results by: Officials, Proposals, Agencies, Donors & PACs
  * - "View all results" navigates to /search?q=...
+ *
+ * FIX-769 — the data source is the cheap /api/browse/typeahead (a per-kind
+ * entity_search_index trigram match), NOT the /api/search 8-searcher fan-out.
+ * It returns the same SearchResults envelope, so the dropdown UI, keyboard nav,
+ * and result mapping below are unchanged (FIX-555) — only the fetch URL moved.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -247,7 +252,7 @@ export function GlobalSearch({
     if (q.length < 2) { setResults(null); setOpen(false); return; }
     setLoading(true);
     try {
-      const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
+      const res = await fetch(`/api/browse/typeahead?q=${encodeURIComponent(q)}`);
       const data: SearchResults = await res.json();
       setResults(data);
       setOpen(data.total > 0);

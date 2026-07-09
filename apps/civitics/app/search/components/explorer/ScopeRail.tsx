@@ -18,9 +18,15 @@ import { useEffect, useMemo, useState } from "react";
 import type { BrowseKind, FacetMap, FacetValue } from "@/lib/browse/types";
 import { BROWSE_REGISTRY, type FacetDef } from "@/lib/browse/registry";
 import { BROWSE_TREE, compileScope, type ScopeNode } from "@/lib/browse/scope-tree";
+import { DISCOVERY_ROOTS, type DiscoveryRootKey } from "@/lib/browse/discovery";
+import { PlaceTree, TopicList } from "./DiscoveryTrees";
 import { titleizeValue, formatCountCompact } from "./format";
 
 const ENUM_VISIBLE = 8;
+
+// Discovery roots that render an in-rail tree (Branch/Place/Topic). Money/Time
+// are preset jumps, surfaced on the landing START FROM row, not the rail switcher.
+const TREE_ROOTS = DISCOVERY_ROOTS.filter((r) => r.kind !== "preset");
 
 function asArray(v: FacetValue | undefined): string[] {
   if (v == null) return [];
@@ -42,13 +48,43 @@ export interface ScopeRailProps {
   onToggleFacet: (key: string, value: string) => void;
 }
 
-export function ScopeRail({ savedViewsSlot, ...props }: ScopeRailProps & { savedViewsSlot?: React.ReactNode }) {
+export function ScopeRail({
+  savedViewsSlot,
+  root = "branch",
+  onRootChange,
+  ...props
+}: ScopeRailProps & {
+  savedViewsSlot?: React.ReactNode;
+  /** FIX-768 — active discovery root (Branch/Place/Topic). */
+  root?: DiscoveryRootKey;
+  onRootChange?: (root: DiscoveryRootKey) => void;
+}) {
+  const headLabel = root === "place" ? "by place" : root === "topic" ? "by topic" : "by branch";
   return (
     <div className="flex h-full flex-col overflow-y-auto border-r border-rule bg-card px-2 pb-6 pt-3">
+      {/* FIX-768 — discovery-root switcher. Presets (Money/Time) live on the landing. */}
+      {onRootChange && (
+        <div className="flex flex-wrap gap-1 px-2 pb-2">
+          {TREE_ROOTS.map((r) => (
+            <button
+              key={r.key}
+              onClick={() => onRootChange(r.key as DiscoveryRootKey)}
+              title={r.hint}
+              className={`rounded-[2px] border px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.1em] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent
+                ${root === r.key
+                  ? "border-amber/55 bg-amber/10 text-amber"
+                  : "border-term-line text-ink-soft hover:text-ink"}`}
+            >
+              {r.short}
+            </button>
+          ))}
+        </div>
+      )}
+
       <h5 className="px-2 pb-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.16em] text-ink-soft/70">
-        Scope — by branch
+        Scope — {headLabel}
       </h5>
-      <ScopeTree {...props} />
+      {root === "place" ? <PlaceTree /> : root === "topic" ? <TopicList /> : <ScopeTree {...props} />}
 
       <h5 className="mt-4 px-2 pb-1 font-mono text-[10px] font-semibold uppercase tracking-[0.16em] text-ink-soft/70">
         Saved
@@ -56,7 +92,8 @@ export function ScopeRail({ savedViewsSlot, ...props }: ScopeRailProps & { saved
       {/* FIX-763 — the W1 disabled stub is replaced by the saved-views rail. */}
       {savedViewsSlot}
 
-      <FacetBlocks {...props} />
+      {/* Refine blocks only apply to the By-Branch scope compiler. */}
+      {root === "branch" && <FacetBlocks {...props} />}
     </div>
   );
 }
