@@ -27,13 +27,26 @@ interface EntityDetail {
   primary_source_url?: string | null;
 }
 
+// FIX-774: read the count from entity_connection_stats_mv (one row per entity,
+// both edge directions folded in; refreshed after each entity_connections
+// rebuild) instead of the live get_connection_counts RPC. The RPC live-COUNTs
+// both directions of ~5.68M edges and timed out the 8s authenticator cap on
+// high-connection entities (FIX-499), which is the 500 Craig hit selecting an
+// entity in the detail rail. Fallback is NOT the live RPC (that's the bug): an
+// entity absent from the MV genuinely has no edges → 0; on MV error, degrade to
+// 0 (hidden count) rather than blocking the whole detail response.
 async function getConnectionCount(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   db: any,
   id: string,
 ): Promise<number> {
-  const { data } = await db.rpc("get_connection_counts", { entity_ids: [id] });
-  return Number((data?.[0] as { connection_count?: number } | undefined)?.connection_count ?? 0);
+  const { data, error } = await db
+    .from("entity_connection_stats_mv")
+    .select("connection_count")
+    .eq("entity_id", id)
+    .maybeSingle();
+  if (error || !data) return 0;
+  return Number((data as { connection_count?: number }).connection_count ?? 0);
 }
 
 function formatDollars(cents: number): string {

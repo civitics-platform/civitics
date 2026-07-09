@@ -1,0 +1,37 @@
+-- =============================================================================
+-- FIX-774 — DEPRECATION NOTE (no schema change): get_connection_counts is no
+-- longer the request-path source of per-entity connection counts.
+--
+-- get_connection_counts(uuid[]) (0032_search_connection_counts.sql) live-COUNTs
+-- both directions of ~5.68M entity_connections rows per call. FIX-499 measured
+-- this workload class at 0.7s warm / 12-25s cold under prod IOWait; the 8s
+-- authenticator statement cap kills the cold case → HTTP 500. That was the 500
+-- users hit selecting a high-connection entity in the search detail rail.
+--
+-- FIX-509 built the replacement: entity_connection_stats_mv (one row per entity —
+-- connection_count / vote_count / has_donation / has_vote — unique index on
+-- entity_id, refreshed by the FIX-715 refresh_derived_mvs pg_cron tail and the
+-- entity_connections rebuild cadence). FIX-774 swaps the live request-path
+-- callers onto MV point reads:
+--   * apps/civitics/app/api/search/entity/route.ts      (detail rail — the 500)
+--   * apps/civitics/app/api/graph/connections/route.ts  (neighbor-degree gate)
+--
+-- The function itself is INTENTIONALLY LEFT IN PLACE (not dropped, not altered):
+--   * apps/civitics/app/api/search/route.ts still calls it, but that route is
+--     already @deprecated with zero live consumers (FIX-769) and retires with
+--     FIX-773 — deliberately not touched here.
+--   * Any non-request-path caller (rebuild-time / ad-hoc) may keep using it;
+--     rebuild-time COUNT cost is fine.
+--
+-- CLEANUP LEDGER: get_connection_counts is DEPRECATED for request paths as of
+-- this migration. Once FIX-773 deletes /api/search (its last request-path
+-- caller), the RPC has no request-path callers left and can be DROP FUNCTIONed.
+-- Grep `.rpc("get_connection_counts"` before dropping — it must return zero hits
+-- under apps/ and packages/ first.
+--
+-- This migration is a comment only. It performs NO DDL so it is safe to apply to
+-- local and prod with no effect beyond recording the deprecation in the ledger.
+-- =============================================================================
+
+-- (intentionally no statements)
+SELECT 1;

@@ -329,7 +329,15 @@ export async function GET(req: NextRequest) {
   const isPaginated = true;
   const fetchLimit  = pageSize + 1;
 
-  // Batch connection count helper
+  // Batch connection count helper.
+  // FIX-774: this is the LAST request-path caller of the live get_connection_counts
+  // RPC — every other request-path caller (search/entity, graph/connections) was
+  // swapped to entity_connection_stats_mv point reads. This route is already
+  // @deprecated with zero live consumers (FIX-769) and retires with FIX-773, so
+  // it was deliberately left on the RPC rather than touched. When FIX-773 deletes
+  // this route, get_connection_counts has no request-path callers left and can be
+  // dropped (cleanup-ledger note; the RPC is deprecated for request paths as of
+  // the entity_connection_stats_mv swap — see the FIX-774 comment migration).
   async function getConnectionCounts(ids: string[]): Promise<Map<string, number>> {
     if (ids.length === 0) return new Map();
     const { data } = await db2.rpc("get_connection_counts", { entity_ids: ids });

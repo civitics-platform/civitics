@@ -310,17 +310,26 @@ export async function GET(request: Request) {
         // Paginate the full set: an unbounded .select() caps at MAX_ROWS, so a neighbor
         // whose rows fell past the cap was undercounted to 0 → wrongly auto-expanded (FIX-428).
         // Single-column projections keep the egress small even for high-degree neighbors.
-        // FIX-503: count neighbor degrees with the get_connection_counts RPC
-        // (from+to UNION ALL GROUP BY, server-side) instead of two fully-
-        // paginated entity_connections scans pulled to the client. The old
-        // approach moved every edge row of every neighbor over the wire and
-        // churned the buffer pool; the RPC returns one count per id. Chunk the
-        // uuid[] arg so a wide neighbor set stays bounded.
+        // FIX-503 counted neighbor degrees with the get_connection_counts RPC
+        // (from+to UNION ALL GROUP BY, server-side). FIX-774 reads the same
+        // per-entity counts from entity_connection_stats_mv (one row per entity,
+        // both directions pre-folded, refreshed after each entity_connections
+        // rebuild) instead — the live RPC re-COUNTs ~5.68M edges on every call
+        // and blew the 8s authenticator cap on high-degree entities (FIX-499),
+        // which is the 500 users hit. A neighbor absent from the MV genuinely
+        // has zero edges → count 0. Chunk at 200: supabase-js encodes the .in()
+        // filter in the request URL, and ~356 uuids (~13KB) trips PostgREST's
+        // 414 URI-too-long (verified in the FIX-509 treemap swap), so the RPC's
+        // old 500-wide uuid[] body arg can't carry over to a URL-based read.
         const neighborConnCounts = new Map<string, number>();
-        const RPC_CHUNK = 500;
-        for (let i = 0; i < neighborIds.length; i += RPC_CHUNK) {
-          const chunk = neighborIds.slice(i, i + RPC_CHUNK);
-          const { data, error } = await supabase.rpc("get_connection_counts", { entity_ids: chunk });
+        const STATS_CHUNK = 200;
+        for (let i = 0; i < neighborIds.length; i += STATS_CHUNK) {
+          const chunk = neighborIds.slice(i, i + STATS_CHUNK);
+          const { data, error } = await supabase
+            .from("entity_connection_stats_mv")
+            .select("entity_id, connection_count")
+            .in("entity_id", chunk)
+            .limit(chunk.length);
           if (error) throw error;
           for (const r of (data ?? []) as Array<{ entity_id: string; connection_count: number | string }>) {
             neighborConnCounts.set(r.entity_id, Number(r.connection_count));
