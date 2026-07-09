@@ -170,30 +170,47 @@ export async function GET(request: Request) {
   // entity_connection_stats_mv (one row per entity, both edge directions already
   // folded in). This replaces the two unpaged entity_connections fetches, which
   // silently capped count + flags at the PostgREST 1000-row default — the
-  // graph/entities site of FIX-510. allIds is at most ~80 (4 source queries ×
-  // 20), so a single ≤1000-id batch with an explicit .limit() covers it.
+  // graph/entities site of FIX-510.
   // has_vote here folds in the broader 5-type vote set (the MV's vote_count),
   // a slight, intentional improvement over the old vote_yes/vote_no-only flag.
+  //
+  // FIX-783 — mirrors the FIX-774 P1 read shape (api/graph/connections): chunk
+  // the .in() at 200 ids and CHECK the error explicitly. The prior read used a
+  // bare `const { data }` with no error check and a single unbounded batch, so
+  // an MV error or a Kong 414 URI-too-long from a large id chunk fell through
+  // `data ?? []` and silently returned HTTP 200 with every count/flag = 0
+  // (silent-empty class). allIds is normally ~80 (4 source queries × 20), but a
+  // future scope widening shouldn't be able to reintroduce the URI-limit trap.
+  // Counts here are decorative metadata and this endpoint has no outer try/catch,
+  // so we log-and-degrade rather than throw (a failed MV read yields count 0
+  // with a warning in the logs, not a 500 that kills the whole search).
   const countMap = new Map<string, number>();
   const hasDonation = new Set<string>();
   const hasVote = new Set<string>();
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: statsData } = await (supabase as any)
-    .from("entity_connection_stats_mv")
-    .select("entity_id, connection_count, has_donation, has_vote")
-    .in("entity_id", allIds)
-    .limit(allIds.length);
-
-  for (const r of (statsData ?? []) as {
-    entity_id: string;
-    connection_count: number;
-    has_donation: boolean;
-    has_vote: boolean;
-  }[]) {
-    countMap.set(r.entity_id, Number(r.connection_count));
-    if (r.has_donation) hasDonation.add(r.entity_id);
-    if (r.has_vote) hasVote.add(r.entity_id);
+  const STATS_CHUNK = 200;
+  for (let i = 0; i < allIds.length; i += STATS_CHUNK) {
+    const chunk = allIds.slice(i, i + STATS_CHUNK);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: statsData, error: statsErr } = await (supabase as any)
+      .from("entity_connection_stats_mv")
+      .select("entity_id, connection_count, has_donation, has_vote")
+      .in("entity_id", chunk)
+      .limit(chunk.length);
+    if (statsErr) {
+      console.warn("[graph/entities] entity_connection_stats_mv read failed — counts degraded to 0:", statsErr.message);
+      continue;
+    }
+    for (const r of (statsData ?? []) as {
+      entity_id: string;
+      connection_count: number;
+      has_donation: boolean;
+      has_vote: boolean;
+    }[]) {
+      countMap.set(r.entity_id, Number(r.connection_count));
+      if (r.has_donation) hasDonation.add(r.entity_id);
+      if (r.has_vote) hasVote.add(r.entity_id);
+    }
   }
 
   // Fetch top topic tags per entity
