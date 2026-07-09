@@ -944,3 +944,5 @@
 2026-07-08 | FIX-769 | 6059a8c6 | local+prod | feat(search): browse landing + typeahead + /api/search sweep (W3)
 2026-07-08 | FIX-770 | 2eacc2fb | local-only | fix(search): shared saved-views refresh bus + no-store so a save shows on both surfaces (FIX-770)
 2026-07-08 | FIX-771 | df1c0343 | local-only | fix(fixes): fix:add allocates against origin/main markers, not the stale worktree FIXES.md (FIX-771)
+2026-07-08 | FIX-774 | f84f6825 | local+prod | fix(search): read connection counts from entity_connection_stats_mv (P1)
+2026-07-08 | FIX-775 | f84f6825 | local+prod | fix(search): read connection counts from entity_connection_stats_mv (P1)
