@@ -946,3 +946,5 @@
 2026-07-08 | FIX-771 | df1c0343 | local-only | fix(fixes): fix:add allocates against origin/main markers, not the stale worktree FIXES.md (FIX-771)
 2026-07-08 | FIX-774 | f84f6825 | local+prod | fix(search): read connection counts from entity_connection_stats_mv (P1)
 2026-07-08 | FIX-775 | f84f6825 | local+prod | fix(search): read connection counts from entity_connection_stats_mv (P1)
+2026-07-08 | FIX-782 | 924b7ac2 | local-only | fix(search): saved views survive reloads + destructive-catch root cause (FIX-770 regression)
+2026-07-08 | FIX-783 | 90d581ed | local-only | fix(graph): error-check + chunk-200 the entities MV read so it can't fail silently (FIX-509 ride-along)
