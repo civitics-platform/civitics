@@ -40,8 +40,11 @@
     ],
     "ask": [
       "Bash(pnpm install*)"
+    ],
+    "additionalDirectories": [
+      "//c/Users/Craig/Documents/Civitics/civitics-worktrees",
+      "//c/Users/Craig/.claude"
     ]
-    
   },"hooks": {
     "PreToolUse": [
       {
