@@ -17,7 +17,7 @@
  * loses the view mid-session.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { BrowseState } from "@/lib/browse/types";
 import {
   buildSavedViewPayload,
@@ -25,6 +25,25 @@ import {
   suggestedViewName,
   tryCompileBrowseToGroupFilter,
 } from "@/lib/browse/graph-compiler";
+
+/**
+ * FIX-770 — shared saved-views refresh bus. Every mounted SavedViewsRail
+ * subscribes; any persisted save (saveViewToServer) or delete notifies, so a
+ * save on /search or the /graph sidebar mount is immediately visible on BOTH
+ * surfaces (the W2 both-surface contract). Before this, each rail owned an
+ * independent fetch with no cross-surface invalidation — a view saved from
+ * /graph showed in /search but not back on /graph.
+ */
+const savedViewsListeners = new Set<() => void>();
+function subscribeSavedViews(cb: () => void): () => void {
+  savedViewsListeners.add(cb);
+  return () => {
+    savedViewsListeners.delete(cb);
+  };
+}
+function notifySavedViewsChanged() {
+  for (const cb of [...savedViewsListeners]) cb();
+}
 
 export interface SavedViewItem {
   /** user_custom_groups uuid, or `session-<n>` for unpersisted fallback rows. */
@@ -80,6 +99,9 @@ export async function saveViewToServer(
     });
     if (!res.ok) return { persisted: false, row: null };
     const data = (await res.json()) as { group?: ServerRow };
+    // Fan out to every mounted rail (both surfaces) so the new view appears
+    // everywhere without a page reload (FIX-770).
+    notifySavedViewsChanged();
     return { persisted: true, row: data.group ?? null };
   } catch {
     return { persisted: false, row: null };
@@ -114,16 +136,36 @@ export function SavedViewsRail({
   const [saveName, setSaveName] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
 
+  const mountedRef = useRef(true);
+  const reloadSeq = useRef(0);
   useEffect(() => {
-    let cancelled = false;
-    fetch("/api/graph/custom-groups", { credentials: "include" })
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  // Single read path shared by mount, the external refreshNonce, and the
+  // module bus. cache:"no-store" defeats the browser HTTP cache so an
+  // in-session re-fetch after a save never serves a stale list (FIX-770). A
+  // sequence guard keeps the latest reload authoritative when several fire in
+  // quick succession (save → notify → reload racing an in-flight one).
+  const reload = useCallback(() => {
+    const seq = ++reloadSeq.current;
+    fetch("/api/graph/custom-groups", { credentials: "include", cache: "no-store" })
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
       .then((data: { groups?: ServerRow[] }) => {
-        if (!cancelled) setItems((data.groups ?? []).map(toItem));
+        if (mountedRef.current && seq === reloadSeq.current) setItems((data.groups ?? []).map(toItem));
       })
-      .catch(() => { if (!cancelled) setItems([]); });
-    return () => { cancelled = true; };
-  }, [refreshNonce]);
+      .catch(() => {
+        if (mountedRef.current && seq === reloadSeq.current) setItems([]);
+      });
+  }, []);
+
+  useEffect(() => {
+    reload();
+    return subscribeSavedViews(reload);
+  }, [refreshNonce, reload]);
 
   const handleSave = useCallback(async () => {
     if (saving) return;
@@ -155,7 +197,11 @@ export function SavedViewsRail({
       const res = await fetch(`/api/graph/custom-groups?id=${encodeURIComponent(item.id)}`, {
         method: "DELETE", credentials: "include",
       });
-      if (res.ok) setItems((prev) => (prev ?? []).filter((i) => i.id !== item.id));
+      if (res.ok) {
+        setItems((prev) => (prev ?? []).filter((i) => i.id !== item.id));
+        // Drop it on every other mounted rail too (FIX-770).
+        notifySavedViewsChanged();
+      }
     } catch { /* leave the row; next refresh reconciles */ }
   }, []);
 
