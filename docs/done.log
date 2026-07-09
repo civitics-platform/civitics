@@ -939,3 +939,8 @@
 2026-07-07 | FIX-766 | 7772b232 | local-only | fix(usaspending): enumerate all CSV parts + move run state to pipeline_state (FIX-766, FIX-739)
 2026-07-08 | FIX-739 | 2278c291 | local+prod | chore(fixes): record prod verification for FIX-766/FIX-739 [skip vercel]
 2026-07-08 | FIX-766 | 2278c291 | local+prod | chore(fixes): record prod verification for FIX-766/FIX-739 [skip vercel]
+2026-07-08 | FIX-767 | 6059a8c6 | local+prod | feat(search): browse landing + typeahead + /api/search sweep (W3)
+2026-07-08 | FIX-768 | 6059a8c6 | local+prod | feat(search): browse landing + typeahead + /api/search sweep (W3)
+2026-07-08 | FIX-769 | 6059a8c6 | local+prod | feat(search): browse landing + typeahead + /api/search sweep (W3)
+2026-07-08 | FIX-770 | 2eacc2fb | local-only | fix(search): shared saved-views refresh bus + no-store so a save shows on both surfaces (FIX-770)
+2026-07-08 | FIX-771 | df1c0343 | local-only | fix(fixes): fix:add allocates against origin/main markers, not the stale worktree FIXES.md (FIX-771)
