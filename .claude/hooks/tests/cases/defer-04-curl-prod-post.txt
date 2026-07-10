@@ -1,0 +1,1 @@
+curl -s -X POST https://xsazcoxinpgttgquwvuf.supabase.co/rest/v1/entity_comments -H "apikey: x" -d '{"body":"hi"}'

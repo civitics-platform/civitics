@@ -1,0 +1,1 @@
+supabase db push --db-url "postgresql://postgres:pw@db.xsazcoxinpgttgquwvuf.supabase.co:5432/postgres" && echo done

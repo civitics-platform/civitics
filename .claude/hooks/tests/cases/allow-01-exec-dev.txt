@@ -1,0 +1,1 @@
+cd /c/Users/Craig/Documents/Civitics/civitics-worktrees/fix-784/apps/civitics && exec pnpm dev

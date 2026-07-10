@@ -1,0 +1,8 @@
+node -e '
+const fs=require("fs");
+const env=fs.readFileSync(".env.local","utf8").split(/\r?\n/).filter(l=>/^VERCEL_/.test(l)).reduce((a,l)=>{const i=l.indexOf("=");a[l.slice(0,i)]=l.slice(i+1);return a;},{});
+const url=`https://api.vercel.com/v6/deployments?projectId=${encodeURIComponent(env.VERCEL_PROJECT_ID||"")}&limit=3`+(env.VERCEL_TEAM_ID?`&teamId=${env.VERCEL_TEAM_ID}`:"");
+fetch(url,{headers:{Authorization:`Bearer ${env.VERCEL_API_TOKEN}`}}).then(r=>r.json()).then(j=>{
+  for(const d of (j.deployments||[])) console.log(new Date(d.created).toISOString(), d.state, (d.meta&&d.meta.githubCommitSha||"").slice(0,8), (d.meta&&d.meta.githubCommitMessage||"").slice(0,55));
+}).catch(e=>console.log("err",e.message));
+' 2>&1 | tail -6

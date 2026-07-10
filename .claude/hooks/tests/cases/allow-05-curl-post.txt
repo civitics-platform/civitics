@@ -1,0 +1,7 @@
+cd /c/Users/Craig/Documents/Civitics/App
+URL=$(pnpm --filter @civitics/data data:auth:mint 2>&1 | grep -io "http://127.0.0.1:3000/auth/confirm[^ ]*" | tail -1)
+curl -s -c scratchpad/ck785.txt -L -o /dev/null -w "confirm:%{http_code}\n" "$URL"
+echo "=== POST ==="
+curl -s -b scratchpad/ck785.txt -w "\n[%{http_code}]\n" -X POST http://127.0.0.1:3000/api/graph/custom-groups -H "Content-Type: application/json" -d '{"name":"nr785","filter":{"v":2,"scope":"officials","facets":{},"q":"","sort":null}}' | tail -c 300
+echo "=== GET (should list nr785) ==="
+curl -s -b scratchpad/ck785.txt -w "\n[%{http_code}]\n" http://127.0.0.1:3000/api/graph/custom-groups | tail -c 400

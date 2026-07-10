@@ -1,0 +1,1 @@
+for pid in $(netstat -ano 2>/dev/null | grep ':3000' | grep LISTENING | awk '{print $5}' | sort -u); do taskkill //F //PID $pid 2>/dev/null || true; done; sleep 1; cd /c/Users/Craig/Documents/Civitics/civitics-worktrees/fix-784 && pnpm --filter @civitics/app-civitics build 2>&1 | tail -6

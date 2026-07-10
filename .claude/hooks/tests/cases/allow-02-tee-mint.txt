@@ -1,0 +1,1 @@
+pnpm --filter @civitics/data data:auth:mint 2>&1 | grep -io "http://127.0.0.1:3000/auth/confirm[^ ]*" | tail -1 | tee scratchpad/confirm_url.txt >/dev/null; node scratchpad/fix784-cdp.mjs "$(cat scratchpad/confirm_url.txt)" 2>&1 | tail -30

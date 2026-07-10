@@ -1,0 +1,1 @@
+cd /c/Users/Craig/Documents/Civitics/App && rm -rf node_modules

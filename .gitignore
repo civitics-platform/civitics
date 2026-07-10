@@ -80,6 +80,9 @@ packages/data/.usaspending-bulk-state.json
 # Enrichment-drain wave artifacts (see CLAUDE.md "Enrichment Queue Drain — Runbook").
 .drain-tmp/
 
+# Session scratch scripts / cookie jars / header dumps — never commit.
+/scratchpad/
+
 
 .vercel
 .env*

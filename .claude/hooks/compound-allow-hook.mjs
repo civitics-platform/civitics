@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /*
- * Claude Code PreToolUse hook — auto-approve SAFE compound Bash commands. (v7)
+ * Claude Code PreToolUse hook — auto-approve SAFE compound Bash commands. (v8)
  *
  * WHY: a Claude Code security fix (the `cd && <anything>` bypass) made wildcard
  * allow-rules like `Bash(*)` stop auto-approving any command containing a shell
@@ -35,6 +35,17 @@
  *       supabase/gh/python/python3 to SAFE, with NON_SQL_DANGER guards that keep
  *       outward/prod-mutating verbs deferring (supabase db push/reset/link, gh
  *       workflow run / run cancel / pr merge / release / secret / api -X POST).
+ *   v8  real prompts from the FIX-784/785 sessions: (1) shell control flow —
+ *       `for x in …` word lists, do/done/then/fi/break as bare or prefix words,
+ *       `exec`/`xargs`/`nohup` wrappers, and `# comment` lines — is handled, so
+ *       port-kill loops and `cd X && exec pnpm dev` auto-approve; (2) tee + seq
+ *       added to SAFE; (3) backtick/process-substitution detection is now a
+ *       quote-aware scanner (a template literal inside a single-quoted
+ *       `node -e '…'` program is inert to the shell and no longer defers;
+ *       backticks in double quotes or bare still do); (4) curl write methods
+ *       (-X POST/-d/-T) auto-approve when EVERY url in the command is loopback
+ *       (127.0.0.1/localhost — local dev server + local Supabase are
+ *       disposable); write-to-remote still prompts.
  *
  * The shell-PARSING classes (quotes, pipes, redirects, ${VAR}, $(...), nesting)
  * are now handled. If something still prompts, it's almost always a real leading
@@ -44,7 +55,8 @@
  * node/tsx/pnpm/git/psql/source are SAFE, so $(node -e '...') / $(psql -c '...')
  * auto-approve and node -e/tsx can run arbitrary code — intentional, since those
  * already auto-run as single commands under your Bash(*) allow. `curl … | sh`,
- * `wget`, backticks, and process substitution <( ) >( ) still PROMPT.
+ * `wget`, unquoted/double-quoted backticks, and process substitution <( ) >( )
+ * still PROMPT (single-quoted backticks are inert to the shell and pass).
  * NON_SQL_DANGER scans the RAW command (substitution bodies included), so
  * rm/git-force/etc. anywhere defer. SQL_DANGER (DROP/DELETE/…) defers only when a
  * raw non-local psql carries it (db-query.mjs and local psql are exempt). Trim
@@ -65,7 +77,7 @@ const SAFE = new Set([
   "git", "pnpm", "node", "tsx", "npx", "tsc",
   "set", "source", "export", "psql",
   // read-only / harmless additions:
-  "netstat", "sleep", "jq",
+  "netstat", "sleep", "jq", "seq", "tee",
   // process kill (recoverable; clears orphaned dev servers) + curl (host-guarded below):
   "taskkill", "kill", "curl",
   // CLIs whose read/monitor subcommands dominate — their outward/mutating verbs
@@ -119,12 +131,47 @@ const SQL_DANGER = [
 const ALLOWED_CURL_HOST =
   /^(https?:\/\/)?(127\.0\.0\.1|localhost|([\w-]+\.)?xsazcoxinpgttgquwvuf\.supabase\.co|civitics-civitics\.vercel\.app)([:/]|$)/i;
 
-// Backticks and process substitution <( ) >( ) defer (too hard to reason about).
-// $(...) is NOT here — it is validated below.
-const TRICKY = /`|<\(|>\(/;
+// Hosts where curl WRITE methods (-X POST/-d/-T) are still auto-approvable:
+// the local dev server and local Docker Supabase are disposable state.
+const LOOPBACK_URL = /^(https?:\/\/)?(127\.0\.0\.1|localhost)([:/]|$)/i;
+
+// Backticks and process substitution <( ) >( ) defer (too hard to reason
+// about) — but only OUTSIDE single quotes, where the shell would actually
+// execute them. A backtick inside '…' (e.g. a JS template literal in a
+// `node -e '…'` program) is inert. Inside "…" backticks DO execute, so they
+// still defer. The scanner mirrors bash quoting exactly, including \-escapes.
+// $(...) is NOT handled here — it is validated below.
+function trickyOutsideSingleQuotes(s) {
+  let q = null;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (q === "'") { if (c === "'") q = null; continue; }
+    if (q === '"') {
+      if (c === "\\") { i++; continue; }
+      if (c === '"') { q = null; continue; }
+      if (c === "`") return true;
+      continue;
+    }
+    if (c === "\\") { i++; continue; }
+    if (c === "'") { q = "'"; continue; }
+    if (c === '"') { q = '"'; continue; }
+    if (c === "`") return true;
+    if ((c === "<" || c === ">") && s[i + 1] === "(") return true;
+  }
+  return false;
+}
 
 // A segment that is ONLY VAR=val assignments (PW="x" URL="y") is safe on its own.
 const ASSIGN_ONLY = /^([A-Za-z_]\w*=(?:"[^"]*"|'[^']*'|\S+)\s*)+$/;
+// Leading VAR=val assignments before a command (`PW=x psql …`).
+const ASSIGN_PREFIX = /^([A-Za-z_]\w*=(?:"[^"]*"|'[^']*'|\S+)\s+)+/;
+// Shell control-flow / wrapper words that may PRECEDE the real command in a
+// segment (`do curl …`, `if [ -f x ]`, `exec pnpm dev`, `xargs grep …`) —
+// strip them, then judge what's left. `for` is NOT here: what follows it is a
+// word list, not a command, so it gets its own inert-pattern check instead.
+const KEYWORD_PREFIX = /^((?:if|then|elif|else|do|while|until|exec|xargs|nohup|!)\s+)+/;
+// Segments that are ONLY a control-flow word carry no command at all.
+const BARE_KEYWORDS = new Set(["then", "do", "done", "fi", "else", "esac", "break", "continue", "!"]);
 
 function defer() { process.exit(0); }                       // no stdout = normal flow
 function allow(reason) {
@@ -148,10 +195,18 @@ function allSegmentsSafe(text) {
   const segs = masked.split(/&&|\|\||;|\||\n/).map((s) => s.trim()).filter(Boolean);
   if (segs.length === 0) return false;
   for (const seg of segs) {
+    if (seg.startsWith("#")) continue;                  // comment line
     if (ASSIGN_ONLY.test(seg)) continue;
-    const s = seg.replace(/^([A-Za-z_]\w*=(?:"[^"]*"|'[^']*'|\S+)\s+)+/, "").trim();
+    let s = seg.replace(ASSIGN_PREFIX, "").trim();
+    // `for x in <words>` — the word list is inert data ($(…) inside it was
+    // already resolved/validated); the loop BODY arrives as do/… segments.
+    if (/^for\s+[A-Za-z_]\w*\s+in\b/.test(s)) continue;
+    s = s.replace(KEYWORD_PREFIX, "").trim();
+    s = s.replace(ASSIGN_PREFIX, "").trim();            // `do PW=x psql …`
+    if (!s || BARE_KEYWORDS.has(s)) continue;
     const word = s.split(/\s+/)[0] || "";
     const base = word.replace(/^.*[\\/]/, ""); // strip any path prefix
+    if (base === "[" || base === "[[") continue;        // test brackets: [ -f x ]
     if (!SAFE.has(base)) return false;
   }
   return true;
@@ -215,7 +270,7 @@ if (!rawCmd.trim()) defer();
 // wrapped command — e.g. a psql with several `-c`/`-f` args across lines — is
 // one logical line instead of segments that lead with `-c`/`-f` (not in SAFE).
 const cmd = rawCmd.replace(/\\\r?\n/g, " ");
-if (TRICKY.test(cmd)) defer();
+if (trickyOutsideSingleQuotes(cmd)) defer();
 if (NON_SQL_DANGER.some((re) => re.test(cmd))) defer();
 
 // SQL write/DDL only matters when a raw `psql` targets a non-local DB. A raw
@@ -226,14 +281,18 @@ const hasRawPsql = /(^|[\s;&|(=])psql\s/.test(cmd);
 const provablyLocal = /127\.0\.0\.1|localhost/.test(cmd);
 if (hasRawPsql && !provablyLocal && SQL_DANGER.some((re) => re.test(cmd))) defer();
 
-// curl is in SAFE, but auto-approve only for our own hosts + read methods.
-// Fail-closed: needs >=1 explicit http(s):// URL, all to allowed hosts, no write
-// method. Otherwise (external host, no URL, POST/PUT/-d/-T upload) → prompt.
+// curl is in SAFE, but auto-approve only for our own hosts. Read methods may
+// target any allowed host; WRITE methods (-X POST/PUT/PATCH/DELETE, --data,
+// -d, -T) auto-approve only when EVERY url in the command is loopback — the
+// local dev server / local Supabase are disposable, the prod hosts are not.
+// Fail-closed: needs >=1 explicit http(s):// URL. Otherwise (external host,
+// no URL, write-to-remote) → prompt.
 if (/(^|[\s;&|(=])curl\b/.test(cmd)) {
   const urls = cmd.match(/https?:\/\/[^\s"'`]+/gi) || [];
   const curlWrite = curlWindows(cmd).some((w) =>
     /-X\s*(POST|PUT|PATCH|DELETE)\b|--data\b|--upload-file\b|\s-[dT](\s|=|"|')/i.test(w));
-  if (urls.length === 0 || curlWrite || !urls.every((u) => ALLOWED_CURL_HOST.test(u))) defer();
+  if (urls.length === 0 || !urls.every((u) => ALLOWED_CURL_HOST.test(u))) defer();
+  if (curlWrite && !urls.every((u) => LOOPBACK_URL.test(u))) defer();
 }
 
 // Resolve $(...) substitutions innermost-first (lastIndexOf -> nothing after it,
@@ -254,4 +313,4 @@ while (true) {
 }
 
 if (!allSegmentsSafe(work)) defer();
-allow(`compound-allow v7: all segments + $() inners in safe list (heredocs stripped)`);
+allow(`compound-allow v8: all segments + $() inners in safe list (heredocs stripped)`);

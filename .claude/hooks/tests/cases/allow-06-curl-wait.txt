@@ -1,0 +1,14 @@
+cd /c/Users/Craig/Documents/Civitics/App
+# wait for auth container to be ready after restart
+for i in $(seq 1 20); do curl -s -o /dev/null -w "" http://127.0.0.1:3000/ 2>/dev/null && break; sleep 1; done
+URL=$(pnpm --filter @civitics/data data:auth:mint 2>&1 | grep -io "http://127.0.0.1:3000/auth/confirm[^ ]*" | tail -1)
+echo "confirm (token clock starts now):"
+curl -s -c scratchpad/ck785r.txt -L -o /dev/null -w "  confirm:%{http_code}\n" "$URL"
+echo "POST while token fresh:"
+curl -s -b scratchpad/ck785r.txt -w "  [%{http_code}]\n" -X POST http://127.0.0.1:3000/api/graph/custom-groups -H "Content-Type: application/json" -d '{"name":"rt785","filter":{"v":2,"scope":"officials","facets":{},"q":"","sort":null}}' -o /dev/null
+echo "waiting 12s for the 8s access token to EXPIRE..."
+sleep 12
+echo "GET after expiry (middleware must refresh; handler must still be authed):"
+curl -s -b scratchpad/ck785r.txt -D scratchpad/hdr785.txt -w "\n  [%{http_code}]\n" http://127.0.0.1:3000/api/graph/custom-groups | tail -c 300
+echo "refreshed Set-Cookie present? (evidence a rotation happened):"
+grep -ic "set-cookie:.*sb-" scratchpad/hdr785.txt
