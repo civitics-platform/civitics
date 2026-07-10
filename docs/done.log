@@ -953,3 +953,4 @@
 2026-07-09 | FIX-785 | 1b96126b | closes-as-redirected | chore(diag): remove the FIX-785 temporary custom-groups instrumentation
 2026-07-09 | FIX-787 | ea01dce5 | local-only | fix(cache): no-store the remaining per-user authed API routes (FIX-787)
 2026-07-09 | FIX-789 | 89e147a9 | local-only | [skip vercel] chore(claude): fix permission-prompt storm — path forms + hook v8
+2026-07-09 | FIX-788 | 5710c21c | local+prod | perf(api): split viewer vote overlay from cached statements/questions payloads
