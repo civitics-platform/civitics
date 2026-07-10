@@ -1,23 +1,33 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { createServerClient } from "@civitics/db";
+import { createPublicClient, createServerClient } from "@civitics/db";
 import {
   STATEMENT_MIN_LEN,
   STATEMENT_MAX_LEN,
   isEntityCommentType,
 } from "@civitics/db";
 import { getSlowMode } from "@/lib/slow-mode";
+import { stripViewerKeys } from "@/lib/public-payload";
 import { challengeRequiredForWrite, verifyTurnstile } from "@/lib/turnstile";
 import { mapRpcError } from "./_lib";
 
 export const dynamic = "force-dynamic";
 
 // ─── GET /api/statements?entity_type=&entity_id=&lens=&cursor=&limit= ─────────
-// Public ordered list (anon-allowed). Called via the caller's server client so
-// get_entity_statements can surface my_vote for an authenticated reader. Also
-// returns the slow-mode flag so a client refresh can re-read it without SSR.
+// PUBLIC, CDN-CACHED (FIX-788). This response is held in the shared Vercel edge
+// cache (next.config.mjs cdnHot catch-all) and served cross-user, so it must
+// contain ZERO viewer-dependent fields — a personalized field here is the
+// FIX-786/787 cross-user cache leak. Two layers enforce that:
+//   1. the RPC runs on createPublicClient (no cookies → auth.uid() NULL →
+//      my_vote is null for every row, for every caller), and
+//   2. the body passes through stripViewerKeys() so the my_vote key never
+//      appears in the cached payload at all (public-payload.test.ts pins this).
+// The caller's own ballots hydrate client-side from the no-store
+// /api/viewer/engagement overlay. Never re-add a personalized field here — put
+// it in the overlay instead.
 // FIX-540: the RPC keysets in SQL and returns { statements, next_cursor };
-// cursor/limit pass through opaquely.
+// cursor/limit pass through opaquely. Also returns the (per-entity, public)
+// slow-mode flag so a client refresh can re-read it without SSR.
 export async function GET(request: NextRequest) {
   try {
     const sp = request.nextUrl.searchParams;
@@ -34,8 +44,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "entity_id is required" }, { status: 400 });
     }
 
-    const cookieStore = await cookies();
-    const supabase = createServerClient(cookieStore);
+    const supabase = createPublicClient();
 
     const { data, error } = await supabase.rpc("get_entity_statements", {
       p_entity_type: entityType,
@@ -48,11 +57,13 @@ export async function GET(request: NextRequest) {
 
     const result = (data as { statements?: unknown; next_cursor?: unknown } | null) ?? {};
     const slowMode = await getSlowMode(entityType, entityId, supabase);
-    return NextResponse.json({
-      statements: Array.isArray(result.statements) ? result.statements : [],
-      nextCursor: typeof result.next_cursor === "string" ? result.next_cursor : null,
-      slowMode,
-    });
+    return NextResponse.json(
+      stripViewerKeys({
+        statements: Array.isArray(result.statements) ? result.statements : [],
+        nextCursor: typeof result.next_cursor === "string" ? result.next_cursor : null,
+        slowMode,
+      }),
+    );
   } catch {
     return NextResponse.json({ error: "Failed to load statements" }, { status: 500 });
   }

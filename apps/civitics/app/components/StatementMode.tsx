@@ -11,6 +11,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { challengedFetch } from "@/lib/challenged-fetch";
+import { fetchViewerEngagement } from "@/lib/viewer-overlay";
 import { SyntheticMark } from "./integrity/Synthetic";
 import {
   createBrowserClient,
@@ -30,9 +31,15 @@ type Statement = {
   is_constituent: boolean;
   author_name: string;
   author_is_synthetic?: boolean;
+  // FIX-788: NOT in the /api/statements payload anymore (that response is
+  // edge-cached and viewer-independent) — hydrated client-side from the
+  // no-store /api/viewer/engagement overlay, then kept current by vote().
   my_vote: number | null;
   created_at: string;
 };
+
+// The cached list payload: a Statement minus the viewer-keyed field.
+type PublicStatement = Omit<Statement, "my_vote">;
 
 export interface StatementModeProps {
   entityType: EntityCommentType;
@@ -267,6 +274,23 @@ export function StatementMode({
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
 
+  // FIX-788: hydrate the caller's ballots onto already-rendered rows. Fired
+  // after the (cached, viewer-independent) list lands — merges by id, so a late
+  // response for a superseded list is a harmless no-op. Signed-out users make
+  // zero overlay calls (fetchViewerEngagement short-circuits on the local
+  // session read) and the empty overlay renders exactly today's anon state.
+  const hydrateMyVotes = useCallback((ids: string[]) => {
+    void fetchViewerEngagement({ statementIds: ids }).then(({ votes }) => {
+      if (Object.keys(votes).length === 0) return;
+      setStatements((prev) =>
+        prev.map((s) => {
+          const v = votes[s.id];
+          return v !== undefined ? { ...s, my_vote: v } : s;
+        }),
+      );
+    });
+  }, []);
+
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -278,9 +302,13 @@ export function StatementMode({
         setError(data.error ?? "Failed to load statements.");
         return;
       }
-      setStatements(data.statements ?? []);
+      const list = ((data.statements ?? []) as PublicStatement[]).map(
+        (s): Statement => ({ ...s, my_vote: null }),
+      );
+      setStatements(list);
       setNextCursor(data.nextCursor ?? null);
       setIndex(0);
+      hydrateMyVotes(list.map((s) => s.id));
     } catch {
       setError("Failed to load statements.");
     } finally {
@@ -303,15 +331,17 @@ export function StatementMode({
       const res = await fetch(`/api/statements?${sp.toString()}`);
       const data = await res.json();
       if (res.ok) {
+        const incoming = ((data.statements ?? []) as PublicStatement[]).map(
+          (s): Statement => ({ ...s, my_vote: null }),
+        );
         // Dedupe by id: an optimistically appended statement (zero votes →
         // sorted last) can legitimately arrive again on a later page.
         setStatements((prev) => [
           ...prev,
-          ...((data.statements ?? []) as Statement[]).filter(
-            (s) => !prev.some((p) => p.id === s.id),
-          ),
+          ...incoming.filter((s) => !prev.some((p) => p.id === s.id)),
         ]);
         setNextCursor(data.nextCursor ?? null);
+        hydrateMyVotes(incoming.map((s) => s.id));
       }
     } catch {
       // Leave the cursor in place — the button stays available to retry.

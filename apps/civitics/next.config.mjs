@@ -133,13 +133,23 @@ const nextConfig = {
     // (so it can't stamp cdnHot on them) AND pinned CDN no-store. Only
     // unambiguously per-user routes belong here; genuinely public routes stay
     // cached. FIX-787 completed the audit of the ambiguous authed GET routes:
-    // statements + questions (their RPCs embed a per-viewer `my_vote`) and
     // investigations (RLS `status<>'archived' OR created_by=auth.uid()` — creators
-    // see their own archived rows) vary by viewer and are added here; comments,
+    // see their own archived rows) varies by viewer and is here; comments,
     // initiatives and positions/rollup are genuinely public and stay cached.
     // `api/positions` (the caller's own stance) is handled separately below with
     // an EXACT match, because its `/rollup` sub-path is a public aggregate that
     // must stay cached — a `/:path*` entry here would wrongly catch it.
+    //
+    // FIX-788 — api/statements + api/questions were pinned here by FIX-787
+    // (their RPC payloads embedded a per-viewer `my_vote` / `can_answer`) but
+    // they are hot anon-heavy entity-page reads, so no-store pushed every hit
+    // to the cache-starved prod DB. They are now SPLIT: the list routes are
+    // viewer-independent (RPC via createPublicClient + stripViewerKeys — see
+    // src/lib/public-payload.ts) and fall to the cdnHot catch-all below, while
+    // the viewer's own state moved to api/viewer/engagement, which IS pinned
+    // here. The rule this file implements: cache headers only on payloads with
+    // ZERO viewer-dependence; anything personalized goes under api/viewer (or
+    // another denylisted prefix) — never back into a cached payload.
     const userScopedApi = [
       "api/graph/custom-groups",
       "api/graph/me",
@@ -150,10 +160,11 @@ const nextConfig = {
       "api/constituent-status",
       "api/officials/claim-status",
       "api/representatives",
-      // FIX-787 — per-viewer routes found in the FIX-786 security audit.
-      "api/statements",
-      "api/questions",
+      // FIX-787 — per-viewer route found in the FIX-786 security audit.
       "api/investigations",
+      // FIX-788 — the per-viewer overlay prefix for the cached public list
+      // routes (statements ballots, Q&A can_answer, and any future overlay).
+      "api/viewer",
     ];
     return [
       {

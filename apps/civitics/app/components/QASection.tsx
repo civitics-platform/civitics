@@ -21,6 +21,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { BODY_MIN, BODY_MAX } from "@civitics/db";
 import { challengedFetch } from "@/lib/challenged-fetch";
+import { fetchViewerEngagement } from "@/lib/viewer-overlay";
 import { SyntheticMark } from "./integrity/Synthetic";
 
 type Answer = {
@@ -66,8 +67,10 @@ type Question = {
   community_note_count: number;
 };
 
+// FIX-788: the /api/questions payload is edge-cached and viewer-independent —
+// it carries NO can_answer. The caller's grant flag hydrates separately from
+// the no-store /api/viewer/engagement overlay (see the effect in QASection).
 type QuestionsResponse = {
-  can_answer: boolean;
   total: number;
   awaiting: number;
   questions: Question[];
@@ -889,7 +892,8 @@ function QuestionCard({
       </div>
 
       {/* Official answer affordance — suppressed on proposals (officialLane=false);
-          can_answer is already false from the RPC, this is belt-and-braces. */}
+          the viewer overlay never grants can_answer for a proposal (FIX-788),
+          this is belt-and-braces. */}
       {officialLane && canAnswer && (
         <AnswerComposer
           entityId={entityId}
@@ -923,6 +927,22 @@ export function QASection({ entityId, entityType, entityName, signInNext }: QASe
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sort, setSort] = useState<SortKey>("wanted");
+  // FIX-788: can_answer is no longer in the (edge-cached, viewer-independent)
+  // /api/questions payload — it hydrates from the no-store viewer overlay.
+  const [canAnswer, setCanAnswer] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setCanAnswer(false);
+    // Proposals have no official answerer (grant never exists) and signed-out
+    // users hold no grants — fetchViewerEngagement short-circuits both to zero
+    // network calls; only a signed-in viewer on a grantable entity asks.
+    if (entityType === "proposal") return;
+    void fetchViewerEngagement({ entityType, entityId }).then(({ can_answer }) => {
+      if (!cancelled && can_answer) setCanAnswer(true);
+    });
+    return () => { cancelled = true; };
+  }, [entityType, entityId]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -977,7 +997,6 @@ export function QASection({ entityId, entityType, entityName, signInNext }: QASe
 
   const total = data?.total ?? 0;
   const awaiting = data?.awaiting ?? 0;
-  const canAnswer = data?.can_answer ?? false;
   const questions = data?.questions ?? [];
   // Q&A v2 PR-2a (FIX-629): proposals have no official answerer — suppress the
   // official lane and reframe the "awaiting official response" copy as a
