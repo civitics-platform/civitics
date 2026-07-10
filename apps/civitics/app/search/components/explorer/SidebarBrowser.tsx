@@ -55,7 +55,6 @@ export function SidebarBrowser({
 }: SidebarBrowserProps) {
   const ex = useBrowseExplorer({ initialState: EMPTY_STATE, pageLimit: SIDEBAR_PAGE_LIMIT });
   const [notice, setNotice] = useState<string | null>(null);
-  const [savedNonce, setSavedNonce] = useState(0);
   const [treeOpen, setTreeOpen] = useState(true);
   const [refineOpen, setRefineOpen] = useState(false);
 
@@ -117,15 +116,19 @@ export function SidebarBrowser({
       ...(groupCount != null ? { count: groupCount } : {}),
     };
     onAddGroup(group);
-    if (persisted) setSavedNonce((n) => n + 1);
+    // FIX-784: no savedNonce bump — saveViewToServer already broadcast the row
+    // onto the rail via the saved-views bus. Re-fetching here would fire the
+    // post-write GET that races the auth-cookie rotation on prod (empty-200 →
+    // the just-saved view disappears from the graph list).
     flash(persisted ? "Added to graph + saved to your views" : "Added to graph (sign in to save views)");
   }
 
   async function handleSaveView() {
     const name = suggestedViewName(ex.currentState);
     const { persisted } = await saveViewToServer(name, ex.currentState);
+    // FIX-784: the bus broadcast from saveViewToServer lists the row on the rail;
+    // no savedNonce refetch (that post-write GET is the one that races on prod).
     if (persisted) {
-      setSavedNonce((n) => n + 1);
       flash(`Saved “${name}” — usable in /search too`);
     } else {
       flash("Not signed in — views can't be saved");
@@ -376,7 +379,6 @@ export function SidebarBrowser({
           onApply={(state) => ex.applyState(state)}
           onAddGroup={handleAddSavedView}
           activeGroupIds={activeGroupIds}
-          refreshNonce={savedNonce}
           showSaveRow={false}
         />
       </div>

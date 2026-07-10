@@ -27,22 +27,34 @@ import {
 } from "@/lib/browse/graph-compiler";
 
 /**
- * FIX-770 — shared saved-views refresh bus. Every mounted SavedViewsRail
- * subscribes; any persisted save (saveViewToServer) or delete notifies, so a
- * save on /search or the /graph sidebar mount is immediately visible on BOTH
- * surfaces (the W2 both-surface contract). Before this, each rail owned an
- * independent fetch with no cross-surface invalidation — a view saved from
- * /graph showed in /search but not back on /graph.
+ * FIX-770 / FIX-784 — shared saved-views bus. Every mounted SavedViewsRail
+ * subscribes, so a save/delete on /search or the /graph sidebar mount is
+ * immediately visible on BOTH surfaces (the W2 both-surface contract).
+ *
+ * FIX-784 — the bus carries the changed ROW (upsert) or id (remove), NOT a
+ * bare "refetch" signal. The original design (FIX-770) had every listener
+ * re-GET the whole list on notify; on prod that post-write GET fires while the
+ * POST's middleware is rotating the auth cookie, so it can race a rotated-out
+ * token and come back authenticated-as-anon → an empty 200 → the list wiped
+ * the just-saved row on every surface (the reported regression). Broadcasting
+ * the delta from the already-confirmed POST/DELETE response removes that
+ * post-write GET entirely, so listing a save no longer depends on a second
+ * authenticated round-trip. The mount fetch (a standalone GET, not chained
+ * after a write) still loads the existing list.
  */
-const savedViewsListeners = new Set<() => void>();
-function subscribeSavedViews(cb: () => void): () => void {
+type SavedViewEvent =
+  | { type: "upsert"; row: ServerRow }
+  | { type: "remove"; id: string };
+
+const savedViewsListeners = new Set<(e: SavedViewEvent) => void>();
+function subscribeSavedViews(cb: (e: SavedViewEvent) => void): () => void {
   savedViewsListeners.add(cb);
   return () => {
     savedViewsListeners.delete(cb);
   };
 }
-function notifySavedViewsChanged() {
-  for (const cb of [...savedViewsListeners]) cb();
+function notifySavedView(e: SavedViewEvent) {
+  for (const cb of [...savedViewsListeners]) cb(e);
 }
 
 export interface SavedViewItem {
@@ -99,9 +111,9 @@ export async function saveViewToServer(
     });
     if (!res.ok) return { persisted: false, row: null };
     const data = (await res.json()) as { group?: ServerRow };
-    // Fan out to every mounted rail (both surfaces) so the new view appears
-    // everywhere without a page reload (FIX-770).
-    notifySavedViewsChanged();
+    // Broadcast the confirmed row so every mounted rail (both surfaces) lists it
+    // without a second GET — the POST response IS authoritative (FIX-784).
+    if (data.group) notifySavedView({ type: "upsert", row: data.group });
     return { persisted: true, row: data.group ?? null };
   } catch {
     return { persisted: false, row: null };
@@ -148,17 +160,16 @@ export function SavedViewsRail({
     };
   }, []);
 
-  // Single read path shared by mount, the external refreshNonce, and the
-  // module bus. cache:"no-store" defeats the browser HTTP cache so an
-  // in-session re-fetch after a save never serves a stale list (FIX-770). A
-  // sequence guard keeps the latest reload authoritative when several fire in
-  // quick succession (save → notify → reload racing an in-flight one).
+  // Mount + external-refreshNonce read path. This is a STANDALONE GET (not
+  // chained after a write), so it authenticates reliably — unlike the post-write
+  // refetch the module bus used to trigger, which raced the auth-cookie rotation
+  // on prod (FIX-784). In-session save/delete deltas arrive via the bus and
+  // applyEvent below; this fetch only loads the existing list.
   //
   // NB: `items` holds only server-persisted rows; anon/session-only fallback
   // rows live in the separate `sessionItems` state that reload never touches,
-  // so they survive every refetch (FIX-782). The server is authoritative for
-  // persisted rows here (so a delete on another surface propagates), which is
-  // why the success path replaces rather than merges `items`.
+  // so they survive every refetch (FIX-782). A sequence guard keeps the latest
+  // reload authoritative when several fire in quick succession.
   const reload = useCallback(() => {
     const seq = ++reloadSeq.current;
     fetch("/api/graph/custom-groups", { credentials: "include", cache: "no-store" })
@@ -186,21 +197,35 @@ export function SavedViewsRail({
 
   useEffect(() => {
     reload();
-    return subscribeSavedViews(reload);
   }, [refreshNonce, reload]);
+
+  // Apply a bus delta to local state — an upsert (save, dedup by id so the
+  // saver's own optimistic insert and the broadcast can't double up) or a
+  // remove (delete). No network: the row/id came from an already-confirmed
+  // write, so listing it never depends on a second authenticated GET (FIX-784).
+  const applyEvent = useCallback((e: SavedViewEvent) => {
+    if (!mountedRef.current) return;
+    setItems((prev) => {
+      const list = prev ?? [];
+      if (e.type === "remove") return list.filter((i) => i.id !== e.id);
+      const item = toItem(e.row);
+      return [item, ...list.filter((i) => i.id !== item.id)];
+    });
+    setStale(false);
+  }, []);
+
+  useEffect(() => subscribeSavedViews(applyEvent), [applyEvent]);
 
   const handleSave = useCallback(async () => {
     if (saving) return;
     const name = (saveName.trim() || suggestedViewName(currentState)).slice(0, 80);
     setSaving(true);
     setNotice(null);
-    const { persisted, row } = await saveViewToServer(name, currentState);
+    const { persisted } = await saveViewToServer(name, currentState);
     setSaving(false);
     setSavingOpen(false);
     setSaveName("");
-    if (persisted && row) {
-      setItems((prev) => [toItem({ ...row, is_owner: true }), ...(prev ?? [])]);
-    } else {
+    if (!persisted) {
       // Session-only fallback (anon / network) — mirrors pre-W2 custom groups.
       setSessionItems((prev) => [{
         id: `session-${++sessionSeq}`, name, state: { ...currentState, cursor: null },
@@ -219,12 +244,13 @@ export function SavedViewsRail({
       const res = await fetch(`/api/graph/custom-groups?id=${encodeURIComponent(item.id)}`, {
         method: "DELETE", credentials: "include",
       });
-      if (res.ok) {
-        setItems((prev) => (prev ?? []).filter((i) => i.id !== item.id));
-        // Drop it on every other mounted rail too (FIX-770).
-        notifySavedViewsChanged();
+      // 404 = the row is already gone (a stale/phantom id), so the goal state —
+      // absent — is achieved; drop it from the UI just like a 200 (FIX-784).
+      if (res.ok || res.status === 404) {
+        // Broadcast the removal so every mounted rail drops it — no refetch.
+        notifySavedView({ type: "remove", id: item.id });
       }
-    } catch { /* leave the row; next refresh reconciles */ }
+    } catch { /* leave the row; next mount reconciles */ }
   }, []);
 
   const all = [...sessionItems, ...(items ?? [])];
