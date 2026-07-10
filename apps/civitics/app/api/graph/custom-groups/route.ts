@@ -57,7 +57,43 @@ function parseFilter(input: unknown): GroupFilter | { error: string } {
   };
 }
 
-export async function GET() {
+// ── FIX-785 TEMPORARY DIAGNOSTIC (remove after root-cause capture) ──────────
+// Logs auth outcome + cookie PRESENCE (names/byte-size, NEVER values) so the
+// Vercel runtime logs reveal whether a given request to this route authenticated
+// and which sb-* cookies it carried. Used to capture, from real prod data, why a
+// chained-after-write authed request reads anon. Grep logs for `fix785diag`.
+function diagLog(
+  method: string,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  cookieStore: any,
+  user: { id?: string } | null,
+  request: Request,
+  extra: Record<string, unknown> = {},
+) {
+  try {
+    const sb = (cookieStore.getAll() as { name: string; value: string }[]).filter(
+      (c) => c.name.startsWith("sb-"),
+    );
+    console.log(
+      "[fix785diag] " +
+        JSON.stringify({
+          m: method,
+          hasUser: !!user,
+          uid: user?.id ? user.id.slice(0, 8) : null,
+          sbNames: sb.map((c) => c.name),
+          sbBytes: sb.reduce((n, c) => n + c.value.length, 0),
+          q: new URL(request.url).search,
+          ref: (request.headers.get("referer") ?? "").slice(0, 80),
+          xff: (request.headers.get("x-forwarded-for") ?? "").slice(0, 40),
+          ...extra,
+        }),
+    );
+  } catch {
+    /* a diagnostic must never throw */
+  }
+}
+
+export async function GET(request: Request) {
   const cookieStore = await cookies();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const supabase = createServerClient(cookieStore) as any;
@@ -74,6 +110,10 @@ export async function GET() {
   if (!user) query = query.eq("is_public", true);
 
   const { data, error } = await query;
+  diagLog("GET", cookieStore, user, request, {
+    rows: (data ?? []).length,
+    err: error?.message ?? null,
+  });
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   const userId = user?.id ?? null;
@@ -90,6 +130,7 @@ export async function POST(request: Request) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const supabase = createServerClient(cookieStore) as any;
   const { data: { user } } = await supabase.auth.getUser();
+  diagLog("POST", cookieStore, user, request);
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await request.json().catch(() => null) as
@@ -151,6 +192,7 @@ export async function DELETE(request: Request) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const supabase = createServerClient(cookieStore) as any;
   const { data: { user } } = await supabase.auth.getUser();
+  diagLog("DELETE", cookieStore, user, request);
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const id = new URL(request.url).searchParams.get("id");
