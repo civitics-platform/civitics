@@ -123,6 +123,29 @@ const nextConfig = {
       { key: "CDN-Cache-Control", value: `public, s-maxage=${sMaxAge}, stale-while-revalidate=${swr}` },
       { key: "Vercel-CDN-Cache-Control", value: `public, s-maxage=${sMaxAge}, stale-while-revalidate=${swr}` },
     ];
+    // FIX-786 — per-user, auth-dependent API endpoints. Their response varies by
+    // the signed-in user, so they must NEVER sit in the shared edge cache the
+    // cdnHot catch-all applies: a stale hit shows a list from up to s-maxage
+    // seconds ago (the saved-views "reverts on refresh" bug — the write persists
+    // but the refresh reads the cached list), AND because the edge cache key does
+    // not vary by Cookie, one user's response can be served to another (cross-user
+    // leak). These are BOTH denylisted from the catch-all's negative-lookahead
+    // (so it can't stamp cdnHot on them) AND pinned CDN no-store. Only
+    // unambiguously per-user routes belong here; genuinely public routes stay
+    // cached. Ambiguous public-or-private authed GET routes
+    // (comments/positions/statements/initiatives/investigations/questions) are a
+    // separate per-route audit — see FIX-786's follow-up.
+    const userScopedApi = [
+      "api/graph/custom-groups",
+      "api/graph/me",
+      "api/graph/my-representatives",
+      "api/notifications",
+      "api/follows",
+      "api/profile",
+      "api/constituent-status",
+      "api/officials/claim-status",
+      "api/representatives",
+    ];
     return [
       {
         // Static assets — content-hashed, immutable. Cache-Control here is
@@ -157,11 +180,19 @@ const nextConfig = {
         source: "/dashboard",
         headers: [...cdnHot(1800, 3600), ...securityHeaders],
       },
+      // FIX-786 — per-user API endpoints: pin CDN no-store. `:path*` also covers
+      // the bare base path (e.g. /api/graph/custom-groups with no sub-segment).
+      ...userScopedApi.map((p) => ({
+        source: `/${p}/:path*`,
+        headers: [...cdnNoStore, ...securityHeaders],
+      })),
       {
         // Read-heavy public pages — Vercel edge holds the response for 5 min
         // and serves stale while revalidating for another 10. Civic data
-        // changes slowly; SWR keeps freshness acceptable.
-        source: "/((?!_next/static|api/auth|api/admin|auth|profile|dashboard).*)",
+        // changes slowly; SWR keeps freshness acceptable. The per-user API routes
+        // above are excluded here too (FIX-786) so the catch-all can't re-stamp
+        // cdnHot over their no-store rule regardless of Next's rule-merge order.
+        source: `/((?!_next/static|api/auth|api/admin|${userScopedApi.join("|")}|auth|profile|dashboard).*)`,
         headers: [...cdnHot(300, 600), ...securityHeaders],
       },
     ];
