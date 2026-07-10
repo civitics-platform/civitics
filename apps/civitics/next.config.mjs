@@ -132,9 +132,14 @@ const nextConfig = {
     // leak). These are BOTH denylisted from the catch-all's negative-lookahead
     // (so it can't stamp cdnHot on them) AND pinned CDN no-store. Only
     // unambiguously per-user routes belong here; genuinely public routes stay
-    // cached. Ambiguous public-or-private authed GET routes
-    // (comments/positions/statements/initiatives/investigations/questions) are a
-    // separate per-route audit — see FIX-786's follow-up.
+    // cached. FIX-787 completed the audit of the ambiguous authed GET routes:
+    // statements + questions (their RPCs embed a per-viewer `my_vote`) and
+    // investigations (RLS `status<>'archived' OR created_by=auth.uid()` — creators
+    // see their own archived rows) vary by viewer and are added here; comments,
+    // initiatives and positions/rollup are genuinely public and stay cached.
+    // `api/positions` (the caller's own stance) is handled separately below with
+    // an EXACT match, because its `/rollup` sub-path is a public aggregate that
+    // must stay cached — a `/:path*` entry here would wrongly catch it.
     const userScopedApi = [
       "api/graph/custom-groups",
       "api/graph/me",
@@ -145,6 +150,10 @@ const nextConfig = {
       "api/constituent-status",
       "api/officials/claim-status",
       "api/representatives",
+      // FIX-787 — per-viewer routes found in the FIX-786 security audit.
+      "api/statements",
+      "api/questions",
+      "api/investigations",
     ];
     return [
       {
@@ -186,13 +195,28 @@ const nextConfig = {
         source: `/${p}/:path*`,
         headers: [...cdnNoStore, ...securityHeaders],
       })),
+      // FIX-787 — /api/positions returns the caller's own stance; no-store it.
+      // EXACT source (no `/:path*`) so the PUBLIC `/api/positions/rollup`
+      // aggregate below is not caught.
+      {
+        source: "/api/positions",
+        headers: [...cdnNoStore, ...securityHeaders],
+      },
+      {
+        // /api/positions/rollup is a public per-entity aggregate (no per-viewer
+        // fields) — keep it edge-cached like other public reads.
+        source: "/api/positions/rollup",
+        headers: [...cdnHot(300, 600), ...securityHeaders],
+      },
       {
         // Read-heavy public pages — Vercel edge holds the response for 5 min
         // and serves stale while revalidating for another 10. Civic data
         // changes slowly; SWR keeps freshness acceptable. The per-user API routes
-        // above are excluded here too (FIX-786) so the catch-all can't re-stamp
-        // cdnHot over their no-store rule regardless of Next's rule-merge order.
-        source: `/((?!_next/static|api/auth|api/admin|${userScopedApi.join("|")}|auth|profile|dashboard).*)`,
+        // above are excluded here too (FIX-786/787) so the catch-all can't
+        // re-stamp cdnHot over their no-store rule regardless of Next's rule-merge
+        // order. `api/positions(?!/)` excludes the exact /api/positions path but
+        // NOT /api/positions/rollup (which stays public/cached).
+        source: `/((?!_next/static|api/auth|api/admin|${userScopedApi.join("|")}|api/positions(?!/)|auth|profile|dashboard).*)`,
         headers: [...cdnHot(300, 600), ...securityHeaders],
       },
     ];
