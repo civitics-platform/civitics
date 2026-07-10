@@ -950,3 +950,5 @@
 2026-07-08 | FIX-783 | 90d581ed | local-only | fix(graph): error-check + chunk-200 the entities MV read so it can't fail silently (FIX-509 ride-along)
 2026-07-09 | FIX-784 | 570c0b31 | local-only | fix(search): broadcast saved-view deltas instead of refetching, killing the prod post-write GET race (FIX-784)
 2026-07-09 | FIX-786 | 5a4a248c | local-only | fix(cache): stop CDN-caching per-user authed API endpoints (FIX-786)
+2026-07-09 | FIX-785 | 1b96126b | closes-as-redirected | chore(diag): remove the FIX-785 temporary custom-groups instrumentation
+2026-07-09 | FIX-787 | ea01dce5 | local-only | fix(cache): no-store the remaining per-user authed API routes (FIX-787)
