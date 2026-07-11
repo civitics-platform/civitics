@@ -4,15 +4,21 @@ import { createServerClient } from "@civitics/db";
 
 export const dynamic = "force-dynamic";
 
-// ─── GET /api/viewer/engagement?statement_ids=&entity_type=&entity_id= ────────
+// ─── GET /api/viewer/engagement?statement_ids=&comment_ids=&entity_type=&entity_id=
 // FIX-788 — the per-viewer overlay for the CDN-cached public list routes
-// (/api/statements, /api/questions). Those payloads are edge-cached cross-user
-// and therefore carry zero viewer-dependent fields; this endpoint returns ONLY
-// the viewer's own state, merged client-side onto the already-rendered rows:
+// (/api/statements, /api/questions, /api/comments). Those payloads are
+// edge-cached (or public-shaped) cross-user and carry zero viewer-dependent
+// fields; this endpoint returns ONLY the viewer's own state, merged
+// client-side onto the already-rendered rows:
 //
 //   votes      — { [statement_id]: -1|0|1 } for the caller's ballots among
 //                ?statement_ids (comma-separated uuids; the RLS policy
 //                statement_votes_select_own scopes the read to own rows)
+//   ratings    — { [comment_id]: { agree: -1|0|1, valuable: -1|0|1 } } for the
+//                caller's two-axis ratings among ?comment_ids (FIX-798; RLS
+//                comment_ratings_select_own scopes to own rows). Serves the
+//                discussion-lane RatingControls, Q&A "want answered" marks and
+//                community-note ratings — all rate entity_comments rows.
 //   can_answer — whether the caller holds the active answerer grant for
 //                ?entity_type + ?entity_id (has_active_answerer_grant RPC)
 //
@@ -29,18 +35,23 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const GRANTABLE_ENTITY_TYPES = new Set(["official", "institution", "jurisdiction"]);
 // Batch cap: list pages are ≤100 rows; also keeps the .in() well under the
 // local Kong URI limit (~200 uuids, see entity_connection_stats_mv precedent).
-const MAX_STATEMENT_IDS = 200;
+const MAX_IDS = 200;
 
-const EMPTY = { votes: {}, can_answer: false };
+const EMPTY = { votes: {}, ratings: {}, can_answer: false };
+
+function parseIds(raw: string | null): string[] {
+  return (raw ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => UUID_RE.test(s))
+    .slice(0, MAX_IDS);
+}
 
 export async function GET(request: NextRequest) {
   try {
     const sp = request.nextUrl.searchParams;
-    const statementIds = (sp.get("statement_ids") ?? "")
-      .split(",")
-      .map((s) => s.trim())
-      .filter((s) => UUID_RE.test(s))
-      .slice(0, MAX_STATEMENT_IDS);
+    const statementIds = parseIds(sp.get("statement_ids"));
+    const commentIds = parseIds(sp.get("comment_ids"));
     const entityType = sp.get("entity_type");
     const entityId = sp.get("entity_id");
 
@@ -54,12 +65,18 @@ export async function GET(request: NextRequest) {
         ? { p_user_id: user.id, p_entity_type: entityType, p_entity_id: entityId }
         : null;
 
-    const [voteRows, grant] = await Promise.all([
+    const [voteRows, ratingRows, grant] = await Promise.all([
       statementIds.length > 0
         ? supabase
             .from("statement_votes")
             .select("statement_id, vote")
             .in("statement_id", statementIds)
+        : Promise.resolve({ data: null }),
+      commentIds.length > 0
+        ? supabase
+            .from("comment_ratings")
+            .select("comment_id, agree, valuable")
+            .in("comment_id", commentIds)
         : Promise.resolve({ data: null }),
       grantArgs
         ? supabase.rpc("has_active_answerer_grant", grantArgs)
@@ -71,7 +88,12 @@ export async function GET(request: NextRequest) {
       votes[row.statement_id] = row.vote;
     }
 
-    return NextResponse.json({ votes, can_answer: grant.data === true });
+    const ratings: Record<string, { agree: number; valuable: number }> = {};
+    for (const row of ratingRows.data ?? []) {
+      ratings[row.comment_id] = { agree: row.agree ?? 0, valuable: row.valuable ?? 0 };
+    }
+
+    return NextResponse.json({ votes, ratings, can_answer: grant.data === true });
   } catch {
     return NextResponse.json(EMPTY);
   }

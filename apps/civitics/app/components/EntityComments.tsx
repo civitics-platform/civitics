@@ -10,6 +10,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { challengedFetch } from "@/lib/challenged-fetch";
 import { useConstituentDefaultLens } from "@/lib/use-constituent-default-lens";
+import { fetchViewerEngagement, type ViewerRating } from "@/lib/viewer-overlay";
 import {
   ALLOWED_KINDS,
   DEFAULT_KIND,
@@ -154,15 +155,29 @@ function treeContains(list: Comment[], id: string): boolean {
 
 function RatingControls({
   comment,
+  myRating,
   signInNext,
 }: {
   comment: Comment;
+  myRating?: ViewerRating;
   signInNext: string;
 }) {
   const [summary, setSummary] = useState<RatingSummary>(comment.rating_summary);
   const [myAgree, setMyAgree] = useState<number>(0);
   const [myValuable, setMyValuable] = useState<number>(0);
   const [busy, setBusy] = useState(false);
+
+  // FIX-798: seed the caller's own prior rating once the (async, no-store)
+  // viewer overlay arrives. The cached comment payload is viewer-independent
+  // by design, so own-state can ONLY come from the overlay. If the user has
+  // already clicked this mount, their optimistic state wins — the overlay
+  // snapshot predates the click.
+  const touched = useRef(false);
+  useEffect(() => {
+    if (touched.current || !myRating) return;
+    setMyAgree(myRating.agree);
+    setMyValuable(myRating.valuable);
+  }, [myRating]);
 
   async function send(axis: "agree" | "valuable", next: number) {
     if (busy) return;
@@ -185,6 +200,7 @@ function RatingControls({
   }
 
   function toggle(axis: "agree" | "valuable", value: 1 | -1) {
+    touched.current = true;
     const cur = axis === "agree" ? myAgree : myValuable;
     const next = cur === value ? 0 : value;
     if (axis === "agree") setMyAgree(next);
@@ -451,6 +467,7 @@ function CommentCard({
   signInNext,
   onReplyPosted,
   highlightId,
+  myRatings,
   depth = 0,
 }: {
   comment: Comment;
@@ -461,6 +478,7 @@ function CommentCard({
   signInNext: string;
   onReplyPosted: (parentId: string, reply: Comment) => void;
   highlightId: string | null;
+  myRatings: Record<string, ViewerRating>;
   depth?: number;
 }) {
   const [showReply, setShowReply] = useState(false);
@@ -535,7 +553,7 @@ function CommentCard({
 
       <div className="mt-2 flex items-center justify-between gap-2">
         <div className="flex items-center gap-3">
-          <RatingControls comment={comment} signInNext={signInNext} />
+          <RatingControls comment={comment} myRating={myRatings[comment.id]} signInNext={signInNext} />
           {depth < MAX_THREAD_DEPTH && (
             <button onClick={() => setShowReply((v) => !v)} className="text-xs text-ink-soft/60 hover:text-ink">
               Reply
@@ -575,6 +593,7 @@ function CommentCard({
               signInNext={signInNext}
               onReplyPosted={onReplyPosted}
               highlightId={highlightId}
+              myRatings={myRatings}
               depth={depth + 1}
             />
           ))}
@@ -759,6 +778,38 @@ export function EntityComments({
     [comments, pinned],
   );
 
+  // FIX-798: the caller's own ratings for every loaded comment (roots, nested
+  // replies, pinned threads), hydrated from the no-store viewer overlay. The
+  // cached /api/comments payload is viewer-independent, so own-state can only
+  // come from here. Anon viewers cost zero network calls (the helper
+  // short-circuits on the local session check).
+  const [myRatings, setMyRatings] = useState<Record<string, ViewerRating>>({});
+  const allCommentIds = useMemo(() => {
+    const ids: string[] = [];
+    const walk = (list: Comment[]) => {
+      for (const c of list) {
+        ids.push(c.id);
+        walk(c.replies);
+      }
+    };
+    walk(comments);
+    walk(pinned);
+    return ids;
+  }, [comments, pinned]);
+  const allCommentIdsKey = allCommentIds.join(",");
+  useEffect(() => {
+    if (allCommentIds.length === 0) return;
+    let cancelled = false;
+    void fetchViewerEngagement({ commentIds: allCommentIds }).then(({ ratings }) => {
+      // Merge (not replace): pagination appends — an overlay response for the
+      // new page must not drop seeds already applied to earlier pages.
+      if (!cancelled) setMyRatings((prev) => ({ ...prev, ...ratings }));
+    });
+    return () => { cancelled = true; };
+    // Keyed on the joined ids so a same-content re-render doesn't refetch.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allCommentIdsKey]);
+
   const grouped = useMemo(() => {
     if (!stanceGrouped) return null;
     // C1 (FIX-526): side is derived PURELY from stance now — 'support'/'oppose'
@@ -780,6 +831,7 @@ export function EntityComments({
     signInNext: next,
     onReplyPosted: handleReplyPosted,
     highlightId: selectedId,
+    myRatings,
   };
 
   return (

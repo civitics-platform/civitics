@@ -18,10 +18,10 @@
 // jurisdiction. The entity_type is threaded through so the question/answer posts
 // and the read RPC target the right entity + answerer role.
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { BODY_MIN, BODY_MAX } from "@civitics/db";
 import { challengedFetch } from "@/lib/challenged-fetch";
-import { fetchViewerEngagement } from "@/lib/viewer-overlay";
+import { fetchViewerEngagement, type ViewerRating } from "@/lib/viewer-overlay";
 import { SyntheticMark } from "./integrity/Synthetic";
 
 type Answer = {
@@ -162,10 +162,12 @@ function NoteBody({ body }: { body: string }) {
 function NoteRatingControls({
   noteId,
   initialSummary,
+  myRating,
   signInNext,
 }: {
   noteId: string;
   initialSummary: any;
+  myRating?: ViewerRating;
   signInNext: string;
 }) {
   const net = (s: any, key: "agree" | "valuable") =>
@@ -177,6 +179,15 @@ function NoteRatingControls({
   const [myAgree, setMyAgree] = useState(0);
   const [myValuable, setMyValuable] = useState(0);
   const [busy, setBusy] = useState(false);
+
+  // FIX-798: seed the caller's own prior rating from the viewer overlay once it
+  // arrives; an optimistic click this mount wins over the (older) seed.
+  const touched = useRef(false);
+  useEffect(() => {
+    if (touched.current || !myRating) return;
+    setMyAgree(myRating.agree);
+    setMyValuable(myRating.valuable);
+  }, [myRating]);
 
   async function send(axis: "agree" | "valuable", next: number) {
     if (busy) return;
@@ -196,6 +207,7 @@ function NoteRatingControls({
   }
 
   function toggle(axis: "agree" | "valuable", value: 1 | -1) {
+    touched.current = true;
     const cur = axis === "agree" ? myAgree : myValuable;
     const next = cur === value ? 0 : value;
     if (axis === "agree") setMyAgree(next);
@@ -668,6 +680,7 @@ function CommunityContext({
   canAnswer,
   signInNext,
   onChanged,
+  myRatings,
 }: {
   q: Question;
   entityId: string;
@@ -675,6 +688,7 @@ function CommunityContext({
   canAnswer: boolean;
   signInNext: string;
   onChanged: () => void;
+  myRatings: Record<string, ViewerRating>;
 }) {
   const notes = q.community_notes ?? [];
   const extra = (q.community_note_count ?? 0) - notes.length;
@@ -735,7 +749,7 @@ function CommunityContext({
                 <span className="text-ink-soft/60">· {formatDate(n.created_at)}</span>
               </div>
               <div className="mt-2 flex items-center justify-between">
-                <NoteRatingControls noteId={n.id} initialSummary={n.rating_summary} signInNext={signInNext} />
+                <NoteRatingControls noteId={n.id} initialSummary={n.rating_summary} myRating={myRatings[n.id]} signInNext={signInNext} />
                 <div className="flex items-center gap-3">
                   {canAnswer && (
                     <EndorseControl note={n} signInNext={signInNext} onChanged={onChanged} />
@@ -777,6 +791,7 @@ function QuestionCard({
   entityName,
   signInNext,
   onChanged,
+  myRatings,
 }: {
   q: Question;
   entityId: string;
@@ -786,13 +801,24 @@ function QuestionCard({
   entityName: string;
   signInNext: string;
   onChanged: () => void;
+  myRatings: Record<string, ViewerRating>;
 }) {
   const [wantCount, setWantCount] = useState(q.want_count);
   const [wanted, setWanted] = useState(false);
   const [busy, setBusy] = useState(false);
 
+  // FIX-798: "I want this answered" is a valuable=1 rating on the question row —
+  // seed the pressed state from the viewer overlay so a refresh doesn't offer
+  // the button again. An optimistic click this mount wins over the seed.
+  const touched = useRef(false);
+  useEffect(() => {
+    if (touched.current) return;
+    if (myRatings[q.id]?.valuable === 1) setWanted(true);
+  }, [myRatings, q.id]);
+
   async function wantAnswered() {
     if (busy || wanted) return;
+    touched.current = true;
     setBusy(true);
     try {
       const res = await fetch(`/api/comments/${q.id}/rate`, {
@@ -914,6 +940,7 @@ function QuestionCard({
         canAnswer={canAnswer}
         signInNext={signInNext}
         onChanged={onChanged}
+        myRatings={myRatings}
       />
     </li>
   );
@@ -943,6 +970,29 @@ export function QASection({ entityId, entityType, entityName, signInNext }: QASe
     });
     return () => { cancelled = true; };
   }, [entityType, entityId]);
+
+  // FIX-798: the caller's own ratings for the loaded questions + community
+  // notes ("want answered" marks + note ratings), from the no-store viewer
+  // overlay. The cached /api/questions payload is viewer-independent, so
+  // own-state can only come from here. Anon viewers cost zero network calls.
+  const [myRatings, setMyRatings] = useState<Record<string, ViewerRating>>({});
+  const ratedIds = (data?.questions ?? []).flatMap((q) => [
+    q.id,
+    ...(q.community_notes ?? []).map((n) => n.id),
+  ]);
+  const ratedIdsKey = ratedIds.join(",");
+  useEffect(() => {
+    if (ratedIds.length === 0) return;
+    let cancelled = false;
+    void fetchViewerEngagement({ commentIds: ratedIds }).then(({ ratings }) => {
+      // Merge (not replace): Load more appends — a later overlay response must
+      // not drop seeds already applied to earlier pages.
+      if (!cancelled) setMyRatings((prev) => ({ ...prev, ...ratings }));
+    });
+    return () => { cancelled = true; };
+    // Keyed on the joined ids so a same-content re-render doesn't refetch.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ratedIdsKey]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -1065,6 +1115,7 @@ export function QASection({ entityId, entityType, entityName, signInNext }: QASe
                 entityName={entityName}
                 signInNext={next}
                 onChanged={load}
+                myRatings={myRatings}
               />
             ))}
           </ul>

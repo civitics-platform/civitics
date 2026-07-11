@@ -15,24 +15,31 @@
 
 import { createBrowserClient } from "@civitics/db";
 
+export type ViewerRating = { agree: number; valuable: number };
+
 export type ViewerEngagement = {
   /** statement_id → the caller's ballot (-1 | 0 | 1). */
   votes: Record<string, number>;
+  /** comment_id → the caller's two-axis rating (FIX-798). Serves discussion
+   *  ratings, Q&A "want answered" marks and community-note ratings. */
+  ratings: Record<string, ViewerRating>;
   /** Caller holds the active answerer grant for the requested entity. */
   can_answer: boolean;
 };
 
-const EMPTY: ViewerEngagement = { votes: {}, can_answer: false };
+const EMPTY: ViewerEngagement = { votes: {}, ratings: {}, can_answer: false };
 
 export async function fetchViewerEngagement(params: {
   statementIds?: string[];
+  commentIds?: string[];
   entityType?: string;
   entityId?: string;
 }): Promise<ViewerEngagement> {
-  const { statementIds, entityType, entityId } = params;
+  const { statementIds, commentIds, entityType, entityId } = params;
   const wantsVotes = (statementIds?.length ?? 0) > 0;
+  const wantsRatings = (commentIds?.length ?? 0) > 0;
   const wantsGrant = Boolean(entityType && entityId);
-  if (!wantsVotes && !wantsGrant) return EMPTY;
+  if (!wantsVotes && !wantsRatings && !wantsGrant) return EMPTY;
 
   try {
     // Local read (cookie/storage) — no network round-trip for anon visitors.
@@ -41,6 +48,7 @@ export async function fetchViewerEngagement(params: {
 
     const sp = new URLSearchParams();
     if (wantsVotes) sp.set("statement_ids", statementIds!.join(","));
+    if (wantsRatings) sp.set("comment_ids", commentIds!.join(","));
     if (wantsGrant) {
       sp.set("entity_type", entityType!);
       sp.set("entity_id", entityId!);
@@ -52,6 +60,10 @@ export async function fetchViewerEngagement(params: {
       votes:
         json?.votes && typeof json.votes === "object"
           ? (json.votes as Record<string, number>)
+          : {},
+      ratings:
+        json?.ratings && typeof json.ratings === "object"
+          ? (json.ratings as Record<string, ViewerRating>)
           : {},
       can_answer: json?.can_answer === true,
     };
