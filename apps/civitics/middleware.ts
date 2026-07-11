@@ -66,13 +66,24 @@ const ENTITY_PAGE_RE =
 // Upstash check, not two.
 const LEAF_PAGE_RE = /^\/(jurisdictions|districts|officials)\/[^/]+/;
 
-// FIX-797: identify router/browser prefetches. Next.js App Router tags its
-// Link prefetches with Next-Router-Prefetch: 1 (older builds surfaced
-// x-middleware-prefetch to middleware); browsers tag speculative fetches via
-// Sec-Purpose/Purpose: prefetch. Spoofable by design — a spoofed prefetch
-// only moves the caller into the (still capped) entity_prefetch bucket.
+// FIX-797: identify router/browser prefetches and RSC fetches. Spoofable by
+// design — a spoofed marker only moves the caller into the (still capped)
+// entity_prefetch bucket, never past limiting.
+//
+// IMPORTANT (verified on prod, 2026-07-11): Vercel's edge STRIPS Next's own
+// protocol headers — Next-Router-Prefetch and x-middleware-prefetch never
+// reach this middleware there (a probe carrying them 429'd in the strict
+// bucket while a Sec-Purpose probe passed). They are still checked for
+// self-hosted/local parity, but the load-bearing prod markers are:
+//   - the `_rsc` query param the App Router appends to every client-side RSC
+//     fetch (prefetch AND soft navigation — both are human-with-an-app-shell
+//     traffic; a crawler's plain document GETs carry none of this), and
+//   - Sec-Purpose/Purpose, which browsers attach to speculative loads and
+//     fetch() cannot forge or remove.
 function isPrefetchRequest(request: NextRequest): boolean {
   return (
+    request.nextUrl.searchParams.has("_rsc") ||
+    request.headers.get("rsc") === "1" ||
     request.headers.get("next-router-prefetch") === "1" ||
     request.headers.get("x-middleware-prefetch") === "1" ||
     (request.headers.get("sec-purpose") ?? "").includes("prefetch") ||
