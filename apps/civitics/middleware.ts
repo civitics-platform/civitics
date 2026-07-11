@@ -70,24 +70,32 @@ const LEAF_PAGE_RE = /^\/(jurisdictions|districts|officials)\/[^/]+/;
 // design — a spoofed marker only moves the caller into the (still capped)
 // entity_prefetch bucket, never past limiting.
 //
-// IMPORTANT (verified on prod, 2026-07-11): Vercel's edge STRIPS Next's own
-// protocol headers — Next-Router-Prefetch and x-middleware-prefetch never
-// reach this middleware there (a probe carrying them 429'd in the strict
-// bucket while a Sec-Purpose probe passed). They are still checked for
-// self-hosted/local parity, but the load-bearing prod markers are:
-//   - the `_rsc` query param the App Router appends to every client-side RSC
-//     fetch (prefetch AND soft navigation — both are human-with-an-app-shell
-//     traffic; a crawler's plain document GETs carry none of this), and
-//   - Sec-Purpose/Purpose, which browsers attach to speculative loads and
-//     fetch() cannot forge or remove.
+// IMPORTANT (verified on prod, 2026-07-11, two probe rounds against the live
+// deploys): the ENTIRE Next RSC protocol surface is invisible to middleware
+// on Vercel — Next-Router-Prefetch, x-middleware-prefetch and the bare `rsc`
+// header are stripped at the edge, and the `_rsc` query param is stripped
+// from nextUrl by Next's own middleware adapter (internal-param
+// normalization). Probes carrying each of them 429'd in the strict bucket
+// while Sec-Purpose probes passed. The load-bearing markers are therefore
+// the Sec-* fetch-metadata headers, which browsers ALWAYS attach and page
+// JS cannot forge or remove (forbidden header names), and which Vercel
+// demonstrably forwards:
+//   - Sec-Fetch-Dest: empty — every fetch()-issued request, which is what
+//     the App Router's prefetches AND soft navigations are. A document
+//     navigation (and a crawler walking pages) is `document` or absent →
+//     stays in the strict bucket.
+//   - Sec-Purpose / Purpose: prefetch — <link rel=prefetch> and speculation
+//     -rules loads.
+// The Next protocol headers are kept below for self-hosted/local parity,
+// where no edge strips them.
 function isPrefetchRequest(request: NextRequest): boolean {
   return (
-    request.nextUrl.searchParams.has("_rsc") ||
-    request.headers.get("rsc") === "1" ||
+    request.headers.get("sec-fetch-dest") === "empty" ||
+    (request.headers.get("sec-purpose") ?? "").includes("prefetch") ||
+    (request.headers.get("purpose") ?? "").includes("prefetch") ||
     request.headers.get("next-router-prefetch") === "1" ||
     request.headers.get("x-middleware-prefetch") === "1" ||
-    (request.headers.get("sec-purpose") ?? "").includes("prefetch") ||
-    (request.headers.get("purpose") ?? "").includes("prefetch")
+    request.headers.get("rsc") === "1"
   );
 }
 
