@@ -76,6 +76,25 @@ test("pac scope + industry compiles to the industry-tagged pac mode", () => {
   assert.deepEqual(f, { entity_type: "pac", industry: "pharma" });
 });
 
+test("financial subtype scopes compile to the financial cohort mode (FIX-772)", () => {
+  assert.deepEqual(
+    compileBrowseToGroupFilter(state({ scope: "money/super-pacs" })),
+    { entity_type: "financial", financial_type: "super_pac" },
+  );
+  assert.deepEqual(
+    compileBrowseToGroupFilter(state({ scope: "money/party-committees" })),
+    { entity_type: "financial", financial_type: "party_committee" },
+  );
+  assert.deepEqual(
+    compileBrowseToGroupFilter(state({ scope: "money/corporations" })),
+    { entity_type: "financial", financial_type: "corporation" },
+  );
+  assert.deepEqual(
+    compileBrowseToGroupFilter(state({ scope: "money/unions" })),
+    { entity_type: "financial", financial_type: "union" },
+  );
+});
+
 test("legacy industry token normalizes through the map (energy → oil_gas)", () => {
   const f = compileBrowseToGroupFilter(
     state({ scope: "money/pacs", facets: { industry: "energy" } }),
@@ -134,10 +153,34 @@ test("non-active status fails loudly", () => {
   assertUncompilable(state({ scope: "officials", facets: { status: "former" } }), /active/i);
 });
 
-test("financial without financial_type=pac fails loudly (route has no financial mode)", () => {
-  assertUncompilable(state({ scope: "money" }), /pac/i);
-  assertUncompilable(state({ scope: "money/super-pacs" }), /super_pac/);
-  assertUncompilable(state({ scope: "money", facets: { industry: "pharma" } }), /pac/i);
+test("financial without a subtype fails loudly (whole-Money cohort has no route mode)", () => {
+  assertUncompilable(state({ scope: "money" }), /entity type/i);
+  assertUncompilable(state({ scope: "money", facets: { industry: "pharma" } }), /entity type/i);
+});
+
+test("individual donors and unknown financial subtypes fail loudly (FIX-772)", () => {
+  assertUncompilable(
+    state({ scope: "money", facets: { financial_type: "individual" } }),
+    /individual donors/i,
+  );
+  assertUncompilable(
+    state({ scope: "money", facets: { financial_type: "nonprofit" } }),
+    /can't form a live group yet/i,
+  );
+});
+
+test("industry with a non-pac financial subtype fails loudly (route ignores it)", () => {
+  assertUncompilable(
+    state({ scope: "money/super-pacs", facets: { industry: "pharma" } }),
+    /pac cohorts/i,
+  );
+});
+
+test("multi-value financial_type fails loudly", () => {
+  assertUncompilable(
+    state({ scope: "money", facets: { financial_type: ["super_pac", "corporation"] } }),
+    /single entity type/i,
+  );
 });
 
 test("unknown industry token fails loudly with the vocabulary in the message", () => {

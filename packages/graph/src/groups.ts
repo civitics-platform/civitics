@@ -388,9 +388,23 @@ export const BUILT_IN_GROUPS: FocusGroup[] = [
       financial_type: 'corporation',
     },
     isPremade: true,
-    description: 'Corporations with direct campaign contributions',
+    // FIX-772: corporations carry no direct-contribution edges (FEC bars
+    // corporate treasury donations to candidates) — their money surface on the
+    // graph is federal contract awards, so the description says that.
+    description: 'Corporations receiving federal contract dollars',
   },
 
+  // FIX-772: Unions and Individual Donors are hidden from the GROUP_TREE (the
+  // FIX-176 federal-judges pattern — entries stay in BUILT_IN_GROUPS so saved
+  // sessions still resolve).
+  //   Unions: the 'union' financial cohort is LittleSis org rows with zero
+  //   dollar totals and zero money edges on both DBs (verified local + prod
+  //   2026-07-10) — the bubble would render 100+ members and no connections.
+  //   Labor money that actually flows lives in the Labor PACs group above.
+  //   Rewire if a union-committee data source lands.
+  //   Individual Donors: individuals are deliberately non-enumerable as a
+  //   cohort (excluded from entity_search_index, FIX-236/FIX-748) — the route
+  //   answers a structured 422 for saved sessions.
   {
     id: 'group-unions',
     name: 'Unions & Labor',
@@ -402,7 +416,7 @@ export const BUILT_IN_GROUPS: FocusGroup[] = [
       financial_type: 'union',
     },
     isPremade: true,
-    description: 'Labor unions and worker organizations',
+    description: 'Labor unions and worker organizations (no money-edge data yet — see FIX-772)',
   },
 
   {
@@ -416,7 +430,7 @@ export const BUILT_IN_GROUPS: FocusGroup[] = [
       financial_type: 'individual',
     },
     isPremade: true,
-    description: 'Individual campaign donors',
+    description: 'Individual campaign donors (not resolvable as a cohort — see FIX-772)',
   },
 
   // ── Proposal types ─────────────
@@ -617,8 +631,10 @@ export const GROUP_TREE: GroupTreeNode[] = [
       { kind: 'group', id: 'group-super-pacs' },
       { kind: 'group', id: 'group-party-committees' },
       { kind: 'group', id: 'group-corporations' },
-      { kind: 'group', id: 'group-unions' },
-      { kind: 'group', id: 'group-individual-donors' },
+      // FIX-772: group-unions and group-individual-donors are intentionally
+      // NOT offered here — see the BUILT_IN_GROUPS comment above their entries
+      // (dead union money data / non-enumerable individuals). Saved sessions
+      // referencing them still resolve through getGroupById.
     ],
   },
   {

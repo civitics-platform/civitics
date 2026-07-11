@@ -11,10 +11,15 @@
  *   pac      — industry-tagged PACs → top recipients (industry optional).
  *   proposal — topic-tag bubble (tag REQUIRED — 400 without).
  *   agency   — ALL active agencies; every filter field is ignored.
- *   financial / initiative — NOT handled: the route 400s ("Invalid
- *              entity_type"), which is why today's Money built-ins render
- *              nothing. The compiler REFUSES to emit these rather than
- *              minting silently-dead groups.
+ *   financial — FIX-772: subtype cohorts (financial_type REQUIRED —
+ *              super_pac|party_committee|corporation|union; pac routes to the
+ *              dedicated industry-capable mode above). 'individual' stays
+ *              refused — the route 422s it (individuals aren't enumerable as
+ *              a cohort). The route ignores industry here, so industry + a
+ *              non-pac subtype refuses rather than minting a lying group.
+ *   initiative — NOT handled: the route 400s ("Invalid entity_type"). The
+ *              compiler REFUSES to emit it rather than minting silently-dead
+ *              groups.
  *
  * compileBrowseToGroupFilter mirrors exactly that surface and THROWS
  * UncompilableBrowseStateError (with a user-showable reason) on anything
@@ -199,32 +204,62 @@ function compileOfficial(facets: FacetMap): GroupFilter {
   return filter;
 }
 
+// FIX-772 — subtypes the route's entity_type=financial branch resolves (top-1000
+// cohort by entity_search_index.amount_cents + donation/contract edge
+// aggregation). 'pac' compiles to the dedicated industry-capable mode instead;
+// 'individual' is refused (the route 422s — not enumerable as a cohort).
+const GROUPABLE_FINANCIAL_TYPES: ReadonlySet<string> = new Set([
+  "super_pac", "party_committee", "corporation", "union",
+]);
+
 function compileFinancial(facets: FacetMap): GroupFilter {
   const financialType = requireSingle(facets, "financial_type", "entity type");
   const industryRaw = requireSingle(facets, "industry", "industry");
 
-  // The route has no 'financial' mode — the only money cohort it resolves is
-  // the industry-tagged-PAC branch (entity_type=pac).
-  if (financialType !== "pac") {
+  if (financialType === undefined) {
     throw new UncompilableBrowseStateError(
-      financialType === undefined
-        ? "Money records only form live groups as PAC cohorts — drill into PACs first"
-        : `"${financialType}" money entities can't form a live group yet — only PAC cohorts resolve`,
+      "Money records only form live groups per entity type — drill into PACs, Super PACs, Party committees, or Corporations first",
     );
   }
 
-  const filter: GroupFilter = { entity_type: "pac" };
-  if (industryRaw !== undefined) {
-    try {
-      filter.industry = normalizeIndustryToken(industryRaw);
-    } catch (e) {
-      if (e instanceof UnknownIndustryTokenError) {
-        throw new UncompilableBrowseStateError(e.message);
+  // PAC cohorts keep the dedicated route mode, which is the only one that
+  // understands the industry filter.
+  if (financialType === "pac") {
+    const filter: GroupFilter = { entity_type: "pac" };
+    if (industryRaw !== undefined) {
+      try {
+        filter.industry = normalizeIndustryToken(industryRaw);
+      } catch (e) {
+        if (e instanceof UnknownIndustryTokenError) {
+          throw new UncompilableBrowseStateError(e.message);
+        }
+        throw e;
       }
-      throw e;
     }
+    return filter;
   }
-  return filter;
+
+  if (!GROUPABLE_FINANCIAL_TYPES.has(financialType)) {
+    throw new UncompilableBrowseStateError(
+      financialType === "individual"
+        ? "Individual donors can't form a live group — they aren't enumerable as a cohort"
+        : `"${financialType}" money entities can't form a live group yet`,
+    );
+  }
+
+  // The route ignores industry for non-pac financial cohorts — emitting the
+  // filter anyway would mint a group whose name lies about its members (the
+  // same rule the agency branch applies to its ignored facets).
+  if (industryRaw !== undefined) {
+    throw new UncompilableBrowseStateError(
+      "Industry filters only apply to PAC cohorts — clear the industry filter or drill into PACs",
+    );
+  }
+
+  return {
+    entity_type: "financial",
+    financial_type: financialType as NonNullable<GroupFilter["financial_type"]>,
+  };
 }
 
 function compileAgency(facets: FacetMap): GroupFilter {
@@ -426,16 +461,16 @@ export function suggestedViewName(state: BrowseState): string {
 // here instead of silently falling outside the compiler.
 
 export const GROUP_FILTER_FIELD_COVERAGE: Record<keyof GroupFilter, string> = {
-  entity_type:      "kind official → 'official'; kind financial + f_financial_type=pac → 'pac'; kind agency → 'agency'. 'financial'/'initiative' are never emitted (route 400s); 'proposal' unreachable (needs tag).",
+  entity_type:      "kind official → 'official'; kind financial + f_financial_type=pac → 'pac'; kind financial + f_financial_type super_pac|party_committee|corporation|union → 'financial' (FIX-772); kind agency → 'agency'. 'initiative' is never emitted (route 400s); 'proposal' unreachable (needs tag).",
   governingBody:    "f_chamber senate|house → gb slug (FIX-495 canonical cohort key)",
   chamber:          "never emitted — chamber compiles to governingBody; the route aliases chamber= to the same gb branch",
   party:            "f_party (single value)",
   state:            "f_state (single value, index carries abbreviations)",
-  industry:         "f_industry (single value, normalized through the token map)",
+  industry:         "f_industry (single value, normalized through the token map; pac cohorts only — refused with a non-pac financial subtype, which the route ignores)",
   tag:              "unreachable — the browse registry has no topic-tag facet (proposal scopes refuse to compile)",
   committeeId:      "unreachable — no committee facet in the browse registry",
   official_role:    "unreachable — no role facet; the route also ignores it today",
-  financial_type:   "consumed by the compiler to select pac mode; never emitted on the filter",
+  financial_type:   "f_financial_type: pac is consumed to select the pac mode; super_pac|party_committee|corporation|union are emitted on the filter (FIX-772); individual is refused (route 422s — not enumerable)",
   proposal_type:    "unreachable — proposal scopes refuse to compile (route needs tag)",
   agency_type:      "never emitted — the route ignores it, so a narrowed agency filter would lie about its members",
   initiative_stage: "unreachable — initiative scopes refuse to compile (no route mode)",
