@@ -967,3 +967,4 @@
 2026-07-11 | FIX-797 | 1026c92e | local+prod | fix(ratelimit): route router prefetches to their own bucket; make 429s uncacheable (FIX-797)
 2026-07-11 | FIX-797 | e7558899 | local+prod | fix(ratelimit): detect app-shell fetches via Sec-Fetch-Dest — full RSC protocol surface is stripped on Vercel (FIX-797)
 2026-07-11 | FIX-797 | b35c9456 | local+prod | fix(ratelimit): detect prefetches via _rsc/RSC markers — Vercel strips Next-Router-Prefetch (FIX-797 follow-through)
+2026-07-11 | FIX-798 | db7fe750 | local+prod | feat(engagement): surface the caller's own agree/valuable ratings via the viewer overlay (FIX-798)
