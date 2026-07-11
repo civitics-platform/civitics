@@ -46,6 +46,14 @@ export type RateLimitBucket =
   // Mutually exclusive with entity_pages (one check per request — keeps the
   // Upstash free-tier command budget cheap), so a leaf hit counts only here.
   | "entity_leaf"
+  // Router prefetches on the entity-page families (FIX-797). Link-dense pages
+  // (e.g. the USA jurisdiction page) fire dozens of Next-Router-Prefetch RSC
+  // GETs on load — enough to drain the 45/min entity_leaf cap so a single
+  // human's browser 429s its own subsequent navigations. Prefetch-tagged GETs
+  // count against this SEPARATE, generous bucket instead — a bucket, NOT an
+  // exemption: a crawler spoofing the prefetch header just moves itself to a
+  // different capped bucket, it never bypasses limiting.
+  | "entity_prefetch"
   // Auth-send throttles (FIX-568). NB: the browser's signInWithOtp call goes
   // straight to Supabase GoTrue, not through this app — so these buckets are
   // enforced in the auth/actions.ts preflight, not in middleware.
@@ -73,6 +81,11 @@ const BUCKET_LIMITS: Record<RateLimitBucket, { tokens: number; window: Window }>
   // empty district/county/official shells. Tune down if a crawl still gets
   // through; tune up if a power-user tab-restore burst trips it.
   entity_leaf: { tokens: 45, window: "1 m" },
+  // FIX-797: generous — a link-dense page can legitimately queue 50–100
+  // prefetches as the viewport scrolls, and prefetch responses are cheap RSC
+  // payloads that usually hit the edge cache. 300/min still hard-caps a
+  // header-spoofing crawler at ~5 pages/s, far below an unthrottled walk.
+  entity_prefetch: { tokens: 300, window: "1 m" },
   auth_send_ip: { tokens: 5, window: "10 m" },
   auth_send_email: { tokens: 3, window: "1 h" },
 };

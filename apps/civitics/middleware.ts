@@ -66,13 +66,31 @@ const ENTITY_PAGE_RE =
 // Upstash check, not two.
 const LEAF_PAGE_RE = /^\/(jurisdictions|districts|officials)\/[^/]+/;
 
+// FIX-797: identify router/browser prefetches. Next.js App Router tags its
+// Link prefetches with Next-Router-Prefetch: 1 (older builds surfaced
+// x-middleware-prefetch to middleware); browsers tag speculative fetches via
+// Sec-Purpose/Purpose: prefetch. Spoofable by design — a spoofed prefetch
+// only moves the caller into the (still capped) entity_prefetch bucket.
+function isPrefetchRequest(request: NextRequest): boolean {
+  return (
+    request.headers.get("next-router-prefetch") === "1" ||
+    request.headers.get("x-middleware-prefetch") === "1" ||
+    (request.headers.get("sec-purpose") ?? "").includes("prefetch") ||
+    (request.headers.get("purpose") ?? "").includes("prefetch")
+  );
+}
+
 /**
  * Classify a request into a rate-limit bucket, or null to skip. Reads are
  * method-agnostic (preserved from the prior limiter); the `write` bucket applies
  * only to mutating verbs on the participation routes; `entity_pages` applies only
  * to GETs of the per-entity detail pages.
  */
-function getRateLimitBucket(path: string, method: string): RateLimitBucket | null {
+function getRateLimitBucket(
+  path: string,
+  method: string,
+  prefetch: boolean,
+): RateLimitBucket | null {
   if (path.startsWith("/api/search")) return "search";
   // AI narrative route is more expensive — stricter limit.
   if (path.startsWith("/api/graph/narrative")) return "graph_ai";
@@ -82,9 +100,15 @@ function getRateLimitBucket(path: string, method: string): RateLimitBucket | nul
   // crawl is GETs; never bucket a participation POST behind this read limit.
   // FIX-683: the leaf families get the stricter entity_leaf bucket first; the
   // rest fall through to entity_pages. Order matters — leaf check precedes.
+  // FIX-797: prefetch-tagged GETs of EITHER family go to the separate generous
+  // entity_prefetch bucket, so a link-dense page's prefetch burst can't drain
+  // the navigation caps and 429 the human's own clicks. Real navigations
+  // (no prefetch header) keep the strict caps.
   if (method === "GET") {
-    if (LEAF_PAGE_RE.test(path)) return "entity_leaf";
-    if (ENTITY_PAGE_RE.test(path)) return "entity_pages";
+    if (LEAF_PAGE_RE.test(path) || ENTITY_PAGE_RE.test(path)) {
+      if (prefetch) return "entity_prefetch";
+      return LEAF_PAGE_RE.test(path) ? "entity_leaf" : "entity_pages";
+    }
   }
   return null;
 }
@@ -108,6 +132,14 @@ function rateLimitResponse(retryAfterSec: number): NextResponse {
         "Retry-After": String(retryAfterSec),
         "X-RateLimit-Limit": "see bucket",
         "X-RateLimit-Remaining": "0",
+        // FIX-797: a 429 must NEVER be shared-cache-eligible. Config headers()
+        // rules are status-blind, so before FIX-796 the cdnHot catch-all
+        // stamped 429s on cacheable paths; these explicit no-store headers
+        // make it unambiguous at the response itself regardless of any
+        // path-matched config rule.
+        "Cache-Control": "no-store",
+        "CDN-Cache-Control": "no-store",
+        "Vercel-CDN-Cache-Control": "no-store",
       },
     }
   );
@@ -173,7 +205,7 @@ export async function middleware(request: NextRequest) {
   // ── Rate limiting on public API + participation-write routes (FIX-570) ─────
   // Durable (Upstash) and fail-open: an Upstash outage/quota allows the request
   // and logs `[ratelimit]`; the per-user DB caps remain the real backstop.
-  const bucket = getRateLimitBucket(path, request.method);
+  const bucket = getRateLimitBucket(path, request.method, isPrefetchRequest(request));
   if (bucket) {
     const ip = getClientIp(request);
     const result = await checkRateLimit(bucket, ip);
