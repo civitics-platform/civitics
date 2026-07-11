@@ -1147,5 +1147,290 @@ export async function GET(req: NextRequest) {
     });
   }
 
+  // ── Financial-cohort group mode (FIX-772) ───────────────────────────────────
+  // Resolves the Money built-in groups (Super PACs, Party Committees,
+  // Corporations, Unions) that 400'd since BUILT_IN_GROUPS shipped. Member
+  // cohort = top-1000 by entity_search_index.amount_cents (the FIX-667
+  // IE > contract/grant > donation precedence, already materialized — never a
+  // live financial_relationships aggregation). Two edge aggregations run in
+  // parallel and the data decides which renders:
+  //   donations  — cohort → officials  (super PACs, party committees)
+  //   contracts  — agencies → cohort   (corporations: FEC bars direct corporate
+  //                contributions, so a corporation cohort's money surface is
+  //                federal contracting, not donation edges)
+
+  if (entityType === "financial") {
+    const financialType = searchParams.get("financial_type");
+
+    // 'individual' is deliberately not groupable: the ~2.7M individual rows are
+    // excluded from entity_search_index (FIX-748) and every financial_entities
+    // index is partial on entity_type <> 'individual' (FIX-236 lineage), so a
+    // top-N cohort has no request-path-safe resolution. Structured 422
+    // (mirrors gb_not_expandable) so saved sessions degrade loudly.
+    if (financialType === "individual") {
+      return NextResponse.json(
+        {
+          error: "financial_type_not_groupable",
+          reason:
+            "individual donors are not enumerable as a cohort — use the individual-donor display modes on a focused official instead",
+          financialType,
+        },
+        { status: 422 },
+      );
+    }
+
+    const VALID_FINANCIAL_TYPES = new Set([
+      "pac", "super_pac", "corporation", "union", "party_committee",
+    ]);
+    if (!financialType || !VALID_FINANCIAL_TYPES.has(financialType)) {
+      return NextResponse.json(
+        {
+          error:
+            "financial_type query param required for entity_type=financial (pac|super_pac|corporation|union|party_committee)",
+        },
+        { status: 400 },
+      );
+    }
+
+    // Member cohort. The 1000 cap mirrors the official branch's member query;
+    // memberCount stays the exact cohort size. Ordering matches the
+    // entity_search_index_amount_sort index (kind, amount_cents DESC NULLS
+    // LAST, entity_id). Synthetic rows are excluded (FIX-600: synthetic never
+    // feeds a platform-wide aggregate) and the "PAC/Committee" aggregate
+    // placeholder rows are skipped as in the pac branch.
+    // entity_search_index is absent from the generated database.ts (the FIX-748
+    // table predates the last types regen) — the codebase-wide pattern for it is
+    // a local any-cast (see api/browse/typeahead); the explicit withDbTimeout
+    // generic keeps the result typed.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const searchIndexDb = supabase as any;
+    const memberRes = await withDbTimeout<{
+      count: number | null;
+      data: Array<{ entity_id: string }> | null;
+      error: { message: string } | null;
+    }>(
+      searchIndexDb
+        .from("entity_search_index")
+        .select("entity_id", { count: "exact" })
+        .eq("kind", "financial")
+        .eq("financial_type", financialType)
+        .eq("is_synthetic", false)
+        .not("display_name", "ilike", "%PAC/Committee%")
+        .order("amount_cents", { ascending: false, nullsFirst: false })
+        .order("entity_id", { ascending: true })
+        .limit(1000),
+    );
+    if (memberRes.error) {
+      return NextResponse.json({ error: memberRes.error.message }, { status: 500 });
+    }
+
+    const memberIds = (memberRes.data ?? []).map((m) => m.entity_id);
+    const memberCount = memberRes.count ?? memberIds.length;
+
+    if (memberIds.length === 0) {
+      return NextResponse.json({
+        group: { id: groupId, name: groupName, count: 0 },
+        nodes: [],
+        edges: [],
+      });
+    }
+
+    // FIX-497 contract: a timed-out / errored edge aggregation must flag, never
+    // ship a convincing "this cohort moves no money" empty.
+    let donorFetchError = false;
+
+    const FIN_BATCH = 200; // PostgREST .in() URI-length ceiling (FIX-732 class)
+    const finChunks: string[][] = [];
+    for (let i = 0; i < memberIds.length; i += FIN_BATCH)
+      finChunks.push(memberIds.slice(i, i + FIN_BATCH));
+
+    const [donationFetch, contractFetch] = await Promise.all([
+      // Cohort → official donations (entity_connections_from_id_connection_type).
+      fetchPagedConnections<{ to_id: string; amount_cents: number | null }>(
+        finChunks.map((batch) => (f: number, t: number) =>
+          supabase
+            .from("entity_connections")
+            .select("to_id, amount_cents")
+            .eq("connection_type", "donation")
+            .eq("from_type", "financial_entity")
+            .in("from_id", batch)
+            .eq("to_type", "official")
+            .order("id", { ascending: true })
+            .range(f, t),
+        ),
+        DONOR_FETCH_BUDGET_MS,
+        "financial-donations",
+      ),
+      // Agency → cohort contract awards (entity_connections_to).
+      fetchPagedConnections<{ from_id: string; amount_cents: number | null }>(
+        finChunks.map((batch) => (f: number, t: number) =>
+          supabase
+            .from("entity_connections")
+            .select("from_id, amount_cents")
+            .eq("connection_type", "contract_award")
+            .eq("from_type", "agency")
+            .eq("to_type", "financial_entity")
+            .in("to_id", batch)
+            .order("id", { ascending: true })
+            .range(f, t),
+        ),
+        DONOR_FETCH_BUDGET_MS,
+        "financial-contracts",
+      ),
+    ]);
+    if (donationFetch.fetchFailed || contractFetch.fetchFailed) donorFetchError = true;
+
+    // Aggregate donations per recipient official (mirrors the pac branch).
+    const recipientMap = new Map<string, { officialId: string; totalUsd: number; donorCount: number }>();
+    for (const row of donationFetch.rows) {
+      const usd = (row.amount_cents ?? 0) / 100;
+      const ex = recipientMap.get(row.to_id);
+      if (ex) {
+        ex.totalUsd   += usd;
+        ex.donorCount += 1;
+      } else {
+        recipientMap.set(row.to_id, { officialId: row.to_id, totalUsd: usd, donorCount: 1 });
+      }
+    }
+    const topRecipients = [...recipientMap.values()]
+      .sort((a, b) => b.totalUsd - a.totalUsd)
+      .slice(0, limit);
+
+    // Aggregate contract dollars per awarding agency (inbound, mirroring the
+    // agency branch's overseer shape).
+    const awarderMap = new Map<string, { agencyId: string; totalUsd: number; vendorCount: number }>();
+    for (const row of contractFetch.rows) {
+      const usd = (row.amount_cents ?? 0) / 100;
+      const ex = awarderMap.get(row.from_id);
+      if (ex) {
+        ex.totalUsd    += usd;
+        ex.vendorCount += 1;
+      } else {
+        awarderMap.set(row.from_id, { agencyId: row.from_id, totalUsd: usd, vendorCount: 1 });
+      }
+    }
+    const topAwarders = [...awarderMap.values()]
+      .sort((a, b) => b.totalUsd - a.totalUsd)
+      .slice(0, limit);
+
+    // Resolve display names for both connected sets (≤ limit ids each).
+    type OfficialRow = { id: string; full_name: string; party: string | null; metadata: Record<string, unknown> | null };
+    type AgencyRow = { id: string; name: string; acronym: string | null };
+    const [officialsRes, agenciesRes] = await Promise.all([
+      topRecipients.length > 0
+        ? supabase
+            .from("officials")
+            .select("id, full_name, party, metadata")
+            .in("id", topRecipients.map((r) => r.officialId))
+        : Promise.resolve({ data: [] as OfficialRow[], error: null }),
+      topAwarders.length > 0
+        ? supabase
+            .from("agencies")
+            .select("id, name, acronym")
+            .in("id", topAwarders.map((a) => a.agencyId))
+        : Promise.resolve({ data: [] as AgencyRow[], error: null }),
+    ]);
+    if (officialsRes.error) {
+      donorFetchError = true;
+      console.error(`[graph/group] financial recipient lookup error: ${officialsRes.error.message}`);
+    }
+    if (agenciesRes.error) {
+      donorFetchError = true;
+      console.error(`[graph/group] financial awarder lookup error: ${agenciesRes.error.message}`);
+    }
+    const officialLookup = new Map(((officialsRes.data ?? []) as OfficialRow[]).map((o) => [o.id, o]));
+    const agencyLookup   = new Map(((agenciesRes.data ?? []) as AgencyRow[]).map((a) => [a.id, a]));
+
+    const groupNode: ResponseNode = {
+      id: groupId,
+      name: groupName,
+      type: "group" as NodeType,
+      collapsed: false,
+      metadata: {
+        icon: groupIcon,
+        color: groupColor,
+        memberCount,
+        isGroup: true,
+        isFinancialGroup: true,
+        financialType,
+        donorFetchError, // FIX-497
+      },
+    };
+
+    const recipientNodes: ResponseNode[] = topRecipients.map((r) => {
+      const official = officialLookup.get(r.officialId);
+      return {
+        id: r.officialId,
+        name: official?.full_name ?? "Unknown",
+        type: "official" as NodeType,
+        collapsed: false,
+        metadata: {
+          party: official?.party,
+          state: (official?.metadata as Record<string, unknown> | null)?.state,
+        },
+      };
+    });
+
+    const awarderNodes: ResponseNode[] = topAwarders.map((a) => {
+      const agency = agencyLookup.get(a.agencyId);
+      return {
+        id: a.agencyId,
+        name: agency?.name ?? "Unknown Agency",
+        type: "agency" as NodeType,
+        collapsed: false,
+        metadata: { acronym: agency?.acronym, vendorCount: a.vendorCount },
+      };
+    });
+
+    // Donation edges flow group → officials (pac-branch direction); contract
+    // edges flow agency → group (DB direction: agency awards to vendor).
+    const donationEdges: ResponseEdge[] = topRecipients.map((r) => ({
+      id: `edge-${groupId}-${r.officialId}`,
+      fromId: groupId,
+      toId: r.officialId,
+      connectionType: "donation",
+      amountUsd: r.totalUsd,
+      strength: Math.min(r.totalUsd / 100_000, 1),
+      metadata: { donorCount: r.donorCount },
+    }));
+    const contractEdges: ResponseEdge[] = topAwarders.map((a) => ({
+      id: `edge-${a.agencyId}-${groupId}`,
+      fromId: a.agencyId,
+      toId: groupId,
+      connectionType: "contract_award",
+      amountUsd: a.totalUsd,
+      // Contract flows run to hundreds of $B — log-scale so mid-size awarders
+      // stay visible next to DOD instead of a linear cap flattening everyone.
+      strength: Math.min(0.999, Math.max(0.1, Math.log10(Math.max(a.totalUsd, 1)) / 12)),
+      metadata: { vendorCount: a.vendorCount },
+    }));
+
+    return NextResponse.json({
+      group: {
+        id: groupId,
+        name: groupName,
+        icon: groupIcon,
+        color: groupColor,
+        count: memberCount,
+        filter: { entity_type: entityType, financial_type: financialType },
+      },
+      nodes: [groupNode, ...recipientNodes, ...awarderNodes],
+      edges: [...donationEdges, ...contractEdges],
+      meta: {
+        memberCount,
+        // Top-slice honesty: edges aggregate the top-1000 members by amount,
+        // not the whole cohort (corporations: 66k+ rows).
+        membersAggregated: memberIds.length,
+        recipientCount:    recipientMap.size,
+        recipientsShown:   topRecipients.length,
+        totalDonatedUsd:   topRecipients.reduce((s, r) => s + r.totalUsd, 0),
+        awarderCount:      awarderMap.size,
+        awardersShown:     topAwarders.length,
+        totalContractUsd:  topAwarders.reduce((s, a) => s + a.totalUsd, 0),
+        donorFetchError, // FIX-497 — edge aggregation timed out / errored
+      },
+    });
+  }
+
   return NextResponse.json({ error: "Invalid entity_type" }, { status: 400 });
 }

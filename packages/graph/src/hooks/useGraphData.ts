@@ -218,6 +218,10 @@ export function useGraphData(
         if (group.filter.tag)      params.set('tag',      group.filter.tag);
         if (group.filter.committeeId) params.set('committeeId', group.filter.committeeId);
         if (group.filter.governingBody) params.set('governingBody', group.filter.governingBody);
+        // FIX-772 — financial cohorts were unreachable end-to-end: this param
+        // was never forwarded, so even a route that understood
+        // entity_type=financial would have seen no subtype.
+        if (group.filter.financial_type) params.set('financial_type', group.filter.financial_type);
 
         const res  = await fetch(`/api/graph/group?` + params);
         const data = await res.json();

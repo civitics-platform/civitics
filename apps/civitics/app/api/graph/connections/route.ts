@@ -485,10 +485,14 @@ export async function GET(request: Request) {
     // FIX-123: bill_number lives in `bill_details` (one-to-one with proposals)
     // post-cutover, so it's a separate fetch keyed on proposal_id.
     // Financial entities can number in the thousands (e.g. Sanders ~5k individual donors).
-    // PostgREST sends IN filters as query-string params; at >~500 UUIDs the URL exceeds
-    // nginx's header buffer limit and the query silently returns empty. Chunk to 500.
+    // PostgREST sends IN filters as query-string params, so the chunk size is
+    // bounded by proxy URL limits, and the verified-safe width is 200 (same
+    // constant + rationale as STATS_CHUNK above). FIX-772: the prior 500 chunk
+    // 414'd ("URI too long") at ~234 uuids behind local Kong, throwing the whole
+    // route to a 500 for any financial entity with a few hundred donors — the
+    // exact node class the Money groups now surface.
     type FinRow = { id: string; display_name: string; entity_type: string; recipient_count?: number; metadata?: Record<string, unknown> | null; is_synthetic?: boolean };
-    const FIN_CHUNK = 500;
+    const FIN_CHUNK = 200;
     const financialData: FinRow[] = [];
     if (financialIds.length > 0) {
       const finSelect = individualMode === 'employer'

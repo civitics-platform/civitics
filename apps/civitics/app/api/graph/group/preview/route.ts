@@ -7,11 +7,12 @@
  * build — the only thing the caller needs is the row count.
  *
  * Query params (all from GroupFilter shape):
- *   entity_type=official|pac|agency  (required)
+ *   entity_type=official|pac|agency|financial  (required)
  *   chamber=senate|house              (official only)
  *   party=democrat|republican|independent (official only)
  *   state=XX                          (official only)
  *   industry=Finance|...              (pac only)
+ *   financial_type=super_pac|...      (financial only, required — FIX-772)
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -20,8 +21,13 @@ import { supabaseUnavailable, unavailableResponse } from "@/lib/supabase-check";
 
 export const dynamic = "force-dynamic";
 
-const VALID_TYPES   = new Set(["official", "pac", "agency"]);
+const VALID_TYPES   = new Set(["official", "pac", "agency", "financial"]);
 const VALID_CHAMBER = new Set(["senate", "house"]);
+// FIX-772 — the financial cohorts the full route resolves. 'individual' is
+// deliberately absent (not enumerable — see the full route's 422).
+const VALID_FINANCIAL_TYPES = new Set([
+  "pac", "super_pac", "corporation", "union", "party_committee",
+]);
 
 export async function GET(req: NextRequest) {
   if (supabaseUnavailable()) return unavailableResponse();
@@ -29,7 +35,7 @@ export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl;
   const entityType = searchParams.get("entity_type") ?? "";
   if (!VALID_TYPES.has(entityType)) {
-    return NextResponse.json({ error: "entity_type must be official|pac|agency" }, { status: 400 });
+    return NextResponse.json({ error: "entity_type must be official|pac|agency|financial" }, { status: 400 });
   }
 
   const supabase = createAdminClient();
@@ -77,6 +83,35 @@ export async function GET(req: NextRequest) {
     if (taggedIds) q = q.in("id", taggedIds);
 
     const { count, error } = await q;
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ count: count ?? 0 });
+  }
+
+  // FIX-772 — financial cohort count, mirroring the full route's member query
+  // (entity_search_index, synthetic + placeholder rows excluded).
+  if (entityType === "financial") {
+    const financialType = searchParams.get("financial_type") ?? "";
+    if (!VALID_FINANCIAL_TYPES.has(financialType)) {
+      return NextResponse.json(
+        { error: "financial_type must be pac|super_pac|corporation|union|party_committee" },
+        { status: 400 },
+      );
+    }
+
+    // entity_search_index is absent from the generated database.ts (FIX-748
+    // table, types regen pending) — local any-cast per the typeahead pattern.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { count, error } = (await (supabase as any)
+      .from("entity_search_index")
+      .select("entity_id", { count: "exact", head: true })
+      .eq("kind", "financial")
+      .eq("financial_type", financialType)
+      .eq("is_synthetic", false)
+      .not("display_name", "ilike", "%PAC/Committee%")) as {
+      count: number | null;
+      error: { message: string } | null;
+    };
+
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({ count: count ?? 0 });
   }
