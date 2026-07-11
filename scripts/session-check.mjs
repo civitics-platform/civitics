@@ -12,8 +12,10 @@
 //   2. every worktree and the branch it is on
 //   3. branches not yet merged into origin/main  ← the stranded-work signal
 //   4. open PRs via `gh` (degrades gracefully if gh is absent/unauthenticated)
-//   5. `pnpm fixes:check` result
-//   6. an OK / ⚠ ATTENTION summary so strays are obvious at a glance
+//   5. latest tests.yml run on main  ← the red-CI signal (FIX-794)
+//   6. supabase CLI version vs the pinned sentinel (FIX-530)
+//   7. `pnpm fixes:check` result
+//   8. an OK / ⚠ ATTENTION summary so strays are obvious at a glance
 //
 // Matches the dependency-free `scripts/*.mjs` Node convention so it runs the
 // same in PowerShell, Git Bash, and CI.
@@ -119,7 +121,52 @@ if (ghVersion.launchFailed || !ghVersion.ok) {
   }
 }
 
-// ── 5. supabase CLI version vs pinned sentinel (FIX-530) ─────────────────
+// ── 5. latest tests.yml run on main (FIX-794) ────────────────────────────
+// The FIX-793 typecheck breakage sat red on main for 3 runs (~21h): the gate
+// fired correctly but nothing pulls CI status into the session loop (no
+// branch protection, no failure notifications). WARN only, never block;
+// degrades silently when gh is absent/unauthenticated.
+section("Latest tests.yml run on main (FIX-794)");
+if (ghVersion.launchFailed || !ghVersion.ok) {
+  console.log("(gh not available — skipping CI check)");
+} else {
+  const ci = run("gh", [
+    "run", "list", "--workflow", "tests.yml", "--branch", "main", "--limit", "1",
+    "--json", "status,conclusion,displayTitle,headSha,url",
+  ]);
+  let latestRun = null;
+  let probeOk = ci.ok;
+  if (ci.ok) {
+    try {
+      latestRun = JSON.parse(ci.out)[0] ?? null;
+    } catch {
+      probeOk = false;
+    }
+  }
+  if (!probeOk) {
+    console.log("(gh present but `gh run list` failed — not authenticated or no remote?)");
+    if (ci.err) console.log(`  ${ci.err.split("\n")[0]}`);
+  } else if (!latestRun) {
+    console.log("(no tests.yml runs found on main)");
+  } else {
+    const sha = (latestRun.headSha || "").slice(0, 8);
+    const title = latestRun.displayTitle || "(untitled)";
+    if (latestRun.status !== "completed") {
+      console.log(`… ${latestRun.status} — ${sha} ${title}`);
+      console.log(`  ${latestRun.url}`);
+    } else if (latestRun.conclusion === "success") {
+      console.log(`✓ success — ${sha} ${title}`);
+    } else {
+      console.log(`⚠ ${latestRun.conclusion} — ${sha} ${title}`);
+      console.log(`  ${latestRun.url}`);
+      attention.push(
+        `latest tests.yml run on main is ${latestRun.conclusion} — fix CI before riding new work on it`,
+      );
+    }
+  }
+}
+
+// ── 6. supabase CLI version vs pinned sentinel (FIX-530) ─────────────────
 // The active CLI is a standalone exe (manual install — never self-updates);
 // the sentinel at supabase/.cli-version is the project's expected version. A
 // silent CLI bump once shipped a bundled PG17 image against a PG15 volume and
@@ -152,14 +199,14 @@ if (!pinnedCli) {
   }
 }
 
-// ── 6. fixes:check ───────────────────────────────────────────────────────
+// ── 7. fixes:check ───────────────────────────────────────────────────────
 section("fixes:check");
 const fc = run("pnpm", ["fixes:check"]);
 if (fc.out) console.log(fc.out);
 if (fc.err) console.log(fc.err);
 if (!fc.ok) attention.push("pnpm fixes:check FAILED — FIXES.md/done.log out of sync with trailers");
 
-// ── 7. summary ───────────────────────────────────────────────────────────
+// ── 8. summary ───────────────────────────────────────────────────────────
 section("Summary");
 if (attention.length === 0) {
   console.log("✓ OK — tree is tidy. No stranded work detected.");
