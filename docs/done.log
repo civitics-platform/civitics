@@ -957,3 +957,5 @@
 2026-07-10 | FIX-717 | dd04c57c | local+prod | feat(db): convert the 2 large MVs to incremental tables on pg_cron (FIX-717/718)
 2026-07-10 | FIX-718 | dd04c57c | local+prod | feat(db): convert the 2 large MVs to incremental tables on pg_cron (FIX-717/718)
 2026-07-10 | FIX-790 | adc2d3e4 | local-only | feat(ci): put the USASpending delta on a weekly cron on usaspending-bulk.yml (FIX-790)
+2026-07-10 | FIX-772 | 4458c8a9 | local+prod | fix(graph): resolve financial built-in groups (Money branch)
+2026-07-10 | FIX-792 | 6c64d6d3 | local+prod | fix(graph): adopt financial cohorts in browse compiler + curate Money tree
