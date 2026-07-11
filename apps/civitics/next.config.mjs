@@ -166,6 +166,26 @@ const nextConfig = {
       // routes (statements ballots, Q&A can_answer, and any future overlay).
       "api/viewer",
     ];
+    // FIX-795 — per-user PAGES: the same FIX-786 cross-user shared-cache class,
+    // at page scope. The denylist above only ever listed API routes, so these
+    // page families sat under the cdnHot catch-all with viewer-dependent SSR
+    // HTML/RSC payloads (captured on prod, 2026-07-11):
+    //   desk                    — auth-redirect + the signed-in user's inbox/receipts
+    //   admin                   — admin pages (only api/admin was listed; /admin was not)
+    //   dashboard/notifications — per-user follows/notifications (the /dashboard
+    //                             cdnHot rule is EXACT-match, so this fell through)
+    //   initiatives             — the WHOLE page family is viewer-dependent: the
+    //                             index has the per-user "Mine" tab (?mine=1 is its
+    //                             own cache key → one user's list served to the
+    //                             next), /new and /problem are auth-redirect pages,
+    //                             and /[id] SSRs isAuthor + the viewer's own
+    //                             upvote/follow/signature state.
+    const userScopedPages = [
+      "desk",
+      "admin",
+      "dashboard/notifications",
+      "initiatives",
+    ];
     return [
       {
         // Static assets — content-hashed, immutable. Cache-Control here is
@@ -206,6 +226,22 @@ const nextConfig = {
         source: `/${p}/:path*`,
         headers: [...cdnNoStore, ...securityHeaders],
       })),
+      // FIX-795 — per-user pages: pin CDN no-store (see userScopedPages above).
+      ...userScopedPages.map((p) => ({
+        source: `/${p}/:path*`,
+        headers: [...cdnNoStore, ...securityHeaders],
+      })),
+      // FIX-795 — /api/comments/*: pin CDN no-store. The payload is public (no
+      // per-viewer fields — FIX-787 audited it), but a 300s edge hold breaks
+      // read-your-own-writes for every commenter: the POST persists, the refresh
+      // reads the stale cached thread. No-store is the durable answer, not a
+      // shorter TTL — comments are client-island fetches, crawlers don't execute
+      // JS, so edge-caching them never reduced crawler load in the first place.
+      // Page HTML/RSC caching (which stays) is where the crawler defense lives.
+      {
+        source: "/api/comments/:path*",
+        headers: [...cdnNoStore, ...securityHeaders],
+      },
       // FIX-787 — /api/positions returns the caller's own stance; no-store it.
       // EXACT source (no `/:path*`) so the PUBLIC `/api/positions/rollup`
       // aggregate below is not caught.
@@ -226,8 +262,9 @@ const nextConfig = {
         // above are excluded here too (FIX-786/787) so the catch-all can't
         // re-stamp cdnHot over their no-store rule regardless of Next's rule-merge
         // order. `api/positions(?!/)` excludes the exact /api/positions path but
-        // NOT /api/positions/rollup (which stays public/cached).
-        source: `/((?!_next/static|api/auth|api/admin|${userScopedApi.join("|")}|api/positions(?!/)|auth|profile|dashboard).*)`,
+        // NOT /api/positions/rollup (which stays public/cached). FIX-795 adds
+        // the per-user pages + api/comments to the exclusion.
+        source: `/((?!_next/static|api/auth|api/admin|${userScopedApi.join("|")}|api/comments|${userScopedPages.join("|")}|api/positions(?!/)|auth|profile|dashboard).*)`,
         headers: [...cdnHot(300, 600), ...securityHeaders],
       },
     ];
