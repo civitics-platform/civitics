@@ -105,22 +105,33 @@ describe("stripViewerKeys", () => {
     assert.deepEqual(findViewerKeys(out), []);
     // The public fields survive untouched.
     assert.equal(out.statements.length, 2);
-    assert.equal(out.statements[0].body, statementsResponse.statements[0].body);
-    assert.deepEqual(out.statements[0].vote_summary, { agree: 4, disagree: 1, pass: 2 });
+    const first = out.statements[0];
+    const second = out.statements[1];
+    const inputFirst = statementsResponse.statements[0];
+    assert.ok(first && second && inputFirst);
+    assert.equal(first.body, inputFirst.body);
+    assert.deepEqual(first.vote_summary, { agree: 4, disagree: 1, pass: 2 });
     assert.equal(out.nextCursor, statementsResponse.nextCursor);
     assert.equal(out.slowMode, false);
-    assert.ok(!("my_vote" in out.statements[0]));
-    assert.ok(!("my_vote" in out.statements[1]));
+    assert.ok(!("my_vote" in first));
+    assert.ok(!("my_vote" in second));
   });
 
   it("removes can_answer from the questions payload, keeps nested lanes intact", () => {
     const out = stripViewerKeys(questionsResponse);
     assert.deepEqual(findViewerKeys(out), []);
-    assert.ok(!("can_answer" in out));
     assert.equal(out.total, 2);
-    assert.equal(out.questions[0].answers[0].body, "Yes.");
-    assert.equal(out.questions[0].community_notes[0].is_endorsed, true);
-    assert.equal(out.questions[0].community_note_count, 1);
+    const question = out.questions[0];
+    assert.ok(question);
+    const answer = question.answers[0];
+    const note = question.community_notes[0];
+    assert.ok(answer && note);
+    assert.equal(answer.body, "Yes.");
+    assert.equal(note.is_endorsed, true);
+    assert.equal(question.community_note_count, 1);
+    // Last: the `in`-absence assertion narrows `out` to never under tsc-strict,
+    // so nothing may read `out` after it.
+    assert.ok(!("can_answer" in out));
   });
 
   it("strips viewer keys at ANY depth, including inside arrays", () => {
