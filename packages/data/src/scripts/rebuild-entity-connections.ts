@@ -350,18 +350,22 @@ async function main(): Promise<void> {
             `  [post] refresh_group_donor_rollup — FAILED: ${errMsg(rollupErr)}`,
           );
         }
-        // FIX-509 — refresh the per-entity connection-stats MV the treemap
-        // aggregate + graph entities routes read. Like the rollup above, its
-        // source (entity_connections) only changes when the chunks run, so this
-        // is the right (and only) cadence. Wrapped so a refresh failure leaves
-        // the prior snapshot in place rather than masking a successful rebuild.
+        // FIX-509/FIX-717 — rebuild the per-entity connection-stats TABLE the
+        // treemap aggregate + graph entities routes read. Its source
+        // (entity_connections) only changes when the chunks run, so this is the
+        // right cadence for a local run (prod has its own pg_cron job,
+        // entity-connection-stats-rebuild). CALL the staged procedure. The
+        // session timeout below is armed at CALL start and budgets the WHOLE
+        // CALL (FIX-703 — intra-CALL COMMITs never re-arm it); 1800s is ample
+        // for the ~5-min staged rebuild. Wrapped so a failure leaves the prior
+        // snapshot in place rather than masking a successful edge rebuild.
         try {
-          await client.query("SET statement_timeout = '600s'");
-          await client.query("SELECT public.refresh_entity_connection_stats_mv()");
-          console.log("  [post] refresh_entity_connection_stats_mv — complete");
+          await client.query("SET statement_timeout = '1800s'");
+          await client.query("CALL public.rebuild_entity_connection_stats()");
+          console.log("  [post] rebuild_entity_connection_stats — complete");
         } catch (statsErr) {
           console.warn(
-            `  [post] refresh_entity_connection_stats_mv — FAILED: ${errMsg(statsErr)}`,
+            `  [post] rebuild_entity_connection_stats — FAILED: ${errMsg(statsErr)}`,
           );
         }
         // FIX-663 — refresh the per-jurisdiction page cache. The payload bakes in

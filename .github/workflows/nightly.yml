@@ -249,16 +249,16 @@ jobs:
         run: pnpm --filter @civitics/data data:mark-killed:ci -- --phase=enrichment-light
 
   # FIX-746: the daily derivation tail (comment bridge scorer, rule + AI taggers,
-  # AI summaries, and the two deferred MV refreshes — donor_party_rollup_mv +
-  # entity_connection_stats_mv) split out of enrichment-light into its own budget.
-  # FIX-743's forced-weekly run proved light was squeezed past 120 min on Sunday
-  # by the weekly ingest block + this tail sharing one budget (SIGTERM'd
-  # mid-tag_rules → ai_summaries + the two MV refreshes never ran). Chained after
-  # enrichment-light-phase (serialize the DB writers on the Micro) but decoupled
-  # from its outcome via `!cancelled()` so a light-phase timeout doesn't skip the
-  # tail. The tail reads DB state written by the light job, so ordering holds via
-  # the DB. Complementary to FIX-717/718 — once those two MVs are incrementalized
-  # onto pg_cron they leave the tail entirely.
+  # AI summaries) split out of enrichment-light into its own budget. FIX-743's
+  # forced-weekly run proved light was squeezed past 120 min on Sunday by the
+  # weekly ingest block + this tail sharing one budget (SIGTERM'd mid-tag_rules
+  # → the rest of the tail never ran). Chained after enrichment-light-phase
+  # (serialize the DB writers on the Micro) but decoupled from its outcome via
+  # `!cancelled()` so a light-phase timeout doesn't skip the tail. The tail
+  # reads DB state written by the light job, so ordering holds via the DB.
+  # FIX-717/718: the two deferred MV refreshes that used to close this tail
+  # (donor_party_rollup_mv + entity_connection_stats_mv) are now incremental
+  # TABLEs on their own pg_cron jobs and no longer run here.
   enrichment-tail-phase:
     needs: enrichment-light-phase
     if: ${{ !cancelled() }}

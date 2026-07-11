@@ -931,9 +931,11 @@ export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<Nigh
   //     packages/data/src/scripts/rebuild-entity-connections.ts.
   //     Most MVs derived from entity_connections moved to refresh_derived_mvs on
   //     pg_cron (FIX-715). The two large ones — entity_connection_stats_mv and
-  //     donor_party_rollup_mv — are DEFERRED (a full REFRESH is in the FIX-704
-  //     OOM class on Micro) and still refresh in step 7 below until they get a
-  //     FIX-704-style incremental conversion.
+  //     donor_party_rollup_mv — were DEFERRED here until FIX-717/718 converted
+  //     them to incrementally-maintained TABLEs on their own pg_cron jobs
+  //     (entity-connection-stats-rebuild Mon+Wed 11:00 UTC,
+  //     donor-party-rollup-refresh Tue 08:45 UTC). Nothing derived from
+  //     entity_connections runs in the nightly anymore.
 
   // 4. Rule-based tags — the Node-side taggers only: proposal urgency/scope,
   //    official tenure/voting/donor patterns, financial-entity industry keywords.
@@ -982,30 +984,16 @@ export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<Nigh
   //    (daily + weekly, cadence-matched to source). See
   //    supabase/migrations/20260703000000_fix715_refresh_derived_mvs_pgcron.sql.
   //
-  //    What REMAINS here is the two DEFERRED MVs. A full REFRESH of either is in
-  //    the FIX-704 OOM class on Micro (entity_connection_stats_mv 2.4M/264MB,
-  //    donor_party_rollup_mv 1.29M/186MB — official_donor_rollup was 276MB/770k
-  //    when it OOM-restarted Micro), so they are NOT relocated to pg_cron's 6h
-  //    budget (where a refresh runs to completion → OOM). They stay on this
-  //    capped admin.rpc() path, which cuts a too-heavy refresh off at the ~100s
-  //    gateway (stale-but-safe), until a FIX-704-style incremental conversion
-  //    lands (follow-up FIXes). Non-fatal: a stale refresh must not abort the
-  //    nightly.
-  for (const fn of [
-    "refresh_donor_party_rollup_mv",
-    "refresh_entity_connection_stats_mv",
-  ]) {
-    try {
-      const { createAdminClient } = await import("@civitics/db");
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const admin = createAdminClient() as any;
-      await admin.rpc(fn);
-    } catch (err) {
-      const msg = errMsg(err);
-      console.error(`[nightly] ${fn} failed:`, msg);
-      results.errors.push(`${fn}: ${msg}`);
-    }
-  }
+  //    [FIX-717/718] The two DEFERRED MVs that used to remain here —
+  //    entity_connection_stats_mv + donor_party_rollup_mv — are now
+  //    incrementally-maintained TABLEs (same names) on their own pg_cron jobs
+  //    (entity-connection-stats-rebuild Mon+Wed 11:00 UTC after the EC rebuild
+  //    jobs; donor-party-rollup-refresh Tue 08:45 UTC on the
+  //    donor_party_rollup_watermark). The capped admin.rpc() refreshes that ran
+  //    here never actually completed on prod (the ~8s service_role
+  //    statement_timeout cancelled a minutes-long REFRESH every night), so this
+  //    also un-stales both. The enrichment-tail (FIX-746) keeps its other work
+  //    (comment bridge scorer, taggers, AI summaries) — only the MV loop left.
 
   } // end Phase 2 daily stages (FIX-292 / FIX-740 / FIX-746 — enrichment-tail)
 
