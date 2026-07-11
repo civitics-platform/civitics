@@ -8,13 +8,18 @@
 // (still synthetic-gated, no standing). The authored rollup confers nothing —
 // no standing computation reads it. Returns the 7-bucket distribution, median,
 // pct_with_conditions and n — all NULL except n below MIN_POSITIONS_FOR_ROLLUP
-// (10) for the live path. No user data, so anon is fine; kept dynamic (premature
-// caching of near-empty aggregates isn't worth header tuning).
+// (10) for the live path.
+//
+// PUBLIC, CDN-CACHED (config rule since FIX-787; header handler-owned since
+// FIX-796 — withPublicCdnCache stamps the GET 200 only). The payload is a
+// per-entity aggregate with zero viewer-dependence, and since FIX-796 it is
+// built on createPublicClient (no cookies) so that is structural, not just
+// observed — the FIX-788 pattern.
 
 import { NextRequest, NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createServerClient } from "@civitics/db";
+import { createPublicClient } from "@civitics/db";
 import { isEntityCommentType } from "@civitics/db";
+import { withPublicCdnCache } from "@/lib/cdn-cache";
 
 export const dynamic = "force-dynamic";
 
@@ -40,8 +45,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "entity_id is required" }, { status: 400 });
     }
 
-    const cookieStore = await cookies();
-    const supabase = createServerClient(cookieStore);
+    const supabase = createPublicClient();
 
     const { data, error } = await supabase.rpc("get_position_rollup_display", {
       p_entity_type: entityType,
@@ -62,7 +66,7 @@ export async function GET(request: NextRequest) {
       buckets: null,
       synthetic: false,
     };
-    return NextResponse.json({ rollup, lens }, { status: 200 });
+    return withPublicCdnCache(NextResponse.json({ rollup, lens }, { status: 200 }));
   } catch {
     return NextResponse.json({ error: "Failed to load rollup" }, { status: 500 });
   }

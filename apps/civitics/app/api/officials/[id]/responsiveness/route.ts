@@ -1,17 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createServerClient } from "@civitics/db";
+import { createPublicClient } from "@civitics/db";
 import { gradeFromRate, type ResponsivenessData } from "./_lib";
+import { withPublicCdnCache } from "@/lib/cdn-cache";
 
 export const dynamic = "force-dynamic";
 
+// PUBLIC, CDN-CACHED (header handler-owned since FIX-796 — withPublicCdnCache
+// on the GET 200 only). Per-official public aggregate, zero viewer-dependence;
+// built on createPublicClient so that is structural (FIX-788 pattern).
 export async function GET(
   _request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
-    const cookieStore = await cookies();
-    const supabase = createServerClient(cookieStore);
+    const supabase = createPublicClient();
 
     const { data: rows, error } = await supabase
       .from("civic_initiative_responses")
@@ -74,7 +76,7 @@ export async function GET(
       recent,
     };
 
-    return NextResponse.json(data);
+    return withPublicCdnCache(NextResponse.json(data));
   } catch {
     return NextResponse.json(
       { error: "Failed to compute responsiveness score" },

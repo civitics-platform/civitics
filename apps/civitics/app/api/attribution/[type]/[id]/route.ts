@@ -28,6 +28,7 @@ import {
   type AttributionPrimary,
 } from "@civitics/db";
 import { withDbTimeout } from "@/lib/supabase-check";
+import { withPublicCdnCache } from "@/lib/cdn-cache";
 
 const ENTITY_TYPE_TO_TABLE: Record<AttributionEntityType, string> = {
   official:         "officials",
@@ -204,5 +205,7 @@ export async function GET(
     source_count: sources.length,
   };
 
-  return NextResponse.json(body);
+  // FIX-796 — header handler-owned: public per-entity source attribution
+  // (createPublicClient payload, zero viewer-dependence); GET 200 only.
+  return withPublicCdnCache(NextResponse.json(body));
 }

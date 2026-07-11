@@ -16,6 +16,10 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@civitics/db";
 import { createAiClient, MODELS } from "@civitics/ai";
+// FIX-796 — header handler-owned: only the two summary-bearing 200s are
+// CDN-cached. The `summary: null` variants (kill switch, spend cap, no data,
+// DB error) are NOT stamped, so a transient null is never pinned at the edge.
+import { withPublicCdnCache } from "@/lib/cdn-cache";
 
 const MONTHLY_SPEND_LIMIT_CENTS = 400;
 
@@ -57,7 +61,7 @@ export async function GET(
       .maybeSingle();
 
     if (cacheRes.data?.summary_text) {
-      return NextResponse.json({ summary: cacheRes.data.summary_text });
+      return withPublicCdnCache(NextResponse.json({ summary: cacheRes.data.summary_text }));
     }
   } catch {
     // cache miss — proceed
@@ -176,7 +180,7 @@ export async function GET(
       }),
     ]);
 
-    return NextResponse.json({ summary: summaryText });
+    return withPublicCdnCache(NextResponse.json({ summary: summaryText }));
   } catch (err) {
     console.error("[/api/officials/[id]/summary]", err);
     return NextResponse.json({ summary: null });

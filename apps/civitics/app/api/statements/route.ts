@@ -8,16 +8,18 @@ import {
 } from "@civitics/db";
 import { getSlowMode } from "@/lib/slow-mode";
 import { stripViewerKeys } from "@/lib/public-payload";
+import { withPublicCdnCache } from "@/lib/cdn-cache";
 import { challengeRequiredForWrite, verifyTurnstile } from "@/lib/turnstile";
 import { mapRpcError } from "./_lib";
 
 export const dynamic = "force-dynamic";
 
 // ─── GET /api/statements?entity_type=&entity_id=&lens=&cursor=&limit= ─────────
-// PUBLIC, CDN-CACHED (FIX-788). This response is held in the shared Vercel edge
-// cache (next.config.mjs cdnHot catch-all) and served cross-user, so it must
-// contain ZERO viewer-dependent fields — a personalized field here is the
-// FIX-786/787 cross-user cache leak. Two layers enforce that:
+// PUBLIC, CDN-CACHED (FIX-788; header handler-owned since FIX-796 — the config
+// catch-all is gone, withPublicCdnCache stamps the GET 200 below and nothing
+// else). The response is held in the shared edge cache and served cross-user,
+// so it must contain ZERO viewer-dependent fields — a personalized field here
+// is the FIX-786/787 cross-user cache leak. Two layers enforce that:
 //   1. the RPC runs on createPublicClient (no cookies → auth.uid() NULL →
 //      my_vote is null for every row, for every caller), and
 //   2. the body passes through stripViewerKeys() so the my_vote key never
@@ -57,12 +59,14 @@ export async function GET(request: NextRequest) {
 
     const result = (data as { statements?: unknown; next_cursor?: unknown } | null) ?? {};
     const slowMode = await getSlowMode(entityType, entityId, supabase);
-    return NextResponse.json(
-      stripViewerKeys({
-        statements: Array.isArray(result.statements) ? result.statements : [],
-        nextCursor: typeof result.next_cursor === "string" ? result.next_cursor : null,
-        slowMode,
-      }),
+    return withPublicCdnCache(
+      NextResponse.json(
+        stripViewerKeys({
+          statements: Array.isArray(result.statements) ? result.statements : [],
+          nextCursor: typeof result.next_cursor === "string" ? result.next_cursor : null,
+          slowMode,
+        }),
+      ),
     );
   } catch {
     return NextResponse.json({ error: "Failed to load statements" }, { status: 500 });

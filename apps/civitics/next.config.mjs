@@ -108,8 +108,78 @@ const nextConfig = {
     // to everyone else for the s-maxage window. This was the mechanism FIX-8
     // used in reverse to *bust* the dashboard cache.
     //
-    // We set both so it works on Vercel today and any future generic CDN
-    // (Cloudflare, Fastly) we might layer in.
+    // We set both so it works on Vercel today and any future generic CDN we
+    // might layer in. Cloudflare (which fronts the site) honors
+    // CDN-Cache-Control as well, so public responses are held at BOTH layers
+    // (observe x-vercel-cache and cf-cache-status when verifying).
+    //
+    // ──────────────────────────────────────────────────────────────────────
+    // CDN CACHE POLICY — ALLOWLIST MODEL (FIX-796)
+    //
+    // THE RULE: cache headers only on payloads with ZERO viewer-dependence,
+    // set as close to the response as possible.
+    //
+    // History (why this is an allowlist, not a denylist):
+    //   FIX-786 — saved-views "reverts on refresh": per-user API responses sat
+    //     in the shared edge cache (which does NOT vary by Cookie) under an
+    //     earlier cdnHot catch-all → stale read-your-own-writes AND cross-user
+    //     leaks. Fix then: denylist + pinned no-store for per-user API routes.
+    //   FIX-787 — audit of the ambiguous authed GETs: api/investigations
+    //     (RLS varies by viewer) pinned no-store; api/positions split (own
+    //     stance no-store, /rollup public).
+    //   FIX-788 — api/statements + api/questions split into viewer-independent
+    //     cached lists (createPublicClient + stripViewerKeys — pinned by
+    //     public-payload.test.ts) + the no-store api/viewer overlay for the
+    //     caller's own state.
+    //   FIX-795 (2026-07-11) — the same incident class found AGAIN, at PAGE
+    //     scope: /desk, /admin, /dashboard/notifications and the /initiatives
+    //     family were cross-user cached, and /api/comments caching broke
+    //     read-your-own-writes for every commenter. Proof that a denylist
+    //     fails unsafe: every new per-user route is a latent leak until
+    //     someone remembers to list it. Config rules are also method- and
+    //     status-blind — cdnHot was captured on POST responses and a 429.
+    //
+    // The model is therefore INVERTED (FIX-796):
+    //   1. PAGES — cdnHot applies ONLY to the explicit allowlist of
+    //      viewer-independent public page prefixes below. Unlisted routes get
+    //      NOTHING stamped, so Next's own `private, no-cache, no-store` for
+    //      dynamic routes stands. A new route is safe by default; forgetting
+    //      to list it costs performance, never correctness.
+    //   2. API — config stamps NO cache headers on /api. Public API routes own
+    //      their cache headers in the handler (src/lib/cdn-cache.ts →
+    //      withPublicCdnCache), where they can be method-aware (GET only) and
+    //      status-aware (200 only). The pinned no-store guards below stay as
+    //      belt-and-braces for the known per-user surfaces.
+    //   3. Anything personalized goes under api/viewer (or another no-store
+    //      surface) — never into a cached payload.
+    //
+    // Route → cache policy (complete map, post-FIX-796):
+    //   /_next/static/*             browser immutable (content-hashed)
+    //   PAGE ALLOWLIST (publicPages
+    //   + `/` + /dashboard)         edge 300/600 (dashboard: 1800/3600)
+    //   PINNED NO-STORE             /auth, /profile, /desk, /admin,
+    //                               /dashboard/notifications, /initiatives*,
+    //                               /api/auth, /api/admin, /api/comments*,
+    //                               userScopedApi (api/viewer et al.),
+    //                               /api/positions (exact)
+    //   HANDLER-OWNED (in route
+    //   code, GET 200 only)         api/statements, api/questions,
+    //                               api/positions/rollup, api/browse/typeahead,
+    //                               api/browse/jurisdictions,
+    //                               api/officials|proposals [id]/summary,
+    //                               api/officials/[id]/responsiveness,
+    //                               api/attribution, api/dashboard/stats;
+    //                               api/browse keeps its own Cache-Control
+    //                               s-maxage=60 (predates this, same idea)
+    //   EVERYTHING ELSE             nothing stamped → uncached by default.
+    //                               Deliberate: all api/graph/* reads
+    //                               (interactive, param-heavy → low hit rate;
+    //                               the `graph` rate bucket bounds cost),
+    //                               api/initiatives* (read-your-own-writes),
+    //                               platform/claude/cron/track/moderation/
+    //                               evidence routes, OG images (Next stamps
+    //                               its own — see app/_og/cards.ts).
+    // ──────────────────────────────────────────────────────────────────────
     const securityHeaders = [
       { key: "X-Frame-Options", value: "DENY" },
       { key: "X-Content-Type-Options", value: "nosniff" },
@@ -123,33 +193,9 @@ const nextConfig = {
       { key: "CDN-Cache-Control", value: `public, s-maxage=${sMaxAge}, stale-while-revalidate=${swr}` },
       { key: "Vercel-CDN-Cache-Control", value: `public, s-maxage=${sMaxAge}, stale-while-revalidate=${swr}` },
     ];
-    // FIX-786 — per-user, auth-dependent API endpoints. Their response varies by
-    // the signed-in user, so they must NEVER sit in the shared edge cache the
-    // cdnHot catch-all applies: a stale hit shows a list from up to s-maxage
-    // seconds ago (the saved-views "reverts on refresh" bug — the write persists
-    // but the refresh reads the cached list), AND because the edge cache key does
-    // not vary by Cookie, one user's response can be served to another (cross-user
-    // leak). These are BOTH denylisted from the catch-all's negative-lookahead
-    // (so it can't stamp cdnHot on them) AND pinned CDN no-store. Only
-    // unambiguously per-user routes belong here; genuinely public routes stay
-    // cached. FIX-787 completed the audit of the ambiguous authed GET routes:
-    // investigations (RLS `status<>'archived' OR created_by=auth.uid()` — creators
-    // see their own archived rows) varies by viewer and is here; comments,
-    // initiatives and positions/rollup are genuinely public and stay cached.
-    // `api/positions` (the caller's own stance) is handled separately below with
-    // an EXACT match, because its `/rollup` sub-path is a public aggregate that
-    // must stay cached — a `/:path*` entry here would wrongly catch it.
-    //
-    // FIX-788 — api/statements + api/questions were pinned here by FIX-787
-    // (their RPC payloads embedded a per-viewer `my_vote` / `can_answer`) but
-    // they are hot anon-heavy entity-page reads, so no-store pushed every hit
-    // to the cache-starved prod DB. They are now SPLIT: the list routes are
-    // viewer-independent (RPC via createPublicClient + stripViewerKeys — see
-    // src/lib/public-payload.ts) and fall to the cdnHot catch-all below, while
-    // the viewer's own state moved to api/viewer/engagement, which IS pinned
-    // here. The rule this file implements: cache headers only on payloads with
-    // ZERO viewer-dependence; anything personalized goes under api/viewer (or
-    // another denylisted prefix) — never back into a cached payload.
+    // Per-user, auth-dependent API endpoints (FIX-786/787/788) — belt-and-
+    // braces no-store pins. The response varies by the signed-in user, so a
+    // shared-cache hit is a cross-user leak.
     const userScopedApi = [
       "api/graph/custom-groups",
       "api/graph/me",
@@ -160,33 +206,58 @@ const nextConfig = {
       "api/constituent-status",
       "api/officials/claim-status",
       "api/representatives",
-      // FIX-787 — per-viewer route found in the FIX-786 security audit.
+      // FIX-787 — RLS varies by viewer (creators see their own archived rows).
       "api/investigations",
       // FIX-788 — the per-viewer overlay prefix for the cached public list
       // routes (statements ballots, Q&A can_answer, and any future overlay).
       "api/viewer",
     ];
-    // FIX-795 — per-user PAGES: the same FIX-786 cross-user shared-cache class,
-    // at page scope. The denylist above only ever listed API routes, so these
-    // page families sat under the cdnHot catch-all with viewer-dependent SSR
-    // HTML/RSC payloads (captured on prod, 2026-07-11):
-    //   desk                    — auth-redirect + the signed-in user's inbox/receipts
-    //   admin                   — admin pages (only api/admin was listed; /admin was not)
-    //   dashboard/notifications — per-user follows/notifications (the /dashboard
-    //                             cdnHot rule is EXACT-match, so this fell through)
-    //   initiatives             — the WHOLE page family is viewer-dependent: the
-    //                             index has the per-user "Mine" tab (?mine=1 is its
-    //                             own cache key → one user's list served to the
-    //                             next), /new and /problem are auth-redirect pages,
-    //                             and /[id] SSRs isAuthor + the viewer's own
-    //                             upvote/follow/signature state.
+    // Per-user PAGES (FIX-795) — same class, page scope:
+    //   desk                    — auth-redirect + the signed-in user's inbox
+    //   admin                   — admin pages (api/admin alone was not enough)
+    //   dashboard/notifications — per-user follows/notifications (the
+    //                             /dashboard cdnHot rule is EXACT-match)
+    //   initiatives             — whole family: index has the per-user "Mine"
+    //                             tab (?mine=1 is its own cache key), /new and
+    //                             /problem are auth-redirect pages, /[id] SSRs
+    //                             isAuthor + the viewer's own engagement state.
     const userScopedPages = [
       "desk",
       "admin",
       "dashboard/notifications",
       "initiatives",
     ];
+    // The page allowlist (FIX-796): viewer-independent public page prefixes.
+    // Every entry was verified to have NO cookies()/auth read in its SSR
+    // render path (per-viewer UI is client islands; engagement state hydrates
+    // from the no-store api/viewer overlay). Before adding a prefix here,
+    // verify the same — a viewer-dependent page in this list is the FIX-786
+    // incident. `/` (home) and /dashboard get exact-match rules below.
+    // NB: prefixes also cover sub-resources (RSC payloads, opengraph-image
+    // routes) under them — all viewer-independent by the same audit.
+    const publicPages = [
+      "officials",
+      "proposals",
+      "jurisdictions",
+      "institutions",
+      "agencies",
+      "donors",
+      "districts",
+      "meetings",
+      "search",
+      "graph",
+      "commons",
+      "franklin",
+      "investigations",
+      "about",
+    ];
     return [
+      {
+        // Security headers on every route. Cache headers are deliberately NOT
+        // part of this rule — they come only from the explicit rules below.
+        source: "/:path*",
+        headers: securityHeaders,
+      },
       {
         // Static assets — content-hashed, immutable. Cache-Control here is
         // what the browser respects, which is exactly what we want.
@@ -195,77 +266,72 @@ const nextConfig = {
           { key: "Cache-Control", value: "public, max-age=31536000, immutable" },
         ],
       },
+      // ── Pinned no-store guards ─────────────────────────────────────────────
+      // Auth + admin + mutating routes — never cache anywhere. Auth callbacks
+      // set session cookies; admin endpoints expose privileged reads.
       {
-        // Auth + admin + mutating routes — never cache anywhere. Auth
-        // callbacks set session cookies; admin endpoints expose privileged
-        // reads.
         source: "/api/auth/:path*",
-        headers: [...cdnNoStore, ...securityHeaders],
+        headers: cdnNoStore,
       },
       {
         source: "/api/admin/:path*",
-        headers: [...cdnNoStore, ...securityHeaders],
+        headers: cdnNoStore,
       },
       {
         source: "/auth/:path*",
-        headers: [...cdnNoStore, ...securityHeaders],
+        headers: cdnNoStore,
       },
       {
         source: "/profile/:path*",
-        headers: [...cdnNoStore, ...securityHeaders],
+        headers: cdnNoStore,
       },
-      {
-        // Dashboard is an admin/transparency tool; content is stable.
-        // Hold on the edge for 30 min, serve stale up to an hour.
-        source: "/dashboard",
-        headers: [...cdnHot(1800, 3600), ...securityHeaders],
-      },
-      // FIX-786 — per-user API endpoints: pin CDN no-store. `:path*` also covers
-      // the bare base path (e.g. /api/graph/custom-groups with no sub-segment).
+      // FIX-786 — per-user API endpoints. `:path*` also covers the bare base
+      // path (e.g. /api/graph/custom-groups with no sub-segment).
       ...userScopedApi.map((p) => ({
         source: `/${p}/:path*`,
-        headers: [...cdnNoStore, ...securityHeaders],
+        headers: cdnNoStore,
       })),
-      // FIX-795 — per-user pages: pin CDN no-store (see userScopedPages above).
+      // FIX-795 — per-user pages (see userScopedPages above).
       ...userScopedPages.map((p) => ({
         source: `/${p}/:path*`,
-        headers: [...cdnNoStore, ...securityHeaders],
+        headers: cdnNoStore,
       })),
-      // FIX-795 — /api/comments/*: pin CDN no-store. The payload is public (no
-      // per-viewer fields — FIX-787 audited it), but a 300s edge hold breaks
-      // read-your-own-writes for every commenter: the POST persists, the refresh
-      // reads the stale cached thread. No-store is the durable answer, not a
-      // shorter TTL — comments are client-island fetches, crawlers don't execute
-      // JS, so edge-caching them never reduced crawler load in the first place.
-      // Page HTML/RSC caching (which stays) is where the crawler defense lives.
+      // FIX-795 — /api/comments/*: public payload (FIX-787 audited it), but a
+      // 300s edge hold breaks read-your-own-writes for every commenter. No-store
+      // is the durable answer, not a shorter TTL — comments are client-island
+      // fetches, crawlers don't execute JS, so edge-caching them never reduced
+      // crawler load. Page HTML/RSC caching is where the crawler defense lives.
       {
         source: "/api/comments/:path*",
-        headers: [...cdnNoStore, ...securityHeaders],
+        headers: cdnNoStore,
       },
       // FIX-787 — /api/positions returns the caller's own stance; no-store it.
-      // EXACT source (no `/:path*`) so the PUBLIC `/api/positions/rollup`
-      // aggregate below is not caught.
+      // EXACT source (no `/:path*`) so the PUBLIC /api/positions/rollup
+      // (handler-owned cache headers since FIX-796) is not caught.
       {
         source: "/api/positions",
-        headers: [...cdnNoStore, ...securityHeaders],
+        headers: cdnNoStore,
       },
+      // ── Page allowlist ─────────────────────────────────────────────────────
+      // Read-heavy public pages — Vercel edge holds the response for 5 min and
+      // serves stale while revalidating for another 10. Civic data changes
+      // slowly; SWR keeps freshness acceptable. This caching is the crawler
+      // defense — crawlers fetch page HTML, not client-island APIs.
       {
-        // /api/positions/rollup is a public per-entity aggregate (no per-viewer
-        // fields) — keep it edge-cached like other public reads.
-        source: "/api/positions/rollup",
-        headers: [...cdnHot(300, 600), ...securityHeaders],
+        // Home. EXACT match — `/` only.
+        source: "/",
+        headers: cdnHot(300, 600),
       },
+      ...publicPages.map((p) => ({
+        source: `/${p}/:path*`,
+        headers: cdnHot(300, 600),
+      })),
       {
-        // Read-heavy public pages — Vercel edge holds the response for 5 min
-        // and serves stale while revalidating for another 10. Civic data
-        // changes slowly; SWR keeps freshness acceptable. The per-user API routes
-        // above are excluded here too (FIX-786/787) so the catch-all can't
-        // re-stamp cdnHot over their no-store rule regardless of Next's rule-merge
-        // order. `api/positions(?!/)` excludes the exact /api/positions path but
-        // NOT /api/positions/rollup (which stays public/cached). FIX-795 adds
-        // the per-user pages + api/comments to the exclusion.
-        source: `/((?!_next/static|api/auth|api/admin|${userScopedApi.join("|")}|api/comments|${userScopedPages.join("|")}|api/positions(?!/)|auth|profile|dashboard).*)`,
-        headers: [...cdnHot(300, 600), ...securityHeaders],
+        // Dashboard is a public transparency tool; content is stable. Hold on
+        // the edge for 30 min, serve stale up to an hour. EXACT match — its
+        // /notifications sub-page is per-user and pinned no-store above.
+        source: "/dashboard",
+        headers: cdnHot(1800, 3600),
       },
     ];
   },
