@@ -7,20 +7,28 @@ name: usaspending-bulk
 # processed ~200k rows, got SIGTERM'd at the cutoff, wrote no checkpoint, and
 # restarted as a "first run — no prior state" every night, cumulatively starving
 # the rest of enrichment (LittleSis, EDGAR, the MV-refresh/tagger tail). Moving
-# it here stops that starvation; a scheduled + checkpointed version is the
-# deferred durable fix (FIX-739 — needs FEC-backfill-style resumability).
+# it here stops that starvation. FIX-739 then shipped the DB-backed
+# checkpoint/resume state (pipeline_state.usaspending_bulk_state), so the delta
+# baseline is live: a scheduled run is a cheap delta (~32s when no new archive
+# has landed; a real delta is minutes, not the 2 GB first-run).
 #
-# Manual only (`workflow_dispatch`). Runs both categories (contracts then
-# assistance) sequentially against PROD via `data:usaspending-bulk:ci`
-# (index.ts `usaspending` command → runUsaSpendingBulk). `--allow-prod` on the
-# :ci script satisfies createAdminClient's prod-write guard; the prod URL +
-# secret come from the same env block nightly.yml's fec-phase uses (GHA has no
-# YAML anchors, so the duplication is explicit). Each category self-logs to
-# data_sync_log via its own startSync/completeSync — check there + this run's
-# log to size the FIX-739 checkpoint work (how far the 2 GB first-run gets).
+# Scheduled weekly + manual (`workflow_dispatch`). Cadence Thu 10:00 UTC —
+# off-peak, clear of the 02:00Z nightly window, the Mon/Wed 08:00 EC-rebuild +
+# Tue rollup pg_cron jobs, and the Sunday FEC block. Deliberately NOT rejoining
+# the nightly: its 120-min budget is exactly what FIX-740 pulled this out of.
+# Runs both categories (contracts then assistance) sequentially against PROD
+# via `data:usaspending-bulk:ci` (index.ts `usaspending` command →
+# runUsaSpendingBulk). `--allow-prod` on the :ci script satisfies
+# createAdminClient's prod-write guard; the prod URL + secret come from the
+# same env block nightly.yml's fec-phase uses (GHA has no YAML anchors, so the
+# duplication is explicit). Each category self-logs to data_sync_log via its
+# own startSync/completeSync. The concurrency group serializes a scheduled
+# firing against any in-flight manual dispatch.
 
 on:
   workflow_dispatch: {}
+  schedule:
+    - cron: "0 10 * * 4"
 
 permissions:
   contents: read
