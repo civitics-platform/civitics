@@ -961,3 +961,4 @@
 2026-07-10 | FIX-792 | 6c64d6d3 | local+prod | fix(graph): adopt financial cohorts in browse compiler + curate Money tree
 2026-07-10 | FIX-750 | 6576bb15 | local-only | fix(db): regenerate database.ts from prod + drop the browse-era any-casts (FIX-750)
 2026-07-10 | FIX-793 | 4db64204 | local-only | fix(tests): satisfy tsc-strict in public-payload.test.ts (FIX-793)
+2026-07-10 | FIX-794 | e53df887 | local-only | [skip vercel] feat(scripts): session:check surfaces the latest tests.yml run on main (FIX-794)
