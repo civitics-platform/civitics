@@ -102,8 +102,7 @@ function compactCount(n: number): string {
 }
 
 async function readLanding(): Promise<LandingData> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const db = createAdminClient() as any;
+  const db = createAdminClient();
   const nowMs = Date.now();
   const nowIso = new Date(nowMs).toISOString();
 
@@ -116,13 +115,8 @@ async function readLanding(): Promise<LandingData> {
   // costs one ~READ_TIMEOUT window, not four. Each is withDbTimeout-capped, so
   // a degraded DB degrades the landing to zeros + empty strips (which still
   // render) rather than hanging the render.
-  //
-  // withDbTimeout over an `any` builder infers T=unknown
-  // (project_withdbtimeout_any_infers_unknown) — cast the result array locally
-  // rather than adding a type arg the render-timeout CI guard would miss.
   const [{ data: rollup }, { data: closingRows }, { data: recentRows }, { data: connectedRows }] =
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (await Promise.all([
+    await Promise.all([
       // 1) Rollup — totals + sub-link counts + the freshest refreshed_at.
       withDbTimeout(
         db.from("browse_facet_counts")
@@ -164,11 +158,9 @@ async function readLanding(): Promise<LandingData> {
         READ_TIMEOUT_MS,
         "landing:connected",
       ),
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ])) as [{ data: any }, { data: any }, { data: any }, { data: any }];
+    ]);
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  for (const r of (rollup ?? []) as any[]) {
+  for (const r of rollup ?? []) {
     const count = Number(r.count) || 0;
     if (r.refreshed_at && (!refreshedAt || r.refreshed_at > refreshedAt)) refreshedAt = r.refreshed_at;
     if (r.facet_key === "__total__") {
@@ -179,9 +171,10 @@ async function readLanding(): Promise<LandingData> {
     }
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const closing: LandingStripRow[] = ((closingRows ?? []) as any[]).map((r) => {
-    const d = daysUntil(r.metadata?.comment_period_end, nowMs);
+  const closing: LandingStripRow[] = (closingRows ?? []).map((r) => {
+    // metadata is jsonb — the payload shape isn't in the generated types.
+    const meta = r.metadata as { comment_period_end?: string } | null;
+    const d = daysUntil(meta?.comment_period_end, nowMs);
     return {
       key: `closing:${r.id}`,
       label: r.title,
@@ -191,8 +184,7 @@ async function readLanding(): Promise<LandingData> {
     };
   });
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const recent: LandingStripRow[] = ((recentRows ?? []) as any[]).map((r) => ({
+  const recent: LandingStripRow[] = (recentRows ?? []).map((r) => ({
     key: `recent:${r.entity_id}`,
     label: r.display_name,
     meta: `${KIND_LABEL[r.kind] ?? r.kind} · ${relTime(r.activity_at, nowMs)}`,
@@ -200,8 +192,7 @@ async function readLanding(): Promise<LandingData> {
     href: entityHref(r.kind, r.entity_id, r.display_name),
   }));
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const connected: LandingStripRow[] = ((connectedRows ?? []) as any[]).map((r) => ({
+  const connected: LandingStripRow[] = (connectedRows ?? []).map((r) => ({
     key: `connected:${r.entity_id}`,
     label: r.display_name,
     meta: `${compactCount(r.connection_count ?? 0)} links`,

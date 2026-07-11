@@ -63,21 +63,26 @@ export async function executeBrowse(sp: URLSearchParams): Promise<BrowseExecutio
 
   const cursor = decodeCursor(state.cursor);
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const db = createAdminClient() as any;
+  const db = createAdminClient();
 
   // ── Page rows (keyset) ──────────────────────────────────────────────────────
   const rows: BrowseRow[] = [];
   let nextCursor: string | null = null;
 
   if (wantRows) {
+    // Omitted args land the SQL DEFAULT NULL — identical to the explicit nulls
+    // this passed pre-types-regen (including the p_cursor_value-NULL +
+    // p_cursor_id keyset tail case). p_kind has no default and SQL NULL means
+    // "all kinds" ($3 IS NULL OR e.kind = $3), which the generated arg type
+    // (`p_kind: string`) cannot express — hence the cast.
     const { data: pageData, error: pageErr } = await db.rpc("get_browse_page", {
-      p_kind: kind,
+      p_kind: kind as unknown as string,
       p_facets: facetsJson,
-      p_q: state.q || null,
+      p_q: state.q || undefined,
       p_sort: state.sort,
-      p_cursor_value: cursor ? (cursor.sortValue === null ? null : String(cursor.sortValue)) : null,
-      p_cursor_id: cursor ? cursor.entityId : null,
+      p_cursor_value:
+        cursor && cursor.sortValue !== null ? String(cursor.sortValue) : undefined,
+      p_cursor_id: cursor ? cursor.entityId : undefined,
       p_limit: pageSize,
     });
 
@@ -85,8 +90,12 @@ export async function executeBrowse(sp: URLSearchParams): Promise<BrowseExecutio
       return { status: 500, body: { error: "browse_page_failed", details: pageErr.message } };
     }
 
-    const rawRows: Array<BrowseRow & { _sort_value: string | null }> = pageData?.rows ?? [];
-    const hasMore: boolean = pageData?.has_more ?? false;
+    const page = pageData as unknown as {
+      rows?: Array<BrowseRow & { _sort_value: string | null }>;
+      has_more?: boolean;
+    } | null;
+    const rawRows = page?.rows ?? [];
+    const hasMore: boolean = page?.has_more ?? false;
 
     for (const { _sort_value, ...r } of rawRows) rows.push(r);
 
@@ -110,8 +119,7 @@ export async function executeBrowse(sp: URLSearchParams): Promise<BrowseExecutio
         .eq("entity_type", "individual")
         .ilike("canonical_name", `%${state.q}%`)
         .limit(200);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const top = ((indivData ?? []) as any[])
+      const top = (indivData ?? [])
         .sort((a, b) => (b.total_donated_cents ?? 0) - (a.total_donated_cents ?? 0))
         .slice(0, INDIVIDUALS_PASSTHROUGH_LIMIT);
       for (const f of top) {
@@ -144,8 +152,7 @@ export async function executeBrowse(sp: URLSearchParams): Promise<BrowseExecutio
       .from("browse_facet_counts")
       .select("facet_key, facet_value, count")
       .eq("kind", kind);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    for (const r of (rollup ?? []) as any[]) {
+    for (const r of rollup ?? []) {
       if (r.facet_key === "__total__") { totals = { count: Number(r.count) }; continue; }
       (facets[r.facet_key] ??= {})[r.facet_value] = Number(r.count);
     }
@@ -155,11 +162,10 @@ export async function executeBrowse(sp: URLSearchParams): Promise<BrowseExecutio
     const { data: live, error: liveErr } = await db.rpc("get_browse_facets", {
       p_kind: kind,
       p_facets: facetsJson,
-      p_q: state.q || null,
+      p_q: state.q || undefined,
     });
     if (!liveErr && live) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const obj = live as Record<string, any>;
+      const obj = live as Record<string, unknown>;
       for (const [k, v] of Object.entries(obj)) {
         if (k === "__total__") { totals = { count: Number(v) }; continue; }
         facets[k] = Object.fromEntries(Object.entries(v as Record<string, number>).map(([vv, c]) => [vv, Number(c)]));

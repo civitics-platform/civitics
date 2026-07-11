@@ -25,8 +25,7 @@ const EXPANDABLE_TYPES = new Set(["country", "state", "county", "federal_distric
 
 export async function GET(req: Request) {
   const parent = new URL(req.url).searchParams.get("parent");
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const db = createAdminClient() as any;
+  const db = createAdminClient();
 
   let query = db
     .from("jurisdictions")
@@ -41,14 +40,13 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  const nodes = // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ((data ?? []) as any[]).map((r) => ({
-      id: r.id as string,
-      name: r.name as string,
-      short_name: (r.short_name ?? null) as string | null,
-      type: r.type as string,
-      expandable: EXPANDABLE_TYPES.has(r.type),
-    }));
+  const nodes = (data ?? []).map((r) => ({
+    id: r.id,
+    name: r.name,
+    short_name: r.short_name,
+    type: r.type,
+    expandable: EXPANDABLE_TYPES.has(r.type),
+  }));
 
   return NextResponse.json(
     { nodes },

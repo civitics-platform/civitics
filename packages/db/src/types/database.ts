@@ -120,6 +120,32 @@ export type Database = {
           },
         ]
       }
+      agency_page_cache: {
+        Row: {
+          agency_id: string
+          payload: Json
+          refreshed_at: string
+        }
+        Insert: {
+          agency_id: string
+          payload: Json
+          refreshed_at?: string
+        }
+        Update: {
+          agency_id?: string
+          payload?: Json
+          refreshed_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agency_page_cache_agency_id_fkey"
+            columns: ["agency_id"]
+            isOneToOne: true
+            referencedRelation: "agencies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       agenda_items: {
         Row: {
           created_at: string
@@ -366,6 +392,30 @@ export type Database = {
           sha?: string | null
           signals?: Json
           target_id?: string | null
+        }
+        Relationships: []
+      }
+      browse_facet_counts: {
+        Row: {
+          count: number
+          facet_key: string
+          facet_value: string
+          kind: string
+          refreshed_at: string
+        }
+        Insert: {
+          count: number
+          facet_key: string
+          facet_value: string
+          kind: string
+          refreshed_at?: string
+        }
+        Update: {
+          count?: number
+          facet_key?: string
+          facet_value?: string
+          kind?: string
+          refreshed_at?: string
         }
         Relationships: []
       }
@@ -1366,6 +1416,39 @@ export type Database = {
         }
         Relationships: []
       }
+      donor_party_rollup_mv: {
+        Row: {
+          donor_id: string
+          donor_name: string | null
+          entity_type: string | null
+          industry_label: string | null
+          industry_tag: string | null
+          party_key: string
+          total_cents: number
+          tx_count: number
+        }
+        Insert: {
+          donor_id: string
+          donor_name?: string | null
+          entity_type?: string | null
+          industry_label?: string | null
+          industry_tag?: string | null
+          party_key: string
+          total_cents: number
+          tx_count: number
+        }
+        Update: {
+          donor_id?: string
+          donor_name?: string | null
+          entity_type?: string | null
+          industry_label?: string | null
+          industry_tag?: string | null
+          party_key?: string
+          total_cents?: number
+          tx_count?: number
+        }
+        Relationships: []
+      }
       edgar_companies: {
         Row: {
           canonical_name: string
@@ -1738,6 +1821,30 @@ export type Database = {
           },
         ]
       }
+      entity_connection_stats_mv: {
+        Row: {
+          connection_count: number
+          entity_id: string
+          has_donation: boolean | null
+          has_vote: boolean | null
+          vote_count: number
+        }
+        Insert: {
+          connection_count: number
+          entity_id: string
+          has_donation?: boolean | null
+          has_vote?: boolean | null
+          vote_count: number
+        }
+        Update: {
+          connection_count?: number
+          entity_id?: string
+          has_donation?: boolean | null
+          has_vote?: boolean | null
+          vote_count?: number
+        }
+        Relationships: []
+      }
       entity_connections: {
         Row: {
           amount_cents: number | null
@@ -1912,6 +2019,90 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      entity_search_index: {
+        Row: {
+          activity_at: string | null
+          agency_type: string | null
+          amount_cents: number | null
+          amount_label: string | null
+          chamber: string | null
+          committee_ids: string[] | null
+          connection_count: number
+          display_name: string
+          entity_id: string
+          financial_type: string | null
+          industry: string | null
+          initiative_stage: string | null
+          institution_type: string | null
+          is_synthetic: boolean
+          jurisdiction_level: string | null
+          kind: string
+          party: string | null
+          photo_url: string | null
+          primary_source: string | null
+          proposal_type: string | null
+          refreshed_at: string
+          search_tsv: unknown
+          secondary_label: string | null
+          state: string | null
+          status: string | null
+        }
+        Insert: {
+          activity_at?: string | null
+          agency_type?: string | null
+          amount_cents?: number | null
+          amount_label?: string | null
+          chamber?: string | null
+          committee_ids?: string[] | null
+          connection_count?: number
+          display_name: string
+          entity_id: string
+          financial_type?: string | null
+          industry?: string | null
+          initiative_stage?: string | null
+          institution_type?: string | null
+          is_synthetic?: boolean
+          jurisdiction_level?: string | null
+          kind: string
+          party?: string | null
+          photo_url?: string | null
+          primary_source?: string | null
+          proposal_type?: string | null
+          refreshed_at?: string
+          search_tsv?: unknown
+          secondary_label?: string | null
+          state?: string | null
+          status?: string | null
+        }
+        Update: {
+          activity_at?: string | null
+          agency_type?: string | null
+          amount_cents?: number | null
+          amount_label?: string | null
+          chamber?: string | null
+          committee_ids?: string[] | null
+          connection_count?: number
+          display_name?: string
+          entity_id?: string
+          financial_type?: string | null
+          industry?: string | null
+          initiative_stage?: string | null
+          institution_type?: string | null
+          is_synthetic?: boolean
+          jurisdiction_level?: string | null
+          kind?: string
+          party?: string | null
+          photo_url?: string | null
+          primary_source?: string | null
+          proposal_type?: string | null
+          refreshed_at?: string
+          search_tsv?: unknown
+          secondary_label?: string | null
+          state?: string | null
+          status?: string | null
+        }
+        Relationships: []
       }
       entity_statements: {
         Row: {
@@ -2473,6 +2664,32 @@ export type Database = {
           table_name?: string
         }
         Relationships: []
+      }
+      gb_page_cache: {
+        Row: {
+          gb_id: string
+          payload: Json
+          refreshed_at: string
+        }
+        Insert: {
+          gb_id: string
+          payload: Json
+          refreshed_at?: string
+        }
+        Update: {
+          gb_id?: string
+          payload?: Json
+          refreshed_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "gb_page_cache_gb_id_fkey"
+            columns: ["gb_id"]
+            isOneToOne: true
+            referencedRelation: "governing_bodies"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       governing_bodies: {
         Row: {
@@ -3168,6 +3385,32 @@ export type Database = {
           },
         ]
       }
+      jurisdiction_page_cache: {
+        Row: {
+          jurisdiction_id: string
+          payload: Json
+          refreshed_at: string
+        }
+        Insert: {
+          jurisdiction_id: string
+          payload: Json
+          refreshed_at?: string
+        }
+        Update: {
+          jurisdiction_id?: string
+          payload?: Json
+          refreshed_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "jurisdiction_page_cache_jurisdiction_id_fkey"
+            columns: ["jurisdiction_id"]
+            isOneToOne: true
+            referencedRelation: "jurisdictions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       jurisdictions: {
         Row: {
           boundary_geometry: unknown
@@ -3745,6 +3988,78 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      official_content_ids: {
+        Row: {
+          official_id: string
+          refreshed_at: string
+        }
+        Insert: {
+          official_id: string
+          refreshed_at?: string
+        }
+        Update: {
+          official_id?: string
+          refreshed_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "official_content_ids_official_id_fkey"
+            columns: ["official_id"]
+            isOneToOne: true
+            referencedRelation: "official_homepage_stats_mv"
+            referencedColumns: ["official_id"]
+          },
+          {
+            foreignKeyName: "official_content_ids_official_id_fkey"
+            columns: ["official_id"]
+            isOneToOne: true
+            referencedRelation: "officials"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      official_donor_rollup_mv: {
+        Row: {
+          donor_id: string | null
+          donor_name: string | null
+          entity_type: string | null
+          industry_label: string | null
+          industry_tag: string | null
+          official_id: string
+          rank: number
+          relationship_type: string
+          tail_donor_count: number | null
+          total_cents: number
+          tx_count: number
+        }
+        Insert: {
+          donor_id?: string | null
+          donor_name?: string | null
+          entity_type?: string | null
+          industry_label?: string | null
+          industry_tag?: string | null
+          official_id: string
+          rank: number
+          relationship_type: string
+          tail_donor_count?: number | null
+          total_cents: number
+          tx_count: number
+        }
+        Update: {
+          donor_id?: string | null
+          donor_name?: string | null
+          entity_type?: string | null
+          industry_label?: string | null
+          industry_tag?: string | null
+          official_id?: string
+          rank?: number
+          relationship_type?: string
+          tail_donor_count?: number | null
+          total_cents?: number
+          tx_count?: number
+        }
+        Relationships: []
       }
       officials: {
         Row: {
@@ -5086,29 +5401,6 @@ export type Database = {
           },
         ]
       }
-      donor_party_rollup_mv: {
-        Row: {
-          donor_id: string | null
-          donor_name: string | null
-          entity_type: string | null
-          industry_label: string | null
-          industry_tag: string | null
-          party_key: string | null
-          total_cents: number | null
-          tx_count: number | null
-        }
-        Relationships: []
-      }
-      entity_connection_stats_mv: {
-        Row: {
-          connection_count: number | null
-          entity_id: string | null
-          has_donation: boolean | null
-          has_vote: boolean | null
-          vote_count: number | null
-        }
-        Relationships: []
-      }
       entity_engagement_rollup_mv: {
         Row: {
           answered_rate: number | null
@@ -5167,22 +5459,6 @@ export type Database = {
           usaspending_agency_id: string | null
           usaspending_subtier_id: string | null
           website_url: string | null
-        }
-        Relationships: []
-      }
-      official_donor_rollup_mv: {
-        Row: {
-          donor_id: string | null
-          donor_name: string | null
-          entity_type: string | null
-          industry_label: string | null
-          industry_tag: string | null
-          official_id: string | null
-          rank: number | null
-          relationship_type: string | null
-          tail_donor_count: number | null
-          total_cents: number | null
-          tx_count: number | null
         }
         Relationships: []
       }
@@ -5572,6 +5848,14 @@ export type Database = {
           target_id: string
         }[]
       }
+      donor_party_rollup_rebuild_donors: {
+        Args: { p_donors: string[] }
+        Returns: number
+      }
+      donor_rollup_rebuild_recipients: {
+        Args: { p_recipients: string[] }
+        Returns: number
+      }
       enqueue_enrichment: {
         Args: {
           p_context: Json
@@ -5584,6 +5868,30 @@ export type Database = {
         Returns: string
       }
       expire_lapsed_grants: { Args: never; Returns: number }
+      financial_entity_donation_totals_rebuild: {
+        Args: { p_ids: string[] }
+        Returns: number
+      }
+      financial_entity_donation_totals_window: {
+        Args: { p_hi: string; p_lo: string }
+        Returns: number
+      }
+      financial_entity_received_totals_rebuild: {
+        Args: { p_ids: string[] }
+        Returns: number
+      }
+      financial_entity_received_totals_window: {
+        Args: { p_hi: string; p_lo: string }
+        Returns: number
+      }
+      financial_entity_recipient_count_rebuild: {
+        Args: { p_ids: string[] }
+        Returns: number
+      }
+      financial_entity_recipient_count_window: {
+        Args: { p_hi: string; p_lo: string }
+        Returns: number
+      }
       find_jurisdictions_by_location: {
         Args: { user_lat: number; user_lng: number }
         Returns: {
@@ -5605,6 +5913,23 @@ export type Database = {
         }[]
       }
       get_agency_page: { Args: { p_id: string }; Returns: Json }
+      get_agency_page_live: { Args: { p_id: string }; Returns: Json }
+      get_browse_facets: {
+        Args: { p_facets?: Json; p_kind: string; p_q?: string }
+        Returns: Json
+      }
+      get_browse_page: {
+        Args: {
+          p_cursor_id?: string
+          p_cursor_value?: string
+          p_facets?: Json
+          p_kind: string
+          p_limit?: number
+          p_q?: string
+          p_sort?: string
+        }
+        Returns: Json
+      }
       get_connection_counts: {
         Args: { entity_ids: string[] }
         Returns: {
@@ -5681,6 +6006,7 @@ export type Database = {
       }
       get_financial_entity_naics: { Args: never; Returns: Json }
       get_gb_page: { Args: { p_id: string }; Returns: Json }
+      get_gb_page_live: { Args: { p_id: string }; Returns: Json }
       get_group_connections: {
         Args: { p_limit?: number; p_member_ids: string[] }
         Returns: {
@@ -5735,6 +6061,7 @@ export type Database = {
         }[]
       }
       get_jurisdiction_page: { Args: { p_id: string }; Returns: Json }
+      get_jurisdiction_page_live: { Args: { p_id: string }; Returns: Json }
       get_official_bipartisan_stats: { Args: never; Returns: Json }
       get_official_donor_rollup: { Args: never; Returns: Json }
       get_official_donors: {
@@ -5883,6 +6210,7 @@ export type Database = {
           vote_connection_total: number
         }[]
       }
+      get_sitemap_official_ids: { Args: { p_limit: number }; Returns: Json }
       get_supabase_auth_mau: { Args: never; Returns: number }
       get_supabase_cpu_max: {
         Args: { window_minutes: number }
@@ -5997,6 +6325,7 @@ export type Database = {
       link_federal_reps_to_districts: { Args: never; Returns: number }
       link_officials_to_districts: { Args: never; Returns: number }
       normalize_pv_path: { Args: { p: string }; Returns: string }
+      official_is_content_bearing: { Args: { p_id: string }; Returns: boolean }
       promote_candidate_to_elected: {
         Args: { p_candidate_id: string; p_elected_id: string }
         Returns: Json
@@ -6075,7 +6404,7 @@ export type Database = {
           table_name: string
         }[]
       }
-      rebuild_ec_donations_full_finalize: { Args: never; Returns: number }
+      rebuild_browse_facet_counts: { Args: never; Returns: number }
       rebuild_ec_donations_full_prepare: { Args: never; Returns: undefined }
       rebuild_ec_donations_full_window: {
         Args: { p_hi: string; p_lo: string }
@@ -6179,6 +6508,7 @@ export type Database = {
           edges_upserted: number
         }[]
       }
+      rebuild_entity_search_index: { Args: never; Returns: number }
       rebuild_financial_entity_donation_totals: {
         Args: never
         Returns: undefined
@@ -6188,6 +6518,10 @@ export type Database = {
         Returns: undefined
       }
       rebuild_financial_entity_ie_totals: { Args: never; Returns: undefined }
+      rebuild_financial_entity_received_totals: {
+        Args: never
+        Returns: undefined
+      }
       rebuild_financial_entity_size_tags: { Args: never; Returns: number }
       rebuild_official_donation_totals: { Args: never; Returns: undefined }
       rebuild_official_donation_totals_full: { Args: never; Returns: undefined }
@@ -6200,6 +6534,7 @@ export type Database = {
         Args: { p_error: string; p_queue_id: number }
         Returns: string
       }
+      refresh_agency_page_cache: { Args: never; Returns: number }
       refresh_chord_donor_state_party_flows_mv: {
         Args: never
         Returns: undefined
@@ -6215,9 +6550,12 @@ export type Database = {
       refresh_donor_party_rollup_mv: { Args: never; Returns: undefined }
       refresh_entity_connection_stats_mv: { Args: never; Returns: undefined }
       refresh_entity_engagement_rollup_mv: { Args: never; Returns: undefined }
+      refresh_gb_page_cache: { Args: never; Returns: number }
       refresh_group_donor_rollup: { Args: never; Returns: Json }
       refresh_homepage_agency_counts_mv: { Args: never; Returns: undefined }
       refresh_homepage_stats_mv: { Args: never; Returns: undefined }
+      refresh_jurisdiction_page_cache: { Args: never; Returns: number }
+      refresh_official_content_ids: { Args: never; Returns: number }
       refresh_official_donor_rollup_mv: { Args: never; Returns: undefined }
       refresh_official_homepage_stats_mv: { Args: never; Returns: undefined }
       refresh_official_sector_dollars_mv: { Args: never; Returns: undefined }

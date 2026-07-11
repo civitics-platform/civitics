@@ -1198,18 +1198,8 @@ export async function GET(req: NextRequest) {
     // LAST, entity_id). Synthetic rows are excluded (FIX-600: synthetic never
     // feeds a platform-wide aggregate) and the "PAC/Committee" aggregate
     // placeholder rows are skipped as in the pac branch.
-    // entity_search_index is absent from the generated database.ts (the FIX-748
-    // table predates the last types regen) — the codebase-wide pattern for it is
-    // a local any-cast (see api/browse/typeahead); the explicit withDbTimeout
-    // generic keeps the result typed.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const searchIndexDb = supabase as any;
-    const memberRes = await withDbTimeout<{
-      count: number | null;
-      data: Array<{ entity_id: string }> | null;
-      error: { message: string } | null;
-    }>(
-      searchIndexDb
+    const memberRes = await withDbTimeout(
+      supabase
         .from("entity_search_index")
         .select("entity_id", { count: "exact" })
         .eq("kind", "financial")

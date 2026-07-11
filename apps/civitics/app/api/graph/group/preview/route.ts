@@ -98,19 +98,13 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // entity_search_index is absent from the generated database.ts (FIX-748
-    // table, types regen pending) — local any-cast per the typeahead pattern.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { count, error } = (await (supabase as any)
+    const { count, error } = await supabase
       .from("entity_search_index")
       .select("entity_id", { count: "exact", head: true })
       .eq("kind", "financial")
       .eq("financial_type", financialType)
       .eq("is_synthetic", false)
-      .not("display_name", "ilike", "%PAC/Committee%")) as {
-      count: number | null;
-      error: { message: string } | null;
-    };
+      .not("display_name", "ilike", "%PAC/Committee%");
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({ count: count ?? 0 });

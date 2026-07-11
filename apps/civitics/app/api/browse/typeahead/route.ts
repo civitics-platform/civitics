@@ -30,10 +30,10 @@ const PER_KIND = 6;
 const INDIV_LIMIT = 4;
 const INDIV_SCAN = 200;
 
+// Single literal (not concatenated) so postgrest-js keeps the literal type
+// and parses it into a typed row pick.
 const SELECT =
-  "entity_id, display_name, secondary_label, photo_url, party, state, status, " +
-  "proposal_type, agency_type, financial_type, industry, initiative_stage, " +
-  "institution_type, amount_cents, amount_label, connection_count, activity_at, is_synthetic";
+  "entity_id, display_name, secondary_label, photo_url, party, state, status, proposal_type, agency_type, financial_type, industry, initiative_stage, institution_type, amount_cents, amount_label, connection_count, activity_at, is_synthetic";
 
 const AMOUNT_LABELS = new Set(["contract", "grant", "donation", "independent_expenditure"]);
 function amountLabel(v: unknown): SearchFinancialEntity["amount_label"] {
@@ -58,8 +58,7 @@ export async function GET(req: NextRequest) {
   const q = (req.nextUrl.searchParams.get("q") ?? "").trim();
   if (q.length < 2) return NextResponse.json(emptyResults(q));
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const db = createAdminClient() as any;
+  const db = createAdminClient();
   const like = `%${q}%`;
 
   const forKind = (kind: string) =>
@@ -73,28 +72,25 @@ export async function GET(req: NextRequest) {
   const [
     officialsRes, proposalsRes, agenciesRes, financialRes,
     jurisdictionsRes, institutionsRes, initiativesRes, meetingsRes, indivRes,
-  ] = // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (await Promise.all([
-      forKind("official"),
-      forKind("proposal"),
-      forKind("agency"),
-      forKind("financial"),
-      forKind("jurisdiction"),
-      forKind("institution"),
-      forKind("initiative"),
-      forKind("meeting"),
-      // Individuals live outside the index (FIX-748) — reach them via the
-      // FIX-238 canonical_name trigram, ranked in JS to keep a bitmap plan.
-      db.from("financial_entities")
-        .select("id, display_name, total_donated_cents, is_synthetic")
-        .eq("entity_type", "individual")
-        .ilike("canonical_name", like)
-        .limit(INDIV_SCAN),
-    ])) as Array<{ data: any }>;
+  ] = await Promise.all([
+    forKind("official"),
+    forKind("proposal"),
+    forKind("agency"),
+    forKind("financial"),
+    forKind("jurisdiction"),
+    forKind("institution"),
+    forKind("initiative"),
+    forKind("meeting"),
+    // Individuals live outside the index (FIX-748) — reach them via the
+    // FIX-238 canonical_name trigram, ranked in JS to keep a bitmap plan.
+    db.from("financial_entities")
+      .select("id, display_name, total_donated_cents, is_synthetic")
+      .eq("entity_type", "individual")
+      .ilike("canonical_name", like)
+      .limit(INDIV_SCAN),
+  ]);
 
-  // Array-cast elements are `{ data } | undefined` under noUncheckedIndexedAccess.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const rowsOf = (res: { data: any } | undefined) => (res?.data ?? []) as any[];
+  const rowsOf = <T>(res: { data: T[] | null }): T[] => res.data ?? [];
 
   const officials: SearchOfficial[] = rowsOf(officialsRes).map((r) => ({
     id: r.entity_id, full_name: r.display_name, role_title: r.secondary_label ?? "",
