@@ -962,3 +962,6 @@
 2026-07-10 | FIX-750 | 6576bb15 | local-only | fix(db): regenerate database.ts from prod + drop the browse-era any-casts (FIX-750)
 2026-07-10 | FIX-793 | 4db64204 | local-only | fix(tests): satisfy tsc-strict in public-payload.test.ts (FIX-793)
 2026-07-10 | FIX-794 | e53df887 | local-only | [skip vercel] feat(scripts): session:check surfaces the latest tests.yml run on main (FIX-794)
+2026-07-11 | FIX-795 | 1b42009f | local+prod | fix(cache): pin per-user pages + /api/comments CDN no-store (FIX-795 hotfix)
+2026-07-11 | FIX-796 | fd023ed5 | local+prod | feat(cache): invert CDN cache model — page allowlist + handler-owned API headers (FIX-796)
+2026-07-11 | FIX-797 | 1026c92e | local+prod | fix(ratelimit): route router prefetches to their own bucket; make 429s uncacheable (FIX-797)
