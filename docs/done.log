@@ -954,3 +954,6 @@
 2026-07-09 | FIX-787 | ea01dce5 | local-only | fix(cache): no-store the remaining per-user authed API routes (FIX-787)
 2026-07-09 | FIX-789 | 89e147a9 | local-only | [skip vercel] chore(claude): fix permission-prompt storm — path forms + hook v8
 2026-07-09 | FIX-788 | 5710c21c | local+prod | perf(api): split viewer vote overlay from cached statements/questions payloads
+2026-07-10 | FIX-717 | dd04c57c | local+prod | feat(db): convert the 2 large MVs to incremental tables on pg_cron (FIX-717/718)
+2026-07-10 | FIX-718 | dd04c57c | local+prod | feat(db): convert the 2 large MVs to incremental tables on pg_cron (FIX-717/718)
+2026-07-10 | FIX-790 | adc2d3e4 | local-only | feat(ci): put the USASpending delta on a weekly cron on usaspending-bulk.yml (FIX-790)
