@@ -1,5 +1,3 @@
-export const revalidate = 60; // Graph connections cached 1 minute at edge
-
 import { createAdminClient } from "@civitics/db";
 import { supabaseUnavailable, unavailableResponse, withDbTimeout } from "@/lib/supabase-check";
 import type { Database } from "@civitics/db";
@@ -24,6 +22,36 @@ const MAX_AUTO_EXPAND = 50;
 // — even with .limit(N) for N>1000 — never returns more than this, so any load
 // that consumes its result as the complete set silently truncates past it (FIX-428).
 const MAX_ROWS = 1000;
+
+// FIX-802 — whitelisted fetch caps, dropdown-driven from the client.
+//   limit        — named donation/opposition donors by MV rank
+//   votes_limit  — vote-bucket rows (most recent first, unchanged ordering)
+const DONOR_LIMIT_CHOICES = [10, 25, 50, 100];
+const DEFAULT_DONOR_LIMIT = 25;
+const VOTES_LIMIT_CHOICES = [50, 100, 250, 500];
+const DEFAULT_VOTES_LIMIT = 50;
+
+// FIX-802 — cap for every raw entity_connections bucket read (donation/
+// opposition fallback, oversight bucket, investigation backstop), ordered
+// amount_cents DESC NULLS LAST (NULLS LAST is required for index use —
+// FIX-664 precedent) so the cap keeps the biggest-dollar edges. No read of
+// entity_connections in this route may be unbounded: the silent MAX_ROWS
+// truncation with no ORDER BY handed back an arbitrary subset for the 555+
+// officials with >1,000 donation edges.
+const RAW_EDGE_CAP = 500;
+
+// FIX-781 — JS deadline for the whole depth-2 expansion phase (neighbor stats
+// + edge hydration), modeled on the group route's DONOR_FETCH_BUDGET_MS
+// (FIX-497). On exhaustion (or a failed depth-2 read) the un-hydrated
+// neighbors degrade to collapsed nodes and the response carries
+// meta.depth2Truncated — depth 2 is an enhancement and must never 500 a graph
+// that depth 1 already answered.
+const DEPTH2_BUDGET_MS = 8000;
+
+// .in() filters ride the request URL; ~234 uuids trip PostgREST's 414
+// URI-too-long behind Kong (verified in FIX-772), so 200 is the safe chunk
+// width for every id-list read in this route (FIX-732).
+const ID_CHUNK = 200;
 
 /**
  * Page through a row-capped PostgREST query so the full set is assembled rather
@@ -53,6 +81,28 @@ async function fetchAllPaged<T>(
   return { rows, error: null, truncated: false };
 }
 
+/**
+ * Chunked .in() fetch over an id list (FIX-732): ID_CHUNK ids per request
+ * (URL-width safe), chunks fetched in parallel, per-chunk error check that
+ * THROWS — a failed chunk previously fell through `data ?? []` and rendered
+ * its entities as "Unknown"-labeled nodes on HTTP 200 (FIX-431 class).
+ */
+async function fetchChunkedByIds<T>(
+  ids: string[],
+  build: (chunk: string[]) => PromiseLike<{ data: unknown; error: { message: string } | null }>,
+): Promise<T[]> {
+  if (ids.length === 0) return [];
+  const chunks: string[][] = [];
+  for (let i = 0; i < ids.length; i += ID_CHUNK) chunks.push(ids.slice(i, i + ID_CHUNK));
+  const results = await Promise.all(chunks.map((c) => build(c)));
+  const out: T[] = [];
+  for (const r of results) {
+    if (r.error) throw r.error;
+    out.push(...((r.data ?? []) as T[]));
+  }
+  return out;
+}
+
 // ── Individual-donor aggregation helpers (FIX-194) ────────────────────────────
 
 /** Normalize FEC employer strings for grouping. "GOLDMAN SACHS & CO" → "GOLDMAN SACHS". */
@@ -70,6 +120,65 @@ function normalizeEmployer(raw: string): string {
 /** Log-scale donation strength identical to the rebuild function's formula. */
 function logScaleDonation(cents: number): number {
   return Math.min(0.999, Math.max(0.001, Math.log10(Math.max(cents / 100, 1)) / 8));
+}
+
+// ── official_donor_rollup_mv read path (FIX-802) ──────────────────────────────
+
+/**
+ * Per (recipient, relationship_type): rank 1..200 named donors + one rank-201
+ * tail row (donor_id NULL, tail_donor_count set). SUM(total_cents) over a
+ * recipient's rows is the true total — the FIX-518/FIX-704 contract. This is
+ * the donation/opposition source for a focused OFFICIAL: Allred's 31,368 raw
+ * donation edges collapse to 231 rollup rows, which both kills the timeout
+ * 500s and ends the silent 1,000-row truncation that corrupted rendered
+ * donation totals for every official past the cap.
+ */
+type MvRollupRow = {
+  relationship_type: string;
+  rank: number;
+  donor_id: string | null;
+  donor_name: string | null;
+  entity_type: string | null;
+  total_cents: number | null;
+  tx_count: number | null;
+  tail_donor_count: number | null;
+};
+
+type MvDonorAgg = { donorId: string; name: string; entityType: string; cents: number; tx: number };
+
+/**
+ * Aggregate bucket for everything that stays unnamed on the graph: the MV
+ * rank-201 tail, named rows folded past the top-N cap, and sub-bracket-
+ * threshold individuals. One node per (official, connection type) so rendered
+ * totals equal the true MV sums — the tail is never silently dropped.
+ */
+type TailAgg = { connType: "donation" | "opposition"; officialId: string; cents: number; tx: number; donorCount: number };
+
+/**
+ * Synthesize an entity_connections-shaped row from an MV donor aggregate so the
+ * downstream node/edge/bracket machinery consumes it unchanged. The id is
+ * namespaced `mv:` — never a real entity_connections uuid. occurred_at stays
+ * null (the row is an aggregate, not an event); evidence_source matches the
+ * real donation edges so rendering is identical.
+ */
+function mvPseudoRow(officialId: string, donor: MvDonorAgg, connType: "donation" | "opposition"): ConnectionRow {
+  return {
+    id: `mv:${connType}:${officialId}:${donor.donorId}`,
+    from_type: "financial_entity",
+    from_id: donor.donorId,
+    to_type: "official",
+    to_id: officialId,
+    connection_type: connType,
+    amount_cents: donor.cents,
+    strength: logScaleDonation(donor.cents),
+    occurred_at: null,
+    ended_at: null,
+    derived_at: "",
+    evidence_count: 0,
+    evidence_ids: [],
+    evidence_source: "financial_relationships",
+    metadata: {},
+  } as ConnectionRow;
 }
 
 /** Map DB entity type string → GraphNode type */
@@ -161,13 +270,45 @@ async function filterProceduralConnections(
     proposalIds.add(proposalId);
   }
 
-  const { data: votes, error } = await supabase
-    .from("votes")
-    .select("official_id, bill_proposal_id, vote_question")
-    .in("official_id", [...officialIds])
-    .in("bill_proposal_id", [...proposalIds]);
+  // FIX-802 — both id lists ride the request URL, so the previous single
+  // .in()+.in() read 414'd once either list grew (FIX-732 class) and the whole
+  // filter failed open silently. Chunk both sides at 100 (≤200 uuids per
+  // request). Pairs in a failed chunk stay un-looked-up → their edges are
+  // kept, preserving the existing fail-open contract.
+  const PROC_CHUNK = 100;
+  const officialIdList = [...officialIds];
+  const proposalIdList = [...proposalIds];
+  const oChunks: string[][] = [];
+  for (let i = 0; i < officialIdList.length; i += PROC_CHUNK) oChunks.push(officialIdList.slice(i, i + PROC_CHUNK));
+  const pChunks: string[][] = [];
+  for (let i = 0; i < proposalIdList.length; i += PROC_CHUNK) pChunks.push(proposalIdList.slice(i, i + PROC_CHUNK));
 
-  if (error || !votes) return connections; // fail open — never hide data on lookup error
+  if (oChunks.length * pChunks.length > 25) {
+    // Pathological pair space (default view at full expansion) — skip rather
+    // than fan out 100+ lookups. Same fail-open outcome: no edge is hidden.
+    console.warn(`[graph/connections] procedural filter skipped — ${oChunks.length}x${pChunks.length} vote-lookup chunks`);
+    return connections;
+  }
+
+  const pairs: Array<[string[], string[]]> = [];
+  for (const o of oChunks) for (const p of pChunks) pairs.push([o, p]);
+  const results: Array<{ data: unknown; error: { message: string } | null }> = await Promise.all(
+    pairs.map(([o, p]) =>
+      supabase
+        .from("votes")
+        .select("official_id, bill_proposal_id, vote_question")
+        .in("official_id", o)
+        .in("bill_proposal_id", p),
+    ),
+  );
+  const votes: { official_id: string; bill_proposal_id: string; vote_question: string | null }[] = [];
+  for (const r of results) {
+    if (r.error) {
+      console.warn("[graph/connections] procedural vote-lookup chunk failed (fail open):", r.error.message);
+      continue;
+    }
+    votes.push(...((r.data ?? []) as typeof votes));
+  }
 
   // For each (official, proposal) pair: true if at least one non-procedural vote exists,
   // false if we saw votes but they were all procedural, missing if no votes were found.
@@ -175,7 +316,7 @@ async function filterProceduralConnections(
   // vote_question is a first-class votes column (NOT metadata->>'vote_question').
   // Reading it off metadata returned undefined for every row, so the procedural
   // filter failed open and treated every vote as substantive.
-  for (const v of votes as { official_id: string; bill_proposal_id: string; vote_question: string | null }[]) {
+  for (const v of votes) {
     const key = `${v.official_id}|${v.bill_proposal_id}`;
     const q = String(v.vote_question ?? "").toLowerCase();
     const isProcedural = PROCEDURAL_PREFIXES.some(p => q.startsWith(p));
@@ -210,6 +351,12 @@ export async function GET(request: Request) {
   // 'off'       = pass all individuals through as real nodes (researcher mode)
   const individualMode = (searchParams.get("individualMode") ?? "bracket") as IndividualDisplayMode;
   const connectorMin = Math.max(2, parseInt(searchParams.get("connectorMin") ?? "2", 10));
+  // FIX-802 — whitelisted fetch caps (see constants above). Anything off the
+  // whitelist falls back to the default so cache keys stay enumerable.
+  const donorLimitRaw = parseInt(searchParams.get("limit") ?? "", 10);
+  const donorLimit = DONOR_LIMIT_CHOICES.includes(donorLimitRaw) ? donorLimitRaw : DEFAULT_DONOR_LIMIT;
+  const votesLimitRaw = parseInt(searchParams.get("votes_limit") ?? "", 10);
+  const votesLimit = VOTES_LIMIT_CHOICES.includes(votesLimitRaw) ? votesLimitRaw : DEFAULT_VOTES_LIMIT;
 
   try {
     const supabase = createAdminClient();
@@ -219,39 +366,59 @@ export async function GET(request: Request) {
     // Set when an edge-hydration load was capped at a safety ceiling — surfaced to
     // the client so a truncated graph is honest rather than silently incomplete (FIX-428).
     let partial = false;
+    // FIX-781 — set when the depth-2 budget tripped or a depth-2 read failed;
+    // surfaced as meta.depth2Truncated. Depth-1 data is always complete.
+    let depth2Truncated = false;
 
-    // Tracks which neighbor nodes were too large to auto-expand: entityId → connectionCount
-    const collapsedNodes = new Map<string, number>();
+    // FIX-802 — side-state for rollup-sourced donation/opposition edges:
+    //   mvDonorInfo  donor_id → name/entity_type from the MV (these ids skip
+    //                the financial_entities NAME fetch — the rollup is the
+    //                name source for aggregate edges)
+    //   mvTxCounts   pseudo-row id → tx_count (edge payload txCount)
+    //   tailAggs     per (official, type) unnamed-remainder aggregates
+    const mvDonorInfo = new Map<string, { label: string; subType: string }>();
+    const mvTxCounts = new Map<string, number>();
+    const tailAggs = new Map<string, TailAgg>();
+
+    // Tracks which neighbor nodes were not auto-expanded: entityId → connection
+    // count (undefined when the count itself is unknown — depth-2 degrade path).
+    const collapsedNodes = new Map<string, number | undefined>();
 
     if (entityId) {
       // ── Entity-focused mode — parallel type-bucketed fetches ───────────
-      // Donations and oversight are fetched in full (never more than ~20–30).
-      // Votes are capped at 50 most recent — prevents a single default row limit
-      // from crowding out donations when an official has thousands of vote records.
+      // Donation + opposition for a focused OFFICIAL come from
+      // official_donor_rollup_mv (FIX-802) — see MvRollupRow above. The raw
+      // entity_connections read this replaces was unbounded behind a stale
+      // "never more than ~20-30" comment; Allred carries 31,368 donation
+      // edges and blew the 5s withDbTimeout under IOWait (the 500 users hit).
+      // Votes are capped at votes_limit most recent; oversight-class and
+      // investigation reads are capped too — no unbounded EC read remains.
       const VOTE_TYPES = [
         "vote_yes", "vote_no", "vote_abstain",
         "nomination_vote_yes", "nomination_vote_no",
       ] as const;
       const OVERSIGHT_TYPES = ["oversight", "appointment", "co_sponsorship", "revolving_door", "contract_award"] as const;
 
-      const [donationsRes, oppositionRes, votesRes, oversightRes, investigationRes] = await Promise.all([
+      const [officialProbeRes, rollupRes, votesRes, oversightRes, investigationRes] = await Promise.all([
+        // Cheap PK probe: the rollup keys recipients of BOTH kinds (officials
+        // and super-PAC financial_entities, FIX-704), but only an official
+        // focus is fully served by it — a financial focus also has OUTBOUND
+        // donations the MV doesn't key by donor, so it takes the capped raw
+        // fallback (decision 6).
         withDbTimeout(
-          supabase
-            .from("entity_connections")
-            .select("*")
-            .eq("connection_type", "donation")
-            .or(`from_id.eq.${entityId},to_id.eq.${entityId}`)
+          supabase.from("officials").select("id").eq("id", entityId).limit(1),
+          5000,
+          "connections:official-probe",
         ),
-        // FIX-747 — opposition (IE-against) edges are financial→official, fetched
-        // in full like donations (bounded per entity); their own bucket so they
-        // surface on a focused official/PAC graph, not just the depth-2/default
-        // unfiltered `select("*")` paths.
         withDbTimeout(
           supabase
-            .from("entity_connections")
-            .select("*")
-            .eq("connection_type", "opposition")
-            .or(`from_id.eq.${entityId},to_id.eq.${entityId}`)
+            .from("official_donor_rollup_mv")
+            .select("relationship_type, rank, donor_id, donor_name, entity_type, total_cents, tx_count, tail_donor_count")
+            .eq("official_id", entityId)
+            .in("relationship_type", ["donation", "ie_support", "ie_oppose"])
+            .order("rank", { ascending: true }),
+          5000,
+          "connections:donor-rollup",
         ),
         withDbTimeout(
           supabase
@@ -260,56 +427,200 @@ export async function GET(request: Request) {
             .in("connection_type", VOTE_TYPES)
             .or(`from_id.eq.${entityId},to_id.eq.${entityId}`)
             .order("occurred_at", { ascending: false, nullsFirst: false })
-            .limit(50)
+            .limit(votesLimit),
+          5000,
+          "connections:votes",
         ),
+        // Previously unbounded → silently MAX_ROWS-capped for contract-heavy
+        // agencies. Amount-ordered cap keeps the biggest-dollar edges.
         withDbTimeout(
           supabase
             .from("entity_connections")
             .select("*")
             .in("connection_type", OVERSIGHT_TYPES)
             .or(`from_id.eq.${entityId},to_id.eq.${entityId}`)
+            .order("amount_cents", { ascending: false, nullsFirst: false })
+            .limit(RAW_EDGE_CAP),
+          5000,
+          "connections:oversight",
         ),
         // FIX-584 — investigation-sourced edges by source, not connection_type:
         // a promoted edge card can carry any of the 16 assertable relationship_kinds
         // (member_of / owns / lobbying / family / …), most of which fall outside the
         // type-bucketed fetches above. Fetching by evidence_source guarantees every
-        // promoted edge touching this entity surfaces. The set is tiny (hand-curated),
-        // so no pagination.
+        // promoted edge touching this entity surfaces. The set is tiny
+        // (hand-curated); the cap is a pure backstop (FIX-802 no-unbounded rule).
         withDbTimeout(
           supabase
             .from("entity_connections")
             .select("*")
             .eq("evidence_source", "investigation")
             .or(`from_id.eq.${entityId},to_id.eq.${entityId}`)
+            .limit(RAW_EDGE_CAP),
+          5000,
+          "connections:investigation",
         ),
       ]);
 
       // Check every edge-type result, not just donations — a votes/oversight
       // timeout was previously merged blind, silently dropping those edge types
       // and presenting a partial graph as complete (FIX-431). Fail loud instead.
-      if (donationsRes.error) throw donationsRes.error;
-      if (oppositionRes.error) throw oppositionRes.error;
+      if (officialProbeRes.error) throw officialProbeRes.error;
+      if (rollupRes.error) throw rollupRes.error;
       if (votesRes.error) throw votesRes.error;
       if (oversightRes.error) throw oversightRes.error;
       if (investigationRes.error) throw investigationRes.error;
+
+      const isOfficialFocus = (officialProbeRes.data ?? []).length > 0;
+      const mvRows = (rollupRes.data ?? []) as MvRollupRow[];
+
       const direct: ConnectionRow[] = [
-        ...(donationsRes.data ?? []),
-        ...(oppositionRes.data ?? []),
         ...(oversightRes.data ?? []),
         ...(votesRes.data ?? []),
         ...(investigationRes.data ?? []),
       ];
 
+      if (isOfficialFocus && mvRows.length > 0) {
+        // ── MV path (FIX-802) ────────────────────────────────────────────
+        // relationship_type mapping mirrors the EC derivation (FIX-747):
+        // donation + ie_support → connection_type 'donation'; ie_oppose →
+        // 'opposition'. A donor named under both donation and ie_support
+        // merges into one edge (summed cents/tx) — EC keys one edge per
+        // (donor, official, type) pair, so the merged edge matches what the
+        // raw path rendered.
+        const donationByDonor = new Map<string, MvDonorAgg>();
+        const oppositionByDonor = new Map<string, MvDonorAgg>();
+        const donationTail: TailAgg = { connType: "donation", officialId: entityId, cents: 0, tx: 0, donorCount: 0 };
+        const oppositionTail: TailAgg = { connType: "opposition", officialId: entityId, cents: 0, tx: 0, donorCount: 0 };
+
+        for (const r of mvRows) {
+          const cents = Number(r.total_cents) || 0;
+          const tx = Number(r.tx_count) || 0;
+          const isOpp = r.relationship_type === "ie_oppose";
+          if (r.donor_id == null) {
+            // rank-201 tail bucket — everything beyond the MV's top-200
+            const tail = isOpp ? oppositionTail : donationTail;
+            tail.cents += cents;
+            tail.tx += tx;
+            tail.donorCount += Number(r.tail_donor_count) || 0;
+            continue;
+          }
+          const map = isOpp ? oppositionByDonor : donationByDonor;
+          const existing = map.get(r.donor_id);
+          if (existing) {
+            existing.cents += cents;
+            existing.tx += tx;
+          } else {
+            map.set(r.donor_id, {
+              donorId: r.donor_id,
+              name: r.donor_name ?? "Unknown donor",
+              entityType: r.entity_type ?? "unknown",
+              cents,
+              tx,
+            });
+          }
+        }
+
+        const donationDonors = [...donationByDonor.values()].sort((a, b) => b.cents - a.cents);
+        const oppositionDonors = [...oppositionByDonor.values()].sort((a, b) => b.cents - a.cents);
+
+        // Top-N governs NAMED nodes (decision 4): in bracket/connector/employer
+        // modes the cap applies to institutional donors (individuals — ALL
+        // stored ranks — feed the bracket machinery below); with
+        // individualMode=off it caps named donors of every entity_type. Rows
+        // past the cap fold into the tail aggregate so totals stay exact.
+        let namedDonation: MvDonorAgg[];
+        let foldedDonation: MvDonorAgg[];
+        if (individualMode === "off") {
+          namedDonation = donationDonors.slice(0, donorLimit);
+          foldedDonation = donationDonors.slice(donorLimit);
+        } else {
+          const individuals = donationDonors.filter((d) => d.entityType === "individual");
+          const institutions = donationDonors.filter((d) => d.entityType !== "individual");
+          namedDonation = [...institutions.slice(0, donorLimit), ...individuals];
+          foldedDonation = institutions.slice(donorLimit);
+        }
+        const namedOpposition = oppositionDonors.slice(0, donorLimit);
+        const foldedOpposition = oppositionDonors.slice(donorLimit);
+
+        for (const d of foldedDonation) {
+          donationTail.cents += d.cents;
+          donationTail.tx += d.tx;
+          donationTail.donorCount += 1;
+        }
+        for (const d of foldedOpposition) {
+          oppositionTail.cents += d.cents;
+          oppositionTail.tx += d.tx;
+          oppositionTail.donorCount += 1;
+        }
+
+        for (const d of namedDonation) {
+          const row = mvPseudoRow(entityId, d, "donation");
+          mvTxCounts.set(row.id, d.tx);
+          mvDonorInfo.set(d.donorId, { label: d.name, subType: d.entityType });
+          direct.push(row);
+        }
+        for (const d of namedOpposition) {
+          const row = mvPseudoRow(entityId, d, "opposition");
+          mvTxCounts.set(row.id, d.tx);
+          mvDonorInfo.set(d.donorId, { label: d.name, subType: d.entityType });
+          direct.push(row);
+        }
+
+        if (donationTail.donorCount > 0 || donationTail.cents > 0) {
+          tailAggs.set(`donation:${entityId}`, donationTail);
+        }
+        if (oppositionTail.donorCount > 0 || oppositionTail.cents > 0) {
+          tailAggs.set(`opposition:${entityId}`, oppositionTail);
+        }
+      } else {
+        // ── Raw fallback (decision 6): non-official focus (a PAC's OUTBOUND
+        // donations aren't keyed by it in the MV) or an official absent from
+        // the MV. Capped + amount-ordered — never unbounded.
+        const [donationsRes, oppositionRes] = await Promise.all([
+          withDbTimeout(
+            supabase
+              .from("entity_connections")
+              .select("*")
+              .eq("connection_type", "donation")
+              .or(`from_id.eq.${entityId},to_id.eq.${entityId}`)
+              .order("amount_cents", { ascending: false, nullsFirst: false })
+              .limit(RAW_EDGE_CAP),
+            5000,
+            "connections:donations-raw",
+          ),
+          // FIX-747 — opposition (IE-against) edges are financial→official;
+          // their own bucket so they surface on a focused official/PAC graph.
+          withDbTimeout(
+            supabase
+              .from("entity_connections")
+              .select("*")
+              .eq("connection_type", "opposition")
+              .or(`from_id.eq.${entityId},to_id.eq.${entityId}`)
+              .order("amount_cents", { ascending: false, nullsFirst: false })
+              .limit(RAW_EDGE_CAP),
+            5000,
+            "connections:opposition-raw",
+          ),
+        ]);
+        if (donationsRes.error) throw donationsRes.error;
+        if (oppositionRes.error) throw oppositionRes.error;
+        direct.push(...(donationsRes.data ?? []), ...(oppositionRes.data ?? []));
+      }
+
       if (depth >= 2 && direct.length > 0) {
+        // FIX-781 — the whole depth-2 phase runs under a JS deadline. Budget
+        // checks land between chunks; a trip or read error degrades the
+        // remaining neighbors to collapsed nodes (+ meta.depth2Truncated)
+        // instead of 500ing the request.
+        const deadlineAt = Date.now() + DEPTH2_BUDGET_MS;
+
         // Get all neighbor IDs from direct connections
         const neighborIds = Array.from(
           new Set(direct.map((c) => (c.from_id === entityId ? c.to_id : c.from_id)))
         );
 
         // Count how many connections each neighbor has (to decide auto-expand vs. collapsed).
-        // Paginate the full set: an unbounded .select() caps at MAX_ROWS, so a neighbor
-        // whose rows fell past the cap was undercounted to 0 → wrongly auto-expanded (FIX-428).
-        // Single-column projections keep the egress small even for high-degree neighbors.
         // FIX-503 counted neighbor degrees with the get_connection_counts RPC
         // (from+to UNION ALL GROUP BY, server-side). FIX-774 reads the same
         // per-entity counts from entity_connection_stats_mv (one row per entity,
@@ -323,14 +634,29 @@ export async function GET(request: Request) {
         // old 500-wide uuid[] body arg can't carry over to a URL-based read.
         const neighborConnCounts = new Map<string, number>();
         const STATS_CHUNK = 200;
+        let statsDegraded = false;
         for (let i = 0; i < neighborIds.length; i += STATS_CHUNK) {
+          if (Date.now() > deadlineAt) {
+            statsDegraded = true;
+            depth2Truncated = true;
+            break;
+          }
           const chunk = neighborIds.slice(i, i + STATS_CHUNK);
-          const { data, error } = await supabase
-            .from("entity_connection_stats_mv")
-            .select("entity_id, connection_count")
-            .in("entity_id", chunk)
-            .limit(chunk.length);
-          if (error) throw error;
+          const { data, error } = await withDbTimeout(
+            supabase
+              .from("entity_connection_stats_mv")
+              .select("entity_id, connection_count")
+              .in("entity_id", chunk)
+              .limit(chunk.length),
+            5000,
+            "connections:depth2-stats",
+          );
+          if (error) {
+            console.error("[graph/connections] depth-2 stats chunk failed — degrading:", error.message);
+            statsDegraded = true;
+            depth2Truncated = true;
+            break;
+          }
           for (const r of (data ?? []) as Array<{ entity_id: string; connection_count: number | string }>) {
             neighborConnCounts.set(r.entity_id, Number(r.connection_count));
           }
@@ -338,6 +664,11 @@ export async function GET(request: Request) {
 
         const autoExpandIds: string[] = [];
         for (const id of neighborIds) {
+          if (statsDegraded && !neighborConnCounts.has(id)) {
+            // Degree unknown (budget/error) — collapsed; manual expand still works
+            collapsedNodes.set(id, undefined);
+            continue;
+          }
           const count = neighborConnCounts.get(id) ?? 0;
           if (count >= MAX_AUTO_EXPAND) {
             // Too many connections — show as collapsed, let user expand manually
@@ -347,20 +678,52 @@ export async function GET(request: Request) {
           }
         }
 
-        if (autoExpandIds.length > 0) {
-          // Paginate the expansion edges — the neighbors here each have < MAX_AUTO_EXPAND
-          // connections, but their sum can exceed MAX_ROWS, so an unbounded load dropped
-          // edges past the cap from the rendered graph with HTTP 200 (FIX-428).
+        // Hydrate expansion edges in bounded neighbor chunks: each chunk is
+        // ≤ EXPAND_CHUNK neighbors × < MAX_AUTO_EXPAND edges, so a budget trip
+        // or read error degrades only the REMAINING neighbors. Pagination
+        // inside a chunk still guards MAX_ROWS truncation (FIX-428).
+        const EXPAND_CHUNK = 50;
+        const expandedRows: ConnectionRow[] = [];
+        let cursor = 0;
+        while (cursor < autoExpandIds.length) {
+          if (Date.now() > deadlineAt) {
+            depth2Truncated = true;
+            break;
+          }
+          const chunk = autoExpandIds.slice(cursor, cursor + EXPAND_CHUNK);
           const [expandFromRes, expandToRes] = await Promise.all([
             fetchAllPaged<ConnectionRow>((f, t) =>
-              supabase.from("entity_connections").select("*").in("from_id", autoExpandIds).range(f, t)),
+              withDbTimeout(
+                supabase.from("entity_connections").select("*").in("from_id", chunk).range(f, t),
+                5000,
+                "connections:depth2-from",
+              )),
             fetchAllPaged<ConnectionRow>((f, t) =>
-              supabase.from("entity_connections").select("*").in("to_id", autoExpandIds).range(f, t)),
+              withDbTimeout(
+                supabase.from("entity_connections").select("*").in("to_id", chunk).range(f, t),
+                5000,
+                "connections:depth2-to",
+              )),
           ]);
-          if (expandFromRes.error) throw expandFromRes.error;
-          if (expandToRes.error) throw expandToRes.error;
+          if (expandFromRes.error || expandToRes.error) {
+            console.error(
+              "[graph/connections] depth-2 expansion chunk failed — degrading:",
+              expandFromRes.error?.message ?? expandToRes.error?.message,
+            );
+            depth2Truncated = true;
+            break;
+          }
+          expandedRows.push(...expandFromRes.rows, ...expandToRes.rows);
+          cursor += EXPAND_CHUNK;
+        }
+        // Neighbors whose hydration never ran degrade to collapsed.
+        for (const id of autoExpandIds.slice(cursor)) {
+          collapsedNodes.set(id, neighborConnCounts.get(id));
+        }
+
+        if (expandedRows.length > 0) {
           const connMap = new Map<string, ConnectionRow>();
-          for (const c of [...direct, ...expandFromRes.rows, ...expandToRes.rows]) {
+          for (const c of [...direct, ...expandedRows]) {
             connMap.set(c.id, c);
           }
           connections = [...connMap.values()];
@@ -484,64 +847,61 @@ export async function GET(request: Request) {
     // ── Batch-fetch names in parallel ──────────────────────────────────────
     // FIX-123: bill_number lives in `bill_details` (one-to-one with proposals)
     // post-cutover, so it's a separate fetch keyed on proposal_id.
-    // Financial entities can number in the thousands (e.g. Sanders ~5k individual donors).
-    // PostgREST sends IN filters as query-string params, so the chunk size is
-    // bounded by proxy URL limits, and the verified-safe width is 200 (same
-    // constant + rationale as STATS_CHUNK above). FIX-772: the prior 500 chunk
-    // 414'd ("URI too long") at ~234 uuids behind local Kong, throwing the whole
-    // route to a 500 for any financial entity with a few hundred donors — the
-    // exact node class the Money groups now surface.
-    type FinRow = { id: string; display_name: string; entity_type: string; recipient_count?: number; metadata?: Record<string, unknown> | null; is_synthetic?: boolean };
-    const FIN_CHUNK = 200;
-    const financialData: FinRow[] = [];
-    if (financialIds.length > 0) {
-      const finSelect = individualMode === 'employer'
-        ? "id, display_name, entity_type, recipient_count, metadata, is_synthetic"
-        : "id, display_name, entity_type, recipient_count, is_synthetic";
-      const finChunks: string[][] = [];
-      for (let i = 0; i < financialIds.length; i += FIN_CHUNK) {
-        finChunks.push(financialIds.slice(i, i + FIN_CHUNK));
-      }
-      const finResults = await Promise.all(
-        finChunks.map(ids => withDbTimeout(supabase.from("financial_entities").select(finSelect).in("id", ids)))
-      );
-      for (const r of finResults) {
-        // A timed-out/errored chunk previously fell through `data ?? []`, silently
-        // dropping those entities' names so their nodes rendered as "Unknown" with
-        // HTTP 200. Fail loud instead (FIX-431).
-        if (r.error) throw r.error;
-        financialData.push(...((r.data ?? []) as unknown as FinRow[]));
-      }
-    }
+    // Every batch is chunked at ID_CHUNK with per-chunk error checks
+    // (FIX-732/FIX-802) — a 414/timeout here previously fell through
+    // `data ?? []` and rendered "Unknown"-labeled nodes on HTTP 200.
+    // FIX-772: the prior 500-wide financial chunk 414'd ("URI too long") at
+    // ~234 uuids behind local Kong.
+    type FinRow = { id: string; display_name: string; entity_type: string; recipient_count?: number | null; metadata?: Record<string, unknown> | null; is_synthetic?: boolean };
+    type FinMetaRow = { id: string; entity_type: string; recipient_count?: number | null; metadata?: Record<string, unknown> | null; is_synthetic?: boolean };
 
-    const [officialsRes, agenciesRes, proposalsRes, billDetailsRes, gbRes] = await Promise.all([
-      officialIds.length
-        ? supabase.from("officials").select("id, full_name, party, is_synthetic").in("id", officialIds)
-        : Promise.resolve({ data: [] as { id: string; full_name: string; party: string | null; is_synthetic: boolean }[] }),
-      agencyIds.length
-        ? supabase.from("agencies").select("id, name, acronym, is_synthetic").in("id", agencyIds)
-        : Promise.resolve({ data: [] as { id: string; name: string; acronym: string | null; is_synthetic: boolean }[] }),
-      proposalIds.length
-        ? supabase.from("proposals").select("id, title, is_synthetic").in("id", proposalIds)
-        : Promise.resolve({ data: [] as { id: string; title: string; is_synthetic: boolean }[] }),
-      proposalIds.length
-        ? supabase.from("bill_details").select("proposal_id, bill_number").in("proposal_id", proposalIds)
-        : Promise.resolve({ data: [] as { proposal_id: string; bill_number: string }[] }),
-      gbIds.length
-        ? supabase.from("governing_bodies").select("id, name, is_synthetic").in("id", gbIds)
-        : Promise.resolve({ data: [] as { id: string; name: string; is_synthetic: boolean }[] }),
+    // Rollup-sourced donor ids get their names from the MV (decision 7); fetch
+    // only the fields the aggregation modes + synthetic labeling still need.
+    const rawFinancialIds = financialIds.filter((id) => !mvDonorInfo.has(id));
+    const mvFinancialIds  = financialIds.filter((id) => mvDonorInfo.has(id));
+
+    const finSelect = individualMode === 'employer'
+      ? "id, display_name, entity_type, recipient_count, metadata, is_synthetic"
+      : "id, display_name, entity_type, recipient_count, is_synthetic";
+    const mvFinSelect = individualMode === 'employer'
+      ? "id, entity_type, recipient_count, metadata, is_synthetic"
+      : "id, entity_type, recipient_count, is_synthetic";
+
+    type OfficialNameRow = { id: string; full_name: string; party: string | null; is_synthetic: boolean | null };
+    type AgencyNameRow   = { id: string; name: string; acronym: string | null; is_synthetic: boolean | null };
+    type ProposalNameRow = { id: string; title: string | null; is_synthetic: boolean | null };
+    type BillDetailRow   = { proposal_id: string; bill_number: string | null };
+    type GbNameRow       = { id: string; name: string; is_synthetic: boolean | null };
+
+    const [financialData, mvFinMetaRows, officialRows, agencyRows, proposalRows, billDetailRows, gbRows] = await Promise.all([
+      fetchChunkedByIds<FinRow>(rawFinancialIds, (ids) =>
+        withDbTimeout(supabase.from("financial_entities").select(finSelect).in("id", ids), 5000, "connections:fin-names")),
+      fetchChunkedByIds<FinMetaRow>(mvFinancialIds, (ids) =>
+        withDbTimeout(supabase.from("financial_entities").select(mvFinSelect).in("id", ids), 5000, "connections:fin-mv-meta")),
+      fetchChunkedByIds<OfficialNameRow>(officialIds, (ids) =>
+        withDbTimeout(supabase.from("officials").select("id, full_name, party, is_synthetic").in("id", ids), 5000, "connections:official-names")),
+      fetchChunkedByIds<AgencyNameRow>(agencyIds, (ids) =>
+        withDbTimeout(supabase.from("agencies").select("id, name, acronym, is_synthetic").in("id", ids), 5000, "connections:agency-names")),
+      fetchChunkedByIds<ProposalNameRow>(proposalIds, (ids) =>
+        withDbTimeout(supabase.from("proposals").select("id, title, is_synthetic").in("id", ids), 5000, "connections:proposal-names")),
+      fetchChunkedByIds<BillDetailRow>(proposalIds, (ids) =>
+        withDbTimeout(supabase.from("bill_details").select("proposal_id, bill_number").in("proposal_id", ids), 5000, "connections:bill-details")),
+      fetchChunkedByIds<GbNameRow>(gbIds, (ids) =>
+        withDbTimeout(supabase.from("governing_bodies").select("id, name, is_synthetic").in("id", ids), 5000, "connections:gb-names")),
     ]);
 
+    const mvFinMeta = new Map(mvFinMetaRows.map((r) => [r.id, r]));
+
     const billNumberByProposal = new Map<string, string>();
-    for (const b of billDetailsRes.data ?? []) {
+    for (const b of billDetailRows) {
       if (b.bill_number) billNumberByProposal.set(b.proposal_id, b.bill_number);
     }
 
     // ── Build name lookup ───────────────────────────────────────────────────
     const nameMap = new Map<string, { label: string; party?: string; subType?: string; role?: string; isSynthetic?: boolean }>();
-    for (const o of officialsRes.data ?? []) nameMap.set(o.id, { label: o.full_name, party: o.party ?? undefined, isSynthetic: o.is_synthetic ?? false });
-    for (const a of agenciesRes.data ?? []) nameMap.set(a.id, { label: a.acronym ?? a.name, isSynthetic: a.is_synthetic ?? false });
-    for (const p of proposalsRes.data ?? []) {
+    for (const o of officialRows) nameMap.set(o.id, { label: o.full_name, party: o.party ?? undefined, isSynthetic: o.is_synthetic ?? false });
+    for (const a of agencyRows) nameMap.set(a.id, { label: a.acronym ?? a.name, isSynthetic: a.is_synthetic ?? false });
+    for (const p of proposalRows) {
       // FIX-123: bill_number ("HR 1234") goes into role so the tooltip subtitle
       // shows it. Title stays as the primary name. If title is missing, fall
       // back to bill_number rather than rendering blank.
@@ -552,7 +912,7 @@ export async function GET(request: Request) {
         isSynthetic: p.is_synthetic ?? false,
       });
     }
-    for (const g of gbRes.data ?? []) nameMap.set(g.id, { label: g.name, isSynthetic: g.is_synthetic ?? false });
+    for (const g of gbRows) nameMap.set(g.id, { label: g.name, isSynthetic: g.is_synthetic ?? false });
 
     // Track individual-donor extra data for bracket/employer aggregation (FIX-194)
     const individualMeta = new Map<string, { recipientCount: number; employer?: string }>();
@@ -563,6 +923,19 @@ export async function GET(request: Request) {
         individualMeta.set(f.id, {
           recipientCount: f.recipient_count ?? 0,
           employer: meta?.employer ?? undefined,
+        });
+      }
+    }
+    // FIX-802 — rollup-sourced donors: label/type from the MV, synthetic flag +
+    // individual meta from the slim fetch.
+    for (const [id, info] of mvDonorInfo) {
+      const meta = mvFinMeta.get(id);
+      nameMap.set(id, { label: info.label, subType: info.subType, isSynthetic: meta?.is_synthetic ?? false });
+      if (info.subType === 'individual') {
+        const m = (meta?.metadata ?? null) as Record<string, string> | null;
+        individualMeta.set(id, {
+          recipientCount: meta?.recipient_count ?? 0,
+          employer: m?.employer ?? undefined,
         });
       }
     }
@@ -619,7 +992,18 @@ export async function GET(request: Request) {
           const tier = BRACKET_TIERS.find(t =>
             amountCents >= t.minCents && (t.maxCents === null || amountCents <= t.maxCents)
           );
-          if (!tier) continue; // below FEC itemization threshold — skip
+          if (!tier) {
+            // Below the smallest bracket tier — fold into the official's
+            // unnamed-tail aggregate so headline totals stay exact
+            // (previously silently dropped, FIX-802).
+            const key = `donation:${officialId}`;
+            const t = tailAggs.get(key) ?? { connType: 'donation' as const, officialId, cents: 0, tx: 0, donorCount: 0 };
+            t.cents += amountCents;
+            t.tx += mvTxCounts.get(c.id) ?? 1;
+            t.donorCount += 1;
+            tailAggs.set(key, t);
+            continue;
+          }
           const bucketKey: BucketKey = `bracket:${officialId}:${tier.id}`;
           const existing = buckets.get(bucketKey);
           if (existing) {
@@ -684,6 +1068,34 @@ export async function GET(request: Request) {
       }
     }
 
+    // ── Unnamed-remainder aggregate nodes (FIX-802) ───────────────────────────
+    // One per (official, connection type): the MV rank-201 tail + named rows
+    // folded past the top-N cap + sub-bracket-threshold individuals. Reuses the
+    // synthetic bracket node shape; rendered totals equal the true MV sums.
+    for (const t of tailAggs.values()) {
+      if (t.donorCount <= 0 && t.cents <= 0) continue;
+      const nodeId = `tail:${t.connType}:${t.officialId}`;
+      bracketNodes.push({
+        id: nodeId,
+        type: 'individual_bracket',
+        name: t.connType === 'opposition'
+          ? `${t.donorCount.toLocaleString('en-US')} more opposition spenders`
+          : `${t.donorCount.toLocaleString('en-US')} smaller donors`,
+        connectionCount: t.donorCount,
+        donationTotal: t.cents,
+        metadata: { isTailNode: true, donorCount: t.donorCount, officialId: t.officialId },
+      });
+      bracketEdges.push({
+        fromId: nodeId,
+        toId: `official:${t.officialId}`,
+        connectionType: t.connType,
+        amountUsd: t.cents / 100,
+        strength: logScaleDonation(t.cents),
+        txCount: t.tx,
+        metadata: { isTailEdge: true, donorCount: t.donorCount },
+      });
+    }
+
     // ── Pre-compute per-financial-entity donation totals (cents) ──────────
     // Used to populate donationTotal on PAC/corporation/individual nodes so
     // the tooltip can show total donations given to officials in this graph.
@@ -720,7 +1132,7 @@ export async function GET(request: Request) {
           : {}),
       });
     }
-    // Append synthetic bracket/employer aggregate nodes
+    // Append synthetic bracket/employer/tail aggregate nodes
     nodes.push(...bracketNodes);
 
     const nodeIds = new Set(nodes.map((n) => n.id));
@@ -777,16 +1189,25 @@ export async function GET(request: Request) {
         amountUsd: c.amount_cents != null ? c.amount_cents / 100 : undefined,
         occurredAt: c.occurred_at ?? undefined,
         strength: Number(c.strength),
+        // FIX-802 — rollup-sourced edges are aggregates: txCount is the
+        // underlying transaction count (G2 hover labels consume it).
+        ...(mvTxCounts.has(c.id) ? { txCount: mvTxCounts.get(c.id) } : {}),
         ...(c.evidence_source ? { evidenceSource: c.evidence_source } : {}),
         ...(attr
           ? { investigationId: attr.investigationId, investigationTitle: attr.title, reviewedAt: attr.reviewedAt }
           : {}),
       });
     }
-    // Append synthetic bracket/employer aggregate edges (official endpoints guaranteed in nodeIds)
+    // Append synthetic bracket/employer/tail aggregate edges (official endpoints guaranteed in nodeIds)
     edges.push(...bracketEdges);
 
-    return Response.json({ nodes, edges, count: totalCount, ...(partial ? { partial: true } : {}) });
+    return Response.json({
+      nodes,
+      edges,
+      count: totalCount,
+      ...(partial ? { partial: true } : {}),
+      ...(depth2Truncated ? { meta: { depth2Truncated: true } } : {}),
+    });
   } catch (err) {
     console.error("[graph/connections]", err);
     return Response.json({ error: "Failed to load graph data" }, { status: 500 });

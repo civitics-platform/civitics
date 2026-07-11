@@ -14,6 +14,9 @@ import type { UseGraphViewReturn } from '../hooks/useGraphView';
 import type { GraphMeta } from '../hooks/useGraphData';
 import {
   CONNECTION_TYPE_REGISTRY,
+  VOTE_CONNECTION_TYPES,
+  VOTES_LIMIT_OPTIONS,
+  DEFAULT_VOTES_LIMIT,
   applicableConnectionTypes,
   inapplicableReason,
 } from '../connections';
@@ -51,6 +54,19 @@ export function ConnectionsTree({
   // Procedural-vote filter is only meaningful when the loaded graph actually contains vote edges.
   // Default to showing the toggle when graphMeta isn't loaded yet — prevents it disappearing on first paint.
   const showProceduralToggle = graphMeta?.hasVotes !== false;
+
+  // FIX-802 — the five vote types share ONE "Votes loaded" fetch cap. Read the
+  // first defined value; write the same value to every vote-type key so it
+  // round-trips through snapshots/presets like any per-type setting.
+  const votesLimit =
+    VOTE_CONNECTION_TYPES.map(t => connections[t]?.fetchLimit).find(v => v != null) ??
+    DEFAULT_VOTES_LIMIT;
+  function setVotesLimit(value: number) {
+    for (const t of VOTE_CONNECTION_TYPES) {
+      const settings = connections[t];
+      if (settings) hooks.setConnection(t, { ...settings, fetchLimit: value });
+    }
+  }
 
   // When graphMeta is available, only show a type if it has data OR is currently enabled.
   // When graphMeta is absent (data not yet loaded), show all types.
@@ -231,6 +247,28 @@ export function ConnectionsTree({
             >
               <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-paper shadow transition-transform ${includeProcedural ? 'translate-x-3.5' : 'translate-x-0.5'}`} />
             </button>
+          </div>
+
+          {/* FIX-802 — shared server-side vote row cap (most recent first).
+              One control for all five vote types; changing it re-fetches. */}
+          <div
+            className="flex items-center justify-between px-2 py-1.5"
+            style={{ paddingLeft: '32px' }}
+          >
+            <div className="min-w-0 pr-2">
+              <div className="text-[11px] text-ink">Votes loaded</div>
+              <div className="text-[9px] text-ink-soft/60 leading-tight">Most recent votes fetched per entity</div>
+            </div>
+            <select
+              aria-label="Votes loaded"
+              value={votesLimit}
+              onChange={e => setVotesLimit(parseInt(e.target.value, 10))}
+              className="px-1.5 py-0.5 text-xs border border-rule rounded bg-card focus:outline-none focus:border-accent shrink-0"
+            >
+              {VOTES_LIMIT_OPTIONS.map(o => (
+                <option key={o} value={o}>{o}</option>
+              ))}
+            </select>
           </div>
         </TreeSection>
       )}

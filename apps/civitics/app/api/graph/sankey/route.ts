@@ -133,45 +133,62 @@ export async function GET(req: NextRequest) {
     return NextResponse.json<SankeyResponse>({ flows: [], totalCents: 0, scannedRows: 0 });
   }
 
-  // Resolve agency + vendor names in two batched lookups.
+  // Resolve agency + vendor names in chunked batched lookups. The id lists
+  // derive from up to SCAN_LIMIT contract rows (vendorIds can be thousands);
+  // a single .in() read 414'd behind Kong at ~234 uuids (FIX-772), so chunk at
+  // 200 with per-chunk error checks — the FIX-732 shape.
   const agencyIds = [...new Set(contracts.map((c) => c.from_id))];
   const vendorIds = [...new Set(contracts.map((c) => c.to_id))];
 
+  const ID_CHUNK = 200;
+  function chunkIds(ids: string[]): string[][] {
+    const out: string[][] = [];
+    for (let i = 0; i < ids.length; i += ID_CHUNK) out.push(ids.slice(i, i + ID_CHUNK));
+    return out;
+  }
+  async function fetchChunked<T>(
+    ids: string[],
+    label: string,
+    build: (chunk: string[]) => PromiseLike<{ data: unknown; error: { message: string } | null }>,
+  ): Promise<{ rows: T[]; error: string | null }> {
+    const results = await Promise.all(chunkIds(ids).map((c) => build(c)));
+    const rows: T[] = [];
+    for (const r of results) {
+      if (r.error) {
+        console.error(`[graph/sankey] ${label} fetch:`, r.error.message);
+        return { rows, error: r.error.message };
+      }
+      rows.push(...((r.data ?? []) as T[]));
+    }
+    return { rows, error: null };
+  }
+
   const [agenciesRes, vendorsRes, tagsRes] = await Promise.all([
-    supabase
-      .from("agencies")
-      .select("id, name, acronym, short_name")
-      .in("id", agencyIds),
-    supabase
-      .from("financial_entities")
-      .select("id, display_name")
-      .in("id", vendorIds),
-    supabase
-      .from("entity_tags")
-      .select("entity_id, tag")
-      .eq("entity_type", "financial_entity")
-      .eq("tag_category", "industry")
-      .in("entity_id", vendorIds),
+    fetchChunked<AgencyRow>(agencyIds, "agencies", (ids) =>
+      supabase.from("agencies").select("id, name, acronym, short_name").in("id", ids)),
+    fetchChunked<FinancialEntityRow>(vendorIds, "vendors", (ids) =>
+      supabase.from("financial_entities").select("id, display_name").in("id", ids)),
+    fetchChunked<TagRow>(vendorIds, "tags", (ids) =>
+      supabase
+        .from("entity_tags")
+        .select("entity_id, tag")
+        .eq("entity_type", "financial_entity")
+        .eq("tag_category", "industry")
+        .in("entity_id", ids)),
   ]);
 
   if (agenciesRes.error) {
-    console.error("[graph/sankey] agencies fetch:", agenciesRes.error.message);
-    return NextResponse.json({ error: agenciesRes.error.message }, { status: 500 });
+    return NextResponse.json({ error: agenciesRes.error }, { status: 500 });
   }
   if (vendorsRes.error) {
-    console.error("[graph/sankey] vendors fetch:", vendorsRes.error.message);
-    return NextResponse.json({ error: vendorsRes.error.message }, { status: 500 });
+    return NextResponse.json({ error: vendorsRes.error }, { status: 500 });
   }
+  // Tags stay best-effort (sector falls back to NAICS prefix / "Other"), but a
+  // failed chunk is now logged instead of silently narrowing every sector.
 
-  const agencies = new Map<string, AgencyRow>(
-    ((agenciesRes.data ?? []) as AgencyRow[]).map((a) => [a.id, a]),
-  );
-  const vendors = new Map<string, FinancialEntityRow>(
-    ((vendorsRes.data ?? []) as FinancialEntityRow[]).map((v) => [v.id, v]),
-  );
-  const vendorTags = new Map<string, string>(
-    ((tagsRes.data ?? []) as TagRow[]).map((t) => [t.entity_id, t.tag]),
-  );
+  const agencies = new Map<string, AgencyRow>(agenciesRes.rows.map((a) => [a.id, a]));
+  const vendors = new Map<string, FinancialEntityRow>(vendorsRes.rows.map((v) => [v.id, v]));
+  const vendorTags = new Map<string, string>(tagsRes.rows.map((t) => [t.entity_id, t.tag]));
 
   // Aggregate to (agency, sector, vendor) buckets.
   const flowMap = new Map<string, SankeyFlow>();

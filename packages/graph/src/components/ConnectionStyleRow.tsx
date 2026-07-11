@@ -135,6 +135,23 @@ export function ConnectionStyleRow({ type, def, settings, onChange, count }: Con
               />
             </div>
           )}
+
+          {/* Server-side fetch cap (FIX-802) — registry-driven; donation renders
+              "Top donors: 10/25/50/100". Changing it triggers a re-fetch. */}
+          {def.fetchLimitControl && (
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-ink-soft w-16 shrink-0">{def.fetchLimitControl.label}</span>
+              <select
+                value={settings.fetchLimit ?? def.fetchLimitControl.defaultValue}
+                onChange={e => set('fetchLimit', parseInt(e.target.value, 10))}
+                className="flex-1 px-1.5 py-0.5 text-xs border border-rule rounded bg-card focus:outline-none focus:border-accent"
+              >
+                {def.fetchLimitControl.options.map(o => (
+                  <option key={o} value={o}>{o}</option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
       )}
     </div>

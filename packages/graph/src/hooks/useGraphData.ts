@@ -13,6 +13,11 @@ import type { GraphView, ForceOptions } from '../types';
 import type { FocusEntity, FocusGroup } from '../types';
 import { isFocusEntity, isFocusGroup } from '../types';
 import type { GraphNode, GraphEdge } from '../types';
+import {
+  VOTE_CONNECTION_TYPES,
+  DEFAULT_DONATION_LIMIT,
+  DEFAULT_VOTES_LIMIT,
+} from '../connections';
 
 export interface GraphMeta {
   /** Connection types present with counts and total amounts */
@@ -54,10 +59,20 @@ export function useGraphData(
   // Track which nodes belong to each group (groupId → Set of connected node IDs)
   const groupNodeIds = useRef(new Map<string, Set<string>>());
 
+  // FIX-802 — server-side fetch caps, read from the per-type connection
+  // settings (donation row dropdown + shared vote control in ConnectionsTree)
+  // so they round-trip through snapshots/presets.
+  const donationLimit = connections['donation']?.fetchLimit ?? DEFAULT_DONATION_LIMIT;
+  const votesLimit =
+    VOTE_CONNECTION_TYPES.map(t => connections[t]?.fetchLimit).find(v => v != null) ??
+    DEFAULT_VOTES_LIMIT;
+
   // Track values that require a full re-fetch when they change
   const prevIncludeProceduralRef   = useRef(focus.includeProcedural);
   const prevIndividualModeRef      = useRef(forceOptions?.individualDisplayMode);
   const prevConnectorMinRef        = useRef(forceOptions?.connectorMinRecipients);
+  const prevDonationLimitRef       = useRef(donationLimit);
+  const prevVotesLimitRef          = useRef(votesLimit);
 
   // When focus.entities or any re-fetch trigger changes: fetch data for new entities,
   // remove data for removed entities, and re-fetch all when server-side params toggle.
@@ -68,11 +83,15 @@ export function useGraphData(
     const shouldRefetchAll =
       prevIncludeProceduralRef.current !== focus.includeProcedural ||
       prevIndividualModeRef.current    !== forceOptions?.individualDisplayMode ||
-      prevConnectorMinRef.current      !== forceOptions?.connectorMinRecipients;
+      prevConnectorMinRef.current      !== forceOptions?.connectorMinRecipients ||
+      prevDonationLimitRef.current     !== donationLimit ||
+      prevVotesLimitRef.current        !== votesLimit;
 
     prevIncludeProceduralRef.current = focus.includeProcedural;
     prevIndividualModeRef.current    = forceOptions?.individualDisplayMode;
     prevConnectorMinRef.current      = forceOptions?.connectorMinRecipients;
+    prevDonationLimitRef.current     = donationLimit;
+    prevVotesLimitRef.current        = votesLimit;
 
     if (shouldRefetchAll) {
       fetchedIds.current.clear();
@@ -150,7 +169,7 @@ export function useGraphData(
       fetchedIds.current.clear();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focus.entities, focus.includeProcedural, forceOptions?.individualDisplayMode, forceOptions?.connectorMinRecipients, retryNonce]);
+  }, [focus.entities, focus.includeProcedural, forceOptions?.individualDisplayMode, forceOptions?.connectorMinRecipients, donationLimit, votesLimit, retryNonce]);
 
   async function fetchEntities(entities: FocusEntity[]) {
     setLoading(true);
@@ -162,6 +181,9 @@ export function useGraphData(
           depth: String(entity.depth ?? focus.depth),
           viz: 'force',
           include_procedural: String(focus.includeProcedural),
+          // FIX-802 — server-side fetch caps (whitelisted by the route)
+          limit: String(donationLimit),
+          votes_limit: String(votesLimit),
         });
         if (forceOptions?.individualDisplayMode) {
           params.set('individualMode', forceOptions.individualDisplayMode);

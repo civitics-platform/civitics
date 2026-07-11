@@ -86,6 +86,10 @@ export interface GraphEdge {
   strength: number
   /** ISO date string */
   occurredAt?: string
+  /** Underlying transaction count — set on rollup-sourced aggregate edges
+   *  (donation/opposition read from official_donor_rollup_mv, FIX-802).
+   *  Per-event edges omit it. G2's hover $ labels consume this. */
+  txCount?: number
   /** Provenance tag from entity_connections.evidence_source. The narrow slice this
    *  package cares about is 'investigation' — a community claim promoted to the graph
    *  (FIX-584/585) — which renders distinctly, filterable, and attributed. Other
@@ -113,6 +117,18 @@ export interface ConnectionTypeDefinition {
   description: string
   /** True if this connection type carries a dollar amount */
   hasAmount: boolean
+  /**
+   * FIX-802 — when set, ConnectionStyleRow renders a fetch-cap dropdown for
+   * this type (e.g. donation "Top donors: 10/25/50/100"). The chosen value is
+   * stored as `fetchLimit` on the type's connection settings and forwarded to
+   * /api/graph/connections. Vote types share ONE control in ConnectionsTree
+   * instead — do not set this on them.
+   */
+  fetchLimitControl?: {
+    label: string
+    options: readonly number[]
+    defaultValue: number
+  }
 }
 
 // ── Individual Donor Display (FIX-194) ────────────────────────────────────────
@@ -527,6 +543,14 @@ export interface GraphView {
       opacity: number     // 0–1
       thickness: number   // 0–1
       minAmount?: number  // USD — donations only
+      /**
+       * FIX-802 — server-side fetch cap for this type. donation: named
+       * top-N donors by rollup rank (10|25|50|100, default 25). Vote types:
+       * rows loaded (50|100|250|500, default 50) — one shared control writes
+       * the same value to every vote-type key. Round-trips through
+       * snapshots/presets like every other per-type setting.
+       */
+      fetchLimit?: number
       dateRange?: {
         start: string | null
         end: string | null

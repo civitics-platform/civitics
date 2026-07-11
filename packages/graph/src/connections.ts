@@ -20,6 +20,23 @@ import { isFocusGroup } from './types'
 //   nomination yes/no → ochre-gold/wine   appointment → terracotta
 //   co-sponsorship → olive    revolving door → bronze  alignment → steel-slate
 //     (alignment legend only — its edges render dynamically by ratio)
+// FIX-802 — server-side fetch caps. Values are whitelisted by the route; the
+// dropdowns render from these constants so client and server stay in step.
+export const DONATION_LIMIT_OPTIONS = [10, 25, 50, 100] as const
+export const DEFAULT_DONATION_LIMIT = 25
+export const VOTES_LIMIT_OPTIONS = [50, 100, 250, 500] as const
+export const DEFAULT_VOTES_LIMIT = 50
+
+// The five vote-type registry keys — they share one "Votes loaded" control in
+// ConnectionsTree (FIX-802), which writes the same fetchLimit to each key.
+export const VOTE_CONNECTION_TYPES = [
+  'vote_yes',
+  'vote_no',
+  'vote_abstain',
+  'nomination_vote_yes',
+  'nomination_vote_no',
+] as const
+
 export const CONNECTION_TYPE_REGISTRY: Record<string, ConnectionTypeDefinition> = {
   donation: {
     label: 'Donations',
@@ -27,6 +44,13 @@ export const CONNECTION_TYPE_REGISTRY: Record<string, ConnectionTypeDefinition> 
     color: 'rgb(var(--c-amber))',
     description: 'PAC and individual donor contributions',
     hasAmount: true,
+    // FIX-802 — top-N named donors by official_donor_rollup_mv rank; the
+    // remainder folds into the "smaller donors" tail node, so totals stay true.
+    fetchLimitControl: {
+      label: 'Top donors',
+      options: DONATION_LIMIT_OPTIONS,
+      defaultValue: DEFAULT_DONATION_LIMIT,
+    },
   },
   // FIX-747 — super-PAC independent expenditures made AGAINST a candidate
   // (FEC Schedule E "O" / financial_relationships.ie_oppose). Rendered red +
