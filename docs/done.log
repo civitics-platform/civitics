@@ -965,3 +965,5 @@
 2026-07-11 | FIX-795 | 1b42009f | local+prod | fix(cache): pin per-user pages + /api/comments CDN no-store (FIX-795 hotfix)
 2026-07-11 | FIX-796 | fd023ed5 | local+prod | feat(cache): invert CDN cache model — page allowlist + handler-owned API headers (FIX-796)
 2026-07-11 | FIX-797 | 1026c92e | local+prod | fix(ratelimit): route router prefetches to their own bucket; make 429s uncacheable (FIX-797)
+2026-07-11 | FIX-797 | e7558899 | local+prod | fix(ratelimit): detect app-shell fetches via Sec-Fetch-Dest — full RSC protocol surface is stripped on Vercel (FIX-797)
+2026-07-11 | FIX-797 | b35c9456 | local+prod | fix(ratelimit): detect prefetches via _rsc/RSC markers — Vercel strips Next-Router-Prefetch (FIX-797 follow-through)
