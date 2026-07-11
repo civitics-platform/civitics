@@ -968,3 +968,6 @@
 2026-07-11 | FIX-797 | e7558899 | local+prod | fix(ratelimit): detect app-shell fetches via Sec-Fetch-Dest — full RSC protocol surface is stripped on Vercel (FIX-797)
 2026-07-11 | FIX-797 | b35c9456 | local+prod | fix(ratelimit): detect prefetches via _rsc/RSC markers — Vercel strips Next-Router-Prefetch (FIX-797 follow-through)
 2026-07-11 | FIX-798 | db7fe750 | local+prod | feat(engagement): surface the caller's own agree/valuable ratings via the viewer overlay (FIX-798)
+2026-07-11 | FIX-732 | 4da943e0 | local+prod | fix(graph): bounded rollup read-path for connections + sankey/depth-2 hardening
+2026-07-11 | FIX-781 | 4da943e0 | local+prod | fix(graph): bounded rollup read-path for connections + sankey/depth-2 hardening
+2026-07-11 | FIX-802 | 4da943e0 | local+prod | fix(graph): bounded rollup read-path for connections + sankey/depth-2 hardening
