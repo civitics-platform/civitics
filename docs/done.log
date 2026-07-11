@@ -959,3 +959,5 @@
 2026-07-10 | FIX-790 | adc2d3e4 | local-only | feat(ci): put the USASpending delta on a weekly cron on usaspending-bulk.yml (FIX-790)
 2026-07-10 | FIX-772 | 4458c8a9 | local+prod | fix(graph): resolve financial built-in groups (Money branch)
 2026-07-10 | FIX-792 | 6c64d6d3 | local+prod | fix(graph): adopt financial cohorts in browse compiler + curate Money tree
+2026-07-10 | FIX-750 | 6576bb15 | local-only | fix(db): regenerate database.ts from prod + drop the browse-era any-casts (FIX-750)
+2026-07-10 | FIX-793 | 4db64204 | local-only | fix(tests): satisfy tsc-strict in public-payload.test.ts (FIX-793)
