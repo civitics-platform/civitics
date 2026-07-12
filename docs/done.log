@@ -989,3 +989,6 @@
 2026-07-11 | FIX-815 | fd0a282c | local-only | fix(graph): G4 force-sim settle — cooling tune + spurious type-cluster restarts
 2026-07-12 | FIX-812 | 9b941f44 | local-only | chore(graph): drop @next/next eslint-disable — rule undefined in package config
 2026-07-12 | FIX-813 | 2970c8a2 | local-only | fix(graph): persist panel width synchronously — dbl-click reset raced updater
+2026-07-12 | FIX-812 | 02a44b7e | prod-only | chore: record prod verification for FIX-812..815 (browser QA 2026-07-12)
+2026-07-12 | FIX-813 | 02a44b7e | prod-only | chore: record prod verification for FIX-812..815 (browser QA 2026-07-12)
+2026-07-12 | FIX-815 | 02a44b7e | prod-only | chore: record prod verification for FIX-812..815 (browser QA 2026-07-12)
