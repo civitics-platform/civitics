@@ -23,6 +23,7 @@
 
 import { createAdminClient } from "@civitics/db";
 import { completeSync, failSync, startSync, type PipelineResult } from "../sync-log";
+import { withDirectClient } from "../../lib/direct-pg-upsert";
 import {
   FEDERAL_GENERAL_ELECTIONS,
   STATE_ELECTION_CALENDAR,
@@ -50,11 +51,60 @@ interface OfficialRow {
   jurisdiction_id: string;
   governing_body_id: string | null;
   metadata: Record<string, unknown> | null;
+  // Current stored values of the five output columns, fetched so change-detection
+  // can skip rows whose computed values are unchanged (FIX-819). On a steady-state
+  // run these match the freshly-computed values for ~every row → nothing written.
+  current_term_start: string | null;
+  current_term_end: string | null;
+  next_election_date: string | null;
+  next_election_type: string | null;
+  is_up_for_election: boolean;
 }
 
 interface JurisdictionRow {
   id: string;
   type: string;
+}
+
+// One changed official, aligned to the VALUES tuple below:
+//   [id, current_term_start, current_term_end, next_election_date,
+//    next_election_type, is_up_for_election]
+type ChangedRow = [string, string | null, string | null, string | null, string | null, boolean];
+
+// Compare date columns as YYYY-MM-DD strings (null==null unchanged). Both the
+// stored value and the computed value are `date` columns, but slice defensively
+// in case a timestamp string ever sneaks in.
+function normDate(v: string | null | undefined): string | null {
+  return v == null ? null : String(v).slice(0, 10);
+}
+
+// FIX-819 — build a chunked set-based UPDATE for the changed officials, replacing
+// ~27k single-row PostgREST round-trips. Placeholders run $1..$(rowCount*6)
+// row-major, aligned to ChangedRow. The VALUES list lives in a FROM subquery, so
+// its column types come from the literals alone — node-postgres sends every param
+// untyped, so the FIRST row's placeholders carry explicit casts to pin each
+// column's type (id→uuid, dates→date, type→text, flag→boolean); every later row's
+// bare params coerce to it. Without that pin, an all-NULL/all-unknown column would
+// error "could not determine data type of parameter".
+export function buildElectionUpdateStatement(rowCount: number): string {
+  if (rowCount <= 0) throw new Error("buildElectionUpdateStatement: rowCount must be > 0");
+  const casts = ["::uuid", "::date", "::date", "::date", "::text", "::boolean"];
+  const tuples: string[] = [];
+  let p = 1;
+  for (let r = 0; r < rowCount; r++) {
+    const cells = casts.map((cast) => `$${p++}${r === 0 ? cast : ""}`);
+    tuples.push(`(${cells.join(", ")})`);
+  }
+  return (
+    "UPDATE public.officials AS o SET " +
+    "current_term_start = v.cts, " +
+    "current_term_end = v.cte, " +
+    "next_election_date = v.ned, " +
+    "next_election_type = v.net, " +
+    "is_up_for_election = v.iufe " +
+    `FROM (VALUES ${tuples.join(", ")}) AS v(id, cts, cte, ned, net, iufe) ` +
+    "WHERE o.id = v.id"
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -95,12 +145,20 @@ export async function runElectionsPipeline(): Promise<PipelineResult> {
     const nowIso = now.toISOString().slice(0, 10);
     const pageSize = 1000;
     let offset = 0;
-    let processed = 0;
+    let scanned = 0;
+    // FIX-819 — accumulate only the officials whose computed values differ from
+    // what's already stored. On a steady-state run this stays ~empty (election
+    // dates are near-static); the occasional bulk flip (a fixed date rolling
+    // past → many is_up_for_election flip on one run) is handled by the chunked
+    // set-based write below.
+    const changed: ChangedRow[] = [];
 
     for (;;) {
       const { data, error } = await db
         .from("officials")
-        .select("id, role_title, term_start, term_end, jurisdiction_id, governing_body_id, metadata")
+        .select(
+          "id, role_title, term_start, term_end, jurisdiction_id, governing_body_id, metadata, current_term_start, current_term_end, next_election_date, next_election_type, is_up_for_election",
+        )
         .eq("is_active", true)
         .order("id", { ascending: true })
         .range(offset, offset + pageSize - 1);
@@ -180,24 +238,62 @@ export async function runElectionsPipeline(): Promise<PipelineResult> {
           is_up_for_election: isUp,
         };
 
-        const { error: upErr } = await db
-          .from("officials")
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          .update(patch as any)
-          .eq("id", r.id);
-        if (upErr) {
-          result.failed++;
-        } else {
-          result.updated++;
+        // Change-detection: only queue a write if at least one of the five
+        // output values actually differs from what's stored.
+        const isChanged =
+          normDate(patch.current_term_start) !== normDate(r.current_term_start) ||
+          normDate(patch.current_term_end)   !== normDate(r.current_term_end) ||
+          normDate(patch.next_election_date) !== normDate(r.next_election_date) ||
+          (patch.next_election_type ?? null) !== (r.next_election_type ?? null) ||
+          patch.is_up_for_election           !== r.is_up_for_election;
+
+        if (isChanged) {
+          changed.push([
+            r.id,
+            patch.current_term_start,
+            patch.current_term_end,
+            patch.next_election_date,
+            patch.next_election_type,
+            patch.is_up_for_election,
+          ]);
         }
-        processed++;
+        scanned++;
       }
 
       offset += rows.length;
       if (rows.length < pageSize) break;
     }
 
-    console.log(`  Processed ${processed} officials. Updated: ${result.updated}, failed: ${result.failed}`);
+    // FIX-819 — write the changed set with a single chunked direct-pg
+    // UPDATE...FROM (VALUES ...) per chunk (autocommit, so a bad chunk doesn't
+    // poison the rest). Skip the connection entirely on the common changed=0 run.
+    if (changed.length > 0) {
+      const CHUNK = 1000; // 1000 rows × 6 params = 6000 bind params (< 65535 cap)
+      await withDirectClient(async (client) => {
+        for (let i = 0; i < changed.length; i += CHUNK) {
+          const chunk = changed.slice(i, i + CHUNK);
+          const sql = buildElectionUpdateStatement(chunk.length);
+          const params: unknown[] = [];
+          for (const row of chunk) params.push(...row);
+          try {
+            await client.query(sql, params);
+            result.updated += chunk.length;
+          } catch (err) {
+            console.error(
+              `  elections chunk ${i}-${i + chunk.length} failed: ${
+                err instanceof Error ? err.message : String(err)
+              }`,
+            );
+            result.failed += chunk.length;
+          }
+        }
+      });
+    }
+
+    console.log(
+      `  Elections: detected=${scanned} changed=${result.updated}` +
+        (result.failed ? ` failed=${result.failed}` : ""),
+    );
 
     await completeSync(logId, result);
     return result;
