@@ -430,7 +430,6 @@ function EntityRow({
         style={{ '--tw-ring-color': partyRingColor(entity.party) } as React.CSSProperties}
       >
         {entity.photoUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
           <img src={entity.photoUrl} alt={entity.name} className="w-full h-full object-cover" />
         ) : (
           <span className="text-[9px] font-semibold text-ink-soft">{rowInitials(entity.name)}</span>
