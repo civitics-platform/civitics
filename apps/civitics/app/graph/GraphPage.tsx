@@ -691,8 +691,17 @@ export function GraphPage({ initialCode, aiEnabled = true }: GraphPageProps = {}
   //   1. Explicitly pinned via the ★ in FocusTree (focus.primaryEntityId / primaryGroupId)
   //   2. Last-added of each type — picking the FIRST element silently sticks
   //      the treemap to whatever was added first regardless of later clicks.
-  const focusEntityList = view.focus.entities.filter(isFocusEntity);
-  const focusGroupList  = view.focus.entities.filter(isFocusGroup) as FocusGroup[];
+  // FIX-815 — memoized: fresh .filter() arrays every render made ForceGraph's
+  // focusEntities-dependent effects (type-cluster) restart the simulation on
+  // unrelated re-renders, so the layout never came to rest.
+  const focusEntityList = useMemo(
+    () => view.focus.entities.filter(isFocusEntity),
+    [view.focus.entities],
+  );
+  const focusGroupList  = useMemo(
+    () => view.focus.entities.filter(isFocusGroup) as FocusGroup[],
+    [view.focus.entities],
+  );
   const pinnedEntity    = view.focus.primaryEntityId
     ? focusEntityList.find(e => e.id === view.focus.primaryEntityId) ?? null
     : null;
@@ -881,7 +890,7 @@ export function GraphPage({ initialCode, aiEnabled = true }: GraphPageProps = {}
                   nodes={displayNodes}
                   edges={displayEdges}
                   loadingEntityId={loadingEntityId}
-                  focusEntities={view.focus.entities.filter(isFocusEntity)}
+                  focusEntities={focusEntityList}
                   connections={view.connections}
                   vizOptions={view.style.vizOptions?.force}
                   highlightedNodeId={highlightedSharedId}

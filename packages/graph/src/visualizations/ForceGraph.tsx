@@ -1320,8 +1320,13 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
         .force("charge", d3.forceManyBody<SimNode>().strength(charge))
         .force("center",  d3.forceCenter(width / 2, height / 2).strength(gravity))
         .force("collide", d3.forceCollide<SimNode>().radius((d) => (d.baseRadius ?? 20) + 10).strength(0.7))
-        .alphaDecay(0.0228)
-        .velocityDecay(0.4);
+        // FIX-815 — cooling tuned so the layout comes to rest within ~2s of a
+        // full reheat instead of drifting for 5s+ (d3 defaults: alphaDecay
+        // 0.0228 / alphaMin 0.001 / velocityDecay 0.4). Drag (alphaTarget 0.3)
+        // and expand (rebuild at alpha 1) still reheat as before.
+        .alphaDecay(0.04)
+        .alphaMin(0.005)
+        .velocityDecay(0.5);
 
       sim.on("tick", () => {
         link
@@ -1582,7 +1587,13 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
       const cy = height / 2;
 
       if (!vizOptions?.typeClusterEnabled) {
-        sim.force("type-cluster", null).alpha(0.3).restart();
+        // FIX-815 — only restart when tearing down an actually-mounted force.
+        // This effect re-runs on every focusEntities identity change; the old
+        // unconditional restart reheated a settled layout on unrelated
+        // re-renders (GraphPage passed a fresh .filter() array each render).
+        if (sim.force("type-cluster")) {
+          sim.force("type-cluster", null).alpha(0.3).restart();
+        }
         return;
       }
 
