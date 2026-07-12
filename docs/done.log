@@ -971,3 +971,13 @@
 2026-07-11 | FIX-732 | 4da943e0 | local+prod | fix(graph): bounded rollup read-path for connections + sankey/depth-2 hardening
 2026-07-11 | FIX-781 | 4da943e0 | local+prod | fix(graph): bounded rollup read-path for connections + sankey/depth-2 hardening
 2026-07-11 | FIX-802 | 4da943e0 | local+prod | fix(graph): bounded rollup read-path for connections + sankey/depth-2 hardening
+2026-07-11 | FIX-592 | 60cf1d18 | local-only | fix(graph): G3 — single opacity-resolver pipeline + edge hover $ labels + investigation bracket exemption
+2026-07-11 | FIX-693 | 479312e9 | local+prod | fix(graph): bidirectional pathfinder BFS — v1 timed out on prod
+2026-07-11 | FIX-693 | 01e0f020 | local+prod | feat(graph): G2b — NodePopup affordances, dead-code purge, pathfinding RPC
+2026-07-11 | FIX-694 | 75ab078c | local+prod | feat(graph): G2a quick wins — force PNG export, mount FIX-217 viz trio, restore snapshot view counter, wire color-by
+2026-07-11 | FIX-731 | 75ab078c | local+prod | feat(graph): G2a quick wins — force PNG export, mount FIX-217 viz trio, restore snapshot view counter, wire color-by
+2026-07-11 | FIX-733 | 75ab078c | local+prod | feat(graph): G2a quick wins — force PNG export, mount FIX-217 viz trio, restore snapshot view counter, wire color-by
+2026-07-11 | FIX-804 | 75ab078c | local+prod | feat(graph): G2a quick wins — force PNG export, mount FIX-217 viz trio, restore snapshot view counter, wire color-by
+2026-07-11 | FIX-805 | 01e0f020 | local+prod | feat(graph): G2b — NodePopup affordances, dead-code purge, pathfinding RPC
+2026-07-11 | FIX-806 | 01e0f020 | local+prod | feat(graph): G2b — NodePopup affordances, dead-code purge, pathfinding RPC
+2026-07-11 | FIX-807 | 60cf1d18 | local-only | fix(graph): G3 — single opacity-resolver pipeline + edge hover $ labels + investigation bracket exemption
