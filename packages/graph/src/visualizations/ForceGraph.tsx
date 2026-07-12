@@ -90,12 +90,113 @@ type SimLink = {
   fromId: string;
   toId: string;
   metadata?: Record<string, unknown>;
+  // FIX-807 — hover label inputs: txCount rides rollup-sourced aggregate
+  // edges (FIX-802); occurredAt dates vote edges.
+  txCount?: number;
+  occurredAt?: string;
   // FIX-585 — investigation-promoted edges render distinctly + filterable + attributed.
   evidenceSource?: string;
   investigationId?: string;
   investigationTitle?: string;
   reviewedAt?: string;
 };
+
+const linkSrcId = (d: SimLink): string => (d.source as SimNode)?.id ?? d.fromId;
+const linkTgtId = (d: SimLink): string => (d.target as SimNode)?.id ?? d.toId;
+
+// ── FIX-807 — single opacity resolver ─────────────────────────────────────────
+// Previously four channels fought over dimming: hover attr("opacity"), the
+// connection-style effect attr("stroke-opacity") + style("display"), the
+// strength filter's own style("display"), and SharedConnectionsBar's
+// style("opacity") — inline style silently wins over attrs, and the hover
+// handlers closed over a stale opacity fn, so toggling a type then hovering
+// restored last-load opacities. Everything now resolves through ONE ctx-driven
+// pair and applies through ONE channel: style("opacity"), with
+// style("display") computed in the same pass.
+
+interface OpacityCtx {
+  connections: GraphView["connections"];
+  focusIds: Set<string>;
+  /** Hovered node id, or null. */
+  hoverId: string | null;
+  /** Hovered node + its neighbors (set only while hovering). */
+  hoverNeighborIds: Set<string> | null;
+  /** SharedConnectionsBar pinned node id (FIX-149), or null. */
+  highlightedId: string | null;
+  showInvestigation: boolean;
+  strengthFilter: number;
+}
+
+function edgeVisible(d: SimLink, ctx: OpacityCtx): boolean {
+  // FIX-585 — investigation edges follow their own toggle, not the type filter.
+  if (d.evidenceSource === "investigation") {
+    if (!ctx.showInvestigation) return false;
+  } else if (Object.keys(ctx.connections).length > 0) {
+    const conn = ctx.connections[d.connectionType];
+    if (conn && conn.enabled === false) return false; // unknown type: show
+  }
+  return (d.strength ?? 1) >= ctx.strengthFilter;
+}
+
+function baseEdgeOpacity(d: SimLink, ctx: OpacityCtx): number {
+  if (d.connectionType === "alignment") return 0.85;
+  const isShared = ctx.focusIds.has(linkSrcId(d)) && ctx.focusIds.has(linkTgtId(d));
+  if (isShared) return 0.9;
+  return ctx.connections[d.connectionType]?.opacity ?? 0.6;
+}
+
+/** Hover > pinned shared-connections highlight > per-type settings. */
+function resolveEdgeOpacity(d: SimLink, ctx: OpacityCtx): number {
+  if (ctx.hoverId) {
+    const incident = linkSrcId(d) === ctx.hoverId || linkTgtId(d) === ctx.hoverId;
+    return incident ? 0.9 : 0.04;
+  }
+  if (ctx.highlightedId) {
+    // Spotlight edges between the pinned node and a focused entity (FIX-149).
+    const s = linkSrcId(d);
+    const t = linkTgtId(d);
+    const spotlight =
+      (s === ctx.highlightedId && ctx.focusIds.has(t)) ||
+      (t === ctx.highlightedId && ctx.focusIds.has(s));
+    return spotlight ? 1 : 0.1;
+  }
+  return baseEdgeOpacity(d, ctx);
+}
+
+function resolveNodeOpacity(n: SimNode, ctx: OpacityCtx): number {
+  if (ctx.hoverNeighborIds) return ctx.hoverNeighborIds.has(n.id) ? 1 : 0.12;
+  if (ctx.highlightedId) {
+    return n.id === ctx.highlightedId || ctx.focusIds.has(n.id) ? 1 : 0.2;
+  }
+  return 1;
+}
+
+// ── FIX-807 — edge hover labels with amounts ──────────────────────────────────
+// Compact-$ idiom shared by ChordGraph/SankeyGraph/etc. (this package doesn't
+// depend on @civitics/ui, where formatUSD lives).
+function fmtCompactUsd(usd: number): string {
+  if (usd >= 1_000_000_000) return `$${(usd / 1_000_000_000).toFixed(1)}B`;
+  if (usd >= 1_000_000) return `$${(usd / 1_000_000).toFixed(1)}M`;
+  if (usd >= 1_000) return `$${(usd / 1_000).toFixed(0)}K`;
+  return `$${Math.round(usd).toLocaleString("en-US")}`;
+}
+
+const VOTE_EDGE_TYPES = new Set([
+  "vote_yes", "vote_no", "vote_abstain", "nomination_vote_yes", "nomination_vote_no",
+]);
+
+function edgeHoverLabel(d: SimLink): string {
+  const typeLabel = (CONNECTION_TYPE_REGISTRY[d.connectionType]?.label ?? d.connectionType ?? "").replace(/_/g, " ");
+  if (CONNECTION_TYPE_REGISTRY[d.connectionType]?.hasAmount && d.amountUsd) {
+    const base = `${typeLabel} — ${fmtCompactUsd(d.amountUsd)}`;
+    return d.txCount ? `${base} · ${d.txCount.toLocaleString("en-US")} txs` : base;
+  }
+  if (VOTE_EDGE_TYPES.has(d.connectionType) && d.occurredAt) {
+    const date = new Date(d.occurredAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+    return `${typeLabel} · ${date}`;
+  }
+  return typeLabel;
+}
 
 // FIX-585 — distinct color for community-asserted edges promoted to the graph.
 // FIX-729 — ink: investigation edges read as hand-annotations on the record;
@@ -465,6 +566,72 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
     const [showInvestigation, setShowInvestigation] = useState(true);
     const hasInvestigationEdges = edges.some((e) => e.evidenceSource === "investigation");
 
+    // ── FIX-807 — latest-value refs for the opacity resolver ─────────────────
+    // Hover handlers are bound once per data rebuild; reading through refs
+    // means they never close over stale settings (the old bug: toggling a
+    // connection type didn't rebind them, so mouseleave restored last-load
+    // opacities).
+    const settingsRef = useRef(connections);
+    settingsRef.current = connections;
+    const focusIdsRef = useRef<Set<string>>(new Set());
+    focusIdsRef.current = new Set(focusEntities.map((fe) => fe.id));
+    const highlightedIdRef = useRef<string | null>(highlightedNodeId);
+    highlightedIdRef.current = highlightedNodeId;
+    const showInvestigationRef = useRef(showInvestigation);
+    showInvestigationRef.current = showInvestigation;
+    const strengthFilterRef = useRef(vizOptions?.strengthFilter ?? 0);
+    strengthFilterRef.current = vizOptions?.strengthFilter ?? 0;
+    const hoverIdRef = useRef<string | null>(null);
+    const hoverNeighborIdsRef = useRef<Set<string> | null>(null);
+    const edgeLabelGrpRef = useRef<d3.Selection<SVGGElement, unknown, null, undefined> | null>(null);
+    const edgeLabelSelRef = useRef<d3.Selection<SVGTextElement, SimLink, SVGGElement, unknown> | null>(null);
+
+    // The ONE writer for dimming/visibility. Every trigger (hover, type
+    // toggle, strength filter, shared-connections pin, data rebuild) funnels
+    // through here; style() is the only channel so nothing silently loses to
+    // an inline style set elsewhere.
+    const applyOpacity = useCallback(() => {
+      const link = linkSelRef.current;
+      const nodeGrp = nodeGrpRef.current;
+      if (!link || !nodeGrp) return;
+      const ctx: OpacityCtx = {
+        connections: settingsRef.current ?? {},
+        focusIds: focusIdsRef.current,
+        hoverId: hoverIdRef.current,
+        hoverNeighborIds: hoverNeighborIdsRef.current,
+        highlightedId: highlightedIdRef.current,
+        showInvestigation: showInvestigationRef.current,
+        strengthFilter: strengthFilterRef.current,
+      };
+
+      link
+        .style("display", (d: SimLink) => (edgeVisible(d, ctx) ? null : "none"))
+        .style("opacity", (d: SimLink) => resolveEdgeOpacity(d, ctx));
+
+      // Nodes whose every edge is hidden hide too. Focused entities, groups,
+      // and the USER node always stay visible.
+      const visibleNodeIds = new Set<string>();
+      link.each(function (d: SimLink) {
+        if (!edgeVisible(d, ctx)) return;
+        visibleNodeIds.add(linkSrcId(d));
+        visibleNodeIds.add(linkTgtId(d));
+      });
+      nodeGrp
+        .style("display", (n: SimNode) => {
+          if (ctx.focusIds.has(n.id)) return null;
+          if (n.type === "user" || n.type === "group") return null;
+          return visibleNodeIds.has(n.id) ? null : "none";
+        })
+        .style("opacity", (n: SimNode) => resolveNodeOpacity(n, ctx));
+
+      // Edge hover labels follow the hover target (visible edges only).
+      edgeLabelGrpRef.current?.attr("opacity", ctx.hoverId ? 1 : 0);
+      edgeLabelSelRef.current?.attr("opacity", (d: SimLink) => {
+        if (!ctx.hoverId || !edgeVisible(d, ctx)) return 0;
+        return linkSrcId(d) === ctx.hoverId || linkTgtId(d) === ctx.hoverId ? 1 : 0;
+      });
+    }, []);
+
     // ── Category C — data change: full re-init preserving positions ───────────
     useEffect(() => {
       const svgEl = svgRef.current;
@@ -525,6 +692,8 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
         amountUsd: e.amountUsd,
         strength: e.strength,
         metadata: e.metadata,
+        txCount: e.txCount,
+        occurredAt: e.occurredAt,
         evidenceSource: e.evidenceSource,
         investigationId: e.investigationId,
         investigationTitle: e.investigationTitle,
@@ -602,15 +771,6 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
         );
       }
 
-      function edgeOpacityFn(d: SimLink): number {
-        if (d.connectionType === "alignment") return 0.85;
-        const isShared =
-          focusIds.has(d.source?.id ?? d.fromId) &&
-          focusIds.has(d.target?.id ?? d.toId);
-        if (isShared) return 0.9;
-        return connections[d.connectionType]?.opacity ?? 0.6;
-      }
-
       function edgeWidthFn(d: SimLink): number {
         if (d.connectionType === "alignment") return 2;
         const isShared =
@@ -629,8 +789,6 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
         return base * 4;
       }
 
-      const hasConnectionFilter = connections && Object.keys(connections).length > 0;
-
       const linkGroup = g.append("g").attr("class", "links");
       const link = linkGroup
         .selectAll<SVGLineElement, SimLink>("line")
@@ -639,22 +797,13 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
         .attr("class", "link")
         .attr("stroke", edgeColor)
         .attr("stroke-width", edgeWidthFn)
-        .attr("stroke-opacity", edgeOpacityFn)
+        // FIX-807 — opacity + display are owned by applyOpacity() (single
+        // channel), called at the end of this rebuild.
         // FIX-585 — dash investigation edges so they read as asserted-not-derived.
         // FIX-747 — dash opposition (IE-against) edges so red opposition spend
         // reads as distinct from support money and from solid-red vote_no.
         .attr("stroke-dasharray", (d) =>
           d.evidenceSource === "investigation" ? "5 3" : d.connectionType === "opposition" ? "6 4" : null)
-        .style("display", (d) => {
-          // FIX-585 — investigation edges have their own toggle (independent of the
-          // connection-type filter, since they carry a real connection_type).
-          if (d.evidenceSource === "investigation") return showInvestigation ? "block" : "none";
-          if (!hasConnectionFilter) return "block";
-          const conn = connections[d.connectionType];
-          if (!conn) return "block";           // unknown type: show
-          if (conn.enabled === false) return "none"; // explicitly disabled: hide
-          return "block";
-        })
         .attr("marker-end", (d) => `url(#arrow-${d.connectionType})`);
 
       linkSelRef.current = link;
@@ -708,7 +857,9 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
           setInvestTooltip(null);
         });
 
-      // Edge labels (shown on hover)
+      // Edge labels (shown on hover). FIX-807 — amount-bearing edges carry
+      // "$47.2M · 1,234 txs" (txCount from the FIX-802 rollup); vote edges
+      // carry their date.
       const edgeLabelGroup = g.append("g").attr("class", "edge-labels").attr("opacity", 0);
       const edgeLabel = edgeLabelGroup
         .selectAll<SVGTextElement, SimLink>("text")
@@ -718,7 +869,10 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
         .attr("font-size", "9px")
         .attr("fill", edgeColor)
         .attr("font-weight", "600")
-        .text((d) => (CONNECTION_TYPE_REGISTRY[d.connectionType]?.label ?? d.connectionType ?? '').replace(/_/g, " "));
+        .text(edgeHoverLabel);
+
+      edgeLabelGrpRef.current = edgeLabelGroup;
+      edgeLabelSelRef.current = edgeLabel;
 
       // ── Node groups ───────────────────────────────────────────────────────
       const nodeGroup = g.append("g").attr("class", "nodes");
@@ -1105,19 +1259,12 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
 
       nodeGrp
         .on("mouseenter", function (event: MouseEvent, d) {
-          const ids = connectedIds(d);
-          nodeGrp.attr("opacity", (n) => (ids.has(n.id) ? 1 : 0.12));
-          link.attr("opacity", (e) => {
-            const sid = (e.source as SimNode).id ?? e.fromId;
-            const tid = (e.target as SimNode).id ?? e.toId;
-            return sid === d.id || tid === d.id ? 0.9 : 0.04;
-          });
-          edgeLabelGroup.attr("opacity", 1);
-          edgeLabel.attr("opacity", (e) => {
-            const sid = (e.source as SimNode).id ?? e.fromId;
-            const tid = (e.target as SimNode).id ?? e.toId;
-            return sid === d.id || tid === d.id ? 1 : 0;
-          });
+          // FIX-807 — set hover state on refs and repaint through the single
+          // resolver. No direct opacity writes here: leaving hover restores
+          // CURRENT settings (the old handlers closed over a stale opacity fn).
+          hoverIdRef.current = d.id;
+          hoverNeighborIdsRef.current = connectedIds(d);
+          applyOpacity();
           d3.select(this).select("circle,rect,path").attr("filter", "url(#fg-shadow)");
           const rect = svgEl.getBoundingClientRect();
           showTip(d, event.clientX - rect.left, event.clientY - rect.top);
@@ -1129,9 +1276,9 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
           onNodeHover?.(d, event.clientX - rect.left, event.clientY - rect.top);
         })
         .on("mouseleave", function () {
-          nodeGrp.attr("opacity", 1);
-          link.attr("opacity", edgeOpacityFn);
-          edgeLabelGroup.attr("opacity", 0);
+          hoverIdRef.current = null;
+          hoverNeighborIdsRef.current = null;
+          applyOpacity();
           d3.select(this).select("circle,rect,path").attr("filter", null);
           hideTip();
           onNodeHover?.(null, 0, 0);
@@ -1197,33 +1344,29 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
         }
       });
 
+      // FIX-807 — the DOM was rebuilt: any in-flight hover is gone. Reset
+      // hover state and paint the initial opacity/visibility pass.
+      hoverIdRef.current = null;
+      hoverNeighborIdsRef.current = null;
+      applyOpacity();
+
       return () => { sim.stop(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [nodes, edges]);
 
-    // ── Category A — Connection styles + shared edge highlighting ─────────────
+    // ── Category A — Connection styles (color/width/dash) ─────────────────────
+    // FIX-807 — opacity + display moved into applyOpacity(); this effect only
+    // owns the paint attributes that per-type settings drive.
     useEffect(() => {
       const link = linkSelRef.current;
-      const nodeGrp = nodeGrpRef.current;
       if (!link) return;
       // FIX-729 — scope-aware token resolution for SVG presentation attrs
       // (var() fails in .attr(); resolve to concrete rgb() first).
       const svgEl = svgRef.current;
 
       const focusIds = new Set(focusEntities.map((fe) => fe.id));
-      const hasConnectionFilter = connections && Object.keys(connections).length > 0;
-
-      const edgeVisible = (d: SimLink): boolean => {
-        // FIX-585 — investigation edges follow their own toggle, not the type filter.
-        if (d.evidenceSource === "investigation") return showInvestigation;
-        if (!hasConnectionFilter) return true;
-        const conn = connections[d.connectionType];
-        if (!conn) return true;
-        return conn.enabled !== false;
-      };
 
       link
-        .style("display", (d: SimLink) => (edgeVisible(d) ? "block" : "none"))
         .attr("stroke-dasharray", (d: SimLink) =>
           d.evidenceSource === "investigation" ? "5 3" : d.connectionType === "opposition" ? "6 4" : null)
         .attr("stroke", (d: SimLink) => {
@@ -1237,13 +1380,6 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
               ?? "rgb(var(--c-ink-soft))",
             svgEl
           );
-        })
-        .attr("stroke-opacity", (d: SimLink) => {
-          const isShared =
-            focusIds.has((d.source as SimNode).id ?? d.fromId) &&
-            focusIds.has((d.target as SimNode).id ?? d.toId);
-          if (isShared) return 0.9;
-          return connections[d.connectionType]?.opacity ?? 0.6;
         })
         .attr("stroke-width", (d: SimLink) => {
           const isShared =
@@ -1259,24 +1395,8 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
           return thickness * 4;
         });
 
-      // Hide nodes whose only edges were just disabled. Focused entities,
-      // FocusGroup nodes, and the USER node always stay visible.
-      if (nodeGrp) {
-        const visibleNodeIds = new Set<string>();
-        link.each(function (d: SimLink) {
-          if (!edgeVisible(d)) return;
-          const sid = (d.source as SimNode).id ?? d.fromId;
-          const tid = (d.target as SimNode).id ?? d.toId;
-          visibleNodeIds.add(sid);
-          visibleNodeIds.add(tid);
-        });
-        nodeGrp.style("display", (n: SimNode) => {
-          if (focusIds.has(n.id)) return null;
-          if (n.type === "user" || n.type === "group") return null;
-          if (n.type === "individual_bracket") return visibleNodeIds.has(n.id) ? null : "none";
-          return visibleNodeIds.has(n.id) ? null : "none";
-        });
-      }
+      applyOpacity();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [connections, focusEntities, showInvestigation]);
 
     // ── Category A — Node highlight for focus entities + color-by (FIX-804) ────
@@ -1330,41 +1450,12 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
     }, [loadingEntityId]);
 
     // ── Category A — Shared-connections highlight (FIX-149) ────────────────────
-    // Driven by SharedConnectionsBar pill clicks. Pulls focus to one node + its
-    // edges to the focused entities, fading everything else.
+    // Driven by SharedConnectionsBar pill clicks. FIX-807 — both the highlight
+    // and its clear go through the single resolver (the pin survives hover and
+    // clears fully; refs were updated during render).
     useEffect(() => {
-      const svgEl = svgRef.current;
-      const link = linkSelRef.current;
-      if (!svgEl) return;
-
-      const root = d3.select(svgEl);
-
-      if (!highlightedNodeId) {
-        // Clear: restore everyone to normal opacity. Stroke style is owned by
-        // the focus-entities effect, so we only touch what we changed.
-        root.selectAll<SVGGElement, SimNode>("g.node").style("opacity", 1);
-        link?.style("opacity", null);
-        return;
-      }
-
-      const focusIds = new Set(focusEntities.map((fe) => fe.id));
-      // Edges incident to the highlighted node + at least one focused entity:
-      // those are the "shared" edges we want to spotlight.
-      const isIncidentSharedEdge = (d: SimLink): boolean => {
-        const srcId = (d.source as SimNode).id ?? d.fromId;
-        const tgtId = (d.target as SimNode).id ?? d.toId;
-        if (srcId === highlightedNodeId && focusIds.has(tgtId)) return true;
-        if (tgtId === highlightedNodeId && focusIds.has(srcId)) return true;
-        return false;
-      };
-      const isIncidentNode = (d: SimNode): boolean =>
-        d.id === highlightedNodeId || focusIds.has(d.id);
-
-      root
-        .selectAll<SVGGElement, SimNode>("g.node")
-        .style("opacity", (d: SimNode) => (isIncidentNode(d) ? 1 : 0.2));
-
-      link?.style("opacity", (d: SimLink) => (isIncidentSharedEdge(d) ? 1 : 0.1));
+      applyOpacity();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [highlightedNodeId, focusEntities]);
 
     // ── Category B — Physics options ──────────────────────────────────────────
@@ -1509,13 +1600,11 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
     }, [vizOptions?.nodeSizeEncoding]);
 
     // ── Category A — Strength filter ─────────────────────────────────────────
+    // FIX-807 — folded into the single pass: this effect and the type-toggle
+    // effect previously both wrote style("display") on the same lines, so
+    // whichever ran last clobbered the other's hides.
     useEffect(() => {
-      const svgEl = svgRef.current;
-      if (!svgEl) return;
-      const threshold = vizOptions?.strengthFilter ?? 0;
-      d3.select(svgEl)
-        .selectAll<SVGLineElement, SimLink>(".links line")
-        .style("display", (d) => (d.strength ?? 1) >= threshold ? null : "none");
+      applyOpacity();
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [vizOptions?.strengthFilter]);
 

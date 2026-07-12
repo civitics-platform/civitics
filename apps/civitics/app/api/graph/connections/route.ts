@@ -959,6 +959,19 @@ export async function GET(request: Request) {
     const bracketEdges: GraphEdge[] = [];
 
     if (individualMode !== 'off' && individualMeta.size > 0) {
+      // FIX-592 — any node that is an endpoint of an investigation-promoted
+      // edge is EXEMPT from bracket collapse. Collapsing the donor node made
+      // the promoted edge fail the nodeIds guard below, silently dropping
+      // admin-reviewed evidence in the default bracket mode. The exempted
+      // donor passes through as a real node (its donation edges stay per-edge).
+      const investigationEndpointIds = new Set<string>();
+      for (const c of connections) {
+        if (c.evidence_source === "investigation") {
+          investigationEndpointIds.add(c.from_id);
+          investigationEndpointIds.add(c.to_id);
+        }
+      }
+
       const buckets = new Map<BucketKey, {
         totalCents: number;
         donorCount: number;
@@ -972,6 +985,9 @@ export async function GET(request: Request) {
         if (c.from_type !== 'financial_entity') continue;
         const meta = individualMeta.get(c.from_id);
         if (!meta) continue; // not an individual donor
+
+        // FIX-592 — investigation-edge endpoints render as real nodes
+        if (investigationEndpointIds.has(c.from_id)) continue;
 
         // Connector mode: pass through donors who donated to enough officials
         if (individualMode === 'connector' && meta.recipientCount >= connectorMin) continue;
