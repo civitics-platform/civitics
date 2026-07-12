@@ -46,6 +46,12 @@ export interface ForceGraphProps {
    * incident edges are highlighted. Driven by SharedConnectionsBar pill clicks.
    */
   highlightedNodeId?: string | null;
+  /**
+   * FIX-731 — external ref to the rendered <svg>, same convention as every
+   * other viz (Treemap/Chord/…): GraphPage's ScreenshotPanel reads it for PNG
+   * export. A prop (not a JSX ref) because next/dynamic does not forward refs.
+   */
+  svgRef?: React.RefObject<SVGSVGElement>;
   onNodeClick?: (node: GraphNode) => void;
   onNodeHover?: (node: GraphNode | null, x: number, y: number) => void;
   className?: string;
@@ -112,11 +118,55 @@ const NODE_STROKE: Record<string, string> = {
   user:               "rgb(var(--c-amber))",
 };
 
+// Mirrors the barrel's PARTY_COLORS (index.ts, FIX-729) — duplicated here
+// because importing from ../index would cycle (index re-exports this file).
 const PARTY_STROKE: Record<string, string> = {
   democrat:    "rgb(var(--c-blue))",
   republican:  "rgb(var(--c-accent))",
   independent: "rgb(var(--c-viz-7))", // wine — the token system has no purple
+  nonpartisan: "rgb(var(--c-ink-soft))",
 };
+
+// FIX-804 — "Color by" support. Neutral for nodes a mode doesn't apply to.
+const NEUTRAL_STROKE = "rgb(var(--c-ink-soft))";
+
+// Categorical hash into the viz ramp for the industry/state encodings. Stable
+// per key so the same industry/state always gets the same hue within a session.
+const VIZ_RAMP = [
+  "rgb(var(--c-viz-1))", "rgb(var(--c-viz-2))", "rgb(var(--c-viz-3))",
+  "rgb(var(--c-viz-4))", "rgb(var(--c-viz-5))", "rgb(var(--c-viz-6))",
+  "rgb(var(--c-viz-7))", "rgb(var(--c-viz-8))", "rgb(var(--c-viz-9))",
+];
+
+function rampColor(key: string): string {
+  let h = 0;
+  for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0;
+  return VIZ_RAMP[h % VIZ_RAMP.length]!;
+}
+
+/**
+ * FIX-804 — stroke token for a node under the active nodeColorEncoding.
+ * 'entity_type' preserves the historical behavior exactly (officials stroke by
+ * party, everything else by NODE_STROKE). Group nodes always keep their own
+ * color; individual_bracket keeps its per-tier color (drawn at render time)
+ * only under 'entity_type' — other modes treat brackets as neutral.
+ * Returns a token string — resolveColor() it at .attr() sites.
+ */
+function nodeStrokeToken(d: GraphNode, encoding: string | undefined): string {
+  if (d.type === "group" && d.metadata?.color) return d.metadata.color as string;
+  switch (encoding) {
+    case "party_affiliation":
+      return d.party ? (PARTY_STROKE[d.party.toLowerCase()] ?? NEUTRAL_STROKE) : NEUTRAL_STROKE;
+    case "industry_sector":
+      return d.industryTag ? rampColor(d.industryTag) : NEUTRAL_STROKE;
+    case "state_region":
+      return d.state ? rampColor(d.state) : NEUTRAL_STROKE;
+    default: // 'entity_type' + unknown values
+      return d.type === "official" && d.party
+        ? (PARTY_STROKE[d.party.toLowerCase()] ?? NODE_STROKE[d.type] ?? "rgb(var(--c-blue))")
+        : (NODE_STROKE[d.type] ?? NEUTRAL_STROKE);
+  }
+}
 
 // ── Type-cluster angles ───────────────────────────────────────────────────────
 // Fixed semantic compass: 0 = right, -π/2 = up, π/2 = down (SVG y-down).
@@ -367,10 +417,13 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
       onRemoveGroup,
       onRetryGroup,
       onOpenDonorList,
+      svgRef: externalSvgRef,
     },
     forwardedRef
   ) {
-    const svgRef       = useRef<SVGSVGElement>(null);
+    const internalSvgRef = useRef<SVGSVGElement>(null);
+    // FIX-731 — external prop ref wins (screenshot export); internal fallback.
+    const svgRef       = externalSvgRef ?? internalSvgRef;
     const simRef       = useRef<d3.Simulation<SimNode, SimLink> | null>(null);
     const linkSelRef   = useRef<d3.Selection<SVGLineElement, SimLink, SVGGElement, unknown> | null>(null);
     const nodeGrpRef   = useRef<d3.Selection<SVGGElement, SimNode, SVGGElement, unknown> | null>(null);
@@ -707,14 +760,8 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
               ? withAlpha(d.metadata.color as string, 0.2, svgEl)
               : pal.termPanel)
           : pal.cardFill;
-        const stroke = resolveColor(
-          d.type === "group" && d.metadata?.color
-            ? (d.metadata.color as string)
-            : d.type === "official" && d.party
-              ? (PARTY_STROKE[d.party.toLowerCase()] ?? NODE_STROKE[d.type] ?? "rgb(var(--c-blue))")
-              : (NODE_STROKE[d.type] ?? "rgb(var(--c-ink-soft))"),
-          svgEl
-        );
+        // FIX-804 — stroke honors the active "Color by" encoding.
+        const stroke = resolveColor(nodeStrokeToken(d, vizOptions?.nodeColorEncoding), svgEl);
 
         // Store baseRadius for focus highlight effect
         (d as SimNode).baseRadius = r;
@@ -1226,7 +1273,7 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
       }
     }, [connections, focusEntities, showInvestigation]);
 
-    // ── Category A — Node highlight for focus entities ─────────────────────────
+    // ── Category A — Node highlight for focus entities + color-by (FIX-804) ────
     useEffect(() => {
       const nodeGrp = nodeGrpRef.current;
       if (!nodeGrp) return;
@@ -1234,6 +1281,7 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
       const svgEl = svgRef.current;
 
       const focusIds = new Set(focusEntities.map((fe) => fe.id));
+      const encoding = vizOptions?.nodeColorEncoding;
 
       nodeGrp
         .selectAll<SVGGElement, SimNode>(".node-circle")
@@ -1245,15 +1293,11 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
               default:           return resolveToken("--c-viz-7", svgEl); // wine — no purple in the token system
             }
           }
-          return resolveColor(
-            d.type === "official" && d.party
-              ? (PARTY_STROKE[d.party.toLowerCase()] ?? NODE_STROKE[d.type] ?? "rgb(var(--c-blue))")
-              : (NODE_STROKE[d.type] ?? "rgb(var(--c-ink-soft))"),
-            svgEl
-          );
+          return resolveColor(nodeStrokeToken(d, encoding), svgEl);
         })
         .attr("stroke-width", (d: SimNode) => (focusIds.has(d.id) ? 3 : d.type === "official" ? 3 : 2));
-    }, [focusEntities]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [focusEntities, vizOptions?.nodeColorEncoding]);
 
     // ── Category A — Label visibility ─────────────────────────────────────────
     useEffect(() => {

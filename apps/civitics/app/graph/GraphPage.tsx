@@ -42,6 +42,11 @@ const HierarchyGraph = dynamic(() => import("@civitics/graph").then((m) => ({ de
 const MatrixGraph    = dynamic(() => import("@civitics/graph").then((m) => ({ default: m.MatrixGraph })),    { ssr: false });
 const AlignmentGraph = dynamic(() => import("@civitics/graph").then((m) => ({ default: m.AlignmentGraph })), { ssr: false });
 const SankeyGraph    = dynamic(() => import("@civitics/graph").then((m) => ({ default: m.SankeyGraph })),    { ssr: false });
+// FIX-733 — the FIX-217 trio was registry-selectable but never mounted here,
+// so picking Scatter/Choropleth/Gantt rendered a blank canvas.
+const ScatterGraph    = dynamic(() => import("@civitics/graph").then((m) => ({ default: m.ScatterGraph })),    { ssr: false });
+const ChoroplethGraph = dynamic(() => import("@civitics/graph").then((m) => ({ default: m.ChoroplethGraph })), { ssr: false });
+const GanttGraph      = dynamic(() => import("@civitics/graph").then((m) => ({ default: m.GanttGraph })),      { ssr: false });
 
 // ── GraphPage ──────────────────────────────────────────────────────────────────
 
@@ -187,7 +192,7 @@ export function GraphPage({ initialCode, aiEnabled = true }: GraphPageProps = {}
 
     const params = new URL(window.location.href).searchParams;
     const vizParam = params.get("viz");
-    const validVizTypes: VizType[] = ["force", "chord", "treemap", "sunburst", "spending", "hierarchy", "matrix", "alignment", "sankey"];
+    const validVizTypes: VizType[] = ["force", "chord", "treemap", "sunburst", "spending", "hierarchy", "matrix", "alignment", "sankey", "scatter", "choropleth", "gantt"];
     if (!vizParam || !validVizTypes.includes(vizParam as VizType)) return;
 
     vizHandoffRef.current = true;
@@ -403,15 +408,20 @@ export function GraphPage({ initialCode, aiEnabled = true }: GraphPageProps = {}
     setHighlightedSharedId(null);
   }, [view.focus.entities]);
 
-  // ── SVG refs for screenshot (chord / treemap / sunburst) ─────────────────
-  // Force graph uses id="force-graph-canvas" via registry selector
-  const chordSvgRef     = useRef<SVGSVGElement>(null);
-  const treemapSvgRef   = useRef<SVGSVGElement>(null);
-  const sunburstSvgRef  = useRef<SVGSVGElement>(null);
-  const hierarchySvgRef = useRef<SVGSVGElement>(null);
-  const matrixSvgRef    = useRef<SVGSVGElement>(null);
-  const alignmentSvgRef = useRef<SVGSVGElement>(null);
-  const sankeySvgRef    = useRef<SVGSVGElement>(null);
+  // ── SVG refs for screenshot ───────────────────────────────────────────────
+  // FIX-731 — the force ref rides a `svgRef` prop (not a JSX ref: next/dynamic
+  // doesn't forward refs), same convention as every other viz below.
+  const forceSvgRef      = useRef<SVGSVGElement>(null);
+  const chordSvgRef      = useRef<SVGSVGElement>(null);
+  const treemapSvgRef    = useRef<SVGSVGElement>(null);
+  const sunburstSvgRef   = useRef<SVGSVGElement>(null);
+  const hierarchySvgRef  = useRef<SVGSVGElement>(null);
+  const matrixSvgRef     = useRef<SVGSVGElement>(null);
+  const alignmentSvgRef  = useRef<SVGSVGElement>(null);
+  const sankeySvgRef     = useRef<SVGSVGElement>(null);
+  const scatterSvgRef    = useRef<SVGSVGElement>(null);
+  const choroplethSvgRef = useRef<SVGSVGElement>(null);
+  const ganttSvgRef      = useRef<SVGSVGElement>(null);
 
   // ── Keyboard: [ = left panel, ] = right panel ─────────────────────────────
   useEffect(() => {
@@ -465,14 +475,19 @@ export function GraphPage({ initialCode, aiEnabled = true }: GraphPageProps = {}
 
   function getScreenshotRef() {
     switch (view.style.vizType) {
-      case "chord":     return chordSvgRef;
-      case "treemap":   return treemapSvgRef;
-      case "sunburst":  return sunburstSvgRef;
-      case "hierarchy": return hierarchySvgRef;
-      case "matrix":    return matrixSvgRef;
-      case "alignment": return alignmentSvgRef;
-      case "sankey":    return sankeySvgRef;
-      default:          return null; // force uses #force-graph-canvas via registry
+      case "chord":      return chordSvgRef;
+      case "treemap":    return treemapSvgRef;
+      case "sunburst":   return sunburstSvgRef;
+      case "hierarchy":  return hierarchySvgRef;
+      case "matrix":     return matrixSvgRef;
+      case "alignment":  return alignmentSvgRef;
+      case "sankey":     return sankeySvgRef;
+      case "scatter":    return scatterSvgRef;    // FIX-733
+      case "choropleth": return choroplethSvgRef; // FIX-733
+      case "gantt":      return ganttSvgRef;      // FIX-733
+      // FIX-731 — returning null here made the force Download PNG a silent
+      // no-op (ScreenshotPanel reads svgRef.current at click time).
+      default:           return forceSvgRef;
     }
   }
 
@@ -668,6 +683,7 @@ export function GraphPage({ initialCode, aiEnabled = true }: GraphPageProps = {}
                 </div>
               ) : (
                 <ForceGraph
+                  svgRef={forceSvgRef}
                   nodes={displayNodes}
                   edges={displayEdges}
                   loadingEntityId={loadingEntityId}
@@ -806,6 +822,42 @@ export function GraphPage({ initialCode, aiEnabled = true }: GraphPageProps = {}
                 className="w-full h-full"
                 svgRef={sankeySvgRef}
                 vizOptions={view.style.vizOptions.sankey}
+              />
+            </div>
+          )}
+
+          {/* FIX-733 — the FIX-217 trio, previously selectable but unmounted */}
+          {vizType === "scatter" && (
+            <div className="absolute inset-0">
+              <ScatterGraph
+                className="w-full h-full"
+                svgRef={scatterSvgRef}
+                vizOptions={view.style.vizOptions.scatter}
+                primaryEntityId={primaryEntity?.id ?? null}
+                primaryGroup={primaryGroup}
+              />
+            </div>
+          )}
+
+          {vizType === "choropleth" && (
+            <div className="absolute inset-0">
+              <ChoroplethGraph
+                className="w-full h-full"
+                svgRef={choroplethSvgRef}
+                vizOptions={view.style.vizOptions.choropleth}
+                primaryEntityId={primaryEntity?.id ?? null}
+              />
+            </div>
+          )}
+
+          {vizType === "gantt" && (
+            <div className="absolute inset-0">
+              <GanttGraph
+                className="w-full h-full"
+                svgRef={ganttSvgRef}
+                vizOptions={view.style.vizOptions.gantt}
+                primaryEntityId={primaryEntity?.type === "agency" ? primaryEntity.id : null}
+                primaryEntityName={primaryEntity?.type === "agency" ? primaryEntity.name : null}
               />
             </div>
           )}

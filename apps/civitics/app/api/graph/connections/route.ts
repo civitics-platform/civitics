@@ -142,9 +142,13 @@ type MvRollupRow = {
   total_cents: number | null;
   tx_count: number | null;
   tail_donor_count: number | null;
+  // FIX-804 — denormalized at MV refresh (FIX-518); forwarded onto donor node
+  // payloads for the "Color by: Industry" encoding.
+  industry_tag: string | null;
+  industry_label: string | null;
 };
 
-type MvDonorAgg = { donorId: string; name: string; entityType: string; cents: number; tx: number };
+type MvDonorAgg = { donorId: string; name: string; entityType: string; cents: number; tx: number; industryTag?: string; industryLabel?: string };
 
 /**
  * Aggregate bucket for everything that stays unnamed on the graph: the MV
@@ -376,7 +380,7 @@ export async function GET(request: Request) {
     //                name source for aggregate edges)
     //   mvTxCounts   pseudo-row id → tx_count (edge payload txCount)
     //   tailAggs     per (official, type) unnamed-remainder aggregates
-    const mvDonorInfo = new Map<string, { label: string; subType: string }>();
+    const mvDonorInfo = new Map<string, { label: string; subType: string; industryTag?: string; industryLabel?: string }>();
     const mvTxCounts = new Map<string, number>();
     const tailAggs = new Map<string, TailAgg>();
 
@@ -413,7 +417,7 @@ export async function GET(request: Request) {
         withDbTimeout(
           supabase
             .from("official_donor_rollup_mv")
-            .select("relationship_type, rank, donor_id, donor_name, entity_type, total_cents, tx_count, tail_donor_count")
+            .select("relationship_type, rank, donor_id, donor_name, entity_type, total_cents, tx_count, tail_donor_count, industry_tag, industry_label")
             .eq("official_id", entityId)
             .in("relationship_type", ["donation", "ie_support", "ie_oppose"])
             .order("rank", { ascending: true }),
@@ -517,6 +521,7 @@ export async function GET(request: Request) {
               entityType: r.entity_type ?? "unknown",
               cents,
               tx,
+              ...(r.industry_tag ? { industryTag: r.industry_tag, industryLabel: r.industry_label ?? undefined } : {}),
             });
           }
         }
@@ -557,13 +562,13 @@ export async function GET(request: Request) {
         for (const d of namedDonation) {
           const row = mvPseudoRow(entityId, d, "donation");
           mvTxCounts.set(row.id, d.tx);
-          mvDonorInfo.set(d.donorId, { label: d.name, subType: d.entityType });
+          mvDonorInfo.set(d.donorId, { label: d.name, subType: d.entityType, industryTag: d.industryTag, industryLabel: d.industryLabel });
           direct.push(row);
         }
         for (const d of namedOpposition) {
           const row = mvPseudoRow(entityId, d, "opposition");
           mvTxCounts.set(row.id, d.tx);
-          mvDonorInfo.set(d.donorId, { label: d.name, subType: d.entityType });
+          mvDonorInfo.set(d.donorId, { label: d.name, subType: d.entityType, industryTag: d.industryTag, industryLabel: d.industryLabel });
           direct.push(row);
         }
 
@@ -867,7 +872,10 @@ export async function GET(request: Request) {
       ? "id, entity_type, recipient_count, metadata, is_synthetic"
       : "id, entity_type, recipient_count, is_synthetic";
 
-    type OfficialNameRow = { id: string; full_name: string; party: string | null; is_synthetic: boolean | null };
+    // FIX-804 — state rides the officials name batch via the single
+    // officials_jurisdiction_id_fkey embed (jurisdictions.name is the plain
+    // state name). NOT metadata->>'state' — that is {} for federal officials.
+    type OfficialNameRow = { id: string; full_name: string; party: string | null; is_synthetic: boolean | null; jurisdictions: { name: string } | null };
     type AgencyNameRow   = { id: string; name: string; acronym: string | null; is_synthetic: boolean | null };
     type ProposalNameRow = { id: string; title: string | null; is_synthetic: boolean | null };
     type BillDetailRow   = { proposal_id: string; bill_number: string | null };
@@ -879,7 +887,7 @@ export async function GET(request: Request) {
       fetchChunkedByIds<FinMetaRow>(mvFinancialIds, (ids) =>
         withDbTimeout(supabase.from("financial_entities").select(mvFinSelect).in("id", ids), 5000, "connections:fin-mv-meta")),
       fetchChunkedByIds<OfficialNameRow>(officialIds, (ids) =>
-        withDbTimeout(supabase.from("officials").select("id, full_name, party, is_synthetic").in("id", ids), 5000, "connections:official-names")),
+        withDbTimeout(supabase.from("officials").select("id, full_name, party, is_synthetic, jurisdictions(name)").in("id", ids), 5000, "connections:official-names")),
       fetchChunkedByIds<AgencyNameRow>(agencyIds, (ids) =>
         withDbTimeout(supabase.from("agencies").select("id, name, acronym, is_synthetic").in("id", ids), 5000, "connections:agency-names")),
       fetchChunkedByIds<ProposalNameRow>(proposalIds, (ids) =>
@@ -898,8 +906,8 @@ export async function GET(request: Request) {
     }
 
     // ── Build name lookup ───────────────────────────────────────────────────
-    const nameMap = new Map<string, { label: string; party?: string; subType?: string; role?: string; isSynthetic?: boolean }>();
-    for (const o of officialRows) nameMap.set(o.id, { label: o.full_name, party: o.party ?? undefined, isSynthetic: o.is_synthetic ?? false });
+    const nameMap = new Map<string, { label: string; party?: string; subType?: string; role?: string; isSynthetic?: boolean; state?: string; industryTag?: string; industryLabel?: string }>();
+    for (const o of officialRows) nameMap.set(o.id, { label: o.full_name, party: o.party ?? undefined, isSynthetic: o.is_synthetic ?? false, state: o.jurisdictions?.name ?? undefined });
     for (const a of agencyRows) nameMap.set(a.id, { label: a.acronym ?? a.name, isSynthetic: a.is_synthetic ?? false });
     for (const p of proposalRows) {
       // FIX-123: bill_number ("HR 1234") goes into role so the tooltip subtitle
@@ -930,7 +938,7 @@ export async function GET(request: Request) {
     // individual meta from the slim fetch.
     for (const [id, info] of mvDonorInfo) {
       const meta = mvFinMeta.get(id);
-      nameMap.set(id, { label: info.label, subType: info.subType, isSynthetic: meta?.is_synthetic ?? false });
+      nameMap.set(id, { label: info.label, subType: info.subType, isSynthetic: meta?.is_synthetic ?? false, industryTag: info.industryTag, industryLabel: info.industryLabel });
       if (info.subType === 'individual') {
         const m = (meta?.metadata ?? null) as Record<string, string> | null;
         individualMeta.set(id, {
@@ -1126,6 +1134,9 @@ export async function GET(request: Request) {
         party: info.party as GraphNode["party"],
         ...(info.role ? { role: info.role } : {}),
         ...(info.isSynthetic ? { isSynthetic: true } : {}),
+        // FIX-804 — color-by payload: state (officials) + industry (rollup donors)
+        ...(info.state ? { state: info.state } : {}),
+        ...(info.industryTag ? { industryTag: info.industryTag, industryLabel: info.industryLabel } : {}),
         ...(donationTotalCents != null ? { donationTotal: donationTotalCents } : {}),
         ...(isCollapsed
           ? { collapsed: true, connectionCount: collapsedNodes.get(id) }

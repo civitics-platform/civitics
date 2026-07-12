@@ -57,6 +57,20 @@ export interface GraphNode {
   /** True when this node has 50+ connections and is collapsed (force graph only). */
   collapsed?: boolean
   /**
+   * State name for officials — jurisdictions.name via officials.jurisdiction_id
+   * (NOT metadata->>'state', which is {} for federal officials). Drives the
+   * "Color by: State" encoding (FIX-804).
+   */
+  state?: string
+  /**
+   * Donor industry, denormalized from official_donor_rollup_mv on
+   * rollup-sourced donor nodes (FIX-802 read path). Drives the
+   * "Color by: Industry" encoding (FIX-804). Absent on non-donor /
+   * untagged nodes — those render neutral.
+   */
+  industryTag?: string
+  industryLabel?: string
+  /**
    * True when the backing entity is AI-generated demonstration content
    * (entity.is_synthetic, FIX-572). Drives the persistent SYNTHETIC mark on the
    * node + in NodePopup (SF-P2). 0 rows true today — behavior-neutral wiring.
@@ -183,7 +197,13 @@ export interface ForceOptions {
     | 'single_color'
   singleColor: string
   edgeThicknessEncoding: 'amount_proportional' | 'strength_proportional' | 'uniform'
-  edgeOpacity: number
+  /**
+   * @deprecated FIX-804 — the global edge-opacity control was a placebo (read
+   * only by the deleted legacy ForceGraph) and redundant with per-type opacity
+   * in ConnectionStyleRow. Key retained so serialized snapshots/presets
+   * deserialize cleanly; ignored on read.
+   */
+  edgeOpacity?: number
   theme: 'light' | 'dark' | 'print'
   // Physics — Category B (restart simulation, no re-fetch)
   charge?: number        // many-body strength, default: -300

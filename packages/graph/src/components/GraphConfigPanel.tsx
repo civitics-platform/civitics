@@ -320,7 +320,9 @@ function ForceSettings({ view, hooks, graphMeta }: { view: GraphView; hooks: Use
         ]}
         onChange={v => set('nodeColorEncoding', v)}
       />
-      <LabeledSlider label="Edge opacity" min={0} max={1} step={0.05} value={opts?.edgeOpacity ?? 0.7} onChange={v => set('edgeOpacity', v)} />
+      {/* FIX-804 — global "Edge opacity" slider deleted: it was a placebo (read
+          only by the removed legacy ForceGraph) and redundant with the per-type
+          opacity control in ConnectionStyleRow. */}
       <LabeledSelect
         label="Labels"
         value={opts?.labels ?? 'hover'}
