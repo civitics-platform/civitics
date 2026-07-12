@@ -38,6 +38,17 @@ export interface GraphHeaderProps {
    * wordmark link.
    */
   brand?: ReactNode;
+  /**
+   * FIX-814 — drawer toggles for narrow viewports. When provided, the header
+   * renders "Focus" / "View" buttons (visible below lg) that open the
+   * off-canvas panel drawers.
+   */
+  drawerControls?: {
+    onToggleFocus: () => void;
+    onToggleView: () => void;
+    focusOpen: boolean;
+    viewOpen: boolean;
+  };
 }
 
 interface EntityResult {
@@ -66,6 +77,7 @@ export function GraphHeader({
   aiEnabled = true,
   graphMeta,
   brand,
+  drawerControls,
 }: GraphHeaderProps) {
   const activeViz = VIZ_REGISTRY.find(v => v.id === view.style.vizType);
 
@@ -299,8 +311,10 @@ export function GraphHeader({
       {/* ── Center cluster: search + Path + AI Explain (FIX-133) ─────────── */}
       <div className="flex items-center gap-1.5 flex-1 px-3 border-r border-rule min-w-0">
 
-      {/* Entity search */}
-      <div className="relative flex-1 max-w-72" ref={searchRef}>
+      {/* Entity search — FIX-811: min-width so the input can't collapse to a
+          sliver on narrow viewports; the results dropdown carries its own
+          min-width so rows stay readable even when the anchor is tight. */}
+      <div className="relative flex-1 min-w-[150px] max-w-72" ref={searchRef}>
         <div className="relative">
           <svg
             className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-ink-soft pointer-events-none"
@@ -314,6 +328,7 @@ export function GraphHeader({
             onChange={e => setQuery(e.target.value)}
             onFocus={() => results.length > 0 && setSearchOpen(true)}
             placeholder="Add to graph…"
+            aria-label="Search entities to add to the graph"
             className="w-full pl-8 pr-3 py-1.5 text-xs bg-paper border border-rule rounded-md text-ink placeholder:text-ink-soft focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors"
           />
           {searching && (
@@ -322,11 +337,12 @@ export function GraphHeader({
         </div>
 
         {searchOpen && results.length > 0 && (
-          <div className="absolute top-full left-0 right-0 mt-1 bg-card border border-rule rounded-lg shadow-lg z-50 max-h-60 overflow-y-auto">
+          <div className="absolute top-full left-0 mt-1 w-full min-w-[260px] max-w-[80vw] bg-card border border-rule rounded-lg shadow-lg z-50 max-h-60 overflow-y-auto">
             {results.map(r => (
               <button
                 key={r.id}
                 onMouseDown={e => { e.preventDefault(); selectEntity(r); }}
+                aria-label={`Add ${r.label} to graph`}
                 className="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-ink/5 transition-colors text-left"
               >
                 <span
@@ -347,13 +363,15 @@ export function GraphHeader({
         )}
       </div>
 
-      {/* FIX-132: Path button — toggles PathFinder overlay. */}
+      {/* FIX-132: Path button — toggles PathFinder overlay. FIX-811 — icon-only
+          below md so the search input keeps room on narrow viewports. */}
       <button
         onClick={() => setPathOpen(p => !p)}
         title="Find shortest path between two entities"
+        aria-label="Find shortest path between two entities"
         className={`shrink-0 px-2.5 py-1.5 text-xs font-medium rounded-md transition-colors ${pathOpen ? 'bg-accent/10 text-accent' : 'hover:bg-ink/10 text-ink-soft'}`}
       >
-        🔗 Path
+        🔗<span className="hidden md:inline"> Path</span>
       </button>
 
       <button
@@ -362,17 +380,42 @@ export function GraphHeader({
         title={aiEnabled
           ? "AI-generated summary of the current graph"
           : "AI summaries are temporarily disabled"}
+        aria-label="AI-generated summary of the current graph"
         className="shrink-0 px-2.5 py-1.5 text-xs font-medium rounded-md hover:bg-ink/10 transition-colors text-ink-soft disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
       >
-        ✨ Explain
+        ✨<span className="hidden md:inline"> Explain</span>
       </button>
 
       </div>
 
-      {/* ── Right cluster: share + screenshot + fullscreen (FIX-133) ────── */}
+      {/* ── Right cluster: drawers (narrow) + share + screenshot + fullscreen ── */}
       <div className="flex items-center gap-1 shrink-0 pl-3">
+        {/* FIX-814 — drawer toggles, only relevant below lg where the inline
+            panels are replaced by off-canvas drawers. */}
+        {drawerControls && (
+          <>
+            <button
+              onClick={drawerControls.onToggleFocus}
+              aria-expanded={drawerControls.focusOpen}
+              aria-label="Toggle focus panel"
+              className={`lg:hidden px-2.5 py-1.5 text-xs font-medium rounded-md transition-colors ${drawerControls.focusOpen ? 'bg-accent/10 text-accent' : 'hover:bg-ink/10 text-ink-soft'}`}
+            >
+              Focus
+            </button>
+            <button
+              onClick={drawerControls.onToggleView}
+              aria-expanded={drawerControls.viewOpen}
+              aria-label="Toggle view panel"
+              className={`lg:hidden px-2.5 py-1.5 text-xs font-medium rounded-md transition-colors ${drawerControls.viewOpen ? 'bg-accent/10 text-accent' : 'hover:bg-ink/10 text-ink-soft'}`}
+            >
+              View
+            </button>
+          </>
+        )}
+
         <button
           onClick={onShare}
+          aria-label="Share this graph"
           className="px-2.5 py-1.5 text-xs font-medium rounded-md hover:bg-ink/10 transition-colors text-ink-soft"
         >
           Share
@@ -380,9 +423,12 @@ export function GraphHeader({
 
         <button
           onClick={onScreenshot}
+          title="Screenshot"
+          aria-label="Screenshot the graph"
           className="px-2.5 py-1.5 text-xs font-medium rounded-md hover:bg-ink/10 transition-colors text-ink-soft"
         >
-          Screenshot
+          <span className="md:hidden" aria-hidden="true">📷</span>
+          <span className="hidden md:inline">Screenshot</span>
         </button>
 
         <button

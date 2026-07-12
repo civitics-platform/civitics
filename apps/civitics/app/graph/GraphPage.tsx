@@ -16,6 +16,8 @@ import {
   createCustomGroup,
   BRACKET_TIERS,
   DonorListPanel,
+  LEFT_PANEL_DEFAULT_WIDTH,
+  RIGHT_PANEL_DEFAULT_WIDTH,
 } from "@civitics/graph";
 import type { VizType, FocusEntity, FocusGroup, GroupFilter, GraphNodeV2 as GraphNode, GraphEdgeV2 as GraphEdge, GraphMeta, UserNodeInfo, IndividualDisplayMode } from "@civitics/graph";
 import { isGraphSeedableKind } from "@/lib/graph-seedable-kinds";
@@ -46,6 +48,48 @@ const SankeyGraph    = dynamic(() => import("@civitics/graph").then((m) => ({ de
 const ScatterGraph    = dynamic(() => import("@civitics/graph").then((m) => ({ default: m.ScatterGraph })),    { ssr: false });
 const ChoroplethGraph = dynamic(() => import("@civitics/graph").then((m) => ({ default: m.ChoroplethGraph })), { ssr: false });
 const GanttGraph      = dynamic(() => import("@civitics/graph").then((m) => ({ default: m.GanttGraph })),      { ssr: false });
+
+// ── PanelResizeHandle (FIX-813) ───────────────────────────────────────────────
+// Thin drag strip on a panel's inner edge. Pointer-capture drag reports raw
+// clientX to the owner (which converts to a width); double-click resets.
+
+function PanelResizeHandle({
+  label,
+  onDrag,
+  onDragEnd,
+  onReset,
+}: {
+  label: string;
+  onDrag: (clientX: number) => void;
+  onDragEnd: () => void;
+  onReset: () => void;
+}) {
+  return (
+    <div
+      role="separator"
+      aria-orientation="vertical"
+      aria-label={label}
+      title="Drag to resize — double-click to reset"
+      className="w-1 shrink-0 cursor-col-resize bg-transparent hover:bg-accent/40 active:bg-accent/60 transition-colors touch-none"
+      onPointerDown={e => {
+        e.preventDefault();
+        const el = e.currentTarget;
+        el.setPointerCapture(e.pointerId);
+        const move = (ev: PointerEvent) => onDrag(ev.clientX);
+        const up = () => {
+          el.removeEventListener("pointermove", move);
+          el.removeEventListener("pointerup", up);
+          el.removeEventListener("pointercancel", up);
+          onDragEnd();
+        };
+        el.addEventListener("pointermove", move);
+        el.addEventListener("pointerup", up);
+        el.addEventListener("pointercancel", up);
+      }}
+      onDoubleClick={onReset}
+    />
+  );
+}
 
 // ── GraphPage ──────────────────────────────────────────────────────────────────
 
@@ -411,11 +455,52 @@ export function GraphPage({ initialCode, aiEnabled = true }: GraphPageProps = {}
   }, [graphMeta, userNodeVisible, alignmentEdges.length]);
 
   // ── Panel collapse state ──────────────────────────────────────────────────
-  // Auto-collapse both panels on small screens (<768px) — panels are fixed-width
-  // and would leave no canvas space on mobile.
-  const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
-  const [leftCollapsed,  setLeftCollapsed]  = useState(isMobile);
+  const [leftCollapsed,  setLeftCollapsed]  = useState(false);
   const [rightCollapsed, setRightCollapsed] = useState(true);
+
+  // ── Panel widths — drag-resize (FIX-813) ──────────────────────────────────
+  // Min 180 / max 400, double-click resets to default, persists in localStorage.
+  const PANEL_MIN = 180;
+  const PANEL_MAX = 400;
+  const WIDTH_KEYS = { left: "civitics-graph-panel-width-left", right: "civitics-graph-panel-width-right" } as const;
+  const clampWidth = (w: number) => Math.max(PANEL_MIN, Math.min(PANEL_MAX, Math.round(w)));
+  const [leftWidth,  setLeftWidth]  = useState(LEFT_PANEL_DEFAULT_WIDTH);
+  const [rightWidth, setRightWidth] = useState(RIGHT_PANEL_DEFAULT_WIDTH);
+  useEffect(() => {
+    // localStorage after mount — reading during render would mismatch SSR markup.
+    try {
+      const l = parseInt(localStorage.getItem(WIDTH_KEYS.left)  ?? "", 10);
+      const r = parseInt(localStorage.getItem(WIDTH_KEYS.right) ?? "", 10);
+      if (Number.isFinite(l)) setLeftWidth(clampWidth(l));
+      if (Number.isFinite(r)) setRightWidth(clampWidth(r));
+    } catch { /* localStorage unavailable */ }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  function persistWidth(side: "left" | "right", w: number | null) {
+    try {
+      if (w == null) localStorage.removeItem(WIDTH_KEYS[side]);
+      else localStorage.setItem(WIDTH_KEYS[side], String(w));
+    } catch { /* ignore */ }
+  }
+
+  // ── Responsive drawers below ~1024px (FIX-814) ────────────────────────────
+  // Both panels become off-canvas overlay drawers toggled from header buttons;
+  // one drawer open at a time; canvas takes full width.
+  const [isNarrow, setIsNarrow]     = useState(false);
+  const [openDrawer, setOpenDrawer] = useState<"left" | "right" | null>(null);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 1023px)");
+    const apply = () => {
+      setIsNarrow(mq.matches);
+      if (!mq.matches) setOpenDrawer(null);
+    };
+    apply();
+    mq.addEventListener("change", apply);
+    return () => mq.removeEventListener("change", apply);
+  }, []);
+  function toggleDrawer(side: "left" | "right") {
+    setOpenDrawer(prev => (prev === side ? null : side));
+  }
 
   // ── Overlay state ─────────────────────────────────────────────────────────
   const [shareCode,       setShareCode]       = useState<string | null>(initialCode ?? null);
@@ -450,15 +535,22 @@ export function GraphPage({ initialCode, aiEnabled = true }: GraphPageProps = {}
   const ganttSvgRef      = useRef<SVGSVGElement>(null);
 
   // ── Keyboard: [ = left panel, ] = right panel ─────────────────────────────
+  // In drawer mode (FIX-814) the same keys toggle the drawers; Esc closes.
   useEffect(() => {
     function handler(e: KeyboardEvent) {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (isNarrow) {
+        if (e.key === "[") setOpenDrawer(prev => (prev === "left" ? null : "left"));
+        if (e.key === "]") setOpenDrawer(prev => (prev === "right" ? null : "right"));
+        if (e.key === "Escape") setOpenDrawer(null);
+        return;
+      }
       if (e.key === "[") setLeftCollapsed(p => !p);
       if (e.key === "]") setRightCollapsed(p => !p);
     }
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, []);
+  }, [isNarrow]);
 
   // ── Header handlers ───────────────────────────────────────────────────────
   function handleHeaderVizChange(vizType: VizType) {
@@ -689,6 +781,12 @@ export function GraphPage({ initialCode, aiEnabled = true }: GraphPageProps = {}
         onFullscreen={handleFullscreen}
         aiEnabled={aiEnabled}
         graphMeta={displayGraphMeta}
+        drawerControls={{
+          onToggleFocus: () => toggleDrawer("left"),
+          onToggleView:  () => toggleDrawer("right"),
+          focusOpen: openDrawer === "left",
+          viewOpen:  openDrawer === "right",
+        }}
         brand={
           <a
             href="/"
@@ -704,19 +802,32 @@ export function GraphPage({ initialCode, aiEnabled = true }: GraphPageProps = {}
       {/* ── Three-column body ────────────────────────────────────────────── */}
       <div className="flex flex-1 overflow-hidden">
 
-        {/* LEFT — Focus (what is on the graph) */}
-        <DataExplorerPanel
-          view={view}
-          hooks={graphHooks}
-          collapsed={leftCollapsed}
-          onCollapse={() => setLeftCollapsed(p => !p)}
-          graphMeta={displayGraphMeta}
-          userNode={userNodeInfo}
-          onToggleUserNode={() => setUserNodeVisible(v => !v)}
-          browserSlot={browserSlot}
-          youCardSlot={youCardSlot}
-          onEntityHover={setHoveredFocusEntityId}
-        />
+        {/* LEFT — Focus (what is on the graph). Hidden in drawer mode (FIX-814). */}
+        {!isNarrow && (
+          <DataExplorerPanel
+            view={view}
+            hooks={graphHooks}
+            collapsed={leftCollapsed}
+            onCollapse={() => setLeftCollapsed(p => !p)}
+            graphMeta={displayGraphMeta}
+            userNode={userNodeInfo}
+            onToggleUserNode={() => setUserNodeVisible(v => !v)}
+            browserSlot={browserSlot}
+            youCardSlot={youCardSlot}
+            onEntityHover={setHoveredFocusEntityId}
+            width={leftWidth}
+          />
+        )}
+
+        {/* Left resize handle (FIX-813) */}
+        {!isNarrow && !leftCollapsed && (
+          <PanelResizeHandle
+            label="Resize focus panel"
+            onDrag={clientX => setLeftWidth(clampWidth(clientX))}
+            onDragEnd={() => setLeftWidth(w => { persistWidth("left", w); return w; })}
+            onReset={() => { setLeftWidth(LEFT_PANEL_DEFAULT_WIDTH); persistWidth("left", null); }}
+          />
+        )}
 
         {/* CANVAS */}
         <div className="flex-1 overflow-hidden relative">
@@ -990,18 +1101,77 @@ export function GraphPage({ initialCode, aiEnabled = true }: GraphPageProps = {}
 
         </div>{/* end CANVAS */}
 
+        {/* Right resize handle (FIX-813) */}
+        {!isNarrow && !rightCollapsed && (
+          <PanelResizeHandle
+            label="Resize view panel"
+            onDrag={clientX => setRightWidth(clampWidth(window.innerWidth - clientX))}
+            onDragEnd={() => setRightWidth(w => { persistWidth("right", w); return w; })}
+            onReset={() => { setRightWidth(RIGHT_PANEL_DEFAULT_WIDTH); persistWidth("right", null); }}
+          />
+        )}
+
         {/* RIGHT — View (how it renders): View + Connections tabs */}
-        <GraphConfigPanel
-          view={view}
-          hooks={graphHooks}
-          collapsed={rightCollapsed}
-          onCollapse={() => setRightCollapsed(p => !p)}
-          onSavePreset={handleSavePreset}
-          graphMeta={displayGraphMeta}
-          userNodeVisible={!!userNodeInfo?.visible}
-        />
+        {!isNarrow && (
+          <GraphConfigPanel
+            view={view}
+            hooks={graphHooks}
+            collapsed={rightCollapsed}
+            onCollapse={() => setRightCollapsed(p => !p)}
+            onSavePreset={handleSavePreset}
+            graphMeta={displayGraphMeta}
+            userNodeVisible={!!userNodeInfo?.visible}
+            width={rightWidth}
+          />
+        )}
 
       </div>
+
+      {/* ── Off-canvas overlay drawers below ~1024px (FIX-814) ───────────── */}
+      {isNarrow && openDrawer && (
+        <>
+          <button
+            type="button"
+            aria-label="Close panel"
+            onClick={() => setOpenDrawer(null)}
+            className="fixed inset-x-0 top-12 bottom-0 z-30 bg-ink/40 cursor-default"
+          />
+          <div
+            role="dialog"
+            aria-label={openDrawer === "left" ? "Focus panel" : "View panel"}
+            className={`fixed top-12 bottom-0 z-40 w-[300px] max-w-[85vw] shadow-2xl ${
+              openDrawer === "left" ? "left-0 border-r border-rule" : "right-0 border-l border-rule"
+            }`}
+          >
+            {openDrawer === "left" ? (
+              <DataExplorerPanel
+                view={view}
+                hooks={graphHooks}
+                collapsed={false}
+                onCollapse={() => setOpenDrawer(null)}
+                graphMeta={displayGraphMeta}
+                userNode={userNodeInfo}
+                onToggleUserNode={() => setUserNodeVisible(v => !v)}
+                browserSlot={browserSlot}
+                youCardSlot={youCardSlot}
+                onEntityHover={setHoveredFocusEntityId}
+                asDrawer
+              />
+            ) : (
+              <GraphConfigPanel
+                view={view}
+                hooks={graphHooks}
+                collapsed={false}
+                onCollapse={() => setOpenDrawer(null)}
+                onSavePreset={handleSavePreset}
+                graphMeta={displayGraphMeta}
+                userNodeVisible={!!userNodeInfo?.visible}
+                asDrawer
+              />
+            )}
+          </div>
+        </>
+      )}
       {/* EmbedModal mount removed (FIX-806) — setShowEmbed was never called;
           SharePanel's embed snippet is the surviving embed path. */}
     </div>
