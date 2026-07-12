@@ -995,3 +995,4 @@
 2026-07-12 | FIX-819 | 6e2c9765 | local+prod | perf(elections): change-detection + set-based writes — drop ~27k per-row UPDATEs/run
 2026-07-12 | FIX-820 | 699d93e0 | local+prod | perf(db): task_type-leading enrichment_queue claim index + autovacuum tuning
 2026-07-12 | FIX-820 | eeaba602 | prod-only | chore: record prod verification for FIX-820 (enrichment_queue VACUUM)
+2026-07-12 | FIX-821 | 2c24fa6c | local+prod | fix(plum-book): quote+escape names in the ilike OR-filter
