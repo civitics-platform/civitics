@@ -427,7 +427,14 @@ export async function runPlumBookPipeline(opts: { force?: boolean } = {}): Promi
     for (let i = 0; i < nameArr.length; i += NAME_BATCH) {
       const chunk = nameArr.slice(i, i + NAME_BATCH);
       // Build OR filter: full_name.ilike.NAME1,full_name.ilike.NAME2,...
-      const orFilter = chunk.map(n => `full_name.ilike.${n}`).join(",");
+      // A name containing a comma ("joseph knouff, jr.") would otherwise be
+      // parsed as two separate OR conditions → PostgREST "failed to parse logic
+      // tree" and the whole chunk's official lookup fails (plum_id bindings
+      // silently drop). Double-quote each value so reserved chars (comma, dot,
+      // parens) are literal; backslash-escape embedded " and \. Exact
+      // case-insensitive match semantics unchanged — no wildcards are appended.
+      const esc = (n: string): string => n.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+      const orFilter = chunk.map(n => `full_name.ilike."${esc(n)}"`).join(",");
       // FIX-545: silent-zero left names unmatched → duplicate officials inserted.
       const batch = rowsOrThrow(
         await db
