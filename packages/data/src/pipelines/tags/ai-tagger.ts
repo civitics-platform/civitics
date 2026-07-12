@@ -32,11 +32,17 @@ import {
   aggregateOfficialStats,
   loadJurisdictionPriorities,
 } from "../enrichment/queue";
+import { withDirectClient } from "../../lib/direct-pg-upsert";
 
 const AI_MODEL = "claude-haiku-4-5-20251001";
 
 // Max cost per standalone invocation ($0.10 = 10 cents)
 const DEFAULT_MAX_COST_CENTS = 10;
+
+// FIX-823 — upper bound on candidate rows fetched per onlyNew run. Comfortably
+// above the maxCostCents (~$0.10 ≈ a few hundred items) ceiling, so the cost
+// cap — not this LIMIT — is what stops the run.
+const AI_CANDIDATE_LIMIT = 2000;
 
 // Haiku pricing (per million tokens)
 const HAIKU_INPUT_COST_PER_M  = 0.25;  // $0.25/M input
@@ -138,43 +144,43 @@ async function classifyProposal(proposal: {
 async function runProposalAiTagger(db: any, maxCostCents: number, onlyNew: boolean): Promise<number> {
   console.log("\n  [AI 1/2] Classifying proposals...");
 
-  // Fetch all proposals; filter in-memory to avoid huge .in() URL params.
-  // FIX-476 — the prior `.limit(2000)` was silently capped at PostgREST
-  // max_rows (1000), so proposals beyond the first 1000 were never classified.
-  // Page the full set with a stable unique order key.
-  const PROPOSAL_PAGE = 1000;
   type ProposalRow = { id: string; title: string | null; summary_plain: string | null; metadata: Record<string, unknown> | null };
-  const allProposals: ProposalRow[] = [];
-  for (let from = 0; ; from += PROPOSAL_PAGE) {
-    const { data, error } = await db
-      .from("proposals")
-      .select("id, title, summary_plain, metadata")
-      .order("id", { ascending: true })
-      .range(from, from + PROPOSAL_PAGE - 1);
-    if (error) { console.error("    Error fetching proposals:", error.message); return 0; }
-    const batch = (data ?? []) as ProposalRow[];
-    allProposals.push(...batch);
-    if (batch.length < PROPOSAL_PAGE) break;
-  }
-  if (allProposals.length === 0) { console.log("    No proposals to classify."); return 0; }
 
-  let proposals = allProposals;
-
+  let proposals: ProposalRow[];
   if (onlyNew) {
-    // FIX-545: was a silent-zero AND unpaginated read — the tagged set
-    // truncated at PostgREST's 1,000-row cap, so already-tagged proposals
-    // looked untagged and re-burned Anthropic budget every run.
-    const alreadyTagged = await fetchDistinctIds(
-      (f, t) => db.from("entity_tags").select("entity_id")
-        .eq("entity_type", "proposal").eq("generated_by", "ai").eq("tag_category", "topic")
-        .order("id").range(f, t),
-      "entity_id",
+    // FIX-823 — server-side anti-join: only untagged proposals, newest first,
+    // bounded by LIMIT. Replaces the prior load-all-proposals + fetchDistinctIds
+    // + in-memory filter (two full scans on the cold Micro to feed a run the
+    // maxCostCents cap stops after a few hundred items). Same candidate set
+    // (untagged), just server-side, ordered, and bounded.
+    proposals = await fetchUntaggedForAi<ProposalRow>(
+      "proposal",
+      ["id", "title", "summary_plain", "metadata"],
+      AI_CANDIDATE_LIMIT,
     );
-    proposals = allProposals.filter((p: { id: string }) => !alreadyTagged.has(p.id));
     if (proposals.length === 0) {
       console.log("    All proposals already have AI topic tags. Skipping.");
       return 0;
     }
+  } else {
+    // Full retag (manual --confirm without onlyNew): page the entire proposals
+    // table (unchanged). FIX-476 — a stable unique order key so PostgREST's
+    // 1,000-row cap paginates cleanly instead of silently truncating.
+    const PROPOSAL_PAGE = 1000;
+    const allProposals: ProposalRow[] = [];
+    for (let from = 0; ; from += PROPOSAL_PAGE) {
+      const { data, error } = await db
+        .from("proposals")
+        .select("id, title, summary_plain, metadata")
+        .order("id", { ascending: true })
+        .range(from, from + PROPOSAL_PAGE - 1);
+      if (error) { console.error("    Error fetching proposals:", error.message); return 0; }
+      const batch = (data ?? []) as ProposalRow[];
+      allProposals.push(...batch);
+      if (batch.length < PROPOSAL_PAGE) break;
+    }
+    if (allProposals.length === 0) { console.log("    No proposals to classify."); return 0; }
+    proposals = allProposals;
   }
 
   console.log(`    ${proposals.length} proposals to classify`);
@@ -315,31 +321,30 @@ async function classifyOfficial(official: any): Promise<OfficialClassification |
 async function runOfficialAiTagger(db: any, maxCostCents: number, onlyNew: boolean): Promise<number> {
   console.log("\n  [AI 2/2] Classifying officials...");
 
-  // Fetch officials with vote count + financial data (pre-aggregated)
-  const { data: officials, error } = await db
-    .from("officials")
-    .select("id, full_name, role_title, party, metadata, is_active")
-    .eq("is_active", true);
-
-  if (error) { console.error("    Error fetching officials:", error.message); return 0; }
-  if (!officials || officials.length === 0) { console.log("    No officials found."); return 0; }
-
-  let targetOfficials = officials;
-
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let targetOfficials: any[];
   if (onlyNew) {
-    // FIX-545: same silent-zero + 1,000-row truncation as the proposal path.
-    const alreadyTagged = await fetchDistinctIds(
-      (f, t) => db.from("entity_tags").select("entity_id")
-        .eq("entity_type", "official").eq("generated_by", "ai").eq("tag_category", "topic")
-        .order("id").range(f, t),
-      "entity_id",
+    // FIX-823 — server-side anti-join, active officials only, newest first.
+    // Replaces load-all-active-officials + fetchDistinctIds + in-memory filter.
+    targetOfficials = await fetchUntaggedForAi(
+      "official",
+      ["id", "full_name", "role_title", "party", "metadata", "is_active"],
+      AI_CANDIDATE_LIMIT,
+      { activeOnly: true },
     );
-    targetOfficials = officials.filter((o: { id: string }) => !alreadyTagged.has(o.id));
-  }
-
-  if (targetOfficials.length === 0) {
-    console.log("    All active officials already have AI tags. Skipping.");
-    return 0;
+    if (targetOfficials.length === 0) {
+      console.log("    All active officials already have AI tags. Skipping.");
+      return 0;
+    }
+  } else {
+    // Full retag (manual): all active officials (unchanged).
+    const { data: officials, error } = await db
+      .from("officials")
+      .select("id, full_name, role_title, party, metadata, is_active")
+      .eq("is_active", true);
+    if (error) { console.error("    Error fetching officials:", error.message); return 0; }
+    if (!officials || officials.length === 0) { console.log("    No officials found."); return 0; }
+    targetOfficials = officials;
   }
 
   console.log(`    ${targetOfficials.length} officials to classify`);
@@ -411,6 +416,60 @@ async function runOfficialAiTagger(db: any, maxCostCents: number, onlyNew: boole
 // tag_category=topic) row in entity_tags.
 // ---------------------------------------------------------------------------
 
+const AI_TABLE_BY_ENTITY: Record<"proposal" | "official", string> = {
+  proposal: "proposals",
+  official: "officials",
+};
+const SAFE_IDENT = /^[a-z_][a-z0-9_]*$/i;
+
+/**
+ * FIX-823 — server-side anti-join for AI-untagged entities. Replaces the
+ * load-entire-table-into-Node + fetchDistinctIds + in-memory-filter pattern
+ * (two full scans on the cold Micro to feed a maxCostCents-capped run that only
+ * touches a few hundred rows). A single `NOT EXISTS` returns only untagged
+ * rows, newest first, bounded by LIMIT — the cost cap, not the LIMIT, stops the
+ * run. "Untagged" == no (entity_type, generated_by='ai', tag_category='topic')
+ * row in entity_tags — byte-for-byte the prior in-memory predicate and
+ * fetchDistinctIds' filter. Seeks via idx_entity_tags_entity
+ * (entity_type, entity_id). Runs over withDirectClient, whose buildDbUrl()
+ * resolves local Docker / CI SUPABASE_DB_URL / composed prod pooler alike.
+ *
+ * `cols` are code-controlled literals; each is asserted against SAFE_IDENT
+ * before interpolation (mirrors direct-pg-upsert.ts quoteIdent). Values bind as
+ * $1/$2. node-pg returns timestamptz as a Date; we normalize those back to ISO
+ * strings so callers forwarding updated_at into enqueue() see the PostgREST shape.
+ */
+export async function fetchUntaggedForAi<T>(
+  entityType: "proposal" | "official",
+  cols: string[],
+  limit: number,
+  opts: { activeOnly?: boolean } = {},
+): Promise<T[]> {
+  const table = AI_TABLE_BY_ENTITY[entityType];
+  for (const c of cols) {
+    if (!SAFE_IDENT.test(c)) throw new Error(`fetchUntaggedForAi: unsafe column ${JSON.stringify(c)}`);
+  }
+  const selectList = cols.map((c) => `p.${c}`).join(", ");
+  const activeClause = opts.activeOnly ? "AND p.is_active = true" : "";
+  const sql =
+    `SELECT ${selectList} FROM public.${table} p ` +
+    `WHERE NOT EXISTS (` +
+    `SELECT 1 FROM public.entity_tags t ` +
+    `WHERE t.entity_type = $1 AND t.entity_id = p.id ` +
+    `AND t.generated_by = 'ai' AND t.tag_category = 'topic') ` +
+    `${activeClause} ` +
+    `ORDER BY p.created_at DESC LIMIT $2`;
+  const rows = await withDirectClient((client) =>
+    client.query(sql, [entityType, limit]).then((r) => r.rows as Record<string, unknown>[]),
+  );
+  for (const row of rows) {
+    for (const k of Object.keys(row)) {
+      if (row[k] instanceof Date) row[k] = (row[k] as Date).toISOString();
+    }
+  }
+  return rows as T[];
+}
+
 export type ProposalNeedingTags = {
   id: string;
   title: string;
@@ -420,22 +479,13 @@ export type ProposalNeedingTags = {
   updated_at: string;
 };
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function fetchProposalsNeedingTags(db: any, limit = 2000): Promise<ProposalNeedingTags[]> {
-  const { data: allProposals, error } = await db
-    .from("proposals")
-    .select("id, title, summary_plain, metadata, jurisdiction_id, updated_at")
-    .limit(limit);
-  if (error || !allProposals || allProposals.length === 0) return [];
-
-  // FIX-545: silent-zero + truncation fixed via the paginating helper.
-  const alreadyTagged = await fetchDistinctIds(
-    (f, t) => db.from("entity_tags").select("entity_id")
-      .eq("entity_type", "proposal").eq("generated_by", "ai").eq("tag_category", "topic")
-      .order("id").range(f, t),
-    "entity_id",
+export async function fetchProposalsNeedingTags(limit = 2000): Promise<ProposalNeedingTags[]> {
+  // FIX-823 — server-side anti-join (see fetchUntaggedForAi). No db needed.
+  return fetchUntaggedForAi<ProposalNeedingTags>(
+    "proposal",
+    ["id", "title", "summary_plain", "metadata", "jurisdiction_id", "updated_at"],
+    limit,
   );
-  return allProposals.filter((p: { id: string }) => !alreadyTagged.has(p.id));
 }
 
 export type OfficialNeedingTags = {
@@ -453,29 +503,30 @@ export type OfficialNeedingTags = {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function fetchOfficialsNeedingTags(db: any): Promise<OfficialNeedingTags[]> {
-  const { data: officials, error } = await db
-    .from("officials")
-    .select("id, full_name, role_title, party, metadata, is_active, jurisdiction_id, updated_at")
-    .eq("is_active", true);
-  if (error || !officials || officials.length === 0) return [];
-
-  // FIX-545: silent-zero + truncation fixed via the paginating helper.
-  const alreadyTagged = await fetchDistinctIds(
-    (f, t) => db.from("entity_tags").select("entity_id")
-      .eq("entity_type", "official").eq("generated_by", "ai").eq("tag_category", "topic")
-      .order("id").range(f, t),
-    "entity_id",
+  // FIX-823 — server-side anti-join, active officials only (see fetchUntaggedForAi).
+  // `db` is still used below for aggregateOfficialStats.
+  const targets = await fetchUntaggedForAi<{
+    id: string;
+    full_name: string;
+    role_title: string;
+    party: string | null;
+    metadata: Record<string, unknown> | null;
+    jurisdiction_id: string | null;
+    updated_at: string | null;
+  }>(
+    "official",
+    ["id", "full_name", "role_title", "party", "metadata", "jurisdiction_id", "updated_at"],
+    2000,
+    { activeOnly: true },
   );
-  const targets = officials.filter((o: { id: string }) => !alreadyTagged.has(o.id));
   if (targets.length === 0) return [];
 
   const stats = await aggregateOfficialStats(
     db,
-    targets.map((o: { id: string }) => o.id),
+    targets.map((o) => o.id),
   );
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return targets.map((o: any) => {
+  return targets.map((o) => {
     const agg = stats.get(o.id);
     return {
       id: o.id,
@@ -537,7 +588,7 @@ export async function runAiTagger(options?: {
   // recency guard — staging is cheap and idempotent.
   if (FLAGS.ENRICHMENT_MODE === "queue") {
     console.log("  Mode: queue — staging to enrichment_queue, no API calls");
-    const proposals = await fetchProposalsNeedingTags(db);
+    const proposals = await fetchProposalsNeedingTags();
     const officials = await fetchOfficialsNeedingTags(db);
 
     const jIds = [
