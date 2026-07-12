@@ -3,19 +3,26 @@
 /**
  * packages/graph/src/components/DataExplorerPanel.tsx
  *
- * Left panel — 260px wide, full height, collapsible to a 40px icon strip.
- * Hosts FocusTree (🎯) and ConnectionsTree (🔗).
+ * Left panel — FIX-812: WHAT is on the graph. Full height, collapsible to a
+ * 40px icon strip, width driven by the host (drag-resize, FIX-813).
+ * Contents top to bottom: Active entities, Add entities (browserSlot),
+ * Path finder, YOU-node affordance card (youCardSlot).
+ *
+ * ConnectionsTree moved to the right panel's Connections tab (FIX-812);
+ * AlignmentPanel (My Priorities) moved to /desk — the civic-alignment
+ * localStorage contract is owned by the desk module now.
  *
  * Keyboard shortcut: [ toggles left panel (managed by GraphPage)
  */
 
-import { useState, useEffect, useRef } from 'react';
+import type { ReactNode } from 'react';
 import type { GraphView } from '../types';
 import type { UseGraphViewReturn } from '../hooks/useGraphView';
 import type { GraphMeta } from '../hooks/useGraphData';
 import { FocusTree, type UserNodeInfo } from './FocusTree';
-import { ConnectionsTree } from './ConnectionsTree';
-import { AlignmentPanel } from './AlignmentPanel';
+
+/** FIX-813 — default width; host may override via the width prop. */
+export const LEFT_PANEL_DEFAULT_WIDTH = 230;
 
 export interface DataExplorerPanelProps {
   view: GraphView;
@@ -28,87 +35,83 @@ export interface DataExplorerPanelProps {
   /** Toggle USER node visibility (FIX-120). */
   onToggleUserNode?: () => void;
   /** FIX-762 — unified browser sidebar mount, forwarded to FocusTree. */
-  browserSlot?: React.ReactNode;
+  browserSlot?: ReactNode;
+  /**
+   * FIX-812 — YOU-node affordance card (app-provided; shown when the viewer
+   * is signed out or has no home_state). Rendered at the bottom of the panel.
+   */
+  youCardSlot?: ReactNode;
+  /** FIX-812 — entity-row hover spotlight, forwarded to FocusTree. */
+  onEntityHover?: (entityId: string | null) => void;
+  /** FIX-813 — panel width in px (180–400). Defaults to 230. */
+  width?: number;
+  /**
+   * FIX-814 — drawer mode: the host renders this panel as an off-canvas
+   * overlay; the panel drops its own border/shrink chrome and fills its
+   * container instead.
+   */
+  asDrawer?: boolean;
 }
 
-const userNodeIsVisible = (info?: UserNodeInfo | null): boolean =>
-  !!info && info.visible;
-
-type Section = 'focus' | 'connections';
-
-const SECTION_ICONS: Record<Section, string> = {
-  focus:       '🎯',
-  connections: '🔗',
-};
-
-export function DataExplorerPanel({ view, hooks, collapsed, onCollapse, graphMeta, userNode, onToggleUserNode, browserSlot }: DataExplorerPanelProps) {
-  const [savedAlignment, setSavedAlignment] = useState(null);
-
-  // FIX-134: section-jump — collapsed strip icons set a target before expanding,
-  // and an effect scrolls the matching section into view once the panel is open.
-  const [targetSection, setTargetSection] = useState<Section | null>(null);
-  const bodyRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem('civic-alignment');
-      if (saved) setSavedAlignment(JSON.parse(saved));
-    } catch {}
-  }, []);
-
-  useEffect(() => {
-    if (collapsed || !targetSection || !bodyRef.current) return;
-    const el = bodyRef.current.querySelector<HTMLElement>(`[data-section="${targetSection}"]`);
-    if (el) el.scrollIntoView({ block: 'start', behavior: 'smooth' });
-    setTargetSection(null);
-  }, [collapsed, targetSection]);
-
-  function jumpTo(section: Section) {
-    setTargetSection(section);
-    if (collapsed) onCollapse();
-  }
-
-  // Collapsed: 40px icon strip — FIX-134: each icon expands and scrolls to its section.
-  if (collapsed) {
+export function DataExplorerPanel({
+  view,
+  hooks,
+  collapsed,
+  onCollapse,
+  graphMeta,
+  userNode,
+  onToggleUserNode,
+  browserSlot,
+  youCardSlot,
+  onEntityHover,
+  width = LEFT_PANEL_DEFAULT_WIDTH,
+  asDrawer = false,
+}: DataExplorerPanelProps) {
+  // Collapsed: 40px icon strip (not used in drawer mode — the drawer just closes).
+  if (collapsed && !asDrawer) {
     return (
       <div className="h-full w-10 flex flex-col items-center py-2 gap-3 border-r border-rule bg-card shrink-0">
-        {(['focus', 'connections'] as Section[]).map(section => (
-          <button
-            key={section}
-            title={section === 'focus' ? 'Open Focus section' : 'Open Connections section'}
-            onClick={() => jumpTo(section)}
-            className="w-8 h-8 flex items-center justify-center rounded hover:bg-ink/10 transition-colors text-base"
-          >
-            {SECTION_ICONS[section]}
-          </button>
-        ))}
+        <button
+          title="Open Focus panel  ([ shortcut)"
+          aria-label="Open Focus panel"
+          onClick={onCollapse}
+          className="w-8 h-8 flex items-center justify-center rounded hover:bg-ink/10 transition-colors text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+        >
+          <span aria-hidden="true">🎯</span>
+        </button>
       </div>
     );
   }
 
-  // Expanded: 260px panel
   return (
-    <div className="h-full w-[260px] flex flex-col border-r border-rule bg-card overflow-hidden shrink-0 min-w-0">
+    <div
+      className={
+        asDrawer
+          ? 'h-full w-full flex flex-col bg-card overflow-hidden min-w-0'
+          : 'h-full flex flex-col border-r border-rule bg-card overflow-hidden shrink-0 min-w-0'
+      }
+      style={asDrawer ? undefined : { width }}
+    >
 
       {/* Panel header */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-rule/60 shrink-0">
         <span className="text-[10px] font-semibold text-ink-soft uppercase tracking-wide">
-          Data Explorer
+          Focus
         </span>
         <button
           onClick={onCollapse}
-          title="Collapse panel  ([ shortcut)"
-          className="w-6 h-6 flex items-center justify-center rounded hover:bg-ink/10 transition-colors text-ink-soft hover:text-ink"
+          title={asDrawer ? 'Close panel' : 'Collapse panel  ([ shortcut)'}
+          aria-label={asDrawer ? 'Close Focus panel' : 'Collapse Focus panel'}
+          className="w-6 h-6 flex items-center justify-center rounded hover:bg-ink/10 transition-colors text-ink-soft hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
         >
-          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg aria-hidden="true" className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
           </svg>
         </button>
       </div>
 
       {/* Scrollable content */}
-      <div ref={bodyRef} className="flex-1 overflow-y-auto overscroll-contain">
-        <div data-section="focus">
+      <div className="flex-1 overflow-y-auto overscroll-contain">
         <FocusTree
           focus={view.focus}
           hooks={hooks}
@@ -116,27 +119,9 @@ export function DataExplorerPanel({ view, hooks, collapsed, onCollapse, graphMet
           userNode={userNode}
           onToggleUserNode={onToggleUserNode}
           browserSlot={browserSlot}
+          onEntityHover={onEntityHover}
         />
-        </div>
-        <div data-section="connections">
-        <ConnectionsTree
-          connections={view.connections}
-          vizType={view.style.vizType}
-          hooks={hooks}
-          graphMeta={graphMeta}
-          focus={view.focus}
-          userNodeVisible={userNodeIsVisible(userNode)}
-          includeProcedural={view.focus.includeProcedural}
-        />
-        </div>
-        <AlignmentPanel
-          initialIssues={savedAlignment}
-          onAlignmentChange={(issues) => {
-            try {
-              localStorage.setItem('civic-alignment', JSON.stringify(issues));
-            } catch {}
-          }}
-        />
+        {youCardSlot}
       </div>
     </div>
   );

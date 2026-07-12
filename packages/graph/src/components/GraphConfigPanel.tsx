@@ -3,8 +3,15 @@
 /**
  * packages/graph/src/components/GraphConfigPanel.tsx
  *
- * Right panel — 220px wide, full height, collapsed by default to 40px icon strip.
- * Hosts: viz type picker, presets, type-specific settings, display options.
+ * Right panel — FIX-812: HOW the graph renders. Two tabs:
+ *   View        — visualization picker, presets, per-viz settings (+ the
+ *                 viz-agnostic Default depth select), Physics (collapsed).
+ *   Connections — the ConnectionsTree per-type styling rows (moved here from
+ *                 the left panel) plus the edge-filter group (donation floor,
+ *                 min strength, individual donors mode — they filter edges,
+ *                 so they live with edges).
+ * Tab choice persists per session (localStorage), defaults to View.
+ * Width driven by the host (drag-resize, FIX-813); collapsed = 40px strip.
  *
  * Keyboard shortcut: ] toggles right panel (managed by GraphPage)
  */
@@ -16,10 +23,19 @@ import type { GraphMeta } from '../hooks/useGraphData';
 import { VIZ_REGISTRY, getVizApplicability } from '../visualizations/registry';
 import { BUILT_IN_PRESETS, isPresetApplicableToView } from '../presets';
 import { TreeNode, TreeSection } from './TreeNode';
+import { ConnectionsTree } from './ConnectionsTree';
 import { isFocusEntity } from '../types';
+
+/** FIX-813 — default width; host may override via the width prop. */
+export const RIGHT_PANEL_DEFAULT_WIDTH = 260;
 
 // FIX-134: section-jump targets the right-panel collapsed icons can scroll to.
 type ConfigSection = 'viz' | 'presets' | 'settings';
+
+type ConfigTab = 'view' | 'connections';
+
+/** FIX-812 — tab persistence key (per-session UX nicety, additive state). */
+const TAB_STORAGE_KEY = 'civitics-graph-config-tab';
 
 export interface GraphConfigPanelProps {
   view: GraphView;
@@ -29,6 +45,12 @@ export interface GraphConfigPanelProps {
   onSavePreset: () => void;
   /** Optional: derived from loaded graph data. Used to self-configure visible options. */
   graphMeta?: GraphMeta;
+  /** FIX-812 — gates the alignment type in the Connections tab (FIX-128). */
+  userNodeVisible?: boolean;
+  /** FIX-813 — panel width in px (180–400). Defaults to 260. */
+  width?: number;
+  /** FIX-814 — drawer mode: fills its container, host owns the overlay chrome. */
+  asDrawer?: boolean;
 }
 
 // Emoji for each preset
@@ -99,9 +121,9 @@ function LabeledSlider({
 }
 
 // FIX-220 — Donation floor control. Six log-scale stops mapped to a single
-// minAmount value on view.connections.donation. Surfaced in both the
-// Treemap and Force settings panels so users can suppress noise without
-// hunting for the buried Min $ field in the Connections row.
+// minAmount value on view.connections.donation. FIX-812 — lives in the
+// Connections tab filter group (it filters donation edges), no longer
+// duplicated inside the Force/Treemap View settings.
 //
 // Stop-index → dollar floor:
 //   0: $0      (show all)
@@ -253,6 +275,10 @@ function donationCountFrom(graphMeta?: GraphMeta): number {
 }
 
 // ── Force settings ─────────────────────────────────────────────────────────────
+//
+// FIX-812 — the Filters group (donation floor, min strength) and the
+// Individual Donors mode moved to the Connections tab: they filter edges, so
+// they live with edges. Physics collapses into its own sub-section.
 
 function ForceSettings({ view, hooks, graphMeta }: { view: GraphView; hooks: UseGraphViewReturn; graphMeta?: GraphMeta }) {
   const opts = view.style.vizOptions.force;
@@ -333,77 +359,25 @@ function ForceSettings({ view, hooks, graphMeta }: { view: GraphView; hooks: Use
         ]}
         onChange={v => set('labels', v)}
       />
-      <div className="px-3 pt-1 pb-0.5 text-[9px] font-semibold text-ink-soft uppercase tracking-wide">Physics</div>
-      <LabeledSlider label="Charge" min={-1000} max={-50} step={50} value={opts?.charge ?? -300} onChange={v => set('charge', v)} />
-      <LabeledSlider label="Link dist" min={50} max={500} step={10} value={opts?.linkDistance ?? 150} onChange={v => set('linkDistance', v)} />
-      <LabeledSlider label="Gravity" min={0} max={1} step={0.05} value={opts?.gravity ?? 0.1} onChange={v => set('gravity', v)} />
-      <LabeledToggle
-        label="Type clusters"
-        value={opts?.typeClusterEnabled ?? false}
-        onChange={v => set('typeClusterEnabled', v)}
-      />
-      {(opts?.typeClusterEnabled ?? false) && (
-        <LabeledSlider
-          label="Cluster pull"
-          min={0} max={0.3} step={0.01}
-          value={opts?.typeClusterStrength ?? 0.08}
-          onChange={v => set('typeClusterStrength', v)}
+      {/* Physics — collapsed group (FIX-812) */}
+      <TreeSection label="Physics" defaultExpanded={false} separator={false} depth={1}>
+        <LabeledSlider label="Charge" min={-1000} max={-50} step={50} value={opts?.charge ?? -300} onChange={v => set('charge', v)} />
+        <LabeledSlider label="Link dist" min={50} max={500} step={10} value={opts?.linkDistance ?? 150} onChange={v => set('linkDistance', v)} />
+        <LabeledSlider label="Gravity" min={0} max={1} step={0.05} value={opts?.gravity ?? 0.1} onChange={v => set('gravity', v)} />
+        <LabeledToggle
+          label="Type clusters"
+          value={opts?.typeClusterEnabled ?? false}
+          onChange={v => set('typeClusterEnabled', v)}
         />
-      )}
-      <div className="px-3 pt-2 pb-0.5 text-[9px] font-semibold text-ink-soft uppercase tracking-wide">Filters</div>
-      {/* FIX-220 — same control as treemap so the floor is consistent
-          across viz switches. Writes to view.connections.donation.minAmount. */}
-      <DonationFloorControl view={view} hooks={hooks} />
-      <LabeledSlider
-        label="Min strength"
-        min={0} max={0.9} step={0.1}
-        value={opts?.strengthFilter ?? 0}
-        onChange={v => set('strengthFilter', v)}
-      />
-      <div className="px-3 pb-0.5 text-[9px] text-ink-soft italic leading-tight">
-        {(() => {
-          const v = opts?.strengthFilter ?? 0;
-          if (v === 0)       return 'Showing all connections';
-          if (v < 0.3)       return 'Hiding connections under ~$10K';
-          if (v < 0.5)       return 'Showing $10K+ connections';
-          if (v < 0.7)       return 'Showing $100K+ connections';
-          return 'Showing $500K+ connections';
-        })()}
-      </div>
-      <div className="px-3 pt-2 pb-0.5 text-[9px] font-semibold text-ink-soft uppercase tracking-wide">Individual Donors</div>
-      <div className="px-3 pb-1 space-y-1">
-        {(['bracket', 'connector', 'employer', 'off'] as IndividualDisplayMode[]).map(mode => (
-          <label key={mode} className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="radio"
-              name="indivDisplayMode"
-              value={mode}
-              checked={(opts?.individualDisplayMode ?? 'bracket') === mode}
-              onChange={() => set('individualDisplayMode', mode)}
-              className="accent-accent cursor-pointer"
-            />
-            <span className="text-[10px] text-ink">
-              {mode === 'bracket'   && 'Bracket (default)'}
-              {mode === 'connector' && 'Connector (2+ officials)'}
-              {mode === 'employer'  && 'By Employer'}
-              {mode === 'off'       && 'All (raw)'}
-            </span>
-          </label>
-        ))}
-      </div>
-      {(opts?.individualDisplayMode ?? 'bracket') === 'connector' && (
-        <div className="flex items-center gap-2 px-3 py-1">
-          <span className="text-[10px] text-ink-soft w-20 shrink-0">Min officials</span>
-          <input
-            type="number"
-            min={2}
-            max={10}
-            value={opts?.connectorMinRecipients ?? 2}
-            onChange={e => set('connectorMinRecipients', Math.max(2, Math.min(10, parseInt(e.target.value) || 2)))}
-            className="w-14 text-xs text-ink border border-rule rounded px-1.5 py-0.5 bg-card focus:outline-none focus:border-accent"
+        {(opts?.typeClusterEnabled ?? false) && (
+          <LabeledSlider
+            label="Cluster pull"
+            min={0} max={0.3} step={0.01}
+            value={opts?.typeClusterStrength ?? 0.08}
+            onChange={v => set('typeClusterStrength', v)}
           />
-        </div>
-      )}
+        )}
+      </TreeSection>
     </>
   );
 }
@@ -691,8 +665,8 @@ function TreemapSettings({ view, hooks, graphMeta }: { view: GraphView; hooks: U
         ]}
         onChange={v => set('dataMode', v)}
       />
-      {/* FIX-220 — donation floor available in every treemap mode */}
-      <DonationFloorControl view={view} hooks={hooks} />
+      {/* FIX-812 — donation floor moved to the Connections tab filter group;
+          the treemap still reads view.connections.donation.minAmount. */}
       {!isPacMode && (
         <>
           <LabeledSelect
@@ -1056,10 +1030,33 @@ function SankeySettings({ view, hooks }: { view: GraphView; hooks: UseGraphViewR
 
 // ── Main panel ─────────────────────────────────────────────────────────────────
 
-export function GraphConfigPanel({ view, hooks, collapsed, onCollapse, onSavePreset, graphMeta }: GraphConfigPanelProps) {
+export function GraphConfigPanel({
+  view,
+  hooks,
+  collapsed,
+  onCollapse,
+  onSavePreset,
+  graphMeta,
+  userNodeVisible = false,
+  width = RIGHT_PANEL_DEFAULT_WIDTH,
+  asDrawer = false,
+}: GraphConfigPanelProps) {
   const vizType       = view.style.vizType;
   const activePreset  = view.meta?.presetId ?? null;
-  const isDirty       = view.meta?.isDirty  ?? false;
+
+  // FIX-812 — View | Connections tab. Persists per session; read after mount
+  // (localStorage during render would mismatch the SSR'd markup).
+  const [tab, setTab] = useState<ConfigTab>('view');
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(TAB_STORAGE_KEY);
+      if (saved === 'connections') setTab('connections');
+    } catch { /* localStorage unavailable */ }
+  }, []);
+  function switchTab(next: ConfigTab) {
+    setTab(next);
+    try { localStorage.setItem(TAB_STORAGE_KEY, next); } catch { /* ignore */ }
+  }
 
   // FIX-134: each collapsed-strip icon sets a pending scroll target before
   // calling onCollapse. When the panel becomes expanded the effect below
@@ -1072,10 +1069,16 @@ export function GraphConfigPanel({ view, hooks, collapsed, onCollapse, onSavePre
     const el = bodyRef.current.querySelector<HTMLElement>(`[data-section="${targetSection}"]`);
     if (el) el.scrollIntoView({ block: 'start', behavior: 'smooth' });
     setTargetSection(null);
-  }, [collapsed, targetSection]);
+  }, [collapsed, targetSection, tab]);
 
   function jumpTo(section: ConfigSection) {
+    switchTab('view');
     setTargetSection(section);
+    if (collapsed) onCollapse();
+  }
+
+  function jumpToConnections() {
+    switchTab('connections');
     if (collapsed) onCollapse();
   }
 
@@ -1112,8 +1115,13 @@ export function GraphConfigPanel({ view, hooks, collapsed, onCollapse, onSavePre
   const adaptedFocusName = focusHead && isFocusEntity(focusHead) ? focusHead.name : focusHead?.name;
   const adaptedLabel = adaptedFocusName ? `Adapted for ${adaptedFocusName}` : 'Adapted';
 
-  // Collapsed: 40px icon strip — FIX-134: each icon expands and scrolls to its section.
-  if (collapsed) {
+  // FIX-812 — global default depth (was the left panel OPTIONS section).
+  // UI offers 1|2 only — the server clamps at 2; legacy depth-3 saves read as 2.
+  const globalDepth = view.focus.depth >= 2 ? 2 : 1;
+
+  // Collapsed: 40px icon strip — FIX-134: each icon expands and scrolls to its
+  // section (View tab); the 🔗 icon opens the Connections tab (FIX-812).
+  if (collapsed && !asDrawer) {
     return (
       <div className="h-full w-10 flex flex-col items-center py-2 gap-3 border-l border-rule bg-card shrink-0">
         <button
@@ -1143,24 +1151,39 @@ export function GraphConfigPanel({ view, hooks, collapsed, onCollapse, onSavePre
         >
           <span aria-hidden="true">⚙</span>
         </button>
+        <button
+          type="button"
+          title="Open Connections tab"
+          aria-label="Open graph config — connections"
+          onClick={jumpToConnections}
+          className="w-8 h-8 flex items-center justify-center rounded hover:bg-ink/10 transition-colors text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+        >
+          <span aria-hidden="true">🔗</span>
+        </button>
       </div>
     );
   }
 
-  // Expanded: 220px panel
   return (
-    <div className="h-full w-[220px] flex flex-col border-l border-rule bg-card overflow-hidden shrink-0">
+    <div
+      className={
+        asDrawer
+          ? 'h-full w-full flex flex-col bg-card overflow-hidden min-w-0'
+          : 'h-full flex flex-col border-l border-rule bg-card overflow-hidden shrink-0 min-w-0'
+      }
+      style={asDrawer ? undefined : { width }}
+    >
 
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-rule/60 shrink-0">
         <span className="text-[10px] font-semibold text-ink-soft uppercase tracking-wide">
-          Graph Config
+          View
         </span>
         <button
           type="button"
           onClick={onCollapse}
-          title="Collapse panel  (] shortcut)"
-          aria-label="Collapse config panel"
+          title={asDrawer ? 'Close panel' : 'Collapse panel  (] shortcut)'}
+          aria-label={asDrawer ? 'Close view panel' : 'Collapse view panel'}
           className="w-6 h-6 flex items-center justify-center rounded hover:bg-ink/10 transition-colors text-ink-soft hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
         >
           <svg aria-hidden="true" className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1169,119 +1192,117 @@ export function GraphConfigPanel({ view, hooks, collapsed, onCollapse, onSavePre
         </button>
       </div>
 
+      {/* Tab bar (FIX-812) */}
+      <div role="tablist" aria-label="Graph view configuration" className="flex shrink-0 border-b border-rule/60">
+        {([['view', 'View'], ['connections', 'Connections']] as const).map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            aria-selected={tab === id}
+            onClick={() => switchTab(id)}
+            className={`flex-1 py-1.5 text-[11px] font-medium transition-colors border-b-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
+              tab === id
+                ? 'border-accent text-accent'
+                : 'border-transparent text-ink-soft hover:text-ink'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
       {/* Scrollable body */}
       <div ref={bodyRef} className="flex-1 overflow-y-auto overscroll-contain">
 
-        {/* Visualization picker — FIX-129: split by applicability against current focus + data. */}
-        <div data-section="viz">
-        <TreeSection label="Visualization" separator={false} defaultExpanded>
-          {(() => {
-            const partitioned = STD_VIZ.map(v => ({
-              v,
-              app: getVizApplicability(v, view.focus, view.connections, graphMeta),
-            }));
-            const available    = partitioned.filter(p =>  p.app.applicable);
-            const inapplicable = partitioned.filter(p => !p.app.applicable);
-            return (
-              <>
-                {available.map(({ v }) => (
-                  <TreeNode
-                    key={v.id}
-                    label={v.label}
-                    variant="item"
-                    collapsible={false}
-                    active={vizType === v.id}
-                    separator={false}
-                    depth={1}
-                    icon={undefined}
-                    onClick={() => hooks.setVizType(v.id as VizType)}
-                  >
-                    {null}
-                  </TreeNode>
-                ))}
-                {inapplicable.length > 0 && (
-                  <TreeSection
-                    label="Not yet applicable"
-                    count={inapplicable.length}
-                    defaultExpanded={false}
-                    separator={false}
-                    depth={1}
-                  >
-                    {inapplicable.map(({ v, app }) => {
-                      const reason = app.applicable ? '' : app.reason;
-                      return (
-                        <div
-                          key={v.id}
-                          title={reason}
-                          className="flex flex-col px-3 py-2 text-xs text-ink-soft/60 cursor-not-allowed"
-                          style={{ paddingLeft: '32px' }}
-                        >
-                          <span>{v.label}</span>
-                          <span className="text-[10px] text-ink-soft/60 leading-tight truncate">
-                            {reason}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </TreeSection>
-                )}
-              </>
-            );
-          })()}
-          {COMING_VIZ.length > 0 && (
-            <TreeSection label="Coming Soon" defaultExpanded={false} separator={false} depth={1}>
-              {COMING_VIZ.map(v => (
-                <TreeNode
-                  key={v.id}
-                  label={v.label}
-                  variant="item"
-                  collapsible={false}
-                  separator={false}
-                  depth={2}
-                  onClick={() => {}}
-                >
-                  {null}
-                </TreeNode>
-              ))}
+        {tab === 'view' && (
+          <>
+            {/* Visualization picker — FIX-129: split by applicability against current focus + data. */}
+            <div data-section="viz">
+            <TreeSection label="Visualization" separator={false} defaultExpanded>
+              {(() => {
+                const partitioned = STD_VIZ.map(v => ({
+                  v,
+                  app: getVizApplicability(v, view.focus, view.connections, graphMeta),
+                }));
+                const available    = partitioned.filter(p =>  p.app.applicable);
+                const inapplicable = partitioned.filter(p => !p.app.applicable);
+                return (
+                  <>
+                    {available.map(({ v }) => (
+                      <TreeNode
+                        key={v.id}
+                        label={v.label}
+                        variant="item"
+                        collapsible={false}
+                        active={vizType === v.id}
+                        separator={false}
+                        depth={1}
+                        icon={undefined}
+                        onClick={() => hooks.setVizType(v.id as VizType)}
+                      >
+                        {null}
+                      </TreeNode>
+                    ))}
+                    {inapplicable.length > 0 && (
+                      <TreeSection
+                        label="Not yet applicable"
+                        count={inapplicable.length}
+                        defaultExpanded={false}
+                        separator={false}
+                        depth={1}
+                      >
+                        {inapplicable.map(({ v, app }) => {
+                          const reason = app.applicable ? '' : app.reason;
+                          return (
+                            <div
+                              key={v.id}
+                              title={reason}
+                              className="flex flex-col px-3 py-2 text-xs text-ink-soft/60 cursor-not-allowed"
+                              style={{ paddingLeft: '32px' }}
+                            >
+                              <span>{v.label}</span>
+                              <span className="text-[10px] text-ink-soft/60 leading-tight truncate">
+                                {reason}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </TreeSection>
+                    )}
+                  </>
+                );
+              })()}
+              {COMING_VIZ.length > 0 && (
+                <TreeSection label="Coming Soon" defaultExpanded={false} separator={false} depth={1}>
+                  {COMING_VIZ.map(v => (
+                    <TreeNode
+                      key={v.id}
+                      label={v.label}
+                      variant="item"
+                      collapsible={false}
+                      separator={false}
+                      depth={2}
+                      onClick={() => {}}
+                    >
+                      {null}
+                    </TreeNode>
+                  ))}
+                </TreeSection>
+              )}
             </TreeSection>
-          )}
-        </TreeSection>
-        </div>
-
-        {/* Presets — Native + Adapted buckets (FIX-216) */}
-        <div data-section="presets">
-        <TreeSection label="Presets" defaultExpanded separator>
-          {partitionedPresets.native.length === 0 && partitionedPresets.adapted.length === 0 && (
-            <div className="px-3 py-2 text-xs text-ink-soft">
-              No presets for this visualization
             </div>
-          )}
 
-          {partitionedPresets.native.map(preset => (
-            <TreeNode
-              key={preset.meta.presetId}
-              label={preset.meta.name}
-              variant="item"
-              collapsible={false}
-              active={activePreset === preset.meta.presetId}
-              separator={false}
-              depth={1}
-              icon={PRESET_EMOJI[preset.meta.presetId] ?? '📋'}
-              onClick={() => hooks.applyPreset(preset)}
-            >
-              {null}
-            </TreeNode>
-          ))}
+            {/* Presets — Native + Adapted buckets (FIX-216) */}
+            <div data-section="presets">
+            <TreeSection label="Presets" defaultExpanded separator>
+              {partitionedPresets.native.length === 0 && partitionedPresets.adapted.length === 0 && (
+                <div className="px-3 py-2 text-xs text-ink-soft">
+                  No presets for this visualization
+                </div>
+              )}
 
-          {partitionedPresets.adapted.length > 0 && (
-            <TreeSection
-              label={adaptedLabel}
-              count={partitionedPresets.adapted.length}
-              defaultExpanded
-              separator={partitionedPresets.native.length > 0}
-              depth={1}
-            >
-              {partitionedPresets.adapted.map(preset => (
+              {partitionedPresets.native.map(preset => (
                 <TreeNode
                   key={preset.meta.presetId}
                   label={preset.meta.name}
@@ -1289,67 +1310,173 @@ export function GraphConfigPanel({ view, hooks, collapsed, onCollapse, onSavePre
                   collapsible={false}
                   active={activePreset === preset.meta.presetId}
                   separator={false}
-                  depth={2}
+                  depth={1}
                   icon={PRESET_EMOJI[preset.meta.presetId] ?? '📋'}
                   onClick={() => hooks.applyPreset(preset)}
                 >
                   {null}
                 </TreeNode>
               ))}
+
+              {partitionedPresets.adapted.length > 0 && (
+                <TreeSection
+                  label={adaptedLabel}
+                  count={partitionedPresets.adapted.length}
+                  defaultExpanded
+                  separator={partitionedPresets.native.length > 0}
+                  depth={1}
+                >
+                  {partitionedPresets.adapted.map(preset => (
+                    <TreeNode
+                      key={preset.meta.presetId}
+                      label={preset.meta.name}
+                      variant="item"
+                      collapsible={false}
+                      active={activePreset === preset.meta.presetId}
+                      separator={false}
+                      depth={2}
+                      icon={PRESET_EMOJI[preset.meta.presetId] ?? '📋'}
+                      onClick={() => hooks.applyPreset(preset)}
+                    >
+                      {null}
+                    </TreeNode>
+                  ))}
+                </TreeSection>
+              )}
+
+              <div className="h-px bg-rule mx-2 my-1" />
+
+              <TreeNode
+                label="Save view…"
+                variant="item"
+                collapsible={false}
+                separator={false}
+                depth={1}
+                icon="💾"
+                onClick={onSavePreset}
+              >
+                {null}
+              </TreeNode>
             </TreeSection>
-          )}
+            </div>
 
-          <div className="h-px bg-rule mx-2 my-1" />
+            {/* Type-specific settings */}
+            <div data-section="settings">
+            <TreeSection
+              label={
+                <span className="flex items-center gap-2">
+                  <span>Settings</span>
+                  <span className="text-[10px] text-accent font-medium capitalize">{vizType}</span>
+                </span>
+              }
+              separator
+            >
+              {/* FIX-812 — global default depth (viz-agnostic; from the dissolved
+                  left-panel OPTIONS section). Per-entity chips override it. */}
+              <LabeledSelect
+                label="Default depth"
+                value={String(globalDepth)}
+                options={[
+                  { value: '1', label: '1 — direct connections' },
+                  { value: '2', label: '2 — two hops' },
+                ]}
+                onChange={v => hooks.setDepth(parseInt(v, 10) as 1 | 2)}
+              />
+              {vizType === 'force'     && <ForceSettings     view={view} hooks={hooks} graphMeta={graphMeta} />}
+              {vizType === 'chord'     && <ChordSettings     view={view} hooks={hooks} graphMeta={graphMeta} />}
+              {vizType === 'treemap'   && <TreemapSettings   view={view} hooks={hooks} graphMeta={graphMeta} />}
+              {vizType === 'sunburst'  && <SunburstSettings  view={view} hooks={hooks} graphMeta={graphMeta} />}
+              {vizType === 'hierarchy' && <HierarchySettings view={view} hooks={hooks} />}
+              {vizType === 'matrix'    && <MatrixSettings    view={view} hooks={hooks} />}
+              {vizType === 'alignment' && <AlignmentSettings view={view} hooks={hooks} />}
+              {vizType === 'sankey'    && <SankeySettings    view={view} hooks={hooks} />}
+              {vizType === 'spending'  && <SpendingSettings  view={view} hooks={hooks} />}
+            </TreeSection>
+            </div>
+          </>
+        )}
 
-          <TreeNode
-            label="Save current…"
-            variant="item"
-            collapsible={false}
-            separator={false}
-            depth={1}
-            icon="💾"
-            onClick={onSavePreset}
-          >
-            {null}
-          </TreeNode>
-        </TreeSection>
-        </div>
+        {tab === 'connections' && (
+          <>
+            {/* Per-type styling rows — moved from the left panel (FIX-812) */}
+            <ConnectionsTree
+              connections={view.connections}
+              vizType={vizType}
+              hooks={hooks}
+              graphMeta={graphMeta}
+              focus={view.focus}
+              userNodeVisible={userNodeVisible}
+              includeProcedural={view.focus.includeProcedural}
+            />
 
-        {/* Type-specific settings */}
-        <div data-section="settings">
-        <TreeSection
-          label={
-            <span className="flex items-center gap-2">
-              <span>Settings</span>
-              <span className="text-[10px] text-accent font-medium capitalize">{vizType}</span>
-            </span>
-          }
-          separator
-        >
-          {vizType === 'force'     && <ForceSettings     view={view} hooks={hooks} graphMeta={graphMeta} />}
-          {vizType === 'chord'     && <ChordSettings     view={view} hooks={hooks} graphMeta={graphMeta} />}
-          {vizType === 'treemap'   && <TreemapSettings   view={view} hooks={hooks} graphMeta={graphMeta} />}
-          {vizType === 'sunburst'  && <SunburstSettings  view={view} hooks={hooks} graphMeta={graphMeta} />}
-          {vizType === 'hierarchy' && <HierarchySettings view={view} hooks={hooks} />}
-          {vizType === 'matrix'    && <MatrixSettings    view={view} hooks={hooks} />}
-          {vizType === 'alignment' && <AlignmentSettings view={view} hooks={hooks} />}
-          {vizType === 'sankey'    && <SankeySettings    view={view} hooks={hooks} />}
-          {vizType === 'spending'  && <SpendingSettings  view={view} hooks={hooks} />}
-        </TreeSection>
-        </div>
-
-        {/* Display section removed — per-viz settings now live inside each viz's Settings section */}
+            {/* Edge filters — these three moved out of the View settings
+                because they filter edges, so they live with edges (FIX-812). */}
+            <TreeSection label="Filters" defaultExpanded separator>
+              <DonationFloorControl view={view} hooks={hooks} />
+              <LabeledSlider
+                label="Min strength"
+                min={0} max={0.9} step={0.1}
+                value={view.style.vizOptions.force?.strengthFilter ?? 0}
+                onChange={v => hooks.setVizOption('force', 'strengthFilter', v)}
+              />
+              <div className="px-3 pb-0.5 text-[9px] text-ink-soft italic leading-tight">
+                {(() => {
+                  const v = view.style.vizOptions.force?.strengthFilter ?? 0;
+                  if (v === 0)       return 'Showing all connections';
+                  if (v < 0.3)       return 'Hiding connections under ~$10K';
+                  if (v < 0.5)       return 'Showing $10K+ connections';
+                  if (v < 0.7)       return 'Showing $100K+ connections';
+                  return 'Showing $500K+ connections';
+                })()}
+              </div>
+              <div className="px-3 pt-2 pb-0.5 text-[9px] font-semibold text-ink-soft uppercase tracking-wide">Individual Donors</div>
+              <div className="px-3 pb-1 space-y-1">
+                {(['bracket', 'connector', 'employer', 'off'] as IndividualDisplayMode[]).map(mode => (
+                  <label key={mode} className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="indivDisplayMode"
+                      value={mode}
+                      checked={(view.style.vizOptions.force?.individualDisplayMode ?? 'bracket') === mode}
+                      onChange={() => hooks.setVizOption('force', 'individualDisplayMode', mode)}
+                      className="accent-accent cursor-pointer"
+                    />
+                    <span className="text-[10px] text-ink">
+                      {mode === 'bracket'   && 'Bracket (default)'}
+                      {mode === 'connector' && 'Connector (2+ officials)'}
+                      {mode === 'employer'  && 'By Employer'}
+                      {mode === 'off'       && 'All (raw)'}
+                    </span>
+                  </label>
+                ))}
+              </div>
+              {(view.style.vizOptions.force?.individualDisplayMode ?? 'bracket') === 'connector' && (
+                <div className="flex items-center gap-2 px-3 py-1">
+                  <span className="text-[10px] text-ink-soft w-20 shrink-0">Min officials</span>
+                  <input
+                    type="number"
+                    min={2}
+                    max={10}
+                    value={view.style.vizOptions.force?.connectorMinRecipients ?? 2}
+                    onChange={e => hooks.setVizOption('force', 'connectorMinRecipients', Math.max(2, Math.min(10, parseInt(e.target.value) || 2)))}
+                    className="w-14 text-xs text-ink border border-rule rounded px-1.5 py-0.5 bg-card focus:outline-none focus:border-accent"
+                  />
+                </div>
+              )}
+            </TreeSection>
+          </>
+        )}
 
       </div>
 
-      {/* Footer */}
+      {/* Footer — available from both tabs (FIX-812: "Save view…") */}
       <div className="border-t border-rule/60 px-3 py-2 shrink-0">
         <button
           onClick={onSavePreset}
           className="w-full flex items-center justify-center gap-1.5 py-1.5 text-xs font-medium rounded-lg bg-accent/10 hover:bg-accent/20 text-accent transition-colors border border-accent/30"
         >
           <span>💾</span>
-          <span>{isDirty ? 'Save changes' : 'Save preset'}</span>
+          <span>Save view…</span>
         </button>
       </div>
     </div>

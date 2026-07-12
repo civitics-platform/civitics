@@ -47,6 +47,14 @@ export interface ForceGraphProps {
    */
   highlightedNodeId?: string | null;
   /**
+   * FIX-812 — transient neighborhood spotlight driven by hovering an entity
+   * row in the left panel. Accepts the focus entity id (raw or type-prefixed);
+   * resolves through the same FIX-807 hover pathway as canvas node hover and
+   * clears on null. Panel hover and canvas hover can't overlap (the pointer is
+   * in one place), so sharing the hover refs is safe.
+   */
+  panelHoverEntityId?: string | null;
+  /**
    * FIX-731 — external ref to the rendered <svg>, same convention as every
    * other viz (Treemap/Chord/…): GraphPage's ScreenshotPanel reads it for PNG
    * export. A prop (not a JSX ref) because next/dynamic does not forward refs.
@@ -514,6 +522,7 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
       connections = {},
       vizOptions,
       highlightedNodeId = null,
+      panelHoverEntityId = null,
       onNodeClick,
       onNodeHover,
       className,
@@ -1457,6 +1466,42 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
       applyOpacity();
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [highlightedNodeId, focusEntities]);
+
+    // ── Category A — Panel-row hover spotlight (FIX-812) ───────────────────────
+    // Entity-row hover in the left panel feeds the same hover refs the canvas
+    // mouseenter handler uses, so the FIX-807 resolver treats both identically.
+    useEffect(() => {
+      const sim = simRef.current;
+      const links = (linkSelRef.current?.data() ?? []) as SimLink[];
+      if (!sim) return;
+
+      if (!panelHoverEntityId) {
+        if (hoverIdRef.current !== null || hoverNeighborIdsRef.current !== null) {
+          hoverIdRef.current = null;
+          hoverNeighborIdsRef.current = null;
+          applyOpacity();
+        }
+        return;
+      }
+
+      // Focus entity ids are raw uuids; node ids may be raw or "type:uuid".
+      const target = sim.nodes().find(
+        (n) => n.id === panelHoverEntityId || n.id.endsWith(`:${panelHoverEntityId}`)
+      );
+      if (!target) return;
+
+      const neighbors = new Set([target.id]);
+      for (const e of links) {
+        const sid = linkSrcId(e);
+        const tid = linkTgtId(e);
+        if (sid === target.id) neighbors.add(tid);
+        if (tid === target.id) neighbors.add(sid);
+      }
+      hoverIdRef.current = target.id;
+      hoverNeighborIdsRef.current = neighbors;
+      applyOpacity();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [panelHoverEntityId]);
 
     // ── Category B — Physics options ──────────────────────────────────────────
     useEffect(() => {

@@ -3,10 +3,16 @@
 /**
  * packages/graph/src/components/ConnectionsTree.tsx
  *
- * Renders the CONNECTIONS section of DataExplorerPanel.
- * Shows enabled types with full style controls and disabled types in an "Add" list.
- * FIX-128: types not applicable to the current focus fall under a collapsed
- * "Not applicable to current focus" sub-tree (still reachable).
+ * Renders the per-type connection rows. FIX-812 — relocated from the left
+ * DataExplorerPanel into the right panel's Connections tab; the tab supplies
+ * the outer section chrome, so this component renders the row stack directly.
+ * Shows enabled types with full style controls and disabled types in an "Add"
+ * list. FIX-128: types not applicable to the current focus fall under a
+ * collapsed "Not applicable to current focus" sub-tree (still reachable).
+ *
+ * The procedural-votes toggle and the shared "Votes loaded" fetch cap render
+ * as indented rows directly under the vote-type rows (FIX-812) — they filter
+ * and cap vote edges, so they live with the vote rows they act on.
  */
 
 import type { GraphView, VizType } from '../types';
@@ -39,6 +45,8 @@ export interface ConnectionsTreeProps {
 // Viz types that only support donations
 const DONATION_ONLY_VIZ = new Set<VizType>(['chord', 'treemap']);
 
+const VOTE_TYPE_SET = new Set<string>(VOTE_CONNECTION_TYPES);
+
 export function ConnectionsTree({
   connections,
   vizType,
@@ -51,9 +59,9 @@ export function ConnectionsTree({
   // All known types
   const allTypes = Object.keys(CONNECTION_TYPE_REGISTRY);
 
-  // Procedural-vote filter is only meaningful when the loaded graph actually contains vote edges.
-  // Default to showing the toggle when graphMeta isn't loaded yet — prevents it disappearing on first paint.
-  const showProceduralToggle = graphMeta?.hasVotes !== false;
+  // Vote filter rows are only meaningful when the loaded graph actually contains vote edges.
+  // Default to showing them when graphMeta isn't loaded yet — prevents them disappearing on first paint.
+  const showVoteFilterRows = graphMeta?.hasVotes !== false;
 
   // FIX-802 — the five vote types share ONE "Votes loaded" fetch cap. Read the
   // first defined value; write the same value to every vote-type key so it
@@ -87,12 +95,53 @@ export function ConnectionsTree({
 
   const donationOnlyViz = DONATION_ONLY_VIZ.has(vizType);
 
+  // FIX-812 — render the vote-filter rows right after the LAST enabled vote-type
+  // row (indented, so they read as acting on the rows above). If no vote type
+  // is enabled they trail the list so the controls stay reachable.
+  const lastEnabledVoteType = [...enabledTypes].reverse().find(t => VOTE_TYPE_SET.has(t));
+
+  const voteFilterRows = showVoteFilterRows && (
+    <div className="border-b border-rule/40 bg-ink/5" style={{ paddingLeft: '20px' }}>
+      <div className="flex items-center justify-between px-2 py-1.5">
+        <div className="min-w-0 pr-2">
+          <div className="text-[11px] text-ink">Include procedural votes</div>
+          <div className="text-[9px] text-ink-soft/60 leading-tight">Cloture, passage motions, etc.</div>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={!!includeProcedural}
+          aria-label="Include procedural votes"
+          onClick={hooks.toggleIncludeProcedural}
+          className={`w-7 h-4 rounded-full transition-colors relative shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1 ${includeProcedural ? 'bg-accent' : 'bg-ink/20'}`}
+        >
+          <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-paper shadow transition-transform ${includeProcedural ? 'translate-x-3.5' : 'translate-x-0.5'}`} />
+        </button>
+      </div>
+
+      {/* FIX-802 — shared server-side vote row cap (most recent first).
+          One control for all five vote types; changing it re-fetches. */}
+      <div className="flex items-center justify-between px-2 py-1.5">
+        <div className="min-w-0 pr-2">
+          <div className="text-[11px] text-ink">Votes loaded</div>
+          <div className="text-[9px] text-ink-soft/60 leading-tight">Most recent votes fetched per entity</div>
+        </div>
+        <select
+          aria-label="Votes loaded"
+          value={votesLimit}
+          onChange={e => setVotesLimit(parseInt(e.target.value, 10))}
+          className="px-1.5 py-0.5 text-xs border border-rule rounded bg-card focus:outline-none focus:border-accent shrink-0"
+        >
+          {VOTES_LIMIT_OPTIONS.map(o => (
+            <option key={o} value={o}>{o}</option>
+          ))}
+        </select>
+      </div>
+    </div>
+  );
+
   return (
-    <TreeSection
-      label="Connections"
-      defaultExpanded
-      separator
-    >
+    <>
       {/* Active connection types */}
       <TreeSection
         label="Active Types"
@@ -106,19 +155,24 @@ export function ConnectionsTree({
           const settings = connections[type];
           if (!def || !settings) return null;
           return (
-            <ConnectionStyleRow
-              key={type}
-              type={type}
-              def={def}
-              settings={settings}
-              onChange={(t, s) => hooks.setConnection(t, s)}
-              count={graphMeta?.connectionTypes[type]?.count}
-            />
+            <div key={type}>
+              <ConnectionStyleRow
+                type={type}
+                def={def}
+                settings={settings}
+                onChange={(t, s) => hooks.setConnection(t, s)}
+                count={graphMeta?.connectionTypes[type]?.count}
+              />
+              {/* Vote filter rows indented under the last vote-type row (FIX-812) */}
+              {type === lastEnabledVoteType && voteFilterRows}
+            </div>
           );
         })}
         {enabledTypes.length === 0 && (
           <div className="px-3 py-2 text-xs text-ink-soft/60">No active connection types</div>
         )}
+        {/* No enabled vote type — keep the vote filters reachable at the tail */}
+        {!lastEnabledVoteType && voteFilterRows}
       </TreeSection>
 
       {/* Disabled but applicable types — can be added */}
@@ -220,58 +274,6 @@ export function ConnectionsTree({
           Switch to Force Graph to configure vote connections
         </div>
       )}
-
-      {/* Vote filter row — procedural votes toggle. Filters cloture, passage motions, etc. */}
-      {showProceduralToggle && (
-        <TreeSection
-          label="Vote filters"
-          defaultExpanded
-          separator={false}
-          depth={1}
-        >
-          <div
-            className="flex items-center justify-between px-2 py-1.5"
-            style={{ paddingLeft: '32px' }}
-          >
-            <div className="min-w-0 pr-2">
-              <div className="text-[11px] text-ink">Include procedural votes</div>
-              <div className="text-[9px] text-ink-soft/60 leading-tight">Cloture, passage motions, etc.</div>
-            </div>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={!!includeProcedural}
-              aria-label="Include procedural votes"
-              onClick={hooks.toggleIncludeProcedural}
-              className={`w-7 h-4 rounded-full transition-colors relative shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1 ${includeProcedural ? 'bg-accent' : 'bg-ink/20'}`}
-            >
-              <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-paper shadow transition-transform ${includeProcedural ? 'translate-x-3.5' : 'translate-x-0.5'}`} />
-            </button>
-          </div>
-
-          {/* FIX-802 — shared server-side vote row cap (most recent first).
-              One control for all five vote types; changing it re-fetches. */}
-          <div
-            className="flex items-center justify-between px-2 py-1.5"
-            style={{ paddingLeft: '32px' }}
-          >
-            <div className="min-w-0 pr-2">
-              <div className="text-[11px] text-ink">Votes loaded</div>
-              <div className="text-[9px] text-ink-soft/60 leading-tight">Most recent votes fetched per entity</div>
-            </div>
-            <select
-              aria-label="Votes loaded"
-              value={votesLimit}
-              onChange={e => setVotesLimit(parseInt(e.target.value, 10))}
-              className="px-1.5 py-0.5 text-xs border border-rule rounded bg-card focus:outline-none focus:border-accent shrink-0"
-            >
-              {VOTES_LIMIT_OPTIONS.map(o => (
-                <option key={o} value={o}>{o}</option>
-              ))}
-            </select>
-          </div>
-        </TreeSection>
-      )}
-    </TreeSection>
+    </>
   );
 }

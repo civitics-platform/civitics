@@ -8,6 +8,7 @@ import { WatchingModule, type WatchingItem } from "./components/WatchingModule";
 import { ReceiptsModule, type ReceiptItem } from "./components/ReceiptsModule";
 import { PickUpModule, type ResumeInvestigation, type ResumeEvidenceCard } from "./components/PickUpModule";
 import { VerificationModule, type VerifiedJurisdiction, type OfficialClaim } from "./components/VerificationModule";
+import { PrioritiesModule } from "./components/PrioritiesModule";
 
 export const dynamic = "force-dynamic";
 
@@ -342,6 +343,8 @@ export default async function DeskPage() {
           <div className="space-y-6">
             <InboxModule initial={notifications} initialUnread={unreadCount} />
             <WatchingModule items={watchingItems} />
+            {/* FIX-812 — My Priorities moved here from the /graph left panel */}
+            <PrioritiesModule />
           </div>
         </div>
 

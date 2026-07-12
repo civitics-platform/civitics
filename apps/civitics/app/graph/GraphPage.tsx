@@ -245,6 +245,22 @@ export function GraphPage({ initialCode, aiEnabled = true }: GraphPageProps = {}
   const [alignmentEdges, setAlignmentEdges] = useState<GraphEdge[]>([]);
   const [userNodeVisible, setUserNodeVisible] = useState(true);
 
+  // FIX-812 — YOU-node affordance card. 'signed-out' (401) and 'no-home-state'
+  // (configured:false) both surface the dismissible card in the left panel;
+  // dismissal persists in localStorage.
+  const YOU_CARD_DISMISS_KEY = "civitics-graph-you-card-dismissed";
+  const [youCardReason, setYouCardReason] = useState<"signed-out" | "no-home-state" | null>(null);
+  const [youCardDismissed, setYouCardDismissed] = useState(true); // true until localStorage read
+  useEffect(() => {
+    try {
+      setYouCardDismissed(localStorage.getItem(YOU_CARD_DISMISS_KEY) === "1");
+    } catch { /* localStorage unavailable — keep hidden */ }
+  }, []);
+  function dismissYouCard() {
+    setYouCardDismissed(true);
+    try { localStorage.setItem(YOU_CARD_DISMISS_KEY, "1"); } catch { /* ignore */ }
+  }
+
   useEffect(() => {
     if (userRepFetchedRef.current) return;
     if (initialCode) return;
@@ -253,6 +269,10 @@ export function GraphPage({ initialCode, aiEnabled = true }: GraphPageProps = {}
     (async () => {
       try {
         const res = await fetch("/api/graph/my-representatives", { credentials: "include" });
+        if (res.status === 401) {
+          setYouCardReason("signed-out");
+          return;
+        }
         if (!res.ok) return;
         const { configured, reps } = await res.json() as {
           configured: boolean;
@@ -268,7 +288,11 @@ export function GraphPage({ initialCode, aiEnabled = true }: GraphPageProps = {}
             };
           }>;
         };
-        if (!configured || !reps.length) return;
+        if (!configured) {
+          setYouCardReason("no-home-state");
+          return;
+        }
+        if (!reps.length) return;
 
         setUserNode({
           id: USER_NODE_ID,
@@ -401,6 +425,10 @@ export function GraphPage({ initialCode, aiEnabled = true }: GraphPageProps = {}
   // FIX-149: shared-connections pill bar selection — null when nothing pinned.
   const [highlightedSharedId, setHighlightedSharedId] = useState<string | null>(null);
 
+  // FIX-812 — entity-row hover in the left panel transiently spotlights that
+  // entity's neighborhood on the force canvas (through the FIX-807 resolver).
+  const [hoveredFocusEntityId, setHoveredFocusEntityId] = useState<string | null>(null);
+
   // Clear pin whenever the focus set changes — old pin probably no longer makes sense.
   useEffect(() => {
     setHighlightedSharedId(null);
@@ -445,7 +473,7 @@ export function GraphPage({ initialCode, aiEnabled = true }: GraphPageProps = {}
 
   function handleSavePreset() {
     if (typeof window === "undefined") return;
-    const name = window.prompt("Name this preset:");
+    const name = window.prompt("Name this view:");
     if (!name?.trim()) return;
     try {
       const existing = JSON.parse(localStorage.getItem("civitics_presets") ?? "[]");
@@ -613,6 +641,37 @@ export function GraphPage({ initialCode, aiEnabled = true }: GraphPageProps = {}
     />
   );
 
+  // ── YOU-node affordance card (FIX-812) ─────────────────────────────────────
+  // App-side because it links to app routes (sign-in / the Citizen Desk).
+  // Shown when the viewer is signed out or has no home_state; dismissible.
+  const youCardSlot = youCardReason && !youCardDismissed ? (
+    <div className="mx-3 my-3 rounded border border-rule bg-ink/5 px-3 py-2.5">
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-[11px] font-medium text-ink leading-snug">
+          See your representatives on the graph
+        </p>
+        <button
+          onClick={dismissYouCard}
+          aria-label="Dismiss"
+          className="shrink-0 text-ink-soft/60 hover:text-ink text-xs leading-none transition-colors"
+        >
+          ✕
+        </button>
+      </div>
+      <p className="mt-1 text-[10px] text-ink-soft leading-relaxed">
+        {youCardReason === "signed-out"
+          ? "Sign in and set your home state to add a YOU node connected to your senators and representative."
+          : "Set your home state to add a YOU node connected to your senators and representative."}
+      </p>
+      <a
+        href={youCardReason === "signed-out" ? "/auth/sign-in?next=/graph" : "/desk"}
+        className="mt-2 inline-block rounded border border-accent/30 bg-accent/10 px-2 py-1 text-[10px] font-medium text-accent hover:bg-accent/20 transition-colors"
+      >
+        {youCardReason === "signed-out" ? "Sign in" : "Set home state"}
+      </a>
+    </div>
+  ) : null;
+
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     // Terminal Wave 3 (FIX-728): /graph is a fullscreen instrument with no site
@@ -645,7 +704,7 @@ export function GraphPage({ initialCode, aiEnabled = true }: GraphPageProps = {}
       {/* ── Three-column body ────────────────────────────────────────────── */}
       <div className="flex flex-1 overflow-hidden">
 
-        {/* LEFT — Data Explorer */}
+        {/* LEFT — Focus (what is on the graph) */}
         <DataExplorerPanel
           view={view}
           hooks={graphHooks}
@@ -655,6 +714,8 @@ export function GraphPage({ initialCode, aiEnabled = true }: GraphPageProps = {}
           userNode={userNodeInfo}
           onToggleUserNode={() => setUserNodeVisible(v => !v)}
           browserSlot={browserSlot}
+          youCardSlot={youCardSlot}
+          onEntityHover={setHoveredFocusEntityId}
         />
 
         {/* CANVAS */}
@@ -713,6 +774,7 @@ export function GraphPage({ initialCode, aiEnabled = true }: GraphPageProps = {}
                   connections={view.connections}
                   vizOptions={view.style.vizOptions?.force}
                   highlightedNodeId={highlightedSharedId}
+                  panelHoverEntityId={hoveredFocusEntityId}
                   className="w-full h-full"
                   onViewGroupAsTreemap={handleViewGroupAsTreemap}
                   onViewGroupAsChord={handleViewGroupAsChord}
@@ -928,7 +990,7 @@ export function GraphPage({ initialCode, aiEnabled = true }: GraphPageProps = {}
 
         </div>{/* end CANVAS */}
 
-        {/* RIGHT — Graph Config */}
+        {/* RIGHT — View (how it renders): View + Connections tabs */}
         <GraphConfigPanel
           view={view}
           hooks={graphHooks}
@@ -936,6 +998,7 @@ export function GraphPage({ initialCode, aiEnabled = true }: GraphPageProps = {}
           onCollapse={() => setRightCollapsed(p => !p)}
           onSavePreset={handleSavePreset}
           graphMeta={displayGraphMeta}
+          userNodeVisible={!!userNodeInfo?.visible}
         />
 
       </div>

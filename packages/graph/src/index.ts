@@ -119,10 +119,10 @@ export type { GanttGraphProps } from "./GanttGraph";
 export { GraphHeader } from "./components/GraphHeader";
 export type { GraphHeaderProps } from "./components/GraphHeader";
 
-export { DataExplorerPanel } from "./components/DataExplorerPanel";
+export { DataExplorerPanel, LEFT_PANEL_DEFAULT_WIDTH } from "./components/DataExplorerPanel";
 export type { DataExplorerPanelProps } from "./components/DataExplorerPanel";
 
-export { GraphConfigPanel } from "./components/GraphConfigPanel";
+export { GraphConfigPanel, RIGHT_PANEL_DEFAULT_WIDTH } from "./components/GraphConfigPanel";
 export type { GraphConfigPanelProps } from "./components/GraphConfigPanel";
 
 // ── Components — panel primitives ───────────────────────────────────────────
