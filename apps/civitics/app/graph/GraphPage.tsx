@@ -466,13 +466,22 @@ export function GraphPage({ initialCode, aiEnabled = true }: GraphPageProps = {}
   const clampWidth = (w: number) => Math.max(PANEL_MIN, Math.min(PANEL_MAX, Math.round(w)));
   const [leftWidth,  setLeftWidth]  = useState(LEFT_PANEL_DEFAULT_WIDTH);
   const [rightWidth, setRightWidth] = useState(RIGHT_PANEL_DEFAULT_WIDTH);
+  // Mirror the widths in refs so drag-end can persist synchronously in event
+  // order — persisting inside a setState updater runs at commit time, AFTER a
+  // double-click reset's removeItem, silently re-adding the stale width.
+  const leftWidthRef  = useRef(LEFT_PANEL_DEFAULT_WIDTH);
+  const rightWidthRef = useRef(RIGHT_PANEL_DEFAULT_WIDTH);
+  function applyWidth(side: "left" | "right", w: number) {
+    if (side === "left") { leftWidthRef.current = w; setLeftWidth(w); }
+    else { rightWidthRef.current = w; setRightWidth(w); }
+  }
   useEffect(() => {
     // localStorage after mount — reading during render would mismatch SSR markup.
     try {
       const l = parseInt(localStorage.getItem(WIDTH_KEYS.left)  ?? "", 10);
       const r = parseInt(localStorage.getItem(WIDTH_KEYS.right) ?? "", 10);
-      if (Number.isFinite(l)) setLeftWidth(clampWidth(l));
-      if (Number.isFinite(r)) setRightWidth(clampWidth(r));
+      if (Number.isFinite(l)) applyWidth("left", clampWidth(l));
+      if (Number.isFinite(r)) applyWidth("right", clampWidth(r));
     } catch { /* localStorage unavailable */ }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -832,9 +841,9 @@ export function GraphPage({ initialCode, aiEnabled = true }: GraphPageProps = {}
         {!isNarrow && !leftCollapsed && (
           <PanelResizeHandle
             label="Resize focus panel"
-            onDrag={clientX => setLeftWidth(clampWidth(clientX))}
-            onDragEnd={() => setLeftWidth(w => { persistWidth("left", w); return w; })}
-            onReset={() => { setLeftWidth(LEFT_PANEL_DEFAULT_WIDTH); persistWidth("left", null); }}
+            onDrag={clientX => applyWidth("left", clampWidth(clientX))}
+            onDragEnd={() => persistWidth("left", leftWidthRef.current)}
+            onReset={() => { applyWidth("left", LEFT_PANEL_DEFAULT_WIDTH); persistWidth("left", null); }}
           />
         )}
 
@@ -1114,9 +1123,9 @@ export function GraphPage({ initialCode, aiEnabled = true }: GraphPageProps = {}
         {!isNarrow && !rightCollapsed && (
           <PanelResizeHandle
             label="Resize view panel"
-            onDrag={clientX => setRightWidth(clampWidth(window.innerWidth - clientX))}
-            onDragEnd={() => setRightWidth(w => { persistWidth("right", w); return w; })}
-            onReset={() => { setRightWidth(RIGHT_PANEL_DEFAULT_WIDTH); persistWidth("right", null); }}
+            onDrag={clientX => applyWidth("right", clampWidth(window.innerWidth - clientX))}
+            onDragEnd={() => persistWidth("right", rightWidthRef.current)}
+            onReset={() => { applyWidth("right", RIGHT_PANEL_DEFAULT_WIDTH); persistWidth("right", null); }}
           />
         )}
 
