@@ -992,3 +992,4 @@
 2026-07-12 | FIX-812 | 02a44b7e | prod-only | chore: record prod verification for FIX-812..815 (browser QA 2026-07-12)
 2026-07-12 | FIX-813 | 02a44b7e | prod-only | chore: record prod verification for FIX-812..815 (browser QA 2026-07-12)
 2026-07-12 | FIX-815 | 02a44b7e | prod-only | chore: record prod verification for FIX-812..815 (browser QA 2026-07-12)
+2026-07-12 | FIX-819 | 6e2c9765 | local+prod | perf(elections): change-detection + set-based writes — drop ~27k per-row UPDATEs/run
