@@ -5,7 +5,6 @@ import dynamic from "next/dynamic";
 import {
   SharedConnectionsBar,
   AiNarrative,
-  EmbedModal,
   useGraphView,
   useGraphData,
   GraphHeader,
@@ -18,7 +17,7 @@ import {
   BRACKET_TIERS,
   DonorListPanel,
 } from "@civitics/graph";
-import type { VizType, FocusGroup, GroupFilter, GraphNodeV2 as GraphNode, GraphEdgeV2 as GraphEdge, GraphMeta, UserNodeInfo, IndividualDisplayMode } from "@civitics/graph";
+import type { VizType, FocusEntity, FocusGroup, GroupFilter, GraphNodeV2 as GraphNode, GraphEdgeV2 as GraphEdge, GraphMeta, UserNodeInfo, IndividualDisplayMode } from "@civitics/graph";
 import { isGraphSeedableKind } from "@/lib/graph-seedable-kinds";
 import { SidebarBrowser } from "../search/components/explorer/SidebarBrowser";
 import { PorticoMark }     from "../components/brand/PorticoMark";
@@ -398,7 +397,6 @@ export function GraphPage({ initialCode, aiEnabled = true }: GraphPageProps = {}
   const [shareCode,       setShareCode]       = useState<string | null>(initialCode ?? null);
   const [showShare,       setShowShare]       = useState(false);
   const [showScreenshot,  setShowScreenshot]  = useState(false);
-  const [showEmbed,       setShowEmbed]       = useState(false);
 
   // FIX-149: shared-connections pill bar selection — null when nothing pinned.
   const [highlightedSharedId, setHighlightedSharedId] = useState<string | null>(null);
@@ -540,6 +538,30 @@ export function GraphPage({ initialCode, aiEnabled = true }: GraphPageProps = {}
 
   function handlePinDonor(donorId: string, donorName: string) {
     graphHooks.addEntity({ id: donorId, name: donorName, type: 'financial' });
+  }
+
+  // FIX-805 — NodePopup "Expand connections" on a collapsed (+) node. Interim
+  // implementation: add the node as a focus entity, which runs the same
+  // whole-entity fetch that search-add uses. G5 replaces this with an
+  // incremental neighborhood fetch.
+  const EXPAND_TYPE_MAP: Record<string, FocusEntity["type"]> = {
+    official: "official",
+    agency: "agency",
+    proposal: "proposal",
+    financial: "financial",
+    pac: "financial",
+    corporation: "financial",
+    individual: "financial",
+    organization: "financial",
+  };
+
+  function handleExpandNode(node: GraphNode) {
+    if (graphHooks.atMaxFocus) return;
+    const focusType = EXPAND_TYPE_MAP[node.type];
+    if (!focusType) return; // group / user / bracket nodes aren't expandable entities
+    const rawId = node.id.replace(/^[a-z_]+:/, "");
+    if (!UUID_RE.test(rawId)) return;
+    graphHooks.addEntity({ id: rawId, name: node.name, type: focusType });
   }
 
   const vizType      = view.style.vizType;
@@ -698,6 +720,7 @@ export function GraphPage({ initialCode, aiEnabled = true }: GraphPageProps = {}
                   onRemoveGroup={handleRemoveGroup}
                   onRetryGroup={handleRetryGroup}
                   onOpenDonorList={handleOpenDonorList}
+                  onExpandNode={handleExpandNode}
                 />
               )}
 
@@ -916,11 +939,8 @@ export function GraphPage({ initialCode, aiEnabled = true }: GraphPageProps = {}
         />
 
       </div>
-
-      {/* Embed Modal */}
-      {showEmbed && (
-        <EmbedModal shareCode={shareCode} onClose={() => setShowEmbed(false)} />
-      )}
+      {/* EmbedModal mount removed (FIX-806) — setShowEmbed was never called;
+          SharePanel's embed snippet is the surviving embed path. */}
     </div>
   );
 }

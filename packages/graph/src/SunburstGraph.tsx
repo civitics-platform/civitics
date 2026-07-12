@@ -100,7 +100,6 @@ export function SunburstGraph({ entityId, entityLabel, className = "", svgRef: e
   const nodeActions: NodeActions = {
     recenter:        () => {},
     openProfile:     (nodeId) => window.open(`/officials/${nodeId}`, "_blank"),
-    addToComparison: () => {},
     expandNode:      () => {},
   };
 

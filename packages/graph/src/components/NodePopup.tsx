@@ -42,6 +42,14 @@ export function NodePopup({ node, onClose, actions, vizType }: NodePopupProps) {
   const isForce    = vizType === 'force';
   const isOfficial = node.type === 'official';
   const isBracket  = node.type === 'individual_bracket';
+  // FIX-805 — profile links for the previously link-less types. Donor node
+  // flavors are all financial_entities rows (/donors/[id]); agency nodes come
+  // from either the agencies or governing_bodies table ("agency:" /
+  // "governing_body:" id prefixes) and both resolve at /institutions/[uuid]
+  // via the institutions UNION view (FIX-418).
+  const isDonor  = ['financial', 'pac', 'corporation', 'individual'].includes(node.type);
+  const isAgency = node.type === 'agency';
+  const rawEntityId = node.id.replace(/^[a-z_]+:/, '');
 
   const displayName = node.name ?? 'Unknown';
 
@@ -380,6 +388,28 @@ export function NodePopup({ node, onClose, actions, vizType }: NodePopupProps) {
             </button>
           )}
 
+          {/* View donor profile (FIX-805) */}
+          {isDonor && (
+            <button
+              onClick={() => window.open(`/donors/${rawEntityId}`, '_blank')}
+              className="w-full text-left px-3 py-2 rounded-lg text-sm text-ink hover:bg-ink/5 flex items-center gap-2 transition-colors"
+            >
+              <span>↗</span>
+              <span>View donor profile</span>
+            </button>
+          )}
+
+          {/* View institution profile (FIX-805) */}
+          {isAgency && (
+            <button
+              onClick={() => window.open(`/institutions/${rawEntityId}`, '_blank')}
+              className="w-full text-left px-3 py-2 rounded-lg text-sm text-ink hover:bg-ink/5 flex items-center gap-2 transition-colors"
+            >
+              <span>↗</span>
+              <span>View institution profile</span>
+            </button>
+          )}
+
           {/* Expand collapsed node — force only */}
           {isForce && node.collapsed && (
             <button
@@ -393,20 +423,8 @@ export function NodePopup({ node, onClose, actions, vizType }: NodePopupProps) {
               <span>Expand connections</span>
             </button>
           )}
-
-          {/* Add to comparison — force + official only */}
-          {isForce && isOfficial && (
-            <button
-              onClick={() => {
-                actions.addToComparison(node.id);
-                onClose();
-              }}
-              className="w-full text-left px-3 py-2 rounded-lg text-sm text-ink hover:bg-ink/5 flex items-center gap-2 transition-colors"
-            >
-              <span>+</span>
-              <span>Add to comparison</span>
-            </button>
-          )}
+          {/* "Add to comparison" removed (FIX-805) — it invoked an empty
+              callback; no comparison feature exists. */}
         </div>
       </div>
     </>

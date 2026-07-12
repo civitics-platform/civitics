@@ -82,6 +82,7 @@ export {
   getShortestPath,
   listConnectionsByType,
 } from "./queries/entity-connections";
+export type { EntityPathSegment } from "./queries/entity-connections";
 
 export {
   getPromise,

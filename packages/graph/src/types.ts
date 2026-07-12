@@ -709,9 +709,11 @@ export interface NodeActions {
   recenter: (nodeId: string) => void
   /** Navigate to the entity's profile page. All viz types. */
   openProfile: (nodeId: string) => void
-  /** Add to side-by-side comparison. Force viz only. */
-  addToComparison: (nodeId: string) => void
-  /** Expand a collapsed node (50+ connections). Force viz only. */
+  /**
+   * Expand a collapsed node (50+ connections). Force viz only.
+   * FIX-805 interim: adds the node as a focus entity (whole-entity fetch);
+   * G5 replaces this with an incremental neighborhood fetch.
+   */
   expandNode: (nodeId: string) => void
   /** Switch to treemap viz focused on this group. Group nodes only. */
   viewGroupAsTreemap?: (groupId: string) => void

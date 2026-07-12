@@ -620,7 +620,6 @@ export function ChordGraph({ className = "", svgRef: externalSvgRef, vizOptions,
   const nodeActions: NodeActions = {
     recenter:         () => {},
     openProfile:      (nodeId) => window.open(`/officials/${nodeId}`, "_blank"),
-    addToComparison:  () => {},
     expandNode:       () => {},
   };
 

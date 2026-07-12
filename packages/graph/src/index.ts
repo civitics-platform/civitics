@@ -170,11 +170,8 @@ export type { PathFinderProps } from "./PathFinder";
 export { AiNarrative } from "./AiNarrative";
 export type { AiNarrativeProps } from "./AiNarrative";
 
-export { EmbedModal } from "./EmbedModal";
-export type { EmbedModalProps } from "./EmbedModal";
-
-export { CollapsiblePanel } from "./CollapsiblePanel";
-export type { CollapsiblePanelProps } from "./CollapsiblePanel";
+// EmbedModal + CollapsiblePanel deleted (FIX-806) — zero consumers left;
+// SharePanel's embed snippet is the surviving embed path.
 
 // ── Legacy types — kept for backward compat with any external consumers ─────
 // These are the old flat GraphNode / GraphEdge used in the original ForceGraph.

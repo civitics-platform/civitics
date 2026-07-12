@@ -405,7 +405,6 @@ export function HierarchyGraph({
   const nodeActions: NodeActions = {
     recenter: () => {},
     openProfile: (id) => window.open(`/agencies/${id}`, "_blank"),
-    addToComparison: () => {},
     expandNode: () => {},
   };
 

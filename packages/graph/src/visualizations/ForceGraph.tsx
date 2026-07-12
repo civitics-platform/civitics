@@ -61,6 +61,11 @@ export interface ForceGraphProps {
   onRemoveGroup?: (groupId: string) => void;
   onRetryGroup?: (groupId: string) => void;
   onOpenDonorList?: (officialId: string, tierOrEmployer: string) => void;
+  /**
+   * FIX-805 — NodePopup "Expand connections" on a collapsed (+) node.
+   * Receives the full node so the caller can map it to a focus entity.
+   */
+  onExpandNode?: (node: GraphNode) => void;
 }
 
 // ── D3 simulation types ────────────────────────────────────────────────────────
@@ -417,6 +422,7 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
       onRemoveGroup,
       onRetryGroup,
       onOpenDonorList,
+      onExpandNode,
       svgRef: externalSvgRef,
     },
     forwardedRef
@@ -1533,11 +1539,12 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
         window.open(`/officials/${cleanId}`, "_blank");
       }, []),
 
-      addToComparison: useCallback((_nodeId: string) => {
-      }, []),
-
-      expandNode: useCallback((_nodeId: string) => {
-      }, []),
+      // FIX-805 — interim expand: hand the node to GraphPage, which adds it as
+      // a focus entity (whole-entity fetch). G5: incremental neighborhood fetch.
+      expandNode: useCallback((nodeId: string) => {
+        const target = nodes.find((n) => n.id === nodeId);
+        if (target) onExpandNode?.(target);
+      }, [nodes, onExpandNode]),
 
       viewGroupAsTreemap: onViewGroupAsTreemap,
       viewGroupAsChord: onViewGroupAsChord,

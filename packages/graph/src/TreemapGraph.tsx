@@ -809,7 +809,6 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
   const nodeActions: NodeActions = {
     recenter:         () => {},
     openProfile:      (nodeId) => window.open(`/officials/${nodeId}`, "_blank"),
-    addToComparison:  () => {},
     expandNode:       () => {},
   };
 

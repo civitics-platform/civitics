@@ -66,29 +66,36 @@ export async function getAllConnectionsForEntity(
   return { outgoing, incoming };
 }
 
+/** One row per node along a path, ordered start → end (FIX-693). */
+export interface EntityPathSegment {
+  hop: number;
+  entity_id: string;
+  entity_type: string | null;
+  entity_label: string | null;
+  /** Type of the edge that led INTO this node — null on the first row. */
+  connection_type: string | null;
+}
+
 /**
- * Shortest path between two entities.
- * Calls the PostgreSQL recursive CTE function.
- * This is the signature investigation feature of the connection graph.
+ * Shortest path between two entities via the find_entity_path RPC (FIX-693):
+ * bidirectional-edge BFS over entity_connections with a 50k visited-node cap,
+ * max 6 hops. The former find_shortest_path RPC was never installed; this is
+ * the single pathfinding implementation, shared with /api/graph/pathfinder
+ * and the snapshot route. From/to types are no longer needed — the BFS keys
+ * on ids alone.
  *
- * Returns an ordered array of connection records forming the path,
- * or an empty array if no path exists within maxHops.
+ * Returns an ordered node list, or [] when no path exists within maxHops
+ * (or the RPC is not yet deployed).
  */
 export async function getShortestPath(
   db: DB,
-  fromType: EntityType,
   fromId: string,
-  toType: EntityType,
   toId: string,
-  maxHops = 6
-): Promise<Row[]> {
-  // Implemented as a PostgreSQL recursive CTE function (Phase 2+).
-  // Stub returns empty array until the function is deployed.
+  maxHops = 3
+): Promise<EntityPathSegment[]> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data, error } = await (db as any).rpc("find_shortest_path", {
-    p_from_type: fromType,
+  const { data, error } = await (db as any).rpc("find_entity_path", {
     p_from_id: fromId,
-    p_to_type: toType,
     p_to_id: toId,
     p_max_hops: maxHops,
   });
@@ -97,7 +104,7 @@ export async function getShortestPath(
     if (error.code === "PGRST202") return [];
     throw error;
   }
-  return data ?? [];
+  return (data ?? []) as EntityPathSegment[];
 }
 
 /** Connections filtered by type (e.g. all donations). */
