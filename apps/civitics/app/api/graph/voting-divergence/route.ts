@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { withPublicCdnCache } from "@/lib/cdn-cache";
 import type { NextRequest } from "next/server";
 import { createAdminClient } from "@civitics/db";
 import { supabaseUnavailable, unavailableResponse } from "@/lib/supabase-check";
@@ -112,7 +113,7 @@ export async function GET(req: NextRequest) {
   }
 
   const districts = jRows;
-  if (districts.length === 0) return NextResponse.json([]);
+  if (districts.length === 0) return withPublicCdnCache(NextResponse.json([]));
 
   const districtIds = districts.map(d => d.id);
   const districtIdSet = new Set(districtIds);
@@ -232,9 +233,9 @@ export async function GET(req: NextRequest) {
     };
   });
 
-  return NextResponse.json(rows, {
+  return withPublicCdnCache(NextResponse.json(rows, {
     headers: {
       "Cache-Control": "public, max-age=0, s-maxage=3600, stale-while-revalidate=86400",
     },
-  });
+  }));
 }

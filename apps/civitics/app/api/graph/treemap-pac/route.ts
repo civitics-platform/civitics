@@ -1,4 +1,5 @@
 import { createAdminClient } from "@civitics/db";
+import { withPublicCdnCache } from "@/lib/cdn-cache";
 import { supabaseUnavailable, unavailableResponse } from "@/lib/supabase-check";
 
 export const dynamic = "force-dynamic";
@@ -111,7 +112,7 @@ export async function GET(request: Request) {
         ? [{ name: officialParty, totalUsd: leaves.reduce((s, l) => s + l.value, 0), children: leaves }]
         : [];
       const name = officialName ? `${officialName} — PAC Money by Party` : "PAC Money by Party";
-      return Response.json({ name, children } satisfies PacHierarchy, { headers: CACHE_HEADERS });
+      return withPublicCdnCache(Response.json({ name, children } satisfies PacHierarchy, { headers: CACHE_HEADERS }));
     }
 
     // Sector mode: group the official's PAC donors by industry_label.
@@ -134,7 +135,7 @@ export async function GET(request: Request) {
       .slice(0, SECTOR_CAP);
     const baseName = industryFilter ? `${industryFilter} PACs` : "PAC Money by Sector";
     const name = officialName ? `${officialName} — ${baseName}` : baseName;
-    return Response.json({ name, children } satisfies PacHierarchy, { headers: CACHE_HEADERS });
+    return withPublicCdnCache(Response.json({ name, children } satisfies PacHierarchy, { headers: CACHE_HEADERS }));
   }
 
   // ── Global party mode: rollup #2 via RPC ───────────────────────────────────
@@ -148,7 +149,7 @@ export async function GET(request: Request) {
       return Response.json({ error: error.message }, { status: 500 });
     }
     const children = ((data?.children ?? []) as PacGroup[]);
-    return Response.json({ name: "PAC Money by Party", children } satisfies PacHierarchy, { headers: CACHE_HEADERS });
+    return withPublicCdnCache(Response.json({ name: "PAC Money by Party", children } satisfies PacHierarchy, { headers: CACHE_HEADERS }));
   }
 
   // ── Global sector mode: rollup #2 via RPC ──────────────────────────────────
@@ -163,5 +164,5 @@ export async function GET(request: Request) {
   }
   const children = ((data?.children ?? []) as PacGroup[]);
   const name = industryFilter ? `${industryFilter} PACs` : "PAC Money by Sector";
-  return Response.json({ name, children } satisfies PacHierarchy, { headers: CACHE_HEADERS });
+  return withPublicCdnCache(Response.json({ name, children } satisfies PacHierarchy, { headers: CACHE_HEADERS }));
 }

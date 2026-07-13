@@ -12,6 +12,7 @@
  */
 
 import { createAdminClient, fetchIndustryTagsByEntityId } from "@civitics/db";
+import { withPublicCdnCache } from "@/lib/cdn-cache";
 import { supabaseUnavailable, unavailableResponse, withDbTimeout } from "@/lib/supabase-check";
 
 export const dynamic = "force-dynamic";
@@ -161,7 +162,7 @@ export async function GET(request: Request) {
   }
 
   if (rows.length === 0) {
-    return Response.json({ results: [], total: 0 });
+    return withPublicCdnCache(Response.json({ results: [], total: 0 }));
   }
 
   const allIds = rows.map((r) => r.id);
@@ -325,8 +326,8 @@ export async function GET(request: Request) {
     return a.name.localeCompare(b.name);
   });
 
-  return Response.json(
+  return withPublicCdnCache(Response.json(
     { results, total: results.length },
     { headers: { "Cache-Control": "public, max-age=30, s-maxage=30" } },
-  );
+  ));
 }

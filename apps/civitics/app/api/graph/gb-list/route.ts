@@ -17,6 +17,7 @@
 export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
+import { withPublicCdnCache } from "@/lib/cdn-cache";
 import { createAdminClient } from "@civitics/db";
 import { supabaseUnavailable, unavailableResponse } from "@/lib/supabase-check";
 
@@ -77,5 +78,5 @@ export async function GET() {
         a.stateName.localeCompare(b.stateName) || CHAMBER_RANK[a.type] - CHAMBER_RANK[b.type],
     );
 
-  return NextResponse.json({ governingBodies: items });
+  return withPublicCdnCache(NextResponse.json({ governingBodies: items }));
 }

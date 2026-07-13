@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server";
 import { createAdminClient } from "@civitics/db";
 import { supabaseUnavailable, unavailableResponse, withDbTimeout } from "@/lib/supabase-check";
 import type { GroupFilter } from "@civitics/graph";
+import { withPublicCdnCache } from "@/lib/cdn-cache";
 
 export const dynamic = "force-dynamic";
 
@@ -149,7 +150,7 @@ export async function GET(req: NextRequest) {
     try {
       const cohortIds = await resolveCohortIds();
       if (cohortIds.length === 0) {
-        return NextResponse.json({ groups: [], recipients: [], matrix: [], mode: 'sector-vote' });
+        return withPublicCdnCache(NextResponse.json({ groups: [], recipients: [], matrix: [], mode: 'sector-vote' }));
       }
       const minFlowParam = parseFloat(searchParams.get('minFlowUsd') ?? '0');
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -158,7 +159,7 @@ export async function GET(req: NextRequest) {
       );
       if (error) {
         console.error('[chord/sector-vote] rpc error:', error);
-        return NextResponse.json({ groups: [], recipients: [], matrix: [], mode: 'sector-vote' });
+        return withPublicCdnCache(NextResponse.json({ groups: [], recipients: [], matrix: [], mode: 'sector-vote' }));
       }
       const rows = data ?? [];
 
@@ -201,7 +202,7 @@ export async function GET(req: NextRequest) {
       const matrix = groups.map(g =>
         recipients.map(r => Math.round(cellMap.get(g.id)?.get(r.id) ?? 0))
       );
-      return NextResponse.json({ groups, recipients, matrix, mode: 'sector-vote' });
+      return withPublicCdnCache(NextResponse.json({ groups, recipients, matrix, mode: 'sector-vote' }));
     } catch (e) {
       console.error('[chord/sector-vote]', e);
       return NextResponse.json({ error: 'Internal error' }, { status: 500 });
@@ -218,7 +219,7 @@ export async function GET(req: NextRequest) {
       );
       if (error) {
         console.error('[chord/subject-party] rpc error:', error);
-        return NextResponse.json({ groups: [], recipients: [], matrix: [], mode: 'subject-party' });
+        return withPublicCdnCache(NextResponse.json({ groups: [], recipients: [], matrix: [], mode: 'subject-party' }));
       }
       const rows = data ?? [];
 
@@ -258,7 +259,7 @@ export async function GET(req: NextRequest) {
       const matrix = groups.map(g =>
         recipients.map(r => cellMap.get(g.id)?.get(r.id) ?? 0)
       );
-      return NextResponse.json({ groups, recipients, matrix, mode: 'subject-party' });
+      return withPublicCdnCache(NextResponse.json({ groups, recipients, matrix, mode: 'subject-party' }));
     } catch (e) {
       console.error('[chord/subject-party]', e);
       return NextResponse.json({ error: 'Internal error' }, { status: 500 });
@@ -275,7 +276,7 @@ export async function GET(req: NextRequest) {
       );
       if (error) {
         console.error('[chord/donor-type-party] rpc error:', error);
-        return NextResponse.json({ groups: [], recipients: [], matrix: [], mode: 'donor-type-party' });
+        return withPublicCdnCache(NextResponse.json({ groups: [], recipients: [], matrix: [], mode: 'donor-type-party' }));
       }
       const rows = data ?? [];
 
@@ -312,7 +313,7 @@ export async function GET(req: NextRequest) {
       const matrix = groups.map(g =>
         recipients.map(r => Math.round(cellMap.get(g.id)?.get(r.id) ?? 0))
       );
-      return NextResponse.json({ groups, recipients, matrix, mode: 'donor-type-party' });
+      return withPublicCdnCache(NextResponse.json({ groups, recipients, matrix, mode: 'donor-type-party' }));
     } catch (e) {
       console.error('[chord/donor-type-party]', e);
       return NextResponse.json({ error: 'Internal error' }, { status: 500 });
@@ -328,7 +329,7 @@ export async function GET(req: NextRequest) {
       );
       if (error) {
         console.error('[chord/state-party] rpc error:', error);
-        return NextResponse.json({ groups: [], recipients: [], matrix: [], mode: 'state-party' });
+        return withPublicCdnCache(NextResponse.json({ groups: [], recipients: [], matrix: [], mode: 'state-party' }));
       }
       const rows = data ?? [];
 
@@ -366,7 +367,7 @@ export async function GET(req: NextRequest) {
       const matrix = groups.map(g =>
         recipients.map(r => Math.round(cellMap.get(g.id)?.get(r.id) ?? 0))
       );
-      return NextResponse.json({ groups, recipients, matrix, mode: 'state-party' });
+      return withPublicCdnCache(NextResponse.json({ groups, recipients, matrix, mode: 'state-party' }));
     } catch (e) {
       console.error('[chord/state-party]', e);
       return NextResponse.json({ error: 'Internal error' }, { status: 500 });
@@ -382,7 +383,7 @@ export async function GET(req: NextRequest) {
       ]);
 
       if (group1Ids.length === 0 && group2Ids.length === 0) {
-        return NextResponse.json({ groups: [], recipients: [], matrix: [], mode: 'cross-group' });
+        return withPublicCdnCache(NextResponse.json({ groups: [], recipients: [], matrix: [], mode: 'cross-group' }));
       }
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -419,7 +420,7 @@ export async function GET(req: NextRequest) {
 
       const matrix = sortedSectors.map((r) => [Math.round(r.group1_usd), Math.round(r.group2_usd)]);
 
-      return NextResponse.json({ groups, recipients, matrix, top_flows: [], total_flow_usd: 0, untagged_flow_usd: 0, mode: 'cross-group' });
+      return withPublicCdnCache(NextResponse.json({ groups, recipients, matrix, top_flows: [], total_flow_usd: 0, untagged_flow_usd: 0, mode: 'cross-group' }));
     } catch (e) {
       console.error('[chord/cross-group]', e);
       return NextResponse.json({ error: 'Internal error' }, { status: 500 });
@@ -431,7 +432,7 @@ export async function GET(req: NextRequest) {
     try {
       const memberIds = await getMemberIds(groupFilter);
       if (memberIds.length === 0) {
-        return NextResponse.json({ groups: [], recipients: [], matrix: [], mode: 'group' });
+        return withPublicCdnCache(NextResponse.json({ groups: [], recipients: [], matrix: [], mode: 'group' }));
       }
 
       const minFlowParam = parseFloat(searchParams.get('minFlowUsd') ?? '0');
@@ -459,7 +460,7 @@ export async function GET(req: NextRequest) {
       }));
 
       if (groups.length === 0) {
-        return NextResponse.json({ groups: [], recipients: [], matrix: [], mode: 'group' });
+        return withPublicCdnCache(NextResponse.json({ groups: [], recipients: [], matrix: [], mode: 'group' }));
       }
 
       const groupName = groupNameParam ?? 'Group';
@@ -474,7 +475,7 @@ export async function GET(req: NextRequest) {
 
       const matrix = groups.map((g) => [g.total_usd]);
 
-      return NextResponse.json({ groups, recipients, matrix, top_flows: [], total_flow_usd: totalReceived, untagged_flow_usd: 0, mode: 'group' });
+      return withPublicCdnCache(NextResponse.json({ groups, recipients, matrix, top_flows: [], total_flow_usd: totalReceived, untagged_flow_usd: 0, mode: 'group' }));
     } catch (e) {
       console.error('[chord/group]', e);
       return NextResponse.json({ error: 'Internal error' }, { status: 500 });
@@ -500,7 +501,7 @@ export async function GET(req: NextRequest) {
         .filter((s) => UUID_RE.test(s))
         .slice(0, 12);
       if (entityIds.length === 0) {
-        return NextResponse.json({ groups: [], recipients: [], matrix: [], mode: 'compare' });
+        return withPublicCdnCache(NextResponse.json({ groups: [], recipients: [], matrix: [], mode: 'compare' }));
       }
       const granularity = searchParams.get('granularity') ?? 'aggregate';
       const topPacsLimit = parseInt(searchParams.get('topPacsLimit') ?? '12');
@@ -623,7 +624,7 @@ export async function GET(req: NextRequest) {
         recipients.map(r => Math.round((cell.get(g.id)?.get(r.id) ?? 0) / 100))
       );
 
-      return NextResponse.json({ groups, recipients, matrix, mode: 'compare' });
+      return withPublicCdnCache(NextResponse.json({ groups, recipients, matrix, mode: 'compare' }));
     } catch (e) {
       console.error('[chord/compare]', e);
       return NextResponse.json({ error: 'Internal error' }, { status: 500 });
@@ -708,7 +709,7 @@ export async function GET(req: NextRequest) {
       }
 
       if (groups.length === 0) {
-        return NextResponse.json({ groups: [], recipients: [], matrix: [] });
+        return withPublicCdnCache(NextResponse.json({ groups: [], recipients: [], matrix: [] }));
       }
 
       const recipients = [
@@ -723,7 +724,7 @@ export async function GET(req: NextRequest) {
       // Matrix: M industries × 1 official
       const matrix: number[][] = groups.map((g) => [g.total_usd]);
 
-      return NextResponse.json({ groups, recipients, matrix });
+      return withPublicCdnCache(NextResponse.json({ groups, recipients, matrix }));
     } catch (e) {
       console.error("[chord/entity]", e);
       return NextResponse.json({ error: "Internal error" }, { status: 500 });
@@ -737,7 +738,7 @@ export async function GET(req: NextRequest) {
 
     if (error) {
       console.error("[chord] RPC error:", error.message);
-      return NextResponse.json({ groups: [], recipients: [], matrix: [], top_flows: [], total_flow_usd: 0 });
+      return withPublicCdnCache(NextResponse.json({ groups: [], recipients: [], matrix: [], top_flows: [], total_flow_usd: 0 }));
     }
 
     const rows = (data ?? []) as FlowRow[];
@@ -809,7 +810,7 @@ export async function GET(req: NextRequest) {
         topFlows.push({ from: labelFor(ind), to: party, amount_usd: Math.round(usd) });
     topFlows.sort((a, b) => b.amount_usd - a.amount_usd);
 
-    return NextResponse.json({
+    return withPublicCdnCache(NextResponse.json({
       groups,
       recipients,
       matrix,
@@ -818,7 +819,7 @@ export async function GET(req: NextRequest) {
       untagged_flow_usd: Math.round(untaggedFlow),
     }, {
       headers: { "Cache-Control": "public, max-age=0, s-maxage=86400, stale-while-revalidate=172800" },
-    });
+    }));
   } catch (e) {
     console.error("[chord]", e);
     return NextResponse.json({ error: "Internal error" }, { status: 500 });

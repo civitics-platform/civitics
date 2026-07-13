@@ -5,6 +5,7 @@
 // so they can be inspected or pinned as real graph nodes (option c).
 
 import { createAdminClient } from "@civitics/db";
+import { withPublicCdnCache } from "@/lib/cdn-cache";
 import { supabaseUnavailable, unavailableResponse, withDbTimeout } from "@/lib/supabase-check";
 import { BRACKET_TIERS } from "@civitics/graph";
 
@@ -69,7 +70,7 @@ export async function GET(request: Request): Promise<Response> {
     );
     if (connErr) throw connErr;
     if (!connRows?.length) {
-      return Response.json({ donors: [], total: 0, page, pageSize });
+      return withPublicCdnCache(Response.json({ donors: [], total: 0, page, pageSize }));
     }
 
     // Step 2: fetch individual donor metadata for those entity IDs
@@ -142,7 +143,7 @@ export async function GET(request: Request): Promise<Response> {
     const total = filtered.length;
     const donors = filtered.slice((page - 1) * pageSize, page * pageSize);
 
-    return Response.json({ donors, total, page, pageSize } satisfies IndividualDonorsResponse);
+    return withPublicCdnCache(Response.json({ donors, total, page, pageSize } satisfies IndividualDonorsResponse));
   } catch (err) {
     console.error("[graph/individual-donors]", err);
     return Response.json({ error: "Failed to load donor list" }, { status: 500 });

@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
+import { withPublicCdnCache } from "@/lib/cdn-cache";
 import { createAdminClient, fetchIndustryTagsByEntityId, fetchEntityIdsByIndustryTag, currentGoverningBodyMembers } from "@civitics/db";
 import { supabaseUnavailable, unavailableResponse, withDbTimeout } from "@/lib/supabase-check";
 import { fetchAllRows } from "@/lib/paginate";
@@ -415,11 +416,11 @@ export async function GET(req: NextRequest) {
     }
 
     if (memberIds.length === 0) {
-      return NextResponse.json({
+      return withPublicCdnCache(NextResponse.json({
         group: { id: groupId, name: groupNameOut, count: 0 },
         nodes: [],
         edges: [],
-      });
+      }));
     }
 
     // ── FIX-500 — rollup-first read for materialized cohorts ───────────────────
@@ -454,7 +455,7 @@ export async function GET(req: NextRequest) {
             donorFetchErrorCode,
           },
         };
-        return NextResponse.json({
+        return withPublicCdnCache(NextResponse.json({
           group: {
             id: groupId,
             name: groupNameOut,
@@ -474,7 +475,7 @@ export async function GET(req: NextRequest) {
             donorFetchErrorCode,
             seatCanaryTripped,
           },
-        });
+        }));
       }
 
       if (rollup.kind === "hit") {
@@ -525,7 +526,7 @@ export async function GET(req: NextRequest) {
           },
         }));
 
-        return NextResponse.json({
+        return withPublicCdnCache(NextResponse.json({
           group: {
             id: groupId,
             name: groupNameOut,
@@ -546,7 +547,7 @@ export async function GET(req: NextRequest) {
             donorFetchError: false,
             seatCanaryTripped,
           },
-        });
+        }));
       }
       // rollup.kind === "miss" → cohort not materialized → fall through to the
       // live OFFSET path below (decision 5: never let a miss render as no donors).
@@ -735,7 +736,7 @@ export async function GET(req: NextRequest) {
       },
     }));
 
-    return NextResponse.json({
+    return withPublicCdnCache(NextResponse.json({
       group: {
         id: groupId,
         name: groupNameOut,
@@ -761,7 +762,7 @@ export async function GET(req: NextRequest) {
         // the gb's seat_count × 1.2. Advisory only (never gates the response).
         seatCanaryTripped,
       },
-    });
+    }));
   }
 
   // ── PAC group mode ───────────────────────────────────────────────────────────
@@ -914,7 +915,7 @@ export async function GET(req: NextRequest) {
       metadata: { pacCount: r.pacCount },
     }));
 
-    return NextResponse.json({
+    return withPublicCdnCache(NextResponse.json({
       group: {
         id: groupId,
         name: groupName,
@@ -931,7 +932,7 @@ export async function GET(req: NextRequest) {
         totalDonatedUsd:     topRecipients.reduce((s, r) => s + r.totalUsd, 0),
         donorFetchError, // FIX-497 — connection aggregation timed out / errored
       },
-    });
+    }));
   }
 
   // ── Proposal/topic-tag group mode (FIX-137) ───────────────────────────────
@@ -973,7 +974,7 @@ export async function GET(req: NextRequest) {
       },
     };
 
-    return NextResponse.json({
+    return withPublicCdnCache(NextResponse.json({
       group: {
         id: groupId,
         name: groupName,
@@ -985,7 +986,7 @@ export async function GET(req: NextRequest) {
       nodes: [groupNode],
       edges: [],
       meta: { memberCount, tag },
-    });
+    }));
   }
 
   // ── Agency group mode ────────────────────────────────────────────────────────
@@ -1009,11 +1010,11 @@ export async function GET(req: NextRequest) {
     const agencyIds = (agencyData ?? []).map(a => a.id);
 
     if (agencyIds.length === 0) {
-      return NextResponse.json({
+      return withPublicCdnCache(NextResponse.json({
         group: { id: groupId, name: groupName, count: 0 },
         nodes: [],
         edges: [],
-      });
+      }));
     }
 
     // FIX-497 — same fail-closed contract for the agency branch's connection
@@ -1128,7 +1129,7 @@ export async function GET(req: NextRequest) {
       metadata: { agencyCount: stats.agencyCount },
     }));
 
-    return NextResponse.json({
+    return withPublicCdnCache(NextResponse.json({
       group: {
         id: groupId,
         name: groupName,
@@ -1144,7 +1145,7 @@ export async function GET(req: NextRequest) {
         overseersShown:   topOverseers.length,
         donorFetchError, // FIX-497 — oversight aggregation timed out / errored
       },
-    });
+    }));
   }
 
   // ── Financial-cohort group mode (FIX-772) ───────────────────────────────────
@@ -1218,11 +1219,11 @@ export async function GET(req: NextRequest) {
     const memberCount = memberRes.count ?? memberIds.length;
 
     if (memberIds.length === 0) {
-      return NextResponse.json({
+      return withPublicCdnCache(NextResponse.json({
         group: { id: groupId, name: groupName, count: 0 },
         nodes: [],
         edges: [],
-      });
+      }));
     }
 
     // FIX-497 contract: a timed-out / errored edge aggregation must flag, never
@@ -1395,7 +1396,7 @@ export async function GET(req: NextRequest) {
       metadata: { vendorCount: a.vendorCount },
     }));
 
-    return NextResponse.json({
+    return withPublicCdnCache(NextResponse.json({
       group: {
         id: groupId,
         name: groupName,
@@ -1419,7 +1420,7 @@ export async function GET(req: NextRequest) {
         totalContractUsd:  topAwarders.reduce((s, a) => s + a.totalUsd, 0),
         donorFetchError, // FIX-497 — edge aggregation timed out / errored
       },
-    });
+    }));
   }
 
   return NextResponse.json({ error: "Invalid entity_type" }, { status: 400 });

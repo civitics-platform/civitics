@@ -1,4 +1,5 @@
 import { createAdminClient } from "@civitics/db";
+import { withPublicCdnCache } from "@/lib/cdn-cache";
 import { supabaseUnavailable, unavailableResponse, withDbTimeout } from "@/lib/supabase-check";
 import type { Database } from "@civitics/db";
 import type { GraphEdgeV2 as GraphEdge, GraphNodeV2 as GraphNode, EdgeType, NodeTypeV2 as NodeType, IndividualDisplayMode } from "@civitics/graph";
@@ -765,7 +766,7 @@ export async function GET(request: Request) {
       totalCount = count ?? 0;
 
       if (totalCount === 0) {
-        return Response.json({ nodes: [], edges: [], count: 0 });
+        return withPublicCdnCache(Response.json({ nodes: [], edges: [], count: 0 }));
       }
 
       // FIX-476 — true top-10 by degree via a GROUP BY RPC. The prior approach
@@ -799,7 +800,7 @@ export async function GET(request: Request) {
       }
 
       if (top10Ids.length === 0) {
-        return Response.json({ nodes: [], edges: [], count: totalCount });
+        return withPublicCdnCache(Response.json({ nodes: [], edges: [], count: totalCount }));
       }
 
       // Top-10 officials are the highest-degree nodes, so this is the egress-sensitive
@@ -1228,13 +1229,13 @@ export async function GET(request: Request) {
     // Append synthetic bracket/employer/tail aggregate edges (official endpoints guaranteed in nodeIds)
     edges.push(...bracketEdges);
 
-    return Response.json({
+    return withPublicCdnCache(Response.json({
       nodes,
       edges,
       count: totalCount,
       ...(partial ? { partial: true } : {}),
       ...(depth2Truncated ? { meta: { depth2Truncated: true } } : {}),
-    });
+    }));
   } catch (err) {
     console.error("[graph/connections]", err);
     return Response.json({ error: "Failed to load graph data" }, { status: 500 });

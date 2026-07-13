@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { withPublicCdnCache } from "@/lib/cdn-cache";
 import type { NextRequest } from "next/server";
 import { createAdminClient } from "@civitics/db";
 import { supabaseUnavailable, unavailableResponse } from "@/lib/supabase-check";
@@ -37,7 +38,7 @@ export async function GET(req: NextRequest) {
     const { data, error } = await supabase.rpc("chord_contract_flows");
     if (error) {
       console.error("[spending/chord] RPC error:", error.message);
-      return NextResponse.json({ agencies: [], sectors: [], flows: [], total_cents: 0 });
+      return withPublicCdnCache(NextResponse.json({ agencies: [], sectors: [], flows: [], total_cents: 0 }));
     }
 
     const rows = (data ?? []) as ChordRow[];
@@ -81,10 +82,10 @@ export async function GET(req: NextRequest) {
         award_count: v.count,
       }));
 
-    return NextResponse.json(
+    return withPublicCdnCache(NextResponse.json(
       { agencies, sectors, flows: rows, total_cents: totalCents },
       { headers: { "Cache-Control": "public, max-age=0, s-maxage=3600, stale-while-revalidate=86400" } }
-    );
+    ));
   }
 
   // ── Treemap: top recipients by contract value ─────────────────────────────
@@ -93,13 +94,13 @@ export async function GET(req: NextRequest) {
     const { data, error } = await supabase.rpc("treemap_recipients_by_contracts", { lim });
     if (error) {
       console.error("[spending/treemap] RPC error:", error.message);
-      return NextResponse.json([]);
+      return withPublicCdnCache(NextResponse.json([]));
     }
 
     const rows = (data ?? []) as TreemapRow[];
-    return NextResponse.json(rows, {
+    return withPublicCdnCache(NextResponse.json(rows, {
       headers: { "Cache-Control": "public, max-age=0, s-maxage=3600, stale-while-revalidate=86400" },
-    });
+    }));
   }
 
   return NextResponse.json({ error: "Unknown type. Use ?type=chord or ?type=treemap" }, { status: 400 });

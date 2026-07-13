@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { withPublicCdnCache } from "@/lib/cdn-cache";
 import type { NextRequest } from "next/server";
 import { createAdminClient } from "@civitics/db";
 import { supabaseUnavailable, unavailableResponse } from "@/lib/supabase-check";
@@ -86,7 +87,7 @@ export async function GET(req: NextRequest) {
 
   if (donorTotals.size === 0) {
     const o = official as OfficialRow;
-    return NextResponse.json({ officialId: o.id, officialName: o.full_name, totalCents: 0, sectors: [] } as ResponseShape);
+    return withPublicCdnCache(NextResponse.json({ officialId: o.id, officialName: o.full_name, totalCents: 0, sectors: [] } as ResponseShape));
   }
 
   // Pull industry tags for these donors. Use the primary visibility tag
@@ -132,7 +133,7 @@ export async function GET(req: NextRequest) {
     totalCents,
     sectors,
   };
-  return NextResponse.json(body, {
+  return withPublicCdnCache(NextResponse.json(body, {
     headers: { "Cache-Control": "public, max-age=0, s-maxage=3600, stale-while-revalidate=86400" },
-  });
+  }));
 }

@@ -1,4 +1,5 @@
 import { createAdminClient, fetchIndustryTagsByEntityId, fetchEntityIdsByIndustryTag } from "@civitics/db";
+import { withPublicCdnCache } from "@/lib/cdn-cache";
 import { supabaseUnavailable, unavailableResponse } from "@/lib/supabase-check";
 import { fetchAllRows } from "@/lib/paginate";
 
@@ -51,9 +52,9 @@ export async function GET(request: Request) {
       // No PACs tagged with this industry — return empty result rather than
       // running a query against an empty .in() filter (which PostgREST may
       // mis-interpret as "match anything").
-      return Response.json([], {
+      return withPublicCdnCache(Response.json([], {
         headers: { "Cache-Control": "public, max-age=0, s-maxage=86400, stale-while-revalidate=172800" },
-      });
+      }));
     }
   }
 
@@ -125,9 +126,9 @@ export async function GET(request: Request) {
       });
     }
 
-    return Response.json(rows, {
+    return withPublicCdnCache(Response.json(rows, {
       headers: { "Cache-Control": "public, max-age=0, s-maxage=86400, stale-while-revalidate=172800" },
-    });
+    }));
   }
 
   // FIX-185 cohort×filter (industry_filter + entityId): the rollup MV ranks /
@@ -205,9 +206,9 @@ export async function GET(request: Request) {
       });
     }
 
-    return Response.json(rows, {
+    return withPublicCdnCache(Response.json(rows, {
       headers: { "Cache-Control": "public, max-age=0, s-maxage=86400, stale-while-revalidate=172800" },
-    });
+    }));
   }
 
   // ── Aggregate mode: all officials by party / chamber ─────────────────────
@@ -413,7 +414,7 @@ export async function GET(request: Request) {
   // implicit cap there.
   const top = chamber ? rows : rows.slice(0, 500);
 
-  return Response.json(top, {
+  return withPublicCdnCache(Response.json(top, {
     headers: { "Cache-Control": "public, max-age=0, s-maxage=86400, stale-while-revalidate=172800" },
-  });
+  }));
 }

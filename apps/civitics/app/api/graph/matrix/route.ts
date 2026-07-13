@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { withPublicCdnCache } from "@/lib/cdn-cache";
 import type { NextRequest } from "next/server";
 import { createAdminClient } from "@civitics/db";
 import { supabaseUnavailable, unavailableResponse } from "@/lib/supabase-check";
@@ -234,10 +235,10 @@ export async function GET(req: NextRequest) {
     proposalCount,
   };
 
-  return NextResponse.json(response, {
+  return withPublicCdnCache(NextResponse.json(response, {
     headers: {
       "Cache-Control":
         "public, max-age=0, s-maxage=300, stale-while-revalidate=3600",
     },
-  });
+  }));
 }

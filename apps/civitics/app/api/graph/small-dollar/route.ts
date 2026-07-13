@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { withPublicCdnCache } from "@/lib/cdn-cache";
 import type { NextRequest } from "next/server";
 import { createAdminClient } from "@civitics/db";
 import { supabaseUnavailable, unavailableResponse } from "@/lib/supabase-check";
@@ -104,7 +105,7 @@ export async function GET(req: NextRequest) {
     smallDollarShare,
     smallDollarCount:  allRows.length,
   };
-  return NextResponse.json(body, {
+  return withPublicCdnCache(NextResponse.json(body, {
     headers: { "Cache-Control": "public, max-age=0, s-maxage=3600, stale-while-revalidate=86400" },
-  });
+  }));
 }

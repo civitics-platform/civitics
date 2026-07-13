@@ -14,6 +14,7 @@
 export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
+import { withPublicCdnCache } from "@/lib/cdn-cache";
 import { createAdminClient } from "@civitics/db";
 import { supabaseUnavailable, unavailableResponse } from "@/lib/supabase-check";
 
@@ -77,5 +78,5 @@ export async function GET() {
     .sort((a, b) => b.count - a.count)
     .slice(0, MAX_RESULTS);
 
-  return NextResponse.json({ tags });
+  return withPublicCdnCache(NextResponse.json({ tags }));
 }

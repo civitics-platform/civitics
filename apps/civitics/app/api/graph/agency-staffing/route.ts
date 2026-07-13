@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { createAdminClient } from "@civitics/db";
 import { supabaseUnavailable, unavailableResponse } from "@/lib/supabase-check";
+import { withPublicCdnCache } from "@/lib/cdn-cache";
 
 export const dynamic = "force-dynamic";
 
@@ -50,7 +51,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: aErr.message }, { status: 500 });
   }
   if (!agencies || agencies.length === 0) {
-    return NextResponse.json([]);
+    return withPublicCdnCache(NextResponse.json([]));
   }
 
   const agencyIds = agencies.map((a: { id: string }) => a.id);
@@ -144,9 +145,9 @@ export async function GET(req: NextRequest) {
     foundedYear:     a.founded_year,
   }));
 
-  return NextResponse.json(rows, {
+  return withPublicCdnCache(NextResponse.json(rows, {
     headers: {
       "Cache-Control": "public, max-age=0, s-maxage=3600, stale-while-revalidate=86400",
     },
-  });
+  }));
 }

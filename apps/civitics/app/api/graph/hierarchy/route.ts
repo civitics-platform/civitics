@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { withPublicCdnCache } from "@/lib/cdn-cache";
 import type { NextRequest } from "next/server";
 import { createAdminClient } from "@civitics/db";
 import { supabaseUnavailable, unavailableResponse } from "@/lib/supabase-check";
@@ -63,7 +64,7 @@ export async function GET(req: NextRequest) {
 
   const agencies = (agencyRows ?? []) as AgencyRow[];
   if (agencies.length === 0) {
-    return NextResponse.json({ tree: null, total_budget_cents: 0 });
+    return withPublicCdnCache(NextResponse.json({ tree: null, total_budget_cents: 0 }));
   }
 
   // Pull contract totals per agency (financial_relationships from agency).
@@ -122,7 +123,7 @@ export async function GET(req: NextRequest) {
   let tree: HierarchyNode;
   if (rootParam) {
     const found = nodeMap.get(rootParam);
-    if (!found) return NextResponse.json({ tree: null, total_budget_cents: 0 });
+    if (!found) return withPublicCdnCache(NextResponse.json({ tree: null, total_budget_cents: 0 }));
     sortRecursive(found);
     tree = found;
   } else {
@@ -144,12 +145,12 @@ export async function GET(req: NextRequest) {
   let total = 0;
   for (const v of spendMap.values()) total += v.total;
 
-  return NextResponse.json(
+  return withPublicCdnCache(NextResponse.json(
     { tree, total_budget_cents: total },
     {
       headers: {
         "Cache-Control": "public, max-age=0, s-maxage=3600, stale-while-revalidate=86400",
       },
     }
-  );
+  ));
 }

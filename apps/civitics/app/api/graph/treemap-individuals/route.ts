@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { withPublicCdnCache } from "@/lib/cdn-cache";
 import type { NextRequest } from "next/server";
 import { createAdminClient } from "@civitics/db";
 import { supabaseUnavailable, unavailableResponse } from "@/lib/supabase-check";
@@ -72,7 +73,7 @@ export async function GET(req: NextRequest) {
     console.error("[treemap-individuals] donations fetch:", dErr.message);
     return NextResponse.json({ error: dErr.message }, { status: 500 });
   }
-  if (donationRows.length === 0) return NextResponse.json({ name: "Individual donors", children: [] } as ResponseShape);
+  if (donationRows.length === 0) return withPublicCdnCache(NextResponse.json({ name: "Individual donors", children: [] } as ResponseShape));
 
   // Step 2: filter to individual donors only.
   const donorIds = [...new Set(donationRows.map(r => r.from_id))];
@@ -94,7 +95,7 @@ export async function GET(req: NextRequest) {
   }
 
   if (donorMap.size === 0) {
-    return NextResponse.json({ name: "Individual donors", children: [] } as ResponseShape);
+    return withPublicCdnCache(NextResponse.json({ name: "Individual donors", children: [] } as ResponseShape));
   }
 
   // Step 3: aggregate by state then donor.
@@ -128,10 +129,10 @@ export async function GET(req: NextRequest) {
     .sort((a, b) => b.totalUsd - a.totalUsd)
     .slice(0, STATE_CAP);
 
-  return NextResponse.json({
+  return withPublicCdnCache(NextResponse.json({
     name: entityId ? "Individual donors (focused)" : "Top Individual Donors by State",
     children,
   } as ResponseShape, {
     headers: { "Cache-Control": "public, max-age=0, s-maxage=86400, stale-while-revalidate=172800" },
-  });
+  }));
 }

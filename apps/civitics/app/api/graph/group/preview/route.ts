@@ -16,6 +16,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { withPublicCdnCache } from "@/lib/cdn-cache";
 import { createAdminClient, fetchEntityIdsByIndustryTag } from "@civitics/db";
 import { supabaseUnavailable, unavailableResponse } from "@/lib/supabase-check";
 
@@ -61,7 +62,7 @@ export async function GET(req: NextRequest) {
 
     const { count, error } = await q;
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json({ count: count ?? 0 });
+    return withPublicCdnCache(NextResponse.json({ count: count ?? 0 }));
   }
 
   if (entityType === "pac") {
@@ -71,7 +72,7 @@ export async function GET(req: NextRequest) {
     // tagged entity IDs first, then count PACs in that set.
     const taggedIds = industry ? await fetchEntityIdsByIndustryTag(supabase, industry) : null;
     if (taggedIds && taggedIds.length === 0) {
-      return NextResponse.json({ count: 0 });
+      return withPublicCdnCache(NextResponse.json({ count: 0 }));
     }
 
     let q = supabase
@@ -84,7 +85,7 @@ export async function GET(req: NextRequest) {
 
     const { count, error } = await q;
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json({ count: count ?? 0 });
+    return withPublicCdnCache(NextResponse.json({ count: count ?? 0 }));
   }
 
   // FIX-772 — financial cohort count, mirroring the full route's member query
@@ -107,7 +108,7 @@ export async function GET(req: NextRequest) {
       .not("display_name", "ilike", "%PAC/Committee%");
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json({ count: count ?? 0 });
+    return withPublicCdnCache(NextResponse.json({ count: count ?? 0 }));
   }
 
   // entity_type === "agency"
@@ -119,5 +120,5 @@ export async function GET(req: NextRequest) {
     .eq("is_active", true);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ count: count ?? 0 });
+  return withPublicCdnCache(NextResponse.json({ count: count ?? 0 }));
 }

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { withPublicCdnCache } from "@/lib/cdn-cache";
 import type { NextRequest } from "next/server";
 import { createAdminClient } from "@civitics/db";
 import { supabaseUnavailable, unavailableResponse } from "@/lib/supabase-check";
@@ -89,8 +90,12 @@ function naicsToSector(naics: string | null | undefined): string {
 
 // Scan ceiling. Contracts are heavily power-law distributed by amount, so the
 // top-N rows already cover ~99% of total spend. 5000 is a comfortable upper
-// bound that fits in a single Supabase response.
+// bound. PostgREST caps a single .select() at max_rows (1000), so we page the
+// scan with .range() to actually reach this window (FIX-803).
 const SCAN_LIMIT = 5000;
+// PostgREST max_rows cap — the real per-request row ceiling. Page size for the
+// .range() loop below (FIX-428 class).
+const PAGE_SIZE = 1000;
 
 // ── Route ─────────────────────────────────────────────────────────────────────
 
@@ -111,26 +116,41 @@ export async function GET(req: NextRequest) {
 
   // Pull the largest contracts first. The Sankey is dominated by the top of
   // the distribution; capping here keeps response size bounded.
-  let contractsQuery = supabase
-    .from("financial_relationships")
-    .select("from_id, to_id, amount_cents, metadata")
-    .eq("relationship_type", "contract")
-    .eq("from_type", "agency")
-    .eq("to_type", "financial_entity")
-    .gt("amount_cents", 0)
-    .order("amount_cents", { ascending: false })
-    .limit(SCAN_LIMIT);
-  if (agencyId) contractsQuery = contractsQuery.eq("from_id", agencyId);
-  const { data: contractRows, error: contractsErr } = await contractsQuery;
+  //
+  // FIX-803: a single .limit(SCAN_LIMIT) is silently truncated to PostgREST's
+  // max_rows (1000), so scannedRows/totalCents only ever reflected the top
+  // 1000 contracts on a large agency — 1/5 of the intended window. Page with
+  // .range() up to SCAN_LIMIT to actually reach it. The sort key must be
+  // stable across pages or rows repeat/skip at page seams and totals corrupt
+  // (the FIX-503 lesson) — amount_cents DESC alone ties on equal amounts, so
+  // add an id tiebreak.
+  const contracts: ContractRow[] = [];
+  for (let from = 0; from < SCAN_LIMIT; from += PAGE_SIZE) {
+    const to = Math.min(from + PAGE_SIZE, SCAN_LIMIT) - 1;
+    let contractsQuery = supabase
+      .from("financial_relationships")
+      .select("from_id, to_id, amount_cents, metadata")
+      .eq("relationship_type", "contract")
+      .eq("from_type", "agency")
+      .eq("to_type", "financial_entity")
+      .gt("amount_cents", 0)
+      .order("amount_cents", { ascending: false })
+      .order("id", { ascending: true })
+      .range(from, to);
+    if (agencyId) contractsQuery = contractsQuery.eq("from_id", agencyId);
+    const { data: pageRows, error: contractsErr } = await contractsQuery;
 
-  if (contractsErr) {
-    console.error("[graph/sankey] contracts fetch:", contractsErr.message);
-    return NextResponse.json({ error: contractsErr.message }, { status: 500 });
+    if (contractsErr) {
+      console.error("[graph/sankey] contracts fetch:", contractsErr.message);
+      return NextResponse.json({ error: contractsErr.message }, { status: 500 });
+    }
+
+    const page = (pageRows ?? []) as ContractRow[];
+    contracts.push(...page);
+    if (page.length < PAGE_SIZE) break; // last page — no more rows
   }
-
-  const contracts = (contractRows ?? []) as ContractRow[];
   if (contracts.length === 0) {
-    return NextResponse.json<SankeyResponse>({ flows: [], totalCents: 0, scannedRows: 0 });
+    return withPublicCdnCache(NextResponse.json<SankeyResponse>({ flows: [], totalCents: 0, scannedRows: 0 }));
   }
 
   // Resolve agency + vendor names in chunked batched lookups. The id lists
@@ -236,10 +256,10 @@ export async function GET(req: NextRequest) {
     scannedRows: contracts.length,
   };
 
-  return NextResponse.json(response, {
+  return withPublicCdnCache(NextResponse.json(response, {
     headers: {
       "Cache-Control":
         "public, max-age=0, s-maxage=3600, stale-while-revalidate=86400",
     },
-  });
+  }));
 }

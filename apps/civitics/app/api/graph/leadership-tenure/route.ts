@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { withPublicCdnCache } from "@/lib/cdn-cache";
 import type { NextRequest } from "next/server";
 import { createAdminClient } from "@civitics/db";
 import { supabaseUnavailable, unavailableResponse } from "@/lib/supabase-check";
@@ -76,7 +77,7 @@ export async function GET(req: NextRequest) {
   }
 
   const conRows = (conns ?? []) as ConnectionRow[];
-  if (conRows.length === 0) return NextResponse.json([]);
+  if (conRows.length === 0) return withPublicCdnCache(NextResponse.json([]));
 
   const officialIds = [...new Set(conRows.map(r => r.from_id))];
   const { data: officials } = await supabase
@@ -108,9 +109,9 @@ export async function GET(req: NextRequest) {
     return sb - sa;
   });
 
-  return NextResponse.json(rows, {
+  return withPublicCdnCache(NextResponse.json(rows, {
     headers: {
       "Cache-Control": "public, max-age=0, s-maxage=3600, stale-while-revalidate=86400",
     },
-  });
+  }));
 }

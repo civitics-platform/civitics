@@ -1,4 +1,5 @@
 import { createAdminClient, fetchIndustryTagsByEntityId } from "@civitics/db";
+import { withPublicCdnCache } from "@/lib/cdn-cache";
 import { supabaseUnavailable, unavailableResponse, withDbTimeout } from "@/lib/supabase-check";
 
 export const dynamic = "force-dynamic";
@@ -15,7 +16,7 @@ export async function GET(req: Request) {
   if (supabaseUnavailable()) return unavailableResponse();
   const { searchParams } = new URL(req.url);
   const q = searchParams.get("q")?.trim() ?? "";
-  if (q.length < 2) return Response.json([]);
+  if (q.length < 2) return withPublicCdnCache(Response.json([]));
 
   const supabase = createAdminClient();
 
@@ -95,7 +96,7 @@ export async function GET(req: Request) {
 
   // Attach connection counts for all result entities
   const allIds = rows.map((r) => r.id);
-  if (allIds.length === 0) return Response.json([]);
+  if (allIds.length === 0) return withPublicCdnCache(Response.json([]));
 
   const [fromRes, toRes] = await Promise.all([
     supabase.from("entity_connections").select("from_id").in("from_id", allIds),
@@ -151,5 +152,5 @@ export async function GET(req: Request) {
       return a.label.localeCompare(b.label);
     });
 
-  return Response.json(results);
+  return withPublicCdnCache(Response.json(results));
 }

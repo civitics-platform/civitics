@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { withPublicCdnCache } from "@/lib/cdn-cache";
 import type { NextRequest } from "next/server";
 import { createAdminClient, fetchIndustryTagsByEntityId } from "@civitics/db";
 import { supabaseUnavailable, unavailableResponse, withDbTimeout } from "@/lib/supabase-check";
@@ -137,7 +138,7 @@ export async function GET(req: NextRequest) {
       const memberIds = (memberData ?? []).map((m: { id: string }) => m.id);
 
       if (memberIds.length === 0) {
-        return NextResponse.json({ name: groupNameParam ?? "Group", groupId, isGroup: true, children: [], meta: { totalConnections: 0, connectionTypes: [] } });
+        return withPublicCdnCache(NextResponse.json({ name: groupNameParam ?? "Group", groupId, isGroup: true, children: [], meta: { totalConnections: 0, connectionTypes: [] } }));
       }
 
       // ── Group mode: donation_industries ─────────────────────────────────────
@@ -161,7 +162,7 @@ export async function GET(req: NextRequest) {
             children: [] as Array<{ name: string; value: number; type: string }>,
           }));
 
-        return NextResponse.json({
+        return withPublicCdnCache(NextResponse.json({
           name: groupNameParam ?? "Group",
           groupId,
           isGroup: true,
@@ -171,7 +172,7 @@ export async function GET(req: NextRequest) {
             totalConnections: children.length,
             connectionTypes: children.map((c) => c.name),
           },
-        });
+        }));
       }
 
       // ── Fetch all group connections via RPC (avoids .in() URL limit) ─────────
@@ -188,7 +189,7 @@ export async function GET(req: NextRequest) {
 
       if (connsError) {
         console.error("[sunburst] group conns error:", (connsError as { message?: string }).message ?? connsError);
-        return NextResponse.json({ name: groupNameParam ?? "Group", groupId, isGroup: true, children: [], meta: { totalConnections: 0, connectionTypes: [] } });
+        return withPublicCdnCache(NextResponse.json({ name: groupNameParam ?? "Group", groupId, isGroup: true, children: [], meta: { totalConnections: 0, connectionTypes: [] } }));
       }
       console.log("[sunburst] group conns:", groupConns?.length ?? 0);
 
@@ -249,7 +250,7 @@ export async function GET(req: NextRequest) {
           .sort((a, b) => b.children.length - a.children.length)
           .slice(0, maxRing1);
 
-        return NextResponse.json({
+        return withPublicCdnCache(NextResponse.json({
           name: groupNameParam ?? "Group",
           groupId,
           isGroup: true,
@@ -259,7 +260,7 @@ export async function GET(req: NextRequest) {
             totalConnections: voteConns.length,
             connectionTypes: children.map((c) => c.name),
           },
-        });
+        }));
       }
 
       // ── Group mode: connection_types (default) ────────────────────────────────
@@ -281,7 +282,7 @@ export async function GET(req: NextRequest) {
       const nameMap = await buildNameMap(allToIds);
       const children = buildChildren(flatConns, nameMap);
 
-      return NextResponse.json({
+      return withPublicCdnCache(NextResponse.json({
         name: groupNameParam ?? "Group",
         groupId,
         isGroup: true,
@@ -290,7 +291,7 @@ export async function GET(req: NextRequest) {
           totalConnections: groupConns?.length ?? 0,
           connectionTypes: children.map((c) => c.name),
         },
-      });
+      }));
     }
 
     // ── Individual mode ────────────────────────────────────────────────────
@@ -392,14 +393,14 @@ export async function GET(req: NextRequest) {
         })
         .slice(0, maxRing1);
 
-      return NextResponse.json({
+      return withPublicCdnCache(NextResponse.json({
         name: centerName,
         entityId,
         party: centerEntity?.party,
         role: centerEntity?.role_title,
         children,
         meta: { ring1: "donation_industries", totalConnections: kept },
-      });
+      }));
     }
 
     // ── MODE: vote_categories ──────────────────────────────────────────────
@@ -451,14 +452,14 @@ export async function GET(req: NextRequest) {
         .sort((a, b) => b.children.length - a.children.length)
         .slice(0, maxRing1);
 
-      return NextResponse.json({
+      return withPublicCdnCache(NextResponse.json({
         name: centerName,
         entityId,
         party: centerEntity?.party,
         role: centerEntity?.role_title,
         children,
         meta: { ring1: "vote_categories", totalConnections: votes?.length ?? 0 },
-      });
+      }));
     }
 
     // ── MODE: connection_types (default) ───────────────────────────────────
@@ -476,7 +477,7 @@ export async function GET(req: NextRequest) {
 
     if (error) {
       console.error("[sunburst]", error.message);
-      return NextResponse.json({ name: centerName, entityId, entityType: "official", children: [], meta: { totalConnections: 0, connectionTypes: [] } });
+      return withPublicCdnCache(NextResponse.json({ name: centerName, entityId, entityType: "official", children: [], meta: { totalConnections: 0, connectionTypes: [] } }));
     }
 
     const allToIds = [...new Set((connections ?? []).map((c) => c.to_id))];
@@ -487,7 +488,7 @@ export async function GET(req: NextRequest) {
       .slice(0, maxRing1)
       .map(c => ({ ...c, children: c.children.slice(0, maxRing2) }));
 
-    return NextResponse.json({
+    return withPublicCdnCache(NextResponse.json({
       name: centerName,
       entityId,
       entityType: "official",
@@ -498,7 +499,7 @@ export async function GET(req: NextRequest) {
         totalConnections: connections?.length ?? 0,
         connectionTypes: children.map((c) => c.name),
       },
-    });
+    }));
   } catch (e) {
     console.error("[sunburst]", e);
     return NextResponse.json({ error: "Internal error" }, { status: 500 });
