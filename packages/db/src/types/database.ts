@@ -5892,6 +5892,16 @@ export type Database = {
         Args: { p_hi: string; p_lo: string }
         Returns: number
       }
+      find_entity_path: {
+        Args: { p_from_id: string; p_max_hops?: number; p_to_id: string }
+        Returns: {
+          connection_type: string
+          entity_id: string
+          entity_label: string
+          entity_type: string
+          hop: number
+        }[]
+      }
       find_jurisdictions_by_location: {
         Args: { user_lat: number; user_lng: number }
         Returns: {
@@ -6293,6 +6303,11 @@ export type Database = {
         Args: { p_user_id: string }
         Returns: boolean
       }
+      increment_service_usage: {
+        Args: { p_metric: string; p_period: string; p_service: string }
+        Returns: undefined
+      }
+      increment_snapshot_view: { Args: { p_code: string }; Returns: undefined }
       investigation_citation_target_exists: {
         Args: {
           p_citation_type: string
