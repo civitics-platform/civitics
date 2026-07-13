@@ -26,7 +26,7 @@ import { execSync } from "node:child_process";
 import { dirname, isAbsolute, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Client } from "pg";
-import { FIXTURES } from "./fixtures";
+import { FIXTURES, INSERT_EPHEMERAL_AUTH_USER } from "./fixtures";
 import { writeReport, printStdoutTable } from "./reporter";
 import type { AuditRow, HarnessReport, TxContext } from "./types";
 
@@ -164,9 +164,7 @@ async function main(): Promise<void> {
         // Ephemeral, NON-synthetic (so the live standing/scorer rules evaluate it).
         // Rolled back with the txn — never persists, never confers real standing.
         const res = await client.query<{ id: string }>(
-          `WITH a AS (
-             INSERT INTO auth.users (id) VALUES (gen_random_uuid()) RETURNING id
-           ), u AS (
+          `WITH a AS (${INSERT_EPHEMERAL_AUTH_USER}), u AS (
              INSERT INTO public.users (id, is_synthetic) SELECT id, false FROM a RETURNING id
            )
            SELECT id FROM u`,

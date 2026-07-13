@@ -19,6 +19,26 @@ import type { Fixture, TxContext } from "./types";
 
 const VALID_BODY = "this is a valid casebook fixture comment body";
 
+// GoTrue-complete ephemeral auth.users insert (FIX-660). Every column GoTrue's
+// admin API scans as a NON-nullable Go value is filled with a valid empty default
+// (zero-uuid instance_id, 'authenticated' aud/role, '' token columns, '{}' meta,
+// now() timestamps). A bare `INSERT INTO auth.users (id) VALUES (gen_random_uuid())`
+// leaves them NULL, and a single such row that ever leaks past a fixture's
+// rollback 500s admin.listUsers globally. These rows live inside a rolled-back
+// txn so they still never persist in normal operation — this just makes any leak
+// harmless. Ends with `RETURNING id` for use as a CTE head.
+export const INSERT_EPHEMERAL_AUTH_USER = `
+  INSERT INTO auth.users
+    (id, instance_id, aud, role, created_at, updated_at,
+     confirmation_token, recovery_token, email_change, email_change_token_new,
+     email_change_token_current, phone_change, phone_change_token,
+     reauthentication_token, raw_app_meta_data, raw_user_meta_data)
+  VALUES
+    (gen_random_uuid(), '00000000-0000-0000-0000-000000000000',
+     'authenticated', 'authenticated', now(), now(),
+     '', '', '', '', '', '', '', '', '{}'::jsonb, '{}'::jsonb)
+  RETURNING id`;
+
 // Probe whether a brigade/coordination detector exists at all. The GAP fixtures
 // (F8/F9) compute their "not detected" verdict from this — honest, not assumed.
 async function detectorExists(
@@ -40,7 +60,7 @@ async function detectorExists(
 // Rolled back with the txn. Used by the SF-P4 fixtures (F8N / F9).
 async function createAgedUser(tx: TxContext, ageDays: number): Promise<string> {
   const rows = await tx.query<{ id: string }>(
-    `WITH a AS (INSERT INTO auth.users (id) VALUES (gen_random_uuid()) RETURNING id),
+    `WITH a AS (${INSERT_EPHEMERAL_AUTH_USER}),
           u AS (INSERT INTO public.users (id, is_synthetic, created_at)
                 SELECT id, false, now() - make_interval(days => $1) FROM a RETURNING id)
      SELECT id FROM u`,
@@ -53,7 +73,7 @@ async function createAgedUser(tx: TxContext, ageDays: number): Promise<string> {
 // seed shape. The detector must exclude these via author_excluded_from_standing.
 async function createSyntheticUser(tx: TxContext): Promise<string> {
   const rows = await tx.query<{ id: string }>(
-    `WITH a AS (INSERT INTO auth.users (id) VALUES (gen_random_uuid()) RETURNING id),
+    `WITH a AS (${INSERT_EPHEMERAL_AUTH_USER}),
           u AS (INSERT INTO public.users (id, is_synthetic)
                 SELECT id, true FROM a RETURNING id)
      SELECT id FROM u`,
