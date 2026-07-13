@@ -91,10 +91,9 @@ function naicsToSector(naics: string | null | undefined): string {
 // Scan ceiling. Contracts are heavily power-law distributed by amount, so the
 // top-N rows already cover ~99% of total spend. 5000 is a comfortable upper
 // bound. PostgREST caps a single .select() at max_rows (1000), so we page the
-// scan with .range() to actually reach this window (FIX-803).
+// scan to actually reach this window (FIX-803).
 const SCAN_LIMIT = 5000;
-// PostgREST max_rows cap — the real per-request row ceiling. Page size for the
-// .range() loop below (FIX-428 class).
+// PostgREST max_rows cap — the real per-request row ceiling / keyset page size.
 const PAGE_SIZE = 1000;
 
 // ── Route ─────────────────────────────────────────────────────────────────────
@@ -119,25 +118,35 @@ export async function GET(req: NextRequest) {
   //
   // FIX-803: a single .limit(SCAN_LIMIT) is silently truncated to PostgREST's
   // max_rows (1000), so scannedRows/totalCents only ever reflected the top
-  // 1000 contracts on a large agency — 1/5 of the intended window. Page with
-  // .range() up to SCAN_LIMIT to actually reach it. The sort key must be
-  // stable across pages or rows repeat/skip at page seams and totals corrupt
-  // (the FIX-503 lesson) — amount_cents DESC alone ties on equal amounts, so
-  // add an id tiebreak.
+  // 1000 contracts — 1/5 of the intended window. We page to reach the full
+  // 5000, but via KEYSET (not .range()/OFFSET): OFFSET re-runs the whole
+  // amount_cents sort per page (5x the work → statement timeout on the ~1.19M
+  // contract rows), whereas a keyset cursor SEEKS via the
+  // financial_relationships_amount (amount_cents DESC) index from the previous
+  // page's last row — the whole window costs ~one index range scan. The id
+  // tiebreak makes the (amount_cents DESC, id ASC) order total so equal-amount
+  // rows never repeat or skip at page seams (the FIX-503 lesson).
+  interface ScanRow extends ContractRow { id: string }
   const contracts: ContractRow[] = [];
-  for (let from = 0; from < SCAN_LIMIT; from += PAGE_SIZE) {
-    const to = Math.min(from + PAGE_SIZE, SCAN_LIMIT) - 1;
+  let cursor: { amount: number; id: string } | null = null;
+  for (let fetched = 0; fetched < SCAN_LIMIT; fetched += PAGE_SIZE) {
     let contractsQuery = supabase
       .from("financial_relationships")
-      .select("from_id, to_id, amount_cents, metadata")
+      .select("id, from_id, to_id, amount_cents, metadata")
       .eq("relationship_type", "contract")
       .eq("from_type", "agency")
       .eq("to_type", "financial_entity")
       .gt("amount_cents", 0)
       .order("amount_cents", { ascending: false })
       .order("id", { ascending: true })
-      .range(from, to);
+      .limit(PAGE_SIZE);
     if (agencyId) contractsQuery = contractsQuery.eq("from_id", agencyId);
+    if (cursor) {
+      // Rows strictly after the cursor in (amount_cents DESC, id ASC) order.
+      contractsQuery = contractsQuery.or(
+        `amount_cents.lt.${cursor.amount},and(amount_cents.eq.${cursor.amount},id.gt.${cursor.id})`,
+      );
+    }
     const { data: pageRows, error: contractsErr } = await contractsQuery;
 
     if (contractsErr) {
@@ -145,9 +154,14 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: contractsErr.message }, { status: 500 });
     }
 
-    const page = (pageRows ?? []) as ContractRow[];
-    contracts.push(...page);
-    if (page.length < PAGE_SIZE) break; // last page — no more rows
+    const page = (pageRows ?? []) as ScanRow[];
+    if (page.length === 0) break;
+    for (const r of page) {
+      contracts.push({ from_id: r.from_id, to_id: r.to_id, amount_cents: r.amount_cents, metadata: r.metadata });
+    }
+    const last = page[page.length - 1]!;
+    cursor = { amount: last.amount_cents, id: last.id };
+    if (page.length < PAGE_SIZE) break; // exhausted before the ceiling
   }
   if (contracts.length === 0) {
     return withPublicCdnCache(NextResponse.json<SankeyResponse>({ flows: [], totalCents: 0, scannedRows: 0 }));
