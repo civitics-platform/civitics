@@ -19,30 +19,18 @@ async function main(): Promise<void> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = createAdminClient() as any;
 
-  const { data: rows, error } = await db.rpc("exec_sql_json", {
-    sql: `
-      SELECT status, task_type, COUNT(*)::int AS count
-        FROM enrichment_queue
-       GROUP BY status, task_type
-       ORDER BY status, task_type
-    `,
-  });
-
-  // Fallback: RPC may not exist. Do it with plain selects.
-  let summary: StatusRow[] | null = null;
-  if (!error && Array.isArray(rows)) {
-    summary = rows as StatusRow[];
-  } else {
-    summary = [];
-    for (const status of ["pending", "processing", "done", "failed"]) {
-      for (const task of ["tag", "summary"]) {
-        const { count } = await db
-          .from("enrichment_queue")
-          .select("*", { count: "exact", head: true })
-          .eq("status", status)
-          .eq("task_type", task);
-        summary.push({ status, task_type: task, count: count ?? 0 });
-      }
+  // Count by status × task_type via plain counted selects. (The prior
+  // exec_sql_json RPC branch was dead — that function does not exist, so it
+  // always errored and fell through to this path anyway; removed in FIX-696.)
+  const summary: StatusRow[] = [];
+  for (const status of ["pending", "processing", "done", "failed"]) {
+    for (const task of ["tag", "summary"]) {
+      const { count } = await db
+        .from("enrichment_queue")
+        .select("*", { count: "exact", head: true })
+        .eq("status", status)
+        .eq("task_type", task);
+      summary.push({ status, task_type: task, count: count ?? 0 });
     }
   }
 

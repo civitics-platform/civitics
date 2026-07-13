@@ -85,10 +85,7 @@ async function main(): Promise<void> {
     }
     console.log(`  sum-of-top-20: ${fmt$(total)}`);
 
-    // Aggregate outflow by relationship_type
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: agg } = await (db as any).rpc("noop_skip");
-    void agg;
+    // Aggregate outflow by relationship_type.
     // PostgREST can't group; pull ALL rows for the entity and sum client-side,
     // paged past max_rows=1000 (FIX-476) so the aggregate isn't truncated.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
