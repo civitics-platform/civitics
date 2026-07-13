@@ -1627,8 +1627,16 @@ export function DashboardClient({
       {failedTests.length > 0 && (
         <AlertBanner
           level="warning"
-          message={`System issue detected: ${failedTests.map((t) => SELF_TEST_LABELS[t.name] ?? t.name).join(", ")}`}
-          detail="The team has been notified and is investigating."
+          // Self-test LABELS are phrased as the HEALTHY assertion ("Connections
+          // pipeline healthy") — fine next to a ✓/✗ in the self-test list, but
+          // echoing them after "System issue detected:" self-contradicts
+          // ("issue detected: … healthy", FIX-725). Name how many checks are
+          // failing, then surface each test's own `detail` (the real failure
+          // reason) rather than the healthy-phrased label.
+          message={`System issue detected — ${failedTests.length} check${failedTests.length === 1 ? "" : "s"} failing`}
+          detail={`${failedTests
+            .map((t) => t.detail || SELF_TEST_LABELS[t.name] || t.name)
+            .join(" · ")} — the team has been notified and is investigating.`}
         />
       )}
       {error && (
