@@ -47,10 +47,17 @@ export type EvidenceCard = {
   status: "proposed" | "corroborated" | "disputed" | "promoted" | "rejected";
   subject_is_private_person: boolean;
   rating_summary: EvidenceRatingSummary;
+  // FIX-801: the signed-in viewer's OWN ballot for this card (agree / valuable,
+  // each -1|0|1), read from evidence_ratings under RLS own-select and used to
+  // seed the rating control so a rated card stays selected across reloads.
+  // { agree: 0, valuable: 0 } for anon / unrated.
+  my_rating: EvidenceViewerRating;
   created_at: string;
   updated_at: string;
   citations: Citation[];
 };
+
+export type EvidenceViewerRating = { agree: number; valuable: number };
 
 export type Investigation = {
   id: string;

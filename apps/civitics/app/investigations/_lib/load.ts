@@ -18,6 +18,7 @@ import type {
   Citation,
   Contributor,
   EvidenceRatingSummary,
+  EvidenceViewerRating,
 } from "./presentation";
 
 const INVESTIGATION_COLS =
@@ -211,7 +212,7 @@ export async function loadCaseFile(id: string): Promise<CaseFile | null> {
     3000,
     "investigations:case-file-cards",
   );
-  const cards = (cardRows ?? []) as unknown as Array<Omit<EvidenceCard, "author_name" | "citations" | "rating_summary"> & {
+  const cards = (cardRows ?? []) as unknown as Array<Omit<EvidenceCard, "author_name" | "citations" | "rating_summary" | "my_rating"> & {
     rating_summary: unknown;
   }>;
 
@@ -233,6 +234,39 @@ export async function loadCaseFile(id: string): Promise<CaseFile | null> {
     }
   }
 
+  // FIX-801: seed each card's rating control with the viewer's OWN ballot so a
+  // rated card stays selected across reloads (same own-state class as FIX-798,
+  // but this substrate is per-viewer SSR, not an edge-cached list, so we read it
+  // here instead of via the /api/viewer/engagement overlay). RLS
+  // (evidence_ratings_select_own) scopes the read to the caller's rows; anon
+  // callers get an empty map and every card falls back to zeros.
+  const myRatingByCard = new Map<string, EvidenceViewerRating>();
+  if (cardIds.length > 0) {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (user) {
+      const { data: mine } = await withDbTimeout(
+        supabase
+          .from("evidence_ratings")
+          .select("evidence_id, agree, valuable")
+          .in("evidence_id", cardIds),
+        3000,
+        "investigations:case-file-my-ratings",
+      );
+      for (const r of (mine ?? []) as Array<{
+        evidence_id: string;
+        agree: number | null;
+        valuable: number | null;
+      }>) {
+        myRatingByCard.set(r.evidence_id, {
+          agree: r.agree ?? 0,
+          valuable: r.valuable ?? 0,
+        });
+      }
+    }
+  }
+
   // Resolve crew + author display names via the shared admin resolver.
   const contributorIds = Array.from(
     new Set<string>([investigation.created_by, ...cards.map((c) => c.author_id)]),
@@ -245,6 +279,7 @@ export async function loadCaseFile(id: string): Promise<CaseFile | null> {
     author_name: metaMap.get(c.author_id)?.name ?? "",
     author_is_synthetic: metaMap.get(c.author_id)?.isSynthetic ?? false,
     rating_summary: normSummary(c.rating_summary),
+    my_rating: myRatingByCard.get(c.id) ?? { agree: 0, valuable: 0 },
     citations: (citationsByCard.get(c.id) ?? []).sort(
       (a, b) => a.created_at.localeCompare(b.created_at),
     ),

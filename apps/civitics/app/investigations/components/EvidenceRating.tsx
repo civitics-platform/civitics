@@ -8,7 +8,7 @@
 
 import { useState } from "react";
 import { challengedFetch } from "@/lib/challenged-fetch";
-import type { EvidenceRatingSummary } from "../_lib/presentation";
+import type { EvidenceRatingSummary, EvidenceViewerRating } from "../_lib/presentation";
 
 function redirectToSignIn(next: string) {
   window.location.href = `/auth/sign-in?next=${encodeURIComponent(next)}`;
@@ -17,15 +17,20 @@ function redirectToSignIn(next: string) {
 export function EvidenceRating({
   evidenceId,
   summary,
+  myRating,
   signInNext,
 }: {
   evidenceId: string;
   summary: EvidenceRatingSummary;
+  // FIX-801: the viewer's own persisted ballot, resolved server-side in
+  // loadCaseFile. Seeds the control so a rated card renders selected on reload
+  // instead of resetting to unrated. Defaults to zeros for anon / unrated.
+  myRating?: EvidenceViewerRating;
   signInNext: string;
 }) {
   const [agg, setAgg] = useState<EvidenceRatingSummary>(summary);
-  const [myAgree, setMyAgree] = useState(0);
-  const [myValuable, setMyValuable] = useState(0);
+  const [myAgree, setMyAgree] = useState(myRating?.agree ?? 0);
+  const [myValuable, setMyValuable] = useState(myRating?.valuable ?? 0);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
 

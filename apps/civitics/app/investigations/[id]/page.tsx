@@ -150,7 +150,7 @@ function EvidenceCardView({ card, signInNext }: { card: EvidenceCard; signInNext
       </div>
 
       <div className="mt-3 border-t border-rule pt-3 print:hidden">
-        <EvidenceRating evidenceId={card.id} summary={card.rating_summary} signInNext={signInNext} />
+        <EvidenceRating evidenceId={card.id} summary={card.rating_summary} myRating={card.my_rating} signInNext={signInNext} />
       </div>
     </article>
   );
