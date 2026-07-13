@@ -1009,3 +1009,8 @@
 2026-07-12 | FIX-660 | 4c6b8ceb | local-only | fix(data): repair local auth seed rows that poison admin.listUsers
 2026-07-12 | FIX-695 | 0729c1b2 | local+prod | feat(db): install increment_service_usage RPC
 2026-07-12 | FIX-699 | 421b1cf8 | local+prod | fix(db): restore set_updated_at trigger on financial_entities
+2026-07-12 | FIX-800 | 8bd3f09e | local-only | perf(graph): CDN-cache public graph reads; page sankey scan to its real limit
+2026-07-12 | FIX-803 | 8bd3f09e | local-only | perf(graph): CDN-cache public graph reads; page sankey scan to its real limit
+2026-07-12 | FIX-810 | 5e977eab | local-only | fix(graph): scatter paints, saved views load, retire dead scope field
+2026-07-12 | FIX-816 | 5e977eab | local-only | fix(graph): scatter paints, saved views load, retire dead scope field
+2026-07-12 | FIX-817 | 5e977eab | local-only | fix(graph): scatter paints, saved views load, retire dead scope field
