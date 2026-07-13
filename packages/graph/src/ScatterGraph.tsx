@@ -71,13 +71,22 @@ export function ScatterGraph({
   const [rows, setRows] = useState<AgencyStaffRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // FIX-810 — true when rows loaded but none are plottable on the current
+  // axes. Drives a visible overlay instead of a silent blank canvas.
+  const [noneOnAxes, setNoneOnAxes] = useState(false);
 
+  // FIX-810 — default Y is `contract_total` (log), not `appointment_count`.
+  // Zero official→agency appointment edges exist post-cutover (FIX-808), so the
+  // appointment axis is all-zero and the old default plotted nothing. FTE ×
+  // contract spending are both populated → a meaningful log-log default today;
+  // the appointment axis stays selectable and should return as the default once
+  // FIX-808 re-derives those edges.
   const xAxis     = vizOptions?.xAxis     ?? "fte";
-  const yAxis     = vizOptions?.yAxis     ?? "appointment_count";
+  const yAxis     = vizOptions?.yAxis     ?? "contract_total";
   const sizeBy    = vizOptions?.sizeBy    ?? "fte";
   const showLabels = vizOptions?.showLabels ?? true;
   const logXAxis  = vizOptions?.logXAxis  ?? true;
-  const logYAxis  = vizOptions?.logYAxis  ?? false;
+  const logYAxis  = vizOptions?.logYAxis  ?? true;
 
   useEffect(() => {
     setLoading(true);
@@ -117,8 +126,14 @@ export function ScatterGraph({
     const yValue = (r: AgencyStaffRow): number => extractAxis(r, yAxis);
     const sValue = (r: AgencyStaffRow): number => extractAxis(r, sizeBy);
 
-    const filtered = rows.filter(r => xValue(r) > 0 && yValue(r) > 0);
-    if (filtered.length === 0) return;
+    // FIX-810 — a ≤0 value is only invalid on a LOG axis (log(0) = -∞); on a
+    // linear axis 0 is a plottable coordinate. The old `xValue>0 && yValue>0`
+    // AND-filter dropped every row whenever a chosen axis was entirely zero
+    // (e.g. appointment_count, dead until FIX-808), silently blanking the svg.
+    const axisOk = (v: number, log: boolean): boolean => Number.isFinite(v) && (log ? v > 0 : true);
+    const filtered = rows.filter(r => axisOk(xValue(r), logXAxis) && axisOk(yValue(r), logYAxis));
+    if (filtered.length === 0) { setNoneOnAxes(true); return; }
+    setNoneOnAxes(false);
 
     const xExtent = d3.extent(filtered, xValue) as [number, number];
     const yExtent = d3.extent(filtered, yValue) as [number, number];
@@ -224,8 +239,16 @@ export function ScatterGraph({
   }
 
   return (
-    <div ref={containerRef} className={`w-full h-full ${className}`}>
+    <div ref={containerRef} className={`relative w-full h-full ${className}`}>
       <svg id="scatter-svg" ref={svgRef} className="w-full h-full" />
+      {/* FIX-810 — the svg stays mounted (so svgRef survives and a later axis
+          change redraws); this overlay explains an empty plot instead of a
+          silent blank canvas. */}
+      {noneOnAxes && (
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-ink-soft text-sm">
+          No agencies have data for the selected axes
+        </div>
+      )}
     </div>
   );
 }

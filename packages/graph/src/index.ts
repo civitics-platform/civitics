@@ -48,6 +48,16 @@ export { MAX_FOCUS_ENTITIES, isFocusGroup, isFocusEntity, BRACKET_TIERS } from "
 export { DEFAULT_GRAPH_VIEW, BUILT_IN_PRESETS, applyPreset, markDirty } from "./presets";
 export { CONNECTION_TYPE_REGISTRY, DEFAULT_CONNECTION_STATE } from "./connections";
 
+// ── Saved views (FIX-817) ───────────────────────────────────────────────────
+export {
+  listSavedViews,
+  saveView,
+  deleteSavedView,
+  clampLegacyView,
+  SAVED_VIEWS_CHANGE_EVENT,
+} from "./saved-views";
+export type { SavedView } from "./saved-views";
+
 // ── Design-token helpers (FIX-729) ──────────────────────────────────────────
 export { resolveToken, resolvePaperToken, resolveColor, withAlpha, toHexColor } from "./tokens";
 

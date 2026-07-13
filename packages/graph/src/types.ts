@@ -541,7 +541,11 @@ export interface GraphView {
   // with shared connections becoming visually prominent.
   focus: {
     entities: FocusItem[]
-    scope: 'all' | 'federal' | 'state' | 'senate' | 'house'
+    // FIX-816 — the `scope` field was retired: its Scope select gated nothing
+    // (zero readers in useGraphData or any /api/graph route) and was not
+    // re-mounted in the G4 IA reorg (FIX-812). Legacy snapshots/presets may
+    // still carry a `scope` key; it deserializes as an ignored excess property
+    // and is never read.
     depth: 1 | 2 | 3
     includeProcedural: boolean
     /**

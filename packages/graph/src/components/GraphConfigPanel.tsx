@@ -22,6 +22,12 @@ import type { UseGraphViewReturn } from '../hooks/useGraphView';
 import type { GraphMeta } from '../hooks/useGraphData';
 import { VIZ_REGISTRY, getVizApplicability } from '../visualizations/registry';
 import { BUILT_IN_PRESETS, isPresetApplicableToView } from '../presets';
+import {
+  listSavedViews,
+  deleteSavedView,
+  SAVED_VIEWS_CHANGE_EVENT,
+  type SavedView,
+} from '../saved-views';
 import { TreeNode, TreeSection } from './TreeNode';
 import { ConnectionsTree } from './ConnectionsTree';
 import { isFocusEntity } from '../types';
@@ -1058,6 +1064,18 @@ export function GraphConfigPanel({
     try { localStorage.setItem(TAB_STORAGE_KEY, next); } catch { /* ignore */ }
   }
 
+  // FIX-817 — user-saved views (localStorage civitics_presets). Read after
+  // mount (SSR has no localStorage) and re-read on the change event fired by
+  // saveView/deleteSavedView so the list stays in sync with the header's
+  // Save-view action and this panel's own deletes.
+  const [savedViews, setSavedViews] = useState<SavedView[]>([]);
+  useEffect(() => {
+    const refresh = () => setSavedViews(listSavedViews());
+    refresh();
+    window.addEventListener(SAVED_VIEWS_CHANGE_EVENT, refresh);
+    return () => window.removeEventListener(SAVED_VIEWS_CHANGE_EVENT, refresh);
+  }, []);
+
   // FIX-134: each collapsed-strip icon sets a pending scroll target before
   // calling onCollapse. When the panel becomes expanded the effect below
   // scrolls the matching section into view, then clears the target.
@@ -1337,6 +1355,42 @@ export function GraphConfigPanel({
                       depth={2}
                       icon={PRESET_EMOJI[preset.meta.presetId] ?? '📋'}
                       onClick={() => hooks.applyPreset(preset)}
+                    >
+                      {null}
+                    </TreeNode>
+                  ))}
+                </TreeSection>
+              )}
+
+              {/* FIX-817 — user-saved views, restorable + deletable. Not
+                  viz-filtered: restoring a saved view switches to its own viz.
+                  A saved view is a full snapshot, so restoreSavedView replaces
+                  the entire state (its focus entities included), unlike the
+                  built-in applyPreset which preserves the current focus. */}
+              {savedViews.length > 0 && (
+                <TreeSection
+                  label="Saved views"
+                  count={savedViews.length}
+                  defaultExpanded
+                  separator={partitionedPresets.native.length > 0 || partitionedPresets.adapted.length > 0}
+                  depth={1}
+                >
+                  {savedViews.map(sv => (
+                    <TreeNode
+                      key={sv.meta.presetId}
+                      label={sv.meta.name}
+                      variant="item"
+                      collapsible={false}
+                      active={activePreset === sv.meta.presetId}
+                      separator={false}
+                      depth={2}
+                      icon="🔖"
+                      onClick={() => hooks.restoreSavedView(sv)}
+                      actions={[{
+                        icon: '🗑',
+                        label: `Delete "${sv.meta.name}"`,
+                        onClick: () => setSavedViews(deleteSavedView(sv.meta.presetId)),
+                      }]}
                     >
                       {null}
                     </TreeNode>

@@ -26,9 +26,7 @@ import { DEFAULT_CONNECTION_STATE } from './connections'
 
 export const DEFAULT_GRAPH_VIEW: GraphView = {
   focus: {
-    entities: [],
-    scope: 'all',
-    depth: 1,
+    entities: [],    depth: 1,
     includeProcedural: false,
   },
   connections: DEFAULT_CONNECTION_STATE,
@@ -70,9 +68,7 @@ function buildConnections(
 
 export const FOLLOW_THE_MONEY: GraphViewPreset = {
   focus: {
-    entities: [],
-    scope: 'all',
-    depth: 1,           // financial networks are dense — depth 1 by default
+    entities: [],    depth: 1,           // financial networks are dense — depth 1 by default
     includeProcedural: false,
   },
   connections: buildConnections(['donation']),
@@ -102,9 +98,7 @@ export const FOLLOW_THE_MONEY: GraphViewPreset = {
 
 export const VOTES_AND_BILLS: GraphViewPreset = {
   focus: {
-    entities: [],
-    scope: 'all',
-    depth: 2,
+    entities: [],    depth: 2,
     includeProcedural: false, // procedural votes (cloture, passage) hidden by default
   },
   connections: buildConnections(['vote_yes', 'vote_no', 'co_sponsorship']),
@@ -135,9 +129,7 @@ export const VOTES_AND_BILLS: GraphViewPreset = {
 
 export const NOMINATIONS: GraphViewPreset = {
   focus: {
-    entities: [],
-    scope: 'senate', // nominations are confirmed by the Senate
-    depth: 2,
+    entities: [],    depth: 2,
     includeProcedural: false,
   },
   connections: buildConnections(['nomination_vote_yes', 'nomination_vote_no']),
@@ -167,9 +159,7 @@ export const NOMINATIONS: GraphViewPreset = {
 
 export const COMMITTEE_POWER: GraphViewPreset = {
   focus: {
-    entities: [],
-    scope: 'all',
-    depth: 2,
+    entities: [],    depth: 2,
     includeProcedural: false,
   },
   // FIX-216: drifted from packages/graph/CLAUDE.md Built-in Presets table —
@@ -203,9 +193,7 @@ export const COMMITTEE_POWER: GraphViewPreset = {
 // For researchers and journalists who need the complete record.
 export const FULL_RECORD: GraphViewPreset = {
   focus: {
-    entities: [],
-    scope: 'all',
-    depth: 2,
+    entities: [],    depth: 2,
     includeProcedural: true,  // show procedural votes (cloture, etc.)
   },
   connections: buildConnections(Object.keys(DEFAULT_CONNECTION_STATE)),
@@ -237,9 +225,7 @@ export const FULL_RECORD: GraphViewPreset = {
 // Shows only meaningful amounts — reduces visual noise for public audiences.
 export const CLEAN_VIEW: GraphViewPreset = {
   focus: {
-    entities: [],
-    scope: 'all',
-    depth: 1,
+    entities: [],    depth: 1,
     includeProcedural: false,
   },
   connections: buildConnections(
@@ -273,9 +259,7 @@ export const CLEAN_VIEW: GraphViewPreset = {
 // QWEN-ADDED: Shows which industries and PACs fund which officials
 export const INDUSTRY_CAPTURE: GraphViewPreset = {
   focus: {
-    entities: [],
-    scope: 'all',
-    depth: 2,
+    entities: [],    depth: 2,
     includeProcedural: false,
   },
   // FIX-216: drifted from packages/graph/CLAUDE.md Built-in Presets table —
@@ -309,9 +293,7 @@ export const INDUSTRY_CAPTURE: GraphViewPreset = {
 // QWEN-ADDED: Shows co-sponsorship networks between legislators
 export const CO_SPONSOR_NETWORK: GraphViewPreset = {
   focus: {
-    entities: [],
-    scope: 'all',
-    depth: 2,
+    entities: [],    depth: 2,
     includeProcedural: false,
   },
   // FIX-216: drifted from packages/graph/CLAUDE.md Built-in Presets table —
@@ -344,9 +326,7 @@ export const CO_SPONSOR_NETWORK: GraphViewPreset = {
 
 export const CHORD_TOP_DONORS: GraphViewPreset = {
   focus: {
-    entities: [],
-    scope: 'all',
-    depth: 1,
+    entities: [],    depth: 1,
     includeProcedural: false,
   },
   connections: DEFAULT_CONNECTION_STATE,
@@ -376,9 +356,7 @@ export const CHORD_TOP_DONORS: GraphViewPreset = {
 
 export const TREEMAP_BY_STATE: GraphViewPreset = {
   focus: {
-    entities: [],
-    scope: 'all',
-    depth: 1,
+    entities: [],    depth: 1,
     includeProcedural: false,
   },
   connections: DEFAULT_CONNECTION_STATE,
@@ -404,9 +382,7 @@ export const TREEMAP_BY_STATE: GraphViewPreset = {
 
 export const TREEMAP_BY_CHAMBER: GraphViewPreset = {
   focus: {
-    entities: [],
-    scope: 'all',
-    depth: 1,
+    entities: [],    depth: 1,
     includeProcedural: false,
   },
   connections: DEFAULT_CONNECTION_STATE,
@@ -432,9 +408,7 @@ export const TREEMAP_BY_CHAMBER: GraphViewPreset = {
 
 export const TREEMAP_DONOR_BREAKDOWN: GraphViewPreset = {
   focus: {
-    entities: [],
-    scope: 'all',
-    depth: 1,
+    entities: [],    depth: 1,
     includeProcedural: false,
   },
   connections: DEFAULT_CONNECTION_STATE,
@@ -464,9 +438,7 @@ export const TREEMAP_DONOR_BREAKDOWN: GraphViewPreset = {
 
 export const TREEMAP_PAC_SECTOR: GraphViewPreset = {
   focus: {
-    entities: [],
-    scope: 'all',
-    depth: 1,
+    entities: [],    depth: 1,
     includeProcedural: false,
   },
   connections: DEFAULT_CONNECTION_STATE,
@@ -499,9 +471,7 @@ export const TREEMAP_PAC_SECTOR: GraphViewPreset = {
 
 export const TREEMAP_PAC_PARTY: GraphViewPreset = {
   focus: {
-    entities: [],
-    scope: 'all',
-    depth: 1,
+    entities: [],    depth: 1,
     includeProcedural: false,
   },
   connections: DEFAULT_CONNECTION_STATE,
@@ -533,9 +503,7 @@ export const TREEMAP_PAC_PARTY: GraphViewPreset = {
 
 export const CHORD_DONOR_INDUSTRIES: GraphViewPreset = {
   focus: {
-    entities: [],
-    scope: 'all',
-    depth: 1,
+    entities: [],    depth: 1,
     includeProcedural: false,
   },
   connections: DEFAULT_CONNECTION_STATE,
@@ -566,9 +534,7 @@ export const CHORD_DONOR_INDUSTRIES: GraphViewPreset = {
 // correlates with affirmative or negative votes.
 export const CHORD_SECTOR_VOTE: GraphViewPreset = {
   focus: {
-    entities: [],
-    scope: 'all',
-    depth: 1,
+    entities: [],    depth: 1,
     includeProcedural: false,
   },
   connections: buildConnections(['donation', 'vote_yes', 'vote_no']),
@@ -598,9 +564,7 @@ export const CHORD_SECTOR_VOTE: GraphViewPreset = {
 // party-line. Weighted by affirmative-vote count.
 export const CHORD_SUBJECT_PARTY: GraphViewPreset = {
   focus: {
-    entities: [],
-    scope: 'all',
-    depth: 1,
+    entities: [],    depth: 1,
     includeProcedural: false,
   },
   connections: buildConnections(['vote_yes']),
@@ -630,9 +594,7 @@ export const CHORD_SUBJECT_PARTY: GraphViewPreset = {
 // / Union / Party Committee breakdown of campaign money flows.
 export const CHORD_DONOR_TYPE_PARTY: GraphViewPreset = {
   focus: {
-    entities: [],
-    scope: 'all',
-    depth: 1,
+    entities: [],    depth: 1,
     includeProcedural: false,
   },
   connections: DEFAULT_CONNECTION_STATE,
@@ -662,9 +624,7 @@ export const CHORD_DONOR_TYPE_PARTY: GraphViewPreset = {
 // focused, scopes to that official's donor states.
 export const CHORD_STATE_PARTY: GraphViewPreset = {
   focus: {
-    entities: [],
-    scope: 'all',
-    depth: 1,
+    entities: [],    depth: 1,
     includeProcedural: false,
   },
   connections: DEFAULT_CONNECTION_STATE,
@@ -695,9 +655,7 @@ export const CHORD_STATE_PARTY: GraphViewPreset = {
 // Selecting this preset switches viz; alignment data lights up on its own.
 export const HOW_ALIGNED_ARE_MY_REPS: GraphViewPreset = {
   focus: {
-    entities: [],
-    scope: 'all',
-    depth: 1,
+    entities: [],    depth: 1,
     includeProcedural: false,
   },
   connections: buildConnections(['alignment']),
@@ -727,9 +685,7 @@ export const HOW_ALIGNED_ARE_MY_REPS: GraphViewPreset = {
 // $25k floor suppresses small bundlers while keeping mid-size PAC connections.
 export const GROUP_OVERVIEW: GraphViewPreset = {
   focus: {
-    entities: [],
-    scope: 'federal',
-    depth: 1,
+    entities: [],    depth: 1,
     includeProcedural: false,
   },
   connections: buildConnections(['donation'], {
@@ -762,7 +718,7 @@ export const GROUP_OVERVIEW: GraphViewPreset = {
 // ── FIX-218 — Tier 1 + Tier 2 New Presets ──────────────────────────────────────
 
 export const FUNDRAISING_BY_DONOR_TYPE: GraphViewPreset = {
-  focus: { entities: [], scope: 'all', depth: 1, includeProcedural: false },
+  focus: { entities: [], depth: 1, includeProcedural: false },
   connections: DEFAULT_CONNECTION_STATE,
   style: {
     vizType: 'treemap',
@@ -787,7 +743,7 @@ export const FUNDRAISING_BY_DONOR_TYPE: GraphViewPreset = {
 }
 
 export const TREEMAP_INDIVIDUALS_BY_STATE: GraphViewPreset = {
-  focus: { entities: [], scope: 'all', depth: 1, includeProcedural: false },
+  focus: { entities: [], depth: 1, includeProcedural: false },
   connections: DEFAULT_CONNECTION_STATE,
   style: {
     vizType: 'treemap',
@@ -811,7 +767,7 @@ export const TREEMAP_INDIVIDUALS_BY_STATE: GraphViewPreset = {
 }
 
 export const SPENDING_SANKEY_BY_SECTOR: GraphViewPreset = {
-  focus: { entities: [], scope: 'federal', depth: 1, includeProcedural: false },
+  focus: { entities: [], depth: 1, includeProcedural: false },
   connections: buildConnections(['contract_award']),
   style: {
     vizType: 'sankey',
@@ -828,18 +784,23 @@ export const SPENDING_SANKEY_BY_SECTOR: GraphViewPreset = {
 }
 
 export const AGENCIES_BY_STAFFING: GraphViewPreset = {
-  focus: { entities: [], scope: 'federal', depth: 1, includeProcedural: false },
+  focus: { entities: [], depth: 1, includeProcedural: false },
   connections: DEFAULT_CONNECTION_STATE,
   style: {
     vizType: 'scatter',
     vizOptions: {
       scatter: {
         xAxis: 'fte',
-        yAxis: 'appointment_count',
+        // FIX-810 — contract_total (log), not appointment_count: zero
+        // official→agency appointment edges exist post-cutover (FIX-808) so
+        // that axis is all-zero and plotted nothing. Restore appointment_count
+        // as the default once FIX-808 re-derives the edges.
+        yAxis: 'contract_total',
         sizeBy: 'fte',
         colorBy: 'agency_type',
         showLabels: true,
         logXAxis: true,
+        logYAxis: true,
       },
     },
   },
@@ -856,7 +817,7 @@ export const AGENCIES_BY_STAFFING: GraphViewPreset = {
 // ── Tier 2 ────────────────────────────────────────────────────────────────────
 
 export const LEADERSHIP_TENURE_GANTT: GraphViewPreset = {
-  focus: { entities: [], scope: 'federal', depth: 1, includeProcedural: false },
+  focus: { entities: [], depth: 1, includeProcedural: false },
   connections: buildConnections(['appointment']),
   style: {
     vizType: 'gantt',
@@ -873,7 +834,7 @@ export const LEADERSHIP_TENURE_GANTT: GraphViewPreset = {
 }
 
 export const VOTING_DIVERGENCE_MAP: GraphViewPreset = {
-  focus: { entities: [], scope: 'all', depth: 1, includeProcedural: false },
+  focus: { entities: [], depth: 1, includeProcedural: false },
   connections: buildConnections(['vote_yes', 'vote_no']),
   style: {
     vizType: 'choropleth',
@@ -900,7 +861,7 @@ export const VOTING_DIVERGENCE_MAP: GraphViewPreset = {
 }
 
 export const SMALL_DOLLAR_DEPENDENCY: GraphViewPreset = {
-  focus: { entities: [], scope: 'all', depth: 1, includeProcedural: false },
+  focus: { entities: [], depth: 1, includeProcedural: false },
   connections: DEFAULT_CONNECTION_STATE,
   style: {
     vizType: 'alignment',
@@ -917,7 +878,7 @@ export const SMALL_DOLLAR_DEPENDENCY: GraphViewPreset = {
 }
 
 export const SECTOR_AFFINITY_BY_OFFICIAL: GraphViewPreset = {
-  focus: { entities: [], scope: 'all', depth: 1, includeProcedural: false },
+  focus: { entities: [], depth: 1, includeProcedural: false },
   connections: DEFAULT_CONNECTION_STATE,
   style: {
     vizType: 'alignment',

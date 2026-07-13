@@ -81,8 +81,8 @@ interface GraphView {
   focus: {
     entities: FocusEntity[]
     depth: 1 | 2 | 3
-    scope: 'all' | 'federal'
-      | 'state' | 'senate' | 'house'
+    // `scope` retired (FIX-816) —
+    // it gated nothing (zero readers)
     includeProcedural: boolean
   }
 

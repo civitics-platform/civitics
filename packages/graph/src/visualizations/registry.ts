@@ -388,13 +388,17 @@ export const VIZ_REGISTRY: VizRegistryEntry[] = [
 
     requiresEntity: false,
     supportedConnectionTypes: ['appointment', 'contract_award'],
+    // FIX-810 — default Y is contract_total (log), not appointment_count:
+    // zero official→agency appointment edges post-cutover (FIX-808) left the
+    // scatter blank. Restore appointment_count as default once FIX-808 lands.
     defaultOptions: {
       xAxis: 'fte',
-      yAxis: 'appointment_count',
+      yAxis: 'contract_total',
       sizeBy: 'fte',
       colorBy: 'agency_type',
       showLabels: true,
       logXAxis: true,
+      logYAxis: true,
     },
 
     screenshotTarget: '#scatter-svg',

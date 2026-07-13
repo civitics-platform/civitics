@@ -18,6 +18,7 @@ import {
   DonorListPanel,
   LEFT_PANEL_DEFAULT_WIDTH,
   RIGHT_PANEL_DEFAULT_WIDTH,
+  saveView,
 } from "@civitics/graph";
 import type { VizType, FocusEntity, FocusGroup, GroupFilter, GraphNodeV2 as GraphNode, GraphEdgeV2 as GraphEdge, GraphMeta, UserNodeInfo, IndividualDisplayMode } from "@civitics/graph";
 import { isGraphSeedableKind } from "@/lib/graph-seedable-kinds";
@@ -576,14 +577,10 @@ export function GraphPage({ initialCode, aiEnabled = true }: GraphPageProps = {}
     if (typeof window === "undefined") return;
     const name = window.prompt("Name this view:");
     if (!name?.trim()) return;
-    try {
-      const existing = JSON.parse(localStorage.getItem("civitics_presets") ?? "[]");
-      const newPreset = {
-        ...view,
-        meta: { name: name.trim(), isPreset: true, presetId: `user-${Date.now()}`, isDirty: false },
-      };
-      localStorage.setItem("civitics_presets", JSON.stringify([...existing, newPreset]));
-    } catch { /* localStorage unavailable */ }
+    // FIX-817 — save through the shared helper so the right-panel Saved-views
+    // list refreshes (change event) and the localStorage shape stays canonical
+    // with the read/delete path. Previously these views were write-only.
+    saveView(view, name);
   }
 
   function handleFullscreen() {

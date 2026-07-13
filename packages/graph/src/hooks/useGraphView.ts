@@ -22,6 +22,7 @@ import {
   resolvePresetForFocus,
 } from '../presets';
 import { recordRecent } from '../recently-viewed';
+import { clampLegacyView } from '../saved-views';
 
 export function useGraphView(initialView?: Partial<GraphView>) {
   const [view, setView] = useState<GraphView>({
@@ -186,11 +187,8 @@ export function useGraphView(initialView?: Partial<GraphView>) {
         focus: { ...v.focus, depth },
       })),
 
-    setScope: (scope: GraphView['focus']['scope']) =>
-      setView(v => markDirty({
-        ...v,
-        focus: { ...v.focus, scope },
-      })),
+    // FIX-816 — setScope retired alongside GraphView.focus.scope (dead field,
+    // zero readers, control never re-mounted in G4). No consumers.
 
     toggleIncludeProcedural: () =>
       setView(v => markDirty({
@@ -297,6 +295,16 @@ export function useGraphView(initialView?: Partial<GraphView>) {
 
     applyPreset: (preset: GraphViewPreset) =>
       setView(applyPresetUtil(preset, view)),
+
+    /**
+     * FIX-817 — restore a full user-saved view (localStorage civitics_presets).
+     * Unlike applyPreset (which preserves the current focus so switching a
+     * BUILT-IN preset doesn't drop the user's entities), a saved view is a
+     * snapshot: replace the ENTIRE state, including its own focus entities.
+     * Applies the FIX-812 back-compat clamp on read.
+     */
+    restoreSavedView: (saved: GraphView) =>
+      setView(clampLegacyView(saved)),
 
     // ── Computed helpers (backward compat with single-entity APIs) ───────────
 

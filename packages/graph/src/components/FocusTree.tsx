@@ -14,7 +14,8 @@
  * that entity's neighborhood on the canvas through the FIX-807 opacity
  * resolver (onEntityHover). The legacy global OPTIONS section is dissolved:
  * Default depth lives in the right panel's View tab; the Scope select gated
- * nothing (focus.scope has no readers) and is not re-mounted.
+ * nothing (focus.scope had zero readers) and was not re-mounted — the field
+ * itself is now retired (FIX-816).
  *
  * FIX-762 — when the host app passes `browserSlot` (the unified browse
  * sidebar mount, app-side because it depends on app lib/route code this
@@ -327,7 +328,8 @@ export function FocusTree({
 
       {/* FIX-812 — the legacy OPTIONS section is dissolved. Default depth now
           lives in the right panel's View tab; the Scope select gated nothing
-          (focus.scope has zero readers) and is intentionally not re-mounted. */}
+          (focus.scope had zero readers) and was not re-mounted — the field is
+          now retired (FIX-816). */}
     </TreeSection>
   );
 }
