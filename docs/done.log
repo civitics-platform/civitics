@@ -1014,3 +1014,4 @@
 2026-07-12 | FIX-810 | 5e977eab | local-only | fix(graph): scatter paints, saved views load, retire dead scope field
 2026-07-12 | FIX-816 | 5e977eab | local-only | fix(graph): scatter paints, saved views load, retire dead scope field
 2026-07-12 | FIX-817 | 5e977eab | local-only | fix(graph): scatter paints, saved views load, retire dead scope field
+2026-07-12 | FIX-803 | 65964f73 | local-only | fix(graph): sankey keyset pagination — OFFSET version timed out (FIX-803)
