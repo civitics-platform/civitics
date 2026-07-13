@@ -1001,3 +1001,8 @@
 2026-07-12 | FIX-753 | 78794895 | closes-as-superseded | docs(fixes): close FIX-753/765 as superseded by FIX-773
 2026-07-12 | FIX-765 | 78794895 | closes-as-superseded | docs(fixes): close FIX-753/765 as superseded by FIX-773
 2026-07-12 | FIX-744 | dcdebcbd | closes-as-recognized | docs(fixes): close FIX-744 — already resolved by FIX-746 enrichment-tail split
+2026-07-12 | FIX-691 | 4899d3be | local-only | fix(officials): stop responsiveness route 500 on dropped civic_initiatives embed
+2026-07-12 | FIX-696 | 1a72fd58 | local-only | fix(data): remove dead RPC calls to nonexistent functions
+2026-07-12 | FIX-721 | a06ccabc | local-only | fix(officials): compact Government Spending to $B scale
+2026-07-12 | FIX-725 | 49c043ab | local-only | fix(dashboard): stop AlertBanner self-contradicting on failing self-tests
+2026-07-12 | FIX-801 | 2abf65ac | local-only | fix(investigations): persist own evidence rating across reload
