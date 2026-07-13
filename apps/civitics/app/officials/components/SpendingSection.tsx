@@ -1,5 +1,7 @@
 // QWEN-ADDED: Government spending records section for official detail pages
 
+import { formatUSD } from "@civitics/ui";
+
 type SpendingRow = {
   id: string;
   recipient_name: string;
@@ -10,12 +12,11 @@ type SpendingRow = {
   awarding_agency: string;
 };
 
+// Compact currency ($51.3B / $51.3M / $51K). Uses the shared formatUSD — the
+// old local helper capped at the "M" tier, so billion-scale totals rendered as
+// "$51269.2M" instead of "$51.3B" (FIX-721).
 function formatMoney(cents: number): string {
-  const dollars = cents / 100;
-  if (dollars >= 1_000_000) return `$${(dollars / 1_000_000).toFixed(1)}M`;
-  if (dollars >= 1_000) return `$${(dollars / 1_000).toFixed(0)}K`;
-  if (dollars > 0) return `$${dollars.toLocaleString()}`;
-  return "$0";
+  return formatUSD(cents, { compact: true });
 }
 
 function formatDate(dateStr: string | null): string {
