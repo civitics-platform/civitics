@@ -998,3 +998,5 @@
 2026-07-12 | FIX-821 | 2c24fa6c | local+prod | fix(plum-book): quote+escape names in the ilike OR-filter
 2026-07-12 | FIX-822 | 2df0e1fd | local+prod | perf(db): align enrichment_queue pending indexes to DESC NULLS LAST
 2026-07-12 | FIX-823 | 0adcc3c3 | local+prod | perf(tags): server-side anti-join for AI-untagged entities
+2026-07-12 | FIX-753 | 78794895 | closes-as-superseded | docs(fixes): close FIX-753/765 as superseded by FIX-773
+2026-07-12 | FIX-765 | 78794895 | closes-as-superseded | docs(fixes): close FIX-753/765 as superseded by FIX-773
