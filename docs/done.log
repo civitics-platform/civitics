@@ -1019,3 +1019,5 @@
 2026-07-13 | FIX-827 | a3f1d4f4 | local-only | feat(graph): incremental node expansion — merge / collapse / promote
 2026-07-13 | FIX-828 | d81c58c6 | local-only | feat(graph): aggregate edge sheet + wire the G5 interaction layer
 2026-07-13 | FIX-829 | d163d048 | local-only | feat(graph): shift-click multi-select + selection pill + combined CSV export
+2026-07-13 | FIX-692 | e54ab4be | local+prod | fix(graph): stop rebuild wiping official->agency appointment edges + harden stale-close
+2026-07-13 | FIX-808 | e54ab4be | local+prod | fix(graph): stop rebuild wiping official->agency appointment edges + harden stale-close
