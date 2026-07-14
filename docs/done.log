@@ -1015,3 +1015,7 @@
 2026-07-12 | FIX-816 | 5e977eab | local-only | fix(graph): scatter paints, saved views load, retire dead scope field
 2026-07-12 | FIX-817 | 5e977eab | local-only | fix(graph): scatter paints, saved views load, retire dead scope field
 2026-07-12 | FIX-803 | 65964f73 | local-only | fix(graph): sankey keyset pagination — OFFSET version timed out (FIX-803)
+2026-07-13 | FIX-826 | d163d048 | local-only | feat(graph): shift-click multi-select + selection pill + combined CSV export
+2026-07-13 | FIX-827 | a3f1d4f4 | local-only | feat(graph): incremental node expansion — merge / collapse / promote
+2026-07-13 | FIX-828 | d81c58c6 | local-only | feat(graph): aggregate edge sheet + wire the G5 interaction layer
+2026-07-13 | FIX-829 | d163d048 | local-only | feat(graph): shift-click multi-select + selection pill + combined CSV export
