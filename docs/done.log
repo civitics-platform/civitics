@@ -1021,3 +1021,5 @@
 2026-07-13 | FIX-829 | d163d048 | local-only | feat(graph): shift-click multi-select + selection pill + combined CSV export
 2026-07-13 | FIX-692 | e54ab4be | local+prod | fix(graph): stop rebuild wiping official->agency appointment edges + harden stale-close
 2026-07-13 | FIX-808 | e54ab4be | local+prod | fix(graph): stop rebuild wiping official->agency appointment edges + harden stale-close
+2026-07-13 | FIX-809 | 66675d82 | local+prod | fix(rollup): backfill officials missing from official_donor_rollup_mv
+2026-07-13 | FIX-831 | 984a2d7e | local-only | fix(status): widen REBUILD_STALE_MS for the Mon+Wed pg_cron cadence
