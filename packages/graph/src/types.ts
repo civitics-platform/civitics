@@ -489,6 +489,20 @@ export interface FocusGroup {
   isPremade: boolean
   /** Optional tooltip text */
   description?: string
+  /**
+   * FIX-826 — CLIENT-ONLY selection group. When set, this group is a named
+   * handle over an explicit set of already-loaded node ids (built from a
+   * shift-click selection). useGraphData SKIPS fetching it (no /api/graph/group
+   * call, no bubble node), and it is excluded from the single-entity viz
+   * primary/secondary-group resolution — it is purely an organizational entry
+   * in the FOCUS list. `filter` carries a benign placeholder that nothing reads.
+   */
+  memberIds?: string[]
+}
+
+/** FIX-826 — true for a client-only selection group (carries explicit members). */
+export function isSelectionGroup(item: FocusItem): item is FocusGroup {
+  return item.type === 'group' && Array.isArray((item as FocusGroup).memberIds)
 }
 
 // ── Focus Item ─────────────────────────────────────────────────────────────────
@@ -714,11 +728,14 @@ export interface NodeActions {
   /** Navigate to the entity's profile page. All viz types. */
   openProfile: (nodeId: string) => void
   /**
-   * Expand a collapsed node (50+ connections). Force viz only.
-   * FIX-805 interim: adds the node as a focus entity (whole-entity fetch);
-   * G5 replaces this with an incremental neighborhood fetch.
+   * FIX-827 — expand a node's neighborhood one hop, MERGING the result into the
+   * graph (the origin does not become a focus entity). Force viz only.
    */
   expandNode: (nodeId: string) => void
+  /** FIX-827 — collapse an expanded node, removing exactly what its expansion added. Force viz only. */
+  collapseNode?: (nodeId: string) => void
+  /** FIX-827 — promote an expanded node into a real focus entity (full fetch). Force viz only. */
+  promoteNode?: (nodeId: string) => void
   /** Switch to treemap viz focused on this group. Group nodes only. */
   viewGroupAsTreemap?: (groupId: string) => void
   /** Switch to chord viz focused on this group. Group nodes only. */

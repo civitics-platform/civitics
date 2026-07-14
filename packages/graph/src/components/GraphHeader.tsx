@@ -27,6 +27,10 @@ export interface GraphHeaderProps {
   onShare: () => void;
   onScreenshot: () => void;
   onFullscreen: () => void;
+  /** FIX-829 — combined CSV export (Export ▾ menu). 'selection' scopes to the multi-select. */
+  onExportCsv?: (scope: "selection" | "all") => void;
+  /** FIX-829 — current multi-selection size; the "CSV (selection)" entry is disabled below 2. */
+  selectionCount?: number;
   /** When false, ✨ Explain is disabled (kill switch via AI_NARRATIVE_ENABLED). Defaults true. */
   aiEnabled?: boolean;
   /** Loaded-data summary used to gate the viz dropdown by applicability (FIX-129). */
@@ -74,6 +78,8 @@ export function GraphHeader({
   onShare,
   onScreenshot,
   onFullscreen,
+  onExportCsv,
+  selectionCount = 0,
   aiEnabled = true,
   graphMeta,
   brand,
@@ -82,6 +88,8 @@ export function GraphHeader({
   const activeViz = VIZ_REGISTRY.find(v => v.id === view.style.vizType);
 
   const [showVizMenu, setShowVizMenu]       = useState(false);
+  const [showExportMenu, setShowExportMenu] = useState(false);
+  const exportMenuRef = useRef<HTMLDivElement>(null);
   const [query, setQuery]                   = useState('');
   const [results, setResults]               = useState<EntityResult[]>([]);
   const [searchOpen, setSearchOpen]         = useState(false);
@@ -111,6 +119,9 @@ export function GraphHeader({
       }
       if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
         setSearchOpen(false);
+      }
+      if (exportMenuRef.current && !exportMenuRef.current.contains(e.target as Node)) {
+        setShowExportMenu(false);
       }
     }
     document.addEventListener('mousedown', onMouseDown);
@@ -420,6 +431,42 @@ export function GraphHeader({
         >
           Share
         </button>
+
+        {/* FIX-829 — Export ▾ (combined CSV). The Screenshot button/panel is untouched. */}
+        {onExportCsv && (
+          <div className="relative" ref={exportMenuRef}>
+            <button
+              onClick={() => setShowExportMenu(o => !o)}
+              title="Export graph data as CSV"
+              aria-label="Export graph data as CSV"
+              aria-expanded={showExportMenu}
+              className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-md hover:bg-ink/10 transition-colors text-ink-soft"
+            >
+              <span className="md:hidden" aria-hidden="true">⭳</span>
+              <span className="hidden md:inline">Export</span>
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+            {showExportMenu && (
+              <div className="absolute top-full right-0 mt-1 w-48 bg-card border border-rule rounded-lg shadow-lg z-50 overflow-hidden py-1">
+                <button
+                  onClick={() => { onExportCsv("selection"); setShowExportMenu(false); }}
+                  disabled={selectionCount < 2}
+                  className="w-full text-left px-3 py-2 text-xs text-ink hover:bg-ink/5 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  CSV — selection{selectionCount >= 2 ? ` (${selectionCount})` : ""}
+                </button>
+                <button
+                  onClick={() => { onExportCsv("all"); setShowExportMenu(false); }}
+                  className="w-full text-left px-3 py-2 text-xs text-ink hover:bg-ink/5 transition-colors"
+                >
+                  CSV — all
+                </button>
+              </div>
+            )}
+          </div>
+        )}
 
         <button
           onClick={onScreenshot}
