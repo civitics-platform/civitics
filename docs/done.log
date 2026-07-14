@@ -1027,3 +1027,5 @@
 2026-07-13 | FIX-827 | d1ebfa61 | local+prod | chore: record prod verification for FIX-826..829 (browser QA 2026-07-13)
 2026-07-13 | FIX-828 | d1ebfa61 | local+prod | chore: record prod verification for FIX-826..829 (browser QA 2026-07-13)
 2026-07-13 | FIX-829 | d1ebfa61 | local+prod | chore: record prod verification for FIX-826..829 (browser QA 2026-07-13)
+2026-07-13 | FIX-832 | bc4a1bbc | local+prod | fix(pipeline): refresh donor rollup daily instead of weekly (next-day official freshness)
+2026-07-13 | FIX-833 | 1c695361 | local+prod | fix(pipeline): retire 6h Monday full EC rebuild → incremental + monthly orphan sweep + health-check hardening
