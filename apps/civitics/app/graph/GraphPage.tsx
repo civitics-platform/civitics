@@ -13,14 +13,20 @@ import {
   VIZ_REGISTRY,
   isFocusEntity,
   isFocusGroup,
+  isSelectionGroup,
   createCustomGroup,
   BRACKET_TIERS,
   DonorListPanel,
+  SelectionPill,
+  EdgeSheet,
+  graphToCsv,
+  downloadCsv,
+  graphCsvFilename,
   LEFT_PANEL_DEFAULT_WIDTH,
   RIGHT_PANEL_DEFAULT_WIDTH,
   saveView,
 } from "@civitics/graph";
-import type { VizType, FocusEntity, FocusGroup, GroupFilter, GraphNodeV2 as GraphNode, GraphEdgeV2 as GraphEdge, GraphMeta, UserNodeInfo, IndividualDisplayMode } from "@civitics/graph";
+import type { VizType, FocusEntity, FocusGroup, GroupFilter, GraphNodeV2 as GraphNode, GraphEdgeV2 as GraphEdge, GraphMeta, UserNodeInfo, IndividualDisplayMode, EdgeSheetData } from "@civitics/graph";
 import { isGraphSeedableKind } from "@/lib/graph-seedable-kinds";
 import { SidebarBrowser } from "../search/components/explorer/SidebarBrowser";
 import { PorticoMark }     from "../components/brand/PorticoMark";
@@ -385,7 +391,12 @@ export function GraphPage({ initialCode, aiEnabled = true }: GraphPageProps = {}
     graphHooks.updateGroup(groupId, { name: resolvedName });
   };
 
-  const { nodes, allEdges, loadingEntityId, graphMeta, retryGroup } = useGraphData(
+  const {
+    nodes, allEdges, loadingEntityId, graphMeta, retryGroup,
+    // FIX-827 — incremental expand surface
+    expandNode, collapseExpansion, promoteExpansion,
+    expandedOriginIds, expansionAddedIds, donationLimit,
+  } = useGraphData(
     view.focus,
     view.connections,
     view.style.vizOptions?.force,
@@ -417,6 +428,19 @@ export function GraphPage({ initialCode, aiEnabled = true }: GraphPageProps = {}
     if (!userNode || !userNodeVisible) return allEdges;
     return [...allEdges, ...alignmentEdges];
   }, [allEdges, userNode, userNodeVisible, alignmentEdges]);
+
+  // FIX-826 — prune the selection to nodes still on the canvas (a collapse /
+  // focus removal can drop a selected node) so the pill count stays honest.
+  useEffect(() => {
+    setSelectedNodeIds(prev => {
+      if (prev.size === 0) return prev;
+      const present = new Set(displayNodes.map(n => n.id));
+      let changed = false;
+      const next = new Set<string>();
+      prev.forEach(id => { if (present.has(id)) next.add(id); else changed = true; });
+      return changed ? next : prev;
+    });
+  }, [displayNodes]);
 
   // FIX-120: aggregate alignment ratio across the user's reps. Drives both the
   // FocusTree YOU row badge and (indirectly) the USER node ring color.
@@ -517,6 +541,21 @@ export function GraphPage({ initialCode, aiEnabled = true }: GraphPageProps = {}
   const [showShare,       setShowShare]       = useState(false);
   const [showScreenshot,  setShowScreenshot]  = useState(false);
 
+  // FIX-826 — shift-click multi-selection (node ids). FIX-828 — edge sheet.
+  const [selectedNodeIds, setSelectedNodeIds] = useState<Set<string>>(new Set());
+  const [edgeSheet,       setEdgeSheet]       = useState<EdgeSheetData | null>(null);
+  const [expandNotice,    setExpandNotice]    = useState<string | null>(null);
+  const [expandingSelection, setExpandingSelection] = useState(false);
+
+  const toggleSelectNode = useCallback((nodeId: string) => {
+    setSelectedNodeIds(prev => {
+      const next = new Set(prev);
+      if (next.has(nodeId)) next.delete(nodeId); else next.add(nodeId);
+      return next;
+    });
+  }, []);
+  const clearSelection = useCallback(() => setSelectedNodeIds(new Set()), []);
+
   // FIX-149: shared-connections pill bar selection — null when nothing pinned.
   const [highlightedSharedId, setHighlightedSharedId] = useState<string | null>(null);
 
@@ -549,6 +588,8 @@ export function GraphPage({ initialCode, aiEnabled = true }: GraphPageProps = {}
   useEffect(() => {
     function handler(e: KeyboardEvent) {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      // FIX-826 — Esc clears the multi-selection (in both layouts).
+      if (e.key === "Escape") setSelectedNodeIds(prev => (prev.size ? new Set() : prev));
       if (isNarrow) {
         if (e.key === "[") setOpenDrawer(prev => (prev === "left" ? null : "left"));
         if (e.key === "]") setOpenDrawer(prev => (prev === "right" ? null : "right"));
@@ -666,10 +707,9 @@ export function GraphPage({ initialCode, aiEnabled = true }: GraphPageProps = {}
     graphHooks.addEntity({ id: donorId, name: donorName, type: 'financial' });
   }
 
-  // FIX-805 — NodePopup "Expand connections" on a collapsed (+) node. Interim
-  // implementation: add the node as a focus entity, which runs the same
-  // whole-entity fetch that search-add uses. G5 replaces this with an
-  // incremental neighborhood fetch.
+  // FIX-827 — incremental expand replaces the FIX-805 interim (which added the
+  // clicked node as a whole focus entity). Expand merges one hop; Collapse undoes
+  // exactly that; Promote converts an expanded origin into a real focus entity.
   const EXPAND_TYPE_MAP: Record<string, FocusEntity["type"]> = {
     official: "official",
     agency: "agency",
@@ -682,12 +722,72 @@ export function GraphPage({ initialCode, aiEnabled = true }: GraphPageProps = {}
   };
 
   function handleExpandNode(node: GraphNode) {
+    void expandNode(node.id);
+  }
+
+  function handleCollapseNode(node: GraphNode) {
+    collapseExpansion(node.id);
+  }
+
+  function handlePromoteNode(node: GraphNode) {
     if (graphHooks.atMaxFocus) return;
     const focusType = EXPAND_TYPE_MAP[node.type];
-    if (!focusType) return; // group / user / bracket nodes aren't expandable entities
+    if (!focusType) return; // group / user / bracket nodes aren't focus entities
     const rawId = node.id.replace(/^[a-z_]+:/, "");
     if (!UUID_RE.test(rawId)) return;
     graphHooks.addEntity({ id: rawId, name: node.name, type: focusType });
+    promoteExpansion(node.id);
+  }
+
+  // FIX-826 — Create group: a client-only "Selection (N)" group carrying the
+  // selected node ids (no server fetch — useGraphData skips memberIds groups).
+  function handleCreateGroupFromSelection() {
+    const ids = [...selectedNodeIds];
+    if (ids.length < 2) return;
+    graphHooks.addGroup({
+      id: `group-selection-${Math.random().toString(36).slice(2, 8)}`,
+      name: `Selection (${ids.length})`,
+      type: "group",
+      icon: "◈",
+      color: "rgb(var(--c-accent))",
+      filter: { entity_type: "official" }, // benign placeholder — never resolved for memberIds groups
+      isPremade: false,
+      memberIds: ids,
+    });
+    clearSelection();
+  }
+
+  // FIX-826/827 — Expand each selected node (cap 10, ≤3 concurrent). The graph
+  // rate bucket is 60 req/min sliding — 10 requests at 3-wide stays well under.
+  async function handleExpandSelection() {
+    const all = [...selectedNodeIds];
+    const ids = all.slice(0, 10);
+    if (!ids.length) return;
+    setExpandingSelection(true);
+    setExpandNotice(all.length > 10 ? `Expanding 10 of ${all.length}` : `Expanding ${ids.length}…`);
+    const queue = [...ids];
+    const workers = Array.from({ length: Math.min(3, queue.length) }, async () => {
+      while (queue.length) {
+        const id = queue.shift();
+        if (id) await expandNode(id);
+      }
+    });
+    await Promise.all(workers);
+    setExpandNotice(null);
+    setExpandingSelection(false);
+  }
+
+  // FIX-829 — combined CSV export. 'selection' = selected nodes + edges among
+  // them (endpoints are themselves selected); 'all' = the full loaded graph.
+  function handleExportCsv(scope: "selection" | "all") {
+    let csvNodes = displayNodes;
+    let csvEdges = displayEdges;
+    if (scope === "selection") {
+      if (selectedNodeIds.size < 2) return;
+      csvNodes = displayNodes.filter(n => selectedNodeIds.has(n.id));
+      csvEdges = displayEdges.filter(e => selectedNodeIds.has(e.fromId) && selectedNodeIds.has(e.toId));
+    }
+    downloadCsv(graphCsvFilename(new Date()), graphToCsv(csvNodes, csvEdges));
   }
 
   const vizType      = view.style.vizType;
@@ -704,8 +804,11 @@ export function GraphPage({ initialCode, aiEnabled = true }: GraphPageProps = {}
     () => view.focus.entities.filter(isFocusEntity),
     [view.focus.entities],
   );
+  // FIX-826 — exclude client-only selection groups: they're organizational
+  // handles over loaded nodes, not data cohorts, so they must never become the
+  // treemap/chord/sunburst primary/secondary group.
   const focusGroupList  = useMemo(
-    () => view.focus.entities.filter(isFocusGroup) as FocusGroup[],
+    () => view.focus.entities.filter(g => isFocusGroup(g) && !isSelectionGroup(g)) as FocusGroup[],
     [view.focus.entities],
   );
   const pinnedEntity    = view.focus.primaryEntityId
@@ -794,6 +897,8 @@ export function GraphPage({ initialCode, aiEnabled = true }: GraphPageProps = {}
         onShare={() => setShowShare(true)}
         onScreenshot={handleScreenshot}
         onFullscreen={handleFullscreen}
+        onExportCsv={handleExportCsv}
+        selectionCount={selectedNodeIds.size}
         aiEnabled={aiEnabled}
         graphMeta={displayGraphMeta}
         drawerControls={{
@@ -909,6 +1014,27 @@ export function GraphPage({ initialCode, aiEnabled = true }: GraphPageProps = {}
                   onRetryGroup={handleRetryGroup}
                   onOpenDonorList={handleOpenDonorList}
                   onExpandNode={handleExpandNode}
+                  onCollapseNode={handleCollapseNode}
+                  onPromoteNode={handlePromoteNode}
+                  expandedOriginIds={expandedOriginIds}
+                  expansionAddedIds={expansionAddedIds}
+                  donationLimit={donationLimit}
+                  selectedNodeIds={selectedNodeIds}
+                  onToggleSelect={toggleSelectNode}
+                  onEdgeSelect={setEdgeSheet}
+                />
+              )}
+
+              {/* FIX-826 — selection action pill (≥ 2 selected) */}
+              {selectedNodeIds.size >= 2 && (
+                <SelectionPill
+                  count={selectedNodeIds.size}
+                  notice={expandNotice}
+                  expanding={expandingSelection}
+                  onCreateGroup={handleCreateGroupFromSelection}
+                  onExpand={handleExpandSelection}
+                  onExportCsv={() => handleExportCsv("selection")}
+                  onClear={clearSelection}
                 />
               )}
 
@@ -1112,6 +1238,11 @@ export function GraphPage({ initialCode, aiEnabled = true }: GraphPageProps = {}
               onClose={() => setDonorListState(null)}
               onPinDonor={handlePinDonor}
             />
+          )}
+
+          {/* FIX-828 — money-edge detail sheet (aggregate pair totals) */}
+          {edgeSheet && (
+            <EdgeSheet {...edgeSheet} onClose={() => setEdgeSheet(null)} />
           )}
 
         </div>{/* end CANVAS */}

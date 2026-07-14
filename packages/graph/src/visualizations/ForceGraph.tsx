@@ -30,6 +30,20 @@ import { resolveToken, resolvePaperToken, resolveColor, withAlpha } from "../tok
 
 // ── Props ──────────────────────────────────────────────────────────────────────
 
+/** FIX-828 — money-edge click payload handed to GraphPage for the edge sheet. */
+export interface EdgeClickPayload {
+  fromId: string;
+  fromName: string;
+  fromType: string;
+  toId: string;
+  toName: string;
+  toType: string;
+  connectionType: string;
+  amountUsd?: number;
+  txCount?: number;
+  occurredAt?: string;
+}
+
 export interface ForceGraphProps {
   nodes: GraphNode[];
   edges: GraphEdge[];
@@ -70,10 +84,26 @@ export interface ForceGraphProps {
   onRetryGroup?: (groupId: string) => void;
   onOpenDonorList?: (officialId: string, tierOrEmployer: string) => void;
   /**
-   * FIX-805 — NodePopup "Expand connections" on a collapsed (+) node.
-   * Receives the full node so the caller can map it to a focus entity.
+   * FIX-827 — NodePopup "Expand here" on a node. Receives the full node so the
+   * caller can drive the incremental neighborhood merge in useGraphData.
    */
   onExpandNode?: (node: GraphNode) => void;
+  /** FIX-827 — collapse an expanded origin (undo its expansion). */
+  onCollapseNode?: (node: GraphNode) => void;
+  /** FIX-827 — promote an expanded origin into a real focus entity. */
+  onPromoteNode?: (node: GraphNode) => void;
+  /** FIX-827 — origins currently expanded (badge flips + / expanded indicator). */
+  expandedOriginIds?: Set<string>;
+  /** FIX-827 — nodes introduced by an expansion (rendered lightweight/dashed). */
+  expansionAddedIds?: Set<string>;
+  /** FIX-827 — current donation Top-N, surfaced in the "Expand here (top N)" label. */
+  donationLimit?: number;
+  /** FIX-826 — currently multi-selected node ids (shift-click). Dashed accent ring. */
+  selectedNodeIds?: Set<string>;
+  /** FIX-826 — toggle a node in/out of the selection set (shift-click). */
+  onToggleSelect?: (nodeId: string) => void;
+  /** FIX-828 — a money edge (donation/opposition/contract) was clicked → open the edge sheet. */
+  onEdgeSelect?: (payload: EdgeClickPayload) => void;
 }
 
 // ── D3 simulation types ────────────────────────────────────────────────────────
@@ -533,6 +563,14 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
       onRetryGroup,
       onOpenDonorList,
       onExpandNode,
+      onCollapseNode,
+      onPromoteNode,
+      expandedOriginIds,
+      expansionAddedIds,
+      donationLimit = 25,
+      selectedNodeIds,
+      onToggleSelect,
+      onEdgeSelect,
       svgRef: externalSvgRef,
     },
     forwardedRef
@@ -594,6 +632,17 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
     const hoverNeighborIdsRef = useRef<Set<string> | null>(null);
     const edgeLabelGrpRef = useRef<d3.Selection<SVGGElement, unknown, null, undefined> | null>(null);
     const edgeLabelSelRef = useRef<d3.Selection<SVGTextElement, SimLink, SVGGElement, unknown> | null>(null);
+    // FIX-828 — transparent wide hit-area lines carry the edge click (below the
+    // visible links so the FIX-807 hover handlers on the visible lines are
+    // untouched; near-miss clicks land here). Display is synced in applyOpacity.
+    const hitLinkSelRef = useRef<d3.Selection<SVGLineElement, SimLink, SVGGElement, unknown> | null>(null);
+
+    // FIX-826/828 — latest-value refs so d3 handlers (bound once per rebuild)
+    // never close over a stale callback / selection.
+    const onToggleSelectRef = useRef(onToggleSelect);
+    onToggleSelectRef.current = onToggleSelect;
+    const onEdgeSelectRef = useRef(onEdgeSelect);
+    onEdgeSelectRef.current = onEdgeSelect;
 
     // The ONE writer for dimming/visibility. Every trigger (hover, type
     // toggle, strength filter, shared-connections pin, data rebuild) funnels
@@ -616,6 +665,10 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
       link
         .style("display", (d: SimLink) => (edgeVisible(d, ctx) ? null : "none"))
         .style("opacity", (d: SimLink) => resolveEdgeOpacity(d, ctx));
+
+      // FIX-828 — hidden edges must not be clickable: mirror display onto the
+      // transparent hit-area lines (they carry no opacity of their own).
+      hitLinkSelRef.current?.style("display", (d: SimLink) => (edgeVisible(d, ctx) ? null : "none"));
 
       // Nodes whose every edge is hidden hide too. Focused entities, groups,
       // and the USER node always stay visible.
@@ -798,6 +851,45 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
         return base * 4;
       }
 
+      // FIX-828 — edge click: money edges (hasAmount) open the aggregate sheet;
+      // vote edges navigate to the proposal; every other edge is inert.
+      function handleEdgeClick(event: MouseEvent, d: SimLink) {
+        event.stopPropagation();
+        const reg = CONNECTION_TYPE_REGISTRY[d.connectionType];
+        if (reg?.hasAmount) {
+          const s = d.source as SimNode;
+          const t = d.target as SimNode;
+          onEdgeSelectRef.current?.({
+            fromId: s.id, fromName: s.name, fromType: s.type,
+            toId: t.id, toName: t.name, toType: t.type,
+            connectionType: d.connectionType,
+            amountUsd: d.amountUsd, txCount: d.txCount, occurredAt: d.occurredAt,
+          });
+          return;
+        }
+        if (VOTE_EDGE_TYPES.has(d.connectionType)) {
+          const proposal = [d.source as SimNode, d.target as SimNode].find((n) => n?.type === "proposal");
+          if (proposal) window.open(`/proposals/${proposal.id.replace(/^proposal:/, "")}`, "_blank");
+        }
+      }
+
+      // Transparent wide hit-area lines UNDER the visible links so near-miss
+      // clicks on thin edges still register. Kept below the visible links so the
+      // FIX-807 hover handlers (align/investigation) on the visible lines fire
+      // normally when the pointer is directly over them.
+      const hitGroup = g.append("g").attr("class", "link-hitarea");
+      const hitLink = hitGroup
+        .selectAll<SVGLineElement, SimLink>("line")
+        .data(simLinks)
+        .join("line")
+        .attr("stroke", "transparent")
+        .attr("stroke-width", 14)
+        .attr("fill", "none")
+        .style("cursor", "pointer")
+        .style("pointer-events", "stroke")
+        .on("click", handleEdgeClick);
+      hitLinkSelRef.current = hitLink;
+
       const linkGroup = g.append("g").attr("class", "links");
       const link = linkGroup
         .selectAll<SVGLineElement, SimLink>("line")
@@ -816,6 +908,10 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
         .attr("marker-end", (d) => `url(#arrow-${d.connectionType})`);
 
       linkSelRef.current = link;
+
+      // FIX-828 — a click directly on the (topmost) visible line also opens the
+      // sheet; the hit-area beneath handles the wider near-miss target.
+      link.style("cursor", "pointer").on("click", handleEdgeClick);
 
       // Alignment edge tooltip on hover
       link
@@ -1168,6 +1264,13 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
             .attr("stroke-width", 2);
         }
 
+        // FIX-827 — expansion-added nodes render lightweight (dashed stroke) so
+        // they read as "pulled in by an expand", distinct from focus-fetched
+        // nodes. Focus entities keep their solid highlight stroke.
+        if (expansionAddedIds?.has(d.id) && !focusIds.has(d.id)) {
+          el.select<SVGElement>(".node-circle").attr("stroke-dasharray", "4,3");
+        }
+
         // Node label below shape
         const labelY = d.type === "official"          ? r + 16 :
                        d.type === "pac"               ? r + 14 :
@@ -1207,8 +1310,26 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
           .style("display", "none")
           .style("animation", "spin 1s linear infinite");
 
-        // Collapsed badge
-        if (d.collapsed) {
+        // Collapsed / expanded badge (top-right). FIX-827 — an expanded origin
+        // flips the collapsed "+" to a blue "−" (click → Collapse in the popup).
+        if (expandedOriginIds?.has(d.id)) {
+          el.append("circle")
+            .attr("cx", r - 2).attr("cy", -(r - 2))
+            .attr("r", 9)
+            .attr("fill", pal.blue)
+            .attr("stroke", pal.termBg)
+            .attr("stroke-width", 1.5)
+            .attr("pointer-events", "none");
+          el.append("text")
+            .attr("x", r - 2).attr("y", -(r - 2))
+            .attr("text-anchor", "middle")
+            .attr("dominant-baseline", "central")
+            .attr("font-size", "13px")
+            .attr("font-weight", "800")
+            .attr("fill", "white")
+            .attr("pointer-events", "none")
+            .text("−");
+        } else if (d.collapsed) {
           el.append("circle")
             .attr("cx", r - 2).attr("cy", -(r - 2))
             .attr("r", 9)
@@ -1295,6 +1416,12 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
         .on("click", (event: MouseEvent, d) => {
           event.stopPropagation();
           hideTip();
+          // FIX-826 — shift-click toggles multi-selection instead of the popup
+          // (plain click keeps the existing popup behavior).
+          if (event.shiftKey && onToggleSelectRef.current && d.type !== "user") {
+            onToggleSelectRef.current(d.id);
+            return;
+          }
           // USER node has no profile page — skip popup
           if (d.type !== "user") {
             setPopup(d);
@@ -1330,6 +1457,13 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
 
       sim.on("tick", () => {
         link
+          .attr("x1", (d) => (d.source as SimNode).x ?? 0)
+          .attr("y1", (d) => (d.source as SimNode).y ?? 0)
+          .attr("x2", (d) => (d.target as SimNode).x ?? 0)
+          .attr("y2", (d) => (d.target as SimNode).y ?? 0);
+
+        // FIX-828 — keep the transparent hit-area lines aligned with the visible ones.
+        hitLink
           .attr("x1", (d) => (d.source as SimNode).x ?? 0)
           .attr("y1", (d) => (d.source as SimNode).y ?? 0)
           .attr("x2", (d) => (d.target as SimNode).x ?? 0)
@@ -1664,6 +1798,34 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [vizOptions?.strengthFilter]);
 
+    // ── Category A — FIX-826 multi-select dashed ring ─────────────────────────
+    // Selecting is visual-only: toggle a dashed accent ring per selected node.
+    // Re-runs on selection change AND on data rebuild (which recreates the node
+    // groups, dropping the rings) so the rings reattach.
+    useEffect(() => {
+      const nodeGrp = nodeGrpRef.current;
+      const svgEl = svgRef.current;
+      if (!nodeGrp) return;
+      const accent = resolveToken("--c-accent", svgEl);
+      const sel = selectedNodeIds ?? new Set<string>();
+      nodeGrp.each(function (d) {
+        const el = d3.select(this);
+        el.selectAll(".selection-ring").remove();
+        if (sel.has(d.id)) {
+          el.append("circle")
+            .attr("class", "selection-ring")
+            .attr("r", (d.baseRadius ?? 20) + 5)
+            .attr("fill", "none")
+            .attr("stroke", accent)
+            .attr("stroke-width", 2)
+            .attr("stroke-dasharray", "4,3")
+            .attr("opacity", 0.95)
+            .attr("pointer-events", "none");
+        }
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [selectedNodeIds, nodes]);
+
     // ── NodeActions for popup ─────────────────────────────────────────────────
     const nodeActions: NodeActions = {
       recenter: useCallback((nodeId: string) => {
@@ -1684,12 +1846,22 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
         window.open(`/officials/${cleanId}`, "_blank");
       }, []),
 
-      // FIX-805 — interim expand: hand the node to GraphPage, which adds it as
-      // a focus entity (whole-entity fetch). G5: incremental neighborhood fetch.
+      // FIX-827 — incremental expand / collapse / promote. Each hands the full
+      // node to GraphPage, which drives useGraphData's merge-based expansion.
       expandNode: useCallback((nodeId: string) => {
         const target = nodes.find((n) => n.id === nodeId);
         if (target) onExpandNode?.(target);
       }, [nodes, onExpandNode]),
+
+      collapseNode: useCallback((nodeId: string) => {
+        const target = nodes.find((n) => n.id === nodeId);
+        if (target) onCollapseNode?.(target);
+      }, [nodes, onCollapseNode]),
+
+      promoteNode: useCallback((nodeId: string) => {
+        const target = nodes.find((n) => n.id === nodeId);
+        if (target) onPromoteNode?.(target);
+      }, [nodes, onPromoteNode]),
 
       viewGroupAsTreemap: onViewGroupAsTreemap,
       viewGroupAsChord: onViewGroupAsChord,
@@ -1698,6 +1870,22 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
       retryGroup: onRetryGroup,
       openDonorList: onOpenDonorList,
     };
+
+    // FIX-827 — expand affordance state for the popup node. Expanded origins
+    // offer Collapse/Promote; expandable entities (real uuid, not already in
+    // focus) offer "Expand here (top N)".
+    const EXPANDABLE_TYPES = new Set([
+      "official", "agency", "proposal", "financial", "corporation", "individual", "organization", "pac",
+    ]);
+    function popupExpandState(n: GraphNode | null): "none" | "expandable" | "expanded" {
+      if (!n) return "none";
+      if (expandedOriginIds?.has(n.id)) return "expanded";
+      const isFocus = focusEntities.some((fe) => fe.id === n.id || n.id.endsWith(`:${fe.id}`));
+      if (isFocus || !EXPANDABLE_TYPES.has(n.type)) return "none";
+      const raw = n.id.replace(/^[a-z_]+:/, "");
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(raw)) return "none";
+      return "expandable";
+    }
 
     return (
       <div className={`relative w-full h-full ${className ?? ""}`}>
@@ -1771,6 +1959,8 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
           onClose={() => setPopup(null)}
           actions={nodeActions}
           vizType="force"
+          expandState={popupExpandState(popup)}
+          expandLabel={`Expand here (top ${donationLimit})`}
         />
 
         {/* Type-cluster sector legend */}

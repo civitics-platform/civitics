@@ -42,7 +42,7 @@ export type {
 } from "./types";
 export type { VizApplicability, VizApplicabilityMeta } from "./types";
 export type { IndividualDisplayMode, BracketTier } from "./types";
-export { MAX_FOCUS_ENTITIES, isFocusGroup, isFocusEntity, BRACKET_TIERS } from "./types";
+export { MAX_FOCUS_ENTITIES, isFocusGroup, isFocusEntity, isSelectionGroup, BRACKET_TIERS } from "./types";
 
 // ── Presets + connections ───────────────────────────────────────────────────
 export { DEFAULT_GRAPH_VIEW, BUILT_IN_PRESETS, applyPreset, markDirty } from "./presets";
@@ -169,6 +169,18 @@ export type { NodePopupProps } from "./components/NodePopup";
 
 export { DonorListPanel } from "./components/DonorListPanel";
 export type { DonorListPanelProps } from "./components/DonorListPanel";
+
+// ── G5 (FIX-826/828) — selection pill + edge sheet ──────────────────────────
+export { SelectionPill } from "./components/SelectionPill";
+export type { SelectionPillProps } from "./components/SelectionPill";
+
+export { EdgeSheet } from "./components/EdgeSheet";
+export type { EdgeSheetProps, EdgeSheetData } from "./components/EdgeSheet";
+
+export type { EdgeClickPayload } from "./visualizations/ForceGraph";
+
+// ── CSV export (FIX-829) ────────────────────────────────────────────────────
+export { graphToCsv, downloadCsv, graphCsvFilename, csvField } from "./csv";
 
 export { Tooltip, useTooltip } from "./components/Tooltip";
 export type { TooltipProps, TooltipState } from "./components/Tooltip";
