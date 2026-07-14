@@ -223,23 +223,32 @@ async function closeStaleConnections(
 ): Promise<number> {
   if (currentOfficialIds.size === 0) return 0;
 
-  const inList = [...currentOfficialIds].join(",");
   // FIX-545: silent-zero here made a gateway blip read as "no stale
   // connections", skipping the is_current cleanup while the run looked clean.
-  const staleConns = rowsOrThrow(
+  // FIX-692 (two parts):
+  //  (1) filter on the real current-ness column (ended_at IS NULL), not
+  //      metadata->>is_current — ended_at is what this pipeline writes for the
+  //      current holder; the metadata JSON was fragile.
+  //  (2) exclude the current holders IN MEMORY. The old
+  //      `.not("from_id","in",(<list>))` inlined every current official id into
+  //      the request URI and overflowed Kong's URI limit (`URI too long`) once
+  //      a big agency (e.g. DoD) had a few hundred current holders — surfaced
+  //      the moment the name-match preload stopped failing first (FIX-821).
+  //  Scope stays evidence_source='plum_book' so we only close our own edges.
+  const openConns = rowsOrThrow(
     await db
       .from("entity_connections")
-      .select("id, metadata")
+      .select("id, from_id, metadata")
       .eq("to_type", "agency")
       .eq("to_id", agencyId)
       .eq("from_type", "official")
       .eq("connection_type", "appointment")
       .eq("evidence_source", "plum_book")
-      .filter("metadata->>is_current", "eq", "true")
-      .not("from_id", "in", `(${inList})`),
+      .is("ended_at", null),
     "plum-book stale-connections",
-  ) as Array<{ id: string; metadata: Record<string, unknown> | null }>;
+  ) as Array<{ id: string; from_id: string; metadata: Record<string, unknown> | null }>;
 
+  const staleConns = openConns.filter((c) => !currentOfficialIds.has(c.from_id));
   if (!staleConns.length) return 0;
 
   let closed = 0;

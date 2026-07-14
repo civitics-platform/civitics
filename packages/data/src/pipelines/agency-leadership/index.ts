@@ -131,22 +131,39 @@ async function closeStaleConnections(
 ): Promise<number> {
   if (currentOfficialIds.size === 0) return 0;
 
-  const inList = [...currentOfficialIds].join(",");
   // FIX-545: silent-zero here made a gateway blip read as "no stale
   // connections", skipping the is_current cleanup while the run looked clean.
-  const staleConns = rowsOrThrow(
+  // FIX-692 (two parts):
+  //  (1) filter on the real current-ness column (ended_at IS NULL), not
+  //      metadata->>is_current — ended_at is what both this pipeline and the
+  //      rebuild's career_history derivation write; the metadata JSON was
+  //      fragile (empty across rebuild-written rows).
+  //  (2) exclude the current holders IN MEMORY. The old
+  //      `.not("from_id","in",(<list>))` inlined every current official id into
+  //      the request URI, which overflowed Kong's URI limit (`URI too long`)
+  //      once an agency had a few hundred current holders. Per-agency open
+  //      appointment edges are bounded, so an in-memory anti-join is cheap and
+  //      URI-safe.
+  //  (3) scope to THIS pipeline's own evidence sources (wikidata +
+  //      congress_nominations). Its current-holder set is only the Wikidata
+  //      heads + Senate-confirmed cabinet, so an unscoped close clobbered the
+  //      plum-book roster (deputies / Schedule C / SES) that plum-book had
+  //      correctly marked current — 4,272 plum_book edges wrongly closed in one
+  //      local run. plum-book already scopes to its own source; this mirrors it.
+  const openConns = rowsOrThrow(
     await db
       .from("entity_connections")
-      .select("id, metadata")
+      .select("id, from_id, metadata")
       .eq("to_type", "agency")
       .eq("to_id", agencyId)
       .eq("from_type", "official")
       .eq("connection_type", "appointment")
-      .filter("metadata->>is_current", "eq", "true")
-      .not("from_id", "in", `(${inList})`),
+      .in("evidence_source", ["wikidata", "congress_nominations"])
+      .is("ended_at", null),
     "agency-leadership stale-connections",
-  ) as Array<{ id: string; metadata: Record<string, unknown> | null }>;
+  ) as Array<{ id: string; from_id: string; metadata: Record<string, unknown> | null }>;
 
+  const staleConns = openConns.filter((c) => !currentOfficialIds.has(c.from_id));
   if (!staleConns.length) return 0;
 
   let closed = 0;
