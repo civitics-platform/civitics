@@ -69,10 +69,14 @@ export async function section<T>(
 
 // ── 1. Platform version ──────────────────────────────────────────────────────
 export async function getVersion(db: Db) {
+  // FIX-833: NULLS LAST — an in-flight or stranded status='running' row has a
+  // NULL completed_at, which under `.order(completed_at desc)` sorts FIRST in
+  // Postgres (NULLS FIRST default) and would blank out latest_sync_at. Prefer
+  // the newest row that actually completed.
   const latestSync = await db
     .from("data_sync_log")
     .select("pipeline, completed_at, status")
-    .order("completed_at", { ascending: false })
+    .order("completed_at", { ascending: false, nullsFirst: false })
     .limit(1)
     .maybeSingle();
   return {
@@ -770,12 +774,24 @@ export async function getSelfTests(
     // ONLY to data_sync_log under pipeline='entity_connections_rebuild'.
     // Reader updated to follow the data; writer stays as the single source of
     // truth per its file-header comment in scripts/rebuild-entity-connections.ts.
+    //
+    // FIX-833: gate on the latest COMPLETE run, not the latest row. A rebuild
+    // that hits its CALL statement_timeout (the pre-FIX-833 6h Monday full) or
+    // otherwise dies strands a status='running' row with a NULL completed_at;
+    // under `.order(completed_at desc)` that NULL sorts FIRST in Postgres (NULLS
+    // FIRST default) and dominated the read forever → permanent false-fail even
+    // though the incremental was keeping edges fresh. Filtering to complete +
+    // NULLS LAST reads the freshest *reconciled* run and is immune to a stranded
+    // 'running' or a one-off 'failed' row. "A complete run within
+    // REBUILD_STALE_MS" is the true data-health signal; a genuinely stalled
+    // pipeline still fails once its last complete ages out.
     timed("self_tests:rebuild_last_run", () =>
       db
         .from("data_sync_log")
         .select("status, completed_at, rows_inserted")
         .eq("pipeline", "entity_connections_rebuild")
-        .order("completed_at", { ascending: false })
+        .eq("status", "complete")
+        .order("completed_at", { ascending: false, nullsFirst: false })
         .limit(1)
         .maybeSingle(),
     ),
@@ -824,18 +840,19 @@ export async function getSelfTests(
     | null;
   const cronLastRun = cronVal?.completed_at ?? cronVal?.started_at ?? null;
 
-  // FIX-340: shape of one data_sync_log row from the standalone rebuild script.
+  // FIX-340: shape of the latest COMPLETE entity_connections_rebuild row (the
+  // query above filters to status='complete', so this is never a stranded run).
   const rebuildLastRun = (rebuildLastRunRes.data ?? null) as
     | { status: string; completed_at: string | null; rows_inserted: number | null }
     | null;
-  // Rebuild cadence is pg_cron (FIX-688): rebuild-ec-full Mon 08:00 UTC,
-  // rebuild-ec-incremental Wed 08:00 UTC. The largest gap between successful
-  // runs is Wed→Mon = 5 days, and Monday's full can run up to its 6h CALL
-  // budget (FIX-703) before it writes its completing row — so on a healthy
-  // week the newest completed row legitimately reaches ~5.25 days old. 6d
-  // clears that with cushion without false-passing a genuinely missed
-  // schedule. (Was 4.5d, calibrated for the retired Sun+Wed GHA cadence whose
-  // max gap was ~3.5–4d — FIX-H.)
+  // Rebuild cadence is pg_cron: rebuild-ec-incremental-mon Mon 08:00 UTC +
+  // rebuild-ec-incremental Wed 08:00 UTC (FIX-833 converted the Monday job from
+  // 'full' to 'incremental' — the 6h full was retired). Both runs are the ~42min
+  // incremental, so the largest gap between successful runs is Wed→Mon = 5 days.
+  // 6d clears that with cushion without false-passing a genuinely missed
+  // schedule. (Was Mon-full/Wed-incremental where Monday's 6h CALL budget pushed
+  // the newest completed row to ~5.25d; before that 4.5d for the retired Sun+Wed
+  // GHA cadence — FIX-H.)
   const REBUILD_STALE_MS = 6 * 24 * 60 * 60 * 1000;
   const rebuildAgeMs = rebuildLastRun?.completed_at
     ? Date.now() - new Date(rebuildLastRun.completed_at).getTime()
@@ -896,7 +913,7 @@ export async function getSelfTests(
         rebuildAgeMs != null &&
         rebuildAgeMs < REBUILD_STALE_MS,
       detail: rebuildLastRun
-        ? `entity_connections_rebuild: ${rebuildLastRun.status} at ${rebuildLastRun.completed_at ?? "?"}${
+        ? `entity_connections_rebuild: last complete at ${rebuildLastRun.completed_at ?? "?"}${
             rebuildLastRun.rows_inserted != null
               ? ` (${rebuildLastRun.rows_inserted} rows)`
               : ""
@@ -905,7 +922,7 @@ export async function getSelfTests(
               ? `, age ${(rebuildAgeMs / (60 * 60 * 1000)).toFixed(1)}h`
               : ""
           }`
-        : "No entity_connections_rebuild row in data_sync_log — has the pg_cron rebuild (Mon full / Wed incremental) run since cutover?",
+        : "No COMPLETE entity_connections_rebuild row in data_sync_log — has the pg_cron rebuild (Mon + Wed incremental) run since cutover?",
     },
     {
       name: "derived_edges_match_source",
