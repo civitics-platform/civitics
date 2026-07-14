@@ -828,10 +828,15 @@ export async function getSelfTests(
   const rebuildLastRun = (rebuildLastRunRes.data ?? null) as
     | { status: string; completed_at: string | null; rows_inserted: number | null }
     | null;
-  // GHA workflow rebuild-entity-connections.yml runs Sun + Wed 08:00 UTC, so
-  // the natural max-stale window is ~3.5 days; 4.5d gives a small cushion for
-  // long-running rebuilds without false-passing a genuinely missed schedule.
-  const REBUILD_STALE_MS = 4.5 * 24 * 60 * 60 * 1000;
+  // Rebuild cadence is pg_cron (FIX-688): rebuild-ec-full Mon 08:00 UTC,
+  // rebuild-ec-incremental Wed 08:00 UTC. The largest gap between successful
+  // runs is Wed→Mon = 5 days, and Monday's full can run up to its 6h CALL
+  // budget (FIX-703) before it writes its completing row — so on a healthy
+  // week the newest completed row legitimately reaches ~5.25 days old. 6d
+  // clears that with cushion without false-passing a genuinely missed
+  // schedule. (Was 4.5d, calibrated for the retired Sun+Wed GHA cadence whose
+  // max gap was ~3.5–4d — FIX-H.)
+  const REBUILD_STALE_MS = 6 * 24 * 60 * 60 * 1000;
   const rebuildAgeMs = rebuildLastRun?.completed_at
     ? Date.now() - new Date(rebuildLastRun.completed_at).getTime()
     : null;
@@ -900,7 +905,7 @@ export async function getSelfTests(
               ? `, age ${(rebuildAgeMs / (60 * 60 * 1000)).toFixed(1)}h`
               : ""
           }`
-        : "No entity_connections_rebuild row in data_sync_log — has the Sun+Wed GHA workflow run since cutover?",
+        : "No entity_connections_rebuild row in data_sync_log — has the pg_cron rebuild (Mon full / Wed incremental) run since cutover?",
     },
     {
       name: "derived_edges_match_source",
