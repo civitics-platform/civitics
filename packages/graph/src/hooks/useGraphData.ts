@@ -8,7 +8,7 @@
  * removed entities without reloading the whole graph.
  */
 
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import type { GraphView, ForceOptions } from '../types';
 import type { FocusEntity, FocusGroup } from '../types';
 import { isFocusEntity, isFocusGroup } from '../types';
@@ -18,6 +18,9 @@ import {
   DEFAULT_DONATION_LIMIT,
   DEFAULT_VOTES_LIMIT,
 } from '../connections';
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const edgeKey = (e: GraphEdge) => `${e.fromId}:${e.toId}:${e.connectionType}`;
 
 export interface GraphMeta {
   /** Connection types present with counts and total amounts */
@@ -47,6 +50,30 @@ export function useGraphData(
   const [edges, setEdges] = useState<GraphEdge[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingEntityId, setLoadingEntityId] = useState<string | null>(null);
+
+  // FIX-827 — incremental expansion state. Fresh refs mirror nodes/edges so the
+  // async expand/collapse handlers diff against the latest committed set without
+  // closing over a stale render snapshot.
+  const nodesRef = useRef<GraphNode[]>(nodes);
+  nodesRef.current = nodes;
+  const edgesRef = useRef<GraphEdge[]>(edges);
+  edgesRef.current = edges;
+  // originId → the node/edge ids this expansion ADDED (i.e. that were newly
+  // present when it ran). Drives exact collapse + the lightweight render sets.
+  const expansions = useRef(new Map<string, { addedNodeIds: Set<string>; addedEdgeKeys: Set<string> }>());
+  // Exposed as state so ForceGraph re-derives the expanded-origin badge flip
+  // and the dashed lightweight stroke on expansion-added nodes.
+  const [expandedOriginIds, setExpandedOriginIds] = useState<Set<string>>(new Set());
+  const [expansionAddedIds, setExpansionAddedIds] = useState<Set<string>>(new Set());
+
+  const syncExpansionSets = () => {
+    setExpandedOriginIds(new Set(expansions.current.keys()));
+    const added = new Set<string>();
+    for (const { addedNodeIds } of expansions.current.values()) {
+      addedNodeIds.forEach((id) => added.add(id));
+    }
+    setExpansionAddedIds(added);
+  };
 
   // FIX-497 — bumping this re-runs the fetch effect on demand. A group whose
   // donor aggregation failed is deliberately left out of `fetchedIds`, so a
@@ -105,9 +132,10 @@ export function useGraphData(
       (e): e is FocusEntity => isFocusEntity(e) && !fetchedIds.current.has(e.id)
     );
 
-    // Find newly added groups
+    // Find newly added groups. FIX-826 — selection groups (memberIds set) are
+    // client-only handles over already-loaded nodes: no server fetch, no bubble.
     const toFetchGroups = focus.entities.filter(
-      (e): e is FocusGroup => isFocusGroup(e) && !fetchedIds.current.has(e.id)
+      (e): e is FocusGroup => isFocusGroup(e) && !e.memberIds && !fetchedIds.current.has(e.id)
     );
 
     // Find removed entities
@@ -312,6 +340,96 @@ export function useGraphData(
     setLoading(false);
   }
 
+  // ── FIX-827 — incremental neighborhood expand ──────────────────────────────
+  // Replaces the FIX-805 interim (which added the clicked node as a whole focus
+  // entity). Fetches ONE hop for the node honoring the current fetch caps and
+  // MERGES the result into graph state; the origin does NOT become a focus
+  // entity. The set-difference vs the current graph is recorded so a later
+  // collapse removes exactly what this expansion introduced.
+  const expandNode = useCallback(async (originId: string) => {
+    const cleanId = originId.replace(/^[a-z_]+:/, '');
+    if (!UUID_RE.test(cleanId)) return;               // groups / user / brackets aren't expandable
+    if (expansions.current.has(originId)) return;     // already expanded
+
+    setLoading(true);
+    setLoadingEntityId(originId);
+    try {
+      const params = new URLSearchParams({
+        entityId: cleanId,
+        depth: '1',
+        viz: 'force',
+        include_procedural: String(focus.includeProcedural),
+        limit: String(donationLimit),
+        votes_limit: String(votesLimit),
+      });
+      if (forceOptions?.individualDisplayMode) params.set('individualMode', forceOptions.individualDisplayMode);
+      if (forceOptions?.connectorMinRecipients != null) params.set('connectorMin', String(forceOptions.connectorMinRecipients));
+
+      const res = await fetch(`/api/graph/connections?` + params);
+      const data = await res.json();
+
+      const existingNodeIds = new Set(nodesRef.current.map((n) => n.id));
+      const existingEdgeKeys = new Set(edgesRef.current.map(edgeKey));
+      const addedNodeIds = new Set<string>();
+      const addedEdgeKeys = new Set<string>();
+      (data.nodes ?? []).forEach((n: GraphNode) => { if (!existingNodeIds.has(n.id)) addedNodeIds.add(n.id); });
+      (data.edges ?? []).forEach((e: GraphEdge) => { const k = edgeKey(e); if (!existingEdgeKeys.has(k)) addedEdgeKeys.add(k); });
+
+      setNodes((prev) => {
+        const existing = new Map(prev.map((n) => [n.id, n]));
+        (data.nodes ?? []).forEach((n: GraphNode) => existing.set(n.id, n));
+        return [...existing.values()];
+      });
+      setEdges((prev) => {
+        const existing = new Map(prev.map((e) => [edgeKey(e), e]));
+        (data.edges ?? []).forEach((e: GraphEdge) => existing.set(edgeKey(e), e));
+        return [...existing.values()];
+      });
+
+      expansions.current.set(originId, { addedNodeIds, addedEdgeKeys });
+      syncExpansionSets();
+    } catch (err) {
+      console.error('[useGraphData] expand failed:', originId, err);
+    } finally {
+      setLoadingEntityId(null);
+      setLoading(false);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [donationLimit, votesLimit, focus.includeProcedural, forceOptions?.individualDisplayMode, forceOptions?.connectorMinRecipients]);
+
+  // Collapse an expansion: remove the edges it added, then drop the nodes it
+  // added UNLESS a surviving edge still references them, they're a focus entity,
+  // or the USER node — i.e. "minus anything another expansion / focus fetch also
+  // references" (a shared node kept alive by another surviving edge stays).
+  const collapseExpansion = useCallback((originId: string) => {
+    const exp = expansions.current.get(originId);
+    if (!exp) return;
+    expansions.current.delete(originId);
+
+    const survivingEdges = edgesRef.current.filter((e) => !exp.addedEdgeKeys.has(edgeKey(e)));
+    const referenced = new Set<string>();
+    survivingEdges.forEach((e) => { referenced.add(e.fromId); referenced.add(e.toId); });
+
+    const survivingNodes = nodesRef.current.filter((n) => {
+      if (!exp.addedNodeIds.has(n.id)) return true;   // not ours → keep
+      if (referenced.has(n.id)) return true;          // still wired by a surviving edge
+      if (n.type === 'user') return true;
+      return false;
+    });
+
+    setEdges(survivingEdges);
+    setNodes(survivingNodes);
+    syncExpansionSets();
+  }, []);
+
+  // Promote an expanded origin to a real focus entity: drop its expansion record
+  // WITHOUT pruning (the caller's addEntity re-fetches the full neighborhood and
+  // takes ownership of these nodes) and clear its lightweight/expanded state.
+  const promoteExpansion = useCallback((originId: string) => {
+    if (!expansions.current.delete(originId)) return;
+    syncExpansionSets();
+  }, []);
+
   // Filter visible edges based on connection settings
   const visibleEdges = useMemo(
     () => edges.filter(e => connections[e.connectionType]?.enabled ?? true),
@@ -357,6 +475,11 @@ export function useGraphData(
   return {
     nodes, edges: visibleEdges, allEdges: edges, loading,
     loadingEntityId, graphMeta,
+    // FIX-827 — incremental expand surface
+    expandNode, collapseExpansion, promoteExpansion,
+    expandedOriginIds, expansionAddedIds,
+    // FIX-827 — surfaced so the NodePopup can show "Expand here (top N)"
+    donationLimit,
     refetch: () => {
       fetchedIds.current.clear();
       setNodes([]); setEdges([]);

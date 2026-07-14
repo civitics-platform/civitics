@@ -15,6 +15,15 @@ export interface NodePopupProps {
   onClose: () => void;
   actions: NodeActions;
   vizType: VizType;
+  /**
+   * FIX-827 — expand affordance state for this node (force viz only):
+   *   'expandable' → show "Expand here (top N)"
+   *   'expanded'   → show "Collapse" + "Promote to focus"
+   *   'none'       → no expand affordance (focus entity, non-entity node, etc.)
+   */
+  expandState?: 'none' | 'expandable' | 'expanded';
+  /** FIX-827 — label for the expand action, e.g. "Expand here (top 25)". */
+  expandLabel?: string;
 }
 
 /**
@@ -35,7 +44,7 @@ function SyntheticMark() {
   );
 }
 
-export function NodePopup({ node, onClose, actions, vizType }: NodePopupProps) {
+export function NodePopup({ node, onClose, actions, vizType, expandState = 'none', expandLabel = 'Expand here' }: NodePopupProps) {
   if (!node) return null;
 
   const isGroup    = node.type === 'group';
@@ -410,8 +419,10 @@ export function NodePopup({ node, onClose, actions, vizType }: NodePopupProps) {
             </button>
           )}
 
-          {/* Expand collapsed node — force only */}
-          {isForce && node.collapsed && (
+          {/* FIX-827 — incremental expand affordances (force only). An
+              expandable node offers a one-hop merge; an already-expanded origin
+              offers Collapse (undo exactly what it added) + Promote to focus. */}
+          {isForce && expandState === 'expandable' && (
             <button
               onClick={() => {
                 actions.expandNode(node.id);
@@ -420,8 +431,32 @@ export function NodePopup({ node, onClose, actions, vizType }: NodePopupProps) {
               className="w-full text-left px-3 py-2 rounded-lg text-sm text-ink hover:bg-amber/30 flex items-center gap-2 transition-colors"
             >
               <span>+</span>
-              <span>Expand connections</span>
+              <span>{expandLabel}</span>
             </button>
+          )}
+          {isForce && expandState === 'expanded' && (
+            <>
+              <button
+                onClick={() => {
+                  actions.collapseNode?.(node.id);
+                  onClose();
+                }}
+                className="w-full text-left px-3 py-2 rounded-lg text-sm text-ink hover:bg-ink/5 flex items-center gap-2 transition-colors"
+              >
+                <span>−</span>
+                <span>Collapse</span>
+              </button>
+              <button
+                onClick={() => {
+                  actions.promoteNode?.(node.id);
+                  onClose();
+                }}
+                className="w-full text-left px-3 py-2 rounded-lg text-sm text-ink hover:bg-accent/10 hover:text-accent flex items-center gap-2 transition-colors"
+              >
+                <span>★</span>
+                <span>Promote to focus</span>
+              </button>
+            </>
           )}
           {/* "Add to comparison" removed (FIX-805) — it invoked an empty
               callback; no comparison feature exists. */}
