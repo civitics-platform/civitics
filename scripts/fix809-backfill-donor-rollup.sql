@@ -1,0 +1,30 @@
+-- FIX-809 — backfill officials missing from official_donor_rollup_mv.
+--
+-- Cause (confirmed on prod 2026-07-14, and it is NOT the FIX-704 watermark
+-- hole the ticket hypothesised): official_donor_rollup_mv is refreshed only by
+-- the weekly pg_cron job `donor-rollup-refresh` (Tue 08:00 UTC) via
+-- refresh_official_donor_rollup_incremental(), whose dirty set is
+-- financial_relationships.updated_at > pipeline_state.donor_rollup_watermark.
+-- FEC data now lands far more often than weekly (fec_bulk), so any recipient
+-- whose donation rows were (re)written since the last Tuesday run has no rollup
+-- rows until the next Tuesday — up to ~7 days. On 2026-07-14 that stranded 76
+-- officials (incl. Mitch McConnell), ALL with max(updated_at) > the watermark,
+-- i.e. ZERO permanent holes — so a plain incremental catches every one of them.
+-- No watermark clear / full re-bootstrap is needed (that would re-aggregate all
+-- ~11.4k recipients for zero extra coverage and is the heavy path FIX-704 exists
+-- to avoid).
+--
+-- This runbook just runs the standard weekly incremental early. The procedure is
+-- chunked (200 recipients per COMMIT, work_mem-bounded) and session-advisory-
+-- locked, so it is safe to run alongside the scheduled job — one wins the lock,
+-- the other logs a 'skipped' data_sync_log row. The DURABLE cadence fix (run the
+-- rollup refresh daily / after the FEC ingest instead of weekly) is tracked as a
+-- separate follow-up FIX; see docs/FIXES.md.
+--
+-- statement_timeout backstop: the CALL's budget is armed from the session value
+-- at CALL start (FIX-703 — an in-procedure SET/COMMIT cannot re-arm it). 2h is
+-- comfortably above the ~30 min an ~8k-recipient dirty set takes and well below
+-- a runaway. Run via an AUTOCOMMIT psql session (NOT db-query.mjs, whose
+-- --single-transaction wrapper would forbid the procedure's per-chunk COMMITs).
+SET statement_timeout = '2h';
+CALL public.refresh_official_donor_rollup_incremental();
