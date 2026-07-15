@@ -69,7 +69,13 @@ Of the **125 revoked**, **52 are SECURITY DEFINER** (the priority exposures —
 they bypass RLS) and 73 are invoker (mostly mutating rebuild/refresh machinery
 whose anon exposure is a DoS/data-mutation vector even under invoker RLS).
 
-## NEEDS-CRAIG — decide before/after the migration
+## NEEDS-CRAIG — RESOLVED (FIX-835): all 13 revoked
+
+**Update 2026-07-14:** Craig confirmed revoke. **FIX-835**
+(`20260714010000_fix835_revoke_needs_craig_rpc_execute.sql`) revokes
+anon+authenticated EXECUTE on all 13 (service_role kept). Anon/auth-executable
+public-fn count dropped **72 → 59**. The paragraph below is the original
+flag rationale, retained for the record.
 
 All 13 are read-only functions with **no demonstrable caller** (their only repo
 references are in generated `database.ts` types). They are almost certainly
