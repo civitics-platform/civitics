@@ -108,6 +108,8 @@
     "data:reap-sync-log": "tsx --env-file=../../.env.local src/scripts/reap-sync-log.ts",
     "data:score-comments": "tsx --env-file=../../.env.local src/scripts/score-comments.ts",
     "data:refresh-donor-mv": "tsx --env-file=../../.env.local src/scripts/refresh-donor-rollup-mv.ts",
+    "data:backfill-donor-totals": "tsx --env-file=../../.env.local src/scripts/backfill-official-donor-totals.ts",
+    "data:backfill-donor-totals:prod": "tsx --env-file=../../.env.local.prod src/scripts/backfill-official-donor-totals.ts",
     "data:rebuild:ie-totals": "tsx --env-file=../../.env.local src/scripts/rebuild-ie-totals.ts",
     "data:rebuild:received-totals": "tsx --env-file=../../.env.local src/scripts/rebuild-received-totals.ts",
     "data:analyze:ie-drop": "tsx --env-file=../../.env.local src/scripts/analyze-ie-drop.ts",

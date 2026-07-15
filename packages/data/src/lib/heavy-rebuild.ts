@@ -84,6 +84,11 @@ const ALLOWED_REBUILDS = new Set([
   // the capped admin.rpc() path, triggering the enrichment-phase cascade. Same
   // direct-pg lift as the donation-total recompute above.
   "refresh_spending_totals",
+  // FIX-836: one-shot bootstrap of official_donor_totals (TRUNCATE + whole-table
+  // donation aggregation, ~16min on prod — the very cost this FIX moves OFF the
+  // per-run tagger path). Returns the row count. Per-env bootstrap only; the
+  // incremental daily refresh keeps the summary fresh thereafter.
+  "official_donor_totals_backfill",
 ]);
 
 /**
