@@ -1034,3 +1034,4 @@
 2026-07-14 | FIX-836 | 0aead7aa | local+prod | perf(tags): materialize get_official_donor_rollup() off the FIX-704 dirty set
 2026-07-15 | FIX-776 | 17276404 | local+prod | feat(graph): materialize per-official small-dollar rollup with live fallback
 2026-07-15 | FIX-777 | f8bd94d6 | local+prod | feat(graph): materialize per-official sector-affinity rollup with live fallback
+2026-07-15 | FIX-778 | 708e5064 | local+prod | feat(graph): materialize per-agency staffing rollup with live fallback
