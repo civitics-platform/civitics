@@ -129,6 +129,8 @@ export async function runHeavyRebuild(fn: string): Promise<number> {
 const ALLOWED_PROCEDURES = new Set([
   // FIX-776: one-shot chunked bootstrap of official_small_dollar_rollup.
   "backfill_official_small_dollar_rollup",
+  // FIX-777: one-shot chunked bootstrap of official_sector_affinity_rollup.
+  "backfill_official_sector_affinity_rollup",
 ]);
 
 /**
