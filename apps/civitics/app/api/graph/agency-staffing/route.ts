@@ -17,6 +17,13 @@ export const dynamic = "force-dynamic";
  *   - founded_year (Wikidata, FIX-208)
  *
  * Federal scope only by default; query param `agencyType` can switch.
+ *
+ * FIX-778: appointment/contract/grant aggregates are served from the
+ * public.agency_staffing_rollup table (weekly recompute) instead of a live
+ * per-request COUNT/SUM over entity_connections + the ~1.28M agency contract/
+ * grant FR rows. The live aggregation below stays as the per-agency fallback for
+ * agencies missing from the rollup (pre-backfill / brand-new). fte / founded_year
+ * / name stay on the agencies table.
  */
 
 interface ResponseRow {
@@ -29,6 +36,79 @@ interface ResponseRow {
   contractTotal: number;   // cents
   grantTotal: number;      // cents
   foundedYear: number | null;
+}
+
+interface AgencyStats { appointmentCount: number; contractTotal: number; grantTotal: number }
+interface RollupRow {
+  agency_id: string;
+  appointment_count: number | string | null;
+  contract_cents: number | string | null;
+  grant_cents: number | string | null;
+}
+
+// FIX-778 live-compute fallback: the pre-materialization per-agency aggregation
+// over entity_connections (appointment COUNT) + financial_relationships (contract/
+// grant SUM), batched by 100 agencyIds to dodge PostgREST URL-length limits
+// (FIX-220) and paged (FIX-503 stable order). Kept as the per-agency fallback for
+// agencies absent from agency_staffing_rollup so nothing 500s / renders 0 wrongly.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function computeAgencyStatsLive(supabase: any, agencyIds: string[]): Promise<Map<string, AgencyStats>> {
+  const out = new Map<string, AgencyStats>();
+  const get = (id: string): AgencyStats => {
+    let s = out.get(id);
+    if (!s) { s = { appointmentCount: 0, contractTotal: 0, grantTotal: 0 }; out.set(id, s); }
+    return s;
+  };
+  const BATCH = 100;
+  const PAGE = 1000;
+  for (let i = 0; i < agencyIds.length; i += BATCH) {
+    const batch = agencyIds.slice(i, i + BATCH);
+
+    // Appointment counts. Paginate in case a single agency has >1000 leaders.
+    let from = 0;
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const { data: appts, error: apptErr } = await supabase
+        .from("entity_connections")
+        .select("to_id")
+        .eq("connection_type", "appointment")
+        .eq("to_type", "agency")
+        .in("to_id", batch)
+        .order("id", { ascending: true })
+        .range(from, from + PAGE - 1);
+      if (apptErr) { console.error("[agency-staffing] appts error:", apptErr.message); break; }
+      if (!appts || appts.length === 0) break;
+      for (const r of appts as { to_id: string }[]) get(r.to_id).appointmentCount += 1;
+      if (appts.length < PAGE) break;
+      from += PAGE;
+      if (from > 50_000) break; // safety
+    }
+
+    // Contract + grant totals.
+    let sFrom = 0;
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const { data: spendRows, error: spendErr } = await supabase
+        .from("financial_relationships")
+        .select("from_id, amount_cents, relationship_type")
+        .eq("from_type", "agency")
+        .in("from_id", batch)
+        .in("relationship_type", ["contract", "grant"])
+        .order("id", { ascending: true })
+        .range(sFrom, sFrom + PAGE - 1);
+      if (spendErr) { console.error("[agency-staffing] spend error:", spendErr.message); break; }
+      if (!spendRows || spendRows.length === 0) break;
+      for (const r of spendRows as { from_id: string; amount_cents: number | null; relationship_type: string }[]) {
+        const s = get(r.from_id);
+        if (r.relationship_type === "contract") s.contractTotal += (r.amount_cents ?? 0);
+        else s.grantTotal += (r.amount_cents ?? 0);
+      }
+      if (spendRows.length < PAGE) break;
+      sFrom += PAGE;
+      if (sFrom > 200_000) break;
+    }
+  }
+  return out;
 }
 
 export async function GET(req: NextRequest) {
@@ -56,73 +136,37 @@ export async function GET(req: NextRequest) {
 
   const agencyIds = agencies.map((a: { id: string }) => a.id);
 
-  // FIX-220: paginate appointment + spending queries in batches of 100
-  // agencyIds. With 98 federal agencies, the previous single-shot
-  // .in("to_id", agencyIds) hit PostgREST URL length limits and silently
-  // returned partial/empty results — the agencies page rendered DOJ with
-  // appointmentCount: 0 even though Bondi's edge exists.
-  const BATCH = 100;
-  const PAGE = 1000;
-  const apptCountByAgency = new Map<string, number>();
-  const contractByAgency = new Map<string, number>();
-  const grantByAgency    = new Map<string, number>();
-
-  for (let i = 0; i < agencyIds.length; i += BATCH) {
-    const batch = agencyIds.slice(i, i + BATCH);
-
-    // Appointment counts. Paginate in case a single agency has >1000 leaders.
-    let from = 0;
-    // eslint-disable-next-line no-constant-condition
-    while (true) {
-      const { data: appts, error: apptErr } = await supabase
-        .from("entity_connections")
-        .select("to_id")
-        .eq("connection_type", "appointment")
-        .eq("to_type", "agency")
-        .in("to_id", batch)
-        // FIX-503: .range() without a stable sort key can repeat/skip rows
-        // across pages → double-counted appointments. Order by pkey.
-        .order("id", { ascending: true })
-        .range(from, from + PAGE - 1);
-      if (apptErr) {
-        console.error("[agency-staffing] appts error:", apptErr.message);
-        break;
-      }
-      if (!appts || appts.length === 0) break;
-      for (const r of appts as { to_id: string }[]) {
-        apptCountByAgency.set(r.to_id, (apptCountByAgency.get(r.to_id) ?? 0) + 1);
-      }
-      if (appts.length < PAGE) break;
-      from += PAGE;
-      if (from > 50_000) break; // safety
+  // FIX-778 fast path: read the materialized per-agency rollup. Chunk the .in()
+  // to stay under the Kong/PostgREST URL-length cap (~200 ids/chunk).
+  const statByAgency = new Map<string, AgencyStats>();
+  const CHUNK = 200;
+  let rollupErr = false;
+  for (let i = 0; i < agencyIds.length; i += CHUNK) {
+    const chunk = agencyIds.slice(i, i + CHUNK);
+    const { data, error } = await supabase
+      .from("agency_staffing_rollup")
+      .select("agency_id, appointment_count, contract_cents, grant_cents")
+      .in("agency_id", chunk);
+    if (error) {
+      console.error("[agency-staffing] rollup read (falling back to live):", error.message);
+      rollupErr = true;
+      break;
     }
-
-    // Contract + grant totals.
-    let sFrom = 0;
-    // eslint-disable-next-line no-constant-condition
-    while (true) {
-      const { data: spendRows, error: spendErr } = await supabase
-        .from("financial_relationships")
-        .select("from_id, amount_cents, relationship_type")
-        .eq("from_type", "agency")
-        .in("from_id", batch)
-        .in("relationship_type", ["contract", "grant"])
-        // FIX-503: stable pkey order so paged sums don't double-count.
-        .order("id", { ascending: true })
-        .range(sFrom, sFrom + PAGE - 1);
-      if (spendErr) {
-        console.error("[agency-staffing] spend error:", spendErr.message);
-        break;
-      }
-      if (!spendRows || spendRows.length === 0) break;
-      for (const r of spendRows as { from_id: string; amount_cents: number | null; relationship_type: string }[]) {
-        const map = r.relationship_type === "contract" ? contractByAgency : grantByAgency;
-        map.set(r.from_id, (map.get(r.from_id) ?? 0) + (r.amount_cents ?? 0));
-      }
-      if (spendRows.length < PAGE) break;
-      sFrom += PAGE;
-      if (sFrom > 200_000) break;
+    for (const r of (data ?? []) as RollupRow[]) {
+      statByAgency.set(r.agency_id, {
+        appointmentCount: Number(r.appointment_count ?? 0),
+        contractTotal:    Number(r.contract_cents ?? 0),
+        grantTotal:       Number(r.grant_cents ?? 0),
+      });
     }
+  }
+
+  // Live fallback for agencies missing from the rollup (pre-backfill / brand-new),
+  // or ALL agencies if the rollup read errored.
+  const missing = rollupErr ? agencyIds : agencyIds.filter((id: string) => !statByAgency.has(id));
+  if (missing.length > 0) {
+    const live = await computeAgencyStatsLive(supabase, missing);
+    for (const [id, s] of live) statByAgency.set(id, s);
   }
 
   const rows: ResponseRow[] = agencies.map((a: {
@@ -133,17 +177,20 @@ export async function GET(req: NextRequest) {
     agency_type: string;
     personnel_fte: number | null;
     founded_year: number | null;
-  }) => ({
-    agencyId:        a.id,
-    agencyName:      a.name,
-    agencyAcronym:   a.acronym ?? a.short_name ?? null,
-    agencyType:      a.agency_type,
-    fte:             a.personnel_fte ?? 0,
-    appointmentCount: apptCountByAgency.get(a.id) ?? 0,
-    contractTotal:   contractByAgency.get(a.id) ?? 0,
-    grantTotal:      grantByAgency.get(a.id) ?? 0,
-    foundedYear:     a.founded_year,
-  }));
+  }) => {
+    const s = statByAgency.get(a.id);
+    return {
+      agencyId:        a.id,
+      agencyName:      a.name,
+      agencyAcronym:   a.acronym ?? a.short_name ?? null,
+      agencyType:      a.agency_type,
+      fte:             a.personnel_fte ?? 0,
+      appointmentCount: s?.appointmentCount ?? 0,
+      contractTotal:   s?.contractTotal ?? 0,
+      grantTotal:      s?.grantTotal ?? 0,
+      foundedYear:     a.founded_year,
+    };
+  });
 
   return withPublicCdnCache(NextResponse.json(rows, {
     headers: {

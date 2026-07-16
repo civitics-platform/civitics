@@ -131,6 +131,9 @@ const ALLOWED_PROCEDURES = new Set([
   "backfill_official_small_dollar_rollup",
   // FIX-777: one-shot chunked bootstrap of official_sector_affinity_rollup.
   "backfill_official_sector_affinity_rollup",
+  // FIX-778: full chunked recompute of agency_staffing_rollup (weekly cron entry
+  // point + the per-env backfill).
+  "refresh_agency_staffing_rollup",
 ]);
 
 /**

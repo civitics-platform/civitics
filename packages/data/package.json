@@ -114,6 +114,8 @@
     "data:backfill-small-dollar:prod": "tsx --env-file=../../.env.local.prod src/scripts/backfill-small-dollar-rollup.ts",
     "data:backfill-sector-affinity": "tsx --env-file=../../.env.local src/scripts/backfill-sector-affinity-rollup.ts",
     "data:backfill-sector-affinity:prod": "tsx --env-file=../../.env.local.prod src/scripts/backfill-sector-affinity-rollup.ts",
+    "data:backfill-agency-staffing": "tsx --env-file=../../.env.local src/scripts/backfill-agency-staffing-rollup.ts",
+    "data:backfill-agency-staffing:prod": "tsx --env-file=../../.env.local.prod src/scripts/backfill-agency-staffing-rollup.ts",
     "data:rebuild:ie-totals": "tsx --env-file=../../.env.local src/scripts/rebuild-ie-totals.ts",
     "data:rebuild:received-totals": "tsx --env-file=../../.env.local src/scripts/rebuild-received-totals.ts",
     "data:analyze:ie-drop": "tsx --env-file=../../.env.local src/scripts/analyze-ie-drop.ts",
