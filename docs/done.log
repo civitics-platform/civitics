@@ -1036,3 +1036,4 @@
 2026-07-15 | FIX-777 | f8bd94d6 | local+prod | feat(graph): materialize per-official sector-affinity rollup with live fallback
 2026-07-15 | FIX-778 | 708e5064 | local+prod | feat(graph): materialize per-agency staffing rollup with live fallback
 2026-07-16 | FIX-779 | d239ad17 | local+prod | feat(graph): materialize treemap-individuals rollup, fixing the global coverage gap
+2026-07-16 | FIX-780 | fd5e98f4 | closes-as-recognized | docs(audit): FIX-780 internal-aggregating RPC cost audit — all leave-live
