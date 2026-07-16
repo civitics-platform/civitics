@@ -1035,3 +1035,4 @@
 2026-07-15 | FIX-776 | 17276404 | local+prod | feat(graph): materialize per-official small-dollar rollup with live fallback
 2026-07-15 | FIX-777 | f8bd94d6 | local+prod | feat(graph): materialize per-official sector-affinity rollup with live fallback
 2026-07-15 | FIX-778 | 708e5064 | local+prod | feat(graph): materialize per-agency staffing rollup with live fallback
+2026-07-16 | FIX-779 | d239ad17 | local+prod | feat(graph): materialize treemap-individuals rollup, fixing the global coverage gap
