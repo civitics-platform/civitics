@@ -134,6 +134,10 @@ const ALLOWED_PROCEDURES = new Set([
   // FIX-778: full chunked recompute of agency_staffing_rollup (weekly cron entry
   // point + the per-env backfill).
   "refresh_agency_staffing_rollup",
+  // FIX-779: treemap-individuals rollup — focused chunked backfill + the global
+  // (uncapped) recompute (weekly cron entry point + per-env backfill).
+  "backfill_treemap_individuals_focused",
+  "refresh_treemap_individuals_global",
 ]);
 
 /**
@@ -146,11 +150,19 @@ export async function callHeavyProcedure(proc: string): Promise<void> {
   if (!ALLOWED_PROCEDURES.has(proc)) {
     throw new Error(`callHeavyProcedure: '${proc}' is not an allow-listed procedure`);
   }
+  const dsn = buildDbUrl();
+  const isLocal = dsn.includes("127.0.0.1") || dsn.includes("localhost");
   const { Client } = await import("pg");
-  const client = new Client({ connectionString: buildDbUrl() });
+  const client = new Client({ connectionString: dsn });
   await client.connect();
   try {
     await client.query("SET statement_timeout = '90min'");
+    // Local Docker's /dev/shm is 64MB, so a parallel-plan aggregate/temp-table
+    // build ("could not resize shared memory segment") fails locally. Disable
+    // parallel query for the local backfill session ONLY — prod has adequate
+    // shared memory and benefits from parallelism (env-only; see the
+    // reference_local_docker_shm_parallel_refresh memory).
+    if (isLocal) await client.query("SET max_parallel_workers_per_gather = 0");
     await client.query(`CALL public.${proc}()`);
   } finally {
     await client.end();
