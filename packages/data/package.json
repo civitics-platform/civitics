@@ -110,6 +110,8 @@
     "data:refresh-donor-mv": "tsx --env-file=../../.env.local src/scripts/refresh-donor-rollup-mv.ts",
     "data:backfill-donor-totals": "tsx --env-file=../../.env.local src/scripts/backfill-official-donor-totals.ts",
     "data:backfill-donor-totals:prod": "tsx --env-file=../../.env.local.prod src/scripts/backfill-official-donor-totals.ts",
+    "data:backfill-small-dollar": "tsx --env-file=../../.env.local src/scripts/backfill-small-dollar-rollup.ts",
+    "data:backfill-small-dollar:prod": "tsx --env-file=../../.env.local.prod src/scripts/backfill-small-dollar-rollup.ts",
     "data:rebuild:ie-totals": "tsx --env-file=../../.env.local src/scripts/rebuild-ie-totals.ts",
     "data:rebuild:received-totals": "tsx --env-file=../../.env.local src/scripts/rebuild-received-totals.ts",
     "data:analyze:ie-drop": "tsx --env-file=../../.env.local src/scripts/analyze-ie-drop.ts",

@@ -120,6 +120,38 @@ export async function runHeavyRebuild(fn: string): Promise<number> {
   }
 }
 
+// FIX-776 — direct-pg CALL for chunked backfill PROCEDUREs. A procedure that
+// COMMITs per chunk (the memory-bounded FIX-704 shape) must run in autocommit at
+// the TOP level, not inside a transaction — node-postgres issues each query in
+// autocommit by default, so a bare `CALL public.proc()` lets the internal COMMITs
+// through (db-query.mjs's --single-transaction wrapper would abort them). SELECT-
+// based runHeavyRebuild cannot invoke a PROCEDURE. Allow-listed like the others.
+const ALLOWED_PROCEDURES = new Set([
+  // FIX-776: one-shot chunked bootstrap of official_small_dollar_rollup.
+  "backfill_official_small_dollar_rollup",
+]);
+
+/**
+ * CALL an allow-listed 0-arg PROCEDURE over a direct session-pooler connection
+ * with a raised SESSION statement_timeout. For chunked, per-chunk-COMMIT
+ * backfills. Connection always closed. Fixed name (allow-list) — no interpolation
+ * injection surface.
+ */
+export async function callHeavyProcedure(proc: string): Promise<void> {
+  if (!ALLOWED_PROCEDURES.has(proc)) {
+    throw new Error(`callHeavyProcedure: '${proc}' is not an allow-listed procedure`);
+  }
+  const { Client } = await import("pg");
+  const client = new Client({ connectionString: buildDbUrl() });
+  await client.connect();
+  try {
+    await client.query("SET statement_timeout = '90min'");
+    await client.query(`CALL public.${proc}()`);
+  } finally {
+    await client.end();
+  }
+}
+
 // FIX-651 — jsonb-array rollup RPCs lifted off the capped PostgREST path. Each
 // returns its whole result set as ONE jsonb row (see
 // 20260529130000_official_tag_rollups_426_427.sql), so the direct-pg call is
