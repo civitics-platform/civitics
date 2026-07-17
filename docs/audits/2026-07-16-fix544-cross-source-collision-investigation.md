@@ -132,16 +132,30 @@ present. Graph/search stale up to a few days until the twice-weekly
 - Post-merge eligible residue (P3 + P2) = 0.
 - No core FK table still references a deleted loser id.
 
-## Status
+## Status — DONE (local + prod), 2026-07-16
 
-- **Local (prod-clone):** dry-run + apply proven; invariants hold; residue → 0.
-- **Prod:** apply pending. The merge itself is small and surgical (~277 FK
-  rewrites + scoped rollup deletes, one transaction) — NOT a heavy rebuild — but
-  it was deferred this session because the Supavisor pooler was intermittently
-  failing its auth query under investigation load. Apply with:
-  `pnpm --filter @civitics/data data:merge-fe-collisions:prod -- --dry-run`
-  then `-- --apply`, off-peak, then re-verify counts + a spot-checked merged
-  entity. FIX-544 stays **open** until prod is applied and verified.
+- **Local (prod-clone):** applied + verified; ~275 loser rows folded; donation
+  invariants held; residue → 0; 0 FK orphans.
+- **Prod (`xsazcoxinpgttgquwvuf`):** applied + verified 2026-07-16.
+  **165 loser rows → 122 winners.** `total_donated_cents` (1,362,158,555,300)
+  and `total_received_cents` (754,491,933,200) unchanged; FE count
+  2,896,149 − 165 = 2,895,984; post-merge residue P3=0 / P2=0; 0 loser-id FK
+  orphans. Independent spot-check: END CITIZENS UNITED collapsed to its FEC
+  committee `C00573261` carrying `littlesis:244516` + 13 board edges;
+  LATINO VICTORY FUND → `C00562777` + `littlesis:215744`. `entity_connections`
+  (13,133 edges) / `entity_search_index` / `group_donor_rollup` rows for the
+  affected ids were deleted — the scheduled `rebuild_entity_connections`
+  (Sun+Wed) + pg_cron rollup refreshes repopulate the surviving winners.
+
+## Deferred (documented, not a bug)
+
+- **Multi-binding clusters** — a same-name non-committee org bound to ≥2 sources
+  (e.g. AMERICAN CHEMISTRY COUNCIL / CLUB FOR GROWTH 'other', each with two
+  `littlesis` ids) are excluded by the exactly-one-binding gate and LEFT
+  unmerged. They need a shared-edge / identifier confirmation to pick a survivor
+  safely. Tracked as a follow-up FIX.
+- **Individuals** — the ~53k common-name individual clusters are intentionally
+  never merged (no corroborating signal; FIX-273 lesson).
 
 Cross-ref: FIX-271 (canonical FE-merge template), FIX-379 (preserve-data merge),
 FIX-273 (common-name false-positive lesson), FIX-380 (predecessor finding).
