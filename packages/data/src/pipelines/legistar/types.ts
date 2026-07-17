@@ -66,6 +66,30 @@ export interface LegistarPerson {
 }
 
 // ---------------------------------------------------------------------------
+// OfficeRecords (person ↔ body membership with term dates)
+// ---------------------------------------------------------------------------
+//
+// The membership table Legistar exposes but the pipeline historically ignored
+// (FIX-471). Ties a PersonId to a BodyId with a start/end term window and a
+// title/member-type. This — NOT the all-time Persons roster — is the current-
+// membership signal: a person is a *current* member of a body iff they have an
+// OfficeRecord on it whose end date is null or in the future.
+export interface LegistarOfficeRecord {
+  OfficeRecordId:            number;
+  OfficeRecordGuid:          string;
+  OfficeRecordLastModifiedUtc: string;
+  OfficeRecordPersonId:      number;
+  OfficeRecordBodyId:        number;
+  OfficeRecordBodyName:      string | null;
+  OfficeRecordTitle:         string | null;   // e.g. "Council Member", "Supervisor", "Chair"
+  OfficeRecordMemberTypeId:  number | null;
+  OfficeRecordMemberTypeName: string | null;
+  OfficeRecordStartDate:     string | null;   // ISO datetime — term start
+  OfficeRecordEndDate:       string | null;   // ISO datetime — term end (null/future = current)
+  OfficeRecordSort:          number | null;
+}
+
+// ---------------------------------------------------------------------------
 // Matters (legislation / bills)
 // ---------------------------------------------------------------------------
 
@@ -203,6 +227,17 @@ export interface MetroConfig {
   source:       string;
   /** UUID of this city's jurisdiction in our DB (resolved at startup). */
   jurisdictionId: string;
+  /**
+   * Legistar BodyId of this metro's primary legislative body — the real council
+   * whose members are the ones we surface as a roster (FIX-471). Hardcoded per
+   * metro because Legistar's BodyTypeName is unreliable for identifying it: the
+   * classifier picked "City Council Addendum Agenda" (an agenda variant) over
+   * Austin's real "City Council" (BodyId 138, typed "Primary Legislative Body"),
+   * and SF's Board of Supervisors has no `municipal_council`-typed body at all.
+   * officials.governing_body_id for every person in the metro is keyed to this
+   * body; is_active reflects current membership derived from OfficeRecords.
+   */
+  councilBodyId: number;
 }
 
 /** IDs resolved during the pipeline run for cross-step lookups. */

@@ -23,6 +23,7 @@ import type {
   LegistarEvent,
   LegistarEventItem,
   LegistarVote,
+  LegistarOfficeRecord,
 } from "./types";
 
 export class LegistarClient {
@@ -36,6 +37,16 @@ export class LegistarClient {
 
   fetchPersons(): Promise<LegistarPerson[]> {
     return this.fetchAll<LegistarPerson>("Persons");
+  }
+
+  /**
+   * Fetch all OfficeRecords (person ↔ body membership rows with term dates).
+   * The membership signal the pipeline uses to derive current council members
+   * (FIX-471). Paginated like every other endpoint, so cities with >1000
+   * historical memberships (none of the current pilot metros) page cleanly.
+   */
+  fetchOfficeRecords(): Promise<LegistarOfficeRecord[]> {
+    return this.fetchAll<LegistarOfficeRecord>("OfficeRecords");
   }
 
   /**

@@ -212,16 +212,26 @@ export interface PersonBatchResult {
   failed: number;
 }
 
+/**
+ * @param councilBodyId    UUID of the metro's primary council body (FIX-471).
+ *                         Every person is keyed here, not to an arbitrary body.
+ * @param currentPersonIds Legistar PersonIds who currently sit on the council,
+ *                         derived from OfficeRecords. is_active mirrors membership.
+ */
 export async function upsertPersonsBatch(
   db: Db,
   persons: LegistarPerson[],
   config: MetroConfig,
-  primaryBodyId: string,
-): Promise<PersonBatchResult> {
-  const out: PersonBatchResult = {
-    personIdMap: new Map(),
+  councilBodyId: string,
+  currentPersonIds: Set<number>,
+): Promise<PersonBatchResult & { reactivated: number; deactivated: number; rekeyed: number }> {
+  const out = {
+    personIdMap: new Map<number, string>(),
     inserted: 0,
     failed: 0,
+    reactivated: 0,
+    deactivated: 0,
+    rekeyed: 0,
   };
   if (persons.length === 0) return out;
 
@@ -234,6 +244,36 @@ export async function upsertPersonsBatch(
     if (id) out.personIdMap.set(p.PersonId, id);
   }
 
+  // ── Existing officials: re-key onto the council body + refresh is_active from
+  // current membership (FIX-471). This is the self-healing backfill — a re-run
+  // corrects rows the old writer parked on the wrong body / flagged active.
+  const currentExistingIds: string[] = [];
+  const formerExistingIds: string[] = [];
+  for (const p of persons) {
+    const officialId = existing.get(String(p.PersonId));
+    if (!officialId) continue;
+    if (currentPersonIds.has(p.PersonId)) currentExistingIds.push(officialId);
+    else formerExistingIds.push(officialId);
+  }
+  const applyUpdate = async (ids: string[], isActive: boolean) => {
+    for (let i = 0; i < ids.length; i += LOOKUP_CHUNK_SIZE) {
+      const chunk = ids.slice(i, i + LOOKUP_CHUNK_SIZE);
+      const { error } = await db
+        .from("officials")
+        .update({ governing_body_id: councilBodyId, is_active: isActive })
+        .in("id", chunk);
+      if (error) {
+        console.error(`    legistar writer: officials re-key (${isActive ? "current" : "former"}) ${i}-${i + chunk.length}: ${error.message}`);
+      } else {
+        out.rekeyed += chunk.length;
+        if (isActive) out.reactivated += chunk.length;
+        else out.deactivated += chunk.length;
+      }
+    }
+  };
+  await applyUpdate(currentExistingIds, true);
+  await applyUpdate(formerExistingIds, false);
+
   const toInsert = persons.filter((p) => !existing.has(String(p.PersonId)));
   if (toInsert.length === 0) return out;
 
@@ -241,7 +281,10 @@ export async function upsertPersonsBatch(
   for (let i = 0; i < toInsert.length; i += CHUNK_SIZE) {
     const chunk = toInsert.slice(i, i + CHUNK_SIZE);
     const records = chunk.map((p) =>
-      personToOfficialRow(p, config.source, primaryBodyId, config.jurisdictionId),
+      personToOfficialRow(
+        p, config.source, councilBodyId, config.jurisdictionId,
+        currentPersonIds.has(p.PersonId),
+      ),
     );
     const { data, error } = await db
       .from("officials")
@@ -281,6 +324,48 @@ export async function upsertPersonsBatch(
   }
 
   return out;
+}
+
+// ---------------------------------------------------------------------------
+// Council-body reconcile (FIX-471)
+// ---------------------------------------------------------------------------
+
+/**
+ * After persons are re-keyed onto the metro's real council body, make sure the
+ * governing_bodies rows reflect reality:
+ *   1. The council body is typed `municipal_council` and active.
+ *   2. Any OTHER Legistar-sourced `municipal_council` body in the same
+ *      jurisdiction — the mis-classified agenda/addendum variants the old
+ *      classifier promoted (e.g. Austin's "City Council Addendum Agenda") — is
+ *      demoted to `other` and deactivated. Not hard-deleted: history stays,
+ *      it just stops presenting as a council roster.
+ */
+export async function reconcileCouncilBody(
+  db: Db,
+  jurisdictionId: string,
+  councilBodyId: string,
+): Promise<{ demoted: number }> {
+  const { error: promoteErr } = await db
+    .from("governing_bodies")
+    .update({ type: "municipal_council", is_active: true })
+    .eq("id", councilBodyId);
+  if (promoteErr) {
+    console.error(`    legistar writer: council promote ${councilBodyId}: ${promoteErr.message}`);
+  }
+
+  const { data, error: demoteErr } = await db
+    .from("governing_bodies")
+    .update({ type: "other", is_active: false })
+    .eq("jurisdiction_id", jurisdictionId)
+    .eq("type", "municipal_council")
+    .neq("id", councilBodyId)
+    .not("metadata->legistar_body_id", "is", null)
+    .select("id");
+  if (demoteErr) {
+    console.error(`    legistar writer: council demote (${jurisdictionId}): ${demoteErr.message}`);
+    return { demoted: 0 };
+  }
+  return { demoted: (data as Array<{ id: string }> | null)?.length ?? 0 };
 }
 
 // ---------------------------------------------------------------------------

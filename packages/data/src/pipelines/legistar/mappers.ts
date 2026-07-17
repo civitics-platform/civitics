@@ -14,6 +14,7 @@ import type {
   LegistarEvent,
   LegistarEventItem,
   LegistarVote,
+  LegistarOfficeRecord,
 } from "./types";
 
 // ---------------------------------------------------------------------------
@@ -69,16 +70,83 @@ export function legistarVoteValue(valueName: string): string | null {
   return null; // unknown — caller should skip
 }
 
-/** Map Legistar BodyTypeName → public.governing_body_type enum. */
+/** Map Legistar BodyTypeName → public.governing_body_type enum.
+ *
+ * FIX-471: BodyTypeName is the *type* label, and cities use it inconsistently —
+ * the real council is often typed "Primary Legislative Body" (SF, Austin) while
+ * agenda/procedural variants get typed "City Council Addendum Agenda", "Council
+ * Discussion", etc. The old rule matched the latter as `municipal_council` and
+ * missed the former. Now: (a) "primary legislative body" counts as a council;
+ * (b) procedural/agenda variants are explicitly excluded so they never win the
+ * council slot even when their type string contains "city council". */
 export function bodyTypeToGoverningBodyType(typeName: string | null): string {
   const t = (typeName ?? "").toLowerCase();
-  if (t.includes("city council") || t.includes("board of supervisors") ||
+  // Procedural / agenda variants — never a governing body proper.
+  if (t.includes("addendum") || t.includes("agenda") ||
+      t.includes("work session") || t.includes("special called") ||
+      t.includes("discussion") || t.includes("briefing")) {
+    return "other";
+  }
+  if (t.includes("primary legislative body") ||
+      t.includes("city council") || t.includes("board of supervisors") ||
       t.includes("common council") || t.includes("city commission")) {
     return "municipal_council";
   }
   if (t.includes("school board"))    return "school_board";
   if (t.includes("mayor") || t.includes("executive")) return "executive";
   return "other";
+}
+
+// ---------------------------------------------------------------------------
+// Current council membership (FIX-471)
+// ---------------------------------------------------------------------------
+
+/**
+ * Derive the set of PersonIds who are *current* members of a council body from
+ * its OfficeRecords.
+ *
+ * Primary rule: a person is current iff they hold an OfficeRecord on the council
+ * body whose end date is null or in the future.
+ *
+ * SF fallback: some clients (sfgov) stamp an end date on *every* OfficeRecord,
+ * including sitting members, so the primary rule yields zero. When that happens
+ * AND we know the body's seat count, fall back to the `expectedSeats` most-recent
+ * distinct persons by OfficeRecord start date on that body — an approximation of
+ * "the current cohort" that keeps the roster plausibly sized instead of empty.
+ * Returns `{ personIds, usedFallback }` so the caller can log which path ran.
+ */
+export function currentCouncilMemberPersonIds(
+  officeRecords: LegistarOfficeRecord[],
+  councilBodyId: number,
+  expectedSeats: number | null,
+  now: Date = new Date(),
+): { personIds: Set<number>; usedFallback: boolean } {
+  const onBody = officeRecords.filter((r) => r.OfficeRecordBodyId === councilBodyId);
+
+  const current = new Set<number>();
+  for (const r of onBody) {
+    const end = r.OfficeRecordEndDate ? new Date(r.OfficeRecordEndDate) : null;
+    if (!end || isNaN(end.getTime()) || end >= now) {
+      current.add(r.OfficeRecordPersonId);
+    }
+  }
+  if (current.size > 0) return { personIds: current, usedFallback: false };
+
+  // Fallback: top-N distinct persons by most-recent start date.
+  if (!expectedSeats || expectedSeats <= 0) {
+    return { personIds: current, usedFallback: false };
+  }
+  const byRecentStart = [...onBody].sort((a, b) => {
+    const ta = a.OfficeRecordStartDate ? new Date(a.OfficeRecordStartDate).getTime() : 0;
+    const tb = b.OfficeRecordStartDate ? new Date(b.OfficeRecordStartDate).getTime() : 0;
+    return tb - ta;
+  });
+  const fallback = new Set<number>();
+  for (const r of byRecentStart) {
+    if (fallback.size >= expectedSeats) break;
+    fallback.add(r.OfficeRecordPersonId);
+  }
+  return { personIds: fallback, usedFallback: true };
 }
 
 // ---------------------------------------------------------------------------
@@ -133,6 +201,7 @@ export function personToOfficialRow(
   source: string, // e.g. 'legistar:seattle'
   governingBodyId: string,
   jurisdictionId: string,
+  isCurrentMember: boolean, // FIX-471: derived from OfficeRecords, NOT PersonActiveFlag
 ): OfficialRow {
   return {
     governing_body_id: governingBodyId,
@@ -141,7 +210,10 @@ export function personToOfficialRow(
     first_name:        person.PersonFirstName,
     last_name:         person.PersonLastName,
     role_title:        "Council Member",
-    is_active:         isActive(person.PersonActiveFlag),
+    // Legistar's PersonActiveFlag is "not soft-deleted", not "sits on the
+    // council" — it flags ~40-95% of the all-time roster true, flooding the
+    // council page. is_active now means current council member (FIX-471).
+    is_active:         isCurrentMember,
     source_ids:        { [source]: String(person.PersonId) },
     metadata:          {
       legistar_person_id: person.PersonId,
