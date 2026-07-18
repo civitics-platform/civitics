@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import * as d3 from "d3";
 import type { RefObject } from "react";
-import type { GraphNode as NewGraphNode, NodeActions, TreemapOptions, FocusGroup, FocusEntity } from "./types";
+import type { GraphNode as NewGraphNode, NodeActions, TreemapOptions, FocusGroup, FocusEntity, GroupFilter } from "./types";
 import { Tooltip, useTooltip } from "./components/Tooltip";
 import { NodePopup } from "./components/NodePopup";
 import { resolveColor, resolveToken } from "./tokens";
@@ -194,6 +194,45 @@ function getSizeValue(
   return Math.log10(raw + 1) + 1;
 }
 
+// ── Group scope resolution (FIX-K) ──────────────────────────────────────────────
+// Map an official group's filter to treemap aggregate scope params, or declare it
+// unsupported. Federal gb slugs (senate/house) map to the chamber param — the
+// server aliases chamber → governing_body_id resolution — and other gb slugs pass
+// through as governingBody; party/state compose. Groups the treemap aggregate can't
+// scope (committee membership, official_role cohorts, or an empty filter) return
+// `unsupported` so the client shows an explicit empty state instead of fetching the
+// global top-500 (the old silent fallback that let "Full Senate → Treemap" render
+// every House member and state legislator platform-wide).
+
+type TreemapGroupScope =
+  | { kind: 'params'; params: Record<string, string> }
+  | { kind: 'unsupported'; reason: string };
+
+function resolveTreemapGroupScope(filter: GroupFilter): TreemapGroupScope {
+  const params: Record<string, string> = {};
+  const gb = filter.governingBody;
+  if (gb === 'senate' || gb === 'house') {
+    params.chamber = gb;
+  } else if (gb) {
+    params.governingBody = gb;
+  } else if (filter.chamber) {
+    params.chamber = filter.chamber;
+  }
+  if (filter.party) params.party = filter.party;
+  if (filter.state) params.state = filter.state;
+
+  if ('chamber' in params || 'governingBody' in params || 'party' in params || 'state' in params) {
+    return { kind: 'params', params };
+  }
+
+  const reason = filter.committeeId
+    ? "Committee treemaps aren't available yet — open the committee in the force graph instead."
+    : filter.official_role
+      ? `The ${filter.official_role.replace(/_/g, ' ')} group can't be shown as a treemap yet.`
+      : "This group can't be shown as a treemap — pick a chamber, party, or state cohort.";
+  return { kind: 'unsupported', reason };
+}
+
 function officialToNode(o: TreemapOfficial): NewGraphNode {
   return {
     id:           o.official_id,
@@ -246,6 +285,10 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
   const [compareEntries, setCompareEntries] = useState<CompareEntry[]>([]);
   const [loading, setLoading]             = useState(true);
   const [error, setError]                 = useState<string | null>(null);
+  // FIX-K — set when the focused group can't be scoped as a treemap (committee,
+  // official_role cohort, or empty filter). Renders an explicit empty state and
+  // skips the fetch entirely — never the silent global top-500.
+  const [groupUnsupported, setGroupUnsupported] = useState<string | null>(null);
 
   const { tooltip, show: showTip, hide: hideTip } = useTooltip();
   const [popup, setPopup]       = useState<NewGraphNode | null>(null);
@@ -270,6 +313,8 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
   // ── Fetch data ──────────────────────────────────────────────────────────────
   useEffect(() => {
     setLoading(true);
+    setError(null);
+    setGroupUnsupported(null);
 
     // FIX-186 — Compare mode: parallel fetch donors for each focused entity
     // and render a top-level cell per entity. Bypasses single-primary logic.
@@ -382,12 +427,20 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
     let url: string;
 
     if (primaryGroup && primaryGroup.filter.entity_type === 'official') {
-      // Group of officials: fetch aggregate and filter server-side
-      const g = primaryGroup.filter;
-      const params = new URLSearchParams({ groupBy, sizeBy });
-      if (g.chamber) params.set('chamber', g.chamber);
-      if (g.party)   params.set('party',   g.party);
-      if (g.state)   params.set('state',   g.state);
+      // FIX-K — Group of officials: resolve the group's filter to treemap scope
+      // params (gb → chamber/governingBody, party/state compose). A group the
+      // treemap can't scope shows an explicit empty state and skips the fetch
+      // rather than falling through to the unscoped global cohort.
+      const scope = resolveTreemapGroupScope(primaryGroup.filter);
+      if (scope.kind === 'unsupported') {
+        setOfficials([]);
+        setDonors([]);
+        setPacHierarchy(null);
+        setGroupUnsupported(scope.reason);
+        setLoading(false);
+        return;
+      }
+      const params = new URLSearchParams({ groupBy, sizeBy, ...scope.params });
       if (industryFilter) params.set('industry_filter', industryFilter);
       if (minAmountUsd > 0) params.set('minAmountUsd', String(minAmountUsd));
       url = `/api/graph/treemap?${params.toString()}`;
@@ -881,6 +934,21 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
     return (
       <div className={`flex items-center justify-center ${className}`}>
         <p className="text-accent text-sm">Failed to load treemap: {error}</p>
+      </div>
+    );
+  }
+
+  // FIX-K — group not scopable as a treemap: honest, specific empty state.
+  if (groupUnsupported) {
+    return (
+      <div className={`flex items-center justify-center ${className}`}>
+        <div className="text-center max-w-xs px-4">
+          <p className="text-ink-soft text-sm">{groupUnsupported}</p>
+          <p className="text-ink-soft/70 text-xs mt-1.5">
+            Treemaps scope to fundraising cohorts — try Full Senate, Full House, or
+            a party / state group.
+          </p>
+        </div>
       </div>
     );
   }

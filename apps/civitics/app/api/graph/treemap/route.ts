@@ -1,4 +1,4 @@
-import { createAdminClient, fetchIndustryTagsByEntityId, fetchEntityIdsByIndustryTag } from "@civitics/db";
+import { createAdminClient, fetchIndustryTagsByEntityId, fetchEntityIdsByIndustryTag, currentGoverningBodyMembers } from "@civitics/db";
 import { withPublicCdnCache } from "@/lib/cdn-cache";
 import { supabaseUnavailable, unavailableResponse } from "@/lib/supabase-check";
 import { fetchAllRows } from "@/lib/paginate";
@@ -227,6 +227,37 @@ export async function GET(request: Request) {
   const chamber = searchParams.get("chamber");
   const party   = searchParams.get("party");
   const state   = searchParams.get("state");
+  // FIX-K — gb cohort scoping. `governingBody` (slug canonical, UUID fallback)
+  // resolves the cohort via officials.governing_body_id — the FIX-470 roster
+  // predicate the group route uses — NOT role_title, which is polluted: state
+  // legislators carry role.title "Representative"/"Senator" verbatim from
+  // openstates and FEC candidates are parked on the body they run for (FIX-495).
+  // `chamber=senate|house` is a legacy alias for the federal gb slugs of the same
+  // name (mirrors the group route), so old share URLs / custom groups resolve to
+  // the same governing_body_id cohort instead of the polluted title predicate
+  // that once counted Arizona state rep David Marshall as the 437th US House member.
+  const governingBody = searchParams.get("governingBody");
+
+  let gbId: string | null = null;
+  const gbKey = governingBody ?? ((chamber === "senate" || chamber === "house") ? chamber : null);
+  if (gbKey) {
+    const isUuid = UUID_RE.test(gbKey);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let gbq = (supabase as any).from("governing_bodies").select("id");
+    gbq = isUuid ? gbq.eq("id", gbKey) : gbq.eq("slug", gbKey);
+    const { data: gb, error: gbErr } = await gbq.maybeSingle();
+    if (gbErr) {
+      console.error("[graph/treemap] gb lookup error:", gbErr.message);
+      return Response.json({ error: gbErr.message }, { status: 500 });
+    }
+    if (!gb) {
+      // Unknown gb slug — explicit empty, never the silent global top-500.
+      return withPublicCdnCache(Response.json([], {
+        headers: { "Cache-Control": "public, max-age=0, s-maxage=86400, stale-while-revalidate=172800" },
+      }));
+    }
+    gbId = gb.id as string;
+  }
 
   // treemap_officials_by_donations RPC was retired in the shadow→public promotion.
   // Query the filtered officials + aggregate their donations app-side.
@@ -241,17 +272,27 @@ export async function GET(request: Request) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let officialsQuery = (supabase as any)
     .from("officials")
-    .select("id, full_name, party, role_title, metadata, source_ids, total_received_cents, jurisdictions:jurisdiction_id(short_name)")
-    .eq("is_active", true);
+    .select("id, full_name, party, role_title, metadata, source_ids, total_received_cents, jurisdictions:jurisdiction_id(short_name)");
 
-  if (chamber === "senate") officialsQuery = officialsQuery.eq("role_title", "Senator");
-  else if (chamber === "house") officialsQuery = officialsQuery.eq("role_title", "Representative");
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  if (party) officialsQuery = officialsQuery.eq("party", party as any);
-  if (state) {
-    // Match either metadata field — they're kept in sync by the FIX-124 backfill
-    // but accept both for robustness.
-    officialsQuery = officialsQuery.or(`metadata->>state.eq.${state},metadata->>state_abbr.eq.${state}`);
+  if (gbId) {
+    // FIX-K — governing_body_id cohort + current-member predicate (is_active +
+    // tier='elected', excluding FEC-candidate pollution). party composes as it
+    // does in the group route. state is intentionally NOT composed here: no
+    // built-in gb group combines gb+state, and federal officials carry empty
+    // metadata (FIX-550), so the metadata state filter below would silently drop
+    // the whole federal cohort — the gb cohort is the correct, complete answer.
+    officialsQuery = currentGoverningBodyMembers(officialsQuery.eq("governing_body_id", gbId));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if (party) officialsQuery = officialsQuery.eq("party", party as any);
+  } else {
+    officialsQuery = officialsQuery.eq("is_active", true);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if (party) officialsQuery = officialsQuery.eq("party", party as any);
+    if (state) {
+      // Match either metadata field — they're kept in sync by the FIX-124 backfill
+      // but accept both for robustness.
+      officialsQuery = officialsQuery.or(`metadata->>state.eq.${state},metadata->>state_abbr.eq.${state}`);
+    }
   }
 
   const { data: officials, error: officialsErr } = await officialsQuery.limit(1000);
@@ -417,9 +458,9 @@ export async function GET(request: Request) {
   rows.sort((a, b) => b.total_donated_cents - a.total_donated_cents);
 
   // Cap unfiltered "all officials" view (local dev has 9k+ officials per FIX-113);
-  // chamber-filtered queries are already bounded (100 senators, 435 reps) so no
-  // implicit cap there.
-  const top = chamber ? rows : rows.slice(0, 500);
+  // a scoped cohort (chamber alias or gb) is already bounded (100 senators, 435
+  // reps, a state chamber's roster) so no implicit cap there.
+  const top = (gbId || chamber) ? rows : rows.slice(0, 500);
 
   return withPublicCdnCache(Response.json(top, {
     headers: { "Cache-Control": "public, max-age=0, s-maxage=86400, stale-while-revalidate=172800" },
