@@ -37,6 +37,15 @@ function labelFor(s: string) {
   return s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+// FIX-L (decision 3) — pull a message out of a PostgREST/RPC error so the route
+// can return an honest error envelope instead of swallowing it into an empty 200.
+function rpcErrMessage(err: unknown): string {
+  if (err && typeof err === "object" && "message" in err) {
+    return String((err as { message: unknown }).message);
+  }
+  return String(err);
+}
+
 // Display label maps for the new modes.
 const VOTE_OUTCOME_LABELS: Record<string, string> = {
   yes:   'Yes Votes',
@@ -553,13 +562,19 @@ export async function GET(req: NextRequest) {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           (supabase as any).rpc('chord_industry_flows_for_official', { p_official_id: officialId })
         );
+        // FIX-L (decision 2) — keep the untagged bucket as a neutral arc rather
+        // than silently dropping it; it is frequently the largest donor slice.
         return (data ?? [])
-          .filter(r => r.industry !== 'untagged')
-          .map(r => ({
-            id: r.industry, label: r.display_label || labelFor(r.industry),
-            icon: r.display_icon || '🏢', total_cents: Number(r.total_cents),
-            pac_count: r.donor_count,
-          }));
+          .map(r => r.industry === 'untagged'
+            ? {
+                id: 'untagged', label: 'Untagged donors', icon: '•',
+                total_cents: Number(r.total_cents), pac_count: r.donor_count,
+              }
+            : {
+                id: r.industry, label: r.display_label || labelFor(r.industry),
+                icon: r.display_icon || '🏢', total_cents: Number(r.total_cents),
+                pac_count: r.donor_count,
+              });
       }
 
       const [{ data: officialsData }, ...perOfficialDonors] = await Promise.all([
@@ -650,6 +665,11 @@ export async function GET(req: NextRequest) {
       const officialName = officialData?.full_name ?? entityId;
 
       let groups: { id: string; label: string; icon: string; total_usd: number; pac_count: number; industry?: string }[] = [];
+      // FIX-L (decision 2) — untagged money (donors with no industry tag), carried
+      // out of the aggregate branch so the response can render it as a neutral arc
+      // or an honest "$X from N donors not yet industry-tagged" empty state.
+      let untaggedUsd = 0;
+      let untaggedDonors = 0;
 
       if (granularity === 'top-pacs') {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -657,7 +677,11 @@ export async function GET(req: NextRequest) {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           (supabase as any).rpc('chord_top_pacs_for_official', { p_official_id: entityId, p_limit: topPacsLimit })
         );
-        if (error) console.error('[chord/entity/top-pacs] rpc error:', error);
+        // FIX-L (decision 3) — surface RPC failure as an error, never a blank chord.
+        if (error) {
+          console.error('[chord/entity/top-pacs] rpc error:', error);
+          return NextResponse.json({ error: 'chord_rpc_failed', detail: rpcErrMessage(error) }, { status: 502 });
+        }
         groups = (data ?? []).map(row => ({
           id: row.pac_id,
           label: row.pac_name,
@@ -672,7 +696,11 @@ export async function GET(req: NextRequest) {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           (supabase as any).rpc('chord_donor_brackets_for_official', { p_official_id: entityId })
         );
-        if (error) console.error('[chord/entity/by-bracket] rpc error:', error);
+        // FIX-L (decision 3) — surface RPC failure as an error, never a blank chord.
+        if (error) {
+          console.error('[chord/entity/by-bracket] rpc error:', error);
+          return NextResponse.json({ error: 'chord_rpc_failed', detail: rpcErrMessage(error) }, { status: 502 });
+        }
         const order: Record<string, number> = { mega: 0, major: 1, mid: 2, small: 3 };
         const labels: Record<string, string> = {
           mega:  'Mega ($10k+)',
@@ -690,14 +718,30 @@ export async function GET(req: NextRequest) {
             pac_count: row.donor_count,
           }));
       } else {
-        // aggregate: industries as arcs
+        // aggregate: industries as arcs (+ the untagged bucket, surfaced honestly)
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const { data, error } = await withDbTimeout<{ data: Array<{ industry: string; display_label: string; display_icon: string; total_cents: number; donor_count: number }> | null; error: unknown }>(
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           (supabase as any).rpc('chord_industry_flows_for_official', { p_official_id: entityId })
         );
-        if (error) console.error('[chord/entity/aggregate] rpc error:', error);
-        groups = (data ?? [])
+        // FIX-L (decision 3) — surface RPC failure / timeout as an error the
+        // client renders as "couldn't load", never a swallowed empty 200 (which
+        // was indistinguishable from an all-untagged or no-donor official, and
+        // hid the FIX-839 cold-cache timeouts on the best-funded officials —
+        // measured 6.8s aggregate / 8.8s top-pacs for the whale on warm local).
+        if (error) {
+          console.error('[chord/entity/aggregate] rpc error:', error);
+          return NextResponse.json({ error: 'chord_rpc_failed', detail: rpcErrMessage(error) }, { status: 502 });
+        }
+        const rows = data ?? [];
+        // FIX-L (decision 2) — the untagged bucket is money from donors with no
+        // industry tag; for most officials it is the single largest slice (the
+        // whale: $268M / 309k donors untagged vs ~$10M tagged). Carry it so the
+        // client renders it instead of silently dropping the biggest arc.
+        const untaggedRow = rows.find(r => r.industry === 'untagged');
+        untaggedUsd    = untaggedRow ? Math.round(Number(untaggedRow.total_cents) / 100) : 0;
+        untaggedDonors = untaggedRow ? Number(untaggedRow.donor_count) : 0;
+        groups = rows
           .filter(r => r.industry !== 'untagged')
           .map(row => ({
             id: row.industry,
@@ -706,10 +750,26 @@ export async function GET(req: NextRequest) {
             total_usd: Math.round(Number(row.total_cents) / 100),
             pac_count: row.donor_count,
           }));
+        // Append the untagged arc AFTER the tagged industries. A lone untagged
+        // arc is degenerate, so when there is NO tagged industry the all-untagged
+        // case falls through to the honest empty state below instead.
+        if (untaggedUsd > 0 && groups.length > 0) {
+          groups.push({
+            id: 'untagged', label: 'Untagged donors', icon: '•',
+            total_usd: untaggedUsd, pac_count: untaggedDonors,
+          });
+        }
       }
 
       if (groups.length === 0) {
-        return withPublicCdnCache(NextResponse.json({ groups: [], recipients: [], matrix: [] }));
+        // FIX-L (decision 2) — no tagged industries. If there is untagged money,
+        // tell the client exactly how much / how many donors so it renders an
+        // honest empty state ("$83M from 755 donors not yet industry-tagged")
+        // rather than a "pipeline is processing" platitude.
+        return withPublicCdnCache(NextResponse.json({
+          groups: [], recipients: [], matrix: [],
+          untagged_usd: untaggedUsd, untagged_donors: untaggedDonors,
+        }));
       }
 
       const recipients = [
@@ -724,7 +784,10 @@ export async function GET(req: NextRequest) {
       // Matrix: M industries × 1 official
       const matrix: number[][] = groups.map((g) => [g.total_usd]);
 
-      return withPublicCdnCache(NextResponse.json({ groups, recipients, matrix }));
+      return withPublicCdnCache(NextResponse.json({
+        groups, recipients, matrix,
+        untagged_usd: untaggedUsd, untagged_donors: untaggedDonors,
+      }));
     } catch (e) {
       console.error("[chord/entity]", e);
       return NextResponse.json({ error: "Internal error" }, { status: 500 });

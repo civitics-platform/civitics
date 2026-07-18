@@ -158,6 +158,9 @@ function colorForArc(
     return "rgb(var(--c-ink-soft))";
   }
   // Donor-side palettes
+  // FIX-L — the untagged bucket is money from donors with no industry tag;
+  // render it neutral so it never masquerades as a categorized sector.
+  if (group.id === 'untagged') return "rgb(var(--c-ink-soft))";
   if (granularity === 'by-bracket' && group.id) {
     return BRACKET_COLORS[group.id] ?? "rgb(var(--c-ink-soft))";
   }
@@ -331,6 +334,9 @@ export function ChordGraph({ className = "", svgRef: externalSvgRef, vizOptions,
   const [rawData,   setRawData]   = useState<{ groups: RawGroup[]; recipients: RawRecipient[]; matrix: number[][] } | null>(null);
   const [chartData, setChartData] = useState<ChartData | null>(null);
   const [entityName, setEntityName] = useState<string | null>(null);
+  // FIX-L — untagged donor money reported by the entity-aggregate route, so the
+  // empty state can say what is actually missing instead of a pipeline platitude.
+  const [untagged,  setUntagged]  = useState<{ usd: number; donors: number } | null>(null);
 
   const { tooltip, show: showTip, hide: hideTip } = useTooltip();
   const [popup, setPopup] = useState<NewGraphNode | null>(null);
@@ -365,6 +371,7 @@ export function ChordGraph({ className = "", svgRef: externalSvgRef, vizOptions,
     async function load() {
       setStatus("loading");
       setEntityName(null);
+      setUntagged(null);
       try {
         // Both topPacsLimit and minFlowUsd are applied client-side in
         // Effect 2 — the server fetch is invariant of slider position so
@@ -447,10 +454,18 @@ export function ChordGraph({ className = "", svgRef: externalSvgRef, vizOptions,
           groups?:     RawGroup[];
           recipients?: RawRecipient[];
           matrix?:     number[][];
+          untagged_usd?: number;
+          untagged_donors?: number;
           error?: string;
         };
 
         if (cancelled) return;
+
+        // FIX-L — capture the untagged figure (entity-aggregate mode) so the
+        // empty state can be honest about money that exists but isn't tagged.
+        if (typeof json.untagged_usd === 'number' && json.untagged_usd > 0) {
+          setUntagged({ usd: json.untagged_usd, donors: json.untagged_donors ?? 0 });
+        }
 
         if (json.error || !json.groups?.length || !json.matrix?.length) {
           setStatus("empty");
@@ -651,10 +666,25 @@ export function ChordGraph({ className = "", svgRef: externalSvgRef, vizOptions,
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
             </svg>
           </div>
-          <p className="text-ink text-sm font-medium">No donation flow data available.</p>
-          <p className="text-ink-soft text-xs mt-2 leading-relaxed">
-            Data is being processed. Industry-to-party donation flows will appear here once the pipeline completes.
-          </p>
+          {untagged && untagged.usd > 0 ? (
+            <>
+              <p className="text-ink text-sm font-medium">
+                {formatDollars(untagged.usd)} from {untagged.donors.toLocaleString()} donors — not yet industry-tagged.
+              </p>
+              <p className="text-ink-soft text-xs mt-2 leading-relaxed">
+                {entityName ? `${entityName}'s` : "This cohort's"} donors haven&apos;t been
+                assigned industries yet, so there are no sector arcs to chart. The money is
+                real — it just isn&apos;t categorized.
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="text-ink text-sm font-medium">No donation flow data available.</p>
+              <p className="text-ink-soft text-xs mt-2 leading-relaxed">
+                No industry-tagged donations to chart for this view yet.
+              </p>
+            </>
+          )}
         </div>
       )}
 
