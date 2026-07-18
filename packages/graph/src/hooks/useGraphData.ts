@@ -575,8 +575,26 @@ export function useGraphData(
     };
   }, [edges, nodes, focus.entities]);
 
+  // FIX-C — stamp client-computed contract totals (USD) onto nodes so
+  // ForceGraph's 'contract_total' node-size encoding stays a plain field read in
+  // getNodeRadius. Sums amountUsd over contract_award edges incident to each
+  // node (agency award-side AND vendor receive-side). LOWER BOUND: reflects only
+  // the loaded top-500-by-amount contract edges the connections route returns.
+  const nodesWithContractTotals = useMemo(() => {
+    const totals = new Map<string, number>();
+    for (const e of edges) {
+      if (e.connectionType !== 'contract_award') continue;
+      const amt = e.amountUsd ?? 0;
+      if (amt <= 0) continue;
+      totals.set(e.fromId, (totals.get(e.fromId) ?? 0) + amt);
+      totals.set(e.toId, (totals.get(e.toId) ?? 0) + amt);
+    }
+    if (totals.size === 0) return nodes;
+    return nodes.map((n) => (totals.has(n.id) ? { ...n, contractTotal: totals.get(n.id)! } : n));
+  }, [nodes, edges]);
+
   return {
-    nodes, edges: visibleEdges, allEdges: edges, loading,
+    nodes: nodesWithContractTotals, edges: visibleEdges, allEdges: edges, loading,
     loadingEntityId, graphMeta,
     // FIX-852 — honest truncation flags for the canvas badge
     dataTruncation,

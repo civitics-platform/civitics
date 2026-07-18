@@ -30,7 +30,7 @@ import {
 } from '../saved-views';
 import { TreeNode, TreeSection } from './TreeNode';
 import { ConnectionsTree } from './ConnectionsTree';
-import { isFocusEntity } from '../types';
+import { isFocusEntity, coerceNodeSizeEncoding } from '../types';
 
 /** FIX-813 — default width; host may override via the width prop. */
 export const RIGHT_PANEL_DEFAULT_WIDTH = 260;
@@ -190,7 +190,9 @@ function DonationFloorControl({ view, hooks, label = 'Donation floor' }: {
       <div className="px-3 pb-1 text-[9px] text-ink-soft italic leading-tight">
         {dollars === 0
           ? 'Showing all donations'
-          : `Hiding donations below ${formatDollars(dollars)}`}
+          // FIX-B — the floor hides sub-floor NAMED money edges; bracket/tail
+          // rollup edges (sums over many small donors) are exempt.
+          : `Hiding named donors below ${formatDollars(dollars)}`}
       </div>
     </>
   );
@@ -290,15 +292,19 @@ function ForceSettings({ view, hooks, graphMeta }: { view: GraphView; hooks: Use
   const opts = view.style.vizOptions.force;
   function set(key: string, value: unknown) { hooks.setVizOption('force', key, value); }
 
-  const voteCount     = voteCountFrom(graphMeta);
   const donationCount = donationCountFrom(graphMeta);
+  // FIX-C — contract sizing enables only when contract edges are loaded (mirror
+  // the donations-option gating).
+  const contractCount = graphMeta?.connectionTypes['contract_award']?.count ?? 0;
 
   // FIX-130: don't filter — disable. Each option that doesn't have backing data
   // stays in the list (so users can see the full option set) but is marked
   // disabled with a one-line reason.
   const hasDonations = graphMeta?.hasDonations ?? true;
-  const hasVotes     = graphMeta?.hasVotes     ?? true;
+  const hasContracts = contractCount > 0;
 
+  // FIX-D (decision 5) — the placebo Bills/Seniority size options are removed
+  // (they silently fell through to connection_count). Contracts (FIX-C) is added.
   const nodeSizeOptions: LabeledOption[] = [
     { value: 'connection_count', label: 'Connections' },
     {
@@ -308,17 +314,17 @@ function ForceSettings({ view, hooks, graphMeta }: { view: GraphView; hooks: Use
       disabledReason: 'No donation data in graph',
     },
     {
-      value: 'bills_sponsored',
-      label: voteCount > 0 ? `Bills (${voteCount})` : 'Bills',
-      disabled: !hasVotes,
-      disabledReason: 'No vote data in graph',
+      value: 'contract_total',
+      label: contractCount > 0 ? `Contracts (${contractCount})` : 'Contracts',
+      disabled: !hasContracts,
+      disabledReason: 'No contract data in graph',
     },
-    { value: 'years_in_office', label: 'Seniority' },
     { value: 'uniform',         label: 'Uniform' },
   ];
 
-  // If the current encoding lands on a now-disabled option, fall back to the default.
-  const sizeEncoding = opts?.nodeSizeEncoding ?? 'connection_count';
+  // FIX-D — coerce a persisted placebo encoding to connection_count so the select
+  // shows a real option; then fall back if the (coerced) pick is disabled.
+  const sizeEncoding = coerceNodeSizeEncoding(opts?.nodeSizeEncoding);
   const currentDisabled = nodeSizeOptions.find(o => o.value === sizeEncoding)?.disabled ?? false;
   const validSizeEncoding = currentDisabled ? 'connection_count' : sizeEncoding;
 
