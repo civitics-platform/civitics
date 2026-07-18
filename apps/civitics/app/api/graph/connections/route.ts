@@ -973,6 +973,30 @@ export async function GET(request: Request) {
         }
       }
 
+      // FIX-852 — distinct recipients per individual donor WITHIN this response.
+      // A donor bridging ≥2 recipients is a CONNECTOR: it must render as a real
+      // node with its real edges so the recipients stay wired through it. At
+      // depth 2 the old code bracketed every donation row per-recipient and
+      // deleted the donor globally, so a hop-2 connector (gave to focus A AND
+      // neighbor B) was replaced by an unlinked `bracket:{B}:{tier}` island — B
+      // lost its only tie to the focus component. That IS the explosion.
+      const donorRecipients = new Map<string, Set<string>>();
+      for (const c of connections) {
+        if (c.connection_type !== 'donation') continue;
+        if (c.from_type !== 'financial_entity') continue;
+        if (!individualMeta.has(c.from_id)) continue;
+        const set = donorRecipients.get(c.from_id) ?? new Set<string>();
+        set.add(c.to_id);
+        donorRecipients.set(c.from_id, set);
+      }
+      const isConnectorDonor = (donorId: string): boolean => {
+        // In-response bridge: reaches ≥2 recipients in THIS graph → real node.
+        if ((donorRecipients.get(donorId)?.size ?? 0) >= 2) return true;
+        // Connector viz mode also honors the donor's GLOBAL recipient breadth.
+        const meta = individualMeta.get(donorId);
+        return individualMode === 'connector' && (meta?.recipientCount ?? 0) >= connectorMin;
+      };
+
       const buckets = new Map<BucketKey, {
         totalCents: number;
         donorCount: number;
@@ -990,11 +1014,13 @@ export async function GET(request: Request) {
         // FIX-592 — investigation-edge endpoints render as real nodes
         if (investigationEndpointIds.has(c.from_id)) continue;
 
-        // Connector mode: pass through donors who donated to enough officials
-        if (individualMode === 'connector' && meta.recipientCount >= connectorMin) continue;
+        // FIX-852 — connectors (in-response bridge OR global breadth in connector
+        // mode) pass through as real nodes; do NOT bracket or skip their edges.
+        if (isConnectorDonor(c.from_id)) continue;
 
-        // Mark for exclusion from normal node/edge paths
-        skipEntityKeys.add(`financial_entity:${c.from_id}`);
+        // Mark THIS ROW as aggregated. The donor NODE is suppressed only if ALL
+        // its rows were aggregated (computed after the loop) — a donor with any
+        // surviving edge stays a real node so the edge guard can't drop it.
         skipConnectionIds.add(c.id);
 
         const officialId = c.to_id;
@@ -1037,6 +1063,34 @@ export async function GET(request: Request) {
           } else {
             buckets.set(bucketKey, { totalCents: amountCents, donorCount: 1, officialId, tier: tier.id });
           }
+        }
+      }
+
+      // FIX-852 — suppress a donor NODE only if EVERY connection touching it was
+      // aggregated into a bracket/tail. A donor with any surviving edge (a
+      // connector donation the loop passed through, or a non-donation edge like
+      // an investigation link) keeps its node so the edge guard below cannot
+      // silently drop that surviving edge. Previously the loop added the donor
+      // to skipEntityKeys on the FIRST aggregated row, dropping the whole node.
+      const donorTotalRefs = new Map<string, number>();
+      const donorAggregatedRefs = new Map<string, number>();
+      for (const c of connections) {
+        const endpoints: Array<[string, string]> = [
+          [c.from_type, c.from_id],
+          [c.to_type, c.to_id],
+        ];
+        for (const [endpointType, endpointId] of endpoints) {
+          if (endpointType !== 'financial_entity') continue;
+          if (!individualMeta.has(endpointId)) continue;
+          donorTotalRefs.set(endpointId, (donorTotalRefs.get(endpointId) ?? 0) + 1);
+          if (skipConnectionIds.has(c.id)) {
+            donorAggregatedRefs.set(endpointId, (donorAggregatedRefs.get(endpointId) ?? 0) + 1);
+          }
+        }
+      }
+      for (const [donorId, total] of donorTotalRefs) {
+        if ((donorAggregatedRefs.get(donorId) ?? 0) >= total) {
+          skipEntityKeys.add(`financial_entity:${donorId}`);
         }
       }
 

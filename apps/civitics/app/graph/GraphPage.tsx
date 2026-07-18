@@ -26,6 +26,7 @@ import {
   RIGHT_PANEL_DEFAULT_WIDTH,
   saveView,
   makeNodeId,
+  isFocusNode,
 } from "@civitics/graph";
 import type { VizType, FocusEntity, FocusGroup, GroupFilter, GraphNodeV2 as GraphNode, GraphEdgeV2 as GraphEdge, GraphMeta, UserNodeInfo, IndividualDisplayMode, EdgeSheetData } from "@civitics/graph";
 import { isGraphSeedableKind } from "@/lib/graph-seedable-kinds";
@@ -397,6 +398,7 @@ export function GraphPage({ initialCode, aiEnabled = true }: GraphPageProps = {}
 
   const {
     nodes, allEdges, loadingEntityId, graphMeta, retryGroup,
+    dataTruncation,
     // FIX-827 — incremental expand surface
     expandNode, collapseExpansion, promoteExpansion,
     expandedOriginIds, expansionAddedIds, donationLimit,
@@ -421,17 +423,34 @@ export function GraphPage({ initialCode, aiEnabled = true }: GraphPageProps = {}
   // Merge user node + rep nodes + alignment edges into the display arrays.
   // repNodes not already in `nodes` are added so alignment edges can render.
   // FIX-120: when userNodeVisible is false, fall back to the raw focus data.
-  const displayNodes = useMemo((): GraphNode[] => {
-    if (!userNode || !userNodeVisible) return nodes;
-    const existingIds = new Set(nodes.map(n => n.id));
-    const newReps = repNodes.filter(n => !existingIds.has(n.id));
-    return [...nodes, ...newReps, userNode];
-  }, [nodes, userNode, userNodeVisible, repNodes]);
-
   const displayEdges = useMemo((): GraphEdge[] => {
     if (!userNode || !userNodeVisible) return allEdges;
     return [...allEdges, ...alignmentEdges];
   }, [allEdges, userNode, userNodeVisible, alignmentEdges]);
+
+  const displayNodes = useMemo((): GraphNode[] => {
+    const merged = (!userNode || !userNodeVisible)
+      ? nodes
+      : (() => {
+          const existingIds = new Set(nodes.map(n => n.id));
+          const newReps = repNodes.filter(n => !existingIds.has(n.id));
+          return [...nodes, ...newReps, userNode];
+        })();
+
+    // FIX-852 — belt-and-braces: drop non-focus / non-user / non-group nodes
+    // with zero incident edges (an orphan a prune left behind, or a depth-2
+    // bracket island that slipped past the server connector invariant). Focus,
+    // user, and group nodes always stay even when momentarily edgeless.
+    const incident = new Set<string>();
+    for (const e of displayEdges) { incident.add(e.fromId); incident.add(e.toId); }
+    const focusUuids = new Set(view.focus.entities.filter(isFocusEntity).map(e => e.id));
+    return merged.filter(n =>
+      incident.has(n.id) ||
+      n.type === 'user' ||
+      n.type === 'group' ||
+      isFocusNode(n.id, focusUuids)
+    );
+  }, [nodes, userNode, userNodeVisible, repNodes, displayEdges, view.focus.entities]);
 
   // FIX-826 — prune the selection to nodes still on the canvas (a collapse /
   // focus removal can drop a selected node) so the pill count stays honest.
@@ -1052,6 +1071,19 @@ export function GraphPage({ initialCode, aiEnabled = true }: GraphPageProps = {}
                     highlightedNodeId={highlightedSharedId}
                     onHighlight={setHighlightedSharedId}
                   />
+                </div>
+              )}
+
+              {/* FIX-852 — honest truncation badge. The route emits these flags
+                  (depth-2 budget/read trip, or an edge-hydration ceiling) but
+                  nothing consumed them, so a truncated graph read as complete. */}
+              {(dataTruncation.depth2Truncated || dataTruncation.partial) && (
+                <div className="absolute bottom-3 left-3 z-20 flex items-center gap-1.5 rounded-[2px] border border-amber/50 bg-card px-2.5 py-1 shadow-lg pointer-events-none">
+                  <span className="font-mono text-[10px] text-amber">
+                    {dataTruncation.depth2Truncated
+                      ? "Depth-2 partially loaded — some connections hidden"
+                      : "Large graph truncated — some edges hidden"}
+                  </span>
                 </div>
               )}
             </div>
