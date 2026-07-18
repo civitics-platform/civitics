@@ -55,14 +55,33 @@ export interface IndepExpAggregation {
   latestDate:     string | null; // ISO YYYY-MM-DD (already normalized from DD-MON-YY)
 }
 
+/**
+ * FIX-674: an unmatched-target aggregation. Same shape as a matched
+ * aggregation, plus the FEC-file identity fields the resolve-or-mint step needs
+ * to create a `tier='candidate'` official for a target that isn't in our
+ * officials set yet. `candId` is already uppercase-normalized.
+ */
+export interface UnmatchedIndepExpAggregation extends IndepExpAggregation {
+  candName:   string; // FEC "LASTNAME, FIRST" (raw)
+  candOffice: string; // H / S / P if present in the file, else ""
+  candState:  string; // 2-letter postal if present in the file, else ""
+}
+
 export interface IndepExpStreamResult {
   /** Key = `${spendingCmteId}|${candId}|${supportOppose}`. */
   aggregations: Map<string, IndepExpAggregation>;
   /**
+   * FIX-674: aggregations whose target cand_id was NOT in `candidateSet`.
+   * Populated only when `opts.collectUnmatched` is set. Same key shape as
+   * `aggregations`. The IE stage resolves-or-mints these targets and merges
+   * them back into the write set so their money is captured rather than dropped.
+   */
+  unmatchedAggregations?: Map<string, UnmatchedIndepExpAggregation>;
+  /**
    * Per-cand dropped totals (cents). Populated only when
    * `opts.collectDroppedByCand` is set — used by the `data:analyze:ie-drop`
    * diagnostic (FIX-B) to surface which unmatched target candidates hide the
-   * most IE money. Key = raw FEC cand_id.
+   * most IE money. Key = uppercase FEC cand_id.
    */
   droppedByCand?: Map<string, number>;
   stats: {
@@ -110,11 +129,14 @@ function parseDdMonYy(raw: string | undefined): string | null {
 // ---------------------------------------------------------------------------
 
 interface IeRow {
-  cand_id?:   string;
-  spe_id?:    string;
-  exp_amo?:   string;
-  exp_date?:  string;
-  sup_opp?:   string;
+  cand_id?:        string;
+  cand_name?:      string; // FIX-674 — identity for minting unmatched targets
+  cand_office?:    string; // FIX-674 — "H"/"S"/"P" (often blank; derived from cand_id as fallback)
+  cand_office_st?: string; // FIX-674 — 2-letter postal (often blank; derived from cand_id)
+  spe_id?:         string;
+  exp_amo?:        string;
+  exp_date?:       string;
+  sup_opp?:        string;
 }
 
 // ---------------------------------------------------------------------------
@@ -124,7 +146,7 @@ interface IeRow {
 export async function streamIndependentExpenditures(
   csvPath:      string,
   candidateSet: Set<string>,
-  opts:         { collectDroppedByCand?: boolean } = {},
+  opts:         { collectDroppedByCand?: boolean; collectUnmatched?: boolean } = {},
 ): Promise<IndepExpStreamResult> {
   const aggregations = new Map<string, IndepExpAggregation>();
 
@@ -139,6 +161,11 @@ export async function streamIndependentExpenditures(
   let droppedUnmatchedCents = 0;
   const droppedByCand = opts.collectDroppedByCand
     ? new Map<string, number>()
+    : undefined;
+  // FIX-674: unmatched-target aggregations, so the IE stage can resolve-or-mint
+  // the target and capture the money instead of dropping it.
+  const unmatchedAggregations = opts.collectUnmatched
+    ? new Map<string, UnmatchedIndepExpAggregation>()
     : undefined;
 
   const parser = fs.createReadStream(csvPath).pipe(
@@ -165,7 +192,11 @@ export async function streamIndependentExpenditures(
     passedSupOpp++;
 
     const spendingCmteId = (row.spe_id  ?? "").trim();
-    const candId         = (row.cand_id ?? "").trim();
+    // FIX-674: uppercase-normalize the target id. FEC candidate ids are
+    // canonically uppercase (H8FL26039); a handful of Schedule E rows carry a
+    // lowercased id ("s4nc00162") that would otherwise miss candidateSet — and
+    // any minted row — on a pure case difference.
+    const candId         = (row.cand_id ?? "").trim().toUpperCase();
     if (!spendingCmteId || !candId) continue;
     passedCmteCand++;
 
@@ -189,6 +220,32 @@ export async function streamIndependentExpenditures(
       droppedUnmatchedCents += amtCents;
       if (droppedByCand) {
         droppedByCand.set(candId, (droppedByCand.get(candId) ?? 0) + amtCents);
+      }
+      // FIX-674: retain the unmatched aggregation (with FEC identity) so the IE
+      // stage can resolve-or-mint the target and capture the money.
+      if (unmatchedAggregations) {
+        const dateIsoU = parseDdMonYy(row.exp_date);
+        const keyU     = `${spendingCmteId}|${candId}|${supOpp}`;
+        const existingU = unmatchedAggregations.get(keyU);
+        if (existingU) {
+          existingU.totalCents += amtCents;
+          existingU.txCount++;
+          if (dateIsoU && (!existingU.latestDate || dateIsoU > existingU.latestDate)) {
+            existingU.latestDate = dateIsoU;
+          }
+        } else {
+          unmatchedAggregations.set(keyU, {
+            spendingCmteId,
+            candId,
+            supportOppose: supOpp as "S" | "O",
+            totalCents:    amtCents,
+            txCount:       1,
+            latestDate:    dateIsoU,
+            candName:      (row.cand_name      ?? "").trim(),
+            candOffice:    (row.cand_office    ?? "").trim().toUpperCase(),
+            candState:     (row.cand_office_st ?? "").trim().toUpperCase(),
+          });
+        }
       }
       continue;
     }
@@ -229,9 +286,13 @@ export async function streamIndependentExpenditures(
   console.log(`    Kept $ (matched officials):   ${usd(keptCents)}`);
   console.log(`    Dropped $ (unmatched target): ${usd(droppedUnmatchedCents)}`);
   console.log(`    Unique (cmte × cand × S/O): ${aggregations.size.toLocaleString()}`);
+  if (unmatchedAggregations) {
+    console.log(`    Unmatched (cmte × cand × S/O): ${unmatchedAggregations.size.toLocaleString()} — will resolve-or-mint (FIX-674)`);
+  }
 
   return {
     aggregations,
+    unmatchedAggregations,
     droppedByCand,
     stats: {
       rowsRead,

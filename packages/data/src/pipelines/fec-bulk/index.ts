@@ -153,6 +153,7 @@ import {
   type IndivStageName,
 } from "./scope";
 import { streamIndependentExpenditures } from "./indep-exp";
+import { resolveOrMintIeTargets, type IeTargetIdentity } from "./mint-ie-targets";
 import {
   streamCandidates,
   loadOfficialsByFecIds,
@@ -711,6 +712,7 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
   let ieSupportRows = 0, ieOpposeRows = 0;                // FIX-240
   let ieSpendersUpserted = 0, ieSpendersOrphaned = 0;     // FIX-240
   let ieCyclesProcessed = 0, ieCyclesSkipped = 0;         // FIX-240
+  let ieTargetsResolved = 0, ieTargetsMinted = 0, ieTargetsFailed = 0; // FIX-674
   let matchedByFecId = 0, matchedByName = 0, notMatched = 0;
   let totalFileMb = 0;
 
@@ -1614,7 +1616,53 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
 
         if (!ieFailed) {
           try {
-            const ieResult = await streamIndependentExpenditures(iePath, candidateSet);
+            const ieResult = await streamIndependentExpenditures(iePath, candidateSet, {
+              collectUnmatched: true, // FIX-674
+            });
+
+            // FIX-674: resolve-or-mint the unmatched IE targets, then merge
+            // their aggregations back into the write set. Without this the money
+            // whose target cand_id isn't a matched official (~6% of valid IE $,
+            // 13% in 2020) is silently dropped. resolveOrMintIeTargets reuses an
+            // existing official when the exact id already lives on one (incl.
+            // inactive rows), else mints a tier='candidate' row keyed on
+            // fec_candidate_id — dedup-safe across cycles.
+            if (ieResult.unmatchedAggregations && ieResult.unmatchedAggregations.size > 0) {
+              const targetById = new Map<string, IeTargetIdentity>();
+              for (const agg of ieResult.unmatchedAggregations.values()) {
+                if (!targetById.has(agg.candId)) {
+                  targetById.set(agg.candId, {
+                    candId:     agg.candId,
+                    candName:   agg.candName,
+                    candOffice: agg.candOffice,
+                    candState:  agg.candState,
+                  });
+                }
+              }
+              const mintResult = await resolveOrMintIeTargets({
+                db,
+                targets:            [...targetById.values()],
+                existingByFecCandId,
+                governingBodies,
+                stateJurisdictions: stateIds,
+                federalId,
+              });
+              ieTargetsResolved += mintResult.resolved;
+              ieTargetsMinted   += mintResult.minted;
+              ieTargetsFailed   += mintResult.failed;
+              console.log(
+                `    IE targets — resolved: ${mintResult.resolved}  minted: ${mintResult.minted}  failed: ${mintResult.failed}`,
+              );
+              // Wire resolved+minted targets into the match index so the writer
+              // loop below resolves them, and fold the unmatched aggregations
+              // into the main set so they flow through spender pre-upsert + write.
+              for (const [candId, officialId] of mintResult.candIdToOfficialId) {
+                index.byFecId.set(candId, officialId);
+              }
+              for (const [key, agg] of ieResult.unmatchedAggregations) {
+                if (!ieResult.aggregations.has(key)) ieResult.aggregations.set(key, agg);
+              }
+            }
 
             // Surface new spenders that pas2/cm/indiv never touched. The
             // canonical case is IE-only super PACs whose only money flow
@@ -1894,6 +1942,7 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
     }
     console.log(`  ${"IE cycles processed / skipped:".padEnd(38)} ${ieCyclesProcessed} / ${ieCyclesSkipped}`);
     console.log(`  ${"IE new spenders pre-upserted:".padEnd(38)} ${ieSpendersUpserted}`);
+    console.log(`  ${"IE targets resolved/minted/failed:".padEnd(38)} ${ieTargetsResolved} / ${ieTargetsMinted} / ${ieTargetsFailed}`); // FIX-674
     console.log(`  ${"IE orphan spe_ids skipped:".padEnd(38)} ${ieSpendersOrphaned}`);
     console.log(`  ${"IE → cand rels upserted (S+O):".padEnd(38)} ${ieRelsUpserted}`);
     console.log(`  ${"IE → cand rels failed:".padEnd(38)} ${ieRelsFailed}`);
