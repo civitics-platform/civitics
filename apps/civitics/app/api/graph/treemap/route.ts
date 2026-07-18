@@ -24,6 +24,27 @@ export interface DonorRow {
   entity_type: string;
 }
 
+// FIX-848/FIX-A — individual-donor size brackets for the treemap "Individual
+// donors" group. Boundaries + the small=catch-all(<$500) convention MATCH the
+// treemap_individual_brackets_for_official RPC and the sibling
+// chord_donor_brackets_for_official, so the chord and treemap donor-size views
+// agree. `ceilingUsd` drives the donation-floor "hide a whole bracket when the
+// floor clears its ceiling" rule. Order high→low.
+const INDIV_BRACKETS = [
+  { id: "mega",  label: "Mega donors ($10k+)",       ceilingUsd: Infinity },
+  { id: "major", label: "Major donors ($2.5k–$10k)", ceilingUsd: 10_000 },
+  { id: "mid",   label: "Mid donors ($500–$2.5k)",   ceilingUsd: 2_500 },
+  { id: "small", label: "Small donors (<$500)",      ceilingUsd: 500 },
+] as const;
+
+/** Bucket a per-donor total (cents) into a bracket id — mirrors the RPC CASE. */
+function bracketIdForCents(cents: number): string {
+  if (cents >= 1_000_000) return "mega";  // $10k+
+  if (cents >=   250_000) return "major"; // $2.5k–$10k
+  if (cents >=    50_000) return "mid";   // $500–$2.5k
+  return "small";                          // < $500
+}
+
 export async function GET(request: Request) {
   if (supabaseUnavailable()) return unavailableResponse();
   const supabase = createAdminClient();
@@ -72,11 +93,19 @@ export async function GET(request: Request) {
   // industry_label are denormalized in the MV → no donorInfo loop, no
   // per-render industry fetch.
   if (validEntityId && !filterPacIds) {
-    // Paginated: 1000 ranked rows + the tail row (rank 1001) is 1001 rows, over
-    // the 1000-row PostgREST cap — an unpaginated read would silently drop the
-    // tail (where most of a small-dollar official's money lives, e.g. the whale:
-    // ~$257M of $268M). rank is a stable unique total order per official.
+    // Paginated: 200 ranked rows + a rank-201 tail row per relationship_type,
+    // over the 1000-row PostgREST cap once BOTH types are read — an unpaginated
+    // read would silently drop the tail (where most of a small-dollar official's
+    // money lives). rank is a stable unique total order per (official, type).
+    //
+    // FIX-848/FIX-A — read BOTH donation and ie_support (ie_oppose stays
+    // excluded from Top Donors). donation → named donor cells + individual
+    // size-bracket cells (replacing the FIX-845 single "Individual donors (N)"
+    // tail cell). ie_support → a separate "Independent support" group: super-PAC
+    // independent-expenditure money does NOT merge into donor cells (Craig
+    // decision 2b) — the treemap is the honest per-recipient receipts view.
     const { rows: rollup, error: rollupErr } = await fetchAllRows<{
+      relationship_type: string;
       rank: number;
       donor_id: string | null;
       donor_name: string | null;
@@ -88,9 +117,9 @@ export async function GET(request: Request) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (supabase as any)
         .from("official_donor_rollup_mv")
-        .select("rank, donor_id, donor_name, entity_type, industry_label, total_cents, tail_donor_count")
+        .select("relationship_type, rank, donor_id, donor_name, entity_type, industry_label, total_cents, tail_donor_count")
         .eq("official_id", validEntityId)
-        .eq("relationship_type", "donation")
+        .in("relationship_type", ["donation", "ie_support"])
         .order("rank", { ascending: true })
         .range(f, t),
       { maxRows: 5000 },
@@ -101,25 +130,41 @@ export async function GET(request: Request) {
     }
 
     const rows: DonorRow[] = [];
+    // Named individual donation rows are ALSO in the RPC's per-tier totals, so
+    // collect their amounts to subtract each from its bracket (no double count).
+    const namedIndividuals: number[] = [];
+    let donationTailCents = 0;
+    let donationTailCount = 0;
+    let ieTailCents = 0;
+    let ieTailCount = 0;
+
     for (const r of rollup) {
       const cents = Number(r.total_cents ?? 0);
+      const isIe = r.relationship_type === "ie_support";
+
       if (r.donor_id === null) {
-        // Tail bucket: a per-donor floor hides the small-donor long tail, so
-        // only emit the "Other" leaf when no floor is set.
-        if (minAmountCents > 0 || cents <= 0) continue;
-        // FIX-845 — the small-dollar tail is individual money; label it
-        // "Individual donors (N)", never "Other". entity_type marks it as the
-        // synthetic aggregate so TreemapGraph.prettyDonorType renders it right.
+        // rank-201 tail bucket for this relationship_type.
+        if (isIe) { ieTailCents += cents; ieTailCount += Number(r.tail_donor_count ?? 0); }
+        else      { donationTailCents += cents; donationTailCount += Number(r.tail_donor_count ?? 0); }
+        continue;
+      }
+
+      if (isIe) {
+        // Named independent-expenditure spender (super-PAC / org) — own group.
+        if (cents < minAmountCents) continue;
         rows.push({
-          donor_id: `tail:${validEntityId}`,
-          donor_name: `Individual donors (${Number(r.tail_donor_count ?? 0).toLocaleString()})`,
-          industry_category: "Individual donors",
+          donor_id: r.donor_id,
+          donor_name: r.donor_name ?? "Unknown",
+          industry_category: "Independent support",
           amount_usd: cents / 100,
-          entity_type: "individual_aggregate",
+          entity_type: r.entity_type ?? "super_pac",
         });
         continue;
       }
+
+      // Named donation donor.
       if (cents < minAmountCents) continue;
+      if (r.entity_type === "individual") namedIndividuals.push(cents);
       rows.push({
         donor_id: r.donor_id,
         donor_name: r.donor_name ?? "Unknown",
@@ -130,6 +175,94 @@ export async function GET(request: Request) {
           (r.entity_type === "individual" ? "Individual donors" : "Other"),
         amount_usd: cents / 100,
         entity_type: r.entity_type ?? "financial",
+      });
+    }
+
+    // ── Individual size-bracket cells (FIX-848/FIX-A) ────────────────────────
+    // Replace the single donation tail cell with per-tier bracket cells inside
+    // the "Individual donors" group. The RPC's per-tier totals cover ALL
+    // individuals (named + unnamed); subtract the named individuals (rendered as
+    // their own cells above) so the SUM invariant holds:
+    //   named individuals + bracket cells       = RPC individual total, and
+    //   (that group) + "Other unnamed donors"   = named individuals + donation
+    //   tail  == the PRE-CHANGE "Individual donors" group total, EXACTLY (the
+    //   bracketSum term cancels, so conservation holds regardless of MV/RPC
+    //   drift, and the OVERALL treemap total is unchanged).
+    // Only when there IS a donation tail (official has >200 donors). A per-donor
+    // floor keeps the pre-change behavior of hiding the aggregate: emit only
+    // brackets whose ceiling clears the floor, and no residual.
+    if (donationTailCents > 0) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data: brData, error: brErr } = await (supabase as any).rpc(
+        "treemap_individual_brackets_for_official",
+        { p_official: validEntityId },
+      );
+      if (brErr || !brData) {
+        console.warn("[graph/treemap/entity] brackets RPC failed — single tail cell fallback:", brErr?.message);
+        // Fallback to the FIX-845 single aggregate cell (only when no floor).
+        if (minAmountCents === 0) {
+          rows.push({
+            donor_id: `tail:${validEntityId}`,
+            donor_name: `Individual donors (${donationTailCount.toLocaleString()})`,
+            industry_category: "Individual donors",
+            amount_usd: donationTailCents / 100,
+            entity_type: "individual_aggregate",
+          });
+        }
+      } else {
+        const tierMap = new Map<string, { cents: number; count: number }>();
+        for (const t of ((brData.tiers ?? []) as Array<{ tier: string; total_cents: number; donor_count: number }>)) {
+          tierMap.set(t.tier, { cents: Number(t.total_cents) || 0, count: Number(t.donor_count) || 0 });
+        }
+        // Subtract each named individual from its bracket (no double count).
+        for (const c of namedIndividuals) {
+          const t = tierMap.get(bracketIdForCents(c));
+          if (t) { t.cents = Math.max(0, t.cents - c); t.count = Math.max(0, t.count - 1); }
+        }
+        let bracketCents = 0;
+        let bracketCount = 0;
+        for (const tier of INDIV_BRACKETS) {   // mega → small
+          const t = tierMap.get(tier.id);
+          if (!t || t.cents <= 0) continue;
+          // Floor hides a whole bracket only when it clears the bracket ceiling.
+          if (minAmountUsd > 0 && minAmountUsd >= tier.ceilingUsd) continue;
+          rows.push({
+            donor_id: `bracket:${validEntityId}:${tier.id}`,
+            donor_name: `${tier.label} · ${t.count.toLocaleString()}`,
+            industry_category: "Individual donors",
+            amount_usd: t.cents / 100,
+            entity_type: "individual_bracket",
+          });
+          bracketCents += t.cents;
+          bracketCount += t.count;
+        }
+        // Residual = the non-individual money past rank-200 (unnamed
+        // institutions). Kept as an honest "Other unnamed donors" cell so the
+        // OVERALL treemap total is conserved exactly. Suppressed under a floor.
+        if (minAmountCents === 0) {
+          const residualCents = donationTailCents - bracketCents;
+          const residualCount = Math.max(0, donationTailCount - bracketCount);
+          if (residualCents > 0) {
+            rows.push({
+              donor_id: `tail:other:${validEntityId}`,
+              donor_name: `${residualCount.toLocaleString()} other unnamed donors`,
+              industry_category: "Other",
+              amount_usd: residualCents / 100,
+              entity_type: "individual_aggregate",
+            });
+          }
+        }
+      }
+    }
+
+    // ── Independent-support tail (FIX-A) ─────────────────────────────────────
+    if (ieTailCents > 0 && minAmountCents === 0) {
+      rows.push({
+        donor_id: `tail:ie:${validEntityId}`,
+        donor_name: `${ieTailCount.toLocaleString()} more independent spenders`,
+        industry_category: "Independent support",
+        amount_usd: ieTailCents / 100,
+        entity_type: "individual_aggregate",
       });
     }
 
