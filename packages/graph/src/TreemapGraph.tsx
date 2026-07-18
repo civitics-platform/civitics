@@ -160,7 +160,9 @@ function prettyDonorType(entityType: string): string {
     case 'individual':      return 'Individuals';
     // FIX-845 — the small-dollar tail aggregate + the explicit catch-all so
     // the default branch never prints a raw lowercase "other".
-    case 'individual_aggregate': return 'Individual donors';
+    // FIX-848 — bracket cells (individual size tiers) group with individuals.
+    case 'individual_aggregate':
+    case 'individual_bracket': return 'Individual donors';
     case 'other':           return 'Other';
     default:                return entityType || 'Other';
   }
@@ -240,6 +242,47 @@ function officialToNode(o: TreemapOfficial): NewGraphNode {
     type:         'official',
     party:        (o.party as NewGraphNode['party']) ?? undefined,
     donationTotal: o.total_donated_cents,
+  };
+}
+
+// FIX-E — donor cell → NodePopup / Tooltip identity. Maps entity_type to a real
+// NodeType (individual / pac / corporation) instead of the blanket 'financial'
+// so NodePopup resolves the correct /donors/{uuid} profile link. Synthetic
+// aggregates (bracket / tail / IE-tail / residual) get a pseudo id + the
+// individual_bracket type so NodePopup shows the aggregate stats card and
+// suppresses the profile button — its id is NOT a real financial_entities uuid.
+// (This was Craig's observed 404: a PAC cell whose id fell back to a display
+// name deep-linked to /donors/{name}. NodePopup now also suppresses any id
+// without a uuid, so name-as-id can never 404.)
+function donorEntityToNodeType(entityType: string): NewGraphNode['type'] {
+  const t = (entityType ?? '').toLowerCase();
+  if (t === 'pac' || t === 'super_pac' || t === 'party_committee') return 'pac';
+  if (t === 'individual') return 'individual';
+  if (t === 'corporation' || t === 'union') return 'corporation';
+  return 'financial';
+}
+
+function donorToNode(d: DonorRow): NewGraphNode {
+  const donationTotal = Math.round(d.amount_usd * 100);
+  if (
+    d.donor_id.startsWith('bracket:') ||
+    d.donor_id.startsWith('tail:') ||
+    d.entity_type === 'individual_bracket' ||
+    d.entity_type === 'individual_aggregate'
+  ) {
+    return {
+      id:            d.donor_id,
+      name:          d.donor_name,
+      type:          'individual_bracket',
+      donationTotal,
+      metadata:      { isBracketNode: true },
+    };
+  }
+  return {
+    id:            d.donor_id,
+    name:          d.donor_name,
+    type:          donorEntityToNodeType(d.entity_type),
+    donationTotal,
   };
 }
 
@@ -561,9 +604,12 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
             name:  leaf.name,
             value: leaf.value,
             industryIndex: idx,
-            // Reuse donor slot to carry PAC data for tooltip/popup
+            // Reuse donor slot to carry PAC data for tooltip/popup. FIX-E —
+            // when a PAC leaf has no real entity id, use a pseudo id (never a
+            // display name) so NodePopup suppresses the /donors/{id} profile
+            // button instead of 404ing on /donors/{name}.
             donor: {
-              donor_id:          leaf.pacId ?? leaf.name,
+              donor_id:          leaf.pacId ?? `pacgroup:${leaf.name}`,
               donor_name:        leaf.name,
               industry_category: group.name,
               amount_usd:        leaf.value,
@@ -680,7 +726,11 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
       .text((d) => isCompareMode
         ? d.data.name
         : isEntityMode
-          ? d.data.name.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
+          // FIX-A — badge the independent-expenditure group so it reads as
+          // distinct from ordinary donations (super-PAC IE money, not gifts).
+          ? (d.data.name === "Independent support"
+              ? "⚡ Independent Support"
+              : d.data.name.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()))
           : getGroupLabel(d.data.name, groupBy));
 
     // Drill hint on group cells (only when not already drilled)
@@ -745,12 +795,7 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
         const rect = (containerRef.current ?? svg).getBoundingClientRect();
         if (d.data.donor) {
           showTip(
-            {
-              id:           d.data.donor.donor_id,
-              name:         d.data.donor.donor_name,
-              type:         'financial',
-              donationTotal: d.data.donor.amount_usd * 100,
-            },
+            donorToNode(d.data.donor),
             event.clientX - rect.left,
             event.clientY - rect.top
           );
@@ -766,12 +811,7 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
         const rect = (containerRef.current ?? svg).getBoundingClientRect();
         if (d.data.donor) {
           showTip(
-            {
-              id:           d.data.donor.donor_id,
-              name:         d.data.donor.donor_name,
-              type:         'financial',
-              donationTotal: d.data.donor.amount_usd * 100,
-            },
+            donorToNode(d.data.donor),
             event.clientX - rect.left,
             event.clientY - rect.top
           );
@@ -789,12 +829,7 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
       })
       .on("click", (_event: MouseEvent, d) => {
         if (d.data.donor) {
-          setPopup({
-            id:            d.data.donor.donor_id,
-            name:          d.data.donor.donor_name,
-            type:          'financial',
-            donationTotal: d.data.donor.amount_usd * 100,
-          });
+          setPopup(donorToNode(d.data.donor));
           return;
         }
         if (d.data.official) {

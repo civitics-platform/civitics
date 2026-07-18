@@ -68,7 +68,10 @@ export function NodePopup({ node, onClose, actions, vizType, expandState = 'none
   // FIX-843 — `tail:{officialUuid}` and `bracket:*` are synthetic aggregates,
   // not real financial_entities; the uuid inside is the OFFICIAL's, so a donor
   // deep-link would target the wrong entity. Suppress the profile button.
-  const isPseudoNode = /^(tail|bracket):/.test(node.id);
+  // FIX-E — also suppress for ANY id with no uuid at all (e.g. a treemap PAC
+  // cell whose id fell back to a display name): /donors/{name} 404s. If the id
+  // carries no uuid it can never resolve to a real financial_entities row.
+  const isPseudoNode = /^(tail|bracket):/.test(node.id) || !uuidMatch;
 
   const displayName = node.name ?? 'Unknown';
 
@@ -276,7 +279,10 @@ export function NodePopup({ node, onClose, actions, vizType, expandState = 'none
           </div>
 
           <div className="space-y-1">
-            {officialId && (tier || employer) && (
+            {/* FIX-E — only when a drill handler exists (force viz). The treemap
+                renders bracket cells too but has no DonorListPanel wiring, so
+                the button would be a dead no-op there. */}
+            {officialId && (tier || employer) && actions.openDonorList && (
               <button
                 onClick={() => {
                   actions.openDonorList?.(officialId, tier ?? employer ?? '');
