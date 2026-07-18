@@ -44,6 +44,10 @@ export type { VizApplicability, VizApplicabilityMeta } from "./types";
 export type { IndividualDisplayMode, BracketTier } from "./types";
 export { MAX_FOCUS_ENTITIES, isFocusGroup, isFocusEntity, isSelectionGroup, BRACKET_TIERS } from "./types";
 
+// ── Canonical node-id scheme (FIX-849) ──────────────────────────────────────
+export { makeNodeId, extractUuid, matchesFocus, isFocusNode, NODE_ID_TYPES } from "./nodeId";
+export type { NodeIdType } from "./nodeId";
+
 // ── Presets + connections ───────────────────────────────────────────────────
 export { DEFAULT_GRAPH_VIEW, BUILT_IN_PRESETS, applyPreset, markDirty } from "./presets";
 export { CONNECTION_TYPE_REGISTRY, DEFAULT_CONNECTION_STATE, DEFAULT_DONATION_LIMIT } from "./connections";

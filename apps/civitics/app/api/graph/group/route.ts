@@ -7,7 +7,12 @@ import { supabaseUnavailable, unavailableResponse, withDbTimeout } from "@/lib/s
 import { fetchAllRows } from "@/lib/paginate";
 import { isGbExpandableJurisdictionType } from "@/lib/graph-seedable-kinds";
 import type { GraphEdgeV2 as GraphEdge, GraphNodeV2 as GraphNode, NodeTypeV2 as NodeType } from "@civitics/graph";
+// FIX-842 — group Top-N donor default aligned to the shared client cap.
 import { DEFAULT_DONATION_LIMIT } from "@civitics/graph";
+// FIX-849 — canonical `${type}:${uuid}` node ids. The group route previously
+// minted `donor-{uuid}` + raw official/agency/gb uuids, so the same entity
+// reached via a group vs a focus fetch rendered as two distinct nodes.
+import { makeNodeId } from "@civitics/graph";
 
 // Local extensions — group route adds metadata and id fields not in base types
 type ResponseNode = GraphNode & { metadata?: Record<string, unknown> };
@@ -507,7 +512,7 @@ export async function GET(req: NextRequest) {
         };
 
         const connectedNodes: ResponseNode[] = topDonors.map((donor) => ({
-          id: `donor-${donor.donorId}`,
+          id: makeNodeId('financial_entity', donor.donorId),
           name: donor.donorName,
           type: "financial" as NodeType,
           collapsed: false,
@@ -516,7 +521,7 @@ export async function GET(req: NextRequest) {
 
         const edges: ResponseEdge[] = topDonors.map((donor) => ({
           id: `edge-${groupId}-${donor.donorId}`,
-          fromId: `donor-${donor.donorId}`,
+          fromId: makeNodeId('financial_entity', donor.donorId),
           toId: groupId,
           connectionType: "donation",
           amountUsd: donor.totalUsd,
@@ -717,7 +722,7 @@ export async function GET(req: NextRequest) {
     };
 
     const connectedNodes: ResponseNode[] = topDonors.map((donor) => ({
-      id: `donor-${donor.donorId}`,
+      id: makeNodeId('financial_entity', donor.donorId),
       name: donor.donorName,
       type: "financial" as NodeType,
       collapsed: false,
@@ -726,7 +731,7 @@ export async function GET(req: NextRequest) {
 
     const edges: ResponseEdge[] = topDonors.map((donor) => ({
       id: `edge-${groupId}-${donor.donorId}`,
-      fromId: `donor-${donor.donorId}`,
+      fromId: makeNodeId('financial_entity', donor.donorId),
       toId: groupId,
       connectionType: "donation",
       amountUsd: donor.totalUsd,
@@ -896,7 +901,7 @@ export async function GET(req: NextRequest) {
     const connectedNodes: ResponseNode[] = topRecipients.map((r) => {
       const official = officialLookup.get(r.officialId);
       return {
-        id: r.officialId,
+        id: makeNodeId('official', r.officialId),
         name: official?.full_name ?? "Unknown",
         type: "official" as NodeType,
         collapsed: false,
@@ -911,7 +916,7 @@ export async function GET(req: NextRequest) {
     const edges: ResponseEdge[] = topRecipients.map((r) => ({
       id: `edge-${groupId}-${r.officialId}`,
       fromId: groupId,
-      toId: r.officialId,
+      toId: makeNodeId('official', r.officialId),
       connectionType: "donation",
       amountUsd: r.totalUsd,
       strength: Math.min(r.totalUsd / 100_000, 1),
@@ -1112,7 +1117,7 @@ export async function GET(req: NextRequest) {
     const overseerNodes: ResponseNode[] = topOverseers.map(([id, stats]) => {
       const g = overseerLookup.get(id);
       return {
-        id,
+        id: makeNodeId('governing_body', id),
         name: g?.name ?? "Unknown Committee",
         type: "agency" as NodeType,
         collapsed: false,
@@ -1125,7 +1130,7 @@ export async function GET(req: NextRequest) {
 
     const overseerEdges: ResponseEdge[] = topOverseers.map(([id, stats]) => ({
       id: `edge-${groupId}-${id}`,
-      fromId: id,
+      fromId: makeNodeId('governing_body', id),
       toId: groupId,
       connectionType: "oversight",
       strength: Math.min(stats.totalStrength, 1),
@@ -1354,7 +1359,7 @@ export async function GET(req: NextRequest) {
     const recipientNodes: ResponseNode[] = topRecipients.map((r) => {
       const official = officialLookup.get(r.officialId);
       return {
-        id: r.officialId,
+        id: makeNodeId('official', r.officialId),
         name: official?.full_name ?? "Unknown",
         type: "official" as NodeType,
         collapsed: false,
@@ -1368,7 +1373,7 @@ export async function GET(req: NextRequest) {
     const awarderNodes: ResponseNode[] = topAwarders.map((a) => {
       const agency = agencyLookup.get(a.agencyId);
       return {
-        id: a.agencyId,
+        id: makeNodeId('agency', a.agencyId),
         name: agency?.name ?? "Unknown Agency",
         type: "agency" as NodeType,
         collapsed: false,
@@ -1381,7 +1386,7 @@ export async function GET(req: NextRequest) {
     const donationEdges: ResponseEdge[] = topRecipients.map((r) => ({
       id: `edge-${groupId}-${r.officialId}`,
       fromId: groupId,
-      toId: r.officialId,
+      toId: makeNodeId('official', r.officialId),
       connectionType: "donation",
       amountUsd: r.totalUsd,
       strength: Math.min(r.totalUsd / 100_000, 1),
@@ -1389,7 +1394,7 @@ export async function GET(req: NextRequest) {
     }));
     const contractEdges: ResponseEdge[] = topAwarders.map((a) => ({
       id: `edge-${a.agencyId}-${groupId}`,
-      fromId: a.agencyId,
+      fromId: makeNodeId('agency', a.agencyId),
       toId: groupId,
       connectionType: "contract_award",
       amountUsd: a.totalUsd,

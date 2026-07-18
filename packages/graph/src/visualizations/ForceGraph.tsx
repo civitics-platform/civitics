@@ -27,6 +27,24 @@ import { BRACKET_TIERS } from "../types";
 import { Tooltip, useTooltip } from "../components/Tooltip";
 import { NodePopup } from "../components/NodePopup";
 import { resolveToken, resolvePaperToken, resolveColor, withAlpha } from "../tokens";
+import { isFocusNode, matchesFocus } from "../nodeId";
+
+/**
+ * FIX-849 — resolve which of the currently-rendered node ids are focus nodes.
+ * Focus ids are RAW uuids; node/edge-endpoint ids are canonical `${type}:${uuid}`.
+ * Every focus set in this file is a set of NODE IDS (so `.has(nodeId)` and
+ * `.has(edgeEndpointId)` match, and computeNodeDepths / forceTypeCluster seed /
+ * skip on real ids) — never a raw-uuid set compared against prefixed ids.
+ */
+function focusNodeIds(
+  nodes: ReadonlyArray<{ id: string }>,
+  focusEntities: ReadonlyArray<{ id: string }>,
+): Set<string> {
+  const focusUuids = new Set(focusEntities.map((fe) => fe.id));
+  const out = new Set<string>();
+  for (const n of nodes) if (isFocusNode(n.id, focusUuids)) out.add(n.id);
+  return out;
+}
 
 // ── Props ──────────────────────────────────────────────────────────────────────
 
@@ -657,7 +675,9 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
     const settingsRef = useRef(connections);
     settingsRef.current = connections;
     const focusIdsRef = useRef<Set<string>>(new Set());
-    focusIdsRef.current = new Set(focusEntities.map((fe) => fe.id));
+    // FIX-849 — set of matching NODE ids (not raw focus uuids) so the opacity
+    // resolver's `.has(nodeId)` / `.has(edgeEndpointId)` checks actually match.
+    focusIdsRef.current = focusNodeIds(nodes, focusEntities);
     const highlightedIdRef = useRef<string | null>(highlightedNodeId);
     highlightedIdRef.current = highlightedNodeId;
     const showInvestigationRef = useRef(showInvestigation);
@@ -853,7 +873,7 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
       svg.on("click", () => setPopup(null));
 
       // ── Edge lines ────────────────────────────────────────────────────────
-      const focusIds = new Set(focusEntities.map((fe) => fe.id));
+      const focusIds = focusNodeIds(nodes, focusEntities); // FIX-849 — node ids
 
       function edgeColor(d: SimLink): string {
         // FIX-585 — source wins over connection_type for the distinct investigation render.
@@ -1040,8 +1060,9 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
             })
             .on("end", (event, d) => {
               if (!event.active) simRef.current?.alphaTarget(0);
-              // Keep pinned if FocusEntity has pinned=true
-              const fe = focusEntities.find((fe) => fe.id === d.id);
+              // Keep pinned if FocusEntity has pinned=true (FIX-849 — d.id is
+              // canonical `type:uuid`, fe.id is a raw uuid → match via helper)
+              const fe = focusEntities.find((fe) => matchesFocus(d.id, fe.id));
               if (!fe?.pinned) {
                 d.fx = null;
                 d.fy = null;
@@ -1522,7 +1543,7 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
           n.fy = height / 2;
           return;
         }
-        const fe = focusEntities.find((fe) => fe.id === n.id);
+        const fe = focusEntities.find((fe) => matchesFocus(n.id, fe.id)); // FIX-849
         if (fe?.pinned) {
           n.fx = n.x;
           n.fy = n.y;
@@ -1549,7 +1570,7 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
       // (var() fails in .attr(); resolve to concrete rgb() first).
       const svgEl = svgRef.current;
 
-      const focusIds = new Set(focusEntities.map((fe) => fe.id));
+      const focusIds = focusNodeIds(nodes, focusEntities); // FIX-849 — node ids
 
       link
         .attr("stroke-dasharray", (d: SimLink) =>
@@ -1591,7 +1612,7 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
       // FIX-729 — resolve tokens against the svg's scope for presentation attrs.
       const svgEl = svgRef.current;
 
-      const focusIds = new Set(focusEntities.map((fe) => fe.id));
+      const focusIds = focusNodeIds(nodes, focusEntities); // FIX-849 — node ids
       const encoding = vizOptions?.nodeColorEncoding;
 
       nodeGrp
@@ -1660,10 +1681,9 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
         return;
       }
 
-      // Focus entity ids are raw uuids; node ids may be raw or "type:uuid".
-      const target = sim.nodes().find(
-        (n) => n.id === panelHoverEntityId || n.id.endsWith(`:${panelHoverEntityId}`)
-      );
+      // Focus entity ids are raw uuids; node ids are canonical "type:uuid"
+      // (FIX-849 — match through the shared helper, not an ad-hoc endsWith).
+      const target = sim.nodes().find((n) => matchesFocus(n.id, panelHoverEntityId));
       if (!target) return;
 
       const neighbors = new Set([target.id]);
@@ -1724,7 +1744,7 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
           break;
         }
         case "hierarchical": {
-          const focusIdSet = new Set((focusEntities ?? []).map(fe => fe.id));
+          const focusIdSet = focusNodeIds(sim.nodes(), focusEntities); // FIX-849
           const linkForce  = sim.force("link") as d3.ForceLink<SimNode, SimLink> | null;
           const curLinks   = (linkForce?.links() ?? []) as SimLink[];
           const depths     = computeNodeDepths(sim.nodes(), curLinks, focusIdSet);
@@ -1770,8 +1790,8 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
 
       const strength = vizOptions?.typeClusterStrength ?? 0.08;
       const radius   = Math.min(width, height) * 0.35;
-      const focusedIds = new Set(focusEntities.map(fe => fe.id));
       const currentNodes = sim.nodes();
+      const focusedIds = focusNodeIds(currentNodes, focusEntities); // FIX-849
 
       const clusterAngle = new Map<string, number>();
       const typesPresent = new Set<string>(
@@ -1918,7 +1938,7 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
     function popupExpandState(n: GraphNode | null): "none" | "expandable" | "expanded" {
       if (!n) return "none";
       if (expandedOriginIds?.has(n.id)) return "expanded";
-      const isFocus = focusEntities.some((fe) => fe.id === n.id || n.id.endsWith(`:${fe.id}`));
+      const isFocus = focusEntities.some((fe) => matchesFocus(n.id, fe.id)); // FIX-849
       if (isFocus || !EXPANDABLE_TYPES.has(n.type)) return "none";
       // FIX-843 — tolerate `donor-{uuid}` (group route) alongside `type:uuid`;
       // the old prefix-strip left the hyphenated form intact so group donor

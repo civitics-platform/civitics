@@ -25,6 +25,7 @@ import {
   LEFT_PANEL_DEFAULT_WIDTH,
   RIGHT_PANEL_DEFAULT_WIDTH,
   saveView,
+  makeNodeId,
 } from "@civitics/graph";
 import type { VizType, FocusEntity, FocusGroup, GroupFilter, GraphNodeV2 as GraphNode, GraphEdgeV2 as GraphEdge, GraphMeta, UserNodeInfo, IndividualDisplayMode, EdgeSheetData } from "@civitics/graph";
 import { isGraphSeedableKind } from "@/lib/graph-seedable-kinds";
@@ -351,8 +352,11 @@ export function GraphPage({ initialCode, aiEnabled = true }: GraphPageProps = {}
           type: "user",
         });
 
+        // FIX-849 — canonical `official:{uuid}` so a rep reached via the YOU
+        // node MERGES with the same official reached via a focus fetch instead
+        // of rendering as a duplicate raw-uuid node.
         setRepNodes(reps.map(rep => ({
-          id: rep.id,
+          id: makeNodeId('official', rep.id),
           name: rep.name,
           type: rep.type,
           role: rep.role,
@@ -361,7 +365,7 @@ export function GraphPage({ initialCode, aiEnabled = true }: GraphPageProps = {}
 
         setAlignmentEdges(reps.map(rep => ({
           fromId: USER_NODE_ID,
-          toId: rep.id,
+          toId: makeNodeId('official', rep.id),
           connectionType: "alignment",
           strength: 1,
           metadata: {
