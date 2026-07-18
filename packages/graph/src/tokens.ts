@@ -27,14 +27,30 @@
  * use `resolvePaperToken`) for those.
  */
 
-const FALLBACK = "rgb(0 0 0)";
+const FALLBACK = "rgb(0, 0, 0)";
 
-/** Resolve a `--c-*` token to a concrete `rgb(R G B)` string. SSR-safe. */
+/**
+ * Format a `--c-*` channel triplet (`"R G B"` as authored in globals.css) as a
+ * COMMA-separated `rgb(R, G, B)` string. Comma form is valid CSS everywhere AND
+ * parseable by d3-color; the CSS space form `rgb(R G B)` is browser-valid but
+ * `d3.color()` returns null for it — which silently blackened every
+ * d3-interpolated fill: `d3.color('rgb(43 74 139)')` → null, so
+ * `interpolateRgb(...)` emitted `rgb(0, 0, 0)` (choropleth painted all-black —
+ * FIX-860; also the treemap panel→stroke blend and sunburst `.darker()`).
+ * Pure (no DOM) so the contract is unit-testable. Tolerates a comma- or
+ * space-separated triplet.
+ */
+export function formatRgbTriplet(triplet: string): string {
+  const channels = triplet.trim().split(/[\s,]+/).filter(Boolean);
+  return channels.length ? `rgb(${channels.join(", ")})` : FALLBACK;
+}
+
+/** Resolve a `--c-*` token to a concrete `rgb(R, G, B)` string. SSR-safe. */
 export function resolveToken(name: string, scope?: Element | null): string {
   if (typeof window === "undefined" || typeof document === "undefined") return FALLBACK;
   const el = scope ?? document.documentElement;
   const triplet = getComputedStyle(el).getPropertyValue(name).trim();
-  return triplet ? `rgb(${triplet})` : FALLBACK;
+  return triplet ? formatRgbTriplet(triplet) : FALLBACK;
 }
 
 /** Paper-mode value of a token regardless of scope (node fills). */

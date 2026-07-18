@@ -303,8 +303,11 @@ function extractAxis(r: AgencyStaffRow, key: string): number {
   switch (key) {
     case "fte":              return r.fte;
     case "appointment_count": return r.appointmentCount;
-    case "contract_total":   return r.contractTotal;
-    case "grant_total":      return r.grantTotal;
+    // FIX-860 rider — money axes are stored in cents; plot dollars so the ticks
+    // read as spending, not a 100× inflated cent count. Tooltip divides
+    // contractTotal itself, so it is unaffected by this axis-only conversion.
+    case "contract_total":   return r.contractTotal / 100;
+    case "grant_total":      return r.grantTotal / 100;
     case "founded_year":     return r.foundedYear ?? 0;
     default:                 return 0;
   }
@@ -314,8 +317,8 @@ function axisLabel(key: string): string {
   switch (key) {
     case "fte":              return "FTE Headcount";
     case "appointment_count": return "Political Appointments";
-    case "contract_total":   return "Contract Spending (cents)";
-    case "grant_total":      return "Grant Spending (cents)";
+    case "contract_total":   return "Contract Spending ($)";
+    case "grant_total":      return "Grant Spending ($)";
     case "founded_year":     return "Founded Year";
     default:                 return key;
   }
