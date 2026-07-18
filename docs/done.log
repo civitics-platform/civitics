@@ -1058,3 +1058,5 @@
 2026-07-18 | FIX-857 | 06b35d10 | local-only | fix(graph): viz scope field + Focus/Platform pickers + badge; sankey/scatter focus wiring
 2026-07-18 | FIX-858 | 06b35d10 | local-only | fix(graph): viz scope field + Focus/Platform pickers + badge; sankey/scatter focus wiring
 2026-07-18 | FIX-854 | 8bc2b1ac | prod-only | chore(graph): record prod verification of FIX-854 chord dedup migration [skip vercel]
+2026-07-18 | FIX-860 | 319accf4 | local-only | fix(graph): comma-form rgb() tokens so d3-color can parse them (choropleth black map)
+2026-07-18 | FIX-861 | 0cf7cbc7 | local-only | fix(graph): thread search entity type through header select (agency scoping from search)
