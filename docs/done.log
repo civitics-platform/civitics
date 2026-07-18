@@ -1040,3 +1040,10 @@
 2026-07-16 | FIX-471 | 97f09e07 | local+prod | fix(legistar): key council members via OfficeRecords, ending the person-flood
 2026-07-16 | FIX-544 | 8e43b3b4 | local+prod | docs(dedup): FIX-544 applied to prod; file multi-binding follow-up FIX-840 [skip vercel]
 2026-07-17 | FIX-674 | 9fb09738 | local+prod | feat(fec-ie): capture unmatched-target IE money via resolve-or-mint (FIX-674)
+2026-07-18 | FIX-842 | bc9bfcca | local-only | fix(graph): honor group Top-N limit and tolerate all donor node id shapes
+2026-07-18 | FIX-843 | 337c2a10 | local-only | fix(graph): add force node size-scale option with a hard radius cap
+2026-07-18 | FIX-843 | bc9bfcca | local-only | fix(graph): honor group Top-N limit and tolerate all donor node id shapes
+2026-07-18 | FIX-844 | 7048a282 | local-only | fix(graph): revive treemap clicks, relabel individual donors, hide footer on /graph
+2026-07-18 | FIX-845 | 7048a282 | local-only | fix(graph): revive treemap clicks, relabel individual donors, hide footer on /graph
+2026-07-18 | FIX-846 | 7048a282 | local-only | fix(graph): revive treemap clicks, relabel individual donors, hide footer on /graph
+2026-07-18 | FIX-847 | 337c2a10 | local-only | fix(graph): add force node size-scale option with a hard radius cap
