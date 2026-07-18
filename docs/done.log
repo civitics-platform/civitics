@@ -1047,3 +1047,7 @@
 2026-07-18 | FIX-845 | 7048a282 | local-only | fix(graph): revive treemap clicks, relabel individual donors, hide footer on /graph
 2026-07-18 | FIX-846 | 7048a282 | local-only | fix(graph): revive treemap clicks, relabel individual donors, hide footer on /graph
 2026-07-18 | FIX-847 | 337c2a10 | local-only | fix(graph): add force node size-scale option with a hard radius cap
+2026-07-18 | FIX-849 | 07e7f569 | local-only | fix(graph): canonical node-id scheme + shared helper (FIX-849)
+2026-07-18 | FIX-850 | 2dcc8524 | local-only | fix(graph): per-focus ownership prune, field-wise merge, live depth chip (FIX-850, FIX-851)
+2026-07-18 | FIX-851 | 2dcc8524 | local-only | fix(graph): per-focus ownership prune, field-wise merge, live depth chip (FIX-850, FIX-851)
+2026-07-18 | FIX-852 | 92f9064e | local-only | fix(graph): depth-2 connector invariant, edge-guard, zero-edge drop, truncation badge (FIX-852)
