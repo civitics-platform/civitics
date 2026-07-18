@@ -1060,3 +1060,10 @@
 2026-07-18 | FIX-854 | 8bc2b1ac | prod-only | chore(graph): record prod verification of FIX-854 chord dedup migration [skip vercel]
 2026-07-18 | FIX-860 | 319accf4 | local-only | fix(graph): comma-form rgb() tokens so d3-color can parse them (choropleth black map)
 2026-07-18 | FIX-861 | 0cf7cbc7 | local-only | fix(graph): thread search entity type through header select (agency scoping from search)
+2026-07-18 | FIX-848 | 0b781c37 | local-only | feat(graph): treemap individual-donor size brackets + separate IE group
+2026-07-18 | FIX-862 | 0b781c37 | local-only | feat(graph): treemap individual-donor size brackets + separate IE group
+2026-07-18 | FIX-863 | 66c69590 | local-only | feat(graph): force floor wiring, Contracts sizing, domain-aware linear scale
+2026-07-18 | FIX-864 | 66c69590 | local-only | feat(graph): force floor wiring, Contracts sizing, domain-aware linear scale
+2026-07-18 | FIX-865 | 66c69590 | local-only | feat(graph): force floor wiring, Contracts sizing, domain-aware linear scale
+2026-07-18 | FIX-866 | 85f25300 | local-only | fix(graph): treemap popup identity sweep + empty-focus enablement
+2026-07-18 | FIX-867 | 85f25300 | local-only | fix(graph): treemap popup identity sweep + empty-focus enablement
