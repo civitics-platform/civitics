@@ -47,6 +47,7 @@ export { MAX_FOCUS_ENTITIES, isFocusGroup, isFocusEntity, isSelectionGroup, BRAC
 // ── Canonical node-id scheme (FIX-849) ──────────────────────────────────────
 export { makeNodeId, extractUuid, matchesFocus, isFocusNode, NODE_ID_TYPES } from "./nodeId";
 export type { NodeIdType } from "./nodeId";
+export { graphGroupParams } from "./groupQuery";
 
 // ── Presets + connections ───────────────────────────────────────────────────
 export { DEFAULT_GRAPH_VIEW, BUILT_IN_PRESETS, applyPreset, markDirty } from "./presets";

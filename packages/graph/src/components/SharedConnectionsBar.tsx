@@ -15,6 +15,7 @@
 import { useMemo } from "react";
 import type { GraphNode, GraphEdge, FocusItem } from "../types";
 import { isFocusEntity } from "../types";
+import { extractUuid } from "../nodeId";
 
 // ── Helper ────────────────────────────────────────────────────────────────────
 
@@ -30,6 +31,10 @@ export interface SharedConnection {
 /**
  * Find nodes connected to ≥2 of the focused entity ids. Returns them sorted by
  * focusCount desc, then name asc — most-shared first.
+ *
+ * `focusIds` is a set of RAW focus uuids; edge endpoints are canonical
+ * `type:{uuid}` (FIX-850). The old `focusIds.has(e.fromId)` compared the two
+ * directly and never matched, so this bar was permanently empty.
  */
 export function findSharedConnections(
   focusIds: ReadonlySet<string>,
@@ -38,19 +43,26 @@ export function findSharedConnections(
 ): SharedConnection[] {
   if (focusIds.size < 2) return [];
 
-  // Build neighbour map: node id → set of focused entity ids it's connected to.
+  // Resolve an edge endpoint id to the focus uuid it represents, or null.
+  const focusUuidOf = (id: string): string | null => {
+    if (focusIds.has(id)) return id;
+    const u = extractUuid(id);
+    return u != null && focusIds.has(u) ? u : null;
+  };
+
+  // Build neighbour map: node id → set of DISTINCT focus uuids it's connected to.
   const neighbourFocus = new Map<string, Set<string>>();
   for (const e of edges) {
-    const fromIsFocus = focusIds.has(e.fromId);
-    const toIsFocus = focusIds.has(e.toId);
-    if (fromIsFocus && !toIsFocus) {
+    const fromFocus = focusUuidOf(e.fromId);
+    const toFocus = focusUuidOf(e.toId);
+    if (fromFocus && !toFocus) {
       const set = neighbourFocus.get(e.toId) ?? new Set<string>();
-      set.add(e.fromId);
+      set.add(fromFocus);
       neighbourFocus.set(e.toId, set);
     }
-    if (toIsFocus && !fromIsFocus) {
+    if (toFocus && !fromFocus) {
       const set = neighbourFocus.get(e.fromId) ?? new Set<string>();
-      set.add(e.toId);
+      set.add(toFocus);
       neighbourFocus.set(e.fromId, set);
     }
   }
