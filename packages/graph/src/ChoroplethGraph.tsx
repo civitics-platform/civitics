@@ -111,13 +111,18 @@ export function ChoroplethGraph({
     const measureValues = rows
       .map(r => r.measureValue)
       .filter((v): v is number => typeof v === "number");
-    const ext = d3.extent(measureValues) as [number, number];
+    const ext = (measureValues.length ? d3.extent(measureValues) : [-1, 1]) as [number, number];
+    const isDiverging = colorScale === "diverging";
+    // FIX-M — the server returns party CONTROL, not cohesion: −1 = Democrat,
+    // +1 = Republican, 0 = mixed / independent. Democrat → blue, Republican →
+    // red (the interpolator was reversed, painting Democrats red). Fixed
+    // [−1,0,1] domain so a solid-party district always renders full colour and a
+    // single-party band never collapses to a rescaled flat map.
     const colorFn = colorScale === "diverging"
-      // accent → panel → civic-blue replaces interpolateRdBu
       ? d3.scaleDiverging<string>(
-          d3.piecewise(d3.interpolateRgb, [T.accent, T.panel, T.blue])
-        ).domain([ext[0], (ext[0] + ext[1]) / 2, ext[1]])
-      // panel → teal replaces interpolateBlues
+          d3.piecewise(d3.interpolateRgb, [T.blue, T.panel, T.accent])
+        ).domain([-1, 0, 1])
+      // panel → teal replaces interpolateBlues (sequential measures)
       : d3.scaleSequential<string>(d3.interpolateRgb(T.panel, T.teal)).domain(ext);
 
     svg.attr("viewBox", `0 0 ${width} ${height}`);
@@ -147,11 +152,13 @@ export function ChoroplethGraph({
       .append("title")
       .text(d => {
         const p = d.properties as DistrictRow;
-        const v = p.measureValue == null ? "n/a" : `${(p.measureValue * 100).toFixed(1)}%`;
-        return `${p.districtName}\n${labelFor(measure)}: ${v}`;
+        return `${p.districtName}\n${labelFor(measure)}: ${fmtMeasure(p.measureValue, isDiverging)}`;
       });
 
-    // Legend (compact, bottom-left)
+    // Legend (compact, bottom-left). Party-control (diverging) gradients run over
+    // the fixed [−1,1] party domain with Dem/Rep endpoints; sequential measures
+    // keep the data-extent percentage endpoints.
+    const [loLeg, hiLeg] = isDiverging ? [-1, 1] : ext;
     const legendW = 180;
     const legendH = 8;
     const lg = svg.append("g").attr("transform", `translate(20,${height - 40})`);
@@ -163,7 +170,7 @@ export function ChoroplethGraph({
         .attr("y", 0)
         .attr("width", legendW / stops + 0.5)
         .attr("height", legendH)
-        .attr("fill", colorFn(ext[0] + t * (ext[1] - ext[0])));
+        .attr("fill", colorFn(loLeg + t * (hiLeg - loLeg)));
     }
     lg.append("text")
       .attr("x", 0).attr("y", -4)
@@ -172,11 +179,11 @@ export function ChoroplethGraph({
     lg.append("text")
       .attr("x", 0).attr("y", legendH + 12)
       .attr("font-size", 9).attr("fill", T.dim)
-      .text(`${(ext[0] * 100).toFixed(0)}%`);
+      .text(isDiverging ? "Democrat" : `${(loLeg * 100).toFixed(0)}%`);
     lg.append("text")
       .attr("x", legendW).attr("y", legendH + 12).attr("text-anchor", "end")
       .attr("font-size", 9).attr("fill", T.dim)
-      .text(`${(ext[1] * 100).toFixed(0)}%`);
+      .text(isDiverging ? "Republican" : `${(hiLeg * 100).toFixed(0)}%`);
   }, [rows, measure, colorScale, primaryEntityId, svgRef]);
 
   if (error) {
@@ -201,6 +208,38 @@ export function ChoroplethGraph({
     );
   }
 
+  // FIX-M — rows exist but nothing colours the map: no linked representatives
+  // (every measure null → the FIX-217 uniform-flat symptom) or no geometry for
+  // this band, or a degenerate sequential domain (min === max). Show an explicit
+  // "no data" overlay rather than a misleading uniform fill.
+  const measureValues = rows
+    .map(r => r.measureValue)
+    .filter((v): v is number => typeof v === "number");
+  const hasGeom = rows.some(r => r.geojson != null);
+  const extentDegenerate =
+    measureValues.length > 0 && Math.min(...measureValues) === Math.max(...measureValues);
+  const noData =
+    !hasGeom ||
+    measureValues.length === 0 ||
+    (colorScale !== "diverging" && extentDegenerate);
+
+  if (noData) {
+    return (
+      <div className={`flex items-center justify-center h-full ${className}`}>
+        <div className="text-center max-w-xs px-4">
+          <p className="text-ink text-sm font-medium">
+            No {labelFor(measure).toLowerCase()} data for {bandLabel(bandLevel)}.
+          </p>
+          <p className="text-ink-soft text-xs mt-1.5 leading-relaxed">
+            {hasGeom
+              ? "These districts have no linked representatives yet, so there's nothing to colour. Try the U.S. House band."
+              : "No boundary geometry is loaded for this band yet."}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div ref={containerRef} className={`w-full h-full ${className}`}>
       <svg id="choropleth-svg" ref={svgRef} className="w-full h-full" />
@@ -210,9 +249,34 @@ export function ChoroplethGraph({
 
 function labelFor(measure: string): string {
   switch (measure) {
-    case "party_cohesion":     return "Party cohesion";
+    // FIX-M — the voting-divergence route returns party lean (party CONTROL),
+    // not a cohesion rate; label it for what it actually is.
+    case "party_cohesion":     return "Party control";
     case "divergence":         return "Vote divergence";
     case "small_dollar_share": return "% small-dollar";
     default:                   return measure;
   }
+}
+
+// FIX-M — human label for a district band, used in the "no data" overlay.
+function bandLabel(band: string): string {
+  switch (band) {
+    case "congressional": return "U.S. House districts";
+    case "sld_u":         return "state upper-chamber districts";
+    case "sld_l":         return "state lower-chamber districts";
+    case "state":         return "states";
+    default:              return band;
+  }
+}
+
+// FIX-M — format a district's measure value. Party control (diverging) reads as
+// a party label, not a nonsensical percentage of a −1..1 scalar.
+function fmtMeasure(v: number | null, isDiverging: boolean): string {
+  if (v == null) return "no linked representative";
+  if (isDiverging) {
+    if (v <= -0.34) return "Democratic";
+    if (v >= 0.34)  return "Republican";
+    return "Mixed / Independent";
+  }
+  return `${(v * 100).toFixed(1)}%`;
 }
