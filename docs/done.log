@@ -1039,3 +1039,4 @@
 2026-07-16 | FIX-780 | fd5e98f4 | closes-as-recognized | docs(audit): FIX-780 internal-aggregating RPC cost audit — all leave-live
 2026-07-16 | FIX-471 | 97f09e07 | local+prod | fix(legistar): key council members via OfficeRecords, ending the person-flood
 2026-07-16 | FIX-544 | 8e43b3b4 | local+prod | docs(dedup): FIX-544 applied to prod; file multi-binding follow-up FIX-840 [skip vercel]
+2026-07-17 | FIX-674 | 9fb09738 | local+prod | feat(fec-ie): capture unmatched-target IE money via resolve-or-mint (FIX-674)
