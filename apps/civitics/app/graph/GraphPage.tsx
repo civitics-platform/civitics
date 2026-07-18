@@ -102,6 +102,17 @@ function PanelResizeHandle({
 
 // ── GraphPage ──────────────────────────────────────────────────────────────────
 
+// FIX-861 — /api/graph/search row types → FocusEntity type. Mirrors the shape of
+// the in-component EXPAND_TYPE_MAP, but keyed on the SEARCH API's vocabulary
+// (note "financial_entity", not the node-type "financial"). Anything off the map
+// falls back to "official" at the call site.
+const SEARCH_TYPE_MAP: Record<string, FocusEntity["type"]> = {
+  official: "official",
+  agency: "agency",
+  proposal: "proposal",
+  financial_entity: "financial",
+};
+
 interface GraphPageProps {
   initialCode?: string;
   /** Serialized snapshot state (old arch or v2 JSON). Stage 2: restore full GraphView. */
@@ -631,9 +642,14 @@ export function GraphPage({ initialCode, aiEnabled = true }: GraphPageProps = {}
     graphHooks.setVizType(vizType);
   }
 
-  function handleHeaderEntitySelect(id: string, name: string) {
+  function handleHeaderEntitySelect(id: string, name: string, entityType?: string) {
     if (id) {
-      graphHooks.addEntity({ id, name, type: "official" });
+      // FIX-861 — honour the search row's type. The API returns
+      // official/agency/proposal/financial_entity; map to the FocusEntity type
+      // so agency adds actually scope Sankey/Hierarchy/Gantt (FIX-857) instead
+      // of every add silently becoming "official". Unknown/absent → official.
+      const type = SEARCH_TYPE_MAP[entityType ?? ""] ?? "official";
+      graphHooks.addEntity({ id, name, type });
     }
   }
 
@@ -1002,10 +1018,13 @@ export function GraphPage({ initialCode, aiEnabled = true }: GraphPageProps = {}
           {/* FIX-856 — platform-scope badge. The active viz ignores focus, so
               when the user HAS focused entities, tell them this view is
               platform-wide. Keyed off the registry scope (one element here), not
-              per-viz code. */}
+              per-viz code. FIX-861 rider — pinned bottom-RIGHT (was
+              bottom-center), where it collided with the scatter X-axis label;
+              the bottom-left corner is taken by the seed badge and choropleth's
+              legend, so right is the clear corner. */}
           {view.focus.entities.length > 0 &&
             VIZ_REGISTRY.find(v => v.id === vizType)?.scope === 'platform' && (
-              <div className="pointer-events-none absolute bottom-3 left-1/2 z-30 -translate-x-1/2 rounded-full border border-amber/50 bg-card/90 px-3 py-1 shadow-lg">
+              <div className="pointer-events-none absolute bottom-3 right-3 z-30 rounded-full border border-amber/50 bg-card/90 px-3 py-1 shadow-lg">
                 <span className="font-mono text-[10px] font-medium uppercase tracking-wider text-amber">
                   Platform-wide data — not affected by focus
                 </span>

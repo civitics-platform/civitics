@@ -22,8 +22,14 @@ import { PathFinder } from '../PathFinder';
 export interface GraphHeaderProps {
   view: GraphView;
   onVizChange: (vizType: VizType) => void;
-  /** Called when the user selects a search result — ADDS to focus, not replaces */
-  onEntitySelect: (id: string, name: string) => void;
+  /**
+   * Called when the user selects a search result — ADDS to focus, not replaces.
+   * `entityType` is the search row's type (official / agency / proposal /
+   * financial_entity); threaded through (FIX-861) so the caller sets the right
+   * FocusEntity type instead of defaulting every add to "official" — which had
+   * killed header-search agency scoping for Sankey/Hierarchy/Gantt (FIX-857).
+   */
+  onEntitySelect: (id: string, name: string, entityType?: string) => void;
   onShare: () => void;
   onScreenshot: () => void;
   onFullscreen: () => void;
@@ -153,7 +159,7 @@ export function GraphHeader({
   }, [query]);
 
   function selectEntity(r: EntityResult) {
-    onEntitySelect(r.id, r.label);
+    onEntitySelect(r.id, r.label, r.type);
     setQuery('');
     setSearchOpen(false);
   }
