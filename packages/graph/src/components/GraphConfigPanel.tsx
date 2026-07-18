@@ -341,6 +341,18 @@ function ForceSettings({ view, hooks, graphMeta }: { view: GraphView; hooks: Use
         options={nodeSizeOptions}
         onChange={v => set('nodeSizeEncoding', v)}
       />
+      {/* FIX-847 — how the size magnitude maps to radius. Mirrors the treemap
+          "Size scale" control; force adds 'sqrt' (the historical default). */}
+      <LabeledSelect
+        label="Size scale"
+        value={opts?.sizeScale ?? 'sqrt'}
+        options={[
+          { value: 'sqrt',   label: 'Square root (default)' },
+          { value: 'log',    label: 'Log (tame outliers)'   },
+          { value: 'linear', label: 'Linear (true ratios)'  },
+        ]}
+        onChange={v => set('sizeScale', v)}
+      />
       <LabeledSelect
         label="Color by"
         value={opts?.nodeColorEncoding ?? 'entity_type'}

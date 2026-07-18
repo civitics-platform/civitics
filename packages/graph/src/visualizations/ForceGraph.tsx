@@ -424,13 +424,49 @@ function alignmentEdgeColor(ratio: number | null | undefined): string {
   return "rgb(var(--c-accent))";                       // misaligned
 }
 
-function getNodeRadius(node: GraphNode, sizeBy: string | undefined): number {
+// FIX-847 — hard ceiling applied in EVERY size mode. The old uncapped
+// `base + sqrt(donationTotal/100_000)*2` gave a $100M donor (~10^10 cents)
+// a +632px radius that swallowed the canvas; linear mode would be far worse.
+const MAX_NODE_RADIUS = 72;
+
+type SizeScale = NonNullable<ForceOptions["sizeScale"]>;
+
+// Map a normalized magnitude `v` (donation dollars/100k, or connection count)
+// to a radius under the chosen scale, then clamp to MAX_NODE_RADIUS.
+function scaledRadius(base: number, v: number, sizeScale: SizeScale | undefined): number {
+  const safeV = Math.max(0, v);
+  let r: number;
+  switch (sizeScale) {
+    case "log":
+      // A $1M donor (v=1000) reads ~+24px over base; a $100M donor (v=100k)
+      // stays ~+40px instead of sqrt's +632px — the whole point of log mode.
+      r = base + Math.log10(safeV + 1) * 8;
+      break;
+    case "linear":
+      // True ratios; the cap is what stops a whale from filling the canvas.
+      r = base + safeV;
+      break;
+    case "sqrt":
+    default:
+      r = base + Math.sqrt(safeV) * 2; // historical default
+      break;
+  }
+  return Math.min(r, MAX_NODE_RADIUS);
+}
+
+function getNodeRadius(
+  node: GraphNode,
+  sizeBy: string | undefined,
+  sizeScale?: SizeScale,
+): number {
   const base = getBaseRadius(node);
-  if (sizeBy === "uniform") return base;
-  if (sizeBy === "donation_total")
-    return base + Math.sqrt((node.donationTotal ?? 0) / 100_000) * 2;
-  // default: connection_count
-  return base + Math.sqrt(node.connectionCount ?? 0) * 2;
+  if (sizeBy === "uniform") return Math.min(base, MAX_NODE_RADIUS);
+  // connection_count is the default and also backs the cosmetic
+  // votes_cast/bills_sponsored/years_in_office aliases (unchanged, decision 9).
+  const v = sizeBy === "donation_total"
+    ? (node.donationTotal ?? 0) / 100_000
+    : (node.connectionCount ?? 0);
+  return scaledRadius(base, v, sizeScale);
 }
 
 function initials(name: string | undefined | null): string {
@@ -982,6 +1018,7 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
       // ── Node groups ───────────────────────────────────────────────────────
       const nodeGroup = g.append("g").attr("class", "nodes");
       const sizeBy = vizOptions?.nodeSizeEncoding ?? "connection_count";
+      const sizeScale = vizOptions?.sizeScale ?? "sqrt"; // FIX-847
 
       const nodeGrp = nodeGroup
         .selectAll<SVGGElement, SimNode>("g")
@@ -1017,7 +1054,7 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
       // Draw shapes per node type
       nodeGrp.each(function (d) {
         const el     = d3.select(this);
-        const r      = getNodeRadius(d, sizeBy);
+        const r      = getNodeRadius(d, sizeBy, sizeScale);
         // Group nodes use their metadata color; others get the paper-locked
         // light chip fill in every scope (FIX-729 "records on the terminal").
         const fill = d.type === "group"
@@ -1758,12 +1795,13 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
       if (!nodeGrp) return;
 
       const sizeBy = vizOptions?.nodeSizeEncoding ?? "connection_count";
+      const sizeScale = vizOptions?.sizeScale ?? "sqrt"; // FIX-847
 
       nodeGrp
         .selectAll<SVGGElement, SimNode>(".node-circle")
         .each(function (d) {
           const el = d3.select(this);
-          const r  = getNodeRadius(d, sizeBy);
+          const r  = getNodeRadius(d, sizeBy, sizeScale);
           d.baseRadius = r;
           const tagName = (this as SVGElement).tagName;
           const t = el.transition().duration(200);
@@ -1787,7 +1825,7 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
         .alpha(0.2)
         .restart();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [vizOptions?.nodeSizeEncoding]);
+    }, [vizOptions?.nodeSizeEncoding, vizOptions?.sizeScale]);
 
     // ── Category A — Strength filter ─────────────────────────────────────────
     // FIX-807 — folded into the single pass: this effect and the type-toggle
@@ -1882,8 +1920,12 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
       if (expandedOriginIds?.has(n.id)) return "expanded";
       const isFocus = focusEntities.some((fe) => fe.id === n.id || n.id.endsWith(`:${fe.id}`));
       if (isFocus || !EXPANDABLE_TYPES.has(n.type)) return "none";
-      const raw = n.id.replace(/^[a-z_]+:/, "");
-      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(raw)) return "none";
+      // FIX-843 — tolerate `donor-{uuid}` (group route) alongside `type:uuid`;
+      // the old prefix-strip left the hyphenated form intact so group donor
+      // nodes never offered "Expand here". Pseudo-aggregates stay non-expandable.
+      if (/^(tail|bracket):/.test(n.id)) return "none";
+      const raw = n.id.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i)?.[0];
+      if (!raw) return "none";
       return "expandable";
     }
 
@@ -1989,24 +2031,28 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
           );
         })()}
 
-        {/* Donation size scale legend */}
+        {/* Donation size scale legend — FIX-847: compute from the SAME
+            scaledRadius fn (+ active sizeScale) as the nodes, so it can't lie.
+            Amounts are in cents to match node.donationTotal's unit. */}
         {vizOptions?.nodeSizeEncoding === "donation_total" && (() => {
-          const BASE = 16;
-          const entries: { amt: number; label: string }[] = [
-            { amt: 100_000,    label: '$100K' },
-            { amt: 1_000_000,  label: '$1M'   },
-            { amt: 10_000_000, label: '$10M'  },
+          const BASE = 16; // financial-node base radius
+          const legendScale = vizOptions?.sizeScale ?? "sqrt";
+          const entries: { cents: number; label: string }[] = [
+            { cents: 10_000_000,    label: '$100K' },
+            { cents: 100_000_000,   label: '$1M'   },
+            { cents: 1_000_000_000, label: '$10M'  },
           ];
-          const maxR = BASE + Math.sqrt(10_000_000 / 100_000) * 2;
+          const radiusFor = (cents: number) => scaledRadius(BASE, cents / 100_000, legendScale);
+          const maxR = Math.max(...entries.map((e) => radiusFor(e.cents)));
           return (
             <div className="absolute bottom-4 right-4 bg-card/90 backdrop-blur-sm border border-rule rounded-lg px-2.5 py-2 shadow-sm pointer-events-none">
               <div className="text-[9px] font-semibold text-ink-soft uppercase tracking-wide mb-2">Node size</div>
               <div className="space-y-1.5">
-                {entries.map(({ amt, label }) => {
-                  const r = BASE + Math.sqrt(amt / 100_000) * 2;
+                {entries.map(({ cents, label }) => {
+                  const r = radiusFor(cents);
                   const px = Math.round(r * 1.4);
                   return (
-                    <div key={amt} className="flex items-center gap-2 text-[10px] text-ink">
+                    <div key={cents} className="flex items-center gap-2 text-[10px] text-ink">
                       <div className="flex items-center justify-center" style={{ width: Math.round(maxR * 1.4) + 2 }}>
                         <div className="rounded-full bg-amber/10 border border-amber" style={{ width: px, height: px }} />
                       </div>

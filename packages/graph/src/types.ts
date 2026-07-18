@@ -196,6 +196,16 @@ export interface ForceOptions {
     | 'state_region'
     | 'single_color'
   singleColor: string
+  /**
+   * FIX-847 — how the node-size magnitude (donation dollars / connection
+   * count) maps to radius.
+   * 'sqrt'   = base + sqrt(v)*2  — historical default.
+   * 'log'    = base + log10(v+1)*K — tames whales (a $100M donor otherwise
+   *            reaches +632px on sqrt and swallows the canvas).
+   * 'linear' = base + v — true ratios; the hard radius cap is the safety net.
+   * A hard MAX_NODE_RADIUS cap applies in ALL modes regardless of scale.
+   */
+  sizeScale?: 'sqrt' | 'log' | 'linear'
   edgeThicknessEncoding: 'amount_proportional' | 'strength_proportional' | 'uniform'
   /**
    * @deprecated FIX-804 — the global edge-opacity control was a placebo (read
