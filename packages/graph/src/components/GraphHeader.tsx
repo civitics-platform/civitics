@@ -178,6 +178,10 @@ export function GraphHeader({
   }));
   const availableViz   = standardApplicability.filter(s =>  s.result.applicable);
   const inapplicableViz = standardApplicability.filter(s => !s.result.applicable);
+  // FIX-856 — within the applicable set, split by scope so the user sees which
+  // views respond to focus (focus/hybrid) and which are always platform-wide.
+  const availableFocusViz    = availableViz.filter(s => s.viz.scope !== 'platform');
+  const availablePlatformViz = availableViz.filter(s => s.viz.scope === 'platform');
 
   function showVizToast(msg: string) {
     setVizToast(msg);
@@ -221,13 +225,32 @@ export function GraphHeader({
 
         {showVizMenu && (
           <div className="absolute top-full left-0 mt-1 w-56 bg-card border border-rule rounded-lg shadow-lg z-50 overflow-hidden">
-            {/* Available group (FIX-129) */}
-            {availableViz.length > 0 && (
+            {/* Available group, split Focus vs Platform (FIX-129 / FIX-856) */}
+            {availableFocusViz.length > 0 && (
               <>
                 <p className="px-3 py-1.5 text-[10px] font-semibold text-ink-soft/70 uppercase tracking-wider bg-paper-2 border-b border-rule/60">
-                  Available
+                  Focus views
                 </p>
-                {availableViz.map(({ viz }) => (
+                {availableFocusViz.map(({ viz }) => (
+                  <button
+                    key={viz.id}
+                    onClick={() => { onVizChange(viz.id); setShowVizMenu(false); }}
+                    className="w-full flex items-center justify-between px-3 py-2 text-xs hover:bg-ink/5 transition-colors text-ink"
+                  >
+                    <span>{viz.label}</span>
+                    {view.style.vizType === viz.id && (
+                      <span className="text-accent font-bold">✓</span>
+                    )}
+                  </button>
+                ))}
+              </>
+            )}
+            {availablePlatformViz.length > 0 && (
+              <>
+                <p className="px-3 py-1.5 text-[10px] font-semibold text-ink-soft/70 uppercase tracking-wider bg-paper-2 border-t border-b border-rule/60">
+                  Platform views
+                </p>
+                {availablePlatformViz.map(({ viz }) => (
                   <button
                     key={viz.id}
                     onClick={() => { onVizChange(viz.id); setShowVizMenu(false); }}

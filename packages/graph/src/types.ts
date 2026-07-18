@@ -801,6 +801,19 @@ export interface VizDefinition {
   requiresEntity: boolean
 
   /**
+   * FIX-856 — how the viz relates to the focus set. Drives the Focus/Platform
+   * split in the viz pickers and the "platform-wide, not affected by focus"
+   * canvas badge.
+   *   'focus'    — renders the focused entities and their connections
+   *                (force, treemap, sunburst, matrix, gantt)
+   *   'platform' — always platform-wide; ignores focus entirely
+   *                (sankey, scatter, choropleth, alignment)
+   *   'hybrid'   — scopes to focus WHEN a compatible entity/group is focused,
+   *                otherwise platform-wide (hierarchy, chord)
+   */
+  scope: 'focus' | 'platform' | 'hybrid'
+
+  /**
    * Which connection types this viz can display.
    * force/sunburst: all types. chord/treemap: ['donation'] only.
    */

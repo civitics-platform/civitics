@@ -876,6 +876,41 @@ function HierarchySettings({ view, hooks }: { view: GraphView; hooks: UseGraphVi
   );
 }
 
+// ── Choropleth settings (FIX-855) ───────────────────────────────────────────────
+// choropleth/scatter/gantt previously had NO settings entry. The band control is
+// meaningful (congressional / SLD / state geography); the measure is honest about
+// what the route actually computes — party CONTROL (Dem↔Rep lean), the only
+// measure the voting-divergence route currently produces.
+
+function ChoroplethSettings({ view, hooks }: { view: GraphView; hooks: UseGraphViewReturn }) {
+  const opts = view.style.vizOptions.choropleth;
+  function set(key: string, value: unknown) { hooks.setVizOption('choropleth', key, value); }
+
+  return (
+    <>
+      <LabeledSelect
+        label="District band"
+        value={opts?.bandLevel ?? 'congressional'}
+        options={[
+          { value: 'congressional', label: 'U.S. House districts' },
+          { value: 'sld_u',         label: 'State upper chamber' },
+          { value: 'sld_l',         label: 'State lower chamber' },
+          { value: 'state',         label: 'States' },
+        ]}
+        onChange={v => set('bandLevel', v)}
+      />
+      <LabeledSelect
+        label="Measure"
+        value={opts?.measure ?? 'party_cohesion'}
+        options={[
+          { value: 'party_cohesion', label: 'Party control (Dem ↔ Rep)' },
+        ]}
+        onChange={v => set('measure', v)}
+      />
+    </>
+  );
+}
+
 // ── Matrix settings ────────────────────────────────────────────────────────────
 
 function MatrixSettings({ view, hooks }: { view: GraphView; hooks: UseGraphViewReturn }) {
@@ -1257,23 +1292,50 @@ export function GraphConfigPanel({
                 }));
                 const available    = partitioned.filter(p =>  p.app.applicable);
                 const inapplicable = partitioned.filter(p => !p.app.applicable);
+                // FIX-856 — split applicable viz by scope so Focus and Platform
+                // views are visibly separated (mirrors the header dropdown).
+                const focusAvail    = available.filter(p => p.v.scope !== 'platform');
+                const platformAvail = available.filter(p => p.v.scope === 'platform');
                 return (
                   <>
-                    {available.map(({ v }) => (
-                      <TreeNode
-                        key={v.id}
-                        label={v.label}
-                        variant="item"
-                        collapsible={false}
-                        active={vizType === v.id}
-                        separator={false}
-                        depth={1}
-                        icon={undefined}
-                        onClick={() => hooks.setVizType(v.id as VizType)}
-                      >
-                        {null}
-                      </TreeNode>
-                    ))}
+                    {focusAvail.length > 0 && (
+                      <TreeSection label="Focus views" separator={false} defaultExpanded depth={1}>
+                        {focusAvail.map(({ v }) => (
+                          <TreeNode
+                            key={v.id}
+                            label={v.label}
+                            variant="item"
+                            collapsible={false}
+                            active={vizType === v.id}
+                            separator={false}
+                            depth={2}
+                            icon={undefined}
+                            onClick={() => hooks.setVizType(v.id as VizType)}
+                          >
+                            {null}
+                          </TreeNode>
+                        ))}
+                      </TreeSection>
+                    )}
+                    {platformAvail.length > 0 && (
+                      <TreeSection label="Platform views" separator={false} defaultExpanded depth={1}>
+                        {platformAvail.map(({ v }) => (
+                          <TreeNode
+                            key={v.id}
+                            label={v.label}
+                            variant="item"
+                            collapsible={false}
+                            active={vizType === v.id}
+                            separator={false}
+                            depth={2}
+                            icon={undefined}
+                            onClick={() => hooks.setVizType(v.id as VizType)}
+                          >
+                            {null}
+                          </TreeNode>
+                        ))}
+                      </TreeSection>
+                    )}
                     {inapplicable.length > 0 && (
                       <TreeSection
                         label="Not yet applicable"
@@ -1457,6 +1519,7 @@ export function GraphConfigPanel({
               {vizType === 'alignment' && <AlignmentSettings view={view} hooks={hooks} />}
               {vizType === 'sankey'    && <SankeySettings    view={view} hooks={hooks} />}
               {vizType === 'spending'  && <SpendingSettings  view={view} hooks={hooks} />}
+              {vizType === 'choropleth' && <ChoroplethSettings view={view} hooks={hooks} />}
             </TreeSection>
             </div>
           </>

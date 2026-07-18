@@ -101,6 +101,13 @@ export interface SankeyGraphProps {
   className?: string;
   svgRef?: RefObject<SVGSVGElement>;
   vizOptions?: Partial<SankeyOptions>;
+  /**
+   * FIX-857 — when an agency is the primary focus entity, scope the contract
+   * scan to that agency (the server has supported ?agencyId= since FIX-218).
+   * null = platform-wide (all agencies). agencyName labels the scope pill.
+   */
+  agencyId?: string | null;
+  agencyName?: string | null;
 }
 
 const DEFAULTS: SankeyOptions = {
@@ -110,7 +117,7 @@ const DEFAULTS: SankeyOptions = {
   showLabels: true,
 };
 
-export function SankeyGraph({ className = "", svgRef: externalSvgRef, vizOptions }: SankeyGraphProps) {
+export function SankeyGraph({ className = "", svgRef: externalSvgRef, vizOptions, agencyId = null, agencyName = null }: SankeyGraphProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const internalSvgRef = useRef<SVGSVGElement>(null);
   const svgRef = externalSvgRef ?? internalSvgRef;
@@ -129,7 +136,11 @@ export function SankeyGraph({ className = "", svgRef: externalSvgRef, vizOptions
     setLoading(true);
     setError(null);
 
-    fetch("/api/graph/sankey")
+    // FIX-857 — scope to the focused agency when present (?agencyId=), else
+    // platform-wide. The server (FIX-218) narrows the contract scan to
+    // from_id = agencyId.
+    const qs = agencyId ? `?agencyId=${encodeURIComponent(agencyId)}` : "";
+    fetch(`/api/graph/sankey${qs}`)
       .then((r) => r.json())
       .then((res: SankeyApiResponse | { error: string }) => {
         if ("error" in res) throw new Error(res.error);
@@ -137,7 +148,7 @@ export function SankeyGraph({ className = "", svgRef: externalSvgRef, vizOptions
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false));
-  }, []);
+  }, [agencyId]);
 
   // ── Build nodes + links from flows ──────────────────────────────────────────
   const graph = useMemo(() => {
@@ -418,9 +429,14 @@ export function SankeyGraph({ className = "", svgRef: externalSvgRef, vizOptions
     <div ref={containerRef} className={`relative overflow-hidden flex flex-col ${className}`}>
       <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 pointer-events-none">
         <span className="text-xs text-ink-soft bg-term-bg/70 px-2 py-0.5 rounded-full">
+          {/* FIX-857 — pill reflects the scope: the focused agency's spending, or
+              platform-wide (all agencies) when nothing is focused. */}
+          <span className="text-ink font-medium">
+            {agencyId ? `${agencyName ?? "Agency"} spending` : "All federal spending"}
+          </span>
           {data && data.totalCents > 0 && (
             <>
-              <span className="text-green-ink font-medium">{fmtMoney(data.totalCents)}</span>
+              <span className="ml-1 text-green-ink font-medium">{fmtMoney(data.totalCents)}</span>
               <span className="ml-1">in {data.scannedRows.toLocaleString()} contracts</span>
             </>
           )}

@@ -857,6 +857,16 @@ export function GraphPage({ initialCode, aiEnabled = true }: GraphPageProps = {}
       .map(e => e.id);
   }, [view.focus.entities]);
 
+  // ── Scatter viz props — UUID-validated focused agency IDs (FIX-857) ────────
+  // Every focused agency gets a highlight ring + peer-class emphasis; scatter
+  // data itself stays platform-wide.
+  const focusedAgencyIds = useMemo(() => {
+    return view.focus.entities
+      .filter(isFocusEntity)
+      .filter(e => e.type === "agency" && UUID_RE.test(e.id))
+      .map(e => e.id);
+  }, [view.focus.entities]);
+
   // ── Unified browser sidebar mount (FIX-762) ────────────────────────────────
   // App-side because it depends on @/lib/browse + explorer components the
   // graph package can't import; FocusTree renders it in place of the legacy
@@ -988,6 +998,19 @@ export function GraphPage({ initialCode, aiEnabled = true }: GraphPageProps = {}
               </button>
             </div>
           )}
+
+          {/* FIX-856 — platform-scope badge. The active viz ignores focus, so
+              when the user HAS focused entities, tell them this view is
+              platform-wide. Keyed off the registry scope (one element here), not
+              per-viz code. */}
+          {view.focus.entities.length > 0 &&
+            VIZ_REGISTRY.find(v => v.id === vizType)?.scope === 'platform' && (
+              <div className="pointer-events-none absolute bottom-3 left-1/2 z-30 -translate-x-1/2 rounded-full border border-amber/50 bg-card/90 px-3 py-1 shadow-lg">
+                <span className="font-mono text-[10px] font-medium uppercase tracking-wider text-amber">
+                  Platform-wide data — not affected by focus
+                </span>
+              </div>
+            )}
 
           {/* Active viz only — see FIX-205 import block at the top for why.
               The previous "all 9 mounted with opacity:0" pattern kept the D3
@@ -1195,6 +1218,8 @@ export function GraphPage({ initialCode, aiEnabled = true }: GraphPageProps = {}
                 className="w-full h-full"
                 svgRef={sankeySvgRef}
                 vizOptions={view.style.vizOptions.sankey}
+                agencyId={primaryEntity?.type === "agency" ? primaryEntity.id : null}
+                agencyName={primaryEntity?.type === "agency" ? primaryEntity.name : null}
               />
             </div>
           )}
@@ -1208,6 +1233,7 @@ export function GraphPage({ initialCode, aiEnabled = true }: GraphPageProps = {}
                 vizOptions={view.style.vizOptions.scatter}
                 primaryEntityId={primaryEntity?.id ?? null}
                 primaryGroup={primaryGroup}
+                focusedAgencyIds={focusedAgencyIds}
               />
             </div>
           )}

@@ -783,6 +783,28 @@ export const SPENDING_SANKEY_BY_SECTOR: GraphViewPreset = {
   },
 }
 
+// FIX-857 — agency-focused sankey. Empty focus (the user focuses an agency);
+// GraphPage forwards it as ?agencyId= so the sankey scopes to that agency's
+// contract → sector → vendor flows. Lower topN + no min-flow floor so a single
+// agency's mid-size awards stay visible where the platform-wide preset would
+// drown them under DoD.
+export const AGENCY_SPENDING_FLOWS: GraphViewPreset = {
+  focus: { entities: [], depth: 1, includeProcedural: false },
+  connections: buildConnections(['contract_award']),
+  style: {
+    vizType: 'sankey',
+    vizOptions: { sankey: { levels: 4, topN: 15, minFlowUsd: 0, showLabels: true } },
+  },
+  meta: {
+    name: 'Agency spending flows',
+    isPreset: true,
+    presetId: 'sankey-agency-spending',
+    isDirty: false,
+    applicableEntityTypes: ['agency'],
+    intent: 'agency-spending-flows',
+  },
+}
+
 export const AGENCIES_BY_STAFFING: GraphViewPreset = {
   focus: { entities: [], depth: 1, includeProcedural: false },
   connections: DEFAULT_CONNECTION_STATE,
@@ -838,14 +860,18 @@ export const VOTING_DIVERGENCE_MAP: GraphViewPreset = {
   connections: buildConnections(['vote_yes', 'vote_no']),
   style: {
     vizType: 'choropleth',
-    // FIX-217: TIGER (FIX-163) only ships state legislative districts; the
-    // congressional band has no boundary geometry on prod. Default to
-    // SLD-U so the choropleth has shapes to render. Congressional support
-    // can be added once a federal-district shapefile pipeline lands.
+    // FIX-855 (P3): default to the congressional band. The FIX-217 note that
+    // "congressional has no boundary geometry on prod" is stale — congressional
+    // districts are fully loaded on BOTH prod and local (436/436 with geometry,
+    // verified 2026-07-18) and federal-rep district linkage is 361/443 (prod),
+    // so the U.S. House map renders a real red/blue choropleth. SLD bands remain
+    // selectable in settings but their district_jurisdiction_id linkage is
+    // incomplete (~87% prod, ~0% on the stale local clone) — the completion
+    // backfill is filed as a separate FIX.
     vizOptions: {
       choropleth: {
         measure: 'party_cohesion',
-        bandLevel: 'sld_u',
+        bandLevel: 'congressional',
         colorScale: 'diverging',
       },
     },
@@ -922,6 +948,7 @@ export const BUILT_IN_PRESETS: GraphViewPreset[] = [
   FUNDRAISING_BY_DONOR_TYPE,
   TREEMAP_INDIVIDUALS_BY_STATE,
   SPENDING_SANKEY_BY_SECTOR,
+  AGENCY_SPENDING_FLOWS,
   AGENCIES_BY_STAFFING,
   LEADERSHIP_TENURE_GANTT,
   VOTING_DIVERGENCE_MAP,

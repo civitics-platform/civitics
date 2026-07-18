@@ -11,7 +11,7 @@
  * Powers the "Agencies by Staffing" preset.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import * as d3 from "d3";
 import type { RefObject } from "react";
 import type { ScatterOptions, FocusGroup } from "./types";
@@ -37,6 +37,12 @@ export interface ScatterGraphProps {
   vizOptions?: Partial<ScatterOptions>;
   primaryEntityId?: string | null;
   primaryGroup?: FocusGroup | null;
+  /**
+   * FIX-857 — all focused agency ids. Every one gets a highlight ring (not just
+   * the primary), and agencies sharing a focused agency's agencyType are the
+   * emphasised "peer class"; the rest are ghosted. Data stays platform-wide.
+   */
+  focusedAgencyIds?: string[];
 }
 
 // ── Color palette by agency type ──────────────────────────────────────────────
@@ -63,6 +69,7 @@ export function ScatterGraph({
   svgRef: externalSvgRef,
   vizOptions,
   primaryEntityId,
+  focusedAgencyIds,
 }: ScatterGraphProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const internalRef  = useRef<SVGSVGElement>(null);
@@ -100,7 +107,14 @@ export function ScatterGraph({
       .finally(() => setLoading(false));
   }, []);
 
-  useEffect(() => {
+  // FIX-857 / FIX-P — draw is a useCallback so BOTH the data effect and the
+  // ResizeObserver below can invoke it. Scatter was the one viz in the FIX-733
+  // trio (with choropleth/gantt) that lacked a ResizeObserver, so it drew exactly
+  // once at mount-time container size and never redrew — the "blank canvas on
+  // prod despite 122 rows" symptom (26 agencies are plottable on prod's default
+  // axes, so it was a render-timing gap, not missing data). Observing the
+  // container guarantees a draw once it has real dimensions.
+  const draw = useCallback(() => {
     if (!svgRef.current || rows.length === 0) return;
     const svgEl = svgRef.current;
     const svg = d3.select(svgEl);
@@ -149,6 +163,18 @@ export function ScatterGraph({
       .nice();
     const rScale = d3.scaleSqrt().domain(sExtent).range([3, 22]);
 
+    // FIX-857 — rings for ALL focused agencies (not just the primary); peer-class
+    // emphasis by the focused agencies' agencyType (ghost the rest). Data stays
+    // platform-wide — this is client-side highlight only.
+    const ringIds = new Set<string>([
+      ...(focusedAgencyIds ?? []),
+      ...(primaryEntityId ? [primaryEntityId] : []),
+    ]);
+    const focusedTypes = new Set(
+      filtered.filter(r => ringIds.has(r.agencyId)).map(r => r.agencyType),
+    );
+    const peerActive = focusedTypes.size > 0;
+
     const g = svg
       .attr("viewBox", `0 0 ${width} ${height}`)
       .append("g")
@@ -189,9 +215,13 @@ export function ScatterGraph({
       .attr("cy", d => yScale(yValue(d)))
       .attr("r",  d => rScale(sValue(d)))
       .attr("fill", d => resolveColor(colorForType(d.agencyType), svgEl))
-      .attr("fill-opacity", d => d.agencyId === primaryEntityId ? 0.9 : 0.55)
-      .attr("stroke", d => d.agencyId === primaryEntityId ? T.amber : T.termBg)
-      .attr("stroke-width", d => d.agencyId === primaryEntityId ? 2.5 : 0.75)
+      .attr("fill-opacity", d => {
+        if (ringIds.has(d.agencyId)) return 0.95;
+        if (peerActive) return focusedTypes.has(d.agencyType) ? 0.6 : 0.12;
+        return 0.55;
+      })
+      .attr("stroke", d => ringIds.has(d.agencyId) ? T.amber : T.termBg)
+      .attr("stroke-width", d => ringIds.has(d.agencyId) ? 2.5 : 0.75)
       .style("cursor", "pointer");
 
     dots.append("title").text(d =>
@@ -214,7 +244,21 @@ export function ScatterGraph({
         .attr("fill", T.ink)
         .text(d => d.agencyAcronym ?? d.agencyName);
     }
-  }, [rows, xAxis, yAxis, sizeBy, showLabels, logXAxis, logYAxis, primaryEntityId, svgRef]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows, xAxis, yAxis, sizeBy, showLabels, logXAxis, logYAxis, primaryEntityId, focusedAgencyIds, svgRef]);
+
+  // FIX-P — draw on data/option change AND on container resize. The initial
+  // ro.observe() fires synchronously with the current size, so the first real
+  // draw happens as soon as the container has dimensions — fixing the
+  // draw-once-at-zero-size blank canvas.
+  useEffect(() => {
+    draw();
+    const container = containerRef.current;
+    if (!container) return;
+    const ro = new ResizeObserver(() => draw());
+    ro.observe(container);
+    return () => ro.disconnect();
+  }, [draw]);
 
   if (error) {
     return (

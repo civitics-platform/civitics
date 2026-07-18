@@ -99,6 +99,7 @@ function donationCount(graphMeta?: VizApplicabilityMeta): number {
 export const VIZ_REGISTRY: VizRegistryEntry[] = [
   {
     id: 'force',
+    scope: 'focus',
     label: 'Force Graph',
     civicQuestion: 'How is this official connected to donors and legislation?',
     description: 'Organic force-directed layout reveals clusters and bridge nodes',
@@ -128,6 +129,7 @@ export const VIZ_REGISTRY: VizRegistryEntry[] = [
 
   {
     id: 'treemap',
+    scope: 'focus',
     label: 'Treemap',
     civicQuestion: 'Which officials receive the most donor money?',
     description: 'Officials sized by donations received, grouped by party',
@@ -160,6 +162,7 @@ export const VIZ_REGISTRY: VizRegistryEntry[] = [
 
   {
     id: 'chord',
+    scope: 'hybrid',
     label: 'Chord Diagram',
     civicQuestion: 'Which industries fund which political groups — and how much?',
     description: 'Flows between donor industries and recipient party groups',
@@ -198,6 +201,7 @@ export const VIZ_REGISTRY: VizRegistryEntry[] = [
 
   {
     id: 'sunburst',
+    scope: 'focus',
     label: 'Sunburst',
     civicQuestion: "What is this official's full relationship profile?",
     description: 'Concentric rings show votes, donors, and oversight connections',
@@ -226,6 +230,7 @@ export const VIZ_REGISTRY: VizRegistryEntry[] = [
 
   {
     id: 'hierarchy',
+    scope: 'hybrid',
     label: 'Hierarchy',
     civicQuestion: 'How is this department structured, and where is the money concentrated?',
     description: 'Tree/dendrogram of agency org structure, sized by contract budget',
@@ -254,6 +259,7 @@ export const VIZ_REGISTRY: VizRegistryEntry[] = [
 
   {
     id: 'spending',
+    scope: 'hybrid',
     label: 'Spending',
     civicQuestion: 'How is taxpayer money flowing to government contractors?',
     description: 'Contract flows from agencies to recipient companies by NAICS sector',
@@ -287,6 +293,7 @@ export const VIZ_REGISTRY: VizRegistryEntry[] = [
 
   {
     id: 'matrix',
+    scope: 'focus',
     label: 'Matrix',
     civicQuestion: 'Which officials vote together — and which break ranks?',
     description: 'N×N heatmap of pairwise vote agreement; sortable, clusterable',
@@ -317,6 +324,7 @@ export const VIZ_REGISTRY: VizRegistryEntry[] = [
 
   {
     id: 'alignment',
+    scope: 'platform',
     label: 'Alignment',
     civicQuestion: 'How well do my reps vote with me?',
     description: 'Radial bar chart — YOU at centre, reps fan out by alignment ratio',
@@ -350,6 +358,12 @@ export const VIZ_REGISTRY: VizRegistryEntry[] = [
 
   {
     id: 'sankey',
+    // FIX-857 — hybrid, not platform: sankey scopes to a focused AGENCY via
+    // ?agencyId= (the same wiring hierarchy uses, which is also 'hybrid'), and is
+    // platform-wide otherwise. Classifying it 'platform' would fire the
+    // "not affected by focus" badge on the agency-scoped "Agency spending flows"
+    // preset, contradicting the scoped render.
+    scope: 'hybrid',
     label: 'Sankey',
     civicQuestion: 'Where does federal contract money flow — Treasury → agency → sector → vendor?',
     description: 'Multi-tier flow diagram of contract budget down to top vendors',
@@ -379,6 +393,7 @@ export const VIZ_REGISTRY: VizRegistryEntry[] = [
   // FIX-217 — Scatter: agencies plotted on configurable X/Y axes.
   {
     id: 'scatter',
+    scope: 'platform',
     label: 'Scatter',
     civicQuestion: 'Are larger agencies more politically appointed — or less?',
     description: 'Agencies plotted by FTE × appointments × spending; bubble size encodes one axis',
@@ -414,6 +429,7 @@ export const VIZ_REGISTRY: VizRegistryEntry[] = [
   // FIX-217 — Choropleth: per-district map of a derived metric.
   {
     id: 'choropleth',
+    scope: 'platform',
     label: 'Choropleth Map',
     civicQuestion: 'Where do districts diverge from their party line?',
     description: 'Per-district map; color encodes within-district party-cohesion or vote divergence',
@@ -443,6 +459,7 @@ export const VIZ_REGISTRY: VizRegistryEntry[] = [
   // FIX-217 — Gantt: time-tenure bars for agency leadership.
   {
     id: 'gantt',
+    scope: 'focus',
     label: 'Tenure Gantt',
     civicQuestion: 'Who has led this agency, and for how long?',
     description: 'Per-position tenure bars — start/end dates, party color, current vs past',
