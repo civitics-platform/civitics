@@ -5,6 +5,7 @@ import { SpeedInsights } from "@vercel/speed-insights/next";
 import { AuthHashHandler } from "./components/AuthHashHandler";
 import { ChallengeModal } from "./components/ChallengeModal";
 import { Footer } from "./components/Footer";
+import { FooterGate } from "./components/FooterGate";
 import { NavBar } from "./components/NavBar";
 import { WebVitalsReporter } from "./components/WebVitalsReporter";
 import "./globals.css";
@@ -65,7 +66,9 @@ export default function RootLayout({
       <body className="font-sans">
         <NavBar />
         {children}
-        <Footer />
+        <FooterGate>
+          <Footer />
+        </FooterGate>
         <AuthHashHandler />
         <ChallengeModal />
         <WebVitalsReporter />

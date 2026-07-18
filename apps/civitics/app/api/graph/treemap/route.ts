@@ -107,12 +107,15 @@ export async function GET(request: Request) {
         // Tail bucket: a per-donor floor hides the small-donor long tail, so
         // only emit the "Other" leaf when no floor is set.
         if (minAmountCents > 0 || cents <= 0) continue;
+        // FIX-845 — the small-dollar tail is individual money; label it
+        // "Individual donors (N)", never "Other". entity_type marks it as the
+        // synthetic aggregate so TreemapGraph.prettyDonorType renders it right.
         rows.push({
           donor_id: `tail:${validEntityId}`,
-          donor_name: `Other (${Number(r.tail_donor_count ?? 0).toLocaleString()} donors)`,
-          industry_category: "Other",
+          donor_name: `Individual donors (${Number(r.tail_donor_count ?? 0).toLocaleString()})`,
+          industry_category: "Individual donors",
           amount_usd: cents / 100,
-          entity_type: "other",
+          entity_type: "individual_aggregate",
         });
         continue;
       }
@@ -120,7 +123,11 @@ export async function GET(request: Request) {
       rows.push({
         donor_id: r.donor_id,
         donor_name: r.donor_name ?? "Unknown",
-        industry_category: r.industry_label ?? "Other",
+        // FIX-845 — every named individual has industry_label NULL, so an
+        // untagged individual is "Individual donors", not the catch-all "Other".
+        industry_category:
+          r.industry_label ??
+          (r.entity_type === "individual" ? "Individual donors" : "Other"),
         amount_usd: cents / 100,
         entity_type: r.entity_type ?? "financial",
       });

@@ -8,7 +8,7 @@
  * Import useTooltip for state management alongside this component.
  */
 
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import type { GraphNode } from '../types';
 
 export interface TooltipProps {
@@ -100,10 +100,20 @@ export function useTooltip() {
     visible: false,
   });
 
-  const show = (node: GraphNode, x: number, y: number) =>
-    setTooltip({ node, x, y, visible: true });
+  // FIX-844 — stable identities. Any viz that lists show/hide in a d3-render
+  // dep array (TreemapGraph) would otherwise rebuild its whole SVG on every
+  // mousemove, killing real-mouse clicks (the cell is torn down between
+  // mousedown and mouseup). The setState setter is stable, so deps are [].
+  const show = useCallback(
+    (node: GraphNode, x: number, y: number) =>
+      setTooltip({ node, x, y, visible: true }),
+    [],
+  );
 
-  const hide = () => setTooltip((t) => ({ ...t, visible: false }));
+  const hide = useCallback(
+    () => setTooltip((t) => ({ ...t, visible: false })),
+    [],
+  );
 
   return { tooltip, show, hide };
 }

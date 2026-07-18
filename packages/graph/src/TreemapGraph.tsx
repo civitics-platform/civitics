@@ -158,6 +158,10 @@ function prettyDonorType(entityType: string): string {
     case 'corporation':     return 'Corporations';
     case 'union':           return 'Unions';
     case 'individual':      return 'Individuals';
+    // FIX-845 — the small-dollar tail aggregate + the explicit catch-all so
+    // the default branch never prints a raw lowercase "other".
+    case 'individual_aggregate': return 'Individual donors';
+    case 'other':           return 'Other';
     default:                return entityType || 'Other';
   }
 }
