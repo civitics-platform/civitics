@@ -259,6 +259,9 @@ export function useGraphData(
           groupName: group.name,
           groupIcon: group.icon,
           groupColor: group.color,
+          // FIX-842 — forward the Top-donors cap so the dropdown actually
+          // changes the group's donor count (route clamps to ≤100).
+          limit: String(donationLimit),
         });
 
         if (group.filter.chamber)  params.set('chamber',  group.filter.chamber);
@@ -347,7 +350,14 @@ export function useGraphData(
   // entity. The set-difference vs the current graph is recorded so a later
   // collapse removes exactly what this expansion introduced.
   const expandNode = useCallback(async (originId: string) => {
-    const cleanId = originId.replace(/^[a-z_]+:/, '');
+    // FIX-843 — group donor nodes arrive as `donor-{uuid}` (no `type:` colon),
+    // which the old prefix-strip left intact → UUID_RE failed → the node was
+    // silently non-expandable. Extract the first uuid anywhere in the id, but
+    // never expand the synthetic tail/bracket aggregates (their uuid is the
+    // official's, not a real neighbor to fetch).
+    if (/^(tail|bracket):/.test(originId)) return;
+    const uuidMatch = originId.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+    const cleanId = uuidMatch ? uuidMatch[0] : originId.replace(/^[a-z_]+:/, '');
     if (!UUID_RE.test(cleanId)) return;               // groups / user / brackets aren't expandable
     if (expansions.current.has(originId)) return;     // already expanded
 

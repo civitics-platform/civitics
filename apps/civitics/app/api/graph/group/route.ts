@@ -7,6 +7,7 @@ import { supabaseUnavailable, unavailableResponse, withDbTimeout } from "@/lib/s
 import { fetchAllRows } from "@/lib/paginate";
 import { isGbExpandableJurisdictionType } from "@/lib/graph-seedable-kinds";
 import type { GraphEdgeV2 as GraphEdge, GraphNodeV2 as GraphNode, NodeTypeV2 as NodeType } from "@civitics/graph";
+import { DEFAULT_DONATION_LIMIT } from "@civitics/graph";
 
 // Local extensions — group route adds metadata and id fields not in base types
 type ResponseNode = GraphNode & { metadata?: Record<string, unknown> };
@@ -197,7 +198,9 @@ export async function GET(req: NextRequest) {
   const groupName  = searchParams.get("groupName")  ?? "Group";
   const groupIcon  = searchParams.get("groupIcon")  ?? "👥";
   const groupColor = searchParams.get("groupColor") ?? "#6366f1";
-  const limit      = Math.min(parseInt(searchParams.get("limit") ?? "50"), 100);
+  // FIX-842 — default aligns to the shared client cap (25) so an unset limit
+  // matches the Top-donors dropdown default; still clamped to ≤100.
+  const limit      = Math.min(parseInt(searchParams.get("limit") ?? String(DEFAULT_DONATION_LIMIT)), 100);
 
   const supabase = createAdminClient();
 

@@ -46,7 +46,7 @@ export { MAX_FOCUS_ENTITIES, isFocusGroup, isFocusEntity, isSelectionGroup, BRAC
 
 // ── Presets + connections ───────────────────────────────────────────────────
 export { DEFAULT_GRAPH_VIEW, BUILT_IN_PRESETS, applyPreset, markDirty } from "./presets";
-export { CONNECTION_TYPE_REGISTRY, DEFAULT_CONNECTION_STATE } from "./connections";
+export { CONNECTION_TYPE_REGISTRY, DEFAULT_CONNECTION_STATE, DEFAULT_DONATION_LIMIT } from "./connections";
 
 // ── Saved views (FIX-817) ───────────────────────────────────────────────────
 export {

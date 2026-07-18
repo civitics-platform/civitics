@@ -58,7 +58,17 @@ export function NodePopup({ node, onClose, actions, vizType, expandState = 'none
   // via the institutions UNION view (FIX-418).
   const isDonor  = ['financial', 'pac', 'corporation', 'individual'].includes(node.type);
   const isAgency = node.type === 'agency';
-  const rawEntityId = node.id.replace(/^[a-z_]+:/, '');
+  // FIX-843 — node ids arrive in three shapes: bare uuid (treemap named donor),
+  // `type:uuid` (force nodes), and `donor-{uuid}` (group route). The old
+  // prefix-strip only handled the middle form, so `donor-{uuid}` 404'd at
+  // /donors/{id}. Extract the first UUID anywhere in the id; fall back to the
+  // strip for any id without one.
+  const uuidMatch = node.id.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+  const rawEntityId = uuidMatch ? uuidMatch[0] : node.id.replace(/^[a-z_]+:/, '');
+  // FIX-843 — `tail:{officialUuid}` and `bracket:*` are synthetic aggregates,
+  // not real financial_entities; the uuid inside is the OFFICIAL's, so a donor
+  // deep-link would target the wrong entity. Suppress the profile button.
+  const isPseudoNode = /^(tail|bracket):/.test(node.id);
 
   const displayName = node.name ?? 'Unknown';
 
@@ -397,8 +407,8 @@ export function NodePopup({ node, onClose, actions, vizType, expandState = 'none
             </button>
           )}
 
-          {/* View donor profile (FIX-805) */}
-          {isDonor && (
+          {/* View donor profile (FIX-805) — hidden for pseudo-nodes (FIX-843) */}
+          {isDonor && !isPseudoNode && (
             <button
               onClick={() => window.open(`/donors/${rawEntityId}`, '_blank')}
               className="w-full text-left px-3 py-2 rounded-lg text-sm text-ink hover:bg-ink/5 flex items-center gap-2 transition-colors"
