@@ -1070,3 +1070,5 @@
 2026-07-18 | FIX-848 | ddf59524 | prod-only | chore(graph): record prod verification of FIX-848/FIX-862 treemap brackets RPC [skip vercel]
 2026-07-18 | FIX-862 | ddf59524 | prod-only | chore(graph): record prod verification of FIX-848/FIX-862 treemap brackets RPC [skip vercel]
 2026-07-18 | FIX-868 | e3947b5c | local+prod | feat(graph): materialize treemap individual-donor brackets off the FIX-704 dirty set
+2026-07-19 | FIX-870 | 67ffa661 | local-only | fix(edgar): parse multi-year <br> SCT comp cells — take first fiscal-year line
+2026-07-19 | FIX-871 | 819a06ec | local-only | fix(pipelines): bounded 502/503/504 backoff in fetchJson
