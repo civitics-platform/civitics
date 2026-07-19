@@ -146,6 +146,30 @@ export type Database = {
           },
         ]
       }
+      agency_staffing_rollup: {
+        Row: {
+          agency_id: string
+          appointment_count: number
+          contract_cents: number
+          grant_cents: number
+          updated_at: string
+        }
+        Insert: {
+          agency_id: string
+          appointment_count?: number
+          contract_cents?: number
+          grant_cents?: number
+          updated_at?: string
+        }
+        Update: {
+          agency_id?: string
+          appointment_count?: number
+          contract_cents?: number
+          grant_cents?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       agenda_items: {
         Row: {
           created_at: string
@@ -4019,6 +4043,27 @@ export type Database = {
           },
         ]
       }
+      official_donor_bracket_totals: {
+        Row: {
+          donor_count: number
+          official_id: string
+          tier: string
+          total_cents: number
+        }
+        Insert: {
+          donor_count: number
+          official_id: string
+          tier: string
+          total_cents: number
+        }
+        Update: {
+          donor_count?: number
+          official_id?: string
+          tier?: string
+          total_cents?: number
+        }
+        Relationships: []
+      }
       official_donor_rollup_mv: {
         Row: {
           donor_id: string | null
@@ -4058,6 +4103,78 @@ export type Database = {
           tail_donor_count?: number | null
           total_cents?: number
           tx_count?: number
+        }
+        Relationships: []
+      }
+      official_donor_totals: {
+        Row: {
+          donor_count: number
+          individual_cents: number | null
+          official_id: string
+          pac_cents: number | null
+          total_cents: number
+          updated_at: string
+        }
+        Insert: {
+          donor_count: number
+          individual_cents?: number | null
+          official_id: string
+          pac_cents?: number | null
+          total_cents: number
+          updated_at?: string
+        }
+        Update: {
+          donor_count?: number
+          individual_cents?: number | null
+          official_id?: string
+          pac_cents?: number | null
+          total_cents?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      official_sector_affinity_rollup: {
+        Row: {
+          donor_count: number
+          industry: string
+          official_id: string
+          total_cents: number
+          updated_at: string
+        }
+        Insert: {
+          donor_count: number
+          industry: string
+          official_id: string
+          total_cents: number
+          updated_at?: string
+        }
+        Update: {
+          donor_count?: number
+          industry?: string
+          official_id?: string
+          total_cents?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      official_small_dollar_rollup: {
+        Row: {
+          official_id: string
+          small_dollar_cents: number
+          small_dollar_count: number
+          updated_at: string
+        }
+        Insert: {
+          official_id: string
+          small_dollar_cents?: number
+          small_dollar_count?: number
+          updated_at?: string
+        }
+        Update: {
+          official_id?: string
+          small_dollar_cents?: number
+          small_dollar_count?: number
+          updated_at?: string
         }
         Relationships: []
       }
@@ -4999,6 +5116,33 @@ export type Database = {
         }
         Relationships: []
       }
+      treemap_individuals_rollup: {
+        Row: {
+          donation_count: number
+          donor_name: string
+          rank: number
+          scope_id: string
+          state: string
+          total_cents: number
+        }
+        Insert: {
+          donation_count: number
+          donor_name: string
+          rank: number
+          scope_id: string
+          state: string
+          total_cents: number
+        }
+        Update: {
+          donation_count?: number
+          donor_name?: string
+          rank?: number
+          scope_id?: string
+          state?: string
+          total_cents?: number
+        }
+        Relationships: []
+      }
       user_custom_groups: {
         Row: {
           color: string | null
@@ -5607,6 +5751,10 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      agency_staffing_rebuild_agencies: {
+        Args: { p_agencies: string[] }
+        Returns: number
+      }
       author_excluded_from_standing: {
         Args: { p_user_id: string }
         Returns: boolean
@@ -6074,6 +6222,7 @@ export type Database = {
       get_jurisdiction_page_live: { Args: { p_id: string }; Returns: Json }
       get_official_bipartisan_stats: { Args: never; Returns: Json }
       get_official_donor_rollup: { Args: never; Returns: Json }
+      get_official_donor_rollup_full: { Args: never; Returns: Json }
       get_official_donors: {
         Args: { p_official_id: string }
         Returns: {
@@ -6265,6 +6414,7 @@ export type Database = {
           type: string
         }[]
       }
+      get_treemap_individuals: { Args: { p_scope: string }; Returns: Json }
       get_user_receipts: {
         Args: { p_limit?: number }
         Returns: {
@@ -6340,6 +6490,7 @@ export type Database = {
       link_federal_reps_to_districts: { Args: never; Returns: number }
       link_officials_to_districts: { Args: never; Returns: number }
       normalize_pv_path: { Args: { p: string }; Returns: string }
+      official_donor_totals_backfill: { Args: never; Returns: number }
       official_is_content_bearing: { Args: { p_id: string }; Returns: boolean }
       promote_candidate_to_elected: {
         Args: { p_candidate_id: string; p_elected_id: string }
@@ -6628,6 +6779,10 @@ export type Database = {
           subtitle: string
         }[]
       }
+      sector_affinity_rebuild_officials: {
+        Args: { p_recipients: string[] }
+        Returns: number
+      }
       set_community_note_endorsement: {
         Args: { p_endorsed: boolean; p_note_id: string }
         Returns: Json
@@ -6691,6 +6846,10 @@ export type Database = {
       set_statement_vote: {
         Args: { p_statement_id: string; p_vote: number }
         Returns: Json
+      }
+      small_dollar_rebuild_officials: {
+        Args: { p_recipients: string[] }
+        Returns: number
       }
       source_priority: { Args: { src: string }; Returns: number }
       submit_comment: {
@@ -6758,6 +6917,22 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      treemap_individual_brackets_for_official: {
+        Args: { p_official: string }
+        Returns: Json
+      }
+      treemap_individual_brackets_for_official_live: {
+        Args: { p_official: string }
+        Returns: Json
+      }
+      treemap_individual_brackets_rebuild_officials: {
+        Args: { p_officials: string[] }
+        Returns: number
+      }
+      treemap_individuals_rebuild_officials: {
+        Args: { p_officials: string[] }
+        Returns: number
       }
       treemap_officials_by_donations:
         | {
@@ -7346,3 +7521,4 @@ export const Constants = {
     },
   },
 } as const
+

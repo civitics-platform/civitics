@@ -192,8 +192,7 @@ export async function GET(request: Request) {
     // floor keeps the pre-change behavior of hiding the aggregate: emit only
     // brackets whose ceiling clears the floor, and no residual.
     if (donationTailCents > 0) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data: brData, error: brErr } = await (supabase as any).rpc(
+      const { data: brData, error: brErr } = await supabase.rpc(
         "treemap_individual_brackets_for_official",
         { p_official: validEntityId },
       );
@@ -210,8 +209,9 @@ export async function GET(request: Request) {
           });
         }
       } else {
+        const brackets = brData as { tiers?: Array<{ tier: string; total_cents: number; donor_count: number }> };
         const tierMap = new Map<string, { cents: number; count: number }>();
-        for (const t of ((brData.tiers ?? []) as Array<{ tier: string; total_cents: number; donor_count: number }>)) {
+        for (const t of (brackets.tiers ?? [])) {
           tierMap.set(t.tier, { cents: Number(t.total_cents) || 0, count: Number(t.donor_count) || 0 });
         }
         // Subtract each named individual from its bracket (no double count).
