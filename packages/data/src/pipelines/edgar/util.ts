@@ -43,7 +43,25 @@ export function accessionPathSegment(accession: string): string {
  */
 export function parseUsdCents(raw: string | null | undefined): number | null {
   if (!raw) return null;
-  const cleaned = raw.replace(/[$,\s]/g, "").trim();
+  // FIX-870: some DEF 14A Summary Compensation Tables pack all three disclosed
+  // fiscal years into ONE cell separated by <br> — which cellText() converts to
+  // "\n". Left as-is, the whitespace strip below would concatenate the three
+  // numbers into a single oversized integer that the FIX-742 guard then
+  // (correctly) drops. But because EVERY numeric cell in that row fails
+  // identically, extractRowFromCells finds no comp value and drops the whole
+  // officer row — deterministic zero-officer coverage for this layout class.
+  // Take the first digit-bearing line: SCTs list fiscal years most-recent-first,
+  // which matches effectiveYear (derived from the filing year in def14a.ts).
+  let value = raw;
+  if (value.includes("\n")) {
+    const firstNumericLine = value
+      .split("\n")
+      .map((line) => line.trim())
+      .find((line) => line.length > 0 && /\d/.test(line));
+    if (firstNumericLine === undefined) return null;
+    value = firstNumericLine;
+  }
+  const cleaned = value.replace(/[$,\s]/g, "").trim();
   if (!cleaned) return null;
   const n = Number(cleaned);
   if (!Number.isFinite(n)) return null;

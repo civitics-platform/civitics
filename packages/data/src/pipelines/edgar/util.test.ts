@@ -38,3 +38,19 @@ test("parseUsdCents: null / empty / non-numeric → null", () => {
   assert.equal(parseUsdCents(""), null);
   assert.equal(parseUsdCents("abc"), null);
 });
+
+test("parseUsdCents: multi-year <br> comp cell takes the first (most-recent-FY) line (FIX-870)", () => {
+  // The exact three-fiscal-years-in-one-cell string from the 2026-07-19 log
+  // (cellText converts <br> → \n; trailing spaces included). Pre-FIX-870 the
+  // whitespace strip concatenated all three into an oversized integer that the
+  // FIX-742 guard dropped, silently killing the whole officer row.
+  assert.equal(parseUsdCents("8,495,829   \n7,666,172   \n8,348,656"), 849582900);
+  assert.equal(parseUsdCents("338,293\n289,794\n236,976"), 33829300);
+  // First digit-bearing line wins even when a non-numeric line precedes it.
+  assert.equal(parseUsdCents("Total\n1,234,567"), 123456700);
+  // A single-line value is unchanged by the multi-line branch (regression).
+  assert.equal(parseUsdCents("$1,234,567"), 123456700);
+  // A multi-year Year cell parses to its first year and is rejected upstream by
+  // MIN_REAL_COMP_CENTS (verified here as a small-but-valid parse, not an error).
+  assert.equal(parseUsdCents("2025\n2024\n2023"), 202500);
+});
