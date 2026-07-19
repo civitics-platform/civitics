@@ -42,6 +42,14 @@ export async function fetchJson<T>(
   retries = 1
 ): Promise<T> {
   let lastErr: Error | null = null;
+  // FIX-871: transient gateway 5xx (502/503/504) get a bounded in-attempt
+  // back-off loop (15s → 30s → 60s) *before* the generic retry budget is spent,
+  // so a gateway blip doesn't propagate and truncate a caller's pagination — the
+  // OpenStates per-state bills loop `break`s on the first thrown page, so a
+  // single 504 dropped MN to page 1 of 3 (2026-07-19). Request-scoped (unlike
+  // the per-attempt rateLimitCount) so the total added wait stays bounded at
+  // ~105s regardless of the retry budget.
+  let gatewayErrorCount = 0;
   for (let attempt = 0; attempt <= retries; attempt++) {
     if (attempt > 0) {
       console.log(`  Retrying in 30s (attempt ${attempt + 1})...`);
@@ -61,6 +69,15 @@ export async function fetchJson<T>(
               console.warn(`  Rate limited (429) — backing off ${backoffMs / 1000}s...`);
               await sleep(backoffMs);
               rateLimitCount++;
+              continue;
+            }
+          }
+          if (res.status === 502 || res.status === 503 || res.status === 504) {
+            if (gatewayErrorCount < 3) {
+              const backoffMs = 15_000 * Math.pow(2, gatewayErrorCount); // 15s, 30s, 60s
+              console.warn(`  Gateway error (${res.status}) — backing off ${backoffMs / 1000}s (${gatewayErrorCount + 1}/3)...`);
+              await sleep(backoffMs);
+              gatewayErrorCount++;
               continue;
             }
           }
