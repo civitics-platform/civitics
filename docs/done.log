@@ -1072,3 +1072,6 @@
 2026-07-18 | FIX-868 | e3947b5c | local+prod | feat(graph): materialize treemap individual-donor brackets off the FIX-704 dirty set
 2026-07-19 | FIX-870 | 67ffa661 | local-only | fix(edgar): parse multi-year <br> SCT comp cells — take first fiscal-year line
 2026-07-19 | FIX-871 | 819a06ec | local-only | fix(pipelines): bounded 502/503/504 backoff in fetchJson
+2026-07-19 | FIX-824 | b712548b | local-only | perf(tags): count-anti-join AI-tagger cost estimate (FIX-824)
+2026-07-19 | FIX-837 | 822549c6 | local+prod | perf(tags): materialize get_official_bipartisan_stats into official_vote_stats (FIX-837)
+2026-07-19 | FIX-869 | 118c5131 | local+prod | perf(db): source focused-backfill work-lists from official_donor_totals (FIX-869)
