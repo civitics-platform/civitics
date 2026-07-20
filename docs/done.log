@@ -1075,3 +1075,5 @@
 2026-07-19 | FIX-824 | b712548b | local-only | perf(tags): count-anti-join AI-tagger cost estimate (FIX-824)
 2026-07-19 | FIX-837 | 822549c6 | local+prod | perf(tags): materialize get_official_bipartisan_stats into official_vote_stats (FIX-837)
 2026-07-19 | FIX-869 | 118c5131 | local+prod | perf(db): source focused-backfill work-lists from official_donor_totals (FIX-869)
+2026-07-19 | FIX-507 | b3d9700a | closes-as-superseded | feat(graph): materialize contract-flow rollups for /api/graph/spending
+2026-07-19 | FIX-838 | b3d9700a | local+prod | feat(graph): materialize contract-flow rollups for /api/graph/spending
