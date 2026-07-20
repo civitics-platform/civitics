@@ -423,6 +423,25 @@ const AI_TABLE_BY_ENTITY: Record<"proposal" | "official", string> = {
 const SAFE_IDENT = /^[a-z_][a-z0-9_]*$/i;
 
 /**
+ * Shared "untagged" predicate for the AI-topic taggers: an entity of the given
+ * type with NO (entity_type, generated_by='ai', tag_category='topic') row in
+ * entity_tags. Aliased `p` (the entity) / `t` (the tag), binds entity_type as $1.
+ * Both the candidate SELECT (fetchUntaggedForAi) and the cost-estimate COUNT
+ * (countUntaggedForAi) build on this one fragment so they can never drift
+ * (FIX-824). `activeOnly` appends the officials is_active guard.
+ */
+function untaggedWhere(activeOnly: boolean): string {
+  const activeClause = activeOnly ? "AND p.is_active = true" : "";
+  return (
+    `WHERE NOT EXISTS (` +
+    `SELECT 1 FROM public.entity_tags t ` +
+    `WHERE t.entity_type = $1 AND t.entity_id = p.id ` +
+    `AND t.generated_by = 'ai' AND t.tag_category = 'topic') ` +
+    `${activeClause}`
+  );
+}
+
+/**
  * FIX-823 — server-side anti-join for AI-untagged entities. Replaces the
  * load-entire-table-into-Node + fetchDistinctIds + in-memory-filter pattern
  * (two full scans on the cold Micro to feed a maxCostCents-capped run that only
@@ -450,14 +469,9 @@ export async function fetchUntaggedForAi<T>(
     if (!SAFE_IDENT.test(c)) throw new Error(`fetchUntaggedForAi: unsafe column ${JSON.stringify(c)}`);
   }
   const selectList = cols.map((c) => `p.${c}`).join(", ");
-  const activeClause = opts.activeOnly ? "AND p.is_active = true" : "";
   const sql =
     `SELECT ${selectList} FROM public.${table} p ` +
-    `WHERE NOT EXISTS (` +
-    `SELECT 1 FROM public.entity_tags t ` +
-    `WHERE t.entity_type = $1 AND t.entity_id = p.id ` +
-    `AND t.generated_by = 'ai' AND t.tag_category = 'topic') ` +
-    `${activeClause} ` +
+    `${untaggedWhere(!!opts.activeOnly)} ` +
     `ORDER BY p.created_at DESC LIMIT $2`;
   const rows = await withDirectClient((client) =>
     client.query(sql, [entityType, limit]).then((r) => r.rows as Record<string, unknown>[]),
@@ -468,6 +482,26 @@ export async function fetchUntaggedForAi<T>(
     }
   }
   return rows as T[];
+}
+
+/**
+ * FIX-824 — server-side COUNT of AI-untagged entities, sharing untaggedWhere()
+ * with fetchUntaggedForAi so the cost-gate estimate and the candidate selection
+ * apply the identical predicate. Replaces four full id-projection scans that were
+ * paginated into Node and diffed in memory (the pre-FIX-824 onlyNew estimate).
+ * Distinct-by-construction (one row per entity), so no tag-row-count subtraction.
+ */
+export async function countUntaggedForAi(
+  entityType: "proposal" | "official",
+  opts: { activeOnly?: boolean } = {},
+): Promise<number> {
+  const table = AI_TABLE_BY_ENTITY[entityType];
+  const sql =
+    `SELECT count(*)::bigint AS n FROM public.${table} p ` +
+    `${untaggedWhere(!!opts.activeOnly)}`;
+  return withDirectClient((client) =>
+    client.query(sql, [entityType]).then((r) => Number((r.rows[0] as { n: string }).n)),
+  );
 }
 
 export type ProposalNeedingTags = {
@@ -546,29 +580,6 @@ export async function fetchOfficialsNeedingTags(db: any): Promise<OfficialNeedin
 // ---------------------------------------------------------------------------
 // Main pipeline
 // ---------------------------------------------------------------------------
-
-// Page through a row-capped PostgREST id projection into a distinct Set. The
-// cost-gate's onlyNew branch needs distinct entity counts (entity_tags carries
-// multiple topic rows per entity), and an unbounded .select() silently truncates
-// at the 1,000-row cap — skewing the untagged estimate (FIX-430).
-async function fetchDistinctIds(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  build: (from: number, to: number) => PromiseLike<{ data: Record<string, string>[] | null; error: { message: string } | null }>,
-  key: string,
-): Promise<Set<string>> {
-  const PAGE = 1000;
-  const ids = new Set<string>();
-  let from = 0;
-  for (;;) {
-    const { data, error } = await build(from, from + PAGE - 1);
-    if (error) throw error;
-    const batch = data ?? [];
-    for (const r of batch) ids.add(r[key]);
-    if (batch.length < PAGE) break;
-    from += PAGE;
-  }
-  return ids;
-}
 
 export async function runAiTagger(options?: {
   maxCostCents?: number;
@@ -669,26 +680,18 @@ export async function runAiTagger(options?: {
     };
 
     // Count entities that ACTUALLY need processing — apply onlyNew filter FIRST
-    // so costGate estimate reflects 1,321 untagged rather than 10,108 total.
+    // so costGate estimate reflects the untagged subset, not the full table.
     let totalEntities: number;
     if (onlyNew) {
-      // Paginate the full id sets — proposals (~73k) and the topic-tag rows both
-      // exceed the 1,000-row cap, so the prior .limit(2000)/unbounded loads
-      // truncated and the untagged estimate undercounted (FIX-430).
-      // FIX-760: .order("id") on every builder — unordered .range() pagination
-      // can skip/duplicate rows as page boundaries shift between queries.
-      const [allProposals, taggedProposals, allOfficials, taggedOfficials] = await Promise.all([
-        fetchDistinctIds((f, t) => db.from("proposals").select("id").order("id").range(f, t), "id"),
-        fetchDistinctIds((f, t) => db.from("entity_tags").select("entity_id")
-          .eq("entity_type", "proposal").eq("generated_by", "ai").eq("tag_category", "topic").order("id").range(f, t), "entity_id"),
-        fetchDistinctIds((f, t) => db.from("officials").select("id").eq("is_active", true).order("id").range(f, t), "id"),
-        fetchDistinctIds((f, t) => db.from("entity_tags").select("entity_id")
-          .eq("entity_type", "official").eq("generated_by", "ai").eq("tag_category", "topic").order("id").range(f, t), "entity_id"),
+      // FIX-824: two server-side COUNT anti-joins over withDirectClient, sharing
+      // untaggedWhere() with fetchUntaggedForAi so the estimate and the candidate
+      // selection apply the identical predicate. Replaces four full id-projection
+      // scans that were paginated into Node and diffed in memory (FIX-430/760) —
+      // distinct-by-construction, no page-boundary or 1,000-row-cap hazards.
+      const [untaggedProposals, untaggedOfficials] = await Promise.all([
+        countUntaggedForAi("proposal"),
+        countUntaggedForAi("official", { activeOnly: true }),
       ]);
-      let untaggedProposals = 0;
-      for (const id of allProposals) if (!taggedProposals.has(id)) untaggedProposals++;
-      let untaggedOfficials = 0;
-      for (const id of allOfficials) if (!taggedOfficials.has(id)) untaggedOfficials++;
       totalEntities = untaggedProposals + untaggedOfficials;
     } else {
       const [proposalRes, officialRes] = await Promise.all([
