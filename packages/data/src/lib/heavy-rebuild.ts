@@ -138,6 +138,9 @@ const ALLOWED_PROCEDURES = new Set([
   // (uncapped) recompute (weekly cron entry point + per-env backfill).
   "backfill_treemap_individuals_focused",
   "refresh_treemap_individuals_global",
+  // FIX-837: single-txn full rebuild of official_vote_stats (per-env bootstrap +
+  // break-glass; the nightly vote-stats-refresh cron is the ongoing path).
+  "rebuild_official_vote_stats",
 ]);
 
 /**

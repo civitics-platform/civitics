@@ -114,6 +114,8 @@
     "data:backfill-donor-totals:prod": "tsx --env-file=../../.env.local.prod src/scripts/backfill-official-donor-totals.ts",
     "data:backfill-small-dollar": "tsx --env-file=../../.env.local src/scripts/backfill-small-dollar-rollup.ts",
     "data:backfill-small-dollar:prod": "tsx --env-file=../../.env.local.prod src/scripts/backfill-small-dollar-rollup.ts",
+    "data:backfill-vote-stats": "tsx --env-file=../../.env.local src/scripts/backfill-official-vote-stats.ts",
+    "data:backfill-vote-stats:prod": "tsx --env-file=../../.env.local.prod src/scripts/backfill-official-vote-stats.ts",
     "data:backfill-sector-affinity": "tsx --env-file=../../.env.local src/scripts/backfill-sector-affinity-rollup.ts",
     "data:backfill-sector-affinity:prod": "tsx --env-file=../../.env.local.prod src/scripts/backfill-sector-affinity-rollup.ts",
     "data:backfill-agency-staffing": "tsx --env-file=../../.env.local src/scripts/backfill-agency-staffing-rollup.ts",
