@@ -141,6 +141,11 @@ const ALLOWED_PROCEDURES = new Set([
   // FIX-837: single-txn full rebuild of official_vote_stats (per-env bootstrap +
   // break-glass; the nightly vote-stats-refresh cron is the ongoing path).
   "rebuild_official_vote_stats",
+  // FIX-838: single-txn full rebuild of the two contract-flow rollups
+  // (contract_recipient_rollup + contract_agency_sector_rollup) that
+  // /api/graph/spending reads instead of a >45s 3.2M-row scan. Per-env bootstrap +
+  // break-glass; the weekly contract-flow-rollups-refresh cron is the ongoing path.
+  "refresh_contract_flow_rollups",
 ]);
 
 /**
