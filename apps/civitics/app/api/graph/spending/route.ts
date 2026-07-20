@@ -30,15 +30,21 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const type = searchParams.get("type") ?? "chord";
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const supabase = createAdminClient() as any;
+  const supabase = createAdminClient();
 
   // ── Chord: agency × sector flows ─────────────────────────────────────────
   if (type === "chord") {
     const { data, error } = await supabase.rpc("chord_contract_flows");
     if (error) {
       console.error("[spending/chord] RPC error:", error.message);
-      return withPublicCdnCache(NextResponse.json({ agencies: [], sectors: [], flows: [], total_cents: 0 }));
+      // FIX-838: 502 (NOT a CDN-cached empty 200). A cache-miss RPC failure/
+      // timeout must never pin an empty chord in the CDN for 1h — the pre-FIX-838
+      // latent-correctness bug. Mirrors the FIX-854 chord-route precedent; the
+      // SpendingGraph client checks res.ok and renders "couldn't load".
+      return NextResponse.json(
+        { error: "spending_rpc_failed", detail: error.message },
+        { status: 502 },
+      );
     }
 
     const rows = (data ?? []) as ChordRow[];
@@ -94,7 +100,11 @@ export async function GET(req: NextRequest) {
     const { data, error } = await supabase.rpc("treemap_recipients_by_contracts", { lim });
     if (error) {
       console.error("[spending/treemap] RPC error:", error.message);
-      return withPublicCdnCache(NextResponse.json([]));
+      // FIX-838: 502, not a CDN-cached empty []. See the chord branch above.
+      return NextResponse.json(
+        { error: "spending_rpc_failed", detail: error.message },
+        { status: 502 },
+      );
     }
 
     const rows = (data ?? []) as TreemapRow[];

@@ -71,6 +71,21 @@ function EmptyState() {
   );
 }
 
+// FIX-838: the /api/graph/spending RPCs now 502 on failure/timeout (instead of a
+// swallowed empty 200 the CDN pinned for an hour). Render a distinct "couldn't
+// load" state rather than the misleading "no data yet" — a refresh retries.
+function ErrorState() {
+  return (
+    <div className="flex flex-col items-center justify-center h-full text-ink-soft">
+      <svg className="w-12 h-12 mb-3 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M12 9v2m0 4h.01M12 3a9 9 0 100 18 9 9 0 000-18z" />
+      </svg>
+      <p className="text-sm font-medium">Couldn&apos;t load contract flows</p>
+      <p className="text-xs mt-1 opacity-60">The data service is busy — refresh to try again.</p>
+    </div>
+  );
+}
+
 function Skeleton() {
   return (
     <div className="animate-pulse space-y-3 p-4">
@@ -131,6 +146,7 @@ export function SpendingGraph({ className = "", vizOptions }: SpendingGraphProps
   const [chord, setChord]           = useState<ChordData | null>(null);
   const [recipients, setRecipients] = useState<RecipientRow[]>([]);
   const [loading, setLoading]       = useState(true);
+  const [loadError, setLoadError]   = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
 
   const topAgenciesN  = vizOptions?.topAgencies   ?? DEFAULTS.topAgencies;
@@ -141,19 +157,30 @@ export function SpendingGraph({ className = "", vizOptions }: SpendingGraphProps
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
+    setLoadError(false);
+
+    // FIX-838: check res.ok — the route now 502s on RPC failure/timeout rather
+    // than returning a swallowed empty 200. A non-ok status must surface as an
+    // error (a distinct "couldn't load" state), never be .json()'d into the
+    // recipients/chord shape (which would crash the render on .filter/.map).
+    const getJson = async (url: string) => {
+      const r = await fetch(url);
+      if (!r.ok) throw new Error(`${url} → HTTP ${r.status}`);
+      return r.json();
+    };
 
     // Pull a generous slice from the API so the user can re-rank client-side
     // via topN sliders without refetching.
     Promise.all([
-      fetch("/api/graph/spending?type=chord").then(r => r.json()),
-      fetch("/api/graph/spending?type=treemap&lim=100").then(r => r.json()),
+      getJson("/api/graph/spending?type=chord"),
+      getJson("/api/graph/spending?type=treemap&lim=100"),
     ])
       .then(([chordData, treemapData]) => {
         if (cancelled) return;
         setChord(chordData as ChordData);
         setRecipients((treemapData as RecipientRow[]) ?? []);
       })
-      .catch(console.error)
+      .catch((e) => { if (!cancelled) { console.error(e); setLoadError(true); } })
       .finally(() => { if (!cancelled) setLoading(false); });
 
     return () => { cancelled = true; };
@@ -208,7 +235,7 @@ export function SpendingGraph({ className = "", vizOptions }: SpendingGraphProps
       </div>
 
       {loading && <Skeleton />}
-      {!loading && !hasData && <EmptyState />}
+      {!loading && !hasData && (loadError ? <ErrorState /> : <EmptyState />)}
 
       {hasData && (
         <div className="flex-1 overflow-auto">

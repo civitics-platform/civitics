@@ -1395,6 +1395,69 @@ export type Database = {
           },
         ]
       }
+      contract_agency_sector_rollup: {
+        Row: {
+          agency_acronym: string | null
+          agency_id: string
+          agency_name: string | null
+          award_count: number
+          sector: string
+          total_cents: number
+          updated_at: string
+        }
+        Insert: {
+          agency_acronym?: string | null
+          agency_id: string
+          agency_name?: string | null
+          award_count: number
+          sector: string
+          total_cents: number
+          updated_at?: string
+        }
+        Update: {
+          agency_acronym?: string | null
+          agency_id?: string
+          agency_name?: string | null
+          award_count?: number
+          sector?: string
+          total_cents?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      contract_recipient_rollup: {
+        Row: {
+          award_count: number
+          entity_id: string
+          entity_name: string | null
+          id: number
+          industry: string | null
+          naics_code: string | null
+          total_cents: number
+          updated_at: string
+        }
+        Insert: {
+          award_count: number
+          entity_id: string
+          entity_name?: string | null
+          id?: never
+          industry?: string | null
+          naics_code?: string | null
+          total_cents: number
+          updated_at?: string
+        }
+        Update: {
+          award_count?: number
+          entity_id?: string
+          entity_name?: string | null
+          id?: never
+          industry?: string | null
+          naics_code?: string | null
+          total_cents?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       data_sync_log: {
         Row: {
           completed_at: string | null
@@ -4178,6 +4241,30 @@ export type Database = {
         }
         Relationships: []
       }
+      official_vote_stats: {
+        Row: {
+          bipartisan_yes: number
+          official_id: string
+          total_votes: number
+          updated_at: string
+          yes_votes: number
+        }
+        Insert: {
+          bipartisan_yes: number
+          official_id: string
+          total_votes: number
+          updated_at?: string
+          yes_votes: number
+        }
+        Update: {
+          bipartisan_yes?: number
+          official_id?: string
+          total_votes?: number
+          updated_at?: string
+          yes_votes?: number
+        }
+        Relationships: []
+      }
       officials: {
         Row: {
           created_at: string
@@ -5781,6 +5868,17 @@ export type Database = {
           total_cents: number
         }[]
       }
+      chord_contract_flows_full: {
+        Args: never
+        Returns: {
+          agency_acronym: string
+          agency_id: string
+          agency_name: string
+          award_count: number
+          sector: string
+          total_cents: number
+        }[]
+      }
       chord_donor_brackets_for_official: {
         Args: { p_official_id: string }
         Returns: {
@@ -6221,6 +6319,7 @@ export type Database = {
       get_jurisdiction_page: { Args: { p_id: string }; Returns: Json }
       get_jurisdiction_page_live: { Args: { p_id: string }; Returns: Json }
       get_official_bipartisan_stats: { Args: never; Returns: Json }
+      get_official_bipartisan_stats_full: { Args: never; Returns: Json }
       get_official_donor_rollup: { Args: never; Returns: Json }
       get_official_donor_rollup_full: { Args: never; Returns: Json }
       get_official_donors: {
@@ -6963,6 +7062,17 @@ export type Database = {
             }[]
           }
       treemap_recipients_by_contracts: {
+        Args: { lim?: number }
+        Returns: {
+          award_count: number
+          entity_id: string
+          entity_name: string
+          industry: string
+          naics_code: string
+          total_cents: number
+        }[]
+      }
+      treemap_recipients_by_contracts_full: {
         Args: { lim?: number }
         Returns: {
           award_count: number
