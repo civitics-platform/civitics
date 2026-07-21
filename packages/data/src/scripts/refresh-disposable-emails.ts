@@ -57,7 +57,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
-const SOURCE_COMMIT = "d7fb152d99320da2448cdb80d1f8e4fb28fd1233";
+const SOURCE_COMMIT = "3824fc4f7638f2c6e68e354fa0133cbf5092a0d5";
 
 const UPSTREAM_OWNER = "disposable-email-domains";
 const UPSTREAM_REPO = "disposable-email-domains";
