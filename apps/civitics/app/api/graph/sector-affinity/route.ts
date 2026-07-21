@@ -18,6 +18,20 @@ export const dynamic = "force-dynamic";
  * FIX-704 donor dirty set). The route reads all of an official's sector rows,
  * sorts, and takes the top 15; `totalCents` is the sum over ALL sectors. The
  * live per-donor aggregation below stays as the per-entity miss fallback.
+ *
+ * FIX-872 — SCOPE: donation-only by design. Both the rollup rebuild
+ * (sector_affinity_rebuild_officials, per_donor CTE filters
+ * relationship_type='donation') and the live fallback below
+ * (computeSectorAffinityLive, .eq("relationship_type","donation")) count ONLY
+ * donations — ie_support/ie_oppose are intentionally excluded. So an official
+ * with only independent-expenditure money and zero donations returns a clean
+ * empty payload (sectors: [], totalCents: 0), NOT a 500. This is deliberate:
+ * the chart answers "which sectors FUND this official" (donations); IE money
+ * (especially ie_oppose, spent AGAINST a candidate) is shown separately as
+ * "Independent support" and would be wrong here (locked IE≠donation product
+ * rule). IE-only officials being absent from this surface is not a gap. The
+ * FIX-872 investigation confirmed the donation-only reading on local + prod and
+ * chose scope-as-designed over widening the work-list. See FIX-869/FIX-872.
  */
 
 interface SectorRow {
