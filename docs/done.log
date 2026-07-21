@@ -1081,3 +1081,8 @@
 2026-07-20 | FIX-657 | a04cab70 | local-only | chore(fixes): sync status after FIX-656; log FIX-657/658
 2026-07-20 | FIX-658 | a04cab70 | local-only | chore(fixes): sync status after FIX-656; log FIX-657/658
 2026-07-20 | FIX-589 | ba7c0209 | local-only | docs(audits): costed compute-tier upgrade memo (FIX-589 closeout) [skip vercel]
+2026-07-20 | FIX-447 | ef7943e1 | local-only | ci(workflows): schedule CRS summaries + blocklist refresh; union stacked trailers
+2026-07-20 | FIX-655 | ef7943e1 | local-only | ci(workflows): schedule CRS summaries + blocklist refresh; union stacked trailers
+2026-07-20 | FIX-657 | ccd0f3f3 | local-only | feat(lens): unify + persist + extend the constituent lens (FIX-656/657/658)
+2026-07-20 | FIX-658 | ccd0f3f3 | local-only | feat(lens): unify + persist + extend the constituent lens (FIX-656/657/658)
+2026-07-20 | FIX-874 | ef7943e1 | local-only | ci(workflows): schedule CRS summaries + blocklist refresh; union stacked trailers
