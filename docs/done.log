@@ -1077,3 +1077,4 @@
 2026-07-19 | FIX-869 | 118c5131 | local+prod | perf(db): source focused-backfill work-lists from official_donor_totals (FIX-869)
 2026-07-19 | FIX-507 | b3d9700a | closes-as-superseded | feat(graph): materialize contract-flow rollups for /api/graph/spending
 2026-07-19 | FIX-838 | b3d9700a | local+prod | feat(graph): materialize contract-flow rollups for /api/graph/spending
+2026-07-20 | FIX-656 | ccd0f3f3 | local-only | feat(lens): unify + persist + extend the constituent lens (FIX-656/657/658)
