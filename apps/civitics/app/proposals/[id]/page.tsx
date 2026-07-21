@@ -611,7 +611,13 @@ export default async function ProposalDetailPage({
                 answerer exists for a proposal — questions are answered by the
                 community with sourced, citation-required notes "from the record". */}
             <div className="mt-8 print:hidden">
-              <QASection entityType="proposal" entityId={p.id} entityName={p.title} />
+              <QASection
+                entityType="proposal"
+                entityId={p.id}
+                entityName={p.title}
+                lensEnabled
+                constituentJurisdictionId={bcMeta?.jurisdiction_id ?? null}
+              />
             </div>
 
             {/* Citizen Initiatives linked to this proposal */}

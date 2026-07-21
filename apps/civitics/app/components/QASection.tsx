@@ -21,6 +21,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BODY_MIN, BODY_MAX } from "@civitics/db";
 import { challengedFetch } from "@/lib/challenged-fetch";
+import { useConstituentDefaultLens } from "@/lib/use-constituent-default-lens";
+import { useEntityLens } from "@/lib/use-entity-lens";
 import { fetchViewerEngagement, type ViewerRating } from "@/lib/viewer-overlay";
 import { SyntheticMark } from "./integrity/Synthetic";
 
@@ -92,6 +94,13 @@ export interface QASectionProps {
   entityType: QAEntityType;
   entityName: string;
   signInNext?: string;
+  /** FIX-656: show the constituent lens toggle. Off → the lane stays "all" and
+   *  renders no pill (inert). */
+  lensEnabled?: boolean;
+  /** FIX-574/658: the entity's jurisdiction — a verified constituent defaults the
+   *  Q&A lens to "constituents" when ≥1 constituent-asked question exists. `null`
+   *  keeps the manual toggle working; only the auto-default short-circuits. */
+  constituentJurisdictionId?: string | null;
 }
 
 const FLAG_REASONS = [
@@ -947,13 +956,51 @@ function QuestionCard({
 }
 
 // ─── QASection ─────────────────────────────────────────────────────────────────
-export function QASection({ entityId, entityType, entityName, signInNext }: QASectionProps) {
+export function QASection({
+  entityId,
+  entityType,
+  entityName,
+  signInNext,
+  lensEnabled = false,
+  constituentJurisdictionId = null,
+}: QASectionProps) {
   const next = signInNext ?? (typeof window !== "undefined" ? window.location.pathname : "/");
   const [data, setData] = useState<QuestionsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sort, setSort] = useState<SortKey>("wanted");
+
+  // FIX-656/658: the Q&A lane joins the shared entity lens. The RPC filters
+  // QUESTIONS by the asker's constituent stamp (answers/notes under a shown
+  // question are untouched); total/awaiting follow the lens. A lens change resets
+  // the list + cursor via load()'s deps, exactly like a sort change.
+  const { lens, setLens: setLensManual, adoptConstituents, overridden } = useEntityLens(
+    entityType,
+    entityId,
+    lensEnabled,
+  );
+  const lensProbe = useCallback(
+    async (signal: AbortSignal) => {
+      const sp = new URLSearchParams({
+        entity_type: entityType,
+        entity_id: entityId,
+        lens: "constituents",
+        limit: "1",
+      });
+      const res = await fetch(`/api/questions?${sp.toString()}`, { signal });
+      const json = await res.json().catch(() => ({}));
+      return res.ok && typeof json.total === "number" && json.total >= 1;
+    },
+    [entityType, entityId],
+  );
+  const { defaultLens, resolved: lensResolved } = useConstituentDefaultLens(
+    lensEnabled && !overridden ? constituentJurisdictionId : null,
+    lensProbe,
+  );
+  useEffect(() => {
+    if (lensResolved && defaultLens === "constituents") adoptConstituents();
+  }, [lensResolved, defaultLens, adoptConstituents]);
   // FIX-788: can_answer is no longer in the (edge-cached, viewer-independent)
   // /api/questions payload — it hydrates from the no-store viewer overlay.
   const [canAnswer, setCanAnswer] = useState(false);
@@ -998,7 +1045,7 @@ export function QASection({ entityId, entityType, entityName, signInNext }: QASe
     setLoading(true);
     setError(null);
     try {
-      const sp = new URLSearchParams({ entity_type: entityType, entity_id: entityId, sort });
+      const sp = new URLSearchParams({ entity_type: entityType, entity_id: entityId, sort, lens });
       const res = await fetch(`/api/questions?${sp.toString()}`);
       const json = await res.json();
       if (!res.ok) {
@@ -1011,7 +1058,7 @@ export function QASection({ entityId, entityType, entityName, signInNext }: QASe
     } finally {
       setLoading(false);
     }
-  }, [entityId, entityType, sort]);
+  }, [entityId, entityType, sort, lens]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -1022,7 +1069,7 @@ export function QASection({ entityId, entityType, entityName, signInNext }: QASe
     if (!cursor || loadingMore) return;
     setLoadingMore(true);
     try {
-      const sp = new URLSearchParams({ entity_type: entityType, entity_id: entityId, sort, cursor });
+      const sp = new URLSearchParams({ entity_type: entityType, entity_id: entityId, sort, cursor, lens });
       const res = await fetch(`/api/questions?${sp.toString()}`);
       const json = (await res.json()) as QuestionsResponse;
       if (res.ok) {
@@ -1071,20 +1118,38 @@ export function QASection({ entityId, entityType, entityName, signInNext }: QASe
             : "Ask a question about this bill — the community answers from the record."}
       </p>
 
-      {total > 0 && (
-        <div className="mb-3 flex gap-1.5">
-          {SORTS.map((s) => (
+      {(lensEnabled || total > 0) && (
+        <div className="mb-3 flex flex-wrap items-center gap-1.5">
+          {/* FIX-656: constituent lens toggle — shows even at total 0 so a stored
+              "constituents" pref landing on an empty view is escapable. Filters
+              QUESTIONS by the asker's constituent stamp, not the answers. */}
+          {lensEnabled && (
             <button
-              key={s.key}
               type="button"
-              onClick={() => setSort(s.key)}
-              className={`rounded-full px-2.5 py-1 text-[11px] font-medium ${
-                sort === s.key ? "bg-ink text-paper" : "bg-card text-ink-soft border border-rule hover:bg-paper-2"
+              onClick={() => setLensManual(lens === "all" ? "constituents" : "all")}
+              title="Questions from verified constituents"
+              className={`rounded-full border px-2.5 py-1 text-[11px] font-medium ${
+                lens === "constituents"
+                  ? "border-civic-blue/30 bg-civic-blue/10 text-civic-blue"
+                  : "border-rule text-ink-soft hover:bg-paper-2"
               }`}
             >
-              {s.label}
+              {lens === "constituents" ? "Verified constituents" : "Everyone"}
             </button>
-          ))}
+          )}
+          {total > 0 &&
+            SORTS.map((s) => (
+              <button
+                key={s.key}
+                type="button"
+                onClick={() => setSort(s.key)}
+                className={`rounded-full px-2.5 py-1 text-[11px] font-medium ${
+                  sort === s.key ? "bg-ink text-paper" : "bg-card text-ink-soft border border-rule hover:bg-paper-2"
+                }`}
+              >
+                {s.label}
+              </button>
+            ))}
         </div>
       )}
 

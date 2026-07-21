@@ -298,7 +298,13 @@ export default async function InstitutionPage({
           active institution_admin grant on this institution (= agency/gb id) —
           unclaimed real institutions show the honest "awaiting response" state. */}
       <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
-        <QASection entityId={institution.id} entityType="institution" entityName={institution.short_name ?? institution.name} />
+        <QASection
+          entityId={institution.id}
+          entityType="institution"
+          entityName={institution.short_name ?? institution.name}
+          lensEnabled
+          constituentJurisdictionId={institution.jurisdiction_id ?? null}
+        />
       </div>
       <div className="mx-auto max-w-5xl px-4 pb-12 sm:px-6">
         <EntityComments

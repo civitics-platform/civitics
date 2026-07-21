@@ -11,10 +11,11 @@
 // Public reads are aggregates only; the card writes through /api/positions, which
 // calls set_entity_position() as the caller (every anti-collusion guard server-side).
 
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import type { EntityCommentType } from "@civitics/db";
 import { challengedFetch } from "@/lib/challenged-fetch";
 import { useConstituentDefaultLens } from "@/lib/use-constituent-default-lens";
+import { useEntityLens } from "@/lib/use-entity-lens";
 import { SyntheticMark } from "./integrity/Synthetic";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -491,11 +492,22 @@ export function PositionSection({
   const [own, setOwn] = useState<OwnPosition>(null);
   const [rollup, setRollup] = useState<Rollup | null>(null);
   const [comments, setComments] = useState<CommentLite[]>([]);
-  const [lens, setLens] = useState<"all" | "constituents">("all");
+
+  // FIX-658: the lens is shared entity-wide via a module store, so toggling this
+  // rollup moves the comments cluster, highlights, and Q&A together (and a stored
+  // preference — FIX-657 — seeds them all). `overridden` is true once a manual
+  // toggle or a stored pref has locked it.
+  const { lens, setLens: setLensManual, adoptConstituents, overridden } = useEntityLens(
+    entityType,
+    entityId,
+    lensEnabled,
+  );
 
   // FIX-574: open on the constituent lens for a verified constituent — but only
   // if that view clears the rollup floor (median non-null ⇔ n ≥ 10), else stay
-  // on "all" rather than greet them with "not enough positions yet".
+  // on "all" rather than greet them with "not enough positions yet". A stored/
+  // manual override short-circuits the whole resolution (null jurisdiction → no
+  // network), so a persisted choice never triggers the status fetch.
   const probe = useCallback(
     async (signal: AbortSignal) => {
       const sp = new URLSearchParams({ entity_type: entityType, entity_id: entityId, lens: "constituents" });
@@ -506,19 +518,12 @@ export function PositionSection({
     [entityType, entityId],
   );
   const { defaultLens, resolved } = useConstituentDefaultLens(
-    lensEnabled ? constituentJurisdictionId : null,
+    lensEnabled && !overridden ? constituentJurisdictionId : null,
     probe,
   );
-  // Once a manual toggle has happened, the async default must never clobber it.
-  const lensOverridden = useRef(false);
-  const setLensManual = useCallback((l: "all" | "constituents") => {
-    lensOverridden.current = true;
-    setLens(l);
-  }, []);
   useEffect(() => {
-    if (lensOverridden.current) return;
-    if (resolved && defaultLens === "constituents") setLens("constituents");
-  }, [resolved, defaultLens]);
+    if (resolved && defaultLens === "constituents") adoptConstituents();
+  }, [resolved, defaultLens, adoptConstituents]);
 
   const loadRollup = useCallback(async () => {
     try {

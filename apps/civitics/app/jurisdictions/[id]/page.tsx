@@ -347,7 +347,13 @@ export default async function JurisdictionPage({ params }: { params: Promise<{ i
             active jurisdiction_admin grant on this jurisdiction (the clerk role) —
             unclaimed real jurisdictions show the honest "awaiting response" state. */}
         <div className="mt-8">
-          <QASection entityId={id} entityType="jurisdiction" entityName={jurisdiction.short_name ?? jurisdiction.name} />
+          <QASection
+            entityId={id}
+            entityType="jurisdiction"
+            entityName={jurisdiction.short_name ?? jurisdiction.name}
+            lensEnabled
+            constituentJurisdictionId={id}
+          />
         </div>
 
         <EntityComments

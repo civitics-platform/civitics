@@ -26,6 +26,7 @@
 
 import { useEffect, useState } from "react";
 import { createBrowserClient } from "@civitics/db";
+import { getConstituentStatus } from "./use-entity-lens";
 
 export type Lens = "all" | "constituents";
 
@@ -86,18 +87,11 @@ export function useConstituentDefaultLens(
       }
 
       // 2. Authoritative constituent status (RLS-scoped to the signed-in user).
-      let verified = false;
-      try {
-        const sp = new URLSearchParams({ jurisdiction_id: jurisdictionId });
-        const res = await fetch(`/api/constituent-status?${sp.toString()}`, {
-          signal: ctrl.signal,
-          credentials: "same-origin",
-        });
-        const data = await res.json().catch(() => ({}));
-        verified = res.ok && !!data.verified;
-      } catch {
-        verified = false;
-      }
+      // FIX-658: deduped through a module-level promise cache keyed by
+      // jurisdiction id — the (up to 4) lens surfaces on a page share one
+      // round-trip instead of each firing their own. The shared promise is
+      // uncancellable by design; the `cancelled` flag still guards state writes.
+      const verified = await getConstituentStatus(jurisdictionId);
       if (cancelled) return;
       if (!verified) {
         settle("all");
