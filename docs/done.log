@@ -1086,3 +1086,4 @@
 2026-07-20 | FIX-657 | ccd0f3f3 | local-only | feat(lens): unify + persist + extend the constituent lens (FIX-656/657/658)
 2026-07-20 | FIX-658 | ccd0f3f3 | local-only | feat(lens): unify + persist + extend the constituent lens (FIX-656/657/658)
 2026-07-20 | FIX-874 | ef7943e1 | local-only | ci(workflows): schedule CRS summaries + blocklist refresh; union stacked trailers
+2026-07-20 | FIX-447 | 077aa709 | local+prod | chore(verify): FIX-447 CRS backfill verified on prod [skip vercel]
