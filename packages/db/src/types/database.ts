@@ -1430,7 +1430,6 @@ export type Database = {
           award_count: number
           entity_id: string
           entity_name: string | null
-          id: number
           industry: string | null
           naics_code: string | null
           total_cents: number
@@ -1440,7 +1439,6 @@ export type Database = {
           award_count: number
           entity_id: string
           entity_name?: string | null
-          id?: never
           industry?: string | null
           naics_code?: string | null
           total_cents: number
@@ -1450,7 +1448,6 @@ export type Database = {
           award_count?: number
           entity_id?: string
           entity_name?: string | null
-          id?: never
           industry?: string | null
           naics_code?: string | null
           total_cents?: number
