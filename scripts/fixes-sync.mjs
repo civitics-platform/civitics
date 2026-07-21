@@ -222,17 +222,34 @@ export function parseCommitTrailers(body) {
   // non-global, first-match-wins and appearing before the real trailer —
   // shadow the actual `Fixes: FIX-NNN`, attributing the commit to the wrong
   // FIX. Surfaced on the FIX-464 commit, which mentioned "fixes:sync" in prose.
-  const fixesRe = /^\s*Fixes:\s*(.+)$/m;
-  const closesRe = /^\s*Closes:\s*(.+)$/m;
+  //
+  // FIX-874: `/gm` (global) so EVERY `Fixes:`/`Closes:` line contributes its
+  // IDs, not just the first. A commit may stack multiple trailer lines instead
+  // of the comma form — the 2026-07-20 lens-family commit ccd0f3f3 carried
+  // `Fixes: FIX-656` / `FIX-657` / `FIX-658` on three separate lines and the old
+  // non-global `body.match()` returned only line one, silently dropping 657/658
+  // from done.log (they had to be logged retroactively). Case-sensitivity still
+  // guards the prose-shadow case regardless of the global flag.
+  const fixesRe = /^\s*Fixes:\s*(.+)$/gm;
+  const closesRe = /^\s*Closes:\s*(.+)$/gm;
   const verifiedRe = /^\s*Verified:\s*(.+)$/m;
   const verifiedPerFixRe = /^\s*Verified\[(FIX-\d{3})\]:\s*(.+)$/gm;
   const idRe = /FIX-\d{3}/g;
 
   const warnings = [];
-  const fixesMatch = body.match(fixesRe);
-  const closesMatch = body.match(closesRe);
-  const fixesIds = new Set(fixesMatch ? fixesMatch[1].match(idRe) || [] : []);
-  const closesIds = new Set(closesMatch ? closesMatch[1].match(idRe) || [] : []);
+  // Union the IDs across all matching trailer lines (FIX-874). `matchAll`
+  // consumes the whole body per key; each line's capture is still comma-split
+  // by `idRe`, so both the stacked-line and the single comma-separated form
+  // (`Fixes: FIX-A, FIX-B`) resolve identically.
+  const collectIds = (re) => {
+    const ids = new Set();
+    for (const m of body.matchAll(re)) {
+      for (const id of m[1].match(idRe) || []) ids.add(id);
+    }
+    return ids;
+  };
+  const fixesIds = collectIds(fixesRe);
+  const closesIds = collectIds(closesRe);
 
   // FIX-314: if an ID appears in both trailers in the same commit, Fixes:
   // wins (code-level fix is the stronger signal). Warn so we notice.

@@ -1,0 +1,90 @@
+name: crs-summaries
+
+# FIX-447 — weekly backfill of proposals.summary_plain from Congress.gov CRS
+# summaries.
+#
+# What it does: the CRS-authored plain-language summary is real prose, so
+# writing it to summary_plain flips congress bills from `title_only` to
+# `full_summary` with ZERO AI calls (packages/data/src/scripts/backfill-crs-summaries.ts,
+# FIX-435 Phase 2). The script is idempotent and resumable — it selects only
+# proposals where `summary_plain IS NULL` and re-asserts that filter in the
+# UPDATE — so a scheduled re-run is exactly the ongoing-capture mechanism for
+# newly-ingested congress bills: they land `title_only`, and the next Saturday
+# run fills whatever's missing. Left to humans it only ran when someone
+# remembered; this closes that gap.
+#
+# Why its OWN workflow, not a step in nightly.yml: FIX-740's whole direction was
+# pulling API-heavy work (USASpending) OUT of the nightly enrichment phase's
+# 120-min budget — it was starving the rest of enrichment — and FIX-744 then
+# extracted the tail it was starving. Folding a fresh source of thousands of
+# Congress.gov calls back into the nightly would reverse that, so this stays
+# standalone with its own budget.
+#
+# Cadence: Saturday 10:00 UTC (`0 10 * * 6`). Collision check (2026-07-20):
+#   - GHA: clear of nightly (`0 2 * * *`), sync-canary (`0 5 * * *`),
+#     audit (Mon `0 4 * * 1`), and usaspending-bulk (Thu `0 10 * * 4`).
+#     platform-snapshot (`*/10 * * * *`) is a tiny read — irrelevant.
+#   - Prod pg_cron DB jobs: NONE run on Saturday (the weekly rollups are
+#     Mon/Tue/Wed/Thu). The only Saturday DB job is the daily donor-rollup
+#     (`0 9 * * *`), a full hour earlier; CRS's DB load is light anyway
+#     (paginated selects + one throttled single-row UPDATE per bill).
+#   - Sunday weekly-enrichment block (nightly's `getDay()===0` path) is a day
+#     later. Saturday 10:00 UTC is clean.
+#
+# Rate control lives IN the script: fetchCongressApi already sleeps 200ms and
+# the loop adds the rest to ~800ms/iter (~4,500 req/hr, under the ~5,000/hr
+# Congress.gov per-key ceiling). No workflow-level throttling — it would only
+# double-count. `data:backfill-crs-summaries:ci` bakes `--apply --allow-prod`
+# (no `--env-file`); the prod URL + secret key + Congress key come from the
+# secrets below (a pruned copy of usaspending-bulk.yml's block — this script
+# only reads these three; it uses PostgREST via createAdminClient, not a direct
+# pg connection, so no SUPABASE_DB_PASSWORD).
+#
+# timeout-minutes: 350 (the usaspending-bulk precedent, headroom under GHA's 6h
+# cap). The FIRST scheduled run may face a large backlog — prod is ~98%
+# title_only on the congress dataset — and at ~800ms/iter a few thousand bills
+# is well over an hour. Because the script is resumable, a SIGTERM at the
+# timeout is SAFE: it simply stops mid-list and next Saturday continues from the
+# still-NULL rows. A long first run (or one that hits the cutoff) is NOT a
+# failure — it's the backlog draining across weeks by design.
+
+on:
+  workflow_dispatch: {}
+  schedule:
+    - cron: "0 10 * * 6"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: crs-summaries
+  cancel-in-progress: false
+
+jobs:
+  crs-summaries:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: https://xsazcoxinpgttgquwvuf.supabase.co
+      SUPABASE_SECRET_KEY:      ${{ secrets.SUPABASE_SECRET_KEY }}
+      CONGRESS_API_KEY:         ${{ secrets.CONGRESS_API_KEY }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Backfill CRS summaries (prod, resumable)
+        run: pnpm --filter @civitics/data data:backfill-crs-summaries:ci

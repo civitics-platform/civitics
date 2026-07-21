@@ -1,0 +1,115 @@
+name: refresh-disposable-emails
+
+# FIX-655 — monthly refresh of the vendored disposable-email blocklist
+# (apps/civitics/src/lib/disposable-email-domains.json), regenerated from the
+# upstream disposable-email-domains/disposable-email-domains dataset by
+# packages/data/src/scripts/refresh-disposable-emails.ts.
+#
+# Why AUTO-PR, not auto-commit to main: the blocklist is a SECURITY-relevant
+# input pulled from a third-party repo at its LATEST commit. A compromised or
+# vandalized upstream — e.g. `gmail.com` slipped into the list — would silently
+# block real sign-ups if committed straight to main. A monthly PR diff is a
+# 30-second human review; that review is the whole point. The script's own
+# fail-closed gates (size bounds + a canary set of known-legit provider domains)
+# are the second line: a bad regen aborts the job BEFORE writing anything, so no
+# PR is ever opened on poisoned data.
+#
+# What the run does (`--latest --write-pin`, via data:refresh-disposable-emails:ci):
+#   1. Resolve the upstream default-branch HEAD SHA (GitHub API; public repo, so
+#      the built-in token is used only to lift the unauthenticated rate limit).
+#   2. Regenerate the JSON against that SHA: (curated ∪ upstream) − ALLOWLIST.
+#   3. Run the sanity gates; abort loudly on violation (nothing written).
+#   4. On a real content change, rewrite the SOURCE_COMMIT pin in the script so
+#      the pin and the JSON always move together in the SAME PR. No content
+#      change ⇒ nothing written ⇒ create-pull-request opens no PR.
+#
+# Cadence: 3rd of the month, 11:00 UTC (`0 11 3 * *`) + manual dispatch. The 3rd
+# deliberately clears the 1st-of-month prod pg_cron sweeps (monthly donor-rollup
+# / financial-entity / stats-rollup / orphan jobs all fire on day 1). Note this
+# workflow does ZERO database work — pure GitHub fetch + file write + PR — so
+# there is no prod DB-load collision to worry about regardless of the clock; the
+# day-3 slot is just tidiness.
+#
+# create-pull-request is PINNED to a full commit SHA (supply-chain hygiene for a
+# workflow whose entire reason to exist is supply-chain caution — a moving tag
+# would undercut the point).
+#
+# Known GitHub limitation (NOT a bug to fight): a PR created with the default
+# GITHUB_TOKEN does NOT trigger `pull_request`-triggered workflows, so tests.yml
+# won't auto-run on the bot PR. Acceptable — the diff is a JSON blob plus one
+# pinned constant, reviewed by eye. To force CI, close and reopen the PR. We do
+# NOT introduce a PAT just for this.
+
+on:
+  workflow_dispatch: {}
+  schedule:
+    - cron: "0 11 3 * *"
+
+concurrency:
+  group: refresh-disposable-emails
+  cancel-in-progress: false
+
+jobs:
+  refresh-disposable-emails:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    # Needed by create-pull-request to push the branch and open the PR.
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Gates run here; a violation exits non-zero and skips the PR step, leaving
+      # the tree untouched. GITHUB_TOKEN only lifts the GitHub API rate limit.
+      - name: Refresh blocklist against upstream HEAD (gated)
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: pnpm --filter @civitics/data data:refresh-disposable-emails:ci
+
+      - name: Open PR if the list changed
+        uses: peter-evans/create-pull-request@22a9089034f40e5a961c8808d113e2c98fb63676 # v7.0.11
+        with:
+          # Constrain the PR to exactly the two files that move together.
+          add-paths: |
+            apps/civitics/src/lib/disposable-email-domains.json
+            packages/data/src/scripts/refresh-disposable-emails.ts
+          branch: chore/refresh-disposable-emails
+          delete-branch: true
+          commit-message: "chore(security): refresh disposable-email blocklist [skip vercel]"
+          title: "chore(security): monthly disposable-email blocklist refresh"
+          labels: security, automated
+          body: |
+            Automated monthly refresh of the vendored disposable-email blocklist
+            (produced by the FIX-655 workflow, `refresh-disposable-emails.yml`).
+
+            - Regenerated `apps/civitics/src/lib/disposable-email-domains.json`
+              against the current upstream `disposable-email-domains` HEAD.
+            - Bumped the `SOURCE_COMMIT` pin in
+              `packages/data/src/scripts/refresh-disposable-emails.ts` to match
+              (pin + JSON always move together).
+            - Sanity gates passed before this PR was opened: size within
+              `[5000, 25000]` and no known-legit provider domain
+              (gmail/outlook/yahoo/…) present in the blocklist.
+
+            **Review = eyeball the JSON diff + the one-line pin bump.** A
+            surprising bulk removal, or any mainstream provider appearing, means
+            upstream drifted — do not merge.
+
+            Note: bot PRs created with the default token do not trigger CI. The
+            diff is data only; close/reopen to force tests.yml if desired.

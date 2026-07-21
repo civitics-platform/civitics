@@ -95,6 +95,46 @@ console.log("\nprose-shadow guard (FIX-465):");
 assertEq("fixesIds (real trailer wins, not prose)", [...proseParsed.fixesIds], ["FIX-464"]);
 assertEq("closesIds (none)", [...proseParsed.closesIds], []);
 
+// FIX-874: STACKED trailer lines. A commit may put each FIX on its own `Fixes:`
+// line rather than the comma form; the old non-global regex returned only the
+// first line and silently dropped the rest (the ccd0f3f3 lens-family incident:
+// FIX-656/657/658 stacked, only 656 logged). Union every matching line's IDs.
+const stackedBody = [
+  "feat(lens): unify + persist + extend the constituent lens",
+  "",
+  "Longer body prose that happens to mention fixes:sync in passing.",
+  "",
+  "Verified: local + prod",
+  "Fixes: FIX-656",
+  "Fixes: FIX-657",
+  "Fixes: FIX-658",
+  "Closes: FIX-659",
+  "Closes: FIX-660",
+  "",
+].join("\n");
+const stackedParsed = parseCommitTrailers(stackedBody);
+console.log("\nstacked-trailer union (FIX-874):");
+assertEq("fixesIds (all three stacked lines)", [...stackedParsed.fixesIds].sort(), ["FIX-656", "FIX-657", "FIX-658"]);
+assertEq("closesIds (both stacked lines)", [...stackedParsed.closesIds].sort(), ["FIX-659", "FIX-660"]);
+assertEq("stacked warnings (none)", stackedParsed.warnings, []);
+
+// FIX-874: mixed form — a stacked `Fixes:` line AND a comma-separated line in
+// the same commit. Every ID from both shapes must survive.
+const mixedFormBody = [
+  "chore: land several fixes at once",
+  "",
+  "Verified: local",
+  "Fixes: FIX-800, FIX-801",
+  "Fixes: FIX-802",
+  "",
+].join("\n");
+const mixedFormParsed = parseCommitTrailers(mixedFormBody);
+assertEq(
+  "mixed stacked+comma Fixes (FIX-874)",
+  [...mixedFormParsed.fixesIds].sort(),
+  ["FIX-800", "FIX-801", "FIX-802"],
+);
+
 // FIX-461: trunk-ancestry guard decision core. `evaluateTrunkViolations` and
 // `buildCompletingShasById` are pure (git is injected via `resolve`), so the
 // silent-zero-sweep-tail failure mode is exercised here without touching a repo.
