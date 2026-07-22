@@ -1090,3 +1090,5 @@
 2026-07-20 | FIX-655 | b995e826 | local+prod | chore(verify): FIX-655 blocklist refresh verified on prod [skip vercel]
 2026-07-21 | FIX-872 | 9159f347 | local-only | docs(graph): sector affinity is donation-scoped by design
 2026-07-21 | FIX-873 | 4270f984 | local-only | fix(graph): dedupe multi-tag recipients in contract flows
+2026-07-21 | FIX-872 | f0116d00 | local+prod | chore(verify): FIX-872/873 verified on prod [skip vercel]
+2026-07-21 | FIX-873 | f0116d00 | local+prod | chore(verify): FIX-872/873 verified on prod [skip vercel]
