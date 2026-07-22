@@ -258,8 +258,23 @@ function done(rawId, argv) {
     // NON-empty porcelain means real tracked edits or untracked files → refuse
     // unless the caller passed --force (the unmerged-work gate above is
     // separate and untouched).
+    // FIX-879: a stranded-then-de-registered ORPHAN. A prior teardown's
+    // `git worktree remove` de-registers the tree at the admin level even when the
+    // fs.rm below loses to a lock, so a recovery re-run finds the dir on disk but
+    // NO longer a registered worktree. `git -C <dir> status` then errors "not a
+    // working tree", which the porcelain check must NOT read as a dirty tree —
+    // that fail-closed refusal (needing --force) was the FIX-879 gap surfaced by
+    // FIX-877's own live teardown test. An orphan has no tracked changes to
+    // preserve, and the fs.rm below is still containment-guarded, so treat it as
+    // clean-and-removable.
+    const isRegistered = git("worktree", "list", "--porcelain")
+      .out.split(/\r?\n/)
+      .some((line) => {
+        const m = line.match(/^worktree (.+)$/);
+        return m && resolve(m[1].trim()) === resolve(wtDir);
+      });
     const porcelain = git("-C", wtDir, "status", "--porcelain");
-    const cleanIgnoringArtifacts = porcelain.ok && porcelain.out === "";
+    const cleanIgnoringArtifacts = (porcelain.ok && porcelain.out === "") || !isRegistered;
     const forceRemove = force || cleanIgnoringArtifacts;
 
     if (!forceRemove) {
@@ -271,7 +286,13 @@ function done(rawId, argv) {
     // --force is always passed to git here: when porcelain is clean it's the
     // gitignored artifacts that would otherwise block removal; when the caller
     // forced, they've accepted the loss.
-    let rm = git("worktree", "remove", wtDir, "--force");
+    // FIX-879: a de-registered orphan can only ever error "not a working tree"
+    // from `git worktree remove` (a permanent failure, not a transient lock), so
+    // skip the remove + its backoff entirely and go straight to the contained
+    // fs.rm below — avoids ~34s of futile retries on the recovery re-run.
+    let rm = isRegistered
+      ? git("worktree", "remove", wtDir, "--force")
+      : { ok: false, err: "de-registered orphan — skipping git worktree remove" };
 
     // FIX-480 / FIX-876: on a freshly-built tree, `git worktree remove` loses to
     // a TRANSIENT lock on a just-written node_modules handle — the AV (Defender
@@ -287,7 +308,7 @@ function done(rawId, argv) {
     // for ../civitics-worktrees (Bitdefender/Defender); this loop covers the
     // residual indexer window.
     for (const delayMs of [2000, 4000, 8000, 10000, 10000]) {
-      if (rm.ok) break;
+      if (rm.ok || !isRegistered) break;
       console.warn(
         `[session:worktree] ⚠ git worktree remove failed (${rm.err || "unknown"}); retrying in ${delayMs / 1000}s ...`,
       );
@@ -317,7 +338,7 @@ function done(rawId, argv) {
         );
       }
       console.warn(
-        `[session:worktree] ⚠ git worktree remove still failing after retry; ` +
+        `[session:worktree] ⚠ ${isRegistered ? "git worktree remove still failing after retry" : "de-registered orphan dir"}; ` +
         `falling back to contained fs.rm of ${wtDir}`,
       );
       let rmFallbackOk = true;
