@@ -260,15 +260,25 @@ function done(rawId, argv) {
     // forced, they've accepted the loss.
     let rm = git("worktree", "remove", wtDir, "--force");
 
-    // FIX-480: on a freshly-built tree, `git worktree remove` can lose to a
-    // transient lock on a just-written node_modules handle (Windows AV/indexer
-    // still holding it) — the Wave-477 failure looked exactly like this. Retry
-    // once after a short pause before reaching for the heavier fallback.
-    if (!rm.ok) {
+    // FIX-480 / FIX-876: on a freshly-built tree, `git worktree remove` loses to
+    // a TRANSIENT lock on a just-written node_modules handle — the AV (Defender
+    // or a third-party like Bitdefender) and the Windows indexer scanning
+    // freshly-hardlinked deps, plus any tsx/esbuild service that has not yet
+    // exited. These release within ~a minute. The FIX-480 original retried ONCE
+    // after 2s, which was too short: the FIX-841 teardown EPERM'd straight
+    // through it and stranded the dir. Retry with a short backoff (≈34s total;
+    // each delay is clamped to sleepSync's 10s ceiling) before the heavier fs.rm
+    // fallback below. We deliberately do NOT kill esbuild globally here — a
+    // parallel session may be mid-build, and esbuild's service exits on its own
+    // once its spawning tsx run ends. The durable fix is an AV folder exclusion
+    // for ../civitics-worktrees (Bitdefender/Defender); this loop covers the
+    // residual indexer window.
+    for (const delayMs of [2000, 4000, 8000, 10000, 10000]) {
+      if (rm.ok) break;
       console.warn(
-        `[session:worktree] ⚠ git worktree remove failed (${rm.err || "unknown"}); retrying once in 2s ...`,
+        `[session:worktree] ⚠ git worktree remove failed (${rm.err || "unknown"}); retrying in ${delayMs / 1000}s ...`,
       );
-      sleepSync(2000);
+      sleepSync(delayMs);
       rm = git("worktree", "remove", wtDir, "--force");
     }
 
