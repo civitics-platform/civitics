@@ -1093,3 +1093,4 @@
 2026-07-21 | FIX-872 | f0116d00 | local+prod | chore(verify): FIX-872/873 verified on prod [skip vercel]
 2026-07-21 | FIX-873 | f0116d00 | local+prod | chore(verify): FIX-872/873 verified on prod [skip vercel]
 2026-07-21 | FIX-841 | b3e3f46f | local+prod | feat(fec-ie): complete the spender-side Schedule E gap (2020/22 + orphan spenders)
+2026-07-21 | FIX-876 | 61b57062 | local-only | fix(session-worktree): backoff retry loop for Windows node_modules EPERM on teardown
