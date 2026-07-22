@@ -98,6 +98,7 @@ import {
 } from "../sync-log";
 import {
   upsertPacEntitiesBatch,
+  upsertIeSpenderEntitiesByName,
   upsertDonationRelationshipsBatch,
   upsertIndividualDonorsBatch,
   upsertIndividualDonationsBatch,
@@ -152,7 +153,7 @@ import {
   INDIV_STAGE_NAMES,
   type IndivStageName,
 } from "./scope";
-import { streamIndependentExpenditures } from "./indep-exp";
+import { streamIndependentExpenditures, isMintableSpenderName } from "./indep-exp";
 import { resolveOrMintIeTargets, type IeTargetIdentity } from "./mint-ie-targets";
 import {
   streamCandidates,
@@ -711,6 +712,7 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
   let ieRelsUpserted = 0, ieRelsFailed = 0;               // FIX-240
   let ieSupportRows = 0, ieOpposeRows = 0;                // FIX-240
   let ieSpendersUpserted = 0, ieSpendersOrphaned = 0;     // FIX-240
+  let ieSpendersMintedByName = 0;                         // FIX-841 (orphan spe_nam mint)
   let ieCyclesProcessed = 0, ieCyclesSkipped = 0;         // FIX-240
   let ieTargetsResolved = 0, ieTargetsMinted = 0, ieTargetsFailed = 0; // FIX-674
   let matchedByFecId = 0, matchedByName = 0, notMatched = 0;
@@ -1617,7 +1619,8 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
         if (!ieFailed) {
           try {
             const ieResult = await streamIndependentExpenditures(iePath, candidateSet, {
-              collectUnmatched: true, // FIX-674
+              collectUnmatched:    true, // FIX-674
+              collectSpenderNames: true, // FIX-841 — mint orphan spenders from spe_nam
             });
 
             // FIX-674: resolve-or-mint the unmatched IE targets, then merge
@@ -1677,25 +1680,45 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
             }
 
             if (newSpenderIds.size > 0) {
+              // FIX-841: first non-empty spe_nam per new-spender id, for the
+              // orphan (∉ cm) mint fallback below.
+              const nameBySpe = new Map<string, string>();
+              for (const agg of ieResult.aggregations.values()) {
+                const nm = (agg.spenderName ?? "").trim();
+                if (nm && newSpenderIds.has(agg.spendingCmteId) && !nameBySpe.has(agg.spendingCmteId)) {
+                  nameBySpe.set(agg.spendingCmteId, nm);
+                }
+              }
+
               const newSpenderInputs = [];
+              const orphanNameInputs: Array<{ cmteId: string; name: string }> = []; // FIX-841
               let orphanCount = 0;
               for (const cmteId of newSpenderIds) {
                 const info = cmteInfoSeen.get(cmteId);
-                if (!info) { orphanCount++; continue; }
-                newSpenderInputs.push({
-                  cmteId,
-                  name:              info.name,
-                  cmteType:          info.type,
-                  connectedOrg:      info.connectedOrg,
-                  // total_donated_cents kept at 0 — the cross-cycle final
-                  // pass below uses cmteTotalsAllCycles (pas2-derived) as
-                  // truth, same convention as the FIX-236 pre-upsert.
-                  totalDonatedCents: 0,
-                });
+                if (info) {
+                  newSpenderInputs.push({
+                    cmteId,
+                    name:              info.name,
+                    cmteType:          info.type,
+                    connectedOrg:      info.connectedOrg,
+                    // total_donated_cents kept at 0 — the cross-cycle final
+                    // pass below uses cmteTotalsAllCycles (pas2-derived) as
+                    // truth, same convention as the FIX-236 pre-upsert.
+                    totalDonatedCents: 0,
+                  });
+                  continue;
+                }
+                // FIX-841: orphan spe_id (∉ cm). Mint a name-only entity from
+                // spe_nam when mintable (non-empty, not a known prankster name)
+                // instead of dropping the money.
+                const nm = (nameBySpe.get(cmteId) ?? "").trim();
+                if (isMintableSpenderName(nm)) { orphanNameInputs.push({ cmteId, name: nm }); continue; }
+                orphanCount++; // blank OR denylisted prankster name
               }
               console.log(
                 `    New IE spenders to pre-upsert: ${newSpenderInputs.length}` +
-                (orphanCount > 0 ? ` (${orphanCount} orphan spe_id(s) missing from cm — skipped)` : ""),
+                (orphanNameInputs.length > 0 ? ` (+${orphanNameInputs.length} orphan minted from spe_nam)` : "") +
+                (orphanCount > 0 ? ` (${orphanCount} orphan spe_id(s) missing from cm AND spe_nam — skipped)` : ""),
               );
               ieSpendersOrphaned += orphanCount;
 
@@ -1705,6 +1728,18 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
                 pacEntitiesFailed   += spenderResult.failed;
                 ieSpendersUpserted  += spenderResult.upserted;
                 for (const [cmteId, id] of spenderResult.entityIdByCmte.entries()) {
+                  entityIdByCmteAcc.set(cmteId, id);
+                }
+              }
+
+              if (orphanNameInputs.length > 0) {
+                // FIX-841: name-only mint keyed on spe_id, provenance
+                // source='schedule_e_spe_nam'; totals left at DEFAULT 0.
+                const orphanResult = await upsertIeSpenderEntitiesByName(orphanNameInputs);
+                pacEntitiesUpserted    += orphanResult.upserted;
+                ieSpendersUpserted     += orphanResult.upserted;
+                ieSpendersMintedByName += orphanResult.upserted;
+                for (const [cmteId, id] of orphanResult.entityIdByCmte.entries()) {
                   entityIdByCmteAcc.set(cmteId, id);
                 }
               }
@@ -1942,6 +1977,7 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
     }
     console.log(`  ${"IE cycles processed / skipped:".padEnd(38)} ${ieCyclesProcessed} / ${ieCyclesSkipped}`);
     console.log(`  ${"IE new spenders pre-upserted:".padEnd(38)} ${ieSpendersUpserted}`);
+    console.log(`  ${"IE orphan spenders minted (spe_nam):".padEnd(38)} ${ieSpendersMintedByName}`); // FIX-841
     console.log(`  ${"IE targets resolved/minted/failed:".padEnd(38)} ${ieTargetsResolved} / ${ieTargetsMinted} / ${ieTargetsFailed}`); // FIX-674
     console.log(`  ${"IE orphan spe_ids skipped:".padEnd(38)} ${ieSpendersOrphaned}`);
     console.log(`  ${"IE → cand rels upserted (S+O):".padEnd(38)} ${ieRelsUpserted}`);

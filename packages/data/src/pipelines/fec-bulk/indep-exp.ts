@@ -43,6 +43,45 @@ import { parse } from "csv-parse";
 const MAX_IE_AMOUNT_DOLLARS = 50_000_000;
 
 // ---------------------------------------------------------------------------
+// Known vexatious / prankster filer names — orphan-spender mint denylist (FIX-841)
+// ---------------------------------------------------------------------------
+//
+// The $50M/row bound above screens the billion-dollar prank filings, but a
+// residue of the SAME serial-prankster corpus lands UNDER the per-row bound —
+// e.g. a ~$3M "WARREN BUFFET APPLE INC." (note the misspelled Buffett) IE in the
+// 2026 file. That does not matter for a matched target whose spender is already a
+// real committee, but when the FIX-841 orphan-spender mint keys a NEW entity off
+// `spe_nam` alone (spe_id absent from both financial_entities and the cm master),
+// a prankster name would mint a junk committee. Screen those by NORMALIZED name.
+// Legit-but-odd real filers (a C9 Form-5 filer like "Casey Family Farms") are
+// deliberately NOT here — only names the FEC prankster corpus is known to use.
+function normalizeSpenderName(raw: string | undefined): string {
+  return (raw ?? "").toUpperCase().replace(/[^A-Z0-9]+/g, " ").replace(/\s+/g, " ").trim();
+}
+
+const IE_SPENDER_NAME_DENYLIST: ReadonlySet<string> = new Set(
+  [
+    "WARREN BUFFET APPLE INC",      // misspelled Buffett — serial prankster
+    "BETTIS SHAWN",                 // serial prankster (documented above)
+    "THE COURT OF DIVINE JUSTICE",  // fake committee
+    "THE COMMITTEE OF 300",         // fake committee
+    "REPUBLICAN EMO GIRL",          // fake committee
+  ].map(normalizeSpenderName),
+);
+
+/**
+ * FIX-841 — a Schedule E `spe_nam` is mintable as an orphan-spender entity iff it
+ * is non-empty after trim AND not a known vexatious/prankster filer name. Shared
+ * by the backfill (backfill-ie-841.ts) and the nightly IE-stage rider so the
+ * denylist has one source of truth.
+ */
+export function isMintableSpenderName(name: string | undefined): boolean {
+  const norm = normalizeSpenderName(name);
+  if (!norm) return false;
+  return !IE_SPENDER_NAME_DENYLIST.has(norm);
+}
+
+// ---------------------------------------------------------------------------
 // Public types
 // ---------------------------------------------------------------------------
 
@@ -53,6 +92,16 @@ export interface IndepExpAggregation {
   totalCents:     number;
   txCount:        number;
   latestDate:     string | null; // ISO YYYY-MM-DD (already normalized from DD-MON-YY)
+  /**
+   * FIX-841 — the Schedule E `spe_nam` (spending committee / filer name),
+   * populated ONLY when `opts.collectSpenderNames` is set. Default off so the
+   * nightly IE stage's aggregation shape and memory profile are unchanged. The
+   * FIX-841 backfill uses it to MINT a name-only financial_entity for spenders
+   * whose spe_id appears in NEITHER financial_entities NOR the cm{yy} committee
+   * master — the last identity source for orphan Schedule E spenders. First
+   * non-empty value wins across the rows that aggregate into this key.
+   */
+  spenderName?:   string;
 }
 
 /**
@@ -134,6 +183,7 @@ interface IeRow {
   cand_office?:    string; // FIX-674 — "H"/"S"/"P" (often blank; derived from cand_id as fallback)
   cand_office_st?: string; // FIX-674 — 2-letter postal (often blank; derived from cand_id)
   spe_id?:         string;
+  spe_nam?:        string; // FIX-841 — spending committee / filer name (Schedule E)
   exp_amo?:        string;
   exp_date?:       string;
   sup_opp?:        string;
@@ -146,9 +196,17 @@ interface IeRow {
 export async function streamIndependentExpenditures(
   csvPath:      string,
   candidateSet: Set<string>,
-  opts:         { collectDroppedByCand?: boolean; collectUnmatched?: boolean } = {},
+  opts:         {
+    collectDroppedByCand?: boolean;
+    collectUnmatched?:     boolean;
+    // FIX-841: retain the Schedule E spe_nam on each aggregation so the backfill
+    // can mint name-only entities for orphan spenders (spe_id ∉ cm ∪ entities).
+    // Default off — nightly IE-stage behavior and memory profile unchanged.
+    collectSpenderNames?:  boolean;
+  } = {},
 ): Promise<IndepExpStreamResult> {
   const aggregations = new Map<string, IndepExpAggregation>();
+  const captureSpenderName = opts.collectSpenderNames === true;
 
   let rowsRead              = 0;
   let passedSupOpp          = 0;
@@ -200,6 +258,10 @@ export async function streamIndependentExpenditures(
     if (!spendingCmteId || !candId) continue;
     passedCmteCand++;
 
+    // FIX-841: spender name, captured only when requested. Kept even when empty
+    // so the merge below can fill it from a later row that does carry a name.
+    const spenderNam = captureSpenderName ? (row.spe_nam ?? "").trim() : "";
+
     const amt = parseFloat((row.exp_amo ?? "").trim());
     if (isNaN(amt) || amt <= 0) continue;
     // Upper sanity bound — reject vexatious / fake billion-dollar filings (FIX-A).
@@ -233,6 +295,9 @@ export async function streamIndependentExpenditures(
           if (dateIsoU && (!existingU.latestDate || dateIsoU > existingU.latestDate)) {
             existingU.latestDate = dateIsoU;
           }
+          if (captureSpenderName && !existingU.spenderName && spenderNam) {
+            existingU.spenderName = spenderNam;
+          }
         } else {
           unmatchedAggregations.set(keyU, {
             spendingCmteId,
@@ -244,6 +309,7 @@ export async function streamIndependentExpenditures(
             candName:      (row.cand_name      ?? "").trim(),
             candOffice:    (row.cand_office    ?? "").trim().toUpperCase(),
             candState:     (row.cand_office_st ?? "").trim().toUpperCase(),
+            ...(captureSpenderName ? { spenderName: spenderNam } : {}),
           });
         }
       }
@@ -262,6 +328,9 @@ export async function streamIndependentExpenditures(
       if (dateIso && (!existing.latestDate || dateIso > existing.latestDate)) {
         existing.latestDate = dateIso;
       }
+      if (captureSpenderName && !existing.spenderName && spenderNam) {
+        existing.spenderName = spenderNam;
+      }
     } else {
       aggregations.set(key, {
         spendingCmteId,
@@ -270,6 +339,7 @@ export async function streamIndependentExpenditures(
         totalCents:    amtCents,
         txCount:       1,
         latestDate:    dateIso,
+        ...(captureSpenderName ? { spenderName: spenderNam } : {}),
       });
     }
   }

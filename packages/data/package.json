@@ -130,6 +130,7 @@
     "data:rebuild:received-totals": "tsx --env-file=../../.env.local src/scripts/rebuild-received-totals.ts",
     "data:analyze:ie-drop": "tsx --env-file=../../.env.local src/scripts/analyze-ie-drop.ts",
     "data:backfill:ie-674": "tsx --env-file=../../.env.local src/scripts/backfill-ie-674.ts",
+    "data:backfill:ie-841": "tsx --env-file=../../.env.local src/scripts/backfill-ie-841.ts",
     "data:refresh-donor-mv:ci": "tsx src/scripts/refresh-donor-rollup-mv.ts",
     "data:rebuild-connections": "tsx --env-file=../../.env.local src/scripts/rebuild-entity-connections.ts",
     "data:rebuild-connections:ci": "tsx src/scripts/rebuild-entity-connections.ts --allow-prod",

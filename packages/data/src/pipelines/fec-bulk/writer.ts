@@ -221,6 +221,90 @@ const PAC_ENTITY_COLUMNS_SCOPED: string[] = PAC_ENTITY_COLUMNS.filter(
 );
 
 // ---------------------------------------------------------------------------
+// FIX-841 — name-only IE spender entities (orphan spe_ids)
+// ---------------------------------------------------------------------------
+
+export interface IeSpenderNameInput {
+  cmteId: string; // Schedule E spe_id
+  name:   string; // Schedule E spe_nam — caller must pass a non-empty, trimmed value
+}
+
+// FIX-841 orphan-spender column set. Mirrors PAC_ENTITY_COLUMNS_SCOPED (aggregate
+// columns OMITTED so total_donated_cents / total_received_cents take DEFAULT 0 on
+// insert and are never touched on conflict) — the same "don't clobber a real
+// total from a partial slice" contract as FIX-700.
+const IE_SPENDER_NAME_COLUMNS: string[] = [
+  "canonical_name",
+  "display_name",
+  "entity_type",
+  "fec_committee_id",
+  "metadata",
+];
+
+/**
+ * Mint name-only `financial_entities` for Schedule E spenders whose `spe_id`
+ * appears in NEITHER `financial_entities` NOR the cm{yy} committee master
+ * (FIX-841). cm is normally the only committee-identity source, but a residue
+ * of real IE spenders never appear there; without a `from_id` their matched IE
+ * money is silently dropped (the spender-side leak FIX-841 closes).
+ *
+ * entity_type is set to `super_pac` — the dominant Schedule E filer type; the
+ * FEC IE-only committee codes (O/U/I) already bucket there via
+ * `cmteTypeToEntityType`. It is a best-guess, so provenance is marked
+ * `metadata.source='schedule_e_spe_nam'` and `fec_cmte_type_raw=null` so a later
+ * cm ingest can correct both the type and the aggregate totals.
+ *
+ * Dedup via `fec_committee_id` UNIQUE (same arbiter as `upsertPacEntitiesBatch`).
+ * Callers only reach this for spe_ids absent from `financial_entities` at load
+ * time, so on a fresh run every row INSERTs and RETURNING yields the full id
+ * map; a re-run finds them already present (skipped upstream) and never revisits
+ * them, so the DO UPDATE never clobbers a since-corrected row.
+ */
+// FIX-756 direct-pg path + FIX-686 loud-abort contract, same as the sibling
+// entity writers.
+export async function upsertIeSpenderEntitiesByName(
+  inputs: IeSpenderNameInput[],
+): Promise<EntityBatchResult> {
+  const entityIdByCmte = new Map<string, string>();
+  if (inputs.length === 0) return { entityIdByCmte, upserted: 0, failed: 0 };
+
+  const rows = inputs.map((input) => {
+    const displayName = (input.name || input.cmteId).trim();
+    return [
+      canonicalizeEntityName(displayName),
+      displayName,
+      "super_pac",
+      input.cmteId,
+      { source: "schedule_e_spe_nam", fec_cmte_type_raw: null },
+    ];
+  });
+
+  const { upserted, failed, returned } = await withDirectClient((client) =>
+    bulkUpsert(client, {
+      table:            "financial_entities",
+      label:            "ie-spender-name",
+      columns:          IE_SPENDER_NAME_COLUMNS,
+      conflictColumns:  ["fec_committee_id"],
+      jsonbColumns:     ["metadata"],
+      returningColumns: ["id", "fec_committee_id"],
+      rows,
+    }),
+  );
+
+  if (failed > 0) {
+    throw new Error(
+      `ie-spender-name upsert: ${failed}/${rows.length} rows failed after direct-pg chunking — aborting (FIX-686)`,
+    );
+  }
+
+  for (const row of returned as Array<{ id: string; fec_committee_id: string | null }>) {
+    if (row.fec_committee_id) entityIdByCmte.set(row.fec_committee_id, row.id);
+  }
+
+  return { entityIdByCmte, upserted, failed };
+}
+
+// ---------------------------------------------------------------------------
 // Batched individual-donor entity upsert (FIX-181)
 // ---------------------------------------------------------------------------
 
