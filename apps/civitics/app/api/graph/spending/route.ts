@@ -47,7 +47,11 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const rows = (data ?? []) as ChordRow[];
+    // FIX-878: chord_contract_flows() now RETURNS jsonb (one row: the full flows
+    // array) instead of SETOF, so the >1,000-row flow set is not truncated by
+    // PostgREST's max_rows cap. `data` is the jsonb array; the element shape is
+    // unchanged (ChordRow), so the aggregation below is untouched.
+    const rows = (Array.isArray(data) ? data : []) as unknown as ChordRow[];
 
     // Aggregate agency totals
     const agencyMap = new Map<string, { name: string; acronym: string; total: number; count: number }>();

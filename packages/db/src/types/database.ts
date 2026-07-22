@@ -5854,17 +5854,7 @@ export type Database = {
         Returns: string
       }
       check_rebuild_autovacuum_status: { Args: never; Returns: Json }
-      chord_contract_flows: {
-        Args: never
-        Returns: {
-          agency_acronym: string
-          agency_id: string
-          agency_name: string
-          award_count: number
-          sector: string
-          total_cents: number
-        }[]
-      }
+      chord_contract_flows: { Args: never; Returns: Json }
       chord_contract_flows_full: {
         Args: never
         Returns: {
