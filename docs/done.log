@@ -1100,3 +1100,4 @@
 2026-07-21 | FIX-818 | e9f54d53 | closes-as-recognized | docs(audits): close FIX-818 — /graph hydration errors no longer reproduce
 2026-07-21 | FIX-877 | 56032a6c | local-only | fix(session-worktree): delete merged branch + clear message when teardown dir strands
 2026-07-21 | FIX-878 | 60f6dee7 | local-only | fix(spending): chord_contract_flows() returns jsonb to defeat PostgREST 1k cap
+2026-07-22 | FIX-879 | 1ca086f3 | local-only | fix(session-worktree): make the stranded-dir recovery re-run work on a de-registered orphan
