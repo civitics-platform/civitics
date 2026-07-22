@@ -44,19 +44,24 @@
     "additionalDirectories": [
       "c:/Users/Craig/Documents/Civitics/civitics-worktrees",
       "c:/Users/Craig/.claude",
-      "c:/Users/Craig/AppData/Local/Temp/claude"
-    ]
-  },"hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "Bash",
-        "hooks": [
-          { "type": "command", "command": "node \"C:/Users/Craig/Documents/Civitics/App/.claude/hooks/compound-allow-hook.mjs\"" }
-        ]
-      }
+      "c:/Users/Craig/AppData/Local/Temp/claude",
+      "c:\\Users\\Craig\\.claude\\projects\\c--Users-Craig-Documents-Civitics-App\\memory"
     ]
   },
   "disabledMcpjsonServers": [
     "supabase"
-  ]
+  ],
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"C:/Users/Craig/Documents/Civitics/App/.claude/hooks/compound-allow-hook.mjs\""
+          }
+        ]
+      }
+    ]
+  }
 }
