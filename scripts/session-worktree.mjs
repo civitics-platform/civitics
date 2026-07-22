@@ -221,18 +221,31 @@ function done(rawId, argv) {
   git("fetch", "origin", "--quiet");
 
   const branchExists = git("rev-parse", "--verify", "--quiet", branch).ok;
+  const originMainExists = git("rev-parse", "--verify", "--quiet", "origin/main").ok;
+
+  // "merged" = branch is an ancestor of origin/main, i.e. every commit on it has
+  // landed, so deleting the branch pointer loses nothing. Drives both the
+  // unmerged-work gate and the branch deletion below — which must run even when
+  // the dir strands on a lock (the fix for the fix-447 leftover-branch case).
+  const merged =
+    branchExists && originMainExists
+      ? git("merge-base", "--is-ancestor", branch, "origin/main").ok
+      : false;
 
   // Safety block: refuse to tear down unmerged work unless --force.
-  if (branchExists && git("rev-parse", "--verify", "--quiet", "origin/main").ok) {
-    const merged = git("merge-base", "--is-ancestor", branch, "origin/main").ok;
-    if (!merged) {
-      console.error(`[session:worktree] ✗ ${branch} is NOT an ancestor of origin/main — UNMERGED WORK.`);
-      console.error(`[session:worktree]   Land it via the recipe (pnpm session:worktree printed it), or`);
-      console.error(`[session:worktree]   pass --force to discard the worktree + local branch anyway.`);
-      if (!force) process.exit(1);
-      console.warn(`[session:worktree] ⚠ --force given — removing UNMERGED worktree + branch. Work will be lost.`);
-    }
+  if (branchExists && originMainExists && !merged) {
+    console.error(`[session:worktree] ✗ ${branch} is NOT an ancestor of origin/main — UNMERGED WORK.`);
+    console.error(`[session:worktree]   Land it via the recipe (pnpm session:worktree printed it), or`);
+    console.error(`[session:worktree]   pass --force to discard the worktree + local branch anyway.`);
+    if (!force) process.exit(1);
+    console.warn(`[session:worktree] ⚠ --force given — removing UNMERGED worktree + branch. Work will be lost.`);
   }
+
+  // Set when the dir removal ultimately fails (transient AV/indexer lock on the
+  // fresh node_modules). We do NOT die on that: the git side is still cleaned up
+  // (merged branch deleted, registry pruned) and we exit non-zero with a clear
+  // "re-run later" message rather than half-succeeding silently.
+  let dirStranded = false;
 
   if (existsSync(wtDir)) {
     // `git worktree remove` refuses a tree with ANY local changes without
@@ -307,32 +320,53 @@ function done(rawId, argv) {
         `[session:worktree] ⚠ git worktree remove still failing after retry; ` +
         `falling back to contained fs.rm of ${wtDir}`,
       );
+      let rmFallbackOk = true;
       try {
         rmSync(resolve(wtDir), { recursive: true, force: true });
       } catch (e) {
-        die(`fs.rm fallback failed: ${e?.message ?? e}. Worktree left intact: ${wtDir}`);
+        // The dir is genuinely locked (AV/indexer/esbuild still holding a handle
+        // on the fresh node_modules). Do NOT die here: the git side can still be
+        // made clean below (merged-branch deletion + registry prune), and dying
+        // now is exactly what stranded fix-447's merged branch. Flag it and carry
+        // on; the final message tells the caller to re-run once the lock clears.
+        rmFallbackOk = false;
+        dirStranded = true;
+        console.warn(`[session:worktree] ⚠ fs.rm fallback failed: ${e?.message ?? e}`);
       }
-      // git's worktree registry still lists the (now-deleted) entry → prune it
-      // so `git worktree list` and a future create on the same slot stay clean.
+      // Prune the registry regardless: if fs.rm succeeded the entry is now stale;
+      // if it failed, git may already have de-registered the tree on the failed
+      // `worktree remove`, and prune is a harmless no-op when there's nothing to do.
       const pruned = git("worktree", "prune");
       if (!pruned.ok && pruned.err) {
         console.warn(`[session:worktree] ⚠ git worktree prune reported: ${pruned.err}`);
       }
-      console.log(
-        `[session:worktree] ✓ removed worktree via contained fs.rm + git worktree prune: ${wtDir}`,
-      );
+      if (rmFallbackOk) {
+        console.log(
+          `[session:worktree] ✓ removed worktree via contained fs.rm + git worktree prune: ${wtDir}`,
+        );
+      }
     }
   } else {
     console.log(`[session:worktree] (no worktree dir at ${wtDir} — skipping remove)`);
   }
 
+  // Branch deletion runs regardless of the dir outcome above: a branch that is an
+  // ancestor of origin/main (merged) is always safe to delete, and the branch
+  // pointer — not the disposable build dir — is what pollutes `git branch`.
+  // Deleting a MERGED branch even when the dir stranded is the fix for the
+  // fix-447 leftover-branch case. Use -D when we've confirmed the branch is
+  // landed (a stronger guarantee than -d's local-only "merged into HEAD", which
+  // wrongly refuses when the primary checkout's main is behind origin/main).
   if (branchExists) {
-    const del = git("branch", force ? "-D" : "-d", branch);
-    if (!del.ok) {
+    const del = git("branch", merged || force ? "-D" : "-d", branch);
+    if (del.ok) {
+      console.log(`[session:worktree] ✓ deleted local branch ${branch}`);
+    } else if (dirStranded) {
+      console.warn(`[session:worktree] ⚠ could not delete local branch ${branch}: ${del.err || del.out}`);
+    } else {
       console.error(del.err || del.out);
       die(`could not delete local branch ${branch} (unmerged? pass --force).`);
     }
-    console.log(`[session:worktree] ✓ deleted local branch ${branch}`);
   }
 
   // Remote branch deletion is NOT automatic — needs explicit confirmation.
@@ -340,6 +374,24 @@ function done(rawId, argv) {
     `[session:worktree] note: the remote branch (if pushed) was left in place.\n` +
     `  To delete it too, run:  git push origin --delete ${branch}`,
   );
+
+  if (dirStranded) {
+    const gitSideNote = branchExists
+      ? `the merged branch pointer was deleted`
+      : `no branch pointer remained`;
+    console.error(
+      `[session:worktree] ⚠ worktree DIR is LOCKED and was left in place:\n` +
+      `    ${wtDir}\n` +
+      `  This is a transient AV/indexer lock on the freshly-hardlinked node_modules — it clears within a minute or two.\n` +
+      `  The git side is otherwise clean (${gitSideNote}); the leftover dir may still show in \`git worktree list\` until removed.\n` +
+      `  To finish teardown once the lock clears, either:\n` +
+      `    • re-run  pnpm session:worktree:done ${id}   (fs.rm's the leftover dir + prunes the registry), or\n` +
+      `    • delete ${wtDir} by hand, then run  git worktree prune\n` +
+      `  (durable fix: keep the AV folder exclusion on ../civitics-worktrees — see FIX-876.)`,
+    );
+    process.exit(1);
+  }
+
   console.log(`[session:worktree] ✓ teardown complete for FIX-${id}.`);
 }
 
