@@ -1094,3 +1094,9 @@
 2026-07-21 | FIX-873 | f0116d00 | local+prod | chore(verify): FIX-872/873 verified on prod [skip vercel]
 2026-07-21 | FIX-841 | b3e3f46f | local+prod | feat(fec-ie): complete the spender-side Schedule E gap (2020/22 + orphan spenders)
 2026-07-21 | FIX-876 | 61b57062 | local-only | fix(session-worktree): backoff retry loop for Windows node_modules EPERM on teardown
+2026-07-21 | FIX-589 | 02ad6feb | local-only | docs(audits): FIX-589 compute-tier memo + stay-on-Small decision
+2026-07-21 | FIX-682 | cbb01077 | closes-as-no-op | docs(audits): close FIX-682 — get_quality_counts is sporadic/off-path, no materialization needed
+2026-07-21 | FIX-799 | 2b79a752 | closes-as-no-op | docs(audits): close FIX-799 — RSC NetworkError is a Cloudflare challenge-on-fetch (CF-transient)
+2026-07-21 | FIX-818 | e9f54d53 | closes-as-recognized | docs(audits): close FIX-818 — /graph hydration errors no longer reproduce
+2026-07-21 | FIX-877 | 56032a6c | local-only | fix(session-worktree): delete merged branch + clear message when teardown dir strands
+2026-07-21 | FIX-878 | 60f6dee7 | local-only | fix(spending): chord_contract_flows() returns jsonb to defeat PostgREST 1k cap
