@@ -1101,3 +1101,7 @@
 2026-07-21 | FIX-877 | 56032a6c | local-only | fix(session-worktree): delete merged branch + clear message when teardown dir strands
 2026-07-21 | FIX-878 | 60f6dee7 | local-only | fix(spending): chord_contract_flows() returns jsonb to defeat PostgREST 1k cap
 2026-07-22 | FIX-879 | 1ca086f3 | local-only | fix(session-worktree): make the stranded-dir recovery re-run work on a de-registered orphan
+2026-07-22 | FIX-569 | b96190e0 | prod-only | chore(participation): record prod verification of FIX-569 bot-protection caps [skip vercel]
+2026-07-22 | FIX-875 | 92594d8a | prod-only | chore(graph): record prod verification of FIX-875 donor tag dedup [skip vercel]
+2026-07-22 | FIX-875 | 46e33009 | local-only | fix(graph): dedupe multi-industry-tag donors across 5 money surfaces (FIX-875) [skip vercel]
+2026-07-22 | FIX-878 | 6471952f | prod-only | chore(graph): record prod verification of FIX-878 chord jsonb conversion [skip vercel]
