@@ -1105,3 +1105,4 @@
 2026-07-22 | FIX-875 | 92594d8a | prod-only | chore(graph): record prod verification of FIX-875 donor tag dedup [skip vercel]
 2026-07-22 | FIX-875 | 46e33009 | local-only | fix(graph): dedupe multi-industry-tag donors across 5 money surfaces (FIX-875) [skip vercel]
 2026-07-22 | FIX-878 | 6471952f | prod-only | chore(graph): record prod verification of FIX-878 chord jsonb conversion [skip vercel]
+2026-07-22 | FIX-880 | 3dcdf797 | local+prod | feat(abuse): observe-only abuse_events log substrate + /privacy page (FIX-880)
