@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { createServerClient } from "@civitics/db";
 import { isStatementVote } from "@civitics/db";
 import { mapRpcError } from "../../_lib";
+import { recordAbuseEvent } from "@/lib/abuse-events";
 
 export const dynamic = "force-dynamic";
 
@@ -30,7 +31,28 @@ export async function PUT(
       p_statement_id: params.id,
       p_vote: json.vote,
     });
-    if (error) return mapRpcError(error);
+    if (error) {
+      if (error.code === "53400") {
+        await recordAbuseEvent({
+          action: "cap_hit",
+          headers: request.headers,
+          userId: user.id,
+          targetType: "statement",
+          targetId: params.id,
+          meta: { route: "statements_vote", cap: "vote_daily" },
+        });
+      }
+      return mapRpcError(error);
+    }
+
+    await recordAbuseEvent({
+      action: "statement_vote",
+      headers: request.headers,
+      userId: user.id,
+      targetType: "statement",
+      targetId: params.id,
+      meta: { route: "statements_vote" },
+    });
 
     return NextResponse.json({ ok: true, vote: json.vote, vote_summary: data ?? {} });
   } catch {

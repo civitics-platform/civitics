@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createServerClient } from "@civitics/db";
 import { mapRpcError } from "../../../investigations/_lib";
+import { recordAbuseEvent } from "@/lib/abuse-events";
 
 export const dynamic = "force-dynamic";
 
@@ -42,7 +43,28 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       p_target_id: target_id,
       p_excerpt: typeof excerpt === "string" && excerpt.trim() ? excerpt.trim() : undefined,
     });
-    if (error) return mapRpcError(error);
+    if (error) {
+      if (error.code === "53400") {
+        await recordAbuseEvent({
+          action: "cap_hit",
+          headers: request.headers,
+          userId: user.id,
+          targetType: "evidence_card",
+          targetId: params.id,
+          meta: { route: "evidence_citation", cap: "evidence_cap" },
+        });
+      }
+      return mapRpcError(error);
+    }
+
+    await recordAbuseEvent({
+      action: "evidence_write",
+      headers: request.headers,
+      userId: user.id,
+      targetType: "evidence_card",
+      targetId: params.id,
+      meta: { route: "evidence_citation", kind: "citation" },
+    });
 
     return NextResponse.json(
       { ok: true, id: (data as { id?: string } | null)?.id ?? null },

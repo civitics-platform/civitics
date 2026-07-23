@@ -17,6 +17,7 @@ import {
 } from "./_lib";
 import { getSlowMode } from "@/lib/slow-mode";
 import { challengeRequiredForWrite, verifyTurnstile } from "@/lib/turnstile";
+import { recordAbuseEvent } from "@/lib/abuse-events";
 
 export const dynamic = "force-dynamic";
 
@@ -359,6 +360,14 @@ export async function POST(request: NextRequest) {
         typeof captchaToken === "string" ? captchaToken : null,
         ip,
       );
+      await recordAbuseEvent({
+        action: "turnstile_challenge",
+        headers: request.headers,
+        userId: user.id,
+        targetType: entityType,
+        targetId: entity_id,
+        meta: { route: "comments", outcome: ok ? "pass" : "fail" },
+      });
       if (!ok) {
         return NextResponse.json(
           { error: "Please complete the verification to continue.", code: "challenge_required" },
@@ -388,7 +397,19 @@ export async function POST(request: NextRequest) {
       p_parent_id: typeof parent_id === "string" && parent_id ? parent_id : undefined,
     });
 
-    if (rpcErr) return rpcErrorResponse(rpcErr);
+    if (rpcErr) {
+      if (rpcErr.code === "53400") {
+        await recordAbuseEvent({
+          action: "cap_hit",
+          headers: request.headers,
+          userId: user.id,
+          targetType: entityType,
+          targetId: entity_id,
+          meta: { route: "comments", cap: "comment_daily" },
+        });
+      }
+      return rpcErrorResponse(rpcErr);
+    }
     if (!inserted) {
       return NextResponse.json({ error: "Failed to post comment" }, { status: 500 });
     }
@@ -406,6 +427,17 @@ export async function POST(request: NextRequest) {
         /* non-fatal — nightly scorer will catch up */
       }
     }
+
+    await recordAbuseEvent({
+      action: "comment_create",
+      headers: request.headers,
+      userId: user.id,
+      targetType: entityType,
+      targetId: entity_id,
+      // meta.kind distinguishes discussion comments from Q&A questions/answers
+      // and community_notes — those are all comments, so this stays one action.
+      meta: { route: "comments", kind: typeof kind === "string" && kind ? kind : DEFAULT_KIND },
+    });
 
     const names = await fetchAuthorMeta(admin, [inserted.author_id]);
     return NextResponse.json({ comment: serialize(inserted, names) }, { status: 201 });

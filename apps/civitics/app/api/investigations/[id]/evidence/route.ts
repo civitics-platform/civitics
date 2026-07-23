@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { createServerClient } from "@civitics/db";
 import { challengeRequiredForWrite, verifyTurnstile } from "@/lib/turnstile";
 import { mapRpcError } from "../../_lib";
+import { recordAbuseEvent } from "@/lib/abuse-events";
 
 export const dynamic = "force-dynamic";
 
@@ -72,6 +73,14 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
         request.headers.get("x-real-ip") ??
         undefined;
       const ok = await verifyTurnstile(typeof captchaToken === "string" ? captchaToken : null, ip);
+      await recordAbuseEvent({
+        action: "turnstile_challenge",
+        headers: request.headers,
+        userId: user.id,
+        targetType: "investigation",
+        targetId: params.id,
+        meta: { route: "evidence", outcome: ok ? "pass" : "fail" },
+      });
       if (!ok) {
         return NextResponse.json(
           { error: "Please complete the verification to continue.", code: "challenge_required" },
@@ -98,7 +107,28 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       p_citation_excerpt:
         typeof citation_excerpt === "string" && citation_excerpt.trim() ? citation_excerpt.trim() : undefined,
     });
-    if (error) return mapRpcError(error);
+    if (error) {
+      if (error.code === "53400") {
+        await recordAbuseEvent({
+          action: "cap_hit",
+          headers: request.headers,
+          userId: user.id,
+          targetType: "investigation",
+          targetId: params.id,
+          meta: { route: "evidence", cap: "evidence_cap" },
+        });
+      }
+      return mapRpcError(error);
+    }
+
+    await recordAbuseEvent({
+      action: "evidence_write",
+      headers: request.headers,
+      userId: user.id,
+      targetType: "investigation",
+      targetId: params.id,
+      meta: { route: "evidence", kind: "card" },
+    });
 
     return NextResponse.json(
       { ok: true, id: (data as { id?: string } | null)?.id ?? null },

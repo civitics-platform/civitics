@@ -11,6 +11,7 @@ import { stripViewerKeys } from "@/lib/public-payload";
 import { withPublicCdnCache } from "@/lib/cdn-cache";
 import { challengeRequiredForWrite, verifyTurnstile } from "@/lib/turnstile";
 import { mapRpcError } from "./_lib";
+import { recordAbuseEvent } from "@/lib/abuse-events";
 
 export const dynamic = "force-dynamic";
 
@@ -119,6 +120,14 @@ export async function POST(request: NextRequest) {
         request.headers.get("x-real-ip") ??
         undefined;
       const ok = await verifyTurnstile(typeof captchaToken === "string" ? captchaToken : null, ip);
+      await recordAbuseEvent({
+        action: "turnstile_challenge",
+        headers: request.headers,
+        userId: user.id,
+        targetType: entity_type,
+        targetId: entity_id,
+        meta: { route: "statements", outcome: ok ? "pass" : "fail" },
+      });
       if (!ok) {
         return NextResponse.json(
           { error: "Please complete the verification to continue.", code: "challenge_required" },
@@ -133,7 +142,28 @@ export async function POST(request: NextRequest) {
       p_body: body.trim(),
       p_source_comment_id: sourceCommentId ?? undefined,
     });
-    if (error) return mapRpcError(error);
+    if (error) {
+      if (error.code === "53400") {
+        await recordAbuseEvent({
+          action: "cap_hit",
+          headers: request.headers,
+          userId: user.id,
+          targetType: entity_type,
+          targetId: entity_id,
+          meta: { route: "statements", cap: "statement_daily" },
+        });
+      }
+      return mapRpcError(error);
+    }
+
+    await recordAbuseEvent({
+      action: "statement_create",
+      headers: request.headers,
+      userId: user.id,
+      targetType: entity_type,
+      targetId: entity_id,
+      meta: { route: "statements" },
+    });
 
     return NextResponse.json({ ok: true, id: (data as { id?: string } | null)?.id ?? null }, { status: 201 });
   } catch {

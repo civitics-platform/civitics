@@ -15,6 +15,7 @@ import { cookies } from "next/headers";
 import { createServerClient } from "@civitics/db";
 import { isEntityCommentType } from "@civitics/db";
 import { challengeRequiredForWrite, verifyTurnstile } from "@/lib/turnstile";
+import { recordAbuseEvent } from "@/lib/abuse-events";
 
 export const dynamic = "force-dynamic";
 
@@ -90,6 +91,14 @@ async function handleSet(request: NextRequest) {
       request.headers.get("x-real-ip") ??
       undefined;
     const ok = await verifyTurnstile(typeof captchaToken === "string" ? captchaToken : null, ip);
+    await recordAbuseEvent({
+      action: "turnstile_challenge",
+      headers: request.headers,
+      userId: user.id,
+      targetType: entity_type,
+      targetId: entity_id,
+      meta: { route: "positions", outcome: ok ? "pass" : "fail" },
+    });
     if (!ok) {
       return NextResponse.json(
         { error: "Please complete the verification to continue.", code: "challenge_required" },
@@ -110,9 +119,28 @@ async function handleSet(request: NextRequest) {
   });
 
   if (error) {
+    if ((error as { code?: string }).code === "53400") {
+      await recordAbuseEvent({
+        action: "cap_hit",
+        headers: request.headers,
+        userId: user.id,
+        targetType: entity_type,
+        targetId: entity_id,
+        meta: { route: "positions", cap: "delta_daily_cap" },
+      });
+    }
     const mapped = mapRpcError((error as { code?: string }).code, error.message);
     return NextResponse.json({ error: mapped.error, code: mapped.code }, { status: mapped.status });
   }
+
+  await recordAbuseEvent({
+    action: "position_set",
+    headers: request.headers,
+    userId: user.id,
+    targetType: entity_type,
+    targetId: entity_id,
+    meta: { route: "positions" },
+  });
 
   return NextResponse.json({ position: data ?? null }, { status: 200 });
 }

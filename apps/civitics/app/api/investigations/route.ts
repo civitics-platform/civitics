@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { createServerClient } from "@civitics/db";
 import { challengeRequiredForWrite, verifyTurnstile } from "@/lib/turnstile";
 import { mapRpcError } from "./_lib";
+import { recordAbuseEvent } from "@/lib/abuse-events";
 
 export const dynamic = "force-dynamic";
 
@@ -88,6 +89,12 @@ export async function POST(request: NextRequest) {
         request.headers.get("x-real-ip") ??
         undefined;
       const ok = await verifyTurnstile(typeof captchaToken === "string" ? captchaToken : null, ip);
+      await recordAbuseEvent({
+        action: "turnstile_challenge",
+        headers: request.headers,
+        userId: user.id,
+        meta: { route: "investigations", outcome: ok ? "pass" : "fail" },
+      });
       if (!ok) {
         return NextResponse.json(
           { error: "Please complete the verification to continue.", code: "challenge_required" },
@@ -103,12 +110,29 @@ export async function POST(request: NextRequest) {
       p_scope_id: typeof scope_id === "string" && scope_id ? scope_id : undefined,
       p_scope_note: typeof scope_note === "string" && scope_note.trim() ? scope_note.trim() : undefined,
     });
-    if (error) return mapRpcError(error);
+    if (error) {
+      if (error.code === "53400") {
+        await recordAbuseEvent({
+          action: "cap_hit",
+          headers: request.headers,
+          userId: user.id,
+          meta: { route: "investigations", cap: "investigation_cap" },
+        });
+      }
+      return mapRpcError(error);
+    }
 
-    return NextResponse.json(
-      { ok: true, id: (data as { id?: string } | null)?.id ?? null },
-      { status: 201 },
-    );
+    const newId = (data as { id?: string } | null)?.id ?? null;
+    await recordAbuseEvent({
+      action: "investigation_create",
+      headers: request.headers,
+      userId: user.id,
+      targetType: "investigation",
+      targetId: newId,
+      meta: { route: "investigations" },
+    });
+
+    return NextResponse.json({ ok: true, id: newId }, { status: 201 });
   } catch {
     return NextResponse.json({ error: "Failed to create investigation" }, { status: 500 });
   }

@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { createServerClient } from "@civitics/db";
 import type { CookieStore } from "@civitics/db";
+import { recordAbuseEvent } from "@/lib/abuse-events";
 
 /**
  * Handles implicit-flow auth redirects where tokens are in the URL hash.
@@ -72,6 +73,14 @@ export async function GET(request: Request) {
       // Auth still succeeds even if profile upsert fails
     }
   }
+
+  // FIX-880: observe-only sign-in landing. Never blocks or fails the auth flow.
+  await recordAbuseEvent({
+    action: "auth_callback",
+    headers: request.headers,
+    userId: user?.id ?? null,
+    meta: { route: "callback_hash" },
+  });
 
   // Build redirect response with auth cookies
   const redirectTo = next.startsWith("/") ? `${origin}${next}` : origin;

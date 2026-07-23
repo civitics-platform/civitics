@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { createServerClient, createAdminClient } from "@civitics/db";
 import { FLAG_REASONS, RATE_LIMITS, type FlagReason } from "@civitics/db";
 import { isRateLimited } from "../../../comments/_lib";
+import { recordAbuseEvent } from "@/lib/abuse-events";
 
 export const dynamic = "force-dynamic";
 
@@ -61,6 +62,15 @@ export async function POST(
     if (error && error.code !== "23505") {
       return NextResponse.json({ error: "Failed to flag" }, { status: 500 });
     }
+
+    await recordAbuseEvent({
+      action: "flag_create",
+      headers: request.headers,
+      userId: user.id,
+      targetType: "entity_statement",
+      targetId: params.id,
+      meta: { route: "statements_flag" },
+    });
 
     return NextResponse.json({ flagged: true });
   } catch {

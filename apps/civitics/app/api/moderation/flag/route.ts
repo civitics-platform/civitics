@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createServerClient, createAdminClient } from "@civitics/db";
+import { recordAbuseEvent } from "@/lib/abuse-events";
 
 export const dynamic = "force-dynamic";
 
@@ -89,6 +90,15 @@ export async function POST(request: NextRequest) {
   if (error) {
     return NextResponse.json({ error: "Failed to flag" }, { status: 500 });
   }
+
+  await recordAbuseEvent({
+    action: "flag_create",
+    headers: request.headers,
+    userId: user.id,
+    targetType: body.content_type,
+    targetId: body.content_id,
+    meta: { route: "moderation_flag" },
+  });
 
   return NextResponse.json({ flagged: true });
 }

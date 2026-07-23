@@ -14,6 +14,42 @@ export type Database = {
   }
   public: {
     Tables: {
+      abuse_events: {
+        Row: {
+          action: string
+          id: number
+          ip_hash: string | null
+          meta: Json
+          occurred_at: string
+          target_id: string | null
+          target_type: string | null
+          ua_hash: string | null
+          user_id: string | null
+        }
+        Insert: {
+          action: string
+          id?: never
+          ip_hash?: string | null
+          meta?: Json
+          occurred_at?: string
+          target_id?: string | null
+          target_type?: string | null
+          ua_hash?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          action?: string
+          id?: never
+          ip_hash?: string | null
+          meta?: Json
+          occurred_at?: string
+          target_id?: string | null
+          target_type?: string | null
+          ua_hash?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       agencies: {
         Row: {
           acronym: string | null
