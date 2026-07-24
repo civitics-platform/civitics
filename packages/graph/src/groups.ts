@@ -26,7 +26,7 @@ export const BUILT_IN_GROUPS: FocusGroup[] = [
     id: 'group-full-senate',
     name: 'Full Senate',
     type: 'group',
-    icon: '🏛',
+    icon: 'legislature_upper',
     color: 'rgb(var(--c-viz-5))',
     filter: {
       entity_type: 'official',
@@ -39,7 +39,7 @@ export const BUILT_IN_GROUPS: FocusGroup[] = [
     id: 'group-full-house',
     name: 'Full House',
     type: 'group',
-    icon: '🏠',
+    icon: 'legislature_lower',
     color: 'rgb(var(--c-viz-6))',
     filter: {
       entity_type: 'official',
@@ -52,7 +52,7 @@ export const BUILT_IN_GROUPS: FocusGroup[] = [
     id: 'group-senate-dems',
     name: 'Senate Democrats',
     type: 'group',
-    icon: '🔵',
+    icon: 'users',
     color: 'rgb(var(--c-blue))',
     filter: {
       entity_type: 'official',
@@ -66,7 +66,7 @@ export const BUILT_IN_GROUPS: FocusGroup[] = [
     id: 'group-senate-reps',
     name: 'Senate Republicans',
     type: 'group',
-    icon: '🔴',
+    icon: 'users',
     color: 'rgb(var(--c-accent))',
     filter: {
       entity_type: 'official',
@@ -80,7 +80,7 @@ export const BUILT_IN_GROUPS: FocusGroup[] = [
     id: 'group-house-dems',
     name: 'House Democrats',
     type: 'group',
-    icon: '🔵',
+    icon: 'users',
     color: 'rgb(var(--c-blue))',
     filter: {
       entity_type: 'official',
@@ -94,7 +94,7 @@ export const BUILT_IN_GROUPS: FocusGroup[] = [
     id: 'group-house-reps',
     name: 'House Republicans',
     type: 'group',
-    icon: '🔴',
+    icon: 'users',
     color: 'rgb(var(--c-accent))',
     filter: {
       entity_type: 'official',
@@ -114,7 +114,7 @@ export const BUILT_IN_GROUPS: FocusGroup[] = [
     id: 'group-federal-judges',
     name: 'Federal Judges',
     type: 'group',
-    icon: '⚖️',
+    icon: 'judicial',
     color: 'rgb(var(--c-viz-7))',
     filter: {
       entity_type: 'official',
@@ -133,7 +133,7 @@ export const BUILT_IN_GROUPS: FocusGroup[] = [
     id: 'group-pac-lobby',
     name: 'Lobby & Advocacy PACs',
     type: 'group',
-    icon: '🗣',
+    icon: 'lobbying',
     color: 'rgb(var(--c-viz-7))',
     filter: {
       entity_type: 'pac',
@@ -146,7 +146,7 @@ export const BUILT_IN_GROUPS: FocusGroup[] = [
     id: 'group-pac-finance',
     name: 'Finance PACs',
     type: 'group',
-    icon: '💰',
+    icon: 'finance',
     color: 'rgb(var(--c-amber))',
     filter: {
       entity_type: 'pac',
@@ -159,7 +159,7 @@ export const BUILT_IN_GROUPS: FocusGroup[] = [
     id: 'group-pac-energy',
     name: 'Oil & Gas PACs',
     type: 'group',
-    icon: '⚡',
+    icon: 'oil_gas',
     color: 'rgb(var(--c-viz-6))',
     filter: {
       entity_type: 'pac',
@@ -172,7 +172,7 @@ export const BUILT_IN_GROUPS: FocusGroup[] = [
     id: 'group-pac-healthcare',
     name: 'Pharma PACs',
     type: 'group',
-    icon: '💊',
+    icon: 'pharma',
     color: 'rgb(var(--c-viz-1))',
     filter: {
       entity_type: 'pac',
@@ -185,7 +185,7 @@ export const BUILT_IN_GROUPS: FocusGroup[] = [
     id: 'group-pac-defense',
     name: 'Defense PACs',
     type: 'group',
-    icon: '🛡',
+    icon: 'defense',
     color: 'rgb(var(--c-viz-5))',
     filter: {
       entity_type: 'pac',
@@ -198,7 +198,7 @@ export const BUILT_IN_GROUPS: FocusGroup[] = [
     id: 'group-pac-labor',
     name: 'Labor PACs',
     type: 'group',
-    icon: '👷',
+    icon: 'labor',
     color: 'rgb(var(--c-viz-9))',
     filter: {
       entity_type: 'pac',
@@ -211,7 +211,7 @@ export const BUILT_IN_GROUPS: FocusGroup[] = [
     id: 'group-pac-tech',
     name: 'Tech PACs',
     type: 'group',
-    icon: '💻',
+    icon: 'tech',
     color: 'rgb(var(--c-viz-2))',
     filter: {
       entity_type: 'pac',
@@ -224,7 +224,7 @@ export const BUILT_IN_GROUPS: FocusGroup[] = [
     id: 'group-pac-agriculture',
     name: 'Agriculture PACs',
     type: 'group',
-    icon: '🌾',
+    icon: 'agriculture',
     color: 'rgb(var(--c-viz-8))',
     filter: {
       entity_type: 'pac',
@@ -237,7 +237,7 @@ export const BUILT_IN_GROUPS: FocusGroup[] = [
     id: 'group-pac-realestate',
     name: 'Real Estate PACs',
     type: 'group',
-    icon: '🏘',
+    icon: 'real_estate',
     color: 'rgb(var(--c-viz-3))',
     filter: {
       entity_type: 'pac',
@@ -250,7 +250,7 @@ export const BUILT_IN_GROUPS: FocusGroup[] = [
     id: 'group-pac-retail',
     name: 'Retail PACs',
     type: 'group',
-    icon: '🛒',
+    icon: 'retail',
     color: 'rgb(var(--c-viz-7))',
     filter: {
       entity_type: 'pac',
@@ -263,7 +263,7 @@ export const BUILT_IN_GROUPS: FocusGroup[] = [
     id: 'group-pac-legal',
     name: 'Legal PACs',
     type: 'group',
-    icon: '⚖️',
+    icon: 'legal',
     color: 'rgb(var(--c-blue))',
     filter: {
       entity_type: 'pac',
@@ -276,7 +276,7 @@ export const BUILT_IN_GROUPS: FocusGroup[] = [
     id: 'group-pac-transportation',
     name: 'Transportation PACs',
     type: 'group',
-    icon: '🚛',
+    icon: 'transportation',
     color: 'rgb(var(--c-viz-5))',
     filter: {
       entity_type: 'pac',
@@ -292,7 +292,7 @@ export const BUILT_IN_GROUPS: FocusGroup[] = [
     id: 'group-federal-agencies',
     name: 'Federal Agencies',
     type: 'group',
-    icon: '🏛',
+    icon: 'agency',
     color: 'rgb(var(--c-viz-5))',
     filter: {
       entity_type: 'agency',
@@ -307,7 +307,7 @@ export const BUILT_IN_GROUPS: FocusGroup[] = [
     id: 'group-independent-agencies',
     name: 'Independent Agencies',
     type: 'group',
-    icon: '🏢',
+    icon: 'agency',
     color: 'rgb(var(--c-ink-soft))',
     filter: {
       entity_type: 'agency',
@@ -323,7 +323,7 @@ export const BUILT_IN_GROUPS: FocusGroup[] = [
     id: 'group-judiciary',
     name: 'Federal Judiciary',
     type: 'group',
-    icon: '⚖️',
+    icon: 'judicial',
     color: 'rgb(var(--c-viz-7))',
     filter: {
       entity_type: 'official',
@@ -337,7 +337,7 @@ export const BUILT_IN_GROUPS: FocusGroup[] = [
     id: 'group-cabinet',
     name: 'Cabinet & Executive',
     type: 'group',
-    icon: '🪪',
+    icon: 'executive',
     color: 'rgb(var(--c-viz-6))',
     filter: {
       entity_type: 'official',
@@ -353,7 +353,7 @@ export const BUILT_IN_GROUPS: FocusGroup[] = [
     id: 'group-super-pacs',
     name: 'Super PACs',
     type: 'group',
-    icon: '💲',
+    icon: 'super_pac',
     color: 'rgb(var(--c-accent))',
     filter: {
       entity_type: 'financial',
@@ -367,7 +367,7 @@ export const BUILT_IN_GROUPS: FocusGroup[] = [
     id: 'group-party-committees',
     name: 'Party Committees',
     type: 'group',
-    icon: '🎪',
+    icon: 'party_committee',
     color: 'rgb(var(--c-viz-7))',
     filter: {
       entity_type: 'financial',
@@ -381,7 +381,7 @@ export const BUILT_IN_GROUPS: FocusGroup[] = [
     id: 'group-corporations',
     name: 'Corporations',
     type: 'group',
-    icon: '🏭',
+    icon: 'corporation',
     color: 'rgb(var(--c-viz-2))',
     filter: {
       entity_type: 'financial',
@@ -409,7 +409,7 @@ export const BUILT_IN_GROUPS: FocusGroup[] = [
     id: 'group-unions',
     name: 'Unions & Labor',
     type: 'group',
-    icon: '👷',
+    icon: 'union',
     color: 'rgb(var(--c-viz-9))',
     filter: {
       entity_type: 'financial',
@@ -423,7 +423,7 @@ export const BUILT_IN_GROUPS: FocusGroup[] = [
     id: 'group-individual-donors',
     name: 'Individual Donors',
     type: 'group',
-    icon: '👤',
+    icon: 'individual',
     color: 'rgb(var(--c-viz-1))',
     filter: {
       entity_type: 'financial',
@@ -439,7 +439,7 @@ export const BUILT_IN_GROUPS: FocusGroup[] = [
     id: 'group-proposals-bills',
     name: 'Bills',
     type: 'group',
-    icon: '📋',
+    icon: 'bill',
     color: 'rgb(var(--c-blue))',
     filter: {
       entity_type: 'proposal',
@@ -453,7 +453,7 @@ export const BUILT_IN_GROUPS: FocusGroup[] = [
     id: 'group-proposals-open-comment',
     name: 'Open for Comment',
     type: 'group',
-    icon: '⚡',
+    icon: 'deadline',
     color: 'rgb(var(--c-green-ink))',
     filter: {
       entity_type: 'proposal',
@@ -467,7 +467,7 @@ export const BUILT_IN_GROUPS: FocusGroup[] = [
     id: 'group-proposals-regulations',
     name: 'Regulations',
     type: 'group',
-    icon: '📜',
+    icon: 'regulation',
     color: 'rgb(var(--c-viz-3))',
     filter: {
       entity_type: 'proposal',
@@ -483,7 +483,7 @@ export const BUILT_IN_GROUPS: FocusGroup[] = [
     id: 'group-initiatives-active',
     name: 'Active Initiatives',
     type: 'group',
-    icon: '🌱',
+    icon: 'initiative',
     color: 'rgb(var(--c-green-ink))',
     filter: {
       entity_type: 'initiative',
@@ -497,7 +497,7 @@ export const BUILT_IN_GROUPS: FocusGroup[] = [
     id: 'group-initiatives-resolved',
     name: 'Resolved Initiatives',
     type: 'group',
-    icon: '✅',
+    icon: 'complete',
     color: 'rgb(var(--c-ink-soft))',
     filter: {
       entity_type: 'initiative',
@@ -524,7 +524,7 @@ export function createCustomGroup(filter: GroupFilter, name?: string): FocusGrou
     id,
     name: autoName,
     type: 'group',
-    icon: filter.entity_type === 'pac' ? '💼' : '👤',
+    icon: filter.entity_type === 'pac' ? 'pac' : 'official',
     color: filter.party === 'democrat'
       ? 'rgb(var(--c-blue))'
       : filter.party === 'republican'

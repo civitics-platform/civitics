@@ -284,7 +284,8 @@ function draw(
       .attr("font-size", "10px")
       .text((d) => {
         const grp = allGroups[d.index];
-        return grp ? `${grp.icon} ${grp.label}`.trim() : `Group ${d.index}`;
+        // FIX-730: no glyph in the D3-drawn arc label — label text only.
+        return grp ? grp.label : `Group ${d.index}`;
       });
   }
 
@@ -532,7 +533,7 @@ export function ChordGraph({ className = "", svgRef: externalSvgRef, vizOptions,
     const allGroups: DynamicGroup[] = [
       ...filteredGroups.map((g, i) => ({
         label: g.label,
-        icon:  g.icon ?? "🏢",
+        icon:  g.icon ?? "",
         color: colorForArc({ kind: 'donor', id: g.id, industry: g.industry }, i, dataMode, granularity),
         kind:  "donor" as const,
       })),

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Icon } from "@civitics/graph";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -64,21 +65,22 @@ function WindowRow({ r }: { r: ResponseRow }) {
     }`}>
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
-          <span className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold ${rs.color}`}>
+          <span className={`rounded border px-2.5 py-0.5 text-xs font-semibold ${rs.color}`}>
             {rs.label}
           </span>
           {r.is_verified_staff && (
-            <span className="rounded-full bg-civic-blue/10 border border-civic-blue/25 px-2 py-0.5 text-xs text-civic-blue">
+            <span className="rounded bg-civic-blue/10 border border-civic-blue/25 px-2 py-0.5 text-xs text-civic-blue">
               ✓ Verified staff
             </span>
           )}
           {isOpen && (
-            <span className="rounded-full bg-amber/20 border border-amber/60 px-2 py-0.5 text-xs font-medium text-ink">
-              ⏳ {daysUntil(r.window_closes_at)}d remaining
+            <span className="inline-flex items-center rounded bg-amber/20 border border-amber/60 px-2 py-0.5 text-xs font-medium text-ink">
+              <Icon name="hourglass" className="w-3.5 h-3.5 inline-block align-[-2px] mr-1" />
+              {daysUntil(r.window_closes_at)}d remaining
             </span>
           )}
           {isExpired && (
-            <span className="rounded-full bg-paper-2 border border-rule px-2 py-0.5 text-xs text-ink-soft/70">
+            <span className="rounded bg-paper-2 border border-rule px-2 py-0.5 text-xs text-ink-soft/70">
               Expired {daysAgo(r.window_closes_at)}d ago
             </span>
           )}
@@ -154,17 +156,17 @@ export function ResponseWindowStatus({ initiativeId, responses }: ResponseWindow
         {/* Summary chips */}
         <div className="flex items-center gap-2">
           {responded.length > 0 && (
-            <span className="rounded-full bg-green-ink/10 border border-green-ink/25 px-2.5 py-0.5 text-xs font-medium text-green-ink">
+            <span className="rounded bg-green-ink/10 border border-green-ink/25 px-2.5 py-0.5 text-xs font-medium text-green-ink">
               {responded.length} responded
             </span>
           )}
           {openWindows.length > 0 && (
-            <span className="rounded-full bg-amber/20 border border-amber/60 px-2.5 py-0.5 text-xs font-medium text-ink">
+            <span className="rounded bg-amber/20 border border-amber/60 px-2.5 py-0.5 text-xs font-medium text-ink">
               {openWindows.length} open
             </span>
           )}
           {expired.length > 0 && (
-            <span className="rounded-full bg-paper-2 border border-rule px-2.5 py-0.5 text-xs text-ink-soft/70">
+            <span className="rounded bg-paper-2 border border-rule px-2.5 py-0.5 text-xs text-ink-soft/70">
               {expired.length} no response
             </span>
           )}

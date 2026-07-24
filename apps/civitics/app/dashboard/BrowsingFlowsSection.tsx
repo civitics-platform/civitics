@@ -1,4 +1,5 @@
 import { SectionCard, SectionHeader, EmptyState } from "@civitics/ui";
+import { Icon } from "@civitics/graph";
 
 export type PathTransition = {
   from_page: string;
@@ -17,16 +18,16 @@ type Props = {
 };
 
 function pathIcon(page: string): string {
-  if (page === "/" || page === "") return "🏠";
-  if (page.startsWith("/officials")) return "👤";
-  if (page.startsWith("/proposals")) return "📋";
-  if (page.startsWith("/agencies")) return "🏛";
-  if (page.startsWith("/initiatives")) return "🗳";
-  if (page.startsWith("/graph")) return "🔗";
-  if (page.startsWith("/search")) return "🔍";
-  if (page.startsWith("/dashboard")) return "📊";
-  if (page.startsWith("/desk") || page.startsWith("/profile")) return "👋";
-  return "📄";
+  if (page === "/" || page === "") return "home";
+  if (page.startsWith("/officials")) return "officials";
+  if (page.startsWith("/proposals")) return "proposals";
+  if (page.startsWith("/agencies")) return "agencies";
+  if (page.startsWith("/initiatives")) return "initiatives";
+  if (page.startsWith("/graph")) return "graph";
+  if (page.startsWith("/search")) return "search";
+  if (page.startsWith("/dashboard")) return "dashboard";
+  if (page.startsWith("/desk") || page.startsWith("/profile")) return "profile";
+  return "page";
 }
 
 function pathLabel(page: string): string {
@@ -49,7 +50,7 @@ export function BrowsingFlowsSection({ transitions, entryPages }: Props) {
   return (
     <SectionCard>
       <SectionHeader
-        icon="🧭"
+        icon={<Icon name="compass" className="w-4 h-4" />}
         title="How People Explore the Site"
         description="Common journeys across Civitics, last 30 days"
       />
@@ -74,7 +75,7 @@ export function BrowsingFlowsSection({ transitions, entryPages }: Props) {
               const inner = (
                 <>
                   <span className="flex min-w-0 items-center gap-2">
-                    <span aria-hidden="true">{pathIcon(e.page)}</span>
+                    <Icon name={pathIcon(e.page)} className="w-4 h-4 shrink-0 text-ink-soft" />
                     <span className="truncate font-medium text-ink">{pathLabel(e.page)}</span>
                     <code className="hidden truncate text-[10px] font-mono text-ink-soft/70 sm:inline">
                       {e.page}
@@ -131,10 +132,10 @@ export function BrowsingFlowsSection({ transitions, entryPages }: Props) {
                   />
                   <div className="relative flex items-center justify-between gap-3 rounded px-2 py-1.5 text-sm">
                     <span className="flex min-w-0 flex-1 items-center gap-2">
-                      <span aria-hidden="true">{pathIcon(t.from_page)}</span>
+                      <Icon name={pathIcon(t.from_page)} className="w-4 h-4 shrink-0 text-ink-soft" />
                       <span className="truncate text-ink-soft">{pathLabel(t.from_page)}</span>
                       <span className="shrink-0 text-ink-soft/50" aria-hidden="true">→</span>
-                      <span aria-hidden="true">{pathIcon(t.to_page)}</span>
+                      <Icon name={pathIcon(t.to_page)} className="w-4 h-4 shrink-0 text-ink-soft" />
                       <span className="truncate font-medium text-ink">{pathLabel(t.to_page)}</span>
                     </span>
                     <span className="tabular-nums text-xs text-ink-soft">

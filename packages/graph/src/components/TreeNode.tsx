@@ -15,6 +15,7 @@
 
 import { useState, type ReactNode } from 'react';
 import React from 'react';
+import { Icon, hasIcon } from '../icons';
 
 // ── Action ─────────────────────────────────────────────────────────────────────
 
@@ -168,9 +169,12 @@ export function TreeNode({
           />
         )}
 
-        {/* Icon (section/item, not entity/connection) */}
+        {/* Icon (section/item, not entity/connection). Registry keys render a
+            lucide glyph; typographic markers (+, ⚙, ×) render as text (FIX-730). */}
         {variant !== 'entity' && variant !== 'connection' && icon && (
-          <span className="text-sm shrink-0 leading-none">{icon}</span>
+          hasIcon(icon)
+            ? <Icon name={icon} className="w-3.5 h-3.5 shrink-0" />
+            : <span className="text-sm shrink-0 leading-none">{icon}</span>
         )}
 
         {/* Label */}
@@ -191,7 +195,7 @@ export function TreeNode({
 
         {/* Count badge */}
         {count != null && (
-          <span className="shrink-0 px-1.5 py-0.5 rounded-full bg-ink/5 text-ink-soft text-[10px] leading-none">
+          <span className="shrink-0 px-1.5 py-0.5 rounded bg-ink/5 text-ink-soft text-[10px] leading-none">
             {count}
           </span>
         )}
@@ -206,7 +210,9 @@ export function TreeNode({
                 onClick={e => { e.stopPropagation(); action.onClick(); }}
                 className="w-5 h-5 flex items-center justify-center rounded hover:bg-accent/10 text-ink-soft hover:text-accent transition-colors text-xs leading-none"
               >
-                {action.icon}
+                {hasIcon(action.icon)
+                  ? <Icon name={action.icon} className="w-3.5 h-3.5" />
+                  : action.icon}
               </button>
             ))}
           </div>

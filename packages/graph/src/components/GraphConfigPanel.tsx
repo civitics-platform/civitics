@@ -30,6 +30,7 @@ import {
 } from '../saved-views';
 import { TreeNode, TreeSection } from './TreeNode';
 import { ConnectionsTree } from './ConnectionsTree';
+import { Icon } from '../icons';
 import { isFocusEntity, coerceNodeSizeEncoding } from '../types';
 
 /** FIX-813 — default width; host may override via the width prop. */
@@ -59,19 +60,8 @@ export interface GraphConfigPanelProps {
   asDrawer?: boolean;
 }
 
-// Emoji for each preset
-const PRESET_EMOJI: Record<string, string> = {
-  'follow-the-money':       '💰',
-  'votes-and-bills':        '🗳',
-  'nominations':            '⭐',
-  'committee-power':        '👁',
-  'full-record':            '📋',
-  'clean-view':             '✨',
-  'chord-sector-vote':      '⚖️',
-  'chord-subject-party':    '🏷️',
-  'chord-donor-type-party': '🏛️',
-  'chord-state-party':      '📍',
-};
+// FIX-730 — preset ids ARE icon-registry keys, so the icon renders straight from
+// the presetId via the TreeNode <Icon> resolver; no emoji lookup table.
 
 // Standard viz types from registry
 const STD_VIZ   = VIZ_REGISTRY.filter(v => v.group === 'standard');
@@ -1211,7 +1201,7 @@ export function GraphConfigPanel({
           onClick={() => jumpTo('presets')}
           className="w-8 h-8 flex items-center justify-center rounded hover:bg-ink/10 transition-colors text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
         >
-          <span aria-hidden="true">📋</span>
+          <Icon name="full-record" className="w-4 h-4" aria-hidden="true" />
         </button>
         <button
           type="button"
@@ -1229,7 +1219,7 @@ export function GraphConfigPanel({
           onClick={jumpToConnections}
           className="w-8 h-8 flex items-center justify-center rounded hover:bg-ink/10 transition-colors text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
         >
-          <span aria-hidden="true">🔗</span>
+          <Icon name="link" className="w-4 h-4" aria-hidden="true" />
         </button>
       </div>
     );
@@ -1409,7 +1399,7 @@ export function GraphConfigPanel({
                   active={activePreset === preset.meta.presetId}
                   separator={false}
                   depth={1}
-                  icon={PRESET_EMOJI[preset.meta.presetId] ?? '📋'}
+                  icon={preset.meta.presetId}
                   onClick={() => hooks.applyPreset(preset)}
                 >
                   {null}
@@ -1433,7 +1423,7 @@ export function GraphConfigPanel({
                       active={activePreset === preset.meta.presetId}
                       separator={false}
                       depth={2}
-                      icon={PRESET_EMOJI[preset.meta.presetId] ?? '📋'}
+                      icon={preset.meta.presetId}
                       onClick={() => hooks.applyPreset(preset)}
                     >
                       {null}
@@ -1464,10 +1454,10 @@ export function GraphConfigPanel({
                       active={activePreset === sv.meta.presetId}
                       separator={false}
                       depth={2}
-                      icon="🔖"
+                      icon="bookmark"
                       onClick={() => hooks.restoreSavedView(sv)}
                       actions={[{
-                        icon: '🗑',
+                        icon: 'trash',
                         label: `Delete "${sv.meta.name}"`,
                         onClick: () => setSavedViews(deleteSavedView(sv.meta.presetId)),
                       }]}
@@ -1486,7 +1476,7 @@ export function GraphConfigPanel({
                 collapsible={false}
                 separator={false}
                 depth={1}
-                icon="💾"
+                icon="save"
                 onClick={onSavePreset}
               >
                 {null}
@@ -1610,7 +1600,7 @@ export function GraphConfigPanel({
           onClick={onSavePreset}
           className="w-full flex items-center justify-center gap-1.5 py-1.5 text-xs font-medium rounded-lg bg-accent/10 hover:bg-accent/20 text-accent transition-colors border border-accent/30"
         >
-          <span>💾</span>
+          <Icon name="save" className="w-4 h-4" />
           <span>Save view…</span>
         </button>
       </div>

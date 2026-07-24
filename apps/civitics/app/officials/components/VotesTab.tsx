@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { Icon } from "@civitics/graph";
 
 export interface IssueStats {
   issue: string;
@@ -189,7 +190,7 @@ export function VotesTab({
                 >
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
-                      <span className="text-base">{stat.icon}</span>
+                      <Icon name={stat.icon} className="w-4 h-4 text-ink-soft" />
                       <span className="text-sm font-medium text-ink">
                         {stat.label}
                       </span>

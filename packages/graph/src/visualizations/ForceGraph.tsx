@@ -1084,14 +1084,16 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
             .attr("fill", fill)
             .attr("stroke", stroke)
             .attr("stroke-width", 3);
-          // Emoji icon in center
+          // Initial-letter badge in center (FIX-730: no canvas-drawn emoji).
           el.append("text")
             .attr("text-anchor", "middle")
             .attr("dominant-baseline", "central")
-            .attr("font-size", "22px")
+            .attr("font-size", "16px")
+            .attr("font-weight", "700")
+            .attr("fill", pal.paperInk)
             .attr("pointer-events", "none")
             .style("user-select", "none")
-            .text((d.metadata?.icon as string) ?? "👥");
+            .text(initials(d.name));
           // Member count badge — small circle top-right
           const memberCount = d.metadata?.memberCount as number | undefined;
           if (memberCount) {
@@ -1205,7 +1207,6 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
           // Stacked diamond cluster — three layered diamonds to signal "many donors"
           // Tier color drives both fill and stroke.
           const tierMeta = d.metadata?.tier as string | undefined;
-          const isEmployer = d.metadata?.isEmployerNode as boolean | undefined;
           const tierDef = BRACKET_TIERS.find(t => t.id === tierMeta);
           const tierColor  = tierDef?.color ?? "rgb(var(--c-viz-3))";
           const tierStroke = resolveColor(tierColor, svgEl);
@@ -1225,13 +1226,15 @@ export const ForceGraph = React.forwardRef<SVGSVGElement, ForceGraphProps>(
               .attr("pointer-events", idx === 2 ? null : "none");
           });
 
-          // Icon inside front diamond
+          // Initial-letter badge inside front diamond (FIX-730: no emoji).
           el.append("text")
             .attr("text-anchor", "middle")
             .attr("dominant-baseline", "central")
-            .attr("font-size", "11px")
+            .attr("font-size", "9px")
+            .attr("font-weight", "700")
+            .attr("fill", pal.paperInk)
             .attr("pointer-events", "none")
-            .text(isEmployer ? "🏢" : "👤");
+            .text(initials(d.name));
 
           // Donor count badge (top-right of front diamond)
           const donorCount = (d.metadata?.donorCount as number | undefined) ?? 0;

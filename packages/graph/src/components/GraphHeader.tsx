@@ -18,6 +18,7 @@ import type { GraphView, VizType, VizApplicabilityMeta } from '../types';
 import { VIZ_REGISTRY, getVizApplicability } from '../visualizations/registry';
 import { AiNarrative } from '../AiNarrative';
 import { PathFinder } from '../PathFinder';
+import { Icon } from '../icons';
 
 export interface GraphHeaderProps {
   view: GraphView;
@@ -411,7 +412,10 @@ export function GraphHeader({
         aria-label="Find shortest path between two entities"
         className={`shrink-0 px-2.5 py-1.5 text-xs font-medium rounded-md transition-colors ${pathOpen ? 'bg-accent/10 text-accent' : 'hover:bg-ink/10 text-ink-soft'}`}
       >
-        🔗<span className="hidden md:inline"> Path</span>
+        <span className="inline-flex items-center gap-1">
+          <Icon name="link" className="w-4 h-4" />
+          <span className="hidden md:inline">Path</span>
+        </span>
       </button>
 
       <button
@@ -423,7 +427,10 @@ export function GraphHeader({
         aria-label="AI-generated summary of the current graph"
         className="shrink-0 px-2.5 py-1.5 text-xs font-medium rounded-md hover:bg-ink/10 transition-colors text-ink-soft disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
       >
-        ✨<span className="hidden md:inline"> Explain</span>
+        <span className="inline-flex items-center gap-1">
+          <Icon name="ai" className="w-4 h-4" />
+          <span className="hidden md:inline">Explain</span>
+        </span>
       </button>
 
       </div>
@@ -471,7 +478,7 @@ export function GraphHeader({
               aria-expanded={showExportMenu}
               className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-md hover:bg-ink/10 transition-colors text-ink-soft"
             >
-              <span className="md:hidden" aria-hidden="true">⭳</span>
+              <Icon name="download" className="w-3.5 h-3.5 md:hidden" aria-hidden="true" />
               <span className="hidden md:inline">Export</span>
               <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -503,7 +510,7 @@ export function GraphHeader({
           aria-label="Screenshot the graph"
           className="px-2.5 py-1.5 text-xs font-medium rounded-md hover:bg-ink/10 transition-colors text-ink-soft"
         >
-          <span className="md:hidden" aria-hidden="true">📷</span>
+          <Icon name="camera" className="w-3.5 h-3.5 md:hidden" aria-hidden="true" />
           <span className="hidden md:inline">Screenshot</span>
         </button>
 
@@ -541,7 +548,7 @@ export function GraphHeader({
           <div className="bg-card border border-rule rounded-xl shadow-2xl overflow-hidden">
             <div className="flex items-center justify-between px-4 py-3 border-b border-rule/60">
               <div className="flex items-center gap-2">
-                <span className="text-sm">🔗</span>
+                <Icon name="link" className="w-4 h-4 text-ink" />
                 <span className="text-xs font-semibold text-ink">Path Finder</span>
               </div>
               <button

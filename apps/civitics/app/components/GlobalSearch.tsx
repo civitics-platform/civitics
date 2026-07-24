@@ -27,6 +27,7 @@ import type {
   SearchJurisdiction,
   SearchInstitution,
 } from "@/lib/search/types";
+import { Icon } from "@civitics/graph";
 import { FormerBadge } from "./FormerBadge";
 
 // ---------------------------------------------------------------------------
@@ -133,7 +134,7 @@ function ProposalResult({ p, selected }: { p: SearchProposal; selected: boolean 
           {p.agency_acronym && <span className="font-mono">{p.agency_acronym}</span>}
           {p.agency_acronym && <span>·</span>}
           {isOpen
-            ? <span className="font-semibold text-accent">⏰ Open for Comment</span>
+            ? <span className="font-semibold text-accent"><Icon name="deadline" className="w-3.5 h-3.5 inline-block align-[-2px] mr-1" />Open for Comment</span>
             : <span>{p.status.replace(/_/g, " ")}</span>}
         </div>
       </div>

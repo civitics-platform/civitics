@@ -9,6 +9,7 @@
  */
 
 import type { GraphNode, NodeActions, VizType } from '../types';
+import { Icon } from '../icons';
 
 export interface NodePopupProps {
   node: GraphNode | null;
@@ -113,7 +114,7 @@ export function NodePopup({ node, onClose, actions, vizType, expandState = 'none
                 border: `2px solid ${groupColor ?? 'rgb(var(--c-accent))'}`,
               }}
             >
-              {groupIcon ?? '👥'}
+              <Icon name={groupIcon ?? 'group'} className="w-5 h-5" />
             </div>
             <div>
               <div className="font-semibold text-ink text-sm leading-tight">
@@ -242,8 +243,8 @@ export function NodePopup({ node, onClose, actions, vizType, expandState = 'none
           </button>
 
           <div className="flex items-start gap-2 pr-6 mb-3">
-            <div className="w-10 h-10 rounded-full flex items-center justify-center text-xl flex-shrink-0 bg-amber/20 border-2 border-amber/60">
-              {isEmployer ? '🏢' : '👤'}
+            <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 bg-amber/20 border-2 border-amber/60">
+              <Icon name={isEmployer ? 'corporation' : 'individual'} className="w-5 h-5" />
             </div>
             <div>
               <div className="font-semibold text-ink leading-tight text-sm">
@@ -290,7 +291,7 @@ export function NodePopup({ node, onClose, actions, vizType, expandState = 'none
                 }}
                 className="w-full text-left px-3 py-2 rounded-lg text-sm text-ink hover:bg-amber/30 flex items-center gap-2 transition-colors"
               >
-                <span>📋</span>
+                <Icon name="doc" className="w-4 h-4" />
                 <span>View donor list</span>
               </button>
             )}

@@ -108,17 +108,17 @@ export function ResponsivenessCard({ data }: ResponsivenessCardProps) {
         {/* Stat pills */}
         <div className="mb-4 flex flex-wrap gap-2">
           {responded > 0 && (
-            <span className="rounded-full border border-green-ink/30 bg-green-ink/10 px-2.5 py-0.5 text-xs font-medium text-green-ink">
+            <span className="rounded border border-green-ink/30 bg-green-ink/10 px-2.5 py-0.5 text-xs font-medium text-green-ink">
               {responded} responded
             </span>
           )}
           {no_response > 0 && (
-            <span className="rounded-full border border-accent/30 bg-accent/10 px-2.5 py-0.5 text-xs font-medium text-accent">
+            <span className="rounded border border-accent/30 bg-accent/10 px-2.5 py-0.5 text-xs font-medium text-accent">
               {no_response} no response
             </span>
           )}
           {open > 0 && (
-            <span className="rounded-full border border-amber/60 bg-amber/25 px-2.5 py-0.5 text-xs font-medium text-ink">
+            <span className="rounded border border-amber/60 bg-amber/25 px-2.5 py-0.5 text-xs font-medium text-ink">
               {open} open
             </span>
           )}
@@ -157,7 +157,7 @@ export function ResponsivenessCard({ data }: ResponsivenessCardProps) {
                         }
                       </p>
                     </div>
-                    <span className={`flex-shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${rl.color}`}>
+                    <span className={`flex-shrink-0 rounded border px-2 py-0.5 text-[10px] font-semibold ${rl.color}`}>
                       {rl.label}
                     </span>
                   </div>

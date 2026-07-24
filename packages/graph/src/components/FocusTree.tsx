@@ -30,6 +30,7 @@ import type { UseGraphViewReturn } from '../hooks/useGraphView';
 import type { GraphMeta } from '../hooks/useGraphData';
 import { TreeSection } from './TreeNode';
 import { PathFinder } from '../PathFinder';
+import { Icon } from '../icons';
 
 /**
  * USER node summary surfaced in the FocusTree "Active" section.
@@ -438,7 +439,7 @@ function EntityRow({
             : 'text-ink-soft/40 hover:text-accent opacity-0 group-hover:opacity-100 focus-visible:opacity-100'
         }`}
       >
-        {pinned ? '📌' : '📍'}
+        <Icon name="pin" className="w-3.5 h-3.5" />
       </button>
 
       {/* Remove */}

@@ -14,6 +14,7 @@ import {
   type InitiativeCardData,
 } from "../../../initiatives/components/InitiativeCard";
 import { JURISDICTION_TYPE_LABELS } from "./JurisdictionHeader";
+import { Icon } from "@civitics/graph";
 
 // ─── Shared section wrapper ──────────────────────────────────────────────────
 
@@ -79,7 +80,7 @@ export function ChildJurisdictionsNav({ items }: { items: ChildJurisdiction[] })
           <Link
             key={c.id}
             href={`/jurisdictions/${c.id}`}
-            className="rounded-full border border-rule bg-card px-2.5 py-0.5 text-xs text-ink-soft hover:border-accent hover:text-accent"
+            className="rounded border border-rule bg-card px-2.5 py-0.5 text-xs text-ink-soft hover:border-accent hover:text-accent"
           >
             {c.short_name ?? c.name}
           </Link>
@@ -271,9 +272,9 @@ export type ActivityEvent = {
 };
 
 const EVENT_ICON: Record<string, string> = {
-  proposal_introduced: "📄",
-  meeting: "📅",
-  initiative_created: "📣",
+  proposal_introduced: "page",
+  meeting: "calendar",
+  initiative_created: "announcement",
 };
 
 export function ActivityFeed({ events }: { events: ActivityEvent[] }) {
@@ -285,8 +286,10 @@ export function ActivityFeed({ events }: { events: ActivityEvent[] }) {
             href={e.url}
             className="flex items-center gap-3 px-4 py-3 hover:bg-paper-2"
           >
-            <span aria-hidden className="text-base">
-              {EVENT_ICON[e.event_type] ?? "•"}
+            <span aria-hidden className="flex items-center text-base text-ink-soft">
+              {EVENT_ICON[e.event_type]
+                ? <Icon name={EVENT_ICON[e.event_type]} className="w-5 h-5" />
+                : "•"}
             </span>
             <span className="min-w-0 flex-1 truncate text-sm text-ink-soft">{e.summary}</span>
             <span className="shrink-0 text-xs text-ink-soft/70">{formatDate(e.occurred_at)}</span>

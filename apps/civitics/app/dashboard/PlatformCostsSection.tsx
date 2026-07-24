@@ -8,6 +8,7 @@ import {
   LoadingSkeleton,
   formatMetricValue,
 } from "@civitics/ui";
+import { Icon, hasIcon } from "@civitics/graph";
 import type { PlatformMetric, SourceDisplay } from "@civitics/db";
 import type { PlatformUsageResponse, AnthropicDetail, AiCosts } from "./useDashboardData";
 import { useIsAdmin } from "@/lib/use-is-admin";
@@ -131,11 +132,11 @@ function DataAge({
 // ── Service metadata ──────────────────────────────────────────────────────────
 
 const SERVICE_META: Record<string, { label: string; icon: string; costLabel: string }> = {
-  anthropic: { label: "Anthropic", icon: "🤖", costLabel: "monthly spend" },
+  anthropic: { label: "Anthropic", icon: "anthropic", costLabel: "monthly spend" },
   vercel: { label: "Vercel", icon: "▲", costLabel: "monthly usage" },
-  supabase: { label: "Supabase", icon: "🗄", costLabel: "monthly usage" },
-  cloudflare: { label: "Cloudflare R2", icon: "☁", costLabel: "monthly usage" },
-  mapbox: { label: "Mapbox", icon: "🗺", costLabel: "map loads" },
+  supabase: { label: "Supabase", icon: "supabase", costLabel: "monthly usage" },
+  cloudflare: { label: "Cloudflare R2", icon: "cloudflare", costLabel: "monthly usage" },
+  mapbox: { label: "Mapbox", icon: "mapbox", costLabel: "map loads" },
 };
 
 const SERVICE_ORDER = ["anthropic", "supabase", "vercel", "cloudflare", "mapbox"];
@@ -538,7 +539,11 @@ function ServiceCard({
       <div className="p-4">
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
-            <span>{meta.icon}</span>
+            {hasIcon(meta.icon) ? (
+              <Icon name={meta.icon} className="w-4 h-4 shrink-0 text-ink-soft" />
+            ) : (
+              <span>{meta.icon}</span>
+            )}
             <span className="font-medium text-sm text-ink">{meta.label}</span>
             <StatusDot status={serviceStatus} />
           </div>
@@ -789,7 +794,7 @@ export function PlatformCostsSection({
   if (!platformUsage) {
     return (
       <SectionCard>
-        <SectionHeader icon="💰" title="Platform Costs" />
+        <SectionHeader icon={<Icon name="money" className="w-4 h-4" />} title="Platform Costs" />
         <div className="mt-4">
           {!mounted ? (
             <div className="animate-pulse bg-card rounded-xl border border-rule shadow-sm h-48" />
@@ -822,7 +827,7 @@ export function PlatformCostsSection({
   if (summary.any_critical) {
     banners.push({
       level: "error",
-      message: `⛔ ${summary.critical_count} metric${summary.critical_count !== 1 ? "s" : ""} over limit — action required`,
+      message: `${summary.critical_count} metric${summary.critical_count !== 1 ? "s" : ""} over limit — action required`,
       detail: "Check platform costs section below",
     });
   }
@@ -835,7 +840,7 @@ export function PlatformCostsSection({
   if (summary.needs_verification) {
     banners.push({
       level: "info",
-      message: `💡 ${summary.unverified_count} usage metric${summary.unverified_count !== 1 ? "s" : ""} need manual verification`,
+      message: `${summary.unverified_count} usage metric${summary.unverified_count !== 1 ? "s" : ""} need manual verification`,
       detail: "Check service dashboards to confirm",
     });
   }
@@ -849,7 +854,7 @@ export function PlatformCostsSection({
 
       <SectionCard>
         <SectionHeader
-          icon="💰"
+          icon={<Icon name="money" className="w-4 h-4" />}
           title="Platform Costs"
           description="Every cost is public record"
         />

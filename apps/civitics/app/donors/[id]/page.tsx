@@ -577,11 +577,11 @@ export default async function DonorProfilePage({
 
               <div className="flex-1 min-w-0">
                 <div className="flex flex-wrap items-center gap-2 mb-1">
-                  <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${typeBadgeCls}`}>
+                  <span className={`rounded px-2.5 py-0.5 text-xs font-semibold ${typeBadgeCls}`}>
                     {typeLabel}
                   </span>
                   {industry && (
-                    <span className="rounded-full px-2.5 py-0.5 text-xs font-medium bg-paper-2 text-ink-soft">
+                    <span className="rounded px-2.5 py-0.5 text-xs font-medium bg-paper-2 text-ink-soft">
                       {industry}
                     </span>
                   )}

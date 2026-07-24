@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { Icon } from "@civitics/graph";
 
 // ─── Milestones ────────────────────────────────────────────────────────────────
 
@@ -25,7 +26,7 @@ const MILESTONES: Milestone[] = [
     metric:      "total",
     label:       "Listed publicly",
     description: "Initiative appears in public listings",
-    icon:        "👁",
+    icon:        "eye",
   },
   {
     id:          "notify",
@@ -33,7 +34,7 @@ const MILESTONES: Milestone[] = [
     metric:      "constituent",
     label:       "Officials notified",
     description: "Relevant officials receive formal notice",
-    icon:        "📢",
+    icon:        "announcement",
   },
   {
     id:          "window",
@@ -41,7 +42,7 @@ const MILESTONES: Milestone[] = [
     metric:      "constituent",
     label:       "30-day response window",
     description: "Officials must respond or receive a permanent No Response",
-    icon:        "⏱",
+    icon:        "timer",
   },
   {
     id:          "featured",
@@ -49,7 +50,7 @@ const MILESTONES: Milestone[] = [
     metric:      "constituent",
     label:       "Featured on homepage",
     description: "Initiative spotlighted for the broader community",
-    icon:        "⭐",
+    icon:        "nominations",
   },
 ];
 
@@ -78,7 +79,7 @@ function MilestoneRow({
               ✓
             </span>
           ) : (
-            <span className="text-sm">{milestone.icon}</span>
+            <Icon name={milestone.icon} className="w-4 h-4 text-ink-soft" />
           )}
         </div>
 

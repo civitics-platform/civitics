@@ -26,15 +26,17 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 // Colors are rgb(var(--c-x)) design-token strings (FIX-729), resolved
 // client-side per scope. Upper chambers mirror Full Senate (steel-slate),
 // lower chambers Full House (terracotta), judicial the judiciary wine.
+// FIX-730 — `icon` is a semantic KEY (the gb_type slug); the renderer resolves
+// it through the @civitics/graph icon registry. No emoji strings emitted.
 const GB_TYPE_VISUAL: Record<string, { icon: string; color: string }> = {
-  legislature_upper:      { icon: "🏛", color: "rgb(var(--c-viz-5))" },
-  legislature_lower:      { icon: "🏛", color: "rgb(var(--c-viz-6))" },
-  legislature_unicameral: { icon: "🏛", color: "rgb(var(--c-viz-5))" },
-  executive:              { icon: "🏛", color: "rgb(var(--c-viz-6))" },
-  judicial:               { icon: "⚖️", color: "rgb(var(--c-viz-7))" },
-  committee:              { icon: "🪪", color: "rgb(var(--c-blue))" },
+  legislature_upper:      { icon: "legislature_upper", color: "rgb(var(--c-viz-5))" },
+  legislature_lower:      { icon: "legislature_lower", color: "rgb(var(--c-viz-6))" },
+  legislature_unicameral: { icon: "legislature_unicameral", color: "rgb(var(--c-viz-5))" },
+  executive:              { icon: "executive", color: "rgb(var(--c-viz-6))" },
+  judicial:               { icon: "judicial", color: "rgb(var(--c-viz-7))" },
+  committee:              { icon: "committee", color: "rgb(var(--c-blue))" },
 };
-const GB_TYPE_VISUAL_DEFAULT = { icon: "🏛", color: "rgb(var(--c-viz-5))" };
+const GB_TYPE_VISUAL_DEFAULT = { icon: "agency", color: "rgb(var(--c-viz-5))" };
 
 // FIX-497 — JS-level budget for the connection-aggregation phase (donations,
 // oversight). The donation queries page entity_connections; under prod IOWait
@@ -201,7 +203,7 @@ export async function GET(req: NextRequest) {
   // FIX-490 — gb cohort key. Slug canonical, UUID accepted as fallback forever.
   const governingBody = searchParams.get("governingBody");
   const groupName  = searchParams.get("groupName")  ?? "Group";
-  const groupIcon  = searchParams.get("groupIcon")  ?? "👥";
+  const groupIcon  = searchParams.get("groupIcon")  ?? "group";
   const groupColor = searchParams.get("groupColor") ?? "#6366f1";
   // FIX-842 — default aligns to the shared client cap (25) so an unset limit
   // matches the Top-donors dropdown default; still clamped to ≤100.

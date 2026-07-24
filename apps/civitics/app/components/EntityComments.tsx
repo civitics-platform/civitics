@@ -405,7 +405,7 @@ function Composer({
               key={k}
               type="button"
               onClick={() => setKind(k)}
-              className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
+              className={`rounded border px-2.5 py-1 text-xs font-medium transition-colors ${
                 kind === k ? "border-ink bg-ink/5 text-ink" : "border-rule bg-card text-ink-soft hover:bg-paper-2"
               }`}
             >
@@ -505,22 +505,22 @@ function CommentCard({
     >
       <div className="mb-1 flex items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-1.5">
-          <span className={`inline-block rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${badgeClass(comment.kind)}`}>
+          <span className={`inline-block rounded border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${badgeClass(comment.kind)}`}>
             {comment.kind_label}
           </span>
           {comment.stance && STANCE_LABEL[comment.stance] && (
-            <span className="inline-block rounded-full border border-rule bg-paper-2 px-2 py-0.5 text-[10px] font-medium text-ink-soft">
+            <span className="inline-block rounded border border-rule bg-paper-2 px-2 py-0.5 text-[10px] font-medium text-ink-soft">
               {STANCE_LABEL[comment.stance]}
             </span>
           )}
           {comment.is_constituent && (
-            <span className="inline-block rounded-full border border-civic-blue/25 bg-civic-blue/10 px-2 py-0.5 text-[10px] font-medium text-civic-blue" title="Verified constituent at post time">
+            <span className="inline-block rounded border border-civic-blue/25 bg-civic-blue/10 px-2 py-0.5 text-[10px] font-medium text-civic-blue" title="Verified constituent at post time">
               ✓ Constituent
             </span>
           )}
           {comment.rating_summary.deltas > 0 && (
             <span
-              className="inline-block rounded-full border border-ink/40 bg-ink/5 px-2 py-0.5 text-[10px] font-medium text-ink"
+              className="inline-block rounded border border-ink/40 bg-ink/5 px-2 py-0.5 text-[10px] font-medium text-ink"
               title="Readers changed their position and credited this comment"
             >
               ↺ changed {comment.rating_summary.deltas} {comment.rating_summary.deltas === 1 ? "mind" : "minds"}
@@ -528,7 +528,7 @@ function CommentCard({
           )}
           {bridges && (
             <span
-              className="inline-block rounded-full border border-civic-blue/25 bg-civic-blue/10 px-2 py-0.5 text-[10px] font-medium text-civic-blue"
+              className="inline-block rounded border border-civic-blue/25 bg-civic-blue/10 px-2 py-0.5 text-[10px] font-medium text-civic-blue"
               title="Valued by people on both sides of this debate"
             >
               ⇄ bridges divides
@@ -853,7 +853,7 @@ export function EntityComments({
           aria-expanded={open}
         >
           <h2 className="text-base font-bold text-ink">{heading}</h2>
-          <span className="rounded-full bg-paper-2 px-2 py-0.5 text-xs font-semibold text-ink-soft tabular-nums">
+          <span className="rounded bg-paper-2 px-2 py-0.5 text-xs font-semibold text-ink-soft tabular-nums">
             {comments.length}
           </span>
           {startCollapsed && <span className="text-xs text-ink-soft/60">{open ? "▲" : "▼"}</span>}
@@ -864,19 +864,19 @@ export function EntityComments({
               <button
                 type="button"
                 onClick={toggleLens}
-                className={`rounded-full border px-2 py-0.5 ${lens === "constituents" ? "border-civic-blue/30 bg-civic-blue/10 text-civic-blue" : "border-rule text-ink-soft"}`}
+                className={`rounded border px-2 py-0.5 ${lens === "constituents" ? "border-civic-blue/30 bg-civic-blue/10 text-civic-blue" : "border-rule text-ink-soft"}`}
               >
                 {lens === "constituents" ? "Verified constituents" : "Everyone"}
               </button>
             )}
             {/* List ⇄ map view switch (list default; map one click away). */}
-            <div className="flex rounded-full border border-rule">
+            <div className="flex rounded border border-rule">
               {(["list", "map"] as const).map((v) => (
                 <button
                   key={v}
                   type="button"
                   onClick={() => setView(v)}
-                  className={`rounded-full px-2 py-0.5 capitalize ${view === v ? "bg-ink text-paper" : "text-ink-soft"}`}
+                  className={`rounded px-2 py-0.5 capitalize ${view === v ? "bg-ink text-paper" : "text-ink-soft"}`}
                   aria-pressed={view === v}
                 >
                   {v}
@@ -884,13 +884,13 @@ export function EntityComments({
               ))}
             </div>
             {view === "list" && (
-              <div className="flex rounded-full border border-rule">
+              <div className="flex rounded border border-rule">
                 {(["bridge", "newest", "top"] as const).map((s) => (
                   <button
                     key={s}
                     type="button"
                     onClick={() => setSort(s)}
-                    className={`rounded-full px-2 py-0.5 capitalize ${sort === s ? "bg-ink text-paper" : "text-ink-soft"}`}
+                    className={`rounded px-2 py-0.5 capitalize ${sort === s ? "bg-ink text-paper" : "text-ink-soft"}`}
                   >
                     {s}
                   </button>

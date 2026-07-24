@@ -209,7 +209,7 @@ export function GraphPage({ initialCode, aiEnabled = true }: GraphPageProps = {}
           id: `group-gb-${id}`,
           name: "Institution", // server resolves the real name on group fetch
           type: "group",
-          icon: "🏛",
+          icon: "agency",
           color: "rgb(var(--c-viz-5))",
           filter: { entity_type: "official", governingBody: id },
           isPremade: false,
@@ -1024,7 +1024,7 @@ export function GraphPage({ initialCode, aiEnabled = true }: GraphPageProps = {}
               legend, so right is the clear corner. */}
           {view.focus.entities.length > 0 &&
             VIZ_REGISTRY.find(v => v.id === vizType)?.scope === 'platform' && (
-              <div className="pointer-events-none absolute bottom-3 right-3 z-30 rounded-full border border-amber/50 bg-card/90 px-3 py-1 shadow-lg">
+              <div className="pointer-events-none absolute bottom-3 right-3 z-30 rounded border border-amber/50 bg-card/90 px-3 py-1 shadow-lg">
                 <span className="font-mono text-[10px] font-medium uppercase tracking-wider text-amber">
                   Platform-wide data — not affected by focus
                 </span>

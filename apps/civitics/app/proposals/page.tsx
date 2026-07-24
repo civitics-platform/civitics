@@ -13,6 +13,7 @@ import { AGENCY_FULL_NAMES } from "./components/agencyNames";
 import type { EntityTag } from "../components/tags/EntityTags";
 import { PageViewTracker } from "../components/PageViewTracker";
 import { PageHeader } from "@civitics/ui";
+import { Icon } from "@civitics/graph";
 
 const PAGE_SIZE = 20;
 
@@ -33,14 +34,14 @@ const AGENCIES = [
 
 // Topic filter pills — top 8 by proposal volume
 const TOPIC_PILLS = [
-  { tag: "climate",             label: "Climate",      icon: "🌊" },
-  { tag: "healthcare",          label: "Healthcare",   icon: "🏥" },
-  { tag: "finance",             label: "Finance",      icon: "📈" },
-  { tag: "aviation",            label: "Aviation",     icon: "✈️" },
-  { tag: "agriculture",         label: "Agriculture",  icon: "🌾" },
-  { tag: "energy",              label: "Energy",       icon: "⚡" },
-  { tag: "education",           label: "Education",    icon: "📚" },
-  { tag: "consumer_protection", label: "Consumer",     icon: "🛡" },
+  { tag: "climate",             label: "Climate",      icon: "climate" },
+  { tag: "healthcare",          label: "Healthcare",   icon: "healthcare" },
+  { tag: "finance",             label: "Finance",      icon: "finance" },
+  { tag: "aviation",            label: "Aviation",     icon: "aviation" },
+  { tag: "agriculture",         label: "Agriculture",  icon: "agriculture" },
+  { tag: "energy",              label: "Energy",       icon: "energy" },
+  { tag: "education",           label: "Education",    icon: "education" },
+  { tag: "consumer_protection", label: "Consumer",     icon: "consumer_protection" },
 ];
 
 type SearchParams = {
@@ -536,7 +537,7 @@ export default async function ProposalsPage({
           <a
             href={buildUrl(currentParams, { topics: undefined })}
             aria-current={activeTopics.length === 0 ? "true" : undefined}
-            className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1 ${
+            className={`inline-flex items-center rounded px-3 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1 ${
               activeTopics.length === 0
                 ? "bg-ink text-paper"
                 : "bg-card border border-rule text-ink-soft hover:border-accent hover:text-accent"
@@ -551,13 +552,13 @@ export default async function ProposalsPage({
                 key={pill.tag}
                 href={toggleTopicInUrl(currentParams, pill.tag)}
                 aria-current={isActive ? "true" : undefined}
-                className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1 ${
+                className={`inline-flex items-center gap-1 rounded px-3 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1 ${
                   isActive
                     ? "bg-ink text-paper"
                     : "bg-card border border-rule text-ink-soft hover:border-accent hover:text-accent"
                 }`}
               >
-                <span aria-hidden="true">{pill.icon}</span>
+                <Icon name={pill.icon} className="w-3.5 h-3.5" />
                 {pill.label}
               </a>
             );

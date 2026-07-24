@@ -13,6 +13,7 @@ import type { GraphView } from '../types';
 import type { ConnectionTypeDefinition } from '../types';
 import { TreeNode } from './TreeNode';
 import { toHexColor } from '../tokens';
+import { Icon, hasIcon } from '../icons';
 
 export type ConnectionTypeSettings = GraphView['connections'][string];
 
@@ -52,8 +53,13 @@ export function ConnectionStyleRow({ type, def, settings, onChange, count }: Con
         {/* Color dot */}
         <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: settings.color }} />
 
-        {/* Icon + label */}
-        <span className="text-xs shrink-0">{def.icon}</span>
+        {/* Icon + label — pictographic types carry a registry key (lucide glyph);
+            typographic keeps (✓ ✗ ○ ≈) render as text (FIX-730). */}
+        {hasIcon(def.icon) ? (
+          <Icon name={def.icon} className="w-3.5 h-3.5 shrink-0 text-ink-soft" strokeWidth={2} />
+        ) : (
+          <span className="text-xs shrink-0 w-3.5 text-center">{def.icon}</span>
+        )}
         <span className="flex-1 text-xs text-ink truncate">{def.label}</span>
 
         {/* Count badge */}

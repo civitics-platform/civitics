@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Icon } from "@civitics/graph";
 import { ProposalCard, type ProposalCardData } from "./ProposalCard";
 
 type Tab = "closing_soon" | "trending" | "most_commented" | "new" | "bills" | "most_viewed";
@@ -18,37 +19,37 @@ const TABS: { id: Tab; label: string; icon: string; emptyMsg: string }[] = [
   {
     id:       "closing_soon",
     label:    "Closing Soon",
-    icon:     "⏰",
+    icon:     "deadline",
     emptyMsg: "No open comment periods right now.",
   },
   {
     id:       "trending",
     label:    "Trending",
-    icon:     "🔥",
+    icon:     "hot",
     emptyMsg: "No trending proposals in the last 24 hours.",
   },
   {
     id:       "most_commented",
     label:    "Most Commented",
-    icon:     "💬",
+    icon:     "comment",
     emptyMsg: "No proposals have comments yet.",
   },
   {
     id:       "new",
     label:    "New",
-    icon:     "✨",
+    icon:     "ai",
     emptyMsg: "No new proposals.",
   },
   {
     id:       "bills",
     label:    "Congressional Bills",
-    icon:     "🏛️",
+    icon:     "agency",
     emptyMsg: "No congressional bills found.",
   },
   {
     id:       "most_viewed",
     label:    "Most Viewed",
-    icon:     "👁",
+    icon:     "eye",
     emptyMsg: "No view data yet.",
   },
 ];
@@ -106,17 +107,17 @@ export function FeaturedSection({ closingSoon, bills, mostViewed, trending, most
                 aria-controls="featured-tab-panel"
                 type="button"
                 onClick={() => setActiveTab(tab.id)}
-                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1 ${
+                className={`inline-flex items-center gap-1.5 rounded px-3 py-1 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1 ${
                   isActive
                     ? "bg-ink text-paper"
                     : "bg-card border border-rule text-ink-soft hover:border-accent hover:text-accent"
                 }`}
               >
-                <span aria-hidden="true">{tab.icon}</span>
+                <Icon name={tab.icon} className="w-4 h-4" />
                 {tab.label}
                 {count && (
                   <span
-                    className={`rounded-full px-1.5 py-0.5 font-mono text-[10px] font-semibold tabular-nums ${
+                    className={`rounded px-1.5 py-0.5 font-mono text-[10px] font-semibold tabular-nums ${
                       isActive ? "bg-paper/20 text-paper" : "bg-ink/5 text-ink-soft"
                     }`}
                   >

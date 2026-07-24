@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { initMapbox, mapboxgl } from "@civitics/maps/client";
+import { Icon } from "@civitics/graph";
 import type { FeatureCollection } from "geojson";
 
 type MapState = "placeholder" | "address_input" | "loading" | "active";
@@ -477,7 +478,8 @@ export function DistrictMap() {
         </form>
 
         <p className="text-xs text-ink-soft/70 text-center max-w-sm">
-          🔒 Your address is used only to find your district. Never stored on
+          <Icon name="lock" className="w-3.5 h-3.5 inline-block align-[-2px] mr-1" />
+          Your address is used only to find your district. Never stored on
           our servers.
         </p>
 
@@ -526,8 +528,8 @@ export function DistrictMap() {
 
   const privacyNote =
     lastMethod === "geo"
-      ? "🔒 Your precise location is coarsened to ~1km accuracy. Never stored on our servers."
-      : "🔒 Your address is used only to find your district. Never stored on our servers.";
+      ? "Your precise location is coarsened to ~1km accuracy. Never stored on our servers."
+      : "Your address is used only to find your district. Never stored on our servers.";
 
   return (
     <section>

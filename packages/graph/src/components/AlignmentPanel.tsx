@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Icon } from "../icons";
 
 interface IssueAlignment {
   id: string;
@@ -11,12 +12,12 @@ interface IssueAlignment {
 }
 
 const DEFAULT_ISSUES: IssueAlignment[] = [
-  { id: "healthcare",  label: "Healthcare",  icon: "🏥", importance: 50, color: "rgb(var(--c-viz-1))" },
-  { id: "climate",     label: "Climate",     icon: "⚡", importance: 50, color: "rgb(var(--c-viz-2))" },
-  { id: "economy",     label: "Economy",     icon: "💼", importance: 50, color: "rgb(var(--c-viz-3))" },
-  { id: "education",   label: "Education",   icon: "📚", importance: 50, color: "rgb(var(--c-viz-7))" },
-  { id: "defense",     label: "Defense",     icon: "🛡", importance: 50, color: "rgb(var(--c-viz-5))" },
-  { id: "immigration", label: "Immigration", icon: "🌎", importance: 50, color: "rgb(var(--c-viz-6))" },
+  { id: "healthcare",  label: "Healthcare",  icon: "healthcare",  importance: 50, color: "rgb(var(--c-viz-1))" },
+  { id: "climate",     label: "Climate",     icon: "climate",     importance: 50, color: "rgb(var(--c-viz-2))" },
+  { id: "economy",     label: "Economy",     icon: "economy",     importance: 50, color: "rgb(var(--c-viz-3))" },
+  { id: "education",   label: "Education",   icon: "education",   importance: 50, color: "rgb(var(--c-viz-7))" },
+  { id: "defense",     label: "Defense",     icon: "defense",     importance: 50, color: "rgb(var(--c-viz-5))" },
+  { id: "immigration", label: "Immigration", icon: "immigration", importance: 50, color: "rgb(var(--c-viz-6))" },
 ];
 
 export interface AlignmentPanelProps {
@@ -52,12 +53,12 @@ export function AlignmentPanel({ initialIssues, onAlignmentChange }: AlignmentPa
         className="w-full flex items-center justify-between px-3 py-2 text-xs text-ink-soft hover:text-ink transition-colors"
       >
         <div className="flex items-center gap-2">
-          <span>🧭</span>
+          <Icon name="compass" className="w-4 h-4" />
           <span className="font-medium">My Priorities</span>
           <div className="flex gap-1">
             {topIssues.map((i) => (
-              <span key={i.id} className="text-xs" title={i.label}>
-                {i.icon}
+              <span key={i.id} title={i.label}>
+                <Icon name={i.icon} className="w-3.5 h-3.5" />
               </span>
             ))}
           </div>
@@ -75,7 +76,7 @@ export function AlignmentPanel({ initialIssues, onAlignmentChange }: AlignmentPa
             <div key={issue.id}>
               <div className="flex items-center justify-between mb-1">
                 <div className="flex items-center gap-1.5 text-xs text-ink-soft">
-                  <span>{issue.icon}</span>
+                  <Icon name={issue.icon} className="w-3.5 h-3.5" />
                   <span>{issue.label}</span>
                 </div>
                 <span
@@ -121,9 +122,9 @@ export function AlignmentPanel({ initialIssues, onAlignmentChange }: AlignmentPa
               {sortedIssues.map((issue) => (
                 <div
                   key={issue.id}
-                  className="flex-1 text-center text-[8px] text-ink-soft/60 truncate"
+                  className="flex-1 flex justify-center text-ink-soft/60"
                 >
-                  {issue.icon}
+                  <Icon name={issue.icon} className="w-3 h-3" />
                 </div>
               ))}
             </div>

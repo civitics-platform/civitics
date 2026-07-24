@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Icon } from "@civitics/graph";
 import { CommentPeriodBadge } from "./CommentPeriodBadge";
 import { SubmitCommentButton } from "./SubmitCommentButton";
 import { EntityTags, type EntityTag } from "../../components/tags/EntityTags";
@@ -107,7 +108,7 @@ export function ProposalCard({ proposal }: { proposal: ProposalCardData }) {
           <span
             className={`border px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-[0.06em] ${statusBadge.color}`}
           >
-            {open ? "⏰ " : ""}{statusBadge.label}
+            {open && <Icon name="deadline" className="w-3.5 h-3.5 inline-block align-[-2px] mr-1" />}{statusBadge.label}
           </span>
           {docType && (
             <span className="text-xs text-ink-soft/70">{docType}</span>

@@ -24,6 +24,7 @@ import { challengedFetch } from "@/lib/challenged-fetch";
 import { useConstituentDefaultLens } from "@/lib/use-constituent-default-lens";
 import { useEntityLens } from "@/lib/use-entity-lens";
 import { fetchViewerEngagement, type ViewerRating } from "@/lib/viewer-overlay";
+import { Icon } from "@civitics/graph";
 import { SyntheticMark } from "./integrity/Synthetic";
 
 type Answer = {
@@ -159,7 +160,8 @@ function NoteBody({ body }: { body: string }) {
         {...(isExternal ? { target: "_blank", rel: "noopener noreferrer nofollow" } : {})}
         className="inline-flex max-w-full items-center gap-1 break-all rounded-[2px] border border-civic-blue/30 bg-civic-blue/10 px-1.5 py-0.5 align-baseline text-[11px] font-medium text-civic-blue hover:bg-civic-blue/20"
       >
-        🔗 {href.length > 48 ? href.slice(0, 48) + "…" : href}
+        <Icon name="link" className="w-3.5 h-3.5 inline-block align-[-2px] mr-1" />
+        {href.length > 48 ? href.slice(0, 48) + "…" : href}
       </a>
       {after}
     </p>
@@ -741,7 +743,7 @@ function CommunityContext({
                   ANSWER block above. */}
               {n.is_endorsed && (
                 <div className="mb-1.5">
-                  <span className="rounded-full border border-green-ink/25 bg-green-ink/10 px-2 py-0.5 text-[10px] font-semibold text-green-ink" title="The office confirms this note reflects the record">
+                  <span className="rounded border border-green-ink/25 bg-green-ink/10 px-2 py-0.5 text-[10px] font-semibold text-green-ink" title="The office confirms this note reflects the record">
                     ✓ Endorsed by the office
                   </span>
                 </div>
@@ -751,7 +753,7 @@ function CommunityContext({
                 <span>{n.author_name}</span>
                 {n.author_is_synthetic && <SyntheticMark size="xs" />}
                 {n.is_constituent && (
-                  <span className="rounded-full border border-civic-blue/25 bg-civic-blue/10 px-1.5 py-0.5 text-[10px] font-medium text-civic-blue" title="Posted by a verified constituent">
+                  <span className="rounded border border-civic-blue/25 bg-civic-blue/10 px-1.5 py-0.5 text-[10px] font-medium text-civic-blue" title="Posted by a verified constituent">
                     ✓ Constituent
                   </span>
                 )}
@@ -852,11 +854,11 @@ function QuestionCard({
       <div className="mb-1 flex flex-wrap items-center gap-1.5">
         {officialLane ? (
           q.answered ? (
-            <span className="rounded-full border border-green-ink/25 bg-green-ink/10 px-2 py-0.5 text-[10px] font-semibold text-green-ink">
+            <span className="rounded border border-green-ink/25 bg-green-ink/10 px-2 py-0.5 text-[10px] font-semibold text-green-ink">
               ✓ Answered
             </span>
           ) : (
-            <span className="rounded-full border border-amber/60 bg-amber/25 px-2 py-0.5 text-[10px] font-medium text-ink">
+            <span className="rounded border border-amber/60 bg-amber/25 px-2 py-0.5 text-[10px] font-medium text-ink">
               {q.community_note_count > 0
                 ? `Awaiting official response · ${q.community_note_count} community ${q.community_note_count === 1 ? "note" : "notes"}`
                 : `Awaiting response since ${formatDate(q.created_at)}`}
@@ -865,14 +867,14 @@ function QuestionCard({
         ) : (
           // Q&A v2 PR-2a (FIX-629): no official lane on proposals — show the
           // community-note count, never "Answered" / "Awaiting official response".
-          <span className="rounded-full border border-rule bg-paper-2 px-2 py-0.5 text-[10px] font-medium text-ink-soft">
+          <span className="rounded border border-rule bg-paper-2 px-2 py-0.5 text-[10px] font-medium text-ink-soft">
             {q.community_note_count > 0
               ? `${q.community_note_count} community ${q.community_note_count === 1 ? "note" : "notes"}`
               : "No answers yet — add context from the record."}
           </span>
         )}
         {q.status === "needs_review" && (
-          <span className="rounded-full border border-rule bg-paper-2 px-2 py-0.5 text-[10px] font-medium text-ink-soft">
+          <span className="rounded border border-rule bg-paper-2 px-2 py-0.5 text-[10px] font-medium text-ink-soft">
             Under review
           </span>
         )}
@@ -884,7 +886,7 @@ function QuestionCard({
         <span>Asked by {q.asker_name}</span>
         {q.asker_is_synthetic && <SyntheticMark size="xs" />}
         {q.is_constituent && (
-          <span className="rounded-full border border-civic-blue/25 bg-civic-blue/10 px-1.5 py-0.5 text-[10px] font-medium text-civic-blue" title="Asked by a verified constituent">
+          <span className="rounded border border-civic-blue/25 bg-civic-blue/10 px-1.5 py-0.5 text-[10px] font-medium text-civic-blue" title="Asked by a verified constituent">
             ✓ Constituent
           </span>
         )}
@@ -896,7 +898,7 @@ function QuestionCard({
           {q.answers.map((a) => (
             <div key={a.id} className="border-l-4 border-green-ink bg-green-ink/5 p-3">
               <div className="mb-1 flex items-center gap-1.5">
-                <span className="rounded-full bg-green-ink px-2 py-0.5 text-[10px] font-semibold text-paper">
+                <span className="rounded bg-green-ink px-2 py-0.5 text-[10px] font-semibold text-paper">
                   Official response
                 </span>
                 <span className="text-[11px] text-green-ink">{a.author_name}</span>
@@ -915,7 +917,7 @@ function QuestionCard({
           onClick={wantAnswered}
           disabled={busy}
           aria-pressed={wanted}
-          className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors disabled:opacity-50 ${
+          className={`rounded border px-3 py-1 text-xs font-medium transition-colors disabled:opacity-50 ${
             wanted
               ? "border-ink bg-ink text-paper"
               : "border-rule text-ink-soft hover:bg-paper-2"
@@ -1128,7 +1130,7 @@ export function QASection({
               type="button"
               onClick={() => setLensManual(lens === "all" ? "constituents" : "all")}
               title="Questions from verified constituents"
-              className={`rounded-full border px-2.5 py-1 text-[11px] font-medium ${
+              className={`rounded border px-2.5 py-1 text-[11px] font-medium ${
                 lens === "constituents"
                   ? "border-civic-blue/30 bg-civic-blue/10 text-civic-blue"
                   : "border-rule text-ink-soft hover:bg-paper-2"
@@ -1143,7 +1145,7 @@ export function QASection({
                 key={s.key}
                 type="button"
                 onClick={() => setSort(s.key)}
-                className={`rounded-full px-2.5 py-1 text-[11px] font-medium ${
+                className={`rounded px-2.5 py-1 text-[11px] font-medium ${
                   sort === s.key ? "bg-ink text-paper" : "bg-card text-ink-soft border border-rule hover:bg-paper-2"
                 }`}
               >

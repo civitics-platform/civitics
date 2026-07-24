@@ -46,25 +46,9 @@ function rateOk(ip: string): boolean {
 }
 
 // ── Industry metadata ──────────────────────────────────────────────────────────
-const INDUSTRY_ICONS: Record<string, string> = {
-  pharma: "💊",
-  finance: "📈",
-  labor: "👷",
-  tech: "💻",
-  technology: "💻",
-  energy: "⚡",
-  healthcare: "🏥",
-  defense: "🛡️",
-  telecom: "📡",
-  agriculture: "🌾",
-  real_estate: "🏠",
-  legal: "⚖️",
-  transport: "🚗",
-  insurance: "🛡",
-  tobacco: "🚬",
-  oil_gas: "🛢️",
-};
-const icoFor = (s: string) => INDUSTRY_ICONS[s.toLowerCase()] ?? "🏢";
+// FIX-730 — emit the industry slug as a semantic icon KEY (renderers resolve it
+// through the @civitics/graph icon registry); never an emoji string.
+const icoFor = (s: string) => s.toLowerCase() || "sector";
 const labelFor = (s: string) =>
   s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 

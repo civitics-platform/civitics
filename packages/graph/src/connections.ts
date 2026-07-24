@@ -40,7 +40,7 @@ export const VOTE_CONNECTION_TYPES = [
 export const CONNECTION_TYPE_REGISTRY: Record<string, ConnectionTypeDefinition> = {
   donation: {
     label: 'Donations',
-    icon: '💰',
+    icon: 'donation',
     color: 'rgb(var(--c-amber))',
     description: 'PAC and individual donor contributions',
     hasAmount: true,
@@ -58,7 +58,7 @@ export const CONNECTION_TYPE_REGISTRY: Record<string, ConnectionTypeDefinition> 
   // money and from solid-red vote_no; toggleable like any other type.
   opposition: {
     label: 'Opposition',
-    icon: '🚫',
+    icon: 'opposition',
     color: 'rgb(var(--c-accent))',
     description: 'Independent expenditures spent against a candidate (IE against)',
     hasAmount: true,
@@ -89,7 +89,7 @@ export const CONNECTION_TYPE_REGISTRY: Record<string, ConnectionTypeDefinition> 
   // Show in UI as "Nomination Votes" — never merge with "Legislation Votes".
   nomination_vote_yes: {
     label: 'Confirmed',
-    icon: '⭐',
+    icon: 'nomination',
     color: 'rgb(var(--c-viz-3))',
     description: 'Voted to confirm nomination',
     hasAmount: false,
@@ -103,35 +103,35 @@ export const CONNECTION_TYPE_REGISTRY: Record<string, ConnectionTypeDefinition> 
   },
   oversight: {
     label: 'Oversight',
-    icon: '👁',
+    icon: 'oversight',
     color: 'rgb(var(--c-blue))',
     description: 'Committee oversight relationships',
     hasAmount: false,
   },
   co_sponsorship: {
     label: 'Co-Sponsored',
-    icon: '🤝',
+    icon: 'co_sponsorship',
     color: 'rgb(var(--c-viz-8))',
     description: 'Bill co-sponsorship',
     hasAmount: false,
   },
   appointment: {
     label: 'Appointment',
-    icon: '🪪',
+    icon: 'appointment',
     color: 'rgb(var(--c-viz-6))',
     description: 'Cabinet- and agency-leadership appointments (official → agency)',
     hasAmount: false,
   },
   revolving_door: {
     label: 'Revolving Door',
-    icon: '🔁',
+    icon: 'revolving_door',
     color: 'rgb(var(--c-viz-9))',
     description: 'Official ↔ corporation movement via career history',
     hasAmount: false,
   },
   contract_award: {
     label: 'Contracts',
-    icon: '💵',
+    icon: 'contract_award',
     color: 'rgb(var(--c-viz-2))',
     description: 'Federal contracts and grants flowing from agencies to vendors',
     hasAmount: true,

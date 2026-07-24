@@ -8,19 +8,19 @@ import { withPublicCdnCache } from "@/lib/cdn-cache";
 export const dynamic = "force-dynamic";
 
 const SECTOR_ICONS: Record<string, string> = {
-  'Finance': '💰',
-  'Labor': '👷',
-  'Energy': '⚡',
-  'Healthcare': '🏥',
-  'Real Estate': '🏘',
-  'Tech': '💻',
-  'Agriculture': '🌾',
-  'Defense': '🛡',
-  'Transportation': '🚗',
-  'Construction': '🔨',
-  'Retail & Food': '🛍',
-  'Education': '📚',
-  'Legal': '⚖️',
+  'Finance': 'finance',
+  'Labor': 'labor',
+  'Energy': 'energy',
+  'Healthcare': 'healthcare',
+  'Real Estate': 'real_estate',
+  'Tech': 'tech',
+  'Agriculture': 'agriculture',
+  'Defense': 'defense',
+  'Transportation': 'transportation',
+  'Construction': 'construction',
+  'Retail & Food': 'retail',
+  'Education': 'education',
+  'Legal': 'legal',
 };
 
 type FlowRow = {
@@ -179,7 +179,7 @@ export async function GET(req: NextRequest) {
         const sec = row.sector;
         const out = row.vote_outcome;
         const usd = Number(row.total_usd) || 0;
-        const sg = sectorMap.get(sec) ?? { label: row.display_label || labelFor(sec), icon: row.display_icon || '💼', total: 0 };
+        const sg = sectorMap.get(sec) ?? { label: row.display_label || labelFor(sec), icon: 'sector', total: 0 };
         sg.total += usd;
         sectorMap.set(sec, sg);
         const op = outcomeMap.get(out) ?? { usd: 0, votes: 0 };
@@ -195,7 +195,7 @@ export async function GET(req: NextRequest) {
         .map(([sec, v]) => ({
           id: sec,
           label: v.label,
-          icon: v.icon || SECTOR_ICONS[v.label] || '💼',
+          icon: v.icon || SECTOR_ICONS[v.label] || 'sector',
           total_usd: Math.round(v.total),
           pac_count: 0,
         }));
@@ -239,7 +239,7 @@ export async function GET(req: NextRequest) {
         const sub = row.subject;
         const pc = row.party_chamber;
         const cnt = Number(row.vote_count) || 0;
-        const sg = subjectMap.get(sub) ?? { label: row.display_label || labelFor(sub), icon: row.display_icon || '🏷️', total: 0 };
+        const sg = subjectMap.get(sub) ?? { label: row.display_label || labelFor(sub), icon: 'sector', total: 0 };
         sg.total += cnt;
         subjectMap.set(sub, sg);
         partyMap.set(pc, (partyMap.get(pc) ?? 0) + cnt);
@@ -307,7 +307,7 @@ export async function GET(req: NextRequest) {
         .map(([id, total]) => ({
           id,
           label: DONOR_TYPE_LABELS[id] ?? labelFor(id),
-          icon: '🏛️',
+          icon: 'agency',
           total_usd: Math.round(total),
           pac_count: 0,
         }));
@@ -361,7 +361,7 @@ export async function GET(req: NextRequest) {
         .map(([id, total]) => ({
           id,
           label: id,
-          icon: '📍',
+          icon: 'state',
           total_usd: Math.round(total),
           pac_count: 0,
         }));
@@ -414,7 +414,7 @@ export async function GET(req: NextRequest) {
       const groups = sortedSectors.map((row, i) => ({
         id: `sector-${i}`,
         label: row.sector,
-        icon: SECTOR_ICONS[row.sector] ?? '💼',
+        icon: SECTOR_ICONS[row.sector] ?? 'sector',
         total_usd: Math.round(row.group1_usd + row.group2_usd),
         pac_count: 0,
       }));
@@ -463,7 +463,7 @@ export async function GET(req: NextRequest) {
       const groups = (sectorData ?? []).map((row, i) => ({
         id: `sector-${i}`,
         label: row.sector,
-        icon: SECTOR_ICONS[row.sector] ?? '💼',
+        icon: SECTOR_ICONS[row.sector] ?? 'sector',
         total_usd: Math.round(row.total_usd),
         pac_count: 0,
       }));
@@ -537,7 +537,7 @@ export async function GET(req: NextRequest) {
             (supabase as any).rpc('chord_top_pacs_for_official', { p_official_id: officialId, p_limit: perOfficialLimit })
           );
           return (data ?? []).map(r => ({
-            id: r.pac_id, label: r.pac_name, icon: r.display_icon || '🏛️',
+            id: r.pac_id, label: r.pac_name, icon: 'pac',
             total_cents: Number(r.total_cents), pac_count: 1, industry: r.industry,
           }));
         }
@@ -552,7 +552,7 @@ export async function GET(req: NextRequest) {
             mid: 'Mid ($500–2.5k)', small: 'Small (<$500)',
           };
           return (data ?? []).map(r => ({
-            id: r.bracket, label: labels[r.bracket] ?? r.bracket, icon: '💵',
+            id: r.bracket, label: labels[r.bracket] ?? r.bracket, icon: 'bracket',
             total_cents: Number(r.total_cents), pac_count: r.donor_count,
           }));
         }
@@ -572,7 +572,7 @@ export async function GET(req: NextRequest) {
               }
             : {
                 id: r.industry, label: r.display_label || labelFor(r.industry),
-                icon: r.display_icon || '🏢', total_cents: Number(r.total_cents),
+                icon: 'corporation', total_cents: Number(r.total_cents),
                 pac_count: r.donor_count,
               });
       }
@@ -685,7 +685,7 @@ export async function GET(req: NextRequest) {
         groups = (data ?? []).map(row => ({
           id: row.pac_id,
           label: row.pac_name,
-          icon: row.display_icon || '🏛️',
+          icon: 'agency',
           total_usd: Math.round(Number(row.total_cents) / 100),
           pac_count: 1,
           industry: row.industry,
@@ -713,7 +713,7 @@ export async function GET(req: NextRequest) {
           .map(row => ({
             id: row.bracket,
             label: labels[row.bracket] ?? row.bracket,
-            icon: '💵',
+            icon: 'bracket',
             total_usd: Math.round(Number(row.total_cents) / 100),
             pac_count: row.donor_count,
           }));
@@ -746,7 +746,7 @@ export async function GET(req: NextRequest) {
           .map(row => ({
             id: row.industry,
             label: row.display_label || labelFor(row.industry),
-            icon: row.display_icon || '🏢',
+            icon: 'corporation',
             total_usd: Math.round(Number(row.total_cents) / 100),
             pac_count: row.donor_count,
           }));
@@ -823,7 +823,7 @@ export async function GET(req: NextRequest) {
 
       const ig = industryMap.get(row.industry) ?? {
         label: row.display_label || labelFor(row.industry),
-        icon: row.display_icon || "🏢",
+        icon: 'corporation',
         total: 0,
         donors: 0,
       };

@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useEffect, useRef } from "react";
 import Link from "next/link";
+import { Icon } from "@civitics/graph";
 import type { OfficialRow } from "../page";
 import { OfficialCard } from "./OfficialCard";
 import { OfficialGraph } from "./OfficialGraph";
@@ -11,20 +12,20 @@ type SortMode = "default" | "engaged";
 
 // Issue area filter pills
 const ISSUE_PILLS = [
-  { tag: "healthcare", label: "Healthcare",  icon: "🏥" },
-  { tag: "climate",    label: "Climate",     icon: "🌊" },
-  { tag: "finance",    label: "Finance",     icon: "📈" },
-  { tag: "defense",    label: "Defense",     icon: "🛡" },
-  { tag: "technology", label: "Tech",        icon: "💻" },
-  { tag: "labor",      label: "Labor",       icon: "👷" },
-  { tag: "agriculture",label: "Agriculture", icon: "🌾" },
+  { tag: "healthcare", label: "Healthcare",  icon: "healthcare" },
+  { tag: "climate",    label: "Climate",     icon: "climate" },
+  { tag: "finance",    label: "Finance",     icon: "finance" },
+  { tag: "defense",    label: "Defense",     icon: "defense" },
+  { tag: "technology", label: "Tech",        icon: "technology" },
+  { tag: "labor",      label: "Labor",       icon: "labor" },
+  { tag: "agriculture",label: "Agriculture", icon: "agriculture" },
 ];
 
 // Donor pattern filter pills
 const PATTERN_PILLS = [
-  { tag: "grassroots", label: "Grassroots",  icon: "🌱" },
-  { tag: "pac_heavy",  label: "PAC-Heavy",   icon: "💰" },
-  { tag: "bipartisan", label: "Bipartisan",  icon: "🤝" },
+  { tag: "grassroots", label: "Grassroots",  icon: "grassroots" },
+  { tag: "pac_heavy",  label: "PAC-Heavy",   icon: "pac_heavy" },
+  { tag: "bipartisan", label: "Bipartisan",  icon: "bipartisan" },
   { tag: "partisan",   label: "Partisan",    icon: null },
 ];
 
@@ -132,7 +133,7 @@ export function OfficialsList({
           </a>
           <span className="text-rule">/</span>
           <span className="font-serif text-sm font-semibold text-ink">Officials</span>
-          <span className="ml-1 rounded-full bg-ink/5 px-2 py-0.5 font-mono text-xs font-medium tabular-nums text-ink-soft">
+          <span className="ml-1 rounded bg-ink/5 px-2 py-0.5 font-mono text-xs font-medium tabular-nums text-ink-soft">
             {officials.length.toLocaleString()} members
           </span>
         </div>
@@ -159,7 +160,7 @@ export function OfficialsList({
               <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-ink-soft/70">Status</span>
               <Link
                 href="/officials"
-                className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium transition-colors ${
+                className={`rounded px-2.5 py-0.5 text-[11px] font-medium transition-colors ${
                   !includeFormer ? "bg-ink text-paper" : "bg-ink/5 text-ink-soft hover:bg-ink/10"
                 }`}
               >
@@ -167,7 +168,7 @@ export function OfficialsList({
               </Link>
               <Link
                 href="/officials?status=all"
-                className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium transition-colors ${
+                className={`rounded px-2.5 py-0.5 text-[11px] font-medium transition-colors ${
                   includeFormer ? "bg-ink text-paper" : "bg-ink/5 text-ink-soft hover:bg-ink/10"
                 }`}
               >
@@ -231,13 +232,13 @@ export function OfficialsList({
                   type="button"
                   aria-pressed={issueFilter === pill.tag}
                   onClick={() => setIssue(issueFilter === pill.tag ? null : pill.tag)}
-                  className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1 ${
+                  className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1 ${
                     issueFilter === pill.tag
                       ? "bg-ink text-paper"
                       : "bg-ink/5 text-ink-soft hover:bg-ink/10 hover:text-ink"
                   }`}
                 >
-                  {pill.icon} {pill.label}
+                  <Icon name={pill.icon} className="w-4 h-4" /> {pill.label}
                 </button>
               ))}
             </div>
@@ -250,13 +251,13 @@ export function OfficialsList({
                   type="button"
                   aria-pressed={patternFilter === pill.tag}
                   onClick={() => setPattern(patternFilter === pill.tag ? null : pill.tag)}
-                  className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1 ${
+                  className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1 ${
                     patternFilter === pill.tag
                       ? "bg-ink text-paper"
                       : "bg-ink/5 text-ink-soft hover:bg-ink/10 hover:text-ink"
                   }`}
                 >
-                  {pill.icon && <span aria-hidden="true">{pill.icon}</span>} {pill.label}
+                  {pill.icon && <Icon name={pill.icon} className="w-4 h-4" />} {pill.label}
                 </button>
               ))}
             </div>
@@ -324,7 +325,7 @@ export function OfficialsList({
                             {official.full_name}
                           </p>
                           {official.is_active === false && (
-                            <span className="shrink-0 rounded-full bg-ink/5 px-1.5 py-0.5 text-[10px] font-semibold text-ink-soft">
+                            <span className="shrink-0 rounded bg-ink/5 px-1.5 py-0.5 text-[10px] font-semibold text-ink-soft">
                               Former
                             </span>
                           )}

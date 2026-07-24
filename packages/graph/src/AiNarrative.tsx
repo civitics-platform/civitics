@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
+import { Icon } from "./icons";
 
 export interface AiNarrativeProps {
   vizType: string;
@@ -67,7 +68,7 @@ export function AiNarrative({ vizType, entityNames, activeFilters, isVisible, on
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-rule">
           <div className="flex items-center gap-2">
-            <span className="text-sm">✨</span>
+            <Icon name="ai" className="w-4 h-4 text-ink" />
             <span className="text-xs font-semibold text-ink">AI Narrative</span>
           </div>
           <button

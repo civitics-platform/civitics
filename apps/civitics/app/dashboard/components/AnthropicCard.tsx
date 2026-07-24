@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { SectionCard, SectionHeader, LoadingSkeleton } from "@civitics/ui";
+import { Icon } from "@civitics/graph";
 import type { AiCosts } from "../useDashboardData";
 
 // ── Formatters ──────────────────────────────────────────────────────────────
@@ -42,7 +43,7 @@ export function AnthropicCard({ aiCosts }: AnthropicCardProps) {
     <SectionCard>
       <div className="flex items-start justify-between">
         <SectionHeader
-          icon="🤖"
+          icon={<Icon name="anthropic" className="w-4 h-4" />}
           title="Anthropic AI"
           description={
             aiCosts

@@ -668,7 +668,7 @@ async function AgencyView({
                       >
                         <div className="flex flex-wrap items-start justify-between gap-2">
                           <div className="flex flex-wrap items-center gap-2">
-                            <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${statusStyle.color}`}>
+                            <span className={`rounded px-2.5 py-0.5 text-xs font-medium ${statusStyle.color}`}>
                               {statusStyle.label}
                             </span>
                             {rule.bill_number && (
@@ -738,7 +738,7 @@ async function AgencyView({
                             {rule.comment_period_end ? ` · ${formatDate(rule.comment_period_end)}` : ""}
                           </p>
                         </div>
-                        <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium ${statusStyle.color}`}>
+                        <span className={`shrink-0 rounded px-2.5 py-0.5 text-xs font-medium ${statusStyle.color}`}>
                           {statusStyle.label}
                         </span>
                       </div>
@@ -1220,7 +1220,7 @@ async function GoverningBodyView({
                       >
                         <div className="flex flex-wrap items-start justify-between gap-2">
                           <div className="flex flex-wrap items-center gap-2">
-                            <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${statusStyle.color}`}>
+                            <span className={`rounded px-2.5 py-0.5 text-xs font-medium ${statusStyle.color}`}>
                               {statusStyle.label}
                             </span>
                             {p.bill_number && (
@@ -1272,7 +1272,7 @@ async function GoverningBodyView({
                             {p.introduced_at ? ` · ${formatDate(p.introduced_at)}` : ""}
                           </p>
                         </div>
-                        <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium ${statusStyle.color}`}>
+                        <span className={`shrink-0 rounded px-2.5 py-0.5 text-xs font-medium ${statusStyle.color}`}>
                           {statusStyle.label}
                         </span>
                       </a>
@@ -1379,7 +1379,7 @@ function RecentVoteRow({ vote }: { vote: RecentVote }) {
             </span>
           )}
           {indicator && (
-            <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${indicator.cls}`}>
+            <span className={`rounded px-2 py-0.5 text-xs font-medium ${indicator.cls}`}>
               {indicator.label}
             </span>
           )}
@@ -1488,12 +1488,12 @@ function OfficialCard({
         <div className="flex items-center gap-2">
           <p className="truncate text-sm font-semibold text-ink">{official.name}</p>
           {official.isCurrent && !isStale && (
-            <span className="shrink-0 rounded-full bg-green-ink/10 px-1.5 py-0.5 text-[10px] font-semibold text-green-ink">
+            <span className="shrink-0 rounded bg-green-ink/10 px-1.5 py-0.5 text-[10px] font-semibold text-green-ink">
               Current
             </span>
           )}
           {official.isCurrent && isStale && (
-            <span className="shrink-0 rounded-full bg-amber/20 px-1.5 py-0.5 text-[10px] font-semibold text-ink" title="Data may be outdated — OPM PLUM Book hasn't been updated recently">
+            <span className="shrink-0 rounded bg-amber/20 px-1.5 py-0.5 text-[10px] font-semibold text-ink" title="Data may be outdated — OPM PLUM Book hasn't been updated recently">
               Current*
             </span>
           )}

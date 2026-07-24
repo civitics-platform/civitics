@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import nextDynamic from "next/dynamic";
 import { createPublicClient, fetchIndustryTagsByEntityId } from "@civitics/db";
+import { Icon } from "@civitics/graph";
 import { fetchAllRows } from "@/lib/paginate";
 import { withDbTimeout } from "@/lib/supabase-check";
 // FIX-205: defer the D3 graph chunk off the initial /officials/[id] bundle.
@@ -177,7 +178,7 @@ const ISSUE_KEYWORDS: Record<
 > = {
   healthcare: {
     label: "Healthcare",
-    icon: "🏥",
+    icon: "healthcare",
     color: "rgb(var(--c-viz-1))",
     keywords: [
       "health", "medicare", "medicaid", "hospital", "prescription", "drug",
@@ -187,7 +188,7 @@ const ISSUE_KEYWORDS: Record<
   },
   climate: {
     label: "Climate & Energy",
-    icon: "⚡",
+    icon: "energy",
     color: "rgb(var(--c-viz-2))",
     keywords: [
       "climate", "clean energy", "renewable", "carbon", "emission",
@@ -198,7 +199,7 @@ const ISSUE_KEYWORDS: Record<
   },
   economy: {
     label: "Economy",
-    icon: "💼",
+    icon: "economy",
     color: "rgb(var(--c-viz-3))",
     keywords: [
       "tax", "budget", "spending", "economic", "inflation", "trade", "tariff",
@@ -208,7 +209,7 @@ const ISSUE_KEYWORDS: Record<
   },
   education: {
     label: "Education",
-    icon: "📚",
+    icon: "education",
     color: "rgb(var(--c-viz-4))",
     keywords: [
       "education", "school", "student", "teacher", "college", "university",
@@ -217,7 +218,7 @@ const ISSUE_KEYWORDS: Record<
   },
   defense: {
     label: "Defense & Security",
-    icon: "🛡",
+    icon: "defense",
     color: "rgb(var(--c-viz-5))",
     keywords: [
       "defense", "military", "national security", "armed forces", "veteran",
@@ -227,7 +228,7 @@ const ISSUE_KEYWORDS: Record<
   },
   immigration: {
     label: "Immigration",
-    icon: "🌎",
+    icon: "immigration",
     color: "rgb(var(--c-viz-6))",
     keywords: [
       "immigration", "border", "asylum", "refugee", "citizenship", "visa",
@@ -236,7 +237,7 @@ const ISSUE_KEYWORDS: Record<
   },
   justice: {
     label: "Justice & Rights",
-    icon: "⚖️",
+    icon: "legal",
     color: "rgb(var(--c-viz-7))",
     keywords: [
       "justice", "civil rights", "voting rights", "police", "criminal",
@@ -938,11 +939,11 @@ export default async function OfficialProfilePage({
               {/* Info */}
               <div className="flex-1 min-w-0">
                 <div className="flex flex-wrap items-center gap-2 mb-1">
-                  <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${party.badge}`}>
+                  <span className={`rounded px-2.5 py-0.5 text-xs font-semibold ${party.badge}`}>
                     {party.label}
                   </span>
                   {isCandidate && (
-                    <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold bg-amber/25 text-ink">
+                    <span className="rounded px-2 py-0.5 text-[10px] font-semibold bg-amber/25 text-ink">
                       Candidate
                     </span>
                   )}
@@ -952,12 +953,12 @@ export default async function OfficialProfilePage({
                     </span>
                   )}
                   {official.is_active === false && (
-                    <span className="rounded-full px-2.5 py-0.5 text-xs font-semibold bg-ink/5 text-ink-soft">
+                    <span className="rounded px-2.5 py-0.5 text-xs font-semibold bg-ink/5 text-ink-soft">
                       Former
                     </span>
                   )}
                   {official.is_active === true && (
-                    <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium bg-green-ink/10 text-green-ink">
+                    <span className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-medium bg-green-ink/10 text-green-ink">
                       <span className="w-1.5 h-1.5 rounded-full bg-green-ink animate-pulse inline-block" />
                       Active
                     </span>
@@ -1300,7 +1301,7 @@ export default async function OfficialProfilePage({
                     <h3 className="text-sm font-semibold text-ink">Election &amp; Opponents</h3>
                     <p className="text-xs text-ink-soft/70 mt-0.5">Upcoming and recent election data</p>
                   </div>
-                  <span className="text-[10px] bg-amber/15 text-ink border border-amber/60 rounded-full px-2 py-0.5 font-medium">
+                  <span className="text-[10px] bg-amber/15 text-ink border border-amber/60 rounded px-2 py-0.5 font-medium">
                     Coming soon
                   </span>
                 </div>
@@ -1309,7 +1310,7 @@ export default async function OfficialProfilePage({
                   {/* Next election placeholder */}
                   <div className="border border-dashed border-rule p-4 bg-paper-2/50">
                     <div className="flex items-center gap-2 mb-2">
-                      <span className="text-lg">🗳</span>
+                      <Icon name="vote" className="w-5 h-5" />
                       <span className="text-xs font-medium text-ink-soft">Next Election</span>
                     </div>
                     <p className="text-xs text-ink-soft/70 leading-relaxed">
@@ -1324,7 +1325,7 @@ export default async function OfficialProfilePage({
                   {/* Opponents placeholder */}
                   <div className="border border-dashed border-rule p-4 bg-paper-2/50">
                     <div className="flex items-center gap-2 mb-2">
-                      <span className="text-lg">👥</span>
+                      <Icon name="users" className="w-5 h-5" />
                       <span className="text-xs font-medium text-ink-soft">Opponents</span>
                     </div>
                     <p className="text-xs text-ink-soft/70 leading-relaxed">
@@ -1344,7 +1345,7 @@ export default async function OfficialProfilePage({
                 {/* Comparison teaser */}
                 <div className="mt-4 bg-civic-blue/5 border border-civic-blue/20 p-4">
                   <div className="flex items-center gap-3">
-                    <span className="text-2xl">⚖️</span>
+                    <Icon name="legal" className="w-7 h-7" />
                     <div>
                       <p className="text-xs font-medium text-ink">
                         Side-by-side comparison coming soon

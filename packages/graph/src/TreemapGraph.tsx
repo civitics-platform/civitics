@@ -729,7 +729,7 @@ export function TreemapGraph({ className = "", svgRef: externalSvgRef, vizOption
           // FIX-A — badge the independent-expenditure group so it reads as
           // distinct from ordinary donations (super-PAC IE money, not gifts).
           ? (d.data.name === "Independent support"
-              ? "⚡ Independent Support"
+              ? "Independent Support"
               : d.data.name.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()))
           : getGroupLabel(d.data.name, groupBy));
 

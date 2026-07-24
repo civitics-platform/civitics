@@ -87,7 +87,7 @@ export function SidebarBrowser({
         id: `group-gb-${row.entity_id}`,
         name: row.display_name,
         type: "group",
-        icon: "🏛",
+        icon: "agency",
         color: "rgb(var(--c-viz-5))",
         filter: { entity_type: "official", governingBody: row.entity_id },
         isPremade: false,

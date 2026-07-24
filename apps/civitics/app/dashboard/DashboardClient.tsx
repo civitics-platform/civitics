@@ -6,6 +6,7 @@ import {
   RefreshCw, Lightbulb, Eye, Rocket, CircleCheck, CircleX,
   Megaphone,
 } from "lucide-react";
+import { Icon } from "@civitics/graph";
 import {
   StatCard,
   StatsRow,
@@ -15,7 +16,6 @@ import {
   CommentPeriodCard,
   DataQualityBar,
   ConnectionHighlight,
-  ActivityItem,
   AlertBanner,
   StatusBadge,
   formatRelativeTime,
@@ -437,11 +437,11 @@ function freshnessFor(
 // ── Activity path → display name ─────────────────────────────────────────────
 
 function pathIcon(path: string): string {
-  if (path.startsWith("/officials")) return "👤";
-  if (path.startsWith("/proposals")) return "📋";
-  if (path.startsWith("/agencies")) return "🏛";
-  if (path.startsWith("/graph")) return "🔗";
-  return "📄";
+  if (path.startsWith("/officials")) return "officials";
+  if (path.startsWith("/proposals")) return "proposals";
+  if (path.startsWith("/agencies")) return "agencies";
+  if (path.startsWith("/graph")) return "graph";
+  return "page";
 }
 
 function pathLabel(path: string): string {
@@ -1036,7 +1036,7 @@ function DataHealthRow({
                 href={def.source.href}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center rounded-full border border-rule bg-card px-2.5 py-0.5 font-medium hover:border-accent/50 hover:text-accent transition-colors"
+                className="inline-flex items-center rounded border border-rule bg-card px-2.5 py-0.5 font-medium hover:border-accent/50 hover:text-accent transition-colors"
               >
                 {def.source.label} ↗
               </a>
@@ -1367,14 +1367,29 @@ function ActivitySection({
           <EmptyState title="No activity data" description="Page view data will appear here." />
         ) : (
           activity.map((row, i) => (
-            <ActivityItem
+            <a
               key={i}
-              icon={pathIcon(row.path)}
-              title={pathLabel(row.path)}
-              subtitle={row.path}
-              meta={`${formatNumber(row.views)} views`}
               href={row.path}
-            />
+              className="block hover:bg-ink/5 transition-colors duration-150 rounded-lg -mx-2 px-2"
+            >
+              <div className="flex items-start gap-3 py-3">
+                <span
+                  className="shrink-0 inline-flex h-8 w-8 items-center justify-center rounded-full bg-paper-2 text-ink-soft"
+                  aria-hidden="true"
+                >
+                  <Icon name={pathIcon(row.path)} className="w-4 h-4" />
+                </span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-ink truncate">
+                    {pathLabel(row.path)}
+                  </p>
+                  <p className="text-xs text-ink-soft truncate">{row.path}</p>
+                  <p className="text-xs text-ink-soft/80">
+                    {`${formatNumber(row.views)} views`}
+                  </p>
+                </div>
+              </div>
+            </a>
           ))
         )}
       </div>

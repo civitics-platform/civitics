@@ -66,6 +66,9 @@ export type { SavedView } from "./saved-views";
 // ── Design-token helpers (FIX-729) ──────────────────────────────────────────
 export { resolveToken, resolvePaperToken, resolveColor, withAlpha, toHexColor } from "./tokens";
 
+// ── Icon registry (FIX-730) ─────────────────────────────────────────────────
+export { Icon, resolveIcon, hasIcon, ICON_REGISTRY, GENERIC_ICON } from "./icons";
+
 import { CONNECTION_TYPE_REGISTRY } from "./connections";
 
 // ── Groups ──────────────────────────────────────────────────────────────────

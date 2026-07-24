@@ -19,6 +19,7 @@ import { ProposalShareButton } from "../components/ProposalShareButton";
 import { getCachedProposal } from "../_lib/get-proposal";
 import { SyntheticMark, SyntheticBanner } from "../../components/integrity/Synthetic";
 import { PrintLetterhead, PrintProvenance } from "../../components/print/PrintRecord";
+import { Icon } from "@civitics/graph";
 
 // Public proposal detail; no auth dependency, RLS allows anon SELECT on
 // proposals + votes + ai_summary_cache + civic_initiative_proposal_links.
@@ -416,7 +417,7 @@ export default async function ProposalDetailPage({
           {/* Badge row */}
           <div className="flex flex-wrap items-center gap-2 mb-4">
             <span className={`border px-2.5 py-1 font-mono text-[10px] font-bold uppercase tracking-[0.06em] ${statusBadge.color}`}>
-              {open ? "⏰ " : ""}{statusBadge.label}
+              {open && <Icon name="deadline" className="w-3.5 h-3.5 inline-block align-[-2px] mr-1" />}{statusBadge.label}
             </span>
             {agencyAcronym && (
               <span className="inline-flex items-center gap-1.5 border border-rule bg-paper-2 px-2.5 py-1 text-xs">

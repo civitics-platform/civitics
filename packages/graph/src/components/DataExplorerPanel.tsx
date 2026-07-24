@@ -20,6 +20,7 @@ import type { GraphView } from '../types';
 import type { UseGraphViewReturn } from '../hooks/useGraphView';
 import type { GraphMeta } from '../hooks/useGraphData';
 import { FocusTree, type UserNodeInfo } from './FocusTree';
+import { Icon } from '../icons';
 
 /** FIX-813 — default width; host may override via the width prop. */
 export const LEFT_PANEL_DEFAULT_WIDTH = 230;
@@ -77,7 +78,7 @@ export function DataExplorerPanel({
           onClick={onCollapse}
           className="w-8 h-8 flex items-center justify-center rounded hover:bg-ink/10 transition-colors text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
         >
-          <span aria-hidden="true">🎯</span>
+          <Icon name="target" className="w-4 h-4" aria-hidden="true" />
         </button>
       </div>
     );
