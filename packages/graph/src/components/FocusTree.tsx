@@ -17,11 +17,10 @@
  * nothing (focus.scope had zero readers) and was not re-mounted — the field
  * itself is now retired (FIX-816).
  *
- * FIX-762 — when the host app passes `browserSlot` (the unified browse
- * sidebar mount, app-side because it depends on app lib/route code this
- * package can't import), it replaces the legacy Find Entity + Browse Groups
- * sections. Without the slot the legacy stack still renders (embed and any
- * host that hasn't wired the browser yet).
+ * FIX-762 — the host app passes `browserSlot` (the unified browse sidebar
+ * mount, app-side because it depends on app lib/route code this package can't
+ * import) into the "Browse & Add" section. FIX-773 removed the legacy
+ * Find Entity + Browse Groups fallback, so `browserSlot` is now required.
  */
 
 import React, { type ReactNode } from 'react';
@@ -30,8 +29,6 @@ import { isFocusEntity, isFocusGroup, MAX_FOCUS_ENTITIES } from '../types';
 import type { UseGraphViewReturn } from '../hooks/useGraphView';
 import type { GraphMeta } from '../hooks/useGraphData';
 import { TreeSection } from './TreeNode';
-import { EntitySearchInput } from './EntitySearchInput';
-import { GroupBrowser } from './GroupBrowser';
 import { PathFinder } from '../PathFinder';
 
 /**
@@ -57,8 +54,9 @@ export interface FocusTreeProps {
   userNode?: UserNodeInfo | null;
   /** Toggle USER node visibility independent of follows (FIX-120). */
   onToggleUserNode?: () => void;
-  /** FIX-762 — unified browser sidebar mount; replaces Find Entity + Browse Groups. */
-  browserSlot?: ReactNode;
+  /** FIX-762/773 — unified browser sidebar mount (required; the legacy
+   *  Find Entity + Browse Groups fallback was removed in FIX-773). */
+  browserSlot: ReactNode;
   /**
    * FIX-812 — row hover spotlight. Fired with the entity id on row
    * mouseenter and null on mouseleave; GraphPage routes it into the
@@ -257,62 +255,16 @@ export function FocusTree({
         </p>
       )}
 
-      {/* FIX-762 — unified browser sidebar mount (app-provided) replaces the
-          legacy Find Entity + Browse Groups stack when the host wires it. */}
-      {browserSlot ? (
-        <TreeSection
-          label="Browse & Add"
-          defaultExpanded={entities.length === 0}
-          separator={false}
-          depth={1}
-        >
-          {browserSlot}
-        </TreeSection>
-      ) : (
-        <>
-          {/* Find entity search */}
-          <TreeSection
-            label="Find Entity"
-            defaultExpanded={entities.length === 0}
-            separator={false}
-            depth={1}
-          >
-            <EntitySearchInput
-              onSelect={entity => {
-                if (hooks.atMaxFocus) return;
-                hooks.addEntity(entity);
-              }}
-              disabled={atMax}
-            />
-          </TreeSection>
-
-          {/* Browse groups */}
-          <TreeSection
-            label="Browse Groups"
-            defaultExpanded={false}
-            separator={false}
-            depth={1}
-          >
-            <GroupBrowser
-              onAddGroup={group => hooks.addGroup(group)}
-              onAddEntity={entity => {
-                if (hooks.atMaxFocus) return;
-                hooks.addEntity(entity);
-              }}
-              activeGroupIds={
-                focus.entities
-                  .filter(isFocusGroup)
-                  .map(g => g.id)
-              }
-              activeEntityIds={
-                focus.entities
-                  .filter(isFocusEntity)
-                  .map(e => e.id)
-              }
-            />
-          </TreeSection>
-        </>
-      )}
+      {/* FIX-762/773 — unified browser sidebar mount (app-provided). The legacy
+          Find Entity + Browse Groups fallback was removed in FIX-773. */}
+      <TreeSection
+        label="Browse & Add"
+        defaultExpanded={entities.length === 0}
+        separator={false}
+        depth={1}
+      >
+        {browserSlot}
+      </TreeSection>
 
       {/* Path Finder */}
       <TreeSection

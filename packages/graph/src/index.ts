@@ -71,11 +71,9 @@ import { CONNECTION_TYPE_REGISTRY } from "./connections";
 // ── Groups ──────────────────────────────────────────────────────────────────
 export {
   BUILT_IN_GROUPS,
-  GROUP_TREE,
   getGroupById,
   createCustomGroup,
 } from "./groups";
-export type { GroupTreeNode } from "./groups";
 
 // ── Recently viewed (FIX-140) ───────────────────────────────────────────────
 export { recordRecent, loadRecent, clearRecent } from "./recently-viewed";
@@ -149,15 +147,6 @@ export type { FocusTreeProps, UserNodeInfo } from "./components/FocusTree";
 
 export { ConnectionsTree } from "./components/ConnectionsTree";
 export type { ConnectionsTreeProps } from "./components/ConnectionsTree";
-
-export { EntitySearchInput } from "./components/EntitySearchInput";
-export type { EntitySearchInputProps } from "./components/EntitySearchInput";
-
-export { GroupBrowser } from "./components/GroupBrowser";
-export type { GroupBrowserProps } from "./components/GroupBrowser";
-
-export { CustomGroupForm } from "./components/CustomGroupForm";
-export type { CustomGroupFormProps, CustomGroupFormPayload } from "./components/CustomGroupForm";
 
 export { ConnectionStyleRow } from "./components/ConnectionStyleRow";
 export type { ConnectionStyleRowProps, ConnectionTypeSettings } from "./components/ConnectionStyleRow";

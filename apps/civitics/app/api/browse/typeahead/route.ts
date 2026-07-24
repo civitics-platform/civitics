@@ -24,7 +24,7 @@ import type {
   SearchResults, SearchOfficial, SearchProposal, SearchAgency,
   SearchFinancialEntity, SearchJurisdiction, SearchInstitution,
   SearchInitiative, SearchMeeting,
-} from "../../search/route";
+} from "@/lib/search/types";
 
 const PER_KIND = 6;
 const INDIV_LIMIT = 4;

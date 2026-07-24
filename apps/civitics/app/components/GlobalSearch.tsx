@@ -26,7 +26,7 @@ import type {
   SearchFinancialEntity,
   SearchJurisdiction,
   SearchInstitution,
-} from "../api/search/route";
+} from "@/lib/search/types";
 import { FormerBadge } from "./FormerBadge";
 
 // ---------------------------------------------------------------------------
