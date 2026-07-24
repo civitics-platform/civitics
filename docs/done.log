@@ -1107,3 +1107,6 @@
 2026-07-22 | FIX-878 | 6471952f | prod-only | chore(graph): record prod verification of FIX-878 chord jsonb conversion [skip vercel]
 2026-07-22 | FIX-880 | 3dcdf797 | local+prod | feat(abuse): observe-only abuse_events log substrate + /privacy page (FIX-880)
 2026-07-23 | FIX-571 | eabe784e | local+prod | feat(abuse): sybil cluster detector over abuse_events (FIX-571 PR2, closes FIX-571)
+2026-07-23 | FIX-730 | de3aef26 | local+prod | feat(ui): iconography pass — semantic-key icon registry, lucide glyphs replace emoji, squared chip grammar
+2026-07-23 | FIX-773 | e09863fa | local+prod | chore(search,graph): execute W3 retirement checklist — legacy /search components, /api/search, pre-W2 graph selectors, group/preview
+2026-07-23 | FIX-882 | 9910c264 | local+prod | chore(db): drop get_official_donors — zero callers, superseded by official_donor_totals machinery
