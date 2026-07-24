@@ -119,8 +119,12 @@ export default function PrivacyPage() {
             only trustworthy if they resist manipulation. The salted hash lets us
             tell whether many &ldquo;different&rdquo; accounts are actually one
             person or a coordinated cluster gaming a tally, <strong>without</strong>{" "}
-            ever knowing who or where you are. It is a manipulation-resistance
-            signal for public integrity — nothing more.
+            ever knowing who or where you are. This linkage check runs as periodic
+            automated analysis over the hashed log alone — never over your identity
+            or what you wrote — and is strictly <span className="font-medium text-ink">observe-only</span>,
+            surfacing candidates for human review before any consequence is ever
+            considered. It is a manipulation-resistance signal for public integrity
+            — nothing more.
           </p>
         </Section>
 

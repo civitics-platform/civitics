@@ -5203,6 +5203,57 @@ export type Database = {
         }
         Relationships: []
       }
+      sybil_candidates: {
+        Row: {
+          account_ids: string[]
+          cluster_key: string | null
+          cluster_size: number
+          detected_at: string
+          event_count: number | null
+          first_seen: string | null
+          id: number
+          last_seen: string | null
+          metadata: Json
+          notes: string | null
+          score: number
+          sha: string | null
+          signal: string
+          signals: Json
+        }
+        Insert: {
+          account_ids: string[]
+          cluster_key?: string | null
+          cluster_size: number
+          detected_at?: string
+          event_count?: number | null
+          first_seen?: string | null
+          id?: number
+          last_seen?: string | null
+          metadata?: Json
+          notes?: string | null
+          score: number
+          sha?: string | null
+          signal: string
+          signals?: Json
+        }
+        Update: {
+          account_ids?: string[]
+          cluster_key?: string | null
+          cluster_size?: number
+          detected_at?: string
+          event_count?: number | null
+          first_seen?: string | null
+          id?: number
+          last_seen?: string | null
+          metadata?: Json
+          notes?: string | null
+          score?: number
+          sha?: string | null
+          signal?: string
+          signals?: Json
+        }
+        Relationships: []
+      }
       synthetic_position_rollup: {
         Row: {
           buckets: Json
@@ -6115,6 +6166,27 @@ export type Database = {
           score: number
           signals: Json
           target_id: string
+        }[]
+      }
+      detect_sybil_clusters: {
+        Args: {
+          p_burst_minutes?: number
+          p_couple_minutes?: number
+          p_damp_cap?: number
+          p_horizon_days?: number
+          p_min_accounts?: number
+          p_score_threshold?: number
+        }
+        Returns: {
+          account_ids: string[]
+          cluster_key: string
+          cluster_size: number
+          event_count: number
+          first_seen: string
+          last_seen: string
+          score: number
+          signal: string
+          signals: Json
         }[]
       }
       donor_party_rollup_rebuild_donors: {
