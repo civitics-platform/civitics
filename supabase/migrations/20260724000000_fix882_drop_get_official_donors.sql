@@ -1,0 +1,14 @@
+-- FIX-882 — Retire get_official_donors(uuid).
+--
+-- Zero callers. The FIX-835 grant audit found no .rpc / cron / procedure /
+-- direct-pg / view / RLS references to this function — the only remaining
+-- reference was the generated packages/db/src/types/database.ts.
+--
+-- anon/authenticated EXECUTE was already revoked in 20260714010000 (FIX-835);
+-- the function was corrected (single-tag industry dedup) and explicitly flagged
+-- as a retirement candidate in 20260722010000 (FIX-875, lines ~231-235). The
+-- soak gate was lifted by Craig on 2026-07-24, who authorized this drop as part
+-- of the CC-Prompt-19 cleanup batch.
+--
+-- Cross-ref: FIX-835 (grant audit), FIX-875 (correction + retirement flag).
+DROP FUNCTION IF EXISTS public.get_official_donors(uuid);

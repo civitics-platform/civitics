@@ -6417,17 +6417,6 @@ export type Database = {
       get_official_bipartisan_stats_full: { Args: never; Returns: Json }
       get_official_donor_rollup: { Args: never; Returns: Json }
       get_official_donor_rollup_full: { Args: never; Returns: Json }
-      get_official_donors: {
-        Args: { p_official_id: string }
-        Returns: {
-          entity_name: string
-          entity_type: string
-          financial_entity_id: string
-          industry_category: string
-          total_amount_usd: number
-          transaction_count: number
-        }[]
-      }
       get_official_page: { Args: { p_id: string }; Returns: Json }
       get_officials_breakdown: {
         Args: never
@@ -7726,4 +7715,3 @@ export const Constants = {
     },
   },
 } as const
-
