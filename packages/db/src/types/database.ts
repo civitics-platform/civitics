@@ -6281,6 +6281,10 @@ export type Database = {
         }
         Returns: Json
       }
+      get_cohort_top_donors: {
+        Args: { p_limit?: number; p_official_ids: string[] }
+        Returns: Json
+      }
       get_connection_counts: {
         Args: { entity_ids: string[] }
         Returns: {
