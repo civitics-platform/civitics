@@ -115,9 +115,36 @@ async function fetchKilledDates(daysBack: number): Promise<Set<string>> {
 // at the GHA 4h cap skips the finally and the manual 2b recovery path historically
 // didn't manage the flag — so on 2026-06-21 entity_connections was stranded at
 // autovacuum-off and bloated to ~70% dead tuples (FIX-650). The canary runs at
-// 05:00 UTC, never inside the Sun/Wed 08:00 rebuild window, so it's the morning-
-// after detector that would have caught this. Returns the stranded relnames.
-async function fetchStrandedAutovacuum(): Promise<string[]> {
+// 05:00 UTC, never inside the Mon/Wed 08:00 rebuild window, so it's the morning-
+// after detector that would have caught this.
+//
+// FIX-885 — it recurred anyway: the 2026-06-28 GHA run was cancelled at the cap,
+// FIX-688 had already moved the schedule to pg_cron (leaving the TS script's
+// startup reconcile unreachable), and the in-DB procedure gated every re-enable
+// on v_full while both cron jobs pass 'incremental'. The flag sat off for ~4
+// weeks. This detector reported it correctly the whole time — the canary just
+// exited 0. So this now returns the visibility-map numbers too (the state that
+// actually breaks query plans), and main() exits non-zero on either finding.
+// FIX-885 — vm[] entry: visibility-map health for a rebuild-toggled table. An
+// empty visibility map downgrades every index-only scan to a per-row heap fetch,
+// which is what actually breaks queries; the autovacuum flag is only a proxy for
+// it. On prod this silently cost FIX-497's covering index its intended plan.
+type VmRow = {
+  relname: string;
+  relallvisible: number;
+  relpages: number;
+  pct_all_visible: number;
+};
+
+type AutovacuumStatus = {
+  stranded: string[];
+  vmDegraded: string[];
+  vm: VmRow[];
+};
+
+const NO_AUTOVACUUM_FINDINGS: AutovacuumStatus = { stranded: [], vmDegraded: [], vm: [] };
+
+async function fetchStrandedAutovacuum(): Promise<AutovacuumStatus> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = createAdminClient() as any;
   const { data, error } = await db.rpc("check_rebuild_autovacuum_status");
@@ -125,19 +152,31 @@ async function fetchStrandedAutovacuum(): Promise<string[]> {
     // Non-fatal: belt-and-braces detector. A missing RPC (env not yet migrated)
     // or a transient error must never fail the nightly canary's primary job.
     console.warn(`[canary-check] autovacuum detector query failed (non-fatal): ${error.message}`);
-    return [];
+    return NO_AUTOVACUUM_FINDINGS;
   }
-  const result = (data ?? {}) as { rebuild_active?: boolean; stranded?: string[] };
+  const result = (data ?? {}) as {
+    rebuild_active?: boolean;
+    stranded?: string[];
+    vm_degraded?: string[];
+    vm?: VmRow[];
+  };
+  const vm = Array.isArray(result.vm) ? result.vm : [];
   // The RPC already excludes an in-flight rebuild via rebuild_active; this is a
-  // second guard in case the shape changes.
-  if (result.rebuild_active) return [];
-  return Array.isArray(result.stranded) ? result.stranded : [];
+  // second guard in case the shape changes. A rebuild legitimately holds
+  // autovacuum off AND churns the visibility map, so neither signal is
+  // actionable mid-run — keep vm[] for the meta row, suppress both findings.
+  if (result.rebuild_active) return { ...NO_AUTOVACUUM_FINDINGS, vm };
+  return {
+    stranded:   Array.isArray(result.stranded)    ? result.stranded    : [],
+    vmDegraded: Array.isArray(result.vm_degraded) ? result.vm_degraded : [],
+    vm,
+  };
 }
 
 async function writeMetaRow(
   missing: string[],
   killed: string[],
-  strandedAutovacuum: string[],
+  autovacuum: AutovacuumStatus,
 ): Promise<void> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = createAdminClient() as any;
@@ -155,7 +194,12 @@ async function writeMetaRow(
       killed_count:     killed.length,
       killed_dates:     killed,
       // FIX-650 — rebuild-toggled tables stranded at autovacuum_enabled=false.
-      stranded_autovacuum: strandedAutovacuum,
+      stranded_autovacuum: autovacuum.stranded,
+      // FIX-885 — visibility-map health. vm[] is recorded on EVERY run (not just
+      // findings) so the trend is greppable in data_sync_log after the fact —
+      // FIX-884 went unnoticed for ~4 weeks partly because nothing logged it.
+      vm_degraded:      autovacuum.vmDegraded,
+      visibility_map:   autovacuum.vm,
       peak_rss_mb:      captureRssMb(),
     },
   });
@@ -167,10 +211,11 @@ async function writeMetaRow(
 async function sendAlert(
   missing: string[],
   killed: string[],
-  strandedAutovacuum: string[],
+  autovacuum: AutovacuumStatus,
   to: string,
   apiKey: string,
 ): Promise<void> {
+  const strandedAutovacuum = autovacuum.stranded;
   // Lazy import keeps the script no-op-safe when Resend isn't installed for
   // some reason — prevents a hard module-resolution failure at startup.
   const { Resend } = await import("resend");
@@ -185,6 +230,10 @@ async function sendAlert(
   if (missing.length > 0) parts.push(`missed ${missing.length} day(s)`);
   if (killed.length > 0) parts.push(`killed ${killed.length} day(s)`);
   if (strandedAutovacuum.length > 0) parts.push(`autovacuum stranded off on ${strandedAutovacuum.join(", ")}`);
+  // FIX-885 — the visibility map can collapse even with the flag correctly ON
+  // (e.g. a long gap between vacuums), and that is the state that actually
+  // degrades query plans, so it gets its own subject fragment.
+  if (autovacuum.vmDegraded.length > 0) parts.push(`visibility map collapsed on ${autovacuum.vmDegraded.join(", ")}`);
   const subject = `[Civitics] Nightly canary — ${parts.join("; ")}`;
 
   const sections: string[] = [];
@@ -214,6 +263,25 @@ async function sendAlert(
         `(autovacuum_enabled = true); VACUUM (ANALYZE) public.<table>;`,
     );
   }
+  if (autovacuum.vmDegraded.length > 0) {
+    const byName = new Map(autovacuum.vm.map((v) => [v.relname, v]));
+    sections.push(
+      `Visibility map collapsed (FIX-885) — under 50% of pages are all-visible, ` +
+        `so every "Index Only Scan" on these tables degrades to a per-row heap ` +
+        `fetch and any covering index silently stops being one. On prod this ` +
+        `cost FIX-497's index its intended plan (34,534 heap fetches for 34,552 ` +
+        `rows, 20.5s of a 22.1s query) with no other symptom:\n` +
+        autovacuum.vmDegraded
+          .map((t) => {
+            const v = byName.get(t);
+            return v
+              ? `  - ${t}: ${v.pct_all_visible}% all-visible (${v.relallvisible}/${v.relpages} pages)`
+              : `  - ${t}`;
+          })
+          .join("\n") +
+        `\n\nRemediate at low traffic: VACUUM (ANALYZE) public.<table>;`,
+    );
+  }
   const body = sections.join("\n\n") + `\n\nWorkflow runs: ${NIGHTLY_RUN_URL}\n`;
 
   const { error } = await resend.emails.send({
@@ -225,14 +293,16 @@ async function sendAlert(
   if (error) throw new Error(`Resend send failed: ${error.message ?? String(error)}`);
 }
 
-async function main(): Promise<void> {
+async function main(): Promise<number> {
   const now      = new Date();
   const expected = expectedDates(now, CHECK_DAYS);
   const actual   = await fetchActualDates(CHECK_DAYS);
   const killedSet = await fetchKilledDates(CHECK_DAYS);
   // FIX-650 — point-in-time check (not a 7-day window): is a rebuild-toggled
   // table stranded at autovacuum-off right now, outside an active rebuild?
-  const strandedAutovacuum = await fetchStrandedAutovacuum();
+  // FIX-885 — also carries visibility-map health.
+  const autovacuum = await fetchStrandedAutovacuum();
+  const strandedAutovacuum = autovacuum.stranded;
   // "missing" = no nightly_cron row AND no nightly_killed row for that date.
   // "killed" = no nightly_cron row but a nightly_killed synthetic row exists.
   const missing  = expected.filter((d) => !actual.has(d) && !killedSet.has(d));
@@ -243,10 +313,11 @@ async function main(): Promise<void> {
   const resendKey  = process.env["RESEND_API_KEY"];
   const inCi       = process.env["GITHUB_ACTIONS"] === "true";
   const sendReal   = process.argv.includes("--send-real");
-  const hasAlert   = missing.length > 0 || killed.length > 0 || strandedAutovacuum.length > 0;
+  const hasAlert   = missing.length > 0 || killed.length > 0
+                  || strandedAutovacuum.length > 0 || autovacuum.vmDegraded.length > 0;
   if (hasAlert && adminEmail && resendKey) {
     if (inCi || sendReal) {
-      await sendAlert(missing, killed, strandedAutovacuum, adminEmail, resendKey);
+      await sendAlert(missing, killed, autovacuum, adminEmail, resendKey);
       alertSent = true;
     } else {
       console.log(
@@ -255,7 +326,34 @@ async function main(): Promise<void> {
     }
   }
 
-  await writeMetaRow(missing, killed, strandedAutovacuum);
+  await writeMetaRow(missing, killed, autovacuum);
+
+  // FIX-885 — ESCALATE. The DB-health findings exit non-zero so the workflow run
+  // goes red; an email alone is not escalation. FIX-650 built the detector and it
+  // WAS correctly reporting stranded:[entity_connections] for ~4 weeks — the
+  // canary just exited 0 every morning, so nothing surfaced until FIX-883 tripped
+  // over the consequences (FIX-884). Detection worked; escalation did not.
+  //
+  // Deliberately scoped to the autovacuum/visibility-map findings. missing/killed
+  // keep their existing email-only behaviour: they are backward-looking signals
+  // about a pipeline that may already have self-corrected, and turning them red
+  // here would change an unrelated contract. These two are point-in-time facts
+  // about the CURRENT state of prod that stay broken until someone acts.
+  const failures: string[] = [];
+  if (strandedAutovacuum.length > 0) {
+    failures.push(`autovacuum stranded OFF on: ${strandedAutovacuum.join(", ")}`);
+  }
+  if (autovacuum.vmDegraded.length > 0) {
+    const byName = new Map(autovacuum.vm.map((v) => [v.relname, v]));
+    failures.push(
+      `visibility map collapsed on: ${autovacuum.vmDegraded
+        .map((t) => {
+          const v = byName.get(t);
+          return v ? `${t} (${v.pct_all_visible}% all-visible)` : t;
+        })
+        .join(", ")}`,
+    );
+  }
 
   console.log(
     JSON.stringify({
@@ -263,13 +361,24 @@ async function main(): Promise<void> {
       missing_dates:       missing,
       killed_dates:        killed,
       stranded_autovacuum: strandedAutovacuum,
+      vm_degraded:         autovacuum.vmDegraded,
+      visibility_map:      autovacuum.vm,
       alert_sent:          alertSent,
+      escalated:           failures.length > 0,
     })
   );
+
+  if (failures.length > 0) {
+    console.error(`[canary-check] ESCALATING — ${failures.join("; ")}`);
+    return 1;
+  }
+  return 0;
 }
 
 main()
-  .then(() => process.exit(0))
+  // FIX-885 — propagate main's exit code instead of hardcoding 0, so a stranded
+  // autovacuum flag or a collapsed visibility map turns the workflow run red.
+  .then((code) => process.exit(code))
   .catch((err) => {
     console.error(
       "[canary-check] failed:",
