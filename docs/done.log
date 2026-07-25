@@ -1110,3 +1110,4 @@
 2026-07-23 | FIX-730 | de3aef26 | local+prod | feat(ui): iconography pass — semantic-key icon registry, lucide glyphs replace emoji, squared chip grammar
 2026-07-23 | FIX-773 | e09863fa | local+prod | chore(search,graph): execute W3 retirement checklist — legacy /search components, /api/search, pre-W2 graph selectors, group/preview
 2026-07-23 | FIX-882 | 9910c264 | local+prod | chore(db): drop get_official_donors — zero callers, superseded by official_donor_totals machinery
+2026-07-24 | FIX-883 | 0b6596ea | local+prod | perf(graph): aggregate group-cohort donors in one RPC instead of paging entity_connections
