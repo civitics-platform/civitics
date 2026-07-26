@@ -35,6 +35,16 @@
  *   run touches 0 rows. No hardcoded ids — the target set is derived by query
  *   every time.
  *
+ * RECORDED OUTCOMES (both envs, 2026-07-25 — FIX-895 closeout)
+ *   local  131,021 marked;   1,247 left pending, all satisfying the predicate.
+ *   prod   135,718 marked;   3,089 left pending (tag 3,014 / summary 75).
+ *          pending 150,454 -> 14,736 (the remainder is officials 11,604,
+ *          agency 26, financial_entity 17 — untouched by design).
+ *          enrichment_queue total 159,453 before AND after: nothing deleted.
+ *          done / failed / processing unchanged. Re-run marked 0 rows.
+ *   Marked rows also leave the FIX-820/822 partial claim indexes (both are
+ *   `WHERE status='pending'`), so the claim path now scans ~3k rows, not ~139k.
+ *
  * SCOPE
  *   entity_type='proposal' only. Officials and financial entities build their
  *   enrichment context from structured aggregates (vote counts, donor
