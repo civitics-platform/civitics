@@ -1124,3 +1124,4 @@
 2026-07-26 | FIX-896 | e845df2d | local-only | feat(officials): retire AI issue-area tagging, derive industry labels from donations (FIX-896, FIX-897, FIX-899)
 2026-07-26 | FIX-897 | e845df2d | local-only | feat(officials): retire AI issue-area tagging, derive industry labels from donations (FIX-896, FIX-897, FIX-899)
 2026-07-26 | FIX-899 | e845df2d | local-only | feat(officials): retire AI issue-area tagging, derive industry labels from donations (FIX-896, FIX-897, FIX-899)
+2026-07-26 | FIX-898 | 4b2d699a | local+prod | chore(enrichment): sweep the retired official tag backlog on prod (FIX-898 closeout)
