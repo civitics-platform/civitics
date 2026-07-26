@@ -10,16 +10,16 @@ import { compareEngagement, EMPTY_ENGAGEMENT } from "../../lib/engagement";
 
 type SortMode = "default" | "engaged";
 
-// Issue area filter pills
-const ISSUE_PILLS = [
-  { tag: "healthcare", label: "Healthcare",  icon: "healthcare" },
-  { tag: "climate",    label: "Climate",     icon: "climate" },
-  { tag: "finance",    label: "Finance",     icon: "finance" },
-  { tag: "defense",    label: "Defense",     icon: "defense" },
-  { tag: "technology", label: "Tech",        icon: "technology" },
-  { tag: "labor",      label: "Labor",       icon: "labor" },
-  { tag: "agriculture",label: "Agriculture", icon: "agriculture" },
-];
+// FIX-900: ISSUE_PILLS (seven issue-area filter chips) lived here. Their
+// predicate was `tag === issueFilter && tag_category === "topic"`, and officials
+// have never carried a topic tag — entity_tags holds zero official rows in that
+// category — so every chip filtered the list to empty. Dead before FIX-896
+// retired the AI issue-area tagger, and dead after.
+//
+// NOT repointed at the FIX-897 `industry` rows. Those describe an official's
+// DONORS' sectors, not the official's policy positions; relabelling a donor-money
+// filter as an "issue area" is precisely the conflation FIX-896 exists to end.
+// An industry filter is a fine thing to build — under its own name.
 
 // Donor pattern filter pills
 const PATTERN_PILLS = [
@@ -66,7 +66,6 @@ export function OfficialsList({
   const [chamberFilter, setChamber] = useState<"all" | "Senate" | "House">("all");
   const [partyFilter, setParty]     = useState<"all" | "democrat" | "republican" | "independent">("all");
   const [stateFilter, setState]     = useState("all");
-  const [issueFilter, setIssue]     = useState<string | null>(null);
   const [patternFilter, setPattern] = useState<string | null>(null);
   const [sortMode, setSortMode]     = useState<SortMode>("default");
   const [selectedId, setSelectedId] = useState<string | null>(defaultSelectedId ?? null);
@@ -95,7 +94,6 @@ export function OfficialsList({
         if (chamberFilter !== "all" && o.chamber !== chamberFilter) return false;
         if (partyFilter !== "all" && o.party !== partyFilter) return false;
         if (stateFilter !== "all" && o.state_name !== stateFilter) return false;
-        if (issueFilter && !(o.tags ?? []).some((t) => t.tag === issueFilter && t.tag_category === "topic")) return false;
         if (patternFilter && !(o.tags ?? []).some((t) => t.tag === patternFilter)) return false;
         return true;
       })
@@ -116,7 +114,7 @@ export function OfficialsList({
         return a.full_name.localeCompare(b.full_name);
       });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [officials, search, chamberFilter, partyFilter, stateFilter, issueFilter, patternFilter, sortMode]);
+  }, [officials, search, chamberFilter, partyFilter, stateFilter, patternFilter, sortMode]);
 
   const selected = useMemo(
     () => officials.find((o) => o.id === selectedId) ?? null,
@@ -224,27 +222,8 @@ export function OfficialsList({
                 <option value="engaged">Most engaged</option>
               </select>
             </div>
-            {/* Issue area pills */}
-            <div role="group" aria-label="Filter by issue area" className="flex flex-wrap gap-1 pt-1">
-              {ISSUE_PILLS.map((pill) => (
-                <button
-                  key={pill.tag}
-                  type="button"
-                  aria-pressed={issueFilter === pill.tag}
-                  onClick={() => setIssue(issueFilter === pill.tag ? null : pill.tag)}
-                  className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1 ${
-                    issueFilter === pill.tag
-                      ? "bg-ink text-paper"
-                      : "bg-ink/5 text-ink-soft hover:bg-ink/10 hover:text-ink"
-                  }`}
-                >
-                  <Icon name={pill.icon} className="w-4 h-4" /> {pill.label}
-                </button>
-              ))}
-            </div>
-
             {/* Donor pattern pills */}
-            <div role="group" aria-label="Filter by donor pattern" className="flex flex-wrap gap-1">
+            <div role="group" aria-label="Filter by donor pattern" className="flex flex-wrap gap-1 pt-1">
               {PATTERN_PILLS.map((pill) => (
                 <button
                   key={pill.tag}
@@ -281,7 +260,7 @@ export function OfficialsList({
                 <p className="text-sm font-semibold text-ink">No officials match your filters.</p>
                 <p className="mt-1 text-sm text-ink-soft">Try adjusting your search, party, chamber, or state filter.</p>
                 <button
-                  onClick={() => { setSearch(""); setChamber("all"); setParty("all"); setState("all"); setIssue(null); setPattern(null); }}
+                  onClick={() => { setSearch(""); setChamber("all"); setParty("all"); setState("all"); setPattern(null); }}
                   className="mt-4 inline-block text-sm font-medium text-accent hover:underline"
                 >
                   Clear all filters

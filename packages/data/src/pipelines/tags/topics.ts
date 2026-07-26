@@ -47,26 +47,17 @@ export const TOPIC_ICONS: Record<string, string> = {
 
 export const VALID_TOPICS = Object.keys(TOPIC_ICONS);
 
-/**
- * @deprecated ORPHANED by FIX-896 — zero references as of this commit.
- *
- * This was the allowed vocabulary for the official issue-area classifier, which
- * is retired (an official is not a document; see tags/ai-tagger.ts header).
- * Its three consumers all went with it: classifyOfficial(),
- * buildOfficialTagContext(), and `official.topic` in drain/vocabulary.ts —
- * where the entry is now `official: {}` so the guard REJECTS rather than
- * fail-opens.
- *
- * Deliberately left exported pending Craig's call on deleting it: removing a
- * public export is a wider blast radius than this PR's scope, and keeping it
- * costs nothing but a symbol. Do NOT re-wire it into a write path — anything
- * that feeds this list back to a model is re-introducing the retired feature.
- */
-export const ISSUE_AREAS = [
-  "healthcare", "climate", "finance", "education", "defense",
-  "technology", "labor", "agriculture", "housing", "immigration",
-  "civil_rights", "veterans", "energy", "trade",
-];
+// FIX-896/900 — ISSUE_AREAS lived here: the 14-value allowed vocabulary for the
+// official issue-area classifier. That feature is retired (an official is not a
+// document — see tags/ai-tagger.ts header), and all three consumers went with
+// it: classifyOfficial(), buildOfficialTagContext(), and `official.topic` in
+// drain/vocabulary.ts, where the entry is now `official: {}` so the guard
+// REJECTS rather than fail-opens. FIX-900 deleted the orphaned export.
+//
+// Do NOT reintroduce this list. Anything that feeds a fixed set of policy areas
+// to a model to pick from, for an entity whose text we do not hold, is the
+// retired feature wearing a new name. Officials get DERIVED industry labels from
+// donation sector affinity instead — see tagOfficials() in ./rules.ts (FIX-897).
 
 /**
  * Proposal complexity classification — `tag_category='quality'`, NOT `topic`

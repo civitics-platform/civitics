@@ -19,7 +19,21 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { checkTagVocabulary, TAG_VOCABULARY } from "./vocabulary";
-import { ISSUE_AREAS } from "../pipelines/tags/topics";
+
+/**
+ * The retired official issue-area vocabulary, verbatim as `ISSUE_AREAS` held it
+ * before FIX-900 deleted that export.
+ *
+ * Inlined deliberately rather than imported. This test has to assert against
+ * what the retired feature ACTUALLY emitted — a frozen historical list — not
+ * against a live constant that could be edited or removed out from under it. An
+ * imported list would let the coverage silently shrink to nothing.
+ */
+const RETIRED_ISSUE_AREAS = [
+  "healthcare", "climate", "finance", "education", "defense",
+  "technology", "labor", "agriculture", "housing", "immigration",
+  "civil_rights", "veterans", "energy", "trade",
+] as const;
 
 test("official is REGISTERED with an empty category map — not deleted", () => {
   // The structural assertion. If someone "cleans up" by deleting the key, this
@@ -47,7 +61,8 @@ test("an official topic tag is rejected, with a reason naming the empty valid se
 test("EVERY former issue-area is now rejected for officials", () => {
   // Not just a sample: the whole retired vocabulary, so a partial re-permit
   // (e.g. someone re-adding one category) can't slip through.
-  for (const area of ISSUE_AREAS) {
+  assert.equal(RETIRED_ISSUE_AREAS.length, 14, "the retired list had 14 members");
+  for (const area of RETIRED_ISSUE_AREAS) {
     const verdict = checkTagVocabulary("official", "topic", area);
     assert.equal(verdict.allowed, false, `official/topic/${area} must be rejected`);
   }
