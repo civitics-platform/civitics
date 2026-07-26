@@ -2,9 +2,42 @@
  * packages/ai/src/cost-config.ts
  *
  * Central cost configuration for all AI pipelines.
- * Every limit, threshold, and price lives here — nowhere else.
- * Update this file when Anthropic changes model pricing.
+ * Every limit and threshold lives here — nowhere else.
+ *
+ * PRICES ARE NOT DEFINED IN THIS FILE (FIX-893). They live in
+ * `packages/db/src/ai-pricing.ts` and are re-exported below, because two
+ * packages/db modules also need them and `@civitics/ai` already depends on
+ * `@civitics/db` (importing the other way would be circular). See that file's
+ * header for the full reasoning. There is still exactly one definition of a
+ * price; this module stays the documented entry point for pipeline code, and
+ * `COST_CONFIG.model_pricing` / `calculateCostUsd` behave as before — except
+ * that an unrecognised model now throws instead of billing at Haiku rates.
+ *
+ * To change a price, edit packages/db/src/ai-pricing.ts.
  */
+
+import {
+  MODEL_PRICING,
+  calculateCostUsd,
+  DEFAULT_AI_MODEL,
+  UnknownModelPricingError,
+  calculateLoggedCostUsd,
+  hasKnownPricing,
+  MAX_KNOWN_PRICING,
+  type ModelPricing,
+} from "@civitics/db";
+
+// Re-exported so existing importers of "@civitics/ai/cost-config" keep working.
+export {
+  calculateCostUsd,
+  calculateLoggedCostUsd,
+  hasKnownPricing,
+  UnknownModelPricingError,
+  DEFAULT_AI_MODEL,
+  MODEL_PRICING,
+  MAX_KNOWN_PRICING,
+};
+export type { ModelPricing };
 
 export const COST_CONFIG = {
   // Monthly hard limit in USD — ALL pipelines stop if hit, no exceptions
@@ -35,26 +68,12 @@ export const COST_CONFIG = {
     default:       0.20,
   },
 
-  // Anthropic model pricing — prices per million tokens
-  // Update if Anthropic changes pricing
-  model_pricing: {
-    "claude-haiku-4-5-20251001": {
-      input_per_million:  0.25,
-      output_per_million: 1.25,
-    },
-    "claude-sonnet-4-6": {
-      input_per_million:  3.00,
-      output_per_million: 15.00,
-    },
-    "claude-opus-4-6": {
-      input_per_million:  15.00,
-      output_per_million: 75.00,
-    },
-    default: {
-      input_per_million:  0.25,
-      output_per_million: 1.25,
-    },
-  } as Record<string, { input_per_million: number; output_per_million: number }>,
+  // Anthropic model pricing — see packages/db/src/ai-pricing.ts (FIX-893).
+  // NOT defined here. There is deliberately no `default` entry: a model absent
+  // from the map used to bill at Haiku rates, so any unlisted model (e.g. the
+  // claude-opus-4-7 rows already in entity_tags) was priced as the cheapest
+  // model available. calculateCostUsd now throws instead.
+  model_pricing: MODEL_PRICING,
 
   // Alert channels — Phase 1: console + supabase only
   // Phase 2: add email + webhook
@@ -89,24 +108,8 @@ export const COST_CONFIG = {
   },
 } as const;
 
-/**
- * Calculate cost in USD from token counts and model name.
- * Uses exact arithmetic — no rounding, no Math.ceil.
- */
-export function calculateCostUsd(
-  inputTokens: number,
-  outputTokens: number,
-  model: string = "claude-haiku-4-5-20251001"
-): number {
-  const pricing =
-    COST_CONFIG.model_pricing[model] ??
-    COST_CONFIG.model_pricing["default"]!;
-
-  return (
-    inputTokens  * pricing.input_per_million +
-    outputTokens * pricing.output_per_million
-  ) / 1_000_000;
-}
+// calculateCostUsd now lives in packages/db/src/ai-pricing.ts and is
+// re-exported at the top of this file (FIX-893).
 
 export type PipelineName = keyof typeof COST_CONFIG.per_run_limits;
 

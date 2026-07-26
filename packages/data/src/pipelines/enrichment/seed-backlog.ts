@@ -19,7 +19,11 @@ import {
   buildProposalSummaryContext,
   buildOfficialSummaryContext,
   buildFinancialEntityTagContext,
-  classifyProposalContext,
+  hasUsableSourceText,
+  NO_SOURCE_TEXT_STATUS,
+  tallySkip,
+  formatSkipTally,
+  type SkipTally,
   aggregateOfficialStats,
   loadJurisdictionPriorities,
   type EnqueueCounts,
@@ -135,6 +139,8 @@ type ProposalRow = {
   metadata: Record<string, unknown> | null;
   jurisdiction_id: string;
   updated_at: string;
+  // FIX-894: only used to break the gate's skip count down by source.
+  primary_source: string | null;
 };
 
 async function fetchAllProposals(db: Db): Promise<ProposalRow[]> {
@@ -142,7 +148,7 @@ async function fetchAllProposals(db: Db): Promise<ProposalRow[]> {
   return fetchAll<ProposalRow>("proposals", (from, to) =>
     db
       .from("proposals")
-      .select("id, title, summary_plain, type, metadata, jurisdiction_id, updated_at")
+      .select("id, title, summary_plain, type, metadata, jurisdiction_id, updated_at, primary_source")
       .not("title", "ilike", "On %")
       .filter("title", "not.ilike", "% v. %")
       .order("id") // FIX-760
@@ -211,6 +217,12 @@ function classifyAction(
 ): EnqueueAction {
   if (!existing) return "created";
   if (existing.status === "done") return FORCE ? "retried" : "skipped_done";
+  // FIX-895: a row marked no-source-text must stay marked. It would otherwise
+  // fall through to "skipped_pending" below — correct behaviour (not reseeded),
+  // but reported under a label that hides the gate's effect. Note --force does
+  // NOT resurrect these: the reverse sweep (data:sweep-no-text --reverse) is the
+  // only path back to pending, and it requires the text to actually be there.
+  if (existing.status === NO_SOURCE_TEXT_STATUS) return "skipped_no_source_text";
   if (existing.status === "failed" && existing.retry_count < 3) return "retried";
   return "skipped_pending";
 }
@@ -288,7 +300,11 @@ async function enqueueAll(
 }
 
 function fmt(counts: EnqueueCounts): string {
-  return `created=${counts.created} retried=${counts.retried} skipped_done=${counts.skipped_done} skipped_pending=${counts.skipped_pending}`;
+  return (
+    `created=${counts.created} retried=${counts.retried} ` +
+    `skipped_done=${counts.skipped_done} skipped_pending=${counts.skipped_pending} ` +
+    `skipped_no_source_text=${counts.skipped_no_source_text}`
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -323,9 +339,17 @@ async function main(): Promise<void> {
     const jPriority = await loadJurisdictionPriorities(db, allJurisdictionIds);
 
   // 1. Proposal tags
+  //    FIX-894: gate on actual source text. A topic classified from a title
+  //    alone is the model supplying the knowledge rather than the record.
   const taggedProposalIds = await taggedEntityIds(db, "proposal");
+  const proposalTagSkips: SkipTally = new Map();
   const proposalTagRows = proposals
     .filter((p) => FORCE || !taggedProposalIds.has(p.id))
+    .filter((p) => {
+      if (hasUsableSourceText(p.summary_plain, p.title)) return true;
+      tallySkip(proposalTagSkips, p.primary_source);
+      return false;
+    })
     .map((p) => ({
       entity_id: p.id,
       entity_type: "proposal" as const,
@@ -339,15 +363,24 @@ async function main(): Promise<void> {
         metadata: p.metadata,
       }),
     }));
-  console.log(`── Proposal tags (${proposalTagRows.length} to seed) ──`);
+  console.log(`── Proposal tags (${proposalTagRows.length} to seed, with source text) ──`);
+  console.log(formatSkipTally(proposalTagSkips));
   proposalTagCounts = await enqueueAll(db, "proposal", "tag", proposalTagRows, "proposal-tags");
   console.log(`   ${fmt(proposalTagCounts)}\n`);
 
-  // 2. Proposal summaries — exclude truly_empty (worker can't produce output)
+  // 2. Proposal summaries — require real source text (FIX-894)
   const summarizedProposalIds = await summarizedEntityIds(db, "proposal", "plain_language");
+  const proposalSummarySkips: SkipTally = new Map();
   const proposalSummaryRows = proposals
     .filter((p) => FORCE || !summarizedProposalIds.has(p.id))
-    .filter((p) => classifyProposalContext(p.summary_plain, p.title) !== "truly_empty")
+    // FIX-894: was `!== "truly_empty"`, which admitted every title_only row —
+    // i.e. a summary generated from nothing but the title. Now requires real
+    // source text, which subsumes the truly_empty check.
+    .filter((p) => {
+      if (hasUsableSourceText(p.summary_plain, p.title)) return true;
+      tallySkip(proposalSummarySkips, p.primary_source);
+      return false;
+    })
     .map((p) => {
       const acronym = (p.metadata?.["agency_id"] as string | undefined) ?? null;
       return {
@@ -367,7 +400,8 @@ async function main(): Promise<void> {
         }),
       };
     });
-  console.log(`── Proposal summaries (${proposalSummaryRows.length} to seed, non-empty) ──`);
+  console.log(`── Proposal summaries (${proposalSummaryRows.length} to seed, with source text) ──`);
+  console.log(formatSkipTally(proposalSummarySkips));
   proposalSummaryCounts = await enqueueAll(db, "proposal", "summary", proposalSummaryRows, "proposal-summaries");
   console.log(`   ${fmt(proposalSummaryCounts)}\n`);
 

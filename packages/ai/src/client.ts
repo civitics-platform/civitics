@@ -6,13 +6,17 @@
  *
  * Cost rules (non-negotiable):
  *  - Monthly spend cap: $4.00 (leaves $1 buffer on $5 card)
- *  - Model: Haiku for all summaries — cheapest at ~$0.25/M input tokens
+ *  - Model: Haiku 4.5 for all summaries — cheapest available, and it bills
+ *    $1.00/M input + $5.00/M output (this header said ~$0.25/M until FIX-893;
+ *    that was Haiku-3-era pricing). Prices live ONLY in
+ *    packages/db/src/ai-pricing.ts — never inline a rate here again.
  *  - Cache first: summaries generated once and served to all users forever
  *  - Log every API call to api_usage_logs for dashboard transparency
  */
 
 import Anthropic from "@anthropic-ai/sdk";
 import {
+  calculateCostUsd,
   createAdminClient,
   getMonthlyAnthropicSpend,
   getMonthlyAnthropicLimitUsd,
@@ -184,7 +188,7 @@ export async function generateSummary(
     );
   }
 
-  // Haiku: cheapest model — $0.25/M input, $1.25/M output
+  // Haiku 4.5 — cheapest model. Rate lives in packages/db/src/ai-pricing.ts.
   const model = "claude-haiku-4-5-20251001";
   const message = await anthropic.messages.create({
     model,
@@ -202,9 +206,11 @@ export async function generateSummary(
   const inputTokens = message.usage.input_tokens;
   const outputTokens = message.usage.output_tokens;
   const tokensUsed = inputTokens + outputTokens;
-  // Haiku: $0.25/M input + $1.25/M output → exact fractional cents
-  // Stored as DECIMAL(10,4) — no rounding, no Math.ceil, no Math.round
-  const costCents = (inputTokens * 0.25 + outputTokens * 1.25) / 10_000;
+  // FIX-893: was an inline (in*0.25 + out*1.25)/10_000 — a duplicated copy of
+  // Haiku-3-era pricing, ~4x low. Routed through the shared helper, which
+  // throws on an unrecognised model rather than billing at the cheapest rate.
+  // Stored as DECIMAL(10,4) — no rounding, no Math.ceil, no Math.round.
+  const costCents = calculateCostUsd(inputTokens, outputTokens, model) * 100;
 
   // Cache and log in parallel — neither blocks the response
   await Promise.all([

@@ -3,6 +3,7 @@
 // Errors are wrapped with `section()` at the call site, never thrown out.
 
 import {
+  calculateLoggedCostUsd,
   createAdminClient,
   getAnthropicUsage,
   type AnthropicUsageResponse,
@@ -383,18 +384,21 @@ export async function getAiCosts(
 
   const { data: rows } = await db
     .from("api_usage_logs")
-    .select("input_tokens, output_tokens, cost_cents")
+    .select("input_tokens, output_tokens, cost_cents, model")
     .eq("service", "anthropic")
     .gte("created_at", monthStart);
 
+  // FIX-893: was an inline (in*0.25 + out*1.25) using Haiku-3-era prices and
+  // ignoring the model column. Priced by model now, erring high on unknowns.
   type UsageRow = {
     input_tokens: number | null;
     output_tokens: number | null;
     cost_cents: number | null;
+    model: string | null;
   };
   const monthly_spent = ((rows ?? []) as UsageRow[]).reduce((sum, r) => {
     if (r.input_tokens != null && r.output_tokens != null) {
-      return sum + (r.input_tokens * 0.25 + r.output_tokens * 1.25) / 1_000_000;
+      return sum + calculateLoggedCostUsd(r.input_tokens, r.output_tokens, r.model);
     }
     return sum + (r.cost_cents ?? 0) / 100;
   }, 0);

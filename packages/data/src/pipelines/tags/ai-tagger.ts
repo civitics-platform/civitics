@@ -21,6 +21,7 @@
 import { createAdminClient } from "@civitics/db";
 import { createAiClient } from "@civitics/ai";
 import { costGate } from "@civitics/ai/cost-gate";
+import { calculateCostUsd } from "@civitics/db";
 import { startSync, completeSync, failSync } from "../sync-log";
 import { checkFlag, FLAGS } from "../../feature-flags";
 import { TOPIC_ICONS, VALID_TOPICS, ISSUE_AREAS } from "./topics";
@@ -29,6 +30,10 @@ import {
   zeroCounts,
   buildProposalTagContext,
   buildOfficialTagContext,
+  hasUsableSourceText,
+  tallySkip,
+  formatSkipTally,
+  type SkipTally,
   aggregateOfficialStats,
   loadJurisdictionPriorities,
 } from "../enrichment/queue";
@@ -44,9 +49,9 @@ const DEFAULT_MAX_COST_CENTS = 10;
 // cap — not this LIMIT — is what stops the run.
 const AI_CANDIDATE_LIMIT = 2000;
 
-// Haiku pricing (per million tokens)
-const HAIKU_INPUT_COST_PER_M  = 0.25;  // $0.25/M input
-const HAIKU_OUTPUT_COST_PER_M = 1.25;  // $1.25/M output
+// FIX-893: HAIKU_INPUT_COST_PER_M / HAIKU_OUTPUT_COST_PER_M lived here and were
+// a third private copy of Haiku-3-era pricing (~4x low). Prices now come only
+// from packages/db/src/ai-pricing.ts via calculateCostUsd.
 
 const anthropic = createAiClient();
 
@@ -55,12 +60,19 @@ const anthropic = createAiClient();
 // ---------------------------------------------------------------------------
 
 let sessionCostCents = 0;
+// FIX-893: real per-call usage is now accumulated alongside cost, so the
+// gate's recorded actuals carry measured token counts instead of counts
+// reverse-engineered from a cost figure (see costGate.complete below).
+let sessionInputTokens = 0;
+let sessionOutputTokens = 0;
 
 function trackCost(inputTokens: number, outputTokens: number): number {
   const cost = Math.round(
-    ((inputTokens * HAIKU_INPUT_COST_PER_M + outputTokens * HAIKU_OUTPUT_COST_PER_M) / 1_000_000) * 10000
+    calculateCostUsd(inputTokens, outputTokens, AI_MODEL) * 100 * 100
   ) / 100; // cost in cents, 2dp
   sessionCostCents += cost;
+  sessionInputTokens += inputTokens;
+  sessionOutputTokens += outputTokens;
   return cost;
 }
 
@@ -511,13 +523,15 @@ export type ProposalNeedingTags = {
   metadata: Record<string, unknown> | null;
   jurisdiction_id: string;
   updated_at: string;
+  // FIX-894: only used to break the enqueue gate's skip count down by source.
+  primary_source: string | null;
 };
 
 export async function fetchProposalsNeedingTags(limit = 2000): Promise<ProposalNeedingTags[]> {
   // FIX-823 — server-side anti-join (see fetchUntaggedForAi). No db needed.
   return fetchUntaggedForAi<ProposalNeedingTags>(
     "proposal",
-    ["id", "title", "summary_plain", "metadata", "jurisdiction_id", "updated_at"],
+    ["id", "title", "summary_plain", "metadata", "jurisdiction_id", "updated_at", "primary_source"],
     limit,
   );
 }
@@ -609,7 +623,16 @@ export async function runAiTagger(options?: {
     const jPriority = await loadJurisdictionPriorities(db, jIds);
 
     const counts = zeroCounts();
+    // FIX-894: gate on actual source text — a topic classified from a title
+    // alone is the model supplying the knowledge rather than the record.
+    // Proposals only; the officials loop below builds context from structured
+    // aggregates, not prose, and is governed by a separate decision.
+    const tagSkips: SkipTally = new Map();
     for (const p of proposals) {
+      if (!hasUsableSourceText(p.summary_plain, p.title)) {
+        tallySkip(tagSkips, p.primary_source);
+        continue;
+      }
       const action = await enqueue(db, {
         entity_id: p.id,
         entity_type: "proposal",
@@ -620,6 +643,7 @@ export async function runAiTagger(options?: {
       });
       counts[action]++;
     }
+    console.log(formatSkipTally(tagSkips));
     for (const o of officials) {
       const action = await enqueue(db, {
         entity_id: o.id,
@@ -663,6 +687,8 @@ export async function runAiTagger(options?: {
   const logId = await startSync("tag_ai");
 
   sessionCostCents = 0;
+  sessionInputTokens = 0;
+  sessionOutputTokens = 0;
 
   try {
     // Fetch a sample proposal to use for cost estimation
@@ -751,13 +777,17 @@ export async function runAiTagger(options?: {
 
     // Record actual costs via gate
     if (gate.run_id) {
-      // sessionCostCents was accumulated via trackCost() which doesn't track tokens separately.
-      // We approximate token counts from cost using Haiku pricing: cost = (in*0.25 + out*1.25)/1M
-      // Assume 80/20 input/output split (typical for classification tasks)
-      const approxTotalTokens = Math.round((sessionCostCents / 100) * 1_000_000 / 0.45);
-      const approxInput  = Math.round(approxTotalTokens * 0.8);
-      const approxOutput = Math.round(approxTotalTokens * 0.2);
-      await costGate.complete(gate.run_id, approxInput, approxOutput, AI_MODEL);
+      // FIX-893: this used to invert the (wrong) cost formula to reconstruct
+      // token counts — dividing cost by a blended 0.45/M rate and assuming an
+      // 80/20 input/output split. That inversion is doubly wrong now the rate
+      // is corrected, and it was never necessary: trackCost() sees real
+      // message.usage on every call, so carry those numbers through.
+      await costGate.complete(
+        gate.run_id,
+        sessionInputTokens,
+        sessionOutputTokens,
+        AI_MODEL,
+      );
     }
 
     await completeSync(logId, { inserted: totalTags, updated: 0, failed: 0, estimatedMb: 0 });

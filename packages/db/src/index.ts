@@ -309,3 +309,18 @@ export type {
   FlagReason,
   StatementVote,
 } from "./comment-kinds";
+
+// AI model pricing — THE single source of truth for prices (FIX-893).
+// Lives here (not packages/ai) because @civitics/ai depends on @civitics/db,
+// so packages/db cannot import from packages/ai. Re-exported by
+// packages/ai/src/cost-config.ts, which stays the entry point for pipelines.
+export {
+  MODEL_PRICING,
+  MAX_KNOWN_PRICING,
+  DEFAULT_AI_MODEL,
+  UnknownModelPricingError,
+  calculateCostUsd,
+  calculateLoggedCostUsd,
+  hasKnownPricing,
+} from "./ai-pricing";
+export type { ModelPricing } from "./ai-pricing";

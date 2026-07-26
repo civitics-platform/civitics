@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
  *  - pipeline_state        — latest cost alert from the gate
  */
 
-import { createAdminClient } from "@civitics/db";
+import { calculateLoggedCostUsd, createAdminClient } from "@civitics/db";
 import { NextResponse } from "next/server";
 
 export async function GET() {
@@ -27,7 +27,7 @@ export async function GET() {
       // Monthly spend from api_usage_logs
       db
         .from("api_usage_logs")
-        .select("input_tokens, output_tokens, cost_cents")
+        .select("input_tokens, output_tokens, cost_cents, model")
         .eq("service", "anthropic")
         .gte("created_at", monthStart),
 
@@ -50,11 +50,14 @@ export async function GET() {
     ]);
 
     // Calculate monthly spend — prefer token-based, fall back to cost_cents
-    type UsageRow = { input_tokens: number | null; output_tokens: number | null; cost_cents: number | null };
+    // FIX-893: was an inline (in*0.25 + out*1.25) that used Haiku-3-era prices
+    // and ignored the model column entirely. Priced by model now, erring high on
+    // an unknown one so the dashboard never under-reports spend.
+    type UsageRow = { input_tokens: number | null; output_tokens: number | null; cost_cents: number | null; model: string | null };
     const monthRows: UsageRow[] = usageLogs.data ?? [];
     const cost_usd = monthRows.reduce((sum, r) => {
       if (r.input_tokens != null && r.output_tokens != null) {
-        return sum + (r.input_tokens * 0.25 + r.output_tokens * 1.25) / 1_000_000;
+        return sum + calculateLoggedCostUsd(r.input_tokens, r.output_tokens, r.model);
       }
       return sum + (r.cost_cents ?? 0) / 100;
     }, 0);

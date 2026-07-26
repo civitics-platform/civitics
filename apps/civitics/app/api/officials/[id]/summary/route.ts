@@ -14,7 +14,7 @@
 export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
-import { createAdminClient } from "@civitics/db";
+import { calculateCostUsd, createAdminClient } from "@civitics/db";
 import { createAiClient, MODELS } from "@civitics/ai";
 // FIX-796 — header handler-owned: only the two summary-bearing 200s are
 // CDN-cached. The `summary: null` variants (kill switch, spend cap, no data,
@@ -155,7 +155,10 @@ export async function GET(
     const inputTokens = response.usage.input_tokens;
     const outputTokens = response.usage.output_tokens;
     const tokensUsed = inputTokens + outputTokens;
-    const costCents = Math.ceil((inputTokens * 0.00025 + outputTokens * 0.00125) / 10);
+    // FIX-893: was Math.ceil((in*0.00025 + out*0.00125)/10) — a fourth private
+    // copy of Haiku-3-era pricing, ~4x low. cost_cents is DECIMAL(10,4), so keep
+    // exact fractional cents rather than ceiling to whole cents.
+    const costCents = calculateCostUsd(inputTokens, outputTokens, MODELS.haiku) * 100;
 
     await Promise.all([
       // eslint-disable-next-line @typescript-eslint/no-explicit-any

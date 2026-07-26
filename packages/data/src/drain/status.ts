@@ -6,6 +6,7 @@
 
 import { createAdminClient } from "@civitics/db";
 import { parseFlags } from "./args";
+import { NO_SOURCE_TEXT_STATUS } from "../pipelines/enrichment/queue-status";
 
 type StatusRow = { status: string; task_type: string; count: number };
 
@@ -23,7 +24,16 @@ async function main(): Promise<void> {
   // exec_sql_json RPC branch was dead — that function does not exist, so it
   // always errored and fell through to this path anyway; removed in FIX-696.)
   const summary: StatusRow[] = [];
-  for (const status of ["pending", "processing", "done", "failed"]) {
+  // FIX-895: skipped_no_source_text included so the marked backlog is visible
+  // here rather than silently absent from the snapshot. The list is explicit,
+  // so a value missing from it is not an error — just invisible.
+  for (const status of [
+    "pending",
+    "processing",
+    "done",
+    "failed",
+    NO_SOURCE_TEXT_STATUS,
+  ]) {
     for (const task of ["tag", "summary"]) {
       const { count } = await db
         .from("enrichment_queue")
@@ -37,7 +47,7 @@ async function main(): Promise<void> {
   console.log("=== enrichment_queue status ===");
   for (const r of summary) {
     if (r.count > 0) {
-      console.log(`  ${r.status.padEnd(12)} ${r.task_type.padEnd(8)} ${r.count}`);
+      console.log(`  ${r.status.padEnd(23)} ${r.task_type.padEnd(8)} ${r.count}`);
     }
   }
 

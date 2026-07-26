@@ -25,7 +25,7 @@
  *   pnpm --filter @civitics/data data:ai-summaries-new
  */
 
-import { createAdminClient, agencyFullName, rowsOrThrow, selectAllOrThrow } from "@civitics/db";
+import { calculateCostUsd, createAdminClient, agencyFullName, rowsOrThrow, selectAllOrThrow } from "@civitics/db";
 import { createAiClient, MODELS } from "@civitics/ai";
 import { costGate } from "@civitics/ai/cost-gate";
 import { sleep } from "../utils";
@@ -35,6 +35,10 @@ import {
   enqueue,
   zeroCounts,
   buildProposalSummaryContext,
+  hasUsableSourceText,
+  tallySkip,
+  formatSkipTally,
+  type SkipTally,
   buildOfficialSummaryContext,
   aggregateOfficialStats,
   loadJurisdictionPriorities,
@@ -58,6 +62,8 @@ type ProposalRow = {
   context_level: ContextLevel;
   jurisdiction_id: string;
   updated_at: string;
+  // FIX-894: only used to break the enqueue gate's skip count down by source.
+  primary_source: string | null;
 };
 
 type OfficialRow = {
@@ -132,8 +138,10 @@ async function logApiUsage(
 }
 
 function computeCostCents(inputTokens: number, outputTokens: number): number {
-  // Haiku: $0.25/M input + $1.25/M output → exact fractional cents, no rounding
-  return (inputTokens * 0.25 + outputTokens * 1.25) / 10_000;
+  // FIX-893: was an inline (in*0.25 + out*1.25)/10_000 — a fifth private copy of
+  // Haiku-3-era pricing, ~4x low. This site was NOT in the original FIX-893
+  // brief; the literal-grep sweep found it. Exact fractional cents, no rounding.
+  return calculateCostUsd(inputTokens, outputTokens, MODELS.haiku) * 100;
 }
 
 // ---------------------------------------------------------------------------
@@ -151,7 +159,7 @@ export async function fetchOpenProposals(db: ReturnType<typeof createAdminClient
   const proposals = rowsOrThrow(
     await (db as any)
       .from("proposals")
-      .select("id, title, summary_plain, type, metadata, jurisdiction_id, updated_at")
+      .select("id, title, summary_plain, type, metadata, jurisdiction_id, updated_at, primary_source")
       .gt("metadata->>comment_period_end", new Date().toISOString())
       .order("metadata->>comment_period_end", { ascending: true })
       .limit(200),
@@ -182,6 +190,7 @@ export async function fetchOpenProposals(db: ReturnType<typeof createAdminClient
     .map((p: any) => {
       const acronym: string | null = p.metadata?.agency_id ?? null;
       const contextLevel = classifyContext(p.summary_plain ?? null, p.title ?? "");
+      const primarySource = (p as { primary_source?: string | null }).primary_source ?? null;
       return {
         id: p.id,
         title: p.title ?? "",
@@ -193,6 +202,7 @@ export async function fetchOpenProposals(db: ReturnType<typeof createAdminClient
         context_level: contextLevel,
         jurisdiction_id: p.jurisdiction_id ?? "",
         updated_at: p.updated_at ?? new Date().toISOString(),
+        primary_source: primarySource,
       };
     });
 }
@@ -528,8 +538,16 @@ export async function runAiSummariesPipeline(incremental = false): Promise<void>
     const counts = zeroCounts();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const q = db as any;
+    // FIX-894: was `context_level === "truly_empty"` only, which staged every
+    // title_only proposal — a summary generated from nothing but its title.
+    // Now requires real source text. Proposals only; the officials loop below
+    // builds context from structured aggregates and is governed separately.
+    const summarySkips: SkipTally = new Map();
     for (const p of proposals) {
-      if (p.context_level === "truly_empty") continue;
+      if (!hasUsableSourceText(p.summary_plain, p.title)) {
+        tallySkip(summarySkips, p.primary_source);
+        continue;
+      }
       const action = await enqueue(q, {
         entity_id: p.id,
         entity_type: "proposal",
@@ -568,8 +586,9 @@ export async function runAiSummariesPipeline(incremental = false): Promise<void>
       });
       counts[action]++;
     }
+    console.log(formatSkipTally(summarySkips));
     console.log(
-      `    [queue] proposals=${proposals.filter((p) => p.context_level !== "truly_empty").length} officials=${officials.length} ${JSON.stringify(counts)}`,
+      `    [queue] proposals=${proposals.filter((p) => hasUsableSourceText(p.summary_plain, p.title)).length} officials=${officials.length} ${JSON.stringify(counts)}`,
     );
     return;
   }

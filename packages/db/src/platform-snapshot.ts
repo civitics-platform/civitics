@@ -21,6 +21,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { selectAllOrThrow } from "./read-helpers";
+import { calculateLoggedCostUsd } from "./ai-pricing";
 import {
   getPlatformUsage,
   updateUsage,
@@ -47,6 +48,8 @@ type UsageRow = {
   input_tokens: number | null;
   output_tokens: number | null;
   cost_cents: number | null;
+  // FIX-893: needed so spend is priced by the model that actually ran.
+  model: string | null;
 };
 
 export type PlatformUsageSummary = {
@@ -129,16 +132,19 @@ async function getMonthlyAnthropicSpend(
       "platform-snapshot anthropic-spend logs",
       (from, to) => db
         .from("api_usage_logs")
-        .select("input_tokens, output_tokens, cost_cents")
+        .select("input_tokens, output_tokens, cost_cents, model")
         .eq("service", "anthropic")
         .gte("created_at", monthStart)
         .order("created_at")
         .range(from, to),
     );
 
+    // FIX-893: was an inline (in*0.25 + out*1.25) using Haiku-3-era prices that
+    // also ignored the model column. calculateLoggedCostUsd prices by the row's
+    // model, erring high on an unknown one.
     const total = rows.reduce((sum, r) => {
       if (r.input_tokens != null && r.output_tokens != null) {
-        return sum + (r.input_tokens * 0.25 + r.output_tokens * 1.25) / 1_000_000;
+        return sum + calculateLoggedCostUsd(r.input_tokens, r.output_tokens, r.model);
       }
       return sum + (r.cost_cents ?? 0) / 100;
     }, 0);

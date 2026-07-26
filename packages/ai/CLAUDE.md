@@ -22,11 +22,22 @@ ANTHROPIC_API_KEY
 
 ## Model Routing
 
-| Model | Use case | Cost |
-|-------|----------|------|
-| claude-haiku-4-5 | Simple tasks, cached lookups, classification | ~$0.25/M tokens (12x cheaper than Sonnet) |
-| claude-sonnet-4-6 | Standard features, summaries, drafting | Standard |
-| claude-opus-4-6 | Premium complex tasks only | Highest cost |
+Prices verified against the published Anthropic pricing table 2026-07-25.
+**Never copy a rate out of this table into code** — the single source of truth is
+`packages/db/src/ai-pricing.ts` (re-exported by `cost-config.ts`). FIX-893 exists
+because eight files each kept their own copy and all of them were ~4x low.
+
+| Model | Use case | Input $/MTok | Output $/MTok |
+|-------|----------|--------------|---------------|
+| claude-haiku-4-5 | Simple tasks, cached lookups, classification | $1.00 | $5.00 |
+| claude-sonnet-4-6 | Standard features, summaries, drafting | $3.00 | $15.00 |
+| claude-opus-4-6 | Premium complex tasks only | $5.00 | $25.00 |
+
+Haiku is **3x cheaper than Sonnet on input, 3x on output** — not the "12x" this
+file claimed while it was quoting Haiku-3-era pricing. Haiku 4.5 also emits
+roughly 30% more tokens for the same text than earlier models, so the real
+per-item gap is smaller again. Model routing still favours Haiku for anything
+that doesn't need reasoning, but the saving is 3x, not an order of magnitude.
 
 **Default to Sonnet.** Use Haiku for any task that doesn't require reasoning. Use Opus only for premium-tier features with explicit credit cost.
 

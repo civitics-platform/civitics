@@ -18,13 +18,26 @@ export type EnqueueAction =
   | "created"
   | "retried"
   | "skipped_done"
-  | "skipped_pending";
+  | "skipped_pending"
+  // FIX-895: an existing queue row already marked as having no source text.
+  | "skipped_no_source_text";
 
 export type EnqueueCounts = Record<EnqueueAction, number>;
 
 export function zeroCounts(): EnqueueCounts {
-  return { created: 0, retried: 0, skipped_done: 0, skipped_pending: 0 };
+  return {
+    created: 0,
+    retried: 0,
+    skipped_done: 0,
+    skipped_pending: 0,
+    skipped_no_source_text: 0,
+  };
 }
+
+// FIX-895: the status value itself lives in the dependency-free queue-status.ts
+// (queue.ts pulls in `pg` via heavy-rebuild; drain-side scripts must not).
+// Re-exported so pipeline code can keep importing it from here.
+export { NO_SOURCE_TEXT_STATUS } from "./queue-status";
 
 export async function enqueue(
   db: Db,
@@ -176,6 +189,85 @@ export function classifyProposalContext(
   if (sp.length > 100 && !isTitleMasqueradingAsSummary(sp, title)) return "full_summary";
   if (title.trim().length >= 10) return "title_only";
   return "truly_empty";
+}
+
+// ---------------------------------------------------------------------------
+// FIX-894 — source-text enqueue gate (PROPOSALS ONLY)
+// ---------------------------------------------------------------------------
+
+/**
+ * Minimum trimmed `summary_plain` length for a proposal to be worth enqueuing.
+ *
+ * This is deliberately the SAME 100-char boundary `classifyProposalContext`
+ * already uses to call something a `full_summary`, not a new number. If the gate
+ * admitted rows the context classifier grades `title_only`, we would be right
+ * back to paying a model to guess from a title — the thing this gate exists to
+ * stop. One threshold, so the two cannot drift apart.
+ *
+ * Why 100 and not the 40 the original investigation probed with, measured on
+ * prod 2026-07-25:
+ *   - `summary_plain` on openstates rows is polluted with bare subject labels
+ *     ("Health", "Education", "Occupational Licensing Boards",
+ *     "Businesses & Financial Institutions"). Every one of them is <= 35 chars.
+ *     A 40-char floor admits ~90 of these; summarizing "Education" is invention.
+ *   - Title restatements ("Relating to inspection fees.", "Amend KRS 6.922 to
+ *     make technical corrections.") top out around 68 chars. They add no signal
+ *     a title does not already carry.
+ *   - Length alone cannot separate label from summary in the 31-48 band: a
+ *     35-char label sits beside a genuine 35-char summary. Any floor inside that
+ *     band is arbitrary; 100 sits above the ambiguity entirely.
+ *   - Cost of the stricter floor is negligible: 3,089 proposal tasks qualify at
+ *     100 vs 3,244 at 40, out of 138,807 pending. 155 rows, against ~90 bare
+ *     labels plus several hundred title restatements admitted at 40.
+ */
+export const SOURCE_TEXT_MIN_CHARS = 100;
+
+/**
+ * Does this proposal hold text we can honestly classify or summarize FROM?
+ *
+ * The governing principle: classify only where the classification is derived
+ * from text we hold. Both task types answer to it — a summary of a title is not
+ * a summary, and a topic inferred from a title is the model supplying the
+ * knowledge rather than the record.
+ *
+ * Keys on the entity actually having usable text NOW, deliberately NOT on a
+ * source-name blocklist: a blocklist goes stale the moment a source starts
+ * supplying abstracts, whereas this predicate re-admits a Legistar matter
+ * automatically the day it acquires a summary.
+ *
+ * SCOPE: proposals only. Officials and financial entities build their context
+ * from structured aggregates (vote counts, donor composition, committee type),
+ * not prose, so "has source text" is not the right question for them — their
+ * enqueue policy is a separate decision and is intentionally untouched here.
+ */
+export function hasUsableSourceText(
+  summaryPlain: string | null,
+  title: string,
+): boolean {
+  return classifyProposalContext(summaryPlain, title) === "full_summary";
+}
+
+/**
+ * Per-source tally of rows the gate refused, so its effect is visible in run
+ * output rather than silent. Keyed by `proposals.primary_source`.
+ */
+export type SkipTally = Map<string, number>;
+
+export function tallySkip(tally: SkipTally, source: string | null): void {
+  const key = source ?? "(no primary_source)";
+  tally.set(key, (tally.get(key) ?? 0) + 1);
+}
+
+/** Render a SkipTally as aligned `source=count` lines, biggest first. */
+export function formatSkipTally(tally: SkipTally): string {
+  if (tally.size === 0) return "   (none — every candidate had usable text)";
+  const rows = [...tally.entries()].sort((a, b) => b[1] - a[1]);
+  const total = rows.reduce((s, [, n]) => s + n, 0);
+  const width = Math.max(...rows.map(([s]) => s.length));
+  return [
+    `   skipped ${total} with no usable source text (< ${SOURCE_TEXT_MIN_CHARS} chars), by source:`,
+    ...rows.map(([s, n]) => `     ${s.padEnd(width)}  ${n}`),
+  ].join("\n");
 }
 
 export function buildProposalSummaryContext(p: ProposalSummaryInput) {
