@@ -8,9 +8,9 @@ import { createAdminClient, fetchEntityIdsByIndustryTag, currentGoverningBodyMem
 import { supabaseUnavailable, unavailableResponse, withDbTimeout } from "@/lib/supabase-check";
 import { fetchAllRows } from "@/lib/paginate";
 import { isGbExpandableJurisdictionType } from "@/lib/graph-seedable-kinds";
-// FIX-886 — hand-picked cohort parsing, kept pure in @/lib so it carries unit
-// tests the route itself can't.
-import { parseOfficialIds } from "@/lib/graph-cohort";
+// FIX-886/887 — hand-picked cohort parsing + live-path admission rules, kept
+// pure in @/lib so they carry unit tests the route itself can't.
+import { parseOfficialIds, checkLiveCohort } from "@/lib/graph-cohort";
 import type { GraphEdgeV2 as GraphEdge, GraphNodeV2 as GraphNode, NodeTypeV2 as NodeType } from "@civitics/graph";
 // FIX-842 — group Top-N donor default aligned to the shared client cap.
 import { DEFAULT_DONATION_LIMIT } from "@civitics/graph";
@@ -638,6 +638,37 @@ export async function GET(req: NextRequest) {
       donor_count: number;
       shown_cents: number;
     };
+
+    // ── FIX-887 — live-path cohort admission ──────────────────────────────────
+    // Placed HERE, not at member resolution, so it governs exactly the requests
+    // that actually run the live aggregation: the rollup hit/error paths have
+    // already returned above, and a rollup MISS falls through to here and is
+    // checked like any other live cohort. Structured 422 (mirroring
+    // gb_not_expandable / financial_type_not_groupable) so useGraphData's
+    // FIX-490 error path marks the group non-retryable and the client renders a
+    // visible reason instead of a blank bubble. See @/lib/graph-cohort for the
+    // measurements behind MAX_LIVE_COHORT — in short: this bounds the ANSWER,
+    // not the latency.
+    const admission = checkLiveCohort({
+      hasGoverningBody: Boolean(gbKey),
+      hasParty:         Boolean(party),
+      hasState:         Boolean(state),
+      hasOfficialIds:   officialIds.length > 0,
+      memberCount:      memberCount ?? memberIds.length,
+    });
+    if (!admission.ok) {
+      console.warn(
+        `[graph/group] refusing live cohort (${admission.error}): memberCount=${admission.memberCount}`,
+      );
+      return NextResponse.json(
+        {
+          error: admission.error,
+          reason: admission.reason,
+          memberCount: admission.memberCount,
+        },
+        { status: 422 },
+      );
+    }
 
     // The generated signature returns `Json` (the fn RETURNS jsonb), so the
     // payload is cast once here rather than threading `Json` through the mapping.

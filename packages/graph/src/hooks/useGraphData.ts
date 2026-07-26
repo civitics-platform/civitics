@@ -118,6 +118,13 @@ export function useGraphData(
   // nonce bump re-requests exactly the un-fetched groups (retryGroup below).
   const [retryNonce, setRetryNonce] = useState(0);
 
+  // FIX-887 — groups the route REFUSED (422 filter_too_broad / cohort_too_large,
+  // 404 gb_not_found, 422 gb_not_expandable, …). The FIX-490 error path already
+  // stopped these from merging an empty payload, but it only console.warn'd —
+  // silent in prod, so a refused group read as a graph that just did nothing.
+  // Carrying the server's `reason` up lets GraphPage render the FIX-764 notice.
+  const [groupNotices, setGroupNotices] = useState<Array<{ groupId: string; name: string; reason: string }>>([]);
+
   // Track which entity IDs we've already fetched to avoid re-fetching
   const fetchedIds = useRef(new Set<string>());
 
@@ -205,6 +212,14 @@ export function useGraphData(
     const toFetchGroups = focus.entities.filter(
       (e): e is FocusGroup => isFocusGroup(e) && !e.memberIds && !fetchedIds.current.has(e.id)
     );
+
+    // FIX-887 — a refusal notice belongs to a group in focus; drop it once the
+    // group is removed (or retried), so dismissing by removing works and a stale
+    // reason never outlives its group.
+    setGroupNotices(prev => {
+      const kept = prev.filter(n => currentIds.has(n.groupId));
+      return kept.length === prev.length ? prev : kept;
+    });
 
     // Evict = removed-from-focus ∪ depth-changed. Both prune the data they own;
     // depth-changed ids stay in focus so they re-fetch at the new depth.
@@ -369,6 +384,18 @@ export function useGraphData(
             `[useGraphData] group ${group.id} not expandable:`,
             data?.error ?? `HTTP ${res.status}`,
             data?.reason ?? '',
+          );
+          // FIX-887 — make the refusal visible. `reason` is the route's
+          // human-readable sentence; fall back to the error code so even an
+          // unstructured failure says something rather than nothing.
+          const reason: string =
+            (typeof data?.reason === 'string' && data.reason) ||
+            (typeof data?.error === 'string' && data.error) ||
+            `HTTP ${res.status}`;
+          setGroupNotices(prev =>
+            prev.some(n => n.groupId === group.id)
+              ? prev
+              : [...prev, { groupId: group.id, name: group.name, reason }],
           );
           continue;
         }
@@ -598,6 +625,10 @@ export function useGraphData(
     loadingEntityId, graphMeta,
     // FIX-852 — honest truncation flags for the canvas badge
     dataTruncation,
+    // FIX-887 — groups the route refused, with the server's reason (visible notice)
+    groupNotices,
+    dismissGroupNotice: (groupId: string) =>
+      setGroupNotices(prev => prev.filter(n => n.groupId !== groupId)),
     // FIX-827 — incremental expand surface
     expandNode, collapseExpansion, promoteExpansion,
     expandedOriginIds, expansionAddedIds,

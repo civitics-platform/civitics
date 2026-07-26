@@ -419,6 +419,9 @@ export function GraphPage({ initialCode, aiEnabled = true }: GraphPageProps = {}
   const {
     nodes, allEdges, loadingEntityId, graphMeta, retryGroup,
     dataTruncation,
+    // FIX-887 — groups the route refused (filter_too_broad / cohort_too_large /
+    // gb_not_expandable …), surfaced as a visible notice rather than a console warn.
+    groupNotices, dismissGroupNotice,
     // FIX-827 — incremental expand surface
     expandNode, collapseExpansion, promoteExpansion,
     expandedOriginIds, expansionAddedIds, donationLimit,
@@ -1021,6 +1024,37 @@ export function GraphPage({ initialCode, aiEnabled = true }: GraphPageProps = {}
               >
                 ✕
               </button>
+            </div>
+          )}
+
+          {/* FIX-887 — refused-group notice. A 422 (filter_too_broad,
+              cohort_too_large, gb_not_expandable) used to be a console.warn and
+              nothing else, so a group that the route declined rendered as a
+              graph that mysteriously did nothing. Stacked under the handoff
+              notice, same visual language. */}
+          {groupNotices.length > 0 && (
+            <div
+              className="absolute left-1/2 z-30 flex max-w-[90%] -translate-x-1/2 flex-col gap-1.5"
+              style={{ top: handoffNotice ? "3.25rem" : "0.75rem" }}
+            >
+              {groupNotices.map(notice => (
+                <div
+                  key={notice.groupId}
+                  role="status"
+                  className="flex items-center gap-3 rounded-[2px] border border-amber/50 bg-card px-3 py-2 shadow-lg"
+                >
+                  <span className="font-mono text-[11px] text-amber">
+                    “{notice.name}” couldn’t be built — {notice.reason}
+                  </span>
+                  <button
+                    onClick={() => dismissGroupNotice(notice.groupId)}
+                    aria-label="Dismiss notice"
+                    className="font-mono text-[11px] text-ink-soft transition-colors hover:text-ink focus-visible:outline-none focus-visible:text-accent"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
             </div>
           )}
 
