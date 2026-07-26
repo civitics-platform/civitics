@@ -1115,3 +1115,6 @@
 2026-07-25 | FIX-885 | c5bc8217 | local+prod | fix(db): self-heal stranded autovacuum in the pg_cron rebuild; make the canary escalate
 2026-07-25 | FIX-886 | 5f83e753 | local-only | fix(graph): BUNDLE AS GROUP sends the selected officials instead of discarding them
 2026-07-25 | FIX-887 | 7a81bbef | local-only | fix(graph): refuse degenerate live donor cohorts with a 422 instead of aggregating them
+2026-07-25 | FIX-889 | c71c02eb | local+prod | fix(tags): move proposal complexity tags out of the topic category (FIX-889, FIX-890, FIX-891)
+2026-07-25 | FIX-890 | c71c02eb | local+prod | fix(tags): move proposal complexity tags out of the topic category (FIX-889, FIX-890, FIX-891)
+2026-07-25 | FIX-891 | c71c02eb | local+prod | fix(tags): move proposal complexity tags out of the topic category (FIX-889, FIX-890, FIX-891)
