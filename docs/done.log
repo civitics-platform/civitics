@@ -1118,3 +1118,5 @@
 2026-07-25 | FIX-889 | c71c02eb | local+prod | fix(tags): move proposal complexity tags out of the topic category (FIX-889, FIX-890, FIX-891)
 2026-07-25 | FIX-890 | c71c02eb | local+prod | fix(tags): move proposal complexity tags out of the topic category (FIX-889, FIX-890, FIX-891)
 2026-07-25 | FIX-891 | c71c02eb | local+prod | fix(tags): move proposal complexity tags out of the topic category (FIX-889, FIX-890, FIX-891)
+2026-07-25 | FIX-893 | f2bb5e41 | local-only | fix(ai): correct Haiku 4.5 pricing and gate enrichment enqueue on source text (FIX-893, FIX-894)
+2026-07-25 | FIX-894 | f2bb5e41 | local-only | fix(ai): correct Haiku 4.5 pricing and gate enrichment enqueue on source text (FIX-893, FIX-894)
