@@ -9,7 +9,8 @@
 type Db = any;
 
 import { rowsOrThrow } from "@civitics/db";
-import { VALID_TOPICS, TOPIC_ICONS, ISSUE_AREAS, VALID_INDUSTRIES } from "../tags/topics";
+// FIX-896: ISSUE_AREAS dropped from this import with buildOfficialTagContext().
+import { VALID_TOPICS, TOPIC_ICONS, VALID_INDUSTRIES } from "../tags/topics";
 import { rollupJsonbDirect } from "../../lib/heavy-rebuild";
 
 export type EntityType = "proposal" | "official" | "financial_entity";
@@ -37,7 +38,7 @@ export function zeroCounts(): EnqueueCounts {
 // FIX-895: the status value itself lives in the dependency-free queue-status.ts
 // (queue.ts pulls in `pg` via heavy-rebuild; drain-side scripts must not).
 // Re-exported so pipeline code can keep importing it from here.
-export { NO_SOURCE_TEXT_STATUS } from "./queue-status";
+export { NO_SOURCE_TEXT_STATUS, FEATURE_RETIRED_STATUS } from "./queue-status";
 
 export async function enqueue(
   db: Db,
@@ -128,29 +129,15 @@ export function buildProposalTagContext(p: ProposalTagInput) {
   };
 }
 
-export type OfficialTagInput = {
-  id: string;
-  full_name: string;
-  role_title: string;
-  party: string | null;
-  state: string | null;
-  vote_count: number;
-  total_raised: number;
-  top_industries: string;
-};
-
-export function buildOfficialTagContext(o: OfficialTagInput) {
-  return {
-    full_name: o.full_name,
-    role_title: o.role_title,
-    party: o.party,
-    state: o.state,
-    vote_count: o.vote_count,
-    total_raised: o.total_raised,
-    top_industries: o.top_industries,
-    issue_areas: ISSUE_AREAS,
-  };
-}
+// FIX-896 — OfficialTagInput / buildOfficialTagContext() lived here. They shaped
+// the official issue-area task: full_name, role_title, party, state, vote_count,
+// total_raised, a PAC-vs-individual share string, and `issue_areas` as the
+// allowed vocabulary. That task is retired (see tags/ai-tagger.ts header), so
+// both are gone rather than left as a loaded gun that would re-stage work the
+// drain vocabulary guard now rejects outright.
+//
+// buildOfficialSummaryContext (below) is NOT affected — official AI summaries
+// are a separate policy question and stay wired.
 
 export type ProposalSummaryInput = {
   id: string;

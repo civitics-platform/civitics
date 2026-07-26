@@ -132,24 +132,46 @@ export default async function OfficialsPage({
     }
   }
 
-  // Pre-fetch tags for all officials
+  // Pre-fetch tags for all officials.
+  //
+  // FIX-899: this was ONE `.in("entity_id", officialIds)` over all ~1,000
+  // officials the index loads — a ~40 KB request URL that PostgREST/Kong
+  // rejects with "URI too long". withDbTimeout returns {data:null} on error and
+  // the `?? []` below coalesced it away, so EVERY official silently got
+  // `tags: []` and the directory rendered no pills at all (the FIX-426
+  // swallowed-error class). Note the comment 15 lines above already warns about
+  // exactly this URL-length trap for the engagement rollup — this read did it
+  // anyway. Chunked at 200 ids (the FIX-774 bound), each chunk timing out
+  // independently so one slow chunk degrades to partial tags rather than none.
   if (officials.length > 0) {
     const officialIds = officials.map((o) => o.id);
-    const { data: tagRows } = await withDbTimeout(
-      sbAny
-        .from("entity_tags")
-        .select("entity_id,tag,tag_category,display_label,display_icon,visibility,confidence,generated_by,ai_model")
-        .eq("entity_type", "official")
-        .in("entity_id", officialIds) as PromiseLike<{ data: Array<EntityTag & { entity_id: string }> | null }>,
-      3000,
-      "officials:directory-tags"
+    const ID_CHUNK = 200;
+    const chunks: string[][] = [];
+    for (let i = 0; i < officialIds.length; i += ID_CHUNK) {
+      chunks.push(officialIds.slice(i, i + ID_CHUNK));
+    }
+
+    const tagResults = await Promise.all(
+      chunks.map((ids, i) =>
+        withDbTimeout(
+          sbAny
+            .from("entity_tags")
+            .select("entity_id,tag,tag_category,display_label,display_icon,visibility,confidence,generated_by,ai_model")
+            .eq("entity_type", "official")
+            .in("entity_id", ids) as PromiseLike<{ data: Array<EntityTag & { entity_id: string }> | null }>,
+          3000,
+          `officials:directory-tags:${i}`
+        )
+      )
     );
 
     const tagsByOfficial: Record<string, EntityTag[]> = {};
-    for (const t of tagRows ?? []) {
-      const eid = t.entity_id as string;
-      if (!tagsByOfficial[eid]) tagsByOfficial[eid] = [];
-      tagsByOfficial[eid]!.push(t as EntityTag);
+    for (const { data: tagRows } of tagResults) {
+      for (const t of tagRows ?? []) {
+        const eid = t.entity_id as string;
+        if (!tagsByOfficial[eid]) tagsByOfficial[eid] = [];
+        tagsByOfficial[eid]!.push(t as EntityTag);
+      }
     }
     for (const o of officials) {
       o.tags = tagsByOfficial[o.id] ?? [];

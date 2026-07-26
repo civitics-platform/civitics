@@ -32,3 +32,31 @@
  * 'pending' once text actually arrives.
  */
 export const NO_SOURCE_TEXT_STATUS = "skipped_no_source_text";
+
+/**
+ * `enrichment_queue.status` value for a task whose FEATURE was retired
+ * (FIX-896 / FIX-898) — today, official `tag` tasks.
+ *
+ * DELIBERATELY DISTINCT from NO_SOURCE_TEXT_STATUS, and not merged with it. The
+ * two look similar ("we're not going to process this") but mean opposite things
+ * about the future:
+ *
+ *  - `skipped_no_source_text` says "the ENTITY isn't ready" — the task is still
+ *    valid and FIX-895's `--reverse` sweep re-enters it the moment the entity
+ *    acquires text. That reverse sweep re-derives eligibility from the text and
+ *    knows nothing about which features exist.
+ *  - `skipped_feature_retired` says "the TASK isn't valid" — no change to the
+ *    entity can make it worth draining, because there is nothing left to drain
+ *    it into. Collapsing the two would let the source-text reverse sweep
+ *    resurrect a retired feature's backlog the first time an official's data
+ *    changed shape.
+ *
+ * Same reader audit as NO_SOURCE_TEXT_STATUS applies (status is plain text with
+ * no CHECK constraint, `claim_enrichment_batch` and the FIX-820/822 partial
+ * indexes are all `WHERE status='pending'`, `enqueue_enrichment` won't overwrite
+ * a non-done/non-failed status, `--reclaim` only moves 'processing').
+ *
+ * Rows are MARKED, never deleted: `data:sweep-official-tags --reverse` returns
+ * them to 'pending' if the decision is ever reversed.
+ */
+export const FEATURE_RETIRED_STATUS = "skipped_feature_retired";

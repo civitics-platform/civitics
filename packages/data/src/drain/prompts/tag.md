@@ -26,7 +26,16 @@ Read `{BATCH_FILE}`. The shape is:
 }
 ```
 
-Each item is a `proposal`, an `official`, or a `financial_entity`. Handle them differently:
+Each item is a `proposal` or a `financial_entity`. Handle them differently.
+
+> **Officials are not classified here (FIX-896).** The official issue-area task
+> was retired: it asked the model to name an official's policy focus from a name,
+> party, state and a bare vote count — an inferred claim about a named real
+> person with nothing behind it. Officials now get derived industry labels from
+> donation data instead. You should never be handed an `official` item; if one
+> appears in your batch, emit
+> `{ "queue_id": <id>, "success": false, "error": "official tagging retired" }`
+> and move on.
 
 ### When `entity_type === "proposal"` — `context` has
 
@@ -42,25 +51,6 @@ Each item is a `proposal`, an `official`, or a `financial_entity`. Handle them d
 
 Classify the proposal into **1–3 topics** drawn exclusively from `valid_topics`.
 Also emit one complexity tag.
-
-### When `entity_type === "official"` — `context` has
-
-```
-{
-  full_name: string,
-  role_title: string,
-  party: string | null,
-  state: string | null,
-  vote_count: number,
-  total_raised: number (cents),
-  top_industries: string (donor composition — PAC vs individual share,
-                  e.g. "PAC 62%, individual 31% of $1,234,567 raised"),
-  issue_areas: string[]           // the ONLY tags you may use
-}
-```
-
-Classify the official's policy focus into **1–3 issue_areas** drawn exclusively
-from `issue_areas`. No complexity tag for officials.
 
 ### When `entity_type === "financial_entity"` — `context` has
 
@@ -85,7 +75,7 @@ Set `is_primary: true` on the single tag, `rank: 1`.
 
 - Use your own reasoning — you ARE the model. No prompt the model, no tool
   calls beyond Read/Write. One pass per item.
-- Only emit tags that appear in the item's `valid_topics` / `issue_areas` /
+- Only emit tags that appear in the item's `valid_topics` /
   `valid_industries` list (the complexity tags `technical` / `accessible` are
   the sole exception — they are never in those lists). Any other tag outside
   the list is a bug — drop it silently. **This is now enforced at the write
@@ -101,7 +91,6 @@ Set `is_primary: true` on the single tag, `rank: 1`.
 - **Every tag carries its own `tag_category`.** This is not optional and it is
   not the same for every tag in an item:
   - topic tags (proposals) → `"tag_category": "topic"`
-  - issue-area tags (officials) → `"tag_category": "topic"`
   - industry tags (financial entities) → `"tag_category": "industry"`
   - complexity tags (proposals) → `"tag_category": "quality"`
 - For proposals: ALSO emit a complexity tag based on title+summary technicality:
@@ -118,8 +107,9 @@ Set `is_primary: true` on the single tag, `rank: 1`.
   set for the primary topic tag.
 - `display_label`: title-case the tag with spaces (e.g. `civil_rights` →
   `Civil Rights`).
-- `display_icon`: from `context.topic_icons[tag]` for proposals; `null` for
-  officials and complexity tags.
+- `display_icon`: from `context.topic_icons[tag]` for proposals,
+  `context.industry_labels[tag].icon` for financial entities; `null` for
+  complexity tags.
 
 ## Output
 

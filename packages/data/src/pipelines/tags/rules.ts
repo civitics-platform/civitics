@@ -8,7 +8,7 @@
  * rebuilds, financial-entity size buckets + pre-vote timing, moved to the
  * pg_cron procedure run_rule_taggers in FIX-716):
  *   proposal       — urgency, agency sector, scope
- *   official       — tenure, voting pattern, donor pattern
+ *   official       — tenure, voting pattern, donor pattern, industry (FIX-897)
  *   financial_entity — industry from name / NAICS matching
  *
  * Run standalone:
@@ -19,6 +19,7 @@ import { createAdminClient } from "@civitics/db";
 import { startSync, completeSync, failSync } from "../sync-log";
 import { selectDirect, rollupJsonbDirect } from "../../lib/heavy-rebuild";
 import { withDirectClient, bulkUpsert } from "../../lib/direct-pg-upsert";
+import { VALID_INDUSTRIES } from "./topics";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -200,6 +201,95 @@ const INDUSTRY_LABELS: Record<string, { label: string; icon: string }> = {
   transportation: { label: "Transportation",  icon: "🚛" },
   lobby:          { label: "Lobby / Advocacy",icon: "🏛" },
 };
+
+// ---------------------------------------------------------------------------
+// FIX-897 — official industry labels from donation sector affinity
+//
+// The derived, citeable replacement for the AI issue-area tags retired by
+// FIX-896. Pure functions, exported so the shape and the vocabulary guard are
+// testable without a database — the DB half (the ranked read) lives in
+// tagOfficials().
+// ---------------------------------------------------------------------------
+
+/** Top 3 by dollars — see the rationale at the read site in tagOfficials(). */
+export const INDUSTRY_TOP_N = 3;
+
+export type OfficialSector = {
+  industry: string;
+  total_cents: number;
+  donor_count: number;
+  /** 1-based, by total_cents DESC. Rank 1 is the primary-visibility pill. */
+  rank: number;
+};
+
+/**
+ * Fail loud on vocabulary drift rather than emitting a null-labelled pill.
+ * INDUSTRY_LABELS is this file's label/icon table; VALID_INDUSTRIES in topics.ts
+ * is the shared vocabulary. A rollup value outside either means an upstream
+ * industry tagger started emitting a slug nobody registered — the FIX-889
+ * failure one layer down, and the caller would render a pill with a blank label.
+ *
+ * NOTE: `'Untagged'` — the rollup's bucket for donors with no industry tag —
+ * is filtered out in SQL before this ever sees it. It is not an industry; it is
+ * the absence of one, and it would (correctly) throw here.
+ */
+export function assertIndustryVocabulary(industries: readonly string[]): void {
+  const unknown = [...new Set(industries)].filter(
+    (i) => !VALID_INDUSTRIES.includes(i as (typeof VALID_INDUSTRIES)[number]) || !INDUSTRY_LABELS[i],
+  );
+  if (unknown.length > 0) {
+    throw new Error(
+      `official_sector_affinity_rollup carries industry value(s) outside the vocabulary: ` +
+        `${unknown.join(", ")}. Register them in topics.ts VALID_INDUSTRIES + ` +
+        `rules.ts INDUSTRY_LABELS, or exclude them at the read — refusing to write ` +
+        `null-labelled pills.`,
+    );
+  }
+}
+
+/**
+ * One `entity_tags` row per sector, shaped like the tenure/voting/donor blocks'
+ * `base` object. Rank 1 is `primary` (the pill that always shows), the rest
+ * `secondary` (behind "+N more").
+ *
+ * `metadata` carries the dollars and the donor count so the number behind the
+ * label is auditable from the row itself, and `source: 'donations'` names what
+ * the figure is. That wording is load-bearing: sector affinity is
+ * donation-scoped by design (FIX-872) and EXCLUDES independent expenditures, so
+ * the label must never imply total money raised.
+ */
+export function buildOfficialIndustryTags(
+  officialId: string,
+  sectors: readonly OfficialSector[],
+): TagInsert[] {
+  const out: TagInsert[] = [];
+  for (const s of sectors) {
+    const info = INDUSTRY_LABELS[s.industry];
+    // Unreachable once assertIndustryVocabulary has run (it throws first) —
+    // belt-and-braces so a future caller that skips the assert drops the pill
+    // rather than rendering a null-labelled one.
+    if (!info) continue;
+    out.push({
+      entity_type: "official",
+      entity_id: officialId,
+      tag: s.industry,
+      tag_category: "industry",
+      display_label: info.label,
+      display_icon: info.icon,
+      visibility: s.rank === 1 ? "primary" : "secondary",
+      generated_by: "rule",
+      confidence: 1.0,
+      pipeline_version: "v1",
+      metadata: {
+        rank: s.rank,
+        total_cents: s.total_cents,
+        donor_count: s.donor_count,
+        source: "donations",
+      },
+    });
+  }
+  return out;
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -464,8 +554,13 @@ async function tagProposals(db: any): Promise<number> {
 // 2. Official rules
 // ---------------------------------------------------------------------------
 
+// Exported (FIX-897) so the industry block can be exercised — and, critically,
+// re-run — in isolation. The property that matters is that a SECOND run
+// reproduces the same industry row count rather than zeroing it: this function's
+// authoritative DELETE owns every official rule tag, so anything that wrote
+// industry rows from outside would silently vanish on the next nightly.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function tagOfficials(db: any): Promise<number> {
+export async function tagOfficials(db: any): Promise<number> {
   console.log("\n  [2/3] Tagging officials...");
 
   // Paginated — officials is ~27k rows, past the 1,000-row cap (FIX-427).
@@ -550,6 +645,69 @@ async function tagOfficials(db: any): Promise<number> {
       bipartisanYes: Number(r.bipartisan_yes ?? 0),
     });
   }
+
+  // ── Donation sector affinity → industry labels (FIX-897) ──────────────────
+  // The derived replacement for the AI issue-area tags retired by FIX-896.
+  // Source is public.official_sector_affinity_rollup (FIX-777): per-(official,
+  // industry) donation dollars + distinct donor count, refreshed daily off the
+  // FIX-704/832 donor dirty set, deduped by FIX-872/875.
+  //
+  // Read over direct pg (selectDirect), NOT PostgREST: the rollup is ~18k rows,
+  // well past the 1,000-row cap, and a bare .select() would silently truncate —
+  // most officials would just quietly lose their labels with no error (FIX-427
+  // class). Ranking happens server-side so only the top N rows cross the wire.
+  //
+  // 'Untagged' is the rollup's bucket for donors carrying no industry tag (4,174
+  // of 4,326 officials on prod). It is NOT a member of VALID_INDUSTRIES and is
+  // not an industry — it is the absence of one. Excluded here rather than
+  // rendered as a meaningless pill.
+  //
+  // Top 3 by dollars (INDUSTRY_TOP_N): measured on prod 2026-07-26, top-3
+  // captures 81.4% of an official's classified donation dollars on average
+  // (top-4 85.8%, top-5 89.2%), and the rollup averages ~4.2 industries per
+  // labelled official, so three is where the marginal pill stops carrying its
+  // own weight. It also matches the EntityTags tier-1 budget of 3.
+  type SectorRow = { official_id: string; industry: string; total_cents: string; donor_count: string; rank: string };
+  const sectorRows = await timed("official_sector_affinity_rollup (direct-pg)", () =>
+    selectDirect<SectorRow>(
+      `SELECT official_id, industry, total_cents, donor_count, rank
+         FROM (
+           SELECT r.official_id,
+                  r.industry,
+                  r.total_cents,
+                  r.donor_count,
+                  row_number() OVER (
+                    PARTITION BY r.official_id
+                    ORDER BY r.total_cents DESC, r.industry
+                  ) AS rank
+             FROM public.official_sector_affinity_rollup r
+             JOIN public.officials o ON o.id = r.official_id
+            WHERE o.is_active
+              AND r.industry <> 'Untagged'
+              AND r.total_cents > 0
+         ) ranked
+        WHERE rank <= $1`,
+      [INDUSTRY_TOP_N],
+    ),
+  );
+
+  assertIndustryVocabulary(sectorRows.map((r) => r.industry));
+
+  const sectorsByOfficial = new Map<string, OfficialSector[]>();
+  for (const r of sectorRows) {
+    const list = sectorsByOfficial.get(r.official_id) ?? [];
+    list.push({
+      industry: r.industry,
+      total_cents: Number(r.total_cents),
+      donor_count: Number(r.donor_count),
+      rank: Number(r.rank),
+    });
+    sectorsByOfficial.set(r.official_id, list);
+  }
+  console.log(
+    `    Industry labels: ${sectorRows.length} rows across ${sectorsByOfficial.size} officials ` +
+      `(top ${INDUSTRY_TOP_N} by donation dollars)`,
+  );
 
   const allTags: TagInsert[] = [];
 
@@ -657,13 +815,33 @@ async function tagOfficials(db: any): Promise<number> {
         }
       }
     }
+
+    // ── Industry (donation sector affinity) ───────────────────────────────
+    // FIX-897 — the derived, citeable replacement for the AI issue-area tags
+    // retired by FIX-896. Every pill here is backed by a dollar figure and a
+    // donor count carried in metadata, not by a model's guess about a named
+    // person.
+    allTags.push(
+      ...buildOfficialIndustryTags(
+        official.id as string,
+        sectorsByOfficial.get(official.id as string) ?? [],
+      ),
+    );
   }
 
-  // Authoritative rebuild: clear this function's prior rule tags (every official
-  // rule tag is tag_category='pattern'), then insert the freshly-computed set.
-  // Upsert-only writes would leave stale false positives — e.g. large_donor_funded
-  // tags computed from the truncated pre-FIX-427 prefix, or both freshman AND
-  // sophomore once an official crosses a tenure boundary.
+  // Authoritative rebuild: clear this function's prior rule tags, then insert
+  // the freshly-computed set. Upsert-only writes would leave stale false
+  // positives — e.g. large_donor_funded tags computed from the truncated
+  // pre-FIX-427 prefix, or both freshman AND sophomore once an official crosses
+  // a tenure boundary.
+  //
+  // NOTE (FIX-897): this DELETE is scoped by (entity_type, generated_by) with NO
+  // tag_category filter, so it owns EVERY official rule tag — pattern AND
+  // industry. That is exactly why the industry block above lives inside this
+  // function: industry rows written by any other job or pipeline would be
+  // silently wiped on the next nightly run (the co-owned-rows failure class,
+  // cf. FIX-808). If you ever need to write official rule tags from elsewhere,
+  // this DELETE must gain a tag_category scope FIRST.
   const { error: delErr } = await db
     .from("entity_tags")
     .delete()

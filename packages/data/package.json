@@ -63,6 +63,7 @@
     "data:opensecrets-bulk": "tsx --env-file=../../.env.local src/pipelines/opensecrets-bulk/index.ts",
     "data:enrich-seed": "tsx --env-file=../../.env.local src/pipelines/enrichment/seed-backlog.ts",
     "data:sweep-no-text": "tsx --env-file=../../.env.local src/scripts/sweep-no-source-text.ts",
+    "data:sweep-official-tags": "tsx --env-file=../../.env.local src/scripts/sweep-official-tags.ts",
     "data:calibrate-cost": "tsx --env-file=../../.env.local src/scripts/calibrate-ai-cost.ts",
     "data:verify-gate": "tsx --env-file=../../.env.local src/scripts/verify-source-text-gate.ts",
     "data:drain:claim": "tsx --env-file=../../.env.local src/drain/claim.ts",

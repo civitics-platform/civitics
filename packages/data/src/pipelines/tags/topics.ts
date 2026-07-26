@@ -47,6 +47,21 @@ export const TOPIC_ICONS: Record<string, string> = {
 
 export const VALID_TOPICS = Object.keys(TOPIC_ICONS);
 
+/**
+ * @deprecated ORPHANED by FIX-896 — zero references as of this commit.
+ *
+ * This was the allowed vocabulary for the official issue-area classifier, which
+ * is retired (an official is not a document; see tags/ai-tagger.ts header).
+ * Its three consumers all went with it: classifyOfficial(),
+ * buildOfficialTagContext(), and `official.topic` in drain/vocabulary.ts —
+ * where the entry is now `official: {}` so the guard REJECTS rather than
+ * fail-opens.
+ *
+ * Deliberately left exported pending Craig's call on deleting it: removing a
+ * public export is a wider blast radius than this PR's scope, and keeping it
+ * costs nothing but a symbol. Do NOT re-wire it into a write path — anything
+ * that feeds this list back to a model is re-introducing the retired feature.
+ */
 export const ISSUE_AREAS = [
   "healthcare", "climate", "finance", "education", "defense",
   "technology", "labor", "agriculture", "housing", "immigration",

@@ -15,7 +15,6 @@ import { createAdminClient, agencyFullName, selectAllOrThrow } from "@civitics/d
 import {
   zeroCounts,
   buildProposalTagContext,
-  buildOfficialTagContext,
   buildProposalSummaryContext,
   buildOfficialSummaryContext,
   buildFinancialEntityTagContext,
@@ -71,9 +70,11 @@ async function fetchAll<T>(
 // Already-done sets (so we can "fetch all missing X" efficiently)
 // ---------------------------------------------------------------------------
 
+// FIX-896: `official` left this union with the official-tag leg — proposals are
+// the only entity type whose AI topic tags gate an enqueue now.
 async function taggedEntityIds(
   db: Db,
-  entityType: "proposal" | "official",
+  entityType: "proposal",
 ): Promise<Set<string>> {
   const rows = await fetchAll<{ entity_id: string }>(
     `entity_tags(${entityType})`,
@@ -322,7 +323,7 @@ async function main(): Promise<void> {
   // industry-tag block at the bottom does its own filtering.
   let proposalTagCounts: EnqueueCounts = zeroCounts();
   let proposalSummaryCounts: EnqueueCounts = zeroCounts();
-  let officialTagCounts: EnqueueCounts = zeroCounts();
+  // FIX-896: officialTagCounts is gone with the official-tag leg.
   let officialSummaryCounts: EnqueueCounts = zeroCounts();
 
   if (!PACS_ONLY) {
@@ -405,40 +406,20 @@ async function main(): Promise<void> {
   proposalSummaryCounts = await enqueueAll(db, "proposal", "summary", proposalSummaryRows, "proposal-summaries");
   console.log(`   ${fmt(proposalSummaryCounts)}\n`);
 
-  // 3. Official tags + 4. Official summaries — share the officials fetch and
-  //    the stats aggregation (top_industries, vote_count, total_raised).
-  const [taggedOfficialIds, summarizedOfficialIds] = await Promise.all([
-    taggedEntityIds(db, "official"),
-    summarizedEntityIds(db, "official", "profile"),
-  ]);
+  // 3. Official summaries. FIX-896 removed the official TAG leg that used to sit
+  //    here: AI issue-area classification for officials is retired (the model was
+  //    being asked to name a real person's policy focus from name/party/state and
+  //    a bare vote count). Officials get derived industry labels from donation
+  //    sector affinity in tagOfficials() instead — no queue, no model.
+  //
+  //    Official SUMMARIES are deliberately untouched: whether an official profile
+  //    summary is defensible is a separate policy question from whether an
+  //    issue-area LABEL is, and `ai_summary_cache` holds zero official rows today
+  //    regardless. `aggregateOfficialStats` stays — it feeds this summary context
+  //    (and ai-summaries/index.ts).
+  const summarizedOfficialIds = await summarizedEntityIds(db, "official", "profile");
   const officialIds = officials.map((o) => o.id);
   const stats = await aggregateOfficialStats(db, officialIds);
-
-  const officialTagRows = officials
-    .filter((o) => FORCE || !taggedOfficialIds.has(o.id))
-    .map((o) => {
-      const agg = stats.get(o.id);
-      return {
-        entity_id: o.id,
-        entity_type: "official" as const,
-        task_type: "tag" as const,
-        priority: jPriority.get(o.jurisdiction_id) ?? 0,
-        entity_updated_at: o.updated_at,
-        context: buildOfficialTagContext({
-          id: o.id,
-          full_name: o.full_name,
-          role_title: o.role_title,
-          party: o.party ?? null,
-          state: (o.metadata?.["state"] as string | undefined) ?? null,
-          vote_count: agg?.vote_count ?? 0,
-          total_raised: agg?.total_raised ?? 0,
-          top_industries: agg?.top_industries ?? "Unknown",
-        }),
-      };
-    });
-  console.log(`── Official tags (${officialTagRows.length} to seed) ──`);
-  officialTagCounts = await enqueueAll(db, "official", "tag", officialTagRows, "official-tags");
-  console.log(`   ${fmt(officialTagCounts)}\n`);
 
   const officialSummaryRows = officials
     .filter((o) => FORCE || !summarizedOfficialIds.has(o.id))
@@ -556,7 +537,7 @@ async function main(): Promise<void> {
   console.log(`══ Seed complete ════════════════════════════════════════════`);
   console.log(`   Proposal tags:              ${fmt(proposalTagCounts)}`);
   console.log(`   Proposal summaries:         ${fmt(proposalSummaryCounts)}`);
-  console.log(`   Official tags:              ${fmt(officialTagCounts)}`);
+  console.log(`   Official tags:              retired (FIX-896)`);
   console.log(`   Official summaries:         ${fmt(officialSummaryCounts)}`);
   console.log(`   Financial entity tags:      ${fmt(feTagCounts)}`);
   if (DRY_RUN) console.log(`   (DRY RUN — nothing inserted)`);

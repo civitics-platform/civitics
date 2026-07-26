@@ -1,14 +1,25 @@
 /**
- * AI-powered entity tagger.
+ * AI-powered PROPOSAL tagger.
  *
  * Uses claude-haiku-4-5-20251001 — cheapest model, great at classification.
- * Only runs on entities that don't already have AI topic tags.
+ * Only runs on proposals that don't already have AI topic tags.
+ *
+ * FIX-896 — officials are NO LONGER AI-classified. classifyOfficial() asked the
+ * model for an official's "primary policy focus areas" from full_name /
+ * role_title / party / state / a bare vote_count NUMBER / total_raised / a
+ * PAC-vs-individual percentage — nothing about what the official actually voted
+ * on. For officials with votes that answer could only come from training-data
+ * priors about a named public figure; for the ~22.8k active officials with no
+ * votes, donations, or committee it reduced to name + party + state. `confidence`
+ * was self-reported and `visibility` gated on it, so the quality gate was the
+ * model grading its own homework — an unsourceable inferred claim about a named
+ * real person. The generalized rule: AI-classify only where the classification
+ * derives from text we hold. An official is not a document; a proposal is.
+ * Officials now get DERIVED, citeable industry labels from donation sector
+ * affinity — see tagOfficials() in ./rules.ts (FIX-897).
  *
  * Cost estimate before running full batch:
  *   1 proposal classification: ~150 input + ~30 output tokens ≈ $0.00008
- *   1,917 proposals: ~$0.15
- *   8,042 officials: ~$0.45
- *   Total: ~$0.60
  *
  * Reports estimate and requires --confirm flag to run full batch.
  *
@@ -24,17 +35,15 @@ import { costGate } from "@civitics/ai/cost-gate";
 import { calculateCostUsd } from "@civitics/db";
 import { startSync, completeSync, failSync } from "../sync-log";
 import { checkFlag, FLAGS } from "../../feature-flags";
-import { TOPIC_ICONS, VALID_TOPICS, ISSUE_AREAS } from "./topics";
+import { TOPIC_ICONS, VALID_TOPICS } from "./topics";
 import {
   enqueue,
   zeroCounts,
   buildProposalTagContext,
-  buildOfficialTagContext,
   hasUsableSourceText,
   tallySkip,
   formatSkipTally,
   type SkipTally,
-  aggregateOfficialStats,
   loadJurisdictionPriorities,
 } from "../enrichment/queue";
 import { withDirectClient } from "../../lib/direct-pg-upsert";
@@ -154,7 +163,7 @@ async function classifyProposal(proposal: {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function runProposalAiTagger(db: any, maxCostCents: number, onlyNew: boolean): Promise<number> {
-  console.log("\n  [AI 1/2] Classifying proposals...");
+  console.log("\n  [AI] Classifying proposals...");
 
   type ProposalRow = { id: string; title: string | null; summary_plain: string | null; metadata: Record<string, unknown> | null };
 
@@ -267,189 +276,44 @@ async function runProposalAiTagger(db: any, maxCostCents: number, onlyNew: boole
 }
 
 // ---------------------------------------------------------------------------
-// Official issue area classification
+// FIX-896 — classifyOfficial() / runOfficialAiTagger() lived here and are gone.
+// See the module header for why. Officials get derived industry labels from
+// donation sector affinity in tagOfficials() (./rules.ts), not model output.
 // ---------------------------------------------------------------------------
-
-interface OfficialClassification {
-  issue_areas: string[];
-  confidence: number;
-  primary_area: string;
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function classifyOfficial(official: any): Promise<OfficialClassification | null> {
-  const userMessage =
-    `What are this official's primary policy focus areas?\n\n` +
-    `Name: ${official.full_name}\n` +
-    `Role: ${official.role_title}\n` +
-    `Party: ${official.party ?? "Unknown"}\n` +
-    `State: ${official.state ?? "Unknown"}\n` +
-    `Total votes: ${official.vote_count ?? 0}\n` +
-    `Total raised: $${((official.total_raised ?? 0) / 100).toLocaleString()}\n` +
-    `Donor composition: ${official.top_industries ?? "Unknown"}\n\n` +
-    `Return JSON:\n` +
-    `{\n` +
-    `  "issue_areas": ["area1", "area2"],\n` +
-    `  "confidence": 0.0-1.0,\n` +
-    `  "primary_area": "area1"\n` +
-    `}\n\n` +
-    `Issue areas from this list only:\n` +
-    ISSUE_AREAS.join(", ") + `\n\n` +
-    `Return 1-3 areas maximum.`;
-
-  try {
-    const message = await anthropic.messages.create({
-      model: AI_MODEL,
-      max_tokens: 150,
-      system:
-        "You are a political analyst. Classify an official's primary policy focus areas " +
-        "based on their voting record data. Respond ONLY with valid JSON.",
-      messages: [{ role: "user", content: userMessage }],
-    });
-
-    trackCost(message.usage.input_tokens, message.usage.output_tokens);
-    await sleep(1300);
-
-    const raw   = message.content[0]?.type === "text" ? message.content[0].text : "";
-    const match = raw.match(/\{[\s\S]*\}/);
-    if (!match) return null;
-    const parsed = JSON.parse(match[0]) as Partial<OfficialClassification>;
-
-    const validAreas = (parsed.issue_areas ?? []).filter((a) => ISSUE_AREAS.includes(a));
-    if (validAreas.length === 0) return null;
-
-    return {
-      issue_areas:  validAreas,
-      confidence:   typeof parsed.confidence === "number" ? parsed.confidence : 0.7,
-      primary_area: validAreas[0],
-    };
-  } catch (err) {
-    console.error(`    Classification failed for official ${official.id}:`, err instanceof Error ? err.message : err);
-    return null;
-  }
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function runOfficialAiTagger(db: any, maxCostCents: number, onlyNew: boolean): Promise<number> {
-  console.log("\n  [AI 2/2] Classifying officials...");
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let targetOfficials: any[];
-  if (onlyNew) {
-    // FIX-823 — server-side anti-join, active officials only, newest first.
-    // Replaces load-all-active-officials + fetchDistinctIds + in-memory filter.
-    targetOfficials = await fetchUntaggedForAi(
-      "official",
-      ["id", "full_name", "role_title", "party", "metadata", "is_active"],
-      AI_CANDIDATE_LIMIT,
-      { activeOnly: true },
-    );
-    if (targetOfficials.length === 0) {
-      console.log("    All active officials already have AI tags. Skipping.");
-      return 0;
-    }
-  } else {
-    // Full retag (manual): all active officials (unchanged).
-    const { data: officials, error } = await db
-      .from("officials")
-      .select("id, full_name, role_title, party, metadata, is_active")
-      .eq("is_active", true);
-    if (error) { console.error("    Error fetching officials:", error.message); return 0; }
-    if (!officials || officials.length === 0) { console.log("    No officials found."); return 0; }
-    targetOfficials = officials;
-  }
-
-  console.log(`    ${targetOfficials.length} officials to classify`);
-
-  // Batch fetch vote counts and totals.
-  // FIX-547: the prior inline reads selected financial_relationships columns
-  // dropped at the 2026-04-22 cutover (official_id, donor_type) — a 400 that
-  // was silently swallowed, so officials were tagged with zero financial
-  // context — and the votes .in() read truncated at the 1,000-row cap.
-  const officialIds = targetOfficials.map((o: { id: string }) => o.id);
-  const stats = await aggregateOfficialStats(db, officialIds);
-
-  let tagsInserted = 0;
-
-  for (const official of targetOfficials) {
-    if (sessionCostCents >= maxCostCents) {
-      console.log(`    Cost limit reached ($${(maxCostCents / 100).toFixed(2)}). Stopping.`);
-      break;
-    }
-
-    const agg = stats.get(official.id);
-
-    const enriched = {
-      ...official,
-      state: official.metadata?.state ?? "Unknown",
-      vote_count: agg?.vote_count ?? 0,
-      total_raised: agg?.total_raised ?? 0,
-      top_industries: agg?.top_industries ?? "Unknown",
-    };
-
-    const result = await classifyOfficial(enriched);
-    if (!result) continue;
-
-    for (let i = 0; i < result.issue_areas.length; i++) {
-      const area = result.issue_areas[i];
-      const isPrimary = area === result.primary_area;
-      const confidence = result.confidence;
-      const visibility = isPrimary ? "primary" : "secondary";
-
-      const tag = {
-        entity_type:    "official",
-        entity_id:      official.id,
-        tag:            area,
-        tag_category:   "topic",
-        display_label:  area.replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase()),
-        display_icon:   TOPIC_ICONS[area] ?? null,
-        visibility:     confidence < 0.7 ? "internal" : visibility,
-        generated_by:   "ai",
-        confidence,
-        ai_model:       AI_MODEL,
-        pipeline_version: "v1",
-        metadata: { is_primary: isPrimary, rank: i + 1 },
-      };
-
-      const { error: insertErr } = await db.from("entity_tags").upsert(tag, {
-        onConflict: "entity_type,entity_id,tag,tag_category",
-      });
-      if (!insertErr) tagsInserted++;
-    }
-  }
-
-  console.log(`    Inserted ${tagsInserted} AI official tags (cost so far: $${(sessionCostCents / 100).toFixed(4)})`);
-  return tagsInserted;
-}
 
 // ---------------------------------------------------------------------------
 // Shared fetch helpers — used by the inline path, the queue-mode branch, and
 // the backlog seeder. "Needing tags" = no (entity_type, generated_by=ai,
 // tag_category=topic) row in entity_tags.
+//
+// FIX-896: `official` left this map along with the official tagger. The type is
+// a one-member union rather than a bare string so a future entity type has to be
+// added deliberately (and to keep the $1 bind and the table name in lockstep).
 // ---------------------------------------------------------------------------
 
-const AI_TABLE_BY_ENTITY: Record<"proposal" | "official", string> = {
+const AI_TABLE_BY_ENTITY: Record<"proposal", string> = {
   proposal: "proposals",
-  official: "officials",
 };
 const SAFE_IDENT = /^[a-z_][a-z0-9_]*$/i;
 
 /**
- * Shared "untagged" predicate for the AI-topic taggers: an entity of the given
+ * Shared "untagged" predicate for the AI-topic tagger: an entity of the given
  * type with NO (entity_type, generated_by='ai', tag_category='topic') row in
  * entity_tags. Aliased `p` (the entity) / `t` (the tag), binds entity_type as $1.
  * Both the candidate SELECT (fetchUntaggedForAi) and the cost-estimate COUNT
  * (countUntaggedForAi) build on this one fragment so they can never drift
- * (FIX-824). `activeOnly` appends the officials is_active guard.
+ * (FIX-824).
+ *
+ * FIX-896: the `activeOnly` parameter appended an `officials.is_active` guard
+ * and had exactly one caller — the official tagger. It went with it; proposals
+ * have no is_active column.
  */
-function untaggedWhere(activeOnly: boolean): string {
-  const activeClause = activeOnly ? "AND p.is_active = true" : "";
+function untaggedWhere(): string {
   return (
     `WHERE NOT EXISTS (` +
     `SELECT 1 FROM public.entity_tags t ` +
     `WHERE t.entity_type = $1 AND t.entity_id = p.id ` +
-    `AND t.generated_by = 'ai' AND t.tag_category = 'topic') ` +
-    `${activeClause}`
+    `AND t.generated_by = 'ai' AND t.tag_category = 'topic')`
   );
 }
 
@@ -471,10 +335,9 @@ function untaggedWhere(activeOnly: boolean): string {
  * strings so callers forwarding updated_at into enqueue() see the PostgREST shape.
  */
 export async function fetchUntaggedForAi<T>(
-  entityType: "proposal" | "official",
+  entityType: "proposal",
   cols: string[],
   limit: number,
-  opts: { activeOnly?: boolean } = {},
 ): Promise<T[]> {
   const table = AI_TABLE_BY_ENTITY[entityType];
   for (const c of cols) {
@@ -483,7 +346,7 @@ export async function fetchUntaggedForAi<T>(
   const selectList = cols.map((c) => `p.${c}`).join(", ");
   const sql =
     `SELECT ${selectList} FROM public.${table} p ` +
-    `${untaggedWhere(!!opts.activeOnly)} ` +
+    `${untaggedWhere()} ` +
     `ORDER BY p.created_at DESC LIMIT $2`;
   const rows = await withDirectClient((client) =>
     client.query(sql, [entityType, limit]).then((r) => r.rows as Record<string, unknown>[]),
@@ -503,14 +366,11 @@ export async function fetchUntaggedForAi<T>(
  * paginated into Node and diffed in memory (the pre-FIX-824 onlyNew estimate).
  * Distinct-by-construction (one row per entity), so no tag-row-count subtraction.
  */
-export async function countUntaggedForAi(
-  entityType: "proposal" | "official",
-  opts: { activeOnly?: boolean } = {},
-): Promise<number> {
+export async function countUntaggedForAi(entityType: "proposal"): Promise<number> {
   const table = AI_TABLE_BY_ENTITY[entityType];
   const sql =
     `SELECT count(*)::bigint AS n FROM public.${table} p ` +
-    `${untaggedWhere(!!opts.activeOnly)}`;
+    `${untaggedWhere()}`;
   return withDirectClient((client) =>
     client.query(sql, [entityType]).then((r) => Number((r.rows[0] as { n: string }).n)),
   );
@@ -536,60 +396,11 @@ export async function fetchProposalsNeedingTags(limit = 2000): Promise<ProposalN
   );
 }
 
-export type OfficialNeedingTags = {
-  id: string;
-  full_name: string;
-  role_title: string;
-  party: string | null;
-  state: string | null;
-  vote_count: number;
-  total_raised: number;
-  top_industries: string;
-  jurisdiction_id: string;
-  updated_at: string;
-};
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function fetchOfficialsNeedingTags(db: any): Promise<OfficialNeedingTags[]> {
-  // FIX-823 — server-side anti-join, active officials only (see fetchUntaggedForAi).
-  // `db` is still used below for aggregateOfficialStats.
-  const targets = await fetchUntaggedForAi<{
-    id: string;
-    full_name: string;
-    role_title: string;
-    party: string | null;
-    metadata: Record<string, unknown> | null;
-    jurisdiction_id: string | null;
-    updated_at: string | null;
-  }>(
-    "official",
-    ["id", "full_name", "role_title", "party", "metadata", "jurisdiction_id", "updated_at"],
-    2000,
-    { activeOnly: true },
-  );
-  if (targets.length === 0) return [];
-
-  const stats = await aggregateOfficialStats(
-    db,
-    targets.map((o) => o.id),
-  );
-
-  return targets.map((o) => {
-    const agg = stats.get(o.id);
-    return {
-      id: o.id,
-      full_name: o.full_name,
-      role_title: o.role_title,
-      party: o.party ?? null,
-      state: (o.metadata?.state as string | undefined) ?? null,
-      vote_count: agg?.vote_count ?? 0,
-      total_raised: agg?.total_raised ?? 0,
-      top_industries: agg?.top_industries ?? "Unknown",
-      jurisdiction_id: o.jurisdiction_id ?? "",
-      updated_at: o.updated_at ?? new Date().toISOString(),
-    };
-  });
-}
+// FIX-896: OfficialNeedingTags / fetchOfficialsNeedingTags() were the queue-mode
+// half of the official tagger — they staged an official-tag task per untagged
+// active official. Removed with the classifier. Nothing enqueues official tag
+// tasks any more; the rows already staged are marked by data:sweep-official-tags
+// (FIX-898).
 
 // ---------------------------------------------------------------------------
 // Main pipeline
@@ -614,19 +425,16 @@ export async function runAiTagger(options?: {
   if (FLAGS.ENRICHMENT_MODE === "queue") {
     console.log("  Mode: queue — staging to enrichment_queue, no API calls");
     const proposals = await fetchProposalsNeedingTags();
-    const officials = await fetchOfficialsNeedingTags(db);
 
-    const jIds = [
-      ...proposals.map((p) => p.jurisdiction_id),
-      ...officials.map((o) => o.jurisdiction_id),
-    ].filter(Boolean) as string[];
+    const jIds = proposals.map((p) => p.jurisdiction_id).filter(Boolean) as string[];
     const jPriority = await loadJurisdictionPriorities(db, jIds);
 
     const counts = zeroCounts();
     // FIX-894: gate on actual source text — a topic classified from a title
     // alone is the model supplying the knowledge rather than the record.
-    // Proposals only; the officials loop below builds context from structured
-    // aggregates, not prose, and is governed by a separate decision.
+    // FIX-896 resolved the "separate decision" this comment used to defer for
+    // officials: officials aren't AI-classified at all now, so proposals are the
+    // only thing staged here.
     const tagSkips: SkipTally = new Map();
     for (const p of proposals) {
       if (!hasUsableSourceText(p.summary_plain, p.title)) {
@@ -644,20 +452,7 @@ export async function runAiTagger(options?: {
       counts[action]++;
     }
     console.log(formatSkipTally(tagSkips));
-    for (const o of officials) {
-      const action = await enqueue(db, {
-        entity_id: o.id,
-        entity_type: "official",
-        task_type: "tag",
-        context: buildOfficialTagContext(o),
-        priority: jPriority.get(o.jurisdiction_id) ?? 0,
-        entity_updated_at: o.updated_at,
-      });
-      counts[action]++;
-    }
-    console.log(
-      `  [queue] proposals=${proposals.length} officials=${officials.length} ${JSON.stringify(counts)}`,
-    );
+    console.log(`  [queue] proposals=${proposals.length} ${JSON.stringify(counts)}`);
     return { tagsCreated: counts.created + counts.retried, costCents: 0 };
   }
 
@@ -709,22 +504,16 @@ export async function runAiTagger(options?: {
     // so costGate estimate reflects the untagged subset, not the full table.
     let totalEntities: number;
     if (onlyNew) {
-      // FIX-824: two server-side COUNT anti-joins over withDirectClient, sharing
+      // FIX-824: a server-side COUNT anti-join over withDirectClient, sharing
       // untaggedWhere() with fetchUntaggedForAi so the estimate and the candidate
       // selection apply the identical predicate. Replaces four full id-projection
       // scans that were paginated into Node and diffed in memory (FIX-430/760) —
       // distinct-by-construction, no page-boundary or 1,000-row-cap hazards.
-      const [untaggedProposals, untaggedOfficials] = await Promise.all([
-        countUntaggedForAi("proposal"),
-        countUntaggedForAi("official", { activeOnly: true }),
-      ]);
-      totalEntities = untaggedProposals + untaggedOfficials;
+      // FIX-896: the officials half of this count went with the official tagger.
+      totalEntities = await countUntaggedForAi("proposal");
     } else {
-      const [proposalRes, officialRes] = await Promise.all([
-        db.from("proposals").select("id", { count: "exact", head: true }),
-        db.from("officials").select("id", { count: "exact", head: true }).eq("is_active", true),
-      ]);
-      totalEntities = (proposalRes.count ?? 0) + (officialRes.count ?? 0);
+      const proposalRes = await db.from("proposals").select("id", { count: "exact", head: true });
+      totalEntities = proposalRes.count ?? 0;
     }
 
     // Wire cost gate
@@ -760,19 +549,12 @@ export async function runAiTagger(options?: {
     // Run the actual taggers — use per-run limit from cost gate config
     const maxCostCents = gate.estimate.run_limit_usd * 100;
 
-    const proposalTags = await runProposalAiTagger(db, maxCostCents, onlyNew);
-    const officialTags = sessionCostCents < maxCostCents
-      ? await runOfficialAiTagger(db, maxCostCents, onlyNew)
-      : 0;
-
-    const totalTags = proposalTags + officialTags;
+    const totalTags = await runProposalAiTagger(db, maxCostCents, onlyNew);
 
     console.log("\n  ─────────────────────────────────────────────────");
     console.log("  AI tagger report");
     console.log("  ─────────────────────────────────────────────────");
-    console.log(`  ${"Proposal tags:".padEnd(32)} ${proposalTags}`);
-    console.log(`  ${"Official tags:".padEnd(32)} ${officialTags}`);
-    console.log(`  ${"Total tags:".padEnd(32)} ${totalTags}`);
+    console.log(`  ${"Proposal tags:".padEnd(32)} ${totalTags}`);
     console.log(`  ${"Total cost:".padEnd(32)} $${(sessionCostCents / 100).toFixed(4)}`);
 
     // Record actual costs via gate
@@ -813,31 +595,23 @@ export async function runAiTagger(options?: {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function estimateCost(db: any): Promise<void> {
-  const [proposalRes, officialRes, taggedProposalRes, taggedOfficialRes] = await Promise.all([
+  // FIX-896: the officials leg of this estimate went with the official tagger.
+  const [proposalRes, taggedProposalRes] = await Promise.all([
     db.from("proposals").select("id", { count: "exact", head: true }),
-    db.from("officials").select("id", { count: "exact", head: true }).eq("is_active", true),
     db.from("entity_tags").select("entity_id", { count: "exact", head: true })
       .eq("entity_type", "proposal").eq("generated_by", "ai").eq("tag_category", "topic"),
-    db.from("entity_tags").select("entity_id", { count: "exact", head: true })
-      .eq("entity_type", "official").eq("generated_by", "ai").eq("tag_category", "topic"),
   ]);
 
   const totalProposals   = proposalRes.count ?? 0;
-  const totalOfficials   = officialRes.count ?? 0;
   const taggedProposals  = taggedProposalRes.count ?? 0;
-  const taggedOfficials  = taggedOfficialRes.count ?? 0;
   const untaggedProposals = Math.max(0, totalProposals - taggedProposals);
-  const untaggedOfficials = Math.max(0, totalOfficials - taggedOfficials);
 
-  const proposalCost = untaggedProposals * 0.000075; // ~$0.000075 each
-  const officialCost = untaggedOfficials * 0.000055; // ~$0.000055 each
-  const totalCost    = proposalCost + officialCost;
+  const totalCost = untaggedProposals * 0.000075; // ~$0.000075 each
 
   console.log("\n  ─────────────────────────────────────────────────");
   console.log("  AI tagger cost estimate");
   console.log("  ─────────────────────────────────────────────────");
-  console.log(`  Proposals:  ${untaggedProposals.toLocaleString()} untagged / ${totalProposals.toLocaleString()} total → ~$${proposalCost.toFixed(2)}`);
-  console.log(`  Officials:  ${untaggedOfficials.toLocaleString()} untagged / ${totalOfficials.toLocaleString()} total → ~$${officialCost.toFixed(2)}`);
+  console.log(`  Proposals:  ${untaggedProposals.toLocaleString()} untagged / ${totalProposals.toLocaleString()} total → ~$${totalCost.toFixed(2)}`);
   console.log(`  Total estimate: ~$${totalCost.toFixed(2)}`);
   console.log(`\n  To run: pnpm --filter @civitics/data data:tag-ai -- --confirm`);
 }
