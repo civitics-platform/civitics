@@ -18,6 +18,7 @@ import {
   describeRunState as describeFecRunState,
   type FecBulkRunState,
 } from "./fec-bulk/run-state";
+import { currentFecCycle, resolveProbeCycle, indivDropPending } from "./fec-bulk/drop-check";
 import { runIrs990Pipeline } from "./irs990";
 import { runLittleSisPipeline } from "./littlesis";
 import { runEdgarPipeline, runEdgarDailyPipeline } from "./edgar";
@@ -597,10 +598,32 @@ export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<Nigh
     }
   }
 
-  // 2a. FEC bulk — weekly (Sunday block), or any nightly with a pending
-  // FIX-754 resume state. Everything else weekly (IRS-990 onward) stays
+  // FIX-903: new-drop trigger. FEC publishes indiv{yy}.zip on SUNDAYS ~15:20
+  // UTC — hours after Sunday's heavy run (queued ~05:30 UTC) has finished — so
+  // the Sunday run always probes LAST week's file and the FIX-193 watermark
+  // skips the cycle. On those weeks no resume state is left behind either, so
+  // the FIX-754 branch above never fires and Sunday's fresh file sat uningested
+  // for a full week. HEAD the active cycle here and run fec_bulk when FEC is
+  // ahead of our watermark. Fails closed: a failed probe returns false rather
+  // than launching a ~2.5h writer run on an unreadable signal. See
+  // ./fec-bulk/drop-check.ts.
+  let fecDropPending = false;
+  if (runFec && !isWeekly && fecResumeState === null) {
+    const probeCycle = resolveProbeCycle(new Date(), process.env["FEC_INDIV_CYCLES"]);
+    fecDropPending = await indivDropPending(db, probeCycle);
+    if (fecDropPending) {
+      console.log(
+        `[nightly] NEW FEC DROP — triggering off-Sunday fec_bulk for cycle ${probeCycle} (FIX-903); ` +
+          `see the [fec-drop-check] line above for the FEC Last-Modified vs stored watermark`,
+      );
+    }
+  }
+
+  // 2a. FEC bulk — weekly (Sunday block), any nightly with a pending FIX-754
+  // resume state, or a weekday on which FEC published a newer indiv file than
+  // our watermark (FIX-903). Everything else weekly (IRS-990 onward) stays
   // Sunday-gated below.
-  if (runFec && (isWeekly || fecResumeState !== null)) {
+  if (runFec && (isWeekly || fecResumeState !== null || fecDropPending)) {
     {
       const t0 = Date.now();
       // Weekly cron only refreshes the current + prior cycle for the PAC
@@ -627,8 +650,12 @@ export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<Nigh
         if (!prevFecIndivCycles) process.env["FEC_INDIV_CYCLES"] = fecResumeState.cycle;
         console.log(`[nightly] fec_bulk resume: cycles narrowed to pending cycle ${fecResumeState.cycle} (FIX-754)`);
       } else if (!prevFecCycles || !prevFecIndivCycles) {
-        const yr = new Date().getFullYear();
-        const currentCycle = yr % 2 === 0 ? yr : yr + 1;
+        // FIX-903: currentFecCycle() is the SAME helper the drop probe above
+        // used, so the probe and the run it triggers can never disagree about
+        // which cycle is active. A FIX-903-triggered weekday run lands here
+        // (fecResumeState is null by construction) and so takes the normal
+        // 2-cycle / 1-indiv-cycle nightly defaults, not resume-mode narrowing.
+        const currentCycle = parseInt(currentFecCycle(new Date()), 10);
         if (!prevFecCycles)      process.env["FEC_CYCLES"]       = `${currentCycle - 2},${currentCycle}`;
         if (!prevFecIndivCycles) process.env["FEC_INDIV_CYCLES"] = `${currentCycle}`;
       }
