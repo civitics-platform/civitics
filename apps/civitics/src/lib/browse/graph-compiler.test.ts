@@ -328,9 +328,26 @@ test("GROUP_FILTER_FIELD_COVERAGE names every GroupFilter field", () => {
     "entity_type", "chamber", "party", "state", "industry", "tag",
     "committeeId", "governingBody", "official_role", "financial_type",
     "proposal_type", "agency_type", "initiative_stage",
+    // FIX-886 — handoff-only; the compiler must never emit it (asserted below).
+    "officialIds",
   ].sort();
   assert.deepEqual(Object.keys(GROUP_FILTER_FIELD_COVERAGE).sort(), expected);
   for (const [field, note] of Object.entries(GROUP_FILTER_FIELD_COVERAGE)) {
     assert.ok(note.length > 10, `coverage note for ${field} is empty`);
+  }
+});
+
+test("the compiler never emits officialIds (FIX-886 — handoff-only field)", () => {
+  // BrowseState is a predicate; it cannot express a hand-picked id list. If a
+  // future browse facet ever compiles to one, this must become a deliberate
+  // decision (and the saved-view round-trip needs designing) rather than a
+  // surprise — a saved view carrying stale ids would silently drift.
+  const states = [
+    state({ scope: "people/officials/federal/congress/senate" }),
+    state({ scope: "officials", facets: { state: "WA" } }),
+    state({ scope: "people/officials/federal/congress/house/democrat", facets: { state: "CA" } }),
+  ];
+  for (const s of states) {
+    assert.equal(compileBrowseToGroupFilter(s).officialIds, undefined);
   }
 });

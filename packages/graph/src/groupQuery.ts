@@ -32,6 +32,11 @@ export function graphGroupParams(group: FocusGroup, donationLimit: number): URLS
   if (group.filter.governingBody) params.set('governingBody', group.filter.governingBody);
   // FIX-772 — financial cohorts carry a subtype the route needs.
   if (group.filter.financial_type) params.set('financial_type', group.filter.financial_type);
+  // FIX-886 — hand-picked cohort. Comma-joined; the route validates, dedups and
+  // caps. Sent only when non-empty so an empty array can never read as "the
+  // caller asked for an ids cohort and it resolved to nobody".
+  if (group.filter.officialIds && group.filter.officialIds.length > 0)
+    params.set('officialIds', group.filter.officialIds.join(','));
 
   return params;
 }

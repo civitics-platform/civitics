@@ -500,6 +500,19 @@ export interface GroupFilter {
    * sessions (`group-gb-<uuid>`) keep resolving indefinitely.
    */
   governingBody?: string
+  /**
+   * FIX-886 — explicit, hand-picked official ids. official groups only. When
+   * present the route SKIPS cohort resolution entirely and aggregates exactly
+   * these members, so a group built from a row selection means what it says.
+   * Set only by the /search BUNDLE AS GROUP handoff; the browse compiler never
+   * emits it (BrowseState is a predicate, and cannot express an id list), so
+   * an ids-group is in-session only and does not round-trip through a saved
+   * view. Capped at MAX_GROUP_OFFICIAL_IDS by the route.
+   *
+   * NOT the same thing as FocusGroup.memberIds (FIX-826), which marks a
+   * client-only selection group that is never fetched at all.
+   */
+  officialIds?: string[]
   /** Narrows officials by governing_body type: congress|judiciary|cabinet|state_gov */
   official_role?: 'congress' | 'judiciary' | 'cabinet' | 'state_gov'
   /** Narrows financial entities by entity_type enum value */

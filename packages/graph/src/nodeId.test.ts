@@ -102,5 +102,27 @@ eq(gp.get('party'), 'democrat', 'graphGroupParams party');
 eq(gp.get('state'), null, 'graphGroupParams omits unset filters');
 eq(graphGroupParams(group, 100).get('limit'), '100', 'graphGroupParams forwards a different limit');
 
+// ── FIX-886 — hand-picked cohort serialization ──────────────────────────────
+// The whole point of the FIX: if this param goes missing the route falls back
+// to filter resolution and answers about every active official.
+const idsGroup: FocusGroup = {
+  id: 'group-custom-abc123',
+  name: '4 senators',
+  type: 'group',
+  icon: 'official',
+  color: 'rgb(var(--c-viz-5))',
+  filter: { entity_type: 'official', officialIds: [UUID_A, UUID_B] },
+  isPremade: false,
+};
+const ip = graphGroupParams(idsGroup, 25);
+eq(ip.get('officialIds'), `${UUID_A},${UUID_B}`, 'graphGroupParams comma-joins officialIds');
+eq(ip.get('chamber'), null, 'graphGroupParams ids cohort carries no chamber');
+eq(
+  graphGroupParams({ ...idsGroup, filter: { entity_type: 'official', officialIds: [] } }, 25).get('officialIds'),
+  null,
+  'graphGroupParams omits an empty officialIds array',
+);
+eq(gp.get('officialIds'), null, 'graphGroupParams omits officialIds when unset');
+
 // eslint-disable-next-line no-console
 console.log(`nodeId.test — all ${passed} checks passed ✓`);

@@ -469,6 +469,7 @@ export const GROUP_FILTER_FIELD_COVERAGE: Record<keyof GroupFilter, string> = {
   industry:         "f_industry (single value, normalized through the token map; pac cohorts only — refused with a non-pac financial subtype, which the route ignores)",
   tag:              "unreachable — the browse registry has no topic-tag facet (proposal scopes refuse to compile)",
   committeeId:      "unreachable — no committee facet in the browse registry",
+  officialIds:      "handoff/bundle-only field; no browse-state source; compiler never emits it (FIX-886 — BrowseState is a predicate and cannot express a hand-picked id list, so an ids group is in-session only and does not round-trip through a saved view)",
   official_role:    "unreachable — no role facet; the route also ignores it today",
   financial_type:   "f_financial_type: pac is consumed to select the pac mode; super_pac|party_committee|corporation|union are emitted on the filter (FIX-772); individual is refused (route 422s — not enumerable)",
   proposal_type:    "unreachable — proposal scopes refuse to compile (route needs tag)",

@@ -151,13 +151,22 @@ export function GraphPage({ initialCode, aiEnabled = true }: GraphPageProps = {}
     if (state) filter.state = state;
     const industry = params.get("groupIndustry");
     if (industry) filter.industry = industry;
+    // FIX-886 — hand-picked cohort from /search BUNDLE AS GROUP. Without this the
+    // decode dropped the user's selection on the floor and handed the route a
+    // bare {entity_type:'official'}, which resolved to every active official.
+    // Sender-side the list is officials-only and capped; the route re-validates.
+    const ids = params.get("groupIds");
+    if (ids && groupType === "official") {
+      const parsed = ids.split(",").map((s) => s.trim()).filter(Boolean);
+      if (parsed.length > 0) filter.officialIds = parsed;
+    }
 
     const name = params.get("groupName") ?? undefined;
     graphHooks.addGroup(createCustomGroup(filter, name));
 
     // Strip the group params so refresh / share doesn't re-trigger.
     const cleaned = new URL(window.location.href);
-    for (const k of ["groupType","groupName","groupChamber","groupParty","groupState","groupIndustry"]) {
+    for (const k of ["groupType","groupName","groupChamber","groupParty","groupState","groupIndustry","groupIds"]) {
       cleaned.searchParams.delete(k);
     }
     window.history.replaceState({}, "", cleaned.toString());

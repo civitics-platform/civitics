@@ -8,6 +8,9 @@ import { createAdminClient, fetchEntityIdsByIndustryTag, currentGoverningBodyMem
 import { supabaseUnavailable, unavailableResponse, withDbTimeout } from "@/lib/supabase-check";
 import { fetchAllRows } from "@/lib/paginate";
 import { isGbExpandableJurisdictionType } from "@/lib/graph-seedable-kinds";
+// FIX-886 — hand-picked cohort parsing, kept pure in @/lib so it carries unit
+// tests the route itself can't.
+import { parseOfficialIds } from "@/lib/graph-cohort";
 import type { GraphEdgeV2 as GraphEdge, GraphNodeV2 as GraphNode, NodeTypeV2 as NodeType } from "@civitics/graph";
 // FIX-842 — group Top-N donor default aligned to the shared client cap.
 import { DEFAULT_DONATION_LIMIT } from "@civitics/graph";
@@ -204,6 +207,8 @@ export async function GET(req: NextRequest) {
   const committeeId = searchParams.get("committeeId");
   // FIX-490 — gb cohort key. Slug canonical, UUID accepted as fallback forever.
   const governingBody = searchParams.get("governingBody");
+  // FIX-886 — hand-picked official cohort (the /search BUNDLE AS GROUP handoff).
+  const rawOfficialIds = searchParams.get("officialIds");
   const groupName  = searchParams.get("groupName")  ?? "Group";
   const groupIcon  = searchParams.get("groupIcon")  ?? "group";
   const groupColor = searchParams.get("groupColor") ?? "#6366f1";
@@ -251,6 +256,20 @@ export async function GET(req: NextRequest) {
     // to its member cohort: a generalization of the committeeId path (FIX-139).
     // `governingBody` is slug-canonical with UUID fallback; the legacy
     // `committeeId` param is an internal alias for the same code path.
+    // FIX-886 — hand-picked cohort. Parsed BEFORE any resolution so a malformed
+    // or over-cap list 400s instead of silently degrading to filter resolution —
+    // that silent degradation is the bug this FIX exists to close: BUNDLE AS
+    // GROUP sent no ids at all and the route happily answered about all 27,753
+    // active officials under the user's chosen group name.
+    const idsParse = parseOfficialIds(rawOfficialIds);
+    if (!idsParse.ok) {
+      return NextResponse.json(
+        { error: idsParse.error, reason: idsParse.reason, count: idsParse.count },
+        { status: 400 },
+      );
+    }
+    const officialIds = idsParse.ids;
+
     let gbKey = governingBody ?? committeeId;
 
     // FIX-495 — `chamber=` is a legacy alias for the federal gb cohort (slugs
@@ -267,7 +286,17 @@ export async function GET(req: NextRequest) {
       gbKey = chamber;
     }
 
-    if (gbKey) {
+    if (officialIds.length > 0) {
+      // FIX-886 — the members ARE the request. No cohort query, no 1000-row
+      // slice, no exact-count divergence: memberCount is the set the user
+      // picked, so the bubble's member count and the aggregated set are the
+      // same thing by construction. Identity stays with the caller's
+      // name/icon/color params (there is no server-side row to derive it from,
+      // unlike a gb cohort). rollupGbId stays null — a hand-picked set is never
+      // materialized — so this always uses the live aggregation below.
+      memberIds   = officialIds;
+      memberCount = officialIds.length;
+    } else if (gbKey) {
       const isUuid = UUID_RE.test(gbKey);
       let gbq = supabase
         .from("governing_bodies")
@@ -698,7 +727,12 @@ export async function GET(req: NextRequest) {
         icon: groupIconOut,
         color: groupColorOut,
         count: memberCount ?? 0,
-        filter: { entity_type: entityType, chamber, party, state, committeeId, governingBody },
+        // FIX-886 — echo the hand-picked set so a client (or a curl) can tell an
+        // ids cohort from a filter cohort that happens to be the same size.
+        filter: {
+          entity_type: entityType, chamber, party, state, committeeId, governingBody,
+          ...(officialIds.length > 0 ? { officialIds } : {}),
+        },
       },
       nodes: [groupNode, ...connectedNodes],
       edges,
