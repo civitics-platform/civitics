@@ -1121,3 +1121,6 @@
 2026-07-25 | FIX-893 | f2bb5e41 | local-only | fix(ai): correct Haiku 4.5 pricing and gate enrichment enqueue on source text (FIX-893, FIX-894)
 2026-07-25 | FIX-894 | f2bb5e41 | local-only | fix(ai): correct Haiku 4.5 pricing and gate enrichment enqueue on source text (FIX-893, FIX-894)
 2026-07-25 | FIX-895 | 468d5995 | local+prod | chore(enrichment): run the source-text backlog sweep on prod (FIX-895 closeout)
+2026-07-26 | FIX-896 | e845df2d | local-only | feat(officials): retire AI issue-area tagging, derive industry labels from donations (FIX-896, FIX-897, FIX-899)
+2026-07-26 | FIX-897 | e845df2d | local-only | feat(officials): retire AI issue-area tagging, derive industry labels from donations (FIX-896, FIX-897, FIX-899)
+2026-07-26 | FIX-899 | e845df2d | local-only | feat(officials): retire AI issue-area tagging, derive industry labels from donations (FIX-896, FIX-897, FIX-899)
