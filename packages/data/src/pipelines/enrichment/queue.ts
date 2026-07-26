@@ -9,7 +9,7 @@
 type Db = any;
 
 import { rowsOrThrow } from "@civitics/db";
-import { VALID_TOPICS, TOPIC_ICONS, ISSUE_AREAS } from "../tags/topics";
+import { VALID_TOPICS, TOPIC_ICONS, ISSUE_AREAS, VALID_INDUSTRIES } from "../tags/topics";
 import { rollupJsonbDirect } from "../../lib/heavy-rebuild";
 
 export type EntityType = "proposal" | "official" | "financial_entity";
@@ -221,12 +221,11 @@ export function buildOfficialSummaryContext(o: OfficialSummaryInput) {
 // Financial entity context builder
 // ---------------------------------------------------------------------------
 
-// Valid industry tags the AI worker may assign — mirrors INDUSTRY_LABELS in rules.ts.
-export const VALID_INDUSTRIES = [
-  "pharma", "oil_gas", "finance", "tech", "defense",
-  "real_estate", "labor", "agriculture", "legal",
-  "retail", "transportation", "lobby",
-] as const;
+// Valid industry tags the AI worker may assign — mirrors INDUSTRY_LABELS in
+// rules.ts. Definition moved to ../tags/topics.ts by FIX-890 (the drain
+// vocabulary guard needs a `pg`-free vocabulary module); re-exported here so
+// existing importers keep working.
+export { VALID_INDUSTRIES } from "../tags/topics";
 
 export const INDUSTRY_DISPLAY: Record<string, { label: string; icon: string }> = {
   pharma:         { label: "Pharma",           icon: "💊" },

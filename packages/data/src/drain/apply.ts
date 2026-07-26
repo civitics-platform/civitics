@@ -12,6 +12,8 @@
  * until retry_count >= 3, then permanent 'failed').
  */
 
+import { checkTagVocabulary } from "./vocabulary";
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Db = any;
 
@@ -31,6 +33,12 @@ type QueueRow = {
 
 type TagResultItem = {
   tag: string;
+  /**
+   * FIX-890: per-tag category. Optional because result files written by the
+   * pre-FIX-890 prompt carry no category at all; those fall back to the old
+   * per-entity-type derivation in applyResult().
+   */
+  tag_category?: string;
   display_label?: string;
   display_icon?: string | null;
   visibility?: "primary" | "secondary" | "internal";
@@ -65,6 +73,10 @@ function parseTagResult(x: unknown): TagResultPayload | null {
     if (!isRecord(t) || typeof t["tag"] !== "string") return null;
     tags.push({
       tag: t["tag"] as string,
+      tag_category:
+        typeof t["tag_category"] === "string" && t["tag_category"].length > 0
+          ? (t["tag_category"] as string)
+          : undefined,
       display_label: typeof t["display_label"] === "string" ? (t["display_label"] as string) : undefined,
       display_icon:
         typeof t["display_icon"] === "string" || t["display_icon"] === null
@@ -108,8 +120,9 @@ function titleize(s: string): string {
 }
 
 export type ApplyOutcome =
-  | { kind: "ok" }
-  | { kind: "fail"; error: string }
+  /** `rejected` counts tags dropped by the FIX-890 vocabulary guard. */
+  | { kind: "ok"; rejected?: number }
+  | { kind: "fail"; error: string; rejected?: number }
   | { kind: "missing_queue_row" };
 
 async function recordFailure(db: Db, queueId: number, msg: string): Promise<void> {
@@ -140,6 +153,8 @@ export async function applyResult(db: Db, r: SubmitResult): Promise<ApplyOutcome
     return { kind: "fail", error: r.error ?? "worker reported failure" };
   }
 
+  let rejectedCount = 0;
+
   try {
     if (queueRow.task_type === "tag") {
       const parsed = parseTagResult(r.result);
@@ -149,28 +164,59 @@ export async function applyResult(db: Db, r: SubmitResult): Promise<ApplyOutcome
       }
       const model = parsed.model ?? "claude-sonnet-4-6";
       const pipelineVersion = parsed.pipeline_version ?? "v1";
-      const tagCategory = queueRow.entity_type === "financial_entity" ? "industry" : "topic";
-      const rows = parsed.tags.map((t) => ({
-        entity_type: queueRow.entity_type,
-        entity_id: queueRow.entity_id,
-        tag: t.tag,
-        tag_category: tagCategory,
-        display_label: t.display_label ?? titleize(t.tag),
-        display_icon: t.display_icon ?? null,
-        visibility: t.visibility ?? "secondary",
-        generated_by: "ai",
-        confidence: typeof t.confidence === "number" ? t.confidence : 0.7,
-        ai_model: model,
-        pipeline_version: pipelineVersion,
-        metadata: {
-          ...(t.is_primary !== undefined ? { is_primary: t.is_primary } : {}),
-          ...(t.reasoning !== undefined ? { reasoning: t.reasoning } : {}),
-          ...(t.affects_individuals !== undefined
-            ? { affects_individuals: t.affects_individuals }
-            : {}),
-          ...(t.rank !== undefined ? { rank: t.rank } : {}),
-        },
-      }));
+      // FIX-890: fallback only. A worker on the current prompt sends
+      // `tag_category` per tag; this derivation exists for result files written
+      // by the pre-FIX-890 prompt that may still be in flight. It is the exact
+      // shape that caused FIX-889 — one category stamped on the whole batch —
+      // so it must never win over an explicit per-tag value.
+      const fallbackCategory =
+        queueRow.entity_type === "financial_entity" ? "industry" : "topic";
+
+      const rows = [];
+      let rejected = 0;
+      for (const t of parsed.tags) {
+        const tagCategory = t.tag_category ?? fallbackCategory;
+
+        const verdict = checkTagVocabulary(queueRow.entity_type, tagCategory, t.tag);
+        if (!verdict.allowed) {
+          rejected++;
+          console.warn(
+            `[drain:apply] queue_id=${queueRow.id} rejected tag: ${verdict.reason}`,
+          );
+          continue;
+        }
+
+        rows.push({
+          entity_type: queueRow.entity_type,
+          entity_id: queueRow.entity_id,
+          tag: t.tag,
+          tag_category: tagCategory,
+          display_label: t.display_label ?? titleize(t.tag),
+          display_icon: t.display_icon ?? null,
+          visibility: t.visibility ?? "secondary",
+          generated_by: "ai",
+          confidence: typeof t.confidence === "number" ? t.confidence : 0.7,
+          ai_model: model,
+          pipeline_version: pipelineVersion,
+          metadata: {
+            ...(t.is_primary !== undefined ? { is_primary: t.is_primary } : {}),
+            ...(t.reasoning !== undefined ? { reasoning: t.reasoning } : {}),
+            ...(t.affects_individuals !== undefined
+              ? { affects_individuals: t.affects_individuals }
+              : {}),
+            ...(t.rank !== undefined ? { rank: t.rank } : {}),
+          },
+        });
+      }
+
+      // Every tag rejected — nothing to write. Route through the failure path
+      // rather than marking the queue row 'done', so the item is retried /
+      // surfaced instead of silently completing with zero tags written.
+      if (rows.length === 0) {
+        const msg = `all ${rejected} tag(s) rejected by vocabulary guard`;
+        await recordFailure(db, queueRow.id, msg);
+        return { kind: "fail", error: msg, rejected };
+      }
 
       const { error: upsertErr } = await db
         .from("entity_tags")
@@ -178,8 +224,9 @@ export async function applyResult(db: Db, r: SubmitResult): Promise<ApplyOutcome
       if (upsertErr) {
         const msg = `entity_tags upsert: ${upsertErr.message}`;
         await recordFailure(db, queueRow.id, msg);
-        return { kind: "fail", error: msg };
+        return { kind: "fail", error: msg, rejected };
       }
+      rejectedCount = rejected;
     } else if (queueRow.task_type === "summary") {
       const parsed = parseSummaryResult(r.result);
       if (!parsed) {
@@ -231,10 +278,10 @@ export async function applyResult(db: Db, r: SubmitResult): Promise<ApplyOutcome
         `enrichment_queue update (done) failed for ${queueRow.id}: ${doneErr.message}`,
       );
     }
-    return { kind: "ok" };
+    return { kind: "ok", rejected: rejectedCount };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     await recordFailure(db, queueRow.id, `submit exception: ${msg}`);
-    return { kind: "fail", error: msg };
+    return { kind: "fail", error: msg, rejected: rejectedCount };
   }
 }

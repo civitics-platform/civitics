@@ -85,18 +85,32 @@ Set `is_primary: true` on the single tag, `rank: 1`.
 
 - Use your own reasoning — you ARE the model. No prompt the model, no tool
   calls beyond Read/Write. One pass per item.
-- Only emit tags that appear in the item's `valid_topics` / `issue_areas` list.
-  Any tag outside the list is a bug — drop it silently.
+- Only emit tags that appear in the item's `valid_topics` / `issue_areas` /
+  `valid_industries` list (the complexity tags `technical` / `accessible` are
+  the sole exception — they are never in those lists). Any other tag outside
+  the list is a bug — drop it silently. **This is now enforced at the write
+  boundary**: out-of-vocab tags are rejected and counted before they reach the
+  database, so inventing a tag loses the item's work rather than adding a new
+  category.
 - `confidence`: 0.0–1.0. Use ≥0.8 when the title/summary makes the topic
   unambiguous; 0.6–0.8 when inferring from context; <0.6 → omit the tag entirely.
 - `visibility`: `primary` if confidence ≥ 0.8 AND `is_primary=true`; `internal`
   if confidence < 0.7; otherwise `secondary`.
 - `is_primary`: exactly one tag per item marked `true` (the top-ranked topic).
   `rank` starts at 1 for primary, increments per additional tag.
+- **Every tag carries its own `tag_category`.** This is not optional and it is
+  not the same for every tag in an item:
+  - topic tags (proposals) → `"tag_category": "topic"`
+  - issue-area tags (officials) → `"tag_category": "topic"`
+  - industry tags (financial entities) → `"tag_category": "industry"`
+  - complexity tags (proposals) → `"tag_category": "quality"`
 - For proposals: ALSO emit a complexity tag based on title+summary technicality:
-  - If dense technical/regulatory language → `{ tag: "technical", display_label: "Technical", display_icon: null, visibility: "secondary", confidence: 1.0, ... }`
-  - Else → `{ tag: "accessible", display_label: "Accessible", display_icon: null, visibility: "secondary", confidence: 1.0, ... }`
-  (The complexity tag goes in the same `tags[]` array.)
+  - If dense technical/regulatory language → `{ tag: "technical", tag_category: "quality", display_label: "Technical", display_icon: null, visibility: "secondary", confidence: 1.0, ... }`
+  - Else → `{ tag: "accessible", tag_category: "quality", display_label: "Accessible", display_icon: null, visibility: "secondary", confidence: 1.0, ... }`
+  The complexity tag goes in the same `tags[]` array as the topics, but it is
+  **`tag_category: "quality"`, never `"topic"`** — it describes how the text
+  reads, not what the proposal is about. Emitting it as a topic is the bug
+  FIX-889 had to re-categorize 4,561 rows to undo.
 - For proposals: estimate `affects_individuals: boolean` (does this directly
   affect ordinary people, or only agencies/corporations?). Set it on each
   topic tag's payload, not the complexity tag.
@@ -121,6 +135,7 @@ Write `{RESULTS_FILE}` with this EXACT shape:
         "tags": [
           {
             "tag": "climate",
+            "tag_category": "topic",
             "display_label": "Climate",
             "display_icon": "🌊",
             "visibility": "primary",
@@ -129,6 +144,14 @@ Write `{RESULTS_FILE}` with this EXACT shape:
             "reasoning": "emissions cap mandate",
             "affects_individuals": true,
             "rank": 1
+          },
+          {
+            "tag": "technical",
+            "tag_category": "quality",
+            "display_label": "Technical",
+            "display_icon": null,
+            "visibility": "secondary",
+            "confidence": 1.0
           }
         ],
         "model": "{MODEL_NAME}",

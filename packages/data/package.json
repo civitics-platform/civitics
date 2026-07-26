@@ -127,6 +127,8 @@
     "data:backfill-agency-staffing:prod": "tsx --env-file=../../.env.local.prod src/scripts/backfill-agency-staffing-rollup.ts",
     "data:backfill-treemap-individuals": "tsx --env-file=../../.env.local src/scripts/backfill-treemap-individuals-rollup.ts",
     "data:backfill-treemap-individuals:prod": "tsx --env-file=../../.env.local.prod src/scripts/backfill-treemap-individuals-rollup.ts",
+    "data:recategorize-complexity-tags": "tsx --env-file=../../.env.local src/scripts/recategorize-proposal-complexity-tags.ts",
+    "data:recategorize-complexity-tags:prod": "tsx --env-file=../../.env.local.prod src/scripts/recategorize-proposal-complexity-tags.ts --allow-prod",
     "data:rebuild:ie-totals": "tsx --env-file=../../.env.local src/scripts/rebuild-ie-totals.ts",
     "data:rebuild:received-totals": "tsx --env-file=../../.env.local src/scripts/rebuild-received-totals.ts",
     "data:analyze:ie-drop": "tsx --env-file=../../.env.local src/scripts/analyze-ie-drop.ts",

@@ -54,14 +54,21 @@ async function main(): Promise<void> {
   let ok = 0;
   let failed = 0;
   let missing = 0;
+  // FIX-890: tags dropped by the write-boundary vocabulary guard. Surfaced in
+  // the run summary so a prompt/vocabulary drift shows up as a number here
+  // instead of as junk rows discovered in entity_tags weeks later.
+  let rejected = 0;
 
   for (const r of results) {
     const outcome = await applyResult(db, r);
-    if (outcome.kind === "ok") ok++;
-    else if (outcome.kind === "missing_queue_row") {
+    if (outcome.kind === "missing_queue_row") {
       missing++;
       console.error(`[drain:submit] queue_id=${r.queue_id} not found`);
-    } else {
+      continue;
+    }
+    rejected += outcome.rejected ?? 0;
+    if (outcome.kind === "ok") ok++;
+    else {
       failed++;
       console.error(`[drain:submit] queue_id=${r.queue_id} failed: ${outcome.error}`);
     }
@@ -71,7 +78,8 @@ async function main(): Promise<void> {
   console.error(
     `[drain:submit] ${ok}/${total} ok` +
       (failed ? `, ${failed} failed` : "") +
-      (missing ? `, ${missing} missing` : ""),
+      (missing ? `, ${missing} missing` : "") +
+      (rejected ? `, ${rejected} tag(s) rejected by vocabulary guard` : ""),
   );
 
   // Orchestrator uses exit code to decide whether to halt a drain run.
