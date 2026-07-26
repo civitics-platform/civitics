@@ -1,6 +1,7 @@
 import { createAdminClient } from "@civitics/db";
 import { withPublicCdnCache } from "@/lib/cdn-cache";
 import { supabaseUnavailable, unavailableResponse, withDbTimeout } from "@/lib/supabase-check";
+import { fetchChunkedByIds } from "@/lib/paginate";
 import type { Database } from "@civitics/db";
 import type { GraphEdgeV2 as GraphEdge, GraphNodeV2 as GraphNode, EdgeType, NodeTypeV2 as NodeType, IndividualDisplayMode } from "@civitics/graph";
 import { BRACKET_TIERS } from "@civitics/graph";
@@ -49,11 +50,6 @@ const RAW_EDGE_CAP = 500;
 // that depth 1 already answered.
 const DEPTH2_BUDGET_MS = 8000;
 
-// .in() filters ride the request URL; ~234 uuids trip PostgREST's 414
-// URI-too-long behind Kong (verified in FIX-772), so 200 is the safe chunk
-// width for every id-list read in this route (FIX-732).
-const ID_CHUNK = 200;
-
 /**
  * Page through a row-capped PostgREST query so the full set is assembled rather
  * than silently truncated at MAX_ROWS (FIX-428). `build(from, to)` must return a
@@ -83,26 +79,14 @@ async function fetchAllPaged<T>(
 }
 
 /**
- * Chunked .in() fetch over an id list (FIX-732): ID_CHUNK ids per request
- * (URL-width safe), chunks fetched in parallel, per-chunk error check that
- * THROWS — a failed chunk previously fell through `data ?? []` and rendered
- * its entities as "Unknown"-labeled nodes on HTTP 200 (FIX-431 class).
+ * FIX-901 — the local FIX-732 `fetchChunkedByIds` + its `ID_CHUNK = 200`
+ * constant moved to `@/lib/paginate` (shared with the officials directory and
+ * the agency-staffing rollup, which had each hand-written the same loop). The
+ * name-batch reads below pass `{ strict: true }` to keep FIX-732's throw-on-
+ * failed-chunk contract: a swallowed chunk here renders its entities as
+ * "Unknown"-labeled nodes on an HTTP 200 (FIX-431 class), so a short read is
+ * strictly worse than the 500 the catch block turns the throw into.
  */
-async function fetchChunkedByIds<T>(
-  ids: string[],
-  build: (chunk: string[]) => PromiseLike<{ data: unknown; error: { message: string } | null }>,
-): Promise<T[]> {
-  if (ids.length === 0) return [];
-  const chunks: string[][] = [];
-  for (let i = 0; i < ids.length; i += ID_CHUNK) chunks.push(ids.slice(i, i + ID_CHUNK));
-  const results = await Promise.all(chunks.map((c) => build(c)));
-  const out: T[] = [];
-  for (const r of results) {
-    if (r.error) throw r.error;
-    out.push(...((r.data ?? []) as T[]));
-  }
-  return out;
-}
 
 // ── Individual-donor aggregation helpers (FIX-194) ────────────────────────────
 
@@ -853,11 +837,12 @@ export async function GET(request: Request) {
     // ── Batch-fetch names in parallel ──────────────────────────────────────
     // FIX-123: bill_number lives in `bill_details` (one-to-one with proposals)
     // post-cutover, so it's a separate fetch keyed on proposal_id.
-    // Every batch is chunked at ID_CHUNK with per-chunk error checks
-    // (FIX-732/FIX-802) — a 414/timeout here previously fell through
-    // `data ?? []` and rendered "Unknown"-labeled nodes on HTTP 200.
-    // FIX-772: the prior 500-wide financial chunk 414'd ("URI too long") at
-    // ~234 uuids behind local Kong.
+    // Every batch is chunked at the shared ID_CHUNK_SIZE (200) with per-chunk
+    // error checks (FIX-732/FIX-802/FIX-901) — a 414/timeout here previously
+    // fell through `data ?? []` and rendered "Unknown"-labeled nodes on HTTP
+    // 200. FIX-772: the prior 500-wide financial chunk 414'd ("URI too long")
+    // at ~234 uuids behind local Kong. `strict` makes a failed chunk throw to
+    // the route's catch (→ 500) rather than quietly shortening the name map.
     type FinRow = { id: string; display_name: string; entity_type: string; recipient_count?: number | null; metadata?: Record<string, unknown> | null; is_synthetic?: boolean };
     type FinMetaRow = { id: string; entity_type: string; recipient_count?: number | null; metadata?: Record<string, unknown> | null; is_synthetic?: boolean };
 
@@ -882,22 +867,38 @@ export async function GET(request: Request) {
     type BillDetailRow   = { proposal_id: string; bill_number: string | null };
     type GbNameRow       = { id: string; name: string; is_synthetic: boolean | null };
 
-    const [financialData, mvFinMetaRows, officialRows, agencyRows, proposalRows, billDetailRows, gbRows] = await Promise.all([
-      fetchChunkedByIds<FinRow>(rawFinancialIds, (ids) =>
-        withDbTimeout(supabase.from("financial_entities").select(finSelect).in("id", ids), 5000, "connections:fin-names")),
-      fetchChunkedByIds<FinMetaRow>(mvFinancialIds, (ids) =>
-        withDbTimeout(supabase.from("financial_entities").select(mvFinSelect).in("id", ids), 5000, "connections:fin-mv-meta")),
-      fetchChunkedByIds<OfficialNameRow>(officialIds, (ids) =>
-        withDbTimeout(supabase.from("officials").select("id, full_name, party, is_synthetic, jurisdictions(name)").in("id", ids), 5000, "connections:official-names")),
-      fetchChunkedByIds<AgencyNameRow>(agencyIds, (ids) =>
-        withDbTimeout(supabase.from("agencies").select("id, name, acronym, is_synthetic").in("id", ids), 5000, "connections:agency-names")),
-      fetchChunkedByIds<ProposalNameRow>(proposalIds, (ids) =>
-        withDbTimeout(supabase.from("proposals").select("id, title, is_synthetic").in("id", ids), 5000, "connections:proposal-names")),
-      fetchChunkedByIds<BillDetailRow>(proposalIds, (ids) =>
-        withDbTimeout(supabase.from("bill_details").select("proposal_id, bill_number").in("proposal_id", ids), 5000, "connections:bill-details")),
-      fetchChunkedByIds<GbNameRow>(gbIds, (ids) =>
-        withDbTimeout(supabase.from("governing_bodies").select("id, name, is_synthetic").in("id", ids), 5000, "connections:gb-names")),
+    const STRICT = { strict: true } as const;
+    const [finRes, mvFinMetaRes, officialRes, agencyRes, proposalRes, billDetailRes, gbRes] = await Promise.all([
+      fetchChunkedByIds<FinRow>(rawFinancialIds, (ids, { label }) =>
+        withDbTimeout(supabase.from("financial_entities").select(finSelect).in("id", ids), 5000, label),
+        { ...STRICT, label: "connections:fin-names" }),
+      fetchChunkedByIds<FinMetaRow>(mvFinancialIds, (ids, { label }) =>
+        withDbTimeout(supabase.from("financial_entities").select(mvFinSelect).in("id", ids), 5000, label),
+        { ...STRICT, label: "connections:fin-mv-meta" }),
+      fetchChunkedByIds<OfficialNameRow>(officialIds, (ids, { label }) =>
+        withDbTimeout(supabase.from("officials").select("id, full_name, party, is_synthetic, jurisdictions(name)").in("id", ids), 5000, label),
+        { ...STRICT, label: "connections:official-names" }),
+      fetchChunkedByIds<AgencyNameRow>(agencyIds, (ids, { label }) =>
+        withDbTimeout(supabase.from("agencies").select("id, name, acronym, is_synthetic").in("id", ids), 5000, label),
+        { ...STRICT, label: "connections:agency-names" }),
+      fetchChunkedByIds<ProposalNameRow>(proposalIds, (ids, { label }) =>
+        withDbTimeout(supabase.from("proposals").select("id, title, is_synthetic").in("id", ids), 5000, label),
+        { ...STRICT, label: "connections:proposal-names" }),
+      fetchChunkedByIds<BillDetailRow>(proposalIds, (ids, { label }) =>
+        withDbTimeout(supabase.from("bill_details").select("proposal_id, bill_number").in("proposal_id", ids), 5000, label),
+        { ...STRICT, label: "connections:bill-details" }),
+      fetchChunkedByIds<GbNameRow>(gbIds, (ids, { label }) =>
+        withDbTimeout(supabase.from("governing_bodies").select("id, name, is_synthetic").in("id", ids), 5000, label),
+        { ...STRICT, label: "connections:gb-names" }),
     ]);
+    // `strict` above guarantees these are complete or the whole Promise.all threw.
+    const financialData   = finRes.rows;
+    const mvFinMetaRows   = mvFinMetaRes.rows;
+    const officialRows    = officialRes.rows;
+    const agencyRows      = agencyRes.rows;
+    const proposalRows    = proposalRes.rows;
+    const billDetailRows  = billDetailRes.rows;
+    const gbRows          = gbRes.rows;
 
     const mvFinMeta = new Map(mvFinMetaRows.map((r) => [r.id, r]));
 

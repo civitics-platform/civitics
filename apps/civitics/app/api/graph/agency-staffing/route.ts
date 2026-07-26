@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server";
 import { createAdminClient } from "@civitics/db";
 import { supabaseUnavailable, unavailableResponse } from "@/lib/supabase-check";
 import { withPublicCdnCache } from "@/lib/cdn-cache";
+import { fetchChunkedByIds } from "@/lib/paginate";
 
 export const dynamic = "force-dynamic";
 
@@ -136,29 +137,30 @@ export async function GET(req: NextRequest) {
 
   const agencyIds = agencies.map((a: { id: string }) => a.id);
 
-  // FIX-778 fast path: read the materialized per-agency rollup. Chunk the .in()
-  // to stay under the Kong/PostgREST URL-length cap (~200 ids/chunk).
+  // FIX-778 fast path: read the materialized per-agency rollup. FIX-901 moved
+  // the hand-rolled 200-id chunk loop onto the shared `fetchChunkedByIds`
+  // (same URL-length bound). Non-strict: a failed chunk is reported via
+  // `complete`, and this route already has a better answer than an error —
+  // `rollupErr` sends EVERY agency down the live-compute fallback, exactly as
+  // the old `break`-on-first-error did.
   const statByAgency = new Map<string, AgencyStats>();
-  const CHUNK = 200;
-  let rollupErr = false;
-  for (let i = 0; i < agencyIds.length; i += CHUNK) {
-    const chunk = agencyIds.slice(i, i + CHUNK);
-    const { data, error } = await supabase
-      .from("agency_staffing_rollup")
-      .select("agency_id, appointment_count, contract_cents, grant_cents")
-      .in("agency_id", chunk);
-    if (error) {
-      console.error("[agency-staffing] rollup read (falling back to live):", error.message);
-      rollupErr = true;
-      break;
-    }
-    for (const r of (data ?? []) as RollupRow[]) {
-      statByAgency.set(r.agency_id, {
-        appointmentCount: Number(r.appointment_count ?? 0),
-        contractTotal:    Number(r.contract_cents ?? 0),
-        grantTotal:       Number(r.grant_cents ?? 0),
-      });
-    }
+  const { rows: rollupRows, complete } = await fetchChunkedByIds<RollupRow>(
+    agencyIds,
+    (ids) =>
+      supabase
+        .from("agency_staffing_rollup")
+        .select("agency_id, appointment_count, contract_cents, grant_cents")
+        .in("agency_id", ids),
+    { label: "agency-staffing:rollup" },
+  );
+  const rollupErr = !complete;
+  if (rollupErr) console.error("[agency-staffing] rollup read incomplete — falling back to live");
+  for (const r of rollupRows) {
+    statByAgency.set(r.agency_id, {
+      appointmentCount: Number(r.appointment_count ?? 0),
+      contractTotal:    Number(r.contract_cents ?? 0),
+      grantTotal:       Number(r.grant_cents ?? 0),
+    });
   }
 
   // Live fallback for agencies missing from the rollup (pre-backfill / brand-new),

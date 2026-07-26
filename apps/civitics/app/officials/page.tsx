@@ -5,6 +5,7 @@ export const revalidate = 300;
 
 import { createPublicClient } from "@civitics/db";
 import { withDbTimeout } from "@/lib/supabase-check";
+import { fetchChunkedByIds } from "@/lib/paginate";
 import { OfficialsList } from "./components/OfficialsList";
 import { PageViewTracker } from "../components/PageViewTracker";
 import { PageHeader } from "@civitics/ui";
@@ -141,37 +142,41 @@ export default async function OfficialsPage({
   // `tags: []` and the directory rendered no pills at all (the FIX-426
   // swallowed-error class). Note the comment 15 lines above already warns about
   // exactly this URL-length trap for the engagement rollup — this read did it
-  // anyway. Chunked at 200 ids (the FIX-774 bound), each chunk timing out
-  // independently so one slow chunk degrades to partial tags rather than none.
+  // anyway. FIX-901 moved the chunking onto the shared `fetchChunkedByIds`
+  // (200-id chunks, the FIX-774 URL-width bound) so the unchunked form is the
+  // harder thing to write. Each chunk still times out independently and this
+  // surface deliberately stays in the helper's DEFAULT non-strict mode: partial
+  // tags beat no tags on a directory, so a failed chunk is reported (and
+  // logged) rather than thrown.
   if (officials.length > 0) {
-    const officialIds = officials.map((o) => o.id);
-    const ID_CHUNK = 200;
-    const chunks: string[][] = [];
-    for (let i = 0; i < officialIds.length; i += ID_CHUNK) {
-      chunks.push(officialIds.slice(i, i + ID_CHUNK));
-    }
-
-    const tagResults = await Promise.all(
-      chunks.map((ids, i) =>
+    const { rows: tagRows, complete: tagsComplete } = await fetchChunkedByIds<
+      EntityTag & { entity_id: string }
+    >(
+      officials.map((o) => o.id),
+      (ids, { label }) =>
         withDbTimeout(
           sbAny
             .from("entity_tags")
             .select("entity_id,tag,tag_category,display_label,display_icon,visibility,confidence,generated_by,ai_model")
             .eq("entity_type", "official")
-            .in("entity_id", ids) as PromiseLike<{ data: Array<EntityTag & { entity_id: string }> | null }>,
+            .in("entity_id", ids) as PromiseLike<{
+              data: Array<EntityTag & { entity_id: string }> | null;
+              error: { message: string } | null;
+            }>,
           3000,
-          `officials:directory-tags:${i}`
-        )
-      )
+          label
+        ),
+      { label: "officials:directory-tags" }
     );
+    if (!tagsComplete) {
+      console.warn("officials:directory-tags — partial tag read; some cards render fewer pills");
+    }
 
     const tagsByOfficial: Record<string, EntityTag[]> = {};
-    for (const { data: tagRows } of tagResults) {
-      for (const t of tagRows ?? []) {
-        const eid = t.entity_id as string;
-        if (!tagsByOfficial[eid]) tagsByOfficial[eid] = [];
-        tagsByOfficial[eid]!.push(t as EntityTag);
-      }
+    for (const t of tagRows) {
+      const eid = t.entity_id as string;
+      if (!tagsByOfficial[eid]) tagsByOfficial[eid] = [];
+      tagsByOfficial[eid]!.push(t as EntityTag);
     }
     for (const o of officials) {
       o.tags = tagsByOfficial[o.id] ?? [];
