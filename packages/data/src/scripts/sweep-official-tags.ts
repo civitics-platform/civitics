@@ -24,10 +24,19 @@
  *   Both directions are `UPDATE ... WHERE status = <the other one>`, so a second
  *   run touches 0 rows. No hardcoded ids.
  *
- * MEASURED BEFORE (2026-07-26, pre-sweep)
- *   local  official tag pending 5,917 | official summary pending 2,677
- *   prod   official tag pending 8,886 | official summary pending 2,779
+ * RECORDED OUTCOMES (both envs, 2026-07-26 — FIX-898 closeout)
+ *   local  5,917 marked. Official summary pending unchanged at 2,677.
+ *          enrichment_queue total 149,904 before AND after: nothing deleted.
+ *          Second run marked 0. `--reverse` returned all 5,917 to pending, then
+ *          the forward sweep was re-applied — recoverability proven end to end.
+ *   prod   8,886 marked, matching the BEGIN/ROLLBACK dry-run count exactly.
+ *          Official summary pending unchanged at 2,779; tag done 123 and summary
+ *          done 160 untouched. enrichment_queue total 159,714 before AND after.
+ *          Second run marked 0, confirming idempotency on prod as well as local.
+ *   Marked rows also leave the FIX-820/822 partial claim indexes (both are
+ *   `WHERE status='pending'`), so no drain worker can claim a retired task.
  *
+
  * USAGE
  *   Local (default target; safe to iterate):
  *     pnpm --filter @civitics/data data:sweep-official-tags -- --dry-run
