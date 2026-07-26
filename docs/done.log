@@ -1113,3 +1113,5 @@
 2026-07-24 | FIX-883 | 0b6596ea | local+prod | perf(graph): aggregate group-cohort donors in one RPC instead of paging entity_connections
 2026-07-24 | FIX-884 | 1166ecb0 | prod-only | ops(db): clear stranded autovacuum on prod entity_connections; file the recurrence guard
 2026-07-25 | FIX-885 | c5bc8217 | local+prod | fix(db): self-heal stranded autovacuum in the pg_cron rebuild; make the canary escalate
+2026-07-25 | FIX-886 | 5f83e753 | local-only | fix(graph): BUNDLE AS GROUP sends the selected officials instead of discarding them
+2026-07-25 | FIX-887 | 7a81bbef | local-only | fix(graph): refuse degenerate live donor cohorts with a 422 instead of aggregating them
