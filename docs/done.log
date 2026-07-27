@@ -1131,3 +1131,4 @@
 2026-07-26 | FIX-909 | f036c2a6 | local+prod | fix(tags): expand industry vocabulary to 16 keys; consolidate label maps; clean singleton drift
 2026-07-26 | FIX-905 | 4706cb12 | local-only | fix(officials): remove A-F responsiveness grade; engagement tiers on profile
 2026-07-26 | FIX-906 | 4706cb12 | local-only | fix(officials): remove A-F responsiveness grade; engagement tiers on profile
+2026-07-27 | FIX-912 | ab0c7a58 | local-only | feat(db): repeatable prod-clone refresh + state-legislature district linkage
