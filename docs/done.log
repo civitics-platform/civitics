@@ -1129,3 +1129,5 @@
 2026-07-26 | FIX-901 | f9bd50fe | local-only | refactor(lib): shared chunked-by-ids fetch helper; migrate three call sites (FIX-901)
 2026-07-26 | FIX-908 | f036c2a6 | local+prod | fix(tags): expand industry vocabulary to 16 keys; consolidate label maps; clean singleton drift
 2026-07-26 | FIX-909 | f036c2a6 | local+prod | fix(tags): expand industry vocabulary to 16 keys; consolidate label maps; clean singleton drift
+2026-07-26 | FIX-905 | 4706cb12 | local-only | fix(officials): remove A-F responsiveness grade; engagement tiers on profile
+2026-07-26 | FIX-906 | 4706cb12 | local-only | fix(officials): remove A-F responsiveness grade; engagement tiers on profile
