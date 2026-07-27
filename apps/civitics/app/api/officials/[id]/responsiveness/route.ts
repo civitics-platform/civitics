@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createPublicClient } from "@civitics/db";
-import { gradeFromRate, type ResponsivenessData } from "./_lib";
+import { type ResponsivenessData } from "./_lib";
 import { withPublicCdnCache } from "@/lib/cdn-cache";
 
 export const dynamic = "force-dynamic";
@@ -83,11 +83,9 @@ export async function GET(
       }
     }
 
+    // FIX-905: counts only. The response-rate percentage and the A-F grade
+    // derived from it were public scores with no minimum-sample floor — see _lib.ts.
     const total_closed = responded + no_response;
-    const response_rate = total_closed > 0
-      ? Math.round((responded / total_closed) * 100)
-      : null;
-    const grade = response_rate !== null ? gradeFromRate(response_rate) : null;
 
     // Build recent list (most recent first, capped at 10)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -106,15 +104,13 @@ export async function GET(
       no_response,
       open,
       total_closed,
-      response_rate,
-      grade,
       recent,
     };
 
     return withPublicCdnCache(NextResponse.json(data));
   } catch {
     return NextResponse.json(
-      { error: "Failed to compute responsiveness score" },
+      { error: "Failed to compute responsiveness data" },
       { status: 500 }
     );
   }

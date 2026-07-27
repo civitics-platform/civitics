@@ -1,21 +1,14 @@
 import Link from "next/link";
-import type { ResponsivenessData, ResponsivenessGrade } from "../../api/officials/[id]/responsiveness/_lib";
+import type { ResponsivenessData } from "../../api/officials/[id]/responsiveness/_lib";
 
-// ─── Grade config ──────────────────────────────────────────────────────────────
-
-// A-F grade gradient compressed onto the token palette: green-ink (good) →
-// amber (middling) → accent red (poor). No orange/distinct-green tokens exist;
-// A/B and C/D differ by tint depth.
-const GRADE_CONFIG: Record<
-  ResponsivenessGrade,
-  { label: string; color: string; bg: string; border: string; ring: string }
-> = {
-  A: { label: "Highly responsive",     color: "text-green-ink", bg: "bg-green-ink/15", border: "border-green-ink/30", ring: "ring-green-ink/40" },
-  B: { label: "Generally responsive",  color: "text-green-ink", bg: "bg-green-ink/8",  border: "border-green-ink/20", ring: "ring-green-ink/30" },
-  C: { label: "Partially responsive",  color: "text-ink",       bg: "bg-amber/25",     border: "border-amber/60",     ring: "ring-amber/60"     },
-  D: { label: "Low responsiveness",    color: "text-ink",       bg: "bg-amber/15",     border: "border-amber/40",     ring: "ring-amber/40"     },
-  F: { label: "Non-responsive",        color: "text-accent",    bg: "bg-accent/10",    border: "border-accent/30",    ring: "ring-accent/40"    },
-};
+// FIX-905 — this card is a LEDGER, not a score. The A-F grade badge and the
+// response-rate percentage headline were removed: both were public scores with
+// no minimum-sample floor (one unanswered window rendered a public "F"), and the
+// platform is committed against public scores. Everything below the headline —
+// the counts, the breakdown bar, the per-window response labels, the initiative
+// links, and the "Silence is data" note — is the receipts content and stays.
+// The responsiveness JUDGMENT now lives in the tiered EngagementBadges
+// (app/lib/engagement.ts), which carries explicit small-n discipline.
 
 // Independents/pledge use ink-outline & civic-blue — no purple token by design.
 const RESPONSE_LABELS: Record<string, { label: string; color: string }> = {
@@ -39,8 +32,7 @@ interface ResponsivenessCardProps {
 }
 
 export function ResponsivenessCard({ data }: ResponsivenessCardProps) {
-  const { responded, no_response, open, total_closed, response_rate, grade, recent } = data;
-  const gc = grade ? GRADE_CONFIG[grade] : null;
+  const { responded, no_response, open, total_closed, recent } = data;
   const now = new Date();
 
   // If no windows at all, don't render — no civic initiatives have reached this official yet
@@ -55,38 +47,28 @@ export function ResponsivenessCard({ data }: ResponsivenessCardProps) {
       </div>
 
       <div className="p-4">
-        {/* Score row */}
-        <div className="flex items-center gap-4 mb-4">
-          {/* Grade badge */}
-          {gc ? (
-            <div className={`flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-full ring-2 ${gc.ring} ${gc.bg}`}>
-              <span className={`font-serif text-2xl font-black ${gc.color}`}>{grade}</span>
-            </div>
+        {/* Count row — the record, not a score (FIX-905) */}
+        <div className="mb-4">
+          {total_closed > 0 ? (
+            <>
+              <p className="font-mono text-2xl font-bold tabular-nums text-ink">
+                {responded} of {total_closed}
+              </p>
+              <p className="text-xs text-ink-soft mt-0.5">
+                closed window{total_closed !== 1 ? "s" : ""} answered
+                {open > 0 ? ` · ${open} still open` : ""}
+              </p>
+            </>
           ) : (
-            <div className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-full ring-2 ring-rule bg-paper-2">
-              <span className="text-lg font-bold text-ink-soft/70">—</span>
-            </div>
+            <>
+              <p className="text-base font-semibold text-ink-soft">No closed windows</p>
+              <p className="text-xs text-ink-soft/70 mt-0.5">
+                {open > 0
+                  ? `${open} open window${open !== 1 ? "s" : ""} in progress`
+                  : "The record will appear once windows close"}
+              </p>
+            </>
           )}
-
-          <div>
-            {response_rate !== null ? (
-              <>
-                <p className={`font-mono text-2xl font-bold tabular-nums ${gc?.color ?? "text-ink"}`}>
-                  {response_rate}%
-                </p>
-                <p className="text-xs text-ink-soft mt-0.5">
-                  {gc?.label}
-                </p>
-              </>
-            ) : (
-              <>
-                <p className="text-base font-semibold text-ink-soft">No closed windows</p>
-                <p className="text-xs text-ink-soft/70 mt-0.5">
-                  {open > 0 ? `${open} open window${open !== 1 ? "s" : ""} in progress` : "Score will appear once windows close"}
-                </p>
-              </>
-            )}
-          </div>
         </div>
 
         {/* Breakdown bar */}

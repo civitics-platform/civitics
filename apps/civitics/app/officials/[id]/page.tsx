@@ -23,7 +23,13 @@ import { QASection } from "../../components/QASection";
 import { ClaimProfileSection } from "../components/ClaimProfileSection";
 import { getSlowMode } from "@/lib/slow-mode";
 import { ResponsivenessCard } from "../components/ResponsivenessCard";
-import { gradeFromRate } from "../../api/officials/[id]/responsiveness/_lib";
+import { EngagementBadges } from "../../components/EngagementBadges";
+import {
+  fetchEngagementRollup,
+  engagedTier,
+  communityTier,
+  EMPTY_ENGAGEMENT,
+} from "../../lib/engagement";
 import { PageViewTracker } from "../../components/PageViewTracker";
 import { FollowButton } from "../../components/FollowButton";
 import { SourceBadge } from "../../components/SourceBadge";
@@ -337,7 +343,7 @@ export default async function OfficialProfilePage({
   // votes with proposal hydration done in SQL, AI summary, career, promises,
   // civic responses, synthetic answer-count, spending) into one RPC. The donor
   // rollup MV read + FIX-635 fallback stay separate to avoid a ~10k-row payload.
-  const [officialData, pageRes, donorRollupRes] =
+  const [officialData, pageRes, donorRollupRes, engagementRollup] =
     await Promise.all([
       getCachedOfficial(params.id),
       // FIX-683: empty official → skip the RPC; page.* all default to []/null/0
@@ -394,6 +400,14 @@ export default async function OfficialProfilePage({
         );
         return { data: rows };
       })(),
+      // FIX-906 — display-only engagement rollup for the identity-block badges
+      // (Claimed / Responsive / Active community). One id, so the by-ids reader
+      // is the right one — this is the "single detail page" caller its docstring
+      // names, and nowhere near the ~200-id in(...) URL bound. Fails open: the
+      // reader is withDbTimeout-wrapped and returns an empty Map on any error,
+      // and EngagementBadges renders nothing when there is nothing to show, so a
+      // stale or missing MV can never break the profile.
+      fetchEngagementRollup(sb, "official", [params.id]),
     ]);
 
   // Shim the get_official_page payload back into the per-section result shapes the
@@ -407,6 +421,9 @@ export default async function OfficialProfilePage({
   const careerHistoryRes = { data: page.career_history ?? [] };
   const promisesRes = { data: page.promises ?? [] };
   const responsivenessRes = { data: page.civic_responses ?? [] };
+  // FIX-906: missing id → EMPTY (the MV only holds rows for entities with an
+  // engagement signal at all), same fallback OfficialCard uses.
+  const engagement = engagementRollup.get(params.id) ?? EMPTY_ENGAGEMENT;
 
   if (!officialData) {
     notFound();
@@ -805,18 +822,15 @@ export default async function OfficialProfilePage({
     else                                                   civicOpen++;
   }
   const civicTotalClosed   = civicResponded + civicNoResponse;
-  const civicResponseRate  = civicTotalClosed > 0
-    ? Math.round((civicResponded / civicTotalClosed) * 100)
-    : null;
-  const civicGrade         = civicResponseRate !== null ? gradeFromRate(civicResponseRate) : null;
 
+  // FIX-905: counts only — the A-F grade and the response-rate percentage that
+  // fed it are gone. The responsiveness JUDGMENT is the tiered EngagementBadges
+  // in the identity block above; this is the ledger behind it.
   const responsivenessData = {
     responded:     civicResponded,
     no_response:   civicNoResponse,
     open:          civicOpen,
     total_closed:  civicTotalClosed,
-    response_rate: civicResponseRate,
-    grade:         civicGrade,
     recent: responsivenessRows.slice(0, 10).map((r) => {
       const p = Array.isArray(r.proposals) ? r.proposals[0] : r.proposals;
       const details = p?.initiative_details
@@ -1011,6 +1025,18 @@ export default async function OfficialProfilePage({
                   </p>
                 )}
 
+                {/* FIX-906 — display-only Claimed / Engaged / Active-community
+                    badges, same position they hold on the directory card. This
+                    is the canonical responsiveness signal now that the A-F grade
+                    is gone (FIX-905): tiered, not scored, and small-n disciplined. */}
+                <EngagementBadges
+                  className="mt-2"
+                  entityType="official"
+                  isClaimed={engagement.isClaimed}
+                  engaged={engagedTier(engagement)}
+                  community={communityTier(engagement)}
+                />
+
                 {/* Contact */}
                 <div className="mt-3 flex flex-wrap gap-3">
                   {official.email && (
@@ -1082,16 +1108,22 @@ export default async function OfficialProfilePage({
               value={yearsInOffice !== null ? `${yearsInOffice}y` : "—"}
               label="Years in office"
             />
+            {/* FIX-905: a count, not a grade. No letter, no percentage — the
+                A-F grade this cell used to publish had no minimum-sample floor. */}
             <StatCell
               value={
-                civicGrade
-                  ? `${civicGrade} · ${civicResponseRate}%`
+                civicTotalClosed > 0
+                  ? `${civicResponded}/${civicTotalClosed}`
                   : civicOpen > 0
                   ? `${civicOpen} open`
                   : "—"
               }
               label="Civic responsiveness"
-              note={civicTotalClosed > 0 ? `${civicResponded}/${civicTotalClosed} responded` : undefined}
+              note={
+                civicTotalClosed > 0
+                  ? `windows answered${civicOpen > 0 ? ` · ${civicOpen} open` : ""}`
+                  : undefined
+              }
             />
           </div>
         </div>

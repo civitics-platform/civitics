@@ -1,29 +1,13 @@
 // QWEN-ADDED: shared types and helper for civic initiative responsiveness
+//
+// @deprecated ORPHANED — nothing imports this module. It was a byte-for-byte
+// duplicate of app/api/officials/[id]/responsiveness/_lib.ts; both the card and
+// the detail page import the types from _lib.ts directly.
+//
+// FIX-905 reduced it to a re-export rather than deleting it (file deletions need
+// Craig's sign-off). The point of the reduction is that the removed A-F grade
+// formula — `gradeFromRate` and the `ResponsivenessGrade` type — lived here in a
+// second copy, so leaving the file intact would have kept the deleted score
+// alive in the tree. Deletion candidate: this file has no consumers.
 
-export type ResponsivenessGrade = "A" | "B" | "C" | "D" | "F";
-
-export type ResponsivenessData = {
-  responded: number;
-  no_response: number;
-  open: number;
-  total_closed: number;
-  response_rate: number | null;
-  grade: ResponsivenessGrade | null;
-  recent: Array<{
-    initiative_id: string;
-    initiative_title: string;
-    scope: string;
-    response_type: string;
-    responded_at: string | null;
-    window_closes_at: string;
-    window_opened_at: string;
-  }>;
-};
-
-export function gradeFromRate(rate: number): ResponsivenessGrade {
-  if (rate >= 90) return "A";
-  if (rate >= 70) return "B";
-  if (rate >= 50) return "C";
-  if (rate >= 30) return "D";
-  return "F";
-}
+export type { ResponsivenessData } from "../../api/officials/[id]/responsiveness/_lib";

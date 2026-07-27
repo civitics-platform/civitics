@@ -169,14 +169,22 @@ Updated pages:
 No migration needed — reads from `civic_initiative_responses` (Sprint 1 table).
 
 New API route:
-- `GET /api/officials/[id]/responsiveness` — returns `ResponsivenessData`: responded / no_response / open / total_closed / response_rate (0-100 or null) / grade (A-F or null) / recent (last 10 windows with initiative title + scope). Exports `gradeFromRate()` helper and `ResponsivenessData` type for reuse.
+- `GET /api/officials/[id]/responsiveness` — returns `ResponsivenessData`: responded / no_response / open / total_closed / recent (last 10 windows with initiative title + scope). Exports the `ResponsivenessData` type for reuse.
 
-Grade tiers: A ≥90%, B ≥70%, C ≥50%, D ≥30%, F <30%, null = no closed windows.
+> **FIX-905 (C2 Wave 1) superseded the grading below.** The A-F letter grade and
+> the `response_rate` percentage were removed from the type, the route, the card,
+> and the profile: both were public scores on a public profile (which the
+> platform is committed against) with no minimum-sample floor, so one unanswered
+> window rendered a public "F". The window ledger is unchanged — it is the
+> receipts content, and the record was never the problem. Tiered, small-n-
+> disciplined responsiveness now comes from `app/lib/engagement.ts` +
+> `EngagementBadges`, mounted on the detail page by FIX-906. The grade tiers
+> (A ≥90%, B ≥70%, C ≥50%, D ≥30%, F <30%) are recorded here as history only.
 
 New component:
 - `officials/components/ResponsivenessCard.tsx` — server component (no `"use client"`):
-  - Grade badge (colored ring, A=emerald → F=red)
-  - Response rate % + label ("Highly responsive" etc.)
+  - ~~Grade badge (colored ring, A=emerald → F=red)~~ *(removed, FIX-905)*
+  - ~~Response rate % + label ("Highly responsive" etc.)~~ *(removed, FIX-905 — now `N of M` closed windows answered)*
   - Progress bar (green = responded, gray = no-response)
   - Stat pills: N responded / N no-response / N open
   - Recent window list: initiative title linked, scope, days remaining or responded date, response type badge
@@ -185,8 +193,8 @@ New component:
 
 Updated `officials/[id]/page.tsx`:
 - Added `civic_initiative_responses` join query to existing `Promise.all`
-- Computed grade/rate/counts server-side using `gradeFromRate()` from route module
-- Quick stats row: `sm:grid-cols-4 → sm:grid-cols-5`, added "Civic responsiveness" StatCell showing `Grade · Rate%` or open count
+- Computed grade/rate/counts server-side using `gradeFromRate()` from route module *(grade/rate removed by FIX-905 — counts only)*
+- Quick stats row: `sm:grid-cols-4 → sm:grid-cols-5`, added "Civic responsiveness" StatCell showing ~~`Grade · Rate%`~~ `responded/total_closed` (FIX-905) or open count
 - Added `<ResponsivenessCard>` to overview tab (below CareerHistory)
 
 ## Sprint 6 — Delivered (2026-04-11)

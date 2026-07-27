@@ -1,12 +1,15 @@
-export type ResponsivenessGrade = "A" | "B" | "C" | "D" | "F";
+// FIX-905 — the A-F letter grade and the response-rate percentage were removed.
+// Both were public SCORES on a public profile, which the platform is committed
+// against, and neither carried a minimum-sample floor: one closed window with no
+// response rendered a public "F". What survives is the RECORD — the raw window
+// counts and the recent-window ledger. The canonical responsiveness judgment is
+// now the small-n-disciplined tiering in app/lib/engagement.ts (EngagementBadges).
 
 export type ResponsivenessData = {
   responded:     number;
   no_response:   number;
   open:          number;
   total_closed:  number;
-  response_rate: number | null;
-  grade:         ResponsivenessGrade | null;
   recent: Array<{
     initiative_id:    string;
     initiative_title: string;
@@ -17,11 +20,3 @@ export type ResponsivenessData = {
     window_opened_at: string;
   }>;
 };
-
-export function gradeFromRate(rate: number): ResponsivenessGrade {
-  if (rate >= 90) return "A";
-  if (rate >= 70) return "B";
-  if (rate >= 50) return "C";
-  if (rate >= 30) return "D";
-  return "F";
-}

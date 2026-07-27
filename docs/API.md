@@ -187,7 +187,10 @@ Create a community comment on an official's profile.
 
 ### `GET /api/officials/[id]/responsiveness`
 
-Response-rate scorecard across the official's initiative response windows.
+Window-by-window response record across the official's initiative response
+windows. Counts and a ledger — **not** a score: the `response_rate` percentage
+and the A-F `grade` were removed in FIX-905 (public scores with no
+minimum-sample floor). Tiered responsiveness lives in `EngagementBadges`.
 
 **Response:**
 ```json
@@ -196,9 +199,7 @@ Response-rate scorecard across the official's initiative response windows.
   "no_response": 2,
   "open": 1,
   "total_closed": 6,
-  "response_rate": 0.67,
-  "grade": "B",
-  "items": [{ "initiative_id": "...", "response_type": "...", "responded_at": "...", "..." }]
+  "recent": [{ "initiative_id": "...", "response_type": "...", "responded_at": "...", "..." }]
 }
 ```
 
