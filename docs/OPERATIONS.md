@@ -277,15 +277,95 @@ supabase migration list --local
 supabase migration list
 ```
 
-### Restoring Production Data Locally
+### Refreshing the Local Prod-Clone — `pnpm db:clone:prod` (FIX-912)
+
+One command. Do **not** hand-roll a `supabase db dump` + `psql` restore — that
+recipe silently skips the pg_cron, materialized-view, and stamp steps below and
+leaves the clone in a state nobody can reason about afterwards.
 
 ```powershell
-# Dump data only (no schema) from production
-supabase db dump --data-only -f data.sql
-
-# Load into local DB
-psql postgresql://postgres:postgres@127.0.0.1:54322/postgres -f data.sql
+pnpm db:clone:prod -- --dry-run    # sizes, table counts, resolved command — writes nothing
+pnpm db:clone:prod                 # the real thing
 ```
+
+Useful flags: `--jobs N` (parallel restore workers, default 4), `--skip-dump`
+(retry a failed restore against the dump already on disk), `--keep-dump`,
+`--dump-file PATH`, `--env-file PATH`, `--restore-url URL`.
+
+From a **git worktree**, `.env.local.prod` is a local stub with no password, so
+point at the primary checkout:
+
+```powershell
+pnpm db:clone:prod -- --env-file C:/Users/Craig/Documents/Civitics/App/.env.local.prod
+```
+
+What it does, and why each step is there:
+
+| Step | Why |
+|---|---|
+| Refuse to run unless `.env.local` is `http://127.0.0.1:54321` | The script TRUNCATEs every public table on its target. Restoring prod data *onto prod* is the catastrophic failure mode, so the guard is structural, not advisory. |
+| Warn if prod pipelines are mid-run | `pg_dump` is MVCC-consistent, but a dump pulled mid-nightly is "prod halfway through rewriting itself". Recorded in the stamp; re-run outside the nightly window for a quiescent clone. |
+| Preflight privileges **before** truncating | A permissions failure then leaves the DB intact instead of stranded between TRUNCATE and restore. |
+| Park `pg_cron`, restore, un-park | pg_cron is live locally. A nightly rebuild firing partway through a multi-GB load corrupts the result silently. Parking uses `cron.alter_job(active := false)` — `cron.job` is owned by `supabase_admin` and grants `postgres` SELECT but *not* UPDATE. Only jobs that were active before are re-activated. |
+| Restore as `supabase_admin`, not `postgres` | `pg_restore --disable-triggers` must disable internal RI constraint triggers, which needs SUPERUSER. Local `postgres` owns the tables (enough for TRUNCATE) but is **not** superuser. `entity_comments` has circular FKs, so `--disable-triggers` is genuinely required. |
+| Refresh the 13 materialized views | `pg_dump --data-only` does **not** carry matview contents. `CALL refresh_derived_mvs('daily')` + `('weekly')` covers exactly those 13. |
+| `VACUUM (ANALYZE)` every public table | A bulk load leaves zero planner stats; local `EXPLAIN` output is worthless without them, and index-only scans need the visibility map set. |
+| Write the `pipeline_state` stamp **last** | `pipeline_state` arrives in the dump carrying *prod's* rows, so a stamp written any earlier is clobbered by the restore. |
+
+Everything not in `public` is untouched — in particular `auth.*` survives, so
+the local auth-testing harness (FIX-659/660) does not need re-minting. The
+database is never dropped and `supabase db reset` is never run.
+
+#### Reading the staleness stamp
+
+```powershell
+node scripts/db-query.mjs --local "SELECT value, updated_at FROM pipeline_state WHERE key='local_clone_restore';"
+```
+
+```json
+{
+  "restored_at": "2026-07-27T06:31:00.000Z",
+  "prod_project_ref": "xsazcoxinpgttgquwvuf",
+  "dump_bytes": 2402000000,
+  "tables_restored": 114,
+  "cli_version": "pg_dump (PostgreSQL) 18.3",
+  "restore_jobs": 4,
+  "elapsed": "21m03s",
+  "pipelines_running_at_dump": ""
+}
+```
+
+`restored_at` is the answer to "how stale is local?". `pipelines_running_at_dump`
+empty means prod was quiescent; non-empty names the pipelines that were mid-run,
+so their tables are a part-way snapshot. **No row at all means the clone predates
+FIX-912 and its age is unknown** — refresh before trusting it.
+
+#### Local clone staleness — the trap this exists to prevent
+
+`pg_cron` runs **locally**, on the same schedule as prod. Derived data therefore
+keeps rebuilding itself on a stale clone: `data_sync_log` shows recent runs,
+matviews show recent refreshes, and the whole database *looks* current while its
+source tables are months old. The clone answers confidently and wrongly, and
+nothing on the surface says so.
+
+Three separate workstreams paid for this before the stamp existed — the SLD
+choropleth could not be developed locally, and a `money_vote_influence` screening
+pass had to mark every number it produced "prod-verify before authoring". Check
+`local_clone_restore` before trusting local numbers; recency in `data_sync_log`
+proves nothing about the sources.
+
+### Data facts worth not rediscovering
+
+- **`officials.party` is a Postgres ENUM named `party`,** and its labels are
+  lowercase by definition: `democrat, republican, independent, libertarian,
+  green, other, nonpartisan`. Identical on local and prod, and unaffected by a
+  clone refresh — lowercase values are not clone drift or a casing bug. Query
+  the live list with:
+
+  ```sql
+  SELECT enumlabel FROM pg_enum e JOIN pg_type t ON t.oid = e.enumtypid
+  WHERE t.typname = 'party' ORDER BY e.enumsortorder;
+  ```
 
 ---
 

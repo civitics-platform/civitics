@@ -28,7 +28,8 @@
     "fix:add:test": "node scripts/test-fix-add.mjs",
     "check:reads": "node scripts/check-silent-reads.mjs",
     "check:render-timeouts": "node scripts/check-render-timeouts.mjs",
-    "db:push:prod": "node scripts/db-push-prod.mjs"
+    "db:push:prod": "node scripts/db-push-prod.mjs",
+    "db:clone:prod": "node scripts/db-clone-prod.mjs"
   },
   "devDependencies": {
     "supabase": "2.78.1",
