@@ -169,17 +169,20 @@ export const BUILT_IN_GROUPS: FocusGroup[] = [
     description: 'Oil, gas, and energy sector PACs',
   },
   {
+    // FIX-908: `pharma` → `health`. The group ID is a STABLE HANDLE referenced by
+    // saved sessions and share codes — renamed the label and repointed the
+    // filter, never the id.
     id: 'group-pac-healthcare',
-    name: 'Pharma PACs',
+    name: 'Health Care PACs',
     type: 'group',
-    icon: 'pharma',
+    icon: 'health',
     color: 'rgb(var(--c-viz-1))',
     filter: {
       entity_type: 'pac',
-      industry: 'pharma',
+      industry: 'health',
     },
     isPremade: true,
-    description: 'Pharmaceutical, biotech, and medical device PACs',
+    description: 'Hospital, physician, insurer, pharmaceutical, and biotech PACs',
   },
   {
     id: 'group-pac-defense',

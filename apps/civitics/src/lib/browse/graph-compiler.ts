@@ -31,6 +31,11 @@
  */
 
 import type { GroupFilter } from "@civitics/graph";
+// Value import, deliberately via the `/industries` SUBPATH rather than the
+// package barrel: the barrel pulls in React, d3 and lucide, which would break
+// this module's "dependency-free at runtime" property above and make it
+// un-runnable under `tsx --test`. industries.ts is plain data with no imports.
+import { INDUSTRY_KEYS } from "@civitics/graph/industries";
 import type { BrowseKind, BrowseSort, BrowseState, FacetMap, FacetValue } from "./types";
 import { normalizeSort } from "./browse-state";
 import { compileScope, scopeCrumbs, UnknownScopeError } from "./scope-tree";
@@ -38,27 +43,34 @@ import { validateFacets } from "./registry";
 
 // ── Industry token map ──────────────────────────────────────────────────────────
 //
-// The index/entity_tags canonical vocabulary (verified local + prod 2026-07-07):
-// lobby finance oil_gas pharma defense labor tech agriculture real_estate retail
-// legal transportation. BUILT_IN_GROUPS already matches it 1:1; the mismatch
-// lives in v1 saved rows and legacy URLs, which carry CustomGroupForm display
-// labels ("Energy", "Healthcare", "Real Estate", "Retail & Food") or the W1
-// legacy "energy" token. Unknown tokens throw — a filter that silently matches
-// zero rows is the failure mode this map exists to prevent.
+// The canonical entity_tags vocabulary. FIX-908 stopped this file declaring its
+// own copy of the list: the keys now come from `INDUSTRY_KEYS` in
+// @civitics/graph, which mirrors VALID_INDUSTRIES in
+// packages/data/src/pipelines/tags/topics.ts (apps/civitics has no dependency
+// edge to @civitics/data — see packages/graph/src/industries.ts). BUILT_IN_GROUPS
+// matches it 1:1; the mismatch this map exists for lives in v1 saved rows and
+// legacy URLs, which carry CustomGroupForm display labels ("Energy",
+// "Healthcare", "Real Estate", "Retail & Food") or the W1 legacy "energy" token.
+// Unknown tokens throw — a filter that silently matches zero rows is the failure
+// mode this map exists to prevent.
 
-export const CANONICAL_INDUSTRY_TOKENS = [
-  "lobby", "finance", "oil_gas", "pharma", "defense", "labor", "tech",
-  "agriculture", "real_estate", "retail", "legal", "transportation",
-] as const;
+export { INDUSTRY_KEYS as CANONICAL_INDUSTRY_TOKENS } from "@civitics/graph/industries";
 
-const CANONICAL_SET: ReadonlySet<string> = new Set(CANONICAL_INDUSTRY_TOKENS);
+const CANONICAL_SET: ReadonlySet<string> = new Set(INDUSTRY_KEYS);
 
 /** Legacy/display tokens (lowercased, trimmed) → canonical entity_tags token. */
 const INDUSTRY_ALIASES: Record<string, string> = {
   "energy":           "oil_gas",
   "oil & gas":        "oil_gas",
-  "healthcare":       "pharma",
-  "pharmaceutical":   "pharma",
+  "healthcare":       "health",
+  // FIX-908 back-compat: `pharma` was the canonical key until the blanket rename
+  // to `health`. An old URL or saved row carrying it must still resolve rather
+  // than throw UnknownIndustryTokenError. `pharmaceutical` was never canonical —
+  // it was a single hallucinated AI tag, deleted by FIX-909 — but it is a
+  // plausible thing for a natural-language query to produce, so it keeps mapping.
+  "pharma":           "health",
+  "pharmaceutical":   "health",
+  "health care":      "health",
   "real estate":      "real_estate",
   "retail & food":    "retail",
   "lobby / advocacy": "lobby",
@@ -69,7 +81,7 @@ export class UnknownIndustryTokenError extends Error {
   constructor(public readonly token: string) {
     super(
       `Unknown industry token "${token}" — not in the entity_tags vocabulary ` +
-      `(${CANONICAL_INDUSTRY_TOKENS.join(", ")}) and no alias maps it`,
+      `(${INDUSTRY_KEYS.join(", ")}) and no alias maps it`,
     );
     this.name = "UnknownIndustryTokenError";
   }

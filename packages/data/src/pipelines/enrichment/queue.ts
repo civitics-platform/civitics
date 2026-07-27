@@ -300,26 +300,18 @@ export function buildOfficialSummaryContext(o: OfficialSummaryInput) {
 // Financial entity context builder
 // ---------------------------------------------------------------------------
 
-// Valid industry tags the AI worker may assign — mirrors INDUSTRY_LABELS in
-// rules.ts. Definition moved to ../tags/topics.ts by FIX-890 (the drain
-// vocabulary guard needs a `pg`-free vocabulary module); re-exported here so
-// existing importers keep working.
+// Valid industry tags the AI worker may assign. Definition moved to
+// ../tags/topics.ts by FIX-890 (the drain vocabulary guard needs a `pg`-free
+// vocabulary module); re-exported here so existing importers keep working.
+//
+// FIX-908: INDUSTRY_DISPLAY was the third verbatim copy of the label map (after
+// rules.ts and ai-classifier.ts) and is now an alias of the shared
+// INDUSTRY_LABELS rather than its own table. The name is kept as an export so
+// existing importers are unaffected.
 export { VALID_INDUSTRIES } from "../tags/topics";
+import { INDUSTRY_LABELS } from "../tags/topics";
 
-export const INDUSTRY_DISPLAY: Record<string, { label: string; icon: string }> = {
-  pharma:         { label: "Pharma",           icon: "💊" },
-  oil_gas:        { label: "Oil & Gas",        icon: "🛢" },
-  finance:        { label: "Finance",          icon: "📈" },
-  tech:           { label: "Tech",             icon: "💻" },
-  defense:        { label: "Defense",          icon: "🛡" },
-  real_estate:    { label: "Real Estate",      icon: "🏠" },
-  labor:          { label: "Labor",            icon: "👷" },
-  agriculture:    { label: "Agriculture",      icon: "🌾" },
-  legal:          { label: "Legal",            icon: "⚖️" },
-  retail:         { label: "Retail",           icon: "🛒" },
-  transportation: { label: "Transportation",   icon: "🚛" },
-  lobby:          { label: "Lobby / Advocacy", icon: "🏛" },
-};
+export const INDUSTRY_DISPLAY: Record<string, { label: string; icon: string }> = INDUSTRY_LABELS;
 
 export type FinancialEntityTagInput = {
   id: string;

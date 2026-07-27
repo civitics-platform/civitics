@@ -19,6 +19,7 @@ import { createAdminClient, selectAllOrThrow } from "@civitics/db";
 import { createAiClient } from "@civitics/ai";
 import { costGate } from "@civitics/ai/cost-gate";
 import { startSync, completeSync, failSync } from "../sync-log";
+import { VALID_INDUSTRIES, INDUSTRY_LABELS, industryDisplay } from "./topics";
 
 // ---------------------------------------------------------------------------
 // Config
@@ -27,28 +28,32 @@ import { startSync, completeSync, failSync } from "../sync-log";
 const MIN_DONATION_CENTS = 10_000_000; // $100k — not worth AI cost below this
 const COST_PER_PAC_USD = 0.0002;
 
-const VALID_INDUSTRIES = [
-  "pharma", "oil_gas", "finance", "tech", "defense",
-  "real_estate", "labor", "agriculture", "legal",
-  "retail", "transportation", "lobby", "other",
-] as const;
-type Industry = typeof VALID_INDUSTRIES[number];
+// FIX-908: the local 12-key VALID_INDUSTRIES + INDUSTRY_LABELS copies that lived
+// here are gone. This file now imports the SAME constants the drain
+// write-boundary guard uses (drain/vocabulary.ts →
+// TAG_VOCABULARY.financial_entity.industry = VALID_INDUSTRIES), so the set the
+// model is offered and the set the database will accept cannot drift apart —
+// which they already had: this copy carried an `other` key that was never a
+// member of the shared vocabulary.
+//
+// KNOWN, DELIBERATELY UNCHANGED (FIX-908): the prompt offers "other" as an answer
+// and "other" is NOT a member of VALID_INDUSTRIES — yet it is still WRITTEN, as
+// a real entity_tags row tagged `other`. Every model abstention, and every
+// unparseable answer (the coercion below collapses both to "other"), lands in
+// the table as out-of-vocabulary drift: the same class as the four singleton
+// rows this change is deleting, and the class FIX-890's write-boundary guard
+// exists to stop — except this path upserts over PostgREST and never passes
+// through that guard. Measured 2026-07-27: prod carries 8 such rows (local
+// carries 0), so this is open AND bleeding. Left as-is here on purpose — fixing
+// it changes what gets written, which is not what a vocabulary PR should do
+// quietly, and the 8 rows are a display wart rather than a correctness break.
+// Tracked as its own FIX; the FIX-909 migration deliberately tolerates `other`
+// in its vocabulary assertion rather than deleting rows this PR was not
+// authorised to touch.
+type Industry = (typeof VALID_INDUSTRIES)[number] | "other";
 
-const INDUSTRY_LABELS: Record<Industry, { label: string; icon: string }> = {
-  pharma:         { label: "Pharma",           icon: "💊" },
-  oil_gas:        { label: "Oil & Gas",        icon: "🛢" },
-  finance:        { label: "Finance",          icon: "📈" },
-  tech:           { label: "Tech",             icon: "💻" },
-  defense:        { label: "Defense",          icon: "🛡" },
-  real_estate:    { label: "Real Estate",      icon: "🏠" },
-  labor:          { label: "Labor",            icon: "👷" },
-  agriculture:    { label: "Agriculture",      icon: "🌾" },
-  legal:          { label: "Legal",            icon: "⚖️" },
-  retail:         { label: "Retail",           icon: "🛒" },
-  transportation: { label: "Transportation",   icon: "🚛" },
-  lobby:          { label: "Lobby / Advocacy", icon: "🏛" },
-  other:          { label: "Other",            icon: "⚙" },
-};
+/** Not a vocabulary member — see the note above. Kept only to preserve current behaviour. */
+const OTHER_DISPLAY = { label: "Other", icon: "⚙" } as const;
 
 // ---------------------------------------------------------------------------
 // Types
@@ -70,14 +75,32 @@ interface ClassificationResult {
 // Prompt
 // ---------------------------------------------------------------------------
 
+// FIX-908: the allowed list is BUILT from VALID_INDUSTRIES rather than restated in
+// prose. The old hardcoded twelve is what made the classifier the root cause the
+// audit found — with no bucket for electric utilities, industrial manufacturing,
+// chemicals, autos, steel, mining or media, a model handed "Duke Energy PAC" can
+// only answer `oil_gas`, and it is not wrong to. Enumerating from the constant
+// means the next key added to the vocabulary reaches the model automatically.
+//
+// The one-line label gloss is included so the model classifies against what a
+// bucket MEANS rather than guessing from the slug — `lobby` vs `legal` and
+// `retail` vs `manufacturing` are otherwise coin flips on a bare key.
 function buildPrompt(pacName: string): string {
+  const options = VALID_INDUSTRIES
+    .map((k) => `  ${k} — ${INDUSTRY_LABELS[k].label}`)
+    .join("\n");
+
   return `What industry does this political action committee represent?
 
 PAC name: ${pacName}
 
+Choose exactly one of these industries:
+${options}
+  other — none of the above / cannot tell from the name
+
 Return ONLY valid JSON with no markdown and no explanation:
 {
-  "industry": "one of: pharma, oil_gas, finance, tech, defense, real_estate, labor, agriculture, legal, retail, transportation, lobby, other",
+  "industry": "one of the keys listed above",
   "confidence": 0.0,
   "reasoning": "one sentence"
 }
@@ -114,7 +137,7 @@ async function classifyPac(
       reasoning: string;
     };
 
-    const industry = VALID_INDUSTRIES.includes(parsed.industry as Industry)
+    const industry: Industry = (VALID_INDUSTRIES as readonly string[]).includes(parsed.industry)
       ? (parsed.industry as Industry)
       : "other";
 
@@ -242,7 +265,7 @@ export async function runAiClassifier(options: { confirmed?: boolean } = {}): Pr
       totalInputTokens  += result.input_tokens;
       totalOutputTokens += result.output_tokens;
 
-      const info = INDUSTRY_LABELS[result.industry];
+      const info = industryDisplay(result.industry) ?? OTHER_DISPLAY;
       const visibility = result.confidence >= 0.7 ? "primary" : "internal";
 
       const { error: upsertErr } = await db.from("entity_tags").upsert(

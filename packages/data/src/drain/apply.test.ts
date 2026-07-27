@@ -182,7 +182,7 @@ test("financial_entity legacy fallback still derives 'industry'", async () => {
   const outcome = await applyResult(db, {
     queue_id: 77,
     success: true,
-    result: { tags: [{ tag: "pharma", confidence: 0.9, is_primary: true, rank: 1 }] },
+    result: { tags: [{ tag: "health", confidence: 0.9, is_primary: true, rank: 1 }] },
   });
 
   assert.equal(outcome.kind, "ok");

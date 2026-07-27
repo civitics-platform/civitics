@@ -94,5 +94,5 @@ test("rejection comes from official: {} — an UNREGISTERED type still fails OPE
 test("proposal and financial_entity vocabularies are unaffected", () => {
   assert.equal(checkTagVocabulary("proposal", "topic", "climate").allowed, true);
   assert.equal(checkTagVocabulary("proposal", "quality", "technical").allowed, true);
-  assert.equal(checkTagVocabulary("financial_entity", "industry", "pharma").allowed, true);
+  assert.equal(checkTagVocabulary("financial_entity", "industry", "health").allowed, true);
 });

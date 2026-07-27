@@ -19,7 +19,7 @@ import { createAdminClient } from "@civitics/db";
 import { startSync, completeSync, failSync } from "../sync-log";
 import { selectDirect, rollupJsonbDirect } from "../../lib/heavy-rebuild";
 import { withDirectClient, bulkUpsert } from "../../lib/direct-pg-upsert";
-import { VALID_INDUSTRIES } from "./topics";
+import { VALID_INDUSTRIES, industryDisplay } from "./topics";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -79,8 +79,20 @@ const AGENCY_SECTORS: Record<
 // Industry keyword matching for financial entities
 // ---------------------------------------------------------------------------
 
-const INDUSTRY_KEYWORDS: Record<string, string[]> = {
-  pharma: [
+// Exported (FIX-908) so industry-vocabulary.test.ts can assert that every key
+// here is a real vocabulary member. That invariant is load-bearing: the emit
+// loop below drops any match whose key misses INDUSTRY_LABELS (`if (!info)
+// continue`), and this function does an AUTHORITATIVE rebuild — it clears the
+// whole 'industry' category first. So a key that stops resolving does not
+// degrade, it silently ZEROES that industry on the next nightly.
+export const INDUSTRY_KEYWORDS: Record<string, string[]> = {
+  // FIX-908: key renamed `pharma` → `health` in lockstep with the VALID_INDUSTRIES
+  // rename. This key IS the emitted tag — leaving it as `pharma` would make
+  // every keyword match resolve to an INDUSTRY_LABELS miss and get dropped by
+  // the `if (!info) continue` guard below, silently zeroing the largest industry
+  // tag on the next nightly. The keyword list itself is unchanged and was always
+  // health-sector, not pharmaceutical-sector; see the note in topics.ts.
+  health: [
     "pharma", "drug", "medical", "health", "biotech",
     "pfizer", "merck", "physician", "hospital", "healthcare",
     "medicine", "surgical", "dental", "optometry", "nursing",
@@ -187,20 +199,10 @@ const INDUSTRY_KEYWORDS: Record<string, string[]> = {
   ],
 };
 
-const INDUSTRY_LABELS: Record<string, { label: string; icon: string }> = {
-  pharma:         { label: "Pharma",          icon: "💊" },
-  oil_gas:        { label: "Oil & Gas",       icon: "🛢" },
-  finance:        { label: "Finance",         icon: "📈" },
-  tech:           { label: "Tech",            icon: "💻" },
-  defense:        { label: "Defense",         icon: "🛡" },
-  real_estate:    { label: "Real Estate",     icon: "🏠" },
-  labor:          { label: "Labor",           icon: "👷" },
-  agriculture:    { label: "Agriculture",     icon: "🌾" },
-  legal:          { label: "Legal",           icon: "⚖️" },
-  retail:         { label: "Retail",          icon: "🛒" },
-  transportation: { label: "Transportation",  icon: "🚛" },
-  lobby:          { label: "Lobby / Advocacy",icon: "🏛" },
-};
+// FIX-908: the local INDUSTRY_LABELS copy that lived here is gone — the map is now
+// imported from ./topics, beside VALID_INDUSTRIES, so the vocabulary and its
+// labels can no longer drift apart. Runtime lookups on unvalidated keys (rollup
+// values, NAICS output) go through industryDisplay().
 
 // ---------------------------------------------------------------------------
 // FIX-897 — official industry labels from donation sector affinity
@@ -224,10 +226,18 @@ export type OfficialSector = {
 
 /**
  * Fail loud on vocabulary drift rather than emitting a null-labelled pill.
- * INDUSTRY_LABELS is this file's label/icon table; VALID_INDUSTRIES in topics.ts
- * is the shared vocabulary. A rollup value outside either means an upstream
- * industry tagger started emitting a slug nobody registered — the FIX-889
- * failure one layer down, and the caller would render a pill with a blank label.
+ * Both halves now live in topics.ts (FIX-908): VALID_INDUSTRIES is the vocabulary
+ * and INDUSTRY_LABELS (read here via industryDisplay) is its label/icon table. A
+ * rollup value outside either means an upstream industry tagger started emitting
+ * a slug nobody registered — the FIX-889 failure one layer down, and the caller
+ * would render a pill with a blank label.
+ *
+ * FIX-908 NOTE: official_sector_affinity_rollup STORES the industry key and is
+ * refreshed incrementally off the donor dirty set, so a vocabulary key rename
+ * must UPDATE that table in the same migration as entity_tags. Renaming only
+ * entity_tags leaves stale keys in the rollup for every official whose donors
+ * did not change, and this assert then throws and takes the whole official
+ * tagger down on the next nightly.
  *
  * NOTE: `'Untagged'` — the rollup's bucket for donors with no industry tag —
  * is filtered out in SQL before this ever sees it. It is not an industry; it is
@@ -235,13 +245,13 @@ export type OfficialSector = {
  */
 export function assertIndustryVocabulary(industries: readonly string[]): void {
   const unknown = [...new Set(industries)].filter(
-    (i) => !VALID_INDUSTRIES.includes(i as (typeof VALID_INDUSTRIES)[number]) || !INDUSTRY_LABELS[i],
+    (i) => !VALID_INDUSTRIES.includes(i as (typeof VALID_INDUSTRIES)[number]) || !industryDisplay(i),
   );
   if (unknown.length > 0) {
     throw new Error(
       `official_sector_affinity_rollup carries industry value(s) outside the vocabulary: ` +
-        `${unknown.join(", ")}. Register them in topics.ts VALID_INDUSTRIES + ` +
-        `rules.ts INDUSTRY_LABELS, or exclude them at the read — refusing to write ` +
+        `${unknown.join(", ")}. Register them in topics.ts (VALID_INDUSTRIES + ` +
+        `INDUSTRY_LABELS), or exclude them at the read — refusing to write ` +
         `null-labelled pills.`,
     );
   }
@@ -264,7 +274,7 @@ export function buildOfficialIndustryTags(
 ): TagInsert[] {
   const out: TagInsert[] = [];
   for (const s of sectors) {
-    const info = INDUSTRY_LABELS[s.industry];
+    const info = industryDisplay(s.industry);
     // Unreachable once assertIndustryVocabulary has run (it throws first) —
     // belt-and-braces so a future caller that skips the assert drops the pill
     // rather than rendering a null-labelled one.
@@ -861,13 +871,17 @@ export async function tagOfficials(db: any): Promise<number> {
 // More-specific 3/4-digit entries override the 2-digit bucket.
 // ---------------------------------------------------------------------------
 
+// FIX-909: five sector-level corrections. These touch only ~78 contractor rows so
+// the dollar impact is nil, but each was the same category error the taxonomy
+// audit found in entity_tags, written down a second time — left alone they would
+// reseed it on every nightly.
 const NAICS2_INDUSTRY: Record<string, string> = {
   "11": "agriculture",
-  "21": "oil_gas",
-  "22": "oil_gas",
-  "31": "agriculture",
-  "32": "pharma",
-  "33": "defense",
+  "21": "oil_gas",         // NAICS 21 — Mining, Quarrying, and Oil and Gas Extraction (kept on oil_gas; see decision 4)
+  "22": "utilities",       // NAICS 22 — Utilities. WAS oil_gas: sector 22 IS Utilities; this is the mis-bucketing the audit named
+  "31": "manufacturing",   // NAICS 31 — Manufacturing (food/textile/apparel). WAS agriculture
+  "32": "manufacturing",   // NAICS 32 — Manufacturing (paper/chemical/plastics). WAS pharma
+  "33": "manufacturing",   // NAICS 33 — Manufacturing (metal/machinery/electrical/transport equip). WAS defense
   "42": "retail",
   "44": "retail",
   "45": "retail",
@@ -878,24 +892,49 @@ const NAICS2_INDUSTRY: Record<string, string> = {
   "53": "real_estate",
   "54": "tech",
   "55": "finance",
-  "56": "labor",
-  "62": "pharma",
+  // NAICS 56 — Administrative/Support and Waste Management: staffing, security
+  // and waste firms, NOT unions. Mapping it to `labor` was a category error and
+  // there is no right bucket in this vocabulary, so the entry is REMOVED rather
+  // than repointed — naicsToIndustry returns null and the row goes untagged,
+  // which is the honest answer.
+  "62": "health",          // NAICS 62 — Health Care and Social Assistance (key renamed from pharma)
   "92": "lobby",
 };
 
+// 3/4-digit overrides beat the 2-digit bucket. FIX-909 left these alone except
+// where the 2-digit rename forced a rewrite, per decision 8 ("only if the change
+// is clean — skip if it spiders").
 const NAICS_OVERRIDE: Record<string, string> = {
   "334": "tech",
   "335": "tech",
+  // "336" — Transportation Equipment Manufacturing. Kept on `defense` rather
+  // than moved to `manufacturing`: 336 is where the aerospace/defense primes
+  // actually sit (3364 Aerospace Product and Parts), and `defense` is the more
+  // specific true answer for this contractor set. Its parent 33 now correctly
+  // resolves to `manufacturing`, so autos and the rest of 336 that are NOT
+  // defense primes are the open question — deliberately left as a follow-up
+  // rather than swept in here, because splitting 3361/3363 (autos) from 3364
+  // (aerospace) is a real classification call, not a typo fix.
   "336": "defense",
-  "325": "pharma",
-  "326": "pharma",
+  // 325/326 — Chemical and Plastics/Rubber Manufacturing. WERE `pharma`, which
+  // was only ever right for 3254 (Pharmaceutical and Medicine Manufacturing);
+  // bulk chemicals and plastics are manufacturing, and `chemicals` is one of the
+  // buckets the audit named as missing. 3254 keeps its true home via the 4-digit
+  // entry below, which is checked first.
+  "3254": "health",
+  "325": "manufacturing",
+  "326": "manufacturing",
   "541": "tech",
   "5411": "legal",
   "5412": "finance",
   "5415": "tech",
 };
 
-function naicsToIndustry(code: string): string | null {
+// Exported (FIX-909) for the same reason as INDUSTRY_KEYWORDS — the NAICS emit
+// loop drops unresolvable keys just as silently.
+export const NAICS_MAPS = { NAICS2_INDUSTRY, NAICS_OVERRIDE } as const;
+
+export function naicsToIndustry(code: string): string | null {
   const clean = code.trim();
   return (
     NAICS_OVERRIDE[clean.slice(0, 4)] ??
@@ -977,7 +1016,7 @@ async function tagFinancialEntities(db: any): Promise<number> {
       const baseConfidence = matchedIndustries.length > 1 ? 0.7 : 0.8;
       const base = { entity_type: "financial_entity", entity_id: entity.id as string, generated_by: "rule" as const, pipeline_version: "v1" };
       for (const industry of matchedIndustries) {
-        const info = INDUSTRY_LABELS[industry];
+        const info = industryDisplay(industry);
         if (!info) continue;
         allTags.push({
           ...base,
@@ -1003,7 +1042,7 @@ async function tagFinancialEntities(db: any): Promise<number> {
     if (!r.naics_code) continue;
     const industry = naicsToIndustry(r.naics_code);
     if (!industry) continue;
-    const info = INDUSTRY_LABELS[industry];
+    const info = industryDisplay(industry);
     if (!info) continue;
     allTags.push({
       entity_type: "financial_entity",

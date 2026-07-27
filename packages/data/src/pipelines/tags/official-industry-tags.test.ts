@@ -22,7 +22,7 @@ const OFFICIAL_ID = "33333333-3333-3333-3333-333333333333";
 
 const SECTORS: OfficialSector[] = [
   { industry: "finance", total_cents: 5_000_00, donor_count: 42, rank: 1 },
-  { industry: "pharma", total_cents: 2_000_00, donor_count: 17, rank: 2 },
+  { industry: "health", total_cents: 2_000_00, donor_count: 17, rank: 2 },
   { industry: "oil_gas", total_cents: 1_000_00, donor_count: 5, rank: 3 },
 ];
 
@@ -59,8 +59,10 @@ test("every tag carries a non-null display label and icon", () => {
     assert.ok(t.display_label, `null display_label for ${t.tag}`);
     assert.ok(t.display_icon, `null display_icon for ${t.tag}`);
   }
-  assert.equal(tags[0]?.display_label, "Finance");
-  assert.equal(tags[1]?.display_label, "Pharma");
+  // FIX-908 widened these labels; `oil_gas` is pinned narrow on purpose (see
+  // the decision-4 pin in industry-vocabulary.test.ts).
+  assert.equal(tags[0]?.display_label, "Finance & Insurance");
+  assert.equal(tags[1]?.display_label, "Health Care");
   assert.equal(tags[2]?.display_label, "Oil & Gas");
 });
 

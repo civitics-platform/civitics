@@ -71,9 +71,9 @@ test("status=active is consumed (route is always active-only)", () => {
 
 test("pac scope + industry compiles to the industry-tagged pac mode", () => {
   const f = compileBrowseToGroupFilter(
-    state({ scope: "money/pacs", facets: { industry: "pharma" } }),
+    state({ scope: "money/pacs", facets: { industry: "health" } }),
   );
-  assert.deepEqual(f, { entity_type: "pac", industry: "pharma" });
+  assert.deepEqual(f, { entity_type: "pac", industry: "health" });
 });
 
 test("financial subtype scopes compile to the financial cohort mode (FIX-772)", () => {
@@ -155,7 +155,7 @@ test("non-active status fails loudly", () => {
 
 test("financial without a subtype fails loudly (whole-Money cohort has no route mode)", () => {
   assertUncompilable(state({ scope: "money" }), /entity type/i);
-  assertUncompilable(state({ scope: "money", facets: { industry: "pharma" } }), /entity type/i);
+  assertUncompilable(state({ scope: "money", facets: { industry: "health" } }), /entity type/i);
 });
 
 test("individual donors and unknown financial subtypes fail loudly (FIX-772)", () => {
@@ -171,7 +171,7 @@ test("individual donors and unknown financial subtypes fail loudly (FIX-772)", (
 
 test("industry with a non-pac financial subtype fails loudly (route ignores it)", () => {
   assertUncompilable(
-    state({ scope: "money/super-pacs", facets: { industry: "pharma" } }),
+    state({ scope: "money/super-pacs", facets: { industry: "health" } }),
     /pac cohorts/i,
   );
 });
@@ -213,11 +213,31 @@ test("canonical tokens pass through unchanged", () => {
 
 test("v1 display labels map to canonical tokens", () => {
   assert.equal(normalizeIndustryToken("Energy"), "oil_gas");
-  assert.equal(normalizeIndustryToken("Healthcare"), "pharma");
+  assert.equal(normalizeIndustryToken("Healthcare"), "health");
   assert.equal(normalizeIndustryToken("Real Estate"), "real_estate");
   assert.equal(normalizeIndustryToken("Retail & Food"), "retail");
   assert.equal(normalizeIndustryToken("Finance"), "finance");
   assert.equal(normalizeIndustryToken("Tech"), "tech");
+});
+
+// FIX-908 — `pharma` was the canonical token until the blanket rename to
+// `health`. Old URLs and any v1 saved row still carry it, and normalizeIndustryToken
+// THROWS on an unknown token, so without the alias a bookmarked /search or graph
+// link would hard-fail rather than resolve.
+test("the retired `pharma` token still resolves to `health` (FIX-908 back-compat)", () => {
+  assert.equal(normalizeIndustryToken("pharma"), "health");
+  assert.equal(normalizeIndustryToken("Pharma"), "health");
+  assert.equal(normalizeIndustryToken("pharmaceutical"), "health");
+  assert.equal(normalizeIndustryToken("Health Care"), "health");
+});
+
+// The four buckets FIX-908 added are empty in entity_tags until the curated
+// override list lands, but the compiler must accept them NOW — otherwise the
+// first donor moved into `utilities` produces a filter that throws.
+test("the four new FIX-908 industry keys are accepted as canonical", () => {
+  for (const k of ["utilities", "manufacturing", "mining", "media"]) {
+    assert.equal(normalizeIndustryToken(k), k);
+  }
 });
 
 test("unknown tokens throw (never silently match zero rows)", () => {
@@ -298,7 +318,7 @@ test("v1 row shape is detected and up-compiled on parse", () => {
   const parsed = parseSavedViewFilter({ entity_type: "pac", industry: "Healthcare" });
   assert.equal(parsed.version, 1);
   assert.equal(parsed.state.scope, "money/pacs");
-  assert.deepEqual(parsed.state.facets, { industry: "pharma" });
+  assert.deepEqual(parsed.state.facets, { industry: "health" });
 });
 
 test("garbage payloads are rejected, not guessed at", () => {

@@ -69,6 +69,12 @@ export { resolveToken, resolvePaperToken, resolveColor, withAlpha, toHexColor } 
 // ── Icon registry (FIX-730) ─────────────────────────────────────────────────
 export { Icon, resolveIcon, hasIcon, ICON_REGISTRY, GENERIC_ICON } from "./icons";
 
+// FIX-908 — donor-industry vocabulary mirror. Source of truth is
+// packages/data/src/pipelines/tags/topics.ts; see ./industries.ts for why a
+// mirror exists and which test keeps the two in lockstep.
+export { INDUSTRY_KEYS, isIndustryKey, labelToIndustryKey } from "./industries";
+export type { IndustryKey } from "./industries";
+
 import { CONNECTION_TYPE_REGISTRY } from "./connections";
 
 // ── Groups ──────────────────────────────────────────────────────────────────

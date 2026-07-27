@@ -3,25 +3,22 @@ import type { NextRequest } from "next/server";
 import { createAdminClient } from "@civitics/db";
 import { supabaseUnavailable, unavailableResponse, withDbTimeout } from "@/lib/supabase-check";
 import type { GroupFilter } from "@civitics/graph";
+import { labelToIndustryKey } from "@civitics/graph/industries";
 import { withPublicCdnCache } from "@/lib/cdn-cache";
 
 export const dynamic = "force-dynamic";
 
-const SECTOR_ICONS: Record<string, string> = {
-  'Finance': 'finance',
-  'Labor': 'labor',
-  'Energy': 'energy',
-  'Healthcare': 'healthcare',
-  'Real Estate': 'real_estate',
-  'Tech': 'tech',
-  'Agriculture': 'agriculture',
-  'Defense': 'defense',
-  'Transportation': 'transportation',
-  'Construction': 'construction',
-  'Retail & Food': 'retail',
-  'Education': 'education',
-  'Legal': 'legal',
-};
+// FIX-908: was a hand-written label→icon-key table that had already gone stale —
+// 'Healthcare', 'Energy' and 'Retail & Food' were never our display_labels, so
+// those lookups silently fell through to the generic 'sector' icon. The values
+// here are `official_sector_dollars_mv.sector_label` (a MIN() over
+// entity_tags.display_label), which is why this surface only ever sees a LABEL
+// and has to map back; labelToIndustryKey covers the current labels AND the
+// historical ones, since a rollup refreshed before a label change still carries
+// the old string.
+function sectorIconKey(label: string | null | undefined): string {
+  return (label ? labelToIndustryKey(label) : null) ?? 'sector';
+}
 
 type FlowRow = {
   industry: string;
@@ -195,7 +192,7 @@ export async function GET(req: NextRequest) {
         .map(([sec, v]) => ({
           id: sec,
           label: v.label,
-          icon: v.icon || SECTOR_ICONS[v.label] || 'sector',
+          icon: v.icon || sectorIconKey(v.label),
           total_usd: Math.round(v.total),
           pac_count: 0,
         }));
@@ -414,7 +411,7 @@ export async function GET(req: NextRequest) {
       const groups = sortedSectors.map((row, i) => ({
         id: `sector-${i}`,
         label: row.sector,
-        icon: SECTOR_ICONS[row.sector] ?? 'sector',
+        icon: sectorIconKey(row.sector),
         total_usd: Math.round(row.group1_usd + row.group2_usd),
         pac_count: 0,
       }));
@@ -463,7 +460,7 @@ export async function GET(req: NextRequest) {
       const groups = (sectorData ?? []).map((row, i) => ({
         id: `sector-${i}`,
         label: row.sector,
-        icon: SECTOR_ICONS[row.sector] ?? 'sector',
+        icon: sectorIconKey(row.sector),
         total_usd: Math.round(row.total_usd),
         pac_count: 0,
       }));

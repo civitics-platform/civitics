@@ -28,7 +28,7 @@ import {
   Repeat, Ban, User, Users, ClipboardList, ScrollText, Sprout, HeartPulse,
   Briefcase, Factory, IdCard, Umbrella, Award, Stamp, Calendar, Sun, FileText,
   Search, BarChart3, Hand, Network, Leaf, Tag, Pin, Gavel, Lightbulb,
-  CircleCheck, Plane,
+  CircleCheck, Plane, Pickaxe, Newspaper,
 } from "lucide-react";
 
 /** The component type of any lucide glyph (derived — no lucide type import). */
@@ -44,10 +44,22 @@ export const GENERIC_ICON: IconComponent = Building2;
  */
 export const ICON_REGISTRY: Record<string, IconComponent> = {
   // ── Industry / sector slugs ──────────────────────────────────────────────
+  //
+  // Every member of INDUSTRY_KEYS (./industries.ts) MUST appear in this block —
+  // a missing key renders the generic Building2 fallback, which reads as "we
+  // have no idea what this is" on a pill whose whole job is to say what it is.
+  // icons.test.ts asserts key-completeness against INDUSTRY_KEYS, so adding a
+  // vocabulary key without an icon fails the build rather than degrading
+  // quietly.
   finance: Banknote,
   labor: HardHat,
   energy: Zap,
   healthcare: HeartPulse,
+  // FIX-908: `pharma` was renamed to `health` in the vocabulary. The old key is
+  // KEPT as an alias, not deleted — share codes, embedded graphs and cached
+  // rollup rows minted before the rename still carry it, and dropping it would
+  // silently downgrade those to the generic icon.
+  health: HeartPulse,
   pharma: Pill,
   real_estate: Home,
   tech: Laptop,
@@ -65,6 +77,16 @@ export const ICON_REGISTRY: Record<string, IconComponent> = {
   insurance: Umbrella,
   tobacco: Cigarette,
   oil_gas: Fuel,
+  // FIX-908: the four new vocabulary buckets.
+  utilities: Zap,
+  manufacturing: Factory,
+  mining: Pickaxe,
+  media: Newspaper,
+  // FIX-908: `lobby` is the canonical vocabulary key (1,474 rows) but only
+  // `lobbying` was registered, so every lobby pill has been rendering the
+  // generic Building2 fallback. Found by the new key-completeness test, not by
+  // anyone looking at it — which is the argument for the test.
+  lobby: Handshake,
 
   // ── Governing-body types ─────────────────────────────────────────────────
   legislature_upper: Landmark,
