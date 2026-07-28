@@ -1133,3 +1133,6 @@
 2026-07-26 | FIX-906 | 4706cb12 | local-only | fix(officials): remove A-F responsiveness grade; engagement tiers on profile
 2026-07-27 | FIX-912 | ab0c7a58 | local-only | feat(db): repeatable prod-clone refresh + state-legislature district linkage
 2026-07-27 | FIX-915 | 91a6dba2 | local-only | fix(officials): merge officials.metadata in the OpenStates writer; tiered SLD linker
+2026-07-27 | FIX-910 | 663aa865 | local-only | fix(tags): curated industry overrides — 742 donors re-assigned or de-tagged
+2026-07-27 | FIX-916 | 663aa865 | local-only | fix(tags): curated industry overrides — 742 donors re-assigned or de-tagged
+2026-07-27 | FIX-917 | 663aa865 | local-only | fix(tags): curated industry overrides — 742 donors re-assigned or de-tagged
