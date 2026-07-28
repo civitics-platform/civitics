@@ -425,6 +425,31 @@ export async function runOpenStatesPipeline(
       console.log(`  ${state.abbr} bills: ${stateBillsFetched} fetched · ${stateBillsInserted} inserted · ${stateBillsUpdated} updated`);
     }
 
+    // FIX-915 — refresh district cross-links. Mirrors the call site at the end
+    // of openstates-bulk/people.ts, which this pipeline was missing entirely:
+    // it shares the SAME upsertLegislatorsBatch writer and runs in the WEEKLY
+    // Sunday block, i.e. AFTER the daily bulk-people run has already repaired
+    // the links — so before this, the weekly API run undid the daily repair
+    // with no repair of its own.
+    //
+    // The writer now merges metadata rather than replacing it, so existing
+    // links already survive; this call is what links legislators seen for the
+    // first time (and corrects a genuinely changed district) in the SAME run
+    // rather than leaving them dark until the next nightly. Cheap, idempotent,
+    // and a no-op returning 0 when nothing changed. Warn-and-continue: a
+    // linker failure must not fail a pipeline that already landed its rows.
+    let districtLinked = 0;
+    try {
+      const linkRes = await db.rpc("link_officials_to_districts" as never).single();
+      if (linkRes.error) {
+        console.warn(`  link_officials_to_districts: ${linkRes.error.message}`);
+      } else {
+        districtLinked = (linkRes.data as unknown as number | null) ?? 0;
+      }
+    } catch (err) {
+      console.warn(`  link_officials_to_districts threw: ${err instanceof Error ? err.message : err}`);
+    }
+
     const totalInserted = officialsInserted + billsInserted;
     const totalUpdated = officialsUpdated + billsUpdated;
     const totalFailed = officialsFailed + billsFailed;
@@ -446,6 +471,7 @@ export async function runOpenStatesPipeline(
     console.log(`  ${"Bills inserted:".padEnd(32)} ${billsInserted}`);
     console.log(`  ${"Bills updated:".padEnd(32)} ${billsUpdated}`);
     console.log(`  ${"Bills failed:".padEnd(32)} ${billsFailed}`);
+    console.log(`  ${"District-linked:".padEnd(32)} ${districtLinked}`);
     if (quotaHit) console.log(`  ${"Run ended with quota exhausted.".padEnd(32)}`);
 
     await completeSync(logId, result);

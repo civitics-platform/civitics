@@ -24,7 +24,7 @@
  */
 
 import type { createAdminClient } from "@civitics/db";
-import type { Database } from "@civitics/db";
+import type { Database, Json } from "@civitics/db";
 import { refreshPrimarySourceForEntities, rowsOrThrow } from "@civitics/db";
 
 type Db = ReturnType<typeof createAdminClient>;
@@ -181,7 +181,19 @@ export interface LegislatorBatchResult {
   failed: number;
 }
 
-function buildOfficialInsert(input: LegislatorInput): OfficialInsert {
+export type ExistingMetadata = Record<string, Json | undefined>;
+
+/**
+ * `existingMetadata` is supplied on the UPDATE path only (FIX-915). The upsert
+ * REPLACES officials.metadata rather than merging it — PostgREST cannot express
+ * a server-side jsonb merge — so any key the pipeline doesn't re-supply is
+ * destroyed on contact. Incoming keys win; everything else survives. On the
+ * INSERT path there is nothing to preserve, so it stays undefined.
+ */
+function buildOfficialInsert(
+  input: LegislatorInput,
+  existingMetadata?: ExistingMetadata,
+): OfficialInsert {
   const insert: OfficialInsert = {
     full_name: input.fullName,
     role_title: input.roleTitle,
@@ -193,7 +205,9 @@ function buildOfficialInsert(input: LegislatorInput): OfficialInsert {
     is_verified: false,
     website_url: input.websiteUrl,
     source_ids: { openstates_id: input.openstatesId },
-    metadata: input.metadata,
+    metadata: existingMetadata
+      ? { ...existingMetadata, ...input.metadata }
+      : input.metadata,
   };
   if (input.termStart !== undefined) insert.term_start = input.termStart;
   if (input.termEnd !== undefined) insert.term_end = input.termEnd;
@@ -245,11 +259,44 @@ export async function upsertLegislatorsBatch(
 
   // Batched update
   if (toUpdate.length > 0) {
+    // FIX-915 — pre-fetch existing metadata for the update targets so the
+    // upsert below merges instead of replacing. Without this, every legislator
+    // upsert wrote metadata down to just {org_classification, state} and
+    // destroyed `district_jurisdiction_id`, the SLD choropleth cross-link
+    // derived by link_officials_to_districts(). BOTH OpenStates pipelines share
+    // this writer: the daily bulk-people run repaired it afterwards via the
+    // linker RPC, but the weekly API run (runOpenStatesPipeline) never called
+    // the linker at all, so it landed after the repair and undid it.
+    //
+    // rowsOrThrow, not a swallowed error: a skipped chunk here makes every
+    // existing metadata look empty and silently re-clobbers exactly the keys
+    // this pass exists to preserve. Same failure shape as the FIX-545
+    // summary_plain regression — fail loud.
+    const existingMetadata = new Map<string, ExistingMetadata>();
+    const updateIds = toUpdate.map((u) => u.id);
+    for (let i = 0; i < updateIds.length; i += LOOKUP_CHUNK_SIZE) {
+      const chunk = updateIds.slice(i, i + LOOKUP_CHUNK_SIZE);
+      const rows = rowsOrThrow(
+        await db
+          .from("officials")
+          .select("id, metadata")
+          .in("id", chunk),
+        "openstates official metadata prefetch",
+      ) as Array<{ id: string; metadata: Json | null }>;
+      for (const r of rows) {
+        // Defensive: metadata is jsonb and could in principle hold a scalar or
+        // array. Only a plain object is spreadable.
+        if (r.metadata && typeof r.metadata === "object" && !Array.isArray(r.metadata)) {
+          existingMetadata.set(r.id, r.metadata as ExistingMetadata);
+        }
+      }
+    }
+
     for (let i = 0; i < toUpdate.length; i += CHUNK_SIZE) {
       const chunk = toUpdate.slice(i, i + CHUNK_SIZE);
       const records = chunk.map(({ id, item }) => ({
         id,
-        ...buildOfficialInsert(item),
+        ...buildOfficialInsert(item, existingMetadata.get(id)),
       }));
       const { error } = await db
         .from("officials")
@@ -267,7 +314,12 @@ export async function upsertLegislatorsBatch(
   if (toInsert.length > 0) {
     for (let i = 0; i < toInsert.length; i += CHUNK_SIZE) {
       const chunk = toInsert.slice(i, i + CHUNK_SIZE);
-      const records = chunk.map(buildOfficialInsert);
+      // Explicit arrow, NOT the point-free `chunk.map(buildOfficialInsert)`:
+      // Array.map passes (item, index), and buildOfficialInsert's second
+      // parameter is now existingMetadata, so the point-free form hands it the
+      // array index. TypeScript rejects that outright, which is the point —
+      // the insert path must stay merge-free (there is nothing to preserve).
+      const records = chunk.map((item) => buildOfficialInsert(item));
       const { data, error } = await db
         .from("officials")
         .insert(records)

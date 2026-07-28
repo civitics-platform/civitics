@@ -187,8 +187,18 @@ Override default tax years via `IRS990_TAX_YEARS=2022,2023,2024`. Default is `[C
 | `open.pluralpolicy.com/data/session-csv/` | Plural Policy login required | Monthly | Bill CSVs per state per session. Not currently used — gated behind a Django session that the API key doesn't satisfy. |
 
 Scripts:
-- `pnpm --filter @civitics/data data:states` — bulk people pipeline (default; runs daily via nightly orchestrator). Calls `link_officials_to_districts()` at the end so the district cross-link survives the wholesale metadata-jsonb rewrite.
-- `pnpm --filter @civitics/data data:states-api` — full API pipeline (people + bills, weekly). Use when term dates need refreshing or the bulk CSV is stale.
+- `pnpm --filter @civitics/data data:states` — bulk people pipeline (default; runs daily via nightly orchestrator). Calls `link_officials_to_districts()` at the end.
+- `pnpm --filter @civitics/data data:states-api` — full API pipeline (people + bills, weekly Sunday block). Use when term dates need refreshing or the bulk CSV is stale. Also calls `link_officials_to_districts()` at the end (FIX-915) — it previously did not, and since it runs AFTER the daily bulk run it silently undid that run's repair every Sunday.
+
+**`officials.metadata` is MERGED, not replaced (FIX-915).** Both pipelines share
+`openstates/writer.ts`'s `upsertLegislatorsBatch`, whose update path is a
+PostgREST `.upsert(…, { onConflict: 'id' })` — that REPLACES the jsonb column, and
+the pipelines only ever supply `{org_classification, state}`. Every run therefore
+destroyed `metadata->>'district_jurisdiction_id'` (the SLD choropleth cross-link)
+and relied on the linker RPC to re-derive it. The writer now pre-fetches existing
+metadata for its update targets and merges client-side (incoming keys win). If you
+add a pipeline that writes `officials`, merge metadata the same way — PostgREST
+cannot express a server-side jsonb merge, so this has to be done in the writer.
 
 ### Census TIGER districts (FIX-160 maps integration, FIX-217 congressional)
 - District boundaries for all 50 states across three chambers:
@@ -204,7 +214,7 @@ Scripts:
 - Cadence: annual (Census TIGER refresh). Not in the nightly orchestrator.
 - Script: `pnpm --filter @civitics/data data:districts`
 - **Two linker RPCs run after each pipeline pass:**
-  - `link_officials_to_districts()` — state legislators (matches `metadata.org_classification` to TIGER chamber, with regex stripping of "House District N" / "Senate District N" prefixes)
+  - `link_officials_to_districts()` — state legislators. Five-tier match ladder (FIX-913, migration `20260727010000`): numeric zero-pad → multi-member `10A`/`10B` → exact normalised core → squashed core → anchored containment. Scoped by state (`governing_bodies.jurisdiction_id` = the district's `parent_id`) and chamber (`HD`/`SD` short_name prefix) — an unscoped `district_name` join is actively wrong, "10" appears on 99 officials across 50 states. Writes only where the strongest matching tier yields EXACTLY one district; 0 or >1 is skipped, never guessed. Links 7,313 of 7,373; the residual 60 is NH floterial (58, needs [[FIX-914]] seeding) + ME tribal (2, non-geographic and correctly unlinkable forever). Returns rows updated, so a no-change run returns 0. Carries a 5-min function-level `statement_timeout` — it is called as `service_role`, whose prod default is 8s.
   - `link_federal_reps_to_districts()` — House Representatives (matches `role_title='Representative'` + state + district_name to congressional districts; handles at-large states with NULL district_name)
 - The link is written to `officials.metadata->>'district_jurisdiction_id'` (NOT `officials.jurisdiction_id`, which keeps pointing at the statewide jurisdiction).
 
