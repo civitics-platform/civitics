@@ -33,7 +33,12 @@ interface TagInsert {
   display_label: string;
   display_icon: string | null;
   visibility: "primary" | "secondary" | "internal";
-  generated_by: "rule";
+  // FIX-916: `curated` joins `rule` here — hand-audited industry overrides for
+  // financial entities. The distinction is load-bearing, not cosmetic:
+  // clear_financial_entity_rule_tags() is scoped to generated_by='rule', so
+  // curated rows deliberately SURVIVE the nightly clear and are owned by their
+  // own authoritative delete (clearCuratedIndustryTags below).
+  generated_by: "rule" | "curated";
   confidence: number;
   pipeline_version: string;
   metadata: Record<string, unknown>;
@@ -302,6 +307,127 @@ export function buildOfficialIndustryTags(
 }
 
 // ---------------------------------------------------------------------------
+// FIX-916 — curated industry overrides for financial entities
+//
+// WHY THIS LIVES INSIDE tagFinancialEntities() AND NOWHERE ELSE
+// ------------------------------------------------------------
+// tagFinancialEntities() does an AUTHORITATIVE rebuild of the whole `industry`
+// category: it calls clear_financial_entity_rule_tags(['industry']), which
+// DELETEs every entity_type='financial_entity' AND generated_by='rule' AND
+// tag_category='industry' row, and then re-inserts the full keyword+NAICS set.
+// An override applied ANYWHERE ELSE — a post-hoc row edit, a separate job, a
+// migration — is therefore shadowed by a freshly re-inserted keyword tag on the
+// very next nightly. That is the exact trap FIX-897 hit with the official
+// industry pills (which is why THAT block also had to move inside tagOfficials)
+// and the co-owned-rows failure class of FIX-808. The override has to be the
+// last word inside the same function that owns the rebuild.
+//
+// The rows are written generated_by='curated', which the nightly clear does NOT
+// touch (it is scoped to 'rule'). So this function owns them with its own
+// authoritative delete-then-insert — see clearCuratedIndustryTags(). That makes
+// a re-run a no-op instead of an accumulation, and it means an override whose
+// industry CHANGES (or is removed from the table entirely) cannot leave a stale
+// curated row behind.
+//
+// The source list is the 2026-07-27 dollar-weighted audit, committed at
+// docs/audits/2026-07-27-industry-tag-overrides.tsv and seeded into
+// public.financial_entity_industry_overrides. Keyed on fec_committee_id, not
+// financial_entities.id — UUIDs are not portable across a re-seed.
+// ---------------------------------------------------------------------------
+
+export type IndustryOverride = {
+  /** financial_entities.id, resolved via the fec_committee_id join. */
+  entity_id: string;
+  fec_committee_id: string;
+  /**
+   * NULL is a POSITIVE ASSERTION — "this donor carries no industry, ever" — not
+   * "unknown". It is the 362 rows written NONE in the audit TSV: leadership
+   * PACs, party committees and abstract vanity PACs (WinRed, NRSC, Save
+   * America, Huck PAC, AmeriPAC), which are not industries at all. It must
+   * SUPPRESS tagging, not merely omit it — several of them trip the keyword
+   * list on their own names.
+   */
+  industry: string | null;
+  audited_sector: string | null;
+  source: string;
+};
+
+/**
+ * Apply the curated overrides as the last word over the computed keyword+NAICS
+ * industry set.
+ *
+ * For every overridden entity: drop EVERY keyword/NAICS-derived industry tag it
+ * would otherwise have carried, then emit exactly ONE curated row with the
+ * override's industry — or none at all when `industry` is NULL.
+ *
+ * Exactly-one-tag is deliberate and has a second payoff beyond correctness: it
+ * collapses 96.4% of the multi-tag donation dollar mass ($328.4M of $340.8M
+ * across 478 multi-tag donating donors, measured 2026-07-27) down to a single
+ * tag at the source, leaving the alphabetical `DISTINCT ON … ORDER BY tag`
+ * tie-break on the eight consuming surfaces almost nothing to arbitrate. That
+ * tie-break is NOT changed here — see FIX-918, filed not fixed.
+ *
+ * Non-industry categories pass through untouched: this function owns the
+ * `industry` category only.
+ *
+ * Pure — no DB. The caller supplies the resolved overrides.
+ */
+export function applyIndustryOverrides(
+  computed: readonly TagInsert[],
+  overrides: readonly IndustryOverride[],
+): TagInsert[] {
+  // Fail loud on vocabulary drift rather than silently dropping a curated row.
+  // The DB CHECK constraint already pins `industry` to VALID_INDUSTRIES, so a
+  // miss here means INDUSTRY_LABELS drifted away from the vocabulary — and a
+  // silent drop would mean the donor keeps NO tag while looking overridden,
+  // which is indistinguishable from the NULL case. Same contract as
+  // assertIndustryVocabulary() on the officials side.
+  assertIndustryVocabulary(
+    overrides.map((o) => o.industry).filter((i): i is string => i !== null),
+  );
+
+  const overridden = new Set(overrides.map((o) => o.entity_id));
+
+  // Drop every computed industry tag for an overridden entity. Deliberately
+  // done here rather than by an early `continue` in the keyword/NAICS loops so
+  // that ONE place owns the rule and it stays unit-testable without a database.
+  const out = computed.filter(
+    (t) => !(t.tag_category === "industry" && overridden.has(t.entity_id)),
+  );
+
+  for (const o of overrides) {
+    if (o.industry === null) continue; // positive "no industry, ever"
+    const info = industryDisplay(o.industry);
+    if (!info) continue; // unreachable — assertIndustryVocabulary threw first
+    out.push({
+      entity_type: "financial_entity",
+      entity_id: o.entity_id,
+      tag: o.industry,
+      tag_category: "industry",
+      display_label: info.label,
+      display_icon: info.icon,
+      // Always primary: a hand-audited assignment is the most confident label
+      // this entity will ever carry, and it is now the only one.
+      visibility: "primary",
+      generated_by: "curated",
+      confidence: 1.0,
+      pipeline_version: "v1",
+      // `audited_sector` is the finer-grained sector the auditor actually
+      // recorded (e.g. `credit_union`, `labor_union`, `electric_utility`), kept
+      // so the number behind the coarse label stays auditable from the row —
+      // mirrors the FIX-897 metadata shape.
+      metadata: {
+        source: o.source,
+        audited_sector: o.audited_sector,
+        fec_committee_id: o.fec_committee_id,
+      },
+    });
+  }
+
+  return out;
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -367,6 +493,39 @@ async function upsertTags(tags: TagInsert[]): Promise<number> {
   );
   if (failed > 0) console.error(`    entity_tags bulk upsert: ${failed} row(s) failed`);
   return upserted;
+}
+
+/**
+ * FIX-916 — authoritative clear of the CURATED financial-entity industry rows.
+ *
+ * clear_financial_entity_rule_tags(['industry']) is scoped to
+ * generated_by='rule', so curated rows survive it by design (that survival is
+ * the whole point — it is what stops the keyword pass from shadowing a hand
+ * audit). The consequence is that nothing else would ever remove one: an
+ * override whose industry changed, or a row deleted from
+ * financial_entity_industry_overrides entirely, would leave a stale curated tag
+ * behind forever, and the entity would carry TWO industries — breaking the
+ * exactly-one invariant that decision 7 buys.
+ *
+ * So this function's producer owns them the same way it owns the rule rows:
+ * clear the whole curated set, then re-insert from the override table. ~380
+ * rows, once a night. Runs in the same position as the rule clear — AFTER every
+ * read has succeeded — so a partial load can never wipe good tags (FIX-443).
+ *
+ * Direct pg rather than PostgREST: a bare .delete() is subject to the 8s role
+ * statement_timeout pinned on the prod PostgREST roles, the same reason the rule
+ * clear goes through a timeout-raised RPC.
+ */
+async function clearCuratedIndustryTags(): Promise<number> {
+  return withDirectClient(async (client) => {
+    const res = await client.query(
+      `DELETE FROM public.entity_tags
+        WHERE entity_type  = 'financial_entity'
+          AND tag_category = 'industry'
+          AND generated_by = 'curated'`,
+    );
+    return res.rowCount ?? 0;
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -948,8 +1107,14 @@ export function naicsToIndustry(code: string): string | null {
 // 3. Financial entity rules (industry — size buckets moved to pg_cron, FIX-716)
 // ---------------------------------------------------------------------------
 
+// Exported (FIX-916) for the same reason tagOfficials is: the property that
+// matters cannot be unit-tested. A SECOND run must reproduce the same industry
+// row count rather than zeroing it or doubling it — this function's two
+// authoritative clears (rule via RPC, curated via clearCuratedIndustryTags) own
+// every industry row on the table, so anything written from outside is wiped on
+// the next nightly and anything written twice from inside accumulates.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function tagFinancialEntities(db: any): Promise<number> {
+export async function tagFinancialEntities(db: any): Promise<number> {
   console.log("\n  [3/3] Tagging financial entities...");
 
   // ── Donation size tags — RELOCATED to pg_cron (FIX-716) ──────────────────
@@ -966,10 +1131,88 @@ async function tagFinancialEntities(db: any): Promise<number> {
   // NAICS-only rollup (FIX-443): replaces the donation-bearing rollup for the
   // industry path. One row per contract/grant entity carrying a NAICS code — the
   // small slice, not the donor universe — so the payload is safe to fetch.
-  const naicsRollup =
-    (await callWithRetry<Array<{ entity_id: string; naics_code: string | null }>>(
-      "get_financial_entity_naics", () => db.rpc("get_financial_entity_naics"),
-    )) ?? [];
+  //
+  // FIX-910: read over a DIRECT pg.Client (rollupJsonbDirect), not the capped
+  // PostgREST db.rpc()+callWithRetry path — the last of this function's three
+  // reads to be lifted (the keyword fetch went in FIX-444, the two official
+  // rollups in FIX-651). The payload is tiny; the COST is planner-dependent.
+  // Prod picks a bitmap index scan on financial_relationships_derivation (79ms,
+  // measured 2026-07-28); the local prod-clone's stale stats pick a Parallel Seq
+  // Scan over 2.77M rows and measured 104s cold — past the 60s PostgREST gateway
+  // cap, so callWithRetry burned 5 × 60s and THREW, taking the whole function
+  // down before it ever reached clear_financial_entity_rule_tags. That failed
+  // CLOSED (the DELETE is downstream of the throw — FIX-443's ordering working as
+  // designed), but a dead tagger writes no overrides either. rollupJsonbDirect
+  // raises statement_timeout at the SESSION level, so the gateway cap stops
+  // applying and the pipeline no longer depends on which plan a given env's
+  // stats happen to produce. THROWS on error (no silent partial), preserving the
+  // FIX-426/427 contract that the clear+rebuild below runs only on a full read.
+  //
+  // NOTE (FIX-919): this rollup currently returns [] on BOTH envs — it aggregates
+  // fr.from_id WHERE from_type='financial_entity', but all 3,238,246 NAICS-bearing
+  // contract rows are agency → financial_entity, so the contractor is to_id. The
+  // NAICS pass below has therefore never emitted a tag. Filed, not fixed here:
+  // repointing it writes thousands of new industry rows and needs its own
+  // before/after. Do not "simplify away" the pass on the strength of its zero
+  // output — the code is correct-in-shape and wrong-in-join.
+  const naicsRollup = await timed("get_financial_entity_naics (direct-pg)", () =>
+    rollupJsonbDirect<{ entity_id: string; naics_code: string | null }>(
+      "get_financial_entity_naics",
+    ),
+  );
+
+  // ── Curated overrides (FIX-916) ──────────────────────────────────────────
+  // Fetched BEFORE any clear, alongside the other reads, so a failure here
+  // aborts the rebuild rather than wiping tags and then discovering the
+  // override table is unreachable (the FIX-443 ordering contract).
+  //
+  // LEFT JOIN, not INNER: an override row whose fec_committee_id no longer
+  // resolves to a financial_entity is surfaced and counted rather than silently
+  // vanishing. The migration RAISEs on orphans at seed time (they were zero on
+  // both envs at seed), so any orphan seen here is post-seed drift — almost
+  // certainly a FIX-544 entity merge that re-pointed or dropped a committee id.
+  // Logged loudly but NOT thrown: the right response to a merged committee is to
+  // re-point one override row, not to stop tagging ~78k entities every night.
+  type OverrideRow = {
+    entity_id: string | null;
+    fec_committee_id: string;
+    industry: string | null;
+    audited_sector: string | null;
+    source: string;
+  };
+  const overrideRows = await timed("financial_entity_industry_overrides (direct-pg)", () =>
+    selectDirect<OverrideRow>(
+      `SELECT fe.id AS entity_id,
+              o.fec_committee_id,
+              o.industry,
+              o.audited_sector,
+              o.source
+         FROM public.financial_entity_industry_overrides o
+         LEFT JOIN public.financial_entities fe
+                ON fe.fec_committee_id = o.fec_committee_id
+        ORDER BY o.fec_committee_id`,
+    ),
+  );
+
+  const orphanOverrides = overrideRows.filter((r) => !r.entity_id);
+  if (orphanOverrides.length > 0) {
+    console.error(
+      `    [FIX-916] ${orphanOverrides.length} override(s) reference an fec_committee_id ` +
+        `absent from financial_entities — these donors keep their uncurated tags: ` +
+        `${orphanOverrides.slice(0, 10).map((r) => r.fec_committee_id).join(", ")}` +
+        `${orphanOverrides.length > 10 ? ", …" : ""}`,
+    );
+  }
+
+  const overrides: IndustryOverride[] = overrideRows
+    .filter((r): r is OverrideRow & { entity_id: string } => r.entity_id !== null)
+    .map((r) => ({
+      entity_id: r.entity_id,
+      fec_committee_id: r.fec_committee_id,
+      industry: r.industry,
+      audited_sector: r.audited_sector,
+      source: r.source,
+    }));
 
   const allTags: TagInsert[] = [];
 
@@ -1071,6 +1314,21 @@ async function tagFinancialEntities(db: any): Promise<number> {
     return true;
   });
 
+  // ── Curated overrides — the last word (FIX-916) ──────────────────────────
+  // Runs AFTER the keyword pass and the NAICS pass, over their deduped output:
+  // every keyword/NAICS industry tag for an overridden donor is dropped, and
+  // exactly one curated row replaces it (or none, for the 362 `industry IS NULL`
+  // committees that are not industries at all). See the block comment above
+  // applyIndustryOverrides for why this cannot live outside this function.
+  const withOverrides = applyIndustryOverrides(deduped, overrides);
+
+  const curatedCount = withOverrides.filter((t) => t.generated_by === "curated").length;
+  const suppressed = overrides.filter((o) => o.industry === null).length;
+  console.log(
+    `    Curated overrides: ${overrides.length} resolved ` +
+      `(${curatedCount} re-assigned, ${suppressed} de-tagged)`,
+  );
+
   // Authoritative rebuild of the INDUSTRY category only (FIX-443 — 'size' is now
   // cleared+rebuilt server-side by rebuild_financial_entity_size_tags above).
   // Runs only AFTER both the keyword fetch and the NAICS rollup succeeded (each
@@ -1083,8 +1341,16 @@ async function tagFinancialEntities(db: any): Promise<number> {
     db.rpc("clear_financial_entity_rule_tags", { p_categories: ["industry"] }),
   );
 
-  const industryUpserted = await timed(`financial industry tags upsert (n=${deduped.length})`, () =>
-    upsertTags(deduped),
+  // FIX-916: the RPC above is scoped to generated_by='rule', so the curated rows
+  // need their own clear or a changed/removed override would strand a stale tag
+  // and break the exactly-one-industry invariant. Same position as the rule
+  // clear — after every read, before the upsert.
+  const curatedCleared = await clearCuratedIndustryTags();
+  console.log(`    Cleared ${curatedCleared} prior curated industry tags`);
+
+  const industryUpserted = await timed(
+    `financial industry tags upsert (n=${withOverrides.length})`,
+    () => upsertTags(withOverrides),
   );
   // [FIX-716] size tags moved to pg_cron run_rule_taggers('weekly'); this
   // function now returns only the industry tag count.

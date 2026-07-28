@@ -190,6 +190,21 @@ export async function callHeavyProcedure(proc: string): Promise<void> {
 const ALLOWED_JSONB_ROLLUPS = new Set([
   "get_official_donor_rollup",
   "get_official_bipartisan_stats",
+  // FIX-910: the last read in tagFinancialEntities() still going over the capped
+  // PostgREST path — its two SIBLINGS were lifted off it years apart for exactly
+  // this reason (the keyword fetch by FIX-444, the two official rollups by
+  // FIX-651). Its cost is planner-dependent, not data-dependent: prod picks a
+  // bitmap index scan on financial_relationships_derivation and returns in 79ms,
+  // while the local prod-clone's stale stats pick a Parallel Seq Scan over 2.77M
+  // rows / ~348k blocks and measured 104s COLD — past the local 60s PostgREST
+  // gateway cap, so callWithRetry burned 5 x 60s and then THREW, killing the
+  // whole function before it reached clear_financial_entity_rule_tags. Fails
+  // closed (the DELETE is downstream of the throw — the FIX-443 ordering working
+  // as designed), but the tagger is dead on any env whose planner makes that
+  // choice. A session-level statement_timeout raise over a direct connection
+  // removes the cap entirely, so the pipeline no longer depends on which plan a
+  // given env's stats happen to produce.
+  "get_financial_entity_naics",
 ]);
 
 /**

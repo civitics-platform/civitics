@@ -19,6 +19,7 @@ import { createAdminClient, selectAllOrThrow } from "@civitics/db";
 import { createAiClient } from "@civitics/ai";
 import { costGate } from "@civitics/ai/cost-gate";
 import { startSync, completeSync, failSync } from "../sync-log";
+import { selectDirect } from "../../lib/heavy-rebuild";
 import { VALID_INDUSTRIES, INDUSTRY_LABELS, industryDisplay } from "./topics";
 
 // ---------------------------------------------------------------------------
@@ -63,6 +64,40 @@ interface UntaggedPac {
   id: string;
   display_name: string;
   total_donated_cents: number;
+}
+
+/**
+ * FIX-917 — the candidate-set filter, extracted so the guard below is pinnable
+ * by a unit test rather than only reachable through a live API run.
+ *
+ * THE FAILURE THIS PREVENTS
+ * -------------------------
+ * The candidate set is "PACs over the donation threshold that have NO industry
+ * tag". FIX-916 de-tagged 362 committees — leadership PACs, party committees and
+ * abstract vanity PACs (WinRed, NRSC, Save America, Huck PAC, AmeriPAC) — on the
+ * deliberate finding that they are not industries at all, and its migration
+ * deleted their surviving generated_by='ai' rows. That leaves them with ZERO
+ * industry tags, which is EXACTLY the shape this function reads as "needs
+ * classifying". Without the override subtraction the very next run re-tags the
+ * precise committees the audit de-tagged — and because this path upserts
+ * generated_by='ai', those rows land OUTSIDE the nightly
+ * clear_financial_entity_rule_tags scope and persist.
+ *
+ * `industry IS NULL` in the override table is a POSITIVE assertion ("no
+ * industry, ever"), not a gap, so the exclusion covers NULL rows especially —
+ * the 380 re-assigned donors are already protected by carrying a curated tag,
+ * which makes them incidental beneficiaries rather than the reason this exists.
+ *
+ * This is the same silent-strand class as FIX-884/885: a guard that looks fine
+ * and never runs. Verified 2026-07-28 by deleting the `overriddenEntityIds`
+ * clause below: industry-overrides.test.ts fails both FIX-917 cases.
+ */
+export function selectClassifierCandidates(
+  allPacs: readonly UntaggedPac[],
+  alreadyTagged: ReadonlySet<string>,
+  overriddenEntityIds: ReadonlySet<string>,
+): UntaggedPac[] {
+  return allPacs.filter((r) => !alreadyTagged.has(r.id) && !overriddenEntityIds.has(r.id));
 }
 
 interface ClassificationResult {
@@ -208,7 +243,27 @@ export async function runAiClassifier(options: { confirmed?: boolean } = {}): Pr
         .range(from, to),
     ) as { id: string; display_name: string; total_donated_cents: number }[];
 
-    const pacs: UntaggedPac[] = allPacs.filter((r) => !alreadyTagged.has(r.id));
+    // FIX-917: every entity with a curated override is off the table, whether or
+    // not it currently carries a tag. See selectClassifierCandidates() for the
+    // re-tagging failure this prevents.
+    //
+    // Resolved by a direct-pg JOIN rather than PostgREST: the override table is
+    // keyed on fec_committee_id and the classifier needs financial_entities.id,
+    // and a PostgREST `.in("fec_committee_id", [...742 ids])` is a ~8 KB URL —
+    // past what the gateway will carry, and the chunk-to-200 workaround would
+    // turn one guard into four round-trips that can each half-fail. One query,
+    // no caps, and it THROWS on error so the guard can never silently no-op into
+    // a re-tagging run (which is the entire failure being prevented).
+    const overriddenRows = await selectDirect<{ id: string }>(
+      `SELECT fe.id
+         FROM public.financial_entity_industry_overrides o
+         JOIN public.financial_entities fe
+           ON fe.fec_committee_id = o.fec_committee_id`,
+    );
+    const overriddenIds = new Set<string>(overriddenRows.map((r) => r.id));
+    console.log(`  Curated overrides excluded from classification: ${overriddenIds.size}`);
+
+    const pacs: UntaggedPac[] = selectClassifierCandidates(allPacs, alreadyTagged, overriddenIds);
 
     if (pacs.length === 0) {
       console.log("  No untagged PACs found over threshold. Nothing to do.");
