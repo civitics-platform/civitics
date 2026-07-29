@@ -313,3 +313,84 @@ test("the migration seeds exactly the TSV — same ids, same industries", () => 
     assert.equal(seeded.get(r.fec), r.industry, `industry mismatch for ${r.fec}`);
   }
 });
+
+// ---------------------------------------------------------------------------
+// FIX-921 — the second cohort: the oil_gas escapee sweep
+//
+// Same two drift alarms as the FIX-916 cohort above, against its own TSV and
+// its own migration. Kept separate rather than generalised because the two
+// files have different shapes: FIX-916's TSV carries a spare column (industry
+// is c[2], sector is c[4]), this one does not (sector is c[3]).
+// ---------------------------------------------------------------------------
+
+const SWEEP_TSV_PATH = join(REPO_ROOT, "docs", "audits", "2026-07-28-oil-gas-escapees.tsv");
+const SWEEP_MIGRATION_PATH = join(
+  REPO_ROOT, "supabase", "migrations", "20260729010000_fix921_oil_gas_escapee_sweep.sql",
+);
+
+function readSweepTsv(): TsvRow[] {
+  const lines = readFileSync(SWEEP_TSV_PATH, "utf8").split(/\r?\n/).filter((l) => l.length);
+  return lines.slice(1).map((l) => {
+    const c = l.split("\t");
+    return {
+      fec: c[0]!,
+      display_name: c[1]!,
+      industry: c[2] === "NONE" ? null : c[2]!,
+      sector: c[3]!,
+    };
+  });
+}
+
+test("FIX-921: the sweep TSV is 50 / 45 / 5, with unique committee ids", () => {
+  const rows = readSweepTsv();
+  assert.equal(rows.length, 50);
+  assert.equal(rows.filter((r) => r.industry !== null).length, 45);
+  assert.equal(rows.filter((r) => r.industry === null).length, 5);
+  assert.equal(new Set(rows.map((r) => r.fec)).size, 50, "fec_committee_id must be unique");
+});
+
+test("FIX-921: every industry in the sweep TSV is a VALID_INDUSTRIES member", () => {
+  for (const r of readSweepTsv()) {
+    if (r.industry === null) continue;
+    assert.ok(
+      (VALID_INDUSTRIES as readonly string[]).includes(r.industry),
+      `sweep TSV row ${r.fec} carries '${r.industry}', which is not in the vocabulary`,
+    );
+  }
+});
+
+test("FIX-921: the sweep migration seeds exactly its TSV", () => {
+  const sql = readFileSync(SWEEP_MIGRATION_PATH, "utf8");
+  const seeded = new Map<string, string | null>();
+  for (const m of sql.matchAll(/^ {2}\('(C\w+)', (NULL|'[a-z_]+')/gm)) {
+    seeded.set(m[1]!, m[2] === "NULL" ? null : m[2]!.slice(1, -1));
+  }
+
+  const tsv = readSweepTsv();
+  assert.equal(seeded.size, tsv.length, "seed row count must match the sweep TSV");
+  for (const r of tsv) {
+    assert.ok(seeded.has(r.fec), `sweep TSV row ${r.fec} is missing from the migration seed`);
+    assert.equal(seeded.get(r.fec), r.industry, `industry mismatch for ${r.fec}`);
+  }
+});
+
+test("FIX-921: no committee appears in BOTH cohorts", () => {
+  // The sweep migration asserts a combined table of 792 rows. A committee id
+  // present in both TSVs would be absorbed by ON CONFLICT DO UPDATE as an
+  // UPDATE, so the table would hold 791 and the migration's own assertion would
+  // fire — but it would fire with a count, not a name. This says which one.
+  const first = new Set(readTsv().map((r) => r.fec));
+  const overlap = readSweepTsv().filter((r) => first.has(r.fec)).map((r) => r.fec);
+  assert.deepEqual(overlap, [], "a committee curated twice would silently shrink the table");
+});
+
+test("FIX-921: CNG Holdings is finance — the false positive that started this", () => {
+  // Check 'n Go, a consumer lender. `oil_gas` matched it on the "CNG" initials
+  // reading as compressed natural gas. Pinned by name because it is the single
+  // clearest illustration of why the keyword list needed curating, and a future
+  // re-audit that quietly flips it back should have to argue with a test.
+  const cng = readSweepTsv().find((r) => r.fec === "C00441311");
+  assert.ok(cng, "CNG Holdings (C00441311) must be in the sweep");
+  assert.equal(cng!.industry, "finance");
+  assert.equal(cng!.sector, "consumer_lending");
+});
