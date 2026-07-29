@@ -1147,3 +1147,5 @@
 2026-07-28 | FIX-924 | 8048fced | local-only | fix(graph,dashboard,drain): tag-group server-side aggregate, queue status vocabulary, fail-open verdict, chunk concurrency cap
 2026-07-28 | FIX-925 | 8048fced | local-only | fix(graph,dashboard,drain): tag-group server-side aggregate, queue status vocabulary, fail-open verdict, chunk concurrency cap
 2026-07-28 | FIX-926 | 8048fced | local-only | fix(graph,dashboard,drain): tag-group server-side aggregate, queue status vocabulary, fail-open verdict, chunk concurrency cap
+2026-07-28 | FIX-892 | a388d1a1 | prod-only | chore(graph,dashboard): record prod verification of FIX-892 and FIX-924
+2026-07-28 | FIX-924 | a388d1a1 | prod-only | chore(graph,dashboard): record prod verification of FIX-892 and FIX-924
