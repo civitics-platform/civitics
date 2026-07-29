@@ -405,22 +405,33 @@ async function generateOfficialSummaries(
   for (const official of officials) {
 
     try {
-      const totalRaisedDollars = (official.total_raised / 100).toLocaleString("en-US", {
+      const itemizedDollars = (official.total_raised / 100).toLocaleString("en-US", {
         style: "currency",
         currency: "USD",
         maximumFractionDigits: 0,
       });
 
+      // FIX-931: kept byte-identical to the on-demand route's prompt in
+      // apps/civitics/app/api/officials/[id]/summary/route.ts — the two write
+      // into the SAME ai_summary_cache, so a reader cannot tell which produced
+      // the text they are reading and the framing must not depend on that.
+      // The labels are the model's only description of these numbers: the money
+      // is the all-cycle ITEMIZED donation sum (no unitemized giving, no JFC
+      // transfers, no IEs, no loans) and the count is donor-and-cycle rows, not
+      // distinct donors.
       const userPrompt =
         `Write a 2-sentence factual profile of this official based on their record.\n` +
-        `Focus on their role and legislative activity. Be completely neutral.\n\n` +
+        `Focus on their role and legislative activity. Be completely neutral.\n` +
+        `Do not describe the donation figure as total money raised — it is a partial, ` +
+        `itemized-only subset. Do not describe the donor figure as a number of donors.\n\n` +
         `Name: ${official.full_name}\n` +
         `Title: ${official.role_title}\n` +
         `State: ${official.state ?? "Unknown"}\n` +
         `Party: ${official.party ?? "Unknown"}\n` +
         `Votes on record: ${official.vote_count.toLocaleString()}\n` +
-        `Donor relationships: ${official.donor_count.toLocaleString()}\n` +
-        `Total raised: ${totalRaisedDollars}`;
+        `Donor records (donor-and-cycle pairs, not distinct donors): ${official.donor_count.toLocaleString()}\n` +
+        `Itemized donations, all cycles (excludes unitemized giving, transfers, ` +
+        `independent expenditures and loans): ${itemizedDollars}`;
 
       const response = await ai.messages.create({
         model: MODELS.haiku,

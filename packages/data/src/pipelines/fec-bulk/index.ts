@@ -168,7 +168,7 @@ import { errMsg } from "../utils";
 // Types
 // ---------------------------------------------------------------------------
 
-interface WeBallRow {
+export interface WeBallRow {
   candId:           string;  // CAND_ID
   candName:         string;  // CAND_NAME  (format: "LAST, FIRST MI")
   ttlReceipts:      number;  // TTL_RECEIPTS
@@ -183,7 +183,7 @@ interface WeBallRow {
   candOfficeSt:     string;  // CAND_OFFICE_ST (state abbr)
 }
 
-interface OfficialRecord {
+export interface OfficialRecord {
   id:         string;
   full_name:  string;
   first_name: string | null;
@@ -412,7 +412,7 @@ export async function loadOfficials(
   return all;
 }
 
-interface MatchIndex {
+export interface MatchIndex {
   byFecId:    Map<string, string>;           // fecId → officialId
   byLastName: Map<string, OfficialRecord[]>; // normalizedLast → officials
 }
@@ -455,7 +455,26 @@ interface MatchResult {
   byFecId:    boolean;
 }
 
-function matchRow(row: WeBallRow, index: MatchIndex): MatchResult | null {
+/**
+ * Three-letter first-name key, uppercase and stripped of everything but A-Z.
+ * Returns "" when fewer than three comparable letters survive — the caller
+ * treats that as "cannot compare", never as "agrees".
+ *
+ * Mirrors the key the sibling name-fallback loop below already builds
+ * (`normalizedLast | first3 | state`), so both fallbacks agree on what a
+ * first-name match means.
+ */
+function firstNameKey(raw: string | null | undefined): string {
+  const norm = (raw ?? "").toUpperCase().replace(/[^A-Z]/g, "");
+  return norm.length >= 3 ? norm.slice(0, 3) : "";
+}
+
+/** The official's own first name, falling back to the leading full_name token. */
+function officialFirstNameKey(o: OfficialRecord): string {
+  return firstNameKey(o.first_name) || firstNameKey(o.full_name.split(/\s+/)[0]);
+}
+
+export function matchRow(row: WeBallRow, index: MatchIndex): MatchResult | null {
   // 1. Direct stored fec_id match
   const directId = index.byFecId.get(row.candId);
   if (directId) return { officialId: directId, fecId: row.candId, byFecId: true };
@@ -473,17 +492,37 @@ function matchRow(row: WeBallRow, index: MatchIndex): MatchResult | null {
       : candidates;
   const pool = statePool.length > 0 ? statePool : candidates;
 
-  if (pool.length === 1) return { officialId: pool[0].id, fecId: row.candId, byFecId: false };
+  // FIX-929 — first names are compared on EVERY name-fallback match, including
+  // a pool that state-narrowing already collapsed to one.
+  //
+  // A missed match is strictly better than a wrong match. An official with no
+  // FEC binding renders $0 and a "FEC sync weekly" note; an official with a
+  // WRONG binding renders another person's donors under their name on a public
+  // page — and because the writer upserts on (relationship_type, from_id,
+  // to_id, cycle_year), a later corrected binding writes a NEW row and never
+  // retires the bad one, so the mis-attribution is permanent until someone
+  // cleans it up by hand (see FIX-930).
+  //
+  // The old `if (pool.length === 1) return pool[0]` shortcut returned before
+  // the first names were ever compared, and state-narrowing made that WORSE
+  // rather than safer: it collapsed an ambiguous same-surname pool down to one
+  // and thereby removed the very ambiguity guard that would have forced a skip.
+  // Ohio has three officials surnamed Brown; that shortcut bound Sherrod
+  // Brown's Senate CAND_ID (S6OH00163) to Shontel M. Brown and parked $51.0M
+  // of his donors on her page.
+  //
+  // When the FEC first name is too short to compare (initials-only rows like
+  // "PRYCE, B", or a blank name field) firstNameKey returns "" and nothing
+  // matches — skip rather than guess.
+  const fecFirst = firstNameKey(first);
+  if (!fecFirst) return null;
 
-  // Further narrow by first-name prefix
-  if (first.length >= 3) {
-    const firstPool = pool.filter((c) =>
-      c.full_name.toUpperCase().split(/\s+/).some((p) => p.startsWith(first.slice(0, 3)))
-    );
-    if (firstPool.length === 1) return { officialId: firstPool[0].id, fecId: row.candId, byFecId: false };
+  const firstPool = pool.filter((c) => officialFirstNameKey(c) === fecFirst);
+  if (firstPool.length === 1) {
+    return { officialId: firstPool[0].id, fecId: row.candId, byFecId: false };
   }
 
-  return null; // ambiguous — skip
+  return null; // no first-name agreement, or still ambiguous — skip
 }
 
 // ---------------------------------------------------------------------------

@@ -120,22 +120,32 @@ export async function GET(
   try {
     const ai = createAiClient();
 
-    const totalRaisedDollars = (totalRaisedCents / 100).toLocaleString("en-US", {
+    const itemizedDollars = (totalRaisedCents / 100).toLocaleString("en-US", {
       style: "currency",
       currency: "USD",
       maximumFractionDigits: 0,
     });
 
+    // FIX-931: these two labels are the model's ONLY description of the
+    // numbers, so a wrong one is repeated verbatim into public prose. This is
+    // not "total raised" — it is the all-cycle sum of ITEMIZED donations,
+    // excluding unitemized giving, JFC transfers, IEs, loans and other
+    // receipts — and the count is of donor-and-cycle rows, not distinct
+    // donors. Both are spelled out inline rather than named, because the model
+    // has no other context to correct them from.
     const userPrompt =
       `Write a 2-sentence factual profile of this official based on their record.\n` +
-      `Focus on their role and legislative activity. Be completely neutral.\n\n` +
+      `Focus on their role and legislative activity. Be completely neutral.\n` +
+      `Do not describe the donation figure as total money raised — it is a partial, ` +
+      `itemized-only subset. Do not describe the donor figure as a number of donors.\n\n` +
       `Name: ${official.full_name}\n` +
       `Title: ${official.role_title}\n` +
       `State: ${official.metadata?.state ?? "Unknown"}\n` +
       `Party: ${official.party ?? "Unknown"}\n` +
       `Votes on record: ${voteCount.toLocaleString()}\n` +
-      `Donor relationships: ${donorCount.toLocaleString()}\n` +
-      `Total raised: ${totalRaisedDollars}`;
+      `Donor records (donor-and-cycle pairs, not distinct donors): ${donorCount.toLocaleString()}\n` +
+      `Itemized donations, all cycles (excludes unitemized giving, transfers, ` +
+      `independent expenditures and loans): ${itemizedDollars}`;
 
     const response = await ai.messages.create({
       model: MODELS.haiku,

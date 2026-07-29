@@ -236,15 +236,22 @@ export function OfficialCard({ official }: { official: OfficialRow }) {
             label="Votes on record"
             loading={loading}
           />
+          {/* FIX-931: same two relabels as officials/[id]. Both figures come
+              from official_homepage_stats_mv, whose donor_count is COUNT(*)
+              over financial_relationships rows (donor-and-cycle pairs, not
+              distinct donors) and whose total_donations_cents is the all-cycle
+              sum of itemized donations only. The full coverage caveat lives on
+              the detail page — a directory card has no room for it, and the
+              labels no longer assert anything the numbers cannot support. */}
           <Stat
             value={donorCount !== null ? donorCount.toLocaleString() : "—"}
-            label="Donors on record"
+            label="Donor records"
             loading={loading}
             note={donorCount === 0 ? "FEC sync weekly" : undefined}
           />
           <Stat
             value={totalDonations !== null ? formatMoney(totalDonations) : "—"}
-            label="Total raised"
+            label="Itemized donations"
             loading={loading}
             note={totalDonations === 0 ? "FEC sync weekly" : undefined}
           />

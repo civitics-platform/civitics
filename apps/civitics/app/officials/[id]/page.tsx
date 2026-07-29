@@ -1088,14 +1088,35 @@ export default async function OfficialProfilePage({
           {/* Quick stats */}
           <div className="grid grid-cols-2 gap-px border-t border-rule bg-rule sm:grid-cols-5">
             <StatCell value={voteCount.toLocaleString()} label="Votes on record" />
+            {/* FIX-931: "Donor records", not "Donors on record". The value is
+                SUM(tx_count) over official_donor_rollup_mv, which counts
+                financial_relationships ROWS — and that table is unique on
+                (relationship_type, from_id, to_id, cycle_year), so a donor
+                giving across two cycles is two rows. Measured for Ossoff:
+                16,646 rows vs 15,761 distinct donors vs 26,520 underlying FEC
+                transactions — the old label overstated donors by 5.6% and was
+                not a transaction count either. The MV cannot produce a
+                distinct-donor count without a grain change, so this is a
+                relabel rather than a recompute. */}
             <StatCell
               value={donorCount.toLocaleString()}
-              label="Donors on record"
+              label="Donor records"
               note={donorCount === 0 ? "FEC sync weekly" : undefined}
             />
+            {/* FIX-931: "Itemized donations", not "Total raised". This is the
+                ALL-CYCLE sum of itemized donation rows only. It excludes
+                unitemized individual contributions (51% of Ossoff's receipts —
+                FEC never discloses them at any grain, so not a closeable
+                coverage gap), joint-fundraising transfers, independent
+                expenditures, loans and other receipts. The chosen string also
+                survives the removal of the $200 per-transaction floor. Scope is
+                the other half of the gap: official_donor_rollup_mv carries no
+                cycle_year, so a per-cycle figure is a schema change (FIX-932).
+                The caveat lives under the grid, not in `note` — that slot is
+                already taken by the IE support/oppose totals. */}
             <StatCell
               value={formatMoney(totalDonations)}
-              label="Total raised"
+              label="Itemized donations"
               note={
                 ieSupport.total > 0 || ieOppose.total > 0
                   ? `+${formatMoney(ieSupport.total)} support · ${formatMoney(ieOppose.total)} oppose`
@@ -1126,6 +1147,23 @@ export default async function OfficialProfilePage({
               }
             />
           </div>
+
+          {/* FIX-931: coverage + scope caveat for the two money cells above.
+              Rendered as its own full-width row rather than a StatCell `note`
+              (that slot carries the IE support/oppose totals) or a title
+              attribute (invisible on touch), so it is readable at every
+              viewport width without interaction. */}
+          {(totalDonations > 0 || donorCount > 0) && (
+            <p className="border-t border-rule bg-card px-4 py-2 text-[10px] leading-relaxed text-ink-soft/60">
+              Itemized donations is the sum of FEC-itemized contributions across{" "}
+              <span className="whitespace-nowrap">all cycles</span> on record — it excludes
+              unitemized small-dollar giving, which the FEC never discloses, along with
+              joint-fundraising transfers, loans and other receipts. It is therefore lower than
+              this official&apos;s total receipts, and lower again than any single-cycle figure
+              published by the FEC. Donor records counts donor-and-cycle pairs, not distinct
+              donors.
+            </p>
+          )}
         </div>
 
         {/* SF-P11 (FIX-599): synthetic records-only officials carry the
