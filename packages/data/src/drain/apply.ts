@@ -185,6 +185,18 @@ export async function applyResult(db: Db, r: SubmitResult): Promise<ApplyOutcome
           );
           continue;
         }
+        // FIX-925: the guard's documented "write it and warn" fail-open. An
+        // unregistered entity_type is allowed through unchecked (deliberately —
+        // see drain/vocabulary.ts), but until the verdict could say so this
+        // wrote in silence and looked identical to an enforced pass. One warn
+        // per tag, matching the rejection warn above. NOT counted in `rejected`
+        // — the row is written.
+        if (verdict.enforced === false) {
+          console.warn(
+            `[drain:apply] queue_id=${queueRow.id} UNENFORCED tag write ` +
+              `(${queueRow.entity_type}/${tagCategory}/${t.tag}): ${verdict.reason}`,
+          );
+        }
 
         rows.push({
           entity_type: queueRow.entity_type,

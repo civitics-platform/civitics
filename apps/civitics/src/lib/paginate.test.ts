@@ -10,7 +10,7 @@
 
 import { describe, it, mock } from "node:test";
 import assert from "node:assert/strict";
-import { fetchChunkedByIds, ID_CHUNK_SIZE } from "./paginate";
+import { fetchChunkedByIds, ID_CHUNK_SIZE, ID_CHUNK_CONCURRENCY } from "./paginate";
 
 type Row = { id: string };
 
@@ -161,5 +161,129 @@ describe("fetchChunkedByIds", () => {
     const res = await fetchChunkedByIds<Row>(ids(10), build);
     assert.deepEqual(res.rows, []);
     assert.equal(res.complete, true);
+  });
+});
+
+// ── FIX-926: bounded concurrency ───────────────────────────────────────────────
+//
+// The cap bounds one call site's share of the shared connection/socket budget.
+// It is a SCHEDULING concern only: it must be invisible in the output for any
+// input, and it must not change WHICH chunks get issued. The strict-mode case
+// is the one that actually constrains the implementation — a pool that
+// cancelled the queue on first error would break the FIX-901 contract that
+// `strict` decides how a failure is reported, not whether the rest run.
+
+/**
+ * A build() that resolves on the next microtask tick and records how many calls
+ * are simultaneously outstanding, so the pool's ceiling is observable.
+ */
+function instrumentedBuilder(opts: { failIndexes?: number[] } = {}) {
+  const fail = new Set(opts.failIndexes ?? []);
+  const state = { inFlight: 0, peak: 0 };
+  const build = mock.fn(async (chunk: string[], ctx: BuildCtx) => {
+    state.inFlight++;
+    state.peak = Math.max(state.peak, state.inFlight);
+    // Yield enough times that a bug which issues everything up front is
+    // guaranteed to show a peak above the cap rather than racing past it.
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+    state.inFlight--;
+    return fail.has(ctx.index)
+      ? { data: null, error: { message: `chunk ${ctx.index} died` } }
+      : { data: chunk.map((id) => ({ id })), error: null };
+  });
+  return { build, state };
+}
+
+describe("fetchChunkedByIds — concurrency cap (FIX-926)", () => {
+  it("defaults to 6 in flight — a connection-budget bound, not a row or URL bound", () => {
+    assert.equal(ID_CHUNK_CONCURRENCY, 6);
+    assert.notEqual(ID_CHUNK_CONCURRENCY, ID_CHUNK_SIZE);
+  });
+
+  it("never exceeds the cap in flight, and still issues every chunk", async () => {
+    const { build, state } = instrumentedBuilder();
+    const res = await fetchChunkedByIds<Row>(ids(2000), build, {
+      chunkSize: 100,             // 20 chunks
+      maxConcurrency: 3,
+    });
+
+    assert.equal(res.chunkCount, 20);
+    assert.equal(build.mock.callCount(), 20);
+    assert.equal(state.peak, 3, "peak in-flight must equal the cap, never exceed it");
+    assert.equal(state.inFlight, 0);
+    assert.equal(res.rows.length, 2000);
+    assert.equal(res.complete, true);
+  });
+
+  it("respects the default cap when maxConcurrency is not given", async () => {
+    const { build, state } = instrumentedBuilder();
+    await fetchChunkedByIds<Row>(ids(2000), build, { chunkSize: 100 });
+    assert.equal(state.peak, ID_CHUNK_CONCURRENCY);
+  });
+
+  it("keeps rows and failed in CHUNK order under a cap smaller than chunkCount", async () => {
+    // Out-of-order completion is the normal case under a cap; the result must be
+    // indexed by chunk, not by whichever request landed first.
+    const { build } = instrumentedBuilder({ failIndexes: [1, 5] });
+    const res = await fetchChunkedByIds<Row>(ids(700), build, {
+      chunkSize: 100,             // 7 chunks, 2 of them failing
+      maxConcurrency: 2,
+    });
+
+    assert.equal(res.chunkCount, 7);
+    assert.equal(build.mock.callCount(), 7);
+    assert.equal(res.complete, false);
+    assert.deepEqual(res.failed.map((f) => f.index), [1, 5]);
+    // 5 surviving chunks × 100, in chunk order: 0,2,3,4,6 → first row is id-0
+    // and the row after chunk 0's 100 is chunk 2's first id (chunk 1 is gone).
+    assert.equal(res.rows.length, 500);
+    assert.equal(res.rows[0]!.id, "id-0");
+    assert.equal(res.rows[100]!.id, "id-200");
+    assert.equal(res.rows[499]!.id, "id-699");
+  });
+
+  it("strict: true still issues EVERY chunk before throwing, even under a cap", async () => {
+    // The regression guard. `strict` decides how a failure is reported, not
+    // whether the remaining chunks run — a pool that drained the queue on first
+    // error would silently stop issuing work here.
+    const { build } = instrumentedBuilder({ failIndexes: [0] });
+
+    await assert.rejects(
+      () =>
+        fetchChunkedByIds<Row>(ids(600), build, {
+          chunkSize: 100,         // 6 chunks, the FIRST one fails
+          maxConcurrency: 2,
+          strict: true,
+        }),
+      (err: { message: string }) => err.message === "chunk 0 died",
+    );
+    assert.equal(build.mock.callCount(), 6);
+  });
+
+  it("a cap larger than chunkCount is a no-op — same calls, same output", async () => {
+    const capped = instrumentedBuilder();
+    const uncapped = instrumentedBuilder();
+    const a = await fetchChunkedByIds<Row>(ids(450), capped.build, { maxConcurrency: 999 });
+    const b = await fetchChunkedByIds<Row>(ids(450), uncapped.build);
+
+    assert.equal(capped.build.mock.callCount(), 3);
+    assert.equal(capped.state.peak, 3, "only 3 chunks exist — the cap can't create work");
+    assert.deepEqual(a.rows, b.rows);
+    assert.equal(a.chunkCount, b.chunkCount);
+    assert.equal(a.complete, b.complete);
+  });
+
+  it("maxConcurrency of 0 or negative clamps to 1 rather than deadlocking", async () => {
+    for (const bad of [0, -5]) {
+      const { build, state } = instrumentedBuilder();
+      const res = await fetchChunkedByIds<Row>(ids(500), build, {
+        chunkSize: 100,
+        maxConcurrency: bad,
+      });
+      assert.equal(build.mock.callCount(), 5, `maxConcurrency:${bad} must still issue every chunk`);
+      assert.equal(state.peak, 1, `maxConcurrency:${bad} must clamp to serial, not stall`);
+      assert.equal(res.rows.length, 500);
+      assert.equal(res.complete, true);
+    }
   });
 });

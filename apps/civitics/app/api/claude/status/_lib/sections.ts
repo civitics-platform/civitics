@@ -209,9 +209,25 @@ export async function getConnectionTypes(
 //   - history: per-pipeline last 7 runs (newest first), bucketed per pipeline
 //     so every registered pipeline that ran in the lookback window appears
 //     reliably — not just whichever ones happened to land in a global LIMIT
-//   - enrichment_backlog: enrichment_queue depth split by tag/summary/in_progress
-//     (table is from FIX-101 stage 1 schema; fall back to zeros if unavailable
-//     so a missing/renamed table doesn't black out the whole pipelines card)
+//   - enrichment_backlog: enrichment_queue depth split by pending tag /
+//     pending summary / processing / stale processing (fall back to zeros if
+//     unavailable so a missing/renamed table doesn't black out the whole
+//     pipelines card)
+//
+// FIX-924 — the status vocabulary here was wrong, and the comment that used to
+// sit on this line is why. It said the table was "from FIX-101 stage 1 schema".
+// It is not. `.from("enrichment_queue")` resolves to public.enrichment_queue
+// (migration 20260420030000_enrichment_queue.sql, FIX-064), whose vocabulary is
+// pending | processing | done | failed, plus skipped_no_source_text and
+// skipped_feature_retired (FIX-895/896). `in_progress` belongs to
+// shadow.enrichment_queue from the stage-1 schema (20260421000006) — a table
+// that DOES NOT EXIST in the database: exactly one relation named
+// enrichment_queue exists across every schema, in public, and the `shadow`
+// schema itself is gone (promoted to public at the 2026-04-22 cutover).
+// So the third count matched a value no row can hold, the tile read
+// "queue idle" from day one, and 44 abandoned `processing` claims sat invisible
+// on it for three months — invisible to pending_tag/pending_summary (they are
+// not pending) and to in_progress (it never existed).
 //
 // Window + bucketing rationale (FIX-381): the pre-fix shape used a global
 // `ORDER BY completed_at DESC LIMIT 100` which the high-frequency writers
@@ -256,6 +272,24 @@ const HIDDEN_PIPELINES = new Set<string>([
   "nightly_cron",
 ]);
 
+/**
+ * FIX-924 — how old a `processing` claim has to be before the dashboard calls it
+ * abandoned. Minutes.
+ *
+ * The semantic is "long enough that a live drain wave never trips it", NOT
+ * "the operator's reclaim threshold". Deliberately looser than
+ * `data:drain:status`'s 10-minute default: that script answers "what can I
+ * reclaim right now", this number answers "does this look abandoned". A wave of
+ * 12 subagents chewing 60-item batches finishes well inside an hour, so 60
+ * minutes never fires on healthy work while still catching the orphan class
+ * that motivated this fix (44 claims stranded since April).
+ *
+ * It governs only the WARN. `processing` is reported unconditionally — hiding a
+ * stale claim behind a threshold would reproduce the invisibility this fix
+ * exists to remove.
+ */
+export const ENRICHMENT_STALE_CLAIM_MINUTES = 60;
+
 export async function getPipelines(db: Db) {
   // ISO timestamp 14 months ago. Calculated as 14 × 30 days to avoid
   // month-boundary off-by-ones; close enough — the bound is a safety net,
@@ -263,6 +297,10 @@ export async function getPipelines(db: Db) {
   // per-pipeline; see apps/civitics/app/dashboard/DashboardClient.tsx).
   const fourteenMonthsAgo = new Date(
     Date.now() - 14 * 30 * 24 * 60 * 60 * 1000,
+  ).toISOString();
+
+  const staleClaimCutoff = new Date(
+    Date.now() - ENRICHMENT_STALE_CLAIM_MINUTES * 60 * 1000,
   ).toISOString();
 
   const [recentRunsRes, cronState, queueResults] = await Promise.all([
@@ -306,7 +344,12 @@ export async function getPipelines(db: Db) {
       db
         .from("enrichment_queue")
         .select("*", { count: "exact", head: true })
-        .eq("status", "in_progress"),
+        .eq("status", "processing"),
+      db
+        .from("enrichment_queue")
+        .select("*", { count: "exact", head: true })
+        .eq("status", "processing")
+        .lt("claimed_at", staleClaimCutoff),
     ]),
   ]);
 
@@ -352,7 +395,10 @@ export async function getPipelines(db: Db) {
     enrichment_backlog: {
       pending_tag: safeCount(queueResults[0]),
       pending_summary: safeCount(queueResults[1]),
-      in_progress: safeCount(queueResults[2]),
+      // Total claims currently held, and the subset old enough to be abandoned.
+      // stale_processing ⊆ processing — the dashboard renders both.
+      processing: safeCount(queueResults[2]),
+      stale_processing: safeCount(queueResults[3]),
     },
   };
 }

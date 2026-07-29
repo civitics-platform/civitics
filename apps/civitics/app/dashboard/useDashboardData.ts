@@ -44,10 +44,16 @@ export type PipelineHistoryRun = {
   metadata?: Record<string, unknown> | null;
 };
 
+// FIX-924: `in_progress` was a status value public.enrichment_queue never had
+// (it belongs to the never-created shadow.enrichment_queue) so the count was
+// always 0. Real vocabulary is pending | processing | done | failed + the two
+// skipped_* statuses. `stale_processing` is the subset of `processing` whose
+// claim is older than ENRICHMENT_STALE_CLAIM_MINUTES — an abandoned claim.
 export type EnrichmentBacklog = {
   pending_tag: number;
   pending_summary: number;
-  in_progress: number;
+  processing: number;
+  stale_processing: number;
 };
 
 export type PipelinesData = {

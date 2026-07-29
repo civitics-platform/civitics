@@ -6471,6 +6471,7 @@ export type Database = {
           total: number
         }[]
       }
+      get_proposal_topic_groups: { Args: never; Returns: Json }
       get_pv_bots: {
         Args: never
         Returns: {

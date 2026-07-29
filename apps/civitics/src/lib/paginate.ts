@@ -48,6 +48,35 @@ export async function fetchAllRows<T>(
  */
 export const ID_CHUNK_SIZE = 200;
 
+/**
+ * Max chunks in flight per `fetchChunkedByIds` call (FIX-926).
+ *
+ * This bounds ONE call site's share of the shared connection/socket budget —
+ * the sockets, the PostgREST worker pool, and the gateway's per-origin
+ * concurrency. It is NOT a latency budget (nothing here times anything; that is
+ * `withDbTimeout`'s job at the call site) and it is NOT a row bound. The two
+ * constants in this file guard two entirely different ceilings and conflating
+ * them is the whole history of this bug class:
+ *
+ *   ID_CHUNK_SIZE        → how WIDE one request may be   (URL length, 414)
+ *   ID_CHUNK_CONCURRENCY → how MANY may be open at once  (connection budget)
+ *
+ * Sized so real call sites are unaffected and only pathological lists throttle.
+ * The largest plausible input as FIX-902 migrates the remaining `.in()` sites is
+ * the full active-officials set — 27,193 ids → 136 chunks → 136 simultaneous
+ * PostgREST requests from a single request handler under the old unbounded
+ * `Promise.all`. Six keeps that to a queue instead of a stampede.
+ *
+ * KNOWN LIMIT — the cap is PER CALL, not global. A route issuing N concurrent
+ * `fetchChunkedByIds` calls can still have up to N × maxConcurrency requests in
+ * flight; `app/api/graph/connections/route.ts` does exactly that with seven
+ * concurrent calls inside one `Promise.all`. A shared module-level limiter
+ * would bound the route-wide total and is deliberately OUT of scope here — it
+ * was considered, not missed. Per-call is the right granularity for a helper
+ * that has no idea what else the handler is doing.
+ */
+export const ID_CHUNK_CONCURRENCY = 6;
+
 export type ChunkedFetchResult<T> = {
   /** Rows from every chunk that succeeded, in chunk order. */
   rows: T[];
@@ -64,7 +93,8 @@ export type ChunkedFetchResult<T> = {
 
 /**
  * Read rows by a list of ids, chunked so the request URL never outgrows the
- * gateway (see `ID_CHUNK_SIZE`). Chunks are issued in parallel.
+ * gateway (see `ID_CHUNK_SIZE`). Chunks are issued in parallel, at most
+ * `maxConcurrency` (default `ID_CHUNK_CONCURRENCY`) in flight at a time.
  *
  * ── The failure mode this exists to prevent ──────────────────────────────────
  *
@@ -99,6 +129,16 @@ export type ChunkedFetchResult<T> = {
  * Ids are deduped and empty/nullish entries dropped before chunking; an empty
  * list short-circuits to zero requests.
  *
+ * ── Concurrency (FIX-926) ──────────────────────────────────────────────────────
+ *
+ * `maxConcurrency` (default `ID_CHUNK_CONCURRENCY`, clamped to ≥ 1) bounds how
+ * many chunks are open at once. It is purely a SCHEDULING concern and is
+ * invisible in the output for any input: `rows` stay in chunk order, `failed`
+ * stays in chunk-index order, `chunkCount` is unaffected, and — importantly —
+ * `strict` still issues EVERY chunk before throwing. A pool that cancelled the
+ * queue on the first error would change the failure semantics, not just the
+ * pacing; `paginate.test.ts` pins that.
+ *
  * `build` receives the chunk plus a `ctx` carrying the chunk index and a
  * ready-made per-chunk label, so it composes with `withDbTimeout` directly:
  *
@@ -115,9 +155,15 @@ export async function fetchChunkedByIds<T>(
     chunk: string[],
     ctx: { index: number; label: string },
   ) => PromiseLike<{ data: unknown; error?: { message: string } | null }>,
-  opts: { chunkSize?: number; strict?: boolean; label?: string } = {},
+  opts: {
+    chunkSize?: number;
+    strict?: boolean;
+    label?: string;
+    maxConcurrency?: number;
+  } = {},
 ): Promise<ChunkedFetchResult<T>> {
   const size = Math.max(1, opts.chunkSize ?? ID_CHUNK_SIZE);
+  const concurrency = Math.max(1, opts.maxConcurrency ?? ID_CHUNK_CONCURRENCY);
   const base = opts.label ?? "chunked-in";
 
   // Dedupe + drop empty/nullish. Deduping ids is row-preserving (PostgREST
@@ -136,9 +182,49 @@ export async function fetchChunkedByIds<T>(
   const chunks: string[][] = [];
   for (let i = 0; i < clean.length; i += size) chunks.push(clean.slice(i, i + size));
 
-  const results = await Promise.all(
-    chunks.map((chunk, index) => build(chunk, { index, label: `${base}:${index}` })),
+  // Bounded worker pool. `concurrency` workers pull from a shared cursor and
+  // write into `results` BY CHUNK INDEX, so ordering is a property of the array
+  // slot rather than of completion order — out-of-order completion (the normal
+  // case under a cap) can't reshuffle `rows` or `failed`.
+  //
+  // No worker abandons the queue on a failure of any kind — every chunk is
+  // issued before this function throws, whether the trigger is `strict` on an
+  // `{error}` result or a rejected build(). Hand-rolled: a dependency for
+  // twenty lines would be the more surprising choice.
+  type ChunkResult = { data: unknown; error?: { message: string } | null };
+  const results: ChunkResult[] = new Array(chunks.length);
+  const rejections: unknown[] = new Array(chunks.length);
+  let rejected = false;
+  let cursor = 0;
+  const worker = async (): Promise<void> => {
+    for (;;) {
+      const index = cursor++;
+      if (index >= chunks.length) return;
+      try {
+        results[index] = await build(chunks[index]!, {
+          index,
+          label: `${base}:${index}`,
+        });
+      } catch (err) {
+        // A REJECTED build() is not a failed chunk — a failed chunk is the
+        // `{error}` result shape below. Park it and keep draining, so the
+        // "every chunk is issued" property holds, then rethrow once the pool is
+        // empty. That is what the old `Promise.all(chunks.map(build))` did:
+        // issue everything, then propagate. Swallowing it into `failed` would
+        // hide a thrown builder behind a soft partial result.
+        rejections[index] = err;
+        rejected = true;
+      }
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, chunks.length) }, () => worker()),
   );
+  if (rejected) {
+    for (let i = 0; i < rejections.length; i++) {
+      if (i in rejections) throw rejections[i];
+    }
+  }
 
   const rows: T[] = [];
   const failed: ChunkedFetchResult<T>["failed"] = [];

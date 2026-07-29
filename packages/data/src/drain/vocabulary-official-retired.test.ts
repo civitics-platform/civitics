@@ -84,10 +84,40 @@ test("rejection comes from official: {} — an UNREGISTERED type still fails OPE
   const unregistered = checkTagVocabulary("agency", "topic", "healthcare");
   assert.equal(unregistered.allowed, true);
 
+  // FIX-925: the allow is real, but it is UNENFORCED — nothing was checked. The
+  // decision is unchanged (fail-open, deliberately); what is new is that the
+  // caller can see which kind of allow it got, which is what makes the module
+  // header's "write it and warn" actually warn in drain/apply.ts.
+  assert.equal(
+    unregistered.allowed === true ? unregistered.enforced : null,
+    false,
+    "an unregistered entity type must report an UNENFORCED allow",
+  );
+  assert.match(
+    unregistered.allowed === true && unregistered.enforced === false
+      ? unregistered.reason
+      : "",
+    /agency/,
+    "the fail-open reason must name the unregistered entity type",
+  );
+
   assert.equal(
     Object.prototype.hasOwnProperty.call(TAG_VOCABULARY, "agency"),
     false,
     "this control test is only meaningful while 'agency' is unregistered",
+  );
+});
+
+test("an in-vocabulary allow is marked ENFORCED — the two allows are distinguishable", () => {
+  // The other half of FIX-925. Without this, a regression that made every allow
+  // fail-open (or every allow enforced) would still pass the control above,
+  // and `agency`'s silent-write risk would be back with no test noticing.
+  const enforced = checkTagVocabulary("proposal", "topic", "climate");
+  assert.equal(enforced.allowed, true);
+  assert.equal(
+    enforced.allowed === true ? enforced.enforced : null,
+    true,
+    "proposal/topic is a registered vocabulary — its allow was actually checked",
   );
 });
 

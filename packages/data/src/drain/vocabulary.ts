@@ -21,6 +21,16 @@
  * everything for an unregistered type would look identical to a working
  * pipeline right up until someone audited the row counts.
  *
+ * FIX-925 — the "and warn" half of that was undeliverable until now: the verdict
+ * type was `{allowed: true} | {allowed: false, reason}`, so an allow carried no
+ * way to say WHY it was allowed and the caller could not tell an ENFORCED allow
+ * (the tag really is in the vocabulary) from a FAIL-OPEN one (nobody has
+ * registered this entity type, so nothing was actually checked). Both looked
+ * like `{allowed: true}` and both wrote silently. The allowed arm now carries
+ * `enforced`, and drain/apply.ts warns once per tag on `enforced === false`.
+ * NO allow/reject decision changed — fail-open is still fail-open, which is
+ * exactly what the FIX-896 `official: {}` reasoning below depends on.
+ *
  * That fail-open is exactly why FIX-896 set `official: {}` instead of DELETING
  * the `official` key. Retiring the official AI tagger means no official tag may
  * be written by the drain path at all — and deleting the key would have made
@@ -58,15 +68,34 @@ export const TAG_VOCABULARY: Record<string, Record<string, readonly string[]>> =
   },
 };
 
+/**
+ * FIX-925 — the allowed arm distinguishes an ENFORCED allow from a FAIL-OPEN one.
+ *
+ *   { allowed: true,  enforced: true  }            → checked against a real
+ *                                                    vocabulary and passed
+ *   { allowed: true,  enforced: false, reason }    → nothing was checked; the
+ *                                                    entity type is unregistered
+ *                                                    (see the module header)
+ *   { allowed: false, reason }                     → rejected, unchanged
+ *
+ * `allowed` stays the discriminant, so every existing call site and test —
+ * all of which read `.allowed` only, and narrow on it for `.reason` — keeps
+ * compiling and passing untouched. `enforced` is REQUIRED on both allowed arms
+ * rather than optional so the compiler forces each return path below to state
+ * its provenance; an omitted-by-accident field would silently read as an
+ * enforced allow, which is the exact ambiguity this variant exists to end.
+ */
 export type VocabularyVerdict =
-  | { allowed: true }
+  | { allowed: true; enforced: true }
+  | { allowed: true; enforced: false; reason: string }
   | { allowed: false; reason: string };
 
 /**
  * Is `(entityType, tagCategory, tag)` writable to entity_tags?
  *
  * Returns a reason string on rejection so the caller can log something
- * actionable rather than a bare count.
+ * actionable rather than a bare count — and, since FIX-925, on a fail-open allow
+ * too, so `drain/apply.ts` can warn instead of writing silently.
  */
 export function checkTagVocabulary(
   entityType: string,
@@ -75,8 +104,16 @@ export function checkTagVocabulary(
 ): VocabularyVerdict {
   const byCategory = TAG_VOCABULARY[entityType];
   if (!byCategory) {
-    // Unregistered entity type — fail open (documented above).
-    return { allowed: true };
+    // Unregistered entity type — fail open (documented above). This is the ONLY
+    // unenforced return: nothing was checked, so the caller is told so and warns.
+    return {
+      allowed: true,
+      enforced: false,
+      reason:
+        `entity_type '${entityType}' has no vocabulary registered — writing ` +
+        `'${tagCategory}/${tag}' UNCHECKED (fail-open). Register it in ` +
+        `TAG_VOCABULARY to enforce.`,
+    };
   }
 
   const allowedTags = byCategory[tagCategory];
@@ -103,5 +140,5 @@ export function checkTagVocabulary(
     };
   }
 
-  return { allowed: true };
+  return { allowed: true, enforced: true };
 }

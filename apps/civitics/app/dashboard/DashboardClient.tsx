@@ -1192,8 +1192,13 @@ function DataHealthSection({
   const backlog = pipelines.enrichment_backlog ?? {
     pending_tag: 0,
     pending_summary: 0,
-    in_progress: 0,
+    processing: 0,
+    stale_processing: 0,
   };
+  // backlogTotal stays PENDING-only: pending is the backlog. Claims already
+  // held by a worker are in-flight work, not queue depth — folding them in
+  // would move the tile's tone thresholds for the wrong reason. Stale claims
+  // get their own warning treatment on the sub-line instead.
   const backlogTotal = backlog.pending_tag + backlog.pending_summary;
   const backlogTone =
     backlogTotal > 50_000 ? "warning" : backlogTotal > 0 ? "neutral" : "ok";
@@ -1235,9 +1240,25 @@ function DataHealthSection({
               </>
             }
             sub={
-              backlog.in_progress > 0
-                ? `${formatNumber(backlog.in_progress)} in progress`
-                : "queue idle"
+              // FIX-924: this branch used to test `in_progress`, a status
+              // public.enrichment_queue cannot hold, so it always rendered
+              // "queue idle" — including while 44 claims sat abandoned since
+              // April. Stale claims are called out separately in amber: they
+              // are still in-progress rows (so they stay inside the processing
+              // total), they just need a human to reclaim them.
+              backlog.processing > 0 ? (
+                <>
+                  {formatNumber(backlog.processing)} in progress
+                  {backlog.stale_processing > 0 && (
+                    <span className="text-amber">
+                      {" · "}
+                      {formatNumber(backlog.stale_processing)} stale
+                    </span>
+                  )}
+                </>
+              ) : (
+                "queue idle"
+              )
             }
             tone={backlogTone}
           />
