@@ -319,7 +319,9 @@ function deriveBoundary(rows: Array<{ frac: number; shared: number }>): Boundary
 // Formatting
 // ---------------------------------------------------------------------------
 
-const usd = (cents: number | bigint): string =>
+// node-postgres hands bigint columns back as strings, so accept those too
+// rather than making every call site cast.
+const usd = (cents: number | bigint | string): string =>
   `$${(Number(cents) / 100).toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
 
 const iso = (d: Date | null): string => (d ? d.toISOString().slice(0, 10) : "");
