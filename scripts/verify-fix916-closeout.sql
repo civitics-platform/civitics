@@ -132,8 +132,8 @@ SELECT 'C2 rollup freshness histogram' AS check,
        count(*)                      AS rows,
        count(DISTINCT official_id)   AS officials
   FROM public.official_sector_affinity_rollup
- GROUP BY 1
- ORDER BY 1 DESC;
+ GROUP BY 2
+ ORDER BY 2 DESC;
 
 -- ---------------------------------------------------------------------------
 -- C3 — override fidelity. Every non-NULL override donor carries EXACTLY ONE
@@ -193,19 +193,41 @@ HAVING (ov.industry IS NOT NULL AND (count(et.tag) <> 1 OR min(et.tag) IS DISTIN
 -- C4 — dollar conservation. Re-bucketing donors between industries moves money
 -- BETWEEN buckets; it must not create or destroy any.
 --
--- Checked against official_donor_totals (FIX-836) rather than a live
--- financial_relationships scan: both are materializations of the same donation
--- flow maintained by DIFFERENT code paths, so agreement between them is a
--- stronger signal than either against itself — and a full FR scan is a heavy
--- prod read this check does not need.
+-- THE AUTHORITATIVE CHECK IS C4-live BELOW: the rollup against the LIVE
+-- donation ledger. Run it after any full backfill.
 --
--- The two scopes are near-identical but not byte-identical: the sector rollup
--- additionally requires from_type='financial_entity' AND amount_cents > 0,
--- which official_donor_totals does not. Expect a delta of 0, or a small
--- negative one accounted for entirely by those two predicates (quantified
--- below). A LARGE delta means dollars went missing in the re-bucket.
+-- The cheaper C4-proxy that follows compares the rollup against
+-- official_donor_totals (FIX-836) — two materializations of the same flow
+-- maintained by different code paths. That comparison is ONLY meaningful when
+-- the two tables are EQUALLY FRESH, and this is exactly how it misled once:
+-- before the 2026-07-29 backfill both were stale in the same way and agreed to
+-- the cent (487,148,409,800), which read as conservation. After the backfill
+-- the rollup was current and official_donor_totals was not (its own oldest row
+-- dated 2026-07-15 — it has the same dirty-set limitation), so the proxy showed
+-- a $107.9M "loss" that was purely the OTHER table's staleness. The live check
+-- returned an exact match at 497,940,464,700 both sides.
+--
+-- Keep the proxy as a cheap smoke test; trust C4-live when they disagree.
 -- ---------------------------------------------------------------------------
-SELECT 'C4 rollup conservation' AS check,
+SELECT 'C4-live conservation (AUTHORITATIVE)' AS check,
+       (SELECT COALESCE(sum(total_cents), 0)
+          FROM public.official_sector_affinity_rollup)  AS rollup_cents,
+       (SELECT COALESCE(sum(fr.amount_cents), 0)
+          FROM public.financial_relationships fr
+         WHERE fr.relationship_type = 'donation'
+           AND fr.from_type = 'financial_entity'
+           AND fr.to_type   = 'official'
+           AND fr.amount_cents > 0
+           AND fr.to_id IN (SELECT official_id FROM public.official_donor_totals))
+                                                       AS live_cents;
+
+SELECT 'C4 freshness of BOTH materializations' AS check,
+       (SELECT min(updated_at) FROM public.official_sector_affinity_rollup) AS rollup_oldest,
+       (SELECT max(updated_at) FROM public.official_sector_affinity_rollup) AS rollup_newest,
+       (SELECT min(updated_at) FROM public.official_donor_totals)           AS donor_totals_oldest,
+       (SELECT max(updated_at) FROM public.official_donor_totals)           AS donor_totals_newest;
+
+SELECT 'C4-proxy (valid only at equal freshness)' AS check,
        (SELECT COALESCE(sum(total_cents), 0)
           FROM public.official_sector_affinity_rollup)  AS rollup_cents,
        (SELECT COALESCE(sum(total_cents), 0)
