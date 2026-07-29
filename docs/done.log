@@ -1136,3 +1136,10 @@
 2026-07-27 | FIX-910 | 663aa865 | local-only | fix(tags): curated industry overrides — 742 donors re-assigned or de-tagged
 2026-07-27 | FIX-916 | 663aa865 | local-only | fix(tags): curated industry overrides — 742 donors re-assigned or de-tagged
 2026-07-27 | FIX-917 | 663aa865 | local-only | fix(tags): curated industry overrides — 742 donors re-assigned or de-tagged
+2026-07-28 | FIX-910 | 261a19e3 | local+prod | chore(fixes): record prod verification for FIX-910 / FIX-916 / FIX-917
+2026-07-28 | FIX-911 | 8ff634c6 | local+prod | fix(tags): out-of-vocabulary industry can no longer halt the nightly official tagger
+2026-07-28 | FIX-916 | 261a19e3 | local+prod | chore(fixes): record prod verification for FIX-910 / FIX-916 / FIX-917
+2026-07-28 | FIX-917 | 261a19e3 | local+prod | chore(fixes): record prod verification for FIX-910 / FIX-916 / FIX-917
+2026-07-28 | FIX-920 | 8ff634c6 | local-only | fix(tags): out-of-vocabulary industry can no longer halt the nightly official tagger
+2026-07-28 | FIX-921 | fe97ecdf | local-only | fix(tags): sweep 50 non-fossil donors out of oil_gas
+2026-07-28 | FIX-921 | reopen | local-only | prod half deliberately deferred: seed not applied to prod, and the officials-side pills additionally need a full backfill_official_sector_affinity_rollup() (the rollup dirty set is blind to tag-only changes)
