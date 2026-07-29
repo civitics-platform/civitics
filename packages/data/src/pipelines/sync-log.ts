@@ -21,6 +21,15 @@ export interface PipelineResult {
   // Standalone entrypoints inspect it to exit nonzero so CI status is
   // trustworthy; the nightly orchestrator keeps its own try/catch semantics.
   fatal_error?: string;
+  // FIX-911: free-form per-run facts a pipeline wants to keep, merged into
+  // data_sync_log.metadata. Distinct from seed_warnings, which is specifically
+  // the FIX-386 jurisdiction-seed channel the Data Health dashboard reads.
+  // Use for counts a future audit will want to grep — the AI classifier's
+  // vocabulary abstains are the first case: preferring an abstain to a junk tag
+  // is only auditable if the abstain leaves a durable trace, not a CI log line.
+  // Merged UNDER the reserved keys below, so a caller cannot clobber
+  // peak_rss_mb or seed_warnings by accident.
+  metadata?: Record<string, unknown>;
 }
 
 // FIX-255: best-effort failSync on abnormal exit so data_sync_log rows don't
@@ -115,6 +124,9 @@ export async function completeSync(id: string, result: PipelineResult): Promise<
       .maybeSingle();
     const merged: Record<string, unknown> = {
       ...(existing?.metadata ?? {}),
+      // FIX-911: caller metadata goes ABOVE the reserved keys so peak_rss_mb and
+      // seed_warnings below always win.
+      ...(result.metadata ?? {}),
       peak_rss_mb: captureRssMb(),
     };
     if (result.seed_warnings && result.seed_warnings.length > 0) {

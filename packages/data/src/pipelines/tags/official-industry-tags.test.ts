@@ -10,9 +10,13 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
   buildOfficialIndustryTags,
   assertIndustryVocabulary,
+  partitionSectorRowsByVocabulary,
+  formatSectorVocabularyWarning,
   INDUSTRY_TOP_N,
   type OfficialSector,
 } from "./rules";
@@ -125,4 +129,120 @@ test("an unlabellable official produces zero rows, not an empty pill", () => {
 
 test("INDUSTRY_TOP_N is 3 — matches the EntityTags tier-1 budget", () => {
   assert.equal(INDUSTRY_TOP_N, 3);
+});
+
+// ---------------------------------------------------------------------------
+// FIX-920 — the officials-side read must not be able to halt the nightly
+//
+// THE FAILURE THESE PIN. tagOfficials() used to call assertIndustryVocabulary()
+// on the rollup read, which THROWS. official_sector_affinity_rollup.industry is
+// an unconstrained text mirror of whatever the donor taggers wrote, so a single
+// junk donor tag reaching rank <= 3 for ONE official took down the entire
+// nightly official tagger for all ~27k officials — tenure, voting-pattern and
+// donor-profile tags included, none of which have anything to do with
+// industries. Prod was safe only by margin: the 8 `other` rows existed but
+// happened to sit at rank > 3 for every official they touched.
+//
+// The guard-removal proof (the FIX-917 convention): replace the
+// partitionSectorRowsByVocabulary() call in tagOfficials() with the old
+// `assertIndustryVocabulary(sectorRows.map(r => r.industry))` and re-run
+// `pnpm --filter @civitics/data test` — the three tests below fail and nothing
+// else does.
+// ---------------------------------------------------------------------------
+
+/** A rollup row, shaped exactly as tagOfficials()'s SQL read returns them. */
+function rollupRow(industry: string, rank: number) {
+  return {
+    official_id: OFFICIAL_ID,
+    industry,
+    total_cents: "500000",
+    donor_count: "7",
+    rank: String(rank),
+  };
+}
+
+test("FIX-920: an out-of-vocabulary industry at rank<=3 is SKIPPED, not thrown on", () => {
+  // `other` is the real case — ai-classifier.ts wrote 8 of them to prod. Rank 2
+  // puts it squarely inside the band tagOfficials() reads, which is the only
+  // band that could ever have triggered the halt.
+  const rows = [rollupRow("finance", 1), rollupRow("other", 2), rollupRow("health", 3)];
+
+  const { kept, skipped } = partitionSectorRowsByVocabulary(rows);
+
+  assert.deepEqual(kept.map((r) => r.industry), ["finance", "health"]);
+  assert.equal(skipped.get("other"), 1);
+  // The whole point: the two good pills still write. A missing pill is the right
+  // failure for a rendering path; a dead nightly is not.
+  assert.equal(kept.length, 2);
+});
+
+test("FIX-920: the skip is COUNTED and the warning names the offending key", () => {
+  const rows = [
+    rollupRow("finance", 1),
+    rollupRow("other", 2),
+    rollupRow("other", 3),
+    rollupRow("crypto_mining", 1),
+  ];
+
+  const { skipped } = partitionSectorRowsByVocabulary(rows);
+  assert.equal(skipped.get("other"), 2);
+  assert.equal(skipped.get("crypto_mining"), 1);
+
+  // A bare count would be unactionable — the warning has to say WHICH key so the
+  // reader can go find the tagger that emitted it.
+  const warning = formatSectorVocabularyWarning(skipped);
+  assert.match(warning, /other \(2 rows\)/);
+  assert.match(warning, /crypto_mining \(1 row\)/);
+  assert.match(warning, /SKIPPED 3/);
+});
+
+test("FIX-920: a clean rollup is passed through untouched, with no warning", () => {
+  // The guard must not be a kill switch — same shape as FIX-917's third case.
+  const rows = [...VALID_INDUSTRIES].map((ind, i) => rollupRow(ind, i + 1));
+
+  const { kept, skipped } = partitionSectorRowsByVocabulary(rows);
+
+  assert.equal(kept.length, VALID_INDUSTRIES.length);
+  assert.equal(skipped.size, 0);
+  assert.deepEqual(kept.map((r) => r.industry), [...VALID_INDUSTRIES]);
+});
+
+test("FIX-920: 'Untagged' is skipped too if the SQL filter is ever dropped", () => {
+  // Belt-and-braces. tagOfficials() excludes it in SQL; if that filter went
+  // away, the rollup's absence-of-industry sentinel must degrade to a skipped
+  // row rather than a thrown nightly.
+  const { kept, skipped } = partitionSectorRowsByVocabulary([rollupRow("Untagged", 1)]);
+  assert.equal(kept.length, 0);
+  assert.equal(skipped.get("Untagged"), 1);
+});
+
+test("FIX-920: tagOfficials() is WIRED to the soft guard, not the throwing one", () => {
+  // The tests above pin what partitionSectorRowsByVocabulary DOES. This pins
+  // that tagOfficials() actually calls it — without this, swapping the call site
+  // back to assertIndustryVocabulary() would restore the halt while every test
+  // above kept passing, because the extracted function would still exist and
+  // still behave. Same read-the-source-off-disk convention as
+  // industry-overrides.test.ts (migration vs TSV) and industry-vocabulary.test.ts
+  // (packages/graph key list).
+  const src = readFileSync(join(__dirname, "rules.ts"), "utf8");
+  const body = src.slice(src.indexOf("export async function tagOfficials"));
+
+  assert.ok(
+    body.includes("partitionSectorRowsByVocabulary(sectorRows)"),
+    "tagOfficials() must partition the rollup read through the soft vocabulary guard",
+  );
+  assert.ok(
+    !/assertIndustryVocabulary\(\s*sectorRows/.test(body),
+    "tagOfficials() must NOT assert-and-throw on the rollup read — that is the FIX-920 halt",
+  );
+});
+
+test("FIX-920: assertIndustryVocabulary still THROWS — the donor side is unchanged", () => {
+  // The two call sites have opposite correct failure modes and this pins that
+  // the soft officials-side read did not soften the donor side with it.
+  // applyIndustryOverrides() reads a CHECK-constrained table where an
+  // out-of-vocabulary value is impossible-by-construction, so it means real
+  // drift and a silent drop would be indistinguishable from the deliberate NULL
+  // "no industry, ever" case.
+  assert.throws(() => assertIndustryVocabulary(["other"]), /other/);
 });

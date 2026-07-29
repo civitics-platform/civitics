@@ -20,6 +20,7 @@ import { createAiClient } from "@civitics/ai";
 import { costGate } from "@civitics/ai/cost-gate";
 import { startSync, completeSync, failSync } from "../sync-log";
 import { selectDirect } from "../../lib/heavy-rebuild";
+import { checkTagVocabulary } from "../../drain/vocabulary";
 import { VALID_INDUSTRIES, INDUSTRY_LABELS, industryDisplay } from "./topics";
 
 // ---------------------------------------------------------------------------
@@ -28,6 +29,8 @@ import { VALID_INDUSTRIES, INDUSTRY_LABELS, industryDisplay } from "./topics";
 
 const MIN_DONATION_CENTS = 10_000_000; // $100k — not worth AI cost below this
 const COST_PER_PAC_USD = 0.0002;
+/** Named abstains kept in data_sync_log.metadata — a sample, not the full list. */
+const ABSTAIN_SAMPLE_LIMIT = 25;
 
 // FIX-908: the local 12-key VALID_INDUSTRIES + INDUSTRY_LABELS copies that lived
 // here are gone. This file now imports the SAME constants the drain
@@ -37,24 +40,33 @@ const COST_PER_PAC_USD = 0.0002;
 // which they already had: this copy carried an `other` key that was never a
 // member of the shared vocabulary.
 //
-// KNOWN, DELIBERATELY UNCHANGED (FIX-908): the prompt offers "other" as an answer
-// and "other" is NOT a member of VALID_INDUSTRIES — yet it is still WRITTEN, as
-// a real entity_tags row tagged `other`. Every model abstention, and every
-// unparseable answer (the coercion below collapses both to "other"), lands in
-// the table as out-of-vocabulary drift: the same class as the four singleton
-// rows this change is deleting, and the class FIX-890's write-boundary guard
-// exists to stop — except this path upserts over PostgREST and never passes
-// through that guard. Measured 2026-07-27: prod carries 8 such rows (local
-// carries 0), so this is open AND bleeding. Left as-is here on purpose — fixing
-// it changes what gets written, which is not what a vocabulary PR should do
-// quietly, and the 8 rows are a display wart rather than a correctness break.
-// Tracked as its own FIX; the FIX-909 migration deliberately tolerates `other`
-// in its vocabulary assertion rather than deleting rows this PR was not
-// authorised to touch.
-type Industry = (typeof VALID_INDUSTRIES)[number] | "other";
+// FIX-911 — CLOSED (was the "KNOWN, DELIBERATELY UNCHANGED" note left by FIX-908).
+//
+// This path used to coerce every model abstention AND every unparseable answer to
+// the literal `other`, then WRITE it as a real entity_tags row — a value that is
+// not a member of VALID_INDUSTRIES and that FIX-890's write-boundary guard exists
+// to reject. It escaped that guard because the guard lives in the DRAIN path
+// (drain/apply.ts → checkTagVocabulary) and this file upserts over PostgREST
+// directly. A prompt is a request, not a constraint; so is a type alias.
+//
+// Two things made that worse than a display wart. `other` asserts nothing a
+// reader can use — an "Other" pill is strictly worse than no pill — and the value
+// propagates: official_sector_affinity_rollup mirrors donor tags verbatim, so a
+// junk donor tag becomes a junk official industry, which used to THROW inside
+// tagOfficials() and kill the whole nightly official tagger (FIX-920).
+//
+// The writer now fails CLOSED through the same guard the drain path uses, and an
+// unclassifiable PAC ends with NO industry tag. That is the honest state, and it
+// is exactly what the 362 NULL curated overrides already assert for the same
+// class of entity (leadership PACs, party committees, vanity PACs).
+type Industry = (typeof VALID_INDUSTRIES)[number];
 
-/** Not a vocabulary member — see the note above. Kept only to preserve current behaviour. */
-const OTHER_DISPLAY = { label: "Other", icon: "⚙" } as const;
+/**
+ * What the model may answer that is NOT a tag. The prompt still offers it — an
+ * explicit "I cannot tell" beats a forced guess from a bare committee name — but
+ * it now routes to an abstain record instead of an entity_tags row.
+ */
+const ABSTAIN_ANSWER = "other";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -101,7 +113,13 @@ export function selectClassifierCandidates(
 }
 
 interface ClassificationResult {
-  industry: Industry;
+  /**
+   * FIX-911: the model's RAW answer, uncoerced. It is validated at the write
+   * boundary by checkTagVocabulary(), not silently rewritten here — collapsing
+   * an unparseable answer into a plausible-looking tag is how junk reached the
+   * table in the first place.
+   */
+  industry: string;
   confidence: number;
   reasoning: string;
 }
@@ -172,14 +190,15 @@ async function classifyPac(
       reasoning: string;
     };
 
-    const industry: Industry = (VALID_INDUSTRIES as readonly string[]).includes(parsed.industry)
-      ? (parsed.industry as Industry)
-      : "other";
-
+    // FIX-911: NO coercion. An out-of-vocabulary answer (including the prompt's
+    // own `other`) and an answer we could not make sense of are both handed on
+    // verbatim and rejected at the write boundary, where the rejection is
+    // counted and named. Coercing here made an abstention indistinguishable from
+    // a classification.
     const confidence = Math.min(1.0, Math.max(0.0, Number(parsed.confidence) || 0.3));
 
     return {
-      industry,
+      industry: String(parsed.industry ?? "").trim().toLowerCase(),
       confidence,
       reasoning:     String(parsed.reasoning ?? ""),
       input_tokens:  response.usage.input_tokens,
@@ -304,6 +323,12 @@ export async function runAiClassifier(options: { confirmed?: boolean } = {}): Pr
     let skipped = 0;
     let totalInputTokens  = 0;
     let totalOutputTokens = 0;
+    // FIX-911: abstentions are RECORDED, not coerced into a tag. Keyed by the raw
+    // answer so `other` (an honest "cannot tell") stays distinguishable from a
+    // hallucinated slug — the two want different follow-ups: the first is a PAC
+    // that genuinely has no industry, the second is a prompt or vocabulary bug.
+    const abstainsByAnswer = new Map<string, number>();
+    const abstainedPacs: { name: string; answer: string; reason: string }[] = [];
 
     console.log(`\n  Classifying ${pacsToProcess.length} PACs...\n`);
 
@@ -320,7 +345,29 @@ export async function runAiClassifier(options: { confirmed?: boolean } = {}): Pr
       totalInputTokens  += result.input_tokens;
       totalOutputTokens += result.output_tokens;
 
-      const info = industryDisplay(result.industry) ?? OTHER_DISPLAY;
+      // FIX-911: the write boundary. Same guard the drain path uses
+      // (drain/vocabulary.ts), so the set the model is offered, the set the drain
+      // accepts, and the set this pipeline writes are one set by construction.
+      // An unclassifiable PAC ends with NO industry tag — the honest state.
+      const verdict = checkTagVocabulary("financial_entity", "industry", result.industry);
+      if (!verdict.allowed) {
+        const answer = result.industry || "(empty)";
+        abstainsByAnswer.set(answer, (abstainsByAnswer.get(answer) ?? 0) + 1);
+        if (abstainedPacs.length < ABSTAIN_SAMPLE_LIMIT) {
+          abstainedPacs.push({ name: pac.display_name, answer, reason: verdict.reason });
+        }
+        process.stdout.write(
+          answer === ABSTAIN_ANSWER
+            ? "ABSTAIN (no industry)\n"
+            : `ABSTAIN — out of vocabulary: ${answer}\n`,
+        );
+        continue;
+      }
+
+      // Non-null by construction: checkTagVocabulary just proved membership of
+      // VALID_INDUSTRIES, and industry-vocabulary.test.ts pins INDUSTRY_LABELS to
+      // cover every member.
+      const info = industryDisplay(result.industry)!;
       const visibility = result.confidence >= 0.7 ? "primary" : "internal";
 
       const { error: upsertErr } = await db.from("entity_tags").upsert(
@@ -358,15 +405,55 @@ export async function runAiClassifier(options: { confirmed?: boolean } = {}): Pr
     }
 
     // 4. Summary
+    const abstained = [...abstainsByAnswer.values()].reduce((a, b) => a + b, 0);
+
     console.log("\n  ─────────────────────────────────────────────────");
     console.log("  AI classifier report");
     console.log("  ─────────────────────────────────────────────────");
     console.log(`  ${"PACs processed:".padEnd(32)} ${pacsToProcess.length}`);
     console.log(`  ${"Tagged:".padEnd(32)} ${tagged}`);
+    console.log(`  ${"Abstained (no tag written):".padEnd(32)} ${abstained}`);
     console.log(`  ${"Skipped/failed:".padEnd(32)} ${skipped}`);
     console.log(`  ${"Actual cost (est):".padEnd(32)} $${(tagged * COST_PER_PAC_USD).toFixed(4)}`);
 
-    await completeSync(logId, { inserted: tagged, updated: 0, failed: skipped, estimatedMb: 0 });
+    if (abstained > 0) {
+      // FIX-911: an out-of-vocabulary answer that is NOT the prompt's own `other`
+      // is a different animal — the model invented a slug, which means the prompt
+      // and the vocabulary have drifted. Call it out separately rather than
+      // burying it in one abstain count.
+      const invented = [...abstainsByAnswer.entries()].filter(([a]) => a !== ABSTAIN_ANSWER);
+      console.log(
+        `  Abstain breakdown: ` +
+          [...abstainsByAnswer.entries()]
+            .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+            .map(([answer, n]) => `${answer}=${n}`)
+            .join(", "),
+      );
+      if (invented.length > 0) {
+        console.warn(
+          `  [FIX-911] WARNING: the model returned ${invented.length} answer(s) that are ` +
+            `neither a vocabulary member nor '${ABSTAIN_ANSWER}': ` +
+            `${invented.map(([a, n]) => `${a} (${n})`).join(", ")}. ` +
+            `The prompt is built from VALID_INDUSTRIES, so this means the model is ` +
+            `ignoring the offered set — check buildPrompt() output.`,
+        );
+      }
+    }
+
+    await completeSync(logId, {
+      inserted: tagged,
+      updated: 0,
+      failed: skipped,
+      estimatedMb: 0,
+      // FIX-911: the abstain record is DURABLE, not just a CI log line that
+      // scrolls past. A count in data_sync_log.metadata is greppable months
+      // later, which is the whole point of preferring an abstain to a junk tag.
+      metadata: {
+        vocabulary_abstains: abstained,
+        vocabulary_abstains_by_answer: Object.fromEntries(abstainsByAnswer),
+        vocabulary_abstain_sample: abstainedPacs,
+      },
+    });
     return { tagged, skipped };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

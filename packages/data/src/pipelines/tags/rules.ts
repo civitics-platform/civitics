@@ -249,9 +249,7 @@ export type OfficialSector = {
  * the absence of one, and it would (correctly) throw here.
  */
 export function assertIndustryVocabulary(industries: readonly string[]): void {
-  const unknown = [...new Set(industries)].filter(
-    (i) => !VALID_INDUSTRIES.includes(i as (typeof VALID_INDUSTRIES)[number]) || !industryDisplay(i),
-  );
+  const unknown = [...new Set(industries)].filter(isOutOfVocabularyIndustry);
   if (unknown.length > 0) {
     throw new Error(
       `official_sector_affinity_rollup carries industry value(s) outside the vocabulary: ` +
@@ -260,6 +258,81 @@ export function assertIndustryVocabulary(industries: readonly string[]): void {
         `null-labelled pills.`,
     );
   }
+}
+
+/** In the vocabulary AND labellable. Both halves matter — see FIX-908. */
+function isOutOfVocabularyIndustry(industry: string): boolean {
+  return (
+    !VALID_INDUSTRIES.includes(industry as (typeof VALID_INDUSTRIES)[number]) ||
+    !industryDisplay(industry)
+  );
+}
+
+/**
+ * FIX-920 — the officials-side read fails SOFT.
+ *
+ * WHY THIS IS NOT assertIndustryVocabulary(). The two call sites have opposite
+ * correct failure modes, and sharing the throwing one was the bug:
+ *
+ *   - applyIndustryOverrides() (donor side) reads a CHECK-constrained table we
+ *     control, one row per curated decision. An out-of-vocabulary value there is
+ *     impossible-by-construction, so it means real drift and there is nothing
+ *     sensible to degrade to — a silently dropped curated row is
+ *     indistinguishable from the deliberate NULL "no industry, ever" case. It
+ *     THROWS, and should keep throwing.
+ *
+ *   - tagOfficials() (this side) reads official_sector_affinity_rollup, whose
+ *     `industry` column is an UNCONSTRAINED text mirror of whatever the donor
+ *     taggers wrote. Any writer that lands one junk donor tag — the `other` rows
+ *     FIX-911 traces to ai-classifier.ts, a future AI answer, a hand-edit —
+ *     propagates it into the rollup for every official that donor gave to. If
+ *     that value reaches rank <= 3 for even ONE official, the throw takes down
+ *     the ENTIRE nightly official tagger: no tenure tags, no voting-pattern
+ *     tags, no donor-profile tags, for all ~27k officials. Prod was safe only by
+ *     margin — the 8 `other` donors happened not to crack any official's top 3.
+ *
+ * A missing pill is the right failure for a rendering path. A dead nightly is
+ * not. So: drop the unknown rows, count them by key, and let the caller warn.
+ *
+ * The dropped rows are NOT re-ranked. Ranks come from the SQL window function
+ * and are kept as-is, so an official whose rank-2 sector was junk shows its
+ * rank-1 and rank-3 pills and simply has one fewer. Re-ranking would silently
+ * promote a sector into primary visibility on the strength of a bug.
+ *
+ * Pure — no DB — so the guard is pinnable by a unit test rather than only
+ * reachable through a live nightly. Same convention as FIX-917's
+ * selectClassifierCandidates().
+ */
+export function partitionSectorRowsByVocabulary<T extends { industry: string }>(
+  rows: readonly T[],
+): { kept: T[]; skipped: Map<string, number> } {
+  const kept: T[] = [];
+  const skipped = new Map<string, number>();
+
+  for (const row of rows) {
+    if (isOutOfVocabularyIndustry(row.industry)) {
+      skipped.set(row.industry, (skipped.get(row.industry) ?? 0) + 1);
+      continue;
+    }
+    kept.push(row);
+  }
+
+  return { kept, skipped };
+}
+
+/** The counted warning for a non-empty partitionSectorRowsByVocabulary() skip set. */
+export function formatSectorVocabularyWarning(skipped: ReadonlyMap<string, number>): string {
+  const detail = [...skipped.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([industry, n]) => `${industry} (${n} row${n === 1 ? "" : "s"})`)
+    .join(", ");
+  const total = [...skipped.values()].reduce((a, b) => a + b, 0);
+  return (
+    `    [FIX-920] SKIPPED ${total} official_sector_affinity_rollup row(s) carrying ` +
+    `industry value(s) outside the vocabulary: ${detail}. Those officials lose that ` +
+    `pill; every other tag still writes. Register the key in topics.ts ` +
+    `(VALID_INDUSTRIES + INDUSTRY_LABELS) or fix the donor tagger that emitted it.`
+  );
 }
 
 /**
@@ -860,10 +933,19 @@ export async function tagOfficials(db: any): Promise<number> {
     ),
   );
 
-  assertIndustryVocabulary(sectorRows.map((r) => r.industry));
+  // FIX-920: skip-with-warning, NOT assertIndustryVocabulary(). The rollup's
+  // `industry` is an unconstrained text mirror of the donor taggers' output, so
+  // one junk donor tag reaching rank <= 3 for a single official used to throw
+  // here and kill the tagging run for all ~27k officials — tenure and voting
+  // tags included. See partitionSectorRowsByVocabulary() for the full rationale.
+  const { kept: renderableSectorRows, skipped: skippedIndustries } =
+    partitionSectorRowsByVocabulary(sectorRows);
+  if (skippedIndustries.size > 0) {
+    console.warn(formatSectorVocabularyWarning(skippedIndustries));
+  }
 
   const sectorsByOfficial = new Map<string, OfficialSector[]>();
-  for (const r of sectorRows) {
+  for (const r of renderableSectorRows) {
     const list = sectorsByOfficial.get(r.official_id) ?? [];
     list.push({
       industry: r.industry,
@@ -874,8 +956,11 @@ export async function tagOfficials(db: any): Promise<number> {
     sectorsByOfficial.set(r.official_id, list);
   }
   console.log(
-    `    Industry labels: ${sectorRows.length} rows across ${sectorsByOfficial.size} officials ` +
-      `(top ${INDUSTRY_TOP_N} by donation dollars)`,
+    `    Industry labels: ${renderableSectorRows.length} rows across ${sectorsByOfficial.size} officials ` +
+      `(top ${INDUSTRY_TOP_N} by donation dollars)` +
+      (skippedIndustries.size > 0
+        ? `, ${sectorRows.length - renderableSectorRows.length} row(s) skipped as out-of-vocabulary`
+        : ""),
   );
 
   const allTags: TagInsert[] = [];
