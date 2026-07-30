@@ -54,275 +54,28 @@
 import { Client } from "pg";
 import * as fs from "fs";
 import * as path from "path";
+import {
+  BAND_HI,
+  BAND_LO,
+  type Branch,
+  classify,
+  constructDbUrlFromEnv,
+  envLabel,
+  fecState,
+  PLATFORM_SQL,
+  SUSPECT_SQL,
+  type SuspectRow,
+  usd,
+} from "./fec-orphan-classify";
 
-// ---------------------------------------------------------------------------
-// Connection
-// ---------------------------------------------------------------------------
-
-function constructDbUrlFromEnv(): string {
-  const supabaseUrl = process.env["NEXT_PUBLIC_SUPABASE_URL"];
-  if (!supabaseUrl) return "";
-  if (/127\.0\.0\.1:54321|localhost:54321/.test(supabaseUrl)) {
-    return "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
-  }
-  const m = supabaseUrl.match(/^https?:\/\/([a-z0-9]+)\.supabase\.co/i);
-  if (!m) return "";
-  const password = process.env["SUPABASE_DB_PASSWORD"];
-  if (!password) return "";
-  const region = process.env["SUPABASE_DB_REGION"] ?? "us-west-2";
-  return `postgresql://postgres.${m[1]}:${encodeURIComponent(password)}@aws-0-${region}.pooler.supabase.com:5432/postgres`;
-}
-
-function envLabel(): "local" | "prod" {
-  const url = process.env["NEXT_PUBLIC_SUPABASE_URL"] ?? "";
-  return /127\.0\.0\.1|localhost/.test(url) ? "local" : "prod";
-}
-
-// ---------------------------------------------------------------------------
-// The enumeration query
-//
-// Built as one statement so the (from_id, cycle_year) overlap join runs
-// server-side against financial_relationships_donor_rollup_idx rather than
-// shipping ~250k donation keys per suspect over the wire.
-// ---------------------------------------------------------------------------
-
-const SUSPECT_SQL = `
-WITH suspect AS (
-  SELECT o.id
-  FROM officials o
-  WHERE EXISTS (
-          SELECT 1 FROM financial_relationships fr
-          WHERE fr.to_type = 'official'
-            AND fr.relationship_type = 'donation'
-            AND fr.to_id = o.id
-            AND fr.metadata->>'source' LIKE 'fec_bulk%')
-    AND o.source_ids->>'fec_candidate_id' IS NULL
-    AND NOT (
-      o.source_ids->>'fec_id' IS NOT NULL AND (
-        (o.role_title = 'Senator'        AND upper(left(o.source_ids->>'fec_id', 1)) = 'S') OR
-        (o.role_title = 'Representative' AND upper(left(o.source_ids->>'fec_id', 1)) = 'H')
-      ))
-),
--- normalised surname + "does this official carry any FEC id at all"
-lk AS (
-  SELECT o.id,
-         regexp_replace(upper(COALESCE(NULLIF(o.last_name, ''), o.full_name)), '[^A-Z]', '', 'g') AS lastkey,
-         (o.source_ids ? 'fec_candidate_id' OR o.source_ids ? 'fec_id') AS has_fec
-  FROM officials o
-),
-pair AS (
-  SELECT s.id AS suspect_id, t.id AS twin_id
-  FROM suspect s
-  JOIN lk sl ON sl.id = s.id
-  JOIN lk t  ON t.lastkey = sl.lastkey AND t.has_fec AND t.id <> s.id
-  WHERE sl.lastkey <> ''
-),
--- donation keys for every official involved on either side of a pair
-d AS (
-  SELECT fr.to_id, fr.from_id, fr.cycle_year
-  FROM financial_relationships fr
-  WHERE fr.to_type = 'official'
-    AND fr.relationship_type = 'donation'
-    AND fr.to_id IN (SELECT suspect_id FROM pair UNION SELECT twin_id FROM pair)
-),
-ov AS (
-  SELECT p.suspect_id, p.twin_id, count(*)::bigint AS shared
-  FROM pair p
-  JOIN d a ON a.to_id = p.suspect_id
-  JOIN d b ON b.to_id = p.twin_id
-          AND b.from_id = a.from_id
-          AND b.cycle_year IS NOT DISTINCT FROM a.cycle_year
-  GROUP BY 1, 2
-),
-best AS (
-  SELECT DISTINCT ON (suspect_id) suspect_id, twin_id, shared
-  FROM ov ORDER BY suspect_id, shared DESC, twin_id
-),
--- suspect-side facts, straight off the donation rows
-facts AS (
-  SELECT fr.to_id AS official_id,
-         count(*)::bigint          AS donation_rows,
-         sum(fr.amount_cents)::bigint AS fec_cents,
-         min(fr.occurred_at)       AS first_at,
-         max(fr.occurred_at)       AS last_at
-  FROM financial_relationships fr
-  WHERE fr.to_type = 'official'
-    AND fr.relationship_type = 'donation'
-    AND fr.to_id IN (SELECT id FROM suspect)
-  GROUP BY 1
-)
-SELECT
-  o.id                                        AS official_id,
-  o.full_name,
-  o.first_name,
-  o.last_name,
-  o.tier,
-  o.is_active,
-  o.role_title,
-  j.short_name                                AS jurisdiction,
-  o.source_ids->>'fec_id'                     AS stored_fec_id,
-  COALESCE(odt.total_cents, 0)::bigint        AS totals_table_cents,
-  COALESCE(f.fec_cents, 0)::bigint            AS donation_cents,
-  COALESCE(f.donation_rows, 0)::bigint        AS donation_rows,
-  f.first_at,
-  f.last_at,
-  b.twin_id,
-  tw.full_name                                AS twin_name,
-  tw.first_name                               AS twin_first_name,
-  tw.tier                                     AS twin_tier,
-  COALESCE(tw.source_ids->>'fec_candidate_id', tw.source_ids->>'fec_id') AS twin_fec_id,
-  COALESCE(twodt.total_cents, 0)::bigint      AS twin_total_cents,
-  COALESCE(b.shared, 0)::bigint               AS shared_pairs
-FROM suspect s
-JOIN officials o                     ON o.id = s.id
-LEFT JOIN jurisdictions j            ON j.id = o.jurisdiction_id
-LEFT JOIN official_donor_totals odt  ON odt.official_id = o.id
-LEFT JOIN facts f                    ON f.official_id = o.id
-LEFT JOIN best b                     ON b.suspect_id = o.id
-LEFT JOIN officials tw               ON tw.id = b.twin_id
-LEFT JOIN official_donor_totals twodt ON twodt.official_id = b.twin_id
-ORDER BY COALESCE(f.fec_cents, 0) DESC;
-`;
-
-const PLATFORM_SQL = `
-SELECT
-  count(DISTINCT to_id)::bigint AS officials,
-  sum(amount_cents)::bigint     AS cents
-FROM financial_relationships
-WHERE to_type = 'official' AND relationship_type = 'donation';
-`;
-
-interface SuspectRow {
-  official_id: string;
-  full_name: string;
-  first_name: string | null;
-  last_name: string | null;
-  tier: string | null;
-  is_active: boolean;
-  role_title: string | null;
-  jurisdiction: string | null;
-  stored_fec_id: string | null;
-  totals_table_cents: string;
-  donation_cents: string;
-  donation_rows: string;
-  first_at: Date | null;
-  last_at: Date | null;
-  twin_id: string | null;
-  twin_name: string | null;
-  twin_first_name: string | null;
-  twin_tier: string | null;
-  twin_fec_id: string | null;
-  twin_total_cents: string;
-  shared_pairs: string;
-}
-
-type Branch = "SAME-PERSON DUPLICATE" | "CROSS-PERSON MISATTRIBUTION" | "UNIQUE HOLDER";
-
-// ---------------------------------------------------------------------------
-// Name agreement — same 3-letter key the FIX-929 gate uses, so the branch
-// boundary and the matcher agree on what "same person" means.
-// ---------------------------------------------------------------------------
-
-function firstNameKey(raw: string | null | undefined): string {
-  const norm = (raw ?? "").toUpperCase().replace(/[^A-Z]/g, "");
-  return norm.length >= 3 ? norm.slice(0, 3) : "";
-}
-
-function officialFirstKey(first: string | null, full: string | null): string {
-  return firstNameKey(first) || firstNameKey((full ?? "").split(/\s+/)[0]);
-}
-
-// ---------------------------------------------------------------------------
-// Branch boundary — DERIVED from the data, not hardcoded.
-//
-// The raw shared-pair count is the wrong instrument: 90 shared pairs out of an
-// official's 100 rows is damning, 90 out of 45,000 is noise. Measured on this
-// data the raw counts are NOT bimodal — they spread near-continuously from 0 to
-// the maximum. So the boundary is drawn on the OVERLAP FRACTION (shared / the
-// suspect's own donation rows), which normalises for size and IS bimodal.
-//
-// The cut is the midpoint of the widest empty band in the observed fraction
-// distribution, searched within [BAND_LO, BAND_HI] — outside that range a "gap"
-// is just the distribution's own sparse tail, not a boundary.
-//
-// A second, absolute floor guards ONE specific corner the fraction cannot see:
-// an official with 2 donation rows that both happen to land on a same-surname
-// twin scores frac=1.0 by coincidence (one PAC giving to two same-surname
-// officials in a cycle is entirely ordinary). The floor is derived from the low
-// tail of the shared-count distribution AMONG SUSPECTS THAT ALREADY PASS THE
-// FRACTION CUT — that is the only population it operates on, so it is the only
-// population it should be measured against. Deriving it from the below-cut
-// population instead gives a wildly inflated floor: high-volume officials sit
-// below the cut while still sharing hundreds of pairs in absolute terms.
-// ---------------------------------------------------------------------------
-
-const BAND_LO = 0.02;
-const BAND_HI = 0.60;
-/** Above this many shared pairs, coincidence stops being a plausible story. */
-const FLOOR_SEARCH_HI = 50;
-
-interface Boundary {
-  fracCut: number;
-  gapLo: number;
-  gapHi: number;
-  gapWidth: number;
-  sharedFloor: number;
-  floorGapLo: number;
-  floorGapHi: number;
-  bimodal: boolean;
-}
-
-/** Midpoint + edges of the widest empty band in `values` within [lo, hi]. */
-function widestGap(values: number[], lo: number, hi: number): { gapLo: number; gapHi: number; width: number } {
-  const sorted = [...new Set(values)].sort((a, b) => a - b);
-  let gapLo = lo;
-  let gapHi = hi;
-  let width = 0;
-  for (let i = 0; i < sorted.length - 1; i++) {
-    const a = sorted[i];
-    const b = sorted[i + 1];
-    if (b < lo || a > hi) continue;
-    if (b - a > width) {
-      width = b - a;
-      gapLo = a;
-      gapHi = b;
-    }
-  }
-  return { gapLo, gapHi, width };
-}
-
-function deriveBoundary(rows: Array<{ frac: number; shared: number }>): Boundary {
-  const fg = widestGap(rows.map((r) => r.frac), BAND_LO, BAND_HI);
-  const fracCut = fg.width > 0 ? (fg.gapLo + fg.gapHi) / 2 : BAND_HI;
-
-  // Floor: low tail of the shared counts among suspects that clear the cut.
-  const above = rows.filter((r) => r.frac >= fracCut).map((r) => r.shared);
-  const sg = widestGap(above, 1, FLOOR_SEARCH_HI);
-  const sharedFloor = sg.width > 0 ? sg.gapHi : 1;
-
-  const nBelow = rows.filter((r) => r.frac < fracCut).length;
-  const bimodal = fg.width >= 0.05 && nBelow > 0 && above.length > 0;
-
-  return {
-    fracCut,
-    gapLo: fg.gapLo,
-    gapHi: fg.gapHi,
-    gapWidth: fg.width,
-    sharedFloor,
-    floorGapLo: sg.gapLo,
-    floorGapHi: sg.gapHi,
-    bimodal,
-  };
-}
+// The suspect query, the derived branch boundary and the same-vs-cross decision
+// live in ./fec-orphan-classify so the PR-2 remediation scripts act on EXACTLY
+// this population. See that module's header for why it is shared rather than
+// copied.
 
 // ---------------------------------------------------------------------------
 // Formatting
 // ---------------------------------------------------------------------------
-
-// node-postgres hands bigint columns back as strings, so accept those too
-// rather than making every call site cast.
-const usd = (cents: number | bigint | string): string =>
-  `$${(Number(cents) / 100).toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
 
 const iso = (d: Date | null): string => (d ? d.toISOString().slice(0, 10) : "");
 
@@ -344,119 +97,43 @@ async function main(): Promise<void> {
   const client = new Client({ connectionString: dbUrl, statement_timeout: 600_000 });
   await client.connect();
 
+  // Reference-case ids, checked at the end. Read in the same transaction as
+  // everything else so the verdict describes one consistent snapshot.
+  const REF_SHONTEL = "f29bbd4e-944f-4840-adbd-16a4706a3c02";
+  const REF_OSSOFF = "1376dc1e-f697-40b2-8c0f-780f8fe8ea00";
+
   let suspects: SuspectRow[];
   let platform: { officials: string; cents: string };
+  /** reference id → "does this official still satisfy the suspect predicate" */
+  let refState: Map<string, boolean>;
   try {
     // Read-only transaction: a stray write errors instead of landing.
     await client.query("BEGIN TRANSACTION READ ONLY");
-    const [sRes, pRes] = [
+    const [sRes, pRes, rRes] = [
       await client.query<SuspectRow>(SUSPECT_SQL),
       await client.query<{ officials: string; cents: string }>(PLATFORM_SQL),
+      await client.query<{ id: string; remediated: boolean }>(
+        `SELECT o.id::text AS id,
+                NOT (
+                  EXISTS (SELECT 1 FROM financial_relationships fr
+                           WHERE fr.to_type='official' AND fr.relationship_type='donation'
+                             AND fr.to_id = o.id AND fr.metadata->>'source' LIKE 'fec_bulk%')
+                  AND o.source_ids->>'fec_candidate_id' IS NULL
+                ) AS remediated
+           FROM officials o WHERE o.id = ANY($1::uuid[])`,
+        [[REF_SHONTEL, REF_OSSOFF]],
+      ),
     ];
     suspects = sRes.rows;
     platform = pRes.rows[0];
+    refState = new Map(rRes.rows.map((r) => [r.id, r.remediated]));
     await client.query("COMMIT");
   } finally {
     await client.end();
   }
 
-  // ── classify ──────────────────────────────────────────────────────────────
-  const enriched = suspects.map((r) => {
-    const rows = Number(r.donation_rows);
-    const shared = Number(r.shared_pairs);
-    const frac = rows > 0 ? shared / rows : 0;
-    return { ...r, rows, shared, frac };
-  });
-
-  const boundary = deriveBoundary(enriched.map((e) => ({ frac: e.frac, shared: e.shared })));
-
-  // A FEC CAND_ID encodes the seat: office in char 0 (H/S/P), a cycle digit in
-  // char 1, then the two-letter state in chars 2-3. `H8TN07076` is a Tennessee
-  // House seat, `S8GA00180` a Georgia Senate seat. Both halves are compared —
-  // chamber alone is far too coarse, since most suspects are Representatives
-  // and would therefore agree on chamber by default.
-  const fecOffice = (id: string | null): string => (id ?? "")[0]?.toUpperCase() ?? "";
-  const fecState = (id: string | null): string => (id ?? "").slice(2, 4).toUpperCase();
-
-  /** Does the twin's FEC id describe the seat this suspect actually holds? */
-  function seatAgrees(e: (typeof enriched)[number]): boolean {
-    const office = fecOffice(e.twin_fec_id);
-    if (!office) return false;
-    const role = e.role_title ?? "";
-    const officeOk =
-      (office === "S" && (role === "Senator" || role === "Candidate for Senator")) ||
-      (office === "H" && (role === "Representative" || role === "Candidate for Representative")) ||
-      (office === "P" && (role === "President" || role === "Candidate for President"));
-    // Anything else (Council Member, Mayor, agency titles…) holds no federal
-    // seat at all, so a federal CAND_ID can never legitimately be theirs.
-    if (!officeOk) return false;
-    return stateAgrees(e);
-  }
-
-  /**
-   * Suspect's jurisdiction vs the state baked into the twin's CAND_ID.
-   * Municipal jurisdictions (AUS, SF, …) are not two-letter state codes and can
-   * never match a federal seat — which is the correct answer for them.
-   */
-  function stateAgrees(e: (typeof enriched)[number]): boolean {
-    const ours = (e.jurisdiction ?? "").toUpperCase();
-    const theirs = fecState(e.twin_fec_id);
-    return ours.length === 2 && theirs.length === 2 && ours === theirs;
-  }
-
-  /**
-   * Same-person evidence is the UNION of two independent signals, because
-   * neither alone survives contact with this data:
-   *
-   *   name  — the two first names agree on a 3-letter key.
-   *   seat  — the twin's CAND_ID describes the seat this official actually
-   *           holds (chamber AND state).
-   *
-   * Name alone is not sufficient. FEC files candidates under their LEGAL name
-   * while we hold the name they go by, and that pair disagrees constantly:
-   * Ted/Rafael Cruz, Mike/James Johnson, Jack/John Reed, Bill/William Cassidy,
-   * Jim/James Banks, Andy/Garland Barr — ten of the top twelve overlaps on this
-   * clone. Routing those into CROSS-PERSON tells PR 2 to delete a person's own
-   * donors as if they were someone else's, so name-only is not merely imprecise
-   * here, it is destructive.
-   *
-   * Nor is name alone NECESSARY: a first name can be uncomparable because the
-   * twin is an FEC initial (cn{yy} mints candidate rows from CAND_NAME and
-   * parseFecName reduces a leading initial cluster to the initial, so Jon
-   * Ossoff's own candidate row is literally named "T Ossoff") or because the
-   * suspect's own first name is under three letters ("Ro" Khanna, "Al" Green).
-   * Undecidable is not "disagrees".
-   *
-   * Seat alone is not sufficient either — it cannot see municipal officials at
-   * all, and Scott Wiener / Connie Chan are same-name pairs on a city seat.
-   *
-   * The union keeps both reference cases right for the RIGHT reason:
-   *   Shontel Brown  Representative-OH vs Sherrod's S6OH00163 (Senate) →
-   *                  names disagree AND seat disagrees → CROSS-PERSON.
-   *   Jon Ossoff     Senator-GA vs S8GA00180 → name undecidable, seat agrees →
-   *                  SAME-PERSON.
-   */
-  function branchOf(e: (typeof enriched)[number]): { branch: Branch; decidedBy: string } {
-    const overlapping =
-      e.twin_id !== null && e.frac >= boundary.fracCut && e.shared >= boundary.sharedFloor;
-    if (!overlapping) return { branch: "UNIQUE HOLDER", decidedBy: "" };
-
-    const a = officialFirstKey(e.first_name, e.full_name);
-    const b = officialFirstKey(e.twin_first_name, e.twin_name);
-    const nameOk = a !== "" && b !== "" && a === b;
-    const seatOk = seatAgrees(e);
-
-    if (!nameOk && !seatOk) return { branch: "CROSS-PERSON MISATTRIBUTION", decidedBy: "neither" };
-    return {
-      branch: "SAME-PERSON DUPLICATE",
-      decidedBy: nameOk && seatOk ? "name+seat" : nameOk ? "name" : "seat",
-    };
-  }
-
-  const classified = enriched.map((e) => {
-    const { branch, decidedBy } = branchOf(e);
-    return { ...e, branch, decidedBy, stateOk: stateAgrees(e) };
-  });
+  // ── classify (shared with the PR-2 remediation scripts) ───────────────────
+  const { boundary, classified } = classify(suspects);
 
   // Officials whose fraction clears the cut but whose absolute overlap does
   // not — low-confidence UNIQUE HOLDERs, called out so PR 2 knows they are the
@@ -521,12 +198,30 @@ async function main(): Promise<void> {
   const hist = Array.from({ length: 21 }, () => 0);
   for (const e of classified) hist[Math.min(20, Math.floor(e.frac * 20))] += 1;
 
-  const REF_SHONTEL = "f29bbd4e-944f-4840-adbd-16a4706a3c02";
-  const REF_OSSOFF = "1376dc1e-f697-40b2-8c0f-780f8fe8ea00";
   const refShontel = classified.find((e) => e.official_id === REF_SHONTEL);
   const refOssoff = classified.find((e) => e.official_id === REF_OSSOFF);
-  const shontelOk = refShontel?.branch === "CROSS-PERSON MISATTRIBUTION";
-  const ossoffOk = refOssoff?.branch === "SAME-PERSON DUPLICATE";
+
+  // A reference case passes if it lands in its expected branch OR it has been
+  // REMEDIATED — i.e. it no longer satisfies the suspect predicate at all.
+  // FIX-933 merged the SAME-PERSON branch and wrote fec_candidate_id onto the
+  // survivors, so Jon Ossoff's elected row is correctly no longer an
+  // attribution orphan. Treating "absent" as failure would make this audit
+  // exit(2) forever the moment its own remediation shipped, which is precisely
+  // backwards: absence here is the success signal.
+  const refVerdict = (
+    id: string,
+    row: (typeof classified)[number] | undefined,
+    expected: Branch,
+  ): { ok: boolean; observed: string } => {
+    if (row) return { ok: row.branch === expected, observed: row.branch };
+    if (refState.get(id)) return { ok: true, observed: "REMEDIATED (no longer a suspect)" };
+    if (!refState.has(id)) return { ok: false, observed: "**OFFICIALS ROW MISSING**" };
+    return { ok: false, observed: "**ABSENT**" };
+  };
+  const vShontel = refVerdict(REF_SHONTEL, refShontel, "CROSS-PERSON MISATTRIBUTION");
+  const vOssoff = refVerdict(REF_OSSOFF, refOssoff, "SAME-PERSON DUPLICATE");
+  const shontelOk = vShontel.ok;
+  const ossoffOk = vOssoff.ok;
 
   const L: string[] = [];
   L.push(`# FEC orphan attribution — ${env} — ${stamp}`);
@@ -650,10 +345,10 @@ async function main(): Promise<void> {
   L.push("| case | expected branch | observed | shared pairs | ✓ |");
   L.push("|---|---|---|---:|:-:|");
   L.push(
-    `| Shontel M. Brown → Sherrod Brown | CROSS-PERSON MISATTRIBUTION | ${refShontel?.branch ?? "**ABSENT**"} | ${refShontel?.shared ?? "—"} | ${shontelOk ? "✓" : "✗"} |`,
+    `| Shontel M. Brown → Sherrod Brown | CROSS-PERSON MISATTRIBUTION | ${vShontel.observed} | ${refShontel?.shared ?? "—"} | ${shontelOk ? "✓" : "✗"} |`,
   );
   L.push(
-    `| Jon Ossoff (elected) → Ossoff (candidate) | SAME-PERSON DUPLICATE | ${refOssoff?.branch ?? "**ABSENT**"} | ${refOssoff?.shared ?? "—"} | ${ossoffOk ? "✓" : "✗"} |`,
+    `| Jon Ossoff (elected) → Ossoff (candidate) | SAME-PERSON DUPLICATE | ${vOssoff.observed} | ${refOssoff?.shared ?? "—"} | ${ossoffOk ? "✓" : "✗"} |`,
   );
   L.push("");
   if (!shontelOk || !ossoffOk) {
@@ -694,8 +389,8 @@ async function main(): Promise<void> {
     console.log(`  (${lowVolume.length} low-confidence: frac over cut, shared under floor → filed UNIQUE HOLDER)`);
   }
   console.log("");
-  console.log(`reference Shontel/Sherrod  → ${refShontel?.branch ?? "ABSENT"}  ${shontelOk ? "OK" : "MISMATCH"}`);
-  console.log(`reference Ossoff/Ossoff    → ${refOssoff?.branch ?? "ABSENT"}  ${ossoffOk ? "OK" : "MISMATCH"}`);
+  console.log(`reference Shontel/Sherrod  → ${vShontel.observed}  ${shontelOk ? "OK" : "MISMATCH"}`);
+  console.log(`reference Ossoff/Ossoff    → ${vOssoff.observed}  ${ossoffOk ? "OK" : "MISMATCH"}`);
   console.log("");
   console.log(`wrote ${path.relative(process.cwd(), tsvPath)}`);
   console.log(`wrote ${path.relative(process.cwd(), mdPath)}`);
