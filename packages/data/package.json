@@ -113,6 +113,7 @@
     "data:merge-fe-collisions:prod": "tsx --env-file=../../.env.local.prod src/scripts/merge-cross-source-fe-collisions.ts --allow-prod",
     "data:merge:official-dupes": "tsx --env-file=../../.env.local src/scripts/merge-same-person-official-dupes.ts",
     "data:merge:official-dupes:prod": "tsx --env-file=../../.env.local.prod src/scripts/merge-same-person-official-dupes.ts --allow-prod",
+    "data:merge:official-dupes:rollups:prod": "tsx --env-file=../../.env.local.prod src/scripts/merge-same-person-official-dupes.ts --allow-prod --rollups-only",
     "data:backfill:individual-canonical": "tsx --env-file=../../.env.local src/scripts/backfill-individual-canonical-name.ts",
     "data:backfill-crs-summaries": "tsx --env-file=../../.env.local src/scripts/backfill-crs-summaries.ts",
     "data:backfill-crs-summaries:ci": "tsx src/scripts/backfill-crs-summaries.ts --apply --allow-prod",

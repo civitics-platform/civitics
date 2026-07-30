@@ -283,10 +283,189 @@ async function verifyManifestInDb(
 }
 
 // ---------------------------------------------------------------------------
+// Phase 2 — rollups, AFTER commit, chunked and interruptible
+//
+// Nothing in here is atomic with the money move and nothing needs to be: every
+// rollup is a pure function of the committed financial_relationships rows, so a
+// run that dies half-way leaves stale rollups, never wrong money. Re-run with
+// --rollups-only to finish.
+//
+// This exists because the first prod attempt held all of it inside the merge
+// transaction and exhausted Pro Small's burst I/O — see the comment at the
+// former call site.
+// ---------------------------------------------------------------------------
+
+/** Per-step wall-clock budget, seconds. Exceeding it aborts the REST of phase 2. */
+const STEP_BUDGET_S: Record<string, number> = {
+  donor_rollup: 40 * 60,
+  official_totals: 15 * 60,
+  fe_totals_chunk: 10 * 60,
+  donor_party_chunk: 10 * 60,
+  heavy: 40 * 60,
+  mv: 20 * 60,
+};
+
+class BudgetExceeded extends Error {}
+
+/** Run one step, timed; throw BudgetExceeded if it overran its budget. */
+async function budgeted(
+  client: Client,
+  label: string,
+  sql: string,
+  budgetS: number,
+  params: unknown[] = [],
+): Promise<void> {
+  const t0 = Date.now();
+  await client.query(sql, params);
+  const s = (Date.now() - t0) / 1000;
+  console.log(`  ${label.padEnd(52)} ${s.toFixed(1)}s`);
+  if (s > budgetS) {
+    throw new BudgetExceeded(
+      `${label} took ${s.toFixed(0)}s against a ${budgetS}s budget — prod I/O is degraded, ` +
+        `stopping before the remaining rollups make it worse`,
+    );
+  }
+}
+
+async function runRollups(client: Client, prod: boolean): Promise<void> {
+  console.log("\n── Phase 2: rollups (post-commit, chunked) ──────────────");
+
+  // Affected officials come from _manifest when the merge just ran, and are
+  // re-derived from the committed state when this is a --rollups-only resume:
+  // a survivor is an elected row carrying BOTH congress_gov and a
+  // fec_candidate_id whose duplicate holds the retired merged_fec_candidate_id.
+  await client.query(`
+    DROP TABLE IF EXISTS _affected_officials;
+    CREATE TEMP TABLE _affected_officials AS
+      SELECT survivor AS id FROM _manifest
+      UNION
+      SELECT dup FROM _manifest;
+  `);
+  const [offCount] = await q<{ n: string }>(
+    client,
+    `SELECT count(*)::text AS n FROM _affected_officials`,
+  );
+  console.log(`  affected officials: ${offCount?.n}`);
+
+  // Donors whose OUTFLOW changed. Read off the survivor side after the move:
+  // every deleted loser had a surviving counterpart on the same
+  // (relationship_type, from_id, cycle_year) and that counterpart now sits on
+  // the survivor, so this set covers donors whose only change was a deletion.
+  // The incremental pg_cron paths key off financial_relationships.updated_at
+  // and a DELETE bumps nothing, so they would silently skip exactly those.
+  await client.query(`
+    DROP TABLE IF EXISTS _donor;
+    CREATE TEMP TABLE _donor AS
+      SELECT DISTINCT fr.from_id AS id
+        FROM financial_relationships fr
+        JOIN _manifest m ON m.survivor = fr.to_id
+       WHERE fr.to_type='official' AND fr.from_id IS NOT NULL;
+    CREATE UNIQUE INDEX ON _donor(id);
+  `);
+  const [donorCount] = await q<{ n: string }>(client, `SELECT count(*)::text AS n FROM _donor`);
+  const donors = Number(donorCount?.n ?? 0);
+  console.log(`  affected donors:    ${donors.toLocaleString()}`);
+
+  try {
+    await budgeted(
+      client,
+      "donor_rollup_rebuild_recipients(affected)",
+      `SELECT donor_rollup_rebuild_recipients(ARRAY(SELECT id FROM _affected_officials))`,
+      STEP_BUDGET_S["donor_rollup"]!,
+    );
+    console.log("    ↳ official_donor_totals, official_donor_rollup_mv,");
+    console.log("      official_small_dollar_rollup, official_sector_affinity_rollup,");
+    console.log("      treemap_individuals_rollup, official_donor_bracket_totals");
+
+    await budgeted(
+      client,
+      "rebuild_official_donation_totals()",
+      `SELECT rebuild_official_donation_totals()`,
+      STEP_BUDGET_S["official_totals"]!,
+    );
+
+    // CHUNKED. Unchunked over 105,778 donors this was the step that ran 66+
+    // minutes on prod and forced the first attempt to be cancelled. Per-chunk
+    // calls commit independently, so an abort here costs one chunk, not the run.
+    const feChunks = Math.ceil(donors / DONOR_CHUNK);
+    for (let i = 0; i < feChunks; i++) {
+      await budgeted(
+        client,
+        `financial_entity_donation_totals_rebuild ${i + 1}/${feChunks}`,
+        `SELECT financial_entity_donation_totals_rebuild(
+                  ARRAY(SELECT id FROM _donor ORDER BY id OFFSET $1 LIMIT $2))`,
+        STEP_BUDGET_S["fe_totals_chunk"]!,
+        [i * DONOR_CHUNK, DONOR_CHUNK],
+      );
+    }
+
+    const dpChunks = Math.ceil(donors / DONOR_CHUNK);
+    for (let i = 0; i < dpChunks; i++) {
+      await budgeted(
+        client,
+        `donor_party_rollup_rebuild_donors ${i + 1}/${dpChunks}`,
+        `SELECT donor_party_rollup_rebuild_donors(
+                  ARRAY(SELECT id FROM _donor ORDER BY id OFFSET $1 LIMIT $2))`,
+        STEP_BUDGET_S["donor_party_chunk"]!,
+        [i * DONOR_CHUNK, DONOR_CHUNK],
+      );
+    }
+
+    // Platform-wide rebuilds. Each carries its own COMMIT, so they were never
+    // transaction-safe anyway. Individually caught: a stale one is a stale
+    // rollup, not lost data.
+    for (const [label, sql] of [
+      ["rebuild_financial_entity_ie_totals()", `SELECT rebuild_financial_entity_ie_totals()`],
+      ["refresh_group_donor_rollup()", `SELECT refresh_group_donor_rollup()`],
+      ["rebuild_entity_search_index()", `SELECT rebuild_entity_search_index()`],
+      ["refresh_treemap_individuals_global()", `CALL refresh_treemap_individuals_global()`],
+    ] as const) {
+      try {
+        await budgeted(client, label, sql, STEP_BUDGET_S["heavy"]!);
+      } catch (err) {
+        if (err instanceof BudgetExceeded) throw err;
+        console.error(`  ! ${label} failed: ${err instanceof Error ? err.message : String(err)}`);
+        console.error(`    (re-derivable — re-run or let the scheduled refresh pick it up)`);
+      }
+    }
+
+    // CONCURRENTLY wrappers, so the live read path is never locked out.
+    // refresh_homepage_stats_mv is NOT concurrent internally and takes a brief
+    // (~1s) ACCESS EXCLUSIVE — the same lock refresh-derived-mvs-daily takes at
+    // 06:00 UTC, so the read path already absorbs it daily. Drop it if a run
+    // ever has to happen during traffic.
+    for (const fn of [
+      "refresh_official_sector_dollars_mv",
+      "refresh_official_homepage_stats_mv",
+      "refresh_homepage_stats_mv",
+      "refresh_chord_industry_flows_mv",
+      "refresh_chord_donor_type_party_flows_mv",
+      "refresh_chord_donor_state_party_flows_mv",
+    ]) {
+      try {
+        await budgeted(client, `${fn}()`, `SELECT ${fn}()`, STEP_BUDGET_S["mv"]!);
+      } catch (err) {
+        if (err instanceof BudgetExceeded) throw err;
+        console.error(`  ! ${fn}() failed: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+  } catch (err) {
+    if (!(err instanceof BudgetExceeded)) throw err;
+    console.error(`\n✗ PHASE 2 ABORTED — ${err.message}`);
+    console.error(
+      `  The money merge is COMMITTED and correct; only rollups are incomplete.\n` +
+        `  Resume with:  pnpm --filter @civitics/data data:merge:official-dupes${prod ? ":prod" : ""} -- --rollups-only${prod ? "" : ""}\n` +
+        `  Nothing is lost by waiting — the rollups are pure functions of the committed rows.`,
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
 
 async function main(): Promise<void> {
   const argv = process.argv.slice(2);
-  const apply = argv.includes("--apply");
+  const rollupsOnly = argv.includes("--rollups-only");
+  const apply = argv.includes("--apply") || rollupsOnly;
   const allowProd = argv.includes("--allow-prod");
   const prod = isProd();
 
@@ -308,7 +487,9 @@ async function main(): Promise<void> {
   console.log(`# FIX-933 — merge SAME-PERSON duplicate officials`);
   console.log(`Env:        ${envLabel()}`);
   console.log(`Connection: ${dbUrl.replace(/:[^:@/]+@/, ":***@")}`);
-  console.log(`Mode:       ${apply ? "APPLY (COMMIT)" : "DRY-RUN (ROLLBACK)"}\n`);
+  console.log(
+    `Mode:       ${rollupsOnly ? "ROLLUPS-ONLY (resume phase 2)" : apply ? "APPLY (COMMIT)" : "DRY-RUN (ROLLBACK)"}\n`,
+  );
 
   const client = new Client({ connectionString: dbUrl });
   await client.connect();
@@ -318,6 +499,45 @@ async function main(): Promise<void> {
   // refresh dies with "could not resize shared memory segment". Prod has real
   // shared memory and wants its parallel workers, so this is local-only.
   if (!prod) await client.query("SET max_parallel_workers_per_gather = 0");
+
+  // ── --rollups-only: resume phase 2 against already-merged state ──────────
+  // Rebuilds _manifest from the committed result rather than from the
+  // classifier: after a merge the survivors are no longer attribution orphans,
+  // so the FIX-930 suspect query correctly no longer returns them. The durable
+  // marker is the pair itself — an elected row carrying congress_gov AND a
+  // fec_candidate_id, opposite a candidate row holding that same id retired
+  // into merged_fec_candidate_id.
+  if (rollupsOnly) {
+    await client.query(`
+      DROP TABLE IF EXISTS _manifest;
+      CREATE TEMP TABLE _manifest AS
+        SELECT s.id AS survivor, d.id AS dup, s.source_ids->>'fec_candidate_id' AS fec_id
+          FROM officials s
+          JOIN officials d
+            ON d.tier = 'candidate'
+           AND d.source_ids->>'merged_fec_candidate_id' = s.source_ids->>'fec_candidate_id'
+         WHERE s.tier = 'elected'
+           AND s.source_ids ? 'congress_gov'
+           AND s.source_ids ? 'fec_candidate_id';
+    `);
+    const [n] = await q<{ n: string }>(client, `SELECT count(*)::text AS n FROM _manifest`);
+    console.log(`Resuming rollups for ${n?.n} merged pair(s) derived from committed state.\n`);
+    if (n?.n === "0") {
+      console.error("No merged pairs found — nothing to rebuild. Did the merge actually commit?");
+      await client.end();
+      process.exit(1);
+    }
+    await runRollups(client, prod);
+    for (const t of ["financial_relationships", "entity_connections", "officials"]) {
+      try {
+        await step(client, `VACUUM ANALYZE ${t}`, `VACUUM (ANALYZE) public.${t}`);
+      } catch (err) {
+        console.error(`  ! VACUUM ${t} failed: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+    await client.end();
+    return;
+  }
 
   // ── Step 0: duplicate-id reconciliation ─────────────────────────────────
   // Writing fec_candidate_id onto the survivor leaves the SAME id on both rows,
@@ -411,9 +631,12 @@ async function main(): Promise<void> {
 
   await client.query("BEGIN");
   try {
+    // NOT `ON COMMIT DROP` — phase 2 runs after COMMIT and needs the manifest
+    // to scope its rollup rebuilds. Session-scoped, so it still disappears when
+    // the connection closes.
     await client.query(`
-      CREATE TEMP TABLE _manifest (survivor uuid PRIMARY KEY, dup uuid UNIQUE, fec_id text NOT NULL)
-        ON COMMIT DROP;
+      DROP TABLE IF EXISTS _manifest;
+      CREATE TEMP TABLE _manifest (survivor uuid PRIMARY KEY, dup uuid UNIQUE, fec_id text NOT NULL);
     `);
     for (const p of candidates) {
       await client.query(`INSERT INTO _manifest VALUES ($1::uuid, $2::uuid, $3::text)`, [
@@ -623,91 +846,31 @@ async function main(): Promise<void> {
       [MONEY_EDGE_TYPES],
     );
 
-    // ── Rollup rebuilds that are safe inside the transaction ────────────
-    // Every one of these is a plain FUNCTION (no internal COMMIT), so the
-    // dry-run rolls them back and the apply lands them atomically with the
-    // money move — the read path never sees a half-merged state.
-    console.log("\nRollup rebuilds (in-transaction):");
-    await step(
-      client,
-      "donor_rollup_rebuild_recipients(manifest)",
-      `SELECT donor_rollup_rebuild_recipients(
-                ARRAY(SELECT survivor FROM _manifest UNION SELECT dup FROM _manifest))`,
-    );
-    console.log("    ↳ official_donor_totals, official_donor_rollup_mv,");
-    console.log("      official_small_dollar_rollup, official_sector_affinity_rollup,");
-    console.log("      treemap_individuals_rollup, official_donor_bracket_totals");
-    await step(client, "rebuild_official_donation_totals()", `SELECT rebuild_official_donation_totals()`);
-
-    // Donor-side totals: deleting a double-counted row reduces that DONOR's
-    // outflow, so financial_entities.total_donated_cents and
-    // donor_party_rollup_mv both move. Both have per-id rebuild entry points;
-    // the incremental pg_cron paths key off financial_relationships.updated_at
-    // and a DELETE bumps nothing, so relying on them would silently skip any
-    // donor whose only change was a deletion.
-    // Read AFTER the move, off the survivor side: every deleted loser had a
-    // surviving counterpart on the same (relationship_type, from_id,
-    // cycle_year), and that counterpart now sits on the survivor — so this set
-    // covers donors whose only change was a deletion.
-    await client.query(`
-      CREATE TEMP TABLE _donor ON COMMIT DROP AS
-        SELECT DISTINCT fr.from_id AS id
-          FROM financial_relationships fr
-          JOIN _manifest m ON m.survivor = fr.to_id
-         WHERE fr.to_type='official' AND fr.from_id IS NOT NULL;
-      CREATE UNIQUE INDEX ON _donor(id);
-    `);
-    const [donorCount] = await q<{ n: string }>(client, `SELECT count(*)::text AS n FROM _donor`);
-    console.log(`  affected donors: ${Number(donorCount?.n ?? 0).toLocaleString()}`);
-    await step(
-      client,
-      "financial_entity_donation_totals_rebuild(donors)",
-      `SELECT financial_entity_donation_totals_rebuild(ARRAY(SELECT id FROM _donor))`,
-    );
-
-    const chunks = Math.ceil(Number(donorCount?.n ?? 0) / DONOR_CHUNK);
-    const t0 = Date.now();
-    for (let i = 0; i < chunks; i++) {
-      await client.query(
-        `SELECT donor_party_rollup_rebuild_donors(
-                  ARRAY(SELECT id FROM _donor ORDER BY id OFFSET $1 LIMIT $2))`,
-        [i * DONOR_CHUNK, DONOR_CHUNK],
-      );
-    }
-    console.log(
-      `  ${`donor_party_rollup_rebuild_donors × ${chunks} chunks`.padEnd(50)} ${" ".repeat(9)}  ${((Date.now() - t0) / 1000).toFixed(1)}s`,
-    );
-
-    // Materialized views. The wrapper functions all REFRESH … CONCURRENTLY,
-    // which is illegal inside a transaction, so the in-txn proof uses the plain
-    // form — self-cleaning on ROLLBACK, which is what makes the dry run a real
-    // proof rather than a partial one.
+    // ── Rollups do NOT run here ──────────────────────────────────────────
+    // They used to. On prod that made ONE transaction hold ~2 hours of
+    // sustained write I/O, which exhausted Pro Small's burst credits: the
+    // homepage went to 18.7s, a count(*) on a 31k-row table passed 600s, and
+    // financial_entity_donation_totals_rebuild alone ran 66+ minutes against
+    // the 10 it took in the rehearsal. The run had to be cancelled server-side.
     //
-    // LOCAL ONLY, deliberately. A plain REFRESH takes an ACCESS EXCLUSIVE lock
-    // on the view for its whole duration (~90s across these six), which blocks
-    // every live reader of the homepage and chord surfaces — and it would do
-    // that even in a DRY RUN that then rolls back, i.e. a read-only rehearsal
-    // would degrade the live site for no benefit. On prod the CONCURRENTLY
-    // wrappers in the post-commit phase are the only path, so a prod dry run
-    // reports them instead of executing them.
-    const MONEY_MVS = [
-      "official_sector_dollars_mv",
-      "official_homepage_stats_mv",
-      "homepage_stats_mv",
-      "chord_industry_flows_mv",
-      "chord_donor_type_party_flows_mv",
-      "chord_donor_state_party_flows_mv",
-    ];
-    if (prod) {
-      console.log("\nMaterialized views: SKIPPED in-transaction on prod (plain REFRESH takes");
-      console.log("  ACCESS EXCLUSIVE and would block live readers). Refreshed CONCURRENTLY");
-      console.log(`  after COMMIT instead: ${MONEY_MVS.join(", ")}`);
-    } else {
-      console.log("\nMaterialized views (plain REFRESH, in-transaction):");
-      for (const mv of MONEY_MVS) {
-        await step(client, `REFRESH ${mv}`, `REFRESH MATERIALIZED VIEW public.${mv}`);
-      }
-    }
+    // Atomicity was never the reason they were in here — the money move is what
+    // needs to be all-or-nothing, and it is ~12 minutes. The rollups are all
+    // re-derivable from the committed money, several already chunk-and-commit
+    // internally, and holding them inside the transaction bought nothing while
+    // pinning I/O and blocking vacuum for the whole duration. They now run in
+    // phase 2, after COMMIT, chunked and interruptible. See runRollups().
+    //
+    // The read path therefore sees merged money with briefly stale rollups
+    // rather than a half-merged state — which is the same window the twice-
+    // weekly entity_connections rebuild already leaves, and far better than an
+    // I/O-starved site.
+
+    // Materialized views moved to phase 3 for the same reason as the rollups.
+    // They also can no longer be proven in-transaction: they read the rollups,
+    // and the rollups no longer run before COMMIT, so an in-txn refresh would
+    // just materialize pre-merge rollup contents. Honest consequence of the
+    // split — the dry run proves the MONEY, which is the part that must be
+    // right the first time.
 
     // ── Conservation proof, both directions ─────────────────────────────
     const [platformAfter] = await q<{ officials: string; cents: string }>(client, PLATFORM_SQL);
@@ -812,48 +975,7 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  // ── Post-commit maintenance ─────────────────────────────────────────────
-  // These three contain their own COMMIT (chunked full rebuilds), so they
-  // cannot run inside the merge transaction. They are re-derivable in full, so
-  // a failure here is a stale rollup, not lost data.
-  console.log("\nPost-commit rebuilds:");
-  for (const [label, sql] of [
-    ["rebuild_financial_entity_ie_totals()", `SELECT rebuild_financial_entity_ie_totals()`],
-    ["refresh_group_donor_rollup()", `SELECT refresh_group_donor_rollup()`],
-    ["rebuild_entity_search_index()", `SELECT rebuild_entity_search_index()`],
-    ["refresh_treemap_individuals_global()", `CALL refresh_treemap_individuals_global()`],
-  ] as const) {
-    try {
-      await step(client, label, sql);
-    } catch (err) {
-      console.error(`  ! ${label} failed: ${err instanceof Error ? err.message : String(err)}`);
-      console.error(`    (re-derivable — re-run it or let the scheduled refresh pick it up)`);
-    }
-  }
-  // CONCURRENTLY wrappers, so the live read path is never locked out. On local
-  // the plain in-transaction refresh already produced correct contents and this
-  // is the production-shaped path re-run for parity; on prod this is the ONLY
-  // path, because the in-transaction form is skipped there.
-  //
-  // refresh_homepage_stats_mv is included and is NOT concurrent internally, so
-  // it does take a brief ACCESS EXCLUSIVE (~1s). That is the same lock the
-  // refresh-derived-mvs-daily pg_cron job takes at 06:00 UTC, so it is a cost
-  // the read path already absorbs daily — but if a prod run is ever executed
-  // during traffic, drop it and let that job carry the update.
-  for (const fn of [
-    "refresh_official_sector_dollars_mv",
-    "refresh_official_homepage_stats_mv",
-    "refresh_homepage_stats_mv",
-    "refresh_chord_industry_flows_mv",
-    "refresh_chord_donor_type_party_flows_mv",
-    "refresh_chord_donor_state_party_flows_mv",
-  ]) {
-    try {
-      await step(client, `${fn}()`, `SELECT ${fn}()`);
-    } catch (err) {
-      console.error(`  ! ${fn}() failed: ${err instanceof Error ? err.message : String(err)}`);
-    }
-  }
+  await runRollups(client, prod);
 
   // VACUUM the two tables this run churns hardest. It cannot go in the
   // transaction (VACUUM is not transactional) and it is not cosmetic: the merge
