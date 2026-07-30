@@ -339,6 +339,23 @@ async function main(): Promise<void> {
   // elected and a candidate row claiming one CAND_ID where the candidate holds
   // NO financial_relationships at all — is exactly "the money already moved but
   // the id was never retired". Anything else is left alone.
+  //
+  // EXPECTED AND AUTHORISED: this step reconciles MORE pairs than the run's own
+  // manifest, and the count differs per environment. It is scoped by the
+  // predicate above, NOT by this run's 47 pairs, because narrowing it would mean
+  // hardcoding uuids and would leave known-live re-split hazards in place. On
+  // the local prod-clone it matched 83 pairs — 47 from that run plus 36 that
+  // were ALREADY in this state (the FEC id had been written onto the elected row
+  // by some earlier path while the candidate row kept its claim), and 21 of
+  // those 36 had the duplicate actively winning the map slot at the time. The
+  // extra pairs are the identical defect and the fix is provably lossless: the
+  // candidate row holds zero financial_relationships rows, so nothing moves and
+  // nothing is lost, the id is preserved as `merged_fec_candidate_id`, and
+  // `cn{yy}` cannot re-mint because the elected row satisfies
+  // `existingByFecCandId.has(candId)`. A prod count well above the prod manifest
+  // size is therefore the expected outcome, not a signal to stop. Pairs where
+  // the candidate row STILL holds money are deliberately refused — those need
+  // the money decision first (FIX-934 / FIX-935).
   const reconcileSql = `
     UPDATE officials d
        SET source_ids = (d.source_ids - 'fec_candidate_id')
@@ -663,18 +680,33 @@ async function main(): Promise<void> {
 
     // Materialized views. The wrapper functions all REFRESH … CONCURRENTLY,
     // which is illegal inside a transaction, so the in-txn proof uses the plain
-    // form (self-cleaning on ROLLBACK) and --apply re-runs the CONCURRENTLY
-    // wrappers after COMMIT so the live read path is never locked out.
-    console.log("\nMaterialized views (plain REFRESH, in-transaction):");
-    for (const mv of [
+    // form — self-cleaning on ROLLBACK, which is what makes the dry run a real
+    // proof rather than a partial one.
+    //
+    // LOCAL ONLY, deliberately. A plain REFRESH takes an ACCESS EXCLUSIVE lock
+    // on the view for its whole duration (~90s across these six), which blocks
+    // every live reader of the homepage and chord surfaces — and it would do
+    // that even in a DRY RUN that then rolls back, i.e. a read-only rehearsal
+    // would degrade the live site for no benefit. On prod the CONCURRENTLY
+    // wrappers in the post-commit phase are the only path, so a prod dry run
+    // reports them instead of executing them.
+    const MONEY_MVS = [
       "official_sector_dollars_mv",
       "official_homepage_stats_mv",
       "homepage_stats_mv",
       "chord_industry_flows_mv",
       "chord_donor_type_party_flows_mv",
       "chord_donor_state_party_flows_mv",
-    ]) {
-      await step(client, `REFRESH ${mv}`, `REFRESH MATERIALIZED VIEW public.${mv}`);
+    ];
+    if (prod) {
+      console.log("\nMaterialized views: SKIPPED in-transaction on prod (plain REFRESH takes");
+      console.log("  ACCESS EXCLUSIVE and would block live readers). Refreshed CONCURRENTLY");
+      console.log(`  after COMMIT instead: ${MONEY_MVS.join(", ")}`);
+    } else {
+      console.log("\nMaterialized views (plain REFRESH, in-transaction):");
+      for (const mv of MONEY_MVS) {
+        await step(client, `REFRESH ${mv}`, `REFRESH MATERIALIZED VIEW public.${mv}`);
+      }
     }
 
     // ── Conservation proof, both directions ─────────────────────────────
@@ -798,12 +830,20 @@ async function main(): Promise<void> {
       console.error(`    (re-derivable — re-run it or let the scheduled refresh pick it up)`);
     }
   }
-  // CONCURRENTLY wrappers, so the live read path is never locked out. The plain
-  // in-transaction refresh above already produced correct contents; this is the
-  // production-shaped path re-run for parity with the nightly.
+  // CONCURRENTLY wrappers, so the live read path is never locked out. On local
+  // the plain in-transaction refresh already produced correct contents and this
+  // is the production-shaped path re-run for parity; on prod this is the ONLY
+  // path, because the in-transaction form is skipped there.
+  //
+  // refresh_homepage_stats_mv is included and is NOT concurrent internally, so
+  // it does take a brief ACCESS EXCLUSIVE (~1s). That is the same lock the
+  // refresh-derived-mvs-daily pg_cron job takes at 06:00 UTC, so it is a cost
+  // the read path already absorbs daily — but if a prod run is ever executed
+  // during traffic, drop it and let that job carry the update.
   for (const fn of [
     "refresh_official_sector_dollars_mv",
     "refresh_official_homepage_stats_mv",
+    "refresh_homepage_stats_mv",
     "refresh_chord_industry_flows_mv",
     "refresh_chord_donor_type_party_flows_mv",
     "refresh_chord_donor_state_party_flows_mv",
@@ -812,6 +852,24 @@ async function main(): Promise<void> {
       await step(client, `${fn}()`, `SELECT ${fn}()`);
     } catch (err) {
       console.error(`  ! ${fn}() failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  // VACUUM the two tables this run churns hardest. It cannot go in the
+  // transaction (VACUUM is not transactional) and it is not cosmetic: the merge
+  // leaves ~260k dead tuples in financial_relationships and ~120k in
+  // entity_connections, and until they are reclaimed the visibility map is stale
+  // enough to kill index-only scans — measured on prod in FIX-884, where a
+  // stranded autovacuum on entity_connections turned a clean index-only plan
+  // into 34,534 heap fetches. The FIX-930 audit's own suspect query is the first
+  // casualty: it blew past its 10-minute statement_timeout on local immediately
+  // after the merge and completed comfortably once these were vacuumed.
+  for (const t of ["financial_relationships", "entity_connections", "officials"]) {
+    try {
+      await step(client, `VACUUM ANALYZE ${t}`, `VACUUM (ANALYZE) public.${t}`);
+    } catch (err) {
+      console.error(`  ! VACUUM ${t} failed: ${err instanceof Error ? err.message : String(err)}`);
+      console.error(`    (autovacuum will catch up; expect slow reads until it does)`);
     }
   }
 

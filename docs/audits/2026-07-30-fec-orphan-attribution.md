@@ -99,7 +99,7 @@ Representative against a *Senate* CAND_ID (both signals fail), Jon Ossoff a GA S
 | case | expected branch | observed | shared pairs | ✓ |
 |---|---|---|---:|:-:|
 | Shontel M. Brown → Sherrod Brown | CROSS-PERSON MISATTRIBUTION | CROSS-PERSON MISATTRIBUTION | 42681 | ✓ |
-| Jon Ossoff (elected) → Ossoff (candidate) | SAME-PERSON DUPLICATE | REMEDIATED (no longer a suspect) | — | ✓ |
+| Jon Ossoff (elected) → Ossoff (candidate) | SAME-PERSON DUPLICATE | MERGED (holds $15,633,810, carries its CAND_ID, no rival claim) | — | ✓ |
 
 ## Top suspects by dollars
 

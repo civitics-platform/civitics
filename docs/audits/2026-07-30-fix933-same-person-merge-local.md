@@ -106,6 +106,15 @@ duplicate holds zero `financial_relationships` rows), so the reconciliation
 predicate covers them rather than being narrowed to this run's 47. See
 [[FIX-941]] for the code-side guard.
 
+**Pre-authorised for prod (Craig, 2026-07-30):** this step is expected to
+reconcile MORE pairs than the run's own manifest, and the prod count will
+differ from 83. That is the designed behaviour, not a signal to stop — the step
+is scoped by the predicate, not by the manifest, because narrowing it would mean
+hardcoding uuids and would knowingly leave live re-split hazards in place. The
+prod run does not need this judgement re-made. Pairs where the candidate row
+still holds money are refused automatically and belong to
+[[FIX-934]]/[[FIX-935]].
+
 ## Rollups rebuilt
 
 In-transaction (all plain functions — the dry run rolls them back, the apply
@@ -135,11 +144,50 @@ rebuild; the 119,832 money edges pointing at a duplicate were deleted as
 provably false, the survivor's own edges are understated but never wrong),
 `entity_connection_stats(_mv)`, `browse_facet_counts`.
 
+**The in-transaction plain `REFRESH` is local-only.** A plain (non-concurrent)
+`REFRESH MATERIALIZED VIEW` holds an ACCESS EXCLUSIVE lock for its whole
+duration — ~90s across these six — which blocks every live reader of the
+homepage and chord surfaces, *and it would do that in a DRY RUN too*, so a
+read-only rehearsal would have degraded the live site for no benefit. On prod
+the step is skipped in-transaction and the `CONCURRENTLY` wrappers in the
+post-commit phase are the only path. `refresh_homepage_stats_mv` is not
+concurrent internally, so it takes a brief (~1s) exclusive lock — the same one
+`refresh-derived-mvs-daily` takes at 06:00 UTC daily.
+
 ## Wall clock (local Docker)
 
 Dry run ≈ 7 min; apply ≈ 11 min including post-commit rebuilds. The dominant
 steps are the 133,637-row `to_id` update (~107s) and the
 119,832-row `entity_connections` delete (~35s).
+
+## Audit guard — absence now requires positive evidence
+
+The audit's reference-case guard had to stop treating "in the expected branch" as
+the only pass, because FIX-933 makes Ossoff correctly LEAVE the suspect
+population — a bare branch assertion would `exit(2)` forever the moment the
+audit's own remediation shipped. But accepting bare absence is the worse failure:
+a broken suspect predicate also makes every reference case absent, so the guard
+would go green on an audit that found nothing at all and report "0 suspects, all
+clear". That matters most for [[FIX-934]], which leans on this same audit to
+authorise DELETING rows.
+
+So absence is accepted only with positive evidence of the specific remediation:
+
+| reference | remediation | evidence required |
+|---|---|---|
+| Jon Ossoff | `merge` (FIX-933) | still HOLDS fec_bulk donation money, now CARRIES the CAND_ID, and **no rival row claims it** — i.e. the survivor holds the merged total |
+| Shontel M. Brown | `delete` (FIX-934) | holds NO fec_bulk donation money and claims no CAND_ID |
+
+A broken query cannot manufacture either: it leaves the id unwritten and the
+rival row present.
+
+Plus an independent cross-check that fails the whole audit before it writes
+anything — `SUSPECT_COUNT_SQL` counts the suspect predicate ALONE and asserts it
+equals `SUSPECT_SQL`'s row count. Every CTE downstream of `suspect` is a LEFT
+JOIN onto it, so the count must survive the chain; a mismatch means a CTE is
+dropping suspects and the report would understate the problem while looking
+clean. `exit(3)` with an explicit "do not act on this report". ~6s, so it always
+runs.
 
 ## Prod run — what to check
 
@@ -158,3 +206,13 @@ steps are the 133,637-row `to_id` update (~107s) and the
    The script sets `statement_timeout = 0` on its own direct-pg connection.
 6. Invoke with `pnpm --filter @civitics/data data:merge:official-dupes:prod`
    (adds `--allow-prod`), dry-run first.
+7. **The audit is the verification step and it is at risk from this merge's own
+   dead tuples.** `SUSPECT_SQL` carries a 600s `statement_timeout` and, on local,
+   it went from completing in ~8 min to blowing that timeout immediately after
+   the merge left ~260k dead tuples in `financial_relationships` and ~120k in
+   `entity_connections`. The script now ends with `VACUUM (ANALYZE)` on
+   `financial_relationships`, `entity_connections` and `officials` for exactly
+   this reason — same class as [[FIX-884]], where a stranded autovacuum on
+   `entity_connections` turned an index-only plan into 34,534 heap fetches. Do
+   not "fix" a post-merge audit timeout by raising the timeout; confirm the
+   vacuum ran (`pg_stat_user_tables.last_vacuum`) first.

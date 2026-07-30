@@ -63,6 +63,7 @@ import {
   envLabel,
   fecState,
   PLATFORM_SQL,
+  SUSPECT_COUNT_SQL,
   SUSPECT_SQL,
   type SuspectRow,
   usd,
@@ -102,34 +103,69 @@ async function main(): Promise<void> {
   const REF_SHONTEL = "f29bbd4e-944f-4840-adbd-16a4706a3c02";
   const REF_OSSOFF = "1376dc1e-f697-40b2-8c0f-780f8fe8ea00";
 
+  /** Live facts about a reference official, used to prove a remediation LANDED. */
+  interface RefFacts {
+    id: string;
+    /** carries source_ids->>'fec_candidate_id' */
+    has_cand_id: boolean;
+    /** still holds fec_bulk-sourced donation rows */
+    holds_fec_money: boolean;
+    /** live donation total on this row, cents */
+    donation_cents: string;
+    /** other officials rows claiming the SAME CAND_ID (0 once a merge finished) */
+    rival_claims: string;
+  }
+
   let suspects: SuspectRow[];
   let platform: { officials: string; cents: string };
-  /** reference id → "does this official still satisfy the suspect predicate" */
-  let refState: Map<string, boolean>;
+  let refFacts: Map<string, RefFacts>;
+  let expectedSuspects: number;
   try {
     // Read-only transaction: a stray write errors instead of landing.
     await client.query("BEGIN TRANSACTION READ ONLY");
-    const [sRes, pRes, rRes] = [
+    const [sRes, pRes, cRes, rRes] = [
       await client.query<SuspectRow>(SUSPECT_SQL),
       await client.query<{ officials: string; cents: string }>(PLATFORM_SQL),
-      await client.query<{ id: string; remediated: boolean }>(
+      await client.query<{ n: string }>(SUSPECT_COUNT_SQL),
+      await client.query<RefFacts>(
         `SELECT o.id::text AS id,
-                NOT (
-                  EXISTS (SELECT 1 FROM financial_relationships fr
+                (o.source_ids->>'fec_candidate_id' IS NOT NULL) AS has_cand_id,
+                EXISTS (SELECT 1 FROM financial_relationships fr
+                         WHERE fr.to_type='official' AND fr.relationship_type='donation'
+                           AND fr.to_id = o.id
+                           AND fr.metadata->>'source' LIKE 'fec_bulk%') AS holds_fec_money,
+                COALESCE((SELECT sum(fr.amount_cents) FROM financial_relationships fr
                            WHERE fr.to_type='official' AND fr.relationship_type='donation'
-                             AND fr.to_id = o.id AND fr.metadata->>'source' LIKE 'fec_bulk%')
-                  AND o.source_ids->>'fec_candidate_id' IS NULL
-                ) AS remediated
+                             AND fr.to_id = o.id), 0)::text AS donation_cents,
+                (SELECT count(*) FROM officials r
+                  WHERE r.id <> o.id
+                    AND o.source_ids->>'fec_candidate_id' IS NOT NULL
+                    AND r.source_ids->>'fec_candidate_id'
+                        = o.source_ids->>'fec_candidate_id')::text AS rival_claims
            FROM officials o WHERE o.id = ANY($1::uuid[])`,
         [[REF_SHONTEL, REF_OSSOFF]],
       ),
     ];
     suspects = sRes.rows;
     platform = pRes.rows[0];
-    refState = new Map(rRes.rows.map((r) => [r.id, r.remediated]));
+    expectedSuspects = Number(cRes.rows[0]?.n ?? -1);
+    refFacts = new Map(rRes.rows.map((r) => [r.id, r]));
     await client.query("COMMIT");
   } finally {
     await client.end();
+  }
+
+  // Cross-check BEFORE anything is classified or written. Every CTE downstream
+  // of `suspect` is a LEFT JOIN onto it, so the row count must survive the whole
+  // chain — a mismatch means the query lost suspects and the report would
+  // understate the problem while looking clean. Fail loudly instead.
+  if (suspects.length !== expectedSuspects) {
+    console.error(
+      `\nSUSPECT QUERY MISMATCH — the predicate alone counts ${expectedSuspects} officials but ` +
+        `SUSPECT_SQL returned ${suspects.length} rows.\n` +
+        `One of its CTEs is dropping suspects. Do NOT act on this report; fix the query first.`,
+    );
+    process.exit(3);
   }
 
   // ── classify (shared with the PR-2 remediation scripts) ───────────────────
@@ -201,25 +237,58 @@ async function main(): Promise<void> {
   const refShontel = classified.find((e) => e.official_id === REF_SHONTEL);
   const refOssoff = classified.find((e) => e.official_id === REF_OSSOFF);
 
-  // A reference case passes if it lands in its expected branch OR it has been
-  // REMEDIATED — i.e. it no longer satisfies the suspect predicate at all.
-  // FIX-933 merged the SAME-PERSON branch and wrote fec_candidate_id onto the
-  // survivors, so Jon Ossoff's elected row is correctly no longer an
-  // attribution orphan. Treating "absent" as failure would make this audit
-  // exit(2) forever the moment its own remediation shipped, which is precisely
-  // backwards: absence here is the success signal.
+  // A reference case passes if it lands in its expected branch, OR if it is
+  // absent AND there is POSITIVE EVIDENCE that its remediation landed.
+  //
+  // "Absent" alone is not enough, and this is the whole point of the check.
+  // FIX-933 merged the SAME-PERSON branch, so Ossoff correctly leaves the
+  // suspect population and a bare "in the expected branch" assertion would
+  // exit(2) forever the moment the audit's own remediation shipped. But the
+  // mirror-image failure is worse: a broken suspect predicate ALSO makes every
+  // reference case absent, and a guard that accepts absence would go green on
+  // an audit that found nothing at all — reporting "0 suspects, all clear" when
+  // the truth is "the query is broken". That matters most for FIX-934, which
+  // leans on this same audit to authorise DELETING rows.
+  //
+  // So each reference case declares what its remediation looks like, and
+  // absence is only accepted when those live facts hold:
+  //
+  //   merge  (FIX-933, SAME-PERSON) — the survivor must still HOLD the money and
+  //          must now CARRY the CAND_ID, with no rival row claiming it. That is
+  //          "the survivor holds the merged total", which a predicate bug cannot
+  //          fake: a broken query leaves the id unwritten and the rival present.
+  //   delete (FIX-934, CROSS-PERSON) — the mis-bound rows are gone, so the row
+  //          must hold NO fec_bulk donation money and claim no CAND_ID.
+  type Remediation = "merge" | "delete";
   const refVerdict = (
     id: string,
     row: (typeof classified)[number] | undefined,
     expected: Branch,
+    via: Remediation,
   ): { ok: boolean; observed: string } => {
     if (row) return { ok: row.branch === expected, observed: row.branch };
-    if (refState.get(id)) return { ok: true, observed: "REMEDIATED (no longer a suspect)" };
-    if (!refState.has(id)) return { ok: false, observed: "**OFFICIALS ROW MISSING**" };
-    return { ok: false, observed: "**ABSENT**" };
+    const f = refFacts.get(id);
+    if (!f) return { ok: false, observed: "**OFFICIALS ROW MISSING**" };
+    if (via === "merge") {
+      const ok = f.has_cand_id && f.holds_fec_money && f.rival_claims === "0";
+      return {
+        ok,
+        observed: ok
+          ? `MERGED (holds ${usd(f.donation_cents)}, carries its CAND_ID, no rival claim)`
+          : `**ABSENT — merge evidence missing** (cand_id=${f.has_cand_id}, ` +
+            `money=${f.holds_fec_money}, rival_claims=${f.rival_claims})`,
+      };
+    }
+    const ok = !f.holds_fec_money && !f.has_cand_id;
+    return {
+      ok,
+      observed: ok
+        ? "CLEARED (no fec_bulk donation money, no CAND_ID claim)"
+        : `**ABSENT — delete evidence missing** (money=${f.holds_fec_money}, cand_id=${f.has_cand_id})`,
+    };
   };
-  const vShontel = refVerdict(REF_SHONTEL, refShontel, "CROSS-PERSON MISATTRIBUTION");
-  const vOssoff = refVerdict(REF_OSSOFF, refOssoff, "SAME-PERSON DUPLICATE");
+  const vShontel = refVerdict(REF_SHONTEL, refShontel, "CROSS-PERSON MISATTRIBUTION", "delete");
+  const vOssoff = refVerdict(REF_OSSOFF, refOssoff, "SAME-PERSON DUPLICATE", "merge");
   const shontelOk = vShontel.ok;
   const ossoffOk = vOssoff.ok;
 

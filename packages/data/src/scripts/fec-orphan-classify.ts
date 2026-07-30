@@ -130,6 +130,35 @@ FROM financial_relationships
 WHERE to_type = 'official' AND relationship_type = 'donation';
 `;
 
+/**
+ * The suspect predicate ALONE, counted independently of SUSPECT_SQL's CTE chain.
+ *
+ * SUSPECT_SQL wraps this predicate in five more CTEs (surname pairing, the
+ * donation-key overlap join, DISTINCT ON best-twin selection, per-suspect facts)
+ * and any of those joins silently dropping rows would understate the suspect
+ * population — which reads as "clean" rather than as "broken". This is the
+ * cross-check: the two counts MUST agree, because every CTE downstream of
+ * `suspect` is a LEFT JOIN onto it and none of them may remove a suspect.
+ *
+ * Cheap enough to always run (~6s on the local clone) because it skips exactly
+ * the expensive part — the overlap join.
+ */
+export const SUSPECT_COUNT_SQL = `
+SELECT count(*)::bigint AS n
+  FROM officials o
+ WHERE EXISTS (SELECT 1 FROM financial_relationships fr
+                WHERE fr.to_type = 'official'
+                  AND fr.relationship_type = 'donation'
+                  AND fr.to_id = o.id
+                  AND fr.metadata->>'source' LIKE 'fec_bulk%')
+   AND o.source_ids->>'fec_candidate_id' IS NULL
+   AND NOT (
+     o.source_ids->>'fec_id' IS NOT NULL AND (
+       (o.role_title = 'Senator'        AND upper(left(o.source_ids->>'fec_id', 1)) = 'S') OR
+       (o.role_title = 'Representative' AND upper(left(o.source_ids->>'fec_id', 1)) = 'H')
+     ));
+`;
+
 export interface SuspectRow {
   official_id: string;
   full_name: string;
