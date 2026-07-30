@@ -1,0 +1,160 @@
+# FIX-933 — SAME-PERSON duplicate officials merge — LOCAL run record — 2026-07-30
+
+Run record for the local half of [[FIX-933]]. **Prod is PENDING** — the FIX stays
+open. This file is the input the prod run should be checked against, not a
+substitute for re-deriving on prod.
+
+Script: `packages/data/src/scripts/merge-same-person-official-dupes.ts`
+(`pnpm --filter @civitics/data data:merge:official-dupes`, dry-run by default).
+
+Branch state before/after is in the two committed audit runs:
+`2026-07-29-fec-orphan-attribution.{tsv,md}` is **pre**-merge,
+`2026-07-30-fec-orphan-attribution.{tsv,md}` is **post**-merge.
+
+---
+
+## Manifest
+
+| | |
+|---|---:|
+| SAME-PERSON DUPLICATE re-derived live | 50 |
+| dropped — state mismatch (FIX-930 merge-blockers → FIX-934) | 3 |
+| **merged** | **47** |
+| rejected by the server-side structural re-check | 0 |
+
+All 47 survivors were `tier='elected'` carrying only `congress_gov`; all 47
+duplicates were `tier='candidate'` carrying only `fec_candidate_id`. No id
+appeared on both sides; no id appeared twice.
+
+Dropped: Scott Wiener (SF) → H8CA11116; Christine Jones (AUS) → H6AR02286;
+Connie Chan (SF) → H6CA11268.
+
+## Collisions — resolved to the fresher `updated_at`, never summed
+
+| relationship_type | colliding pairs | dup fresher | survivor fresher | ties | loser dollars |
+|---|---:|---:|---:|---:|---:|
+| donation | 127,165 | 127,112 | 0 | 53 | $219,544,699 |
+| ie_support | 77 | 77 | 0 | 0 | $18,050,171 |
+| ie_oppose | 47 | 47 | 0 | 0 | $32,352,017 |
+
+The duplicate's row won every non-tied collision, and ties resolve to the
+duplicate (it is the row the current FEC binding refreshes), so every deleted
+loser was on the survivor side: 127,289 rows.
+
+## Conservation proof
+
+| | |
+|---|---:|
+| platform donation dollars on officials, before | $5,023,195,233 |
+| platform donation dollars on officials, after | $4,803,650,534 |
+| observed drop | $219,544,699 |
+| sum of deleted colliding losers | $219,544,699 |
+| **difference** | **$0** |
+| `official_donor_totals` diffs outside the manifest | **0** |
+| manifest pair dollars | $544,885,352 → $325,340,653 |
+| FR rows moved onto survivors | 133,637 |
+| duplicates still holding money | 0 |
+
+A small number of survivors land slightly BELOW their own pre-merge total
+(Thomas P. Tiffany $2,488,607 → $2,483,607). That is correct, not a leak: where
+a colliding pair's fresher row carries a lower amount, taking the fresher row
+loses the difference — an aggregated donor amount can legitimately fall between
+FEC file versions (refund, re-itemization). The conservation identity above is
+the invariant that matters and it holds exactly.
+
+## Reference case — Jon Ossoff
+
+`1376dc1e-f697-40b2-8c0f-780f8fe8ea00` (elected, `congress_gov: O000174`) ←
+`4719d31a-7db4-4f6f-b933-8442a1fb1f76` (candidate, `fec_candidate_id: S8GA00180`,
+`full_name` literally `T Ossoff`).
+
+| | before | after |
+|---|---:|---:|
+| survivor donation | $14,585,287 (16,006 rows) | **$15,633,810** (16,873 rows) |
+| duplicate donation | $14,627,225 (16,646 rows) | $0 |
+| survivor ie_support | — | $29,743,006 (134 rows) |
+| survivor ie_oppose | $454,772 (3 rows) | $135,429,374 (46 rows) |
+| survivor `total_received_cents` | $11,555,275 (stale) | $15,633,810 |
+
+Inside the $14.6M–$16M bound — the union taking the fresher side on each of
+15,779 colliding pairs. $29.2M would have meant summing.
+
+Page render (`pnpm dev`, `/officials/1376dc1e-…`, HTTP 200): 1,801 votes on
+record, 16,873 donor records, $15.6M itemized donations, +$29.7M support ·
+$135.4M oppose. The IE money was previously stranded on an invisible candidate
+row. 8 `official_committee_memberships` rows intact in the DB (the official
+detail page has no committees section today — pre-existing, unrelated).
+
+## CAND_ID reconciliation (step 0)
+
+Writing `fec_candidate_id` onto the survivor leaves the same id on both rows,
+and `loadOfficialsByFecIds` is last-write-wins by ascending uuid — so the
+duplicate would reclaim the id and the next FEC run would re-split the money.
+The duplicate's claim is retired to `merged_fec_candidate_id`.
+
+| | |
+|---|---:|
+| pairs reconciled | 83 |
+| — of which merged by this run | 47 |
+| — of which pre-existing (same state, money already only on the elected row) | 36 |
+| pre-existing pairs where the duplicate was **actively winning** the map | 21 |
+| CAND_IDs still claimed by two rows (both still hold money → FIX-934/935) | 153 |
+| duplicates in the manifest still claiming their CAND_ID (asserted pre-commit) | 0 |
+
+The 36 extra are the identical defect with a provably lossless fix (the
+duplicate holds zero `financial_relationships` rows), so the reconciliation
+predicate covers them rather than being narrowed to this run's 47. See
+[[FIX-941]] for the code-side guard.
+
+## Rollups rebuilt
+
+In-transaction (all plain functions — the dry run rolls them back, the apply
+lands them atomically with the money move):
+
+- `donor_rollup_rebuild_recipients(94 ids)` — `official_donor_totals`,
+  `official_donor_rollup_mv`, `official_small_dollar_rollup`,
+  `official_sector_affinity_rollup`, `treemap_individuals_rollup`,
+  `official_donor_bracket_totals`
+- `rebuild_official_donation_totals()` — `officials.total_received_cents`
+- `financial_entity_donation_totals_rebuild` + `donor_party_rollup_rebuild_donors`
+  over **105,732 affected donors**, 22 chunks. Deliberately explicit: both
+  incremental pg_cron paths key off `financial_relationships.updated_at`, and a
+  DELETE bumps nothing, so they would silently skip any donor whose only change
+  was a deletion.
+- plain `REFRESH` of `official_sector_dollars_mv`, `official_homepage_stats_mv`,
+  `homepage_stats_mv`, `chord_industry_flows_mv`,
+  `chord_donor_type_party_flows_mv`, `chord_donor_state_party_flows_mv`
+  (their wrapper functions all use `CONCURRENTLY`, illegal in a transaction)
+
+Post-commit: `rebuild_financial_entity_ie_totals`, `refresh_group_donor_rollup`,
+`rebuild_entity_search_index`, `refresh_treemap_individuals_global`, then the
+`CONCURRENTLY` wrappers for the 6 MVs above.
+
+Left stale until their own schedule: `entity_connections` (twice-weekly Sun+Wed
+rebuild; the 119,832 money edges pointing at a duplicate were deleted as
+provably false, the survivor's own edges are understated but never wrong),
+`entity_connection_stats(_mv)`, `browse_facet_counts`.
+
+## Wall clock (local Docker)
+
+Dry run ≈ 7 min; apply ≈ 11 min including post-commit rebuilds. The dominant
+steps are the 133,637-row `to_id` update (~107s) and the
+119,832-row `entity_connections` delete (~35s).
+
+## Prod run — what to check
+
+1. Re-derive everything. Every figure here is clone-measured; the audit's branch
+   boundary is DERIVED from the data and moved from 0.2689 to 0.2802 between the
+   pre- and post-merge runs on this clone alone.
+2. Prod `officials` is polluted (~1,952 candidates mis-linked) and prod UUIDs
+   differ from local, so the manifest size will differ. The script re-derives and
+   re-gates; it does not need editing.
+3. Do NOT run during the nightly window (05:50–08:00 UTC) — delete-then-rewrite
+   mid-flight makes reads wildly wrong. Check `data_sync_log` for
+   `status='running'` first.
+4. `max_parallel_workers_per_gather = 0` is applied on local only; prod keeps its
+   parallel workers.
+5. Expect the run to be slower on prod (256MB `shared_buffers`, ~54% cache hit).
+   The script sets `statement_timeout = 0` on its own direct-pg connection.
+6. Invoke with `pnpm --filter @civitics/data data:merge:official-dupes:prod`
+   (adds `--allow-prod`), dry-run first.
