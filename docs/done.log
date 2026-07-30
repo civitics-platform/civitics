@@ -1151,3 +1151,5 @@
 2026-07-28 | FIX-924 | a388d1a1 | prod-only | chore(graph,dashboard): record prod verification of FIX-892 and FIX-924
 2026-07-28 | FIX-929 | 8d8ce70c | local-only | fix(fec): gate weball name-fallback on first name; correct officials money labels
 2026-07-28 | FIX-931 | 8d8ce70c | local-only | fix(fec): gate weball name-fallback on first name; correct officials money labels
+2026-07-29 | FIX-933 | 85da6a2d | local-only | docs(fec): file the FIX-933 local run record
+2026-07-29 | FIX-933 | reopen | prod-pending | prod half of the same-person officials merge is outstanding — local only
