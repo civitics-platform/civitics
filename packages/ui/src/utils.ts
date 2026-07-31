@@ -86,6 +86,27 @@ export function formatPipelineStatus(status: string): {
         bgColor: "bg-accent/10",
         icon: "✗",
       };
+    // FIX-944 — a run that did real work and stopped cleanly at its wall-clock
+    // budget, resumable from a committed cursor. Warning tier, not error: it is
+    // the designed path for a dirty set too large for one window.
+    case "partial":
+      return {
+        label: "Partial",
+        color: "text-ink",
+        bgColor: "bg-amber/20",
+        icon: "◐",
+      };
+    // FIX-944 — the row was stranded in 'running' and swept by
+    // reap_stale_sync_log(). Distinct from 'failed' because the pipeline never
+    // reported anything; started_at..metadata.reaped_at is an upper bound on
+    // runtime, not a measurement.
+    case "reaped":
+      return {
+        label: "Reaped",
+        color: "text-accent",
+        bgColor: "bg-accent/10",
+        icon: "⌫",
+      };
     default:
       return {
         label: status,

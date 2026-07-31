@@ -25,6 +25,19 @@ import { captureRssMb } from "../pipelines/sync-log";
 const PIPELINE_NAME      = "nightly_cron";
 const KILLED_PIPELINE    = "nightly_killed";
 const CHECK_DAYS         = 7;
+// FIX-944 — rollup pipelines the canary watches for "never reached complete".
+// The canary previously watched ONLY nightly_cron, which is why
+// donor_rollup_refresh could fail four days running (2026-07-27..30) and read
+// as ordinary noise in data_sync_log. Each entry is checked against its own
+// max-age; exceeding it escalates (non-zero exit), same as the DB-health
+// findings, because a stale money rollup is a point-in-time fact about prod
+// that stays broken until someone acts.
+const ROLLUP_PIPELINES: { pipeline: string; maxAgeHours: number }[] = [
+  // Daily job (pg_cron `0 9 * * *`). 48h allows one missed night before
+  // escalating. A FIX-944 sweep converging over several nights reports
+  // status='partial' with sweep_in_progress=true and is NOT alerted on.
+  { pipeline: "donor_rollup_refresh", maxAgeHours: 48 },
+];
 // FIX-289: unify From: address with the rest of the platform (kill-switch
 // alerts in apps/civitics/src/lib/email.ts also read RESEND_FROM). Falls back
 // to the prior hardcoded address only if the env var isn't set, so behavior
@@ -173,10 +186,64 @@ async function fetchStrandedAutovacuum(): Promise<AutovacuumStatus> {
   };
 }
 
+// FIX-944 — rollup freshness. `stale` is the escalating condition: the pipeline
+// has not reached status='complete' within its window. `sweepInProgress`
+// deliberately does NOT alert — it is the FIX-944 resumable path working as
+// designed (a large dirty set converging over several nightly windows), and
+// treating it as a failure would page on every successful catch-up.
+type RollupStatus = {
+  pipeline: string;
+  maxAgeHours: number;
+  stale: boolean;
+  hoursSinceComplete: number | null;
+  lastCompleteAt: string | null;
+  lastStatus: string | null;
+  lastError: string | null;
+  sweepInProgress: boolean;
+};
+
+async function fetchRollupFreshness(): Promise<RollupStatus[]> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = createAdminClient() as any;
+  const out: RollupStatus[] = [];
+  for (const { pipeline, maxAgeHours } of ROLLUP_PIPELINES) {
+    const { data, error } = await db.rpc("check_rollup_freshness", {
+      p_pipeline: pipeline,
+      p_max_age_hours: maxAgeHours,
+    });
+    if (error) {
+      // Non-fatal, same contract as the other detectors: a missing RPC (env not
+      // yet migrated) must never fail the canary's primary nightly_cron job.
+      console.warn(`[canary-check] rollup freshness query failed for ${pipeline} (non-fatal): ${error.message}`);
+      continue;
+    }
+    const r = (data ?? {}) as {
+      stale?: boolean;
+      hours_since_complete?: number | null;
+      last_complete_at?: string | null;
+      last_status?: string | null;
+      last_error?: string | null;
+      sweep_in_progress?: boolean | null;
+    };
+    out.push({
+      pipeline,
+      maxAgeHours,
+      stale:              r.stale === true,
+      hoursSinceComplete: r.hours_since_complete ?? null,
+      lastCompleteAt:     r.last_complete_at ?? null,
+      lastStatus:         r.last_status ?? null,
+      lastError:          r.last_error ?? null,
+      sweepInProgress:    r.sweep_in_progress === true,
+    });
+  }
+  return out;
+}
+
 async function writeMetaRow(
   missing: string[],
   killed: string[],
   autovacuum: AutovacuumStatus,
+  rollups: RollupStatus[],
 ): Promise<void> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = createAdminClient() as any;
@@ -200,6 +267,9 @@ async function writeMetaRow(
       // FIX-884 went unnoticed for ~4 weeks partly because nothing logged it.
       vm_degraded:      autovacuum.vmDegraded,
       visibility_map:   autovacuum.vm,
+      // FIX-944 — recorded on EVERY run, findings or not, so the convergence of
+      // a multi-night resumable sweep is greppable after the fact.
+      rollup_freshness: rollups,
       peak_rss_mb:      captureRssMb(),
     },
   });
@@ -212,6 +282,7 @@ async function sendAlert(
   missing: string[],
   killed: string[],
   autovacuum: AutovacuumStatus,
+  staleRollups: RollupStatus[],
   to: string,
   apiKey: string,
 ): Promise<void> {
@@ -234,6 +305,8 @@ async function sendAlert(
   // (e.g. a long gap between vacuums), and that is the state that actually
   // degrades query plans, so it gets its own subject fragment.
   if (autovacuum.vmDegraded.length > 0) parts.push(`visibility map collapsed on ${autovacuum.vmDegraded.join(", ")}`);
+  // FIX-944 — a rollup that never reaches 'complete' is its own signal.
+  if (staleRollups.length > 0) parts.push(`stale rollup: ${staleRollups.map((r) => r.pipeline).join(", ")}`);
   const subject = `[Civitics] Nightly canary — ${parts.join("; ")}`;
 
   const sections: string[] = [];
@@ -282,6 +355,34 @@ async function sendAlert(
         `\n\nRemediate at low traffic: VACUUM (ANALYZE) public.<table>;`,
     );
   }
+  if (staleRollups.length > 0) {
+    sections.push(
+      `Rollup never reached 'complete' (FIX-944) — the pipeline below has not ` +
+        `logged a successful run inside its window. On 2026-07-27..30 ` +
+        `donor_rollup_refresh failed four nights running and nobody noticed, ` +
+        `because the canary only watched nightly_cron and every failure row ` +
+        `read as ordinary noise. Its six per-official money rollups ` +
+        `(official_donor_rollup_mv, official_donor_totals, ` +
+        `official_small_dollar_rollup, official_sector_affinity_rollup, ` +
+        `treemap_individuals_rollup, official_donor_bracket_totals) go stale ` +
+        `together, and that is what officials' pages, the treemap, the chord ` +
+        `and sector-affinity all render:\n` +
+        staleRollups
+          .map(
+            (r) =>
+              `  - ${r.pipeline}: last complete ${r.lastCompleteAt ?? "NEVER"}` +
+              (r.hoursSinceComplete !== null ? ` (${r.hoursSinceComplete}h ago` : " (") +
+              `, window ${r.maxAgeHours}h), last status=${r.lastStatus ?? "-"}` +
+              (r.sweepInProgress ? " [resumable sweep in flight]" : "") +
+              (r.lastError ? `\n      last error: ${r.lastError}` : ""),
+          )
+          .join("\n") +
+        `\n\nTriage: check cron.job_run_details for the true end_time — a ` +
+        `'reaped' data_sync_log row's started_at..reaped_at gap is an upper ` +
+        `bound, NOT a runtime. Single-pass catch-up: ` +
+        `pnpm --filter @civitics/data data:donor-rollup:sweep:prod`,
+    );
+  }
   const body = sections.join("\n\n") + `\n\nWorkflow runs: ${NIGHTLY_RUN_URL}\n`;
 
   const { error } = await resend.emails.send({
@@ -303,6 +404,10 @@ async function main(): Promise<number> {
   // FIX-885 — also carries visibility-map health.
   const autovacuum = await fetchStrandedAutovacuum();
   const strandedAutovacuum = autovacuum.stranded;
+  // FIX-944 — point-in-time too: has each watched rollup reached 'complete'
+  // inside its window?
+  const rollups = await fetchRollupFreshness();
+  const staleRollups = rollups.filter((r) => r.stale);
   // "missing" = no nightly_cron row AND no nightly_killed row for that date.
   // "killed" = no nightly_cron row but a nightly_killed synthetic row exists.
   const missing  = expected.filter((d) => !actual.has(d) && !killedSet.has(d));
@@ -314,10 +419,11 @@ async function main(): Promise<number> {
   const inCi       = process.env["GITHUB_ACTIONS"] === "true";
   const sendReal   = process.argv.includes("--send-real");
   const hasAlert   = missing.length > 0 || killed.length > 0
-                  || strandedAutovacuum.length > 0 || autovacuum.vmDegraded.length > 0;
+                  || strandedAutovacuum.length > 0 || autovacuum.vmDegraded.length > 0
+                  || staleRollups.length > 0;
   if (hasAlert && adminEmail && resendKey) {
     if (inCi || sendReal) {
-      await sendAlert(missing, killed, autovacuum, adminEmail, resendKey);
+      await sendAlert(missing, killed, autovacuum, staleRollups, adminEmail, resendKey);
       alertSent = true;
     } else {
       console.log(
@@ -326,7 +432,7 @@ async function main(): Promise<number> {
     }
   }
 
-  await writeMetaRow(missing, killed, autovacuum);
+  await writeMetaRow(missing, killed, autovacuum, rollups);
 
   // FIX-885 — ESCALATE. The DB-health findings exit non-zero so the workflow run
   // goes red; an email alone is not escalation. FIX-650 built the detector and it
@@ -354,6 +460,17 @@ async function main(): Promise<number> {
         .join(", ")}`,
     );
   }
+  // FIX-944 — escalate for the same reason as the two above: this is a
+  // point-in-time fact about prod that stays broken until someone acts. Four
+  // days of total donor-rollup failure produced no signal at all under the
+  // email-only contract.
+  if (staleRollups.length > 0) {
+    failures.push(
+      `rollup never reached 'complete': ${staleRollups
+        .map((r) => `${r.pipeline} (${r.hoursSinceComplete ?? "?"}h ago, window ${r.maxAgeHours}h)`)
+        .join(", ")}`,
+    );
+  }
 
   console.log(
     JSON.stringify({
@@ -363,6 +480,8 @@ async function main(): Promise<number> {
       stranded_autovacuum: strandedAutovacuum,
       vm_degraded:         autovacuum.vmDegraded,
       visibility_map:      autovacuum.vm,
+      rollup_freshness:    rollups,
+      stale_rollups:       staleRollups.map((r) => r.pipeline),
       alert_sent:          alertSent,
       escalated:           failures.length > 0,
     })
