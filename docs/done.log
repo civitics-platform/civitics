@@ -1154,3 +1154,4 @@
 2026-07-29 | FIX-933 | 85da6a2d | local-only | docs(fec): file the FIX-933 local run record
 2026-07-29 | FIX-933 | reopen | prod-pending | prod half of the same-person officials merge is outstanding — local only
 2026-07-31 | FIX-933 | de656eac | local+prod | fix(fec): land the same-person officials merge on prod; enforce step budgets server-side
+2026-07-31 | FIX-941 | 25a3a34c | local-only | fix(votes): tier-filter the Senate name map; refuse silent map collisions
