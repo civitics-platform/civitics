@@ -1,8 +1,9 @@
-# FIX-933 — SAME-PERSON duplicate officials merge — LOCAL run record — 2026-07-30
+# FIX-933 — SAME-PERSON duplicate officials merge — run record — 2026-07-30/31
 
-Run record for the local half of [[FIX-933]]. **Prod is PENDING** — the FIX stays
-open. This file is the input the prod run should be checked against, not a
-substitute for re-deriving on prod.
+**PROD LANDED 2026-07-31 02:5x UTC.** Local ran 2026-07-30; prod the following
+night. Prod figures and the operational post-mortem are in
+"Prod run — what actually happened" at the bottom; everything above it is the
+local run that preceded it.
 
 Script: `packages/data/src/scripts/merge-same-person-official-dupes.ts`
 (`pnpm --filter @civitics/data data:merge:official-dupes`, dry-run by default).
@@ -216,3 +217,119 @@ runs.
    `entity_connections` turned an index-only plan into 34,534 heap fetches. Do
    not "fix" a post-merge audit timeout by raising the timeout; confirm the
    vacuum ran (`pg_stat_user_tables.last_vacuum`) first.
+
+---
+
+# Prod run — what actually happened (2026-07-30/31)
+
+Landed. Two aborted attempts preceded it; both are recorded here because the
+reasons are reusable, not incidental.
+
+## Result
+
+| | prod | local |
+|---|---:|---:|
+| manifest pairs | 47 | 47 |
+| merge-blockers dropped | 3 | 3 |
+| donation collisions | 127,165 | 127,165 |
+| ties (→ keep duplicate) | 53 | 53 |
+| deleted colliding losers | $219,544,699 | $219,544,699 |
+| FR rows moved | 133,840 | 133,637 |
+| platform before → after | $5,052,387,823 → $4,832,843,124 | $5,023,195,233 → $4,803,650,534 |
+| **conservation difference** | **$0** | **$0** |
+| odt diffs outside manifest | 0 | 0 |
+| affected donors | 105,778 | 105,732 |
+
+Reference case Jon Ossoff: elected row now
+`{congress_gov: O000174, fec_candidate_id: S8GA00180}` holding **$15,645,810**
+donations + $29,743,006 `ie_support` + $135,429,374 `ie_oppose`; the duplicate
+is reduced to `{merged_fec_candidate_id: S8GA00180}` with **zero**
+financial_relationships rows. Inside the $14.6M–$16M bound.
+
+Post-merge prod audit (exit 0): SAME-PERSON **50 → 3** ($3,202,261, the excluded
+blockers), CROSS-PERSON **60 unchanged** ($113,233,132), UNIQUE HOLDER **92
+unchanged** ($16,613,717). Both reference cases pass; the independent
+`SUSPECT_COUNT_SQL` cross-check agreed.
+
+## Attempt 1 — aborted: one transaction exhausted Pro Small's burst I/O
+
+The original shape held the money move AND every rollup in a single
+transaction. On prod that was ~2 hours of sustained write I/O in one
+transaction, and it exhausted the disk burst credits: homepage **18.7s**, a
+`count(*)` on a 31k-row table past **600s**, and
+`financial_entity_donation_totals_rebuild` at **66+ minutes** against the 10 it
+took in rehearsal.
+
+Cancelled server-side. **Killing the client is not enough** — Postgres does not
+notice a dropped connection mid-query, so the backend kept running until
+`pg_cancel_backend`. Rollback was clean and prod recovered immediately
+(homepage 18.7s → 0.41s, `count(*)` >600s → 111ms), which is what identified the
+run as the cause rather than a victim.
+
+Fix: phase split. Atomicity was never the reason the rollups were in there —
+the money move is what must be all-or-nothing and it is ~12 minutes. Phase 2 now
+runs the rollups after COMMIT with
+`financial_entity_donation_totals_rebuild` **chunked at 5,000 donors**. That step
+went from 66+ min unchunked to **22 chunks averaging ~33s**, and the homepage
+held at 0.39s throughout attempt 2.
+
+## Attempt 2 — completed, then the MV tail had to be abandoned
+
+Phases 1 and 2 landed. The six MV refreshes did not: every one degraded the
+site. `refresh_homepage_stats_mv()` — **0.7s on local** — ran **22 minutes**
+against an otherwise-idle prod and took the homepage to 18.5s;
+`refresh_chord_industry_flows_mv()` did the same immediately after.
+
+They were abandoned deliberately, because `refresh_derived_mvs('daily')` at
+06:00 UTC refreshes **all four** MV families in the list (sector dollars,
+official homepage stats, homepage stats, chord). Deferring them costs nothing.
+
+**The budget guard did not fire, and that was a design bug.** `budgeted()`
+compared elapsed time only *after* the query returned, so it could not catch the
+one case that matters — a step that never returns. It now sets
+`statement_timeout` per step so Postgres owns the ceiling, and translates
+`57014` into a named `BudgetExceeded`. Deliberately NOT applied to the vacuums:
+a vacuum killed by a timeout is worse than a slow one.
+
+## VACUUM — the standing win
+
+Run separately via `--vacuum-only` once prod was quiet.
+
+| table | dead before | all-visible before | after | duration |
+|---|---:|---:|---:|---:|
+| `financial_relationships` | 399,168 | **64.7%** | 0 / 100% | 793.9s |
+| `entity_connections` | 120,375 | 78.3% | 0 / 100% | 600.8s |
+| `officials` | 0 | 100% | 0 / 100% | 9.8s |
+
+`financial_relationships` had **never been vacuumed**. `/officials` went from
+**6.3s → 0.20s** on the back of the `entity_connections` vacuum specifically.
+This is a prod-wide read-performance drag that predates this PR — [[FIX-943]]
+with measured before/after.
+
+## Resume granularity
+
+Three levels, each keyed off durable committed state rather than in-memory
+progress, because this run was interrupted by a VS Code crash AND a machine
+reboot and lost nothing either time:
+
+- `--rollups-only` — re-derives the manifest from the merged state (an elected
+  row carrying `congress_gov` + `fec_candidate_id` opposite a candidate row
+  holding that id in `merged_fec_candidate_id`), then runs all of phase 2.
+- `--mvs-only` — phase 2 tail, when the expensive rebuilds already committed.
+- `--vacuum-only` — the only step with no other owner on the schedule.
+
+## Operational notes for the next prod data run
+
+1. **The 02:00 nightly actually starts 05:00–06:00 UTC** — GHA queue lag. Read
+   the observed start, not the cron. A quiet DB plus no in-progress run does not
+   prove a scheduled job will not start mid-operation; today's dispatched at
+   02:00 and started 05:09, an hour after a clean all-clear check.
+2. **GHA cancellation is not immediate.** The cancelled nightly still completed
+   `congress_officials`, `congress_votes` and `openstates_bulk_people` before the
+   SIGTERM landed, wrote a `nightly_killed`/failed row, and orphaned `tag_rules`
+   mid-phase.
+3. **Burst I/O credits refill over hours, not minutes.** After a long run,
+   expect everything to be slow even once the DB is idle — a 0.7s view took 22
+   minutes in that state. Do not interpret it as contention and push on.
+4. Watch the live site, not just `pg_stat_activity`. Homepage latency was the
+   signal that identified both aborts.

@@ -97,6 +97,74 @@ const DONOR_CHUNK = 5000;
  */
 const MONEY_EDGE_TYPES = ["donation", "opposition"];
 
+/**
+ * Money-reading materialized views, refreshed via their CONCURRENTLY wrappers.
+ *
+ * refresh_homepage_stats_mv is NOT concurrent internally and takes a brief
+ * (~1s) ACCESS EXCLUSIVE — the same lock refresh-derived-mvs-daily takes at
+ * 06:00 UTC, so the read path already absorbs it daily. Drop it if a run ever
+ * has to happen during traffic.
+ */
+const MV_REFRESH_FNS = [
+  "refresh_official_sector_dollars_mv",
+  "refresh_official_homepage_stats_mv",
+  "refresh_homepage_stats_mv",
+  "refresh_chord_industry_flows_mv",
+  "refresh_chord_donor_type_party_flows_mv",
+  "refresh_chord_donor_state_party_flows_mv",
+];
+
+/**
+ * Tables this run churns hardest. VACUUM cannot go in a transaction and is not
+ * cosmetic here: the merge leaves ~260k dead tuples in financial_relationships
+ * and ~120k in entity_connections, and FIX-943 established that autovacuum will
+ * never reclaim them — its trigger is proportional (50 + 0.2 x reltuples), which
+ * on an 8.3M-row table is ~1.66M dead tuples, so ordinary churn sits permanently
+ * below the threshold. Leaving them stales the visibility map and kills
+ * index-only scans (FIX-884: 34,534 heap fetches on a plan that should do none).
+ * Measured: the FIX-930 audit blew its 600s statement_timeout immediately after
+ * the merge and completed comfortably once these were vacuumed.
+ */
+const CHURNED_TABLES = ["financial_relationships", "entity_connections", "officials"];
+
+/**
+ * VACUUM only. Split out from the MV refreshes because the two have opposite
+ * urgency: every MV in MV_REFRESH_FNS is ALSO refreshed by the 06:00 UTC
+ * refresh_derived_mvs('daily') pg_cron job, so skipping them costs nothing —
+ * whereas nothing else on the schedule will ever vacuum these tables (FIX-943:
+ * autovacuum's trigger is proportional, ~1.66M dead tuples on an 8.3M-row
+ * table, and ordinary churn sits permanently below it).
+ *
+ * That asymmetry matters under degraded I/O: on 2026-07-31 a
+ * refresh_homepage_stats_mv() that takes 0.7s on local ran 22 minutes against
+ * an otherwise-idle prod and pushed the homepage to 18.5s. The MVs were
+ * abandoned to the cron; the vacuums were not, because they have no other owner.
+ */
+async function runVacuum(client: Client): Promise<void> {
+  console.log("\n── VACUUM (ANALYZE) ─────────────────────────────────────");
+  for (const t of CHURNED_TABLES) {
+    try {
+      await step(client, `VACUUM ANALYZE ${t}`, `VACUUM (ANALYZE) public.${t}`);
+    } catch (err) {
+      console.error(`  ! VACUUM ${t} failed: ${err instanceof Error ? err.message : String(err)}`);
+      console.error(`    (autovacuum will NOT catch up — see FIX-943; re-run this step)`);
+    }
+  }
+}
+
+/** MV refreshes + VACUUM — the tail of phase 2, separable so it can be resumed alone. */
+async function runMvsAndVacuum(client: Client): Promise<void> {
+  console.log("\n── Phase 3: materialized views + vacuum ─────────────────");
+  for (const fn of MV_REFRESH_FNS) {
+    try {
+      await step(client, `${fn}()`, `SELECT ${fn}()`);
+    } catch (err) {
+      console.error(`  ! ${fn}() failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+  await runVacuum(client);
+}
+
 function isProd(): boolean {
   return /supabase\.co/i.test(process.env["NEXT_PUBLIC_SUPABASE_URL"] ?? "");
 }
@@ -307,7 +375,21 @@ const STEP_BUDGET_S: Record<string, number> = {
 
 class BudgetExceeded extends Error {}
 
-/** Run one step, timed; throw BudgetExceeded if it overran its budget. */
+/**
+ * Run one step under a HARD server-side ceiling, timed.
+ *
+ * The budget is enforced by `statement_timeout`, not by measuring afterwards.
+ * An earlier version only compared elapsed time once the query returned, which
+ * cannot fire on the case that actually matters: a step that never returns.
+ * On 2026-07-31 `refresh_official_homepage_stats_mv()` ran 64 minutes against a
+ * 20-minute budget and the guard stayed silent the whole time, because the check
+ * was downstream of a query that had not finished — the site was at 18.5s and
+ * the run had to be killed by hand. Postgres has to own the ceiling.
+ *
+ * The post-hoc check is kept only to convert a query that finished slowly (but
+ * inside its ceiling) into an abort, so a degrading trend stops the run before
+ * a later step hits the wall.
+ */
 async function budgeted(
   client: Client,
   label: string,
@@ -316,7 +398,22 @@ async function budgeted(
   params: unknown[] = [],
 ): Promise<void> {
   const t0 = Date.now();
-  await client.query(sql, params);
+  await client.query(`SET statement_timeout = ${Math.round(budgetS * 1000)}`);
+  try {
+    await client.query(sql, params);
+  } catch (err) {
+    // 57014 = query_canceled: the ceiling fired. Report it as a budget overrun
+    // rather than an opaque cancellation, so the abort message names the step.
+    if ((err as { code?: string })?.code === "57014") {
+      throw new BudgetExceeded(
+        `${label} hit its ${budgetS}s statement_timeout and was cancelled server-side — ` +
+          `prod I/O is degraded, stopping before the remaining work makes it worse`,
+      );
+    }
+    throw err;
+  } finally {
+    await client.query("SET statement_timeout = 0");
+  }
   const s = (Date.now() - t0) / 1000;
   console.log(`  ${label.padEnd(52)} ${s.toFixed(1)}s`);
   if (s > budgetS) {
@@ -429,19 +526,7 @@ async function runRollups(client: Client, prod: boolean): Promise<void> {
       }
     }
 
-    // CONCURRENTLY wrappers, so the live read path is never locked out.
-    // refresh_homepage_stats_mv is NOT concurrent internally and takes a brief
-    // (~1s) ACCESS EXCLUSIVE — the same lock refresh-derived-mvs-daily takes at
-    // 06:00 UTC, so the read path already absorbs it daily. Drop it if a run
-    // ever has to happen during traffic.
-    for (const fn of [
-      "refresh_official_sector_dollars_mv",
-      "refresh_official_homepage_stats_mv",
-      "refresh_homepage_stats_mv",
-      "refresh_chord_industry_flows_mv",
-      "refresh_chord_donor_type_party_flows_mv",
-      "refresh_chord_donor_state_party_flows_mv",
-    ]) {
+    for (const fn of MV_REFRESH_FNS) {
       try {
         await budgeted(client, `${fn}()`, `SELECT ${fn}()`, STEP_BUDGET_S["mv"]!);
       } catch (err) {
@@ -454,7 +539,9 @@ async function runRollups(client: Client, prod: boolean): Promise<void> {
     console.error(`\n✗ PHASE 2 ABORTED — ${err.message}`);
     console.error(
       `  The money merge is COMMITTED and correct; only rollups are incomplete.\n` +
-        `  Resume with:  pnpm --filter @civitics/data data:merge:official-dupes${prod ? ":prod" : ""} -- --rollups-only${prod ? "" : ""}\n` +
+        `  Resume with:  pnpm --filter @civitics/data data:merge:official-dupes${prod ? ":prod" : ""} -- --rollups-only\n` +
+        `  If the expensive rebuilds already finished and only the MV/VACUUM tail is\n` +
+        `  outstanding, use --mvs-only instead — it skips ~1.5h of redundant prod I/O.\n` +
         `  Nothing is lost by waiting — the rollups are pure functions of the committed rows.`,
     );
   }
@@ -465,7 +552,14 @@ async function runRollups(client: Client, prod: boolean): Promise<void> {
 async function main(): Promise<void> {
   const argv = process.argv.slice(2);
   const rollupsOnly = argv.includes("--rollups-only");
-  const apply = argv.includes("--apply") || rollupsOnly;
+  // Resume the TAIL of phase 2 only. Exists because a run can die (or its host
+  // can reboot) after the expensive rebuilds have already committed — re-running
+  // --rollups-only then costs ~1.5h of redundant prod I/O to redo work that
+  // succeeded, which is precisely the load this script is designed to avoid.
+  const mvsOnly = argv.includes("--mvs-only");
+  /** VACUUM alone — the only phase-3 step with no other owner on the schedule. */
+  const vacuumOnly = argv.includes("--vacuum-only");
+  const apply = argv.includes("--apply") || rollupsOnly || mvsOnly || vacuumOnly;
   const allowProd = argv.includes("--allow-prod");
   const prod = isProd();
 
@@ -488,7 +582,17 @@ async function main(): Promise<void> {
   console.log(`Env:        ${envLabel()}`);
   console.log(`Connection: ${dbUrl.replace(/:[^:@/]+@/, ":***@")}`);
   console.log(
-    `Mode:       ${rollupsOnly ? "ROLLUPS-ONLY (resume phase 2)" : apply ? "APPLY (COMMIT)" : "DRY-RUN (ROLLBACK)"}\n`,
+    `Mode:       ${
+      vacuumOnly
+        ? "VACUUM-ONLY"
+        : mvsOnly
+        ? "MVS-ONLY (resume phase 2 tail)"
+        : rollupsOnly
+          ? "ROLLUPS-ONLY (resume phase 2)"
+          : apply
+            ? "APPLY (COMMIT)"
+            : "DRY-RUN (ROLLBACK)"
+    }\n`,
   );
 
   const client = new Client({ connectionString: dbUrl });
@@ -499,6 +603,18 @@ async function main(): Promise<void> {
   // refresh dies with "could not resize shared memory segment". Prod has real
   // shared memory and wants its parallel workers, so this is local-only.
   if (!prod) await client.query("SET max_parallel_workers_per_gather = 0");
+
+  if (vacuumOnly) {
+    await runVacuum(client);
+    await client.end();
+    return;
+  }
+
+  if (mvsOnly) {
+    await runMvsAndVacuum(client);
+    await client.end();
+    return;
+  }
 
   // ── --rollups-only: resume phase 2 against already-merged state ──────────
   // Rebuilds _manifest from the committed result rather than from the
@@ -528,13 +644,7 @@ async function main(): Promise<void> {
       process.exit(1);
     }
     await runRollups(client, prod);
-    for (const t of ["financial_relationships", "entity_connections", "officials"]) {
-      try {
-        await step(client, `VACUUM ANALYZE ${t}`, `VACUUM (ANALYZE) public.${t}`);
-      } catch (err) {
-        console.error(`  ! VACUUM ${t} failed: ${err instanceof Error ? err.message : String(err)}`);
-      }
-    }
+    await runMvsAndVacuum(client);
     await client.end();
     return;
   }
@@ -976,24 +1086,7 @@ async function main(): Promise<void> {
   }
 
   await runRollups(client, prod);
-
-  // VACUUM the two tables this run churns hardest. It cannot go in the
-  // transaction (VACUUM is not transactional) and it is not cosmetic: the merge
-  // leaves ~260k dead tuples in financial_relationships and ~120k in
-  // entity_connections, and until they are reclaimed the visibility map is stale
-  // enough to kill index-only scans — measured on prod in FIX-884, where a
-  // stranded autovacuum on entity_connections turned a clean index-only plan
-  // into 34,534 heap fetches. The FIX-930 audit's own suspect query is the first
-  // casualty: it blew past its 10-minute statement_timeout on local immediately
-  // after the merge and completed comfortably once these were vacuumed.
-  for (const t of ["financial_relationships", "entity_connections", "officials"]) {
-    try {
-      await step(client, `VACUUM ANALYZE ${t}`, `VACUUM (ANALYZE) public.${t}`);
-    } catch (err) {
-      console.error(`  ! VACUUM ${t} failed: ${err instanceof Error ? err.message : String(err)}`);
-      console.error(`    (autovacuum will catch up; expect slow reads until it does)`);
-    }
-  }
+  await runMvsAndVacuum(client);
 
   console.log(
     "\nSTALE UNTIL THEIR OWN SCHEDULE (not rebuildable here at reasonable cost):\n" +
