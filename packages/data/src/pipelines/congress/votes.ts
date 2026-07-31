@@ -13,8 +13,19 @@
  * Run standalone:  pnpm --filter @civitics/data data:votes
  */
 
-import { createAdminClient, rowsOrThrow, selectAllOrThrow } from "@civitics/db";
+import {
+  createAdminClient,
+  currentGoverningBodyMembers,
+  rowsOrThrow,
+  selectAllOrThrow,
+} from "@civitics/db";
 import type { Database } from "@civitics/db";
+import {
+  buildBioguideMap,
+  buildSenatorNameStateMap,
+  senateNameKey,
+  type MapCollision,
+} from "./votes-maps";
 import {
   fetchCongressApi,
   fetchText,
@@ -267,13 +278,24 @@ interface OfficialMaps {
 // skipped past, leaving the senator map empty (FIX-545).
 const IN_CHUNK = 200;
 
+/** Print a refused map overwrite loudly — see votes-maps.ts for the rationale. */
+function reportCollisions(mapLabel: string, collisions: readonly MapCollision[]): void {
+  if (collisions.length === 0) return;
+  console.warn(
+    `  ⚠ FIX-940: ${collisions.length} collision(s) refused on the ${mapLabel} map — ` +
+      `two officials rows claim one key. The FIRST id keeps the slot; the second is ` +
+      `left unresolved (its votes will surface as unmatched, which is recoverable — ` +
+      `a silent overwrite is not).`,
+  );
+  for (const c of collisions) {
+    console.warn(`      key='${c.key}'  kept=${c.kept}  refused=${c.refused}`);
+  }
+}
+
 async function buildOfficialMaps(
   db: ReturnType<typeof createAdminClient>,
   senateGovBodyId: string
 ): Promise<OfficialMaps> {
-  const officialMap = new Map<string, string>();
-  const senatorByNameState = new Map<string, string>();
-
   // FIX-545: this read was both log-and-continue (a transient error left the
   // bioguide map empty and every House vote unmatched) and unpaginated —
   // officials holds ~28.6k rows (2026-06-09), so the old single .select()
@@ -282,26 +304,57 @@ async function buildOfficialMaps(
     "votes bioguide-map officials preload",
     (from, to) => db.from("officials").select("id, source_ids").order("id").range(from, to),
   );
-  for (const o of allOfficials) {
-    const src = o.source_ids as Record<string, string> | null;
-    const bioguide = src?.["congress_gov"];
-    if (bioguide) {
-      officialMap.set(bioguide, o.id as string);
-    }
-  }
+  const bioguide = buildBioguideMap(
+    allOfficials.map((o) => ({
+      id:         o.id as string,
+      source_ids: o.source_ids as Record<string, string> | null,
+    })),
+  );
+  const officialMap = bioguide.map;
   console.log(`  Built bioguide map with ${officialMap.size} entries`);
+  reportCollisions("bioguide", bioguide.collisions);
 
-  // Also past the 1,000-row cap: the Senate governing body carries ~1.9k
-  // officials rows (candidate pollution included), not 100.
+  // FIX-940: the Senate governing body carries ~1.95k `tier='candidate'` rows
+  // minted by the FEC cn{yy} stage (FIX-246) alongside the 100 sitting Senators,
+  // and the map used to be built from ALL of them. `currentGoverningBodyMembers`
+  // applies the is_active + tier='elected' predicate the rest of the platform
+  // already agreed for exactly this pollution (see packages/db governing-bodies).
+  // The unfiltered count is read first purely so the drop is visible in the run
+  // output — a pool that does NOT shrink on a polluted DB means the predicate
+  // did not apply, and is worth stopping to look at.
+  const { count: rawPoolCount, error: rawPoolErr } = await db
+    .from("officials")
+    .select("id", { count: "exact", head: true })
+    .eq("governing_body_id", senateGovBodyId);
+  if (rawPoolErr) {
+    console.warn(`  Senate pool pre-count unavailable: ${rawPoolErr.message}`);
+  }
+
+  // Still past the 1,000-row cap even after filtering is applied server-side,
+  // so the paginated read stays.
   const senators = await selectAllOrThrow(
     "votes senator preload",
-    (from, to) => db
-      .from("officials")
-      .select("id, last_name, jurisdiction_id")
-      .eq("governing_body_id", senateGovBodyId)
+    (from, to) => currentGoverningBodyMembers(
+      db
+        .from("officials")
+        .select("id, last_name, jurisdiction_id")
+        .eq("governing_body_id", senateGovBodyId),
+    )
       .order("id")
       .range(from, to),
   );
+  console.log(
+    `  Senate pool: ${rawPoolCount ?? "?"} rows in the governing body → ` +
+      `${senators.length} current members after the is_active + tier='elected' filter`,
+  );
+  if (rawPoolCount != null && senators.length >= rawPoolCount && rawPoolCount > 200) {
+    console.warn(
+      `  ⚠ FIX-940: the current-member filter removed nothing from a ${rawPoolCount}-row ` +
+        `Senate pool. Expected ~100 sitting Senators — check that officials.tier is populated.`,
+    );
+  }
+
+  let senatorByNameState = new Map<string, string>();
   if (senators.length > 0) {
     const jidSet = new Set(senators.map((s) => s.jurisdiction_id).filter(Boolean));
     const jids = Array.from(jidSet) as string[];
@@ -318,15 +371,16 @@ async function buildOfficialMaps(
       for (const j of page) jMap.set(j.id as string, (j.short_name as string | null) ?? "");
     }
 
-    for (const s of senators) {
-      const lastName = (s.last_name as string | null) ?? "";
-      const stateAbbr = s.jurisdiction_id ? (jMap.get(s.jurisdiction_id as string) ?? "") : "";
-      if (lastName && stateAbbr) {
-        const key = `${lastName.toLowerCase()}:${stateAbbr.toUpperCase()}`;
-        senatorByNameState.set(key, s.id as string);
-      }
-    }
+    const built = buildSenatorNameStateMap(
+      senators.map((s) => ({
+        id:        s.id as string,
+        last_name: (s.last_name as string | null) ?? null,
+        state:     s.jurisdiction_id ? (jMap.get(s.jurisdiction_id as string) ?? null) : null,
+      })),
+    );
+    senatorByNameState = built.map;
     console.log(`  Built senator name:state map with ${senatorByNameState.size} entries`);
+    reportCollisions("senator name:state", built.collisions);
   }
 
   return { officialMap, senatorByNameState };
@@ -653,6 +707,8 @@ export async function runVotesPipeline(
   console.log("\n--- Step 4: Fetching Senate LIS XML votes ---");
 
   let senateUnmatched = 0;
+  /** FIX-940: which keys missed, not just how many — names the member to chase. */
+  const senateUnmatchedKeys = new Map<string, number>();
 
   interface SenateRollItem {
     rollCallId:   string;
@@ -843,9 +899,15 @@ export async function runVotesPipeline(
         const state    = String(mObj["state"] ?? "").trim().toUpperCase();
         const voteText = String(mObj["vote_cast"] ?? "");
         if (!lastName || !state) continue;
-        const key        = `${lastName.toLowerCase()}:${state}`;
-        const officialId = senatorByNameState.get(key);
-        if (!officialId) { senateUnmatched++; continue; }
+        // Same key function the map was built with — normalization MUST be
+        // symmetric or the lookup silently misses (FIX-940).
+        const key        = senateNameKey(lastName, state);
+        const officialId = key ? senatorByNameState.get(key) : undefined;
+        if (!officialId) {
+          senateUnmatched++;
+          senateUnmatchedKeys.set(key || `${lastName}:${state}`, (senateUnmatchedKeys.get(key || `${lastName}:${state}`) ?? 0) + 1);
+          continue;
+        }
         voteRecords.push({
           official_id:      officialId,
           bill_proposal_id: proposalId,
@@ -880,7 +942,18 @@ export async function runVotesPipeline(
     console.log(`\n  House unmatched bioguide IDs (no official in DB): ${houseUnmatched}`);
   }
   if (senateUnmatched > 0) {
-    console.log(`  Senate unmatched name:state keys (no official in DB): ${senateUnmatched}`);
+    // FIX-940: an unmatched Senator is now the DESIGNED failure mode — the map
+    // refuses ambiguous slots rather than guessing — so this has to be visible
+    // rather than a quiet tail line. Each key here is a sitting member whose
+    // roll-calls were dropped, not misfiled; every one is worth chasing.
+    console.warn(
+      `\n  ⚠ FIX-940: ${senateUnmatched} Senate vote record(s) matched no current ` +
+        `member across ${senateUnmatchedKeys.size} distinct name:state key(s). ` +
+        `These votes were NOT written.`,
+    );
+    for (const [key, n] of [...senateUnmatchedKeys].sort((a, b) => b[1] - a[1])) {
+      console.warn(`      ${key.padEnd(28)} ${n} record(s)`);
+    }
   }
 
   console.log(

@@ -191,6 +191,12 @@ export interface OfficialRecord {
   role_title: string | null;
   source_ids: Record<string, string>;
   state:      string | null;
+  /**
+   * FIX-941 — `officials.tier`. Optional so existing fixtures stay valid;
+   * absent is read as 'elected', matching the column default and the same
+   * fallback `loadOfficialsByFecIds` uses.
+   */
+  tier?:      string | null;
 }
 
 /** Committee master (cm24) entry */
@@ -386,7 +392,7 @@ export async function loadOfficials(
   while (true) {
     const { data, error } = await db
       .from("officials")
-      .select("id, full_name, first_name, last_name, role_title, source_ids, jurisdictions!jurisdiction_id(short_name)")
+      .select("id, full_name, first_name, last_name, role_title, tier, source_ids, jurisdictions!jurisdiction_id(short_name)")
       .eq("is_active", true)
       // FIX-760: stable unique order — unordered .range() pagination can
       // skip/duplicate rows as page boundaries shift between queries.
@@ -404,6 +410,7 @@ export async function loadOfficials(
         role_title: (o.role_title as string | null) ?? null,
         source_ids: (o.source_ids ?? {}) as Record<string, string>,
         state:      (o.jurisdictions?.short_name as string | null) ?? null,
+        tier:       (o.tier as string | null) ?? null,
       });
     }
     if ((data ?? []).length < PAGE) break;
@@ -417,33 +424,82 @@ export interface MatchIndex {
   byLastName: Map<string, OfficialRecord[]>; // normalizedLast → officials
 }
 
+/**
+ * FIX-941 — `byFecId` is built in TWO passes, and an elected row always wins.
+ *
+ * Both passes used to `.set()` unconditionally while iterating `.order("id")`,
+ * which made the index doubly order-dependent: the higher uuid won any
+ * duplicated CAND_ID, AND a row's `fec_id` could clobber another row's
+ * authoritative `fec_candidate_id` purely because it came later. (Its sibling
+ * `loadOfficialsByFecIds` in ./candidates.ts already guarded the second case
+ * with `!map.has()` — the two were inconsistent.) Splitting the passes makes
+ * the precedence explicit — every `fec_candidate_id` claim is resolved before
+ * any `fec_id` claim is considered — and the tier preference makes the outcome
+ * independent of uuid order rather than arbitrary.
+ */
 export function buildMatchIndex(officials: OfficialRecord[]): MatchIndex {
   const byFecId    = new Map<string, string>();
   const byLastName = new Map<string, OfficialRecord[]>();
+  /** key → tier currently holding it, so a later elected row can displace a stub. */
+  const holderTier = new Map<string, string>();
+  const collisions: string[] = [];
+
+  const claim = (key: string, o: OfficialRecord): void => {
+    const tier = o.tier ?? "elected";
+    const held = byFecId.get(key);
+    if (held === undefined) {
+      byFecId.set(key, o.id);
+      holderTier.set(key, tier);
+      return;
+    }
+    if (held === o.id) return;
+
+    const heldTier = holderTier.get(key) ?? "elected";
+    if (heldTier !== "elected" && tier === "elected") {
+      byFecId.set(key, o.id);
+      holderTier.set(key, tier);
+      collisions.push(`    ${key}: ${o.id} (elected) TAKES the slot from ${held} (${heldTier})`);
+    } else {
+      collisions.push(`    ${key}: ${held} (${heldTier}) KEEPS the slot; ${o.id} (${tier}) refused`);
+    }
+  };
+
+  // Pass 1 — fec_candidate_id is the most authoritative key.
+  for (const o of officials) {
+    const candidateId = o.source_ids["fec_candidate_id"];
+    if (candidateId) claim(candidateId, o);
+  }
+
+  // Pass 2 — fec_id, only when its FEC prefix matches the official's current
+  // role. Prefix mismatch means it's an old ID from a prior race (e.g. a Senator
+  // who previously served in the House and has an H-prefix fec_id still stored).
+  // Never displaces a pass-1 claim: an explicit cn{yy} ingestion outranks a
+  // weball-derived id for the same key.
+  for (const o of officials) {
+    const fecId = o.source_ids["fec_id"];
+    if (!fecId) continue;
+    const prefix    = fecId[0]?.toUpperCase() ?? "";
+    const isSenator = o.role_title === "Senator";
+    const isRep     = o.role_title === "Representative";
+    if ((isSenator && prefix === "S") || (isRep && prefix === "H")) {
+      claim(fecId, o);
+    }
+    // Mismatched prefix (old race) — skip; don't pollute the index
+  }
 
   for (const o of officials) {
-    // fec_candidate_id is the most authoritative key — always include
-    const candidateId = o.source_ids["fec_candidate_id"];
-    if (candidateId) byFecId.set(candidateId, o.id);
-
-    // fec_id: only include if its FEC prefix matches the official's current role.
-    // Prefix mismatch means it's an old ID from a prior race (e.g. a Senator who
-    // previously served in the House and has an H-prefix fec_id still stored).
-    const fecId = o.source_ids["fec_id"];
-    if (fecId) {
-      const prefix    = fecId[0]?.toUpperCase() ?? "";
-      const isSenator = o.role_title === "Senator";
-      const isRep     = o.role_title === "Representative";
-      if ((isSenator && prefix === "S") || (isRep && prefix === "H")) {
-        byFecId.set(fecId, o.id);
-      }
-      // Mismatched prefix (old race) — skip; don't pollute the index
-    }
-
     const key  = normalizeLastName(o.last_name ?? o.full_name);
     const list = byLastName.get(key) ?? [];
     list.push(o);
     byLastName.set(key, list);
+  }
+
+  if (collisions.length > 0) {
+    console.warn(
+      `  ⚠ FIX-941: ${collisions.length} FEC ID(s) claimed by more than one officials row. ` +
+        `Resolved by tier preference (elected wins) instead of uuid order:`,
+    );
+    for (const line of collisions) console.warn(line);
   }
 
   return { byFecId, byLastName };

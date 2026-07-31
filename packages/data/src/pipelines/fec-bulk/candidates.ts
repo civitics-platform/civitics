@@ -391,11 +391,58 @@ async function flushNameUpdates(
  *
  * The returned map is what the cn{yy} stage consults to skip CAND_IDs that
  * already point at an officials row.
+ *
+ * FIX-941 — TIER PREFERENCE ON A DUPLICATED CAND_ID.
+ * The `fec_candidate_id` branch used to `.set()` unconditionally while iterating
+ * `.order("id")`, so when two officials rows claimed the same CAND_ID the higher
+ * uuid won ARBITRARILY. That is live-relevant, not theoretical: writing the FEC
+ * id onto an elected survivor (which FIX-933 must do first, or the cn{yy} stage
+ * re-mints the candidate row) leaves the SAME id on both rows, and for roughly
+ * half of pairs the candidate stub then took the slot and the next Sunday run
+ * wrote the money straight back onto it — the merge silently undoing itself.
+ * Measured before FIX-933's reconciliation: 21 of 83 shared-CAND_ID pairs had
+ * the duplicate winning. 153 CAND_IDs are still held by two rows (both hold
+ * money, so FIX-933 correctly refused them) — exactly the ids this guard covers.
+ *
+ * Note the `fec_id` branch below already got this half-right via `!map.has()`.
+ * The guard here makes the function internally consistent: an elected row always
+ * beats a non-elected one for the same key, ties keep the first (stable under
+ * `.order("id")`), and every refusal is logged rather than silent.
  */
 export async function loadOfficialsByFecIds(
   db: AdminDb,
 ): Promise<Map<string, { officialId: string; tier: string }>> {
   const map = new Map<string, { officialId: string; tier: string }>();
+  /** Refused/overridden CAND_ID claims — reported once, after the scan. */
+  const collisions: string[] = [];
+
+  /**
+   * Claim `key`, preferring `tier='elected'`. Returns silently when the slot is
+   * free or already held by the same row.
+   */
+  const claimCandId = (key: string, officialId: string, tier: string): void => {
+    const held = map.get(key);
+    if (held === undefined) {
+      map.set(key, { officialId, tier });
+      return;
+    }
+    if (held.officialId === officialId) return;
+
+    const heldElected = held.tier === "elected";
+    const nextElected = tier === "elected";
+    if (!heldElected && nextElected) {
+      map.set(key, { officialId, tier });
+      collisions.push(
+        `    ${key}: ${officialId} (elected) TAKES the slot from ${held.officialId} (${held.tier})`,
+      );
+    } else {
+      collisions.push(
+        `    ${key}: ${held.officialId} (${held.tier}) KEEPS the slot; ` +
+          `${officialId} (${tier}) refused`,
+      );
+    }
+  };
+
   const PAGE = 1000;
   let offset = 0;
   for (;;) {
@@ -417,7 +464,7 @@ export async function loadOfficialsByFecIds(
     for (const r of rows) {
       const tier   = r.tier ?? "elected";
       const candId = r.source_ids?.["fec_candidate_id"];
-      if (candId) map.set(candId, { officialId: r.id, tier });
+      if (candId) claimCandId(candId, r.id, tier);
 
       const fecId = r.source_ids?.["fec_id"];
       if (fecId) {
@@ -436,6 +483,14 @@ export async function loadOfficialsByFecIds(
     }
     if (rows.length < PAGE) break;
     offset += PAGE;
+  }
+
+  if (collisions.length > 0) {
+    console.warn(
+      `  ⚠ FIX-941: ${collisions.length} CAND_ID(s) claimed by more than one officials row. ` +
+        `Resolved by tier preference (elected wins) instead of uuid order:`,
+    );
+    for (const line of collisions) console.warn(line);
   }
   return map;
 }
