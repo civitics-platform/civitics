@@ -146,6 +146,13 @@ const ALLOWED_PROCEDURES = new Set([
   // /api/graph/spending reads instead of a >45s 3.2M-row scan. Per-env bootstrap +
   // break-glass; the weekly contract-flow-rollups-refresh cron is the ongoing path.
   "refresh_contract_flow_rollups",
+  // FIX-958: content-signature-gated targeted refresh of
+  // official_sector_affinity_rollup off donor industry-tag changes. Nightly
+  // entry point is runRuleBasedTagger, between tagFinancialEntities and
+  // tagOfficials (FIX-959 ordering); also the per-env manual catch-up. noop
+  // when the tag content is unchanged; falls back to the chunked full backfill
+  // only on a cold start / signature-store miss.
+  "refresh_sector_affinity_from_tag_changes",
 ]);
 
 /**

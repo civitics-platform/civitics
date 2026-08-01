@@ -150,6 +150,7 @@
     "data:backfill-contract-flow-rollups:prod": "tsx --env-file=../../.env.local.prod src/scripts/backfill-contract-flow-rollups.ts",
     "data:backfill-sector-affinity": "tsx --env-file=../../.env.local src/scripts/backfill-sector-affinity-rollup.ts",
     "data:backfill-sector-affinity:prod": "tsx --env-file=../../.env.local.prod src/scripts/backfill-sector-affinity-rollup.ts",
+    "data:verify:sector-affinity": "tsx --env-file=../../.env.local src/scripts/verify-sector-affinity-trigger.ts",
     "data:backfill-agency-staffing": "tsx --env-file=../../.env.local src/scripts/backfill-agency-staffing-rollup.ts",
     "data:backfill-agency-staffing:prod": "tsx --env-file=../../.env.local.prod src/scripts/backfill-agency-staffing-rollup.ts",
     "data:backfill-treemap-individuals": "tsx --env-file=../../.env.local src/scripts/backfill-treemap-individuals-rollup.ts",

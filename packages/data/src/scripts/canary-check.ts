@@ -262,11 +262,54 @@ async function fetchRollupFreshness(): Promise<RollupStatus[]> {
   return out;
 }
 
+// FIX-959 — sector-affinity tag staleness. The RPC compares the LIVE content
+// signature of the financial_entity/industry tag set against the one stored by
+// refresh_sector_affinity_from_tag_changes() (FIX-958). A mismatch alone is NOT
+// a finding — this canary runs at 05:00 UTC, inside the nightly window, so it
+// can legitimately observe tags-written-refresh-pending. The RPC only reports
+// stale=true once the STORED signature has sat unchanged across >26h of
+// observed mismatch (probe state in pipeline_state), i.e. a whole nightly cycle
+// failed to incorporate a tag change — the eleven-day FIX-916 drift shape.
+type SectorAffinityStaleness = {
+  stale: boolean;
+  state: string;
+  liveSig: string | null;
+  storedSig: string | null;
+  hoursOutstanding: number | null;
+};
+
+async function fetchSectorAffinityStaleness(): Promise<SectorAffinityStaleness | null> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = createAdminClient() as any;
+  const { data, error } = await db.rpc("check_sector_affinity_tag_staleness");
+  if (error) {
+    // Non-fatal, same contract as the other detectors: a missing RPC (env not
+    // yet migrated) must never fail the canary's primary nightly_cron job.
+    console.warn(`[canary-check] sector-affinity staleness query failed (non-fatal): ${error.message}`);
+    return null;
+  }
+  const r = (data ?? {}) as {
+    stale?: boolean;
+    state?: string;
+    live_sig?: string | null;
+    stored_sig?: string | null;
+    hours_outstanding?: number | null;
+  };
+  return {
+    stale:            r.stale === true,
+    state:            r.state ?? "unknown",
+    liveSig:          r.live_sig ?? null,
+    storedSig:        r.stored_sig ?? null,
+    hoursOutstanding: r.hours_outstanding ?? null,
+  };
+}
+
 async function writeMetaRow(
   missing: string[],
   killed: string[],
   autovacuum: AutovacuumStatus,
   rollups: RollupStatus[],
+  sectorAffinity: SectorAffinityStaleness | null,
 ): Promise<void> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = createAdminClient() as any;
@@ -301,6 +344,9 @@ async function writeMetaRow(
       // FIX-944 — recorded on EVERY run, findings or not, so the convergence of
       // a multi-night resumable sweep is greppable after the fact.
       rollup_freshness: rollups,
+      // FIX-959 — recorded on EVERY run for the same reason: the signature
+      // trail makes a strand's onset findable after the fact.
+      sector_affinity_staleness: sectorAffinity,
       peak_rss_mb:      captureRssMb(),
     },
   });
@@ -314,6 +360,7 @@ async function sendAlert(
   killed: string[],
   autovacuum: AutovacuumStatus,
   staleRollups: RollupStatus[],
+  sectorAffinity: SectorAffinityStaleness | null,
   to: string,
   apiKey: string,
 ): Promise<void> {
@@ -338,6 +385,8 @@ async function sendAlert(
   if (autovacuum.vmDegraded.length > 0) parts.push(`visibility map collapsed on ${autovacuum.vmDegraded.join(", ")}`);
   // FIX-944 — a rollup that never reaches 'complete' is its own signal.
   if (staleRollups.length > 0) parts.push(`stale rollup: ${staleRollups.map((r) => r.pipeline).join(", ")}`);
+  // FIX-959 — a donor tag change stranded un-incorporated in the affinity rollup.
+  if (sectorAffinity?.stale) parts.push(`sector-affinity rollup stranded on a tag change`);
   const subject = `[Civitics] Nightly canary — ${parts.join("; ")}`;
 
   const sections: string[] = [];
@@ -414,6 +463,21 @@ async function sendAlert(
         `pnpm --filter @civitics/data data:donor-rollup:sweep:prod`,
     );
   }
+  if (sectorAffinity?.stale) {
+    sections.push(
+      `Sector-affinity rollup stranded on a tag change (FIX-959) — the donor ` +
+        `industry-tag content signature changed and ` +
+        `refresh_sector_affinity_from_tag_changes() has not incorporated it for ` +
+        `${sectorAffinity.hoursOutstanding ?? "?"}h (>1 nightly cycle). The ` +
+        `FIX-897 official industry pills are rendering pre-change sectors — the ` +
+        `eleven-day FIX-916 drift shape, caught early this time:\n` +
+        `  - live sig:   ${sectorAffinity.liveSig ?? "-"}\n` +
+        `  - stored sig: ${sectorAffinity.storedSig ?? "-"}\n` +
+        `\nTriage: check data_sync_log pipeline='sector_affinity_tag_refresh' ` +
+        `for the failing/missing run, then re-run the nightly tagger or CALL ` +
+        `public.refresh_sector_affinity_from_tag_changes() directly (off-peak).`,
+    );
+  }
   const body = sections.join("\n\n") + `\n\nWorkflow runs: ${NIGHTLY_RUN_URL}\n`;
 
   const { error } = await resend.emails.send({
@@ -439,6 +503,9 @@ async function main(): Promise<number> {
   // inside its window?
   const rollups = await fetchRollupFreshness();
   const staleRollups = rollups.filter((r) => r.stale);
+  // FIX-959 — point-in-time: is a donor industry-tag change stranded
+  // un-incorporated in official_sector_affinity_rollup past one nightly cycle?
+  const sectorAffinity = await fetchSectorAffinityStaleness();
   // "missing" = no nightly_cron row AND no nightly_killed row for that date.
   // "killed" = no nightly_cron row but a nightly_killed synthetic row exists.
   const missing  = expected.filter((d) => !actual.has(d) && !killedSet.has(d));
@@ -451,10 +518,10 @@ async function main(): Promise<number> {
   const sendReal   = process.argv.includes("--send-real");
   const hasAlert   = missing.length > 0 || killed.length > 0
                   || strandedAutovacuum.length > 0 || autovacuum.vmDegraded.length > 0
-                  || staleRollups.length > 0;
+                  || staleRollups.length > 0 || sectorAffinity?.stale === true;
   if (hasAlert && adminEmail && resendKey) {
     if (inCi || sendReal) {
-      await sendAlert(missing, killed, autovacuum, staleRollups, adminEmail, resendKey);
+      await sendAlert(missing, killed, autovacuum, staleRollups, sectorAffinity, adminEmail, resendKey);
       alertSent = true;
     } else {
       console.log(
@@ -463,7 +530,7 @@ async function main(): Promise<number> {
     }
   }
 
-  await writeMetaRow(missing, killed, autovacuum, rollups);
+  await writeMetaRow(missing, killed, autovacuum, rollups, sectorAffinity);
 
   // FIX-885 — ESCALATE. The DB-health findings exit non-zero so the workflow run
   // goes red; an email alone is not escalation. FIX-650 built the detector and it
@@ -502,6 +569,16 @@ async function main(): Promise<number> {
         .join(", ")}`,
     );
   }
+  // FIX-959 — escalate for the same reason: a stranded tag change is a
+  // point-in-time fact about prod that stays broken (stale pills, no error)
+  // until someone acts. The 2026-07 instance sat unnoticed for eleven days.
+  if (sectorAffinity?.stale) {
+    failures.push(
+      `sector-affinity rollup stranded on a tag change ` +
+        `(${sectorAffinity.hoursOutstanding ?? "?"}h outstanding; ` +
+        `live=${sectorAffinity.liveSig ?? "-"} stored=${sectorAffinity.storedSig ?? "-"})`,
+    );
+  }
 
   console.log(
     JSON.stringify({
@@ -518,6 +595,7 @@ async function main(): Promise<number> {
       dead_tuple_load:     autovacuum.bloat,
       rollup_freshness:    rollups,
       stale_rollups:       staleRollups.map((r) => r.pipeline),
+      sector_affinity_staleness: sectorAffinity,
       alert_sent:          alertSent,
       escalated:           failures.length > 0,
     })

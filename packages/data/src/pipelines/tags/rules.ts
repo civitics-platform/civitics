@@ -18,7 +18,7 @@
 import type { Client } from "pg";
 import { createAdminClient } from "@civitics/db";
 import { startSync, completeSync, failSync } from "../sync-log";
-import { selectDirect, rollupJsonbDirect } from "../../lib/heavy-rebuild";
+import { selectDirect, rollupJsonbDirect, callHeavyProcedure } from "../../lib/heavy-rebuild";
 import { withDirectClient, bulkUpsert } from "../../lib/direct-pg-upsert";
 import { VALID_INDUSTRIES, industryDisplay } from "./topics";
 
@@ -875,7 +875,10 @@ async function tagProposals(db: any): Promise<number> {
 // industry rows from outside would silently vanish on the next nightly.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function tagOfficials(db: any): Promise<number> {
-  console.log("\n  [2/3] Tagging officials...");
+  // [3/3] since FIX-959 — runs AFTER tagFinancialEntities + the sector-affinity
+  // refresh, so the industry pills read a rollup that already reflects tonight's
+  // donor tag changes.
+  console.log("\n  [3/3] Tagging officials...");
 
   // Paginated — officials is ~27k rows, past the 1,000-row cap (FIX-427).
   const officials = await timed("officials fetch (paged)", () =>
@@ -1278,7 +1281,9 @@ export function naicsToIndustry(code: string): string | null {
 // the next nightly and anything written twice from inside accumulates.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function tagFinancialEntities(db: any): Promise<number> {
-  console.log("\n  [3/3] Tagging financial entities...");
+  // [2/3] since FIX-959 — the donor-side tag writes must land before the
+  // sector-affinity refresh and tagOfficials read them.
+  console.log("\n  [2/3] Tagging financial entities...");
 
   // ── Donation size tags — RELOCATED to pg_cron (FIX-716) ──────────────────
   // rebuild_financial_entity_size_tags() (the DELETE('size') + INSERT…SELECT of
@@ -1543,6 +1548,37 @@ export async function tagFinancialEntities(db: any): Promise<number> {
 // budget. See supabase/migrations/20260703000100_fix716_rule_taggers_pgcron.sql.
 
 // ---------------------------------------------------------------------------
+// FIX-958 — sector-affinity refresh off donor industry-tag changes
+// ---------------------------------------------------------------------------
+
+/**
+ * CALL refresh_sector_affinity_from_tag_changes() — the content-signature-gated
+ * targeted rebuild of official_sector_affinity_rollup. The procedure computes a
+ * signature over the (entity_id, tag) industry set, no-ops when it is unchanged
+ * (the common night), and rebuilds ONLY the officials who received from a
+ * changed donor when it moved. Cold start / signature-store miss falls back to
+ * the chunked full backfill. See supabase/migrations/20260801010000.
+ *
+ * Deliberately NON-fatal (FIX-959): a stale rollup is the pre-existing
+ * condition this whole mechanism replaces, and a dead nightly is strictly worse
+ * (the FIX-920 lesson). On failure tagOfficials still runs against the prior
+ * rollup state, the signature store is not advanced, and the canary's
+ * check_sector_affinity_tag_staleness() escalates if the strand persists past
+ * one nightly cycle.
+ */
+async function refreshSectorAffinityFromTagChanges(): Promise<void> {
+  try {
+    await callHeavyProcedure("refresh_sector_affinity_from_tag_changes");
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(
+      `    [FIX-958] sector-affinity refresh FAILED — official_sector_affinity_rollup ` +
+        `may be stale; the FIX-959 canary staleness check escalates if this persists: ${msg}`,
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Main pipeline
 // ---------------------------------------------------------------------------
 
@@ -1554,8 +1590,16 @@ export async function runRuleBasedTagger(): Promise<{ tagsCreated: number }> {
 
   try {
     const proposalTags     = await timed("phase: tagProposals", () => tagProposals(db));
-    const officialTags     = await timed("phase: tagOfficials", () => tagOfficials(db));
+    // FIX-959 — financial entities BEFORE officials. tagOfficials() reads
+    // official_sector_affinity_rollup to write the FIX-897 industry pills, and
+    // that rollup is rebuilt (targeted, signature-gated — FIX-958) from
+    // TONIGHT's donor industry-tag changes by the refresh between the two
+    // phases. The old order (officials → financialEntities) meant the pills
+    // were derived before that night's donor tag changes even existed, so even
+    // a perfect change-trigger left them lagging a full night.
     const financialTags    = await timed("phase: tagFinancialEntities", () => tagFinancialEntities(db));
+    await timed("phase: sector-affinity refresh (FIX-958)", () => refreshSectorAffinityFromTagChanges());
+    const officialTags     = await timed("phase: tagOfficials", () => tagOfficials(db));
     // [FIX-716] pre-vote timing tags moved to pg_cron run_rule_taggers('daily').
     const tagsCreated      = proposalTags + officialTags + financialTags;
 

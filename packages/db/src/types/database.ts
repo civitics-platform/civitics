@@ -1536,6 +1536,27 @@ export type Database = {
         }
         Relationships: []
       }
+      donor_industry_tag_state: {
+        Row: {
+          donor_id: string
+          tag_count: number
+          tag_sig: string
+          updated_at: string
+        }
+        Insert: {
+          donor_id: string
+          tag_count: number
+          tag_sig: string
+          updated_at?: string
+        }
+        Update: {
+          donor_id?: string
+          tag_count?: number
+          tag_sig?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       donor_party_rollup_mv: {
         Row: {
           donor_id: string
@@ -2694,6 +2715,36 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      financial_entity_industry_overrides: {
+        Row: {
+          audited_sector: string | null
+          created_at: string
+          display_name_at_audit: string | null
+          fec_committee_id: string
+          industry: string | null
+          note: string | null
+          source: string
+        }
+        Insert: {
+          audited_sector?: string | null
+          created_at?: string
+          display_name_at_audit?: string | null
+          fec_committee_id: string
+          industry?: string | null
+          note?: string | null
+          source?: string
+        }
+        Update: {
+          audited_sector?: string | null
+          created_at?: string
+          display_name_at_audit?: string | null
+          fec_committee_id?: string
+          industry?: string | null
+          note?: string | null
+          source?: string
+        }
+        Relationships: []
       }
       financial_relationships: {
         Row: {
@@ -5941,6 +5992,11 @@ export type Database = {
         Returns: string
       }
       check_rebuild_autovacuum_status: { Args: never; Returns: Json }
+      check_rollup_freshness: {
+        Args: { p_max_age_hours?: number; p_pipeline?: string }
+        Returns: Json
+      }
+      check_sector_affinity_tag_staleness: { Args: never; Returns: Json }
       chord_contract_flows: { Args: never; Returns: Json }
       chord_contract_flows_full: {
         Args: never
@@ -6099,6 +6155,7 @@ export type Database = {
           vote_details: Json
         }[]
       }
+      compute_fe_industry_tag_signature: { Args: never; Returns: string }
       count_independent_corroborations: {
         Args: { p_card_id: string }
         Returns: number
@@ -7720,3 +7777,4 @@ export const Constants = {
     },
   },
 } as const
+
