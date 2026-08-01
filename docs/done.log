@@ -1157,3 +1157,5 @@
 2026-07-31 | FIX-941 | 25a3a34c | local-only | fix(votes): tier-filter the Senate name map; refuse silent map collisions
 2026-07-31 | FIX-940 | 3a7fef1c | local+prod | [skip vercel] chore(votes): run the stub-vote remediation on prod (FIX-940 closeout)
 2026-07-31 | FIX-949 | b9e83b5e | local-only | fix(tags): make the rule taggers' authoritative rebuilds atomic
+2026-07-31 | FIX-921 | 0d62f171 | local+prod | chore(fixes): prod close-out for FIX-945 and FIX-921
+2026-07-31 | FIX-945 | 0d62f171 | local+prod | chore(fixes): prod close-out for FIX-945 and FIX-921
