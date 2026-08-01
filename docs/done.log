@@ -1164,3 +1164,5 @@
 2026-07-31 | FIX-944 | 9ba84eae | closes-as-recognized | fix(db): tune autovacuum on the hot-path tables; close the donor-rollup backlog
 2026-08-01 | FIX-957 | af73c922 | closes-as-recognized | docs(fixes): file FIX-957 — no per-cycle FEC run watermark
 2026-08-01 | FIX-957 | reopen | TRAILER ERROR: af73c922 FILED FIX-957 but carried a Closes: trailer. Pre-logging that sha (dedup key id|sha) stops fixes:sync appending it again; this reopen line is last-write-wins so FIX-957 stays OPEN. FIX-957 is unstarted work.
+2026-08-01 | FIX-954 | b7ebd748 | local-only | fix(fec): FIX-954 — recover cross-person contamination on officials that DO have a legitimate FEC binding
+2026-08-01 | FIX-955 | df3edc70 | local-only | fix(fec): FIX-955 — stop the pipeline undoing every FIX-933 merge; repair the re-split
