@@ -79,6 +79,8 @@
     "data:audit-cutover-indexes": "tsx --env-file=../../.env.local src/scripts/cutover-index-audit.ts",
     "data:audit-fe-fk-surface": "tsx --env-file=../../.env.local src/scripts/audit-fe-fk-surface.ts",
     "data:audit:cross-person": "tsx --env-file=../../.env.local src/scripts/audit-cross-person-misattribution.ts",
+    "data:remediate:bound-cross-person": "tsx --env-file=../../.env.local src/scripts/remediate-bound-cross-person.ts",
+    "data:remediate:bound-cross-person:prod": "tsx --env-file=../../.env.local.prod src/scripts/remediate-bound-cross-person.ts --allow-prod",
     "data:remediate:cross-person": "tsx --env-file=../../.env.local src/scripts/remediate-cross-person-misattribution.ts",
     "data:remediate:cross-person:prod": "tsx --env-file=../../.env.local.prod src/scripts/remediate-cross-person-misattribution.ts --allow-prod",
     "data:audit:cross-person:prod": "tsx --env-file=../../.env.local.prod src/scripts/audit-cross-person-misattribution.ts",

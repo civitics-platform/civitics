@@ -1,0 +1,595 @@
+holder_id	full_name	role_title	tier	jurisdiction	holder_fec_id	verdict	holder_rows	shared_rows	stale_rows	stale_usd	stale_share	live_rows_newer_than_contamination	owner_name	owner_fec_id	owner_role
+f29bbd4e-944f-4840-adbd-16a4706a3c02	Shontel M. Brown	Representative	elected	OH	H2OH11169	ACT	43960	43001	42957	48050874.00	0.9990	57	Sherrod Brown	S6OH00163	Candidate for Senator
+b1db79b2-cf97-4cb1-8ecd-4d45df50d8a2	Raja Krishnamoorthi	Representative	elected	IL	H6IL08147	REFUSE-weak-overlap	8724	4233	3823	8584895.00	0.9031	4899	S Krishnamoorthi	S6IL00482	Candidate for Senator
+a7913d40-d429-46f1-a50b-468ac89e2cd8	Anthony Vargas	Candidate for Representative	candidate	NE	H2NE02132	REFUSE-low-share	3633	3631	3332	4705020.00	0.9177	77	Juan Vargas	H2CA50026	Representative
+63d9274b-6edc-4967-b0b2-f957a544e5b1	Kevin Mullin	Representative	elected	CA	H2CA14162	REFUSE-weak-overlap	2620	1307	1041	3397287.00	0.7965	11	Markwayne Mullin	S2OK00186	Candidate for Senator
+1f984c1a-01ea-41be-bbe2-e49ccb6d0554	Andy Barr	Representative	elected	KY	H0KY06104	REFUSE-weak-overlap	5318	1713	1685	3321330.00	0.9837	2636	Garland Barr	S6KY00286	Candidate for Senator
+24c6d9fc-c5f2-4dcb-8fff-9cd0b1612d10	Cory Mills	Representative	elected	FL	H2FL07156	ACT	3254	2248	2248	3229014.00	1.0000	353	Janet Mills	S6ME00407	Candidate for Senator
+0b87ad8d-9d9c-4a0c-897a-22e5324d003d	Eugene Simon Vindman	Representative	elected	VA	H4VA07234	REFUSE-weak-overlap	10700	3083	2757	2557756.00	0.8943	7956	Alexander Vindman	S6FL00855	Candidate for Senator
+4e0835b8-b841-40ee-8b4e-3bfaeab27afe	Randy Fine	Representative	elected	FL	H6FL06258	ACT	3055	1888	1850	2415308.00	0.9799	306	Laura Fine	H6IL09194	Candidate for Representative
+4ff7bf63-97d7-4ea6-978a-dee5ab277420	Sam Graves	Representative	elected	MO	H0MO06073	REFUSE-weak-overlap	2215	610	402	2348321.00	0.6590	57	Garret Graves	H4LA06153	Candidate for Representative
+66fb4e28-9a73-47f0-b5b5-58f747ab246e	Jason Smith	Representative	elected	MO	H4MO08162	REFUSE-weak-overlap	3663	1025	338	1931225.00	0.3298	74	Adrian Smith	H6NE03115	Representative
+054f428d-aea9-4482-bd21-15fa878d1c83	Clay Higgins	Representative	elected	LA	H6LA03148	ACT	904	476	453	1639210.00	0.9517	56	Brian Higgins	H4NY27076	Candidate for Representative
+efd0cd51-0f21-4f54-a702-2aaf762a0368	Gary C. Peters	Senator	elected	MI	H8MI09068	REFUSE-weak-overlap	2237	390	390	1622170.00	1.0000	4	Scott H. Peters	H2CA52089	Representative
+13d2bf6d-6a78-4835-b246-fbeed4a329de	David P. Joyce	Representative	elected	OH	H2OH14064	REFUSE-weak-overlap	1930	408	302	1522265.00	0.7402	103	John Joyce	H8PA13125	Representative
+ee27066e-5f25-4abd-85c1-2a98de6e5bf6	Mike Collins	Representative	elected	GA		REFUSE-weak-overlap	1534	754	742	1458169.00	0.9841	0	Michael Collins	S6GA00390	Candidate for Senator
+ef1811ae-882c-428e-b904-9ca6f2a48681	Jim Banks	Senator	elected	IN	S4IN00196	REFUSE-weak-overlap	3049	411	408	1436800.00	0.9927	2613	James Banks	H6IN03229	Candidate for Senator
+77e50adb-f015-422f-88db-b96e052b22c3	S Krishnamoorthi	Candidate for Senator	candidate	IL	S6IL00482	REFUSE-low-share	4543	4233	410	1422486.00	0.0969	2	Raja Krishnamoorthi	H6IL08147	Representative
+6a8536b9-811f-4ad2-b7bb-601ade45764f	Robin L. Kelly	Representative	elected	IL	H2IL02172	REFUSE-weak-overlap	2277	358	328	1394419.00	0.9162	3	Mike Kelly	H0PA03271	Representative
+cdc8ae79-9603-49ee-8fc7-4a16a46df2e5	Gary Peters	Candidate for Senator	candidate	MI	S4MI00355	REFUSE-weak-overlap	2222	387	296	1374720.00	0.7649	4	Scott H. Peters	H2CA52089	Representative
+5201c5c4-7b93-4042-a74f-d494a20e74de	Aaron Bean	Representative	elected	FL	H2FL04211	REFUSE-weak-overlap	2271	791	774	1286227.00	0.9785	788	Melissa Bean	H6IL08329	Candidate for Representative
+5f1e037c-1d69-4617-b5b7-1448869d3482	Dusty Johnson	Representative	elected	SD	H8SD01055	REFUSE-weak-overlap	2767	346	346	1278000.00	1.0000	4	Mike Johnson	H6LA04138	Representative
+ee01e913-2a9c-439d-8757-669964f0849e	Sanford D. Bishop	Representative	elected	GA	H2GA02031	REFUSE-weak-overlap	2339	511	479	1260538.00	0.9374	107	James Bishop	H0NC09187	Candidate for Representative
+52bce3fa-b134-4e85-abb5-299318fb9d48	Jack Reed	Senator	elected	RI	S6RI00163	REFUSE-weak-overlap	2323	464	345	1216475.00	0.7435	1975	Thomas Reed	H0NY29054	Candidate for Representative
+8a916c94-dfa8-4971-90f8-2d005e0b7b56	Barry Moore	Representative	elected	AL	H8AL02171	REFUSE-weak-overlap	1098	387	368	1182368.00	0.9509	730	Felix Moore	S6AL00476	Candidate for Senator
+3e452271-e4d4-4bfe-a7a6-062fab2f5bea	Jeanne Shaheen	Senator	elected	NH	S0NH00219	REFUSE-weak-overlap	2003	749	733	1126738.00	0.9786	549	Stefany Shaheen	H6NH01321	Candidate for Representative
+e31db7c1-bd24-4b75-84a0-5a3a27c096c9	John W. Rose	Representative	elected	TN	H8TN06094	REFUSE-weak-overlap	1194	292	284	1095822.00	0.9726	186	Max Rose	H8NY11113	Candidate for Representative
+348f51ce-7dfc-4d87-8c5b-0966ee16637e	Warren Davidson	Representative	elected	OH	H6OH08315	ACT	1900	1067	1067	1089717.00	1.0000	620	Beth Davidson	H6NY17163	Candidate for Representative
+06f1abdb-249b-480e-bd3b-addbbc17c8d0	Juan Vargas	Representative	elected	CA	H2CA50026	REFUSE-low-share	4393	3631	296	1062566.00	0.0815	37	Anthony Vargas	H2NE02132	Candidate for Representative
+77f2b4c7-d1d0-4f44-bef9-2b5158385d5e	Harold Rogers	Representative	elected	KY	H0KY05015	REFUSE-weak-overlap	1144	240	240	1036050.00	1.0000	0	Mike D. Rogers	H2AL03032	Representative
+1fce3e17-64a3-4be0-a692-bfa6063bba8b	Ted Budd	Senator	elected	NC	S2NC00505	REFUSE-weak-overlap	1523	265	254	978692.00	0.9585	340	Theodore Budd	H6NC13129	Candidate for Senator
+1b0abf70-b56f-48f0-8d02-fc67c736071c	Adrian Smith	Representative	elected	NE	H6NE03115	REFUSE-low-share	1858	1025	236	891751.00	0.2302	62	Jason Smith	H4MO08162	Representative
+857e54c2-a43c-498f-8128-34ca6adbb14f	Susheela Jayapal	Candidate for Representative	candidate	OR	H4OR03150	REFUSE-dormant	836	836	815	790759.00	0.9749	24	Pramila Jayapal	H6WA07458	Representative
+5e72c9ea-44f4-4e2c-b5e9-1570750f7cc2	Carol D. Miller	Representative	elected	WV	H8WV03097	REFUSE-weak-overlap	1751	238	216	758323.00	0.9076	73	Max L. Miller	H2OH16051	Representative
+4ae687b8-dd8a-480e-b6c4-45df9beac5d4	Blake D. Moore	Representative	elected	UT	H0UT01205	REFUSE-weak-overlap	1936	264	164	739250.00	0.6212	42	Gwen Moore	H4WI04183	Representative
+a8beedce-d116-42e2-8416-140485446c89	Jeff Hurd	Representative	elected	CO	H4CO03357	REFUSE-weak-overlap	3126	694	694	714666.00	1.0000	2091	William Hurd	P40014011	Candidate for President
+74349a45-3cad-4f5a-9638-fb850bbec59d	Michael R. Turner	Representative	elected	OH	H2OH03067	REFUSE-weak-overlap	1385	365	365	711565.00	1.0000	558	Sylvester Turner	H4TX18237	Candidate for Representative
+f4953d9b-71b1-42aa-aec0-2675e7cd2178	Christopher H. Smith	Representative	elected	NJ	H8NJ04014	REFUSE-weak-overlap	1106	139	139	703418.00	1.0000	3	Adam Smith	H6WA09025	Representative
+c598ba36-ab42-462b-80c4-9b6d6fcad056	Bennie G. Thompson	Representative	elected	MS	H4MS02068	REFUSE-weak-overlap	1357	355	135	700500.00	0.3803	26	Mike Thompson	H8CA01109	Representative
+f6fabb68-9331-468e-8ea2-f427f8cceaf8	David Scott	Representative	former	GA	H2GA13012	REFUSE-weak-overlap	1063	317	127	690824.00	0.4006	20	Tim Scott	S4SC00240	Senator
+bea15555-6429-488a-a39f-2b5b4d4d53b9	Henry C. "Hank" Johnson	Representative	elected	GA	H6GA04129	REFUSE-weak-overlap	752	166	166	645750.00	1.0000	1	Mike Johnson	H6LA04138	Representative
+33603f98-c597-4c3c-8419-90a5a5361252	Norma J. Torres	Representative	elected	CA	H4CA35031	REFUSE-weak-overlap	818	157	128	633550.00	0.8153	23	Ritchie Torres	H0NY15160	Representative
+255713e8-fc47-4250-9652-ea88d96c75eb	Earl Carter	Candidate for Representative	candidate	GA	H4GA01039	REFUSE-weak-overlap	584	163	146	620483.00	0.8957	1	Troy Carter	H2LA02149	Candidate for Representative
+48d00a31-e153-4503-9e8a-5519739fb8e5	Mike Thompson	Representative	elected	CA	H8CA01109	REFUSE-weak-overlap	3459	294	114	618145.00	0.3878	72	Glenn Thompson	H8PA05071	Representative
+132df8d3-43a4-4069-8744-75a1e25fb998	Bill Johnson	Candidate for Representative	candidate	OH	H0OH06189	REFUSE-weak-overlap	515	123	123	611900.00	1.0000	0	Mike Johnson	H6LA04138	Representative
+85f0a388-7de4-4346-b054-1fbffd5d8a0d	Thomas Reed	Candidate for Representative	candidate	NY	H0NY29054	REFUSE-low-share	464	464	117	611500.00	0.2522	2	Jack Reed	S6RI00163	Senator
+ecc1ff46-7f16-45d0-bbfe-87e6fd8d191d	Elijah Crane	Representative	elected	AZ	H2AZ01354	REFUSE-weak-overlap	2251	169	168	605719.00	0.9941	1931	Michael Crane	H0GA13032	Candidate for Representative
+d9bb22a8-efeb-40f0-b2a9-3fb4cac91502	Sara Jacobs	Representative	elected	CA	H8CA49074	REFUSE-weak-overlap	916	198	193	593775.00	0.9747	34	Christopher Jacobs	H0NY27090	Candidate for Representative
+1f7033e4-bfa5-409b-9011-58e5e6efe93a	Kamala Harris	Candidate for President	candidate	US	P00009423	REFUSE-weak-overlap	308875	411	243	590334.00	0.5912	13559	Shawn Harris	H4GA14057	Candidate for Representative
+2db0be0c-5a36-4c50-bf62-305047f34036	Troy A. Carter	Representative	elected	LA	H2LA02149	REFUSE-weak-overlap	1690	243	161	588365.00	0.6626	61	Earl L. "Buddy" Carter	H4GA01039	Representative
+b7a5d478-7d3a-4f07-bc08-22afd56b071f	Brandon Gill	Representative	elected	TX	H4TX26149	REFUSE-weak-overlap	1296	354	354	587700.00	1.0000	538	Brendan Gill	H6NJ11237	Candidate for Representative
+3b45485d-1f5b-44ad-be7c-ec2233fa3808	Alexander Vindman	Candidate for Senator	candidate	FL	S6FL00855	REFUSE-low-share	3329	3083	326	578701.00	0.1057	0	Eugene Simon Vindman	H4VA07234	Representative
+e244c281-afe9-4c4e-8db4-baaf28140ce0	Stephanie Murphy	Candidate for Representative	candidate	FL	H6FL07140	REFUSE-weak-overlap	726	121	121	574000.00	1.0000	2	Gregory F. Murphy	H0NC03172	Representative
+87a9b478-4776-484f-869a-e44319811efa	Julie Johnson	Representative	elected	TX	H4TX32089	REFUSE-weak-overlap	2035	145	145	568418.00	1.0000	0	Mike Johnson	H6LA04138	Representative
+41d738d2-000c-4781-856b-4a5718d9e30c	Tina Smith	Senator	elected	MN	S8MN00578	REFUSE-weak-overlap	1168	99	99	560487.00	1.0000	2	Adam Smith	H6WA09025	Representative
+b9a30221-fc9a-469e-bc5b-0a1e5d632fe4	Anthony Gonzalez	Candidate for Representative	candidate	OH	H8OH16124	REFUSE-weak-overlap	547	218	135	554500.00	0.6193	1	Vicente Gonzalez	H6TX15162	Representative
+5c52e3ca-3986-41c1-89f1-b2b27d099c5a	Tim Scott	Senator	elected	SC	S4SC00240	REFUSE-weak-overlap	5737	155	121	549315.00	0.7806	132	Rick Scott	S8FL00273	Senator
+0ccd2655-f1c7-4716-b55a-d72991a6fa8f	Robin Kelly	Candidate for Representative	candidate	IL	H2IL02172	REFUSE-weak-overlap	461	152	136	548025.00	0.8947	1	Mike Kelly	H0PA03271	Representative
+2d4b9674-f759-44db-a8f2-0d6842012470	Markwayne Mullin	Candidate for Senator	candidate	OK	S2OK00186	REFUSE-low-share	1336	1307	241	535375.00	0.1844	139	Kevin Mullin	H2CA14162	Representative
+68ccfb27-db44-4ffe-a800-b6fce5e60604	Glenn Thompson	Representative	elected	PA	H8PA05071	REFUSE-weak-overlap	2309	294	104	534476.00	0.3537	76	Mike Thompson	H8CA01109	Representative
+68bc1882-cadf-4fc2-a467-3b95dfca2622	Ron Johnson	Senator	elected	WI	S0WI00197	REFUSE-weak-overlap	2274	134	134	513356.00	1.0000	46	Mike Johnson	H6LA04138	Representative
+84425497-5021-493f-b0ed-24ab456762a8	Max Miller	Candidate for Representative	candidate	OH	H2OH16051	REFUSE-weak-overlap	379	183	171	507500.00	0.9344	4	Carol Miller	H8WV03097	Candidate for Representative
+07d985c4-f17b-4408-8090-02e6f28edf35	John R. Carter	Representative	elected	TX	H2TX31044	REFUSE-weak-overlap	1372	287	124	505050.00	0.4321	46	Earl L. "Buddy" Carter	H4GA01039	Representative
+b6091767-7b9a-4abc-a876-446fc3198e45	Kelly Morrison	Representative	elected	MN	H4MN03118	REFUSE-weak-overlap	2128	515	515	498287.00	1.0000	394	Kevin Morrison	H6IL08238	Candidate for Representative
+46bdb81f-c5ca-4b5d-abc6-67128379d2c3	Sylvia R. Garcia	Representative	elected	TX	H8TX29052	REFUSE-weak-overlap	1285	158	124	453719.00	0.7848	51	Michael Garcia	H0CA25105	Candidate for Representative
+d758a091-fa36-47d4-b2b0-e264d41f1fc2	Sherrod Brown	Candidate for Senator	candidate	OH	S6OH00163	REFUSE-weak-overlap	43602	203	89	452050.00	0.4384	2507	M Brown	H2OH11169	Candidate for Representative
+c6dbd5bb-cb0e-4974-bcb7-a3ac47ec973e	Thomas P. Tiffany	Representative	elected	WI	H0WI07101	REFUSE-weak-overlap	1158	259	254	446216.00	0.9807	912	Shawn Tiffany	H4KS02172	Candidate for Representative
+737cb828-f289-4dda-9508-792e366c5a26	John Joyce	Representative	elected	PA	H8PA13125	REFUSE-weak-overlap	1521	209	84	419850.00	0.4019	472	David Joyce	H2OH14064	Candidate for Representative
+8364f702-c803-4a59-b103-836fb13727e3	John Huffman	Candidate for Representative	candidate	TX	H4TX26180	REFUSE-dormant	237	237	228	410127.00	0.9620	9	Jared Huffman	H2CA06259	Representative
+4b462f5c-7ad8-4eed-8027-3b4d28a8e05a	Don Davis	Candidate for Representative	candidate	NC	H2NC02287	REFUSE-weak-overlap	820	77	77	407636.00	1.0000	13	Danny K. Davis	H4IL07037	Representative
+438dacc2-906a-4f1e-a17e-6526e3eaa44c	Michael Rogers	Candidate for Senator	candidate	MI	S4MI00595	REFUSE-weak-overlap	5824	109	109	400337.00	1.0000	0	Mike D. Rogers	H2AL03032	Representative
+5cc3a04d-7a24-4472-9e32-ac5e07c9c532	Earl L. "Buddy" Carter	Representative	elected	GA	H4GA01039	REFUSE-weak-overlap	2692	182	80	391233.00	0.4396	640	Troy Carter	H2LA02149	Candidate for Representative
+2e9627b3-28a5-4026-a42e-54b16a7f8805	Mike Levin	Representative	elected	CA	H8CA49058	REFUSE-weak-overlap	4276	162	62	391221.00	0.3827	108	Andy Levin	H8MI09118	Candidate for Representative
+84b91068-ab4b-4e2a-88cc-2113d126065e	John J. McGuire	Representative	elected	VA	H0VA07133	REFUSE-weak-overlap	619	234	234	387079.00	1.0000	378	Mike Mcguire	H6CA01269	Candidate for Representative
+b4cc5a22-9d33-4146-9d81-7cc6e5ff2124	Samuel Graves	Candidate for Representative	candidate	MO	H0MO06073	REFUSE-weak-overlap	890	198	61	378499.00	0.3081	621	Garret Graves	H4LA06153	Candidate for Representative
+9cf06ac2-9899-4af4-8a91-31c6b110a338	Eric Schmitt	Senator	elected	MO	S2MO00544	REFUSE-weak-overlap	1507	125	104	377700.00	0.8320	54	Colin Schmitt	H2NY18087	Candidate for Representative
+9dfe202c-1a01-4962-8401-9b48c119be92	Christy Smith	Candidate for Representative	candidate	CA	H0CA25154	REFUSE-weak-overlap	333	45	45	375118.00	1.0000	9	Adam Smith	H6WA09025	Representative
+bb4891c2-feaf-4a7f-931f-b3ca448d97ee	Bennie Thompson	Candidate for Representative	candidate	MS	H4MS02068	REFUSE-weak-overlap	201	86	73	375000.00	0.8488	8	Mike Thompson	H8CA01109	Representative
+1f0fcc25-c88d-4112-9e90-e873d106d32d	Gilbert Ray Cisneros	Representative	elected	CA	H8CA39174	REFUSE-weak-overlap	580	74	70	366364.00	0.9459	157	Jessica Cisneros	H0TX28077	Candidate for Representative
+62f20246-2e87-413f-ba44-41277124fa33	Grey Mills	Candidate for Representative	candidate	NC	H4NC10112	REFUSE-low-share	170	170	160	360375.00	0.9412	3	Cory Mills	H2FL07156	Representative
+bb23212c-9844-4ffa-8172-d92655440dd1	Edward J. Markey	Senator	elected	MA	S4MA00028	REFUSE-weak-overlap	1512	129	129	351931.00	1.0000	1326	Michael Markey	H4MI03243	Candidate for Representative
+e7fccd57-9406-452a-a96b-10384765418e	Scott H. Peters	Representative	elected	CA	H2CA52089	REFUSE-weak-overlap	1635	387	71	349185.00	0.1835	1100	Gary Peters	S4MI00355	Candidate for Senator
+d2480a58-f032-4ab6-aca1-1f8b4919cf9a	Garret Graves	Candidate for Representative	candidate	LA	H4LA06153	REFUSE-weak-overlap	1851	610	83	335600.00	0.1361	41	Sam Graves	H0MO06073	Representative
+7b3d1864-ce78-4b60-a664-78b1a1807a0b	David Joyce	Candidate for Representative	candidate	OH	H2OH14064	REFUSE-weak-overlap	806	209	62	335500.00	0.2967	91	John Joyce	H8PA13125	Representative
+7dfe24ed-d576-430b-b7f1-82914581b5c2	Pete Sessions	Representative	elected	TX	H2TX03126	REFUSE-weak-overlap	1349	67	56	331034.00	0.8358	916	Jefferson Sessions	S6AL00195	Candidate for Senator
+91baa852-297e-40e7-9c79-ace3f83f43b4	Henry Johnson	Candidate for Representative	candidate	GA	H6GA04129	REFUSE-weak-overlap	231	90	90	321750.00	1.0000	0	Mike Johnson	H6LA04138	Representative
+638571dc-dec4-4df6-98da-3bce61170451	Blake Moore	Candidate for Representative	candidate	UT	H0UT01205	REFUSE-weak-overlap	1117	197	59	317500.00	0.2995	34	Gwen Moore	H4WI04183	Representative
+fca6bb66-7b1a-44d1-a108-3169e885c3ef	Danny K. Davis	Representative	elected	IL	H4IL07037	REFUSE-weak-overlap	1979	147	73	301551.00	0.4966	21	Donald G. Davis	H2NC02287	Representative
+5af6c34e-2951-4fd4-af65-fc0740e6a553	Susie Lee	Representative	elected	NV	H6NV04020	REFUSE-weak-overlap	5079	140	61	301007.00	0.4357	12	Summer L. Lee	H2PA18200	Representative
+e3a94a66-61db-4833-8b02-1a60feabab7d	Herbert C. Conaway	Representative	elected	NJ	H4NJ03080	REFUSE-weak-overlap	1140	110	110	299000.00	1.0000	1029	Michael Conaway	H4TX19136	Candidate for Representative
+c1807a26-31f4-4830-a8f2-7e7270f0a822	Laurel M. Lee	Representative	elected	FL	H2FL15241	REFUSE-weak-overlap	1189	145	93	294318.00	0.6414	189	Susie Lee	H6NV04020	Representative
+3bfd7fa6-0f83-489c-b3ae-23cc03a9e9d3	Tom Rice	Candidate for Representative	candidate	SC	H2SC07066	REFUSE-weak-overlap	451	106	53	289500.00	0.5000	103	Kathleen Rice	H4NY04075	Candidate for Representative
+57daf850-8043-4b04-a4c0-05e7a59131d5	Mark Kelly	Senator	elected	AZ	S0AZ00350	REFUSE-weak-overlap	13860	49	46	286000.00	0.9388	61	Mike Kelly	H0PA03271	Representative
+b2c36d20-1aa2-4d02-b630-cdcccf8e0f42	Summer L. Lee	Representative	elected	PA	H2PA18200	REFUSE-weak-overlap	2306	140	71	284200.00	0.5071	139	Susie Lee	H6NV04020	Representative
+ea1e5a06-9402-4631-ada5-19144cc91aa4	Carol Miller	Candidate for Representative	candidate	WV	H8WV03097	REFUSE-weak-overlap	1002	209	78	283000.00	0.3732	15	Max L. Miller	H2OH16051	Representative
+235e19d5-aba0-43f4-8fe1-b686ea6b2549	Andy Levin	Candidate for Representative	candidate	MI	H8MI09118	REFUSE-low-share	306	162	56	280500.00	0.3457	55	Mike Levin	H8CA49058	Representative
+ccbb8460-6a27-48f6-83b7-7c7384e1bd33	Barbara Lee	Candidate for Senator	candidate	CA	S4CA00589	REFUSE-weak-overlap	2883	70	69	276950.00	0.9857	3	Susie Lee	H6NV04020	Representative
+0efbe5ed-ef51-42c4-9de5-e815950b15a5	Nikema Williams	Representative	elected	GA	H0GA05301	REFUSE-weak-overlap	1044	131	60	276300.00	0.4580	22	Roger Williams	H2TX33040	Representative
+5d2f194d-74d8-4d1a-b257-759b5474e745	Gwen Moore	Representative	elected	WI	H4WI04183	REFUSE-weak-overlap	1234	197	61	274000.00	0.3096	450	Blake Moore	H0UT01205	Candidate for Representative
+3b447af0-52c7-4380-b444-9dcc19f62685	Danny Davis	Candidate for Representative	candidate	IL	H4IL07037	REFUSE-weak-overlap	171	78	76	272802.00	0.9744	1	Donald G. Davis	H2NC02287	Representative
+8ed0d7ca-af58-40ae-9d44-55828414c78d	Mike Lee	Senator	elected	UT	S0UT00165	REFUSE-weak-overlap	2586	69	46	272250.00	0.6667	42	Laurel M. Lee	H2FL15241	Representative
+97ff9034-0fae-495a-b9eb-8bec92187845	Donald G. Davis	Representative	elected	NC	H2NC02287	REFUSE-weak-overlap	4474	147	48	266886.00	0.3265	78	Danny K. Davis	H4IL07037	Representative
+a82935e7-bb8f-4860-a186-c8ea46250e4e	Robert Garcia	Representative	elected	CA	H2CA47188	REFUSE-weak-overlap	4208	146	63	266650.00	0.4315	131	Sylvia Garcia	H8TX29052	Candidate for Representative
+96fd8a5b-75eb-4bcd-b879-a2a527ca47b9	M Brown	Candidate for Representative	candidate	OH	H2OH11169	REFUSE-weak-overlap	947	203	81	264450.00	0.3990	104	Sherrod Brown	S6OH00163	Candidate for Senator
+ebe736ab-5fd3-461d-acf9-a9fffbd89d17	Joe Wilson	Representative	elected	SC	H2SC02059	REFUSE-weak-overlap	1059	74	61	260700.00	0.8243	0	Frederica S. Wilson	H0FL17068	Representative
+0e528eba-2ed4-4da3-a253-d9c39dec31c7	Gina Jones	Candidate for Representative	candidate	TX	H8TX23121	REFUSE-weak-overlap	234	51	37	257859.00	0.7255	55	Mondaire Jones	H0NY17174	Candidate for Representative
+43fee7e7-d8ee-4a06-95a9-86fcb83d3689	Norma Torres	Candidate for Representative	candidate	CA	H4CA35031	REFUSE-weak-overlap	431	98	49	257750.00	0.5000	4	Ritchie Torres	H0NY15160	Representative
+9b60e52e-0858-4b0a-bafa-045208e4835a	Max L. Miller	Representative	elected	OH	H2OH16051	REFUSE-weak-overlap	1400	209	78	248300.00	0.3732	105	Carol Miller	H8WV03097	Candidate for Representative
+71c5b1c0-7436-499f-a2e1-61f2e2f681a2	Jesus Garcia	Candidate for Representative	candidate	IL	H8IL04134	REFUSE-weak-overlap	821	153	52	247000.00	0.3399	3	Robert Garcia	H2CA47188	Representative
+893a581e-4fc0-4190-b43f-6afafc7aa917	James Scott	Candidate for Representative	candidate	GA	H0GA08099	REFUSE-weak-overlap	1373	118	40	231000.00	0.3390	12	Robert C. "Bobby" Scott	H6VA01117	Representative
+3e559d5c-0763-4f3f-b654-7ae93f1a2a93	Susan M. Collins	Senator	elected	ME	S6ME00159	REFUSE-weak-overlap	5194	51	50	226000.00	0.9804	60	Michael Collins	H4GA10071	Candidate for Representative
+4e02dac9-3175-4ab9-ab5d-589f16fb735b	Troy Carter	Candidate for Representative	candidate	LA	H2LA02149	REFUSE-weak-overlap	746	182	57	222315.00	0.3132	43	Earl L. "Buddy" Carter	H4GA01039	Representative
+96615ef6-08c4-4723-ad86-7f9b0261c95d	Timothy M. Kennedy	Representative	elected	NY	H4NY26078	REFUSE-weak-overlap	1853	45	45	219000.00	1.0000	669	Mike Kennedy	H4UT03260	Representative
+0136736d-20b7-4f3a-aa2b-c45b6e1ab8a1	Timothy Ryan	Candidate for Senator	candidate	OH	S2OH00402	REFUSE-weak-overlap	238	52	38	213335.00	0.7308	52	Patrick Ryan	H8NY19223	Representative
+8dd1cf08-6efe-46dc-8662-d13c49e7bc5b	Riley M. Moore	Representative	elected	WV	H4WV02205	REFUSE-weak-overlap	869	132	66	212000.00	0.5000	14	Blake Moore	H0UT01205	Candidate for Representative
+bf7a1d06-19cf-4d60-9206-053d11391b99	Douglas Collins	Candidate for Representative	candidate	GA	H2GA09150	REFUSE-low-share	227	115	58	210500.00	0.5043	14	Susan M. Collins	S6ME00159	Senator
+eef91ab4-495d-4d32-9b2e-faa59fa19f60	Ro Khanna	Representative	elected	CA	H4CA12055	REFUSE-weak-overlap	5753	273	269	209260.00	0.9853	5485	Lisa Khanna	H6VA01190	Candidate for Representative
+c436717f-bf4a-489d-b8f5-192f88139700	Terri A. Sewell	Representative	elected	AL	H0AL07086	REFUSE-weak-overlap	2956	231	226	193929.00	0.9784	1755	Briana Sewell	H4VA07259	Candidate for Representative
+4c224f3f-c389-4d14-85bd-22964fdaf1a6	Tammy Murphy	Candidate for Senator	candidate	NJ	S4NJ00482	REFUSE-weak-overlap	1554	54	53	192600.00	0.9815	88	Christopher Murphy	S2CT00132	Senator
+bdc0684e-215a-4490-9116-c69539536666	Sheila Lee	Candidate for Representative	candidate	TX	H4TX18054	REFUSE-weak-overlap	395	119	55	191000.00	0.4622	35	Susie Lee	H6NV04020	Representative
+c360d1bc-b203-4337-a204-48aa53d1fcb5	Roger Williams	Representative	elected	TX	H2TX33040	REFUSE-weak-overlap	1629	131	40	189251.00	0.3053	44	Nikema Williams	H0GA05301	Representative
+1f7f59ae-8899-493e-864b-879b73c063bc	Todd Young	Senator	elected	IN	S6IN00191	REFUSE-weak-overlap	2035	55	26	188832.00	0.4727	299	Donald Young	H6AK00045	Candidate for Representative
+14f3a950-ecc7-483f-825a-372d57eebea2	Doug Jones	Candidate for Senator	candidate	AL	S0AL00156	REFUSE-weak-overlap	458	61	29	184000.00	0.4754	56	Gina Jones	H8TX23121	Candidate for Representative
+6b2fea3f-b5fb-4903-b57a-2c6a5ae0401e	Cory A. Booker	Senator	elected	NJ	S4NJ00185	REFUSE-weak-overlap	5915	82	81	180211.00	0.9878	12	Charles Booker	S0KY00420	Candidate for Senator
+8cfd19b0-cd98-4e40-907b-5f78159cad55	Robert C. "Bobby" Scott	Representative	elected	VA	H6VA01117	REFUSE-weak-overlap	872	118	43	180000.00	0.3644	37	James Scott	H0GA08099	Candidate for Representative
+39f916d7-ced4-4d93-aa61-768cd37bca10	Daniel S. Goldman	Representative	elected	NY	H2NY10308	REFUSE-weak-overlap	3808	33	33	178900.00	1.0000	803	Craig A. Goldman	H4TX12065	Representative
+a8d4fc51-6a11-465a-bd95-5153ddfa8d7a	Johnny Olszewski	Representative	elected	MD	H4MD02232	REFUSE-weak-overlap	1481	64	64	177433.00	1.0000	496	Al Olszewski	H2MT02084	Candidate for Representative
+4f9c372a-f214-4d51-b287-815244a9f1f7	J. French Hill	Representative	elected	AR	H4AR02141	REFUSE-weak-overlap	3725	211	210	170708.00	0.9953	3293	Terri Hill	H0MD07171	Candidate for Representative
+33027a2f-dbeb-4bae-b79b-a740c5ac76bd	Barbara Lee	Candidate for Representative	candidate	CA	H8CA09060	REFUSE-weak-overlap	474	132	35	167700.00	0.2652	22	Susie Lee	H6NV04020	Representative
+97b77946-0da6-4e38-b153-ba9dfe421714	Tim Moore	Representative	elected	NC	H4NC14015	REFUSE-weak-overlap	1496	50	43	167300.00	0.8600	6	Barry Moore	H8AL02171	Representative
+380350c0-926a-42b9-a30e-0731a50d2fe7	R Ivey	Candidate for Representative	candidate	TX	H6TX09215	REFUSE-dormant	143	126	126	165300.00	1.0000	0	Glenn Ivey	H2MD04232	Representative
+dceef4b4-6358-45e9-a35f-e27fc8f52670	Alan Armstrong	Senator	elected	OK		REFUSE-weak-overlap	28	28	28	162500.00	1.0000	0	Kelly Armstrong	H8ND00096	Candidate for Representative
+f18d5815-8759-40ec-9e64-854136b9c257	John Carter	Candidate for Representative	candidate	TX	H2TX31044	REFUSE-weak-overlap	526	80	33	162250.00	0.4125	27	Troy Carter	H2LA02149	Candidate for Representative
+bf9c076c-9a53-438c-ab34-8e980e5ab86a	Vicente Gonzalez	Representative	elected	TX	H6TX15162	REFUSE-weak-overlap	2745	218	36	161750.00	0.1651	228	Anthony Gonzalez	H8OH16124	Candidate for Representative
+38308099-457d-488d-8794-3fd3aabf44ce	Jerry Moran	Senator	elected	KS	S0KS00091	REFUSE-weak-overlap	1147	62	34	160343.00	0.5484	113	Nathaniel Moran	H2TX01112	Representative
+ab2daf0e-ed89-4f90-81bd-460dd45c4367	Mary Waters	Candidate for Representative	candidate	MI	H8MI13185	REFUSE-dormant	148	148	146	157532.00	0.9865	3	Maxine Waters	H4CA23011	Representative
+963369f6-da73-4412-8337-3b525a0665ff	Carl Sherman	Candidate for Senator	candidate	TX	S4TX00805	REFUSE-dormant	115	115	115	153566.00	1.0000	0	Brad Sherman	H6CA24113	Representative
+526e530f-ea39-4a01-bc24-33f02bf0a22a	Andy Kim	Senator	elected	NJ	S4NJ00466	REFUSE-weak-overlap	6277	82	34	153500.00	0.4146	132	Young Kim	H8CA39240	Representative
+daeb9a4a-b487-4208-8d1f-a59a8ec26865	Riley Moore	Candidate for Representative	candidate	WV	H4WV02205	REFUSE-weak-overlap	413	40	33	153000.00	0.8250	0	Barry Moore	H8AL02171	Representative
+81acd3f5-d2c2-49ce-b5c9-279270b1fab4	Young Kim	Representative	elected	CA	H8CA39240	REFUSE-weak-overlap	5144	82	45	149225.00	0.5488	744	Andy Kim	S4NJ00466	Senator
+b8f492a2-47cc-4101-820e-a727de36bedb	Stephen F. Lynch	Representative	elected	MA	H2MA09072	REFUSE-weak-overlap	1297	181	181	145183.00	1.0000	872	Mark Lynch	S6SC04213	Candidate for Senator
+3f20419e-a77f-4b27-9671-4805c74416da	Ritchie Torres	Representative	elected	NY	H0NY15160	REFUSE-weak-overlap	5516	98	30	143500.00	0.3061	860	Norma Torres	H4CA35031	Candidate for Representative
+e7b73fea-7929-413a-b03a-21c519251875	Mary E. Miller	Representative	elected	IL	H0IL15129	REFUSE-weak-overlap	2564	77	35	138709.00	0.4545	24	Max L. Miller	H2OH16051	Representative
+816aee8e-debf-4960-8385-d3ca2829c9b7	Rodney Davis	Candidate for Representative	candidate	IL	H2IL13120	REFUSE-weak-overlap	1224	36	32	138500.00	0.8889	21	Donald G. Davis	H2NC02287	Representative
+e624037b-ed42-4bd6-b4e0-1de03c1e4690	Sylvia Garcia	Candidate for Representative	candidate	TX	H8TX29052	REFUSE-weak-overlap	595	146	38	138000.00	0.2603	17	Robert Garcia	H2CA47188	Representative
+442e7a70-f213-4643-bbc8-22881516a7f1	Rick W. Allen	Representative	elected	GA	H2GA12121	REFUSE-weak-overlap	1517	139	139	137333.00	1.0000	1293	Jack Allen	H4TN03199	Candidate for Representative
+de0868e0-020b-4dc5-8f5f-441bdddee0d6	Michael Garcia	Candidate for Representative	candidate	CA	H0CA25105	REFUSE-weak-overlap	2810	43	31	135500.00	0.7209	91	Cassandra Garcia	H2TX28149	Candidate for Representative
+61a9c0ab-edf4-4dc6-93f7-4cc9605ecab8	Tara Johnson	Candidate for Representative	candidate	WI	H4WI03193	REFUSE-dormant	180	180	179	134186.00	0.9944	1	Ron Johnson	S0WI00197	Senator
+67e0e5f3-c20e-439b-b8c9-2e804aecf1df	Hillary J. Scholten	Representative	elected	MI	H0MI03316	REFUSE-weak-overlap	4124	155	155	129851.00	1.0000	3668	James Scholten	S6IA00264	Candidate for Senator
+74736257-9ed3-4c55-89f1-5f8e0a63f61e	Joseph Kennedy	Candidate for Senator	candidate	MA	S0MA00208	REFUSE-weak-overlap	168	67	33	128802.00	0.4925	31	Amy Kennedy	H0NJ02171	Candidate for Representative
+fafd4df5-26aa-4b32-aa24-51b6a3cb706b	David McCormick	Senator	elected	PA	S2PA00661	REFUSE-weak-overlap	8750	76	37	128461.00	0.4868	79	Richard McCormick	H0GA07273	Representative
+4127e558-2530-47d0-bc0e-fb4ab06abf2b	Richard McCormick	Representative	elected	GA	H0GA07273	REFUSE-weak-overlap	1241	76	28	128200.00	0.3684	64	David McCormick	S2PA00661	Senator
+b9f53b20-a823-4ebd-9282-c37038cf7646	Claudia De La Cruz	Candidate for President	candidate	US	P40015406	REFUSE-dormant	109	109	109	126119.00	1.0000	0	Monica De La Cruz	H0TX15124	Representative
+a089f60e-7e0c-405c-b160-6cb69147ff2f	Timothy Kennedy	Candidate for Representative	candidate	NY	H4NY26078	REFUSE-weak-overlap	1004	44	20	124000.00	0.4545	40	Mike Kennedy	H4UT03260	Representative
+768815ff-08e9-47ac-9079-3ddf44fbad0a	Patty Murray	Senator	elected	WA	S2WA00189	REFUSE-weak-overlap	2984	53	53	119800.00	1.0000	2179	Erik Murray	S6KS00270	Candidate for Senator
+278411fd-2fca-46d4-9015-d1055c87ee84	Christopher Smith	Candidate for Representative	candidate	NJ	H8NJ04014	REFUSE-weak-overlap	85	28	28	119500.00	1.0000	3	Adam Smith	H6WA09025	Representative
+c6825cc2-d15c-4e81-a3d3-a647ab0466e7	Susan Collins	Candidate for Senator	candidate	ME	S6ME00159	REFUSE-weak-overlap	3828	47	22	119000.00	0.4681	35	Michael Collins	H4GA10071	Candidate for Representative
+ed55faca-331a-49fb-b381-b8e13fc17537	Timothy Ryan	Candidate for Representative	candidate	OH	H2OH17109	REFUSE-weak-overlap	375	33	31	117000.00	0.9394	12	Patrick Ryan	H8NY19223	Representative
+dc1b3e4c-4ba0-481f-abfd-ee911954baab	Timothy Scott	Candidate for Senator	candidate	SC	S4SC00240	REFUSE-weak-overlap	564	40	25	116867.00	0.6250	123	Rick Scott	S8FL00273	Senator
+cf05a92c-08da-436c-a6b5-0561243d5ad5	Eddie Johnson	Candidate for Representative	candidate	TX	H2TX00015	REFUSE-weak-overlap	131	35	35	115200.00	1.0000	8	Mike Johnson	H6LA04138	Representative
+339c8d60-7de7-459a-ae43-05108275c83b	Garland Barr	Candidate for Senator	candidate	KY	S6KY00286	REFUSE-low-share	2352	1713	28	115000.00	0.0163	0	Andy Barr	H0KY06104	Representative
+7705095b-f530-4d5c-b0df-d8a3a05031a2	Kathleen Rice	Candidate for Representative	candidate	NY	H4NY04075	REFUSE-weak-overlap	253	106	35	114500.00	0.3302	8	Tom Rice	H2SC07066	Candidate for Representative
+5d6241ea-951a-46ff-bebe-9499245e87e4	John Bush	Federal Judge	elected	US		REFUSE-weak-overlap	21	21	21	110000.00	1.0000	0	Cori Bush	H8MO01143	Candidate for Representative
+6b39e4d0-e930-478e-a3ac-737b04e969bd	Jonathan Jackson	Candidate for Representative	candidate	IL	H2IL01349	REFUSE-weak-overlap	170	36	36	105400.00	1.0000	16	Ronny Jackson	H0TX13228	Representative
+7e0944fc-a139-4876-97bd-5f284e3cc397	Shawn Harris	Candidate for Representative	candidate	GA	H4GA14057	REFUSE-weak-overlap	2918	411	161	102791.00	0.3917	1970	Kamala Harris	P00009423	Candidate for President
+5d7a64cc-49a3-41ca-b9c3-76851d5f0c05	Brandon Williams	Candidate for Representative	candidate	NY	H2NY22212	REFUSE-weak-overlap	1072	68	26	102244.00	0.3824	78	Roger Williams	H2TX33040	Representative
+74c3fd15-0b33-40a8-afe7-294f4a9d8168	John Graves	Candidate for Representative	candidate	GA	H0GA09030	REFUSE-weak-overlap	189	67	31	99500.00	0.4627	2	Garret Graves	H4LA06153	Candidate for Representative
+27090d3a-ed66-47de-8f45-24a262cf9e35	Roger Marshall	Senator	elected	KS	H6KS01179	REFUSE-weak-overlap	1774	14	14	99000.00	1.0000	281	Steven Marshall	S6AL00450	Candidate for Senator
+9fbf6e82-b2a0-4bf4-9e40-f45c0607f8a0	Anthony Brown	Candidate for Representative	candidate	MD	H6MD04209	REFUSE-weak-overlap	396	77	36	98500.00	0.4675	17	Shontel M. Brown	H2OH11169	Representative
+d312c73a-dcde-40e3-9d7d-d62a76c49d0d	Donald Young	Candidate for Representative	candidate	AK	H6AK00045	REFUSE-weak-overlap	350	64	24	98262.00	0.3750	116	David Young	H4IA03115	Candidate for Representative
+18c46a64-d7e4-4044-a3d9-d5329dd498db	Margaret Wood Hassan	Senator	elected	NH	S6NH00091	REFUSE-weak-overlap	2752	66	66	95040.00	1.0000	2564	Amir Hassan	H6MI08296	Candidate for Representative
+4920508a-1b6f-4c5f-b389-fc48efa06fbc	David Young	Candidate for Representative	candidate	IA	H4IA03115	REFUSE-weak-overlap	192	64	25	94900.00	0.3906	12	Donald Young	H6AK00045	Candidate for Representative
+05c126c0-caae-4ed6-9947-933bf2ad87df	Brian Higgins	Candidate for Representative	candidate	NY	H4NY27076	REFUSE-low-share	476	476	19	93000.00	0.0399	59	Clay Higgins	H6LA03148	Representative
+712b7eb0-2698-4305-922b-5ad84832a35d	Rick Scott	Senator	elected	FL	S8FL00273	REFUSE-weak-overlap	2587	80	21	92750.00	0.2625	53	James Scott	H0GA08099	Candidate for Representative
+afc05fd0-1d98-4de9-b9ac-f69fe0f1d773	Mark Harris	Representative	elected	NC	H4NC08066	REFUSE-weak-overlap	770	45	24	91800.00	0.5333	23	Andy Harris	H8MD01094	Representative
+f39d5ef5-9585-43e6-92e9-95517dd984dd	Daniel Goldman	Candidate for Representative	candidate	NY	H2NY10308	REFUSE-weak-overlap	2447	34	20	89750.00	0.5882	20	Craig A. Goldman	H4TX12065	Representative
+0cfcccf3-7822-4d6b-87bd-3445a0adeba4	Jeff Jackson	Candidate for Representative	candidate	NC	H2NC14076	REFUSE-weak-overlap	562	44	22	89501.00	0.5000	48	Jonathan L. Jackson	H2IL01349	Representative
+63740b8b-2f40-44c0-a96d-80a125a2208a	Mark Harris	Candidate for Representative	candidate	NC	H4NC08066	REFUSE-weak-overlap	74	28	28	82000.00	1.0000	3	Andy Harris	H8MD01094	Representative
+34a201b2-ad70-4e24-9875-25a21eaf3179	Kathleen Williams	Candidate for Representative	candidate	MT	H8MT01232	REFUSE-weak-overlap	120	25	15	81425.00	0.6000	56	Nikema Williams	H0GA05301	Representative
+68034a67-4c75-4363-ae00-f4cd2ebc1a41	Tina Shah	Candidate for Representative	candidate	NJ	H6NJ07250	REFUSE-weak-overlap	1045	75	31	80800.00	0.4133	0	Amish Shah	H4AZ01194	Candidate for Representative
+44c85a80-4585-4611-95a6-a6b195940fc1	Andy Kim	Candidate for Representative	candidate	NJ	H8NJ03206	REFUSE-weak-overlap	566	33	17	79000.00	0.5152	105	Young Kim	H8CA39240	Representative
+61c4ef5b-5833-41c1-a3e6-c0f2d02c8a55	Nicholas Taylor	Candidate for Representative	candidate	TX	H8TX03123	REFUSE-weak-overlap	452	34	16	77900.00	0.4706	224	Scott Taylor	H0VA02118	Candidate for Representative
+e9015ab5-913e-4f2c-a917-190ebd0dde22	Al Green	Representative	elected	TX		REFUSE-weak-overlap	680	10	10	77500.00	1.0000	545	Mark Green	H8TN07076	Candidate for Representative
+5c0f123b-92b9-40ff-9145-5bc8f5e2c4d0	Derek Tran	Representative	elected	CA	H4CA45170	REFUSE-weak-overlap	5145	126	126	76873.00	1.0000	1984	Nick Tran	H6TX02228	Candidate for Representative
+e11993c6-566d-4d26-a739-375839cb87c2	Michael Turner	Candidate for Representative	candidate	OH	H2OH03067	REFUSE-weak-overlap	349	7	7	76400.00	1.0000	249	Sylvester Turner	H4TX18237	Candidate for Representative
+36907aab-b3e1-4314-a192-ad72f8d2b594	Mary Miller	Candidate for Representative	candidate	IL	H0IL15129	REFUSE-weak-overlap	99	40	28	75000.00	0.7000	2	Max L. Miller	H2OH16051	Representative
+1324f4d3-3277-4936-ba69-0aba36370a91	Mondaire Jones	Candidate for Representative	candidate	NY	H0NY17174	REFUSE-weak-overlap	4157	23	17	73000.00	0.7391	6	Kermit Jones	H2CA04122	Candidate for Representative
+9c74136e-221b-4926-90f7-060e8e38d17d	Louis Sarmiento	Council Member	elected	SF	H6TX09199	REFUSE-weak-overlap	39	39	39	72192.00	1.0000	0	Crystal Sarmiento	H6TX09199	Candidate for Representative
+22968ada-413a-45a2-a344-c67431ae4cb4	Ronny Jackson	Representative	elected	TX	H0TX13228	REFUSE-weak-overlap	1482	41	20	71500.00	0.4878	27	Jonathan L. Jackson	H2IL01349	Representative
+245c82bf-087c-4e43-b793-14540b94e387	Laura Fine	Candidate for Representative	candidate	IL	H6IL09194	REFUSE-low-share	2011	1888	38	71500.00	0.0201	316	Randy Fine	H6FL06258	Representative
+c1768483-8c4f-4b25-b12f-2bc57989805f	James Bishop	Candidate for Representative	candidate	NC	H0NC09187	REFUSE-low-share	511	511	17	70500.00	0.0333	53	Sanford D. Bishop	H2GA02031	Representative
+033321ea-4644-4575-9982-a573091ef9b9	Dwight Evans	Representative	elected	PA	H6PA02171	REFUSE-weak-overlap	1015	21	21	70500.00	1.0000	447	Gabe Evans	H4CO08034	Representative
+428d4aaf-3c9d-4bf8-9cce-8be84ac218b6	Andrew Harris	Candidate for Representative	candidate	MD	H8MD01094	REFUSE-weak-overlap	146	11	11	70000.00	1.0000	13	Mark Harris	H6NC09200	Candidate for Representative
+7bfb2e70-a017-4996-83fe-e01eede7a78b	Ken Bruce	Council Member	elected	SF	S2SC00145	REFUSE-weak-overlap	22	21	21	69500.00	1.0000	0	Kalena Bruce	H2MO04173	Candidate for Representative
+7028f31f-770e-468d-850f-9d4dcbdf4e42	James Scholten	Candidate for Representative	candidate	IA	H8IA04106	REFUSE-weak-overlap	43	43	15	69462.00	0.3488	23	Hillary J. Scholten	H0MI03316	Representative
+24784eb9-2374-4a98-85fe-f4800d204c5c	Patrick Ryan	Representative	elected	NY	H8NY19223	REFUSE-weak-overlap	4484	52	8	69170.00	0.1538	122	Timothy Ryan	S2OH00402	Candidate for Senator
+9e761a59-4853-42a4-b000-485e751d8935	Steven Marshall	Candidate for Senator	candidate	AL	S6AL00450	REFUSE-weak-overlap	419	15	9	68140.00	0.6000	290	Roger Marshall	S0KS00315	Candidate for Senator
+f76e750e-a810-40d4-8019-0a8e464c2d16	Wendy Davis	Candidate for Representative	candidate	TX	H0TX21148	REFUSE-weak-overlap	152	13	10	67500.00	0.7692	49	Morris Davis	H0NC11175	Candidate for Representative
+6cf209a4-4db8-4d99-96df-0c2a0e56dc15	Markwayne Mullin	Candidate for Representative	candidate	OK	H2OK02083	REFUSE-low-share	596	596	14	67500.00	0.0235	44	Kevin Mullin	H2CA14162	Representative
+ac5297b4-e6d8-4fcd-8145-2af84fcbef95	Pramila Jayapal	Representative	elected	WA	H6WA07458	REFUSE-weak-overlap	2476	836	19	66751.00	0.0227	761	Susheela Jayapal	H4OR03150	Candidate for Representative
+4674abb0-91e0-4dfc-9d66-a1084c12b47d	Amish Shah	Candidate for Representative	candidate	AZ	H4AZ01194	REFUSE-weak-overlap	4161	75	34	65850.00	0.4533	213	Tina Shah	H6NJ07250	Candidate for Representative
+07f95924-0f6a-4879-a36d-a4466b1207aa	Colin Schmitt	Candidate for Representative	candidate	NY	H2NY18087	REFUSE-low-share	125	125	15	61950.00	0.1200	21	Eric Schmitt	S2MO00544	Senator
+e21fb3a2-a3f3-429b-af36-357b7abcdba1	Mike Kennedy	Representative	elected	UT	H4UT03260	REFUSE-weak-overlap	743	44	16	60500.00	0.3636	3	Timothy Kennedy	H4NY26078	Candidate for Representative
+2d0fea6e-da0a-4a34-90bb-8ecec2718e6d	Richard Hudson	Representative	elected	NC	H2NC08185	REFUSE-weak-overlap	2956	13	8	60500.00	0.6154	1819	Paul Hudson	H4MI03268	Candidate for Representative
+8c72416d-a975-4901-913c-4a33529a87eb	Amy Kennedy	Candidate for Representative	candidate	NJ	H0NJ02171	REFUSE-weak-overlap	185	67	15	59800.00	0.2239	88	Joseph Kennedy	S0MA00208	Candidate for Senator
+e930c900-bf37-49f1-89d2-773c3287e5fa	Brynne Kennedy	Candidate for Representative	candidate	CA	H0CA04175	REFUSE-weak-overlap	79	31	13	57500.00	0.4194	22	Amy Kennedy	H0NJ02171	Candidate for Representative
+55034623-f55d-41e3-bc46-822568bda233	Jacqueline Nguyen	Federal Judge	elected	US		REFUSE-weak-overlap	11	11	11	55000.00	1.0000	0	Kim Nguyen	H4CA45121	Candidate for Representative
+8d665bbe-8c1c-4187-9bba-d1c0ad2615d0	Susie Lee	Candidate for Representative	candidate	NV	H8NV03200	REFUSE-weak-overlap	55	10	6	55000.00	0.6000	21	Sheila Lee	H4TX18054	Candidate for Representative
+1a912fd3-f05f-431c-ac03-e1f282a02a30	Michael Collins	Candidate for Senator	candidate	GA	S6GA00390	REFUSE-weak-overlap	983	35	19	53759.00	0.5429	295	Susan Collins	S6ME00159	Candidate for Senator
+5db50d56-7d3d-42bc-a2e0-b89af2866d84	James May	Council Member	elected	AUS	H6TX19230	REFUSE-weak-overlap	61	45	45	52560.00	1.0000	4	Karla May	S4MO00276	Candidate for Senator
+e2a5e28a-9e33-44de-991f-e94a3649c539	Nathaniel Moran	Representative	elected	TX	H2TX01112	REFUSE-weak-overlap	827	62	20	49800.00	0.3226	46	Jerry Moran	S0KS00091	Senator
+a42cd1a2-aa86-4e4a-9d46-069b5081ad98	Bradley Scott Schneider	Representative	elected	IL	H2IL10068	REFUSE-weak-overlap	3770	15	14	48700.00	0.9333	3575	Jan Schneider	H2FL13139	Candidate for Representative
+d7442ef3-14aa-4241-8d92-ef3f5c726cb7	Felix Moore	Candidate for Senator	candidate	AL	S6AL00476	REFUSE-weak-overlap	798	387	11	48500.00	0.0284	1	Barry Moore	H8AL02171	Representative
+16e9152a-b560-44f3-a4bc-34eb4c8e98ee	Gabriel Cabrera	Council Member	elected	SF	H4MT02056	REFUSE-weak-overlap	33	33	33	48100.00	1.0000	0	Ming Cabrera	H4MT02056	Candidate for Representative
+be4496ab-c5c3-426c-a34a-6b3377b7fa90	Robert Scott	Candidate for Representative	candidate	VA	H6VA01117	REFUSE-weak-overlap	345	44	15	48000.00	0.3409	5	James Scott	H0GA08099	Candidate for Representative
+66aadb5c-b268-4043-8dca-aa4a0c04cdc0	Andy Harris	Representative	elected	MD	H8MD01094	REFUSE-weak-overlap	2035	45	10	47000.00	0.2222	320	Mark Harris	H4NC08066	Representative
+0bb6ee22-b9b4-41b8-8922-dd465e98221d	Ylenia Aguilar	Candidate for Representative	candidate	AZ	H4AZ03125	REFUSE-dormant	83	83	83	46600.00	1.0000	0	Pete Aguilar	H2CA31125	Representative
+6577b63d-1195-4139-83c6-99e47f03cdb1	Melissa Bean	Candidate for Representative	candidate	IL	H6IL08329	REFUSE-low-share	851	791	16	46000.00	0.0202	793	Aaron Bean	H2FL04211	Representative
+cb9e8e94-c9f9-4ae1-a00d-9730b6699b09	Patty Garcia	Candidate for Representative	candidate	IL	H6IL04153	REFUSE-weak-overlap	172	21	10	46000.00	0.4762	107	Sylvia Garcia	H8TX29052	Candidate for Representative
+4b857eea-5fee-4223-a6fd-dd03c8990077	Wesley Hunt	Representative	elected	TX	H0TX07170	REFUSE-weak-overlap	1409	9	8	43500.00	0.8889	106	Jeremy Hunt	H2GA02189	Candidate for Representative
+884bf3e8-fd4d-4c12-aa8b-6e2de7932f6e	Craig A. Goldman	Representative	elected	TX	H4TX12065	REFUSE-weak-overlap	1677	34	11	42500.00	0.3235	60	Daniel Goldman	H2NY10308	Candidate for Representative
+25050e57-afe8-4cc6-b9b6-ad33949712ec	Mark Sanders	Candidate for Representative	candidate	OK	H4OK01115	REFUSE-weak-overlap	39	39	39	42284.00	1.0000	0	Bernard Sanders	S4VT00033	Senator
+c64ec823-5bb2-4e9e-8cc2-5fbc3791260d	Michael Collins	Candidate for Representative	candidate	GA	H4GA10071	REFUSE-weak-overlap	503	47	15	42000.00	0.3191	69	Susan Collins	S6ME00159	Candidate for Senator
+7e07d6d5-a45c-42e3-8178-89e3dbb3ad12	Jeff Jackson	Candidate for Senator	candidate	NC	S2NC00356	REFUSE-weak-overlap	22	10	7	42000.00	0.7000	5	Jonathan L. Jackson	H2IL01349	Representative
+cef24158-98ad-431b-bc4b-494441f0a0a3	Frederica S. Wilson	Representative	elected	FL	H0FL17068	REFUSE-weak-overlap	459	74	11	40500.00	0.1486	278	Joe Wilson	H2SC02059	Representative
+cf1f7fb7-acf4-4351-b34d-5939b09440a2	Cassandra Costello	Council Member	elected	SF	S4ME00113	REFUSE-weak-overlap	30	28	28	40384.00	1.0000	0	David Costello	S4ME00113	Candidate for Senator
+f7240693-6344-451f-aff8-42c044b7bd9f	Jefferson Sessions	Candidate for Senator	candidate	AL	S6AL00195	REFUSE-low-share	67	67	11	39500.00	0.1642	12	Pete Sessions	H2TX03126	Representative
+30489b7e-705f-4ff4-b46b-425278412239	James Banks	Candidate for Representative	candidate	IN	H6IN03229	REFUSE-low-share	96	96	14	38500.00	0.1458	1	Jim Banks	S4IN00196	Senator
+1d6d10d5-e312-45fc-a83b-45fd805fe32b	Jana Mims	Council Member	elected	AUS	H6TX09165	REFUSE-weak-overlap	36	36	36	38350.00	1.0000	0	Dan Mims	H6TX09165	Candidate for Representative
+dc74b7bf-1a38-4576-9d1a-5b5161247c8b	Robert Moyer	Council Member	elected	SF	H6NE01135	REFUSE-weak-overlap	43	43	43	38281.00	1.0000	0	Eric Moyer	H6NE01135	Candidate for Representative
+fadfdaa1-5de6-469d-b1a1-f8de5b2403fc	Emily Diamond	Council Member	elected	AUS	H2FL13220	REFUSE-weak-overlap	14	14	14	38000.00	1.0000	0	Ben Diamond	H2FL13220	Candidate for Representative
+b7dca556-1290-48b5-9ab6-45ad1a80171d	Marilyn Strickland	Representative	elected	WA	H0WA10034	REFUSE-weak-overlap	2316	40	40	37234.00	1.0000	1352	Justin Strickland	H6NJ11179	Candidate for Representative
+8048eabc-06f4-42ec-93d2-311b14ca36e6	Jaime Harrison	Candidate for Senator	candidate	SC	S0SC00289	REFUSE-weak-overlap	186	8	4	35500.00	0.5000	140	Brigid Harrison	H0NJ02197	Candidate for Representative
+1dc4c7c9-3e23-47f5-8805-f6187904c20c	Brad Sinclair	Council Member	elected	AUS	H4TX28087	REFUSE-weak-overlap	17	10	10	35000.00	1.0000	7	Kyle Sinclair	H2TX20096	Candidate for Representative
+dea1d72f-4b44-4c7c-9d8c-799a157a811c	Christopher Jacobs	Candidate for Representative	candidate	NY	H0NY27090	REFUSE-weak-overlap	198	6	6	34500.00	1.0000	7	Matthew Jacobs	H2CA26133	Candidate for Representative
+03200fc2-a0e5-4f47-aebe-b2ba86a5e2a4	John W. Mannion	Representative	elected	NY	H4NY22085	REFUSE-weak-overlap	3467	48	48	34405.00	1.0000	1020	Nancy Mannion	H6PA11099	Candidate for Representative
+b20ed4e1-a4f4-47d5-865a-855274fe92d7	Scott Taylor	Candidate for Representative	candidate	VA	H0VA02118	REFUSE-weak-overlap	117	34	15	33000.00	0.4412	25	Nicholas Taylor	H8TX03123	Candidate for Representative
+c40ac93d-d1f7-4aa5-9644-2198afc0ae17	Alma S. Adams	Representative	elected	NC	H4NC12100	REFUSE-weak-overlap	876	4	4	32500.00	1.0000	629	Samuel Adams	H0FL06095	Candidate for Representative
+edf68605-9a28-4e21-8e18-3f60af1d2a2d	Fred Simon	Candidate for Representative	candidate	NV	H4NV02193	REFUSE-weak-overlap	11	11	11	31600.00	1.0000	0	Lateefah Simon	H4CA12154	Representative
+628092c1-030c-42db-84d1-ad02163e6f85	Joseph Kennedy	Candidate for Representative	candidate	MA	H2MA04073	REFUSE-weak-overlap	99	12	10	31000.00	0.8333	4	Amy Kennedy	H0NJ02171	Candidate for Representative
+eb63b46f-9758-410e-ab7c-ead2f98cefa9	Jonathan L. Jackson	Representative	elected	IL	H2IL01349	REFUSE-weak-overlap	671	41	13	31000.00	0.3171	67	Ronny Jackson	H0TX13228	Representative
+52b04f5f-b4b9-4f08-a66c-81bc7db1756c	Earl Carter	Candidate for Senator	candidate	GA	S6GA00374	REFUSE-weak-overlap	1090	20	9	30500.00	0.4500	883	John Carter	H2TX31044	Candidate for Representative
+dca79f6f-c8a2-4651-9a9c-d74b13d773c7	Pete Aguilar	Representative	elected	CA	H2CA31125	REFUSE-weak-overlap	3772	38	38	29951.00	1.0000	2388	Anthony Aguilar	H6NC13244	Candidate for Representative
+98a1810d-d0a5-4622-b5c1-ed1feecace4d	Steve Womack	Representative	elected	AR	H0AR03055	REFUSE-weak-overlap	1930	23	23	29626.00	1.0000	1886	David Womack	H6WA05213	Candidate for Representative
+af77d55d-d593-4a29-a5fd-6648992fa463	Eleanor Holmes Norton	Representative	elected	DC	H0DC00058	REFUSE-weak-overlap	268	5	5	28500.00	1.0000	182	Mike Norton	S4AZ00287	Candidate for Senator
+3c836a54-8ebf-4f8d-8031-12cdc12ac2ee	Neal P. Dunn	Representative	elected	FL	H6FL02208	REFUSE-weak-overlap	1403	31	31	26250.00	1.0000	1265	Laura Dunn	H6NY12198	Candidate for Representative
+cf441a28-aaf4-4e22-ac74-1f445e822f78	Kara Stoll	Federal Judge	elected	US		REFUSE-weak-overlap	15	15	15	26150.00	1.0000	0	Matthew Stoll	H2CA22249	Candidate for Representative
+60f87348-1ffc-427f-b80c-5f416967cd41	Roger Marshall	Candidate for Senator	candidate	KS	S0KS00315	REFUSE-weak-overlap	1696	15	5	25500.00	0.3333	521	Steven Marshall	S6AL00450	Candidate for Senator
+084d0875-bbfe-49de-8718-d6edb0d5d45f	Donna Miller	Candidate for Representative	candidate	IL	H6IL02355	REFUSE-weak-overlap	1516	14	9	25500.00	0.6429	233	Max L. Miller	H2OH16051	Representative
+6148b393-1a7e-4129-866a-26219278c5f2	Peter Welch	Senator	elected	VT	S2VT00235	REFUSE-weak-overlap	526	5	5	25500.00	1.0000	256	Lisa Welch	H0TX12238	Candidate for Representative
+f1f799d9-980b-4106-8f05-919c9a4245d6	Stefany Shaheen	Candidate for Representative	candidate	NH	H6NH01321	REFUSE-low-share	976	749	16	25400.00	0.0214	334	Jeanne Shaheen	S0NH00219	Senator
+5b87b47f-e021-4121-8799-a4e10a16b6c9	Jennifer-Ruth Green	Candidate for Representative	candidate	IN	H2IN01172	REFUSE-weak-overlap	185	16	7	25250.00	0.4375	59	Mark Green	H8TN07076	Candidate for Representative
+fb6ffffa-841c-4c65-bcd1-7978d7b10328	Eric Sorensen	Representative	elected	IL	H2IL17147	REFUSE-weak-overlap	2953	5	4	25000.00	0.8000	71	Ben Sorensen	H2FL22197	Candidate for Representative
+3c1674a2-1f45-4766-847a-877102e8a747	John James	Representative	elected	MI	H2MI10150	REFUSE-weak-overlap	2463	3	3	25000.00	1.0000	540	Scott James	H4CO08018	Candidate for Representative
+f4fcdf72-651c-4261-adae-5b4951aa1c6f	Jerry Evans	Candidate for Representative	candidate	IL	H0IL14213	REFUSE-weak-overlap	276	9	9	24900.00	1.0000	4	Gabe Evans	H4CO08034	Representative
+0daa0df0-d0c6-4997-8d61-ead0877d7906	Mackenzie Latimer	Candidate for Representative	candidate	TX	H4TX31065	REFUSE-weak-overlap	26	26	25	24802.00	0.9615	1	George Latimer	H4NY16087	Representative
+ef5825b1-60fd-40a3-9a8c-51f79a27c946	Cassandra Garcia	Candidate for Representative	candidate	TX	H2TX28149	REFUSE-weak-overlap	91	43	6	24519.00	0.1395	70	Michael Garcia	H0CA25105	Candidate for Representative
+adc26240-f44d-48a2-914c-1626138e1b2b	Thomas Cole	Candidate for Representative	candidate	CA	H4CA24191	REFUSE-weak-overlap	25	25	22	24376.00	0.8800	3	Tom Cole	H2OK04055	Representative
+924ba9fb-cf60-4d64-a16e-907078d56dc0	Darren Soto	Representative	elected	FL	H6FL09179	REFUSE-weak-overlap	2003	12	11	23750.00	0.9167	320	Rudy Soto	H0ID01311	Candidate for Representative
+9d49d9f3-8229-49ec-9b22-5c64e3cc7c18	Tom Cole	Representative	elected	OK	H2OK04055	REFUSE-weak-overlap	3842	20	20	23402.00	1.0000	2363	Brian Cole	H6NH01388	Candidate for Representative
+893c913f-7344-4bde-8a75-0fec4381ce6f	Jack Smith	Candidate for Representative	candidate	AZ	H4AZ02192	REFUSE-weak-overlap	30	5	5	23100.00	1.0000	9	Jason Smith	H4MO08162	Representative
+269972af-fd77-4932-a7b7-04c310ec0e80	Dennis Ross	Candidate for Representative	candidate	FL	H2FL15217	REFUSE-weak-overlap	24	7	7	23000.00	1.0000	2	Deborah K. Ross	H0NC02125	Representative
+da3b41c2-5923-49a0-8686-838411fccf80	Carole Reynolds	Council Member	elected	AUS	H6TX11112	REFUSE-weak-overlap	20	20	20	22494.00	1.0000	0	Claire Reynolds	H6TX11112	Candidate for Representative
+6cee156f-a3f9-4fa4-b245-499d975dbb8d	Mark Green	Candidate for Representative	candidate	TN	H8TN07076	REFUSE-weak-overlap	1096	16	8	22400.00	0.5000	40	Jennifer-Ruth Green	H2IN01172	Candidate for Representative
+87c7a953-f193-49de-b6da-0ac4f692c903	Allen Issa	Candidate for Representative	candidate	PA	H4PA07126	REFUSE-weak-overlap	24	24	24	22375.00	1.0000	0	Darrell Issa	H0CA48024	Representative
+193a4a25-e6a5-4743-a47c-243a42e7a539	Ciara Ortiz	Council Member	elected	SEA	H6NY12297	REFUSE-weak-overlap	25	25	25	22199.00	1.0000	0	Oscar Ortiz	H4CA25248	Candidate for Representative
+04f47f04-edb5-4e0f-8089-c120e044fa4c	Marisela Reyes	Council Member	elected	AUS	H0TX23177	REFUSE-weak-overlap	10	9	9	21750.00	1.0000	0	Victor Reyes	H2NM01177	Candidate for Representative
+412719f4-2ddc-4bd3-bbbb-f0a3caef98b5	Kelsey Crowe	Council Member	elected	SF	H0TN01084	REFUSE-weak-overlap	11	11	11	21500.00	1.0000	0	Dewey Crowe	H0TN01084	Candidate for Representative
+8367cb81-cce3-4798-8d35-fca08892f590	Scotty Moore	Candidate for Representative	candidate	FL	H2FL09228	REFUSE-weak-overlap	47	6	6	21000.00	1.0000	2	Barry Moore	H8AL02171	Representative
+a37fa8bf-85b1-42f2-9245-31755020235c	Robert Casey	Candidate for Senator	candidate	PA	S6PA00217	REFUSE-weak-overlap	18853	4	3	21000.00	0.7500	1015	Stephen Casey	H4RI01232	Candidate for Representative
+18807376-a9bb-4a3c-bb6d-23211083147e	Drew Johnson	Candidate for Representative	candidate	NV	H4NV03167	REFUSE-weak-overlap	316	12	12	20870.00	1.0000	37	Mike Johnson	H6LA04138	Representative
+7eb987b1-7689-46f5-af1d-65fa1f82617a	Cherlynn Stevenson	Candidate for Representative	candidate	KY	H6KY06150	REFUSE-weak-overlap	508	15	11	20293.00	0.7333	145	Pamela Stevenson	S6KY00211	Candidate for Senator
+d277388a-1207-49b5-ad69-6afab5957089	Sandra O'Connor	Federal Judge	elected	US		REFUSE-weak-overlap	3	2	2	20250.00	1.0000	1	Kevin O'Connor	S0MA00232	Candidate for Senator
+e7b65345-46b6-4254-a352-1810b7d00967	Tracey Mann	Representative	elected	KS	H0KS01123	REFUSE-weak-overlap	1197	24	15	20250.00	0.6250	928	Bethany Mann	H2MO03167	Candidate for Representative
+e7643b26-a57c-490e-88e7-9e4e6a78ac62	Allen Waters	Candidate for Representative	candidate	RI	H2RI01202	REFUSE-weak-overlap	14	14	11	20010.00	0.7857	3	Maxine Waters	H4CA23011	Representative
+99f3b709-4c91-47ab-895e-1afb2f7060e5	Robert Gibbs	Candidate for Representative	candidate	OH	H0OH18077	REFUSE-weak-overlap	260	5	4	20000.00	0.8000	9	John Gibbs	H2MI03197	Candidate for Representative
+c0af0396-bf73-47e5-8e5d-291d3122ef68	Mark Harris	Candidate for Representative	candidate	NC	H6NC09200	REFUSE-weak-overlap	55	11	2	20000.00	0.1818	24	Andy Harris	H8MD01094	Representative
+d32f3e0a-0fbd-4da1-986a-ef2c59f87d31	John Lujan	Candidate for Representative	candidate	TX	H6TX35053	REFUSE-weak-overlap	159	4	3	20000.00	0.7500	152	Ben Lujan	S0NM00058	Candidate for Senator
+b480edce-9f7f-424f-aed3-6e4a90be0c7c	Joe Cunningham	Candidate for Representative	candidate	SC	H8SC01116	REFUSE-weak-overlap	114	15	7	19750.00	0.4667	54	Cal Cunningham	S0NC00202	Candidate for Senator
+45bcff8a-7db1-4fcf-8607-f4edfb4bad2e	Britt Grant	Federal Judge	elected	US		REFUSE-weak-overlap	27	26	26	19619.00	1.0000	0	Madaris Grant	H6OH08364	Candidate for Representative
+c3b5b52a-e783-494e-8e18-58a0b7372022	Jennifer Adams	Candidate for Representative	candidate	FL	H4FL07137	REFUSE-weak-overlap	127	4	3	19500.00	0.7500	30	Alma S. Adams	H4NC12100	Representative
+aad3f555-b5bf-4a9c-bfd2-cbbb025a6623	Max Rose	Candidate for Representative	candidate	NY	H8NY11113	REFUSE-low-share	292	292	2	19500.00	0.0068	130	John W. Rose	H8TN06094	Representative
+f7d45f03-25a0-4c71-8796-6fc629aa82d3	Susan Davis	Candidate for Representative	candidate	CA	H0CA49055	REFUSE-weak-overlap	50	31	8	19500.00	0.2581	5	Danny K. Davis	H4IL07037	Representative
+033ba554-ee71-4609-b531-1252ce4ee531	Tom Cotton	Senator	elected	AR	S4AR00103	REFUSE-weak-overlap	2569	6	6	19500.00	1.0000	2566	Thomas Cotton	H2AR04083	Candidate for Senator
+1fab6b07-4a86-47fe-bfb9-e5b88920ba61	Melissa Hernandez	Candidate for Representative	candidate	CA	H6CA14163	REFUSE-weak-overlap	372	17	16	19250.00	0.9412	211	Daniel Hernandez	H6AZ07105	Candidate for Representative
+3184bde8-987b-4140-9859-94b57c5da040	Maria Su	Council Member	elected	SF	H6IL09210	REFUSE-weak-overlap	5	5	5	19015.00	1.0000	0	Dongbo Su	H6IL09210	Candidate for Representative
+2e4ee0fd-f4da-41e3-835d-09056a9af6b3	Jeffrey Sutton	Federal Judge	elected	US		REFUSE-weak-overlap	9	8	8	18956.00	1.0000	0	Lisa Sutton	H0NV04056	Candidate for Representative
+181dd383-a682-4cb7-b19d-5276b44e3f3e	David Kim	Candidate for Representative	candidate	CA	H4CA34083	REFUSE-weak-overlap	274	12	12	18150.00	1.0000	110	Andy Kim	S4NJ00466	Senator
+08b8cf09-559a-46d1-854b-05f1886e4fea	Gloria Johnson	Candidate for Senator	candidate	TN	S4TN00526	REFUSE-weak-overlap	3149	13	8	17800.00	0.6154	26	Julie Johnson	H4TX32089	Representative
+17376219-7437-41da-9731-0a885ecba6e2	John Kennedy	Senator	elected	LA	S4LA00065	REFUSE-weak-overlap	6536	15	9	17625.00	0.6000	425	Timothy Kennedy	H4NY26078	Candidate for Representative
+5373491c-cfc4-4aab-b681-7fb6f85aecb4	Adam Gray	Representative	elected	CA	H2CA13115	REFUSE-weak-overlap	4700	11	2	17500.00	0.1818	108	Molly Gray	H2VT01068	Candidate for Representative
+9dd0c3bc-ae02-4354-90cd-daad43592a33	Kate Gibbs	Candidate for Representative	candidate	NJ	H0NJ03211	REFUSE-weak-overlap	27	4	2	17500.00	0.5000	20	Robert Gibbs	H0OH18077	Candidate for Representative
+4c2c4e54-562d-45fb-b9c6-76e309962b39	Kermit Jones	Candidate for Representative	candidate	CA	H2CA04122	REFUSE-weak-overlap	106	23	3	17000.00	0.1304	73	Mondaire Jones	H0NY17174	Candidate for Representative
+9220a26b-93a6-4b7c-bd29-acfb2544ba97	Katherine M. Clark	Representative	elected	MA	H4MA05084	REFUSE-weak-overlap	2836	5	5	17000.00	1.0000	714	Jasmine Clark	H6GA13070	Candidate for Representative
+b9f695d4-1b3e-4fd6-87a2-c9f1b1673605	Wesley Bell	Representative	elected	MO	H4MO01134	REFUSE-weak-overlap	5237	8	8	16800.00	1.0000	1281	Adrienne Bell	H8TX14120	Candidate for Representative
+981e4f8a-d489-4a96-a8c4-88b630d7bdd0	Denise Powell	Candidate for Representative	candidate	NE	H6NE02174	REFUSE-weak-overlap	848	6	5	16749.00	0.8333	677	Nate Powell	H6WA05239	Candidate for Representative
+8a4e1b00-fe98-49fc-aecd-327bec820908	Rebecca Duran	Council Member	elected	SEA	H0CO01136	REFUSE-weak-overlap	2	2	2	16571.00	1.0000	0	Crisanta Duran	H0CO01136	Candidate for Representative
+587b2513-5591-4652-80e7-8991ff22ec7e	Addison P. McDowell	Representative	elected	NC	H4NC06177	REFUSE-weak-overlap	852	18	18	16561.00	1.0000	804	Chase Mcdowell	H6AR02278	Candidate for Representative
+9920ccf7-6857-40b8-8ef6-fe3798074acc	Andy Biggs	Representative	elected	AZ	H6AZ05083	REFUSE-weak-overlap	637	10	6	16500.00	0.6000	161	Sheri Biggs	H4SC01313	Representative
+db4e6705-9909-47a7-addb-465be4bf0448	Nabil Khazei	Council Member	elected	AUS	H0MA04176	REFUSE-weak-overlap	6	6	6	16500.00	1.0000	0	Alan Khazei	H0MA04176	Candidate for Representative
+52b45bc3-c657-4107-a2ae-8215abe22df5	Kate Dean	Candidate for Representative	candidate	WA	H4WA06125	REFUSE-weak-overlap	36	36	36	16500.00	1.0000	0	Madeleine Dean	H8PA04116	Representative
+f697a9e5-080a-4b9a-9240-211ad695a192	Brian Schatz	Senator	elected	HI	S4HI00136	REFUSE-weak-overlap	1157	4	4	16500.00	1.0000	233	Dave Schatz	S2MO00643	Candidate for Senator
+77876d7b-223f-4b6b-8e01-8b6403e33878	Josh Williams	Candidate for Representative	candidate	OH	H6OH09131	REFUSE-weak-overlap	285	18	8	15980.00	0.4444	60	Lily Williams	H2NH02260	Candidate for Representative
+ba6db8d4-526d-4df4-9f08-1a509a20354b	Robert Kennedy	Candidate for President	candidate	US	P40011793	REFUSE-weak-overlap	20092	19	19	15863.00	1.0000	442	John Kennedy	S4LA00065	Senator
+354a140c-950b-4bbe-a6a8-485e26fb98ae	Eric Stockton	Council Member	elected	AUS	H4FL06055	REFUSE-weak-overlap	23	23	23	15850.00	1.0000	0	James Stockton	H4FL06055	Candidate for Representative
+62831aa5-7d58-45d5-bb1c-b3758ff54523	Karen Bowers	Council Member	elected	AUS	H4TX32147	REFUSE-weak-overlap	31	31	31	15550.00	1.0000	0	Rhetta Bowers	H4TX32147	Candidate for Representative
+bfab24a8-8104-4497-a1bd-5a168f448e19	Monica De La Cruz	Representative	elected	TX	H0TX15124	REFUSE-weak-overlap	3284	7	5	15500.00	0.7143	1557	Jessica De La Cruz	H2RI02168	Candidate for Representative
+4b0aebf5-393d-44bd-8c37-4a522bb67f7d	Shawn Tiffany	Candidate for Representative	candidate	KS	H4KS02172	REFUSE-low-share	259	259	5	15500.00	0.0193	0	Thomas P. Tiffany	H0WI07101	Representative
+c74a2ac0-c1b8-4526-9022-0ce6464c05fc	Jill Goodman	Council Member	elected	AUS	S6IL00425	REFUSE-weak-overlap	13	13	13	15483.00	1.0000	0	John Goodman	S6IL00425	Candidate for Senator
+0ef55b11-b253-4056-be90-9ed60355d4aa	Lily Williams	Candidate for Representative	candidate	NH	H2NH02260	REFUSE-weak-overlap	652	18	10	15166.00	0.5556	118	Josh Williams	H6OH09131	Candidate for Representative
+66438dc5-7f8a-4343-9885-b2aa15353592	Jonathan Evans	Candidate for Representative	candidate	WV	H4WV01058	REFUSE-weak-overlap	323	24	24	15075.00	1.0000	2	Gabe Evans	H4CO08034	Representative
+a92cfc2e-4214-49b0-b854-f35079002c6f	Alexander Green	Candidate for Representative	candidate	TX	H4TX09095	REFUSE-weak-overlap	796	10	4	15000.00	0.4000	35	Mark Green	H8TN07076	Candidate for Representative
+43ee1bdc-97e7-4641-a8ff-90b701f0877c	Sue Blackman	Council Member	elected	SF	H2AZ01339	REFUSE-weak-overlap	4	4	4	15000.00	1.0000	0	Walter Blackman	H2AZ01339	Candidate for Representative
+eb6e7f4c-dc9c-47c5-a016-5d499dccd0ac	Bonnie Coleman	Candidate for Representative	candidate	NJ	H4NJ12149	REFUSE-weak-overlap	801	7	4	15000.00	0.5714	166	Jeff Coleman	H0AL02145	Candidate for Representative
+553496bd-1a1e-4363-ae19-0971cf11e0df	Molly Gray	Candidate for Representative	candidate	VT	H2VT01068	REFUSE-weak-overlap	25	11	3	15000.00	0.2727	13	Adam Gray	H2CA13115	Representative
+909a86cb-74a3-4546-89f8-6f54f8386707	Genevieve Collins	Candidate for Representative	candidate	TX	H0TX32087	REFUSE-weak-overlap	132	11	6	14500.00	0.5455	47	Douglas Collins	S0GA00567	Candidate for Senator
+e5aaf27d-cd87-46b4-b4ba-b8e18fc56461	Gregory F. Murphy	Representative	elected	NC	H0NC03172	REFUSE-weak-overlap	2055	11	6	14500.00	0.5455	1039	Christopher Murphy	S2CT00132	Senator
+e23ed64a-424c-4f92-8268-c370bfff42d1	Bradley Walker	Candidate for Senator	candidate	NC	S2NC00307	REFUSE-weak-overlap	158	3	3	14500.00	1.0000	5	Herschel Walker	S2GA00225	Candidate for Senator
+e2ba899a-02dc-4f37-8256-218c82322df6	Laurie Mackenzie	Candidate for Representative	candidate	CA	H6CA04198	REFUSE-weak-overlap	5	4	4	14000.00	1.0000	0	Ryan Mackenzie	H8PA15195	Representative
+d693d1d3-844e-4e9e-9fa8-f26f90c0414b	Mark Smith	Candidate for Representative	candidate	SC	H6SC01250	REFUSE-weak-overlap	257	4	4	13500.00	1.0000	1	Adam Smith	H6WA09025	Representative
+a6ba6b9c-0f7b-4767-bee8-4f7d8d2c6b42	Katherine Clark	Candidate for Representative	candidate	MA	H4MA05084	REFUSE-weak-overlap	1301	5	3	13500.00	0.6000	503	Jasmine Clark	H6GA13070	Candidate for Representative
+2e604187-f386-4d41-814b-d696d839d867	Kevin Kiley	Representative	elected	CA	H2CA03157	REFUSE-weak-overlap	2410	6	5	13300.00	0.8333	39	Susan Kiley	H2NJ06228	Candidate for Representative
+27ee0faf-2c40-4dad-9c34-98652a4f4562	Christopher R. Deluzio	Representative	elected	PA	H2PA17103	REFUSE-weak-overlap	3240	5	5	13000.00	1.0000	3262	Mark Deluzio	H2AZ02402	Candidate for Representative
+e27b3904-0f64-46c9-894a-4fd9716d09b5	Cal Cunningham	Candidate for Senator	candidate	NC	S0NC00202	REFUSE-weak-overlap	154	15	3	12999.00	0.2000	119	Joe Cunningham	H8SC01116	Candidate for Representative
+cea60af5-6425-43cb-af21-e6c4cabab238	Charles Booker	Candidate for Senator	candidate	KY	S6KY00385	REFUSE-weak-overlap	170	9	8	12750.00	0.8889	8	Cory Booker	S4NJ00185	Candidate for Senator
+b3f125d8-fa54-4a52-bd93-c5f769b45fd3	James P. McGovern	Representative	elected	MA	H4MA03022	REFUSE-weak-overlap	1052	14	14	12750.00	1.0000	981	Jay Mcgovern	H4FL05123	Candidate for Representative
+9e99cae2-0330-4997-9552-254657cfaadd	Monica Miranda	Council Member	elected	AUS	H6CA47072	REFUSE-weak-overlap	6	6	6	12354.00	1.0000	0	Hunter Miranda	H6CA47072	Candidate for Representative
+322698df-1587-431c-8655-03139146f2b1	Chuck Edwards	Representative	elected	NC	H2NC14050	REFUSE-weak-overlap	1026	2	2	12000.00	1.0000	544	Becky Edwards	H4UT02254	Candidate for Representative
+29714b2c-42bf-4b43-a82d-60785caa4af7	Linda Sanchez	Candidate for Representative	candidate	CA	H2CA39078	REFUSE-weak-overlap	1489	2	2	12000.00	1.0000	364	Joseph Sanchez	H0NM03078	Candidate for Representative
+8bd09aa3-bb57-4d50-b0b5-b27135931ae4	Maura Sullivan	Candidate for Representative	candidate	NH	H8NH01186	REFUSE-weak-overlap	1154	8	5	12000.00	0.6250	585	Dan Sullivan	S4AK00214	Senator
+1a30221d-0447-4c0a-8264-95698d83341d	Johnny Garcia	Candidate for Representative	candidate	TX	H6TX35095	REFUSE-weak-overlap	158	3	3	12000.00	1.0000	120	Jesus Garcia	H8IL04134	Candidate for Representative
+722a7d0e-3a7e-4ad9-8032-ec96c156a9f8	Jeff Coleman	Candidate for Representative	candidate	AL	H0AL02145	REFUSE-weak-overlap	53	7	2	12000.00	0.2857	7	Bonnie Coleman	H4NJ12149	Candidate for Representative
+970a2044-6c1b-4414-a255-241b941138de	Brigid Harrison	Candidate for Representative	candidate	NJ	H0NJ02197	REFUSE-weak-overlap	12	8	3	12000.00	0.3750	7	Jaime Harrison	S0SC00289	Candidate for Senator
+a9ec94d8-72ad-4d71-b60f-d29efbcb5d2b	Jay Nath	Council Member	elected	SF	H4WI04282	REFUSE-weak-overlap	21	21	21	11712.00	1.0000	0	Purnima Nath	H4WI04282	Candidate for Representative
+346fabb6-fb16-4dca-8203-572333cc44b7	Jordan Feldman	Council Member	elected	AUS	H4NC10146	REFUSE-weak-overlap	19	19	19	11505.00	1.0000	0	Steven Feldman	H4NC10146	Candidate for Representative
+b06aff16-5cf1-4422-a662-c3dcde2417e6	Jim Jordan	Representative	elected	OH	H6OH04082	REFUSE-weak-overlap	4630	6	6	11500.00	1.0000	4631	Paulette Jordan	S0ID00180	Candidate for Senator
+d5eecfa6-55eb-49df-affd-2d63df8ed49d	Dave Wilson	Candidate for Representative	candidate	WA	H0WA05133	REFUSE-weak-overlap	5	4	4	11500.00	1.0000	0	Frederica S. Wilson	H0FL17068	Representative
+9998c3fa-aaca-4946-bf93-673e772b10e4	Christian Collins	Candidate for Representative	candidate	TX	H2TX08273	REFUSE-weak-overlap	3	1	1	11281.00	1.0000	9	Michael Collins	H4GA10071	Candidate for Representative
+ee09025f-9725-4e29-9198-7d7eee8cb1c6	Starr Terrell	Council Member	elected	SF	H6IA01171	REFUSE-weak-overlap	4	4	4	10825.00	1.0000	0	Travis Terrell	H6IA01171	Candidate for Representative
+91fb4d10-f71a-4adb-a802-8edff869eee8	C.L. Smith	Candidate for Senator	candidate	VA	S4VA00197	REFUSE-weak-overlap	228	20	8	10501.00	0.4000	112	Sandy Smith	H0NC03149	Candidate for Representative
+7505cd41-dc3a-430f-82ee-6454c303209a	Daniel Meuser	Representative	elected	PA	H8PA10147	REFUSE-weak-overlap	1643	7	7	10497.00	1.0000	22	Mark Meuser	S2CA01060	Candidate for Senator
+a76d1695-f6a4-4207-8e70-4d6a5d367372	Sandy Smith	Candidate for Representative	candidate	NC	H0NC03149	REFUSE-weak-overlap	221	20	10	10351.00	0.5000	89	C.L. Smith	S4VA00197	Candidate for Senator
+773e3853-f751-4145-bd10-466be3073010	John Gibbs	Candidate for Representative	candidate	MI	H2MI03197	REFUSE-weak-overlap	82	5	1	10000.00	0.2000	40	Robert Gibbs	H0OH18077	Candidate for Representative
+75f40cec-b911-4e9d-87a4-826c4cf03ae8	Terri Sewell	Candidate for Representative	candidate	AL	H0AL07086	REFUSE-weak-overlap	874	1	1	10000.00	1.0000	246	Briana Sewell	H4VA07259	Candidate for Representative
+79ebcaa1-eade-4da4-8150-16a3101500cf	Nicolee Ambrose	Candidate for Representative	candidate	MD	H2MD02368	REFUSE-weak-overlap	27	1	1	10000.00	1.0000	16	Mark Ambrose	H2MI11265	Candidate for Representative
+85f98013-33b1-4116-a460-3b1b2745dc3c	William Kelly	Candidate for Representative	candidate	GA	H6GA14284	REFUSE-weak-overlap	37	2	2	10000.00	1.0000	34	Mike Kelly	H0PA03271	Representative
+575ab5cc-73c5-4353-9dae-44ed83a77e72	James Wilkinson	Federal Judge	elected	US		REFUSE-weak-overlap	1	1	1	10000.00	1.0000	0	Margarita Wilkinson	H4CA49164	Candidate for Representative
+ac34ff0a-b8e5-4146-ba75-455e153abe71	Arthur Johnson	Candidate for Representative	candidate	GA	H2GA02163	REFUSE-weak-overlap	58	2	2	10000.00	1.0000	2	Mike Johnson	H6LA04138	Representative
+af13476d-0dd6-46dd-bdcb-9b9b00cc2b9b	Susan Brooks	Candidate for Representative	candidate	IN	H2IN05082	REFUSE-weak-overlap	82	10	6	10000.00	0.6000	1	Mo Brooks	H0AL05163	Candidate for Representative
+3c4cc860-c4d5-445d-bf27-ff5e310a9e2a	Douglas Collins	Candidate for Senator	candidate	GA	S0GA00567	REFUSE-weak-overlap	63	4	2	10000.00	0.5000	37	Joe Collins	H0CA43108	Candidate for Representative
+2871bb63-1c44-4a10-948f-07d60308416a	William R. Keating	Representative	elected	MA	H0MA10082	REFUSE-weak-overlap	820	13	13	10000.00	1.0000	753	Patrick Keating	H6IL02397	Candidate for Representative
+0a59ec0e-73fb-4f31-894b-e017c1a48f35	Peter Welch	Candidate for Representative	candidate	VT	H6VT00160	REFUSE-weak-overlap	280	3	2	10000.00	0.6667	184	Lisa Welch	H0TX12238	Candidate for Representative
+f590f383-5e5b-4e36-9299-af40602cf5b4	Janell Wegman	Council Member	elected	SF	H6PA16338	REFUSE-weak-overlap	2	2	2	10000.00	1.0000	0	Gary Wegman	H6PA16338	Candidate for Representative
+09b209ec-dad7-45be-b1c8-d9187edeb0f0	Diane Bush	Candidate for Representative	candidate	CO	H8CO03192	REFUSE-weak-overlap	99	11	3	10000.00	0.2727	26	Cori Bush	H8MO01143	Candidate for Representative
+f7f45f56-f5d9-454c-b907-c97a236bd62a	George Scott	Candidate for Representative	candidate	PA	H8PA04090	REFUSE-weak-overlap	2	1	1	10000.00	1.0000	1	Robert C. "Bobby" Scott	H6VA01117	Representative
+fbb77562-6e9c-4037-bc9e-6f00c0754380	Lee Murphy	Candidate for Representative	candidate	DE	H8DE01044	REFUSE-weak-overlap	8	2	2	10000.00	1.0000	1	Gregory F. Murphy	H0NC03172	Representative
+38609b4e-dd1f-4fba-b890-ca5e39d75025	Stephen Houlahan	Candidate for Representative	candidate	CA	H2CA50174	REFUSE-weak-overlap	13	13	13	9860.00	1.0000	0	Chrissy Houlahan	H8PA06087	Representative
+34d96091-1c59-4450-91fb-781005659848	Pete King	Candidate for Representative	candidate	NY	H2NY03089	REFUSE-weak-overlap	89	3	3	9500.00	1.0000	20	Jessica King	H0WI06186	Candidate for Representative
+1343c3fc-4cc4-4242-9ee4-2588c198a216	John Mcbride	Candidate for Representative	candidate	CA	H4CA09101	REFUSE-weak-overlap	20	19	9	9300.00	0.4737	11	Sarah McBride	H4DE00045	Representative
+2d8ed423-0162-4624-99f7-449fcb9e2e1f	Robin Kelly	Candidate for Senator	candidate	IL	S6IL00474	REFUSE-weak-overlap	751	15	7	9050.00	0.4667	21	Mark Kelly	S0AZ00350	Senator
+f63675dd-d333-4315-99e8-574bb061e192	Carol Murphy	Candidate for Representative	candidate	NJ	H4NJ03205	REFUSE-weak-overlap	148	8	8	8750.00	1.0000	25	Christopher Murphy	S2CT00132	Senator
+2b57d3f6-2fdf-4bdd-bc3b-9563b50bbac8	Eleanor Norton	Candidate for Representative	candidate	DC	H0DC00058	REFUSE-weak-overlap	125	1	1	8500.00	1.0000	116	Mike Norton	S4AZ00287	Candidate for Senator
+eba802f3-057d-4f3f-8e95-fb8b657b591c	Ruben Ramirez	Candidate for Representative	candidate	TX	H2TX15138	REFUSE-weak-overlap	17	4	4	8500.00	1.0000	1	Delia C. Ramirez	H2IL03162	Representative
+b60538c3-922a-4210-ae7d-09a3069cc524	Sheri Biggs	Representative	elected	SC	H4SC01313	REFUSE-weak-overlap	469	10	2	8500.00	0.2000	101	Andy Biggs	H6AZ05083	Representative
+f04faa85-2feb-4967-b921-c6b1dd125832	Quynh Pham	Council Member	elected	SEA	H4CA45154	REFUSE-weak-overlap	6	6	6	8361.00	1.0000	0	Jimmy Pham	H4CA45154	Candidate for Representative
+f03d57d7-dc2f-4bfc-96ca-dbd2289b6b36	Tom McClintock	Representative	elected	CA	H8CA04152	REFUSE-weak-overlap	1227	12	11	8141.00	0.9167	1217	Charlie Mcclintock	H6IA02229	Candidate for Representative
+742abc8e-9320-42b7-a9d4-e7c06e935907	Christopher Murphy	Senator	elected	CT	S2CT00132	REFUSE-weak-overlap	8406	11	4	8000.00	0.3636	6	Gregory F. Murphy	H0NC03172	Representative
+6d871965-c58b-4472-b05b-826a4f30f9ea	Scott Perry	Representative	elected	PA	H2PA04135	REFUSE-weak-overlap	3321	2	1	8000.00	0.5000	320	Joan Perry	H0NC03222	Candidate for Representative
+4beceb08-dc41-44a2-a970-8e11603d026e	Bethany Mann	Candidate for Representative	candidate	MO	H2MO03167	REFUSE-weak-overlap	29	24	9	7750.00	0.3750	19	Tracey Mann	H0KS01123	Representative
+f716ce68-832a-4ce6-991f-b516014548a8	Mayor Kirk Watson	Council Member	elected	AUS	H6NC08202	REFUSE-weak-overlap	12	4	4	7750.00	1.0000	0	Colby Watson	H6NC08202	Candidate for Representative
+beb2f31e-7c4a-4f39-869d-7d1b6220f945	Mark Gonzalez	Candidate for Senator	candidate	TX	S4TX00789	REFUSE-weak-overlap	10	10	10	7650.00	1.0000	0	Vicente Gonzalez	H6TX15162	Representative
+320149cf-feb8-4cdd-acc4-e9c7c5a82297	Josh Harder	Representative	elected	CA	H8CA10126	REFUSE-weak-overlap	4235	3	2	7500.00	0.6667	2013	Kathleen Harder	H2OR06074	Candidate for Representative
+8685cdb8-09f5-4ea0-9c51-be1783decbd5	Wendy Davis	Candidate for Representative	candidate	GA	H2GA14077	REFUSE-weak-overlap	5	4	2	7500.00	0.5000	0	Donald G. Davis	H2NC02287	Representative
+cb169802-b0db-4cad-a420-548fc637f9cf	David Price	Candidate for Representative	candidate	NC	H6NC04037	REFUSE-weak-overlap	267	1	1	7500.00	1.0000	236	Thomas Price	H4GA06087	Candidate for Representative
+76c0dc16-f20e-45bf-b6d8-c78b412c9b00	Reagan Dunn	Candidate for Representative	candidate	WA	H2WA08208	REFUSE-weak-overlap	16	16	4	7500.00	0.2500	8	Neal P. Dunn	H6FL02208	Representative
+0c9201de-4378-4b99-a612-afd602531e7b	Ralph Winter	Federal Judge	elected	US		REFUSE-weak-overlap	4	4	4	7250.00	1.0000	0	Thomas Winter	H0MT00090	Candidate for Representative
+4a05256c-a1d0-4dad-b0ad-412ca3894235	Julie Christensen	Council Member	elected	SF	H0UT04092	REFUSE-weak-overlap	3	2	2	7100.00	1.0000	0	Adam Christensen	H0FL03183	Candidate for Representative
+112cdf63-9ade-48f6-8306-6596a3f99714	Timothy Barr	Candidate for Representative	candidate	GA	H2GA10166	REFUSE-weak-overlap	9	9	3	7000.00	0.3333	0	Andy Barr	H0KY06104	Representative
+5bc772da-bfd1-4540-9fe2-78e76c62cc39	Cory Booker	Candidate for President	candidate	US	P00009795	REFUSE-weak-overlap	34	2	2	7000.00	1.0000	1	Charles Booker	S0KY00420	Candidate for Senator
+65eb956f-b5ee-438f-964c-339301201dd0	Brent Lo	Council Member	elected	SEA	H0MN04197	REFUSE-weak-overlap	2	2	2	7000.00	1.0000	0	Sia Lo	H0MN04197	Candidate for Representative
+ffd9233e-1d94-44c9-b455-99e241a2e52c	Andres Power	Council Member	elected	SF	H6FL02315	REFUSE-weak-overlap	3	3	3	7000.00	1.0000	0	Evan Power	H6FL02315	Candidate for Representative
+9d19d029-03b2-4c66-b221-70d7f7f24dc6	Scott Fitzgerald	Representative	elected	WI	H0WI05113	REFUSE-weak-overlap	1254	3	3	7000.00	1.0000	941	Jeff Fitzgerald	S2WI00227	Candidate for Senator
+b7d1db5c-193c-4586-bf5d-ae4e2695f283	Raymond Smith	Candidate for Representative	candidate	NC	H6NC03229	REFUSE-weak-overlap	101	2	2	7000.00	1.0000	92	Adam Smith	H6WA09025	Representative
+2ba4d741-5a44-4535-ac97-652ae093fc64	Delia C. Ramirez	Representative	elected	IL	H2IL03162	REFUSE-weak-overlap	1321	2	2	7000.00	1.0000	715	Lisa Ramirez	H6CA40382	Candidate for Representative
+5505bb05-21da-43a8-ac46-4129cb3aac36	Marc A. Veasey	Representative	elected	TX	H2TX33073	REFUSE-weak-overlap	1718	2	2	6634.00	1.0000	1717	Karen Veasey	H2AL03131	Candidate for Representative
+1547323e-741f-4339-b6e6-c1b9165c2c85	Jessica Cisneros	Candidate for Representative	candidate	TX	H0TX28077	REFUSE-low-share	74	74	2	6473.00	0.0270	86	Gilbert Ray Cisneros	H8CA39174	Representative
+bf073faa-faf1-4942-983b-536660574367	Erica Smith	Candidate for Representative	candidate	NC	H2NC02238	REFUSE-weak-overlap	14	2	2	6000.00	1.0000	6	Christy Smith	H0CA25154	Candidate for Representative
+caf06963-e606-48b8-b5cc-a64904bb9ba8	Maria Elvira Salazar	Representative	elected	FL	H8FL27185	REFUSE-weak-overlap	1284	2	2	6000.00	1.0000	1295	Girien Salazar	H2TX32109	Candidate for Representative
+b550b23b-6e07-4a94-956e-0c2016252d38	Sanford Bishop	Candidate for Representative	candidate	GA	H2GA02031	REFUSE-weak-overlap	427	2	2	6000.00	1.0000	232	James Bishop	H0NC09187	Candidate for Representative
+e4c496d8-e90c-4492-87fb-7d6d69ac0363	Rebekah Jones	Candidate for Representative	candidate	FL	H2FL01233	REFUSE-weak-overlap	3	2	2	5500.00	1.0000	0	Kermit Jones	H2CA04122	Candidate for Representative
+bc11a389-7f42-445b-885d-73c715004749	Claire Gustafson	Candidate for Representative	candidate	NJ	H4NJ01118	REFUSE-weak-overlap	3	1	1	5000.00	1.0000	1	Corey Gustafson	H2CA50232	Candidate for Representative
+c6d2804b-7480-4503-a802-e4393919e247	Scott Smith	Candidate for Representative	candidate	NY	H4NY18109	REFUSE-weak-overlap	3	1	1	5000.00	1.0000	0	Adrian Smith	H6NE03115	Representative
+929296ac-f020-4122-aa82-33021d0147fa	Collin Peterson	Candidate for Representative	candidate	MN	H2MN07014	REFUSE-weak-overlap	394	1	1	5000.00	1.0000	76	Karen Peterson	H2LA02131	Candidate for Representative
+58ce8329-87e5-40f5-8648-f71ef87185ef	Bobby Shepherd	Federal Judge	elected	US		REFUSE-weak-overlap	1	1	1	5000.00	1.0000	0	Mark Shepherd	H0UT01155	Candidate for Representative
+4fb9ec21-fb24-46f4-9177-97d3f288c111	David Williams	Candidate for Representative	candidate	CO	H2CO05216	REFUSE-weak-overlap	93	1	1	5000.00	1.0000	9	Lily Williams	H2NH02260	Candidate for Representative
+f82c4f54-8104-4d22-a3ab-ae065f53fac6	Nikki Foster	Candidate for Representative	candidate	OH	H0OH01081	REFUSE-weak-overlap	6	2	2	5000.00	1.0000	1	Bill Foster	H8IL14067	Representative
+feb35388-9d04-4e75-864f-233735093de1	Leslie Katz	Council Member	elected	SF	S6DE00206	REFUSE-weak-overlap	3	2	2	5000.00	1.0000	1	Mike Katz	H6CA17224	Candidate for Representative
+a38d6305-16df-4be6-a1e2-0596b8905e3a	Leigh Brown	Candidate for Representative	candidate	NC	H0NC09203	REFUSE-weak-overlap	58	3	1	5000.00	0.3333	2	Sherrod Brown	S6OH00163	Candidate for Senator
+a50f5d17-2c16-4be6-aba4-4aafcb380b15	Nancy Mannion	Candidate for Representative	candidate	PA	H6PA11099	REFUSE-weak-overlap	96	1	1	5000.00	1.0000	95	John Mannion	H4NY22085	Candidate for Representative
+a68999bd-8ff3-4c61-94cf-d510e977d1af	Natalie Jackson	Candidate for Representative	candidate	FL	H2FL10184	REFUSE-weak-overlap	3	1	1	5000.00	1.0000	2	Jeff Jackson	H2NC14076	Candidate for Representative
+f5c347cc-aea8-41a1-977d-6c3bb15fd6a2	Lacy Johnson	Candidate for Representative	candidate	MN	H0MN05178	REFUSE-weak-overlap	9	1	1	5000.00	1.0000	3	Mike Johnson	H6LA04138	Representative
+96b19b40-342c-4177-81fe-640ab442423b	Jema Turk	Council Member	elected	SF	H6MO05189	REFUSE-weak-overlap	1	1	1	5000.00	1.0000	0	Jacob Turk	H6MO05189	Candidate for Representative
+5aaf9669-42ed-4442-999e-5d10a8916513	Ernest Gonzales	Candidate for Representative	candidate	TX	H0TX35015	REFUSE-weak-overlap	2405	2	1	5000.00	0.5000	161	Christopher Gonzales	H0CA45160	Candidate for Representative
+ab4b2df1-b279-42e2-9183-c9426ed595b4	Derek Schmidt	Representative	elected	KS	H4KS02164	REFUSE-weak-overlap	1129	1	1	5000.00	1.0000	602	Patrick Schmidt	S6KS00288	Candidate for Senator
+ea6aee6a-6d6a-4695-9fdb-709fe129aa41	Paul Chabot	Candidate for Representative	candidate	CA	H4CA31071	REFUSE-weak-overlap	3	1	1	5000.00	1.0000	1	Steve Chabot	H8OH01043	Candidate for Representative
+e8d5abd2-f190-41e8-8667-7223aa9340c4	Scott Franklin	Representative	elected	FL	H0FL15104	REFUSE-weak-overlap	890	1	1	5000.00	1.0000	663	Margaret Franklin	H4VA07242	Candidate for Representative
+ad26d49c-c42b-4cd0-a90b-042841a85b66	Christopher Collins	Candidate for Representative	candidate	NY	H8NY29032	REFUSE-weak-overlap	7	4	4	5000.00	1.0000	1	Susan M. Collins	S6ME00159	Senator
+fc361d24-3960-449f-b22a-e429a0882a55	Clint Smith	Candidate for Representative	candidate	AZ	H2AZ05173	REFUSE-weak-overlap	33	1	1	5000.00	1.0000	1	Adam Smith	H6WA09025	Representative
+7ca99629-218f-46ca-9663-bf3f1e456c01	Terri Hill	Candidate for Representative	candidate	MD	H0MD07171	REFUSE-low-share	211	211	1	5000.00	0.0047	2	J. French Hill	H4AR02141	Representative
+e6739cf6-7c21-4ad5-afa0-66805241647a	Timothy Kelly	Candidate for Representative	candidate	MI	H0MI05162	REFUSE-weak-overlap	2	1	1	5000.00	1.0000	0	Trent Kelly	H6MS01131	Representative
+4986dce6-cece-4a44-a73c-b42f13f04421	Diane Wood	Federal Judge	elected	US		REFUSE-weak-overlap	1	1	1	5000.00	1.0000	0	Marisa Wood	H2CA23155	Candidate for Representative
+4969d074-ab5d-49bf-9261-bb6c1fb129b0	Helene White	Federal Judge	elected	US		REFUSE-weak-overlap	1	1	1	5000.00	1.0000	0	Royce White	S4MN00502	Candidate for Senator
+df8ed54b-815b-4050-ba43-7217a2e22d84	Shannon Taylor	Candidate for Representative	candidate	VA	H6VA01299	REFUSE-weak-overlap	806	1	1	5000.00	1.0000	782	David J. Taylor	H4OH02248	Representative
+5c85db1c-05ab-426d-ac5f-e26c42fa092a	Aja Smith	Candidate for Representative	candidate	CA	H8CA41170	REFUSE-weak-overlap	4	2	1	5000.00	0.5000	0	Adrian Smith	H6NE03115	Representative
+5d2ad791-32d0-4537-b19d-34c4b72bf53f	Susan Kiley	Candidate for Representative	candidate	NJ	H2NJ06228	REFUSE-weak-overlap	6	6	1	5000.00	0.1667	4	Kevin Kiley	H2CA03157	Representative
+4777ed3c-f0d4-4128-88d3-ba72963526d3	Brenda Jones	Candidate for Representative	candidate	MI	H8MI13243	REFUSE-weak-overlap	4	1	1	5000.00	1.0000	3	Gina Jones	H8TX23121	Candidate for Representative
+2926eb6a-bc32-4601-983a-85f35092791d	Jacob Johnson	Candidate for Representative	candidate	MN	H6MN01190	REFUSE-weak-overlap	657	4	1	5000.00	0.2500	656	Julie Johnson	H4TX32089	Representative
+82a558df-6d73-46ba-9525-a66a60af8ecd	Matthew Smith	Candidate for Representative	candidate	TX	H6TX19263	REFUSE-weak-overlap	29	1	1	5000.00	1.0000	28	Jason Smith	H4MO08162	Representative
+5e9fa8ef-c3ed-4564-a1da-7786fc7ee064	Charles Booker	Candidate for Senator	candidate	KY	S0KY00420	REFUSE-low-share	82	82	1	5000.00	0.0122	14	Cory A. Booker	S4NJ00185	Senator
+d68f689f-2129-477c-8b1b-d51c1086678a	Joseph Schneider	Candidate for Representative	candidate	MA	H8MA06133	REFUSE-weak-overlap	3	3	1	5000.00	0.3333	2	Bradley Scott Schneider	H2IL10068	Representative
+0248a70f-398e-41c6-86c6-531319b276e4	Joe Mitchell	Candidate for Representative	candidate	IA	H6IA02237	REFUSE-weak-overlap	446	1	1	5000.00	1.0000	402	James Mitchell	H6TN07260	Candidate for Representative
+3c24c531-9b34-4324-b894-ff5e9dae199a	Jason Friedman	Candidate for Representative	candidate	IL	H6IL07339	REFUSE-weak-overlap	704	2	2	5000.00	1.0000	701	Laura Friedman	H4CA30149	Representative
+cf2658f8-8819-4ebf-ab6d-90916a6bf287	Steve King	Candidate for Representative	candidate	IA	H2IA05072	REFUSE-weak-overlap	10	2	1	5000.00	0.5000	6	Esther King	H0IL17083	Candidate for Representative
+31303e44-9340-4fb1-9214-d99836d08c1a	Robert Peters	Candidate for Representative	candidate	IL	H6IL02298	REFUSE-weak-overlap	556	4	2	5000.00	0.5000	528	Scott H. Peters	H2CA52089	Representative
+c06e1cef-41b3-4dee-8923-ac4d1e41193b	Jimmy Gomez	Representative	elected	CA	H8CA34266	REFUSE-weak-overlap	2323	1	1	5000.00	1.0000	1415	Meri Gomez	S4TX00771	Candidate for Senator
+c933c735-52a3-4106-88e5-cc1f6250aa0b	Austin Rogers	Candidate for Representative	candidate	FL	H6FL02331	REFUSE-weak-overlap	203	3	1	5000.00	0.3333	202	Michael Rogers	S4MI00595	Candidate for Senator
+c88b2cef-62e2-41b2-95b1-7791c869a70a	Daniel Sanchez	Candidate for Representative	candidate	TX	H2TX34238	REFUSE-weak-overlap	13	1	1	5000.00	1.0000	6	Linda Sanchez	H2CA39078	Candidate for Representative
+33865846-b1db-4c56-874d-122bd8d1b9ea	Erica Smith	Candidate for Senator	candidate	NC	S0NC00343	REFUSE-weak-overlap	6	1	1	5000.00	1.0000	5	Adam Smith	H6WA09025	Representative
+6082617a-2291-48cc-8cc5-44c05f158060	Mike Mcguire	Candidate for Representative	candidate	CA	H6CA01269	REFUSE-weak-overlap	757	2	1	5000.00	0.5000	719	John Mcguire	H4VA05071	Candidate for Representative
+3506059d-340d-44f3-a80c-6a326d1a804d	Anthony Hill	Candidate for Representative	candidate	FL	H2FL04195	REFUSE-weak-overlap	13	2	1	5000.00	0.5000	5	Natasha Hill	H2WA05105	Candidate for Representative
+49be389f-4387-499b-9c15-9d89af34c789	Jodey C. Arrington	Representative	elected	TX	H6TX19099	REFUSE-weak-overlap	1916	1	1	4801.00	1.0000	1917	Katherine Arrington	H8SC01124	Candidate for Representative
+fe3fc0d7-446c-4779-99e0-cde48150dbb0	Derek Marshall	Candidate for Representative	candidate	CA	H2CA08214	REFUSE-weak-overlap	449	4	3	4800.00	0.7500	16	Erin Marshall	H4KY01081	Candidate for Representative
+c7975ec7-ff24-49db-a707-d225cb1abc73	Maria Stuart	Council Member	elected	AUS	S4OH00226	REFUSE-weak-overlap	6	6	6	4800.00	1.0000	0	Douglas Stuart	S4OH00226	Candidate for Senator
+c7663a08-405d-4cde-8bf6-2c8081dc36fb	Sarah McBride	Representative	elected	DE	H4DE00045	REFUSE-weak-overlap	4083	19	10	4760.00	0.5263	1945	John Mcbride	H4CA09101	Candidate for Representative
+842cfe51-de89-41cd-9154-e5aee67aee06	Benjamin Luna	Candidate for Senator	candidate	NM	S4NM00159	REFUSE-weak-overlap	9	9	9	4701.00	1.0000	0	Anna Paulina Luna	H0FL13158	Representative
+55cec243-7341-4799-875e-2580e15b32d1	Jessica De La Cruz	Candidate for Representative	candidate	RI	H2RI02168	REFUSE-weak-overlap	7	7	2	4500.00	0.2857	3	Monica De La Cruz	H0TX15124	Representative
+03d38fae-b058-4c98-8933-1750a4cfdfad	William Cassidy	Candidate for Representative	candidate	LA	H8LA00017	REFUSE-weak-overlap	18	2	2	4500.00	1.0000	11	Bill Cassidy	S4LA00107	Senator
+c0b02046-39f3-4e8d-a492-039a73d9ea77	Mona Sanchez	Council Member	elected	AUS	H6CA38147	REFUSE-weak-overlap	39	2	2	4500.00	1.0000	17	Linda Sanchez	H2CA39078	Candidate for Representative
+51c22591-0da4-4628-8b6c-237493cb041e	Eric Wilson	Candidate for Representative	candidate	WI	H4WI03219	REFUSE-weak-overlap	95	7	5	4300.00	0.7143	15	Tamara Wilson	H2OH04164	Candidate for Representative
+fd1e1797-a407-4b5d-b9d6-dc79bb45468b	Paul Hudson	Candidate for Representative	candidate	MI	H4MI03268	REFUSE-weak-overlap	339	13	4	4270.00	0.3077	28	Richard Hudson	H2NC08185	Representative
+89e08fae-4144-4fd2-90f3-cbfecb64e788	Madeleine Dean	Representative	elected	PA	H8PA04116	REFUSE-weak-overlap	1795	11	11	4200.00	1.0000	1275	Monica Dean	H6KY04130	Candidate for Representative
+4944e0cf-3baf-43ef-b727-037128fa4e1d	Jasmine Clark	Candidate for Representative	candidate	GA	H6GA13070	REFUSE-weak-overlap	546	5	2	4000.00	0.4000	419	Katherine Clark	H4MA05084	Candidate for Representative
+f7c79903-7b8f-4361-844c-6d7ce31524b1	Mike Bishop	Candidate for Representative	candidate	MI	H4MI08135	REFUSE-weak-overlap	10	4	3	4000.00	0.7500	5	James Bishop	H0NC09187	Candidate for Representative
+479fa2a6-146d-4e9e-981a-0af81abb83d8	William Armstrong	Candidate for Representative	candidate	CO	H8CO06153	REFUSE-weak-overlap	8	3	2	4000.00	0.6667	1	Kelly Armstrong	H8ND00096	Candidate for Representative
+4a5da2ec-5c3a-4be0-8332-6fd65557e4dd	Timothy Hill	Candidate for Representative	candidate	TN	H0TN01134	REFUSE-weak-overlap	6	6	2	4000.00	0.3333	4	J. French Hill	H4AR02141	Representative
+872e5c89-52eb-425d-8e32-f3d6bb1e6386	Dan Sullivan	Senator	elected	AK	S4AK00214	REFUSE-weak-overlap	2980	8	3	4000.00	0.3750	1462	Maura Sullivan	H8NH01186	Candidate for Representative
+d93454b4-36e2-4311-8f8c-3828e9c696cc	Sharon Patterson	Council Member	elected	AUS	H6TX17119	REFUSE-weak-overlap	6	4	4	3980.00	1.0000	1	Robert Patterson	H0CA07137	Candidate for Representative
+f4745d1c-c3d4-46c3-a230-e95deb529140	John Carroll	Council Member	elected	SF	P00013771	REFUSE-weak-overlap	1	1	1	3966.00	1.0000	0	Brian Carroll	P00013771	Candidate for President
+bfa3fbee-d6d7-4ee3-86c2-5c7968f616c7	Jared Huffman	Representative	elected	CA	H2CA06259	REFUSE-weak-overlap	1173	10	10	3824.00	1.0000	692	Zackary Huffman	H6AR02294	Candidate for Representative
+25e887cd-e774-4e1f-a1e2-a74c68b1e4f8	John Mills	Candidate for Representative	candidate	TN	H4TN08099	REFUSE-weak-overlap	5	5	4	3750.00	0.8000	1	Cory Mills	H2FL07156	Representative
+e5770f6a-2ca9-45ee-8ae9-7fb5039048e0	John Beatty	Candidate for Representative	candidate	VA	H2VA10141	REFUSE-weak-overlap	6	6	6	3650.00	1.0000	0	Joyce Beatty	H2OH03125	Representative
+34557d0f-d7e7-4145-a239-e1c7fa9213e6	Sander Levin	Candidate for Representative	candidate	MI	H2MI17023	REFUSE-weak-overlap	6	3	2	3500.00	0.6667	1	Mike Levin	H8CA49058	Representative
+9b9b37cc-a031-4f33-a333-e8c4a11ca8be	John Sullivan	Candidate for Representative	candidate	NY	H6NY17197	REFUSE-weak-overlap	224	9	4	3500.00	0.4444	69	Maura Sullivan	H8NH01186	Candidate for Representative
+fa3219b9-9ed3-4598-8cd4-f5b15e95ecff	Michael Rogers	Candidate for Representative	candidate	MD	H4MD03180	REFUSE-weak-overlap	269	2	2	3500.00	1.0000	2	Mike D. Rogers	H2AL03032	Representative
+f8d21839-2699-43f3-8699-b56584014bfc	James Moran	Candidate for Representative	candidate	VA	H0VA08040	REFUSE-weak-overlap	11	4	2	3500.00	0.5000	8	Jerry Moran	S0KS00091	Senator
+382c4480-3fb1-4182-b954-94a53d4e5df4	Michael Moore	Candidate for Representative	candidate	SC	H4SC01297	REFUSE-weak-overlap	583	2	1	3500.00	0.5000	181	Gwen Moore	H4WI04183	Representative
+54594bb5-c48f-46af-9b06-ec67799f7e96	Don Brown	Candidate for Representative	candidate	NC	H4NC08074	REFUSE-weak-overlap	55	1	1	3300.00	1.0000	52	Sam Brown	S2NV00308	Candidate for Senator
+9f0b4952-f622-4720-8e7c-498bba257508	Dori Cho	Council Member	elected	SEA	H4NJ05135	REFUSE-weak-overlap	2	2	2	3300.00	1.0000	0	Roy Cho	H4NJ05135	Candidate for Representative
+8e5f3c01-b28f-43d4-ae36-a86cf36c2f90	Colleen Davis	Candidate for Representative	candidate	DE	H4DE00052	REFUSE-weak-overlap	135	2	1	3300.00	0.5000	120	Donald G. Davis	H2NC02287	Representative
+c90984a6-da9d-42a8-8013-7d6e593ee1ce	Rishi Kumar	Candidate for Representative	candidate	CA	H0CA18068	REFUSE-weak-overlap	170	1	1	3300.00	1.0000	129	Anil Kumar	H4MI10131	Candidate for Representative
+70d77cb1-f709-4f67-8fa1-6b52c3f88dc2	Michael Crane	Candidate for Representative	candidate	GA	H0GA13032	REFUSE-low-share	169	169	1	3300.00	0.0059	163	Elijah Crane	H2AZ01354	Representative
+4ce8b39b-4d22-4167-b8e7-198e46825b56	Marcus Jones	Candidate for Representative	candidate	AR	H4AR02232	REFUSE-weak-overlap	404	4	2	3250.00	0.5000	3	Mondaire Jones	H0NY17174	Candidate for Representative
+0f9cf8f9-c40a-4b1b-9742-467595ce8602	John B. Larson	Representative	elected	CT	H8CT01046	REFUSE-weak-overlap	2032	2	2	3167.00	1.0000	2031	Christopher Larson	S2WI00391	Candidate for Senator
+0ca4d9c2-5f8c-434d-8f14-64bcc9d3cd4b	Scott Taylor	Candidate for Senator	candidate	VA	S0VA00104	REFUSE-weak-overlap	10	4	3	3000.00	0.7500	5	Nicholas Taylor	H8TX03123	Candidate for Representative
+93a6040f-402c-4f85-8d0d-55cf1b0350b2	Ben Lujan	Candidate for Senator	candidate	NM	S0NM00058	REFUSE-weak-overlap	1850	4	1	3000.00	0.2500	1346	John Lujan	H6TX35053	Candidate for Representative
+6041925b-dd66-481f-90e3-f14ca047a093	Marie Gluesenkamp Perez	Representative	elected	WA	H2WA03217	REFUSE-weak-overlap	6796	3	2	3000.00	0.6667	1697	Maclovio Perez	H2TX27299	Candidate for Representative
+7fa5237a-a65f-4059-acf1-bdd0be28fb9d	Lisa Ramirez	Candidate for Representative	candidate	CA	H6CA40382	REFUSE-weak-overlap	326	2	1	3000.00	0.5000	324	Delia Ramirez	H2IL03162	Candidate for Representative
+3992716c-3e98-4f50-9757-ae76b083d73c	Tom Fulmer	Council Member	elected	AUS	H6SC01300	REFUSE-weak-overlap	4	4	4	2950.00	1.0000	0	Matthew Fulmer	H6SC01300	Candidate for Representative
+b34ca28f-6d4e-48e6-bfef-f8755f479eab	Bob Bishop	Candidate for Representative	candidate	NY	H6NY19227	REFUSE-weak-overlap	1	1	1	2800.00	1.0000	0	James Bishop	H0NC09187	Candidate for Representative
+d8fa25bb-8dbe-405e-bcb1-e0755e4c61f3	Elizabeth Branch	Federal Judge	elected	US		REFUSE-weak-overlap	5	5	5	2750.00	1.0000	0	Talmadge Branch	H0MD07130	Candidate for Representative
+535dd9cb-fef0-4a15-a408-5f96b04c5460	Chelsea Pfeifer	Council Member	elected	AUS	H4MO02108	REFUSE-weak-overlap	5	5	5	2750.00	1.0000	0	Peter Pfeifer	H4MO02108	Candidate for Representative
+c57ad7b9-7328-405f-a0d5-7e17d380b2e0	Leslie Tello	Council Member	elected	AUS	H6IL07479	REFUSE-weak-overlap	2	2	2	2600.00	1.0000	0	Felix Tello	H6IL07479	Candidate for Representative
+1295f5c5-5c73-4b59-9bd6-8fc37b4d1ba7	Ammie Calderon	Council Member	elected	AUS	H0CA53131	REFUSE-weak-overlap	1	1	1	2500.00	1.0000	0	Marisa Calderon	H0CA53131	Candidate for Representative
+b24bc36e-c5be-4eae-bee4-df3c6290ac19	Lavangelene Williams	Candidate for Representative	candidate	VA	H8VA01303	REFUSE-weak-overlap	1	1	1	2500.00	1.0000	0	Nikema Williams	H0GA05301	Representative
+02c73475-6fc6-4a00-86af-f74d38e4cfe6	Robert Williams	Candidate for Representative	candidate	SC	H8SC07063	REFUSE-weak-overlap	1	1	1	2500.00	1.0000	0	Nikema Williams	H0GA05301	Representative
+a1e158b4-d7d3-41b8-8adc-dfb2ad510c5b	Angus King	Candidate for Senator	candidate	ME	S2ME00109	REFUSE-weak-overlap	345	1	1	2500.00	1.0000	291	Steve King	H2IA05072	Candidate for Representative
+d969298b-dffa-4b2b-90d7-17de82ddab0c	Daniel Hernandez	Candidate for Representative	candidate	AZ	H6AZ07105	REFUSE-weak-overlap	755	17	1	2500.00	0.0588	749	Melissa Hernandez	H6CA14163	Candidate for Representative
+807b3db5-f80a-40f7-9970-8c7444de3050	Greg Hill	Candidate for Representative	candidate	TX	H0TX22187	REFUSE-weak-overlap	1	1	1	2500.00	1.0000	0	J. French Hill	H4AR02141	Representative
+bdabf843-d594-4852-b572-439e3cbaa8a1	Celeste Williams	Candidate for Representative	candidate	AR	H0AR03105	REFUSE-weak-overlap	3	1	1	2500.00	1.0000	0	Nikema Williams	H0GA05301	Representative
+0e235a8f-2515-4866-a0ce-fe7d755d0394	Ben Sorensen	Candidate for Representative	candidate	FL	H2FL22197	REFUSE-weak-overlap	5	5	1	2500.00	0.2000	2	Eric Sorensen	H2IL17147	Representative
+33b70ac5-b7ff-4ebc-b5dc-7010fe58555a	Daniel Davis	Candidate for Representative	candidate	IL	H8IL19090	REFUSE-weak-overlap	1	1	1	2500.00	1.0000	1	Donald Davis	H4NC01053	Candidate for Representative
+dcd09507-9279-4d8e-a5ba-30e9bc2408ab	Mark Mackenzie	Candidate for Representative	candidate	NH	H8NH01228	REFUSE-weak-overlap	1	1	1	2500.00	1.0000	0	Ryan Mackenzie	H8PA15195	Representative
+4e7797ec-8478-4c5b-876e-f8518bd8e06b	Demnlus Johnson	Candidate for Representative	candidate	CA	H2CA08222	REFUSE-weak-overlap	2	1	1	2500.00	1.0000	0	Mike Johnson	H6LA04138	Representative
+39411ab1-f22c-4ca0-87fa-9729512cdd38	Rafael Cruz	Candidate for President	candidate	US	P60006111	REFUSE-weak-overlap	2	1	1	2500.00	1.0000	1	Ted Cruz	S2TX00312	Senator
+f40e5dcd-3bb2-49f1-8263-cc6a2c80dde7	Kathleen Harder	Candidate for Representative	candidate	OR	H2OR06074	REFUSE-weak-overlap	3	3	1	2500.00	0.3333	0	Josh Harder	H8CA10126	Representative
+ebc13933-999c-4cea-b4f7-400862e67076	George Latimer	Representative	elected	NY	H4NY16087	REFUSE-weak-overlap	4911	26	1	2500.00	0.0385	387	Mackenzie Latimer	H4TX31065	Candidate for Representative
+fd98e2eb-019e-4298-a7e7-f046a1edf439	Phimy Truong	Council Member	elected	SF	H0VA10194	REFUSE-weak-overlap	1	1	1	2300.00	1.0000	0	Matthew Truong	H0VA10194	Candidate for Representative
+4f4b9dcc-8bf2-4511-9b12-c67ea0e36823	Lisa Khanna	Candidate for Representative	candidate	VA	H6VA01190	REFUSE-low-share	273	273	4	2050.00	0.0147	47	Ro Khanna	H4CA12055	Representative
+9b9fb394-8022-4ef4-9a8d-98169c89dd63	Antonio Delgado	Candidate for Representative	candidate	NY	H8NY19181	REFUSE-weak-overlap	328	1	1	2000.00	1.0000	204	Jorge Delgado	H0MD01216	Candidate for Representative
+e386faa6-4f2c-4f66-80df-ef68e394744c	Michael Rogers	Candidate for Representative	candidate	MI	H0MI08042	REFUSE-weak-overlap	4	2	1	2000.00	0.5000	4	Harold Rogers	H0KY05015	Representative
+971d1e06-dba9-4362-ab48-b73c0afc57f4	Chip Roy	Representative	elected	TX	H8TX21307	REFUSE-weak-overlap	1478	1	1	2000.00	1.0000	622	Joshua Roy	S6ID00153	Candidate for Senator
+8849bd20-9def-45fd-a060-0d1086dc1487	Brad Wilson	Candidate for Senator	candidate	UT	S4UT00209	REFUSE-weak-overlap	521	1	1	2000.00	1.0000	12	Frederica S. Wilson	H0FL17068	Representative
+903facbb-ac16-47e4-a7df-60e2445ad9c6	Christine Jones	Council Member	elected	AUS	H6AR02286	REFUSE-weak-overlap	473	2	2	2000.00	1.0000	148	Jolanda Jones	H6TX18364	Candidate for Representative
+eb905293-4f0b-40df-8352-d6fa395e2795	Frank D. Lucas	Representative	elected	OK	H4OK06056	REFUSE-weak-overlap	1394	1	1	2000.00	1.0000	1395	Conrad Lucas	H8WV03105	Candidate for Representative
+eead0faf-86d7-41d2-959a-594968edae94	Quacy Smith	Candidate for Representative	candidate	AZ	H4AZ09049	REFUSE-weak-overlap	77	1	1	2000.00	1.0000	5	Tina Smith	S8MN00578	Senator
+12c304e2-624b-490f-be9b-4526d6a705a6	Joseph Barrett	Candidate for Representative	candidate	TN	H6TN07203	REFUSE-weak-overlap	221	1	1	2000.00	1.0000	0	Tom Barrett	H2MI07123	Representative
+379b6244-5f9a-4ef9-8f02-38e0eb2d70dd	Shawn Collins	Candidate for Representative	candidate	CA	H2CA45158	REFUSE-weak-overlap	3	1	1	2000.00	1.0000	0	Michael Collins	H4GA10071	Candidate for Representative
+c4761443-4156-4a2b-8549-2e7623c4438c	Chris Jones	Candidate for Representative	candidate	AR	H6AR02286	REFUSE-weak-overlap	665	2	2	2000.00	1.0000	372	Jolanda Jones	H6TX18364	Candidate for Representative
+078836c7-6849-41be-970e-15e09c9eaed4	Sam Brown	Candidate for Senator	candidate	NV	S2NV00308	REFUSE-weak-overlap	8178	3	1	2000.00	0.3333	53	M Brown	H2OH11169	Candidate for Representative
+79103a92-0f8d-4973-b5a2-a5c8ab1a7e2b	AnMarie Rodgers	Council Member	elected	SF	H2TX30236	REFUSE-weak-overlap	1	1	1	2000.00	1.0000	0	James Rodgers	H2TX30236	Candidate for Representative
+21d70c92-8f70-41b5-ba9c-8c6552bcc2aa	Jeffrey Duncan	Candidate for Representative	candidate	SC	H0SC03077	REFUSE-weak-overlap	715	1	1	2000.00	1.0000	347	Darren Duncan	H0IL15186	Candidate for Representative
+deacf24f-05ce-4564-a4fc-9b054ce6a035	Robert Bishop	Candidate for Representative	candidate	UT	H2UT01094	REFUSE-weak-overlap	5	1	1	2000.00	1.0000	2	James Bishop	H0NC09187	Candidate for Representative
+7a164092-b563-4fa5-b768-387882d4f264	Mike Garcia	Candidate for Representative	candidate	CA	H0CA25162	REFUSE-weak-overlap	48	2	1	2000.00	0.5000	4	Cassandra Garcia	H2TX28149	Candidate for Representative
+1a80ae8e-160f-4442-b163-838f6a87e0b8	John Mcguire	Candidate for Representative	candidate	VA	H4VA05071	REFUSE-weak-overlap	64	2	1	2000.00	0.5000	58	Mike Mcguire	H6CA01269	Candidate for Representative
+a9983f2f-aa61-4e8c-815d-d5abd5c24176	Alvin Moses	Council Member	elected	SF	S4TN00575	REFUSE-weak-overlap	4	4	4	1775.00	1.0000	0	Pamela Moses	S4TN00575	Candidate for Senator
+66f9d0d7-c7ec-4a5a-8ccf-88e91e089c9f	Dr Garcia	Candidate for Senator	candidate	WA	S4WA00581	REFUSE-weak-overlap	400	5	4	1750.00	0.8000	102	Robert Garcia	H2CA47188	Representative
+b2de3636-54c4-42bf-8241-5467bf64d8c9	Maxine Waters	Representative	elected	CA	H4CA23011	REFUSE-weak-overlap	1198	14	3	1750.00	0.2143	744	Allen Waters	H2RI01202	Candidate for Representative
+892f5b18-e71f-48d5-aba1-f7b85ec44857	Pamela Stevenson	Candidate for Senator	candidate	KY	S6KY00211	REFUSE-weak-overlap	165	15	2	1700.00	0.1333	132	Cherlynn Stevenson	H6KY06150	Candidate for Representative
+6b829924-6bc6-42e9-9873-d336b6de357a	Mike Pence	Candidate for President	candidate	US	P40013435	REFUSE-weak-overlap	1808	3	1	1500.00	0.3333	1436	Gregory Pence	H8IN06129	Candidate for Representative
+c22609a0-c7d3-4499-a844-102ea6ecc265	David Smith	Candidate for Senator	candidate	OR	S6OR05218	REFUSE-weak-overlap	25	1	1	1500.00	1.0000	23	Adrian Smith	H6NE03115	Representative
+7834322f-0ac6-4fbe-99a2-bfa01e15ab80	Briana Sewell	Candidate for Representative	candidate	VA	H4VA07259	REFUSE-low-share	231	231	4	1500.00	0.0173	60	Terri A. Sewell	H0AL07086	Representative
+59185193-2202-421a-b7ec-4652ecbbe879	Kenny Marchant	Candidate for Representative	candidate	TX	H4TX24094	REFUSE-weak-overlap	110	2	2	1500.00	1.0000	40	Jim Marchant	H0NV04015	Candidate for Representative
+7aa932bb-f40c-44bf-8408-83860ef0f339	Kevin Cramer	Senator	elected	ND	S8ND00120	REFUSE-weak-overlap	1811	4	4	1450.00	1.0000	813	Cyle Cramer	H6MN08138	Candidate for Representative
+a15da3e5-9005-42c7-80fd-6a5a34fb6b35	Tamara Wilson	Candidate for Representative	candidate	OH	H2OH04164	REFUSE-weak-overlap	616	7	2	1450.00	0.2857	331	Eric Wilson	H4WI03219	Candidate for Representative
+14083a6d-5b92-4ee7-b96f-2b7a4acd978a	Jack Bergman	Representative	elected	MI	H6MI01226	REFUSE-weak-overlap	1217	5	5	1400.00	1.0000	1217	Lore Bergman	H4TN06226	Candidate for Representative
+77e796df-611e-4a93-940f-a1cbade90b0f	Cory Booker	Candidate for Senator	candidate	NJ	S4NJ00185	REFUSE-weak-overlap	4483	9	1	1200.00	0.1111	4068	Charles Booker	S6KY00385	Candidate for Senator
+1fab1c70-94c3-4f17-a264-22eb913bdf94	Brad Sherman	Representative	elected	CA	H6CA24113	REFUSE-weak-overlap	2277	1	1	1176.00	1.0000	1475	Jayesun Sherman	H8MN07102	Candidate for Representative
+f0835b6e-3986-4de8-b899-8123c51973a3	William Mcbride	Candidate for Senator	candidate	FL	S6FL00236	REFUSE-weak-overlap	1	1	1	1071.00	1.0000	0	Sarah McBride	H4DE00045	Representative
+3e562b31-7612-465f-a252-299f04365aa2	Edward Garcia	Candidate for Senator	candidate	VA	S4VA00239	REFUSE-weak-overlap	153	4	4	1050.00	1.0000	0	Robert Garcia	H2CA47188	Representative
+15b805f5-f526-42a0-ac4d-0d3c3368c7b8	Joe Silva	Council Member	elected	AUS	H4WA01282	REFUSE-weak-overlap	3	3	3	1050.00	1.0000	0	Thomas Silva	H4CA07089	Candidate for Representative
+0aeecedf-07d9-4431-93a3-bf4c64f04729	Candice Miller	Candidate for Representative	candidate	MI	H6MI12181	REFUSE-weak-overlap	1	1	1	1000.00	1.0000	0	Mary E. Miller	H0IL15129	Representative
+c36a5893-c051-43bc-ab96-10b506fb9280	Micah Ellison	Council Member	elected	SEA	S2FL00458	REFUSE-weak-overlap	1	1	1	1000.00	1.0000	0	Allen Ellison	S2FL00458	Candidate for Senator
+370d816a-76e3-4be2-a804-f0d875cbd41f	Joan Perry	Candidate for Representative	candidate	NC	H0NC03222	REFUSE-weak-overlap	31	2	1	1000.00	0.5000	12	Scott Perry	H2PA04135	Representative
+c0a83b96-5a4a-442b-a5ae-3c32a8f97be5	Bradley Walker	Candidate for Representative	candidate	NC	H4NC06052	REFUSE-weak-overlap	399	1	1	1000.00	1.0000	15	Christopher Walker	H4WV02254	Candidate for Representative
+31c4fb8d-6650-4389-b63e-76a042f50a2b	Kelly Armstrong	Candidate for Representative	candidate	ND	H8ND00096	REFUSE-weak-overlap	1082	3	1	1000.00	0.3333	600	William Armstrong	H8CO06153	Candidate for Representative
+bdbe1862-8411-4305-99f3-70daa4e34bb1	William Foster	Candidate for Representative	candidate	TX	H6TX05130	REFUSE-weak-overlap	2	1	1	1000.00	1.0000	0	Bill Foster	H8IL14067	Representative
+84afbcf3-5997-4c01-a624-095b6dc2948f	John Duncan	Candidate for Representative	candidate	TN	H8TN02069	REFUSE-weak-overlap	3	1	1	1000.00	1.0000	0	Jeffrey Duncan	H0SC03077	Candidate for Representative
+bd47b5d9-c2b3-4f62-b67d-e8fc9719bf18	Joe Collins	Candidate for Representative	candidate	CA	H0CA43108	REFUSE-weak-overlap	20	4	1	1000.00	0.2500	9	Douglas Collins	S0GA00567	Candidate for Senator
+69dac09e-7b81-4cdf-8d5c-57812d544857	William Foster	Candidate for Representative	candidate	AZ	H2AZ06296	REFUSE-weak-overlap	2	1	1	1000.00	1.0000	1	Bill Foster	H8IL14067	Representative
+d5f50fda-68aa-4845-bf3a-b04ff20dc61b	Christopher Gonzales	Candidate for Representative	candidate	CA	H0CA45160	REFUSE-weak-overlap	6	2	1	1000.00	0.5000	0	Ernest Gonzales	H0TX35015	Candidate for Representative
+5edb5d1b-e954-4445-97c6-235f706d92cb	Gregory Pence	Candidate for Representative	candidate	IN	H8IN06129	REFUSE-weak-overlap	588	3	2	1000.00	0.6667	549	Mike Pence	P40013435	Candidate for President
+d6b6852c-91ec-4f69-ba87-2dae66ada1ea	Walter Stapleton	Federal Judge	elected	US		REFUSE-weak-overlap	2	1	1	1000.00	1.0000	1	Baxter Stapleton	H2OH10252	Candidate for Representative
+2ba9ed3d-d636-4015-a96d-2322b4f55913	Hunter Gordon	Candidate for Representative	candidate	WA	H6WA01212	REFUSE-weak-overlap	9	1	1	1000.00	1.0000	6	Mark Gordon	H6AZ01314	Candidate for Representative
+d8399eec-61cb-4a96-ae9e-ddbf3b9c18e7	Deb Fischer	Senator	elected	NE	S2NE00094	REFUSE-weak-overlap	2911	1	1	1000.00	1.0000	2922	Jason Fischer	H2FL04187	Candidate for Representative
+40ff9a6f-ec9b-4fb1-8754-0bb84bad1b45	Angus S., Jr. King	Senator	elected	ME	S2ME00109	REFUSE-weak-overlap	2924	3	1	1000.00	0.3333	51	Pete King	H2NY03089	Candidate for Representative
+8a26e1f8-e5ea-4e2a-b0fe-aeaf3adb5315	Jan Schneider	Candidate for Representative	candidate	FL	H2FL13139	REFUSE-weak-overlap	19	15	1	1000.00	0.0667	0	Bradley Scott Schneider	H2IL10068	Representative
+b3772294-e41e-4e8e-ad80-6086cc521a37	Frederic Clark	Candidate for Representative	candidate	WI	H6WI07207	REFUSE-weak-overlap	260	1	1	1000.00	1.0000	256	Katherine Clark	H4MA05084	Candidate for Representative
+28a1b1d7-5578-428f-8de7-439ece766fbd	Bradley Smith	Candidate for Representative	candidate	WI	H6WI06191	REFUSE-weak-overlap	67	1	1	1000.00	1.0000	66	Adam Smith	H6WA09025	Representative
+1fb0f2a8-bfce-4592-b784-e45fae070602	David Potter	Council Member	elected	AUS	H0OH07153	REFUSE-weak-overlap	1	1	1	1000.00	1.0000	0	Quentin Potter	H0OH07153	Candidate for Representative
+80f3071f-02e4-4ab9-b816-6598a142c605	Jessica Taylor	Candidate for Representative	candidate	AL	H0AL02178	REFUSE-weak-overlap	8	2	1	1000.00	0.5000	7	Nicholas Taylor	H8TX03123	Candidate for Representative
+b12b8697-32a7-4a0a-82d2-2503814a23bf	Anthony Strickland	Candidate for Representative	candidate	CA	H2CA26109	REFUSE-weak-overlap	7	7	1	1000.00	0.1429	1	Marilyn Strickland	H0WA10034	Representative
+b05ae301-41b0-4d76-b1fa-cca373262f0f	Gary Peters	Candidate for Representative	candidate	MI	H8MI09068	REFUSE-weak-overlap	3	1	1	1000.00	1.0000	1	Scott H. Peters	H2CA52089	Representative
+718d6b2f-3505-4b96-b8ea-9516859d22cc	Donald S. Beyer	Representative	elected	VA	H4VA08224	REFUSE-weak-overlap	1952	1	1	1000.00	1.0000	1952	Brad Beyer	S2WI00482	Candidate for Senator
+18604977-f189-4d62-92e2-8cd630667618	Jesus Morales	Candidate for Representative	candidate	CA	H4CA20132	REFUSE-weak-overlap	61	1	1	1000.00	1.0000	44	Eduardo Morales	H4OR03168	Candidate for Representative
+17cca174-a7ae-400a-a0af-3a379a5361da	Stephen Casey	Candidate for Representative	candidate	RI	H4RI01232	REFUSE-weak-overlap	84	4	1	1000.00	0.2500	1	Robert Casey	S6PA00217	Candidate for Senator
+ea447f46-4fbb-4530-84e8-790cf655d149	Shaun Brown	Candidate for Representative	candidate	VA	H6VA02115	REFUSE-weak-overlap	3	1	1	1000.00	1.0000	2	M Brown	H2OH11169	Candidate for Representative
+fc2bd152-60f1-44a7-9890-b06023a1d949	Theresa Sparks	Council Member	elected	SF	H0CA45129	REFUSE-weak-overlap	1	1	1	1000.00	1.0000	0	Lisa Sparks	H0CA45129	Candidate for Representative
+aa76cc1b-ff34-42e8-8cbc-c009d4f7a6ae	Gloria Esparza	Council Member	elected	AUS	H6TX28082	REFUSE-weak-overlap	2	2	2	1000.00	1.0000	0	Juan Esparza	H6TX28082	Candidate for Representative
+113e0cf2-d891-443d-9494-11c1e9189d39	Don Bacon	Representative	elected	NE	H6NE02125	REFUSE-weak-overlap	3525	1	1	1000.00	1.0000	1753	Mary Bacon	H0WA10117	Candidate for Representative
+5a8a21dd-c027-4417-bb00-4d4de6e90c0a	Rey Arellano	Council Member	elected	AUS	H6CA49136	REFUSE-weak-overlap	1	1	1	1000.00	1.0000	0	Julian Arellano	H6CA49136	Candidate for Representative
+0c7f6130-c765-4a94-8d5e-1debb02fd69b	David Young	Candidate for Representative	candidate	IA	S4IA00103	REFUSE-weak-overlap	21	1	1	1000.00	1.0000	0	Todd Young	S6IN00191	Senator
+4f9f38b9-22c3-406a-9e94-c2e92186f16e	Dom Jones	Candidate for Representative	candidate	CA	H4CA47093	REFUSE-weak-overlap	10	3	2	1000.00	0.6667	3	Mondaire Jones	H0NY17174	Candidate for Representative
+a062ed4f-c96a-4f3f-b705-712581bd3f4b	Lateefah Simon	Representative	elected	CA	H4CA12154	REFUSE-weak-overlap	2242	1	1	1000.00	1.0000	794	Jo Simon	H2NY10266	Candidate for Representative
+52836d74-28cb-42a0-b947-892b607f4d63	Christopher Peters	Candidate for Representative	candidate	IA	H6IA02161	REFUSE-weak-overlap	2	1	1	1000.00	1.0000	1	Scott H. Peters	H2CA52089	Representative
+58c25ed7-7924-4ddb-bd76-57ab5a5e17e5	Charise Williams	Candidate for Representative	candidate	IL	H2IL01372	REFUSE-weak-overlap	3	1	1	1000.00	1.0000	0	Nikema Williams	H0GA05301	Representative
+60c000f6-f01a-41d0-a005-63bedc247a39	Elizabeth Johnson	Candidate for Representative	candidate	GA	H0GA12059	REFUSE-weak-overlap	29	2	2	1000.00	1.0000	4	Gloria Johnson	S4TN00526	Candidate for Senator
+afcf9718-a4c6-476b-96ca-ec8f982d6eef	Jonathan Evans	Candidate for Senator	candidate	WV	S6WV00147	REFUSE-weak-overlap	371	2	2	850.00	1.0000	95	Gabe Evans	H4CO08034	Representative
+1a1a9a48-b1cd-447c-97a7-1b82217a8ff8	Leela Gray	Candidate for Representative	candidate	FL	H6FL13312	REFUSE-weak-overlap	329	4	2	800.00	0.5000	50	Adam Gray	H2CA13115	Representative
+ebd49f2e-6ccb-40e5-91d6-ea955392c7d8	Maxwell Burke	Council Member	elected	SEA	H6TN01537	REFUSE-weak-overlap	4	3	3	778.00	1.0000	1	Robert Burke	H2MA08090	Candidate for Representative
+f9c370ec-f992-45f8-bbc1-b4a0b23e2bb8	Dominica Henderson	Council Member	elected	SF	H4OH02263	REFUSE-weak-overlap	5	2	2	750.00	1.0000	0	Matthew Henderson	H4OH02263	Candidate for Representative
+7d815d3e-c7da-4ff9-8c19-86f0ac908ede	James Wynn	Federal Judge	elected	US		REFUSE-weak-overlap	1	1	1	746.00	1.0000	0	Douglas Wynn	H4NJ03270	Candidate for Representative
+83f08955-3355-4d11-bccd-bdf2edfeb987	Monica Kaspar	Council Member	elected	AUS	H2IL06132	REFUSE-weak-overlap	1	1	1	669.00	1.0000	0	Scott Kaspar	H2IL06132	Candidate for Representative
+718051ac-a1a0-4eb4-8ac6-d6dc3a15507b	Lauren Underwood	Representative	elected	IL	H8IL14174	REFUSE-weak-overlap	3200	2	2	550.00	1.0000	1510	Andrew Underwood	H6GA14276	Candidate for Representative
+5b7946e6-5e45-4304-bcf1-8edd9f8395e5	Jamie Davis	Candidate for Senator	candidate	LA	S6LA00615	REFUSE-weak-overlap	228	3	2	550.00	0.6667	118	Donald G. Davis	H2NC02287	Representative
+fcf3f9c7-5f50-434d-9f74-dcaa4d17fe50	Charlie Mcclintock	Candidate for Representative	candidate	IA	H6IA02229	REFUSE-weak-overlap	13	12	1	520.00	0.0833	9	Tom McClintock	H8CA04152	Representative
+df3e50a6-2080-4745-bbb9-d3c3ba4ffe31	Tim Smith	Candidate for Representative	candidate	IN	H4IN03232	REFUSE-weak-overlap	125	1	1	520.00	1.0000	57	Jason Smith	H4MO08162	Representative
+3cc03a5d-ade8-4154-b5a5-afc662f52a8c	Jessica Morse	Candidate for Representative	candidate	CA	H8CA04210	REFUSE-weak-overlap	1750	1	1	500.00	1.0000	403	Andrea Morse	H4NY11211	Candidate for Representative
+acdcac4f-fe8b-46bc-81fa-d9753f25ed0e	Timothy Ryan	Candidate for President	candidate	US	P00011338	REFUSE-weak-overlap	13	1	1	500.00	1.0000	0	Patrick Ryan	H8NY19223	Representative
+7f0b1bca-891d-4d14-a5a7-f1446ce8b0e9	Anthony Daniels	Candidate for Representative	candidate	AL	H4AL02162	REFUSE-weak-overlap	441	1	1	500.00	1.0000	244	Shamaine Daniels	H2PA10124	Candidate for Representative
+87439a0f-2158-442f-b4e3-05366e1c62dd	Devin Davis	Candidate for Representative	candidate	LA	H4LA02111	REFUSE-weak-overlap	104	1	1	500.00	1.0000	83	Donald G. Davis	H2NC02287	Representative
+a7d26cba-25a5-4a52-8821-6d0d4727bb0e	Ron Harris	Candidate for Representative	candidate	MN	H4MN03084	REFUSE-weak-overlap	64	6	1	500.00	0.1667	41	Kamala Harris	P00009423	Candidate for President
+70d9bb3e-fe77-4a84-80df-19b8438b3bf9	Esther Montoya	Council Member	elected	AUS	H6AZ01413	REFUSE-weak-overlap	1	1	1	500.00	1.0000	0	Angie Montoya	H6AZ01413	Candidate for Representative
+9100a12b-f829-4eb1-b313-4376680a8d62	Regina Barr	Candidate for Representative	candidate	MN	H0MN02142	REFUSE-weak-overlap	3	3	1	500.00	0.3333	0	Andy Barr	H0KY06104	Representative
+9bd18241-42e6-4831-8ba6-975a6533207e	Ronda Kennedy	Candidate for Representative	candidate	CA	H0CA26145	REFUSE-weak-overlap	2	1	1	500.00	1.0000	1	John Kennedy	S4LA00065	Senator
+5043224e-a1e9-4c49-ad6a-08d2a07b1cce	Laura Jones	Candidate for Representative	candidate	TX	H0TX08145	REFUSE-weak-overlap	38	2	1	500.00	0.5000	36	Mondaire Jones	H0NY17174	Candidate for Representative
+9a71fd5e-95c9-467d-8caa-840301621732	Douglas Bell	Candidate for President	candidate	US	P40019507	REFUSE-weak-overlap	1	1	1	500.00	1.0000	0	Wesley Bell	H4MO01134	Representative
+bedb096e-991f-42f6-a467-73b192c5ed7a	Richard E. Neal	Representative	elected	MA	H8MA02041	REFUSE-weak-overlap	2835	1	1	500.00	1.0000	2733	Joyce Neal	H6TN05363	Candidate for Representative
+99194d66-c853-4f60-ab17-779dd3881dad	John Williams	Candidate for Representative	candidate	KY	H6KY01169	REFUSE-weak-overlap	48	1	1	500.00	1.0000	12	Shonique Williams	H6CA41356	Candidate for Representative
+ebb3b783-776e-468b-ae53-9005baffeac1	Brian Williams	Candidate for Representative	candidate	TX	H4TX32055	REFUSE-weak-overlap	786	1	1	500.00	1.0000	257	Nikema Williams	H0GA05301	Representative
+10f126c9-0207-436e-bb62-1ae81b71ac76	John Lee	Candidate for Representative	candidate	NV	H4NV04116	REFUSE-weak-overlap	375	2	1	500.00	0.5000	185	Mike Lee	S0UT00165	Senator
+73281d68-76eb-40c6-8972-407494a15b3b	Wendy Davis	Candidate for Representative	candidate	IN	H4IN03158	REFUSE-weak-overlap	396	5	1	500.00	0.2000	4	Donald G. Davis	H2NC02287	Representative
+7ca2bd0f-7ac8-44ca-b9a0-e6c6f01914ef	Charles Kim	Candidate for Representative	candidate	IL	H4IL11245	REFUSE-weak-overlap	27	1	1	480.00	1.0000	20	Young Kim	H8CA39240	Representative
+c514d57d-e582-46bb-9f99-39fd86f0fa68	Rudy Soto	Candidate for Representative	candidate	ID	H0ID01311	REFUSE-weak-overlap	12	12	1	300.00	0.0833	3	Darren Soto	H6FL09179	Representative
+a2a6bda6-12d8-4180-bdc5-505647e28c8a	Bradley Johnson	Candidate for Senator	candidate	MT	S2MT00062	REFUSE-weak-overlap	12	1	1	300.00	1.0000	9	Mike Johnson	H6LA04138	Representative
+cee7ae28-403f-4742-8192-4ee1cabc02ca	Perry Johnson	Candidate for President	candidate	US	P40010928	REFUSE-weak-overlap	11	1	1	250.00	1.0000	1	Ron Johnson	S0WI00197	Senator
+32bebe79-4bb6-4534-94c9-7f4aa842b76b	Erin Marshall	Candidate for Representative	candidate	KY	H4KY01081	REFUSE-weak-overlap	133	4	1	250.00	0.2500	111	Derek Marshall	H2CA08214	Candidate for Representative
+aa25d1e8-35f1-4156-ac55-6cd750154e46	Mark Conway	Candidate for Representative	candidate	MD	H6MD07509	REFUSE-weak-overlap	173	1	1	250.00	1.0000	52	George Conway	H6NY12347	Candidate for Representative
+c694987a-83a4-4e3b-8c60-97428c30455f	Franklin Roth	Candidate for Representative	candidate	MO	H4MO08238	REFUSE-weak-overlap	19	1	1	250.00	1.0000	1	David Roth	H4ID02089	Candidate for Representative
+9539fa43-d1b6-42f6-bf08-e340ee807265	Mark R. Warner	Senator	elected	VA	S6VA00093	REFUSE-weak-overlap	5506	1	1	250.00	1.0000	5388	Jeff Warner	H2MD04307	Candidate for Representative
+09ce6d4d-f9c3-41eb-a937-126e11eed34e	Bernard Taylor	Candidate for Representative	candidate	FL	H6FL21034	REFUSE-weak-overlap	128	1	1	250.00	1.0000	91	Shannon Taylor	H6VA01299	Candidate for Representative
+1ecfb3dc-8518-4312-8b93-d83f09de9d09	Elizabeth Funk	Council Member	elected	AUS	H0IL12092	REFUSE-weak-overlap	1	1	1	250.00	1.0000	0	Joel Funk	H0IL12092	Candidate for Representative
+3bc8b659-d5e4-4c47-858e-5698646655fe	Jared Sullivan	Candidate for Senator	candidate	NH	S6NH00190	REFUSE-weak-overlap	75	1	1	250.00	1.0000	48	Maura Sullivan	H8NH01186	Candidate for Representative
+a090e2a0-4e9f-4dec-9420-bea450496595	James Ford	Candidate for Representative	candidate	IN	H6IN05307	REFUSE-weak-overlap	217	1	1	250.00	1.0000	99	Earle Ford	H6FL13239	Candidate for Representative
+b76428ed-1dd8-4856-b26b-5d8b201097d2	Sheryl Johnson	Candidate for Representative	candidate	SD	H4SD00064	REFUSE-weak-overlap	170	3	1	225.00	0.3333	137	Gloria Johnson	S4TN00526	Candidate for Senator
+9ab6bcc1-52df-47aa-b703-3bfcd776255b	Sean Higgins	Candidate for Representative	candidate	ID	H4ID02097	REFUSE-weak-overlap	1	1	1	208.00	1.0000	0	Clay Higgins	H6LA03148	Representative
+80546f67-32f8-46cc-b632-c441e9c88507	Clay Fuller	Representative	elected	GA	H0GA14030	REFUSE-weak-overlap	675	1	1	200.00	1.0000	685	Trevor Fuller	S0NC00285	Candidate for Senator
