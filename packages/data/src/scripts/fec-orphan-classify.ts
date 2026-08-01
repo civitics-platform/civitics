@@ -316,16 +316,28 @@ export const fecState = (id: string | null): string => (id ?? "").slice(2, 4).to
  * never match a federal seat — which is the correct answer for them.
  */
 export function stateAgrees(e: EnrichedRow): boolean {
-  const ours = (e.jurisdiction ?? "").toUpperCase();
-  const theirs = fecState(e.twin_fec_id);
+  return stateMatches(e.jurisdiction, e.twin_fec_id);
+}
+
+/** Lower-level form of `stateAgrees`, usable against any CAND_ID. */
+export function stateMatches(jurisdiction: string | null, fecId: string | null): boolean {
+  const ours = (jurisdiction ?? "").toUpperCase();
+  const theirs = fecState(fecId);
   return ours.length === 2 && theirs.length === 2 && ours === theirs;
 }
 
-/** Does the twin's FEC id describe the seat this suspect actually holds? */
-export function seatAgrees(e: EnrichedRow): boolean {
-  const office = fecOffice(e.twin_fec_id);
+/**
+ * Does `fecId` describe the seat an official with this role + jurisdiction
+ * actually holds? Chamber AND state — chamber alone is far too coarse.
+ */
+export function seatMatches(
+  roleTitle: string | null,
+  jurisdiction: string | null,
+  fecId: string | null,
+): boolean {
+  const office = fecOffice(fecId);
   if (!office) return false;
-  const role = e.role_title ?? "";
+  const role = roleTitle ?? "";
   const officeOk =
     (office === "S" && (role === "Senator" || role === "Candidate for Senator")) ||
     (office === "H" && (role === "Representative" || role === "Candidate for Representative")) ||
@@ -333,7 +345,12 @@ export function seatAgrees(e: EnrichedRow): boolean {
   // Anything else (Council Member, Mayor, agency titles…) holds no federal
   // seat at all, so a federal CAND_ID can never legitimately be theirs.
   if (!officeOk) return false;
-  return stateAgrees(e);
+  return stateMatches(jurisdiction, fecId);
+}
+
+/** Does the twin's FEC id describe the seat this suspect actually holds? */
+export function seatAgrees(e: EnrichedRow): boolean {
+  return seatMatches(e.role_title, e.jurisdiction, e.twin_fec_id);
 }
 
 /**
@@ -399,6 +416,404 @@ export function classify(rows: SuspectRow[]): { boundary: Boundary; classified: 
     return { ...e, branch, decidedBy, stateOk: stateAgrees(e) };
   });
   return { boundary, classified };
+}
+
+// ---------------------------------------------------------------------------
+// FIX-934 — CROSS-PERSON decomposition
+//
+// WHY THIS IS ROW-LEVEL AND NOT PER-OFFICIAL
+// ------------------------------------------
+// The PR-2b design assumed one suspect maps to ONE diverted CAND_ID, so a
+// single collision rate against the best twin would classify it DIVERTED (move
+// the money) or DUPLICATED (delete it). Measured on the data that assumption is
+// false, and the reference case is the one the design was written around:
+//
+//   David Porter (federal judge) holds $7,391,766 in 6,133 rows, which decompose
+//   by cycle into THREE different people's money —
+//     2024  5,660 rows  $5,693,249  100% held by Katherine Porter  S4CA00522
+//     2026     31 rows     $25,510  100% held by Ferguson Porter   H6CA41232
+//     2020+22 442 rows  $1,673,007  held by NOBODY (all PAC, Orange-County
+//                                   signature — Katie Porter's HOUSE money,
+//                                   whose row H8CA45130 sits at $0)
+//
+// A surname-matched suspect accumulates money from EVERY same-surname CAND_ID
+// the matcher ever mis-resolved, so composite holdings are the normal shape
+// rather than the exception. A whole-official collision rate against the single
+// best twin reports 92.3% for that judge — close enough to "~100%" to read as
+// DUPLICATED, which would delete $1,673,007 that no other row holds.
+//
+// So the unit of analysis is the ROW, not the official: a row whose
+// (relationship_type, from_id, cycle_year) key is already held by a
+// surname-matched FEC-bound official is DUPLICATED (deleting it loses nothing);
+// a row held by nobody is DIVERTED (it is the only copy, so it must be moved,
+// never deleted). The per-official verdict is then just the shape of its own
+// row split, and MIXED is a description rather than a failure.
+// ---------------------------------------------------------------------------
+
+/**
+ * Candidate owners for each suspect: same normalised surname, carrying any FEC
+ * id. Surname scope is not a convenience cut — the mis-binding mechanism is
+ * byLastName-pool-driven, so a wrong binding is ALWAYS same-surname.
+ *
+ * Expects a temp table `_xp(suspect_id uuid)`.
+ */
+export const OWNER_SQL = `
+DROP TABLE IF EXISTS _owner;
+CREATE TEMP TABLE _owner AS
+SELECT x.suspect_id,
+       o.id                                AS owner_id,
+       o.full_name                         AS owner_name,
+       o.first_name                        AS owner_first,
+       o.tier                              AS owner_tier,
+       o.role_title                        AS owner_role,
+       COALESCE(o.source_ids->>'fec_candidate_id', o.source_ids->>'fec_id') AS fec_id,
+       COALESCE((SELECT sum(fr.amount_cents) FROM financial_relationships fr
+                  WHERE fr.to_type='official' AND fr.relationship_type='donation'
+                    AND fr.to_id = o.id), 0)::bigint AS owner_donation_cents
+  FROM _xp x
+  JOIN officials s ON s.id = x.suspect_id
+  JOIN officials o
+    ON o.id <> s.id
+   AND regexp_replace(upper(COALESCE(NULLIF(o.last_name,''), o.full_name)), '[^A-Z]', '', 'g')
+     = regexp_replace(upper(COALESCE(NULLIF(s.last_name,''), s.full_name)), '[^A-Z]', '', 'g')
+ WHERE COALESCE(o.source_ids->>'fec_candidate_id', o.source_ids->>'fec_id') IS NOT NULL
+   AND regexp_replace(upper(COALESCE(NULLIF(s.last_name,''), s.full_name)), '[^A-Z]', '', 'g') <> '';
+CREATE INDEX ON _owner(suspect_id);
+`;
+
+/**
+ * Every (suspect row, owner) pair that would COLLIDE under
+ * financial_relationships_relcycle_unique if that row's to_id moved to that
+ * owner.
+ *
+ * `=` rather than IS NOT DISTINCT FROM on from_id / cycle_year: the index is
+ * NULLS DISTINCT, so NULL-keyed rows do not actually collide. (Measured 0 NULL
+ * from_id and 0 NULL cycle_year across all 2,786,610 official-donation rows.)
+ *
+ * SHAPE: both sides are materialized into small temp tables first and then
+ * hash-joined. The obvious formulation — join the suspect's rows straight back
+ * against `financial_relationships` on all four index columns — looks like a
+ * cheap index lookup per row, but it is a nested loop of roughly
+ * (suspect rows x same-surname owners) btree descents into the 8.3M-row index:
+ * measured >12 min on local Docker without finishing, against a 15-minute
+ * statement_timeout. Materializing costs two bounded scans over
+ * `financial_relationships_to` and turns the probe into a hash lookup.
+ */
+export const ROWHIT_SQL = `
+DROP TABLE IF EXISTS _skey;
+CREATE TEMP TABLE _skey AS
+SELECT fr.id AS row_id, fr.to_id AS suspect_id, fr.relationship_type,
+       fr.from_id, fr.cycle_year, fr.amount_cents
+  FROM financial_relationships fr
+  JOIN _xp x ON x.suspect_id = fr.to_id
+ WHERE fr.to_type = 'official';
+
+DROP TABLE IF EXISTS _okey;
+CREATE TEMP TABLE _okey AS
+SELECT ow.suspect_id, ow.owner_id, b.relationship_type, b.from_id, b.cycle_year,
+       b.amount_cents AS owner_amount_cents
+  FROM _owner ow
+  JOIN financial_relationships b
+    ON b.to_type = 'official' AND b.to_id = ow.owner_id;
+
+ANALYZE _skey;
+ANALYZE _okey;
+
+DROP TABLE IF EXISTS _rowhit;
+CREATE TEMP TABLE _rowhit AS
+SELECT k.row_id, k.suspect_id, o.owner_id, k.relationship_type, k.cycle_year, k.amount_cents,
+       o.owner_amount_cents
+  FROM _skey k
+  JOIN _okey o
+    ON o.suspect_id        = k.suspect_id
+   AND o.relationship_type = k.relationship_type
+   AND o.from_id           = k.from_id
+   AND o.cycle_year        = k.cycle_year;
+CREATE INDEX ON _rowhit(suspect_id);
+CREATE INDEX ON _rowhit(row_id);
+ANALYZE _rowhit;
+`;
+
+/**
+ * Amount parity on the deletable (CROSS) rows.
+ *
+ * "The true owner already holds it, so deleting the suspect's copy loses
+ * nothing" is only true if the two copies carry the SAME amount. They are
+ * aggregated rows (`aggregated: true, tx_count: N`), so two bindings written by
+ * runs at different times can hold different cumulative totals for the same
+ * (relationship_type, from_id, cycle_year) key — and the suspect's copy is
+ * sometimes the LARGER one. Measured on Shontel M. Brown: 42,681 shared keys
+ * against Sherrod Brown, of which 533 disagree, with the suspect's side higher
+ * by $455,149 in aggregate. A plain delete would destroy that difference rather
+ * than de-duplicate it, so phase 2 needs FIX-933's fresher-wins rule on these
+ * rows, not an unconditional delete.
+ */
+export const PARITY_SQL = `
+SELECT p.suspect_id,
+       count(*)::bigint                                                        AS cross_rows,
+       count(*) FILTER (WHERE p.suspect_cents <> p.owner_cents)::bigint        AS mismatch_rows,
+       COALESCE(sum(p.suspect_cents - p.owner_cents)
+                FILTER (WHERE p.suspect_cents > p.owner_cents), 0)::bigint     AS suspect_excess_cents,
+       COALESCE(sum(p.owner_cents - p.suspect_cents)
+                FILTER (WHERE p.owner_cents > p.suspect_cents), 0)::bigint     AS owner_excess_cents
+  FROM (
+    SELECT rc.suspect_id, rc.row_id,
+           rc.amount_cents             AS suspect_cents,
+           max(h.owner_amount_cents)   AS owner_cents
+      FROM _rowclass rc
+      JOIN _rowhit h   ON h.row_id = rc.row_id
+      JOIN _ownrel rel ON rel.suspect_id = h.suspect_id AND rel.owner_id = h.owner_id
+                      AND rel.relation = 'CROSS'
+     WHERE rc.class = 'CROSS'
+     GROUP BY 1,2,3) p
+ GROUP BY 1;
+`;
+
+export interface ParityRow {
+  suspect_id: string;
+  cross_rows: string;
+  mismatch_rows: string;
+  suspect_excess_cents: string;
+  owner_excess_cents: string;
+}
+
+/** The `_owner` table verbatim, so owners can be SAME/CROSS-classified in TS. */
+export const ALL_OWNERS_SQL = `
+SELECT suspect_id, owner_id, owner_name, owner_first, owner_tier, owner_role, fec_id,
+       owner_donation_cents
+  FROM _owner ORDER BY suspect_id, fec_id;
+`;
+
+export interface OwnerBase {
+  suspect_id: string;
+  owner_id: string;
+  owner_name: string | null;
+  owner_first: string | null;
+  owner_tier: string | null;
+  owner_role: string | null;
+  fec_id: string | null;
+  owner_donation_cents: string;
+}
+
+export type OwnerRelation = "SAME" | "CROSS";
+
+/**
+ * Is this owner the SAME human as the suspect, or a different one?
+ *
+ * THIS IS THE DISTINCTION THE WHOLE-OFFICIAL MODEL COLLAPSED, AND IT DECIDES
+ * WHETHER A DUPLICATED ROW MAY BE DELETED.
+ *
+ * The FIX-930 branch classifier answers same-vs-cross once, for the suspect
+ * against its single best-overlap twin. But a suspect overlaps MANY
+ * same-surname owners, and they are not all the same kind of counterparty. Two
+ * measured cases where the best twin is a different person but a lesser-overlap
+ * owner is the suspect HERSELF:
+ *
+ *   Shontel M. Brown  (Representative, OH-11)
+ *     best twin  Sherrod Brown   S6OH00163   $47.3M  → different person
+ *     but also   M Brown         H2OH11169    $2.3M  → Candidate for
+ *                Representative, OH, district 11 — HER OWN candidate row.
+ *   Al Green  (Representative, TX-9)
+ *     also       Alexander Green H4TX09095    $1.2M  → Candidate for
+ *                Representative, TX, district 09 — HIS OWN row; FEC files his
+ *                legal name, so the first names disagree on the surface.
+ *
+ * Deleting the suspect's side of a SAME-person overlap deletes a sitting
+ * member's own money from their own page. Those pairs are FIX-933 merges (the
+ * ELECTED row survives, the candidate row is neutralised) — the opposite
+ * direction from a cross-person delete.
+ *
+ * Uses the same union-of-two-signals rule as `branchOf`, for the same reasons:
+ * name alone is unreliable (FEC files legal names) and seat alone cannot see
+ * municipal officials.
+ */
+export function ownerRelation(
+  suspect: {
+    first_name: string | null;
+    full_name: string;
+    role_title: string | null;
+    jurisdiction: string | null;
+  },
+  owner: Pick<OwnerBase, "owner_first" | "owner_name" | "fec_id">,
+): { relation: OwnerRelation; decidedBy: string } {
+  const a = officialFirstKey(suspect.first_name, suspect.full_name);
+  const b = officialFirstKey(owner.owner_first, owner.owner_name);
+  const nameOk = a !== "" && b !== "" && a === b;
+  const seatOk = seatMatches(suspect.role_title, suspect.jurisdiction, owner.fec_id);
+  if (!nameOk && !seatOk) return { relation: "CROSS", decidedBy: "neither" };
+  return {
+    relation: "SAME",
+    decidedBy: nameOk && seatOk ? "name+seat" : nameOk ? "name" : "seat",
+  };
+}
+
+/**
+ * Classify every suspect row by the STRONGEST claim on it. Expects a temp table
+ * `_ownrel(suspect_id uuid, owner_id uuid, relation text)`.
+ *
+ * SAME wins over CROSS deliberately: if the suspect's own candidate row holds
+ * the same key, the money is the suspect's own regardless of which other people
+ * also happen to hold it, and it must not be deleted from the suspect.
+ */
+export const ROWCLASS_SQL = `
+DROP TABLE IF EXISTS _rowclass;
+CREATE TEMP TABLE _rowclass AS
+SELECT k.row_id, k.suspect_id, k.amount_cents, k.cycle_year, k.relationship_type,
+       CASE WHEN bool_or(rel.relation = 'SAME')  THEN 'SAME'
+            WHEN count(rel.relation) > 0         THEN 'CROSS'
+            ELSE 'DIVERTED' END AS class
+  FROM _skey k
+  LEFT JOIN _rowhit h  ON h.row_id = k.row_id
+  LEFT JOIN _ownrel rel ON rel.suspect_id = h.suspect_id AND rel.owner_id = h.owner_id
+ GROUP BY 1,2,3,4,5;
+CREATE INDEX ON _rowclass(suspect_id);
+ANALYZE _rowclass;
+`;
+
+/**
+ * Per-suspect three-way split.
+ *
+ *   same_*  — duplicated against the suspect's OWN other row. FIX-933 merge
+ *             territory; the suspect KEEPS this money.
+ *   cross_* — duplicated against a DIFFERENT person who already holds it.
+ *             Deletable from the suspect; that is the only safe delete here.
+ *   div_*   — held by nobody. The only copy, so it can only ever be moved.
+ */
+export const SPLIT_SQL = `
+SELECT s.suspect_id,
+       COALESCE(c.total_rows, 0)::bigint  AS total_rows,
+       COALESCE(c.total_cents, 0)::bigint AS total_cents,
+       COALESCE(c.same_rows, 0)::bigint   AS same_rows,
+       COALESCE(c.same_cents, 0)::bigint  AS same_cents,
+       COALESCE(c.cross_rows, 0)::bigint  AS cross_rows,
+       COALESCE(c.cross_cents, 0)::bigint AS cross_cents,
+       COALESCE(c.div_rows, 0)::bigint    AS div_rows,
+       COALESCE(c.div_cents, 0)::bigint   AS div_cents
+  FROM _xp s
+  LEFT JOIN LATERAL (
+        SELECT count(*)::bigint                                                  AS total_rows,
+               COALESCE(sum(r.amount_cents), 0)::bigint                          AS total_cents,
+               count(*) FILTER (WHERE r.class='SAME')::bigint                    AS same_rows,
+               COALESCE(sum(r.amount_cents) FILTER (WHERE r.class='SAME'), 0)::bigint  AS same_cents,
+               count(*) FILTER (WHERE r.class='CROSS')::bigint                   AS cross_rows,
+               COALESCE(sum(r.amount_cents) FILTER (WHERE r.class='CROSS'), 0)::bigint AS cross_cents,
+               count(*) FILTER (WHERE r.class='DIVERTED')::bigint                AS div_rows,
+               COALESCE(sum(r.amount_cents) FILTER (WHERE r.class='DIVERTED'), 0)::bigint AS div_cents
+          FROM _rowclass r WHERE r.suspect_id = s.suspect_id) c ON TRUE;
+`;
+
+/** Per-(suspect, owner) overlap — which owner already holds how much of it. */
+export const PER_OWNER_SQL = `
+SELECT r.suspect_id, r.owner_id, o.owner_name, o.fec_id, o.owner_tier, o.owner_role,
+       o.owner_donation_cents, rel.relation,
+       count(*)::bigint                       AS shared_rows,
+       COALESCE(sum(r.amount_cents), 0)::bigint AS shared_cents,
+       min(r.cycle_year)                      AS first_cycle,
+       max(r.cycle_year)                      AS last_cycle
+  FROM _rowhit r
+  JOIN _owner o    ON o.suspect_id = r.suspect_id AND o.owner_id = r.owner_id
+  JOIN _ownrel rel ON rel.suspect_id = r.suspect_id AND rel.owner_id = r.owner_id
+ GROUP BY 1,2,3,4,5,6,7,8
+ ORDER BY r.suspect_id, shared_rows DESC;
+`;
+
+/**
+ * The DIVERTED residue, per suspect and cycle: rows NO surname-matched
+ * FEC-bound official holds. These are the only copy of that money, so they can
+ * only ever be MOVED — deleting them destroys data. Reported per cycle because
+ * that is the axis the composite splits on.
+ */
+export const DIVERTED_SQL = `
+SELECT r.suspect_id, r.relationship_type, r.cycle_year,
+       count(*)::bigint                          AS rows,
+       COALESCE(sum(r.amount_cents), 0)::bigint  AS cents,
+       count(*) FILTER (WHERE fr.metadata->>'fec_committee_id' IS NOT NULL)::bigint AS pac_rows
+  FROM _rowclass r
+  JOIN financial_relationships fr ON fr.id = r.row_id
+ WHERE r.class = 'DIVERTED'
+ GROUP BY 1,2,3
+ ORDER BY 1,2,3;
+`;
+
+/**
+ * Same-surname FEC-bound officials holding at or near $0 — the candidate
+ * destinations for a suspect's DIVERTED rows. A $0 row adjacent to a suspect
+ * holding money is the strongest reattribution signal available, but it is a
+ * HYPOTHESIS: nothing in financial_relationships records which CAND_ID a row
+ * was written for (metadata carries only `source`, `tx_count`, `aggregated`,
+ * `donor_fingerprint` or `fec_committee_id` — never a CAND_ID), so the owner
+ * cannot be DERIVED from the money. It has to be reviewed.
+ */
+export const ZERO_OWNER_SQL = `
+SELECT suspect_id, owner_id, owner_name, fec_id, owner_tier, owner_role, owner_donation_cents
+  FROM _owner
+ WHERE owner_donation_cents = 0
+ ORDER BY suspect_id, fec_id;
+`;
+
+export interface SplitRow {
+  suspect_id: string;
+  total_rows: string;
+  total_cents: string;
+  same_rows: string;
+  same_cents: string;
+  cross_rows: string;
+  cross_cents: string;
+  div_rows: string;
+  div_cents: string;
+}
+
+export interface OwnerRow {
+  suspect_id: string;
+  owner_id: string;
+  owner_name: string | null;
+  fec_id: string | null;
+  owner_tier: string | null;
+  owner_role: string | null;
+  owner_donation_cents: string;
+  relation: OwnerRelation;
+  shared_rows: string;
+  shared_cents: string;
+  first_cycle: number | null;
+  last_cycle: number | null;
+}
+
+export interface DivertedRow {
+  suspect_id: string;
+  relationship_type: string;
+  cycle_year: number | null;
+  rows: string;
+  cents: string;
+  pac_rows: string;
+}
+
+export interface ZeroOwnerRow {
+  suspect_id: string;
+  owner_id: string;
+  owner_name: string | null;
+  fec_id: string | null;
+  owner_tier: string | null;
+  owner_role: string | null;
+  owner_donation_cents: string;
+}
+
+export type Verdict = "DIVERTED" | "DUPLICATED" | "MIXED" | "SELF-SPLIT" | "EMPTY";
+
+/**
+ * Verdict from the three-way row split. `MIXED` is a real and common outcome —
+ * see the header — not an error state; it means the remediation for that
+ * official is per-row rather than per-official.
+ *
+ * `SELF-SPLIT` means every duplicated row belongs to the suspect themselves, so
+ * NOTHING here may be deleted from them — it is a FIX-933 same-person merge
+ * wearing a cross-person label, and it belongs in that PR rather than this one.
+ */
+export function verdictOf(sameRows: number, crossRows: number, divRows: number): Verdict {
+  if (sameRows + crossRows + divRows === 0) return "EMPTY";
+  if (crossRows === 0 && divRows === 0) return "SELF-SPLIT";
+  if (divRows === 0 && sameRows === 0) return "DUPLICATED";
+  if (crossRows === 0 && sameRows === 0) return "DIVERTED";
+  return "MIXED";
 }
 
 // ---------------------------------------------------------------------------

@@ -78,6 +78,8 @@
     "data:sybil-scan": "tsx --env-file=../../.env.local src/pipelines/sybil-scan/index.ts",
     "data:audit-cutover-indexes": "tsx --env-file=../../.env.local src/scripts/cutover-index-audit.ts",
     "data:audit-fe-fk-surface": "tsx --env-file=../../.env.local src/scripts/audit-fe-fk-surface.ts",
+    "data:audit:cross-person": "tsx --env-file=../../.env.local src/scripts/audit-cross-person-misattribution.ts",
+    "data:audit:cross-person:prod": "tsx --env-file=../../.env.local.prod src/scripts/audit-cross-person-misattribution.ts",
     "data:audit:fec-attribution": "tsx --env-file=../../.env.local src/scripts/audit-fec-orphan-attribution.ts",
     "data:audit:fec-attribution:prod": "tsx --env-file=../../.env.local.prod src/scripts/audit-fec-orphan-attribution.ts",
     "data:audit-summary-context": "tsx --env-file=../../.env.local src/scripts/audit-summary-context.ts",
