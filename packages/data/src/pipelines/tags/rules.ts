@@ -15,6 +15,7 @@
  *   pnpm --filter @civitics/data data:tag-rules
  */
 
+import type { Client } from "pg";
 import { createAdminClient } from "@civitics/db";
 import { startSync, completeSync, failSync } from "../sync-log";
 import { selectDirect, rollupJsonbDirect } from "../../lib/heavy-rebuild";
@@ -547,25 +548,86 @@ const TAG_COLUMNS = [
 // so ON CONFLICT (cols) DO UPDATE matches PostgREST merge-duplicates byte-for-
 // byte. A non-zero `failed` now signals a real data/constraint problem rather
 // than a swallowed timeout drop.
-async function upsertTags(tags: TagInsert[]): Promise<number> {
+//
+// FIX-949: takes the CALLER's client rather than opening its own, so the upsert
+// lands inside the caller's clear+upsert transaction (see withTagRebuild below).
+// It stays a plain bulkUpsert — the transaction is opened one level up, never
+// around bulkUpsert itself, whose autocommit-per-chunk behaviour FIX-754's
+// resume support depends on.
+async function upsertTags(client: Client, tags: TagInsert[]): Promise<number> {
   if (tags.length === 0) return 0;
   const rows = tags.map((t) => [
     t.entity_type, t.entity_id, t.tag, t.tag_category,
     t.display_label, t.display_icon, t.visibility,
     t.generated_by, t.confidence, t.pipeline_version, t.metadata,
   ]);
-  const { upserted, failed } = await withDirectClient((client) =>
-    bulkUpsert(client, {
-      table: "entity_tags",
-      columns: [...TAG_COLUMNS],
-      conflictColumns: ["entity_type", "entity_id", "tag", "tag_category"],
-      jsonbColumns: ["metadata"],
-      rows,
-      label: "entity_tags",
-    }),
-  );
-  if (failed > 0) console.error(`    entity_tags bulk upsert: ${failed} row(s) failed`);
+  const { upserted, failed } = await bulkUpsert(client, {
+    table: "entity_tags",
+    columns: [...TAG_COLUMNS],
+    conflictColumns: ["entity_type", "entity_id", "tag", "tag_category"],
+    jsonbColumns: ["metadata"],
+    rows,
+    label: "entity_tags",
+  });
+  if (failed > 0) {
+    // Inside a transaction a failed chunk has already aborted it — every later
+    // statement errors and the COMMIT in withTagRebuild degrades to a ROLLBACK.
+    // Throw rather than return a short count so the caller rolls back loudly
+    // instead of reporting a partial rebuild as a success.
+    throw new Error(`entity_tags bulk upsert: ${failed} row(s) failed`);
+  }
   return upserted;
+}
+
+/**
+ * FIX-949 / FIX-945 — run one rule tagger's authoritative rebuild as a single
+ * transaction: clear(s) + upsert, all-or-nothing, on one connection.
+ *
+ * The bug this exists to close: every tagger cleared its category in one
+ * transaction and then upserted the recomputed set in a series of separate
+ * autocommitted chunks. A process death anywhere in that upsert window — the
+ * cancelled nightly of 2026-07-30 05:30 UTC — left the DELETEs committed and
+ * the INSERTs half-applied. Prod lost 16k of 40k `rule` industry rows and ALL
+ * 425 `curated` ones, and the loss propagated into the sector-affinity rollups
+ * before anyone noticed. Ordering discipline (FIX-443) cannot buy this: it
+ * guards against exceptions, and by the time the process is killed the DELETEs
+ * have already committed.
+ *
+ * Scope is ONE transaction per tagger, not one across the run — the three
+ * categories are independent, and a green proposals rebuild should not be rolled
+ * back by a financial-entity failure. Largest single transaction is the
+ * financial-entity industry set (~40.5k rows); proposals ~16.5k, officials ~7.1k.
+ *
+ * The reads stay OUTSIDE, before this opens. FIX-443's ordering is still correct
+ * and still load-bearing — the two mechanisms cover different halves: ordering
+ * guards against a partial READ reaching the clear, this guards against a
+ * partial WRITE surviving the clear.
+ */
+async function withTagRebuild<T>(fn: (client: Client) => Promise<T>): Promise<T> {
+  return withDirectClient((client) => runTagRebuildTransaction(client, fn));
+}
+
+/**
+ * The BEGIN/COMMIT/ROLLBACK core of withTagRebuild, split out so it can be
+ * driven by a fake client in tests (opening a real connection is the one part
+ * that cannot be). Exported for tests only — production callers want
+ * withTagRebuild, which owns the connection lifecycle.
+ */
+export async function runTagRebuildTransaction<T>(
+  client: Client,
+  fn: (client: Client) => Promise<T>,
+): Promise<T> {
+  await client.query("BEGIN");
+  try {
+    const out = await fn(client);
+    await client.query("COMMIT");
+    return out;
+  } catch (err) {
+    // Best-effort — if the connection itself is gone the server rolls back for
+    // us, which is precisely the kill case this exists for.
+    await client.query("ROLLBACK").catch(() => {});
+    throw err;
+  }
 }
 
 /**
@@ -588,17 +650,18 @@ async function upsertTags(tags: TagInsert[]): Promise<number> {
  * Direct pg rather than PostgREST: a bare .delete() is subject to the 8s role
  * statement_timeout pinned on the prod PostgREST roles, the same reason the rule
  * clear goes through a timeout-raised RPC.
+ *
+ * FIX-949: takes the caller's client so the DELETE joins the caller's
+ * clear+upsert transaction instead of committing on its own connection.
  */
-async function clearCuratedIndustryTags(): Promise<number> {
-  return withDirectClient(async (client) => {
-    const res = await client.query(
-      `DELETE FROM public.entity_tags
-        WHERE entity_type  = 'financial_entity'
-          AND tag_category = 'industry'
-          AND generated_by = 'curated'`,
-    );
-    return res.rowCount ?? 0;
-  });
+async function clearCuratedIndustryTags(client: Client): Promise<number> {
+  const res = await client.query(
+    `DELETE FROM public.entity_tags
+      WHERE entity_type  = 'financial_entity'
+        AND tag_category = 'industry'
+        AND generated_by = 'curated'`,
+  );
+  return res.rowCount ?? 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -778,16 +841,25 @@ async function tagProposals(db: any): Promise<number> {
   // the freshly-computed set. Upsert-only writes would leave stale,
   // time-sensitive tags — 'urgent'/'closing_soon' from elapsed comment windows
   // and 'new' tags older than 7 days — accumulating indefinitely.
-  const { error: delErr } = await db
-    .from("entity_tags")
-    .delete()
-    .eq("entity_type", "proposal")
-    .eq("generated_by", "rule");
-  if (delErr) console.error("    Error clearing prior proposal rule tags:", delErr.message);
-
-  const totalUpserted = await timed(`proposal tags upsert (n=${allTags.length})`, () =>
-    upsertTags(allTags),
-  );
+  //
+  // FIX-949: clear + upsert run in ONE transaction (withTagRebuild), and the
+  // clear moved off PostgREST onto the same direct-pg client. Two bugs closed at
+  // once. (1) Atomicity: this was clear-in-its-own-txn then autocommitted upsert
+  // chunks, so a kill mid-upsert stranded the DELETE without its INSERTs — the
+  // FIX-945 shape, which hit the financial-entity path only because that is
+  // where the cancelled nightly landed. (2) The old `.delete()` error was
+  // console.error'd and then execution FELL THROUGH into the upsert, writing the
+  // fresh set onto a table that was never cleared — the exact stale-table
+  // outcome FIX-443's ordering was written to prevent, never applied here. A pg
+  // error throws, so a failed clear now aborts the rebuild.
+  const totalUpserted = await withTagRebuild(async (client) => {
+    const cleared = await client.query(
+      `DELETE FROM public.entity_tags
+        WHERE entity_type = 'proposal' AND generated_by = 'rule'`,
+    );
+    console.log(`    Cleared ${cleared.rowCount ?? 0} prior proposal rule tags`);
+    return timed(`proposal tags upsert (n=${allTags.length})`, () => upsertTags(client, allTags));
+  });
   console.log(`    Upserted ${totalUpserted} proposal tags`);
   return totalUpserted;
 }
@@ -1095,17 +1167,23 @@ export async function tagOfficials(db: any): Promise<number> {
   // function: industry rows written by any other job or pipeline would be
   // silently wiped on the next nightly run (the co-owned-rows failure class,
   // cf. FIX-808). If you ever need to write official rule tags from elsewhere,
-  // this DELETE must gain a tag_category scope FIRST.
-  const { error: delErr } = await db
-    .from("entity_tags")
-    .delete()
-    .eq("entity_type", "official")
-    .eq("generated_by", "rule");
-  if (delErr) console.error("    Error clearing prior official rule tags:", delErr.message);
-
-  const totalUpserted = await timed(`official tags upsert (n=${allTags.length})`, () =>
-    upsertTags(allTags),
-  );
+  // this DELETE must gain a tag_category scope FIRST. FIX-949 moved it to
+  // direct pg but deliberately did NOT narrow it — the unscoped ownership is
+  // the protection.
+  //
+  // FIX-949: clear + upsert are one transaction (withTagRebuild), and the clear
+  // is direct-pg on that same client. Same two bugs as tagProposals — a kill
+  // mid-upsert used to strand a committed DELETE (FIX-945's shape, ~7.1k rows
+  // here), and a failed `.delete()` used to log and then upsert onto an uncleared
+  // table. A pg error throws, so the rebuild aborts instead.
+  const totalUpserted = await withTagRebuild(async (client) => {
+    const cleared = await client.query(
+      `DELETE FROM public.entity_tags
+        WHERE entity_type = 'official' AND generated_by = 'rule'`,
+    );
+    console.log(`    Cleared ${cleared.rowCount ?? 0} prior official rule tags`);
+    return timed(`official tags upsert (n=${allTags.length})`, () => upsertTags(client, allTags));
+  });
   console.log(`    Upserted ${totalUpserted} official tags`);
   return totalUpserted;
 }
@@ -1417,26 +1495,39 @@ export async function tagFinancialEntities(db: any): Promise<number> {
   // Authoritative rebuild of the INDUSTRY category only (FIX-443 — 'size' is now
   // cleared+rebuilt server-side by rebuild_financial_entity_size_tags above).
   // Runs only AFTER both the keyword fetch and the NAICS rollup succeeded (each
-  // throws on failure), so a partial load can never wipe good tags. The DELETE
-  // goes through a statement_timeout-raised RPC because the 8s ceiling pinned on
-  // the PostgREST roles under contention cancels a bare .delete(). callWithRetry
-  // THROWS on exhaustion → a failed clear aborts the rebuild rather than
-  // upserting onto a stale table.
-  await callWithRetry<number>("clear_financial_entity_rule_tags(industry)", () =>
-    db.rpc("clear_financial_entity_rule_tags", { p_categories: ["industry"] }),
-  );
+  // throws on failure), so a partial load can never wipe good tags.
+  //
+  // FIX-949 / FIX-945: both clears and the upsert now run in ONE transaction on
+  // ONE direct-pg connection. This is the site the 2026-07-30 05:30 UTC nightly
+  // cancellation actually hit: both DELETEs had committed, the single batched
+  // upsert of ~40.5k rows was mid-flight, and the kill left prod with 24,000 of
+  // 40,148 `rule` rows and ZERO of 425 `curated` ones — applyIndustryOverrides
+  // appends the curated rows to the END of the array, so the tail is exactly
+  // what a truncated upsert drops. FIX-443's ordering was working as designed
+  // and could not help: it guards against a partial READ, not a killed process.
+  //
+  // The rule clear still goes through clear_financial_entity_rule_tags rather
+  // than an inline DELETE — the function carries `SET statement_timeout = '120s'`
+  // and is the tested owner of the category scoping — but it is now invoked as
+  // SELECT over this transaction's client instead of over PostgREST, so it
+  // shares the transaction (and stops depending on the 8s role cap that made
+  // callWithRetry necessary here in the first place).
+  const industryUpserted = await withTagRebuild(async (client) => {
+    await client.query(`SELECT public.clear_financial_entity_rule_tags($1::text[])`, [
+      ["industry"],
+    ]);
 
-  // FIX-916: the RPC above is scoped to generated_by='rule', so the curated rows
-  // need their own clear or a changed/removed override would strand a stale tag
-  // and break the exactly-one-industry invariant. Same position as the rule
-  // clear — after every read, before the upsert.
-  const curatedCleared = await clearCuratedIndustryTags();
-  console.log(`    Cleared ${curatedCleared} prior curated industry tags`);
+    // FIX-916: the function above is scoped to generated_by='rule', so the
+    // curated rows need their own clear or a changed/removed override would
+    // strand a stale tag and break the exactly-one-industry invariant. Same
+    // position as the rule clear — after every read, before the upsert.
+    const curatedCleared = await clearCuratedIndustryTags(client);
+    console.log(`    Cleared ${curatedCleared} prior curated industry tags`);
 
-  const industryUpserted = await timed(
-    `financial industry tags upsert (n=${withOverrides.length})`,
-    () => upsertTags(withOverrides),
-  );
+    return timed(`financial industry tags upsert (n=${withOverrides.length})`, () =>
+      upsertTags(client, withOverrides),
+    );
+  });
   // [FIX-716] size tags moved to pg_cron run_rule_taggers('weekly'); this
   // function now returns only the industry tag count.
   console.log(`    Wrote ${industryUpserted} industry tags (size tags now on pg_cron)`);

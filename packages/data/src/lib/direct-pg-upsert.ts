@@ -212,6 +212,24 @@ export function buildUpsertStatement(spec: {
  * failed chunk does not poison the rest. With the 90min session timeout these
  * failures should not occur — `failed > 0` now signals a real data/constraint
  * problem rather than the old timeout drops.
+ *
+ * DO NOT wrap this function in a transaction (FIX-949). The autocommit-per-chunk
+ * behaviour is load-bearing, not an oversight:
+ *   - FIX-754's `startRowOffset` resume exists ONLY because chunks commit
+ *     independently — "rows before the offset already landed in a prior run" is
+ *     false the moment the whole loop shares one transaction, and the FEC-indiv
+ *     and LittleSis resume paths would silently start re-doing committed work
+ *     (or, worse, believe they had).
+ *   - The `failed += chunk` accounting likewise assumes a poisoned chunk does not
+ *     abort its siblings; inside a transaction the first failure aborts the txn
+ *     and every subsequent chunk errors with "current transaction is aborted".
+ *
+ * Atomicity is the CALLER's job. A caller that needs clear-then-upsert to be
+ * all-or-nothing opens its own `BEGIN`/`COMMIT` on the client it passes in —
+ * see the three rule taggers in pipelines/tags/rules.ts, where a nightly killed
+ * mid-upsert with the DELETEs already committed truncated prod's industry tags
+ * (FIX-945). Those callers do not use `startRowOffset`, so the two mechanisms
+ * never have to coexist on one call.
  */
 export async function bulkUpsert(client: Client, spec: BulkUpsertSpec): Promise<BulkUpsertResult> {
   const chunkSize = spec.chunkSize ?? DEFAULT_CHUNK;
