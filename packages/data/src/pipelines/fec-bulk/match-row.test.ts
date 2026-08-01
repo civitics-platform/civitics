@@ -284,3 +284,96 @@ test("FIX-929 RECORDED DECISION — FEC legal name vs our short name no longer m
     "shipped behavior: no name-fallback match when the FEC legal first name disagrees",
   );
 });
+
+// ---------------------------------------------------------------------------
+// FIX-955 — a RETIRED claim must never be re-selected or re-written
+//
+// FIX-933 neutralises a same-person duplicate by moving its `fec_candidate_id`
+// to `merged_fec_candidate_id`. Nothing in the pipeline knew that marker
+// existed, so the retired stub was re-matched BY NAME — the FIX-929 gate agrees,
+// because it genuinely is the same person — and `persistNewFecIds` wrote the
+// claim back. The money re-split across the pair and the merge undid itself on
+// every run. Measured after one FEC_CYCLES=2020,2022 pass on a clone that had
+// already been merged: 76 rows re-claimed, $309,080,435 re-duplicated.
+//
+// The real pair: Steny H. Hoyer (elected, MD-05) and the Steny Hoyer candidate
+// stub, both claiming H2MD05155.
+// ---------------------------------------------------------------------------
+
+const HOYER_ELECTED = official(
+  "e3cc18ef-131d-424b-aa6f-18d7057de207",
+  "Steny H. Hoyer",
+  "Steny",
+  "Hoyer",
+  "Representative",
+  "MD",
+  { congress_gov: "H000874", fec_candidate_id: "H2MD05155" },
+);
+/** Retired by FIX-933, then re-claimed by the very bug under test. */
+const HOYER_RETIRED_STUB = official(
+  "bf646f79-f45a-434d-8fcf-6cf4ba714951",
+  "Steny Hoyer",
+  "Steny",
+  "Hoyer",
+  "Candidate for Representative",
+  "MD",
+  { fec_candidate_id: "H2MD05155", merged_fec_candidate_id: "H2MD05155" },
+);
+const HOYER_WEBALL = weball("H2MD05155", "HOYER, STENY H", "MD");
+
+test("FIX-955 a retired stub never wins the byFecId slot, even with the id re-written", () => {
+  // Stub first, so a naive last-write-wins index would hand it the slot.
+  const index = buildMatchIndex([HOYER_RETIRED_STUB, HOYER_ELECTED]);
+  assert.equal(
+    index.byFecId.get("H2MD05155"),
+    HOYER_ELECTED.id,
+    "the elected survivor must hold the CAND_ID slot",
+  );
+  assert.equal(matchRow(HOYER_WEBALL, index)?.officialId, HOYER_ELECTED.id);
+});
+
+test("FIX-955 a retired stub is not name-matched when it is the ONLY row left", () => {
+  // The survivor is absent from this index, so the only Hoyer is the retired
+  // stub and the first names agree perfectly. Pre-fix this returned the stub.
+  const index = buildMatchIndex([HOYER_RETIRED_STUB]);
+  assert.equal(
+    matchRow(HOYER_WEBALL, index),
+    null,
+    "a retired claim is permanent — skip rather than re-bind the stub",
+  );
+});
+
+test("FIX-955 the retired row does not count toward name-fallback ambiguity", () => {
+  // Survivor carries no id yet (so the byFecId path cannot fire) and must still
+  // be reachable by name — the retired sibling must not make the pool ambiguous.
+  const survivorNoId = official(
+    "e3cc18ef-131d-424b-aa6f-18d7057de207",
+    "Steny H. Hoyer",
+    "Steny",
+    "Hoyer",
+    "Representative",
+    "MD",
+    { congress_gov: "H000874" },
+  );
+  const index = buildMatchIndex([survivorNoId, HOYER_RETIRED_STUB]);
+  assert.equal(
+    matchRow(HOYER_WEBALL, index)?.officialId,
+    survivorNoId.id,
+    "filtering the retired row must not turn a lone survivor into 'ambiguous'",
+  );
+});
+
+test("FIX-955 retiring one id does not disable an unrelated claim on the same row", () => {
+  const twoIds = official(
+    "00000000-0000-0000-0000-0000000000d1",
+    "Jane Doe",
+    "Jane",
+    "Doe",
+    "Representative",
+    "MD",
+    { fec_candidate_id: "H2MD09999", merged_fec_candidate_id: "H2MD05155" },
+  );
+  const index = buildMatchIndex([twoIds]);
+  assert.equal(index.byFecId.get("H2MD09999"), twoIds.id, "the live claim still stands");
+  assert.equal(index.byFecId.get("H2MD05155"), undefined, "the retired claim does not");
+});

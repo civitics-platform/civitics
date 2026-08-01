@@ -952,10 +952,19 @@ export interface NewFecIdRow {
  */
 export async function persistNewFecIds(client: Client, ids: NewFecIdRow[]): Promise<void> {
   for (const { officialId, fecId, storageKey } of ids) {
+    // FIX-955 — never re-write a claim this row has RETIRED.
+    //
+    // FIX-933 moves a merged duplicate's `fec_candidate_id` to
+    // `merged_fec_candidate_id`; this unconditional jsonb merge used to put it
+    // straight back on the next run, which re-split the money across the pair
+    // and undid the merge ($309,080,435 over 95 rows, measured on a clone).
+    // The guard is in SQL rather than in the caller so it holds even if a
+    // concurrent writer retires the claim between match time and now.
     await client.query(
       `UPDATE public.officials
           SET source_ids = COALESCE(source_ids, '{}'::jsonb) || jsonb_build_object($1::text, $2::text)
-        WHERE id = $3::uuid`,
+        WHERE id = $3::uuid
+          AND COALESCE(source_ids->>'merged_fec_candidate_id', '') <> $2::text`,
       [storageKey, fecId, officialId],
     );
   }

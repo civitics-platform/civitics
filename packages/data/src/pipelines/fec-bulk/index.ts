@@ -437,6 +437,31 @@ export interface MatchIndex {
  * any `fec_id` claim is considered — and the tier preference makes the outcome
  * independent of uuid order rather than arbitrary.
  */
+/**
+ * FIX-955 — has this officials row RETIRED its claim on `key`?
+ *
+ * FIX-933 neutralises a same-person duplicate by moving its `fec_candidate_id`
+ * to `merged_fec_candidate_id` — the money goes to the elected survivor and the
+ * candidate stub keeps the id only as provenance. Nothing in this pipeline used
+ * to know that marker existed, so `matchRow` re-matched the retired stub BY NAME
+ * (the FIX-929 first-name gate passes — it genuinely is the same person) and
+ * `persistNewFecIds` wrote the claim straight back. The money then re-split
+ * across the pair and the merge silently undid itself, every run.
+ *
+ * Measured on a clone where FIX-933 had already been applied, after one
+ * `FEC_CYCLES=2020,2022` pass: 76 candidate rows carrying BOTH markers and
+ * holding money again, and $309,080,435 of freshly double-counted money across
+ * 95 rows — e.g. `Steny Hoyer` (candidate) and `Steny H. Hoyer` (elected) each
+ * holding an identical 510 rows for 2020 and 404 for 2022.
+ *
+ * A retired claim is permanent until a human reverses it, so it is refused
+ * everywhere a CAND_ID can select an official: both index passes below, and the
+ * name fallback in `matchRow`.
+ */
+export function hasRetiredClaim(o: OfficialRecord, key: string): boolean {
+  return o.source_ids["merged_fec_candidate_id"] === key;
+}
+
 export function buildMatchIndex(officials: OfficialRecord[]): MatchIndex {
   const byFecId    = new Map<string, string>();
   const byLastName = new Map<string, OfficialRecord[]>();
@@ -467,7 +492,9 @@ export function buildMatchIndex(officials: OfficialRecord[]): MatchIndex {
   // Pass 1 — fec_candidate_id is the most authoritative key.
   for (const o of officials) {
     const candidateId = o.source_ids["fec_candidate_id"];
-    if (candidateId) claim(candidateId, o);
+    // FIX-955: a re-written claim on an id this row already retired is exactly
+    // the defect; refuse it here rather than letting it win a slot.
+    if (candidateId && !hasRetiredClaim(o, candidateId)) claim(candidateId, o);
   }
 
   // Pass 2 — fec_id, only when its FEC prefix matches the official's current
@@ -478,6 +505,7 @@ export function buildMatchIndex(officials: OfficialRecord[]): MatchIndex {
   for (const o of officials) {
     const fecId = o.source_ids["fec_id"];
     if (!fecId) continue;
+    if (hasRetiredClaim(o, fecId)) continue; // FIX-955
     const prefix    = fecId[0]?.toUpperCase() ?? "";
     const isSenator = o.role_title === "Senator";
     const isRep     = o.role_title === "Representative";
@@ -538,7 +566,15 @@ export function matchRow(row: WeBallRow, index: MatchIndex): MatchResult | null 
   // 2. Name fuzzy match
   const { last, first } = parseFecName(row.candName);
   const key       = last.replace(/[^A-Z]/g, "");
-  const candidates = index.byLastName.get(key) ?? [];
+  // FIX-955 — drop any row that RETIRED this CAND_ID before the pool is sized.
+  // This is the path that actually undid FIX-933: the retired stub is the same
+  // human as the survivor, so the first-name gate agrees and the stub wins the
+  // match on name alone. Filtering here (not after) also keeps the ambiguity
+  // guard honest — the retired row must not count toward `firstPool.length`,
+  // or removing it would silently turn an ambiguous pool into a lone match.
+  const candidates = (index.byLastName.get(key) ?? []).filter(
+    (c) => !hasRetiredClaim(c, row.candId),
+  );
   if (candidates.length === 0) return null;
 
   // Narrow by state if available

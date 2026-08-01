@@ -205,6 +205,58 @@ interface Pair {
   name: string;
 }
 
+/**
+ * FIX-955 repair manifest — pairs this script ALREADY merged that a later FEC
+ * run re-split.
+ *
+ * The pipeline was blind to `merged_fec_candidate_id`, so `matchRow` re-matched
+ * the retired stub by name and `persistNewFecIds` wrote its claim back; the next
+ * cycle pass then wrote money onto it again. FIX-955 closes that hole in the
+ * pipeline, but the money already re-split has to be re-merged.
+ *
+ * This manifest is NOT a heuristic and deliberately does not go through the
+ * FIX-930 classifier: every pair here was adjudicated as same-person by a prior
+ * run of this very script, and `merged_fec_candidate_id` is that decision
+ * recorded on the row. The classifier could not find them anyway — the survivor
+ * now carries a valid `fec_candidate_id`, so the FIX-930 suspect predicate
+ * (`fec_candidate_id IS NULL`) excludes it, which is the same blind spot as
+ * FIX-954.
+ *
+ * Scoped to duplicates that actually hold money again; a retired stub sitting at
+ * zero is already correct and is left alone.
+ */
+const REPAIR_MANIFEST_SQL = `
+-- Aliases are QUOTED to preserve camelCase: these rows are consumed directly as
+-- \`Pair\`, and an unquoted \`AS fec_id\` folds to lower case and lands as
+-- \`row.fec_id\`, leaving \`p.fecId\` undefined. (Caught by _manifest's NOT NULL
+-- on fec_id, which rolled the run back rather than merging on a null id.)
+SELECT s.id                                        AS "survivor",
+       d.id                                        AS "dup",
+       d.source_ids->>'merged_fec_candidate_id'    AS "fecId",
+       COALESCE(s.full_name,'?') || '  ←  ' || COALESCE(d.full_name,'?') AS "name"
+  FROM officials d
+  JOIN officials s
+    ON s.tier    = 'elected'
+   AND s.id     <> d.id
+   AND s.source_ids->>'fec_candidate_id' = d.source_ids->>'merged_fec_candidate_id'
+ WHERE d.tier = 'candidate'
+   AND d.source_ids ? 'merged_fec_candidate_id'
+   -- Only the CLEAN re-claim: the stub took back exactly the id it retired.
+   --
+   -- Measured 4 stubs that instead re-claimed the same human's OLD HOUSE
+   -- CAND_ID while the retired one was their Senate id — Jim Banks
+   -- (live H6IN03229 / retired S4IN00196), Ted Budd, Jon Ossoff, Tom Cotton.
+   -- Merging those would leave a LIVE second claim on the stub, so the next FEC
+   -- run re-binds the House id and re-splits the House-era money again; the
+   -- post-merge assertion below correctly refuses that state. Retiring a second
+   -- id needs merged_fec_candidate_id to be multi-valued, which is a semantics
+   -- change and not part of a repair. Excluded and filed as FIX-956.
+   AND d.source_ids->>'fec_candidate_id' = d.source_ids->>'merged_fec_candidate_id'
+   AND EXISTS (SELECT 1 FROM financial_relationships fr
+                WHERE fr.to_type = 'official' AND fr.to_id = d.id)
+ ORDER BY 4;
+`;
+
 interface DroppedPair {
   name: string;
   reason: string;
@@ -275,6 +327,83 @@ function buildManifest(classified: ClassifiedRow[]): { pairs: Pair[]; dropped: D
     keep.push(p);
   }
   return { pairs: keep, dropped };
+}
+
+/**
+ * Repair-mode gate. Same shape as `verifyManifestInDb` but asserts the
+ * re-split contract instead of the first-merge one: here the survivor is
+ * EXPECTED to already carry `fec_candidate_id` (that is what a completed merge
+ * looks like), and the duplicate must still name it in
+ * `merged_fec_candidate_id`. Anything else is not a re-split of our own merge
+ * and is refused rather than coerced.
+ */
+async function verifyRepairInDb(
+  client: Client,
+  pairs: Pair[],
+): Promise<{ ok: Pair[]; rejected: DroppedPair[] }> {
+  if (pairs.length === 0) return { ok: [], rejected: [] };
+  const rows = await q<{
+    survivor: string;
+    dup: string;
+    survivor_tier: string | null;
+    dup_tier: string | null;
+    survivor_fec: string | null;
+    dup_merged: string | null;
+    survivor_role: string | null;
+    survivor_state: string | null;
+  }>(
+    client,
+    `SELECT m.survivor, m.dup,
+            s.tier AS survivor_tier, d.tier AS dup_tier,
+            s.source_ids->>'fec_candidate_id'        AS survivor_fec,
+            d.source_ids->>'merged_fec_candidate_id' AS dup_merged,
+            s.role_title                             AS survivor_role,
+            upper(js.short_name)                     AS survivor_state
+       FROM _manifest m
+       JOIN officials s ON s.id = m.survivor
+       JOIN officials d ON d.id = m.dup
+       LEFT JOIN jurisdictions js ON js.id = s.jurisdiction_id`,
+  );
+  const byKey = new Map(rows.map((r) => [`${r.survivor}|${r.dup}`, r]));
+  const ok: Pair[] = [];
+  const rejected: DroppedPair[] = [];
+  for (const p of pairs) {
+    const r = byKey.get(`${p.survivor}|${p.dup}`);
+    if (!r) {
+      rejected.push({ name: p.name, reason: "one of the two officials rows no longer exists" });
+      continue;
+    }
+    if (r.survivor_tier !== "elected" || r.dup_tier !== "candidate") {
+      rejected.push({ name: p.name, reason: `live tiers are ${r.survivor_tier}/${r.dup_tier}` });
+      continue;
+    }
+    if (r.survivor_fec !== p.fecId || r.dup_merged !== p.fecId) {
+      rejected.push({
+        name: p.name,
+        reason: `id drift — survivor ${r.survivor_fec}, dup retired ${r.dup_merged}, expected ${p.fecId}`,
+      });
+      continue;
+    }
+    // Same seat re-check as the first merge: the CAND_ID must describe the seat
+    // the survivor actually holds, so a repair can never move money onto the
+    // wrong person even if the marker were somehow wrong.
+    const office = p.fecId[0]?.toUpperCase() ?? "";
+    const state = p.fecId.slice(2, 4).toUpperCase();
+    const role = r.survivor_role ?? "";
+    const officeOk =
+      (office === "S" && role === "Senator") ||
+      (office === "H" && role === "Representative") ||
+      (office === "P" && role === "President");
+    if (!officeOk || state !== (r.survivor_state ?? "")) {
+      rejected.push({
+        name: p.name,
+        reason: `seat re-check failed (${p.fecId} vs ${role}/${r.survivor_state})`,
+      });
+      continue;
+    }
+    ok.push(p);
+  }
+  return { ok, rejected };
 }
 
 /**
@@ -559,6 +688,12 @@ async function main(): Promise<void> {
   const mvsOnly = argv.includes("--mvs-only");
   /** VACUUM alone — the only phase-3 step with no other owner on the schedule. */
   const vacuumOnly = argv.includes("--vacuum-only");
+  /**
+   * FIX-955 — re-merge pairs this script already merged that a later FEC run
+   * re-split. Derives its manifest from `merged_fec_candidate_id` instead of
+   * from the FIX-930 classifier; see REPAIR_MANIFEST_SQL.
+   */
+  const repairResplit = argv.includes("--repair-resplit");
   const apply = argv.includes("--apply") || rollupsOnly || mvsOnly || vacuumOnly;
   const allowProd = argv.includes("--allow-prod");
   const prod = isProd();
@@ -583,7 +718,9 @@ async function main(): Promise<void> {
   console.log(`Connection: ${dbUrl.replace(/:[^:@/]+@/, ":***@")}`);
   console.log(
     `Mode:       ${
-      vacuumOnly
+      repairResplit
+        ? "REPAIR-RESPLIT (FIX-955 re-merge)"
+        : vacuumOnly
         ? "VACUUM-ONLY"
         : mvsOnly
         ? "MVS-ONLY (resume phase 2 tail)"
@@ -700,33 +837,51 @@ async function main(): Promise<void> {
        AND s.source_ids->>'fec_candidate_id' = d.source_ids->>'fec_candidate_id'
        AND NOT EXISTS (SELECT 1 FROM financial_relationships fr
                         WHERE fr.to_type = 'official' AND fr.to_id = d.id)`;
-  await client.query("BEGIN");
-  const reconciled = await run(client, "retire duplicate claim on CAND_ID", reconcileSql);
-  if (apply) {
-    await client.query("COMMIT");
-    if (reconciled > 0) console.log(`  ↳ committed (${reconciled} already-merged duplicates finished)`);
-  } else {
-    await client.query("ROLLBACK");
-    if (reconciled > 0) {
-      console.log(`  ↳ ${reconciled} already-merged duplicate(s) still claim their CAND_ID — --apply retires it`);
+  // Step 0 is skipped in repair mode: its predicate requires the duplicate to
+  // hold NO money, which is precisely the opposite of the state being repaired,
+  // so it would be a no-op that commits outside the repair transaction.
+  if (!repairResplit) {
+    await client.query("BEGIN");
+    const reconciled = await run(client, "retire duplicate claim on CAND_ID", reconcileSql);
+    if (apply) {
+      await client.query("COMMIT");
+      if (reconciled > 0) console.log(`  ↳ committed (${reconciled} already-merged duplicates finished)`);
+    } else {
+      await client.query("ROLLBACK");
+      if (reconciled > 0) {
+        console.log(`  ↳ ${reconciled} already-merged duplicate(s) still claim their CAND_ID — --apply retires it`);
+      }
     }
   }
 
-  // ── Re-derive the manifest (read-only, outside the merge txn) ─────────────
-  console.log("\nRe-deriving the FIX-930 classification live…");
-  await client.query("BEGIN TRANSACTION READ ONLY");
-  const suspects = (await client.query<SuspectRow>(SUSPECT_SQL)).rows;
-  await client.query("COMMIT");
-  const { boundary, classified } = classify(suspects);
-  console.log(`  suspects: ${classified.length}   boundary: frac >= ${boundary.fracCut.toFixed(4)} AND shared >= ${boundary.sharedFloor}`);
-  for (const b of ["CROSS-PERSON MISATTRIBUTION", "SAME-PERSON DUPLICATE", "UNIQUE HOLDER"]) {
-    const n = classified.filter((e) => e.branch === b).length;
-    console.log(`  ${b.padEnd(28)} ${String(n).padStart(4)}`);
-  }
+  // ── Derive the manifest (read-only, outside the merge txn) ────────────────
+  let candidates: Pair[];
+  if (repairResplit) {
+    await client.query("BEGIN TRANSACTION READ ONLY");
+    candidates = await q<Pair>(client, REPAIR_MANIFEST_SQL);
+    await client.query("COMMIT");
+    console.log(
+      `\nFIX-955 repair → ${candidates.length} previously-merged pair(s) hold money on the ` +
+        `retired stub again`,
+    );
+    for (const p of candidates) console.log(`  RE-MERGE ${p.name.padEnd(52)} ${p.fecId}`);
+  } else {
+    console.log("\nRe-deriving the FIX-930 classification live…");
+    await client.query("BEGIN TRANSACTION READ ONLY");
+    const suspects = (await client.query<SuspectRow>(SUSPECT_SQL)).rows;
+    await client.query("COMMIT");
+    const { boundary, classified } = classify(suspects);
+    console.log(`  suspects: ${classified.length}   boundary: frac >= ${boundary.fracCut.toFixed(4)} AND shared >= ${boundary.sharedFloor}`);
+    for (const b of ["CROSS-PERSON MISATTRIBUTION", "SAME-PERSON DUPLICATE", "UNIQUE HOLDER"]) {
+      const n = classified.filter((e) => e.branch === b).length;
+      console.log(`  ${b.padEnd(28)} ${String(n).padStart(4)}`);
+    }
 
-  const { pairs: candidates, dropped } = buildManifest(classified);
-  console.log(`\nSAME-PERSON DUPLICATE → ${candidates.length} pairs pass the client-side gates`);
-  for (const d of dropped) console.log(`  DROPPED  ${d.name.padEnd(50)} ${d.reason}`);
+    const built = buildManifest(classified);
+    candidates = built.pairs;
+    console.log(`\nSAME-PERSON DUPLICATE → ${candidates.length} pairs pass the client-side gates`);
+    for (const d of built.dropped) console.log(`  DROPPED  ${d.name.padEnd(50)} ${d.reason}`);
+  }
 
   if (candidates.length === 0) {
     console.log("\nNothing to merge. (If this is a re-run after --apply, that is the expected result.)");
@@ -756,7 +911,9 @@ async function main(): Promise<void> {
       ]);
     }
 
-    const { ok: pairs, rejected } = await verifyManifestInDb(client, candidates);
+    const { ok: pairs, rejected } = repairResplit
+      ? await verifyRepairInDb(client, candidates)
+      : await verifyManifestInDb(client, candidates);
     for (const r of rejected) console.log(`  REJECTED ${r.name.padEnd(50)} ${r.reason}`);
     if (rejected.length > 0) {
       await client.query(
