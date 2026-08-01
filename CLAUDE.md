@@ -535,6 +535,59 @@ must be executed against **each** environment separately:
 you cannot run against prod in this session, leave the FIX open and document
 the prod step as pending.
 
+### Any script that bulk-rewrites a table ends by vacuuming what it rewrote (FIX-943)
+
+**Standing convention. This is not optional and not belt-and-braces.**
+
+If a script, migration, or RPC rewrites a large table in bulk — a merge, a
+backfill, a full rollup rebuild, a mass `UPDATE`/`DELETE` — its **last step must
+be `VACUUM (ANALYZE)` on every table it rewrote**:
+
+```sql
+VACUUM (ANALYZE) public.financial_relationships;
+VACUUM (ANALYZE) public.entity_connections;
+```
+
+Autovacuum tuning (per-table `autovacuum_vacuum_scale_factor`, FIX-943) narrows
+the window; it does not close it. The trigger is
+`autovacuum_vacuum_threshold + scale_factor × reltuples`, so a table is *always*
+permitted to accumulate a floor of dead tuples before anything happens — on
+`financial_relationships` that floor is still ~164k after tuning. A bulk rewrite
+lands its whole dead-tuple load inside that window at once, and the next reader
+pays for it.
+
+Why it matters more than the dead-tuple count suggests: a heap page loses its
+all-visible mark if **any** tuple on it is dead, and these tables carry 4.6–60
+tuples per page. So a few-percent dead ratio can un-mark most of the heap, and
+every index-only scan silently degrades to a per-row heap fetch. That is FIX-884
+(0.9% all-visible → 34,534 heap fetches, 20.5s of a 22.1s query) and it is
+FIX-943 (the FIX-930 audit went from ~8 min to blowing a 600s
+`statement_timeout` purely from the FIX-933 merge's ~260k dead tuples, and
+completed again after a vacuum).
+
+The precedent is load-bearing, not theoretical: the *only* reason the four-day
+`donor-rollup-refresh` failure ([[FIX-944]]) cleared at all was that the FIX-933
+merge script happened to carry this vacuum in its tail. Nothing scheduled it.
+
+Rules:
+
+- Vacuum runs **after** the rewrite commits, never inside the transaction
+  (`VACUUM` cannot run in one).
+- `VACUUM`, never `VACUUM FULL` — the latter takes ACCESS EXCLUSIVE and rewrites
+  the whole table.
+- Cost it: on prod a vacuum of `financial_relationships` is minutes, and on local
+  Docker it measured >17 min. Schedule bulk-rewrite scripts off-peak
+  (cf. the no-heavy-prod-ops-during-active-hours rule) and expect the vacuum tail
+  to add to the runtime.
+- Verify it ran — `pg_stat_user_tables.last_vacuum` — before treating a
+  post-rewrite timing regression as a query problem. Do **not** "fix" a
+  post-rewrite audit timeout by raising the timeout.
+
+The daily canary reports the cause (`bloat_degraded`, report-only) and escalates
+on the consequence (`vm_degraded`) via `check_rebuild_autovacuum_status()`. See
+`packages/db/CLAUDE.md` — *Autovacuum: per-table settings and the bulk-rewrite
+vacuum rule* — for the tuned-table list and how to size a new one.
+
 ---
 
 ## Supabase Clients (Summary)

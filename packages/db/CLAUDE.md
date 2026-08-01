@@ -557,6 +557,77 @@ NOT NULL` guards downstream.
 
 ---
 
+## Autovacuum: per-table settings and the bulk-rewrite vacuum rule
+
+The root `CLAUDE.md` carries the standing rule — **any script that bulk-rewrites
+a table ends by vacuuming what it rewrote**. This section is the reference: what
+is tuned today, and how to size a new one.
+
+### Why percent-dead is the wrong number
+
+Autovacuum's trigger is:
+
+```
+autovacuum_vacuum_threshold + autovacuum_vacuum_scale_factor × reltuples
+```
+
+Cluster defaults on Pro are `50` and `0.2`. The additive threshold is only
+meaningful on small tables — **to lower the trigger on a large table you must
+lower the scale factor.**
+
+The trigger is a *floor of tolerated bloat*, and what that bloat costs is not
+proportional to it. A heap page loses its all-visible mark if **any** tuple on it
+is dead. These tables carry 4.6–60 tuples per page, so a few-percent dead ratio
+can un-mark most of the heap and every index-only scan quietly becomes a per-row
+heap fetch (FIX-884: 0.9% all-visible → 34,534 heap fetches, 20.5s of a 22.1s
+query). Judge a table by `relallvisible / relpages`, not by `n_dead_tup`.
+
+### Currently tuned (prod + local, verified 2026-08-01)
+
+| table | vacuum sf | analyze sf | trigger | why |
+|---|---|---|---|---|
+| `financial_relationships` | 0.02 | 0.02 | 164,213 | 8.2M rows, 16 indexes, **zero HOT updates**; next bulk rewrite target |
+| `financial_entities` | 0.05 | 0.02 | 145,784 | dominates the donor-rollup join; 19 indexes |
+| `entity_connections` | 0.05 | 0.02 | 259,648 | largest table; **kept at 0.05 on purpose** — see below |
+| `entity_tags` | 0.05 | 0.02 | 128,451 | wholesale daily rewrite by the rule taggers |
+| `votes` | 0.05 | 0.02 | 48,458 | accretive nightly ingest; had **never** been autovacuumed |
+| `donor_party_rollup_mv` | 0.02 | 0.01 | 26,307 | weekly wholesale rewrite, only 2 indexes → vacuum ~free |
+| `external_source_refs` | 0.05 | 0.02 | 28,585 | backs every `SourceBadge`; had never been autovacuumed |
+| `proposals` | 0.05 | 0.02 | 4,368 | hottest read table on the site |
+| `enrichment_queue` | 0.05 | 0.02 | 8,040 | drain churn |
+
+Keep this list in sync with the `watched` CTE in
+`check_rebuild_autovacuum_status()` — the detector and the tuning must not drift.
+
+### Sizing a new one
+
+1. **Is it on the request path?** A table rewritten wholesale and read only by a
+   nightly job can decay cheaply — deprioritize it
+   (`external_relationships_review_queue` is deliberately left untuned).
+2. **What does a vacuum pass cost?** Every pass scans **all** indexes. Index
+   bytes × index count is the budget, not row count. `entity_connections` has
+   3.5 GB across 10 indexes on an I/O-bound Small instance, so it stays at 0.05
+   with a monthly `ec-vacuum-analyze` backstop — making it more aggressive is the
+   single move most likely to hurt the request path.
+3. **Default to 0.05.** It is not a guess: four tables have held it in production
+   here and all four sit at 100.0% all-visible. Go to 0.02 only for cheap tables
+   (few indexes, small heap) or the very largest request-path tables.
+4. **Don't tune self-maintaining rollups.** A table rebuilt by deleting and
+   re-inserting millions of rows clears even the 0.2 trigger every run
+   (`entity_connection_stats_mv`, `entity_search_index`, `group_donor_rollup`,
+   `official_donor_rollup_mv`, `treemap_individuals_rollup` — all 100%
+   all-visible while untuned). Extra passes there fix nothing.
+
+### Applying
+
+`ALTER TABLE … SET (…)` is a catalog update — no rewrite, no data movement — but
+it needs a brief ACCESS EXCLUSIVE lock, which queues behind long reads *and*
+blocks new queries behind it. Set `lock_timeout` and prefer an off-peak window.
+Note the Supabase CLI does **not** wrap a migration in a transaction, so use
+`SET lock_timeout`, not `SET LOCAL` (which warns `25P01` and does nothing).
+
+---
+
 ## Storage Strategy
 
 Current: **Supabase Storage** (warm tier substitute until Cloudflare account set up)

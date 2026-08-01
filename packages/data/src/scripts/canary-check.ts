@@ -149,13 +149,29 @@ type VmRow = {
   pct_all_visible: number;
 };
 
+// FIX-943 — bloat[] entry: dead-tuple load against the table's OWN computed
+// autovacuum trigger. This is the CAUSE side of the vm[] consequence: a table
+// under its trigger will not be vacuumed no matter how many dead tuples it
+// carries, so the visibility map decays until it crosses. Recorded on every run;
+// bloatDegraded is deliberately NOT an escalating signal (see below).
+type BloatRow = {
+  relname: string;
+  n_dead_tup: number;
+  vacuum_trigger: number;
+  pct_of_trigger: number | null;
+};
+
 type AutovacuumStatus = {
   stranded: string[];
   vmDegraded: string[];
   vm: VmRow[];
+  bloat: BloatRow[];
+  bloatDegraded: string[];
 };
 
-const NO_AUTOVACUUM_FINDINGS: AutovacuumStatus = { stranded: [], vmDegraded: [], vm: [] };
+const NO_AUTOVACUUM_FINDINGS: AutovacuumStatus = {
+  stranded: [], vmDegraded: [], vm: [], bloat: [], bloatDegraded: [],
+};
 
 async function fetchStrandedAutovacuum(): Promise<AutovacuumStatus> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -172,17 +188,24 @@ async function fetchStrandedAutovacuum(): Promise<AutovacuumStatus> {
     stranded?: string[];
     vm_degraded?: string[];
     vm?: VmRow[];
+    bloat?: BloatRow[];
+    bloat_degraded?: string[];
   };
   const vm = Array.isArray(result.vm) ? result.vm : [];
+  // FIX-943 — pre-migration environments return no bloat keys; default to empty
+  // so an un-migrated DB reads as "nothing to report" rather than throwing.
+  const bloat = Array.isArray(result.bloat) ? result.bloat : [];
   // The RPC already excludes an in-flight rebuild via rebuild_active; this is a
   // second guard in case the shape changes. A rebuild legitimately holds
   // autovacuum off AND churns the visibility map, so neither signal is
-  // actionable mid-run — keep vm[] for the meta row, suppress both findings.
-  if (result.rebuild_active) return { ...NO_AUTOVACUUM_FINDINGS, vm };
+  // actionable mid-run — keep vm[]/bloat[] for the meta row, suppress findings.
+  if (result.rebuild_active) return { ...NO_AUTOVACUUM_FINDINGS, vm, bloat };
   return {
     stranded:   Array.isArray(result.stranded)    ? result.stranded    : [],
     vmDegraded: Array.isArray(result.vm_degraded) ? result.vm_degraded : [],
     vm,
+    bloat,
+    bloatDegraded: Array.isArray(result.bloat_degraded) ? result.bloat_degraded : [],
   };
 }
 
@@ -267,6 +290,14 @@ async function writeMetaRow(
       // FIX-884 went unnoticed for ~4 weeks partly because nothing logged it.
       vm_degraded:      autovacuum.vmDegraded,
       visibility_map:   autovacuum.vm,
+      // FIX-943 — the CAUSE side, recorded on EVERY run for the same reason.
+      // REPORT-ONLY: bloat_degraded does NOT escalate. A table can sit under its
+      // trigger with tens of thousands of dead tuples and no harm done; what is
+      // actionable is the visibility map that eventually collapses as a result,
+      // and vm_degraded already escalates on that. This exists so the cause is
+      // greppable in data_sync_log BEFORE the consequence arrives.
+      bloat_degraded:   autovacuum.bloatDegraded,
+      dead_tuple_load:  autovacuum.bloat,
       // FIX-944 — recorded on EVERY run, findings or not, so the convergence of
       // a multi-night resumable sweep is greppable after the fact.
       rollup_freshness: rollups,
@@ -480,6 +511,11 @@ async function main(): Promise<number> {
       stranded_autovacuum: strandedAutovacuum,
       vm_degraded:         autovacuum.vmDegraded,
       visibility_map:      autovacuum.vm,
+      // FIX-943 — report-only; absent from `failures` by design (see the meta
+      // row above). Surfaced here so a workflow log shows the cause alongside
+      // the consequence when someone is already looking.
+      bloat_degraded:      autovacuum.bloatDegraded,
+      dead_tuple_load:     autovacuum.bloat,
       rollup_freshness:    rollups,
       stale_rollups:       staleRollups.map((r) => r.pipeline),
       alert_sent:          alertSent,
