@@ -1160,3 +1160,5 @@
 2026-07-31 | FIX-921 | 0d62f171 | local+prod | chore(fixes): prod close-out for FIX-945 and FIX-921
 2026-07-31 | FIX-945 | 0d62f171 | local+prod | chore(fixes): prod close-out for FIX-945 and FIX-921
 2026-07-31 | FIX-951 | f8195480 | prod-only | docs(rollups): correct the donor-rollup throughput numbers; file FIX-951
+2026-07-31 | FIX-943 | 9ba84eae | local+prod | fix(db): tune autovacuum on the hot-path tables; close the donor-rollup backlog
+2026-07-31 | FIX-944 | 9ba84eae | closes-as-recognized | fix(db): tune autovacuum on the hot-path tables; close the donor-rollup backlog
