@@ -7,12 +7,34 @@
  * role, which carries `statement_timeout=6h` via pg_db_role_setting. That
  * timeout is armed once at CALL start and is NOT re-armed by the procedure's
  * per-chunk COMMITs, so a sweep needing more than 6h of compute is cancelled
- * mid-flight no matter how it is chunked. Measured on prod 2026-07-31: a 6h
- * window completes ~1,000 recipients, and the outstanding dirty set is 8,382 —
- * roughly 50h of work, i.e. ~9 nightly runs.
+ * mid-flight no matter how it is chunked.
  *
- * FIX-944 made those runs resumable, so the scheduled job now converges on its
- * own. This script is for when you want it done in ONE pass:
+ * FIX-944 made those runs resumable, so the scheduled job converges on its own.
+ *
+ * DO NOT reach for this script on the strength of the throughput numbers this
+ * comment used to carry ("a 6h window completes ~1,000 recipients … roughly 50h
+ * of work, ~9 nightly runs"). Those were a measurement artifact and are wrong by
+ * ~2.5x — see FIX-951. They came from counting DISTINCT official_id in
+ * official_small_dollar_rollup / official_donor_totals inside the run window,
+ * and those tables hold 4,336 rows TOTAL (only recipients with donation rows get
+ * one), so the proxy caps out far below any real recipient count. Measured
+ * against a run whose true count is known — 2026-07-31 09:00, runid 135,
+ * status `complete`, 8,381 recipients in 42 chunks in 3h08m — the same proxy
+ * reports 3,339.
+ *
+ * What the scheduled job actually costs, measured on prod:
+ *   07-22  1,992 recipients / 10 chunks / 1h54m = 685 s per 200-chunk
+ *   07-31  8,381 recipients / 42 chunks / 3h08m = 269 s per 200-chunk
+ * i.e. the whole dirty set clears inside ONE 6h window with ~2h52m to spare.
+ * The 07-27..07-30 slowdown was FIX-943 — dead-tuple/visibility-map decay on
+ * financial_relationships after the 07-26/27 bulk rewrite (930k rows), which
+ * autovacuum never clears because its trigger is proportional (1.66M dead
+ * required at 8.2M live). The one-off `VACUUM (ANALYZE)` at the end of the
+ * FIX-933 merge script cleared it on 2026-07-31 02:35 and per-chunk cost
+ * dropped 2.5x. If this job goes slow again, check
+ * pg_stat_user_tables.n_dead_tup on financial_relationships BEFORE sweeping.
+ *
+ * This script is for when you genuinely want it done in ONE pass:
  *
  *   * `SET statement_timeout = 0` at SESSION level, BEFORE the CALL. This is
  *     the only place that ceiling can be lifted — neither `SET
