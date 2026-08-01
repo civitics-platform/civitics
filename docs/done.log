@@ -1166,3 +1166,6 @@
 2026-08-01 | FIX-957 | reopen | TRAILER ERROR: af73c922 FILED FIX-957 but carried a Closes: trailer. Pre-logging that sha (dedup key id|sha) stops fixes:sync appending it again; this reopen line is last-write-wins so FIX-957 stays OPEN. FIX-957 is unstarted work.
 2026-08-01 | FIX-954 | b7ebd748 | local-only | fix(fec): FIX-954 — recover cross-person contamination on officials that DO have a legitimate FEC binding
 2026-08-01 | FIX-955 | df3edc70 | local-only | fix(fec): FIX-955 — stop the pipeline undoing every FIX-933 merge; repair the re-split
+2026-08-01 | FIX-923 | f33e0b5c | local+prod | fix(tags): a tag change now triggers its own sector-affinity rebuild
+2026-08-01 | FIX-958 | f33e0b5c | local-only | fix(tags): a tag change now triggers its own sector-affinity rebuild
+2026-08-01 | FIX-959 | f33e0b5c | local-only | fix(tags): a tag change now triggers its own sector-affinity rebuild
