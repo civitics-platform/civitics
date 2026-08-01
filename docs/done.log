@@ -1159,3 +1159,4 @@
 2026-07-31 | FIX-949 | b9e83b5e | local-only | fix(tags): make the rule taggers' authoritative rebuilds atomic
 2026-07-31 | FIX-921 | 0d62f171 | local+prod | chore(fixes): prod close-out for FIX-945 and FIX-921
 2026-07-31 | FIX-945 | 0d62f171 | local+prod | chore(fixes): prod close-out for FIX-945 and FIX-921
+2026-07-31 | FIX-951 | f8195480 | prod-only | docs(rollups): correct the donor-rollup throughput numbers; file FIX-951
