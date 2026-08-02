@@ -67,8 +67,10 @@ jobs:
     timeout-minutes: 350
 
     # Env block mirrors nightly.yml's fec-phase verbatim (GHA has no YAML
-    # anchors, so the duplication is explicit). 12 GB heap ceiling is what the
-    # presidential-cycle indiv stage needs (packages/data/CLAUDE.md).
+    # anchors, so the duplication is explicit). Heap ceiling sized for the
+    # LARGEST presidential-cycle indiv file: 12 GB fit 2024 but OOM'd at ~77%
+    # of indiv20 (FIX-961) — 14 GB is the most a 16 GB runner can give after
+    # OS + runner agent + ~1 GB off-heap Node overhead.
     env:
       NEXT_PUBLIC_SUPABASE_URL: https://xsazcoxinpgttgquwvuf.supabase.co
       SUPABASE_SECRET_KEY:      ${{ secrets.SUPABASE_SECRET_KEY }}
@@ -80,7 +82,7 @@ jobs:
       CIVITICS_ANTHROPIC_API_KEY: ${{ secrets.CIVITICS_ANTHROPIC_API_KEY }}
       AUTONOMOUS:               "true"
       CIVITICS_ENRICHMENT_MODE: queue
-      NODE_OPTIONS: --max-old-space-size=12288
+      NODE_OPTIONS: --max-old-space-size=14336
       CLOUDFLARE_ACCOUNT_ID:           ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       CLOUDFLARE_R2_ACCESS_KEY_ID:     ${{ secrets.CLOUDFLARE_R2_ACCESS_KEY_ID }}
       CLOUDFLARE_R2_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_R2_SECRET_ACCESS_KEY }}
