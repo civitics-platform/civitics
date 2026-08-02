@@ -1169,3 +1169,4 @@
 2026-08-01 | FIX-923 | f33e0b5c | local+prod | fix(tags): a tag change now triggers its own sector-affinity rebuild
 2026-08-01 | FIX-958 | f33e0b5c | local-only | fix(tags): a tag change now triggers its own sector-affinity rebuild
 2026-08-01 | FIX-959 | f33e0b5c | local-only | fix(tags): a tag change now triggers its own sector-affinity rebuild
+2026-08-02 | FIX-960 | 54d9206d | local-only | fix(fec): FIX-960 — retire merge stubs from the per-cycle name-fallback; repair manifest for the no-live-id re-split
