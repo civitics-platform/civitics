@@ -595,7 +595,7 @@ async function renderTrioRows(client: Client): Promise<number> {
     client,
     `SELECT COALESCE(o.full_name,'?')                 AS stub_name,
             fr.relationship_type,
-            COALESCE(fe.name, fr.from_id::text, '?')  AS from_name,
+            COALESCE(fe.display_name, fe.canonical_name, fr.from_id::text, '?') AS from_name,
             fr.cycle_year::text                       AS cycle_year,
             fr.amount_cents::text                     AS amount_cents,
             fr.created_at::text                       AS created_at
