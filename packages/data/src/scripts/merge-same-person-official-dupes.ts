@@ -203,7 +203,21 @@ interface Pair {
   dup: string;
   fecId: string;
   name: string;
+  /** Repair mode only — which REPAIR_MANIFEST_SQL class matched (a/b). */
+  cls?: string;
 }
+
+/**
+ * FIX-960 — created_at floor for every financial_relationships row the repair
+ * may delete or move OFF A STUB. FIX-933 left every stub at $0, so pre-window
+ * stub money is an anomaly (some other path re-monied it), not repair material:
+ * a pair or trio stub carrying ANY pre-window row stops the run / is refused
+ * rather than repaired. This is the independent cross-check that the manifest
+ * and the 2026-08-02 damage are the same set. Survivor-side collision losers
+ * are exempt — those are the stale originals being replaced by the fresher
+ * re-written copy, and predate the window by design.
+ */
+const REPAIR_WINDOW_START = "2026-08-02";
 
 /**
  * FIX-955 repair manifest — pairs this script ALREADY merged that a later FEC
@@ -233,7 +247,9 @@ const REPAIR_MANIFEST_SQL = `
 SELECT s.id                                        AS "survivor",
        d.id                                        AS "dup",
        d.source_ids->>'merged_fec_candidate_id'    AS "fecId",
-       COALESCE(s.full_name,'?') || '  ←  ' || COALESCE(d.full_name,'?') AS "name"
+       COALESCE(s.full_name,'?') || '  ←  ' || COALESCE(d.full_name,'?') AS "name",
+       CASE WHEN d.source_ids ? 'fec_candidate_id'
+            THEN 'clean-reclaim' ELSE 'no-live-id' END AS "cls"
   FROM officials d
   JOIN officials s
     ON s.tier    = 'elected'
@@ -241,17 +257,29 @@ SELECT s.id                                        AS "survivor",
    AND s.source_ids->>'fec_candidate_id' = d.source_ids->>'merged_fec_candidate_id'
  WHERE d.tier = 'candidate'
    AND d.source_ids ? 'merged_fec_candidate_id'
-   -- Only the CLEAN re-claim: the stub took back exactly the id it retired.
+   -- Two damage classes, one survivor join:
    --
-   -- Measured 4 stubs that instead re-claimed the same human's OLD HOUSE
-   -- CAND_ID while the retired one was their Senate id — Jim Banks
-   -- (live H6IN03229 / retired S4IN00196), Ted Budd, Jon Ossoff, Tom Cotton.
-   -- Merging those would leave a LIVE second claim on the stub, so the next FEC
-   -- run re-binds the House id and re-splits the House-era money again; the
-   -- post-merge assertion below correctly refuses that state. Retiring a second
-   -- id needs merged_fec_candidate_id to be multi-valued, which is a semantics
-   -- change and not part of a repair. Excluded and filed as FIX-956.
-   AND d.source_ids->>'fec_candidate_id' = d.source_ids->>'merged_fec_candidate_id'
+   -- (a) CLEAN RE-CLAIM — the stub took back exactly the id it retired. The
+   --     local FIX-955 signature: matchRow re-matched the stub by name and
+   --     persistNewFecIds re-stamped the id, so the stub carries BOTH markers.
+   --
+   -- (b) NO LIVE ID (FIX-960) — the per-cycle weball name-fallback stole the
+   --     CAND_ID in memory only: money landed on the stub, but persistNewFecIds'
+   --     SQL guard (writer.ts) refused re-stamping a retired id, so the stub
+   --     holds money with NO live fec_candidate_id at all. The prod 2026-08-02
+   --     signature (79 stubs / $132.9M) — the inverse of (a), and invisible to
+   --     the original predicate, which required the live id to be present.
+   --
+   -- Deliberately still EXCLUDED: a stub whose live fec_candidate_id differs
+   -- from its retired one (Jim Banks / Ted Budd / Tom Cotton — retired SENATE
+   -- id, freshly-stolen HOUSE id). Their duplicate counterparts are House
+   -- STUBS, not the elected survivor, so the pair-merge machinery is the wrong
+   -- tool; they are reverted by the separate FIX-960 trio step below
+   -- (runTrioRevert). Retiring a second id for real needs
+   -- merged_fec_candidate_id to be multi-valued — that semantics change stays
+   -- filed as FIX-956.
+   AND (   d.source_ids->>'fec_candidate_id' = d.source_ids->>'merged_fec_candidate_id'
+        OR NOT (d.source_ids ? 'fec_candidate_id'))
    AND EXISTS (SELECT 1 FROM financial_relationships fr
                 WHERE fr.to_type = 'official' AND fr.to_id = d.id)
  ORDER BY 4;
@@ -404,6 +432,283 @@ async function verifyRepairInDb(
     ok.push(p);
   }
   return { ok, rejected };
+}
+
+// ---------------------------------------------------------------------------
+// FIX-960 trio step — revert a stub's theft of a SECOND (different) CAND_ID
+//
+// The Banks / Budd / Cotton shape: a "Candidate for Senator" merge stub
+// (retired SENATE id in `merged_fec_candidate_id`) name-claimed the same
+// human's old HOUSE id through the per-cycle weball fallback, got STAMPED
+// (stamped ≠ retired passes persistNewFecIds' guard), and took byte-identical
+// copies of the House stub's money. The duplicate counterpart is a House STUB,
+// not an elected survivor, so the pair-merge machinery's survivor-tier gate
+// correctly refuses it — this step reverts the theft directly instead:
+//   (i)   delete the stub's rows that have an amount-identical
+//         (relationship_type, from_id, cycle_year) counterpart on the other
+//         claimant, all inside the REPAIR_WINDOW_START window
+//   (ii)  remove the freshly-stolen `fec_candidate_id` key (merged_… stays)
+//   (iii) assert the stub ends at $0 and the stolen id is single-claimed again
+//
+// Membership is derived from the SHAPE (no hardcoded uuids); any candidate not
+// fitting it exactly is reported and left untouched. The House stub keeps its
+// House-era money — decision 10: this reverts the 2026-08-02 theft only, the
+// pre-existing elected↔House-stub double-hold stays filed under FIX-956.
+// ---------------------------------------------------------------------------
+
+interface TrioCandidate {
+  stub: string;
+  stubName: string;
+  liveId: string;
+  retiredId: string;
+  claimant: string;
+  claimantName: string;
+  claimantTier: string;
+}
+
+/** One row per (stub × other-claimant-of-its-live-id). Aliases quoted — see REPAIR_MANIFEST_SQL. */
+const TRIO_SQL = `
+SELECT d.id                                        AS "stub",
+       COALESCE(d.full_name,'?')                   AS "stubName",
+       d.source_ids->>'fec_candidate_id'           AS "liveId",
+       d.source_ids->>'merged_fec_candidate_id'    AS "retiredId",
+       c.id                                        AS "claimant",
+       COALESCE(c.full_name,'?')                   AS "claimantName",
+       COALESCE(c.tier,'elected')                  AS "claimantTier"
+  FROM officials d
+  JOIN officials c
+    ON c.id <> d.id
+   AND c.source_ids->>'fec_candidate_id' = d.source_ids->>'fec_candidate_id'
+ WHERE d.tier = 'candidate'
+   AND d.source_ids ? 'merged_fec_candidate_id'
+   AND d.source_ids ? 'fec_candidate_id'
+   AND d.source_ids->>'fec_candidate_id' <> d.source_ids->>'merged_fec_candidate_id'
+ ORDER BY 2;
+`;
+
+/**
+ * A stub whose stolen id has EXACTLY one other claimant fits the shape; zero
+ * claimants never appears (the JOIN requires one) and two-plus is not the
+ * measured theft, so it is reported and skipped rather than guessed at.
+ */
+function groupTrioRows(rows: TrioCandidate[]): { trio: TrioCandidate[]; dropped: DroppedPair[] } {
+  const byStub = new Map<string, TrioCandidate[]>();
+  for (const r of rows) {
+    const list = byStub.get(r.stub) ?? [];
+    list.push(r);
+    byStub.set(r.stub, list);
+  }
+  const trio: TrioCandidate[] = [];
+  const dropped: DroppedPair[] = [];
+  for (const list of byStub.values()) {
+    const first = list[0]!;
+    if (list.length > 1) {
+      dropped.push({
+        name: `${first.stubName} (${first.liveId})`,
+        reason: `stolen id has ${list.length} other claimants, expected exactly 1 — report, no write`,
+      });
+      continue;
+    }
+    trio.push(first);
+  }
+  return { trio, dropped };
+}
+
+/**
+ * In-transaction re-check of every _trio stub against live state. A stub fits
+ * only if it holds at least one financial_relationships row AND every row it
+ * holds is (a) inside the repair window and (b) amount-identically mirrored on
+ * the other claimant. Unfit stubs are deleted from _trio (report, no write);
+ * the writes below therefore only ever see stubs whose entire holdings are
+ * provably today's byte-identical theft.
+ */
+async function verifyTrioInDb(
+  client: Client,
+  trio: TrioCandidate[],
+): Promise<{ ok: TrioCandidate[]; rejected: DroppedPair[] }> {
+  if (trio.length === 0) return { ok: [], rejected: [] };
+  const rows = await q<{
+    stub: string;
+    total_rows: string;
+    pre_window: string;
+    no_counterpart: string;
+  }>(
+    client,
+    `SELECT t.stub,
+            count(fr.id)::text AS total_rows,
+            count(*) FILTER (WHERE fr.created_at < $1::timestamptz)::text AS pre_window,
+            count(*) FILTER (WHERE NOT EXISTS (
+                  SELECT 1 FROM financial_relationships c
+                   WHERE c.to_type='official' AND c.to_id = t.claimant
+                     AND c.relationship_type = fr.relationship_type
+                     AND c.from_id           = fr.from_id
+                     AND c.cycle_year        = fr.cycle_year
+                     AND c.amount_cents      = fr.amount_cents))::text AS no_counterpart
+       FROM _trio t
+       LEFT JOIN financial_relationships fr
+         ON fr.to_type='official' AND fr.to_id = t.stub
+      GROUP BY t.stub`,
+    [REPAIR_WINDOW_START],
+  );
+  const byStub = new Map(rows.map((r) => [r.stub, r]));
+  const ok: TrioCandidate[] = [];
+  const rejected: DroppedPair[] = [];
+  for (const t of trio) {
+    const r = byStub.get(t.stub);
+    const label = `${t.stubName} (${t.liveId})`;
+    if (!r || r.total_rows === "0") {
+      rejected.push({ name: label, reason: "stub holds no financial_relationships rows — not the theft shape" });
+      continue;
+    }
+    if (r.pre_window !== "0") {
+      rejected.push({
+        name: label,
+        reason: `${r.pre_window} row(s) created before ${REPAIR_WINDOW_START} — pre-window stub money is an anomaly, not repair material`,
+      });
+      continue;
+    }
+    if (r.no_counterpart !== "0") {
+      rejected.push({
+        name: label,
+        reason: `${r.no_counterpart} row(s) have no amount-identical counterpart on ${t.claimantName}`,
+      });
+      continue;
+    }
+    ok.push(t);
+  }
+  if (rejected.length > 0) {
+    await client.query(`DELETE FROM _trio WHERE stub <> ALL($1::uuid[])`, [ok.map((t) => t.stub)]);
+  }
+  return { ok, rejected };
+}
+
+/** Print the FULL row set the trio step will delete — the review surface. */
+async function renderTrioRows(client: Client): Promise<number> {
+  const rows = await q<{
+    stub_name: string;
+    relationship_type: string;
+    from_name: string;
+    cycle_year: string | null;
+    amount_cents: string;
+    created_at: string;
+  }>(
+    client,
+    `SELECT COALESCE(o.full_name,'?')                 AS stub_name,
+            fr.relationship_type,
+            COALESCE(fe.name, fr.from_id::text, '?')  AS from_name,
+            fr.cycle_year::text                       AS cycle_year,
+            fr.amount_cents::text                     AS amount_cents,
+            fr.created_at::text                       AS created_at
+       FROM _trio t
+       JOIN officials o ON o.id = t.stub
+       JOIN financial_relationships fr ON fr.to_type='official' AND fr.to_id = t.stub
+       LEFT JOIN financial_entities fe ON fe.id = fr.from_id
+      ORDER BY 1, fr.cycle_year, fr.amount_cents DESC`,
+  );
+  console.log(`\nTrio revert — full row set (${rows.length} rows):`);
+  console.log(`  ${"stub".padEnd(22)}${"type".padEnd(12)}${"from".padEnd(38)}${"cycle".padStart(6)}${"amount".padStart(13)}  created_at`);
+  for (const r of rows) {
+    console.log(
+      `  ${r.stub_name.slice(0, 21).padEnd(22)}${r.relationship_type.padEnd(12)}` +
+        `${r.from_name.slice(0, 37).padEnd(38)}${(r.cycle_year ?? "?").padStart(6)}` +
+        `${usd(r.amount_cents).padStart(13)}  ${r.created_at}`,
+    );
+  }
+  return rows.length;
+}
+
+/**
+ * The trio writes. Runs inside the repair transaction, after the pair merge.
+ * Returns the donation cents it deleted, for the conservation proof.
+ */
+async function runTrioRevert(client: Client): Promise<bigint> {
+  console.log("\nTrio revert (rows affected):");
+
+  // (i) Delete the theft. The predicate re-asserts window + counterpart even
+  // though verifyTrioInDb proved both — if the two ever disagree, the leftover
+  // assertion below fires and the transaction rolls back.
+  const res = await client.query(
+    `DELETE FROM financial_relationships fr
+      USING _trio t
+      WHERE fr.to_type='official' AND fr.to_id = t.stub
+        AND fr.created_at >= $1::timestamptz
+        AND EXISTS (SELECT 1 FROM financial_relationships c
+                     WHERE c.to_type='official' AND c.to_id = t.claimant
+                       AND c.relationship_type = fr.relationship_type
+                       AND c.from_id           = fr.from_id
+                       AND c.cycle_year        = fr.cycle_year
+                       AND c.amount_cents      = fr.amount_cents)
+      RETURNING fr.relationship_type, fr.amount_cents`,
+    [REPAIR_WINDOW_START],
+  );
+  let deletedDonationCents = 0n;
+  for (const r of res.rows as Array<{ relationship_type: string; amount_cents: string }>) {
+    if (r.relationship_type === "donation") deletedDonationCents += BigInt(r.amount_cents);
+  }
+  console.log(`  ${"FR delete stolen copies (trio stubs)".padEnd(50)} ${String(res.rowCount ?? 0).padStart(9)}`);
+
+  const [leftover] = await q<{ n: string }>(
+    client,
+    `SELECT count(*)::text AS n FROM financial_relationships fr
+       JOIN _trio t ON t.stub = fr.to_id WHERE fr.to_type='official'`,
+  );
+  if (leftover?.n !== "0") {
+    throw new Error(`trio stub(s) still hold ${leftover?.n} financial_relationships rows after the revert`);
+  }
+
+  // (ii) Strip the stolen key; merged_fec_candidate_id is deliberately untouched.
+  await run(client, "officials.source_ids -= fec_candidate_id (trio)", `
+    UPDATE officials o
+       SET source_ids = o.source_ids - 'fec_candidate_id',
+           updated_at = now()
+      FROM _trio t
+     WHERE o.id = t.stub`);
+
+  // Same neutralisation the pair merge applies to its duplicates.
+  await run(client, "officials.total_received_cents = 0 (trio)", `
+    UPDATE officials o SET total_received_cents = 0, updated_at = now()
+      FROM _trio t
+     WHERE o.id = t.stub AND o.total_received_cents <> 0`);
+  await run(client, "official_donor_totals delete (trio)", `
+    DELETE FROM official_donor_totals x USING _trio t WHERE x.official_id = t.stub`);
+  await run(
+    client,
+    "entity_connections delete stale money edges (trio)",
+    `DELETE FROM entity_connections e
+      USING _trio t
+      WHERE e.to_type='official' AND e.to_id = t.stub
+        AND e.from_type='financial_entity'
+        AND e.connection_type::text = ANY($1::text[])`,
+    [MONEY_EDGE_TYPES],
+  );
+
+  // (iii) The stolen id must be single-claimed again, and the merge marker —
+  // which is what keeps the stub out of every FIX-960 name pool — must remain.
+  const badClaims = await q<{ live_id: string; n: string }>(
+    client,
+    `SELECT t.live_id, count(o.id)::text AS n
+       FROM _trio t
+       JOIN officials o ON o.source_ids->>'fec_candidate_id' = t.live_id
+      GROUP BY t.live_id
+     HAVING count(o.id) <> 1`,
+  );
+  if (badClaims.length > 0) {
+    throw new Error(
+      `stolen id(s) not single-claimed after the revert: ` +
+        badClaims.map((b) => `${b.live_id}=${b.n}`).join(", "),
+    );
+  }
+  const [lostMarker] = await q<{ n: string }>(
+    client,
+    `SELECT count(*)::text AS n FROM _trio t
+       JOIN officials o ON o.id = t.stub
+      WHERE NOT (o.source_ids ? 'merged_fec_candidate_id')`,
+  );
+  if (lostMarker?.n !== "0") {
+    throw new Error(`${lostMarker?.n} trio stub(s) lost merged_fec_candidate_id — refusing`);
+  }
+
+  return deletedDonationCents;
 }
 
 /**
@@ -560,12 +865,24 @@ async function runRollups(client: Client, prod: boolean): Promise<void> {
   // re-derived from the committed state when this is a --rollups-only resume:
   // a survivor is an elected row carrying BOTH congress_gov and a
   // fec_candidate_id whose duplicate holds the retired merged_fec_candidate_id.
+  //
+  // _trio (FIX-960) exists only when the repair path just ran in this session;
+  // on a --rollups-only resume it is empty, so a resume after a trio-touching
+  // run misses the trio CLAIMANTS' donors — accepted: the deltas are ≤ a few
+  // hundred rows and the scheduled donor rollups true them up. (The trio STUBS
+  // themselves re-enter _manifest via the resume join above, since after the
+  // revert they carry merged_fec_candidate_id opposite their elected survivor.)
   await client.query(`
+    CREATE TEMP TABLE IF NOT EXISTS _trio (stub uuid PRIMARY KEY, claimant uuid, live_id text NOT NULL);
     DROP TABLE IF EXISTS _affected_officials;
     CREATE TEMP TABLE _affected_officials AS
       SELECT survivor AS id FROM _manifest
       UNION
-      SELECT dup FROM _manifest;
+      SELECT dup FROM _manifest
+      UNION
+      SELECT stub FROM _trio
+      UNION
+      SELECT claimant FROM _trio;
   `);
   const [offCount] = await q<{ n: string }>(
     client,
@@ -585,6 +902,11 @@ async function runRollups(client: Client, prod: boolean): Promise<void> {
       SELECT DISTINCT fr.from_id AS id
         FROM financial_relationships fr
         JOIN _manifest m ON m.survivor = fr.to_id
+       WHERE fr.to_type='official' AND fr.from_id IS NOT NULL
+      UNION
+      SELECT DISTINCT fr.from_id
+        FROM financial_relationships fr
+        JOIN _trio t ON t.claimant = fr.to_id
        WHERE fr.to_type='official' AND fr.from_id IS NOT NULL;
     CREATE UNIQUE INDEX ON _donor(id);
   `);
@@ -856,15 +1178,31 @@ async function main(): Promise<void> {
 
   // ── Derive the manifest (read-only, outside the merge txn) ────────────────
   let candidates: Pair[];
+  let trioCandidates: TrioCandidate[] = [];
   if (repairResplit) {
     await client.query("BEGIN TRANSACTION READ ONLY");
     candidates = await q<Pair>(client, REPAIR_MANIFEST_SQL);
+    const trioRows = await q<TrioCandidate>(client, TRIO_SQL);
     await client.query("COMMIT");
     console.log(
-      `\nFIX-955 repair → ${candidates.length} previously-merged pair(s) hold money on the ` +
+      `\nFIX-955/960 repair → ${candidates.length} previously-merged pair(s) hold money on the ` +
         `retired stub again`,
     );
-    for (const p of candidates) console.log(`  RE-MERGE ${p.name.padEnd(52)} ${p.fecId}`);
+    for (const p of candidates) {
+      console.log(`  RE-MERGE ${p.name.padEnd(52)} ${p.fecId}  [${p.cls ?? "?"}]`);
+    }
+    const grouped = groupTrioRows(trioRows);
+    trioCandidates = grouped.trio;
+    console.log(
+      `FIX-960 trio → ${trioCandidates.length} stub(s) carrying a stolen SECOND id also claimed elsewhere`,
+    );
+    for (const t of trioCandidates) {
+      console.log(
+        `  REVERT   ${t.stubName.padEnd(30)} stolen ${t.liveId} (retired ${t.retiredId}) ` +
+          `← also claimed by ${t.claimantName} [${t.claimantTier}]`,
+      );
+    }
+    for (const d of grouped.dropped) console.log(`  DROPPED  ${d.name.padEnd(50)} ${d.reason}`);
   } else {
     console.log("\nRe-deriving the FIX-930 classification live…");
     await client.query("BEGIN TRANSACTION READ ONLY");
@@ -883,7 +1221,7 @@ async function main(): Promise<void> {
     for (const d of built.dropped) console.log(`  DROPPED  ${d.name.padEnd(50)} ${d.reason}`);
   }
 
-  if (candidates.length === 0) {
+  if (candidates.length === 0 && trioCandidates.length === 0) {
     console.log("\nNothing to merge. (If this is a re-run after --apply, that is the expected result.)");
     await client.end();
     return;
@@ -911,6 +1249,20 @@ async function main(): Promise<void> {
       ]);
     }
 
+    // FIX-960 — _trio exists in EVERY mode (the conservation strays check and
+    // runRollups reference it); only the repair path ever fills it.
+    await client.query(`
+      DROP TABLE IF EXISTS _trio;
+      CREATE TEMP TABLE _trio (stub uuid PRIMARY KEY, claimant uuid, live_id text NOT NULL);
+    `);
+    for (const t of trioCandidates) {
+      await client.query(`INSERT INTO _trio VALUES ($1::uuid, $2::uuid, $3::text)`, [
+        t.stub,
+        t.claimant,
+        t.liveId,
+      ]);
+    }
+
     const { ok: pairs, rejected } = repairResplit
       ? await verifyRepairInDb(client, candidates)
       : await verifyManifestInDb(client, candidates);
@@ -921,13 +1273,51 @@ async function main(): Promise<void> {
         [pairs.map((p) => p.survivor)],
       );
     }
-    if (pairs.length === 0) {
+
+    // FIX-960 window gate — repair mode only. Every row the pair merge will
+    // delete or move OFF A STUB must postdate the re-split window; FIX-933
+    // left stubs at $0, so a pre-window row means the stub was re-monied by
+    // something other than the damage under repair. That is a STOP, not a
+    // skip: the manifest and the damage are supposed to be the same set, and
+    // a disagreement voids that premise for the whole run.
+    let trioLive: TrioCandidate[] = [];
+    if (repairResplit) {
+      const preWindow = await q<{ dup: string; full_name: string | null; pre_rows: string; oldest: string }>(
+        client,
+        `SELECT m.dup, o.full_name, count(*)::text AS pre_rows, min(fr.created_at)::text AS oldest
+           FROM _manifest m
+           JOIN financial_relationships fr ON fr.to_type='official' AND fr.to_id = m.dup
+           JOIN officials o ON o.id = m.dup
+          WHERE fr.created_at < $1::timestamptz
+          GROUP BY 1, 2 ORDER BY 2`,
+        [REPAIR_WINDOW_START],
+      );
+      if (preWindow.length > 0) {
+        console.error(`\n✗ FIX-960 window gate: stub rows created before ${REPAIR_WINDOW_START}:`);
+        for (const w of preWindow) {
+          console.error(`    ${(w.full_name ?? w.dup).padEnd(40)} ${w.pre_rows} row(s), oldest ${w.oldest}`);
+        }
+        throw new Error(
+          `${preWindow.length} stub(s) hold pre-window money — not the ${REPAIR_WINDOW_START} re-split; stopping`,
+        );
+      }
+
+      const trioVerdict = await verifyTrioInDb(client, trioCandidates);
+      trioLive = trioVerdict.ok;
+      for (const r of trioVerdict.rejected) console.log(`  REJECTED ${r.name.padEnd(50)} ${r.reason}`);
+      if (trioLive.length > 0) await renderTrioRows(client);
+    }
+
+    if (pairs.length === 0 && trioLive.length === 0) {
       console.log("\nNo pair survived the server-side re-check. Rolling back.");
       await client.query("ROLLBACK");
       await client.end();
       return;
     }
-    console.log(`\nManifest: ${pairs.length} pairs confirmed against live state.`);
+    console.log(
+      `\nManifest: ${pairs.length} pairs confirmed against live state.` +
+        (repairResplit ? ` Trio revert: ${trioLive.length} stub(s).` : ""),
+    );
 
     // ── Baselines for the conservation proof ─────────────────────────────
     // Snapshot official_donor_totals WHOLE so an unexpected change anywhere on
@@ -1113,6 +1503,14 @@ async function main(): Promise<void> {
       [MONEY_EDGE_TYPES],
     );
 
+    // FIX-960 — the trio revert runs in the SAME transaction so the
+    // conservation proof below covers it: its deletions are part of the
+    // platform drop this run must account for to the cent.
+    let trioDeletedCents = 0n;
+    if (repairResplit && trioLive.length > 0) {
+      trioDeletedCents = await runTrioRevert(client);
+    }
+
     // ── Rollups do NOT run here ──────────────────────────────────────────
     // They used to. On prod that made ONE transaction hold ~2 hours of
     // sustained write I/O, which exhausted Pro Small's burst credits: the
@@ -1144,7 +1542,7 @@ async function main(): Promise<void> {
     const beforeCents = BigInt(platformBefore?.cents ?? "0");
     const afterCents = BigInt(platformAfter?.cents ?? "0");
     const observedDrop = beforeCents - afterCents;
-    const dropDelta = observedDrop - deletedDonationCents;
+    const dropDelta = observedDrop - deletedDonationCents - trioDeletedCents;
 
     // No official OUTSIDE the manifest may change by a single cent.
     const strays = await q<{
@@ -1163,7 +1561,8 @@ async function main(): Promise<void> {
          LEFT JOIN officials o ON o.id = COALESCE(b.official_id, a.official_id)
         WHERE COALESCE(b.total_cents, -1) <> COALESCE(a.total_cents, -1)
           AND COALESCE(b.official_id, a.official_id) NOT IN (
-                SELECT survivor FROM _manifest UNION SELECT dup FROM _manifest)
+                SELECT survivor FROM _manifest UNION SELECT dup FROM _manifest
+                UNION SELECT stub FROM _trio)
         ORDER BY 1`,
     );
 
@@ -1205,6 +1604,7 @@ async function main(): Promise<void> {
     console.log(`  platform donation dollars on officials: ${usd(beforeCents.toString())} → ${usd(afterCents.toString())}`);
     console.log(`  observed drop:                          ${usd(observedDrop.toString())}`);
     console.log(`  deleted colliding losers:               ${usd(deletedDonationCents.toString())}`);
+    console.log(`  deleted trio stolen copies:             ${usd(trioDeletedCents.toString())}`);
     console.log(`  difference (must be $0):                ${usd(dropDelta.toString())}  ${dropDelta === 0n ? "OK" : "FAIL"}`);
     console.log(`  manifest pair dollars:                  ${usd(sumBefore.toString())} → ${usd(sumAfter.toString())}`);
     console.log(`  FR rows moved onto survivors:           ${moved.toLocaleString()}`);
@@ -1228,7 +1628,10 @@ async function main(): Promise<void> {
         await client.query(`ANALYZE public.${t}`);
       }
       await client.query("COMMIT");
-      console.log(`\n✓ COMMITTED — ${pairs.length} pairs merged.`);
+      console.log(
+        `\n✓ COMMITTED — ${pairs.length} pairs merged.` +
+          (trioLive.length > 0 ? ` ${trioLive.length} trio stub(s) reverted.` : ""),
+      );
     } else {
       await client.query("ROLLBACK");
       console.log(`\n✓ DRY-RUN complete — all checks passed, rolled back. Re-run with --apply to commit.`);

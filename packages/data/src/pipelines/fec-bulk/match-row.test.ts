@@ -19,7 +19,13 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildMatchIndex, matchRow, type OfficialRecord, type WeBallRow } from "./index";
+import {
+  buildMatchIndex,
+  matchRow,
+  perCycleNameFallback,
+  type OfficialRecord,
+  type WeBallRow,
+} from "./index";
 import { parseFecName } from "./util";
 
 // ---------------------------------------------------------------------------
@@ -376,4 +382,140 @@ test("FIX-955 retiring one id does not disable an unrelated claim on the same ro
   const index = buildMatchIndex([twoIds]);
   assert.equal(index.byFecId.get("H2MD09999"), twoIds.id, "the live claim still stands");
   assert.equal(index.byFecId.get("H2MD05155"), undefined, "the retired claim does not");
+});
+
+// ---------------------------------------------------------------------------
+// FIX-960 — the per-cycle weball name-fallback (the SECOND name-resolution
+// path; `perCycleNameFallback`, extracted from the cycle loop)
+//
+// FIX-955 guarded matchRow / buildMatchIndex / persistNewFecIds but NOT this
+// loop. On prod (2026-08-02) it re-pooled the freshly id-less FIX-933 stubs
+// (its filter was `!fec_candidate_id && !fec_id` only) and its unconditional
+// `index.byFecId.set()` stole 79+3 CAND_IDs from their correctly-matched
+// elected survivors — $132.9M of duplicate donation rows. Two guards now:
+// merge stubs are excluded by merged_fec_candidate_id key-PRESENCE (any id,
+// not just the retired one), and an existing byFecId binding is never
+// overwritten.
+// ---------------------------------------------------------------------------
+
+/** The prod class-(b) shape: a FIX-933 stub, id-less, merge marker only. */
+const BANKS_SENATE_STUB: OfficialRecord = {
+  ...official(
+    "00000000-0000-0000-0000-0000000000f1",
+    "Jim Banks",
+    "Jim",
+    "Banks",
+    "Candidate for Senator",
+    "IN",
+    { merged_fec_candidate_id: "S4IN00196" },
+  ),
+  tier: "candidate",
+};
+
+test("FIX-960 a merge stub is excluded from the fallback pool for its own retired id", () => {
+  const index = buildMatchIndex([BANKS_SENATE_STUB]);
+  const bound = perCycleNameFallback(
+    [BANKS_SENATE_STUB],
+    [weball("S4IN00196", "BANKS, JIM", "IN")],
+    index,
+  );
+  assert.deepEqual(bound, [], "a retired claim is permanent — the stub must not re-enter the pool");
+  assert.equal(index.byFecId.get("S4IN00196"), undefined);
+});
+
+test("FIX-960 a merge stub is excluded even for an id DIFFERENT from its retired one (the Banks shape)", () => {
+  // Retired SENATE id on the stub; the weball row carries his old HOUSE id.
+  // The exclusion is key-PRESENCE — hasRetiredClaim's id-equality would pass
+  // this row straight through, which is exactly how Banks/Budd/Cotton took
+  // +$451,756 of duplicated House-stub money on 2026-08-02.
+  const index = buildMatchIndex([BANKS_SENATE_STUB]);
+  const bound = perCycleNameFallback(
+    [BANKS_SENATE_STUB],
+    [weball("H6IN03229", "BANKS, JIM", "IN")],
+    index,
+  );
+  assert.deepEqual(bound, [], "the House id must not bind to the Senate merge stub");
+  assert.equal(index.byFecId.get("H6IN03229"), undefined);
+});
+
+test("FIX-960 the fallback never clobbers an existing byFecId binding", () => {
+  // The elected row holds the CAND_ID via the authoritative path; a same-name
+  // id-less official must not steal it — and the refused binding must not be
+  // RETURNED either, or the caller would persist it via persistNewFecIds.
+  const elected = official(
+    "00000000-0000-0000-0000-0000000000g1",
+    "Brett Guthrie",
+    "Brett",
+    "Guthrie",
+    "Representative",
+    "KY",
+    { fec_candidate_id: "H8KY02015" },
+  );
+  const idless = official(
+    "00000000-0000-0000-0000-0000000000g2",
+    "Brett Guthrie",
+    "Brett",
+    "Guthrie",
+    "Representative",
+    "KY",
+  );
+  const index = buildMatchIndex([elected]);
+  const bound = perCycleNameFallback(
+    [elected, idless],
+    [weball("H8KY02015", "GUTHRIE, BRETT", "KY")],
+    index,
+  );
+  assert.deepEqual(bound, [], "a bound CAND_ID is never re-assigned and never re-reported");
+  assert.equal(index.byFecId.get("H8KY02015"), elected.id, "the survivor keeps the slot");
+});
+
+test("FIX-960 an id-less official still gets its legitimate fallback binding", () => {
+  const ossoff = official(
+    "00000000-0000-0000-0000-0000000000o1",
+    "Jon Ossoff",
+    "Jon",
+    "Ossoff",
+    "Senator",
+    "GA",
+    { congress_gov: "O000174" },
+  );
+  const index = buildMatchIndex([ossoff]);
+  const bound = perCycleNameFallback([ossoff], [weball("S8GA00180", "OSSOFF, JON", "GA")], index);
+  assert.deepEqual(bound, [{ officialId: ossoff.id, fecId: "S8GA00180" }]);
+  assert.equal(index.byFecId.get("S8GA00180"), ossoff.id);
+});
+
+test("FIX-960 an official already bound in the index does not re-enter the pool", () => {
+  const ossoff = official(
+    "00000000-0000-0000-0000-0000000000o1",
+    "Jon Ossoff",
+    "Jon",
+    "Ossoff",
+    "Senator",
+    "GA",
+    { congress_gov: "O000174" },
+  );
+  const index = buildMatchIndex([ossoff]);
+  index.byFecId.set("S8GA00180", ossoff.id); // bound in an earlier cycle
+  const bound = perCycleNameFallback([ossoff], [weball("S0GA00999", "OSSOFF, JON", "GA")], index);
+  assert.deepEqual(bound, [], "one official never accumulates a second id via the fallback");
+});
+
+test("FIX-960 when an elected row and a stub share a name key, elected wins regardless of order", () => {
+  // Same tier preference as buildMatchIndex (FIX-941) — without it the
+  // outcome depends on officials load order.
+  const electedBanks: OfficialRecord = {
+    ...official("00000000-0000-0000-0000-0000000000e1", "Jim Banks", "Jim", "Banks", "Senator", "IN"),
+    tier: "elected",
+  };
+  const stubBanks: OfficialRecord = {
+    ...official("00000000-0000-0000-0000-0000000000c9", "Jim Banks", "Jim", "Banks", "Candidate for Senator", "IN"),
+    tier: "candidate",
+  };
+  for (const pool of [[electedBanks, stubBanks], [stubBanks, electedBanks]]) {
+    const index = buildMatchIndex([]);
+    const bound = perCycleNameFallback(pool, [weball("S4IN00196", "BANKS, JIM", "IN")], index);
+    assert.equal(index.byFecId.get("S4IN00196"), electedBanks.id, "elected takes the binding");
+    assert.deepEqual(bound, [{ officialId: electedBanks.id, fecId: "S4IN00196" }]);
+  }
 });

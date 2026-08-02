@@ -617,6 +617,83 @@ export function matchRow(row: WeBallRow, index: MatchIndex): MatchResult | null 
   return null; // no first-name agreement, or still ambiguous — skip
 }
 
+/**
+ * FIX-960 — the per-cycle weball name-fallback, extracted so it can be tested
+ * and so its two guards are impossible to miss.
+ *
+ * This is the SECOND name-resolution path (the first is `matchRow`'s fallback
+ * above) and it undid FIX-933 on prod through two independent defects:
+ *
+ * 1. Its eligibility filter was `!fec_candidate_id && !fec_id` only — it never
+ *    consulted `merged_fec_candidate_id`, so a FIX-933 merge stub (freshly
+ *    id-less by design) re-entered the pool. The exclusion here is deliberately
+ *    key-PRESENCE, not `hasRetiredClaim`'s id-equality: a merge stub must never
+ *    re-enter any name pool for ANY id. The id-equality form provably leaves
+ *    the second-id path open — the Banks/Budd/Cotton "Candidate for Senator"
+ *    stubs carried retired SENATE ids and name-claimed their old HOUSE ids
+ *    through this loop (+$451,756 of duplicated House-stub money, 2026-08-02).
+ *
+ * 2. Its `index.byFecId.set()` was unconditional, so a fallback match STOLE
+ *    CAND_IDs already correctly bound byFecId to the elected survivor (79+3
+ *    thefts on 2026-08-02, $132.9M of duplicate donation rows). A binding that
+ *    already exists always wins now; the fallback only ever fills empty slots.
+ *
+ * The pool is also processed elected-tier first (same preference as
+ * `buildMatchIndex`, FIX-941): when an elected row and a stub share a name key,
+ * the elected row takes the binding and the non-clobber guard refuses the stub,
+ * instead of the outcome depending on officials load order.
+ *
+ * Mutates `index.byFecId` for the bindings it makes and returns them; the
+ * caller owns the cross-cycle `newFecIds` dedup.
+ */
+export function perCycleNameFallback(
+  officials: OfficialRecord[],
+  weballRows: WeBallRow[],
+  index: MatchIndex,
+): Array<{ officialId: string; fecId: string }> {
+  const alreadyIndexed = new Set(index.byFecId.values());
+  const pool = officials
+    .filter((o) => {
+      if (alreadyIndexed.has(o.id)) return false;
+      // FIX-960 guard 1 — broad key-presence exclusion (see doc comment).
+      if (o.source_ids["merged_fec_candidate_id"] !== undefined) return false;
+      return !o.source_ids["fec_candidate_id"] && !o.source_ids["fec_id"];
+    })
+    .sort(
+      (a, b) =>
+        Number((b.tier ?? "elected") === "elected") -
+        Number((a.tier ?? "elected") === "elected"),
+    );
+  if (pool.length === 0) return [];
+
+  const weballByKey = new Map<string, WeBallRow>();
+  for (const row of weballRows) {
+    const { last, first } = parseFecName(row.candName);
+    const key = `${last.replace(/[^A-Z]/g, "")}|${first.slice(0, 3)}|${row.candOfficeSt}`;
+    if (!weballByKey.has(key)) weballByKey.set(key, row);
+  }
+
+  const bound: Array<{ officialId: string; fecId: string }> = [];
+  for (const official of pool) {
+    const normLast  = normalizeLastName(official.last_name ?? official.full_name);
+    const normFirst = (official.first_name ?? official.full_name.split(" ")[0] ?? "")
+      .toUpperCase()
+      .replace(/[^A-Z]/g, "")
+      .slice(0, 3);
+    const state = (official.state ?? "").toUpperCase();
+    const row   = weballByKey.get(`${normLast}|${normFirst}|${state}`);
+    if (!row) continue;
+
+    // FIX-960 guard 2 — never clobber an existing binding, and never report a
+    // refused binding as a new FEC id (the caller would persist it).
+    if (index.byFecId.has(row.candId)) continue;
+
+    index.byFecId.set(row.candId, official.id);
+    bound.push({ officialId: official.id, fecId: row.candId });
+  }
+  return bound;
+}
+
 // ---------------------------------------------------------------------------
 // Parse cm24 committee master (in-memory — ~2 MB uncompressed)
 // ---------------------------------------------------------------------------
@@ -1064,6 +1141,10 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
           cycMatchedByFecId++;
         } else {
           cycMatchedByName++;
+          // Effectively non-clobbering (FIX-960): match.fecId === row.candId,
+          // and matchRow only reaches its name fallback after step 1 found NO
+          // byFecId binding for row.candId — a bound CAND_ID short-circuits as
+          // a byFecId match and never lands in this branch.
           index.byFecId.set(match.fecId, match.officialId);
           const dedupKey = `${match.officialId}|${match.fecId}`;
           if (!newFecIdSeen.has(dedupKey)) {
@@ -1079,48 +1160,18 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
 
       // Name-fallback for officials with no stored FEC ID at all. Re-run per
       // cycle — a senator who didn't run in 2024 may appear in 2020/2022's
-      // weball under their incumbent committee.
-      const alreadyIndexed = new Set(index.byFecId.values());
-      const noFecIdOfficials = officials.filter((o) => {
-        if (alreadyIndexed.has(o.id)) return false;
-        const cid = o.source_ids["fec_candidate_id"];
-        const fid = o.source_ids["fec_id"];
-        return !cid && !fid;
-      });
-
-      if (noFecIdOfficials.length > 0) {
-        const weballByKey = new Map<string, WeBallRow>();
-        for (const row of weballRows) {
-          const { last, first } = parseFecName(row.candName);
-          const key = `${last.replace(/[^A-Z]/g, "")}|${first.slice(0, 3)}|${row.candOfficeSt}`;
-          if (!weballByKey.has(key)) weballByKey.set(key, row);
+      // weball under their incumbent committee. Extracted (FIX-960) — it
+      // excludes merge stubs and never overwrites an existing byFecId binding.
+      const fallbackBound = perCycleNameFallback(officials, weballRows, index);
+      for (const { officialId, fecId } of fallbackBound) {
+        const dedupKey = `${officialId}|${fecId}`;
+        if (!newFecIdSeen.has(dedupKey)) {
+          newFecIdSeen.add(dedupKey);
+          newFecIds.push({ officialId, fecId, storageKey: "fec_candidate_id" });
         }
-
-        let fallbackMatched = 0;
-        for (const official of noFecIdOfficials) {
-          const normLast  = normalizeLastName(official.last_name ?? official.full_name);
-          const normFirst = (official.first_name ?? official.full_name.split(" ")[0] ?? "")
-            .toUpperCase()
-            .replace(/[^A-Z]/g, "")
-            .slice(0, 3);
-          const state = (official.state ?? "").toUpperCase();
-          const key   = `${normLast}|${normFirst}|${state}`;
-
-          const row = weballByKey.get(key);
-          if (!row) continue;
-
-          fallbackMatched++;
-          index.byFecId.set(row.candId, official.id);
-          const dedupKey = `${official.id}|${row.candId}`;
-          if (!newFecIdSeen.has(dedupKey)) {
-            newFecIdSeen.add(dedupKey);
-            newFecIds.push({ officialId: official.id, fecId: row.candId, storageKey: "fec_candidate_id" });
-          }
-        }
-
-        if (fallbackMatched > 0) {
-          console.log(`    Name fallback matched: ${fallbackMatched} additional officials`);
-        }
+      }
+      if (fallbackBound.length > 0) {
+        console.log(`    Name fallback matched: ${fallbackBound.length} additional officials`);
       }
 
       const candidateSet = new Set<string>(index.byFecId.keys());
