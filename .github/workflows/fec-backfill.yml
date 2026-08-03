@@ -124,6 +124,10 @@ jobs:
       # Same kill-detector backstop the nightly uses: if the job is SIGTERM'd by
       # timeout-minutes mid-run, the fec_bulk data_sync_log row strands at
       # status='running'. Observability only; never gates the job.
+      # --window-hours must exceed timeout-minutes (350 min ≈ 5.9h): the default
+      # 4h window no-op'd on the 2026-08-03 timeout because the orphan row was
+      # older than the lookback — i.e. the backstop failed precisely because the
+      # job ran long (FIX-962).
       - name: Mark killed if no completion row
         if: always()
-        run: pnpm --filter @civitics/data data:mark-killed:ci -- --pipeline=fec_bulk
+        run: pnpm --filter @civitics/data data:mark-killed:ci -- --pipeline=fec_bulk --window-hours 7
