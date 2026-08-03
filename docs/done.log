@@ -1171,3 +1171,4 @@
 2026-08-01 | FIX-959 | f33e0b5c | local-only | fix(tags): a tag change now triggers its own sector-affinity rebuild
 2026-08-02 | FIX-960 | 54d9206d | local-only | fix(fec): FIX-960 — retire merge stubs from the per-cycle name-fallback; repair manifest for the no-live-id re-split
 2026-08-02 | FIX-960 | aa278b7a | local+prod | fix(fec): FIX-960 prod repair applied — trio review render reads display_name
+2026-08-02 | FIX-962 | 09ab3ab9 | unverified | [skip vercel] fix(ci): mark-killed window 7h on fec-backfill; file FIX-962
