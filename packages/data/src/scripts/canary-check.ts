@@ -65,7 +65,25 @@ interface SyncRow {
   completed_at: string | null;
 }
 
-async function fetchActualDates(daysBack: number): Promise<Set<string>> {
+// FIX-968 — returns null when the query itself fails, NOT an empty set.
+//
+// This used to `throw`, and the throw propagated out of main() to the top-level
+// catch, so a failure here skipped EVERY other detector. On 2026-08-06 07:30
+// (GHA run 31081114924) it did exactly that: `data_sync_log query failed:
+// canceling statement due to statement timeout` — service_role's 8s cap, blown
+// because the box was saturated — and the canary died before reaching the
+// autovacuum, rollup, sector-affinity or cron-firing checks. jobid 9 and 11 had
+// both been starved that morning and nothing reported it.
+//
+// That is the FIX-968 failure class turned on the watchman: the canary was
+// blindest exactly when the box was most saturated, which is when things are
+// actually being starved. Every other detector here is already non-fatal on
+// error; these two were the exception.
+//
+// null (unknown) rather than an empty set is deliberate — an empty set would be
+// indistinguishable from "the nightly missed all 7 days" and would fire a
+// 7-day-outage alert on what is really a read timeout.
+async function fetchActualDates(daysBack: number): Promise<Set<string> | null> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = createAdminClient() as any;
   const since = new Date();
@@ -81,7 +99,12 @@ async function fetchActualDates(daysBack: number): Promise<Set<string>> {
     .in("status", ["complete", "partial"])
     .gte("started_at", since.toISOString());
 
-  if (error) throw new Error(`data_sync_log query failed: ${error.message}`);
+  if (error) {
+    console.warn(
+      `[canary-check] nightly_cron query failed (non-fatal, other detectors still run): ${error.message}`,
+    );
+    return null;
+  }
 
   const rows = (data ?? []) as SyncRow[];
   const set = new Set<string>();
@@ -380,6 +403,7 @@ async function writeMetaRow(
   rollups: RollupStatus[],
   sectorAffinity: SectorAffinityStaleness | null,
   cronHealth: CronJobHealth | null,
+  nightlyUnavailable: boolean,
 ): Promise<void> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = createAdminClient() as any;
@@ -392,6 +416,10 @@ async function writeMetaRow(
     metadata: {
       pipeline_checked: PIPELINE_NAME,
       checked_days:     CHECK_DAYS,
+      // FIX-968 — true means the nightly_cron read failed, so missing_* below
+      // are "unknown" rather than "none". Without this a read timeout and a
+      // clean night are the same two zeros in data_sync_log.
+      nightly_check_unavailable: nightlyUnavailable,
       missing_count:    missing.length,
       missing_dates:    missing,
       killed_count:     killed.length,
@@ -624,10 +652,15 @@ async function main(): Promise<number> {
     ...(cronHealth?.startupTimeouts ?? []),
     ...(cronHealth?.missingDaily ?? []),
   ];
+  // FIX-968 — when the nightly_cron read itself failed we know NOTHING about
+  // missing/killed, so report neither rather than inventing a 7-day outage.
+  // The remaining detectors are unaffected and still run, which is the whole
+  // point of the change.
+  const nightlyCheckUnavailable = actual === null;
   // "missing" = no nightly_cron row AND no nightly_killed row for that date.
   // "killed" = no nightly_cron row but a nightly_killed synthetic row exists.
-  const missing  = expected.filter((d) => !actual.has(d) && !killedSet.has(d));
-  const killed   = expected.filter((d) => !actual.has(d) &&  killedSet.has(d));
+  const missing  = nightlyCheckUnavailable ? [] : expected.filter((d) => !actual!.has(d) && !killedSet.has(d));
+  const killed   = nightlyCheckUnavailable ? [] : expected.filter((d) => !actual!.has(d) &&  killedSet.has(d));
 
   let alertSent = false;
   const adminEmail = process.env["ADMIN_EMAIL"];
@@ -649,7 +682,7 @@ async function main(): Promise<number> {
     }
   }
 
-  await writeMetaRow(missing, killed, autovacuum, rollups, sectorAffinity, cronHealth);
+  await writeMetaRow(missing, killed, autovacuum, rollups, sectorAffinity, cronHealth, nightlyCheckUnavailable);
 
   // FIX-885 — ESCALATE. The DB-health findings exit non-zero so the workflow run
   // goes red; an email alone is not escalation. FIX-650 built the detector and it
@@ -729,6 +762,9 @@ async function main(): Promise<number> {
       // FIX-968 — startup_timeouts/missing_daily escalate; timeout_blowouts is
       // report-only (see the RPC comment), surfaced here so the cause shows up
       // in the workflow log alongside the consequence.
+      // FIX-968 — the nightly_cron read failed; missing/killed above are
+      // "unknown", not "clean". Surfaced so a quiet run cannot be misread.
+      nightly_check_unavailable: nightlyCheckUnavailable,
       cron_startup_timeouts: (cronHealth?.startupTimeouts ?? []).map(describeFiring),
       cron_missing_daily:    (cronHealth?.missingDaily ?? []).map(describeFiring),
       cron_timeout_blowouts: (cronHealth?.timeoutBlowouts ?? []).map(describeFiring),
