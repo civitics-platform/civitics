@@ -304,12 +304,82 @@ async function fetchSectorAffinityStaleness(): Promise<SectorAffinityStaleness |
   };
 }
 
+// FIX-968 — pg_cron FIRING health. Every other detector here watches a
+// CONSEQUENCE (a rollup is stale, a visibility map collapsed). This is the only
+// one that watches whether the scheduled work started at all.
+//
+// The surfacing case: jobid 24 (donor-rollup-refresh) died at STARTUP on
+// 2026-08-03/04/05 — `cron.job_run_details.return_message = 'job startup
+// timeout'`, ~10s after firing, body never entered. Because a startup timeout
+// writes nothing to data_sync_log, the FIX-944 rollup watcher above could only
+// infer it two days later from staleness, and the other 20 jobs had no watcher
+// at all (five of them were starved in the same window; jobid 12 has failed 4 of
+// 5 runs at the 6h ceiling unnoticed).
+//
+// Escalation split mirrors FIX-943's cause-vs-consequence rule and is enforced
+// in the RPC, not here: startupTimeouts + missingDaily escalate; timeoutBlowouts
+// and runs are report-only (seven jobs blow the 6h ceiling, one near-weekly, so
+// escalating on it would fail this workflow most Tuesdays and train the alert to
+// be ignored).
+type CronJobFiring = {
+  jobid: number;
+  jobname: string | null;
+  schedule: string | null;
+  start_time?: string;
+  seconds?: number;
+  message?: string | null;
+  status?: string;
+};
+
+type CronJobHealth = {
+  available: boolean;
+  lookbackHours: number;
+  startupTimeouts: CronJobFiring[];
+  missingDaily: CronJobFiring[];
+  timeoutBlowouts: CronJobFiring[];
+  runs: CronJobFiring[];
+};
+
+async function fetchCronJobHealth(): Promise<CronJobHealth | null> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = createAdminClient() as any;
+  const { data, error } = await db.rpc("check_cron_job_health");
+  if (error) {
+    // Non-fatal, same contract as every other detector: a missing RPC (env not
+    // yet migrated) must never fail the canary's primary nightly_cron job.
+    console.warn(`[canary-check] cron job health query failed (non-fatal): ${error.message}`);
+    return null;
+  }
+  const r = (data ?? {}) as {
+    available?: boolean;
+    lookback_hours?: number;
+    startup_timeouts?: CronJobFiring[];
+    missing_daily?: CronJobFiring[];
+    timeout_blowouts?: CronJobFiring[];
+    runs?: CronJobFiring[];
+  };
+  const arr = (v: unknown): CronJobFiring[] => (Array.isArray(v) ? v : []);
+  return {
+    available:       r.available === true,
+    lookbackHours:   r.lookback_hours ?? 0,
+    startupTimeouts: arr(r.startup_timeouts),
+    missingDaily:    arr(r.missing_daily),
+    timeoutBlowouts: arr(r.timeout_blowouts),
+    runs:            arr(r.runs),
+  };
+}
+
+function describeFiring(f: CronJobFiring): string {
+  return `${f.jobname ?? `jobid ${f.jobid}`}${f.schedule ? ` (${f.schedule})` : ""}`;
+}
+
 async function writeMetaRow(
   missing: string[],
   killed: string[],
   autovacuum: AutovacuumStatus,
   rollups: RollupStatus[],
   sectorAffinity: SectorAffinityStaleness | null,
+  cronHealth: CronJobHealth | null,
 ): Promise<void> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = createAdminClient() as any;
@@ -347,6 +417,11 @@ async function writeMetaRow(
       // FIX-959 — recorded on EVERY run for the same reason: the signature
       // trail makes a strand's onset findable after the fact.
       sector_affinity_staleness: sectorAffinity,
+      // FIX-968 — recorded on EVERY run, findings or not, for the same reason as
+      // vm[]/bloat[] above: three days of "the job never fired" were invisible
+      // partly because nothing had ever read cron.job_run_details. The full
+      // window trail makes a firing regression's onset findable after the fact.
+      cron_job_health:  cronHealth,
       peak_rss_mb:      captureRssMb(),
     },
   });
@@ -361,6 +436,7 @@ async function sendAlert(
   autovacuum: AutovacuumStatus,
   staleRollups: RollupStatus[],
   sectorAffinity: SectorAffinityStaleness | null,
+  cronHealth: CronJobHealth | null,
   to: string,
   apiKey: string,
 ): Promise<void> {
@@ -387,6 +463,12 @@ async function sendAlert(
   if (staleRollups.length > 0) parts.push(`stale rollup: ${staleRollups.map((r) => r.pipeline).join(", ")}`);
   // FIX-959 — a donor tag change stranded un-incorporated in the affinity rollup.
   if (sectorAffinity?.stale) parts.push(`sector-affinity rollup stranded on a tag change`);
+  // FIX-968 — a pg_cron firing that never started. Distinct from every other
+  // fragment here: those say "the data is wrong", this says "the work never ran".
+  const skipped = [...(cronHealth?.startupTimeouts ?? []), ...(cronHealth?.missingDaily ?? [])];
+  if (skipped.length > 0) {
+    parts.push(`pg_cron job(s) never started: ${[...new Set(skipped.map((f) => f.jobname ?? `jobid ${f.jobid}`))].join(", ")}`);
+  }
   const subject = `[Civitics] Nightly canary — ${parts.join("; ")}`;
 
   const sections: string[] = [];
@@ -478,6 +560,35 @@ async function sendAlert(
         `public.refresh_sector_affinity_from_tag_changes() directly (off-peak).`,
     );
   }
+  if (skipped.length > 0) {
+    sections.push(
+      `pg_cron job(s) never STARTED (FIX-968) — this is not "the job failed", ` +
+        `it is "the firing was abandoned before the body ran", so nothing was ` +
+        `written to data_sync_log and no self-heal fired:\n` +
+        (cronHealth?.startupTimeouts ?? [])
+          .map((f) => `  - startup timeout: ${describeFiring(f)} at ${f.start_time ?? "?"} after ${f.seconds ?? "?"}s`)
+          .join("\n") +
+        ((cronHealth?.missingDaily ?? []).length > 0
+          ? "\n" +
+            (cronHealth?.missingDaily ?? [])
+              .map((f) => `  - no run row at all in the last ${cronHealth?.lookbackHours ?? "?"}h: ${describeFiring(f)}`)
+              .join("\n")
+          : "") +
+        `\n\nCause on this instance: cron.use_background_workers=off, so pg_cron ` +
+        `opens a fresh libpq connection per firing with a ~10s window. Under ` +
+        `sustained load on Pro Small that window is blown and the firing is ` +
+        `dropped silently — no queue, no retry.\n` +
+        `Triage: SELECT * FROM cron.job_run_details ORDER BY start_time DESC; ` +
+        `then look for what was saturating the box at that minute (a job burning ` +
+        `the 6h statement_timeout, or an overnight GHA fec_bulk retry).` +
+        ((cronHealth?.timeoutBlowouts ?? []).length > 0
+          ? `\n\nAlso in this window (report-only, not escalating): ` +
+            (cronHealth?.timeoutBlowouts ?? [])
+              .map((f) => `${describeFiring(f)} ran ${f.seconds ?? "?"}s into the 6h statement_timeout`)
+              .join("; ")
+          : ""),
+    );
+  }
   const body = sections.join("\n\n") + `\n\nWorkflow runs: ${NIGHTLY_RUN_URL}\n`;
 
   const { error } = await resend.emails.send({
@@ -506,6 +617,13 @@ async function main(): Promise<number> {
   // FIX-959 — point-in-time: is a donor industry-tag change stranded
   // un-incorporated in official_sector_affinity_rollup past one nightly cycle?
   const sectorAffinity = await fetchSectorAffinityStaleness();
+  // FIX-968 — did every scheduled pg_cron job actually START? The only detector
+  // here that watches the cause rather than a consequence.
+  const cronHealth = await fetchCronJobHealth();
+  const skippedFirings = [
+    ...(cronHealth?.startupTimeouts ?? []),
+    ...(cronHealth?.missingDaily ?? []),
+  ];
   // "missing" = no nightly_cron row AND no nightly_killed row for that date.
   // "killed" = no nightly_cron row but a nightly_killed synthetic row exists.
   const missing  = expected.filter((d) => !actual.has(d) && !killedSet.has(d));
@@ -518,10 +636,11 @@ async function main(): Promise<number> {
   const sendReal   = process.argv.includes("--send-real");
   const hasAlert   = missing.length > 0 || killed.length > 0
                   || strandedAutovacuum.length > 0 || autovacuum.vmDegraded.length > 0
-                  || staleRollups.length > 0 || sectorAffinity?.stale === true;
+                  || staleRollups.length > 0 || sectorAffinity?.stale === true
+                  || skippedFirings.length > 0;
   if (hasAlert && adminEmail && resendKey) {
     if (inCi || sendReal) {
-      await sendAlert(missing, killed, autovacuum, staleRollups, sectorAffinity, adminEmail, resendKey);
+      await sendAlert(missing, killed, autovacuum, staleRollups, sectorAffinity, cronHealth, adminEmail, resendKey);
       alertSent = true;
     } else {
       console.log(
@@ -530,7 +649,7 @@ async function main(): Promise<number> {
     }
   }
 
-  await writeMetaRow(missing, killed, autovacuum, rollups, sectorAffinity);
+  await writeMetaRow(missing, killed, autovacuum, rollups, sectorAffinity, cronHealth);
 
   // FIX-885 — ESCALATE. The DB-health findings exit non-zero so the workflow run
   // goes red; an email alone is not escalation. FIX-650 built the detector and it
@@ -580,6 +699,17 @@ async function main(): Promise<number> {
     );
   }
 
+  // FIX-968 — escalate for the same reason as the four above, and arguably
+  // harder: a skipped firing means the work provably did not happen, and pg_cron
+  // has no queue or retry, so it stays not-happened until the next firing. This
+  // is the detector that would have caught jobid 24 on the MORNING of 08-03
+  // instead of two days later via downstream staleness.
+  if (skippedFirings.length > 0) {
+    failures.push(
+      `pg_cron firing(s) never started: ${skippedFirings.map(describeFiring).join(", ")}`,
+    );
+  }
+
   console.log(
     JSON.stringify({
       checked_days:        CHECK_DAYS,
@@ -596,6 +726,12 @@ async function main(): Promise<number> {
       rollup_freshness:    rollups,
       stale_rollups:       staleRollups.map((r) => r.pipeline),
       sector_affinity_staleness: sectorAffinity,
+      // FIX-968 — startup_timeouts/missing_daily escalate; timeout_blowouts is
+      // report-only (see the RPC comment), surfaced here so the cause shows up
+      // in the workflow log alongside the consequence.
+      cron_startup_timeouts: (cronHealth?.startupTimeouts ?? []).map(describeFiring),
+      cron_missing_daily:    (cronHealth?.missingDaily ?? []).map(describeFiring),
+      cron_timeout_blowouts: (cronHealth?.timeoutBlowouts ?? []).map(describeFiring),
       alert_sent:          alertSent,
       escalated:           failures.length > 0,
     })

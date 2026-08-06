@@ -2,7 +2,9 @@
  * FIX-944 — Break-glass single-pass sweep of the six per-official money rollups.
  *
  * WHY THIS EXISTS
- * The scheduled `donor-rollup-refresh` pg_cron job (jobid 24 on prod, `0 9 * * *`,
+ * The scheduled `donor-rollup-refresh` pg_cron job (jobid 24 on prod,
+ * `0 9,12 * * *` since FIX-968 — 09:00 primary, 12:00 same-day backstop for a
+ * firing lost to a `job startup timeout`,
  * `CALL refresh_official_donor_rollup_incremental()`) runs as the `postgres`
  * role, which carries `statement_timeout=6h` via pg_db_role_setting. That
  * timeout is armed once at CALL start and is NOT re-armed by the procedure's
@@ -60,6 +62,7 @@
  */
 
 import { Client } from "pg";
+import { ARMED_PROBE_SQL, isTimeoutDisarmed, type ArmedProbeRow } from "../lib/statement-timeout-probe";
 
 const LOCAL_DB_URL = "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
 
@@ -209,8 +212,12 @@ async function main(): Promise<number> {
     await client.query(`SET civitics.donor_rollup_budget_seconds = '${Math.floor(args.budgetSeconds)}'`);
     await client.query("SET work_mem = '128MB'");
 
-    const armed = await client.query<{ st: string }>("SHOW statement_timeout");
-    if (armed.rows[0]?.st !== "0") {
+    // FIX-968 — shared probe. This gate used `SHOW statement_timeout` + `.st`,
+    // which names its column after the setting, so `.st` was always undefined
+    // and the gate ALWAYS refused: this script could never run. See
+    // lib/statement-timeout-probe.ts.
+    const armed = await client.query<ArmedProbeRow>(ARMED_PROBE_SQL);
+    if (!isTimeoutDisarmed(armed.rows[0])) {
       console.error(`[sweep] refusing: statement_timeout is ${armed.rows[0]?.st}, expected 0 — the sweep would be cancelled mid-flight`);
       return 1;
     }

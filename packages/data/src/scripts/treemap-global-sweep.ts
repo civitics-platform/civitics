@@ -33,6 +33,7 @@
 import { Client } from "pg";
 
 import { constructDbUrlFromEnv } from "./fec-orphan-classify";
+import { ARMED_PROBE_SQL, isTimeoutDisarmed, type ArmedProbeRow } from "../lib/statement-timeout-probe";
 
 const LOCAL_DB_URL = "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
 const PIPELINE = "treemap_individuals_global_refresh";
@@ -198,10 +199,11 @@ async function main(): Promise<number> {
     await client.query(`SET civitics.treemap_global_budget_seconds = '${Math.floor(args.budgetSeconds)}'`);
     if (!isProd) await client.query("SET max_parallel_workers_per_gather = 0"); // local Docker /dev/shm is 64MB
 
-    // NOT `SHOW statement_timeout` + `.st` — SHOW names its column after the
-    // setting, so the donor-rollup sweep's identical guard always refused.
-    const armed = await client.query<{ st: string }>("SELECT current_setting('statement_timeout') AS st");
-    if (armed.rows[0]?.st !== "0") {
+    // FIX-968 — shared probe (was an inline `current_setting(...)` here, and a
+    // broken `SHOW ... ` + `.st` in the donor-rollup sweep). One implementation
+    // so a third sweep cannot reintroduce it. See lib/statement-timeout-probe.ts.
+    const armed = await client.query<ArmedProbeRow>(ARMED_PROBE_SQL);
+    if (!isTimeoutDisarmed(armed.rows[0])) {
       console.error(`[sweep] refusing: statement_timeout is ${armed.rows[0]?.st}, expected 0 — the sweep would be cancelled mid-flight`);
       return 1;
     }
