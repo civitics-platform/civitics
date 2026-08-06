@@ -1178,3 +1178,5 @@
 2026-08-05 | FIX-955 | b0ee27c2 | local+prod | chore(fec): prod attribution run — FIX-952 backfill, FIX-934, FIX-954 applied
 2026-08-05 | FIX-965 | 07b80d45 | local+prod | fix(db): resumable 64-chunk treemap global refresh (FIX-965)
 2026-08-05 | FIX-968 | 2d0cf5ac | local-only | fix(db): donor-rollup 12:00 backstop + first cron-firing detector (FIX-968)
+2026-08-06 | FIX-968 | a9299dfc | local+prod | chore(fix968): record prod verification of the schedule + firing detector
+2026-08-06 | FIX-968 | 86932034 | local-only | fix(data): canary must not die on its first query (FIX-968 follow-on)
