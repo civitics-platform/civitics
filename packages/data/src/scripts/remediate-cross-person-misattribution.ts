@@ -224,7 +224,6 @@ async function runRollups(client: Client, prod: boolean): Promise<void> {
       ["rebuild_financial_entity_ie_totals()", `SELECT rebuild_financial_entity_ie_totals()`],
       ["refresh_group_donor_rollup()", `SELECT refresh_group_donor_rollup()`],
       ["rebuild_entity_search_index()", `SELECT rebuild_entity_search_index()`],
-      ["refresh_treemap_individuals_global()", `CALL refresh_treemap_individuals_global()`],
     ] as const) {
       try {
         await budgeted(client, label, sql, STEP_BUDGET_S["heavy"]!);
@@ -232,6 +231,36 @@ async function runRollups(client: Client, prod: boolean): Promise<void> {
         if (err instanceof BudgetExceeded) throw err;
         console.error(`  ! ${label} failed: ${err instanceof Error ? err.message : String(err)}`);
       }
+    }
+
+    // FIX-965: the treemap global refresh is resumable and budget-guards
+    // ITSELF. Never arm a statement_timeout around this CALL — the 2026-08-05
+    // server-side cancellation of exactly this step wedged the prod instance
+    // for ~7 hours. Hand the step budget to the procedure's session GUC; on
+    // budget it exits cleanly as status='partial' and any later CALL (weekly
+    // cron or data:treemap:sweep) resumes from the committed chunk cursor.
+    try {
+      await client.query(
+        `SET civitics.treemap_global_budget_seconds = '${STEP_BUDGET_S["heavy"]!}'`,
+      );
+      await step(client, "refresh_treemap_individuals_global()", `CALL refresh_treemap_individuals_global()`);
+      const [tm] = await q<{ status: string }>(
+        client,
+        `SELECT status FROM data_sync_log
+          WHERE pipeline = 'treemap_individuals_global_refresh'
+          ORDER BY started_at DESC LIMIT 1`,
+      );
+      if (tm && tm.status !== "complete") {
+        console.error(
+          `  ! treemap global refresh ended '${tm.status}' — resumable; ` +
+            `finish with: pnpm --filter @civitics/data data:treemap:sweep${prod ? ":prod" : ""}`,
+        );
+      }
+    } catch (err) {
+      console.error(
+        `  ! refresh_treemap_individuals_global() failed: ${err instanceof Error ? err.message : String(err)} ` +
+          `(committed chunks are cursor-tracked; resume with data:treemap:sweep)`,
+      );
     }
   } catch (err) {
     if (!(err instanceof BudgetExceeded)) throw err;
