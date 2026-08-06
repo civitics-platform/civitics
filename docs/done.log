@@ -1176,3 +1176,4 @@
 2026-08-05 | FIX-952 | b0ee27c2 | local+prod | chore(fec): prod attribution run — FIX-952 backfill, FIX-934, FIX-954 applied
 2026-08-05 | FIX-954 | b0ee27c2 | local+prod | chore(fec): prod attribution run — FIX-952 backfill, FIX-934, FIX-954 applied
 2026-08-05 | FIX-955 | b0ee27c2 | local+prod | chore(fec): prod attribution run — FIX-952 backfill, FIX-934, FIX-954 applied
+2026-08-05 | FIX-965 | 07b80d45 | local+prod | fix(db): resumable 64-chunk treemap global refresh (FIX-965)
