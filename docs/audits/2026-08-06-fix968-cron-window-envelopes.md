@@ -301,6 +301,94 @@ line in one script — far smaller than FIX-968 decision 5 assumed.
 
 ---
 
+## 7b. The 2026-08-06 drain, as it actually ran
+
+Added after the fact. The runtime projection in §5 was **wrong by ~15×** and the
+correction matters more than the original estimate did.
+
+**Firings under the new `0 9,12 * * *` shape:**
+
+| runid | start | end | secs | cron status | data_sync_log |
+|---|---|---|---|---|---|
+| 181 | 09:00:03 | 12:16:14 | 11 771 | succeeded | `partial` — "budget exhausted — resumable at recipient 601 of 10 286" |
+| 182 | 12:16:15 | (running) | — | running | `running`, dirty 9 686, resuming from cursor |
+
+Both design goals held. 09:00 **started** (the three prior days died at startup),
+and the 12:00 firing did not double-run against the in-flight instance — pg_cron
+held it and launched it **one second** after 181 released, resuming from the
+cursor. That is better than the advisory-lock `skipped` this was designed for.
+
+**Throughput, measured:** 600 recipients = 3 chunks in 3h16m ≈ **65 min/chunk**,
+against FIX-951's measured **269 s/chunk**. A 14.5× gap.
+
+**It is not a plan problem.** `EXPLAIN` (planning only) of arms 1 and 2 at chunk
+sizes 200/100/50/25/10:
+
+| chunk | full arm-1 cost | arm-2 cost | plan |
+|---|---|---|---|
+| 200 | 78 251 | 72 308 | Index Only Scan `financial_relationships_donor_rollup_idx` |
+| 50 | 27 783 | 24 664 | same |
+| 25 | 10 478 | 8 822 | same |
+
+Perfectly linear, no seq scan, no missing index, no spill cliff, no plan flip.
+**So chunk size is not a throughput lever** — it only recovers the ~27% of each
+window the 1.25× budget guard leaves unused (181 stopped at 3h16m of a 4h30m
+budget because it would not start a 4th chunk).
+
+The cost is genuine I/O on a cache-starved instance: the backend sat on
+`IO/DataFileRead` for 64+ minutes continuously, and the Supavisor pooler
+intermittently refused connections outright (`ECHECKOUTTIMEOUT`) throughout
+05:50–13:00. Live PostgREST traffic was queueing behind it. This is the
+FIX-775 lesson — memory-bounded is not I/O-bounded.
+
+**Whale load** (per-recipient donation rows, worst offenders):
+
+| official | FR rows | distinct donors |
+|---|---|---|
+| Raphael G. Warnock | 81 354 | 80 674 |
+| Mark Kelly | 41 977 | 37 687 |
+| Herschel Walker | 32 254 | 32 242 |
+| John Fetterman | 26 466 | 25 807 |
+| Catherine Cortez Masto | 24 423 | 23 699 |
+| **Donald Trump** | **742** | 637 |
+
+Trump's $42.3M understatement comes from 742 rows, not a long tail — it is
+committee money. Also visible: **ten separate "Donald Trump" `officials` rows**
+(and two "Marco Rubio"), most with 1 FR row and no rollup — the known prod
+officials pollution, untouched here.
+
+**Dirty-set composition — sizes the FIX-970 lever, and corrects it:**
+
+| `to_type` | dirty rows | % of rows | recipients | rows/recipient |
+|---|---|---|---|---|
+| `official` | 1 815 180 | **69.8 %** | 5 029 | 361 |
+| `financial_entity` | 785 707 | **30.2 %** | 5 257 | 149 |
+
+Non-official recipients are **51 % of the recipient count but only 30 % of the
+row work** — they are *cheaper* per recipient, not more expensive. The
+speculation that committee recipients might carry bigger individual-donor tails
+than candidates is **false on this data**.
+
+> **Correction to FIX-970's bullet**, which was filed before this measurement and
+> says scoping would "cut the work by roughly half": scoping the dirty set to
+> officials halves the CHUNK COUNT (52 → 26) but cuts total row work by only
+> **~30 %**, and each surviving chunk gets ~1.4× heavier. Expected saving is
+> therefore **~30 %**, not ~50 %. FIX-970's correctness case — 7 241 dead
+> `official_id`s in a 776 137-row table no consumer reads by that key — is
+> unaffected and stands on its own.
+>
+> Consequence for sequencing: a ~30 % saving does **not** justify discarding an
+> in-flight sweep to re-scope it. Let the drain finish; scope for future runs.
+
+**Projection at measured rate:** ~9 500 recipients remaining ≈ 48 chunks ×
+65 min ≈ **52 h of compute**; at ~3 chunks per window and 2 windows/day, roughly
+**8 days**. The 12:00 backstop is free as a startup retry (~0.1 s on an empty
+dirty set) but on a day like this one it drains 12:16–16:46 UTC = 08:16–12:46
+ET, i.e. through US-morning traffic. Worth revisiting if the whale-heavy dirty
+sets become routine rather than a one-off consequence of the FIX-952 backfill.
+
+---
+
 ## 8. Carry-forward for PR 3 (rollup capacity)
 
 Facts worth not re-deriving:
