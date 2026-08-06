@@ -1172,3 +1172,7 @@
 2026-08-02 | FIX-960 | 54d9206d | local-only | fix(fec): FIX-960 — retire merge stubs from the per-cycle name-fallback; repair manifest for the no-live-id re-split
 2026-08-02 | FIX-960 | aa278b7a | local+prod | fix(fec): FIX-960 prod repair applied — trio review render reads display_name
 2026-08-02 | FIX-962 | 09ab3ab9 | unverified | [skip vercel] fix(ci): mark-killed window 7h on fec-backfill; file FIX-962
+2026-08-05 | FIX-934 | b0ee27c2 | local+prod | chore(fec): prod attribution run — FIX-952 backfill, FIX-934, FIX-954 applied
+2026-08-05 | FIX-952 | b0ee27c2 | local+prod | chore(fec): prod attribution run — FIX-952 backfill, FIX-934, FIX-954 applied
+2026-08-05 | FIX-954 | b0ee27c2 | local+prod | chore(fec): prod attribution run — FIX-952 backfill, FIX-934, FIX-954 applied
+2026-08-05 | FIX-955 | b0ee27c2 | local+prod | chore(fec): prod attribution run — FIX-952 backfill, FIX-934, FIX-954 applied
