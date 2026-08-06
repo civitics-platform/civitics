@@ -283,6 +283,49 @@ existing `check_rebuild_autovacuum_status`.
 
 ---
 
+## 6b. `data_sync_log` durations are not runtimes — FIX-944's numbers corrected
+
+FIX-944's bullet reports, from `data_sync_log`:
+
+> 07-27 failed after **20h15m**, 07-28 failed after **20h22m**, 07-29 failed
+> after **20h09m**, 07-30 failed after **4h22m** … the nightly's startup reaps
+> the still-running rollup … **the job can never win: it needs longer than the
+> gap to the next nightly.**
+
+`cron.job_run_details` — the authoritative record — for those same four runs:
+
+| date | runid | start | end | secs | outcome |
+|---|---|---|---|---|---|
+| 07-27 | 105 | 09:00:00 | 15:07:59 | 22 080 | canceling statement due to statement timeout |
+| 07-28 | 116 | 09:00:00 | 15:00:24 | 21 625 | canceling statement due to statement timeout |
+| 07-29 | 123 | 09:00:00 | 15:00:00 | 21 600 | canceling statement due to statement timeout |
+| 07-30 | 129 | 09:00:00 | 15:00:00 | 21 601 | canceling statement due to statement timeout |
+
+Every one ran **6h00m–6h08m and died at ~15:00**, cancelled by the 6h
+`statement_timeout` on the `postgres` role. All four were already dead ~14 hours
+before the nightly that supposedly reaped them.
+
+**So both the durations and the causal story are wrong.** The "20h" figures are
+`started_at` → `reaped_at` gaps on a stale `running` row: the reaper stamped a
+row whose process had exited at 15:00 the previous afternoon, and the gap was
+then read as a runtime. 07-30's "4h22m" is wrong in the other direction (actual
+6h00m) for the same reason — it was reaped by an early manual dispatch.
+
+The nightly never killed this job. The premise "it needs longer than the gap to
+the next nightly" is falsified, and with it the FIX-950 framing that cites this
+as evidence of nightly-vs-supervised-session contention.
+
+FIX-944's **fix** — resumability — was still correct and worked: 07-31 completed
+8,381 recipients in 3h08m, 08-02 in 2h00m.
+
+**Rule this settles:** a `reaped_orphan` row's `started_at`..`completed_at` span
+is an upper bound bounded by *when the reaper ran*, not by when the work stopped.
+Never quote it as a runtime. `cron.job_run_details` is authoritative for anything
+pg_cron launched; for GHA-launched work there is no equivalent, which is its own
+gap.
+
+---
+
 ## 7. Where the "09:00–15:00 donor-rollup window" is actually written
 
 Grepped the whole repo. The rule exists in exactly **two** places:
