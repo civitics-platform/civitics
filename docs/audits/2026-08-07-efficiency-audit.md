@@ -8,8 +8,8 @@ this document is the remediation queue.
 was wrong, a job was dead, a window ran long. This pass hunts the same classes *proactively*, before
 PR 3 multiplies the data and before launch multiplies the traffic.
 
-**The headline result is not a finding — it is a hit rate.** 47 findings were produced by
-mechanism-complete enumeration; adversarial verification killed **roughly two thirds** of them. That
+**The headline result is not a finding — it is a hit rate.** 49 findings were produced by
+mechanism-complete enumeration; adversarial verification killed **28 of them (57%)**. That
 number is the most useful thing this audit learned, and §*Refuted* is the most useful section.
 
 ---
@@ -35,19 +35,26 @@ Per the audit's first design rule, every class was enumerated **by mechanism**, 
 
 | Class | Enumeration mechanism | Population | Findings | Survived |
 |---|---|---|---|---|
-| 1 — per-entity loops (SQL) | every `public` plpgsql body from live `pg_proc` containing `LOOP` | **22** of 154 | 8 | 2 |
+| 1 — per-entity loops (SQL) | every `public` plpgsql body from live `pg_proc` containing `LOOP` | **22** of 154 | 8 | 3 |
 | 1 — per-entity loops (TS) | brace/string/comment-aware matcher over 645 files → 3,159 loop constructs → 264 with a DB call → interprocedural closure (**+56 sites** literal grep cannot see) | **230** | 7 | 3 |
-| 2 — heap-forced reads | every `public` table > 200 MB × `relallvisible/relpages` × `vacuum_count` × `pg_stat_user_indexes`, then cold `EXPLAIN (ANALYZE, BUFFERS)` on the top 3 covering indexes | **18** tables | 2 | 2 |
-| 3 — stale quanta | live `pg_proc` bodies + `proconfig` for every CONSTANT / chunk / budget / timeout, cross-checked against current `reltuples` | **363** constant sites | 6 | 3 |
-| 4 — jobs near the ceiling | all `cron.job` joined to `cron.job_run_details` **by jobname** (rule D3) | **21** jobs, 185 runs | 2 | 2 |
-| 5 — lying timestamps | live bodies matching `NOW()` **and** `COMMIT`; plus a reader-census of every `*_at` progress column | **153** routines | 6 | 2 |
+| 2 — heap-forced reads | every `public` table > 200 MB × `relallvisible/relpages` × `vacuum_count` × `pg_stat_user_indexes`, then cold `EXPLAIN (ANALYZE, BUFFERS)` on the top 3 covering indexes | **18** tables, 40 indexes | 1 | 1 |
+| 3 — stale quanta | live `pg_proc` bodies + `proconfig` for every CONSTANT / chunk / budget / timeout, cross-checked against current `reltuples` | **363** constant sites, 80 bulk-write sites | 7 | 3 |
+| 4 — jobs near the ceiling | all `cron.job` joined to `cron.job_run_details` **by jobname** (rule D3) | **21** jobs, 185 runs | 2 | 1 |
+| 5 — lying timestamps | live bodies matching `NOW()` **and** `COMMIT`; plus a reader-census of every `*_at` progress column | **153** routines, 20 columns | 6 | 2 |
 | 6 — freshness-only monitoring | union of three sweeps: `pg_proc` `check_*`/`detect_*`, repo grep, `.github/workflows` schedules | **7** detectors | 7 | 5 |
-| 7 — equal-by-coincidence | every live `refresh_|rebuild_|backfill_|…` body, each typed predicate vs its column's actual CHECK domain | **88** routines, 274 predicates | 6 | 1 |
-| 8 — status-as-liveness | repo-wide grep for `'running'` / `data_sync_log` readers / advisory locks, across code, SQL, docs, `.github` | **60** sites | 7 | 1 |
+| 7 — equal-by-coincidence | every live `refresh_|rebuild_|backfill_|…` body, each typed predicate vs its column's actual CHECK domain | **88** routines, 274 predicates | 6 | 2 |
+| 8 — status-as-liveness | repo-wide grep for `'running'` / `data_sync_log` readers / advisory locks, across code, SQL, docs, `.github` | **60** sites | 7 | 2 |
 
-**Honest zeros are results.** Class 2 produced only 2 findings from 18 tables because 15 of the 18 are
-genuinely healthy — and that healthy majority is what made the defect legible (see below). Class 7's
-82 clean routines are mostly MV-refresh one-liners with no predicate to be wrong about.
+**49 findings, 21 survived, 28 refuted.** 47 came from parallel per-class enumeration agents and were
+put through 1:1 adversarial verification (**19 survived**); 2 — classes 2 and 3's `financial_entities`
+findings, FIX-975 and FIX-976 — were measured directly during the orchestration pass and re-derived
+against an independent source rather than agent-verified. Class 4's second finding
+(`contract-flow-rollups-refresh` at 7.2× week-over-week) was **downgraded on verification**: 3 retained
+runs is too thin a trail to call a trend, so it is recorded in §*Class 4* rather than filed.
+
+**Honest zeros are results.** Class 2 produced a single finding from 18 tables because 15 of the 18 are
+genuinely healthy — and that healthy majority is exactly what made the defect legible (see below).
+Class 7's 82 clean routines are mostly MV-refresh one-liners with no predicate to be wrong about.
 
 ---
 
@@ -62,11 +69,17 @@ genuinely healthy — and that healthy majority is what made the defect legible 
 | 5 | 🟠 | 5 | `data_sync_log` terminal rows stamped at txn entry | **8 of 46** pipelines report p50=p95=max=**0 ms**; a 7,125.6 s run records as 0 | **FIX-979** |
 | 6 | 🟠 | 6 | Nothing watches the canary | **zero rows on 2026-08-06** — the day with the most incidents; 6 of 7 detectors run only inside it | **FIX-980** |
 | 7 | 🟠 | 5 | `refresh_treemap_individuals_global` — FIX-972's untouched twin | `NOW()` in a per-chunk COMMIT loop; lie bounded at **59 s** today, one chunk of 6 h at blowout | **FIX-981** |
-| 8 | 🟠 | 1/3/4 | `entity-connection-stats-rebuild` — no budget, no cursor | p95 **80.1%** of ceiling, max **86.0%**; bimodal **101 s ↔ 18,568 s (184×)**; 0 failures so FIX-969 cannot see it | *pending* |
-| 9 | 🟠 | 1/3 | OFFSET pagination across all 68 bulk-read sites | **175×** row-visit amplification on the largest walk; proposals planner cost **174×** at the last page, 3 prod timeouts | *pending* |
-| 10 | 🟠 | 5 | 8 watermark reads keyed off `NOW()`-stamped `updated_at` | rows committed after a watermark read are excluded **permanently** | *pending* |
-| 11 | 🟠 | 7 | 9 unscoped DELETEs; 7 of 13 enum labels have **zero rows** | lobbying arm deletes 10,423 live edges, reinserts from an empty source | *pending* |
-| 12 | 🟡 | 8 | 3 operator probes read `status='running'` as liveness | orphan arrival **1.056/day**; one probe gates a prod close-out | *pending* |
+| 8 | 🟠 | 1/3/4 | `entity-connection-stats-rebuild` — no budget, no cursor, no partial | p95 **80.1%** of ceiling, max **86.0%**; bimodal **101 s ↔ 18,568 s (184×)**; 0 failures so FIX-969 cannot see it | **FIX-982** |
+| 9 | 🟠 | 5 | 8 watermark reads keyed off `NOW()`-stamped `updated_at` | a txn beginning before and committing after a watermark read is excluded **permanently** | **FIX-983** |
+| 10 | 🟠 | 1/3 | OFFSET pagination across all 68 bulk-read sites, 7 duplicated helpers | **175×** row-visit amplification on the largest walk; `proposals` planner cost **174×** at the last page, 3 recorded prod timeouts | **FIX-984** |
+| 11 | 🟠 | 7 | 9 unscoped DELETEs rebuild from empty sources; a predicate the CHECK forbids | lobbying arm deletes **10,431** live edges and reinserts **0**; `'organization'` matches nothing, 37 entities render $0 | **FIX-985** |
+| 12 | 🟠 | 1 | `homepage_stats_mv` refreshed non-CONCURRENTLY | only MV of 13 without a unique index; **ACCESS EXCLUSIVE** on a homepage-read MV; the exact object of the 0.7 s-local / **22 min-prod** C4 receipt | **FIX-986** |
+| 13 | 🟡 | 1 | `refresh_agency_staffing_rollup` has no dirty set | re-aggregates **3,822,690 entries / 575 MB** weekly to write **128 rows / 72 kB**; worst run 19m43s | **FIX-987** |
+| 14 | 🟡 | 1 | Nominee lookup on an unindexed jsonb expression | `officials` has 15 indexes, none on `source_ids`; **8.2 s per weekly run** (corrected down ~10× from the finder's claim) | **FIX-988** |
+| 15 | 🟡 | 8 | 3 operator probes read `status='running'` as liveness | one gates a **prod close-out**; resident orphans today **0**, so filed as latent, not active | **FIX-989** |
+
+**15 FIX bullets from 21 surviving findings** (several pairs were folded where the fix is one sweep).
+Companion data: `2026-08-07-efficiency-audit.tsv` — 49 rows, every confirmed finding carrying its FIX id.
 
 ---
 
@@ -195,7 +208,7 @@ Headlines → **FIX-977**, **FIX-978**, **FIX-980**. Staleness re-derived indepe
 
 ## Refuted — reported, not hidden
 
-Verification killed roughly two thirds of the findings. Recording them is the point (playbook E3), and
+Verification killed **28 of 49 findings (57%)** — 21 survived. Recording them is the point (playbook E3), and
 **the failure mode was strikingly consistent: the finders measured real mechanisms and overstated their
 REACH.** A pattern was genuinely present at every site. What did not survive was *"and therefore it
 costs X"*.
