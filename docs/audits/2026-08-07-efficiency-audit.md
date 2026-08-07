@@ -217,8 +217,23 @@ Adversarial verification killed a material fraction of the first pass. Recording
 | platform-snapshot has no escalation path | **Measurably false** — `platform_alert_state` shows a `critical` Resend escalation that fired 2026-08-06, and two further ungated alert paths exist. The "24× miss" quoted a superseded constant (`SNAPSHOT_STALE_MS` = 4 h per FIX-327, which measured and accepted this exact GHA best-effort behaviour). Closed duplicate. |
 | 5 of 21 pg_cron jobs write no `running` start-row | The enumeration is true but the proof was a **null test** that cannot distinguish the two designs (start-row writers INSERT NULL then UPDATE the same row). And playbook **D2 inverts the claim**: a `running` row is *not* liveness, so its absence is not by itself a defect. |
 | `donor_rollup_rebuild_bulk` mixes `now()`/`clock_timestamp()` | Measurement wrong (observable gap 11.3 s, not 59 s), and the failure mode **cannot occur** — the sites are in one transaction, so no observer can see the cursor stamp without simultaneously seeing that chunk's arm rows. The ordering it called false is correct. |
+| 10 of 11 chunked writers skip failed chunks (A4.4) | A4.4's harm is *silent* corruption. **Neither limb holds:** all 8 accumulate-and-continue routines write `status='failed'` plus the failure list to `data_sync_log.error_message`, and **5 of 5** that own a watermark or signature refuse to advance it on a non-empty `v_failures` (prosrc 267 / 545 / 369 / 563 / 87). Zero can silently skip a range across runs. |
+| 6 routines chunk by entity list (A2) | **Four of the six are one-shot backfills already superseded** by FIX-974's `donor_rollup_rebuild_bulk`, which derives the same four arms from one `to_id`-RANGE scan and ran on prod 2026-08-07. They are on no cron job. Of the six, **1 is scheduled** — agency-staffing, keyed on `from_id` over **129 agencies** in 3 chunks of 50, not 6,793 `to_id` descents. |
+| Agency-side twin of the FIX-974 invariant is violated | The 54 rows are real, but the two routine families are **opposite sides of the ledger** — `refresh_spending_totals` groups by `to_id` (money *received*), the agency rollups by `from_id` (money *spent*). A grant with no agency source is correctly absent from a per-agency rollup. B1 does not apply. The rows are grant-only and **0.0013%** of recipient-side grant dollars. |
+| `enrichment_queue` has no lease expiry | **Already filed and closed as FIX-924**, which names these exact 44 rows and explicitly defers the reclaim cron as out of scope. Also: nothing *scheduled* ever claims — claims happen only inside a human-run drain session whose step 1 is a reclaim sweep. **Zero new stranded rows in the 100 days since.** |
+| `pipeline_state.updated_at` / 11 freshness columns have no readers | E7 requires a stamp that *was read as progress and was wrong*; the census establishes only that they are unread, which is the other limb. Not a defect as filed. |
+| Pathfinder `v_cap` cannot fire | The cost model is wrong — each BFS level is **one set-based `INSERT … SELECT DISTINCT ON`**, not an index descent per visited node — so the per-node arithmetic the finding rests on does not describe the body. |
+| `startSync()` swallows its insert error | Playbook **D2 inverts it**: a `running` row was never liveness, so its absence is not by itself a defect. |
+| `ai-classifier.ts` OFFSET paging | Refuted on scale (see the OFFSET finding, which survives only at its two measured sites). |
+
+**The refutation rate is the audit's own most useful result.** Of 47 findings, the adversarial pass
+killed a large fraction — and the failure mode was consistent: **the finders measured real mechanisms
+and overstated their reach.** A pattern was genuinely present at each site; what did not survive was
+"and therefore it costs X" — because the path was a one-shot backfill, or ran weekly not nightly, or
+was already mitigated by a guard the finder did not read, or was already filed. Playbook **E3** was
+written for exactly this ("operational facts are hypotheses until re-derived"), and the cheapest place
+to apply it turned out to be *between* a finding and its filing.
 
 ---
 
-*Second verification pass over the remaining findings is in flight; classes 1, 3, 5, 7 and 8 detail
-lands with it, along with the companion TSV.*
+*Full per-class detail and the companion TSV land with the final verification batch.*
