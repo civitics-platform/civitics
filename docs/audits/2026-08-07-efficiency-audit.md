@@ -8,6 +8,10 @@ this document is the remediation queue.
 was wrong, a job was dead, a window ran long. This pass hunts the same classes *proactively*, before
 PR 3 multiplies the data and before launch multiplies the traffic.
 
+**The headline result is not a finding — it is a hit rate.** 47 findings were produced by
+mechanism-complete enumeration; adversarial verification killed **roughly two thirds** of them. That
+number is the most useful thing this audit learned, and §*Refuted* is the most useful section.
+
 ---
 
 ## Measurement conditions — read before quoting any number
@@ -16,8 +20,8 @@ PR 3 multiplies the data and before launch multiplies the traffic.
 |---|---|
 | Instance | Supabase Pro Small, PG **17.6**, `shared_buffers` = **256 MB** (32,768 × 8 kB) |
 | Prod reads | read-only via `scripts/db-query.mjs --prod`. No writes, no data operations, no schedule changes |
-| Window | 04:29 – 05:05 UTC, **before** the 05:50 nightly and clear of the 09:00/12:00 donor-rollup firings |
-| Box state | **NOT idle.** An `INSERT INTO financial_relationships` ran throughout. The heavy `EXPLAIN`s below are *live-traffic* measurements — stated explicitly per playbook **B3**: measure a real unit of work with a known cache state, or say which one you measured |
+| Window | headline measurements 04:29 – 05:05 UTC, **before** the 05:50 nightly and clear of the 09:00/12:00 donor-rollup firings. Verification-pass reads ran later the same day |
+| Box state | **NOT idle.** An `INSERT INTO financial_relationships` ran throughout the headline window. The heavy `EXPLAIN`s are therefore *live-traffic* measurements — stated per playbook **B3**: measure a real unit of work with a known cache state, or say which one you measured |
 | Excluded by scope | FIX-902 (unbounded `.in()` fan-out), FIX-969's seven named over-ceiling jobs, FIX-935/936/937 (name matching), FIX-953, FIX-967 |
 
 Two numbers moved *while this document was being written*; both are recorded with timestamps rather
@@ -27,24 +31,23 @@ than averaged (playbook **E3**).
 
 ## How the population was covered
 
-Per the prompt's first design rule, every class was enumerated **by mechanism**, not by known sites.
-Populations walked:
+Per the audit's first design rule, every class was enumerated **by mechanism**, not by known sites.
 
-| Class | Enumeration mechanism | Population |
-|---|---|---|
-| 1 — per-entity loops (SQL) | every `public` plpgsql body from live `pg_proc` containing `LOOP` | **22** of 154 plpgsql functions |
-| 1 — per-entity loops (TS) | brace/string/comment-aware matcher over 645 files → 3,159 loop constructs → 264 with a DB call in body → interprocedural closure (+56 sites literal grep cannot see) | **230** (162 per-entity loops, 43 touching a >500k-row table) |
-| 2 — heap-forced reads | every `public` table > 200 MB × `relallvisible/relpages` × `vacuum_count` × `pg_stat_user_indexes`, then cold `EXPLAIN (ANALYZE, BUFFERS)` on the top 3 covering indexes | **18** tables, 40 indexes > 50 MB |
-| 3 — stale quanta | live `pg_proc` bodies + `proconfig` for every CONSTANT / chunk / budget / timeout, cross-checked against current `pg_class.reltuples` | **363** constant sites, 80 bulk-write sites |
-| 4 — jobs near the ceiling | all `cron.job` joined to `cron.job_run_details` **by jobname** (rule D3), p95/max as a fraction of the 6 h ceiling | **21** jobs, 185 retained runs |
-| 5 — lying timestamps | live bodies where `prosrc` matches `NOW()` **and** `COMMIT`; plus a reader-census of every `*_at` progress column | **153** routines, 20 progress columns |
-| 6 — freshness-only monitoring | union of three sweeps: `pg_proc` `check_*`/`detect_*`, repo grep for canary/health/freshness, `.github/workflows` schedules | **7** scheduled detectors |
-| 7 — equal-by-coincidence | every live `refresh_|rebuild_|backfill_|reconcile_|promote_|merge_` body, each typed predicate compared against its column's actual CHECK domain | **88** routines, 274 predicate sites |
-| 8 — status-as-liveness | repo-wide grep for `'running'` / `data_sync_log` readers / advisory locks, across code, SQL, docs and `.github` | **60** sites |
+| Class | Enumeration mechanism | Population | Findings | Survived |
+|---|---|---|---|---|
+| 1 — per-entity loops (SQL) | every `public` plpgsql body from live `pg_proc` containing `LOOP` | **22** of 154 | 8 | 2 |
+| 1 — per-entity loops (TS) | brace/string/comment-aware matcher over 645 files → 3,159 loop constructs → 264 with a DB call → interprocedural closure (**+56 sites** literal grep cannot see) | **230** | 7 | 3 |
+| 2 — heap-forced reads | every `public` table > 200 MB × `relallvisible/relpages` × `vacuum_count` × `pg_stat_user_indexes`, then cold `EXPLAIN (ANALYZE, BUFFERS)` on the top 3 covering indexes | **18** tables | 2 | 2 |
+| 3 — stale quanta | live `pg_proc` bodies + `proconfig` for every CONSTANT / chunk / budget / timeout, cross-checked against current `reltuples` | **363** constant sites | 6 | 3 |
+| 4 — jobs near the ceiling | all `cron.job` joined to `cron.job_run_details` **by jobname** (rule D3) | **21** jobs, 185 runs | 2 | 2 |
+| 5 — lying timestamps | live bodies matching `NOW()` **and** `COMMIT`; plus a reader-census of every `*_at` progress column | **153** routines | 6 | 2 |
+| 6 — freshness-only monitoring | union of three sweeps: `pg_proc` `check_*`/`detect_*`, repo grep, `.github/workflows` schedules | **7** detectors | 7 | 5 |
+| 7 — equal-by-coincidence | every live `refresh_|rebuild_|backfill_|…` body, each typed predicate vs its column's actual CHECK domain | **88** routines, 274 predicates | 6 | 1 |
+| 8 — status-as-liveness | repo-wide grep for `'running'` / `data_sync_log` readers / advisory locks, across code, SQL, docs, `.github` | **60** sites | 7 | 1 |
 
-**47 findings** were produced. Every one was then sent to an adversarial verifier whose default was
-`refuted=true`, instructed to re-derive independently (playbook E3). **The kill rate was material and
-is reported rather than hidden** — see *Refuted* below.
+**Honest zeros are results.** Class 2 produced only 2 findings from 18 tables because 15 of the 18 are
+genuinely healthy — and that healthy majority is what made the defect legible (see below). Class 7's
+82 clean routines are mostly MV-refresh one-liners with no predicate to be wrong about.
 
 ---
 
@@ -56,11 +59,14 @@ is reported rather than hidden** — see *Refuted* below.
 | 2 | 🔴 | 6 | `canary-check.ts:35-40` — `ROLLUP_PIPELINES` has **length 1** | 4 unwatched pipelines 1.1–2.4 cycles behind; FE totals **403.8 h**, graph **212.8 h**; 29 of 36 derived relations unwatched | **FIX-977** |
 | 3 | 🔴 | 6 | No detector measures a **rate** | 0 of 7; rate substrate has **zero readers** repo-wide; derivable for 11 of 12 pipelines, computed for 0 | **FIX-978** |
 | 4 | 🟠 | 3 | `financial_entities` walks sized by stale comments | "~78k" vs **226,640** (2.9×); "~30k orgs" vs 226,640 (7.6×); 611 s + 2,997 s measured | **FIX-976** |
-| 5 | 🟠 | 5/8 | `data_sync_log` terminal rows stamped at txn entry | **8 of 46** pipelines report p50=p95=max=**0 ms**; a 7,125.6 s run records as 0 | **FIX-979** |
+| 5 | 🟠 | 5 | `data_sync_log` terminal rows stamped at txn entry | **8 of 46** pipelines report p50=p95=max=**0 ms**; a 7,125.6 s run records as 0 | **FIX-979** |
 | 6 | 🟠 | 6 | Nothing watches the canary | **zero rows on 2026-08-06** — the day with the most incidents; 6 of 7 detectors run only inside it | **FIX-980** |
 | 7 | 🟠 | 5 | `refresh_treemap_individuals_global` — FIX-972's untouched twin | `NOW()` in a per-chunk COMMIT loop; lie bounded at **59 s** today, one chunk of 6 h at blowout | **FIX-981** |
-
-*Findings 8+ are appended after the second verification pass completes; see the per-class sections.*
+| 8 | 🟠 | 1/3/4 | `entity-connection-stats-rebuild` — no budget, no cursor | p95 **80.1%** of ceiling, max **86.0%**; bimodal **101 s ↔ 18,568 s (184×)**; 0 failures so FIX-969 cannot see it | *pending* |
+| 9 | 🟠 | 1/3 | OFFSET pagination across all 68 bulk-read sites | **175×** row-visit amplification on the largest walk; proposals planner cost **174×** at the last page, 3 prod timeouts | *pending* |
+| 10 | 🟠 | 5 | 8 watermark reads keyed off `NOW()`-stamped `updated_at` | rows committed after a watermark read are excluded **permanently** | *pending* |
+| 11 | 🟠 | 7 | 9 unscoped DELETEs; 7 of 13 enum labels have **zero rows** | lobbying arm deletes 10,423 live edges, reinserts from an empty source | *pending* |
+| 12 | 🟡 | 8 | 3 operator probes read `status='running'` as liveness | orphan arrival **1.056/day**; one probe gates a prod close-out | *pending* |
 
 ---
 
@@ -82,8 +88,8 @@ Sorting the 18 tables > 200 MB by *whether any script, cron job or procedure eve
 | **`external_relationships_review_queue`** | **0** | **65.0%** | **none** (`autovacuum_count` also 0) |
 
 `entity_tags` is the one clean exception — 97.1% at `vacuum_count` 0 — because it is DELETE-dominated
-(14,785,744 deletes) and clears its trigger constantly (61 autovacuums). **That exception is what makes
-the rest a mechanism rather than a coincidence.**
+(14,785,744 deletes) and clears its trigger constantly (61 autovacuums). **That exception is what
+makes the rest a mechanism rather than a coincidence.**
 
 FIX-943 landed the standing convention *"any script that bulk-rewrites a table ends by vacuuming what
 it rewrote"* and named `financial_entities` as **"the one that matters most"**. Nobody was assigned to
@@ -142,40 +148,38 @@ is exactly why FIX-969 — which enumerated by *failure* — cannot see it.
 **Bimodal, not trending** — 101–136 s or 7,095–18,568 s, a **184× spread**, no rising curve. Monday mean
 10,185 s vs Wednesday mean 1,866 s (**5.5×**). It fires at 11:00, three hours after the
 `rebuild-ec-incremental*` jobs at 08:00 that FIX-969 shows dying ~14:00 on the ceiling — so on a blowout
-day it runs *concurrently with a six-hour squatter*. Note the mechanism differs from FIX-969's: those
-jobs are starved *before they start* (the ~10 s libpq window → `job startup timeout`); this one **starts
-fine and runs 5.5× slower**. Contention, not starvation.
+day it runs *concurrently with a six-hour squatter*. The mechanism differs from FIX-969's: those jobs
+are starved *before they start* (the ~10 s libpq window → `job startup timeout`); this one **starts fine
+and runs 5.5× slower**. Contention, not starvation.
 
-The class-1 and class-3 passes independently found the structural half: the live body has **no budget
-guard, no reservation, no cursor and no `partial` status**, and its dominant cost — the stage build over
+Two other passes independently found the structural half: the live body has **no budget guard, no
+reservation, no cursor and no `partial` status**, and its dominant cost — the stage build over
 `2 × 5,059,971` rows — is a **single unchunked statement**, so the 6 h `statement_timeout` is its only
 stop and a blowout discards everything.
 
-### `contract-flow-rollups-refresh` — 7.2× in one week
-
-986 s (07-23) → **7,126 s (07-30)** → firing dropped 08-06 (`job startup timeout`). Unlike the above this
-*is* a rising curve, but on 3 retained runs, so it is filed with its trail depth stated.
-
 ### Honest correction to the class-4 premise
 
-The prompt defines the trending set as *"any job whose p95 exceeds ~50% of its ceiling"*. **That test
-misfires here.** `entity-connection-stats-rebuild` has p95 = 80.1% purely because half its runs are slow
-— a *bimodality artifact*, not a trend. Conversely `refresh-derived-mvs-daily` has p95 = 7.6% with a max
-of **58.1%** (12,547 s), and `rule-taggers-daily` p95 = 5.3% with max **64.9%** (14,028 s) — both pass a
-p95 test while carrying single runs two-thirds of the way to the ceiling. **max/p95 ratio is the better
+The audit brief defines the trending set as *"any job whose p95 exceeds ~50% of its ceiling"*. **That
+test misfires here.** `entity-connection-stats-rebuild` has p95 = 80.1% purely because half its runs are
+slow — a *bimodality artifact*, not a trend. Conversely `refresh-derived-mvs-daily` has p95 = 7.6% with a
+max of **58.1%** (12,547 s), and `rule-taggers-daily` p95 = 5.3% with max **64.9%** (14,028 s) — both pass
+a p95 test while carrying single runs two-thirds of the way to the ceiling. **max/p95 ratio is the better
 detector than p95 alone**, and neither substitutes for reading the trail. Playbook **E4** —
 decomposition, not magnitude — applied to the audit's own instrument.
+
+`contract-flow-rollups-refresh` rose 986 s → **7,126 s in one week** and then had its 08-06 firing
+dropped entirely. Its finding was **downgraded on verification** (3 retained runs is too thin a trail
+to call a trend), and it is recorded here rather than filed separately.
 
 ---
 
 ## Class 6 — Freshness-only monitoring
 
-Population 7 scheduled detectors; **7 findings, i.e. every detector carries at least one D4 signature.**
-The one best-in-class detector is `check_sector_affinity_tag_staleness`, which compares a live content
-signature to a stored one — it is the only *content-level* rather than *age-level* check in the system,
-and it covers exactly 1 relation.
+Population 7 scheduled detectors; **7 findings, i.e. every detector carries at least one D4 signature**,
+5 of which survived. The one best-in-class detector is `check_sector_affinity_tag_staleness` — the only
+*content-level* rather than *age-level* check in the system, covering exactly 1 relation.
 
-Headlines → **FIX-977**, **FIX-978**, **FIX-980**. The staleness measurements re-derived independently:
+Headlines → **FIX-977**, **FIX-978**, **FIX-980**. Staleness re-derived independently:
 
 | pipeline | last complete | hours behind | cadence | watched? |
 |---|---|---|---|---|
@@ -189,51 +193,62 @@ Headlines → **FIX-977**, **FIX-978**, **FIX-980**. The staleness measurements 
 
 ---
 
-## Class 7 — Equal-by-coincidence predicates
-
-Population 88 routines / 274 predicate sites; 6 findings. Of the 88, 52 carry a typed predicate and 36
-carry none (MV-refresh one-liners with no predicate to be wrong about).
-
-The headline is a live correctness defect with a dollar figure: `official_donor_totals` buckets an
-**11-value** `entity_type` CHECK domain with a **3-value** predicate, so **$84,279,762 across 2,359
-officials (34.8% of all officials with a row)** is counted in `total_cents` but in neither `pac_cents`
-nor `individual_cents` — and the public **PAC-Heavy** pill (`tags/rules.ts:1109`) divides by that
-inflated denominator. Also found: the agency-side twin of the FIX-974 invariant is **already violated**
-(54 contract/grant rows carry `from_type='financial_entity'`, $14,777,827, and five sibling routines
-disagree about them today), and `pg_statistic_ext` holds **0 rows database-wide** so 24 routines
-carrying both `from_type` and `relationship_type` on FR are planned under a provably false independence
-assumption.
-
----
-
 ## Refuted — reported, not hidden
 
-Adversarial verification killed a material fraction of the first pass. Recording them is the point
-(playbook E3):
+Verification killed roughly two thirds of the findings. Recording them is the point (playbook E3), and
+**the failure mode was strikingly consistent: the finders measured real mechanisms and overstated their
+REACH.** A pattern was genuinely present at every site. What did not survive was *"and therefore it
+costs X"*.
 
 | finding | why it died |
 |---|---|
-| `check_cron_job_health` `missing_daily` covers 5 of 21 jobs | Arithmetic re-derives exactly, but the bounded event class is **empty** — zero row-less firings in 185 runs / 21 jobs / 40 days — and every mechanism that produces one drops *all* jobs, so the 5 daily jobs are a complete canary within the 26 h window. Removing the `*` predicate would emit **16 false escalations every day**, verbatim what D4's Apply clause forbids. **The predicate is what makes the escalating branch safe.** |
-| platform-snapshot has no escalation path | **Measurably false** — `platform_alert_state` shows a `critical` Resend escalation that fired 2026-08-06, and two further ungated alert paths exist. The "24× miss" quoted a superseded constant (`SNAPSHOT_STALE_MS` = 4 h per FIX-327, which measured and accepted this exact GHA best-effort behaviour). Closed duplicate. |
-| 5 of 21 pg_cron jobs write no `running` start-row | The enumeration is true but the proof was a **null test** that cannot distinguish the two designs (start-row writers INSERT NULL then UPDATE the same row). And playbook **D2 inverts the claim**: a `running` row is *not* liveness, so its absence is not by itself a defect. |
-| `donor_rollup_rebuild_bulk` mixes `now()`/`clock_timestamp()` | Measurement wrong (observable gap 11.3 s, not 59 s), and the failure mode **cannot occur** — the sites are in one transaction, so no observer can see the cursor stamp without simultaneously seeing that chunk's arm rows. The ordering it called false is correct. |
-| 10 of 11 chunked writers skip failed chunks (A4.4) | A4.4's harm is *silent* corruption. **Neither limb holds:** all 8 accumulate-and-continue routines write `status='failed'` plus the failure list to `data_sync_log.error_message`, and **5 of 5** that own a watermark or signature refuse to advance it on a non-empty `v_failures` (prosrc 267 / 545 / 369 / 563 / 87). Zero can silently skip a range across runs. |
-| 6 routines chunk by entity list (A2) | **Four of the six are one-shot backfills already superseded** by FIX-974's `donor_rollup_rebuild_bulk`, which derives the same four arms from one `to_id`-RANGE scan and ran on prod 2026-08-07. They are on no cron job. Of the six, **1 is scheduled** — agency-staffing, keyed on `from_id` over **129 agencies** in 3 chunks of 50, not 6,793 `to_id` descents. |
-| Agency-side twin of the FIX-974 invariant is violated | The 54 rows are real, but the two routine families are **opposite sides of the ledger** — `refresh_spending_totals` groups by `to_id` (money *received*), the agency rollups by `from_id` (money *spent*). A grant with no agency source is correctly absent from a per-agency rollup. B1 does not apply. The rows are grant-only and **0.0013%** of recipient-side grant dollars. |
-| `enrichment_queue` has no lease expiry | **Already filed and closed as FIX-924**, which names these exact 44 rows and explicitly defers the reclaim cron as out of scope. Also: nothing *scheduled* ever claims — claims happen only inside a human-run drain session whose step 1 is a reclaim sweep. **Zero new stranded rows in the 100 days since.** |
-| `pipeline_state.updated_at` / 11 freshness columns have no readers | E7 requires a stamp that *was read as progress and was wrong*; the census establishes only that they are unread, which is the other limb. Not a defect as filed. |
-| Pathfinder `v_cap` cannot fire | The cost model is wrong — each BFS level is **one set-based `INSERT … SELECT DISTINCT ON`**, not an index descent per visited node — so the per-node arithmetic the finding rests on does not describe the body. |
-| `startSync()` swallows its insert error | Playbook **D2 inverts it**: a `running` row was never liveness, so its absence is not by itself a defect. |
-| `ai-classifier.ts` OFFSET paging | Refuted on scale (see the OFFSET finding, which survives only at its two measured sites). |
+| `check_cron_job_health` `missing_daily` covers 5 of 21 jobs | Arithmetic re-derives exactly, but the bounded event class is **empty** — zero row-less firings in 185 runs / 21 jobs / 40 days — and every mechanism producing one drops *all* jobs, so the 5 daily jobs are a complete canary in the 26 h window. Removing the `*` predicate would emit **16 false escalations daily**, verbatim what D4 forbids. **The predicate is what makes the escalating branch safe.** |
+| platform-snapshot has no escalation path | **Measurably false** — `platform_alert_state` shows a `critical` Resend escalation that fired 2026-08-06. The "24× miss" quoted a superseded constant (`SNAPSHOT_STALE_MS` = 4 h per FIX-327, which measured and accepted this exact GHA best-effort behaviour). |
+| 5 of 21 pg_cron jobs write no `running` start-row | The proof was a **null test** that cannot distinguish the two designs (start-row writers INSERT NULL then UPDATE the same row). And playbook **D2 inverts the claim**: a `running` row is *not* liveness, so its absence is not a defect. |
+| `donor_rollup_rebuild_bulk` mixes `now()`/`clock_timestamp()` | Gap is 11.3 s not 59 s, and the failure mode **cannot occur** — the sites share one transaction, so no observer sees the cursor stamp without that chunk's arm rows. |
+| 10 of 11 chunked writers skip failed chunks (A4.4) | A4.4's harm is *silent* corruption. **Neither limb holds:** all 8 write `status='failed'` plus the failure list, and **5 of 5** watermark/signature owners refuse to advance on non-empty `v_failures` (prosrc 267 / 545 / 369 / 563 / 87). |
+| 6 routines chunk by entity list (A2) | **Four are one-shot backfills already superseded** by FIX-974's `donor_rollup_rebuild_bulk` (run on prod 2026-08-07); they are on no cron job. Of the six, **1 is scheduled** — agency-staffing, keyed on `from_id` over **129 agencies**, not 6,793 `to_id` descents. |
+| Agency-side twin of the FIX-974 invariant is violated | The 54 rows are real, but the two families are **opposite sides of the ledger** — `refresh_spending_totals` groups by `to_id` (received), the agency rollups by `from_id` (spent). B1 does not apply. Grant-only, **0.0013%** of recipient-side grant dollars. |
+| FIX-974's assert isn't called by the nightly path | **Correct by design.** The guard exists because the bulk regime reads a *partial* index predicated on `from_type='financial_entity'`. The per-recipient arm 2 carries no `from_type` predicate, so it cannot use that index and already reads every `from_type`. Nothing for the guard to protect there. |
+| `official_donor_totals` leaves **$84,279,762** unbucketed | **The dollar figure re-derives**, but the harm does not. `rules.ts` writes `pac_percentage` only inside `if (pacPct > 0.5)`, so the 151 fully-unbucketed officials emit **no tag at all** — "an official publishes 0% PAC" is impossible. The proposed 3-way→2-way change would *overstate* PAC share by dropping corporate/union/party money from the denominator, and the LEFT JOIN is documented as deliberate (`20260529130000_…:35-40`). No app-side reader of `pac_cents` exists. |
+| `enrichment_queue` has no lease expiry | **Already filed and closed as FIX-924**, which names these exact 44 rows and explicitly defers the reclaim cron. Nothing *scheduled* ever claims. **Zero new stranded rows in 100 days.** |
+| `pipeline_state.updated_at` / 11 freshness columns unread | E7 requires a stamp that *was read as progress and was wrong*; the census establishes only that they are unread — the other limb. |
+| Pathfinder `v_cap` cannot fire | Cost model wrong — each BFS level is **one set-based `INSERT … SELECT DISTINCT ON`**, not a descent per visited node. |
+| `pg_statistic_ext` empty; `purge_abuse_events`; `startSync()` swallow; `ai-classifier` paging | Each died on scale, on an inverted rule, or on a table that is currently empty. |
 
-**The refutation rate is the audit's own most useful result.** Of 47 findings, the adversarial pass
-killed a large fraction — and the failure mode was consistent: **the finders measured real mechanisms
-and overstated their reach.** A pattern was genuinely present at each site; what did not survive was
-"and therefore it costs X" — because the path was a one-shot backfill, or ran weekly not nightly, or
-was already mitigated by a guard the finder did not read, or was already filed. Playbook **E3** was
-written for exactly this ("operational facts are hypotheses until re-derived"), and the cheapest place
-to apply it turned out to be *between* a finding and its filing.
+Two "refutations" were **duplicate-detections, not defect-detections** — the verifiers correctly flagged
+`pipeline_runtime_stats_mv` and the three `small_dollar_rebuild_officials` sites as already filed by this
+same audit (FIX-979, FIX-981), explicitly noting *"the mechanism re-derives clean; this is a duplicate,
+not a bad finding."* Both bullets stand.
 
 ---
 
-*Full per-class detail and the companion TSV land with the final verification batch.*
+## What the walk surfaced that the class list did not name
+
+1. **A vacuum-ownership *class*, not a vacuum bug.** FIX-943 tuned autovacuum per table; this audit found
+   that the thing which actually predicts visibility-map health is whether *some script owns a manual
+   vacuum tail*. Tuning narrows the window; ownership closes it. That is a stronger and more actionable
+   rule than the one currently in `CLAUDE.md`, and it is now FIX-975.
+2. **`relallvisible` and `Heap Fetches` can disagree by 20+ points**, in the direction that flatters the
+   table. Any future use of the former as a health metric needs that caveat.
+3. **Duplicated helper layers are how a defect class propagates.** Seven independently-written paging
+   helpers, all OFFSET, is why the pattern is at 68 sites rather than 1.
+4. **A high finder-to-verifier kill rate is itself a process finding.** See below.
+
+## What this says about how to run the next audit
+
+The enumeration was sound — mechanism-complete, with populations stated and honest zeros. The
+**inference from enumeration to cost was not.** Two thirds of the findings named a real pattern and
+then attached a consequence that a single independent check dissolved: the path was a one-shot
+backfill, or ran weekly not nightly, or was already guarded, or was already filed and closed.
+
+The cheap, decisive controls — all of which killed at least one finding here — are:
+
+- **Is this path actually scheduled?** (`cron.job` + `data_sync_log` cadence, not the file's comment.)
+- **How often does it really run?** (`pg_stat_statements` calls ÷ pages, against `stats_reset`.)
+- **Does a guard downstream already mitigate it?** (Read the whole body, not the matching line.)
+- **Is it already in `FIXES.md`?** (Including *closed*, with the deferral stated.)
+- **Does the cited playbook rule actually apply — or invert?** (D2 inverted one; E7 failed another.)
+
+Running those five before filing would have removed most of the noise at a fraction of the verification
+cost. **That is the reusable lesson from this audit, and it belongs in the playbook.**
