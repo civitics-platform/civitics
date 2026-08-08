@@ -15,8 +15,9 @@ Civitics is civic accountability infrastructure — "Wikipedia meets Bloomberg T
 
 ```
                          ┌─────────────────┐
-    User browser ──────► │   Cloudflare    │  Bot Fight Mode ON
-                         │   (proxy + WAF) │  Orange cloud proxy
+    User browser ──────► │   Cloudflare    │  Orange cloud proxy
+                         │   (proxy + WAF) │  WAF: Common Exploit Paths
+                         │                 │  Bot Fight Mode OFF (docs/CLOUDFLARE.md)
                          └────────┬────────┘
                                   │
                          ┌────────▼────────┐
@@ -433,7 +434,9 @@ Buckets: `civitics-documents` (PDFs, bills), `civitics-cache` (pre-generated fil
 
 ### Cloudflare Proxy (vs. bare Vercel)
 
-Before Cloudflare proxy was enabled, PHP/WordPress scanner bots were burning Vercel Fluid CPU. Bot Fight Mode + orange cloud proxy eliminated this traffic entirely. Vercel CPU usage dropped dramatically. Free on all Cloudflare plans.
+Before Cloudflare proxy was enabled, PHP/WordPress scanner bots were burning Vercel Fluid CPU. The orange cloud proxy plus the `Common Exploit Paths` WAF custom rule — block where URI path contains `.php`, `wp-`, `.env`, `xmlrpc`, or `phpmyadmin` — eliminated this traffic entirely. Vercel CPU usage dropped dramatically. Free on all Cloudflare plans.
+
+Bot Fight Mode is deliberately **off**: it challenges `fetch()`-issued requests, which is the FIX-799 mechanism — a challenged RSC fetch receives 403 `Cf-Mitigated: challenge` HTML instead of the payload. See `docs/CLOUDFLARE.md` for the reasoning and the current zone posture.
 
 `next.config.mjs` adds additional protection at the Next.js layer:
 ```ts
@@ -474,11 +477,13 @@ Multiple votes on the same proposal → single connection with latest `strength`
 ### Layered Defense
 
 ```
-Layer 1: Cloudflare Bot Fight Mode — blocks scrapers, PHP probes at CDN edge
+Layer 1: Cloudflare "Common Exploit Paths" WAF rule — blocks .php/wp-/.env/xmlrpc/phpmyadmin probes at CDN edge
 Layer 2: next.config.mjs redirects — sends .php/.env probes to /404 at Next.js edge
 Layer 3: middleware.ts — silent session refresh, future rate limiting
 Layer 4: Supabase RLS — policy-enforced at DB level
 ```
+
+Bot Fight Mode is **off** at Layer 1 by design — it challenges `fetch()`-issued requests and breaks RSC navigation (FIX-799). See `docs/CLOUDFLARE.md`.
 
 ### RLS Pattern
 

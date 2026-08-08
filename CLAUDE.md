@@ -22,6 +22,7 @@ Starting a new session? Read these files before touching any code:
 | `docs/FIXES.md` | Bug and improvement backlog, each bullet has a stable `FIX-NNN` ID — what's unblocked / what's next |
 | `docs/PHASE_GOALS.md` | Phase 1 completion picture |
 | `docs/ENGINEERING_PLAYBOOK.md` | The operating rules with their receipts — read before touching pipelines, rollups, or scheduled work. Normative for new work |
+| `docs/CLOUDFLARE.md` | Edge posture for civitics.com — which Cloudflare settings are load-bearing and why (Browser Cache TTL, Bot Fight Mode OFF, the WAF exploit-path rule) |
 | `.env.local` (whichever was last copied) | **Which DB you're hitting** — `grep ^NEXT_PUBLIC_SUPABASE_URL .env.local` |
 
 These are the fastest path to current project state. Git log and code exploration

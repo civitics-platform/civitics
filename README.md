@@ -34,7 +34,7 @@ separate.
 
 ```mermaid
 flowchart TD
-  User["User browser"] -->|HTTPS| CF["Cloudflare proxy · WAF · Bot Fight Mode"]
+  User["User browser"] -->|HTTPS| CF["Cloudflare proxy · WAF exploit-path rule"]
   CF --> Vercel["Vercel · Next.js App Router"]
 
   subgraph Edge["Edge services"]

@@ -487,7 +487,7 @@ If a new pipeline crashes with this exit code, apply the same pattern.
 - The delta connections pipeline (~25KB egress) vs full re-run (~114MB) — always prefer delta
 
 **Vercel Fluid CPU:**
-- Cloudflare Bot Fight Mode blocks PHP/WordPress scanners that burned CPU before proxy was enabled
+- Cloudflare's `Common Exploit Paths` WAF rule blocks the PHP/WordPress scanners that burned CPU before proxy was enabled (Bot Fight Mode is off by design — see `docs/CLOUDFLARE.md`)
 - Use `[skip vercel]` on all non-release commits
 - `[skip vercel]` commits: zero Vercel build cost
 
