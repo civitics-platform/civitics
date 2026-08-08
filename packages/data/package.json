@@ -17,6 +17,7 @@
     "data:investigate-officials-casing-dupes": "tsx --env-file=../../.env.local src/scripts/investigate-officials-casing-dupes.ts",
     "data:investigate-entity-backfill-bundle": "tsx --env-file=../../.env.local src/scripts/investigate-entity-backfill-bundle.ts",
     "data:fec:resume-status": "tsx --env-file=../../.env.local src/scripts/investigate-fec-resume-state.ts",
+    "data:measure:donor-heap": "node --expose-gc --import tsx src/scripts/measure-donor-stage-heap.ts",
     "data:fec:resume-status:prod": "tsx --env-file=../../.env.local.prod src/scripts/investigate-fec-resume-state.ts --allow-prod",
     "data:votes": "tsx --env-file=../../.env.local src/pipelines/congress/votes.ts",
     "data:committees": "tsx --env-file=../../.env.local src/pipelines/congress/committees.ts",

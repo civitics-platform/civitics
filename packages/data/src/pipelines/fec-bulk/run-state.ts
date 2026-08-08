@@ -41,6 +41,7 @@
  * scope.ts); thin best-effort DB load/save/clear wrappers at the bottom.
  */
 
+import type { Client } from "pg";
 import { parseLastModified } from "./util";
 import type { IndivStageName } from "./scope";
 
@@ -203,6 +204,80 @@ export function resolveResumeCursor(
   return { start: Math.min(cursor, actualTotalRows), reset: false };
 }
 
+// ---------------------------------------------------------------------------
+// FIX-996 — checkpoint cadence + accounting
+// ---------------------------------------------------------------------------
+
+/**
+ * Minimum gap between two SUCCESSFUL checkpoint persists inside a cursored
+ * stage. Below this, a chunk's `onProgress` still fires (bulkUpsert's
+ * every-chunk contract is load-bearing for FIX-754's cursor accounting) but the
+ * write is skipped.
+ *
+ * WHY THROTTLE AT ALL: pre-FIX-996 the donor stage issued one synchronous
+ * PostgREST upsert per 4,000-row chunk — 210 round-trips for that stage alone,
+ * each on the congested path, at the exact moment the DB is saturated by the
+ * writes being checkpointed. Measured on prod 2026-08-08, one of those saves
+ * consumed the full ~100s gateway cap and then failed
+ * (`[fec-resume] failed to persist run state (continuing): upstream request
+ * timeout`).
+ *
+ * WHY 20s IS SAFE: re-done work on resume is bounded by whatever committed
+ * inside the window, and every indiv upsert is idempotent on a stable arbiter —
+ * the module header's "a reset is merely slower, never wrong" already covers
+ * this. At the measured 52-68s per chunk the throttle is currently a no-op
+ * (every chunk exceeds the window); it becomes load-bearing exactly when chunks
+ * get fast, which is the direction this work is pushing them.
+ */
+export const CHECKPOINT_MIN_INTERVAL_MS = 20_000;
+
+/** Per-stage checkpoint accounting, logged as one line at stage end (FIX-996).
+ *  The 2026-08-03..08-08 investigation had to derive save cadence by hand from
+ *  cursor arithmetic because nothing counted; this is that gap closed. */
+export interface CheckpointStats {
+  /** Persists attempted (i.e. not throttled away). */
+  attempted: number;
+  /** Persists that landed. */
+  saved: number;
+  /** Persists that threw and were swallowed by the best-effort contract. */
+  failed: number;
+  /** Chunks whose persist was skipped by the interval throttle. */
+  throttled: number;
+}
+
+/** Mutable per-stage checkpoint state: the counters plus the last successful
+ *  save time the throttle compares against. */
+export interface CheckpointThrottle {
+  stats: CheckpointStats;
+  /** Epoch ms of the last SUCCESSFUL save. 0 = none yet, so the first call
+   *  always persists (a failed save does not start the clock — otherwise a
+   *  failure would suppress the retry that follows it). */
+  lastSavedAtMs: number;
+}
+
+export function newCheckpointThrottle(): CheckpointThrottle {
+  return { stats: { attempted: 0, saved: 0, failed: 0, throttled: 0 }, lastSavedAtMs: 0 };
+}
+
+/**
+ * Should this chunk's cursor actually be written? `force` is stage completion —
+ * the last cursor of a stage must always land, or a kill immediately after the
+ * final chunk would resume mid-stage and re-do the tail.
+ */
+export function shouldPersistCheckpoint(
+  t: CheckpointThrottle,
+  nowMs: number,
+  force: boolean,
+): boolean {
+  if (force) return true;
+  return nowMs - t.lastSavedAtMs >= CHECKPOINT_MIN_INTERVAL_MS;
+}
+
+/** One-line stage-end summary, e.g. "checkpoint saves: 41 ok / 3 failed / 166 throttled". */
+export function describeCheckpointStats(s: CheckpointStats): string {
+  return `checkpoint saves: ${s.saved} ok / ${s.failed} failed / ${s.throttled} throttled`;
+}
+
 /** One-line summary for the loud RESUMING log lines (orchestrator + pipeline). */
 export function describeRunState(state: FecBulkRunState): string {
   const parts = TRACKED_STAGES.map((s) => {
@@ -242,20 +317,59 @@ export async function loadRunState(db: Db): Promise<FecBulkRunState | null> {
   }
 }
 
-export async function saveRunState(db: Db, state: FecBulkRunState): Promise<void> {
+/**
+ * FIX-996 — persist the run state. Best-effort by contract: warns, continues,
+ * NEVER throws. Returns whether the write landed, purely so the caller can
+ * count (see CheckpointStats); ignoring the return value is the same behavior
+ * as before.
+ *
+ * TRANSPORT: when `client` is supplied, the write goes over that live direct-pg
+ * connection — the SAME one bulkUpsert is writing chunks on, inside
+ * withDirectClient's scope, so no extra connection is opened (210 per-save
+ * connections would be worse than the problem). That path carries the raised
+ * 90-min SESSION statement_timeout and bypasses PostgREST entirely.
+ *
+ * FALLBACK: the save sites OUTSIDE the chunk loop — createRunState at stage
+ * establishment, completeStage's marker write, and the orchestrator's load —
+ * have no writer client in scope, so they pass none and go over PostgREST as
+ * before. That path is subject to the service_role 8s statement_timeout and the
+ * ~100s gateway cap; it is a handful of calls per run rather than hundreds, so
+ * it is left alone deliberately. The fallback is explicit in the signature, not
+ * an accident of a missing argument.
+ */
+export async function saveRunState(
+  db: Db,
+  state: FecBulkRunState,
+  client?: Client | null,
+): Promise<boolean> {
   state.updated_at = new Date().toISOString();
   try {
-    const { error } = await db.from("pipeline_state").upsert(
-      { key: FEC_RUN_STATE_KEY, value: state, updated_at: state.updated_at },
-      { onConflict: "key" },
-    );
-    if (error) throw new Error(error.message);
+    if (client) {
+      // `key` is the PRIMARY KEY of public.pipeline_state (migration 0012), so
+      // the bare ON CONFLICT (key) arbiter matches PostgREST's onConflict:"key"
+      // resolution exactly.
+      await client.query(
+        `INSERT INTO public.pipeline_state (key, value, updated_at)
+         VALUES ($1, $2::jsonb, $3::timestamptz)
+         ON CONFLICT (key) DO UPDATE
+           SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at`,
+        [FEC_RUN_STATE_KEY, JSON.stringify(state), state.updated_at],
+      );
+    } else {
+      const { error } = await db.from("pipeline_state").upsert(
+        { key: FEC_RUN_STATE_KEY, value: state, updated_at: state.updated_at },
+        { onConflict: "key" },
+      );
+      if (error) throw new Error(error.message);
+    }
+    return true;
   } catch (err) {
     console.warn(
       `    [fec-resume] failed to persist run state (continuing): ${
         err instanceof Error ? err.message : String(err)
       }`,
     );
+    return false;
   }
 }
 

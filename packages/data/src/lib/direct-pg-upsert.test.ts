@@ -243,3 +243,95 @@ test("FIX-754 onChunkProcessed still fires when a chunk fails (cursor matches li
   assert.equal(res.upserted, 3, "second chunk landed");
   assert.deepEqual(offsets, [3, 6], "cursor advances past the failed chunk — it is not retried on resume");
 });
+
+// ---------------------------------------------------------------------------
+// FIX-995 — onReturnedRows: per-chunk delivery instead of whole-stage retention
+// ---------------------------------------------------------------------------
+
+/** A client that RETURNs one synthetic row per input row of each chunk. */
+function returningClient(): Client {
+  return {
+    query: async (_sql: string, params: unknown[]) => ({
+      rows: params.map((p) => ({ id: `id-${String(p)}`, donor_fingerprint: `fp-${String(p)}` })),
+    }),
+  } as unknown as Client;
+}
+
+test("FIX-995 onReturnedRows: `returned` stays EMPTY and the callback sees every row exactly once", async () => {
+  const seen: string[] = [];
+  const chunkSizes: number[] = [];
+
+  const res = await bulkUpsert(returningClient(), {
+    table: "financial_entities",
+    columns: ["a"],
+    conflictColumns: ["a"],
+    returningColumns: ["id", "donor_fingerprint"],
+    rows: Array.from({ length: 10 }, (_, i) => [i]),
+    chunkSize: 4,
+    onReturnedRows: (rows) => {
+      chunkSizes.push(rows.length);
+      for (const r of rows) seen.push(String(r["donor_fingerprint"]));
+    },
+  });
+
+  assert.deepEqual(res.returned, [], "rows must NOT be accumulated when the callback took delivery");
+  assert.equal(res.upserted, 10);
+  assert.deepEqual(chunkSizes, [4, 4, 2], "delivered per chunk, not once at the end");
+  assert.deepEqual(
+    seen,
+    Array.from({ length: 10 }, (_, i) => `fp-${i}`),
+    "every row exactly once, in order",
+  );
+  assert.equal(new Set(seen).size, 10, "no duplicates");
+});
+
+test("FIX-995 without the callback, `returned` is unchanged (today's behavior)", async () => {
+  const res = await bulkUpsert(returningClient(), {
+    table: "financial_entities",
+    columns: ["a"],
+    conflictColumns: ["a"],
+    returningColumns: ["id", "donor_fingerprint"],
+    rows: Array.from({ length: 10 }, (_, i) => [i]),
+    chunkSize: 4,
+  });
+
+  assert.equal(res.returned.length, 10, "accumulated across every chunk, as before");
+  assert.deepEqual(res.returned[0], { id: "id-0", donor_fingerprint: "fp-0" });
+  assert.deepEqual(res.returned[9], { id: "id-9", donor_fingerprint: "fp-9" });
+});
+
+test("FIX-995 onReturnedRows composes with the FIX-754 resume offset", async () => {
+  const seen: string[] = [];
+  const res = await bulkUpsert(returningClient(), {
+    table: "financial_entities",
+    columns: ["a"],
+    conflictColumns: ["a"],
+    returningColumns: ["id", "donor_fingerprint"],
+    rows: Array.from({ length: 10 }, (_, i) => [i]),
+    chunkSize: 4,
+    startRowOffset: 6,
+    onReturnedRows: (rows) => { for (const r of rows) seen.push(String(r["donor_fingerprint"])); },
+  });
+
+  // Only rows 6..9 are re-upserted, so only those RETURN. Rows 0..5 landed in a
+  // prior run and are backfilled by fec-bulk's fetchDonorIdsByFingerprint —
+  // this is the pre-existing FIX-754 behavior, unchanged by the callback.
+  assert.deepEqual(seen, ["fp-6", "fp-7", "fp-8", "fp-9"]);
+  assert.deepEqual(res.returned, []);
+  assert.equal(res.upserted, 4);
+});
+
+test("FIX-995 the callback is not invoked when there are no returningColumns", async () => {
+  let calls = 0;
+  const res = await bulkUpsert(returningClient(), {
+    table: "t",
+    columns: ["a"],
+    conflictColumns: ["a"],
+    rows: Array.from({ length: 5 }, (_, i) => [i]),
+    chunkSize: 2,
+    onReturnedRows: () => { calls++; },
+  });
+
+  assert.equal(calls, 0, "no RETURNING ⇒ nothing to deliver");
+  assert.deepEqual(res.returned, []);
+});

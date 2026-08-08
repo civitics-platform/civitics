@@ -25,8 +25,15 @@ import {
   updateStageCursor,
   resolveResumeCursor,
   describeRunState,
+  saveRunState,
+  newCheckpointThrottle,
+  shouldPersistCheckpoint,
+  describeCheckpointStats,
+  CHECKPOINT_MIN_INTERVAL_MS,
+  FEC_RUN_STATE_KEY,
   type FecBulkRunState,
 } from "./run-state";
+import type { Client } from "pg";
 
 const LM_A = "Sun, 05 Jul 2026 11:04:33 GMT";
 const LM_B = "Sun, 12 Jul 2026 11:02:10 GMT";
@@ -171,4 +178,155 @@ test("FIX-754 describeRunState names every tracked stage with its progress", () 
   assert.match(s, /indiv-to-candidate=240000\/634463/);
   assert.match(s, /indiv-to-committee=pending/);
   for (const stage of TRACKED_STAGES) assert.ok(s.includes(stage), `${stage} present`);
+});
+
+// ---------------------------------------------------------------------------
+// FIX-996 — saveRunState transport (direct-pg vs PostgREST fallback)
+// ---------------------------------------------------------------------------
+
+/** PostgREST-shaped stub: db.from(t).upsert(row, opts) → { error }. */
+function fakeDb(error: { message: string } | null = null) {
+  const calls: Array<{ table: string; row: Record<string, unknown>; opts: unknown }> = [];
+  const db = {
+    from: (table: string) => ({
+      upsert: async (row: Record<string, unknown>, opts: unknown) => {
+        calls.push({ table, row, opts });
+        return { error };
+      },
+    }),
+  };
+  return { db, calls };
+}
+
+/** pg.Client-shaped stub. */
+function fakePgClient(throws?: Error) {
+  const calls: Array<{ sql: string; params: unknown[] }> = [];
+  const client = {
+    query: async (sql: string, params: unknown[]) => {
+      calls.push({ sql, params });
+      if (throws) throw throws;
+      return { rows: [] };
+    },
+  } as unknown as Client;
+  return { client, calls };
+}
+
+test("FIX-996 saveRunState WITH a client writes over direct-pg and never touches PostgREST", async () => {
+  const state = freshState();
+  updateStageCursor(state, "donor-entities", 484000, 840338);
+  const { db, calls: pgrstCalls } = fakeDb();
+  const { client, calls } = fakePgClient();
+
+  const ok = await saveRunState(db, state, client);
+
+  assert.equal(ok, true);
+  assert.equal(pgrstCalls.length, 0, "the PostgREST path must not be used when a client is supplied");
+  assert.equal(calls.length, 1);
+  assert.match(calls[0]!.sql, /INSERT INTO public\.pipeline_state/);
+  assert.match(calls[0]!.sql, /ON CONFLICT \(key\) DO UPDATE/, "arbiter must match PostgREST's onConflict:'key'");
+  assert.equal(calls[0]!.params[0], FEC_RUN_STATE_KEY);
+  // The value goes over as a JSON string cast ::jsonb — round-trip it to prove
+  // the cursor actually made it into the payload.
+  const sent = JSON.parse(String(calls[0]!.params[1])) as FecBulkRunState;
+  assert.equal(sent.stages["donor-entities"]?.cursor, 484000);
+  assert.equal(sent.cycle, "2026");
+});
+
+test("FIX-996 saveRunState WITHOUT a client falls back to PostgREST (unchanged behavior)", async () => {
+  const state = freshState();
+  const { db, calls } = fakeDb();
+
+  const ok = await saveRunState(db, state);
+
+  assert.equal(ok, true);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0]!.table, "pipeline_state");
+  assert.equal(calls[0]!.row["key"], FEC_RUN_STATE_KEY);
+  assert.deepEqual(calls[0]!.opts, { onConflict: "key" });
+});
+
+test("FIX-996 saveRunState preserves the best-effort contract on BOTH transports", async () => {
+  const state = freshState();
+
+  // direct-pg throws → swallowed, reported as false, no rejection.
+  const { client } = fakePgClient(new Error("connection terminated unexpectedly"));
+  assert.equal(await saveRunState(fakeDb().db, state, client), false);
+
+  // PostgREST returns an error → swallowed, reported as false.
+  const { db } = fakeDb({ message: "upstream request timeout" });
+  assert.equal(await saveRunState(db, state), false);
+});
+
+test("FIX-996 saveRunState stamps updated_at on every attempt, including failures", async () => {
+  const state = freshState();
+  const before = state.updated_at;
+  const { client } = fakePgClient(new Error("boom"));
+  await saveRunState(fakeDb().db, state, client);
+  assert.notEqual(state.updated_at, before, "updated_at is stamped before the write is attempted");
+});
+
+// ---------------------------------------------------------------------------
+// FIX-996 — checkpoint cadence
+// ---------------------------------------------------------------------------
+
+test("FIX-996 the first checkpoint of a stage always persists", () => {
+  const t = newCheckpointThrottle();
+  assert.equal(shouldPersistCheckpoint(t, 1_000_000, false), true, "lastSavedAtMs=0 ⇒ persist");
+});
+
+test("FIX-996 persists at most once per CHECKPOINT_MIN_INTERVAL_MS", () => {
+  const t = newCheckpointThrottle();
+  t.lastSavedAtMs = 1_000_000;
+
+  assert.equal(shouldPersistCheckpoint(t, 1_000_000 + 1, false), false, "immediately after a save: skip");
+  assert.equal(
+    shouldPersistCheckpoint(t, 1_000_000 + CHECKPOINT_MIN_INTERVAL_MS - 1, false),
+    false,
+    "just inside the window: skip",
+  );
+  assert.equal(
+    shouldPersistCheckpoint(t, 1_000_000 + CHECKPOINT_MIN_INTERVAL_MS, false),
+    true,
+    "exactly at the window: persist",
+  );
+});
+
+test("FIX-996 stage completion FORCES a persist regardless of the window", () => {
+  const t = newCheckpointThrottle();
+  t.lastSavedAtMs = 1_000_000;
+  assert.equal(
+    shouldPersistCheckpoint(t, 1_000_000 + 1, true),
+    true,
+    "the last cursor of a stage must land, or a kill right after the final chunk re-does the tail",
+  );
+});
+
+test("FIX-996 a FAILED save does not start the throttle clock", () => {
+  // The stageResume hook advances lastSavedAtMs ONLY on success. So after a
+  // failure the clock is still wherever the last SUCCESSFUL save left it, and
+  // the retry is not suppressed by the failure itself. Modelled here at a
+  // realistic wall-clock epoch, since the throttle compares absolute ms.
+  const NOW = Date.parse("2026-08-08T04:30:59.632Z");
+
+  // Never saved: the clock is 0, so any real timestamp is past the window.
+  const fresh = newCheckpointThrottle();
+  fresh.stats.attempted = 1;
+  fresh.stats.failed = 1;
+  assert.equal(fresh.lastSavedAtMs, 0, "a failure must not advance the clock");
+  assert.equal(shouldPersistCheckpoint(fresh, NOW, false), true, "retry immediately");
+
+  // Saved once, then a failure 30s later: the clock still reads the SUCCESS,
+  // so the next chunk (>20s past that success) persists rather than waiting on
+  // the failed attempt.
+  const t = newCheckpointThrottle();
+  t.lastSavedAtMs = NOW;
+  assert.equal(shouldPersistCheckpoint(t, NOW + 30_000, false), true);
+  t.stats.attempted++; t.stats.failed++;      // the attempt fails — clock untouched
+  assert.equal(t.lastSavedAtMs, NOW);
+  assert.equal(shouldPersistCheckpoint(t, NOW + 31_000, false), true, "not suppressed by the failure");
+});
+
+test("FIX-996 the stage-end summary names ok / failed / throttled", () => {
+  const line = describeCheckpointStats({ attempted: 44, saved: 41, failed: 3, throttled: 166 });
+  assert.equal(line, "checkpoint saves: 41 ok / 3 failed / 166 throttled");
 });

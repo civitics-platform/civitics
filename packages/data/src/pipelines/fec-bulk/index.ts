@@ -123,6 +123,10 @@ import {
   loadRunState,
   saveRunState,
   clearRunState,
+  newCheckpointThrottle,
+  shouldPersistCheckpoint,
+  describeCheckpointStats,
+  type CheckpointThrottle,
   type FecBulkRunState,
   type TrackedStage,
   type CursoredStage,
@@ -1484,14 +1488,38 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
                 // FIX-754 helpers: per-chunk cursor persistence + stage markers.
                 // No-ops when the checkpoint machinery is inactive (scoped run,
                 // unverifiable identity, another cycle's state pending).
+                // FIX-996: per-stage checkpoint cadence + accounting. The
+                // throttle is keyed by stage so each cursored writer gets its
+                // own window and its own counters for the stage-end summary.
+                const checkpointThrottles = new Map<CursoredStage, CheckpointThrottle>();
                 const stageResume = (stage: CursoredStage): WriterResume | undefined => {
                   const st = cycleActiveState;
                   if (!st) return undefined;
+                  const throttle = newCheckpointThrottle();
+                  checkpointThrottles.set(stage, throttle);
                   return {
                     progress: st.stages[stage],
-                    onProgress: async (processedRows, totalRows) => {
+                    onProgress: async (processedRows, totalRows, client) => {
+                      // The cursor is updated on EVERY chunk — bulkUpsert's
+                      // every-chunk contract is load-bearing for FIX-754's
+                      // accounting (decision: throttle the WRITE, never the
+                      // hook). Only the persist is rate-limited.
                       updateStageCursor(st, stage, processedRows, totalRows);
-                      await saveRunState(db, st); // best-effort — warns, never throws
+                      const stageDone = processedRows >= totalRows;
+                      if (!shouldPersistCheckpoint(throttle, Date.now(), stageDone)) {
+                        throttle.stats.throttled++;
+                        return;
+                      }
+                      throttle.stats.attempted++;
+                      // best-effort — warns, never throws. Rides `client` (the
+                      // live direct-pg connection) when the writer supplied one.
+                      const ok = await saveRunState(db, st, client);
+                      if (ok) {
+                        throttle.stats.saved++;
+                        throttle.lastSavedAtMs = Date.now();
+                      } else {
+                        throttle.stats.failed++;
+                      }
                     },
                   };
                 };
@@ -1499,6 +1527,13 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
                   if (!cycleActiveState) return;
                   markStageComplete(cycleActiveState, stage);
                   await saveRunState(db, cycleActiveState);
+                  // FIX-996: one summary line per cursored stage. The
+                  // 2026-08-03..08-08 investigation had to derive save cadence
+                  // from cursor arithmetic because nothing counted them.
+                  const throttle = checkpointThrottles.get(stage as CursoredStage);
+                  if (throttle && throttle.stats.attempted > 0) {
+                    console.log(`    [${stage}] ${describeCheckpointStats(throttle.stats)}`);
+                  }
                 };
 
                 // Build per-cycle donor totals from BOTH aggregation maps —
@@ -1532,6 +1567,21 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
                     totalDonatedCents: cycleDonorTotals.get(fp) ?? 0,
                   });
                 }
+
+                // FIX-995: donorMetas and cycleDonorTotals are DEAD from here
+                // on — every field they hold has been copied into donorInputs,
+                // and neither is read again anywhere in the cycle block (the
+                // "Unique donors" stat line is printed inside streamIndiv,
+                // before it returns). Left reachable through `indivResult`,
+                // they pinned ~840k meta objects and ~840k Map entries for the
+                // whole 4-stage writer run — the heaviest part of the cycle.
+                // MEASURED at N=840,338 (data:measure:donor-heap): 120.0 MB,
+                // the largest of this PR's three releases.
+                // Released here, NOT by reassigning indivResult, because
+                // indivResult.aggregations and .committeeAggregations are still
+                // read by the two relationship stages below.
+                indivResult.donorMetas.clear();
+                cycleDonorTotals.clear();
 
                 // FIX-700 stage: donor-entities. Skipping it leaves
                 // donorIdByFingerprint empty, so the two indiv relationship

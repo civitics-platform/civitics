@@ -127,6 +127,28 @@ export interface BulkUpsertSpec {
   jsonbColumns?: string[];
   /** Columns to RETURNING (rows come back in `BulkUpsertResult.returned`). */
   returningColumns?: string[];
+  /**
+   * FIX-995 — per-chunk sink for RETURNING rows, for callers that only fold
+   * them into a Map and discard them. When provided, each chunk's rows are
+   * handed to this callback and are NOT accumulated: `BulkUpsertResult.returned`
+   * comes back EMPTY, and the chunk's rows become garbage as soon as the
+   * callback returns.
+   *
+   * Why it exists: the FEC indiv donor stage RETURNs (id, donor_fingerprint)
+   * for ~840k rows purely to build `donorIdByFingerprint`. Accumulating them
+   * pins 840k row objects plus the array holding them for the whole stage,
+   * when the fold could have happened chunk-by-chunk. MEASURED at N=840,338
+   * (`pnpm --filter @civitics/data data:measure:donor-heap`): 208.7 MB → 168.2 MB,
+   * a 40.5 MB saving.
+   *
+   * Note what is NOT saved: the uuid strings survive either way, because
+   * `donorIdByFingerprint` retains them — that map is the whole point of the
+   * RETURNING clause. Only the row objects and the array become collectable.
+   *
+   * Omit for today's behavior (`returned` populated as before). Small
+   * populations have no reason to use this.
+   */
+  onReturnedRows?: (rows: Record<string, unknown>[]) => void;
   /** Greppable label for per-chunk failure logs (defaults to `table`). */
   label?: string;
   /** Rows aligned to `columns`. */
@@ -147,6 +169,8 @@ export interface BulkUpsertSpec {
 export interface BulkUpsertResult {
   upserted: number;
   failed: number;
+  /** RETURNING rows, accumulated across every chunk. ALWAYS EMPTY when the
+   *  spec supplied `onReturnedRows` — that caller took delivery per chunk. */
   returned: Record<string, unknown>[];
 }
 
@@ -273,7 +297,13 @@ export async function bulkUpsert(client: Client, spec: BulkUpsertSpec): Promise<
 
     try {
       const res = await client.query(sql, params);
-      if (spec.returningColumns?.length) returned.push(...(res.rows as Record<string, unknown>[]));
+      if (spec.returningColumns?.length) {
+        const rows = res.rows as Record<string, unknown>[];
+        // FIX-995: hand off per chunk when the caller asked, so the rows are
+        // collectable immediately instead of pinned for the whole stage.
+        if (spec.onReturnedRows) spec.onReturnedRows(rows);
+        else returned.push(...rows);
+      }
       upserted += chunk.length;
     } catch (err) {
       console.error(

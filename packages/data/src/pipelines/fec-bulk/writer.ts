@@ -28,10 +28,21 @@ import { resolveResumeCursor, type StageProgress } from "./run-state";
 /** `progress` is the stored stage progress (cursor + recorded rows total);
  *  `onProgress` is awaited with (processedRows, totalRows) once at stage start
  *  and again after every chunk attempt, so the run-state cursor is durable
- *  before the next chunk begins. Only unscoped runs pass this. */
+ *  before the next chunk begins. Only unscoped runs pass this.
+ *
+ *  FIX-996: the per-chunk calls also pass the LIVE direct-pg client bulkUpsert
+ *  is writing on, so the checkpoint can ride that connection instead of going
+ *  back out over PostgREST (8s role cap, ~100s gateway cap) at the exact moment
+ *  the DB is saturated by the writes being checkpointed. The stage-start call
+ *  has no client — it happens before withDirectClient opens one — so the
+ *  parameter is optional and the hook must handle its absence. */
 export interface WriterResume {
   progress: StageProgress | undefined;
-  onProgress: (processedRows: number, totalRows: number) => Promise<void> | void;
+  onProgress: (
+    processedRows: number,
+    totalRows: number,
+    client?: Client,
+  ) => Promise<void> | void;
 }
 
 /** Resolve the start offset for a cursored writer and record the stage as
@@ -339,6 +350,52 @@ export interface IndividualDonorBatchResult {
  * canonical_name carries the searchable normalized name (NO zip), so
  * existing GIN trigram search on canonical_name still finds donors by name.
  */
+/**
+ * Client-side dedupe by fingerprint — Postgres rejects two rows that hit the
+ * same conflict arbiter in a single statement. Sum totals so the surviving row
+ * carries the merged donation total; prefer the longer displayName and the
+ * first non-empty value for each metadata field.
+ *
+ * FIX-995 — entries are stored BY REFERENCE and merged IN PLACE. This used to
+ * store `{ ...input }`, building a second full object graph of the donor
+ * population (~840k objects on a presidential cycle) purely so the merge could
+ * mutate safely. The merge branch is unreachable for the one production
+ * caller — fec-bulk builds `donorInputs` by iterating a Map keyed by
+ * fingerprint with `fingerprint: fp`, so it is unique by construction — so the
+ * clone was paying for the whole population to protect a branch that never
+ * runs. MEASURED at N=840,338 (`pnpm --filter @civitics/data
+ * data:measure:donor-heap`): 98.5 MB → 27.9 MB, a 70.6 MB saving; the residue
+ * is the Map's own entry storage, which the dedupe genuinely needs.
+ *
+ * CONTRACT: elements of `inputs` MAY BE MUTATED when duplicate fingerprints
+ * are present. Merge semantics are unchanged and pinned by writer-dedupe.test.ts.
+ * Callers must not rely on `inputs` being pristine afterwards. `fingerprint` is
+ * the merge key, so it is invariant under merging — which is what makes the
+ * fec-bulk caller's post-call reads (`.length`, `.fingerprint`) safe.
+ *
+ * Exported for the unit test; not part of the pipeline's public surface.
+ */
+export function mergeIndividualDonorInputs(
+  inputs: IndividualDonorInput[],
+): Map<string, IndividualDonorInput> {
+  const merged = new Map<string, IndividualDonorInput>();
+  for (const input of inputs) {
+    const existing = merged.get(input.fingerprint);
+    if (!existing) {
+      merged.set(input.fingerprint, input);
+      continue;
+    }
+    existing.totalDonatedCents += input.totalDonatedCents;
+    if (input.displayName.length > existing.displayName.length) existing.displayName = input.displayName;
+    if (!existing.employer   && input.employer)   existing.employer   = input.employer;
+    if (!existing.occupation && input.occupation) existing.occupation = input.occupation;
+    if (!existing.city       && input.city)       existing.city       = input.city;
+    if (!existing.state      && input.state)      existing.state      = input.state;
+    if (!existing.zip5       && input.zip5)       existing.zip5       = input.zip5;
+  }
+  return merged;
+}
+
 // FIX-462: direct-pg, not PostgREST. The 768k-row donor upsert was ~1,500
 // PostgREST round-trips against a million-row table, each chunk capped by the
 // prod ~8s role/statement_timeout — slow chunks were silently dropped and the
@@ -360,25 +417,7 @@ export async function upsertIndividualDonorsBatch(
 
   if (inputs.length === 0) return { donorIdByFingerprint, upserted: 0, failed: 0 };
 
-  // Client-side dedupe by fingerprint — Postgres rejects two rows that hit
-  // the same conflict arbiter in a single statement. Sum totals so the
-  // surviving row carries the merged donation total. Prefer the longer/
-  // more complete metadata when merging.
-  const merged = new Map<string, IndividualDonorInput>();
-  for (const input of inputs) {
-    const existing = merged.get(input.fingerprint);
-    if (!existing) {
-      merged.set(input.fingerprint, { ...input });
-      continue;
-    }
-    existing.totalDonatedCents += input.totalDonatedCents;
-    if (input.displayName.length > existing.displayName.length) existing.displayName = input.displayName;
-    if (!existing.employer   && input.employer)   existing.employer   = input.employer;
-    if (!existing.occupation && input.occupation) existing.occupation = input.occupation;
-    if (!existing.city       && input.city)       existing.city       = input.city;
-    if (!existing.state      && input.state)      existing.state      = input.state;
-    if (!existing.zip5       && input.zip5)       existing.zip5       = input.zip5;
-  }
+  const merged = mergeIndividualDonorInputs(inputs);
 
   // canonical_name = natural-order "FIRST [MI] LAST" reorder of the raw FEC
   // display name (FIX-238). The trgm GIN on canonical_name (migration
@@ -423,7 +462,11 @@ export async function upsertIndividualDonorsBatch(
 
   const startRowOffset = await beginCursoredStage(resume, "individual-donor", rows.length);
 
-  const { upserted, failed, returned } = await withDirectClient((client) =>
+  // FIX-995: fold the RETURNING rows into donorIdByFingerprint PER CHUNK
+  // instead of accumulating all ~840k row objects for the whole stage and
+  // folding at the end. The resulting map is byte-identical; only the retention
+  // window changes. Measured 208.7 MB → 168.2 MB at N=840,338.
+  const { upserted, failed } = await withDirectClient((client) =>
     bulkUpsert(client, {
       table:            "financial_entities",
       label:            "individual-donor",
@@ -433,13 +476,16 @@ export async function upsertIndividualDonorsBatch(
       returningColumns: ["id", "donor_fingerprint"],
       rows,
       startRowOffset,
-      onChunkProcessed: resume ? (n) => resume.onProgress(n, rows.length) : undefined,
+      // FIX-996: hand the live client to the checkpoint hook so the cursor
+      // write rides this connection rather than PostgREST.
+      onChunkProcessed: resume ? (n) => resume.onProgress(n, rows.length, client) : undefined,
+      onReturnedRows: (chunkRows) => {
+        for (const row of chunkRows as Array<{ id: string; donor_fingerprint: string | null }>) {
+          if (row.donor_fingerprint) donorIdByFingerprint.set(row.donor_fingerprint, row.id);
+        }
+      },
     }),
   );
-
-  for (const row of returned as Array<{ id: string; donor_fingerprint: string | null }>) {
-    if (row.donor_fingerprint) donorIdByFingerprint.set(row.donor_fingerprint, row.id);
-  }
 
   return { donorIdByFingerprint, upserted, failed };
 }
@@ -668,7 +714,9 @@ export async function upsertIndividualDonationsBatch(
       jsonbColumns:    ["metadata"],
       rows,
       startRowOffset,
-      onChunkProcessed: resume ? (n) => resume.onProgress(n, rows.length) : undefined,
+      // FIX-996: hand the live client to the checkpoint hook so the cursor
+      // write rides this connection rather than PostgREST.
+      onChunkProcessed: resume ? (n) => resume.onProgress(n, rows.length, client) : undefined,
     }).then(({ upserted, failed }) => ({ upserted, failed })),
   );
 }
@@ -875,7 +923,9 @@ export async function upsertIndividualToCommitteeDonationsBatch(
       jsonbColumns:    ["metadata"],
       rows,
       startRowOffset,
-      onChunkProcessed: resume ? (n) => resume.onProgress(n, rows.length) : undefined,
+      // FIX-996: hand the live client to the checkpoint hook so the cursor
+      // write rides this connection rather than PostgREST.
+      onChunkProcessed: resume ? (n) => resume.onProgress(n, rows.length, client) : undefined,
     }).then(({ upserted, failed }) => ({ upserted, failed })),
   );
 }
