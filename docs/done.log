@@ -1182,3 +1182,8 @@
 2026-08-06 | FIX-968 | 86932034 | local-only | fix(data): canary must not die on its first query (FIX-968 follow-on)
 2026-08-06 | FIX-972 | 743ab51f | local-only | fix(donor-rollup): stop wasting a third of every drain window on chunk quantization
 2026-08-06 | FIX-974 | 503092af | local+prod | feat(donor-rollup): bulk regime clears the 9,086-recipient backlog in 15m26s
+2026-08-07 | FIX-975 | e9f17858 | local+prod | feat(observability): vacuum ownership, a derived rollup registry, and the first rate detector
+2026-08-07 | FIX-977 | e9f17858 | local+prod | feat(observability): vacuum ownership, a derived rollup registry, and the first rate detector
+2026-08-07 | FIX-978 | e9f17858 | local-only | feat(observability): vacuum ownership, a derived rollup registry, and the first rate detector
+2026-08-07 | FIX-980 | e9f17858 | local+prod | feat(observability): vacuum ownership, a derived rollup registry, and the first rate detector
+2026-08-07 | FIX-986 | e9f17858 | local+prod | feat(observability): vacuum ownership, a derived rollup registry, and the first rate detector
