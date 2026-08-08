@@ -47,6 +47,10 @@
  *   * `SET civitics.donor_rollup_budget_seconds` widens the procedure's own
  *     between-chunk wall-clock budget to match. It is a session GUC, not shared
  *     state, so a crashed run cannot leave the scheduled job's budget widened.
+ *   * `SET civitics.donor_rollup_ignore_start_window = 'on'` (FIX-1002) lifts
+ *     the 13:00 UTC latest-start refusal, which exists to stop a QUEUED pg_cron
+ *     firing from chaining a second window onto an overrunning one — not to
+ *     stop a human running this deliberately.
  *
  * Everything the procedure does is committed per chunk and cursor-tracked, so
  * killing this script at any point loses at most one chunk — the next run
@@ -210,6 +214,13 @@ async function main(): Promise<number> {
     await client.query("SET statement_timeout = 0");
     await client.query("SET lock_timeout = '60s'");
     await client.query(`SET civitics.donor_rollup_budget_seconds = '${Math.floor(args.budgetSeconds)}'`);
+    // FIX-1002 — the procedure refuses to START at or after 13:00 UTC, so that
+    // a firing pg_cron queued behind an overrunning run cannot open a second
+    // full window into US active hours. Break-glass is exactly the case that
+    // exemption exists for: this script is invoked deliberately, by a human who
+    // has already chosen the hour. Session-scoped, so it cannot leak into the
+    // scheduled run.
+    await client.query("SET civitics.donor_rollup_ignore_start_window = 'on'");
     await client.query("SET work_mem = '128MB'");
 
     // FIX-968 — shared probe. This gate used `SHOW statement_timeout` + `.st`,
