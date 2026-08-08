@@ -34,7 +34,7 @@ const DRY = process.argv.includes("--dry-run");
 const FORCE = process.argv.includes("--force");
 
 const BULLET_RE = /^(\s*- \[)([ xX])(\] )(.*)$/;
-const ID_RE = /<!--\s*id:\s*(FIX-\d{3})\s*-->/;
+const ID_RE = /<!--\s*id:\s*(FIX-\d+)\s*-->/;
 const SECTION_RE = /^##\s+(.+?)\s*$/;
 const STRATEGIC_RE = /^##\s+STRATEGIC PILLARS\b/i;
 const COMPLETED_RE = /^##\s+COMPLETED\b/i;

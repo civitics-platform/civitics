@@ -28,7 +28,7 @@ const PRIORITY_EMOJI = ["🔴", "🟠", "🟡", "🟢", "⬜"];
 const COMPLEXITY = new Set(["S", "M", "L", "XL"]);
 
 const BULLET_RE = /^(\s*- \[)([ xX])(\] )(.*)$/;
-const ID_RE = /<!--\s*id:\s*(FIX-\d{3})\s*-->/;
+const ID_RE = /<!--\s*id:\s*(FIX-\d+)\s*-->/;
 const SECTION_RE = /^##\s+(.+?)\s*$/;
 const STRATEGIC_RE = /^##\s+STRATEGIC PILLARS\b/i;
 const COMPLETED_RE = /^##\s+COMPLETED\b/i;
@@ -44,10 +44,10 @@ function scanAllIds() {
   // missing from the live file still block re-allocation. See fix-add.mjs
   // `allocateNextId` for the full rationale.
   const pushMarker = (text) => {
-    for (const m of text.matchAll(/<!--id:FIX-(\d{3})-->/g)) ids.add(`FIX-${m[1]}`);
+    for (const m of text.matchAll(/<!--id:FIX-(\d+)-->/g)) ids.add(`FIX-${m[1]}`);
   };
   const pushLoose = (text) => {
-    for (const m of text.match(/FIX-\d{3}/g) || []) ids.add(m);
+    for (const m of text.match(/FIX-\d+/g) || []) ids.add(m);
   };
   pushMarker(readLf(FIXES_PATH));
   if (existsSync(DONE_PATH)) pushLoose(readLf(DONE_PATH));

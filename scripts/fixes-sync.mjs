@@ -233,8 +233,8 @@ export function parseCommitTrailers(body) {
   const fixesRe = /^\s*Fixes:\s*(.+)$/gm;
   const closesRe = /^\s*Closes:\s*(.+)$/gm;
   const verifiedRe = /^\s*Verified:\s*(.+)$/m;
-  const verifiedPerFixRe = /^\s*Verified\[(FIX-\d{3})\]:\s*(.+)$/gm;
-  const idRe = /FIX-\d{3}/g;
+  const verifiedPerFixRe = /^\s*Verified\[(FIX-\d+)\]:\s*(.+)$/gm;
+  const idRe = /FIX-\d+/g;
 
   const warnings = [];
   // Union the IDs across all matching trailer lines (FIX-874). `matchAll`
@@ -395,7 +395,7 @@ function syncFixesMd(completedIds, { dry }) {
   const missingMarker = [];
 
   const bulletRe = /^(\s*- \[)([ xX])(\] .+)$/;
-  const idRe = /<!--\s*id:\s*(FIX-\d{3})\s*-->/;
+  const idRe = /<!--\s*id:\s*(FIX-\d+)\s*-->/;
   const archiveHeadingRe = /^##\s+COMPLETED\b/i;
 
   let inArchive = false;

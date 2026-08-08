@@ -135,6 +135,30 @@ assertEq(
   ["FIX-800", "FIX-801", "FIX-802"],
 );
 
+// FIX-1001: four-digit IDs. The repo crossed FIX-999 on 2026-08-08 and the
+// parser's `/FIX-\d{3}/g` did not merely miss FIX-1000 — it MATCHED THE FIRST
+// THREE DIGITS, so a `Fixes: FIX-1000` trailer silently resolved to FIX-100, an
+// unrelated shipped item. Same class as the bug fix-add.mjs was hardened
+// against in FIX-362; fixes-sync.mjs was never given the same treatment.
+const fourDigitBody = [
+  "feat(x): something",
+  "",
+  "Verified: local",
+  "Verified[FIX-1002]: closes-as-superseded",
+  "Fixes: FIX-1000, FIX-99",
+  "Closes: FIX-1002",
+  "",
+].join("\n");
+const fourDigitParsed = parseCommitTrailers(fourDigitBody);
+assertEq("four-digit Fixes IDs survive intact", [...fourDigitParsed.fixesIds].sort(), ["FIX-1000", "FIX-99"]);
+assertEq("four-digit Closes ID survives intact", [...fourDigitParsed.closesIds], ["FIX-1002"]);
+assertEq(
+  "four-digit per-FIX Verified override binds to the right ID",
+  fourDigitParsed.perFixVerified.get("FIX-1002") ?? null,
+  "closes-as-superseded",
+);
+assertEq("four-digit override is not dropped as unknown", fourDigitParsed.warnings, []);
+
 // FIX-461: trunk-ancestry guard decision core. `evaluateTrunkViolations` and
 // `buildCompletingShasById` are pure (git is injected via `resolve`), so the
 // silent-zero-sweep-tail failure mode is exercised here without touching a repo.
