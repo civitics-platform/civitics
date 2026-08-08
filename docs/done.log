@@ -1187,3 +1187,5 @@
 2026-08-07 | FIX-978 | e9f17858 | local-only | feat(observability): vacuum ownership, a derived rollup registry, and the first rate detector
 2026-08-07 | FIX-980 | e9f17858 | local+prod | feat(observability): vacuum ownership, a derived rollup registry, and the first rate detector
 2026-08-07 | FIX-986 | e9f17858 | local+prod | feat(observability): vacuum ownership, a derived rollup registry, and the first rate detector
+2026-08-08 | FIX-996 | 6379e275 | local-only | perf(fec-bulk): cut donor-stage heap copies and move the FIX-754 checkpoint off PostgREST
+2026-08-08 | FIX-998 | 68546ae2 | local-only | feat(nightly): hold fec_bulk on the nightly path pending FIX-995
