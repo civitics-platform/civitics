@@ -41,6 +41,15 @@ import { runElectionsPipeline } from "./elections";
 import { runAiClassifier } from "./tags/ai-classifier";
 import { seedJurisdictions, seedGoverningBodies } from "../jurisdictions/us-states";
 import { computeRunWeekly } from "./weekly-gate";
+import { FLAGS } from "../feature-flags";
+import {
+  shouldLoadResumeState,
+  shouldProbeDrop,
+  shouldRunFecBulk,
+  fecBulkHeldThisPhase,
+  FEC_HOLD_REASON,
+  type FecBulkTriggerInputs,
+} from "./fec-hold";
 
 // errMsg moved to ./utils (FIX-756) so fec-bulk's catch sites can share it
 // without importing this module (which imports fec-bulk — cycle).
@@ -590,8 +599,22 @@ export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<Nigh
   // it up and finishes the pending cycle only, so Monday/Tuesday auto-complete
   // Sunday's work with monotonic progress. Cheap single-row read; Sundays
   // resume through the normal weekly invocation without this check.
+  // FIX-998: TEMPORARY hold, read once and threaded through every fec_bulk
+  // trigger predicate below. Ahead of the FIX-754 resume load, the FIX-903 drop
+  // probe AND the weekly gate, because the two weekday triggers hand off to each
+  // other — see pipelines/fec-hold.ts. Unset env ⇒ held === false ⇒ every branch
+  // below is byte-identical to pre-FIX-998 behavior.
+  const fecTrigger: FecBulkTriggerInputs = {
+    runFec,
+    isWeekly,
+    held: !FLAGS.FEC_NIGHTLY_BULK_ENABLED,
+  };
+  if (fecBulkHeldThisPhase(fecTrigger)) {
+    console.warn(`  [nightly] ⏸  ${FEC_HOLD_REASON}`);
+  }
+
   let fecResumeState: FecBulkRunState | null = null;
-  if (runFec && !isWeekly) {
+  if (shouldLoadResumeState(fecTrigger)) {
     fecResumeState = await loadFecRunState(db);
     if (fecResumeState) {
       console.log(`[nightly] RESUMING fec_bulk (FIX-754): ${describeFecRunState(fecResumeState)}`);
@@ -608,7 +631,7 @@ export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<Nigh
   // than launching a ~2.5h writer run on an unreadable signal. See
   // ./fec-bulk/drop-check.ts.
   let fecDropPending = false;
-  if (runFec && !isWeekly && fecResumeState === null) {
+  if (shouldProbeDrop(fecTrigger, fecResumeState !== null)) {
     const probeCycle = resolveProbeCycle(new Date(), process.env["FEC_INDIV_CYCLES"]);
     fecDropPending = await indivDropPending(db, probeCycle);
     if (fecDropPending) {
@@ -623,7 +646,14 @@ export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<Nigh
   // resume state, or a weekday on which FEC published a newer indiv file than
   // our watermark (FIX-903). Everything else weekly (IRS-990 onward) stays
   // Sunday-gated below.
-  if (runFec && (isWeekly || fecResumeState !== null || fecDropPending)) {
+  if (fecBulkHeldThisPhase(fecTrigger)) {
+    // FIX-998: record a state that is unmistakably NOT a healthy run. `skipped`
+    // is the existing NightlyPipelineResult vocabulary for "deliberately not
+    // run" (regulations/congress/courtlistener/openstates all use it with the
+    // reason in `error`), so every consumer of the payload already understands
+    // it and the union does not widen. Never `complete`, never absent.
+    results.pipelines.fec_bulk = { status: "skipped", error: FEC_HOLD_REASON };
+  } else if (shouldRunFecBulk(fecTrigger, fecResumeState !== null, fecDropPending)) {
     {
       const t0 = Date.now();
       // Weekly cron only refreshes the current + prior cycle for the PAC

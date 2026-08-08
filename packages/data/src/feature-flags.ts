@@ -28,6 +28,20 @@ export const FLAGS = {
   CRON_ENABLED:
     process.env["CRON_DISABLED"] !== "true",
 
+  // FIX-998 — TEMPORARY hold on the nightly path's fec_bulk invocation while
+  // FIX-995 is open. Deliberately shaped like CRON_ENABLED (opt-out via a
+  // *_DISABLED var whose only truthy value is the literal "true") so an unset
+  // env is exactly today's behavior. Read ONCE in the nightly orchestrator and
+  // passed to the pure trigger predicates in pipelines/fec-hold.ts — this is
+  // the single place the env var is parsed.
+  //
+  // Scope note: this holds the NIGHTLY path only. fec-backfill.yml invokes
+  // runFecBulkPipeline() directly (data:fec-bulk:ci), does not route through
+  // runNightlySync, and is deliberately unaffected — the ingest runs by
+  // operator dispatch while the hold is on.
+  FEC_NIGHTLY_BULK_ENABLED:
+    process.env["FEC_NIGHTLY_BULK_DISABLED"] !== "true",
+
   CHORD_DATA_ENABLED:
     process.env["CHORD_DATA_ENABLED"] !== "false",
 
