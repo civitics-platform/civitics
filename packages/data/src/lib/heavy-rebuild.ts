@@ -21,6 +21,8 @@
  * connection; the connection always closes in `finally` before this returns.
  */
 
+import { vacuumRewritten } from "./vacuum-tail";
+
 /**
  * Compose a session-pooler (or local Docker) Postgres DSN from env.
  *
@@ -114,7 +116,15 @@ export async function runHeavyRebuild(fn: string): Promise<number> {
     const res = await client.query<{ count: string | number }>(
       `SELECT public.${fn}() AS count`,
     );
-    return Number(res.rows[0]?.count ?? 0);
+    const count = Number(res.rows[0]?.count ?? 0);
+    // FIX-975 — vacuum ownership. VACUUM cannot run inside the plpgsql writer,
+    // so the tail is discharged here, on the same connection, after the rewrite
+    // has committed. Every caller of this hub inherits it: the FEC bulk
+    // pipeline, the USASpending writer, and the remediation scripts all reach
+    // the FE mass-UPDATEs through this one funnel. See vacuum-tail.ts for why
+    // autovacuum is not a substitute (playbook B1/B2, FIX-943 rule).
+    await vacuumRewritten(client, fn);
+    return count;
   } finally {
     await client.end();
   }
@@ -153,6 +163,13 @@ const ALLOWED_PROCEDURES = new Set([
   // when the tag content is unchanged; falls back to the chunked full backfill
   // only on a cold start / signature-store miss.
   "refresh_sector_affinity_from_tag_changes",
+  // FIX-977: manual catch-up for the weekly financial-entity-totals-incremental
+  // cron (jobid 13). The scheduled path is the ongoing one; this exists because
+  // the watermark only advances on SUCCESS, so a failed run hands its whole
+  // dirty set to the next run PLUS another week of writes — a ratchet that
+  // cannot converge on its own once a run misses. Draining it needs a session
+  // timeout well past the 6h the cron dies at.
+  "refresh_financial_entity_totals_incremental",
 ]);
 
 /**

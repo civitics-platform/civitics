@@ -72,7 +72,11 @@ const LIVE_ROWS_MIN = 50;
 const MAX_OFFICIALS = 40;
 
 const MONEY_EDGE_TYPES = ["donation", "opposition"];
-const CHURNED_TABLES = ["financial_relationships", "entity_connections", "officials"];
+// FIX-975 — financial_entities added: this script mass-UPDATEs it via the
+// chunked financial_entity_donation_totals_rebuild loop and
+// rebuild_financial_entity_ie_totals below, and nothing else on the schedule
+// vacuumed it (vacuum_count was 0 instance-wide).
+const CHURNED_TABLES = ["financial_relationships", "entity_connections", "officials", "financial_entities"];
 
 /**
  * Build the candidate set. Mirrors the FIX-934 SAME/CROSS test in SQL: a

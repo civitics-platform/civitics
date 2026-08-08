@@ -125,7 +125,14 @@ const MV_REFRESH_FNS = [
  * Measured: the FIX-930 audit blew its 600s statement_timeout immediately after
  * the merge and completed comfortably once these were vacuumed.
  */
-const CHURNED_TABLES = ["financial_relationships", "entity_connections", "officials"];
+// FIX-975 — financial_entities joined this list because it was the hottest
+// table on the instance with vacuum_count = 0, and this script mass-UPDATEs it
+// twice (financial_entity_donation_totals_rebuild + rebuild_financial_entity_
+// ie_totals below). Same reasoning as the other three, one table hotter:
+// financial_entities_pkey is the most-scanned index on the box, so its
+// visibility map is what every donor rollup, graph query and treemap build
+// reads through.
+const CHURNED_TABLES = ["financial_relationships", "entity_connections", "officials", "financial_entities"];
 
 /**
  * VACUUM only. Split out from the MV refreshes because the two have opposite

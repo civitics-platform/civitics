@@ -84,7 +84,11 @@ const MV_REFRESH_FNS = [
 ];
 
 /** See the root CLAUDE.md standing rule — a bulk rewrite ends by vacuuming. */
-const CHURNED_TABLES = ["financial_relationships", "entity_connections", "officials"];
+// FIX-975 — financial_entities added: this script mass-UPDATEs it via the
+// chunked financial_entity_donation_totals_rebuild loop and
+// rebuild_financial_entity_ie_totals below, and nothing else on the schedule
+// vacuumed it (vacuum_count was 0 instance-wide).
+const CHURNED_TABLES = ["financial_relationships", "entity_connections", "officials", "financial_entities"];
 
 const STEP_BUDGET_S: Record<string, number> = {
   donor_rollup: 40 * 60,
