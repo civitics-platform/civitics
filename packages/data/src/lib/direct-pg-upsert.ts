@@ -123,6 +123,43 @@ export interface BulkUpsertSpec {
    * forces `DO NOTHING`.
    */
   updateColumns?: string[];
+  /**
+   * FIX-1008 — columns whose value must ACTUALLY DIFFER for a conflicting row
+   * to be rewritten. When set, the statement gains
+   *
+   *   ON CONFLICT (...) DO UPDATE SET ... WHERE (
+   *     tbl.c1 IS DISTINCT FROM EXCLUDED.c1 OR tbl.c2 IS DISTINCT FROM EXCLUDED.c2 ...
+   *   )
+   *
+   * so a row whose every listed column already matches is left completely
+   * alone: no heap write, no index maintenance, no dead tuple, no WAL, and no
+   * `updated_at` bump.
+   *
+   * WHY (measured on prod 2026-08-09, pg_stat_statements, 4,000-row chunks):
+   * the FEC weekly re-ingest rewrites the FULL cycle every Sunday, but only
+   * 0.5–6.3% of the rows it writes are new (`created_at` histogram over cycle
+   * 2026: 6,841–86,818 new rows per run against 1,375,438 total). The other
+   * ~95% are byte-identical re-upserts that still cost the full write, because
+   * `financial_relationships` takes ZERO HOT updates — its unpredicated
+   * `financial_relationships_updated_at` btree indexes a column the
+   * `set_updated_at()` BEFORE UPDATE trigger changes on every single update, so
+   * every upsert rewrites all 16 of its indexes and leaves a dead tuple.
+   * (`financial_entities` has the same trigger but does NOT index `updated_at`,
+   * which is exactly why it gets 27.06% HOT and FR gets 0.00%.)
+   *
+   * CONSEQUENCE YOU MUST HANDLE — `RETURNING` goes quiet. A conflicting row
+   * that fails the predicate is not updated, so it produces NO RETURNING row.
+   * A caller combining this with `returningColumns` therefore gets back FEWER
+   * rows than it put in, and must recover the missing keys itself (the FEC
+   * donor stage re-reads them via `fetchDonorIdsByFingerprint`). Callers that
+   * do not use RETURNING have nothing to do.
+   *
+   * The predicate always covers EXACTLY the columns being SET — not a
+   * caller-chosen subset. A subset is a silent-data-loss footgun: any SET
+   * column left out of the predicate can change without the row being
+   * rewritten. Omit the flag for today's behaviour.
+   */
+  skipUnchangedRows?: boolean;
   /** Columns whose value is JSON-serialized and cast `::jsonb`. */
   jsonbColumns?: string[];
   /** Columns to RETURNING (rows come back in `BulkUpsertResult.returned`). */
@@ -167,8 +204,17 @@ export interface BulkUpsertSpec {
 }
 
 export interface BulkUpsertResult {
+  /** Rows PROCESSED (attempted) — unchanged semantics, counts a row that the
+   *  FIX-1008 predicate left alone. */
   upserted: number;
   failed: number;
+  /**
+   * FIX-1008 — rows the server actually inserted or updated, summed from each
+   * statement's row count. Without `skipUnchangedColumns` this equals
+   * `upserted`; with it, the difference is the no-op re-upserts that were
+   * skipped. Reported so a stage can log how much of its work was real.
+   */
+  changed: number;
   /** RETURNING rows, accumulated across every chunk. ALWAYS EMPTY when the
    *  spec supplied `onReturnedRows` — that caller took delivery per chunk. */
   returned: Record<string, unknown>[];
@@ -192,6 +238,7 @@ export function buildUpsertStatement(spec: {
   columns: string[];
   conflictColumns: string[];
   updateColumns?: string[];
+  skipUnchangedRows?: boolean;
   jsonbColumns?: string[];
   returningColumns?: string[];
   rowCount: number;
@@ -212,12 +259,27 @@ export function buildUpsertStatement(spec: {
 
   const conflict = conflictColumns.map(quoteIdent).join(", ");
   const updateCols = spec.updateColumns ?? columns.filter((c) => !conflictColumns.includes(c));
+
+  // FIX-1008: `... DO UPDATE SET ... WHERE (any SET column actually differs)`.
+  // Built from the SET list itself, via validated + quoted identifiers — never
+  // raw caller SQL, and never a subset. A DO NOTHING already writes nothing, so
+  // the predicate is only emitted on a DO UPDATE.
+  const updateWhere =
+    spec.skipUnchangedRows && updateCols.length > 0
+      ? ` WHERE (${updateCols
+          .map(
+            (c) =>
+              `${quoteIdent(table)}.${quoteIdent(c)} IS DISTINCT FROM EXCLUDED.${quoteIdent(c)}`,
+          )
+          .join(" OR ")})`
+      : "";
+
   const onConflict =
     updateCols.length === 0
       ? "DO NOTHING"
       : `DO UPDATE SET ${updateCols
           .map((c) => `${quoteIdent(c)} = EXCLUDED.${quoteIdent(c)}`)
-          .join(", ")}`;
+          .join(", ")}${updateWhere}`;
 
   const returning = spec.returningColumns?.length
     ? ` RETURNING ${spec.returningColumns.map(quoteIdent).join(", ")}`
@@ -261,6 +323,7 @@ export async function bulkUpsert(client: Client, spec: BulkUpsertSpec): Promise<
   const label = spec.label ?? spec.table;
   let upserted = 0;
   let failed = 0;
+  let changed = 0;
   const returned: Record<string, unknown>[] = [];
 
   // FIX-754: resume support. `upserted`/`failed`/`returned` cover only the rows
@@ -281,6 +344,7 @@ export async function bulkUpsert(client: Client, spec: BulkUpsertSpec): Promise<
       columns: spec.columns,
       conflictColumns: spec.conflictColumns,
       updateColumns: spec.updateColumns,
+      skipUnchangedRows: spec.skipUnchangedRows,
       jsonbColumns: spec.jsonbColumns,
       returningColumns: spec.returningColumns,
       rowCount: chunk.length,
@@ -305,6 +369,9 @@ export async function bulkUpsert(client: Client, spec: BulkUpsertSpec): Promise<
         else returned.push(...rows);
       }
       upserted += chunk.length;
+      // FIX-1008: rowCount is what the server actually wrote. Equal to
+      // chunk.length unless a skip predicate filtered no-op conflicts out.
+      changed += res.rowCount ?? chunk.length;
     } catch (err) {
       console.error(
         `    ${label} chunk ${i}-${i + chunk.length} failed: ${
@@ -317,5 +384,5 @@ export async function bulkUpsert(client: Client, spec: BulkUpsertSpec): Promise<
     if (spec.onChunkProcessed) await spec.onChunkProcessed(i + chunk.length);
   }
 
-  return { upserted, failed, returned };
+  return { upserted, failed, changed, returned };
 }

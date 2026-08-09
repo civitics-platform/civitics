@@ -335,3 +335,119 @@ test("FIX-995 the callback is not invoked when there are no returningColumns", a
   assert.equal(calls, 0, "no RETURNING ⇒ nothing to deliver");
   assert.deepEqual(res.returned, []);
 });
+
+// ---------------------------------------------------------------------------
+// FIX-1008 — skipUnchangedRows (no-op re-upserts are not rewritten)
+// ---------------------------------------------------------------------------
+
+test("FIX-1008 skipUnchangedRows adds a WHERE over EXACTLY the SET columns", () => {
+  const sql = buildUpsertStatement({
+    table: "financial_relationships",
+    columns: REL_COLUMNS,
+    conflictColumns: ["relationship_type", "from_id", "to_id", "cycle_year"],
+    jsonbColumns: ["metadata"],
+    skipUnchangedRows: true,
+    rowCount: 1,
+  });
+
+  assert.match(sql, /DO UPDATE SET .* WHERE \(/, "predicate follows the SET list");
+  // Every SET column is in the predicate...
+  for (const c of REL_COLUMNS) {
+    if (["relationship_type", "from_id", "to_id", "cycle_year"].includes(c)) continue;
+    assert.match(
+      sql,
+      new RegExp(`"financial_relationships"\."${c}" IS DISTINCT FROM EXCLUDED\."${c}"`),
+      `${c} must be covered — a SET column outside the predicate can change silently`,
+    );
+  }
+  // ...and the arbiter columns are in neither the SET nor the predicate (they
+  // are equal by definition of the conflict).
+  assert.doesNotMatch(sql, /"cycle_year" IS DISTINCT FROM/);
+  assert.match(sql, /\)$/, "no RETURNING here, so the predicate closes the statement");
+});
+
+test("FIX-1008 predicate is disjunctive — ANY differing SET column rewrites the row", () => {
+  const sql = buildUpsertStatement({
+    table: "t",
+    columns: ["k", "a", "b"],
+    conflictColumns: ["k"],
+    skipUnchangedRows: true,
+    rowCount: 1,
+  });
+  assert.match(
+    sql,
+    /WHERE \("t"\."a" IS DISTINCT FROM EXCLUDED\."a" OR "t"\."b" IS DISTINCT FROM EXCLUDED\."b"\)$/,
+  );
+});
+
+test("FIX-1008 RETURNING still trails the predicate", () => {
+  const sql = buildUpsertStatement({
+    table: "financial_entities",
+    columns: DONOR_COLUMNS,
+    conflictColumns: ["donor_fingerprint"],
+    jsonbColumns: ["metadata"],
+    returningColumns: ["id", "donor_fingerprint"],
+    skipUnchangedRows: true,
+    rowCount: 1,
+  });
+  assert.match(sql, /IS DISTINCT FROM EXCLUDED\."metadata"\) RETURNING "id", "donor_fingerprint"$/);
+});
+
+test("FIX-1008 omitting the flag leaves the statement byte-identical to today", () => {
+  const base = {
+    table: "financial_relationships",
+    columns: REL_COLUMNS,
+    conflictColumns: ["relationship_type", "from_id", "to_id", "cycle_year"],
+    jsonbColumns: ["metadata"],
+    rowCount: 2,
+  };
+  assert.equal(
+    buildUpsertStatement(base),
+    buildUpsertStatement({ ...base, skipUnchangedRows: false }),
+  );
+  assert.doesNotMatch(buildUpsertStatement(base), /IS DISTINCT FROM/);
+});
+
+test("FIX-1008 DO NOTHING is never given a predicate", () => {
+  const sql = buildUpsertStatement({
+    table: "t",
+    columns: ["k"],
+    conflictColumns: ["k"],
+    updateColumns: [],
+    skipUnchangedRows: true,
+    rowCount: 1,
+  });
+  assert.match(sql, /ON CONFLICT \("k"\) DO NOTHING$/);
+  assert.doesNotMatch(sql, /WHERE/);
+});
+
+test("FIX-1008 `changed` reports the server row count, `upserted` still counts attempts", async () => {
+  // Server writes only 1 of every 4 rows (the rest failed the predicate).
+  const client = {
+    query: async () => ({ rows: [], rowCount: 1 }),
+  } as unknown as Client;
+
+  const res = await bulkUpsert(client, {
+    table: "t",
+    columns: ["k", "a"],
+    conflictColumns: ["k"],
+    skipUnchangedRows: true,
+    rows: Array.from({ length: 12 }, (_, i) => [i, i]),
+    chunkSize: 4,
+  });
+
+  assert.equal(res.upserted, 12, "rows processed — unchanged semantics for existing callers");
+  assert.equal(res.changed, 3, "3 chunks × rowCount 1 actually written");
+});
+
+test("FIX-1008 `changed` equals `upserted` when the driver omits rowCount", async () => {
+  const client = { query: async () => ({ rows: [] }) } as unknown as Client;
+  const res = await bulkUpsert(client, {
+    table: "t",
+    columns: ["a"],
+    conflictColumns: ["a"],
+    rows: Array.from({ length: 5 }, (_, i) => [i]),
+    chunkSize: 2,
+  });
+  assert.equal(res.changed, res.upserted);
+});

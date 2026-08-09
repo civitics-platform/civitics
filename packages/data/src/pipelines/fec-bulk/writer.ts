@@ -466,14 +466,18 @@ export async function upsertIndividualDonorsBatch(
   // instead of accumulating all ~840k row objects for the whole stage and
   // folding at the end. The resulting map is byte-identical; only the retention
   // window changes. Measured 208.7 MB → 168.2 MB at N=840,338.
-  const { upserted, failed } = await withDirectClient((client) =>
-    bulkUpsert(client, {
+  const fpIdx = columns.indexOf("donor_fingerprint");
+  const { upserted, failed, changed } = await withDirectClient(async (client) => {
+    const res = await bulkUpsert(client, {
       table:            "financial_entities",
       label:            "individual-donor",
       columns,
       conflictColumns:  ["donor_fingerprint"],
       jsonbColumns:     ["metadata"],
       returningColumns: ["id", "donor_fingerprint"],
+      // FIX-1008: skip the no-op re-upserts. See the id backfill directly below
+      // — this is the `RETURNING goes quiet` consequence, handled explicitly.
+      skipUnchangedRows: true,
       rows,
       startRowOffset,
       // FIX-996: hand the live client to the checkpoint hook so the cursor
@@ -484,7 +488,46 @@ export async function upsertIndividualDonorsBatch(
           if (row.donor_fingerprint) donorIdByFingerprint.set(row.donor_fingerprint, row.id);
         }
       },
-    }),
+    });
+
+    // FIX-1008 — recover the ids RETURNING no longer hands back. A donor whose
+    // every column already matched is not updated, so it emits no RETURNING
+    // row, but the three relationship stages still need its id as `from_id`.
+    // Re-read those on the SAME connection (no second pooler login), in
+    // RESUME_READ_BATCH-sized `= ANY($1)` reads — the FIX-754 rebuild path's
+    // shape, which already had to solve exactly this problem.
+    //
+    // This also closes a pre-existing gap in the FIX-754 mid-stage resume: rows
+    // BEFORE `startRowOffset` were committed by an earlier run and likewise
+    // never produced a RETURNING row for this one.
+    const missing: string[] = [];
+    for (const row of rows) {
+      const fp = row[fpIdx] as string | null;
+      if (fp && !donorIdByFingerprint.has(fp)) missing.push(fp);
+    }
+    if (missing.length > 0) {
+      console.log(
+        `    individual-donor: re-reading ${missing.length.toLocaleString()} donor id(s) ` +
+          `not returned by the upsert (unchanged rows / prior-run chunks) (FIX-1008)`,
+      );
+      for (let i = 0; i < missing.length; i += RESUME_READ_BATCH) {
+        const batch = missing.slice(i, i + RESUME_READ_BATCH);
+        const q = await client.query(
+          `SELECT id, donor_fingerprint FROM public.financial_entities WHERE donor_fingerprint = ANY($1)`,
+          [batch],
+        );
+        for (const r of q.rows as Array<{ id: string; donor_fingerprint: string }>) {
+          donorIdByFingerprint.set(r.donor_fingerprint, r.id);
+        }
+      }
+    }
+
+    return res;
+  });
+
+  console.log(
+    `    individual-donor: ${changed.toLocaleString()}/${upserted.toLocaleString()} rows ` +
+      `actually written (${(upserted - changed).toLocaleString()} unchanged, skipped) (FIX-1008)`,
   );
 
   return { donorIdByFingerprint, upserted, failed };
@@ -614,6 +657,10 @@ export async function upsertDonationRelationshipsBatch(
       columns:         REL_COLUMNS,
       conflictColumns: REL_CONFLICT,
       jsonbColumns:    ["metadata"],
+      // FIX-1008: a re-upserted PAC→candidate aggregate whose amount, date,
+      // source_url and metadata all already match is left untouched. No
+      // RETURNING here, so nothing downstream changes.
+      skipUnchangedRows: true,
       rows,
     }),
   );
@@ -712,12 +759,29 @@ export async function upsertIndividualDonationsBatch(
       columns:         REL_COLUMNS,
       conflictColumns: REL_CONFLICT,
       jsonbColumns:    ["metadata"],
+      // FIX-1008: the weekly FEC file is a superset — measured 0.5–6.3% of the
+      // rows this stage writes are new. The rest are byte-identical re-upserts
+      // that cost a full 16-index rewrite because FR takes zero HOT updates.
+      skipUnchangedRows: true,
       rows,
       startRowOffset,
       // FIX-996: hand the live client to the checkpoint hook so the cursor
       // write rides this connection rather than PostgREST.
       onChunkProcessed: resume ? (n) => resume.onProgress(n, rows.length, client) : undefined,
-    }).then(({ upserted, failed }) => ({ upserted, failed })),
+    }).then(({ upserted, failed, changed }) => {
+      logSkipRatio("indiv-donation", upserted, changed);
+      return { upserted, failed };
+    }),
+  );
+}
+
+/** FIX-1008 — one line per stage showing how much of the re-upsert was real
+ *  work. `changed` is the server's row count; the remainder is rows whose every
+ *  SET column already matched and which were therefore never rewritten. */
+function logSkipRatio(label: string, upserted: number, changed: number): void {
+  console.log(
+    `    ${label}: ${changed.toLocaleString()}/${upserted.toLocaleString()} rows actually ` +
+      `written (${(upserted - changed).toLocaleString()} unchanged, skipped) (FIX-1008)`,
   );
 }
 
@@ -817,6 +881,9 @@ export async function upsertIndependentExpendituresBatch(
       columns:         REL_COLUMNS,
       conflictColumns: REL_CONFLICT,
       jsonbColumns:    ["metadata"],
+      // FIX-1008: Schedule E is re-aggregated whole every run; only the rows
+      // whose amount or date actually moved need rewriting.
+      skipUnchangedRows: true,
       rows,
     }),
   );
@@ -921,12 +988,17 @@ export async function upsertIndividualToCommitteeDonationsBatch(
       columns:         REL_COLUMNS,
       conflictColumns: REL_CONFLICT,
       jsonbColumns:    ["metadata"],
+      // FIX-1008: same superset economics as indiv-donation above.
+      skipUnchangedRows: true,
       rows,
       startRowOffset,
       // FIX-996: hand the live client to the checkpoint hook so the cursor
       // write rides this connection rather than PostgREST.
       onChunkProcessed: resume ? (n) => resume.onProgress(n, rows.length, client) : undefined,
-    }).then(({ upserted, failed }) => ({ upserted, failed })),
+    }).then(({ upserted, failed, changed }) => {
+      logSkipRatio("indiv-to-committee", upserted, changed);
+      return { upserted, failed };
+    }),
   );
 }
 
