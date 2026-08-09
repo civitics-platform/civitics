@@ -1190,3 +1190,5 @@
 2026-08-08 | FIX-996 | 6379e275 | local-only | perf(fec-bulk): cut donor-stage heap copies and move the FIX-754 checkpoint off PostgREST
 2026-08-08 | FIX-998 | 68546ae2 | local-only | feat(nightly): hold fec_bulk on the nightly path pending FIX-995
 2026-08-08 | FIX-1001 | 2f1adb9d | local-only | fix(fixes): widen the FIX-ID regexes past 999
+2026-08-08 | FIX-1002 | b31c6029 | local-only | fix(donor-rollup): bound and pace the run that took the site down for 6h
+2026-08-08 | FIX-1003 | b31c6029 | local-only | fix(donor-rollup): bound and pace the run that took the site down for 6h
