@@ -1196,3 +1196,7 @@
 2026-08-09 | FIX-1003 | 5944307b | local+prod | chore(donor-rollup): record prod application of FIX-1002/1003
 2026-08-09 | FIX-1003 | db6ad6ab | local-only | fix(donor-rollup): finish vacuum ownership for the arms, chord MVs, pipeline_state
 2026-08-09 | FIX-1008 | 7b6940a6 | local-only | perf(fec-bulk): skip no-op re-upserts in the four FEC bulk writers
+2026-08-09 | FIX-1004 | 8d166e1a | closes-as-superseded | chore(fixes): close FIX-1004, FIX-999, FIX-944, FIX-920
+2026-08-09 | FIX-920 | 8d166e1a | closes-as-recognized | chore(fixes): close FIX-1004, FIX-999, FIX-944, FIX-920
+2026-08-09 | FIX-944 | 8d166e1a | closes-as-recognized | chore(fixes): close FIX-1004, FIX-999, FIX-944, FIX-920
+2026-08-09 | FIX-999 | 8d166e1a | closes-as-superseded | chore(fixes): close FIX-1004, FIX-999, FIX-944, FIX-920
