@@ -72,19 +72,18 @@ jobs:
       # 2026-05-12 run. 12 GB matches packages/data/CLAUDE.md's
       # presidential-cycle guidance; ubuntu-latest runners ship 16 GB. (FIX-254)
       NODE_OPTIONS: --max-old-space-size=12288
-      # ── TEMPORARY DELIBERATE HOLD (FIX-995, filed as FIX-998) ────────────
-      # fec_bulk is skipped on the NIGHTLY path. It had produced zero forward
-      # progress for several nights running while degrading prod for ~1.5h a
-      # night: across 2026-08-03..08-08 the fec-phase job died to the 150-min
-      # timeout twice, lost its runner once, and never advanced cycle 2026's
-      # donor-entities cursor past 484,000/840,338.
+      # ── HOLD LIFTED 2026-08-09 (was FIX-995, filed as FIX-998) ───────────
+      # fec_bulk was skipped on the NIGHTLY path from 2026-08-08 because it had
+      # produced zero forward progress for several nights running while
+      # degrading prod for ~1.5h a night: across 2026-08-03..08-08 the fec-phase
+      # job died to the 150-min timeout twice, lost its runner once, and never
+      # advanced cycle 2026's donor-entities cursor past 484,000/840,338.
       #
-      # The ingest runs via `fec-backfill.yml` workflow_dispatch meanwhile —
-      # that workflow does NOT route through runNightlySync and is deliberately
-      # unaffected by this flag.
-      #
-      # RE-ENABLING IS DELETING THIS ONE LINE. Unset ⇒ today's behavior.
-      FEC_NIGHTLY_BULK_DISABLED: "true"
+      # FIX-1008 removed the cause (no-op re-upserts) and the 2026-08-09
+      # from-zero cycle-2026 ingest completed in 75 min. The hold line
+      # (`FEC_NIGHTLY_BULK_DISABLED: "true"`) is deleted; re-holding is adding
+      # it back here. `FLAGS.FEC_NIGHTLY_BULK_ENABLED` stays in feature-flags.ts
+      # as the kill switch — FIX-998 stays closed.
       # R2 cache for FEC bulk zips (FIX-192). All four are optional — code
       # falls through to direct FEC fetch when any are missing — but adding
       # them as repo secrets cuts ~10 min off repeat-run downloads.
