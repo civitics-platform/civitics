@@ -35,6 +35,7 @@ import { execSync } from "node:child_process";
 import { readFileSync, writeFileSync, existsSync, appendFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { captureTrunkState, abortOnTrunkMove } from "./lib/trunk-guard.mjs";
 
 const REPO_ROOT = execSync("git rev-parse --show-toplevel").toString().trim();
 const FIXES_PATH = resolve(REPO_ROOT, "docs/FIXES.md");
@@ -157,7 +158,7 @@ function trunkAncestorPrefixes(trunk) {
 const _shaClassCache = new Map();
 function classifySha(sha, trunk) {
   if (!SHA_RE.test(sha)) return "unknown";
-  const cacheKey = `${trunk} ${sha}`;
+  const cacheKey = `${trunk}\0${sha}`;
   if (_shaClassCache.has(cacheKey)) return _shaClassCache.get(cacheKey);
   let verdict;
   const byLen = trunkAncestorPrefixes(trunk);
@@ -432,6 +433,13 @@ function main() {
   const anyCheck = CHECK || CHECK_TRUNK;
   const writeMode = !DRY && !anyCheck;
 
+  // Concurrent-write guard: snapshot trunk BEFORE the read half. `scanCommits()`
+  // walks all of git log, so the read-to-write window here is seconds wide and
+  // spans exactly the moment another session's commit would land. Re-checked
+  // immediately before the first write below. Check/dry modes write nothing and
+  // therefore need no guard.
+  const trunkBefore = captureTrunkState();
+
   const done = readDoneLog();
   const scanned = scanCommits();
 
@@ -453,6 +461,13 @@ function main() {
     });
   } else {
     console.warn("warn: no trunk ref (origin/main|main) resolved — skipping FIX-461 off-trunk filter + check.");
+  }
+
+  if (writeMode) {
+    abortOnTrunkMove(trunkBefore, {
+      operation: "fixes:sync (append docs/done.log, flip FIXES.md checkboxes)",
+      files: ["docs/done.log", "docs/FIXES.md"],
+    });
   }
 
   const newEntries = appendNewEntries(done, trailerCompletions, { dry: !writeMode });

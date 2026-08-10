@@ -25,10 +25,15 @@
 import { execSync } from "node:child_process";
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
+import { captureTrunkState, abortOnTrunkMove } from "./lib/trunk-guard.mjs";
 
 const REPO_ROOT = execSync("git rev-parse --show-toplevel").toString().trim();
 const FIXES_PATH = resolve(REPO_ROOT, "docs/FIXES.md");
 const DONE_PATH = resolve(REPO_ROOT, "docs/done.log");
+
+// Concurrent-write guard: snapshot before the read half, re-check before the
+// write. See scripts/lib/trunk-guard.mjs.
+const TRUNK_BEFORE = captureTrunkState();
 
 const DRY = process.argv.includes("--dry-run");
 const FORCE = process.argv.includes("--force");
@@ -259,7 +264,13 @@ const mainBody = finalBlocks.map(renderBlock).join("\n");
 const completedRendered = [completedHeader, ...newCompletedBody].join("\n");
 const finalText = mainBody.replace(/\n+$/, "\n") + "\n" + completedRendered.replace(/\n+$/, "") + "\n";
 
-if (!DRY) writeFileSync(FIXES_PATH, finalText);
+if (!DRY) {
+  abortOnTrunkMove(TRUNK_BEFORE, {
+    operation: "fixes:clean (move completed bullets into ## COMPLETED)",
+    files: ["docs/FIXES.md"],
+  });
+  writeFileSync(FIXES_PATH, finalText);
+}
 
 console.log("fixes:clean —", DRY ? "DRY RUN" : "APPLIED");
 console.table({

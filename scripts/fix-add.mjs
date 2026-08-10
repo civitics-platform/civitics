@@ -38,6 +38,7 @@ import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync, existsSync, renameSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { captureTrunkState, abortOnTrunkMove } from "./lib/trunk-guard.mjs";
 
 const REPO_ROOT = execSync("git rev-parse --show-toplevel").toString().trim();
 const FIXES_PATH = resolve(REPO_ROOT, "docs/FIXES.md");
@@ -269,6 +270,12 @@ function main() {
     const lines = before.split("\n");
     const range = findSectionRange(lines, args.section);
     const id = allocateNextId();
+    // Captured AFTER allocateNextId, deliberately: that call runs its own
+    // `git fetch origin` and folds origin/main's markers into the allocation
+    // (FIX-771), so a trunk advance it consumes is already handled and must not
+    // read as a collision. The window this guards is the one that matters —
+    // between deciding the ID and writing the bullet.
+    const trunkBefore = captureTrunkState();
     const bullet = formatBullet({
       severity: args.severity,
       size: args.size,
@@ -292,6 +299,14 @@ function main() {
       }
       continue;
     }
+    // The hash re-check above catches a concurrent writer that already landed
+    // in the working tree; this catches one whose work is in git but not yet in
+    // this file — a commit on the shared checkout, or a push another session
+    // fetched. Both are needed: neither sees the other's case.
+    abortOnTrunkMove(trunkBefore, {
+      operation: `fix:add (append ${id} to docs/FIXES.md)`,
+      files: ["docs/FIXES.md"],
+    });
     writeAtomic(FIXES_PATH, next);
     writtenId = id;
     break;

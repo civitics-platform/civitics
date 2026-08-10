@@ -16,11 +16,16 @@
 import { execSync } from "node:child_process";
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
+import { captureTrunkState, abortOnTrunkMove } from "./lib/trunk-guard.mjs";
 
 const REPO_ROOT = execSync("git rev-parse --show-toplevel").toString().trim();
 const FIXES_PATH = resolve(REPO_ROOT, "docs/FIXES.md");
 const DONE_PATH = resolve(REPO_ROOT, "docs/done.log");
 const ARCHIVE_PATH = resolve(REPO_ROOT, "docs/archive/fixes-archive.md");
+
+// Concurrent-write guard: snapshot before the read half, re-check before the
+// write. See scripts/lib/trunk-guard.mjs.
+const TRUNK_BEFORE = captureTrunkState();
 
 const DRY = process.argv.includes("--dry-run");
 
@@ -123,6 +128,10 @@ const out = lines.map((line, idx) => {
 });
 
 if (assigned.length && !DRY) {
+  abortOnTrunkMove(TRUNK_BEFORE, {
+    operation: "fixes:housekeep (assign <!--id:FIX-NNN--> markers)",
+    files: ["docs/FIXES.md"],
+  });
   writeFileSync(FIXES_PATH, out.join("\n"));
 }
 

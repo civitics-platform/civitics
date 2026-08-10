@@ -13,6 +13,11 @@ Small** (2 vCPU, 256 MB `shared_buffers`, 6 h `statement_timeout` on the
 `postgres` role) against a ~10.3M-row `financial_relationships`. The rules
 survive a bigger box; the numbers do not. Re-derive before quoting — rule **E3**.
 
+**Extended 2026-08-09** with the rollup-saturation arc (FIX-995 → FIX-1015): new
+rules **C5–C7**, **D6–D8**, **E9–E11**, plus dated addenda on **C2**, **C3**,
+**D2**, **D4** and **E3**. Rules are append-only — a correction is appended
+beneath the claim it corrects, never edited over it.
+
 ---
 
 ## A. Data-shape regimes
@@ -161,6 +166,24 @@ must be stopped from outside it is `pg_cancel_backend` on a named backend,
 deliberately, and the writer must already survive losing its current chunk.
 *FIX-933, FIX-944, FIX-965, FIX-969 · cron audit §8*
 
+**Addendum — 2026-08-08, three instances in one day.** Killing the *client* never
+stops the *backend*; Postgres does not notice a dead connection until TCP
+keepalives expire. A dead session's diagnostic probe kept scanning
+`financial_relationships` for **37 minutes** and contributed to a
+connection-refusal outage on an already-starved instance; a cancelled GHA
+workflow's Supavisor-pooled backend was still `active` on `INSERT INTO
+financial_entities` **15+ minutes** after the run reported `cancelled`.
+
+**Apply:** after cancelling *anything* that writes to prod, re-read
+`pg_stat_activity` and terminate what is still there. Guard the terminate on
+**identity** — `usename` + `backend_start` + query text, never a bare PID, so a
+recycled PID matches zero rows — and issue it over the **direct** connection,
+because the session-mode pooler refuses checkouts (`ECHECKOUTTIMEOUT`) exactly
+when the pool is the congested resource. `pg_terminate_backend` returning `t`
+means the signal was sent, not that the backend died: a backend in
+`IO:DataFileRead` exits at its next interrupt check. Re-poll before calling the
+box quiet. *FIX-995 investigation, 2026-08-08*
+
 ### C3. A guard must be able to fire in the case it exists for.
 
 Three guards this arc were silently incapable of firing in their own situation.
@@ -176,6 +199,19 @@ backstop no-op'd exactly on the longest run (FIX-962).
 server-owned ceilings to client-side arithmetic — FIX-933's fix was a per-step
 `statement_timeout` translating 57014 into a named `BudgetExceeded`.
 
+**Addendum — the fourth guard, FIX-1002.** The donor-rollup predictive budget
+guard is evaluated only *between* chunks (`IF v_chunk_no > 0 AND …`), so a run
+whose **first** chunk exceeds the whole window never evaluates it once. Run 195
+on 2026-08-08 ran **6h00m06s**, was killed by the 6 h role `statement_timeout`,
+committed **zero** chunks, and served the public site statement timeouts and 503s
+throughout — with the guard silent the entire time. Its chunk 1 was 50 recipients
+against a slowest-ever chunk of 5,447 s recorded three hours earlier.
+
+**Apply, sharpened:** ask *which iteration* a guard first becomes capable of
+firing on. "After the first unit of work" is a blind spot whenever one unit can
+be the whole budget — arm it from iteration 1 off a **durable cross-run** worst
+case rather than one seeded inside the run. *FIX-1002 · commit `b31c6029`*
+
 ### C4. Runtime measurements are floors. Design to survive the miss.
 
 `refresh_homepage_stats_mv()` takes 0.7 s on local and ran **22 minutes** against
@@ -186,6 +222,102 @@ on prod and **>17 min on local Docker**.
 **Apply:** never let a projection be the only thing between a run and an unbounded
 window. Resumability plus a budget is what makes a wrong estimate cheap.
 *FIX-933, FIX-943 · cron audit §5 vs §7b*
+
+### C5. A bulk rewriter needs a NAMED vacuum owner at a layer that can issue `VACUUM` — and "owned" must mean "owned by something that runs".
+
+The root `CLAUDE.md` rule says a bulk rewriter ends by vacuuming what it rewrote.
+This is the part that keeps being missed: **a pg_cron procedure cannot be that
+owner** — `VACUUM` cannot run inside a function or a transaction block, and a
+plpgsql body is always inside one, even immediately after a `COMMIT`. So the
+owner is a script tail or a separate scheduled `VACUUM` job, never the writer
+itself. Six donor-rollup arms rewritten twice daily by `DELETE`+`INSERT` had
+neither: last autovacuum 2026-08-02, by 08-08 reading 19.9 / 18.6 / 18.6% dead at
+73.7 / 32.5 / 31.7% all-visible, and per-recipient cost over that same window went
+**3.06 s → ~108 s** — the site-down run. A manual `VACUUM (ANALYZE)` of all six
+took **8.4 s** and returned every one to 100% all-visible. The control is in the
+same neighbourhood: `donor_party_rollup_mv`, the one arm-adjacent table that
+already had a scheduled vacuum job, sat at **0.0% dead** throughout.
+
+**"Owned" is a claim about the schedule, not the code.** FIX-975's census recorded
+`financial_relationships` as **96.8% OWNED** — truthfully, against
+`donor_rollup_rebuild_bulk()`'s vacuum tail. But cron jobid 24 does not call that
+procedure (getting it called is what FIX-1004 was still open to do), so the owner
+was a code path nothing scheduled. Measured after the 2026-08-09 `fec-backfill`
+dispatch: prod carries **nine** `VACUUM (ANALYZE)` cron jobs and FR is not among
+them; FR's `last_vacuum` read 2026-08-06 00:56:29 — three days stale and
+predating the run entirely — while `financial_entities`, which does have a
+scheduled job, was vacuumed 26 s before the pipeline closed.
+
+**Staging tables count.** `donor_rollup_rebuild_bulk()`'s four persistent
+`_drb_*` staging tables have never had a manual `VACUUM` (`last_vacuum` NULL on
+all four), and `_drb_fe` at **35,118 pages** is larger than four of the six arms.
+They read clean only because the bulk path last ran two days earlier.
+
+**Counter-caution — do not over-tune.** `financial_relationships` tripped its own
+autovacuum two hours into a bulk ingest and then split I/O with it. An aggressive
+scale factor on a table under sustained bulk write buys a mid-write vacuum, not a
+clean one; prefer an unconditional scheduled job **after** the write window.
+Prefer the cron job over a pipeline tail for the same reason a tail is weaker:
+`fec-backfill.yml` can be SIGTERM'd at its 350-min cap and the nightly at its
+150-min cap, and a tail that does not run on the kill path is not an owner.
+
+**Apply:** name the owner and the schedule in the same PR as the writer, and
+check `pg_stat_user_tables.last_vacuum` against the writer's last run before
+believing any census. See A4.6 for the tail as part of the writer skeleton, D7
+for choosing the autovacuum lever.
+*FIX-1003, FIX-1005, FIX-1013, FIX-975, FIX-943, FIX-884 · `supabase/tests/verify_fix1003.sql`*
+
+### C6. When resume is hard, price a full replay's no-op fraction before designing a cursor.
+
+A content-keyed resume cursor for the FEC indiv ingest was **proven
+non-convergent** before it was built: the sort key must be the conflict arbiter
+(`donor_fingerprint`, or `(from_id, to_id)`) to survive a republish, and those key
+spaces are effectively random with respect to newness — so a republished superset
+almost always adds rows *below* the cursor, the below-cursor slice is always
+re-run, and the re-run slice **is** all the progress the cursor bought. Net saving
+on a mid-file cursor: zero. What dissolved the problem instead was making the
+replay cheap: `ON CONFLICT … DO UPDATE SET … WHERE (any SET column IS DISTINCT
+FROM EXCLUDED)` on a re-ingest measured **0.5–6.3% new rows**, i.e. ~95% no-op,
+came in at **5.39×** on `financial_relationships` (1.735 → 0.322 ms/row) and
+**3.18×** on `financial_entities` (0.344 → 0.108 ms/row), with `rows_written = 0`
+on every skip slice. **342.6 min** of projected writer work against a 350-min cap
+became ~123 min — and the cursor's original motivation went with it.
+
+Two constraints the measurement fixed in place. The skip predicate must cover
+**exactly** the `SET` list, never a caller-chosen subset — a `SET` column outside
+the predicate changes silently. And an unchanged row returns no `RETURNING` row,
+so any caller that needed those ids must re-read them on the same connection.
+
+**Apply:** before designing resume state, measure what fraction of a full replay
+is a no-op and what an idempotent no-op costs. A cheap replay beats a correct
+cursor, and it beats an incorrect one by more. Watch for the sibling trap: an
+existence probe over already-present keys finds rows that are ABSENT but is blind
+to rows PRESENT WITH A CHANGED VALUE, so it silently drops real updates.
+*FIX-1008, FIX-1010, FIX-999 · `packages/data/src/lib/direct-pg-upsert.ts`*
+
+### C7. Every index is a write cost — and indexing a column a trigger always changes makes HOT impossible by construction.
+
+`financial_relationships` takes **exactly zero** HOT updates —
+`n_tup_upd 4,911,666 / n_tup_hot_upd 0` — because an unpredicated 159 MB btree
+indexes `updated_at`, the column the `set_updated_at()` BEFORE UPDATE trigger
+changes on every update. HOT requires that no indexed column change, so that one
+index makes it unreachable and every upsert rewrites all **16 indexes
+(4,855 MB)** and leaves a dead tuple. `financial_entities` carries the same
+trigger but does *not* index `updated_at`, and gets **27.06%** HOT. A non-HOT
+update also writes an entry into every index whether or not its columns changed:
+five `financial_entities` indexes read `idx_scan = 0` over the full post-cutover
+window — **310 MB across 5 of 19** — and are still maintained on 840,338 upserts
+per cycle at ~73% non-HOT.
+
+**Apply:** treat the index list as part of the write path's cost, and check
+`n_tup_hot_upd` before optimising anything else about an upsert. But do **not**
+batch-drop on `idx_scan = 0` alone — a zero-scan index can be a uniqueness
+constraint, an `ON CONFLICT` arbiter, or serving a route that has not run since
+the counters started. `financial_relationships_usaspending_unique` is 485 MB at
+`idx_scan = 0` and must stay: it is the conflict arbiter for a
+manual-dispatch-only pipeline (FIX-740). Expression indexes over a rewritten
+`jsonb` column are the worst of both — re-evaluated per write *and* a HOT blocker.
+*FIX-1008, FIX-1012, FIX-884*
 
 ---
 
@@ -226,6 +358,26 @@ identifier is recorded, so `GITHUB_RUN_ID` cannot be joined after the fact.
 for workflow work; liveness comes from `pg_stat_activity`, never a status column.
 *FIX-944, FIX-971 (open) · cron audit §6b*
 
+**Addendum — liveness, outcome and progress are THREE questions with three
+sources.** The rule above separates the first two. 2026-08-08 established the
+third as independent of both: jobid 24 run 195 read `failed` in
+`cron.job_run_details` after six hours — and had committed **zero** chunks.
+`pipeline_state.donor_rollup_watermark.updated_at` still held 12:28:38, the cursor
+written by the *previous* run. A `failed` outcome is equally consistent with
+"did 95% and died", and nothing in the outcome record distinguishes them.
+
+| question | source | what it is NOT |
+|---|---|---|
+| is it alive **now**? | `pg_stat_activity` | a `running` status row — orphans outlive processes (D2) |
+| how did it **end**? | `cron.job_run_details`, GHA API | a `data_sync_log` span — `reaped_orphan` is not a runtime (D2) |
+| how far did it **get**? | `pipeline_state` cursor / watermark | the outcome — `failed` says nothing about durable progress |
+
+**Apply:** name the question before picking the source. Any post-mortem that
+concludes "it failed" without reading the cursor has not established whether the
+work needs redoing. Corollary from E7: the cursor's own `updated_at` must be
+`clock_timestamp()` or it will misreport progress by one chunk.
+*FIX-1002, FIX-1007 · 2026-08-08*
+
 ### D3. Reference cron jobs by NAME. Alter in place.
 
 Ids get misrecorded — the FIX-968 bullet named jobid 34; there is no jobid 34, it
@@ -257,6 +409,23 @@ escalating on them would fail the canary most Tuesdays and train the alert to be
 ignored (the FIX-943 `bloat_degraded` vs `vm_degraded` split).
 *FIX-968, FIX-969, FIX-972, FIX-943 · cron audit §6 · `canary-check.ts`*
 
+**Addendum — an intentional hold is a distinct STATE, not a quiet period.**
+`fec_bulk` has no freshness watch at all: `list_scheduled_rollup_pipelines(90)`
+returns 13 pipelines and none of them is fec_bulk, because the census selects on
+`metadata->>'source' = 'pg_cron'` and fec_bulk runs from GHA with a NULL source.
+So it could stop ingesting for a month unnoticed — and right now it is
+*deliberately* held off the nightly (FIX-998) with nothing distinguishing "held"
+from "silently broken". Two enumeration failures compound: the registry's
+predicate excludes a whole launcher class, and `nightly_cron` records the
+**phase**, not the pipeline — the fec-phase row proves the phase ran, not that
+anything was ingested.
+
+**Apply:** when a detector enumerates by launcher, ask which launchers it
+excludes. And model a hold as its own state; a monitor that cannot represent
+"intentionally paused" trades a silent failure for a standing false alarm, which
+D4's own escalate-on-consequence rule then trains everyone to ignore.
+*FIX-1011, FIX-998, FIX-977*
+
 ### D5. Guard constants are tuned to a table size and go stale when the table steps.
 
 Two consecutive drain windows cleared **exactly 600** recipients and stopped at
@@ -271,6 +440,83 @@ against under 6% on 07-31 when the slowest chunk was 749 s.
 table steps. Here: chunk 200 → 50 (quantum ~24% → ~7% of budget), which also cut
 the outer timeout's blast radius from 109 min of discarded work to ~27.
 *FIX-972 · `20260806230000_fix972_donor_rollup_chunk_quantum.sql`*
+
+### D6. pg_cron QUEUES per jobid. A different session's advisory lock SKIPS. "Defers" means neither — never write it.
+
+Three behaviours in this family have been described with one word, and that
+conflation has now produced two falsified bullets (FIX-968, FIX-974). Name the
+one you mean:
+
+| | trigger | what happens | trace left |
+|---|---|---|---|
+| **(a) QUEUED** | a firing comes due while the **same jobid** is still running | pg_cron keeps one task per jobid and runs them **back-to-back** — nothing is dropped, nothing waits on a lock | **none.** `cron.job_run_details.start_time` lands ~1.0 s after the prior `end_time`, and `data_sync_log` shows nothing at all |
+| **(b) SKIPPED** | a **different session** holds the advisory lock (the bulk driver, a manual sweep) | `pg_try_advisory_lock` is non-blocking → returns false → a `status='skipped'` row is written and the procedure RETURNs. **That firing's work is forfeited until the next one** — it is not delayed into the running one | greppable: `status='skipped'`, `skip_reason='advisory lock held by a concurrent donor-rollup refresh'` |
+| **(c) "defers"** | — | used in this repo for both, precise about neither | — |
+
+Measured on 08-06, 08-07 and 08-08: the second run starts within ~1 s of the
+first ending, chaining two full budget windows into one continuous **9.5 h**
+block. `max_running_jobs` is 32, so this is not a slot cap.
+
+**The observability asymmetry is the reason this hid for three days.** A lock-skip
+writes a row you can grep for; queueing writes nothing anywhere. Absence of
+`skipped` rows is therefore not evidence that firings are not chaining — the
+evidence is `start_time` ≈ prior `end_time` in `cron.job_run_details`.
+
+**Consequence — a split schedule provides no isolation once a run overruns.** Two
+firings 3 h apart do not bound anything if a run can exceed 3 h; they concatenate.
+So a per-run budget must sit **below the gap between firings**, or the schedule is
+decorative. FIX-1002's remedy was exactly this: cut the budget from 4h30m to 2h so
+a firing cannot still be running when the next is due.
+
+**Apply:** before rescheduling anything to "give it room", check whether the two
+firings share a jobid. If they do, the room is imaginary until the budget is cut.
+*FIX-1002, FIX-968, FIX-974 (2026-08-09 clarifier), FIX-972 · migration `20260807000000` header ~line 88 states the false (a)≡(b) equivalence and is frozen; the FIX-974 bullet is the correction of record*
+
+### D7. Pick the autovacuum lever by table size — on a small relation the THRESHOLD is the whole trigger.
+
+The trigger is **additive**: `autovacuum_vacuum_threshold + scale_factor ×
+reltuples`. On a large table the default threshold (50) is rounding error and only
+the scale factor moves anything — which is why every large-table override in this
+repo is a scale factor. On a small, high-churn relation the scale term is
+negligible and the threshold **is** the trigger, so a scale-factor override alone
+changes nothing and the relation sits indefinitely just under the default. On a
+27-row matview the scale term is **1.35**.
+
+Measured on prod 2026-08-09, relations with no override ranked by dead ratio:
+`proposal_popularity_24h` **100%** (0 live / 6 dead), `supabase_prometheus_state`
+75.0%, `platform_alert_state` 70.3%, `pipeline_runtime_stats_mv` 47.2%,
+`platform_usage` 29.6%, `platform_limits` 22.6% — several at **0.0% all-visible**.
+Five tiny relations given `autovacuum_vacuum_threshold = 20` alongside the scale
+factor went from **24.9–62.0% dead / 0.0% all-visible → 0 dead / 100%** within
+seconds, on the first autovacuum evaluation after the override landed.
+
+**Apply:** compute both terms before choosing the lever. Honest scoping — the
+direct cost of bloat on a 1–5 page relation is near zero; the value is that these
+are exactly the relations where the FIX-884 all-visible mechanism is invisible in
+monitoring because the absolute numbers look harmless. Autovacuum genuinely
+suffices once the trigger is reachable, so this is an override, not a cron job
+(contrast C5, where the table is bulk-rewritten and needs an owner).
+*FIX-1003, FIX-1006, FIX-943, FIX-884*
+
+### D8. A quantum, batch size, page size or rate limit is a DISCRIMINATOR over a population. Census its cost distribution before choosing the number.
+
+D5 says a quantum tuned to a table size goes stale when the table steps, and
+re-tuned the donor-rollup chunk 200 → 50 on that basis. Necessary, and not
+sufficient — because the quantum counted the wrong thing. The chunk is quantised
+by **recipient count** while the cost driver is per-recipient
+`financial_relationships` fan-out, and that distribution on the uuid-ordered dirty
+set is p50 **36** / p99 **7,326** / max **308,875** donors — an **8,580×** spread.
+A fixed 50-recipient chunk therefore has unbounded cost: one such chunk ran past a
+6 h `statement_timeout` having committed nothing, and the between-chunk budget
+guard never evaluated once (C3).
+
+**Apply:** for any number that slices a population, ask the **p99/p50 ratio of
+whatever the number counts**. If it is large, the number counts the wrong thing —
+quantise by an estimate of the cost driver instead. The estimate does not have to
+be expensive: `official_donor_totals.donor_count` is maintained by the same
+procedure and costs 117 pages to read. State the distribution you measured next
+to the constant you chose, so D5's re-derivation has something to re-derive
+against. *FIX-1002 · cf. D5, C3*
 
 ---
 
@@ -323,6 +569,16 @@ a bullet anyone would reasonably have trusted:
 not from re-reading the bullet. When a number decides a multi-hour action, re-derive
 it first; when you correct one, **append** the correction rather than editing the
 claim away. *FIX-943, FIX-944, FIX-968, FIX-970, FIX-951*
+
+**Appended 2026-08-09 — two more, per this rule's own instruction:**
+
+| claim | corrected to |
+|---|---|
+| nightly `fec_bulk` OOM'd; `--max-old-space-size=12288` is load-bearing | **it never OOM'd** — no `FATAL ERROR` / `Reached heap limit` in any of six nights' logs. The mechanism is the **150-minute GHA `timeout-minutes` cap** (two nights log `exceeded the maximum execution time`), plus two unrelated prod statement timeouts. "Cap the heap" was never a fix direction (FIX-995) |
+| `financial_relationships` vacuum **96.8% OWNED** (FIX-975 census) | true of the code, false of the schedule — the owner is `donor_rollup_rebuild_bulk()`, which cron jobid 24 does not call. FR `last_vacuum` was **3 days stale** after a full ingest (FIX-1013, C5) |
+
+Both share a shape worth naming: the original claim was *true about an artifact*
+(a log line, a function body) and false about the *thing the artifact stands for*.
 
 ### E4. Check cross-environment and cross-run expectations by DECOMPOSITION, not magnitude.
 
@@ -403,3 +659,68 @@ of it, ranked" is not a product requirement. Note FEC ingest still drops
 contributions under the $200 itemization floor (`fec-bulk/indiv.ts:203`) —
 removing that floor multiplies source rows by an order of magnitude.
 *FIX-974 migration (arm 1 body), FIX-952, FIX-965, FIX-961*
+
+### E9. Prove a zero with a relaxation ladder — drop one predicate clause at a time and show where the population dies.
+
+A query returning zero rows is ambiguous between "the thing does not exist" and
+"my predicate is wrong", and the second is the common case. The ladder resolves
+it: run the same query with one clause removed per rung and report the count at
+each rung, so the zero is localised to exactly one clause. Standing watch #1,
+2026-08-09: **L1 83 → L2 83 → L3 83 → L4 83 → L5 0**, which pins the collapse to
+the money predicate and nothing else. Composition then confirms the mechanism
+rather than assuming it — **0 of 83** held a live id, **0 of 83** held any
+`financial_relationships` row.
+
+**Apply:** a zero you cannot localise to a single clause is not evidence, and it
+must not be reported as one. This is strictly stronger than the usual defence
+("here is a case that *would* fire"): a positive control proves the query can
+return rows, the ladder proves *which* clause is the one returning none. Report
+the rung counts, not just the conclusion. *standing watch #1, 2026-08-09 · cf. E10*
+
+### E10. An assertion that cannot fail is not evidence — and three-valued logic makes assertions pass vacuously.
+
+Two ways a green check means nothing, both measured in one verification file:
+
+**The population was empty.** `verify_fix1003.sql` derives its arm set by walking
+the call tree from `refresh_official_donor_rollup_incremental()`. Anchored on
+`PERFORM|CALL`, the walk misses the chunk loop's **assignment** call form
+(`v_n := public.donor_rollup_rebuild_recipients(v_chunk)`) and returns the empty
+set — which every "all arms are covered" assertion satisfies perfectly. The fix is
+a sanity gate that runs *before* the cases: `IF v_n < 6 THEN RAISE EXCEPTION …
+'the call-tree walker is broken, so the cases below would pass vacuously'`.
+
+**NULL is not FALSE.** `array_to_string(NULL, ',')` is NULL,
+`NULL LIKE '%autovacuum%'` is NULL, and `count(*) FILTER (WHERE NOT overridden)`
+does not count NULLs — so a table with **no overrides at all** passed an
+"everything is overridden" check. `COALESCE` the expression, and pair every
+`count(*) FILTER (WHERE NOT ok) = 0` with `count(*) > 0`.
+
+**Apply:** a test that passes on `main` before the fix proves nothing — run it
+against the unfixed state once and watch it fail. Assert the population is
+non-empty as its own case, and make NULL an error rather than a pass.
+*FIX-1003 · `supabase/tests/verify_fix1003.sql` · cf. C3 (the guard-side twin)*
+
+### E11. An adjacent metric is not the fact. Name the authoritative source per question.
+
+`5/5 R2 uploads ok` was read as "five files were downloaded from FEC" — but that
+counter **structurally excludes cache hits**, which was exactly the case being
+ruled out. A stale 2 GB file was ingested on the strength of it. Same class,
+different pair: `downloadWithR2Cache` decides freshness with `r2Lm >= fecLm`,
+where `r2Lm` is *when we finished uploading* and `fecLm` is *when FEC published* —
+two timestamps that answer different questions, so a republish mid-run can pin
+superseded bytes stamped newer than the live file (near-miss measured 2026-08-09:
+FEC republished at 16:03:26 GMT, our uploads drained 16:54:40–16:55:32Z; it did
+not fire only because that file took the cache branch, which re-uploads nothing).
+And dead-tuple counts were read as "the run committed nothing", falsified by
+`pipeline_state` (D2 addendum).
+
+**Apply:** for each question, name the source that is authoritative *for that
+question* and go to it — the write-count for "did it write", the watermark for
+"how far", FEC's own reported headers for "is our copy current". When comparing
+two values, check they answer the same question: store the remote's reported
+`Last-Modified` / `Content-Length` / `ETag` as metadata and compare
+reported-then vs reported-now, so your own object's timestamp drops out of the
+decision. Cheap belt-and-braces beats clever: the two files here differ by
+**65,891,767 bytes (3.3%)**, so a size compare alone would have caught it. E2 is
+the special case of this where the proxy is built from a rollup.
+*FIX-1014, FIX-1008, FIX-1002 · `packages/data/src/pipelines/fec-bulk/util.ts`*

@@ -19,10 +19,15 @@
 import { execSync } from "node:child_process";
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { resolve, dirname } from "node:path";
+import { captureTrunkState, abortOnTrunkMove } from "./lib/trunk-guard.mjs";
 
 const REPO_ROOT = execSync("git rev-parse --show-toplevel").toString().trim();
 const FIXES_PATH = resolve(REPO_ROOT, "docs/FIXES.md");
 const ARCHIVE_PATH = resolve(REPO_ROOT, "docs/archive/fixes-archive.md");
+
+// Concurrent-write guard: snapshot before the read half, re-check before the
+// write. See scripts/lib/trunk-guard.mjs.
+const TRUNK_BEFORE = captureTrunkState();
 
 const DRY = process.argv.includes("--dry-run");
 
@@ -125,6 +130,10 @@ const newBlocks = blocks.map((b, i) => (i === completedIdx ? newCompletedBlock :
 const newFixes = newBlocks.map(renderBlock).join("\n").replace(/\n+$/, "\n");
 
 if (!DRY) {
+  abortOnTrunkMove(TRUNK_BEFORE, {
+    operation: "fixes:archive (move ## COMPLETED into docs/archive/fixes-archive.md)",
+    files: ["docs/FIXES.md", "docs/archive/fixes-archive.md"],
+  });
   mkdirSync(dirname(ARCHIVE_PATH), { recursive: true });
   writeFileSync(ARCHIVE_PATH, archiveText);
   writeFileSync(FIXES_PATH, newFixes);
