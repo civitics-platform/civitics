@@ -1200,3 +1200,4 @@
 2026-08-09 | FIX-920 | 8d166e1a | closes-as-recognized | chore(fixes): close FIX-1004, FIX-999, FIX-944, FIX-920
 2026-08-09 | FIX-944 | 8d166e1a | closes-as-recognized | chore(fixes): close FIX-1004, FIX-999, FIX-944, FIX-920
 2026-08-09 | FIX-999 | 8d166e1a | closes-as-superseded | chore(fixes): close FIX-1004, FIX-999, FIX-944, FIX-920
+2026-08-09 | FIX-1008 | 8c881c22 | local+prod | perf(fec-bulk): FIX-1008 prod-verify — from-zero cycle-2026 ingest at 86.0% skipped
