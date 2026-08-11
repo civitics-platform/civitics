@@ -334,9 +334,19 @@ function buildManifest(classified: ClassifiedRow[]): { pairs: Pair[]; dropped: D
     pairs.push({ survivor: e.official_id, dup: e.twin_id, fecId: e.twin_fec_id, name: label });
   }
 
-  // A row must never be both a survivor and a duplicate, and neither side may
-  // repeat — the SQL below assumes a 1:1 mapping and would otherwise resolve a
-  // chain in whatever order the planner picked.
+  const { kept, dropped: notUnique } = enforceOneToOne(pairs);
+  dropped.push(...notUnique);
+  return { pairs: kept, dropped };
+}
+
+/**
+ * A row must never be both a survivor and a duplicate, and neither side may
+ * repeat — `_manifest` is (survivor PRIMARY KEY, dup UNIQUE) and the merge SQL
+ * assumes a 1:1 mapping, so a chain would otherwise resolve in whatever order
+ * the planner picked. Shared by the classifier and own-seat selection modes.
+ */
+function enforceOneToOne(pairs: Pair[]): { kept: Pair[]; dropped: DroppedPair[] } {
+  const dropped: DroppedPair[] = [];
   const survivors = new Set(pairs.map((p) => p.survivor));
   const dups = new Set(pairs.map((p) => p.dup));
   const keep: Pair[] = [];
@@ -361,7 +371,7 @@ function buildManifest(classified: ClassifiedRow[]): { pairs: Pair[]; dropped: D
     }
     keep.push(p);
   }
-  return { pairs: keep, dropped };
+  return { kept: keep, dropped };
 }
 
 /**
@@ -435,6 +445,293 @@ async function verifyRepairInDb(
         reason: `seat re-check failed (${p.fecId} vs ${role}/${r.survivor_state})`,
       });
       continue;
+    }
+    ok.push(p);
+  }
+  return { ok, rejected };
+}
+
+// ---------------------------------------------------------------------------
+// FIX-953 — OWN-SEAT selection mode
+//
+// WHY THE CLASSIFIER CANNOT FIND THESE
+// ------------------------------------
+// `classify()` answers same-vs-cross ONCE, for a suspect against its single
+// best-overlap twin. A sitting member whose own candidate stub holds a slice of
+// their money, but who ALSO carries a larger slice of a same-surname stranger's
+// money, ranks the stranger first and lands in CROSS-PERSON — so
+// `buildManifest` never sees the real duplicate. Reference cases, as measured
+// by the FIX-953 investigation (rankings not re-derived here):
+//
+//   Shontel M. Brown  (Representative, OH-11)  best twin Sherrod Brown
+//                     S6OH00163 — a different person, and far larger.
+//   Al Green          (Representative, TX-9)   best twin Mark Green
+//                     H8TN07076 — a different person.
+//
+// So selection here is NOT ranked. It asks a direct structural question of
+// every (elected, candidate) same-surname pair: does the stub's CAND_ID
+// describe the seat this elected official ACTUALLY OCCUPIES?
+//
+// THE DISTRICT DIGITS ARE LOAD-BEARING — DO NOT DROP THEM
+// ------------------------------------------------------
+// `seatMatches()` in fec-orphan-classify compares office + state only, and
+// FIX-954 recorded exactly what that costs: "the seat signal collapses when
+// both parties hold the same chamber+state", which merges Robert Garcia
+// (Rep, CA-42) into Mike Garcia (H0CA25105, Rep, CA-27) — two different people.
+// A CAND_ID carries the district in chars 5-6 (`H2OH11169` → 11), and
+// `officials.district_name` carries it as 'District 11', so comparing them
+// restores the asymmetry office+state cannot supply. Senate and President
+// have no district, which is why those rows lean harder on the name signal —
+// see the `cls` column and the census.
+//
+// THE SEAT GATE IS NOT, BY ITSELF, A SAME-PERSON PROOF — MEASURED
+// ---------------------------------------------------------------
+// Surname + office + state + district still matches people who are provably
+// NOT each other, because relatives, spouses, siblings and opponents contest
+// the same seat all the time. Measured on prod 2026-08-10, all same-district:
+//
+//   Adelita S. Grijalva (AZ-7)  vs Raul Grijalva   H2AZ07070  — her father
+//   Julia Letlow        (LA-5)  vs Luke Letlow     H0LA05120  — her late husband
+//   Troy E. Nehls       (TX-22) vs Trever Nehls    H6TX22283  — his twin brother
+//   Robert Garcia       (CA-42) vs Cristina Garcia H2CA42213  — unrelated
+//   Derek Schmidt       (KS-2)  vs Patrick Schmidt H2KS02143  — his opponent
+//   Sylvia R. Garcia    (TX-29) vs Adrian/Roel/Christian Garcia
+//
+// Every one of those is held back ONLY because the survivor carries its own,
+// different CAND_ID (the excluded class below) — an accident of those rows, not
+// something the seat gate earned. So the seat gate is a NECESSARY condition
+// here, never a sufficient one, and the two selectable classes below differ
+// precisely in what supplies the missing sufficiency:
+//
+//   double-claim    the survivor ALREADY carries the stub's exact CAND_ID. A
+//                   CAND_ID names exactly one FEC candidate, and the stub was
+//                   MINTED from that CAND_ID by the cn{yy} stage, so both rows
+//                   purport to be the same candidate on authority that never
+//                   passed through a surname. This is self-sufficient.
+//   orphan-survivor the survivor carries NO binding, so nothing but the seat
+//                   gate is talking. NOT self-sufficient — every pair needs
+//                   human confirmation before it goes in a manifest, which is
+//                   why this class is small and enumerated in the audit doc.
+//
+// Hence --own-seat-class: the two are never merged in one undifferentiated run.
+//
+// WHAT IS DELIBERATELY EXCLUDED
+// -----------------------------
+// A survivor already carrying a DIFFERENT `fec_candidate_id` from the stub's
+// (the House-member-moved-to-Senate shape: Gary Peters holds H8MI09068 while
+// his Senate stub holds S4MI00355). Retiring a second id for real needs
+// `merged_fec_candidate_id` to be multi-valued — that is FIX-956, and it stays
+// out of this script. Those pairs are reported, never merged.
+//
+// A survivor carrying the SAME id as the stub IS included (`cls =
+// double-claim`): that is the live last-write-wins race
+// `loadOfficialsByFecIds` resolves by ascending uuid, and it is precisely the
+// population step 0 refuses because the duplicate still holds money.
+// ---------------------------------------------------------------------------
+
+/**
+ * One row per (elected survivor × own-seat candidate stub). Aliases QUOTED so
+ * they survive as camelCase `Pair` fields — see REPAIR_MANIFEST_SQL's note.
+ */
+const OWN_SEAT_MANIFEST_SQL = `
+WITH seat AS (
+  SELECT o.id, o.tier, o.full_name, o.first_name, o.role_title,
+         upper(j.short_name)               AS state,
+         o.source_ids->>'fec_candidate_id' AS live_fec,
+         regexp_replace(upper(COALESCE(NULLIF(o.last_name,''), o.full_name)),'[^A-Z]','','g') AS surname,
+         -- District as an int. Elected rows read 'District 11', candidate rows
+         -- '11'; Senate / President / at-large collapse to 0 on both sides.
+         COALESCE(NULLIF(regexp_replace(COALESCE(o.district_name,''),'[^0-9]','','g'),'')::int, 0) AS district_int,
+         regexp_replace(upper(COALESCE(NULLIF(o.first_name,''), split_part(o.full_name,' ',1))),'[^A-Z]','','g') AS firstnorm
+    FROM officials o
+    LEFT JOIN jurisdictions j ON j.id = o.jurisdiction_id
+   WHERE o.tier IN ('elected','candidate')
+)
+SELECT s.id        AS "survivor",
+       d.id        AS "dup",
+       d.live_fec  AS "fecId",
+       COALESCE(s.full_name,'?') || '  <-  ' || COALESCE(d.full_name,'?') AS "name",
+       CASE WHEN s.live_fec IS NULL THEN 'orphan-survivor' ELSE 'double-claim' END
+                   AS "cls"
+  FROM seat s
+  JOIN seat d
+    ON d.tier = 'candidate'
+   AND s.id  <> d.id
+   AND d.surname = s.surname
+ WHERE s.tier = 'elected'
+   AND s.surname <> ''
+   AND d.live_fec IS NOT NULL
+   -- office char vs the role the survivor actually holds
+   AND (   (left(d.live_fec,1) = 'S' AND s.role_title = 'Senator')
+        OR (left(d.live_fec,1) = 'H' AND s.role_title = 'Representative')
+        OR (left(d.live_fec,1) = 'P' AND s.role_title = 'President'))
+   -- state chars vs the survivor's jurisdiction
+   AND substr(d.live_fec,3,2) = s.state
+   -- district digits — House only; this is the Garcia guard
+   AND (left(d.live_fec,1) <> 'H'
+        OR (substr(d.live_fec,5,2) ~ '^[0-9]{2}$'
+            AND substr(d.live_fec,5,2)::int = s.district_int))
+   -- FIX-956 exclusion: survivor must be unbound, or bound to THIS id
+   AND (s.live_fec IS NULL OR s.live_fec = d.live_fec)
+   -- the stub must actually hold something to move
+   AND EXISTS (SELECT 1 FROM financial_relationships fr
+                WHERE fr.to_type='official' AND fr.to_id = d.id)
+ ORDER BY 4;
+`;
+
+/**
+ * Own-seat gate, server-side. Same contract as `verifyManifestInDb` except the
+ * survivor may ALREADY carry the stub's CAND_ID (the double-claim class), and
+ * the seat re-check additionally compares the district digits.
+ */
+async function verifyOwnSeatInDb(
+  client: Client,
+  pairs: Pair[],
+): Promise<{ ok: Pair[]; rejected: DroppedPair[] }> {
+  if (pairs.length === 0) return { ok: [], rejected: [] };
+  const rows = await q<{
+    survivor: string;
+    dup: string;
+    survivor_tier: string | null;
+    dup_tier: string | null;
+    survivor_fec: string | null;
+    dup_fec: string | null;
+    survivor_role: string | null;
+    survivor_state: string | null;
+    survivor_district: string | null;
+    survivor_surname: string | null;
+    dup_surname: string | null;
+    dup_attachments: string;
+    dup_attachment_detail: string | null;
+  }>(
+    client,
+    `SELECT m.survivor, m.dup,
+            s.tier AS survivor_tier, d.tier AS dup_tier,
+            s.source_ids->>'fec_candidate_id' AS survivor_fec,
+            d.source_ids->>'fec_candidate_id' AS dup_fec,
+            s.role_title                      AS survivor_role,
+            upper(js.short_name)              AS survivor_state,
+            COALESCE(NULLIF(regexp_replace(COALESCE(s.district_name,''),'[^0-9]','','g'),''),'0')
+                                              AS survivor_district,
+            regexp_replace(upper(COALESCE(NULLIF(s.last_name,''), s.full_name)),'[^A-Z]','','g')
+                                              AS survivor_surname,
+            regexp_replace(upper(COALESCE(NULLIF(d.last_name,''), d.full_name)),'[^A-Z]','','g')
+                                              AS dup_surname,
+            -- Decision 5, mechanized. Every NON-derived thing that can hang off
+            -- an officials row. A stub is merge-safe only if it is money +
+            -- provenance and NOTHING else; this script moves money and money
+            -- EC edges, so anything here would be stranded on a $0 row.
+            -- Deliberately NOT counted: official_content_ids (a
+            -- (official_id, refreshed_at) cache stamp with no payload),
+            -- entity_connections and the *_rollup / *_totals / *_stats tables
+            -- (all derived and rebuilt by phase 2).
+            (att.votes + att.career + att.cmte + att.promises + att.cosponsor
+             + att.comments + att.civic + att.lobby + att.sponsored + att.actions
+             + att.extrel)::text                AS dup_attachments,
+            NULLIF(concat_ws(', ',
+              CASE WHEN att.votes     > 0 THEN att.votes     || ' votes'                 END,
+              CASE WHEN att.career    > 0 THEN att.career    || ' career_history'        END,
+              CASE WHEN att.cmte      > 0 THEN att.cmte      || ' committee_memberships' END,
+              CASE WHEN att.promises  > 0 THEN att.promises  || ' promises'              END,
+              CASE WHEN att.cosponsor > 0 THEN att.cosponsor || ' cosponsorships'        END,
+              CASE WHEN att.comments  > 0 THEN att.comments  || ' community_comments'    END,
+              CASE WHEN att.civic     > 0 THEN att.civic     || ' civic_responses'       END,
+              CASE WHEN att.lobby     > 0 THEN att.lobby     || ' lobbying_disclosures'  END,
+              CASE WHEN att.sponsored > 0 THEN att.sponsored || ' sponsored_bills'       END,
+              CASE WHEN att.actions   > 0 THEN att.actions   || ' proposal_actions'      END,
+              CASE WHEN att.extrel    > 0 THEN att.extrel    || ' external_relationships' END
+            ), '')                              AS dup_attachment_detail
+       FROM _manifest m
+       JOIN officials s ON s.id = m.survivor
+       JOIN officials d ON d.id = m.dup
+       LEFT JOIN jurisdictions js ON js.id = s.jurisdiction_id
+       CROSS JOIN LATERAL (
+         SELECT (SELECT count(*) FROM votes v                          WHERE v.official_id = d.id) AS votes,
+                (SELECT count(*) FROM career_history c                 WHERE c.official_id = d.id) AS career,
+                (SELECT count(*) FROM official_committee_memberships k WHERE k.official_id = d.id) AS cmte,
+                (SELECT count(*) FROM promises p                       WHERE p.official_id = d.id) AS promises,
+                (SELECT count(*) FROM proposal_cosponsors pc           WHERE pc.official_id = d.id) AS cosponsor,
+                (SELECT count(*) FROM official_community_comments oc   WHERE oc.official_id = d.id) AS comments,
+                (SELECT count(*) FROM civic_initiative_responses ci    WHERE ci.official_id = d.id) AS civic,
+                (SELECT count(*) FROM lobbying_disclosures ld          WHERE ld.official_id = d.id) AS lobby,
+                (SELECT count(*) FROM bill_details bd                  WHERE bd.primary_sponsor_id = d.id) AS sponsored,
+                (SELECT count(*) FROM proposal_actions pa              WHERE pa.performed_by_id = d.id) AS actions,
+                (SELECT count(*) FROM external_relationships er
+                  WHERE (er.from_type='official' AND er.from_id = d.id)
+                     OR (er.to_type='official'   AND er.to_id   = d.id))                AS extrel
+       ) att`,
+  );
+  const byKey = new Map(rows.map((r) => [`${r.survivor}|${r.dup}`, r]));
+  const ok: Pair[] = [];
+  const rejected: DroppedPair[] = [];
+  for (const p of pairs) {
+    const r = byKey.get(`${p.survivor}|${p.dup}`);
+    if (!r) {
+      rejected.push({ name: p.name, reason: "one of the two officials rows no longer exists" });
+      continue;
+    }
+    if (r.survivor_tier !== "elected" || r.dup_tier !== "candidate") {
+      rejected.push({ name: p.name, reason: `live tiers are ${r.survivor_tier}/${r.dup_tier}` });
+      continue;
+    }
+    if (r.dup_fec !== p.fecId) {
+      rejected.push({ name: p.name, reason: `duplicate's live CAND_ID is ${r.dup_fec}, expected ${p.fecId}` });
+      continue;
+    }
+    // The FIX-956 line: unbound survivor, or bound to this very id. Never a
+    // different one — that needs multi-valued retirement we do not have.
+    if (r.survivor_fec !== null && r.survivor_fec !== p.fecId) {
+      rejected.push({
+        name: p.name,
+        reason: `survivor holds a DIFFERENT id (${r.survivor_fec}) — FIX-956, not this script`,
+      });
+      continue;
+    }
+    if (!r.survivor_surname || r.survivor_surname !== r.dup_surname) {
+      rejected.push({
+        name: p.name,
+        reason: `surnames disagree (${r.survivor_surname} vs ${r.dup_surname})`,
+      });
+      continue;
+    }
+    // Decision 5: money + provenance and nothing else. FIX-940's lesson — the
+    // "money and nothing else" assumption was once wrong by 1,755 votes — so
+    // this is a hard refusal, not a warning.
+    if (r.dup_attachments !== "0") {
+      rejected.push({
+        name: p.name,
+        reason: `stub carries non-money records (${r.dup_attachment_detail}) — would be stranded on a $0 row`,
+      });
+      continue;
+    }
+    // Seat re-check from the CAND_ID itself: office, state AND district.
+    const office = p.fecId[0]?.toUpperCase() ?? "";
+    const state = p.fecId.slice(2, 4).toUpperCase();
+    const role = r.survivor_role ?? "";
+    const officeOk =
+      (office === "S" && role === "Senator") ||
+      (office === "H" && role === "Representative") ||
+      (office === "P" && role === "President");
+    if (!officeOk || state !== (r.survivor_state ?? "")) {
+      rejected.push({
+        name: p.name,
+        reason: `seat re-check failed (${p.fecId} vs ${role}/${r.survivor_state})`,
+      });
+      continue;
+    }
+    if (office === "H") {
+      const candDistrict = p.fecId.slice(4, 6);
+      if (!/^\d{2}$/.test(candDistrict)) {
+        rejected.push({ name: p.name, reason: `CAND_ID has no district digits (${p.fecId})` });
+        continue;
+      }
+      if (Number(candDistrict) !== Number(r.survivor_district ?? "0")) {
+        rejected.push({
+          name: p.name,
+          reason: `district mismatch (${p.fecId} → ${Number(candDistrict)} vs survivor ${r.survivor_district})`,
+        });
+        continue;
+      }
     }
     ok.push(p);
   }
@@ -1023,6 +1320,22 @@ async function main(): Promise<void> {
    * from the FIX-930 classifier; see REPAIR_MANIFEST_SQL.
    */
   const repairResplit = argv.includes("--repair-resplit");
+  /**
+   * FIX-953 — select by OWN-SEAT relation instead of by the classifier's
+   * single best-overlap twin. See OWN_SEAT_MANIFEST_SQL.
+   */
+  const ownSeat = argv.includes("--own-seat");
+  /**
+   * Which own-seat class to select. Defaults to `orphan` — the FIX-953 scope —
+   * because `double` is a 117-pair / ~$815M action whose justification is
+   * different in kind (see OWN_SEAT_MANIFEST_SQL) and must be chosen out loud.
+   */
+  const ownSeatClass = (argv.find((a) => a.startsWith("--own-seat-class="))?.split("=")[1] ??
+    "orphan") as "orphan" | "double" | "both";
+  if (ownSeat && !["orphan", "double", "both"].includes(ownSeatClass)) {
+    console.error(`✗ --own-seat-class must be one of orphan | double | both (got '${ownSeatClass}')`);
+    process.exit(1);
+  }
   const apply = argv.includes("--apply") || rollupsOnly || mvsOnly || vacuumOnly;
   const allowProd = argv.includes("--allow-prod");
   const prod = isProd();
@@ -1049,6 +1362,8 @@ async function main(): Promise<void> {
     `Mode:       ${
       repairResplit
         ? "REPAIR-RESPLIT (FIX-955 re-merge)"
+        : ownSeat
+        ? `OWN-SEAT class=${ownSeatClass} — ${apply ? "APPLY (COMMIT)" : "DRY-RUN (ROLLBACK)"}`
         : vacuumOnly
         ? "VACUUM-ONLY"
         : mvsOnly
@@ -1210,6 +1525,29 @@ async function main(): Promise<void> {
       );
     }
     for (const d of grouped.dropped) console.log(`  DROPPED  ${d.name.padEnd(50)} ${d.reason}`);
+  } else if (ownSeat) {
+    // FIX-953 — structural selection, no overlap ranking. See
+    // OWN_SEAT_MANIFEST_SQL for why the classifier cannot reach these.
+    await client.query("BEGIN TRANSACTION READ ONLY");
+    const raw = await q<Pair>(client, OWN_SEAT_MANIFEST_SQL);
+    await client.query("COMMIT");
+    // Census first — the whole class, printed regardless of which slice is
+    // selected, so a run can never quietly understate what it found.
+    const census = new Map<string, number>();
+    for (const p of raw) census.set(p.cls ?? "?", (census.get(p.cls ?? "?") ?? 0) + 1);
+    console.log(`\nOWN-SEAT census → ${raw.length} structural pair(s) platform-wide:`);
+    for (const [k, v] of [...census].sort()) console.log(`  ${k.padEnd(20)} ${String(v).padStart(4)}`);
+    const wanted =
+      ownSeatClass === "both"
+        ? raw
+        : raw.filter((p) => p.cls === (ownSeatClass === "orphan" ? "orphan-survivor" : "double-claim"));
+    console.log(`Selected class '${ownSeatClass}' → ${wanted.length} pair(s)`);
+    const unique = enforceOneToOne(wanted);
+    candidates = unique.kept;
+    for (const p of candidates) {
+      console.log(`  MERGE    ${p.name.padEnd(52)} ${p.fecId}  [${p.cls ?? "?"}]`);
+    }
+    for (const d of unique.dropped) console.log(`  DROPPED  ${d.name.padEnd(50)} ${d.reason}`);
   } else {
     console.log("\nRe-deriving the FIX-930 classification live…");
     await client.query("BEGIN TRANSACTION READ ONLY");
@@ -1272,7 +1610,9 @@ async function main(): Promise<void> {
 
     const { ok: pairs, rejected } = repairResplit
       ? await verifyRepairInDb(client, candidates)
-      : await verifyManifestInDb(client, candidates);
+      : ownSeat
+        ? await verifyOwnSeatInDb(client, candidates)
+        : await verifyManifestInDb(client, candidates);
     for (const r of rejected) console.log(`  REJECTED ${r.name.padEnd(50)} ${r.reason}`);
     if (rejected.length > 0) {
       await client.query(

@@ -133,6 +133,8 @@
     "data:merge:official-dupes": "tsx --env-file=../../.env.local src/scripts/merge-same-person-official-dupes.ts",
     "data:merge:official-dupes:repair": "tsx --env-file=../../.env.local src/scripts/merge-same-person-official-dupes.ts --repair-resplit",
     "data:merge:official-dupes:repair:prod": "tsx --env-file=../../.env.local.prod src/scripts/merge-same-person-official-dupes.ts --repair-resplit --allow-prod",
+    "data:merge:official-dupes:own-seat": "tsx --env-file=../../.env.local src/scripts/merge-same-person-official-dupes.ts --own-seat",
+    "data:merge:official-dupes:own-seat:prod": "tsx --env-file=../../.env.local.prod src/scripts/merge-same-person-official-dupes.ts --own-seat --allow-prod",
     "data:merge:official-dupes:prod": "tsx --env-file=../../.env.local.prod src/scripts/merge-same-person-official-dupes.ts --allow-prod",
     "data:merge:official-dupes:rollups:prod": "tsx --env-file=../../.env.local.prod src/scripts/merge-same-person-official-dupes.ts --allow-prod --rollups-only",
     "data:merge:official-dupes:mvs:prod": "tsx --env-file=../../.env.local.prod src/scripts/merge-same-person-official-dupes.ts --allow-prod --mvs-only",
