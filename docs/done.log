@@ -1204,3 +1204,4 @@
 2026-08-09 | FIX-1015 | 05d35256 | local-only | docs(playbook): fold in the 2026-08 rollup-saturation lessons; guard the FIXES.md writers
 2026-08-10 | FIX-953 | f4c00e90 | local+prod | feat(fec): FIX-953 — merge own-seat duplicate officials via a new selection mode
 2026-08-10 | FIX-1017 | 1be95822 | local-only | fix(merge): FIX-1017 — propagate the phase-2 abort so phase 3 is skipped
+2026-08-10 | FIX-1018 | d21a7b0b | local-only | fix(donor-rollup): FIX-1018 — scope the dirty set to officials, index it, and bring the pre-loop build inside the budget
