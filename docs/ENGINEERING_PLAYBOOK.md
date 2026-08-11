@@ -319,6 +319,39 @@ manual-dispatch-only pipeline (FIX-740). Expression indexes over a rewritten
 `jsonb` column are the worst of both — re-evaluated per write *and* a HOT blocker.
 *FIX-1008, FIX-1012, FIX-884*
 
+### C8. A guard that fires must PROPAGATE. Catching an abort and returning normally converts a safety stop into a no-op.
+
+C3 asks whether a guard *can* fire. This is the next question: what happens
+after it does. `merge-same-person-official-dupes.ts` had a correct, server-owned
+budget guard — `budgeted()` translating 57014 into a named `BudgetExceeded` — and
+`runRollups()` caught it, printed **"✗ PHASE 2 ABORTED — … stopping before the
+remaining work makes it worse"**, and then `return`ed normally. `main()`'s next
+line was an unconditional `await runMvsAndVacuum(client)`.
+
+So on the FIX-953 prod apply (2026-08-10 ~23:10 UTC) the guard fired exactly as
+designed at `refresh_treemap_individuals_global()` chunk 53/64 — and the script
+proceeded straight into phase 3, the **heaviest I/O in the whole run**, against
+the instance it had just diagnosed as degraded. The six MV refreshes ran at
+**25–70× their local timings** (`refresh_official_homepage_stats_mv` 326.2 s vs
+4.7 s local; `refresh_chord_industry_flows_mv` 205.1 s vs 20.3 s). Prod went
+fully unresponsive — pooler `ECHECKOUTTIMEOUT`, effectively every PostgREST GET
+returning Cloudflare 522 for 30+ minutes — and needed a manual project reset
+(`pg_postmaster_start_time()` = 2026-08-11 01:08:19 UTC).
+
+The abort message was the tell and nobody could act on it: it told the operator
+the run had stopped at the precise moment the run was accelerating. A guard whose
+only effect is a log line is decoration.
+
+**Apply:** a caught abort must change what the caller *does*, not only what it
+prints. Return a status (or rethrow) and branch on it; skip every remaining stage
+whose cost the abort just declared unaffordable; and exit **non-zero** (FIX-1017
+uses `2`, distinct from `1`, so a wrapper can tell a deliberate safety stop from
+a crash and neither reads as clean). Then check the skipped stages against C5 —
+skipping is only free for work that has another owner that runs. Phase 3's MV
+refreshes are also refreshed by `refresh_derived_mvs('daily')`, so skipping them
+costs nothing; its `VACUUM` tail is **not** covered, so the abort message has to
+name it as outstanding and point at `--vacuum-only`. *FIX-1017, FIX-953*
+
 ---
 
 ## D. Scheduled work

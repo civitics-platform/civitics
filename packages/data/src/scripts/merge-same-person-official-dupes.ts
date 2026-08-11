@@ -1114,6 +1114,18 @@ const STEP_BUDGET_S: Record<string, number> = {
 class BudgetExceeded extends Error {}
 
 /**
+ * Exit code for "a guard fired and the run stopped early". Distinct from 1
+ * (hard failure) so a wrapper can tell a deliberate safety stop from a crash —
+ * and, more importantly, so neither is ever read as a clean run. FIX-1017.
+ *
+ * NOTE: `pnpm run` collapses every non-zero child status to 1, so the 2 is only
+ * visible to a caller that execs the script directly (`tsx …`). Verified on
+ * local: raw tsx exits 2, `pnpm data:merge:official-dupes` reports 1. Both are
+ * non-zero, which is the property that actually matters.
+ */
+const ABORTED_EXIT_CODE = 2;
+
+/**
  * Run one step under a HARD server-side ceiling, timed.
  *
  * The budget is enforced by `statement_timeout`, not by measuring afterwards.
@@ -1162,7 +1174,13 @@ async function budgeted(
   }
 }
 
-async function runRollups(client: Client, prod: boolean): Promise<void> {
+/**
+ * Outcome of phase 2. `aborted` means a budget guard fired and the CALLER must
+ * not proceed into phase 3 — see the abort handler at the bottom of runRollups.
+ */
+type RollupOutcome = "ok" | "aborted";
+
+async function runRollups(client: Client, prod: boolean): Promise<RollupOutcome> {
   console.log("\n── Phase 2: rollups (post-commit, chunked) ──────────────");
 
   // Affected officials come from _manifest when the merge just ran, and are
@@ -1289,16 +1307,26 @@ async function runRollups(client: Client, prod: boolean): Promise<void> {
         console.error(`  ! ${fn}() failed: ${err instanceof Error ? err.message : String(err)}`);
       }
     }
+    return "ok";
   } catch (err) {
     if (!(err instanceof BudgetExceeded)) throw err;
+    const resume = `pnpm --filter @civitics/data data:merge:official-dupes${prod ? ":prod" : ""} --`;
     console.error(`\n✗ PHASE 2 ABORTED — ${err.message}`);
     console.error(
       `  The money merge is COMMITTED and correct; only rollups are incomplete.\n` +
-        `  Resume with:  pnpm --filter @civitics/data data:merge:official-dupes${prod ? ":prod" : ""} -- --rollups-only\n` +
+        `  Resume with:  ${resume} --rollups-only\n` +
         `  If the expensive rebuilds already finished and only the MV/VACUUM tail is\n` +
         `  outstanding, use --mvs-only instead — it skips ~1.5h of redundant prod I/O.\n` +
-        `  Nothing is lost by waiting — the rollups are pure functions of the committed rows.`,
+        `  Nothing is lost by waiting — the rollups are pure functions of the committed rows.\n` +
+        `\n  PHASE 3 IS BEING SKIPPED (FIX-1017) — the MV refreshes and the VACUUM tail are\n` +
+        `  the heaviest I/O in the run, and this abort means the instance is already\n` +
+        `  degraded. The MVs have another owner (refresh_derived_mvs('daily'), 06:00 UTC),\n` +
+        `  so skipping them costs nothing. The VACUUM of ${CHURNED_TABLES.join(", ")}\n` +
+        `  is OUTSTANDING and does need re-running once the instance recovers:\n` +
+        `      ${resume} --mvs-only      (MV tail + VACUUM)\n` +
+        `      ${resume} --vacuum-only   (VACUUM alone — the part with no other owner)`,
     );
+    return "aborted";
   }
 }
 
@@ -1424,8 +1452,13 @@ async function main(): Promise<void> {
       await client.end();
       process.exit(1);
     }
-    await runRollups(client, prod);
-    await runMvsAndVacuum(client);
+    // Same skip as the full-run path below: a resume that aborts AGAIN must not
+    // fall through into phase 3 either.
+    if ((await runRollups(client, prod)) === "aborted") {
+      process.exitCode = ABORTED_EXIT_CODE;
+    } else {
+      await runMvsAndVacuum(client);
+    }
     await client.end();
     return;
   }
@@ -1992,7 +2025,20 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  await runRollups(client, prod);
+  // FIX-1017 — phase 3 runs ONLY if phase 2 did not self-abort. Before this,
+  // runRollups swallowed its own BudgetExceeded and returned normally, so an
+  // abort that had just diagnosed the instance as I/O-degraded fell straight
+  // through into the six MV refreshes plus four VACUUMs — the heaviest I/O in
+  // the whole run. Measured on the FIX-953 prod apply (2026-08-10/11): phase 2
+  // aborted correctly at refresh_treemap_individuals_global() chunk 53/64, then
+  // phase 3 ran anyway at 25-70x its local timings and took prod fully
+  // unresponsive (pooler ECHECKOUTTIMEOUT, Cloudflare 522 for 30+ minutes,
+  // manual project reset). A guard that fires has to propagate.
+  if ((await runRollups(client, prod)) === "aborted") {
+    process.exitCode = ABORTED_EXIT_CODE;
+    await client.end();
+    return;
+  }
   await runMvsAndVacuum(client);
 
   console.log(
