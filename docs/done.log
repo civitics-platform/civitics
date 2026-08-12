@@ -1208,3 +1208,9 @@
 2026-08-11 | FIX-1014 | 7bfd1157 | local-only | fix(fec-bulk): FIX-1014 — compare like with like in the R2 cache freshness check
 2026-08-11 | FIX-964 | 2af5d333 | local-only | fix(ops): make the runtime and liveness instruments tell the truth
 2026-08-11 | FIX-989 | 2af5d333 | local-only | fix(ops): make the runtime and liveness instruments tell the truth
+2026-08-11 | FIX-1009 | cf10c2ad | local-only | fix(fec-bulk): bind only on evidence that survives a state check; stop the donor writer thrashing an aggregate it knows is wrong
+2026-08-11 | FIX-904 | cf10c2ad | local-only | fix(fec-bulk): bind only on evidence that survives a state check; stop the donor writer thrashing an aggregate it knows is wrong
+2026-08-11 | FIX-936 | cf10c2ad | local-only | fix(fec-bulk): bind only on evidence that survives a state check; stop the donor writer thrashing an aggregate it knows is wrong
+2026-08-11 | FIX-957 | cf10c2ad | local-only | fix(fec-bulk): bind only on evidence that survives a state check; stop the donor writer thrashing an aggregate it knows is wrong
+2026-08-11 | FIX-904 | reopen | prod-pending | code landed in cf10c2ad (IRS-990 extracted to .github/workflows/irs990.yml, Mondays 15:00 UTC, in-nightly call removed). GHA-behaviour item: stays OPEN until its first real Monday firing produces a durable verify.
+2026-08-11 | FIX-957 | reopen | prod-pending | code landed in cf10c2ad (success-only per-cycle/per-stage stamps + fec_cycle_watermark/fec_cycle_full_pass_at, migration 20260812010000). Stays OPEN until the migration is pasted to prod; the updated_at-trigger-suppression question and the stuck 2026-07-27 data_sync_log row also remain on the bullet.
