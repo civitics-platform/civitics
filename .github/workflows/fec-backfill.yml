@@ -64,13 +64,42 @@ jobs:
     # Multi-cycle indiv ingest on the Micro is slow (IOWait-bound). 350 min
     # leaves headroom under GHA's 6h job cap. Unlike the nightly, this is not a
     # recurring budget — it's a one-off operator action.
+    #
+    # workflow-parity-waiver: nightly fec-phase is a recurring 150-min slice of
+    # one night's budget; this is a one-off operator action allowed most of the
+    # 6h job cap. Deliberate divergence (FIX-961, FIX-995, FIX-1000).
     timeout-minutes: 350
 
-    # Env block mirrors nightly.yml's fec-phase verbatim (GHA has no YAML
-    # anchors, so the duplication is explicit). Heap ceiling sized for the
-    # LARGEST presidential-cycle indiv file: 12 GB fit 2024 but OOM'd at ~77%
-    # of indiv20 (FIX-961) — 14 GB is the most a 16 GB runner can give after
-    # OS + runner agent + ~1 GB off-heap Node overhead.
+    # DIVERGES FROM nightly.yml's fec-phase — do not assume otherwise.
+    #
+    # This block used to claim it "mirrors nightly.yml's fec-phase verbatim".
+    # FIX-961 falsified that in the same commit that raised the heap ceiling,
+    # and the stale claim survived. The two jobs both reach runFecBulkPipeline()
+    # → streamIndiv on the same ubuntu-latest 16 GB runner class, but their
+    # resource envelopes were set at different times for different reasons:
+    #
+    #   nightly.yml fec-phase : NODE_OPTIONS 12288 / timeout-minutes 150   (FIX-254, FIX-689)
+    #   this job              : NODE_OPTIONS 14336 / timeout-minutes 350   (FIX-961)
+    #
+    # Everything else in the block IS the same set of keys as fec-phase.
+    #
+    # The heap divergence is deliberate and stays: FIX-995 examined the
+    # 2026-08-03..08-08 nightly deaths — two job timeouts, one
+    # runner-communication loss, one unrelated statement timeout, one human
+    # cancel — and found NO V8 heap-limit exit in any log, so copying 14336
+    # across would be tuning against a cause that was not present. 14 GB here is
+    # sized for the LARGEST presidential-cycle indiv file: 12 GB fit 2024 but
+    # OOM'd at ~77% of indiv20 (FIX-961); 14 GB is the most a 16 GB runner can
+    # give after OS + runner agent + ~1 GB off-heap Node overhead.
+    #
+    # `pnpm check:workflow-parity` (scripts/check-workflow-parity.mjs, blocking
+    # in tests.yml) fails on an UNDECLARED divergence between these two jobs.
+    # The waiver comments are what make this one declared rather than forgotten.
+    #
+    # workflow-parity-waiver: sized for the largest presidential indiv file,
+    # where 12288 OOM'd at ~77% of indiv20 (FIX-961). FIX-995 deliberately did
+    # NOT copy this to nightly — no V8 heap-limit exit appeared in any of the
+    # 2026-08-03..08-08 nightly failure logs.
     env:
       NEXT_PUBLIC_SUPABASE_URL: https://xsazcoxinpgttgquwvuf.supabase.co
       SUPABASE_SECRET_KEY:      ${{ secrets.SUPABASE_SECRET_KEY }}
@@ -89,6 +118,12 @@ jobs:
       CLOUDFLARE_R2_BUCKET_CACHE:      civitics-cache
 
     steps:
+      # FIX-963 — stamp this job's start so the mark-killed post-step can bind
+      # its no-op guard to THIS run (fallback for rows predating FIX-971a's
+      # metadata.github_run_id). See packages/data/src/scripts/mark-killed.ts.
+      - name: Record job start (FIX-963)
+        run: echo "MARK_KILLED_JOB_STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+
       - name: Checkout
         uses: actions/checkout@v4
 

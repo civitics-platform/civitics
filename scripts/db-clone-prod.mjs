@@ -242,21 +242,56 @@ if (dryRun) {
 // never corrupt — but it IS "prod halfway through rewriting itself", which is a
 // poor thing to reason from later. Record which pipelines were in flight so the
 // stamp says so, rather than leaving a future session to rediscover it.
+// FIX-989 — liveness comes from pg_stat_activity, not from a status column.
+// This probe used to read `data_sync_log.status = 'running'` within 6h, which
+// is not liveness (playbook D2): a dead process leaves the row set, and a
+// process that never wrote a start row is invisible. Both directions matter
+// here — a false "in flight" makes an operator postpone a clone for a corpse,
+// and a false "quiet" is exactly the mid-nightly snapshot this warning exists
+// to catch. A backend leaves pg_stat_activity when it dies, by construction,
+// and pg_cron job executors appear there too, so one read covers both the
+// GHA-launched (pooled) pipelines and the in-DB cron work.
 step(1, `pg_dump public (data only) from PROD → ${DUMP}`);
-const runningPipelines = q1(
+const liveBackends = q1(
+  PROD_URL,
+  `SELECT coalesce(string_agg(
+            coalesce(nullif(application_name, ''), backend_type) ||
+            ' pid=' || pid ||
+            ' (' || state || ', ' ||
+            coalesce(to_char(now() - coalesce(xact_start, query_start, backend_start), 'HH24:MI:SS'), '?') || ' in)',
+            ', ' ORDER BY coalesce(xact_start, query_start, backend_start)), '')
+     FROM pg_stat_activity
+    WHERE datname       = current_database()
+      AND pid          <> pg_backend_pid()
+      AND backend_type  = 'client backend'
+      AND state IS DISTINCT FROM 'idle';`,
+);
+// Advisory only — kept because a self-reported pipeline NAME is more legible
+// than a pid, but it never decides anything on its own.
+const runningRows = q1(
   PROD_URL,
   `SELECT coalesce(string_agg(pipeline || ' (since ' || started_at::time(0) || ' UTC)', ', ' ORDER BY started_at), '')
      FROM public.data_sync_log
     WHERE status = 'running' AND started_at > now() - interval '6 hours';`,
 );
-if (runningPipelines) {
-  console.warn(`${TAG} ⚠ PROD PIPELINES IN FLIGHT: ${runningPipelines}`);
+if (liveBackends) {
+  console.warn(`${TAG} ⚠ PROD WORK IN FLIGHT (live backends): ${liveBackends}`);
+  if (runningRows) console.warn(`${TAG}   self-reported as: ${runningRows}`);
   console.warn(`${TAG}   The snapshot is consistent but mid-update. Tables those pipelines`);
   console.warn(`${TAG}   write will land part-way through tonight's run. Re-run outside the`);
   console.warn(`${TAG}   nightly window for a fully quiescent clone. Recorded in the stamp.`);
+} else if (runningRows) {
+  log(`no live prod backends — clean snapshot window.`);
+  console.warn(
+    `${TAG} note: data_sync_log still shows '${runningRows}' as running, but no backend is` +
+      ` alive behind it — that is a STALE ORPHAN row, not work in flight (FIX-989). Not a reason to wait.`,
+  );
 } else {
-  log("no prod pipelines in flight — clean snapshot window.");
+  log("no live prod backends and no running rows — clean snapshot window.");
 }
+// Stamp shape kept: '' = quiescent, non-empty = mid-update. The value is now
+// the LIVE-backend list; the self-reported names ride alongside it.
+const runningPipelines = liveBackends;
 if (skipDump) {
   if (!existsSync(DUMP)) die(`--skip-dump given but no dump at ${DUMP}`);
   log(`--skip-dump — reusing existing dump (${(statSync(DUMP).size / 1e9).toFixed(2)} GB).`);
@@ -450,9 +485,13 @@ const stampValue = {
   cli_version: cliVersion,
   restore_jobs: jobs,
   elapsed: elapsed(),
-  // Empty string = prod was quiescent at dump time. Non-empty = these pipelines
-  // were mid-run, so their tables are a part-way snapshot.
+  // FIX-989: LIVE backends at dump time, from pg_stat_activity. Empty string =
+  // prod was genuinely quiescent. Non-empty = real work was mid-run, so those
+  // tables are a part-way snapshot.
   pipelines_running_at_dump: runningPipelines,
+  // Self-reported names for the same moment. Advisory: a value here with an
+  // empty pipelines_running_at_dump means stale orphan rows, not in-flight work.
+  sync_log_running_rows_at_dump: runningRows,
 };
 psqlLocal(
   `INSERT INTO public.pipeline_state (key, value, updated_at)

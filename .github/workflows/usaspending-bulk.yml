@@ -63,6 +63,12 @@ jobs:
       CLOUDFLARE_R2_BUCKET_CACHE:      civitics-cache
 
     steps:
+      # FIX-963 — stamp this job's start so the mark-killed post-step can bind
+      # its no-op guard to THIS run (fallback for rows predating FIX-971a's
+      # metadata.github_run_id). See packages/data/src/scripts/mark-killed.ts.
+      - name: Record job start (FIX-963)
+        run: echo "MARK_KILLED_JOB_STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+
       - name: Checkout
         uses: actions/checkout@v4
 

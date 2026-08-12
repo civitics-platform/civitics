@@ -26,14 +26,77 @@
 -- ---------------------------------------------------------------------------
 -- C0 — is a nightly in flight right now?
 -- A mid-flight tagger DELETEs then re-inserts, so a read taken inside that
--- window can show a legitimately-empty table. Expect zero rows.
+-- window can show a legitimately-empty table.
+--
+-- FIX-989 — this gate used to be `data_sync_log.status = 'running'` within 12h,
+-- which is not liveness (playbook D2). It is wrong in BOTH directions: a dead
+-- process leaves the row set (false positive), and a process that never wrote a
+-- start row is invisible (false negative). The expensive direction here is the
+-- FALSE POSITIVE — this is a gate on a prod close-out, and a guard that refuses
+-- because a corpse says 'running' is a self-inflicted outage (playbook C3).
+--
+-- Liveness now comes from pg_stat_activity, which cannot go stale: a backend
+-- disappears from it when it dies, by construction. pg_cron job executors show
+-- up there too, so one probe covers both GHA-launched (pooled) and pg_cron work.
+-- The data_sync_log read is KEPT below but demoted to advisory context, and
+-- C0-verdict prints WHICH case it found so a hold is never mysterious.
 -- ---------------------------------------------------------------------------
-SELECT 'C0 in-flight pipelines (expect 0 rows)' AS check,
-       pipeline, status, started_at
+SELECT 'C0a LIVE backends — the gate (expect 0 rows)' AS check,
+       pid,
+       usename,
+       application_name,
+       state,
+       now() - xact_start  AS xact_age,
+       now() - query_start AS query_age,
+       wait_event_type,
+       left(regexp_replace(coalesce(query, ''), '\s+', ' ', 'g'), 140) AS query
+  FROM pg_stat_activity
+ WHERE datname       = current_database()
+   AND pid          <> pg_backend_pid()
+   AND backend_type  = 'client backend'
+   AND state IS DISTINCT FROM 'idle'
+ ORDER BY xact_start NULLS LAST;
+
+-- Advisory ONLY — never the gate. A `running` row with no live backend behind
+-- it is an orphan (the reaper has not been by yet), not work in flight.
+SELECT 'C0b data_sync_log running rows (ADVISORY, not liveness)' AS check,
+       pipeline,
+       status,
+       started_at,
+       now() - started_at AS age,
+       CASE WHEN EXISTS (
+              SELECT 1 FROM pg_stat_activity a
+               WHERE a.datname       = current_database()
+                 AND a.pid          <> pg_backend_pid()
+                 AND a.backend_type  = 'client backend'
+                 AND a.state IS DISTINCT FROM 'idle')
+            THEN 'a backend IS alive — this row may be real'
+            ELSE 'NO live backend — this row is a STALE ORPHAN, ignore it'
+       END AS interpretation
   FROM public.data_sync_log
- WHERE status = 'running'
+ WHERE status IN ('running')
    AND started_at > now() - interval '12 hours'
  ORDER BY started_at DESC;
+
+SELECT 'C0 verdict' AS check,
+       live.n                                       AS live_backends,
+       stale.n                                      AS running_rows,
+       CASE
+         WHEN live.n > 0
+           THEN 'HOLD — ' || live.n || ' live backend(s); real work is in flight'
+         WHEN stale.n > 0
+           THEN 'PROCEED — no live backend; the ' || stale.n ||
+                ' running row(s) above are stale orphans, NOT a reason to hold (FIX-989)'
+         ELSE 'PROCEED — quiet: no live backends and no running rows'
+       END                                          AS verdict
+  FROM (SELECT count(*) AS n FROM pg_stat_activity
+         WHERE datname       = current_database()
+           AND pid          <> pg_backend_pid()
+           AND backend_type  = 'client backend'
+           AND state IS DISTINCT FROM 'idle') live,
+       (SELECT count(*) AS n FROM public.data_sync_log
+         WHERE status = 'running'
+           AND started_at > now() - interval '12 hours') stale;
 
 -- ---------------------------------------------------------------------------
 -- C1 — did the nightly rule tagger complete green?

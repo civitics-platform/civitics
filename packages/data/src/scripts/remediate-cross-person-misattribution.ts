@@ -40,9 +40,34 @@
  * it renamed to `misattributed_fec_id`. Renaming rather than deleting keeps the
  * evidence; leaving it in place would hand the slot back on the next run.
  *
+ * RESUME MODES (FIX-964)
+ * ----------------------
+ * `--vacuum-only`, `--mvs-only` and `--rollups-only` all short-circuit BEFORE
+ * the FIX-930 suspect derivation. `--rollups-only` did not, and that made the
+ * script's own advertised recovery path impossible to use: the abort message
+ * printed "Resume with --rollups-only", but that mode re-ran the derivation,
+ * which post-commit finds 0 CROSS suspects (the deletes already happened) and
+ * exited "Nothing to remediate" without running a single rollup step. Measured
+ * on prod 2026-08-05 when refresh_treemap_individuals_global() blew its budget
+ * mid-tail. The resume path can never work after the commit it exists to
+ * resume, so it no longer derives anything.
+ *
+ * What resume can and cannot recover:
+ *   - The GLOBAL phase-2 steps (official totals, FE IE totals, group rollup,
+ *     search index, treemap) need no manifest and always run.
+ *   - The OFFICIAL-scoped step (donor_rollup_rebuild_recipients) takes its list
+ *     from `--officials <uuid,uuid,…>` when supplied.
+ *   - The DONOR-scoped chunk loops (financial_entity_donation_totals_rebuild,
+ *     donor_party_rollup_rebuild_donors) CANNOT be reconstructed after the
+ *     commit — the donor set is read off the deleted rows, and a DELETE leaves
+ *     no trace. They are skipped, loudly, with the reason printed. Re-run the
+ *     apply-path steps for those donors only if a manifest exists.
+ *
  * Usage:
  *   pnpm --filter @civitics/data data:remediate:cross-person             # dry-run
  *   pnpm --filter @civitics/data data:remediate:cross-person -- --apply  # commit
+ *   pnpm --filter @civitics/data data:remediate:cross-person -- --rollups-only
+ *   pnpm --filter @civitics/data data:remediate:cross-person -- --rollups-only --officials <uuid>,<uuid>
  */
 
 import { Client } from "pg";
@@ -179,7 +204,8 @@ async function runRollups(client: Client, prod: boolean): Promise<void> {
   console.log("\n── Phase 2: rollups (post-commit, chunked) ──────────────");
 
   const [offCount] = await q<{ n: string }>(client, `SELECT count(*)::text AS n FROM _affected`);
-  console.log(`  affected officials: ${offCount?.n}`);
+  const officials = Number(offCount?.n ?? 0);
+  console.log(`  affected officials: ${officials.toLocaleString()}`);
 
   // Donors whose OUTFLOW changed. Read off the DONOR side of the deleted rows,
   // captured before the delete — a DELETE bumps no updated_at, so the
@@ -189,12 +215,23 @@ async function runRollups(client: Client, prod: boolean): Promise<void> {
   console.log(`  affected donors:    ${donors.toLocaleString()}`);
 
   try {
-    await budgeted(
-      client,
-      "donor_rollup_rebuild_recipients(affected)",
-      `SELECT donor_rollup_rebuild_recipients(ARRAY(SELECT id FROM _affected))`,
-      STEP_BUDGET_S["donor_rollup"]!,
-    );
+    // FIX-964: in a resume the manifest may be empty (post-commit the affected
+    // set is unrecoverable unless handed in via --officials). Say what is being
+    // skipped rather than calling an RPC with an empty array and reading the
+    // no-op as success.
+    if (officials > 0) {
+      await budgeted(
+        client,
+        "donor_rollup_rebuild_recipients(affected)",
+        `SELECT donor_rollup_rebuild_recipients(ARRAY(SELECT id FROM _affected))`,
+        STEP_BUDGET_S["donor_rollup"]!,
+      );
+    } else {
+      console.log(
+        `  SKIPPED donor_rollup_rebuild_recipients — no affected officials in scope ` +
+          `(pass --officials <uuid,…> to run it)`,
+      );
+    }
     await budgeted(
       client,
       "rebuild_official_donation_totals()",
@@ -203,6 +240,14 @@ async function runRollups(client: Client, prod: boolean): Promise<void> {
     );
 
     const chunks = Math.ceil(donors / DONOR_CHUNK);
+    if (chunks === 0) {
+      console.log(
+        `  SKIPPED financial_entity_donation_totals_rebuild + donor_party_rollup_rebuild_donors —\n` +
+          `    no donor manifest. The donor set is read off the DELETED rows and a DELETE leaves\n` +
+          `    no trace, so it cannot be reconstructed after the commit (FIX-964). Their totals\n` +
+          `    stay stale until a manifest exists or a full rebuild runs.`,
+      );
+    }
     for (let i = 0; i < chunks; i++) {
       await budgeted(
         client,
@@ -269,21 +314,132 @@ async function runRollups(client: Client, prod: boolean): Promise<void> {
   } catch (err) {
     if (!(err instanceof BudgetExceeded)) throw err;
     console.error(`\n✗ ROLLUPS ABORTED — ${err.message}`);
+    // FIX-964: this message is only true because --rollups-only no longer
+    // re-derives the manifest. Keep the --officials hint attached to it — the
+    // official-scoped step is the one the resume cannot infer for itself.
+    const officialsHint =
+      officials > 0
+        ? `\n  Re-scope the official step with: --officials ${await affectedIdList(client)}`
+        : "";
     console.error(
       `  The delete is COMMITTED and correct; only rollups are incomplete.\n` +
-        `  Resume with --rollups-only${prod ? " (prod)" : ""}.`,
+        `  Resume with --rollups-only${prod ? " --allow-prod" : ""}.` +
+        officialsHint,
     );
   }
 }
 
-async function main(): Promise<void> {
-  const argv = process.argv.slice(2);
+/** Comma-joined affected-official ids, for pasting into a `--officials` resume. */
+async function affectedIdList(client: Client): Promise<string> {
+  try {
+    const rows = await q<{ id: string }>(client, `SELECT id::text FROM _affected ORDER BY id`);
+    return rows.map((r) => r.id).join(",");
+  } catch {
+    return "<_affected unavailable>";
+  }
+}
+
+export type RunMode = "vacuum-only" | "mvs-only" | "rollups-only" | "full";
+
+export interface ModeSelection {
+  mode: RunMode;
+  /** Commits rather than rolling back. Every resume mode implies it. */
+  apply: boolean;
+  /** Whether the FIX-930 suspect derivation runs. Only `full` derives. */
+  derives: boolean;
+  officialIds: string[];
+}
+
+/**
+ * FIX-964 — single place that decides what a given argv actually does, so the
+ * "does this mode derive?" question is answerable without a database. The bug
+ * this encodes against: `--rollups-only` used to answer `derives: true`, which
+ * post-commit means "find 0 suspects and exit before any rollup step".
+ */
+export function selectMode(argv: string[]): ModeSelection {
   const rollupsOnly = argv.includes("--rollups-only");
   const mvsOnly = argv.includes("--mvs-only");
   const vacuumOnly = argv.includes("--vacuum-only");
-  const apply = argv.includes("--apply") || rollupsOnly || mvsOnly || vacuumOnly;
+  const mode: RunMode = vacuumOnly
+    ? "vacuum-only"
+    : mvsOnly
+      ? "mvs-only"
+      : rollupsOnly
+        ? "rollups-only"
+        : "full";
+  return {
+    mode,
+    apply: argv.includes("--apply") || mode !== "full",
+    derives: mode === "full",
+    officialIds: parseOfficialsArg(argv),
+  };
+}
+
+/** `--officials a,b,c` (repeatable). Rejects anything that is not a UUID. */
+export function parseOfficialsArg(argv: string[]): string[] {
+  const raw: string[] = [];
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i]!;
+    if (a.startsWith("--officials=")) raw.push(a.slice("--officials=".length));
+    else if (a === "--officials" && argv[i + 1]) {
+      raw.push(argv[i + 1]!);
+      i++;
+    }
+  }
+  const ids = raw
+    .flatMap((s) => s.split(","))
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const bad = ids.filter(
+    (s) => !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s),
+  );
+  if (bad.length > 0) {
+    throw new Error(`--officials contains non-UUID value(s): ${bad.join(", ")}`);
+  }
+  return [...new Set(ids)];
+}
+
+/**
+ * FIX-964 — phase-2 resume. Stands up the two manifest temp tables the rollup
+ * steps read, WITHOUT re-deriving anything: `_affected` from `--officials` (or
+ * empty), `_donor` always empty. Then runs the same phase 2 → phase 3 sequence
+ * the apply path runs, so a resume finishes the run rather than half of it.
+ */
+async function runRollupsResume(client: Client, prod: boolean, officialIds: string[]): Promise<void> {
+  console.log("\n── RESUME (--rollups-only): no derivation, no delete ────");
+  console.log(`  officials handed in: ${officialIds.length}`);
+  await client.query(`
+    DROP TABLE IF EXISTS _affected;
+    CREATE TEMP TABLE _affected (id uuid PRIMARY KEY);
+    DROP TABLE IF EXISTS _donor;
+    CREATE TEMP TABLE _donor (id uuid PRIMARY KEY);
+  `);
+  if (officialIds.length > 0) {
+    await client.query(`INSERT INTO _affected (id) SELECT unnest($1::uuid[])`, [officialIds]);
+  }
+  await runRollups(client, prod);
+  await runMvsAndVacuum(client);
+}
+
+async function main(): Promise<void> {
+  const argv = process.argv.slice(2);
+  let selection: ModeSelection;
+  try {
+    selection = selectMode(argv);
+  } catch (err) {
+    console.error(`✗ ${err instanceof Error ? err.message : String(err)}`);
+    process.exit(1);
+  }
+  const { mode, apply, officialIds } = selection;
+  const rollupsOnly = mode === "rollups-only";
+  const mvsOnly = mode === "mvs-only";
+  const vacuumOnly = mode === "vacuum-only";
   const allowProd = argv.includes("--allow-prod");
   const prod = isProd();
+  if (officialIds.length > 0 && !rollupsOnly) {
+    console.error("✗ --officials is only meaningful with --rollups-only (FIX-964 resume scope).");
+    process.exit(1);
+  }
 
   if (prod && !allowProd) {
     console.error(
@@ -303,7 +459,11 @@ async function main(): Promise<void> {
   console.log(`# FIX-934 phase 2 — remediate CROSS-PERSON misattribution`);
   console.log(`Env:        ${envLabel()}`);
   console.log(`Connection: ${dbUrl.replace(/:[^:@/]+@/, ":***@")}`);
-  console.log(`Mode:       ${apply ? "APPLY (COMMIT)" : "DRY-RUN (ROLLBACK)"}\n`);
+  console.log(
+    `Mode:       ${mode}` +
+      (mode === "full" ? ` — ${apply ? "APPLY (COMMIT)" : "DRY-RUN (ROLLBACK)"}` : " — resume, no derivation, no delete") +
+      "\n",
+  );
 
   const client = new Client({ connectionString: dbUrl });
   await client.connect();
@@ -318,6 +478,13 @@ async function main(): Promise<void> {
   }
   if (mvsOnly) {
     await runMvsAndVacuum(client);
+    await client.end();
+    return;
+  }
+  // FIX-964: short-circuit BEFORE the derivation, like the other two resume
+  // modes. Deriving here is what made the advertised resume path a no-op.
+  if (rollupsOnly) {
+    await runRollupsResume(client, prod, officialIds);
     await client.end();
     return;
   }
@@ -617,7 +784,11 @@ async function main(): Promise<void> {
   await client.end();
 }
 
-main().catch((err) => {
-  console.error("Fatal:", err instanceof Error ? err.message : String(err));
-  process.exit(1);
-});
+// Only run when invoked as a script (mirrors mark-killed.ts). Importing this
+// module for the FIX-964 unit tests must not open a connection or exit.
+if (require.main === module) {
+  main().catch((err) => {
+    console.error("Fatal:", err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  });
+}

@@ -10,7 +10,7 @@
  */
 
 import { createAdminClient } from "@civitics/db";
-import { getDbSizeMb, getLastSync, captureRssMb } from "./sync-log";
+import { getDbSizeMb, getLastSync, captureRssMb, githubRunIdentity } from "./sync-log";
 import { runRegulationsPipeline } from "./regulations";
 import { runFecBulkPipeline } from "./fec-bulk";
 import {
@@ -468,6 +468,12 @@ export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<Nigh
   // write below (one row per phase per night, not two). metadata.phase scopes
   // mark-killed so a fec-phase kill is still detected after the now-decoupled
   // enrichment-phase writes its own terminal row for the same date.
+  //
+  // FIX-971a: this row does NOT go through startSync(), so the run-identity
+  // capture added there does not reach it — and `nightly_cron` is precisely
+  // the pipeline mark-killed's phase-scoped guard operates on. Stamp it here
+  // too, and again on the terminal write below (which REPLACES metadata
+  // wholesale and would otherwise drop it).
   let runningRowId = "";
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -477,7 +483,7 @@ export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<Nigh
         pipeline:   "nightly_cron",
         status:     "running",
         started_at: startedAt.toISOString(),
-        metadata:   { phase },
+        metadata:   { phase, ...githubRunIdentity() },
       })
       .select("id")
       .single();
@@ -1150,7 +1156,10 @@ export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<Nigh
       rows_inserted: Object.values(results.pipelines).reduce(
         (sum, p) => sum + (p?.rows_added ?? 0), 0
       ),
-      metadata: { ...results, peak_rss_mb: captureRssMb(), phase },
+      // FIX-971a: this UPDATE replaces `metadata` wholesale, so the run
+      // identity written on the start-row has to be re-applied here or the
+      // terminal row loses its only join key back to the GHA record.
+      metadata: { ...results, peak_rss_mb: captureRssMb(), phase, ...githubRunIdentity() },
     };
     if (runningRowId) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any

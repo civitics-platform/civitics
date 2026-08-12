@@ -81,6 +81,41 @@ function installExitHandlers(): void {
   );
 }
 
+/**
+ * FIX-971a — launcher-side run identity.
+ *
+ * For pg_cron work `cron.job_run_details` records start/end/status from the
+ * LAUNCHER's side, independently of anything the job wrote about itself, so a
+ * job that died without closing its own row can still be timed exactly. For
+ * GitHub-Actions work there is no equivalent: `data_sync_log` is the only
+ * record and it is self-reported. The truth does exist externally — the GHA API
+ * returns `run_started_at` / `updated_at` / `conclusion` per run — but it could
+ * never be joined after the fact because no run identifier was recorded
+ * anywhere. That is how FIX-944's four failing runs came to be reported as
+ * ~20h when they were 6h `statement_timeout` deaths; the 14h difference was
+ * reaper latency and there was no second source to correct it with.
+ *
+ * Stamping these three at row-creation time makes every future row joinable to
+ * the authoritative external record forever:
+ *
+ *   gh api /repos/{owner}/{repo}/actions/runs/{github_run_id}
+ *   gh api /repos/{owner}/{repo}/actions/runs/{github_run_id}/jobs
+ *
+ * Empty off CI (nothing is written), so local runs are unchanged.
+ */
+export function githubRunIdentity(
+  env: NodeJS.ProcessEnv = process.env,
+): Record<string, string> {
+  const identity: Record<string, string> = {};
+  const runId = env["GITHUB_RUN_ID"];
+  const runAttempt = env["GITHUB_RUN_ATTEMPT"];
+  const workflow = env["GITHUB_WORKFLOW"];
+  if (runId) identity["github_run_id"] = runId;
+  if (runAttempt) identity["github_run_attempt"] = runAttempt;
+  if (workflow) identity["github_workflow"] = workflow;
+  return identity;
+}
+
 // RSS at completion time, not peak across the run. Acceptable proxy for
 // bulk-streaming pipelines whose RSS doesn't shrink during the process
 // lifetime. True-peak instrumentation (setInterval sampler) is deferred.
@@ -95,9 +130,19 @@ export async function startSync(pipeline: string): Promise<string> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = createAdminClient() as any;
   try {
+    // FIX-971a: the run identity goes on at INSERT, not at completion — a run
+    // that never reaches completeSync/failSync is exactly the one whose true
+    // stop time has to be recovered from the GHA API later.
+    const identity = githubRunIdentity();
+    const row: Record<string, unknown> = {
+      pipeline,
+      status: "running",
+      started_at: new Date().toISOString(),
+    };
+    if (Object.keys(identity).length > 0) row["metadata"] = identity;
     const { data, error } = await db
       .from("data_sync_log")
-      .insert({ pipeline, status: "running", started_at: new Date().toISOString() })
+      .insert(row)
       .select("id")
       .single();
     if (error) throw new Error(error.message);

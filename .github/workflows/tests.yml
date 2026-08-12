@@ -108,6 +108,18 @@ jobs:
       - name: Render-timeout guard
         run: pnpm check:render-timeouts
 
+      # Blocking (FIX-1000) — flags two workflow jobs that run the SAME work
+      # under different NODE_OPTIONS / timeout-minutes with nothing recording
+      # why. nightly.yml's fec-phase and fec-backfill.yml both reach
+      # runFecBulkPipeline() → streamIndiv; FIX-961 raised the heap on the one
+      # where the OOM was observed and fec-backfill.yml went on claiming for
+      # months that it mirrored the other verbatim. Parity, not tuning: a
+      # deliberate divergence passes once it carries an adjacent
+      # `# workflow-parity-waiver: <reason>` comment. Pure text scan, no DB or
+      # secrets needed.
+      - name: Workflow resource-parity guard
+        run: pnpm check:workflow-parity
+
       # Blocking — run-tests.mjs discovers every src/**/*.test.ts under @civitics/data
       # (source-priority drift guard, congress reconcile, fec-bulk indiv fingerprint).
       - name: Unit tests

@@ -5855,6 +5855,7 @@ export type Database = {
           last_run_at: string | null
           max_duration_ms: number | null
           max_peak_rss_mb: number | null
+          measured_runs_30d: number | null
           p50_duration_ms: number | null
           p95_duration_ms: number | null
           p95_peak_rss_mb: number | null
@@ -5862,6 +5863,7 @@ export type Database = {
           runs_30d: number | null
           success_rate_pct: number | null
           successful_runs_30d: number | null
+          zero_span_runs_30d: number | null
         }
         Relationships: []
       }
