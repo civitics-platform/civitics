@@ -123,6 +123,7 @@ import {
   loadRunState,
   saveRunState,
   clearRunState,
+  saveCycleStageWatermark,
   newCheckpointThrottle,
   shouldPersistCheckpoint,
   describeCheckpointStats,
@@ -466,6 +467,54 @@ export function hasRetiredClaim(o: OfficialRecord, key: string): boolean {
   return o.source_ids["merged_fec_candidate_id"] === key;
 }
 
+/**
+ * FIX-937 — the only `role_title`s that can legitimately hold an FEC
+ * House / Senate / President CAND_ID.
+ *
+ * WHY A ROLE ALLOW-LIST AND NOT THE `short_name` SYMPTOM. The bullet found the
+ * population via jurisdiction `short_name` values that are not two-letter state
+ * codes (`AUS`, `SEA`, `SF`, `US`), because such an official can never satisfy
+ * `matchRow`'s state narrowing and therefore only ever bound through the
+ * national-pool fallback FIX-936 has now closed. But `short_name` is a
+ * *consequence* of where the row came from, not a statement about the seat:
+ * `US` is also the jurisdiction of every presidential candidate the cn{yy}
+ * stage mints, which IS federally electable. The stable signal is the role.
+ *
+ * The read side already refuses these ids — `buildMatchIndex` pass 2 honours a
+ * stored `fec_id` only when its FEC prefix matches the role (Senator→S,
+ * Representative→H), and `loadOfficialsByFecIds` mirrors that with a
+ * President→P arm. The write side had NO role check at all, so the pipeline
+ * wrote a binding by surname, refused to read it back, and re-derived it by
+ * name on the next run, forever. This list is that asymmetry closed: the same
+ * vocabulary, applied where the binding is MADE.
+ *
+ * EXACT strings, never `includes`/`ILIKE`. `"State Senator"` contains
+ * `"Senator"`; `"Vice President, Marketing"` (a real USPS row on the clone)
+ * contains `"President"`. An allow-list also fails in the recoverable
+ * direction — an unrecognised federal role is refused a name match, which
+ * lands in FIX-935's UNIQUE HOLDER branch (write the id later), rather than
+ * binding someone else's donors (FIX-934).
+ *
+ * `President` / `Vice President` match nothing on the clone today (the sitting
+ * President is not carried as an `officials` row); they are listed so a future
+ * seed does not silently fall out of the pool.
+ */
+export const FEC_ELECTABLE_ROLE_TITLES: ReadonlySet<string> = new Set([
+  "Senator",
+  "Representative",
+  "President",
+  "Vice President",
+  // Minted by the cn{yy} stage — see roleTitleFor() in ./candidates.ts.
+  "Candidate for Senator",
+  "Candidate for Representative",
+  "Candidate for President",
+]);
+
+/** FIX-937 — may this official hold an FEC candidate id at all? */
+export function isFecElectableRole(o: OfficialRecord): boolean {
+  return FEC_ELECTABLE_ROLE_TITLES.has((o.role_title ?? "").trim());
+}
+
 export function buildMatchIndex(officials: OfficialRecord[]): MatchIndex {
   const byFecId    = new Map<string, string>();
   const byLastName = new Map<string, OfficialRecord[]>();
@@ -519,11 +568,32 @@ export function buildMatchIndex(officials: OfficialRecord[]): MatchIndex {
     // Mismatched prefix (old race) — skip; don't pollute the index
   }
 
+  // FIX-937 — the NAME pool is federal-electable only. A city council member or
+  // an Article III judge holds no federal seat, so an H*/S*/P* CAND_ID can never
+  // legitimately be theirs; excluding them here is both cheaper and stricter
+  // than any name heuristic downstream. The judges arrive via CourtListener and
+  // the municipal rows via Legistar — neither population has an FEC identity to
+  // match. (The byFecId passes above are deliberately untouched: they resolve a
+  // STORED, authoritative id, and pass 2 already enforces the role/prefix rule.)
+  //
+  // Excluding at pool-CONSTRUCTION time, not per row, is what keeps the FIX-929
+  // ambiguity guard honest — the same reasoning as FIX-955's retired-claim
+  // filter. A judge sitting in a surname pool inflates `firstPool.length` and
+  // can suppress a legitimate lone match; dropping the judge is allowed to
+  // reveal that match, because the judge was never a candidate for it.
+  let roleExcluded = 0;
   for (const o of officials) {
+    if (!isFecElectableRole(o)) { roleExcluded++; continue; }
     const key  = normalizeLastName(o.last_name ?? o.full_name);
     const list = byLastName.get(key) ?? [];
     list.push(o);
     byLastName.set(key, list);
+  }
+  if (roleExcluded > 0) {
+    console.log(
+      `    FIX-937: ${roleExcluded} of ${officials.length} officials excluded from the ` +
+        `name-match pool (role_title is not federally electable)`,
+    );
   }
 
   if (collisions.length > 0) {
@@ -562,7 +632,99 @@ function officialFirstNameKey(o: OfficialRecord): string {
   return firstNameKey(o.first_name) || firstNameKey(o.full_name.split(/\s+/)[0]);
 }
 
-export function matchRow(row: WeBallRow, index: MatchIndex): MatchResult | null {
+/** Why a weball row was refused a name match, for the per-cycle telemetry line. */
+export type NamePoolRefusal =
+  | "no-surname-match"  // nobody in the pool carries that surname at all
+  | "no-state-match";   // FIX-936: surname pool exists, but nobody is in that state
+
+export interface NamePoolSelection {
+  /** Officials the first-name gate may run over. Empty ⇒ refuse to bind. */
+  pool: OfficialRecord[];
+  /** Non-null exactly when `pool` is empty. */
+  refusal: NamePoolRefusal | null;
+  /** True when state narrowing actually ran and produced this pool. */
+  narrowedByState: boolean;
+}
+
+/**
+ * FIX-936 — pick the pool the weball name fallback may bind from. Pure, so the
+ * refusal rule is testable without a pipeline run or a DB.
+ *
+ * THE DEFECT: this was `statePool.length > 0 ? statePool : candidates`. When
+ * state narrowing yielded NOTHING the pool silently widened back to every
+ * official in the country with that surname — the inverse of the intended
+ * safety property, because "narrowing failed" is precisely the case where a
+ * name match is least trustworthy. FIX-929's first-name gate mitigates it but
+ * does not remove it: a coincidental national single-match whose first names
+ * happen to agree still binds, and the FIX-930 audit showed first names
+ * agreeing by coincidence is common at national scale.
+ *
+ * THE RULE: no state match ⇒ no name match. Strict, not corroborated. The cost
+ * asymmetry decides it — a refused bind lands in FIX-935's UNIQUE HOLDER branch
+ * (the id gets written later; non-destructive and recoverable), while a wrong
+ * bind renders another person's donors under an official's name and, because
+ * the writer upserts on (relationship_type, from_id, to_id, cycle_year), a
+ * later corrected binding writes a NEW row and never retires the bad one
+ * (FIX-934). A corroborator-based alternative (ccl committee linkage, district
+ * agreement, an existing external_source_refs binding) is deliberately NOT
+ * built here.
+ *
+ * RECORDED DECISION — a weball row with a BLANK CAND_OFFICE_ST keeps the
+ * un-narrowed pool. Narrowing was not attempted there, so there is no state
+ * disagreement to act on; that is a different epistemic position from "we
+ * checked and nobody with this surname sits in that state". FIX-929's
+ * first-name gate is the only guard on that path, exactly as before this fix.
+ * It is counted separately in the telemetry (`blankState`) so the decision can
+ * be revisited on evidence rather than on argument.
+ */
+export function selectNameFallbackPool(
+  candidates: OfficialRecord[],
+  candOfficeSt: string,
+): NamePoolSelection {
+  if (candidates.length === 0) {
+    return { pool: [], refusal: "no-surname-match", narrowedByState: false };
+  }
+  if (!candOfficeSt) {
+    return { pool: candidates, refusal: null, narrowedByState: false };
+  }
+  const statePool = candidates.filter(
+    (c) => (c.state ?? "").toUpperCase() === candOfficeSt,
+  );
+  if (statePool.length === 0) {
+    return { pool: [], refusal: "no-state-match", narrowedByState: true };
+  }
+  return { pool: statePool, refusal: null, narrowedByState: true };
+}
+
+/** Per-cycle counters for the FIX-936 / FIX-937 refusal log line. */
+export interface MatchRefusalStats {
+  /** Surname is not in the (federal-electable) name pool at all. */
+  noSurnameMatch: number;
+  /** FIX-936: surname pool exists but nobody sits in the FEC row's state. */
+  noStateMatch: number;
+  /** FEC row carried no CAND_OFFICE_ST, so narrowing never ran. */
+  blankState: number;
+  /** FIX-929: pool survived, but no unique first-name agreement. */
+  noFirstNameAgreement: number;
+}
+
+export function newMatchRefusalStats(): MatchRefusalStats {
+  return { noSurnameMatch: 0, noStateMatch: 0, blankState: 0, noFirstNameAgreement: 0 };
+}
+
+export function describeMatchRefusals(s: MatchRefusalStats): string {
+  return (
+    `refused: ${s.noSurnameMatch} no-surname, ${s.noStateMatch} no-state-match (FIX-936), ` +
+    `${s.noFirstNameAgreement} no-first-name-agreement (FIX-929); ` +
+    `${s.blankState} row(s) had a blank CAND_OFFICE_ST`
+  );
+}
+
+export function matchRow(
+  row: WeBallRow,
+  index: MatchIndex,
+  stats?: MatchRefusalStats,
+): MatchResult | null {
   // 1. Direct stored fec_id match
   const directId = index.byFecId.get(row.candId);
   if (directId) return { officialId: directId, fecId: row.candId, byFecId: true };
@@ -579,14 +741,18 @@ export function matchRow(row: WeBallRow, index: MatchIndex): MatchResult | null 
   const candidates = (index.byLastName.get(key) ?? []).filter(
     (c) => !hasRetiredClaim(c, row.candId),
   );
-  if (candidates.length === 0) return null;
 
-  // Narrow by state if available
-  const statePool =
-    row.candOfficeSt
-      ? candidates.filter((c) => (c.state ?? "").toUpperCase() === row.candOfficeSt)
-      : candidates;
-  const pool = statePool.length > 0 ? statePool : candidates;
+  // FIX-936 — "no state match ⇒ no name match" (see selectNameFallbackPool).
+  const selection = selectNameFallbackPool(candidates, row.candOfficeSt);
+  if (stats && !selection.narrowedByState && row.candOfficeSt === "") stats.blankState++;
+  if (selection.refusal) {
+    if (stats) {
+      if (selection.refusal === "no-surname-match") stats.noSurnameMatch++;
+      else stats.noStateMatch++;
+    }
+    return null;
+  }
+  const pool = selection.pool;
 
   // FIX-929 — first names are compared on EVERY name-fallback match, including
   // a pool that state-narrowing already collapsed to one.
@@ -611,13 +777,17 @@ export function matchRow(row: WeBallRow, index: MatchIndex): MatchResult | null 
   // "PRYCE, B", or a blank name field) firstNameKey returns "" and nothing
   // matches — skip rather than guess.
   const fecFirst = firstNameKey(first);
-  if (!fecFirst) return null;
+  if (!fecFirst) {
+    if (stats) stats.noFirstNameAgreement++;
+    return null;
+  }
 
   const firstPool = pool.filter((c) => officialFirstNameKey(c) === fecFirst);
   if (firstPool.length === 1) {
     return { officialId: firstPool[0].id, fecId: row.candId, byFecId: false };
   }
 
+  if (stats) stats.noFirstNameAgreement++;
   return null; // no first-name agreement, or still ambiguous — skip
 }
 
@@ -659,6 +829,11 @@ export function perCycleNameFallback(
   const pool = officials
     .filter((o) => {
       if (alreadyIndexed.has(o.id)) return false;
+      // FIX-937 — same federal-electable gate buildMatchIndex applies to
+      // byLastName. This loop takes `officials` directly rather than the index,
+      // so it is a SECOND pool that has to be filtered independently; that is
+      // exactly the enumeration gap FIX-960 was filed for.
+      if (!isFecElectableRole(o)) return false;
       // FIX-960 guard 1 — broad key-presence exclusion (see doc comment).
       if (o.source_ids["merged_fec_candidate_id"] !== undefined) return false;
       return !o.source_ids["fec_candidate_id"] && !o.source_ids["fec_id"];
@@ -1138,8 +1313,11 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
 
       // Step 3: Match weball → officials, growing index across cycles
       let cycMatchedByFecId = 0, cycMatchedByName = 0, cycNotMatched = 0;
+      // FIX-936/FIX-937 — why rows were refused, so the first post-deploy run
+      // shows the refusal mix instead of one opaque "not matched" count.
+      const refusals = newMatchRefusalStats();
       for (const row of weballRows) {
-        const match = matchRow(row, index);
+        const match = matchRow(row, index, refusals);
         if (!match) { cycNotMatched++; continue; }
         if (match.byFecId) {
           cycMatchedByFecId++;
@@ -1161,6 +1339,7 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
       matchedByName  += cycMatchedByName;
       notMatched     += cycNotMatched;
       console.log(`    Matched by fec_id: ${cycMatchedByFecId}  by name: ${cycMatchedByName}  not matched: ${cycNotMatched}`);
+      console.log(`    ${describeMatchRefusals(refusals)}`);
 
       // Name-fallback for officials with no stored FEC ID at all. Re-run per
       // cycle — a senator who didn't run in 2024 may appear in 2020/2022's
@@ -1527,6 +1706,14 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
                   if (!cycleActiveState) return;
                   markStageComplete(cycleActiveState, stage);
                   await saveRunState(db, cycleActiveState);
+                  // FIX-957: the durable half. Reached only after the stage's
+                  // writer returned without throwing, so a killed or partial
+                  // stage never advances its stamp. See run-state.ts for why
+                  // this lives under its own pipeline_state key rather than in
+                  // the (deliberately ephemeral) resume state.
+                  await saveCycleStageWatermark(
+                    db, CYCLE, stage, cycleActiveState.fec_last_modified,
+                  );
                   // FIX-996: one summary line per cursored stage. The
                   // 2026-08-03..08-08 investigation had to derive save cadence
                   // from cursor arithmetic because nothing counted them.
@@ -2011,6 +2198,12 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
             if (cycleActiveState) {
               markStageComplete(cycleActiveState, "independent-expenditures");
               await saveRunState(db, cycleActiveState);
+              // FIX-957 — same success-only stamp as completeStage(); this site
+              // is outside that helper's scope, which is exactly the shape of
+              // enumeration gap FIX-960 was filed for.
+              await saveCycleStageWatermark(
+                db, CYCLE, "independent-expenditures", cycleActiveState.fec_last_modified,
+              );
             }
           } catch (err) {
             const msg = errMsg(err);

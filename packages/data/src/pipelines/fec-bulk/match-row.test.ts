@@ -23,6 +23,9 @@ import {
   buildMatchIndex,
   matchRow,
   perCycleNameFallback,
+  selectNameFallbackPool,
+  newMatchRefusalStats,
+  isFecElectableRole,
   type OfficialRecord,
   type WeBallRow,
 } from "./index";
@@ -518,4 +521,255 @@ test("FIX-960 when an elected row and a stub share a name key, elected wins rega
     assert.equal(index.byFecId.get("S4IN00196"), electedBanks.id, "elected takes the binding");
     assert.deepEqual(bound, [{ officialId: electedBanks.id, fecId: "S4IN00196" }]);
   }
+});
+
+// ---------------------------------------------------------------------------
+// FIX-936 — "no state match ⇒ no name match"
+//
+// `statePool.length > 0 ? statePool : candidates` widened the pool back to
+// every same-surname official in the COUNTRY whenever state narrowing came up
+// empty — the inverse of the intended safety property. FIX-929's first-name
+// gate mitigates but does not remove it: a coincidental national single-match
+// whose first names agree still bound.
+//
+// The refusal is the cheap side of the asymmetry: it lands in FIX-935's UNIQUE
+// HOLDER branch (write the id later, non-destructive), where a wrong bind lands
+// in FIX-934's (another person's donors under an official's name, permanent
+// until hand-cleaned because the writer never retires the old row).
+// ---------------------------------------------------------------------------
+
+test("FIX-936 an empty state pool refuses to bind, even on a national single match", () => {
+  // One Ossoff in the whole index — but he sits in GA and the FEC row says TX.
+  // Pre-fix: statePool empty, pool widens to [ossoff], first names agree
+  // (JON/JON), bound. That is the national-pool coincidence, and it is exactly
+  // how a wrong CAND_ID gets attached to a real person.
+  const ossoff = official(
+    "1376dc1e-f697-40b2-8c0f-780f8fe8ea00",
+    "Jon Ossoff", "Jon", "Ossoff", "Senator", "GA",
+  );
+  const index = buildMatchIndex([ossoff]);
+
+  assert.equal(
+    matchRow(weball("S8TX00999", "OSSOFF, JON", "TX"), index),
+    null,
+    "surname + first name agree nationally, but no GA official is in TX — refuse",
+  );
+});
+
+test("FIX-936 the refusal is recorded as no-state-match, not as no-surname-match", () => {
+  const ossoff = official(
+    "1376dc1e-f697-40b2-8c0f-780f8fe8ea00",
+    "Jon Ossoff", "Jon", "Ossoff", "Senator", "GA",
+  );
+  const index = buildMatchIndex([ossoff]);
+  const stats = newMatchRefusalStats();
+
+  matchRow(weball("S8TX00999", "OSSOFF, JON", "TX"), index, stats);
+  assert.equal(stats.noStateMatch, 1);
+  assert.equal(stats.noSurnameMatch, 0);
+  assert.equal(stats.noFirstNameAgreement, 0);
+
+  // An unknown surname is a DIFFERENT refusal and must not inflate FIX-936's count.
+  matchRow(weball("H0GA00001", "NOTAREALSURNAME, JON", "GA"), index, stats);
+  assert.equal(stats.noStateMatch, 1);
+  assert.equal(stats.noSurnameMatch, 1);
+});
+
+test("FIX-936 a non-empty state pool behaves exactly as before", () => {
+  // Every FIX-929 property still holds on the narrowed pool: agreement binds,
+  // disagreement refuses, ambiguity refuses.
+  const index = buildMatchIndex([
+    SHONTEL,
+    { ...SHERROD, source_ids: {} },
+    official("00000000-0000-0000-0000-0000000000b3", "Bob Brown", "Bob", "Brown", "Representative", "OH"),
+  ]);
+
+  assert.equal(
+    matchRow(weball("H2OH11169", "BROWN, SHONTEL M", "OH"), index)?.officialId,
+    SHONTEL.id,
+    "state pool of three, one first-name agreement — unchanged",
+  );
+  assert.equal(
+    matchRow(weball("S6OH00163", "BROWN, SHERROD", "OH"), index)?.officialId,
+    SHERROD.id,
+    "the sibling in the same state pool still resolves",
+  );
+});
+
+test("FIX-936 the FIX-929 first-name gate still applies ON TOP of the state gate", () => {
+  // State narrowing succeeds (one OH Brown), so FIX-936 lets the row through
+  // and FIX-929 is what refuses it. Both gates, in order.
+  const index = buildMatchIndex([SHONTEL]);
+  const stats = newMatchRefusalStats();
+
+  assert.equal(
+    matchRow(SHERROD_WEBALL, index, stats),
+    null,
+    "a surviving single-element state pool is still first-name gated",
+  );
+  assert.equal(stats.noStateMatch, 0, "this is a FIX-929 refusal, not a FIX-936 one");
+  assert.equal(stats.noFirstNameAgreement, 1);
+});
+
+test("FIX-936 selectNameFallbackPool is pure and reports its own reasoning", () => {
+  const ga = official("00000000-0000-0000-0000-00000000aa01", "Jon Ossoff", "Jon", "Ossoff", "Senator", "GA");
+  const tx = official("00000000-0000-0000-0000-00000000aa02", "Jane Ossoff", "Jane", "Ossoff", "Senator", "TX");
+
+  assert.deepEqual(selectNameFallbackPool([], "GA"), {
+    pool: [], refusal: "no-surname-match", narrowedByState: false,
+  });
+  assert.deepEqual(selectNameFallbackPool([ga], "TX"), {
+    pool: [], refusal: "no-state-match", narrowedByState: true,
+  });
+  const hit = selectNameFallbackPool([ga, tx], "TX");
+  assert.deepEqual(hit.pool, [tx], "narrowing keeps only the in-state officials");
+  assert.equal(hit.refusal, null);
+  assert.equal(hit.narrowedByState, true);
+});
+
+test("FIX-936 RECORDED DECISION — a blank CAND_OFFICE_ST keeps the un-narrowed pool", () => {
+  // Narrowing was never ATTEMPTED here, so there is no state disagreement to
+  // act on — a different position from "we checked and nobody is in that
+  // state". FIX-929 remains the only guard on this path, unchanged by FIX-936.
+  // Counted separately so the decision can be revisited on evidence.
+  const ossoff = official(
+    "00000000-0000-0000-0000-00000000bb01", "Jon Ossoff", "Jon", "Ossoff", "Senator", "GA",
+  );
+  const index = buildMatchIndex([ossoff]);
+  const stats = newMatchRefusalStats();
+
+  const match = matchRow(weball("S8GA00180", "OSSOFF, JON", ""), index, stats);
+  assert.equal(match?.officialId, ossoff.id, "no state on the FEC row keeps pre-FIX-936 behavior");
+  assert.equal(stats.blankState, 1, "but it is counted, so a rider can be filed on evidence");
+});
+
+// ---------------------------------------------------------------------------
+// FIX-937 (pool half) — non-federal-role officials are not in the match pool
+//
+// The write path had NO role check: `matchRow` bound by surname and wrote the
+// id via newFecIds, while the READ side (buildMatchIndex pass 2 /
+// loadOfficialsByFecIds) refuses the very same id on a role/prefix mismatch —
+// so the pipeline wrote a binding, refused to read it back, and re-derived it
+// by name on the next run, forever.
+//
+// Fixtures are shaped like the bullet's live cases: a Seattle council member
+// holding an H* id (Joy Hollingsworth / H6IN09176, Trey Hollingsworth's), and a
+// sitting federal judge with no fec_id stored at all (David Porter, holding
+// Katherine Porter's money).
+//
+// The EXISTING-DATA cleanup is deliberately not here — it overlaps FIX-934's
+// CROSS-PERSON manifest and needs a prod window.
+// ---------------------------------------------------------------------------
+
+const JOY_HOLLINGSWORTH: OfficialRecord = {
+  ...official(
+    "00000000-0000-0000-0000-0000000009a1",
+    "Joy Hollingsworth", "Joy", "Hollingsworth",
+    "Council Member",
+    "SEA",                       // never satisfies state narrowing — FIX-936's half
+    { fec_id: "H6IN09176" },     // Trey Hollingsworth's; written by the bug under test
+  ),
+  tier: "elected",
+};
+
+const DAVID_PORTER_JUDGE: OfficialRecord = {
+  ...official(
+    "00000000-0000-0000-0000-0000000009a2",
+    "David Porter", "David", "Porter", "Federal Judge", "US",
+  ),
+  tier: "elected",
+};
+
+test("FIX-937 a council member never enters the name pool", () => {
+  const index = buildMatchIndex([JOY_HOLLINGSWORTH]);
+  assert.equal(
+    index.byLastName.get("HOLLINGSWORTH"),
+    undefined,
+    "a municipal row holds no federal seat — it is not a candidate for any CAND_ID",
+  );
+  assert.equal(
+    matchRow(weball("H6IN09176", "HOLLINGSWORTH, JOY", "IN"), index),
+    null,
+    "even a perfect surname + first-name agreement must not bind a non-federal role",
+  );
+});
+
+test("FIX-937 the read-side refusal and the write-side pool now agree", () => {
+  // buildMatchIndex pass 2 already refused this stored id (H* prefix on a role
+  // that is not Representative). Before this fix the NAME pool re-derived it
+  // every run — write it, refuse to read it, re-derive it. Both sides refuse now.
+  const index = buildMatchIndex([JOY_HOLLINGSWORTH]);
+  assert.equal(index.byFecId.get("H6IN09176"), undefined, "read side refused it (pre-existing)");
+  assert.equal(index.byLastName.get("HOLLINGSWORTH"), undefined, "write side refuses it now");
+});
+
+test("FIX-937 a federal judge with no fec_id is excluded from every name path", () => {
+  const index = buildMatchIndex([DAVID_PORTER_JUDGE]);
+  assert.equal(
+    matchRow(weball("H6CA45123", "PORTER, DAVID", "US"), index),
+    null,
+    "an Article III judge arrives via CourtListener and has no FEC identity to match",
+  );
+  // The per-cycle fallback is a SECOND pool built from `officials` directly, so
+  // it has to be filtered independently — the FIX-960 enumeration gap. Note its
+  // key is `last|first3|state`, so a US-jurisdiction judge lines up exactly with
+  // a presidential (CAND_OFFICE_ST='US') weball row.
+  const bound = perCycleNameFallback(
+    [DAVID_PORTER_JUDGE],
+    [weball("P80001234", "PORTER, DAVID", "US")],
+    index,
+  );
+  assert.deepEqual(bound, [], "the US-jurisdiction judge must not match a US-office weball row");
+  assert.equal(index.byFecId.get("P80001234"), undefined);
+});
+
+test("FIX-937 every federally-electable role stays in the pool", () => {
+  const roles = [
+    "Senator", "Representative",
+    "Candidate for Senator", "Candidate for Representative", "Candidate for President",
+  ];
+  roles.forEach((role, i) => {
+    const o = official(`00000000-0000-0000-0000-00000000090${i}`, "Pat Quill", "Pat", "Quill", role, "GA");
+    const index = buildMatchIndex([o]);
+    assert.equal(
+      matchRow(weball("H0GA00777", "QUILL, PAT", "GA"), index)?.officialId,
+      o.id,
+      `${role} must remain matchable`,
+    );
+  });
+});
+
+test("FIX-937 the allow-list is exact — 'State Senator' is not 'Senator'", () => {
+  // `role.includes("Senator")` (the loadOfficialsByFecIds spelling) would let
+  // this through; so would an ILIKE. A state legislator holds no federal seat.
+  const stateSen = official(
+    "00000000-0000-0000-0000-0000000009b1", "Pat Quill", "Pat", "Quill", "State Senator", "GA",
+  );
+  assert.equal(isFecElectableRole(stateSen), false);
+  assert.equal(matchRow(weball("S0GA00777", "QUILL, PAT", "GA"), buildMatchIndex([stateSen])), null);
+});
+
+test("FIX-937 excluding a non-federal row may REVEAL a legitimate lone match", () => {
+  // Same reasoning as FIX-955's retired-claim filter: a row that was never a
+  // candidate for this binding must not count toward the ambiguity guard.
+  // Pre-fix the judge and the representative both keyed to PORTER/DAV, so the
+  // first-name pool had two members and the real match was suppressed.
+  const davidRep = official(
+    "00000000-0000-0000-0000-0000000009c1", "David Porter", "David", "Porter", "Representative", "US",
+  );
+  const index = buildMatchIndex([DAVID_PORTER_JUDGE, davidRep]);
+  assert.equal(
+    matchRow(weball("H6US00001", "PORTER, DAVID", "US"), index)?.officialId,
+    davidRep.id,
+    "dropping the judge is allowed to unmask the representative",
+  );
+});
+
+test("FIX-937 a null role_title is refused (allow-list default)", () => {
+  const noRole: OfficialRecord = {
+    ...official("00000000-0000-0000-0000-0000000009d1", "Pat Quill", "Pat", "Quill", "Senator", "GA"),
+    role_title: null,
+  };
+  assert.equal(isFecElectableRole(noRole), false);
+  assert.equal(matchRow(weball("S0GA00777", "QUILL, PAT", "GA"), buildMatchIndex([noRole])), null);
 });

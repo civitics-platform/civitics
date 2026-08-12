@@ -1,0 +1,104 @@
+name: irs990
+
+# FIX-904 — IRS Form 990 bulk ingest, pulled out of the nightly's Sunday block.
+#
+# WHY ITS OWN WORKFLOW. IRS-990 ran inside `if (isWeekly)` in
+# packages/data/src/pipelines/index.ts, downstream of fec_bulk in the same
+# fec-phase job. Any week fec_bulk overran its GHA budget the job was SIGTERM'd
+# before reaching the 990 call, and NO weekday path picked it up: the only
+# off-Sunday fec-phase triggers (FIX-754 resume state, FIX-903 drop-check)
+# invoke fec_bulk alone and stop before that block. Same
+# stranded-behind-a-calendar-gate class as FIX-903 — a stage whose only
+# invocation path is gated on the calendar, sitting downstream of a stage that
+# reliably exhausts the budget. The failure was silent and recurred every week
+# fec_bulk overran. Mirrors the FIX-740 phase split and the FIX-291
+# entity-connections extraction.
+#
+# WHY MONDAY 15:00 UTC, AND WHAT IT COSTS. The ordering fec_bulk → IRS-990 is
+# load-bearing: `resolveGrantRecipient` needs fec-bulk's freshly-upserted PAC
+# entities when a 990 grants to a PAC. Moving 990 BEFORE fec_bulk would break
+# that, so the ordering is preserved by the calendar instead — Monday follows
+# Sunday's fec_bulk PAC upserts. If Sunday's run was killed, Monday's 990 runs
+# against the last-persisted entities rather than fresher ones. That is an
+# ACCEPTED cost, not an oversight: 990s file annually with a ~1-month bulk lag,
+# the index HEAD-watermark (pipeline_state.irs990.index_watermark) short-circuits
+# unchanged years cheaply, and a grant that fails to resolve this week resolves
+# next week once the PAC entity lands. A miss here costs a week of grant-edge
+# freshness; the old failure mode cost the entire run, indefinitely.
+#
+# The 15:00 slot is deliberately clear of every known prod window: the nightly
+# (~05:00-06:00 UTC), the 09:00/12:00 pg_cron firings and their 2h budgets, and
+# the 11:05-11:18 arm vacuums. GHA cron drifts by up to hours under queue load,
+# so the gap is sized for drift rather than assuming punctuality.
+#
+# Scheduled weekly + manual (`workflow_dispatch`). Runs against PROD via
+# `data:irs990:ci`; `--allow-prod` satisfies createAdminClient's prod-write
+# guard. The pipeline self-logs to data_sync_log under pipeline='irs990' via its
+# own startSync/completeSync/failSync. The concurrency group serializes a
+# scheduled firing against any in-flight manual dispatch.
+
+on:
+  workflow_dispatch: {}
+  schedule:
+    - cron: "0 15 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: irs990
+  cancel-in-progress: false
+
+jobs:
+  irs990:
+    runs-on: ubuntu-latest
+    # Bounded by the seed list (~35 orgs) x 3 tax years of per-filing XML GETs,
+    # each typically <1 MB, with the year-level HEAD watermark skipping unchanged
+    # years outright. A cold first-run over three fresh years is the worst case
+    # and is tens of minutes, not hours; 90 leaves room for IRS latency without
+    # sitting on a runner all afternoon if something wedges. No parity group:
+    # this job is the sole runner of data:irs990:ci (check-workflow-parity.mjs).
+    timeout-minutes: 90
+
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: https://xsazcoxinpgttgquwvuf.supabase.co
+      SUPABASE_SECRET_KEY:      ${{ secrets.SUPABASE_SECRET_KEY }}
+      SUPABASE_DB_PASSWORD:     ${{ secrets.SUPABASE_DB_PASSWORD }}
+      AUTONOMOUS:               "true"
+      CIVITICS_ENRICHMENT_MODE: queue
+      # Per-filing XML parse, never a whole-file load — nothing like the fec-bulk
+      # indiv stream's 12 GB envelope. 4096 is headroom, not a measured need.
+      NODE_OPTIONS: --max-old-space-size=4096
+
+    steps:
+      # FIX-963 — stamp this job's start so the mark-killed post-step can bind
+      # its no-op guard to THIS run (fallback for rows predating FIX-971a's
+      # metadata.github_run_id). See packages/data/src/scripts/mark-killed.ts.
+      - name: Record job start (FIX-963)
+        run: echo "MARK_KILLED_JOB_STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run IRS 990 bulk (officers + grants-out)
+        run: pnpm --filter @civitics/data data:irs990:ci
+
+      # Same kill-detector backstop the nightly / backfill / usaspending jobs
+      # use: if SIGTERM'd by timeout-minutes mid-run, the irs990 data_sync_log
+      # row strands at status='running' and the step above never reaches its
+      # completeSync/failSync. Observability only; never gates the job.
+      - name: Mark killed if no completion row
+        if: always()
+        run: pnpm --filter @civitics/data data:mark-killed:ci -- --pipeline=irs990

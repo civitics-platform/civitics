@@ -373,6 +373,205 @@ export async function saveRunState(
   }
 }
 
+// ---------------------------------------------------------------------------
+// FIX-957 — per-cycle, per-stage "last pass that ran to COMPLETION" watermarks
+// ---------------------------------------------------------------------------
+
+/**
+ * WHY A SEPARATE pipeline_state KEY, not `fec_bulk_run_state`.
+ *
+ * The FIX-957 bullet proposes extending `fec_bulk_run_state` in place, because
+ * it already tracks per-cycle, per-stage progress. It cannot hold the
+ * watermarks: that row is RESUME state and is deliberately destroyed at exactly
+ * the moment a watermark becomes valuable. `clearRunState` DELETEs the whole row
+ * when a cycle completes (index.ts, the `runStateCompletedCycle` block), and it
+ * is also discarded whenever FEC publishes a new drop (planCycleResume →
+ * "stale") or a version bump makes `parseRunState` return null. Storing
+ * completion stamps there would erase them on every successful run.
+ *
+ * Rewriting `clearRunState` into a partial update is worse, not better: a
+ * non-null `loadRunState` result is the pipeline's signal that a resume is
+ * PENDING, and it drives the FIX-754 self-guard that narrows the indiv cycle
+ * set. A residual row kept alive purely to carry watermarks would read as a
+ * pending resume forever.
+ *
+ * So: `fec_bulk_cycle_watermarks`, a sibling durable key, in the same JSONB
+ * per-cycle shape as `fec_indiv_watermark`. Append-only in practice — a stamp is
+ * only ever advanced forward by a completing stage.
+ *
+ * WHAT "COMPLETION" MEANS HERE, precisely. The stamp is written at the same
+ * call site that marks a stage complete in the run state, which is reached ONLY
+ * after that stage's writer returns without throwing. A killed or partial stage
+ * never gets there, so a stamp can never claim work that did not finish — which
+ * is the entire point, since `max(updated_at)` was rejected for exactly the
+ * opposite failure (it marked 1,622,392 of 1,734,219 cycle-2024 rows stale
+ * because recent runs were not full passes).
+ *
+ * DELIBERATE UNDER-CLAIMING, in two places:
+ *   1. Scoped runs (FEC_INDIV_TX_TYPES / _STAGES / _RECIPIENT_CMTES) never
+ *      stamp — `cycleActiveState` is null by construction on those paths, and a
+ *      partial slice must never be readable as "the cycle had a full pass".
+ *   2. A run whose FEC HEAD probe failed ("unverifiable") also never stamps: it
+ *      runs without checkpoint machinery, so `cycleActiveState` stays null. The
+ *      cycle may genuinely have completed and still show no fresh stamp. Both
+ *      directions of error are possible for a watermark; only one of them is
+ *      safe, and this is it.
+ *
+ * A stage SKIPPED on resume (`stageIsComplete` short-circuit) is likewise not
+ * re-stamped. That is correct rather than incidental: the rows were written by
+ * the EARLIER run, under that run's match index, so the earlier run's timestamp
+ * is the honest provenance of the binding those rows carry.
+ */
+export const FEC_CYCLE_WATERMARK_KEY = "fec_bulk_cycle_watermarks";
+
+export interface CycleStageWatermark {
+  /** ISO timestamp of the pass that ran this stage to completion. */
+  completed_at: string;
+  /** RFC1123 Last-Modified of the FEC indiv file that pass ingested — which
+   *  DROP the pass covered, not just when it ran. */
+  fec_last_modified: string | null;
+}
+
+/** `{ "2024": { "indiv-to-candidate": { completed_at, fec_last_modified } } }` */
+export type FecCycleWatermarks = Record<string, Partial<Record<TrackedStage, CycleStageWatermark>>>;
+
+/** Shape-validate a raw pipeline_state.value; unknown cycles/stages are dropped
+ *  rather than trusted, and a malformed blob degrades to `{}` (no watermark) —
+ *  never to a bogus one. */
+export function parseCycleWatermarks(value: unknown): FecCycleWatermarks {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const out: FecCycleWatermarks = {};
+  for (const [cycle, stages] of Object.entries(value as Record<string, unknown>)) {
+    if (!/^\d{4}$/.test(cycle)) continue;
+    if (!stages || typeof stages !== "object" || Array.isArray(stages)) continue;
+    const kept: Partial<Record<TrackedStage, CycleStageWatermark>> = {};
+    for (const stage of TRACKED_STAGES) {
+      const raw = (stages as Record<string, unknown>)[stage];
+      if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
+      const r = raw as Record<string, unknown>;
+      if (typeof r["completed_at"] !== "string" || !r["completed_at"]) continue;
+      kept[stage] = {
+        completed_at: r["completed_at"],
+        fec_last_modified:
+          typeof r["fec_last_modified"] === "string" ? r["fec_last_modified"] : null,
+      };
+    }
+    if (Object.keys(kept).length > 0) out[cycle] = kept;
+  }
+  return out;
+}
+
+/**
+ * Merge one stage completion into the watermark map. Pure, and MONOTONIC — an
+ * older `completedAt` than the one already stored is refused, so an out-of-order
+ * or replayed write can never walk a watermark backwards. Returns a new object;
+ * the input is not mutated.
+ */
+export function stampCycleStage(
+  current: FecCycleWatermarks,
+  cycle: string,
+  stage: TrackedStage,
+  completedAt: string,
+  fecLastModified: string | null,
+): FecCycleWatermarks {
+  const existing = current[cycle]?.[stage];
+  if (existing && Date.parse(existing.completed_at) >= Date.parse(completedAt)) {
+    return current;
+  }
+  return {
+    ...current,
+    [cycle]: {
+      ...(current[cycle] ?? {}),
+      [stage]: { completed_at: completedAt, fec_last_modified: fecLastModified },
+    },
+  };
+}
+
+/**
+ * The scalar every audit actually wants: when did this cycle last have a pass
+ * that completed EVERY indiv writer stage? MIN across `INDIV_WRITER_STAGES`,
+ * because a cycle is only fully re-derived once the slowest of them finished;
+ * null when any one of them has never completed.
+ *
+ * The IE stage is excluded on purpose — it writes `ie_support`/`ie_oppose`, not
+ * `donation`, and it is explicitly allowed to fail without failing the cycle
+ * ("Stage failure is tolerated"). Folding it in would let a flaky Schedule-E
+ * download suppress the donation-side watermark.
+ */
+export function cycleFullPassAt(
+  watermarks: FecCycleWatermarks,
+  cycle: string,
+): string | null {
+  const stages = watermarks[cycle];
+  if (!stages) return null;
+  let oldest: number | null = null;
+  let oldestIso: string | null = null;
+  for (const s of INDIV_WRITER_STAGES) {
+    const w = stages[s];
+    if (!w) return null;
+    const t = Date.parse(w.completed_at);
+    if (Number.isNaN(t)) return null;
+    if (oldest === null || t < oldest) { oldest = t; oldestIso = w.completed_at; }
+  }
+  return oldestIso;
+}
+
+export async function loadCycleWatermarks(db: Db): Promise<FecCycleWatermarks> {
+  try {
+    const { data, error } = await db
+      .from("pipeline_state")
+      .select("value")
+      .eq("key", FEC_CYCLE_WATERMARK_KEY)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    return parseCycleWatermarks(data?.value ?? null);
+  } catch (err) {
+    console.warn(
+      `    [fec-watermark] failed to load cycle watermarks (treating as none): ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+    return {};
+  }
+}
+
+/**
+ * Read-modify-write one stage stamp. Best-effort like `saveRunState` — a failed
+ * watermark write must never abort a pipeline that has already done the work.
+ * Returns the merged map so the caller can keep an in-memory copy without a
+ * second read; on failure it returns the merged map anyway (the DB is behind,
+ * not the process).
+ *
+ * Re-reads before merging rather than trusting a long-lived in-memory copy: the
+ * fec phase can run for hours, and a concurrent run's stamp for a DIFFERENT
+ * cycle must not be clobbered by this one's write-back.
+ */
+export async function saveCycleStageWatermark(
+  db: Db,
+  cycle: string,
+  stage: TrackedStage,
+  fecLastModified: string | null,
+  nowIso: string = new Date().toISOString(),
+): Promise<FecCycleWatermarks> {
+  const current = await loadCycleWatermarks(db);
+  const next = stampCycleStage(current, cycle, stage, nowIso, fecLastModified);
+  if (next === current) return current; // monotonic refusal — nothing to write
+  try {
+    const { error } = await db.from("pipeline_state").upsert(
+      { key: FEC_CYCLE_WATERMARK_KEY, value: next, updated_at: nowIso },
+      { onConflict: "key" },
+    );
+    if (error) throw new Error(error.message);
+  } catch (err) {
+    console.warn(
+      `    [fec-watermark] failed to persist ${cycle}/${stage} watermark (continuing): ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  }
+  return next;
+}
+
 export async function clearRunState(db: Db): Promise<void> {
   try {
     const { error } = await db.from("pipeline_state").delete().eq("key", FEC_RUN_STATE_KEY);

@@ -28,6 +28,7 @@
     "data:fec-bulk": "tsx --env-file=../../.env.local src/pipelines/fec-bulk/index.ts",
     "data:fec-bulk:ci": "tsx src/pipelines/fec-bulk/index.ts --allow-prod",
     "data:irs990": "tsx --env-file=../../.env.local src/pipelines/irs990/index.ts",
+    "data:irs990:ci": "tsx src/pipelines/irs990/index.ts --allow-prod",
     "data:littlesis": "tsx --env-file=../../.env.local src/pipelines/littlesis/index.ts",
     "data:edgar": "tsx --env-file=../../.env.local src/pipelines/edgar/index.ts",
     "data:edgar:daily": "tsx --env-file=../../.env.local src/pipelines/edgar/index.ts --daily",

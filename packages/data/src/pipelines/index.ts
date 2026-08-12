@@ -19,7 +19,9 @@ import {
   type FecBulkRunState,
 } from "./fec-bulk/run-state";
 import { currentFecCycle, resolveProbeCycle, indivDropPending } from "./fec-bulk/drop-check";
-import { runIrs990Pipeline } from "./irs990";
+// FIX-904: runIrs990Pipeline is no longer imported here — IRS-990 runs from its
+// own weekly workflow (.github/workflows/irs990.yml). See the note at its old
+// call site in the Sunday block.
 import { runLittleSisPipeline } from "./littlesis";
 import { runEdgarPipeline, runEdgarDailyPipeline } from "./edgar";
 import { runUsaSpendingBulkPipeline } from "./usaspending-bulk";
@@ -330,6 +332,9 @@ export interface NightlySyncResults {
     congress_officials?: NightlyPipelineResult;
     congress_votes?: NightlyPipelineResult;
     fec_bulk?: NightlyPipelineResult;
+    /** FIX-904: never populated by the nightly any more — IRS-990 runs from
+     *  .github/workflows/irs990.yml and self-logs to data_sync_log. Kept so a
+     *  historical nightly summary still type-checks. */
     irs990?: NightlyPipelineResult;
     littlesis?: NightlyPipelineResult;
     usaspending?: NightlyPipelineResult;
@@ -715,28 +720,19 @@ export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<Nigh
     const clKey  = process.env["COURTLISTENER_API_KEY"];
     const osKey  = process.env["OPENSTATES_API_KEY"];
 
-    // FIX-292: Phase 1 ('fec') weekly stages — IRS 990 (FEC bulk moved above
-    // for the FIX-754 resume trigger). These flush before the Phase 2
-    // enrichment job picks up the LittleSis matcher index.
-    if (runFec) {
-
-    // FIX-250: IRS 990 bulk (officers + grants-out, seed list only — NOT donors).
-    // Runs after FEC so resolveGrantRecipient can see fec-bulk's PAC entities
-    // in the same Sunday wave if a 990 grants to a PAC.
-    {
-      const t0 = Date.now();
-      try {
-        const r = await runIrs990Pipeline();
-        results.pipelines.irs990 = { status: "complete", rows_added: r.inserted, duration_ms: Date.now() - t0 };
-      } catch (err) {
-        const msg = errMsg(err);
-        console.error("[nightly] irs990 failed:", msg);
-        results.pipelines.irs990 = { status: "failed", error: msg };
-        results.errors.push(`IRS 990: ${msg}`);
-      }
-    }
-
-    } // end Phase 1 weekly stages (FIX-292)
+    // FIX-904: IRS-990 USED TO RUN HERE, and it is now .github/workflows/
+    // irs990.yml (Mondays 15:00 UTC) instead. It sat downstream of fec_bulk
+    // inside this Sunday-only block, so any week fec_bulk overran the fec-phase
+    // budget and got SIGTERM'd, IRS-990 simply never ran — and no weekday path
+    // reached it, because the only off-Sunday fec-phase triggers (FIX-754
+    // resume, FIX-903 drop-check) invoke fec_bulk alone and stop before this
+    // block. Silent, unbounded, and recurring for as long as fec_bulk overruns.
+    //
+    // The load-bearing ordering is preserved by the CALENDAR, not by the call
+    // site: Monday follows Sunday, so `resolveGrantRecipient` still sees
+    // fec-bulk's freshly-upserted PAC entities when a 990 grants to a PAC.
+    // SINGLE OWNER — the invocation is deliberately NOT kept here as well; a
+    // stage with two owners is how the FIX-740 phase split earned its rule.
 
     // FIX-292 / FIX-740: Phase 2 weekly stages, now split into two sub-budgets.
     // 'enrichment-heavy' = LittleSis (~35 min on its own); 'enrichment-light' =

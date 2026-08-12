@@ -409,6 +409,11 @@ export async function upsertIndividualDonorsBatch(
   // donors take the BIGINT NOT NULL DEFAULT 0. A tx-type-10-only run would
   // otherwise overwrite a mixed donor's real total with just their super-PAC
   // slice; the totals rebuild re-derives the authoritative value afterward.
+  //
+  // FIX-1009: an UNSCOPED run no longer overwrites those columns either — it
+  // just does it by narrowing the DO UPDATE SET list instead of the INSERT list,
+  // so a brand-new donor still lands with a real value. See
+  // DONOR_UPDATE_COLUMNS_UNSCOPED for the gate that decided the difference.
   skipAggregateOverwrite = false,
   // FIX-754: checkpoint cursor for killed-run resume. Unscoped runs only.
   resume?: WriterResume,
@@ -473,6 +478,13 @@ export async function upsertIndividualDonorsBatch(
       label:            "individual-donor",
       columns,
       conflictColumns:  ["donor_fingerprint"],
+      // FIX-1009: on an UNSCOPED run the aggregate columns are INSERTed (a new
+      // donor needs a real value — see DONOR_UPDATE_COLUMNS_UNSCOPED) but never
+      // SET on conflict, so `rebuild_financial_entity_donation_totals()` and the
+      // pg_cron totals jobs are the only writers of an EXISTING donor's
+      // all-cycle aggregate. A scoped run keeps FIX-700's column drop, so its
+      // SET list is already aggregate-free and needs no override.
+      updateColumns:    skipAggregateOverwrite ? undefined : DONOR_UPDATE_COLUMNS_UNSCOPED,
       jsonbColumns:     ["metadata"],
       returningColumns: ["id", "donor_fingerprint"],
       // FIX-1008: skip the no-op re-upserts. See the id backfill directly below
@@ -549,6 +561,51 @@ const DONOR_COLUMNS: string[] = [
 // unchanged). Row builder above must emit tuples aligned to this order.
 const DONOR_COLUMNS_SCOPED: string[] = DONOR_COLUMNS.filter(
   (c) => c !== "total_donated_cents" && c !== "total_received_cents",
+);
+
+/** Entity aggregate columns no pipeline writer should own on a conflict. */
+export const ENTITY_AGGREGATE_COLUMNS = ["total_donated_cents", "total_received_cents"] as const;
+
+/**
+ * FIX-1009 — `DO UPDATE SET` list for an UNSCOPED donor upsert: every non-arbiter
+ * column EXCEPT the aggregates.
+ *
+ * WHY THIS AND NOT FIX-700's COLUMN DROP. Both stop an existing donor's
+ * authoritative all-cycle total being clobbered with a cycle-only value, but
+ * they differ on the NEW-donor path, and that difference is the whole gate:
+ *
+ *   FIX-700 (scoped)   column absent from the INSERT list  → new donor gets 0
+ *   FIX-1009 (unscoped) column present, absent from SET    → new donor gets the
+ *                                                            real inserted value
+ *
+ * A new donor must not land at 0. `rebuild_financial_entity_donation_totals()`
+ * is no longer called by this pipeline at all (FIX-702/726 moved it to pg_cron),
+ * and MEASURED on the local clone 2026-08-12 the weekly
+ * `financial-entity-totals-incremental` job is still `active = false` — created
+ * paused by 20260704000000 and never enabled by any migration. Only
+ * `financial-entity-totals-reconcile` (1st of month, 12:00 UTC) is active. So
+ * the real coverage window for a brand-new donor is up to ~31 days, not a week,
+ * and dropping the column outright would park every newly-itemised donor at $0
+ * on their public page for most of a month.
+ *
+ * Keeping the INSERT value closes that with no new machinery: a donor who is
+ * NEW to `financial_entities` has no prior-cycle rows by construction, so the
+ * cycle total this run computed IS their all-cycle total. The lossy case FIX-269
+ * exists for — a donor who gave in an EARLIER cycle — is exactly the conflict
+ * path, which now leaves the stored value alone.
+ *
+ * `skipUnchangedRows` (FIX-1008) builds its "did anything change" predicate from
+ * the SET list, so narrowing the SET list narrows the predicate in lockstep and
+ * the invariant "the predicate always covers EXACTLY the SET list" still holds.
+ * That is the payoff: a multi-cycle donor whose stored all-cycle total can never
+ * equal the cycle-only value being written was rewritten every single week no
+ * matter what — 24.2% of donors, per the FIX-1009 prod sample — and is now
+ * skippable like everyone else.
+ */
+const DONOR_UPDATE_COLUMNS_UNSCOPED: string[] = DONOR_COLUMNS.filter(
+  (c) =>
+    c !== "donor_fingerprint" &&
+    !(ENTITY_AGGREGATE_COLUMNS as readonly string[]).includes(c),
 );
 
 // Shared column order for the two individual-donation relationship writers.

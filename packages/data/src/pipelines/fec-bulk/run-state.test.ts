@@ -31,7 +31,13 @@ import {
   describeCheckpointStats,
   CHECKPOINT_MIN_INTERVAL_MS,
   FEC_RUN_STATE_KEY,
+  FEC_CYCLE_WATERMARK_KEY,
+  parseCycleWatermarks,
+  stampCycleStage,
+  cycleFullPassAt,
+  saveCycleStageWatermark,
   type FecBulkRunState,
+  type FecCycleWatermarks,
 } from "./run-state";
 import type { Client } from "pg";
 
@@ -329,4 +335,188 @@ test("FIX-996 a FAILED save does not start the throttle clock", () => {
 test("FIX-996 the stage-end summary names ok / failed / throttled", () => {
   const line = describeCheckpointStats({ attempted: 44, saved: 41, failed: 3, throttled: 166 });
   assert.equal(line, "checkpoint saves: 41 ok / 3 failed / 166 throttled");
+});
+
+// ---------------------------------------------------------------------------
+// FIX-957 — per-cycle "last full pass" watermarks
+//
+// The question is "was this row written by the most recent full pass for its
+// cycle?". `max(updated_at)` was measured and rejected as a proxy — it marked
+// 1,622,392 of 1,734,219 cycle-2024 rows stale, because the recent runs were
+// partial. So the stamp must be SUCCESS-ONLY: a killed or partial stage must
+// never advance it, and the durable store must survive the run-state row being
+// deleted at cycle completion (which is why these live under their own
+// pipeline_state key — see the run-state.ts header).
+// ---------------------------------------------------------------------------
+
+const WM_LM = "Sun, 12 Jul 2026 09:00:00 GMT";
+
+/** PostgREST-shaped stub supporting BOTH the select→eq→maybeSingle read and the
+ *  upsert write, so loadCycleWatermarks + saveCycleStageWatermark round-trip. */
+function fakeWatermarkDb(initial: unknown = null, upsertError: { message: string } | null = null) {
+  const store: { value: unknown } = { value: initial };
+  const writes: Array<Record<string, unknown>> = [];
+  const db = {
+    from: (_table: string) => ({
+      select: () => ({
+        eq: () => ({
+          maybeSingle: async () => ({ data: store.value === null ? null : { value: store.value }, error: null }),
+        }),
+      }),
+      upsert: async (row: Record<string, unknown>) => {
+        writes.push(row);
+        if (upsertError) return { error: upsertError };
+        store.value = row["value"];
+        return { error: null };
+      },
+    }),
+  };
+  return { db, store, writes };
+}
+
+test("FIX-957 a SUCCESSFUL stage advances its cycle+stage stamp", async () => {
+  const { db, writes, store } = fakeWatermarkDb();
+  const after = await saveCycleStageWatermark(
+    db, "2026", "indiv-to-candidate", WM_LM, "2026-08-11T05:00:00.000Z",
+  );
+
+  assert.equal(writes.length, 1, "one upsert");
+  assert.equal(writes[0]!["key"], FEC_CYCLE_WATERMARK_KEY, "written under the DURABLE key");
+  assert.notEqual(
+    writes[0]!["key"],
+    FEC_RUN_STATE_KEY,
+    "never the resume key — that row is DELETEd on cycle completion",
+  );
+  assert.deepEqual(after["2026"]!["indiv-to-candidate"], {
+    completed_at: "2026-08-11T05:00:00.000Z",
+    fec_last_modified: WM_LM,
+  });
+  assert.deepEqual((store.value as FecCycleWatermarks)["2026"]!["indiv-to-candidate"], {
+    completed_at: "2026-08-11T05:00:00.000Z",
+    fec_last_modified: WM_LM,
+  });
+});
+
+test("FIX-957 a KILLED stage leaves no stamp — the write only happens on success", () => {
+  // The kill shape: three writer stages stamped, the fourth never reached. This
+  // is the state a SIGTERM at the GHA budget leaves behind, and the scalar must
+  // refuse to call it a full pass.
+  let wm: FecCycleWatermarks = {};
+  for (const stage of ["donor-entities", "indiv-to-candidate", "recipient-entities"] as const) {
+    wm = stampCycleStage(wm, "2026", stage, "2026-08-09T05:00:00.000Z", WM_LM);
+  }
+  assert.equal(Object.keys(wm["2026"]!).length, 3);
+  assert.equal(
+    cycleFullPassAt(wm, "2026"),
+    null,
+    "indiv-to-committee never completed — this cycle has NO full pass",
+  );
+
+  // …and the moment the last writer stage does complete, it does.
+  wm = stampCycleStage(wm, "2026", "indiv-to-committee", "2026-08-10T05:30:00.000Z", WM_LM);
+  assert.equal(cycleFullPassAt(wm, "2026"), "2026-08-09T05:00:00.000Z");
+});
+
+test("FIX-957 the full-pass scalar is the MIN over writer stages, not the MAX", () => {
+  // The four stages can legitimately complete on different nights via the
+  // FIX-754 resume path. MAX would let one fast stage vouch for three that
+  // never re-ran; the cycle is only re-derived once the SLOWEST finished.
+  let wm: FecCycleWatermarks = {};
+  wm = stampCycleStage(wm, "2024", "donor-entities",     "2026-07-13T04:10:00.000Z", WM_LM);
+  wm = stampCycleStage(wm, "2024", "indiv-to-candidate", "2026-07-13T05:20:00.000Z", WM_LM);
+  wm = stampCycleStage(wm, "2024", "recipient-entities", "2026-07-13T05:25:00.000Z", WM_LM);
+  wm = stampCycleStage(wm, "2024", "indiv-to-committee", "2026-07-13T06:40:00.000Z", WM_LM);
+  assert.equal(cycleFullPassAt(wm, "2024"), "2026-07-13T04:10:00.000Z");
+});
+
+test("FIX-957 the IE stage neither completes nor blocks a full pass", () => {
+  // independent-expenditures writes ie_support/ie_oppose, not 'donation', and
+  // the pipeline explicitly tolerates its failure. It must not gate the
+  // donation-side watermark in either direction.
+  let ieOnly: FecCycleWatermarks = {};
+  ieOnly = stampCycleStage(ieOnly, "2024", "independent-expenditures", "2026-07-13T06:55:00.000Z", WM_LM);
+  assert.equal(cycleFullPassAt(ieOnly, "2024"), null, "IE alone is not a full pass");
+
+  let full: FecCycleWatermarks = {};
+  for (const s of INDIV_WRITER_STAGES) {
+    full = stampCycleStage(full, "2024", s, "2026-07-13T04:10:00.000Z", WM_LM);
+  }
+  const withIe = stampCycleStage(full, "2024", "independent-expenditures", "2026-07-13T06:55:00.000Z", WM_LM);
+  assert.equal(
+    cycleFullPassAt(withIe, "2024"),
+    "2026-07-13T04:10:00.000Z",
+    "a LATER IE completion must not drag the scalar forward",
+  );
+});
+
+test("FIX-957 stamps are monotonic — an older completion never walks one back", () => {
+  const wm = stampCycleStage({}, "2026", "donor-entities", "2026-08-10T05:00:00.000Z", WM_LM);
+  const older = stampCycleStage(wm, "2026", "donor-entities", "2026-08-01T05:00:00.000Z", WM_LM);
+  assert.equal(older, wm, "an out-of-order write is refused by identity, not merged");
+  assert.equal(older["2026"]!["donor-entities"]!.completed_at, "2026-08-10T05:00:00.000Z");
+});
+
+test("FIX-957 a monotonic refusal writes nothing to the DB at all", async () => {
+  const seeded = stampCycleStage({}, "2026", "donor-entities", "2026-08-10T05:00:00.000Z", WM_LM);
+  const { db, writes } = fakeWatermarkDb(seeded);
+  await saveCycleStageWatermark(db, "2026", "donor-entities", WM_LM, "2026-08-01T05:00:00.000Z");
+  assert.deepEqual(writes, [], "no upsert is issued when the stamp would go backwards");
+});
+
+test("FIX-957 stamping one cycle leaves every other cycle intact", async () => {
+  // The fec phase can run for hours; a write-back must not clobber a stamp made
+  // for a different cycle in the meantime, which is why the save re-reads first.
+  const seeded = stampCycleStage({}, "2024", "donor-entities", "2026-07-13T04:10:00.000Z", WM_LM);
+  const { db } = fakeWatermarkDb(seeded);
+  const after = await saveCycleStageWatermark(
+    db, "2026", "donor-entities", WM_LM, "2026-08-11T05:00:00.000Z",
+  );
+  assert.equal(after["2024"]!["donor-entities"]!.completed_at, "2026-07-13T04:10:00.000Z");
+  assert.equal(after["2026"]!["donor-entities"]!.completed_at, "2026-08-11T05:00:00.000Z");
+});
+
+test("FIX-957 a failed watermark write is best-effort and never throws", async () => {
+  const { db } = fakeWatermarkDb(null, { message: "upstream request timeout" });
+  const after = await saveCycleStageWatermark(
+    db, "2026", "donor-entities", WM_LM, "2026-08-11T05:00:00.000Z",
+  );
+  // The work already happened; a stale watermark must not abort the pipeline.
+  assert.equal(after["2026"]!["donor-entities"]!.completed_at, "2026-08-11T05:00:00.000Z");
+});
+
+test("FIX-957 a malformed stored blob degrades to NO watermark, never a bogus one", () => {
+  assert.deepEqual(parseCycleWatermarks(null), {});
+  assert.deepEqual(parseCycleWatermarks("nope"), {});
+  assert.deepEqual(parseCycleWatermarks([1, 2, 3]), {});
+  assert.deepEqual(parseCycleWatermarks({ "2026": "nope" }), {});
+  assert.deepEqual(parseCycleWatermarks({ notacycle: { "donor-entities": { completed_at: "x" } } }), {});
+  // A stage name outside TRACKED_STAGES is dropped rather than trusted.
+  assert.deepEqual(
+    parseCycleWatermarks({ "2026": { "made-up-stage": { completed_at: "2026-08-11T00:00:00Z" } } }),
+    {},
+  );
+  // A stage row with no completed_at is not a completion.
+  assert.deepEqual(parseCycleWatermarks({ "2026": { "donor-entities": { fec_last_modified: WM_LM } } }), {});
+});
+
+test("FIX-957 a valid blob round-trips, with a missing fec_last_modified normalised to null", () => {
+  const parsed = parseCycleWatermarks({
+    "2026": {
+      "donor-entities": { completed_at: "2026-08-11T05:00:00.000Z", fec_last_modified: WM_LM },
+      "indiv-to-candidate": { completed_at: "2026-08-11T06:00:00.000Z" },
+    },
+  });
+  assert.deepEqual(parsed["2026"]!["donor-entities"], {
+    completed_at: "2026-08-11T05:00:00.000Z",
+    fec_last_modified: WM_LM,
+  });
+  assert.deepEqual(parsed["2026"]!["indiv-to-candidate"], {
+    completed_at: "2026-08-11T06:00:00.000Z",
+    fec_last_modified: null,
+  });
+});
+
+test("FIX-957 an unstamped cycle reports NULL rather than a guess", () => {
+  assert.equal(cycleFullPassAt({}, "2020"), null);
+  assert.equal(cycleFullPassAt(parseCycleWatermarks({ "2024": {} }), "2024"), null);
 });
