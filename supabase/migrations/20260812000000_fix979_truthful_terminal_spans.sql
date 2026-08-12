@@ -406,10 +406,27 @@ SELECT
   )::INT AS p95_peak_rss_mb
 FROM public.data_sync_log
 WHERE started_at > NOW() - INTERVAL '30 days'
-  -- Unchanged, and it is also what keeps FIX-971's reaped rows out: a reaped
-  -- row now carries completed_at = NULL precisely so its started_at..reap gap
-  -- can never be read as a runtime.
+  -- Unchanged, and it is also what keeps FIX-971's newly-written reaped rows
+  -- out: those now carry completed_at = NULL precisely so their
+  -- started_at..reap gap can never be read as a runtime.
   AND completed_at IS NOT NULL
+  -- FIX-971 reader half. The writers only fix rows written from now on; rows
+  -- ALREADY on disk keep the old shape, and their spans are still being read as
+  -- runtimes today (prod carries ~40 nightly_killed rows plus the pre-FIX-944
+  -- reaped_orphan set). The rule — a reaped row's started_at..completed_at span
+  -- is an upper bound on REAPER LATENCY, never a runtime — has to be stated
+  -- where the span is turned into a rendered number, not only at the writers.
+  -- Four tells, covering every generation of the shape:
+  --   status='reaped'                        post-FIX-944 reap_stale_sync_log()
+  --   metadata.reaped = true                 post-FIX-944 and post-FIX-971b
+  --   error_message LIKE 'reaped_orphan%'    pre-FIX-944 reap_stale_sync_log()
+  --   error_message = 'workflow-timeout…'    mark-killed's nightly_killed marker
+  AND NOT (
+       status = 'reaped'
+    OR COALESCE(metadata->>'reaped', 'false') = 'true'
+    OR COALESCE(error_message, '') LIKE 'reaped_orphan%'
+    OR COALESCE(error_message, '') = 'workflow-timeout-or-sigterm'
+  )
 GROUP BY pipeline;
 
 CREATE UNIQUE INDEX IF NOT EXISTS pipeline_runtime_stats_mv_pkey
@@ -419,8 +436,12 @@ GRANT SELECT ON public.pipeline_runtime_stats_mv
   TO anon, authenticated, service_role;
 
 COMMENT ON MATERIALIZED VIEW public.pipeline_runtime_stats_mv IS
-  'FIX-233/FIX-979 — 30-day per-pipeline runtime stats from data_sync_log. '
-  'Duration percentiles cover only rows with completed_at > started_at; '
-  'zero-span rows (a writer stamping both columns from one now()) are counted '
-  'in zero_span_runs_30d and excluded from the percentiles, so 0 ms can never '
-  'again be rendered as a measured runtime.';
+  'FIX-233/FIX-979/FIX-971 — 30-day per-pipeline runtime stats from '
+  'data_sync_log. Duration percentiles cover only rows with '
+  'completed_at > started_at; zero-span rows (a writer stamping both columns '
+  'from one now()) are counted in zero_span_runs_30d and excluded from the '
+  'percentiles, so 0 ms can never again be rendered as a measured runtime. '
+  'Reaped rows are excluded outright — their span is reaper latency, not a '
+  'runtime — which also drops the synthetic nightly_killed marker stream from '
+  'this view; the FIX-234 canary reads those rows straight from data_sync_log '
+  'and is unaffected.';
