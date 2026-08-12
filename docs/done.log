@@ -1205,3 +1205,4 @@
 2026-08-10 | FIX-953 | f4c00e90 | local+prod | feat(fec): FIX-953 — merge own-seat duplicate officials via a new selection mode
 2026-08-10 | FIX-1017 | 1be95822 | local-only | fix(merge): FIX-1017 — propagate the phase-2 abort so phase 3 is skipped
 2026-08-10 | FIX-1018 | d21a7b0b | local-only | fix(donor-rollup): FIX-1018 — scope the dirty set to officials, index it, and bring the pre-loop build inside the budget
+2026-08-11 | FIX-1014 | 7bfd1157 | local-only | fix(fec-bulk): FIX-1014 — compare like with like in the R2 cache freshness check
