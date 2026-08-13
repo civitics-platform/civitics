@@ -1214,3 +1214,9 @@
 2026-08-11 | FIX-957 | cf10c2ad | local-only | fix(fec-bulk): bind only on evidence that survives a state check; stop the donor writer thrashing an aggregate it knows is wrong
 2026-08-11 | FIX-904 | reopen | prod-pending | code landed in cf10c2ad (IRS-990 extracted to .github/workflows/irs990.yml, Mondays 15:00 UTC, in-nightly call removed). GHA-behaviour item: stays OPEN until its first real Monday firing produces a durable verify.
 2026-08-11 | FIX-957 | reopen | prod-pending | code landed in cf10c2ad (success-only per-cycle/per-stage stamps + fec_cycle_watermark/fec_cycle_full_pass_at, migration 20260812010000). Stays OPEN until the migration is pasted to prod; the updated_at-trigger-suppression question and the stuck 2026-07-27 data_sync_log row also remain on the bullet.
+2026-08-12 | FIX-1013 | ab1a3f96 | local+prod | fix(ops): bound the MV refresh loop, give FR and officials a vacuum owner, and stop laundering the outage signal
+2026-08-12 | FIX-1018 | 860542df | local+prod | chore(donor-rollup): record prod verification of FIX-1018
+2026-08-12 | FIX-1021 | ab1a3f96 | local+prod | fix(ops): bound the MV refresh loop, give FR and officials a vacuum owner, and stop laundering the outage signal
+2026-08-12 | FIX-1022 | ab1a3f96 | closes-as-recognized | fix(ops): bound the MV refresh loop, give FR and officials a vacuum owner, and stop laundering the outage signal
+2026-08-12 | FIX-1026 | ab1a3f96 | local+prod | fix(ops): bound the MV refresh loop, give FR and officials a vacuum owner, and stop laundering the outage signal
+2026-08-12 | FIX-1027 | ab1a3f96 | local+prod | fix(ops): bound the MV refresh loop, give FR and officials a vacuum owner, and stop laundering the outage signal
