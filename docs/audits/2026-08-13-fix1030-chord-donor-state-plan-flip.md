@@ -284,7 +284,61 @@ corrected**, not the fix changing output: unit 3 had not refreshed successfully 
 
 **jobid 10 remains `active=false`.** The supervised verification firing did not happen.
 
-## 10. Open / not done here
+## 10. The supervised firing — FIX-1033, 2026-08-13 04:50 UTC
+
+**Result: full pass.** `status=complete`, 6/6 units, **707.1 s**, no failures, no cancel, no
+budget hit.
+
+| unit | prod seconds |
+|---|---|
+| `chord_industry_flows_mv` | 185.7 |
+| `chord_donor_type_party_flows_mv` | 128.0 |
+| **`chord_donor_state_party_flows_mv`** | **160.3** ← had never completed on prod |
+| `chord_subject_party_flows_mv` | 2.8 |
+| `official_sector_dollars_mv` | 112.1 |
+| `refresh_spending_totals` | 118.2 |
+
+**Unit 3 is sibling-class, exactly as the fix predicted** — 160.3 s, sitting between its two
+siblings (185.7 and 128.0). Against a unit that on 08-13 ran ≥34m44s without returning and on
+08-11 never returned at all.
+
+Headroom is better than either earlier estimate: total 707.1 s against the 4200 s budget
+(17%), slowest unit 185.7 s against the 900 s fence (**4.85×**, vs the ~3.4× claimed warm and
+the ~2× feared cold). Units 4–6 measured on prod for the first time.
+
+**jobid 10 `refresh-derived-mvs-weekly` re-enabled** (`cron.alter_job` with the jobid resolved
+by name, not hardcoded). Post-close-out: jobs 9/10/40 all active, the one-off unscheduled, no
+restart, 0 stranded rows, 0 advisory locks.
+
+### Attempt 1 aborted — operator error, worth recording
+
+The first firing (04:30) was killed by **this session**: `cron.unschedule()` was run 11 s in to
+prevent the one-off re-firing, and unscheduling a *running* pg_cron job cancels its worker.
+`cron.job_run_details` jobid 41: `status=failed`, `return_message='job canceled'`,
+`end_time=04:30:11.130007`. The backend survived the cancel long enough to finish unit 1
+(~207 s) and was torn down ~04:35:56 (`connection to client lost` / `Broken pipe` — pg_cron
+reaches its worker over libpq). Backend kill is the un-catchable FATAL class, so the row
+stranded `running` and needed the reaper.
+
+**The lesson is ordering:** the re-fire risk from leaving a one-off scheduled is 24 h away;
+the unschedule risk is immediate. Unschedule *after* the run completes. Attempt 2 did that.
+
+Two things this exposed:
+
+- **Resolved as fine — pg_cron workers ARE visible to the watchdog.** The open worry was that
+  the guard's `state <> 'idle'` predicate would drop a NULL-state background worker, making
+  the 900 s fence inert in the only configuration production uses. Measured on the live
+  worker: `application_name=pg_cron`, `backend_type=client backend`, `state=active` (not
+  NULL), `query=CALL public.refresh_derived_mvs('weekly');`, and the guard's full predicate
+  evaluates **TRUE**. The fence is live for pg_cron-launched runs.
+- **Still open — FIX-1035.** The watchdog only probes pid liveness *after* the budget
+  elapses, so a dead backend is indistinguishable from a long unit: at 04:44 it still returned
+  `within budget, unit_age_seconds: 702.5` for a process gone eleven minutes. It also fooled
+  the operator, who reported unit 2 as "running long, heading for the fence" when unit 2 had
+  accrued only ~149 s of real work. `current_unit_started_at` freezes at death; growing
+  `unit_age` is arithmetic, not evidence of life.
+
+## 11. Open / not done here
 
 - Statistics (1) and (2) are **still wrong**. The durable follow-up is
   `CREATE STATISTICS` on `(LENGTH(metadata->>'state'))` and an `n_distinct` override on
