@@ -1221,3 +1221,4 @@
 2026-08-12 | FIX-1026 | ab1a3f96 | local+prod | fix(ops): bound the MV refresh loop, give FR and officials a vacuum owner, and stop laundering the outage signal
 2026-08-12 | FIX-1027 | ab1a3f96 | local+prod | fix(ops): bound the MV refresh loop, give FR and officials a vacuum owner, and stop laundering the outage signal
 2026-08-12 | FIX-1030 | c00e3ac5 | local-only | fix(derived-mvs): fence the chord donor-state plan and bound any weekly unit from outside
+2026-08-12 | FIX-1033 | 82a4906e | prod-only | feat(derived-mvs): supervised weekly firing passed 6/6 in 707s — jobid 10 re-enabled
