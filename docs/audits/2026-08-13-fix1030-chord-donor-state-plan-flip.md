@@ -194,10 +194,22 @@ run that would have recorded them died.
 | `refresh_spending_totals` | 15.7 |
 | **6/6 units, `complete`, 85 s total** | |
 
-The clone runs ~7× faster than prod on these units (prod 189/143 s where the clone is
-26.5/20.0 s), so the prod-equivalent worst unit stays ~263 s. **No weekly unit comes within an
-order of magnitude of the 900 s per-unit budget**, which is why that value can be chosen
-rather than guessed.
+The clone runs ~7× faster than prod on these units **when prod's cache is warm** (prod
+189/143 s where the clone is 26.5/20.0 s), which puts the prod-equivalent worst unit at
+~263 s.
+
+> **⚠ Corrected 2026-08-13 04:20 UTC — the ~7× factor only holds warm.** The prod apply
+> (§10) measured this exact fixed statement at **442 s on a cold box**, i.e. a ~24×
+> clone-to-prod factor, not 7×. The 900 s per-unit budget still holds — 442 s is the
+> worst-case cold measurement and unit 3 now *completes* where it previously never did —
+> but the real headroom is **~2×, not the ~3.4× claimed in the migration header**. The
+> weekly job runs at 07:00 Tuesday, an hour after the 06:00 daily has warmed the same
+> heaps, so the cold case is not the expected case; a cold-box false trip would close the
+> row `partial` cleanly and skip the remaining units, which is the safe direction.
+
+**No weekly unit comes within an order of magnitude of 900 s on a warm box**, which is why
+that value can be chosen rather than guessed — but see the correction above before treating
+any clone timing as a prod prediction.
 
 ## 8. Forced-timeout proof
 
@@ -216,7 +228,63 @@ skipped units by name. **No stranded `running` row.** Subsequent watchdog polls 
 `no running refresh_derived_mvs` — the cancel-once guard held and did not touch the
 procedure's own bookkeeping.
 
-## 9. Open / not done here
+## 9. Prod apply — and the request-path incident it caused
+
+Applied **2026-08-13 03:55:29 → 04:03:15 UTC** via `pnpm db:push:prod`, against a gate that
+was clean at 03:55: **0 non-idle backends, 0 running `data_sync_log` rows**, last cron run
+03:30 (`vote-stats-refresh`, 13 s, succeeded), jobid 10 paused, daily cadence 2 h away.
+
+**The apply caused ~5.5 minutes of request-path timeouts.** Postgres logs, 03:57:43 →
+04:03:12, stopping dead at the apply's end:
+
+```
+duration: 442115.812 ms  plan: Query Text: CREATE MATERIALIZED VIEW
+    public.chord_donor_state_party_flows_mv AS WITH donor_states AS MATERIALIZED (...)
+process 13991 still waiting for AccessShareLock on relation 127653 of database 5
+    after 1000.090 ms
+57014 canceling statement due to statement timeout          (dozens)
+08006 connection to client lost
+```
+
+Two compounding mechanisms:
+
+1. **Lock.** An MV's definition cannot be replaced in place, so the migration does
+   `DROP` + `CREATE … AS` (which populates). That holds **ACCESS EXCLUSIVE on the MV name
+   for the entire 442 s rebuild**; every reader blocks on AccessShareLock and then dies at
+   the 8 s `service_role` statement_timeout.
+2. **I/O.** The `CREATE`'s sequential scan of the 1,632 MB `financial_entities` heap ran on
+   a box up only 2h10m since the 01:45:27 crash, so the 256 MB shared_buffers was cold and
+   the scan paid full physical-read cost — starving the request path generally. This is why
+   the timeouts were **not** confined to /graph chord callers.
+
+**The estimate miss.** This session predicted "~2–3 min, blocked on that MV's readers,"
+extrapolating the clone's warm 18.7 s by the ~7× steady-state factor. The real cold-box
+factor was ~24× and the blast radius was site-wide, not MV-local. **A warm-cache clone
+timing is not a safe basis for predicting a cold-prod DDL window.**
+
+Filed as **FIX-1032** with the durable fix shape: build the replacement out of line
+(`CREATE … WITH NO DATA` → `REFRESH` → short rename-swap transaction) so the exclusive
+window is milliseconds, and schedule MV-definition swaps against a warm box.
+
+**Self-resolved, no escalation.** No restart (`pg_postmaster_start_time` unchanged at
+01:45:27), 0 errors in the following 4 minutes, `/` 200 in 2.2 s and `/graph` 200 in 0.57 s
+at 04:07, 0 non-idle backends.
+
+**Post-apply prod state, verified:** MV 325 rows / `SUM` 2,197,387,010.00 (byte-identical to
+the clone's rebuild — the clone's donation subset matches prod's); definition carries the
+`AS MATERIALIZED` fence; unique index, GRANTs and FIX-1003b autovacuum reloptions all
+survived the swap; prod's plan for the new definition is all hash joins with no Memoize;
+`enforce_derived_mvs_unit_budget()` present, `SECURITY INVOKER`, EXECUTE only for
+postgres/service_role; cron job 40 `derived-mvs-unit-watchdog` active on `*/2 * * * *`, 4
+runs, all succeeded, slowest **58 ms**.
+
+The pre-swap MV read 326 rows / 2,139,715,460.00 — that delta is **staleness being
+corrected**, not the fix changing output: unit 3 had not refreshed successfully since before
+08-11, and the old and new definitions produce identical results on identical data (§6).
+
+**jobid 10 remains `active=false`.** The supervised verification firing did not happen.
+
+## 10. Open / not done here
 
 - Statistics (1) and (2) are **still wrong**. The durable follow-up is
   `CREATE STATISTICS` on `(LENGTH(metadata->>'state'))` and an `n_distinct` override on
