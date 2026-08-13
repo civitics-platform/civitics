@@ -542,6 +542,83 @@ The status API runs 6 self-tests:
 5. Entity connections table has data
 6. `nightly_ran_today` — will fail if cron is disabled (expected during dev)
 
+### External request-path probe (FIX-1026)
+
+`.github/workflows/platform-snapshot.yml` carries a **`request-path-probe`** job
+alongside the snapshot trigger. It curls `/`, `/officials` and
+`/api/officials/<id>/summary` (3 attempts × 20 s, `--max-time 25`) and exits
+non-zero if any endpoint never returns 200. A red `request-path-probe` means
+**the site is down** — it is deliberately a separate job so it can never be read
+as snapshot flakiness.
+
+**Detection latency is ~1 hour, not minutes.** GHA cron does not honour its own
+schedule: configured `*/10`, the observed gaps on 2026-08-11..12 were 38, 50,
+56, 63, 87, 107 and 153 minutes. Read the *observed* run history, never the cron
+expression. For minutes-scale detection, add an external uptime service
+(UptimeRobot's free tier does 5-minute checks) — zero repo code, configured
+entirely in that service's dashboard.
+
+**Three properties are load-bearing — do not "tidy" them away:**
+
+1. `concurrency` lives on the `trigger` job, **not** at workflow level. A
+   workflow-level `cancel-in-progress` makes the whole run's conclusion
+   `cancelled`.
+2. The probe job has **no** concurrency group, so a later run cannot cancel it.
+3. Its worst case (~3.5 min) sits far inside `timeout-minutes: 10`, so it always
+   concludes `success` or `failure`.
+
+**Why:** during the 2026-08-11 outage the five snapshot runs at 08:28, 09:31,
+10:27, 11:17 and 12:00 UTC all hung and were cut off by `timeout-minutes: 5`.
+**GitHub reports a timeout-expired job as `cancelled`, not `failed`, and sends no
+notification for a cancelled run.** The signal spanned the outage exactly and
+could not page anyone. Verified on run `31478090511` (09:31:46 → 09:36:49,
+conclusion `cancelled`).
+
+**Where the page goes:** GitHub emails scheduled-workflow failures to whoever
+last committed the workflow file — currently
+`Civitics Platform <civitics.platform@gmail.com>`. If that inbox is unwatched,
+this alert is decorative.
+
+### pg_cron background-worker capacity (FIX-1022)
+
+**Applied on prod:** `max_worker_processes` raised **6 → 12**.
+
+**Why:** pg_cron runs with `cron.use_background_workers = off`, opening a fresh
+connection per firing inside a ~10 s window. At `mwp = 6`, three slots are
+permanently held on an idle box (two `Extension` bgworkers plus
+`LogicalLauncherMain`), and any parallel query takes two more — leaving pg_cron
+**one**. The result was 29 lifetime firings that never reached their command,
+all `return_message = 'job startup timeout'`, including **0-for-12 on the six
+FIX-1003 arm vacuums**.
+
+**How to apply a Supabase Postgres config override — the trick matters:**
+
+```
+supabase --experimental postgres-config update --no-restart   # stores, but NEVER renders
+```
+
+`--no-restart` writes the value and it does not take effect; a plain restart does
+**not** pick it up either. **Delete the key, then set it** — the
+delete-then-update forces the apply. Verify with
+`SELECT name, setting, source FROM pg_settings WHERE name = 'max_worker_processes'`
+(expect `source = configuration file`).
+
+> ⚠ **Custom Postgres config persists across compute resizes and will NOT
+> re-derive.** If the instance is ever resized, this override stays pinned at
+> whatever was set — it will not scale up with the new tier, and it can pin a
+> larger box to a small-box value. Re-check it after any resize.
+
+**`cron.max_running_jobs` is NOT in Supabase's overridable set** — it stays at
+the default 32, i.e. pg_cron still advertises far more concurrency than the
+postmaster can supply. **Schedule deconfliction is therefore the standing
+mitigation, not a nice-to-have** (FIX-969 / FIX-990).
+
+**Honest limit on the evidence:** the arm vacuums went 6-for-6 at 11:05–11:18 on
+2026-08-12, but jobids 2 and 16 were paused that day, and six of them already
+succeeded at 08-11 14:05–14:18 *before* the restart and *before* `mwp=12` — once
+the 6 h squatter died. The 0-for-12 was a contention record. The first real test
+of `mwp=12` is the next Mon/Wed 11:00 with jobid 16 active.
+
 ### Dashboards
 
 | Service | URL |

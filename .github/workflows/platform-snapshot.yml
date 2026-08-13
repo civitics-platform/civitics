@@ -13,10 +13,16 @@ name: platform-snapshot
 # the same as the pre-FIX-281 state. No correctness risk, just an occasional
 # slow request.
 #
+# FIX-1026 — this workflow also carries the external request-path probe. See the
+# `request-path-probe` job at the bottom for why it lives here and not in a
+# scheduled workflow of its own.
+#
 # Required GitHub Actions secrets:
 #   - CRON_SECRET           — must match the value in Vercel project env
 #   - CIVITICS_APP_URL      — e.g. https://civitics-civitics.vercel.app
 #                             (falls back to the production URL below if unset)
+#   - PROBE_OFFICIAL_ID     — optional; an officials.id the probe fetches
+#                             (falls back to the id below if unset)
 
 on:
   schedule:
@@ -26,17 +32,23 @@ on:
 permissions:
   contents: read
 
-# Skip overlapping runs. The route is idempotent (each invocation INSERTs a
-# new snapshot row), but stacking runs during a slow Vercel deploy wastes
-# minutes and clutters the table.
-concurrency:
-  group: platform-snapshot
-  cancel-in-progress: true
+# NOTE (FIX-1026): concurrency is declared PER-JOB, not workflow-wide, and this
+# is load-bearing — see the request-path-probe job's header. A workflow-level
+# `cancel-in-progress` makes the whole RUN's conclusion `cancelled` when any job
+# is cut short, and GitHub sends no notification for a cancelled run. That is
+# what silently swallowed the 2026-08-11 outage signal.
 
 jobs:
   trigger:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+
+    # Skip overlapping runs. The route is idempotent (each invocation INSERTs a
+    # new snapshot row), but stacking runs during a slow Vercel deploy wastes
+    # minutes and clutters the table.
+    concurrency:
+      group: platform-snapshot
+      cancel-in-progress: true
 
     steps:
       - name: Curl /api/cron/platform-snapshot
@@ -61,3 +73,116 @@ jobs:
             echo "::error::snapshot route returned HTTP ${HTTP}"
             exit 1
           fi
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # FIX-1026 — external request-path probe.
+  #
+  # WHY IT RIDES THIS WORKFLOW rather than getting its own schedule: GHA cron is
+  # unreliable at tight cadences and adding a second scheduled workflow buys
+  # nothing. MEASURED from this workflow's own run history (observed starts, not
+  # the cron expression — playbook D2 applied to GHA): configured `*/10`, actual
+  # gaps on 2026-08-11..12 were 38, 50, 56, 63, 87, 107 and 153 minutes. So the
+  # effective cadence is roughly hourly, with a two-and-a-half-hour tail.
+  #
+  # WHAT THIS BUYS, STATED HONESTLY: detection latency of about ONE HOUR, not
+  # minutes. The 2026-08-11 outage ran 14 hours undetected, so this is a ~10x
+  # improvement at zero new cost — but it is NOT minutes-scale monitoring. True
+  # minutes-scale detection needs an EXTERNAL uptime service (e.g. UptimeRobot's
+  # free 5-minute checks), which is zero repo code and lives entirely in that
+  # service's dashboard. That gap is real and deliberately left visible here.
+  #
+  # WHY IT IS A SEPARATE JOB, NOT A STEP: a step appended to `trigger` would be
+  # indistinguishable from snapshot flakiness in the failure notification. As
+  # its own job with an unambiguous name, a red `request-path-probe` reads as
+  # "the site is down" and nothing else.
+  #
+  # WHY IT MUST NOT SHARE trigger's CONCURRENCY GROUP — the finding that shaped
+  # this whole job. During the 2026-08-11 outage the five platform-snapshot runs
+  # at 08:28, 09:31, 10:27, 11:17 and 12:00 UTC all hung on the unreachable site
+  # and were cut off by `timeout-minutes: 5`. GitHub reports a timeout-expired
+  # job as **cancelled**, not failed, and sends NO notification for a cancelled
+  # run. The signal existed, spanned the outage exactly, and was structurally
+  # incapable of paging anyone. So this job:
+  #   * carries no concurrency group at all, so a subsequent run never cancels it
+  #   * bounds every curl with --max-time and exits non-zero ITSELF
+  #   * has a worst case (~3.5 min) far inside its own timeout-minutes, so it
+  #     can only ever finish as success or FAILURE — never `cancelled`
+  #
+  # This is therefore alerting on a signal that already existed, not new
+  # monitoring.
+  #
+  # WHERE THE PAGE GOES: GitHub emails scheduled-workflow failures to the account
+  # that last committed the workflow file — currently
+  # `Civitics Platform <civitics.platform@gmail.com>` (96c2204c). If that inbox
+  # is not watched, this alert is decorative; forward it or add a notification
+  # integration. See docs/OPERATIONS.md § Monitoring.
+  # ───────────────────────────────────────────────────────────────────────────
+  request-path-probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Deliberately NO `concurrency:` here. See header.
+
+    steps:
+      - name: Probe key request-path endpoints
+        env:
+          APP_URL: ${{ secrets.CIVITICS_APP_URL || 'https://civitics-civitics.vercel.app' }}
+          OFFICIAL_ID: ${{ secrets.PROBE_OFFICIAL_ID || '5201c5c4-7b93-4042-a74f-d494a20e74de' }}
+        run: |
+          set -uo pipefail
+
+          # Three surfaces, each verified on 2026-08-12 to return 200 with
+          # X-Vercel-Cache: MISS — so none of them can answer from the CDN while
+          # the database is unreachable:
+          #   /                                 homepage SSR (no-store)
+          #   /officials                        DB-backed index page
+          #   /api/officials/<id>/responsiveness  an official-page API
+          #
+          # The official-page API is /responsiveness and NOT /summary, and that
+          # choice is deliberate: /summary FAILS OPEN. Its own header says the
+          # `summary: null` variants (kill switch, spend cap, no data, DB error)
+          # are returned unstamped — i.e. it answers HTTP 200 when the database
+          # is unreachable, which makes it blind to exactly the outage this job
+          # exists to catch. /responsiveness returns HTTP 500 on a DB error
+          # (route.ts:36 and :111). Verified both ways against prod.
+          #
+          # KNOWN LIMIT: the two page routes have not been proven to fail closed
+          # on a DB-down-but-Vercel-up partial outage. On the failure mode this
+          # job was built for — 2026-08-11, Cloudflare 522, origin unreachable —
+          # every endpoint fails, so the probe fires. A partial outage rests on
+          # /responsiveness alone.
+          PATHS=(
+            "/"
+            "/officials"
+            "/api/officials/${OFFICIAL_ID}/responsiveness"
+          )
+
+          ATTEMPTS=3
+          BACKOFF=20
+          FAILED=()
+
+          for path in "${PATHS[@]}"; do
+            url="${APP_URL}${path}"
+            ok=0
+            for attempt in $(seq 1 "${ATTEMPTS}"); do
+              # --max-time is what turns "hangs until the job is killed" into
+              # "fails fast with a conclusion GitHub will notify on".
+              # `|| code=000` rather than `|| echo 000`: on a connection error
+              # curl still prints its own "000" via -w, so echoing a second one
+              # produced "000000". -sS is kept so curl's reason reaches the log.
+              code=$(curl -sS -o /dev/null -w "%{http_code}" --max-time 25 "${url}") || code="000"
+              if [ "${code}" = "200" ]; then
+                echo "ok   ${path} (HTTP 200, attempt ${attempt}/${ATTEMPTS})"
+                ok=1
+                break
+              fi
+              echo "warn ${path} → HTTP ${code} (attempt ${attempt}/${ATTEMPTS})"
+              if [ "${attempt}" -lt "${ATTEMPTS}" ]; then sleep "${BACKOFF}"; fi
+            done
+            if [ "${ok}" -ne 1 ]; then FAILED+=("${path}"); fi
+          done
+
+          if [ "${#FAILED[@]}" -gt 0 ]; then
+            echo "::error::request path is DOWN — ${#FAILED[@]} of ${#PATHS[@]} endpoint(s) failed ${ATTEMPTS} attempts each: ${FAILED[*]}"
+            exit 1
+          fi
+          echo "request path healthy — ${#PATHS[@]}/${#PATHS[@]} endpoints returned 200"
