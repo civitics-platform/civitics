@@ -1220,3 +1220,4 @@
 2026-08-12 | FIX-1022 | ab1a3f96 | closes-as-recognized | fix(ops): bound the MV refresh loop, give FR and officials a vacuum owner, and stop laundering the outage signal
 2026-08-12 | FIX-1026 | ab1a3f96 | local+prod | fix(ops): bound the MV refresh loop, give FR and officials a vacuum owner, and stop laundering the outage signal
 2026-08-12 | FIX-1027 | ab1a3f96 | local+prod | fix(ops): bound the MV refresh loop, give FR and officials a vacuum owner, and stop laundering the outage signal
+2026-08-12 | FIX-1030 | c00e3ac5 | local-only | fix(derived-mvs): fence the chord donor-state plan and bound any weekly unit from outside
