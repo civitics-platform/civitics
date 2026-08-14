@@ -1226,3 +1226,4 @@
 2026-08-13 | FIX-1023 | 356ad10c | local+prod | fix(planner,watchdog): liveness before budget, and correct the FR/FE statistics
 2026-08-13 | FIX-1034 | 356ad10c | local+prod | fix(planner,watchdog): liveness before budget, and correct the FR/FE statistics
 2026-08-13 | FIX-1035 | 356ad10c | local+prod | fix(planner,watchdog): liveness before budget, and correct the FR/FE statistics
+2026-08-13 | FIX-902 | 9092361c | local-only | fix(apps): chunk the growth-prone .in() id-list reads (FIX-902 audit)
