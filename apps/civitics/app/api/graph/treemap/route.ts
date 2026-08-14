@@ -1,7 +1,7 @@
 import { createAdminClient, fetchIndustryTagsByEntityId, fetchEntityIdsByIndustryTag, currentGoverningBodyMembers } from "@civitics/db";
 import { withPublicCdnCache } from "@/lib/cdn-cache";
 import { supabaseUnavailable, unavailableResponse } from "@/lib/supabase-check";
-import { fetchAllRows } from "@/lib/paginate";
+import { fetchAllRows, ID_CHUNK_SIZE } from "@/lib/paginate";
 
 export const dynamic = "force-dynamic";
 
@@ -279,31 +279,43 @@ export async function GET(request: Request) {
   if (validEntityId) {
     const PAGE = 1000;
     const byDonor = new Map<string, number>();
-    let from = 0;
-    // eslint-disable-next-line no-constant-condition
-    while (true) {
-      const donationsQuery = supabase
-        .from("financial_relationships")
-        .select("from_id, amount_cents")
-        .eq("relationship_type", "donation")
-        .eq("to_type", "official")
-        .eq("to_id", validEntityId)
-        .eq("from_type", "financial_entity")
-        .in("from_id", filterPacIds!)
-        .range(from, from + PAGE - 1);
+    // FIX-902: `filterPacIds` rides the request URL exactly like an id list,
+    // because it IS one — every financial_entity carrying the requested
+    // industry tag, straight out of `fetchEntityIdsByIndustryTag` with no cap
+    // but PostgREST's 1,000-row ceiling. One tag covers 8,908 entities on the
+    // local clone, so this filter was routinely 1,000 uuids ≈ 37 KB on the
+    // request line: a guaranteed 414, swallowed by `?? []` into an empty
+    // industry-filtered treemap. Chunk the FILTER at the URL bound and run the
+    // pagination loop per chunk; the per-donor sums merge across chunks
+    // because each pac id appears in exactly one chunk.
+    for (let p = 0; p < filterPacIds!.length; p += ID_CHUNK_SIZE) {
+      const pacChunk = filterPacIds!.slice(p, p + ID_CHUNK_SIZE);
+      let from = 0;
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        const donationsQuery = supabase
+          .from("financial_relationships")
+          .select("from_id, amount_cents")
+          .eq("relationship_type", "donation")
+          .eq("to_type", "official")
+          .eq("to_id", validEntityId)
+          .eq("from_type", "financial_entity")
+          .in("from_id", pacChunk)
+          .range(from, from + PAGE - 1);
 
-      const { data: donations, error: donationsErr } = await donationsQuery;
-      if (donationsErr) {
-        console.error("[graph/treemap/entity] donations error:", donationsErr.message);
-        return Response.json({ error: donationsErr.message }, { status: 500 });
+        const { data: donations, error: donationsErr } = await donationsQuery;
+        if (donationsErr) {
+          console.error("[graph/treemap/entity] donations error:", donationsErr.message);
+          return Response.json({ error: donationsErr.message }, { status: 500 });
+        }
+        if (!donations || donations.length === 0) break;
+        for (const d of donations) {
+          byDonor.set(d.from_id, (byDonor.get(d.from_id) ?? 0) + (d.amount_cents ?? 0));
+        }
+        if (donations.length < PAGE) break;
+        from += PAGE;
+        if (from > 500_000) break; // safety guard
       }
-      if (!donations || donations.length === 0) break;
-      for (const d of donations) {
-        byDonor.set(d.from_id, (byDonor.get(d.from_id) ?? 0) + (d.amount_cents ?? 0));
-      }
-      if (donations.length < PAGE) break;
-      from += PAGE;
-      if (from > 500_000) break; // safety guard
     }
 
     const LEAF_CAP = 1000;
@@ -514,27 +526,39 @@ export async function GET(request: Request) {
     }
   } else if (officialIds.length > 0) {
     const PAGE = 1000;
-    const BATCH = 200;
-    for (let i = 0; i < officialIds.length; i += BATCH) {
-      const batch = officialIds.slice(i, i + BATCH);
-      let from = 0;
-      // eslint-disable-next-line no-constant-condition
-      while (true) {
-        const { data } = await supabase
-          .from("financial_relationships")
-          .select("to_id, amount_cents")
-          .eq("relationship_type", "donation")
-          .eq("to_type", "official")
-          .in("to_id", batch)
-          .in("from_id", filterPacIds)
-          .range(from, from + PAGE - 1);
-        if (!data || data.length === 0) break;
-        for (const d of data) {
-          totalByOfficial.set(d.to_id, (totalByOfficial.get(d.to_id) ?? 0) + (d.amount_cents ?? 0));
+    // FIX-902 (FIX-802 shape): BOTH id lists ride the request URL, so chunking
+    // one of them is not enough. `officialIds` was already chunked at 200 while
+    // `filterPacIds` — up to PostgREST's 1,000-row ceiling out of
+    // `fetchEntityIdsByIndustryTag` — went in whole, making the real request
+    // ~1,200 uuids (≈44 KB) and a certain 414. `?? []` via `!data` then read
+    // that as "this official received nothing from the industry", i.e. an
+    // industry-filtered treemap of zeroes. Half the bound per side keeps the
+    // combined list ≤ ID_CHUNK_SIZE; the pair (official, pac) appears in
+    // exactly one chunk combination, so the per-official sums stay exact.
+    const HALF = Math.floor(ID_CHUNK_SIZE / 2);
+    for (let i = 0; i < officialIds.length; i += HALF) {
+      const batch = officialIds.slice(i, i + HALF);
+      for (let p = 0; p < filterPacIds.length; p += HALF) {
+        const pacChunk = filterPacIds.slice(p, p + HALF);
+        let from = 0;
+        // eslint-disable-next-line no-constant-condition
+        while (true) {
+          const { data } = await supabase
+            .from("financial_relationships")
+            .select("to_id, amount_cents")
+            .eq("relationship_type", "donation")
+            .eq("to_type", "official")
+            .in("to_id", batch)
+            .in("from_id", pacChunk)
+            .range(from, from + PAGE - 1);
+          if (!data || data.length === 0) break;
+          for (const d of data) {
+            totalByOfficial.set(d.to_id, (totalByOfficial.get(d.to_id) ?? 0) + (d.amount_cents ?? 0));
+          }
+          if (data.length < PAGE) break;
+          from += PAGE;
+          if (from > 200_000) break; // safety guard
         }
-        if (data.length < PAGE) break;
-        from += PAGE;
-        if (from > 200_000) break; // safety guard
       }
     }
   }

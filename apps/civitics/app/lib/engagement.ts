@@ -187,6 +187,10 @@ export async function fetchEngagementRollup(
       .from("entity_engagement_rollup_mv")
       .select(ROLLUP_COLUMNS)
       .eq("entity_type", entityType)
+      // .in() bounded: the only caller is officials/[id]/page.tsx passing a
+      // single-element `[params.id]`, max 1. The doc comment above is the
+      // enforcement — a future caller passing an index-sized list must chunk
+      // via fetchChunkedByIds instead — FIX-902
       .in("entity_id", entityIds),
     3000,
     "engagement:rollup-by-ids",

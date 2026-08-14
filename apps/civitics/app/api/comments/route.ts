@@ -251,6 +251,9 @@ export async function GET(request: NextRequest) {
     }
 
     // ── Descendants of the returned roots (depth-bounded threads) ──
+    // .in() bounded: roots is `.limit(limit)` and limit is Math.min(MAX_LIMIT=50, …),
+    // max 50. Note the DESCENDANT read this feeds is NOT bounded — its author
+    // list is chunked in fetchAuthorMeta — FIX-902
     const rootIds = roots.map((r) => r.id);
     let descendants: any[] = [];
     if (rootIds.length > 0) {

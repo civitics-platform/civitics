@@ -3,6 +3,7 @@ import { withPublicCdnCache } from "@/lib/cdn-cache";
 import type { NextRequest } from "next/server";
 import { createAdminClient } from "@civitics/db";
 import { supabaseUnavailable, unavailableResponse } from "@/lib/supabase-check";
+import { fetchChunkedByIds } from "@/lib/paginate";
 
 export const dynamic = "force-dynamic";
 
@@ -70,20 +71,32 @@ export async function GET(req: NextRequest) {
   // Pull contract totals per agency (financial_relationships from agency).
   // amount_cents is the FY-totalled spend; aggregating per from_id gives us
   // the budget figure to size each node by.
+  // FIX-902: chunked. `ids` is the full active agency set for this agencyType,
+  // capped only by the `.limit(1000)` above — 127 rows locally for the largest
+  // type today and growing with every agency ingest, so a single `.in()` is
+  // already within a factor of two of the 414 bound.
   const ids = agencies.map((a) => a.id);
-  const { data: spendRows, error: spendErr } = await supabase
-    .from("financial_relationships")
-    .select("from_id, amount_cents")
-    .eq("from_type", "agency")
-    .eq("relationship_type", "contract")
-    .in("from_id", ids);
+  const { rows: spendRows, complete: spendComplete } = await fetchChunkedByIds<{
+    from_id: string;
+    amount_cents: number | null;
+  }>(
+    ids,
+    (chunk) =>
+      supabase
+        .from("financial_relationships")
+        .select("from_id, amount_cents")
+        .eq("from_type", "agency")
+        .eq("relationship_type", "contract")
+        .in("from_id", chunk),
+    { label: "graph/hierarchy:agency-spend" },
+  );
 
-  if (spendErr) {
-    console.error("[graph/hierarchy] spend fetch:", spendErr.message);
+  if (!spendComplete) {
+    console.error("[graph/hierarchy] spend fetch incomplete — some agencies sized without contract totals");
   }
 
   const spendMap = new Map<string, { total: number; count: number }>();
-  for (const row of (spendRows ?? []) as SpendRow[]) {
+  for (const row of spendRows as SpendRow[]) {
     const cur = spendMap.get(row.from_id) ?? { total: 0, count: 0 };
     cur.total += Number(row.amount_cents) || 0;
     cur.count += 1;

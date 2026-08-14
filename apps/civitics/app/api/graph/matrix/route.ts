@@ -109,6 +109,8 @@ export async function GET(req: NextRequest) {
       supabase
         .from("officials")
         .select("id, full_name, party, district_name, metadata")
+        // .in() bounded: `ids` is UUID-validated and `.slice(0, MAX_OFFICIALS)`d
+        // to 25 at parse time, max 25 — FIX-902
         .in("id", ids),
       // FIX-510 — pairwise agreement computed server-side. The old path fetched
       // every vote row for these officials (votes.official_id = ANY(ids)) and

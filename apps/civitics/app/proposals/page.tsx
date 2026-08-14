@@ -192,6 +192,7 @@ export default async function ProposalsPage({
           supabase
             .from("proposals")
             .select("id,title,type,status,summary_plain,summary_model,introduced_at,metadata,is_synthetic")
+            // .in() bounded: proposal_popularity_24h `.limit(6)` above, max 6 — FIX-902
             .in("id", topProposalIds),
           3000,
           "proposals:featured-most-viewed",
@@ -231,6 +232,7 @@ export default async function ProposalsPage({
         supabase
           .from("proposals")
           .select("id,title,type,status,summary_plain,summary_model,introduced_at,metadata,is_synthetic")
+          // .in() bounded: proposal_trending_24h `.limit(6)` above, max 6 — FIX-902
           .in("id", trendingIds),
         3000,
         "proposals:featured-trending",
@@ -243,6 +245,7 @@ export default async function ProposalsPage({
         supabase
           .from("proposals")
           .select("id,title,type,status,summary_plain,summary_model,introduced_at,metadata,is_synthetic")
+          // .in() bounded: proposal_comment_stats `.limit(6)` above, max 6 — FIX-902
           .in("id", mostCommentedIds),
         3000,
         "proposals:featured-most-commented",
@@ -407,6 +410,9 @@ export default async function ProposalsPage({
     ...rawMainProposals.map((p) => p.id),
   ].filter((id, i, arr) => arr.indexOf(id) === i);
 
+  // .in() bounded: six featured strips at `.limit(6)` plus one main page at
+  // PAGE_SIZE (20) — max 56, and every contributing query carries its own
+  // explicit limit. Both reads below share this list — FIX-902
   // ai_summary_cache may not be in generated types — cast to bypass
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const sb = supabase as any;

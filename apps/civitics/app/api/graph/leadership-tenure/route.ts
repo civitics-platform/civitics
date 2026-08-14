@@ -3,6 +3,7 @@ import { withPublicCdnCache } from "@/lib/cdn-cache";
 import type { NextRequest } from "next/server";
 import { createAdminClient } from "@civitics/db";
 import { supabaseUnavailable, unavailableResponse } from "@/lib/supabase-check";
+import { fetchChunkedByIds } from "@/lib/paginate";
 
 export const dynamic = "force-dynamic";
 
@@ -79,13 +80,20 @@ export async function GET(req: NextRequest) {
   const conRows = (conns ?? []) as ConnectionRow[];
   if (conRows.length === 0) return withPublicCdnCache(NextResponse.json([]));
 
+  // FIX-902: chunked. The appointment-edge read above is capped at 500 rows,
+  // so this list reaches 500 distinct officials — 2.5× the URL bound. The
+  // busiest agency carries 810 appointment edges on the local clone, i.e. the
+  // cap is the only thing holding it down. Non-strict: an unresolved official
+  // renders as an unnamed tenure bar rather than a failed panel.
   const officialIds = [...new Set(conRows.map(r => r.from_id))];
-  const { data: officials } = await supabase
-    .from("officials")
-    .select("id, full_name, party")
-    .in("id", officialIds);
+  const { rows: officials, complete } = await fetchChunkedByIds<OfficialRow>(
+    officialIds,
+    (ids) => supabase.from("officials").select("id, full_name, party").in("id", ids),
+    { label: "leadership-tenure:official-names" },
+  );
+  if (!complete) console.error("[leadership-tenure] official name read incomplete — some rows unnamed");
   const officialMap = new Map<string, OfficialRow>();
-  for (const o of (officials ?? []) as OfficialRow[]) officialMap.set(o.id, o);
+  for (const o of officials) officialMap.set(o.id, o);
 
   const rows: ResponseRow[] = conRows.map((c) => {
     const meta: ConnectionMetadata = c.metadata ?? {};

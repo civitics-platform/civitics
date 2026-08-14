@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createServerClient, createAdminClient } from "@civitics/db";
+import { fetchChunkedByIds } from "@/lib/paginate";
 
 export const dynamic = "force-dynamic";
 
@@ -47,8 +48,17 @@ async function resolveEndpointNames(
     [...byType.entries()].map(async ([type, ids]) => {
       const spec = specs[type];
       if (!spec) return;
-      const { data } = await db.from(spec.table).select(`id, ${spec.col}`).in("id", [...ids]);
-      for (const r of data ?? []) out.set(`${type}:${r.id}`, r[spec.col] ?? "");
+      // FIX-902: chunked. Callers pass BOTH endpoints of every card in the
+      // queue — the card reads are capped at 100 each but there are two of
+      // them, so a single type bucket can hold ~400 ids, past the URL bound.
+      // Unresolved endpoints render as blank names in the moderation queue.
+      const { rows: data, complete } = await fetchChunkedByIds<Record<string, string>>(
+        [...ids],
+        (chunk) => db.from(spec.table).select(`id, ${spec.col}`).in("id", chunk),
+        { label: `moderation:endpoint-names:${type}` },
+      );
+      if (!complete) console.warn(`[admin/moderation] endpoint name read incomplete for ${type}`);
+      for (const r of data) out.set(`${type}:${r.id}`, r[spec.col] ?? "");
     }),
   );
   return out;
@@ -111,6 +121,10 @@ export async function GET(request: NextRequest) {
     }>;
 
     // Hydrate: investigation title, citation count, corroboration count, endpoint names.
+    // .in() bounded (this and the flagged/citation reads around it): both card
+    // sources are `.limit(100)`, so cards is ≤200 and every list derived from it
+    // is ≤200. resolveEndpointNames is the exception — it takes TWO endpoints
+    // per card, so it chunks — FIX-902
     const invIds = Array.from(new Set(cards.map((c) => c.investigation_id)));
     const cardIds = cards.map((c) => c.id);
     const titleById = new Map<string, string>();
@@ -162,6 +176,8 @@ export async function GET(request: NextRequest) {
       .limit(100);
     const flagRows = (flags ?? []) as Array<{ id: string; content_id: string }>;
 
+    // .in() bounded: the flags read above is `.limit(100)`, so this and the
+    // invIds derived from it are ≤100 — FIX-902
     const cardIds = Array.from(new Set(flagRows.map((f) => f.content_id)));
     const cardById = new Map<string, Record<string, unknown>>();
     if (cardIds.length > 0) {
@@ -212,6 +228,9 @@ export async function GET(request: NextRequest) {
   const civicIds = flagRows
     .filter((f) => f.content_type === "civic_comment")
     .map((f) => f.content_id);
+  // .in() bounded (this, civicIds above, and authorIds below): the comment-flag
+  // queue read is `.limit(100)`, so the two content-type splits sum to ≤100 and
+  // the author set derived from them is ≤100 — FIX-902
   const officialIds = flagRows
     .filter((f) => f.content_type === "official_community_comment")
     .map((f) => f.content_id);

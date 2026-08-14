@@ -3,6 +3,7 @@ import { withPublicCdnCache } from "@/lib/cdn-cache";
 import type { NextRequest } from "next/server";
 import { createAdminClient } from "@civitics/db";
 import { supabaseUnavailable, unavailableResponse } from "@/lib/supabase-check";
+import { fetchChunkedByIds } from "@/lib/paginate";
 
 export const dynamic = "force-dynamic";
 
@@ -95,22 +96,32 @@ async function computeSectorAffinityLive(supabase: any, entityId: string): Promi
   // (FIX-777 — was "first seen" across unordered batches; ordering by (entity_id,
   // tag) + keep-first yields the smallest tag, matching the rollup / the
   // FIX-518 `ind` CTE / fetchIndustryTagsByEntityId).
+  // FIX-902: this loop WAS chunked — at 300, which is over the URL bound, not
+  // under it. 300 uuids is ~11 KB on the request line and FIX-509 verified the
+  // gateway 414 at ~356 / FIX-772 at ~234, so every chunk sat inside the
+  // failure window and each one that tripped it silently dropped 300 donors'
+  // industry tags into "Other". The pagination loop above admits up to 200,000
+  // donors, so this is not a rare shape. Chunked at the shared ID_CHUNK_SIZE.
   const donorIds = [...donorTotals.keys()];
   const tagByEntity = new Map<string, string>();
-  const BATCH = 300;
-  for (let i = 0; i < donorIds.length; i += BATCH) {
-    const batch = donorIds.slice(i, i + BATCH);
-    const { data: tags } = await supabase
-      .from("entity_tags")
-      .select("entity_id, tag")
-      .eq("tag_category", "industry")
-      .eq("entity_type", "financial_entity")
-      .in("entity_id", batch)
-      .order("entity_id", { ascending: true })
-      .order("tag", { ascending: true });
-    for (const t of (tags ?? []) as TagLite[]) {
-      if (!tagByEntity.has(t.entity_id)) tagByEntity.set(t.entity_id, t.tag);
-    }
+  const { rows: tags, complete: tagsComplete } = await fetchChunkedByIds<TagLite>(
+    donorIds,
+    (ids) =>
+      supabase
+        .from("entity_tags")
+        .select("entity_id, tag")
+        .eq("tag_category", "industry")
+        .eq("entity_type", "financial_entity")
+        .in("entity_id", ids)
+        .order("entity_id", { ascending: true })
+        .order("tag", { ascending: true }),
+    { label: "sector-affinity:industry-tags" },
+  );
+  if (!tagsComplete) {
+    console.warn("[sector-affinity] industry tag read incomplete — affected donors fall back to Other");
+  }
+  for (const t of tags) {
+    if (!tagByEntity.has(t.entity_id)) tagByEntity.set(t.entity_id, t.tag);
   }
 
   const bySector = new Map<string, { totalCents: number; donors: Set<string> }>();

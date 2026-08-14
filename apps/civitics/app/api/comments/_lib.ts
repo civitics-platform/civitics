@@ -8,6 +8,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { kindLabel, MAX_THREAD_DEPTH, type EntityCommentType } from "@civitics/db";
+import { fetchChunkedByIds } from "@/lib/paginate";
 
 // Loosely-typed admin client alias — the generated Database type is threaded
 // through createAdminClient already; this keeps the helper signatures readable.
@@ -133,12 +134,21 @@ export async function fetchAuthorMeta(admin: Admin, ids: string[]): Promise<Map<
   const map = new Map<string, AuthorMeta>();
   const unique = Array.from(new Set(ids));
   if (unique.length === 0) return map;
-  const { data, error } = await admin
-    .from("users")
-    .select("id,display_name,is_synthetic")
-    .in("id", unique);
-  if (error) throw error;
-  for (const u of (data ?? []) as Array<{ id: string; display_name: string | null; is_synthetic: boolean | null }>) {
+  // FIX-902: chunked, strict. Callers pass the authors of a page of thread
+  // ROOTS plus ALL their descendants — the descendant read is bounded only by
+  // PostgREST's 1,000-row cap, so a busy entity's comment page carries well
+  // over 200 distinct authors. Strict preserves this function's existing
+  // throw-on-error contract, which exists for a reason stated above: a
+  // swallowed failure renders synthetic authors UNLABELLED, and unlabelled
+  // fiction reading as real is the dangerous direction.
+  const { rows: data } = await fetchChunkedByIds<{
+    id: string; display_name: string | null; is_synthetic: boolean | null;
+  }>(
+    unique,
+    (chunk) => admin.from("users").select("id,display_name,is_synthetic").in("id", chunk),
+    { strict: true, label: "comments:author-meta" },
+  );
+  for (const u of data) {
     map.set(u.id, { name: displayNameFor(u.id, u.display_name), isSynthetic: u.is_synthetic === true });
   }
   for (const id of unique)

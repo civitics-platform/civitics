@@ -30,6 +30,8 @@ export async function GET() {
     return NextResponse.json({ entities: [] });
   }
 
+  // .in() bounded (both lists): the user_follows read above is `.limit(5)`, so
+  // the two type-split lists sum to 5 — FIX-902
   const officialIds = follows.filter((f: { entity_type: string }) => f.entity_type === "official").map((f: { entity_id: string }) => f.entity_id);
   const agencyIds = follows.filter((f: { entity_type: string }) => f.entity_type === "agency").map((f: { entity_id: string }) => f.entity_id);
 

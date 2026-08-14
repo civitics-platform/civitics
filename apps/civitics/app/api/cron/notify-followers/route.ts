@@ -14,6 +14,7 @@ export const dynamic = "force-dynamic";
 import { NextResponse, type NextRequest } from "next/server";
 import { createAdminClient } from "@civitics/db";
 import { notifyFollowers } from "@/lib/notifications";
+import { fetchChunkedByIds } from "@/lib/paginate";
 
 const STATE_KEY = "notify_followers_last_run";
 
@@ -80,29 +81,48 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   let officialEventsSent = 0;
   if (followedOfficialIds.length > 0) {
-    const { data: newVotes } = await db
-      .from("votes")
-      .select("id, official_id, vote, voted_at, bill_proposal_id")
-      .in("official_id", followedOfficialIds)
-      .gt("voted_at", lastRunIso)
-      .order("voted_at", { ascending: false })
-      .limit(500);
+    // FIX-902: chunked. `fetchAllFollowedEntityIds` pages the ENTIRE
+    // user_follows table for this entity type — there is no cap at all, and it
+    // grows with every user who follows anyone. A 414 here silently sends zero
+    // vote notifications and the cron still reports success.
+    const { rows: newVotes, complete: votesComplete } = await fetchChunkedByIds<{
+      id: string; official_id: string; vote: string; voted_at: string | null; bill_proposal_id: string | null;
+    }>(
+      followedOfficialIds,
+      (ids) =>
+        db
+          .from("votes")
+          .select("id, official_id, vote, voted_at, bill_proposal_id")
+          .in("official_id", ids)
+          .gt("voted_at", lastRunIso)
+          .order("voted_at", { ascending: false })
+          .limit(500),
+      { label: "notify-followers:new-votes" },
+    );
+    if (!votesComplete) {
+      console.error("[notify-followers] vote read incomplete — some followed officials skipped this run");
+    }
 
     // votes.bill_proposal_id FKs to bill_details(proposal_id), not proposals, so a
     // PostgREST embed can't resolve. Two-step: fetch proposals + bill_number
     // separately. The bill_proposal_id value IS a proposals.id.
-    const newVoteRows = (newVotes ?? []) as Array<{
-      id: string; official_id: string; vote: string; voted_at: string | null; bill_proposal_id: string | null;
-    }>;
+    const newVoteRows = newVotes;
+    // FIX-902: chunked. Bounded by the vote read's `.limit(500)` — which is now
+    // per chunk, so this can carry more distinct proposals than the 500 the old
+    // single-shot read allowed. Either way it was already over the 200 bound.
     const followProposalIds = [...new Set(newVoteRows.map((v) => v.bill_proposal_id).filter(Boolean) as string[])];
     const followProposalsById = new Map<string, { id: string; title: string | null; bill_number: string | null }>();
     if (followProposalIds.length > 0) {
-      const { data: props } = await db
-        .from("proposals")
-        .select("id, title, bill_details(bill_number)")
-        .in("id", followProposalIds);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      for (const p of ((props ?? []) as any[])) {
+      const { rows: props, complete: propsComplete } = await fetchChunkedByIds<any>(
+        followProposalIds,
+        (ids) => db.from("proposals").select("id, title, bill_details(bill_number)").in("id", ids),
+        { label: "notify-followers:vote-proposals" },
+      );
+      if (!propsComplete) {
+        console.error("[notify-followers] proposal read incomplete — some notifications say 'Unknown bill'");
+      }
+      for (const p of props) {
         const bd = Array.isArray(p.bill_details) ? p.bill_details[0] : p.bill_details;
         followProposalsById.set(p.id, { id: p.id, title: p.title ?? null, bill_number: bd?.bill_number ?? null });
       }
@@ -155,12 +175,20 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   let agencyEventsSent = 0;
   if (followedAgencyIds.length > 0) {
     // Agencies are keyed by acronym or name in proposals.metadata->>agency_id.
-    const { data: agencies } = await db
-      .from("agencies")
-      .select("id, name, acronym")
-      .in("id", followedAgencyIds);
+    // FIX-902: chunked — same uncapped `fetchAllFollowedEntityIds` feeder as the
+    // official branch above.
+    const { rows: agencies, complete: agenciesComplete } = await fetchChunkedByIds<{
+      id: string; name: string; acronym: string | null;
+    }>(
+      followedAgencyIds,
+      (ids) => db.from("agencies").select("id, name, acronym").in("id", ids),
+      { label: "notify-followers:agencies" },
+    );
+    if (!agenciesComplete) {
+      console.error("[notify-followers] agency read incomplete — some followed agencies skipped this run");
+    }
 
-    for (const a of agencies ?? []) {
+    for (const a of agencies) {
       const key = a.acronym ?? a.name;
       const { data: newProposals } = await db
         .from("proposals")

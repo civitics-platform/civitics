@@ -8,6 +8,7 @@ import { createAdminClient } from "@civitics/db";
 import { withPublicCdnCache } from "@/lib/cdn-cache";
 import { supabaseUnavailable, unavailableResponse, withDbTimeout } from "@/lib/supabase-check";
 import { BRACKET_TIERS } from "@civitics/graph";
+import { fetchChunkedByIds } from "@/lib/paginate";
 
 export const dynamic = "force-dynamic";
 
@@ -73,16 +74,30 @@ export async function GET(request: Request): Promise<Response> {
       return withPublicCdnCache(Response.json({ donors: [], total: 0, page, pageSize }));
     }
 
-    // Step 2: fetch individual donor metadata for those entity IDs
+    // Step 2: fetch individual donor metadata for those entity IDs.
+    //
+    // FIX-902: chunked. Step 1 has no `.limit()`, so `fromIds` is every donor
+    // edge PostgREST will hand back — 1,000 (the row cap) in the common funded
+    // case, and the underlying per-official donation-edge count runs to 309,081
+    // on the local clone. A single `.in()` over even the capped 1,000 is a
+    // ~37 KB URL: a guaranteed 414, swallowed into "this official has no
+    // individual donors". Strict — a SHORT donor list here is worse than an
+    // error, because the route's whole output is that list plus its total.
     const fromIds = connRows.map((r) => r.from_id);
-    const { data: entities, error: entErr } = await withDbTimeout(
-      supabase
-        .from("financial_entities")
-        .select("id, display_name, entity_type, recipient_count, metadata")
-        .in("id", fromIds)
-        .eq("entity_type", "individual")
+    const { rows: entities } = await fetchChunkedByIds<EntityRow>(
+      fromIds,
+      (ids, { label }) =>
+        withDbTimeout(
+          supabase
+            .from("financial_entities")
+            .select("id, display_name, entity_type, recipient_count, metadata")
+            .in("id", ids)
+            .eq("entity_type", "individual"),
+          5000,
+          label,
+        ),
+      { strict: true, label: "individual-donors:entities" },
     );
-    if (entErr) throw entErr;
 
     type EntityRow = {
       id: string;
@@ -94,7 +109,7 @@ export async function GET(request: Request): Promise<Response> {
 
     // Build a lookup: entity_id → { display_name, recipient_count, employer, state }
     const entityLookup = new Map<string, EntityRow>();
-    for (const e of (entities ?? []) as unknown as EntityRow[]) {
+    for (const e of entities) {
       entityLookup.set(e.id, e);
     }
 

@@ -494,6 +494,9 @@ export default async function DonorProfilePage({
     .slice(0, 50);
 
   // ── Enrich spending awards (contracts + grants received) ──────────────────
+  // .in() bounded: the contracts+grants read ("donors:spending") is `.limit(50)`,
+  // so this is ≤50 distinct agencies — the only unchunked `.in()` on this page;
+  // the three donor/recipient lookups above chunk at 200 — FIX-902
   const agencyIds = [...new Set(spending.map((r) => r.from_id))];
   const agencyName = new Map<string, string>();
   if (agencyIds.length > 0) {

@@ -22,6 +22,7 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { fetchChunkedByIds } from "@/lib/paginate";
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -202,13 +203,25 @@ export async function computeGate(
   let againstBestVotes = 0;
 
   if (argIds.length > 0) {
-    const { data: voteRows } = await supabase
-      .from("civic_initiative_argument_votes")
-      .select("argument_id")
-      .in("argument_id", argIds);
+    // FIX-902: chunked. `argIds` is every top-level argument on the initiative
+    // with no cap — user-generated, so it grows with participation, and this
+    // gate decides whether an initiative ADVANCES. A 414 reads as zero votes on
+    // every argument, i.e. a silently failed gate rather than an errored one.
+    const { rows: voteRows, complete } = await fetchChunkedByIds<{ argument_id: string }>(
+      argIds,
+      (ids) =>
+        supabase
+          .from("civic_initiative_argument_votes")
+          .select("argument_id")
+          .in("argument_id", ids),
+      { label: "initiatives:argument-votes" },
+    );
+    if (!complete) {
+      console.error("[initiatives/gate] argument vote read incomplete — gate evaluated on partial counts");
+    }
 
     const voteCounts: Record<string, number> = {};
-    for (const v of voteRows ?? []) {
+    for (const v of voteRows) {
       voteCounts[v.argument_id] = (voteCounts[v.argument_id] ?? 0) + 1;
     }
 

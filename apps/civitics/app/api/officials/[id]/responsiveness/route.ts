@@ -40,6 +40,7 @@ export async function GET(
     }
 
     // Resolve linked-initiative title + scope for the recent list (≤10 rows).
+    // .in() bounded: the responses read above is capped at 10, max 10 — FIX-902
     const initiativeIds = [
       ...new Set(
         ((rows ?? []) as Array<{ initiative_id: string | null }>)

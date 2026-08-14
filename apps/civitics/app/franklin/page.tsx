@@ -246,6 +246,9 @@ export default async function FranklinHubPage() {
     short_name: string | null;
     type: string;
   }>;
+  // .in() bounded: the Franklin synthetic state plus its direct children —
+  // 2 ids on the seeded clone, and the seed is what sets the ceiling. Feeds the
+  // six jurisdiction-scoped reads below — FIX-902
   const jurisdictionIds = [stateId, ...children.map((c) => c.id)];
 
   const [instRes, offRes, propRes, initRes, investRes, qaRes, finEntRes, gbRes, bdRes] = await Promise.all([
@@ -367,6 +370,7 @@ export default async function FranklinHubPage() {
 
   // ── Officials (feature Q&A answerers first) ─────────────────────────────────
   const officialsAll = (offRes.data ?? []) as OfficialRosterData[];
+  // .in() bounded: the officials read above is `.limit(50)`, max 50 — FIX-902
   const officialIds = officialsAll.map((o) => o.id);
   // Featured-first ordering (decision 6.4): one cheap follow-up to find which
   // officials have answered Q&A. Needs the official ids, so it can't join the
@@ -462,11 +466,16 @@ export default async function FranklinHubPage() {
   const hb14PropId =
     [...billNumByProp.entries()].find(([, bn]) => bn === FRANKLIN_BILL_NUMBER)?.[0] ?? null;
   const hb14 = hb14PropId ? proposalsRaw.find((p) => p.id === hb14PropId) ?? null : null;
+  // .in() bounded: the investigations read above is `.limit(6)` and this
+  // filters it down further, max 6 — FIX-902
   const ridgelineInvs = investigations.filter((inv) =>
     RIDGELINE_INVESTIGATION_TITLES.includes(inv.title)
   );
   const initiativeRow = initiatives.find((i) => i.title === PLATEAU_INITIATIVE_TITLE) ?? null;
 
+  // .in() bounded (both this and gbIds below): financial_entities is
+  // `.limit(50)` and governing_bodies is scoped to the two Franklin
+  // jurisdictions (2 rows seeded) — max 50 and ~2 — FIX-902
   const finEntities = (finEntRes.data ?? []) as Array<{ id: string; display_name: string }>;
   const finById = new Map(finEntities.map((e) => [e.id, e]));
   const oppositionPac = finEntities.find((e) => e.display_name === OPPOSITION_PAC_NAME) ?? null;

@@ -791,6 +791,8 @@ export async function GET(request: Request) {
       // path the default view is designed to keep small. Cap each direction at a safety
       // ceiling and signal `partial` when truncated, rather than silently dropping edges
       // past MAX_ROWS (the prior unbounded load) or fetching the whole table (FIX-428).
+      // .in() bounded: top10Ids is `.slice(0, 10)` of the degree-sorted
+      // officials, max 10 — FIX-902
       const TOP10_EDGE_CEILING = MAX_ROWS * 5;
       const [expandFromRes, expandToRes] = await Promise.all([
         fetchAllPaged<ConnectionRow>((f, t) =>
@@ -1234,17 +1236,31 @@ export async function GET(request: Request) {
       ),
     );
     if (investCardIds.length > 0) {
-      const { data: invCards } = await supabase
-        .from("evidence_cards")
-        .select("id, investigation_id, updated_at")
-        .in("id", investCardIds);
-      const invIds = Array.from(new Set((invCards ?? []).map((c) => c.investigation_id as string)));
+      // FIX-902: chunked. Small today (promotions are hand-curated) but nothing
+      // caps it — it is one id per investigation-sourced edge in the response,
+      // and the edge set here runs to thousands. Non-strict: a missing card just
+      // loses the attribution popover's link, which is what the `?? []` already
+      // degraded to, only now it is logged rather than invisible.
+      const { rows: invCards, complete: cardsComplete } = await fetchChunkedByIds<{
+        id: string; investigation_id: string; updated_at: string;
+      }>(
+        investCardIds,
+        (ids) => supabase.from("evidence_cards").select("id, investigation_id, updated_at").in("id", ids),
+        { label: "connections:invest-attr-cards" },
+      );
+      const invIds = Array.from(new Set(invCards.map((c) => c.investigation_id)));
       const titleById = new Map<string, string>();
       if (invIds.length > 0) {
-        const { data: invs } = await supabase.from("investigations").select("id, title").in("id", invIds);
-        for (const i of invs ?? []) titleById.set(i.id as string, i.title as string);
+        const { rows: invs, complete: invsComplete } = await fetchChunkedByIds<{ id: string; title: string }>(
+          invIds,
+          (ids) => supabase.from("investigations").select("id, title").in("id", ids),
+          { label: "connections:invest-attr-titles" },
+        );
+        if (!invsComplete) console.warn("[graph/connections] investigation title read incomplete");
+        for (const i of invs) titleById.set(i.id, i.title);
       }
-      for (const c of invCards ?? []) {
+      if (!cardsComplete) console.warn("[graph/connections] investigation attribution read incomplete");
+      for (const c of invCards) {
         investAttr.set(c.id as string, {
           investigationId: c.investigation_id as string,
           title: titleById.get(c.investigation_id as string) ?? "Investigation",

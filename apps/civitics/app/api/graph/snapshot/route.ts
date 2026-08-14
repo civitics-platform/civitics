@@ -20,6 +20,7 @@
 import { createAdminClient, fetchIndustryTagsByEntityId } from "@civitics/db";
 import type { Json } from "@civitics/db";
 import { supabaseUnavailable, unavailableResponse, withDbTimeout } from "@/lib/supabase-check";
+import { fetchChunkedByIds } from "@/lib/paginate";
 
 export const dynamic = "force-dynamic";
 // revalidate = 60 is overridden by force-dynamic; Cache-Control header is set manually.
@@ -336,6 +337,8 @@ async function buildForceData(
 
   // Depth 2: expand up to 20 neighbors
   if (depth >= 2 && resolvedId && all.length > 0) {
+    // .in() bounded: explicit `.slice(0, 20)`, max 20 — feeds both depth-2
+    // expansion reads below — FIX-902
     const neighborIds = [
       ...new Set(
         all.map((c) => (c.from_id === resolvedId ? c.to_id : c.from_id)),
@@ -378,19 +381,27 @@ async function buildForceData(
   if (!includeProcedural) {
     const proposalIds = [...new Set(all.filter((c) => c.to_type === "proposal").map((c) => c.to_id))];
     if (proposalIds.length > 0) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data: propCats } = await withDbTimeout<{ data: Array<{ id: string; vote_category: string | null }> | null; error: unknown }>(
-        (supabase as any)
-          .from("proposals")
-          .select("id, vote_category")
-          .in("id", proposalIds)
+      // FIX-902: chunked. `all` holds up to `limit` direct edges plus two
+      // depth-2 half-pages, and `limit` is capped at 500 — so an official whose
+      // edges are mostly votes yields well over 200 distinct proposals. The
+      // filter fails OPEN (a 414 → no procedural ids → nothing filtered), which
+      // is the quiet direction: the graph silently regains the cloture-motion
+      // clutter this block exists to remove.
+      const { rows: propCats, complete } = await fetchChunkedByIds<{ id: string; vote_category: string | null }>(
+        proposalIds,
+        (ids) =>
+          withDbTimeout<{ data: Array<{ id: string; vote_category: string | null }> | null; error: { message: string } | null }>(
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (supabase as any).from("proposals").select("id, vote_category").in("id", ids)
+          ),
+        { label: "snapshot:procedural-filter" },
       );
       queries++;
+      if (!complete) {
+        console.warn("[graph/snapshot] procedural filter read incomplete — some procedural edges kept");
+      }
       const proceduralIds = new Set(
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        ((propCats ?? []) as unknown as { id: string; vote_category: string | null }[])
-          .filter((p) => p.vote_category === "procedural")
-          .map((p) => p.id),
+        propCats.filter((p) => p.vote_category === "procedural").map((p) => p.id),
       );
       if (proceduralIds.size > 0) {
         all = all.filter((c) => c.to_type !== "proposal" || !proceduralIds.has(c.to_id));
@@ -440,31 +451,43 @@ async function buildForceData(
     .filter((e) => ["governing_body", "agency"].includes(e.type))
     .map((e) => e.id);
 
+  // FIX-902: chunked. These four lists partition the node set of an edge
+  // collection that is capped at `limit` (≤500) direct edges plus two depth-2
+  // half-pages — so any one of them can exceed 200 on a high-degree entity. A
+  // 414 here is the FIX-431/FIX-732 failure: nodes render with "Unknown" labels
+  // on an HTTP 200, which reads as missing data rather than a failed lookup.
   const [offRes, finRes, propRes, gbRes] = await Promise.all([
-    officialIds.length
-      ? supabase.from("officials").select("id, full_name").in("id", officialIds)
-      : Promise.resolve({ data: [] as { id: string; full_name: string }[] }),
-    financialIds.length
-      ? supabase.from("financial_entities").select("id, display_name").in("id", financialIds)
-      : Promise.resolve({ data: [] as { id: string; display_name: string }[] }),
-    proposalIds.length
-      ? supabase.from("proposals").select("id, title").in("id", proposalIds)
-      : Promise.resolve({ data: [] as { id: string; title: string }[] }),
-    gbIds.length
-      ? supabase.from("governing_bodies").select("id, name").in("id", gbIds)
-      : Promise.resolve({ data: [] as { id: string; name: string }[] }),
+    fetchChunkedByIds<{ id: string; full_name: string }>(
+      officialIds,
+      (ids) => supabase.from("officials").select("id, full_name").in("id", ids),
+      { label: "snapshot:official-names" },
+    ),
+    fetchChunkedByIds<{ id: string; display_name: string }>(
+      financialIds,
+      (ids) => supabase.from("financial_entities").select("id, display_name").in("id", ids),
+      { label: "snapshot:financial-names" },
+    ),
+    fetchChunkedByIds<{ id: string; title: string }>(
+      proposalIds,
+      (ids) => supabase.from("proposals").select("id, title").in("id", ids),
+      { label: "snapshot:proposal-names" },
+    ),
+    fetchChunkedByIds<{ id: string; name: string }>(
+      gbIds,
+      (ids) => supabase.from("governing_bodies").select("id, name").in("id", ids),
+      { label: "snapshot:gb-names" },
+    ),
   ]);
-  queries += 4;
+  queries += offRes.chunkCount + finRes.chunkCount + propRes.chunkCount + gbRes.chunkCount;
+  if (!offRes.complete || !finRes.complete || !propRes.complete || !gbRes.complete) {
+    console.warn("[graph/snapshot] name lookup incomplete — some nodes render as Unknown");
+  }
 
   const nameMap = new Map<string, string>();
-  for (const o of (offRes.data ?? []) as { id: string; full_name: string }[])
-    nameMap.set(o.id, o.full_name);
-  for (const f of (finRes.data ?? []) as { id: string; display_name: string }[])
-    nameMap.set(f.id, f.display_name);
-  for (const p of (propRes.data ?? []) as { id: string; title: string }[])
-    nameMap.set(p.id, p.title);
-  for (const g of (gbRes.data ?? []) as { id: string; name: string }[])
-    nameMap.set(g.id, g.name);
+  for (const o of offRes.rows) nameMap.set(o.id, o.full_name);
+  for (const f of finRes.rows) nameMap.set(f.id, f.display_name);
+  for (const p of propRes.rows) nameMap.set(p.id, p.title);
+  for (const g of gbRes.rows) nameMap.set(g.id, g.name);
 
   // Path finder
   let path: string[] | undefined;

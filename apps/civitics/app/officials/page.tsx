@@ -117,18 +117,30 @@ export default async function OfficialsPage({
   const present = new Set(officials.map((o) => o.id));
   const missingEngagedIds = [...engagementByOfficial.keys()].filter((id) => !present.has(id));
   if (missingEngagedIds.length > 0) {
-    // Builder split across variable assignment; the awaited `extraQuery`
-    // db-timeout-exempt: IS wrapped in withDbTimeout below.
-    let extraQuery = supabase.from("officials").select(OFFICIAL_SELECT).in("id", missingEngagedIds);
-    // Match the active/former view so "Active" doesn't surprise-show a former
-    // official; an engaged former official appears only under ?status=all.
-    if (!includeFormer) extraQuery = extraQuery.eq("is_active", true);
-    const { data: extra } = await withDbTimeout(
-      extraQuery,
-      3000,
-      "officials:directory-engaged-extra"
+    // FIX-902: chunked. The feeder is the engagement rollup — one row per
+    // official carrying a claim or any Q&A/comment activity — so this list
+    // grows with USE, not with a fixed page size, and nothing upstream caps it.
+    // It is sparse today, which is exactly how FIX-899 stayed invisible for
+    // months on this same page.
+    const { rows: extra, complete: extraComplete } = await fetchChunkedByIds<unknown>(
+      missingEngagedIds,
+      (ids, { label }) => {
+        // Builder split across variable assignment; returned INTO withDbTimeout
+        // db-timeout-exempt: on the next line.
+        let extraQuery = supabase.from("officials").select(OFFICIAL_SELECT).in("id", ids);
+        // Match the active/former view so "Active" doesn't surprise-show a former
+        // official; an engaged former official appears only under ?status=all.
+        if (!includeFormer) extraQuery = extraQuery.eq("is_active", true);
+        return withDbTimeout(extraQuery, 3000, label);
+      },
+      { label: "officials:directory-engaged-extra" }
     );
-    for (const o of (extra ?? []) as unknown[]) {
+    if (!extraComplete) {
+      console.warn(
+        "officials:directory-engaged-extra — partial read; some engaged officials are missing from the index"
+      );
+    }
+    for (const o of extra as unknown[]) {
       officials.push(mapOfficial(o));
     }
   }

@@ -6,7 +6,7 @@ import { withPublicCdnCache } from "@/lib/cdn-cache";
 // sector resolution moved into get_cohort_top_donors(), and no other branch used it.
 import { createAdminClient, fetchEntityIdsByIndustryTag, currentGoverningBodyMembers } from "@civitics/db";
 import { supabaseUnavailable, unavailableResponse, withDbTimeout } from "@/lib/supabase-check";
-import { fetchAllRows } from "@/lib/paginate";
+import { fetchAllRows, ID_CHUNK_SIZE } from "@/lib/paginate";
 import { isGbExpandableJurisdictionType } from "@/lib/graph-seedable-kinds";
 // FIX-886/887 — hand-picked cohort parsing + live-path admission rules, kept
 // pure in @/lib so they carry unit tests the route itself can't.
@@ -881,6 +881,8 @@ export async function GET(req: NextRequest) {
       .sort((a, b) => b.totalUsd - a.totalUsd)
       .slice(0, limit);
 
+    // .in() bounded: `limit` is Math.min(…, 100) at parse time, max 100 — the
+    // same cap bounds the overseer and contract-flow name lookups below — FIX-902
     const officialIds = topRecipients.map((r) => r.officialId);
 
     type OfficialRow = { id: string; full_name: string; party: string | null; metadata: Record<string, unknown> | null };
@@ -1047,8 +1049,18 @@ export async function GET(req: NextRequest) {
     // treating an empty overseer set as "no oversight".
     let donorFetchError = false;
 
-    // Fetch oversight edges for all agencies in parallel batches
-    const AG_BATCH = 500;
+    // Fetch oversight edges for all agencies in parallel batches.
+    //
+    // FIX-902: was 500. That is a URL-WIDTH bound, not a row bound, and 500
+    // uuids (~18.5 KB on the request line) is past the gateway's limit — 414
+    // verified at ~356 in FIX-509 and ~234 in FIX-772 — so a full-width chunk
+    // failed, `r.data ?? []` dropped it, and the overseer aggregation silently
+    // lost up to 500 agencies' oversight edges. The agency read above admits
+    // 1,000 ids, so full-width chunks were the normal case, not the edge case.
+    // Kept as a hand-rolled chunk loop (not fetchChunkedByIds) because the
+    // per-page error handling here feeds `donorFetchError`, the route's
+    // fail-closed flag, via a raceWithBudget wrapper the helper doesn't model.
+    const AG_BATCH = ID_CHUNK_SIZE;
     const agChunks: string[][] = [];
     for (let i = 0; i < agencyIds.length; i += AG_BATCH)
       agChunks.push(agencyIds.slice(i, i + AG_BATCH));
@@ -1097,6 +1109,7 @@ export async function GET(req: NextRequest) {
       .sort((a, b) => b[1].agencyCount - a[1].agencyCount)
       .slice(0, limit);
 
+    // .in() bounded: `.slice(0, limit)` above, and limit caps at 100 — FIX-902
     const overseerIds = topOverseers.map(([id]) => id);
     type GovBodyRow = { id: string; name: string; metadata: Record<string, unknown> | null };
     const { data: overseerData, error: overseerErr } = overseerIds.length > 0
@@ -1329,6 +1342,7 @@ export async function GET(req: NextRequest) {
       .slice(0, limit);
 
     // Resolve display names for both connected sets (≤ limit ids each).
+    // .in() bounded: both are `.slice(0, limit)` and limit caps at 100 — FIX-902
     type OfficialRow = { id: string; full_name: string; party: string | null; metadata: Record<string, unknown> | null };
     type AgencyRow = { id: string; name: string; acronym: string | null };
     const [officialsRes, agenciesRes] = await Promise.all([

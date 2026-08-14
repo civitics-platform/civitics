@@ -12,6 +12,7 @@ import Link from "next/link";
 import { createClient } from "@supabase/supabase-js";
 import { createPublicClient } from "@civitics/db";
 import { withDbTimeout } from "@/lib/supabase-check";
+import { fetchChunkedByIds } from "@/lib/paginate";
 import { PageViewTracker } from "../../components/PageViewTracker";
 
 export const revalidate = 300;
@@ -185,15 +186,24 @@ export default async function MeetingDetailPage({ params }: { params: Promise<{ 
   );
   const proposalTitles = new Map<string, string>();
   if (proposalIds.length > 0) {
-    const { data: props } = await withDbTimeout(
-      supabase
-        .from("proposals")
-        .select("id, title")
-        .in("id", proposalIds),
-      3000,
-      "meetings:proposal-titles"
+    // FIX-902: chunked. The agenda_items read above has no `.limit()`, so this
+    // list is exactly as long as the meeting's agenda — a large council agenda
+    // is the growth path. Non-strict: an unresolved title falls back to the
+    // agenda item's own text, so partial beats nothing here.
+    const { rows: props, complete } = await fetchChunkedByIds<{ id: string; title: string }>(
+      proposalIds,
+      (ids, { label }) =>
+        withDbTimeout(
+          supabase.from("proposals").select("id, title").in("id", ids),
+          3000,
+          label
+        ),
+      { label: "meetings:proposal-titles" }
     );
-    for (const p of (props ?? []) as Array<{ id: string; title: string }>) {
+    if (!complete) {
+      console.warn("meetings:proposal-titles — partial read; some agenda items show no linked bill title");
+    }
+    for (const p of props) {
       proposalTitles.set(p.id, p.title);
     }
   }

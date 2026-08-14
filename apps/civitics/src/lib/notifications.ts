@@ -11,6 +11,7 @@
 
 import { createAdminClient } from "@civitics/db";
 import { renderNotificationEmail, sendEmail } from "./email";
+import { fetchChunkedByIds } from "./paginate";
 
 type EntityType = "official" | "agency";
 type EventType = "official_vote" | "new_proposal" | "initiative_status";
@@ -81,11 +82,21 @@ export async function notifyFollowers(
   let emailsSkipped = 0;
 
   if (emailTargets.length > 0) {
-    const { data: users } = await db
-      .from("users")
-      .select("id, email")
-      .in("id", emailTargets);
-    const userRows: Array<{ id: string; email: string | null }> = users ?? [];
+    // FIX-902: chunked. `emailTargets` is every follower of this entity with
+    // email enabled — the follow read above has no cap, and a widely-followed
+    // official is exactly the entity whose notifications matter most. A 414
+    // here returns zero users, so every email is silently skipped while the
+    // in-app notifications (already inserted) look fine.
+    const { rows: userRows, complete: usersComplete } = await fetchChunkedByIds<{
+      id: string; email: string | null;
+    }>(
+      emailTargets,
+      (ids) => db.from("users").select("id, email").in("id", ids),
+      { label: "notify-followers:email-targets" },
+    );
+    if (!usersComplete) {
+      console.error("[notifyFollowers] email target read incomplete — some followers not emailed");
+    }
     const html = renderNotificationEmail({
       title: input.title,
       body:  input.body ?? null,
@@ -118,10 +129,18 @@ export async function notifyFollowers(
         .filter((n) => idsSent.includes(n.user_id))
         .map((n) => n.id);
       if (matchedNotifIds.length > 0) {
-        await db
-          .from("notifications")
-          .update({ email_sent: true })
-          .in("id", matchedNotifIds);
+        // FIX-902: chunked. Same follower-count feeder as the read above — the
+        // id list rides the URL on an UPDATE exactly as it does on a SELECT, so
+        // a large fan-out left every `email_sent` flag false after the mail had
+        // actually gone out.
+        const { complete: markComplete } = await fetchChunkedByIds<never>(
+          matchedNotifIds,
+          (ids) => db.from("notifications").update({ email_sent: true }).in("id", ids),
+          { label: "notify-followers:mark-email-sent" },
+        );
+        if (!markComplete) {
+          console.error("[notifyFollowers] email_sent update incomplete — some rows may re-send");
+        }
       }
     }
   }

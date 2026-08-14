@@ -3,7 +3,7 @@ import { withPublicCdnCache } from "@/lib/cdn-cache";
 import type { NextRequest } from "next/server";
 import { createAdminClient } from "@civitics/db";
 import { supabaseUnavailable, unavailableResponse } from "@/lib/supabase-check";
-import { fetchAllRows } from "@/lib/paginate";
+import { fetchAllRows, fetchChunkedByIds } from "@/lib/paginate";
 
 export const dynamic = "force-dynamic";
 
@@ -73,19 +73,29 @@ async function computeTreemapIndividualsLive(supabase: any, entityId: string | n
   }
   if (donationRows.length === 0) return [];
 
+  // FIX-902: this loop WAS chunked — at 300, above the URL bound rather than
+  // below it (~11 KB per request; 414 verified at ~356 in FIX-509 and ~234 in
+  // FIX-772). The donations read above admits up to 100,000 rows, so donorIds
+  // is routinely in the thousands and every chunk sat in the failure window;
+  // a tripped chunk silently drops 300 donors out of the state rollup, which
+  // reads as "these states gave less" rather than as an error.
   const donorIds = [...new Set(donationRows.map(r => r.from_id))];
   const donorMap = new Map<string, { name: string; state: string }>();
-  const BATCH = 300;
-  for (let i = 0; i < donorIds.length; i += BATCH) {
-    const batch = donorIds.slice(i, i + BATCH);
-    const { data: donors } = await supabase
-      .from("financial_entities")
-      .select("id, display_name, metadata")
-      .in("id", batch)
-      .eq("entity_type", "individual");
-    for (const d of (donors ?? []) as DonorLite[]) {
-      donorMap.set(d.id, { name: d.display_name, state: d.metadata?.state ?? "??" });
-    }
+  const { rows: donors, complete: donorsComplete } = await fetchChunkedByIds<DonorLite>(
+    donorIds,
+    (ids) =>
+      supabase
+        .from("financial_entities")
+        .select("id, display_name, metadata")
+        .in("id", ids)
+        .eq("entity_type", "individual"),
+    { label: "treemap-individuals:donors" },
+  );
+  if (!donorsComplete) {
+    console.error("[treemap-individuals] donor read incomplete — state totals understated");
+  }
+  for (const d of donors) {
+    donorMap.set(d.id, { name: d.display_name, state: d.metadata?.state ?? "??" });
   }
   if (donorMap.size === 0) return [];
 

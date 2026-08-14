@@ -278,6 +278,8 @@ export default async function HomePage({
   }
 
   // ── Wave 2: officials + agency stats + proposal enrichment (parallel) ──────
+  // .in() bounded: the homepage proposal strip is `.limit(6)` (fallback
+  // `.limit(3)`), max 6 — feeds both enrichment reads below — FIX-902
   const proposalIds = rawProposals.map((p) => p.id);
   const agencyRows = agencyRowsRes.data ?? [];
 
@@ -367,6 +369,7 @@ export default async function HomePage({
   // financial_relationships. The MV uses to_type='official' AND to_id and is
   // refreshed nightly.
   const rawOfficials = officialsRes.data ?? [];
+  // .in() bounded: the officials read above is `.limit(20)`, max 20 — FIX-902
   const officialIds = rawOfficials.map((o) => o.id as string);
   type OfficialStatRow = {
     official_id: string;

@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { createServerClient, createAdminClient } from "@civitics/db";
 import { mapRpcError } from "../_lib";
 import { fetchAuthorMeta } from "../../comments/_lib";
+import { fetchChunkedByIds } from "@/lib/paginate";
 
 export const dynamic = "force-dynamic";
 
@@ -40,11 +41,23 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
     // Citations for the visible cards (RLS hides citations of hidden cards too).
     const citationsByCard = new Map<string, unknown[]>();
     if (cardIds.length > 0) {
-      const { data: citations } = await supabase
-        .from("citations")
-        .select("id, evidence_card_id, citation_type, target_type, target_id, external_url, excerpt, created_at")
-        .in("evidence_card_id", cardIds);
-      for (const c of citations ?? []) {
+      // FIX-902: chunked. The card read above is scoped to one investigation but
+      // uncapped, so a large case file pushes this past the URL bound and every
+      // card comes back sourceless — the worst possible silent failure on a
+      // surface whose entire claim to credibility is its citations.
+      const { rows: citations, complete } = await fetchChunkedByIds<Record<string, unknown>>(
+        cardIds,
+        (ids) =>
+          supabase
+            .from("citations")
+            .select("id, evidence_card_id, citation_type, target_type, target_id, external_url, excerpt, created_at")
+            .in("evidence_card_id", ids),
+        { label: "investigations:detail-citations" },
+      );
+      if (!complete) {
+        console.warn("[investigations/:id] citation read incomplete — some cards returned without sources");
+      }
+      for (const c of citations) {
         const key = c.evidence_card_id as string;
         const list = citationsByCard.get(key) ?? [];
         list.push(c);

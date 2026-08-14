@@ -4,6 +4,7 @@ import type { NextRequest } from "next/server";
 import { createAdminClient, fetchIndustryTagsByEntityId } from "@civitics/db";
 import { supabaseUnavailable, unavailableResponse, withDbTimeout } from "@/lib/supabase-check";
 import type { GroupFilter } from "@civitics/graph";
+import { fetchChunkedByIds, ID_CHUNK_SIZE } from "@/lib/paginate";
 
 export const dynamic = "force-dynamic";
 
@@ -28,23 +29,49 @@ export async function GET(req: NextRequest) {
       const nameMap = new Map<string, { name: string; entityType: string; party?: string }>();
       if (allToIds.length === 0) return nameMap;
 
+      // FIX-902: chunked. The single-entity callers pass ≤200 (their edge reads
+      // are `.limit(200)`), but the GROUP caller passes the distinct to_ids of
+      // `get_group_connections` at p_limit 500 — 2.5× the URL bound, on the one
+      // path where a name lookup failing silently is most visible: every ring-2
+      // slice falls back to a raw uuid or "Unknown". Chunking here fixes all
+      // four reads and every caller at once.
       const [officialsRes, proposalsRes, agenciesRes, financialRes] = await Promise.all([
-        supabase.from("officials").select("id, full_name, party").in("id", allToIds),
-        supabase.from("proposals").select("id, title").in("id", allToIds),
-        supabase.from("agencies").select("id, name").in("id", allToIds),
-        supabase.from("financial_entities").select("id, display_name, entity_type").in("id", allToIds),
+        fetchChunkedByIds<{ id: string; full_name: string; party: string | null }>(
+          allToIds,
+          (ids) => supabase.from("officials").select("id, full_name, party").in("id", ids),
+          { label: "sunburst:official-names" },
+        ),
+        fetchChunkedByIds<{ id: string; title: string }>(
+          allToIds,
+          (ids) => supabase.from("proposals").select("id, title").in("id", ids),
+          { label: "sunburst:proposal-names" },
+        ),
+        fetchChunkedByIds<{ id: string; name: string }>(
+          allToIds,
+          (ids) => supabase.from("agencies").select("id, name").in("id", ids),
+          { label: "sunburst:agency-names" },
+        ),
+        fetchChunkedByIds<{ id: string; display_name: string; entity_type: string | null }>(
+          allToIds,
+          (ids) => supabase.from("financial_entities").select("id, display_name, entity_type").in("id", ids),
+          { label: "sunburst:financial-names" },
+        ),
       ]);
 
-      for (const o of officialsRes.data ?? []) {
+      if (!officialsRes.complete || !proposalsRes.complete || !agenciesRes.complete || !financialRes.complete) {
+        console.warn("[sunburst] name lookup incomplete — some slices render with unresolved labels");
+      }
+
+      for (const o of officialsRes.rows) {
         nameMap.set(o.id, { name: o.full_name, entityType: "official", party: o.party ?? undefined });
       }
-      for (const p of proposalsRes.data ?? []) {
+      for (const p of proposalsRes.rows) {
         nameMap.set(p.id, { name: p.title, entityType: "proposal" });
       }
-      for (const a of agenciesRes.data ?? []) {
+      for (const a of agenciesRes.rows) {
         nameMap.set(a.id, { name: a.name, entityType: "agency" });
       }
-      for (const f of financialRes.data ?? []) {
+      for (const f of financialRes.rows) {
         nameMap.set(f.id, { name: f.display_name, entityType: f.entity_type ?? "financial" });
       }
 
@@ -220,6 +247,7 @@ export async function GET(req: NextRequest) {
         const { data: proposals } = await supabase
           .from("proposals")
           .select("id, title")
+          // .in() bounded: explicit `.slice(0, 100)`, max 100 — FIX-902
           .in("id", proposalIds.slice(0, 100));
 
         const proposalMap = new Map((proposals ?? []).map((p) => [p.id, p.title]));
@@ -335,6 +363,13 @@ export async function GET(req: NextRequest) {
           .limit(200)
       );
 
+      // .in() bounded: the donations read above is `.limit(200)`, so this is
+      // ≤200 distinct donors and the chunk loop below never actually splits.
+      // The batch constant was 300 — harmless here only because the feeder is
+      // capped, but 300 is ABOVE the URL bound, so it was a correct-looking
+      // number waiting to be copied to a site with an uncapped feeder (which is
+      // exactly what sector-affinity and treemap-individuals had done). Pinned
+      // to the shared ID_CHUNK_SIZE so the number can't drift again — FIX-902
       const fromEntityIds = [
         ...new Set(((donationsRaw ?? []) as Array<{ from_id: string }>).map((d) => d.from_id)),
       ];
@@ -342,7 +377,7 @@ export async function GET(req: NextRequest) {
       const entityInfo = new Map<string, { display_name: string; entity_type: string | null; industry: string | null }>();
       if (fromEntityIds.length > 0) {
         const industryByEntityId = await fetchIndustryTagsByEntityId(supabase, fromEntityIds);
-        const BATCH = 300;
+        const BATCH = ID_CHUNK_SIZE;
         for (let i = 0; i < fromEntityIds.length; i += BATCH) {
           const batch = fromEntityIds.slice(i, i + BATCH);
           const { data: entities } = await supabase
@@ -418,6 +453,8 @@ export async function GET(req: NextRequest) {
           .limit(200)
       );
 
+      // .in() bounded: the vote-edge read above is `.limit(200)`, max 200 —
+      // exactly at ID_CHUNK_SIZE, so any raise to that limit needs chunking — FIX-902
       const proposalIds = [...new Set((votes ?? []).map(v => v.to_id))];
       const { data: proposals } = await supabase
         .from("proposals")

@@ -114,6 +114,9 @@ export default async function AdminGrantsPage() {
   const eventRows: RawEvent[] = eventsRaw ?? [];
 
   // Bulk-hydrate users / officials / evidence for both lists.
+  // .in() bounded (this and the three id lists below): the two source reads are
+  // pending grants `.limit(100)` and events `.limit(25)`, so every derived list
+  // here is ≤125 — FIX-902
   const eventGrantIds = [...new Set(eventRows.map((e) => e.grant_id))];
   const { data: eventGrantsRaw } = eventGrantIds.length
     ? await withDbTimeout<DbRes>(

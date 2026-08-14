@@ -76,6 +76,9 @@ async function loadParentNames(
 ): Promise<Map<string, string>> {
   const map = new Map<string, string>();
   if (parentIds.length === 0) return map;
+  // .in() bounded: both callers derive parentIds from a capped row set — the
+  // featured strip at `.limit(20)` and the main list at PAGE_SIZE (50) — and
+  // dedupe first, so max 50 — FIX-902
   const { data } = await withDbTimeout(
     supabase.from("jurisdictions").select("id, name").in("id", parentIds) as PromiseLike<{
       data: { id: string; name: string }[] | null;
@@ -151,6 +154,8 @@ export default async function JurisdictionsIndexPage({
     .select("id, name, short_name, type, population, parent_id, is_synthetic", { count: "exact" })
     .eq("is_active", true);
 
+  // .in() bounded: a comma-split of the `type` URL param over the jurisdiction
+  // type vocabulary (~8 values), not an id list — FIX-902
   if (types) query = query.in("type", types);
   // Sanitize before interpolating into .or() — commas/parens are PostgREST
   // filter syntax and would let user input break out of the ilike clause.

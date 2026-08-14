@@ -12,6 +12,7 @@ import { cookies } from "next/headers";
 import { createServerClient, createAdminClient } from "@civitics/db";
 import { withDbTimeout } from "@/lib/supabase-check";
 import { fetchAuthorMeta } from "../../api/comments/_lib";
+import { fetchChunkedByIds } from "@/lib/paginate";
 import type {
   Investigation,
   EvidenceCard,
@@ -67,6 +68,8 @@ export async function listInvestigations(): Promise<InvestigationListItem[]> {
   const investigations = (rows ?? []) as unknown as Investigation[];
   if (investigations.length === 0) return [];
 
+  // .in() bounded: the investigations read above carries an explicit limit
+  // (100 for the list, `limit` for the home strip), max 100 — FIX-902
   const ids = investigations.map((i) => i.id);
   const { data: cards } = await withDbTimeout(
     supabase
@@ -139,6 +142,8 @@ export async function listInvestigationsForHome(limit = 4): Promise<HomeInvestig
   }>;
   if (investigations.length === 0) return [];
 
+  // .in() bounded: the investigations read above carries an explicit limit
+  // (100 for the list, `limit` for the home strip), max 100 — FIX-902
   const ids = investigations.map((i) => i.id);
   const { data: cards } = await withDbTimeout(
     supabase.from("evidence_cards").select("id, investigation_id").in("investigation_id", ids),
@@ -156,14 +161,23 @@ export async function listInvestigationsForHome(limit = 4): Promise<HomeInvestig
 
   // Citation count rolls up citations → their card → the card's investigation.
   const citationCount = new Map<string, number>();
+  // FIX-902: chunked. `cardIds` is every evidence card across the investigations
+  // on this page — no per-investigation cap, so a handful of well-evidenced case
+  // files clears 200 on its own. A 414 zeroes the citation count on every card.
   const cardIds = cardRows.map((c) => c.id);
   if (cardIds.length > 0) {
-    const { data: cites } = await withDbTimeout(
-      supabase.from("citations").select("evidence_card_id").in("evidence_card_id", cardIds),
-      3000,
-      "investigations:home-citations",
+    const { rows: cites, complete } = await fetchChunkedByIds<{ evidence_card_id: string }>(
+      cardIds,
+      (ids, { label }) =>
+        withDbTimeout(
+          supabase.from("citations").select("evidence_card_id").in("evidence_card_id", ids),
+          3000,
+          label,
+        ),
+      { label: "investigations:home-citations" },
     );
-    for (const ct of (cites ?? []) as Array<{ evidence_card_id: string }>) {
+    if (!complete) console.warn("investigations:home-citations — partial read; citation counts understated");
+    for (const ct of cites) {
       const invId = investigationByCard.get(ct.evidence_card_id);
       if (!invId) continue;
       citationCount.set(invId, (citationCount.get(invId) ?? 0) + 1);
@@ -216,18 +230,25 @@ export async function loadCaseFile(id: string): Promise<CaseFile | null> {
     rating_summary: unknown;
   }>;
 
+  // FIX-902: chunked (this list and the viewer-ratings read below). The card
+  // read above is scoped to one investigation but has no `.limit()`, so a large
+  // case file blows the URL bound and every card renders with zero citations
+  // and an unset rating control — on an HTTP 200.
   const cardIds = cards.map((c) => c.id);
   const citationsByCard = new Map<string, Citation[]>();
   if (cardIds.length > 0) {
-    const { data: citations } = await withDbTimeout(
-      supabase
-        .from("citations")
-        .select(CITATION_COLS)
-        .in("evidence_card_id", cardIds),
-      3000,
-      "investigations:case-file-citations",
+    const { rows: citations, complete } = await fetchChunkedByIds<Citation>(
+      cardIds,
+      (ids, { label }) =>
+        withDbTimeout(
+          supabase.from("citations").select(CITATION_COLS).in("evidence_card_id", ids),
+          3000,
+          label,
+        ),
+      { label: "investigations:case-file-citations" },
     );
-    for (const c of (citations ?? []) as unknown as Citation[]) {
+    if (!complete) console.warn("investigations:case-file-citations — partial read; some cards show no sources");
+    for (const c of citations) {
       const list = citationsByCard.get(c.evidence_card_id) ?? [];
       list.push(c);
       citationsByCard.set(c.evidence_card_id, list);
@@ -246,19 +267,24 @@ export async function loadCaseFile(id: string): Promise<CaseFile | null> {
       data: { user },
     } = await supabase.auth.getUser();
     if (user) {
-      const { data: mine } = await withDbTimeout(
-        supabase
-          .from("evidence_ratings")
-          .select("evidence_id, agree, valuable")
-          .in("evidence_id", cardIds),
-        3000,
-        "investigations:case-file-my-ratings",
-      );
-      for (const r of (mine ?? []) as Array<{
+      const { rows: mine, complete } = await fetchChunkedByIds<{
         evidence_id: string;
         agree: number | null;
         valuable: number | null;
-      }>) {
+      }>(
+        cardIds,
+        (ids, { label }) =>
+          withDbTimeout(
+            supabase.from("evidence_ratings").select("evidence_id, agree, valuable").in("evidence_id", ids),
+            3000,
+            label,
+          ),
+        { label: "investigations:case-file-my-ratings" },
+      );
+      if (!complete) {
+        console.warn("investigations:case-file-my-ratings — partial read; some cards lose the viewer's own ballot");
+      }
+      for (const r of mine) {
         myRatingByCard.set(r.evidence_id, {
           agree: r.agree ?? 0,
           valuable: r.valuable ?? 0,

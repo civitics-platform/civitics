@@ -210,6 +210,8 @@ export default async function DeskPage() {
   const proposedCards = (proposedCardsRes.data ?? []) as RawCard[];
 
   // Investigation titles for the proposed-card list (open list already has titles).
+  // .in() bounded: proposed cards are `.limit(15)` and this subtracts the ones
+  // already titled by the `.limit(10)` open-investigations read, max 15 — FIX-902
   const cardInvIds = [...new Set(proposedCards.map((c) => c.investigation_id))];
   const invTitleById = new Map<string, string>(openInvestigations.map((i) => [i.id, i.title]));
   const missingInvIds = cardInvIds.filter((id) => !invTitleById.has(id));

@@ -62,6 +62,9 @@ export async function resolveEntityLabels(
   await Promise.all(
     [...idsByType.entries()].map(async ([et, ids]) => {
       const cfg = COMMONS_ENTITY[et];
+      // .in() bounded: all three callers pass a capped list — commons/page.tsx
+      // and app/page.tsx at `.limit(50)`, desk/page.tsx at `.limit(30)` — and
+      // this splits it across four type buckets, so max 50 — FIX-902
       const { data } = await client.from(cfg.table).select(`id,${cfg.col}`).in("id", [...ids]);
       for (const row of (data ?? []) as Record<string, string>[]) {
         const label = row[cfg.col];

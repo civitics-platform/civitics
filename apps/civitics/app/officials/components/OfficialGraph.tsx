@@ -268,6 +268,7 @@ export function OfficialGraph({
     // fetch the proposals separately and attach them. bill_proposal_id IS a proposals.id.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const voteRows = ((voteRes.data as any[]) ?? []) as Array<{ bill_proposal_id: string | null }>;
+    // .in() bounded: the votes read above is `.limit(40)`, max 40 — FIX-902
     const proposalIds = [...new Set(voteRows.map((v) => v.bill_proposal_id).filter(Boolean) as string[])];
     const proposalsById = new Map<string, { id: string; title: string | null; short_title: string | null; bill_number: string | null }>();
     if (proposalIds.length > 0) {

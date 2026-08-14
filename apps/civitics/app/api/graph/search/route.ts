@@ -95,6 +95,9 @@ export async function GET(req: Request) {
   }
 
   // Attach connection counts for all result entities
+  // .in() bounded: rows is the union of four search reads at `.limit(20)` each,
+  // max 80 — feeds the two count reads below and the officials read after them
+  // — FIX-902
   const allIds = rows.map((r) => r.id);
   if (allIds.length === 0) return withPublicCdnCache(Response.json([]));
 

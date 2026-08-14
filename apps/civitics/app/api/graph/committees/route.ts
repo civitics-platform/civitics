@@ -16,6 +16,7 @@ import { NextResponse } from "next/server";
 import { withPublicCdnCache } from "@/lib/cdn-cache";
 import { createAdminClient } from "@civitics/db";
 import { supabaseUnavailable, unavailableResponse } from "@/lib/supabase-check";
+import { fetchChunkedByIds } from "@/lib/paginate";
 
 export interface CommitteeListItem {
   id: string;
@@ -58,17 +59,30 @@ export async function GET() {
 
   const counts = new Map<string, number>();
   if (ids.length > 0) {
-    const { data: memberships, error: membersErr } = await supabase
-      .from("official_committee_memberships")
-      .select("committee_id")
-      .is("ended_at", null)
-      .in("committee_id", ids);
+    // FIX-902: chunked. The committee read above has no `.limit()`, so `ids` is
+    // every active parent committee — 49 on the local clone, but that is one
+    // legislature's worth; the set grows with each state legislature ingested
+    // and PostgREST would hand back up to 1,000. Non-strict so the route keeps
+    // its own 500 shape (it has no try/catch, so a strict throw would become an
+    // unhandled framework error instead of this JSON body) — but a partial read
+    // still fails the request rather than reporting "0 members" on every
+    // committee, which is what the pre-chunk `membersErr` check did.
+    const { rows: memberships, failed } = await fetchChunkedByIds<MembershipRow>(
+      ids,
+      (chunk) =>
+        supabase
+          .from("official_committee_memberships")
+          .select("committee_id")
+          .is("ended_at", null)
+          .in("committee_id", chunk),
+      { label: "graph/committees:memberships" },
+    );
 
-    if (membersErr) {
-      return NextResponse.json({ error: membersErr.message }, { status: 500 });
+    if (failed.length > 0) {
+      return NextResponse.json({ error: failed[0]!.error.message }, { status: 500 });
     }
 
-    for (const row of (memberships ?? []) as MembershipRow[]) {
+    for (const row of memberships) {
       counts.set(row.committee_id, (counts.get(row.committee_id) ?? 0) + 1);
     }
   }

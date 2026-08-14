@@ -80,6 +80,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: true });
   }
 
+  // .in() bounded by the client's batch size, not by data growth — and unlike
+  // the read sites, a 414 here is NOT silent: the error is checked and returned
+  // as a 500, so an oversized batch fails loudly instead of no-op'ing — FIX-902
   if (Array.isArray(body.ids) && body.ids.length > 0) {
     const { error } = await supabase
       .from("notifications")

@@ -516,6 +516,8 @@ export async function GET(req: NextRequest) {
       // Fetch official names + per-official donor breakdowns in parallel.
       const officialsPromise = withDbTimeout<{ data: Array<{ id: string; full_name: string }> | null; error: unknown }>(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        // .in() bounded: entityIds is UUID-validated and `.slice(0, 12)`d at
+        // parse time (FIX-503), max 12 — FIX-902
         (supabase as any).from('officials').select('id, full_name').in('id', entityIds)
       );
 

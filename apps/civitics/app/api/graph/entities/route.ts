@@ -215,6 +215,10 @@ export async function GET(request: Request) {
   }
 
   // Fetch top topic tags per entity
+  // .in() bounded: allIds is the union of four search reads at `.limit(20)`
+  // each, max 80 — same list the chunked stats read above walks. Left unchunked
+  // deliberately; if any of those limits is ever raised, this and the officials
+  // read below need fetchChunkedByIds — FIX-902
   const { data: tagData } = await supabase
     .from("entity_tags")
     .select("entity_id, tag")

@@ -104,6 +104,7 @@ export function OfficialCard({ official }: { official: OfficialRow }) {
       // bill_proposal_id value IS a proposals.id (bill_details.proposal_id == proposals.id).
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const voteRows = ((recentRes.data as any[]) ?? []) as Array<{ bill_proposal_id: string | null }>;
+      // .in() bounded: the recent-votes read above is `.limit(10)`, max 10 — FIX-902
       const proposalIds = [...new Set(voteRows.map((v) => v.bill_proposal_id).filter(Boolean) as string[])];
       const proposalsById = new Map<string, RecentVote["proposals"]>();
       if (proposalIds.length > 0) {
