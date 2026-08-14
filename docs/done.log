@@ -1222,3 +1222,7 @@
 2026-08-12 | FIX-1027 | ab1a3f96 | local+prod | fix(ops): bound the MV refresh loop, give FR and officials a vacuum owner, and stop laundering the outage signal
 2026-08-12 | FIX-1030 | c00e3ac5 | local-only | fix(derived-mvs): fence the chord donor-state plan and bound any weekly unit from outside
 2026-08-12 | FIX-1033 | 82a4906e | prod-only | feat(derived-mvs): supervised weekly firing passed 6/6 in 707s — jobid 10 re-enabled
+2026-08-13 | FIX-1007 | 356ad10c | closes-as-recognized | fix(planner,watchdog): liveness before budget, and correct the FR/FE statistics
+2026-08-13 | FIX-1023 | 356ad10c | local+prod | fix(planner,watchdog): liveness before budget, and correct the FR/FE statistics
+2026-08-13 | FIX-1034 | 356ad10c | local+prod | fix(planner,watchdog): liveness before budget, and correct the FR/FE statistics
+2026-08-13 | FIX-1035 | 356ad10c | local+prod | fix(planner,watchdog): liveness before budget, and correct the FR/FE statistics
