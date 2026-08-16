@@ -291,7 +291,17 @@ export function foldBreaches(
   threshold: number = resolveTripThreshold(),
 ): MitigationBreach[] {
   const byHour = new Map<string, MitigationBreach>();
-  for (const b of prior) byHour.set(b.hour, b);
+  // Re-validate PRIOR evidence against the threshold in force NOW, not the one
+  // it was recorded under. Found by the FIX-1047 verify run: dropping the
+  // threshold to 10 recorded three ordinary hours (41, 43, 69 req) as breaches,
+  // and raising it back to 3,000 left them sitting in the state row for the full
+  // 6h window. They were harmless there only because the zone happened to be at
+  // under_attack — with the zone lower, stale sub-threshold evidence could have
+  // driven a real escalation. A breach is only evidence while it still clears
+  // the current bar.
+  for (const b of prior) {
+    if (b.origin_requests >= threshold) byHour.set(b.hour, b);
+  }
   for (const h of hours) {
     if (h.origin_requests >= threshold) {
       byHour.set(h.hour, { hour: h.hour, origin_requests: h.origin_requests });

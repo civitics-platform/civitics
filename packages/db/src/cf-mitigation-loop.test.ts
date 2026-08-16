@@ -104,6 +104,22 @@ describe("foldBreaches", () => {
     const out = foldBreaches([{ hour: "not-a-date", origin_requests: 9999 }], [], T0);
     assert.equal(out.length, 0);
   });
+
+  test("re-validates PRIOR evidence against the CURRENT threshold", () => {
+    // Found by the FIX-1047 prod verify run. Lowering the threshold to 10
+    // recorded three ordinary hours (41/43/69 req) as breaches; raising it back
+    // to 3,000 left them in the state row for the full 6h window, still counting
+    // toward a trip. Stale sub-threshold evidence must not be able to drive a
+    // real escalation once the bar is back where it belongs.
+    const stale = [breach(-1, 41), breach(-2, 43), breach(-3, 69)];
+    assert.equal(foldBreaches(stale, [], T0, 10).length, 3, "valid at the low bar");
+    assert.equal(foldBreaches(stale, [], T0, 3000).length, 0, "dropped at the real bar");
+  });
+
+  test("prior evidence that still clears the current threshold survives", () => {
+    const real = [breach(-1, 7200), breach(-2, 7100)];
+    assert.equal(foldBreaches(real, [], T0, 3000).length, 2);
+  });
 });
 
 // ── FIX-1047 helpers ──────────────────────────────────────────────────────────
