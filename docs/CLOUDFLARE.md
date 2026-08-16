@@ -155,6 +155,85 @@ Mail is Resend (via SES) on the `send.` subdomain. SPF and DKIM present; **no DM
       `docs/OPERATIONS.md`~~ — **no-op, 2026-08-16.** Both files were already correct;
       §2's warning was the stale thing and has been retracted there.
 
+## The platform now WRITES to this zone (FIX-1045)
+
+**As of 2026-08-16 the security level is no longer a purely human setting.** The
+10-minute platform-snapshot cron runs a closed loop that can raise it by itself.
+Read this before you next find the level different from how you left it.
+
+### What it does, and when
+
+| | |
+|---|---|
+| **Trigger** | Origin-reaching requests ≥ **3,000/hr** in **≥2 distinct complete clock hours** within a rolling 6h window |
+| **Action** | `PATCH /zones/{id}/settings/security_level` → `under_attack` |
+| **Revert** | Automatically after **6 hours**, back to the level it found |
+| **Re-trip** | Allowed, but not within 2h of a revert |
+| **Emails** | Every transition, to `ADMIN_EMAIL` |
+
+"Origin-reaching" means `originResponseStatus != 0` in the GraphQL Analytics
+API — requests Vercel actually answered. Requests Cloudflare blocked, challenged
+or served from cache are excluded, which is what makes the loop self-limiting:
+**while a mitigation is working, the trigger metric collapses and the loop goes
+quiet.** On 2026-08-15 the same ~7,300 edge req/hr went from 7,302 origin-reaching
+at 21:00 UTC to 36 at 23:00 UTC.
+
+The 3,000/hr figure is derived, not chosen: a census of the 147 complete hours
+this Free zone retained before the crawl gave p50 77, p99 1,508, max 2,218 —
+against a crawl floor of 7,158. Full derivation in
+`packages/db/src/cf-mitigation-loop.ts`.
+
+### How to tell an automatic change from a manual one
+
+Three independent ways, in order of convenience:
+
+1. **The dashboard** — Operations tab, Platform Costs card. The strip under the
+   headline reads `Loop TRIPPED (auto, since HH:MM UTC)` whenever the level is
+   the loop's doing, and `armed` / `disarmed` otherwise.
+2. **The database** — `pipeline_state.cf_mitigation_loop`. If `tripped` is
+   non-null, the current level was set by the loop and carries `tripped_at`,
+   `previous_level` and the breach hours that justified it. If `tripped` is null,
+   **the loop did not set the current level.**
+3. **Your inbox** — the loop emails every transition. No email, no automatic
+   change.
+
+### It will never fight you
+
+Escalate-only, enforced in code and covered by tests:
+
+- It only ever **raises** the level, never lowers it — except to undo an
+  escalation it made itself.
+- Before reverting it **re-reads the live level**. If that is not the exact level
+  it set, it concludes you changed it by hand, **writes nothing**, drops its
+  claim on the setting, and emails you the discrepancy. Your value stands.
+- If the level is already at or above `under_attack` when the trigger fires, it
+  records **no trip at all** — it must never end up auto-reverting a level a
+  human chose.
+
+So: **if you set the security level manually, it is yours.** The worst the loop
+can do to a manual setting is raise it during a genuine spike, and even that only
+from strictly below `under_attack`.
+
+### Turning it off
+
+Any one of these disarms the WRITE while leaving detection, metrics and alerting
+fully live — you never lose visibility by disabling the loop:
+
+- Flip the **`cf_auto_mitigation` kill switch** off (Operations tab, or
+  `pipeline_state.kill_switches`).
+- Set **`CF_AUTO_MITIGATION_ENABLED=false`** in the Vercel env (the hard kill —
+  works even if the DB read fails).
+- Remove **Zone Settings:Edit** from the Cloudflare API token.
+
+### Current status: ALERT-ONLY
+
+The token in `CLOUDFLARE_API_TOKEN` carries Zone:Read, Zone Analytics:Read and
+Zone Settings:**Read**. Measured 2026-08-16: `GET security_level` → 200,
+`PATCH security_level` → **403 / code 9109**. So the loop **detects, records and
+emails but cannot act** until a token with **Zone Settings:Edit** is in the
+Vercel env. The card shows `needs Zone Settings:Edit` while that is true, and the
+alert email says plainly that nothing was changed at the edge.
+
 ## If the zone ever moves accounts again
 
 Cloudflare moves the registration and lets you re-import DNS. **It moves nothing else.**

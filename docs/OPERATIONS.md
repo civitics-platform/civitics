@@ -579,6 +579,97 @@ last committed the workflow file — currently
 `Civitics Platform <civitics.platform@gmail.com>`. If that inbox is unwatched,
 this alert is decorative.
 
+### Cost detection: what watches money, and what acts on its own (FIX-1044/1045/1046)
+
+Added 2026-08-16 after the 2026-08-15 crawl burned ~$21/day for 16 hours without
+anything paging. The alert system was healthy; it was watching the wrong things.
+All of the below rides the existing 10-minute `platform-snapshot` cron — no new
+workflow, no new substrate.
+
+**Four layers, fastest first:**
+
+| Layer | Signal | Detects in | Where |
+|---|---|---|---|
+| Cloudflare edge volume | origin-reaching req/hr | ~1–2 h | `cloudflare.origin_requests_hourly` |
+| Closed-loop mitigation | 2 breached hours | ~2–3 h, then **acts** | `pipeline_state.cf_mitigation_loop` |
+| Burn rate | day-over-day $ vs trailing median | ~1 day | `burn.vercel.daily_usage_usd` |
+| Monthly bands (pre-existing) | MTD % of limit | days | `platform_alert_state` |
+
+**Why the Cloudflare layer exists at all:** it is the only near-real-time,
+script-readable counter in the stack. Vercel's billing data is cumulative and
+steps once per day, so the 10-minute cron buys *zero* extra resolution on any
+Vercel metric — consecutive snapshots are byte-identical. Supabase's feed watches
+the database, not the request path. Upstash exposes no usage API.
+
+**The trigger is origin-reaching requests, not total edge requests** — those are
+the ones that cost money (~$1.23e-4 each, measured), and it makes every layer
+self-limiting: while a mitigation absorbs a crawl, the metric collapses and the
+alarms correctly go quiet instead of paging about free traffic.
+
+#### The loop can change production edge config
+
+On a sustained spike the cron raises Cloudflare's `security_level` to
+`under_attack` **by itself**, then emails what it did. It reverts after 6h.
+**Full behaviour, safety rails, and how to tell an automatic change from a manual
+one: `docs/CLOUDFLARE.md` → "The platform now WRITES to this zone".**
+
+**Currently ALERT-ONLY** — the API token lacks Zone Settings:Edit
+(`PATCH` → 403/9109, measured 2026-08-16). It detects and emails; it cannot act.
+
+**To disable the loop** (any one; all leave detection and alerting fully live):
+
+```
+# 1. Kill switch — Operations tab, or:
+UPDATE pipeline_state
+   SET value = jsonb_set(value, '{cf_auto_mitigation,enabled}', 'false')
+ WHERE key = 'kill_switches';
+
+# 2. Env hard-kill (works even if the DB read fails) — Vercel project env:
+CF_AUTO_MITIGATION_ENABLED=false
+
+# 3. Revoke Zone Settings:Edit from CLOUDFLARE_API_TOKEN.
+```
+
+#### Reading the state
+
+```bash
+# What the loop is doing and why
+node scripts/db-query.mjs --prod "SELECT value FROM pipeline_state WHERE key='cf_mitigation_loop'"
+
+# The edge counter, straight from Cloudflare (bypasses the snapshot entirely)
+node scripts/cf-analytics.mjs --hours 24
+
+# Latest snapshot's view of all four layers
+node scripts/db-query.mjs --prod "SELECT payload->'cloudflare_edge'->'latest', payload->'cf_mitigation'->>'action', payload->'burn_rate'->>'reason', payload->'vercel_billing' FROM platform_usage_snapshot ORDER BY fetched_at DESC LIMIT 1"
+```
+
+The GHA run log for `platform-snapshot` also echoes `cf_origin_requests_hourly`,
+`cf_security_level`, `cf_mitigation_action`, `burn_rate_elevated` and
+`vercel_billable_overage_usd` on every tick — the cheapest liveness check.
+
+#### The dollar figures changed meaning (FIX-1046)
+
+**Vercel Pro is $20/month and that $20 buys $20 of included usage.** The
+dashboard used to display the gross list value of all consumption — including
+the subscription line and every within-allotment dollar — as money owed. On
+2026-08-16 it read **$31.38/mo** when the true billable overage was **$0.00**
+with **$8.62 of credit unspent**.
+
+- `vercel.monthly_spend_usd` — **gross list value.** Unchanged, still the leading
+  indicator, reconciles against the Vercel dashboard. Not money owed.
+- `vercel.included_usage_usd` — consumption vs the $20 credit. **This is the %
+  bar that means something.** Warns at 80%.
+- `vercel.billable_overage_usd` — **the headline.** `max(0, usage − $20)`.
+
+The $20 lives in `platform_limits` (`vercel.included_usage_usd.included_limit`),
+so retuning the credit — or the page-me ceiling on `billable_overage_usd` — is an
+`UPDATE`, not a deploy.
+
+*Cycle-basis caveat:* the charges API is queried from the first of the calendar
+month and the `Pro` line prorates over 31 days, so the projection is
+calendar-month. The Vercel usage page separately describes an Aug 14 – Sep 14
+cycle and nothing in the API discriminates between the two.
+
 ### pg_cron background-worker capacity (FIX-1022)
 
 **Applied on prod:** `max_worker_processes` raised **6 → 12**.

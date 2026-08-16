@@ -215,14 +215,18 @@ export type {
 // Upstash edge-limiter health (FIX-1038 — the vendor the snapshot could not see)
 export {
   getUpstashHealth,
+  getUpstashUsage,
   recordUpstashLimiterState,
   isQuotaExhaustedMessage,
   parseQuotaError,
   __resetUpstashHealthCache,
+  __resetUpstashUsageCache,
 } from "./upstash-usage";
 export type {
   UpstashHealth,
   UpstashHealthError,
+  UpstashUsage,
+  UpstashUsageError,
   UpstashLimiterState,
   UpstashLimiterHistory,
   UpstashLimiterTransition,
@@ -237,6 +241,69 @@ export type {
   VercelUsage,
   VercelUsageError,
 } from "./vercel-usage";
+
+// Cloudflare zone analytics + zone settings (FIX-1044/1045 — the leading signal)
+export {
+  getCloudflareEdgeVolume,
+  getZoneSecurityLevel,
+  setZoneSecurityLevel,
+  resolveZoneId,
+  isScopeError,
+  isSecurityLevel,
+  SECURITY_LEVEL_RANK,
+  __resetCloudflareZoneCache,
+} from "./cloudflare-analytics";
+export type {
+  CloudflareEdgeVolume,
+  CloudflareHourBucket,
+  CloudflareError,
+  SecurityLevel,
+  ZoneSecurityLevel,
+} from "./cloudflare-analytics";
+
+// Closed-loop Cloudflare auto-mitigation (FIX-1045)
+export {
+  runCloudflareMitigationLoop,
+  decideMitigationAction,
+  applyMitigationDecision,
+  foldBreaches,
+  readMitigationState,
+  emptyMitigationState,
+  isEmailableMitigationAction,
+  TRIP_THRESHOLD_ORIGIN_REQ_PER_HOUR,
+  REQUIRED_BREACH_HOURS,
+  BREACH_WINDOW_HOURS,
+  REVERT_AFTER_HOURS,
+  MIN_HOURS_BETWEEN_TRIPS,
+  TARGET_LEVEL,
+} from "./cf-mitigation-loop";
+export type {
+  MitigationAction,
+  MitigationDecision,
+  MitigationLoopState,
+  MitigationRunResult,
+  MitigationBreach,
+  MitigationTrip,
+} from "./cf-mitigation-loop";
+
+// Vercel Pro billing math — $20 base INCLUDES $20 of usage (FIX-1046)
+export {
+  computeVercelBilling,
+  isPlanBaseService,
+  VERCEL_PRO_INCLUDED_USD,
+} from "./vercel-billing";
+export type { VercelBilling, VercelBillingInput } from "./vercel-billing";
+
+// Daily burn-rate detection (FIX-1044 D2)
+export {
+  evaluateBurnRate,
+  computeBurnRateDeltas,
+  readBurnRateSeries,
+  BURN_ABSOLUTE_FLOOR_USD,
+  BURN_MULTIPLE,
+  BURN_TRAILING_DAYS,
+} from "./burn-rate";
+export type { BurnRateDay, BurnRateDelta, BurnRateVerdict } from "./burn-rate";
 
 // GitHub Actions usage (org-level billing minutes + shared-storage)
 export {

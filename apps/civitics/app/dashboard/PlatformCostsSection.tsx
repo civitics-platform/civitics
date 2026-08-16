@@ -468,6 +468,7 @@ function ServiceCard({
   meta,
   anthropicDetail,
   aiCosts,
+  vercelBilling,
   isAdmin,
   adminKey,
   onVerify,
@@ -478,6 +479,7 @@ function ServiceCard({
   meta: (typeof SERVICE_META)[string];
   anthropicDetail?: AnthropicDetail | null;
   aiCosts?: AiCosts | null;
+  vercelBilling?: PlatformUsageResponse["vercel_billing"];
   isAdmin: boolean;
   adminKey: string;
   onVerify: (metric: PlatformMetric) => void;
@@ -500,9 +502,15 @@ function ServiceCard({
     service === "anthropic"
       ? (anthropicDetail?.this_month?.cost_usd ?? aiCosts?.monthly_spent_usd ?? 0)
       : service === "vercel"
-        ? // FIX-648: Vercel rows carry no overage_unit_cost (Pro is credit-based),
-          // so overage_cost is $0 — the real figure is the projected monthly_spend.
-          (metrics.find((m) => m.metric === "monthly_spend_usd")?.value ?? 0)
+        ? // FIX-1046: the card headline is the projected BILL — subscription plus
+          // whatever exceeds the $20 of usage the subscription includes — not the
+          // gross list value of all consumption, which is what monthly_spend_usd
+          // holds and what this used to show ($31.38 against a real $20.00).
+          // FIX-648's monthly_spend_usd remains the fallback for the window
+          // between deploy and the first cron tick in the new payload shape.
+          (vercelBilling?.projected_total_bill_usd ??
+            metrics.find((m) => m.metric === "monthly_spend_usd")?.value ??
+            0)
         : metrics.reduce((sum, m) => sum + (m.overage_cost ?? 0), 0);
 
   // For Anthropic: override the collapsed bar to reflect total account spend, not just app spend
@@ -815,11 +823,30 @@ export function PlatformCostsSection({
     .filter(([svc]) => svc !== "anthropic")
     .flatMap(([, metrics]) => metrics)
     .reduce((sum, m) => sum + (m.overage_cost ?? 0), 0);
-  // FIX-648: Vercel's run-rate spend isn't an overage_cost (credit-based rows),
-  // so fold its projected monthly_spend into the headline total explicitly.
-  const vercelSpend =
-    (by_service["vercel"] ?? []).find((m) => m.metric === "monthly_spend_usd")?.value ?? 0;
-  const totalMonthlyCost = anthropicCost + otherOverages + vercelSpend;
+
+  // FIX-1046 — the headline is BILLABLE money, not gross list value.
+  //
+  // It used to fold in vercel.monthly_spend_usd, which is the projected sum of
+  // EffectiveCost across every charge line INCLUDING the $20 Pro subscription
+  // and every dollar of within-allotment usage. On prod 2026-08-16 that made
+  // this number read $31.38 on a month whose actual billable overage was $0.00.
+  // Vercel Pro is $20/mo AND that $20 buys $20 of included usage, so:
+  //     bill = $20 subscription + max(0, usage - $20)
+  // The subscription is a real, known, fixed cost and stays in the total; what
+  // comes out is the pretend "cost" of usage the subscription already paid for.
+  //
+  // Falls back to the old gross figure only while `vercel_billing` is absent —
+  // i.e. between this deploy and the first cron tick that writes the new payload
+  // shape. That window can be a couple of hours under GHA drift.
+  const billing = platformUsage.vercel_billing;
+  const vercelCost = billing
+    ? billing.projected_total_bill_usd
+    : ((by_service["vercel"] ?? []).find((m) => m.metric === "monthly_spend_usd")?.value ?? 0);
+  const totalMonthlyCost = anthropicCost + otherOverages + vercelCost;
+
+  const edge = platformUsage.cloudflare_edge;
+  const mitigation = platformUsage.cf_mitigation;
+  const burn = platformUsage.burn_rate;
 
   // Alert banners
   const banners: Array<{ level: "error" | "warning" | "info"; message: string; detail?: string }> =
@@ -860,7 +887,7 @@ export function PlatformCostsSection({
         />
 
         {/* Summary row */}
-        <div className="flex justify-between items-center mb-4 px-1 mt-4">
+        <div className="flex justify-between items-center mb-1 px-1 mt-4">
           <span className="text-2xl font-bold tabular-nums">
             ${totalMonthlyCost.toFixed(2)}
             <span className="text-sm font-normal text-ink-soft ml-1">/month</span>
@@ -870,6 +897,104 @@ export function PlatformCostsSection({
             <button className="underline hover:text-ink">Upgrade</button>
           </span>
         </div>
+
+        {/* FIX-1046: show the decomposition, because "$20.00/month" on its own
+            is indistinguishable from "we have no idea". The credit line is the
+            number that actually tells you how much headroom is left. */}
+        {billing && (
+          <div className="px-1 mb-3 text-xs text-ink-soft">
+            Vercel: ${billing.projected_total_bill_usd.toFixed(2)} = $
+            {(billing.projected_total_bill_usd - billing.projected_billable_overage_usd).toFixed(2)}{" "}
+            subscription + ${billing.projected_billable_overage_usd.toFixed(2)} billable overage
+            {" · "}
+            <span
+              className={
+                billing.credit_remaining_usd <= 0
+                  ? "text-accent font-medium"
+                  : billing.credit_used_pct >= 80
+                    ? "text-ink font-medium"
+                    : ""
+              }
+            >
+              ${billing.credit_remaining_usd.toFixed(2)} of the $
+              {billing.included_credit_usd.toFixed(0)} usage credit unspent
+            </span>
+            {" · "}gross list value ${billing.projected_gross_usd.toFixed(2)}
+            {!billing.projectable && " (no daily granularity — not projected)"}
+          </div>
+        )}
+
+        {/* FIX-1044/1045: the leading signal + what the loop is doing. Deliberately
+            a compact strip rather than a redesign — the full card revamp is its
+            own piece of work. */}
+        {(edge || burn || mitigation) && (
+          <div className="px-1 mb-4 flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink-soft border-t border-rule/60 pt-2">
+            {edge?.latest && (
+              <span title={`Cloudflare hour ${edge.latest.hour} (UTC)`}>
+                Edge{" "}
+                <span
+                  className={
+                    edge.latest.origin_requests >= edge.trip_threshold
+                      ? "text-accent font-medium tabular-nums"
+                      : "text-ink tabular-nums"
+                  }
+                >
+                  {formatMetricValue(edge.latest.origin_requests, "requests_per_hour")}
+                </span>{" "}
+                to origin of{" "}
+                <span className="tabular-nums">
+                  {formatMetricValue(edge.latest.edge_requests, "requests_per_hour")}
+                </span>{" "}
+                seen
+                {edge.latest.mitigated_pct >= 1 &&
+                  ` · ${Math.round(edge.latest.mitigated_pct)}% absorbed`}
+                {" · trip at "}
+                <span className="tabular-nums">
+                  {formatMetricValue(edge.trip_threshold, "requests_per_hour")}
+                </span>
+              </span>
+            )}
+            {burn?.latest_delta_usd != null && (
+              <span title={burn.reason}>
+                Burn{" "}
+                <span
+                  className={
+                    burn.elevated ? "text-accent font-medium tabular-nums" : "text-ink tabular-nums"
+                  }
+                >
+                  ${burn.latest_delta_usd.toFixed(2)}/day
+                </span>
+                {burn.multiple != null && ` (${burn.multiple.toFixed(1)}× median)`}
+              </span>
+            )}
+            {mitigation && (
+              <span title={mitigation.reason}>
+                Loop{" "}
+                <span
+                  className={
+                    mitigation.tripped_at
+                      ? "text-accent font-medium"
+                      : mitigation.writes_enabled
+                        ? "text-green-ink"
+                        : "text-ink"
+                  }
+                >
+                  {mitigation.tripped_at
+                    ? `TRIPPED (auto, since ${mitigation.tripped_at.slice(11, 16)} UTC)`
+                    : mitigation.writes_enabled
+                      ? "armed"
+                      : "disarmed"}
+                </span>
+                {mitigation.observed_level && ` · CF ${mitigation.observed_level}`}
+                {mitigation.breach_hours > 0 &&
+                  ` · ${mitigation.breach_hours}/${mitigation.required_breach_hours} breach hrs`}
+                {mitigation.action === "skip_no_scope" && (
+                  <span className="text-amber"> · needs Zone Settings:Edit</span>
+                )}
+              </span>
+            )}
+          </div>
+        )}
 
         {/* Service cards */}
         <div className="space-y-3">
@@ -886,6 +1011,7 @@ export function PlatformCostsSection({
                 meta={meta}
                 anthropicDetail={service === "anthropic" ? anthropicDetail : undefined}
                 aiCosts={service === "anthropic" ? aiCosts : undefined}
+                vercelBilling={service === "vercel" ? billing : undefined}
                 isAdmin={isAdmin}
                 adminKey={adminKey}
                 onVerify={handleVerify}

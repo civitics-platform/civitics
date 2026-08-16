@@ -34,7 +34,14 @@ export type KillSwitchName =
   | "ai_tagger"
   | "connection_graph_live"
   | "cron"
-  | "mapbox_geocode";
+  | "mapbox_geocode"
+  // FIX-1045: arms the closed-loop Cloudflare auto-mitigation WRITE. Turning it
+  // off leaves detection, the snapshot metric and every alert fully live — only
+  // the zone-settings PATCH is disarmed. It is the disable-the-loop control
+  // documented in docs/OPERATIONS.md. Unlike every other switch here it does not
+  // gate a spend path, so it has NO auto_trip_threshold_pct: a cost metric must
+  // never be able to switch off the thing that defends against cost.
+  | "cf_auto_mitigation";
 
 export type KillSwitchState = {
   enabled: boolean;
@@ -74,6 +81,7 @@ const ENV_RULES: Record<KillSwitchName, EnvRule> = {
   connection_graph_live: { envVar: "CONNECTIONS_PIPELINE_ENABLED", off: "false" },
   cron:                  { envVar: "CRON_DISABLED",              off: "true"  },
   mapbox_geocode:        { envVar: "MAPBOX_GEOCODING_ENABLED",   off: "false" },
+  cf_auto_mitigation:    { envVar: "CF_AUTO_MITIGATION_ENABLED", off: "false" },
 };
 
 function envKillSwitchIsOff(name: KillSwitchName): boolean {

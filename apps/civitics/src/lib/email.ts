@@ -202,6 +202,125 @@ export function renderMetricAlertEmail(args: {
   return { subject, html };
 }
 
+/**
+ * Render a Cloudflare auto-mitigation transition email (FIX-1045).
+ *
+ * Distinct from every other alert in this file in one important way: the other
+ * templates ask a human to go and look at something. This one reports that the
+ * system ALREADY ACTED on production edge configuration. So the body leads with
+ * what changed, backs it with the measured evidence that justified it, and ends
+ * with the exact one-line undo — because the first question on reading "we
+ * turned on Under Attack mode" is always "how do I turn it off".
+ *
+ * Four shapes, one per transition the loop can make:
+ *   trip                        → it escalated. Evidence + undo.
+ *   revert                      → the timer expired and it put the level back.
+ *   refuse_revert_manual_change → somebody changed the level by hand; the loop
+ *                                 released its claim and wrote NOTHING.
+ *   skip_*                      → it WOULD have acted but is disarmed (kill
+ *                                 switch off, or the token has no write scope).
+ */
+export function renderMitigationEmail(args: {
+  action: string;
+  reason: string;
+  observedLevel: string | null;
+  targetLevel?: string | null;
+  latestHourUtc?: string | null;
+  latestOriginRequests?: number | null;
+  latestEdgeRequests?: number | null;
+  threshold: number;
+  revertAfterHours: number;
+  siteUrl: string;
+}): { subject: string; html: string } {
+  const {
+    action,
+    reason,
+    observedLevel,
+    latestHourUtc,
+    latestOriginRequests,
+    latestEdgeRequests,
+    threshold,
+    revertAfterHours,
+    siteUrl,
+  } = args;
+
+  let subject: string;
+  let title: string;
+  let lead: string;
+
+  switch (action) {
+    case "trip":
+      subject = "🛡️ ACTED: Cloudflare raised to Under Attack (auto-mitigation)";
+      title = "Auto-mitigation escalated the Cloudflare security level";
+      lead =
+        `The platform detected a sustained origin-volume spike and RAISED the ` +
+        `Cloudflare zone security level to "under_attack" by itself. This is not a ` +
+        `request for you to act — it has already happened. It will auto-revert in ` +
+        `${revertAfterHours}h unless the burn is still running, in which case the ` +
+        `next runs will re-trip on fresh evidence.`;
+      break;
+    case "revert":
+      subject = "🛡️ Cloudflare security level restored (auto-revert)";
+      title = "Auto-mitigation reverted its own escalation";
+      lead =
+        `The ${revertAfterHours}h window expired and the loop restored the security ` +
+        `level it found before escalating. If the burn resumes, the next runs will ` +
+        `escalate again on fresh evidence. Nothing further is required.`;
+      break;
+    case "refuse_revert_manual_change":
+      subject = "⚠️ Auto-mitigation stood down — Cloudflare level changed by hand";
+      title = "Auto-revert refused: the zone no longer matches what the loop set";
+      lead =
+        `The loop was due to revert its own escalation, re-read the zone first, and ` +
+        `found a DIFFERENT security level than the one it set. That means somebody ` +
+        `changed it manually. It wrote nothing, released its claim on the setting, ` +
+        `and will not touch it again — the current level is yours and stays yours. ` +
+        `A future spike can still trigger a fresh escalation.`;
+      break;
+    default:
+      subject = "⚠️ Cost spike detected — auto-mitigation is DISARMED";
+      title = "Sustained origin-volume spike, and the loop could not act";
+      lead =
+        `The trip condition was met but the closed loop is not armed, so NOTHING was ` +
+        `changed at the edge and the burn is continuing. This is the alert-only ` +
+        `degradation path — you need to raise the Cloudflare security level by hand, ` +
+        `or fix the reason it is disarmed.`;
+      break;
+  }
+
+  const evidence: string[] = [];
+  if (latestHourUtc) {
+    evidence.push(
+      `Latest complete hour ${latestHourUtc}: ` +
+        `${(latestOriginRequests ?? 0).toLocaleString()} requests reached the origin` +
+        (latestEdgeRequests != null
+          ? ` of ${latestEdgeRequests.toLocaleString()} seen at the edge`
+          : "") +
+        ` (threshold ${threshold.toLocaleString()}/hr).`,
+    );
+  }
+  if (observedLevel) evidence.push(`Zone security_level read as "${observedLevel}".`);
+  evidence.push(reason);
+  evidence.push(
+    `To change it by hand: Cloudflare dashboard → civitics.com → Security → ` +
+      `Settings → Security Level. Auto-set changes are recorded in ` +
+      `pipeline_state.cf_mitigation_loop, so you can always tell an automatic ` +
+      `change from a manual one. To disarm the loop entirely, turn off the ` +
+      `cf_auto_mitigation kill switch on the Operations tab.`,
+  );
+
+  // renderNotificationEmail escapes the body into a single <p>, so newlines
+  // would vanish — join as prose with a separator that survives escaping.
+  const html = renderNotificationEmail({
+    title,
+    body: [lead, ...evidence].join(" — "),
+    link: "/dashboard?tab=operations",
+    siteUrl,
+  });
+
+  return { subject, html };
+}
+
 /** Compact human-readable usage formatting for alert bodies. */
 function formatUsage(value: number, unit: string): string {
   if (unit === "bytes") {

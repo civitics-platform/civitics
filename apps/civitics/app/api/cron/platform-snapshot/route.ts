@@ -25,10 +25,16 @@ import { NextResponse, type NextRequest } from "next/server";
 import {
   createAdminClient,
   writePlatformUsageSnapshot,
+  BURN_ABSOLUTE_FLOOR_USD,
   type PlatformUsagePayload,
 } from "@civitics/db";
 import { writeStatusSnapshot } from "../../claude/status/_lib/status-snapshot";
-import { sendEmail, renderKillSwitchEmail, renderMetricAlertEmail } from "@/lib/email";
+import {
+  sendEmail,
+  renderKillSwitchEmail,
+  renderMetricAlertEmail,
+  renderMitigationEmail,
+} from "@/lib/email";
 
 const SITE_URL_FALLBACK = "https://civitics-civitics.vercel.app";
 
@@ -271,6 +277,238 @@ async function emailLeadingFluidCostAlerts(
   }
 }
 
+/**
+ * FIX-1044 — leading-signal alert on Cloudflare origin-reaching volume.
+ *
+ * The THIRD leading-signal layer, and the one that would actually have caught
+ * 2026-08-15. db_connections (FIX-642) watches the database; fluid-compute
+ * dollars (FIX-648) watch a Vercel figure that only moves once per day. This
+ * watches request volume at the edge, which is where every downstream cost
+ * originates and is the only thing in the stack observable at hour resolution.
+ *
+ * ORIGIN-REACHING, not total edge requests: those are the requests that cost
+ * money, and it makes the alert self-limiting — while a mitigation absorbs a
+ * crawl, origin volume collapses and this correctly goes quiet instead of
+ * paging about traffic nobody is paying for.
+ *
+ * Ungated (mirrors FIX-642/648 — a live burn pages even with cumulative-cost
+ * alerting muted) and rising-edge debounced on its own platform_alert_state key
+ * so it pages once per spike rather than every tick. Best-effort: never throws.
+ */
+async function emailLeadingEdgeVolumeAlerts(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  db: any,
+  payload: PlatformUsagePayload,
+  adminEmail: string,
+  siteUrl: string,
+): Promise<void> {
+  const edge = payload.cloudflare_edge;
+  if (!edge?.latest) return;
+
+  const threshold = Number(
+    process.env["LEADING_CF_ORIGIN_REQ_THRESHOLD"] ?? edge.trip_threshold,
+  );
+  const value = edge.latest.origin_requests;
+  const alertKey = "leading.cloudflare.origin_requests_hourly";
+  const elevated = value >= threshold;
+
+  const { data: priorRow, error: readErr } = await db
+    .from("platform_alert_state")
+    .select("last_status")
+    .eq("metric_key", alertKey)
+    .maybeSingle();
+  if (readErr) {
+    console.warn(`[leading edge] could not read state (${alertKey}): ${readErr.message}`);
+  }
+  const prevElevated = priorRow?.last_status === "elevated";
+
+  if (elevated && !prevElevated) {
+    const pct = (value / threshold) * 100;
+    const { subject, html } = renderMetricAlertEmail({
+      service: "cloudflare",
+      metric: "origin_requests_hourly",
+      display_label:
+        `Origin requests/hr (leading signal) — hour ${edge.latest.hour}, ` +
+        `${edge.latest.edge_requests.toLocaleString()} at the edge, ` +
+        `${edge.latest.mitigated_pct.toFixed(0)}% absorbed`,
+      value,
+      limit: threshold,
+      unit: "requests_per_hour",
+      pct,
+      status: pct >= 200 ? "critical" : "warning",
+      siteUrl,
+    });
+    const sendResult = await sendEmail({ to: adminEmail, subject, html });
+    if (!sendResult.sent) {
+      console.warn(`[leading edge] not sent (${alertKey}): ${sendResult.reason}`);
+    }
+  }
+
+  const nowIso = new Date().toISOString();
+  const upsertRow =
+    elevated && !prevElevated
+      ? { metric_key: alertKey, last_status: "elevated", last_alerted_at: nowIso }
+      : { metric_key: alertKey, last_status: elevated ? "elevated" : "normal" };
+  const { error: upsertErr } = await db
+    .from("platform_alert_state")
+    .upsert(upsertRow, { onConflict: "metric_key" });
+  if (upsertErr) {
+    console.warn(`[leading edge] state upsert failed (${alertKey}): ${upsertErr.message}`);
+  }
+}
+
+/**
+ * FIX-1044 D2 — burn-rate alert on day-over-day consumption.
+ *
+ * The monthly-cumulative bands are a lagging control by construction: at
+ * 2026-08-15's ~$21/day they would not have tripped for days. This fires on the
+ * DERIVATIVE — today's consumption against the trailing-7-day median, gated on
+ * BOTH an absolute floor and a multiple (see packages/db/src/burn-rate.ts for
+ * why one condition alone produces either noise or silence).
+ *
+ * Routed through the existing platform_alert_state edge-trigger machinery with
+ * a new key — a new SIGNAL, not new substrate. Ungated for the same reason as
+ * the other leading alerts.
+ */
+async function emailBurnRateAlerts(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  db: any,
+  payload: PlatformUsagePayload,
+  adminEmail: string,
+  siteUrl: string,
+): Promise<void> {
+  const burn = payload.burn_rate;
+  if (!burn || burn.latest_delta_usd === null) return;
+
+  const alertKey = "burn.vercel.daily_usage_usd";
+
+  const { data: priorRow, error: readErr } = await db
+    .from("platform_alert_state")
+    .select("last_status")
+    .eq("metric_key", alertKey)
+    .maybeSingle();
+  if (readErr) {
+    console.warn(`[burn rate] could not read state (${alertKey}): ${readErr.message}`);
+  }
+  const prevElevated = priorRow?.last_status === "elevated";
+
+  if (burn.elevated && !prevElevated) {
+    const { subject, html } = renderMetricAlertEmail({
+      service: "vercel",
+      metric: "daily_usage_usd",
+      display_label:
+        `Daily burn rate — ${burn.reason} (day ${burn.latest_mtd_day}, ` +
+        `${burn.history_days}d of history)`,
+      value: burn.latest_delta_usd,
+      // Framed against the absolute floor, so the pct in the subject reads as
+      // "how many times over the bar this day went" rather than a share of a
+      // monthly allotment — which is the whole point of a rate alert.
+      limit: BURN_ABSOLUTE_FLOOR_USD,
+      unit: "usd",
+      pct: (burn.latest_delta_usd / BURN_ABSOLUTE_FLOOR_USD) * 100,
+      status: (burn.multiple ?? 0) >= 6 ? "critical" : "warning",
+      siteUrl,
+    });
+    const sendResult = await sendEmail({ to: adminEmail, subject, html });
+    if (!sendResult.sent) {
+      console.warn(`[burn rate] not sent (${alertKey}): ${sendResult.reason}`);
+    }
+  }
+
+  const nowIso = new Date().toISOString();
+  const upsertRow =
+    burn.elevated && !prevElevated
+      ? { metric_key: alertKey, last_status: "elevated", last_alerted_at: nowIso }
+      : { metric_key: alertKey, last_status: burn.elevated ? "elevated" : "normal" };
+  const { error: upsertErr } = await db
+    .from("platform_alert_state")
+    .upsert(upsertRow, { onConflict: "metric_key" });
+  if (upsertErr) {
+    console.warn(`[burn rate] state upsert failed (${alertKey}): ${upsertErr.message}`);
+  }
+}
+
+/**
+ * FIX-1045 — email every transition of the closed mitigation loop.
+ *
+ * "Every transition emails" is a hard requirement: the loop mutates production
+ * edge configuration, and an unannounced change to the security level is worse
+ * than no change at all. Trip, revert, refusal, and the disarmed-but-should-
+ * have-acted cases all send.
+ *
+ * DEBOUNCED ON THE ACTION ITSELF, not on a status band. `skip_no_scope` and
+ * `skip_disabled` persist for as long as the underlying condition does, so a
+ * naive per-tick send would mail on every cron run for hours. Storing the last
+ * emailed action in platform_alert_state means a state that persists is
+ * reported once, and any CHANGE of state is reported immediately.
+ *
+ * Best-effort throughout: email failure never blocks or reverses the action,
+ * which has already been recorded durably by the loop itself.
+ */
+async function emailMitigationTransitions(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  db: any,
+  payload: PlatformUsagePayload,
+  adminEmail: string,
+  siteUrl: string,
+): Promise<void> {
+  const mit = payload.cf_mitigation;
+  const edge = payload.cloudflare_edge;
+  if (!mit) return;
+
+  const emailable =
+    mit.action === "trip" ||
+    mit.action === "revert" ||
+    mit.action === "refuse_revert_manual_change" ||
+    mit.action === "skip_no_scope" ||
+    mit.action === "skip_disabled" ||
+    (mit.action === "error" && mit.write_error !== null);
+
+  const alertKey = "mitigation.cloudflare.security_level";
+
+  const { data: priorRow, error: readErr } = await db
+    .from("platform_alert_state")
+    .select("last_status")
+    .eq("metric_key", alertKey)
+    .maybeSingle();
+  if (readErr) {
+    console.warn(`[mitigation] could not read state (${alertKey}): ${readErr.message}`);
+  }
+  const changed = priorRow?.last_status !== mit.action;
+
+  if (emailable && changed) {
+    const { subject, html } = renderMitigationEmail({
+      action: mit.action,
+      reason: mit.reason,
+      observedLevel: mit.observed_level,
+      latestHourUtc: edge?.latest?.hour ?? null,
+      latestOriginRequests: edge?.latest?.origin_requests ?? null,
+      latestEdgeRequests: edge?.latest?.edge_requests ?? null,
+      threshold: edge?.trip_threshold ?? 0,
+      revertAfterHours: mit.revert_after_hours,
+      siteUrl,
+    });
+    const sendResult = await sendEmail({ to: adminEmail, subject, html });
+    if (!sendResult.sent) {
+      console.warn(`[mitigation] not sent (${mit.action}): ${sendResult.reason}`);
+    }
+  }
+
+  // Record the action every tick — including 'none' — so returning to quiet
+  // re-arms the next transition email.
+  const nowIso = new Date().toISOString();
+  const upsertRow =
+    emailable && changed
+      ? { metric_key: alertKey, last_status: mit.action, last_alerted_at: nowIso }
+      : { metric_key: alertKey, last_status: mit.action };
+  const { error: upsertErr } = await db
+    .from("platform_alert_state")
+    .upsert(upsertRow, { onConflict: "metric_key" });
+  if (upsertErr) {
+    console.warn(`[mitigation] state upsert failed (${alertKey}): ${upsertErr.message}`);
+  }
+}
+
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const authHeader = request.headers.get("authorization");
   const expected = `Bearer ${process.env["CRON_SECRET"] ?? ""}`;
@@ -354,6 +592,25 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         adminEmail,
         siteUrl,
       );
+      // FIX-1044: the leading signal that would actually have caught
+      // 2026-08-15 — origin-reaching edge volume, at hour resolution.
+      await emailLeadingEdgeVolumeAlerts(
+        db,
+        platformOutcome.value.payload,
+        adminEmail,
+        siteUrl,
+      );
+      // FIX-1044 D2: day-over-day burn rate against the trailing median.
+      await emailBurnRateAlerts(db, platformOutcome.value.payload, adminEmail, siteUrl);
+      // FIX-1045: report what the closed loop DID. Runs last so the action is
+      // already durably recorded before we try to talk about it — an email
+      // failure must never be able to hide a live edge-config change.
+      await emailMitigationTransitions(
+        db,
+        platformOutcome.value.payload,
+        adminEmail,
+        siteUrl,
+      );
     }
   }
 
@@ -383,6 +640,17 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     // PR 3 (FIX-286): one-glance log signal so we don't need to query
     // kill_switch_events from the GHA workflow log to spot a flip.
     auto_trips_flipped: platformResult?.auto_trips_flipped ?? 0,
+    // FIX-1044/1045: the same one-glance principle for the new signals. These
+    // land in the GHA run log, which is the cheapest place to confirm the loop
+    // is alive without opening the dashboard or querying the snapshot table.
+    cf_origin_requests_hourly:
+      platformResult?.payload.cloudflare_edge?.latest?.origin_requests ?? null,
+    cf_security_level: platformResult?.payload.cf_mitigation?.observed_level ?? null,
+    cf_mitigation_action: platformResult?.payload.cf_mitigation?.action ?? null,
+    cf_mitigation_acted: platformResult?.payload.cf_mitigation?.acted ?? false,
+    burn_rate_elevated: platformResult?.payload.burn_rate?.elevated ?? null,
+    vercel_billable_overage_usd:
+      platformResult?.payload.vercel_billing?.projected_billable_overage_usd ?? null,
     status_query_time_ms: statusResult?.query_time_ms ?? null,
     partial:
       (platformResult?.error ?? null) !== null ||

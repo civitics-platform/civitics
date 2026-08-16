@@ -37,9 +37,11 @@ import { getSupabasePrometheusMetrics } from "./supabase-prometheus";
 import { getCloudflareR2Usage } from "./cloudflare-usage";
 import {
   getUpstashHealth,
+  getUpstashUsage,
   recordUpstashLimiterState,
   type UpstashLimiterState,
   type UpstashLimiterTransition,
+  type UpstashUsage,
 } from "./upstash-usage";
 import { getVercelUsage, type VercelUsage } from "./vercel-usage";
 import { getGitHubUsage } from "./github-usage";
@@ -47,6 +49,24 @@ import {
   evaluateAutoTrips,
   type AutoTripDecision,
 } from "./auto-trip-evaluator";
+import {
+  getCloudflareEdgeVolume,
+  getZoneSecurityLevel,
+  setZoneSecurityLevel,
+  type CloudflareEdgeVolume,
+  type CloudflareHourBucket,
+  type SecurityLevel,
+} from "./cloudflare-analytics";
+import {
+  runCloudflareMitigationLoop,
+  TRIP_THRESHOLD_ORIGIN_REQ_PER_HOUR,
+  REQUIRED_BREACH_HOURS,
+  REVERT_AFTER_HOURS,
+  type MitigationRunResult,
+} from "./cf-mitigation-loop";
+import { computeVercelBilling, VERCEL_PRO_INCLUDED_USD, type VercelBilling } from "./vercel-billing";
+import { evaluateBurnRate, readBurnRateSeries, type BurnRateVerdict } from "./burn-rate";
+import { isKillSwitchEnabled } from "./kill-switches";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -121,7 +141,52 @@ export type PlatformUsagePayload = {
     previous_state: UpstashLimiterState | null;
     last_transition_at: string | null;
     transitions: UpstashLimiterTransition[];
+    // Control-plane reading (management API). Absent without UPSTASH_EMAIL /
+    // _API_KEY / _DATABASE_ID. Deliberately NOT merged into the fields above:
+    // `usage.used_commands` (billing) and `usage_commands` (the enforcement
+    // number parsed off a refusal) are different counters that disagree, and
+    // collapsing them would hide that.
+    usage?: UpstashUsage;
   };
+  // FIX-1044: the LEADING cost signal. Cloudflare is the only near-real-time,
+  // script-readable counter in this stack, and every downstream dollar (Vercel
+  // invocations, Upstash commands, observability events) follows edge request
+  // volume. `origin_requests` — requests the origin actually answered — is the
+  // one that costs money and is what the alert and the mitigation loop key on;
+  // `edge_requests` rides along so the card can show "absorbed at the edge",
+  // which is exactly the shape that made Under Attack mode's effect legible on
+  // 2026-08-15 (same ~7,300 edge requests/hr, origin fell from 7,302 to 36).
+  // Absent when CLOUDFLARE_API_TOKEN is unset (local dev).
+  cloudflare_edge?: {
+    zone_id: string;
+    /** Most recent COMPLETE clock hour. Partial hours are never reported. */
+    latest: CloudflareHourBucket | null;
+    /** Up to 3 complete hours, newest first — GHA drift can skip one. */
+    hours: CloudflareHourBucket[];
+    trip_threshold: number;
+    fetched_at: string;
+  };
+  // FIX-1045: closed-loop auto-mitigation state. `decision.action` is the whole
+  // story for the card; `security_level` is what the zone read this tick.
+  cf_mitigation?: {
+    action: string;
+    reason: string;
+    observed_level: SecurityLevel | null;
+    acted: boolean;
+    write_error: string | null;
+    tripped_at: string | null;
+    previous_level: SecurityLevel | null;
+    breach_hours: number;
+    required_breach_hours: number;
+    revert_after_hours: number;
+    writes_enabled: boolean;
+  };
+  // FIX-1046: the corrected Vercel billing picture. `monthly_spend_usd` in
+  // `metrics` remains the GROSS list value (the leading indicator); everything
+  // billable lives here.
+  vercel_billing?: VercelBilling;
+  // FIX-1044 D2: day-over-day consumption deltas vs the trailing median.
+  burn_rate?: BurnRateVerdict;
   timestamp: string;
 };
 
@@ -289,13 +354,33 @@ export async function computePlatformUsagePayload(
   // see upstash-usage.ts's header for the measurement). `limiter_degraded` is
   // 0/1 against an included_limit of 1, so a degraded limiter reads 100% and
   // trips the SAME critical machinery every other metric uses — no new alerting
-  // substrate. `period_commands` is only written when Upstash's own quota error
-  // discloses the numbers (there is no usage API without a management key);
-  // otherwise the row stays value-less rather than carrying an invented zero.
-  // Missing env is benign (matches the github/cloudflare convention).
+  // substrate.
+  //
+  // `period_commands` now comes from the MANAGEMENT API (control plane), which
+  // is the leading half: it reads total_monthly_requests against the vendor's
+  // own db_request_limit every tick, so the 80% warning is reachable BEFORE the
+  // limiter dies rather than at the instant it does. The quota-error parse stays
+  // as the fallback for when the management key is absent. The two counters
+  // disagree — billing lags enforcement — so health, not usage, decides
+  // `limiter_degraded`. Missing env on either side is benign (matches the
+  // github/cloudflare convention).
   let upstashPayload: PlatformUsagePayload["upstash"] = undefined;
   try {
-    const upstash = await getUpstashHealth();
+    const [upstash, usage] = await Promise.all([getUpstashHealth(), getUpstashUsage()]);
+    const usageOk = !("error" in usage);
+    if (usageOk) {
+      await updateUsage(db, "upstash", "period_commands", usage.used_commands, "api");
+      // Keep the denominator honest against the vendor's own cap rather than a
+      // seeded constant — same pattern as FIX-351 for the Supabase disk size.
+      await anyDb
+        .from("platform_limits")
+        .update({ included_limit: usage.limit_commands })
+        .eq("service", "upstash")
+        .eq("metric", "period_commands");
+    } else if (!/UPSTASH_(EMAIL|API_KEY|DATABASE_ID)/i.test(usage.error)) {
+      errors.push(`upstash_usage: ${usage.error}`);
+    }
+
     if (!("error" in upstash)) {
       const history = await recordUpstashLimiterState(anyDb, upstash.state);
       await updateUsage(
@@ -305,15 +390,99 @@ export async function computePlatformUsagePayload(
         upstash.state === "healthy" ? 0 : 1,
         "api",
       );
-      if (upstash.usage_commands !== null) {
+      // Fallback only: without the management key the quota error is the sole
+      // source of a number, and it appears only once the cap is already crossed.
+      if (!usageOk && upstash.usage_commands !== null) {
         await updateUsage(db, "upstash", "period_commands", upstash.usage_commands, "api");
       }
-      upstashPayload = { ...upstash, ...history };
+      upstashPayload = {
+        ...upstash,
+        ...history,
+        ...(usageOk ? { usage } : {}),
+      };
     } else if (!/UPSTASH_REDIS_REST/i.test(upstash.error)) {
       errors.push(`upstash: ${upstash.error}`);
     }
   } catch (err) {
     errors.push(`upstash: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  // FIX-1044 — Cloudflare edge volume: THE leading cost signal.
+  //
+  // One GraphQL call per tick returning the last 3 COMPLETE clock hours. Three,
+  // not one, because this cron is GHA-driven and its measured inter-run gap is
+  // p50 46 min / p90 87 min / max 155 min (200 runs, 6.8 days) — a single-hour
+  // read would silently skip hours on 26% of runs, and skipped hours cannot
+  // contribute to the mitigation loop's sustained-breach count.
+  //
+  // The metric written to platform_usage is origin-reaching requests in the
+  // latest complete hour. Missing env is benign (matches the github/cloudflare/
+  // upstash convention) so local dev and any environment without the token just
+  // omits the block rather than flagging the snapshot partial.
+  //
+  // FIX-1045 — the closed loop runs from the SAME reading, immediately after,
+  // so the decision and the number it was made on can never disagree.
+  let cloudflareEdge: PlatformUsagePayload["cloudflare_edge"] = undefined;
+  let cfMitigation: PlatformUsagePayload["cf_mitigation"] = undefined;
+  let cfHours: CloudflareHourBucket[] = [];
+  try {
+    const edge: CloudflareEdgeVolume | { error: string } = await getCloudflareEdgeVolume({
+      lookbackHours: 3,
+    });
+    if (!("error" in edge)) {
+      cfHours = edge.hours;
+      cloudflareEdge = {
+        zone_id: edge.zone_id,
+        latest: edge.latest,
+        hours: edge.hours,
+        trip_threshold: TRIP_THRESHOLD_ORIGIN_REQ_PER_HOUR,
+        fetched_at: edge.fetched_at,
+      };
+      if (edge.latest) {
+        await Promise.all([
+          updateUsage(db, "cloudflare", "origin_requests_hourly", edge.latest.origin_requests, "api"),
+          updateUsage(db, "cloudflare", "edge_requests_hourly", edge.latest.edge_requests, "api"),
+          updateUsage(db, "cloudflare", "edge_mitigated_pct", edge.latest.mitigated_pct, "api"),
+        ]);
+      }
+    } else if (!/CLOUDFLARE_(API_TOKEN|ZONE)/i.test(edge.error)) {
+      errors.push(`cloudflare_edge: ${edge.error}`);
+    }
+  } catch (err) {
+    errors.push(`cloudflare_edge: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  // The loop is skipped entirely when there is no Cloudflare reading at all —
+  // acting on no evidence is exactly the failure mode rail 5 exists to prevent.
+  if (cloudflareEdge) {
+    try {
+      // Rail 6: the kill switch disarms the WRITE only. Detection above and the
+      // alerting below stay live regardless, so turning the loop off never
+      // makes the platform blinder than it was before this shipped.
+      const writesEnabled = await isKillSwitchEnabled(db, "cf_auto_mitigation");
+      const run: MitigationRunResult = await runCloudflareMitigationLoop(anyDb, cfHours, {
+        writesEnabled,
+        deps: {
+          getLevel: getZoneSecurityLevel,
+          setLevel: setZoneSecurityLevel,
+        },
+      });
+      cfMitigation = {
+        action: run.decision.action,
+        reason: run.decision.reason,
+        observed_level: run.observed_level,
+        acted: run.acted,
+        write_error: run.write_error,
+        tripped_at: run.state.tripped?.tripped_at ?? null,
+        previous_level: run.state.tripped?.previous_level ?? null,
+        breach_hours: run.state.breaches.length,
+        required_breach_hours: REQUIRED_BREACH_HOURS,
+        revert_after_hours: REVERT_AFTER_HOURS,
+        writes_enabled: writesEnabled,
+      };
+    } catch (err) {
+      errors.push(`cf_mitigation: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 
   // Supabase Prometheus live metrics → platform_usage. Sources egress
@@ -446,6 +615,7 @@ export async function computePlatformUsagePayload(
   // breakdown is projected the same way for the card + leading fluid alert.
   let vercelUsage: VercelUsage | null = null;
   let vercelBreakdown: PlatformUsagePayload["vercel_breakdown"] = undefined;
+  let vercelBilling: VercelBilling | undefined = undefined;
   try {
     const v = await getVercelUsage();
     if (!("error" in v)) {
@@ -484,6 +654,55 @@ export async function computePlatformUsagePayload(
           .map((b) => ({ service: b.service, usd: project(b.effective_usd) }))
           .slice(0, 8),
       };
+
+      // FIX-1046 — the billing correction.
+      //
+      // Vercel Pro is $20/mo and that $20 BUYS $20 of included usage, so the
+      // bill is `$20 + max(0, usage - $20)`. Everything above still writes the
+      // GROSS list value (`monthly_spend_usd`) because it is the leading
+      // indicator and it is what reconciles against the Vercel dashboard — but
+      // it is not money owed, and treating it as such is why the card read
+      // $31.38/mo on a month whose true billable overage was $0.00.
+      //
+      // The included credit comes from platform_limits so it is retunable with
+      // an UPDATE, with the named constant as the fallback. Two new metrics:
+      //   included_usage_usd   — consumption vs the $20 credit (the % bar that
+      //                          finally means something), and
+      //   billable_overage_usd — the projected money actually owed. THIS is the
+      //                          headline and the alerting row.
+      const creditRow = await anyDb
+        .from("platform_limits")
+        .select("included_limit")
+        .eq("service", "vercel")
+        .eq("metric", "included_usage_usd")
+        .eq("plan", "pro")
+        .maybeSingle();
+      const includedCreditUsd =
+        typeof creditRow?.data?.included_limit === "number" && creditRow.data.included_limit > 0
+          ? creditRow.data.included_limit
+          : VERCEL_PRO_INCLUDED_USD;
+
+      vercelBilling = computeVercelBilling({
+        effectiveMtdUsd: v.effective_cost_usd,
+        planBaseMtdUsd: v.plan_base_usd,
+        windowDays: v.window_days,
+        daysInCycle: daysInMonth,
+        includedCreditUsd,
+      });
+
+      await Promise.all([
+        // source='api': both are exact arithmetic over measured charge lines,
+        // not an extrapolated quantity. The PROJECTION inside them is honest
+        // about itself via `projectable` and the sub-labels on the card.
+        updateUsage(db, "vercel", "included_usage_usd", vercelBilling.projected_usage_usd, "api"),
+        updateUsage(
+          db,
+          "vercel",
+          "billable_overage_usd",
+          vercelBilling.projected_billable_overage_usd,
+          "api",
+        ),
+      ]);
     } else {
       if (!/VERCEL_API_TOKEN/i.test(v.error) && !/plan_upgrade_required|Plan not found/i.test(v.error)) {
         errors.push(`vercel: ${v.error}`);
@@ -622,6 +841,23 @@ export async function computePlatformUsagePayload(
     (d) => d.action === "flip",
   ).length;
 
+  // FIX-1044 D2 — burn rate. Differentiates the cumulative MTD cost series the
+  // snapshot has been storing all along into per-day consumption and compares
+  // today against the trailing median. This is the calculation the 2026-08-15
+  // audit did BY HAND to establish that the spike was 3.7x baseline; nothing
+  // was automating it. Reads via an RPC so the jsonb extraction stays in the
+  // database — there are ~150 snapshot rows/day and each payload is large.
+  //
+  // Runs LAST because it reads back snapshot rows written by earlier ticks;
+  // failure is non-fatal and degrades to "not enough history".
+  let burnRate: BurnRateVerdict | undefined = undefined;
+  try {
+    const series = await readBurnRateSeries(anyDb, 12);
+    burnRate = evaluateBurnRate(series);
+  } catch (err) {
+    errors.push(`burn_rate: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
   const payload: PlatformUsagePayload = {
     plan: defaultPlan,
     plan_overrides: planOverrides,
@@ -643,6 +879,10 @@ export async function computePlatformUsagePayload(
     ...(supabaseCpuPayload ? { supabase_cpu: supabaseCpuPayload } : {}),
     ...(vercelBreakdown ? { vercel_breakdown: vercelBreakdown } : {}),
     ...(upstashPayload ? { upstash: upstashPayload } : {}),
+    ...(cloudflareEdge ? { cloudflare_edge: cloudflareEdge } : {}),
+    ...(cfMitigation ? { cf_mitigation: cfMitigation } : {}),
+    ...(vercelBilling ? { vercel_billing: vercelBilling } : {}),
+    ...(burnRate ? { burn_rate: burnRate } : {}),
     timestamp: new Date().toISOString(),
   };
 

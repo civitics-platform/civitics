@@ -8,18 +8,29 @@
  * `platform_usage_snapshot` did not track. A hard $0-ceiling cost control
  * switched itself off silently. See docs/audits/2026-08-15-traffic-cost-spike.md.
  *
- * ── What can and cannot be measured, honestly ────────────────────────────────
+ * ── Two independent readings, and they do NOT agree ──────────────────────────
  *
- * Upstash exposes command counts only through its **management** API
- * (`api.upstash.com/v2/redis/stats/{id}`), which needs an account-level
- * `UPSTASH_EMAIL` + `UPSTASH_API_KEY` pair. This repo holds only the per-database
- * REST credentials (`UPSTASH_REDIS_REST_URL` / `_TOKEN`) — verified against
- * `.env.example`, `.env.local` and `.env.local.prod`. Minting a management key
- * is a dashboard action and out of scope for the code that ships this file.
+ * This module exposes both, because each sees something the other cannot:
  *
- * So this helper measures the thing that actually matters and that we CAN see
- * from here: **is the limiter's backing store usable right now?** A few cheap
- * `PING`s per snapshot tick resolve to one of three states:
+ *   getUpstashHealth()  — data plane. PINGs the REST endpoint with the
+ *                         per-database token. Answers "is the limiter working
+ *                         RIGHT NOW", which is the only question that matters
+ *                         during an incident.
+ *   getUpstashUsage()   — control plane. Reads the management API with an
+ *                         account-level key. Answers "how close are we", which
+ *                         is the only question that lets you act BEFORE one.
+ *
+ * They are not redundant and they measurably disagree. At 2026-08-16 03:5x UTC
+ * the management API reported `total_monthly_requests: 498964` — i.e. *under*
+ * the 500,000 cap — while the data plane was already refusing commands with
+ * `Usage: 500002`. **The billing counter lags enforcement.** So the usage number
+ * is a leading indicator and never a liveness verdict: never conclude "we are
+ * under quota, therefore the limiter works" from it. That is what the PING is
+ * for, and it is why both survive.
+ *
+ * ── The health probe ─────────────────────────────────────────────────────────
+ *
+ * A few cheap `PING`s per snapshot tick resolve to one of three states:
  *
  *   healthy         — every PING answered PONG.
  *   quota_exhausted — at least one PING drew "ERR max requests limit exceeded".
@@ -47,23 +58,36 @@
  * watching. Note this also softens the audit's "the limiter is FULLY open"
  * reading: over quota it is intermittently open, not uniformly dead.
  *
- * NB the allotment period is NOT confirmed daily. Probed live at 2026-08-16
- * 03:08 UTC — 5h38m after exhaustion and past the 00:00 UTC boundary — Upstash
- * still answered `Limit: 500000, Usage: 500002`. If the period is monthly, a
- * single crawl takes the durable limiter out for the rest of the cycle, which
- * is precisely why `checkRateLimit` now fails OVER instead of open.
+ * ── THE ALLOTMENT IS MONTHLY. Settled 2026-08-16, do not re-litigate ─────────
  *
- * ── The one place the real numbers ARE observable ────────────────────────────
+ * The triage prompt assumed 500,000 commands/**day**. It is per month. Measured
+ * straight off the vendor, not inferred:
  *
- * Upstash's quota error carries them: `"ERR max requests limit exceeded.
- * Limit: 500000, Usage: 500002."` They are parsed out here, which means
- * `upstash.daily_commands` gets a real measured value at exactly the moment it
- * matters and stays unknown otherwise. Note the counter FREEZES on crossing
- * (hence "500002" — two over, not a running total), so the value dates nothing;
- * it only confirms the cap was reached.
+ *   GET /v2/redis/database/{id}  →  db_request_limit: 500000, auto_upgrade: false
+ *   GET /v2/redis/stats/{id}     →  total_monthly_requests: 498964
+ *                                   (read 230550 / write 268414)
+ *                                   daily_net_commands: 1
  *
- * Never throws. Missing env returns `{ error }` matching the convention every
- * other vendor helper here uses, so the snapshot writer treats it as benign.
+ * Corroborated by the earlier data-plane observation that the counter had NOT
+ * reset 5h38m after exhaustion, across a 00:00 UTC boundary, and by the audit's
+ * own "~55 days at baseline" figure — which only parses against a per-month cap.
+ *
+ * **The consequence is the whole reason FIX-1038's fail-over matters.** One
+ * 16-hour crawl did not cost a day of rate limiting; it cost the REST OF THE
+ * BILLING CYCLE. `daily_net_commands: 1` against `total_monthly_requests:
+ * 498964` is that fact in two numbers: nothing is being spent today because
+ * nothing CAN be. A daily reset would have self-healed by breakfast. This one
+ * does not, which is exactly why `checkRateLimit` now fails OVER instead of open.
+ *
+ * The quota error also discloses numbers (`Limit: 500000, Usage: 500002`) and
+ * they are still parsed here — that path is the fallback when the management
+ * key is absent, and it is the only reading available at all in that case. Note
+ * the enforcement counter FREEZES on crossing (hence "500002" — two over, not a
+ * running total), so it confirms the cap was reached and dates nothing.
+ *
+ * Neither function throws. Missing env returns `{ error }` matching the
+ * convention every other vendor helper here uses, so the snapshot writer treats
+ * it as benign and the whole block simply does not appear in the payload.
  */
 
 const CACHE_TTL_MS = 60 * 1000;
@@ -232,6 +256,135 @@ export async function getUpstashHealth(): Promise<UpstashHealth | UpstashHealthE
 /** Test hook — drops the module cache so a suite can probe twice. */
 export function __resetUpstashHealthCache(): void {
   cache = null;
+  usageCache = null;
+}
+
+// ── Control plane: how close to the cap are we? ───────────────────────────────
+//
+// The LEADING indicator the health probe cannot be. The probe tells you the
+// limiter is dead; this tells you it is going to be, while there is still time
+// to do something. Two GETs against the management API per tick, cached 5 min
+// (the snapshot cron runs every 10) — these do NOT count against the Redis
+// command allotment, they are a different API.
+//
+// SECURITY. UPSTASH_API_KEY is an UNSCOPED account-level credential — Upstash
+// lists per-privilege keys as a roadmap item, not a shipped feature — so it can
+// delete databases. Everything here is a GET, the key is never logged, and the
+// response's `read_only_rest_token` / `password` fields are never read or
+// surfaced. Treat it as a higher-privilege secret than UPSTASH_REDIS_REST_TOKEN.
+
+const USAGE_CACHE_TTL_MS = 5 * 60 * 1000;
+const MGMT_API = "https://api.upstash.com/v2";
+const MGMT_TIMEOUT_MS = 8_000;
+
+export type UpstashUsage = {
+  database_id: string;
+  database_name: string | null;
+  /** Vendor's own cap (`db_request_limit`) — read, never hardcoded. */
+  limit_commands: number;
+  /** `total_monthly_requests`. LAGS enforcement; see the header. */
+  used_commands: number;
+  used_pct: number;
+  read_commands: number;
+  write_commands: number;
+  /** Today only. Near-zero while over quota — nothing can be spent. */
+  daily_commands: number;
+  /** false = hard $0 ceiling (exhaustion throttles instead of billing). */
+  auto_upgrade: boolean;
+  plan: string | null;
+  fetched_at: string;
+};
+
+export type UpstashUsageError = { error: string };
+
+let usageCache: { at: number; value: UpstashUsage } | null = null;
+
+function num(value: unknown, fallback = 0): number {
+  const n = typeof value === "string" ? Number(value) : value;
+  return typeof n === "number" && Number.isFinite(n) ? n : fallback;
+}
+
+export async function getUpstashUsage(): Promise<UpstashUsage | UpstashUsageError> {
+  const email = process.env.UPSTASH_EMAIL;
+  const apiKey = process.env.UPSTASH_API_KEY;
+  const dbId = process.env.UPSTASH_DATABASE_ID;
+  if (!email || !apiKey) {
+    return { error: "UPSTASH_EMAIL/UPSTASH_API_KEY not set" };
+  }
+  if (!dbId) {
+    // Deliberately NOT auto-discovered here. Resolving it means listing every
+    // database on the account on every tick; `node scripts/upstash-db-id.mjs`
+    // does that once and prints the line to paste.
+    return { error: "UPSTASH_DATABASE_ID not set (run scripts/upstash-db-id.mjs)" };
+  }
+
+  if (usageCache && Date.now() - usageCache.at < USAGE_CACHE_TTL_MS) {
+    return usageCache.value;
+  }
+
+  const auth = `Basic ${Buffer.from(`${email}:${apiKey}`).toString("base64")}`;
+  // Tagged union, not `{ __error }` on the payload type: the payload is a
+  // Record<string, unknown>, whose index signature makes `"__error" in x`
+  // useless for narrowing (it resolves to `unknown`, not `string`).
+  type Fetched =
+    | { ok: true; data: Record<string, unknown> }
+    | { ok: false; error: string };
+
+  async function get(path: string): Promise<Fetched> {
+    try {
+      const res = await fetch(`${MGMT_API}${path}`, {
+        headers: { Authorization: auth },
+        signal: AbortSignal.timeout(MGMT_TIMEOUT_MS),
+      });
+      if (!res.ok) {
+        // Never echo the body — an auth failure response can be noisy and the
+        // status is the actionable part.
+        return { ok: false, error: `HTTP ${res.status} on ${path}` };
+      }
+      return { ok: true, data: (await res.json()) as Record<string, unknown> };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  }
+
+  const [detailRes, statsRes] = await Promise.all([
+    get(`/redis/database/${dbId}`),
+    get(`/redis/stats/${dbId}`),
+  ]);
+  if (!detailRes.ok) return { error: detailRes.error };
+  if (!statsRes.ok) return { error: statsRes.error };
+  const detail = detailRes.data;
+  const stats = statsRes.data;
+
+  // db_request_limit is the vendor's own cap. If it is ever absent, fail rather
+  // than substituting 500000 — a wrong denominator produces a confidently wrong
+  // percentage, which is worse than no percentage.
+  const limit = num(detail.db_request_limit, 0);
+  if (limit <= 0) {
+    return { error: "db_request_limit missing from /redis/database response" };
+  }
+  const used = num(stats.total_monthly_requests, 0);
+
+  const value: UpstashUsage = {
+    database_id: dbId,
+    database_name: typeof detail.database_name === "string" ? detail.database_name : null,
+    limit_commands: limit,
+    used_commands: used,
+    used_pct: Math.round((used / limit) * 10000) / 100,
+    read_commands: num(stats.total_monthly_read_requests),
+    write_commands: num(stats.total_monthly_write_requests),
+    daily_commands: num(stats.daily_net_commands),
+    auto_upgrade: detail.auto_upgrade === true,
+    plan: typeof detail.type === "string" ? detail.type : null,
+    fetched_at: new Date().toISOString(),
+  };
+  usageCache = { at: Date.now(), value };
+  return value;
+}
+
+/** Test hook — drops the usage cache independently of the health cache. */
+export function __resetUpstashUsageCache(): void {
+  usageCache = null;
 }
 
 // ── Durable state-TRANSITION record (FIX-1040) ────────────────────────────────

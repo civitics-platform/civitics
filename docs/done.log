@@ -1231,3 +1231,4 @@
 2026-08-15 | FIX-1040 | 3ce324be | local-only | feat(ratelimit): fail over instead of open, deny-cache the already-denied, and make Upstash visible
 2026-08-15 | FIX-1042 | 3ce324be | closes-as-no-op | feat(ratelimit): fail over instead of open, deny-cache the already-denied, and make Upstash visible
 2026-08-15 | FIX-1043 | 3ce324be | local-only | feat(ratelimit): fail over instead of open, deny-cache the already-denied, and make Upstash visible
+2026-08-15 | FIX-1043 | d51b91c7 | local-only | fix(ci): declare tsx in apps/civitics so its test runner resolves on a clean install

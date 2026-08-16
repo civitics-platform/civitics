@@ -152,6 +152,59 @@ export type PlatformUsageResponse = {
     warning_count: number;
     unverified_count: number;
   };
+  // FIX-1044/1045/1046. All optional: the dashboard reads a PERSISTED snapshot
+  // payload, so after a deploy these are absent until the next cron tick writes
+  // a row in the new shape — which under GHA drift can be up to a couple of
+  // hours. Every consumer below must render without them.
+  cloudflare_edge?: {
+    zone_id: string;
+    latest: {
+      hour: string;
+      edge_requests: number;
+      origin_requests: number;
+      absorbed_requests: number;
+      mitigated_pct: number;
+    } | null;
+    trip_threshold: number;
+    fetched_at: string;
+  };
+  cf_mitigation?: {
+    action: string;
+    reason: string;
+    observed_level: string | null;
+    acted: boolean;
+    write_error: string | null;
+    tripped_at: string | null;
+    previous_level: string | null;
+    breach_hours: number;
+    required_breach_hours: number;
+    revert_after_hours: number;
+    writes_enabled: boolean;
+  };
+  vercel_billing?: {
+    gross_effective_mtd_usd: number;
+    plan_base_mtd_usd: number;
+    usage_mtd_usd: number;
+    included_credit_usd: number;
+    credit_remaining_usd: number;
+    credit_used_pct: number;
+    billable_overage_mtd_usd: number;
+    projected_usage_usd: number;
+    projected_billable_overage_usd: number;
+    projected_total_bill_usd: number;
+    projected_gross_usd: number;
+    projectable: boolean;
+  };
+  burn_rate?: {
+    latest_delta_usd: number | null;
+    latest_mtd_day: number | null;
+    trailing_median_usd: number | null;
+    multiple: number | null;
+    elevated: boolean;
+    reason: string;
+    history_days: number;
+    projected_monthly_usd: number | null;
+  };
   timestamp: string;
 };
 

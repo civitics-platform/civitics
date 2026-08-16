@@ -6,10 +6,12 @@ import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import {
   getUpstashHealth,
+  getUpstashUsage,
   recordUpstashLimiterState,
   isQuotaExhaustedMessage,
   parseQuotaError,
   __resetUpstashHealthCache,
+  __resetUpstashUsageCache,
   type UpstashLimiterState,
 } from "./upstash-usage";
 
@@ -179,6 +181,146 @@ describe("getUpstashHealth", () => {
     assert.ok(!("error" in first));
     await getUpstashHealth();
     assert.equal(calls.length, first.attempts, "the second call must not re-probe");
+  });
+});
+
+// ── Control plane: getUpstashUsage ───────────────────────────────────────────
+
+// The real shapes, trimmed to the fields the helper reads. Captured live
+// 2026-08-16 from the civitics_limiter_db database.
+const DB_DETAIL = {
+  database_id: "d2f01ee0-0000-0000-0000-000000000000",
+  database_name: "civitics_limiter_db",
+  type: "free",
+  auto_upgrade: false,
+  db_request_limit: 500000,
+  read_only_rest_token: "SECRET-SHOULD-NEVER-SURFACE",
+};
+const DB_STATS = {
+  total_monthly_requests: 498964,
+  total_monthly_read_requests: 230550,
+  total_monthly_write_requests: 268414,
+  daily_net_commands: 1,
+};
+
+function stubMgmt(
+  responder: (path: string) => { status?: number; body: unknown },
+): { paths: string[] } {
+  const paths: string[] = [];
+  globalThis.fetch = (async (url: string) => {
+    const path = String(url);
+    paths.push(path);
+    const r = responder(path);
+    return {
+      ok: (r.status ?? 200) < 400,
+      status: r.status ?? 200,
+      statusText: "",
+      json: async () => r.body,
+    } as unknown as Response;
+  }) as unknown as typeof fetch;
+  return { paths };
+}
+
+describe("getUpstashUsage", () => {
+  beforeEach(() => {
+    process.env.UPSTASH_EMAIL = "ops@example.com";
+    process.env.UPSTASH_API_KEY = "mgmt-key";
+    process.env.UPSTASH_DATABASE_ID = "d2f01ee0-0000-0000-0000-000000000000";
+    __resetUpstashUsageCache();
+  });
+  afterEach(() => {
+    delete process.env.UPSTASH_EMAIL;
+    delete process.env.UPSTASH_API_KEY;
+    delete process.env.UPSTASH_DATABASE_ID;
+    __resetUpstashUsageCache();
+  });
+
+  it("reads monthly usage against the VENDOR's cap, not a hardcoded 500000", async () => {
+    stubMgmt((p) => ({ body: p.includes("/stats/") ? DB_STATS : DB_DETAIL }));
+    const r = await getUpstashUsage();
+    assert.ok(!("error" in r));
+    assert.equal(r.limit_commands, 500000);
+    assert.equal(r.used_commands, 498964);
+    assert.equal(r.used_pct, 99.79);
+    assert.equal(r.read_commands, 230550);
+    assert.equal(r.write_commands, 268414);
+    assert.equal(r.auto_upgrade, false, "hard $0 ceiling — the FIX-570 design premise");
+    assert.equal(r.plan, "free");
+  });
+
+  it("tracks a tier change instead of pinning the seeded limit", async () => {
+    stubMgmt((p) => ({
+      body: p.includes("/stats/")
+        ? { ...DB_STATS, total_monthly_requests: 500000 }
+        : { ...DB_DETAIL, db_request_limit: 10_000_000, type: "payg" },
+    }));
+    const r = await getUpstashUsage();
+    assert.ok(!("error" in r));
+    assert.equal(r.limit_commands, 10_000_000);
+    assert.equal(r.used_pct, 5, "5% of the NEW cap, not 100% of the old one");
+  });
+
+  it("daily_net_commands near zero while monthly is at the cap is the real signature", async () => {
+    // The 2026-08-16 reading: nothing is spent today because nothing CAN be.
+    stubMgmt((p) => ({ body: p.includes("/stats/") ? DB_STATS : DB_DETAIL }));
+    const r = await getUpstashUsage();
+    assert.ok(!("error" in r));
+    assert.equal(r.daily_commands, 1);
+    assert.ok(r.used_pct > 99);
+  });
+
+  it("refuses to invent a denominator when db_request_limit is missing", async () => {
+    stubMgmt((p) => ({
+      body: p.includes("/stats/") ? DB_STATS : { ...DB_DETAIL, db_request_limit: undefined },
+    }));
+    const r = await getUpstashUsage();
+    assert.ok("error" in r, "a wrong denominator is worse than no percentage");
+    assert.match(r.error, /db_request_limit/);
+  });
+
+  it("returns the benign {error} shape for each missing credential", async () => {
+    delete process.env.UPSTASH_API_KEY;
+    const noKey = await getUpstashUsage();
+    assert.ok("error" in noKey);
+    assert.match(noKey.error, /UPSTASH_EMAIL\/UPSTASH_API_KEY/);
+
+    process.env.UPSTASH_API_KEY = "mgmt-key";
+    delete process.env.UPSTASH_DATABASE_ID;
+    const noId = await getUpstashUsage();
+    assert.ok("error" in noId);
+    assert.match(noId.error, /UPSTASH_DATABASE_ID/);
+    assert.match(noId.error, /upstash-db-id/, "the error must name the way to fix it");
+  });
+
+  it("surfaces an auth failure as a status, never echoing the response body", async () => {
+    stubMgmt(() => ({ status: 401, body: { message: "unauthorized" } }));
+    const r = await getUpstashUsage();
+    assert.ok("error" in r);
+    assert.match(r.error, /HTTP 401/);
+    assert.doesNotMatch(r.error, /unauthorized/);
+  });
+
+  it("never surfaces the read_only_rest_token the detail endpoint returns", async () => {
+    stubMgmt((p) => ({ body: p.includes("/stats/") ? DB_STATS : DB_DETAIL }));
+    const r = await getUpstashUsage();
+    assert.ok(!("error" in r));
+    assert.doesNotMatch(JSON.stringify(r), /SECRET-SHOULD-NEVER-SURFACE/);
+  });
+
+  it("a thrown fetch degrades to {error} rather than propagating", async () => {
+    globalThis.fetch = (async () => {
+      throw new Error("ENOTFOUND api.upstash.com");
+    }) as unknown as typeof fetch;
+    const r = await getUpstashUsage();
+    assert.ok("error" in r);
+    assert.match(r.error, /ENOTFOUND/);
+  });
+
+  it("caches across ticks — two calls issue one pair of GETs", async () => {
+    const { paths } = stubMgmt((p) => ({ body: p.includes("/stats/") ? DB_STATS : DB_DETAIL }));
+    await getUpstashUsage();
+    await getUpstashUsage();
+    assert.equal(paths.length, 2, "one /database and one /stats, not four");
   });
 });
 

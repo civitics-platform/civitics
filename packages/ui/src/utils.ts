@@ -150,6 +150,13 @@ export function formatMetricValue(value: number, unit: string): string {
       if (value >= 1000) return `${(value / 1000).toFixed(0)}K`;
       return value.toString();
 
+    // FIX-1044. Deliberately NOT abbreviated the way "requests" is: this is a
+    // RATE read against a 3,000/hr threshold, and the whole point is telling
+    // 2,900 from 7,300. "7K" and "3K" would render a crawl and a busy hour
+    // identically — the exact discrimination the metric exists to make.
+    case "requests_per_hour":
+      return `${Math.round(value).toLocaleString()}/hr`;
+
     case "usd":
       return `$${value.toFixed(2)}`;
 

@@ -1,7 +1,6 @@
 {
   "permissions": {
     "allow": [
-      "Bash(*)",
       "Write(c:/Users/Craig/Documents/Civitics/App/**)",
       "Edit(c:/Users/Craig/Documents/Civitics/App/**)",
       "Read(c:/Users/Craig/Documents/Civitics/App/**)",
@@ -39,13 +38,18 @@
       "Bash(yarn add*)"
     ],
     "ask": [
-      "Bash(pnpm install*)"
+      "Bash(pnpm install*)",
+      "Bash(rm *)",
+      "Bash(supabase db push*)",
+      "Bash(supabase db reset*)",
+      "Bash(supabase link*)"
     ],
     "additionalDirectories": [
       "c:/Users/Craig/Documents/Civitics/civitics-worktrees",
       "c:/Users/Craig/.claude",
       "c:/Users/Craig/AppData/Local/Temp/claude",
-      "c:\\Users\\Craig\\.claude\\projects\\c--Users-Craig-Documents-Civitics-App\\memory"
+      "c:\\Users\\Craig\\.claude\\projects\\c--Users-Craig-Documents-Civitics-App\\memory",
+      "c:/Users/Craig/.claude/projects/c--Users-Craig-Documents-Civitics-App/memory"
     ]
   },
   "disabledMcpjsonServers": [
@@ -63,5 +67,16 @@
         ]
       }
     ]
+    
+  },
+  "autoMode": {
+    "environment": [
+      "$defaults",
+      "Solo-dev monorepo: Civitics. Pushes to main are routine and sanctioned (Vercel auto-deploys from main).",
+      "Trusted DB hosts: 127.0.0.1:54321-54324 (disposable local Docker Supabase), xsazcoxinpgttgquwvuf.supabase.co (PROD — reads and pnpm db:push:prod migrations are routine; ad-hoc writes are not).",
+      "Trusted external APIs (data pipelines): api.open.fec.gov, api.usaspending.gov, courtlistener.com, openstates.org, littlesis.org, sec.gov/EDGAR, civitics-civitics.vercel.app",
+      "Sensitive remote targets: the Supabase prod DB; destructive SQL there always needs confirmation."
+    ]
   }
+
 }
