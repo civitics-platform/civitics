@@ -1244,3 +1244,5 @@
 2026-08-15 | FIX-1047 | a82a8cfe | local-only | fix(mitigation): re-validate stored breach evidence against the CURRENT threshold
 2026-08-15 | FIX-1049 | af9b09b3 | local+prod | chore(ops): record prod verification of FIX-1049 — burn-rate RPC is ~18x faster
 2026-08-15 | FIX-1049 | a04020bc | local-only | perf(burn-rate): stop scanning every snapshot payload — 427ms/tick down to a couple of rows per day
+2026-08-15 | FIX-1050 | f995ffd7 | local+prod | chore(ops): record prod verification of FIX-1050 — R2 row is an alarm again
+2026-08-15 | FIX-1050 | 515f829e | local-only | fix(platform-limits): make the R2 row an alarm again, alert on the first cent of Vercel overage
