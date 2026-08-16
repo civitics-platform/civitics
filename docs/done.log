@@ -1239,3 +1239,4 @@
 2026-08-15 | FIX-1045 | 5bb4c325 | local+prod | chore(ops): record prod verification of FIX-1044/1045/1046 — and the burn-rate layer caught the real incident
 2026-08-15 | FIX-1046 | 5bb4c325 | local+prod | chore(ops): record prod verification of FIX-1044/1045/1046 — and the burn-rate layer caught the real incident
 2026-08-15 | FIX-1047 | 41e2ae16 | local-only | feat(ops): let the mitigation loop prove its own write scope, and make the trip threshold testable
+2026-08-15 | FIX-1048 | 8438a438 | closes-as-recognized | docs(fixes): record the shipped Upstash control-plane reader (FIX-1048 closeout)
