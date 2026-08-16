@@ -4,32 +4,56 @@ Triage of the overnight Vercel / Upstash spike. **Investigation only — nothing
 remediated.** All queries read-only; no Cloudflare or Vercel dashboard state was
 changed.
 
-**Verdict in one line:** a JS-executing crawler is walking the entity-detail
-families on `www.civitics.com`, **passing straight through Under Attack mode**,
-while the Upstash free-tier command allotment is exhausted so every crawl-defense
-bucket built by FIX-637 / FIX-683 / FIX-797 is failing open. The crawl was still
-running at 2026-08-16 01:26 UTC, when this audit was written.
+**Verdict in one line:** a crawler is walking the entity-detail families on
+`www.civitics.com` while the Upstash free-tier command allotment is exhausted, so
+every crawl-defense bucket built by FIX-637 / FIX-683 / FIX-797 is failing open.
+The crawl was **still running at 2026-08-16 01:41 UTC — 3 h 41 m after Under
+Attack mode was enabled**.
+
+> **Revision 2026-08-16 01:45 UTC — three user-supplied facts arrived after the
+> first draft and changed three findings.** Under Attack mode was enabled
+> **2026-08-15 15:00 PDT / 22:00 UTC**, *not* 2026-08-08 as `docs/CLOUDFLARE.md`
+> records — so it was **OFF for the entire spike window**. The Upstash limit
+> email arrived **~14:30 PDT / 21:30 UTC on 08-15**. The `Speed Insights Data
+> Points` $0.65 is a once-per-billing-cycle fixed charge, not usage. Each is
+> marked **user-supplied** inline below. Superseded conclusions are struck
+> through and corrected rather than deleted.
 
 Companion FIXes: [[FIX-1038]], [[FIX-1039]], [[FIX-1040]], [[FIX-1041]].
 
 ---
 
-## Blocked on user — dashboards this session cannot reach
+## User-supplied facts, and what is still outstanding
 
-None of the following were available; every conclusion below is drawn from the
-repo, the prod DB, `gh`, and the Vercel CLI. **No number in this document is
-user-supplied.**
+Everything not in this section is drawn from the repo, the prod DB, `gh`, and the
+Vercel CLI, and is measured.
 
-1. **Cloudflare audit log** — exact time Under Attack mode was enabled, and
-   whether it was ever off since 2026-08-08. Needed to date the posture change.
-2. **Cloudflare Analytics** — requests by hostname, top user-agents, top
-   ASNs/countries, challenge-issued vs challenge-solved counts. **The
-   challenge-solved count is the single most valuable missing number** — see H1.
-3. **Upstash console** — command count over the last 72 h and **when** the
-   500,000 limit was hit. Bounds the H5 ordering claim below.
-4. **Vercel usage page** — the Observability Events unit and current-cycle
-   quantity; whether Observability Plus is on; and **why a `Speed Insights Data
-   Points` charge line appeared on 2026-08-14** (see the anomaly section).
+**Answered (user-supplied — treat as authoritative, not measured here):**
+
+| Fact | Value | What it settled |
+|---|---|---|
+| Under Attack mode enabled | **2026-08-15 15:00 PDT = 22:00 UTC** | It was **OFF** during the spike window. `docs/CLOUDFLARE.md`'s 2026-08-08 "enabled" row is wrong or was reverted — see the correction below |
+| Upstash limit email received | **~14:30 PDT = ~21:30 UTC, 2026-08-15** | Dates exhaustion to **14.5 h after** the spike window closed. **Confirms the H5 ordering** |
+| Observed effect of enabling UA mode | "usage dropped off shortly following" | See the caveat under H1 — a frozen counter and a stopped crawl look identical |
+| `Speed Insights Data Points` $0.65 | Once-per-billing-cycle fixed charge, ~1×/month regardless of usage | **Retracts** the anomaly section below entirely |
+
+**Still outstanding, in priority order:**
+
+1. **Cloudflare → Analytics & Logs → Traffic**, last 24–48 h: total requests, and
+   **requests split by hostname**. This is now the top ask — it is the only way
+   to tell whether the traffic *stopped* at 22:00 UTC or merely stopped being
+   *counted* by Upstash. See the caveat under H1.
+2. **Cloudflare → Security → Events**, filtered to 2026-08-15 22:00 UTC onward:
+   the **challenge-issued vs challenge-solved** counts, plus top user-agents and
+   top ASNs. A high solved count proves the crawler is JS-capable, which is the
+   one leg of H1 still resting on a single measurement. *(Free plan retention is
+   short — if 08-14 is already gone, the post-22:00 UTC window is what matters.)*
+3. **Upstash → your Redis database → Usage / Metrics**: daily command counts for
+   the last 7 days and **the allotment reset date**. Gives the burn rate, i.e.
+   how fast the next 500 k goes and therefore how urgent [[FIX-1038]] is.
+4. **Vercel → Usage** (or Observability): the Observability Events line's **unit**
+   and current-cycle quantity, and whether Observability Plus is on. Lowest value
+   of the four — that line is $2.87/month.
 5. Anything deployed, linked, posted or announced in the last 48 h.
 
 ---
@@ -87,7 +111,16 @@ Docker throughout (`grep "^NEXT_PUBLIC_SUPABASE_URL" .env.local` →
 | 2026-08-15 02:52–03:02 | 08-14 19:52 | Nightly sync ran normally (4.6 min) | `data_sync_log` |
 | 2026-08-15 06:00–06:11 | 08-14 23:00 | `refresh_derived_mvs` (10.9 min) | `data_sync_log` |
 | 2026-08-15 06:30–06:42 | 08-14 23:30 | `run_rule_taggers` (12.5 min) | `data_sync_log` |
-| 2026-08-16 00:28 → 01:26 | 08-15 17:28 | **Crawl observed live**, Upstash exhausted, limiter fully open | `vercel logs` |
+| **2026-08-15 ~21:30** | **08-15 ~14:30** | **Upstash limit email received** — allotment exhausted | **user-supplied** |
+| **2026-08-15 22:00** | **08-15 15:00** | **Under Attack mode enabled** | **user-supplied** |
+| 2026-08-16 00:28 → 01:26 | 08-15 17:28 | **Crawl observed live**, Upstash exhausted, limiter fully open, 92/100 on `www.civitics.com` | `vercel logs` |
+| 2026-08-16 01:41 | 08-15 18:41 | **Crawl still running** — 4/4 sampled requests `www.civitics.com` → `/officials/<uuid>`, HTTP 200, `MISS/cold`, `entity_leaf`, all fail-open | `vercel logs` (re-measured) |
+
+**The two user-supplied timestamps are the spine of this incident.** The spike
+window closed at 2026-08-15 07:00 UTC. Upstash exhausted ~21:30 UTC. Under Attack
+mode went on at 22:00 UTC. So the ordering is: **crawl → 14.5 h → quota
+exhaustion → 30 min → mitigation**, and the mitigation post-dates the spike it
+was reaching for by nearly a full day.
 
 **No deploy occurred inside the spike window.** `d_build_min = 0.00` on billing
 day 15 — the build-minutes counter did not move at all. The FIX-902 deploy landed
@@ -215,7 +248,16 @@ posture**, not the bill.
 This is the FIX-637 / FIX-683 crawl shape precisely: distinct entity IDs across
 the high-cardinality detail families, every one a cold miss.
 
-**The correction.** Cloudflare *is* challenging right now — probed this session:
+**Correction (revision 2).** The first draft asserted that Under Attack mode was
+on during the spike and therefore that H1 required a challenge-solving crawler to
+be viable at all. **That was wrong** — UA mode was enabled 2026-08-15 22:00 UTC
+(user-supplied), which is **15 hours after the spike window closed**. During the
+spike, Cloudflare was at its normal security level and a plain crawler needed to
+defeat nothing. H1 stands on the traffic evidence alone and is *simpler* than
+first written.
+
+**What survives, and it is still load-bearing.** Probed this session, *after*
+UA mode was on:
 
 ```
 https://www.civitics.com/              → 403
@@ -223,20 +265,36 @@ https://civitics.com/                  → 403
 https://civitics-civitics.vercel.app/  → 200
 ```
 
-So apex and www both 403 a browser-UA `curl`, exactly as `docs/CLOUDFLARE.md` §5
-describes — **and the crawler is getting 200s on `www.civitics.com` anyway.**
-The only way both are true is that **the crawler is solving the challenge**: it
-is a JS-executing client (headless browser, or one holding a valid
-`cf_clearance`). Under Attack mode is filtering out exactly the clients that
-cannot run JS — legitimate scripted ones — and letting the actual crawler
-through.
+Apex and www both 403 a browser-UA `curl`, exactly as `docs/CLOUDFLARE.md` §5
+describes — **and at 2026-08-16 01:41 UTC, 3 h 41 m after UA mode was enabled,
+the crawler was still getting 200s on `www.civitics.com`** (4/4 sampled requests,
+`/officials/<uuid>`, `MISS/cold`, `entity_leaf`, every one fail-open). Cloudflare
+issues `cf_clearance` for ~30 minutes under UA mode, so cookies minted before
+22:00 UTC cannot explain traffic 3.5 h later. The client is passing the
+challenge.
 
-Craig's hypothesis is therefore **right about the mechanism and wrong about the
-remedy**: this is a crawl, it is arriving on `civitics.com`, and raising the
-Cloudflare security level does not touch it.
+So the corrected H1 reads: **an ordinary crawl during an ordinary security
+posture, which Under Attack mode has since reduced but not stopped.**
 
-*What would settle the residual:* Cloudflare Analytics challenge-**solved** count
-for the window. A high solve rate confirms headless-browser crawling directly.
+> ### ⚠️ Caveat on "usage dropped off shortly following"
+>
+> The observed drop is **user-supplied and real**, but it has two candidate
+> causes and they are indistinguishable from the Vercel/Upstash graphs alone:
+>
+> 1. UA mode is blocking most of the crawl. (Craig's reading.)
+> 2. **The Upstash command counter physically cannot increase.** It is frozen at
+>    `Usage: 500002` against a `Limit: 500000` — every subsequent command is
+>    *rejected*, not counted. An Upstash usage graph flatlining at ~14:30 PDT is
+>    the **expected** shape of quota exhaustion and says nothing about traffic.
+>    Note the email (21:30 UTC) precedes UA mode (22:00 UTC) by 30 minutes, so
+>    the flatline starts *before* the mitigation.
+>
+> Cause 2 is confirmed to be occurring regardless. Cause 1 is unverified. The
+> direct measurement above shows the crawl still running, which is evidence
+> against a *complete* stop but says nothing about the rate — `vercel logs` is
+> capped and sampled and cannot measure volume. **Cloudflare Analytics →
+> Traffic, requests by hostname, is the only clean discriminator** and is
+> outstanding ask #1.
 
 ### H2 — Traffic hitting `*.vercel.app` directly, bypassing Cloudflare — **KILLED**
 
@@ -321,20 +379,36 @@ Day 15 sits **below** the baseline ratio (0.86×). Observability events scaled
 per-request log line. **The `[ratelimit]` warn was not yet firing during the
 spike window.**
 
-So the true ordering is the reverse of the prompt's:
+So the true ordering is the reverse of the prompt's — and it is now **confirmed
+by an independent timestamp** rather than inferred:
 
-1. The crawl started (~08-14 PDT) and drove invocations/edge requests/observability up ~4×, all in proportion.
-2. The crawl kept running and **later** burned through the remaining Upstash monthly allotment.
-3. The limiter went fully open, the per-request warn began firing, and the crawl is now completely unthrottled — the state observed at 08-16 01:26 UTC.
+1. The crawl started (~08-14 PDT) and drove invocations / edge requests /
+   observability up ~4×, **all in proportion**.
+2. The crawl kept running and, **14.5 h after the spike window closed**, burned
+   through the remaining Upstash monthly allotment — Upstash's limit email
+   arrived **~21:30 UTC on 08-15** (user-supplied).
+3. The limiter went fully open, the per-request warn began firing, and the crawl
+   is now completely unthrottled — still true at 08-16 01:41 UTC.
+4. Under Attack mode was enabled at **22:00 UTC**, 30 minutes after (2) and a day
+   after (1).
 
-`Usage: 500002` is only 2 over the cap, i.e. the counter froze on crossing, so it
-carries **no information about when** exhaustion happened. That is the Upstash
-console item.
+The inference and the user-supplied timestamp agree: the ratio evidence said the
+warn was not yet firing during the spike window, and the email confirms
+exhaustion happened 14.5 h later. **H5 is a genuine second-order amplifier that
+began after the incident it was proposed to explain.**
 
-**Falsifiable prediction.** If this ordering is right, the day-16 delta — visible
-after the next daily step — will show observability-event cost rising
-**superlinearly** against `edge_requests`, breaking out of the 1.96–3.64×10⁻⁵
-band above for the first time. Re-run `q4`/`q6` tomorrow to confirm or refute.
+`Usage: 500002` is only 2 over the cap because the counter freezes on crossing —
+so the *value* dates nothing, but the *email* does. This also means the Upstash
+usage graph cannot rise any further no matter what the traffic does; see the H1
+caveat.
+
+**Falsifiable prediction — now datable, and still open.** Exhaustion at 21:30 UTC
+falls **inside billing day 16** (08-15 07:00 → 08-16 07:00 UTC), about 14.5 h in.
+So day 16 should carry roughly **9.5 h of per-request warn**, and its
+observability-cost-per-edge-request should break above the 1.96–3.64×10⁻⁵ band —
+but **diluted to ~40 % of a full day**. Day 17 is the full-strength test. As of
+08-16 01:42 UTC the counters still read `window_days = 15`; they step at ~07:00
+UTC. Re-run `q4` / `q6` then.
 
 Per decision 6, the fail-open behaviour is **not** proposed for change. It did
 its job: the site stayed up. The defects are that it is **silent** and that its
@@ -342,32 +416,57 @@ failure path **logs per request** — filed as [[FIX-1038]] and [[FIX-1040]].
 
 ---
 
-## Anomaly: a `Speed Insights Data Points` charge line appeared from nothing
+## ~~Anomaly: a `Speed Insights Data Points` charge line appeared from nothing~~ — RETRACTED
 
-On billing day 15 a `Speed Insights Data Points` line appears at **$0.65** raw
-MTD. It is absent from every prior day. Bounding it from the residual (total
-effective minus the eight stored lines), on day 14 it was **≤ $0.0471** — so this
-is at minimum a **13.8× single-day step**, and the largest single cost mover in
-the incident, larger than Observability Events.
+**Retracted 2026-08-16 on user-supplied information.** The $0.65 is a
+**once-per-billing-cycle fixed charge**, billed roughly monthly regardless of
+usage. It is not a usage step and carries no signal about traffic.
 
-`<SpeedInsights />` has been mounted in `apps/civitics/app/layout.tsx` since
-`0b521cf6` (2026-03-17), so this is **not** a code change.
+What the first draft said, and why it was wrong: it observed the line appearing
+at $0.65 on billing day 15 having been bounded at ≤ $0.0471 the day before, read
+that as a 13.8× usage step, and offered it as corroboration that the crawler
+executes JavaScript. The reasoning was sound given the data available and the
+conclusion was still wrong, because a fixed cycle charge and a usage spike are
+indistinguishable in a cumulative MTD series — which is itself another instance
+of the [[FIX-1041]] resolution limitation.
 
-This does not reconcile cleanly with `web_analytics_events` staying flat at 8 —
-both are browser-side beacons. The most likely explanation is that Vercel Web
-Analytics filters known bots from its counts while Speed Insights does not, so a
-headless-browser crawler would show up in one and not the other. **That is
-inference, not measurement** — it needs the Vercel usage page to confirm, and it
-is USER item 4. If it holds, it is independent corroboration that the crawler
-executes JavaScript, which is the H1 correction.
+The inference it supported (JS-capable crawler) does **not** fall with it: that
+now rests on the independent 403-vs-200 measurement under H1, taken 3 h 41 m
+after Under Attack mode was enabled. One leg removed, the other verified.
+
+**Method note worth keeping:** the de-projection used here (`raw = usd ×
+window_days / 31`, validated against the `Pro` line) is correct and reusable, but
+a de-projected cumulative series cannot distinguish *fixed* charges from *usage*
+charges. Check the Vercel usage page before reading any new line as a spike.
 
 ---
 
 ## Did Under Attack mode help, do nothing, or hurt?
 
-**It hurt.** It is not stopping the crawler — which solved the challenge and was
-still walking entity pages on `www.civitics.com` at 2026-08-16 01:26 UTC — while
-it 403s every legitimate non-JS client, which is a strict net loss.
+**Revised on user-supplied timing. It partially helped, and it did not fix the
+problem.** ~~It hurt.~~
+
+The first draft's "it hurt" verdict assumed UA mode was on during the spike and
+had therefore demonstrably failed to prevent it. **That premise was wrong** — it
+was enabled 2026-08-15 22:00 UTC, 15 h after the spike window closed, so it never
+had the chance to prevent anything and cannot be blamed for the spike.
+
+The corrected verdict, split by what is measured and what is not:
+
+- **It did not stop the crawl.** Measured: still running on `www.civitics.com`,
+  HTTP 200, cold cache miss, at 01:41 UTC — 3 h 41 m after enablement, well past
+  the ~30 min `cf_clearance` TTL.
+- **It plausibly reduced the volume.** User-supplied: "usage dropped off shortly
+  following." Unverified, and confounded by the frozen Upstash counter — see the
+  H1 caveat. Cloudflare Analytics → Traffic settles it.
+- **It is definitely 403ing every legitimate scripted client.** Measured this
+  session on both apex and www.
+
+So: a partial mitigation with a real cost, applied to the right target for the
+wrong reason, which bought time but did not restore the actual defense. **The
+actual defense is the rate limiter, and it is still off** ([[FIX-1038]]) — that
+is the thing to fix, and UA mode is the temporary cover while it is fixed. Do not
+turn UA mode off until the limiter works.
 
 ### Blast radius — verified against this repo, what is broken right now
 
@@ -501,8 +600,10 @@ Where this prompt's stated assumptions were falsified by repo, DB or CLI evidenc
 | Snapshot gives a per-10-minute series with a first-departure time per metric | **False.** One-day resolution; consecutive snapshots byte-identical |
 | The Vercel window is a trailing ~7 days (FIX-648 header) | **False.** Now month-to-date, `window_days = 15` |
 | Payload key path needs reconciling between `vercel_breakdown.services[]` and `cost_breakdown[].effective_usd` | **Both, at different layers** — stored as `vercel_breakdown.services[{service, usd}]`, projected; also on `metrics[].metadata.cost_breakdown` |
-| UA mode already on since 08-08 makes H1 "close to dead on arrival" | **Backwards.** UA mode is on *and* H1 is confirmed — the crawler solves the challenge |
+| UA mode already on since 08-08 makes H1 "close to dead on arrival" | **False, and the doc is wrong.** UA mode was enabled **2026-08-15 22:00 UTC** (user-supplied), 15 h *after* the spike window. `docs/CLOUDFLARE.md`'s "Security level: I'm Under Attack: enabled" row dated 2026-08-08 does not match reality and needs correcting. H1 is confirmed and needed no challenge-solving to occur |
 | UA mode may have killed the platform snapshot / request-path probe | **False today** — both green throughout; but true the moment `CIVITICS_APP_URL` is set to `civitics.com` |
+| *(this audit, draft 1)* Speed Insights $0.65 was a 13.8× usage step | **Self-falsified — retracted.** Fixed once-per-cycle charge (user-supplied) |
+| *(this audit, draft 1)* Under Attack mode "hurt" | **Self-falsified — revised.** It post-dates the spike; partial mitigation, not a failed one |
 | Observability Events has no quantity metric | **True.** `mapChargeQuantity` returns `null` for it — cost is the only signal |
 | Upstash is not tracked in `platform_usage_snapshot` | **True.** Five services tracked, Upstash absent |
 | H5 explains both symptoms from one cause | **Half.** Exhaustion is real and active, but it began *after* the spike, not before |
