@@ -14,6 +14,21 @@
 //   node scripts/cf-analytics.mjs --hours 6
 //   node scripts/cf-analytics.mjs --since 2026-08-15T06:00:00Z --hours 12
 //
+// BREAKDOWN MODE (FIX-1038 session) — group by one dimension instead of by hour:
+//
+//   node scripts/cf-analytics.mjs --by clientIP --top 20
+//   node scripts/cf-analytics.mjs --since 2026-08-15T06:00:00Z --hours 16 --by userAgent
+//
+// It prints the DISTINCT-VALUE COUNT and a cumulative-coverage ladder, not just
+// a top-N — "569 distinct IPs, top 100 cover 98%" is the shape of answer that
+// tells you whether a per-IP control can work at all, and a bare top-10 is not.
+// It also warns explicitly when the API's 10,000-row group cap binds, because a
+// truncated grouping reads exactly like a complete one.
+//
+// NOT AVAILABLE ON THIS FREE ZONE (probed 2026-08-16, both refused by the API):
+// the `clientAsn` dimension, and the whole `firewallEventsAdaptiveGroups`
+// dataset. Top-ASN and per-rule mitigation breakdowns need the dashboard.
+//
 // Reads CLOUDFLARE_API_TOKEN from .env.local.prod by direct file read — the
 // same trick as db-query.mjs / db-push-prod.mjs, which sidesteps the `source`
 // non-export trap and keeps the agent's command free of $(...) substitution.
@@ -97,6 +112,91 @@ const vars = { zoneTag: zone.id, since: since.toISOString(), until: until.toISOS
 
 console.log(`[cf-analytics] zone=${zone.name} id=${zone.id} plan=${zone.plan?.name}`);
 console.log(`[cf-analytics] window ${vars.since} .. ${vars.until} (${hours}h, UTC)\n`);
+
+// ── Breakdown mode (--by <dimension>) ────────────────────────────────────────
+
+const GROUP_LIMIT = 10000; // the API's per-query group cap
+const BY_DIMENSIONS = new Set([
+  "clientIP",
+  "userAgent",
+  "clientRequestPath",
+  "clientRequestHTTPHost",
+  "edgeResponseStatus",
+  "cacheStatus",
+  "clientCountryName",
+  "clientRequestHTTPMethodName",
+]);
+
+const by = arg("by");
+if (by) {
+  if (!BY_DIMENSIONS.has(by)) {
+    console.error(
+      `[cf-analytics] --by ${by} is not in the supported set: ${[...BY_DIMENSIONS].join(", ")}.\n` +
+        `  NB clientAsn and firewallEventsAdaptiveGroups are refused to this Free zone.`,
+    );
+    process.exit(1);
+  }
+  const top = Math.max(1, Number(arg("top", "20")));
+  const BREAKDOWN = `
+query ($zoneTag: String!, $since: Time!, $until: Time!) {
+  viewer { zones(filter: {zoneTag: $zoneTag}) {
+    httpRequestsAdaptiveGroups(limit: ${GROUP_LIMIT},
+      filter: {datetime_geq: $since, datetime_leq: $until},
+      orderBy: [count_DESC]) {
+      count
+      dimensions { ${by} }
+    }
+  } }
+}`;
+  const bd = await gql(BREAKDOWN, vars);
+  const brows = bd?.httpRequestsAdaptiveGroups ?? [];
+  if (!brows.length) {
+    console.log("(no rows — zone may have had no traffic in the window)");
+    process.exit(0);
+  }
+  const total = brows.reduce((s, r) => s + r.count, 0);
+  console.log(`distinct ${by} values: ${brows.length}`);
+  console.log(`requests across them:  ${total}\n`);
+  if (brows.length >= GROUP_LIMIT) {
+    // A truncated grouping is indistinguishable from a complete one unless it
+    // says so. High-cardinality dimensions (clientRequestPath during a
+    // per-UUID entity walk) hit this every time.
+    console.log(
+      `⚠  TRUNCATED — the API returned the ${GROUP_LIMIT}-row cap, so both the\n` +
+        `   distinct count and the total above are LOWER BOUNDS. Only values that\n` +
+        `   rank inside the cap have trustworthy counts.\n`,
+    );
+  }
+  console.log(`top ${Math.min(top, brows.length)} by request count:`);
+  let acc = 0;
+  brows.slice(0, top).forEach((r, i) => {
+    acc += r.count;
+    const value = String(r.dimensions[by] ?? "(null)");
+    console.log(
+      `  ${String(i + 1).padStart(3)}. ${String(r.count).padStart(8)}  ` +
+        `${((acc / total) * 100).toFixed(1).padStart(5)}% cum  ` +
+        (value.length > 96 ? `${value.slice(0, 93)}...` : value),
+    );
+  });
+  // Coverage ladder — the number that decides whether a per-value control can
+  // bite. "569 IPs, top 100 cover 98%" and "569 IPs, top 3 cover 98%" call for
+  // completely different responses.
+  const cum = [];
+  let running = 0;
+  for (const r of brows) {
+    running += r.count;
+    cum.push(running);
+  }
+  console.log("\ncumulative coverage:");
+  for (const n of [1, 5, 10, 25, 50, 100, 250, 500, 1000]) {
+    if (n <= brows.length) {
+      console.log(`  top ${String(n).padStart(4)} → ${((cum[n - 1] / total) * 100).toFixed(1)}%`);
+    }
+  }
+  process.exit(0);
+}
+
+// ── Default mode: hourly ─────────────────────────────────────────────────────
 
 const GROUPS = `
 query ($zoneTag: String!, $since: Time!, $until: Time!) {

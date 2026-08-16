@@ -212,6 +212,22 @@ export type {
   CloudflareR2UsageError,
 } from "./cloudflare-usage";
 
+// Upstash edge-limiter health (FIX-1038 — the vendor the snapshot could not see)
+export {
+  getUpstashHealth,
+  recordUpstashLimiterState,
+  isQuotaExhaustedMessage,
+  parseQuotaError,
+  __resetUpstashHealthCache,
+} from "./upstash-usage";
+export type {
+  UpstashHealth,
+  UpstashHealthError,
+  UpstashLimiterState,
+  UpstashLimiterHistory,
+  UpstashLimiterTransition,
+} from "./upstash-usage";
+
 // Vercel current-cycle usage (Pro Usage endpoint + Billing Charges fallback)
 export {
   getVercelUsage,

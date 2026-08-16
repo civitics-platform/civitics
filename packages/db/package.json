@@ -12,6 +12,7 @@
   "scripts": {
     "lint": "eslint src --ext .ts,.tsx",
     "typecheck": "tsc --noEmit",
+    "test": "node run-tests.mjs",
     "clean": "rm -rf dist",
     "db:migrate": "supabase db push",
     "db:types": "supabase gen types typescript --project-id xsazcoxinpgttgquwvuf > src/types/database.ts",
@@ -21,7 +22,8 @@
     "@civitics/config": "workspace:*",
     "eslint": "^8.57.0",
     "@types/node": "^20.0.0",
-    "typescript": "^5.4.0"
+    "typescript": "^5.4.0",
+    "tsx": "^4.0.0"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1045.0",

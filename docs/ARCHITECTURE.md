@@ -479,7 +479,7 @@ Multiple votes on the same proposal → single connection with latest `strength`
 ```
 Layer 1: Cloudflare "Common Exploit Paths" WAF rule — blocks .php/wp-/.env/xmlrpc/phpmyadmin probes at CDN edge
 Layer 2: next.config.mjs redirects — sends .php/.env probes to /404 at Next.js edge
-Layer 3: middleware.ts — silent session refresh, future rate limiting
+Layer 3: middleware.ts — silent session refresh, per-IP rate limiting (FIX-570/637/683/797)
 Layer 4: Supabase RLS — policy-enforced at DB level
 ```
 

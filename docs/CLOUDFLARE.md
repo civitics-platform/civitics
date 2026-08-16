@@ -51,12 +51,24 @@ mechanism: when Cloudflare challenges a Next.js RSC fetch, the fetch receives 40
 `Cf-Mitigated: challenge` HTML instead of the RSC payload and the router falls back to a
 hard navigation.
 
-⚠️ `docs/ARCHITECTURE.md` (request-flow diagram + the "Layer 1" abuse-defense list) and
-`docs/OPERATIONS.md` still describe Bot Fight Mode as ON and credit it with eliminating the
-PHP/WordPress scanner traffic that was burning Vercel Fluid CPU. **That is stale.** The job
-is now carried by the `Common Exploit Paths` WAF custom rule (below), which targets the
-same traffic more precisely. Watch Vercel Fluid CPU after Under Attack mode goes off — that
-is the real test of whether the custom rule alone holds the line.
+~~⚠️ `docs/ARCHITECTURE.md` … and `docs/OPERATIONS.md` still describe Bot Fight Mode as
+ON…~~ — **retracted 2026-08-16 (FIX-1042 sweep). Both files were already correct when
+this warning was written, and re-verified line by line since:**
+`docs/ARCHITECTURE.md` names "Bot Fight Mode OFF" in the request-flow diagram (§System
+Overview), says it is "deliberately **off**" in §Cloudflare Proxy, and says it is "**off**
+at Layer 1 by design" in the abuse-defense list — each with the FIX-799 reasoning and a
+pointer back here. `docs/OPERATIONS.md` §Vercel Fluid CPU credits the `Common Exploit
+Paths` WAF rule and parenthesises "Bot Fight Mode is off by design". **There was nothing
+to correct; the warning was the stale artifact.** Left in place struck through rather than
+deleted, because a doc that has cried stale once will be trusted next time.
+
+What *is* still true and load-bearing: the job Bot Fight Mode is sometimes assumed to do
+is carried by the `Common Exploit Paths` WAF custom rule (below), which targets the same
+traffic more precisely — **and that rule is now partially validated on live data**, not
+just asserted: in the 2026-08-15 crawl window `/wp-includes/fonts/index.php`,
+`/defaults.php`, `/wp-admin/*` and `/wp-content/*` probes all reached the zone and were
+mitigated. Watch Vercel Fluid CPU after Under Attack mode goes off — that remains the real
+test of whether the custom rule alone holds the line.
 
 ### 3. The rule surface is empty **on purpose**
 
@@ -139,8 +151,9 @@ Mail is Resend (via SES) on the `send.` subdomain. SPF and DKIM present; **no DM
 - [ ] Re-enable DNSSEC (DS record handling depends on where the domain is registered).
 - [ ] Confirm Search Console is still verified — there are no verification TXT records in
       the zone, so a DNS-based verification did not survive the move.
-- [ ] Correct the stale Bot Fight Mode claims in `docs/ARCHITECTURE.md` and
-      `docs/OPERATIONS.md` (see §2).
+- [x] ~~Correct the stale Bot Fight Mode claims in `docs/ARCHITECTURE.md` and
+      `docs/OPERATIONS.md`~~ — **no-op, 2026-08-16.** Both files were already correct;
+      §2's warning was the stale thing and has been retracted there.
 
 ## If the zone ever moves accounts again
 

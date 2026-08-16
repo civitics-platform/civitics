@@ -714,6 +714,153 @@ is exactly the kind of gap that makes an incident un-reconstructable. Filed as
 
 ---
 
+## Appendix — remediation-session measurements (2026-08-16 02:38 UTC)
+
+Taken while implementing [[FIX-1038]] / [[FIX-1040]] / [[FIX-1042]]. All four
+queries below run against the **historical** window 2026-08-15 06:00–22:00 UTC,
+so they are immune to any edge-posture change made after the fact. `clientAsn`
+and `firewallEventsAdaptiveGroups` are both **refused to this Free zone** — the
+outstanding-ask #1 "top ASNs from Security Events" is not reachable by script;
+`clientIP` and `userAgent` on `httpRequestsAdaptiveGroups` are.
+
+### The crawl came from 569 IPs, none of them fast enough to trip a bucket
+
+| | |
+|---|---|
+| Requests in window | **116,636** |
+| Distinct `clientIP` | **569** (exact — the result set was not truncated) |
+| Inside Meta's `2a03:2880::/32` | **140 IPs carrying 114,489 requests (98.2 %)** |
+| Busiest single IP | 1,752 requests / 16 h = **1.82 req/min** |
+| IPs sustaining >45 req/min (the `entity_leaf` cap) | **0** |
+| Top 50 IPs / top 100 IPs | 70.6 % / 98.4 % of volume |
+
+**This inverts the premise the deny-cache was proposed on.** The remediation
+prompt assumed "the limiter's Upstash spend was highest precisely while it was
+blocking — it burned its own budget issuing 429s." It never blocked. The
+busiest participating IP ran **25× under the strictest bucket**, so no bucket
+could have rejected anything, and every one of the ~500,000 commands was spent
+issuing **allows**. The deny-cache would have saved approximately zero on
+2026-08-15. It ships anyway because it is correct for the case the limiter is
+actually for — one noisy identifier — but it is **not** an incident fix, and
+per-IP limiting must be documented as the human-scale layer. That is now in
+`ratelimit.ts`'s header.
+
+### `/graph` share, and why it is nevertheless cheap
+
+| path family | requests | share |
+|---|---|---|
+| **`/graph` (exact)** | **27,534** | **23.6 %** |
+| `/donors/*`, `/officials/*`, `/jurisdictions/*`, `/proposals/*` | long tail of distinct UUIDs | — |
+| `/graph/*` (the `[code]` share route) | **0** | 0 % |
+
+23.6 % over 06:00–22:00 is consistent with the ~30 % the FIX-1039 bullet records
+over the full 24 h. Every one of the 27,534 was `cacheStatus: dynamic` at the
+Cloudflare edge (the zone has no cache rules — §3 of `docs/CLOUDFLARE.md`), 27,530
+× 200, 3 × 307, 1 × 522.
+
+**But `/graph` is `○ (Static)` in the Next build table** — `export const dynamic
+= "force-static"` in `apps/civitics/app/graph/page.tsx`, and the `?entity=`
+param is read **client-side** (`new URL(window.location.href).searchParams` in
+the `"use client"` `GraphPage.tsx`). So a `/graph?entity=<uuid>` request is a
+prerendered HTML file off the CDN plus one edge-middleware invocation: no
+server render, no Supabase read, no Fluid CPU. The real cost sits behind
+`/api/graph*`, which **is** bucketed (`graph` 60/min, `graph_ai` 5/min), and a
+non-JS crawler never fires it. [[FIX-1042]] therefore closes measured-no-op:
+adding a `graph_page` bucket would have spent ~27.5 k extra Upstash commands per
+crawl window to throttle the cheapest request class on the site.
+
+### The crawler rotates 18 user-agent strings — a WAF rule must match a substring
+
+63 distinct `userAgent` values in the window. **18 of them contain
+`meta-webindexer`, together carrying 114,526 requests (98.2 %).** They differ
+only in the browser-impersonation prefix: `Windows NT 10.0` (66,213),
+`Macintosh; Intel Mac OS X 10_15_7` (34,090), `X11; Linux x86_64` (7,549),
+`… Edg/145` (4,690), `… Chrome/144 … Edg/144` (799), and 13 more.
+
+> **Operationally load-bearing for the WAF rule:** a rule matching the exact UA
+> string quoted in [[FIX-1039]] catches **66,213 of 116,636 — 57 %**. The rule
+> must be `User Agent **contains** "meta-webindexer"` (or an ASN-32934 match) to
+> reach 98 %.
+
+`/robots.txt` was fetched **52 times inside this window** and the crawl
+continued — consistent with the FIX-1042 conclusion that the robots.txt half is
+dead: Cloudflare's bot directory documents Meta-WebIndexer as not respecting
+robots.txt by default, and RFC 9309 §2.2.3 makes `*` support mandatory
+("Crawlers **MUST** support"), so FIX-513's `Disallow: /*?` is
+standards-conformant and the "wildcard unsupported" hypothesis is falsified.
+
+### Upstash was STILL exhausted at 2026-08-16 03:08 UTC — and the allotment may not be daily
+
+The new `getUpstashHealth()` probe (FIX-1038), run live against the real Upstash
+REST endpoint:
+
+```json
+{ "state": "quota_exhausted",
+  "detail": "ERR max requests limit exceeded. Limit: 500000, Usage: 500002. …",
+  "limit_commands": 500000, "usage_commands": 500002,
+  "latency_ms": 287, "checked_at": "2026-08-16T03:08:07.832Z" }
+```
+
+Two things follow.
+
+1. **The limiter is still degraded right now.** Exhaustion was ~21:30 UTC on
+   08-15; this reading is 5h38m later.
+2. **"500k daily commands" is not established.** The counter did not reset
+   across the 00:00 UTC boundary. This audit's own "~55 days at baseline"
+   figure only makes sense for a per-period (monthly) allotment as well. If it
+   is monthly, **one crawl removes the durable limiter for the remainder of the
+   cycle** — which makes the FIX-1038 fail-over materially more load-bearing
+   than a daily reset would. Not asserted here, because it can only be settled
+   from the Upstash console; recorded as measured-and-open, and the
+   `platform_limits` row is named `period_commands` rather than
+   `daily_commands` so the card does not repeat the unverified claim.
+
+### An over-quota Upstash refuses only ~38% of commands — "fully open" is too strong
+
+Eight probes, 3 s apart, same credentials, same process, 2026-08-16 03:10 UTC,
+while the counter sat frozen at `Usage: 500002`:
+
+```
+03:10:23 healthy   03:10:26 healthy   03:10:29 QUOTA   03:10:32 healthy
+03:10:35 healthy   03:10:38 QUOTA     03:10:41 healthy 03:10:44 QUOTA
+```
+
+**3 of 8 refused (~38%); the rest answered PONG.** So over-quota Upstash
+degrades *probabilistically*, and two conclusions follow that this audit got
+slightly wrong:
+
+- **"Every subsequent command is rejected, not counted" / "the limiter is fully
+  open" is an overstatement.** It is *intermittently* open. Roughly 6 in 10
+  checks still limited correctly. (The incident's `92/100 requests carried the
+  warn` implies a much higher refusal rate under crawl load than at idle, which
+  is consistent — refusal rate is presumably load-dependent.)
+- **A one-ping health probe would have been blind to its own incident**, calling
+  it "healthy" through ~60% of ticks. `getUpstashHealth()` therefore issues
+  three PINGs and reports `quota_exhausted` if **any** refuses, plus a
+  `refusals/attempts` ratio: a PONG is not evidence of health, a refusal is
+  proof of exhaustion. Caught live on the very next run —
+  `"1/3 PINGs refused"` at 03:12:39 UTC, two minutes after a single-ping probe
+  had returned `healthy`.
+
+### Reproduction
+
+```bash
+node scripts/cf-analytics.mjs --since 2026-08-15T06:00:00Z --hours 16
+node scripts/cf-analytics.mjs --since 2026-08-15T06:00:00Z --hours 16 --by clientIP --top 20
+node scripts/cf-analytics.mjs --since 2026-08-15T06:00:00Z --hours 16 --by userAgent --top 20
+node scripts/cf-analytics.mjs --since 2026-08-15T06:00:00Z --hours 16 --by clientRequestPath --top 20
+```
+
+`--by` / `--top` were added to `scripts/cf-analytics.mjs` by this session; the
+`--by` mode reports distinct-value cardinality and a cumulative-coverage ladder
+alongside the top-N, which is what makes the "569 IPs, 0 above the cap" reading
+possible. It also prints an explicit truncation warning when the API's 10,000-row
+group cap binds (it does bind on `clientRequestPath`: the per-UUID entity walk
+produces >10,000 distinct paths, so **only `/graph`, which is a single constant
+path, has a trustworthy absolute count in that mode**).
+
+---
+
 ## Reproduction
 
 Every query in this document is in the session scratchpad and re-runnable:

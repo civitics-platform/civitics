@@ -35,6 +35,12 @@ import {
 } from "./supabase-usage";
 import { getSupabasePrometheusMetrics } from "./supabase-prometheus";
 import { getCloudflareR2Usage } from "./cloudflare-usage";
+import {
+  getUpstashHealth,
+  recordUpstashLimiterState,
+  type UpstashLimiterState,
+  type UpstashLimiterTransition,
+} from "./upstash-usage";
 import { getVercelUsage, type VercelUsage } from "./vercel-usage";
 import { getGitHubUsage } from "./github-usage";
 import {
@@ -94,6 +100,27 @@ export type PlatformUsagePayload = {
   vercel_breakdown?: {
     window_days: number;
     services: { service: string; usd: number }[];
+  };
+  // FIX-1038: the edge rate limiter's backing store. Upstash was the one vendor
+  // in the cost chain this snapshot could not see, and its silent exhaustion on
+  // 2026-08-15 was the incident's force-multiplier — every crawl-defense bucket
+  // switched itself off with zero signal. `state` is a live probe; `since` /
+  // `previous_state` / `transitions` come from the durable pipeline_state
+  // record so the card can say "DEGRADED since 21:30 UTC" rather than just
+  // "degraded". Absent when UPSTASH_* is unset (local dev).
+  upstash?: {
+    state: UpstashLimiterState;
+    detail: string | null;
+    limit_commands: number | null;
+    usage_commands: number | null;
+    attempts: number;
+    refusals: number;
+    latency_ms: number;
+    checked_at: string;
+    since: string;
+    previous_state: UpstashLimiterState | null;
+    last_transition_at: string | null;
+    transitions: UpstashLimiterTransition[];
   };
   timestamp: string;
 };
@@ -254,6 +281,39 @@ export async function computePlatformUsagePayload(
     }
   } catch (err) {
     errors.push(`cloudflare: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  // FIX-1038: Upstash edge-limiter health → platform_usage. Three cheap PINGs
+  // per tick (≤0.09% of the 500k allotment it watches — an over-quota Upstash
+  // refuses only ~38% of commands, so one PING is not enough to see an outage;
+  // see upstash-usage.ts's header for the measurement). `limiter_degraded` is
+  // 0/1 against an included_limit of 1, so a degraded limiter reads 100% and
+  // trips the SAME critical machinery every other metric uses — no new alerting
+  // substrate. `period_commands` is only written when Upstash's own quota error
+  // discloses the numbers (there is no usage API without a management key);
+  // otherwise the row stays value-less rather than carrying an invented zero.
+  // Missing env is benign (matches the github/cloudflare convention).
+  let upstashPayload: PlatformUsagePayload["upstash"] = undefined;
+  try {
+    const upstash = await getUpstashHealth();
+    if (!("error" in upstash)) {
+      const history = await recordUpstashLimiterState(anyDb, upstash.state);
+      await updateUsage(
+        db,
+        "upstash",
+        "limiter_degraded",
+        upstash.state === "healthy" ? 0 : 1,
+        "api",
+      );
+      if (upstash.usage_commands !== null) {
+        await updateUsage(db, "upstash", "period_commands", upstash.usage_commands, "api");
+      }
+      upstashPayload = { ...upstash, ...history };
+    } else if (!/UPSTASH_REDIS_REST/i.test(upstash.error)) {
+      errors.push(`upstash: ${upstash.error}`);
+    }
+  } catch (err) {
+    errors.push(`upstash: ${err instanceof Error ? err.message : String(err)}`);
   }
 
   // Supabase Prometheus live metrics → platform_usage. Sources egress
@@ -582,6 +642,7 @@ export async function computePlatformUsagePayload(
     auto_trip_decisions: autoTripDecisions,
     ...(supabaseCpuPayload ? { supabase_cpu: supabaseCpuPayload } : {}),
     ...(vercelBreakdown ? { vercel_breakdown: vercelBreakdown } : {}),
+    ...(upstashPayload ? { upstash: upstashPayload } : {}),
     timestamp: new Date().toISOString(),
   };
 

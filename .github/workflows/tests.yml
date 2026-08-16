@@ -124,3 +124,18 @@ jobs:
       # (source-priority drift guard, congress reconcile, fec-bulk indiv fingerprint).
       - name: Unit tests
         run: pnpm --filter @civitics/data test
+
+      # Blocking — the app's own pure suites (browse registry/compiler/cursor,
+      # cdn-cache, abuse-events, paginate, public-payload, entity-lens,
+      # graph-cohort, ratelimit). These existed for months and CI never ran a
+      # single one of them: only the @civitics/data filter above was wired, so
+      # 141 assertions sat green-by-assumption. Found while adding the FIX-1038
+      # limiter tests — filed as FIX-1043.
+      - name: Unit tests (app)
+        run: pnpm --filter @civitics/app-civitics test
+
+      # Blocking — @civitics/db had no test runner at all before FIX-1038.
+      # Covers the Upstash limiter-health probe and the durable state-transition
+      # record that page when the edge limiter degrades.
+      - name: Unit tests (db)
+        run: pnpm --filter @civitics/db test
