@@ -180,6 +180,12 @@ export type PlatformUsageResponse = {
     required_breach_hours: number;
     revert_after_hours: number;
     writes_enabled: boolean;
+    // FIX-1047 — optional: absent until a snapshot written by that code lands.
+    write_scope_confirmed?: boolean | null;
+    write_scope_checked_at?: string | null;
+    write_scope_detail?: string | null;
+    threshold?: number;
+    threshold_is_overridden?: boolean;
   };
   vercel_billing?: {
     gross_effective_mtd_usd: number;

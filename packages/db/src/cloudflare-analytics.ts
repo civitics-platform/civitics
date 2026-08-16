@@ -375,15 +375,63 @@ export async function setZoneSecurityLevel(
 /**
  * Can this token WRITE zone settings?
  *
- * There is no cheap read-only way to ask — `GET /user/tokens/{id}` needs "User
- * API Tokens:Read", which this token also lacks (403/9109, probed 2026-08-16).
- * So the scope is inferred from the shape of the failure at the moment of a
- * real write attempt: the loop calls `setZoneSecurityLevel`, and a 9109 back is
- * recorded as `scope_missing` rather than as a transient error, which is what
- * demotes the loop to alert-only and puts the USER item on the card.
+ * There is no read-only way to ask — `GET /user/tokens/{id}` needs "User API
+ * Tokens:Read", which this token also lacks (403/9109, probed 2026-08-16). So
+ * the scope is learned from the shape of a write failure, and `isScopeError`
+ * classifies it: a 9109 back is recorded as `scope_missing` rather than as a
+ * transient error, which is what demotes the loop to alert-only.
  */
 export function isScopeError(message: string): boolean {
   return /\b9109\b|Unauthorized to access requested resource|Authentication error/i.test(
     message,
   );
+}
+
+export type ScopeProbeResult =
+  | { writable: true }
+  | { writable: false; scope_missing: boolean; detail: string };
+
+/**
+ * FIX-1047 — determine the token's write scope WITHOUT waiting for an incident.
+ *
+ * THE PROBLEM THIS SOLVES. `isScopeError` above only ever runs at the moment the
+ * loop first needs to write, i.e. during a live burn. So "is the loop actually
+ * armed?" was unanswerable until the one moment the answer had to be right. A
+ * token can be minted without Zone Settings:Edit, rolled, scoped to the wrong
+ * zone, or expire — and every one of those failure modes stayed invisible until
+ * the mitigation was already needed. That is precisely the class of silent
+ * failure that made the 2026-08-15 incident cost what it did.
+ *
+ * THE PROBE. Issue a `PATCH security_level` with **the value the zone already
+ * has**. Cloudflare accepts it, changes nothing, and does not move
+ * `modified_on` (verified by hand 2026-08-16: two no-op PATCHes either side of a
+ * permission edit, `modified_on` pinned at 2026-08-15T22:03:19Z throughout).
+ * A 200 proves Edit; a 9109 proves Read-only. There is no safer write available
+ * — every other zone setting would be a real change.
+ *
+ * CALLER CONTRACT, and it is load-bearing: `currentLevel` MUST be a value just
+ * read from this zone. Passing anything else turns the probe into a real
+ * mutation. It is deliberately a required argument rather than something this
+ * function fetches itself, so the call site cannot accidentally probe with a
+ * constant.
+ *
+ * The caller is also responsible for RATE: cf-mitigation-loop.ts probes at most
+ * once every PROBE_SCOPE_INTERVAL_HOURS, because an idempotent PATCH still
+ * writes a Cloudflare AUDIT LOG entry, and the audit log is one of the
+ * documented ways to tell an automatic change from a manual one
+ * (docs/CLOUDFLARE.md). Probing every tick would bury real changes in ~40 no-op
+ * entries a day and defeat the thing it is meant to protect.
+ */
+export async function probeZoneWriteScope(
+  currentLevel: SecurityLevel,
+): Promise<ScopeProbeResult> {
+  const res = await setZoneSecurityLevel(currentLevel);
+  if ("error" in res) {
+    return {
+      writable: false,
+      scope_missing: isScopeError(res.error),
+      detail: res.error,
+    };
+  }
+  return { writable: true };
 }

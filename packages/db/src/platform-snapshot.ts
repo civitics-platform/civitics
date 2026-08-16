@@ -53,12 +53,14 @@ import {
   getCloudflareEdgeVolume,
   getZoneSecurityLevel,
   setZoneSecurityLevel,
+  probeZoneWriteScope,
   type CloudflareEdgeVolume,
   type CloudflareHourBucket,
   type SecurityLevel,
 } from "./cloudflare-analytics";
 import {
   runCloudflareMitigationLoop,
+  resolveTripThreshold,
   TRIP_THRESHOLD_ORIGIN_REQ_PER_HOUR,
   REQUIRED_BREACH_HOURS,
   REVERT_AFTER_HOURS,
@@ -180,6 +182,15 @@ export type PlatformUsagePayload = {
     required_breach_hours: number;
     revert_after_hours: number;
     writes_enabled: boolean;
+    // FIX-1047: is the loop CONFIRMED able to act, rather than assumed to be?
+    // `write_scope_confirmed` null = never probed (disarmed, or CF unreadable).
+    write_scope_confirmed: boolean | null;
+    write_scope_checked_at: string | null;
+    write_scope_detail: string | null;
+    // Threshold actually in force, after any CF_TRIP_ORIGIN_REQ_THRESHOLD
+    // override. Surfaced so a verify-run value left in place is visible.
+    threshold: number;
+    threshold_is_overridden: boolean;
   };
   // FIX-1046: the corrected Vercel billing picture. `monthly_spend_usd` in
   // `metrics` remains the GROSS list value (the leading indicator); everything
@@ -435,7 +446,9 @@ export async function computePlatformUsagePayload(
         zone_id: edge.zone_id,
         latest: edge.latest,
         hours: edge.hours,
-        trip_threshold: TRIP_THRESHOLD_ORIGIN_REQ_PER_HOUR,
+        // FIX-1047: the EFFECTIVE threshold, so the card and the alert email
+        // never quote a constant the loop is not actually using.
+        trip_threshold: resolveTripThreshold(),
         fetched_at: edge.fetched_at,
       };
       if (edge.latest) {
@@ -465,6 +478,9 @@ export async function computePlatformUsagePayload(
         deps: {
           getLevel: getZoneSecurityLevel,
           setLevel: setZoneSecurityLevel,
+          // FIX-1047: proves Zone Settings:Edit before an incident needs it,
+          // at most twice a day. See cf-mitigation-loop.ts for why not more.
+          probeScope: probeZoneWriteScope,
         },
       });
       cfMitigation = {
@@ -479,6 +495,11 @@ export async function computePlatformUsagePayload(
         required_breach_hours: REQUIRED_BREACH_HOURS,
         revert_after_hours: REVERT_AFTER_HOURS,
         writes_enabled: writesEnabled,
+        write_scope_confirmed: run.scope_probe ? run.scope_probe.writable : null,
+        write_scope_checked_at: run.scope_probe?.checked_at ?? null,
+        write_scope_detail: run.scope_probe?.detail ?? null,
+        threshold: run.threshold,
+        threshold_is_overridden: run.threshold !== TRIP_THRESHOLD_ORIGIN_REQ_PER_HOUR,
       };
     } catch (err) {
       errors.push(`cf_mitigation: ${err instanceof Error ? err.message : String(err)}`);

@@ -247,6 +247,7 @@ export {
   getCloudflareEdgeVolume,
   getZoneSecurityLevel,
   setZoneSecurityLevel,
+  probeZoneWriteScope,
   resolveZoneId,
   isScopeError,
   isSecurityLevel,
@@ -259,6 +260,7 @@ export type {
   CloudflareError,
   SecurityLevel,
   ZoneSecurityLevel,
+  ScopeProbeResult,
 } from "./cloudflare-analytics";
 
 // Closed-loop Cloudflare auto-mitigation (FIX-1045)
@@ -270,6 +272,9 @@ export {
   readMitigationState,
   emptyMitigationState,
   isEmailableMitigationAction,
+  scopeProbeIsDue,
+  resolveTripThreshold,
+  PROBE_SCOPE_INTERVAL_HOURS,
   TRIP_THRESHOLD_ORIGIN_REQ_PER_HOUR,
   REQUIRED_BREACH_HOURS,
   BREACH_WINDOW_HOURS,
@@ -284,6 +289,7 @@ export type {
   MitigationRunResult,
   MitigationBreach,
   MitigationTrip,
+  MitigationScopeProbe,
 } from "./cf-mitigation-loop";
 
 // Vercel Pro billing math — $20 base INCLUDES $20 of usage (FIX-1046)

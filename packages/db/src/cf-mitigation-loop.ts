@@ -135,6 +135,46 @@ export const REVERT_AFTER_HOURS = 6;
 /** Anti-flap floor between a revert and the next trip. See rail 4. */
 export const MIN_HOURS_BETWEEN_TRIPS = 2;
 
+/**
+ * FIX-1047 — how often to re-confirm the token can actually write.
+ *
+ * 12h is a deliberate compromise. The probe is an idempotent PATCH that changes
+ * nothing, but it still lands a Cloudflare AUDIT LOG entry, and the audit log is
+ * one of the documented ways to tell an automatic change from a manual one. At
+ * the measured cron cadence, probing every tick would produce ~40 no-op entries
+ * a day and bury exactly the signal it exists to protect. Twice a day keeps the
+ * armed/alert-only status fresh enough to act on while leaving the audit log
+ * readable.
+ *
+ * Staleness is harmless for CORRECTNESS: before a real trip the loop attempts
+ * the actual write regardless, and that write is authoritative. A stale cache
+ * can only make the *reported* status lag, never cause a wrong action.
+ */
+export const PROBE_SCOPE_INTERVAL_HOURS = 12;
+
+/**
+ * FIX-1047 — env override for the trip threshold, so an operator can force a
+ * genuine end-to-end trip in a verify run and watch it revert.
+ *
+ * Mirrors LEADING_DB_CONN_THRESHOLD (FIX-642) and LEADING_FLUID_USD_THRESHOLD
+ * (FIX-648), which are overridable for the same reason: an alarm nobody has ever
+ * seen fire is an alarm nobody should trust. Without this the only way to
+ * exercise the write path was to wait for a real crawl.
+ *
+ * The EFFECTIVE value rides in the snapshot payload and onto the card, because a
+ * threshold quietly lowered for a verify run and then forgotten is its own
+ * incident.
+ */
+export function resolveTripThreshold(): number {
+  const raw = process.env["CF_TRIP_ORIGIN_REQ_THRESHOLD"];
+  if (raw === undefined) return TRIP_THRESHOLD_ORIGIN_REQ_PER_HOUR;
+  const n = Number(raw);
+  // A non-numeric or non-positive override is ignored rather than obeyed: a
+  // typo'd env var must never be able to set the threshold to 0 and trip the
+  // loop on every quiet hour.
+  return Number.isFinite(n) && n > 0 ? n : TRIP_THRESHOLD_ORIGIN_REQ_PER_HOUR;
+}
+
 /** The level the loop escalates TO. Never anything below it. */
 export const TARGET_LEVEL: SecurityLevel = "under_attack";
 
@@ -169,11 +209,22 @@ export type MitigationTransition = {
   detail: string;
 };
 
+/** FIX-1047 — cached verdict from the idempotent write-scope probe. */
+export type MitigationScopeProbe = {
+  writable: boolean;
+  /** true when the failure was specifically a missing-permission 9109. */
+  scope_missing: boolean;
+  detail: string | null;
+  checked_at: string;
+};
+
 export type MitigationLoopState = {
   breaches: MitigationBreach[];
   tripped: MitigationTrip | null;
   last_revert_at: string | null;
   transitions: MitigationTransition[];
+  /** FIX-1047. Absent until the first probe runs. */
+  scope_probe?: MitigationScopeProbe | null;
 };
 
 export type MitigationAction =
@@ -199,7 +250,24 @@ export type MitigationDecision = {
 };
 
 export function emptyMitigationState(): MitigationLoopState {
-  return { breaches: [], tripped: null, last_revert_at: null, transitions: [] };
+  return {
+    breaches: [],
+    tripped: null,
+    last_revert_at: null,
+    transitions: [],
+    scope_probe: null,
+  };
+}
+
+/** Is the cached scope verdict stale (or absent)? FIX-1047. */
+export function scopeProbeIsDue(
+  probe: MitigationScopeProbe | null | undefined,
+  nowMs: number,
+): boolean {
+  if (!probe?.checked_at) return true;
+  const age = nowMs - Date.parse(probe.checked_at);
+  if (!Number.isFinite(age)) return true;
+  return age >= PROBE_SCOPE_INTERVAL_HOURS * HOUR_MS;
 }
 
 // ── Breach bookkeeping ────────────────────────────────────────────────────────
@@ -218,7 +286,9 @@ export function foldBreaches(
   prior: MitigationBreach[],
   hours: CloudflareHourBucket[],
   nowMs: number,
-  threshold: number = TRIP_THRESHOLD_ORIGIN_REQ_PER_HOUR,
+  // Default resolved at CALL time so a verify-run env override is honoured
+  // without every call site having to thread it through.
+  threshold: number = resolveTripThreshold(),
 ): MitigationBreach[] {
   const byHour = new Map<string, MitigationBreach>();
   for (const b of prior) byHour.set(b.hour, b);
@@ -491,6 +561,10 @@ export type MitigationRunResult = {
   write_error: string | null;
   /** Latest complete hour, echoed so the email can quote the evidence. */
   latest_hour: CloudflareHourBucket | null;
+  /** FIX-1047: current write-scope verdict (cached; may be from an earlier tick). */
+  scope_probe: MitigationScopeProbe | null;
+  /** The threshold actually in force this tick, after any env override. */
+  threshold: number;
 };
 
 export type MitigationDeps = {
@@ -498,6 +572,10 @@ export type MitigationDeps = {
   setLevel: (
     level: SecurityLevel,
   ) => Promise<{ level: SecurityLevel } | { error: string }>;
+  /** FIX-1047. Idempotent no-op write used to confirm Zone Settings:Edit. */
+  probeScope?: (
+    currentLevel: SecurityLevel,
+  ) => Promise<{ writable: true } | { writable: false; scope_missing: boolean; detail: string }>;
   now?: () => number;
 };
 
@@ -518,6 +596,7 @@ export async function readMitigationState(
       tripped: v.tripped ?? null,
       last_revert_at: v.last_revert_at ?? null,
       transitions: Array.isArray(v.transitions) ? v.transitions : [],
+      scope_probe: v.scope_probe ?? null,
     };
   } catch {
     return emptyMitigationState();
@@ -555,14 +634,15 @@ export async function runCloudflareMitigationLoop(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   db: any,
   hours: CloudflareHourBucket[],
-  opts: { writesEnabled: boolean; deps: MitigationDeps },
+  opts: { writesEnabled: boolean; deps: MitigationDeps; threshold?: number },
 ): Promise<MitigationRunResult> {
   const now = opts.deps.now ?? Date.now;
   const nowMs = now();
   const nowIso = new Date(nowMs).toISOString();
 
   const prior = await readMitigationState(db);
-  const breaches = foldBreaches(prior.breaches, hours, nowMs);
+  const threshold = opts.threshold ?? resolveTripThreshold();
+  const breaches = foldBreaches(prior.breaches, hours, nowMs, threshold);
 
   const levelRes = await opts.deps.getLevel();
   const currentLevel = "error" in levelRes ? null : levelRes.level;
@@ -572,6 +652,39 @@ export async function runCloudflareMitigationLoop(
   // scope as present and let the decision's fail-safe branch handle the null.
   let hasWriteScope = true;
   if (levelError && isScopeError(levelError)) hasWriteScope = false;
+
+  // FIX-1047 — confirm the write scope BEFORE it is needed, not during a burn.
+  //
+  // Only when armed (a disarmed loop must not write at all, not even a no-op),
+  // only when we have a level just read from this zone (the probe writes THAT
+  // value back, so anything else would be a real mutation), and only when the
+  // cached verdict has aged out. Cache hits keep the previous answer.
+  let scopeProbe: MitigationScopeProbe | null = prior.scope_probe ?? null;
+  if (
+    opts.deps.probeScope &&
+    opts.writesEnabled &&
+    currentLevel !== null &&
+    scopeProbeIsDue(scopeProbe, nowMs)
+  ) {
+    try {
+      const p = await opts.deps.probeScope(currentLevel);
+      scopeProbe = {
+        writable: p.writable,
+        scope_missing: p.writable ? false : p.scope_missing,
+        detail: p.writable ? null : p.detail,
+        checked_at: nowIso,
+      };
+    } catch (err) {
+      // A thrown probe tells us nothing about the scope — keep the prior
+      // verdict rather than inventing a pessimistic one that would suppress a
+      // real mitigation.
+      scopeProbe = prior.scope_probe ?? null;
+      void err;
+    }
+  }
+  // The probe is authoritative when it has an answer; a missing probe leaves the
+  // getLevel-derived default in place, which is the pre-FIX-1047 behaviour.
+  if (scopeProbe) hasWriteScope = scopeProbe.writable;
 
   let decision = decideMitigationAction({
     state: prior,
@@ -606,14 +719,20 @@ export async function runCloudflareMitigationLoop(
     }
   }
 
-  const next = applyMitigationDecision(prior, breaches, decision, currentLevel, nowIso);
+  const applied = applyMitigationDecision(prior, breaches, decision, currentLevel, nowIso);
+  // The probe verdict is orthogonal to the decision — it survives every
+  // transition and is refreshed on its own schedule.
+  const next: MitigationLoopState = { ...applied, scope_probe: scopeProbe };
 
   // Only write when something actually changed — a quiet tick is the common case
-  // and must not cost a row update. Breach-set changes DO count as a change.
+  // and must not cost a row update. Breach-set changes DO count as a change, and
+  // so does a refreshed scope verdict (else a 12-hourly probe would be forgotten
+  // and re-run every tick).
   const changed =
     JSON.stringify(next.breaches) !== JSON.stringify(prior.breaches) ||
     JSON.stringify(next.tripped) !== JSON.stringify(prior.tripped) ||
     next.last_revert_at !== prior.last_revert_at ||
+    JSON.stringify(next.scope_probe ?? null) !== JSON.stringify(prior.scope_probe ?? null) ||
     decision.action !== "none";
   if (changed) await writeMitigationState(db, next, nowIso);
 
@@ -624,6 +743,8 @@ export async function runCloudflareMitigationLoop(
     acted,
     write_error: writeError,
     latest_hour: hours[0] ?? null,
+    scope_probe: scopeProbe,
+    threshold,
   };
 }
 

@@ -225,14 +225,55 @@ fully live — you never lose visibility by disabling the loop:
   works even if the DB read fails).
 - Remove **Zone Settings:Edit** from the Cloudflare API token.
 
-### Current status: ALERT-ONLY
+### Token scope, and how the loop proves its own (FIX-1047)
 
-The token in `CLOUDFLARE_API_TOKEN` carries Zone:Read, Zone Analytics:Read and
-Zone Settings:**Read**. Measured 2026-08-16: `GET security_level` → 200,
-`PATCH security_level` → **403 / code 9109**. So the loop **detects, records and
-emails but cannot act** until a token with **Zone Settings:Edit** is in the
-Vercel env. The card shows `needs Zone Settings:Edit` while that is true, and the
-alert email says plainly that nothing was changed at the edge.
+`security_level` writes need **Zone Settings:Edit**. The trap: "Zone Settings"
+appears **twice** in Cloudflare's token permission dropdown — Read and Edit are
+separate rows — so a token with only Read looks correctly scoped at a glance.
+`Zone:Edit` is a different permission group (zone metadata) and does **not**
+grant settings writes.
+
+History on this zone: the token was Read-only until 2026-08-16
+(`GET security_level` → 200, `PATCH` → **403 / 9109**), which is why the loop
+shipped alert-only. Edit was added the same day and the write now returns 200.
+
+**The loop no longer assumes any of this.** Twice a day it issues an
+**idempotent `PATCH` of the level the zone already has** — a 200 proves Edit, a
+9109 proves Read-only. Nothing changes at the edge and `modified_on` does not
+move (verified by hand across the permission change: pinned at
+`2026-08-15T22:03:19Z` through no-op PATCHes on both sides of it).
+
+Why this exists: before it, the token's write scope was only ever discovered *at
+the moment the loop first needed to write* — i.e. during a live burn. A token
+minted without Edit, later rolled, re-scoped, or expired was invisible until the
+mitigation was already needed. That is the same class of silent failure that made
+2026-08-15 cost what it did.
+
+Why **twice a day and not every tick**: an idempotent PATCH still writes a
+Cloudflare **audit-log entry**, and the audit log is one of the ways above to
+tell an automatic change from a manual one. Probing every tick would bury real
+changes under ~40 no-op entries a day.
+
+Staleness is harmless for correctness — before a real trip the loop attempts the
+actual write regardless, and that write is authoritative. The cache only affects
+the *reported* status.
+
+**Where it shows:** the Platform Costs card reads `armed ✓ verified`,
+`ALERT-ONLY · needs Zone Settings:Edit`, `armed (unverified)` (no probe yet), or
+`disarmed`. A disarmed loop never probes — a no-op write is still a write.
+
+### Forcing a real trip in a verify run
+
+An alarm nobody has watched fire is an alarm nobody should trust. Set
+`CF_TRIP_ORIGIN_REQ_THRESHOLD` in the Vercel env to something the zone's normal
+traffic clears (e.g. `50`) and the next tick with two breached hours will trip
+for real, email, hold for 6h and auto-revert.
+
+The effective threshold rides in the snapshot payload and the card shows
+`threshold OVERRIDDEN to N/hr` in amber whenever it differs from the derived
+3,000 — because a verify-run value left in place is its own incident. A
+non-numeric or non-positive value is ignored rather than obeyed, so an env typo
+cannot set the threshold to 0 and trip the loop on every quiet hour.
 
 ## If the zone ever moves accounts again
 

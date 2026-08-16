@@ -613,8 +613,16 @@ On a sustained spike the cron raises Cloudflare's `security_level` to
 **Full behaviour, safety rails, and how to tell an automatic change from a manual
 one: `docs/CLOUDFLARE.md` → "The platform now WRITES to this zone".**
 
-**Currently ALERT-ONLY** — the API token lacks Zone Settings:Edit
-(`PATCH` → 403/9109, measured 2026-08-16). It detects and emails; it cannot act.
+**The loop proves its own write scope** (FIX-1047) rather than discovering it
+mid-incident: twice a day it issues an idempotent `PATCH` of the security level
+the zone already has. 200 = Edit, 9109 = Read-only; nothing changes at the edge.
+The card reads `armed ✓ verified` / `ALERT-ONLY` / `armed (unverified)` /
+`disarmed`. Token scope history and the audit-log rationale are in
+`docs/CLOUDFLARE.md`.
+
+**To force a real trip in a verify run:** set `CF_TRIP_ORIGIN_REQ_THRESHOLD=50`
+in the Vercel env. Two breached hours will trip for real, email, hold 6h, and
+auto-revert. The card flags `threshold OVERRIDDEN` in amber until you remove it.
 
 **To disable the loop** (any one; all leave detection and alerting fully live):
 

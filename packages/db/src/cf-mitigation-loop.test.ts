@@ -22,6 +22,10 @@ import {
   REVERT_AFTER_HOURS,
   MIN_HOURS_BETWEEN_TRIPS,
   BREACH_WINDOW_HOURS,
+  PROBE_SCOPE_INTERVAL_HOURS,
+  resolveTripThreshold,
+  scopeProbeIsDue,
+  TRIP_THRESHOLD_ORIGIN_REQ_PER_HOUR as TRIP_DEFAULT,
   type MitigationLoopState,
   type MitigationBreach,
 } from "./cf-mitigation-loop";
@@ -99,6 +103,73 @@ describe("foldBreaches", () => {
   test("discards an unparseable hour rather than keeping it forever", () => {
     const out = foldBreaches([{ hour: "not-a-date", origin_requests: 9999 }], [], T0);
     assert.equal(out.length, 0);
+  });
+});
+
+// ── FIX-1047 helpers ──────────────────────────────────────────────────────────
+
+describe("resolveTripThreshold", () => {
+  const KEY = "CF_TRIP_ORIGIN_REQ_THRESHOLD";
+  const restore = (v: string | undefined): void => {
+    if (v === undefined) delete process.env[KEY];
+    else process.env[KEY] = v;
+  };
+
+  test("defaults to the derived constant", () => {
+    const prev = process.env[KEY];
+    delete process.env[KEY];
+    assert.equal(resolveTripThreshold(), TRIP_DEFAULT);
+    restore(prev);
+  });
+
+  test("honours a valid override for a verify run", () => {
+    const prev = process.env[KEY];
+    process.env[KEY] = "50";
+    assert.equal(resolveTripThreshold(), 50);
+    restore(prev);
+  });
+
+  test("IGNORES a typo'd or non-positive override rather than obeying it", () => {
+    // A threshold of 0 would trip the loop on every quiet hour — an env typo
+    // must not be able to point production edge config at itself.
+    const prev = process.env[KEY];
+    for (const bad of ["0", "-1", "abc", ""]) {
+      process.env[KEY] = bad;
+      assert.equal(resolveTripThreshold(), TRIP_DEFAULT, `input ${JSON.stringify(bad)}`);
+    }
+    restore(prev);
+  });
+});
+
+describe("scopeProbeIsDue", () => {
+  test("due when never probed", () => {
+    assert.equal(scopeProbeIsDue(null, T0), true);
+    assert.equal(scopeProbeIsDue(undefined, T0), true);
+  });
+
+  test("not due inside the interval", () => {
+    const p = {
+      writable: true,
+      scope_missing: false,
+      detail: null,
+      checked_at: new Date(T0 - 1 * HOUR).toISOString(),
+    };
+    assert.equal(scopeProbeIsDue(p, T0), false);
+  });
+
+  test("due once the interval elapses", () => {
+    const p = {
+      writable: true,
+      scope_missing: false,
+      detail: null,
+      checked_at: new Date(T0 - PROBE_SCOPE_INTERVAL_HOURS * HOUR).toISOString(),
+    };
+    assert.equal(scopeProbeIsDue(p, T0), true);
+  });
+
+  test("due when the stored timestamp is unparseable", () => {
+    const p = { writable: true, scope_missing: false, detail: null, checked_at: "garbage" };
+    assert.equal(scopeProbeIsDue(p, T0), true);
   });
 });
 
@@ -551,6 +622,179 @@ describe("runCloudflareMitigationLoop", () => {
     assert.equal(r.decision.action, "trip");
     assert.equal(level.current, "under_attack");
     assert.equal(store.value?.tripped?.previous_level, "medium");
+  });
+
+  test("FIX-1047: probes the write scope BEFORE an incident and records the verdict", async () => {
+    const { db, store } = fakeDb();
+    let probedWith: SecurityLevel | null = null;
+    const res = await runCloudflareMitigationLoop(db, [hour(-1, 50)], {
+      writesEnabled: true,
+      deps: {
+        getLevel: async () => ({ level: "medium" as SecurityLevel }),
+        setLevel: async () => ({ error: "should not be called on a quiet tick" }),
+        probeScope: async (lvl) => {
+          probedWith = lvl;
+          return { writable: true };
+        },
+        now: () => T0,
+      },
+    });
+    assert.equal(res.decision.action, "none", "no breach — the probe is not a trip");
+    assert.equal(probedWith, "medium", "must probe with the level just READ from the zone");
+    assert.equal(res.scope_probe?.writable, true);
+    assert.equal(store.value?.scope_probe?.writable, true, "verdict persisted");
+  });
+
+  test("FIX-1047: a read-only token is caught before it is needed", async () => {
+    const { db } = fakeDb();
+    const res = await runCloudflareMitigationLoop(db, [hour(-1, 50)], {
+      writesEnabled: true,
+      deps: {
+        getLevel: async () => ({ level: "medium" as SecurityLevel }),
+        setLevel: async () => ({ error: "unused" }),
+        probeScope: async () => ({
+          writable: false,
+          scope_missing: true,
+          detail: "HTTP 403: 9109 Unauthorized to access requested resource",
+        }),
+        now: () => T0,
+      },
+    });
+    assert.equal(res.scope_probe?.writable, false);
+    assert.equal(res.scope_probe?.scope_missing, true);
+  });
+
+  test("FIX-1047: a failed probe demotes a would-be trip to skip_no_scope", async () => {
+    const { db, store } = fakeDb();
+    let wrote = false;
+    const res = await runCloudflareMitigationLoop(db, [hour(-1, 7200), hour(-2, 7100)], {
+      writesEnabled: true,
+      deps: {
+        getLevel: async () => ({ level: "medium" as SecurityLevel }),
+        setLevel: async () => {
+          wrote = true;
+          return { level: "under_attack" as SecurityLevel };
+        },
+        probeScope: async () => ({ writable: false, scope_missing: true, detail: "9109" }),
+        now: () => T0,
+      },
+    });
+    assert.equal(res.decision.action, "skip_no_scope");
+    assert.equal(wrote, false, "must not attempt the real write once scope is known bad");
+    assert.equal(store.value?.tripped, null);
+  });
+
+  test("FIX-1047: the probe is NOT re-run inside the cache interval", async () => {
+    // An idempotent PATCH still writes a Cloudflare audit-log entry, and the
+    // audit log is how a human tells an automatic change from a manual one.
+    // Probing every tick would bury real changes in ~40 no-op entries a day.
+    let probes = 0;
+    const fresh = {
+      writable: true,
+      scope_missing: false,
+      detail: null,
+      checked_at: new Date(T0 - 1 * HOUR).toISOString(),
+    };
+    const { db } = fakeDb(stateWith({ scope_probe: fresh }));
+    await runCloudflareMitigationLoop(db, [hour(-1, 50)], {
+      writesEnabled: true,
+      deps: {
+        getLevel: async () => ({ level: "medium" as SecurityLevel }),
+        setLevel: async () => ({ error: "unused" }),
+        probeScope: async () => {
+          probes += 1;
+          return { writable: true };
+        },
+        now: () => T0,
+      },
+    });
+    assert.equal(probes, 0, "cached verdict is still fresh");
+  });
+
+  test("FIX-1047: the probe IS re-run once the cache ages out", async () => {
+    let probes = 0;
+    const stale = {
+      writable: true,
+      scope_missing: false,
+      detail: null,
+      checked_at: new Date(T0 - (PROBE_SCOPE_INTERVAL_HOURS + 1) * HOUR).toISOString(),
+    };
+    const { db } = fakeDb(stateWith({ scope_probe: stale }));
+    await runCloudflareMitigationLoop(db, [hour(-1, 50)], {
+      writesEnabled: true,
+      deps: {
+        getLevel: async () => ({ level: "medium" as SecurityLevel }),
+        setLevel: async () => ({ error: "unused" }),
+        probeScope: async () => {
+          probes += 1;
+          return { writable: true };
+        },
+        now: () => T0,
+      },
+    });
+    assert.equal(probes, 1);
+  });
+
+  test("FIX-1047: a DISARMED loop never probes — it must not write at all", async () => {
+    let probes = 0;
+    const { db } = fakeDb();
+    await runCloudflareMitigationLoop(db, [hour(-1, 50)], {
+      writesEnabled: false,
+      deps: {
+        getLevel: async () => ({ level: "medium" as SecurityLevel }),
+        setLevel: async () => ({ error: "unused" }),
+        probeScope: async () => {
+          probes += 1;
+          return { writable: true };
+        },
+        now: () => T0,
+      },
+    });
+    assert.equal(probes, 0, "a no-op write is still a write");
+  });
+
+  test("FIX-1047: a thrown probe keeps the prior verdict rather than inventing one", async () => {
+    // Pessimism here would SUPPRESS a real mitigation on a transient blip.
+    const prior = {
+      writable: true,
+      scope_missing: false,
+      detail: null,
+      checked_at: new Date(T0 - (PROBE_SCOPE_INTERVAL_HOURS + 1) * HOUR).toISOString(),
+    };
+    const { db } = fakeDb(stateWith({ scope_probe: prior }));
+    const res = await runCloudflareMitigationLoop(db, [hour(-1, 50)], {
+      writesEnabled: true,
+      deps: {
+        getLevel: async () => ({ level: "medium" as SecurityLevel }),
+        setLevel: async () => ({ error: "unused" }),
+        probeScope: async () => {
+          throw new Error("network reset");
+        },
+        now: () => T0,
+      },
+    });
+    assert.equal(res.scope_probe?.writable, true, "kept the last known-good verdict");
+  });
+
+  test("FIX-1047: an explicit threshold lowers the bar for a verify run", async () => {
+    const { db } = fakeDb();
+    const level = { current: "medium" as SecurityLevel };
+    const res = await runCloudflareMitigationLoop(db, [hour(-1, 120), hour(-2, 110)], {
+      writesEnabled: true,
+      threshold: 100,
+      deps: {
+        getLevel: async () => ({ level: level.current }),
+        setLevel: async (l) => {
+          level.current = l;
+          return { level: l };
+        },
+        probeScope: async () => ({ writable: true }),
+        now: () => T0,
+      },
+    });
+    assert.equal(res.decision.action, "trip");
+    assert.equal(res.threshold, 100);
+    assert.equal(level.current, "under_attack");
   });
 
   test("a manual change during the trip window is respected end-to-end", async () => {

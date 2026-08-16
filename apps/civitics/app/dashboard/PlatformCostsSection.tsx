@@ -970,26 +970,45 @@ export function PlatformCostsSection({
             {mitigation && (
               <span title={mitigation.reason}>
                 Loop{" "}
+                {/* FIX-1047: "armed" now means the write scope was PROVED by an
+                    idempotent probe, not merely that the kill switch is on.
+                    `undefined` = a pre-FIX-1047 snapshot, so we fall back to the
+                    old kill-switch-only wording rather than claiming either. */}
                 <span
                   className={
                     mitigation.tripped_at
                       ? "text-accent font-medium"
-                      : mitigation.writes_enabled
-                        ? "text-green-ink"
-                        : "text-ink"
+                      : !mitigation.writes_enabled
+                        ? "text-ink"
+                        : mitigation.write_scope_confirmed === true
+                          ? "text-green-ink"
+                          : mitigation.write_scope_confirmed === false
+                            ? "text-amber"
+                            : "text-ink"
                   }
                 >
                   {mitigation.tripped_at
                     ? `TRIPPED (auto, since ${mitigation.tripped_at.slice(11, 16)} UTC)`
-                    : mitigation.writes_enabled
-                      ? "armed"
-                      : "disarmed"}
+                    : !mitigation.writes_enabled
+                      ? "disarmed"
+                      : mitigation.write_scope_confirmed === true
+                        ? "armed ✓ verified"
+                        : mitigation.write_scope_confirmed === false
+                          ? "ALERT-ONLY"
+                          : "armed (unverified)"}
                 </span>
                 {mitigation.observed_level && ` · CF ${mitigation.observed_level}`}
                 {mitigation.breach_hours > 0 &&
                   ` · ${mitigation.breach_hours}/${mitigation.required_breach_hours} breach hrs`}
-                {mitigation.action === "skip_no_scope" && (
+                {(mitigation.write_scope_confirmed === false ||
+                  mitigation.action === "skip_no_scope") && (
                   <span className="text-amber"> · needs Zone Settings:Edit</span>
+                )}
+                {mitigation.threshold_is_overridden && mitigation.threshold != null && (
+                  <span className="text-amber">
+                    {" "}
+                    · threshold OVERRIDDEN to {mitigation.threshold.toLocaleString()}/hr
+                  </span>
                 )}
               </span>
             )}
