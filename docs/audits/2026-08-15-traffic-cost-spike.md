@@ -10,14 +10,30 @@ every crawl-defense bucket built by FIX-637 / FIX-683 / FIX-797 is failing open.
 The crawl was **still running at 2026-08-16 01:41 UTC — 3 h 41 m after Under
 Attack mode was enabled**.
 
-> **Revision 2026-08-16 01:45 UTC — three user-supplied facts arrived after the
-> first draft and changed three findings.** Under Attack mode was enabled
-> **2026-08-15 15:00 PDT / 22:00 UTC**, *not* 2026-08-08 as `docs/CLOUDFLARE.md`
-> records — so it was **OFF for the entire spike window**. The Upstash limit
-> email arrived **~14:30 PDT / 21:30 UTC on 08-15**. The `Speed Insights Data
-> Points` $0.65 is a once-per-billing-cycle fixed charge, not usage. Each is
-> marked **user-supplied** inline below. Superseded conclusions are struck
-> through and corrected rather than deleted.
+> **Revision 2026-08-16 01:45 UTC — three user-supplied facts.** Under Attack
+> mode was enabled **2026-08-15 15:00 PDT / 22:00 UTC**, *not* 2026-08-08 as
+> `docs/CLOUDFLARE.md` records — so it was **OFF for the entire spike window**.
+> The Upstash limit email arrived **~14:30 PDT / 21:30 UTC on 08-15**. The
+> `Speed Insights Data Points` $0.65 is a once-per-billing-cycle fixed charge.
+>
+> **Revision 2026-08-16 02:00 UTC — Cloudflare analytics obtained as text, and
+> it moves the cost finding by an order of magnitude.** `docs/CLOUDFLARE.md` §5
+> says the Cloudflare layer "cannot be verified by script". That is true of the
+> *request path* and **false of the Analytics API**, which the existing
+> `CLOUDFLARE_API_TOKEN` already has scope for. New tool:
+> **`node scripts/cf-analytics.mjs --hours 24`**. What it showed:
+>
+> 1. **The crawl began 2026-08-15 06:00 UTC** and ran at a machine-flat
+>    **7,163–7,562 requests/hour for 16 hours**. Billing day 15 — the "spike day"
+>    this audit was built around — contains **exactly one hour** of it.
+>    **Every cost figure in draft 1 was therefore ~15× too low.**
+> 2. **Under Attack mode worked, decisively.** At 21:00 UTC: 7,313 × HTTP 200,
+>    **0 × 403**. At 22:00 UTC: 445 × 200, **6,850 × 403**. Origin-reaching
+>    traffic fell **~99 %**. The "it hurt" verdict is retracted outright.
+> 3. **The crawler has not backed off at all** — still 7,033–7,336 req/hour,
+>    now absorbed by Cloudflare instead of by Vercel.
+>
+> Superseded conclusions are struck through and corrected, not deleted.
 
 Companion FIXes: [[FIX-1038]], [[FIX-1039]], [[FIX-1040]], [[FIX-1041]].
 
@@ -37,24 +53,24 @@ Vercel CLI, and is measured.
 | Observed effect of enabling UA mode | "usage dropped off shortly following" | See the caveat under H1 — a frozen counter and a stopped crawl look identical |
 | `Speed Insights Data Points` $0.65 | Once-per-billing-cycle fixed charge, ~1×/month regardless of usage | **Retracts** the anomaly section below entirely |
 
-**Still outstanding, in priority order:**
+**Answered by dashboard screenshots + the new `scripts/cf-analytics.mjs`:**
 
-1. **Cloudflare → Analytics & Logs → Traffic**, last 24–48 h: total requests, and
-   **requests split by hostname**. This is now the top ask — it is the only way
-   to tell whether the traffic *stopped* at 22:00 UTC or merely stopped being
-   *counted* by Upstash. See the caveat under H1.
-2. **Cloudflare → Security → Events**, filtered to 2026-08-15 22:00 UTC onward:
-   the **challenge-issued vs challenge-solved** counts, plus top user-agents and
-   top ASNs. A high solved count proves the crawler is JS-capable, which is the
-   one leg of H1 still resting on a single measurement. *(Free plan retention is
-   short — if 08-14 is already gone, the post-22:00 UTC window is what matters.)*
-3. **Upstash → your Redis database → Usage / Metrics**: daily command counts for
-   the last 7 days and **the allotment reset date**. Gives the burn rate, i.e.
-   how fast the next 500 k goes and therefore how urgent [[FIX-1038]] is.
-4. **Vercel → Usage** (or Observability): the Observability Events line's **unit**
-   and current-cycle quantity, and whether Observability Plus is on. Lowest value
-   of the four — that line is $2.87/month.
-5. Anything deployed, linked, posted or announced in the last 48 h.
+| Question | Answer |
+|---|---|
+| Did traffic stop, or stop being counted? | **Both, separately.** Origin traffic fell 99 % at 22:00 UTC (UA mode); the Upstash counter froze at 21:30 UTC (exhaustion). Two different causes 30 min apart |
+| Cloudflare volume | 147,611 requests / 24 h; 117,092 reached origin; 29,764 mitigated |
+| Upstash tier + burn | **Free tier**, ~8–9 commands/sec at crawl volume → 500 k lasts **~15.5 h** |
+| Observability Plus | **Active** — Vercel usage page states it explicitly |
+| Observability Events quantity | **3,860,211 events** in the current cycle. This is the number [[FIX-1041]] says the snapshot cannot see |
+| Vercel billing cycle | **Aug 14 – Sep 14**, i.e. cycle start ≈ the calendar day the Speed Insights line appeared. Confirms the retraction |
+
+**Still outstanding — all low priority now:**
+
+1. **Cloudflare → Security → Events**, post-22:00 UTC: top user-agents and top
+   ASNs, to identify *who* the crawler is. Not needed for any verdict; useful if
+   you want a targeted WAF rule instead of blanket UA mode. *(The
+   challenge-solved count is no longer needed — the ~1 % leak rate answers it.)*
+2. Anything deployed, linked, posted or announced in the last 48 h.
 
 ---
 
@@ -206,7 +222,68 @@ accrue `$20/31 = $0.6452/day`: day 15 reads exactly `$9.6774 = 0.6452 × 15`. �
 Observability Events daily delta on day 15 = **$0.2824**, against a trailing
 median of **$0.0773** → **3.7×**. In absolute terms: **28 cents**.
 
-### Cost quantified
+### Cloudflare edge truth (revision 3) — `node scripts/cf-analytics.mjs --hours 24`
+
+The measurement that should have anchored this audit from the start. Hourly,
+UTC, all through the `civitics.com` zone:
+
+| hour UTC | total | 200 (reached origin) | 403 (mitigated) | cache hit |
+|---|---|---|---|---|
+| 02:00–05:00 | 231–1,144 | 53–350 | 139–696 | ≤31 |
+| **06:00** | **7,231** | **7,176** | **0** | 0 |
+| 07:00–21:00 | 7,163–7,562 | 7,143–7,442 | 0 (four hours: 3–101) | ≤24 |
+| **22:00** ← UA mode on | **7,310** | **445** | **6,850** | 0 |
+| 23:00 | 7,313 | **28** | 7,268 | 0 |
+| 00:00 (08-16) | 7,336 | 86 | 7,232 | 0 |
+| 01:00 | 7,033 | 75 | 6,932 | 14 |
+| **24 h total** | **147,611** | **117,092** | **29,764 (20.2 %)** | ~0.1 % |
+
+Four things fall straight out of this table:
+
+- **Onset is 06:00 UTC on 08-15** (23:00 PDT 08-14), not "somewhere in billing
+  day 15". The plateau is flat to ±3 % across 16 hours — no human diurnal curve,
+  no ramp. A machine.
+- **Billing day 15 (Aug 14 07:00 → Aug 15 07:00 UTC) contains ONE crawl hour.**
+  Everything draft 1 called "the spike" was a single hour bleeding into the last
+  hour of that billing day. The other 15 hours land in **billing day 16, which
+  has not been billed yet**.
+- **UA mode's effect is a step function at exactly 22:00 UTC**, matching the
+  user-supplied 15:00 PDT to the hour. This is unambiguous.
+- **Cloudflare cache hit rate is ~0.1 %** (165 of 140.6k on the dashboard; ~146
+  of 147,611 here). Every crawl request was a cold origin render — which is
+  *why* it cost what it did. Entity pages are `no-store` by design, so this is
+  expected rather than a defect, but it sets the per-request price.
+
+### Cost quantified — **REVISED, draft 1 was ~11× low**
+
+Draft 1 read billing day 15 as a full day of spike and projected **$57.62/mo**.
+It was one crawl hour. Rebuilt from the Cloudflare request counts, which are the
+authoritative volume measure:
+
+| | |
+|---|---|
+| Day-15 excess consumption (measured) | **$0.885** |
+| Crawl requests reaching origin in day 15 (06:00–07:00 UTC) | **~7,176** |
+| → **cost per origin-reaching crawl request** | **~$1.23 × 10⁻⁴** |
+| Crawl requests reaching origin in day 16 (07:00–22:00 UTC) | **~108,600** |
+| → **projected day-16 excess** | **~$13.40** (vs a $0.33 baseline day ≈ **40×**) |
+| Unmitigated 30-day run (24 h × 7,240/h × $1.23×10⁻⁴) | **~$21/day → ~$640/month** |
+
+**So the real exposure was roughly $600–700/month, not $58.** Treat that as
+order-of-magnitude — it chains a measured per-request cost onto a measured
+request count — but the conclusion does not depend on the precision: this was a
+two-orders-of-magnitude-over-baseline burn, and **Under Attack mode is currently
+saving about $21/day.** That reframes it from "a mitigation with a real cost" to
+"the thing standing between this project and a $600/month bill".
+
+Cross-check on the burn rate, which corroborates independently: the crawl started
+06:00 UTC and Upstash's 500,000-command allotment was exhausted by ~21:30 UTC —
+**15.5 hours**, i.e. ~9 commands/second sustained. That matches the Upstash
+throughput graph (~8/sec) and means **the free tier lasts well under one day at
+crawl volume**, against ~55 days at baseline traffic. That is the sizing number
+for [[FIX-1038]].
+
+### Cost quantified — draft 1 figures, retained for the record
 
 | | |
 |---|---|
@@ -443,30 +520,46 @@ charges. Check the Vercel usage page before reading any new line as a spike.
 
 ## Did Under Attack mode help, do nothing, or hurt?
 
-**Revised on user-supplied timing. It partially helped, and it did not fix the
-problem.** ~~It hurt.~~
+**It helped, decisively. ~~It hurt.~~ ~~It partially helped.~~** Both earlier
+verdicts are retracted; the Cloudflare data settles it and the answer is not
+ambiguous.
 
-The first draft's "it hurt" verdict assumed UA mode was on during the spike and
-had therefore demonstrably failed to prevent it. **That premise was wrong** — it
-was enabled 2026-08-15 22:00 UTC, 15 h after the spike window closed, so it never
-had the chance to prevent anything and cannot be blamed for the spike.
+The step function at 22:00 UTC, from `scripts/cf-analytics.mjs`:
 
-The corrected verdict, split by what is measured and what is not:
+| hour UTC | reached origin (200) | mitigated (403) |
+|---|---|---|
+| 21:00 | 7,313 | 0 |
+| **22:00** | **445** | **6,850** |
+| 23:00 | **28** | 7,268 |
 
-- **It did not stop the crawl.** Measured: still running on `www.civitics.com`,
-  HTTP 200, cold cache miss, at 01:41 UTC — 3 h 41 m after enablement, well past
-  the ~30 min `cf_clearance` TTL.
-- **It plausibly reduced the volume.** User-supplied: "usage dropped off shortly
-  following." Unverified, and confounded by the frozen Upstash counter — see the
-  H1 caveat. Cloudflare Analytics → Traffic settles it.
-- **It is definitely 403ing every legitimate scripted client.** Measured this
-  session on both apex and www.
+**Origin-reaching traffic fell ~99 % within one hour of enablement**, worth about
+**$21/day**. Craig's call was correct, and draft 1's "it hurt" verdict was an
+artifact of the wrong enablement date plus a 4-row log sample that happened to
+catch the residual.
 
-So: a partial mitigation with a real cost, applied to the right target for the
-wrong reason, which bought time but did not restore the actual defense. **The
-actual defense is the rate limiter, and it is still off** ([[FIX-1038]]) — that
-is the thing to fix, and UA mode is the temporary cover while it is fixed. Do not
-turn UA mode off until the limiter works.
+Three things remain true and matter for what comes next:
+
+1. **The crawler has not backed off.** It is still sending **7,033–7,336
+   requests/hour**; Cloudflare is absorbing them instead of Vercel. **Turn UA
+   mode off today and the $21/day resumes within the hour.** UA mode is not a
+   fix, it is a dam.
+2. **~1 % still leaks to origin** — 28–86 × HTTP 200 per hour, which is exactly
+   the ~1 req/min measured independently via `vercel logs` at 01:49–01:53 UTC.
+   Nothing throttles that residual, because the limiter is still fail-open.
+   ~~The crawler solves the JS challenge.~~ **Softened:** a ~1 % leak is
+   consistent with ordinary challenge-bypass edge cases and does **not** require
+   a JS-capable crawler. A challenge-solving client would show a far higher
+   200 rate. Draft 1 over-read this; the Speed Insights leg that supported it has
+   also been retracted.
+3. **It still 403s every legitimate scripted client** — measured on both apex and
+   www. Now *more* dangerous than when first written, because UA mode is staying
+   on: see the `CIVITICS_APP_URL` landmine below.
+
+**The order of operations that follows:** UA mode stays on. Fix the limiter
+([[FIX-1038]]) and get Upstash instrumented, because that is the defense that
+works without collateral damage. Only then consider dropping the security level,
+and watch Fluid CPU when you do — per `docs/CLOUDFLARE.md` §2 that is the real
+test of whether the `Common Exploit Paths` WAF rule alone holds the line.
 
 ### Blast radius — verified against this repo, what is broken right now
 
