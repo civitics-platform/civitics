@@ -81,6 +81,14 @@ type UsageRow = {
 };
 
 export type PlatformUsageSummary = {
+  /**
+   * Estimated USD above what the plans include, this cycle, across every
+   * service. Non-Vercel services contribute per-metric quota overage priced at
+   * the vendor's list rate; Vercel contributes its FIX-1046 credit-aware
+   * `billable_overage_mtd_usd` INSTEAD of its per-metric rows, so the same
+   * consumption is never counted on two definitions (FIX-1050). Month-to-date
+   * throughout — this is not a month-end projection.
+   */
   total_overage_cost: number;
   top3_by_pct: PlatformMetric[];
   top3_by_cost: PlatformMetric[];
@@ -723,6 +731,30 @@ export async function computePlatformUsagePayload(
           vercelBilling.projected_billable_overage_usd,
           "api",
         ),
+        // FIX-1050 — the first-cent trigger, as a 0/1 companion row.
+        //
+        // It is a separate row because `warning_pct` is an INTEGER column and
+        // $0.01 of the $20 credit is 0.05%. Rounding that to 0 is not a near
+        // miss — the band test is `pct >= warning_pct`, so a 0 would park every
+        // metric in the warning band forever, a $0.00 one included.
+        //
+        // ACTUAL MTD, NOT THE PROJECTION, and the difference decides whether
+        // this alert is useful. The projection scales by
+        // daysInCycle/windowDays, so on day 1 of a cycle an entirely ordinary
+        // $0.71 of usage extrapolates to ~$22 and would report overage — a
+        // false first-cent email in the opening days of most months.
+        // `billable_overage_mtd_usd` only goes positive once real cumulative
+        // consumption has genuinely passed $20, and it is monotonic within a
+        // cycle, so the healthy→warning edge fires at most once per episode.
+        // The dollar row above stays on the projection: "is month-end heading
+        // past $10" is a different question from "are we over the credit now".
+        updateUsage(
+          db,
+          "vercel",
+          "overage_present",
+          vercelBilling.billable_overage_mtd_usd > 0 ? 1 : 0,
+          "api",
+        ),
       ]);
     } else {
       if (!/VERCEL_API_TOKEN/i.test(v.error) && !/plan_upgrade_required|Plan not found/i.test(v.error)) {
@@ -819,9 +851,42 @@ export async function computePlatformUsagePayload(
     byService[m.service]!.push(m);
   }
 
-  let totalOverageCost = 0;
   const metricsWithValues = finalMetrics.filter((m) => m.value !== null);
-  for (const m of metricsWithValues) totalOverageCost += m.overage_cost;
+
+  // FIX-1050 (T3) — one definition of "overage" in the dollar rollup.
+  //
+  // What this scalar has always been: Σ calculateOverageCost(value, limit) —
+  // units consumed above a plan's included quota × that vendor's published list
+  // price per unit. It has never read Vercel's EffectiveCost, so FIX-1046 did
+  // NOT leave it computing a gross list figure. What FIX-1046 did leave is
+  // subtler: the one vendor whose billing we now model correctly was still
+  // being counted here on the other basis.
+  //
+  // `vercel.origin_transfer_bytes` (pro) carries $0.15/GB above 1 TiB. Every
+  // dollar of that transfer is ALSO inside the consumption FIX-1046 draws
+  // against the $20 included credit, so summing both bills the same bytes twice
+  // under two different definitions of the word. It reads $0 today only because
+  // the account is at 3.1 GB of a 1 TiB allowance — the disagreement is latent,
+  // not absent, and it surfaces exactly when the number starts to matter.
+  //
+  // So Vercel contributes exactly one figure: its credit-aware billable
+  // overage. Every other service keeps the per-metric quota model, which is the
+  // most correct model available for them (there is no credit-aware billing
+  // computation for Supabase or Cloudflare). MTD rather than the projection,
+  // because every other contributor is "cost of what has been consumed so far
+  // this cycle"; folding a month-end forecast into that sum would make one
+  // scalar mean two things — the failure this task exists to prevent.
+  //
+  // If the Vercel API call failed, `vercelBilling` is undefined and Vercel
+  // contributes 0. That is correct rather than lossy: the per-metric Vercel
+  // values come from the same failed call, so there is no fresher figure to
+  // fall back to, and the tick's `errors` array already records the failure.
+  let totalOverageCost = 0;
+  for (const m of metricsWithValues) {
+    if (m.service === "vercel") continue;
+    totalOverageCost += m.overage_cost;
+  }
+  totalOverageCost += vercelBilling?.billable_overage_mtd_usd ?? 0;
 
   const top3ByPct = [...metricsWithValues]
     .sort((a, b) => b.pct - a.pct)

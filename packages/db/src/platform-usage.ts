@@ -143,12 +143,7 @@ export async function getPlatformUsage(
     const denom = effectiveLimit(limit);
     const pct =
       value !== null && denom > 0 ? (value / denom) * 100 : 0;
-    const status: PlatformMetric["status"] =
-      pct >= limit.critical_pct
-        ? "critical"
-        : pct >= limit.warning_pct
-          ? "warning"
-          : "healthy";
+    const status = computeMetricStatus(pct, limit);
     const overage_cost = calculateOverageCost(value ?? 0, limit);
     const source_display = getSourceDisplay(
       usage?.source ?? "manual",
@@ -270,6 +265,25 @@ export async function upgradeServicePlan(
 }
 
 // ── Pure helpers ──────────────────────────────────────────────────────────────
+
+/**
+ * The band ladder: which status a metric's percentage falls into.
+ *
+ * Extracted from `getPlatformUsage` (FIX-1050) so the band edges are testable
+ * without a database. Behaviour is unchanged — critical is checked first, and
+ * both comparisons are `>=`, which is why a `warning_pct` of 0 would put every
+ * row including a zero-valued one in the warning band. That property is the
+ * reason the first-cent Vercel alert needed a 0/1 companion row rather than a
+ * fractional threshold; see the FIX-1050 migration.
+ */
+export function computeMetricStatus(
+  pct: number,
+  bands: Pick<PlatformLimit, "warning_pct" | "critical_pct">,
+): PlatformMetric["status"] {
+  if (pct >= bands.critical_pct) return "critical";
+  if (pct >= bands.warning_pct) return "warning";
+  return "healthy";
+}
 
 /**
  * FIX-353: resolve the effective %-bar denominator. Falls back to
