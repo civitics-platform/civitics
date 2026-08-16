@@ -1235,3 +1235,6 @@
 2026-08-15 | FIX-1044 | 90404380 | local-only | feat(ops): detect a cost burn at the edge in hours, act on it, and stop calling included usage a bill
 2026-08-15 | FIX-1045 | 90404380 | local-only | feat(ops): detect a cost burn at the edge in hours, act on it, and stop calling included usage a bill
 2026-08-15 | FIX-1046 | 90404380 | local-only | feat(ops): detect a cost burn at the edge in hours, act on it, and stop calling included usage a bill
+2026-08-15 | FIX-1044 | 5bb4c325 | local+prod | chore(ops): record prod verification of FIX-1044/1045/1046 — and the burn-rate layer caught the real incident
+2026-08-15 | FIX-1045 | 5bb4c325 | local+prod | chore(ops): record prod verification of FIX-1044/1045/1046 — and the burn-rate layer caught the real incident
+2026-08-15 | FIX-1046 | 5bb4c325 | local+prod | chore(ops): record prod verification of FIX-1044/1045/1046 — and the burn-rate layer caught the real incident
