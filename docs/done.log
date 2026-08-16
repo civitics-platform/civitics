@@ -1241,3 +1241,6 @@
 2026-08-15 | FIX-1047 | 41e2ae16 | local-only | feat(ops): let the mitigation loop prove its own write scope, and make the trip threshold testable
 2026-08-15 | FIX-1048 | 8438a438 | closes-as-recognized | docs(fixes): record the shipped Upstash control-plane reader (FIX-1048 closeout)
 2026-08-15 | FIX-1047 | 2ff894b0 | local+prod | chore(ops): record prod verification of FIX-1047 — the loop is now verified-armed
+2026-08-15 | FIX-1047 | a82a8cfe | local-only | fix(mitigation): re-validate stored breach evidence against the CURRENT threshold
+2026-08-15 | FIX-1049 | af9b09b3 | local+prod | chore(ops): record prod verification of FIX-1049 — burn-rate RPC is ~18x faster
+2026-08-15 | FIX-1049 | a04020bc | local-only | perf(burn-rate): stop scanning every snapshot payload — 427ms/tick down to a couple of rows per day
