@@ -103,7 +103,7 @@ nothing about Cloudflare.
 
 ---
 
-## Posture as of 2026-08-08
+## Posture as of 2026-08-17
 
 Snapshot. Verify in the dashboard before relying on any row.
 
@@ -113,15 +113,22 @@ Snapshot. Verify in the dashboard before relying on any row.
 | Browser Cache TTL | Respect Existing Headers | required — see §1 |
 | Caching Level | Standard | default |
 | Bot Fight Mode | **Off** | intentional — see §2 |
-| Security level | **I'm Under Attack: enabled** | temporary — see Pending |
-| WAF custom rules | 1/5 — Common Exploit Paths | active |
+| Security level | **Off Under Attack since 2026-08-12** | back to the default automated level |
+| WAF custom rules | 2/5 — Common Exploit Paths, ACME skip | active |
 | TLS 1.3 | On | |
 | Automatic HTTPS Rewrites | On | |
 | Always Use HTTPS | Off | optional; Vercel already redirects |
 | HSTS | Off | deliberate — preload is near-irreversible |
 | Minimum TLS Version | 1.0 (default) | should be 1.2 |
 | DNSSEC | Not enabled | disabled for the move, never re-enabled |
-| Certificate Transparency Monitoring | Off | free issuance alerts |
+| Certificate Transparency Monitoring | **On since 2026-08-14** | free issuance alerts |
+
+**The second WAF rule is an ACME skip.** Certificate issuance and renewal validate over
+`/.well-known/acme-challenge/*`, and that path must never be challenged, rate-limited or
+mitigated — a blocked validation fails renewal silently and surfaces later as an edge
+certificate error rather than as a WAF event. The skip rule exists so no present or future
+security-level change can take the certificate path down with it. This is the one rule that
+must survive any rule-surface cleanup (§3).
 
 **DNS records (5):**
 
@@ -139,15 +146,17 @@ Mail is Resend (via SES) on the `send.` subdomain. SPF and DKIM present; **no DM
 
 ## Pending
 
-- [ ] **Turn Under Attack mode off.** While it is on, every RSC prefetch and soft-nav is a
-      JS-challenge coin flip, and every non-browser client — GHA post-push verification
-      curls, uptime checks, webhooks — gets 403. Drop to the default automated security
-      level once the transfer has settled.
+- [x] ~~**Turn Under Attack mode off.**~~ — **done 2026-08-12.** Back to the default
+      automated security level, so RSC prefetches and non-browser clients (GHA verification
+      curls, uptime checks, webhooks) stop drawing 403s. This was also the real test named
+      in §2: watch Vercel Fluid CPU now that the `Common Exploit Paths` custom rule is
+      holding the line alone.
 - [ ] **Add the FIX-799 Skip rule** for same-origin `RSC eq "1"` GETs, so managed challenge
       stops firing on the app's own soft navigations. More urgent while Under Attack is on.
 - [ ] **Add a DMARC record** — `_dmarc.civitics.com` TXT, `v=DMARC1; p=none; rua=…` to
       start. SPF and DKIM without DMARC leave the domain spoofable.
-- [ ] Minimum TLS → 1.2; enable Certificate Transparency Monitoring. One click each.
+- [ ] Minimum TLS → 1.2. ~~enable Certificate Transparency Monitoring~~ — **CT Monitoring
+      enabled 2026-08-14**; the TLS minimum is still 1.0 and still one click.
 - [ ] Re-enable DNSSEC (DS record handling depends on where the domain is registered).
 - [ ] Confirm Search Console is still verified — there are no verification TXT records in
       the zone, so a DNS-based verification did not survive the move.
