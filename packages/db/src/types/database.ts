@@ -14,6 +14,135 @@ export type Database = {
   }
   public: {
     Tables: {
+      _drb_chunk_fe: {
+        Row: {
+          display_name: string | null
+          entity_type: string | null
+          id: string
+          industry_label: string | null
+          industry_tag: string | null
+          state: string | null
+        }
+        Insert: {
+          display_name?: string | null
+          entity_type?: string | null
+          id: string
+          industry_label?: string | null
+          industry_tag?: string | null
+          state?: string | null
+        }
+        Update: {
+          display_name?: string | null
+          entity_type?: string | null
+          id?: string
+          industry_label?: string | null
+          industry_tag?: string | null
+          state?: string | null
+        }
+        Relationships: []
+      }
+      _drb_donor: {
+        Row: {
+          from_id: string
+          pos_cents: number
+          pos_count: number
+          relationship_type: string
+          small_cents: number
+          small_count: number
+          to_id: string
+          total_cents: number | null
+          total_cents0: number
+          tx_count: number
+        }
+        Insert: {
+          from_id: string
+          pos_cents: number
+          pos_count: number
+          relationship_type: string
+          small_cents: number
+          small_count: number
+          to_id: string
+          total_cents?: number | null
+          total_cents0: number
+          tx_count: number
+        }
+        Update: {
+          from_id?: string
+          pos_cents?: number
+          pos_count?: number
+          relationship_type?: string
+          small_cents?: number
+          small_count?: number
+          to_id?: string
+          total_cents?: number | null
+          total_cents0?: number
+          tx_count?: number
+        }
+        Relationships: []
+      }
+      _drb_fe: {
+        Row: {
+          display_name: string | null
+          entity_type: string | null
+          id: string
+          industry_label: string | null
+          industry_tag: string | null
+          state: string | null
+        }
+        Insert: {
+          display_name?: string | null
+          entity_type?: string | null
+          id: string
+          industry_label?: string | null
+          industry_tag?: string | null
+          state?: string | null
+        }
+        Update: {
+          display_name?: string | null
+          entity_type?: string | null
+          id?: string
+          industry_label?: string | null
+          industry_tag?: string | null
+          state?: string | null
+        }
+        Relationships: []
+      }
+      _drb_targets: {
+        Row: {
+          is_official: boolean
+          to_id: string
+        }
+        Insert: {
+          is_official: boolean
+          to_id: string
+        }
+        Update: {
+          is_official?: boolean
+          to_id?: string
+        }
+        Relationships: []
+      }
+      _tin_state_name: {
+        Row: {
+          donation_count: number
+          donor_name: string
+          state: string
+          total_cents: number
+        }
+        Insert: {
+          donation_count: number
+          donor_name: string
+          state: string
+          total_cents: number
+        }
+        Update: {
+          donation_count?: number
+          donor_name?: string
+          state?: string
+          total_cents?: number
+        }
+        Relationships: []
+      }
       abuse_events: {
         Row: {
           action: string
@@ -5993,6 +6122,19 @@ export type Database = {
         Args: { raw_name: string; zip5: string }
         Returns: string
       }
+      check_cron_job_health: {
+        Args: { p_lookback_hours?: number }
+        Returns: Json
+      }
+      check_pipeline_rate_regression: {
+        Args: {
+          p_factor?: number
+          p_lookback_days?: number
+          p_min_baseline_runs?: number
+          p_recent_runs?: number
+        }
+        Returns: Json
+      }
       check_rebuild_autovacuum_status: { Args: never; Returns: Json }
       check_rollup_freshness: {
         Args: { p_max_age_hours?: number; p_pipeline?: string }
@@ -6206,6 +6348,7 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      cron_cadence_hours: { Args: { p_schedule: string }; Returns: number }
       detect_brigade_candidates: {
         Args: {
           p_established_days?: number
@@ -6252,9 +6395,14 @@ export type Database = {
         Args: { p_donors: string[] }
         Returns: number
       }
+      donor_rollup_bulk_assert_invariants: { Args: never; Returns: undefined }
       donor_rollup_rebuild_recipients: {
         Args: { p_recipients: string[] }
         Returns: number
+      }
+      enforce_derived_mvs_unit_budget: {
+        Args: { p_budget_seconds?: number }
+        Returns: Json
       }
       enqueue_enrichment: {
         Args: {
@@ -6268,6 +6416,15 @@ export type Database = {
         Returns: string
       }
       expire_lapsed_grants: { Args: never; Returns: number }
+      fec_cycle_full_pass_at: { Args: { p_cycle: number }; Returns: string }
+      fec_cycle_watermark: {
+        Args: { p_cycle: number }
+        Returns: {
+          completed_at: string
+          fec_last_modified: string
+          stage: string
+        }[]
+      }
       financial_entity_donation_totals_rebuild: {
         Args: { p_ids: string[] }
         Returns: number
@@ -6511,6 +6668,14 @@ export type Database = {
         Args: { p_industry?: string; p_min_cents?: number }
         Returns: Json
       }
+      get_platform_daily_cost_deltas: {
+        Args: { p_days?: number }
+        Returns: {
+          base_usd: number
+          gross_usd: number
+          mtd_day: number
+        }[]
+      }
       get_plum_book_last_change: { Args: never; Returns: string }
       get_position_rollup_display: {
         Args: { p_entity_id: string; p_entity_type: string; p_lens?: string }
@@ -6736,6 +6901,10 @@ export type Database = {
       }
       link_federal_reps_to_districts: { Args: never; Returns: number }
       link_officials_to_districts: { Args: never; Returns: number }
+      list_scheduled_rollup_pipelines: {
+        Args: { p_lookback_days?: number }
+        Returns: Json
+      }
       normalize_pv_path: { Args: { p: string }; Returns: string }
       official_donor_totals_backfill: { Args: never; Returns: number }
       official_is_content_bearing: { Args: { p_id: string }; Returns: boolean }
@@ -7779,4 +7948,3 @@ export const Constants = {
     },
   },
 } as const
-
