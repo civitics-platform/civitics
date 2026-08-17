@@ -1246,3 +1246,10 @@
 2026-08-15 | FIX-1049 | a04020bc | local-only | perf(burn-rate): stop scanning every snapshot payload — 427ms/tick down to a couple of rows per day
 2026-08-15 | FIX-1050 | f995ffd7 | local+prod | chore(ops): record prod verification of FIX-1050 — R2 row is an alarm again
 2026-08-15 | FIX-1050 | 515f829e | local-only | fix(platform-limits): make the R2 row an alarm again, alert on the first cent of Vercel overage
+2026-08-17 | FIX-1000 | b24cde48 | local-only | chore(ops): record the weekend's prod evidence — FIX-1014, 936, 963, 971, 1000
+2026-08-17 | FIX-1014 | b24cde48 | prod-only | chore(ops): record the weekend's prod evidence — FIX-1014, 936, 963, 971, 1000
+2026-08-17 | FIX-1024 | 63000f0a | closes-as-superseded | fix(cron): move EC-stats and the afternoon vacuum wave out of the EC rebuild's 6h window
+2026-08-17 | FIX-1052 | 63000f0a | local+prod | fix(cron): move EC-stats and the afternoon vacuum wave out of the EC rebuild's 6h window
+2026-08-17 | FIX-936 | b24cde48 | prod-only | chore(ops): record the weekend's prod evidence — FIX-1014, 936, 963, 971, 1000
+2026-08-17 | FIX-963 | b24cde48 | prod-only | chore(ops): record the weekend's prod evidence — FIX-1014, 936, 963, 971, 1000
+2026-08-17 | FIX-971 | b24cde48 | prod-only | chore(ops): record the weekend's prod evidence — FIX-1014, 936, 963, 971, 1000
