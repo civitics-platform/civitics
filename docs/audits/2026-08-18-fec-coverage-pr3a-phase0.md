@@ -61,6 +61,45 @@ multi-run merge):
 **Per-key divergences: 0.** Same keys, same sums, same tx counts, same latest dates, same
 donor rows and totals.
 
+### End-to-end, against rows the OLD path already wrote
+
+The harness diffs the stage in isolation. The pipeline's own consumption path
+(`index.ts`: four sequential re-reads of the sorted files, the merge-join for donor
+inputs, `dispose()` in a `finally`) needed exercising too, so a scoped run went through
+the real pipeline against the local Docker DB:
+
+```
+FEC_CYCLES=2026 FEC_INDIV_CYCLES=2026 FEC_INDIV_RECIPIENT_CMTES=C00718866 \
+  NODE_OPTIONS=--max-old-space-size=2048 pnpm --filter @civitics/data data:fec-bulk
+```
+
+Result: `Aggregation mode: external`, 19,441 donors, 19,441 donor × candidate pairs,
+0 committee pairs (correct — C00718866 is candidate-authorized, so it routes
+candidate-only), peak RSS 494 MB, 0 failures.
+
+The load-bearing line is the writer's:
+
+```
+indiv-donation: 0/19,441 rows actually written (19,441 unchanged, skipped) (FIX-1008)
+```
+
+The local DB already held those rows from **old-path** runs — 19,441 rows for
+`S8GA00180`, `updated_at` spanning 2026-07-30 to 2026-08-09, `sum(amount_cents)` =
+1,624,733,800. The new path reproduced all 19,441 rows with values identical enough that
+the FIX-1008 skip-overwrite comparator changed nothing, and `updated_at` did not move.
+That is equivalence against real persisted output from the old accumulator, through the
+writers, at a different point in time — a stronger check than the in-process diff.
+
+It also cross-checks the phase-0 numbers below: §2.3's "FR rows emitted today" figure
+(19,441 rows / $16,247,338) is exactly the persisted row count and dollar total, derived
+by a completely separate script.
+
+Caveat: at 19,441 groups this run stayed under the 400k buffer and took the
+single-buffer fast path (`0 agg + 0 meta` runs), so it did **not** exercise the k-way
+merge end-to-end. The merge is covered by the harness (up to 81+74 runs on the full file)
+and by unit tests, but the first pipeline run to merge for real will be the phase-4
+indiv20 backfill.
+
 ### Memory and disk
 
 Full cycle-2026 file: 30,632,248 lines, 5,401 MB extracted, 2,105,550 rows past the $200
