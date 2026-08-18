@@ -297,3 +297,82 @@ pnpm --filter @civitics/data data:fec:phase0-floor \
 pnpm --filter @civitics/data data:fec:phase0-floor \
   --txt <indiv.txt> --ccl <ccl.txt> --cm <cm.txt> --all
 ```
+
+---
+
+## 5. Addendum — phase-4 prod run and the 2026-08-18 API incident
+
+### 5.1 The mechanism worked on the file that OOM'd twice
+
+`fec-backfill` run **32097136492**, `cycles=2020`, on sha `51deff46`.
+
+| | |
+|---|---|
+| indiv20.zip | 5,593 MB compressed → **13,109 MB extracted** |
+| lines read | **69,377,425 — the whole file** (prior attempts died at 53M and 64M) |
+| stream + external sort | **3m02s** (03:59:08 → 04:02:10) |
+| **peak RSS** | **439 MB** — against a 14,336 MB heap that OOM'd |
+| sort runs / disk | 12 agg + 9 meta · **288 MB** (projection was ~300 MB) |
+| unique donors | 1,944,958 |
+| donor × candidate pairs | 2,165,106 |
+| donor × committee pairs | 1,149,355 |
+
+FIX-961 is **mechanically resolved**: ~33× less memory, and the disk projection in §1
+held. What did not finish is the *write* phase.
+
+### 5.2 The write phase is the real ceiling — and it is not new
+
+| stage | result |
+|---|---|
+| `donor-entities` | **complete** — 1,944,958 rows in 90m18s (~21,500/min), 1,162,416 new entities |
+| `indiv-to-candidate` | **692,000 / 2,165,106** when SIGTERM'd at the 350-min cap |
+| `indiv-to-committee` | not started |
+
+The cand-rel stage opened at 20,300/min and decayed to 300–2,000/min. Cause is
+cache starvation, not bloat: `financial_relationships` was **11.1M live / 94,729
+dead (0.8%)** with heap cache hit **62.4%**, so each of the 2.1M upserts probes the
+UNIQUE arbiter `(relationship_type, from_id, to_id, cycle_year)` on a random donor
+UUID against indexes far larger than the 256 MB `shared_buffers`. Precedent confirms
+this predates PR 3a: run `30769510735` (`cycles=2022`) hit the same 350-min cap on the
+**old** code path — that is what FIX-962 was written about.
+
+State is banked; a re-dispatch resumes (`fec_last_modified` is a frozen historical
+file, so the FIX-754 precondition still matches). **Resume in a genuinely quiet
+window** — the difference between 20,300/min and 600/min is entirely contention.
+
+### 5.3 The incident: prod REST down 09:45–10:41 UTC (~56 min)
+
+Public PostgREST returned `503 PGRST002` — schema cache unqueryable. Measured cause:
+`refresh_treemap_individuals_global()` fired by pg_cron at 08:15 and was **still
+running at 1h47m54s**, starving the box until the catalog query PostgREST needs
+timed out (`pg_proc JOIN pg_namespace` → 57014 at 60,247 ms; `pg_timezone_names`
+24,788 ms, later failing at 99,868 ms).
+
+The scheduled path has **no effective `statement_timeout`** — FIX-965's 2400s figure
+came from a *manual* `CALL` with the timeout set in-session, and per FIX-1056 an
+in-procedure `SET statement_timeout` is decorative. Filed as **FIX-1063**.
+
+Resolution: `pg_cancel_backend` on the treemap (catalog query 60s timeout → **28ms**
+immediately), then on `refresh_financial_entity_totals_incremental` (1h31m58s);
+PostgREST did not self-recover, so the project was restarted via the Management API
+and REST returned 200 in 0.12–0.25s.
+
+The FIX-961 backfill was already dead (09:44 cap) before the outage window closed and
+was not the proximate cause, though its earlier load contributed to the cold cache.
+
+### 5.4 Post-run verification
+
+- **Both attribution detectors read CROSS-PERSON MISATTRIBUTION = 0 / $0.** ✅
+- `VACUUM (ANALYZE)` tail discharged per FIX-943 (the run was SIGTERM'd before it
+  could): `financial_entities` 299s (58,122 dead → 0), `financial_relationships`
+  182s (94,729 dead → 0), both analyzed 10:48–10:51 — ahead of the 12:00 donor-rollup,
+  whose cost is gated by exactly this (FIX-1003/1018).
+- `nightly_killed` marker written correctly (`08-18 03:54 failed |
+  workflow-timeout-or-sigterm`) — but only after the restart, because mark-killed
+  depends on PostgREST. Filed as **FIX-1065**.
+- The orphan detector's own **reference-case guard** now fails on a clean signal —
+  mis-specified for a legitimate official, latent since FIX-934 shipped 08-05 and
+  surfaced by the first audit run since. **Not** caused by the backfill (it added 6
+  rows / $5,750 to that official). Filed as **FIX-1064**.
+- Left `running`, artifacts of the cancels/restart:
+  `treemap_individuals_global_refresh` (08:15) and `run_rule_taggers` (10:00).
