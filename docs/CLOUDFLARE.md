@@ -113,15 +113,51 @@ Snapshot. Verify in the dashboard before relying on any row.
 | Browser Cache TTL | Respect Existing Headers | required — see §1 |
 | Caching Level | Standard | default |
 | Bot Fight Mode | **Off** | intentional — see §2 |
-| Security level | **Off Under Attack since 2026-08-12** | back to the default automated level |
-| WAF custom rules | 2/5 — Common Exploit Paths, ACME skip | active |
+| Security level | **`under_attack` — STILL ON as of 2026-08-17** | human-set, not the loop — see §526 |
+| WAF custom rules | 3 — Common Exploit Paths, `WAF - SSL` (ACME skip), Meta | all enabled |
 | TLS 1.3 | On | |
 | Automatic HTTPS Rewrites | On | |
-| Always Use HTTPS | Off | optional; Vercel already redirects |
+| Always Use HTTPS | **On** | corrected 2026-08-17; the doc said Off |
+| Browser Integrity Check | On | |
 | HSTS | Off | deliberate — preload is near-irreversible |
 | Minimum TLS Version | 1.0 (default) | should be 1.2 |
 | DNSSEC | Not enabled | disabled for the move, never re-enabled |
 | Certificate Transparency Monitoring | **On since 2026-08-14** | free issuance alerts |
+
+### The 2026-08-12 526 — an expired ORIGIN certificate, renewals failing silently
+
+**2026-08-12, resolved the same day ~23:15 UTC.** `civitics.com` served Cloudflare **526
+"Invalid SSL certificate"**. The cause was at the *origin*: Vercel's Let's Encrypt
+certificate had **expired after renewals failed silently behind the Cloudflare proxy**. The
+Cloudflare **edge** certificate was fine throughout, and the Vercel project was up the whole
+time — the `civitics-civitics.vercel.app` URL kept serving normally, which is exactly why
+nothing alerted (see below).
+
+**Resolution:** Vercel dashboard → Settings → Domains → renew. It succeeded **without
+gray-clouding**, i.e. the successful renewal also went through the proxy.
+
+**Do not over-assert the mechanism.** Under Attack mode was the suspect — it 403s the
+non-browser clients an ACME http-01 challenge relies on — but because the fix worked
+*through* the proxy, the original renewal blocker is **UNCONFIRMED**. Treat "Under Attack
+broke ACME" as a hypothesis, not the record.
+
+**Same-day hardening, and what each part actually buys:**
+
+| | |
+|---|---|
+| `WAF - SSL` skip rule on `/.well-known/acme-challenge/*` | removes the WAF as a possible blocker, whatever the original cause was |
+| Under Attack off | **did not stick — see Pending; the zone is still `under_attack` as of 08-17** |
+| CT Monitoring on (2026-08-14) | the real durable win: makes the *next* silent renewal failure visible |
+
+**Next renewal window ≈ 60 days from 08-12, so ~mid-October 2026.** That is the date to
+watch. If CT Monitoring is the only thing standing between a silent renewal failure and
+another 526, confirm its alerts actually reach a watched inbox before then.
+
+**Why nothing paged.** `platform-snapshot` — including the FIX-1026 request-path probe —
+curls `civitics-civitics.vercel.app`, the Vercel origin. It is therefore **structurally
+blind to every Cloudflare-layer failure** and stayed green through this entire outage. Same
+blind spot as the 2026-08-11 522. Tracked as [[FIX-1057]]; the probe cannot simply be
+repointed at `civitics.com` while Under Attack is on, because the probe itself gets 403.
 
 **The second WAF rule is an ACME skip.** Certificate issuance and renewal validate over
 `/.well-known/acme-challenge/*`, and that path must never be challenged, rate-limited or
@@ -146,11 +182,20 @@ Mail is Resend (via SES) on the `send.` subdomain. SPF and DKIM present; **no DM
 
 ## Pending
 
-- [x] ~~**Turn Under Attack mode off.**~~ — **done 2026-08-12.** Back to the default
-      automated security level, so RSC prefetches and non-browser clients (GHA verification
-      curls, uptime checks, webhooks) stop drawing 403s. This was also the real test named
-      in §2: watch Vercel Fluid CPU now that the `Common Exploit Paths` custom rule is
-      holding the line alone.
+- [ ] **Turn Under Attack mode off — STILL OPEN, and re-verified on the live zone
+      2026-08-17.** A planning note recorded this as done on 08-12; the zone says
+      otherwise. `GET /zones/{id}/settings/security_level` returns `under_attack`, and
+      `pipeline_state.cf_mitigation_loop.tripped` is **null**, which by §"How to tell an
+      automatic change from a manual one" means the loop did **not** set it — this is a
+      human setting still in force. The loop's own transition log agrees: on 2026-08-16 at
+      06:08 and 06:12 UTC it recorded `skip_already_escalated` — *"3 breach hours, but the
+      zone is already at security_level=under_attack and this loop did not set it."*
+      Consequence, measured the same day: `curl https://civitics.com/`, `/officials` and
+      `/api/officials/<id>/responsiveness` all return **403 `Cf-Mitigated: challenge`**,
+      even with a browser User-Agent. That is what keeps the FIX-1026 request-path probe
+      pinned to the vercel.app origin ([[FIX-1057]]) and what would block any external
+      uptime service. Turning it off remains the real test named in §2: watch Vercel Fluid
+      CPU once `Common Exploit Paths` holds the line alone.
 - [ ] **Add the FIX-799 Skip rule** for same-origin `RSC eq "1"` GETs, so managed challenge
       stops firing on the app's own soft navigations. More urgent while Under Attack is on.
 - [ ] **Add a DMARC record** — `_dmarc.civitics.com` TXT, `v=DMARC1; p=none; rua=…` to

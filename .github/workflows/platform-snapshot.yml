@@ -123,9 +123,39 @@ jobs:
     # Deliberately NO `concurrency:` here. See header.
 
     steps:
+      # WHICH HOST THIS TESTS, AND THE BLIND SPOT IT CURRENTLY HAS (FIX-1057).
+      #
+      # This probe hits the VERCEL ORIGIN (vercel.app), not the public host
+      # civitics.com. That means it tests "is the app serving" and is BLIND to
+      # every Cloudflare-layer failure. That blindness is not theoretical: on
+      # 2026-08-12 civitics.com served Cloudflare 526 (expired ORIGIN cert)
+      # while the vercel.app URL kept working, so this job — and the whole
+      # platform-snapshot workflow — stayed GREEN through the outage. It is the
+      # same shape as the 2026-08-11 522 this job was built for.
+      #
+      # WHY IT HAS NOT SIMPLY BEEN REPOINTED AT civitics.com: it cannot be, yet.
+      # Measured 2026-08-17 against the live zone — all three probe paths return
+      # HTTP 403 with `Cf-Mitigated: challenge`, including with a browser
+      # User-Agent, because `security_level` is still `under_attack`:
+      #
+      #   curl https://civitics.com/                         -> 403
+      #   curl https://civitics.com/officials                -> 403
+      #   curl https://civitics.com/api/officials/<id>/responsiveness -> 403
+      #
+      # Repointing today would make this job fail every hour forever, which is
+      # strictly worse than the blind spot — a permanently-red pager is a
+      # disabled pager. The zone posture has to change first; the same Under
+      # Attack setting also blocks any external uptime service (UptimeRobot
+      # etc.), which is the other half of the monitoring gap named above.
+      #
+      # SWITCH IT WHEN either (a) security_level leaves under_attack, or (b) a
+      # WAF skip rule admits this probe specifically. Then set the PROBE_URL
+      # secret to https://civitics.com — the env var below already reads it, so
+      # the flip is a secret change with no code change. Verify with the three
+      # curls above before flipping.
       - name: Probe key request-path endpoints
         env:
-          APP_URL: ${{ secrets.CIVITICS_APP_URL || 'https://civitics-civitics.vercel.app' }}
+          APP_URL: ${{ secrets.PROBE_URL || secrets.CIVITICS_APP_URL || 'https://civitics-civitics.vercel.app' }}
           OFFICIAL_ID: ${{ secrets.PROBE_OFFICIAL_ID || '5201c5c4-7b93-4042-a74f-d494a20e74de' }}
         run: |
           set -uo pipefail
