@@ -1253,3 +1253,8 @@
 2026-08-17 | FIX-936 | b24cde48 | prod-only | chore(ops): record the weekend's prod evidence — FIX-1014, 936, 963, 971, 1000
 2026-08-17 | FIX-963 | b24cde48 | prod-only | chore(ops): record the weekend's prod evidence — FIX-1014, 936, 963, 971, 1000
 2026-08-17 | FIX-971 | b24cde48 | prod-only | chore(ops): record the weekend's prod evidence — FIX-1014, 936, 963, 971, 1000
+2026-08-17 | FIX-1053 | 97d3162e | closes-as-redirected | fix(rollups): bound and bank the EC rebuild — and the contracts arm was never the 6h
+2026-08-17 | FIX-1054 | 97d3162e | local+prod | fix(rollups): bound and bank the EC rebuild — and the contracts arm was never the 6h
+2026-08-17 | FIX-1055 | 97d3162e | closes-as-no-op | fix(rollups): bound and bank the EC rebuild — and the contracts arm was never the 6h
+2026-08-17 | FIX-1056 | 97d3162e | local+prod | fix(rollups): bound and bank the EC rebuild — and the contracts arm was never the 6h
+2026-08-17 | FIX-904 | 97d3162e | closes-as-recognized | fix(rollups): bound and bank the EC rebuild — and the contracts arm was never the 6h
