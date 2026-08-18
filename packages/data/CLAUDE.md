@@ -80,10 +80,10 @@ Step 2c (individual contributions, FIX-181 + FIX-236):
 - Parses cm into a second `CMTE_ID → CMTE_TP` lookup, restricted to super PACs (`O`), party committees (`X`/`Y`/`Z`), and other PACs (`N`/`Q`/`V`/`W`) NOT already in ccl P/A — this is the recipient set that captures Form 3X Schedule A flow (Musk → America PAC etc.). Joint-fundraising (`J`), leadership (`D`), and `B` stay excluded — their money is re-itemized via downstream transfers and would double-count.
 - Streams indiv line-by-line, filtering to transaction types `15`, `15E`, and `10`, amount ≥ $200, and recipient CMTE_ID present in EITHER lookup. `10` is FEC's "contribution to an Independent-Expenditure-Only committee (Super PAC) from a person" — the super-PAC analog of `15`. It was added by FIX-677; before that, super-PAC individual receipts (which are filed as type `10`, not `15`) were systematically dropped (e.g. United Democracy Project showed $0 received despite ~$86M / 1,337 itemized type-10 contributions; ~$3.79B across all super PACs in the 2024 file). Earmark passthrough memos (`15I`/`15T`/`24I`/`24T`) and refunds (`20Y`/`22Y`) stay excluded.
 - Donor identity is `fingerprint = upper(NAME) + "|" + ZIP5` (FEC's standard near-duplicate convention). No donor IDs exist in FEC data
-- Aggregates two maps in memory:
+- Aggregates two groupings, **externally** (FIX-961):
   - `(donor × candidate × cycle)` tuples for ccl-mapped lines → donor → official donations
   - `(donor × committee × cycle)` tuples for super-PAC/party/PAC lines → donor → financial_entity (committee) donations
-  - Peak heap roughly doubled after FIX-236. **Run with `NODE_OPTIONS=--max-old-space-size=8192`** (8 GB) for non-presidential cycles; 12 GB recommended for presidential cycles (2024/2028). The default 4 GB OOMs mid-stream around the 20–25 M-line mark on a presidential cycle. Disable the indiv stage with `FEC_INCLUDE_INDIV=false` if memory is constrained.
+  - Both, plus the donor-meta grouping, go through `src/lib/external-sort.ts`: each surviving row is projected to a compact record, partial-aggregated in a bounded buffer, spilled to gzip'd sorted runs, and reduced by a k-way merge. **The stage's live set no longer scales with cycle size.** See "Indiv-stage memory" below.
 - Upserts donor `financial_entities` rows with `entity_type='individual'`, deduped by `donor_fingerprint` UNIQUE (added by migration `20260502120000_financial_entities_donor_fingerprint.sql`). Multiple NULL fingerprints are allowed, so non-individual entities (PACs etc.) are unaffected.
 - Pre-upserts recipient committee `financial_entities` rows for any super PAC / party / non-cand PAC that received itemized individual contributions, so the donor → committee relationships have a `to_id` to point at. `total_donated_cents` is left at 0 for these (or whatever pas2 set; never overwritten with indiv-inflow — `total_donated_cents` is the outflow convention used elsewhere in the schema).
 - Upserts `financial_relationships` rows with `relationship_type='donation'`:
@@ -283,16 +283,76 @@ The individual-level FEC donor file (`indiv{yy}.zip`, ~2 GB) is now ingested
 by the FEC bulk pipeline. Each cycle:
 - Downloads `indiv{yy}.zip` + `ccl{yy}.zip` to OS temp dir
 - Streams line-by-line via readline (never loads full file)
-- Aggregates to two maps: (donor × candidate × cycle) for candidate-authorized
+- Aggregates two groupings: (donor × candidate × cycle) for candidate-authorized
   recipients AND (donor × committee × cycle) for non-cand recipients (super
   PACs etc., FIX-236)
 - Upserts donor entities + donation relationships, then deletes the temp files
-- Peak heap roughly doubled by FIX-236 — **run with
-  `NODE_OPTIONS=--max-old-space-size=8192`** for non-presidential cycles;
-  12 GB for presidential. Default 4 GB OOMs mid-stream on presidential.
 
 Pro verified 2026-05-02 (cycles 2024 + 2026): 540,859 distinct individual
 donors, 959,010 indiv donation rows, 0 failures across both cycles.
 
 R2 is configured but unused for FEC files — see FIX-192 for the planned
 mirror cache. Until then, FEC is hit fresh on each run.
+
+### Indiv-stage memory — external sort, not a heap ceiling (FIX-961)
+
+**The heap-size guidance that used to live here was wrong in kind, not just in
+value.** It said 8 GB for a normal cycle and 12 GB for a presidential one; 12 GB
+then OOM'd at ~53M of ~69M lines of `indiv20` (FIX-961), because the number it
+was tuning was O(distinct groups) and the groups keep growing. Raising a ceiling
+that tracks the data is not a fix.
+
+Since FIX-961 (PR 3a) the stage aggregates **externally**
+(`src/lib/external-sort.ts`): each surviving row is projected to a compact
+record, partial-aggregated in a bounded buffer, spilled to gzip'd sorted runs,
+and reduced by a k-way merge. The live set is one sort buffer plus the merge
+cursors — flat in cycle size.
+
+Measured 2026-08-18 on the full cycle-2026 file — 30,632,248 lines, 5,401 MB
+extracted, 2,105,550 rows past the $200 floor → 879,782 donors, 762,891 donor ×
+candidate + 553,717 donor × committee pairs:
+
+| config | outcome | stage peak RSS | heap peak | runs (agg+meta) | peak sort disk | stream |
+|---|---|---|---|---|---|---|
+| `memory`, heap 2048 | **OOM** (exit 134) | — | — | — | — | — |
+| `external`, heap 2048, buffer 400k | ✅ | 2,256 MB | 1,604 MB | 5+3 | 111.6 MB | 91 s |
+| `external`, heap 1024, buffer 100k | ✅ | 900 MB | 634 MB | 20+17 | 133.8 MB | 86 s |
+| `external`, heap 512, buffer 25k | ✅ | 424 MB | 206 MB | 81+74 | 142.9 MB | 93 s |
+
+All three external configs emit identical results — same 762,891 / 553,717 /
+879,782 counts, same Σ 407,450,870,500 cents — across a 5.3× range of resident
+memory at **flat wall-clock** (86–93 s). On a 5M-line slice with both
+accumulators side by side the stage peaks were 1,377 MB (`memory`) vs 711 MB
+(`external`), again with zero divergence in every emitted set.
+
+Operational notes:
+
+- **The buffer is the heap knob, and it works.** `FEC_INDIV_SORT_BUFFER`
+  (default 400,000 keys per run) trades heap for run count: 16× smaller buffer
+  ⇒ 16× the runs ⇒ 5.3× less RSS, at flat wall-clock and ~28% more sort disk.
+  Peak memory tracks the buffer, **not the cycle**, which is the whole point —
+  a bigger file adds runs, not resident bytes. If a future cycle is tight,
+  lower the buffer; do not raise the heap. The sort is deterministic across
+  buffer sizes and there is a unit test pinning that.
+- Lower the buffer WITH the ceiling, not after it: `external` at the default
+  400k buffer OOMs under a 512 MB heap (as does 200k). The stage is bounded,
+  not free — the buffer has to fit with GC headroom.
+- **Sort disk, not heap, is now the resource to size.** Budget roughly
+  `0.02–0.025 × extracted-text size` for run files (112 MB against 5.4 GB
+  extracted here), on top of the extracted text. The extracted text is unlinked
+  before the merge starts, so the two peaks do not overlap — a presidential
+  cycle's ~13 GB extract implies ~300 MB of runs, well inside the GHA runner's
+  ~14 GB free disk.
+- RSS runs above the live set (2,256 MB at heap 2048) because
+  `line.split("|")` allocates ~21 short-lived strings per line across 30M+
+  lines and V8 does not collect while it has headroom — at heap 1024 the same
+  work fits in 900 MB. Judge this stage by whether it completes at its
+  configured buffer, not by its RSS.
+- `FEC_INDIV_AGG_MODE=memory` restores the pre-FIX-961 in-RAM maps. It exists
+  only so `data:fec:indiv-equivalence` can diff old against new; PR 3b retires
+  it. Do not use it for a real cycle — it is the path that OOMs.
+- Equivalence harness: `pnpm --filter @civitics/data data:fec:indiv-equivalence
+  --txt <indiv.txt> --ccl <ccl.txt> --cm <cm.txt> [--lines N] [--buffer N]`.
+  Runs each accumulator in its own process (one process makes the RSS
+  comparison meaningless — mode 1's garbage stays resident) and diffs every
+  emitted set. Expected output is zero divergence.

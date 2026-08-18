@@ -1603,6 +1603,12 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
           cycleActiveState = null;
         }
 
+        // FIX-961: the indiv stage's aggregates live in gzip'd sort files under
+        // TMP_DIR. Hoisted so the finally below reclaims that disk on EVERY
+        // exit path — including a writer stage throwing mid-cycle, which the
+        // catch swallows so the run can continue to the next cycle.
+        let indivDisposable: { dispose(): Promise<void> } | null = null;
+
         if (indivStateSkip) {
           // FIX-754 fast path: prior run already landed every indiv writer
           // stage; nothing streamed or upserted this run.
@@ -1649,6 +1655,7 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
                 console.warn("    No committees mapped to candidates or non-cand recipients — skipping indiv stage");
               } else {
                 const indivResult = await streamIndiv(indivPath, cmteToCand, candidateSet, nonCandCmtes, TMP_DIR, keepTxTypes);
+                indivDisposable = indivResult;
 
                 // FIX-754: establish fresh checkpoint state (resume runs arrive
                 // here with cycleActiveState already set). Requires a verifiable
@@ -1723,52 +1730,18 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
                   }
                 };
 
-                // Build per-cycle donor totals from BOTH aggregation maps —
-                // candidate-path and committee-path. A donor who gives to
-                // both a candidate AND a super PAC counts both contributions
-                // toward total_donated_cents for the cycle.
-                const cycleDonorTotals = new Map<string, number>();
-                for (const agg of indivResult.aggregations.values()) {
-                  cycleDonorTotals.set(
-                    agg.donorFingerprint,
-                    (cycleDonorTotals.get(agg.donorFingerprint) ?? 0) + agg.totalCents,
-                  );
-                }
-                for (const agg of indivResult.committeeAggregations.values()) {
-                  cycleDonorTotals.set(
-                    agg.donorFingerprint,
-                    (cycleDonorTotals.get(agg.donorFingerprint) ?? 0) + agg.totalCents,
-                  );
-                }
-
+                // Per-cycle donor rows: meta + the donor's total across BOTH
+                // recipient routes (a donor who gives to a candidate AND a
+                // super PAC counts both toward total_donated_cents).
+                //
+                // FIX-961: the join now happens inside the indiv stage. The
+                // external path merge-joins two fingerprint-sorted files, so
+                // the `cycleDonorTotals` Map that used to be built here — one
+                // entry per donor, ~1.9M on a presidential cycle — is gone.
+                // FIX-995's donorMetas release is likewise subsumed: nothing
+                // holds a meta map any more.
                 const donorInputs = [];
-                for (const [fp, meta] of indivResult.donorMetas.entries()) {
-                  donorInputs.push({
-                    fingerprint:       fp,
-                    displayName:       meta.displayName,
-                    city:              meta.city,
-                    state:             meta.state,
-                    zip5:              meta.zip5,
-                    employer:          meta.employer,
-                    occupation:        meta.occupation,
-                    totalDonatedCents: cycleDonorTotals.get(fp) ?? 0,
-                  });
-                }
-
-                // FIX-995: donorMetas and cycleDonorTotals are DEAD from here
-                // on — every field they hold has been copied into donorInputs,
-                // and neither is read again anywhere in the cycle block (the
-                // "Unique donors" stat line is printed inside streamIndiv,
-                // before it returns). Left reachable through `indivResult`,
-                // they pinned ~840k meta objects and ~840k Map entries for the
-                // whole 4-stage writer run — the heaviest part of the cycle.
-                // MEASURED at N=840,338 (data:measure:donor-heap): 120.0 MB,
-                // the largest of this PR's three releases.
-                // Released here, NOT by reassigning indivResult, because
-                // indivResult.aggregations and .committeeAggregations are still
-                // read by the two relationship stages below.
-                indivResult.donorMetas.clear();
-                cycleDonorTotals.clear();
+                for await (const d of indivResult.readDonorInputs()) donorInputs.push(d);
 
                 // FIX-700 stage: donor-entities. Skipping it leaves
                 // donorIdByFingerprint empty, so the two indiv relationship
@@ -1832,7 +1805,7 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
                 } else if (stageOn("indiv-to-candidate")) {
                   // Build relationship inputs — one per (donor × candidate × cycle)
                   const indivRelInputs: IndividualDonationInput[] = [];
-                  for (const agg of indivResult.aggregations.values()) {
+                  for await (const agg of indivResult.readAggregations()) {
                     const fromEntityId = donorResult.donorIdByFingerprint.get(agg.donorFingerprint);
                     if (!fromEntityId) continue;
                     const toOfficialId = index.byFecId.get(agg.candId);
@@ -1882,7 +1855,7 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
                 // is transient.
                 const cmteEntityInputs = [];
                 const seenInflowCmtes  = new Set<string>();
-                for (const agg of indivResult.committeeAggregations.values()) {
+                for await (const agg of indivResult.readCommitteeAggregations()) {
                   if (seenInflowCmtes.has(agg.cmteId)) continue;
                   seenInflowCmtes.add(agg.cmteId);
                   const info = cmLookup.get(agg.cmteId);
@@ -1944,7 +1917,7 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
                   console.log(`    ⟳ [indiv-to-committee] complete in prior run — skipping (FIX-754)`);
                 } else if (stageOn("indiv-to-committee")) {
                   const indivCmteRelInputs: IndividualToCommitteeDonationInput[] = [];
-                  for (const agg of indivResult.committeeAggregations.values()) {
+                  for await (const agg of indivResult.readCommitteeAggregations()) {
                     const fromEntityId = donorResult.donorIdByFingerprint.get(agg.donorFingerprint);
                     if (!fromEntityId) { indivCmteSkippedUnresolved++; continue; } // FIX-686
                     const toEntityId = entityIdByCmteAcc.get(agg.cmteId);
@@ -1995,6 +1968,13 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
             const msg = errMsg(err);
             console.warn(`    indiv stage failed: ${msg} — continuing without indiv data for cycle ${CYCLE}`);
             indivCyclesSkipped++;
+          } finally {
+            // FIX-961: reclaim the cycle's sort files before the next cycle
+            // extracts its own ~13 GB indiv text into the same TMP_DIR.
+            if (indivDisposable) {
+              try { await indivDisposable.dispose(); } catch { /* best effort */ }
+              indivDisposable = null;
+            }
           }
         } else {
           indivCyclesSkipped++;

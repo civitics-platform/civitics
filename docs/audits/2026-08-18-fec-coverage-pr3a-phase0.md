@@ -1,0 +1,260 @@
+# FEC coverage arc — PR 3a shipped, phase-0 floor measurement
+
+**Date:** 2026-08-18 · **FIX:** FIX-961 (PR 3a) · **Scope:** local measurement only, no prod writes
+
+Two things are recorded here:
+
+1. **PR 3a shipped** — the indiv stage's in-memory aggregation maps are replaced by an
+   external sort. No semantics changed; equivalence was proved against the old path.
+2. **The phase-0 measurement** that PR 3b's go/no-go reads: how much disclosed money
+   today's **$200 per-transaction** floor discards, and what a **$200 aggregate** floor
+   would emit instead.
+
+> **Missing referenced document.** The prompt for this work cites
+> `claude/audit-fec-coverage-2026-07-29.md` (§2, §5, "Queued — PR 3"). No such file exists
+> in `App/docs/audits/`, `Claude/civitics/`, or anywhere under `Civitics/` — a repo-wide
+> search for its distinguishing strings (`by_size`, "coverage arc", "Queued — PR 3") hits
+> only the prompt files themselves. This document is therefore written to stand alone and
+> is filed under the repo's actual audit convention (`docs/audits/YYYY-MM-DD-*.md`) rather
+> than as an addendum to a doc that is not in the tree. If the coverage audit exists
+> outside the repo, link this from it.
+
+---
+
+## 1. PR 3a — external-sort aggregation (FIX-961)
+
+### What changed
+
+`streamIndiv` built three `Map`s sized O(distinct groups) and held them for the whole
+cycle. That is what OOM'd. It now projects each surviving row into two compact sorted
+records, partial-aggregates them in a bounded buffer, spills gzip'd sorted runs, and
+reduces them with a k-way merge (`packages/data/src/lib/external-sort.ts`).
+
+The `$200` per-transaction floor stays exactly where it was, applied at parse time.
+Moving it is PR 3b.
+
+Consumers in `fec-bulk/index.ts` moved from `for (… of map.values())` to
+`for await (… of result.readX())`. One structure disappeared outright: the
+`cycleDonorTotals` map (one entry per donor) is now a merge-join between the two
+fingerprint-sorted files, done inside the stage.
+
+The old accumulator is still callable as `FEC_INDIV_AGG_MODE=memory`. PR 3b retires it.
+
+### Equivalence
+
+`pnpm --filter @civitics/data data:fec:indiv-equivalence` runs each accumulator **in its
+own process** and diffs every emitted set. First 5M lines of cycle-2026 `indiv26`, real
+`ccl26`/`cm26` recipient sets, sort buffer 25k (12 agg + 11 meta runs — a genuine
+multi-run merge):
+
+| metric | `memory` | `external` |
+|---|---:|---:|
+| donor × candidate groups | 138,206 | 138,206 |
+| donor × committee groups | 102,497 | 102,497 |
+| donor rows | 193,708 | 193,708 |
+| Σ candidate cents | 15,463,984,400 | 15,463,984,400 |
+| Σ committee cents | 42,265,130,300 | 42,265,130,300 |
+| Σ candidate txCount | 153,671 | 153,671 |
+| Σ committee txCount | 132,312 | 132,312 |
+| Σ donor totalCents | 57,729,114,700 | 57,729,114,700 |
+
+**Per-key divergences: 0.** Same keys, same sums, same tx counts, same latest dates, same
+donor rows and totals.
+
+### Memory and disk
+
+Full cycle-2026 file: 30,632,248 lines, 5,401 MB extracted, 2,105,550 rows past the $200
+floor → 879,782 donors, 762,891 + 553,717 pairs.
+
+| config | outcome | stage peak RSS | heap peak | runs (agg+meta) | peak sort disk | stream |
+|---|---|---:|---:|---:|---:|---:|
+| `memory`, heap 2048 MB | **OOM, exit 134** | — | — | — | — | — |
+| `external`, heap 2048, buffer 400k | ✅ | 2,256 MB | 1,604 MB | 5+3 | 111.6 MB | 91 s |
+| `external`, heap 1024, buffer 100k | ✅ | 900 MB | 634 MB | 20+17 | 133.8 MB | 86 s |
+| `external`, heap 512, buffer 25k | ✅ | 424 MB | 206 MB | 81+74 | 142.9 MB | 93 s |
+
+All three external configs emit identical results across a **5.3× range of resident
+memory at flat wall-clock**. Peak memory tracks the sort buffer, not the cycle — a bigger
+file adds runs, not resident bytes. That is the property the old path did not have.
+
+Sort disk is now the resource to size: ~2% of extracted-text size. The extracted text is
+unlinked before the merge starts, so the two peaks do not overlap; a presidential cycle's
+~13 GB extract implies ~300 MB of runs against the GHA runner's ~14 GB free disk.
+
+### Implementation note — the bug this found
+
+The first cut framed lines as `key \t payload` and split at the first tab, while the indiv
+aggregate key was itself tab-separated (`fp \t route \t recipient`). That does not throw
+and does not corrupt the file: it silently regroups by a **prefix** of the intended key.
+The equivalence run caught it — 240,703 aggregate groups vanished and the survivors summed
+across recipients.
+
+Two defences shipped: composite keys use `KEY_FIELD_SEP` (0x1F), and the sorter asserts
+the first key added on every instance regardless of the `validateKeys` setting, because a
+framing error is systematic — wrong on record #1 or never. Both are covered by tests.
+
+---
+
+## 2. Phase-0 measurement — the $200 floor
+
+### 2.1 What the floor actually discards
+
+FEC's itemization rule is per-donor **cycle aggregate**, not per transaction: once a
+contributor passes $200 cumulative, every later contribution is itemized *however small*.
+So `indiv{yy}.zip` contains a large population of disclosed sub-$200 rows. Our
+per-transaction floor drops all of them.
+
+Three distinct populations, which the discussion so far has conflated:
+
+| population | in the bulk file? | today | PR 3b |
+|---|---|---|---|
+| aggregate ≥ $200, ≥1 tx ≥ $200 | yes | emitted, **amount understated** | emitted, correct amount |
+| aggregate ≥ $200, no tx ≥ $200 | yes | **dropped entirely** | emitted (new FR rows) |
+| aggregate < $200 | yes | dropped | bucketed by size bracket |
+| truly unitemized (donor never passes $200) | **no** | n/a | n/a — unrecoverable |
+
+### 2.2 FEC `by_size` — Ossoff C00718866
+
+`api.open.fec.gov/v1/schedules/schedule_a/by_size/?committee_id=C00718866&cycle=2026`:
+
+| bucket | count | total |
+|---|---:|---:|
+| size 0 (under $200) | null | $52,958,614.87 |
+| size 200 ($200–499) | 14,868 | $3,837,061.41 |
+| size 500 ($500–999) | 7,928 | $4,051,804.96 |
+| size 1000 ($1k–2k) | 4,527 | $4,854,035.61 |
+| size 2000 ($2k+) | 3,500 | $10,885,451.93 |
+
+**Do not quote `by_size` as the floor split.** Its buckets do not reconcile: the four
+itemized buckets sum to $23,628,354 and size-0 to $52,958,615, total $76.59M, against the
+totals endpoint's `individual_contributions` of $67.76M. Size 0 also mixes truly
+unitemized money with sub-$200 *itemized* rows, which are the only recoverable part.
+
+The endpoint that **does** reconcile is `/committee/C00718866/totals/?cycle=2026`:
+
+- `individual_itemized_contributions`: **$28,654,210.06**
+- `individual_unitemized_contributions`: $39,110,515.04
+- `coverage_end_date`: 2026-06-30 (JULY QUARTERLY)
+
+Our floor-off pass over the same committee's rows in `indiv26` totals **$28,623,243** —
+within **0.11%** of FEC's itemized figure. That agreement is what makes the numbers below
+trustworthy; the residual gap is our org-shape guard (2 rows) and tx-type scope.
+
+### 2.3 Ossoff C00718866, cycle 2026 — floor off
+
+Run with the PR 3a machinery (`data:fec:phase0-floor --committee C00718866`), whole file,
+no amount filter. One row here = one `financial_relationships` row.
+
+| | rows | dollars |
+|---|---:|---:|
+| FR rows emitted **today** (≥1 tx ≥ $200) | 19,441 | $16,247,338 |
+| …their **true** cycle aggregate | | $17,905,631 |
+| …**understated today** | 5,884 rows (30.3%) | **$1,658,293** (9.3% of their real total) |
+| **NEW** FR rows under PR 3b (agg ≥ $200, no tx ≥ $200) | **19,532** | **$7,938,864** (from 210,189 tx rows) |
+| Residual (agg < $200) — bucketed, not emitted | 29,551 | $2,778,748 |
+| — $0.01–$49.99 | 4,777 | $139,732 |
+| — $50–$99.99 | 8,718 | $566,802 |
+| — $100–$199.99 | 16,056 | $2,072,214 |
+
+- FR rows **19,441 → 38,973 (+100.5%)**
+- Dollars captured **$16.25M → $25.84M (+59.1%)**
+- Against FEC's itemized $28.65M: we capture **56.7%** today, **90.2%** under PR 3b.
+- The $39.11M unitemized is not in the file and stays out of reach under any rule.
+
+### 2.4 Platform-wide, cycle 2026 — measured, not extrapolated
+
+Same pass with `--all` (every ccl P/A recipient ∪ non-candidate committee set), whole
+file: 30,632,248 lines, 22,151,720 in scope, **21,377,129 rows kept with the floor off**
+vs 2,105,550 with it on — the floor discards **90.2% of in-scope rows**.
+
+| | rows | dollars |
+|---|---:|---:|
+| FR rows emitted **today** | 1,316,608 | $4,074,508,705 |
+| …their **true** cycle aggregate | | $4,143,577,620 |
+| …**understated today** | 201,489 rows (15.3%) | **$69,068,915** (1.7%) |
+| **NEW** FR rows under PR 3b | **664,178** | **$412,638,554** (from 13,804,866 tx rows) |
+| Residual (agg < $200) — bucketed | 1,002,643 | $83,453,297 |
+| — $0.01–$49.99 | 296,250 | $7,092,375 |
+| — $50–$99.99 | 259,815 | $17,525,145 |
+| — $100–$199.99 | 446,578 | $58,835,777 |
+
+- **FR row growth: 1,316,608 → 1,980,786 (+664,178, +50.4%)** for cycle 2026.
+- Dollars captured **$4.07B → $4.56B (+11.8%)**.
+- Residual left unemitted: $83.5M, **1.8%** of in-file itemized dollars.
+
+Cross-check: the 1,316,608 "today" baseline equals the PR 3a full-file run's aggregate
+group count exactly, so this is the same population the pipeline emits, not a re-derivation.
+
+### 2.5 Projection to the other loaded cycles — **extrapolation, read as a range**
+
+Cycle 2026 is measured. The other cycles are not, and the multiplier is not constant:
+small-dollar recurring giving (ActBlue/WinRed) is much heavier in presidential cycles, and
+that is precisely the population the per-transaction floor drops. Ossoff's own by_size
+shows the direction — 50,856 sub-$500 transactions in 2020 against 14,868 in 2026.
+
+- **Lower bound: +50%** FR rows per cycle (the measured 2026 figure, applied unchanged).
+- **Upper bound: +100%** (the measured Ossoff-2026 committee figure, treating a
+  small-dollar-heavy campaign as representative of a presidential cycle's mix).
+- Dollar growth is far smaller than row growth in both directions: **+12% to +60%**,
+  because the newly-emitted rows are individually small.
+
+Row growth is the cost driver, not dollars: PR 3b roughly **1.5–2× the
+`financial_relationships` indiv row count per cycle**, plus up to 664,178 new
+`financial_entities` donor rows for cycle 2026 alone (an upper bound — donors already
+present from another recipient do not create a new entity). Everything downstream that
+scales with FR row count needs sizing against that: the donor rollups, the treemap
+brackets ([[FIX-965]], [[FIX-868]]), the chord MVs ([[FIX-966]], [[FIX-1030]]), and the
+`entity_connections` donations arm. [[FIX-965]]'s bullet already warns that indiv20 will
+grow the population further; PR 3b compounds it on every cycle at once.
+
+### 2.6 Staleness (audit §5 item) — source side clear, prod side owed
+
+| check | result |
+|---|---|
+| `indiv26.zip` Last-Modified | Sun, 16 Aug 2026 15:50:15 GMT (2 days old) |
+| FEC `coverage_end_date`, C00718866 cycle 2026 | 2026-06-30 (JULY QUARTERLY) |
+| max `TRANSACTION_DT` in our copy, C00718866 | 2026-06-30 — **exact match** |
+
+The bulk source is current and our copy reaches FEC's coverage end date. **The prod half
+is not verified here** — confirming that the *loaded* data reaches 2026-06-30 needs a prod
+read, which is out of scope for this session; it is owed at the FIX-961 phase-4 backfill
+verification.
+
+Caveat for anyone re-running this: the platform-wide date span came back as
+`20170622 … 33120101`. Those are filer typos in `TRANSACTION_DT`, not coverage. Scope the
+staleness check to a single committee, or trust the FEC totals endpoint, not the file-wide
+min/max.
+
+---
+
+## 3. Contradicted premises
+
+1. **`claude/audit-fec-coverage-2026-07-29.md` does not exist** anywhere in the tree.
+   See the note at the top.
+2. **FIX-961's bullet is stale, and its candidate fix (a) was tried and failed.** The
+   bullet records only the 12 GB OOM (run 30767905956, 2026-08-02, ~53M of ~69M lines) and
+   lists "raise heap to ~13.5-14 GB" as a candidate. That was done — commit `8da5e209`
+   raised `fec-backfill.yml` to `--max-old-space-size=14336` on 2026-08-02 — and run
+   **30965259079** (2026-08-05 01:03 UTC, `cycles=2020`, confirmed running at 14336)
+   OOM'd again at **~64M of ~69M lines**, ~93% of the way through. The prompt's "OOM'd a
+   12 GB and then a 14 GB heap" is correct; the bullet has not caught up. Left unedited
+   per the FIXES.md append-only contract.
+3. **`by_size` is not a usable floor-vs-cutoff split** (§2.2). Its buckets do not
+   reconcile with the totals endpoint and its size-0 bucket mixes recoverable with
+   unrecoverable money. The totals endpoint reconciles with the file to 0.11%; use it.
+4. **The stage is bounded, not free.** "O(1) in cycle size" is true of the live set but
+   the sort buffer is a real floor — `external` at the default 400k buffer still OOMs
+   under a 512 MB heap. Lower the buffer with the ceiling, not after it.
+
+## 4. Reproduce
+
+```bash
+# from packages/data — no DB, no prod, local files only
+pnpm --filter @civitics/data data:fec:indiv-equivalence \
+  --txt <indiv.txt> --ccl <ccl.txt> --cm <cm.txt> --lines 5000000 --buffer 25000
+
+pnpm --filter @civitics/data data:fec:phase0-floor \
+  --txt <indiv.txt> --ccl <ccl.txt> --cm <cm.txt> --committee C00718866
+pnpm --filter @civitics/data data:fec:phase0-floor \
+  --txt <indiv.txt> --ccl <ccl.txt> --cm <cm.txt> --all
+```

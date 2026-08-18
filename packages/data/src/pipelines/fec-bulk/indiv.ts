@@ -28,18 +28,36 @@
  * fingerprint so the existing UNIQUE(canonical_name, entity_type='individual')
  * dedup contract is honored.
  *
- * Memory: streams the file line-by-line, but holds the per-cycle
- * aggregation maps in RAM. With both candidate and committee paths
- * active (FIX-236), heap pressure roughly doubles vs. the FIX-181-only
- * shape — empirical OOM at ~3.4 GB mid-2026 with the default 4 GB cap.
- * Run with NODE_OPTIONS=--max-old-space-size=8192 for non-presidential
- * cycles; 12 GB recommended for presidential cycles.
+ * Memory (FIX-961 / PR 3a): the file streams line-by-line, and the per-cycle
+ * aggregation is now EXTERNAL — projected records go to gzip'd sorted runs on
+ * disk and are reduced by a k-way merge, so peak heap is one sort buffer plus
+ * the merge cursors, independent of cycle size. The previous shape held three
+ * in-RAM Maps sized O(distinct groups): it OOM'd a 12 GB heap at ~53M of ~69M
+ * lines of indiv20 (1.7M cand pairs / 872k cmte pairs / 1.54M donors at death).
+ *
+ * The old in-memory path is still selectable via FEC_INDIV_AGG_MODE=memory —
+ * it is what the equivalence harness (data:fec:indiv-equivalence) diffs the new
+ * path against. PR 3b retires it.
+ *
+ * NOTE: this PR changes NO semantics. The per-transaction $200 floor
+ * (MIN_AMT_DOLLARS) stays applied at parse time, exactly where it was; moving
+ * it to emit time is PR 3b.
  */
 
 import * as fs       from "fs";
 import * as path     from "path";
 import * as readline from "readline";
 import { extractZipEntryToDisk } from "./util";
+import {
+  ExternalGroupSorter,
+  mergeJoinGrouped,
+  compositeKey,
+  escapeField,
+  unescapeField,
+  KEY_FIELD_SEP,
+  type SortedGroups,
+  type ExternalSortStats,
+} from "../../lib/external-sort";
 
 // ---------------------------------------------------------------------------
 // Column maps
@@ -233,18 +251,88 @@ export interface IndivDonorMeta {
   occupation:  string;
 }
 
-export interface IndivStreamResult {
-  aggregations:          Map<string, IndivAggregation>;          // key = `${fingerprint}|${candId}`
-  committeeAggregations: Map<string, IndivCommitteeAggregation>; // key = `${fingerprint}|${cmteId}` (FIX-236)
-  donorMetas:            Map<string, IndivDonorMeta>;            // key = fingerprint
-  stats: {
-    linesRead:        number;
-    passedTxType:     number;
-    passedCmte:       number;     // line had cmteId in EITHER candidate OR committee map
-    passedCand:       number;     // routed to the candidate aggregation
-    passedCommittee:  number;     // routed to the non-candidate-committee aggregation
-    passedAmt:        number;
+/** A donor row ready for upsertIndividualDonorsBatch — meta + cycle total. */
+export interface IndivDonorInput extends IndivDonorMeta {
+  /**
+   * Sum of this donor's cycle contributions across BOTH recipient routes. A
+   * donor who gives to a candidate AND a super PAC counts both.
+   */
+  totalDonatedCents: number;
+}
+
+export interface IndivStreamStats {
+  linesRead:        number;
+  passedTxType:     number;
+  passedCmte:       number;     // line had cmteId in EITHER candidate OR committee map
+  passedCand:       number;     // routed to the candidate aggregation
+  passedCommittee:  number;     // routed to the non-candidate-committee aggregation
+  passedAmt:        number;
+  uniqueDonors:     number;
+  candPairs:        number;
+  cmtePairs:        number;
+  /** FIX-961: external-sort accounting. Absent in mode="memory". */
+  sort?: {
+    agg:  ExternalSortStats;
+    meta: ExternalSortStats;
+    /** High-water of BOTH sorters' simultaneous on-disk footprint, bytes. */
+    peakDiskBytes: number;
   };
+}
+
+/**
+ * FIX-961: the stage's output is consumed through async iterators so neither
+ * mode has to materialize a whole cycle. `mode="memory"` iterates the legacy
+ * Maps; `mode="external"` re-reads the merged sort files (cheap — the merged
+ * output is ~40 MB gzip'd for a presidential cycle).
+ *
+ * Every accessor is re-readable. `dispose()` removes the on-disk artifacts and
+ * MUST be called when the cycle's writer stages are done.
+ */
+export interface IndivStreamResult {
+  mode: IndivAggMode;
+  /** Donor × candidate aggregates. In external mode, ordered by fingerprint. */
+  readAggregations(): AsyncIterable<IndivAggregation>;
+  /** Donor × non-cand-committee aggregates (FIX-236). */
+  readCommitteeAggregations(): AsyncIterable<IndivCommitteeAggregation>;
+  /** Donor meta joined to the donor's cycle total across both routes. */
+  readDonorInputs(): AsyncIterable<IndivDonorInput>;
+  dispose(): Promise<void>;
+  stats: IndivStreamStats;
+}
+
+// ---------------------------------------------------------------------------
+// FIX-961 — aggregation mode
+// ---------------------------------------------------------------------------
+
+export type IndivAggMode = "external" | "memory";
+
+/**
+ * Resolve the aggregation mechanism. Default `external` (the O(1)-in-cycle-size
+ * path). `memory` restores the pre-FIX-961 in-RAM Maps and exists so the
+ * equivalence harness can diff old against new; it is NOT a supported setting
+ * for a presidential-cycle run and says so on stderr.
+ */
+export function resolveIndivAggMode(
+  raw: string | undefined = process.env.FEC_INDIV_AGG_MODE,
+): IndivAggMode {
+  const v = (raw ?? "").trim().toLowerCase();
+  if (v === "memory") return "memory";
+  if (v && v !== "external") {
+    console.warn(
+      `    [fec-bulk:indiv] FEC_INDIV_AGG_MODE="${raw}" not recognized (expected external|memory) — using external`,
+    );
+  }
+  return "external";
+}
+
+/**
+ * Distinct keys held per sort buffer before it spills. ~400k measured ~55 MB
+ * retained for the aggregate record shape. Override with FEC_INDIV_SORT_BUFFER
+ * when tuning against a heap ceiling.
+ */
+function resolveSortBuffer(raw: string | undefined = process.env.FEC_INDIV_SORT_BUFFER): number {
+  const n = parseInt((raw ?? "").trim(), 10);
+  return Number.isFinite(n) && n > 0 ? n : 400_000;
 }
 
 // ---------------------------------------------------------------------------
@@ -419,8 +507,96 @@ export function isLikelyOrgName(normalizedName: string): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// Stream indiv{yy}.zip → in-memory aggregations
+// Stream indiv{yy}.zip → aggregates
+//
+// FIX-961 / PR 3a. The parse, filter and projection below are byte-for-byte the
+// pre-FIX-961 logic; only the ACCUMULATOR changed. Two accumulators exist:
+//
+//   external (default) — each surviving row is projected to two compact sorted
+//     records and spilled to gzip'd runs; a k-way merge reduces them. Peak heap
+//     is one sort buffer, independent of cycle size.
+//   memory — the original three Maps. Kept callable for the equivalence
+//     harness; PR 3b retires it.
+//
+// Both accumulators MUST produce the same aggregate set. The three folds are
+// sum / count / lexicographic-max-over-non-empty (all associative and
+// commutative) plus first-seen donor meta, which the external path preserves by
+// carrying the row ordinal in the record and combining on min-ordinal.
 // ---------------------------------------------------------------------------
+
+/** Route marker in the aggregate sort key. 'C' sorts before 'M'. */
+const ROUTE_CAND = "C";
+const ROUTE_CMTE = "M";
+
+interface AggValue { cents: number; count: number; maxDt: string | null }
+interface MetaValue {
+  ordinal:     number;
+  displayName: string;
+  city:        string;
+  state:       string;
+  zip5:        string;
+  employer:    string;
+  occupation:  string;
+}
+
+const AGG_CODEC = {
+  encode: (v: AggValue) => `${v.cents}\t${v.count}\t${v.maxDt ?? ""}`,
+  decode: (s: string): AggValue => {
+    const t1 = s.indexOf("\t");
+    const t2 = s.indexOf("\t", t1 + 1);
+    const dt = s.slice(t2 + 1);
+    return { cents: +s.slice(0, t1), count: +s.slice(t1 + 1, t2), maxDt: dt === "" ? null : dt };
+  },
+  // Mirrors the map path exactly: sum, count, and `dt > (latest ?? "")`.
+  combine: (a: AggValue, b: AggValue): AggValue => ({
+    cents: a.cents + b.cents,
+    count: a.count + b.count,
+    maxDt: (b.maxDt ?? "") > (a.maxDt ?? "") ? b.maxDt : a.maxDt,
+  }),
+};
+
+const META_CODEC = {
+  encode: (v: MetaValue) =>
+    `${v.ordinal}\t${escapeField(v.displayName)}\t${escapeField(v.city)}\t${v.state}\t` +
+    `${v.zip5}\t${escapeField(v.employer)}\t${escapeField(v.occupation)}`,
+  decode: (s: string): MetaValue => {
+    const f = s.split("\t");
+    return {
+      ordinal:     +(f[0] ?? "0"),
+      displayName: unescapeField(f[1] ?? ""),
+      city:        unescapeField(f[2] ?? ""),
+      state:       f[3] ?? "",
+      zip5:        f[4] ?? "",
+      employer:    unescapeField(f[5] ?? ""),
+      occupation:  unescapeField(f[6] ?? ""),
+    };
+  },
+  // `donorMetas.set(fp, …)` only when absent ⇒ FIRST occurrence in file order
+  // wins. The ordinal makes that order-independent, so it survives spilling.
+  combine: (a: MetaValue, b: MetaValue): MetaValue => (b.ordinal < a.ordinal ? b : a),
+};
+
+/**
+ * Split an aggregate sort key `fp ␟ route ␟ recipient` into its parts.
+ *
+ * The separator is KEY_FIELD_SEP, NOT a tab. The line format reserves the first
+ * tab as the key/payload boundary, so tab-separated key fields reframe every
+ * line — the reader takes field 1 as the whole key and folds route/recipient
+ * into the payload, which silently groups by donor instead of by
+ * (donor, route, recipient). That was a real bug in this PR's first pass; the
+ * always-on first-key assertion in external-sort.ts now catches it at add().
+ */
+function splitAggKey(key: string): { fp: string; route: string; recipient: string } {
+  const t1 = key.indexOf(KEY_FIELD_SEP);
+  const t2 = key.indexOf(KEY_FIELD_SEP, t1 + 1);
+  return { fp: key.slice(0, t1), route: key.slice(t1 + 1, t2), recipient: key.slice(t2 + 1) };
+}
+
+/** Join key of an aggregate record = the donor fingerprint prefix. */
+function aggKeyDonor(key: string): string {
+  const t = key.indexOf(KEY_FIELD_SEP);
+  return t < 0 ? key : key.slice(0, t);
+}
 
 export async function streamIndiv(
   zipPath:        string,
@@ -431,6 +607,8 @@ export async function streamIndiv(
   // FIX-700: active tx-type filter. Defaults to FEC_INDIV_TX_TYPES / 15,15E,10.
   // index.ts passes the already-resolved set so the parse + warning run once.
   keepTxTypes:    Set<string> = parseKeepTxTypes(),
+  // FIX-961: accumulator selection. Defaults to FEC_INDIV_AGG_MODE / external.
+  mode:           IndivAggMode = resolveIndivAggMode(),
 ): Promise<IndivStreamResult> {
   const txtPath = path.join(tempDir, "indiv-extracted.txt");
   const found = await extractZipEntryToDisk(
@@ -442,13 +620,66 @@ export async function streamIndiv(
     throw new Error(`indiv .txt entry not found inside ${zipPath} (looked for itcont*.txt or indiv*.txt)`);
   }
 
+  return streamIndivText(txtPath, cmteToCandId, candidateSet, nonCandCmtes, tempDir, keepTxTypes, mode, {
+    deleteInputAfterStream: true,
+  });
+}
+
+/** Knobs the equivalence harness needs and the pipeline does not. FIX-961. */
+export interface StreamIndivTextOptions {
+  /** Unlink the input text once the stream drains (the pipeline's behavior). */
+  deleteInputAfterStream?: boolean;
+  /** Stop after this many lines. Used to take a deterministic file slice. */
+  maxLines?: number;
+  /** Override the sort-buffer size — small values force multi-run merging. */
+  sortBufferEntries?: number;
+  /** Name the sort scratch dir, so two modes can run side by side. */
+  sortDirName?: string;
+}
+
+/**
+ * The stage proper, over an already-extracted indiv text file.
+ *
+ * Split out of `streamIndiv` by FIX-961 so the equivalence harness can drive a
+ * deterministic slice through BOTH accumulators without materializing a zip.
+ */
+export async function streamIndivText(
+  txtPath:        string,
+  cmteToCandId:   Map<string, string>,
+  candidateSet:   Set<string>,
+  nonCandCmtes:   Set<string>,
+  tempDir:        string,
+  keepTxTypes:    Set<string> = parseKeepTxTypes(),
+  mode:           IndivAggMode = resolveIndivAggMode(),
+  opts:           StreamIndivTextOptions = {},
+): Promise<IndivStreamResult> {
   const txtMb = (fs.statSync(txtPath).size / 1024 / 1024).toFixed(0);
   console.log(`    Extracted indiv text (${txtMb} MB) — streaming line by line...`);
   console.log(`    Tx-type filter: [${[...keepTxTypes].join(",")}]`);
+  console.log(`    Aggregation mode: ${mode}${mode === "memory" ? "  ⚠ pre-FIX-961 in-RAM maps — heap scales with cycle size" : ""}`);
 
+  // ── accumulators ────────────────────────────────────────────────────────
+  // Exactly one of these pairs is live; the other stays empty.
   const aggregations          = new Map<string, IndivAggregation>();
   const committeeAggregations = new Map<string, IndivCommitteeAggregation>();
   const donorMetas            = new Map<string, IndivDonorMeta>();
+
+  const sortDir = path.join(tempDir, opts.sortDirName ?? "indiv-sort");
+  const bufferEntries = opts.sortBufferEntries ?? resolveSortBuffer();
+  let aggSorter:  ExternalGroupSorter<AggValue>  | null = null;
+  let metaSorter: ExternalGroupSorter<MetaValue> | null = null;
+  if (mode === "external") {
+    fs.mkdirSync(sortDir, { recursive: true });
+    aggSorter  = new ExternalGroupSorter<AggValue>({
+      tempDir: sortDir, name: "agg",  maxBufferEntries: bufferEntries, ...AGG_CODEC,
+    });
+    metaSorter = new ExternalGroupSorter<MetaValue>({
+      // Meta collapses to one record per donor inside the buffer, so it holds
+      // far more input rows per spill than the aggregate sorter does.
+      tempDir: sortDir, name: "meta", maxBufferEntries: bufferEntries, ...META_CODEC,
+    });
+    console.log(`    Sort buffer: ${bufferEntries.toLocaleString()} keys/run · gzip level 1 · ${sortDir}`);
+  }
 
   let linesRead = 0,
       passedTxType = 0,
@@ -463,15 +694,27 @@ export async function streamIndiv(
     crlfDelay: Infinity,
   });
 
+  const maxLines = opts.maxLines ?? Infinity;
+
   for await (const line of rl) {
+    if (linesRead >= maxLines) { rl.close(); break; }
     linesRead++;
     if (linesRead % 1_000_000 === 0) {
-      console.log(
-        `    ... ${linesRead.toLocaleString()} lines | ` +
-        `${aggregations.size.toLocaleString()} cand pairs | ` +
-        `${committeeAggregations.size.toLocaleString()} cmte pairs | ` +
-        `${donorMetas.size.toLocaleString()} donors`,
-      );
+      if (mode === "external") {
+        console.log(
+          `    ... ${linesRead.toLocaleString()} lines | ` +
+          `${passedAmt.toLocaleString()} kept | ` +
+          `${aggSorter!.stats.runsWritten}+${metaSorter!.stats.runsWritten} runs | ` +
+          `rss ${(process.memoryUsage.rss() / 1024 / 1024).toFixed(0)} MB`,
+        );
+      } else {
+        console.log(
+          `    ... ${linesRead.toLocaleString()} lines | ` +
+          `${aggregations.size.toLocaleString()} cand pairs | ` +
+          `${committeeAggregations.size.toLocaleString()} cmte pairs | ` +
+          `${donorMetas.size.toLocaleString()} donors`,
+        );
+      }
     }
 
     const cols   = line.split("|");
@@ -499,6 +742,8 @@ export async function streamIndiv(
 
     const amtStr = (cols[INDIV_COL.TRANSACTION_AMT] ?? "").trim();
     const amt    = parseFloat(amtStr);
+    // PR 3a keeps the per-transaction floor exactly here. PR 3b moves it to
+    // emit time (a $200 AGGREGATE floor) — do not move it in this PR.
     if (isNaN(amt) || amt < MIN_AMT_DOLLARS) continue;
     passedAmt++;
 
@@ -525,6 +770,30 @@ export async function streamIndiv(
     const dt   = (cols[INDIV_COL.TRANSACTION_DT] ?? "").trim();
     const amtCents = Math.round(amt * 100);
 
+    if (mode === "external") {
+      // `linesRead` is the ordinal: strictly increasing, and its ORDER (not its
+      // value) is what first-seen-wins depends on.
+      if (metaSorter!.add(fp, {
+        ordinal:     linesRead,
+        // .slice() forces a flat copy so the record does not pin the whole
+        // parent line through V8's sliced-string representation.
+        displayName: name.slice(),
+        city:        (cols[INDIV_COL.CITY]       ?? "").trim().slice(),
+        state:       (cols[INDIV_COL.STATE]      ?? "").trim().toUpperCase(),
+        zip5,
+        employer:    (cols[INDIV_COL.EMPLOYER]   ?? "").trim().slice(),
+        occupation:  (cols[INDIV_COL.OCCUPATION] ?? "").trim().slice(),
+      })) await metaSorter!.spill();
+
+      const route     = candId ? ROUTE_CAND : ROUTE_CMTE;
+      const recipient = candId ?? cmteId;
+      if (aggSorter!.add(compositeKey(fp, route, recipient), {
+        cents: amtCents, count: 1, maxDt: dt || null,
+      })) await aggSorter!.spill();
+      continue;
+    }
+
+    // ── mode === "memory": the pre-FIX-961 path, unchanged ────────────────
     if (!donorMetas.has(fp)) {
       donorMetas.set(fp, {
         fingerprint: fp,
@@ -572,6 +841,37 @@ export async function streamIndiv(
     }
   }
 
+  // Released BEFORE the merge — a presidential cycle's extracted text is ~13 GB
+  // and the merge wants that disk for its runs.
+  if (opts.deleteInputAfterStream) {
+    try { fs.unlinkSync(txtPath); } catch { /* best effort */ }
+  }
+
+  // ── finalize ────────────────────────────────────────────────────────────
+  let result: IndivStreamResult;
+  let uniqueDonors: number, candPairs: number, cmtePairs: number;
+
+  if (mode === "external") {
+    console.log(`    Merging sorted runs (${aggSorter!.stats.runsWritten} agg + ${metaSorter!.stats.runsWritten} meta)...`);
+    const aggSorted  = await aggSorter!.finalize();
+    const metaSorted = await metaSorter!.finalize();
+
+    // One pass to split the aggregate groups by route — the same two counts the
+    // map path printed. Cheap (the merged output is a few tens of MB gzip'd).
+    candPairs = 0; cmtePairs = 0;
+    for await (const { key } of aggSorted) {
+      if (splitAggKey(key).route === ROUTE_CAND) candPairs++; else cmtePairs++;
+    }
+    uniqueDonors = metaSorted.groupCount;
+
+    result = makeExternalResult(aggSorted, metaSorted, sortDir);
+  } else {
+    uniqueDonors = donorMetas.size;
+    candPairs    = aggregations.size;
+    cmtePairs    = committeeAggregations.size;
+    result = makeMemoryResult(aggregations, committeeAggregations, donorMetas);
+  }
+
   console.log(`    Lines read:                ${linesRead.toLocaleString()}`);
   console.log(`    Passed tx-type filter [${[...keepTxTypes].join(",")}]: ${passedTxType.toLocaleString()}`);
   console.log(`    Passed cmte lookup:        ${passedCmte.toLocaleString()}`);
@@ -579,16 +879,136 @@ export async function streamIndiv(
   console.log(`      → committee path:        ${passedCommittee.toLocaleString()}`);
   console.log(`    Passed $200+ filter:       ${passedAmt.toLocaleString()}`);
   console.log(`    Skipped org-shaped names:  ${skippedOrgShaped.toLocaleString()}`);
-  console.log(`    Unique donors:             ${donorMetas.size.toLocaleString()}`);
-  console.log(`    Donor × candidate pairs:   ${aggregations.size.toLocaleString()}`);
-  console.log(`    Donor × committee pairs:   ${committeeAggregations.size.toLocaleString()}`);
+  console.log(`    Unique donors:             ${uniqueDonors.toLocaleString()}`);
+  console.log(`    Donor × candidate pairs:   ${candPairs.toLocaleString()}`);
+  console.log(`    Donor × committee pairs:   ${cmtePairs.toLocaleString()}`);
 
-  try { fs.unlinkSync(txtPath); } catch { /* best effort */ }
+  result.stats = {
+    linesRead, passedTxType, passedCmte, passedCand, passedCommittee, passedAmt,
+    uniqueDonors, candPairs, cmtePairs,
+  };
+  if (mode === "external") {
+    const peak = aggSorter!.stats.peakDiskBytes + metaSorter!.stats.peakDiskBytes;
+    result.stats.sort = { agg: aggSorter!.stats, meta: metaSorter!.stats, peakDiskBytes: peak };
+    console.log(
+      `    Sort: ${aggSorter!.stats.runsWritten} agg run(s) + ${metaSorter!.stats.runsWritten} meta run(s) · ` +
+      `peak sort disk ${(peak / 1024 / 1024).toFixed(0)} MB · ` +
+      `peak rss ${(process.memoryUsage.rss() / 1024 / 1024).toFixed(0)} MB (FIX-961)`,
+    );
+  }
 
+  return result;
+}
+
+// ---------------------------------------------------------------------------
+// Result adapters
+// ---------------------------------------------------------------------------
+
+const EMPTY_STATS: IndivStreamStats = {
+  linesRead: 0, passedTxType: 0, passedCmte: 0, passedCand: 0,
+  passedCommittee: 0, passedAmt: 0, uniqueDonors: 0, candPairs: 0, cmtePairs: 0,
+};
+
+function makeExternalResult(
+  aggSorted:  SortedGroups<AggValue>,
+  metaSorted: SortedGroups<MetaValue>,
+  sortDir:    string,
+): IndivStreamResult {
   return {
-    aggregations,
-    committeeAggregations,
-    donorMetas,
-    stats: { linesRead, passedTxType, passedCmte, passedCand, passedCommittee, passedAmt },
+    mode: "external",
+    stats: { ...EMPTY_STATS },
+
+    async *readAggregations() {
+      for await (const { key, value } of aggSorted) {
+        const { fp, route, recipient } = splitAggKey(key);
+        if (route !== ROUTE_CAND) continue;
+        yield {
+          donorFingerprint: fp,
+          candId:           recipient,
+          totalCents:       value.cents,
+          txCount:          value.count,
+          latestDate:       value.maxDt,
+        };
+      }
+    },
+
+    async *readCommitteeAggregations() {
+      for await (const { key, value } of aggSorted) {
+        const { fp, route, recipient } = splitAggKey(key);
+        if (route !== ROUTE_CMTE) continue;
+        yield {
+          donorFingerprint: fp,
+          cmteId:           recipient,
+          totalCents:       value.cents,
+          txCount:          value.count,
+          latestDate:       value.maxDt,
+        };
+      }
+    },
+
+    // Merge-join: both files are fingerprint-ordered, so the donor's cycle
+    // total (across BOTH routes) is summed on the fly. This is what removed the
+    // last O(donors) map from the stage — the pre-FIX-961 code built a
+    // `cycleDonorTotals` Map over every fingerprint before the donor upsert.
+    readDonorInputs() {
+      return mergeJoinGrouped<MetaValue, AggValue, IndivDonorInput>(
+        metaSorted, aggSorted, aggKeyDonor,
+        (fp, meta, aggs) => {
+          let total = 0;
+          for (const a of aggs) total += a.cents;
+          return {
+            fingerprint:       fp,
+            displayName:       meta.displayName,
+            city:              meta.city,
+            state:             meta.state,
+            zip5:              meta.zip5,
+            employer:          meta.employer,
+            occupation:        meta.occupation,
+            totalDonatedCents: total,
+          };
+        },
+      );
+    },
+
+    async dispose() {
+      await aggSorted.dispose();
+      await metaSorted.dispose();
+      try { fs.rmSync(sortDir, { recursive: true, force: true }); } catch { /* best effort */ }
+    },
+  };
+}
+
+function makeMemoryResult(
+  aggregations:          Map<string, IndivAggregation>,
+  committeeAggregations: Map<string, IndivCommitteeAggregation>,
+  donorMetas:            Map<string, IndivDonorMeta>,
+): IndivStreamResult {
+  return {
+    mode: "memory",
+    stats: { ...EMPTY_STATS },
+
+    async *readAggregations() { yield* aggregations.values(); },
+    async *readCommitteeAggregations() { yield* committeeAggregations.values(); },
+
+    async *readDonorInputs() {
+      // The pre-FIX-961 shape, verbatim: sum both aggregation maps into a
+      // per-donor total, then walk donorMetas in insertion order.
+      const totals = new Map<string, number>();
+      for (const agg of aggregations.values()) {
+        totals.set(agg.donorFingerprint, (totals.get(agg.donorFingerprint) ?? 0) + agg.totalCents);
+      }
+      for (const agg of committeeAggregations.values()) {
+        totals.set(agg.donorFingerprint, (totals.get(agg.donorFingerprint) ?? 0) + agg.totalCents);
+      }
+      for (const [fp, meta] of donorMetas.entries()) {
+        yield { ...meta, totalDonatedCents: totals.get(fp) ?? 0 };
+      }
+    },
+
+    async dispose() {
+      aggregations.clear();
+      committeeAggregations.clear();
+      donorMetas.clear();
+    },
   };
 }
