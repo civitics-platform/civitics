@@ -10,9 +10,29 @@
  * results to pipeline_state key 'cron_last_run'.
  *
  * What this route does: confirms Vercel's scheduler is alive by writing a
- * `triggered` row to data_sync_log and updating pipeline_state.cron_last_started.
- * If GitHub Actions fails to run, you'll see a triggered row with no matching
+ * `dispatched` row to data_sync_log and updating pipeline_state.cron_last_started.
+ * If GitHub Actions fails to run, you'll see a dispatched row with no matching
  * cron_last_run completion — that's the signal something's wrong.
+ *
+ * FIX-1054 — why `dispatched` with completed_at set, and not `triggered`.
+ * This row used to be written status='triggered' with completed_at NULL and
+ * nothing ever closed it, so 104 of them accumulated between 2026-04-30 and
+ * 2026-08-17 — essentially every nightly dispatch ever made. The dispatch is
+ * instantaneous by construction (the actual work runs in GHA and reports under
+ * nightly_cron and the per-stage pipeline names, all of which close correctly),
+ * so an open-ended row misrepresented a completed handoff as work in flight.
+ * Consequences that made it worth fixing rather than tolerating: every
+ * freshness/liveness scan over unclosed data_sync_log rows had to special-case
+ * or silently swallow this population, and a genuinely hung dispatch was
+ * indistinguishable from the 104 benign ones.
+ *
+ * `dispatched` + completed_at = started_at keeps the row's whole diagnostic
+ * value — "Vercel's scheduler fired at time T" — while making it terminal. The
+ * resulting zero span is a shape FIX-978 already handles: zero-span writers are
+ * excluded from rate baselines by design, so this cannot manufacture an
+ * infinite rate. Note the reaper is NOT the mechanism that was failing here —
+ * reap_stale_sync_log matches status='running' only, so it never considered
+ * these rows at all.
  *
  * Security: Vercel automatically sends `Authorization: Bearer <CRON_SECRET>`
  * when CRON_SECRET is set in Vercel project env vars.
@@ -63,9 +83,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     // Canary marker — proves Vercel's scheduler is alive. The actual nightly
     // pipeline runs in .github/workflows/nightly.yml.
     await anyDb.from("data_sync_log").insert({
-      pipeline:   "nightly-sync",
-      status:     "triggered",
-      started_at: startedAt.toISOString(),
+      pipeline:     "nightly-sync",
+      // FIX-1054 — terminal, not in-flight. See the header note.
+      status:       "dispatched",
+      started_at:   startedAt.toISOString(),
+      completed_at: startedAt.toISOString(),
       metadata:   {
         triggered_by: "vercel-cron",
         schedule:     "0 2 * * *",
