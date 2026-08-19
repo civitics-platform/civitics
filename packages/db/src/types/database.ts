@@ -474,6 +474,36 @@ export type Database = {
         }
         Relationships: []
       }
+      bgworker_census: {
+        Row: {
+          application_name: string | null
+          backend_type: string | null
+          max_query_age_s: number | null
+          n: number
+          sampled_at: string
+          state: string | null
+          wait_event_type: string | null
+        }
+        Insert: {
+          application_name?: string | null
+          backend_type?: string | null
+          max_query_age_s?: number | null
+          n: number
+          sampled_at?: string
+          state?: string | null
+          wait_event_type?: string | null
+        }
+        Update: {
+          application_name?: string | null
+          backend_type?: string | null
+          max_query_age_s?: number | null
+          n?: number
+          sampled_at?: string
+          state?: string | null
+          wait_event_type?: string | null
+        }
+        Relationships: []
+      }
       bill_details: {
         Row: {
           bill_number: string
@@ -1617,6 +1647,60 @@ export type Database = {
           naics_code?: string | null
           total_cents?: number
           updated_at?: string
+        }
+        Relationships: []
+      }
+      cron_job_budget: {
+        Row: {
+          budget_seconds: number
+          jobname: string
+          note: string | null
+          updated_at: string
+        }
+        Insert: {
+          budget_seconds: number
+          jobname: string
+          note?: string | null
+          updated_at?: string
+        }
+        Update: {
+          budget_seconds?: number
+          jobname?: string
+          note?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      cron_job_budget_action: {
+        Row: {
+          acted_at: string
+          age_seconds: number | null
+          budget_seconds: number | null
+          job_pid: number | null
+          jobid: number
+          jobname: string
+          runid: number
+          signaled: boolean | null
+        }
+        Insert: {
+          acted_at?: string
+          age_seconds?: number | null
+          budget_seconds?: number | null
+          job_pid?: number | null
+          jobid: number
+          jobname: string
+          runid: number
+          signaled?: boolean | null
+        }
+        Update: {
+          acted_at?: string
+          age_seconds?: number | null
+          budget_seconds?: number | null
+          job_pid?: number | null
+          jobid?: number
+          jobname?: string
+          runid?: number
+          signaled?: boolean | null
         }
         Relationships: []
       }
@@ -6400,6 +6484,7 @@ export type Database = {
         Args: { p_recipients: string[] }
         Returns: number
       }
+      enforce_cron_job_budgets: { Args: never; Returns: Json }
       enforce_derived_mvs_unit_budget: {
         Args: { p_budget_seconds?: number }
         Returns: Json
@@ -7185,6 +7270,7 @@ export type Database = {
         }
         Returns: string
       }
+      sample_bgworker_census: { Args: never; Returns: undefined }
       search_graph_entities: {
         Args: { lim?: number; q: string }
         Returns: {
