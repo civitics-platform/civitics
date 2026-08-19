@@ -60,6 +60,7 @@ import {
   type Branch,
   classify,
   constructDbUrlFromEnv,
+  deleteEvidenceCleared,
   envLabel,
   fecState,
   PLATFORM_SQL,
@@ -102,6 +103,11 @@ async function main(): Promise<void> {
   // everything else so the verdict describes one consistent snapshot.
   const REF_SHONTEL = "f29bbd4e-944f-4840-adbd-16a4706a3c02";
   const REF_OSSOFF = "1376dc1e-f697-40b2-8c0f-780f8fe8ea00";
+  // FIX-1064 — the CROSS-PERSON reference case is specifically "Shontel M.
+  // Brown's row was bound to SHERROD Brown's money". Naming the twin by its FEC
+  // CAND_ID rather than by a uuid keeps the reference stable: CAND_IDs are
+  // source data, uuids are ours and a future merge can retire one.
+  const REF_SHONTEL_TWIN_FEC_ID = "S6OH00163";
 
   /** Live facts about a reference official, used to prove a remediation LANDED. */
   interface RefFacts {
@@ -114,6 +120,12 @@ async function main(): Promise<void> {
     donation_cents: string;
     /** other officials rows claiming the SAME CAND_ID (0 once a merge finished) */
     rival_claims: string;
+    /** all donation rows on this row — the denominator `frac` is measured against */
+    own_rows: string;
+    /** overlapping (from_id, cycle_year) row-pairs against the NAMED twin (delete cases only) */
+    twin_shared: string;
+    /** does this row claim the TWIN's CAND_ID? That claim IS the mis-binding. */
+    claims_twin_cand_id: boolean;
   }
 
   let suspects: SuspectRow[];
@@ -128,7 +140,16 @@ async function main(): Promise<void> {
       await client.query<{ officials: string; cents: string }>(PLATFORM_SQL),
       await client.query<{ n: string }>(SUSPECT_COUNT_SQL),
       await client.query<RefFacts>(
-        `SELECT o.id::text AS id,
+        // The twin overlap is computed with the SAME shape SUSPECT_SQL's `ov`
+        // CTE uses — a join of donation rows on (from_id, cycle_year), counting
+        // row-pairs, over ALL donation rows rather than fec_bulk-only — so the
+        // number the guard judges is the number the classifier would judge.
+        // Guarded by a CASE so it is only paid for on the delete reference case.
+        `WITH twin AS (
+           SELECT t.id FROM officials t
+            WHERE t.source_ids->>'fec_candidate_id' = $2 LIMIT 1
+         )
+         SELECT o.id::text AS id,
                 (o.source_ids->>'fec_candidate_id' IS NOT NULL) AS has_cand_id,
                 EXISTS (SELECT 1 FROM financial_relationships fr
                          WHERE fr.to_type='official' AND fr.relationship_type='donation'
@@ -141,9 +162,26 @@ async function main(): Promise<void> {
                   WHERE r.id <> o.id
                     AND o.source_ids->>'fec_candidate_id' IS NOT NULL
                     AND r.source_ids->>'fec_candidate_id'
-                        = o.source_ids->>'fec_candidate_id')::text AS rival_claims
+                        = o.source_ids->>'fec_candidate_id')::text AS rival_claims,
+                COALESCE((SELECT count(*) FROM financial_relationships fr
+                           WHERE fr.to_type='official' AND fr.relationship_type='donation'
+                             AND fr.to_id = o.id), 0)::text AS own_rows,
+                (CASE WHEN o.id = $3::uuid
+                      THEN (o.source_ids->>'fec_candidate_id' IS NOT DISTINCT FROM $2)
+                      ELSE false END) AS claims_twin_cand_id,
+                (CASE WHEN o.id = $3::uuid THEN COALESCE((
+                        SELECT count(*)
+                          FROM financial_relationships a
+                          JOIN financial_relationships b
+                            ON b.from_id = a.from_id
+                           AND b.cycle_year IS NOT DISTINCT FROM a.cycle_year
+                           AND b.to_type='official' AND b.relationship_type='donation'
+                           AND b.to_id = (SELECT id FROM twin)
+                         WHERE a.to_type='official' AND a.relationship_type='donation'
+                           AND a.to_id = o.id), 0)
+                      ELSE 0 END)::text AS twin_shared
            FROM officials o WHERE o.id = ANY($1::uuid[])`,
-        [[REF_SHONTEL, REF_OSSOFF]],
+        [[REF_SHONTEL, REF_OSSOFF], REF_SHONTEL_TWIN_FEC_ID, REF_SHONTEL],
       ),
     ];
     suspects = sRes.rows;
@@ -257,8 +295,30 @@ async function main(): Promise<void> {
   //          must now CARRY the CAND_ID, with no rival row claiming it. That is
   //          "the survivor holds the merged total", which a predicate bug cannot
   //          fake: a broken query leaves the id unwritten and the rival present.
-  //   delete (FIX-934, CROSS-PERSON) — the mis-bound rows are gone, so the row
-  //          must hold NO fec_bulk donation money and claim no CAND_ID.
+  //   delete (FIX-934, CROSS-PERSON) — the MIS-BOUND money is gone. Measured by
+  //          the residual overlap against the NAMED twin no longer clearing the
+  //          classifier's own boundary, plus the row not claiming the twin's
+  //          CAND_ID. A predicate bug cannot fake that either: the overlap is
+  //          read straight off financial_relationships, not off SUSPECT_SQL.
+  //
+  // FIX-1064 — the delete predicate used to be `!holds_fec_money && !has_cand_id`,
+  // i.e. "the row is completely empty". That describes a phantom/duplicate row,
+  // NOT the reference case. Shontel M. Brown is a sitting Representative who
+  // legitimately carries her own CAND_ID (H2OH11169) and legitimately holds her
+  // own donors; FIX-934 deleted only the rows duplicating SHERROD Brown's money,
+  // and should not have emptied her row. So the old predicate could never pass
+  // for a real person, and from the moment FIX-934 shipped (08-05) this audit
+  // exited non-zero on a CLEAN signal — measured 08-18: 0 CROSS suspects, $0,
+  // corroborated independently by audit-cross-person-misattribution.ts, and
+  // still "the signal is wrong".
+  //
+  // The replacement is the classifier's OWN test, so the guard tracks the
+  // boundary instead of a hardcoded count. Prod 2026-08-18: 42,681 shared pairs
+  // before FIX-934, 266 after, against fracCut 0.1667 / sharedFloor 146 —
+  // 266/3,578 = 0.0743, below the cut, so the row would now be filed UNIQUE
+  // HOLDER rather than CROSS-PERSON. The residual is real: two Ohio Democrats
+  // genuinely share donors. What must not survive is overlap at a level the
+  // classifier would still call misattribution.
   type Remediation = "merge" | "delete";
   const refVerdict = (
     id: string,
@@ -279,12 +339,19 @@ async function main(): Promise<void> {
             `money=${f.holds_fec_money}, rival_claims=${f.rival_claims})`,
       };
     }
-    const ok = !f.holds_fec_money && !f.has_cand_id;
+    const shared = Number(f.twin_shared);
+    const { ok, frac } = deleteEvidenceCleared(
+      { twinShared: shared, ownRows: Number(f.own_rows), claimsTwinCandId: f.claims_twin_cand_id },
+      boundary,
+    );
     return {
       ok,
       observed: ok
-        ? "CLEARED (no fec_bulk donation money, no CAND_ID claim)"
-        : `**ABSENT — delete evidence missing** (money=${f.holds_fec_money}, cand_id=${f.has_cand_id})`,
+        ? `CLEARED (residual overlap ${shared.toLocaleString()} pairs, frac ${frac.toFixed(4)} ` +
+          `< cut ${boundary.fracCut.toFixed(4)}; keeps its own ${usd(f.donation_cents)})`
+        : `**ABSENT — delete evidence missing** (shared=${shared}, frac=${frac.toFixed(4)}, ` +
+          `cut=${boundary.fracCut.toFixed(4)}, floor=${boundary.sharedFloor}, ` +
+          `claims_twin_cand_id=${f.claims_twin_cand_id})`,
     };
   };
   const vShontel = refVerdict(REF_SHONTEL, refShontel, "CROSS-PERSON MISATTRIBUTION", "delete");
@@ -414,7 +481,10 @@ async function main(): Promise<void> {
   L.push("| case | expected branch | observed | shared pairs | ✓ |");
   L.push("|---|---|---|---:|:-:|");
   L.push(
-    `| Shontel M. Brown → Sherrod Brown | CROSS-PERSON MISATTRIBUTION | ${vShontel.observed} | ${refShontel?.shared ?? "—"} | ${shontelOk ? "✓" : "✗"} |`,
+    // Once the remediation lands the suspect leaves the population, so `shared`
+    // has no classified row to come from — fall back to the residual overlap the
+    // guard itself measured (FIX-1064) rather than printing an uninformative em-dash.
+    `| Shontel M. Brown → Sherrod Brown | CROSS-PERSON MISATTRIBUTION | ${vShontel.observed} | ${refShontel?.shared ?? refFacts.get(REF_SHONTEL)?.twin_shared ?? "—"} | ${shontelOk ? "✓" : "✗"} |`,
   );
   L.push(
     `| Jon Ossoff (elected) → Ossoff (candidate) | SAME-PERSON DUPLICATE | ${vOssoff.observed} | ${refOssoff?.shared ?? "—"} | ${ossoffOk ? "✓" : "✗"} |`,

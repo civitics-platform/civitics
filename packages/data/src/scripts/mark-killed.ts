@@ -55,8 +55,97 @@
 
 import { createAdminClient } from "@civitics/db";
 import { captureRssMb, githubRunIdentity } from "../pipelines/sync-log";
+import { constructDbUrlFromEnv } from "./fec-orphan-classify";
 
 const KILLED_PIPELINE = "nightly_killed";
+
+/**
+ * FIX-1065 — the two data_sync_log operations mark-killed needs, over whichever
+ * route is actually available.
+ *
+ * `direct` is preferred: pg.Client speaks to Postgres itself and needs no
+ * schema cache, so it keeps working in the exact condition this backstop exists
+ * for — a box too loaded for PostgREST to answer. `postgrest` is the fallback
+ * for environments with no direct URL (no SUPABASE_DB_URL and no
+ * SUPABASE_DB_PASSWORD to build a pooler URL from).
+ *
+ * Nothing here throws on connect: a failed direct connect falls back rather
+ * than taking down a step whose entire contract is "observability, never a
+ * gate, always exit 0".
+ */
+interface KillDb {
+  route: "direct" | "postgrest";
+  selectRecent(pipeline: string, since: string): Promise<SyncRow[]>;
+  insertKilled(row: Record<string, unknown>): Promise<void>;
+  close(): Promise<void>;
+}
+
+async function openDb(): Promise<KillDb> {
+  const url = constructDbUrlFromEnv();
+  if (url) {
+    try {
+      const { Client } = await import("pg");
+      // Short connect/statement bounds: this runs as a post-timeout backstop
+      // step, so it must fail over fast rather than hang the job.
+      const client = new Client({ connectionString: url, statement_timeout: 30_000 });
+      await client.connect();
+      return {
+        route: "direct",
+        async selectRecent(pipeline, since) {
+          const res = await client.query<SyncRow>(
+            `SELECT id, status, started_at, completed_at, metadata
+               FROM public.data_sync_log
+              WHERE pipeline = $1 AND started_at >= $2
+              ORDER BY started_at DESC
+              LIMIT 50`,
+            [pipeline, since],
+          );
+          return res.rows;
+        },
+        async insertKilled(row) {
+          await client.query(
+            `INSERT INTO public.data_sync_log
+               (pipeline, status, started_at, completed_at, error_message, metadata)
+             VALUES ($1, $2, $3, $4, $5, $6::jsonb)`,
+            [
+              row["pipeline"], row["status"], row["started_at"],
+              row["completed_at"], row["error_message"], JSON.stringify(row["metadata"]),
+            ],
+          );
+        },
+        async close() {
+          await client.end().catch(() => {});
+        },
+      };
+    } catch (err) {
+      console.warn(
+        `[mark-killed] direct pg connect failed (${(err as Error).message}) — falling back to PostgREST`,
+      );
+    }
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = createAdminClient() as any;
+  return {
+    route: "postgrest",
+    async selectRecent(pipeline, since) {
+      const { data, error } = await db
+        .from("data_sync_log")
+        .select("id, status, started_at, completed_at, metadata")
+        .eq("pipeline", pipeline)
+        .gte("started_at", since)
+        .order("started_at", { ascending: false })
+        .limit(50);
+      if (error) throw new Error(error.message);
+      return (data ?? []) as SyncRow[];
+    },
+    async insertKilled(row) {
+      const { error } = await db.from("data_sync_log").insert(row);
+      if (error) throw new Error(error.message);
+    },
+    async close() {},
+  };
+}
 
 export interface OwnRun {
   /** GITHUB_RUN_ID for this job's workflow run. */
@@ -245,24 +334,33 @@ async function main(): Promise<void> {
     console.warn(`[mark-killed] ignoring unparseable --job-started-at '${jobStartedAt}'`);
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const db = createAdminClient() as any;
+  // FIX-1065 — direct pg.Client FIRST, PostgREST only as fallback.
+  //
+  // This backstop exists for the case "the run was killed", and a run is most
+  // likely to be killed precisely when the database is overloaded — which is
+  // precisely when PostgREST is least likely to be answering. Measured
+  // 2026-08-18: fec-backfill run 32097136492 was SIGTERMd at its 350-minute cap,
+  // and mark-killed then failed with "Could not query the database for the
+  // schema cache" because PostgREST was returning 503 PGRST002 (FIX-1063). The
+  // marker was only written after the project restart. Routing the backstop
+  // through the component most likely to be down in the situation it exists for
+  // is a structural coupling, not bad luck.
+  //
+  // pg.Client needs no schema cache, so it survives exactly that condition.
+  // FIX-444 set the precedent for going direct when PostgREST is unsuitable.
+  const conn = await openDb();
+  console.log(`[mark-killed] db route: ${conn.route}`);
 
-  const { data, error } = await db
-    .from("data_sync_log")
-    .select("id, status, started_at, completed_at, metadata")
-    .eq("pipeline", pipeline)
-    .gte("started_at", since)
-    .order("started_at", { ascending: false })
-    .limit(50);
-
-  if (error) {
-    console.warn(`[mark-killed] data_sync_log query failed: ${error.message}`);
+  let rows: SyncRow[];
+  try {
+    rows = await conn.selectRecent(pipeline, since);
+  } catch (err) {
+    console.warn(`[mark-killed] data_sync_log query failed: ${(err as Error).message}`);
     // Observability, not a gate — always exit 0.
+    await conn.close();
     return;
   }
 
-  const rows = (data ?? []) as SyncRow[];
   const { finished, orphan, orphanIsOwnRun, foreignFinished, binding } = selectKillTarget(
     rows,
     phase,
@@ -278,6 +376,7 @@ async function main(): Promise<void> {
     console.log(
       `[mark-killed] ${phaseLabel} own run finished (status=${finished.status}, id=${finished.id}) — no-op`,
     );
+    await conn.close();
     return;
   }
   // FIX-963: this is the line that used to be a no-op. Terminal rows from an
@@ -292,11 +391,12 @@ async function main(): Promise<void> {
     console.log(
       `[mark-killed] no '${phaseLabel}' running row in last ${windowHours}h — no-op (workflow may not have started)`,
     );
+    await conn.close();
     return;
   }
 
   const now = new Date().toISOString();
-  const { error: insErr } = await db.from("data_sync_log").insert({
+  const killedRow = {
     pipeline:      KILLED_PIPELINE,
     status:        "failed",
     started_at:    orphan.started_at ?? now,
@@ -326,12 +426,16 @@ async function main(): Promise<void> {
       ...githubRunIdentity(),
       peak_rss_mb:     captureRssMb(),
     },
-  });
+  };
 
-  if (insErr) {
-    console.warn(`[mark-killed] insert failed (non-fatal): ${insErr.message}`);
+  try {
+    await conn.insertKilled(killedRow);
+  } catch (err) {
+    console.warn(`[mark-killed] insert failed (non-fatal): ${(err as Error).message}`);
+    await conn.close();
     return;
   }
+  await conn.close();
   console.log(
     `[mark-killed] wrote '${KILLED_PIPELINE}' row for orphan ${pipeline} run ` +
       `(id=${orphan.id}, started_at=${orphan.started_at}, own_run=${orphanIsOwnRun ?? false}, completed_at=NULL)`,

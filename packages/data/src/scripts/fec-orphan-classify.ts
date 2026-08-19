@@ -405,6 +405,36 @@ export function branchOf(
   };
 }
 
+/**
+ * FIX-1064 — has a CROSS-PERSON delete remediation demonstrably landed?
+ *
+ * Asked of a reference case that has LEFT the suspect population, where "is it
+ * in the expected branch" can no longer be evaluated. The question is not "is
+ * this row empty" — that describes a phantom/duplicate row, and the reference
+ * case is a sitting Representative who legitimately holds her own donors and
+ * her own CAND_ID. The question is whether the MIS-BOUND money is gone.
+ *
+ * Two things must hold:
+ *   1. the residual overlap against the named twin no longer clears the
+ *      classifier's own boundary — i.e. `branchOf` would not call this row
+ *      CROSS-PERSON MISATTRIBUTION again;
+ *   2. the row does not claim the twin's CAND_ID, which IS the mis-binding.
+ *
+ * Deliberately expressed with `branchOf`'s exact conjunction rather than a
+ * hardcoded count, so the guard moves when the boundary moves. Neither input
+ * comes from SUSPECT_SQL, so a broken suspect predicate cannot fake a pass —
+ * which is the property the whole reference-case check exists to have.
+ */
+export function deleteEvidenceCleared(
+  facts: { twinShared: number; ownRows: number; claimsTwinCandId: boolean },
+  boundary: Pick<Boundary, "fracCut" | "sharedFloor">,
+): { ok: boolean; frac: number; stillOverlapping: boolean } {
+  const frac = facts.ownRows > 0 ? facts.twinShared / facts.ownRows : 0;
+  const stillOverlapping =
+    frac >= boundary.fracCut && facts.twinShared >= boundary.sharedFloor;
+  return { ok: !stillOverlapping && !facts.claimsTwinCandId, frac, stillOverlapping };
+}
+
 export type ClassifiedRow = EnrichedRow & { branch: Branch; decidedBy: string; stateOk: boolean };
 
 /** Enrich + derive the boundary + classify, in one pass. */
