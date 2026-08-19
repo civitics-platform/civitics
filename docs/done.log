@@ -1262,3 +1262,4 @@
 2026-08-18 | FIX-1064 | ed672017 | local-only | fix(audit,mark-killed): judge the mis-bound money, and stop routing the backstop through the thing that is down
 2026-08-18 | FIX-1065 | ed672017 | local-only | fix(audit,mark-killed): judge the mis-bound money, and stop routing the backstop through the thing that is down
 2026-08-18 | FIX-1066 | f00b6e64 | local+prod | fix(cron): bound the CALL-shaped jobs from outside, and unstack Tuesday morning
+2026-08-18 | FIX-961 | 116dce2f | local+prod | feat(fec): land cycle-2020 individual money — $6.66B across 3.3M relationships
