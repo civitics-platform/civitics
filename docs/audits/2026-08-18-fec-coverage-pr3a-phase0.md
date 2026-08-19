@@ -376,3 +376,74 @@ was not the proximate cause, though its earlier load contributed to the cold cac
   rows / $5,750 to that official). Filed as **FIX-1064**.
 - Left `running`, artifacts of the cancels/restart:
   `treemap_individuals_global_refresh` (08:15) and `run_rule_taggers` (10:00).
+
+---
+
+## 6. Addendum — the resume completed; FIX-961 closes
+
+`fec-backfill` run **32200957208**, `cycles=2020`, dispatched 2026-08-19 00:21:55 UTC into
+a quiet box, **succeeded at 03:15:36** (2h53m41s).
+
+FIX-754 resume did its job: `donor-entities` was already banked, so the run rebuilt the
+1,944,958-fingerprint donor id map by direct-pg read in 6.5 min instead of re-upserting
+90 minutes of donors.
+
+| stage | upserted | failed |
+|---|---:|---:|
+| indiv → candidate | 1,473,106 (completing 2,165,106/2,165,106) | 0 |
+| indiv → committee | 1,149,355 (1,149,355/1,149,355) | 0 |
+| skipped_unresolved | **0** (FIX-686) | — |
+| IE relationships | 4,106 | 0 |
+| cross-cycle entity totals | 4,401 | 0 |
+
+**Cycle-2020 individual money now on prod:**
+
+| source | rows | dollars | tx |
+|---|---:|---:|---:|
+| `fec_bulk_indiv` → officials | 2,165,106 | $2,379,532,703 | 3,265,730 |
+| `fec_bulk_indiv_to_committee` | 1,149,355 | $4,281,860,748 | 2,098,589 |
+| **total** | **3,314,461** | **$6,661,393,451** | 5,364,319 |
+
+### The write-ordering verdict (PR 3b input)
+
+Craig's kill criterion was: sustained under ~5,000/min for 30 minutes on a quiet box →
+cancel. It never came close.
+
+| window | rate |
+|---|---:|
+| 00:43 | 20,377/min |
+| 00:48 | 19,200/min |
+| 00:52 | 18,921/min |
+| 00:58 | 20,800/min |
+| 01:03 | 19,628/min |
+| … through the full 78-minute candidate stage | ~18,900/min average |
+
+Same table, same fingerprint-ordered emission (random against the arbiter's `from_id`),
+same ~11–14M-row `financial_relationships`: **20,400/min on a quiet box versus 300/min
+under Tuesday-morning contention.** Write ordering is NOT the constraint. PR 3b's +50%
+row growth needs a scheduling slot, not a write-ordering redesign.
+
+Caveat kept honest: the 08-18 10:48 vacuum also left both tables at zero dead tuples with
+fresh stats, so vacuum state and contention moved in the same direction. The contention
+explanation carries most of the weight (a 68× swing), but the vacuum is not proven to
+have contributed nothing.
+
+### Verification
+
+- Both attribution detectors: **CROSS-PERSON MISATTRIBUTION 0 / $0** ✅, and with the
+  FIX-1064 guard fix both reference cases now pass for the right reason (Shontel CLEARED
+  on residual overlap 267 pairs / frac 0.0742 < cut 0.1667; Ossoff MERGED holding
+  $78,791,661 — up from $39,800,406, which is the cycle-2020 money landing).
+- `VACUUM (ANALYZE)` tail: the pipeline vacuumed `financial_entities` itself (44.7s,
+  FIX-943 rule), but nothing covered `financial_relationships`, which gained ~2.6M rows.
+  Run by hand on the quiet box at 03:39–03:40 — FR 56s, FE 12s, both analyzed ahead of
+  the 09:00/12:00 donor-rollup whose cost is gated by exactly that.
+- Sync row closed `complete` (ins=2,782,408); `fec_bulk_run_state` cleared.
+
+### One defect this run surfaced
+
+The nightly `fec-phase` opened its own `fec_bulk` row at 03:02:27 and **overlapped this
+run by 13 minutes**, then re-processed cycle 2020 from the shared
+`pipeline_state.fec_bulk_run_state` key. The two workflows declare different GHA
+concurrency groups, so nothing serializes them. Idempotent upserts meant no damage here,
+but the resume cursor is not idempotent state. Filed as **FIX-1067**.
