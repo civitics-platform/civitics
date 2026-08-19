@@ -1258,3 +1258,7 @@
 2026-08-17 | FIX-1055 | 97d3162e | closes-as-no-op | fix(rollups): bound and bank the EC rebuild — and the contracts arm was never the 6h
 2026-08-17 | FIX-1056 | 97d3162e | local+prod | fix(rollups): bound and bank the EC rebuild — and the contracts arm was never the 6h
 2026-08-17 | FIX-904 | 97d3162e | closes-as-recognized | fix(rollups): bound and bank the EC rebuild — and the contracts arm was never the 6h
+2026-08-18 | FIX-1063 | f00b6e64 | local+prod | fix(cron): bound the CALL-shaped jobs from outside, and unstack Tuesday morning
+2026-08-18 | FIX-1064 | ed672017 | local-only | fix(audit,mark-killed): judge the mis-bound money, and stop routing the backstop through the thing that is down
+2026-08-18 | FIX-1065 | ed672017 | local-only | fix(audit,mark-killed): judge the mis-bound money, and stop routing the backstop through the thing that is down
+2026-08-18 | FIX-1066 | f00b6e64 | local+prod | fix(cron): bound the CALL-shaped jobs from outside, and unstack Tuesday morning
