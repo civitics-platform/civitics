@@ -1272,3 +1272,4 @@
 2026-08-19 | FIX-1072 | b0934460 | local+prod | feat(ec): window the incremental donations arm — an arm that is one statement cannot be budgeted, banked or resumed
 2026-08-19 | FIX-1075 | a7c41332 | local+prod | fix(ec): make an absent window map a REFUSAL to close, not a silent pass
 2026-08-19 | FIX-1075 | reopen | reopen | trailer was a mis-tag: a7c41332 hardens rebuild_ec_donations_incr_close() (FIX-1069 work), it does NOT extend windowing to the remaining EC arms, which is what FIX-1075 asks for. FIX-1075 remains OPEN and unstarted.
+2026-08-19 | FIX-1069 | c9d93c52 | local+prod | feat(ec): drain 5 of 16 donation windows on prod, and give the drain the vacuum tail it owed
