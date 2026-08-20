@@ -206,18 +206,70 @@ function main() {
       : "NOT closed (a window still lags)"}`);
   }
 
+  // ── VACUUM the table we just bulk-rewrote (CLAUDE.md standing convention) ──
+  // Not optional and not belt-and-braces. Measured on the first prod drain
+  // 2026-08-20: 5 windows rewrote 1,760,324 edges and took entity_connections
+  // from 100% all-visible to 77.3%, with 4.21% dead tuples — a heap page loses
+  // its all-visible mark if ANY tuple on it is dead, so every index-only scan
+  // over EC silently degrades to per-row heap fetches (that is FIX-884: 0.9%
+  // all-visible -> 34,534 heap fetches -> 20.5s of a 22.1s query). Autovacuum
+  // had already fired mid-drain and had NOT closed it. The vacuum below took
+  // ~90s and restored 0 dead / 100% all-visible.
+  //
+  // Runs after the windows commit, never inside one (VACUUM cannot run in a
+  // transaction), and on the early-stop path too — a partial drain rewrote just
+  // as many pages as a complete one.
+  if (ran > 0) {
+    console.log("[drain] VACUUM (ANALYZE) entity_connections — FIX-943 bulk-rewrite rule...");
+    const v0 = Date.now();
+    q(`VACUUM (ANALYZE) public.entity_connections`);
+    console.log(`[drain] vacuum done in ${((Date.now() - v0) / 1000).toFixed(1)}s`);
+  }
+
   const after = q(`SELECT value->>'last_indexed_at', (value ? 'cycle')::text
                      FROM public.pipeline_state WHERE key='entity_connections_donations'`)[0];
-  const d1 = q(DIRTY_SQL)[0];
+  const cycleOpen = after[1] === "true";
+
+  // Intra-cycle progress. The scalar watermark is the MIN across the 16 windows,
+  // so mid-cycle it does not move at all and the dirty-set-since-scalar query
+  // reports the FULL original backlog no matter how many windows have banked.
+  // Reporting only that would tell an operator who just drained a third of the
+  // donor space that nothing happened. Count the windows instead.
+  const prog = q(`SELECT count(*) FILTER (WHERE (e.value)::timestamptz >= '${target}'::timestamptz),
+                         count(*) FILTER (WHERE (e.value)::timestamptz <  '${target}'::timestamptz)
+                    FROM public.pipeline_state ps,
+                         jsonb_each_text(ps.value->'windows') AS e(key, value)
+                   WHERE ps.key='entity_connections_donations'`)[0];
 
   console.log("");
   console.log("[drain] ---- result ------------------------------------------");
   console.log(`[drain] windows run: ${ran}   skipped: ${skipped}   edges written: ${totalEdges.toLocaleString()}`);
   console.log(`[drain] total elapsed: ${((Date.now() - t0) / 60000).toFixed(1)} min`);
+  console.log(`[drain] windows at target: ${prog[0]}/16   still pending: ${prog[1]}`);
   console.log(`[drain] scalar watermark now: ${after[0]}`);
   console.log(`[drain] cycle still open:     ${after[1]}`);
-  console.log(`[drain] RESIDUAL dirty set:   ${Number(d1[0]).toLocaleString()} rows / ${Number(d1[1]).toLocaleString()} donors`);
-  console.log("[drain] ^ this is what the next scheduled firing will find.");
+
+  if (cycleOpen) {
+    const remaining = q(`SELECT count(*) FROM public.ec_donations_incr_dirty d
+                          WHERE ('x' || substr(replace(d.from_id::text,'-',''),1,1))::bit(4)::int
+                                IN (SELECT e.key::int
+                                      FROM public.pipeline_state ps,
+                                           jsonb_each_text(ps.value->'windows') AS e(key, value)
+                                     WHERE ps.key='entity_connections_donations'
+                                       AND (e.value)::timestamptz < '${target}'::timestamptz)`)[0][0];
+    const staged = q(`SELECT count(*) FROM public.ec_donations_incr_dirty`)[0][0];
+    console.log(`[drain] CYCLE INCOMPLETE — ${Number(remaining).toLocaleString()} of ${Number(staged).toLocaleString()} staged donors still owed,`);
+    console.log(`[drain] in the ${prog[1]} pending window(s). The next firing RESUMES this cycle:`);
+    console.log("[drain] it reuses the staging table, skips the banked windows instantly, and");
+    console.log("[drain] finishes the rest. Re-run this script to drain more before then.");
+    console.log("[drain] NOTE: the scalar watermark deliberately does NOT move until the last");
+    console.log("[drain] window lands, so a dirty-set-since-watermark query still reports the");
+    console.log("[drain] full backlog. That is the conservative reading, not a lack of progress.");
+  } else {
+    const d1 = q(DIRTY_SQL)[0];
+    console.log(`[drain] CYCLE CLOSED. Residual dirty set: ${Number(d1[0]).toLocaleString()} rows / ${Number(d1[1]).toLocaleString()} donors`);
+    console.log("[drain] ^ this is what the next scheduled firing will find.");
+  }
 }
 
 try { main(); } catch (e) { console.error("[drain] FAILED:", e.message); process.exit(1); }

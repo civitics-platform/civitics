@@ -283,15 +283,90 @@ quiet slot) would take Monday's dirty set to near zero. It is supervised and
 interruptible; `--until` stops before a window it cannot finish, and stopping is
 free.
 
-**Sizing expectation for the drain.** Local windows over 164k dirty donors ran
-~43 s each. Prod's dirty set is ~12x that (1.96M donors → ~122k per window) on a
-cache-starved box, so windows in the **8–30 min** range are plausible and the
-full 16 may exceed one 4-hour slot. That is survivable by design: run it again
-the next night and it resumes. **Do not treat a partial drain as a failure.**
+---
 
-The prepare/staging build is a single un-interruptible statement (FIX-1018
-class). It is paid once per cycle and not on resume, and it is deliberately
-**not** optimised with a new index here — adding a ~300 MB partial index on
-`(from_id, updated_at)` to a 10.4M-row table days before the deadline is a
-bigger risk than the cost it saves, and the drain's own measurement is the
-correct sizing input for that decision.
+## 8. The first prod drain — measured, 2026-08-20 04:38–05:41 UTC
+
+Run supervised on an idle box (nightly complete 03:06:53, vote-stats 03:30:20,
+0 cron and 0 pipelines running; FR 0.08% dead / 99.5% all-visible, EC 0.07% /
+100%). Hard stop 05:30 to protect `refresh-derived-mvs-daily` at 06:00.
+
+```
+prepare done in 88.0s — 1,961,194 donors staged
+  window  1/16    356,388 edges  702.5s
+  window  2/16    349,871 edges  697.1s
+  window  3/16    352,814 edges  706.8s
+  window  4/16    351,677 edges  718.1s
+  window  5/16    349,574 edges  708.0s
+DEADLINE reached before window 6/16 — stopping cleanly.
+windows run: 5   edges written: 1,760,324   total elapsed: 61.7 min
+```
+
+**Every design property held on prod.** Windows 0–4 carry the cycle target;
+5–15 still carry the old watermark. Exactly 5 banked, 11 pending — the ratchet
+is exact. The scalar `last_indexed_at` did **not** move (it is the MIN, and 11
+windows lag), staging survived intact at 1,961,194 rows, and the cycle stayed
+open, so the next firing resumes for free.
+
+**612,284 of 1,961,194 donors drained (31.2%).**
+
+### 8.1 The pre-loop cost is a non-issue — no index needed
+
+**88 seconds** to stage 1,961,194 donors. That retires the FIX-1018-class
+concern in §7 and settles the index question: a ~300 MB partial index on
+`(from_id, updated_at)` would be buying back 88 s paid once per cycle. **Do not
+build it.**
+
+### 8.2 Window cost scales cleanly
+
+| | local | prod | ratio |
+|---|---|---|---|
+| donors/window | ~10k | ~122k | 12.2x |
+| seconds/window | 43 | ~707 | 16.3x |
+
+Timings are flat across windows (702/697/707/718/708 s, σ ≈ 8 s), which is the
+uniform nibble partition doing its job. **A full 16-window drain projects to
+~3.2 h** (88 s + 16 × ~707 s) — it fits a 4-hour quiet slot with margin.
+
+### 8.3 A bulk rewrite degrades the visibility map — the script now vacuums
+
+The drain rewrote 1,760,324 edges and took `entity_connections` from **100%
+all-visible to 77.3%**, with 4.21% dead tuples. Autovacuum had already fired
+mid-drain (05:19) and had *not* closed it. That is exactly the FIX-884
+precondition: a heap page loses its all-visible mark if **any** tuple on it is
+dead, so every index-only scan over EC silently degrades to per-row heap fetches.
+
+This was a violation of the standing CLAUDE.md convention (FIX-943: *any script
+that bulk-rewrites a table ends by vacuuming what it rewrote*) in
+`scripts/drain-ec-donations.mjs` itself. `VACUUM (ANALYZE)` run by hand
+immediately after — **~90 s, restoring 0 dead tuples and 100% all-visible** —
+and the vacuum tail is now part of the script, on the early-stop path too,
+because a partial drain dirties just as many pages as a complete one.
+
+### 8.4 A mid-cycle residual cannot be read off the scalar watermark
+
+The script originally closed by reporting "dirty set since the scalar
+watermark", which mid-cycle is **the full original backlog regardless of
+progress** — it told an operator who had just drained 31% of the donor space
+that nothing had happened. Fixed: it now reports windows-at-target, the donors
+still owed in pending windows, and an explicit note that the scalar deliberately
+does not move until the last window lands.
+
+---
+
+## 9. Monday readiness — as it now stands
+
+The cycle is **open** on prod with 5 of 16 windows banked. Monday 08-24 08:00
+UTC therefore does **not** start fresh: `prepare()` finds the open cycle, reuses
+the staging table (no re-stage, no 88 s), skips windows 0–4 instantly, and runs
+the remaining 11 at ~707 s each ≈ **2.2 h** — comfortably inside both the 5 h
+internal budget and FIX-1071's 18,000 s outside bound. It then closes the cycle
+and advances the scalar watermark.
+
+So Monday converges on its own with no further intervention. An optional second
+drain (`node scripts/drain-ec-donations.mjs --prod --allow-prod --until HH:MM`)
+in any quiet slot before then makes Monday close to instant; it needs ~2.2 h to
+finish the cycle outright.
+
+Note the cycle's 7-day guard: `staged_at` is 2026-08-20, so the cycle is valid
+through 2026-08-27. Monday is well inside it.
