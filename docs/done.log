@@ -1268,3 +1268,5 @@
 2026-08-19 | FIX-1061 | d4806b2b | local-only | feat(fec): the $200 floor becomes a per-donor cycle aggregate, applied at emit
 2026-08-19 | FIX-1067 | d4806b2b | local-only | feat(fec): the $200 floor becomes a per-donor cycle aggregate, applied at emit
 2026-08-19 | FIX-1071 | b0ef152a | local+prod | fix(ops): bound the two EC rebuild jobs from outside — an internal budget cannot bound one arm
+2026-08-19 | FIX-1070 | 72f13500 | local-only | fix(home): carry "not measured" through the hero stats, and stop firing fallback queries at a saturated DB
+2026-08-19 | FIX-1072 | b0934460 | local+prod | feat(ec): window the incremental donations arm — an arm that is one statement cannot be budgeted, banked or resumed
