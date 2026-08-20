@@ -1265,3 +1265,5 @@
 2026-08-18 | FIX-961 | 116dce2f | local+prod | feat(fec): land cycle-2020 individual money — $6.66B across 3.3M relationships
 2026-08-18 | FIX-1064 | 713e626b | local+prod | chore(ops): record prod verification of FIX-1064 and FIX-1065
 2026-08-18 | FIX-1065 | 713e626b | local+prod | chore(ops): record prod verification of FIX-1064 and FIX-1065
+2026-08-19 | FIX-1061 | d4806b2b | local-only | feat(fec): the $200 floor becomes a per-donor cycle aggregate, applied at emit
+2026-08-19 | FIX-1067 | d4806b2b | local-only | feat(fec): the $200 floor becomes a per-donor cycle aggregate, applied at emit
