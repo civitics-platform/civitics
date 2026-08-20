@@ -18,7 +18,7 @@
     "data:investigate-entity-backfill-bundle": "tsx --env-file=../../.env.local src/scripts/investigate-entity-backfill-bundle.ts",
     "data:fec:resume-status": "tsx --env-file=../../.env.local src/scripts/investigate-fec-resume-state.ts",
     "data:measure:donor-heap": "node --expose-gc --import tsx src/scripts/measure-donor-stage-heap.ts",
-    "data:fec:indiv-equivalence": "tsx src/scripts/fec-indiv-equivalence.ts",
+    "data:fec:indiv-acceptance": "tsx src/scripts/fec-indiv-equivalence.ts",
     "data:fec:phase0-floor": "tsx src/scripts/fec-phase0-floor-measure.ts",
     "data:fec:resume-status:prod": "tsx --env-file=../../.env.local.prod src/scripts/investigate-fec-resume-state.ts --allow-prod",
     "data:votes": "tsx --env-file=../../.env.local src/pipelines/congress/votes.ts",

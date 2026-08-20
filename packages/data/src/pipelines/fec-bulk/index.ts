@@ -100,17 +100,21 @@ import {
   upsertPacEntitiesBatch,
   upsertIeSpenderEntitiesByName,
   upsertDonationRelationshipsBatch,
-  upsertIndividualDonorsBatch,
-  upsertIndividualDonationsBatch,
-  upsertIndividualToCommitteeDonationsBatch,
   upsertIndependentExpendituresBatch,
-  fetchDonorIdsByFingerprint,
+  // FIX-1061: the three indiv writer stages stream off the sorted files. The
+  // array-taking `upsertIndividual*Batch` trio they replace stays exported for
+  // callers with genuinely small, already-materialized inputs (and for the unit
+  // tests that pin the merge semantics), but is no longer on the pipeline path.
+  streamIndividualDonorEntities,
+  streamIndividualDonations,
+  streamIndividualToCommitteeDonations,
+  replaceSmallDollarBrackets,
+  rebuildSmallDollarForOfficials,
   fetchEntityIdsByCmteId,
   persistNewFecIds,
   type WriterResume,
-  type IndividualDonationInput,
-  type IndividualToCommitteeDonationInput,
   type IndependentExpenditureInput,
+  type SmallDollarBracketWriteRow,
 } from "./writer";
 import {
   planCycleResume,
@@ -150,6 +154,7 @@ import {
   parseRecipientCmtes,
   isRecipientScoped,
   applyRecipientCmteScope,
+  MIN_AGGREGATE_CENTS,
 } from "./indiv";
 import {
   parseIndivStages,
@@ -158,6 +163,7 @@ import {
   INDIV_STAGE_NAMES,
   type IndivStageName,
 } from "./scope";
+import { acquireFecPipelineLock } from "./pipeline-lock";
 import { streamIndependentExpenditures, isMintableSpenderName } from "./indep-exp";
 import { resolveOrMintIeTargets, type IeTargetIdentity } from "./mint-ie-targets";
 import {
@@ -938,10 +944,28 @@ export function buildNonCandRecipientSet(
  *
  * Filters applied while streaming:
  *   TRANSACTION_TP in ('24K', '24Z')   — direct contributions only
- *   TRANSACTION_AMT >= 200             — FEC's itemization threshold; rejects malformed/refund rows
+ *   TRANSACTION_AMT > 0                — rejects malformed / zero / refund rows
  *   CAND_ID in candidateSet            — only our matched officials
  *
- * Returns aggregated totals keyed by "CMTE_ID|CAND_ID".
+ * PR 3b — the $200 floor moved to EMIT, and the comment that used to sit on the
+ * parse-time test was wrong twice over. It read "FEC's itemization threshold",
+ * but (a) itemization is a per-donor CYCLE-AGGREGATE rule, never a
+ * per-transaction one, and (b) it does not apply to this file at all: pas2 is
+ * committee-to-candidate money (Schedule A line 11(c)), which FEC itemizes in
+ * full regardless of amount. The threshold here was therefore a purely
+ * Civitics-imposed per-transaction cut that silently discarded, say, a PAC
+ * giving 3 × $100 to one candidate — $300 of disclosed money, dropped.
+ *
+ * The floor is now applied once to the (committee × candidate × cycle)
+ * aggregate, which is exactly this function's grouping key and exactly one
+ * `financial_relationships` row.
+ *
+ * No bracket rollup for the residual, deliberately: `small_dollar_bracket_rollup`
+ * is the sub-$200 INDIVIDUAL-donor substrate that the "small-dollar" surfaces
+ * read, and folding PAC money into it would make that number mean nothing. The
+ * pas2 residual is logged instead.
+ *
+ * Returns aggregated totals keyed by "CMTE_ID|CAND_ID", floor applied.
  */
 async function streamPas224(
   zipPath:      string,
@@ -988,7 +1012,9 @@ async function streamPas224(
     passedCand++;
 
     const amt = parseFloat(amtStr);
-    if (isNaN(amt) || amt < 200) continue;
+    // PR 3b: admission is `> 0`; the $200 floor is applied to the aggregate
+    // after the stream drains (see below).
+    if (isNaN(amt) || amt <= 0) continue;
     passedAmt++;
 
     const key      = `${cmteId}|${candId}`;
@@ -1009,10 +1035,26 @@ async function streamPas224(
     }
   }
 
+  // PR 3b — the emit floor, applied once per (committee × candidate × cycle)
+  // aggregate. Deleting in place keeps the caller's iteration shape unchanged.
+  let residualPairs = 0, residualCents = 0;
+  for (const [key, agg] of aggregated) {
+    if (agg.totalCents >= MIN_AGGREGATE_CENTS) continue;
+    residualPairs++;
+    residualCents += agg.totalCents;
+    aggregated.delete(key);
+  }
+
   console.log(`    Lines read: ${linesRead.toLocaleString()}`);
   console.log(`    Passed 24K/24Z filter:    ${passedTxType.toLocaleString()}`);
   console.log(`    Passed candidateSet filter: ${passedCand.toLocaleString()}`);
-  console.log(`    Passed $200+ filter:       ${passedAmt.toLocaleString()}`);
+  console.log(`    Admitted (amount > 0):    ${passedAmt.toLocaleString()}`);
+  console.log(`    PAC × candidate pairs:    ${aggregated.size.toLocaleString()}  (aggregate ≥ $200)`);
+  console.log(
+    `    Sub-floor residual:       ${residualPairs.toLocaleString()} pair(s) · ` +
+    `$${(residualCents / 100).toLocaleString("en-US", { maximumFractionDigits: 0 })} ` +
+    `— not emitted, not bracketed (PR 3b; brackets are the individual-donor substrate)`,
+  );
 
   try { fs.unlinkSync(txtPath); } catch { /* best effort */ }
 
@@ -1023,7 +1065,63 @@ async function streamPas224(
 // Main pipeline
 // ---------------------------------------------------------------------------
 
+/**
+ * FIX-1067 — public entrypoint. Takes the cross-run interlock, then delegates.
+ *
+ * The nightly `fec-phase` and the on-demand `fec-backfill` reach this same
+ * function from different GHA concurrency groups and share ONE resume-cursor
+ * key (`pipeline_state.fec_bulk_run_state`), which is not idempotent state. A
+ * second live invocation now REFUSES rather than interleaving. See
+ * ./pipeline-lock.ts for why this is a DB advisory lock and not a shared GHA
+ * concurrency group.
+ *
+ * A refused run is NOT a failure: it opens no sync row, touches no watermark and
+ * returns a clean zero result, so the caller's workflow carries on immediately
+ * instead of queueing behind a run that can legitimately take three hours.
+ */
 export async function runFecBulkPipeline(): Promise<PipelineResult> {
+  const lock = await acquireFecPipelineLock();
+  if (!lock.acquired) {
+    console.warn(
+      `\n=== FEC bulk data pipeline — SKIPPED (another run holds the interlock) ===\n` +
+        `  blocked by: ${lock.blockedBy}\n` +
+        `  Nothing was streamed or written. The FIX-193 watermark is untouched, so the\n` +
+        `  next trigger re-attempts this drop normally. (FIX-1067)`,
+    );
+    await recordSkippedRun(lock.blockedBy ?? "unknown");
+    return { inserted: 0, updated: 0, failed: 0, estimatedMb: 0 };
+  }
+  try {
+    return await runFecBulkPipelineLocked();
+  } finally {
+    await lock.release();
+  }
+}
+
+/**
+ * FIX-1067 — leave a greppable trace of a refusal.
+ *
+ * Terminal (`complete`), never `running`: a `running` row is what the FIX-290
+ * mark-killed detector and the FIX-234 canary treat as a stranded run, and a
+ * refusal is the opposite of stranded. `rows_*` are zero and the reason is in
+ * metadata, so a Data-Health reader can tell "declined to overlap" from "ran and
+ * found nothing". Best-effort — a failure to log must not fail the caller.
+ */
+async function recordSkippedRun(blockedBy: string): Promise<void> {
+  try {
+    const id = await startSync("fec_bulk");
+    if (id) {
+      await completeSync(id, {
+        inserted: 0, updated: 0, failed: 0, estimatedMb: 0,
+        metadata: { skipped: true, skip_reason: "pipeline-interlock", blocked_by: blockedBy, fix: "FIX-1067" },
+      });
+    }
+  } catch (err) {
+    console.warn(`  [fec-lock] could not record the skipped run: ${errMsg(err)}`);
+  }
+}
+
+async function runFecBulkPipelineLocked(): Promise<PipelineResult> {
   console.log("\n=== FEC bulk data pipeline (public, multi-cycle) ===");
   const logId = await startSync("fec_bulk");
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1091,6 +1189,7 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
   let indivDonorsUpserted = 0, indivDonorsFailed = 0;
   let indivRelsUpserted = 0, indivRelsFailed = 0;
   let indivCmteRelsUpserted = 0, indivCmteRelsFailed = 0; // FIX-236
+  let smallDollarBracketRows = 0;                        // FIX-1068
   // FIX-686 integrity counter: donor→committee rows skipped because an entity id
   // failed to resolve. With the retry+throw writers this must read 0; a nonzero
   // value means a committee/donor entity silently went missing — re-run the cycle.
@@ -1730,68 +1829,36 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
                   }
                 };
 
-                // Per-cycle donor rows: meta + the donor's total across BOTH
-                // recipient routes (a donor who gives to a candidate AND a
-                // super PAC counts both toward total_donated_cents).
+                // FIX-700 stage: donor-entities.
                 //
-                // FIX-961: the join now happens inside the indiv stage. The
-                // external path merge-joins two fingerprint-sorted files, so
-                // the `cycleDonorTotals` Map that used to be built here — one
-                // entry per donor, ~1.9M on a presidential cycle — is gone.
-                // FIX-995's donorMetas release is likewise subsumed: nothing
-                // holds a meta map any more.
-                const donorInputs = [];
-                for await (const d of indivResult.readDonorInputs()) donorInputs.push(d);
-
-                // FIX-700 stage: donor-entities. Skipping it leaves
-                // donorIdByFingerprint empty, so the two indiv relationship
-                // stages below resolve no from_id (they log skipped_unresolved).
-                // For the type-10 finish this stage runs.
-                let donorResult: Awaited<ReturnType<typeof upsertIndividualDonorsBatch>> = {
-                  upserted: 0,
-                  failed: 0,
-                  donorIdByFingerprint: new Map<string, string>(),
-                };
+                // FIX-1061: streamed. The pre-1061 shape drained
+                // readDonorInputs() into a whole-cycle `donorInputs` array
+                // (~879k objects for cycle 2026, ~1.94M for 2020) purely to
+                // hand the writer an array and to feed the fingerprint list to
+                // the FIX-754 id-map rebuild. Both are gone: the writer pulls
+                // batches off the sorted stream, and the relationship stages
+                // resolve their own batch's donor ids against the
+                // donor_fingerprint UNIQUE instead of inheriting a map. Peak
+                // memory for this stage is now one 4,000-row batch.
                 if (stageOn("donor-entities") && cycleActiveState && stageIsComplete(cycleActiveState, "donor-entities")) {
-                  // FIX-754: prior run landed every donor — rebuild the id map
-                  // via batched direct-pg reads instead of re-upserting 780k rows.
-                  console.log(
-                    `    ⟳ [donor-entities] complete in prior run — rebuilding donor id map ` +
-                      `via direct-pg read (${donorInputs.length.toLocaleString()} fingerprints) (FIX-754)...`,
-                  );
-                  donorResult = {
-                    upserted: 0,
-                    failed:   0,
-                    donorIdByFingerprint: await fetchDonorIdsByFingerprint(donorInputs.map((d) => d.fingerprint)),
-                  };
-                  console.log(
-                    `    ⟳ [donor-entities] resolved ${donorResult.donorIdByFingerprint.size.toLocaleString()}` +
-                      `/${donorInputs.length.toLocaleString()} fingerprints`,
-                  );
+                  // FIX-754: prior run landed every donor. Nothing to rebuild —
+                  // the id map this used to reconstruct no longer exists.
+                  console.log(`    ⟳ [donor-entities] complete in prior run — skipping (FIX-754)`);
                 } else if (stageOn("donor-entities")) {
-                  console.log(`    Upserting ${donorInputs.length.toLocaleString()} individual donor entities...`);
+                  console.log(
+                    `    Upserting ${indivResult.stats.donorRows.toLocaleString()} individual donor entities (streamed)...`,
+                  );
                   // isScoped ⇒ omit total_donated_cents/total_received_cents so a
                   // partial-slice run doesn't clobber existing donor aggregates.
-                  donorResult = await upsertIndividualDonorsBatch(donorInputs, isScoped, stageResume("donor-entities"));
+                  const donorResult = await streamIndividualDonorEntities(
+                    indivResult.readDonorInputs(),
+                    indivResult.stats.donorRows,
+                    isScoped,
+                    stageResume("donor-entities"),
+                  );
                   indivDonorsUpserted += donorResult.upserted;
                   indivDonorsFailed   += donorResult.failed;
                   console.log(`    Donors — upserted: ${donorResult.upserted}  failed: ${donorResult.failed}`);
-                  // FIX-754: a cursor-resumed upsert only RETURNs ids from the
-                  // start offset on — backfill the rows the prior run committed
-                  // so the two relationship stages can resolve every from_id.
-                  if (cycleActiveState && donorResult.donorIdByFingerprint.size < donorInputs.length) {
-                    const missing = donorInputs
-                      .map((d) => d.fingerprint)
-                      .filter((fp) => !donorResult.donorIdByFingerprint.has(fp));
-                    if (missing.length > 0) {
-                      console.log(
-                        `    ⟳ [donor-entities] backfilling ${missing.length.toLocaleString()} donor ids ` +
-                          `committed by the prior run (FIX-754)...`,
-                      );
-                      const fetched = await fetchDonorIdsByFingerprint(missing);
-                      for (const [fp, id] of fetched) donorResult.donorIdByFingerprint.set(fp, id);
-                    }
-                  }
                   await completeStage("donor-entities");
                 } else {
                   console.log(`    [donor-entities] — skipped (not in FEC_INDIV_STAGES)`);
@@ -1803,29 +1870,24 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
                 if (stageOn("indiv-to-candidate") && cycleActiveState && stageIsComplete(cycleActiveState, "indiv-to-candidate")) {
                   console.log(`    ⟳ [indiv-to-candidate] complete in prior run — skipping (FIX-754)`);
                 } else if (stageOn("indiv-to-candidate")) {
-                  // Build relationship inputs — one per (donor × candidate × cycle)
-                  const indivRelInputs: IndividualDonationInput[] = [];
-                  for await (const agg of indivResult.readAggregations()) {
-                    const fromEntityId = donorResult.donorIdByFingerprint.get(agg.donorFingerprint);
-                    if (!fromEntityId) continue;
-                    const toOfficialId = index.byFecId.get(agg.candId);
-                    if (!toOfficialId) continue;
-                    indivRelInputs.push({
-                      fromEntityId,
-                      toOfficialId,
-                      cycleYear:        parseInt(CYCLE, 10),
-                      amountCents:      agg.totalCents,
-                      occurredAt:       agg.latestDate ? parseFecDate(agg.latestDate) : null,
-                      donorFingerprint: agg.donorFingerprint,
-                      txCount:          agg.txCount,
-                    });
-                  }
-
-                  console.log(`    Upserting ${indivRelInputs.length.toLocaleString()} individual → candidate donation relationships...`);
-                  const indivRelResult = await upsertIndividualDonationsBatch(indivRelInputs, stageResume("indiv-to-candidate"));
+                  // FIX-1061: streamed — one (donor × candidate × cycle) row per
+                  // aggregate, pulled a batch at a time off the fingerprint-sorted
+                  // file. The pre-1061 shape materialized 762,891 objects here for
+                  // cycle 2026 (2,165,106 for 2020) before the writer saw one row.
+                  console.log(
+                    `    Upserting ${indivResult.stats.candPairs.toLocaleString()} individual → candidate donation relationships (streamed)...`,
+                  );
+                  const indivRelResult = await streamIndividualDonations({
+                    source:             indivResult.readAggregations(),
+                    totalItems:         indivResult.stats.candPairs,
+                    cycleYear:          parseInt(CYCLE, 10),
+                    officialIdByCandId: index.byFecId,
+                    parseDate:          parseFecDate,
+                    resume:             stageResume("indiv-to-candidate"),
+                  });
                   indivRelsUpserted += indivRelResult.upserted;
                   indivRelsFailed   += indivRelResult.failed;
-                  console.log(`    Donations (→ candidate) — upserted: ${indivRelResult.upserted}  failed: ${indivRelResult.failed}`);
+                  console.log(`    Donations (→ candidate) — upserted: ${indivRelResult.upserted}  failed: ${indivRelResult.failed}  unresolved: ${indivRelResult.skipped}`);
                   await completeStage("indiv-to-candidate");
                 } else {
                   console.log(`    [indiv-to-candidate] — skipped (not in FEC_INDIV_STAGES)`);
@@ -1916,26 +1978,19 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
                 if (stageOn("indiv-to-committee") && cycleActiveState && stageIsComplete(cycleActiveState, "indiv-to-committee")) {
                   console.log(`    ⟳ [indiv-to-committee] complete in prior run — skipping (FIX-754)`);
                 } else if (stageOn("indiv-to-committee")) {
-                  const indivCmteRelInputs: IndividualToCommitteeDonationInput[] = [];
-                  for await (const agg of indivResult.readCommitteeAggregations()) {
-                    const fromEntityId = donorResult.donorIdByFingerprint.get(agg.donorFingerprint);
-                    if (!fromEntityId) { indivCmteSkippedUnresolved++; continue; } // FIX-686
-                    const toEntityId = entityIdByCmteAcc.get(agg.cmteId);
-                    if (!toEntityId) { indivCmteSkippedUnresolved++; continue; } // FIX-686
-                    indivCmteRelInputs.push({
-                      fromEntityId,
-                      toEntityId,
-                      cycleYear:        parseInt(CYCLE, 10),
-                      amountCents:      agg.totalCents,
-                      occurredAt:       agg.latestDate ? parseFecDate(agg.latestDate) : null,
-                      donorFingerprint: agg.donorFingerprint,
-                      cmteId:           agg.cmteId,
-                      txCount:          agg.txCount,
-                    });
-                  }
-
-                  console.log(`    Upserting ${indivCmteRelInputs.length.toLocaleString()} individual → committee donation relationships...`);
-                  const indivCmteRelResult = await upsertIndividualToCommitteeDonationsBatch(indivCmteRelInputs, stageResume("indiv-to-committee"));
+                  // FIX-1061: streamed, same shape as indiv-to-candidate above.
+                  console.log(
+                    `    Upserting ${indivResult.stats.cmtePairs.toLocaleString()} individual → committee donation relationships (streamed)...`,
+                  );
+                  const indivCmteRelResult = await streamIndividualToCommitteeDonations({
+                    source:           indivResult.readCommitteeAggregations(),
+                    totalItems:       indivResult.stats.cmtePairs,
+                    cycleYear:        parseInt(CYCLE, 10),
+                    entityIdByCmteId: entityIdByCmteAcc,
+                    parseDate:        parseFecDate,
+                    resume:           stageResume("indiv-to-committee"),
+                    onUnresolved:     () => { indivCmteSkippedUnresolved++; },   // FIX-686
+                  });
                   indivCmteRelsUpserted += indivCmteRelResult.upserted;
                   indivCmteRelsFailed   += indivCmteRelResult.failed;
                   console.log(`    Donations (→ committee) — upserted: ${indivCmteRelResult.upserted}  failed: ${indivCmteRelResult.failed}`);
@@ -1943,6 +1998,75 @@ export async function runFecBulkPipeline(): Promise<PipelineResult> {
                   await completeStage("indiv-to-committee");
                 } else {
                   console.log(`    [indiv-to-committee] — skipped (not in FEC_INDIV_STAGES)`);
+                }
+
+                // ── FIX-1068: the sub-$200 residual ──────────────────────────
+                // Groups below the emit floor produce no FR row; they are
+                // bracketed per recipient instead so the money is measured
+                // rather than discarded. Small and bounded (recipients × 3
+                // bands), one delete-then-insert transaction per cycle, no
+                // resume cursor.
+                if (!stageOn("small-dollar-brackets")) {
+                  console.log(`    [small-dollar-brackets] — skipped (not in FEC_INDIV_STAGES)`);
+                } else {
+                  const bracketRows = indivResult.readSmallDollarBrackets();
+                  // Resolve FEC ids → our ids. Candidates come from the match
+                  // index; committees from the pre-upsert map, with a direct-pg
+                  // fallback for committees that received ONLY sub-floor money
+                  // (they never entered cmteEntityInputs, which is built from
+                  // the floored stream, but usually exist already from pas2/cm).
+                  const unresolvedCmtes = new Set<string>();
+                  for (const r of bracketRows) {
+                    if (r.route === "M" && !entityIdByCmteAcc.has(r.recipient)) unresolvedCmtes.add(r.recipient);
+                  }
+                  if (unresolvedCmtes.size > 0) {
+                    const fetched = await fetchEntityIdsByCmteId([...unresolvedCmtes]);
+                    for (const [cmteId, id] of fetched) entityIdByCmteAcc.set(cmteId, id);
+                    console.log(
+                      `    [small-dollar-brackets] resolved ${fetched.size.toLocaleString()}/` +
+                        `${unresolvedCmtes.size.toLocaleString()} sub-floor-only committee(s) via direct-pg`,
+                    );
+                  }
+
+                  const writeRows: SmallDollarBracketWriteRow[] = [];
+                  let bracketUnresolved = 0;
+                  for (const r of bracketRows) {
+                    const id = r.route === "C"
+                      ? index.byFecId.get(r.recipient)
+                      : entityIdByCmteAcc.get(r.recipient);
+                    if (!id) { bracketUnresolved++; continue; }
+                    writeRows.push({
+                      recipientType: r.route === "C" ? "official" : "financial_entity",
+                      recipientId:   id,
+                      bracket:       r.bracket,
+                      donorCount:    r.donorCount,
+                      totalCents:    r.totalCents,
+                      txCount:       r.txCount,
+                    });
+                  }
+
+                  const bracketRes = await replaceSmallDollarBrackets(parseInt(CYCLE, 10), writeRows);
+                  smallDollarBracketRows += bracketRes.inserted;
+                  console.log(
+                    `    Small-dollar brackets — deleted ${bracketRes.deleted.toLocaleString()}, ` +
+                      `inserted ${bracketRes.inserted.toLocaleString()}, ` +
+                      `unresolved recipients ${bracketUnresolved.toLocaleString()}`,
+                  );
+
+                  // Push the new residual into official_small_dollar_rollup for
+                  // the officials it belongs to. See rebuildSmallDollarForOfficials
+                  // for why this cannot be left to the daily dirty-set refresh.
+                  const bracketOfficials = writeRows
+                    .filter((r) => r.recipientType === "official")
+                    .map((r) => r.recipientId);
+                  if (bracketOfficials.length > 0) {
+                    const t0 = Date.now();
+                    const n = await rebuildSmallDollarForOfficials(bracketOfficials);
+                    console.log(
+                      `    Small-dollar rollup — re-aggregated ${n.toLocaleString()} official(s) ` +
+                        `in ${((Date.now() - t0) / 1000).toFixed(1)}s (FIX-1068)`,
+                    );
+                  }
                 }
 
                 // FIX-193 watermark advance: record the FEC Last-Modified we

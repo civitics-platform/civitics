@@ -54,6 +54,13 @@ on:
 permissions:
   contents: read
 
+# FIX-1067: self-serialization only. Cross-workflow serialization against
+# nightly.yml's fec-phase is enforced inside the pipeline by a session-scoped DB
+# advisory lock (packages/data/src/pipelines/fec-bulk/pipeline-lock.ts), NOT by
+# a shared GHA group — see the note on nightly.yml's `concurrency:` block for
+# why queueing is the worse option here. A dispatch that loses the interlock
+# exits cleanly in seconds with the blocking run named in its log; re-dispatch
+# once that run finishes.
 concurrency:
   group: fec-backfill
   cancel-in-progress: false

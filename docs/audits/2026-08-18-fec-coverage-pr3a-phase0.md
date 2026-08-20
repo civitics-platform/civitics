@@ -447,3 +447,139 @@ run by 13 minutes**, then re-processed cycle 2020 from the shared
 `pipeline_state.fec_bulk_run_state` key. The two workflows declare different GHA
 concurrency groups, so nothing serializes them. Idempotent upserts meant no damage here,
 but the resume cursor is not idempotent state. Filed as **FIX-1067**.
+
+---
+
+## 7. Addendum — PR 3b local acceptance (2026-08-19)
+
+PR 3b lands the semantics this document measured. Three FIXes:
+
+| FIX | what |
+|---|---|
+| **FIX-1067** | cross-run interlock around `runFecBulkPipeline()` — the §6 defect |
+| **FIX-1061** | indiv writer stages stream off the sorted files; no whole-cycle arrays |
+| **FIX-1068** | the $200 floor becomes a per-donor cycle-AGGREGATE floor applied at EMIT, with the sub-floor residual bracketed |
+
+### 7.1 Acceptance — the numbers reproduce EXACTLY
+
+Run against the same cached full cycle-2026 file (30,632,248 lines, 5,401 MB
+extracted) through the REAL `streamIndivText`, via the rewritten harness
+(`data:fec:indiv-acceptance`, which replaced `data:fec:indiv-equivalence` — the
+`memory` accumulator it diffed against is retired in this PR).
+
+**Ossoff C00718866 — against §2.3:**
+
+| | §2.3 expected | measured | |
+|---|---:|---:|:--:|
+| FR rows emitted | 38,973 | 38,973 | ✓ |
+| dollars | $25,844,495 | $25,844,495 | ✓ |
+| residual groups | 29,551 | 29,551 | ✓ |
+| residual dollars | $2,778,748 | $2,778,748 | ✓ |
+| — $0.01–$49.99 | 4,777 / $139,732 | 4,777 / $139,732 | ✓ |
+| — $50–$99.99 | 8,718 / $566,802 | 8,718 / $566,802 | ✓ |
+| — $100–$199.99 | 16,056 / $2,072,214 | 16,056 / $2,072,214 | ✓ |
+
+Coverage of FEC's `individual_itemized_contributions` ($28,654,210): **90.2%**,
+up from 56.7%. §2.3's projection, met to the dollar.
+
+**Platform-wide — against §2.4:**
+
+| | §2.4 expected | measured | |
+|---|---:|---:|:--:|
+| FR rows | 1,980,786 | 1,980,786 | ✓ |
+| dollars | $4,556,216,174 | $4,556,216,174 | ✓ |
+| residual groups | 1,002,643 | 1,002,643 | ✓ |
+| residual dollars | $83,453,297 | $83,453,297 | ✓ |
+| — $0.01–$49.99 | 296,250 / $7,092,375 | 296,250 / $7,092,375 | ✓ |
+| — $50–$99.99 | 259,815 / $17,525,145 | 259,815 / $17,525,145 | ✓ |
+| — $100–$199.99 | 446,578 / $58,835,777 | 446,578 / $58,835,777 | ✓ |
+
+Split by route: 993,638 donor×candidate ($1,220,922,776) + 987,148
+donor×committee ($3,335,293,398). Donor entity rows **1,301,466** — below the
+1,889,224 donors in the file by exactly the donors whose every group is
+sub-floor, who correctly mint no entity.
+
+One number differs from §2.4 and is explained, not a discrepancy: §2.4 reports
+21,377,129 rows kept floor-off; the stage reports 21,382,745 admitted. The
+phase-0 script counts *after* the org-shape guard, the stage counts *before* it
+(5,574 org-shaped + 42 blank-name/fingerprint = 5,616 = the difference exactly).
+
+### 7.2 Bounded memory survives the 10× bigger workload
+
+The floor-off admission puts ~21.4M records into the sorter instead of ~2.1M.
+Identical results at every configuration:
+
+| config | FR rows | dollars | residual | peak RSS | peak heapUsed | runs (agg+meta) | sort disk | stream |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| heap 512, buffer 25k | 1,980,786 | $4,556,216,174 | 1,002,643 / $83,453,297 | 590 MB | 254.5 MB | 671+577 | 823 MB | 299 s |
+| heap 1024, buffer 100k | 1,980,786 | $4,556,216,174 | 1,002,643 / $83,453,297 | 467 MB | 253.3 MB | 150+119 | 723 MB | 261 s |
+| heap 2048, buffer 400k | 1,980,786 | $4,556,216,174 | 1,002,643 / $83,453,297 | 1,560 MB | 1,211.9 MB | 30+21 | 561 MB | 226 s |
+
+**Peak heapUsed is flat at ~254 MB across a 16× buffer range** — the live set is
+one buffer, not the cycle, and the 10× record increase did not move it. RSS at
+buffer 400k is GC headroom, not live data (§1's note).
+
+**Sort disk is the resource that grew: 142.9 MB → 822.7 MB at buffer 25k, ~5×.**
+That is the real operational change from this PR. A presidential cycle's ~13 GB
+extract implied ~300 MB of runs pre-3b; budget **~1.5–2 GB** now. The extract is
+still unlinked before the merge, so the peaks do not overlap, and the GHA
+runner's ~14 GB free disk still covers it — but it is no longer a rounding error.
+
+### 7.3 What the prod run must show — and WHEN it actually fires
+
+**The prompt's rollout premise is wrong about the day, and the code and prod
+state both say so.**
+
+Prod `pipeline_state.fec_indiv_watermark` for cycle 2026 is
+`"Sun, 16 Aug 2026 15:50:15 GMT"`, which equals the Last-Modified FEC is serving
+right now. `fec_bulk_run_state` is absent (cleared by the §6 run), so there is no
+FIX-754 resume trigger either.
+
+- **Sunday 2026-08-23's nightly** starts 02:00 UTC and, with GHA queueing, reaches
+  the FEC phase ~05:30 UTC. FEC publishes `indiv{yy}.zip` on Sundays at ~15:20
+  UTC — *ten hours later*. So the run probes the 08-16 file, hits
+  `watermarkUnchanged && !isScoped` in `fec-bulk/index.ts`, and **skips the indiv
+  stage entirely**. This is exactly the phase offset `drop-check.ts`'s own header
+  describes.
+- **Monday 2026-08-24's nightly** probes again, now sees FEC's 08-23 drop ahead of
+  the 08-16 watermark, and the FIX-903 weekday drop-check fires an off-Sunday
+  `fec_bulk` — a full-file replay under the new semantics. **That** is the
+  acceptance run.
+- The **pas2 half lands on the Sunday run** regardless: `streamPas224` has no
+  watermark gate, so the (committee × candidate) aggregate floor takes effect
+  there a day earlier than the indiv half.
+
+Nothing fires before then: the weekday drop-check needs a new FEC publish, and
+FEC's cadence is Sunday. An off-cycle FEC republish would fire it early, which is
+now safe — local acceptance passes.
+
+**Checklist for the post-run session:**
+
+1. Cycle-2026 `financial_relationships` from `fec_bulk_indiv` +
+   `fec_bulk_indiv_to_committee`: expect **1,980,786** rows / **$4,556,216,174**,
+   up from 1,316,608 / $4,074,508,705. The pipeline's own numbers will be
+   slightly LOWER than the harness's on the candidate route — the harness uses
+   every ccl P/A candidate, the pipeline only our matched officials.
+2. `small_dollar_bracket_rollup` for `cycle_year = 2026`: **1,002,643** summed
+   `donor_count`, **$83,453,297** summed `total_cents`, ~9,823 rows before
+   recipient resolution drops the unmatched.
+3. `official_small_dollar_rollup.sub_floor_cents` non-zero for officials with
+   bracketed residual; `/api/graph/small-dollar` returning both
+   `smallDollarShare` and `smallDollarShareWithSubFloor`.
+4. Write cost: ~+664k FR rows. At the §6-measured ~20,400/min on a quiet box that
+   is **~33 min extra**; at the 300/min contended rate it is 37 hours, so the
+   scheduling slot is the whole ballgame (§6's write-ordering verdict).
+5. **FIX-943 vacuum tail** on `financial_relationships` and `financial_entities`
+   — this run adds ~664k rows and rewrites more.
+6. Post-run stats sanity of the FIX-1034 class (`FR.from_id` n_distinct).
+7. The budget-sized surfaces watched against the growth: FIX-965 (treemap),
+   FIX-868 (donor brackets), FIX-966 / FIX-1030 (chord MVs), and the
+   `entity_connections` donations arm.
+8. `sub_floor_cents` needs `backfill_official_small_dollar_rollup()` once per env
+   to cover officials whose bracket rows landed but who were not in the donor
+   dirty set. The ingest calls `small_dollar_rebuild_officials()` for its own
+   bracket-touched officials, so this is belt-and-braces.
+
+Older cycles (2024, 2022, 2020) re-stream via gated `fec-backfill` dispatches in
+quiet windows, Craig-approved per dispatch, one cycle at a time. §2.5's
+extrapolation (+50% to +100% rows) stands unmeasured for those.

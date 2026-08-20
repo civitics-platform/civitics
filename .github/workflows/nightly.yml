@@ -20,6 +20,16 @@ on:
 permissions:
   contents: read
 
+# FIX-1067: this group serializes nightly-sync against ITSELF only. It is
+# deliberately NOT shared with fec-backfill.yml even though both reach
+# runFecBulkPipeline() and share the pipeline_state.fec_bulk_run_state resume
+# cursor. A shared job-level group with cancel-in-progress:false would QUEUE
+# fec-phase behind a backfill that can legitimately run three hours, and every
+# enrichment-*-phase job chains off `needs: fec-phase` — so the whole nightly
+# would stall (and GHA keeps only ONE pending job per group, cancelling the
+# rest). Serialization is enforced in the pipeline instead, by a session-scoped
+# DB advisory lock: see packages/data/src/pipelines/fec-bulk/pipeline-lock.ts.
+# The losing run exits in seconds and this workflow carries on.
 concurrency:
   group: nightly-sync
   cancel-in-progress: false

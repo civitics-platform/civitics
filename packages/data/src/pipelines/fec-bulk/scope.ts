@@ -20,13 +20,21 @@
 
 // Stable stage names, in pipeline order. Each maps to a gated sub-step in
 // runFecBulkPipeline(): donor-entity upsert, indiv→candidate rels,
-// recipient-committee pre-upsert, indiv→committee rels, the Schedule-E
-// (independent expenditure) stage, and the end-of-run totals recompute(s).
+// recipient-committee pre-upsert, indiv→committee rels, the sub-$200 bracket
+// rollup, the Schedule-E (independent expenditure) stage, and the end-of-run
+// totals recompute(s).
+//
+// FIX-1068 added `small-dollar-brackets`. It is deliberately NOT in
+// run-state.ts's TRACKED_STAGES: it writes a few tens of thousands of rows in
+// one delete-then-insert transaction per cycle, so it is idempotent, fast, and
+// has nothing worth a resume cursor — the cursor machinery exists for the
+// hour-scale writers.
 export const INDIV_STAGE_NAMES = [
   "donor-entities",
   "indiv-to-candidate",
   "recipient-entities",
   "indiv-to-committee",
+  "small-dollar-brackets",
   "independent-expenditures",
   "totals",
 ] as const;

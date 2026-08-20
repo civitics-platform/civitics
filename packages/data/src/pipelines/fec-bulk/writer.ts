@@ -66,6 +66,199 @@ async function beginCursoredStage(
 }
 
 // ---------------------------------------------------------------------------
+// FIX-1061 — streamed writer core
+//
+// FIX-961 (PR 3a) bounded the indiv STREAMING stage but not the WRITE stages:
+// index.ts drained each sorted stream into a whole-cycle array before calling a
+// writer, because the writers took arrays. Measured cycle-2026 scale — 879,782
+// donors, 762,891 candidate pairs, 553,717 committee pairs — that is ~2.2M live
+// objects, and cycle 2020 is materially bigger. With the streaming maps gone it
+// was the binding constraint, and the emit-time floor grows it further.
+//
+// `upsertStreamed` is the replacement: pull a bounded batch off a sorted async
+// iterable, resolve whatever foreign ids that batch needs, build its rows,
+// upsert, advance the cursor, drop it. Peak memory is one batch.
+//
+// ── The cursor domain changed, deliberately ─────────────────────────────────
+// FIX-754's cursor used to be "rows in the merged input array". A streamed
+// writer cannot know that number without materializing the array it exists to
+// avoid — rows are dropped mid-stream when a donor or recipient id fails to
+// resolve. The cursor is therefore now **items consumed from the sorted
+// stream**, whose total IS known up front (the sorter's group count) and whose
+// order is the sort order, i.e. deterministic across runs and across machines.
+//
+// Old state resumes safely by construction: a stored `total_rows` recorded in
+// the old domain will not match the new one, so `resolveResumeCursor` resets
+// that stage to 0 and the (idempotent) upserts simply re-run. That is the
+// FIX-754 defensive reset doing exactly its job.
+//
+// ── Batches are aligned to group boundaries ─────────────────────────────────
+// Two aggregates can collide on the upsert arbiter — an official holding both a
+// House and a Senate FEC candidate id receives two `(fp, C, candId)` aggregates
+// that resolve to one `to_id`. Postgres rejects two such rows in ONE statement
+// ("cannot affect row a second time"), and splitting them across two statements
+// is WORSE: the second silently overwrites the first instead of summing. The
+// array writers dedupe with a whole-population Map. A streamed writer cannot,
+// so batches are closed only on a change of group key (the donor fingerprint) —
+// every colliding pair is contiguous in the sort order, so a group-aligned
+// batch sees all of them and the in-batch merge is exactly equivalent to the
+// global one.
+// ---------------------------------------------------------------------------
+
+/** Items per DB round-trip. Matches direct-pg-upsert's DEFAULT_CHUNK so a batch
+ *  is normally one statement. */
+const STREAM_BATCH_ITEMS = 4000;
+
+/**
+ * Group-boundary-aligned batching over a key-sorted async iterable.
+ *
+ * Fills to `size`, then keeps pulling while the key is unchanged, so no group
+ * is ever split across two batches. Exported for the unit test.
+ */
+export async function* batchByGroup<T>(
+  source: AsyncIterable<T>,
+  size: number,
+  keyOf: (item: T) => string,
+): AsyncGenerator<T[]> {
+  let batch: T[] = [];
+  let lastKey: string | null = null;
+  for await (const item of source) {
+    const key = keyOf(item);
+    if (batch.length >= size && key !== lastKey) {
+      yield batch;
+      batch = [];
+    }
+    batch.push(item);
+    lastKey = key;
+  }
+  if (batch.length > 0) yield batch;
+}
+
+export interface StreamedUpsertSpec<T> {
+  /** Greppable stage label (also the bulkUpsert label). */
+  label: string;
+  table: string;
+  columns: string[];
+  conflictColumns: string[];
+  updateColumns?: string[];
+  jsonbColumns?: string[];
+  skipUnchangedRows?: boolean;
+  /** Items in sort order. The cursor domain. */
+  source: AsyncIterable<T>;
+  /** How many items `source` will yield — the sorter's group count. */
+  totalItems: number;
+  /** Group key; batches never split a group. */
+  groupKeyOf: (item: T) => string;
+  /**
+   * Called once per batch BEFORE rows are built, on the live connection, so the
+   * batch's foreign ids can be resolved in one round-trip instead of from a
+   * whole-cycle map.
+   */
+  prepareBatch?: (items: T[], client: Client) => Promise<void>;
+  /** Build a row aligned to `columns`. Return null to drop the item. */
+  toRow: (item: T) => unknown[] | null;
+  /**
+   * Merge key for two rows that would collide on the upsert arbiter, computed
+   * from the BUILT row. Rows sharing one are folded via `mergeRows`. Omit when
+   * collisions are impossible.
+   */
+  rowMergeKeyOf?: (row: unknown[]) => string;
+  /** Fold `b` into `a` in place. Required when `rowMergeKeyOf` is set. */
+  mergeRows?: (a: unknown[], b: unknown[]) => void;
+  resume?: WriterResume;
+  batchItems?: number;
+}
+
+export interface StreamedUpsertResult extends RelationshipBatchResult {
+  /** Items `toRow` dropped (unresolvable foreign id). */
+  skipped: number;
+  /** Rows the server actually wrote (FIX-1008 skip accounting). */
+  changed: number;
+}
+
+/**
+ * Stream a sorted aggregate iterable straight into chunked upserts.
+ *
+ * One direct-pg connection for the whole stage (as the array writers had), one
+ * statement per batch, cursor persisted after every batch commits.
+ */
+export async function upsertStreamed<T>(spec: StreamedUpsertSpec<T>): Promise<StreamedUpsertResult> {
+  const batchSize = spec.batchItems ?? STREAM_BATCH_ITEMS;
+
+  // FIX-754: resolve the resume offset in the ITEM domain. A stored total from
+  // the pre-FIX-1061 row domain will not match and resets the cursor to 0.
+  const startItem = await beginCursoredStage(spec.resume, spec.label, spec.totalItems);
+
+  let consumed = 0, upserted = 0, failed = 0, changed = 0, skipped = 0;
+
+  await withDirectClient(async (client) => {
+    for await (const batch of batchByGroup(spec.source, batchSize, spec.groupKeyOf)) {
+      // Rows before the cursor were committed by a prior run. Skip WITHOUT
+      // building rows or resolving ids — the whole point of resuming.
+      if (consumed + batch.length <= startItem) {
+        consumed += batch.length;
+        continue;
+      }
+      // A partially-consumed batch can only happen when a prior run's cursor
+      // landed mid-batch, which group alignment makes possible if batch sizes
+      // shift. Re-doing the whole batch is idempotent, so take the safe path.
+      consumed += batch.length;
+
+      if (spec.prepareBatch) await spec.prepareBatch(batch, client);
+
+      let rows: unknown[][] = [];
+      for (const item of batch) {
+        const row = spec.toRow(item);
+        if (row === null) { skipped++; continue; }
+        rows.push(row);
+      }
+      if (spec.rowMergeKeyOf && spec.mergeRows) {
+        rows = mergeRowsByKey(rows, spec.rowMergeKeyOf, spec.mergeRows);
+      }
+
+      if (rows.length > 0) {
+        const res = await bulkUpsert(client, {
+          table:             spec.table,
+          label:             spec.label,
+          columns:           spec.columns,
+          conflictColumns:   spec.conflictColumns,
+          updateColumns:     spec.updateColumns,
+          jsonbColumns:      spec.jsonbColumns,
+          skipUnchangedRows: spec.skipUnchangedRows,
+          rows,
+        });
+        upserted += res.upserted;
+        failed   += res.failed;
+        changed  += res.changed;
+      }
+
+      // FIX-996: the cursor rides the live connection, and is advanced only
+      // AFTER the batch's statement committed.
+      if (spec.resume) await spec.resume.onProgress(consumed, spec.totalItems, client);
+    }
+  });
+
+  logSkipRatio(spec.label, upserted, changed);
+  return { upserted, failed, changed, skipped };
+}
+
+/** Fold rows that share a merge key, preserving first-seen order. */
+function mergeRowsByKey(
+  rows: unknown[][],
+  keyOf: (row: unknown[]) => string,
+  merge: (a: unknown[], b: unknown[]) => void,
+): unknown[][] {
+  const byKey = new Map<string, unknown[]>();
+  for (const row of rows) {
+    const key = keyOf(row);
+    const existing = byKey.get(key);
+    if (existing) merge(existing, row);
+    else byKey.set(key, row);
+  }
+  return [...byKey.values()];
+}
+
+// ---------------------------------------------------------------------------
 // Name canonicalization
 // ---------------------------------------------------------------------------
 
@@ -545,6 +738,72 @@ export async function upsertIndividualDonorsBatch(
   return { donorIdByFingerprint, upserted, failed };
 }
 
+/**
+ * FIX-1061 — streamed donor-entity upsert.
+ *
+ * Same table, columns, arbiter and FIX-700/1009/1008 semantics as
+ * `upsertIndividualDonorsBatch`; the differences are all consequences of not
+ * holding the population:
+ *
+ *   - NO `mergeIndividualDonorInputs`. The external sort emits exactly one
+ *     record per fingerprint (`metaSorted.groupCount` IS the donor count), so
+ *     the merge was already a no-op for this caller — FIX-995 says as much in
+ *     its own comment. Nothing can collide, so nothing needs merging.
+ *   - NO `RETURNING`, and so no `donorIdByFingerprint` and no FIX-1008 id
+ *     recovery. The relationship stages resolve their own batch's donors
+ *     against the unique index instead of inheriting a ~1.9M-entry map.
+ */
+export async function streamIndividualDonorEntities(
+  source: AsyncIterable<IndividualDonorInput>,
+  totalItems: number,
+  skipAggregateOverwrite = false,
+  resume?: WriterResume,
+): Promise<StreamedUpsertResult> {
+  const columns = skipAggregateOverwrite ? DONOR_COLUMNS_SCOPED : DONOR_COLUMNS;
+  return upsertStreamed<IndividualDonorInput>({
+    label:            "individual-donor",
+    table:            "financial_entities",
+    columns,
+    conflictColumns:  ["donor_fingerprint"],
+    updateColumns:    skipAggregateOverwrite ? undefined : DONOR_UPDATE_COLUMNS_UNSCOPED,
+    jsonbColumns:     ["metadata"],
+    skipUnchangedRows: true,
+    source,
+    totalItems,
+    groupKeyOf: (d) => d.fingerprint,
+    toRow: (input) => {
+      const meta = {
+        city:       input.city       || null,
+        state:      input.state      || null,
+        zip5:       input.zip5       || null,
+        employer:   input.employer   || null,
+        occupation: input.occupation || null,
+        source:     "fec_bulk_indiv",
+      };
+      return skipAggregateOverwrite
+        ? [
+            canonicalDonorName(input.displayName),
+            input.displayName,
+            "individual",
+            null,
+            input.fingerprint,
+            meta,
+          ]
+        : [
+            canonicalDonorName(input.displayName),
+            input.displayName,
+            "individual",
+            null,
+            input.fingerprint,
+            input.totalDonatedCents,
+            0,
+            meta,
+          ];
+    },
+    resume,
+  });
+}
+
 const DONOR_COLUMNS: string[] = [
   "canonical_name",
   "display_name",
@@ -832,6 +1091,222 @@ export async function upsertIndividualDonationsBatch(
   );
 }
 
+// ---------------------------------------------------------------------------
+// FIX-1061 — streamed relationship writers
+//
+// Both take the indiv stage's sorted aggregate iterable directly. Because that
+// stream is fingerprint-ordered, a batch touches ~`batchItems` distinct donors,
+// so resolving their ids is ONE indexed `donor_fingerprint = ANY($1)` probe on
+// the connection already open for the writes. That is what replaces the
+// ~1.9M-entry `donorIdByFingerprint` map the array path carried for the whole
+// cycle — and it is the same read the FIX-754 resume path already performs, just
+// a batch at a time.
+//
+// Consequence worth knowing: a run that SKIPS the donor-entities stage
+// (FEC_INDIV_STAGES) used to write zero relationships, because the id map it
+// inherited was empty. It now resolves donors that already exist in the DB and
+// writes their relationships. That is strictly more useful (it is what the
+// FIX-754 already-complete path does deliberately) and it drives the FIX-686
+// skipped_unresolved counter toward 0 rather than toward the stage count.
+// ---------------------------------------------------------------------------
+
+/** The indiv → candidate aggregate as the writer needs it. */
+export interface StreamedIndivCandidateItem {
+  donorFingerprint: string;
+  candId:           string;
+  totalCents:       number;
+  txCount:          number;
+  latestDate:       string | null;
+}
+
+/** The indiv → non-candidate-committee aggregate as the writer needs it. */
+export interface StreamedIndivCommitteeItem {
+  donorFingerprint: string;
+  cmteId:           string;
+  totalCents:       number;
+  txCount:          number;
+  latestDate:       string | null;
+}
+
+/** Resolve a batch's donor fingerprints on an already-open connection. */
+async function resolveDonorIdsOn(
+  client: Client,
+  fingerprints: Iterable<string>,
+  into: Map<string, string>,
+): Promise<void> {
+  const wanted = [...new Set(fingerprints)];
+  if (wanted.length === 0) return;
+  for (let i = 0; i < wanted.length; i += RESUME_READ_BATCH) {
+    const res = await client.query(
+      `SELECT id, donor_fingerprint FROM public.financial_entities WHERE donor_fingerprint = ANY($1)`,
+      [wanted.slice(i, i + RESUME_READ_BATCH)],
+    );
+    for (const r of res.rows as Array<{ id: string; donor_fingerprint: string }>) {
+      into.set(r.donor_fingerprint, r.id);
+    }
+  }
+}
+
+/** Index of the arbiter columns inside REL_COLUMNS, for the in-batch merge. */
+const REL_FROM_ID_IDX = REL_COLUMNS.indexOf("from_id");
+const REL_TO_ID_IDX   = REL_COLUMNS.indexOf("to_id");
+const REL_CYCLE_IDX   = REL_COLUMNS.indexOf("cycle_year");
+const REL_AMOUNT_IDX  = REL_COLUMNS.indexOf("amount_cents");
+const REL_OCCURRED_IDX = REL_COLUMNS.indexOf("occurred_at");
+const REL_METADATA_IDX = REL_COLUMNS.indexOf("metadata");
+
+/** Arbiter key of a built relationship row. */
+function relMergeKey(row: unknown[]): string {
+  return `${row[REL_FROM_ID_IDX]}|${row[REL_TO_ID_IDX]}|${row[REL_CYCLE_IDX]}`;
+}
+
+/**
+ * Fold two relationship rows that hit the same arbiter: sum amount and tx_count,
+ * keep the later occurred_at. Mirrors the array writers' `merged` Map exactly.
+ */
+function mergeRelRows(a: unknown[], b: unknown[]): void {
+  a[REL_AMOUNT_IDX] = (a[REL_AMOUNT_IDX] as number) + (b[REL_AMOUNT_IDX] as number);
+  const aMeta = a[REL_METADATA_IDX] as { tx_count: number };
+  const bMeta = b[REL_METADATA_IDX] as { tx_count: number };
+  aMeta.tx_count += bMeta.tx_count;
+  const aAt = a[REL_OCCURRED_IDX] as string | null;
+  const bAt = b[REL_OCCURRED_IDX] as string | null;
+  if (bAt && (!aAt || bAt > aAt)) a[REL_OCCURRED_IDX] = bAt;
+}
+
+/**
+ * FIX-1061 — streamed individual → official donation upsert. Replaces
+ * `upsertIndividualDonationsBatch` on the pipeline path.
+ */
+export async function streamIndividualDonations(opts: {
+  source:      AsyncIterable<StreamedIndivCandidateItem>;
+  totalItems:  number;
+  cycleYear:   number;
+  /** FEC CAND_ID → officials.id. Bounded by candidate count; safe to hold. */
+  officialIdByCandId: Map<string, string>;
+  /** MMDDYYYY → ISO date, or null. */
+  parseDate:   (raw: string) => string | null;
+  resume?:     WriterResume;
+}): Promise<StreamedUpsertResult> {
+  const donorIds = new Map<string, string>();
+  return upsertStreamed<StreamedIndivCandidateItem>({
+    label:            "indiv-donation",
+    table:            "financial_relationships",
+    columns:          REL_COLUMNS,
+    conflictColumns:  REL_CONFLICT,
+    jsonbColumns:     ["metadata"],
+    skipUnchangedRows: true,
+    source:           opts.source,
+    totalItems:       opts.totalItems,
+    groupKeyOf:       (a) => a.donorFingerprint,
+    prepareBatch: async (items, client) => {
+      // Only this batch's donors are resolved, and the map is reset per batch so
+      // nothing accumulates across the cycle.
+      donorIds.clear();
+      await resolveDonorIdsOn(client, items.map((i) => i.donorFingerprint), donorIds);
+    },
+    toRow: (agg) => {
+      const fromEntityId = donorIds.get(agg.donorFingerprint);
+      if (!fromEntityId) return null;
+      const toOfficialId = opts.officialIdByCandId.get(agg.candId);
+      if (!toOfficialId) return null;
+      const occurredAt =
+        (agg.latestDate ? opts.parseDate(agg.latestDate) : null) ?? `${opts.cycleYear}-01-01`;
+      return [
+        "donation",
+        "financial_entity",
+        fromEntityId,
+        "official",
+        toOfficialId,
+        agg.totalCents,
+        occurredAt,
+        null,
+        null,
+        opts.cycleYear,
+        "https://www.fec.gov/data/receipts/individual-contributions/",
+        {
+          donor_fingerprint: agg.donorFingerprint,
+          tx_count:          agg.txCount,
+          source:            "fec_bulk_indiv",
+          aggregated:        true,
+        },
+      ];
+    },
+    // One official can hold two FEC candidate ids (a House id and a later Senate
+    // id), so two of a donor's aggregates can resolve to the same to_id.
+    rowMergeKeyOf: relMergeKey,
+    mergeRows:     mergeRelRows,
+    resume:        opts.resume,
+  });
+}
+
+/**
+ * FIX-1061 — streamed individual → committee donation upsert. Replaces
+ * `upsertIndividualToCommitteeDonationsBatch` on the pipeline path.
+ */
+export async function streamIndividualToCommitteeDonations(opts: {
+  source:      AsyncIterable<StreamedIndivCommitteeItem>;
+  totalItems:  number;
+  cycleYear:   number;
+  /** FEC CMTE_ID → financial_entities.id. Bounded by committee count. */
+  entityIdByCmteId: Map<string, string>;
+  parseDate:   (raw: string) => string | null;
+  resume?:     WriterResume;
+  /** FIX-686: called for each aggregate dropped for an unresolved id. */
+  onUnresolved?: () => void;
+}): Promise<StreamedUpsertResult> {
+  const donorIds = new Map<string, string>();
+  return upsertStreamed<StreamedIndivCommitteeItem>({
+    label:            "indiv-to-committee",
+    table:            "financial_relationships",
+    columns:          REL_COLUMNS,
+    conflictColumns:  REL_CONFLICT,
+    jsonbColumns:     ["metadata"],
+    skipUnchangedRows: true,
+    source:           opts.source,
+    totalItems:       opts.totalItems,
+    groupKeyOf:       (a) => a.donorFingerprint,
+    prepareBatch: async (items, client) => {
+      donorIds.clear();
+      await resolveDonorIdsOn(client, items.map((i) => i.donorFingerprint), donorIds);
+    },
+    toRow: (agg) => {
+      const fromEntityId = donorIds.get(agg.donorFingerprint);
+      if (!fromEntityId) { opts.onUnresolved?.(); return null; }   // FIX-686
+      const toEntityId = opts.entityIdByCmteId.get(agg.cmteId);
+      if (!toEntityId) { opts.onUnresolved?.(); return null; }     // FIX-686
+      const occurredAt =
+        (agg.latestDate ? opts.parseDate(agg.latestDate) : null) ?? `${opts.cycleYear}-01-01`;
+      return [
+        "donation",
+        "financial_entity",
+        fromEntityId,
+        "financial_entity",
+        toEntityId,
+        agg.totalCents,
+        occurredAt,
+        null,
+        null,
+        opts.cycleYear,
+        `https://www.fec.gov/data/committee/${agg.cmteId}/`,
+        {
+          donor_fingerprint: agg.donorFingerprint,
+          fec_committee_id:  agg.cmteId,
+          tx_count:          agg.txCount,
+          source:            "fec_bulk_indiv_to_committee",
+          aggregated:        true,
+        },
+      ];
+    },
+    // Distinct committees are distinct entities, so a collision here needs two
+    // fingerprints resolving to one donor id — impossible under the
+    // donor_fingerprint UNIQUE. Kept for symmetry and cheap insurance.
+    rowMergeKeyOf: relMergeKey,
+    mergeRows:     mergeRelRows,
+    resume:        opts.resume,
+  });
+}
+
 /** FIX-1008 — one line per stage showing how much of the re-upsert was real
  *  work. `changed` is the server's row count; the remainder is rows whose every
  *  SET column already matched and which were therefore never rewritten. */
@@ -1057,6 +1532,124 @@ export async function upsertIndividualToCommitteeDonationsBatch(
       return { upserted, failed };
     }),
   );
+}
+
+// ---------------------------------------------------------------------------
+// FIX-1068 — sub-$200 residual bracket rollup
+// ---------------------------------------------------------------------------
+
+export interface SmallDollarBracketWriteRow {
+  recipientType: "official" | "financial_entity";
+  recipientId:   string;
+  bracket:       string;
+  donorCount:    number;
+  totalCents:    number;
+  txCount:       number;
+}
+
+const BRACKET_COLUMNS: string[] = [
+  "recipient_type",
+  "recipient_id",
+  "cycle_year",
+  "bracket",
+  "donor_count",
+  "total_cents",
+  "tx_count",
+  "source",
+  "updated_at",
+];
+
+const BRACKET_CONFLICT: string[] = [
+  "recipient_type", "recipient_id", "cycle_year", "bracket", "source",
+];
+
+/**
+ * Replace this (cycle, source) slice of `small_dollar_bracket_rollup`.
+ *
+ * DELETE-then-INSERT, not a bare upsert: a recipient whose sub-floor residual
+ * moved out of a bracket between runs (their donors crossed $200, or FEC revised
+ * the file) must lose the stale row, and an upsert cannot express that. The
+ * whole slice is small — tens of thousands of rows — so this is cheap.
+ *
+ * Wrapped in an explicit transaction. `bulkUpsert` is autocommit-per-chunk by
+ * design (FIX-949) and atomicity is the caller's job; a run killed between the
+ * DELETE and the last INSERT would otherwise leave the rollup truncated, which
+ * is the FIX-945 rule-tagger failure exactly. Bounded row count is what makes
+ * one transaction affordable here — do NOT copy this shape onto the
+ * million-row writers.
+ */
+export async function replaceSmallDollarBrackets(
+  cycleYear: number,
+  rows:      SmallDollarBracketWriteRow[],
+  source = "fec_bulk_indiv",
+): Promise<{ deleted: number; inserted: number; failed: number }> {
+  return withDirectClient(async (client) => {
+    await client.query("BEGIN");
+    try {
+      const del = await client.query(
+        `DELETE FROM public.small_dollar_bracket_rollup WHERE cycle_year = $1 AND source = $2`,
+        [cycleYear, source],
+      );
+      let inserted = 0, failed = 0;
+      if (rows.length > 0) {
+        const now = new Date().toISOString();
+        const res = await bulkUpsert(client, {
+          table:           "small_dollar_bracket_rollup",
+          label:           "small-dollar-brackets",
+          columns:         BRACKET_COLUMNS,
+          conflictColumns: BRACKET_CONFLICT,
+          rows: rows.map((r) => [
+            r.recipientType, r.recipientId, cycleYear, r.bracket,
+            r.donorCount, r.totalCents, r.txCount, source, now,
+          ]),
+        });
+        inserted = res.upserted;
+        failed   = res.failed;
+      }
+      if (failed > 0) {
+        // FIX-686 loud-abort contract: a partially-written rollup reads as a
+        // real (smaller) residual, which is worse than no rollup at all.
+        throw new Error(
+          `small-dollar-brackets: ${failed}/${rows.length} rows failed — rolling back (FIX-686)`,
+        );
+      }
+      await client.query("COMMIT");
+      return { deleted: del.rowCount ?? 0, inserted, failed };
+    } catch (err) {
+      await client.query("ROLLBACK").catch(() => { /* best effort */ });
+      throw err;
+    }
+  });
+}
+
+/**
+ * FIX-1068 — re-aggregate `official_small_dollar_rollup` for the officials whose
+ * bracket rows this run just wrote.
+ *
+ * WHY THE INGEST DOES THIS RATHER THAN LEAVING IT TO THE DAILY REFRESH. The
+ * FIX-704/832 dirty set is derived from `financial_relationships.updated_at`, so
+ * it captures officials whose FR rows moved. An official who received ONLY
+ * sub-floor money this cycle has no FR rows to move, is therefore never dirty,
+ * and their residual would sit in the bracket table forever without reaching the
+ * summary the route reads. Any official who also received above-floor money is
+ * picked up by the dirty set anyway — so this call is redundant for the common
+ * case and load-bearing for the tail, which is the right way round.
+ *
+ * Chunked at the same 500 the FIX-776 backfill uses, on one connection.
+ */
+export async function rebuildSmallDollarForOfficials(officialIds: string[]): Promise<number> {
+  const unique = [...new Set(officialIds)];
+  if (unique.length === 0) return 0;
+  const CHUNK = 500;
+  let rebuilt = 0;
+  await withDirectClient(async (client) => {
+    for (let i = 0; i < unique.length; i += CHUNK) {
+      const chunk = unique.slice(i, i + CHUNK);
+      await client.query(`SELECT public.small_dollar_rebuild_officials($1::uuid[])`, [chunk]);
+      rebuilt += chunk.length;
+    }
+  });
+  return rebuilt;
 }
 
 // ---------------------------------------------------------------------------

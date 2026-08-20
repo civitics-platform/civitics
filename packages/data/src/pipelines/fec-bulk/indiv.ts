@@ -35,13 +35,32 @@
  * in-RAM Maps sized O(distinct groups): it OOM'd a 12 GB heap at ~53M of ~69M
  * lines of indiv20 (1.7M cand pairs / 872k cmte pairs / 1.54M donors at death).
  *
- * The old in-memory path is still selectable via FEC_INDIV_AGG_MODE=memory —
- * it is what the equivalence harness (data:fec:indiv-equivalence) diffs the new
- * path against. PR 3b retires it.
+ * PR 3b retired the pre-FIX-961 in-memory accumulator and its
+ * FEC_INDIV_AGG_MODE=memory flag. The external sort is the only path.
  *
- * NOTE: this PR changes NO semantics. The per-transaction $200 floor
- * (MIN_AMT_DOLLARS) stays applied at parse time, exactly where it was; moving
- * it to emit time is PR 3b.
+ * ── The $200 floor is an AGGREGATE floor, applied at EMIT (PR 3b) ───────────
+ *
+ * FEC's itemization rule is a per-donor CYCLE AGGREGATE, not a per-transaction
+ * threshold: once a contributor passes $200 cumulative to a committee, every
+ * later contribution is itemized HOWEVER SMALL. `indiv{yy}.zip` therefore holds
+ * a large population of disclosed sub-$200 rows, and the pre-3b parse-time
+ * `amt < 200` filter dropped all of them. Measured on the full cycle-2026 file
+ * (docs/audits/2026-08-18-fec-coverage-pr3a-phase0.md §2.4): the per-transaction
+ * floor discarded 90.2% of in-scope rows, understated 201,489 already-emitted
+ * relationships by $69.1M, and dropped 664,178 relationships whose cycle
+ * aggregate clears $200 outright ($412.6M).
+ *
+ * So: every itemized row now enters the aggregation, and the floor is applied
+ * once per (donor × recipient × cycle) group at emit time.
+ *
+ *   aggregate ≥ $200  → an FR row, with the CORRECT (full) amount
+ *   aggregate < $200  → NO FR row and NO financial_entities row; the group is
+ *                       counted into a per-recipient size bracket instead
+ *                       (readSmallDollarBrackets), so the residual is measured
+ *                       rather than silently discarded
+ *
+ * Truly unitemized money — a donor who never crosses $200 with a committee and
+ * so never appears in the file at all — remains unrecoverable under any rule.
  */
 
 import * as fs       from "fs";
@@ -217,8 +236,56 @@ export function applyRecipientCmteScope(
   return { candKept: cmteToCand.size, nonCandKept: nonCandCmtes.size };
 }
 
-// FEC's itemization floor. Same threshold the pas2 pipeline uses post-FIX-182.
-const MIN_AMT_DOLLARS = 200;
+/**
+ * FEC's itemization floor, in cents — applied to the (donor × recipient × cycle)
+ * AGGREGATE at emit time, never to a single transaction (see the file header).
+ * The pas2 pipeline applies the same threshold to its own (committee × candidate)
+ * aggregate.
+ */
+export const MIN_AGGREGATE_CENTS = 20_000;
+
+// ---------------------------------------------------------------------------
+// Sub-floor residual brackets (PR 3b)
+//
+// A (donor × recipient × cycle) aggregate below the floor emits no row. It is
+// real disclosed money, so it is COUNTED into a size bracket per recipient
+// rather than dropped: `small_dollar_bracket_rollup` is the substrate, and the
+// honest "small-dollar (sub-$200 aggregate)" figure on an official's page is
+// derived from it.
+//
+// Bands mirror FEC's own by_size display convention at sub-floor grain, and are
+// the bands the phase-0 audit measured, so the acceptance numbers are directly
+// comparable. Ordered low→high; `assignSmallDollarBracket` takes the first
+// match, so the ranges must stay disjoint and contiguous over [1, floor).
+// ---------------------------------------------------------------------------
+
+export const SMALL_DOLLAR_BRACKETS = [
+  { code: "lt_50",   label: "$0.01–$49.99", loCents: 1,      hiCents: 4_999  },
+  { code: "50_99",   label: "$50–$99.99",   loCents: 5_000,  hiCents: 9_999  },
+  { code: "100_199", label: "$100–$199.99", loCents: 10_000, hiCents: 19_999 },
+] as const;
+
+export type SmallDollarBracketCode = (typeof SMALL_DOLLAR_BRACKETS)[number]["code"];
+
+/** Bracket for a sub-floor aggregate, or null when it is not sub-floor. */
+export function assignSmallDollarBracket(totalCents: number): SmallDollarBracketCode | null {
+  for (const b of SMALL_DOLLAR_BRACKETS) {
+    if (totalCents >= b.loCents && totalCents <= b.hiCents) return b.code;
+  }
+  return null;
+}
+
+/** One (recipient × bracket) residual row for a single cycle. */
+export interface SmallDollarBracketRow {
+  /** ROUTE_CAND ⇒ `recipient` is an FEC CAND_ID; ROUTE_CMTE ⇒ a CMTE_ID. */
+  route:      "C" | "M";
+  recipient:  string;
+  bracket:    SmallDollarBracketCode;
+  /** (donor × recipient) groups in this bracket — donor-and-recipient pairs. */
+  donorCount: number;
+  totalCents: number;
+  txCount:    number;
+}
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -266,11 +333,27 @@ export interface IndivStreamStats {
   passedCmte:       number;     // line had cmteId in EITHER candidate OR committee map
   passedCand:       number;     // routed to the candidate aggregation
   passedCommittee:  number;     // routed to the non-candidate-committee aggregation
-  passedAmt:        number;
+  /** PR 3b: rows admitted to the aggregation (amount > 0). Was `passedAmt`, the
+   *  count that survived the per-transaction $200 filter — a different number
+   *  with a different meaning, so it got a different name. */
+  passedAmount:     number;
+  /** Distinct donors IN THE FILE (pre-floor). */
   uniqueDonors:     number;
+  /** (donor × candidate) groups that CLEAR the aggregate floor — i.e. FR rows. */
   candPairs:        number;
+  /** (donor × committee) groups that CLEAR the aggregate floor. */
   cmtePairs:        number;
-  /** FIX-961: external-sort accounting. Absent in mode="memory". */
+  /**
+   * FIX-1061 — rows `readDonorInputs()` will yield, i.e. donors with at least
+   * one above-floor aggregate. The donor writer's FIX-754 cursor TOTAL. Below
+   * `uniqueDonors` by exactly the donors whose every group is sub-floor.
+   */
+  donorRows:        number;
+  /** PR 3b: (donor × recipient) groups BELOW the floor — bracketed, not emitted. */
+  residualGroups:   number;
+  /** PR 3b: dollars in those groups. */
+  residualCents:    number;
+  /** FIX-961: external-sort accounting. */
   sort?: {
     agg:  ExternalSortStats;
     meta: ExternalSortStats;
@@ -280,50 +363,51 @@ export interface IndivStreamStats {
 }
 
 /**
- * FIX-961: the stage's output is consumed through async iterators so neither
- * mode has to materialize a whole cycle. `mode="memory"` iterates the legacy
- * Maps; `mode="external"` re-reads the merged sort files (cheap — the merged
- * output is ~40 MB gzip'd for a presidential cycle).
+ * FIX-961: the stage's output is consumed through async iterators, so nothing
+ * has to materialize a whole cycle — the accessors re-read the merged sort files
+ * (cheap; the merged output is ~40 MB gzip'd for a presidential cycle).
+ *
+ * PR 3b: every aggregate accessor applies the $200 AGGREGATE floor, so what they
+ * yield is exactly what gets written. The sub-floor residual is not silently
+ * dropped — it comes back through `readSmallDollarBrackets()`.
  *
  * Every accessor is re-readable. `dispose()` removes the on-disk artifacts and
  * MUST be called when the cycle's writer stages are done.
  */
 export interface IndivStreamResult {
-  mode: IndivAggMode;
-  /** Donor × candidate aggregates. In external mode, ordered by fingerprint. */
+  /** Donor × candidate aggregates ≥ the floor, ordered by fingerprint. */
   readAggregations(): AsyncIterable<IndivAggregation>;
-  /** Donor × non-cand-committee aggregates (FIX-236). */
+  /** Donor × non-cand-committee aggregates ≥ the floor (FIX-236). */
   readCommitteeAggregations(): AsyncIterable<IndivCommitteeAggregation>;
-  /** Donor meta joined to the donor's cycle total across both routes. */
+  /**
+   * Donor meta joined to the donor's cycle total. PR 3b: donors with NO
+   * above-floor aggregate are omitted entirely (no FR row ⇒ no donor entity),
+   * and the total sums ONLY above-floor groups so it agrees with the FR rows
+   * this run writes — the same convention
+   * `rebuild_financial_entity_donation_totals()` re-derives from.
+   */
   readDonorInputs(): AsyncIterable<IndivDonorInput>;
+  /**
+   * PR 3b: the sub-floor residual, aggregated to (recipient × bracket). Small
+   * and bounded (recipients × 3), so it is materialized rather than streamed.
+   */
+  readSmallDollarBrackets(): SmallDollarBracketRow[];
   dispose(): Promise<void>;
   stats: IndivStreamStats;
 }
 
 // ---------------------------------------------------------------------------
-// FIX-961 — aggregation mode
+// PR 3b — the FEC_INDIV_AGG_MODE flag and its `memory` accumulator are GONE.
+//
+// The flag existed for exactly one reason: to let `data:fec:indiv-equivalence`
+// diff the pre-FIX-961 in-RAM Maps against the external sort. That diff ran
+// (zero divergence across every emitted set, plus an end-to-end check against
+// rows the old path had already persisted) and PR 3a shipped on the strength of
+// it. Keeping a second accumulator alive past that point buys nothing and costs
+// a great deal: it is the path that OOMs, every semantics change has to be made
+// twice, and "which mode was that run?" becomes a question every incident has to
+// answer. A run that sets FEC_INDIV_AGG_MODE now simply gets the external sort.
 // ---------------------------------------------------------------------------
-
-export type IndivAggMode = "external" | "memory";
-
-/**
- * Resolve the aggregation mechanism. Default `external` (the O(1)-in-cycle-size
- * path). `memory` restores the pre-FIX-961 in-RAM Maps and exists so the
- * equivalence harness can diff old against new; it is NOT a supported setting
- * for a presidential-cycle run and says so on stderr.
- */
-export function resolveIndivAggMode(
-  raw: string | undefined = process.env.FEC_INDIV_AGG_MODE,
-): IndivAggMode {
-  const v = (raw ?? "").trim().toLowerCase();
-  if (v === "memory") return "memory";
-  if (v && v !== "external") {
-    console.warn(
-      `    [fec-bulk:indiv] FEC_INDIV_AGG_MODE="${raw}" not recognized (expected external|memory) — using external`,
-    );
-  }
-  return "external";
-}
 
 /**
  * Distinct keys held per sort buffer before it spills. ~400k measured ~55 MB
@@ -509,19 +593,18 @@ export function isLikelyOrgName(normalizedName: string): boolean {
 // ---------------------------------------------------------------------------
 // Stream indiv{yy}.zip → aggregates
 //
-// FIX-961 / PR 3a. The parse, filter and projection below are byte-for-byte the
-// pre-FIX-961 logic; only the ACCUMULATOR changed. Two accumulators exist:
+// FIX-961 / PR 3a: each surviving row is projected to two compact sorted records
+// and spilled to gzip'd runs; a k-way merge reduces them. Peak heap is one sort
+// buffer, independent of cycle size.
 //
-//   external (default) — each surviving row is projected to two compact sorted
-//     records and spilled to gzip'd runs; a k-way merge reduces them. Peak heap
-//     is one sort buffer, independent of cycle size.
-//   memory — the original three Maps. Kept callable for the equivalence
-//     harness; PR 3b retires it.
+// The folds are sum / count / lexicographic-max-over-non-empty (all associative
+// and commutative, as ExternalGroupSorter requires) plus first-seen donor meta,
+// preserved by carrying the row ordinal in the record and combining on
+// min-ordinal.
 //
-// Both accumulators MUST produce the same aggregate set. The three folds are
-// sum / count / lexicographic-max-over-non-empty (all associative and
-// commutative) plus first-seen donor meta, which the external path preserves by
-// carrying the row ordinal in the record and combining on min-ordinal.
+// PR 3b: the ADMISSION test is now `amount > 0` — the $200 rule is a property of
+// the (donor × recipient × cycle) AGGREGATE, so it cannot be evaluated until the
+// group is complete. See the file header.
 // ---------------------------------------------------------------------------
 
 /** Route marker in the aggregate sort key. 'C' sorts before 'M'. */
@@ -607,8 +690,6 @@ export async function streamIndiv(
   // FIX-700: active tx-type filter. Defaults to FEC_INDIV_TX_TYPES / 15,15E,10.
   // index.ts passes the already-resolved set so the parse + warning run once.
   keepTxTypes:    Set<string> = parseKeepTxTypes(),
-  // FIX-961: accumulator selection. Defaults to FEC_INDIV_AGG_MODE / external.
-  mode:           IndivAggMode = resolveIndivAggMode(),
 ): Promise<IndivStreamResult> {
   const txtPath = path.join(tempDir, "indiv-extracted.txt");
   const found = await extractZipEntryToDisk(
@@ -620,12 +701,12 @@ export async function streamIndiv(
     throw new Error(`indiv .txt entry not found inside ${zipPath} (looked for itcont*.txt or indiv*.txt)`);
   }
 
-  return streamIndivText(txtPath, cmteToCandId, candidateSet, nonCandCmtes, tempDir, keepTxTypes, mode, {
+  return streamIndivText(txtPath, cmteToCandId, candidateSet, nonCandCmtes, tempDir, keepTxTypes, {
     deleteInputAfterStream: true,
   });
 }
 
-/** Knobs the equivalence harness needs and the pipeline does not. FIX-961. */
+/** Knobs the acceptance harness needs and the pipeline does not. FIX-961. */
 export interface StreamIndivTextOptions {
   /** Unlink the input text once the stream drains (the pipeline's behavior). */
   deleteInputAfterStream?: boolean;
@@ -633,15 +714,15 @@ export interface StreamIndivTextOptions {
   maxLines?: number;
   /** Override the sort-buffer size — small values force multi-run merging. */
   sortBufferEntries?: number;
-  /** Name the sort scratch dir, so two modes can run side by side. */
+  /** Name the sort scratch dir, so two runs can work side by side. */
   sortDirName?: string;
 }
 
 /**
  * The stage proper, over an already-extracted indiv text file.
  *
- * Split out of `streamIndiv` by FIX-961 so the equivalence harness can drive a
- * deterministic slice through BOTH accumulators without materializing a zip.
+ * Split out of `streamIndiv` by FIX-961 so a harness can drive a deterministic
+ * slice of a real file without materializing a zip.
  */
 export async function streamIndivText(
   txtPath:        string,
@@ -650,43 +731,32 @@ export async function streamIndivText(
   nonCandCmtes:   Set<string>,
   tempDir:        string,
   keepTxTypes:    Set<string> = parseKeepTxTypes(),
-  mode:           IndivAggMode = resolveIndivAggMode(),
   opts:           StreamIndivTextOptions = {},
 ): Promise<IndivStreamResult> {
   const txtMb = (fs.statSync(txtPath).size / 1024 / 1024).toFixed(0);
   console.log(`    Extracted indiv text (${txtMb} MB) — streaming line by line...`);
   console.log(`    Tx-type filter: [${[...keepTxTypes].join(",")}]`);
-  console.log(`    Aggregation mode: ${mode}${mode === "memory" ? "  ⚠ pre-FIX-961 in-RAM maps — heap scales with cycle size" : ""}`);
-
-  // ── accumulators ────────────────────────────────────────────────────────
-  // Exactly one of these pairs is live; the other stays empty.
-  const aggregations          = new Map<string, IndivAggregation>();
-  const committeeAggregations = new Map<string, IndivCommitteeAggregation>();
-  const donorMetas            = new Map<string, IndivDonorMeta>();
+  console.log(`    Floor: $${(MIN_AGGREGATE_CENTS / 100).toFixed(0)} per (donor × recipient × cycle) AGGREGATE, applied at EMIT (PR 3b)`);
 
   const sortDir = path.join(tempDir, opts.sortDirName ?? "indiv-sort");
   const bufferEntries = opts.sortBufferEntries ?? resolveSortBuffer();
-  let aggSorter:  ExternalGroupSorter<AggValue>  | null = null;
-  let metaSorter: ExternalGroupSorter<MetaValue> | null = null;
-  if (mode === "external") {
-    fs.mkdirSync(sortDir, { recursive: true });
-    aggSorter  = new ExternalGroupSorter<AggValue>({
-      tempDir: sortDir, name: "agg",  maxBufferEntries: bufferEntries, ...AGG_CODEC,
-    });
-    metaSorter = new ExternalGroupSorter<MetaValue>({
-      // Meta collapses to one record per donor inside the buffer, so it holds
-      // far more input rows per spill than the aggregate sorter does.
-      tempDir: sortDir, name: "meta", maxBufferEntries: bufferEntries, ...META_CODEC,
-    });
-    console.log(`    Sort buffer: ${bufferEntries.toLocaleString()} keys/run · gzip level 1 · ${sortDir}`);
-  }
+  fs.mkdirSync(sortDir, { recursive: true });
+  const aggSorter = new ExternalGroupSorter<AggValue>({
+    tempDir: sortDir, name: "agg",  maxBufferEntries: bufferEntries, ...AGG_CODEC,
+  });
+  const metaSorter = new ExternalGroupSorter<MetaValue>({
+    // Meta collapses to one record per donor inside the buffer, so it holds
+    // far more input rows per spill than the aggregate sorter does.
+    tempDir: sortDir, name: "meta", maxBufferEntries: bufferEntries, ...META_CODEC,
+  });
+  console.log(`    Sort buffer: ${bufferEntries.toLocaleString()} keys/run · gzip level 1 · ${sortDir}`);
 
   let linesRead = 0,
       passedTxType = 0,
       passedCmte = 0,
       passedCand = 0,
       passedCommittee = 0,
-      passedAmt = 0,
+      passedAmount = 0,
       skippedOrgShaped = 0;
 
   const rl = readline.createInterface({
@@ -700,21 +770,12 @@ export async function streamIndivText(
     if (linesRead >= maxLines) { rl.close(); break; }
     linesRead++;
     if (linesRead % 1_000_000 === 0) {
-      if (mode === "external") {
-        console.log(
-          `    ... ${linesRead.toLocaleString()} lines | ` +
-          `${passedAmt.toLocaleString()} kept | ` +
-          `${aggSorter!.stats.runsWritten}+${metaSorter!.stats.runsWritten} runs | ` +
-          `rss ${(process.memoryUsage.rss() / 1024 / 1024).toFixed(0)} MB`,
-        );
-      } else {
-        console.log(
-          `    ... ${linesRead.toLocaleString()} lines | ` +
-          `${aggregations.size.toLocaleString()} cand pairs | ` +
-          `${committeeAggregations.size.toLocaleString()} cmte pairs | ` +
-          `${donorMetas.size.toLocaleString()} donors`,
-        );
-      }
+      console.log(
+        `    ... ${linesRead.toLocaleString()} lines | ` +
+        `${passedAmount.toLocaleString()} kept | ` +
+        `${aggSorter.stats.runsWritten}+${metaSorter.stats.runsWritten} runs | ` +
+        `rss ${(process.memoryUsage.rss() / 1024 / 1024).toFixed(0)} MB`,
+      );
     }
 
     const cols   = line.split("|");
@@ -742,10 +803,13 @@ export async function streamIndivText(
 
     const amtStr = (cols[INDIV_COL.TRANSACTION_AMT] ?? "").trim();
     const amt    = parseFloat(amtStr);
-    // PR 3a keeps the per-transaction floor exactly here. PR 3b moves it to
-    // emit time (a $200 AGGREGATE floor) — do not move it in this PR.
-    if (isNaN(amt) || amt < MIN_AMT_DOLLARS) continue;
-    passedAmt++;
+    // PR 3b: admission is `amount > 0`, NOT `amount >= $200`. The itemization
+    // rule is a property of the donor's cycle aggregate (file header), so it
+    // cannot be evaluated here — it is applied once per group at emit. `<= 0`
+    // still rejects the unparseable, the zero and the negative (refund/
+    // correction) rows, exactly as the old `< 200` test incidentally did.
+    if (isNaN(amt) || amt <= 0) continue;
+    passedAmount++;
 
     const name = (cols[INDIV_COL.NAME] ?? "").trim();
     if (!name) continue;
@@ -770,75 +834,25 @@ export async function streamIndivText(
     const dt   = (cols[INDIV_COL.TRANSACTION_DT] ?? "").trim();
     const amtCents = Math.round(amt * 100);
 
-    if (mode === "external") {
-      // `linesRead` is the ordinal: strictly increasing, and its ORDER (not its
-      // value) is what first-seen-wins depends on.
-      if (metaSorter!.add(fp, {
-        ordinal:     linesRead,
-        // .slice() forces a flat copy so the record does not pin the whole
-        // parent line through V8's sliced-string representation.
-        displayName: name.slice(),
-        city:        (cols[INDIV_COL.CITY]       ?? "").trim().slice(),
-        state:       (cols[INDIV_COL.STATE]      ?? "").trim().toUpperCase(),
-        zip5,
-        employer:    (cols[INDIV_COL.EMPLOYER]   ?? "").trim().slice(),
-        occupation:  (cols[INDIV_COL.OCCUPATION] ?? "").trim().slice(),
-      })) await metaSorter!.spill();
+    // `linesRead` is the ordinal: strictly increasing, and its ORDER (not its
+    // value) is what first-seen-wins depends on.
+    if (metaSorter.add(fp, {
+      ordinal:     linesRead,
+      // .slice() forces a flat copy so the record does not pin the whole
+      // parent line through V8's sliced-string representation.
+      displayName: name.slice(),
+      city:        (cols[INDIV_COL.CITY]       ?? "").trim().slice(),
+      state:       (cols[INDIV_COL.STATE]      ?? "").trim().toUpperCase(),
+      zip5,
+      employer:    (cols[INDIV_COL.EMPLOYER]   ?? "").trim().slice(),
+      occupation:  (cols[INDIV_COL.OCCUPATION] ?? "").trim().slice(),
+    })) await metaSorter.spill();
 
-      const route     = candId ? ROUTE_CAND : ROUTE_CMTE;
-      const recipient = candId ?? cmteId;
-      if (aggSorter!.add(compositeKey(fp, route, recipient), {
-        cents: amtCents, count: 1, maxDt: dt || null,
-      })) await aggSorter!.spill();
-      continue;
-    }
-
-    // ── mode === "memory": the pre-FIX-961 path, unchanged ────────────────
-    if (!donorMetas.has(fp)) {
-      donorMetas.set(fp, {
-        fingerprint: fp,
-        displayName: name,
-        city:        (cols[INDIV_COL.CITY]       ?? "").trim(),
-        state:       (cols[INDIV_COL.STATE]      ?? "").trim().toUpperCase(),
-        zip5,
-        employer:    (cols[INDIV_COL.EMPLOYER]   ?? "").trim(),
-        occupation:  (cols[INDIV_COL.OCCUPATION] ?? "").trim(),
-      });
-    }
-
-    if (candId) {
-      const aggKey  = `${fp}|${candId}`;
-      const existing = aggregations.get(aggKey);
-      if (existing) {
-        existing.totalCents += amtCents;
-        existing.txCount++;
-        if (dt && dt > (existing.latestDate ?? "")) existing.latestDate = dt;
-      } else {
-        aggregations.set(aggKey, {
-          donorFingerprint: fp,
-          candId,
-          totalCents:       amtCents,
-          txCount:          1,
-          latestDate:       dt || null,
-        });
-      }
-    } else {
-      const aggKey  = `${fp}|${cmteId}`;
-      const existing = committeeAggregations.get(aggKey);
-      if (existing) {
-        existing.totalCents += amtCents;
-        existing.txCount++;
-        if (dt && dt > (existing.latestDate ?? "")) existing.latestDate = dt;
-      } else {
-        committeeAggregations.set(aggKey, {
-          donorFingerprint: fp,
-          cmteId,
-          totalCents:       amtCents,
-          txCount:          1,
-          latestDate:       dt || null,
-        });
-      }
-    }
+    const route     = candId ? ROUTE_CAND : ROUTE_CMTE;
+    const recipient = candId ?? cmteId;
+    if (aggSorter.add(compositeKey(fp, route, recipient), {
+      cents: amtCents, count: 1, maxDt: dt || null,
+    })) await aggSorter.spill();
   }
 
   // Released BEFORE the merge — a presidential cycle's extracted text is ~13 GB
@@ -848,54 +862,97 @@ export async function streamIndivText(
   }
 
   // ── finalize ────────────────────────────────────────────────────────────
-  let result: IndivStreamResult;
-  let uniqueDonors: number, candPairs: number, cmtePairs: number;
+  console.log(`    Merging sorted runs (${aggSorter.stats.runsWritten} agg + ${metaSorter.stats.runsWritten} meta)...`);
+  const aggSorted  = await aggSorter.finalize();
+  const metaSorted = await metaSorter.finalize();
 
-  if (mode === "external") {
-    console.log(`    Merging sorted runs (${aggSorter!.stats.runsWritten} agg + ${metaSorter!.stats.runsWritten} meta)...`);
-    const aggSorted  = await aggSorter!.finalize();
-    const metaSorted = await metaSorter!.finalize();
+  // ONE pass over the merged aggregates does three jobs at once (the merged
+  // output is a few tens of MB gzip'd, so this is cheap):
+  //   1. the two emitted-pair counts, which are the writers' FIX-754 cursor
+  //      TOTALS and so must be the post-floor counts, not the group counts;
+  //   2. the donor-row count — donors with ≥1 above-floor group. The stream is
+  //      fingerprint-ordered, so a donor's groups are contiguous and one
+  //      boolean carries the answer;
+  //   3. the sub-floor residual, folded to (recipient × bracket).
+  // Doing it here rather than inside the emit iterators matters: those are
+  // re-read several times per cycle, and an accumulator inside them would
+  // multiply-count.
+  let candPairs = 0, cmtePairs = 0, donorRows = 0;
+  let residualGroups = 0, residualCents = 0;
+  const brackets = new Map<string, SmallDollarBracketRow>();
+  let curDonor: string | null = null;
+  let curDonorEmits = false;
 
-    // One pass to split the aggregate groups by route — the same two counts the
-    // map path printed. Cheap (the merged output is a few tens of MB gzip'd).
-    candPairs = 0; cmtePairs = 0;
-    for await (const { key } of aggSorted) {
-      if (splitAggKey(key).route === ROUTE_CAND) candPairs++; else cmtePairs++;
+  for await (const { key, value } of aggSorted) {
+    const { fp, route, recipient } = splitAggKey(key);
+    if (fp !== curDonor) {
+      if (curDonorEmits) donorRows++;
+      curDonor = fp;
+      curDonorEmits = false;
     }
-    uniqueDonors = metaSorted.groupCount;
 
-    result = makeExternalResult(aggSorted, metaSorted, sortDir);
-  } else {
-    uniqueDonors = donorMetas.size;
-    candPairs    = aggregations.size;
-    cmtePairs    = committeeAggregations.size;
-    result = makeMemoryResult(aggregations, committeeAggregations, donorMetas);
+    if (value.cents >= MIN_AGGREGATE_CENTS) {
+      curDonorEmits = true;
+      if (route === ROUTE_CAND) candPairs++; else cmtePairs++;
+      continue;
+    }
+
+    // Sub-floor: no FR row, no donor entity — bracketed instead.
+    residualGroups++;
+    residualCents += value.cents;
+    const bracket = assignSmallDollarBracket(value.cents);
+    if (!bracket) continue;   // unreachable while admission is amount > 0
+    const bKey = `${route}${KEY_FIELD_SEP}${recipient}${KEY_FIELD_SEP}${bracket}`;
+    const row  = brackets.get(bKey);
+    if (row) {
+      row.donorCount++;
+      row.totalCents += value.cents;
+      row.txCount    += value.count;
+    } else {
+      brackets.set(bKey, {
+        route:      route === ROUTE_CAND ? ROUTE_CAND : ROUTE_CMTE,
+        recipient,
+        bracket,
+        donorCount: 1,
+        totalCents: value.cents,
+        txCount:    value.count,
+      });
+    }
   }
+  if (curDonorEmits) donorRows++;   // the last donor never hits a key change
+
+  const uniqueDonors = metaSorted.groupCount;
+  const bracketRows  = [...brackets.values()];
+  const result = makeExternalResult(aggSorted, metaSorted, bracketRows, sortDir);
 
   console.log(`    Lines read:                ${linesRead.toLocaleString()}`);
   console.log(`    Passed tx-type filter [${[...keepTxTypes].join(",")}]: ${passedTxType.toLocaleString()}`);
   console.log(`    Passed cmte lookup:        ${passedCmte.toLocaleString()}`);
   console.log(`      → candidate path:        ${passedCand.toLocaleString()}`);
   console.log(`      → committee path:        ${passedCommittee.toLocaleString()}`);
-  console.log(`    Passed $200+ filter:       ${passedAmt.toLocaleString()}`);
+  console.log(`    Admitted (amount > 0):     ${passedAmount.toLocaleString()}`);
   console.log(`    Skipped org-shaped names:  ${skippedOrgShaped.toLocaleString()}`);
-  console.log(`    Unique donors:             ${uniqueDonors.toLocaleString()}`);
-  console.log(`    Donor × candidate pairs:   ${candPairs.toLocaleString()}`);
-  console.log(`    Donor × committee pairs:   ${cmtePairs.toLocaleString()}`);
+  console.log(`    Unique donors in file:     ${uniqueDonors.toLocaleString()}`);
+  console.log(`    Donor rows to write:       ${donorRows.toLocaleString()}  (donors with ≥1 aggregate ≥ $${(MIN_AGGREGATE_CENTS / 100).toFixed(0)})`);
+  console.log(`    Donor × candidate pairs:   ${candPairs.toLocaleString()}  (≥ floor)`);
+  console.log(`    Donor × committee pairs:   ${cmtePairs.toLocaleString()}  (≥ floor)`);
+  console.log(
+    `    Sub-floor residual:        ${residualGroups.toLocaleString()} group(s) · ` +
+    `$${(residualCents / 100).toLocaleString("en-US", { maximumFractionDigits: 0 })} · ` +
+    `${bracketRows.length.toLocaleString()} (recipient × bracket) rollup row(s) (PR 3b)`,
+  );
 
   result.stats = {
-    linesRead, passedTxType, passedCmte, passedCand, passedCommittee, passedAmt,
-    uniqueDonors, candPairs, cmtePairs,
+    linesRead, passedTxType, passedCmte, passedCand, passedCommittee, passedAmount,
+    uniqueDonors, candPairs, cmtePairs, donorRows, residualGroups, residualCents,
   };
-  if (mode === "external") {
-    const peak = aggSorter!.stats.peakDiskBytes + metaSorter!.stats.peakDiskBytes;
-    result.stats.sort = { agg: aggSorter!.stats, meta: metaSorter!.stats, peakDiskBytes: peak };
-    console.log(
-      `    Sort: ${aggSorter!.stats.runsWritten} agg run(s) + ${metaSorter!.stats.runsWritten} meta run(s) · ` +
-      `peak sort disk ${(peak / 1024 / 1024).toFixed(0)} MB · ` +
-      `peak rss ${(process.memoryUsage.rss() / 1024 / 1024).toFixed(0)} MB (FIX-961)`,
-    );
-  }
+  const peak = aggSorter.stats.peakDiskBytes + metaSorter.stats.peakDiskBytes;
+  result.stats.sort = { agg: aggSorter.stats, meta: metaSorter.stats, peakDiskBytes: peak };
+  console.log(
+    `    Sort: ${aggSorter.stats.runsWritten} agg run(s) + ${metaSorter.stats.runsWritten} meta run(s) · ` +
+    `peak sort disk ${(peak / 1024 / 1024).toFixed(0)} MB · ` +
+    `peak rss ${(process.memoryUsage.rss() / 1024 / 1024).toFixed(0)} MB (FIX-961)`,
+  );
 
   return result;
 }
@@ -906,20 +963,27 @@ export async function streamIndivText(
 
 const EMPTY_STATS: IndivStreamStats = {
   linesRead: 0, passedTxType: 0, passedCmte: 0, passedCand: 0,
-  passedCommittee: 0, passedAmt: 0, uniqueDonors: 0, candPairs: 0, cmtePairs: 0,
+  passedCommittee: 0, passedAmount: 0, uniqueDonors: 0, candPairs: 0, cmtePairs: 0,
+  donorRows: 0, residualGroups: 0, residualCents: 0,
 };
 
+/**
+ * The emit side. Every accessor re-reads the merged sorted file and applies the
+ * PR 3b aggregate floor, so a caller cannot accidentally consume the sub-floor
+ * population: what these yield is exactly what gets written.
+ */
 function makeExternalResult(
-  aggSorted:  SortedGroups<AggValue>,
-  metaSorted: SortedGroups<MetaValue>,
-  sortDir:    string,
+  aggSorted:   SortedGroups<AggValue>,
+  metaSorted:  SortedGroups<MetaValue>,
+  bracketRows: SmallDollarBracketRow[],
+  sortDir:     string,
 ): IndivStreamResult {
   return {
-    mode: "external",
     stats: { ...EMPTY_STATS },
 
     async *readAggregations() {
       for await (const { key, value } of aggSorted) {
+        if (value.cents < MIN_AGGREGATE_CENTS) continue;   // PR 3b emit floor
         const { fp, route, recipient } = splitAggKey(key);
         if (route !== ROUTE_CAND) continue;
         yield {
@@ -934,6 +998,7 @@ function makeExternalResult(
 
     async *readCommitteeAggregations() {
       for await (const { key, value } of aggSorted) {
+        if (value.cents < MIN_AGGREGATE_CENTS) continue;   // PR 3b emit floor
         const { fp, route, recipient } = splitAggKey(key);
         if (route !== ROUTE_CMTE) continue;
         yield {
@@ -946,16 +1011,28 @@ function makeExternalResult(
       }
     },
 
+    readSmallDollarBrackets() { return bracketRows; },
+
     // Merge-join: both files are fingerprint-ordered, so the donor's cycle
-    // total (across BOTH routes) is summed on the fly. This is what removed the
-    // last O(donors) map from the stage — the pre-FIX-961 code built a
-    // `cycleDonorTotals` Map over every fingerprint before the donor upsert.
-    readDonorInputs() {
-      return mergeJoinGrouped<MetaValue, AggValue, IndivDonorInput>(
+    // total is summed on the fly. This is what removed the last O(donors) map
+    // from the stage — the pre-FIX-961 code built a `cycleDonorTotals` Map over
+    // every fingerprint before the donor upsert.
+    //
+    // PR 3b: the total sums ONLY above-floor groups, and a donor with none is
+    // dropped (emit returns null, filtered below). Two reasons, and they are the
+    // same reason: no FR row means no money to attribute, and
+    // `total_donated_cents` must agree with the FR rows this run writes because
+    // `rebuild_financial_entity_donation_totals()` re-derives it from exactly
+    // those rows. Minting a donor entity for someone whose every group is
+    // sub-floor would create a $0 individual with no relationships — a row that
+    // shows up in search and dead-ends.
+    async *readDonorInputs() {
+      const joined = mergeJoinGrouped<MetaValue, AggValue, IndivDonorInput | null>(
         metaSorted, aggSorted, aggKeyDonor,
         (fp, meta, aggs) => {
           let total = 0;
-          for (const a of aggs) total += a.cents;
+          for (const a of aggs) if (a.cents >= MIN_AGGREGATE_CENTS) total += a.cents;
+          if (total === 0) return null;
           return {
             fingerprint:       fp,
             displayName:       meta.displayName,
@@ -968,47 +1045,15 @@ function makeExternalResult(
           };
         },
       );
+      for await (const d of joined) {
+        if (d !== null) yield d;
+      }
     },
 
     async dispose() {
       await aggSorted.dispose();
       await metaSorted.dispose();
       try { fs.rmSync(sortDir, { recursive: true, force: true }); } catch { /* best effort */ }
-    },
-  };
-}
-
-function makeMemoryResult(
-  aggregations:          Map<string, IndivAggregation>,
-  committeeAggregations: Map<string, IndivCommitteeAggregation>,
-  donorMetas:            Map<string, IndivDonorMeta>,
-): IndivStreamResult {
-  return {
-    mode: "memory",
-    stats: { ...EMPTY_STATS },
-
-    async *readAggregations() { yield* aggregations.values(); },
-    async *readCommitteeAggregations() { yield* committeeAggregations.values(); },
-
-    async *readDonorInputs() {
-      // The pre-FIX-961 shape, verbatim: sum both aggregation maps into a
-      // per-donor total, then walk donorMetas in insertion order.
-      const totals = new Map<string, number>();
-      for (const agg of aggregations.values()) {
-        totals.set(agg.donorFingerprint, (totals.get(agg.donorFingerprint) ?? 0) + agg.totalCents);
-      }
-      for (const agg of committeeAggregations.values()) {
-        totals.set(agg.donorFingerprint, (totals.get(agg.donorFingerprint) ?? 0) + agg.totalCents);
-      }
-      for (const [fp, meta] of donorMetas.entries()) {
-        yield { ...meta, totalDonatedCents: totals.get(fp) ?? 0 };
-      }
-    },
-
-    async dispose() {
-      aggregations.clear();
-      committeeAggregations.clear();
-      donorMetas.clear();
     },
   };
 }

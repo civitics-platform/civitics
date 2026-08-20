@@ -1156,8 +1156,11 @@ export default async function OfficialProfilePage({
           {(totalDonations > 0 || donorCount > 0) && (
             <p className="border-t border-rule bg-card px-4 py-2 text-[10px] leading-relaxed text-ink-soft/60">
               Itemized donations is the sum of FEC-itemized contributions across{" "}
-              <span className="whitespace-nowrap">all cycles</span> on record — it excludes
-              unitemized small-dollar giving, which the FEC never discloses, along with
+              <span className="whitespace-nowrap">all cycles</span> on record. It excludes two
+              different things: giving the FEC never discloses at all (a donor whose cycle total
+              with a committee stays under $200 is never itemized), and{" "}
+              <span className="whitespace-nowrap">sub-$200</span> giving that IS disclosed but
+              which we count separately rather than as a donation record. It also excludes
               joint-fundraising transfers, loans and other receipts. It is therefore lower than
               this official&apos;s total receipts, and lower again than any single-cycle figure
               published by the FEC. Donor records counts donor-and-cycle pairs, not distinct

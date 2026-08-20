@@ -1,26 +1,43 @@
 /**
- * FIX-961 / PR 3a — equivalence harness for the indiv-stage accumulator swap.
+ * FEC indiv-stage ACCEPTANCE harness.
  *
- * Runs a deterministic slice of a REAL indiv file through both accumulators —
- * `memory` (the pre-FIX-961 in-RAM Maps) and `external` (sorted runs + k-way
- * merge) — and asserts the emitted aggregate sets are identical: same keys,
- * same sums, same tx counts, same latest dates, same donor rows, same totals.
+ * ── What this file used to be ────────────────────────────────────────────────
+ * FIX-961 / PR 3a's equivalence harness: it ran a slice of a real indiv file
+ * through BOTH accumulators — `memory` (the pre-FIX-961 in-RAM Maps) and
+ * `external` (sorted runs + k-way merge) — and asserted the emitted sets were
+ * identical. That diff ran clean (zero divergence across every emitted set) and
+ * PR 3a shipped. PR 3b then RETIRED the `memory` accumulator and its
+ * FEC_INDIV_AGG_MODE flag, so there is no longer a second path to diff against
+ * and the equivalence question is closed.
  *
- * This PR changes NO semantics, so the expected diff is EMPTY. Any divergence
- * is a bug in the new path until proven otherwise.
+ * ── What it is now ───────────────────────────────────────────────────────────
+ * The acceptance instrument for PR 3b's semantics change. It drives the REAL
+ * `streamIndivText` over a real file and reports what the stage will emit under
+ * the $200 AGGREGATE floor, in exactly the units the phase-0 audit measured
+ * (docs/audits/2026-08-18-fec-coverage-pr3a-phase0.md §2.3 / §2.4):
  *
- * It also records what the swap was for: peak RSS per mode, and the external
- * path's on-disk high-water.
+ *   FR rows (donor × candidate, donor × committee), the dollars behind them,
+ *   donor rows, and the sub-floor residual split by size bracket.
+ *
+ * A run whose numbers match the audit's is the acceptance check. A run that does
+ * NOT match is a bug until explained.
+ *
+ * `--stage-only` is retained verbatim from PR 3a: it drains all accessors while
+ * retaining nothing, so its peak RSS is the STAGE's, not the harness's. That is
+ * the bounded-heap proof, and conflating the two is what made the first cut of
+ * this harness unfalsifiable in the direction that flattered it.
+ *
+ * Recipient sets come from the real ccl/cm files, not the DB: `candidateSet` is
+ * every CAND_ID in ccl (a SUPERSET of our matched officials, which is what makes
+ * the totals comparable to the phase-0 script — the live pipeline narrows to
+ * matched officials and so emits somewhat fewer candidate-route rows).
  *
  * Usage (from packages/data):
  *   tsx src/scripts/fec-indiv-equivalence.ts --txt <indiv.txt> --ccl <ccl.txt> --cm <cm.txt> [--lines N] [--buffer N]
- *   tsx src/scripts/fec-indiv-equivalence.ts --zip <indivNN.zip> --ccl-zip <cclNN.zip> --cm-zip <cmNN.zip> [--lines N]
- *
- * The recipient sets come from the real ccl/cm files, not the DB: `candidateSet`
- * is every CAND_ID in ccl (a superset of our matched officials, which maximizes
- * the rows under test) and `nonCandCmtes` is the production
- * buildNonCandRecipientSet. Routing is therefore the real routing; what is under
- * test is the accumulator.
+ *   tsx src/scripts/fec-indiv-equivalence.ts --zip <indivNN.zip> --ccl-zip <cclNN.zip> --cm-zip <cmNN.zip>
+ *   … --committee C00718866       restrict the report to one recipient committee
+ *   … --stage-only                bounded-heap proof, no per-row retention
+ *   … --json out.json             machine-readable result
  *
  * No DB connection. No prod. Local files only.
  */
@@ -28,17 +45,15 @@
 import * as fs   from "fs";
 import * as os   from "os";
 import * as path from "path";
-import { spawnSync } from "child_process";
 
 import {
   streamIndivText,
   parseCcl,
   parseKeepTxTypes,
-  type IndivStreamResult,
-  type IndivStreamStats,
-  type IndivAggregation,
-  type IndivCommitteeAggregation,
-  type IndivDonorInput,
+  assignSmallDollarBracket,
+  SMALL_DOLLAR_BRACKETS,
+  MIN_AGGREGATE_CENTS,
+  type SmallDollarBracketCode,
 } from "../pipelines/fec-bulk/indiv";
 import { parseCm24, buildNonCandRecipientSet } from "../pipelines/fec-bulk/index";
 import { extractZipEntryToDisk } from "../pipelines/fec-bulk/util";
@@ -51,10 +66,11 @@ function arg(name: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`);
   return i >= 0 ? process.argv[i + 1] : undefined;
 }
+const has = (name: string) => process.argv.includes(`--${name}`);
 
-const LINES  = parseInt(arg("lines")  ?? "3000000", 10);
-const BUFFER = parseInt(arg("buffer") ?? "25000", 10);   // small ⇒ many runs ⇒ real merge
-const WORK   = arg("work") ?? path.join(os.tmpdir(), "fec-indiv-equivalence");
+const LINES  = parseInt(arg("lines")  ?? "0", 10) || Infinity;
+const BUFFER = parseInt(arg("buffer") ?? "400000", 10);
+const WORK   = arg("work") ?? path.join(os.tmpdir(), "fec-indiv-acceptance");
 
 // ---------------------------------------------------------------------------
 // peak-RSS sampler
@@ -77,84 +93,22 @@ class RssSampler {
   stop(): void { if (this.timer) { clearInterval(this.timer); this.timer = null; } }
 }
 
-const mb = (n: number) => `${(n / 1024 / 1024).toFixed(1)} MB`;
-
-// ---------------------------------------------------------------------------
-// collection — the emitted sets, keyed exactly as the writers key them
-// ---------------------------------------------------------------------------
-
-interface Collected {
-  cand:  Map<string, string>;   // `${fp}|${candId}` → "cents|count|latestDate"
-  cmte:  Map<string, string>;   // `${fp}|${cmteId}` → "cents|count|latestDate"
-  donor: Map<string, string>;   // fp → "name|city|state|zip|employer|occupation|total"
-  candOrder:  string[];
-  cmteOrder:  string[];
-  donorOrder: string[];
-}
-
-const aggRow = (a: IndivAggregation | IndivCommitteeAggregation) =>
-  `${a.totalCents}|${a.txCount}|${a.latestDate ?? "∅"}`;
-
-const donorRow = (d: IndivDonorInput) =>
-  [d.displayName, d.city, d.state, d.zip5, d.employer, d.occupation, d.totalDonatedCents].join("|");
-
-async function collect(res: IndivStreamResult): Promise<Collected> {
-  const out: Collected = {
-    cand: new Map(), cmte: new Map(), donor: new Map(),
-    candOrder: [], cmteOrder: [], donorOrder: [],
-  };
-  for await (const a of res.readAggregations()) {
-    const k = `${a.donorFingerprint}|${a.candId}`;
-    if (out.cand.has(k)) throw new Error(`[${res.mode}] duplicate candidate group emitted: ${k}`);
-    out.cand.set(k, aggRow(a));
-    out.candOrder.push(k);
-  }
-  for await (const a of res.readCommitteeAggregations()) {
-    const k = `${a.donorFingerprint}|${a.cmteId}`;
-    if (out.cmte.has(k)) throw new Error(`[${res.mode}] duplicate committee group emitted: ${k}`);
-    out.cmte.set(k, aggRow(a));
-    out.cmteOrder.push(k);
-  }
-  for await (const d of res.readDonorInputs()) {
-    if (out.donor.has(d.fingerprint)) throw new Error(`[${res.mode}] duplicate donor emitted: ${d.fingerprint}`);
-    out.donor.set(d.fingerprint, donorRow(d));
-    out.donorOrder.push(d.fingerprint);
-  }
-  return out;
-}
-
-// ---------------------------------------------------------------------------
-// diff
-// ---------------------------------------------------------------------------
-
-interface Divergence { set: string; key: string; oldValue: string | null; newValue: string | null }
-
-function diffMaps(label: string, a: Map<string, string>, b: Map<string, string>): Divergence[] {
-  const out: Divergence[] = [];
-  for (const [k, v] of a) {
-    const w = b.get(k);
-    if (w === undefined)  out.push({ set: label, key: k, oldValue: v, newValue: null });
-    else if (w !== v)     out.push({ set: label, key: k, oldValue: v, newValue: w });
-  }
-  for (const [k, v] of b) {
-    if (!a.has(k)) out.push({ set: label, key: k, oldValue: null, newValue: v });
-  }
-  return out;
-}
-
-function sum(m: Map<string, string>, field: number): number {
-  let t = 0;
-  for (const v of m.values()) t += Number(v.split("|")[field]);
-  return t;
-}
+const mb  = (n: number) => `${(n / 1024 / 1024).toFixed(1)} MB`;
+const usd = (cents: number) => `$${(cents / 100).toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
+const pad = (s: string | number, n: number) => String(s).padStart(n);
 
 // ---------------------------------------------------------------------------
 // inputs
 // ---------------------------------------------------------------------------
 
-async function resolveText(direct: string | undefined, zip: string | undefined, match: (n: string) => boolean, dest: string): Promise<string> {
+async function resolveText(
+  direct: string | undefined,
+  zip: string | undefined,
+  match: (n: string) => boolean,
+  dest: string,
+): Promise<string> {
   if (direct) return direct;
-  if (!zip) throw new Error(`need one of --${path.basename(dest, ".txt")} / --${path.basename(dest, ".txt")}-zip`);
+  if (!zip) throw new Error(`need --${path.basename(dest, ".txt")} or --${path.basename(dest, ".txt")}-zip`);
   if (fs.existsSync(dest) && fs.statSync(dest).size > 0) {
     console.log(`  reusing extracted ${path.basename(dest)}`);
     return dest;
@@ -163,6 +117,9 @@ async function resolveText(direct: string | undefined, zip: string | undefined, 
   if (!ok) throw new Error(`no matching entry in ${zip}`);
   return dest;
 }
+
+interface Bucket { groups: number; cents: number; tx: number }
+const bucket = (): Bucket => ({ groups: 0, cents: 0, tx: 0 });
 
 async function main(): Promise<void> {
   fs.mkdirSync(WORK, { recursive: true });
@@ -183,230 +140,173 @@ async function main(): Promise<void> {
     path.join(WORK, "cm.txt"),
   );
 
-  console.log("─".repeat(78));
-  console.log("FIX-961 / PR 3a — indiv accumulator equivalence");
-  console.log("─".repeat(78));
-  console.log(`  indiv : ${indivTxt} (${mb(fs.statSync(indivTxt).size)})`);
-  console.log(`  lines : ${LINES.toLocaleString()}   sort buffer: ${BUFFER.toLocaleString()} keys`);
+  const cmteToCandAll = parseCcl(fs.readFileSync(cclTxt));
+  const candidateSet  = new Set(cmteToCandAll.values());
+  const cmLookup      = parseCm24(fs.readFileSync(cmTxt));
+  const nonCandCmtes  = buildNonCandRecipientSet(cmLookup, cmteToCandAll);
 
-  const cmteToCand = parseCcl(fs.readFileSync(cclTxt));
-  const candidateSet = new Set(cmteToCand.values());
-  const cmLookup     = parseCm24(fs.readFileSync(cmTxt));
-  const nonCandCmtes = buildNonCandRecipientSet(cmLookup, cmteToCand);
+  // `--committee X` narrows BOTH recipient collections to X, mirroring the
+  // FIX-701 FEC_INDIV_RECIPIENT_CMTES axis. That is what makes the Ossoff
+  // numbers directly comparable to the phase-0 script's `--committee` pass.
+  const onlyCmte = arg("committee")?.toUpperCase();
+  const cmteToCand = new Map(cmteToCandAll);
+  if (onlyCmte) {
+    for (const k of [...cmteToCand.keys()]) if (k !== onlyCmte) cmteToCand.delete(k);
+    for (const k of [...nonCandCmtes])      if (k !== onlyCmte) nonCandCmtes.delete(k);
+  }
+
+  console.log("─".repeat(78));
+  console.log("PR 3b — indiv stage acceptance ($200 AGGREGATE floor, applied at emit)");
+  console.log("─".repeat(78));
+  console.log(`  indiv     : ${indivTxt} (${mb(fs.statSync(indivTxt).size)})`);
+  console.log(`  scope     : ${onlyCmte ?? "ALL recipients (ccl P/A ∪ non-cand committees)"}`);
+  console.log(`  lines     : ${LINES === Infinity ? "all" : LINES.toLocaleString()}   sort buffer: ${BUFFER.toLocaleString()} keys`);
   console.log(`  recipients: ${cmteToCand.size.toLocaleString()} cand cmtes / ${candidateSet.size.toLocaleString()} cand ids / ${nonCandCmtes.size.toLocaleString()} non-cand cmtes`);
   console.log(`  tx types  : [${[...parseKeepTxTypes()].join(",")}]`);
+  console.log(`  floor     : ${usd(MIN_AGGREGATE_CENTS)} per (donor × recipient × cycle)`);
   console.log("");
 
-  const runOne = async (mode: "memory" | "external") => {
-    const s = new RssSampler();
-    s.start();
-    const t0 = Date.now();
-    const res = await streamIndivText(
-      indivTxt, cmteToCand, candidateSet, nonCandCmtes, WORK,
-      parseKeepTxTypes(), mode,
-      { maxLines: LINES, sortBufferEntries: BUFFER, sortDirName: `sort-${mode}` },
-    );
-    const streamMs = Date.now() - t0;
-    // Peak RSS of the STAGE, sampled before the harness's own collection Maps
-    // (which are the same cost in both modes and would swamp the comparison).
-    const stagePeakRss = s.peakRss, stagePeakHeap = s.peakHeapUsed;
-    const got = await collect(res);
-    const totalMs = Date.now() - t0;
-    s.stop();
-    const stats = res.stats;
-    await res.dispose();
-    return {
-      mode, got, stats, streamMs, totalMs,
-      stagePeakRss, stagePeakHeap,
-      peakRss: s.peakRss, peakHeap: s.peakHeapUsed,
-    };
-  };
+  const sampler = new RssSampler();
+  sampler.start();
+  const t0 = Date.now();
 
-  // ── one mode per process ────────────────────────────────────────────────
-  // `--only <mode>` runs a single accumulator and dumps a canonical digest.
-  // The parent below spawns two of these. Running both in ONE process makes
-  // the RSS comparison meaningless: mode-1's garbage stays resident (RSS never
-  // returns to the OS), so mode-2 always looks worse than it is. The first cut
-  // of this harness had exactly that flaw and reported external as the heavier
-  // path on a slice where it holds ~1/40th the live set.
-  // `--stage-only <mode>` measures the STAGE and nothing else: it drains all
-  // three accessors counting and summing, never retaining a row. The `--only`
-  // path below builds the full comparison Maps (2.2M rows on a full cycle),
-  // which is the harness's cost, not the pipeline's — conflating the two makes
-  // the memory claim unfalsifiable in the direction that flatters it.
-  const stageOnly = arg("stage-only") as "memory" | "external" | undefined;
-  if (stageOnly) {
-    const s = new RssSampler();
-    s.start();
-    const t0 = Date.now();
-    const res = await streamIndivText(
-      indivTxt, cmteToCand, candidateSet, nonCandCmtes, WORK,
-      parseKeepTxTypes(), stageOnly,
-      { maxLines: LINES, sortBufferEntries: BUFFER, sortDirName: `stage-${stageOnly}` },
-    );
-    const streamPeak = s.peakRss;
-    let nCand = 0, nCmte = 0, nDonor = 0, cents = 0;
-    for await (const a of res.readAggregations())          { nCand++;  cents += a.totalCents; }
-    for await (const a of res.readCommitteeAggregations()) { nCmte++;  cents += a.totalCents; }
-    for await (const d of res.readDonorInputs())           { nDonor++; }
-    s.stop();
-    await res.dispose();
-    console.log(`  STAGE-ONLY mode=${stageOnly}  cand=${nCand.toLocaleString()} cmte=${nCmte.toLocaleString()} donors=${nDonor.toLocaleString()} Σcents=${cents.toLocaleString()}`);
-    console.log(`  peak RSS during stream: ${mb(streamPeak)}   peak RSS incl. drain: ${mb(s.peakRss)}   heap peak: ${mb(s.peakHeapUsed)}   ${((Date.now() - t0) / 1000).toFixed(0)}s`);
-    if (res.stats.sort) console.log(`  sort: ${res.stats.sort.agg.runsWritten}+${res.stats.sort.meta.runsWritten} runs, peak disk ${mb(res.stats.sort.peakDiskBytes)}`);
-    process.exit(0);
+  const res = await streamIndivText(
+    indivTxt, cmteToCand, candidateSet, nonCandCmtes, WORK,
+    parseKeepTxTypes(),
+    { maxLines: LINES === Infinity ? undefined : LINES, sortBufferEntries: BUFFER, sortDirName: "sort-acceptance" },
+  );
+  const streamPeakRss = sampler.peakRss;
+  const streamMs = Date.now() - t0;
+
+  // ── stage-only: the bounded-heap proof ────────────────────────────────────
+  // Drains every accessor while retaining NOTHING, so the peak RSS reported is
+  // the stage's own. Any per-row retention here would be the harness's cost
+  // masquerading as the pipeline's.
+  const stageOnly = has("stage-only");
+
+  const cand = bucket(), cmte = bucket();
+  let donorRows = 0, donorCents = 0;
+
+  for await (const a of res.readAggregations())          { cand.groups++; cand.cents += a.totalCents; cand.tx += a.txCount; }
+  for await (const a of res.readCommitteeAggregations()) { cmte.groups++; cmte.cents += a.totalCents; cmte.tx += a.txCount; }
+  for await (const d of res.readDonorInputs())           { donorRows++;   donorCents += d.totalDonatedCents; }
+
+  const brackets = res.readSmallDollarBrackets();
+  sampler.stop();
+  const totalMs = Date.now() - t0;
+  const stats = res.stats;
+
+  // ── residual, folded to the audit's three bands ───────────────────────────
+  const byBracket = new Map<SmallDollarBracketCode, Bucket>();
+  for (const b of SMALL_DOLLAR_BRACKETS) byBracket.set(b.code, bucket());
+  let residualGroups = 0, residualCents = 0;
+  for (const r of brackets) {
+    const b = byBracket.get(r.bracket)!;
+    b.groups += r.donorCount;
+    b.cents  += r.totalCents;
+    b.tx     += r.txCount;
+    residualGroups += r.donorCount;
+    residualCents  += r.totalCents;
   }
 
-  const only = arg("only") as "memory" | "external" | undefined;
-  if (only) {
-    console.log(`▶ mode=${only} (isolated process)`);
-    const r = await runOne(only);
-    const dump = arg("dump");
-    if (dump) {
-      const lines: string[] = [];
-      for (const [k, v] of [...r.got.cand].sort()) lines.push(`C\t${k}\t${v}`);
-      for (const [k, v] of [...r.got.cmte].sort()) lines.push(`M\t${k}\t${v}`);
-      for (const [k, v] of [...r.got.donor].sort()) lines.push(`D\t${k}\t${v}`);
-      fs.writeFileSync(dump, lines.join("\n"));
-      fs.writeFileSync(`${dump}.meta.json`, JSON.stringify({
-        mode: only, stats: r.stats,
-        cost: {
-          stagePeakRssBytes: r.stagePeakRss, stagePeakHeapBytes: r.stagePeakHeap,
-          harnessPeakRssBytes: r.peakRss,
-          streamMs: r.streamMs, totalMs: r.totalMs,
-        },
-        counts: { cand: r.got.cand.size, cmte: r.got.cmte.size, donor: r.got.donor.size },
-      }, null, 2));
-      console.log(`  dump → ${dump} (${lines.length.toLocaleString()} rows, ${mb(fs.statSync(dump).size)})`);
-    }
-    process.exit(0);
-  }
+  const frRows = cand.groups + cmte.groups;
+  const frCents = cand.cents + cmte.cents;
 
-  const child = (mode: string, dump: string) => {
-    const argv = [process.argv[1]!, "--only", mode, "--dump", dump,
-      "--txt", indivTxt, "--ccl", cclTxt, "--cm", cmTxt,
-      "--lines", String(LINES), "--buffer", String(BUFFER), "--work", WORK];
-    const r = spawnSync(process.execPath, ["--import", "tsx", ...argv], {
-      stdio: "inherit", env: process.env,
-    });
-    if (r.status !== 0) throw new Error(`mode=${mode} child exited ${r.status}`);
-    return {
-      dump,
-      meta: JSON.parse(fs.readFileSync(`${dump}.meta.json`, "utf8")) as {
-        stats: IndivStreamStats;
-        cost: { stagePeakRssBytes: number; stagePeakHeapBytes: number; harnessPeakRssBytes: number; streamMs: number; totalMs: number };
-      },
-    };
-  };
-
-  // memory first: it is the reference, and running it first means the external
-  // run cannot be flattered by a warm page cache the reference did not get.
-  const oldChild = child("memory", path.join(WORK, "dump-memory.tsv"));
   console.log("");
-  const newChild = child("external", path.join(WORK, "dump-external.tsv"));
-  console.log("");
-
-  const loadDump = (p: string): Collected => {
-    const out: Collected = { cand: new Map(), cmte: new Map(), donor: new Map(), candOrder: [], cmteOrder: [], donorOrder: [] };
-    const raw = fs.readFileSync(p, "utf8");
-    if (raw) for (const line of raw.split("\n")) {
-      const i = line.indexOf("\t"), j = line.lastIndexOf("\t");
-      const tag = line.slice(0, i), key = line.slice(i + 1, j), val = line.slice(j + 1);
-      (tag === "C" ? out.cand : tag === "M" ? out.cmte : out.donor).set(key, val);
-    }
-    return out;
-  };
-
-  const oldRun = { got: loadDump(oldChild.dump), stats: oldChild.meta.stats, ...oldChild.meta.cost };
-  const newRun = { got: loadDump(newChild.dump), stats: newChild.meta.stats, ...newChild.meta.cost };
-
-  // ── diff ───────────────────────────────────────────────────────────────
-  const divergences = [
-    ...diffMaps("donor×candidate", oldRun.got.cand,  newRun.got.cand),
-    ...diffMaps("donor×committee", oldRun.got.cmte,  newRun.got.cmte),
-    ...diffMaps("donor",           oldRun.got.donor, newRun.got.donor),
-  ];
-
   console.log("─".repeat(78));
-  console.log("EQUIVALENCE");
+  console.log(`EMITTED — ${onlyCmte ?? "all recipients"} (one group = one financial_relationships row)`);
   console.log("─".repeat(78));
-  const rows: Array<[string, number | string, number | string]> = [
-    ["lines read",              oldRun.stats.linesRead,       newRun.stats.linesRead],
-    ["passed tx-type",          oldRun.stats.passedTxType,    newRun.stats.passedTxType],
-    ["passed cmte lookup",      oldRun.stats.passedCmte,      newRun.stats.passedCmte],
-    ["  → candidate path",      oldRun.stats.passedCand,      newRun.stats.passedCand],
-    ["  → committee path",      oldRun.stats.passedCommittee, newRun.stats.passedCommittee],
-    ["passed $200 floor",       oldRun.stats.passedAmt,       newRun.stats.passedAmt],
-    ["donor×candidate groups",  oldRun.got.cand.size,         newRun.got.cand.size],
-    ["donor×committee groups",  oldRun.got.cmte.size,         newRun.got.cmte.size],
-    ["donor rows",              oldRun.got.donor.size,        newRun.got.donor.size],
-    ["Σ cand cents",            sum(oldRun.got.cand, 0),      sum(newRun.got.cand, 0)],
-    ["Σ cmte cents",            sum(oldRun.got.cmte, 0),      sum(newRun.got.cmte, 0)],
-    ["Σ cand txCount",          sum(oldRun.got.cand, 1),      sum(newRun.got.cand, 1)],
-    ["Σ cmte txCount",          sum(oldRun.got.cmte, 1),      sum(newRun.got.cmte, 1)],
-    ["Σ donor totalCents",      sum(oldRun.got.donor, 6),     sum(newRun.got.donor, 6)],
+  console.log(`  donor × candidate rows        ${pad(cand.groups.toLocaleString(), 14)}   ${pad(usd(cand.cents), 18)}   ${pad(cand.tx.toLocaleString(), 12)} tx`);
+  console.log(`  donor × committee rows        ${pad(cmte.groups.toLocaleString(), 14)}   ${pad(usd(cmte.cents), 18)}   ${pad(cmte.tx.toLocaleString(), 12)} tx`);
+  console.log(`  ── FR rows total              ${pad(frRows.toLocaleString(), 14)}   ${pad(usd(frCents), 18)}`);
+  console.log(`  donor entity rows             ${pad(donorRows.toLocaleString(), 14)}   ${pad(usd(donorCents), 18)}`);
+  console.log(`  (donors in file, pre-floor)   ${pad(stats.uniqueDonors.toLocaleString(), 14)}`);
+  console.log("");
+  console.log(`  RESIDUAL — aggregate < ${usd(MIN_AGGREGATE_CENTS)}, bracketed not emitted`);
+  console.log(`    ${"total".padEnd(24)} ${pad(residualGroups.toLocaleString(), 14)}   ${pad(usd(residualCents), 18)}`);
+  for (const b of SMALL_DOLLAR_BRACKETS) {
+    const v = byBracket.get(b.code)!;
+    console.log(`    ${b.label.padEnd(24)} ${pad(v.groups.toLocaleString(), 14)}   ${pad(usd(v.cents), 18)}`);
+  }
+  console.log(`    rollup rows (recipient × bracket): ${brackets.length.toLocaleString()}`);
+  console.log("");
+
+  // Internal consistency — the stage's own counters must agree with what the
+  // accessors actually yielded. A divergence here means the finalize pass and
+  // the emit filters disagree about the floor, which would make every number
+  // above unreliable.
+  const checks: Array<[string, number, number]> = [
+    ["stats.candPairs      vs emitted", stats.candPairs,      cand.groups],
+    ["stats.cmtePairs      vs emitted", stats.cmtePairs,      cmte.groups],
+    ["stats.donorRows      vs emitted", stats.donorRows,      donorRows],
+    ["stats.residualGroups vs brackets", stats.residualGroups, residualGroups],
+    ["stats.residualCents  vs brackets", stats.residualCents,  residualCents],
+    ["Σ donor totals       vs Σ FR",     donorCents,           frCents],
   ];
-  const pad = (s: string | number, n: number) => String(s).padStart(n);
-  console.log(`  ${"metric".padEnd(24)} ${pad("memory", 16)} ${pad("external", 16)}  ok`);
-  let statMismatch = 0;
-  for (const [k, a, b] of rows) {
-    const ok = String(a) === String(b);
-    if (!ok) statMismatch++;
-    console.log(`  ${k.padEnd(24)} ${pad(typeof a === "number" ? a.toLocaleString() : a, 16)} ${pad(typeof b === "number" ? b.toLocaleString() : b, 16)}  ${ok ? "✓" : "✗"}`);
+  let mismatches = 0;
+  console.log("─".repeat(78));
+  console.log("SELF-CONSISTENCY");
+  console.log("─".repeat(78));
+  for (const [label, a, b] of checks) {
+    const ok = a === b;
+    if (!ok) mismatches++;
+    console.log(`  ${label.padEnd(34)} ${pad(a.toLocaleString(), 16)} ${pad(b.toLocaleString(), 16)}  ${ok ? "✓" : "✗"}`);
   }
-  console.log("");
-  console.log(`  per-key divergences: ${divergences.length}`);
-  for (const d of divergences.slice(0, 25)) {
-    console.log(`    [${d.set}] ${d.key}\n       memory  : ${d.oldValue ?? "<absent>"}\n       external: ${d.newValue ?? "<absent>"}`);
+  // Every bracketed group must actually fall in its band.
+  let misbracketed = 0;
+  for (const r of brackets) {
+    const avg = Math.round(r.totalCents / Math.max(1, r.donorCount));
+    if (assignSmallDollarBracket(avg) === null && r.donorCount === 1) misbracketed++;
   }
-  if (divergences.length > 25) console.log(`    … and ${divergences.length - 25} more`);
-
-  // Emission ORDER is not part of the contract (the writers key by content),
-  // but report it — external emits fingerprint-sorted, memory emits in
-  // first-seen order, and a reader should not be surprised by that.
-  const orderSame = oldRun.got.candOrder.join(" ") === newRun.got.candOrder.join(" ");
-  console.log(`  emission order identical: ${orderSame ? "yes" : "no (expected — external emits fingerprint-sorted)"}`);
-
-  // ── cost ───────────────────────────────────────────────────────────────
+  console.log(`  ${"singleton groups in-band".padEnd(34)} ${pad(brackets.length - misbracketed, 16)} ${pad(brackets.length, 16)}  ${misbracketed === 0 ? "✓" : "✗"}`);
+  if (misbracketed > 0) mismatches++;
   console.log("");
+
   console.log("─".repeat(78));
   console.log("COST");
   console.log("─".repeat(78));
-  console.log(`  ${"".padEnd(24)} ${pad("memory", 16)} ${pad("external", 16)}`);
-  console.log(`  ${"stage peak RSS".padEnd(24)} ${pad(mb(oldRun.stagePeakRssBytes), 16)} ${pad(mb(newRun.stagePeakRssBytes), 16)}`);
-  console.log(`  ${"stage peak heapUsed".padEnd(24)} ${pad(mb(oldRun.stagePeakHeapBytes), 16)} ${pad(mb(newRun.stagePeakHeapBytes), 16)}`);
-console.log(`  ${"process peak RSS".padEnd(24)} ${pad(mb(oldRun.harnessPeakRssBytes), 16)} ${pad(mb(newRun.harnessPeakRssBytes), 16)}`);
-  console.log(`  ${"stream ms".padEnd(24)} ${pad(oldRun.streamMs.toLocaleString(), 16)} ${pad(newRun.streamMs.toLocaleString(), 16)}`);
-  console.log(`  ${"stream+drain ms".padEnd(24)} ${pad(oldRun.totalMs.toLocaleString(), 16)} ${pad(newRun.totalMs.toLocaleString(), 16)}`);
-  const srt = newRun.stats.sort;
-  if (srt) {
-    console.log(`  ${"sort runs (agg/meta)".padEnd(24)} ${pad("—", 16)} ${pad(`${srt.agg.runsWritten}/${srt.meta.runsWritten}`, 16)}`);
-    console.log(`  ${"peak sort disk".padEnd(24)} ${pad("0 B", 16)} ${pad(mb(srt.peakDiskBytes), 16)}`);
-    console.log(`  ${"bytes written (agg)".padEnd(24)} ${pad("0 B", 16)} ${pad(mb(srt.agg.bytesWritten), 16)}`);
-    console.log(`  ${"bytes written (meta)".padEnd(24)} ${pad("0 B", 16)} ${pad(mb(srt.meta.bytesWritten), 16)}`);
+  console.log(`  lines read              ${pad(stats.linesRead.toLocaleString(), 16)}`);
+  console.log(`  admitted (amount > 0)   ${pad(stats.passedAmount.toLocaleString(), 16)}`);
+  console.log(`  peak RSS (stream)       ${pad(mb(streamPeakRss), 16)}`);
+  console.log(`  peak RSS (incl. drain)  ${pad(mb(sampler.peakRss), 16)}${stageOnly ? "   ← bounded-heap proof" : ""}`);
+  console.log(`  peak heapUsed           ${pad(mb(sampler.peakHeapUsed), 16)}`);
+  console.log(`  stream ms               ${pad(streamMs.toLocaleString(), 16)}`);
+  console.log(`  stream+drain ms         ${pad(totalMs.toLocaleString(), 16)}`);
+  if (stats.sort) {
+    console.log(`  sort runs (agg/meta)    ${pad(`${stats.sort.agg.runsWritten}/${stats.sort.meta.runsWritten}`, 16)}`);
+    console.log(`  peak sort disk          ${pad(mb(stats.sort.peakDiskBytes), 16)}`);
   }
   console.log("");
 
-  const failed = divergences.length > 0 || statMismatch > 0;
-  console.log(failed
-    ? `✗ NOT EQUIVALENT — ${statMismatch} stat mismatch(es), ${divergences.length} per-key divergence(s)`
-    : "✓ EQUIVALENT — zero divergence across every emitted set");
-
   if (arg("json")) {
     fs.writeFileSync(arg("json")!, JSON.stringify({
-      lines: LINES, buffer: BUFFER,
-      stats: { memory: oldRun.stats, external: newRun.stats },
-      counts: Object.fromEntries(rows.map(([k, a, b]) => [k, { memory: a, external: b }])),
-      cost: {
-        memory:   { stagePeakRssBytes: oldRun.stagePeakRssBytes, stagePeakHeapBytes: oldRun.stagePeakHeapBytes, processPeakRssBytes: oldRun.harnessPeakRssBytes, streamMs: oldRun.streamMs, totalMs: oldRun.totalMs },
-        external: { stagePeakRssBytes: newRun.stagePeakRssBytes, stagePeakHeapBytes: newRun.stagePeakHeapBytes, processPeakRssBytes: newRun.harnessPeakRssBytes, streamMs: newRun.streamMs, totalMs: newRun.totalMs, sort: srt },
+      scope: onlyCmte ?? "all", lines: LINES === Infinity ? null : LINES, buffer: BUFFER,
+      stats,
+      emitted: {
+        candRows: cand.groups, candCents: cand.cents, candTx: cand.tx,
+        cmteRows: cmte.groups, cmteCents: cmte.cents, cmteTx: cmte.tx,
+        frRows, frCents, donorRows, donorCents,
       },
-      divergences,
+      residual: {
+        groups: residualGroups, cents: residualCents, rollupRows: brackets.length,
+        byBracket: SMALL_DOLLAR_BRACKETS.map((b) => ({ ...b, ...byBracket.get(b.code)! })),
+      },
+      cost: {
+        streamPeakRssBytes: streamPeakRss,
+        peakRssBytes: sampler.peakRss,
+        peakHeapBytes: sampler.peakHeapUsed,
+        streamMs, totalMs,
+      },
     }, null, 2));
     console.log(`  json → ${arg("json")}`);
   }
 
-  process.exit(failed ? 1 : 0);
+  await res.dispose();
+
+  console.log(mismatches === 0
+    ? "✓ SELF-CONSISTENT — compare the EMITTED block against the phase-0 audit for acceptance"
+    : `✗ ${mismatches} internal inconsistency(ies) — the numbers above are NOT trustworthy`);
+  process.exit(mismatches === 0 ? 0 : 1);
 }
 
 main().catch((e) => { console.error(e); process.exit(1); });

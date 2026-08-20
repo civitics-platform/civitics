@@ -30,7 +30,7 @@ materializations to model off.
 | Source | Budget | Strategy |
 |--------|--------|----------|
 | Congress.gov | 0.5GB | Full resolution — bills + votes + legislators |
-| FEC bulk | 2GB | Candidate totals (weball24.zip) + PAC contributions (pas224.zip, streamed) + individual contributions (indiv24.zip). FEC's $200 itemization threshold is the only filter — no Civitics-imposed cap (FIX-182). |
+| FEC bulk | 2GB | Candidate totals (weball24.zip) + PAC contributions (pas224.zip, streamed) + individual contributions (indiv24.zip). FEC's $200 itemization threshold is the only filter — no Civitics-imposed cap (FIX-182). **PR 3b / FIX-1068:** that threshold is a per-donor CYCLE-AGGREGATE rule and is now applied at emit, not per transaction at parse. Sub-floor money is bracketed into `small_dollar_bracket_rollup` rather than discarded. |
 | USASpending | 1GB | Full FY bulk archive, all agencies in our DB, all award sizes |
 | Regulations.gov | 0.5GB | Active proposals only, no archived |
 | CourtListener | 1GB | Metadata only — no opinion text |
@@ -70,15 +70,15 @@ Step 1b (candidate master, FIX-246):
 
 Step 2b (PAC contributions):
 - Parses cm24 into a committee ID → name/type/connected-org lookup map
-- Streams pas224, filtering to: 24K/24Z transaction types, $200+ (FEC itemization threshold), and known FEC candidate IDs
-- Aggregates total contributions per committee × candidate pair
+- Streams pas224, filtering to: 24K/24Z transaction types, amount > 0, and known FEC candidate IDs
+- Aggregates total contributions per committee × candidate pair, then applies the $200 floor to the AGGREGATE (FIX-1068). The old per-transaction `>= 200` test was mislabelled "FEC itemization threshold" twice over: itemization is a per-donor cycle-aggregate rule, and it does not apply to this file at all — pas2 is committee-to-candidate money (Schedule A 11(c)), which FEC itemizes in full regardless of amount. The residual is logged, NOT bracketed (brackets are the individual-donor substrate).
 - Upserts `financial_entities` rows for named PAC donors (keyed on `source_ids->>'fec_committee_id'`)
 - Upserts `financial_relationships` rows per PAC × candidate pair (keyed on `official_id + fec_committee_id + cycle_year`)
 
 Step 2c (individual contributions, FIX-181 + FIX-236):
 - Parses ccl into a `CMTE_ID → CAND_ID` lookup, restricted to principal ('P') and authorized ('A') committees
 - Parses cm into a second `CMTE_ID → CMTE_TP` lookup, restricted to super PACs (`O`), party committees (`X`/`Y`/`Z`), and other PACs (`N`/`Q`/`V`/`W`) NOT already in ccl P/A — this is the recipient set that captures Form 3X Schedule A flow (Musk → America PAC etc.). Joint-fundraising (`J`), leadership (`D`), and `B` stay excluded — their money is re-itemized via downstream transfers and would double-count.
-- Streams indiv line-by-line, filtering to transaction types `15`, `15E`, and `10`, amount ≥ $200, and recipient CMTE_ID present in EITHER lookup. `10` is FEC's "contribution to an Independent-Expenditure-Only committee (Super PAC) from a person" — the super-PAC analog of `15`. It was added by FIX-677; before that, super-PAC individual receipts (which are filed as type `10`, not `15`) were systematically dropped (e.g. United Democracy Project showed $0 received despite ~$86M / 1,337 itemized type-10 contributions; ~$3.79B across all super PACs in the 2024 file). Earmark passthrough memos (`15I`/`15T`/`24I`/`24T`) and refunds (`20Y`/`22Y`) stay excluded.
+- Streams indiv line-by-line, filtering to transaction types `15`, `15E`, and `10`, **amount > 0** (FIX-1068 — see "The $200 floor is an aggregate floor" below), and recipient CMTE_ID present in EITHER lookup. `10` is FEC's "contribution to an Independent-Expenditure-Only committee (Super PAC) from a person" — the super-PAC analog of `15`. It was added by FIX-677; before that, super-PAC individual receipts (which are filed as type `10`, not `15`) were systematically dropped (e.g. United Democracy Project showed $0 received despite ~$86M / 1,337 itemized type-10 contributions; ~$3.79B across all super PACs in the 2024 file). Earmark passthrough memos (`15I`/`15T`/`24I`/`24T`) and refunds (`20Y`/`22Y`) stay excluded.
 - Donor identity is `fingerprint = upper(NAME) + "|" + ZIP5` (FEC's standard near-duplicate convention). No donor IDs exist in FEC data
 - Aggregates two groupings, **externally** (FIX-961):
   - `(donor × candidate × cycle)` tuples for ccl-mapped lines → donor → official donations
@@ -348,11 +348,67 @@ Operational notes:
   lines and V8 does not collect while it has headroom — at heap 1024 the same
   work fits in 900 MB. Judge this stage by whether it completes at its
   configured buffer, not by its RSS.
-- `FEC_INDIV_AGG_MODE=memory` restores the pre-FIX-961 in-RAM maps. It exists
-  only so `data:fec:indiv-equivalence` can diff old against new; PR 3b retires
-  it. Do not use it for a real cycle — it is the path that OOMs.
-- Equivalence harness: `pnpm --filter @civitics/data data:fec:indiv-equivalence
-  --txt <indiv.txt> --ccl <ccl.txt> --cm <cm.txt> [--lines N] [--buffer N]`.
-  Runs each accumulator in its own process (one process makes the RSS
-  comparison meaningless — mode 1's garbage stays resident) and diffs every
-  emitted set. Expected output is zero divergence.
+- `FEC_INDIV_AGG_MODE` is **gone** (PR 3b / FIX-1068). The `memory` accumulator
+  existed only so the PR 3a equivalence harness could diff it against the
+  external sort; that diff ran clean and PR 3a shipped on it. Keeping a second
+  accumulator alive past that point meant every semantics change had to be made
+  twice, in the path that OOMs. Setting the var now does nothing.
+- Acceptance harness (replaced the equivalence harness in the same file):
+  `pnpm --filter @civitics/data data:fec:indiv-acceptance --txt <indiv.txt>
+  --ccl <ccl.txt> --cm <cm.txt> [--committee C00…] [--buffer N] [--stage-only]`.
+  Drives the real `streamIndivText` and reports what the stage will EMIT in the
+  units the phase-0 audit measured (FR rows, dollars, donor rows, residual by
+  bracket), plus self-consistency checks. `--stage-only` retains nothing per
+  row, so its peak RSS is the stage's rather than the harness's — that is the
+  bounded-heap proof.
+
+### The $200 floor is an AGGREGATE floor, applied at emit (PR 3b / FIX-1068)
+
+FEC itemizes on a per-donor **cycle aggregate**: once a contributor passes $200
+cumulative with a committee, every later contribution is itemized however small.
+The ingest applied $200 **per transaction at parse time**, which is a different
+rule, and it discarded 90.2% of in-scope cycle-2026 rows.
+
+Now: `amount > 0` admits the row; the floor is applied once per
+`(donor × recipient × cycle)` group at emit.
+
+| aggregate | result |
+|---|---|
+| ≥ $200 | an FR row, with the **correct (full)** amount |
+| < $200 | **no** FR row, **no** `financial_entities` donor row — counted into `small_dollar_bracket_rollup` by size band |
+| donor never reaches $200 with anyone | not in the file at all; unrecoverable under any rule |
+
+Measured on the full cycle-2026 file (identical across sort buffers 25k/100k/400k,
+and exact against `docs/audits/2026-08-18-fec-coverage-pr3a-phase0.md`):
+
+| | before | after |
+|---|---:|---:|
+| FR rows | 1,316,608 | **1,980,786** (+50.4%) |
+| dollars | $4,074,508,705 | **$4,556,216,174** (+11.8%) |
+| residual (bracketed, not emitted) | silently dropped | 1,002,643 groups / $83,453,297 |
+
+Two consequences to keep in mind:
+
+- **`total_donated_cents` for a donor sums only ABOVE-floor groups**, so it
+  agrees with the FR rows the run writes — which is the same convention
+  `rebuild_financial_entity_donation_totals()` re-derives from.
+- **Sort disk grew ~5×** (142.9 MB → 822.7 MB at buffer 25k on cycle 2026),
+  because ~10× more records now reach the sorter. Peak heap did **not** move
+  (~254 MB). Budget disk, not RAM, when sizing a presidential cycle.
+
+### `small_dollar_bracket_rollup` — the residual substrate (FIX-1068)
+
+Grain `(recipient_type, recipient_id, cycle_year, bracket, source)`;
+`recipient_type` mirrors `financial_relationships.to_type` because the residual
+spans BOTH recipient routes. `donor_count` counts **(donor × recipient) groups**
+— the same unit as an FR row — not distinct donors. Written by the indiv stage
+as one delete-then-insert transaction per (cycle, source).
+
+It also fixes `official_small_dollar_rollup`, which was computed over the floored
+population and so meant "$200-and-**up**" under a label that says small-dollar
+(FIX-776 §2 of the audit). That table now carries both halves:
+`small_dollar_cents` (itemized, aggregate under $500) and `sub_floor_cents`
+(bracketed, aggregate under $200). They are kept separate because
+`officials.total_received_cents` is FR-derived and contains the first and not the
+second — `/api/graph/small-dollar` returns both shares rather than one ambiguous
+number.
