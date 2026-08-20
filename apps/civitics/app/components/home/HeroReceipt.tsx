@@ -1,7 +1,12 @@
 import type { HomeStats } from "./types";
 
-function line(n: number): string {
-  return n > 0 ? n.toLocaleString("en-US") : "—";
+/**
+ * FIX-1070 — "—" means NOT MEASURED, and only that. A measured 0 prints "0".
+ * This used to read `n > 0 ? … : "—"`, which quietly folded three different
+ * states (timed out, absent, genuinely zero) into one glyph.
+ */
+function line(n: number | null): string {
+  return n === null ? "—" : n.toLocaleString("en-US");
 }
 
 /**

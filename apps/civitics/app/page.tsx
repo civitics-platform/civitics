@@ -147,7 +147,11 @@ export default async function HomePage({
         .select("officials_count,active_proposals_count,donor_records_count,spending_records_count")
         .limit(1)
         .maybeSingle(),
-      2000
+      2000,
+      // FIX-1070 — this read was the only one in wave1 without a label, so when
+      // it timed out during the 2026-08-19 saturation there was nothing
+      // greppable tying the degraded hero to the DB event that caused it.
+      "home:hero-stats",
     ),
     withDbTimeout(
       supabase
@@ -182,9 +186,25 @@ export default async function HomePage({
     donor_records_count:    number | null;
     spending_records_count: number | null;
   };
-  const homepageStatsTyped = homepageStatsRes as { data: HomepageStatsRow | null };
+  const homepageStatsTyped = homepageStatsRes as {
+    data: HomepageStatsRow | null;
+    error?: { message?: string } | null;
+  };
+  // FIX-1070 — did the MV read itself fail, as opposed to succeeding with a
+  // missing/zero donor number? withDbTimeout returns { data: null, error } on
+  // both a timeout and a query error, and the two cases want OPPOSITE
+  // responses, so they have to be told apart here.
+  const heroStatsFailed = Boolean(homepageStatsTyped.error);
   let mvStats: HomepageStatsRow | null = homepageStatsTyped.data ?? null;
-  if (!mvStats || (mvStats.donor_records_count ?? 0) === 0) {
+  // FIX-1070 — the fallback runs ONLY when the MV read SUCCEEDED and simply has
+  // no donor number for us. If the read failed, the database is already in
+  // trouble, and this branch's response was to fire two MORE queries at it —
+  // an estimated count over financial_relationships plus an RPC. That is
+  // anti-help: it lengthens the outage it is reacting to, on the single most
+  // requested page on the site, exactly when every other request is queueing
+  // for the same starved box. A hero stat is not worth a second round trip
+  // during saturation; rendering "—" is.
+  if (!heroStatsFailed && (!mvStats || (mvStats.donor_records_count ?? 0) === 0)) {
     const liveDonorRes = await timed("wave1_donor_fallback", () =>
       withDbTimeout(
         supabase
@@ -223,11 +243,14 @@ export default async function HomePage({
       const synthDonorCount = synthDonorRes.error ? 0 : Number(synthDonorRes.data ?? 0);
       liveDonorCount = Math.max(0, liveDonorGross - synthDonorCount);
     }
+    // FIX-1070 — the other three stats stay null when the MV had nothing for
+    // them. They used to be coerced to 0 here, which asserted a measurement
+    // this branch never took: it only ever measures the donor count.
     mvStats = {
-      officials_count:        mvStats?.officials_count        ?? 0,
-      active_proposals_count: mvStats?.active_proposals_count ?? 0,
+      officials_count:        mvStats?.officials_count        ?? null,
+      active_proposals_count: mvStats?.active_proposals_count ?? null,
       donor_records_count:    liveDonorCount ?? mvStats?.donor_records_count ?? null,
-      spending_records_count: mvStats?.spending_records_count ?? 0,
+      spending_records_count: mvStats?.spending_records_count ?? null,
     };
   }
 
@@ -477,11 +500,17 @@ export default async function HomePage({
 
   // ─── Shape data ────────────────────────────────────────────────────────────
 
+  // FIX-1070 — carry "not measured" through to the render instead of ending it
+  // here. Every one of these was `Number(… ?? 0)`, which is where FIX-431's
+  // carefully-preserved null for the donor count died, one line before it would
+  // have reached the component that knows how to show it.
+  const num = (v: number | null | undefined): number | null =>
+    v === null || v === undefined ? null : Number(v);
   const stats: HomeStats = {
-    officials: Number(mvStats.officials_count        ?? 0),
-    proposals: Number(mvStats.active_proposals_count ?? 0),
-    donors:    Number(mvStats.donor_records_count    ?? 0),
-    spending:  Number(mvStats.spending_records_count ?? 0),
+    officials: num(mvStats?.officials_count),
+    proposals: num(mvStats?.active_proposals_count),
+    donors:    num(mvStats?.donor_records_count),
+    spending:  num(mvStats?.spending_records_count),
   };
 
   // Officials → HomeOfficialCardData

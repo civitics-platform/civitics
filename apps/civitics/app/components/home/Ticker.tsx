@@ -1,4 +1,4 @@
-import { formatStatCompact, type HomeStats } from "./types";
+import { formatStatOrDash, type HomeStats } from "./types";
 
 /**
  * Terminal stat ticker — the dark instrument strip under the masthead.
@@ -7,10 +7,12 @@ import { formatStatCompact, type HomeStats } from "./types";
  */
 export function Ticker({ stats }: { stats: HomeStats }) {
   const items: { label: string; value: string; accent?: boolean }[] = [
-    { label: "OFFICIALS",        value: stats.officials > 0 ? formatStatCompact(stats.officials) : "—" },
-    { label: "PROPOSALS",        value: stats.proposals > 0 ? formatStatCompact(stats.proposals) : "—" },
-    { label: "DONOR RECORDS",    value: stats.donors    > 0 ? formatStatCompact(stats.donors)    : "—" },
-    { label: "SPENDING RECORDS", value: stats.spending  > 0 ? formatStatCompact(stats.spending)  : "—" },
+    // FIX-1070 — "—" is reserved for NOT MEASURED (null). A measured 0 prints
+    // "0"; the old `> 0` test made those two states look identical.
+    { label: "OFFICIALS",        value: formatStatOrDash(stats.officials) },
+    { label: "PROPOSALS",        value: formatStatOrDash(stats.proposals) },
+    { label: "DONOR RECORDS",    value: formatStatOrDash(stats.donors)    },
+    { label: "SPENDING RECORDS", value: formatStatOrDash(stats.spending)  },
     { label: "COMMENT FEE",      value: "$0.00 — ALWAYS", accent: true },
   ];
 

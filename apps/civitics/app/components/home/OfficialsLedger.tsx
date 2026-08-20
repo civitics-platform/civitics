@@ -29,7 +29,8 @@ export function OfficialsLedger({
   totalOfficials,
 }: {
   officials: HomeOfficialCardData[];
-  totalOfficials: number;
+  /** FIX-1070 — null means the hero-stats read did not complete. */
+  totalOfficials: number | null;
 }) {
   return (
     <section className="border-b border-rule py-12">
@@ -43,7 +44,7 @@ export function OfficialsLedger({
             href="/officials"
             className="shrink-0 font-mono text-[11.5px] font-semibold uppercase tracking-[0.1em] text-accent hover:underline"
           >
-            {totalOfficials > 0
+            {totalOfficials !== null && totalOfficials > 0
               ? `All ${totalOfficials.toLocaleString("en-US")} officials →`
               : "All officials →"}
           </a>

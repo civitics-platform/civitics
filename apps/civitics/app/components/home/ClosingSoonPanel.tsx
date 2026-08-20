@@ -28,7 +28,8 @@ export function ClosingSoonPanel({
 }: {
   proposals: ProposalCardData[];
   nowIso: string;
-  activeCount: number;
+  /** FIX-1070 — null means the hero-stats read did not complete. */
+  activeCount: number | null;
 }) {
   return (
     <section className="border-b border-rule py-12">
@@ -63,7 +64,9 @@ export function ClosingSoonPanel({
             <span className="flex items-center gap-2 font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-term-green">
               <span className="h-[7px] w-[7px] animate-pulse rounded-full bg-term-green motion-reduce:animate-none" />
               <span className="tabular-nums">
-                {activeCount > 0 ? `${activeCount.toLocaleString("en-US")} active proposals` : "Live"}
+                {activeCount !== null && activeCount > 0
+                  ? `${activeCount.toLocaleString("en-US")} active proposals`
+                  : "Live"}
               </span>
             </span>
           </div>
