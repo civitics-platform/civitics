@@ -157,14 +157,48 @@ connection mid-query; it took `pg_cancel_backend` (FIX-933). Nor is cancelling
 free: a cancelled 2400 s treemap CALL on 2026-08-05 wedged the instance, prod
 unreachable **~15:50–22:41 UTC** (FIX-965). And `statement_timeout` **arms once at
 CALL start** — per-chunk `COMMIT`s do not re-arm it, nor does `SET
-statement_timeout` inside a procedure body. Chunking is the only real lever: seven
-pg_cron jobs have been killed by the 6 h ceiling and chunking is the only thing
-that has ever fixed one.
+statement_timeout` inside a procedure body.
 
-**Apply:** design the stop you intend (budget → `partial` → resume). If something
-must be stopped from outside it is `pg_cancel_backend` on a named backend,
-deliberately, and the writer must already survive losing its current chunk.
-*FIX-933, FIX-944, FIX-965, FIX-969 · cron audit §8*
+**There are TWO levers, and they do different jobs.** This rule used to say
+chunking was the only one; 2026-08-19 falsified that.
+
+- **Chunking is the CONVERGENCE lever** — it makes a killed run keep its
+  progress, so the next firing starts from where the last one died. Seven
+  pg_cron jobs have been killed by the 6 h ceiling and chunking is the only
+  thing that has ever made one finish.
+- **The budget watchdog is the BOUNDING lever** — it makes sure nothing runs
+  unbounded in the first place. `enforce_cron_job_budgets()` (pg_cron jobid 44)
+  is an EXTERNAL watchdog keyed off `cron.job_run_details.job_pid`: it reads
+  per-job budgets from a table and `pg_cancel_backend`s any firing that exceeds
+  its own. It works — live cancel proof on a 20 s budget, cancelled at 94 s,
+  `signaled: true`, and 114/114 clean firings through the 173-minute backfill
+  window.
+
+Chunking without a bound still runs forever; a bound without chunking still
+loses the run's work. Build both.
+
+**Two traps, both measured — do not re-derive the broken shape:**
+
+1. **You cannot prefix a pg_cron job command with `SET statement_timeout`.**
+   pg_cron sends the job command as ONE simple-query message, which Postgres
+   wraps in an implicit transaction block, so
+   `SET statement_timeout='…'; CALL <proc>` fails *instantly* with "invalid
+   transaction termination" for any procedure containing `COMMIT` — and six of
+   the seven CALL-shaped jobs contain one. Measured on pg_cron 1.6.4 with
+   `use_background_workers = off`, which is prod's setting.
+2. **`ALTER FUNCTION … SET statement_timeout` (proconfig) is decorative for this
+   purpose.** A function declared with it slept 5 s past a 2 s setting and
+   returned normally. It is not a bound.
+
+That leaves the external watchdog as the only mechanism that actually bounds a
+scheduled firing, which is why it is a first-class lever and not a nicety.
+
+**Apply:** design the stop you intend (budget → `partial` → resume). Give every
+scheduled heavy job BOTH a chunk boundary it can resume from AND a row in the
+budget table. If something must be stopped from outside it is
+`pg_cancel_backend` on a named backend, deliberately, and the writer must
+already survive losing its current chunk.
+*FIX-933, FIX-944, FIX-965, FIX-969, FIX-1030, FIX-1056, FIX-1063 · cron audit §8*
 
 **Addendum — 2026-08-08, three instances in one day.** Killing the *client* never
 stops the *backend*; Postgres does not notice a dead connection until TCP
