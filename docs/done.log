@@ -1267,3 +1267,4 @@
 2026-08-18 | FIX-1065 | 713e626b | local+prod | chore(ops): record prod verification of FIX-1064 and FIX-1065
 2026-08-19 | FIX-1061 | d4806b2b | local-only | feat(fec): the $200 floor becomes a per-donor cycle aggregate, applied at emit
 2026-08-19 | FIX-1067 | d4806b2b | local-only | feat(fec): the $200 floor becomes a per-donor cycle aggregate, applied at emit
+2026-08-19 | FIX-1071 | b0ef152a | local+prod | fix(ops): bound the two EC rebuild jobs from outside — an internal budget cannot bound one arm
