@@ -354,19 +354,75 @@ does not move until the last window lands.
 
 ---
 
-## 9. Monday readiness — as it now stands
+## 9. The second drain — cycle CLOSED, backlog at zero
 
-The cycle is **open** on prod with 5 of 16 windows banked. Monday 08-24 08:00
-UTC therefore does **not** start fresh: `prepare()` finds the open cycle, reuses
-the staging table (no re-stage, no 88 s), skips windows 0–4 instantly, and runs
-the remaining 11 at ~707 s each ≈ **2.2 h** — comfortably inside both the 5 h
-internal budget and FIX-1071's 18,000 s outside bound. It then closes the cycle
-and advances the scalar watermark.
+Run 2026-08-20 22:55 → 2026-08-21 01:11 UTC, hard stop 02:00 (an hour of margin
+on the ~03:00 nightly).
 
-So Monday converges on its own with no further intervention. An optional second
-drain (`node scripts/drain-ec-donations.mjs --prod --allow-prod --until HH:MM`)
-in any quiet slot before then makes Monday close to instant; it needs ~2.2 h to
-finish the cycle outright.
+```
+resuming cycle target=2026-08-20 02:58:40 staged=2026-08-20 04:39:57
+                                          (1961194 dirty donors already staged)
+prepare done in 0.6s
+  window  1..5/16   SKIPPED (already at target)
+  window  6/16    358,827 edges  702.7s      window 11/16    353,229 edges  733.1s
+  window  7/16    350,280 edges  714.7s      window 12/16    357,870 edges  742.1s
+  window  8/16    354,219 edges  728.0s      window 13/16    352,687 edges  738.1s
+  window  9/16    344,629 edges  736.0s      window 14/16    358,380 edges  729.6s
+  window 10/16    358,148 edges  755.7s      window 15/16    353,284 edges  746.3s
+                                             window 16/16    354,801 edges  731.5s
+close: cycle CLOSED — staging cleared, scalar watermark advanced
+VACUUM (ANALYZE) entity_connections — done in 79.6s
+windows run: 11   skipped: 5   edges written: 3,896,354   elapsed: 135.7 min
+```
 
-Note the cycle's 7-day guard: `staged_at` is 2026-08-20, so the cycle is valid
-through 2026-08-27. Monday is well inside it.
+**Resume is free, measured: `prepare` took 0.6 s against 88 s to open the cycle
+— 147x — and the five banked windows skipped instantly.** That is the
+cycle-scoped staging table and the per-window ratchet doing exactly what they
+were built for, against a real cycle 18 hours old.
+
+### 9.1 Final state, verified independently of the script's own output
+
+| check | result |
+|---|---|
+| windows at target | **16/16**, one distinct value |
+| cycle block | gone |
+| staging rows | 0 |
+| scalar `last_indexed_at` | `2026-08-20 02:58:40.681855+00` |
+| **dirty set remaining** | **0 rows / 0 donors** |
+| donation edges | 8,558,850 |
+| opposition edges | 4,648 |
+| EC dead tuples / all-visible | **0 / 100.0%** (vacuum tail, `last_vacuum` 08-21 01:10) |
+| budget watchdog cancellations | 0 — it never had to act |
+
+Across both drains: **5,656,678 edges written over 16 windows in 3.3 h of
+wall clock**, and the donation-edge population went from 6,594,441 after drain 1
+to 8,558,850 — the backlog was not merely stale, it was *missing* edges the
+failed rebuilds could never write.
+
+### 9.2 The windowed path does not starve the box
+
+During the 2 h 15 m of drain 2, prod logged **144 cron firings, 0 `job startup
+timeout`, 0 failures**. Set that beside 2026-08-19, when the unwindowed
+six-hour statement was running and **91 of 91 firings died** in the 12:00–13:29
+window and the census sampler could not get a connection either.
+
+Same table, comparable write volume, opposite outcome. Short committed
+transactions with COMMITs between them leave the postmaster able to accept
+connections; one six-hour statement does not. That is a second, independent
+argument for the windowing beyond budget-and-resume, and it is the first direct
+evidence for the connection-accept mechanism §6 relocated the problem to.
+
+---
+
+## 10. Monday readiness — settled
+
+**The 08-24 08:00 UTC firing will find a dirty set of zero** (plus whatever the
+Friday, Saturday and Sunday nightlies add, which is ordinary daily volume — the
+08-17→08-20 backlog is gone).
+
+It will open a fresh cycle, stage a small dirty set, run 16 cheap windows, and
+close. Nothing about it resembles 2026-08-19.
+
+Both bounds remain in place regardless: FIX-1056's 5 h internal budget now has
+units small enough to see between, and FIX-1071's 18,000 s outside bound
+backstops it.
