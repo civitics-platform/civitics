@@ -2003,9 +2003,19 @@ function DevelopmentProgressSection() {
       .catch(() => {/* keep fallback */});
   }, []);
 
+  // FIX-1088: the header used to hard-code "Phase 1 of 5" while six bars
+  // rendered. M is however many phases came back; N is the first unfinished
+  // one (its own name, so "Phase 1" tracks the 0-indexed PHASE_GOALS.md
+  // headers), falling back to the last phase once everything is complete.
+  const currentPhase =
+    phases.find((p) => p.pct < 100) ?? phases[phases.length - 1] ?? null;
+  const phaseSummary = currentPhase
+    ? `${currentPhase.name} of ${phases.length}`
+    : undefined;
+
   return (
     <SectionCard>
-      <SectionHeader icon={<Rocket size={16} />} title="Development Progress" description="Phase 1 of 5" />
+      <SectionHeader icon={<Rocket size={16} />} title="Development Progress" description={phaseSummary} />
       <div className="mt-4 space-y-3">
         {phases.map((phase) => (
           <div key={phase.name}>

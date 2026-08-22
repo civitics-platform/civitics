@@ -104,7 +104,9 @@ export async function generateStaticParams(): Promise<Array<{ id: string }>> {
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  if (!UUID_RE.test(id)) return { title: "Jurisdiction · Civitics" };
+  // No site name in any of these titles — the root layout title template is
+  // "%s | Civitics" and appends it (FIX-1087).
+  if (!UUID_RE.test(id)) return { title: "Jurisdiction" };
   const supabase = anonClient();
   const [{ data }, lookup] = await Promise.all([
     withDbTimeout(
@@ -116,9 +118,9 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
     ),
     lookupJurisdictionCache(supabase, id),
   ]);
-  if (!data) return { title: "Jurisdiction · Civitics" };
+  if (!data) return { title: "Jurisdiction" };
   return {
-    title: `${data.name} · Civitics`,
+    title: data.name,
     // FIX-683: an empty county/district leaf (not in jurisdiction_page_cache) is
     // noindex,nofollow — the sitemap already drops it; this deindexes the ~10k
     // shells already crawled. Content jurisdictions (isMember true) and any cache

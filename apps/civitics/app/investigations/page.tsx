@@ -62,12 +62,15 @@ export default async function InvestigationsIndexPage() {
               const status = STATUS_BADGE[inv.status] ?? STATUS_BADGE.open;
               return (
                 <li key={inv.id} className="group relative py-5">
+                  {/* Overlay sits ABOVE the static content so the row body is
+                      clickable (FIX-1086). Nothing in the row is interactive,
+                      so no child needs raising back above it. */}
                   <Link
                     href={`/investigations/${inv.id}`}
-                    className="absolute inset-0 z-0"
+                    className="absolute inset-0 z-10"
                     aria-label={inv.title}
                   />
-                  <div className="relative z-10 flex flex-col gap-2">
+                  <div className="flex flex-col gap-2">
                     <div className="flex flex-wrap items-center gap-2">
                       {inv.is_featured && (
                         <span className="rounded border border-civic-blue/30 bg-civic-blue/10 px-1.5 py-0.5 text-[11px] font-medium text-civic-blue">

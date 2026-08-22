@@ -67,7 +67,8 @@ export async function generateMetadata({
   const label = type !== "all" ? TYPE_LABEL[type] ?? type : "Institutions";
   let title = type !== "all" ? label.charAt(0).toUpperCase() + label.slice(1) : "Institutions";
   if (q) title = `${q} — ${title.toLowerCase()}`;
-  return { title: `${title} · Civitics` };
+  // No site name — the root layout title template appends it (FIX-1087).
+  return { title };
 }
 
 export default async function InstitutionsIndexPage({

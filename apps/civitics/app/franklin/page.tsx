@@ -61,7 +61,8 @@ function anonClient(): SupabaseClient<Database> {
 }
 
 export const metadata = {
-  title: "State of Franklin — a guided demonstration · Civitics",
+  // No site name — the root layout title template appends it (FIX-1087).
+  title: "State of Franklin — a guided demonstration",
   description:
     "A fictional 14th state where every Civitics feature is populated by AI — explore officials, bills, money trails, investigations and Q&A in one place. Clearly labeled; nothing here is real civic data.",
 };

@@ -66,7 +66,8 @@ export async function generateMetadata({
   if (single && q) title = `${q} ${single}`;
   else if (single) title = single.charAt(0).toUpperCase() + single.slice(1);
   else if (q) title = `Jurisdictions matching "${q}"`;
-  return { title: `${title} · Civitics` };
+  // No site name — the root layout title template appends it (FIX-1087).
+  return { title };
 }
 
 async function loadParentNames(

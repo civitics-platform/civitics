@@ -94,15 +94,18 @@ export function ProposalCard({ proposal }: { proposal: ProposalCardData }) {
         open ? "border-amber/60" : "border-rule"
       }`}
     >
-      {/* Stretched link — covers whole card, sits below interactive content */}
+      {/* Stretched link — covers the whole card and sits ABOVE the static
+          content, so the card body actually receives the click (FIX-1086). */}
       <Link
         href={`/proposals/${proposal.id}`}
-        className="absolute inset-0 z-0"
+        className="absolute inset-0 z-10"
         aria-label={proposal.title}
       />
 
-      {/* All card content sits above the stretched link */}
-      <div className="relative z-10 flex flex-col h-full">
+      {/* Content wrapper is positioned but carries NO z-index — it must not
+          create a stacking context, or the controls below could not be raised
+          above the overlay. */}
+      <div className="relative flex flex-col h-full">
         {/* Badge row */}
         <div className="flex flex-wrap items-center gap-1.5 mb-3">
           <span
@@ -155,14 +158,16 @@ export function ProposalCard({ proposal }: { proposal: ProposalCardData }) {
           </div>
         )}
 
-        {/* Tags */}
+        {/* Tags — raised above the overlay; the tier-2 pills are buttons */}
         {proposal.tags && proposal.tags.length > 0 && (
-          <EntityTags
-            entityType="proposal"
-            entityId={proposal.id}
-            tags={proposal.tags}
-            variant="compact"
-          />
+          <div className="relative z-20">
+            <EntityTags
+              entityType="proposal"
+              entityId={proposal.id}
+              tags={proposal.tags}
+              variant="compact"
+            />
+          </div>
         )}
 
         <div className="mt-auto space-y-3">
@@ -179,8 +184,9 @@ export function ProposalCard({ proposal }: { proposal: ProposalCardData }) {
             </p>
           )}
 
-          {/* Action row — these are above the stretched link, so clicks work normally */}
-          <div className="flex items-center gap-2">
+          {/* Action row — raised ABOVE the stretched link so these keep their
+              own hit target */}
+          <div className="relative z-20 flex items-center gap-2">
             {open && (
               <SubmitCommentButton
                 regulationsGovId={proposal.regulations_gov_id}

@@ -113,17 +113,37 @@ Bad:
 Fix — use the **stretched link** pattern instead:
 ```tsx
 <div className="relative group ...">
-  {/* Covers entire card, sits below interactive content */}
-  <Link href="/proposals/123" className="absolute inset-0 z-0" aria-label={title} />
+  {/* Overlay covers the entire card and sits ABOVE the static content */}
+  <Link href="/proposals/123" className="absolute inset-0 z-10" aria-label={title} />
 
-  {/* Content sits above — buttons and links receive clicks normally */}
-  <div className="relative z-10">
-    <h3>...</h3>
-    <button>Share</button>
-    <a href="...">Submit</a>
+  {/* Content wrapper: positioned, but NO z-index of its own */}
+  <div className="relative">
+    <h3>...</h3>                       {/* card body — clicks hit the overlay */}
+
+    {/* Real controls are raised back above the overlay */}
+    <div className="relative z-20">
+      <button>Share</button>
+      <a href="...">Submit</a>
+    </div>
   </div>
 </div>
 ```
+
+**The z-order trap (FIX-1086): the overlay must be ABOVE the card body, not
+below it.** Writing the overlay at `z-0` under a `z-10` content wrapper — the
+shape this doc used to recommend — makes the whole card body dead: the click
+lands on the content div, which is not a descendant of the anchor, so nothing
+navigates even though `cursor-pointer` says otherwise. Two rules keep it
+working:
+
+- The overlay's z-index must be **higher** than the content's.
+- The content wrapper must **not** carry a z-index (`relative` alone). A
+  z-index there creates a stacking context, and then nothing inside it can be
+  raised above the overlay — the buttons go dead instead of the body.
+
+Check it, don't eyeball it: `document.elementFromPoint(x, y)` at a card title's
+centre must resolve to something with an enclosing `<a>` (`.closest("a")`).
+`CommentPeriodCard` in `@civitics/ui` is the reference implementation.
 
 `group-hover:` still works — put `group` on the outer `<div>`, not the `<Link>`.
 

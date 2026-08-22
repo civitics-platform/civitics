@@ -59,26 +59,29 @@ export function InvestigationsBand({ items }: { items: HomeInvestigation[] }) {
           <div className="grid grid-cols-1 gap-px border border-rule bg-rule sm:grid-cols-2">
             {items.map((inv) => (
               <div key={inv.id} className="group relative flex flex-col bg-paper p-5 hover:bg-paper-2">
+                {/* Overlay sits ABOVE the static content so the card body is
+                    clickable (FIX-1086). Nothing here is interactive, so no
+                    child needs raising back above it. */}
                 <Link
                   href={`/investigations/${inv.id}`}
-                  className="absolute inset-0 z-0"
+                  className="absolute inset-0 z-10"
                   aria-label={inv.title}
                 />
-                <div className="relative z-10 mb-2 flex flex-wrap items-center gap-1.5">
+                <div className="mb-2 flex flex-wrap items-center gap-1.5">
                   <span className={`${CHIP} ${STATUS_CHIP[inv.status]}`}>
                     {STATUS_LABEL[inv.status]}
                   </span>
                   {inv.isSynthetic && <SyntheticMark size="xs" />}
                 </div>
-                <h3 className="relative z-10 font-serif text-[16px] font-semibold leading-snug text-ink transition-colors group-hover:text-accent">
+                <h3 className="font-serif text-[16px] font-semibold leading-snug text-ink transition-colors group-hover:text-accent">
                   {inv.title}
                 </h3>
                 {inv.summary && (
-                  <p className="relative z-10 mt-1.5 line-clamp-2 text-sm leading-relaxed text-ink-soft">
+                  <p className="mt-1.5 line-clamp-2 text-sm leading-relaxed text-ink-soft">
                     {inv.summary}
                   </p>
                 )}
-                <div className="relative z-10 mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[11px] tabular-nums text-ink-soft">
+                <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[11px] tabular-nums text-ink-soft">
                   <span>
                     {inv.evidenceCount} {inv.evidenceCount === 1 ? "evidence card" : "evidence cards"}
                   </span>

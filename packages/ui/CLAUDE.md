@@ -114,8 +114,10 @@ Always use these — never inline format logic: `formatUSD(cents)`,
 
 Never nest `<a>` (or `<button>`/`<input>`) inside `<a>`. Card with an href
 that contains its own clickable elements: outer `<div>` + stretched-link
-pattern, inner content on a higher z-index. See
-`apps/civitics/CLAUDE.md` → Hydration Safety for the full patterns.
+pattern — the overlay anchor goes ABOVE the card body, and only the real
+controls are raised above the overlay (FIX-1086; `CommentPeriodCard` is the
+reference). Putting the content on a higher z-index than the overlay makes
+the card body dead. See `apps/civitics/CLAUDE.md` → Hydration Safety.
 
 ## What NOT To Do
 

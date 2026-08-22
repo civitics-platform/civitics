@@ -116,7 +116,9 @@ export async function generateMetadata({
     (!searchParams.page || !(pageNum > 1));
 
   return {
-    title: "Proposals · Civitics",
+    // No site name in a page title — the root layout template is "%s | Civitics"
+    // and appends it (FIX-1087; "· Civitics" here rendered "… · Civitics | Civitics").
+    title: "Proposals",
     description: "Bills, regulations, and rules open for public comment.",
     ...(isDefaultView ? {} : { robots: { index: false, follow: true } }),
   };

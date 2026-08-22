@@ -91,7 +91,9 @@ export async function generateStaticParams(): Promise<Array<{ id: string }>> {
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  if (!UUID_RE.test(id)) return { title: "Meeting · Civitics" };
+  // No site name in any of these titles — the root layout title template is
+  // "%s | Civitics" and appends it (FIX-1087).
+  if (!UUID_RE.test(id)) return { title: "Meeting" };
   const supabase = createPublicClient();
   const { data } = await withDbTimeout(
     supabase
@@ -102,10 +104,10 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
     3000,
     "meetings:metadata"
   );
-  if (!data) return { title: "Meeting · Civitics" };
+  if (!data) return { title: "Meeting" };
   const m = data as { title: string | null; meeting_type: string; scheduled_at: string };
   const t = m.title ?? `${typeLabel(m.meeting_type)} meeting · ${formatDateTime(m.scheduled_at)}`;
-  return { title: `${t} · Civitics` };
+  return { title: t };
 }
 
 type AgendaItem = {
