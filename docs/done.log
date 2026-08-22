@@ -1280,3 +1280,6 @@
 2026-08-22 | FIX-1079 | d83dbd92 | local+prod | feat(graph): preset URL deep links + dashboard entry-point retargets
 2026-08-22 | FIX-1080 | d83dbd92 | local+prod | feat(graph): preset URL deep links + dashboard entry-point retargets
 2026-08-22 | FIX-1081 | d83dbd92 | local+prod | feat(graph): preset URL deep links + dashboard entry-point retargets
+2026-08-22 | FIX-1082 | 774a658f | local+prod | feat(dashboard): data-health rework — sources/maintenance split, real runtimes, honest verdicts
+2026-08-22 | FIX-1083 | 774a658f | local+prod | feat(dashboard): data-health rework — sources/maintenance split, real runtimes, honest verdicts
+2026-08-22 | FIX-1084 | 774a658f | local+prod | feat(dashboard): data-health rework — sources/maintenance split, real runtimes, honest verdicts
