@@ -1273,3 +1273,7 @@
 2026-08-19 | FIX-1075 | a7c41332 | local+prod | fix(ec): make an absent window map a REFUSAL to close, not a silent pass
 2026-08-19 | FIX-1075 | reopen | reopen | trailer was a mis-tag: a7c41332 hardens rebuild_ec_donations_incr_close() (FIX-1069 work), it does NOT extend windowing to the remaining EC arms, which is what FIX-1075 asks for. FIX-1075 remains OPEN and unstarted.
 2026-08-19 | FIX-1069 | c9d93c52 | local+prod | feat(ec): drain 5 of 16 donation windows on prod, and give the drain the vacuum tail it owed
+2026-08-22 | FIX-1076 | 793f2325 | local+prod | fix(dashboard): strip a leading icon from a persisted source label too
+2026-08-22 | FIX-1076 | 83fd24e9 | local+prod | fix(dashboard): quick-wins sweep — links, title, copy, count, phases route
+2026-08-22 | FIX-1077 | 83fd24e9 | local+prod | fix(dashboard): quick-wins sweep — links, title, copy, count, phases route
+2026-08-22 | FIX-1078 | 83fd24e9 | local+prod | fix(dashboard): quick-wins sweep — links, title, copy, count, phases route
