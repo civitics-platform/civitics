@@ -1284,3 +1284,6 @@
 2026-08-22 | FIX-1083 | 774a658f | local+prod | feat(dashboard): data-health rework — sources/maintenance split, real runtimes, honest verdicts
 2026-08-22 | FIX-1084 | 774a658f | local+prod | feat(dashboard): data-health rework — sources/maintenance split, real runtimes, honest verdicts
 2026-08-22 | FIX-1085 | 732ccdea | local+prod | docs(phases): PHASE_GOALS.md verified refresh — 2026-08 audit
+2026-08-22 | FIX-1086 | dcbd6058 | local+prod | fix(ui): stretched-link hit-testing + title-template dup variants + derived phase header
+2026-08-22 | FIX-1087 | dcbd6058 | local+prod | fix(ui): stretched-link hit-testing + title-template dup variants + derived phase header
+2026-08-22 | FIX-1088 | dcbd6058 | local+prod | fix(ui): stretched-link hit-testing + title-template dup variants + derived phase header
