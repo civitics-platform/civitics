@@ -1277,3 +1277,6 @@
 2026-08-22 | FIX-1076 | 83fd24e9 | local+prod | fix(dashboard): quick-wins sweep — links, title, copy, count, phases route
 2026-08-22 | FIX-1077 | 83fd24e9 | local+prod | fix(dashboard): quick-wins sweep — links, title, copy, count, phases route
 2026-08-22 | FIX-1078 | 83fd24e9 | local+prod | fix(dashboard): quick-wins sweep — links, title, copy, count, phases route
+2026-08-22 | FIX-1079 | d83dbd92 | local+prod | feat(graph): preset URL deep links + dashboard entry-point retargets
+2026-08-22 | FIX-1080 | d83dbd92 | local+prod | feat(graph): preset URL deep links + dashboard entry-point retargets
+2026-08-22 | FIX-1081 | d83dbd92 | local+prod | feat(graph): preset URL deep links + dashboard entry-point retargets
