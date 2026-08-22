@@ -44,7 +44,7 @@ export async function generateMetadata(
     "initiatives:metadata"
   );
 
-  if (!proposal || !proposal.initiative_details) return { title: "Initiative | Civitics" };
+  if (!proposal || !proposal.initiative_details) return { title: "Initiative" };
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const details: any = Array.isArray(proposal.initiative_details)

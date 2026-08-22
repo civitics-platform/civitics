@@ -64,7 +64,10 @@ const ROUTES: Route[] = [
     description: "Receipts, inbox, watchlist, and constituent verification.",
   },
   {
-    href: "/proposals/problem",
+    // FIX-1076: was /proposals/problem — a live 404. The authoring page lives
+    // under /initiatives (its own metadata title is literally "Post a
+    // Problem"), which is what this card's title and description describe.
+    href: "/initiatives/problem",
     icon: "insights",
     title: "Post a Problem",
     description: "Raise an issue for the community to deliberate on.",

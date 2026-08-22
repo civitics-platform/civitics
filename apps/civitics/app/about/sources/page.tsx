@@ -24,7 +24,8 @@ import {
 } from "@civitics/db";
 
 export const metadata: Metadata = {
-  title: "Data sources & licenses | Civitics",
+  // No "| Civitics" suffix — the root layout title template appends it (FIX-1076).
+  title: "Data sources & licenses",
   description:
     "Every data source Civitics ingests, with its license terms and citation requirements. " +
     "Includes the CC-BY-SA 4.0 attribution required for LittleSis-derived data.",

@@ -23,7 +23,8 @@ import { PageViewTracker } from "../components/PageViewTracker";
 import type { CommonsThread } from "../components/home/types";
 
 export const metadata: Metadata = {
-  title: "The Commons | Civitics",
+  // No "| Civitics" suffix — the root layout title template appends it (FIX-1076).
+  title: "The Commons",
   description:
     "Threads anchored to the record — public deliberation on proposals, officials, agencies, and the money behind them, ranked by common ground rather than volume.",
 };

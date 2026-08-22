@@ -22,7 +22,10 @@ import {
 import { withDbTimeout } from "@/lib/supabase-check";
 import type { StatusData } from "./useDashboardData";
 
-export const metadata = { title: "Platform Transparency | Civitics" };
+// No "| Civitics" suffix here — the root layout's title template is
+// "%s | Civitics", so writing it in the page title too rendered
+// "Platform Transparency | Civitics | Civitics" on prod (FIX-1076).
+export const metadata = { title: "Platform Transparency" };
 
 // ── Server-side data fetching ─────────────────────────────────────────────────
 
@@ -69,6 +72,18 @@ async function getOpenProposals(): Promise<OpenProposal[]> {
 
 // Total count of regulations currently in their comment-period window.
 // Separate from getOpenProposals above (which limits to 3 for display).
+//
+// FIX-1077: this was `count: "planned"`, which returns the planner's row
+// estimate rather than a count. The planner has no cross-column statistics
+// for `status = 'open_comment'` AND a JSONB-path comparison on
+// `metadata->>comment_period_end`, so it multiplies two independent
+// selectivity guesses and bottoms out at `Plan Rows: 1` — on BOTH local and
+// prod. The card rendered a literal "1" against a true 220 (local) / 314
+// (prod). `count: "exact"` measured 96 ms local / 32 ms prod under the same
+// filters, comfortably inside the 3 s budget below, so it needs no
+// materialization. Note the FIX-206 precedent (cheap `estimated` counts)
+// applies to UNFILTERED big-table counts, where the estimate is
+// `pg_class.reltuples`; on a filtered count there is no such shortcut.
 async function getOpenProposalCount(): Promise<number> {
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -77,7 +92,7 @@ async function getOpenProposalCount(): Promise<number> {
     const { count } = await withDbTimeout(
       db
         .from("proposals")
-        .select("*", { count: "planned", head: true })
+        .select("*", { count: "exact", head: true })
         .eq("status", "open_comment")
         .gt("metadata->>comment_period_end", now) as PromiseLike<{ count: number | null }>,
       3000,

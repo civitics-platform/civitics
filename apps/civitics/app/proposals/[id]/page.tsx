@@ -36,7 +36,7 @@ export async function generateMetadata(
   { params }: { params: { id: string } }
 ): Promise<Metadata> {
   const data = await getCachedProposal(params.id);
-  if (!data) return { title: "Proposal | Civitics" };
+  if (!data) return { title: "Proposal" };
 
   const description = data.summary_plain
     ? data.summary_plain.slice(0, 160)

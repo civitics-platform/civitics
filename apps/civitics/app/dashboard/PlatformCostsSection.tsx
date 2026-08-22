@@ -230,7 +230,11 @@ function MetricRow({
           un-projected truth so it's verifiable against the Vercel dashboard. */}
       {metric.metadata?.is_projected && metric.metadata.raw_window_value != null && (
         <div className="text-xs text-ink-soft/80 mt-0.5">
-          ~est. monthly run-rate · last {metric.metadata.window_days ?? "?"}d:{" "}
+          ~est. monthly run-rate
+          {/* FIX-1076: was `window_days ?? "?"`, which rendered "last ?d" when
+              the writer had no daily granularity. Drop the clause instead of
+              printing a placeholder. */}
+          {metric.metadata.window_days != null && <> · last {metric.metadata.window_days}d</>}:{" "}
           {formatMetricValue(metric.metadata.raw_window_value, metric.unit)}
           {metric.metric === "monthly_spend_usd" &&
             metric.metadata.billed_window_usd != null && (
@@ -487,10 +491,23 @@ function ServiceCard({
 }) {
   const [expanded, setExpanded] = useState(false);
 
+  // FIX-1076: `vercel.overage_present` is the FIX-1050 wire-format companion
+  // to the dollar row — a 0/1 state with bands 1/101, which exists purely so
+  // "any overage at all" can be expressed as an integer percentage band and
+  // fire the first-cent email. It is not a quantity, so rendering it as a
+  // "0 / 1" progress row says nothing; worse, at 1 its pct is 100 and it
+  // sorts to the front of `topMetric`, taking over the collapsed card's
+  // headline label and bar. Dropped from DISPLAY only — it stays in the API
+  // payload and in `serviceStatus` below, so the alert evaluation and the
+  // status dot are untouched.
+  const displayMetrics = metrics.filter(
+    (m) => !(m.service === "vercel" && m.metric === "overage_present"),
+  );
+
   const topMetric =
-    metrics
+    displayMetrics
       .filter((m) => m.value !== null && m.value !== undefined)
-      .sort((a, b) => (b.pct ?? 0) - (a.pct ?? 0))[0] ?? metrics[0];
+      .sort((a, b) => (b.pct ?? 0) - (a.pct ?? 0))[0] ?? displayMetrics[0];
 
   const serviceStatus: string = metrics.some((m) => m.status === "critical")
     ? "critical"
@@ -633,7 +650,7 @@ function ServiceCard({
               onUpdate={onUpdate}
             />
           ) : (
-            metrics.map((metric) => (
+            displayMetrics.map((metric) => (
               <MetricRow
                 key={metric.metric}
                 metric={metric}
@@ -886,15 +903,14 @@ export function PlatformCostsSection({
           description="Every cost is public record"
         />
 
-        {/* Summary row */}
+        {/* Summary row. FIX-1076 removed the trailing
+            "On {plan} plan · Upgrade" span: the plan field rendered "free"
+            while Supabase and Vercel are both on Pro, and the Upgrade button
+            had no onClick — a wrong fact next to a dead control. */}
         <div className="flex justify-between items-center mb-1 px-1 mt-4">
           <span className="text-2xl font-bold tabular-nums">
             ${totalMonthlyCost.toFixed(2)}
             <span className="text-sm font-normal text-ink-soft ml-1">/month</span>
-          </span>
-          <span className="text-xs text-ink-soft/80">
-            On {platformUsage.plan} plan ·{" "}
-            <button className="underline hover:text-ink">Upgrade</button>
           </span>
         </div>
 

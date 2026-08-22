@@ -912,9 +912,15 @@ export async function getSelfTests(
     {
       name: "entity_search_finds_warren",
       passed: warrenEntity != null,
+      // FIX-1076: the `name` key is deliberately unchanged — persisted
+      // status_snapshot payloads and DashboardClient's SELF_TEST_LABELS both
+      // key on it. Only the human-facing `detail` is neutralised: these
+      // strings render on the public dashboard, and a failing self-test used
+      // to read as an assertion about a named sitting politician (the pass
+      // text also leaked a raw uuid).
       detail: warrenEntity
-        ? `Found ${warrenEntity.label} (${warrenEntity.id})`
-        : "Elizabeth Warren not found in search results",
+        ? "reference official found"
+        : "reference official not found in search results",
     },
     {
       name: "chord_has_industry_data",
@@ -933,7 +939,7 @@ export async function getSelfTests(
       // candidate slot) trips it immediately.
       detail: warrenId
         ? `${warrenVotesRes.data?.length ?? 0}+ vote_yes connections (capped at 11)`
-        : "Warren not found — skipped",
+        : "reference official not found — skipped",
     },
     {
       name: "ai_budget_ok",

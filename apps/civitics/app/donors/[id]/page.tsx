@@ -183,13 +183,13 @@ export async function generateMetadata(
   { params }: { params: { id: string } }
 ): Promise<Metadata> {
   const entity = await getCachedDonor(params.id);
-  if (!entity) return { title: "Donor | Civitics" };
+  if (!entity) return { title: "Donor" };
 
   const typeLabel = ENTITY_TYPE_LABEL[entity.entity_type] ?? entity.entity_type;
   const description = `${typeLabel} · ${formatMoney(entity.total_donated_cents)} donated · ${formatMoney(entity.total_received_cents)} received`;
 
   return {
-    title: `${entity.display_name} | Civitics`,
+    title: entity.display_name,
     description,
     openGraph: {
       title: `${entity.display_name} | Civitics`,

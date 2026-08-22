@@ -10,7 +10,8 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Privacy | Civitics",
+  // No "| Civitics" suffix — the root layout title template appends it (FIX-1076).
+  title: "Privacy",
   description:
     "What Civitics collects, why, and how long we keep it — in plain language. " +
     "Raw network identifiers are never stored; the integrity log is observe-only.",

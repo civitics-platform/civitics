@@ -417,7 +417,10 @@ export function getSourceDisplay(
 
     case "estimated":
       return {
-        label: "~ Est.",
+        // No leading "~" here — every renderer prints `icon` then `label`,
+        // so carrying the tilde in both produced a literal "~ ~ Est."
+        // on the estimated metric rows (FIX-1076).
+        label: "Est.",
         color: "gray",
         icon: "~",
         tooltip: "Calculated from our pipeline logs. Accuracy ±15%.",

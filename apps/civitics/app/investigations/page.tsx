@@ -11,7 +11,8 @@ import { PageViewTracker } from "../components/PageViewTracker";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Investigations | Civitics",
+  // No "| Civitics" suffix — the root layout title template appends it (FIX-1076).
+  title: "Investigations",
   description:
     "Community case files built on cited records — no claim without a citation. Browse open investigations or start your own.",
 };

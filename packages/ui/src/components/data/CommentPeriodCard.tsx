@@ -40,13 +40,28 @@ export function CommentPeriodCard({
     urgency ?? deriveUrgency(deadline) ?? "normal";
   const countdown = formatCountdown(deadline);
 
+  // FIX-1076: the whole card is the link, not just the "Comment →" button —
+  // the agency badge and title used to be dead pixels. Stretched-link rather
+  // than wrapping everything in one <a>, because the CTA is itself an <a> and
+  // nesting anchors is invalid HTML (hydration mismatch — see
+  // apps/civitics/CLAUDE.md). The overlay sits ABOVE the static content so it
+  // actually receives those clicks; the CTA is raised above the overlay in
+  // turn, so it keeps its own hit target and stays in the tab order.
   return (
-    <div className="bg-card rounded-xl border border-rule shadow-sm p-4 flex flex-col gap-3">
+    <div className="group relative bg-card rounded-xl border border-rule shadow-sm p-4 flex flex-col gap-3 transition-colors duration-150 hover:border-accent/50">
+      <a
+        href={href}
+        aria-label={`Comment on ${title}`}
+        className="absolute inset-0 z-10 rounded-xl"
+      />
+
       <div>
         <span className="inline-flex items-center rounded-full bg-paper-2 px-2.5 py-0.5 text-xs font-medium text-ink-soft mb-2">
           {agency}
         </span>
-        <p className="text-sm font-medium text-ink line-clamp-2">{title}</p>
+        <p className="text-sm font-medium text-ink line-clamp-2 group-hover:text-accent transition-colors duration-150">
+          {title}
+        </p>
       </div>
       <div className="flex items-center justify-between gap-2 mt-auto">
         <span
@@ -56,7 +71,9 @@ export function CommentPeriodCard({
         </span>
         <a
           href={href}
-          className="inline-flex items-center rounded-lg bg-ink px-3 py-1.5 text-xs font-medium text-paper hover:bg-accent transition-colors duration-150 shrink-0"
+          tabIndex={-1}
+          aria-hidden="true"
+          className="relative z-20 inline-flex items-center rounded-lg bg-ink px-3 py-1.5 text-xs font-medium text-paper hover:bg-accent transition-colors duration-150 shrink-0"
         >
           Comment →
         </a>

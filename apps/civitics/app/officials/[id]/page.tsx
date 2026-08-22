@@ -67,7 +67,7 @@ export async function generateMetadata(
     getCachedOfficial(params.id),
     getOfficialContentBearing(params.id),
   ]);
-  if (!data) return { title: "Official | Civitics" };
+  if (!data) return { title: "Official" };
 
   const description = [
     data.role_title,

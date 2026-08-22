@@ -33,10 +33,10 @@ export async function generateMetadata({
   params: { id: string };
 }): Promise<Metadata> {
   const data = await loadCaseFile(params.id);
-  if (!data) return { title: "Investigation | Civitics" };
+  if (!data) return { title: "Investigation" };
   const { investigation } = data;
   return {
-    title: `${investigation.title} | Investigations | Civitics`,
+    title: `${investigation.title} | Investigations`,
     description: investigation.question ?? investigation.scope_note ?? undefined,
   };
 }

@@ -6,7 +6,8 @@ import { PostProblemForm } from "./PostProblemForm";
 export const dynamic = "force-dynamic";
 
 export const metadata = {
-  title: "Post a Problem | Civitics",
+  // No "| Civitics" suffix — the root layout title template appends it (FIX-1076).
+  title: "Post a Problem",
   description: "Describe a civic problem — no solution needed yet. The community can help develop one.",
 };
 

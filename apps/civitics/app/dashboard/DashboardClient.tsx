@@ -31,6 +31,7 @@ import {
   type DatabaseStats,
   type StatusData,
 } from "./useDashboardData";
+import { useIsAdmin } from "@/lib/use-is-admin";
 import dynamic from "next/dynamic";
 
 const AnthropicCard = dynamic(
@@ -378,13 +379,16 @@ const SELF_TEST_LABELS: Record<string, string> = {
 
 // ── Phase / task data (FIX 4) ────────────────────────────────────────────────
 
+// Rendered until /api/phases resolves. Labels mirror the ## headers in
+// docs/PHASE_GOALS.md — they had drifted to a set of names that appear
+// nowhere in that document (FIX-1078).
 const PHASES_FALLBACK = [
-  { name: "Phase 0", label: "Foundation", pct: 100, done: true },
-  { name: "Phase 1", label: "Civic Core", pct: 88, done: false },
-  { name: "Phase 2", label: "Community", pct: 0, done: false },
-  { name: "Phase 3", label: "Economy", pct: 0, done: false },
+  { name: "Phase 0", label: "Scaffold", pct: 100, done: true },
+  { name: "Phase 1", label: "MVP", pct: 88, done: false },
+  { name: "Phase 2", label: "Growth", pct: 0, done: false },
+  { name: "Phase 3", label: "Social App", pct: 0, done: false },
   { name: "Phase 4", label: "Blockchain", pct: 0, done: false },
-  { name: "Phase 5", label: "Candidates", pct: 0, done: false },
+  { name: "Phase 5", label: "Global", pct: 0, done: false },
 ];
 
 const PHASE1_TASKS: Array<{ label: string; done: boolean }> = [
@@ -1070,6 +1074,14 @@ function DataHealthSection({
   quality: NonNullable<ReturnType<typeof useDashboardData>["data"]>["status"]["quality"];
   database: NonNullable<ReturnType<typeof useDashboardData>["data"]>["status"]["database"];
 }) {
+  // FIX-1076: /admin/pipeline-health is a real, working page — it renders
+  // 30-day p50/p95/max runtime stats — but it 404s for everyone who is not
+  // the configured admin, so the public dashboard was advertising an action
+  // that dead-ends for every visitor. Gate it client-side on /api/admin/me
+  // rather than at SSR: this page is edge-cached for 30 min (FIX-347), so
+  // anything admin-conditional baked into the HTML would be served to
+  // whoever warmed the cache.
+  const { isAdmin } = useIsAdmin();
   const [hoursUntilNext, setHoursUntilNext] = useState(0);
 
   useEffect(() => {
@@ -1220,7 +1232,9 @@ function DataHealthSection({
               "No recent runs found"
             )
           }
-          action={{ label: "Runtime stats", href: "/admin/pipeline-health" }}
+          action={
+            isAdmin ? { label: "Runtime stats", href: "/admin/pipeline-health" } : undefined
+          }
         />
 
         {/* Top strip */}
@@ -1404,7 +1418,12 @@ function ActivitySection({
                   <p className="text-sm font-medium text-ink truncate">
                     {pathLabel(row.path)}
                   </p>
-                  <p className="text-xs text-ink-soft truncate">{row.path}</p>
+                  {/* pathLabel falls through to the raw path for anything it
+                      has no friendly name for, which printed the same string
+                      twice (FIX-1076). */}
+                  {pathLabel(row.path) !== row.path && (
+                    <p className="text-xs text-ink-soft truncate">{row.path}</p>
+                  )}
                   <p className="text-xs text-ink-soft/80">
                     {`${formatNumber(row.views)} views`}
                   </p>
@@ -1523,11 +1542,11 @@ function PlatformStorySection({
         <p className="text-xs text-ink-soft">All civic actions are free.</p>
       </div>
       <div className="mt-4 flex flex-wrap gap-3">
-        <a href="/proposals" className="text-sm font-medium text-accent hover:underline">
+        <a href="/about/sources" className="text-sm font-medium text-accent hover:underline">
           View data sources →
         </a>
         <a
-          href="https://github.com"
+          href="https://github.com/civitics-platform/civitics"
           target="_blank"
           rel="noopener noreferrer"
           className="text-sm font-medium text-accent hover:underline"
