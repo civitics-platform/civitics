@@ -2,8 +2,17 @@
 
 > This file tracks progress against the phased development plan defined in `CLAUDE.md`.
 > Update checkboxes as tasks complete. Phases are sequential; each unlocks the next.
-> Last audited: 2026-03-21 (verified against actual files, tables, and code — not guessed).
-> Last updated: 2026-03-21 — Phase 1 ~88% complete; 51k vote connections live (227k pending IO recovery).
+> Last audited: 2026-08-22 (verified against actual files, tables, and live prod counts — not guessed).
+> Last updated: 2026-08-22 — Phase 1 exits on beta users + grants; everything else in it is shipped.
+> Community layer (comments / positions / follows), vote backfill, and the final
+> three graph presets all landed since the March audit. The four unimplemented
+> Phase 2 pipelines were re-verified and are still skeletons — see the annotations.
+>
+> **Percentages** are a simple checkbox ratio over the phase's own `- [ ]` / `- [x]`
+> bullets (sub-bullets and notes don't count). `/api/phases` parses these header
+> lines at runtime — see `apps/civitics/app/api/phases/route.ts` (FIX-1078). Keep the
+> `` `~NN% complete` `` / `` `Planned` `` token shape intact or the public
+> Development Progress section on `/dashboard` drops to its static fallback.
 
 ---
 
@@ -37,9 +46,13 @@
 
 ---
 
-## Phase 1 — MVP `Weeks 3–10` `~88% complete` ← **current**
+## Phase 1 — MVP `Weeks 3–10` `~96% complete` ← **current**
 
 > **Done when:** Vote backfill complete, search ranking fixed, auth tested end-to-end, grant applications submitted, first 500 users.
+> As of the 2026-08-22 audit the only open exit criteria are **500 beta users** and
+> **grant applications** — both non-engineering. The remaining unchecked engineering
+> bullets (credit system, personalized "what does this mean for me", custom storage
+> domain) are real but do not gate the phase.
 
 ### Data Ingestion Pipelines
 - [x] Congress.gov API → officials + votes (`packages/data/src/pipelines/congress/`)
@@ -53,7 +66,8 @@
 - [x] OpenStates → state legislators (`packages/data/src/pipelines/openstates/`) — 6,268 inserted, 1,031 updated (2026-03-17)
 - [x] CourtListener → judges + rulings (`packages/data/src/pipelines/courtlistener/`)
 - [x] Entity connections pipeline — derives donation/vote/oversight/appointment from ingested data (`packages/data/src/pipelines/connections/`)
-  - Note: 51k vote connections live; full 227k pending IO recovery
+  - 9.84M edges live on prod (2026-08-22). The March "51k of 227k pending IO recovery" note is retired — the backlog cleared long ago.
+  - Rebuild moved out of the nightly to its own twice-weekly GHA workflow (Sun + Wed 08:00 UTC), then to in-DB `pg_cron` (FIX-291 → FIX-717/718)
 - [x] Delta connections runner — only re-derives changed officials since last run (`packages/data/src/pipelines/connections/delta.ts`)
 - [x] Master orchestrator + scheduler (`packages/data/src/pipelines/index.ts`)
 - [x] Nightly sync pipeline — `runNightlySync()` export, full sequence: data → connections delta → rule tags → AI tags
@@ -70,7 +84,7 @@
 - [x] Agency detail page (`/agencies/[slug]`) — real data
 - [x] Proposals list page (`/proposals`) — status/type/agency/search filters, open-now featured section, clickable cards, full agency names, pagination with filter preservation
 - [x] Proposal detail page (`/proposals/[id]`) — "What This Means" AI summary section, comment period banner, 3-step comment draft tool, vote record, related proposals, generateStaticParams for top 50
-  - Note: `vote_category` filter UI pending full migration completion
+  - `vote_category` fully populated — 0 NULL across all 2,215 prod proposals that carry votes (verified 2026-08-22)
 - [x] Public accountability dashboard (`/dashboard`) — platform stats, pipeline health, data counts
 - [x] Search — universal search across officials, proposals, agencies
   - `GET /api/search?q=&type=` — parallel queries, special cases (state abbr, party, role), trigram+ILIKE
@@ -85,7 +99,7 @@
 - [x] Screenshot export — PNG 1×/2×/4× with non-removable watermark (URL + data sources + date)
 - [x] 5 preset views built — Follow the Money, Votes & Bills, Revolving Door, Full Picture, Clean View
   - Nominations preset ("Who did this senator confirm?") + Full Record preset (all including procedural) also added
-  - Not yet built: Committee Power, Industry Capture, Co-Sponsor Network
+  - All three remaining presets — Committee Power, Industry Capture, Co-Sponsor Network — now built and registered in `packages/graph/src/presets.ts` (see Phase 2)
 - [x] Proposal vote categorization — `vote_category` column on `proposals` (substantive/procedural/nomination/regulation)
   - Migration `0019_proposal_vote_category.sql` applied; all existing proposals categorized
   - Procedural votes (cloture, passage motions) hidden from graph by default; archived, not deleted
@@ -192,17 +206,28 @@
 - [x] AI cost trend chart — historical cost per run visualized in admin dashboard
 - [x] Alert history — past threshold breaches logged and viewable
 - [x] Admin-only dashboard controls — gated by `ADMIN_EMAIL` env var
-- [ ] Custom storage domain
+- [ ] Custom storage domain — still the R2-issued `pub-*.r2.dev` subdomain (`CLOUDFLARE_R2_PUBLIC_URL_DOCUMENTS`); no custom hostname bound yet
 
-### Database (as of 2026-03-21)
-- [x] `officials` — 8,251 rows (federal Congress + 6,268 state legislators + 651 judges via OpenStates / CourtListener)
-- [x] `proposals` — 2,066 rows
-- [x] `votes` — 227,153 rows
-- [x] `financial_relationships` — 19,647 donation rows (FEC bulk) + 1,980 contract/grant rows (USASpending; merged from former `spending_records` table at 2026-04-22 cutover)
-- [x] `entity_connections` — 51k vote connections live; full 227k pending IO recovery
-- [x] `financial_entities` — FEC donor categories seeded
-- [x] `graph_snapshots` — table exists, rows created on share
-- [x] `civic_comments` — table exists, no commenting UI yet
+### Database (live prod counts, audited 2026-08-22)
+
+Read-only counts against Supabase Pro (`xsazcoxinpgttgquwvuf`). These move
+constantly — treat them as an order-of-magnitude snapshot, not a target.
+
+| Table | Rows |
+|---|---:|
+| `officials` | 37,148 |
+| `proposals` | 89,482 |
+| `votes` | 969,302 |
+| `financial_relationships` | 13,817,499 |
+| `entity_connections` | 9,839,089 |
+| `financial_entities` | 4,842,219 |
+| `entity_tags` | 2,851,445 |
+| `ai_summary_cache` | 6,888 |
+
+- `officials` growth is mostly FEC candidate rows (`tier='candidate'`, FIX-246) plus state legislators and judges — not 37k elected officials.
+- `financial_entities` is dominated by individual FEC donors deduped on `donor_fingerprint`.
+- `graph_snapshots` — table exists, rows created on share.
+- `entity_comments` / `entity_positions` / `user_follows` — live and receiving real writes (see Community & Auth below). `civic_comments` is the older table; the shipped UI writes `entity_comments`.
 
 ### Community & Auth
 - [x] User auth via Supabase (magic link + Google OAuth + GitHub OAuth)
@@ -215,23 +240,45 @@
   - `SignInForm` — shared form component (used by page + modal)
   - `middleware.ts` — silent session refresh on all routes, no protected routes yet
   - Migration `0009_users_table.sql` — run `pnpm db:migrate` in packages/db to apply
-- [ ] Community commenting on entities (`civic_comments` table exists, no UI)
-- [ ] Position tracking on proposals
-- [ ] Follow officials and agencies
+- [x] Community commenting on entities — `EntityComments` mounted on officials, proposals, initiatives, institutions, investigations, and jurisdictions detail pages; writes `entity_comments` (55 rows on prod)
+  - Ratings via `comment_ratings`, per-proposal aggregates in `proposal_comment_stats`
+- [x] Position tracking on proposals — `PositionSection` on proposal + initiative detail pages; writes `entity_positions` (21 rows on prod), history in `position_events`
+- [x] Follow officials and agencies — `FollowButton` on officials, institutions, jurisdictions, and initiatives; `user_follows` (9 rows on prod) surfaced in `/desk` via `WatchingModule`
+  - `notifications` table exists and is wired, but has not fired yet (0 rows) — worth a look before calling the loop closed
+
+### Shipped since 2026-03 (not in the original plan)
+
+Work that landed after the March audit and has no bullet above. Listed so the
+phase percentage isn't read as the whole story — the plan understated Phase 1 in
+both directions.
+
+- Homepage rebuilt as "Public Record × Terminal"
+- `/search` rebuilt as a browse explorer — zero-query landing, scope rails, saved-views rail, Cmd-K typeahead
+- `/graph` five-wave overhaul + polish — token-native theming, canonical node ids, panel rework, preset URL deep links
+- Investigations MVP (`/investigations`)
+- Commons (`/commons`) and Desk (`/desk`)
+- Q&A v2 on entity pages
+- Bot-protection gate + Cloudflare edge posture (`docs/CLOUDFLARE.md`)
+- Donor industry-tag program — per-tag `tag_category`, write-boundary vocab guard, sector affinity
+- FEC attribution arc — external-sort indiv stage (PR 3a) and the aggregate-$200-floor correction with `small_dollar_bracket_rollup` (PR 3b)
+- Platform monitoring + cost-detection loop — daily canary, data-health dashboard, request-path `withDbTimeout` enforcement in CI
+- `pg_cron` migration + cron resilience for the entity-connections and donor-rollup rebuilds
+- Synthetic-content quarantine + moderation harness (SF-P1 through SF-P5)
+- Request-path materializations — vote stats, contract flow rollups, connection-count MV, donor totals
 
 ### Remaining Phase 1
-- [ ] Vote backfill complete — 51k/227k done, pending IO recovery
-- [ ] Proposal vote_category migration — full data population for all proposals
-- [ ] Elizabeth Warren (and other senators) appearing in search results
-- [ ] Community commenting
-- [ ] Position tracking
-- [ ] Follow officials/agencies
+- [x] Vote backfill complete — 969,302 vote rows on prod (the 227k figure was the March ceiling)
+- [x] Proposal vote_category migration — 0 NULL across 2,215 prod proposals with votes
+- [x] Elizabeth Warren (and other senators) appearing in search results — `search_graph_entities('warren')` returns the elected `MA · Senator` row; the status route's self-test resolves it past the two FEC candidate duplicates (FIX-339)
+- [x] Community commenting
+- [x] Position tracking
+- [x] Follow officials/agencies
 - [ ] 500 beta users
-- [ ] Grant applications submitted
+- [ ] Grant applications submitted — **(Craig: status?)**
 
 ---
 
-## Phase 2 — Growth `Weeks 11–22` `Planned`
+## Phase 2 — Growth `Weeks 11–22` `~8% complete`
 
 > **Done when:** Platform financially self-sustaining, first institutional API customer, first grant money received.
 
@@ -244,8 +291,12 @@
 
 ### Graph Enhancements (Phase 2)
 - [ ] Timeline scrubber — animate graph through time with play button
-- [ ] Remaining 3 preset views — Committee Power, Industry Capture, Co-Sponsor Network
-- [ ] Community presets — user-saved named presets (`graph_presets` table)
+- [x] Remaining 3 preset views — Committee Power, Industry Capture, Co-Sponsor Network
+  - All three defined and exported from `packages/graph/src/presets.ts` (`committee-power`, `industry-capture`, `co-sponsor-network`)
+  - Caveat: Co-Sponsor Network leans on `vote_yes` for signal — `proposal_cosponsors` is still empty (0 rows on prod) because the cosponsorship pipeline is a skeleton, so the `co_sponsorship` edge type contributes nothing yet
+- [x] Community presets — user-saved named views
+  - Shipped as **localStorage**-backed saved views (`civitics_presets`, `packages/graph/src/saved-views.ts`, FIX-817), not the originally-specced `graph_presets` table — that table was never created
+  - The Browse explorer's `SavedViewsRail` reads the same contract; a DB-backed store (FIX-763) remains the longer-term merge target
 
 ### AI Power Features
 - [ ] Connection mapping queries
@@ -269,10 +320,10 @@
 These items were scoped in `docs/archive/REBUILD_STATUS.md` but explicitly deferred — none blocked the Stage 2 cutover. Tracked here so they don't slip through the cracks.
 
 - [ ] **NYC Legistar pipeline** — blocked: requires API token (Knight / Mozilla / Democracy Fund grant pre-req per Decision D, 2026-04-20). Other 4 metros (Seattle, Austin, SF, DC) are live.
-- [ ] **FEC bulk 2022 + 2020 cycles** — current FEC data is 2024 only. Backfill older cycles for historical donor pattern analysis.
-- [ ] **Cosponsorship pipeline** — migration stub `20260420000000` exists; writer not implemented. Powers `co_sponsorship` connection type properly.
-- [ ] **Federal Register pipeline** — migration stub `20260420010000` exists; writer not implemented.
-- [ ] **Lobbying pipeline** — migration stub `20260420020000` exists; writer not implemented. Senate LDA disclosures + lobbying spend → `financial_relationships`.
+- [ ] **FEC bulk 2022 + 2020 cycles** — **in flight.** The 2024-cycle re-stream under the corrected aggregate-$200 floor (PR 3b / FIX-1068) ships first; 2022 and 2020 follow on the same rollout recipe. Backfills historical donor pattern analysis.
+- [ ] **Cosponsorship pipeline** — re-verified 2026-08-22: still a skeleton. `packages/data/src/pipelines/govtrack-cosponsors/index.ts` calls `skipSync(logId, "not_implemented")` and returns without touching the network. `proposal_cosponsors` = 0 rows and `co_sponsorship` edges = 0 on prod. It **is** registered as a writer on the data-health dashboard — that registration is the skeleton logging its own skip, not evidence of a run.
+- [ ] **Federal Register pipeline** — re-verified 2026-08-22: still a skeleton, same `skipSync(logId, "not_implemented")` shape in `packages/data/src/pipelines/federal-register/index.ts`. The `federal_register` sync-log alias exists for that reason only.
+- [ ] **Lobbying pipeline** — re-verified 2026-08-22: no LDA writer exists (no lobbying pipeline directory), and `financial_relationships.relationship_type = 'lobbying_spend'` has 0 rows on prod. The ~10.4k `lobbying` edges in `entity_connections` are **not** from Senate LDA — they carry `evidence_source = 'external_relationships'` (LittleSis). Senate LDA disclosures + lobbying spend → `financial_relationships` is still the open work.
 - [ ] **Stage 3 — Local data rollout** — broaden Legistar coverage and per-metro civic data beyond the initial 5-metro pilot.
 
 ---
