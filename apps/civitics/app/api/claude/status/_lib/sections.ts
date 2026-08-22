@@ -1016,10 +1016,17 @@ export async function getChord(db: Db) {
     pm.set(row.party_chamber, (pm.get(row.party_chamber) ?? 0) + usd);
   }
 
-  const topFlows: Array<{ from: string; to: string; amount_usd: number }> = [];
+  // FIX-1081 — carry the RAW industry key alongside the prettified label.
+  // `from` is display-only (lbl() title-cases and de-underscores it), so a
+  // consumer that needs to address the industry — the dashboard's per-row
+  // graph deep link — had nothing to send: ChordFlow.from_id was declared
+  // optional and never populated, and every row fell back to the un-emphasized
+  // link. The key matches the arc ids /api/graph/chord builds from the same
+  // chord_industry_flows RPC, so it addresses the arc directly.
+  const topFlows: Array<{ from: string; from_id: string; to: string; amount_usd: number }> = [];
   for (const [ind, pm] of flowMatrix)
     for (const [party, usd] of pm)
-      topFlows.push({ from: lbl(ind), to: party, amount_usd: Math.round(usd) });
+      topFlows.push({ from: lbl(ind), from_id: ind, to: party, amount_usd: Math.round(usd) });
   topFlows.sort((a, b) => b.amount_usd - a.amount_usd);
 
   return {

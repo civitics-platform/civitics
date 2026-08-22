@@ -317,6 +317,16 @@ export interface ChordOptions {
   granularity?: ChordGranularity
   /** When granularity='top-pacs', how many PAC arcs to show (default 12). */
   topPacsLimit?: number
+  /**
+   * FIX-1081 — open the chord with ONE donor arc emphasized and the other
+   * donor arcs receded, so a deep link can say "here is Labor's money"
+   * without the reader hunting for the arc.
+   *
+   * Matched against the donor-side arc id, which in aggregate mode is the raw
+   * industry key the chord route returns (e.g. 'oil_gas') — NOT the prettified
+   * label. Unset, or set to an id that isn't on the chart, renders flat.
+   */
+  emphasizeGroupId?: string
 }
 
 export interface TreemapOptions {

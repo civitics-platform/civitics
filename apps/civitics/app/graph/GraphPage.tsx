@@ -27,6 +27,8 @@ import {
   saveView,
   makeNodeId,
   isFocusNode,
+  BUILT_IN_PRESETS,
+  getGroupById,
 } from "@civitics/graph";
 import type { VizType, FocusEntity, FocusGroup, GroupFilter, GraphNodeV2 as GraphNode, GraphEdgeV2 as GraphEdge, GraphMeta, UserNodeInfo, IndividualDisplayMode, EdgeSheetData } from "@civitics/graph";
 import { isGraphSeedableKind } from "@/lib/graph-seedable-kinds";
@@ -111,6 +113,20 @@ const SEARCH_TYPE_MAP: Record<string, FocusEntity["type"]> = {
   agency: "agency",
   proposal: "proposal",
   financial_entity: "financial",
+};
+
+// FIX-1079 — presetId → default seed group for the /graph?preset= handoff.
+//
+// Force presets ship with an empty `focus.entities`, so applying one bare
+// still paints an empty canvas — which is exactly the bug the handoff exists
+// to fix. EmptyStatePresets.applyCard already solves this by pairing the
+// preset with a group; this map is the same pairing for the URL path, so a
+// deep link and a card click land on the same graph.
+//
+// Only presets that genuinely need a seed belong here. Global-dataMode chord
+// and treemap presets query without a focus and must NOT be paired.
+const PRESET_DEFAULT_GROUP: Record<string, string> = {
+  'follow-the-money': 'group-full-senate',
 };
 
 interface GraphPageProps {
@@ -273,6 +289,74 @@ export function GraphPage({ initialCode, aiEnabled = true }: GraphPageProps = {}
     const cleaned = new URL(window.location.href);
     cleaned.searchParams.delete("viz");
     window.history.replaceState({}, "", cleaned.toString());
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialCode]);
+
+  // ── Preset handoff from /dashboard and other deep links (FIX-1079) ────────
+  // /graph?preset=<presetId>[&industry=<tag>]. Read once on mount, apply the
+  // built-in preset (plus its seed group, if it needs one), and strip the
+  // params so a refresh doesn't re-apply over whatever the user did next.
+  // Mirrors the FIX-144 viz handoff above.
+  //
+  // Before this, `preset` was decoded by nobody — every dashboard graph link
+  // silently landed on the "Search to start exploring" empty state.
+  const presetHandoffRef = useRef(false);
+  useEffect(() => {
+    if (presetHandoffRef.current) return;
+    if (initialCode) return; // share-code hydration owns focus
+    if (typeof window === "undefined") return;
+
+    const params = new URL(window.location.href).searchParams;
+    const presetParam = params.get("preset");
+    if (!presetParam) return;
+
+    presetHandoffRef.current = true;
+
+    function stripParams() {
+      const cleaned = new URL(window.location.href);
+      cleaned.searchParams.delete("preset");
+      cleaned.searchParams.delete("industry");
+      window.history.replaceState({}, "", cleaned.toString());
+    }
+
+    const preset = BUILT_IN_PRESETS.find((p) => p.meta.presetId === presetParam);
+    if (!preset) {
+      // FIX-764-style: a stale or hand-built preset id has to SAY so. A silent
+      // empty graph is the exact failure this handoff was added to kill, so
+      // don't reintroduce it one level down.
+      console.warn(`[graph] preset handoff: unknown preset id "${presetParam}"`);
+      setHandoffNotice(
+        `Unknown graph preset "${presetParam}" — nothing was loaded. Search or pick a preset below.`,
+      );
+      stripParams();
+      return;
+    }
+
+    graphHooks.applyPreset(preset);
+
+    const groupId = PRESET_DEFAULT_GROUP[presetParam];
+    if (groupId) {
+      const group = getGroupById(groupId);
+      if (group) graphHooks.addGroup(group);
+    }
+
+    // FIX-1081 — &industry=<tag> opens a chord preset with that donor arc
+    // emphasized. The tag is the RAW industry key (e.g. 'labor'), matching the
+    // arc ids /api/graph/chord returns — not the prettified label.
+    //
+    // This goes through setVizOption rather than being merged into the preset
+    // object above, and that is load-bearing: the FIX-216 auto-adapt effect in
+    // useGraphView re-resolves the ORIGINAL preset from BUILT_IN_PRESETS on
+    // every focus change and overwrites style.vizOptions wholesale whenever it
+    // differs — which silently ate an injected option one tick after apply.
+    // It skips dirty views, and setVizOption marks dirty. Honest, too: a view
+    // carrying URL-supplied emphasis genuinely is a modified preset.
+    const industry = params.get("industry");
+    if (industry && preset.style.vizOptions.chord) {
+      graphHooks.setVizOption("chord", "emphasizeGroupId", industry);
+    }
+
+    stripParams();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialCode]);
 

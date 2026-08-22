@@ -100,7 +100,10 @@ export type SelfTest = {
 };
 
 export type ChordSectionData = {
-  top_flows: Array<{ from: string; to: string; amount_usd: number }>;
+  // from_id — raw industry key, added by FIX-1081. Optional here because a
+  // CDN-cached /api/claude/status payload written before that change has rows
+  // without it; the row's graph link falls back to the un-emphasized preset.
+  top_flows: Array<{ from: string; from_id?: string; to: string; amount_usd: number }>;
   total_flow_usd: number;
 };
 

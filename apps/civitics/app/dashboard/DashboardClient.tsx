@@ -506,7 +506,10 @@ function StatsSection({
         label="Votes"
         value={db?.votes ?? 0}
         formatAs="number"
-        href="/graph"
+        // FIX-1080 — bare /graph is the empty state. Topics-by-Party is the
+        // votes chord that renders globally; votes-and-bills and
+        // chord-sector-vote both need focused entities first.
+        href="/graph?preset=chord-subject-party"
         sublabel="Congressional votes tracked"
         loading={!db}
       />
@@ -1360,7 +1363,9 @@ function ConnectionHighlightsSection({
         icon={<Lightbulb size={16} />}
         title="Notable Connections"
         description="Top donation flows this cycle"
-        action={{ label: "Explore graph", href: "/graph?preset=follow-the-money" }}
+        // FIX-1080 — these rows ARE the industry→party chord's top ribbons, so
+        // the graph they open is that chord, not the donor force graph.
+        action={{ label: "Explore graph", href: "/graph?preset=chord-donor-industries" }}
       />
       <div className="mt-3 divide-y divide-rule/60">
         {topFlows.map((flow, i) => (
@@ -1370,9 +1375,12 @@ function ConnectionHighlightsSection({
             to={flow.to}
             amountUsd={flow.amount_usd}
             graphHref={
+              // FIX-1081 — from_id is the raw industry key; the chord emphasizes
+              // that arc on open. getChord only started emitting it in FIX-1081,
+              // so keep the fallback for a cached/older payload.
               flow.from_id
-                ? `/graph?preset=follow-the-money&industry=${flow.from_id}`
-                : "/graph?preset=follow-the-money"
+                ? `/graph?preset=chord-donor-industries&industry=${encodeURIComponent(flow.from_id)}`
+                : "/graph?preset=chord-donor-industries"
             }
           />
         ))}

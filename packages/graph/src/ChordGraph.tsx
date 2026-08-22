@@ -194,7 +194,9 @@ function draw(
   showLabels: boolean,
   onGroupHover: (index: number, x: number, y: number) => void,
   onGroupLeave: () => void,
-  onGroupClick: (index: number) => void
+  onGroupClick: (index: number) => void,
+  /** FIX-1081 — arc index to emphasize on first paint. -1 = flat (default). */
+  emphasisIndex: number = -1
 ) {
   d3.select(svgEl).selectAll("*").remove();
 
@@ -237,6 +239,27 @@ function draw(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const ribbon = d3.ribbon<d3.Chord, d3.ChordSubgroup>().radius(innerR) as any;
 
+  // FIX-1081 — emphasis baseline. When a deep link names a donor arc, the
+  // OTHER donor arcs recede and only ribbons touching the named arc stay lit.
+  // Recipient (party) arcs keep full opacity — they're the far end of the
+  // emphasized ribbons, so fading them would leave the ribbons pointing into
+  // nothing. Hover restores to THIS baseline rather than flat 0.7, otherwise
+  // the first mouseout would silently wipe the emphasis.
+  const emphasized = emphasisIndex >= 0 && emphasisIndex < allGroups.length;
+  const baseRibbonOpacity = (rd: unknown): number => {
+    if (!emphasized) return 0.7;
+    const r = rd as d3.Chord;
+    return r.source.index === emphasisIndex || r.target.index === emphasisIndex ? 0.85 : 0.06;
+  };
+  const resetRibbons = () => {
+    g.selectAll("path.ribbon").style("opacity", baseRibbonOpacity);
+  };
+  const arcOpacity = (index: number): number => {
+    if (!emphasized) return 1;
+    if (index === emphasisIndex) return 1;
+    return allGroups[index]?.kind === "recipient" ? 1 : 0.25;
+  };
+
   const group = g.append("g")
     .selectAll("g")
     .data(chords.groups)
@@ -248,6 +271,7 @@ function draw(
     .attr("stroke-width", 1)
     .attr("d", arc)
     .style("cursor", "pointer")
+    .style("opacity", (d) => arcOpacity(d.index))
     .on("mouseover", (event: MouseEvent, d) => {
       const rect = svgEl.getBoundingClientRect();
       const angle = (d.startAngle + d.endAngle) / 2 - Math.PI / 2;
@@ -263,7 +287,7 @@ function draw(
     })
     .on("mouseout", () => {
       onGroupLeave();
-      g.selectAll("path.ribbon").style("opacity", 0.7);
+      resetRibbons();
     })
     .on("click", (_event: MouseEvent, d) => {
       onGroupClick(d.index);
@@ -282,6 +306,7 @@ function draw(
       .attr("text-anchor", (d) => ((d.startAngle + d.endAngle) / 2 > Math.PI ? "end" : "start"))
       .attr("fill", T.inkSoft)
       .attr("font-size", "10px")
+      .style("opacity", (d) => arcOpacity(d.index))
       .text((d) => {
         const grp = allGroups[d.index];
         // FIX-730: no glyph in the D3-drawn arc label — label text only.
@@ -300,6 +325,10 @@ function draw(
     .attr("stroke", T.bg)
     .attr("stroke-width", 0.5)
     .style("cursor", "pointer")
+    // Only set an explicit opacity when emphasizing — the flat case inherits
+    // the parent group's fill-opacity 0.7, and stacking a second 0.7 on top
+    // of it would darken every ribbon on first paint.
+    .style("opacity", (rd: unknown) => (emphasized ? baseRibbonOpacity(rd) : null))
     .on("mouseover", (_event: MouseEvent, d) => {
       const src = allGroups[d.source.index];
       const tgt = allGroups[d.target.index];
@@ -312,7 +341,7 @@ function draw(
     })
     .on("mouseout", () => {
       onGroupLeave();
-      g.selectAll("path.ribbon").style("opacity", 0.7);
+      resetRibbons();
     });
 }
 
@@ -574,6 +603,15 @@ export function ChordGraph({ className = "", svgRef: externalSvgRef, vizOptions,
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rawData, vizOptions?.minFlowUsd, vizOptions?.normalizeMode, vizOptions?.topPacsLimit, vizOptions?.granularity]);
 
+  // FIX-1081 — resolve the emphasized donor arc id to its index in the CURRENT
+  // chart. Done here (not in draw) because minFlowUsd / top-pacs filtering can
+  // drop the arc entirely; an id that survived the filter gets emphasized, one
+  // that didn't falls back to -1 (flat) rather than emphasizing the wrong arc.
+  const emphasizeGroupId = vizOptions?.emphasizeGroupId;
+  const emphasisIndex = emphasizeGroupId && chartData
+    ? chartData.rawGroups.findIndex(g => g.id === emphasizeGroupId)
+    : -1;
+
   // ── Effect 3: Draw ────────────────────────────────────────────────────────
   useEffect(() => {
     if (status !== "ok" || !chartData) return;
@@ -594,10 +632,11 @@ export function ChordGraph({ className = "", svgRef: externalSvgRef, vizOptions,
       vizOptions?.showLabels ?? true,
       (index, x, y) => showTip(groupToNode(index, chartData), x, y),
       hideTip,
-      (index) => setPopup(groupToNode(index, chartData))
+      (index) => setPopup(groupToNode(index, chartData)),
+      emphasisIndex
     );
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status, chartData, vizOptions?.showLabels, svgRef]);
+  }, [status, chartData, vizOptions?.showLabels, svgRef, emphasisIndex]);
 
   // ── Resize observer ───────────────────────────────────────────────────────
   useEffect(() => {
@@ -622,7 +661,8 @@ export function ChordGraph({ className = "", svgRef: externalSvgRef, vizOptions,
           vizOptions?.showLabels ?? true,
           (index, x, y) => showTip(groupToNode(index, chartData), x, y),
           hideTip,
-          (index) => setPopup(groupToNode(index, chartData))
+          (index) => setPopup(groupToNode(index, chartData)),
+          emphasisIndex
         );
       }
     });
@@ -630,7 +670,7 @@ export function ChordGraph({ className = "", svgRef: externalSvgRef, vizOptions,
     obs.observe(container);
     return () => obs.disconnect();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status, chartData, vizOptions?.showLabels, svgRef]);
+  }, [status, chartData, vizOptions?.showLabels, svgRef, emphasisIndex]);
 
   // NodeActions for chord — no recenter/comparison (groups aren't individual officials)
   const nodeActions: NodeActions = {
