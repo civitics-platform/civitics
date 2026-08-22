@@ -62,9 +62,20 @@ function SourceIndicator({ display }: { display: SourceDisplay }) {
         ? "text-amber"
         : "text-ink-soft/80";
 
+  // FIX-1076: getSourceDisplay no longer carries the icon inside `label` (the
+  // "estimated" case used to, which rendered "~ ~ Est."). This strip stays
+  // because SourceDisplay is PERSISTED: platform_usage_snapshot stores the
+  // whole computed payload, so a freshly-deployed fix keeps reading the old
+  // label back out until the next platform-snapshot cron tick rewrites it.
+  // Guarding here makes the render correct immediately and is cheap insurance
+  // against the same shape recurring.
+  const label = display.label.startsWith(display.icon)
+    ? display.label.slice(display.icon.length).trimStart()
+    : display.label;
+
   return (
     <span className={`text-xs ${colorClass} whitespace-nowrap`} title={display.tooltip}>
-      {display.icon} {display.label}
+      {display.icon} {label}
     </span>
   );
 }
