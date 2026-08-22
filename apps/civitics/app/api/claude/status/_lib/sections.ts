@@ -9,6 +9,11 @@ import {
   type AnthropicUsageResponse,
 } from "@civitics/db";
 import { fetchAllRows } from "@/lib/paginate";
+import {
+  fetchPipelineRuntimeStats,
+  toPublicRuntimeStats,
+  type PublicPipelineRuntimeStat,
+} from "@/lib/pipeline-runtime-stats";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type Db = ReturnType<typeof createAdminClient> & Record<string, any>;
@@ -303,7 +308,7 @@ export async function getPipelines(db: Db) {
     Date.now() - ENRICHMENT_STALE_CLAIM_MINUTES * 60 * 1000,
   ).toISOString();
 
-  const [recentRunsRes, cronState, queueResults] = await Promise.all([
+  const [recentRunsRes, cronState, queueResults, runtimeStatRows] = await Promise.all([
     // FIX-476 — 14 months of run history across ~30 pipelines exceeds PostgREST
     // max_rows (1000), and the prior `.limit(3000)` never raised that ceiling, so
     // pipelines late in the (pipeline ASC) ordering lost all run history once the
@@ -351,6 +356,11 @@ export async function getPipelines(db: Db) {
         .eq("status", "processing")
         .lt("claimed_at", staleClaimCutoff),
     ]),
+    // FIX-1083 — 30-day aggregates for the "30d: N runs · X% ok" line under
+    // each Data Health row. Same MV and same reader the admin page uses.
+    // Returns [] on any error (the shared helper swallows it), so a missing or
+    // unrefreshed MV degrades the sub-line rather than the whole section.
+    fetchPipelineRuntimeStats(db),
   ]);
 
   const allRuns = (recentRunsRes.data ?? []) as PipelineHistoryRun[];
@@ -388,10 +398,18 @@ export async function getPipelines(db: Db) {
     r: PromiseSettledResult<{ count: number | null }>,
   ): number => (r.status === "fulfilled" ? (r.value.count ?? 0) : 0);
 
+  // FIX-1083: additive field. The dashboard renders from a PERSISTED
+  // status_snapshot, so a snapshot written before this deploy simply has no
+  // `runtime_stats` key — every consumer treats it as optional and falls back
+  // to showing no 30-day line, never to a crash.
+  const runtime_stats: Record<string, PublicPipelineRuntimeStat> =
+    toPublicRuntimeStats(runtimeStatRows);
+
   return {
     recent_runs,
     cron_last_run: cronState.data?.value ?? null,
     history,
+    runtime_stats,
     enrichment_backlog: {
       pending_tag: safeCount(queueResults[0]),
       pending_summary: safeCount(queueResults[1]),
@@ -783,6 +801,7 @@ export async function getSelfTests(
     anthropicUsageResult,
     cronState,
     rebuildLastRunRes,
+    ecDonationsStateRes,
     drift,
   ] = await Promise.all([
     timed("self_tests:chord_industry_flows", () => db.rpc("chord_industry_flows")),
@@ -825,24 +844,58 @@ export async function getSelfTests(
     // Reader updated to follow the data; writer stays as the single source of
     // truth per its file-header comment in scripts/rebuild-entity-connections.ts.
     //
-    // FIX-833: gate on the latest COMPLETE run, not the latest row. A rebuild
-    // that hits its CALL statement_timeout (the pre-FIX-833 6h Monday full) or
-    // otherwise dies strands a status='running' row with a NULL completed_at;
-    // under `.order(completed_at desc)` that NULL sorts FIRST in Postgres (NULLS
+    // FIX-833: gate on a TERMINAL run, not the latest row. A rebuild that dies
+    // strands a status='running' row with a NULL completed_at; under
+    // `.order(completed_at desc)` that NULL sorts FIRST in Postgres (NULLS
     // FIRST default) and dominated the read forever → permanent false-fail even
-    // though the incremental was keeping edges fresh. Filtering to complete +
-    // NULLS LAST reads the freshest *reconciled* run and is immune to a stranded
-    // 'running' or a one-off 'failed' row. "A complete run within
-    // REBUILD_STALE_MS" is the true data-health signal; a genuinely stalled
-    // pipeline still fails once its last complete ages out.
+    // though the incremental was keeping edges fresh. Filtering to terminal
+    // statuses + NULLS LAST keeps that immunity: a stranded 'running' and a
+    // reaped row both carry a NULL completed_at (the reaper deliberately does
+    // not stamp one — FIX-944/979), and 'failed' is excluded so a single bad
+    // firing does not flip the banner.
+    //
+    // FIX-1084: 'partial' joins 'complete' as terminal-and-alive, because the
+    // EC machinery legitimately stopped emitting 'complete' every firing. Under
+    // FIX-1056 (per-arm resume) + FIX-1063/1071 (external per-job budgets, 5h
+    // for both rebuild-ec-incremental jobs) + FIX-1028 (the query_canceled
+    // handlers the cancel lands in), an incremental firing is DESIGNED to do as
+    // much as its budget allows, close the row 'partial' carrying `next_arm`
+    // and `arm_timings`, and resume from that checkpoint on the next firing.
+    // Only a firing that drains an entire cycle reports 'complete'.
+    //
+    // Measured on prod 2026-08-22: newest 'complete' was 2026-07-29 08:00 (24
+    // days old, so the old predicate had held the public dashboard's red
+    // "System issue detected" banner up for over three weeks) while the newest
+    // row was 2026-08-19 08:00 'partial' — and cron.job_run_details records
+    // BOTH recent firings, rebuild-ec-incremental 08-19 and
+    // rebuild-ec-incremental-mon 08-17, as `succeeded`. The pipeline was fine;
+    // the predicate was asking for a status the design no longer produces.
     timed("self_tests:rebuild_last_run", () =>
       db
         .from("data_sync_log")
         .select("status, completed_at, rows_inserted")
         .eq("pipeline", "entity_connections_rebuild")
-        .eq("status", "complete")
+        .in("status", ["complete", "partial"])
         .order("completed_at", { ascending: false, nullsFirst: false })
         .limit(1)
+        .maybeSingle(),
+    ),
+
+    // FIX-1084: the donations cycle watermark. This is the only place a
+    // *cycle completion* is recorded — scripts/drain-ec-donations.mjs writes NO
+    // data_sync_log row at all, so the healthy 2026-08-21 close (16/16 window
+    // watermarks level, `cycle` key dropped, last_indexed_at advanced) was
+    // invisible to every sync-log-based check. Reported in the detail string
+    // rather than gated on: `last_indexed_at` only advances when a whole cycle
+    // closes, and how often that happens is a function of dirty-set size, not
+    // of schedule — turning it into a threshold would trade one false-red for
+    // another. A cycle that genuinely stops progressing still surfaces here as
+    // a visibly old watermark, and via derived_edges_match_source.
+    timed("self_tests:ec_donations_watermark", () =>
+      db
+        .from("pipeline_state")
+        .select("value, updated_at")
+        .eq("key", "entity_connections_donations")
         .maybeSingle(),
     ),
 
@@ -890,19 +943,50 @@ export async function getSelfTests(
     | null;
   const cronLastRun = cronVal?.completed_at ?? cronVal?.started_at ?? null;
 
-  // FIX-340: shape of the latest COMPLETE entity_connections_rebuild row (the
-  // query above filters to status='complete', so this is never a stranded run).
+  // FIX-340/1084: shape of the newest TERMINAL entity_connections_rebuild row
+  // (the query above filters to complete|partial, so this is never a stranded
+  // 'running' or a reaped one — both carry a NULL completed_at).
   const rebuildLastRun = (rebuildLastRunRes.data ?? null) as
     | { status: string; completed_at: string | null; rows_inserted: number | null }
     | null;
+
+  // FIX-1084: donations cycle watermark, for the detail string only. A closed
+  // cycle has all 16 window watermarks present and level, no `cycle` key, and
+  // last_indexed_at advanced to the cycle's target.
+  const ecDonationsState = (ecDonationsStateRes.data ?? null) as
+    | { value: Record<string, unknown> | null; updated_at: string | null }
+    | null;
+  const ecDonationsSummary = (() => {
+    const v = ecDonationsState?.value;
+    if (!v) return "donations watermark: absent";
+    const windows = v["windows"];
+    const windowCount =
+      windows && typeof windows === "object" ? Object.keys(windows).length : 0;
+    const lastIndexed = typeof v["last_indexed_at"] === "string" ? v["last_indexed_at"] : null;
+    const cycleOpen = Object.prototype.hasOwnProperty.call(v, "cycle");
+    return (
+      `donations cycle: ${cycleOpen ? "in progress" : "closed"}` +
+      `, ${windowCount}/16 windows` +
+      (lastIndexed ? `, indexed through ${lastIndexed}` : "")
+    );
+  })();
   // Rebuild cadence is pg_cron: rebuild-ec-incremental-mon Mon 08:00 UTC +
   // rebuild-ec-incremental Wed 08:00 UTC (FIX-833 converted the Monday job from
-  // 'full' to 'incremental' — the 6h full was retired). Both runs are the ~42min
-  // incremental, so the largest gap between successful runs is Wed→Mon = 5 days.
-  // 6d clears that with cushion without false-passing a genuinely missed
-  // schedule. (Was Mon-full/Wed-incremental where Monday's 6h CALL budget pushed
-  // the newest completed row to ~5.25d; before that 4.5d for the retired Sun+Wed
-  // GHA cadence — FIX-H.)
+  // 'full' to 'incremental' — the 6h full was retired). The largest gap between
+  // two scheduled firings is Wed→Mon = 5 days. 6d clears that with cushion
+  // without false-passing a genuinely missed schedule. (Was Mon-full/Wed-
+  // incremental where Monday's 6h CALL budget pushed the newest completed row
+  // to ~5.25d; before that 4.5d for the retired Sun+Wed GHA cadence — FIX-H.)
+  //
+  // FIX-1084 re-checked this against the real cadence rather than the old
+  // "~42min incremental" assumption, which no longer holds: a firing now runs
+  // to its 5h cron_job_budget and closes 'partial'. That does not move the
+  // bound — the row still lands within minutes of the firing either way, and
+  // 5d + 1d cushion is still the right window. It DOES mean a firing that
+  // never starts is the failure mode to worry about, and that is exactly what
+  // this ages out on: prod has two "job startup timeout" firings on record
+  // (rebuild-ec-incremental 08-05, rebuild-ec-incremental-mon 07-27) which
+  // wrote no row at all.
   const REBUILD_STALE_MS = 6 * 24 * 60 * 60 * 1000;
   const rebuildAgeMs = rebuildLastRun?.completed_at
     ? Date.now() - new Date(rebuildLastRun.completed_at).getTime()
@@ -963,13 +1047,20 @@ export async function getSelfTests(
     },
     {
       name: "connections_pipeline_healthy",
+      // FIX-1084: "a terminal run inside the cadence window, and the edges it
+      // maintains are actually there". The status set is complete|partial
+      // because a budget-bounded resume closes 'partial' by design (see the
+      // query comment above); the vote_yes floor is unchanged and is what stops
+      // a row that closes terminally every firing while writing nothing from
+      // reading as healthy.
       passed:
-        rebuildLastRun?.status === "complete" &&
+        (rebuildLastRun?.status === "complete" ||
+          rebuildLastRun?.status === "partial") &&
         voteYesTotalCount > 50000 &&
         rebuildAgeMs != null &&
         rebuildAgeMs < REBUILD_STALE_MS,
       detail: rebuildLastRun
-        ? `entity_connections_rebuild: last complete at ${rebuildLastRun.completed_at ?? "?"}${
+        ? `entity_connections_rebuild: last ${rebuildLastRun.status} at ${rebuildLastRun.completed_at ?? "?"}${
             rebuildLastRun.rows_inserted != null
               ? ` (${rebuildLastRun.rows_inserted} rows)`
               : ""
@@ -977,8 +1068,8 @@ export async function getSelfTests(
             rebuildAgeMs != null
               ? `, age ${(rebuildAgeMs / (60 * 60 * 1000)).toFixed(1)}h`
               : ""
-          }`
-        : "No COMPLETE entity_connections_rebuild row in data_sync_log — has the pg_cron rebuild (Mon + Wed incremental) run since cutover?",
+          } · ${ecDonationsSummary}`
+        : `No complete or partial entity_connections_rebuild row in data_sync_log — has the pg_cron rebuild (Mon + Wed incremental) run since cutover? · ${ecDonationsSummary}`,
     },
     {
       name: "derived_edges_match_source",

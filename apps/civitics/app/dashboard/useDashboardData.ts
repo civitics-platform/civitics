@@ -56,10 +56,23 @@ export type EnrichmentBacklog = {
   stale_processing: number;
 };
 
+// FIX-1083: 30-day aggregates out of pipeline_runtime_stats_mv, keyed by the
+// writer-side pipeline label. Mirrors PublicPipelineRuntimeStat in
+// @/lib/pipeline-runtime-stats.
+export type PipelineRuntimeStat = {
+  runs_30d: number;
+  success_rate_pct: number | null;
+  p95_duration_ms: number | null;
+};
+
 export type PipelinesData = {
   recent_runs: PipelineRun[];
   cron_last_run: Record<string, unknown> | null;
   history: Record<string, PipelineHistoryRun[]>;
+  // Optional: the dashboard renders a PERSISTED status_snapshot, so a snapshot
+  // written before FIX-1083 deployed has no such key. Every read site must
+  // tolerate its absence for the one-cron-tick window after a deploy.
+  runtime_stats?: Record<string, PipelineRuntimeStat>;
   enrichment_backlog: EnrichmentBacklog;
 };
 
