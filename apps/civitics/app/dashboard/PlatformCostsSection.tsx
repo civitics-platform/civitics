@@ -1,690 +1,425 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import {
-  SectionCard,
-  SectionHeader,
-  AlertBanner,
-  LoadingSkeleton,
-  formatMetricValue,
-} from "@civitics/ui";
-import { Icon, hasIcon } from "@civitics/graph";
-import type { PlatformMetric, SourceDisplay } from "@civitics/db";
+/**
+ * Platform Costs — the R4b presentation rebuild (FIX-1091 / FIX-1092).
+ *
+ * ── WHAT CHANGED AND WHY ─────────────────────────────────────────────────────
+ *
+ * The headline is the only number this section exists to produce, and it used
+ * to be assembled here out of three unrelated fields: Anthropic's actual spend,
+ * a sum of non-Vercel metric overages, and Vercel's projected bill. Supabase
+ * Pro's $25/month was in none of them. FIX-1089 built a true-cost data plane
+ * (itemized subscriptions + billable usage, selected BY BASIS so a
+ * credit-absorbed dollar can never be added to an owed one), so this file now
+ * RENDERS a total rather than inventing one — $47.70 against the old $22.71.
+ *
+ * The anonymous "N metrics over limit" banners are gone. Every alert line names
+ * its metric, states the magnitude and states the dollars, across three fixed
+ * severities. `over` deliberately includes "is generating real money" as well
+ * as "is band-critical", because those are different questions and
+ * supabase.db_size_bytes is the case that proves it: $2.70/month owed, bands
+ * (500/750, re-based by FIX-1089) correctly asleep.
+ *
+ * ── THE SNAPSHOT TRAP ────────────────────────────────────────────────────────
+ *
+ * This component renders a PERSISTED payload — `platform_usage_snapshot`, whose
+ * GHA-driven cron drifts hours. So a freshly-deployed card reads OLD payloads
+ * for a while, and every R4a field is optional here. The fallbacks are not
+ * defensive noise; they are the only thing standing between a deploy and a
+ * blank card. Old shape → old headline arithmetic, no cycles, no rates, no
+ * per-provider itemization. Verified in both states.
+ */
+
+import { useState, useEffect, useMemo, type ReactNode } from "react";
+import { SectionCard, SectionHeader, LoadingSkeleton, formatMetricValue } from "@civitics/ui";
+import { Icon } from "@civitics/graph";
+import type { PlatformMetric } from "@civitics/db";
 import type { PlatformUsageResponse, AnthropicDetail, AiCosts } from "./useDashboardData";
 import { useIsAdmin } from "@/lib/use-is-admin";
+import {
+  deriveAlerts,
+  isDisplayedMetric,
+  metricLabel,
+  planLabelFor,
+  serviceCosts,
+  type AlertSeverity,
+  type CostAlert,
+  type CostsPayloadView,
+  type Formatters,
+  type ServiceCost,
+} from "@/lib/platform-costs-view";
+import { MeterKey } from "./components/CostMeter";
+import { ProviderCostCard } from "./components/ProviderCostCard";
+import { ThresholdsEditor } from "./components/ThresholdsEditor";
 
-// ── Token / cost formatters ───────────────────────────────────────────────────
+// ── Formatters ────────────────────────────────────────────────────────────────
+
+function fmtUsd(n: number): string {
+  if (!Number.isFinite(n)) return "—";
+  if (n === 0) return "$0.00";
+  if (Math.abs(n) < 0.01) return "<$0.01";
+  return `$${n.toFixed(2)}`;
+}
 
 function fmtTokens(n: number): string {
-  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M";
-  if (n >= 1_000) return (n / 1_000).toFixed(0) + "K";
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(0)}K`;
   return n === 0 ? "—" : String(n);
 }
 
-function fmtUsd(n: number): string {
-  if (n === 0) return "—";
-  if (n < 0.01) return "<$0.01";
-  return "$" + n.toFixed(2);
+/**
+ * `formatMetricValue` handles the units it was written for and falls through to
+ * `String(value)` for the rest — which is how 498964 commands rendered as a
+ * bare, unreadable digit run. The units FIX-1090 added (commands, emails,
+ * users, connections) are grouped here rather than in @civitics/ui because they
+ * are cost-card vocabulary, not general formatting.
+ */
+const LOCALE_UNITS = new Set(["commands", "emails", "users", "connections", "state"]);
+
+function fmtValue(value: number, unit: string): string {
+  // Bare locale number, no unit word: every one of these rows already names its
+  // unit in `display_label` ("Monthly Commands", "DB connections (active)"), and
+  // repeating it produced "25 connections / 60 connections".
+  if (LOCALE_UNITS.has(unit)) return Math.round(value).toLocaleString();
+  return formatMetricValue(value, unit);
 }
 
-// ── Anthropic source badge ────────────────────────────────────────────────────
+const FORMATTERS: Formatters = { value: fmtValue, usd: fmtUsd };
 
-function AnthropicSourceBadge({ source }: { source?: string }) {
-  if (source === "api")
-    return (
-      <span className="inline-flex items-center gap-1.5 text-xs text-green-ink">
-        <span className="w-1.5 h-1.5 bg-green-ink rounded-full inline-block animate-pulse" />
-        Live · Anthropic Admin API
-      </span>
-    );
-  if (source === "api_usage_logs")
-    return (
-      <span className="inline-flex items-center gap-1.5 text-xs text-civic-blue">
-        <span className="w-1.5 h-1.5 bg-civic-blue rounded-full inline-block" />
-        From local usage logs
-      </span>
-    );
-  return (
-    <span className="inline-flex items-center gap-1.5 text-xs text-amber">
-      <span className="w-1.5 h-1.5 bg-amber rounded-full inline-block" />
-      Estimated
-    </span>
-  );
-}
+// ── Providers ─────────────────────────────────────────────────────────────────
 
-// ── Source indicator ──────────────────────────────────────────────────────────
-
-function SourceIndicator({ display }: { display: SourceDisplay }) {
-  const colorClass =
-    display.color === "green"
-      ? "text-green-ink"
-      : display.color === "amber"
-        ? "text-amber"
-        : "text-ink-soft/80";
-
-  // FIX-1076: getSourceDisplay no longer carries the icon inside `label` (the
-  // "estimated" case used to, which rendered "~ ~ Est."). This strip stays
-  // because SourceDisplay is PERSISTED: platform_usage_snapshot stores the
-  // whole computed payload, so a freshly-deployed fix keeps reading the old
-  // label back out until the next platform-snapshot cron tick rewrites it.
-  // Guarding here makes the render correct immediately and is cheap insurance
-  // against the same shape recurring.
-  const label = display.label.startsWith(display.icon)
-    ? display.label.slice(display.icon.length).trimStart()
-    : display.label;
-
-  return (
-    <span className={`text-xs ${colorClass} whitespace-nowrap`} title={display.tooltip}>
-      {display.icon} {label}
-    </span>
-  );
-}
-
-// ── Data age indicator ────────────────────────────────────────────────────────
-
-function DataAge({
-  recordedAt,
-  source,
-}: {
-  recordedAt?: string | null;
-  source?: string | null;
-}) {
-  if (!recordedAt && !source) {
-    return <span className="text-xs text-ink-soft/60">&#9675; No data</span>;
-  }
-
-  if (!recordedAt) {
-    return (
-      <span className="text-xs text-ink-soft/80">
-        {source === "manual"
-          ? "✓ Manual entry"
-          : source === "estimated"
-            ? "~ Estimated"
-            : "○ No data"}
-      </span>
-    );
-  }
-
-  const ageMs = Date.now() - new Date(recordedAt).getTime();
-  const ageMin = Math.round(ageMs / 60_000);
-  const ageHrs = Math.round(ageMs / 3_600_000);
-  const ageDays = Math.round(ageMs / 86_400_000);
-
-  const ageStr =
-    ageMin < 1
-      ? "just now"
-      : ageMin < 60
-        ? `${ageMin}m ago`
-        : ageHrs < 24
-          ? `${ageHrs}h ago`
-          : `${ageDays}d ago`;
-
-  const isStale = ageMin > 15;
-
-  const sourceIcon =
-    source === "api" ? "●" : source === "estimated" ? "~" : source === "manual" ? "✓" : "○";
-
-  const colorClass =
-    source === "api" && !isStale
-      ? "text-green-ink"
-      : source === "api" && isStale
-        ? "text-amber"
-        : source === "manual"
-          ? "text-civic-blue"
-          : "text-ink-soft/80";
-
-  return (
-    <span suppressHydrationWarning className={`text-xs ${colorClass}`}>
-      {sourceIcon} {ageStr}
-    </span>
-  );
-}
-
-// ── Service metadata ──────────────────────────────────────────────────────────
-
-const SERVICE_META: Record<string, { label: string; icon: string; costLabel: string }> = {
-  anthropic: { label: "Anthropic", icon: "anthropic", costLabel: "monthly spend" },
-  vercel: { label: "Vercel", icon: "▲", costLabel: "monthly usage" },
-  supabase: { label: "Supabase", icon: "supabase", costLabel: "monthly usage" },
-  cloudflare: { label: "Cloudflare R2", icon: "cloudflare", costLabel: "monthly usage" },
-  mapbox: { label: "Mapbox", icon: "mapbox", costLabel: "map loads" },
+/**
+ * FIX-1091 extended this from 5 entries to 8. GitHub, Upstash and Resend have
+ * been COLLECTED since FIX-1090 and rendered nowhere — a provider missing from
+ * this map is silently dropped from the section, which is exactly how $30.87 of
+ * GitHub Actions runner time stayed invisible.
+ *
+ * Google Cloud is deliberately absent: FIX-1090's inventory found zero billable
+ * GCP surface (the only Google integration is Sign-in-with-Google behind
+ * Supabase Auth, which is free), so there is no collector and no card.
+ */
+const SERVICE_META: Record<string, { label: string; icon: string }> = {
+  anthropic: { label: "Anthropic", icon: "anthropic" },
+  supabase: { label: "Supabase", icon: "supabase" },
+  vercel: { label: "Vercel", icon: "vercel" },
+  cloudflare: { label: "Cloudflare R2", icon: "cloudflare" },
+  github: { label: "GitHub", icon: "github" },
+  upstash: { label: "Upstash", icon: "upstash" },
+  resend: { label: "Resend", icon: "resend" },
+  mapbox: { label: "Mapbox", icon: "mapbox" },
 };
 
-const SERVICE_ORDER = ["anthropic", "supabase", "vercel", "cloudflare", "mapbox"];
+const SERVICE_ORDER = [
+  "anthropic",
+  "supabase",
+  "vercel",
+  "cloudflare",
+  "github",
+  "upstash",
+  "resend",
+  "mapbox",
+];
 
-const SERVICE_LINKS: Record<string, string> = {
-  vercel: "https://vercel.com/dashboard",
-  supabase: "https://supabase.com/dashboard",
-  anthropic: "https://console.anthropic.com",
-  cloudflare: "https://dash.cloudflare.com",
-  mapbox: "https://account.mapbox.com",
-  resend: "https://resend.com/dashboard",
+// ── Alerts strip ──────────────────────────────────────────────────────────────
+
+const SEVERITY_STYLE: Record<AlertSeverity, { dot: string; text: string; label: string }> = {
+  over: { dot: "bg-accent", text: "text-ink", label: "over" },
+  watch: { dot: "bg-amber", text: "text-ink", label: "watch" },
+  steady: { dot: "bg-green-ink", text: "text-ink-soft", label: "steady" },
 };
 
-// ── Status dot ────────────────────────────────────────────────────────────────
-
-function StatusDot({ status }: { status: string }) {
-  const colors = {
-    healthy: "bg-green-ink",
-    warning: "bg-amber",
-    critical: "bg-accent",
-  };
+function AlertsStrip({ alerts }: { alerts: CostAlert[] }) {
+  if (alerts.length === 0) return null;
   return (
-    <span
-      className={`w-1.5 h-1.5 rounded-full inline-block ${
-        colors[status as keyof typeof colors] ?? "bg-rule/60"
-      }`}
-    />
-  );
-}
-
-// ── Metric row (non-Anthropic expanded view) ──────────────────────────────────
-
-function MetricRow({
-  metric,
-  isAdmin,
-  onVerify,
-  onUpdate,
-}: {
-  metric: PlatformMetric;
-  isAdmin?: boolean;
-  onVerify?: (metric: PlatformMetric) => void;
-  onUpdate?: (metric: PlatformMetric) => void;
-}) {
-  const pct = metric.included_limit === -1 ? 0 : (metric.pct ?? 0);
-  const barColor =
-    metric.status === "critical"
-      ? "bg-accent"
-      : metric.status === "warning"
-        ? "bg-amber"
-        : "bg-green-ink";
-
-  return (
-    <div>
-      <div className="flex justify-between text-xs mb-1">
-        <span className="text-ink-soft font-medium">
-          {metric.display_label ?? metric.metric}
-        </span>
-        <span className="text-ink-soft tabular-nums">
-          {metric.value != null
-            ? `${formatMetricValue(metric.value, metric.unit)} / ${
-                metric.included_limit === -1
-                  ? "∞"
-                  : formatMetricValue(metric.included_limit, metric.unit)
-              }`
-            : "No data"}
-        </span>
-      </div>
-      <div className="h-1.5 bg-rule/30 rounded-full">
-        {metric.included_limit !== -1 && metric.value !== null && (
-          <div
-            className={`h-full rounded-full ${barColor}`}
-            style={{ width: `${Math.min(pct, 100)}%` }}
-          />
-        )}
-      </div>
-      {pct > 0 && (
-        <div className="text-xs text-ink-soft/80 mt-0.5 text-right">{Math.round(pct)}%</div>
-      )}
-      {metric.metric === "cpu_pct" && metric.metadata && (
-        <div className="text-xs text-ink-soft mt-0.5">
-          max 1h: {metric.metadata.cpu_max_1h != null
-            ? `${Math.round(metric.metadata.cpu_max_1h)}%`
-            : "—"}
-          {" · "}24h: {metric.metadata.cpu_max_24h != null
-            ? `${Math.round(metric.metadata.cpu_max_24h)}%`
-            : "—"}
-        </div>
-      )}
-      {/* FIX-648: Vercel run-rate projection context. The headline value is a
-          30-day run-rate projected from a trailing ~Nd billing window; show the
-          un-projected truth so it's verifiable against the Vercel dashboard. */}
-      {metric.metadata?.is_projected && metric.metadata.raw_window_value != null && (
-        <div className="text-xs text-ink-soft/80 mt-0.5">
-          ~est. monthly run-rate
-          {/* FIX-1076: was `window_days ?? "?"`, which rendered "last ?d" when
-              the writer had no daily granularity. Drop the clause instead of
-              printing a placeholder. */}
-          {metric.metadata.window_days != null && <> · last {metric.metadata.window_days}d</>}:{" "}
-          {formatMetricValue(metric.metadata.raw_window_value, metric.unit)}
-          {metric.metric === "monthly_spend_usd" &&
-            metric.metadata.billed_window_usd != null && (
-              <> · billed overage (cap): {fmtUsd(metric.metadata.billed_window_usd)}</>
-            )}
-        </div>
-      )}
-      {metric.metric === "monthly_spend_usd" &&
-        metric.metadata?.cost_breakdown &&
-        metric.metadata.cost_breakdown.length > 0 && (
-          <div className="text-xs text-ink-soft mt-1">
-            <div className="font-medium text-ink-soft/80 mb-0.5">By service (run-rate $/mo)</div>
-            {metric.metadata.cost_breakdown.slice(0, 6).map((b) => (
-              <div key={b.service} className="flex justify-between py-0.5">
-                <span className="truncate max-w-[180px]">{b.service}</span>
-                <span className="tabular-nums">{fmtUsd(b.usd)}</span>
-              </div>
-            ))}
+    <div className="mb-4 space-y-1 rounded-lg border border-rule/60 bg-paper-2/40 p-3">
+      {alerts.map((a) => {
+        const style = SEVERITY_STYLE[a.severity];
+        return (
+          <div key={a.key} className="flex items-start gap-2 text-xs" title={a.detail}>
+            <span className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${style.dot}`} />
+            <span className="w-12 shrink-0 pt-px text-[10px] uppercase tracking-wide text-ink-soft/60">
+              {style.label}
+            </span>
+            <span className={`min-w-0 ${style.text}`}>
+              {a.tag && (
+                <span className="mr-1.5 font-mono text-[10px] text-ink-soft/70">{a.tag}</span>
+              )}
+              {a.text}
+            </span>
           </div>
-        )}
-      <div className="flex items-center justify-between mt-1">
-        {metric.source !== null ? (
-          <SourceIndicator display={metric.source_display} />
-        ) : (
-          <span className="text-xs text-ink-soft/60">No data</span>
-        )}
-        {isAdmin && (
-          <div className="flex gap-2">
-            {metric.source_display.needsVerification && onVerify && (
-              <button
-                onClick={() => onVerify(metric)}
-                className="text-xs text-amber hover:text-amber/80 font-medium"
-              >
-                Verify
-              </button>
-            )}
-            {onUpdate && (
-              <button
-                onClick={() => onUpdate(metric)}
-                className="text-xs text-ink-soft/80 hover:text-ink"
-              >
-                Update
-              </button>
-            )}
-          </div>
-        )}
-      </div>
+        );
+      })}
     </div>
   );
 }
 
-// ── Anthropic detail panel (expanded view) ────────────────────────────────────
+// ── Headline ──────────────────────────────────────────────────────────────────
+
+function Headline({
+  payload,
+  legacyTotal,
+  chordTotalFlowUsd,
+}: {
+  payload: PlatformUsageResponse;
+  legacyTotal: number;
+  chordTotalFlowUsd: number;
+}) {
+  const subs = payload.subscriptions_usd;
+  const usage = payload.billable_usage_usd;
+  const total = payload.total_monthly_usd ?? legacyTotal;
+  const billing = payload.vercel_billing;
+  const omissions = payload.cost_omissions ?? [];
+
+  const items = [
+    ...(subs?.items ?? []).map((s) => ({
+      key: `sub:${s.service}:${s.name}`,
+      text: `${SERVICE_META[s.service]?.label ?? s.service} ${s.name} ${fmtUsd(s.monthly_usd)}`,
+      note: s.note,
+      // "(stated)" belongs only on a SUBSCRIPTION we could not source from an
+      // API — Supabase Pro's $25 is Craig-stated because every Supabase billing
+      // endpoint 404s. On a usage line, `source: configured` means the RATE came
+      // from platform_limits, which is not the same claim at all.
+      stated: s.source === "configured",
+    })),
+    ...(usage?.items ?? []).map((u) => ({
+      key: `usage:${u.service}:${u.metric ?? u.label}`,
+      text: `${SERVICE_META[u.service]?.label ?? u.service} ${u.label} ${fmtUsd(u.usd)}`,
+      note: u.note,
+      stated: false,
+    })),
+  ];
+
+  return (
+    <div className="mt-4">
+      <div className="px-1 text-3xl font-bold tabular-nums text-ink">
+        {fmtUsd(total)}
+        <span className="ml-1 text-sm font-normal text-ink-soft">/month</span>
+      </div>
+
+      {/* The decomposition. A scalar cannot be audited; this line is what makes
+          the headline checkable against a vendor invoice, and what makes a
+          MISSING line visible. */}
+      <div className="mt-1 px-1 text-xs text-ink-soft">
+        {subs && usage ? (
+          <>
+            <span className="text-ink">{fmtUsd(subs.total)}</span> subscriptions +{" "}
+            <span className="text-ink">{fmtUsd(usage.total)}</span> billable usage
+            {billing && (
+              <>
+                {" · "}
+                <span className={billing.credit_remaining_usd <= 0 ? "font-medium text-accent" : ""}>
+                  {fmtUsd(billing.credit_remaining_usd)} of Vercel&rsquo;s{" "}
+                  {fmtUsd(billing.included_credit_usd)} usage credit unspent
+                </span>
+              </>
+            )}
+          </>
+        ) : (
+          <>
+            Pre-R4a snapshot — subscriptions are not itemized in this payload yet, so this total is
+            usage only. It self-corrects at the next snapshot tick.
+          </>
+        )}
+      </div>
+
+      {items.length > 0 && (
+        <div className="mt-1 px-1 text-[11px] text-ink-soft/70">
+          {items.map((i, idx) => (
+            <span key={i.key} title={i.note ?? undefined}>
+              {idx > 0 && " · "}
+              {i.text}
+              {i.stated && <span className="text-ink-soft/50"> (stated)</span>}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {omissions.length > 0 && (
+        <ul className="mt-1.5 space-y-0.5 px-1 text-[11px] text-amber">
+          {omissions.map((o) => (
+            <li key={o}>⚠ not priced: {o}</li>
+          ))}
+        </ul>
+      )}
+
+      <div className="mt-3 px-1">
+        <MeterKey />
+      </div>
+
+      {chordTotalFlowUsd > 0 && (
+        <p className="mt-2 px-1 text-[11px] text-ink-soft/70">
+          Tracking{" "}
+          {chordTotalFlowUsd >= 1_000_000_000
+            ? `$${(chordTotalFlowUsd / 1_000_000_000).toFixed(2)}B`
+            : `$${(chordTotalFlowUsd / 1_000_000).toFixed(0)}M`}{" "}
+          in political money for {fmtUsd(total)} a month — every line of it above, and every line
+          auditable against a vendor invoice.
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ── Anthropic detail (token table preserved verbatim) ─────────────────────────
 
 function AnthropicDetailPanel({
   aiCosts,
   anthropicDetail,
-  metrics,
-  isAdmin,
-  onVerify,
-  onUpdate,
 }: {
   aiCosts?: AiCosts | null;
   anthropicDetail?: AnthropicDetail | null;
-  metrics: PlatformMetric[];
-  isAdmin?: boolean;
-  onVerify?: (metric: PlatformMetric) => void;
-  onUpdate?: (metric: PlatformMetric) => void;
 }) {
-  const spendMetric = metrics.find((m) => m.metric === "monthly_spend_usd");
-  const totalCost = anthropicDetail?.this_month?.cost_usd;
   const appOnlyCost = aiCosts?.monthly_spent_usd ?? 0;
-
-  const displayMetric: PlatformMetric | undefined =
-    spendMetric && totalCost != null && spendMetric.included_limit > 0
-      ? {
-          ...spendMetric,
-          value: totalCost,
-          pct: (totalCost / spendMetric.included_limit) * 100,
-          status:
-            (totalCost / spendMetric.included_limit) * 100 >= spendMetric.critical_pct
-              ? "critical"
-              : (totalCost / spendMetric.included_limit) * 100 >= spendMetric.warning_pct
-                ? "warning"
-                : "healthy",
-        }
-      : spendMetric;
-
-  const showSubLabel = totalCost != null && Math.abs(totalCost - appOnlyCost) > 0.01;
+  const totalCost = anthropicDetail?.this_month?.cost_usd;
+  const showSplit = totalCost != null && Math.abs(totalCost - appOnlyCost) > 0.01;
 
   return (
     <div className="space-y-3">
-      {/* Spend metric row */}
-      {displayMetric && (
-        <div>
-          <div className="flex justify-between text-xs mb-1">
-            <span className="text-ink-soft font-medium">
-              {displayMetric.display_label ?? displayMetric.metric}
-            </span>
-            <span className="text-ink-soft tabular-nums">
-              {displayMetric.value != null
-                ? `${fmtUsd(displayMetric.value)} / ${fmtUsd(displayMetric.included_limit)}`
-                : "No data"}
-            </span>
-          </div>
-          <div className="h-1.5 bg-rule/30 rounded-full">
-            {displayMetric.included_limit !== -1 && displayMetric.value !== null && (
-              <div
-                className={`h-full rounded-full ${
-                  displayMetric.status === "critical"
-                    ? "bg-accent"
-                    : displayMetric.status === "warning"
-                      ? "bg-amber"
-                      : "bg-green-ink"
-                }`}
-                style={{ width: `${Math.min(displayMetric.pct ?? 0, 100)}%` }}
-              />
-            )}
-          </div>
-          <div className="flex items-center justify-between mt-1">
-            <AnthropicSourceBadge source={aiCosts?.source} />
-            {isAdmin && (
-              <div className="flex gap-2">
-                {displayMetric.source_display.needsVerification && onVerify && (
-                  <button
-                    onClick={() => onVerify(displayMetric)}
-                    className="text-xs text-amber hover:text-amber/80 font-medium"
-                  >
-                    Verify
-                  </button>
-                )}
-                {onUpdate && (
-                  <button
-                    onClick={() => onUpdate(displayMetric)}
-                    className="text-xs text-ink-soft/80 hover:text-ink"
-                  >
-                    Update
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
-          {showSubLabel && (
-            <div className="flex justify-between text-xs text-ink-soft/80 mt-1">
-              <span>${appOnlyCost.toFixed(2)} from Civitics app</span>
-              <span>${((totalCost ?? 0) - appOnlyCost).toFixed(2)} other tools</span>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Token breakdown table */}
-      <table className="w-full text-xs text-ink-soft">
-        <thead>
-          <tr className="text-ink-soft/80 border-b border-rule/60 text-right">
-            <th className="text-left pb-1.5 font-medium">Tokens</th>
-            <th className="pb-1.5 font-medium">1h</th>
-            <th className="pb-1.5 font-medium">24h</th>
-            <th className="pb-1.5 font-medium">Month</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-rule/40">
-          <tr className="text-right">
-            <td className="text-left py-1.5">Input</td>
-            <td className="tabular-nums text-ink-soft/70">—</td>
-            <td className="tabular-nums text-ink-soft/70">—</td>
-            <td className="tabular-nums">
-              {fmtTokens(anthropicDetail?.this_month?.input_tokens ?? 0)}
-            </td>
-          </tr>
-          <tr className="text-right">
-            <td className="text-left py-1.5">Output</td>
-            <td className="tabular-nums text-ink-soft/70">—</td>
-            <td className="tabular-nums text-ink-soft/70">—</td>
-            <td className="tabular-nums">
-              {fmtTokens(anthropicDetail?.this_month?.output_tokens ?? 0)}
-            </td>
-          </tr>
-          <tr className="text-right">
-            <td className="text-left py-1.5">Cache hits</td>
-            <td className="tabular-nums text-ink-soft/70">—</td>
-            <td className="tabular-nums text-ink-soft/70">—</td>
-            <td className="tabular-nums">
-              {fmtTokens(anthropicDetail?.this_month?.cache_read_tokens ?? 0)}
-            </td>
-          </tr>
-          <tr className="text-right font-medium border-t border-rule/60">
-            <td className="text-left py-1.5">Total</td>
-            <td className="tabular-nums">{fmtTokens(aiCosts?.last_hour_tokens ?? 0)}</td>
-            <td className="tabular-nums">{fmtTokens(aiCosts?.last_24h_tokens ?? 0)}</td>
-            <td className="tabular-nums">
-              {fmtTokens(anthropicDetail?.this_month?.total_tokens ?? 0)}
-            </td>
-          </tr>
-          <tr className="text-right">
-            <td className="text-left py-1.5 text-ink-soft">Cost</td>
-            <td className="tabular-nums text-ink-soft/70">—</td>
-            <td className="tabular-nums">{fmtUsd(aiCosts?.last_24h_cost_usd ?? 0)}</td>
-            <td className="tabular-nums font-medium">
-              {fmtUsd(
-                anthropicDetail?.this_month?.cost_usd ?? aiCosts?.monthly_spent_usd ?? 0,
-              )}
-            </td>
-          </tr>
-        </tbody>
-      </table>
-
-      {/* By model breakdown */}
-      {anthropicDetail?.this_month?.by_model &&
-        anthropicDetail.this_month.by_model.length > 0 && (
-          <div className="text-xs text-ink-soft">
-            <div className="font-medium text-ink-soft/80 mb-1">By model</div>
-            {anthropicDetail.this_month.by_model.map((m) => (
-              <div key={m.model} className="flex justify-between py-0.5">
-                <span className="font-mono text-ink-soft/80 truncate max-w-[180px]">
-                  {m.model.replace("claude-", "")}
-                </span>
-                <span className="tabular-nums">
-                  {fmtTokens(m.input_tokens + m.output_tokens)}
-                  {" · "}
-                  {fmtUsd(m.cost_usd)}
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
-    </div>
-  );
-}
-
-// ── Service card (collapsible) ────────────────────────────────────────────────
-
-function ServiceCard({
-  service,
-  metrics,
-  meta,
-  anthropicDetail,
-  aiCosts,
-  vercelBilling,
-  isAdmin,
-  adminKey,
-  onVerify,
-  onUpdate,
-}: {
-  service: string;
-  metrics: PlatformMetric[];
-  meta: (typeof SERVICE_META)[string];
-  anthropicDetail?: AnthropicDetail | null;
-  aiCosts?: AiCosts | null;
-  vercelBilling?: PlatformUsageResponse["vercel_billing"];
-  isAdmin: boolean;
-  adminKey: string;
-  onVerify: (metric: PlatformMetric) => void;
-  onUpdate: (metric: PlatformMetric) => void;
-}) {
-  const [expanded, setExpanded] = useState(false);
-
-  // FIX-1076: `vercel.overage_present` is the FIX-1050 wire-format companion
-  // to the dollar row — a 0/1 state with bands 1/101, which exists purely so
-  // "any overage at all" can be expressed as an integer percentage band and
-  // fire the first-cent email. It is not a quantity, so rendering it as a
-  // "0 / 1" progress row says nothing; worse, at 1 its pct is 100 and it
-  // sorts to the front of `topMetric`, taking over the collapsed card's
-  // headline label and bar. Dropped from DISPLAY only — it stays in the API
-  // payload and in `serviceStatus` below, so the alert evaluation and the
-  // status dot are untouched.
-  //
-  // FIX-1089 made that property generic: `is_displayed` on platform_limits, so
-  // the next companion row needs no code change. The name check stays as the
-  // fallback — this component renders a PERSISTED snapshot payload, and one
-  // written before the column existed carries no `is_displayed` at all.
-  const displayMetrics = metrics.filter(
-    (m) =>
-      m.is_displayed !== false &&
-      !(m.service === "vercel" && m.metric === "overage_present"),
-  );
-
-  const topMetric =
-    displayMetrics
-      .filter((m) => m.value !== null && m.value !== undefined)
-      .sort((a, b) => (b.pct ?? 0) - (a.pct ?? 0))[0] ?? displayMetrics[0];
-
-  const serviceStatus: string = metrics.some((m) => m.status === "critical")
-    ? "critical"
-    : metrics.some((m) => m.status === "warning")
-      ? "warning"
-      : "healthy";
-
-  const totalCost =
-    service === "anthropic"
-      ? (anthropicDetail?.this_month?.cost_usd ?? aiCosts?.monthly_spent_usd ?? 0)
-      : service === "vercel"
-        ? // FIX-1046: the card headline is the projected BILL — subscription plus
-          // whatever exceeds the $20 of usage the subscription includes — not the
-          // gross list value of all consumption, which is what monthly_spend_usd
-          // holds and what this used to show ($31.38 against a real $20.00).
-          // FIX-648's monthly_spend_usd remains the fallback for the window
-          // between deploy and the first cron tick in the new payload shape.
-          (vercelBilling?.projected_total_bill_usd ??
-            metrics.find((m) => m.metric === "monthly_spend_usd")?.value ??
-            0)
-        : metrics.reduce((sum, m) => sum + (m.overage_cost ?? 0), 0);
-
-  // For Anthropic: override the collapsed bar to reflect total account spend, not just app spend
-  const anthropicBarPct =
-    service === "anthropic" && anthropicDetail?.this_month?.cost_usd != null
-      ? (() => {
-          const spendMetric = metrics.find((m) => m.metric === "monthly_spend_usd");
-          const budget = spendMetric?.included_limit ?? 3.5;
-          return (anthropicDetail.this_month!.cost_usd / budget) * 100;
-        })()
-      : null;
-  const displayBarPct = anthropicBarPct ?? (topMetric?.pct ?? 0);
-  const displayBarStatus =
-    anthropicBarPct != null
-      ? (() => {
-          const spendMetric = metrics.find((m) => m.metric === "monthly_spend_usd");
-          return anthropicBarPct >= (spendMetric?.critical_pct ?? 95)
-            ? "critical"
-            : anthropicBarPct >= (spendMetric?.warning_pct ?? 80)
-              ? "warning"
-              : "healthy";
-        })()
-      : (topMetric?.status ?? "healthy");
-
-  const appOnlyCost = aiCosts?.monthly_spent_usd ?? 0;
-  const showAnthropicSubLabel =
-    service === "anthropic" &&
-    anthropicDetail?.this_month?.cost_usd != null &&
-    Math.abs(anthropicDetail.this_month.cost_usd - appOnlyCost) > 0.01;
-
-  return (
-    <div className="border border-rule rounded-xl overflow-hidden bg-card">
-      {/* Collapsed header — always visible */}
-      <div className="p-4">
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-2">
-            {hasIcon(meta.icon) ? (
-              <Icon name={meta.icon} className="w-4 h-4 shrink-0 text-ink-soft" />
-            ) : (
-              <span>{meta.icon}</span>
-            )}
-            <span className="font-medium text-sm text-ink">{meta.label}</span>
-            <StatusDot status={serviceStatus} />
-          </div>
-          <span className="text-sm font-medium text-ink tabular-nums">
-            ${totalCost.toFixed(2)}/mo
-          </span>
-        </div>
-
-        {/* Top metric label */}
-        {topMetric && (
-          <div className="text-xs text-ink-soft mb-1.5">
-            {topMetric.display_label ?? topMetric.metric}
-          </div>
-        )}
-
-        {/* Single progress bar */}
-        {topMetric && (
-          <>
-            <div className="h-1.5 bg-rule/30 rounded-full mb-2">
-              <div
-                className={`h-full rounded-full ${
-                  displayBarStatus === "critical"
-                    ? "bg-accent"
-                    : displayBarStatus === "warning"
-                      ? "bg-amber"
-                      : "bg-green-ink"
-                }`}
-                style={{ width: `${Math.min(displayBarPct, 100)}%` }}
-              />
-            </div>
-            {showAnthropicSubLabel && (
-              <div className="flex justify-between text-xs text-ink-soft/80 mt-1 mb-1">
-                <span>${appOnlyCost.toFixed(2)} from Civitics app</span>
-                <span>
-                  ${((anthropicDetail!.this_month!.cost_usd) - appOnlyCost).toFixed(2)} other tools
-                </span>
-              </div>
-            )}
-          </>
-        )}
-
-        {/* Show/hide button */}
-        <button
-          onClick={() => setExpanded((e) => !e)}
-          className="text-xs text-ink-soft/80 hover:text-ink transition-colors flex items-center gap-1"
-        >
-          <span>{expanded ? "▲" : "▾"}</span>
-          {expanded ? "Hide details" : "Show details"}
-        </button>
-
-        {/* Data age */}
-        {(() => {
-          const latestRecordedAt =
-            metrics
-              .filter((m) => m.recorded_at)
-              .sort(
-                (a, b) =>
-                  new Date(b.recorded_at!).getTime() - new Date(a.recorded_at!).getTime(),
-              )[0]?.recorded_at ?? null;
-          const latestSource = metrics.filter((m) => m.source)[0]?.source ?? null;
-          return (
-            <div className="mt-1">
-              <DataAge recordedAt={latestRecordedAt} source={latestSource} />
-            </div>
-          );
-        })()}
+      <div className="-mx-1 overflow-x-auto px-1">
+        <table className="w-full min-w-[320px] text-xs text-ink-soft">
+          <thead>
+            <tr className="border-b border-rule/60 text-right text-ink-soft/80">
+              <th className="pb-1.5 text-left font-medium">Tokens</th>
+              <th className="pb-1.5 font-medium">1h</th>
+              <th className="pb-1.5 font-medium">24h</th>
+              <th className="pb-1.5 font-medium">Month</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-rule/40">
+            <tr className="text-right">
+              <td className="py-1.5 text-left">Input</td>
+              <td className="tabular-nums text-ink-soft/70">—</td>
+              <td className="tabular-nums text-ink-soft/70">—</td>
+              <td className="tabular-nums">
+                {fmtTokens(anthropicDetail?.this_month?.input_tokens ?? 0)}
+              </td>
+            </tr>
+            <tr className="text-right">
+              <td className="py-1.5 text-left">Output</td>
+              <td className="tabular-nums text-ink-soft/70">—</td>
+              <td className="tabular-nums text-ink-soft/70">—</td>
+              <td className="tabular-nums">
+                {fmtTokens(anthropicDetail?.this_month?.output_tokens ?? 0)}
+              </td>
+            </tr>
+            <tr className="text-right">
+              <td className="py-1.5 text-left">Cache hits</td>
+              <td className="tabular-nums text-ink-soft/70">—</td>
+              <td className="tabular-nums text-ink-soft/70">—</td>
+              <td className="tabular-nums">
+                {fmtTokens(anthropicDetail?.this_month?.cache_read_tokens ?? 0)}
+              </td>
+            </tr>
+            <tr className="border-t border-rule/60 text-right font-medium">
+              <td className="py-1.5 text-left">Total</td>
+              <td className="tabular-nums">{fmtTokens(aiCosts?.last_hour_tokens ?? 0)}</td>
+              <td className="tabular-nums">{fmtTokens(aiCosts?.last_24h_tokens ?? 0)}</td>
+              <td className="tabular-nums">
+                {fmtTokens(anthropicDetail?.this_month?.total_tokens ?? 0)}
+              </td>
+            </tr>
+            <tr className="text-right">
+              <td className="py-1.5 text-left text-ink-soft">Cost</td>
+              <td className="tabular-nums text-ink-soft/70">—</td>
+              <td className="tabular-nums">{fmtUsd(aiCosts?.last_24h_cost_usd ?? 0)}</td>
+              <td className="tabular-nums font-medium">
+                {fmtUsd(anthropicDetail?.this_month?.cost_usd ?? aiCosts?.monthly_spent_usd ?? 0)}
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
 
-      {/* Expanded details */}
-      {expanded && (
-        <div className="border-t border-rule/60 p-4 space-y-4 bg-paper-2/50">
-          {service === "anthropic" ? (
-            <AnthropicDetailPanel
-              aiCosts={aiCosts}
-              anthropicDetail={anthropicDetail}
-              metrics={metrics}
-              isAdmin={isAdmin}
-              onVerify={onVerify}
-              onUpdate={onUpdate}
-            />
-          ) : (
-            displayMetrics.map((metric) => (
-              <MetricRow
-                key={metric.metric}
-                metric={metric}
-                isAdmin={isAdmin}
-                onVerify={onVerify}
-                onUpdate={onUpdate}
-              />
-            ))
-          )}
+      {showSplit && (
+        <div className="flex justify-between text-xs text-ink-soft/80">
+          <span>{fmtUsd(appOnlyCost)} from the Civitics app</span>
+          <span>{fmtUsd((totalCost ?? 0) - appOnlyCost)} other tools on this account</span>
+        </div>
+      )}
+
+      {anthropicDetail?.this_month?.by_model && anthropicDetail.this_month.by_model.length > 0 && (
+        <div className="text-xs text-ink-soft">
+          <div className="mb-1 font-medium text-ink-soft/80">By model</div>
+          {anthropicDetail.this_month.by_model.map((m) => (
+            <div key={m.model} className="flex justify-between py-0.5">
+              <span className="max-w-[180px] truncate font-mono text-ink-soft/80">
+                {m.model.replace("claude-", "")}
+              </span>
+              <span className="tabular-nums">
+                {fmtTokens(m.input_tokens + m.output_tokens)} · {fmtUsd(m.cost_usd)}
+              </span>
+            </div>
+          ))}
         </div>
       )}
     </div>
   );
 }
 
-// ── Update modal ──────────────────────────────────────────────────────────────
+// ── Provider-specific detail panels ───────────────────────────────────────────
+
+function GithubDetailPanel({ github }: { github: NonNullable<PlatformUsageResponse["github"]> }) {
+  const entries = Object.entries(github.minutes_breakdown ?? {});
+  return (
+    <div className="space-y-1 text-xs text-ink-soft">
+      <div>
+        {fmtUsd(github.gross_usd)} at list · <span className="text-ink">{fmtUsd(github.billed_usd)}</span>{" "}
+        billed — GitHub bills Actions minutes at $0 on a public repository.
+      </div>
+      {entries.length > 0 && (
+        <div>
+          <div className="mb-0.5 font-medium text-ink-soft/80">Runner minutes</div>
+          {entries.map(([runner, minutes]) => (
+            <div key={runner} className="flex justify-between py-0.5">
+              <span className="truncate">{runner}</span>
+              <span className="tabular-nums">{Math.round(minutes).toLocaleString()}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function UpstashDetailPanel({
+  upstash,
+}: {
+  upstash: NonNullable<PlatformUsageResponse["upstash"]>;
+}) {
+  return (
+    <div className="space-y-1 text-xs text-ink-soft">
+      {upstash.state && (
+        <div>
+          Limiter state: <span className="text-ink">{upstash.state.replace(/_/g, " ")}</span>
+          {upstash.last_transition_at && ` since ${upstash.last_transition_at.slice(11, 16)} UTC`}
+        </div>
+      )}
+      {upstash.usage?.auto_upgrade === false && (
+        <div>
+          auto-upgrade is OFF — exhausting the allotment throttles the database rather than billing.
+          A hard $0 ceiling, paid in rate limiting.
+        </div>
+      )}
+      {upstash.detail && <div className="text-ink-soft/70">{upstash.detail}</div>}
+    </div>
+  );
+}
+
+// ── Manual usage entry (admin) ────────────────────────────────────────────────
+
+/**
+ * Kept from the pre-R4b card, but no longer rendered on every row.
+ *
+ * FIX-1090 retired the Mapbox manual-entry flow (a publishable token cannot
+ * read Mapbox analytics, so the number is self-counted now), and every row in
+ * the current payload reports `has_public_api = true` with nothing awaiting
+ * verification — so these controls render for zero rows today. The CAPABILITY
+ * survives for the next metric that genuinely has no API, rather than being
+ * deleted along with the flow that no longer needs it.
+ */
+function manualEntryEligible(m: PlatformMetric): boolean {
+  return m.has_public_api === false || m.source === "manual" || m.source_display.needsVerification;
+}
 
 function UpdateModal({
   metric,
@@ -695,15 +430,12 @@ function UpdateModal({
   onClose: () => void;
   onSave: (value: number) => Promise<void>;
 }) {
-  const [inputValue, setInputValue] = useState(
-    metric.value !== null ? String(metric.value) : "",
-  );
+  const [inputValue, setInputValue] = useState(metric.value !== null ? String(metric.value) : "");
   const [saving, setSaving] = useState(false);
-  const link = SERVICE_LINKS[metric.service];
 
   async function handleSave() {
     const num = parseFloat(inputValue);
-    if (isNaN(num)) return;
+    if (Number.isNaN(num)) return;
     setSaving(true);
     try {
       await onSave(num);
@@ -714,57 +446,28 @@ function UpdateModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="bg-card rounded-xl shadow-xl p-6 w-full max-w-sm">
-        <h2 className="text-base font-semibold text-ink mb-1">
-          Update {metric.display_label ?? metric.metric}
-        </h2>
-        <p className="text-xs text-ink-soft mb-4">
-          Source will be set to <span className="font-medium">manual</span>.
-          {link && (
-            <>
-              {" "}
-              Check the{" "}
-              <a
-                href={link}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-accent hover:underline"
-              >
-                {metric.service} dashboard
-              </a>{" "}
-              for the current value.
-            </>
-          )}
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="w-full max-w-sm rounded-xl border border-rule bg-card p-6 shadow-xl">
+        <h2 className="mb-1 text-base font-semibold text-ink">Update {metricLabel(metric)}</h2>
+        <p className="mb-4 text-xs text-ink-soft">
+          Source will be set to <span className="font-medium">manual</span>. Enter the value in{" "}
+          {metric.unit}.
         </p>
-        <div className="mb-4">
-          <label className="text-xs font-medium text-ink-soft block mb-1">
-            Value ({metric.unit})
-          </label>
-          <input
-            type="number"
-            value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
-            className="w-full border border-rule bg-card text-ink rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
-            autoFocus
-          />
-          {metric.value !== null && (
-            <p className="text-xs text-ink-soft/80 mt-1">
-              Current: {formatMetricValue(metric.value, metric.unit)}
-            </p>
-          )}
-        </div>
-        <div className="flex justify-end gap-3">
-          <button
-            onClick={onClose}
-            className="text-sm text-ink-soft hover:text-ink px-3 py-1.5"
-          >
+        <input
+          type="number"
+          value={inputValue}
+          onChange={(e) => setInputValue(e.target.value)}
+          className="w-full rounded-lg border border-rule bg-paper-2 px-3 py-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-accent"
+          autoFocus
+        />
+        <div className="mt-4 flex justify-end gap-3">
+          <button onClick={onClose} className="px-3 py-1.5 text-sm text-ink-soft hover:text-ink">
             Cancel
           </button>
           <button
             onClick={handleSave}
             disabled={saving}
-            className="text-sm bg-ink text-paper px-4 py-1.5 rounded-lg hover:bg-accent disabled:opacity-50"
+            className="rounded-lg bg-ink px-4 py-1.5 text-sm text-paper hover:bg-accent disabled:opacity-50"
           >
             {saving ? "Saving…" : "Save"}
           </button>
@@ -792,55 +495,74 @@ export function PlatformCostsSection({
   chordTotalFlowUsd = 0,
 }: PlatformCostsSectionProps) {
   const [mounted, setMounted] = useState(false);
+  const [editingService, setEditingService] = useState<string | null>(null);
   const [updatingMetric, setUpdatingMetric] = useState<PlatformMetric | null>(null);
   const [adminKey, setAdminKey] = useState("");
   const { isAdmin } = useIsAdmin();
 
   useEffect(() => setMounted(true), []);
 
-  // Read admin key from localStorage after mount only — never during SSR
+  // Read the legacy admin key after mount only — never during SSR.
   useEffect(() => {
     try {
       setAdminKey(localStorage.getItem("civitics_admin_key") ?? "");
     } catch {
-      // Blocked storage (private mode, etc.) — stay empty
+      // Blocked storage (private mode, etc.) — stay empty.
     }
   }, []);
+
+  const payloadView: CostsPayloadView | null = platformUsage;
+
+  const alerts = useMemo(
+    () => (payloadView ? deriveAlerts(payloadView, FORMATTERS) : []),
+    [payloadView],
+  );
+  const costsByService = useMemo(
+    () => (payloadView ? serviceCosts(payloadView) : null),
+    [payloadView],
+  );
 
   async function adminPost(body: Record<string, unknown>) {
     const res = await fetch("/api/platform/usage", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-admin-key": adminKey,
-      },
+      headers: { "Content-Type": "application/json", "x-admin-key": adminKey },
       body: JSON.stringify(body),
     });
     if (!res.ok) throw new Error(`Admin action failed: HTTP ${res.status}`);
     onRefresh();
   }
 
-  async function handleVerify(metric: PlatformMetric) {
-    await adminPost({ action: "verify_usage", service: metric.service, metric: metric.metric });
-  }
-
-  async function handleUpdate(value: number) {
-    if (!updatingMetric) return;
-    await adminPost({
-      action: "update_usage",
-      service: updatingMetric.service,
-      metric: updatingMetric.metric,
-      value,
-    });
+  function metricControls(m: PlatformMetric): ReactNode {
+    if (!isAdmin || !manualEntryEligible(m)) return null;
+    return (
+      <span className="flex gap-2">
+        {m.source_display.needsVerification && (
+          <button
+            onClick={() =>
+              void adminPost({ action: "verify_usage", service: m.service, metric: m.metric })
+            }
+            className="font-medium text-amber hover:text-amber/80"
+          >
+            verify
+          </button>
+        )}
+        <button
+          onClick={() => setUpdatingMetric(m)}
+          className="text-ink-soft/80 hover:text-ink"
+        >
+          update
+        </button>
+      </span>
+    );
   }
 
   if (!platformUsage) {
     return (
       <SectionCard>
-        <SectionHeader icon={<Icon name="money" className="w-4 h-4" />} title="Platform Costs" />
+        <SectionHeader icon={<Icon name="money" className="h-4 w-4" />} title="Platform Costs" />
         <div className="mt-4">
           {!mounted ? (
-            <div className="animate-pulse bg-card rounded-xl border border-rule shadow-sm h-48" />
+            <div className="h-48 animate-pulse rounded-xl border border-rule bg-card shadow-sm" />
           ) : (
             <LoadingSkeleton variant="card" />
           )}
@@ -849,251 +571,195 @@ export function PlatformCostsSection({
     );
   }
 
-  const { summary, by_service } = platformUsage;
+  const { by_service } = platformUsage;
+  const view = payloadView!;
 
-  // Total monthly cost: Anthropic actual spend + other service overages
-  const anthropicCost =
-    anthropicDetail?.this_month?.cost_usd ?? aiCosts?.monthly_spent_usd ?? 0;
-  const otherOverages = Object.entries(by_service)
-    .filter(([svc]) => svc !== "anthropic")
-    .flatMap(([, metrics]) => metrics)
-    .reduce((sum, m) => sum + (m.overage_cost ?? 0), 0);
+  // ── Legacy (pre-FIX-1089) fallbacks ─────────────────────────────────────────
+  // Only reachable while a snapshot written before the R4a data plane is still
+  // the newest row. Same arithmetic the card used before this rebuild.
+  const anthropicCost = anthropicDetail?.this_month?.cost_usd ?? aiCosts?.monthly_spent_usd ?? 0;
+  const legacyServiceCost = (service: string, metrics: PlatformMetric[]): number => {
+    if (service === "anthropic") return anthropicCost;
+    if (service === "vercel") {
+      return (
+        platformUsage.vercel_billing?.projected_total_bill_usd ??
+        metrics.find((m) => m.metric === "monthly_spend_usd")?.value ??
+        0
+      );
+    }
+    return metrics.reduce((sum, m) => sum + (m.overage_cost ?? 0), 0);
+  };
+  const legacyTotal = SERVICE_ORDER.reduce(
+    (sum, service) => sum + legacyServiceCost(service, by_service[service] ?? []),
+    0,
+  );
 
-  // FIX-1046 — the headline is BILLABLE money, not gross list value.
-  //
-  // It used to fold in vercel.monthly_spend_usd, which is the projected sum of
-  // EffectiveCost across every charge line INCLUDING the $20 Pro subscription
-  // and every dollar of within-allotment usage. On prod 2026-08-16 that made
-  // this number read $31.38 on a month whose actual billable overage was $0.00.
-  // Vercel Pro is $20/mo AND that $20 buys $20 of included usage, so:
-  //     bill = $20 subscription + max(0, usage - $20)
-  // The subscription is a real, known, fixed cost and stays in the total; what
-  // comes out is the pretend "cost" of usage the subscription already paid for.
-  //
-  // Falls back to the old gross figure only while `vercel_billing` is absent —
-  // i.e. between this deploy and the first cron tick that writes the new payload
-  // shape. That window can be a couple of hours under GHA drift.
-  const billing = platformUsage.vercel_billing;
-  const vercelCost = billing
-    ? billing.projected_total_bill_usd
-    : ((by_service["vercel"] ?? []).find((m) => m.metric === "monthly_spend_usd")?.value ?? 0);
-  const totalMonthlyCost = anthropicCost + otherOverages + vercelCost;
-
-  const edge = platformUsage.cloudflare_edge;
-  const mitigation = platformUsage.cf_mitigation;
-  const burn = platformUsage.burn_rate;
-
-  // Alert banners
-  const banners: Array<{ level: "error" | "warning" | "info"; message: string; detail?: string }> =
-    [];
-  if (summary.any_critical) {
-    banners.push({
-      level: "error",
-      message: `${summary.critical_count} metric${summary.critical_count !== 1 ? "s" : ""} over limit — action required`,
-      detail: "Check platform costs section below",
-    });
-  }
-  if (summary.any_warning) {
-    banners.push({
-      level: "warning",
-      message: `⚠ ${summary.warning_count} metric${summary.warning_count !== 1 ? "s" : ""} approaching limit`,
-    });
-  }
-  if (summary.needs_verification) {
-    banners.push({
-      level: "info",
-      message: `${summary.unverified_count} usage metric${summary.unverified_count !== 1 ? "s" : ""} need manual verification`,
-      detail: "Check service dashboards to confirm",
-    });
-  }
+  const editingMetrics = editingService
+    ? (by_service[editingService] ?? []).filter(isDisplayedMetric)
+    : [];
 
   return (
     <>
-      {/* Alert banners — rendered above the card */}
-      {banners.map((b, i) => (
-        <AlertBanner key={i} level={b.level} message={b.message} detail={b.detail} />
-      ))}
-
       <SectionCard>
         <SectionHeader
-          icon={<Icon name="money" className="w-4 h-4" />}
+          icon={<Icon name="money" className="h-4 w-4" />}
           title="Platform Costs"
           description="Every cost is public record"
         />
 
-        {/* Summary row. FIX-1076 removed the trailing
-            "On {plan} plan · Upgrade" span: the plan field rendered "free"
-            while Supabase and Vercel are both on Pro, and the Upgrade button
-            had no onClick — a wrong fact next to a dead control. */}
-        <div className="flex justify-between items-center mb-1 px-1 mt-4">
-          <span className="text-2xl font-bold tabular-nums">
-            ${totalMonthlyCost.toFixed(2)}
-            <span className="text-sm font-normal text-ink-soft ml-1">/month</span>
-          </span>
+        <Headline
+          payload={platformUsage}
+          legacyTotal={legacyTotal}
+          chordTotalFlowUsd={chordTotalFlowUsd}
+        />
+
+        <div className="mt-4">
+          <AlertsStrip alerts={alerts} />
         </div>
 
-        {/* FIX-1046: show the decomposition, because "$20.00/month" on its own
-            is indistinguishable from "we have no idea". The credit line is the
-            number that actually tells you how much headroom is left. */}
-        {billing && (
-          <div className="px-1 mb-3 text-xs text-ink-soft">
-            Vercel: ${billing.projected_total_bill_usd.toFixed(2)} = $
-            {(billing.projected_total_bill_usd - billing.projected_billable_overage_usd).toFixed(2)}{" "}
-            subscription + ${billing.projected_billable_overage_usd.toFixed(2)} billable overage
-            {" · "}
-            <span
-              className={
-                billing.credit_remaining_usd <= 0
-                  ? "text-accent font-medium"
-                  : billing.credit_used_pct >= 80
-                    ? "text-ink font-medium"
-                    : ""
-              }
-            >
-              ${billing.credit_remaining_usd.toFixed(2)} of the $
-              {billing.included_credit_usd.toFixed(0)} usage credit unspent
-            </span>
-            {" · "}gross list value ${billing.projected_gross_usd.toFixed(2)}
-            {!billing.projectable && " (no daily granularity — not projected)"}
-          </div>
-        )}
-
-        {/* FIX-1044/1045: the leading signal + what the loop is doing. Deliberately
-            a compact strip rather than a redesign — the full card revamp is its
-            own piece of work. */}
-        {(edge || burn || mitigation) && (
-          <div className="px-1 mb-4 flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink-soft border-t border-rule/60 pt-2">
-            {edge?.latest && (
-              <span title={`Cloudflare hour ${edge.latest.hour} (UTC)`}>
-                Edge{" "}
-                <span
-                  className={
-                    edge.latest.origin_requests >= edge.trip_threshold
-                      ? "text-accent font-medium tabular-nums"
-                      : "text-ink tabular-nums"
-                  }
-                >
-                  {formatMetricValue(edge.latest.origin_requests, "requests_per_hour")}
-                </span>{" "}
-                to origin of{" "}
-                <span className="tabular-nums">
-                  {formatMetricValue(edge.latest.edge_requests, "requests_per_hour")}
-                </span>{" "}
-                seen
-                {edge.latest.mitigated_pct >= 1 &&
-                  ` · ${Math.round(edge.latest.mitigated_pct)}% absorbed`}
-                {" · trip at "}
-                <span className="tabular-nums">
-                  {formatMetricValue(edge.trip_threshold, "requests_per_hour")}
-                </span>
-              </span>
-            )}
-            {burn?.latest_delta_usd != null && (
-              <span title={burn.reason}>
-                Burn{" "}
-                <span
-                  className={
-                    burn.elevated ? "text-accent font-medium tabular-nums" : "text-ink tabular-nums"
-                  }
-                >
-                  ${burn.latest_delta_usd.toFixed(2)}/day
-                </span>
-                {burn.multiple != null && ` (${burn.multiple.toFixed(1)}× median)`}
-              </span>
-            )}
-            {mitigation && (
-              <span title={mitigation.reason}>
-                Loop{" "}
-                {/* FIX-1047: "armed" now means the write scope was PROVED by an
-                    idempotent probe, not merely that the kill switch is on.
-                    `undefined` = a pre-FIX-1047 snapshot, so we fall back to the
-                    old kill-switch-only wording rather than claiming either. */}
-                <span
-                  className={
-                    mitigation.tripped_at
-                      ? "text-accent font-medium"
-                      : !mitigation.writes_enabled
-                        ? "text-ink"
-                        : mitigation.write_scope_confirmed === true
-                          ? "text-green-ink"
-                          : mitigation.write_scope_confirmed === false
-                            ? "text-amber"
-                            : "text-ink"
-                  }
-                >
-                  {mitigation.tripped_at
-                    ? `TRIPPED (auto, since ${mitigation.tripped_at.slice(11, 16)} UTC)`
-                    : !mitigation.writes_enabled
-                      ? "disarmed"
-                      : mitigation.write_scope_confirmed === true
-                        ? "armed ✓ verified"
-                        : mitigation.write_scope_confirmed === false
-                          ? "ALERT-ONLY"
-                          : "armed (unverified)"}
-                </span>
-                {mitigation.observed_level && ` · CF ${mitigation.observed_level}`}
-                {mitigation.breach_hours > 0 &&
-                  ` · ${mitigation.breach_hours}/${mitigation.required_breach_hours} breach hrs`}
-                {(mitigation.write_scope_confirmed === false ||
-                  mitigation.action === "skip_no_scope") && (
-                  <span className="text-amber"> · needs Zone Settings:Edit</span>
-                )}
-                {mitigation.threshold_is_overridden && mitigation.threshold != null && (
-                  <span className="text-amber">
-                    {" "}
-                    · threshold OVERRIDDEN to {mitigation.threshold.toLocaleString()}/hr
-                  </span>
-                )}
-              </span>
-            )}
-          </div>
-        )}
-
-        {/* Service cards */}
         <div className="space-y-3">
           {SERVICE_ORDER.map((service) => {
             const metrics = by_service[service] ?? [];
-            if (metrics.length === 0) return null;
+            // On an R4a payload a provider MISSING from the itemization costs
+            // $0.00 — that is the roll-up's answer, not an absence of one. Only
+            // a pre-R4a payload (no map at all) falls back to the old per-card
+            // arithmetic. Getting this backwards is how Anthropic would show a
+            // sub-cent legacy figure while the headline counted it as nothing.
+            const cost: ServiceCost | null = costsByService
+              ? (costsByService.get(service) ?? {
+                  service,
+                  subscriptions: 0,
+                  usage: 0,
+                  total: 0,
+                  subItems: [],
+                  usageItems: [],
+                })
+              : null;
+            // A provider with neither metrics nor money has nothing to say.
+            if (metrics.length === 0 && !cost) return null;
             const meta = SERVICE_META[service];
             if (!meta) return null;
+
+            const selfCount =
+              service === "mapbox" || service === "resend"
+                ? view.self_counted?.[service as "mapbox" | "resend"]
+                : undefined;
+
             return (
-              <ServiceCard
+              <ProviderCostCard
                 key={service}
                 service={service}
+                label={meta.label}
+                icon={meta.icon}
                 metrics={metrics}
-                meta={meta}
-                anthropicDetail={service === "anthropic" ? anthropicDetail : undefined}
-                aiCosts={service === "anthropic" ? aiCosts : undefined}
-                vercelBilling={service === "vercel" ? billing : undefined}
+                payload={view}
+                cost={cost}
+                legacyCost={legacyServiceCost(service, metrics)}
+                planLabel={planLabelFor(view, service)}
+                fmt={FORMATTERS}
                 isAdmin={isAdmin}
-                adminKey={adminKey}
-                onVerify={handleVerify}
-                onUpdate={(metric) => setUpdatingMetric(metric)}
+                onEditThresholds={() => setEditingService(service)}
+                metricControls={metricControls}
+                footnote={
+                  selfCount ? (
+                    <>
+                      Self-counted at our own send/call sites
+                      {view.self_counted?.period ? ` for ${view.self_counted.period}` : ""} —{" "}
+                      {selfCount.total.toLocaleString()} recorded.
+                      {service === "mapbox" &&
+                        " A LOWER BOUND: a publishable token cannot read Mapbox analytics, so browser-side map loads are not counted here."}
+                      {service === "resend" &&
+                        " Resend exposes no usable usage API (/emails lists only recently-retained rows), so this counts every call through sendEmail()."}
+                    </>
+                  ) : undefined
+                }
+                extra={
+                  service === "anthropic" ? (
+                    <AnthropicDetailPanel aiCosts={aiCosts} anthropicDetail={anthropicDetail} />
+                  ) : service === "github" && platformUsage.github ? (
+                    <GithubDetailPanel github={platformUsage.github} />
+                  ) : service === "upstash" && platformUsage.upstash ? (
+                    <UpstashDetailPanel upstash={platformUsage.upstash} />
+                  ) : service === "vercel" && platformUsage.vercel_billing ? (
+                    <VercelBillingPanel billing={platformUsage.vercel_billing} />
+                  ) : service === "supabase" && view.supabase_account?.compute_addon ? (
+                    <SupabaseAddonPanel addon={view.supabase_account.compute_addon} />
+                  ) : undefined
+                }
               />
             );
           })}
         </div>
-
-        {/* Footer */}
-        <p className="text-xs text-center text-ink-soft/80 mt-4">
-          Running a civic accountability platform tracking{" "}
-          {chordTotalFlowUsd >= 1_000_000_000
-            ? `$${(chordTotalFlowUsd / 1_000_000_000).toFixed(2)}B`
-            : chordTotalFlowUsd >= 1_000_000
-            ? `$${(chordTotalFlowUsd / 1_000_000).toFixed(0)}M`
-            : "billions"}{" "}
-          in donations costs less than a streaming subscription
-        </p>
       </SectionCard>
 
-      {/* Update modal */}
+      {editingService && (
+        <ThresholdsEditor
+          serviceLabel={SERVICE_META[editingService]?.label ?? editingService}
+          metrics={editingMetrics}
+          onClose={() => setEditingService(null)}
+          onSaved={onRefresh}
+        />
+      )}
+
       {updatingMetric && (
         <UpdateModal
           metric={updatingMetric}
           onClose={() => setUpdatingMetric(null)}
-          onSave={handleUpdate}
+          onSave={(value) =>
+            adminPost({
+              action: "update_usage",
+              service: updatingMetric.service,
+              metric: updatingMetric.metric,
+              value,
+            })
+          }
         />
       )}
     </>
+  );
+}
+
+// ── Small provider panels ─────────────────────────────────────────────────────
+
+function VercelBillingPanel({
+  billing,
+}: {
+  billing: NonNullable<PlatformUsageResponse["vercel_billing"]>;
+}) {
+  return (
+    <div className="space-y-1 text-xs text-ink-soft">
+      <div>
+        Projected bill <span className="text-ink">{fmtUsd(billing.projected_total_bill_usd)}</span> ={" "}
+        {fmtUsd(billing.projected_total_bill_usd - billing.projected_billable_overage_usd)}{" "}
+        subscription + {fmtUsd(billing.projected_billable_overage_usd)} billable overage. Gross list
+        value of all consumption: {fmtUsd(billing.projected_gross_usd)}.
+      </div>
+      <div>
+        {fmtUsd(billing.credit_remaining_usd)} of the {fmtUsd(billing.included_credit_usd)} usage
+        credit unspent ({Math.round(billing.credit_used_pct)}% used).
+        {!billing.projectable && " No daily granularity this tick — not projected."}
+      </div>
+      <div className="text-ink-soft/70">
+        Vercel row quantities are projected from a calendar-month window while the billing cycle runs
+        mid-month, so those meters carry a projection marker and no pace tick. Re-basing the
+        projection would move the tuned alert bands and is deliberately a separate change
+        (FIX-1089).
+      </div>
+    </div>
+  );
+}
+
+function SupabaseAddonPanel({
+  addon,
+}: {
+  addon: NonNullable<NonNullable<CostsPayloadView["supabase_account"]>["compute_addon"]>;
+}) {
+  return (
+    <div className="text-xs text-ink-soft">
+      Compute add-on: <span className="text-ink">{addon.name}</span>
+      {addon.monthly_usd != null && ` at ${fmtUsd(addon.monthly_usd)}/mo list`} — Pro includes a $10
+      monthly compute credit, so a Micro instance nets to $0. It stays on the books as a live row so
+      an instance resize shows up as money the moment it happens.
+    </div>
   );
 }

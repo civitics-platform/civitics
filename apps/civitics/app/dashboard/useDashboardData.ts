@@ -299,6 +299,26 @@ export type PlatformUsageResponse = {
     mapbox: { total: number; by_metric: Record<string, number> };
     resend: { total: number; by_metric: Record<string, number> };
   };
+  /**
+   * FIX-1038 / FIX-1090 Upstash health + usage block. Present in the payload
+   * since FIX-1038 but never typed here because nothing rendered it; FIX-1091
+   * gave Upstash a card, so the fields the card reads are declared. Loose and
+   * partial on purpose — this is a persisted payload and the block predates
+   * several of its own keys.
+   */
+  upstash?: {
+    state?: string;
+    detail?: string | null;
+    last_transition_at?: string | null;
+    usage?: {
+      plan?: string;
+      used_commands?: number;
+      limit_commands?: number;
+      auto_upgrade?: boolean;
+    } | null;
+  };
+  /** Per-service plan resolution (`{vercel: "pro", supabase: "pro"}`). */
+  plan_overrides?: Record<string, string>;
   timestamp: string;
 };
 

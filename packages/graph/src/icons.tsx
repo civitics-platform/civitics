@@ -28,7 +28,7 @@ import {
   Repeat, Ban, User, Users, ClipboardList, ScrollText, Sprout, HeartPulse,
   Briefcase, Factory, IdCard, Umbrella, Award, Stamp, Calendar, Sun, FileText,
   Search, BarChart3, Hand, Network, Leaf, Tag, Pin, Gavel, Lightbulb,
-  CircleCheck, Plane, Pickaxe, Newspaper,
+  CircleCheck, Plane, Pickaxe, Newspaper, GitBranch, Mail, Triangle,
 } from "lucide-react";
 
 /** The component type of any lucide glyph (derived — no lucide type import). */
@@ -202,6 +202,14 @@ export const ICON_REGISTRY: Record<string, IconComponent> = {
   cloud: Cloud,
   cloudflare: Cloud,
   mapbox: Map,
+  // Platform-cost providers (FIX-1091). GitHub, Upstash and Resend have been
+  // collected since FIX-1090 but had no card to appear on; Vercel was rendering
+  // a literal "▲" through the emoji fallback, which is the one thing FIX-730
+  // took off these surfaces.
+  vercel: Triangle,
+  github: GitBranch,
+  upstash: Zap,
+  resend: Mail,
   money: DollarSign,
   dollar: DollarSign,
   bracket: Banknote,
