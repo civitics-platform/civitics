@@ -1295,3 +1295,6 @@
 2026-08-22 | FIX-1093 | 8d3fabed | local+prod | feat(dashboard): neutral self-test fixtures, cron/count/index checks, honest counts
 2026-08-22 | FIX-1094 | 8d3fabed | local+prod | feat(dashboard): neutral self-test fixtures, cron/count/index checks, honest counts
 2026-08-22 | FIX-1095 | 8d3fabed | local+prod | feat(dashboard): neutral self-test fixtures, cron/count/index checks, honest counts
+2026-08-22 | FIX-1096 | 70fd0e86 | local+prod | feat(chrome): terminal chrome on terminal routes + recently-shipped + hit-test CI probe
+2026-08-22 | FIX-1097 | 70fd0e86 | local+prod | feat(chrome): terminal chrome on terminal routes + recently-shipped + hit-test CI probe
+2026-08-22 | FIX-1098 | 70fd0e86 | local+prod | feat(chrome): terminal chrome on terminal routes + recently-shipped + hit-test CI probe
