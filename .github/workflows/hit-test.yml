@@ -1,0 +1,127 @@
+name: hit-test
+
+# FIX-1098 — NON-BLOCKING layout hit-test probe for the stretched-link
+# regression class (FIX-1086: a card title that looks clickable but isn't,
+# because an overlay sits above the text and swallows the click).
+#
+# WHY IT IS ITS OWN WORKFLOW, NOT A STEP IN tests.yml:
+#   1. tests.yml is the blocking pre-merge gate. Every step in it is green
+#      across all packages and required to stay that way. This probe builds the
+#      app and drives a real browser — slower, and with more ways to be flaky
+#      than a pure `tsc`. Dropping it into the gate would either weaken the
+#      gate or hold merges hostage to a browser launch.
+#   2. tests.yml deliberately excludes BUILD (see its header: `turbo run build`
+#      wants the full secret set from turbo.json's build.env). This job DOES
+#      build — but with placeholder env, never real secrets, which is only
+#      acceptable precisely because it cannot block.
+#   3. tests.yml pins Node 20. This probe needs the global WebSocket to speak
+#      CDP without a dependency, which is Node 22+. Separate workflow, separate
+#      Node — the Node-20 gate is untouched.
+#
+# SO: failures here ANNOTATE and never block. `continue-on-error` on the job
+# keeps the workflow conclusion green while the failing step still shows up in
+# the run and as a ::warning:: annotation. Promoting this to blocking is a
+# later, deliberate flip — do it only once the signal has proven non-flaky
+# across a stretch of real pushes, and move it into tests.yml when you do.
+#
+# WHAT THE PLACEHOLDER ENV MEANS FOR COVERAGE — read before trusting a green:
+# there are no Supabase credentials here, so data-driven cards may not render.
+# The probe reports "no linked card titles rendered" for such a route and
+# treats it as not-a-failure. A green run therefore means "nothing that DID
+# render was unclickable", not "every card on the site was checked". That is
+# still the exact signal FIX-1086 needed: the broken overlay was in the card
+# shell, which renders with or without rows.
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'docs/**'
+  pull_request:
+    paths-ignore:
+      - 'docs/**'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hit-test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  hit-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    # THE non-blocking switch. Removing this line makes the probe a gate.
+    continue-on-error: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      # Node 22 for the global WebSocket the CDP client uses. Deliberately NOT
+      # the Node 20 that tests.yml pins — see the header.
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Placeholder env only. Well-formed enough for `new URL()` and for the
+      # Supabase clients to construct; they will fail their requests, which is
+      # what the graceful-degradation paths (generateStaticParams try/catch,
+      # withDbTimeout, empty states) already exist to handle. NO REAL SECRETS
+      # BELONG IN THIS FILE OR THIS JOB.
+      - name: Write placeholder env
+        run: |
+          cat > .env.local <<'EOF'
+          NEXT_PUBLIC_SUPABASE_URL=https://placeholder.supabase.co
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_ci_placeholder
+          SUPABASE_SECRET_KEY=sb_secret_ci_placeholder
+          NEXT_PUBLIC_SITE_URL=http://localhost:3000
+          EOF
+
+      - name: Build app
+        run: pnpm --filter @civitics/app-civitics build
+
+      - name: Start server
+        run: |
+          pnpm --filter @civitics/app-civitics start > /tmp/next-start.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -fsS -o /dev/null http://localhost:3000/; then
+              echo "server up after ${i}s"; exit 0
+            fi
+            sleep 1
+          done
+          echo "server did not come up in 60s"; cat /tmp/next-start.log; exit 1
+
+      # The probe's own exit code is captured rather than failing the step
+      # outright, so a finding is reported as a GitHub annotation (visible in
+      # the run summary and inline on the PR) instead of a bare red X.
+      - name: Hit-test probe
+        id: probe
+        run: |
+          set +e
+          node scripts/hit-test-probe.mjs --base http://localhost:3000 | tee /tmp/hit-test.log
+          code=${PIPESTATUS[0]}
+          set -e
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          if [ "$code" = "0" ]; then
+            echo "::notice title=hit-test::All probed card titles resolve to an anchor."
+          elif [ "$code" = "1" ]; then
+            echo "::warning title=hit-test (non-blocking)::Card titles failed the layout hit test — the FIX-1086 stretched-link class. See the step log."
+          else
+            echo "::warning title=hit-test (could not run)::The probe could not execute (no browser, or the server never came up). Not a code finding."
+          fi
+          exit 0
+
+      - name: Server log on failure
+        if: steps.probe.outputs.code != '0'
+        run: cat /tmp/next-start.log || true

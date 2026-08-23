@@ -24,6 +24,16 @@
     --c-ink:        28  26  22; /* #1c1a16 */
     --c-ink-soft:   87  83  74; /* #57534a */
     --c-rule:      216 210 196; /* #d8d2c4 */
+    /* Structural "editorial" rule — the double-rule under the masthead, above
+       the footer, and the crisp 1px box around nav dropdowns / the
+       notifications panel. In paper mode it IS --c-ink (full-strength black
+       rule: the look is unchanged from before FIX-1096), which is also why it
+       follows --c-ink's print re-bind for free. Terminal mode is the reason
+       the token exists: a 3px double rule in --c-term-txt on --c-term-bg is a
+       glaring near-white band, so the terminal scope drops it to the faint
+       structural line instead. Use border-rule-strong for chrome-level
+       structure; border-rule stays the everyday hairline. */
+    --c-rule-strong: var(--c-ink);
     --c-accent:    157  43  43; /* #9d2b2b */
     --c-blue:       43  74 139; /* #2b4a8b */
     --c-green-ink:  29 122  62; /* #1d7a3e — stamp/verified ink (desk mockup) */
@@ -77,9 +87,18 @@
     --c-ink:       var(--c-term-txt);
     --c-ink-soft:  var(--c-term-dim);
     --c-rule:      var(--c-term-line);
+    --c-rule-strong: var(--c-term-faint);
     --c-accent:    var(--c-term-red);
     --c-blue:      var(--c-term-blue);
     --c-green-ink: var(--c-term-green);
+
+    /* Tailwind's ring-offset defaults to #fff, which paints a white halo
+       around every focus-visible:ring-offset-* affordance once the chrome
+       joined this scope (FIX-1096: the skip link, the wordmark, the auth
+       button). Re-bind it to the terminal surface so focus rings read as
+       rings, not haloes — applies to every terminal-scoped subtree, chrome
+       and instrument alike. */
+    --tw-ring-offset-color: rgb(var(--c-term-bg));
 
     /* Luminous viz variants — same 9 hues lifted to read on --c-term-bg. */
     --c-viz-1:  79 209 138; /* #4fd18a green */
@@ -99,6 +118,16 @@
 
   body {
     @apply bg-paper text-ink;
+  }
+
+  /* FIX-1096 — the terminal scope lives on a wrapper INSIDE <body>, so the
+     root canvas (overscroll bounce, the strip under a short page) would still
+     paint paper-cream on an otherwise-dark route. Match the canvas to the
+     wrapper's theme. Pure CSS, so it applies on first paint like the rest of
+     the theme; browsers without :has() simply keep the cream canvas, which is
+     the pre-FIX-1096 behaviour. */
+  html:has([data-site-chrome][data-theme="terminal"]) {
+    background-color: rgb(var(--c-term-bg));
   }
 }
 
@@ -151,9 +180,19 @@
   /* Sans body text prints as the record serif; mono ledger figures stay mono. */
   body, .font-sans { font-family: var(--font-serif), Georgia, serif !important; }
 
-  /* Global chrome + interactive affordances never belong on paper. */
+  /* Global chrome + interactive affordances never belong on paper.
+     FIX-1096 moved NavBar/Footer one level down, inside the ChromeTheme
+     wrapper, so `body > header` alone stopped matching and the masthead
+     started printing on every record page. [data-site-chrome] is that
+     wrapper and is present on EVERY route; its direct-child header/footer are
+     exactly the two global chrome elements (FooterGate is a fragment, so the
+     Footer's DOM parent is the wrapper). A page's own <header> is nested
+     deeper, so it is untouched. The `body >` forms are kept so this rule
+     cannot silently no-op if the wrapper is ever removed. */
   body > header,
   body > footer,
+  [data-site-chrome] > header,
+  [data-site-chrome] > footer,
   button,
   input, textarea, select,
   [role="tablist"],

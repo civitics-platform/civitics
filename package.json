@@ -30,6 +30,7 @@
     "check:reads": "node scripts/check-silent-reads.mjs",
     "check:render-timeouts": "node scripts/check-render-timeouts.mjs",
     "check:workflow-parity": "node scripts/check-workflow-parity.mjs",
+    "check:hit-test": "node scripts/hit-test-probe.mjs",
     "db:push:prod": "node scripts/db-push-prod.mjs",
     "db:clone:prod": "node scripts/db-clone-prod.mjs"
   },

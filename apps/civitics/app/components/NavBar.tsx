@@ -93,8 +93,10 @@ export function NavBar() {
         </div>
       </div>
 
-      {/* Masthead */}
-      <div className="border-b-[3px] border-double border-ink">
+      {/* Masthead. border-rule-strong == border-ink in paper mode; it only
+          diverges inside the terminal scope, where a near-white double rule
+          would glare (FIX-1096). */}
+      <div className="border-b-[3px] border-double border-rule-strong">
         <div className="mx-auto flex max-w-7xl items-center gap-6 px-4 py-4 sm:px-6 lg:px-8">
           {/* Mark + wordmark */}
           <a
@@ -128,7 +130,7 @@ export function NavBar() {
                     ▼
                   </span>
                 </button>
-                <div className="invisible absolute left-0 top-full z-50 min-w-[230px] translate-y-1.5 border border-ink bg-card pb-1.5 pt-1 opacity-0 shadow-[0_14px_30px_rgba(28,26,22,0.18)] transition-all group-hover:visible group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:visible group-focus-within:translate-y-0 group-focus-within:opacity-100">
+                <div className="invisible absolute left-0 top-full z-50 min-w-[230px] translate-y-1.5 border border-rule-strong bg-card pb-1.5 pt-1 opacity-0 shadow-[0_14px_30px_rgba(28,26,22,0.18)] transition-all group-hover:visible group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:visible group-focus-within:translate-y-0 group-focus-within:opacity-100">
                   <div className="mb-1 border-b border-rule px-4 pb-2 pt-2 font-mono text-[9px] font-semibold uppercase tracking-[0.22em] text-accent">
                     {group.heading}
                   </div>

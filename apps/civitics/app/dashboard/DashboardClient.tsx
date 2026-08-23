@@ -37,6 +37,8 @@ import { useIsAdmin } from "@/lib/use-is-admin";
 // /admin/pipeline-health. Import-safe from a client component: the module has
 // no server-only dependencies at module scope.
 import { formatDurationMs, runDurationMs } from "@/lib/pipeline-runtime-stats";
+// FIX-1097 — type only; the parse itself runs server-side in /api/shipped.
+import type { ShippedEntry } from "@/lib/done-log";
 // FIX-1094 — snapshot-age cue. Import-safe from a client component by
 // construction: snapshot-freshness.ts has no imports at all (that is why the
 // constant was moved out of _lib/status-snapshot.ts, which pulls in @civitics/db).
@@ -2010,12 +2012,24 @@ type PhaseData = { name: string; label: string; pct: number; done: boolean };
 
 function DevelopmentProgressSection() {
   const [phases, setPhases] = useState<PhaseData[]>(PHASES_FALLBACK);
+  // FIX-1097 — real recent ships from docs/done.log. Starts EMPTY (no
+  // fallback list): phases have a known-good static shape to fall back on,
+  // "what shipped last week" does not, and inventing one would publish an
+  // unbacked claim. Empty → the block simply does not render.
+  const [shipped, setShipped] = useState<ShippedEntry[]>([]);
 
   useEffect(() => {
     fetch("/api/phases")
       .then((r) => r.json())
       .then((d) => { if (d.phases?.length) setPhases(d.phases as PhaseData[]); })
       .catch(() => {/* keep fallback */});
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/shipped")
+      .then((r) => r.json())
+      .then((d) => { if (Array.isArray(d.shipped)) setShipped(d.shipped as ShippedEntry[]); })
+      .catch(() => {/* section stays hidden */});
   }, []);
 
   // FIX-1088: the header used to hard-code "Phase 1 of 5" while six bars
@@ -2073,6 +2087,41 @@ function DevelopmentProgressSection() {
           ))}
         </ul>
       </div>
+
+      {/* FIX-1097 — Recently shipped, straight off docs/done.log. The phase
+          bars and the task list above are both hand-maintained claims about
+          progress; this is the append-only record of what actually landed,
+          which is the only part of this section nobody can forget to update.
+          Hidden entirely when the log is empty or unreadable. */}
+      {shipped.length > 0 && (
+        <div className="mt-6 border-t border-rule/60 pt-4">
+          <p className="mb-2 text-xs font-semibold text-ink-soft">Recently shipped</p>
+          <ul className="space-y-2">
+            {shipped.map((entry) => (
+              <li key={`${entry.sha}-${entry.fixIds[0]}`} className="flex items-start gap-2.5">
+                <span className="mt-px shrink-0 font-mono text-[10.5px] tabular-nums text-ink-soft/80">
+                  {entry.date.slice(5)}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-xs leading-snug text-ink">{entry.subject}</span>
+                  <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 font-mono text-[10px] text-ink-soft">
+                    <span>
+                      {entry.fixIds.length === 1
+                        ? entry.fixIds[0]
+                        : `${entry.fixIds[0]} +${entry.fixIds.length - 1}`}
+                    </span>
+                    {entry.verified && (
+                      <span className="border border-rule/70 px-1 py-px uppercase tracking-[0.08em]">
+                        {entry.verified}
+                      </span>
+                    )}
+                  </span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </SectionCard>
   );
 }

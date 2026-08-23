@@ -4,6 +4,7 @@ import { Analytics } from "@vercel/analytics/react";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { AuthHashHandler } from "./components/AuthHashHandler";
 import { ChallengeModal } from "./components/ChallengeModal";
+import { ChromeTheme } from "./components/ChromeTheme";
 import { Footer } from "./components/Footer";
 import { FooterGate } from "./components/FooterGate";
 import { NavBar } from "./components/NavBar";
@@ -64,11 +65,17 @@ export default function RootLayout({
       className={`${inter.variable} ${jetbrainsMono.variable} ${fraunces.variable}`}
     >
       <body className="font-sans">
-        <NavBar />
-        {children}
-        <FooterGate>
-          <Footer />
-        </FooterGate>
+        {/* FIX-1096: chrome + page share one token scope, so /dashboard and
+            /search render dark end-to-end instead of a dark instrument
+            sandwiched between a light masthead and a light footer. Every
+            other route is unchanged — see components/ChromeTheme.tsx. */}
+        <ChromeTheme>
+          <NavBar />
+          {children}
+          <FooterGate>
+            <Footer />
+          </FooterGate>
+        </ChromeTheme>
         <AuthHashHandler />
         <ChallengeModal />
         <WebVitalsReporter />

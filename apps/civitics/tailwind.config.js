@@ -22,6 +22,11 @@ module.exports = {
         ink:        "rgb(var(--c-ink) / <alpha-value>)",
         "ink-soft": "rgb(var(--c-ink-soft) / <alpha-value>)",
         rule:       "rgb(var(--c-rule) / <alpha-value>)",
+        // Chrome-level structural rule (FIX-1096). Paper mode == ink, so
+        // border-rule-strong is a drop-in for the border-ink it replaced on
+        // the masthead/footer double rules and the nav/notification panels;
+        // terminal mode softens it off near-white. See globals.css.
+        "rule-strong": "rgb(var(--c-rule-strong) / <alpha-value>)",
         accent:     "rgb(var(--c-accent) / <alpha-value>)",
         "civic-blue": "rgb(var(--c-blue) / <alpha-value>)",
         "green-ink":  "rgb(var(--c-green-ink) / <alpha-value>)",
