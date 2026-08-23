@@ -1287,3 +1287,5 @@
 2026-08-22 | FIX-1086 | dcbd6058 | local+prod | fix(ui): stretched-link hit-testing + title-template dup variants + derived phase header
 2026-08-22 | FIX-1087 | dcbd6058 | local+prod | fix(ui): stretched-link hit-testing + title-template dup variants + derived phase header
 2026-08-22 | FIX-1088 | dcbd6058 | local+prod | fix(ui): stretched-link hit-testing + title-template dup variants + derived phase header
+2026-08-22 | FIX-1089 | 0d25a8a2 | local+prod | feat(costs): true-cost data plane — subs + rates + cycles + new provider collectors
+2026-08-22 | FIX-1090 | 0d25a8a2 | local+prod | feat(costs): true-cost data plane — subs + rates + cycles + new provider collectors
