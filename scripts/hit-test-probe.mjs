@@ -21,6 +21,10 @@
 //   node scripts/hit-test-probe.mjs --base http://localhost:3000
 //   node scripts/hit-test-probe.mjs --base http://localhost:3000 --route /proposals
 //   node scripts/hit-test-probe.mjs --json          # machine-readable summary
+//   node scripts/hit-test-probe.mjs --self-test     # verify the probe itself
+//
+// Run --self-test whenever you touch target selection: it is the guard against
+// this script going quietly green by matching nothing. See its block below.
 //
 // EXIT CODES: 0 = every probed title resolved to an anchor (or a route was
 // legitimately skipped); 1 = at least one title failed the hit test; 2 = the
@@ -33,11 +37,13 @@
 
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
+import { createServer } from "node:http";
 
 // ── args ─────────────────────────────────────────────────────────────────────
 const argv = process.argv.slice(2);
 let base = "http://localhost:3000";
 let asJson = false;
+let selfTest = false;
 let navTimeoutMs = 45_000;
 const routeOverrides = [];
 for (let i = 0; i < argv.length; i++) {
@@ -46,8 +52,9 @@ for (let i = 0; i < argv.length; i++) {
   else if (a === "--route") routeOverrides.push(argv[++i]);
   else if (a === "--timeout") navTimeoutMs = Number(argv[++i]) * 1000;
   else if (a === "--json") asJson = true;
+  else if (a === "--self-test") selfTest = true;
   else if (a === "--help" || a === "-h") {
-    console.log("Usage: node scripts/hit-test-probe.mjs [--base <url>] [--route <path>]... [--timeout <sec>] [--json]");
+    console.log("Usage: node scripts/hit-test-probe.mjs [--base <url>] [--route <path>]... [--timeout <sec>] [--json] [--self-test]");
     process.exit(0);
   }
 }
@@ -72,7 +79,45 @@ function normalizeRoute(t) {
 // route most likely to render data-less in CI (its sections need Supabase), so
 // a card-less result there is explicitly not a failure.
 const DEFAULT_ROUTES = ["/proposals", "/investigations", "/dashboard"];
-const routes = (routeOverrides.length ? routeOverrides : DEFAULT_ROUTES).map(normalizeRoute);
+let routes = (routeOverrides.length ? routeOverrides : DEFAULT_ROUTES).map(normalizeRoute);
+
+// ── self-test ────────────────────────────────────────────────────────────────
+//
+// WHY THIS MODE EXISTS. The probe's dangerous failure is not a false alarm —
+// it is silence. If its target selection stops matching real cards, it reports
+// "nothing to probe", exits 0, and reads as a pass forever. That is not
+// hypothetical: the first cut of this script keyed on `article h2, li h3` and
+// went green on /proposals (div.group.relative cards) while probing nothing.
+// And it is the CI job's normal state today — with placeholder env and no
+// database, no cards render on any route, so the real routes assert nothing.
+//
+// --self-test serves a fixture with two stretched-link cards, one healthy and
+// one carrying the FIX-1086 defect (title raised into its own stacking context
+// above the link), and asserts the probe finds BOTH and fails EXACTLY the
+// broken one. So CI always verifies that the probe can still see a card and
+// still tell good from broken, even when the app renders none.
+const FIXTURE_HTML = `<!doctype html><html><body style="margin:0">
+<div style="position:relative;width:400px;height:120px">
+  <a href="/good" style="position:absolute;inset:0;z-index:10"></a>
+  <div style="position:relative"><h3>Healthy card title</h3></div>
+</div>
+<div style="position:relative;width:400px;height:120px">
+  <a href="/bad" style="position:absolute;inset:0;z-index:10"></a>
+  <div style="position:relative;z-index:20"><h3>Broken card title</h3></div>
+</div>
+</body></html>`;
+
+let fixtureServer = null;
+if (selfTest) {
+  fixtureServer = createServer((_req, res) => {
+    res.writeHead(200, { "content-type": "text/html" });
+    res.end(FIXTURE_HTML);
+  });
+  await new Promise((r) => fixtureServer.listen(0, "127.0.0.1", r));
+  base = `http://127.0.0.1:${fixtureServer.address().port}`;
+  routes = ["/"];
+  console.log(`[hit-test] self-test: fixture on ${base}`);
+}
 
 // ── the in-page probe ────────────────────────────────────────────────────────
 //
@@ -335,8 +380,27 @@ try {
 
 cdp.close();
 child.kill();
+if (fixtureServer) fixtureServer.close();
 
 if (asJson) console.log(JSON.stringify({ base, routes: summary, failures }, null, 2));
+
+// In self-test mode the expected result is INVERTED: exactly one of the two
+// fixture cards must fail. Anything else means the probe has lost the ability
+// to see cards or to tell a working card from a broken one.
+if (selfTest) {
+  const s = summary[0] ?? {};
+  const ok = s.stretchedCards === 2 && s.probed === 2 && s.failed === 1;
+  if (!ok) {
+    console.error(
+      `\n[hit-test] SELF-TEST FAILED — expected 2 cards found, 2 probed, exactly 1 failing; ` +
+      `got ${JSON.stringify(s)}. The probe can no longer detect the FIX-1086 pattern, ` +
+      `so a green run from it would mean nothing.`,
+    );
+    process.exit(1);
+  }
+  console.log("\n[hit-test] self-test OK — probe sees both cards and fails exactly the broken one.");
+  process.exit(0);
+}
 
 if (failures > 0) {
   console.error(`\n[hit-test] ${failures} hit-test failure(s). This is the FIX-1086 regression class: a title that looks clickable but isn't.`);

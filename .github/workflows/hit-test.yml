@@ -24,13 +24,24 @@ name: hit-test
 # later, deliberate flip — do it only once the signal has proven non-flaky
 # across a stretch of real pushes, and move it into tests.yml when you do.
 #
-# WHAT THE PLACEHOLDER ENV MEANS FOR COVERAGE — read before trusting a green:
-# there are no Supabase credentials here, so data-driven cards may not render.
-# The probe reports "no linked card titles rendered" for such a route and
-# treats it as not-a-failure. A green run therefore means "nothing that DID
-# render was unclickable", not "every card on the site was checked". That is
-# still the exact signal FIX-1086 needed: the broken overlay was in the card
-# shell, which renders with or without rows.
+# WHAT A GREEN RUN HERE ACTUALLY MEANS — read this before trusting one.
+# There are no Supabase credentials in CI, and MEASURED ON THE FIRST RUN
+# (2026-08-22, commit 70fd0e86) that means ZERO cards render on all three
+# probed routes: every one reports "no stretched-link cards rendered". So the
+# app-route probe currently asserts NOTHING in CI. It is wired up so that it
+# starts covering automatically the day CI gets a seeded database, and so the
+# same command is available locally — where, against the local Docker DB, it
+# finds 26 stretched-link cards on /proposals and probes 12 of them.
+#
+# That is why the self-test step below exists and runs FIRST. The probe's
+# dangerous failure mode is silence, not noise: if its target selection stops
+# matching real cards it reports "nothing to probe", exits 0, and reads as a
+# pass forever. (That is not hypothetical — the first cut of the script keyed
+# on `article h2, li h3` and went green on /proposals, whose cards are plain
+# div.group.relative.) --self-test serves a two-card fixture, one healthy and
+# one carrying the FIX-1086 defect, and asserts the probe sees both and fails
+# exactly the broken one. That step is a real assertion on every run, with or
+# without a database.
 
 on:
   push:
@@ -73,6 +84,21 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      # Asserts the probe can still see a stretched-link card and still tell a
+      # working one from a broken one — the one check here that does NOT depend
+      # on the app rendering data. Runs before the build so it fails fast.
+      - name: Probe self-test
+        id: selftest
+        run: |
+          set +e
+          node scripts/hit-test-probe.mjs --self-test
+          code=$?
+          set -e
+          if [ "$code" != "0" ]; then
+            echo "::warning title=hit-test self-test (non-blocking)::The probe can no longer detect the FIX-1086 pattern — a green run from it would mean nothing."
+          fi
+          exit 0
 
       # Placeholder env only. Well-formed enough for `new URL()` and for the
       # Supabase clients to construct; they will fail their requests, which is
