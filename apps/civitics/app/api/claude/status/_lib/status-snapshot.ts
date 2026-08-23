@@ -38,14 +38,16 @@ import {
 
 // ── Shared staleness / timeout constants (FIX-327) ────────────────────────────
 // Hoisted here so /dashboard SSR, /api/claude/status/{core,quality}, and
-// /api/platform/usage all read the same numbers. Tuning history:
-//   - FIX-297 set 30 min (three 10-min cron cycles).
-//   - Prod observation 2026-05-22: GHA */10 cron drifts to 1h-3h35m gaps
-//     under scheduler load — 30 min flipped most pageloads to a 30-s live
-//     recompute path. Bumped to 4 h (covers 9 of last 10 observed gaps).
+// /api/platform/usage all read the same numbers.
+//
+// FIX-1094 moved SNAPSHOT_STALE_MS itself (and its tuning history) to
+// @/lib/snapshot-freshness, which has no imports and is therefore safe for the
+// client bundle — DashboardClient's staleness cue needs the same number. This
+// re-export keeps every existing server-side importer unchanged.
+//
 // The fallback cap was unbounded — any cold-cache stale-snapshot hit blocked
 // SSR for whatever computeStatusPayload actually took (30+ s on prod).
-export const SNAPSHOT_STALE_MS = 4 * 60 * 60 * 1000;
+export { SNAPSHOT_STALE_MS } from "@/lib/snapshot-freshness";
 export const SNAPSHOT_FALLBACK_TIMEOUT_MS = 5000;
 
 // ── Types ─────────────────────────────────────────────────────────────────────

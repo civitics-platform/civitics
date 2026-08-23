@@ -37,6 +37,10 @@ import { useIsAdmin } from "@/lib/use-is-admin";
 // /admin/pipeline-health. Import-safe from a client component: the module has
 // no server-only dependencies at module scope.
 import { formatDurationMs, runDurationMs } from "@/lib/pipeline-runtime-stats";
+// FIX-1094 — snapshot-age cue. Import-safe from a client component by
+// construction: snapshot-freshness.ts has no imports at all (that is why the
+// constant was moved out of _lib/status-snapshot.ts, which pulls in @civitics/db).
+import { classifySnapshotAge } from "@/lib/snapshot-freshness";
 import dynamic from "next/dynamic";
 
 const AnthropicCard = dynamic(
@@ -637,13 +641,24 @@ const ALIAS_TO_DEF: Record<string, PipelineDef> = (() => {
 
 // ── Self-test display labels ──────────────────────────────────────────────────
 
+// Keyed by the self-test `name` emitted in sections.ts getSelfTests(). Names are
+// append-only by contract: a persisted status_snapshot payload is up to one tick
+// old, so a name that is renamed rather than retired-and-replaced would render
+// unlabelled for that tick and retro-relabel every historical payload. Retired
+// names are left out entirely — an unknown name falls back to a de-underscored
+// form of itself in the renderer, so the one-tick-old payload still reads fine.
+// (Retired FIX-1093: entity_search_finds_warren, warren_has_vote_connections.)
 const SELF_TEST_LABELS: Record<string, string> = {
-  entity_search_finds_warren: "Entity search working",
+  entity_search_resolves_sampled_official: "Entity search working",
   chord_has_industry_data: "Chord diagram has data",
-  warren_has_vote_connections: "Vote connections healthy",
+  senate_vote_edges_present: "Vote connections healthy",
   ai_budget_ok: "AI budget OK",
   nightly_ran_today: "Nightly sync ran today",
   connections_pipeline_healthy: "Connections pipeline healthy",
+  derived_edges_match_source: "Derived edges match source",
+  cron_jobs_healthy: "Scheduled jobs healthy",
+  open_comment_count_sane: "Comment-period count sane",
+  search_index_fresh: "Search index fresh",
 };
 
 // ── Phase / task data (FIX 4) ────────────────────────────────────────────────
@@ -2279,12 +2294,47 @@ export function DashboardClient({
     </>
   );
 
+  // FIX-1094: snapshot staleness cue. Everything below this line renders is
+  // already in the payload — `meta.fetched_at` is when the status_snapshot row
+  // was written — so there is no new request and nothing to keep in sync.
+  //
+  // This is a cue and not a self-test on purpose: a self-test is computed inside
+  // the snapshot, so the only age it could ever report is ~0. Staleness is
+  // answerable at read time and nowhere else.
+  //
+  // Computed on the client after mount (`mounted` gates the whole header), which
+  // is also what keeps it honest: an SSR-rendered age would be frozen at the age
+  // the HTML was built, and /dashboard is edge-cached for 30 min.
+  const snapshotFreshness =
+    mounted && data
+      ? classifySnapshotAge(
+          data.status.meta.fetched_at ?? data.status.meta.timestamp,
+          Date.now(),
+        )
+      : null;
+
   // Refresh timestamp + admin button (shown on operations tab)
   const opsHeader = mounted && data ? (
     <div className="flex items-center justify-between">
       <p className="font-mono text-xs tabular-nums text-ink-soft/80" suppressHydrationWarning>
         Updated {new Date(data.status.meta.timestamp).toLocaleTimeString()} ·
         {data.status.meta.query_time_ms}ms
+        {snapshotFreshness?.label && (
+          <span
+            className={
+              snapshotFreshness.level === "stale"
+                ? "ml-2 text-accent font-medium"
+                : "ml-2 text-amber"
+            }
+            title={
+              snapshotFreshness.level === "stale"
+                ? "Every number on this page is from that snapshot. Treat them as historical until the refresh recovers."
+                : "The 10-minute snapshot refresh has missed several ticks; these numbers are not live."
+            }
+          >
+            · {snapshotFreshness.label}
+          </span>
+        )}
       </p>
       <button
         onClick={handleAdminRefresh}

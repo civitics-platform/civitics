@@ -2,12 +2,14 @@
  * GET /api/claude/status/quality
  *
  * Heavier half of the dashboard health endpoint: data quality coverage,
- * self-tests (incl. Warren search, chord industry data, derived-edge drift),
- * and chord top flows. Holds the graph RPCs and semantic checks.
+ * self-tests (sampled-official search, chord industry data, derived-edge drift,
+ * pg_cron health, comment-period count sanity, search-index freshness), and
+ * chord top flows. Holds the graph RPCs and semantic checks.
  *
- * Reads from status_snapshot with a 30-min staleness fallback to a live
- * computeStatusPayload recompute — same shape as /core (FIX-297). Response
- * envelope is unchanged.
+ * Reads from status_snapshot with a SNAPSHOT_STALE_MS staleness fallback to a
+ * live computeStatusPayload recompute — same shape as /core (FIX-297). That
+ * threshold is 4 h and has been since FIX-327; this comment said 30 min until
+ * FIX-1094. Response envelope is unchanged.
  *
  * Rate limit shared with /api/claude/status and /core (60 req/hour/IP).
  *

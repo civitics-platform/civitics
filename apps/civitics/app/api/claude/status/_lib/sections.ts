@@ -52,6 +52,39 @@ export const CONNECTION_TYPES = [
   "contract_award",
 ] as const;
 
+// ── Self-test thresholds (FIX-1093 / FIX-1094) ───────────────────────────────
+//
+// Every number here is a floor with measured headroom, not a target. Each one
+// records what it was measured against so the next person can tell a genuine
+// regression from a threshold that drifted out from under the data.
+
+// Per-senator vote_yes edge floor. A sample of 15 sitting senators (2026-05-23)
+// ranged 38–785 edges with a median around 640, so 10 clears even the newest
+// junior senator by ~4x. The failure it exists to catch is the opposite shape
+// entirely: a resolver bug that lands votes on FEC candidate stubs instead of
+// the elected row leaves ≤6 edges, which trips this immediately.
+const SENATE_MIN_VOTE_EDGES = 10;
+// Cohort floor. Measured 99 of 100 clearing the edge floor on BOTH local and
+// prod (2026-08-22) — one senator legitimately sits below it. 50 is half the
+// chamber: survivable roster churn and a seated-mid-term senator or two, but a
+// resolver-class regression that strands votes on stubs collapses the count far
+// past it in one rebuild.
+const SENATE_COVERAGE_FLOOR = 50;
+// How many comment-period cards /dashboard renders. The count must never come
+// back below the number of cards actually shown — see open_comment_count_sane.
+const OPEN_COMMENT_CARD_LIMIT = 3;
+// entity_search_index is rebuilt nightly; 26 h is the standard one-cycle + 2 h
+// slack window used throughout this codebase for daily work.
+const SEARCH_INDEX_STALE_MS = 26 * 60 * 60 * 1000;
+// 14 days, because a `0 16 * * 1,3` job fires twice a week — a 26 h window can
+// only ever contain one of its firings, so "consecutive" is unanswerable there.
+// Prod pg_cron history retains ~55 days, so this sits well inside retention.
+const CRON_STREAK_LOOKBACK_HOURS = 336;
+// Two consecutive failed firings. One is noise (the every-2-minute watchdogs
+// logged 169 startup timeouts on 2026-08-19 and recovered fully); two in a row
+// is a job that is stuck.
+const CRON_MIN_FAIL_STREAK = 2;
+
 export const VOTE_CATEGORIES = [
   "substantive",
   "procedural",
@@ -105,6 +138,37 @@ export async function getVersion(db: Db) {
 //   • planned    → filtered counts that timeout (proposals_bills)
 //   • exact      → filtered counts cheap enough not to time out
 //                  (proposals_regulations, page_views_24h)
+//
+// FIX-1095 — the three HEADLINE counts are now exact, and FIX-206's reasoning is
+// why they had to change rather than why they shouldn't.
+//
+// "estimated" reads pg_class.reltuples, which is not a count: it is whatever the
+// last vacuum/analyze wrote, and it goes stale in exactly one direction after a
+// bulk DELETE. Measured on prod 2026-08-22, after the vote-stub retirement
+// deletions:
+//
+//     votes      reltuples 1,270,118   count(*) 969,302   (+31.0% overstated)
+//     proposals  reltuples    89,899   count(*)  90,201   (-0.3%)
+//     officials  reltuples    37,234   count(*)  37,234   (exact)
+//
+// The Votes stat card and the "What Civitics Tracks" line had been quoting
+// 1.27 M against a true 969 k. A transparency dashboard that overstates its own
+// corpus by a third is worse than one that takes an extra three seconds to
+// build, and the constraint FIX-206 was written under no longer applies: since
+// FIX-297 this runs inside /api/cron/platform-snapshot on a 10-minute schedule,
+// not on the request path, where the whole payload already takes 30+ s. Exact
+// costs (prod, same session): votes 3.38 s, proposals 2.35 s, officials 0.18 s.
+//
+// The remaining "estimated" counts stay estimated: they are append-mostly, so
+// reltuples does not drift the way a bulk-deleted table does, and
+// entity_connections / financial_relationships are 5 M+ rows where an exact
+// count is genuinely expensive. Revisit any of them individually if a large
+// delete ever lands on one — the tell is this same reltuples-vs-count gap.
+//
+// NOTE: the per-request SSR fallback path (dashboard/page.tsx, the two status
+// routes) calls the same helper, so a cold snapshot pays the exact-count cost
+// too. That path is already capped by SNAPSHOT_FALLBACK_TIMEOUT_MS and degrades
+// to the last-known-good snapshot, so the added seconds cannot hang a render.
 export async function getDatabase(db: Db, yesterday: string) {
   const [
     officials,
@@ -119,8 +183,9 @@ export async function getDatabase(db: Db, yesterday: string) {
     cache,
     views,
   ] = await Promise.all([
-    db.from("officials").select("*", { count: "estimated", head: true }),
-    db.from("proposals").select("*", { count: "estimated", head: true }),
+    // FIX-1095: exact, not estimated. See the block comment above getDatabase.
+    db.from("officials").select("*", { count: "exact", head: true }),
+    db.from("proposals").select("*", { count: "exact", head: true }),
     db
       .from("proposals")
       .select("*", { count: "planned", head: true })
@@ -131,7 +196,8 @@ export async function getDatabase(db: Db, yesterday: string) {
       .from("proposals")
       .select("*", { count: "planned", head: true })
       .eq("type", "regulation"),
-    db.from("votes").select("*", { count: "estimated", head: true }),
+    // FIX-1095: exact, not estimated. See the block comment above getDatabase.
+    db.from("votes").select("*", { count: "exact", head: true }),
     db.from("entity_connections").select("*", { count: "estimated", head: true }),
     db.from("financial_relationships").select("*", { count: "estimated", head: true }),
     db.from("financial_entities").select("*", { count: "estimated", head: true }),
@@ -749,40 +815,53 @@ export async function getSelfTests(
     }
   };
 
-  // Step 1: resolve Warren (needed for two checks). Sequential — every
-  // downstream check waits on this, so it floors the section wall-clock.
-  const warrenSearch = await timed("self_tests:warren_search", () =>
-    db.rpc("search_graph_entities", { q: "warren", lim: 5 }),
+  // Step 1: sample a reference official from live data. Sequential — the search
+  // fixture below waits on it, so it floors the section wall-clock (57 ms prod /
+  // 36 ms local, measured 2026-08-22).
+  //
+  // FIX-1093: this replaces a hardcoded `q: "warren"` search plus a three-tier
+  // disambiguation ladder for the three "Elizabeth Warren" official rows on
+  // prod. FIX-1076 had already neutralised the rendered strings; the fixture
+  // itself stayed keyed to one named sitting politician, which is not something
+  // a public transparency dashboard should be asserting about anybody in
+  // particular. check_senate_reference_cohort() samples the lowest-id member of
+  // the active federal senator cohort instead, so the subject rotates on its own
+  // as the roster changes, and returns the cohort aggregate from the same
+  // cohort definition so the two fixtures are provably about the same set.
+  //
+  // The candidate-stub problem the old ladder worked around is now handled by
+  // construction rather than by disambiguation: the cohort predicate excludes
+  // `tier = 'candidate'` outright, so there is no wrong row to resolve to.
+  const cohortRes = await timed("self_tests:senate_cohort", () =>
+    db.rpc("check_senate_reference_cohort", { p_min_edges: SENATE_MIN_VOTE_EDGES }),
   );
-  type SearchRow = {
-    id: string;
-    label: string;
-    entity_type: string;
-    subtitle?: string | null;
+  type SenateCohort = {
+    cohort_size: number;
+    with_edges: number;
+    min_edges: number;
+    sample_id: string | null;
+    sample_name: string | null;
   };
-  const warrenRows = (warrenSearch.data ?? []) as SearchRow[];
-  // FIX-339 + Warren resolver fix (2026-05-23): prod has three "Elizabeth
-  // Warren" officials — one elected Senator (~606 vote_yes edges) plus two
-  // FEC candidate slots ("Candidate for President", "Candidate for Senator",
-  // both with ≤6 edges because rebuild_entity_connections joins votes to the
-  // elected row, not candidate duplicates). The search RPC returns all three
-  // with identical trigram sim, so `.find()` was picking the first candidate
-  // slot. Prefer the row whose subtitle does NOT mark it as a candidate.
-  const isElizabethWarrenOfficial = (r: SearchRow) =>
-    r.label.toLowerCase().includes("elizabeth warren") &&
-    r.entity_type === "official";
-  const isCandidateSubtitle = (s?: string | null) =>
-    (s ?? "").toLowerCase().includes("candidate for");
-  const warrenEntity =
-    warrenRows.find(
-      (r) => isElizabethWarrenOfficial(r) && !isCandidateSubtitle(r.subtitle),
-    ) ??
-    warrenRows.find(isElizabethWarrenOfficial) ??
-    warrenRows.find(
-      (r) =>
-        r.label.toLowerCase().endsWith("warren") && r.entity_type === "official",
+  const cohort = (cohortRes.error ? null : cohortRes.data) as SenateCohort | null;
+
+  // `sample_name` is a query string, never a rendered one — every `detail`
+  // below says "sampled reference official". Searching by full name and
+  // asserting the sampled UUID comes back is the strong form of the check: a
+  // resolver-class bug that points search at the wrong row fails it even when
+  // a same-named row is returned.
+  type SearchRow = { id: string; label: string; entity_type: string };
+  const sampleName = cohort?.sample_name ?? null;
+  const sampleId = cohort?.sample_id ?? null;
+  const referenceSearch = sampleName
+    ? await timed("self_tests:reference_search", () =>
+        db.rpc("search_graph_entities", { q: sampleName, lim: 10 }),
+      )
+    : { data: null, error: null };
+  const referenceResolved =
+    sampleId != null &&
+    ((referenceSearch.data ?? []) as SearchRow[]).some(
+      (r) => r.id === sampleId && r.entity_type === "official",
     );
-  const warrenId = warrenEntity?.id ?? null;
 
   // FIX-337 follow-up (2026-05-23): when no shared promise is provided (the
   // /api/claude/status live route is one such caller), synthesize one here
@@ -795,9 +874,14 @@ export async function getSelfTests(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (db as any).rpc("get_connection_type_counts");
 
+  const openCommentCutoff = new Date().toISOString();
+
   const [
     chordData,
-    warrenVotesRes,
+    cronEscalationsRes,
+    openCommentCountRes,
+    openCommentCardsRes,
+    searchIndexRes,
     anthropicUsageResult,
     cronState,
     rebuildLastRunRes,
@@ -806,24 +890,47 @@ export async function getSelfTests(
   ] = await Promise.all([
     timed("self_tests:chord_industry_flows", () => db.rpc("chord_industry_flows")),
 
-    // FIX-337: was count:'exact' (~8.3s). FIX-336 diagnostic showed
-    // count:'planned' was no faster for this two-column indexed predicate.
-    // Boolean check is `> 10`; .limit(11) is the minimum sufficient — no
-    // COUNT co-query issued, index seek stops at 11 hits.
-    // FIX-343: from_type leads the entity_connections_from composite index;
-    // without this predicate the planner falls back to a vote_yes-edge scan
-    // (~6s on prod).
-    warrenId
-      ? timed("self_tests:warren_votes_count", () =>
-          db
-            .from("entity_connections")
-            .select("id")
-            .eq("from_type", "official")
-            .eq("from_id", warrenId)
-            .eq("connection_type", "vote_yes")
-            .limit(11),
-        )
-      : Promise.resolve({ data: null }),
+    // FIX-1094: pg_cron escalations. See the migration header for why this is a
+    // function and not a PostgREST read (the `cron` schema is not exposed, and
+    // check_cron_job_health()'s 222 kB response every 10 min would be ~960 MB of
+    // egress per month against the 5 GB budget this same payload reports on).
+    timed("self_tests:cron_escalations", () =>
+      db.rpc("check_cron_job_escalations", {
+        p_lookback_hours: CRON_STREAK_LOOKBACK_HOURS,
+        p_min_streak: CRON_MIN_FAIL_STREAK,
+      }),
+    ),
+
+    // FIX-1094: the two halves of the open-comment invariant, issued with the
+    // same filter and the same cutoff so they cannot disagree for any reason
+    // except a broken count. See the test body for what this catches.
+    timed("self_tests:open_comment_count", () =>
+      db
+        .from("proposals")
+        .select("*", { count: "exact", head: true })
+        .eq("status", "open_comment")
+        .gt("metadata->>comment_period_end", openCommentCutoff),
+    ),
+    timed("self_tests:open_comment_cards", () =>
+      db
+        .from("proposals")
+        .select("id")
+        .eq("status", "open_comment")
+        .gt("metadata->>comment_period_end", openCommentCutoff)
+        .limit(OPEN_COMMENT_CARD_LIMIT),
+    ),
+
+    // FIX-1094: same read /search's own header displays (app/api/browse/
+    // execute.ts) — newest refreshed_at on the search substrate itself, not on
+    // the browse_facet_counts rollup that is stamped alongside it.
+    timed("self_tests:search_index_freshness", () =>
+      db
+        .from("entity_search_index")
+        .select("refreshed_at")
+        .order("refreshed_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+    ),
 
     timed("self_tests:anthropic_usage", () =>
       opts?.sharedAnthropicUsagePromise ?? getAnthropicUsage(),
@@ -992,19 +1099,59 @@ export async function getSelfTests(
     ? Date.now() - new Date(rebuildLastRun.completed_at).getTime()
     : null;
 
+  // ── FIX-1094 derivations ────────────────────────────────────────────────────
+
+  type CronEscalations = {
+    available: boolean;
+    lookback_hours: number;
+    min_streak: number;
+    jobs_active: number;
+    failing: Array<{
+      jobname: string | null;
+      schedule: string | null;
+      fail_streak: number;
+      runs_in_window: number;
+      last_failed_at: string | null;
+      last_message: string | null;
+    }>;
+    missing_daily: Array<{ jobname: string | null }>;
+    canary_liveness: { silent: boolean; hours_since: number | null } | null;
+  };
+  const cronEscalations = (
+    cronEscalationsRes.error ? null : cronEscalationsRes.data
+  ) as CronEscalations | null;
+  const cronFailing = cronEscalations?.failing ?? [];
+  // Name jobs, never jobids — a jobid is a local handle that changes when a job
+  // is rescheduled and means nothing to whoever reads this on the dashboard.
+  // An unnamed row is a deleted job still holding history; say that rather than
+  // rendering "null".
+  const jobLabel = (name: string | null) => name ?? "(unnamed job)";
+
+  const openCommentCount = openCommentCountRes.count ?? 0;
+  const openCommentCards = (openCommentCardsRes.data ?? []).length;
+
+  const searchIndexRefreshedAt =
+    (searchIndexRes.data as { refreshed_at: string | null } | null)?.refreshed_at ?? null;
+  const searchIndexAgeMs = searchIndexRefreshedAt
+    ? Date.now() - new Date(searchIndexRefreshedAt).getTime()
+    : null;
+
   return [
     {
-      name: "entity_search_finds_warren",
-      passed: warrenEntity != null,
-      // FIX-1076: the `name` key is deliberately unchanged — persisted
-      // status_snapshot payloads and DashboardClient's SELF_TEST_LABELS both
-      // key on it. Only the human-facing `detail` is neutralised: these
-      // strings render on the public dashboard, and a failing self-test used
-      // to read as an assertion about a named sitting politician (the pass
-      // text also leaked a raw uuid).
-      detail: warrenEntity
-        ? "reference official found"
-        : "reference official not found in search results",
+      // FIX-1093: replaces the retired `entity_search_finds_warren`. NEW name,
+      // not a rename — persisted status_snapshot payloads and DashboardClient's
+      // SELF_TEST_LABELS both key on `name`, so renaming in place would
+      // retro-relabel every historical payload. The retired name simply stops
+      // appearing once the next snapshot rolls.
+      name: "entity_search_resolves_sampled_official",
+      passed: referenceResolved,
+      detail: sampleId
+        ? referenceResolved
+          ? "sampled reference official resolved by entity search"
+          : "sampled reference official NOT resolved in the top 10 search results"
+        : cohortRes.error
+          ? `cohort RPC error: ${cohortRes.error.message}`
+          : "no sampled reference official available — cohort empty",
     },
     {
       name: "chord_has_industry_data",
@@ -1014,16 +1161,16 @@ export async function getSelfTests(
         : `${chordGroups} industry groups returned`,
     },
     {
-      name: "warren_has_vote_connections",
-      passed: (warrenVotesRes.data?.length ?? 0) > 10,
-      // Senator Warren has ~600 vote_yes edges on prod; sample of 15 sitting
-      // senators (2026-05-23) ranged 38–785 with median ~640. `> 10` stays
-      // the floor — junior senators (Alsobrooks: 38) still clear it, but a
-      // resolved-to-wrong-record bug like the pre-fix one (≤6 edges on a
-      // candidate slot) trips it immediately.
-      detail: warrenId
-        ? `${warrenVotesRes.data?.length ?? 0}+ vote_yes connections (capped at 11)`
-        : "reference official not found — skipped",
+      // FIX-1093: replaces the retired `warren_has_vote_connections`, which
+      // asserted one named senator's edge count. The aggregate form is neutral
+      // AND strictly more sensitive: the single-senator check could only fail if
+      // that one person's edges broke, whereas a resolver-class bug that strands
+      // votes on candidate stubs moves the whole cohort at once.
+      name: "senate_vote_edges_present",
+      passed: (cohort?.with_edges ?? 0) >= SENATE_COVERAGE_FLOOR,
+      detail: cohort
+        ? `${cohort.with_edges} of ${cohort.cohort_size} active federal senators have >${cohort.min_edges} vote_yes edges (floor ${SENATE_COVERAGE_FLOOR})`
+        : `cohort RPC unavailable${cohortRes.error ? `: ${cohortRes.error.message}` : ""}`,
     },
     {
       name: "ai_budget_ok",
@@ -1078,6 +1225,84 @@ export async function getSelfTests(
         drift.drifted.length === 0
           ? `all ${drift.total_rules} derivation rules have non-zero derived edges`
           : `drift detected: ${drift.drifted.map((d) => `${d.type} has source rows but 0 derived edges`).join("; ")}`,
+    },
+    {
+      // FIX-1094. The gap this closes: on 2026-08-17 and again on 2026-08-19 the
+      // `entity-connection-stats-rebuild` pg_cron job died with "job startup
+      // timeout" before its body ran, and nothing on the dashboard said so. Its
+      // last three firings had all failed (08-10 statement timeout, then the two
+      // startup timeouts) and the only visible symptom was rollups quietly
+      // ageing — which cc-79 made public, but as a consequence, not a cause.
+      //
+      // Gated on the failure-streak arm only. missing_daily and canary silence
+      // ride in the detail but do not fail the test: both already escalate in
+      // the daily canary, and both are permanently true on any database without
+      // a live pg_cron (every local Docker), which would pin this red forever.
+      // See the migration header for the full argument.
+      name: "cron_jobs_healthy",
+      passed: cronFailing.length === 0,
+      detail: !cronEscalations
+        ? `cron escalation RPC unavailable${cronEscalationsRes.error ? `: ${cronEscalationsRes.error.message}` : ""}`
+        : !cronEscalations.available
+          ? "pg_cron not present on this database — check skipped"
+          : cronFailing.length > 0
+            ? `${cronFailing.length} job${cronFailing.length === 1 ? "" : "s"} stuck failing: ${cronFailing
+                .map(
+                  (j) =>
+                    `${jobLabel(j.jobname)} (${j.fail_streak} consecutive, last ${j.last_failed_at ?? "?"}${
+                      j.last_message ? `: ${j.last_message}` : ""
+                    })`,
+                )
+                .join("; ")}`
+            : `${cronEscalations.jobs_active} active jobs, none failing ${cronEscalations.min_streak}+ firings in a row over ${Math.round(cronEscalations.lookback_hours / 24)}d` +
+              (cronEscalations.missing_daily.length > 0
+                ? ` · ${cronEscalations.missing_daily.length} daily job(s) with no run in 26h: ${cronEscalations.missing_daily
+                    .map((j) => jobLabel(j.jobname))
+                    .join(", ")}`
+                : "") +
+              (cronEscalations.canary_liveness?.silent
+                ? ` · canary silent ${cronEscalations.canary_liveness.hours_since ?? "?"}h`
+                : ""),
+    },
+    {
+      // FIX-1094. The gap this closes: FIX-1077 found the /dashboard
+      // comment-period card rendering a literal "1" against a true 220 local /
+      // 314 prod, because `count: "planned"` multiplies two independent
+      // selectivity guesses over `status` and a JSONB-path date comparison and
+      // bottoms out at Plan Rows: 1. It shipped that way for weeks, and no
+      // self-test could see it because nothing compared the count to anything.
+      //
+      // The assertion is the invariant, not a magic number: the count and the
+      // card list run the same filter with the same cutoff, so the count can
+      // never legitimately be below the number of cards rendered. A count of 1
+      // against 3 rendered cards fails. A genuinely empty comment-period window
+      // (0 and 0) passes, which is what stops this becoming a seasonal false red
+      // every time the federal register goes quiet.
+      name: "open_comment_count_sane",
+      passed:
+        !openCommentCountRes.error &&
+        !openCommentCardsRes.error &&
+        openCommentCount >= openCommentCards,
+      detail: openCommentCountRes.error
+        ? `count failed: ${openCommentCountRes.error.message}`
+        : openCommentCardsRes.error
+          ? `card sample failed: ${openCommentCardsRes.error.message}`
+          : `${openCommentCount} proposals in an open comment window, ${openCommentCards} card${openCommentCards === 1 ? "" : "s"} rendered`,
+    },
+    {
+      // FIX-1094. /search already shows this stamp in its own header, so the
+      // dashboard reading the same value keeps the two surfaces from disagreeing
+      // about how fresh search is. entity_search_index is the substrate itself —
+      // deliberately not the browse_facet_counts rollup, which is stamped in the
+      // same refresh and would therefore look fresh even if the index write half
+      // of that job failed.
+      name: "search_index_fresh",
+      passed: searchIndexAgeMs != null && searchIndexAgeMs < SEARCH_INDEX_STALE_MS,
+      detail: searchIndexRes.error
+        ? `entity_search_index read failed: ${searchIndexRes.error.message}`
+        : searchIndexRefreshedAt
+          ? `entity_search_index refreshed ${searchIndexRefreshedAt} (${((searchIndexAgeMs ?? 0) / (60 * 60 * 1000)).toFixed(1)}h ago, stale after ${SEARCH_INDEX_STALE_MS / (60 * 60 * 1000)}h)`
+          : "entity_search_index has no refreshed_at stamp",
     },
   ];
 }

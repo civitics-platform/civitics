@@ -133,7 +133,18 @@ export type OfficialsBreakdown = {
 } | null;
 
 export type StatusData = {
-  meta: { query_time_ms: number; timestamp: string };
+  // FIX-1094: `timestamp` is when the RESPONSE was built, so it is always ~now
+  // and can never express staleness. `fetched_at` is when the status_snapshot
+  // row this payload came from was written — the only field that can. /core has
+  // returned it all along (it just was not declared here); dashboard SSR now
+  // sends it too. Optional because a live-recompute response has no snapshot
+  // behind it, and older cached responses predate the field.
+  meta: {
+    query_time_ms: number;
+    timestamp: string;
+    fetched_at?: string | null;
+    from_snapshot?: boolean;
+  };
   version: { commit_sha: string; env: string; latest_sync_at: string | null; latest_pipeline: string | null } | PartialError;
   database: DatabaseStats | PartialError;
   pipelines: PipelinesData | PartialError;

@@ -6206,6 +6206,10 @@ export type Database = {
         Args: { raw_name: string; zip5: string }
         Returns: string
       }
+      check_cron_job_escalations: {
+        Args: { p_lookback_hours?: number; p_min_streak?: number }
+        Returns: Json
+      }
       check_cron_job_health: {
         Args: { p_lookback_hours?: number }
         Returns: Json
@@ -6225,6 +6229,10 @@ export type Database = {
         Returns: Json
       }
       check_sector_affinity_tag_staleness: { Args: never; Returns: Json }
+      check_senate_reference_cohort: {
+        Args: { p_min_edges?: number }
+        Returns: Json
+      }
       chord_contract_flows: { Args: never; Returns: Json }
       chord_contract_flows_full: {
         Args: never

@@ -107,7 +107,8 @@ async function getOpenProposalCount(): Promise<number> {
 // Pre-fetch the same status payload that useDashboardData would otherwise
 // pull client-side via /api/claude/status/{core,quality}. Reads from the
 // 10-min status_snapshot (FIX-297), falling back to a live recompute when
-// the snapshot is missing or older than 30 min. Same source of truth the
+// the snapshot is missing or older than SNAPSHOT_STALE_MS (4 h since FIX-327;
+// this comment said 30 min until FIX-1094). Same source of truth the
 // two status routes use, so SSR and the in-hook background refresh produce
 // identical shapes.
 //
@@ -130,10 +131,16 @@ async function getInitialStatus(): Promise<StatusData | null> {
     let payload;
     let computeMs: number;
     let timestamp: string;
+    // FIX-1094: carry the snapshot's own write time separately from `timestamp`
+    // so DashboardClient's staleness cue has something real to measure. Null on
+    // the live-recompute branch — there is no snapshot behind that payload, and
+    // a recompute is by definition zero seconds old.
+    let fetchedAt: string | null = null;
     if (fresh && snapshot) {
       payload = snapshot.payload;
       computeMs = snapshot.query_time_ms;
       timestamp = snapshot.fetched_at;
+      fetchedAt = snapshot.fetched_at;
     } else {
       // FIX-327: cap live-compute fallback at 5 s. Prod observed
       // computeStatusPayload taking 30+ s — unbounded fallback turned every
@@ -160,6 +167,7 @@ async function getInitialStatus(): Promise<StatusData | null> {
         payload = snapshot.payload;
         computeMs = snapshot.query_time_ms;
         timestamp = snapshot.fetched_at;
+        fetchedAt = snapshot.fetched_at;
       } else {
         console.warn(
           "[dashboard.getInitialStatus] snapshot missing or stale, served live recompute",
@@ -175,6 +183,8 @@ async function getInitialStatus(): Promise<StatusData | null> {
       meta: {
         query_time_ms: computeMs,
         timestamp,
+        fetched_at: fetchedAt,
+        from_snapshot: fetchedAt != null,
       },
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       version: payload.version as any,
