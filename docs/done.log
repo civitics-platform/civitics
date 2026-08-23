@@ -1292,3 +1292,6 @@
 2026-08-22 | FIX-1051 | 04e093e6 | local+prod | feat(costs): presentation rebuild — true-cost headline, named alerts, bullet meters, uniform cards
 2026-08-22 | FIX-1091 | 04e093e6 | local+prod | feat(costs): presentation rebuild — true-cost headline, named alerts, bullet meters, uniform cards
 2026-08-22 | FIX-1092 | 04e093e6 | local+prod | feat(costs): presentation rebuild — true-cost headline, named alerts, bullet meters, uniform cards
+2026-08-22 | FIX-1093 | 8d3fabed | local+prod | feat(dashboard): neutral self-test fixtures, cron/count/index checks, honest counts
+2026-08-22 | FIX-1094 | 8d3fabed | local+prod | feat(dashboard): neutral self-test fixtures, cron/count/index checks, honest counts
+2026-08-22 | FIX-1095 | 8d3fabed | local+prod | feat(dashboard): neutral self-test fixtures, cron/count/index checks, honest counts
