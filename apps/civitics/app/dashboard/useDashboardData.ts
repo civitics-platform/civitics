@@ -227,6 +227,78 @@ export type PlatformUsageResponse = {
     history_days: number;
     projected_monthly_usd: number | null;
   };
+
+  // ── FIX-1089 / FIX-1090 (R4a data plane) ────────────────────────────────────
+  //
+  // Optional for the same reason everything above it is: this is a PERSISTED
+  // snapshot payload and the cron that writes it drifts hours, so the card
+  // renders the pre-R4a shape until the next tick. Consumers must degrade.
+  subscriptions_usd?: {
+    total: number;
+    items: Array<{
+      service: string;
+      name: string;
+      monthly_usd: number;
+      cadence: "monthly" | "annual";
+      source: "api" | "configured";
+      in_headline: boolean;
+      note: string | null;
+    }>;
+  };
+  billable_usage_usd?: {
+    total: number;
+    items: Array<{
+      service: string;
+      metric: string | null;
+      label: string;
+      usd: number;
+      basis: string;
+      source: "api" | "configured";
+      note: string | null;
+    }>;
+  };
+  /** Subscriptions + billable usage. The true monthly cost to run. */
+  total_monthly_usd?: number;
+  /** Costs we know exist and deliberately did not price rather than guess. */
+  cost_omissions?: string[];
+  cycles?: Record<
+    string,
+    | {
+        start: string;
+        end: string;
+        source: "api" | "configured" | "calendar";
+        label: string;
+        detail: string;
+        elapsed_pct: number;
+        days_remaining: number;
+      }
+    | { rolling: true; label: string; detail: string }
+  >;
+  vercel_account?: {
+    plan: string;
+    plan_iteration: string | null;
+    status: string | null;
+    subscription_usd: number | null;
+    included_credit_usd: number | null;
+  };
+  supabase_account?: {
+    plan: string;
+    compute_addon: { id: string; name: string; monthly_usd: number | null } | null;
+  };
+  github?: {
+    action_minutes: number;
+    minutes_breakdown: Record<string, number>;
+    storage_bytes: number;
+    billed_usd: number;
+    gross_usd: number;
+    minutes_price_per_unit: number | null;
+    fetched_at: string;
+  };
+  self_counted?: {
+    period: string;
+    mapbox: { total: number; by_metric: Record<string, number> };
+    resend: { total: number; by_metric: Record<string, number> };
+  };
   timestamp: string;
 };
 

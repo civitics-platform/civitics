@@ -82,6 +82,19 @@ export type VercelUsage = {
    *  each to a monthly run-rate and surfaces the top entries on the card and to
    *  the leading fluid-cost alert. Empty from the quantity-only fallback. */
   cost_breakdown: { service: string; effective_usd: number }[];
+  /** FIX-1089: EffectiveCost over the window, keyed by OUR metric name rather
+   *  than by ServiceName — the same `mapChargeQuantity` mapping that produces
+   *  the quantities, applied to the dollars. Two things fall out of it:
+   *
+   *    implied cost   the dollars this metric contributed, directly measured
+   *    unit rate      those dollars ÷ the quantity above them
+   *
+   *  Measured beats published here. Vercel prices by region (fastDataTransfer
+   *  is $0.15/GB in iad1 and $0.35/GB in icn1), so a list price is not the
+   *  price this account pays, and the ratio of two numbers from the same
+   *  response cannot drift when Vercel reprices. Empty from the quantity-only
+   *  fallback, and a key is absent (not zero) when no charge line mapped. */
+  cost_by_metric: Partial<Record<keyof QuantityMetrics, number>>;
   /** "charges" if the billing/charges endpoint provided the data (the normal
    *  path), "usage" if only the quantity-only /v1/usage fallback succeeded. */
   source: "usage" | "charges";
@@ -92,7 +105,12 @@ export type VercelUsageError = { error: string };
 
 type CostFields = "charges_total_usd" | "effective_cost_usd" | "plan_base_usd";
 // FIX-648: window + breakdown are response-level metadata, not metric quantities.
-type WindowFields = "window_days" | "window_start" | "window_end" | "cost_breakdown";
+type WindowFields =
+  | "window_days"
+  | "window_start"
+  | "window_end"
+  | "cost_breakdown"
+  | "cost_by_metric";
 type QuantityMetrics = Omit<VercelUsage, "source" | "fetched_at" | CostFields | WindowFields>;
 type AllMetrics = Omit<VercelUsage, "source" | "fetched_at" | WindowFields>;
 
@@ -209,12 +227,14 @@ type ChargesExtract = {
   window_start: string | null;
   window_end: string | null;
   cost_breakdown: { service: string; effective_usd: number }[];
+  cost_by_metric: Partial<Record<keyof QuantityMetrics, number>>;
 };
 
 function extractFromCharges(charges: ChargeLine[]): ChargesExtract {
   const out = emptyMetrics();
   const days = new Set<string>();
   const byService = new Map<string, number>();
+  const byMetric: Partial<Record<keyof QuantityMetrics, number>> = {};
   for (const c of charges) {
     const serviceName = typeof c["ServiceName"] === "string" ? (c["ServiceName"] as string) : "";
     const qty = num(c["ConsumedQuantity"]);
@@ -224,6 +244,11 @@ function extractFromCharges(charges: ChargeLine[]): ChargesExtract {
     const effective = num(c["EffectiveCost"]);
     out.charges_total_usd += billed;
     out.effective_cost_usd += effective;
+    // FIX-1089: dollars keyed by OUR metric, through the SAME mapping as the
+    // quantity above — so cost and quantity can never end up describing
+    // different sets of charge lines. Accumulated even when effective is 0 so a
+    // genuinely-free metric reports $0 rather than looking unmeasured.
+    if (mapped) byMetric[mapped.key] = (byMetric[mapped.key] ?? 0) + effective;
     // FIX-1046: keep the subscription line separable from consumption.
     if (isPlanBaseService(serviceName)) out.plan_base_usd += effective;
     // FIX-648: window + per-service breakdown. Lines are per (day, region)
@@ -246,6 +271,7 @@ function extractFromCharges(charges: ChargeLine[]): ChargesExtract {
     window_start: sortedDays[0] ?? null,
     window_end: sortedDays[sortedDays.length - 1] ?? null,
     cost_breakdown,
+    cost_by_metric: byMetric,
   };
 }
 
@@ -348,6 +374,7 @@ export async function getVercelUsage(): Promise<VercelUsage | VercelUsageError> 
         window_start: ex.window_start,
         window_end: ex.window_end,
         cost_breakdown: ex.cost_breakdown,
+        cost_by_metric: ex.cost_by_metric,
         source: "charges",
         fetched_at: new Date().toISOString(),
       };
@@ -390,6 +417,7 @@ export async function getVercelUsage(): Promise<VercelUsage | VercelUsageError> 
         window_start: null,
         window_end: null,
         cost_breakdown: [],
+        cost_by_metric: {},
         source: "usage",
         fetched_at: new Date().toISOString(),
       };

@@ -19,6 +19,32 @@ function tokenRgb(varName: string): string {
   return `rgb(${triplet.split(/\s+/).join(", ")})`;
 }
 
+/**
+ * FIX-1090 — the BEST-EFFORT half of the Mapbox self-count.
+ *
+ * This is the only live map mount on the site: `/districts/[id]` renders it
+ * through DeferredDistrictMap. The other component that instantiates a
+ * `mapboxgl.Map`, `app/components/DistrictMap.tsx`, already had a tracker and
+ * is ORPHANED — nothing imports it — which is why `service_usage` is empty on
+ * prod despite the table existing since Phase 1 and the increment RPC existing
+ * since FIX-695. A counter wired to dead code reads exactly like a service
+ * nobody uses.
+ *
+ * A beacon can be lost (tab closed mid-flight, blocked, offline), so the metric
+ * this feeds is labelled a LOWER BOUND rather than a measurement. Fired
+ * alongside the constructor rather than on `load`: Mapbox bills the style and
+ * tile requests the constructor issues, so a user who navigates away before
+ * `load` still cost a map load.
+ */
+function trackMapLoad() {
+  void fetch("/api/track-usage", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ service: "mapbox", metric: "map_load" }),
+    keepalive: true,
+  }).catch(() => {});
+}
+
 export function SingleDistrictMap({ geometry }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
@@ -26,6 +52,7 @@ export function SingleDistrictMap({ geometry }: Props) {
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
     initMapbox();
+    trackMapLoad();
 
     const map = new mapboxgl.Map({
       container: containerRef.current,

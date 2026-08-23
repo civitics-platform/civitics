@@ -292,6 +292,18 @@ export type UpstashUsage = {
   /** false = hard $0 ceiling (exhaustion throttles instead of billing). */
   auto_upgrade: boolean;
   plan: string | null;
+  /**
+   * FIX-1089: `creation_time` (epoch SECONDS) as an ISO string — the anchor for
+   * the billing cycle. The allotment is per BILLING PERIOD, and the period is
+   * the monthly anniversary of this date, NOT the calendar month: measured
+   * 1781337093 = 2026-06-13T07:51:33Z, so it rolls on the 13th.
+   *
+   * That gap is the whole point. On 2026-08-15 a crawler spent the entire
+   * 500,000 in 15.5 hours; "99.8% used" with no cycle end cannot answer the
+   * only question anyone had — when does the rate limiter come back — and the
+   * calendar-month answer (Sep 1) is wrong by twelve days.
+   */
+  created_at: string | null;
   fetched_at: string;
 };
 
@@ -376,6 +388,12 @@ export async function getUpstashUsage(): Promise<UpstashUsage | UpstashUsageErro
     daily_commands: num(stats.daily_net_commands),
     auto_upgrade: detail.auto_upgrade === true,
     plan: typeof detail.type === "string" ? detail.type : null,
+    created_at: (() => {
+      const t = num(detail.creation_time, 0);
+      // Epoch SECONDS, not ms — a raw pass-through would date the account to
+      // 1970 and put the cycle anchor on the wrong day of the month.
+      return t > 0 ? new Date(t * 1000).toISOString() : null;
+    })(),
     fetched_at: new Date().toISOString(),
   };
   usageCache = { at: Date.now(), value };

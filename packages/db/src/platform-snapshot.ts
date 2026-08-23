@@ -32,7 +32,34 @@ import {
   getSupabaseSqlMetrics,
   getSupabaseManagementMetrics,
   getSupabaseAuthMau,
+  getSupabaseOrgBilling,
 } from "./supabase-usage";
+import {
+  configuredRateFromLimit,
+  measuredRate,
+  type ImpliedCostBasis,
+} from "./platform-rates";
+import {
+  anniversaryCycle,
+  calendarMonthCycle,
+  vendorWindowCycle,
+  type ProviderCycle,
+} from "./billing-cycles";
+import {
+  computePlatformCostTotals,
+  type BillableUsageItem,
+  type SubscriptionItem,
+} from "./platform-costs";
+import {
+  getPlatformSubscriptions,
+  updateSubscriptionPrice,
+} from "./platform-subscriptions";
+import {
+  currentUsagePeriod,
+  getServiceSelfCounts,
+  mapboxBillableTotal,
+} from "./service-self-count";
+import { getVercelAccount } from "./vercel-account";
 import { getSupabasePrometheusMetrics } from "./supabase-prometheus";
 import { getCloudflareR2Usage } from "./cloudflare-usage";
 import {
@@ -206,6 +233,87 @@ export type PlatformUsagePayload = {
   vercel_billing?: VercelBilling;
   // FIX-1044 D2: day-over-day consumption deltas vs the trailing median.
   burn_rate?: BurnRateVerdict;
+
+  // ── FIX-1089 / FIX-1090 (R4a) ───────────────────────────────────────────────
+  //
+  // EVERY field below is optional, and that is load-bearing rather than
+  // defensive. The dashboard renders a PERSISTED snapshot payload and the cron
+  // that writes it is GHA-driven with measured 1–3.5 h drift, so between this
+  // deploy and the next tick the card is rendering the OLD payload — which has
+  // none of this. Consumers must degrade to the pre-R4a fields, which are all
+  // still populated. That is the FIX-1076 lesson.
+
+  /**
+   * The recurring charges, itemized. Vercel Pro's $20 was previously visible
+   * only because it rides inside vercel_billing.projected_total_bill_usd;
+   * Supabase Pro's $25 was in no payload field at all.
+   */
+  subscriptions_usd?: {
+    total: number;
+    items: SubscriptionItem[];
+  };
+  /**
+   * Metered money owed this cycle, itemized. Selected BY BASIS — a vendor with
+   * credit-aware billing contributes exactly one figure and its per-metric list
+   * values are never summed. See platform-costs.ts for why.
+   */
+  billable_usage_usd?: {
+    total: number;
+    items: BillableUsageItem[];
+  };
+  /** subscriptions + billable usage. The true monthly cost to run. */
+  total_monthly_usd?: number;
+  /** Costs we know exist and deliberately did not price rather than guess. */
+  cost_omissions?: string[];
+  /**
+   * Billing cycle per provider, with provenance. `source` distinguishes a
+   * window the vendor stated from one we assumed, so the UI can caveat the
+   * assumptions instead of rendering all four dates with equal authority.
+   */
+  cycles?: Record<string, ProviderCycle>;
+  /** FIX-1089: the CONTRACT half of Vercel — plan, period, subscription, credit. */
+  vercel_account?: {
+    plan: string;
+    plan_iteration: string | null;
+    status: string | null;
+    subscription_usd: number | null;
+    included_credit_usd: number | null;
+  };
+  /**
+   * FIX-1089: Supabase plan tier verified live off the Management API. The $25
+   * price is NOT sourceable (every billing endpoint 404s) and lives in
+   * platform_subscriptions as `configured`; this is what stops that configured
+   * price from being asserted against a plan we may no longer be on.
+   */
+  supabase_account?: {
+    plan: string;
+    compute_addon: { id: string; name: string; monthly_usd: number | null } | null;
+  };
+  /**
+   * FIX-1090: the dollars GitHub's billing API reports, which no payload field
+   * carried before. On a public repo `billed_usd` is $0 and `gross_usd` is the
+   * interesting number — 5,136 Actions minutes at $0.006 is $30.82 of runner
+   * time the free tier is absorbing.
+   */
+  github?: {
+    action_minutes: number;
+    minutes_breakdown: Record<string, number>;
+    storage_bytes: number;
+    billed_usd: number;
+    gross_usd: number;
+    minutes_price_per_unit: number | null;
+    fetched_at: string;
+  };
+  /**
+   * FIX-1090: what the self-counters actually hold this period, so a "0" on the
+   * Mapbox row is distinguishable from a counter that is not wired up. Both
+   * rows are LOWER BOUNDS by construction — see service-self-count.ts.
+   */
+  self_counted?: {
+    period: string;
+    mapbox: { total: number; by_metric: Record<string, number> };
+    resend: { total: number; by_metric: Record<string, number> };
+  };
   timestamp: string;
 };
 
@@ -617,6 +725,15 @@ export async function computePlatformUsagePayload(
   // shared-storage. Missing token is benign (matches FIX-284 convention — the
   // partial flag stays false so the snapshot still completes cleanly); rows
   // stay on source='manual' until GITHUB_BILLING_TOKEN is added.
+  //
+  // FIX-1090: the reading is now KEPT rather than written-through and dropped.
+  // The dollars GitHub reports never reached the payload, so nothing could say
+  // that this month's 5,136 Actions minutes are $30.82 of runner time the
+  // public-repo free tier is absorbing down to $0.00 billed.
+  let githubUsage: PlatformUsagePayload["github"] = undefined;
+  let githubBilledUsd: number | null = null;
+  let githubMinutesGrossUsd: number | null = null;
+  let githubMinutesBilledUsd: number | null = null;
   try {
     const gh = await getGitHubUsage();
     if (!("error" in gh)) {
@@ -624,6 +741,18 @@ export async function computePlatformUsagePayload(
         updateUsage(db, "github", "action_minutes", gh.action_minutes, "api"),
         updateUsage(db, "github", "storage_bytes", gh.storage_bytes, "api"),
       ]);
+      githubBilledUsd = gh.total_billed_usd;
+      githubMinutesGrossUsd = gh.minutes_gross_usd;
+      githubMinutesBilledUsd = gh.minutes_billed_usd;
+      githubUsage = {
+        action_minutes: gh.action_minutes,
+        minutes_breakdown: gh.minutes_breakdown,
+        storage_bytes: gh.storage_bytes,
+        billed_usd: gh.total_billed_usd,
+        gross_usd: gh.total_gross_usd,
+        minutes_price_per_unit: gh.minutes_price_per_unit,
+        fetched_at: gh.fetched_at,
+      };
     } else {
       if (!/GITHUB_BILLING_TOKEN/i.test(gh.error)) {
         errors.push(`github: ${gh.error}`);
@@ -765,6 +894,128 @@ export async function computePlatformUsagePayload(
     errors.push(`vercel: ${err instanceof Error ? err.message : String(err)}`);
   }
 
+  // ── FIX-1089: the CONTRACT half of Vercel ───────────────────────────────────
+  //
+  // /v2/teams/{id} answers what /v1/billing/charges cannot: which plan, which
+  // billing PERIOD, what the subscription costs and how much credit it buys.
+  //
+  // Note the premise this contradicts. vercel-billing.ts records that "nothing
+  // in the charges API discriminates between" the calendar month and the
+  // Aug 14 – Sep 14 cycle the usage page shows. Still true of the charges API —
+  // but this endpoint states the period outright, and it matches the usage
+  // page. The projection basis is deliberately NOT re-based here: it feeds
+  // billable_overage_usd and overage_present, both alerting rows with tuned
+  // bands, and moving the divisor would silently move every threshold. The
+  // cycle is surfaced so the card stops implying a calendar month; re-basing
+  // the projection is its own change with its own verification.
+  let vercelAccount: PlatformUsagePayload["vercel_account"] = undefined;
+  let vercelPeriodStartMs: number | null = null;
+  let vercelPeriodEndMs: number | null = null;
+  try {
+    const acct = await getVercelAccount();
+    if (!("error" in acct)) {
+      vercelPeriodStartMs = acct.period_start_ms;
+      vercelPeriodEndMs = acct.period_end_ms;
+      vercelAccount = {
+        plan: acct.plan,
+        plan_iteration: acct.plan_iteration,
+        status: acct.status,
+        subscription_usd: acct.subscription_usd,
+        included_credit_usd: acct.included_credit_usd,
+      };
+      // Self-correcting subscription price: the seeded $20 in the migration is
+      // only ever the fallback for a failed call.
+      if (acct.subscription_usd !== null) {
+        await updateSubscriptionPrice(db, "vercel", "Pro", acct.subscription_usd);
+      }
+      // Cross-check only — the credit that DRIVES billing still comes from
+      // platform_limits (FIX-1046's retune-by-UPDATE design). All three sources
+      // read $20 today; a divergence means the vendor moved and the alert bands
+      // are being computed against a stale credit.
+      if (
+        acct.included_credit_usd !== null &&
+        Math.abs(acct.included_credit_usd - VERCEL_PRO_INCLUDED_USD) > 0.005
+      ) {
+        errors.push(
+          `vercel_credit_drift: vendor reports $${acct.included_credit_usd} included ` +
+            `credit, platform_limits/constant use $${VERCEL_PRO_INCLUDED_USD}`,
+        );
+      }
+    } else if (!/VERCEL_(API_TOKEN|TEAM_ID)/i.test(acct.error)) {
+      errors.push(`vercel_account: ${acct.error}`);
+    }
+  } catch (err) {
+    errors.push(`vercel_account: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  // ── FIX-1089: Supabase plan tier, verified rather than assumed ──────────────
+  //
+  // The $25/month Pro price is NOT sourceable — every Management API billing
+  // endpoint 404s (org-scope subscription/usage/addons, project-scope
+  // subscription; probed 2026-08-22) — so it lives in platform_subscriptions as
+  // `configured`. What IS readable is the plan tier, and reading it is what
+  // stops a configured price being asserted against a plan we are no longer on.
+  let supabaseAccount: PlatformUsagePayload["supabase_account"] = undefined;
+  try {
+    const org = await getSupabaseOrgBilling();
+    if (!("error" in org)) {
+      supabaseAccount = { plan: org.plan, compute_addon: org.compute_addon };
+      if (org.compute_addon?.monthly_usd != null) {
+        // Micro (~$10/mo) is exactly covered by the $10/mo compute credit Pro
+        // includes, so the NET line stays $0 — but the row is live, so a resize
+        // to Small shows up as money the moment it happens.
+        const netCompute = Math.max(0, org.compute_addon.monthly_usd - 10);
+        await updateSubscriptionPrice(
+          db,
+          "supabase",
+          "Compute (Micro)",
+          Math.round(netCompute * 100) / 100,
+        );
+      }
+    } else if (!/MANAGEMENT_API_KEY/i.test(org.error)) {
+      errors.push(`supabase_org: ${org.error}`);
+    }
+  } catch (err) {
+    errors.push(`supabase_org: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  // ── FIX-1090: self-counted providers → platform_usage ───────────────────────
+  //
+  // Mapbox and Resend expose no usage number we can read (Mapbox: pk. token,
+  // analytics/v1 403s; Resend: /emails lists only a retained tail), so both are
+  // counted at their own call sites into `service_usage`.
+  //
+  // Written as source='estimated' on purpose. That is honest — these are LOWER
+  // BOUNDS, not measurements — and it is also the safe choice: 'estimated' rows
+  // are excluded from the escalation email and from the critical/warning
+  // tallies (FIX-α), so wiring up two new counters cannot start paging anyone.
+  const selfCountPeriod = currentUsagePeriod();
+  let selfCounted: PlatformUsagePayload["self_counted"] = undefined;
+  try {
+    const [mapbox, resend] = await Promise.all([
+      getServiceSelfCounts(db, "mapbox"),
+      getServiceSelfCounts(db, "resend"),
+    ]);
+    const mapboxBillable = mapboxBillableTotal(mapbox);
+    await Promise.all([
+      updateUsage(db, "mapbox", "map_loads", mapboxBillable, "estimated"),
+      updateUsage(db, "resend", "emails_sent", resend.byMetric["email_sent"] ?? 0, "estimated"),
+    ]);
+    selfCounted = {
+      period: selfCountPeriod,
+      mapbox: { total: mapboxBillable, by_metric: mapbox.byMetric },
+      resend: { total: resend.byMetric["email_sent"] ?? 0, by_metric: resend.byMetric },
+    };
+  } catch (err) {
+    errors.push(`self_counted: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  // ── FIX-1089: the recurring charges that are not metrics ────────────────────
+  const subscriptionsRead = await getPlatformSubscriptions(db);
+  if (subscriptionsRead.error) {
+    errors.push(`platform_subscriptions: ${subscriptionsRead.error}`);
+  }
+
   // Pull free-tier limits + apply per-service plan overrides
   const allMetrics = await getPlatformUsage(db, defaultPlan);
   const upgradedServices = Object.entries(planOverrides).filter(
@@ -842,6 +1093,124 @@ export async function computePlatformUsagePayload(
             }
           : {}),
       };
+    }
+  }
+
+  // ── FIX-1089: rate + implied cost, per metric ───────────────────────────────
+  //
+  // Every row on this card has shown a quantity, a limit and a bar, and no
+  // price — so no row could answer what it was costing. Two sources of truth
+  // and no third (see platform-rates.ts): Vercel's own charge lines, and the
+  // `overage_unit_cost` already sitting in platform_limits. A metric with
+  // neither gets no rate; nothing is inferred from a published price list.
+  //
+  // `implied_cost_basis` is the field that keeps this safe. "rate × usage" and
+  // "money owed" are different numbers here — a Supabase overage is owed, a
+  // Vercel list value is absorbed by the $20 credit, a GitHub gross is
+  // discounted to zero — and summing them as one kind of dollar is exactly the
+  // double-count FIX-1050 had to remove from total_overage_cost. The roll-up
+  // below selects by basis; it never sums implied_cost_usd blindly.
+  {
+    const now = new Date();
+    const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    const vercelWindowDays = vercelUsage?.window_days ?? 0;
+    // Same projection the quantities got, so a row's cost and its quantity are
+    // always on the same basis.
+    const projectVercel = (raw: number): number =>
+      vercelWindowDays > 0 ? (raw / vercelWindowDays) * daysInMonth : raw;
+    const vercelRawQty: Record<string, number> = vercelUsage
+      ? {
+          fluid_cpu_seconds: vercelUsage.fluid_cpu_seconds,
+          function_invocations: vercelUsage.function_invocations,
+          origin_transfer_bytes: vercelUsage.origin_transfer_bytes,
+          edge_requests: vercelUsage.edge_requests,
+          edge_cpu_ms: vercelUsage.edge_cpu_ms,
+          build_minutes: vercelUsage.build_minutes,
+          web_analytics_events: vercelUsage.web_analytics_events,
+          isr_reads: vercelUsage.isr_reads,
+          fluid_memory_gb_hrs: vercelUsage.fluid_memory_gb_hrs,
+        }
+      : {};
+
+    for (const m of finalMetrics) {
+      // Vercel: measured off the account's own charge lines. Never a published
+      // rate — Vercel prices by region ($0.15/GB in iad1, $0.35/GB in icn1), so
+      // list price is not the price this account pays.
+      if (m.service === "vercel" && vercelUsage) {
+        const windowUsd = vercelUsage.cost_by_metric[
+          m.metric as keyof typeof vercelUsage.cost_by_metric
+        ];
+        if (typeof windowUsd === "number") {
+          const rate = measuredRate(windowUsd, vercelRawQty[m.metric] ?? 0, m.unit);
+          if (rate) m.rate = rate;
+          const projected = projectVercel(windowUsd);
+          m.list_cost_usd = Math.round(projected * 10000) / 10000;
+          // NOT money owed: this consumption is drawn against the $20 credit the
+          // Pro subscription buys. What Vercel is actually owed is one number,
+          // vercel_billing.projected_billable_overage_usd, and it is added to
+          // the roll-up exactly once.
+          m.implied_cost_usd = 0;
+          m.implied_cost_basis = "credit_absorbed";
+        }
+        continue;
+      }
+
+      // Anthropic: the metric IS dollars. api_usage_logs priced per row by
+      // ai-pricing.ts, so there is nothing to multiply — it is the actual spend.
+      if (m.service === "anthropic" && m.metric === "monthly_spend_usd") {
+        if (m.value !== null) {
+          m.implied_cost_usd = m.value;
+          m.implied_cost_basis = "actual";
+        }
+        continue;
+      }
+
+      // GitHub: the billing API states both the rate and the dollars, so the
+      // Actions row can show $30.82 of runner time at list against $0.00 billed
+      // — which is the whole story of a public repo, and neither half alone is.
+      if (m.service === "github" && m.metric === "action_minutes") {
+        if (githubUsage?.minutes_price_per_unit) {
+          m.rate = {
+            usd_per_unit: githubUsage.minutes_price_per_unit,
+            label: `$${githubUsage.minutes_price_per_unit} / minute`,
+            source: "api",
+            free_units: null,
+          };
+        }
+        if (githubMinutesGrossUsd !== null) m.list_cost_usd = githubMinutesGrossUsd;
+        if (githubMinutesBilledUsd !== null) {
+          m.implied_cost_usd = githubMinutesBilledUsd;
+          m.implied_cost_basis = githubMinutesBilledUsd > 0 ? "actual" : "free_tier";
+        }
+        continue;
+      }
+
+      // Everything else: normalize the rate platform_limits already carries.
+      // This introduces no new number — calculateOverageCost has been using the
+      // same one all along; it was simply never printed next to the row.
+      const rate = configuredRateFromLimit(m);
+      if (rate) {
+        m.rate = rate;
+        m.implied_cost_usd = m.overage_cost;
+        m.implied_cost_basis = "overage";
+      } else if (
+        m.value !== null &&
+        m.included_limit > 0 &&
+        m.billing_cycle !== "none" &&
+        m.billing_cycle !== "realtime"
+      ) {
+        // A hard ALLOWANCE with no overage price: the vendor blocks rather than
+        // bills (Resend's 3,000, Upstash's 500,000 with auto_upgrade off). $0 is
+        // the true cost and there is no rate to invent.
+        //
+        // The billing_cycle guard matters. 'none' and 'realtime' rows are GAUGES,
+        // not allowances — cloudflare.edge_mitigated_pct, supabase.cpu_pct,
+        // supabase.db_connections. Calling 70.8% of mitigated traffic "free tier,
+        // $0" is a category error: there is no tier and nothing was consumed.
+        // Caught in the local smoke, where those three showed up priced.
+        m.implied_cost_usd = 0;
+        m.implied_cost_basis = "free_tier" satisfies ImpliedCostBasis;
+      }
     }
   }
 
@@ -944,6 +1313,118 @@ export async function computePlatformUsagePayload(
     errors.push(`burn_rate: ${err instanceof Error ? err.message : String(err)}`);
   }
 
+  // ── FIX-1089: billing cycles, with provenance ───────────────────────────────
+  //
+  // Everything here has been quietly anchored to the calendar month, and two
+  // providers are not on it. Both were found by asking the vendor: Vercel says
+  // Aug 14 – Sep 14, and Upstash's allotment rolls on the 13th (the monthly
+  // anniversary of its creation_time). `source` is what lets the UI caveat the
+  // assumed windows instead of rendering all of them with equal authority.
+  const cycleNow = new Date();
+  const cycles: Record<string, ProviderCycle> = {
+    supabase: calendarMonthCycle(
+      cycleNow,
+      "Assumed: calendar month. The Management API exposes the org plan but " +
+        "every billing endpoint 404s (org-scope subscription/usage/addons, " +
+        "project-scope subscription), so there is no cycle to read. Probed " +
+        "2026-08-22.",
+    ),
+    anthropic: calendarMonthCycle(
+      cycleNow,
+      "Calendar month, and exact: spend is summed from api_usage_logs since " +
+        "date_trunc('month', NOW()), so the window is the cycle by construction.",
+    ),
+    cloudflare: calendarMonthCycle(
+      cycleNow,
+      "Calendar month for the R2 free-tier allowances. The hourly edge counters " +
+        "in cloudflare_edge are instantaneous gauges with no cycle at all — see " +
+        "the cloudflare_edge entry.",
+    ),
+    cloudflare_edge: {
+      rolling: true,
+      label: "hourly",
+      detail:
+        "No billing cycle. These are complete-clock-hour gauges driving the " +
+        "mitigation loop, not a metered allowance — pacing or projecting them " +
+        "against a month would be meaningless.",
+    },
+    github: calendarMonthCycle(
+      cycleNow,
+      "Calendar month: personal-account GitHub billing runs on it, and the " +
+        "enhanced-billing endpoint is queried by year+month.",
+    ),
+    resend: calendarMonthCycle(
+      cycleNow,
+      "Calendar month: self-counted into service_usage keyed 'YYYY-MM'.",
+    ),
+    mapbox: calendarMonthCycle(
+      cycleNow,
+      "Calendar month: self-counted into service_usage keyed 'YYYY-MM'.",
+    ),
+  };
+  {
+    const vercelCycle = vendorWindowCycle(
+      vercelPeriodStartMs,
+      vercelPeriodEndMs,
+      cycleNow,
+      "Stated by the vendor: GET /v2/teams/{id} billing.period. Note the " +
+        "quantities on the Vercel rows are still PROJECTED from a trailing " +
+        "~7-day charges window onto a calendar month — the cycle shown here is " +
+        "the real billing window, and re-basing the projection onto it is " +
+        "deliberately a separate change (it would move the tuned alert bands).",
+    );
+    cycles["vercel"] =
+      vercelCycle ??
+      calendarMonthCycle(
+        cycleNow,
+        "Fallback: the team billing endpoint did not return a period this tick. " +
+          "The real Vercel cycle is NOT the calendar month.",
+      );
+    const upstashCreatedAt = upstashPayload?.usage?.created_at ?? null;
+    if (upstashCreatedAt) {
+      cycles["upstash"] = anniversaryCycle(
+        new Date(upstashCreatedAt),
+        cycleNow,
+        `Derived from the management API's creation_time (${upstashCreatedAt}): ` +
+          "the 500,000-command allotment is per BILLING PERIOD and rolls on that " +
+          "day of the month, not on the 1st. This is the answer to 'when does " +
+          "the rate limiter come back' — the calendar-month answer is wrong.",
+        "api",
+      );
+    }
+  }
+
+  // ── FIX-1089: the true monthly cost to run ──────────────────────────────────
+  //
+  // subscriptions + billable usage. The headline this replaces was
+  // "anthropic actual + Σ non-vercel overages + vercel projected bill", which
+  // read $22.71/month on prod 2026-08-22 while omitting Supabase Pro's $25
+  // entirely — because the payload had no way to express a charge that is not a
+  // metric. The old fields are left populated below; nothing is removed.
+  const costTotals = computePlatformCostTotals({
+    subscriptions: subscriptionsRead.items,
+    metrics: finalMetrics.map((m) => ({
+      service: m.service,
+      metric: m.metric,
+      label: m.display_label ?? m.metric,
+      ...(m.implied_cost_usd !== undefined ? { implied_cost_usd: m.implied_cost_usd } : {}),
+      ...(m.implied_cost_basis !== undefined
+        ? { implied_cost_basis: m.implied_cost_basis }
+        : {}),
+      ...(m.rate ? { rate_source: m.rate.source } : {}),
+    })),
+    vercelBillableUsd: vercelBilling
+      ? vercelBilling.projected_billable_overage_usd
+      : null,
+    githubBilledUsd: githubBilledUsd,
+    ...(githubUsage ? { githubGrossUsd: githubUsage.gross_usd } : {}),
+  });
+  if (subscriptionsRead.error) {
+    costTotals.omissions.push(
+      `Every subscription — platform_subscriptions could not be read (${subscriptionsRead.error}).`,
+    );
+  }
+
   const payload: PlatformUsagePayload = {
     plan: defaultPlan,
     plan_overrides: planOverrides,
@@ -969,6 +1450,18 @@ export async function computePlatformUsagePayload(
     ...(cfMitigation ? { cf_mitigation: cfMitigation } : {}),
     ...(vercelBilling ? { vercel_billing: vercelBilling } : {}),
     ...(burnRate ? { burn_rate: burnRate } : {}),
+    // FIX-1089 / FIX-1090 — all additive; every pre-R4a field above is
+    // untouched so the dashboard keeps rendering correctly off an OLD snapshot
+    // payload until the next GHA cron tick lands.
+    subscriptions_usd: costTotals.subscriptions_usd,
+    billable_usage_usd: costTotals.billable_usage_usd,
+    total_monthly_usd: costTotals.total_monthly_usd,
+    cost_omissions: costTotals.omissions,
+    cycles,
+    ...(vercelAccount ? { vercel_account: vercelAccount } : {}),
+    ...(supabaseAccount ? { supabase_account: supabaseAccount } : {}),
+    ...(githubUsage ? { github: githubUsage } : {}),
+    ...(selfCounted ? { self_counted: selfCounted } : {}),
     timestamp: new Date().toISOString(),
   };
 

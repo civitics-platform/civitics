@@ -511,8 +511,15 @@ function ServiceCard({
   // headline label and bar. Dropped from DISPLAY only — it stays in the API
   // payload and in `serviceStatus` below, so the alert evaluation and the
   // status dot are untouched.
+  //
+  // FIX-1089 made that property generic: `is_displayed` on platform_limits, so
+  // the next companion row needs no code change. The name check stays as the
+  // fallback — this component renders a PERSISTED snapshot payload, and one
+  // written before the column existed carries no `is_displayed` at all.
   const displayMetrics = metrics.filter(
-    (m) => !(m.service === "vercel" && m.metric === "overage_present"),
+    (m) =>
+      m.is_displayed !== false &&
+      !(m.service === "vercel" && m.metric === "overage_present"),
   );
 
   const topMetric =

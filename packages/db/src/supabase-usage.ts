@@ -172,6 +172,119 @@ function sumApiRequests(json: UsageApiCountsResponse): number {
   return total;
 }
 
+// ── Org plan + compute add-on (FIX-1089) ──────────────────────────────────────
+//
+// The subscription half of the Supabase bill, as far as the Management API will
+// go — which is not far, and the shortfall is the finding.
+//
+// WHAT EXISTS:
+//   GET /v1/organizations                     → the org slug
+//   GET /v1/organizations/{slug}              → { plan: "pro" }
+//   GET /v1/projects/{ref}/billing/addons     → selected_addons, each with a
+//                                               price ("$0.01344/hour (~$10/month)")
+//
+// WHAT DOES NOT (all probed 2026-08-22, all 404):
+//   /v1/organizations/{slug}/billing/subscription
+//   /v1/organizations/{slug}/billing/usage
+//   /v1/organizations/{slug}/billing/addons
+//   /v1/projects/{ref}/billing/subscription
+//   /v1/projects/{ref}/billing/usage
+//
+// So the Pro plan's $25/month is NOT sourceable and lives in
+// platform_subscriptions as `source='configured'`. What this call buys is the
+// next best thing: the plan TIER is verified live, so if the org ever drops off
+// Pro the configured $25 stops being asserted against a plan we are no longer
+// on. Same reasoning as reading Upstash's `db_request_limit` instead of
+// hardcoding 500000 — verify the denominator you cannot compute.
+//
+// Compute add-ons ARE priced by the API and are surfaced with their real
+// monthly figure. Micro at ~$10/month is exactly covered by the $10/month
+// compute credit Pro includes, hence a $0 net line rather than an omitted one:
+// a resize to Small should show up as money the moment it happens.
+
+export type SupabaseOrgBilling = {
+  org_slug: string;
+  plan: string;
+  compute_addon: { id: string; name: string; monthly_usd: number | null } | null;
+  fetched_at: string;
+};
+
+export type SupabaseOrgBillingError = { error: string };
+
+const ORG_CACHE_TTL_MS = 30 * 60 * 1000; // plan tier changes ~never
+let cachedOrg: SupabaseOrgBilling | null = null;
+let cachedOrgExpiresAt = 0;
+
+export function clearSupabaseOrgBillingCache(): void {
+  cachedOrg = null;
+  cachedOrgExpiresAt = 0;
+}
+
+/** "$0.01344/hour (~$10/month)" → 10. Null when the shape is unrecognised. */
+function monthlyFromAddonPrice(price: unknown): number | null {
+  if (!price || typeof price !== "object") return null;
+  const p = price as { description?: unknown; amount?: unknown; interval?: unknown };
+  // Prefer the arithmetic over the prose: amount × 730 hours is exact, while
+  // the "~$10/month" in the description is the vendor's own rounding.
+  if (typeof p.amount === "number" && p.interval === "hourly") {
+    return Math.round(p.amount * 730 * 100) / 100;
+  }
+  if (typeof p.description === "string") {
+    const m = /\$([\d.]+)\s*\/\s*month/i.exec(p.description);
+    if (m) return Number(m[1]);
+  }
+  return null;
+}
+
+export async function getSupabaseOrgBilling(): Promise<
+  SupabaseOrgBilling | SupabaseOrgBillingError
+> {
+  if (cachedOrg && Date.now() < cachedOrgExpiresAt) return cachedOrg;
+
+  const token = process.env["SUPABASE_MANAGEMENT_API_KEY"];
+  if (!token) return { error: "SUPABASE_MANAGEMENT_API_KEY not set" };
+
+  try {
+    const project = await mgmtGet<{ organization_slug?: string }>(
+      `/projects/${PROJECT_REF}`,
+      token,
+    );
+    const slug = project.organization_slug;
+    if (!slug) return { error: "project response carried no organization_slug" };
+
+    const [org, addons] = await Promise.all([
+      mgmtGet<{ plan?: string }>(`/organizations/${slug}`, token),
+      mgmtGet<{
+        selected_addons?: Array<{
+          type?: string;
+          variant?: { id?: string; name?: string; price?: unknown };
+        }>;
+      }>(`/projects/${PROJECT_REF}/billing/addons`, token),
+    ]);
+
+    const compute = (addons.selected_addons ?? []).find((a) => a.type === "compute_instance");
+
+    const result: SupabaseOrgBilling = {
+      org_slug: slug,
+      plan: org.plan ?? "unknown",
+      compute_addon: compute?.variant
+        ? {
+            id: compute.variant.id ?? "unknown",
+            name: compute.variant.name ?? "unknown",
+            monthly_usd: monthlyFromAddonPrice(compute.variant.price),
+          }
+        : null,
+      fetched_at: new Date().toISOString(),
+    };
+
+    cachedOrg = result;
+    cachedOrgExpiresAt = Date.now() + ORG_CACHE_TTL_MS;
+    return result;
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
 export async function getSupabaseManagementMetrics(): Promise<
   SupabaseManagementMetrics | SupabaseManagementMetricsError
 > {

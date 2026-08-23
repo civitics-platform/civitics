@@ -109,6 +109,8 @@ export {
   verifyUsage,
   upgradeServicePlan,
   calculateOverageCost,
+  computeMetricStatus,
+  computeMetricPercents,
   getSourceDisplay,
   effectiveLimit,
 } from "./platform-usage";
@@ -120,6 +122,65 @@ export type {
   PlatformMetric,
   SourceDisplay,
 } from "./platform-usage";
+
+// Per-metric unit rates + implied cost basis (FIX-1089)
+export {
+  configuredRateFromLimit,
+  measuredRate,
+  invoiceItemUsdPerUnit,
+  invoiceItemFlatUsd,
+} from "./platform-rates";
+export type {
+  MetricRate,
+  RateSource,
+  ImpliedCostBasis,
+  VercelInvoiceItem,
+} from "./platform-rates";
+
+// Per-provider billing cycles (FIX-1089)
+export {
+  calendarMonthCycle,
+  vendorWindowCycle,
+  anniversaryCycle,
+  isRolling,
+} from "./billing-cycles";
+export type {
+  BillingCycle,
+  RollingWindow,
+  ProviderCycle,
+  CycleSource,
+} from "./billing-cycles";
+
+// True monthly cost roll-up (FIX-1089)
+export { computePlatformCostTotals } from "./platform-costs";
+export type {
+  PlatformCostTotals,
+  PlatformCostInput,
+  SubscriptionItem,
+  BillableUsageItem,
+  CostContributingMetric,
+} from "./platform-costs";
+
+// Recurring subscriptions — the charges that are not metrics (FIX-1089)
+export {
+  getPlatformSubscriptions,
+  updateSubscriptionPrice,
+} from "./platform-subscriptions";
+export type { SubscriptionsRead } from "./platform-subscriptions";
+
+// Self-counted vendor usage — Mapbox + Resend (FIX-1090)
+export {
+  recordServiceUsage,
+  getServiceSelfCounts,
+  currentUsagePeriod,
+  mapboxBillableTotal,
+  MAPBOX_BILLABLE_METRICS,
+} from "./service-self-count";
+export type { SelfCounts } from "./service-self-count";
+
+// Vercel account-level billing facts — plan, period, subscription, credit (FIX-1089)
+export { getVercelAccount, clearVercelAccountCache } from "./vercel-account";
+export type { VercelAccount, VercelAccountError } from "./vercel-account";
 
 // Reference data
 export { AGENCY_NAMES, agencyFullName } from "./agency-names";
@@ -177,7 +238,9 @@ export {
   getSupabaseSqlMetrics,
   getSupabaseManagementMetrics,
   getSupabaseAuthMau,
+  getSupabaseOrgBilling,
   clearSupabaseManagementCache,
+  clearSupabaseOrgBillingCache,
 } from "./supabase-usage";
 export type {
   SupabaseSqlMetrics,
@@ -186,6 +249,8 @@ export type {
   SupabaseManagementMetricsError,
   SupabaseAuthMau,
   SupabaseAuthMauError,
+  SupabaseOrgBilling,
+  SupabaseOrgBillingError,
 } from "./supabase-usage";
 
 // Supabase Prometheus metrics (egress + db_connections + disk_used_bytes

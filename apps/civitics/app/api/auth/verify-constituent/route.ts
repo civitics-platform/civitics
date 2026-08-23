@@ -4,6 +4,7 @@ import {
   createServerClient,
   createAdminClient,
   isKillSwitchEnabled,
+  recordServiceUsage,
 } from "@civitics/db";
 
 export const dynamic = "force-dynamic";
@@ -105,6 +106,21 @@ export async function POST(request: NextRequest) {
     mapboxFailed = true;
   } finally {
     clearTimeout(timer);
+  }
+
+  // FIX-1090 — the EXACT half of the Mapbox self-count.
+  //
+  // Mapbox bills a Temporary Geocoding request whether or not it matched, and
+  // whether or not we liked the answer, so the increment sits here — after the
+  // request left, before any outcome branching. It is deliberately NOT inside
+  // the success path: a 4xx we caused is still a billable request, and counting
+  // only the happy path is how a counter quietly understates.
+  //
+  // The failure branch below still returns normally: recordServiceUsage never
+  // throws, and a constituent's address check must not fail because a usage
+  // counter could not be written.
+  if (!controller.signal.aborted) {
+    await recordServiceUsage(admin, "mapbox", "geocode_request");
   }
 
   if (mapboxFailed) {

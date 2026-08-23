@@ -6,7 +6,24 @@
  *
  * Required env: RESEND_API_KEY, RESEND_FROM (e.g. "Civitics <notify@civitics.com>")
  * If RESEND_API_KEY is unset, the call is a no-op returning { sent: false, reason }.
+ *
+ * ── THE CHOKE POINT (FIX-1090) ───────────────────────────────────────────────
+ *
+ * Every send on the platform funnels through this one function — the kill-switch
+ * flip mail, the six alert mails in the platform-snapshot cron, the follow
+ * notifications, the admin test mail. That is what makes counting here complete
+ * rather than approximate, and it is why Resend is self-counted at all:
+ * `GET /emails` returns only the retained tail (84 rows, `has_more:false` at
+ * limit=100, oldest 2026-07-27), so the vendor cannot tell us a monthly total.
+ *
+ * The counter is BEST-EFFORT AND MUST STAY THAT WAY. This function is on the
+ * alerting path; a monitoring system that fails to page because its own usage
+ * counter could not be written is worse than one with an undercounted graph.
+ * So: the increment runs only AFTER the send has already succeeded, its result
+ * is not consulted, and `recordServiceUsage` swallows its own errors.
  */
+
+import { createAdminClient, recordServiceUsage } from "@civitics/db";
 
 export type SendEmailInput = {
   to: string;
@@ -49,12 +66,31 @@ export async function sendEmail(input: SendEmailInput): Promise<SendEmailResult>
     }
 
     const data = (await res.json()) as { id?: string };
+    // FIX-1090: the send is already done and its result is already decided.
+    // Nothing below can change what this function returns.
+    await countSend();
     return { sent: true, id: data.id ?? "" };
   } catch (err) {
     return {
       sent: false,
       reason: err instanceof Error ? err.message : "unknown email error",
     };
+  }
+}
+
+/**
+ * Increment this month's Resend send counter. Never throws, never rejects.
+ *
+ * The admin-client construction is inside the try because it reads
+ * SUPABASE_SECRET_KEY and throws when it is absent — which is exactly the
+ * situation (a misconfigured environment) where we least want the alert path to
+ * acquire a new way to fail.
+ */
+async function countSend(): Promise<void> {
+  try {
+    await recordServiceUsage(createAdminClient(), "resend", "email_sent");
+  } catch {
+    // Best-effort by design. See the module header.
   }
 }
 

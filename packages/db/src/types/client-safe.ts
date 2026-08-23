@@ -22,6 +22,7 @@ export interface PlatformLimit {
   metric: string;
   plan: string;
   included_limit: number;
+  /** FIX-1089: CAPACITY denominator only — it no longer drives `pct`. */
   display_limit: number | null;
   unit: string;
   overage_unit_cost: number | null;
@@ -35,6 +36,37 @@ export interface PlatformLimit {
   sort_order: number;
   notes: string | null;
   is_active: boolean;
+  /**
+   * FIX-1089: false for wire-format companion rows that exist to make an alert
+   * expressible rather than to be read (vercel.overage_present). Optional
+   * because persisted snapshots written before the column existed lack it —
+   * read as `is_displayed !== false` so those old rows stay visible.
+   */
+  is_displayed?: boolean;
+}
+
+// ── Per-metric rates (FIX-1089) ────────────────────────────────────────────────
+
+export type RateSource = "api" | "configured";
+
+/**
+ * How `implied_cost_usd` was derived. Read it before adding the number to any
+ * total — a `credit_absorbed` dollar and an `overage` dollar are not the same
+ * dollar, and summing them is the double-count FIX-1050 removed.
+ */
+export type ImpliedCostBasis =
+  | "overage"
+  | "actual"
+  | "credit_absorbed"
+  | "free_tier";
+
+export interface MetricRate {
+  usd_per_unit: number;
+  /** Ready-to-render, e.g. "$0.125 / GB". */
+  label: string;
+  source: RateSource;
+  free_units: number | null;
+  per_day?: true;
 }
 
 export interface PlatformUsage {
@@ -65,10 +97,24 @@ export interface PlatformMetric extends PlatformLimit {
   verified_by: string | null;
   stale_after_days: number | null;
   recorded_at: string | null;
+  /**
+   * value ÷ included_limit × 100 — the metric's OWN quota, the same number its
+   * label prints. FIX-1089: it used to divide by `display_limit ?? included_limit`,
+   * which is how supabase.db_size_bytes came to render "29.6 GB / 8.0 GB" beside
+   * a 56% bar. Can exceed 100; cap the BAR, not the number.
+   */
   pct: number;
+  /** FIX-1089: value ÷ display_limit × 100. Only on rows that set one. */
+  capacity_pct?: number;
   status: "healthy" | "warning" | "critical";
   overage_cost: number;
   source_display: SourceDisplay;
+  /** FIX-1089. All optional: absent when no rate is known — never guessed. */
+  rate?: MetricRate;
+  implied_cost_usd?: number;
+  implied_cost_basis?: ImpliedCostBasis;
+  /** List value of the consumption when it differs from what is owed. */
+  list_cost_usd?: number;
 }
 
 // ── Anthropic usage ────────────────────────────────────────────────────────────

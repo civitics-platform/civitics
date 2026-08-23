@@ -86,6 +86,19 @@ export type GitHubUsage = {
   /** Sum of grossAmount — what billing would be without the free tier. Useful
    *  for "if the repo flipped private tomorrow, this is what we'd owe". */
   total_gross_usd: number;
+  /** FIX-1090: `pricePerUnit` off the Minutes line items — GitHub states the
+   *  rate outright, so the Actions row can print $0.006/minute without anyone
+   *  hardcoding a price list. Null when no Minutes items ran this cycle.
+   *  Non-uniform prices across runner OSes (Linux $0.006, Windows $0.012,
+   *  macOS $0.08) resolve to the QUANTITY-WEIGHTED average, which is the only
+   *  single number that reproduces the gross total. */
+  minutes_price_per_unit: number | null;
+  /** Split of the two totals above by product family, so the card can say
+   *  "$30.82 of Actions at list, $0.00 billed" without re-deriving it. */
+  minutes_gross_usd: number;
+  minutes_billed_usd: number;
+  storage_gross_usd: number;
+  storage_billed_usd: number;
   fetched_at: string;
 };
 
@@ -189,6 +202,10 @@ export async function getGitHubUsage(): Promise<GitHubUsage | GitHubUsageError> 
     let storageBytesAccum = 0;
     let totalBilledUsd = 0;
     let totalGrossUsd = 0;
+    let minutesGrossUsd = 0;
+    let minutesBilledUsd = 0;
+    let storageGrossUsd = 0;
+    let storageBilledUsd = 0;
 
     for (const item of items) {
       const q = item.quantity ?? 0;
@@ -197,6 +214,8 @@ export async function getGitHubUsage(): Promise<GitHubUsage | GitHubUsageError> 
 
       if (item.unitType === "Minutes") {
         actionMinutes += q;
+        minutesGrossUsd += item.grossAmount ?? 0;
+        minutesBilledUsd += item.netAmount ?? 0;
         const sku = item.sku || "(unknown)";
         minutesBreakdown[sku] = (minutesBreakdown[sku] ?? 0) + q;
         continue;
@@ -204,8 +223,17 @@ export async function getGitHubUsage(): Promise<GitHubUsage | GitHubUsageError> 
 
       if (isStorageProduct(item)) {
         storageBytesAccum += storageItemToBytes(item, now);
+        storageGrossUsd += item.grossAmount ?? 0;
+        storageBilledUsd += item.netAmount ?? 0;
       }
     }
+
+    // Quantity-weighted, i.e. gross ÷ minutes. Deliberately NOT the first
+    // item's pricePerUnit: SKUs price differently per runner OS, and only the
+    // weighted figure multiplies back up to the gross total the card prints
+    // beside it.
+    const minutesPricePerUnit =
+      actionMinutes > 0 && minutesGrossUsd > 0 ? minutesGrossUsd / actionMinutes : null;
 
     const result: GitHubUsage = {
       action_minutes: Math.round(actionMinutes * 100) / 100,
@@ -213,6 +241,11 @@ export async function getGitHubUsage(): Promise<GitHubUsage | GitHubUsageError> 
       storage_bytes: storageBytesAccum,
       total_billed_usd: Math.round(totalBilledUsd * 10000) / 10000,
       total_gross_usd: Math.round(totalGrossUsd * 10000) / 10000,
+      minutes_price_per_unit: minutesPricePerUnit,
+      minutes_gross_usd: Math.round(minutesGrossUsd * 10000) / 10000,
+      minutes_billed_usd: Math.round(minutesBilledUsd * 10000) / 10000,
+      storage_gross_usd: Math.round(storageGrossUsd * 10000) / 10000,
+      storage_billed_usd: Math.round(storageBilledUsd * 10000) / 10000,
       fetched_at: new Date().toISOString(),
     };
 
