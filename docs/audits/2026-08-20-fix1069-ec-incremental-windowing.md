@@ -426,3 +426,181 @@ close. Nothing about it resembles 2026-08-19.
 Both bounds remain in place regardless: FIX-1056's 5 h internal budget now has
 units small enough to see between, and FIX-1071's 18,000 s outside bound
 backstops it.
+
+---
+
+## 11. The 2026-08-25 cost census — window 5 was the CHEAPEST window
+
+Written from cc-prompt-87, whose working hypothesis was that the 16 uniform
+UUID-space windows are cost-imbalanced and need cost-weighted bounds. **The
+measurement refutes that.** Recorded here in full because the negative result is
+the useful part: it redirects the fix.
+
+### 11.1 What the 2026-08-24 run actually did
+
+Authoritative record, `data_sync_log` row for `entity_connections_rebuild`,
+2026-08-24 08:00:00.120226 → 13:16:16.359763 UTC:
+
+```
+status            partial
+rows_inserted     556008
+elapsed_seconds   18976          budget_seconds 18000
+arm_timings       {"donations_incr_windows": 18976}
+arms_banked       []
+next_arm          donations_incr_windows
+budget_exhausted  false
+cancel_detail     donations window 5 [40000000..50000000):
+                  canceling statement due to user request
+```
+
+Two corrections to the prompt's reading:
+
+- **`556,008` is the total banked by windows 1–4, not window 5's output.**
+  Window 5 committed nothing — it was cancelled, and its transaction rolled back.
+- **The cancel was `user request`, not a statement timeout.** That is
+  `pg_cancel_backend()`, i.e. **FIX-1071's outside watchdog doing exactly its
+  job** at the 18,000 s bound. `budget_exhausted false` next to
+  `elapsed_seconds 18976` is FIX-1071's signature, not a failure of it.
+
+So: windows 1–4 (zero-based keys 0–3) banked in ~5,236 s — ~1,309 s each —
+and window 5 (zero-based 4, range `[40000000..50000000)`) then ran ~13,740 s
+alone before the axe.
+
+### 11.2 The census
+
+The `ec_donations_incr_dirty` staging table could not be read: it is `UNLOGGED`
+and **prod restarted at 2026-08-24 16:26:19 UTC**, which truncates unlogged
+tables. Its 565,810 rows were gone before this session opened. (FIX-1069 handles
+this correctly — `prepare()`'s `EXISTS` check falls through and rebuilds rather
+than advancing watermarks over unprocessed donors — but it does mean **every
+prod restart destroys an open cycle's resume state**, which is worth its own
+FIX.)
+
+The dirty set was therefore **reconstructed read-only** from the cycle block's
+own bounds (`since_at` 2026-08-20 02:58:40.681855+00, `target_at` 2026-08-24
+05:32:17.788383+00), yielding 546,451 donors against the recorded 565,810 — the
+3.5% gap is the staging table's `(from_id, from_type)` key versus this query's
+`from_id`, i.e. donors present under two `from_type`s. Faithful enough to census.
+
+Cost is measured as `entity_connections.evidence_count`, which is the number of
+FR rows behind an edge — so Σ evidence is a direct proxy for the FR rows the
+window's `ARRAY_AGG` re-reads, and the edge count is exactly the window's
+`DELETE` cost.
+
+| win_idx | driver log | staged donors | EC edges to DELETE | evidence rows | max donor | p99 donor |
+|---:|---|---:|---:|---:|---:|---:|
+| 0 | window 1/16 | 34,288 | 115,170 | 139,052 | 2,520 | 43 |
+| 1 | window 2/16 | 33,978 | 111,878 | 132,197 | 1,206 | 43 |
+| 2 | window 3/16 | 33,982 | 116,548 | 138,924 | 1,517 | 47 |
+| 3 | window 4/16 | 34,316 | 111,586 | 132,147 | 1,459 | 41 |
+| **4** | **window 5/16 ← cancelled** | **34,321** | **75,731** | **93,699** | **912** | **39** |
+| 5 | window 6/16 | 34,278 | 84,562 | 106,944 | 1,600 | 44 |
+| 6 | window 7/16 | 34,079 | 80,452 | 100,466 | 1,502 | 40 |
+| 7 | window 8/16 | 34,197 | 78,882 | 99,311 | 1,919 | 39 |
+| 8 | window 9/16 | 34,399 | 75,692 | 93,156 | 1,066 | 39 |
+| 9 | window 10/16 | 34,122 | 78,608 | 100,586 | 1,525 | 36 |
+| 10 | window 11/16 | 34,063 | 79,089 | 99,890 | 1,173 | 39 |
+| 11 | window 12/16 | 33,683 | 79,502 | 100,351 | 1,681 | 40 |
+| 12 | window 13/16 | 34,458 | 79,743 | 99,930 | 1,487 | 41 |
+| 13 | window 14/16 | 34,165 | 81,240 | 101,499 | 1,421 | 41 |
+| 14 | window 15/16 | 33,868 | 77,932 | 98,013 | 1,657 | 40 |
+| 15 | window 16/16 | 34,254 | 80,547 | 102,063 | 1,336 | 40 |
+| | **total** | **546,451** | **1,407,162** | **1,738,228** | | |
+
+### 11.3 The verdict: shape (iii), and not by a small margin
+
+- **Donor counts are uniform to ±1.1%** (33,683–34,458). UUID v4 spreads
+  perfectly across the 16 equal ranges, exactly as the FIX-588/703 design
+  assumed.
+- **Cost is uniform to 1.5×** (75,692–116,548 edges). There is no cost-weighting
+  to recover.
+- **There is no mega-fan-out donor anywhere.** The largest single dirty donor in
+  any window carries 2,520 evidence rows; p99 is 36–47; the average is 2.7–4.1.
+- **Window 5 is the CHEAPEST window in the table by evidence rows** (93,699) and
+  second-cheapest by edges. Windows 1–4 — the ones that finished — each did
+  **~1.50× the DELETE work and ~1.45× the aggregation work** of the window that
+  hung.
+
+Put together: windows 1–4 averaged 1,309 s each on 113,796 edges. Window 5 spent
+≥13,740 s on 75,731 edges. **That is ≥10.5× the wall-clock for 0.67× the work —
+a ≥15× blowup in cost per unit, inside a run whose per-unit work is flat.**
+
+A cost model cannot produce that. Only table state can.
+
+### 11.4 The mechanism the numbers point at
+
+Each window `DELETE`s its dirty donors' edges and re-`INSERT`s them, then
+`COMMIT`s. Across windows 1–4 that is **455,182 deleted tuples** and 556,008
+inserted ones, all landing in `entity_connections` with nothing vacuuming
+between windows.
+
+`entity_connections` carries `autovacuum_vacuum_scale_factor = 0.05` (FIX-943),
+so its autovacuum trigger sits at roughly
+
+```
+50 + 0.05 x 9,974,720 reltuples  ~=  498,786 dead tuples
+```
+
+The four banked windows generate ~455k dead tuples — **just under the trigger**.
+So for the whole of windows 1–4 autovacuum is entitled to do nothing, and by
+window 5 the table is either at its worst un-vacuumed state or has *just* tripped
+the threshold and is competing for the same starved I/O.
+
+This is the FIX-884 / FIX-943 mechanism one level in: a heap page loses its
+all-visible mark if **any** tuple on it is dead, `entity_connections` carries
+~26.7 tuples per page, and the window's `DELETE` drives
+`entity_connections_from_id_connection_type` — an index whose value is
+index-only scanning. Un-mark the heap and every probe becomes a heap fetch.
+The rebuild degrades its own read path as it goes, monotonically, which is
+precisely a flat-work / rising-time curve that blows up a few windows in.
+
+Note the standing FIX-943 rule does not cover this: it says a script that bulk-
+rewrites a table vacuums *what it rewrote, at the end*. This script bulk-rewrites
+the same table **sixteen times inside one run**, and the damage is done to
+itself, in-flight, long before any tail could run.
+
+Corroborating state, measured 2026-08-25 03:5x UTC (after the 08-24 16:26
+restart, so `pg_stat_user_tables` counters are reset and only the `pg_class`
+columns — which vacuum writes — are trustworthy):
+
+| table | relpages | relallvisible | % all-visible | reloptions |
+|---|---:|---:|---:|---|
+| `financial_relationships` | 613,257 | 494,664 | **80.66%** | scale_factor 0.02 |
+| `entity_connections` | 373,641 | 373,641 | 100.00% | scale_factor 0.05 |
+
+`entity_connections` is back at 100% because autovacuum repaired it in the ~15 h
+after the run. `financial_relationships` at 80.66% with no recorded vacuum is
+FIX-1100's separate finding — the killed FEC writer that never paid its tail,
+2.5 h before this EC run started reading the table.
+
+### 11.5 Two premises the prompt carried that the data does not support
+
+1. **"Use the `pg_stats` MCV list for `financial_relationships.from_id` to place
+   mega-fan-out donors in windows."** The MCV list is useless for this arm. Its
+   top five values are all `from_type = 'agency'` with `relationship_type IN
+   ('contract','grant')` — 3,087,864 contract + 301,576 grant rows — i.e.
+   USASpending awards, which the donations arm's
+   `relationship_type IN ('donation','ie_support','ie_oppose')` filter never
+   touches. Of the top 30 MCV values, **exactly one** was in the donations dirty
+   set (NATIONAL TREASURY EMPLOYEES UNION POLI, 4,266 FR rows, 453 edges). The
+   1,965,147-row and 1,063,151-row "donors" the MCV list appears to show are
+   agencies with no `financial_entities` row and zero donation edges.
+
+2. **"Window 5 ran 3 h 49 m (556,008 edges, 72% of the run)."** Window 5 wrote
+   zero durable edges; 556,008 is windows 1–4's banked total. The run was stopped
+   by FIX-1071's outside watchdog (`user request`), not by a statement timeout.
+
+### 11.6 What this changes about the fix
+
+| cc-87 decision | verdict |
+|---|---|
+| 2 — cost-weighted window bounds computed in `prepare()` | **Drop.** Cost is already uniform to 1.5× and the slow window was the cheapest. Cost-weighting would reshuffle bounds that are not the problem, at the price of a more expensive `prepare()` and a new persisted-bounds contract. |
+| 3 — outside per-window budget (FIX-1030 unit-watchdog pattern) | **Keep.** Still a real gap: window 5 ate 13,740 s of an 18,000 s budget on 5.4% of the work, and nothing bounded it below the whole-run level. |
+| 4 — bisect the window on cancel | **Drop.** Bisection is the right response to a too-big unit. This unit was not too big; both halves would degrade identically because the cause is table state, not range size. |
+| 6 — refuse to start while the FEC bulk writer is live | **Keep and widen.** The 08-24 EC run began 2.5 h after a killed FEC replay left `financial_relationships` bulk-rewritten and un-vacuumed. An advisory-lock probe would not have caught that — the FEC writer was already dead. The condition that matters is "a FEC bulk run is live **or** left `fec_bulk_run_state` behind", the latter being exactly the durable marker FIX-1100 now keys its compensating vacuum on. |
+| **new** — vacuum `entity_connections` between windows | **Add.** This is what the census actually indicts. |
+
+The FIX-1101 that follows from this evidence is: an **inter-window vacuum** of
+`entity_connections`, a **per-window outside budget**, and the **FEC interlock
+widened to the pending-run-state case** — not cost-weighted bounds and not
+bisection.
