@@ -604,3 +604,166 @@ The FIX-1101 that follows from this evidence is: an **inter-window vacuum** of
 `entity_connections`, a **per-window outside budget**, and the **FEC interlock
 widened to the pending-run-state case** — not cost-weighted bounds and not
 bisection.
+
+---
+
+## 12. The 2026-08-25 A/B — the inter-window vacuum mechanism is ALSO refuted
+
+Written from cc-prompt-88, whose brief was to build §11.6's prescribed fix after
+proving its mechanism on a clone. **The proof failed, so the vacuum was not
+shipped.** Recorded in full because, again, the negative result is the useful
+part — and because this is the second mechanism in two sessions that survived a
+plausible narrative and died on measurement.
+
+### 12.1 The harness
+
+Local full prod clone: `financial_relationships` 10,412,646 rows / 441,234
+pages, `entity_connections` 6,985,892 rows / 350,645 pages. Watermark
+`W = 2026-08-04 05:00:00+00`, chosen by bisection to stage **565,593 dirty
+donors** against prod's recorded `dirty_donors 565,810` on 08-24 — a 0.04%
+match, so the arms consume a dirty set of the same size and shape as the run
+under investigation.
+
+Both arms drive the **shipped** `rebuild_ec_donations_incr_window()`, one window
+per statement, exactly as `run_entity_connections_rebuild()` drives it. Fairness
+protocol: each arm begins with a `VACUUM (ANALYZE)` of `entity_connections`
+(0 dead tuples, 100% all-visible — the state drain 2 left behind, and the state
+a scheduled firing is meant to wake into), and each arm resets only the 16
+window watermarks, so `prepare()` resumes the SAME staged rows in 0.1–0.2 s
+rather than re-deriving a possibly different dirty set. The windows are
+idempotent (DELETE + re-derive from full history), so a re-run is the same
+logical work, not a different workload.
+
+**A fidelity correction that mattered.** The first control arm ran with local
+defaults and was a null result for the wrong reason: local's autovacuum trigger
+is `50 + 0.05 x 6,985,892 ~= 349,345` against ~155k dead tuples per window, so
+autovacuum intervenes by window 3 and silently repairs the damage under test.
+Prod's trigger is `~= 498,786` against ~113k per window — that is, **prod's
+autovacuum was entitled to do nothing for the whole banked run.** The faithful
+reproduction is therefore `autovacuum_enabled = false` on `entity_connections`,
+which reproduces prod's *effective* state exactly rather than approximating it
+with a tuned scale factor. Arm A' and Arm B both run that way. (The flag is
+restored unconditionally on process exit and the restore was asserted — FIX-885
+is exactly this footgun.)
+
+### 12.2 The result
+
+| | Arm A' — control, no vacuum | Arm B — `VACUUM (ANALYZE)` when dead > 100k |
+|---|---|---|
+| window 1 | 155,066 edges — **69.5 s** | 155,066 edges — **66.1 s** |
+| window 2 | 148,767 edges — **62.8 s** | 148,767 edges — **44.2 s** (+13.6 s vacuum) |
+| window 3 | 151,605 edges — **42.4 s** | 151,605 edges — **41.1 s** (+2.8 s vacuum) |
+| window 4 | 148,344 edges — **56.0 s** | 148,344 edges — **45.6 s** (+15.0 s vacuum) |
+| window 5 | 146,456 edges — **46.7 s** | 146,456 edges — **38.2 s** (+15.4 s vacuum) |
+| window time | 277.4 s | 235.2 s |
+| vacuum time | 0 s | 46.8 s |
+| **total** | **277.4 s** | **282.0 s** |
+| window 1 -> 5 ratio | **0.67x** | 0.58x |
+
+Arm A' entered each window with dead tuples at 0 / 155,066 / 303,833 / 455,438 /
+603,782 — window 4 entered at **455,438, prod's exact 08-24 level** — and the
+arm finished at **750,238, 1.65x prod's accumulation and well past prod's own
+trigger.** The window-time curve does not rise. It falls.
+
+**Verdict.** The inter-window vacuum buys ~15% on window time and pays for all
+of it in vacuum time: 282.0 s against 277.4 s, i.e. **1.7% slower overall**.
+Against a symptom of **>=10.5x** this is not the mechanism, and the
+toggle-a-cron-job machinery it would have required — which carries the FIX-885
+stranded-flag failure mode — was not shipped.
+
+### 12.3 Why it could never have been the mechanism
+
+The structural argument, which outranks the timings and is the durable lesson:
+
+> **Visibility-map decay can only cost an INDEX-ONLY scan. This arm does not
+> contain one.**
+
+Measured plans at the real dirty-set size:
+
+```
+aggregation  ->  Nested Loop
+                   -> Parallel Index Only Scan on ec_donations_incr_dirty
+                   -> Index Scan using financial_relationships_from
+                        on financial_relationships
+                        Index Cond: (from_type = d.from_type) AND (from_id = d.from_id)
+
+DELETE       ->  a tuple cannot be marked dead without visiting the heap,
+                 so no DELETE plan is ever index-only
+```
+
+The `financial_relationships` read is a **plain `Index Scan`** — it fetches the
+heap tuple unconditionally and never consults the visibility map. That single
+line also disposes of the sibling hypothesis this session was asked to test:
+FR's 80.66% all-visible, left by the killed FEC replay, **is not an input to
+this query's cost.**
+
+And the VM damage that *does* occur is real but **local**, so it cannot
+accumulate across windows. Probed mid-run at 455k dead tuples, index-only scan
+forced over a fixed range:
+
+| probed from_id range | state | Heap Fetches | time |
+|---|---|---:|---:|
+| `[00000000..04000000)` | rewritten by window 1 | **108,534** | 156.9 ms |
+| `[d0000000..d4000000)` | no window has touched it | **139** | 66.0 ms |
+
+`entity_connections` is physically clustered by `from_id` — the full rebuild
+inserts window by window — so each window damages its own neighbourhood and the
+next window reads somewhere else. FIX-884's mechanism is real; it does not reach
+this workload.
+
+### 12.4 So what did move window 5 — the box, not the arm
+
+Measured 2026-08-25 with **both EC cron jobs `active = f`** and no EC rebuild
+running anywhere on prod:
+
+> **prod stalled box-wide 11:00-18:00 UTC.**
+
+`cron.job_run_details`, jobs 40 and 44 (the `*/2` watchdogs, 30 firings/hour):
+
+```
+hour   11:00  12:00  13:00  14:00  15:00  16:00  17:00  18:00  19:00
+failed 17/30  22/30  25/30  29/30  16/30  12/30  14/30   1/30   0/30
+```
+
+Corroborated by two independent instruments: all five of FIX-1066's moved
+Tuesday weeklies failed (jobids 25/26/17 at 13:00/14:00/15:00 on `job startup
+timeout`; jobids 13 and 12 cancelled at their budgets), and six GitHub Actions
+`platform-snapshot` runs were cancelled between 11:36 and 17:28.
+
+**The box enters this state without the EC rebuild.** That is the fact the 08-24
+reading could not have. FIX-1101's bullet records jobid 44 failing 24 of 30
+firings in the 12:00 hour on 08-24 and reads it as *the six-hour window starving
+the watchdog*; the same starvation occurred on 08-25 with the arm paused. Window
+5 ran 09:27 -> 13:16 straight through that band.
+
+The most defensible reading of the >=10.5x is that **window 5 was a victim of a
+recurring afternoon pathology, not its cause.** The pathology is unattributed —
+no cron job and no `data_sync_log` row accounts for the 12:14-16:00 core of the
+08-25 stall — and is filed separately. It is not an EC defect.
+
+### 12.5 What shipped instead
+
+Only what survives all of the above:
+
+1. **The per-window outside budget** (default 30 min, overridable at
+   `pipeline_state.entity_connections_window_budget`). It survives every
+   refutation here **because it does not depend on knowing the cause.** Window 5
+   ate 13,740 s of an 18,000 s bound on 5.4% of the work with nothing below the
+   run level able to see it; a per-window bound catches that in 30 minutes
+   whatever the reason.
+2. **The widened FEC interlock**, with its justification restated honestly: not
+   FR's visibility map (§12.3), but write contention and a dirty set computed
+   against a moving target.
+
+Dropped: cost-weighted bounds (§11), bisect-on-cancel (§11), and now the
+inter-window vacuum (§12).
+
+### 12.6 Method note — the instrument that settled it
+
+Two sessions running proposed a mechanism for this arm from *correlational*
+evidence: first a big window (§11 refuted it), then a decayed visibility map
+(§12 refuted it). What settled both was reading the **plan**, not the counters.
+
+A mechanism that requires an index-only scan is falsifiable in one `EXPLAIN`, in
+under a second, before any A/B harness is written. That check belongs at the
+START of a FIX-884/FIX-943-shaped diagnosis, not after two arms have run.
