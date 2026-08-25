@@ -1299,3 +1299,5 @@
 2026-08-22 | FIX-1097 | 70fd0e86 | local+prod | feat(chrome): terminal chrome on terminal routes + recently-shipped + hit-test CI probe
 2026-08-22 | FIX-1098 | 70fd0e86 | local+prod | feat(chrome): terminal chrome on terminal routes + recently-shipped + hit-test CI probe
 2026-08-22 | FIX-1098 | ee2c813d | local+prod | fix(ci): make the hit-test probe self-verifying, and stop overstating its CI coverage
+2026-08-24 | FIX-1104 | 56e7cafc | local+prod | fix(costs): stabilize disk denominator, trim rate labels, plan-label consistency
+2026-08-24 | FIX-1105 | 56e7cafc | local+prod | fix(costs): stabilize disk denominator, trim rate labels, plan-label consistency
