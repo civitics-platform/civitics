@@ -157,8 +157,15 @@ function rateLabel(cost: number, overageUnit: string | null, perDay: boolean): s
  *
  * So: significant digits, not decimal places, and exponential notation once a
  * value is small enough that a decimal string would be unreadable anyway.
+ *
+ * FIX-1104: exported. Both rate builders in this file already used it, but
+ * platform-snapshot.ts was assembling the github.action_minutes rate label
+ * inline and interpolating the raw double, so the card printed
+ * "$0.005999999999999999 / minute" for a rate GitHub states as $0.006. One
+ * formatter, imported by everything that prints a rate — a second local
+ * `${n}` is how this comes back.
  */
-function trimNumber(n: number): string {
+export function trimNumber(n: number): string {
   if (n === 0) return "0";
   const abs = Math.abs(n);
   if (abs >= 0.01) return String(Math.round(n * 10000) / 10000);

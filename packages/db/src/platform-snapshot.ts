@@ -37,6 +37,7 @@ import {
 import {
   configuredRateFromLimit,
   measuredRate,
+  trimNumber,
   type ImpliedCostBasis,
 } from "./platform-rates";
 import {
@@ -149,6 +150,17 @@ export type PlatformUsagePayload = {
     max_1h_pct: number;
     max_24h_pct: number;
     core_count: number;
+  };
+  // FIX-1104: provenance for the /data denominator under the Disk row. The
+  // guard that pins it is invisible by construction — a held tick and a quiet
+  // tick both leave the number unchanged — so record what was observed next to
+  // what was applied. `action` is one of bootstrap | steady | grow |
+  // shrink_confirmed | shrink_held; anything but the first four means a scrape
+  // disagreed with durable config and was refused.
+  supabase_disk?: {
+    provisioned_bytes: number;
+    observed_bytes: number;
+    action: string;
   };
   // FIX-648: per-ServiceName Vercel EffectiveCost, projected to a monthly
   // run-rate (descending). The "what spiked" breakdown — surfaced on the card
@@ -637,6 +649,16 @@ export async function computePlatformUsagePayload(
         core_count: number;
       }
     | null = null;
+  // FIX-1104: what the disk-denominator guard saw and did this tick. Additive
+  // payload field — a held scrape must be visible somewhere, or "the number
+  // didn't move" and "the number was wrong and we ignored it" look identical.
+  let supabaseDiskPayload:
+    | {
+        provisioned_bytes: number;
+        observed_bytes: number;
+        action: string;
+      }
+    | null = null;
   try {
     const prom = await getSupabasePrometheusMetrics(db);
     if (!("error" in prom)) {
@@ -658,6 +680,11 @@ export async function computePlatformUsagePayload(
         max_24h_pct: prom.cpu_max_24h,
         core_count: prom.cpu_core_count,
       };
+      supabaseDiskPayload = {
+        provisioned_bytes: prom.disk_size_bytes,
+        observed_bytes: prom.disk_size_observed_bytes,
+        action: prom.disk_size_action,
+      };
 
       // FIX-351: disk utilization % must divide against provisioned size,
       // not the 8 GB Pro plan-included quota that was seeded. Every other
@@ -665,6 +692,12 @@ export async function computePlatformUsagePayload(
       // is overridden each tick with the actual /data filesystem size
       // from Prometheus so the dashboard % reflects real headroom on the
       // (manually resized) disk.
+      //
+      // FIX-1104: `prom.disk_size_bytes` is the PINNED size, not the raw
+      // scrape — a lone divergent reading no longer lands here. That matters
+      // precisely because this write is durable: before the guard, one bad
+      // scrape on 2026-08-23 left the public Disk row at 87% instead of 58%
+      // for 81 minutes, until an unrelated later tick happened to correct it.
       await anyDb.from("platform_limits")
         .update({
           included_limit: prom.disk_size_bytes,
@@ -1172,7 +1205,10 @@ export async function computePlatformUsagePayload(
         if (githubUsage?.minutes_price_per_unit) {
           m.rate = {
             usd_per_unit: githubUsage.minutes_price_per_unit,
-            label: `$${githubUsage.minutes_price_per_unit} / minute`,
+            // FIX-1104: trimNumber, not `${n}`. GitHub states $0.006/minute;
+            // the IEEE double for it stringifies as 0.005999999999999999, and
+            // a rate renders as fact.
+            label: `$${trimNumber(githubUsage.minutes_price_per_unit)} / minute`,
             source: "api",
             free_units: null,
           };
@@ -1444,6 +1480,7 @@ export async function computePlatformUsagePayload(
     },
     auto_trip_decisions: autoTripDecisions,
     ...(supabaseCpuPayload ? { supabase_cpu: supabaseCpuPayload } : {}),
+    ...(supabaseDiskPayload ? { supabase_disk: supabaseDiskPayload } : {}),
     ...(vercelBreakdown ? { vercel_breakdown: vercelBreakdown } : {}),
     ...(upstashPayload ? { upstash: upstashPayload } : {}),
     ...(cloudflareEdge ? { cloudflare_edge: cloudflareEdge } : {}),

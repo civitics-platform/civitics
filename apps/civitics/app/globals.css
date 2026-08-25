@@ -34,6 +34,16 @@
        structural line instead. Use border-rule-strong for chrome-level
        structure; border-rule stays the everyday hairline. */
     --c-rule-strong: var(--c-ink);
+    /* The quietest legible TEXT tone (FIX-1104). Exists for the footer's
+       v:<sha> build stamp, which wants to sit below even --c-ink-soft. It was
+       written as text-rule, and in paper mode that is right — so paper binds
+       this to exactly --c-rule and the footer is byte-identical. The terminal
+       scope is why the token exists: there --c-rule is --c-term-line (#232b38),
+       a near-black hairline colour that is invisible as text on --c-term-bg,
+       so terminal re-binds to --c-term-faint. Same shape as --c-rule-strong
+       (FIX-1096): one token, two bindings, no per-surface overrides. Use
+       text-ink-faint for text; border-rule stays the hairline. */
+    --c-ink-faint: var(--c-rule);
     --c-accent:    157  43  43; /* #9d2b2b */
     --c-blue:       43  74 139; /* #2b4a8b */
     --c-green-ink:  29 122  62; /* #1d7a3e — stamp/verified ink (desk mockup) */
@@ -88,6 +98,7 @@
     --c-ink-soft:  var(--c-term-dim);
     --c-rule:      var(--c-term-line);
     --c-rule-strong: var(--c-term-faint);
+    --c-ink-faint:   var(--c-term-faint);
     --c-accent:    var(--c-term-red);
     --c-blue:      var(--c-term-blue);
     --c-green-ink: var(--c-term-green);

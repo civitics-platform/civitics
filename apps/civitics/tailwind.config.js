@@ -21,6 +21,11 @@ module.exports = {
         card:       "rgb(var(--c-card) / <alpha-value>)",
         ink:        "rgb(var(--c-ink) / <alpha-value>)",
         "ink-soft": "rgb(var(--c-ink-soft) / <alpha-value>)",
+        // Quietest legible text tone (FIX-1104). Paper mode == rule, so
+        // text-ink-faint is a byte-identical drop-in for the text-rule it
+        // replaced on the footer build stamp; terminal mode lifts it off the
+        // near-black hairline colour so the stamp is readable. See globals.css.
+        "ink-faint": "rgb(var(--c-ink-faint) / <alpha-value>)",
         rule:       "rgb(var(--c-rule) / <alpha-value>)",
         // Chrome-level structural rule (FIX-1096). Paper mode == ink, so
         // border-rule-strong is a drop-in for the border-ink it replaced on

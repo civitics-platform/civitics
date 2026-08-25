@@ -20,6 +20,7 @@ import {
   measuredRate,
   invoiceItemUsdPerUnit,
   invoiceItemFlatUsd,
+  trimNumber,
 } from "./platform-rates";
 import { calculateOverageCost } from "./platform-usage";
 
@@ -171,4 +172,41 @@ test("a malformed invoiceItem yields null, not a bogus price", () => {
   assert.equal(invoiceItemUsdPerUnit(undefined), null);
   assert.equal(invoiceItemUsdPerUnit({}), null);
   assert.equal(invoiceItemFlatUsd(undefined), null);
+});
+
+// ── trimNumber (FIX-1104) ────────────────────────────────────────────────────
+
+/**
+ * A rate renders as fact, so it has to read like one. Both builders in this
+ * module already routed through trimNumber; platform-snapshot.ts did not, and
+ * the github.action_minutes row shipped "$0.005999999999999999 / minute" for a
+ * price GitHub states as $0.006. The formatter is now exported and that is the
+ * only path — these pin what it has to survive.
+ */
+test("trimNumber kills the IEEE tail that shipped on github.action_minutes", () => {
+  // The exact prod value: GitHub's Actions minute price, as a double.
+  assert.equal(trimNumber(0.005999999999999999), "0.006");
+  assert.equal(trimNumber(0.006), "0.006");
+  // EffectiveCost ÷ ConsumedQuantity lands on doubles like this constantly.
+  assert.equal(trimNumber(30.816 / 5136), "0.006");
+  assert.equal(trimNumber(0.1 + 0.2), "0.3");
+});
+
+test("trimNumber keeps small rates legible instead of rounding them to $0", () => {
+  // $0.125/GB expressed per BYTE. toFixed(8) here yields "0.00000000" → "$0".
+  assert.equal(trimNumber(0.125 / 1024 ** 3), "1.16e-10");
+  assert.equal(trimNumber(0.00065), "0.00065");
+  assert.equal(trimNumber(0), "0");
+  assert.equal(trimNumber(0.125), "0.125");
+});
+
+test("every rate label built in this module is already trimmed", () => {
+  const configured = configuredRateFromLimit({
+    overage_unit_cost: 0.006,
+    overage_unit: "per_minute",
+    included_limit: -1,
+    billing_cycle: "monthly_reset",
+  });
+  assert.equal(configured?.label, "$0.006 / minute");
+  assert.equal(measuredRate(30.816, 5136, "minute")?.label, "$0.006 / minute");
 });

@@ -16,9 +16,12 @@ export interface PlatformLimit {
   // included_limit (current behavior for every metric except a couple
   // Supabase ones). Set per-metric by the snapshot writer when the
   // billing-overage and capacity denominators legitimately differ.
-  // FIX-1089: display_limit NO LONGER drives `pct`. It is the CAPACITY
-  // denominator and now feeds `capacity_pct` only — see the pct comment in
-  // getPlatformUsage for why one row cannot have two denominators.
+  // FIX-1089: display_limit NO LONGER drives `pct` — see the
+  // computeMetricPercents comment for why one row cannot have two
+  // denominators. FIX-1104 retired the `capacity_pct` it briefly fed; the
+  // column stays as the declared capacity denominator (read by
+  // `effectiveLimit`, written each tick by FIX-353) with no percentage of its
+  // own.
   display_limit: number | null;
   unit: string;
   overage_unit_cost: number | null;
@@ -81,12 +84,6 @@ export interface PlatformMetric extends PlatformLimit {
    * the BAR, not the number. 0 when the limit is the -1 "unlimited" sentinel.
    */
   pct: number;
-  /**
-   * FIX-1089: value ÷ display_limit × 100 — the capacity reading pct used to
-   * carry. Present only on rows that actually set display_limit (today just
-   * supabase.db_size_bytes), so nothing was lost in making pct honest.
-   */
-  capacity_pct?: number;
   status: "healthy" | "warning" | "critical";
   overage_cost: number;
   source_display: SourceDisplay;
@@ -186,7 +183,7 @@ export async function getPlatformUsage(
   return limits.map((limit) => {
     const usage = usageMap.get(`${limit.service}:${limit.metric}`) ?? null;
     const value = usage?.value ?? null;
-    const { pct, capacity_pct } = computeMetricPercents(value, limit);
+    const { pct } = computeMetricPercents(value, limit);
     const status = computeMetricStatus(pct, limit);
     const overage_cost = calculateOverageCost(value ?? 0, limit);
     const source_display = getSourceDisplay(
@@ -205,7 +202,6 @@ export async function getPlatformUsage(
       stale_after_days: usage?.stale_after_days ?? null,
       recorded_at: usage?.recorded_at ?? null,
       pct,
-      ...(capacity_pct !== undefined ? { capacity_pct } : {}),
       status,
       overage_cost,
       source_display,
@@ -312,7 +308,7 @@ export async function upgradeServicePlan(
 // ── Pure helpers ──────────────────────────────────────────────────────────────
 
 /**
- * The two percentages a metric row can carry, and which denominator each uses.
+ * The percentage a metric row carries, and which denominator it uses.
  *
  * FIX-1089 — THE MISJOIN THIS FIXES. `pct` used to divide by
  * `display_limit ?? included_limit` while the row's LABEL printed
@@ -327,8 +323,25 @@ export async function upgradeServicePlan(
  * thing people actually read, was answering the question nobody asked of that
  * row ("how full is the disk"; `supabase.disk_used_bytes` already answers it).
  *
- * So `pct` is now always value ÷ its own included_limit, and the capacity
- * reading survives as `capacity_pct` — nothing was lost in making it honest.
+ * So `pct` is now always value ÷ its own included_limit.
+ *
+ * FIX-1104 — AND THE CAPACITY READING IS GONE. FIX-1089 kept it alive as
+ * `capacity_pct` on the theory that a number worth computing was being
+ * discarded. Three weeks of it being computed on every tick and rendered by
+ * nothing settled that: it was `db_size_bytes ÷ provisioned disk`, and the
+ * Disk Utilization row is `disk_used_bytes ÷ the same provisioned disk`. Same
+ * denominator, and a numerator that is a strict SUBSET of the other's — the DB
+ * files without the WAL, indexes and temp that share the volume. It never
+ * answered "how full is the disk"; the Disk row does, honestly, and off the
+ * larger numerator. So it is not a second capacity signal, it is a quieter
+ * version of one already on the card, sitting on the row whose meter is
+ * (correctly) the 8 GiB billing quota. Removing it is safe: no renderer reads
+ * it, and the one-tick-old persisted payload still carries the field, which
+ * deserializes harmlessly into a type that no longer declares it.
+ *
+ * `display_limit` itself stays — `effectiveLimit` still exposes it, and
+ * FIX-353 still writes it, because "the capacity denominator" is a real thing
+ * to be able to ask for even with no percentage hanging off it.
  *
  * `pct` may exceed 100 and is not clamped: over-limit is reported truthfully
  * and it is the BAR the UI caps, not the number. Extracted as a pure function
@@ -337,8 +350,8 @@ export async function upgradeServicePlan(
  */
 export function computeMetricPercents(
   value: number | null,
-  limit: Pick<PlatformLimit, "included_limit" | "display_limit">,
-): { pct: number; capacity_pct?: number } {
+  limit: Pick<PlatformLimit, "included_limit">,
+): { pct: number } {
   // included_limit <= 0 is the -1 "unlimited" sentinel (github.action_minutes,
   // vercel.function_invocations on pro, supabase.api_requests_7d). A percentage
   // of unlimited is not 0 so much as undefined, but 0 is what every consumer
@@ -347,11 +360,7 @@ export function computeMetricPercents(
     value !== null && limit.included_limit > 0
       ? (value / limit.included_limit) * 100
       : 0;
-  const denom = limit.display_limit;
-  if (value === null || denom === null || denom === undefined || denom <= 0) {
-    return { pct };
-  }
-  return { pct, capacity_pct: (value / denom) * 100 };
+  return { pct };
 }
 
 /**
@@ -376,12 +385,13 @@ export function computeMetricStatus(
 /**
  * FIX-353: display_limit if set, else included_limit.
  *
- * FIX-1089 took this OFF the `pct` path. It is now the CAPACITY denominator
- * only — "how full is the thing this lives on" — and `capacity_pct` is the
- * field it produces. `pct`, the label, the bands and the overage math all read
- * `included_limit` directly, so a row can no longer print one denominator and
- * bar another. Kept exported because "the capacity denominator, whichever it
- * is" is still a real question a caller can ask.
+ * FIX-1089 took this OFF the `pct` path. It is the CAPACITY denominator only —
+ * "how full is the thing this lives on". `pct`, the label, the bands and the
+ * overage math all read `included_limit` directly, so a row can no longer print
+ * one denominator and bar another. Kept exported because "the capacity
+ * denominator, whichever it is" is still a real question a caller can ask —
+ * FIX-1104 retired the percentage that used to be derived from it, not the
+ * denominator itself.
  */
 export function effectiveLimit(
   row: Pick<PlatformLimit, "included_limit" | "display_limit">,

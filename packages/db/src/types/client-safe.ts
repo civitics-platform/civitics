@@ -104,8 +104,6 @@ export interface PlatformMetric extends PlatformLimit {
    * a 56% bar. Can exceed 100; cap the BAR, not the number.
    */
   pct: number;
-  /** FIX-1089: value ÷ display_limit × 100. Only on rows that set one. */
-  capacity_pct?: number;
   status: "healthy" | "warning" | "critical";
   overage_cost: number;
   source_display: SourceDisplay;

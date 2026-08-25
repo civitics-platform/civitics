@@ -27,6 +27,9 @@
  *                                  Pro plan included quota is the wrong
  *                                  denominator once the disk is manually
  *                                  resized above it.
+ *                                  FIX-1104: this is the STABILIZED value,
+ *                                  not the raw scrape — see "The disk
+ *                                  denominator is pinned, not sampled".
  *   cpu_pct_current              - 0–100 CPU utilization for the current
  *                                  scrape interval. FIX-355. Derived from
  *                                  node_cpu_seconds_total counter deltas:
@@ -56,6 +59,45 @@
  *
  * Failures (HTTP error, parse mismatch) return { error } - never throws.
  * computePlatformUsagePayload expects that shape and degrades gracefully.
+ *
+ * ── The disk denominator is pinned, not sampled (FIX-1104) ───────────────────
+ *
+ * `disk_size_bytes` is not just read out to a dashboard — the snapshot writer
+ * puts it into `platform_limits`, which is DURABLE CONFIG. It is the
+ * denominator under the public Disk Utilization row and under
+ * db_size_bytes.display_limit. So one bad scrape does not cause one bad tick;
+ * it causes a wrong public percentage that persists until some LATER tick
+ * happens to overwrite it, plus a permanently wrong persisted snapshot row.
+ *
+ * That is not hypothetical. Measured on prod (30-day snapshot retention read
+ * 2026-08-24): the /data size has had exactly two values, 37,930,876,928 and
+ * 56,950,861,824. The step up at 2026-08-19 08:56 UTC is a real Supabase
+ * auto-grow (40 GB → 60 GB nominal; the 1.5x is the auto-scale ratio). After
+ * it, 160 of 161 ticks carried the new size and exactly one did not —
+ * 2026-08-23 01:20:27 UTC reported the PRE-grow size, and the Disk row read
+ * 87.26% instead of 58.12% for the 81 minutes until the next tick.
+ *
+ * Two things make a single divergent scrape able to do that, and both are
+ * closed here:
+ *
+ *   1. AMBIGUITY. parsePrometheusText SUMS every row matching its label
+ *      predicate. For a counter summed across NICs that is correct; for "how
+ *      big is the filesystem" it is a fabrication path — two rows at the same
+ *      mountpoint would silently yield their sum with nothing on the row to
+ *      say so. selectDiskSeries refuses 0 or 2+ matches instead of summing.
+ *      The live endpoint exposes exactly one /data row today (device
+ *      /dev/nvme1n1), so this changes no current value.
+ *
+ *   2. NO CORROBORATION ON A SHRINK. A provisioned disk grows on auto-scale
+ *      and effectively never shrinks. resolveProvisionedDiskSize therefore
+ *      takes growth immediately but requires a shrink to be seen on two
+ *      CONSECUTIVE scrapes before it is applied. A lone divergent reading is
+ *      a no-op; a real downsize costs one extra tick of lag.
+ *
+ * Only the DENOMINATOR is pinned. `disk_used_bytes` stays whatever the scrape
+ * measured — it is an observation, not config, nothing persists it as a limit,
+ * and on the anomalous prod tick it was in fact correct (byte-identical to its
+ * neighbours) while only the size/avail pair had moved.
  *
  * Counter-delta bookkeeping (applyCounterDelta below):
  *   - First scrape ever:  INSERT (baseline=current, last=current), return 0.
@@ -101,6 +143,12 @@ const CPU_METRIC_NAME = "node_cpu_seconds_total";
 // Stick with '/data' so the metric semantics carry over cleanly.
 const DISK_MOUNT = "/data";
 
+// FIX-1104: state-table key holding the PINNED provisioned disk size.
+// baseline_value = the accepted size (what gets written to platform_limits),
+// last_raw_value = the previous scrape's raw observation, which is what a
+// shrink has to agree with before it is believed.
+const DISK_SIZE_METRIC = "disk_size_bytes";
+
 // ── Public types ──────────────────────────────────────────────────────────────
 
 export type SupabasePrometheusMetrics = {
@@ -113,8 +161,21 @@ export type SupabasePrometheusMetrics = {
    * `platform_limits.included_limit` for disk_used_bytes in sync with the
    * actual disk size (which can be manually resized above the 8 GB Pro
    * included quota). FIX-351.
+   *
+   * FIX-1104: the ACCEPTED size, after the shrink-corroboration guard. This
+   * is the value that may be written to durable config; see
+   * `disk_size_observed_bytes` for what this particular scrape said.
    */
   disk_size_bytes: number;
+  /**
+   * What THIS scrape reported for the /data filesystem size, before the
+   * guard. Equal to `disk_size_bytes` on every tick except one that is being
+   * held — keeping both means a held tick is visible rather than silent.
+   * FIX-1104.
+   */
+  disk_size_observed_bytes: number;
+  /** What the guard did with this scrape's observation. FIX-1104. */
+  disk_size_action: DiskSizeAction;
   /**
    * 0–100 CPU utilization for the current scrape interval. FIX-355. Zero on
    * the first ever tick (bootstrap) and on any tick following a counter
@@ -217,6 +278,184 @@ export function parsePrometheusText(
 
 function keyOf(w: PromMatch): string {
   return w.labelContains ? `${w.name}|${w.labelContains}` : w.name;
+}
+
+// ── Disk series selection (FIX-1104) ─────────────────────────────────────────
+
+export type DiskSeries = {
+  size_bytes: number;
+  avail_bytes: number;
+  /** `device=` label of the matched row — provenance, not used in any math. */
+  device: string | null;
+};
+
+export type DiskSeriesError = { error: string };
+
+/**
+ * The single filesystem series for a mountpoint, or an error explaining why
+ * there isn't one.
+ *
+ * Deliberately NOT built on parsePrometheusText: that helper sums matching
+ * rows, which is right for a counter spread across devices and wrong for a
+ * size. If the endpoint ever reported two filesystems at the same mountpoint
+ * — a leftover mount across a resize, a bind mount, a replica's exporter
+ * folded into the same scrape — summing them yields a denominator that is
+ * larger than any real disk and looks entirely plausible on the card. Refuse
+ * instead: a missing reading degrades to "keep the last known good", a
+ * fabricated one does not degrade at all.
+ *
+ * Matching is on the exact label token `mountpoint="<mount>"`, so "/data"
+ * cannot match "/data-old".
+ */
+export function selectDiskSeries(body: string, mount: string): DiskSeries | DiskSeriesError {
+  const token = `mountpoint="${mount}"`;
+  const rows: Record<string, { value: number; device: string | null }[]> = {
+    node_filesystem_size_bytes: [],
+    node_filesystem_avail_bytes: [],
+  };
+
+  for (const line of body.split("\n")) {
+    if (!line || line.startsWith("#")) continue;
+    const braceIdx = line.indexOf("{");
+    if (braceIdx === -1) continue;
+    const name = line.slice(0, braceIdx);
+    const bucket = rows[name];
+    if (!bucket) continue;
+
+    const spaceIdx = line.indexOf(" ", braceIdx);
+    if (spaceIdx === -1) continue;
+    const labels = line.slice(braceIdx, spaceIdx);
+    if (!labels.includes(token)) continue;
+
+    const value = Number(line.slice(spaceIdx + 1).trim());
+    if (!Number.isFinite(value)) continue;
+    const deviceMatch = labels.match(/device="([^"]*)"/);
+    bucket.push({ value, device: deviceMatch?.[1] ?? null });
+  }
+
+  for (const [name, bucket] of Object.entries(rows)) {
+    if (bucket.length !== 1) {
+      return {
+        error:
+          `${name} matched ${bucket.length} row(s) for ${token}, expected exactly 1` +
+          (bucket.length > 1
+            ? ` (devices: ${bucket.map((r) => r.device ?? "?").join(", ")})`
+            : ""),
+      };
+    }
+  }
+
+  const size = rows["node_filesystem_size_bytes"]![0]!;
+  const avail = rows["node_filesystem_avail_bytes"]![0]!;
+  if (!(size.value > 0)) {
+    return { error: `node_filesystem_size_bytes for ${token} is ${size.value}, expected > 0` };
+  }
+  return { size_bytes: size.value, avail_bytes: avail.value, device: size.device };
+}
+
+// ── Provisioned-disk-size guard (FIX-1104) ───────────────────────────────────
+
+export type DiskSizeAction =
+  /** No prior accepted value — take this scrape and start tracking. */
+  | "bootstrap"
+  /** Same as the accepted size. The overwhelmingly common case. */
+  | "steady"
+  /** Larger than accepted. Growth is taken immediately (auto-scale is real). */
+  | "grow"
+  /** Smaller, and the PREVIOUS scrape said the same thing. Believed. */
+  | "shrink_confirmed"
+  /** Smaller, uncorroborated. Ignored; the accepted size stands. */
+  | "shrink_held";
+
+export type DiskSizeDecision = { value: number; action: DiskSizeAction };
+
+/**
+ * Decide what provisioned-disk size to trust, given this scrape, the size
+ * currently accepted, and what the previous scrape observed.
+ *
+ * Asymmetric on purpose. Growth is what a Supabase disk actually does — it
+ * auto-scales up and never auto-scales down — so a larger reading is taken on
+ * sight and the card is correct within one tick of a resize. A SMALLER reading
+ * is the shape a bad scrape takes, so it has to be seen twice in a row before
+ * it moves durable config. A genuine downsize (a support-ticket operation, not
+ * something that happens on its own) costs exactly one extra tick of lag.
+ *
+ * Pure — no clock, no DB. `lastObserved` is the previous scrape's RAW value,
+ * not the previously accepted one; corroboration must come from an independent
+ * observation, otherwise a held value would confirm itself on the next tick.
+ */
+export function resolveProvisionedDiskSize(args: {
+  observed: number;
+  accepted: number | null;
+  lastObserved: number | null;
+}): DiskSizeDecision {
+  const { observed, accepted, lastObserved } = args;
+
+  if (accepted === null || !(accepted > 0)) {
+    return { value: observed, action: "bootstrap" };
+  }
+  if (observed === accepted) return { value: observed, action: "steady" };
+  if (observed > accepted) return { value: observed, action: "grow" };
+  if (lastObserved === observed) return { value: observed, action: "shrink_confirmed" };
+  return { value: accepted, action: "shrink_held" };
+}
+
+/**
+ * `resolveProvisionedDiskSize` wired to `supabase_prometheus_state`, which
+ * carries both halves of the guard's memory for the `disk_size_bytes` key:
+ * `baseline_value` is the accepted size, `last_raw_value` is the previous
+ * scrape's observation.
+ *
+ * Fail-soft on a state read error: fall back to trusting the observation, the
+ * pre-FIX-1104 behaviour. A guard that cannot read its memory should not also
+ * take the disk row offline.
+ */
+export async function resolveDiskSizeWithCorroboration(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  db: SupabaseClient<any>,
+  observed: number,
+): Promise<DiskSizeDecision> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const anyDb = db as any;
+
+  const { data: existing, error } = await anyDb
+    .from("supabase_prometheus_state")
+    .select("metric, baseline_value, baseline_at, last_raw_value")
+    .eq("metric", DISK_SIZE_METRIC)
+    .maybeSingle();
+  if (error) return { value: observed, action: "bootstrap" };
+
+  const row = existing as StateRow | null;
+  const decision = resolveProvisionedDiskSize({
+    observed,
+    accepted: row ? Number(row.baseline_value) : null,
+    lastObserved: row ? Number(row.last_raw_value) : null,
+  });
+
+  const now = new Date().toISOString();
+  if (!row) {
+    await anyDb.from("supabase_prometheus_state").insert({
+      metric: DISK_SIZE_METRIC,
+      baseline_value: decision.value,
+      baseline_at: now,
+      last_raw_value: observed,
+      last_scraped_at: now,
+    });
+  } else {
+    await anyDb
+      .from("supabase_prometheus_state")
+      .update({
+        baseline_value: decision.value,
+        // Only stamp baseline_at when the accepted size actually moved, so it
+        // reads as "when the disk changed size", not "when we last scraped".
+        ...(decision.value !== Number(row.baseline_value) ? { baseline_at: now } : {}),
+        last_raw_value: observed,
+        last_scraped_at: now,
+      })
+      .eq("metric", DISK_SIZE_METRIC);
+  }
+
+  return decision;
 }
 
 // ── Counter-delta state ───────────────────────────────────────────────────────
@@ -403,43 +642,32 @@ export async function getSupabasePrometheusMetrics(
       // lo/docker/veth/br/cni on other tiers/hosts, which would inflate egress.
       { name: EGRESS_METRIC, labelExcludes: NETWORK_VIRTUAL_DEVICES },
       { name: "pg_stat_database_num_backends" },
-      {
-        name: "node_filesystem_size_bytes",
-        labelContains: `mountpoint="${DISK_MOUNT}"`,
-      },
-      {
-        name: "node_filesystem_avail_bytes",
-        labelContains: `mountpoint="${DISK_MOUNT}"`,
-      },
     ];
 
     const parsed = parsePrometheusText(text, wants);
     const egressRaw = parsed.get(EGRESS_METRIC);
     const numBackends = parsed.get("pg_stat_database_num_backends");
-    const diskSize = parsed.get(
-      `node_filesystem_size_bytes|mountpoint="${DISK_MOUNT}"`,
-    );
-    const diskAvail = parsed.get(
-      `node_filesystem_avail_bytes|mountpoint="${DISK_MOUNT}"`,
-    );
 
-    if (
-      egressRaw === undefined ||
-      numBackends === undefined ||
-      diskSize === undefined ||
-      diskAvail === undefined
-    ) {
+    if (egressRaw === undefined || numBackends === undefined) {
       return {
         error:
           `Missing metric(s) in response: ` +
           [
             egressRaw === undefined ? EGRESS_METRIC : null,
             numBackends === undefined ? "pg_stat_database_num_backends" : null,
-            diskSize === undefined ? `node_filesystem_size_bytes(${DISK_MOUNT})` : null,
-            diskAvail === undefined ? `node_filesystem_avail_bytes(${DISK_MOUNT})` : null,
           ].filter(Boolean).join(", "),
       };
     }
+
+    // FIX-1104: the filesystem pair goes through selectDiskSeries, which
+    // refuses an ambiguous mount rather than summing it into a plausible-
+    // looking lie. See the header note.
+    const disk = selectDiskSeries(text, DISK_MOUNT);
+    if ("error" in disk) {
+      return { error: `disk series (${DISK_MOUNT}): ${disk.error}` };
+    }
+    const diskSize = disk.size_bytes;
+    const diskAvail = disk.avail_bytes;
 
     const egressDelta = await applyCounterDelta(db, EGRESS_METRIC, egressRaw);
 
@@ -498,11 +726,18 @@ export async function getSupabasePrometheusMetrics(
       // RPC unavailable — keep cpu_max_* equal to the current value.
     }
 
+    // FIX-1104: pin the denominator. Growth lands immediately; a shrink has to
+    // be corroborated by the previous scrape before it moves durable config.
+    const observedDiskSize = Math.max(0, Math.round(diskSize));
+    const diskDecision = await resolveDiskSizeWithCorroboration(db, observedDiskSize);
+
     const result: SupabasePrometheusMetrics = {
       egress_bytes_month_to_date: egressDelta,
       db_connections_active: Math.round(numBackends),
       disk_used_bytes: Math.max(0, Math.round(diskSize - diskAvail)),
-      disk_size_bytes: Math.max(0, Math.round(diskSize)),
+      disk_size_bytes: diskDecision.value,
+      disk_size_observed_bytes: observedDiskSize,
+      disk_size_action: diskDecision.action,
       cpu_pct_current: Math.round(cpuPctCurrent * 100) / 100,
       cpu_max_1h: Math.round(cpuMax1h * 100) / 100,
       cpu_max_24h: Math.round(cpuMax24h * 100) / 100,

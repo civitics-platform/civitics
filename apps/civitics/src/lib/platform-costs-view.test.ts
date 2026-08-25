@@ -91,7 +91,6 @@ const dbSize = metric({
   included_limit: 8589934592,
   display_limit: 56950861824,
   pct: 370.38616113131866,
-  capacity_pct: 55.86557948380732,
   // The bands FIX-1089 re-based: 370% is the steady state, so this row is
   // HEALTHY while owing $2.70/month. That divergence is the whole reason
   // `over` is not `critical`.
@@ -514,7 +513,12 @@ test("an old-shape payload yields no per-service costs, so the caller can fall b
 });
 
 test("plan labels come from whichever block states them", () => {
-  assert.equal(planLabelFor(prodPayload, "vercel"), "Pro Plus");
+  // FIX-1104: "Pro", not "Pro Plus". `plan_iteration` is Vercel's pricing-model
+  // generation marker, not a tier — the account's invoice line is keyed `pro`
+  // at $20, which is what the cost decomposition on the same page prints.
+  // Concatenating them put two names for one plan on one screen.
+  assert.equal(planLabelFor(prodPayload, "vercel"), "Pro");
+  assert.equal(prodPayload.vercel_account?.plan_iteration, "plus", "still in the payload");
   assert.equal(planLabelFor(prodPayload, "supabase"), "Pro");
   assert.equal(planLabelFor(prodPayload, "upstash"), "Free tier");
   assert.equal(planLabelFor(prodPayload, "resend"), "free tier");

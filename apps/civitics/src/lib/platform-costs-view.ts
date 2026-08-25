@@ -506,13 +506,22 @@ export function serviceCosts(payload: CostsPayloadView): Map<string, ServiceCost
   return out;
 }
 
-/** Plan label for a card header, from whichever block states it. */
+/**
+ * Plan label for a card header, from whichever block states it.
+ *
+ * FIX-1104 — the Vercel header used to concatenate `plan` with
+ * `plan_iteration` and read "Pro Plus", while the cost decomposition on the
+ * same page read "Vercel Pro $20.00". Two names for one plan on one screen,
+ * and neither is what the vendor calls it: `planIteration` is Vercel's marker
+ * for which generation of Pro PRICING an account is on (the usage-credit
+ * model), not a tier — the account's own invoice line is keyed `pro`, priced
+ * $20, and the dashboard says Pro. So the label is the plan, and the iteration
+ * stays in the payload for anyone who needs to know which pricing generation
+ * the $20 credit came from.
+ */
 export function planLabelFor(payload: CostsPayloadView, service: string): string | null {
   if (service === "vercel" && payload.vercel_account) {
-    const { plan, plan_iteration } = payload.vercel_account;
-    return [titleCase(plan), plan_iteration ? titleCase(plan_iteration) : null]
-      .filter(Boolean)
-      .join(" ");
+    return titleCase(payload.vercel_account.plan);
   }
   if (service === "supabase" && payload.supabase_account) {
     return titleCase(payload.supabase_account.plan);

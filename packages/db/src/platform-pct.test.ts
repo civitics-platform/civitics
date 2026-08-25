@@ -8,9 +8,14 @@
  * The first test is the exact prod row, with the exact prod numbers, so a
  * regression reads as a failure of a real observation rather than of an
  * abstraction. The rest pin the properties that make the fix safe to ship:
- * capacity survives, over-limit is not clamped, and every OTHER row is
- * bit-for-bit unchanged (only one row in the table sets display_limit, and this
- * is what proves the blast radius really is one row).
+ * over-limit is not clamped, and every OTHER row is bit-for-bit unchanged
+ * (only one row in the table sets display_limit, and this is what proves the
+ * blast radius really is one row).
+ *
+ * FIX-1104 retired `capacity_pct`, the second percentage FIX-1089 kept. The
+ * assertions that pinned its presence now pin its ABSENCE — it was never
+ * rendered, and it divided a subset numerator by the Disk row's own
+ * denominator, so it was a quieter duplicate of a signal already on the card.
  */
 
 import { test } from "node:test";
@@ -28,30 +33,34 @@ const DB_SIZE_ROW = {
 const DB_SIZE_VALUE = 31813807251; // 29.63 GiB
 
 test("db_size_bytes: pct divides by the quota the label prints, not the disk", () => {
-  const { pct, capacity_pct } = computeMetricPercents(DB_SIZE_VALUE, DB_SIZE_ROW);
+  const result = computeMetricPercents(DB_SIZE_VALUE, DB_SIZE_ROW);
 
   // The bug: 29.63 / 53.03 = 55.99 → rendered "56%" next to "/ 8.0 GB".
   assert.equal(Math.round((DB_SIZE_VALUE / DB_SIZE_ROW.display_limit) * 100), 56);
 
   // The fix: 29.63 / 8 = 370.4%. Same row, same label, one denominator.
-  assert.equal(Math.round(pct), 370);
-  assert.ok(pct > 100, "an over-quota row must report over-quota");
+  assert.equal(Math.round(result.pct), 370);
+  assert.ok(result.pct > 100, "an over-quota row must report over-quota");
 
-  // And the capacity reading FIX-353 added is still available, just not as pct.
-  assert.equal(Math.round(capacity_pct as number), 56);
+  // FIX-1104: and the row carries exactly one percentage now.
+  assert.deepEqual(Object.keys(result), ["pct"]);
 });
 
 test("over-limit pct is never clamped — the UI caps the bar, not the number", () => {
-  const { pct } = computeMetricPercents(500, { included_limit: 100, display_limit: null });
+  const { pct } = computeMetricPercents(500, { included_limit: 100 });
   assert.equal(pct, 500);
 });
 
-test("capacity_pct is absent unless the row actually sets display_limit", () => {
+test("FIX-1104: no row carries a capacity_pct, display_limit set or not", () => {
   // Every row in platform_limits except supabase.db_size_bytes(pro) has a NULL
-  // display_limit, which is why exactly one row's pct changed.
-  const r = computeMetricPercents(50, { included_limit: 100, display_limit: null });
-  assert.equal(r.pct, 50);
-  assert.equal("capacity_pct" in r, false);
+  // display_limit, which is why exactly one row's pct changed in FIX-1089. The
+  // one that DOES set it no longer gets a second percentage either.
+  const plain = computeMetricPercents(50, { included_limit: 100 });
+  assert.equal(plain.pct, 50);
+  assert.equal("capacity_pct" in plain, false);
+
+  const withDisplayLimit = computeMetricPercents(DB_SIZE_VALUE, DB_SIZE_ROW);
+  assert.equal("capacity_pct" in withDisplayLimit, false);
 });
 
 test("rows without display_limit are bit-for-bit unchanged by the fix", () => {
@@ -70,7 +79,7 @@ test("rows without display_limit are bit-for-bit unchanged by the fix", () => {
   ];
   for (const [value, included] of cases) {
     assert.equal(
-      computeMetricPercents(value, { included_limit: included, display_limit: null }).pct,
+      computeMetricPercents(value, { included_limit: included }).pct,
       legacy(value, included, null),
       `value=${value} limit=${included}`,
     );
@@ -80,16 +89,14 @@ test("rows without display_limit are bit-for-bit unchanged by the fix", () => {
 test("the -1 unlimited sentinel yields 0, not a negative percentage", () => {
   // github.action_minutes, vercel.function_invocations(pro), supabase.api_requests_7d.
   // Dividing by -1 would render 5,134 minutes as "-513,400%".
-  assert.equal(computeMetricPercents(5134, { included_limit: -1, display_limit: null }).pct, 0);
-  assert.equal(computeMetricPercents(142279, { included_limit: -1, display_limit: null }).pct, 0);
+  assert.equal(computeMetricPercents(5134, { included_limit: -1 }).pct, 0);
+  assert.equal(computeMetricPercents(142279, { included_limit: -1 }).pct, 0);
 });
 
 test("a null value is 0%, not NaN", () => {
-  assert.equal(computeMetricPercents(null, { included_limit: 100, display_limit: 200 }).pct, 0);
-  assert.equal(
-    "capacity_pct" in computeMetricPercents(null, { included_limit: 100, display_limit: 200 }),
-    false,
-  );
+  const row = { included_limit: 100, display_limit: 200 };
+  assert.equal(computeMetricPercents(null, row).pct, 0);
+  assert.equal("capacity_pct" in computeMetricPercents(null, row), false);
 });
 
 /**
