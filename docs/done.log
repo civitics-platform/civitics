@@ -1304,3 +1304,4 @@
 2026-08-24 | FIX-1068 | 7ea7b919 | local+prod | docs(fec): prod acceptance for PR 3b — FIX-1068 closes, FIX-903 proven, residue filed as FIX-1106
 2026-08-24 | FIX-1100 | 8341fc75 | local-only | fix(fec): give the nightly fec job a budget a full replay fits in, and pay the vacuum a killed writer skips
 2026-08-24 | FIX-903 | 7ea7b919 | prod-only | docs(fec): prod acceptance for PR 3b — FIX-1068 closes, FIX-903 proven, residue filed as FIX-1106
+2026-08-25 | FIX-1101 | 13096aa0 | local+prod | fix(ec): bound a single donations window from outside, and defer while a FEC replay is pending
