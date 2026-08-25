@@ -95,22 +95,76 @@ export async function vacuumRewritten(
 ): Promise<void> {
   const targets = REWRITE_TARGETS[writer];
   if (!targets || targets.length === 0) return;
+  await vacuumTables(client, targets, `after ${writer}`, log);
+}
 
-  for (const table of targets) {
+/**
+ * `VACUUM (ANALYZE)` an explicit table list on an already-open connection.
+ *
+ * The same body `vacuumRewritten()` uses, exposed for the callers whose trigger
+ * is not "a named writer just returned" — notably FIX-1100's compensating tail,
+ * where the writer that owed the vacuum was SIGTERM'd by the GHA job timeout
+ * and never reached its own tail at all. `reason` is free text for the log line
+ * so a scan of a run log says WHY the vacuum happened.
+ *
+ * Failure policy is identical and deliberate: log loudly, never throw. A vacuum
+ * is a repair, and failing the caller because a repair failed converts degraded
+ * visibility into lost work.
+ */
+export async function vacuumTables(
+  client: Client,
+  tables: readonly string[],
+  reason: string,
+  log: (msg: string) => void = console.log,
+): Promise<void> {
+  for (const table of tables) {
     const t0 = Date.now();
     try {
       // Autocommit — node-postgres issues simple queries outside an explicit
       // transaction, which is the only reason this is legal at all.
       await client.query(`VACUUM (ANALYZE) ${table}`);
-      log(`[vacuum-tail] ${table} — ${((Date.now() - t0) / 1000).toFixed(1)}s (after ${writer}, FIX-943 rule)`);
+      log(`[vacuum-tail] ${table} — ${((Date.now() - t0) / 1000).toFixed(1)}s (${reason}, FIX-943 rule)`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       // Greppable and unmissable: the backstop cron will catch it, but a tail
       // that fails every run is a real regression and must not read as silence.
       console.error(
-        `[vacuum-tail] FAILED ${table} after ${writer}: ${msg} — ` +
+        `[vacuum-tail] FAILED ${table} ${reason}: ${msg} — ` +
           `visibility map left to autovacuum + the derived-table-vacuum-analyze backstop`,
       );
     }
   }
 }
+
+/**
+ * FIX-1100 — the compensating vacuum for a bulk writer that was KILLED before
+ * its own FIX-943 tail could run.
+ *
+ * WHY THIS EXISTS. `fec_bulk`'s indiv stage bulk-rewrites
+ * `financial_relationships` and `financial_entities` and owns a vacuum tail for
+ * them. On 2026-08-24 the nightly's fec job hit `timeout-minutes: 150` partway
+ * through the committee route — 780,150 of 998,823 records in — and SIGTERM
+ * skipped the tail entirely. `financial_relationships` was measured at 80.66%
+ * all-visible the next day with no `last_vacuum` recorded.
+ *
+ * A heap page loses its all-visible mark if ANY tuple on it is dead, so a
+ * partial bulk rewrite un-marks far more of the heap than its dead-tuple ratio
+ * suggests, and every index-only scan over the table silently degrades to a
+ * per-row heap fetch until something vacuums. That is FIX-884 and FIX-943.
+ *
+ * WHERE IT FIRES, AND WHY NOT THE OBVIOUS PLACE. The obvious home is the killed
+ * job's own `if: always()` post-step — but that step runs inside the SIGTERM
+ * that just killed the job, on a runner being torn down, which is playbook C3:
+ * a guard placed where it cannot fire. The reliable trigger is the NEXT run
+ * finding `fec_bulk_run_state` present, which is exactly the FIX-754 resume
+ * signal and is durable in the DB. So the tail is paid by the resume, before it
+ * adds its own writes on top of the mess.
+ *
+ * Cost is real — minutes on prod for `financial_relationships` — which is part
+ * of why FIX-1100 also raises the job budget. Never `VACUUM FULL`.
+ */
+export const KILLED_FEC_WRITER_TABLES = [
+  "public.financial_relationships",
+  "public.financial_entities",
+] as const;
+

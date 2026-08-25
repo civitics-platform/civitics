@@ -21,7 +21,7 @@
  * connection; the connection always closes in `finally` before this returns.
  */
 
-import { vacuumRewritten } from "./vacuum-tail";
+import { vacuumRewritten, vacuumTables, KILLED_FEC_WRITER_TABLES } from "./vacuum-tail";
 
 /**
  * Compose a session-pooler (or local Docker) Postgres DSN from env.
@@ -128,6 +128,39 @@ export async function runHeavyRebuild(fn: string): Promise<number> {
   } finally {
     await client.end();
   }
+}
+
+/**
+ * FIX-1100 — pay the FIX-943 vacuum tail a KILLED `fec_bulk` writer never
+ * reached. Called from the FIX-754 resume path before the resume adds its own
+ * writes. See `KILLED_FEC_WRITER_TABLES` in vacuum-tail.ts for the mechanism
+ * and why the resume — not the dying job's `if: always()` step — is the only
+ * place this can actually fire.
+ *
+ * Never throws: a failed repair must not stop the ingest it precedes. Returns
+ * elapsed milliseconds so the caller can log the cost against the job budget.
+ */
+export async function vacuumAfterKilledFecWriter(
+  log: (msg: string) => void = console.log,
+): Promise<number> {
+  const t0 = Date.now();
+  const { Client } = await import("pg");
+  let client: InstanceType<typeof Client> | null = null;
+  try {
+    client = new Client({ connectionString: buildDbUrl() });
+    await client.connect();
+    // A vacuum of financial_relationships runs minutes on prod, well past the
+    // session default. Raise at SESSION level — the function-level GUC trick
+    // does not re-arm an already-armed top-level timer (FIX-444 header).
+    await client.query("SET statement_timeout = '90min'");
+    await vacuumTables(client, KILLED_FEC_WRITER_TABLES, "killed fec_bulk writer, FIX-1100", log);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[vacuum-tail] FIX-1100 compensating vacuum could not run: ${msg}`);
+  } finally {
+    if (client) await client.end().catch(() => {});
+  }
+  return Date.now() - t0;
 }
 
 // FIX-776 — direct-pg CALL for chunked backfill PROCEDUREs. A procedure that

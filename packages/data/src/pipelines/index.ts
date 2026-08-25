@@ -19,6 +19,8 @@ import {
   type FecBulkRunState,
 } from "./fec-bulk/run-state";
 import { currentFecCycle, resolveProbeCycle, indivDropPending } from "./fec-bulk/drop-check";
+// FIX-1100 — the compensating vacuum a SIGTERM'd fec_bulk never got to run.
+import { vacuumAfterKilledFecWriter } from "../lib/heavy-rebuild";
 // FIX-904: runIrs990Pipeline is no longer imported here — IRS-990 runs from its
 // own weekly workflow (.github/workflows/irs990.yml). See the note at its old
 // call site in the Sunday block.
@@ -699,6 +701,25 @@ export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<Nigh
         const currentCycle = parseInt(currentFecCycle(new Date()), 10);
         if (!prevFecCycles)      process.env["FEC_CYCLES"]       = `${currentCycle - 2},${currentCycle}`;
         if (!prevFecIndivCycles) process.env["FEC_INDIV_CYCLES"] = `${currentCycle}`;
+      }
+      // FIX-1100: a resume means the previous fec_bulk was KILLED mid-write —
+      // on 2026-08-24 by this job's own `timeout-minutes`, 780,150/998,823
+      // records into the committee route. A killed writer never reaches its
+      // FIX-943 vacuum tail, so it leaves financial_relationships part-rewritten
+      // and un-vacuumed (measured 80.66% all-visible the next day, no
+      // last_vacuum). A heap page loses its all-visible mark if ANY tuple on it
+      // is dead, so index-only scans over the table degrade to per-row heap
+      // fetches until something vacuums — and the resume is about to write on
+      // top of that. Pay the tail FIRST, here, because this is the only place
+      // that can: the dying job's `if: always()` step runs inside the SIGTERM
+      // that killed it (playbook C3, a guard where it cannot fire), while the
+      // resume signal is durable in pipeline_state. Never throws.
+      if (fecResumeState) {
+        console.log(
+          `[nightly] fec_bulk resume — paying the vacuum tail the killed writer skipped (FIX-1100/FIX-943)`,
+        );
+        const vacMs = await vacuumAfterKilledFecWriter();
+        console.log(`[nightly] fec_bulk resume vacuum complete in ${(vacMs / 1000).toFixed(1)}s (FIX-1100)`);
       }
       try {
         const r = await runFecBulkPipeline();

@@ -72,9 +72,13 @@ jobs:
     # leaves headroom under GHA's 6h job cap. Unlike the nightly, this is not a
     # recurring budget — it's a one-off operator action.
     #
-    # workflow-parity-waiver: nightly fec-phase is a recurring 150-min slice of
-    # one night's budget; this is a one-off operator action allowed most of the
-    # 6h job cap. Deliberate divergence (FIX-961, FIX-995, FIX-1000).
+    # workflow-parity-waiver: nightly fec-phase is a recurring slice of one
+    # night's budget (300 min since FIX-1100, was 150); this is a one-off
+    # operator action allowed most of the 6h job cap. The gap is now only
+    # 50 min, but it stays deliberate — the nightly must leave room for
+    # enrichment-phase, which carries `needs: fec-phase`, and a backfill has no
+    # such downstream. Deliberate divergence (FIX-961, FIX-995, FIX-1000,
+    # FIX-1100).
     timeout-minutes: 350
 
     # DIVERGES FROM nightly.yml's fec-phase — do not assume otherwise.

@@ -61,7 +61,30 @@ jobs:
     # routinely overruns 120 min on the Pro Micro. Interim cushion until the
     # ingest-resumability PR (watermark-resumable Vercel Workflow ingest) lands
     # the durable fix; well below GHA's 6h job cap.
-    timeout-minutes: 150
+    #
+    # FIX-1100: raised 150→300, sized off a measured kill rather than a guess.
+    # 2026-08-24's PR 3b full-file replay of cycle 2026 was SIGTERM'd at 150 min
+    # having finished the candidate route and reached 780,150 of 998,823 records
+    # (78%) on the committee route. The 2026-08-25 resume finished the remaining
+    # 22% plus independent expenditures, brackets and the small-dollar rollup in
+    # 30.1 min — of which the rollup alone was 485.2 s. So a full run of the
+    # 3b semantics needs ~180 min of writer time on a quiet box, and the 150 cap
+    # was guaranteeing a kill on every semantics-changing replay. 300 leaves
+    # ~120 min of contention headroom and still sits under GHA's 360-min job cap.
+    #
+    # KNOWN INTERACTION, and why FIX-1101's interlock is load-bearing: this job
+    # now legitimately runs until ~08:00 UTC, which is exactly when the
+    # rebuild-ec-incremental{,-mon} pg_cron jobs fire. That is the collision
+    # shape that produced 2026-08-24's all-503 incident (EC rebuilding on the
+    # replay's delta while the replay's own writer had just been killed).
+    # Widening this budget widens that window, so the EC side must refuse to
+    # START while the FEC bulk pipeline holds its advisory lock — see FIX-1101
+    # decision 6. Do not raise this further without that interlock in place.
+    #
+    # Downstream cost: enrichment-phase carries `needs: fec-phase`, so a
+    # fec-phase that uses its full budget delays enrichment by the same amount.
+    # It is decoupled from the OUTCOME (FIX-462/FIX-740) but not from the wait.
+    timeout-minutes: 300
 
     env:
       NEXT_PUBLIC_SUPABASE_URL: https://xsazcoxinpgttgquwvuf.supabase.co
