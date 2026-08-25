@@ -1301,3 +1301,6 @@
 2026-08-22 | FIX-1098 | ee2c813d | local+prod | fix(ci): make the hit-test probe self-verifying, and stop overstating its CI coverage
 2026-08-24 | FIX-1104 | 56e7cafc | local+prod | fix(costs): stabilize disk denominator, trim rate labels, plan-label consistency
 2026-08-24 | FIX-1105 | 56e7cafc | local+prod | fix(costs): stabilize disk denominator, trim rate labels, plan-label consistency
+2026-08-24 | FIX-1068 | 7ea7b919 | local+prod | docs(fec): prod acceptance for PR 3b — FIX-1068 closes, FIX-903 proven, residue filed as FIX-1106
+2026-08-24 | FIX-1100 | 8341fc75 | local-only | fix(fec): give the nightly fec job a budget a full replay fits in, and pay the vacuum a killed writer skips
+2026-08-24 | FIX-903 | 7ea7b919 | prod-only | docs(fec): prod acceptance for PR 3b — FIX-1068 closes, FIX-903 proven, residue filed as FIX-1106
