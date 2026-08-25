@@ -583,3 +583,194 @@ now safe — local acceptance passes.
 Older cycles (2024, 2022, 2020) re-stream via gated `fec-backfill` dispatches in
 quiet windows, Craig-approved per dispatch, one cycle at a time. §2.5's
 extrapolation (+50% to +100% rows) stands unmeasured for those.
+
+---
+
+## 8. Addendum — the prod acceptance run (2026-08-25), and the residue it exposed
+
+The §7.3 checklist ran against prod on **2026-08-25**, after the replay that
+Monday's nightly started finally completed. Written from cc-prompt-87.
+
+### 8.1 What actually fired — the §7.3 rollout prediction held, with one extra leg
+
+§7.3 predicted the acceptance run lands on **Monday**, fired by the FIX-903
+weekday drop-check rather than the Sunday nightly. That is what happened, but it
+took two nights, not one:
+
+| night | what happened |
+|---|---|
+| Sun 2026-08-23 | no indiv work — FEC published `indiv26.zip` at 15:45 UTC, ~12 h *after* the nightly's fec phase. Exactly the phase offset §7.3 describes. |
+| Mon 2026-08-24 | FIX-903 drop-check fires the weekday `fec_bulk`. Full-file replay under 3b semantics. **Killed by the job's `timeout-minutes: 150`** partway through the committee route. `data_sync_log` row `reaped`. |
+| Tue 2026-08-25 | FIX-754 resume picks the cycle up from its cursor and finishes. `fec_bulk` 03:06:10 → 03:36:18 UTC, **30.1 min**, 336,780 rows, `complete`. |
+
+The resume lines, verbatim from GHA run **32803399130**:
+
+```
+Pending fec_bulk_run_state: cycle=2026 lm="Sun, 23 Aug 2026 15:45:30 GMT"
+  donor-entities=done indiv-to-candidate=done recipient-entities=done
+  indiv-to-committee=780150/998823 independent-expenditures=pending
+Cleared fec_bulk_run_state — cycle 2026 complete (FIX-754)
+```
+
+A resume state naming the 08-23 file can only have been created by a run that
+started after FEC published it and before Tuesday — i.e. Monday's weekday
+firing, which had no resume state of its own (§7.3 records `fec_bulk_run_state`
+absent at the time of writing). **That is FIX-903's durable proof**: a weeknight
+fec_bulk invoked with no pending resume state, and `fec_indiv_watermark['2026']`
+advanced to `Sun, 23 Aug 2026 15:45:30 GMT` — the current FEC Last-Modified,
+inside the week it was published. FIX-903 closes.
+
+The 150-minute kill is filed separately as **FIX-1100**.
+
+### 8.2 §7.3 items 2 and 3 — the bracket half lands, within file drift
+
+`small_dollar_bracket_rollup`, `cycle_year = 2026`, every row written at a
+single timestamp (`2026-08-25 03:26:39.952+00`) — a full replace, no stale
+accumulation. Writer line: `Small-dollar brackets — deleted 0, inserted 9,858,
+unresolved recipients 16`.
+
+| | §7.3 expected | prod measured | delta |
+|---|---:|---:|---:|
+| rows | ~9,823 | **9,858** | +35 |
+| Sum `donor_count` | 1,002,643 | **1,012,504** | +9,861 (+0.98%) |
+| Sum `total_cents` | $83,453,297 | **$84,169,591** | +$716,294 (+0.86%) |
+| — $0.01–$49.99 | 296,250 / $7,092,375 | 299,868 / $7,200,152 | +1.22% |
+| — $50–$99.99 | 259,815 / $17,525,145 | 262,188 / $17,689,205 | +0.91% |
+| — $100–$199.99 | 446,578 / $58,835,777 | 450,448 / $59,280,234 | +0.87% |
+
+Split by recipient type: 5,955 rows / 661,687 donors to `financial_entity`,
+3,903 rows / 350,817 donors to `official`.
+
+**§7.3's prediction that prod would come in slightly LOWER than the harness is
+contradicted — every band is higher, uniformly.** The explanation is the input
+file, not the semantics: §7.1's harness ran on the **08-16 drop** (§7.3 records
+prod's watermark as `Sun, 16 Aug 2026 15:50:15 GMT` at the time of writing),
+while prod ingested the **08-23 drop**. A strictly larger file must produce
+counts at or above the harness's in every band, which is exactly the observed
+shape. The harness was *not* re-run on the newer file, so the ~1% is explained
+but not independently confirmed.
+
+The Ossoff spot-check settles it the other way, and is exact:
+
+| Ossoff C00718866 / official `1376dc1e-…` | §2.3 / §7.1 | prod | |
+|---|---:|---:|:--:|
+| FR rows (`fec_bulk_indiv`, cycle 2026) | 38,973 | 38,973 | ok |
+| dollars | $25,844,495 | $25,844,495 | ok |
+| `sub_floor_donor_count` | 29,551 | 29,551 | ok |
+| `sub_floor_cents` | $2,778,748 | $2,778,748 | ok |
+| — $0.01–$49.99 | 4,777 / $139,732 | 4,777 / $139,732 | ok |
+| — $50–$99.99 | 8,718 / $566,802 | 8,718 / $566,802 | ok |
+| — $100–$199.99 | 16,056 / $2,072,214 | 16,056 / $2,072,214 | ok |
+
+Ossoff's authorized committee files quarterly (Q3 not due until October), so it
+gained no rows between the two drops — which is why his slice reproduces to the
+dollar while the platform total drifts. Consistent with the file-drift reading.
+
+`official_small_dollar_rollup`: **1,724** officials with non-zero
+`sub_floor_cents`, 5,971 zero, 0 null; sum $31,794,494 across 350,817 sub-floor
+donor groups.
+
+### 8.3 §7.3 item 3, the call path — the line exists, and it is not cheap
+
+The `rebuildSmallDollarForOfficials()` call that cc-70 could not find evidence of
+now logs:
+
+```
+Small-dollar rollup — re-aggregated 1,724 official(s) in 485.2s (FIX-1068)
+```
+
+**N = 1,724 equals the non-zero `sub_floor_cents` count exactly**, and equals the
+distinct official recipients behind the 3,903 official-typed bracket rows. The
+call path is proven end-to-end. At **485.2 s it is 27% of the whole 30.1-minute
+resume leg** — worth knowing before the older cycles re-stream, where the
+official count will be larger.
+
+### 8.4 The FR half does not reconcile — and the reason is not PR 3b
+
+§7.3 item 1 expects **1,980,786** rows / **$4,556,216,174**, with prod slightly
+lower on the candidate route. Prod holds:
+
+| source | rows | dollars |
+|---|---:|---:|
+| `fec_bulk_indiv` | 1,097,212 | $1,374,484,612 |
+| `fec_bulk_indiv_to_committee` | 1,105,803 | $3,903,783,421 |
+| **total** | **2,203,015** | **$5,278,268,033** |
+
+That is **+222,229 rows / +$722.1M above an expectation that is itself an upper
+bound**. §7.3's own note (the harness emits to every ccl P/A candidate, the
+pipeline only to matched officials) means prod should sit *below* 1,980,786.
+
+**Neither `updated_at` nor a row count can decide this**, because FIX-1008's
+`WHERE … IS DISTINCT FROM` guard means a re-emitted row with unchanged values
+never fires `set_updated_at` — "untouched" and "not re-emitted" are not the same
+predicate. The instrument that does work is `small_dollar_bracket_rollup`
+membership: the 08-25 run **replaced every cycle-2026 bracket row for every
+recipient it resolved**, so a bracket row is a prod-side witness of emit-set
+membership, and it needs no harness re-run.
+
+Classifying every `(to_type, to_id)` in the slice by how much of it the replay
+touched, crossed with bracket-row presence:
+
+| class | bracket row | recipients | rows | untouched rows | untouched $ |
+|---|:--:|---:|---:|---:|---:|
+| A never touched | **no** | **3,416** | **209,017** | **209,017** | **$1,481,928,516** |
+| A never touched | yes | 275 | 7,818 | 7,818 | $121,442,590 |
+| B fully rewritten | no | 143 | 699 | 0 | — |
+| B fully rewritten | yes | 250 | 21,484 | 0 | — |
+| C partially touched | no | 806 | 49,816 | 46,056 | $719,340,745 |
+| C partially touched | yes | 3,799 | 1,914,181 | 1,031,136 | $2,191,184,868 |
+
+**Class A / no-bracket-row is the residue: 3,416 recipients the replay never
+resolved at all, holding 209,017 rows and $1.48B — ~94% of the 222,229-row
+gap.** The 275 class-A recipients that *do* carry a bracket row were in the emit
+set and merely dormant; their rows are correct, not stale. Sampling note: the
+false-positive rate is bounded at ~2% — among class-C recipients, provably in
+the emit set, 806 of 4,605 (17.5%) lack a bracket row, which admits only ~58 of
+the 3,416 as in-set-but-bracketless.
+
+Split of the residue, and the part that matters:
+
+| to_type | recipients | rows | dollars |
+|---|---:|---:|---:|
+| `financial_entity` | 2,736 | 136,072 | $1,361,948,580 |
+| **`official`** | **680** | **72,945** | **$119,979,936** |
+
+`officials.total_received_cents`, `official_donor_totals`, the donor-rollup MV,
+the treemap brackets and the graph money branch all sum this slice, so that
+**$119,979,936 across 680 officials is live double-counted money on official
+pages today**.
+
+**It is not a PR 3b artifact.** The stale rows last-wrote across **2026-05-03 to
+2026-08-17** — biggest cohorts 488 officials / 52,315 rows on 07-27 and 527
+entities / 103,459 rows on 06-28 — so this has accrued over every full run since
+the pipeline existed. PR 3b only moved the totals far enough to make it legible.
+
+**The cc-87 prompt's leading mechanism is refuted.** The hypothesis was donor
+fingerprint canonicalisation drift resolving a donor to a different `from_id`,
+so corrections landed as duplicates beside stale rows. Against that:
+`financial_entities` carries a **UNIQUE** index on `donor_fingerprint`
+(`financial_entities_donor_fingerprint_unique`, 4,743,739 distinct of 4,743,739
+non-null) and has **no `merged_into` column** at all — the prompt's query 2 has
+no column to run against. And Ossoff, a large recipient, reproduces the harness
+exactly in §8.2, i.e. carries **zero** residue. The residue is per-**recipient**,
+not per-donor: recipients that fell out of the emit set, whose prior rows nothing
+retracts, because an upsert-only replay cannot shrink a set.
+
+Filed as **FIX-1106** (red), with the sweep shape: a run-scoped emitted-key
+staging table written by the writer, a Craig-gated anti-join retraction over the
+`(cycle, source)` slice after a run that reports COMPLETE, and the FIX-943
+vacuum tail after. Nothing was deleted in this session.
+
+### 8.5 Verdict on §7.3
+
+| item | verdict |
+|---|---|
+| 1 — FR row/dollar reconciliation | **fails**, by +222,229 rows / +$722.1M — cause identified, pre-existing, filed as FIX-1106 |
+| 2 — bracket rollup | **passes** within +0.86–1.22% file drift; Ossoff exact |
+| 3 — `sub_floor_cents` + call path | **passes** — 1,724 officials, exact agreement across three instruments |
+| 5 — FIX-943 vacuum tail | **not run** on `financial_relationships` (FIX-1100); `financial_entities` was vacuumed 03:35:51 |
+
+FIX-1068 closes on items 2 and 3: the new semantics are live and producing the
+predicted population, with an exact per-recipient match on the designated
+spot-check. Item 1's gap is a distinct, older defect that PR 3b surfaced rather
+than caused, and it is FIX-1106's to carry.
