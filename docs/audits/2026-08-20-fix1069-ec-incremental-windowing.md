@@ -767,3 +767,134 @@ evidence: first a big window (§11 refuted it), then a decayed visibility map
 A mechanism that requires an index-only scan is falsifiable in one `EXPLAIN`, in
 under a second, before any A/B harness is written. That check belongs at the
 START of a FIX-884/FIX-943-shaped diagnosis, not after two arms have run.
+
+---
+
+## 13. The third prod drain — FIX-1101's acceptance run, and how it ended
+
+Run 2026-08-25 23:59:02 → 2026-08-26 01:58:08 UTC, immediately after the
+FIX-1101 migration landed on prod and both EC cron jobs were un-paused. Hard
+stop nominally 01:45. **It overran, and the overrun is the most useful thing
+this run produced.**
+
+### 13.1 What ran
+
+`prepare()` found the 08-24 cycle block present but its UNLOGGED staging table
+truncated by the 08-24 16:26 restart, so it correctly fell through and opened a
+FRESH cycle rather than advancing watermarks over unprocessed donors — the
+FIX-1069 `EXISTS` guard doing exactly its job. 649,024 donors staged in 38.0 s.
+
+```
+window  1  153,233 edges   348.0s      window  8  150,565 edges   336.6s
+window  2  147,423 edges   325.0s      window  9  143,663 edges   318.7s
+window  3  149,508 edges   363.4s      window 10  148,258 edges   347.3s
+window  4  147,562 edges   324.4s      window 11  150,244 edges   356.6s
+window  5  144,543 edges   343.8s      window 12  151,823 edges  1385.2s  <-- 4.0x
+window  6  158,119 edges   369.6s      window 13       (rolled back)  1902s  <-- 5.5x
+window  7  149,350 edges   341.1s
+```
+
+**12 of 16 windows banked, 1,794,291 edges, mean 343 s (σ 16 s) over the eleven
+normal windows.**
+
+### 13.2 Window 5 ran in 343.8 s
+
+The same `[40000000..50000000)` range that consumed **≥13,740 s** on 2026-08-24
+before FIX-1071's watchdog cancelled it. Same box, a *larger* dirty set per
+window (40.6k donors vs 34.3k), and **40× faster**.
+
+FIX-1101 does not touch the window's SQL — not the DELETE, not the aggregation,
+not the bounds. Nothing in the release can account for a 40× change. This is the
+strongest available confirmation of §12.4: **window 5 was never a slow window.
+It was running through the box-wide condition of 08-24.**
+
+### 13.3 …but two windows in the same run WERE outliers
+
+Window 12 at 1,385.2 s (4.0×) and window 13 at ≥1,902 s (5.5×) — **consecutive**,
+on work indistinguishable from their neighbours, both waiting in
+`IO / DataFileRead`.
+
+> **A correction, because it changed the reading.** Mid-run, window 13 was
+> sampled at 278.6 s and reported as "recovered to pace". That was a sample of
+> an *incomplete* window, not a completed one, and it was wrong: window 13 went
+> on to ≥1,902 s. The inference drawn from it at the time — that the condition
+> is intermittent, which would rule out a depleting-credit mechanism — does not
+> survive the correction. Never read a rate off a window that has not finished.
+
+With the correction the shape is: **eleven normal windows over ~65 minutes, then
+sustained degradation for every window after.** That is precisely the signature
+of a depleting I/O credit balance (gp2 burst credits, or gp3 beyond provisioned
+IOPS), and it is now the leading hypothesis rather than an excluded one. It is
+testable and not yet tested: the volume type and any burst-balance metric are
+outside the database and were not read this session.
+
+**The resource is now named, from outside the database.** Supabase Observability
+for 00:27–01:27 UTC, i.e. windows ~5–12:
+
+| metric | value |
+|---|---|
+| CPU | **54.06%**, of which **IOwait 41.36%**, User only 4.45% |
+| Disk IOPS | **2,078 of a 3,000 Max = 69.3%** (read 1,249 / write 829) |
+| Network in | 17.4 MB/s |
+
+**One EC drain consumes ~69% of this box's provisioned IOPS on an otherwise idle
+box.** That is the mechanism FIX-1072 §6 could infer but not name: connection
+handshakes fail because the postmaster is behind an I/O queue, not because a
+worker pool is exhausted. Anything landing concurrently — or any window whose
+working set misses cache harder than usual — pushes past the cap and everything
+queues. Record this as the first *measured* candidate for FIX-1107.
+
+### 13.4 How it ended — three defects in the operator path (FIX-1110)
+
+Window 13 started ~01:26, legally ahead of the 01:45 stop, then ran past it.
+
+1. **`--until` is a hard START gate, not a hard stop.** The deadline is tested
+   before window *i*; a window already running is never interrupted.
+2. **The drain publishes no `entity_connections_window_inflight` row**, so
+   `enforce_ec_window_budget()` — shipped hours earlier, in this same session —
+   was structurally blind to it. The 30-minute bound would have cancelled window
+   13 at 1,800 s. The *scheduled* driver is bounded; the *hand-driven* one that
+   runs for two hours in a quiet window is not. That is backwards, and it was a
+   deliberate scoping decision in this session ("don't touch the drain script"),
+   made wrong.
+3. **Killing the client does not stop the query.** The node process and its psql
+   child were killed at 01:53; `pg_stat_activity` still showed pid 162913 in
+   `rebuild_ec_donations_incr_window` at 1,902 s two minutes later.
+   `client_connection_check_interval` defaults to 0, so Postgres does not notice
+   a departed client mid-statement. It took a manual
+   `pg_cancel_backend(162913)` at 01:58:08. **Any runbook step that says "stop
+   the drain by killing it" is wrong.**
+
+Prod impact: jobids 40 and 44 failed `job startup timeout` at 01:52, 01:54,
+01:56, 01:58; recovered 01:58:07; busy client backends 20 → 2. Earlier in the
+same drain the watchdogs were **78 ok / 2 failed** across 00:00–01:20, so the
+starvation is attributable to the two outlier windows, not to windowing as such.
+
+### 13.5 The ratchet held, and a vacuum near-miss
+
+Everything FIX-1069 promises about an interrupted run held:
+
+| check | result |
+|---|---|
+| windows banked | **12/16**, watermarks advanced |
+| window 13 | rolled back whole — watermark did NOT advance |
+| staging rows | **649,024**, intact — resume is free |
+| cycle | still open, target `2026-08-25 03:34:48` |
+| edges written | 1,794,291 |
+
+**The near-miss:** killing the drain also skipped its FIX-943 vacuum tail,
+leaving `entity_connections` at **418,198 dead tuples** after a 1.79M-edge bulk
+rewrite. It was repaired only because jobid 6 `ec-vacuum-analyze` is scheduled
+`0 2 * * 0,3` and 08-26 was a Wednesday: runid 16431 ran 02:00:00 → 02:12:01
+(**721.7 s**, against the ~90 s a clean EC vacuum takes) and restored **0 dead /
+100% all-visible**. On any other weekday the table would have sat degraded until
+autovacuum reached it. A standing convention that survives only because of the
+calendar is not being honoured — that is FIX-1110(c).
+
+### 13.6 Status
+
+Four windows (13–16) remain pending against target `2026-08-25 03:34:48`. jobid
+2 `rebuild-ec-incremental` fires Wednesday 2026-08-26 08:00 UTC, resumes the
+open cycle, skips the twelve banked windows instantly, and finishes the rest —
+now under both an 18,000 s whole-run bound and a 30-minute per-window bound.
+That firing is FIX-1101's unsupervised confirmation and should be read on 08-27.
