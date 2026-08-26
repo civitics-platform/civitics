@@ -1307,3 +1307,5 @@
 2026-08-25 | FIX-1101 | 13096aa0 | local+prod | fix(ec): bound a single donations window from outside, and defer while a FEC replay is pending
 2026-08-25 | FIX-1110 | 584ae5f5 | prod-only | docs(ec): the FIX-1101 acceptance drain — 12/16 banked, and how the overrun happened
 2026-08-26 | FIX-1110 | reopen | reopen | filed-not-fixed: the 584ae5f5 trailer said Fixes when the commit only FILED the drain defects. No drain code changed.
+2026-08-25 | FIX-1101 | 68946e09 | local-only | chore(fixes): sync after FIX-1101, and reopen FIX-1110 (filed, not fixed)
+2026-08-26 | FIX-1101 | a6095ece | prod-only | docs(cron): attribute the Tuesday I/O stall to jobid 13, pause it, and bank FIX-1101's scheduled receipt
