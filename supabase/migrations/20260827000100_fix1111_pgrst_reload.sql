@@ -1,0 +1,14 @@
+-- =============================================================================
+-- FIX-1111 — reload the PostgREST schema cache after the procedure signature
+--            change.
+--
+-- Separate file, deliberately: 20260827000000 is already applied on local and
+-- prod, and editing an applied migration would break its recorded checksum.
+--
+-- WHY IT IS NEEDED HERE SPECIFICALLY. This is not the routine post-DDL reload.
+-- FIX-1111 DROPped run_entity_connections_rebuild(text) and created
+-- run_entity_connections_rebuild(text, int), so PostgREST's cached catalog can
+-- still be holding the OLD one-argument signature. A cache that disagrees with
+-- the catalog about a routine's arity is exactly the PGRST202/PGRST203 class.
+-- =============================================================================
+NOTIFY pgrst, 'reload schema';
