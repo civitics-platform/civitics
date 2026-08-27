@@ -1309,3 +1309,6 @@
 2026-08-26 | FIX-1110 | reopen | reopen | filed-not-fixed: the 584ae5f5 trailer said Fixes when the commit only FILED the drain defects. No drain code changed.
 2026-08-25 | FIX-1101 | 68946e09 | local-only | chore(fixes): sync after FIX-1101, and reopen FIX-1110 (filed, not fixed)
 2026-08-26 | FIX-1101 | a6095ece | prod-only | docs(cron): attribute the Tuesday I/O stall to jobid 13, pause it, and bank FIX-1101's scheduled receipt
+2026-08-26 | FIX-1110 | 0ac3e889 | local-only | feat(ec): the rebuild becomes a paced background crawl — one bounded unit per firing
+2026-08-26 | FIX-1111 | b5afb2f2 | local+prod | fix(ec): reload the PostgREST cache after the signature change, and re-close the grant the recreate re-opened
+2026-08-26 | FIX-1111 | 0ac3e889 | local-only | feat(ec): the rebuild becomes a paced background crawl — one bounded unit per firing
