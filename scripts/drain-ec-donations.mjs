@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // scripts/drain-ec-donations.mjs — FIX-1069 supervised drain of the windowed
-// incremental EC donations arm.
+// incremental EC arm, rebuilt on the FIX-1111 crawl (FIX-1110).
 //
 // WHY THIS EXISTS. After FIX-1069 the donations arm is 16 committed, budget-
 // checked, resumable windows. That makes it safe to drive to convergence by
@@ -8,32 +8,66 @@
 // wake to a near-zero dirty set instead of the 1.96M-donor backlog that turned
 // 2026-08-19 into a six-hour, zero-output run.
 //
-// It drives the SHIPPED functions — rebuild_ec_donations_incr_prepare(),
-// _incr_window(), _incr_close() — one window per statement, exactly as
-// run_entity_connections_rebuild() drives them. It is NOT a reimplementation,
-// so a hand drain and a scheduled firing cannot diverge.
+// ═══ WHAT FIX-1110 CHANGED, AND WHY ════════════════════════════════════════
+// This script used to CALL rebuild_ec_donations_incr_window() directly, one
+// window per statement. That made it a SECOND driver of the same work, and on
+// the 2026-08-25 acceptance drain all three of its divergences from the
+// scheduled path bit at once:
+//
+//   1. It never published pipeline_state.entity_connections_window_inflight,
+//      so FIX-1101's per-window watchdog was structurally blind to it. The
+//      30-minute bound that shipped the same night would have cancelled
+//      window 13 at 1,800 s; instead it ran 1,902 s unbounded and took the box
+//      into connection starvation (jobids 40/44 failing 01:52→01:58).
+//   2. --until was checked only BETWEEN windows. Window 13 started at ~01:26,
+//      legally ahead of the 01:45 stop, and overran it by 13 minutes. The flag
+//      was documented as a hard stop and was a hard START gate.
+//   3. Killing the client did not stop the query. The node process and its
+//      psql child were killed at 01:53; pg_stat_activity still showed pid
+//      162913 running at 1,902 s two minutes later, because PostgreSQL does
+//      not notice a departed client mid-statement
+//      (client_connection_check_interval defaults to 0). It took a manual
+//      pg_cancel_backend() at 01:58:08. And the kill skipped the FIX-943
+//      vacuum tail, leaving entity_connections at 418,198 dead tuples.
+//
+// It is now a WRAPPER: it loops
+//     CALL run_entity_connections_rebuild('incremental', p_max_units := 1)
+// exactly as the ec-crawl pg_cron job does, one unit per iteration, with
+// --sleep-seconds between units. So it is no longer a different path — it is
+// the supervised way to run the SAME crawl faster, and every unit inherits the
+// in-flight publication, the per-window watchdog, the banking, the FEC
+// interlock and the backoff sensor for free. (1) is fixed by construction.
+//
+// (2) and (3) are fixed here: the CALL runs asynchronously, a poller enforces
+// the deadline MID-unit by finding the drain's own backend and calling
+// pg_cancel_backend() on it, and the same path handles SIGINT/SIGTERM. The
+// cancel lands in the procedure's FIX-1028 `WHEN query_canceled` handler, so
+// it is an orderly early stop that banks completed work — not an error.
 //
 // SAFETY PROPERTIES:
-//   * --until is a hard wall-clock stop checked BEFORE each window, so the
-//     drain never starts a window it cannot finish inside the quiet slot.
-//     Stopping is free: completed windows are already committed and their
-//     watermarks advanced (FIX-1069's ratchet).
-//   * every window is idempotent and range-scoped, so a re-run resumes.
+//   * every unit is idempotent, range-scoped and committed, so a re-run resumes.
+//   * --until is now a HARD stop, enforced mid-unit, not a start gate.
+//   * Ctrl-C cancels the server-side backend before exiting, then still vacuums.
+//   * the FIX-943 VACUUM (ANALYZE) tail runs on EVERY exit path that wrote
+//     anything — clean finish, deadline, Ctrl-C, or error.
 //   * --dry-run stages nothing and writes nothing.
 //   * refuses to write to prod without --allow-prod.
-//   * deliberately NOT --single-transaction: each window must be its own
-//     committed transaction, which is the entire point of the design.
 //
 // USAGE (from repo root):
 //   node scripts/drain-ec-donations.mjs --local --dry-run
 //   node scripts/drain-ec-donations.mjs --prod  --dry-run
 //   node scripts/drain-ec-donations.mjs --prod  --allow-prod --until 04:45
+//   node scripts/drain-ec-donations.mjs --prod  --allow-prod --max-units 2 --sleep-seconds 60
 //
 // --until takes HH:MM in UTC, interpreted as the next occurrence.
-// Default is 240 minutes from start.
+// --sleep-seconds defaults to 540: one donations window measures ~346 s at
+//   ~2,500 IOPS against a 1,000 IOPS baseline, which is about 9 minutes of
+//   burst-budget refill (FIX-1107). Sleeping that long between units is what
+//   keeps a supervised drain inside the same envelope the */15 crawl respects.
+//   Pass a smaller value only when you have decided to spend burst deliberately.
 
 import { readFileSync, existsSync } from "node:fs";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -58,6 +92,17 @@ if (!isProd && !has("--local")) {
 }
 if (isProd && !dryRun && !has("--allow-prod")) {
   console.error("drain-ec-donations — refusing to write to PRODUCTION without --allow-prod.");
+  process.exit(1);
+}
+
+const sleepSeconds = Number(val("--sleep-seconds") ?? 540);
+const maxUnits = Number(val("--max-units") ?? 64);
+if (!Number.isFinite(sleepSeconds) || sleepSeconds < 0) {
+  console.error("drain-ec-donations — --sleep-seconds must be a non-negative number.");
+  process.exit(1);
+}
+if (!Number.isFinite(maxUnits) || maxUnits < 1) {
+  console.error("drain-ec-donations — --max-units must be >= 1.");
   process.exit(1);
 }
 
@@ -94,23 +139,14 @@ function prodUrl() {
   return base.replace(/^(postgresql:\/\/[^:]+):?[^@]*@/, `$1:${encodeURIComponent(pw)}@`);
 }
 
-const BOUNDS = [
-  "00000000-0000-0000-0000-000000000000", "10000000-0000-0000-0000-000000000000",
-  "20000000-0000-0000-0000-000000000000", "30000000-0000-0000-0000-000000000000",
-  "40000000-0000-0000-0000-000000000000", "50000000-0000-0000-0000-000000000000",
-  "60000000-0000-0000-0000-000000000000", "70000000-0000-0000-0000-000000000000",
-  "80000000-0000-0000-0000-000000000000", "90000000-0000-0000-0000-000000000000",
-  "a0000000-0000-0000-0000-000000000000", "b0000000-0000-0000-0000-000000000000",
-  "c0000000-0000-0000-0000-000000000000", "d0000000-0000-0000-0000-000000000000",
-  "e0000000-0000-0000-0000-000000000000", "f0000000-0000-0000-0000-000000000000",
-];
-
 const utc = (d) => d.toISOString().replace("T", " ").slice(0, 19) + " UTC";
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-// ── psql runner ─────────────────────────────────────────────────────────────
+// ── psql runners ────────────────────────────────────────────────────────────
 // Root scripts in this repo shell out to psql rather than depend on `pg`, which
 // is only installed under packages/data.
 let PSQL_URL = null;
+
 function q(sql) {
   const res = spawnSync("psql", [PSQL_URL, "-v", "ON_ERROR_STOP=1", "-At", "-F", SEP], {
     input: sql + "\n", encoding: "utf8", maxBuffer: 64 * 1024 * 1024,
@@ -124,6 +160,49 @@ function q(sql) {
   return (res.stdout || "").trim().split("\n").filter(Boolean).map((l) => l.split(SEP));
 }
 
+// The CALL runs ASYNC so the deadline and SIGINT can reach it mid-unit. This is
+// FIX-1110 defects (2) and (3): a synchronous spawn cannot be interrupted, and
+// killing the client would leave the server-side statement running.
+function callAsync(sql) {
+  return new Promise((resolve, reject) => {
+    const p = spawn("psql", [PSQL_URL, "-v", "ON_ERROR_STOP=1", "-At", "-F", SEP], {
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    let out = "", err = "";
+    p.stdout.on("data", (d) => { out += d; });
+    p.stderr.on("data", (d) => { err += d; });
+    p.on("error", reject);
+    p.on("close", (code) => resolve({ code, out, err }));
+    p.stdin.write(sql + "\n");
+    p.stdin.end();
+  });
+}
+
+// Find the backend running OUR rebuild and cancel it server-side. Mirrors the
+// FIX-1101 watchdog's narrow probe rather than matching on pid alone: this is
+// the only thing that actually stops the work, because PostgreSQL does not
+// notice a departed client mid-statement.
+function cancelDrainBackend(reason) {
+  try {
+    const rows = q(
+      `SELECT pid, pg_cancel_backend(pid)
+         FROM pg_stat_activity
+        WHERE datname = current_database()
+          AND pid <> pg_backend_pid()
+          AND state <> 'idle'
+          AND query ILIKE '%run_entity_connections_rebuild%'`
+    );
+    if (rows.length) {
+      for (const r of rows) console.log(`[drain] ${reason}: pg_cancel_backend(${r[0]}) -> ${r[1]}`);
+      return true;
+    }
+    console.log(`[drain] ${reason}: no running rebuild backend found to cancel.`);
+  } catch (e) {
+    console.error(`[drain] ${reason}: cancel probe failed: ${e.message}`);
+  }
+  return false;
+}
+
 const DIRTY_SQL = `SELECT count(*), count(DISTINCT from_id)
      FROM public.financial_relationships
     WHERE relationship_type IN ('donation','ie_support','ie_oppose')
@@ -131,13 +210,57 @@ const DIRTY_SQL = `SELECT count(*), count(DISTINCT from_id)
                           FROM public.pipeline_state
                          WHERE key = 'entity_connections_donations')`;
 
-function main() {
+// ── FIX-943 vacuum tail — must survive every exit path ──────────────────────
+// Standing convention (CLAUDE.md): any script that bulk-rewrites a table ends
+// by vacuuming what it rewrote. Measured on the first prod drain 2026-08-20:
+// 5 windows rewrote 1,760,324 edges and took entity_connections from 100%
+// all-visible to 77.3% with 4.21% dead tuples — a heap page loses its
+// all-visible mark if ANY tuple on it is dead, so every index-only scan over EC
+// silently degrades to per-row heap fetches (FIX-884). The vacuum took ~90 s and
+// restored 0 dead / 100% all-visible.
+//
+// The 2026-08-25 drain proved the tail must not be on the happy path only: the
+// kill skipped it and left 418,198 dead tuples, cleaned up only by luck (jobid
+// 6 happened to be scheduled that Wednesday). Playbook C3 — put it where it can
+// FIRE. Guarded so it runs at most once.
+let unitsRan = 0;
+let vacuumDone = false;
+function vacuumTail(why) {
+  if (vacuumDone || unitsRan === 0 || dryRun) return;
+  vacuumDone = true;
+  console.log(`[drain] VACUUM (ANALYZE) entity_connections — FIX-943 bulk-rewrite rule (${why})...`);
+  const v0 = Date.now();
+  try {
+    q(`VACUUM (ANALYZE) public.entity_connections`);
+    console.log(`[drain] vacuum done in ${((Date.now() - v0) / 1000).toFixed(1)}s`);
+  } catch (e) {
+    console.error(`[drain] VACUUM FAILED: ${e.message}`);
+    console.error("[drain] entity_connections was bulk-rewritten and is NOT vacuumed — run");
+    console.error("[drain]   VACUUM (ANALYZE) public.entity_connections;");
+    console.error("[drain] before treating any post-drain timing regression as a query problem.");
+  }
+}
+
+let stopping = false;
+function onSignal(sig) {
+  if (stopping) { process.exit(130); }
+  stopping = true;
+  console.log(`\n[drain] ${sig} — cancelling the running unit server-side, then vacuuming.`);
+  console.log("[drain] (killing this process alone would NOT stop the query — FIX-1110 defect 3.)");
+  cancelDrainBackend(sig);
+}
+process.on("SIGINT", () => onSignal("SIGINT"));
+process.on("SIGTERM", () => onSignal("SIGTERM"));
+
+// ── main ────────────────────────────────────────────────────────────────────
+async function main() {
   PSQL_URL = isProd ? prodUrl() : LOCAL_URL;
   console.log(`[drain] target: ${isProd ? "PROD (Supabase Pro)" : "LOCAL"}`);
-  console.log(`[drain] mode:   ${dryRun ? "DRY RUN (reads only)" : "DRAIN"}`);
+  console.log(`[drain] mode:   ${dryRun ? "DRY RUN (reads only)" : "DRAIN (wraps the FIX-1111 crawl)"}`);
   console.log(`[drain] now:    ${utc(new Date())}`);
   if (!dryRun) {
-    console.log(`[drain] until:  ${utc(deadline)}  (hard stop, checked before each window)`);
+    console.log(`[drain] until:  ${utc(deadline)}  (HARD stop — enforced mid-unit via pg_cancel_backend)`);
+    console.log(`[drain] pacing: ${sleepSeconds}s between units, max ${maxUnits} unit(s)`);
   }
 
   const st = q(`SELECT coalesce(value->>'last_indexed_at','(none)'),
@@ -161,70 +284,85 @@ function main() {
     return;
   }
 
-  console.log("[drain] prepare — opening or resuming a cycle...");
   const t0 = Date.now();
-  const target = q(`SELECT public.rebuild_ec_donations_incr_prepare()`)[0][0];
-  const prepSec = ((Date.now() - t0) / 1000).toFixed(1);
-  if (!target) {
-    console.error("[drain] prepare returned NULL — no watermark exists, so this needs the FULL");
-    console.error("[drain] windowed bootstrap path, not the incremental drain. Aborting.");
-    process.exit(2);
-  }
-  const staged = q(`SELECT count(*) FROM public.ec_donations_incr_dirty`)[0][0];
-  console.log(`[drain] prepare done in ${prepSec}s — target=${target}, ${Number(staged).toLocaleString()} donors staged`);
+  let stoppedEarly = false, finalStatus = null;
 
-  let totalEdges = 0, ran = 0, skipped = 0, stoppedEarly = false;
-  for (let i = 0; i < 16; i++) {
+  for (let n = 1; n <= maxUnits && !stopping; n++) {
     if (Date.now() >= deadline.getTime()) {
-      console.log(`[drain] DEADLINE reached before window ${i + 1}/16 — stopping cleanly.`);
-      console.log("[drain] completed windows are committed and their watermarks advanced;");
-      console.log("[drain] re-run this script to resume from here.");
+      console.log(`[drain] DEADLINE reached before unit ${n} — stopping cleanly.`);
       stoppedEarly = true;
       break;
     }
-    const lo = BOUNDS[i];
-    const hi = i < 15 ? `'${BOUNDS[i + 1]}'::uuid` : "NULL::uuid";
-    const w0 = Date.now();
-    const edges = Number(q(
-      `SELECT public.rebuild_ec_donations_incr_window(${i}::int, '${lo}'::uuid, ${hi}, '${target}'::timestamptz)`
-    )[0][0]);
-    const secs = (Date.now() - w0) / 1000;
-    totalEdges += edges;
-    if (edges === 0 && secs < 2) {
-      skipped++;
-      console.log(`[drain]   window ${String(i + 1).padStart(2)}/16  SKIPPED (already at target)`);
-    } else {
-      ran++;
-      console.log(`[drain]   window ${String(i + 1).padStart(2)}/16  ${edges.toLocaleString().padStart(9)} edges  ${secs.toFixed(1)}s  (elapsed ${((Date.now() - t0) / 60000).toFixed(1)}m)`);
+
+    const u0 = Date.now();
+    // The deadline poller: the whole point of FIX-1110 defect (2). Checked every
+    // 5 s while the unit runs, so --until bounds the DRAIN and not merely the
+    // moment it is allowed to start another unit.
+    const poll = setInterval(() => {
+      if (stopping) return;
+      if (Date.now() >= deadline.getTime()) {
+        stopping = true;
+        stoppedEarly = true;
+        console.log(`\n[drain] DEADLINE reached MID-UNIT — cancelling server-side.`);
+        cancelDrainBackend("deadline");
+      }
+    }, 5000);
+
+    let res;
+    try {
+      res = await callAsync(
+        `CALL public.run_entity_connections_rebuild('incremental', p_max_units := 1);`);
+    } finally {
+      clearInterval(poll);
+    }
+
+    const secs = (Date.now() - u0) / 1000;
+    for (const l of (res.err || "").split("\n")) {
+      if (/WARNING|ERROR|DEFERRED|SKIPPED \(/.test(l) && l.trim()) console.log(`[drain]   ${l.trim()}`);
+    }
+
+    // The log row is the authority on what the unit did — never the exit code.
+    const row = q(`SELECT status,
+                          coalesce(metadata->>'units_run','0'),
+                          coalesce(metadata->>'unit_capped','false'),
+                          coalesce(metadata->>'edges_total','0'),
+                          coalesce(metadata->>'next_arm','(none)'),
+                          coalesce(metadata->>'skip_reason', metadata->>'defer_reason', error_message, '')
+                     FROM public.data_sync_log
+                    WHERE pipeline='entity_connections_rebuild'
+                    ORDER BY started_at DESC LIMIT 1`)[0];
+    const [status, unitsRun, , edges, nextArm, detail] = row;
+    finalStatus = status;
+
+    if (status === "skipped" || status === "deferred") {
+      console.log(`[drain] unit ${String(n).padStart(2)}  ${status.toUpperCase()} — ${detail}`);
+      console.log("[drain] the crawl gate or the FEC interlock is holding work off. Stopping;");
+      console.log("[drain] this is the machinery working, not a failure.");
+      stoppedEarly = true;
+      break;
+    }
+
+    unitsRan += Number(unitsRun || 0);
+    console.log(`[drain] unit ${String(n).padStart(2)}  ${secs.toFixed(1).padStart(7)}s  status=${status}  ` +
+                `edges=${Number(edges).toLocaleString()}  next=${nextArm}`);
+
+    if (status === "complete") { console.log("[drain] CYCLE COMPLETE — every arm banked, cursor cleared."); break; }
+    if (status === "failed")   { console.log(`[drain] unit FAILED: ${detail}`); stoppedEarly = true; break; }
+    if (stopping)              { stoppedEarly = true; break; }
+
+    if (n < maxUnits && sleepSeconds > 0) {
+      const nextAt = Date.now() + sleepSeconds * 1000;
+      if (nextAt >= deadline.getTime()) {
+        console.log(`[drain] next unit would start after the deadline — stopping cleanly.`);
+        stoppedEarly = true;
+        break;
+      }
+      console.log(`[drain]   pacing — sleeping ${sleepSeconds}s (≈ the burst-budget refill for one window)`);
+      for (let s = 0; s < sleepSeconds && !stopping; s++) await sleep(1000);
     }
   }
 
-  if (!stoppedEarly) {
-    const closed = q(`SELECT public.rebuild_ec_donations_incr_close('${target}'::timestamptz)`)[0][0];
-    console.log(`[drain] close: ${closed === "t"
-      ? "cycle CLOSED — staging cleared, scalar watermark advanced"
-      : "NOT closed (a window still lags)"}`);
-  }
-
-  // ── VACUUM the table we just bulk-rewrote (CLAUDE.md standing convention) ──
-  // Not optional and not belt-and-braces. Measured on the first prod drain
-  // 2026-08-20: 5 windows rewrote 1,760,324 edges and took entity_connections
-  // from 100% all-visible to 77.3%, with 4.21% dead tuples — a heap page loses
-  // its all-visible mark if ANY tuple on it is dead, so every index-only scan
-  // over EC silently degrades to per-row heap fetches (that is FIX-884: 0.9%
-  // all-visible -> 34,534 heap fetches -> 20.5s of a 22.1s query). Autovacuum
-  // had already fired mid-drain and had NOT closed it. The vacuum below took
-  // ~90s and restored 0 dead / 100% all-visible.
-  //
-  // Runs after the windows commit, never inside one (VACUUM cannot run in a
-  // transaction), and on the early-stop path too — a partial drain rewrote just
-  // as many pages as a complete one.
-  if (ran > 0) {
-    console.log("[drain] VACUUM (ANALYZE) entity_connections — FIX-943 bulk-rewrite rule...");
-    const v0 = Date.now();
-    q(`VACUUM (ANALYZE) public.entity_connections`);
-    console.log(`[drain] vacuum done in ${((Date.now() - v0) / 1000).toFixed(1)}s`);
-  }
+  vacuumTail(stoppedEarly ? "partial drain" : "drain finished");
 
   const after = q(`SELECT value->>'last_indexed_at', (value ? 'cycle')::text
                      FROM public.pipeline_state WHERE key='entity_connections_donations'`)[0];
@@ -235,6 +373,8 @@ function main() {
   // reports the FULL original backlog no matter how many windows have banked.
   // Reporting only that would tell an operator who just drained a third of the
   // donor space that nothing happened. Count the windows instead.
+  const target = q(`SELECT coalesce(value->'cycle'->>'target_at', value->>'last_indexed_at')
+                      FROM public.pipeline_state WHERE key='entity_connections_donations'`)[0][0];
   const prog = q(`SELECT count(*) FILTER (WHERE (e.value)::timestamptz >= '${target}'::timestamptz),
                          count(*) FILTER (WHERE (e.value)::timestamptz <  '${target}'::timestamptz)
                     FROM public.pipeline_state ps,
@@ -243,25 +383,16 @@ function main() {
 
   console.log("");
   console.log("[drain] ---- result ------------------------------------------");
-  console.log(`[drain] windows run: ${ran}   skipped: ${skipped}   edges written: ${totalEdges.toLocaleString()}`);
+  console.log(`[drain] units run: ${unitsRan}   final status: ${finalStatus ?? "(none)"}`);
   console.log(`[drain] total elapsed: ${((Date.now() - t0) / 60000).toFixed(1)} min`);
   console.log(`[drain] windows at target: ${prog[0]}/16   still pending: ${prog[1]}`);
   console.log(`[drain] scalar watermark now: ${after[0]}`);
   console.log(`[drain] cycle still open:     ${after[1]}`);
 
   if (cycleOpen) {
-    const remaining = q(`SELECT count(*) FROM public.ec_donations_incr_dirty d
-                          WHERE ('x' || substr(replace(d.from_id::text,'-',''),1,1))::bit(4)::int
-                                IN (SELECT e.key::int
-                                      FROM public.pipeline_state ps,
-                                           jsonb_each_text(ps.value->'windows') AS e(key, value)
-                                     WHERE ps.key='entity_connections_donations'
-                                       AND (e.value)::timestamptz < '${target}'::timestamptz)`)[0][0];
-    const staged = q(`SELECT count(*) FROM public.ec_donations_incr_dirty`)[0][0];
-    console.log(`[drain] CYCLE INCOMPLETE — ${Number(remaining).toLocaleString()} of ${Number(staged).toLocaleString()} staged donors still owed,`);
-    console.log(`[drain] in the ${prog[1]} pending window(s). The next firing RESUMES this cycle:`);
-    console.log("[drain] it reuses the staging table, skips the banked windows instantly, and");
-    console.log("[drain] finishes the rest. Re-run this script to drain more before then.");
+    console.log("[drain] CYCLE INCOMPLETE — the next ec-crawl firing RESUMES it: the staging");
+    console.log("[drain] table is reused, banked units are skipped without spending a unit, and");
+    console.log("[drain] the rest is finished one unit at a time. Re-run this script to go faster.");
     console.log("[drain] NOTE: the scalar watermark deliberately does NOT move until the last");
     console.log("[drain] window lands, so a dirty-set-since-watermark query still reports the");
     console.log("[drain] full backlog. That is the conservative reading, not a lack of progress.");
@@ -272,4 +403,6 @@ function main() {
   }
 }
 
-try { main(); } catch (e) { console.error("[drain] FAILED:", e.message); process.exit(1); }
+main()
+  .catch((e) => { console.error("[drain] FAILED:", e.message); vacuumTail("error"); process.exit(1); })
+  .finally(() => { vacuumTail("exit"); });
