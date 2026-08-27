@@ -18,6 +18,7 @@ import { officialsChecks } from "./checks/officials";
 import { proposalsChecks } from "./checks/proposals";
 import { votesChecks } from "./checks/votes";
 import { referentialChecks } from "./checks/referential";
+import { grantChecks } from "./checks/grants";
 import { writeReport, printStdoutTable, summarize } from "./reporter";
 import type { AuditReport, Check, CheckContext, CheckResult } from "./types";
 
@@ -26,6 +27,11 @@ const CHECKS: { name: string; run: Check }[] = [
   { name: "proposals", run: proposalsChecks },
   { name: "votes", run: votesChecks },
   { name: "referential", run: referentialChecks },
+  // FIX-1113 — report-only RPC grant drift. Rides the weekly audit rather than
+  // getting its own schedule: it is one catalog read, and the thing it watches
+  // (a migration re-opening a grant) moves on the same weekly-ish cadence as
+  // everything else this report covers.
+  { name: "grants", run: grantChecks },
 ];
 
 interface Args {

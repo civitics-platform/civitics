@@ -122,24 +122,397 @@ export type Database = {
         }
         Relationships: []
       }
-      _tin_state_name: {
+      _eq_a: {
         Row: {
-          donation_count: number
-          donor_name: string
-          state: string
-          total_cents: number
+          amount_cents: number | null
+          connection_type: Database["public"]["Enums"]["connection_type"] | null
+          ended_at: string | null
+          evidence_count: number | null
+          evidence_sorted: string[] | null
+          evidence_source: string | null
+          from_id: string | null
+          from_type: string | null
+          occurred_at: string | null
+          strength: number | null
+          to_id: string | null
+          to_type: string | null
         }
         Insert: {
-          donation_count: number
-          donor_name: string
-          state: string
-          total_cents: number
+          amount_cents?: number | null
+          connection_type?:
+            | Database["public"]["Enums"]["connection_type"]
+            | null
+          ended_at?: string | null
+          evidence_count?: number | null
+          evidence_sorted?: string[] | null
+          evidence_source?: string | null
+          from_id?: string | null
+          from_type?: string | null
+          occurred_at?: string | null
+          strength?: number | null
+          to_id?: string | null
+          to_type?: string | null
         }
         Update: {
-          donation_count?: number
-          donor_name?: string
-          state?: string
-          total_cents?: number
+          amount_cents?: number | null
+          connection_type?:
+            | Database["public"]["Enums"]["connection_type"]
+            | null
+          ended_at?: string | null
+          evidence_count?: number | null
+          evidence_sorted?: string[] | null
+          evidence_source?: string | null
+          from_id?: string | null
+          from_type?: string | null
+          occurred_at?: string | null
+          strength?: number | null
+          to_id?: string | null
+          to_type?: string | null
+        }
+        Relationships: []
+      }
+      _eq_b: {
+        Row: {
+          amount_cents: number | null
+          connection_type: Database["public"]["Enums"]["connection_type"] | null
+          ended_at: string | null
+          evidence_count: number | null
+          evidence_sorted: string[] | null
+          evidence_source: string | null
+          from_id: string | null
+          from_type: string | null
+          occurred_at: string | null
+          strength: number | null
+          to_id: string | null
+          to_type: string | null
+        }
+        Insert: {
+          amount_cents?: number | null
+          connection_type?:
+            | Database["public"]["Enums"]["connection_type"]
+            | null
+          ended_at?: string | null
+          evidence_count?: number | null
+          evidence_sorted?: string[] | null
+          evidence_source?: string | null
+          from_id?: string | null
+          from_type?: string | null
+          occurred_at?: string | null
+          strength?: number | null
+          to_id?: string | null
+          to_type?: string | null
+        }
+        Update: {
+          amount_cents?: number | null
+          connection_type?:
+            | Database["public"]["Enums"]["connection_type"]
+            | null
+          ended_at?: string | null
+          evidence_count?: number | null
+          evidence_sorted?: string[] | null
+          evidence_source?: string | null
+          from_id?: string | null
+          from_type?: string | null
+          occurred_at?: string | null
+          strength?: number | null
+          to_id?: string | null
+          to_type?: string | null
+        }
+        Relationships: []
+      }
+      _eq_before: {
+        Row: {
+          amount_cents: number | null
+          connection_type: Database["public"]["Enums"]["connection_type"] | null
+          derived_at: string | null
+          ended_at: string | null
+          evidence_count: number | null
+          evidence_ids: string[] | null
+          evidence_source: string | null
+          from_id: string | null
+          from_type: string | null
+          id: string | null
+          metadata: Json | null
+          occurred_at: string | null
+          strength: number | null
+          to_id: string | null
+          to_type: string | null
+        }
+        Insert: {
+          amount_cents?: number | null
+          connection_type?:
+            | Database["public"]["Enums"]["connection_type"]
+            | null
+          derived_at?: string | null
+          ended_at?: string | null
+          evidence_count?: number | null
+          evidence_ids?: string[] | null
+          evidence_source?: string | null
+          from_id?: string | null
+          from_type?: string | null
+          id?: string | null
+          metadata?: Json | null
+          occurred_at?: string | null
+          strength?: number | null
+          to_id?: string | null
+          to_type?: string | null
+        }
+        Update: {
+          amount_cents?: number | null
+          connection_type?:
+            | Database["public"]["Enums"]["connection_type"]
+            | null
+          derived_at?: string | null
+          ended_at?: string | null
+          evidence_count?: number | null
+          evidence_ids?: string[] | null
+          evidence_source?: string | null
+          from_id?: string | null
+          from_type?: string | null
+          id?: string | null
+          metadata?: Json | null
+          occurred_at?: string | null
+          strength?: number | null
+          to_id?: string | null
+          to_type?: string | null
+        }
+        Relationships: []
+      }
+      _eq_c: {
+        Row: {
+          amount_cents: number | null
+          connection_type: Database["public"]["Enums"]["connection_type"] | null
+          ended_at: string | null
+          evidence_count: number | null
+          evidence_sorted: string[] | null
+          evidence_source: string | null
+          from_id: string | null
+          from_type: string | null
+          occurred_at: string | null
+          strength: number | null
+          to_id: string | null
+          to_type: string | null
+        }
+        Insert: {
+          amount_cents?: number | null
+          connection_type?:
+            | Database["public"]["Enums"]["connection_type"]
+            | null
+          ended_at?: string | null
+          evidence_count?: number | null
+          evidence_sorted?: string[] | null
+          evidence_source?: string | null
+          from_id?: string | null
+          from_type?: string | null
+          occurred_at?: string | null
+          strength?: number | null
+          to_id?: string | null
+          to_type?: string | null
+        }
+        Update: {
+          amount_cents?: number | null
+          connection_type?:
+            | Database["public"]["Enums"]["connection_type"]
+            | null
+          ended_at?: string | null
+          evidence_count?: number | null
+          evidence_sorted?: string[] | null
+          evidence_source?: string | null
+          from_id?: string | null
+          from_type?: string | null
+          occurred_at?: string | null
+          strength?: number | null
+          to_id?: string | null
+          to_type?: string | null
+        }
+        Relationships: []
+      }
+      _eq_dirty: {
+        Row: {
+          from_id: string | null
+          from_type: string | null
+        }
+        Insert: {
+          from_id?: string | null
+          from_type?: string | null
+        }
+        Update: {
+          from_id?: string | null
+          from_type?: string | null
+        }
+        Relationships: []
+      }
+      _proof_recips: {
+        Row: {
+          to_id: string
+        }
+        Insert: {
+          to_id: string
+        }
+        Update: {
+          to_id?: string
+        }
+        Relationships: []
+      }
+      _proof_ref_br: {
+        Row: {
+          donor_count: number | null
+          official_id: string | null
+          tier: string | null
+          total_cents: number | null
+        }
+        Insert: {
+          donor_count?: number | null
+          official_id?: string | null
+          tier?: string | null
+          total_cents?: number | null
+        }
+        Update: {
+          donor_count?: number | null
+          official_id?: string | null
+          tier?: string | null
+          total_cents?: number | null
+        }
+        Relationships: []
+      }
+      _proof_ref_odrmv: {
+        Row: {
+          donor_id: string | null
+          donor_name: string | null
+          entity_type: string | null
+          industry_label: string | null
+          industry_tag: string | null
+          official_id: string | null
+          rank: number | null
+          relationship_type: string | null
+          tail_donor_count: number | null
+          total_cents: number | null
+          tx_count: number | null
+        }
+        Insert: {
+          donor_id?: string | null
+          donor_name?: string | null
+          entity_type?: string | null
+          industry_label?: string | null
+          industry_tag?: string | null
+          official_id?: string | null
+          rank?: number | null
+          relationship_type?: string | null
+          tail_donor_count?: number | null
+          total_cents?: number | null
+          tx_count?: number | null
+        }
+        Update: {
+          donor_id?: string | null
+          donor_name?: string | null
+          entity_type?: string | null
+          industry_label?: string | null
+          industry_tag?: string | null
+          official_id?: string | null
+          rank?: number | null
+          relationship_type?: string | null
+          tail_donor_count?: number | null
+          total_cents?: number | null
+          tx_count?: number | null
+        }
+        Relationships: []
+      }
+      _proof_ref_odt: {
+        Row: {
+          donor_count: number | null
+          individual_cents: number | null
+          official_id: string | null
+          pac_cents: number | null
+          total_cents: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          donor_count?: number | null
+          individual_cents?: number | null
+          official_id?: string | null
+          pac_cents?: number | null
+          total_cents?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          donor_count?: number | null
+          individual_cents?: number | null
+          official_id?: string | null
+          pac_cents?: number | null
+          total_cents?: number | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      _proof_ref_sa: {
+        Row: {
+          donor_count: number | null
+          industry: string | null
+          official_id: string | null
+          total_cents: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          donor_count?: number | null
+          industry?: string | null
+          official_id?: string | null
+          total_cents?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          donor_count?: number | null
+          industry?: string | null
+          official_id?: string | null
+          total_cents?: number | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      _proof_ref_sd: {
+        Row: {
+          official_id: string | null
+          small_dollar_cents: number | null
+          small_dollar_count: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          official_id?: string | null
+          small_dollar_cents?: number | null
+          small_dollar_count?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          official_id?: string | null
+          small_dollar_cents?: number | null
+          small_dollar_count?: number | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      _proof_ref_tm: {
+        Row: {
+          donation_count: number | null
+          donor_name: string | null
+          rank: number | null
+          scope_id: string | null
+          state: string | null
+          total_cents: number | null
+        }
+        Insert: {
+          donation_count?: number | null
+          donor_name?: string | null
+          rank?: number | null
+          scope_id?: string | null
+          state?: string | null
+          total_cents?: number | null
+        }
+        Update: {
+          donation_count?: number | null
+          donor_name?: string | null
+          rank?: number | null
+          scope_id?: string | null
+          state?: string | null
+          total_cents?: number | null
         }
         Relationships: []
       }
@@ -471,36 +844,6 @@ export type Database = {
           output_tokens?: number | null
           service?: string
           tokens_used?: number | null
-        }
-        Relationships: []
-      }
-      bgworker_census: {
-        Row: {
-          application_name: string | null
-          backend_type: string | null
-          max_query_age_s: number | null
-          n: number
-          sampled_at: string
-          state: string | null
-          wait_event_type: string | null
-        }
-        Insert: {
-          application_name?: string | null
-          backend_type?: string | null
-          max_query_age_s?: number | null
-          n: number
-          sampled_at?: string
-          state?: string | null
-          wait_event_type?: string | null
-        }
-        Update: {
-          application_name?: string | null
-          backend_type?: string | null
-          max_query_age_s?: number | null
-          n?: number
-          sampled_at?: string
-          state?: string | null
-          wait_event_type?: string | null
         }
         Relationships: []
       }
@@ -1800,6 +2143,57 @@ export type Database = {
           party_key?: string
           total_cents?: number
           tx_count?: number
+        }
+        Relationships: []
+      }
+      ec_donations_incr_dirty: {
+        Row: {
+          from_id: string
+          from_type: string
+        }
+        Insert: {
+          from_id: string
+          from_type: string
+        }
+        Update: {
+          from_id?: string
+          from_type?: string
+        }
+        Relationships: []
+      }
+      ec_window_budget_action: {
+        Row: {
+          acted_at: string
+          age_seconds: number | null
+          backend_pid: number | null
+          budget_seconds: number | null
+          id: number
+          outcome: string
+          signaled: boolean | null
+          window_idx: number
+          window_started: string
+        }
+        Insert: {
+          acted_at?: string
+          age_seconds?: number | null
+          backend_pid?: number | null
+          budget_seconds?: number | null
+          id?: never
+          outcome: string
+          signaled?: boolean | null
+          window_idx: number
+          window_started: string
+        }
+        Update: {
+          acted_at?: string
+          age_seconds?: number | null
+          backend_pid?: number | null
+          budget_seconds?: number | null
+          id?: never
+          outcome?: string
+          signaled?: boolean | null
+          window_idx?: number
+          window_started?: string
         }
         Relationships: []
       }
@@ -4522,18 +4916,24 @@ export type Database = {
           official_id: string
           small_dollar_cents: number
           small_dollar_count: number
+          sub_floor_cents: number
+          sub_floor_donor_count: number
           updated_at: string
         }
         Insert: {
           official_id: string
           small_dollar_cents?: number
           small_dollar_count?: number
+          sub_floor_cents?: number
+          sub_floor_donor_count?: number
           updated_at?: string
         }
         Update: {
           official_id?: string
           small_dollar_cents?: number
           small_dollar_count?: number
+          sub_floor_cents?: number
+          sub_floor_donor_count?: number
           updated_at?: string
         }
         Relationships: []
@@ -4837,6 +5237,7 @@ export type Database = {
           id: string
           included_limit: number
           is_active: boolean | null
+          is_displayed: boolean
           metric: string
           notes: string | null
           overage_cap: number | null
@@ -4859,6 +5260,7 @@ export type Database = {
           id?: string
           included_limit: number
           is_active?: boolean | null
+          is_displayed?: boolean
           metric: string
           notes?: string | null
           overage_cap?: number | null
@@ -4881,6 +5283,7 @@ export type Database = {
           id?: string
           included_limit?: number
           is_active?: boolean | null
+          is_displayed?: boolean
           metric?: string
           notes?: string | null
           overage_cap?: number | null
@@ -4892,6 +5295,48 @@ export type Database = {
           unit?: string
           updated_at?: string | null
           warning_pct?: number | null
+        }
+        Relationships: []
+      }
+      platform_subscriptions: {
+        Row: {
+          cadence: string
+          id: string
+          in_headline: boolean
+          is_active: boolean
+          monthly_usd: number
+          name: string
+          notes: string | null
+          service: string
+          sort_order: number
+          source: string
+          updated_at: string
+        }
+        Insert: {
+          cadence?: string
+          id?: string
+          in_headline?: boolean
+          is_active?: boolean
+          monthly_usd: number
+          name: string
+          notes?: string | null
+          service: string
+          sort_order?: number
+          source?: string
+          updated_at?: string
+        }
+        Update: {
+          cadence?: string
+          id?: string
+          in_headline?: boolean
+          is_active?: boolean
+          monthly_usd?: number
+          name?: string
+          notes?: string | null
+          service?: string
+          sort_order?: number
+          source?: string
+          updated_at?: string
         }
         Relationships: []
       }
@@ -5374,6 +5819,42 @@ export type Database = {
           metric?: string
           period?: string
           service?: string
+        }
+        Relationships: []
+      }
+      small_dollar_bracket_rollup: {
+        Row: {
+          bracket: string
+          cycle_year: number
+          donor_count: number
+          recipient_id: string
+          recipient_type: string
+          source: string
+          total_cents: number
+          tx_count: number
+          updated_at: string
+        }
+        Insert: {
+          bracket: string
+          cycle_year: number
+          donor_count?: number
+          recipient_id: string
+          recipient_type: string
+          source?: string
+          total_cents?: number
+          tx_count?: number
+          updated_at?: string
+        }
+        Update: {
+          bracket?: string
+          cycle_year?: number
+          donor_count?: number
+          recipient_id?: string
+          recipient_type?: string
+          source?: string
+          total_cents?: number
+          tx_count?: number
+          updated_at?: string
         }
         Relationships: []
       }
@@ -6492,11 +6973,23 @@ export type Database = {
         Args: { p_recipients: string[] }
         Returns: number
       }
+      ec_crawl_gate: { Args: never; Returns: Json }
+      ec_crawl_record_unit: {
+        Args: {
+          p_outcome: string
+          p_rows: number
+          p_seconds: number
+          p_unit: string
+          p_unit_class: string
+        }
+        Returns: Json
+      }
       enforce_cron_job_budgets: { Args: never; Returns: Json }
       enforce_derived_mvs_unit_budget: {
         Args: { p_budget_seconds?: number }
         Returns: Json
       }
+      enforce_ec_window_budget: { Args: never; Returns: Json }
       enqueue_enrichment: {
         Args: {
           p_context: Json
@@ -6509,6 +7002,7 @@ export type Database = {
         Returns: string
       }
       expire_lapsed_grants: { Args: never; Returns: number }
+      fec_bulk_interlock_state: { Args: never; Returns: Json }
       fec_cycle_full_pass_at: { Args: { p_cycle: number }; Returns: string }
       fec_cycle_watermark: {
         Args: { p_cycle: number }
@@ -6634,6 +7128,7 @@ export type Database = {
           rule_type: string
         }[]
       }
+      get_ec_crawl_health: { Args: never; Returns: Json }
       get_entity_comment_highlights: {
         Args: { p_entity_id: string; p_entity_type: string; p_lens?: string }
         Returns: Json
@@ -7085,6 +7580,15 @@ export type Database = {
         Args: { p_hi: string; p_lo: string }
         Returns: number
       }
+      rebuild_ec_donations_incr_close: {
+        Args: { p_target: string }
+        Returns: boolean
+      }
+      rebuild_ec_donations_incr_prepare: { Args: never; Returns: string }
+      rebuild_ec_donations_incr_window: {
+        Args: { p_hi: string; p_idx: number; p_lo: string; p_target: string }
+        Returns: number
+      }
       rebuild_entity_connections: {
         Args: never
         Returns: {
@@ -7278,7 +7782,6 @@ export type Database = {
         }
         Returns: string
       }
-      sample_bgworker_census: { Args: never; Returns: undefined }
       search_graph_entities: {
         Args: { lim?: number; q: string }
         Returns: {
@@ -7847,198 +8350,5 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
-  public: {
-    Enums: {
-      argument_flag: ["off_topic", "misleading", "duplicate", "other"],
-      argument_side: ["for", "against"],
-      connection_type: [
-        "donation",
-        "vote_yes",
-        "vote_no",
-        "vote_abstain",
-        "appointment",
-        "revolving_door",
-        "oversight",
-        "lobbying",
-        "co_sponsorship",
-        "family",
-        "business_partner",
-        "legal_representation",
-        "endorsement",
-        "contract_award",
-        "nomination_vote_yes",
-        "nomination_vote_no",
-        "holds_position",
-        "gift_received",
-        "member_of",
-        "owns",
-        "parent_of",
-        "affiliated_with",
-        "opposition",
-      ],
-      donor_type: [
-        "individual",
-        "pac",
-        "super_pac",
-        "corporate",
-        "union",
-        "party_committee",
-        "small_donor_aggregate",
-        "other",
-      ],
-      evidence_method: [
-        "address_check",
-        "voter_roll",
-        "manual_review",
-        "gov_email",
-        "id_document",
-        "delegation",
-        "invitation",
-      ],
-      evidence_outcome: ["pending", "approved", "rejected", "inconclusive"],
-      financial_relationship_type: [
-        "donation",
-        "gift",
-        "honorarium",
-        "loan",
-        "owns_stock",
-        "owns_bond",
-        "property",
-        "contract",
-        "grant",
-        "lobbying_spend",
-        "other",
-        "ie_support",
-        "ie_oppose",
-      ],
-      flag_content_type: [
-        "civic_comment",
-        "official_community_comment",
-        "entity_comment",
-        "entity_statement",
-        "investigation_evidence",
-      ],
-      flag_reason: [
-        "spam",
-        "harassment",
-        "off_topic",
-        "misinformation",
-        "other",
-      ],
-      follow_entity_type: ["official", "agency", "jurisdiction"],
-      governing_body_type: [
-        "legislature_upper",
-        "legislature_lower",
-        "legislature_unicameral",
-        "executive",
-        "judicial",
-        "regulatory_agency",
-        "municipal_council",
-        "school_board",
-        "special_district",
-        "international_body",
-        "other",
-        "committee",
-      ],
-      grant_role: [
-        "constituent",
-        "platform_admin",
-        "official",
-        "verified_human",
-        "staff",
-        "jurisdiction_admin",
-        "institution_admin",
-      ],
-      grant_status: ["pending", "active", "revoked", "expired"],
-      grant_target_type: ["global", "jurisdiction", "official", "institution"],
-      initiative_authorship: ["individual", "community"],
-      initiative_resolution: ["sponsored", "declined", "withdrawn", "expired"],
-      initiative_scope: ["federal", "state", "local"],
-      initiative_stage: [
-        "draft",
-        "deliberate",
-        "mobilise",
-        "resolved",
-        "problem",
-      ],
-      jurisdiction_type: [
-        "global",
-        "supranational",
-        "country",
-        "state",
-        "county",
-        "city",
-        "district",
-        "precinct",
-        "other",
-        "school_district",
-        "special_district",
-        "federal_district",
-        "unincorporated_territory",
-      ],
-      notification_event_type: [
-        "official_vote",
-        "new_proposal",
-        "initiative_status",
-      ],
-      official_response_type: [
-        "support",
-        "oppose",
-        "pledge",
-        "refer",
-        "no_response",
-      ],
-      party: [
-        "democrat",
-        "republican",
-        "independent",
-        "libertarian",
-        "green",
-        "other",
-        "nonpartisan",
-      ],
-      promise_status: [
-        "made",
-        "in_progress",
-        "kept",
-        "broken",
-        "partially_kept",
-        "expired",
-        "modified",
-      ],
-      proposal_status: [
-        "introduced",
-        "in_committee",
-        "passed_committee",
-        "floor_vote",
-        "passed_chamber",
-        "passed_both_chambers",
-        "signed",
-        "vetoed",
-        "veto_overridden",
-        "enacted",
-        "open_comment",
-        "comment_closed",
-        "final_rule",
-        "failed",
-        "withdrawn",
-        "tabled",
-      ],
-      proposal_type: [
-        "bill",
-        "resolution",
-        "amendment",
-        "regulation",
-        "executive_order",
-        "treaty",
-        "referendum",
-        "initiative",
-        "budget",
-        "appointment",
-        "ordinance",
-        "other",
-      ],
-      signature_verification: ["unverified", "email", "district"],
-    },
-  },
 } as const
+

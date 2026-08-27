@@ -1,0 +1,179 @@
+-- =============================================================================
+-- FIX-1114b — get_ec_crawl_health() counted zero crawl units. Fix the join.
+--
+-- 20260828000000 matched a crawl firing to the unit it ran with
+--     l.started_at = d.start_time
+-- on the assumption that the procedure's data_sync_log row carries the firing's
+-- start_time exactly. It does not, and the margin is tiny enough to have looked
+-- exact in every hand-check:
+--
+--   cron.job_run_details.start_time   2026-08-27 01:30:00.090998
+--   data_sync_log.started_at          2026-08-27 01:30:00.093463
+--                                                        ^ 2.5 ms
+--
+-- pg_cron stamps start_time when it dispatches the job; the procedure's row is
+-- written by now() inside the resulting transaction, which begins a couple of
+-- milliseconds later. Equality therefore never matches, and the first prod
+-- reading came back `units_run: 0, skipped: 87` for a day in which the crawl
+-- demonstrably ran 38 units — i.e. the metric reported total starvation on a
+-- crawl that was working perfectly. Exactly the wrong direction for an
+-- instrument whose whole job is to be believed.
+--
+-- Matching within a 5-second window is safe: firings are 15 minutes apart, so
+-- there is no adjacent firing to steal a row from. A hand-driven FIX-1110 drain
+-- would have to start within 5 s of a cron firing to be miscounted as one, and
+-- the procedure's advisory lock serializes those two anyway.
+--
+-- Everything else in the function is unchanged.
+-- =============================================================================
+CREATE OR REPLACE FUNCTION public.get_ec_crawl_health()
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, cron, pg_temp
+AS $$
+DECLARE
+  v_cfg        jsonb;
+  v_wm         timestamptz;
+  v_dirty_rows bigint := 0;
+  v_dirty_dons bigint := 0;
+  v_cursor     jsonb;
+  v_fire_total int := 0;
+  v_fire_fail  int := 0;
+  v_units_7d   int := 0;
+  v_units_all_7d int := 0;
+  v_backoff_7d int := 0;
+  v_cycles     jsonb := '[]'::jsonb;
+  v_last_close timestamptz;
+  v_lag_days   numeric;
+  v_backoff_r  numeric;
+  v_signal     text;
+BEGIN
+  SELECT value INTO v_cfg     FROM public.pipeline_state WHERE key = 'ec_crawl';
+  SELECT value INTO v_cursor  FROM public.pipeline_state
+   WHERE key = 'entity_connections_rebuild_cursor';
+
+  SELECT (value->>'last_indexed_at')::timestamptz INTO v_wm
+    FROM public.pipeline_state WHERE key = 'entity_connections_donations';
+
+  IF v_wm IS NOT NULL THEN
+    SELECT count(*), count(DISTINCT from_id)
+      INTO v_dirty_rows, v_dirty_dons
+      FROM public.financial_relationships
+     WHERE relationship_type IN ('donation','ie_support','ie_oppose')
+       AND updated_at > v_wm;
+  END IF;
+
+  SELECT count(*),
+         count(*) FILTER (WHERE d.status <> 'succeeded')
+    INTO v_fire_total, v_fire_fail
+    FROM cron.job_run_details d
+    JOIN cron.job j ON j.jobid = d.jobid
+   WHERE j.jobname = 'ec-crawl'
+     AND d.start_time >= now() - interval '7 days';
+
+  -- Units run BY THE CRAWL. Counted through the cron rows, not straight off
+  -- data_sync_log, because the FIX-1110 drain wrapper drives the same CALL and
+  -- writes an indistinguishable row. The 5-second window is the fix from
+  -- FIX-1114b — see the header.
+  SELECT count(*) INTO v_units_7d
+    FROM cron.job_run_details d
+    JOIN cron.job j ON j.jobid = d.jobid
+   WHERE j.jobname = 'ec-crawl'
+     AND d.start_time >= now() - interval '7 days'
+     AND EXISTS (
+       SELECT 1 FROM public.data_sync_log l
+        WHERE l.pipeline = 'entity_connections_rebuild'
+          AND l.started_at >= d.start_time
+          AND l.started_at <  d.start_time + interval '5 seconds'
+          AND COALESCE(jsonb_array_length(l.metadata->'units'), 0) > 0);
+
+  SELECT count(*) INTO v_units_all_7d
+    FROM public.data_sync_log
+   WHERE pipeline = 'entity_connections_rebuild'
+     AND started_at >= now() - interval '7 days'
+     AND COALESCE(jsonb_array_length(metadata->'units'), 0) > 0;
+
+  SELECT count(*) INTO v_backoff_7d
+    FROM jsonb_array_elements(COALESCE(v_cfg->'recent_units','[]'::jsonb)) e
+   WHERE (e.value->>'at')::timestamptz >= now() - interval '7 days'
+     AND (e.value->>'outcome') IS DISTINCT FROM 'ok';
+
+  WITH rows AS (
+    SELECT started_at, status,
+           count(*) FILTER (WHERE status = 'complete')
+             OVER (ORDER BY started_at DESC
+                   ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS grp
+      FROM public.data_sync_log
+     WHERE pipeline = 'entity_connections_rebuild'
+       AND COALESCE(jsonb_array_length(metadata->'units'), 0) > 0
+       AND started_at >= now() - interval '30 days'
+  ), cycles AS (
+    SELECT grp,
+           count(*)          AS units,
+           min(started_at)   AS first_unit,
+           max(started_at)   AS last_unit,
+           bool_or(status = 'complete') AS closed
+      FROM rows GROUP BY grp
+  )
+  SELECT jsonb_agg(jsonb_build_object(
+           'units',            units,
+           'first_unit_at',    first_unit,
+           'closed_at',        CASE WHEN closed THEN last_unit END,
+           'closed',           closed,
+           'span_minutes',     round(EXTRACT(epoch FROM (last_unit - first_unit))::numeric / 60.0, 1)
+         ) ORDER BY first_unit DESC)
+    INTO v_cycles
+    FROM (SELECT * FROM cycles WHERE closed ORDER BY first_unit DESC LIMIT 5) c;
+
+  SELECT max(started_at) INTO v_last_close
+    FROM public.data_sync_log
+   WHERE pipeline = 'entity_connections_rebuild' AND status = 'complete';
+
+  v_lag_days  := CASE WHEN v_wm IS NULL THEN NULL
+                      ELSE round(EXTRACT(epoch FROM (now() - v_wm))::numeric / 86400.0, 2) END;
+  v_backoff_r := CASE WHEN v_fire_total = 0 THEN NULL
+                      ELSE round(v_backoff_7d::numeric / v_fire_total::numeric, 4) END;
+
+  v_signal := CASE
+    WHEN v_lag_days IS NULL          THEN 'unknown'
+    WHEN v_lag_days <= 7             THEN 'ok'
+    WHEN COALESCE(v_backoff_r,0) > 0.25 THEN 'lag_high_backoff_high'
+    ELSE                                  'lag_high_backoff_low'
+  END;
+
+  RETURN jsonb_build_object(
+    'generated_at',   now(),
+    'watermark',      jsonb_build_object('last_indexed_at', v_wm, 'age_days', v_lag_days),
+    'dirty_set',      jsonb_build_object('rows', v_dirty_rows, 'donors', v_dirty_dons),
+    'firings_7d',     jsonb_build_object(
+                        'total',             v_fire_total,
+                        'units_run',         v_units_7d,
+                        'skipped',           greatest(v_fire_total - v_units_7d, 0),
+                        'units_out_of_band', greatest(v_units_all_7d - v_units_7d, 0),
+                        'backoff',           v_backoff_7d,
+                        'failed',            v_fire_fail),
+    'backoff_rate_7d',      v_backoff_r,
+    'skips_cumulative',     COALESCE(v_cfg->'skips','{}'::jsonb),
+    'cycles_last5',         COALESCE(v_cycles,'[]'::jsonb),
+    'last_cycle_closed_at', v_last_close,
+    'open_cycle',           jsonb_build_object(
+                              'started_at',     v_cursor->'cycle_started_at',
+                              'completed_arms', COALESCE(jsonb_array_length(v_cursor->'completed_arms'), 0)),
+    'config',               COALESCE(v_cfg,'{}'::jsonb) - 'recent_units' - 'skips',
+    'signal',               v_signal,
+    'decision_rule',        'lag>7d for TWO consecutive weeks WITH backoffs on >~25% of firings -> compute-tier; lag>7d with backoffs rare and units/cycle growing -> ingest (delta aggregation / write amplification / replay pacing)'
+  );
+END;
+$$;
+
+ALTER FUNCTION public.get_ec_crawl_health() OWNER TO postgres;
+
+-- CREATE OR REPLACE preserves the ACL, but re-assert it anyway: the standing
+-- rule is that every routine a migration creates or recreates leaves with an
+-- explicit grant posture, and FIX-1111 is the precedent for a recreate silently
+-- re-opening one.
+REVOKE ALL ON FUNCTION public.get_ec_crawl_health() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.get_ec_crawl_health() TO service_role;
+
+NOTIFY pgrst, 'reload schema';

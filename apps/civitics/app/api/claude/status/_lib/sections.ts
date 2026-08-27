@@ -1416,6 +1416,23 @@ export async function getResourceWarnings(db: Db) {
   };
 }
 
+// ── 11b. EC crawl health (FIX-1114) ──────────────────────────────────────────
+//
+// The FIX-1111 crawl cannot starve the box, so what is worth watching about it
+// is not availability but LAG: how far behind ingest the entity-connections
+// watermark has fallen, and whether the crawl is being throttled (backoffs) or
+// simply out-run (units per cycle growing). Those two readings point at
+// different conversations — compute tier vs ingest shape — and the RPC carries
+// the rule that separates them in its own `decision_rule` key.
+//
+// One RPC, one jsonb. Returns null on error so a cron-catalog hiccup degrades
+// the tile rather than the whole snapshot.
+export async function getEcCrawlHealth(db: Db) {
+  const { data, error } = await db.rpc("get_ec_crawl_health");
+  if (error || !data) return null;
+  return data as Record<string, unknown>;
+}
+
 // ── 11. Officials breakdown ──────────────────────────────────────────────────
 export async function getOfficialsBreakdown(db: Db) {
   const { data, error } = await db.rpc("get_officials_breakdown");

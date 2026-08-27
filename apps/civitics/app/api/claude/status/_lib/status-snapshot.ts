@@ -34,6 +34,7 @@ import {
   getQuality,
   getSelfTests,
   getChord,
+  getEcCrawlHealth,
 } from "./sections";
 
 // ── Shared staleness / timeout constants (FIX-327) ────────────────────────────
@@ -70,6 +71,9 @@ export type StatusPayload = {
   quality: Sectioned<Awaited<ReturnType<typeof getQuality>>>;
   self_tests: Sectioned<Awaited<ReturnType<typeof getSelfTests>>>;
   chord: Sectioned<Awaited<ReturnType<typeof getChord>>>;
+  // FIX-1114 — EC crawl lag/health. Optional so a snapshot written before this
+  // shipped still type-checks when read back.
+  ec_crawl_health?: Sectioned<Awaited<ReturnType<typeof getEcCrawlHealth>>>;
 };
 
 export type StatusComputeResult = {
@@ -157,6 +161,7 @@ export async function computeStatusPayload(
     sectionQuality,
     sectionSelfTests,
     sectionChord,
+    sectionEcCrawlHealth,
   ] = await Promise.all([
     section(() => timed("version", () => getVersion(dbAsDb))),
     section(() => timed("database", () => getDatabase(dbAsDb, yesterday))),
@@ -179,6 +184,7 @@ export async function computeStatusPayload(
       }),
     )),
     section(() => timed("chord", () => getChord(dbAsDb))),
+    section(() => timed("ec_crawl_health", () => getEcCrawlHealth(dbAsDb))),
   ]);
 
   // ── Merged payload assembly ─────────────────────────────────────────────────
@@ -200,6 +206,7 @@ export async function computeStatusPayload(
     quality: sectionQuality as StatusPayload["quality"],
     self_tests: sectionSelfTests as StatusPayload["self_tests"],
     chord: sectionChord as StatusPayload["chord"],
+    ec_crawl_health: sectionEcCrawlHealth as StatusPayload["ec_crawl_health"],
   };
 
   const failedSections: string[] = [];
