@@ -1312,3 +1312,5 @@
 2026-08-26 | FIX-1110 | 0ac3e889 | local-only | feat(ec): the rebuild becomes a paced background crawl — one bounded unit per firing
 2026-08-26 | FIX-1111 | b5afb2f2 | local+prod | fix(ec): reload the PostgREST cache after the signature change, and re-close the grant the recreate re-opened
 2026-08-26 | FIX-1111 | 0ac3e889 | local-only | feat(ec): the rebuild becomes a paced background crawl — one bounded unit per firing
+2026-08-26 | FIX-1111 | 063bc2f2 | local+prod | feat(ec): PHASE 4 — the crawl goes live and the weekly batch stands down
+2026-08-26 | FIX-1111 | f34b50b8 | local+prod | fix(ec): the crawl's backoff sensor compares throughput, not raw duration
