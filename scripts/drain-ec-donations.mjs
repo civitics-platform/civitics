@@ -68,13 +68,100 @@
 
 import { readFileSync, existsSync } from "node:fs";
 import { spawn, spawnSync } from "node:child_process";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const PROJECT_REF = "xsazcoxinpgttgquwvuf";
 const LOCAL_URL = "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
 const SEP = "|@|";
+
+// ── FIX-1116 — WHICH ROW HOLDS THE CYCLE, AND WHICH ONE DOES NOT ────────────
+// This wrapper used to decide "is a cycle still open?" from
+// pipeline_state.entity_connections_donations, like this:
+//
+//     SELECT value->>'last_indexed_at', (value ? 'cycle')::text
+//       FROM public.pipeline_state WHERE key = 'entity_connections_donations'
+//     ...
+//     const cycleOpen = after[1] === "true";
+//
+// That row is the DONATIONS SUB-CYCLE's state, not the rebuild cycle's. Its
+// `cycle` key is real — rebuild_ec_donations_incr_prepare() writes
+// {since_at, staged_at, target_at, dirty_donors} — but incr_close() DELETES it
+// the moment the sixteenth window lands, while the rebuild cycle carries on
+// through ten more arms. So the probe answers "are donations windows still in
+// flight?" and the wrapper printed it as "is the cycle still open?".
+//
+// The consequence measured on prod 2026-08-27 23:09 UTC: the run printed
+// `CYCLE CLOSED. Residual dirty set: 0 rows / 0 donors` while the cursor held an
+// open cycle with six arms banked and five pending, which the next scheduled
+// firing duly resumed. The six-line CYCLE INCOMPLETE branch written to stop an
+// operator drawing exactly that conclusion is unreachable in that state.
+//
+// Rebuild-cycle state lives in entity_connections_rebuild_cursor:
+// {mode, cycle_started_at, completed_arms[]}, and the row is DELETED when the
+// cycle closes. Its presence IS the answer, and completed_arms is progress an
+// operator can act on where a boolean was not.
+const CURSOR_SQL = `SELECT coalesce(value->>'cycle_started_at',''),
+                           coalesce((value->'completed_arms')::text,'[]'),
+                           coalesce(value->>'mode','')
+                      FROM public.pipeline_state
+                     WHERE key = 'entity_connections_rebuild_cursor'`;
+
+/**
+ * Interpret the cursor probe. Pure: takes q()'s rows, returns the cycle state.
+ * No row at all = no cursor = the cycle is closed, which is the ONLY condition
+ * under which this wrapper may print CYCLE CLOSED.
+ */
+export function readCycleState(rows) {
+  if (!rows || rows.length === 0) {
+    return { open: false, startedAt: null, mode: null, arms: [], armsBanked: 0 };
+  }
+  const [startedAt, armsJson, mode] = rows[0];
+  let arms = [];
+  try {
+    const parsed = JSON.parse(armsJson || "[]");
+    if (Array.isArray(parsed)) arms = parsed;
+  } catch {
+    // A cursor we cannot parse is still a cursor: the cycle is open. Failing
+    // toward "open" keeps the operator warning rather than the false all-clear.
+    arms = [];
+  }
+  return {
+    open: true,
+    startedAt: startedAt || null,
+    mode: mode || null,
+    arms,
+    armsBanked: arms.length,
+  };
+}
+
+/**
+ * The closing lines. Pure so the resumption warning — which had never once been
+ * printed before FIX-1116 — is assertable in a test instead of only reachable
+ * by reproducing a mid-cycle drain against a live database.
+ */
+export function finalCycleLines(state, residual) {
+  if (state.open) {
+    const banked = state.armsBanked;
+    return [
+      `CYCLE INCOMPLETE — ${banked} arm(s) banked, cycle opened ${state.startedAt ?? "(unknown)"}.`,
+      ...(banked ? [`  banked: ${state.arms.join(", ")}`] : []),
+      "The next ec-crawl firing RESUMES it: the staging table is reused, banked",
+      "units are skipped without spending a unit, and the rest is finished one",
+      "unit at a time. Re-run this script to go faster.",
+      "NOTE: the scalar watermark deliberately does NOT move until the last",
+      "window lands, so a dirty-set-since-watermark query still reports the",
+      "full backlog. That is the conservative reading, not a lack of progress.",
+    ];
+  }
+  const r = residual ?? { rows: 0, donors: 0 };
+  return [
+    `CYCLE CLOSED — entity_connections_rebuild_cursor is gone, every arm banked.`,
+    `Residual dirty set: ${Number(r.rows).toLocaleString()} rows / ${Number(r.donors).toLocaleString()} donors`,
+    "^ this is what the next scheduled firing will find.",
+  ];
+}
 
 const argv = process.argv.slice(2);
 const has = (f) => argv.includes(f);
@@ -86,11 +173,17 @@ const val = (f) => {
 const isProd = has("--prod");
 const dryRun = has("--dry-run");
 
-if (!isProd && !has("--local")) {
+// FIX-1116 — the CLI half only arms itself when this file is the entry point, so
+// the test can import the pure helpers above without the module exiting on it.
+const isMain = process.argv[1]
+  ? resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+  : false;
+
+if (isMain && !isProd && !has("--local")) {
   console.error("drain-ec-donations — pass --local or --prod explicitly.");
   process.exit(1);
 }
-if (isProd && !dryRun && !has("--allow-prod")) {
+if (isMain && isProd && !dryRun && !has("--allow-prod")) {
   console.error("drain-ec-donations — refusing to write to PRODUCTION without --allow-prod.");
   process.exit(1);
 }
@@ -158,6 +251,16 @@ function q(sql) {
     for (const l of warn.split("\n")) if (l.trim()) console.log(`[drain]   psql: ${l.trim()}`);
   }
   return (res.stdout || "").trim().split("\n").filter(Boolean).map((l) => l.split(SEP));
+}
+
+// FIX-1116 — ONE convention for single-row reads. The old code indexed q()'s
+// result as st[0][1] in one place and after[0]/after[1] in another (the latter
+// having already destructured row 0), which was right by accident twice and is
+// the kind of thing that is right until it is not. q1() returns the first ROW,
+// so every caller indexes columns and only columns.
+function q1(sql) {
+  const rows = q(sql);
+  return rows.length ? rows[0] : null;
 }
 
 // The CALL runs ASYNC so the deadline and SIGINT can reach it mid-unit. This is
@@ -263,18 +366,27 @@ async function main() {
     console.log(`[drain] pacing: ${sleepSeconds}s between units, max ${maxUnits} unit(s)`);
   }
 
-  const st = q(`SELECT coalesce(value->>'last_indexed_at','(none)'),
-                       coalesce((value->'cycle')::text,'(none)'),
-                       (SELECT count(*) FROM jsonb_each_text(value->'windows'))
-                  FROM public.pipeline_state WHERE key = 'entity_connections_donations'`);
-  if (!st.length) {
+  const st = q1(`SELECT coalesce(value->>'last_indexed_at','(none)'),
+                        (SELECT count(*) FROM jsonb_each_text(value->'windows')),
+                        coalesce(value->'cycle'->>'target_at','(none)')
+                   FROM public.pipeline_state WHERE key = 'entity_connections_donations'`);
+  if (!st) {
     console.error("[drain] no entity_connections_donations watermark row at all — this needs the");
     console.error("[drain] FULL windowed bootstrap path, not the incremental drain. Aborting.");
     process.exit(2);
   }
-  console.log(`[drain] watermark (scalar): ${st[0][0]}`);
-  console.log(`[drain] per-window keys:    ${st[0][2]}/16`);
-  console.log(`[drain] open cycle:         ${st[0][1]}`);
+  console.log(`[drain] watermark (scalar): ${st[0]}`);
+  console.log(`[drain] per-window keys:    ${st[1]}/16`);
+  console.log(`[drain] donations target:   ${st[2]}   (the sub-cycle's staged target, absent once its 16 windows close)`);
+
+  // FIX-1116 — the rebuild cycle, read from the row that actually holds it.
+  const openState = readCycleState(q(CURSOR_SQL));
+  if (openState.open) {
+    console.log(`[drain] open cycle:         started ${openState.startedAt}, ` +
+                `${openState.armsBanked} arm(s) banked (mode=${openState.mode})`);
+  } else {
+    console.log("[drain] open cycle:         none — the next unit opens a fresh one");
+  }
 
   const d0 = q(DIRTY_SQL)[0];
   console.log(`[drain] dirty since scalar watermark: ${Number(d0[0]).toLocaleString()} rows / ${Number(d0[1]).toLocaleString()} donors`);
@@ -364,45 +476,43 @@ async function main() {
 
   vacuumTail(stoppedEarly ? "partial drain" : "drain finished");
 
-  const after = q(`SELECT value->>'last_indexed_at', (value ? 'cycle')::text
-                     FROM public.pipeline_state WHERE key='entity_connections_donations'`)[0];
-  const cycleOpen = after[1] === "true";
+  const after = q1(`SELECT value->>'last_indexed_at'
+                      FROM public.pipeline_state WHERE key='entity_connections_donations'`);
+
+  // FIX-1116 — the cycle verdict comes from the CURSOR, not from the donations
+  // sub-cycle key. See CURSOR_SQL at the top of this file for why.
+  const state = readCycleState(q(CURSOR_SQL));
 
   // Intra-cycle progress. The scalar watermark is the MIN across the 16 windows,
   // so mid-cycle it does not move at all and the dirty-set-since-scalar query
   // reports the FULL original backlog no matter how many windows have banked.
   // Reporting only that would tell an operator who just drained a third of the
   // donor space that nothing happened. Count the windows instead.
-  const target = q(`SELECT coalesce(value->'cycle'->>'target_at', value->>'last_indexed_at')
-                      FROM public.pipeline_state WHERE key='entity_connections_donations'`)[0][0];
-  const prog = q(`SELECT count(*) FILTER (WHERE (e.value)::timestamptz >= '${target}'::timestamptz),
-                         count(*) FILTER (WHERE (e.value)::timestamptz <  '${target}'::timestamptz)
-                    FROM public.pipeline_state ps,
-                         jsonb_each_text(ps.value->'windows') AS e(key, value)
-                   WHERE ps.key='entity_connections_donations'`)[0];
+  const target = q1(`SELECT coalesce(value->'cycle'->>'target_at', value->>'last_indexed_at')
+                       FROM public.pipeline_state WHERE key='entity_connections_donations'`)[0];
+  const prog = q1(`SELECT count(*) FILTER (WHERE (e.value)::timestamptz >= '${target}'::timestamptz),
+                          count(*) FILTER (WHERE (e.value)::timestamptz <  '${target}'::timestamptz)
+                     FROM public.pipeline_state ps,
+                          jsonb_each_text(ps.value->'windows') AS e(key, value)
+                    WHERE ps.key='entity_connections_donations'`);
 
   console.log("");
   console.log("[drain] ---- result ------------------------------------------");
   console.log(`[drain] units run: ${unitsRan}   final status: ${finalStatus ?? "(none)"}`);
   console.log(`[drain] total elapsed: ${((Date.now() - t0) / 60000).toFixed(1)} min`);
-  console.log(`[drain] windows at target: ${prog[0]}/16   still pending: ${prog[1]}`);
-  console.log(`[drain] scalar watermark now: ${after[0]}`);
-  console.log(`[drain] cycle still open:     ${after[1]}`);
+  console.log(`[drain] donations windows at target: ${prog[0]}/16   still pending: ${prog[1]}`);
+  console.log(`[drain] scalar watermark now: ${after ? after[0] : "(none)"}`);
+  console.log(`[drain] rebuild cycle open:   ${state.open ? `yes — ${state.armsBanked} arm(s) banked` : "no"}`);
 
-  if (cycleOpen) {
-    console.log("[drain] CYCLE INCOMPLETE — the next ec-crawl firing RESUMES it: the staging");
-    console.log("[drain] table is reused, banked units are skipped without spending a unit, and");
-    console.log("[drain] the rest is finished one unit at a time. Re-run this script to go faster.");
-    console.log("[drain] NOTE: the scalar watermark deliberately does NOT move until the last");
-    console.log("[drain] window lands, so a dirty-set-since-watermark query still reports the");
-    console.log("[drain] full backlog. That is the conservative reading, not a lack of progress.");
-  } else {
-    const d1 = q(DIRTY_SQL)[0];
-    console.log(`[drain] CYCLE CLOSED. Residual dirty set: ${Number(d1[0]).toLocaleString()} rows / ${Number(d1[1]).toLocaleString()} donors`);
-    console.log("[drain] ^ this is what the next scheduled firing will find.");
-  }
+  // The residual dirty set is only meaningful once the cycle has closed and the
+  // scalar watermark has moved; querying it mid-cycle returns the full original
+  // backlog and is exactly the number the warning below exists to disclaim.
+  const residual = state.open ? null : (() => { const d = q1(DIRTY_SQL); return { rows: d[0], donors: d[1] }; })();
+  for (const line of finalCycleLines(state, residual)) console.log(`[drain] ${line}`);
 }
 
-main()
-  .catch((e) => { console.error("[drain] FAILED:", e.message); vacuumTail("error"); process.exit(1); })
-  .finally(() => { vacuumTail("exit"); });
+if (isMain) {
+  main()
+    .catch((e) => { console.error("[drain] FAILED:", e.message); vacuumTail("error"); process.exit(1); })
+    .finally(() => { vacuumTail("exit"); });
+}

@@ -6889,6 +6889,26 @@ export type Database = {
         Args: { p_rel_types: string[] }
         Returns: number
       }
+      crawl_gate: {
+        Args: {
+          p_config_key: string
+          p_cursor_key?: string
+          p_peer_key?: string
+          p_pipeline?: string
+        }
+        Returns: Json
+      }
+      crawl_record_unit: {
+        Args: {
+          p_config_key: string
+          p_outcome: string
+          p_rows: number
+          p_seconds: number
+          p_unit: string
+          p_unit_class: string
+        }
+        Returns: Json
+      }
       create_investigation: {
         Args: {
           p_question?: string
@@ -6973,6 +6993,7 @@ export type Database = {
         Args: { p_recipients: string[] }
         Returns: number
       }
+      ec_arm_source_fingerprint: { Args: { p_arm: string }; Returns: string }
       ec_crawl_gate: { Args: never; Returns: Json }
       ec_crawl_record_unit: {
         Args: {
@@ -7589,6 +7610,10 @@ export type Database = {
         Args: { p_hi: string; p_idx: number; p_lo: string; p_target: string }
         Returns: number
       }
+      rebuild_entity_connection_stats_window: {
+        Args: { p_hi: string; p_lo: string }
+        Returns: Json
+      }
       rebuild_entity_connections: {
         Args: never
         Returns: {
@@ -7729,6 +7754,7 @@ export type Database = {
       refresh_donor_party_rollup_mv: { Args: never; Returns: undefined }
       refresh_entity_connection_stats_mv: { Args: never; Returns: undefined }
       refresh_entity_engagement_rollup_mv: { Args: never; Returns: undefined }
+      refresh_fe_totals_slice: { Args: never; Returns: Json }
       refresh_gb_page_cache: { Args: never; Returns: number }
       refresh_group_donor_rollup: { Args: never; Returns: Json }
       refresh_homepage_agency_counts_mv: { Args: never; Returns: undefined }
@@ -8350,5 +8376,199 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  public: {
+    Enums: {
+      argument_flag: ["off_topic", "misleading", "duplicate", "other"],
+      argument_side: ["for", "against"],
+      connection_type: [
+        "donation",
+        "vote_yes",
+        "vote_no",
+        "vote_abstain",
+        "appointment",
+        "revolving_door",
+        "oversight",
+        "lobbying",
+        "co_sponsorship",
+        "family",
+        "business_partner",
+        "legal_representation",
+        "endorsement",
+        "contract_award",
+        "nomination_vote_yes",
+        "nomination_vote_no",
+        "holds_position",
+        "gift_received",
+        "member_of",
+        "owns",
+        "parent_of",
+        "affiliated_with",
+        "opposition",
+      ],
+      donor_type: [
+        "individual",
+        "pac",
+        "super_pac",
+        "corporate",
+        "union",
+        "party_committee",
+        "small_donor_aggregate",
+        "other",
+      ],
+      evidence_method: [
+        "address_check",
+        "voter_roll",
+        "manual_review",
+        "gov_email",
+        "id_document",
+        "delegation",
+        "invitation",
+      ],
+      evidence_outcome: ["pending", "approved", "rejected", "inconclusive"],
+      financial_relationship_type: [
+        "donation",
+        "gift",
+        "honorarium",
+        "loan",
+        "owns_stock",
+        "owns_bond",
+        "property",
+        "contract",
+        "grant",
+        "lobbying_spend",
+        "other",
+        "ie_support",
+        "ie_oppose",
+      ],
+      flag_content_type: [
+        "civic_comment",
+        "official_community_comment",
+        "entity_comment",
+        "entity_statement",
+        "investigation_evidence",
+      ],
+      flag_reason: [
+        "spam",
+        "harassment",
+        "off_topic",
+        "misinformation",
+        "other",
+      ],
+      follow_entity_type: ["official", "agency", "jurisdiction"],
+      governing_body_type: [
+        "legislature_upper",
+        "legislature_lower",
+        "legislature_unicameral",
+        "executive",
+        "judicial",
+        "regulatory_agency",
+        "municipal_council",
+        "school_board",
+        "special_district",
+        "international_body",
+        "other",
+        "committee",
+      ],
+      grant_role: [
+        "constituent",
+        "platform_admin",
+        "official",
+        "verified_human",
+        "staff",
+        "jurisdiction_admin",
+        "institution_admin",
+      ],
+      grant_status: ["pending", "active", "revoked", "expired"],
+      grant_target_type: ["global", "jurisdiction", "official", "institution"],
+      initiative_authorship: ["individual", "community"],
+      initiative_resolution: ["sponsored", "declined", "withdrawn", "expired"],
+      initiative_scope: ["federal", "state", "local"],
+      initiative_stage: [
+        "draft",
+        "deliberate",
+        "mobilise",
+        "resolved",
+        "problem",
+      ],
+      jurisdiction_type: [
+        "global",
+        "supranational",
+        "country",
+        "state",
+        "county",
+        "city",
+        "district",
+        "precinct",
+        "other",
+        "school_district",
+        "special_district",
+        "federal_district",
+        "unincorporated_territory",
+      ],
+      notification_event_type: [
+        "official_vote",
+        "new_proposal",
+        "initiative_status",
+      ],
+      official_response_type: [
+        "support",
+        "oppose",
+        "pledge",
+        "refer",
+        "no_response",
+      ],
+      party: [
+        "democrat",
+        "republican",
+        "independent",
+        "libertarian",
+        "green",
+        "other",
+        "nonpartisan",
+      ],
+      promise_status: [
+        "made",
+        "in_progress",
+        "kept",
+        "broken",
+        "partially_kept",
+        "expired",
+        "modified",
+      ],
+      proposal_status: [
+        "introduced",
+        "in_committee",
+        "passed_committee",
+        "floor_vote",
+        "passed_chamber",
+        "passed_both_chambers",
+        "signed",
+        "vetoed",
+        "veto_overridden",
+        "enacted",
+        "open_comment",
+        "comment_closed",
+        "final_rule",
+        "failed",
+        "withdrawn",
+        "tabled",
+      ],
+      proposal_type: [
+        "bill",
+        "resolution",
+        "amendment",
+        "regulation",
+        "executive_order",
+        "treaty",
+        "referendum",
+        "initiative",
+        "budget",
+        "appointment",
+        "ordinance",
+        "other",
+      ],
+      signature_verification: ["unverified", "email", "district"],
+    },
+  },
 } as const
 

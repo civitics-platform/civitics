@@ -27,6 +27,7 @@
     "fixes:archive:dry": "node scripts/fixes-archive.mjs --dry-run",
     "fix:add": "node scripts/fix-add.mjs",
     "fix:add:test": "node scripts/test-fix-add.mjs",
+    "drain:test": "node scripts/test-drain-ec.mjs",
     "check:reads": "node scripts/check-silent-reads.mjs",
     "check:render-timeouts": "node scripts/check-render-timeouts.mjs",
     "check:workflow-parity": "node scripts/check-workflow-parity.mjs",
