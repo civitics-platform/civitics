@@ -1321,3 +1321,5 @@
 2026-08-27 | FIX-1115 | 919c2119 | local-only | feat(ec): the stats rebuild becomes a bounded crawl arm, and unchanged arms stop rebuilding
 2026-08-27 | FIX-1116 | 919c2119 | local-only | feat(ec): the stats rebuild becomes a bounded crawl arm, and unchanged arms stop rebuilding
 2026-08-27 | FIX-1117 | 919c2119 | local-only | feat(ec): the stats rebuild becomes a bounded crawl arm, and unchanged arms stop rebuilding
+2026-08-28 | FIX-090 | bb663c4d | local+prod | feat(dashboard): stat-card sparklines + orphan-surface cleanup
+2026-08-28 | FIX-1119 | bb663c4d | local+prod | feat(dashboard): stat-card sparklines + orphan-surface cleanup
