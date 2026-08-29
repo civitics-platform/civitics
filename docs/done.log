@@ -1324,3 +1324,5 @@
 2026-08-28 | FIX-090 | bb663c4d | local+prod | feat(dashboard): stat-card sparklines + orphan-surface cleanup
 2026-08-28 | FIX-1119 | bb663c4d | local+prod | feat(dashboard): stat-card sparklines + orphan-surface cleanup
 2026-08-29 | FIX-1122 | 4aa98413 | local+prod | fix(dashboard): stamp daily-counts provenance only when the counts were observed
+2026-08-29 | FIX-1120 | 128d44f1 | local+prod | fix(dashboard): per-metric stat-card degradation + distinguishable DB-timeout sentinel
+2026-08-29 | FIX-1121 | 128d44f1 | local+prod | fix(dashboard): per-metric stat-card degradation + distinguishable DB-timeout sentinel
