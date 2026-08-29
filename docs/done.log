@@ -1327,3 +1327,4 @@
 2026-08-29 | FIX-1120 | 128d44f1 | local+prod | fix(dashboard): per-metric stat-card degradation + distinguishable DB-timeout sentinel
 2026-08-29 | FIX-1121 | 128d44f1 | local+prod | fix(dashboard): per-metric stat-card degradation + distinguishable DB-timeout sentinel
 2026-08-29 | FIX-1127 | 738cf2a8 | local-only | fix(dashboard): snapshot tick on Vercel cron @30min + bound getDatabase fan-out
+2026-08-29 | FIX-1127 | ca8f8309 | local+prod | docs(cron): record the observed Vercel-cron firing for the FIX-1127 cadence
