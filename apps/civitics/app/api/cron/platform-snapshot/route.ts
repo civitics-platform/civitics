@@ -18,6 +18,13 @@
  * .github/workflows/platform-snapshot.yml still exists — it carries the
  * request-path probe (FIX-1026), which is unrelated to this route.
  *
+ * RECEIPT for the cadence claim above, since the whole point of FIX-1127 is
+ * that a cron expression is not evidence: the first unattended firing after
+ * the cutover landed a status_snapshot row at 2026-08-29T22:30:58Z, on the
+ * :30 boundary, from deployment a82999b0 — nobody dispatched it and the GHA
+ * trigger job no longer exists. Re-check the same way (a boundary row nobody
+ * asked for) if this ever needs re-proving.
+ *
  * Two independent writes:
  *  1. platform_usage_snapshot (FIX-281) — vendor-API + DB-sum aggregation
  *     that used to run inside /api/platform/usage on every request.
