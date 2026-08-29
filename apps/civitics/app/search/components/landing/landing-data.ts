@@ -20,6 +20,7 @@
 import { unstable_cache } from "next/cache";
 import { createAdminClient } from "@civitics/db";
 import { withDbTimeout } from "@/lib/supabase-check";
+import { meetingsEnabled } from "@/lib/meetings-flag";
 
 const STRIP_LIMIT = 6;
 const READ_TIMEOUT_MS = 3000;
@@ -62,7 +63,12 @@ function entityHref(kind: string, id: string, name: string): string {
     case "financial": return `/donors/${id}`;
     case "jurisdiction": return `/jurisdictions/${id}`;
     case "institution": return `/institutions/${id}`;
-    case "meeting": return `/meetings/${id}`;
+    // FIX-1119 — while /meetings is gated, route meeting rows to the explorer
+    // instead of a 404. Same fallback the agency kind already uses for the same
+    // reason (no reachable detail route), so this is the file's own convention.
+    case "meeting": return meetingsEnabled()
+      ? `/meetings/${id}`
+      : `/search?q=${encodeURIComponent(name)}`;
     // agency detail is /agencies/[slug] (no uuid route) — send to the explorer.
     default: return `/search?q=${encodeURIComponent(name)}`;
   }

@@ -131,8 +131,8 @@
 
 ### Maps
 - [x] Mapbox account + API key — `NEXT_PUBLIC_MAPBOX_TOKEN` configured
-- [x] District finder from address — `DistrictMap` component geocodes via Mapbox, calls `/api/representatives`
-- [x] "Find your representatives" map — live on homepage
+- [x] District finder from address — `DistrictMap` component geocoded via Mapbox, called `/api/representatives` (component removed from the homepage by FIX-554, deleted as an orphan by FIX-1119; the API route remains)
+- [x] "Find your representatives" map — was live on the homepage; superseded by the FIX-554 homepage rebuild
 - [x] Lazy loading + geolocation — user-activated map (4-state machine), browser geolocation with privacy coarsening, fade transition
 
 ### AI Features

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { SyntheticMark } from "../integrity/Synthetic";
+import { meetingsEnabled } from "@/lib/meetings-flag";
 
 // First meeting card in the app. Presentational only — shared for reuse across
 // meeting surfaces. The card links to the live /meetings/[id] detail route
@@ -36,11 +37,18 @@ function formatDateTime(iso: string): string {
 
 export function MeetingCard({ meeting }: { meeting: MeetingCardData }) {
   const typeLabel = MEETING_TYPE_LABELS[meeting.meeting_type] ?? meeting.meeting_type.replace(/_/g, " ");
-  return (
-    <Link
-      href={`/meetings/${meeting.id}`}
-      className="group block border border-rule bg-card p-4 transition-colors hover:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-    >
+
+  // FIX-1119 — this card renders on THREE live public surfaces
+  // (/jurisdictions/[id], /institutions/[id], /franklin), so gating the detail
+  // route alone would have turned every one of those into a link to a 404.
+  // Meeting information is still real and worth showing; only the navigation is
+  // withdrawn, so the card degrades to a non-interactive record rather than
+  // disappearing. Hover/focus affordances go with the link — a card that still
+  // looked clickable would be the same broken promise in a quieter costume.
+  const linked = meetingsEnabled();
+
+  const body = (
+    <>
       <div className="flex items-center gap-2">
         <span className="rounded border border-rule bg-paper-2 px-2 py-0.5 text-xs font-medium capitalize text-ink-soft">
           {typeLabel}
@@ -56,6 +64,21 @@ export function MeetingCard({ meeting }: { meeting: MeetingCardData }) {
       {meeting.bodyName && (
         <p className="mt-0.5 truncate text-xs text-ink-soft">{meeting.bodyName}</p>
       )}
+    </>
+  );
+
+  const base = "block border border-rule bg-card p-4";
+
+  if (!linked) {
+    return <div className={base}>{body}</div>;
+  }
+
+  return (
+    <Link
+      href={`/meetings/${meeting.id}`}
+      className={`group ${base} transition-colors hover:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent`}
+    >
+      {body}
     </Link>
   );
 }

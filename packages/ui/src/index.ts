@@ -24,7 +24,7 @@ export { LoadingSkeleton } from "./components/feedback/LoadingSkeleton";
 export { EmptyState } from "./components/feedback/EmptyState";
 
 // Data
-export { StatCard } from "./components/data/StatCard";
+export { StatCard, MIN_SPARKLINE_POINTS } from "./components/data/StatCard";
 export { PipelineRow } from "./components/data/PipelineRow";
 export { Sparkline } from "./components/data/Sparkline";
 export { DataQualityBar } from "./components/data/DataQualityBar";

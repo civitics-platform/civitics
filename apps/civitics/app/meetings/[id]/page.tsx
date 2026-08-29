@@ -13,6 +13,7 @@ import { createClient } from "@supabase/supabase-js";
 import { createPublicClient } from "@civitics/db";
 import { withDbTimeout } from "@/lib/supabase-check";
 import { fetchChunkedByIds } from "@/lib/paginate";
+import { meetingsEnabled } from "@/lib/meetings-flag";
 import { PageViewTracker } from "../../components/PageViewTracker";
 
 export const revalidate = 300;
@@ -72,6 +73,10 @@ function anonClient(): any {
 }
 
 export async function generateStaticParams(): Promise<Array<{ id: string }>> {
+  // FIX-1119 — with the surface hidden, pre-rendering detail pages is pure waste
+  // (every one of them notFound()s). Returning [] also keeps the build from
+  // querying meetings at all.
+  if (!meetingsEnabled()) return [];
   try {
     const supabase = anonClient();
     const result = await Promise.race([
@@ -93,6 +98,8 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   const { id } = await params;
   // No site name in any of these titles — the root layout title template is
   // "%s | Civitics" and appends it (FIX-1087).
+  // FIX-1119 — hidden surface: don't read the DB to title a page that 404s.
+  if (!meetingsEnabled()) return { title: "Meeting" };
   if (!UUID_RE.test(id)) return { title: "Meeting" };
   const supabase = createPublicClient();
   const { data } = await withDbTimeout(
@@ -122,6 +129,10 @@ type AgendaItem = {
 
 export default async function MeetingDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  // FIX-1119 — the gate. Everything below this line is preserved, working code;
+  // it is unreachable only while MEETINGS_ENABLED is unset. See @/lib/meetings-flag
+  // for the revival checklist.
+  if (!meetingsEnabled()) notFound();
   if (!UUID_RE.test(id)) notFound();
 
   const supabase = createPublicClient();

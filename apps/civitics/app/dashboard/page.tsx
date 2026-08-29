@@ -204,6 +204,10 @@ async function getInitialStatus(): Promise<StatusData | null> {
       officials_breakdown: payload.officials_breakdown as any,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       chord: payload.chord as any,
+      // FIX-090 — stat-card sparkline series. `as any` matches the rest of this
+      // block; undefined on a pre-FIX-090 snapshot, which the cards handle.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      daily_counts: payload.daily_counts as any,
     };
   } catch {
     return null;

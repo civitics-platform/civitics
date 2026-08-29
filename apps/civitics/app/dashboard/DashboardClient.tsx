@@ -9,6 +9,7 @@ import {
 import { Icon } from "@civitics/graph";
 import {
   StatCard,
+  MIN_SPARKLINE_POINTS,
   StatsRow,
   SectionCard,
   SectionHeader,
@@ -746,18 +747,98 @@ function pathLabel(path: string): string {
 
 // ── Sections ─────────────────────────────────────────────────────────────────
 
+// ── FIX-090: stat-card sparklines ────────────────────────────────────────────
+//
+// The series comes from public.daily_platform_counts via the status payload's
+// `daily_counts` section. It is OPTIONAL on the payload type and handled as
+// possibly-absent here, because status_snapshot persists whole payloads: the
+// one-tick-old row predates this field, and those cards must render normally
+// with no sparkline rather than crash.
+//
+// Not every metric has 30 points, and that asymmetry is deliberate rather than a
+// gap to paper over. `officials` and `votes` were reconstructed truthfully from
+// created_at at migration time; `open_proposals` and `donation_flow_usd` could
+// not be (see 20260828050000_fix090_daily_platform_counts.sql) and accrue
+// forward from the first cron tick, so they render nothing until they hold
+// MIN_SPARKLINE_POINTS. A short true series beats a long invented one.
+
+type DailySeries = { days: string[]; values: number[] };
+
+type DailyCountsData = {
+  officials?: DailySeries;
+  open_proposals?: DailySeries;
+  votes?: DailySeries;
+  donation_flow_usd?: DailySeries;
+} | null;
+
+/**
+ * Build StatCard's sparkline prop, or undefined when there is nothing honest to
+ * draw. The window label reports the series' ACTUAL span — a 6-point series says
+ * "6d", never "30d".
+ */
+function buildSparkline(
+  series: DailySeries | undefined,
+  label: string,
+): { data: number[]; deltaLabel: string; ariaLabel: string } | undefined {
+  const values = series?.values ?? [];
+  const days = series?.days ?? [];
+  if (values.length < MIN_SPARKLINE_POINTS) return undefined;
+
+  const first = values[0]!;
+  const last = values[values.length - 1]!;
+  const delta = last - first;
+
+  // Parsed from the data, never from the clock — a render-time `new Date()`
+  // here would be a hydration hazard (apps/civitics/CLAUDE.md, trap 2).
+  const firstDay = days[0];
+  const lastDay = days[days.length - 1];
+  const spanDays =
+    firstDay && lastDay
+      ? Math.max(
+          1,
+          Math.round(
+            (Date.parse(`${lastDay}T00:00:00Z`) - Date.parse(`${firstDay}T00:00:00Z`)) / 86_400_000,
+          ),
+        )
+      : values.length - 1;
+
+  const sign = delta > 0 ? "+" : delta < 0 ? "−" : "";
+  // Percent needs a non-zero base; a series that starts at zero reports the
+  // absolute move instead of dividing by it.
+  const magnitude =
+    first > 0
+      ? `${(Math.abs(delta / first) * 100).toFixed(1)}%`
+      : formatNumber(Math.abs(delta));
+
+  const deltaLabel = delta === 0 ? `flat ${spanDays}d` : `${sign}${magnitude} ${spanDays}d`;
+  const direction = delta > 0 ? "up" : delta < 0 ? "down" : "unchanged";
+  const ariaLabel =
+    delta === 0
+      ? `${label}: unchanged over ${spanDays} days`
+      : `${label}: ${direction} ${magnitude} over ${spanDays} days`;
+
+  return { data: values, deltaLabel, ariaLabel };
+}
+
 function StatsSection({
   database,
   officialsBreakdown,
   openProposalCount,
   chordTotalFlowUsd,
+  dailyCounts,
 }: {
   database: NonNullable<ReturnType<typeof useDashboardData>["data"]>["status"]["database"];
   officialsBreakdown: OfficialsBreakdown;
   openProposalCount: number;
   chordTotalFlowUsd: number;
+  dailyCounts: DailyCountsData;
 }) {
   const db = isPartial(database) ? null : database;
+
+  const officialsSpark = buildSparkline(dailyCounts?.officials, "Officials");
+  const openProposalsSpark = buildSparkline(dailyCounts?.open_proposals, "Open proposals");
+  const votesSpark = buildSparkline(dailyCounts?.votes, "Votes");
+  const donationFlowSpark = buildSparkline(dailyCounts?.donation_flow_usd, "Donation flow");
 
   const officialsBreakdownLabel = officialsBreakdown
     ? `${formatNumber(officialsBreakdown.federal)} federal · ${formatNumber(officialsBreakdown.state)} state · ${formatNumber(officialsBreakdown.judges)} judges`
@@ -772,6 +853,7 @@ function StatsSection({
         formatAs="number"
         href="/officials"
         sublabel={officialsBreakdownLabel}
+        sparkline={officialsSpark}
         loading={!db}
       />
       <StatCard
@@ -785,6 +867,7 @@ function StatsSection({
             ? `of ${formatNumber(db.proposals)} total federal regulations`
             : "Federal regulations open for comment"
         }
+        sparkline={openProposalsSpark}
         loading={!db}
       />
       <StatCard
@@ -797,6 +880,7 @@ function StatsSection({
         // chord-sector-vote both need focused entities first.
         href="/graph?preset=chord-subject-party"
         sublabel="Congressional votes tracked"
+        sparkline={votesSpark}
         loading={!db}
       />
       <StatCard
@@ -806,6 +890,7 @@ function StatsSection({
         formatAs="usd"
         href="/graph?preset=follow-the-money"
         sublabel="FEC-tracked PAC and individual contributions"
+        sparkline={donationFlowSpark}
         loading={!db}
       />
     </StatsRow>
@@ -2301,6 +2386,13 @@ export function DashboardClient({
     data?.status.chord && !isPartial(data.status.chord) ? data.status.chord : null;
   const chordTotalFlowUsd = chordSection?.total_flow_usd ?? 0;
 
+  // FIX-090: 30-day stat-card series. Absent on any payload written before this
+  // shipped, so the optional chain is the compatibility seam, not defensiveness.
+  const dailyCounts: DailyCountsData =
+    data?.status.daily_counts && !isPartial(data.status.daily_counts)
+      ? (data.status.daily_counts as DailyCountsData)
+      : null;
+
   const activitySectionData: ActivitySectionData | null =
     data?.status.activity && !isPartial(data.status.activity)
       ? (data.status.activity as ActivitySectionData)
@@ -2407,6 +2499,7 @@ export function DashboardClient({
           officialsBreakdown={officialsBreakdown}
           openProposalCount={openProposalCount}
           chordTotalFlowUsd={chordTotalFlowUsd}
+          dailyCounts={dailyCounts}
         />
 
         {/* ── Comment Periods ── */}

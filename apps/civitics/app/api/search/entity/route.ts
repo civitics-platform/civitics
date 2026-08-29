@@ -8,6 +8,7 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@civitics/db";
+import { meetingsEnabled } from "@/lib/meetings-flag";
 
 interface EntityDetail {
   id: string;
@@ -259,6 +260,11 @@ export async function GET(req: NextRequest) {
     }
 
     if (type === "meeting") {
+      // FIX-1119 — the surface is hidden, so this detail lookup would only ever
+      // hand the client a profile_url into a 404. 404 here instead: the search
+      // UI already treats that as "no such entity", which is the truthful answer
+      // while /meetings is gated.
+      if (!meetingsEnabled()) return NextResponse.json(null, { status: 404 });
       const { data } = await db2
         .from("meetings")
         .select("id, title, scheduled_at, meeting_type, status, location, governing_bodies(name, short_name)")

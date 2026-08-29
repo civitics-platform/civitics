@@ -31,6 +31,7 @@ import {
 import type { InstitutionCardData } from "../../components/cards/InstitutionCard";
 import type { OfficialRosterData } from "../../components/cards/OfficialRosterCard";
 import type { MeetingCardData } from "../../components/cards/MeetingCard";
+import { meetingsEnabled } from "@/lib/meetings-flag";
 import type { ProposalCardData } from "../../proposals/components/ProposalCard";
 import type { InitiativeCardData } from "../../initiatives/components/InitiativeCard";
 import { EntityComments } from "../../components/EntityComments";
@@ -260,7 +261,17 @@ export default async function JurisdictionPage({ params }: { params: Promise<{ i
     .sort((a, b) => (b.created_at ?? "").localeCompare(a.created_at ?? ""))
     .slice(0, 10);
 
-  const activity = ((payload?.activity ?? []) as ActivityEvent[]);
+  // FIX-1119 — the Recent-activity feed's hrefs are built IN THE DATABASE
+  // (get_jurisdiction_activity concatenates '/meetings/' || m.id), so they are
+  // invisible to a source grep for "/meetings" and survived the first sweep.
+  // Filtering here rather than in the RPC is deliberate: MEETINGS_ENABLED is an
+  // application concern and SQL has no business reading it.
+  // Matched on the URL PREFIX, not on event_type, so a future event_type that
+  // also links into /meetings is covered without another edit.
+  const activityAll = (payload?.activity ?? []) as ActivityEvent[];
+  const activity = meetingsEnabled()
+    ? activityAll
+    : activityAll.filter((e) => !e.url?.startsWith("/meetings/"));
 
   // ── Spending: rows pre-resolved (recipient name + award type + amount + date)
   // by get_jurisdiction_page; aggregated here by the same aggregateSpending the

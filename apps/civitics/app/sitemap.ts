@@ -50,7 +50,9 @@ const PAGE_SIZE = 1000; // PostgREST max_rows — the real per-request ceiling
 const STATIC_PATHS = [
   "/", "/about", "/proposals", "/officials", "/agencies",
   "/institutions", "/jurisdictions", "/graph", "/search",
-  "/donors", "/districts", "/meetings", "/initiatives",
+  // FIX-1119 — "/meetings" removed: it has no index route, so the sitemap was
+  // submitting a 404 to search engines. Restore alongside a real index page.
+  "/donors", "/districts", "/initiatives",
 ];
 
 type IdRow = { id: string };

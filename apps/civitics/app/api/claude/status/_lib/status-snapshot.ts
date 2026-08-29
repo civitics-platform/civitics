@@ -35,6 +35,7 @@ import {
   getSelfTests,
   getChord,
   getEcCrawlHealth,
+  getDailyCounts,
 } from "./sections";
 
 // ── Shared staleness / timeout constants (FIX-327) ────────────────────────────
@@ -74,6 +75,10 @@ export type StatusPayload = {
   // FIX-1114 — EC crawl lag/health. Optional so a snapshot written before this
   // shipped still type-checks when read back.
   ec_crawl_health?: Sectioned<Awaited<ReturnType<typeof getEcCrawlHealth>>>;
+  // FIX-090 — 30-day daily series behind the stat-card sparklines. Optional for
+  // the same reason: the one-tick-old payload predates this field and must still
+  // render (the cards simply draw no sparkline).
+  daily_counts?: Sectioned<Awaited<ReturnType<typeof getDailyCounts>>>;
 };
 
 export type StatusComputeResult = {
@@ -162,6 +167,7 @@ export async function computeStatusPayload(
     sectionSelfTests,
     sectionChord,
     sectionEcCrawlHealth,
+    sectionDailyCounts,
   ] = await Promise.all([
     section(() => timed("version", () => getVersion(dbAsDb))),
     section(() => timed("database", () => getDatabase(dbAsDb, yesterday))),
@@ -185,6 +191,7 @@ export async function computeStatusPayload(
     )),
     section(() => timed("chord", () => getChord(dbAsDb))),
     section(() => timed("ec_crawl_health", () => getEcCrawlHealth(dbAsDb))),
+    section(() => timed("daily_counts", () => getDailyCounts(dbAsDb))),
   ]);
 
   // ── Merged payload assembly ─────────────────────────────────────────────────
@@ -207,6 +214,7 @@ export async function computeStatusPayload(
     self_tests: sectionSelfTests as StatusPayload["self_tests"],
     chord: sectionChord as StatusPayload["chord"],
     ec_crawl_health: sectionEcCrawlHealth as StatusPayload["ec_crawl_health"],
+    daily_counts: sectionDailyCounts as StatusPayload["daily_counts"],
   };
 
   const failedSections: string[] = [];
@@ -226,6 +234,80 @@ export async function computeStatusPayload(
 
 // ── Write ─────────────────────────────────────────────────────────────────────
 
+/**
+ * FIX-090 — persist today's point of the stat-card daily series.
+ *
+ * Runs from the same 10-min cron path that writes status_snapshot, and takes its
+ * numbers from the payload that was JUST computed rather than re-querying: three
+ * of the four metrics are already in hand, so the daily series costs one upsert
+ * plus one small count, not a second pass over the database.
+ *
+ * The exception is `open_proposals`, which is genuinely not in the payload — the
+ * Open Proposals card's headline is computed in dashboard/page.tsx
+ * (getOpenProposalCount, FIX-1077: exact, measured 32 ms on prod). The series has
+ * to agree with the number printed above it, so the recorder issues that one
+ * count itself rather than substituting total proposals, which is a different
+ * quantity and would make the trend contradict the card.
+ *
+ * ONLY MEASURED METRICS ARE WRITTEN. A section that came back partial is omitted
+ * from the upsert payload entirely, so PostgREST's ON CONFLICT DO UPDATE touches
+ * only the columns present and a bad tick leaves yesterday's good value alone
+ * instead of overwriting it with a null or a zero.
+ *
+ * Best-effort: a failure here must never lose the status snapshot, which is the
+ * more important write and is what the whole dashboard reads.
+ */
+async function recordDailyCounts(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  db: SupabaseClient<any>,
+  payload: StatusPayload,
+): Promise<Record<string, number> | null> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const anyDb = db as any;
+  // UTC — matches the DATE column and the CURRENT_DATE the backfill used.
+  const day = new Date().toISOString().slice(0, 10);
+
+  const database = payload.database;
+  const chord = payload.chord;
+  const dbOk = database && typeof database === "object" && !("partial" in database);
+  const chordOk = chord && typeof chord === "object" && !("partial" in chord);
+
+  const metrics: Record<string, number> = {};
+  if (dbOk) {
+    metrics["officials"] = (database as { officials: number }).officials;
+    metrics["votes"] = (database as { votes: number }).votes;
+  }
+  if (chordOk) {
+    metrics["donation_flow_usd"] = (chord as { total_flow_usd: number }).total_flow_usd;
+  }
+
+  // The one metric the payload does not carry. Mirrors getOpenProposalCount()
+  // in dashboard/page.tsx exactly — same predicate, same exact count.
+  try {
+    const { count, error } = await anyDb
+      .from("proposals")
+      .select("*", { count: "exact", head: true })
+      .eq("status", "open_comment")
+      .gt("metadata->>comment_period_end", new Date().toISOString());
+    if (!error && typeof count === "number") metrics["open_proposals"] = count;
+  } catch {
+    // Leave the column untouched for today rather than recording a wrong value.
+  }
+
+  if (Object.keys(metrics).length === 0) return null;
+
+  const { error } = await anyDb
+    .from("daily_platform_counts")
+    .upsert({ day, ...metrics, source: "observed", recorded_at: new Date().toISOString() }, {
+      onConflict: "day",
+    });
+  if (error) {
+    console.warn(`[daily counts] upsert failed for ${day}: ${error.message}`);
+    return null;
+  }
+  return metrics;
+}
+
 export async function writeStatusSnapshot(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   db: SupabaseClient<any>,
@@ -234,6 +316,36 @@ export async function writeStatusSnapshot(
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const anyDb = db as any;
+
+  // FIX-090 — record today's point, then fold it into the series this snapshot
+  // is about to persist. Order matters: getDailyCounts ran during compute, i.e.
+  // BEFORE today's row existed, so without this patch the persisted series would
+  // always trail the headline numbers sitting beside it in the same payload. The
+  // patch makes each snapshot internally consistent — the sparkline's right-hand
+  // endpoint is by construction the number the card prints.
+  let recorded: Record<string, number> | null = null;
+  try {
+    recorded = await recordDailyCounts(db, result.payload);
+  } catch (err) {
+    console.warn(`[daily counts] recorder threw: ${err instanceof Error ? err.message : err}`);
+  }
+  if (recorded) {
+    const series = result.payload.daily_counts;
+    if (series && typeof series === "object" && !("partial" in series)) {
+      const today = new Date().toISOString().slice(0, 10);
+      for (const [metric, value] of Object.entries(recorded)) {
+        const s = (series as Record<string, { days: string[]; values: number[] }>)[metric];
+        if (!s) continue;
+        const at = s.days.indexOf(today);
+        if (at >= 0) s.values[at] = value;
+        else {
+          s.days.push(today);
+          s.values.push(value);
+        }
+      }
+    }
+  }
+
   await anyDb.from("status_snapshot").insert({
     query_time_ms: result.query_time_ms,
     payload: result.payload,

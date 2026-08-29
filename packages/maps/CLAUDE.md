@@ -97,9 +97,13 @@ Test with `EXPLAIN ANALYZE` to confirm the GIST index is being used on any spati
 - HTTP route: `GET /api/districts` returns GeoJSON FeatureCollection.
   Query params: `chamber=upper|lower`, `state=XX`, `bbox=W,S,E,N`,
   `point=lng,lat`, `simplify` (0–0.05 degrees, default 0.001), `limit` (max 2000).
-- Detail page: `/districts/[id]` renders a single district + its officials.
-- Homepage `DistrictMap` exposes layer toggles for SLD-U / SLD-L; clicking a
-  district polygon navigates to `/districts/[id]`.
+- Detail page: `/districts/[id]` renders a single district + its officials,
+  via `SingleDistrictMap` (mounted through `DeferredDistrictMap`, FIX-202).
+- The multi-district homepage map (`DistrictMap`, with SLD-U / SLD-L layer
+  toggles and bbox refetch) was removed from the homepage by FIX-554 and the
+  orphaned component deleted by FIX-1119. `GET /api/districts` and
+  `GET /api/representatives` were its only callers and now have none — they
+  still exist and still work, but nothing in the app reaches them.
 
 ---
 

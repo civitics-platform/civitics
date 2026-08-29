@@ -126,5 +126,11 @@ export async function GET(request: Request) {
     activity: payload.activity,
     resource_warnings: payload.resource_warnings,
     officials_breakdown: payload.officials_breakdown,
+    // FIX-090 — the stat-card sparkline series. Rides on /core because the
+    // cards it garnishes are core's own `database` figures; putting it on
+    // /quality would make the hero row wait on the slower of the two calls.
+    // Undefined on any snapshot written before this shipped — the client treats
+    // absence as "draw no sparkline".
+    daily_counts: payload.daily_counts,
   });
 }

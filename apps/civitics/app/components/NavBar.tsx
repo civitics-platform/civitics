@@ -33,7 +33,11 @@ const NAV_GROUPS: NavGroup[] = [
       { label: "Initiatives",      href: "/initiatives",    note: "citizen-led" },
       { label: "Investigations",   href: "/investigations", note: "cited case files" },
       { label: "The Commons",      href: "/commons",        note: "anchored debate" },
-      { label: "Meetings",         href: "/meetings",       note: "public sessions" },
+      // FIX-1119 — "Meetings" → /meetings removed. This was a LIVE 404 in the
+      // primary nav, independent of the new gate: /meetings/[id] exists but a
+      // bare /meetings index route never has. Not flag-gated because a flag
+      // cannot conjure the missing index page — reviving the surface means
+      // building that route first. See @/lib/meetings-flag.
       { label: "State of Franklin", href: "/franklin",      note: "demonstration" },
     ],
   },

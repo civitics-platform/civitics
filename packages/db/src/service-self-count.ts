@@ -17,11 +17,12 @@
  * `service_usage` was built in Phase 1 (migration 0006) explicitly to "track
  * Mapbox map loads". On prod it holds **zero rows**. The cause is not the
  * FIX-695 missing RPC — that landed, and `increment_service_usage` exists on
- * prod today. The cause is that the only component which calls the tracker,
- * `app/components/DistrictMap.tsx`, is ORPHANED: nothing imports it. The two
- * live billable Mapbox sites (the server-side Geocoding v6 call in
- * `api/auth/verify-constituent`, and the map mount in
- * `districts/components/SingleDistrictMap`) never counted anything.
+ * prod today. The cause was that the only component which called the tracker,
+ * `app/components/DistrictMap.tsx`, was ORPHANED: nothing imported it. (That
+ * file was deleted outright in FIX-1119; the finding stands and this is the
+ * record of why the counter read zero.) The two live billable Mapbox sites (the
+ * server-side Geocoding v6 call in `api/auth/verify-constituent`, and the map
+ * mount in `districts/components/SingleDistrictMap`) never counted anything.
  *
  * A counter nobody increments reads exactly like a service nobody uses. That is
  * the failure mode this module exists to close, and it is why the metric is

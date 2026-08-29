@@ -3,6 +3,16 @@
 import * as React from "react";
 import { useState, useEffect } from "react";
 import { formatUSD, formatNumber } from "../../utils";
+import { Sparkline } from "./Sparkline";
+
+/**
+ * FIX-090 — below this many points a sparkline is not drawn at all (no empty
+ * box, no axis, no placeholder). Two points is a straight line between two
+ * readings, which reads as a trend while asserting nothing; three is the least
+ * that can show a shape. Metrics that only start accruing when the recorder
+ * ships therefore stay invisible for their first couple of days and then appear.
+ */
+export const MIN_SPARKLINE_POINTS = 3;
 
 interface StatCardProps {
   /** String emoji (legacy) or React node (e.g. Lucide icon) */
@@ -21,6 +31,20 @@ interface StatCardProps {
   };
   loading?: boolean;
   sublabel?: string;
+  /**
+   * FIX-090 — optional 30-day trend garnish. The card's number stays the hero;
+   * this is a thin unlabelled line beneath it plus a compact delta in dim text.
+   * Props-driven per the packages/ui rule — the caller computes the series and
+   * the label, this component only draws them.
+   */
+  sparkline?: {
+    /** Oldest-first values. Fewer than MIN_SPARKLINE_POINTS renders nothing. */
+    data: number[];
+    /** Compact change over the window, e.g. "+1.2% 30d". */
+    deltaLabel?: string;
+    /** Accessible description, e.g. "Officials, 30-day trend: up 1.2%". */
+    ariaLabel?: string;
+  };
 }
 
 const badgeVariantStyles: Record<
@@ -67,6 +91,7 @@ function CardInner({
   badge,
   sublabel,
   href,
+  sparkline,
 }: StatCardProps) {
   const formatted = formatValue(value, formatAs ?? "number");
   const badgeVariant = badge?.variant ?? "info";
@@ -123,6 +148,22 @@ function CardInner({
         </div>
         {sublabel && (
           <div className="mt-0.5 text-xs text-ink-soft">{sublabel}</div>
+        )}
+        {sparkline && sparkline.data.length >= MIN_SPARKLINE_POINTS && (
+          <div className="mt-2 flex items-end gap-2" role="img" aria-label={sparkline.ariaLabel}>
+            <Sparkline
+              data={sparkline.data}
+              height={20}
+              width={72}
+              strokeWidth={2}
+              endDot
+            />
+            {sparkline.deltaLabel && (
+              <span className="pb-0.5 text-[11px] tabular-nums text-ink-soft/70">
+                {sparkline.deltaLabel}
+              </span>
+            )}
+          </div>
         )}
       </div>
 

@@ -1433,6 +1433,93 @@ export async function getEcCrawlHealth(db: Db) {
   return data as Record<string, unknown>;
 }
 
+// ── 11c. Daily counts — the 30-day stat-card series (FIX-090) ────────────────
+//
+// Reads public.daily_platform_counts, the day-keyed table the recorder below
+// (recordDailyCounts, status-snapshot.ts) upserts from this very payload. It is
+// a separate table and not a slice of status_snapshot because status_snapshot's
+// retention is 24 HOURS — it holds hours of ticks, never 30 days.
+//
+// Every metric is independently nullable: a day where a metric was not measured
+// is a HOLE, not a zero, and the read path drops those points rather than
+// drawing the series through the floor. That is why each series is filtered on
+// its own value being non-null instead of the row being complete — the
+// reconstructed backfill has officials/votes but no open_proposals or
+// donation_flow_usd, so a row-level filter would throw away 30 real points.
+//
+// Cheap by construction: 30 rows of five integers, one indexed range scan.
+export const DAILY_COUNTS_WINDOW_DAYS = 30;
+
+export type DailyCountsSeries = {
+  // ISO dates (YYYY-MM-DD) paired 1:1 with `values`, oldest first.
+  days: string[];
+  values: number[];
+};
+
+export type DailyCounts = {
+  officials: DailyCountsSeries;
+  open_proposals: DailyCountsSeries;
+  votes: DailyCountsSeries;
+  donation_flow_usd: DailyCountsSeries;
+};
+
+type DailyCountsRow = {
+  day: string;
+  officials: number | null;
+  open_proposals: number | null;
+  votes: number | null;
+  donation_flow_usd: number | null;
+};
+
+const DAILY_METRICS = [
+  "officials",
+  "open_proposals",
+  "votes",
+  "donation_flow_usd",
+] as const;
+
+/** Build one metric's series, dropping days where that metric was not measured. */
+function seriesFor(rows: DailyCountsRow[], key: (typeof DAILY_METRICS)[number]): DailyCountsSeries {
+  const days: string[] = [];
+  const values: number[] = [];
+  for (const row of rows) {
+    const v = row[key];
+    if (v === null || v === undefined) continue;
+    days.push(row.day);
+    values.push(Number(v));
+  }
+  return { days, values };
+}
+
+export async function getDailyCounts(db: Db): Promise<DailyCounts> {
+  const cutoff = new Date(Date.now() - DAILY_COUNTS_WINDOW_DAYS * 24 * 60 * 60 * 1000)
+    .toISOString()
+    .slice(0, 10);
+
+  // `as any` on the table name, matching this file's existing idiom for reads
+  // the generated types lag (lines 262/567/751 do the same for RPCs). The
+  // packages/db `db:types` script generates from the PROD project id, so
+  // daily_platform_counts cannot appear in database.ts until this migration has
+  // been applied to prod — regenerating is a follow-up, not a prerequisite.
+  // Row shape is asserted explicitly below via DailyCountsRow.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (db as any)
+    .from("daily_platform_counts")
+    .select("day, officials, open_proposals, votes, donation_flow_usd")
+    .gte("day", cutoff)
+    .order("day", { ascending: true });
+
+  if (error) throw new Error(error.message ?? "daily_platform_counts read failed");
+
+  const rows = (data ?? []) as DailyCountsRow[];
+  return {
+    officials: seriesFor(rows, "officials"),
+    open_proposals: seriesFor(rows, "open_proposals"),
+    votes: seriesFor(rows, "votes"),
+    donation_flow_usd: seriesFor(rows, "donation_flow_usd"),
+  };
+}
+
 // ── 11. Officials breakdown ──────────────────────────────────────────────────
 export async function getOfficialsBreakdown(db: Db) {
   const { data, error } = await db.rpc("get_officials_breakdown");

@@ -154,6 +154,23 @@ export type StatusData = {
   chord?: ChordSectionData | PartialError;
   activity?: ActivitySectionData | PartialError;
   officials_breakdown?: OfficialsBreakdown | PartialError;
+  // FIX-090 — 30-day series behind the stat-card sparklines. Optional because
+  // status_snapshot persists whole payloads and the one-tick-old row predates
+  // this field; the cards must render without it.
+  daily_counts?: DailyCountsSectionData | PartialError;
+};
+
+/**
+ * FIX-090 — one series per stat card, oldest first, `days` paired 1:1 with
+ * `values`. Series lengths differ BY DESIGN: a metric is only present on days it
+ * was actually measured, and two of the four could not be reconstructed
+ * historically (see the migration). Never pad a short series to match a long one.
+ */
+export type DailyCountsSectionData = {
+  officials?: { days: string[]; values: number[] };
+  open_proposals?: { days: string[]; values: number[] };
+  votes?: { days: string[]; values: number[] };
+  donation_flow_usd?: { days: string[]; values: number[] };
 };
 
 export type ChordFlow = {
@@ -434,6 +451,7 @@ export function useDashboardData(initialStatus?: StatusData | null) {
         ai_costs: core.ai_costs!,
         activity: core.activity,
         officials_breakdown: core.officials_breakdown,
+        daily_counts: core.daily_counts,
         quality: qualityFailed ? partialErr : quality.quality!,
         self_tests: qualityFailed ? partialErr : quality.self_tests!,
         chord: qualityFailed ? partialErr : quality.chord,
