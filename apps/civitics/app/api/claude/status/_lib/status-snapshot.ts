@@ -296,11 +296,23 @@ async function recordDailyCounts(
 
   if (Object.keys(metrics).length === 0) return null;
 
+  // FIX-1122 — `source` is sent only when the counts that define it were
+  // actually observed on THIS tick. On a partial tick (FIX-1121: the database
+  // section fails its votes count on most prod ticks) officials/votes are
+  // omitted above and the row keeps its reconstructed backfill values — so
+  // stamping 'observed' anyway would label reconstructed numbers as observed.
+  // Omitting the key leaves the stored value standing, because PostgREST's
+  // ON CONFLICT DO UPDATE only touches columns present in the payload.
+  const row: Record<string, unknown> = {
+    day,
+    ...metrics,
+    recorded_at: new Date().toISOString(),
+  };
+  if (dbOk) row["source"] = "observed";
+
   const { error } = await anyDb
     .from("daily_platform_counts")
-    .upsert({ day, ...metrics, source: "observed", recorded_at: new Date().toISOString() }, {
-      onConflict: "day",
-    });
+    .upsert(row, { onConflict: "day" });
   if (error) {
     console.warn(`[daily counts] upsert failed for ${day}: ${error.message}`);
     return null;
