@@ -200,7 +200,7 @@ export function renderKillSwitchEmail(event: {
  * Distinct from the kill-switch flip email: this fires when a Platform Costs
  * metric ESCALATES past its warning/critical threshold (healthy→warning,
  * healthy→critical, warning→critical), debounced by platform_alert_state so the
- * 10-min cron doesn't re-send while the metric sits in the same band. The
+ * 30-min cron doesn't re-send while the metric sits in the same band. The
  * snapshot caller is responsible for skipping source='estimated' rows (e.g. the
  * NIC egress proxy) before calling this.
  */

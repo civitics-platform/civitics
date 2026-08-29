@@ -26,7 +26,7 @@ describe("classifySnapshotAge", () => {
   });
 
   it("goes amber at the aging threshold and stays amber up to stale", () => {
-    for (const ageMs of [SNAPSHOT_AGING_MS, 2 * 60 * 60_000, SNAPSHOT_STALE_MS - 1]) {
+    for (const ageMs of [SNAPSHOT_AGING_MS, 90 * 60_000, SNAPSHOT_STALE_MS - 1]) {
       const r = classifySnapshotAge(at(ageMs), NOW);
       assert.equal(r.level, "aging", `age ${ageMs}`);
       assert.match(r.label ?? "", /^snapshot .+ old$/);
@@ -36,7 +36,18 @@ describe("classifySnapshotAge", () => {
   it("goes red at SNAPSHOT_STALE_MS with copy that says what is wrong", () => {
     const r = classifySnapshotAge(at(SNAPSHOT_STALE_MS), NOW);
     assert.equal(r.level, "stale");
-    assert.match(r.label ?? "", /snapshot 4h old — the 10-min refresh has not landed/);
+    assert.match(r.label ?? "", /snapshot 2h old — the 30-min refresh has not landed/);
+  });
+
+  // FIX-1127 re-tuned both constants together (4 h/45 min → 2 h/75 min) when the
+  // tick moved to a Vercel cron at */30. They are only meaningful as a pair: an
+  // amber point at or above the stale point would make the amber state
+  // unreachable and silently delete the cue.
+  it("keeps the amber point strictly below the stale point", () => {
+    assert.ok(
+      SNAPSHOT_AGING_MS < SNAPSHOT_STALE_MS,
+      `aging ${SNAPSHOT_AGING_MS} must be < stale ${SNAPSHOT_STALE_MS}`,
+    );
   });
 
   // The failure mode to avoid is a broken timestamp reading as a healthy one.

@@ -8,7 +8,9 @@
  *   FIX-1121 — running all 13 at once was starving the sections' own queries.
  *
  * writeStatusSnapshot — compute then INSERT one row into status_snapshot.
- *   Called by /api/cron/platform-snapshot every 10 min. Never throws;
+ *   Called by /api/cron/platform-snapshot every 30 min (Vercel cron since
+ *   FIX-1127; a nominally ten-minute GHA schedule before that, which really
+ *   fired about every 6 h). Never throws;
  *   per-section failures produce a payload field with `{error, partial:true}`
  *   and an aggregate `error` field on the snapshot row.
  *
@@ -21,6 +23,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getAnthropicUsage } from "@civitics/db";
+import { mapWithConcurrency } from "@/lib/concurrency";
 import { metricValue } from "@/lib/section-failures";
 import {
   type Db,
@@ -87,36 +90,16 @@ export const SNAPSHOT_COLD_COMPUTE_TIMEOUT_MS = 30_000;
  * 1 s. A bound of 4 keeps the heavy five from ever overlapping completely
  * while still packing the cheap eight into the gaps.
  *
- * This is a write-path change: computeStatusPayload runs from a 10-minute
- * cron, which is latency-tolerant. Since FIX-1120 the request path recomputes
- * only when there is no snapshot row at all.
+ * This is a write-path change: computeStatusPayload runs from a scheduled cron
+ * (30 min since FIX-1127), which is latency-tolerant. Since FIX-1120 the
+ * request path recomputes only when there is no snapshot row at all.
+ *
+ * FIX-1126 added a second bound one level down — getDatabase's own eleven
+ * counts, see DATABASE_COUNT_CONCURRENCY in sections.ts. The two compose: this
+ * one caps how many sections overlap, that one caps what the heaviest section
+ * does inside its slot. SECTION_CONCURRENCY deliberately did NOT move.
  */
 const SECTION_CONCURRENCY = 4;
-
-/**
- * Minimal ordered concurrency limiter — no new dependency. Results come back
- * positionally, so the caller can keep mapping tasks to payload keys by index.
- */
-async function mapWithConcurrency<T, R>(
-  items: readonly T[],
-  limit: number,
-  fn: (item: T, index: number) => Promise<R>,
-): Promise<R[]> {
-  const results = new Array<R>(items.length);
-  let next = 0;
-  const worker = async () => {
-    for (;;) {
-      const i = next++;
-      const item = items[i];
-      if (i >= items.length || item === undefined) return;
-      results[i] = await fn(item, i);
-    }
-  };
-  await Promise.all(
-    Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, worker),
-  );
-  return results;
-}
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -316,7 +299,7 @@ export async function computeStatusPayload(
 /**
  * FIX-090 — persist today's point of the stat-card daily series.
  *
- * Runs from the same 10-min cron path that writes status_snapshot, and takes its
+ * Runs from the same 30-min cron path that writes status_snapshot, and takes its
  * numbers from the payload that was JUST computed rather than re-querying: three
  * of the four metrics are already in hand, so the daily series costs one upsert
  * plus one small count, not a second pass over the database.

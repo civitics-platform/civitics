@@ -5,13 +5,14 @@
  * AI budget, activity, resource warnings, officials breakdown. No graph RPCs,
  * no semantic checks — see /api/claude/status/quality for those.
  *
- * Reads the latest row from status_snapshot (populated every 10 min by
- * /api/cron/platform-snapshot, FIX-297). When the snapshot is missing or older
- * than SNAPSHOT_STALE_MS, falls back to a live recompute via
- * computeStatusPayload so the dashboard still works during a cron outage. That
- * threshold is 4 h and has been since FIX-327 — this comment said "30 min
- * (three missed cron ticks)" until FIX-1094 corrected it. Response shape is
- * unchanged so DashboardClient + useDashboardData continue to work without
+ * Reads the latest row from status_snapshot (populated every 30 min by
+ * /api/cron/platform-snapshot — FIX-297, cadence per FIX-1127). When the
+ * snapshot is missing or older than SNAPSHOT_STALE_MS, falls back to a live
+ * recompute via computeStatusPayload so the dashboard still works during a cron
+ * outage. That threshold is 2 h: it was 30 min (FIX-297), then 4 h (FIX-327) to
+ * absorb GHA's real 1–3.5 h gaps, and came back down to 2 h once FIX-1127 moved
+ * the tick to a Vercel cron that actually honours its schedule. Response shape
+ * is unchanged so DashboardClient + useDashboardData continue to work without
  * modification.
  *
  * Rate limit shared with /api/claude/status and /quality (60 req/hour/IP).

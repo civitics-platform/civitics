@@ -1,12 +1,22 @@
 /**
  * Cron-triggered platform usage + status snapshot.
  *
- * Fires every 10 minutes from .github/workflows/platform-snapshot.yml, which
- * curls this endpoint with `Authorization: Bearer <CRON_SECRET>`. Vercel
- * Hobby blocks sub-daily cron expressions, so the schedule lives in GHA
- * rather than vercel.json. The auth shape is identical to the
- * Vercel-internal cron header (Bearer + CRON_SECRET), so swapping back to
- * a vercel.json entry on Pro would be a one-line change.
+ * Fires every 30 minutes from the half-hourly `platform-snapshot` cron entry
+ * in apps/civitics/vercel.json, which invokes this endpoint with
+ * `Authorization: Bearer <CRON_SECRET>` — the same header the GHA workflow
+ * used, so the move needed no protocol change here.
+ *
+ * FIX-1127 (2026-08-29) moved the schedule off GHA. The original reason for
+ * GHA was Vercel Hobby rejecting sub-daily cron expressions; the project has
+ * been on Pro since the April cutover, and GHA had stopped honouring its own
+ * ten-minute schedule badly enough to matter — eight scheduled firings in 51
+ * hours (mean ~6.4 h, shortest gap 3.2 h). The driver stays EXTERNAL to the
+ * database on purpose: a pg_cron job that curls this route would couple the
+ * tick to the health of the very database whose distress the dashboard exists
+ * to show (the FIX-1120 lesson).
+ *
+ * .github/workflows/platform-snapshot.yml still exists — it carries the
+ * request-path probe (FIX-1026), which is unrelated to this route.
  *
  * Two independent writes:
  *  1. platform_usage_snapshot (FIX-281) — vendor-API + DB-sum aggregation
@@ -48,7 +58,7 @@ const STATUS_RANK: Record<string, number> = { healthy: 0, warning: 1, critical: 
  *
  * Compares each metric's current status against platform_alert_state.last_status
  * and emails the admin only on ESCALATION, then records the new status so the
- * 10-min cron doesn't re-page while the metric sits in the same band. Metrics
+ * 30-min cron doesn't re-page while the metric sits in the same band. Metrics
  * with source='estimated' (e.g. the NIC egress upper-bound proxy) are skipped so
  * they never alert. Best-effort: all failures are logged, never thrown.
  */
@@ -566,7 +576,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
       // FIX-γ: edge-triggered per-metric threshold alerts (separate from the
       // kill-switch flips above). Debounced via platform_alert_state so we only
-      // page once per escalation, not every 10-min tick.
+      // page once per escalation, not every 30-min tick.
       await emailMetricThresholdAlerts(db, result.payload, adminEmail, siteUrl);
     }
   }
@@ -637,12 +647,14 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     any_critical: platformResult?.any_critical ?? null,
     any_warning: platformResult?.any_warning ?? null,
     total_overage_cost: platformResult?.total_overage_cost ?? null,
-    // PR 3 (FIX-286): one-glance log signal so we don't need to query
-    // kill_switch_events from the GHA workflow log to spot a flip.
+    // PR 3 (FIX-286): one-glance signal so we don't need to query
+    // kill_switch_events to spot a flip.
     auto_trips_flipped: platformResult?.auto_trips_flipped ?? 0,
     // FIX-1044/1045: the same one-glance principle for the new signals. These
-    // land in the GHA run log, which is the cheapest place to confirm the loop
-    // is alive without opening the dashboard or querying the snapshot table.
+    // used to land in the GHA run log via `cat /tmp/body.json`; FIX-1127 moved
+    // the tick to a Vercel cron, so the body is now read from the function's
+    // invocation log (Vercel dashboard → Logs, filter the cron path) or from a
+    // manual curl of this route. The fields are unchanged either way.
     cf_origin_requests_hourly:
       platformResult?.payload.cloudflare_edge?.latest?.origin_requests ?? null,
     cf_security_level: platformResult?.payload.cf_mitigation?.observed_level ?? null,

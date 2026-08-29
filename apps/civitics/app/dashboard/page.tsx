@@ -101,9 +101,9 @@ async function getOpenProposalCount(): Promise<number> {
 
 // Pre-fetch the same status payload that useDashboardData would otherwise
 // pull client-side via /api/claude/status/{core,quality}. Reads from the
-// 10-min status_snapshot (FIX-297), falling back to a live recompute when
-// the snapshot is missing or older than SNAPSHOT_STALE_MS (4 h since FIX-327;
-// this comment said 30 min until FIX-1094). Same source of truth the
+// 30-min status_snapshot (FIX-297, cadence per FIX-1127), falling back to a
+// live recompute when the snapshot is missing or older than SNAPSHOT_STALE_MS
+// (2 h since FIX-1127; 4 h from FIX-327 before that). Same source of truth the
 // two status routes use, so SSR and the in-hook background refresh produce
 // identical shapes.
 //

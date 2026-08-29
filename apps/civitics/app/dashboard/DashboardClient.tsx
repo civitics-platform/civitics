@@ -2532,7 +2532,7 @@ export function DashboardClient({
             title={
               snapshotFreshness.level === "stale"
                 ? "Every number on this page is from that snapshot. Treat them as historical until the refresh recovers."
-                : "The 10-minute snapshot refresh has missed several ticks; these numbers are not live."
+                : "The 30-minute snapshot refresh has missed more than one tick; these numbers are not live."
             }
           >
             · {snapshotFreshness.label}

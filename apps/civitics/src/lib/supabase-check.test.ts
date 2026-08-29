@@ -52,7 +52,7 @@ describe("withDbTimeoutValue (plain promise)", () => {
     const err = mock.method(console, "error", () => {});
     await withDbTimeoutValue(never(), 10, "status/core:snapshot");
     assert.equal(err.mock.callCount(), 1);
-    const line = String(err.mock.calls[0].arguments[0]);
+    const line = String(err.mock.calls[0]?.arguments[0]);
     assert.match(line, /withDbTimeoutValue/);
     assert.match(line, /status\/core:snapshot/);
   });

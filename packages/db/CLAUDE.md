@@ -257,7 +257,7 @@ preemptively.
 Three shapes — all valid for the right job. **Do not retro-fit existing
 materializations to one shape** to unify; cadence + audience + history value
 determine the right pick, and "homepage hero stats" (single-row MV) and
-"platform usage every 10 min" (rolling snapshot) are correctly different.
+"platform usage every 30 min" (rolling snapshot) are correctly different.
 
 #### Snapshot table vs MV — when each wins
 
@@ -286,13 +286,14 @@ Pick one based on cadence:
   `runNightlySync()`'s MV refresh block at
   `packages/data/src/pipelines/index.ts:908` (search for
   `refresh_homepage_stats_mv`). One line per new MV. No new GHA workflow.
-- **Sub-daily (10 min default):** extend
+- **Sub-daily (30 min default):** extend
   `apps/civitics/app/api/cron/platform-snapshot/route.ts` to call the new
   `write<Surface>Snapshot(db)` helper alongside the existing writes (each
   in its own `Promise.allSettled` slot so one failure doesn't block
-  another). Schedule lives in `.github/workflows/platform-snapshot.yml`
-  (Vercel Hobby blocks sub-daily cron) — don't add a new GHA workflow if
-  the existing 10-min cron's cadence fits.
+  another). Schedule lives in `apps/civitics/vercel.json` as a `*/30` cron
+  entry (FIX-1127; it was a GHA workflow until then, because Vercel *Hobby*
+  blocked sub-daily cron — the project has been on Pro since the April
+  cutover). Don't add a new cron if the existing 30-min tick's cadence fits.
 
 If neither fits, file a FIX bullet documenting the new cadence and the
 reason an existing hook didn't work before adding a new cron — they multiply
@@ -304,15 +305,24 @@ fast.
   `apps/civitics/src/lib/supabase-check.ts`).
 - Always have a live-compute fallback for staleness/missing. Threshold
   proportional to refresh cadence:
-  - **10-min cron (Vercel-internal / actually-honored cadence)** → 30 min
-    staleness threshold (three cycles of slack).
-  - **10-min cron (GHA-driven)** → 4 h staleness threshold. GHA
-    `*/10 * * * *` drifts to 1–3.5 h gaps under platform load (confirmed
-    2026-05-22, FIX-327). The `status_snapshot` and `platform_usage_snapshot`
-    consumers all use the 4 h threshold for this reason. If a consumer
-    needs sub-30-min freshness, the cron driver cannot be GHA — switch to
-    Vercel Pro (`vercel.json` honors sub-daily crons) or use an external
-    scheduler that actually honors its cadence.
+  - **Vercel cron (actually-honored cadence)** → ~3 cycles of slack. The
+    `platform-snapshot` tick is `*/30` in `apps/civitics/vercel.json`, and its
+    consumers use `SNAPSHOT_STALE_MS` = **2 h** with an amber cue at
+    `SNAPSHOT_AGING_MS` = **75 min** (FIX-1127; both live in
+    `apps/civitics/src/lib/snapshot-freshness.ts`). Re-tune the pair WITH the
+    cron expression, never independently.
+  - **GHA-driven cron** → historical, and the reason the threshold above was
+    4 h until FIX-1127. **Do not put a sub-daily tick on GHA.** `*/10 * * * *`
+    was measured firing 8 times in 51 hours (mean ~6.4 h, shortest gap 3.2 h,
+    2026-08-29, FIX-1127) and drifting to 1–3.5 h gaps before that (2026-05-22,
+    FIX-327). GitHub drops scheduled runs under load with no delivery
+    guarantee, so the cron expression is not evidence of anything — read the
+    observed run history. The 4 h threshold existed purely to absorb this.
+  - **Never** drive a sub-daily HTTP tick from pg_cron curling the route: it
+    couples the tick to the health of the database it is reporting on, and the
+    dashboard matters most when that database is in distress (FIX-1120/1127).
+    pg_cron is right for in-database work (the EC and donor rollups), not for
+    watching the platform.
   - **Nightly** → 4 h threshold (catches a missed run window before page
     rendering shows yesterday's data).
 - **Single-row MV reads** use `SELECT * FROM <mv> LIMIT 1`.
@@ -423,8 +433,8 @@ the same table, this is the recipe.
 | `chord_donor_state_party_flows_mv` | Per-row MV | Nightly | `runNightlySync` | Public |
 | `chord_subject_party_flows_mv` | Per-row MV | Nightly | `runNightlySync` | Public |
 | `pipeline_runtime_stats_mv` | Per-pipeline MV | Nightly | `runNightlySync` | Admin |
-| `platform_usage_snapshot` | Rolling table (30 d prune) | 10 min | `platform-snapshot` cron | Public-readable, admin-displayed |
-| `status_snapshot` | Rolling table (24 h prune) | 10 min | `platform-snapshot` cron | Admin |
+| `platform_usage_snapshot` | Rolling table (30 d prune) | 30 min | `platform-snapshot` Vercel cron | Public-readable, admin-displayed |
+| `status_snapshot` | Rolling table (24 h prune) | 30 min | `platform-snapshot` Vercel cron | Admin |
 
 Audit history of which long poles each one replaced lives in `docs/FIXES.md`
 under the cited FIX ID; full conventions audit at

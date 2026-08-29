@@ -24,16 +24,29 @@
 //   - Prod observation 2026-05-22: GHA */10 cron drifts to 1h-3h35m gaps under
 //     scheduler load — 30 min flipped most pageloads to a 30-s live recompute
 //     path. Bumped to 4 h (covers 9 of last 10 observed gaps).
+//   - FIX-1127 (2026-08-29): back down to 2 h. The 4 h value was never a
+//     statement about how stale a snapshot may usefully be — it was pure
+//     absorption of GHA's unreliability, and measurement showed GHA was worse
+//     than "drift": eight scheduled firings in 51 hours, mean ~6.4 h, shortest
+//     gap 3.2 h. That is wholesale skipping, and 4 h was clearing it by luck.
+//     The tick now runs on a Vercel cron at */30, which honours its schedule, so
+//     the threshold can go back to meaning what it should: ~3 missed ticks plus
+//     margin. Re-tune this WITH the cron expression, never independently.
 // This is the threshold at which a READER stops trusting the snapshot and
 // recomputes; it is deliberately generous because the fallback is expensive.
-export const SNAPSHOT_STALE_MS = 4 * 60 * 60 * 1000;
+export const SNAPSHOT_STALE_MS = 2 * 60 * 60 * 1000;
 
 // The cue's amber point. Deliberately far below SNAPSHOT_STALE_MS: the numbers
-// answer different questions. 4 h is "recomputing is now cheaper than serving
-// this"; 45 min is "the 10-minute cron has missed four ticks and you should know
-// that before you read the numbers below as current". Between them the dashboard
-// is still serving the snapshot — it just stops implying the data is live.
-export const SNAPSHOT_AGING_MS = 45 * 60 * 1000;
+// answer different questions. 2 h is "recomputing is now cheaper than serving
+// this"; 75 min is "the 30-minute cron has missed more than one tick and you
+// should know that before you read the numbers below as current". Between them
+// the dashboard is still serving the snapshot — it just stops implying the data
+// is live.
+//
+// FIX-1127 moved this 45 min → 75 min to preserve that semantic at the new
+// cadence: 45 min was "four missed 10-min ticks", 75 min is "two missed 30-min
+// ticks plus half a cycle of slack", so a single late tick still renders clean.
+export const SNAPSHOT_AGING_MS = 75 * 60 * 1000;
 
 export type SnapshotFreshness = {
   level: "fresh" | "aging" | "stale";
@@ -77,7 +90,7 @@ export function classifySnapshotAge(
     return {
       level: "stale",
       ageMs,
-      label: `snapshot ${formatAge(ageMs)} old — the 10-min refresh has not landed`,
+      label: `snapshot ${formatAge(ageMs)} old — the 30-min refresh has not landed`,
     };
   }
   if (ageMs >= SNAPSHOT_AGING_MS) {

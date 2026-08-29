@@ -8,6 +8,7 @@ import {
   getAnthropicUsage,
   type AnthropicUsageResponse,
 } from "@civitics/db";
+import { concurrencyGate } from "@/lib/concurrency";
 import { fetchAllRows } from "@/lib/paginate";
 import { countFailureFields } from "@/lib/section-failures";
 import {
@@ -129,6 +130,33 @@ export async function getVersion(db: Db) {
 
 // ── 2. Row counts ────────────────────────────────────────────────────────────
 //
+/**
+ * FIX-1126 — how many of getDatabase's own counts may be in flight at once.
+ *
+ * FIX-1121 bounded computeStatusPayload's SECTION fan-out to 4 and that did cut
+ * total compute (8.9–18.8 s → 8638 ms), but on the very next prod tick
+ * (2026-08-29 20:13:58) the database section still measured 8304 ms and still
+ * came back `failed: ['votes']` — i.e. still starved against the authenticator
+ * role's 8 s statement_timeout. So the section-level bound bought latency, not
+ * reliability, and the remaining contention is one level down: these eleven
+ * counts were themselves an unbounded Promise.all.
+ *
+ * That the queries are not the problem is measured, not assumed: the votes count
+ * is 261 ms via psql, 555 ms through PostgREST, and a faithful replay of this
+ * entire 11-way fan-out from outside the lambda finished in 559 ms.
+ *
+ * 3 is sized off the section's own budget rather than off throughput. The counts
+ * do not need to race each other — worst case is ceil(11/3) = 4 waves × ~555 ms
+ * ≈ 2.2 s, which is far inside the section budget and leaves the slowest single
+ * count nowhere near an 8 s timeout even if it runs alongside the other three
+ * sections SECTION_CONCURRENCY permits.
+ *
+ * This is a write-path constant. It is not a fix that can be declared working
+ * from one tick — FIX-1126 stays open until the post-FIX-1127 tick stream
+ * (~48/day) shows whether `database.failed` actually goes to zero.
+ */
+const DATABASE_COUNT_CONCURRENCY = 3;
+
 // Mode rationale (FIX-206): unfiltered count(*) on proposals / votes /
 // financial_relationships saturates the PostgREST request budget on Vercel
 // when fired alongside 9 other parallel queries — locally the same queries
@@ -156,9 +184,10 @@ export async function getVersion(db: Db) {
 // 1.27 M against a true 969 k. A transparency dashboard that overstates its own
 // corpus by a third is worse than one that takes an extra three seconds to
 // build, and the constraint FIX-206 was written under no longer applies: since
-// FIX-297 this runs inside /api/cron/platform-snapshot on a 10-minute schedule,
-// not on the request path, where the whole payload already takes 30+ s. Exact
-// costs (prod, same session): votes 3.38 s, proposals 2.35 s, officials 0.18 s.
+// FIX-297 this runs inside /api/cron/platform-snapshot on a scheduled tick
+// (30 min on Vercel cron since FIX-1127), not on the request path, where the
+// whole payload already takes 30+ s. Exact costs (prod, same session): votes
+// 3.38 s, proposals 2.35 s, officials 0.18 s.
 //
 // The remaining "estimated" counts stay estimated: they are append-mostly, so
 // reltuples does not drift the way a bulk-deleted table does, and
@@ -171,6 +200,7 @@ export async function getVersion(db: Db) {
 // too. That path is already capped by SNAPSHOT_FALLBACK_TIMEOUT_MS and degrades
 // to the last-known-good snapshot, so the added seconds cannot hang a render.
 export async function getDatabase(db: Db, yesterday: string) {
+  const gate = concurrencyGate(DATABASE_COUNT_CONCURRENCY);
   const [
     officials,
     proposals,
@@ -185,30 +215,38 @@ export async function getDatabase(db: Db, yesterday: string) {
     views,
   ] = await Promise.all([
     // FIX-1095: exact, not estimated. See the block comment above getDatabase.
-    db.from("officials").select("*", { count: "exact", head: true }),
-    db.from("proposals").select("*", { count: "exact", head: true }),
-    db
-      .from("proposals")
-      .select("*", { count: "planned", head: true })
-      .in("type", ["bill", "resolution", "amendment"]),
-    db
-      // FIX-503: status-page tile — 'planned' (planner estimate) is plenty
-      // accurate and avoids an exact count over all regulation rows.
-      .from("proposals")
-      .select("*", { count: "planned", head: true })
-      .eq("type", "regulation"),
+    gate(() => db.from("officials").select("*", { count: "exact", head: true })),
+    gate(() => db.from("proposals").select("*", { count: "exact", head: true })),
+    gate(() =>
+      db
+        .from("proposals")
+        .select("*", { count: "planned", head: true })
+        .in("type", ["bill", "resolution", "amendment"]),
+    ),
+    gate(() =>
+      db
+        // FIX-503: status-page tile — 'planned' (planner estimate) is plenty
+        // accurate and avoids an exact count over all regulation rows.
+        .from("proposals")
+        .select("*", { count: "planned", head: true })
+        .eq("type", "regulation"),
+    ),
     // FIX-1095: exact, not estimated. See the block comment above getDatabase.
-    db.from("votes").select("*", { count: "exact", head: true }),
-    db.from("entity_connections").select("*", { count: "estimated", head: true }),
-    db.from("financial_relationships").select("*", { count: "estimated", head: true }),
-    db.from("financial_entities").select("*", { count: "estimated", head: true }),
-    db.from("entity_tags").select("*", { count: "estimated", head: true }),
-    db.from("ai_summary_cache").select("*", { count: "estimated", head: true }),
-    db
-      .from("page_views")
-      .select("*", { count: "exact", head: true })
-      .gt("viewed_at", yesterday)
-      .eq("is_bot", false),
+    gate(() => db.from("votes").select("*", { count: "exact", head: true })),
+    gate(() => db.from("entity_connections").select("*", { count: "estimated", head: true })),
+    gate(() =>
+      db.from("financial_relationships").select("*", { count: "estimated", head: true }),
+    ),
+    gate(() => db.from("financial_entities").select("*", { count: "estimated", head: true })),
+    gate(() => db.from("entity_tags").select("*", { count: "estimated", head: true })),
+    gate(() => db.from("ai_summary_cache").select("*", { count: "estimated", head: true })),
+    gate(() =>
+      db
+        .from("page_views")
+        .select("*", { count: "exact", head: true })
+        .gt("viewed_at", yesterday)
+        .eq("is_bot", false),
+    ),
   ]);
 
   // Surface partial state if any count failed (don't silently show 0).
@@ -897,8 +935,11 @@ export async function getSelfTests(
 
     // FIX-1094: pg_cron escalations. See the migration header for why this is a
     // function and not a PostgREST read (the `cron` schema is not exposed, and
-    // check_cron_job_health()'s 222 kB response every 10 min would be ~960 MB of
-    // egress per month against the 5 GB budget this same payload reports on).
+    // check_cron_job_health()'s 222 kB response on every tick would be ~320 MB
+    // of egress per month at the current */30 cadence — and was ~960 MB when
+    // this comment was written against a nominal 10-min tick — against the 5 GB
+    // budget this same payload reports on. Cadence moved (FIX-1127); the reason
+    // to keep this a narrow escalations function did not.
     timed("self_tests:cron_escalations", () =>
       db.rpc("check_cron_job_escalations", {
         p_lookback_hours: CRON_STREAK_LOOKBACK_HOURS,

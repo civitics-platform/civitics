@@ -544,12 +544,18 @@ The status API runs 6 self-tests:
 
 ### External request-path probe (FIX-1026)
 
-`.github/workflows/platform-snapshot.yml` carries a **`request-path-probe`** job
-alongside the snapshot trigger. It curls `/`, `/officials` and
-`/api/officials/<id>/summary` (3 attempts × 20 s, `--max-time 25`) and exits
-non-zero if any endpoint never returns 200. A red `request-path-probe` means
-**the site is down** — it is deliberately a separate job so it can never be read
-as snapshot flakiness.
+`.github/workflows/platform-snapshot.yml` carries the **`request-path-probe`**
+job. Since FIX-1127 it is the workflow's *only* job — the snapshot trigger that
+gave the file its name moved to a Vercel cron (see below) — so anything red here
+means the probe, and the probe means the site. It curls `/`, `/officials` and
+`/api/officials/<id>/responsiveness` (3 attempts × 20 s, `--max-time 25`) and
+exits non-zero if any endpoint never returns 200.
+
+The third path is `/responsiveness` and **not** `/summary`, deliberately:
+`/summary` fails open (it answers 200 with `summary: null` when the database is
+unreachable), which makes it blind to exactly the outage this job exists to
+catch. This doc said `/summary` until FIX-1127; the workflow has always used
+`/responsiveness`.
 
 **Detection latency is ~1 hour, not minutes.** GHA cron does not honour its own
 schedule: configured `*/10`, the observed gaps on 2026-08-11..12 were 38, 50,
@@ -560,9 +566,11 @@ entirely in that service's dashboard.
 
 **Three properties are load-bearing — do not "tidy" them away:**
 
-1. `concurrency` lives on the `trigger` job, **not** at workflow level. A
-   workflow-level `cancel-in-progress` makes the whole run's conclusion
-   `cancelled`.
+1. There is **no** workflow-level `concurrency` block. A workflow-level
+   `cancel-in-progress` makes the whole run's conclusion `cancelled`. (This
+   property used to read "concurrency lives on the `trigger` job, not at
+   workflow level"; FIX-1127 removed that job, so the rule is now simply that
+   neither level gets one.)
 2. The probe job has **no** concurrency group, so a later run cannot cancel it.
 3. Its worst case (~3.5 min) sits far inside `timeout-minutes: 10`, so it always
    concludes `success` or `failure`.
@@ -583,8 +591,11 @@ this alert is decorative.
 
 Added 2026-08-16 after the 2026-08-15 crawl burned ~$21/day for 16 hours without
 anything paging. The alert system was healthy; it was watching the wrong things.
-All of the below rides the existing 10-minute `platform-snapshot` cron — no new
-workflow, no new substrate.
+All of the below rides the existing `platform-snapshot` cron — no new workflow,
+no new substrate. That cron is a **Vercel cron at `*/30`** since FIX-1127
+(`apps/civitics/vercel.json`); it was a GHA `*/10` that actually fired about
+every 6 hours before that, which is the number every "detects in" figure below
+was really operating under.
 
 **Four layers, fastest first:**
 
@@ -597,7 +608,7 @@ workflow, no new substrate.
 
 **Why the Cloudflare layer exists at all:** it is the only near-real-time,
 script-readable counter in the stack. Vercel's billing data is cumulative and
-steps once per day, so the 10-minute cron buys *zero* extra resolution on any
+steps once per day, so the 30-minute cron buys *zero* extra resolution on any
 Vercel metric — consecutive snapshots are byte-identical. Supabase's feed watches
 the database, not the request path. Upstash exposes no usage API.
 
@@ -651,9 +662,13 @@ node scripts/cf-analytics.mjs --hours 24
 node scripts/db-query.mjs --prod "SELECT payload->'cloudflare_edge'->'latest', payload->'cf_mitigation'->>'action', payload->'burn_rate'->>'reason', payload->'vercel_billing' FROM platform_usage_snapshot ORDER BY fetched_at DESC LIMIT 1"
 ```
 
-The GHA run log for `platform-snapshot` also echoes `cf_origin_requests_hourly`,
-`cf_security_level`, `cf_mitigation_action`, `burn_rate_elevated` and
-`vercel_billable_overage_usd` on every tick — the cheapest liveness check.
+The route's ack body echoes `cf_origin_requests_hourly`, `cf_security_level`,
+`cf_mitigation_action`, `burn_rate_elevated` and `vercel_billable_overage_usd`
+on every tick — the cheapest liveness check. Until FIX-1127 that body was
+`cat`-ed into the GHA run log; now the tick is a Vercel cron, so read it from
+the function invocation log (Vercel dashboard → Logs, filter on
+`/api/cron/platform-snapshot`) or curl the route yourself with the `CRON_SECRET`
+bearer.
 
 #### The dollar figures changed meaning (FIX-1046)
 

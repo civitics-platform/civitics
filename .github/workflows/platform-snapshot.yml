@@ -1,26 +1,44 @@
 name: platform-snapshot
 
-# FIX-281 — Trigger /api/cron/platform-snapshot every 10 minutes.
+# THIS WORKFLOW NO LONGER TRIGGERS THE SNAPSHOT. It exists for the
+# `request-path-probe` job (FIX-1026) — the platform's only outage pager.
 #
-# Why GHA instead of vercel.json crons: Vercel Hobby rejects cron expressions
-# more frequent than daily. The route itself accepts Authorization: Bearer
-# <CRON_SECRET>, the same env var Vercel's own cron uses, so we can call it
-# from an external scheduler without protocol changes.
+# The name and the `*/10` schedule are deliberately unchanged: the probe's
+# alerting history, the notification routing, and every reference in
+# docs/OPERATIONS.md key off this filename and job name, and renaming a pager
+# costs archaeology for no benefit.
 #
-# GHA cron cadence drifts during platform load (real-world ~5-15 min), which
-# is well inside the GET handler's 20-minute staleness window — when GHA is
-# late, the dashboard falls back to live recompute, and the worst case is
-# the same as the pre-FIX-281 state. No correctness risk, just an occasional
-# slow request.
+# HISTORY OF THE SNAPSHOT TRIGGER, because the reasoning matters more than the
+# deleted job did:
 #
-# FIX-1026 — this workflow also carries the external request-path probe. See the
-# `request-path-probe` job at the bottom for why it lives here and not in a
-# scheduled workflow of its own.
+#   FIX-281 put /api/cron/platform-snapshot on a GHA `*/10` schedule because
+#   Vercel Hobby rejected cron expressions more frequent than daily. This
+#   header used to claim the resulting drift was "~5-15 min", well inside a
+#   "20-minute staleness window". Both numbers were wrong.
 #
-# Required GitHub Actions secrets:
-#   - CRON_SECRET           — must match the value in Vercel project env
+#   FIX-1127 (2026-08-29) measured the actual scheduled firings over 51 hours:
+#   08-27T15:08, 08-28T00:23, 08-28T11:35, 08-28T21:30, 08-29T03:20,
+#   08-29T10:16, 08-29T15:05, 08-29T18:23. Eight firings, mean interval ~6.4 h,
+#   shortest gap 3.2 h, against an advertised 10 minutes. GitHub drops
+#   scheduled runs under platform load and offers no delivery guarantee — this
+#   is wholesale skipping, not drift, and no staleness threshold tuned against
+#   a `*/10` expression was ever describing reality.
+#
+#   The trigger job therefore moved to a Vercel cron (`*/30 * * * *` in
+#   apps/civitics/vercel.json), which the project has been able to use since
+#   the April Pro cutover. The route needed no change — it already accepted
+#   the Bearer <CRON_SECRET> header Vercel's own cron sends.
+#
+#   READ THE OBSERVED RUN HISTORY, NEVER THE CRON EXPRESSION. That applies to
+#   the probe below exactly as much as it applied to the trigger: this
+#   workflow's `*/10` still means roughly hourly in practice, and the probe's
+#   own header states its detection latency honestly on that basis.
+#
+# Required GitHub Actions secrets (CRON_SECRET is no longer among them — it
+# left with the trigger job, and lives on only as a Vercel project env var):
 #   - CIVITICS_APP_URL      — e.g. https://civitics-civitics.vercel.app
 #                             (falls back to the production URL below if unset)
+#   - PROBE_URL             — optional; see the probe step's FIX-1057 note
 #   - PROBE_OFFICIAL_ID     — optional; an officials.id the probe fetches
 #                             (falls back to the id below if unset)
 
@@ -32,48 +50,15 @@ on:
 permissions:
   contents: read
 
-# NOTE (FIX-1026): concurrency is declared PER-JOB, not workflow-wide, and this
-# is load-bearing — see the request-path-probe job's header. A workflow-level
-# `cancel-in-progress` makes the whole RUN's conclusion `cancelled` when any job
-# is cut short, and GitHub sends no notification for a cancelled run. That is
-# what silently swallowed the 2026-08-11 outage signal.
+# NOTE (FIX-1026): there is deliberately NO workflow-level `concurrency:` block,
+# and its absence is load-bearing — see the request-path-probe job's header. A
+# workflow-level `cancel-in-progress` makes the whole RUN's conclusion
+# `cancelled` when any job is cut short, and GitHub sends no notification for a
+# cancelled run. That is what silently swallowed the 2026-08-11 outage signal.
+# The concurrency group this note used to describe belonged to the `trigger`
+# job, which FIX-1127 removed; do not reintroduce one at either level.
 
 jobs:
-  trigger:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-
-    # Skip overlapping runs. The route is idempotent (each invocation INSERTs a
-    # new snapshot row), but stacking runs during a slow Vercel deploy wastes
-    # minutes and clutters the table.
-    concurrency:
-      group: platform-snapshot
-      cancel-in-progress: true
-
-    steps:
-      - name: Curl /api/cron/platform-snapshot
-        env:
-          CRON_SECRET: ${{ secrets.CRON_SECRET }}
-          APP_URL: ${{ secrets.CIVITICS_APP_URL || 'https://civitics-civitics.vercel.app' }}
-        run: |
-          set -euo pipefail
-          if [ -z "${CRON_SECRET}" ]; then
-            echo "::error::CRON_SECRET secret is not set"; exit 1
-          fi
-          # Capture body + status separately so we can both log and gate on
-          # the response. Anything non-2xx → workflow fails and surfaces in
-          # the Actions tab.
-          HTTP=$(curl -sS -o /tmp/body.json -w "%{http_code}" \
-            -H "Authorization: Bearer ${CRON_SECRET}" \
-            "${APP_URL}/api/cron/platform-snapshot")
-          echo "HTTP ${HTTP}"
-          cat /tmp/body.json
-          echo
-          if [ "${HTTP}" != "200" ]; then
-            echo "::error::snapshot route returned HTTP ${HTTP}"
-            exit 1
-          fi
-
   # ───────────────────────────────────────────────────────────────────────────
   # FIX-1026 — external request-path probe.
   #
@@ -91,13 +76,16 @@ jobs:
   # free 5-minute checks), which is zero repo code and lives entirely in that
   # service's dashboard. That gap is real and deliberately left visible here.
   #
-  # WHY IT IS A SEPARATE JOB, NOT A STEP: a step appended to `trigger` would be
-  # indistinguishable from snapshot flakiness in the failure notification. As
-  # its own job with an unambiguous name, a red `request-path-probe` reads as
-  # "the site is down" and nothing else.
+  # WHY IT IS A SEPARATE JOB, NOT A STEP: when this workflow still carried the
+  # snapshot `trigger` job (removed by FIX-1127), a step appended to it would
+  # have been indistinguishable from snapshot flakiness in the failure
+  # notification. As its own job with an unambiguous name, a red
+  # `request-path-probe` reads as "the site is down" and nothing else. That is
+  # now also why it is the ONLY job here: nothing else can turn this workflow
+  # red, so red means down.
   #
-  # WHY IT MUST NOT SHARE trigger's CONCURRENCY GROUP — the finding that shaped
-  # this whole job. During the 2026-08-11 outage the five platform-snapshot runs
+  # WHY IT MUST NOT CARRY A CONCURRENCY GROUP — the finding that shaped this
+  # whole job. During the 2026-08-11 outage the five platform-snapshot runs
   # at 08:28, 09:31, 10:27, 11:17 and 12:00 UTC all hung on the unreachable site
   # and were cut off by `timeout-minutes: 5`. GitHub reports a timeout-expired
   # job as **cancelled**, not failed, and sends NO notification for a cancelled
