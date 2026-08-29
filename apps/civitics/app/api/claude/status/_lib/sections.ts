@@ -9,6 +9,7 @@ import {
   type AnthropicUsageResponse,
 } from "@civitics/db";
 import { fetchAllRows } from "@/lib/paginate";
+import { countFailureFields } from "@/lib/section-failures";
 import {
   fetchPipelineRuntimeStats,
   toPublicRuntimeStats,
@@ -211,6 +212,13 @@ export async function getDatabase(db: Db, yesterday: string) {
   ]);
 
   // Surface partial state if any count failed (don't silently show 0).
+  //
+  // FIX-1121 — `errored` is now also published as `failed` (see
+  // countFailureFields). `partial` and `error` keep their exact prior meaning:
+  // computeStatusPayload's failedSections list and the status_snapshot.error
+  // column both key off `partial`, and a snapshot written before this shipped
+  // must keep rendering the way it always did. The addition is what lets a
+  // consumer blank the ONE card whose count failed instead of all four.
   const errored = [
     officials.error && "officials",
     proposals.error && "proposals",
@@ -237,10 +245,7 @@ export async function getDatabase(db: Db, yesterday: string) {
     entity_tags: tags.count ?? 0,
     ai_summary_cache: cache.count ?? 0,
     page_views_24h: views.count ?? 0,
-    ...(errored.length > 0 && {
-      error: `count failed for: ${errored.join(", ")}`,
-      partial: true,
-    }),
+    ...countFailureFields(errored),
   };
 }
 

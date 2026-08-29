@@ -1,10 +1,11 @@
 /**
  * Status snapshot helpers — FIX-297.
  *
- * computeStatusPayload — runs the 11-section parallel block that
+ * computeStatusPayload — runs the 13-section block that
  *   /api/claude/status/core, /quality, and the dashboard SSR were each
  *   computing live on every request. Returns the assembled payload plus a
- *   query_time_ms scalar.
+ *   query_time_ms scalar. Fan-out is bounded at SECTION_CONCURRENCY since
+ *   FIX-1121 — running all 13 at once was starving the sections' own queries.
  *
  * writeStatusSnapshot — compute then INSERT one row into status_snapshot.
  *   Called by /api/cron/platform-snapshot every 10 min. Never throws;
@@ -20,6 +21,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getAnthropicUsage } from "@civitics/db";
+import { metricValue } from "@/lib/section-failures";
 import {
   type Db,
   section,
@@ -51,6 +53,70 @@ import {
 // SSR for whatever computeStatusPayload actually took (30+ s on prod).
 export { SNAPSHOT_STALE_MS } from "@/lib/snapshot-freshness";
 export const SNAPSHOT_FALLBACK_TIMEOUT_MS = 5000;
+
+/**
+ * FIX-1120 — cap for the ONE remaining live recompute: a request that finds no
+ * status_snapshot row at all. SNAPSHOT_FALLBACK_TIMEOUT_MS (5 s) cannot serve
+ * that purpose, because computeStatusPayload measurably costs 8.9–18.8 s on
+ * prod (query_time_ms across all ten retained ticks, 2026-08-29: 8863, 9260,
+ * 10090, 10569, 10806, 11040, 12401, 12464, 17760, 18753). A 5 s cap in front
+ * of that is not a timeout, it is an unconditional failure dressed as one.
+ *
+ * 30 s clears the worst measured tick by ~1.6x and sits under the routes'
+ * `maxDuration = 60`, so the 503 written for this case is actually reachable
+ * instead of the function being killed mid-flight.
+ */
+export const SNAPSHOT_COLD_COMPUTE_TIMEOUT_MS = 30_000;
+
+/**
+ * FIX-1121 — how many sections may be in flight at once.
+ *
+ * The payload used to start all 13 sections simultaneously, and getDatabase's
+ * eleven counts were only a fraction of the PostgREST requests racing each
+ * other on a Small instance. The cost of that contention is measurable and it
+ * is not the queries: `SELECT count(*) FROM votes` is 261 ms via psql and
+ * 555 ms through PostgREST, and a faithful replay of getDatabase's whole
+ * 11-way fan-out from outside the lambda finished in 559 ms. Inside
+ * computeStatusPayload the same section took 8266–9165 ms on every failing
+ * tick — i.e. it ran into the authenticator role's 8 s statement_timeout — and
+ * 693 ms on the one tick that came back clean.
+ *
+ * 4 comes from the section_times evidence: five sections dominate (quality
+ * 10.8–18.7 s, self_tests 9.9–10.8 s, database 8.5–9.2 s [contention-inflated],
+ * pipelines 6.4–9.0 s, ai_costs 4.6–7.2 s) and the other eight are all under
+ * 1 s. A bound of 4 keeps the heavy five from ever overlapping completely
+ * while still packing the cheap eight into the gaps.
+ *
+ * This is a write-path change: computeStatusPayload runs from a 10-minute
+ * cron, which is latency-tolerant. Since FIX-1120 the request path recomputes
+ * only when there is no snapshot row at all.
+ */
+const SECTION_CONCURRENCY = 4;
+
+/**
+ * Minimal ordered concurrency limiter — no new dependency. Results come back
+ * positionally, so the caller can keep mapping tasks to payload keys by index.
+ */
+async function mapWithConcurrency<T, R>(
+  items: readonly T[],
+  limit: number,
+  fn: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  const worker = async () => {
+    for (;;) {
+      const i = next++;
+      const item = items[i];
+      if (i >= items.length || item === undefined) return;
+      results[i] = await fn(item, i);
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, worker),
+  );
+  return results;
+}
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -153,46 +219,59 @@ export async function computeStatusPayload(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     .then((r: any) => r);
   const sharedAnthropicUsagePromise = getAnthropicUsage();
+  // FIX-1121: both shared promises are started eagerly and deliberately stay
+  // OUTSIDE the limiter — several sections await them, and gating them behind a
+  // concurrency slot risks a section holding a slot while waiting on a promise
+  // that cannot start. Because the sections that await them may now be queued
+  // rather than running immediately, attach a no-op rejection handler so a
+  // rejection while queued can't surface as an unhandledRejection. The original
+  // promises still reject for whichever section awaits them, so a failure is
+  // still reported through that section's own `partial` result.
+  void sharedConnTypeCountsPromise.catch(() => {});
+  void sharedAnthropicUsagePromise.catch(() => {});
 
-  const [
-    sectionVersion,
-    sectionDatabase,
-    sectionConnectionTypes,
-    sectionPipelines,
-    sectionAiCosts,
-    sectionActivity,
-    sectionResourceWarnings,
-    sectionOfficialsBreakdown,
-    sectionQuality,
-    sectionSelfTests,
-    sectionChord,
-    sectionEcCrawlHealth,
-    sectionDailyCounts,
-  ] = await Promise.all([
-    section(() => timed("version", () => getVersion(dbAsDb))),
-    section(() => timed("database", () => getDatabase(dbAsDb, yesterday))),
-    section(() => timed("connection_types", () =>
-      getConnectionTypes(dbAsDb, sharedConnTypeCountsPromise),
-    )),
-    section(() => timed("pipelines", () => getPipelines(dbAsDb))),
-    section(() => timed("ai_costs", () =>
-      getAiCosts(dbAsDb, monthStart, sharedAnthropicUsagePromise),
-    )),
-    section(() => timed("activity", () => getActivity(dbAsDb, 7))),
-    section(() => timed("resource_warnings", () => getResourceWarnings(dbAsDb))),
-    section(() => timed("officials_breakdown", () => getOfficialsBreakdown(dbAsDb))),
-    section(() => timed("quality", () => getQuality(dbAsDb))),
-    section(() => timed("self_tests", () =>
+  // FIX-1121: bounded fan-out. Ordered longest-pole-first (quality, self_tests,
+  // database, pipelines, ai_costs — the only five over 1 s) so the heavy work
+  // starts immediately and the sub-second sections fill the gaps as slots free
+  // up; a naive declaration-order walk would leave quality to start last and
+  // stretch the tail by its own full duration. Payload assembly is keyed by
+  // name below, so this order is free to change with the evidence.
+  const sectionTasks: Array<[keyof StatusPayload, () => Promise<unknown>]> = [
+    ["quality", () => timed("quality", () => getQuality(dbAsDb))],
+    ["self_tests", () => timed("self_tests", () =>
       getSelfTests(dbAsDb, {
         sharedConnTypeCountsPromise,
         sharedAnthropicUsagePromise,
         collect,
       }),
-    )),
-    section(() => timed("chord", () => getChord(dbAsDb))),
-    section(() => timed("ec_crawl_health", () => getEcCrawlHealth(dbAsDb))),
-    section(() => timed("daily_counts", () => getDailyCounts(dbAsDb))),
-  ]);
+    )],
+    ["database", () => timed("database", () => getDatabase(dbAsDb, yesterday))],
+    ["pipelines", () => timed("pipelines", () => getPipelines(dbAsDb))],
+    ["ai_costs", () => timed("ai_costs", () =>
+      getAiCosts(dbAsDb, monthStart, sharedAnthropicUsagePromise),
+    )],
+    ["connection_types", () => timed("connection_types", () =>
+      getConnectionTypes(dbAsDb, sharedConnTypeCountsPromise),
+    )],
+    ["chord", () => timed("chord", () => getChord(dbAsDb))],
+    ["daily_counts", () => timed("daily_counts", () => getDailyCounts(dbAsDb))],
+    ["activity", () => timed("activity", () => getActivity(dbAsDb, 7))],
+    ["officials_breakdown", () => timed("officials_breakdown", () =>
+      getOfficialsBreakdown(dbAsDb),
+    )],
+    ["resource_warnings", () => timed("resource_warnings", () =>
+      getResourceWarnings(dbAsDb),
+    )],
+    ["ec_crawl_health", () => timed("ec_crawl_health", () => getEcCrawlHealth(dbAsDb))],
+    ["version", () => timed("version", () => getVersion(dbAsDb))],
+  ];
+
+  const resolved = await mapWithConcurrency(sectionTasks, SECTION_CONCURRENCY, ([, run]) =>
+    section(run),
+  );
+  const byKey = Object.fromEntries(
+    sectionTasks.map(([key], i) => [key, resolved[i]]),
+  ) as Record<keyof StatusPayload, unknown>;
 
   // ── Merged payload assembly ─────────────────────────────────────────────────
   // Different semantic contract from the per-section block: this region's
@@ -202,19 +281,19 @@ export async function computeStatusPayload(
   // visibly separate — FIX-293 lesson about adjacent blocks sharing the
   // same `status` name with different meanings.
   const payload: StatusPayload = {
-    version: sectionVersion as StatusPayload["version"],
-    database: sectionDatabase as StatusPayload["database"],
-    connection_types: sectionConnectionTypes as StatusPayload["connection_types"],
-    pipelines: sectionPipelines as StatusPayload["pipelines"],
-    ai_costs: sectionAiCosts as StatusPayload["ai_costs"],
-    activity: sectionActivity as StatusPayload["activity"],
-    resource_warnings: sectionResourceWarnings as StatusPayload["resource_warnings"],
-    officials_breakdown: sectionOfficialsBreakdown as StatusPayload["officials_breakdown"],
-    quality: sectionQuality as StatusPayload["quality"],
-    self_tests: sectionSelfTests as StatusPayload["self_tests"],
-    chord: sectionChord as StatusPayload["chord"],
-    ec_crawl_health: sectionEcCrawlHealth as StatusPayload["ec_crawl_health"],
-    daily_counts: sectionDailyCounts as StatusPayload["daily_counts"],
+    version: byKey.version as StatusPayload["version"],
+    database: byKey.database as StatusPayload["database"],
+    connection_types: byKey.connection_types as StatusPayload["connection_types"],
+    pipelines: byKey.pipelines as StatusPayload["pipelines"],
+    ai_costs: byKey.ai_costs as StatusPayload["ai_costs"],
+    activity: byKey.activity as StatusPayload["activity"],
+    resource_warnings: byKey.resource_warnings as StatusPayload["resource_warnings"],
+    officials_breakdown: byKey.officials_breakdown as StatusPayload["officials_breakdown"],
+    quality: byKey.quality as StatusPayload["quality"],
+    self_tests: byKey.self_tests as StatusPayload["self_tests"],
+    chord: byKey.chord as StatusPayload["chord"],
+    ec_crawl_health: byKey.ec_crawl_health as StatusPayload["ec_crawl_health"],
+    daily_counts: byKey.daily_counts as StatusPayload["daily_counts"],
   };
 
   const failedSections: string[] = [];
@@ -269,14 +348,20 @@ async function recordDailyCounts(
 
   const database = payload.database;
   const chord = payload.chord;
-  const dbOk = database && typeof database === "object" && !("partial" in database);
   const chordOk = chord && typeof chord === "object" && !("partial" in chord);
 
+  // FIX-1121 — gate each metric on ITS OWN count, not on the whole section.
+  // Before this, one failed count anywhere in getDatabase's eleven (in practice
+  // always `votes`) withheld BOTH officials and votes, so the series stalled on
+  // the ~90% of ticks that came back partial. `metricValue` returns null for a
+  // count that failed — including on a pre-FIX-1121 payload, where the failed
+  // list is unknown and every metric is therefore withheld exactly as before.
+  const officials = metricValue(database, "officials");
+  const votes = metricValue(database, "votes");
+
   const metrics: Record<string, number> = {};
-  if (dbOk) {
-    metrics["officials"] = (database as { officials: number }).officials;
-    metrics["votes"] = (database as { votes: number }).votes;
-  }
+  if (officials !== null) metrics["officials"] = officials;
+  if (votes !== null) metrics["votes"] = votes;
   if (chordOk) {
     metrics["donation_flow_usd"] = (chord as { total_flow_usd: number }).total_flow_usd;
   }
@@ -297,18 +382,21 @@ async function recordDailyCounts(
   if (Object.keys(metrics).length === 0) return null;
 
   // FIX-1122 — `source` is sent only when the counts that define it were
-  // actually observed on THIS tick. On a partial tick (FIX-1121: the database
-  // section fails its votes count on most prod ticks) officials/votes are
-  // omitted above and the row keeps its reconstructed backfill values — so
-  // stamping 'observed' anyway would label reconstructed numbers as observed.
-  // Omitting the key leaves the stored value standing, because PostgREST's
-  // ON CONFLICT DO UPDATE only touches columns present in the payload.
+  // actually observed on THIS tick. On a tick that withheld officials or votes
+  // the row keeps its reconstructed backfill values for them, so stamping
+  // 'observed' anyway would label reconstructed numbers as observed. Omitting
+  // the key leaves the stored value standing, because PostgREST's ON CONFLICT
+  // DO UPDATE only touches columns present in the payload.
+  //
+  // FIX-1121 refines the gate from section-level to metric-level but keeps
+  // FIX-1122's rule intact: one row-level label can only honestly say
+  // "observed" when BOTH of the metrics it describes were measured here.
   const row: Record<string, unknown> = {
     day,
     ...metrics,
     recorded_at: new Date().toISOString(),
   };
-  if (dbOk) row["source"] = "observed";
+  if (officials !== null && votes !== null) row["source"] = "observed";
 
   const { error } = await anyDb
     .from("daily_platform_counts")

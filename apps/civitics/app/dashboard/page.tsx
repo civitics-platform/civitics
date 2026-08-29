@@ -13,13 +13,8 @@ import { SitemapSection } from "./SitemapSection";
 import { BrowsingFlowsSection, type PathTransition, type EntryPage } from "./BrowsingFlowsSection";
 import { ModerationSection } from "./ModerationSection";
 import { PageViewTracker } from "../components/PageViewTracker";
-import {
-  computeStatusPayload,
-  readStatusSnapshot,
-  SNAPSHOT_STALE_MS,
-  SNAPSHOT_FALLBACK_TIMEOUT_MS,
-} from "../api/claude/status/_lib/status-snapshot";
-import { withDbTimeout } from "@/lib/supabase-check";
+import { readStatusSnapshot } from "../api/claude/status/_lib/status-snapshot";
+import { withDbTimeout, withDbTimeoutValue } from "@/lib/supabase-check";
 import type { StatusData } from "./useDashboardData";
 
 // No "| Civitics" suffix here — the root layout's title template is
@@ -118,73 +113,49 @@ async function getOpenProposalCount(): Promise<number> {
 async function getInitialStatus(): Promise<StatusData | null> {
   try {
     const db = createAdminClient();
-    const now = new Date();
 
-    const snapshot = await withDbTimeout<Awaited<ReturnType<typeof readStatusSnapshot>>>(
+    // FIX-1120: withDbTimeoutValue, not withDbTimeout — readStatusSnapshot is
+    // already unwrapped, so the builder wrapper's `{data:null,error}` sentinel
+    // came back TRUTHY here and every guard below it read the wrong branch.
+    // This page never 500'd on it only because the whole body is inside a
+    // try/catch that returns null, which is exactly why it stayed invisible.
+    const snapshot = await withDbTimeoutValue(
       readStatusSnapshot(db),
       2000,
+      "dashboard:snapshot",
     );
-    const fresh =
-      snapshot &&
-      Date.now() - new Date(snapshot.fetched_at).getTime() < SNAPSHOT_STALE_MS;
 
-    let payload;
-    let computeMs: number;
-    let timestamp: string;
+    // FIX-1120: whatever snapshot exists is served, fresh or stale. There is no
+    // live recompute on this path any more, and that removal is deliberate:
+    //
+    //   - The 5 s cap it used to race under could not win. computeStatusPayload
+    //     costs 8.9–18.8 s on prod (all ten retained ticks), so the race spent
+    //     5 s of blocked SSR to arrive at the stale snapshot it already had.
+    //   - Raising the cap instead would mean blocking a PAGE render for ~30 s,
+    //     and Vercel bills provisioned fluid-compute memory for the whole time
+    //     a function sits on I/O (apps/civitics/CLAUDE.md, the withDbTimeout
+    //     rule). That is the cost pattern this app explicitly defends against.
+    //   - When there is no snapshot at all, returning null degrades to the
+    //     client-fetch render, and /api/claude/status/core — which DOES still
+    //     recompute, under a cap above the measured cost — fills the page in.
+    //     Same data, same wait, without holding the shell hostage.
+    //
+    // The staleness itself is not silent: DashboardClient renders the FIX-1094
+    // age cue from `fetched_at`.
+    if (!snapshot) return null;
+
+    const payload = snapshot.payload;
+    const computeMs = snapshot.query_time_ms;
     // FIX-1094: carry the snapshot's own write time separately from `timestamp`
-    // so DashboardClient's staleness cue has something real to measure. Null on
-    // the live-recompute branch — there is no snapshot behind that payload, and
-    // a recompute is by definition zero seconds old.
-    let fetchedAt: string | null = null;
-    if (fresh && snapshot) {
-      payload = snapshot.payload;
-      computeMs = snapshot.query_time_ms;
-      timestamp = snapshot.fetched_at;
-      fetchedAt = snapshot.fetched_at;
-    } else {
-      // FIX-327: cap live-compute fallback at 5 s. Prod observed
-      // computeStatusPayload taking 30+ s — unbounded fallback turned every
-      // stale-snapshot SSR into a 30-s hang. On timeout, serve the
-      // last-known-good snapshot if we have one; only return null when
-      // there is no snapshot row at all.
-      const TIMEOUT = Symbol("status-fallback-timeout");
-      const result = await Promise.race<
-        Awaited<ReturnType<typeof computeStatusPayload>> | typeof TIMEOUT
-      >([
-        computeStatusPayload(db),
-        new Promise<typeof TIMEOUT>((resolve) =>
-          setTimeout(() => resolve(TIMEOUT), SNAPSHOT_FALLBACK_TIMEOUT_MS),
-        ),
-      ]);
-      if (result === TIMEOUT) {
-        console.warn(
-          "[dashboard.getInitialStatus] live-compute fallback timed out after",
-          SNAPSHOT_FALLBACK_TIMEOUT_MS,
-          "ms — serving stale snapshot",
-          snapshot ? { fetched_at: snapshot.fetched_at } : { snapshot: null },
-        );
-        if (!snapshot) return null;
-        payload = snapshot.payload;
-        computeMs = snapshot.query_time_ms;
-        timestamp = snapshot.fetched_at;
-        fetchedAt = snapshot.fetched_at;
-      } else {
-        console.warn(
-          "[dashboard.getInitialStatus] snapshot missing or stale, served live recompute",
-          snapshot ? { fetched_at: snapshot.fetched_at } : { snapshot: null },
-        );
-        payload = result.payload;
-        computeMs = result.query_time_ms;
-        timestamp = now.toISOString();
-      }
-    }
+    // so DashboardClient's staleness cue has something real to measure.
+    const fetchedAt: string = snapshot.fetched_at;
 
     return {
       meta: {
         query_time_ms: computeMs,
-        timestamp,
+        timestamp: fetchedAt,
         fetched_at: fetchedAt,
-        from_snapshot: fetchedAt != null,
+        from_snapshot: true,
       },
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       version: payload.version as any,

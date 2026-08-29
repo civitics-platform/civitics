@@ -17,17 +17,19 @@
  */
 
 export const revalidate = 300;
+// FIX-1120 — see /core route: explicit budget so the 30 s cold-compute cap is
+// provably under the function timeout and the 503 can actually be returned.
+export const maxDuration = 60;
 
 import { createAdminClient } from "@civitics/db";
 import { NextResponse } from "next/server";
 import { getIp, rateOk } from "../_lib/ratelimit";
-import { withDbTimeout } from "@/lib/supabase-check";
+import { withDbTimeoutValue } from "@/lib/supabase-check";
 import {
   computeStatusPayload,
   readStatusSnapshot,
   SNAPSHOT_STALE_MS,
-  SNAPSHOT_FALLBACK_TIMEOUT_MS,
-  type StatusSnapshotRow,
+  SNAPSHOT_COLD_COMPUTE_TIMEOUT_MS,
 } from "../_lib/status-snapshot";
 
 export async function GET(request: Request) {
@@ -43,9 +45,11 @@ export async function GET(request: Request) {
   const db = createAdminClient();
   const now = new Date();
 
-  const snapshot = await withDbTimeout<StatusSnapshotRow | null>(
+  // FIX-1120: plain-promise variant. See /core route for the full mechanism.
+  const snapshot = await withDbTimeoutValue(
     readStatusSnapshot(db),
     2000,
+    "status/quality:snapshot",
   );
 
   const fresh =
@@ -56,59 +60,53 @@ export async function GET(request: Request) {
   let snapshotQueryTimeMs: number | null = null;
   let fetchedAt: string = now.toISOString();
   let servedStale = false;
-  if (fresh && snapshot) {
+  if (snapshot) {
+    // FIX-1120: stale is served as-is. The 5 s recompute race it replaced could
+    // not win against an 8.9–18.8 s compute; it only delayed this same answer.
     payload = snapshot.payload;
     snapshotQueryTimeMs = snapshot.query_time_ms;
     fetchedAt = snapshot.fetched_at;
+    servedStale = !fresh;
+    if (!fresh) {
+      console.warn("[status/quality] snapshot stale, served as-is", {
+        fetched_at: snapshot.fetched_at,
+      });
+    }
   } else {
-    // FIX-327: cap live-compute fallback. See /core route for context.
-    const TIMEOUT = Symbol("status-fallback-timeout");
+    // No snapshot row at all. Only path that still recomputes live, now capped
+    // above the measured cost so the 503 below is genuinely reachable.
+    const TIMEOUT = Symbol("status-cold-compute-timeout");
     const result = await Promise.race<
       Awaited<ReturnType<typeof computeStatusPayload>> | typeof TIMEOUT
     >([
       computeStatusPayload(db),
       new Promise<typeof TIMEOUT>((resolve) =>
-        setTimeout(() => resolve(TIMEOUT), SNAPSHOT_FALLBACK_TIMEOUT_MS),
+        setTimeout(() => resolve(TIMEOUT), SNAPSHOT_COLD_COMPUTE_TIMEOUT_MS),
       ),
     ]);
     if (result === TIMEOUT) {
       console.warn(
-        "[status/quality] live-compute fallback timed out after",
-        SNAPSHOT_FALLBACK_TIMEOUT_MS,
+        "[status/quality] no snapshot and live compute timed out after",
+        SNAPSHOT_COLD_COMPUTE_TIMEOUT_MS,
         "ms",
-        snapshot ? { fetched_at: snapshot.fetched_at, served_stale: true } : { snapshot: null },
       );
-      if (!snapshot) {
-        return NextResponse.json(
-          { error: "snapshot unavailable" },
-          { status: 503 },
-        );
-      }
-      payload = snapshot.payload;
-      snapshotQueryTimeMs = snapshot.query_time_ms;
-      fetchedAt = snapshot.fetched_at;
-      servedStale = true;
-    } else {
-      console.warn(
-        "[status/quality] snapshot missing or stale, served live recompute",
-        snapshot ? { fetched_at: snapshot.fetched_at } : { snapshot: null },
-      );
-      payload = result.payload;
-      snapshotQueryTimeMs = result.query_time_ms;
+      return NextResponse.json({ error: "snapshot unavailable" }, { status: 503 });
     }
+    console.warn("[status/quality] no snapshot row, served live recompute");
+    payload = result.payload;
+    snapshotQueryTimeMs = result.query_time_ms;
   }
 
-  const snapshotAgeMinutes =
-    fresh || servedStale
-      ? Math.floor((Date.now() - new Date(fetchedAt).getTime()) / 60_000)
-      : null;
+  const snapshotAgeMinutes = snapshot
+    ? Math.floor((Date.now() - new Date(fetchedAt).getTime()) / 60_000)
+    : null;
 
   return NextResponse.json({
     meta: {
       query_time_ms: Date.now() - t0,
       snapshot_compute_ms: snapshotQueryTimeMs,
       fetched_at: fetchedAt,
-      from_snapshot: !!(fresh && snapshot) || servedStale,
+      from_snapshot: !!snapshot,
       snapshot_age_minutes: snapshotAgeMinutes,
       served_stale: servedStale,
       timestamp: now.toISOString(),

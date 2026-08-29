@@ -37,6 +37,16 @@ const STRUCTURAL_ERROR_CODES = new Set([
  * On timeout, resolves with { data: null, error: Error } instead of hanging.
  * Preserves the full return type (including count, status, etc.) via generic T.
  *
+ * USE THIS ONLY FOR POSTGREST BUILDERS — anything whose resolved value is a
+ * `{ data, error }` envelope. The timeout branch fabricates that envelope and
+ * casts it `as unknown as T`, which is the right shape for a builder and the
+ * WRONG shape for anything else. Passing an already-unwrapped promise (e.g.
+ * `readStatusSnapshot(db)`, which resolves to a row or null) makes the timeout
+ * hand back a truthy object with none of the fields the type promises, and
+ * every `if (!value)` guard downstream silently takes the wrong branch — that
+ * was FIX-1120, which turned a written-on-purpose 503 into a 500. For those,
+ * use `withDbTimeoutValue` below.
+ *
  * Also inspects resolved results for PostgREST structural errors (see
  * STRUCTURAL_ERROR_CODES above) and logs a single-line, prefixed message
  * via console.error. The return shape is unchanged — callers that only
@@ -77,4 +87,51 @@ export async function withDbTimeout<T>(
       setTimeout(() => resolve(timeoutResult as unknown as T), ms)
     ),
   ]);
+}
+
+/**
+ * FIX-1120 — the plain-promise counterpart to `withDbTimeout`.
+ *
+ * For call sites whose promise has ALREADY unwrapped the PostgREST envelope
+ * and resolves to a domain value (a row, a row-or-null, an array). On timeout
+ * this resolves to `null` — a value the caller's own `if (!x)` guard is
+ * already written to handle — instead of a fabricated `{data,error}` object
+ * that satisfies the type checker while being structurally wrong.
+ *
+ * Why a separate function rather than defensive checks at each call site: the
+ * misuse is invisible at the call site. `withDbTimeout<StatusSnapshotRow|null>`
+ * reads as if it returns a row or null, and the `as unknown as T` cast inside
+ * makes that annotation a lie the compiler will not question. Three call sites
+ * shared the bug for three months (core/route.ts, quality/route.ts,
+ * dashboard/page.tsx), and each of the three guards downstream of it looked
+ * correct in isolation. A distinct name is the only thing that makes the two
+ * contracts distinguishable at the point of use.
+ *
+ * The timeout is logged (never silent) so a route serving degraded output has
+ * a greppable line behind it.
+ *
+ * Usage:
+ *   const snapshot = await withDbTimeoutValue(
+ *     readStatusSnapshot(db),
+ *     2000,
+ *     "status/core:snapshot",
+ *   );
+ *   if (!snapshot) { ... }   // now actually reachable on timeout
+ */
+export async function withDbTimeoutValue<T>(
+  promise: PromiseLike<T>,
+  ms = 5000,
+  label?: string
+): Promise<T | null> {
+  const TIMED_OUT = Symbol("withDbTimeoutValue");
+  const result = await Promise.race<T | typeof TIMED_OUT>([
+    promise,
+    new Promise<typeof TIMED_OUT>((resolve) => setTimeout(() => resolve(TIMED_OUT), ms)),
+  ]);
+  if (result === TIMED_OUT) {
+    const labelSeg = label ? ` [label=${label}]` : "";
+    console.error(`[withDbTimeoutValue] timed out after ${ms}ms${labelSeg} — resolving null`);
+    return null;
+  }
+  return result;
 }

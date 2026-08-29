@@ -20,17 +20,22 @@
  */
 
 export const revalidate = 300;
+// FIX-1120 — the cold-start recompute below is capped at
+// SNAPSHOT_COLD_COMPUTE_TIMEOUT_MS (30 s). Declare the function budget
+// explicitly so that cap is provably under it and the 503 is reachable,
+// rather than depending on whatever Vercel's project-level default happens
+// to be. Only the no-snapshot-at-all path can run that long.
+export const maxDuration = 60;
 
 import { createAdminClient } from "@civitics/db";
 import { NextResponse } from "next/server";
 import { getIp, rateOk } from "../_lib/ratelimit";
-import { withDbTimeout } from "@/lib/supabase-check";
+import { withDbTimeoutValue } from "@/lib/supabase-check";
 import {
   computeStatusPayload,
   readStatusSnapshot,
   SNAPSHOT_STALE_MS,
-  SNAPSHOT_FALLBACK_TIMEOUT_MS,
-  type StatusSnapshotRow,
+  SNAPSHOT_COLD_COMPUTE_TIMEOUT_MS,
 } from "../_lib/status-snapshot";
 
 export async function GET(request: Request) {
@@ -46,9 +51,15 @@ export async function GET(request: Request) {
   const db = createAdminClient();
   const now = new Date();
 
-  const snapshot = await withDbTimeout<StatusSnapshotRow | null>(
+  // FIX-1120: withDbTimeoutValue, not withDbTimeout — readStatusSnapshot is a
+  // plain promise, already unwrapped. The builder-shaped wrapper's timeout
+  // sentinel was truthy here, which made `fresh` NaN-false, forced a
+  // guaranteed-to-lose recompute race, and then walked past `if (!snapshot)`
+  // into a TypeError on payload.version — a 500 where a 503 was written.
+  const snapshot = await withDbTimeoutValue(
     readStatusSnapshot(db),
     2000,
+    "status/core:snapshot",
   );
 
   const fresh =
@@ -59,61 +70,57 @@ export async function GET(request: Request) {
   let snapshotQueryTimeMs: number | null = null;
   let fetchedAt: string = now.toISOString();
   let servedStale = false;
-  if (fresh && snapshot) {
+  if (snapshot) {
+    // FIX-1120: a stale snapshot is served immediately. It used to race a live
+    // recompute capped at 5 s first — but computeStatusPayload measurably costs
+    // 8.9–18.8 s on prod, so that race could only ever end in this same branch,
+    // 5 s later. Removing it costs nothing and saves the 5 s.
     payload = snapshot.payload;
     snapshotQueryTimeMs = snapshot.query_time_ms;
     fetchedAt = snapshot.fetched_at;
+    servedStale = !fresh;
+    if (!fresh) {
+      console.warn("[status/core] snapshot stale, served as-is", {
+        fetched_at: snapshot.fetched_at,
+      });
+    }
   } else {
-    // FIX-327: cap live-compute fallback. On timeout, fall back to the
-    // last-known-good snapshot (served_stale=true) rather than hanging the
-    // request for 30+ seconds.
-    const TIMEOUT = Symbol("status-fallback-timeout");
+    // No snapshot row at all — cold start, or the read itself timed out. This
+    // is the only path that still recomputes live, and its cap is now above
+    // the measured cost rather than below it, so the timeout means "genuinely
+    // could not build a payload" and the 503 is the honest answer.
+    const TIMEOUT = Symbol("status-cold-compute-timeout");
     const result = await Promise.race<
       Awaited<ReturnType<typeof computeStatusPayload>> | typeof TIMEOUT
     >([
       computeStatusPayload(db),
       new Promise<typeof TIMEOUT>((resolve) =>
-        setTimeout(() => resolve(TIMEOUT), SNAPSHOT_FALLBACK_TIMEOUT_MS),
+        setTimeout(() => resolve(TIMEOUT), SNAPSHOT_COLD_COMPUTE_TIMEOUT_MS),
       ),
     ]);
     if (result === TIMEOUT) {
       console.warn(
-        "[status/core] live-compute fallback timed out after",
-        SNAPSHOT_FALLBACK_TIMEOUT_MS,
+        "[status/core] no snapshot and live compute timed out after",
+        SNAPSHOT_COLD_COMPUTE_TIMEOUT_MS,
         "ms",
-        snapshot ? { fetched_at: snapshot.fetched_at, served_stale: true } : { snapshot: null },
       );
-      if (!snapshot) {
-        return NextResponse.json(
-          { error: "snapshot unavailable" },
-          { status: 503 },
-        );
-      }
-      payload = snapshot.payload;
-      snapshotQueryTimeMs = snapshot.query_time_ms;
-      fetchedAt = snapshot.fetched_at;
-      servedStale = true;
-    } else {
-      console.warn(
-        "[status/core] snapshot missing or stale, served live recompute",
-        snapshot ? { fetched_at: snapshot.fetched_at } : { snapshot: null },
-      );
-      payload = result.payload;
-      snapshotQueryTimeMs = result.query_time_ms;
+      return NextResponse.json({ error: "snapshot unavailable" }, { status: 503 });
     }
+    console.warn("[status/core] no snapshot row, served live recompute");
+    payload = result.payload;
+    snapshotQueryTimeMs = result.query_time_ms;
   }
 
-  const snapshotAgeMinutes =
-    fresh || servedStale
-      ? Math.floor((Date.now() - new Date(fetchedAt).getTime()) / 60_000)
-      : null;
+  const snapshotAgeMinutes = snapshot
+    ? Math.floor((Date.now() - new Date(fetchedAt).getTime()) / 60_000)
+    : null;
 
   return NextResponse.json({
     meta: {
       query_time_ms: Date.now() - t0,
       snapshot_compute_ms: snapshotQueryTimeMs,
       fetched_at: fetchedAt,
-      from_snapshot: !!(fresh && snapshot) || servedStale,
+      from_snapshot: !!snapshot,
       snapshot_age_minutes: snapshotAgeMinutes,
       served_stale: servedStale,
       timestamp: now.toISOString(),

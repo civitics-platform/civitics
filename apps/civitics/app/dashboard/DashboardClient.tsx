@@ -44,6 +44,10 @@ import type { ShippedEntry } from "@/lib/done-log";
 // construction: snapshot-freshness.ts has no imports at all (that is why the
 // constant was moved out of _lib/status-snapshot.ts, which pulls in @civitics/db).
 import { classifySnapshotAge } from "@/lib/snapshot-freshness";
+// FIX-1121 — per-metric degradation. Same module getDatabase writes `failed`
+// with, so the producer's contract and the consumer's reading of it are one
+// definition rather than two that can drift.
+import { isMetricAvailable, metricValue } from "@/lib/section-failures";
 import dynamic from "next/dynamic";
 
 const AnthropicCard = dynamic(
@@ -127,7 +131,12 @@ type PipelineDef = {
   // were all parked this way — every one of them ingesting fine daily.
   retiredAliases?: string[];
   cadence: Cadence; // expected schedule, drives freshness thresholds
-  dbTotals?: (db: DatabaseStats) => Array<{ value: number; label: string }>;
+  // FIX-1121 — `metric` names which getDatabase count the value came from, so a
+  // row can drop just the totals whose count failed instead of dropping all of
+  // them (or, worse, printing a zero that was never measured).
+  dbTotals?: (
+    db: DatabaseStats,
+  ) => Array<{ value: number; label: string; metric: keyof DatabaseStats }>;
   source?: { label: string; href: string };
   retryCmd?: string;
   note?: string; // optional caveat shown in the expansion (e.g. "no log writer yet")
@@ -149,8 +158,8 @@ const PIPELINES: PipelineDef[] = [
     retiredAliases: ["congress"],
     cadence: "daily",
     dbTotals: (db) => [
-      { value: db.officials, label: "officials" },
-      { value: db.proposals_bills, label: "bills + resolutions" },
+      { value: db.officials, label: "officials", metric: "officials" },
+      { value: db.proposals_bills, label: "bills + resolutions", metric: "proposals_bills" },
     ],
     source: { label: "Congress.gov", href: "https://congress.gov" },
     retryCmd: "pnpm data:officials  /  data:votes",
@@ -176,7 +185,7 @@ const PIPELINES: PipelineDef[] = [
     retiredAliases: ["federal_register"],
     cadence: "daily",
     dbTotals: (db) => [
-      { value: db.proposals_regulations, label: "regulations" },
+      { value: db.proposals_regulations, label: "regulations", metric: "proposals_regulations" },
     ],
     source: { label: "Regulations.gov", href: "https://regulations.gov" },
     retryCmd: "pnpm data:regulations",
@@ -190,8 +199,8 @@ const PIPELINES: PipelineDef[] = [
     retiredAliases: ["fec"],
     cadence: "weekly",
     dbTotals: (db) => [
-      { value: db.financial_entities, label: "donors / PACs" },
-      { value: db.financial_relationships, label: "donations" },
+      { value: db.financial_entities, label: "donors / PACs", metric: "financial_entities" },
+      { value: db.financial_relationships, label: "donations", metric: "financial_relationships" },
     ],
     source: { label: "FEC.gov", href: "https://www.fec.gov" },
     retryCmd: "pnpm data:fec-bulk",
@@ -204,7 +213,7 @@ const PIPELINES: PipelineDef[] = [
     aliases: ["usaspending_bulk", "usaspending_bulk_assistance"],
     cadence: "weekly",
     dbTotals: (db) => [
-      { value: db.financial_relationships, label: "spending records (shared)" },
+      { value: db.financial_relationships, label: "spending records (shared)", metric: "financial_relationships" },
     ],
     source: { label: "USAspending.gov", href: "https://usaspending.gov" },
     retryCmd: "pnpm data:usaspending-bulk",
@@ -387,7 +396,7 @@ const MAINTENANCE: PipelineDef[] = [
     scheduleLabel: "Mondays + Wednesdays, 08:00 UTC",
     blurb:
       "Derives the connection edges the graph is built from — who donated to whom, who voted how, which contracts went where.",
-    dbTotals: (db) => [{ value: db.entity_connections, label: "edges" }],
+    dbTotals: (db) => [{ value: db.entity_connections, label: "edges", metric: "entity_connections" }],
     // FIX-1084: a firing runs to its 5h budget, banks its progress and closes
     // 'partial', resuming from that checkpoint next time. Partial is the
     // healthy steady state here, not a warning.
@@ -562,7 +571,7 @@ const MAINTENANCE: PipelineDef[] = [
     blurb:
       "Assigns descriptive tags to entities that the deterministic rules can't classify, drawn from a work queue rather than a schedule.",
     dbTotals: (db) => [
-      { value: db.entity_tags, label: "entity_tags rows (all categories)" },
+      { value: db.entity_tags, label: "entity_tags rows (all categories)", metric: "entity_tags" },
     ],
     retryCmd: "pnpm data:tag-ai",
   },
@@ -575,7 +584,7 @@ const MAINTENANCE: PipelineDef[] = [
     scheduleLabel: "Queue-drained, on demand",
     blurb:
       "Writes the plain-language summaries shown on proposals, cached once per document rather than generated per visit.",
-    dbTotals: (db) => [{ value: db.ai_summary_cache, label: "summaries cached" }],
+    dbTotals: (db) => [{ value: db.ai_summary_cache, label: "summaries cached", metric: "ai_summary_cache" }],
     retryCmd: "pnpm data:ai-summaries",
   },
   {
@@ -825,15 +834,28 @@ function StatsSection({
   officialsBreakdown,
   openProposalCount,
   chordTotalFlowUsd,
+  chordAvailable,
   dailyCounts,
 }: {
   database: NonNullable<ReturnType<typeof useDashboardData>["data"]>["status"]["database"];
   officialsBreakdown: OfficialsBreakdown;
   openProposalCount: number;
   chordTotalFlowUsd: number;
+  chordAvailable: boolean;
   dailyCounts: DailyCountsData;
 }) {
-  const db = isPartial(database) ? null : database;
+  // FIX-1121 — each card degrades on ITS OWN input. This block used to be
+  // `const db = isPartial(database) ? null : database` with `loading={!db}` on
+  // all four cards, so one failed count out of getDatabase's eleven blanked the
+  // entire hero row. On prod that was 9 of the 10 retained ticks: four
+  // skeletons where four measured numbers were sitting in the payload.
+  //
+  // `metricValue` returns null only when THAT metric is untrustworthy — the
+  // section is missing, the payload predates the per-metric `failed` list, or
+  // this specific count failed and its stored value is a zero nobody measured.
+  const officials = metricValue(database, "officials");
+  const votes = metricValue(database, "votes");
+  const proposals = metricValue(database, "proposals");
 
   const officialsSpark = buildSparkline(dailyCounts?.officials, "Officials");
   const openProposalsSpark = buildSparkline(dailyCounts?.open_proposals, "Open proposals");
@@ -849,12 +871,12 @@ function StatsSection({
       <StatCard
         icon={<Users size={16} />}
         label="Officials"
-        value={db?.officials ?? 0}
+        value={officials ?? 0}
         formatAs="number"
         href="/officials"
         sublabel={officialsBreakdownLabel}
         sparkline={officialsSpark}
-        loading={!db}
+        loading={officials === null}
       />
       <StatCard
         icon={<ScrollText size={16} />}
@@ -862,18 +884,22 @@ function StatsSection({
         value={openProposalCount}
         formatAs="number"
         href="/proposals?status=open"
+        // FIX-1121 — the headline comes from getOpenProposalCount in
+        // dashboard/page.tsx, a separate exact count that has nothing to do
+        // with the `database` section, so it is never withheld on a failed
+        // count. Only the "of N total" sublabel depends on `proposals`.
         sublabel={
-          db
-            ? `of ${formatNumber(db.proposals)} total federal regulations`
+          proposals !== null
+            ? `of ${formatNumber(proposals)} total federal regulations`
             : "Federal regulations open for comment"
         }
         sparkline={openProposalsSpark}
-        loading={!db}
+        loading={false}
       />
       <StatCard
         icon={<Vote size={16} />}
         label="Votes"
-        value={db?.votes ?? 0}
+        value={votes ?? 0}
         formatAs="number"
         // FIX-1080 — bare /graph is the empty state. Topics-by-Party is the
         // votes chord that renders globally; votes-and-bills and
@@ -881,7 +907,7 @@ function StatsSection({
         href="/graph?preset=chord-subject-party"
         sublabel="Congressional votes tracked"
         sparkline={votesSpark}
-        loading={!db}
+        loading={votes === null}
       />
       <StatCard
         icon={<DollarSign size={16} />}
@@ -891,7 +917,11 @@ function StatsSection({
         href="/graph?preset=follow-the-money"
         sublabel="FEC-tracked PAC and individual contributions"
         sparkline={donationFlowSpark}
-        loading={!db}
+        // FIX-1121 — this value comes from the `chord` section, not `database`.
+        // It used to key its skeleton on `database`, so it blanked for another
+        // section's failure and would have rendered a stale/zero flow had the
+        // chord section been the one that failed. Both directions were wrong.
+        loading={!chordAvailable}
       />
     </StatsRow>
   );
@@ -1153,8 +1183,38 @@ function DataHealthRow({
 
   const { rowStatus, worstFreshness, aliasStates, worstAlias } = verdict;
 
-  const dbResolved = database && !isPartial(database) ? database : null;
-  const totals = dbResolved && def.dbTotals ? def.dbTotals(dbResolved) : [];
+  // FIX-1121 — suppress only the totals whose own count failed, not the whole
+  // set. The numbers are present on a partial section (a failed count stores a
+  // 0), so the guard has to be `isMetricAvailable` per entry, not a type check
+  // on the section: reading the fields is safe, believing them is not.
+  const dbCounts =
+    database && typeof database === "object" && "officials" in database
+      ? (database as DatabaseStats)
+      : null;
+  const totals =
+    dbCounts && def.dbTotals
+      ? def.dbTotals(dbCounts).filter((t) => isMetricAvailable(database, t.metric))
+      : [];
+
+  // FIX-1121 — the AI-summaries coverage bar is a RATIO, so it needs both of
+  // its inputs to be trustworthy; one failed count makes the percentage a
+  // fiction rather than a partial truth. Null here hides the bar, same as a
+  // wholly-missing section did before.
+  const summaryCounts = {
+    cached: metricValue(database, "ai_summary_cache"),
+    proposals: metricValue(database, "proposals"),
+  };
+  const summaryCoverage =
+    summaryCounts.cached !== null && summaryCounts.proposals !== null
+      ? {
+          cached: summaryCounts.cached,
+          proposals: summaryCounts.proposals,
+          pct:
+            summaryCounts.proposals > 0
+              ? Math.round((summaryCounts.cached / summaryCounts.proposals) * 1000) / 10
+              : 0,
+        }
+      : null;
   const primaryTotal = totals[0] ?? null;
   const lastInserted = latest?.rows_inserted ?? 0;
 
@@ -1371,16 +1431,12 @@ function DataHealthRow({
               color="blue"
             />
           )}
-          {def.key === "ai_summaries" && dbResolved && (
+          {def.key === "ai_summaries" && summaryCoverage && (
             <DataQualityBar
               label="AI summaries cached"
-              pct={
-                dbResolved.proposals > 0
-                  ? Math.round((dbResolved.ai_summary_cache / dbResolved.proposals) * 1000) / 10
-                  : 0
-              }
-              value={dbResolved.ai_summary_cache}
-              total={dbResolved.proposals}
+              pct={summaryCoverage.pct}
+              value={summaryCoverage.cached}
+              total={summaryCoverage.proposals}
               color="amber"
             />
           )}
@@ -2220,7 +2276,12 @@ function PlatformStorySection({
   database: NonNullable<ReturnType<typeof useDashboardData>["data"]>["status"]["database"];
   chordTotalFlowUsd: number;
 }) {
-  const db = isPartial(database) ? null : database;
+  // FIX-1121 — per-line degradation. A failed `votes` count used to replace all
+  // five lines with their generic fallbacks; now it replaces one.
+  const metricLine = (metric: string, render: (n: number) => string, fallback: string) => {
+    const v = metricValue(database, metric);
+    return v === null ? fallback : render(v);
+  };
 
   function formatFlowUsd(n: number): string {
     if (n >= 1_000_000_000) return `$${(n / 1_000_000_000).toFixed(2)}B`;
@@ -2229,7 +2290,10 @@ function PlatformStorySection({
     return null!;
   }
 
-  const flowLabel = formatFlowUsd(chordTotalFlowUsd) ?? (db ? `${formatNumber(db.financial_relationships)} donor records` : null);
+  const finRel = metricValue(database, "financial_relationships");
+  const flowLabel =
+    formatFlowUsd(chordTotalFlowUsd) ??
+    (finRel !== null ? `${formatNumber(finRel)} donor records` : null);
 
   return (
     <SectionCard>
@@ -2237,10 +2301,10 @@ function PlatformStorySection({
       <div className="mt-4 space-y-2">
         {[
           flowLabel ? `${flowLabel} in donation flows` : "Donation flows tracked",
-          db ? `${formatNumber(db.votes)} congressional votes` : "Congressional votes tracked",
-          db ? `${formatNumber(db.proposals)} federal regulations` : "Federal regulations tracked",
-          db ? `${formatNumber(db.officials)} officials across federal, state, and judiciary` : "Officials across all levels",
-          db ? `${formatNumber(db.entity_connections)} mapped connections` : "Connections mapped",
+          metricLine("votes", (n) => `${formatNumber(n)} congressional votes`, "Congressional votes tracked"),
+          metricLine("proposals", (n) => `${formatNumber(n)} federal regulations`, "Federal regulations tracked"),
+          metricLine("officials", (n) => `${formatNumber(n)} officials across federal, state, and judiciary`, "Officials across all levels"),
+          metricLine("entity_connections", (n) => `${formatNumber(n)} mapped connections`, "Connections mapped"),
         ].map((line, i) => (
           <p key={i} className="text-sm text-ink-soft">
             {line}
@@ -2368,8 +2432,6 @@ export function DashboardClient({
   useEffect(() => {
     setMounted(true);
   }, []);
-
-  const db = data && !isPartial(data.status.database) ? data.status.database : null;
 
   const officialsBreakdown: OfficialsBreakdown =
     data?.status.officials_breakdown && !isPartial(data.status.officials_breakdown)
@@ -2499,6 +2561,7 @@ export function DashboardClient({
           officialsBreakdown={officialsBreakdown}
           openProposalCount={openProposalCount}
           chordTotalFlowUsd={chordTotalFlowUsd}
+          chordAvailable={chordSection !== null}
           dailyCounts={dailyCounts}
         />
 
