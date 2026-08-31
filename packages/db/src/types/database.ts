@@ -7022,6 +7022,13 @@ export type Database = {
         }
         Returns: string
       }
+      entity_search_conn_window: {
+        Args: { p_hi: string; p_lo: string }
+        Returns: {
+          c: number
+          entity_id: string
+        }[]
+      }
       expire_lapsed_grants: { Args: never; Returns: number }
       fec_bulk_interlock_state: { Args: never; Returns: Json }
       fec_cycle_full_pass_at: { Args: { p_cycle: number }; Returns: string }
