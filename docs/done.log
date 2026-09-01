@@ -1330,3 +1330,5 @@
 2026-08-29 | FIX-1127 | ca8f8309 | local+prod | docs(cron): record the observed Vercel-cron firing for the FIX-1127 cadence
 2026-08-31 | FIX-1123 | 2538988d | local-only | fix(search-index): the stage build becomes 16 bounded windows, and the guard that never fired
 2026-08-31 | FIX-1123 | 9d0b56a8 | local+prod | chore(fixes): sync FIX-1123 and record the supervised prod firing
+2026-09-01 | FIX-1115 | f37b2169 | local+prod | docs(ec): the FIX-1115/1117 prod receipts, and the 09-01 front-door window
+2026-09-01 | FIX-1117 | f37b2169 | local+prod | docs(ec): the FIX-1115/1117 prod receipts, and the 09-01 front-door window
