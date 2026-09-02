@@ -1347,3 +1347,6 @@
 2026-09-01 | FIX-981 | 2d4563ab | local+prod | fix(cron): every budget-cancellable procedure closes its own row — the FIX-1028 sweep, truthful chunk and terminal timestamps
 2026-09-01 | FIX-991 | 3a367aa8 | closes-as-superseded | fix(donor-party): jobid 17 banks its watermark per slice — FIX-1112's ratchet ends; FIX-991 superseded by the FE crawl
 2026-09-01 | FIX-994 | 2d4563ab | local+prod | fix(cron): every budget-cancellable procedure closes its own row — the FIX-1028 sweep, truthful chunk and terminal timestamps
+2026-09-02 | FIX-1032 | 221a4176 | local-only | perf(derived-mvs): official_homepage_stats_mv scans FR once, swapped in without a lock window; search-index vocab + arm DELETE scope
+2026-09-02 | FIX-1134 | 221a4176 | local-only | perf(derived-mvs): official_homepage_stats_mv scans FR once, swapped in without a lock window; search-index vocab + arm DELETE scope
+2026-09-02 | FIX-985 | 221a4176 | local-only | perf(derived-mvs): official_homepage_stats_mv scans FR once, swapped in without a lock window; search-index vocab + arm DELETE scope
