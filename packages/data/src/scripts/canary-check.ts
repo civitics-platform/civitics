@@ -583,15 +583,23 @@ async function writeMetaRow(
   sectorAffinity: SectorAffinityStaleness | null,
   cronHealth: CronJobHealth | null,
   nightlyUnavailable: boolean,
+  startedAt: Date,
 ): Promise<boolean> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = createAdminClient() as any;
-  const now = new Date().toISOString();
+  // FIX-979 — TWO timestamps taken around the work, not one value written twice.
+  // This row used to carry a single `new Date()` in BOTH columns, so every
+  // canary_check row ever written reads completed_at - started_at = 0 and
+  // pipeline_runtime_stats_mv renders the run as 0 ms. The canary's detectors
+  // are a dozen sequential DB round-trips — that duration is the thing worth
+  // watching, since a slow canary is the first symptom of a saturated box
+  // (FIX-968, where the canary itself timed out before reaching its findings).
+  // startedAt is main()'s entry instant; the completion stamp is taken here.
   const { error } = await db.from("data_sync_log").insert({
     pipeline:     "canary_check",
     status:       "complete",
-    started_at:   now,
-    completed_at: now,
+    started_at:   startedAt.toISOString(),
+    completed_at: new Date().toISOString(),
     metadata: {
       pipeline_checked: PIPELINE_NAME,
       checked_days:     CHECK_DAYS,
@@ -881,7 +889,9 @@ async function main(): Promise<number> {
     }
   }
 
-  const metaRowWritten = await writeMetaRow(missing, killed, autovacuum, rollups, sectorAffinity, cronHealth, nightlyCheckUnavailable);
+  // FIX-979 — `now` is main()'s entry instant, captured before the first
+  // detector ran; writeMetaRow stamps completed_at itself.
+  const metaRowWritten = await writeMetaRow(missing, killed, autovacuum, rollups, sectorAffinity, cronHealth, nightlyCheckUnavailable, now);
 
   // FIX-885 — ESCALATE. The DB-health findings exit non-zero so the workflow run
   // goes red; an email alone is not escalation. FIX-650 built the detector and it
