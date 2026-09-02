@@ -1332,3 +1332,4 @@
 2026-08-31 | FIX-1123 | 9d0b56a8 | local+prod | chore(fixes): sync FIX-1123 and record the supervised prod firing
 2026-09-01 | FIX-1115 | f37b2169 | local+prod | docs(ec): the FIX-1115/1117 prod receipts, and the 09-01 front-door window
 2026-09-01 | FIX-1117 | f37b2169 | local+prod | docs(ec): the FIX-1115/1117 prod receipts, and the 09-01 front-door window
+2026-09-01 | FIX-1118 | 340d3308 | local+prod | fix(ec): the contracts arm rejoins the gate, and the vacuum premise that was wrong
