@@ -313,7 +313,32 @@ Rules that make it safe:
   populate is a normal long statement; `pnpm db:push:prod` carries them fine
   (FIX-1030's ran 442 s).
 
-First instance: `20260902120000_fix1134_1032_official_homepage_stats_single_fr_scan.sql`.
+First instance: `20260902120000_fix1134_1032_official_homepage_stats_single_fr_scan.sql`,
+swapping `official_homepage_stats_mv` (37,294 rows) on prod 2026-09-02 22:47 UTC.
+What it actually cost, so the next one can be planned rather than guessed:
+
+- **44 s end-to-end** through `pnpm db:push:prod` — ~41 s of populate (a Parallel
+  Seq Scan of the 4,932 MB `financial_relationships` heap) and a sub-second
+  cutover.
+- **Zero lock waiters at every sample.** A 15 s poll of `pg_stat_activity`
+  across the whole window showed `wait_event_type='Lock'` = 0 and no ungranted
+  relation locks — the live MV kept serving reads throughout. That is the whole
+  point of the pattern, and it is the measured contrast with FIX-1032's 442 s.
+- **The census came back identical**: same ACL
+  (`{postgres,anon,authenticated,service_role}=arwdDxtm`, restored by default
+  privileges without any explicit grant being load-bearing), same `_pk` index
+  name, `reloptions`/`COMMENT` still null, `pg_depend` still just the index, no
+  leftover `_new`.
+- **PostgREST needed no schema reload** — an anon read of the swapped MV
+  returned 200 with the right columns immediately. Same name + same column set
+  means the schema cache never notices the new OID.
+- **The pre-cutover delta was explainable to the row.** 431 of 37,294 officials
+  differed; `votes` had gained 3,017 rows across exactly 431 distinct officials
+  since the old MV's 06:00 build, and `financial_relationships` had zero writes
+  to officials in that window. Staleness, not disagreement — which is what the
+  loose bound is there to let through.
+- Side benefit worth knowing: a fresh populate compacts. The MV went 770 -> 385
+  pages (8,608 kB -> 4,272 kB), because the old heap carried refresh bloat.
 
 ### Naming conventions
 
