@@ -1340,3 +1340,10 @@
 2026-09-01 | FIX-1103 | 5ebbebe7 | closes-as-recognized | docs(fixes): Bundle 0 closures — 1058/1010 superseded, 947 → 942, 990/1103 recognized
 2026-09-01 | FIX-947 | 5ebbebe7 | closes-as-redirected | docs(fixes): Bundle 0 closures — 1058/1010 superseded, 947 → 942, 990/1103 recognized
 2026-09-01 | FIX-990 | 5ebbebe7 | closes-as-recognized | docs(fixes): Bundle 0 closures — 1058/1010 superseded, 947 → 942, 990/1103 recognized
+2026-09-01 | FIX-1028 | 2d4563ab | local+prod | fix(cron): every budget-cancellable procedure closes its own row — the FIX-1028 sweep, truthful chunk and terminal timestamps
+2026-09-01 | FIX-1108 | 2d4563ab | local+prod | fix(cron): every budget-cancellable procedure closes its own row — the FIX-1028 sweep, truthful chunk and terminal timestamps
+2026-09-01 | FIX-1112 | 3a367aa8 | local+prod | fix(donor-party): jobid 17 banks its watermark per slice — FIX-1112's ratchet ends; FIX-991 superseded by the FE crawl
+2026-09-01 | FIX-979 | 2d4563ab | local+prod | fix(cron): every budget-cancellable procedure closes its own row — the FIX-1028 sweep, truthful chunk and terminal timestamps
+2026-09-01 | FIX-981 | 2d4563ab | local+prod | fix(cron): every budget-cancellable procedure closes its own row — the FIX-1028 sweep, truthful chunk and terminal timestamps
+2026-09-01 | FIX-991 | 3a367aa8 | closes-as-superseded | fix(donor-party): jobid 17 banks its watermark per slice — FIX-1112's ratchet ends; FIX-991 superseded by the FE crawl
+2026-09-01 | FIX-994 | 2d4563ab | local+prod | fix(cron): every budget-cancellable procedure closes its own row — the FIX-1028 sweep, truthful chunk and terminal timestamps
