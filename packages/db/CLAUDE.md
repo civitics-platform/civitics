@@ -270,6 +270,51 @@ determine the right pick, and "homepage hero stats" (single-row MV) and
   cadence + debug history matter (the prune retention IS the rolling
   history).
 
+### Redefining a live MV — always swap, never DROP + CREATE (FIX-1032)
+
+Changing the defining query of an MV that a request path reads has exactly one
+safe shape. `DROP` + `CREATE … WITH DATA` holds ACCESS EXCLUSIVE for the whole
+populate — that is FIX-1032's incident, **442 s of request-path timeouts on
+2026-08-13**. `DROP` + `CREATE … WITH NO DATA` avoids the lock but leaves the MV
+empty, and `REFRESH … CONCURRENTLY` *refuses* to refresh an unpopulated MV, so
+the surface reads empty until the next scheduled refresh. Build a populated twin
+and swap it in:
+
+```sql
+CREATE MATERIALIZED VIEW public.<name>_new AS <new query> WITH NO DATA;
+CREATE UNIQUE INDEX <name>_new_pk ON public.<name>_new (<pk col>);
+GRANT SELECT ON public.<name>_new TO anon, authenticated, service_role;
+REFRESH MATERIALIZED VIEW public.<name>_new;            -- long; no lock on the live MV
+-- then, atomically:
+DROP MATERIALIZED VIEW public.<name>;
+ALTER MATERIALIZED VIEW public.<name>_new RENAME TO <name>;
+ALTER INDEX public.<name>_new_pk RENAME TO <name>_pk;
+```
+
+Rules that make it safe:
+
+- **Wrap the cutover in a `DO $$ … $$` block, not `BEGIN; … COMMIT;`.** A `DO`
+  block is one statement and so is atomic whether or not the migration file is
+  applied inside an implicit transaction; an explicit `BEGIN` inside an already
+  open block is a warning, and its `COMMIT` ends the *outer* block.
+- **Guard for idempotency** on `to_regclass('public.<name>_new')` and on a
+  substring of the outgoing definition, so a re-run is a no-op.
+- **Read `pg_depend` first.** A VIEW or RULE on the MV blocks the `DROP` and
+  needs its own step. Check `obj_description` and `reloptions` too — a `RENAME`
+  carries neither, so re-apply anything the old object had.
+- **The ACL comes back on its own.** Supabase's schema-`public` default
+  privileges give the new object the same `anon`/`authenticated`/`service_role`
+  grants; the explicit `GRANT SELECT` is belt-and-braces.
+- **Prove equivalence on a clone, not on prod.** Evaluate both defining queries
+  in one snapshot and require `(old EXCEPT new) UNION ALL (new EXCEPT old)` to
+  be 0 rows. On prod the two sides were populated at different times, so a delta
+  there is staleness — assert only a loose bound before the cutover.
+- **Swap against a warm box, in a window clear of the scheduled jobs.** The
+  populate is a normal long statement; `pnpm db:push:prod` carries them fine
+  (FIX-1030's ran 442 s).
+
+First instance: `20260902120000_fix1134_1032_official_homepage_stats_single_fr_scan.sql`.
+
 ### Naming conventions
 
 - `_mv` suffix → materialized view
