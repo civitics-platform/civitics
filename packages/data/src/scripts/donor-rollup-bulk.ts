@@ -15,7 +15,8 @@
  *     GUC that cannot strand into the scheduled pg_cron job.
  *   * re-CALLs while the procedure reports `partial`, so one invocation
  *     converges a sweep.
- *   * VACUUM (ANALYZE)s all six rewritten arms afterwards. NOT optional: this
+ *   * VACUUM (ANALYZE)s everything the procedure rewrote afterwards — the six
+ *     live arms AND the four persistent `_drb_*` staging tables. NOT optional: this
  *     is a bulk rewrite, and the FIX-943 standing rule exists because the
  *     dead-tuple load of one lands inside the autovacuum threshold window and
  *     the next reader pays for it (FIX-884: 0.9% all-visible → 34,534 heap
@@ -31,7 +32,8 @@
  *   pnpm --filter @civitics/data data:donor-rollup:bulk -- --mode full
  *   pnpm --filter @civitics/data data:donor-rollup:bulk:prod             # prod (--confirm baked in)
  *
- * Prod runs rewrite six live tables and take hours. Run them off-peak, clear of
+ * Prod runs rewrite six live tables plus four staging tables and take hours.
+ * Run them off-peak, clear of
  * the 09:00-15:20 UTC donor-rollup window and the nightly (~05:15-08:00 UTC) —
  * see CLAUDE.md "Data-state changes vs schema changes".
  */
@@ -45,7 +47,20 @@ const LOCAL_DB_URL = "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
 const PIPELINE = "donor_rollup_bulk";
 const STATE_KEY = "donor_rollup_bulk_sweep";
 
-/** Every table donor_rollup_rebuild_bulk() rewrites. Vacuumed in this order. */
+/**
+ * Every table donor_rollup_rebuild_bulk() rewrites. Vacuumed in this order:
+ * the six live arms first, then the four persistent `_drb_*` staging tables.
+ *
+ * FIX-1005 — the staging tables were missing. FIX-1003 gave vacuum ownership to
+ * the six arms the INCREMENTAL path rewrites and deliberately skipped these,
+ * because nothing scheduled calls the bulk procedure; this script is its only
+ * caller, so this list is the ONLY thing standing between them and the FIX-943
+ * violation. They are not scratch: all four are relkind='r', they persist
+ * between runs, and none carries an autovacuum override — measured on prod
+ * 2026-09-02, `_drb_fe` is 35,118 pages / 3.65M rows, larger than four of the
+ * six arms above it. The write set is catalog-derived from the procedure's own
+ * `pg_proc.prosrc`, not from the bullet.
+ */
 const REWRITTEN_ARMS = [
   "public.official_donor_rollup_mv",
   "public.official_donor_totals",
@@ -53,6 +68,10 @@ const REWRITTEN_ARMS = [
   "public.official_sector_affinity_rollup",
   "public.treemap_individuals_rollup",
   "public.official_donor_bracket_totals",
+  "public._drb_targets",
+  "public._drb_chunk_fe",
+  "public._drb_donor",
+  "public._drb_fe",
 ] as const;
 
 const DEFAULT_BUDGET_SECONDS = 20 * 3600;
