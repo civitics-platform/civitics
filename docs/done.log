@@ -1333,3 +1333,10 @@
 2026-09-01 | FIX-1115 | f37b2169 | local+prod | docs(ec): the FIX-1115/1117 prod receipts, and the 09-01 front-door window
 2026-09-01 | FIX-1117 | f37b2169 | local+prod | docs(ec): the FIX-1115/1117 prod receipts, and the 09-01 front-door window
 2026-09-01 | FIX-1118 | 340d3308 | local+prod | fix(ec): the contracts arm rejoins the gate, and the vacuum premise that was wrong
+2026-09-01 | FIX-1005 | 0ea2d0e6 | local+prod | chore(backlog): Bundle 0 — reconcile stranded sync rows, vacuum the _drb staging tables, record the 14 GB OOM
+2026-09-01 | FIX-1010 | 5ebbebe7 | closes-as-superseded | docs(fixes): Bundle 0 closures — 1058/1010 superseded, 947 → 942, 990/1103 recognized
+2026-09-01 | FIX-1058 | 5ebbebe7 | closes-as-superseded | docs(fixes): Bundle 0 closures — 1058/1010 superseded, 947 → 942, 990/1103 recognized
+2026-09-01 | FIX-1062 | 0ea2d0e6 | local+prod | chore(backlog): Bundle 0 — reconcile stranded sync rows, vacuum the _drb staging tables, record the 14 GB OOM
+2026-09-01 | FIX-1103 | 5ebbebe7 | closes-as-recognized | docs(fixes): Bundle 0 closures — 1058/1010 superseded, 947 → 942, 990/1103 recognized
+2026-09-01 | FIX-947 | 5ebbebe7 | closes-as-redirected | docs(fixes): Bundle 0 closures — 1058/1010 superseded, 947 → 942, 990/1103 recognized
+2026-09-01 | FIX-990 | 5ebbebe7 | closes-as-recognized | docs(fixes): Bundle 0 closures — 1058/1010 superseded, 947 → 942, 990/1103 recognized
