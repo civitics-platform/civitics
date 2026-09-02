@@ -1350,3 +1350,6 @@
 2026-09-02 | FIX-1032 | 221a4176 | local-only | perf(derived-mvs): official_homepage_stats_mv scans FR once, swapped in without a lock window; search-index vocab + arm DELETE scope
 2026-09-02 | FIX-1134 | 221a4176 | local-only | perf(derived-mvs): official_homepage_stats_mv scans FR once, swapped in without a lock window; search-index vocab + arm DELETE scope
 2026-09-02 | FIX-985 | 221a4176 | local-only | perf(derived-mvs): official_homepage_stats_mv scans FR once, swapped in without a lock window; search-index vocab + arm DELETE scope
+2026-09-02 | FIX-1032 | 87fd1f29 | local+prod | docs(db): bank what the first MV swap actually cost on prod — FIX-1134/1032/985 applied
+2026-09-02 | FIX-1134 | 87fd1f29 | local+prod | docs(db): bank what the first MV swap actually cost on prod — FIX-1134/1032/985 applied
+2026-09-02 | FIX-985 | 87fd1f29 | local+prod | docs(db): bank what the first MV swap actually cost on prod — FIX-1134/1032/985 applied
