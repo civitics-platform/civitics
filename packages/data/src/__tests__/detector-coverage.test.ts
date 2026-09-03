@@ -69,6 +69,45 @@ function insertRun(
   );
 }
 
+/** FIX-1135/1011 — a run at an arbitrary status and driver metadata. */
+function insertRunAs(
+  c: Client,
+  pipeline: string,
+  minutesAgo: number,
+  status: string,
+  metadata: string,
+): Promise<unknown> {
+  return c.query(
+    `INSERT INTO public.data_sync_log
+       (pipeline, started_at, completed_at, rows_inserted, rows_updated, status, metadata)
+     VALUES ($1,
+             now() - make_interval(mins => $2::int),
+             now() - make_interval(mins => $2::int) + interval '30 seconds',
+             1, 0, $3, $4::jsonb)`,
+    [pipeline, minutesAgo, status, metadata],
+  );
+}
+
+type RegistryElement = {
+  pipeline: string;
+  driver?: string | null;
+  cadence_hours?: number | string | null;
+  cadence_source?: string | null;
+  cadence_support?: number | null;
+  retired?: boolean;
+  held?: boolean;
+  has_closures?: boolean;
+  report_after_hours?: number | string | null;
+  escalate_after_hours?: number | string | null;
+};
+
+async function registryElements(c: Client): Promise<Map<string, RegistryElement>> {
+  const reg = await c.query<{ result: { pipelines: RegistryElement[] } }>(
+    "SELECT public.list_scheduled_rollup_pipelines() AS result",
+  );
+  return new Map((reg.rows[0]?.result?.pipelines ?? []).map((p) => [p.pipeline, p]));
+}
+
 async function rateVerdicts(c: Client): Promise<Map<string, { verdict: string; escalates: boolean }>> {
   const res = await c.query<{ result: { pipelines: { pipeline: string; verdict: string; escalates: boolean }[] } }>(
     "SELECT public.check_pipeline_rate_regression() AS result",
@@ -258,6 +297,168 @@ test("FIX-978 thin history reports insufficient_data rather than escalating", as
     assert.ok(got, "the pipeline should be rated");
     assert.equal(got.verdict, "insufficient_data");
     assert.equal(got.escalates, false, "thin history must never escalate");
+  });
+  if (!ran) return;
+});
+
+// ---------------------------------------------------------------------------
+// FIX-1135 + FIX-1059 + FIX-1011 — the registry must derive a cadence that
+// matches the rows freshness is judged on, and must keep listing pipelines it
+// has stopped alerting on.
+// ---------------------------------------------------------------------------
+
+test("FIX-1135 a crawl-shaped pipeline gets its CYCLE cadence, not its unit interval", async () => {
+  const ran = await inRollback(async (c) => {
+    const P = "zz_crawl_shaped_fix1135";
+    // The exact shape of ec-crawl on prod: one 'partial' row per crawl UNIT
+    // every 15 minutes, and a 'complete' row only when a cycle closes. The old
+    // observed-median took the median gap over rows of ANY status, measured
+    // 0.25h, set escalate_after to 0.6h, and therefore escalated on every run
+    // while the pipeline was perfectly healthy.
+    for (let i = 0; i < 30; i++) await insertRunAs(c, P, i * 15, "partial", '{"source":"pg_cron","crawl":true}');
+    // Cycle closures 30h apart.
+    for (let i = 0; i < 5; i++) {
+      await insertRunAs(c, P, i * 30 * 60, "complete", '{"source":"pg_cron","crawl":true}');
+    }
+
+    const el = (await registryElements(c)).get(P);
+    assert.ok(el, "the crawl-shaped pipeline must be listed");
+    const cadence = Number(el.cadence_hours);
+    assert.ok(
+      cadence > 20 && cadence < 40,
+      `cadence must be the ~30h CYCLE, not the 0.25h unit interval — got ${cadence}h ` +
+        `(source ${el.cadence_source}). This is FIX-1135 regressing.`,
+    );
+    // Assert on report_after, NOT escalate_after. A synthetic pipeline writes
+    // pg_cron-sourced rows without owning a cron job, so the FIX-1059 orphan
+    // rule correctly NULLs its escalate threshold — a different, also-correct
+    // rule that would mask what this test is actually about. report_after is
+    // cadence * 1.5 unconditionally, so it is the honest proxy for "the
+    // threshold was derived from the CYCLE and not from the unit interval":
+    // under the old behaviour it was 0.4h.
+    assert.ok(
+      Number(el.report_after_hours) > 20,
+      `report_after must be cycle-scale (cadence * 1.5), got ${el.report_after_hours}h`,
+    );
+  });
+  if (!ran) return;
+});
+
+test("FIX-1135 same-run rows do not become a cadence", async () => {
+  const ran = await inRollback(async (c) => {
+    const P = "zz_multi_row_run_fix1135";
+    // nightly_cron's shape: ~4 'complete' rows per night, minutes apart. The
+    // raw median gap over closures is 0.08h; the same-run floor has to see past
+    // it to the 24h between runs.
+    for (let day = 0; day < 6; day++) {
+      for (const offset of [0, 2, 5, 9]) {
+        await insertRunAs(c, P, day * 24 * 60 + offset, "complete", "{}");
+      }
+    }
+    const el = (await registryElements(c)).get(P);
+    assert.ok(el, "the multi-row-per-run pipeline must be listed");
+    const cadence = Number(el.cadence_hours);
+    assert.ok(
+      cadence > 20 && cadence < 30,
+      `cadence must be the ~24h between RUNS, not the minutes between rows of one ` +
+        `run — got ${cadence}h`,
+    );
+  });
+  if (!ran) return;
+});
+
+test("FIX-1011 a GHA-driven pipeline is listed with its driver", async () => {
+  const ran = await inRollback(async (c) => {
+    const P = "zz_gha_driven_fix1011";
+    // GHA rows carry NO metadata->>'source' at all — the old census filter
+    // (`= 'pg_cron'`) excluded 36 of the 49 pipelines writing data_sync_log,
+    // fec_bulk among them. The driver is read from github_workflow instead.
+    for (let i = 0; i < 6; i++) {
+      await insertRunAs(c, P, i * 24 * 60, "complete", '{"github_workflow":"nightly-sync","github_run_id":"1"}');
+    }
+    const el = (await registryElements(c)).get(P);
+    assert.ok(el, "a GHA-driven pipeline must be in the census — this is FIX-1011 regressing");
+    assert.equal(el.driver, "github_actions");
+    assert.equal(el.cadence_source, "observed_median");
+  });
+  if (!ran) return;
+});
+
+test("FIX-1059 a retired pipeline stays LISTED with both thresholds NULL", async () => {
+  const ran = await inRollback(async (c) => {
+    const P = "zz_retired_fix1059";
+    for (let i = 0; i < 6; i++) await insertRunAs(c, P, i * 24 * 60, "complete", '{"source":"pg_cron"}');
+    await c.query(
+      `INSERT INTO public.rollup_watch_overrides (pipeline, retired_at, note)
+       VALUES ($1, now(), 'synthetic test declaration')`,
+      [P],
+    );
+
+    const el = (await registryElements(c)).get(P);
+    // The coverage contract: DECLARING a pipeline retired must not remove it.
+    // Dropping it would narrow the watch list, which is the FIX-977 defect in
+    // a different hat, and would make the retirement itself unauditable.
+    assert.ok(el, "a retired pipeline must still be LISTED, not removed from the registry");
+    assert.equal(el.retired, true);
+    assert.equal(el.escalate_after_hours, null, "a retired pipeline must never escalate");
+    assert.equal(el.report_after_hours, null, "a retired pipeline must never report");
+  });
+  if (!ran) return;
+});
+
+test("FIX-1059 a held pipeline stays LISTED with its reason and both thresholds NULL", async () => {
+  const ran = await inRollback(async (c) => {
+    const P = "zz_held_fix1059";
+    for (let i = 0; i < 6; i++) await insertRunAs(c, P, i * 24 * 60, "complete", "{}");
+    await c.query(
+      `INSERT INTO public.rollup_watch_overrides (pipeline, held_since, hold_reason, note)
+       VALUES ($1, now(), 'synthetic hold', 'synthetic test declaration')`,
+      [P],
+    );
+
+    const el = (await registryElements(c)).get(P) as (RegistryElement & { hold_reason?: string }) | undefined;
+    assert.ok(el, "a held pipeline must still be LISTED — a deliberate hold has to be visible");
+    assert.equal(el.held, true);
+    assert.equal(el.hold_reason, "synthetic hold");
+    assert.equal(el.escalate_after_hours, null);
+    assert.equal(el.report_after_hours, null);
+  });
+  if (!ran) return;
+});
+
+test("FIX-1135 a thin observed median is reported but never escalated", async () => {
+  const ran = await inRollback(async (c) => {
+    const P = "zz_one_shot_backfill_fix1135";
+    // A one-shot backfill: two closures an hour apart and never again. Widening
+    // the census to every pipeline in data_sync_log drags these in, and a naive
+    // observed median would give it a 1h cadence and page forever.
+    await insertRunAs(c, P, 60 * 24 * 30, "complete", "{}");
+    await insertRunAs(c, P, 60 * 24 * 30 - 60, "complete", "{}");
+
+    const el = (await registryElements(c)).get(P);
+    assert.ok(el, "a one-shot backfill must still be listed");
+    assert.equal(
+      el.escalate_after_hours, null,
+      `an observed median with ${el.cadence_support} supporting gap(s) must not be paged on`,
+    );
+    assert.ok(el.report_after_hours != null, "it still reports — listed, not muted");
+  });
+  if (!ran) return;
+});
+
+test("FIX-1135 a pipeline with no closure in the lookback has NO staleness thresholds", async () => {
+  const ran = await inRollback(async (c) => {
+    const P = "zz_never_closes_fix1135";
+    // nightly_killed / edgar_daily / nightly-sync on prod: rows, never a
+    // 'complete' one. "Hours since last complete" is undefined for these, so
+    // neither threshold means anything — but they stay listed.
+    for (let i = 0; i < 5; i++) await insertRunAs(c, P, i * 24 * 60, "failed", "{}");
+
+    const el = (await registryElements(c)).get(P);
+    assert.ok(el, "a never-closing pipeline must still be listed");
+    assert.equal(el.has_closures, false);
+    assert.equal(el.report_after_hours, null);
+    assert.equal(el.escalate_after_hours, null);
   });
   if (!ran) return;
 });

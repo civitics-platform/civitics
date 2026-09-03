@@ -21,6 +21,15 @@
 
 import { createAdminClient } from "@civitics/db";
 import { captureRssMb } from "../pipelines/sync-log";
+import {
+  type AlertTier,
+  type Condition,
+  type Transition,
+  classifyTransitions,
+  decideAlert,
+  describeTransitions,
+  withUnchangedRuns,
+} from "./canary-transitions";
 
 const PIPELINE_NAME      = "nightly_cron";
 const KILLED_PIPELINE    = "nightly_killed";
@@ -259,10 +268,26 @@ type RollupStatus = {
   /** FIX-977 — two-plus cadence cycles late. Escalates; `stale` alone reports.
    *  NULL when no cadence could be derived: reports, never escalates. */
   escalateAfterHours: number | null;
+  /** FIX-1135 — NULL when the pipeline is retired, held, or has never reached
+   *  'complete' in the lookback, i.e. staleness is not defined for it. */
+  reportAfterHours: number | null;
   cadenceHours: number | null;
   cadenceSource: string | null;
+  cadenceSupport: number | null;
   jobname: string | null;
+  /** FIX-1011 — 'pg_cron' | 'github_actions' | 'unknown'. */
+  driver: string | null;
+  /** FIX-1059 — the correlated cron job's active flag; null when uncorrelated. */
+  hasActiveJob: boolean | null;
+  retired: boolean;
+  held: boolean;
+  holdReason: string | null;
+  orphan: boolean;
+  hasClosures: boolean;
+  /** The RPC's raw answer against maxAgeHours. */
   stale: boolean;
+  /** FIX-1135 — the GATED verdict: stale AND staleness means something here. */
+  reports: boolean;
   escalates: boolean;
   hoursSinceComplete: number | null;
   lastCompleteAt: string | null;
@@ -275,10 +300,31 @@ type RollupWatch = {
   pipeline: string;
   maxAgeHours: number;
   escalateAfterHours: number | null;
+  reportAfterHours: number | null;
   cadenceHours: number | null;
   cadenceSource: string | null;
+  cadenceSupport: number | null;
   jobname: string | null;
+  driver: string | null;
+  hasActiveJob: boolean | null;
+  retired: boolean;
+  held: boolean;
+  holdReason: string | null;
+  orphan: boolean;
+  hasClosures: boolean;
 };
+
+/** FIX-1059 — a pg_cron-driven pipeline with rows but no ACTIVE job and no
+ *  declaration in rollup_watch_overrides. Reported, never escalated. */
+type RollupOrphan = {
+  pipeline: string;
+  jobid: number | null;
+  jobname: string | null;
+  schedule: string | null;
+  last_row_at: string | null;
+};
+
+type RollupRegistry = { watches: RollupWatch[]; orphans: RollupOrphan[] };
 
 /**
  * FIX-977 — the DERIVED watch registry.
@@ -290,7 +336,29 @@ type RollupWatch = {
  * environment not yet migrated), because a canary that hard-fails on a missing
  * detector is worse than one that watches less.
  */
-async function fetchRollupRegistry(): Promise<RollupWatch[]> {
+function fallbackRegistry(): RollupRegistry {
+  return {
+    watches: FALLBACK_ROLLUP_PIPELINES.map((p) => ({
+      ...p,
+      escalateAfterHours: p.maxAgeHours * 2,
+      reportAfterHours: p.maxAgeHours,
+      cadenceHours: null,
+      cadenceSource: "fallback_literal",
+      cadenceSupport: null,
+      jobname: null,
+      driver: null,
+      hasActiveJob: null,
+      retired: false,
+      held: false,
+      holdReason: null,
+      orphan: false,
+      hasClosures: true,
+    })),
+    orphans: [],
+  };
+}
+
+async function fetchRollupRegistry(): Promise<RollupRegistry> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = createAdminClient() as any;
   const { data, error } = await db.rpc("list_scheduled_rollup_pipelines");
@@ -299,56 +367,81 @@ async function fetchRollupRegistry(): Promise<RollupWatch[]> {
       `[canary-check] rollup registry query failed (non-fatal, falling back to the ` +
         `${FALLBACK_ROLLUP_PIPELINES.length}-entry literal): ${error.message}`,
     );
-    return FALLBACK_ROLLUP_PIPELINES.map((p) => ({
-      ...p,
-      escalateAfterHours: p.maxAgeHours * 2,
-      cadenceHours: null,
-      cadenceSource: "fallback_literal",
-      jobname: null,
-    }));
+    return fallbackRegistry();
   }
   const r = (data ?? {}) as {
     available?: boolean;
     pipelines?: {
       pipeline: string;
       jobname?: string | null;
+      driver?: string | null;
+      has_active_job?: boolean | null;
+      orphan?: boolean | null;
+      retired?: boolean | null;
+      held?: boolean | null;
+      hold_reason?: string | null;
+      has_closures?: boolean | null;
       cadence_hours?: number | null;
       cadence_source?: string | null;
+      cadence_support?: number | null;
       report_after_hours?: number | null;
       escalate_after_hours?: number | null;
     }[];
+    orphans?: RollupOrphan[];
   };
   const list = Array.isArray(r.pipelines) ? r.pipelines : [];
   if (list.length === 0) {
     console.warn("[canary-check] rollup registry returned 0 pipelines — falling back to the literal");
-    return FALLBACK_ROLLUP_PIPELINES.map((p) => ({
-      ...p,
-      escalateAfterHours: p.maxAgeHours * 2,
-      cadenceHours: null,
-      cadenceSource: "fallback_literal",
-      jobname: null,
-    }));
+    return fallbackRegistry();
   }
-  return list.map((p) => ({
-    pipeline:    p.pipeline,
-    maxAgeHours: Number(p.report_after_hours ?? 48),
-    // FIX-977b — NULL means "we could not derive a cadence for this pipeline",
-    // and a cadence we guessed is not one we may page on. Such a pipeline is
-    // still listed and still reports; it just cannot escalate. `null` here, NOT
-    // a fallback number — coercing it to a default is what made
-    // recipient_count_reconcile escalate at 812h against a 730h monthly job.
-    escalateAfterHours: p.escalate_after_hours != null ? Number(p.escalate_after_hours) : null,
-    cadenceHours:       p.cadence_hours != null ? Number(p.cadence_hours) : null,
-    cadenceSource:      p.cadence_source ?? null,
-    jobname:            p.jobname ?? null,
-  }));
+  return {
+    watches: list.map((p) => ({
+      pipeline: p.pipeline,
+      // FIX-1135 — report_after_hours is NULL for a retired/held pipeline and
+      // for one with no closure in the lookback (nothing to be stale relative
+      // to). The RPC still needs a number, so pass a nominal one and gate the
+      // VERDICT on reportAfterHours below instead of on the RPC's raw answer.
+      //
+      // ROUNDED, and it has to be: check_rollup_freshness takes
+      // `p_max_age_hours int`, and an observed median now yields fractional
+      // cadences (163.88h -> a 245.8h report threshold) where every pre-FIX-1135
+      // cadence was a whole number of hours off a cron schedule. Passing the raw
+      // value made PostgREST reject the call with `invalid input syntax for type
+      // integer: "245.8"` — 20 of 49 pipelines silently un-checked, which is the
+      // narrowing this whole registry exists to prevent. The unrounded value is
+      // kept in reportAfterHours for the verdict and the email.
+      maxAgeHours: Math.max(1, Math.round(Number(p.report_after_hours ?? 48))),
+      reportAfterHours: p.report_after_hours != null ? Number(p.report_after_hours) : null,
+      // FIX-977b — NULL means "we could not derive a cadence for this pipeline",
+      // and a cadence we guessed is not one we may page on. Such a pipeline is
+      // still listed and still reports; it just cannot escalate. `null` here, NOT
+      // a fallback number — coercing it to a default is what made
+      // recipient_count_reconcile escalate at 812h against a 730h monthly job.
+      escalateAfterHours: p.escalate_after_hours != null ? Number(p.escalate_after_hours) : null,
+      cadenceHours: p.cadence_hours != null ? Number(p.cadence_hours) : null,
+      cadenceSource: p.cadence_source ?? null,
+      cadenceSupport: p.cadence_support != null ? Number(p.cadence_support) : null,
+      jobname: p.jobname ?? null,
+      driver: p.driver ?? null,
+      hasActiveJob: p.has_active_job ?? null,
+      retired: p.retired === true,
+      held: p.held === true,
+      holdReason: p.hold_reason ?? null,
+      orphan: p.orphan === true,
+      // Pre-migration environments have no such key; treat as "has closures"
+      // so behaviour is unchanged rather than silently muted.
+      hasClosures: p.has_closures !== false,
+    })),
+    orphans: Array.isArray(r.orphans) ? r.orphans : [],
+  };
 }
 
 async function fetchRollupFreshness(registry: RollupWatch[]): Promise<RollupStatus[]> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = createAdminClient() as any;
   const out: RollupStatus[] = [];
-  for (const { pipeline, maxAgeHours, escalateAfterHours, cadenceHours, cadenceSource, jobname } of registry) {
+  for (const w of registry) {
+    const { pipeline, maxAgeHours, escalateAfterHours, cadenceHours, cadenceSource, jobname } = w;
     const { data, error } = await db.rpc("check_rollup_freshness", {
       p_pipeline: pipeline,
       p_max_age_hours: maxAgeHours,
@@ -368,21 +461,42 @@ async function fetchRollupFreshness(registry: RollupWatch[]): Promise<RollupStat
       sweep_in_progress?: boolean | null;
     };
     const hours = r.hours_since_complete ?? null;
+    const stale = r.stale === true;
+    // FIX-1135/1059 — staleness is only MEANINGFUL where a report threshold
+    // exists. It does not for a retired pipeline (recipient_count_reconcile,
+    // declared in rollup_watch_overrides), a held one, or one that has never
+    // reached 'complete' in the lookback (nightly_killed, edgar_daily,
+    // nightly-sync — none of them ever write a closure row). Those stay LISTED
+    // in rollup_freshness for the trail; they just do not generate a finding.
+    const reports = stale && w.reportAfterHours !== null && !w.retired && !w.held;
     out.push({
       pipeline,
       maxAgeHours,
       escalateAfterHours,
+      reportAfterHours:   w.reportAfterHours,
       cadenceHours,
       cadenceSource,
+      cadenceSupport:     w.cadenceSupport,
       jobname,
-      stale:              r.stale === true,
+      driver:             w.driver,
+      hasActiveJob:       w.hasActiveJob,
+      retired:            w.retired,
+      held:               w.held,
+      holdReason:         w.holdReason,
+      orphan:             w.orphan,
+      hasClosures:        w.hasClosures,
+      stale,
+      reports,
       // FIX-977 + FIX-943 cause-vs-consequence split: one cadence cycle late
       // REPORTS (`stale`), two-plus ESCALATES. Without the split, deriving the
       // registry from the schedule would page on every weekly job that slipped
       // a single firing, and an alert that cries wolf gets muted — which is how
       // a detector stops covering what it enumerates.
       // A pipeline with no derivable cadence (escalateAfterHours === null) can
-      // never escalate — see FIX-977b. Otherwise: past two-plus cycles.
+      // never escalate — see FIX-977b. FIX-1135/1059 widen that NULL to cover
+      // an observed median with under 4 supporting gaps, a driver that has not
+      // closed a cycle yet (fe-crawl), and the orphan class. Otherwise: past
+      // two-plus cycles.
       escalates:          escalateAfterHours === null ? false
                           : hours === null ? true
                           : hours > escalateAfterHours,
@@ -465,10 +579,42 @@ type CronJobFiring = {
   status?: string;
 };
 
+/** FIX-1073 — a job whose OWN run history shows N-or-more consecutive
+ *  startup timeouts. `span_minutes` separates 96 minutes of an every-2-minutes watchdog
+ *  from three days of a twice-daily rollup, which the count alone cannot. */
+type StartupStreak = {
+  jobid: number;
+  jobname: string | null;
+  schedule: string | null;
+  streak: number;
+  first_at: string;
+  last_at: string;
+  span_minutes: number;
+};
+
+/** FIX-1073 — a 60-minute bucket with M-or-more startup timeouts across ALL
+ *  jobs: the short, broad connection-accept collapse no single job stretches
+ *  into a streak. */
+type StartupBurst = {
+  bucket: string;
+  count: number;
+  jobs_affected: number;
+  jobs: string | null;
+};
+
+type StartupTimeoutTiers = {
+  streakThreshold: number;
+  burstThreshold: number;
+  perJob: StartupStreak[];
+  burst: StartupBurst[];
+};
+
 type CronJobHealth = {
   available: boolean;
   lookbackHours: number;
   startupTimeouts: CronJobFiring[];
+  /** FIX-1073 — what actually escalates now; startupTimeouts is report-only. */
+  startupTimeoutTiers: StartupTimeoutTiers | null;
   missingDaily: CronJobFiring[];
   timeoutBlowouts: CronJobFiring[];
   runs: CronJobFiring[];
@@ -497,21 +643,53 @@ async function fetchCronJobHealth(): Promise<CronJobHealth | null> {
     available?: boolean;
     lookback_hours?: number;
     startup_timeouts?: CronJobFiring[];
+    startup_timeout_tiers?: {
+      streak_threshold?: number;
+      burst_threshold?: number;
+      per_job?: StartupStreak[];
+      burst?: StartupBurst[];
+    } | null;
     missing_daily?: CronJobFiring[];
     timeout_blowouts?: CronJobFiring[];
     runs?: CronJobFiring[];
     canary_liveness?: CanaryLiveness | null;
   };
   const arr = (v: unknown): CronJobFiring[] => (Array.isArray(v) ? v : []);
+  // FIX-1073 — a pre-migration environment returns no tier key. `null` (not an
+  // empty tier set) so main() can tell "no tiers computed" from "tiers computed
+  // and clean", and fall back to the old any-startup-timeout rule rather than
+  // silently escalating on nothing.
+  const t = r.startup_timeout_tiers;
+  const tiers: StartupTimeoutTiers | null = t
+    ? {
+        streakThreshold: Number(t.streak_threshold ?? 0),
+        burstThreshold:  Number(t.burst_threshold ?? 0),
+        perJob: Array.isArray(t.per_job) ? t.per_job : [],
+        burst:  Array.isArray(t.burst)   ? t.burst   : [],
+      }
+    : null;
   return {
-    available:       r.available === true,
-    lookbackHours:   r.lookback_hours ?? 0,
-    startupTimeouts: arr(r.startup_timeouts),
-    missingDaily:    arr(r.missing_daily),
-    timeoutBlowouts: arr(r.timeout_blowouts),
-    runs:            arr(r.runs),
-    canaryLiveness:  r.canary_liveness ?? null,
+    available:           r.available === true,
+    lookbackHours:       r.lookback_hours ?? 0,
+    startupTimeouts:     arr(r.startup_timeouts),
+    startupTimeoutTiers: tiers,
+    missingDaily:        arr(r.missing_daily),
+    timeoutBlowouts:     arr(r.timeout_blowouts),
+    runs:                arr(r.runs),
+    canaryLiveness:      r.canary_liveness ?? null,
   };
+}
+
+function describeStreak(s: StartupStreak): string {
+  return (
+    `${s.jobname ?? `jobid ${s.jobid}`}${s.schedule ? ` (${s.schedule})` : ""}: ` +
+    `${s.streak} consecutive startup timeouts over ${s.span_minutes} min, ` +
+    `last ${s.last_at}`
+  );
+}
+
+function describeBurst(b: StartupBurst): string {
+  return `${b.bucket}: ${b.count} startup timeouts across ${b.jobs_affected} job(s) — ${b.jobs ?? "?"}`;
 }
 
 function describeFiring(f: CronJobFiring): string {
@@ -575,16 +753,140 @@ function describeRate(f: RateFinding): string {
   );
 }
 
-async function writeMetaRow(
+function buildMetadata(
   missing: string[],
   killed: string[],
   autovacuum: AutovacuumStatus,
   rollups: RollupStatus[],
+  orphans: RollupOrphan[],
   sectorAffinity: SectorAffinityStaleness | null,
   cronHealth: CronJobHealth | null,
   nightlyUnavailable: boolean,
+  conditions: Condition[],
+  failures: string[],
+  reportOnly: string[],
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+): Record<string, any> {
+  return {
+    pipeline_checked: PIPELINE_NAME,
+    checked_days:     CHECK_DAYS,
+    // FIX-968 — true means the nightly_cron read failed, so missing_* below
+    // are "unknown" rather than "none". Without this a read timeout and a
+    // clean night are the same two zeros in data_sync_log.
+    nightly_check_unavailable: nightlyUnavailable,
+    missing_count:    missing.length,
+    missing_dates:    missing,
+    killed_count:     killed.length,
+    killed_dates:     killed,
+    // FIX-650 — rebuild-toggled tables stranded at autovacuum_enabled=false.
+    stranded_autovacuum: autovacuum.stranded,
+    // FIX-885 — visibility-map health. vm[] is recorded on EVERY run (not just
+    // findings) so the trend is greppable in data_sync_log after the fact —
+    // FIX-884 went unnoticed for ~4 weeks partly because nothing logged it.
+    vm_degraded:      autovacuum.vmDegraded,
+    visibility_map:   autovacuum.vm,
+    // FIX-943 — the CAUSE side, recorded on EVERY run for the same reason.
+    // REPORT-ONLY: bloat_degraded does NOT escalate. A table can sit under its
+    // trigger with tens of thousands of dead tuples and no harm done; what is
+    // actionable is the visibility map that eventually collapses as a result,
+    // and vm_degraded already escalates on that. This exists so the cause is
+    // greppable in data_sync_log BEFORE the consequence arrives.
+    bloat_degraded:   autovacuum.bloatDegraded,
+    dead_tuple_load:  autovacuum.bloat,
+    // FIX-944 — recorded on EVERY run, findings or not, so the convergence of
+    // a multi-night resumable sweep is greppable after the fact.
+    rollup_freshness: rollups,
+    // FIX-1036 — the verdict itself, not just its inputs. These four keys are
+    // what the old meta row could not answer: they existed only in the stdout
+    // JSON, so data_sync_log recorded what the canary SAW and never what it
+    // CONCLUDED, and no run could compare itself against the one before it.
+    escalating_rollups: rollups.filter((r) => r.escalates).map((r) => r.pipeline),
+    escalated:          failures.length > 0,
+    failures,
+    report_only:        reportOnly,
+    // FIX-1036 — the keyed conditions this run observed. THIS is what the next
+    // run reads to decide new / worsening / unchanged / recovered.
+    conditions,
+    // FIX-1059 — pg_cron-driven pipelines with rows but no active job and no
+    // declaration. Recorded on every run; reported, never escalated.
+    orphans,
+    // FIX-959 — recorded on EVERY run for the same reason: the signature
+    // trail makes a strand's onset findable after the fact.
+    sector_affinity_staleness: sectorAffinity,
+    // FIX-968 — recorded on EVERY run, findings or not, for the same reason as
+    // vm[]/bloat[] above: three days of "the job never fired" were invisible
+    // partly because nothing had ever read cron.job_run_details. The full
+    // window trail makes a firing regression's onset findable after the fact.
+    cron_job_health:  cronHealth,
+    // FIX-1073 — hoisted out of cron_job_health so the tier verdict is greppable
+    // without parsing the whole window trail.
+    startup_timeout_tiers: cronHealth?.startupTimeoutTiers ?? null,
+    peak_rss_mb:      captureRssMb(),
+  };
+}
+
+/**
+ * FIX-1036 — the previous run's verdict, read BEFORE this run's row can be
+ * mistaken for it. Filtering on `started_at < startedAt` is what makes that
+ * safe: writeMetaRow has already inserted this run's row by the time this is
+ * called (the meta row must land even if everything after it fails), so the
+ * newest row is ours.
+ *
+ * Returns null when there is no readable prior verdict — no previous row, a
+ * previous row from before this shipped (no `conditions` key), or a failed
+ * read. Every condition then reads as `new` exactly once, and the email says so.
+ */
+async function fetchPreviousConditions(startedAt: Date): Promise<Condition[] | null> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = createAdminClient() as any;
+  const { data, error } = await db
+    .from("data_sync_log")
+    .select("metadata")
+    .eq("pipeline", "canary_check")
+    .lt("started_at", startedAt.toISOString())
+    .order("started_at", { ascending: false })
+    .limit(1);
+  if (error) {
+    console.warn(`[canary-check] previous-verdict read failed (non-fatal, treating as first run): ${error.message}`);
+    return null;
+  }
+  const rows = (data ?? []) as { metadata?: { conditions?: Condition[] } }[];
+  const prev = rows[0]?.metadata?.conditions;
+  return Array.isArray(prev) ? prev : null;
+}
+
+/** FIX-1036 — stamp the alert outcome onto the row this run already wrote. */
+async function updateMetaRow(
+  id: string,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  metadata: Record<string, any>,
+  outcome: {
+    alert_sent: boolean;
+    alert_tier: AlertTier | null;
+    alert_error: string | null;
+    transitions: Transition[];
+    first_run: boolean;
+  },
+): Promise<void> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = createAdminClient() as any;
+  const { error } = await db
+    .from("data_sync_log")
+    .update({ metadata: { ...metadata, ...outcome } })
+    .eq("id", id);
+  if (error) {
+    // Non-fatal by design: the row itself already landed, which is the evidence
+    // FIX-980 cares about. Losing the alert stamp costs the NEXT run its
+    // transition baseline for one cycle, not this run's visibility.
+    console.warn(`[canary-check] meta-row alert stamp failed (non-fatal): ${error.message}`);
+  }
+}
+
+async function writeMetaRow(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  metadata: Record<string, any>,
   startedAt: Date,
-): Promise<boolean> {
+): Promise<{ ok: boolean; id: string | null }> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = createAdminClient() as any;
   // FIX-979 — TWO timestamps taken around the work, not one value written twice.
@@ -595,51 +897,17 @@ async function writeMetaRow(
   // watching, since a slow canary is the first symptom of a saturated box
   // (FIX-968, where the canary itself timed out before reaching its findings).
   // startedAt is main()'s entry instant; the completion stamp is taken here.
-  const { error } = await db.from("data_sync_log").insert({
-    pipeline:     "canary_check",
-    status:       "complete",
-    started_at:   startedAt.toISOString(),
-    completed_at: new Date().toISOString(),
-    metadata: {
-      pipeline_checked: PIPELINE_NAME,
-      checked_days:     CHECK_DAYS,
-      // FIX-968 — true means the nightly_cron read failed, so missing_* below
-      // are "unknown" rather than "none". Without this a read timeout and a
-      // clean night are the same two zeros in data_sync_log.
-      nightly_check_unavailable: nightlyUnavailable,
-      missing_count:    missing.length,
-      missing_dates:    missing,
-      killed_count:     killed.length,
-      killed_dates:     killed,
-      // FIX-650 — rebuild-toggled tables stranded at autovacuum_enabled=false.
-      stranded_autovacuum: autovacuum.stranded,
-      // FIX-885 — visibility-map health. vm[] is recorded on EVERY run (not just
-      // findings) so the trend is greppable in data_sync_log after the fact —
-      // FIX-884 went unnoticed for ~4 weeks partly because nothing logged it.
-      vm_degraded:      autovacuum.vmDegraded,
-      visibility_map:   autovacuum.vm,
-      // FIX-943 — the CAUSE side, recorded on EVERY run for the same reason.
-      // REPORT-ONLY: bloat_degraded does NOT escalate. A table can sit under its
-      // trigger with tens of thousands of dead tuples and no harm done; what is
-      // actionable is the visibility map that eventually collapses as a result,
-      // and vm_degraded already escalates on that. This exists so the cause is
-      // greppable in data_sync_log BEFORE the consequence arrives.
-      bloat_degraded:   autovacuum.bloatDegraded,
-      dead_tuple_load:  autovacuum.bloat,
-      // FIX-944 — recorded on EVERY run, findings or not, so the convergence of
-      // a multi-night resumable sweep is greppable after the fact.
-      rollup_freshness: rollups,
-      // FIX-959 — recorded on EVERY run for the same reason: the signature
-      // trail makes a strand's onset findable after the fact.
-      sector_affinity_staleness: sectorAffinity,
-      // FIX-968 — recorded on EVERY run, findings or not, for the same reason as
-      // vm[]/bloat[] above: three days of "the job never fired" were invisible
-      // partly because nothing had ever read cron.job_run_details. The full
-      // window trail makes a firing regression's onset findable after the fact.
-      cron_job_health:  cronHealth,
-      peak_rss_mb:      captureRssMb(),
-    },
-  });
+  const { data, error } = await db
+    .from("data_sync_log")
+    .insert({
+      pipeline:     "canary_check",
+      status:       "complete",
+      started_at:   startedAt.toISOString(),
+      completed_at: new Date().toISOString(),
+      metadata,
+    })
+    .select("id")
+    .single();
   if (error) {
     // FIX-980 — the OTHER half of "nothing watches the watchman". This used to
     // console.warn() and move on, so an insert that failed under the same 8s
@@ -649,21 +917,26 @@ async function writeMetaRow(
     // a hard failure — the caller exits non-zero and GHA marks the run red,
     // which is the one surface outside this process that can see the gap.
     console.error(`[canary-check] meta-row insert FAILED: ${error.message}`);
-    return false;
+    return { ok: false, id: null };
   }
-  return true;
+  return { ok: true, id: (data as { id?: string } | null)?.id ?? null };
 }
 
 async function sendAlert(
+  tier: AlertTier,
+  transitions: Transition[],
+  firstRun: boolean,
   missing: string[],
   killed: string[],
   autovacuum: AutovacuumStatus,
   staleRollups: RollupStatus[],
+  orphans: RollupOrphan[],
+  rateRegressions: RateFinding[],
   sectorAffinity: SectorAffinityStaleness | null,
   cronHealth: CronJobHealth | null,
   to: string,
   apiKey: string,
-): Promise<void> {
+): Promise<string | null> {
   const strandedAutovacuum = autovacuum.stranded;
   // Lazy import keeps the script no-op-safe when Resend isn't installed for
   // some reason — prevents a hard module-resolution failure at startup.
@@ -689,13 +962,48 @@ async function sendAlert(
   if (sectorAffinity?.stale) parts.push(`sector-affinity rollup stranded on a tag change`);
   // FIX-968 — a pg_cron firing that never started. Distinct from every other
   // fragment here: those say "the data is wrong", this says "the work never ran".
+  // FIX-1073 — the SUBJECT now names the tier, not every individual dropped
+  // firing: a lone startup timeout is ordinary weather on this box (1,849 in
+  // 30 days) and putting each one in the subject is what made the subject
+  // unreadable.
+  const tiers = cronHealth?.startupTimeoutTiers ?? null;
   const skipped = [...(cronHealth?.startupTimeouts ?? []), ...(cronHealth?.missingDaily ?? [])];
-  if (skipped.length > 0) {
-    parts.push(`pg_cron job(s) never started: ${[...new Set(skipped.map((f) => f.jobname ?? `jobid ${f.jobid}`))].join(", ")}`);
+  if ((tiers?.perJob.length ?? 0) > 0) {
+    parts.push(
+      `pg_cron startup-timeout streak: ${[...new Set(tiers!.perJob.map((s) => s.jobname ?? `jobid ${s.jobid}`))].join(", ")}`,
+    );
   }
-  const subject = `[Civitics] Nightly canary — ${parts.join("; ")}`;
+  if ((tiers?.burst.length ?? 0) > 0) {
+    parts.push(`pg_cron startup-timeout burst x${tiers!.burst.length}`);
+  }
+  if ((cronHealth?.missingDaily.length ?? 0) > 0) {
+    parts.push(
+      `daily pg_cron job(s) never fired: ${[...new Set((cronHealth?.missingDaily ?? []).map((f) => f.jobname ?? `jobid ${f.jobid}`))].join(", ")}`,
+    );
+  }
+  if (rateRegressions.length > 0) {
+    parts.push(`throughput regressed: ${rateRegressions.map((r) => r.pipeline).join(", ")}`);
+  }
+  if (cronHealth?.canaryLiveness?.silent) parts.push("canary itself went silent");
+  const recoveredCount = transitions.filter((t) => t.kind === "recovered").length;
+  if (parts.length === 0 && recoveredCount > 0) parts.push(`${recoveredCount} condition(s) cleared`);
+  const subject = `[Civitics][${tier}] Nightly canary — ${parts.join("; ") || "state change"}`;
 
   const sections: string[] = [];
+  // FIX-1036 — the derivative goes FIRST. Everything below it is the same
+  // point-in-time detail the old email carried; this is the part that says
+  // whether anything actually changed since last night, which is the only
+  // reason to open the mail at all.
+  if (firstRun) {
+    sections.push(
+      `No prior canary verdict was readable, so EVERY condition below reads as ` +
+        `NEW this once. That is a baseline, not an overnight collapse — compare ` +
+        `against tomorrow's run.`,
+    );
+  }
+  if (transitions.length > 0) {
+    sections.push(`What changed since the last run:\n${describeTransitions(transitions).join("\n")}`);
+  }
   if (missing.length > 0) {
     sections.push(
       `Missing entirely (no row in data_sync_log) — likely never ran or died ` +
@@ -784,9 +1092,70 @@ async function sendAlert(
         `public.refresh_sector_affinity_from_tag_changes() directly (off-peak).`,
     );
   }
+  // FIX-1073 — the ESCALATING half of the firing signal.
+  if ((tiers?.perJob.length ?? 0) > 0 || (tiers?.burst.length ?? 0) > 0) {
+    sections.push(
+      `pg_cron startup timeouts crossed a TIER (FIX-1073) — a single abandoned ` +
+        `firing is ordinary weather on this box (1,849 in the 30 days to ` +
+        `2026-09-02, dominated by the */2 watchdogs), so what escalates is ` +
+        `either ${tiers!.streakThreshold}+ CONSECUTIVE timeouts for one job (that ` +
+        `job has stopped running, not merely stumbled) or ${tiers!.burstThreshold}+ ` +
+        `in one 60-minute bucket across all jobs (the box stopped accepting ` +
+        `pg_cron's connections):\n` +
+        (tiers!.perJob.length > 0
+          ? tiers!.perJob.map((s) => `  - streak: ${describeStreak(s)}`).join("\n")
+          : "") +
+        (tiers!.perJob.length > 0 && tiers!.burst.length > 0 ? "\n" : "") +
+        (tiers!.burst.length > 0
+          ? tiers!.burst.map((b) => `  - burst: ${describeBurst(b)}`).join("\n")
+          : "") +
+        `\n\nTriage: SELECT * FROM cron.job_run_details ORDER BY start_time DESC; ` +
+        `then look for what was saturating the box in that window. span_minutes ` +
+        `separates a */2 watchdog losing 90 minutes from a twice-daily rollup ` +
+        `losing three days.`,
+    );
+  }
+  // FIX-1059 — pipelines nobody owns. Reported, never escalated.
+  if (orphans.length > 0) {
+    sections.push(
+      `Orphaned watch entries (FIX-1059, REPORT-ONLY) — these pipelines have ` +
+        `rows in data_sync_log, no ACTIVE pg_cron job, and no declaration in ` +
+        `public.rollup_watch_overrides. Either the job was retired and nobody ` +
+        `recorded it, or it was paused and should not have been:\n` +
+        orphans
+          .map(
+            (o) =>
+              `  - ${o.pipeline}` +
+              (o.jobname ? ` (job ${o.jobname}${o.jobid != null ? `, jobid ${o.jobid}` : ""}, inactive)` : " (no cron job at all)") +
+              `, last row ${o.last_row_at ?? "never"}`,
+          )
+          .join("\n") +
+        `\n\nResolve by declaring it: INSERT INTO public.rollup_watch_overrides ` +
+        `(pipeline, retired_at, note) VALUES (...) — or by re-activating the job.`,
+    );
+  }
+  if (rateRegressions.length > 0) {
+    sections.push(
+      `Pipeline throughput regressed (FIX-978) — every run in the recent window ` +
+        `is above the P90 baseline by the threshold factor, so this is a trend ` +
+        `rather than one slow night:\n` +
+        rateRegressions.map((f) => `  - ${describeRate(f)}`).join("\n"),
+    );
+  }
+  if (cronHealth?.canaryLiveness?.silent) {
+    const cl = cronHealth.canaryLiveness;
+    sections.push(
+      `The canary itself went SILENT (FIX-980) — the previous run left no row in ` +
+        `data_sync_log. Six of the seven scheduled detectors run only inside that ` +
+        `one process, so its silence takes them all dark at once and reads ` +
+        `exactly like health:\n` +
+        `  - last run ${cl.last_started_at ?? "never"} (${cl.hours_since ?? "?"}h ago, threshold ${cl.threshold_hours}h)`,
+    );
+  }
   if (skipped.length > 0) {
     sections.push(
-      `pg_cron job(s) never STARTED (FIX-968) — this is not "the job failed", ` +
+      `pg_cron job(s) never STARTED (report-only unless tiered, see above) — ` +
+        `this is not "the job failed", ` +
         `it is "the firing was abandoned before the body ran", so nothing was ` +
         `written to data_sync_log and no self-heal fired:\n` +
         (cronHealth?.startupTimeouts ?? [])
@@ -815,15 +1184,49 @@ async function sendAlert(
   }
   const body = sections.join("\n\n") + `\n\nWorkflow runs: ${NIGHTLY_RUN_URL}\n`;
 
-  const { error } = await resend.emails.send({
-    from:    ALERTS_FROM,
-    to:      [to],
-    subject,
-    text:    body,
-  });
-  if (error) throw new Error(`Resend send failed: ${error.message ?? String(error)}`);
+  // FIX-1036 — a send failure is REPORTED, never thrown. This used to throw out
+  // of sendAlert and, because sendAlert ran BEFORE writeMetaRow, took the whole
+  // process down before the meta row landed — so a Resend outage erased the
+  // evidence the canary had run at all, which is precisely the silence FIX-980
+  // exists to make visible. The row is already written by the time we get here;
+  // the caller turns this string into a failures[] entry and a red workflow run.
+  try {
+    const { error } = await resend.emails.send({
+      from:    ALERTS_FROM,
+      to:      [to],
+      subject,
+      text:    body,
+    });
+    if (error) return `Resend send failed: ${error.message ?? String(error)}`;
+  } catch (err) {
+    return `Resend send threw: ${err instanceof Error ? err.message : String(err)}`;
+  }
+  return null;
 }
 
+/**
+ * FIX-1036 — the order of operations IS the fix.
+ *
+ * It used to be: fetch everything -> sendAlert -> writeMetaRow -> build
+ * failures[] -> exit. Three consequences, all of them bugs:
+ *
+ *   1. The meta row never carried the VERDICT. `escalating_rollups`,
+ *      `alert_sent` and `escalated` existed only in the stdout JSON, which
+ *      lives in a GHA log that ages out — so data_sync_log recorded what the
+ *      canary saw and never what it concluded, and no run could compare itself
+ *      against the one before it.
+ *   2. A Resend failure THREW before the meta row was written, so an email
+ *      outage erased the evidence the canary had run at all. That is exactly
+ *      the silence FIX-980 exists to make visible, reintroduced one line above
+ *      the detector for it.
+ *   3. There was no prior-state read at all, so the same condition paged every
+ *      night forever with a byte-identical `; `-joined subject.
+ *
+ * Now: build the keyed conditions and failures[] FIRST -> write the meta row
+ * (it always lands) -> read the PREVIOUS run's conditions -> classify each as
+ * new/worsening/unchanged/recovered -> send only on a transition (or the 7-run
+ * STILL RED floor) -> stamp the outcome back onto the row this run wrote.
+ */
 async function main(): Promise<number> {
   const now      = new Date();
   const expected = expectedDates(now, CHECK_DAYS);
@@ -837,13 +1240,18 @@ async function main(): Promise<number> {
   // FIX-944 — point-in-time too: has each watched rollup reached 'complete'
   // inside its window?
   // FIX-977 — the watch list is derived from the schedule, not hand-listed.
-  const registry = await fetchRollupRegistry();
+  // FIX-1011 — and from every pipeline in data_sync_log, not just pg_cron's.
+  const { watches: registry, orphans } = await fetchRollupRegistry();
   console.log(
-    `[canary-check] rollup registry: ${registry.length} scheduled pipeline(s) ` +
-      `(was a hand-maintained literal of ${FALLBACK_ROLLUP_PIPELINES.length})`,
+    `[canary-check] rollup registry: ${registry.length} pipeline(s) ` +
+      `(was a hand-maintained literal of ${FALLBACK_ROLLUP_PIPELINES.length}); ` +
+      `${orphans.length} orphaned, ` +
+      `${registry.filter((r) => r.retired || r.held).length} retired/held`,
   );
   const rollups = await fetchRollupFreshness(registry);
-  const staleRollups = rollups.filter((r) => r.stale);
+  // FIX-1135 — `reports`, not the RPC's raw `stale`: a retired, held or
+  // never-closing pipeline is listed but generates no finding.
+  const staleRollups = rollups.filter((r) => r.reports);
   // One cadence cycle late reports; two-plus escalates.
   const escalatingRollups = rollups.filter((r) => r.escalates);
   // FIX-978 — is anything getting SLOWER while still landing inside its window?
@@ -855,10 +1263,13 @@ async function main(): Promise<number> {
   // FIX-968 — did every scheduled pg_cron job actually START? The only detector
   // here that watches the cause rather than a consequence.
   const cronHealth = await fetchCronJobHealth();
-  const skippedFirings = [
-    ...(cronHealth?.startupTimeouts ?? []),
-    ...(cronHealth?.missingDaily ?? []),
-  ];
+  // FIX-1073 — `null` means the tier migration has not been applied in this
+  // environment. Fall back to the old any-startup-timeout rule there rather
+  // than silently escalating on nothing; a detector that quietly stops
+  // detecting is the failure this whole file exists to prevent.
+  const tiers = cronHealth?.startupTimeoutTiers ?? null;
+  const missingDaily = cronHealth?.missingDaily ?? [];
+  const legacyStartup = tiers === null ? (cronHealth?.startupTimeouts ?? []) : [];
   // FIX-968 — when the nightly_cron read itself failed we know NOTHING about
   // missing/killed, so report neither rather than inventing a 7-day outage.
   // The remaining detectors are unaffected and still run, which is the whole
@@ -869,142 +1280,210 @@ async function main(): Promise<number> {
   const missing  = nightlyCheckUnavailable ? [] : expected.filter((d) => !actual!.has(d) && !killedSet.has(d));
   const killed   = nightlyCheckUnavailable ? [] : expected.filter((d) => !actual!.has(d) &&  killedSet.has(d));
 
-  let alertSent = false;
-  const adminEmail = process.env["ADMIN_EMAIL"];
-  const resendKey  = process.env["RESEND_API_KEY"];
-  const inCi       = process.env["GITHUB_ACTIONS"] === "true";
-  const sendReal   = process.argv.includes("--send-real");
-  const hasAlert   = missing.length > 0 || killed.length > 0
-                  || strandedAutovacuum.length > 0 || autovacuum.vmDegraded.length > 0
-                  || staleRollups.length > 0 || sectorAffinity?.stale === true
-                  || skippedFirings.length > 0;
-  if (hasAlert && adminEmail && resendKey) {
-    if (inCi || sendReal) {
-      await sendAlert(missing, killed, autovacuum, staleRollups, sectorAffinity, cronHealth, adminEmail, resendKey);
-      alertSent = true;
-    } else {
-      console.log(
-        "[canary-check] local run — skipping Resend send; pass --send-real to actually email"
+  // -------------------------------------------------------------------------
+  // FIX-1036 STEP 1 — the keyed conditions. Every finding gets a key that is
+  // STABLE across runs (the identity of the problem, not its wording), a tier,
+  // and a monotone severity, so the next run can say what moved.
+  //
+  // Two keying choices matter and are deliberate:
+  //   - A rollup uses ONE key whatever its tier, so crossing from report-only
+  //     to escalating reads as `worsening` rather than as a recovery plus a
+  //     new finding.
+  //   - The startup-timeout BURST uses one flat key rather than one per hourly
+  //     bucket. Bucket timestamps change every run by construction, so keying
+  //     on them would make every burst permanently `new` and page nightly —
+  //     the exact defect being fixed.
+  // -------------------------------------------------------------------------
+  const conditions: Condition[] = [];
+  const push = (key: string, tier: "escalate" | "report", severity: number, detail: string) =>
+    conditions.push({ key, tier, severity, detail });
+
+  // missing/killed keep their historical email-only contract: they are
+  // backward-looking signals about a pipeline that may already have
+  // self-corrected, so they report rather than fail the run.
+  if (missing.length > 0) {
+    push("nightly_missing", "report", missing.length, `nightly_cron missed ${missing.length} day(s): ${missing.join(", ")}`);
+  }
+  if (killed.length > 0) {
+    push("nightly_killed", "report", killed.length, `nightly_cron killed by workflow timeout on ${killed.length} day(s): ${killed.join(", ")}`);
+  }
+  for (const t of strandedAutovacuum) {
+    push(`autovacuum_stranded:${t}`, "escalate", 1, `autovacuum stranded OFF on ${t}`);
+  }
+  {
+    const byName = new Map(autovacuum.vm.map((v) => [v.relname, v]));
+    for (const t of autovacuum.vmDegraded) {
+      const v = byName.get(t);
+      // Severity counts UP as health goes down, so it is monotone-worse.
+      push(
+        `vm_degraded:${t}`, "escalate", v ? 100 - v.pct_all_visible : 100,
+        `visibility map collapsed on ${t}${v ? ` (${v.pct_all_visible}% all-visible)` : ""}`,
       );
     }
   }
-
-  // FIX-979 — `now` is main()'s entry instant, captured before the first
-  // detector ran; writeMetaRow stamps completed_at itself.
-  const metaRowWritten = await writeMetaRow(missing, killed, autovacuum, rollups, sectorAffinity, cronHealth, nightlyCheckUnavailable, now);
-
-  // FIX-885 — ESCALATE. The DB-health findings exit non-zero so the workflow run
-  // goes red; an email alone is not escalation. FIX-650 built the detector and it
-  // WAS correctly reporting stranded:[entity_connections] for ~4 weeks — the
-  // canary just exited 0 every morning, so nothing surfaced until FIX-883 tripped
-  // over the consequences (FIX-884). Detection worked; escalation did not.
-  //
-  // Deliberately scoped to the autovacuum/visibility-map findings. missing/killed
-  // keep their existing email-only behaviour: they are backward-looking signals
-  // about a pipeline that may already have self-corrected, and turning them red
-  // here would change an unrelated contract. These two are point-in-time facts
-  // about the CURRENT state of prod that stay broken until someone acts.
-  const failures: string[] = [];
-  if (strandedAutovacuum.length > 0) {
-    failures.push(`autovacuum stranded OFF on: ${strandedAutovacuum.join(", ")}`);
-  }
-  if (autovacuum.vmDegraded.length > 0) {
-    const byName = new Map(autovacuum.vm.map((v) => [v.relname, v]));
-    failures.push(
-      `visibility map collapsed on: ${autovacuum.vmDegraded
-        .map((t) => {
-          const v = byName.get(t);
-          return v ? `${t} (${v.pct_all_visible}% all-visible)` : t;
-        })
-        .join(", ")}`,
+  for (const r of rollups) {
+    if (!r.escalates && !r.reports) continue;
+    push(
+      `rollup:${r.pipeline}`,
+      r.escalates ? "escalate" : "report",
+      // "never reached complete" is worse than any finite age, but must stay a
+      // finite number so the WORSEN_FACTOR comparison behaves.
+      r.hoursSinceComplete ?? 1_000_000,
+      `rollup ${r.pipeline} last complete ${r.lastCompleteAt ?? "NEVER"}` +
+        (r.hoursSinceComplete !== null ? ` (${r.hoursSinceComplete}h ago` : " (") +
+        `, cadence ${r.cadenceHours ?? "?"}h from ${r.cadenceSource ?? "?"}` +
+        (r.escalates ? `, escalate past ${r.escalateAfterHours}h` : `, report past ${r.reportAfterHours}h`) +
+        `)` + (r.sweepInProgress ? " [resumable sweep in flight]" : ""),
     );
   }
-  // FIX-944 — escalate for the same reason as the two above: this is a
-  // point-in-time fact about prod that stays broken until someone acts. Four
-  // days of total donor-rollup failure produced no signal at all under the
-  // email-only contract.
-  //
-  // FIX-977 narrowed this from `staleRollups` to `escalatingRollups`. Deriving
-  // the registry took the watch list from 1 pipeline to 13, and escalating on
-  // one-cycle staleness across all 13 would fail the canary most Tuesdays — an
-  // alert that cries wolf gets muted, which is how a detector quietly stops
-  // covering what it enumerates. One cycle late is reported below; two-plus
-  // still escalates here, which is what the four-day donor-rollup outage was.
-  if (escalatingRollups.length > 0) {
-    failures.push(
-      `rollup never reached 'complete': ${escalatingRollups
-        .map(
-          (r) =>
-            `${r.pipeline} (${r.hoursSinceComplete ?? "?"}h ago, cadence ` +
-            `${r.cadenceHours ?? "?"}h, escalate past ${r.escalateAfterHours}h)`,
-        )
-        .join(", ")}`,
+  for (const o of orphans) {
+    push(`orphan:${o.pipeline}`, "report", 1, `orphaned watch entry ${o.pipeline} (no active pg_cron job, no override row)`);
+  }
+  for (const s of tiers?.perJob ?? []) {
+    push(`cron_startup_streak:${s.jobid}`, "escalate", s.streak, `pg_cron startup-timeout streak — ${describeStreak(s)}`);
+  }
+  if ((tiers?.burst.length ?? 0) > 0) {
+    const worst = Math.max(...tiers!.burst.map((b) => b.count));
+    push(
+      "cron_startup_burst", "escalate", worst,
+      `pg_cron startup-timeout burst — ${tiers!.burst.length} bucket(s) at or above ` +
+        `${tiers!.burstThreshold}, worst ${worst}: ${tiers!.burst.map(describeBurst).join("; ")}`,
     );
   }
-  // REPORT-ONLY: one cadence cycle late. Kept greppable so a slipping job is
-  // visible before it becomes an escalation.
-  const reportOnlyStale = staleRollups.filter((r) => !r.escalates);
-  if (reportOnlyStale.length > 0) {
-    console.log(
-      `[canary-check] rollups one cycle late (report-only): ${reportOnlyStale
-        .map((r) => `${r.pipeline} (${r.hoursSinceComplete ?? "?"}h, cadence ${r.cadenceHours ?? "?"}h)`)
-        .join(", ")}`,
-    );
+  for (const f of legacyStartup) {
+    push(`cron_startup_legacy:${f.jobid}`, "escalate", 1, `pg_cron firing never started: ${describeFiring(f)} (tier RPC not migrated here)`);
   }
-  // FIX-980 — the watchman's dead-man switch. `canary_check` is a GHA workflow,
-  // so check_cron_job_health() cannot see it in cron.job_run_details and no
-  // other workflow asserts on it. It emitted ZERO rows on 2026-08-06 — the day
-  // with the most incidents in the retained window — after 19 consecutive daily
-  // rows, and nothing noticed. Six of the seven scheduled detectors run only
-  // inside this process, so its silence takes them all dark at once.
+  for (const f of missingDaily) {
+    push(`cron_missing_daily:${f.jobid}`, "escalate", 1, `daily pg_cron job never fired in the window: ${describeFiring(f)}`);
+  }
   if (cronHealth?.canaryLiveness?.silent) {
     const cl = cronHealth.canaryLiveness;
-    failures.push(
+    push(
+      "canary_silent", "escalate", cl.hours_since ?? 1_000_000,
       `canary_check itself went silent: last run ${cl.hours_since ?? "?"}h ago ` +
         `(${cl.last_started_at ?? "never"}), threshold ${cl.threshold_hours}h`,
     );
   }
-  if (!metaRowWritten) {
+  for (const f of rateRegressions) {
+    push(`rate_regression:${f.pipeline}`, "escalate", f.worst_case_ratio ?? 1, `pipeline throughput regressed (sustained): ${describeRate(f)}`);
+  }
+  if (sectorAffinity?.stale) {
+    push(
+      "sector_affinity", "escalate", sectorAffinity.hoursOutstanding ?? 1,
+      `sector-affinity rollup stranded on a tag change ` +
+        `(${sectorAffinity.hoursOutstanding ?? "?"}h outstanding; ` +
+        `live=${sectorAffinity.liveSig ?? "-"} stored=${sectorAffinity.storedSig ?? "-"})`,
+    );
+  }
+  // FIX-943 — bloat_degraded is deliberately absent: a table under its own
+  // autovacuum trigger is the CAUSE, vm_degraded is the consequence that
+  // actually breaks query plans, and only the consequence escalates. The cause
+  // is still recorded on every run in the meta row.
+
+  const failures   = conditions.filter((c) => c.tier === "escalate").map((c) => c.detail);
+  const reportOnly = conditions.filter((c) => c.tier === "report").map((c) => c.detail);
+
+  // -------------------------------------------------------------------------
+  // FIX-1036 STEP 2 — the meta row lands BEFORE anything that can fail.
+  // -------------------------------------------------------------------------
+  // FIX-979 — `now` is main()'s entry instant, captured before the first
+  // detector ran; writeMetaRow stamps completed_at itself.
+  const metadata = buildMetadata(
+    missing, killed, autovacuum, rollups, orphans, sectorAffinity, cronHealth,
+    nightlyCheckUnavailable, conditions, failures, reportOnly,
+  );
+  const meta = await writeMetaRow(metadata, now);
+  if (!meta.ok) {
+    // FIX-980 — the row IS the evidence this process ran. A run that leaves
+    // none is the silence the dead-man switch exists to surface, so it fails
+    // the workflow even if every detector was clean.
     failures.push(
       "canary_check meta-row insert failed — this run left no evidence it ran, " +
         "which is the silence FIX-980 exists to make visible",
     );
   }
-  // FIX-978 — a SUSTAINED rate regression escalates: every one of the last N
-  // runs above the P90 baseline x factor, with enough history to mean it. An
-  // intermittent or single-run dip is report-only (the bimodal guard), per the
-  // FIX-943 cause-vs-consequence split.
-  if (rateRegressions.length > 0) {
-    failures.push(
-      `pipeline throughput regressed (sustained): ${rateRegressions.map(describeRate).join("; ")}`,
-    );
+
+  // -------------------------------------------------------------------------
+  // FIX-1036 STEP 3 — what changed? `now` excludes the row just written.
+  // -------------------------------------------------------------------------
+  const previous    = await fetchPreviousConditions(now);
+  const firstRun    = previous === null;
+  const transitions = classifyTransitions(conditions, previous);
+  const decision    = decideAlert(conditions, transitions, firstRun);
+  // Persisted conditions carry their unchanged-run counters forward, which is
+  // what makes the 7-run STILL RED floor possible without a second table.
+  metadata["conditions"] = withUnchangedRuns(conditions, transitions);
+
+  // -------------------------------------------------------------------------
+  // FIX-1036 STEP 4 — send only on a transition.
+  // -------------------------------------------------------------------------
+  let alertSent  = false;
+  let alertError: string | null = null;
+  const adminEmail = process.env["ADMIN_EMAIL"];
+  const resendKey  = process.env["RESEND_API_KEY"];
+  const inCi       = process.env["GITHUB_ACTIONS"] === "true";
+  const sendReal   = process.argv.includes("--send-real");
+  if (decision.send && adminEmail && resendKey) {
+    if (inCi || sendReal) {
+      alertError = await sendAlert(
+        decision.tier!, transitions, firstRun, missing, killed, autovacuum,
+        staleRollups, orphans, rateRegressions, sectorAffinity, cronHealth,
+        adminEmail, resendKey,
+      );
+      alertSent = alertError === null;
+      if (alertError) {
+        console.error(`[canary-check] ${alertError}`);
+        failures.push(alertError);
+      }
+    } else {
+      console.log(
+        `[canary-check] local run — would have sent [${decision.tier}]; ` +
+          `skipping Resend send, pass --send-real to actually email`,
+      );
+    }
+  } else if (!decision.send) {
+    console.log("[canary-check] no transition since the last run — no email (the red X still stands if escalating)");
+  }
+
+  // -------------------------------------------------------------------------
+  // FIX-1036 STEP 5 — stamp the outcome onto the row we already wrote.
+  // -------------------------------------------------------------------------
+  if (meta.id) {
+    await updateMetaRow(meta.id, metadata, {
+      alert_sent:  alertSent,
+      alert_tier:  decision.tier,
+      alert_error: alertError,
+      transitions,
+      first_run:   firstRun,
+    });
+  }
+
+  // REPORT-ONLY, kept greppable in the workflow log so a slipping job is
+  // visible before it becomes an escalation.
+  if (reportOnly.length > 0) {
+    console.log(`[canary-check] report-only (${reportOnly.length}): ${reportOnly.join("; ")}`);
+  }
+  {
+    // FIX-1135 — pipelines that have never closed a cycle in the lookback are
+    // LISTED (the registry must stay a superset of the census) but are not
+    // "stale": hours-since-complete is undefined for them.
+    const noClosure = rollups.filter((r) => !r.hasClosures).map((r) => r.pipeline);
+    if (noClosure.length > 0) {
+      console.log(`[canary-check] no cycle closure in the lookback (not a finding): ${noClosure.join(", ")}`);
+    }
+    const declared = rollups.filter((r) => r.retired || r.held);
+    if (declared.length > 0) {
+      console.log(
+        `[canary-check] declared in rollup_watch_overrides (listed, never alerted): ` +
+          declared.map((r) => `${r.pipeline}=${r.retired ? "retired" : "held"}`).join(", "),
+      );
+    }
   }
   const rateWatch = (rateHealth?.pipelines ?? []).filter((p) => p.verdict === "intermittent");
   if (rateWatch.length > 0) {
     console.log(
       `[canary-check] intermittent rate outliers (report-only, not a trend): ` +
         `${rateWatch.map(describeRate).join("; ")}`,
-    );
-  }
-  // FIX-959 — escalate for the same reason: a stranded tag change is a
-  // point-in-time fact about prod that stays broken (stale pills, no error)
-  // until someone acts. The 2026-07 instance sat unnoticed for eleven days.
-  if (sectorAffinity?.stale) {
-    failures.push(
-      `sector-affinity rollup stranded on a tag change ` +
-        `(${sectorAffinity.hoursOutstanding ?? "?"}h outstanding; ` +
-        `live=${sectorAffinity.liveSig ?? "-"} stored=${sectorAffinity.storedSig ?? "-"})`,
-    );
-  }
-
-  // FIX-968 — escalate for the same reason as the four above, and arguably
-  // harder: a skipped firing means the work provably did not happen, and pg_cron
-  // has no queue or retry, so it stays not-happened until the next firing. This
-  // is the detector that would have caught jobid 24 on the MORNING of 08-03
-  // instead of two days later via downstream staleness.
-  if (skippedFirings.length > 0) {
-    failures.push(
-      `pg_cron firing(s) never started: ${skippedFirings.map(describeFiring).join(", ")}`,
     );
   }
 
@@ -1027,20 +1506,35 @@ async function main(): Promise<number> {
       // silent narrowing (the exact defect this replaced) is visible in the log.
       rollup_registry_size:   registry.length,
       escalating_rollups:     escalatingRollups.map((r) => r.pipeline),
+      // FIX-1059 — the class that paged for six weeks, now named rather than
+      // silently carried at a fabricated cadence.
+      orphans:                orphans.map((o) => o.pipeline),
       // FIX-978 — the first rate signal on this box.
       rate_regressions:       rateRegressions.map(describeRate),
       rate_intermittent:      rateWatch.map((p) => p.pipeline),
       sector_affinity_staleness: sectorAffinity,
-      // FIX-968 — startup_timeouts/missing_daily escalate; timeout_blowouts is
-      // report-only (see the RPC comment), surfaced here so the cause shows up
-      // in the workflow log alongside the consequence.
       // FIX-968 — the nightly_cron read failed; missing/killed above are
       // "unknown", not "clean". Surfaced so a quiet run cannot be misread.
       nightly_check_unavailable: nightlyCheckUnavailable,
+      // FIX-1073 — startup_timeouts is REPORT-ONLY now; the tiers are what
+      // escalate. Both are surfaced so the workflow log shows the raw weather
+      // next to the verdict drawn from it.
       cron_startup_timeouts: (cronHealth?.startupTimeouts ?? []).map(describeFiring),
-      cron_missing_daily:    (cronHealth?.missingDaily ?? []).map(describeFiring),
+      cron_startup_tiers: {
+        streak_threshold: tiers?.streakThreshold ?? null,
+        burst_threshold:  tiers?.burstThreshold ?? null,
+        per_job:          (tiers?.perJob ?? []).map(describeStreak),
+        burst:            (tiers?.burst ?? []).map(describeBurst),
+      },
+      cron_missing_daily:    missingDaily.map(describeFiring),
       cron_timeout_blowouts: (cronHealth?.timeoutBlowouts ?? []).map(describeFiring),
+      // FIX-1036 — the verdict and its derivative, in the log AND the meta row.
+      first_run:           firstRun,
+      transitions:         transitions.map((t) => `${t.kind}:${t.key}`),
       alert_sent:          alertSent,
+      alert_tier:          decision.tier,
+      alert_error:         alertError,
+      report_only:         reportOnly,
       escalated:           failures.length > 0,
     })
   );
@@ -1051,6 +1545,7 @@ async function main(): Promise<number> {
   }
   return 0;
 }
+
 
 main()
   // FIX-885 — propagate main's exit code instead of hardcoding 0, so a stranded

@@ -369,6 +369,42 @@ If neither fits, file a FIX bullet documenting the new cadence and the
 reason an existing hook didn't work before adding a new cron — they multiply
 fast.
 
+### Retiring or pausing a pg_cron job — declare it in the same migration (FIX-1059)
+
+**Any `cron.unschedule(...)` or `cron.alter_job(..., active := false)` on a job
+whose procedure writes `data_sync_log` MUST land a `public.rollup_watch_overrides`
+row in the SAME migration.**
+
+`list_scheduled_rollup_pipelines()` derives its watch list from
+`data_sync_log`, so a retired job's pipeline stays in the census for the whole
+90-day lookback with nothing recording *why*. `recipient_count_reconcile` is the
+worked example: FIX-736 unscheduled `ec-recipient-count-reconcile` on 2026-07-05
+and the retirement was written down nowhere, so the registry carried it as live
+at a fabricated 168h `default` cadence for six weeks. It only escaped paging
+because FIX-977b had separately NULLed the `default` escalate threshold.
+
+```sql
+INSERT INTO public.rollup_watch_overrides (pipeline, retired_at, note)
+VALUES ('<pipeline_name>', now(), 'Why it was retired, and what replaced it.');
+
+-- or, for a deliberate pause you intend to undo:
+INSERT INTO public.rollup_watch_overrides (pipeline, held_since, hold_reason, note)
+VALUES ('<pipeline_name>', now(), 'short reason', 'longer context + the FIX id');
+```
+
+Rows in that table are **declarations, never measurements** — they say what a
+human decided. A declared pipeline stays LISTED in the registry with
+`retired`/`held` set and both thresholds NULL; it is never dropped, because
+dropping it would narrow the watch list, which is the FIX-977 defect wearing a
+different hat (`detector-coverage.test.ts` pins registry ⊇ census). The table
+also carries an optional `cadence_hours` for asserting a cadence the schedule
+cannot express.
+
+Anything the canary finds that is NOT declared — pg_cron rows, no active job,
+no override row — appears in the registry's top-level `orphans` array and in the
+nightly canary email as report-only. That list is the backlog of retirements
+nobody wrote down.
+
 ### Read path convention
 
 - Wrap snapshot reads in `withDbTimeout<{...}>(2000)` (from
