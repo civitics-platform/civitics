@@ -590,6 +590,45 @@ on the consequence (`vm_degraded`) via `check_rebuild_autovacuum_status()`. See
 `packages/db/CLAUDE.md` — *Autovacuum: per-table settings and the bulk-rewrite
 vacuum rule* — for the tuned-table list and how to size a new one.
 
+### A landing that holds one transaction longer than the watermark lag rewinds the watermarks (FIX-983/FIX-1074)
+
+**Sibling of the vacuum rule above, same category of unpaid bill.**
+
+`financial_relationships.updated_at` (and `votes.updated_at`, and
+`entity_connections.derived_at`) is stamped with `NOW()` — the moment the
+writing transaction *began*, not the moment it committed. Every incremental
+rollup takes `dirty = updated_at > watermark`, so a transaction that STARTS
+before a rollup's watermark read and COMMITS after it leaves rows stamped
+*below* the new watermark that were invisible at read time. Nothing ever picks
+them up again. FIX-983 closes the routine case with a head-lag horizon: no
+watermark may advance past `clock_timestamp() -
+civitics.watermark_lag_seconds` (default 3600), so ordinary writers are safe by
+construction. **A supervised landing that exceeds that lag in one transaction
+is outside the guarantee.** The FIX-933 money move held ~12 minutes atomic;
+that is inside 1 h and therefore covered today, but the shape scales with the
+landing, not with the lag.
+
+THE RULE: **a supervised landing that holds a single transaction longer than
+`civitics.watermark_lag_seconds` either rewinds every FR-keyed watermark to its
+own transaction start before committing, or runs with the incremental consumers
+paused.** Batch-committing writers need nothing — each batch is its own short
+transaction and the default 1 h horizon already covers it. A third option, when
+the landing's duration is known in advance, is to raise the GUC for the session
+that drives the consumers; it costs only staleness.
+
+FR-keyed watermark keys to rewind, all in `pipeline_state`:
+`financial_entity_totals_watermark`, `donor_party_rollup_watermark`,
+`donor_rollup_watermark`, `entity_connections_donations` (its scalar
+`last_indexed_at` **and** all sixteen `windows` entries),
+`agency_staffing_watermark` (`fr_last_indexed_at`).
+
+**The EC donations arm is already covered** by the FIX-1101 interlock — it
+defers its cycle while a FEC bulk run is pending or in flight — so a FEC replay
+does not need the rewind for that arm specifically. Every other consumer above
+does. FIX-1074 is the broader pre-drain convention this sits under: a landing
+also owns the *derived* work its rewrite creates, not just the watermark
+correctness of it.
+
 ---
 
 ## Supabase Clients (Summary)
