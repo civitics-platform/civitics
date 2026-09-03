@@ -1353,3 +1353,8 @@
 2026-09-02 | FIX-1032 | 87fd1f29 | local+prod | docs(db): bank what the first MV swap actually cost on prod — FIX-1134/1032/985 applied
 2026-09-02 | FIX-1134 | 87fd1f29 | local+prod | docs(db): bank what the first MV swap actually cost on prod — FIX-1134/1032/985 applied
 2026-09-02 | FIX-985 | 87fd1f29 | local+prod | docs(db): bank what the first MV swap actually cost on prod — FIX-1134/1032/985 applied
+2026-09-02 | FIX-1011 | 539dadd5 | local+prod | fix(canary): freshness judged on cycle closures, a declared-override table, tiered startup-timeout escalation, and emails that page on change
+2026-09-02 | FIX-1036 | 539dadd5 | local+prod | fix(canary): freshness judged on cycle closures, a declared-override table, tiered startup-timeout escalation, and emails that page on change
+2026-09-02 | FIX-1059 | 539dadd5 | local+prod | fix(canary): freshness judged on cycle closures, a declared-override table, tiered startup-timeout escalation, and emails that page on change
+2026-09-02 | FIX-1073 | 539dadd5 | local+prod | fix(canary): freshness judged on cycle closures, a declared-override table, tiered startup-timeout escalation, and emails that page on change
+2026-09-02 | FIX-1135 | 539dadd5 | local+prod | fix(canary): freshness judged on cycle closures, a declared-override table, tiered startup-timeout escalation, and emails that page on change
