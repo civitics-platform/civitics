@@ -47,12 +47,18 @@ CREATE TEMP TABLE fix1003_results (
 -- pipeline_state is asserted separately in case 4 because it needs an override
 -- but not a scheduled job.
 -- ─────────────────────────────────────────────────────────────────────────────
-CREATE TEMP TABLE fix1003_arms AS
+CREATE TEMP TABLE fix1003_written AS
 WITH RECURSIVE reachable(proname, src) AS (
+  -- FIX-973 — TWO roots. jobid 24 now CALLs donor_rollup_rebuild_bulk(), and a
+  -- walk rooted only at the per-recipient procedure would stop covering the
+  -- path that actually runs. Rooting at both also means the two regimes' write
+  -- sets are asserted to have the same owners, which is what makes an arm added
+  -- to one and not the other fail here rather than in production.
   SELECT p.proname, p.prosrc
   FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
   WHERE n.nspname = 'public'
-    AND p.proname = 'refresh_official_donor_rollup_incremental'
+    AND p.proname IN ('refresh_official_donor_rollup_incremental',
+                      'donor_rollup_rebuild_bulk')
   UNION
   -- Match ANY `identifier(` and keep only those that name a function in
   -- public. Deliberately NOT anchored on PERFORM/CALL: the chunk loop invokes
@@ -76,12 +82,30 @@ written AS (
     '(?:INSERT\s+INTO|DELETE\s+FROM|UPDATE|TRUNCATE(?:\s+TABLE)?)\s+(?:ONLY\s+)?(?:public\.)?([a-z_][a-z0-9_]*)',
     'gi') AS m
 )
-SELECT c.relname, c.reloptions
+SELECT c.relname, c.reloptions, c.relpersistence
 FROM written w
 JOIN pg_class c ON c.relname = w.relname
 JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = 'public'
 WHERE c.relkind IN ('r','m')
   AND c.relname NOT IN ('data_sync_log','pipeline_state');
+
+-- The PERMANENT arms — what cases 1, 2 and 7 have always been about. Split out
+-- by relpersistence rather than by name, so a new arm lands here automatically
+-- and a new staging table does not blow up case 1 for the wrong reason.
+CREATE TEMP TABLE fix1003_arms AS
+SELECT relname, reloptions FROM fix1003_written WHERE relpersistence <> 'u';
+
+-- The UNLOGGED staging the bulk regime rebuilds (FIX-1005). Different owner
+-- shape: these are TRUNCATE-then-bulk-INSERT, so dead tuples never accumulate
+-- and the scale factor is not the lever — the INSERT-triggered autovacuum that
+-- restores all-visible is. Case 8 below.
+CREATE TEMP TABLE fix1003_staging AS
+SELECT relname, reloptions, relpages FROM (
+  SELECT w.relname, w.reloptions, c.relpages
+  FROM fix1003_written w
+  JOIN pg_class c ON c.relname = w.relname
+  JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = 'public'
+  WHERE w.relpersistence = 'u') t;
 
 -- Sanity: the derivation must find the six known arms. If this trips, the
 -- walker broke, not the fix — and every case below would be vacuously true.
@@ -93,6 +117,17 @@ BEGIN
   IF v_n < 6 THEN
     RAISE EXCEPTION
       'verify_fix1003: arm derivation found only % relation(s) [%] — the call-tree walker is broken, so the cases below would pass vacuously',
+      v_n, v_found;
+  END IF;
+
+  -- FIX-973 — same guard for the staging half. donor_rollup_rebuild_bulk()
+  -- TRUNCATEs four `_drb_*` tables; finding none means the second root did not
+  -- resolve and case 8 would pass on an empty set.
+  SELECT count(*), string_agg(relname, ',' ORDER BY relname)
+    INTO v_n, v_found FROM fix1003_staging;
+  IF v_n < 4 THEN
+    RAISE EXCEPTION
+      'verify_fix1003: staging derivation found only % relation(s) [%] — the donor_rollup_rebuild_bulk root did not resolve',
       v_n, v_found;
   END IF;
 END $$;
@@ -264,10 +299,19 @@ FROM (
 -- at 11:00 and 14:00. A vacuum scheduled inside a window would split I/O with
 -- the run it is meant to clean up after (the 2026-08-08 FEC failure mode).
 -- ─────────────────────────────────────────────────────────────────────────────
+--
+-- FIX-973 — the assertion was a literal `= '11,14'`, and the deployed waves are
+-- `11,17` (they have been since before this file's last edit, so case 7 has
+-- been red on main). A hardcoded hour STRING is the same defect this file was
+-- written to avoid one level up: it pins the answer instead of the claim. The
+-- claim is "not inside a rollup window", so that is what is asserted — every
+-- hour in the field is at or after 11:00, the hour the 09:00 window closes.
+-- The 12:00 window closes at 14:00 and 17 clears it; a wave moved back to,
+-- say, 10 or 13 would fail here, which is the case that matters.
 INSERT INTO fix1003_results
 SELECT 7,
        'arm vacuum jobs are active and scheduled after the 11:00/14:00 windows',
-       'active, hour field = 11,14',
+       'active, every scheduled hour >= 11',
        CASE WHEN count(*) FILTER (WHERE NOT ok) = 0
             THEN format('%s job(s) ok', count(*))
             ELSE format('BAD: %s',
@@ -276,10 +320,52 @@ SELECT 7,
        count(*) >= 6 AND count(*) FILTER (WHERE NOT ok) = 0
 FROM (
   SELECT j.jobname, j.schedule,
-         j.active AND split_part(j.schedule, ' ', 2) = '11,14' AS ok
+         j.active
+           AND split_part(j.schedule, ' ', 2) ~ '^[0-9]+(,[0-9]+)*$'
+           AND NOT EXISTS (
+             SELECT 1 FROM unnest(string_to_array(split_part(j.schedule, ' ', 2), ',')) h
+              WHERE h::int < 11) AS ok
   FROM cron.job j
   WHERE j.command ILIKE '%VACUUM%'
     AND EXISTS (SELECT 1 FROM fix1003_arms a WHERE j.command ILIKE '%' || a.relname || '%')
+) t;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- CASE 8 (FIX-973/FIX-1005) — the bulk regime's UNLOGGED staging has a vacuum
+-- owner too.
+--
+-- These four are rebuilt by TRUNCATE + bulk INSERT (`_drb_fe` and
+-- `_drb_targets` once per sweep, `_drb_donor` and `_drb_chunk_fe` once per
+-- chunk), so they never accumulate dead tuples and the arms' scale-factor
+-- recipe is beside the point. What they DO leave behind is a heap with nothing
+-- marked all-visible, and the chunk loop then probes `_drb_fe` and
+-- `_drb_chunk_fe` by primary key. The lever is insert-triggered autovacuum,
+-- whose default (1,000 + 0.2 x reltuples) is ~730k inserts on `_drb_fe` — about
+-- one sweep in five, and TRUNCATE resets the counter.
+--
+-- Asserted as "carries an insert-triggered override", derived from the call
+-- tree, so a fifth staging table added to the bulk regime fails here until
+-- someone gives it an owner. That is the FIX-961 -> FIX-995 lesson applied to
+-- the half cc-98 left to the manual script's VACUUM tail.
+-- ─────────────────────────────────────────────────────────────────────────────
+INSERT INTO fix1003_results
+SELECT 8,
+       'bulk-regime UNLOGGED staging carries an insert-triggered autovacuum override',
+       'all derived staging tables overridden',
+       CASE WHEN count(*) FILTER (WHERE NOT overridden) = 0
+            THEN format('%s of %s overridden', count(*), count(*))
+            ELSE format('MISSING: %s',
+                        string_agg(relname, ', ') FILTER (WHERE NOT overridden)) END,
+       count(*) > 0 AND count(*) FILTER (WHERE NOT overridden) = 0
+FROM (
+  -- COALESCE for the same reason case 2 needs it: NULL reloptions makes the
+  -- LIKE NULL, and a NULL is neither counted as a pass nor as a failure.
+  SELECT s.relname,
+         COALESCE(array_to_string(s.reloptions, ',')
+                    LIKE '%autovacuum_vacuum_insert_threshold%', false)
+      OR COALESCE(array_to_string(s.reloptions, ',')
+                    LIKE '%autovacuum_vacuum_insert_scale_factor%', false) AS overridden
+  FROM fix1003_staging s
 ) t;
 
 \echo ''
@@ -292,6 +378,12 @@ FROM fix1003_results ORDER BY case_no;
 \echo '--- derived arm set (from the catalog, not a hand-kept list) ---'
 SELECT relname, COALESCE(array_to_string(reloptions, ' '), '(no override)') AS reloptions
 FROM fix1003_arms ORDER BY relname;
+
+\echo ''
+\echo '--- derived UNLOGGED staging set (FIX-973 second root) ---'
+SELECT relname, relpages,
+       COALESCE(array_to_string(reloptions, ' '), '(no override)') AS reloptions
+FROM fix1003_staging ORDER BY relname;
 
 \echo ''
 SELECT count(*) FILTER (WHERE passed)     AS passed,
@@ -313,8 +405,8 @@ BEGIN
     INTO v_null, v_failed, v_n
   FROM fix1003_results;
 
-  IF v_n <> 7 THEN
-    RAISE EXCEPTION 'verify_fix1003: expected 7 cases, recorded % — a case produced no row', v_n;
+  IF v_n <> 8 THEN
+    RAISE EXCEPTION 'verify_fix1003: expected 8 cases, recorded % — a case produced no row', v_n;
   END IF;
   IF v_null > 0 THEN
     RAISE EXCEPTION 'verify_fix1003: % case(s) evaluated to NULL (test bug, not a result)', v_null;
