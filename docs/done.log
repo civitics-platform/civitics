@@ -1362,3 +1362,5 @@
 2026-09-02 | FIX-987 | 6c1ea0c4 | local+prod | fix(rollups): every FR watermark stops one hour short of now — the FIX-983 horizon; agency staffing rebuilds only what changed
 2026-09-02 | FIX-1140 | 61174b62 | local+prod | fix(rollups): a caught-up run is COMPLETE, not skipped — FIX-983's own branch would have frozen the freshness clock
 2026-09-02 | FIX-1141 | d57d39f8 | local+prod | fix(cron): move agency-staffing-rollup-refresh to Tue 00:05 UTC — 13:00 is the worst hour of the week for worker launch
+2026-09-02 | FIX-970 | 2cd9a0da | local+prod | perf(donor-rollup): the scheduled refresh uses the set-based regime — 24 s/recipient becomes 0.06 s; freshness reads its own pipeline
+2026-09-02 | FIX-973 | 2cd9a0da | local-only | perf(donor-rollup): the scheduled refresh uses the set-based regime — 24 s/recipient becomes 0.06 s; freshness reads its own pipeline
