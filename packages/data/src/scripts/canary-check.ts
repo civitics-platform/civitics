@@ -819,8 +819,19 @@ function buildMetadata(
     // window trail makes a firing regression's onset findable after the fact.
     cron_job_health:  cronHealth,
     // FIX-1073 — hoisted out of cron_job_health so the tier verdict is greppable
-    // without parsing the whole window trail.
-    startup_timeout_tiers: cronHealth?.startupTimeoutTiers ?? null,
+    // without parsing the whole window trail. Re-keyed to snake_case on the way
+    // out: every other key in this row is snake_case, and the TS-shaped object
+    // would have made `metadata->'startup_timeout_tiers'->>'streak_threshold'`
+    // return NULL forever — a grep that silently finds nothing is worse than one
+    // that errors.
+    startup_timeout_tiers: cronHealth?.startupTimeoutTiers
+      ? {
+          streak_threshold: cronHealth.startupTimeoutTiers.streakThreshold,
+          burst_threshold:  cronHealth.startupTimeoutTiers.burstThreshold,
+          per_job:          cronHealth.startupTimeoutTiers.perJob,
+          burst:            cronHealth.startupTimeoutTiers.burst,
+        }
+      : null,
     peak_rss_mb:      captureRssMb(),
   };
 }
