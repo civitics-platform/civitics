@@ -1360,3 +1360,4 @@
 2026-09-02 | FIX-1135 | 539dadd5 | local+prod | fix(canary): freshness judged on cycle closures, a declared-override table, tiered startup-timeout escalation, and emails that page on change
 2026-09-02 | FIX-983 | 6c1ea0c4 | local+prod | fix(rollups): every FR watermark stops one hour short of now — the FIX-983 horizon; agency staffing rebuilds only what changed
 2026-09-02 | FIX-987 | 6c1ea0c4 | local+prod | fix(rollups): every FR watermark stops one hour short of now — the FIX-983 horizon; agency staffing rebuilds only what changed
+2026-09-02 | FIX-1140 | 61174b62 | local+prod | fix(rollups): a caught-up run is COMPLETE, not skipped — FIX-983's own branch would have frozen the freshness clock
