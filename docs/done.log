@@ -1371,3 +1371,6 @@
 2026-09-03 | FIX-1142 | d4d14b97 | local-only | docs(ops): overnight receipts — 1134 post-swap unit time, canary steady state, jobid 24 first bulk firings
 2026-09-03 | FIX-1109 | 67a11a5c | local-only | fix(derived-mvs): the weekly comes back bounded — parallel workers off, no fences needed, a failed unit fails the CALL, a quiet-band slot
 2026-09-03 | FIX-1129 | 67a11a5c | local-only | fix(derived-mvs): the weekly comes back bounded — parallel workers off, no fences needed, a failed unit fails the CALL, a quiet-band slot
+2026-09-03 | FIX-1109 | 1b91b94a | prod-only | docs(ops): the weekly derived-MV refresh is back on schedule — supervised firing complete, jobid 10 re-enabled
+2026-09-03 | FIX-1129 | 1b91b94a | prod-only | docs(ops): the weekly derived-MV refresh is back on schedule — supervised firing complete, jobid 10 re-enabled
+2026-09-03 | FIX-966 | 1b91b94a | closes-as-superseded | docs(ops): the weekly derived-MV refresh is back on schedule — supervised firing complete, jobid 10 re-enabled
