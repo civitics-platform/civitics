@@ -1369,3 +1369,5 @@
 2026-09-03 | FIX-1130 | f706f301 | local+prod | feat(ops): a Postgres-free front-door watchdog on Vercel cron, and the request-path probe finally sees Cloudflare
 2026-09-03 | FIX-1142 | 40da76ce | unverified | perf(treemap-global): a covering partial index for the donor-range chunk, and a resume bound that outlives the schedule
 2026-09-03 | FIX-1142 | d4d14b97 | local-only | docs(ops): overnight receipts — 1134 post-swap unit time, canary steady state, jobid 24 first bulk firings
+2026-09-03 | FIX-1109 | 67a11a5c | local-only | fix(derived-mvs): the weekly comes back bounded — parallel workers off, no fences needed, a failed unit fails the CALL, a quiet-band slot
+2026-09-03 | FIX-1129 | 67a11a5c | local-only | fix(derived-mvs): the weekly comes back bounded — parallel workers off, no fences needed, a failed unit fails the CALL, a quiet-band slot
