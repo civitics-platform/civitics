@@ -702,7 +702,7 @@ query). Judge a table by `relallvisible / relpages`, not by `n_dead_tup`.
 
 | table | vacuum sf | analyze sf | trigger | why |
 |---|---|---|---|---|
-| `financial_relationships` | 0.02 | 0.02 | 164,213 | 8.2M rows, 16 indexes, **zero HOT updates**; next bulk rewrite target |
+| `financial_relationships` | 0.02 | 0.02 | 164,213 | 14.5M rows, **18 indexes** post-census (FIX-1133), **zero HOT updates**; next bulk rewrite target |
 | `financial_entities` | 0.05 | 0.02 | 145,784 | dominates the donor-rollup join; 19 indexes |
 | `entity_connections` | 0.05 | 0.02 | 259,648 | largest table; **kept at 0.05 on purpose** — see below |
 | `entity_tags` | 0.05 | 0.02 | 128,451 | wholesale daily rewrite by the rule taggers |
@@ -714,6 +714,48 @@ query). Judge a table by `relallvisible / relpages`, not by `n_dead_tup`.
 
 Keep this list in sync with the `watched` CTE in
 `check_rebuild_autovacuum_status()` — the detector and the tuning must not drift.
+
+### Sizing an *ad-hoc* vacuum — never from the cron job's history (FIX-1133)
+
+A scheduled vacuum's runtimes measure the **steady state**, not a catch-up, and
+the two are not the same order of magnitude. jobid 38 `fr-vacuum-analyze` is
+cheap (227.2 s / 20.3 s / 97.8 s over three firings) *precisely because* it is
+weekly at 01:00 UTC and never has much to do. Sizing an ad-hoc run from those
+numbers put 8 front-door statement timeouts through prod in 16 minutes on
+2026-09-01.
+
+**Size an ad-hoc vacuum from `n_dead_tup` and the index footprint, not from
+`cron.job_run_details`.** On `financial_relationships` the heap is not the cost:
+the heap phase finished 631,265 blocks in about 115 s, and the remaining 560 s
+was the **index phase**, which is proportional to *index bytes times index
+count* — every pass sweeps all of them in full, on a box with 256 MB of
+`shared_buffers`.
+
+Two corollaries:
+
+- **A cancelled VACUUM banks nothing.** `vacuum_count`, `last_vacuum` and
+  `n_dead_tup` are all unchanged by a cancel; the next attempt restarts from the
+  top. Same cancel-discards-the-work property as the ec-crawl stats windows.
+- **The index count is a first-class cost, but you cannot assume it is
+  reducible.** The FIX-1133 census of all 19 FR indexes found exactly one
+  droppable (8 kB, a UNIQUE partial over a column with zero non-NULL rows);
+  1,091 MB of the apparent slack was a PRIMARY KEY plus a live `ON CONFLICT`
+  arbiter, both invisible to `idx_scan`. Classify by **role first, callers
+  second, counters last** — and check the stats window before believing a zero.
+  `pg_stat_database.stats_reset` reads NULL both when stats were never reset and
+  when they were discarded after a crash; triangulate against
+  `pg_stat_statements_info.stats_reset` and an insert-only table's `n_tup_ins`.
+  Full method and result: `docs/audits/fr-index-census-2026-09.md`.
+
+### Bulk-rewrite tails on `financial_relationships` are an outage risk, not a formality (FIX-1133)
+
+The FIX-943 convention — any script that bulk-rewrites a table ends by vacuuming
+what it rewrote — still holds. On this table the tail is **tens of minutes**, and
+it is front-door-visible for all of them. So a bulk-rewrite script touching
+`financial_relationships` is scheduled off-peak under the
+no-heavy-prod-ops-during-active-hours rule, and its runtime budget includes the
+vacuum tail explicitly. Do not start one because the heap looks small; the
+budget is index bytes times index count.
 
 ### Sizing a new one
 

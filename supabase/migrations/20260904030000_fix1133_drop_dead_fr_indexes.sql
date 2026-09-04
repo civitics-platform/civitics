@@ -1,0 +1,51 @@
+-- FIX-1133 — financial_relationships index census: drop the dead-column index.
+--
+-- Companion migration to scripts/fix1133-drop-fr-indexes.mjs. The script is the
+-- prod path (DROP INDEX CONCURRENTLY cannot run inside a transaction block, and
+-- `supabase db push` wraps each migration in one); this file is the real path
+-- for local and any rebuilt-from-zero environment, and a no-op against prod once
+-- the script has run. Same shape as the FIX-1118 / FIX-1142 precedent.
+--
+-- WHAT THE CENSUS FOUND — docs/audits/fr-index-census-2026-09.md
+--
+-- 19 indexes, 7,184 MB. The prior "six never scanned, ~1,224 MB" read was taken
+-- over a stats window that turned out to be 6.6 days (statistics were discarded
+-- at the 2026-08-29 outage; pg_stat_database.stats_reset reads NULL and is not
+-- evidence of anything). Of those 1,224 MB, 1,091 MB is two indexes that
+-- idx_scan structurally cannot see doing their job:
+--
+--   financial_relationships_pkey                573 MB  PRIMARY KEY
+--   financial_relationships_usaspending_unique  518 MB  live ON CONFLICT arbiter
+--                                                       (usaspending-bulk/writer.ts:291),
+--                                                       manual-only pipeline
+--
+-- Exactly one index survived the predicate as a drop candidate:
+--
+--   financial_relationships_fec_filing_unique   8192 B
+--
+-- It is a UNIQUE partial index on a column with ZERO non-NULL rows on prod and
+-- on the clone, referenced nowhere in pg_proc.prosrc, pg_matviews, apps/, or
+-- packages/ outside the generated database.ts, and arbitrating no ON CONFLICT.
+-- It enforces uniqueness over an empty set that nothing writes to.
+--
+-- The clone rehearsal re-EXPLAINed all 25 corpus shapes with this index dropped:
+-- zero plan changes.
+--
+-- NOT DROPPED, and why, so a future pass does not re-litigate it:
+--   _cycle       133 MB  no caller, 0 scans — but HELD, the window is under the
+--                        14-day floor. Re-read on or after 2026-09-12.
+--   _started_at   16 kB  no index-driven caller — but the column has a writer
+--                        (REL_COLUMNS, fec-bulk/writer.ts:879). HELD.
+--   _type        157 MB  structurally a strict prefix of _derivation AND of
+--                        _relcycle_unique, so a Class C candidate on the letter
+--                        of the rule — but the rehearsal showed
+--                        ec_arm_source_fingerprint's three zero-row arms fall
+--                        back onto _relcycle_unique (877 MB, 5.6x) on the */15
+--                        ec-crawl. Class B. Do not drop it.
+--
+-- RECREATE, if this ever turns out to be wrong:
+--   CREATE UNIQUE INDEX financial_relationships_fec_filing_unique
+--     ON public.financial_relationships USING btree (fec_filing_id)
+--     WHERE (fec_filing_id IS NOT NULL);
+
+DROP INDEX IF EXISTS public.financial_relationships_fec_filing_unique;
