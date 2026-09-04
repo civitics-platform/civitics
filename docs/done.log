@@ -1374,3 +1374,4 @@
 2026-09-03 | FIX-1109 | 1b91b94a | prod-only | docs(ops): the weekly derived-MV refresh is back on schedule — supervised firing complete, jobid 10 re-enabled
 2026-09-03 | FIX-1129 | 1b91b94a | prod-only | docs(ops): the weekly derived-MV refresh is back on schedule — supervised firing complete, jobid 10 re-enabled
 2026-09-03 | FIX-966 | 1b91b94a | closes-as-superseded | docs(ops): the weekly derived-MV refresh is back on schedule — supervised firing complete, jobid 10 re-enabled
+2026-09-04 | FIX-1133 | 1fabf701 | local+prod | perf(fr): an index census on financial_relationships — role first, callers second, counters last; 1 dropped / 2 held to 2026-09-12
