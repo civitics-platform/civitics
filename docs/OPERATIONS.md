@@ -587,6 +587,69 @@ last committed the workflow file — currently
 `Civitics Platform <civitics.platform@gmail.com>`. If that inbox is unwatched,
 this alert is decorative.
 
+**Which host it tests (FIX-1057, 2026-09-04):** `https://civitics.com` — through
+Cloudflare, the path a real user takes. It curled the `vercel.app` origin until
+then and was blind to every edge-layer failure; on 2026-08-12 civitics.com served
+Cloudflare 526 all day while this job stayed green. The flip was blocked by
+`security_level=under_attack` challenging every non-browser client, and was
+unblocked by a narrow WAF rule (`Probe skip (FIX-1057)`) that matches a secret
+header and skips **only** the security level. The zone posture did not change, so
+an external uptime service is still blocked. The secret lives in the
+`PROBE_HEADER_SECRET` GHA secret and the WAF rule expression — rotate both
+together, or the probe goes permanently red. See `docs/CLOUDFLARE.md` §"The one
+custom rule that does exist is security, not caching".
+
+### Front-door watchdog (FIX-1130)
+
+`/api/cron/front-door-watch`, every 15 minutes from a Vercel cron entry in
+`apps/civitics/vercel.json`. Emails `ADMIN_EMAIL` on the Resend rails with
+subjects `[Civitics][FRONT DOOR DOWN]` / `[Civitics][FRONT DOOR RECOVERED]`.
+
+**What it watches that nothing else could.** The Supabase front door (Cloudflare
+→ Kong → PostgREST/pooler) can wedge on its own and stay wedged after Postgres
+underneath has recovered. On 2026-08-31 it did exactly that: `edge_logs` shows
+**sixteen consecutive hours at 100.0% Cloudflare-class 52x**, and
+`pg_postmaster_start_time()` still reads `2026-08-31T23:01:12Z` — the project
+restart that cleared it. Cloudflare's analytics for civitics.com showed **zero
+5xx across the same 24 hours**, because the wedge was on the *data* front door,
+not the website's edge. The sync canary rides Postgres and was blind. The
+request-path probe did go red three times (11:49, 18:11, 22:52 UTC) but its
+first red was five hours after onset, and a red GHA run is not a page.
+
+**RUNBOOK — the only known remediation is a Supabase project restart**
+(dashboard → Project Settings → General → Restart project). **Postgres is
+usually healthy during this failure; do not go hunting for a slow query first.**
+Confirm the restart landed with `pg_postmaster_start_time()` afterwards.
+
+**Two instruments, both Postgres-free by design** (FIX-1130 puts that in scope
+explicitly — the detector must not need a Postgres connection to report that the
+thing in front of Postgres is broken):
+
+1. A direct `GET /rest/v1/` liveness probe, 3 attempts × 5 s. **A 401 means
+   healthy** — PostgREST rejects on key class before touching the database, which
+   is exactly why that endpoint is the right target. The predicate is "any status
+   < 500", not "200".
+2. The Supabase Logs API over `edge_logs`, four closed 15-minute buckets.
+
+**It reads 52x, not 5xx, and that is the whole design.** Across 550 healthy
+15-minute buckets (six days), `n_52x` is p50/p90/p95/p99 = 0 and 544 of 550 are
+exactly zero. A bucket is RED at `n_52x >= 3 AND n_52x/requests >= 0.5`; measured
+wedge buckets run 95.8–100%, every non-outage bucket runs ≤ 7.1%. A 5xx-ratio arm
+was designed in and **removed**: on 2026-09-01 the front door served up to 67.7%
+5xx in a bucket while healthy (statement timeouts under I/O load — see
+`docs/audits/front-door-degradation-2026-09-01.md`), so that arm would have paged
+with the restart runbook attached, which was both wrong and harmful advice.
+
+**Dedup is stateless** — there is no Postgres-independent state store in this
+codebase, so DOWN pages on the transition tick and thereafter at most once an
+hour, and RECOVERED fires on an exact bucket-shape edge. Replayed against
+2026-08-31 it declares DOWN at 06:47 (32 min after the wedge went total) and
+sends 19 emails across the 17-hour outage. Replayed against six healthy days it
+sends three, all on 2026-08-29 — which is the FIX-1125 outage, a true positive.
+
+The logic is pure and unit-tested against both real series in
+`packages/db/src/front-door-verdict.test.ts`; the route only does the I/O.
+
 ### Cost detection: what watches money, and what acts on its own (FIX-1044/1045/1046)
 
 Added 2026-08-16 after the 2026-08-15 crawl burned ~$21/day for 16 hours without

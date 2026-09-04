@@ -87,6 +87,29 @@ The one custom rule that does exist is security, not caching:
 > **Common Exploit Paths** — Block where URI Path contains `.php`, `wp-`, `.env`,
 > `xmlrpc`, or `phpmyadmin`. 1 of 5 custom rules. Active.
 
+The second security rule was added 2026-09-04 to unblock [[FIX-1057]]:
+
+> **Probe skip (FIX-1057)** — Skip → **Security Level only**, where
+> `(http.request.headers["x-civitics-probe"][0] eq "<secret>")`. Active.
+
+Why it is shaped exactly that way, because each choice is load-bearing:
+
+- **Skip "Security Level", not "All remaining custom rules".** The rule buys the
+  request-path probe past the Under Attack challenge and nothing else — `Common
+  Exploit Paths` still applies to it. Ticking the broader box would turn a
+  leaked header into a WAF bypass rather than a challenge bypass.
+- **A secret header, not a UA or an IP allowlist.** GitHub-hosted runners have no
+  stable egress IP, and a User-Agent is forgeable by anyone. The header value is
+  32 random bytes, held in the `PROBE_HEADER_SECRET` GitHub Actions secret and in
+  this rule's expression — those two places and nowhere else.
+- **It does NOT change the zone posture.** `security_level` stays `under_attack`;
+  the Pending item below is still open and still the real fix. This rule admits
+  one client, which is why an external uptime service remains blocked.
+
+Rotating the secret means editing the WAF expression and the GHA secret
+*together*. Changing only one makes the probe fail every run — a permanently-red
+pager, which is the disabled-pager failure [[FIX-1057]] existed to avoid.
+
 ### 4. SSL/TLS mode must be **Full (strict)**
 
 Vercel serves a valid certificate for the domain and forces HTTPS at the origin. *Flexible*
@@ -114,7 +137,7 @@ Snapshot. Verify in the dashboard before relying on any row.
 | Caching Level | Standard | default |
 | Bot Fight Mode | **Off** | intentional — see §2 |
 | Security level | **`under_attack` — STILL ON as of 2026-08-17** | human-set, not the loop — see §526 |
-| WAF custom rules | 3 — Common Exploit Paths, `WAF - SSL` (ACME skip), Meta | all enabled |
+| WAF custom rules | 4 — Common Exploit Paths, `WAF - SSL` (ACME skip), Meta, `Probe skip (FIX-1057)` | all enabled |
 | TLS 1.3 | On | |
 | Automatic HTTPS Rewrites | On | |
 | Always Use HTTPS | **On** | corrected 2026-08-17; the doc said Off |
@@ -192,10 +215,18 @@ Mail is Resend (via SES) on the `send.` subdomain. SPF and DKIM present; **no DM
       zone is already at security_level=under_attack and this loop did not set it."*
       Consequence, measured the same day: `curl https://civitics.com/`, `/officials` and
       `/api/officials/<id>/responsiveness` all return **403 `Cf-Mitigated: challenge`**,
-      even with a browser User-Agent. That is what keeps the FIX-1026 request-path probe
-      pinned to the vercel.app origin ([[FIX-1057]]) and what would block any external
-      uptime service. Turning it off remains the real test named in §2: watch Vercel Fluid
-      CPU once `Common Exploit Paths` holds the line alone.
+      even with a browser User-Agent. That kept the FIX-1026 request-path probe pinned to
+      the vercel.app origin until 2026-09-04, when [[FIX-1057]] shipped the narrow
+      `Probe skip (FIX-1057)` WAF rule above and repointed it at civitics.com — the probe
+      is no longer blocked, but **an external uptime service still is**, because that rule
+      admits one client by a secret header rather than changing the posture. Turning Under
+      Attack off remains the real test named in §2: watch Vercel Fluid CPU once
+      `Common Exploit Paths` holds the line alone.
+- [ ] **Rotate `PROBE_HEADER_SECRET` whenever the probe changes hands or leaks.** It lives
+      in exactly two places — the `Probe skip (FIX-1057)` WAF rule expression and the
+      GitHub Actions secret of the same name — and both must change in the same sitting.
+      A mismatch does not fail open: the probe gets challenged and
+      `.github/workflows/platform-snapshot.yml` goes red on a 403.
 - [ ] **Add the FIX-799 Skip rule** for same-origin `RSC eq "1"` GETs, so managed challenge
       stops firing on the app's own soft navigations. More urgent while Under Attack is on.
 - [ ] **Add a DMARC record** — `_dmarc.civitics.com` TXT, `v=DMARC1; p=none; rua=…` to

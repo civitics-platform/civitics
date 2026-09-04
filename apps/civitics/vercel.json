@@ -11,6 +11,10 @@
     {
       "path": "/api/cron/platform-snapshot",
       "schedule": "*/30 * * * *"
+    },
+    {
+      "path": "/api/cron/front-door-watch",
+      "schedule": "*/15 * * * *"
     }
   ]
 }

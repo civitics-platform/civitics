@@ -478,3 +478,25 @@ export {
   hasKnownPricing,
 } from "./ai-pricing";
 export type { ModelPricing } from "./ai-pricing";
+
+// FIX-1130 — the front-door wedge detector's pure decision logic. The route
+// (apps/civitics/app/api/cron/front-door-watch) does the I/O; everything that
+// decides lives here so the 2026-08-31 incident is replayable as a test.
+export {
+  bucketIsRed,
+  alignBuckets,
+  floorToBucket,
+  decideFrontDoorVerdict,
+  shouldSend,
+  renderFrontDoorEmail,
+  FRONT_DOOR_RUNBOOK,
+  RED_MIN_52X,
+  RED_MIN_52X_RATIO,
+  BUCKET_MS,
+  BUCKET_COUNT,
+} from "./front-door-verdict";
+export type {
+  FrontDoorBucket,
+  FrontDoorProbe,
+  FrontDoorVerdict,
+} from "./front-door-verdict";

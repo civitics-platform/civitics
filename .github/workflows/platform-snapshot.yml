@@ -38,7 +38,13 @@ name: platform-snapshot
 # left with the trigger job, and lives on only as a Vercel project env var):
 #   - CIVITICS_APP_URL      — e.g. https://civitics-civitics.vercel.app
 #                             (falls back to the production URL below if unset)
-#   - PROBE_URL             — optional; see the probe step's FIX-1057 note
+#   - PROBE_URL             — https://civitics.com since FIX-1057 (2026-09-04).
+#                             Kept SEPARATE from CIVITICS_APP_URL on purpose;
+#                             see the probe step's note.
+#   - PROBE_HEADER_SECRET   — REQUIRED since FIX-1057. The value the Cloudflare
+#                             WAF rule "Probe skip (FIX-1057)" matches on to
+#                             skip the Under Attack security level. Rotate it
+#                             in the WAF rule and here TOGETHER.
 #   - PROBE_OFFICIAL_ID     — optional; an officials.id the probe fetches
 #                             (falls back to the id below if unset)
 
@@ -111,49 +117,107 @@ jobs:
     # Deliberately NO `concurrency:` here. See header.
 
     steps:
-      # WHICH HOST THIS TESTS, AND THE BLIND SPOT IT CURRENTLY HAS (FIX-1057).
+      # WHICH HOST THIS TESTS (FIX-1057 — RESOLVED 2026-09-04).
       #
-      # This probe hits the VERCEL ORIGIN (vercel.app), not the public host
-      # civitics.com. That means it tests "is the app serving" and is BLIND to
-      # every Cloudflare-layer failure. That blindness is not theoretical: on
-      # 2026-08-12 civitics.com served Cloudflare 526 (expired ORIGIN cert)
-      # while the vercel.app URL kept working, so this job — and the whole
-      # platform-snapshot workflow — stayed GREEN through the outage. It is the
-      # same shape as the 2026-08-11 522 this job was built for.
+      # This probe now hits https://www.civitics.com, so it traverses Cloudflare
+      # THEN Vercel, which is the path a real user takes.
       #
-      # WHY IT HAS NOT SIMPLY BEEN REPOINTED AT civitics.com: it cannot be, yet.
-      # Measured 2026-08-17 against the live zone — all three probe paths return
-      # HTTP 403 with `Cf-Mitigated: challenge`, including with a browser
-      # User-Agent, because `security_level` is still `under_attack`:
+      # IT IS THE www HOST, NOT THE APEX, AND THAT IS NOT A TYPO. The apex
+      # answers 307 to https://www.civitics.com/ (measured 2026-09-04, with the
+      # probe header, so this is the redirect and not the challenge). This job
+      # asserts an exact 200 and does not pass -L, so pointing it at the apex
+      # would fail every run on the redirect — the same permanently-red-pager
+      # outcome FIX-1057 exists to avoid. The FIX-1057 bullet and the 2026-08-17
+      # measurements both say "civitics.com"; they were recording the challenge,
+      # which the apex returns before it ever gets to redirect.
+      #
+      # Consequence worth knowing: nothing here watches the apex redirect. If
+      # civitics.com stopped redirecting, this job would stay green.
+      #
+      # THE BLIND SPOT IT USED TO HAVE, kept because it is the reason the rule
+      # below exists: until 2026-09-04 this job curled the VERCEL ORIGIN
+      # (vercel.app) and was structurally blind to every Cloudflare-layer
+      # failure. Not theoretical — on 2026-08-12 civitics.com served Cloudflare
+      # 526 (expired ORIGIN cert) for much of the day while the vercel.app URL
+      # kept working, and this job stayed GREEN through the whole outage. Same
+      # shape as the 2026-08-11 522 it was built for.
+      #
+      # WHY IT COULD NOT SIMPLY BE REPOINTED, until now. Measured 2026-08-17
+      # against the live zone, all three probe paths returned HTTP 403 with
+      # `Cf-Mitigated: challenge` — including with a browser User-Agent —
+      # because `security_level` is `under_attack`:
       #
       #   curl https://civitics.com/                         -> 403
       #   curl https://civitics.com/officials                -> 403
       #   curl https://civitics.com/api/officials/<id>/responsiveness -> 403
       #
-      # Repointing today would make this job fail every hour forever, which is
-      # strictly worse than the blind spot — a permanently-red pager is a
-      # disabled pager. The zone posture has to change first; the same Under
-      # Attack setting also blocks any external uptime service (UptimeRobot
-      # etc.), which is the other half of the monitoring gap named above.
+      # Repointing then would have made this job fail every hour forever, which
+      # is strictly worse than the blind spot — a permanently-red pager is a
+      # disabled pager.
       #
-      # SWITCH IT WHEN either (a) security_level leaves under_attack, or (b) a
-      # WAF skip rule admits this probe specifically. Then set the PROBE_URL
-      # secret to https://civitics.com — the env var below already reads it, so
-      # the flip is a secret change with no code change. Verify with the three
-      # curls above before flipping.
+      # The zone is STILL at under_attack. What unblocked the flip was the WAF
+      # skip rule described on the step below, which admits this probe by a
+      # secret header and nothing else. Re-verified 2026-09-04 WITH the header:
+      # all three paths return 200 and no Cf-Mitigated header.
+      #
+      # STILL OPEN, and unchanged by this: an external uptime service
+      # (UptimeRobot etc.) is still blocked by the same Under Attack setting,
+      # so true minutes-scale third-party monitoring remains unavailable. The
+      # FIX-1130 watchdog closes part of that gap from the inside, on a
+      # 15-minute Vercel cron.
+      #
+      # RESOLVED 2026-09-04 (FIX-1057) VIA OPTION (b) — the WAF skip rule.
+      #
+      # The zone STAYS at security_level=under_attack; that posture is a human
+      # setting and part of the cost program, and nothing here touches it. What
+      # changed is a single Cloudflare WAF custom rule, "Probe skip (FIX-1057)":
+      #
+      #   expression: (http.request.headers["x-civitics-probe"][0] eq "<secret>")
+      #   action:     Skip -> Security Level ONLY
+      #
+      # "all remaining custom rules" is deliberately UNCHECKED, so Common
+      # Exploit Paths still applies to the probe's requests — the rule buys this
+      # job past the Under Attack challenge and nothing else. The key is a
+      # secret header rather than a UA or an IP allowlist because the runner's
+      # egress IP is not stable and a UA is trivially forgeable.
+      #
+      # PROBE_URL is now https://civitics.com, so this job finally tests the
+      # path a real user takes: Cloudflare THEN Vercel. CIVITICS_APP_URL is
+      # deliberately still the vercel.app origin — other consumers read it and
+      # repointing it would change their behaviour too (that is the FIX-1057
+      # landmine; do not "tidy" the two into one).
+      #
+      # ROTATING THE SECRET: it lives in exactly two places, the GHA secret
+      # PROBE_HEADER_SECRET and the WAF rule expression. Change both together;
+      # changing only one turns this job permanently red, which is the same
+      # disabled-pager failure the whole FIX was avoiding.
+      #
+      # If the header is ever absent or wrong the request gets the Under Attack
+      # challenge and this job goes red on a 403 — verified 2026-09-04 by
+      # curling without the header. That is a real signal about the rule, not a
+      # false alarm about the site, so read the log before assuming an outage.
       - name: Probe key request-path endpoints
         env:
           APP_URL: ${{ secrets.PROBE_URL || secrets.CIVITICS_APP_URL || 'https://civitics-civitics.vercel.app' }}
           OFFICIAL_ID: ${{ secrets.PROBE_OFFICIAL_ID || '5201c5c4-7b93-4042-a74f-d494a20e74de' }}
+          PROBE_HEADER_SECRET: ${{ secrets.PROBE_HEADER_SECRET }}
         run: |
           set -uo pipefail
 
-          # Three surfaces, each verified on 2026-08-12 to return 200 with
-          # X-Vercel-Cache: MISS — so none of them can answer from the CDN while
-          # the database is unreachable:
-          #   /                                 homepage SSR (no-store)
+          # Three surfaces:
+          #   /                                 homepage SSR
           #   /officials                        DB-backed index page
           #   /api/officials/<id>/responsiveness  an official-page API
+          #
+          # THE "ALL THREE ARE X-Vercel-Cache: MISS" CLAIM IS NO LONGER TRUE OF
+          # THE FIRST ONE. That was verified on 2026-08-12 against the vercel.app
+          # origin. Re-measured 2026-09-04 through Cloudflare against
+          # www.civitics.com: `/` answers `x-vercel-cache: HIT`, so it CAN serve
+          # from the CDN while the database is unreachable and its arm of this
+          # probe is decorative on a DB-down outage. `/officials` and
+          # `/api/.../responsiveness` are both still MISS, so the job as a whole
+          # still fails closed — and `/responsiveness` was chosen precisely
+          # because it 500s on a DB error (see below). Filed as FIX-1143.
           #
           # The official-page API is /responsiveness and NOT /summary, and that
           # choice is deliberate: /summary FAILS OPEN. Its own header says the
@@ -187,7 +251,15 @@ jobs:
               # `|| code=000` rather than `|| echo 000`: on a connection error
               # curl still prints its own "000" via -w, so echoing a second one
               # produced "000000". -sS is kept so curl's reason reaches the log.
-              code=$(curl -sS -o /dev/null -w "%{http_code}" --max-time 25 "${url}") || code="000"
+              # The x-civitics-probe header is what the WAF "Probe skip
+              # (FIX-1057)" rule matches to skip the Under Attack security
+              # level. Without it every one of these returns 403 with
+              # Cf-Mitigated: challenge. Sent unconditionally — when the
+              # secret is unset it is an empty header, which matches nothing
+              # and simply gets challenged, so the failure is loud rather than
+              # silent.
+              code=$(curl -sS -o /dev/null -w "%{http_code}" --max-time 25 \
+                -H "x-civitics-probe: ${PROBE_HEADER_SECRET}" "${url}") || code="000"
               if [ "${code}" = "200" ]; then
                 echo "ok   ${path} (HTTP 200, attempt ${attempt}/${ATTEMPTS})"
                 ok=1
