@@ -1364,3 +1364,8 @@
 2026-09-02 | FIX-1141 | d57d39f8 | local+prod | fix(cron): move agency-staffing-rollup-refresh to Tue 00:05 UTC — 13:00 is the worst hour of the week for worker launch
 2026-09-02 | FIX-970 | 2cd9a0da | local+prod | perf(donor-rollup): the scheduled refresh uses the set-based regime — 24 s/recipient becomes 0.06 s; freshness reads its own pipeline
 2026-09-02 | FIX-973 | 2cd9a0da | local-only | perf(donor-rollup): the scheduled refresh uses the set-based regime — 24 s/recipient becomes 0.06 s; freshness reads its own pipeline
+2026-09-03 | FIX-1057 | f706f301 | local+prod | feat(ops): a Postgres-free front-door watchdog on Vercel cron, and the request-path probe finally sees Cloudflare
+2026-09-03 | FIX-1102 | f706f301 | closes-as-superseded | feat(ops): a Postgres-free front-door watchdog on Vercel cron, and the request-path probe finally sees Cloudflare
+2026-09-03 | FIX-1130 | f706f301 | local+prod | feat(ops): a Postgres-free front-door watchdog on Vercel cron, and the request-path probe finally sees Cloudflare
+2026-09-03 | FIX-1142 | 40da76ce | unverified | perf(treemap-global): a covering partial index for the donor-range chunk, and a resume bound that outlives the schedule
+2026-09-03 | FIX-1142 | d4d14b97 | local-only | docs(ops): overnight receipts — 1134 post-swap unit time, canary steady state, jobid 24 first bulk firings
