@@ -12,7 +12,7 @@
 export const dynamic = "force-dynamic";
 
 import { NextResponse, type NextRequest } from "next/server";
-import { createAdminClient } from "@civitics/db";
+import { createAdminClient, afterKey } from "@civitics/db";
 import { notifyFollowers } from "@/lib/notifications";
 import { fetchChunkedByIds } from "@/lib/paginate";
 
@@ -30,18 +30,24 @@ async function fetchAllFollowedEntityIds(
   entityType: string,
 ): Promise<string[]> {
   const ids = new Set<string>();
-  let from = 0;
+  // FIX-984: keyset on the `id` pkey. This walk carried NO `.order()` at all,
+  // so `.range()` was paging an unordered result -- free to hand back the same
+  // follow row on two pages and another on none. The Set hid the duplicate; the
+  // MISSED follower just never got notified. Ordering by the seek key fixes the
+  // correctness bug and the deep-page cost in the same edit.
+  let afterId: string | null = null;
   for (;;) {
-    const { data, error } = await db
+    const { data, error } = await afterKey(db
       .from("user_follows")
-      .select("entity_id")
+      .select("id, entity_id")
       .eq("entity_type", entityType)
-      .range(from, from + FOLLOWS_PAGE - 1);
+      .order("id", { ascending: true })
+      .limit(FOLLOWS_PAGE), "id", afterId);
     if (error) throw error;
-    const batch: { entity_id: string }[] = data ?? [];
+    const batch: { id: string; entity_id: string }[] = data ?? [];
     for (const r of batch) ids.add(r.entity_id);
     if (batch.length < FOLLOWS_PAGE) break;
-    from += FOLLOWS_PAGE;
+    afterId = batch[batch.length - 1]!.id;
   }
   return Array.from(ids);
 }

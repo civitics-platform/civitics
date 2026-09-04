@@ -25,7 +25,7 @@
  *   pnpm --filter @civitics/data data:ai-summaries-new
  */
 
-import { calculateCostUsd, createAdminClient, agencyFullName, rowsOrThrow, selectAllOrThrow } from "@civitics/db";
+import { calculateCostUsd, createAdminClient, agencyFullName, rowsOrThrow, selectAllKeyset, afterKey } from "@civitics/db";
 import { createAiClient, MODELS } from "@civitics/ai";
 import { costGate } from "@civitics/ai/cost-gate";
 import { sleep } from "../utils";
@@ -170,17 +170,21 @@ export async function fetchOpenProposals(db: ReturnType<typeof createAdminClient
   // FIX-545: the cache read was silent-zero AND truncated at PostgREST's
   // 1,000-row cap — already-summarized proposals looked unsummarized and
   // re-burned Anthropic budget. Paginate + throw.
-  const cacheRows = await selectAllOrThrow(
+  const cacheRows = await selectAllKeyset<{ id: string; entity_id: string }, string>(
     "ai-summaries proposal cache preload",
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (from, to) => (db as any)
+    (after, limit) => afterKey((db as any)
       .from("ai_summary_cache")
-      .select("entity_id")
+      .select("id, entity_id")
       .eq("entity_type", "proposal")
       .eq("summary_type", "plain_language")
-      .order("entity_id")
-      .range(from, to),
-  ) as { entity_id: string }[];
+      // FIX-984: keyed on the `id` pkey, not `entity_id` — nothing constrains
+      // one (entity_type, summary_type) pair to one row per entity, and a
+      // repeated key makes a keyset walk skip the duplicate silently.
+      .order("id")
+      .limit(limit), "id", after),
+    { key: (r) => r.id },
+  );
   const cached = new Set<string>(cacheRows.map((r) => r.entity_id));
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -341,17 +345,18 @@ export async function fetchOfficials(db: ReturnType<typeof createAdminClient>): 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ) as any[];
 
-  const cacheRows = await selectAllOrThrow(
+  const cacheRows = await selectAllKeyset<{ id: string; entity_id: string }, string>(
     "ai-summaries official cache preload",
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (from, to) => (db as any)
+    (after, limit) => afterKey((db as any)
       .from("ai_summary_cache")
-      .select("entity_id")
+      .select("id, entity_id")
       .eq("entity_type", "official")
       .eq("summary_type", "profile")
-      .order("entity_id")
-      .range(from, to),
-  ) as { entity_id: string }[];
+      .order("id") // FIX-984 keyset key -- see the proposal preload above
+      .limit(limit), "id", after),
+    { key: (r) => r.id },
+  );
   const cached = new Set<string>(cacheRows.map((r) => r.entity_id));
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const uncached = officialRows.filter((o: any) => !cached.has(o.id));

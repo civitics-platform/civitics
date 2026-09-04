@@ -21,7 +21,7 @@
  *   pnpm --filter @civitics/data data:elections
  */
 
-import { createAdminClient } from "@civitics/db";
+import { createAdminClient, afterKey } from "@civitics/db";
 import { completeSync, failSync, startSync, type PipelineResult } from "../sync-log";
 import { withDirectClient } from "../../lib/direct-pg-upsert";
 import {
@@ -144,7 +144,7 @@ export async function runElectionsPipeline(): Promise<PipelineResult> {
     const now = new Date();
     const nowIso = now.toISOString().slice(0, 10);
     const pageSize = 1000;
-    let offset = 0;
+    let afterId: string | null = null; // FIX-984: keyset cursor, not an OFFSET
     let scanned = 0;
     // FIX-819 — accumulate only the officials whose computed values differ from
     // what's already stored. On a steady-state run this stays ~empty (election
@@ -154,14 +154,14 @@ export async function runElectionsPipeline(): Promise<PipelineResult> {
     const changed: ChangedRow[] = [];
 
     for (;;) {
-      const { data, error } = await db
+      const { data, error } = await afterKey(db
         .from("officials")
         .select(
           "id, role_title, term_start, term_end, jurisdiction_id, governing_body_id, metadata, current_term_start, current_term_end, next_election_date, next_election_type, is_up_for_election",
         )
         .eq("is_active", true)
         .order("id", { ascending: true })
-        .range(offset, offset + pageSize - 1);
+        .limit(pageSize), "id", afterId);
       if (error) throw new Error(error.message);
 
       const rows = (data ?? []) as OfficialRow[];
@@ -260,7 +260,7 @@ export async function runElectionsPipeline(): Promise<PipelineResult> {
         scanned++;
       }
 
-      offset += rows.length;
+      afterId = rows[rows.length - 1]!.id;
       if (rows.length < pageSize) break;
     }
 

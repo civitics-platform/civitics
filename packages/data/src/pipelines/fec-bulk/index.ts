@@ -89,7 +89,7 @@ import * as path     from "path";
 import * as os       from "os";
 import * as readline from "readline";
 import * as unzipper from "unzipper";
-import { createAdminClient } from "@civitics/db";
+import { createAdminClient, afterKey } from "@civitics/db";
 import {
   startSync,
   completeSync,
@@ -399,16 +399,16 @@ export async function loadOfficials(
 ): Promise<OfficialRecord[]> {
   const PAGE = 1000;
   const all: OfficialRecord[] = [];
-  let offset = 0;
+  let afterId: string | null = null; // FIX-984: keyset cursor, not an OFFSET
   while (true) {
-    const { data, error } = await db
+    const { data, error } = await afterKey(db
       .from("officials")
       .select("id, full_name, first_name, last_name, role_title, tier, source_ids, jurisdictions!jurisdiction_id(short_name)")
       .eq("is_active", true)
-      // FIX-760: stable unique order — unordered .range() pagination can
-      // skip/duplicate rows as page boundaries shift between queries.
+      // FIX-760 total order / FIX-984 keyset key: the same unique column
+      // must appear in .order(), in .limit()'s cursor, and in the seek.
       .order("id")
-      .range(offset, offset + PAGE - 1);
+      .limit(PAGE), "id", afterId);
 
     if (error) throw new Error(`Could not load officials: ${error.message}`);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -424,8 +424,9 @@ export async function loadOfficials(
         tier:       (o.tier as string | null) ?? null,
       });
     }
-    if ((data ?? []).length < PAGE) break;
-    offset += PAGE;
+    const page = (data ?? []) as Array<{ id: string }>;
+    if (page.length < PAGE) break;
+    afterId = page[page.length - 1]!.id;
   }
   return all;
 }

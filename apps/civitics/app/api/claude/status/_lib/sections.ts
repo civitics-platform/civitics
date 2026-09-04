@@ -431,6 +431,11 @@ export async function getPipelines(db: Db) {
             "pipeline, status, started_at, completed_at, rows_inserted, rows_updated, rows_failed, estimated_mb, error_message, metadata",
           )
           .gt("completed_at", fourteenMonthsAgo)
+          // OFFSET (FIX-984 exception): grouped by pipeline then newest-first
+          // within it, with `id` as the tiebreak -- a three-column composite the
+          // consumer depends on, so there is no single column to seek on. The
+          // window is 14 months of data_sync_log (2,488 rows total on prod), so
+          // the walk is a couple of pages. Order is total.
           .order("pipeline", { ascending: true })
           .order("completed_at", { ascending: false, nullsFirst: false })
           .order("id", { ascending: true })

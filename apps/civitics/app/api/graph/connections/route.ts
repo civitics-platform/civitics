@@ -1,4 +1,4 @@
-import { createAdminClient } from "@civitics/db";
+import { createAdminClient, fetchAllKeyset, afterKey } from "@civitics/db";
 import { withPublicCdnCache } from "@/lib/cdn-cache";
 import { supabaseUnavailable, unavailableResponse, withDbTimeout } from "@/lib/supabase-check";
 import { fetchChunkedByIds } from "@/lib/paginate";
@@ -52,30 +52,33 @@ const DEPTH2_BUDGET_MS = 8000;
 
 /**
  * Page through a row-capped PostgREST query so the full set is assembled rather
- * than silently truncated at MAX_ROWS (FIX-428). `build(from, to)` must return a
- * fresh query with `.range(from, to)` applied.
+ * than silently truncated at MAX_ROWS (FIX-428).
+ *
+ * FIX-984: keyset, not OFFSET, and now a thin wrapper over the shared
+ * `fetchAllKeyset` in `@civitics/db`. Two things changed for every caller:
+ *
+ *  - `build` now receives `(after, limit)` and must apply
+ *    `.order("id").limit(limit)` plus `.gt("id", after)` when `after` is
+ *    non-null (`afterKey` does the conditional).
+ *  - the walks here previously carried NO `.order()` AT ALL. `.range()` over an
+ *    unordered result is free to return a row on two pages and another on none,
+ *    so the depth-2 expansion could double-count an edge and drop a different
+ *    one on the same request. Every caller now orders by the `entity_connections`
+ *    pkey, which is also the seek key.
  *
  * Returns the accumulated rows plus an `error` (propagated from the first failing
  * page — never swallowed, FIX-431) and a `truncated` flag set when an optional
  * `maxRows` safety ceiling was reached before exhaustion.
  */
-async function fetchAllPaged<T>(
-  build: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
-  opts: { maxRows?: number } = {},
+function fetchAllPaged<T extends { id: string }>(
+  build: (after: string | null, limit: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
+  opts: { maxRows?: number; label?: string } = {},
 ): Promise<{ rows: T[]; error: { message: string } | null; truncated: boolean }> {
-  const ceiling = opts.maxRows ?? Number.POSITIVE_INFINITY;
-  const rows: T[] = [];
-  let from = 0;
-  for (;;) {
-    const { data, error } = await build(from, from + MAX_ROWS - 1);
-    if (error) return { rows, error, truncated: false };
-    const batch = data ?? [];
-    rows.push(...batch);
-    if (batch.length < MAX_ROWS) break;        // last (short) page → exhausted
-    from += MAX_ROWS;
-    if (rows.length >= ceiling) return { rows, error: null, truncated: true };
-  }
-  return { rows, error: null, truncated: false };
+  return fetchAllKeyset<T, string>(opts.label ?? "connections", build, {
+    key: (r) => r.id,
+    pageSize: MAX_ROWS,
+    ...(opts.maxRows !== undefined ? { maxRows: opts.maxRows } : {}),
+  });
 }
 
 /**
@@ -682,18 +685,20 @@ export async function GET(request: Request) {
           }
           const chunk = autoExpandIds.slice(cursor, cursor + EXPAND_CHUNK);
           const [expandFromRes, expandToRes] = await Promise.all([
-            fetchAllPaged<ConnectionRow>((f, t) =>
+            fetchAllPaged<ConnectionRow>((after, limit) =>
               withDbTimeout(
-                supabase.from("entity_connections").select("*").in("from_id", chunk).range(f, t),
+                afterKey(supabase.from("entity_connections").select("*").in("from_id", chunk)
+                  .order("id", { ascending: true }).limit(limit), "id", after),
                 5000,
                 "connections:depth2-from",
-              )),
-            fetchAllPaged<ConnectionRow>((f, t) =>
+              ), { label: "connections:depth2-from" }),
+            fetchAllPaged<ConnectionRow>((after, limit) =>
               withDbTimeout(
-                supabase.from("entity_connections").select("*").in("to_id", chunk).range(f, t),
+                afterKey(supabase.from("entity_connections").select("*").in("to_id", chunk)
+                  .order("id", { ascending: true }).limit(limit), "id", after),
                 5000,
                 "connections:depth2-to",
-              )),
+              ), { label: "connections:depth2-to" }),
           ]);
           if (expandFromRes.error || expandToRes.error) {
             console.error(
@@ -795,12 +800,14 @@ export async function GET(request: Request) {
       // officials, max 10 — FIX-902
       const TOP10_EDGE_CEILING = MAX_ROWS * 5;
       const [expandFromRes, expandToRes] = await Promise.all([
-        fetchAllPaged<ConnectionRow>((f, t) =>
-          supabase.from("entity_connections").select("*").in("from_id", top10Ids).range(f, t),
-          { maxRows: TOP10_EDGE_CEILING }),
-        fetchAllPaged<ConnectionRow>((f, t) =>
-          supabase.from("entity_connections").select("*").in("to_id", top10Ids).range(f, t),
-          { maxRows: TOP10_EDGE_CEILING }),
+        fetchAllPaged<ConnectionRow>((after, limit) =>
+          afterKey(supabase.from("entity_connections").select("*").in("from_id", top10Ids)
+            .order("id", { ascending: true }).limit(limit), "id", after),
+          { maxRows: TOP10_EDGE_CEILING, label: "connections:top10-from" }),
+        fetchAllPaged<ConnectionRow>((after, limit) =>
+          afterKey(supabase.from("entity_connections").select("*").in("to_id", top10Ids)
+            .order("id", { ascending: true }).limit(limit), "id", after),
+          { maxRows: TOP10_EDGE_CEILING, label: "connections:top10-to" }),
       ]);
       if (expandFromRes.error) throw expandFromRes.error;
       if (expandToRes.error) throw expandToRes.error;

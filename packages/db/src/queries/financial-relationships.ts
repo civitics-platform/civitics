@@ -34,6 +34,17 @@ export async function listDonationsByOfficial(
  * Top donors to an official — aggregates by from_id (financial_entities row),
  * then joins financial_entities.display_name for labels.
  */
+/**
+ * FIX-1037 REMOVAL CANDIDATE -- ZERO CALLERS.
+ *
+ * A repo-wide grep (2026-09-04) finds this name only here and in the
+ * `packages/db/src/index.ts` export list. The FIX-902 audit flagged its `.in()`
+ * over up to 1,000 donor ids as one of the two highest-value packages/ sites;
+ * it was NOT chunked in this pass, deliberately. A function with no callers is
+ * not a bug to fix, it is code to delete -- and deleting a public export off
+ * @civitics/db is its own decision, not a rider on a pagination sweep. If it is
+ * ever wired up, chunk the `.in()` through fetchChunkedByIds first.
+ */
 export async function getTopDonorsByOfficial(
   db: DB,
   officialId: string,
@@ -66,6 +77,11 @@ export async function getTopDonorsByOfficial(
 }
 
 /** Donations FROM a named donor (ilike on financial_entities.display_name). */
+/**
+ * FIX-1037 REMOVAL CANDIDATE -- ZERO CALLERS. See getTopDonorsByOfficial above;
+ * same finding, same reasoning. Its `.in("from_id", ids)` is fed by an uncapped
+ * `ilike` result and stays unchunked for now.
+ */
 export async function listDonationsByDonor(
   db: DB,
   donorName: string

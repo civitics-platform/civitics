@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { withPublicCdnCache } from "@/lib/cdn-cache";
 import type { NextRequest } from "next/server";
-import { createAdminClient } from "@civitics/db";
+import { createAdminClient, fetchAllKeyset, afterKey } from "@civitics/db";
 import { supabaseUnavailable, unavailableResponse } from "@/lib/supabase-check";
-import { fetchAllRows, fetchChunkedByIds } from "@/lib/paginate";
+import { fetchChunkedByIds } from "@/lib/paginate";
 
 export const dynamic = "force-dynamic";
 
@@ -56,17 +56,22 @@ interface DonorLite    { id: string; display_name: string; metadata: { state?: s
 // keeping the ceilings bounds a degraded-DB fallback response.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function computeTreemapIndividualsLive(supabase: any, entityId: string | null): Promise<StateGroup[]> {
-  const { rows: donationRows, error: dErr } = await fetchAllRows<DonationLite>((f, t) => {
+  // FIX-984: keyset on the financial_relationships pkey (the column this walk
+  // already ordered on), so the deep pages of a 100k-row scan stop re-walking
+  // everything ahead of them.
+  const { rows: donationRows, error: dErr } = await fetchAllKeyset<
+    DonationLite & { id: string }, string
+  >("treemap-individuals:donations", (after, limit) => {
     let q = supabase
       .from("financial_relationships")
-      .select("from_id, amount_cents")
+      .select("id, from_id, amount_cents")
       .eq("relationship_type", "donation")
       .eq("from_type", "financial_entity")
       .eq("to_type", "official")
       .gt("amount_cents", 0);
     if (entityId) q = q.eq("to_id", entityId);
-    return q.order("id", { ascending: true }).range(f, t);
-  }, { maxRows: entityId ? 100000 : 20000 });
+    return afterKey(q.order("id", { ascending: true }).limit(limit), "id", after);
+  }, { key: (r) => r.id, maxRows: entityId ? 100000 : 20000 });
   if (dErr) {
     console.error("[treemap-individuals] donations fetch:", dErr.message);
     return [];

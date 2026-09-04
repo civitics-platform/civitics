@@ -28,6 +28,7 @@
  */
 
 import type { createAdminClient } from "@civitics/db";
+import { afterKey } from "@civitics/db";
 import { promoteCandidatesDirect } from "../../lib/heavy-rebuild";
 
 type Db = ReturnType<typeof createAdminClient>;
@@ -97,17 +98,17 @@ export async function runCandidateToElectedPromotion(
   }> = [];
   {
     const PAGE = 1000;
-    let offset = 0;
+    let afterId: string | null = null; // FIX-984: keyset cursor, not an OFFSET
     for (;;) {
-      const { data, error } = await db
+      const { data, error } = await afterKey(db
         .from("officials")
         .select("id, full_name, role_title, source_ids, jurisdictions(short_name)")
         .filter("source_ids->>congress_gov", "not.is", null)
         .eq("is_active", true)
-        // FIX-760: stable unique order — unordered .range() pagination can
-        // skip/duplicate rows as page boundaries shift between queries.
+        // FIX-760 total order / FIX-984 keyset key: the same unique column
+        // must appear in .order(), in .limit()'s cursor, and in the seek.
         .order("id")
-        .range(offset, offset + PAGE - 1);
+        .limit(PAGE), "id", afterId);
       if (error) throw new Error(`promote-candidates: elected load: ${error.message}`);
       const rows = (data ?? []) as unknown as Array<{
         id:           string;
@@ -127,7 +128,7 @@ export async function runCandidateToElectedPromotion(
         });
       }
       if (rows.length < PAGE) break;
-      offset += PAGE;
+      afterId = rows[rows.length - 1]!.id;
     }
   }
 
@@ -142,9 +143,9 @@ export async function runCandidateToElectedPromotion(
   }> = [];
   {
     const PAGE = 1000;
-    let offset = 0;
+    let afterId: string | null = null; // FIX-984: keyset cursor, not an OFFSET
     for (;;) {
-      const { data, error } = await db
+      const { data, error } = await afterKey(db
         .from("officials")
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         .select("id, full_name, role_title, metadata" as any)
@@ -152,7 +153,7 @@ export async function runCandidateToElectedPromotion(
         .filter("source_ids->>fec_candidate_id", "not.is", null)
         // FIX-760: stable unique order (see elected load above).
         .order("id")
-        .range(offset, offset + PAGE - 1);
+        .limit(PAGE), "id", afterId);
       if (error) throw new Error(`promote-candidates: candidate load: ${error.message}`);
       const rows = (data ?? []) as unknown as Array<{
         id:         string;
@@ -172,7 +173,7 @@ export async function runCandidateToElectedPromotion(
         });
       }
       if (rows.length < PAGE) break;
-      offset += PAGE;
+      afterId = rows[rows.length - 1]!.id;
     }
   }
 

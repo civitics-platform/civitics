@@ -20,7 +20,7 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { selectAllOrThrow } from "./read-helpers";
+import { selectAllKeyset, afterKey } from "./read-helpers";
 import { calculateLoggedCostUsd } from "./ai-pricing";
 import {
   getPlatformUsage,
@@ -359,15 +359,20 @@ async function getMonthlyAnthropicSpend(
 
     // FIX-545: paginate + throw; the surrounding catch keeps the null
     // ("unknown") contract and a >1k-row month no longer undercounts.
-    const rows = await selectAllOrThrow<UsageRow>(
+    const rows = await selectAllKeyset<UsageRow & { id: string }, string>(
       "platform-snapshot anthropic-spend logs",
-      (from, to) => db
+      (after, limit) => afterKey(db
         .from("api_usage_logs")
-        .select("input_tokens, output_tokens, cost_cents, model")
+        .select("id, input_tokens, output_tokens, cost_cents, model")
         .eq("service", "anthropic")
         .gte("created_at", monthStart)
-        .order("created_at")
-        .range(from, to),
+      // FIX-984: keyset on the `id` pkey, not OFFSET, and not on created_at --
+      // created_at is not unique, and a keyset walk that seeks past a repeated
+      // key drops every row sharing it. Nothing downstream depends on the
+      // order: the rows are summed.
+        .order("id")
+        .limit(limit), "id", after),
+      { key: (r) => r.id },
     );
 
     // FIX-893: was an inline (in*0.25 + out*1.25) using Haiku-3-era prices that

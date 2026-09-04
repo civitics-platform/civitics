@@ -23,6 +23,7 @@ import * as path     from "path";
 import * as readline from "readline";
 
 import type { createAdminClient, Database } from "@civitics/db";
+import { afterKey } from "@civitics/db";
 import { extractZipEntryToDisk, parseFecName } from "./util";
 
 type AdminDb = ReturnType<typeof createAdminClient>;
@@ -145,17 +146,17 @@ async function loadExistingCandidateNames(
 ): Promise<Map<string, { id: string; first_name: string | null; last_name: string | null; full_name: string }>> {
   const map = new Map<string, { id: string; first_name: string | null; last_name: string | null; full_name: string }>();
   const PAGE = 1000;
-  let offset = 0;
+  let afterId: string | null = null; // FIX-984: keyset cursor, not an OFFSET
   for (;;) {
-    const { data, error } = await db
+    const { data, error } = await afterKey(db
       .from("officials")
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .select("id, first_name, last_name, full_name, source_ids, tier" as any)
       .eq("tier", "candidate")
-      // FIX-760: stable unique order — unordered .range() pagination can
-      // skip/duplicate rows as page boundaries shift between queries.
+      // FIX-760 total order / FIX-984 keyset key: the same unique column
+      // must appear in .order(), in .limit()'s cursor, and in the seek.
       .order("id")
-      .range(offset, offset + PAGE - 1);
+      .limit(PAGE), "id", afterId);
     if (error) throw new Error(`loadExistingCandidateNames: ${error.message}`);
     const rows = (data ?? []) as unknown as Array<{
       id:          string;
@@ -169,7 +170,7 @@ async function loadExistingCandidateNames(
       if (candId) map.set(candId, { id: r.id, first_name: r.first_name, last_name: r.last_name, full_name: r.full_name });
     }
     if (rows.length < PAGE) break;
-    offset += PAGE;
+    afterId = rows[rows.length - 1]!.id;
   }
   return map;
 }
@@ -444,16 +445,16 @@ export async function loadOfficialsByFecIds(
   };
 
   const PAGE = 1000;
-  let offset = 0;
+  let afterId: string | null = null; // FIX-984: keyset cursor, not an OFFSET
   for (;;) {
-    const { data, error } = await db
+    const { data, error } = await afterKey(db
       .from("officials")
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .select("id, tier, role_title, source_ids" as any)
       .or("source_ids->>fec_candidate_id.not.is.null,source_ids->>fec_id.not.is.null")
       // FIX-760: stable unique order (see loadExistingCandidateNames).
       .order("id")
-      .range(offset, offset + PAGE - 1);
+      .limit(PAGE), "id", afterId);
     if (error) throw new Error(`loadOfficialsByFecIds: ${error.message}`);
     const rows = (data ?? []) as unknown as Array<{
       id:          string;
@@ -482,7 +483,7 @@ export async function loadOfficialsByFecIds(
       }
     }
     if (rows.length < PAGE) break;
-    offset += PAGE;
+    afterId = rows[rows.length - 1]!.id;
   }
 
   if (collisions.length > 0) {

@@ -63,7 +63,11 @@ export async function listJurisdictionsUpdatedAfter(
     .from("jurisdictions")
     .select("*")
     .gt("updated_at", after)
+    // OFFSET (FIX-984 exception): caller-supplied page number, one request.
+    // `id` added as the unique tiebreaker for the same reason as
+    // listProposalsUpdatedAfter -- a bulk write shares one updated_at.
     .order("updated_at")
+    .order("id", { ascending: true })
     .range(offset, offset + limit - 1);
   if (error) throw error;
   return data;

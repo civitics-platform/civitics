@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { withPublicCdnCache } from "@/lib/cdn-cache";
 import type { NextRequest } from "next/server";
-import { createAdminClient } from "@civitics/db";
+import { createAdminClient, afterKey } from "@civitics/db";
 import { supabaseUnavailable, unavailableResponse } from "@/lib/supabase-check";
 
 export const dynamic = "force-dynamic";
@@ -86,26 +86,28 @@ interface OfficialRow  { id: string; full_name: string; total_received_cents: nu
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function computeSmallDollarLive(supabase: any, entityId: string): Promise<{ cents: number; count: number }> {
   let allRows: DonationLite[] = [];
-  let from = 0;
+  let afterId: string | null = null; // FIX-984: keyset cursor, not an OFFSET
   const PAGE = 1000;
   // eslint-disable-next-line no-constant-condition
   while (true) {
-    const { data } = await supabase
-      .from("financial_relationships")
-      .select("amount_cents")
-      .eq("relationship_type", "donation")
-      .eq("to_type", "official")
-      .eq("to_id", entityId)
-      .lt("amount_cents", SMALL_DOLLAR_CENTS_LIMIT)
-      .gt("amount_cents", 0)
-      // FIX-503: stable pkey order — .range() is OFFSET pagination; without an
-      // ORDER BY the small-dollar sum could double-count or skip rows.
-      .order("id", { ascending: true })
-      .range(from, from + PAGE - 1);
+    // FIX-503 pinned the pkey order so the small-dollar sum cannot double-count
+    // or skip; FIX-984 makes that same pkey the seek key so deep pages stop
+    // re-walking every row before them.
+    const { data }: { data: Array<{ id: string; amount_cents: number | null }> | null } =
+      await afterKey(supabase
+        .from("financial_relationships")
+        .select("id, amount_cents")
+        .eq("relationship_type", "donation")
+        .eq("to_type", "official")
+        .eq("to_id", entityId)
+        .lt("amount_cents", SMALL_DOLLAR_CENTS_LIMIT)
+        .gt("amount_cents", 0)
+        .order("id", { ascending: true })
+        .limit(PAGE), "id", afterId);
     if (!data || data.length === 0) break;
     allRows = allRows.concat(data as DonationLite[]);
     if (data.length < PAGE) break;
-    from += PAGE;
+    afterId = data[data.length - 1]!.id;
     if (allRows.length > 200_000) break; // safety guard
   }
   let cents = 0;

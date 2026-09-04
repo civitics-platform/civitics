@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { withPublicCdnCache } from "@/lib/cdn-cache";
 import type { NextRequest } from "next/server";
-import { createAdminClient } from "@civitics/db";
+import { createAdminClient, afterKey } from "@civitics/db";
 import { supabaseUnavailable, unavailableResponse } from "@/lib/supabase-check";
 
 export const dynamic = "force-dynamic";
@@ -127,22 +127,38 @@ export async function GET(req: NextRequest) {
   const officialsByDistrict = new Map<string, OfficialRow[]>();
 
   async function fetchAndBucket(roleFilter: 'Representative' | 'state-leg'): Promise<void> {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let q = (supabase as any)
-      .from("officials")
-      .select("id, party, metadata, role_title")
-      .not("metadata->>district_jurisdiction_id", "is", null);
-    if (roleFilter === 'Representative') {
-      q = q.eq("role_title", "Representative");
-    } else {
-      q = q.in("role_title", ["State Senator", "State Representative", "State Delegate", "State Assemblymember"]);
-    }
-    // Paginate — defensive even though each branch is bounded.
+    // FIX-984. Two things were wrong here, both fixed by the same rewrite:
+    //
+    //  1. NO `.order()` at all, so `.range()` paged an unordered result -- free
+    //     to hand back the same official twice and drop another, which shifts a
+    //     district's party mix and therefore its divergence score.
+    //  2. ONE builder object was reused for every page. supabase-js filter
+    //     builders MUTATE and return `this`, so each `.range()` overwrote the
+    //     previous call's header on the same instance; a fresh builder per page
+    //     is the documented contract every other walk in this repo follows.
+    //
+    // The builder is now a factory, ordered on and keyset-seeked by the `id`
+    // pkey.
     const PAGE = 1000;
-    let from = 0;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const buildPage = (after: string | null): any => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let q = (supabase as any)
+        .from("officials")
+        .select("id, party, metadata, role_title")
+        .not("metadata->>district_jurisdiction_id", "is", null);
+      if (roleFilter === 'Representative') {
+        q = q.eq("role_title", "Representative");
+      } else {
+        q = q.in("role_title", ["State Senator", "State Representative", "State Delegate", "State Assemblymember"]);
+      }
+      return afterKey(q.order("id", { ascending: true }).limit(PAGE), "id", after);
+    };
+    let afterId: string | null = null;
+    let scanned = 0;
     // eslint-disable-next-line no-constant-condition
     while (true) {
-      const { data, error } = await q.range(from, from + PAGE - 1);
+      const { data, error } = await buildPage(afterId);
       if (error) {
         console.error(`[voting-divergence] ${roleFilter} fetch:`, error.message);
         break;
@@ -155,9 +171,10 @@ export async function GET(req: NextRequest) {
         if (!officialsByDistrict.has(jid)) officialsByDistrict.set(jid, []);
         officialsByDistrict.get(jid)!.push({ id: o.id, jurisdiction_id: jid, party: o.party });
       }
+      scanned += rows.length;
       if (rows.length < PAGE) break;
-      from += PAGE;
-      if (from > 20_000) break;
+      afterId = rows[rows.length - 1]!.id;
+      if (scanned > 20_000) break;
     }
   }
 

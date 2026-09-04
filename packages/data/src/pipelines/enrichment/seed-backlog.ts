@@ -11,7 +11,7 @@
  *   pnpm --filter @civitics/data data:enrich-seed -- --dry-run
  */
 
-import { createAdminClient, agencyFullName, selectAllOrThrow } from "@civitics/db";
+import { createAdminClient, agencyFullName, selectAllKeyset, afterKey } from "@civitics/db";
 import {
   zeroCounts,
   buildProposalTagContext,
@@ -58,12 +58,24 @@ type Db = any;
 // FIX-545: this used to console.error + break on a page error, returning a
 // PARTIAL snapshot — the already-tagged/already-summarized sets would
 // under-count and the seeder would re-enqueue items that were already done.
-// selectAllOrThrow fails the run instead.
-async function fetchAll<T>(
+// selectAllKeyset fails the run instead.
+//
+// FIX-984: keyset, not OFFSET. Every walk below is keyed on the table's uuid
+// `id` pkey, so a page is one index range scan from the cursor that stops at
+// LIMIT. It matters most at :475 — that one walks ALL of financial_entities
+// (5,204,854 rows on prod as of 2026-09-04), which under OFFSET meant a seq
+// scan + a 374 MB external-merge sort of the whole table PER PAGE, 5,205 times
+// (measured: cost 1,005,602 · 245,569 buffers · 36,420 ms for the last page
+// alone; keyset is cost 1,065 · 949 buffers · 893 ms).
+//
+// Every loader must `.order("id")`, `.limit(limit)`, and pass the cursor
+// through `afterKey(q, "id", after)` — the three have to name the same column.
+async function fetchAll<T extends { id?: string }>(
   label: string,
-  loader: (from: number, to: number) => Promise<{ data: T[] | null; error: { message: string } | null }>,
+  loader: (after: string | null, limit: number) => Promise<{ data: T[] | null; error: { message: string } | null }>,
+  key: (row: T) => string = (row) => row.id as string,
 ): Promise<T[]> {
-  return selectAllOrThrow<T>(label, loader, { pageSize: PAGE });
+  return selectAllKeyset<T, string>(label, loader, { key, pageSize: PAGE });
 }
 
 // ---------------------------------------------------------------------------
@@ -76,35 +88,43 @@ async function taggedEntityIds(
   db: Db,
   entityType: "proposal",
 ): Promise<Set<string>> {
-  const rows = await fetchAll<{ entity_id: string }>(
+  const rows = await fetchAll<{ id: string; entity_id: string }>(
     `entity_tags(${entityType})`,
-    (from, to) =>
-      db
-        .from("entity_tags")
-        .select("entity_id")
-        .eq("entity_type", entityType)
-        .eq("generated_by", "ai")
-        .eq("tag_category", "topic")
-        // FIX-760: stable unique order — unordered .range() pagination can
-        // skip/duplicate rows as page boundaries shift between queries.
-        .order("id")
-        .range(from, to),
+    (after, limit) =>
+      afterKey(
+        db
+          .from("entity_tags")
+          .select("id, entity_id")
+          .eq("entity_type", entityType)
+          .eq("generated_by", "ai")
+          .eq("tag_category", "topic")
+          // FIX-760 total order / FIX-984 keyset key: the same unique column
+          // must appear in .order(), in .limit()'s cursor, and in the seek.
+          .order("id") // FIX-984: keyset key
+          .limit(limit),
+        "id",
+        after,
+      ),
   );
   return new Set(rows.map((r) => r.entity_id));
 }
 
 // Returns IDs that already have ANY industry tag (rule or AI) — skip those.
 async function industryTaggedFinancialEntityIds(db: Db): Promise<Set<string>> {
-  const rows = await fetchAll<{ entity_id: string }>(
+  const rows = await fetchAll<{ id: string; entity_id: string }>(
     "entity_tags(financial_entity,industry)",
-    (from, to) =>
-      db
-        .from("entity_tags")
-        .select("entity_id")
-        .eq("entity_type", "financial_entity")
-        .eq("tag_category", "industry")
-        .order("id") // FIX-760
-        .range(from, to),
+    (after, limit) =>
+      afterKey(
+        db
+          .from("entity_tags")
+          .select("id, entity_id")
+          .eq("entity_type", "financial_entity")
+          .eq("tag_category", "industry")
+          .order("id") // FIX-760 (total order) / FIX-984 (keyset key)
+          .limit(limit),
+        "id",
+        after,
+      ),
   );
   return new Set(rows.map((r) => r.entity_id));
 }
@@ -114,16 +134,20 @@ async function summarizedEntityIds(
   entityType: "proposal" | "official",
   summaryType: string,
 ): Promise<Set<string>> {
-  const rows = await fetchAll<{ entity_id: string }>(
+  const rows = await fetchAll<{ id: string; entity_id: string }>(
     `ai_summary_cache(${entityType},${summaryType})`,
-    (from, to) =>
-      db
-        .from("ai_summary_cache")
-        .select("entity_id")
-        .eq("entity_type", entityType)
-        .eq("summary_type", summaryType)
-        .order("id") // FIX-760
-        .range(from, to),
+    (after, limit) =>
+      afterKey(
+        db
+          .from("ai_summary_cache")
+          .select("id, entity_id")
+          .eq("entity_type", entityType)
+          .eq("summary_type", summaryType)
+          .order("id") // FIX-760 (total order) / FIX-984 (keyset key)
+          .limit(limit),
+        "id",
+        after,
+      ),
   );
   return new Set(rows.map((r) => r.entity_id));
 }
@@ -146,14 +170,18 @@ type ProposalRow = {
 
 async function fetchAllProposals(db: Db): Promise<ProposalRow[]> {
   // Exclude procedural votes and case names — see FIX-065 / FIX-066
-  return fetchAll<ProposalRow>("proposals", (from, to) =>
-    db
-      .from("proposals")
-      .select("id, title, summary_plain, type, metadata, jurisdiction_id, updated_at, primary_source")
-      .not("title", "ilike", "On %")
-      .filter("title", "not.ilike", "% v. %")
-      .order("id") // FIX-760
-      .range(from, to),
+  return fetchAll<ProposalRow>("proposals", (after, limit) =>
+    afterKey(
+      db
+        .from("proposals")
+        .select("id, title, summary_plain, type, metadata, jurisdiction_id, updated_at, primary_source")
+        .not("title", "ilike", "On %")
+        .filter("title", "not.ilike", "% v. %")
+        .order("id") // FIX-760 (total order) / FIX-984 (keyset key)
+        .limit(limit),
+      "id",
+      after,
+    ),
   );
 }
 
@@ -172,13 +200,17 @@ type OfficialRow = {
 };
 
 async function fetchAllActiveOfficials(db: Db): Promise<OfficialRow[]> {
-  return fetchAll<OfficialRow>("officials", (from, to) =>
-    db
-      .from("officials")
-      .select("id, full_name, role_title, party, metadata, jurisdiction_id, updated_at")
-      .eq("is_active", true)
-      .order("id") // FIX-760
-      .range(from, to),
+  return fetchAll<OfficialRow>("officials", (after, limit) =>
+    afterKey(
+      db
+        .from("officials")
+        .select("id, full_name, role_title, party, metadata, jurisdiction_id, updated_at")
+        .eq("is_active", true)
+        .order("id") // FIX-760 (total order) / FIX-984 (keyset key)
+        .limit(limit),
+      "id",
+      after,
+    ),
   );
 }
 
@@ -197,16 +229,20 @@ async function fetchQueueSnapshot(
   entityType: EntityType,
   taskType: TaskType,
 ): Promise<QueueSnapshot> {
-  const rows = await fetchAll<{ entity_id: string; status: string; retry_count: number }>(
+  const rows = await fetchAll<{ id: string; entity_id: string; status: string; retry_count: number }>(
     `enrichment_queue(${entityType},${taskType})`,
-    (from, to) =>
-      db
-        .from("enrichment_queue")
-        .select("entity_id, status, retry_count")
-        .eq("entity_type", entityType)
-        .eq("task_type", taskType)
-        .order("id") // FIX-760
-        .range(from, to),
+    (after, limit) =>
+      afterKey(
+        db
+          .from("enrichment_queue")
+          .select("id, entity_id, status, retry_count")
+          .eq("entity_type", entityType)
+          .eq("task_type", taskType)
+          .order("id") // FIX-760 (total order) / FIX-984 (keyset key)
+          .limit(limit),
+        "id",
+        after,
+      ),
   );
   const out: QueueSnapshot = new Map();
   for (const r of rows) out.set(r.entity_id, { status: r.status, retry_count: r.retry_count });
@@ -467,14 +503,19 @@ async function main(): Promise<void> {
   };
   const financialEntities = await fetchAll<FinancialEntityRow>(
     "financial_entities",
-    (from, to) => {
+    (after, limit) => {
+      // FIX-984: the walk that most needed keyset. Unfiltered this is all
+      // 5,204,854 financial_entities; under OFFSET the planner seq-scanned and
+      // external-merge-sorted the whole table for EVERY one of the ~5,205 pages
+      // (last page measured on prod 2026-09-04: 245,569 buffers + 374 MB temp,
+      // 36,420 ms). Keyset is a pkey range scan: 949 buffers, 893 ms.
       let q = db
         .from("financial_entities")
         .select("id, display_name, entity_type, total_donated_cents, updated_at")
-        .order("id") // FIX-760
-        .range(from, to);
+        .order("id") // FIX-760 (total order) / FIX-984 (keyset key)
+        .limit(limit);
       if (PACS_ONLY) q = q.in("entity_type", ["pac", "party_committee"]);
-      return q;
+      return afterKey(q, "id", after);
     },
   );
 

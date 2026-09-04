@@ -58,7 +58,7 @@ import * as https from "https";
 import * as unzipper from "unzipper";
 import { open as openShapefile } from "shapefile";
 import type { Feature, MultiPolygon, Polygon } from "geojson";
-import { createAdminClient } from "@civitics/db";
+import { createAdminClient, afterKey } from "@civitics/db";
 import { startSync, completeSync, failSync, type PipelineResult } from "../sync-log";
 import { STATE_DATA } from "../../jurisdictions/us-states";
 
@@ -269,12 +269,18 @@ async function loadSnapshot(db: Db): Promise<Snapshot> {
   // backfill pre-check). 0 on first run; ~3,235 on re-runs — past PostgREST's
   // 1,000-row default cap, so this must paginate or it would under-report
   // existing counties and needlessly re-call the (idempotent) RPC.
-  for (let from = 0; ; from += 1000) {
-    const page = rowsOrThrow(await db.from("jurisdictions")
+  // FIX-984: keyset on the `id` pkey. Ordering by census_geoid gave the OFFSET
+  // walk its page stability but is not a key we can seek on -- nothing declares
+  // census_geoid unique, and a repeated cursor value drops rows silently.
+  // Iteration order does not matter here; the loop only fills a Map.
+  let afterCountyId: string | null = null;
+  for (;;) {
+    const page = rowsOrThrow(await afterKey(db.from("jurisdictions")
       .select("id, census_geoid, boundary_geometry").eq("type", "county")
-      .order("census_geoid", { ascending: true }).range(from, from + 999), "counties");
+      .order("id", { ascending: true }).limit(1000), "id", afterCountyId), "counties");
     for (const r of page) addUnique(snap.countiesByGeoid, r.census_geoid, tgt(r));
     if (page.length < 1000) break;
+    afterCountyId = page[page.length - 1]!.id;
   }
 
   // Cities (4 pilot metros). fips_code holds the 7-digit place GEOID;

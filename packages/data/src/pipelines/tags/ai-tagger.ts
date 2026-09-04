@@ -29,7 +29,7 @@
  *   pnpm --filter @civitics/data data:tag-ai -- --dry-run   (estimate only)
  */
 
-import { createAdminClient } from "@civitics/db";
+import { createAdminClient, fetchAllKeyset, afterKey } from "@civitics/db";
 import { createAiClient } from "@civitics/ai";
 import { costGate } from "@civitics/ai/cost-gate";
 import { calculateCostUsd } from "@civitics/db";
@@ -187,19 +187,22 @@ async function runProposalAiTagger(db: any, maxCostCents: number, onlyNew: boole
     // Full retag (manual --confirm without onlyNew): page the entire proposals
     // table (unchanged). FIX-476 — a stable unique order key so PostgREST's
     // 1,000-row cap paginates cleanly instead of silently truncating.
+    // FIX-984: keyset on the `id` pkey rather than OFFSET. Deep pages of this
+    // walk measured cost 22,539 · 76,520 buffers · 852 ms on prod (91,302
+    // proposals, 2026-09-04); the keyset page is cost 499 · 431 buffers · 121 ms.
     const PROPOSAL_PAGE = 1000;
-    const allProposals: ProposalRow[] = [];
-    for (let from = 0; ; from += PROPOSAL_PAGE) {
-      const { data, error } = await db
-        .from("proposals")
-        .select("id, title, summary_plain, metadata")
-        .order("id", { ascending: true })
-        .range(from, from + PROPOSAL_PAGE - 1);
-      if (error) { console.error("    Error fetching proposals:", error.message); return 0; }
-      const batch = (data ?? []) as ProposalRow[];
-      allProposals.push(...batch);
-      if (batch.length < PROPOSAL_PAGE) break;
-    }
+    const res = await fetchAllKeyset<ProposalRow, string>(
+      "ai-tagger full-retag proposals",
+      (after, limit) => afterKey(
+        db
+          .from("proposals")
+          .select("id, title, summary_plain, metadata")
+          .order("id", { ascending: true })
+          .limit(limit), "id", after),
+      { key: (r) => r.id, pageSize: PROPOSAL_PAGE },
+    );
+    if (res.error) { console.error("    Error fetching proposals:", res.error.message); return 0; }
+    const allProposals: ProposalRow[] = res.rows;
     if (allProposals.length === 0) { console.log("    No proposals to classify."); return 0; }
     proposals = allProposals;
   }

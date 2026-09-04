@@ -15,7 +15,7 @@
 
 import type { createAdminClient } from "@civitics/db";
 import type { Database } from "@civitics/db";
-import { refreshPrimarySourceForEntities, rowsOrThrow } from "@civitics/db";
+import { refreshPrimarySourceForEntities, rowsOrThrow, fetchChunkedByIds } from "@civitics/db";
 
 type ProposalInsert = Database["public"]["Tables"]["proposals"]["Insert"];
 type ProposalType = Database["public"]["Enums"]["proposal_type"];
@@ -282,21 +282,33 @@ export async function upsertBillProposalsBatch(
   const deduped = [...byKey.values()];
   const billKeys = deduped.map((i) => i.billKey);
 
-  // Step 1: batch lookup of existing proposals via external_source_refs
-  const { data: existing, error: lookupErr } = await db
-    .from("external_source_refs")
-    .select("entity_id, external_id")
-    .eq("source", "congress_gov")
-    .eq("entity_type", "proposal")
-    .in("external_id", billKeys);
+  // Step 1: batch lookup of existing proposals via external_source_refs.
+  //
+  // FIX-1037: this `.in()` was UNCHUNKED while `lookupRefs` twenty lines down
+  // in the same file chunks the identical query at RESOLVE_IN_CHUNK -- the
+  // helper simply was not reachable from packages/ until it moved into
+  // @civitics/db. `billKeys` is every novel bill in the run (resolveBillKeys
+  // passes the whole `novelArgs` set), so on a first-run or backfill ingest it
+  // is thousands of keys in one request line. Bill keys are shorter than uuids,
+  // which is why this survived: it fails at a higher count, not at no count.
+  const { rows: existing, failed: lookupFailed } = await fetchChunkedByIds<{ entity_id: string; external_id: string }>(
+    billKeys,
+    (chunk) => db
+      .from("external_source_refs")
+      .select("entity_id, external_id")
+      .eq("source", "congress_gov")
+      .eq("entity_type", "proposal")
+      .in("external_id", chunk),
+    { label: "bills:existing-refs" },
+  );
 
-  if (lookupErr) {
-    console.error(`    bills.ts batch: lookup error: ${lookupErr.message}`);
+  if (lookupFailed.length > 0) {
+    console.error(`    bills.ts batch: lookup error: ${lookupFailed[0]!.error.message}`);
     return { upserted: 0, failed: deduped.length };
   }
 
   const existingMap = new Map<string, string>();
-  for (const r of (existing ?? []) as Array<{ entity_id: string; external_id: string }>) {
+  for (const r of existing) {
     existingMap.set(r.external_id, r.entity_id);
   }
 

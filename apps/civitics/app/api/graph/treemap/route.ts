@@ -1,4 +1,4 @@
-import { createAdminClient, fetchIndustryTagsByEntityId, fetchEntityIdsByIndustryTag, currentGoverningBodyMembers } from "@civitics/db";
+import { createAdminClient, fetchIndustryTagsByEntityId, fetchEntityIdsByIndustryTag, currentGoverningBodyMembers, afterKey } from "@civitics/db";
 import { withPublicCdnCache } from "@/lib/cdn-cache";
 import { supabaseUnavailable, unavailableResponse } from "@/lib/supabase-check";
 import { fetchAllRows, ID_CHUNK_SIZE } from "@/lib/paginate";
@@ -120,7 +120,15 @@ export async function GET(request: Request) {
         .select("relationship_type, rank, donor_id, donor_name, entity_type, industry_label, total_cents, tail_donor_count")
         .eq("official_id", validEntityId)
         .in("relationship_type", ["donation", "ie_support"])
+        // OFFSET (FIX-984 exception): official_donor_rollup_mv is keyed on
+        // (official_id, relationship_type, rank). `official_id` is pinned, but
+        // `relationship_type` is an .in() over TWO values, so `rank` repeats
+        // across them and there is no single unique column to seek on. Capped
+        // at maxRows 5000 (5 pages), so OFFSET depth never gets interesting.
+        // `relationship_type` is added below purely as the tiebreaker that makes
+        // the order total -- rank alone was not, so pages could overlap.
         .order("rank", { ascending: true })
+        .order("relationship_type", { ascending: true })
         .range(f, t),
       { maxRows: 5000 },
     );
@@ -290,18 +298,25 @@ export async function GET(request: Request) {
     // because each pac id appears in exactly one chunk.
     for (let p = 0; p < filterPacIds!.length; p += ID_CHUNK_SIZE) {
       const pacChunk = filterPacIds!.slice(p, p + ID_CHUNK_SIZE);
-      let from = 0;
+      let afterId: string | null = null; // FIX-984: keyset cursor, not an OFFSET
+      let scanned = 0;
       // eslint-disable-next-line no-constant-condition
       while (true) {
-        const donationsQuery = supabase
+        // FIX-984: keyset on the pkey. This walk had NO `.order()` at all, so
+        // `.range()` was paging an unordered result -- a donation row could be
+        // summed on two pages and another dropped entirely, silently skewing
+        // the industry-filtered treemap.
+        type PacDonationRow = { id: string; from_id: string; amount_cents: number | null };
+        const donationsQuery: PromiseLike<{ data: PacDonationRow[] | null; error: { message: string } | null }> = afterKey(supabase
           .from("financial_relationships")
-          .select("from_id, amount_cents")
+          .select("id, from_id, amount_cents")
           .eq("relationship_type", "donation")
           .eq("to_type", "official")
           .eq("to_id", validEntityId)
           .eq("from_type", "financial_entity")
           .in("from_id", pacChunk)
-          .range(from, from + PAGE - 1);
+          .order("id", { ascending: true })
+          .limit(PAGE), "id", afterId);
 
         const { data: donations, error: donationsErr } = await donationsQuery;
         if (donationsErr) {
@@ -312,9 +327,10 @@ export async function GET(request: Request) {
         for (const d of donations) {
           byDonor.set(d.from_id, (byDonor.get(d.from_id) ?? 0) + (d.amount_cents ?? 0));
         }
+        scanned += donations.length;
         if (donations.length < PAGE) break;
-        from += PAGE;
-        if (from > 500_000) break; // safety guard
+        afterId = donations[donations.length - 1]!.id;
+        if (scanned > 500_000) break; // safety guard
       }
     }
 
@@ -540,24 +556,29 @@ export async function GET(request: Request) {
       const batch = officialIds.slice(i, i + HALF);
       for (let p = 0; p < filterPacIds.length; p += HALF) {
         const pacChunk = filterPacIds.slice(p, p + HALF);
-        let from = 0;
+        let afterId: string | null = null; // FIX-984: keyset cursor, not an OFFSET
+        let scanned = 0;
         // eslint-disable-next-line no-constant-condition
         while (true) {
-          const { data } = await supabase
-            .from("financial_relationships")
-            .select("to_id, amount_cents")
-            .eq("relationship_type", "donation")
-            .eq("to_type", "official")
-            .in("to_id", batch)
-            .in("from_id", pacChunk)
-            .range(from, from + PAGE - 1);
+          // FIX-984: keyset on the pkey; this walk also carried no `.order()`.
+          const { data }: { data: Array<{ id: string; to_id: string; amount_cents: number | null }> | null } =
+            await afterKey(supabase
+              .from("financial_relationships")
+              .select("id, to_id, amount_cents")
+              .eq("relationship_type", "donation")
+              .eq("to_type", "official")
+              .in("to_id", batch)
+              .in("from_id", pacChunk)
+              .order("id", { ascending: true })
+              .limit(PAGE), "id", afterId);
           if (!data || data.length === 0) break;
           for (const d of data) {
             totalByOfficial.set(d.to_id, (totalByOfficial.get(d.to_id) ?? 0) + (d.amount_cents ?? 0));
           }
+          scanned += data.length;
           if (data.length < PAGE) break;
-          from += PAGE;
-          if (from > 200_000) break; // safety guard
+          afterId = data[data.length - 1]!.id;
+          if (scanned > 200_000) break; // safety guard
         }
       }
     }

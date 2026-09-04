@@ -31,7 +31,7 @@ import {
   RED_MIN_52X_RATIO,
   type FrontDoorBucket,
   type FrontDoorProbe,
-} from "./front-door-verdict.ts";
+} from "./front-door-verdict";
 
 type Row = [number, number, number, number];
 

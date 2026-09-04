@@ -15,7 +15,7 @@
  * Dry-run by default: prints estimates, prompts for confirmation.
  */
 
-import { createAdminClient, selectAllOrThrow } from "@civitics/db";
+import { createAdminClient, selectAllOrThrow, selectAllKeyset, afterKey } from "@civitics/db";
 import { createAiClient } from "@civitics/ai";
 import { costGate } from "@civitics/ai/cost-gate";
 import { startSync, completeSync, failSync } from "../sync-log";
@@ -238,18 +238,29 @@ export async function runAiClassifier(options: { confirmed?: boolean } = {}): Pr
     // set truncated (re-tagging already-tagged PACs, re-burning AI budget)
     // and only the top-1,000 PACs were ever considered; the tagged read was
     // also silent-zero on error. Paginate + throw.
-    const taggedIds = await selectAllOrThrow(
+    const taggedIds = await selectAllKeyset<{ id: string; entity_id: string }, string>(
       "ai-classifier industry-tagged FE preload",
-      (from, to) => db
+      (after, limit) => afterKey(db
         .from("entity_tags")
-        .select("entity_id")
+        .select("id, entity_id")
         .eq("entity_type", "financial_entity")
         .eq("tag_category", "industry")
+        // FIX-984: `entity_tags_type_category_id` is (entity_type,
+        // tag_category, id), so the two .eq()s plus this key are one index
+        // range scan. Keying on entity_id would be WRONG -- an entity may
+        // carry several industry tags, so entity_id repeats and a keyset walk
+        // would skip every duplicate silently.
         .order("id")
-        .range(from, to),
-    ) as { entity_id: string }[];
+        .limit(limit), "id", after),
+      { key: (r) => r.id },
+    );
     const alreadyTagged = new Set<string>(taggedIds.map((r) => r.entity_id));
 
+    // OFFSET (FIX-984 exception): ranked by total_donated_cents DESC with `id`
+    // only as the tiebreaker, so a keyset cursor would have to be the composite
+    // (total_donated_cents, id) compared as a row value. The set is bounded --
+    // PACs above MIN_DONATION_CENTS, low thousands -- so the deep pages that
+    // make OFFSET quadratic are never reached. Total order is present.
     const allPacs = await selectAllOrThrow(
       "ai-classifier PAC preload",
       (from, to) => db

@@ -16,7 +16,7 @@
  */
 
 import type { Client } from "pg";
-import { createAdminClient } from "@civitics/db";
+import { createAdminClient, afterKey } from "@civitics/db";
 import { startSync, completeSync, failSync } from "../sync-log";
 import { selectDirect, rollupJsonbDirect, callHeavyProcedure } from "../../lib/heavy-rebuild";
 import { withDirectClient, bulkUpsert } from "../../lib/direct-pg-upsert";
@@ -672,7 +672,9 @@ async function clearCuratedIndustryTags(client: Client): Promise<number> {
 // cap, so the rollup .rpc() calls below paginate through this same helper.
 // ---------------------------------------------------------------------------
 
-const PAGE_SIZE = 500;
+// FIX-984: 1000, PostgREST's max_rows. It was 500 -- half the cap, so every
+// walk here paid twice the round-trips for no ceiling-related reason.
+const PAGE_SIZE = 1000;
 const MAX_ATTEMPTS = 5;
 
 // Retry transient PostgREST/fetch failures. Both the local Kong/PostgREST stack
@@ -701,22 +703,35 @@ async function callWithRetry<T>(
   throw new Error(`${label} failed after ${MAX_ATTEMPTS} attempts: ${lastErr}`);
 }
 
+// FIX-984: keyset, not OFFSET. `loader` receives the cursor (null on the first
+// page) and the page size, and must `.order(<key>)`, `.limit(limit)` and pass
+// the cursor through `afterKey(q, "<key>", after)` -- all three naming the same
+// unique column. Retry semantics are unchanged (callWithRetry, MAX_ATTEMPTS,
+// throws rather than returning a short set: tagProposals/tagOfficials
+// DELETE-then-reinsert on the result, so a partial load is data loss).
 async function fetchAllPaged<T>(
   label: string,
   loader: (
-    from: number,
-    to: number,
+    after: string | null,
+    limit: number,
   ) => Promise<{ data: T[] | null; error: { message: string } | null }>,
+  key: (row: T) => string,
 ): Promise<T[]> {
   const out: T[] = [];
-  let from = 0;
+  let after: string | null = null;
   for (;;) {
-    const to = from + PAGE_SIZE - 1;
     const rows =
-      (await callWithRetry<T[]>(`${label} page ${from}-${to}`, () => loader(from, to))) ?? [];
+      (await callWithRetry<T[]>(
+        `${label} page after ${after ?? "<start>"}`,
+        () => loader(after, PAGE_SIZE),
+      )) ?? [];
     out.push(...rows);
     if (rows.length < PAGE_SIZE) break;
-    from += PAGE_SIZE;
+    const next = key(rows[rows.length - 1]!);
+    if (next === after) {
+      throw new Error(`${label}: keyset cursor did not advance past ${next} -- key is not unique`);
+    }
+    after = next;
   }
   return out;
 }
@@ -729,7 +744,8 @@ async function fetchAllPaged<T>(
 async function tagProposals(db: any): Promise<number> {
   console.log("\n  [1/3] Tagging proposals...");
 
-  // Paginated — proposals is ~73k rows, far past the 1,000-row cap (FIX-427).
+  // Paginated -- proposals is 91,302 rows (prod, as of 2026-09-04), far past
+  // the 1,000-row cap (FIX-427). The comment said ~73k until FIX-976 re-counted.
   const proposals = await fetchAllPaged<{
     id: string;
     title: string | null;
@@ -738,12 +754,15 @@ async function tagProposals(db: any): Promise<number> {
     introduced_at: string | null;
     created_at: string | null;
     metadata: Record<string, unknown> | null;
-  }>("proposals", (from, to) =>
-    db
-      .from("proposals")
-      .select("id, title, type, status, introduced_at, created_at, metadata")
-      .order("id", { ascending: true })
-      .range(from, to),
+  }>(
+    "proposals",
+    (after, limit) => afterKey(
+      db
+        .from("proposals")
+        .select("id, title, type, status, introduced_at, created_at, metadata")
+        .order("id", { ascending: true })
+        .limit(limit), "id", after),
+    (r) => r.id,
   );
 
   if (proposals.length === 0) {
@@ -880,7 +899,8 @@ export async function tagOfficials(db: any): Promise<number> {
   // donor tag changes.
   console.log("\n  [3/3] Tagging officials...");
 
-  // Paginated — officials is ~27k rows, past the 1,000-row cap (FIX-427).
+  // Paginated -- officials is 37,294 rows (prod, as of 2026-09-04), past the
+  // 1,000-row cap (FIX-427). The comment said ~27k until FIX-976 re-counted.
   const officials = await timed("officials fetch (paged)", () =>
     fetchAllPaged<{
       id: string;
@@ -889,12 +909,15 @@ export async function tagOfficials(db: any): Promise<number> {
       term_start: string | null;
       term_end: string | null;
       is_active: boolean;
-    }>("officials", (from, to) =>
-      db
-        .from("officials")
-        .select("id, full_name, party, term_start, term_end, is_active")
-        .order("id", { ascending: true })
-        .range(from, to),
+    }>(
+      "officials",
+      (after, limit) => afterKey(
+        db
+          .from("officials")
+          .select("id, full_name, party, term_start, term_end, is_active")
+          .order("id", { ascending: true })
+          .limit(limit), "id", after),
+      (r) => r.id,
     ),
   );
 
@@ -1340,7 +1363,8 @@ export async function tagFinancialEntities(db: any): Promise<number> {
   // both envs at seed), so any orphan seen here is post-seed drift — almost
   // certainly a FIX-544 entity merge that re-pointed or dropped a committee id.
   // Logged loudly but NOT thrown: the right response to a merged committee is to
-  // re-point one override row, not to stop tagging ~78k entities every night.
+  // re-point one override row, not to stop tagging 228,959 entities every night
+  // (prod count as of 2026-09-04; this comment said ~78k until FIX-976).
   type OverrideRow = {
     entity_id: string | null;
     fec_committee_id: string;
@@ -1384,64 +1408,92 @@ export async function tagFinancialEntities(db: any): Promise<number> {
 
   const allTags: TagInsert[] = [];
 
-  // ── Industry from display_name keyword matching (FEC PACs / orgs) ─────────
+  // -- Industry from display_name keyword matching (FEC PACs / orgs) --------
   // Scoped to NON-individual entities (FIX-437). Un-truncating the old select
-  // would keyword-match 1.05M individual donors by surname (e.g. anyone named
-  // "Koch" → oil_gas, "Wells" → finance) — false positives on people. The
-  // ~78k PAC/super_pac/party/union/corp/nonprofit/other rows.
+  // would keyword-match the 4,975,895 individual donors by surname (e.g. anyone
+  // named "Koch" -> oil_gas, "Wells" -> finance) -- false positives on people.
+  // The non-individual set is 228,959 PAC/super_pac/party/union/corp/nonprofit/
+  // other rows (prod, as of 2026-09-04). Both figures were written as "~1.05M"
+  // and "~78k" until FIX-976 re-counted: the scoped set has grown 2.9x.
   //
   // FIX-444: fetched over a DIRECT pg.Client (selectDirect), not PostgREST.
   // OFFSET-paginating `entity_type <> 'individual'` is an index scan over
-  // financial_entities that discards the ~1M interleaved individual rows page by
-  // page; the deep pages measured ~18s on prod — past the 8s PostgREST role
-  // timeout — so the PostgREST path could never complete the keyword pass (the
-  // failure FIX-443's gateway death used to mask). One direct query pulls the
-  // whole non-individual set in a single scan: no 8s role cap, no 1,000-row
-  // max_rows cap, no OFFSET re-scan. Keyword vocab/confidence/visibility below
-  // are unchanged.
-  const entities = await selectDirect<{
+  // financial_entities that discards the interleaved individual rows page by
+  // page; the deep pages measured ~18s on prod -- past the 8s PostgREST role
+  // timeout -- so the PostgREST path could never complete the keyword pass (the
+  // failure FIX-443's gateway death used to mask). Staying on direct pg: no 8s
+  // role cap, no 1,000-row max_rows cap.
+  //
+  // FIX-976: keyset-CHUNKED rather than one 228,959-row buffer, and each chunk
+  // is keyword-matched before the next is fetched, so peak resident rows are
+  // FE_KEYWORD_CHUNK rather than the whole set. This does NOT reduce the scan's
+  // I/O -- that is FIX-975's visibility-map work -- it bounds MEMORY and
+  // per-statement time. `financial_entities_nonindividual_id` is
+  // (id) INCLUDE (display_name, entity_type) WHERE entity_type <> 'individual',
+  // i.e. exactly this page: measured on prod 2026-09-04 as an Index Only Scan,
+  // cost 489 for a chunk. The `entity_type <> 'individual'` predicate is
+  // load-bearing (FIX-437) and is reproduced verbatim so the partial index
+  // still matches. Keyword vocab/confidence/visibility below are unchanged.
+  const FE_KEYWORD_CHUNK = 20_000;
+  type KeywordEntity = {
     id: string;
     display_name: string | null;
     entity_type: string | null;
-  }>(
-    "SELECT id, display_name, entity_type FROM public.financial_entities " +
-      "WHERE entity_type <> 'individual' ORDER BY id",
-  );
+  };
+  let feAfterId: string | null = null;
+  let feScanned = 0;
+  for (;;) {
+    const entities: KeywordEntity[] = await selectDirect<KeywordEntity>(
+      "SELECT id, display_name, entity_type FROM public.financial_entities " +
+        "WHERE entity_type <> 'individual' " +
+        "AND ($1::uuid IS NULL OR id > $1::uuid) " +
+        "ORDER BY id LIMIT " + FE_KEYWORD_CHUNK,
+      [feAfterId],
+    );
+    if (entities.length === 0) break;
+    feScanned += entities.length;
 
-  for (const entity of entities) {
-    const nameLower = String(entity.display_name ?? "").toLowerCase();
-    const matchedIndustries: string[] = [];
+    for (const entity of entities) {
+      const nameLower = String(entity.display_name ?? "").toLowerCase();
+      const matchedIndustries: string[] = [];
 
-    for (const [industry, keywords] of Object.entries(INDUSTRY_KEYWORDS)) {
-      const matched = keywords.some((kw) => {
-        if (kw.length <= 4) {
-          const escaped = kw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-          return new RegExp(`\\b${escaped}\\b`, "i").test(nameLower);
-        }
-        return nameLower.includes(kw);
-      });
-      if (matched) matchedIndustries.push(industry);
-    }
-
-    if (matchedIndustries.length > 0) {
-      const baseConfidence = matchedIndustries.length > 1 ? 0.7 : 0.8;
-      const base = { entity_type: "financial_entity", entity_id: entity.id as string, generated_by: "rule" as const, pipeline_version: "v1" };
-      for (const industry of matchedIndustries) {
-        const info = industryDisplay(industry);
-        if (!info) continue;
-        allTags.push({
-          ...base,
-          confidence: baseConfidence,
-          tag: industry,
-          tag_category: "industry",
-          display_label: info.label,
-          display_icon: info.icon,
-          visibility: baseConfidence >= 0.8 ? "primary" : "secondary",
-          metadata: { matched_count: matchedIndustries.length },
+      for (const [industry, keywords] of Object.entries(INDUSTRY_KEYWORDS)) {
+        const matched = keywords.some((kw) => {
+          if (kw.length <= 4) {
+            const escaped = kw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            return new RegExp(`\\b${escaped}\\b`, "i").test(nameLower);
+          }
+          return nameLower.includes(kw);
         });
+        if (matched) matchedIndustries.push(industry);
+      }
+
+      if (matchedIndustries.length > 0) {
+        const baseConfidence = matchedIndustries.length > 1 ? 0.7 : 0.8;
+        const base = { entity_type: "financial_entity", entity_id: entity.id as string, generated_by: "rule" as const, pipeline_version: "v1" };
+        for (const industry of matchedIndustries) {
+          const info = industryDisplay(industry);
+          if (!info) continue;
+          allTags.push({
+            ...base,
+            confidence: baseConfidence,
+            tag: industry,
+            tag_category: "industry",
+            display_label: info.label,
+            display_icon: info.icon,
+            visibility: baseConfidence >= 0.8 ? "primary" : "secondary",
+            metadata: { matched_count: matchedIndustries.length },
+          });
+        }
       }
     }
+
+    if (entities.length < FE_KEYWORD_CHUNK) break;
+    feAfterId = entities[entities.length - 1]!.id;
   }
+  console.log(
+    `    keyword pass: ${feScanned} non-individual entities scanned in chunks of ${FE_KEYWORD_CHUNK}`,
+  );
 
   // ── NAICS → industry for USASpending contractors (from the rollup) ────────
   // First NAICS per entity. Keyword match takes priority on an industry/entity

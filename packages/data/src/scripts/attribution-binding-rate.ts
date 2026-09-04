@@ -16,7 +16,7 @@
  *   ( source .env.local.prod && pnpm --filter @civitics/data diag:attribution-coverage )
  */
 
-import { createAdminClientWith, createPublicClient, resolveSource } from "@civitics/db";
+import { createAdminClientWith, createPublicClient, resolveSource, afterKey } from "@civitics/db";
 
 // `huge` marks tables where an exact unfiltered COUNT(*) is at risk of the
 // ~8s prod role-read / PostgREST gateway cap (FIX-450). financial_entities is
@@ -35,7 +35,7 @@ const TABLES = [
   { table: "financial_entities", entityType: "financial_entity",  huge: true  },
 ] as const;
 
-type Row = { primary_source: string | null };
+type Row = { id: string; primary_source: string | null };
 
 // ── Transient-network resilience (FIX-414) ──────────────────────────────
 //
@@ -185,21 +185,23 @@ async function main() {
     // the cap doesn't bind.
     const PAGE = 1000;
     const MAX_ROWS = 100000;
-    let offset = 0;
+    let afterId: string | null = null; // FIX-984: keyset cursor, not an OFFSET
+    let seen = 0; // rows walked so far — the MAX_ROWS sample budget
     const cats: Record<string, number> = {};
-    while (offset < MAX_ROWS && offset < bound) {
+    while (seen < MAX_ROWS && seen < bound) {
       const { data, error } = await withRetry(
         () =>
-          admin
+          afterKey(admin
             .from(table)
-            .select("primary_source")
+            .select("id, primary_source")
             .not("primary_source", "is", null)
-            .order("id") // FIX-760: stable unique order for .range() pagination
-            .range(offset, offset + PAGE - 1),
-        `${table} page @${offset}`,
+            // FIX-760 total order / FIX-984 keyset key — same column for both.
+            .order("id")
+            .limit(PAGE), "id", afterId),
+        `${table} page @${seen}`,
       );
       if (error) {
-        console.warn(`  (paging error on ${table} @ ${offset}: ${error.message})`);
+        console.warn(`  (paging error on ${table} @ ${seen}: ${error.message})`);
         break;
       }
       const rows = (data ?? []) as Row[];
@@ -213,8 +215,9 @@ async function main() {
           unknownSources.set(key, (unknownSources.get(key) ?? 0) + 1);
         }
       }
+      seen += rows.length;
       if (rows.length < PAGE) break;
-      offset += PAGE;
+      afterId = rows[rows.length - 1]!.id;
     }
     categoryByTable[table] = cats;
   }

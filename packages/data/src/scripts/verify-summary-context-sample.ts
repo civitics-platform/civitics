@@ -23,6 +23,9 @@ async function main() {
       .eq("entity_type", "proposal")
       .eq("source", src)
       .limit(200);
+    // .in() bounded: the refs read above is .limit(200), max 200 -- exactly
+    // ID_CHUNK_SIZE, so this sits at the ceiling rather than under it. Raise
+    // that .limit() and this must go through fetchChunkedByIds. FIX-1037.
     const ids = (refs ?? []).map((r: { entity_id: string }) => r.entity_id);
     // reads-ok: ad-hoc verification sample — empty output is visibly wrong to the operator
     const { data: rows } = await db

@@ -20,7 +20,7 @@
  *   pnpm --filter @civitics/data data:plum-book -- --force
  */
 
-import { createAdminClient, rowsOrThrow, selectAllOrThrow } from "@civitics/db";
+import { createAdminClient, rowsOrThrow, selectAllKeyset, afterKey } from "@civitics/db";
 import { completeSync, failSync, startSync, type PipelineResult } from "../sync-log";
 
 // ---------------------------------------------------------------------------
@@ -343,17 +343,18 @@ export async function runPlumBookPipeline(opts: { force?: boolean } = {}): Promi
     // with a PARTIAL map and every unmatched person re-inserted as new.
     const officialByPlumId = new Map<string, string>();
     {
-      const allPlumOfficials = await selectAllOrThrow(
+      const allPlumOfficials = await selectAllKeyset<{ id: string; source_ids: unknown }, string>(
         "plum-book plum_id officials preload",
-        (from: number, to: number) => db
+        (after: string | null, limit: number) => afterKey(db
           .from("officials")
           .select("id, source_ids")
           .not("source_ids->>plum_id", "is", null)
           .order("id")
-          .range(from, to),
+          .limit(limit), "id", after),
+        { key: (r) => r.id },
       );
-      for (const o of allPlumOfficials as Array<{ id: string; source_ids: Record<string, string> | null }>) {
-        const plumId = o.source_ids?.plum_id;
+      for (const o of allPlumOfficials) {
+        const plumId = (o.source_ids as Record<string, string> | null)?.plum_id;
         if (plumId) officialByPlumId.set(plumId, o.id);
       }
     }

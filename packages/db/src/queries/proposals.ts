@@ -17,7 +17,13 @@ export async function listProposalsByJurisdiction(
     .from("proposals")
     .select("*")
     .eq("jurisdiction_id", jurisdictionId)
+    // OFFSET (FIX-984 exception): `offset` is a CALLER-supplied page number,
+    // not a walk cursor -- this is one request, and keyset would change the
+    // function's public contract. The `id` tiebreaker is the part that WAS
+    // missing: introduced_at is nullable and repeats, so .range() over it alone
+    // double-counted or skipped rows across pages.
     .order("introduced_at", { ascending: false })
+    .order("id", { ascending: true })
     .range(offset, offset + limit - 1);
   if (error) throw error;
   return data;
@@ -140,7 +146,11 @@ export async function listProposalsUpdatedAfter(
     .from("proposals")
     .select("*")
     .gt("updated_at", after)
+    // OFFSET (FIX-984 exception): caller-supplied page number; see
+    // listProposalsByJurisdiction above. `id` added as the unique tiebreaker --
+    // updated_at repeats across a bulk write, so pages could overlap.
     .order("updated_at")
+    .order("id", { ascending: true })
     .range(offset, offset + limit - 1);
   if (error) throw error;
   return data;

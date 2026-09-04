@@ -17,7 +17,8 @@ import {
   createAdminClient,
   currentGoverningBodyMembers,
   rowsOrThrow,
-  selectAllOrThrow,
+  selectAllKeyset,
+  afterKey,
 } from "@civitics/db";
 import type { Database } from "@civitics/db";
 import {
@@ -300,9 +301,11 @@ async function buildOfficialMaps(
   // bioguide map empty and every House vote unmatched) and unpaginated —
   // officials holds ~28.6k rows (2026-06-09), so the old single .select()
   // silently truncated at PostgREST's 1,000-row cap.
-  const allOfficials = await selectAllOrThrow(
+  const allOfficials = await selectAllKeyset<{ id: string; source_ids: unknown }, string>(
     "votes bioguide-map officials preload",
-    (from, to) => db.from("officials").select("id, source_ids").order("id").range(from, to),
+    (after, limit) => afterKey(
+      db.from("officials").select("id, source_ids").order("id").limit(limit), "id", after),
+    { key: (r) => r.id },
   );
   const bioguide = buildBioguideMap(
     allOfficials.map((o) => ({
@@ -332,16 +335,19 @@ async function buildOfficialMaps(
 
   // Still past the 1,000-row cap even after filtering is applied server-side,
   // so the paginated read stays.
-  const senators = await selectAllOrThrow(
+  const senators = await selectAllKeyset<
+    { id: string; last_name: string | null; jurisdiction_id: string | null }, string
+  >(
     "votes senator preload",
-    (from, to) => currentGoverningBodyMembers(
+    (after, limit) => afterKey(currentGoverningBodyMembers(
       db
         .from("officials")
         .select("id, last_name, jurisdiction_id")
         .eq("governing_body_id", senateGovBodyId),
     )
       .order("id")
-      .range(from, to),
+      .limit(limit), "id", after),
+    { key: (r) => r.id },
   );
   console.log(
     `  Senate pool: ${rawPoolCount ?? "?"} rows in the governing body → ` +

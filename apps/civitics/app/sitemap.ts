@@ -151,8 +151,11 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   try {
     const supabase = createPublicClient();
     const [proposals, institutions, officials, cacheMembers] = await Promise.all([
-      // introduced_at alone is not unique — the id tiebreak makes the order
-      // total so range pages never overlap.
+      // OFFSET (FIX-984 exception): the order is composite -- introduced_at DESC
+      // with `id` only as the tiebreak that makes it total -- so a keyset cursor
+      // would have to be the (introduced_at, id) row value, and the sitemap
+      // genuinely wants newest-first. The segment is capped at LIMITS.proposals
+      // (5,000 = 5 pages, max OFFSET 4,000), so the quadratic term never bites.
       fetchPaged(LIMITS.proposals, (f, t) =>
         supabase
           .from("proposals")
@@ -161,6 +164,9 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
           .order("id", { ascending: true })
           .range(f, t),
       ),
+      // OFFSET (FIX-984 exception): capped at LIMITS.institutions (1,000), which
+      // is exactly one page -- there is no second page to make cheaper. Order is
+      // already total on the pkey.
       fetchPaged(LIMITS.institutions, (f, t) =>
         supabase.from("institutions").select("id").eq("is_active", true).order("id").range(f, t),
       ),

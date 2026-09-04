@@ -6,7 +6,7 @@
  * in a single block for paste into the audit doc.
  */
 
-import { createAdminClient } from "@civitics/db";
+import { createAdminClient, afterKey } from "@civitics/db";
 import { selectDirect } from "../lib/heavy-rebuild";
 
 // FIX-511 count-site triage (per-site rationale in the FIX-511 commit body):
@@ -23,24 +23,31 @@ function fmt$(cents: number | string | null | undefined): string {
   return "$" + Math.round(c / 100).toLocaleString();
 }
 
-// Local mirror of apps/civitics/src/lib/paginate.ts fetchAllRows (packages/data
-// can't import from apps). Pages a row-capped PostgREST query past the
-// max_rows=1000 ceiling so the full set is summed rather than silently
-// truncated. `build` must apply .range(from,to) on a FRESH query carrying a
-// stable total .order() each call. FIX-476 follow-up — the Wave-1 sweep didn't
-// reach this read-only anchor-verify script (the prior .limit(5000)/.limit(2000)
-// were capped to 1000 by PostgREST, undercounting high-volume anchors).
+// Pages a row-capped PostgREST query past the max_rows=1000 ceiling so the full
+// set is summed rather than silently truncated. FIX-476 follow-up -- the Wave-1
+// sweep didn't reach this read-only anchor-verify script (the prior
+// .limit(5000)/.limit(2000) were capped to 1000 by PostgREST, undercounting
+// high-volume anchors).
+//
+// FIX-984: keyset on `id`, not OFFSET. No longer a local mirror of the apps/
+// helper -- @civitics/db carries the shared one now (fetchAllKeyset) -- but this
+// loop stays local because it deliberately WARNS and returns short on a page
+// error instead of throwing: it is a diagnostic that should still print the
+// anchors it could reach. `build` must .order("id"), .limit(limit) and route
+// the cursor through afterKey(q, "id", after).
 const PAGE_SIZE = 1000;
-async function fetchAllRows<T>(
-  build: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
+async function fetchAllRows<T extends { id: string }>(
+  build: (after: string | null, limit: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
 ): Promise<T[]> {
   const rows: T[] = [];
-  for (let from = 0; ; from += PAGE_SIZE) {
-    const { data, error } = await build(from, from + PAGE_SIZE - 1);
+  let after: string | null = null;
+  for (;;) {
+    const { data, error } = await build(after, PAGE_SIZE);
     if (error) { console.warn("    fetchAllRows page error:", error.message); break; }
     const batch = data ?? [];
     rows.push(...batch);
     if (batch.length < PAGE_SIZE) break;
+    after = batch[batch.length - 1]!.id;
   }
   return rows;
 }
@@ -67,6 +74,7 @@ async function main(): Promise<void> {
     for (const e of (ents ?? [])) console.log(`    [${e.id}] display_name="${e.display_name}" canonical="${e.canonical_name}" type=${e.entity_type} total=${fmt$(e.total_donated_cents)}`);
 
     if (!ents || ents.length === 0) return;
+    // .in() bounded: the entity probe above is .limit(10), max 10 -- FIX-1037
     const muskIds = ents.map((e: { id: string }) => e.id);
 
     // Donations FROM musk to anything
@@ -89,11 +97,11 @@ async function main(): Promise<void> {
     // PostgREST can't group; pull ALL rows for the entity and sum client-side,
     // paged past max_rows=1000 (FIX-476) so the aggregate isn't truncated.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const allOut = await fetchAllRows<any>((from, to) => (db as any).from("financial_relationships")
-      .select("relationship_type, source:metadata->>source, amount_cents")
+    const allOut = await fetchAllRows<any>((after, limit) => afterKey((db as any).from("financial_relationships")
+      .select("id, relationship_type, source:metadata->>source, amount_cents")
       .in("from_id", muskIds)
       .order("id", { ascending: true })
-      .range(from, to));
+      .limit(limit), "id", after));
     const byType: Record<string, { count: number; sum: number }> = {};
     for (const r of allOut) {
       const k = `${r.relationship_type}:${r.source ?? "-"}`;
@@ -129,6 +137,7 @@ async function main(): Promise<void> {
     console.log(`  DCCC candidate entities: ${(dccc ?? []).length}`);
     for (const e of (dccc ?? [])) console.log(`    [${e.id}] display_name="${e.display_name}"`);
 
+    // .in() bounded: the DCCC probe above is .limit(10), max 10 -- FIX-1037
     const dcccIds = (dccc ?? []).map((e: { id: string }) => e.id);
     if (dcccIds.length === 0) return;
 
@@ -161,6 +170,7 @@ async function main(): Promise<void> {
       .select("id, display_name")
       .or("display_name.ilike.%DCCC%,display_name.ilike.%DEMOCRATIC CONGRESSIONAL CAMPAIGN%")
       .limit(10);
+    // .in() bounded: the DCCC probe above is .limit(10), max 10 -- FIX-1037
     const dcccIds = (dccc ?? []).map((e: { id: string }) => e.id);
     if (dcccIds.length === 0) return;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -242,12 +252,12 @@ async function main(): Promise<void> {
 
     // Paged past max_rows=1000 (FIX-476) so the inflow aggregate is complete.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const ins = await fetchAllRows<any>((from, to) => (db as any).from("financial_relationships")
-      .select("relationship_type, source:metadata->>source, amount_cents, cycle_year")
+    const ins = await fetchAllRows<any>((after, limit) => afterKey((db as any).from("financial_relationships")
+      .select("id, relationship_type, source:metadata->>source, amount_cents, cycle_year")
       .in("to_id", ids)
       .eq("to_type", "official")
       .order("id", { ascending: true })
-      .range(from, to));
+      .limit(limit), "id", after));
     const byType: Record<string, { count: number; sum: number }> = {};
     for (const r of ins) {
       const k = `${r.relationship_type}:${r.source ?? "-"}`;
@@ -307,6 +317,7 @@ async function main(): Promise<void> {
       .limit(5);
     for (const e of (ap ?? [])) console.log(`    America PAC: [${e.id}] display_name="${e.display_name}"`);
 
+    // .in() bounded: the America PAC probe above is .limit(5), max 5 -- FIX-1037
     const apIds = (ap ?? []).map((e: { id: string }) => e.id);
     if (apIds.length > 0) {
       // FIX-511 triage: exact counts STAY here — both are selective indexed

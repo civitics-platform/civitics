@@ -33,7 +33,7 @@ import * as fs   from "fs";
 import * as os   from "os";
 import * as path from "path";
 
-import { createAdminClientWith } from "@civitics/db";
+import { createAdminClientWith, afterKey } from "@civitics/db";
 import {
   downloadFile,
   loadOfficials,
@@ -61,19 +61,19 @@ async function loadCommitteeEntityMap(
 ): Promise<Map<string, string>> {
   const map = new Map<string, string>();
   const PAGE = 1000;
-  let offset = 0;
+  let afterId: string | null = null; // FIX-984: keyset cursor, not an OFFSET
   for (;;) {
-    const { data, error } = await db
+    const { data, error } = await afterKey(db
       .from("financial_entities")
       .select("id, fec_committee_id")
       .not("fec_committee_id", "is", null)
       .order("id")
-      .range(offset, offset + PAGE - 1);
+      .limit(PAGE), "id", afterId);
     if (error) throw new Error(`loadCommitteeEntityMap: ${error.message}`);
     const rows = (data ?? []) as Array<{ id: string; fec_committee_id: string | null }>;
     for (const r of rows) if (r.fec_committee_id) map.set(r.fec_committee_id, r.id);
     if (rows.length < PAGE) break;
-    offset += PAGE;
+    afterId = rows[rows.length - 1]!.id;
   }
   return map;
 }

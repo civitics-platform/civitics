@@ -33,7 +33,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "./client";
-import { selectAllOrThrow } from "./read-helpers";
+import { selectAllKeyset, afterKey } from "./read-helpers";
 import { calculateLoggedCostUsd } from "./ai-pricing";
 
 // Base URL — no org ID in path; admin key determines the org
@@ -211,16 +211,21 @@ async function fetchWindowFromLogs(
   // FIX-545: was silent-zero (an error rendered as $0 usage) and unpaginated
   // (a >1k-row month undercounted spend). Throws — the caller's try/catch
   // converts to the error-shape response.
-  const rows = await selectAllOrThrow<UsageLogRow>(
+  const rows = await selectAllKeyset<UsageLogRow & { id: string }, string>(
     "anthropic usage-log window",
-    (from, to) => supabase
+    (after, limit) => afterKey(supabase
       .from("api_usage_logs")
-      .select("input_tokens, output_tokens, cost_cents")
+      .select("id, input_tokens, output_tokens, cost_cents")
       .eq("service", "anthropic")
       .gte("created_at", startingAt)
       .lte("created_at", endingAt)
-      .order("created_at")
-      .range(from, to),
+    // FIX-984: keyset on the `id` pkey, not OFFSET, and not on created_at --
+    // created_at is not unique, and a keyset walk that seeks past a repeated
+    // key drops every row sharing it. Nothing downstream depends on the order:
+    // the rows are summed.
+      .order("id")
+      .limit(limit), "id", after),
+    { key: (r) => r.id },
   );
 
   const window = emptyWindow();
@@ -544,15 +549,20 @@ export async function getMonthlyAnthropicSpend(
     // FIX-545: paginate + throw; the surrounding catch keeps the null
     // ("unknown spend") contract for the AI gate, and a >1k-row month no
     // longer silently undercounts spend.
-    const rows = await selectAllOrThrow<UsageLogSumRow>(
+    const rows = await selectAllKeyset<UsageLogSumRow & { id: string }, string>(
       "anthropic monthly-spend logs",
-      (from, to) => anyDb
+      (after, limit) => afterKey(anyDb
         .from("api_usage_logs")
-        .select("input_tokens, output_tokens, cost_cents, model")
+        .select("id, input_tokens, output_tokens, cost_cents, model")
         .eq("service", "anthropic")
         .gte("created_at", monthStart)
-        .order("created_at")
-        .range(from, to),
+      // FIX-984: keyset on the `id` pkey, not OFFSET, and not on created_at --
+      // created_at is not unique, and a keyset walk that seeks past a repeated
+      // key drops every row sharing it. Nothing downstream depends on the
+      // order: the rows are summed.
+        .order("id")
+        .limit(limit), "id", after),
+      { key: (r) => r.id },
     );
 
     // FIX-893: was an inline (in*0.25 + out*1.25) that both used Haiku-3-era

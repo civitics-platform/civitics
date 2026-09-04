@@ -17,7 +17,7 @@
  */
 
 import type { createAdminClient } from "@civitics/db";
-import { refreshPrimarySourceForEntities, rowsOrThrow } from "@civitics/db";
+import { refreshPrimarySourceForEntities, rowsOrThrow, afterKey } from "@civitics/db";
 import { canonicalizeEntityName } from "../fec-bulk/writer";
 import type { ParsedFiling, ParsedOfficer, ParsedGrantOut } from "./parse";
 
@@ -255,18 +255,22 @@ export async function loadOfficialsByCanonicalName(
   const map = new Map<string, string>();
   // Pull in pages (Supabase default cap is 1000 rows per request).
   const PAGE = 1000;
-  let offset = 0;
+  let afterId: string | null = null; // FIX-984: keyset cursor, not an OFFSET
   for (;;) {
-    const { data, error } = await db
-      .from("officials")
-      .select("id, full_name, first_name, last_name")
-      // FIX-760: stable unique order — unordered .range() pagination can
-      // skip/duplicate rows as page boundaries shift between queries.
-      .order("id")
-      .range(offset, offset + PAGE - 1);
+    type OfficialNameRow = {
+      id: string; full_name: string | null;
+      first_name: string | null; last_name: string | null;
+    };
+    const { data, error }: { data: OfficialNameRow[] | null; error: { message: string } | null } =
+      await afterKey(db
+        .from("officials")
+        .select("id, full_name, first_name, last_name")
+        // FIX-760 total order / FIX-984 keyset key — the same column serves both.
+        .order("id")
+        .limit(PAGE), "id", afterId);
     if (error) throw new Error(`officials load failed: ${error.message}`);
     if (!data || data.length === 0) break;
-    for (const row of data as Array<{ id: string; full_name: string | null; first_name: string | null; last_name: string | null }>) {
+    for (const row of data) {
       // Build canonical from first+last so apostrophes/middle-init quirks in
       // full_name don't trip us up.
       const fullCanon = canonicalizePersonName([row.first_name ?? "", row.last_name ?? ""].join(" "));
@@ -275,7 +279,7 @@ export async function loadOfficialsByCanonicalName(
       if (flatCanon && !map.has(flatCanon)) map.set(flatCanon, row.id);
     }
     if (data.length < PAGE) break;
-    offset += PAGE;
+    afterId = data[data.length - 1]!.id;
   }
   return map;
 }

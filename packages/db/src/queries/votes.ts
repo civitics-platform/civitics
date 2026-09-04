@@ -16,7 +16,12 @@ export async function listVotesByOfficial(
     .from("votes")
     .select("*")
     .eq("official_id", officialId)
+    // OFFSET (FIX-984 exception): caller-supplied page number, one request.
+    // `id` added as the unique tiebreaker -- an official casts many votes at the
+    // same voted_at (one roll-call timestamp per vote series), so ordering by
+    // voted_at alone let a page boundary repeat or drop rows.
     .order("voted_at", { ascending: false })
+    .order("id", { ascending: true })
     .range(offset, offset + limit - 1);
   if (error) throw error;
   return data;

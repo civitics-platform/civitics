@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { createAdminClient } from "@civitics/db";
+import { createAdminClient, afterKey } from "@civitics/db";
 import { supabaseUnavailable, unavailableResponse } from "@/lib/supabase-check";
 import { withPublicCdnCache } from "@/lib/cdn-cache";
 import { fetchChunkedByIds } from "@/lib/paginate";
@@ -66,47 +66,53 @@ async function computeAgencyStatsLive(supabase: any, agencyIds: string[]): Promi
     const batch = agencyIds.slice(i, i + BATCH);
 
     // Appointment counts. Paginate in case a single agency has >1000 leaders.
-    let from = 0;
+    let afterApptId: string | null = null;
+    let apptSeen = 0;
     // eslint-disable-next-line no-constant-condition
     while (true) {
-      const { data: appts, error: apptErr } = await supabase
+      // FIX-984: keyset on the entity_connections pkey (also the .order() key).
+      const { data: appts, error: apptErr }: { data: Array<{ id: string; to_id: string }> | null; error: { message: string } | null } = await afterKey(supabase
         .from("entity_connections")
-        .select("to_id")
+        .select("id, to_id")
         .eq("connection_type", "appointment")
         .eq("to_type", "agency")
         .in("to_id", batch)
         .order("id", { ascending: true })
-        .range(from, from + PAGE - 1);
+        .limit(PAGE), "id", afterApptId);
       if (apptErr) { console.error("[agency-staffing] appts error:", apptErr.message); break; }
       if (!appts || appts.length === 0) break;
-      for (const r of appts as { to_id: string }[]) get(r.to_id).appointmentCount += 1;
+      for (const r of appts) get(r.to_id).appointmentCount += 1;
+      apptSeen += appts.length;
       if (appts.length < PAGE) break;
-      from += PAGE;
-      if (from > 50_000) break; // safety
+      afterApptId = appts[appts.length - 1]!.id;
+      if (apptSeen > 50_000) break; // safety
     }
 
     // Contract + grant totals.
-    let sFrom = 0;
+    let afterSpendId: string | null = null;
+    let spendSeen = 0;
     // eslint-disable-next-line no-constant-condition
     while (true) {
-      const { data: spendRows, error: spendErr } = await supabase
+      // FIX-984: keyset on the financial_relationships pkey.
+      const { data: spendRows, error: spendErr }: { data: Array<{ id: string; from_id: string; amount_cents: number | null; relationship_type: string }> | null; error: { message: string } | null } = await afterKey(supabase
         .from("financial_relationships")
-        .select("from_id, amount_cents, relationship_type")
+        .select("id, from_id, amount_cents, relationship_type")
         .eq("from_type", "agency")
         .in("from_id", batch)
         .in("relationship_type", ["contract", "grant"])
         .order("id", { ascending: true })
-        .range(sFrom, sFrom + PAGE - 1);
+        .limit(PAGE), "id", afterSpendId);
       if (spendErr) { console.error("[agency-staffing] spend error:", spendErr.message); break; }
       if (!spendRows || spendRows.length === 0) break;
-      for (const r of spendRows as { from_id: string; amount_cents: number | null; relationship_type: string }[]) {
+      for (const r of spendRows) {
         const s = get(r.from_id);
         if (r.relationship_type === "contract") s.contractTotal += (r.amount_cents ?? 0);
         else s.grantTotal += (r.amount_cents ?? 0);
       }
+      spendSeen += spendRows.length;
       if (spendRows.length < PAGE) break;
-      sFrom += PAGE;
-      if (sFrom > 200_000) break;
+      afterSpendId = spendRows[spendRows.length - 1]!.id;
+      if (spendSeen > 200_000) break;
     }
   }
   return out;

@@ -7,7 +7,7 @@
  * Run standalone:  pnpm --filter @civitics/data data:officials
  */
 
-import { createAdminClient, refreshPrimarySourceForEntities, selectAllOrThrow } from "@civitics/db";
+import { createAdminClient, refreshPrimarySourceForEntities, selectAllKeyset, afterKey } from "@civitics/db";
 import type { Database } from "@civitics/db";
 import {
   fetchAllMembers,
@@ -69,14 +69,15 @@ export async function runOfficialsPipeline(
   // new") on error — i.e. a transient gateway blip would re-INSERT every
   // member as a duplicate. Fail the run instead; paginate while we're here
   // (the congress_gov-bound set grows past 1k as former members accumulate).
-  const existingOfficials = await selectAllOrThrow(
+  const existingOfficials = await selectAllKeyset<{ id: string; source_ids: unknown }, string>(
     "congress officials preload (congress_gov source_ids)",
-    (from, to) => db
+    (after, limit) => afterKey(db
       .from("officials")
       .select("id, source_ids")
       .not("source_ids->>congress_gov", "is", null)
       .order("id")
-      .range(from, to),
+      .limit(limit), "id", after),
+    { key: (r) => r.id },
   );
   for (const row of existingOfficials) {
     const sourceIds = row.source_ids as Record<string, string> | null;

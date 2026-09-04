@@ -7,8 +7,27 @@ export type { Database, Json } from "./types/database";
 
 // Fail-loud read helpers (FIX-545) — throw-on-error + auto-pagination for
 // PostgREST SELECTs that feed downstream Maps/Sets. See read-helpers.ts.
-export { rowsOrThrow, selectAllOrThrow } from "./read-helpers";
-export type { ReadResult, SelectAllOptions } from "./read-helpers";
+// Keyset pagination (FIX-984) replaces the OFFSET walks; fetchChunkedByIds
+// moved here from apps/civitics/src/lib/paginate.ts (FIX-1037) so packages/
+// call sites can bound their `.in()` id lists too.
+export {
+  rowsOrThrow,
+  selectAllOrThrow,
+  selectAllKeyset,
+  fetchAllKeyset,
+  afterKey,
+  fetchChunkedByIds,
+  ID_CHUNK_SIZE,
+  ID_CHUNK_CONCURRENCY,
+} from "./read-helpers";
+export type {
+  ReadResult,
+  SelectAllOptions,
+  KeysetCursor,
+  KeysetOptions,
+  KeysetResult,
+  ChunkedFetchResult,
+} from "./read-helpers";
 
 // Queries
 export {

@@ -11,7 +11,7 @@
  *   5. Upsert edgar_companies with the bound financial_entity_id.
  */
 
-import { createAdminClient, refreshPrimarySourceForEntities } from "@civitics/db";
+import { createAdminClient, refreshPrimarySourceForEntities, afterKey } from "@civitics/db";
 import { canonicalizeEntityName } from "../fec-bulk/writer";
 import { edgarFetch } from "./client";
 import { padCik } from "./util";
@@ -90,23 +90,23 @@ async function fetchSubmissions(cik: string): Promise<CompanyMeta | null> {
  */
 async function preloadCikBindings(db: Db): Promise<Map<string, string>> {
   const out = new Map<string, string>();
-  let page = 0;
+  let afterId: string | null = null; // FIX-984: keyset cursor, not an OFFSET
   const PAGE = 1000;
   while (true) {
-    const { data, error } = await db
+    const { data, error } = await afterKey(db
       .from("external_source_refs")
       .select("external_id, entity_id")
       .eq("source", "sec_edgar")
       .eq("entity_type", "financial_entity")
-      // FIX-760: stable unique order — unordered .range() pagination can
-      // skip/duplicate rows as page boundaries shift between queries.
-      .order("id")
-      .range(page * PAGE, (page + 1) * PAGE - 1);
+      // FIX-760 total order / FIX-984 keyset key: the same unique column
+      // must appear in .order(), in .limit()'s cursor, and in the seek.
+      .order("external_id")
+      .limit(PAGE), "external_id", afterId);
     if (error) throw new Error(`preloadCikBindings: ${error.message}`);
     const rows = (data ?? []) as Array<{ external_id: string; entity_id: string }>;
     for (const r of rows) out.set(r.external_id, r.entity_id);
     if (rows.length < PAGE) break;
-    page++;
+    afterId = rows[rows.length - 1]!.external_id;
   }
   return out;
 }

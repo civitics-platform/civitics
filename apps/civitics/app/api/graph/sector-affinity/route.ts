@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { withPublicCdnCache } from "@/lib/cdn-cache";
 import type { NextRequest } from "next/server";
-import { createAdminClient } from "@civitics/db";
+import { createAdminClient, afterKey } from "@civitics/db";
 import { supabaseUnavailable, unavailableResponse } from "@/lib/supabase-check";
 import { fetchChunkedByIds } from "@/lib/paginate";
 
@@ -66,28 +66,32 @@ interface RollupRow    { industry: string; total_cents: number | string | null; 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function computeSectorAffinityLive(supabase: any, entityId: string): Promise<{ totalCents: number; sectors: SectorRow[] }> {
   const donorTotals = new Map<string, number>();
-  let from = 0;
+  let afterId: string | null = null;
+  let scanned = 0;
   const PAGE = 1000;
   // eslint-disable-next-line no-constant-condition
   while (true) {
-    const { data } = await supabase
+    // FIX-503 pinned the pkey order so paged per-donor sums cannot double-count;
+    // FIX-984 makes that same pkey the seek key, so a deep page costs what the
+    // first one does instead of re-walking every row before it.
+    const { data }: { data: Array<DonationLite & { id: string }> | null } = await afterKey(supabase
       .from("financial_relationships")
-      .select("from_id, amount_cents")
+      .select("id, from_id, amount_cents")
       .eq("relationship_type", "donation")
       .eq("from_type", "financial_entity")
       .eq("to_type", "official")
       .eq("to_id", entityId)
       .gt("amount_cents", 0)
-      // FIX-503: stable pkey order so paged per-donor sums don't double-count.
       .order("id", { ascending: true })
-      .range(from, from + PAGE - 1);
+      .limit(PAGE), "id", afterId);
     if (!data || data.length === 0) break;
-    for (const d of data as DonationLite[]) {
+    for (const d of data) {
       donorTotals.set(d.from_id, (donorTotals.get(d.from_id) ?? 0) + (d.amount_cents ?? 0));
     }
+    scanned += data.length;
     if (data.length < PAGE) break;
-    from += PAGE;
-    if (donorTotals.size > 200_000) break;
+    afterId = data[data.length - 1]!.id;
+    if (donorTotals.size > 200_000 || scanned > 2_000_000) break;
   }
 
   if (donorTotals.size === 0) return { totalCents: 0, sectors: [] };

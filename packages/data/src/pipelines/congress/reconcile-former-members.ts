@@ -22,6 +22,7 @@
  */
 
 import type { createAdminClient } from "@civitics/db";
+import { ID_CHUNK_SIZE } from "@civitics/db";
 
 type Db = ReturnType<typeof createAdminClient>;
 
@@ -166,14 +167,23 @@ export async function runReconcileFormerMembers(opts: {
       `member(s): ${diff.staleBioguideIds.join(", ")}`
   );
 
-  const { error: updateError } = await db
-    .from("officials")
-    .update({ is_active: false, tier: "former" })
-    .in("id", diff.staleIds);
-  if (updateError) {
-    throw new Error(
-      `reconcile-former-members: deactivate update: ${updateError.message}`
-    );
+  // FIX-1037: chunked. The id list rides the request URL on an UPDATE exactly
+  // as it does on a read (the FIX-902 finding at src/lib/notifications.ts:124),
+  // and `staleIds` is every departed member -- single digits in a steady week,
+  // but a post-election Congress turnover is ~60-100 in one run, and a first
+  // reconcile after a gap is unbounded. Hand-rolled rather than through
+  // fetchChunkedByIds because that helper is a READ helper; the constant is the
+  // shared one either way, which is the whole point.
+  for (let i = 0; i < diff.staleIds.length; i += ID_CHUNK_SIZE) {
+    const { error: updateError } = await db
+      .from("officials")
+      .update({ is_active: false, tier: "former" })
+      .in("id", diff.staleIds.slice(i, i + ID_CHUNK_SIZE));
+    if (updateError) {
+      throw new Error(
+        `reconcile-former-members: deactivate update: ${updateError.message}`
+      );
+    }
   }
 
   console.log(

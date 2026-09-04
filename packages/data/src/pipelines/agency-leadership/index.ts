@@ -16,7 +16,7 @@
  *   is_current=true for officials not in the current-holder set are closed.
  */
 
-import { createAdminClient, rowsOrThrow, selectAllOrThrow } from "@civitics/db";
+import { createAdminClient, rowsOrThrow, selectAllKeyset, afterKey } from "@civitics/db";
 import { completeSync, failSync, startSync, type PipelineResult } from "../sync-log";
 import { sleep } from "../utils";
 
@@ -448,15 +448,16 @@ export async function runAgencyLeadershipPipeline(): Promise<PipelineResult> {
     // Build wikidata_id → official UUID map. FIX-545: silent-zero here meant
     // a failed preload re-inserted every leader as a new official; paginate
     // too — the wikidata-bound set grows with each agency pass.
-    const existingOfficials = await selectAllOrThrow(
+    const existingOfficials = await selectAllKeyset<{ id: string; source_ids: unknown }, string>(
       "agency-leadership wikidata officials preload",
-      (from, to) => db
+      (after, limit) => afterKey(db
         .from("officials")
         .select("id, source_ids")
         .not("source_ids->>wikidata_id", "is", null)
         .order("id")
-        .range(from, to),
-    ) as Array<{ id: string; source_ids: Record<string, string> | null }>;
+        .limit(limit), "id", after),
+      { key: (r) => r.id },
+    );
     const officialByWdId = new Map<string, string>();
     for (const o of existingOfficials) {
       const wdId = (o.source_ids as Record<string, string> | null)?.wikidata_id;

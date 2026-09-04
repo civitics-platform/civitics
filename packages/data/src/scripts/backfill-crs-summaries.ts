@@ -34,7 +34,7 @@
  *     <abs>/src/scripts/backfill-crs-summaries.ts --apply --allow-prod
  */
 
-import { createAdminClient } from "@civitics/db";
+import { createAdminClient, afterKey } from "@civitics/db";
 import { fetchCongressApi, sleep } from "../pipelines/congress/members";
 
 interface SummariesResponse {
@@ -146,21 +146,27 @@ async function main(): Promise<void> {
 
   // ── 1. Collect congress_gov billKeys (paginated; PostgREST 1k cap) ─────────
   const refs: Array<{ entity_id: string; external_id: string }> = [];
-  for (let from = 0; ; from += 1000) {
-    const { data, error } = await db
+  // FIX-984: keyset on `external_id`, which external_source_refs_source_external_id_key
+  // makes UNIQUE once `source` is pinned -- so the filter AND the order are one
+  // index range scan, rather than a pkey walk that re-filters `source` over all
+  // 584,641 rows.
+  let afterExternalId: string | null = null;
+  for (;;) {
+    const { data, error } = await afterKey(db
       .from("external_source_refs")
       .select("entity_id, external_id")
       .eq("source", "congress_gov")
       .eq("entity_type", "proposal")
-      .order("id") // FIX-760: stable unique order for .range() pagination
-      .range(from, from + 999);
+      .order("external_id")
+      .limit(1000), "external_id", afterExternalId);
     if (error) {
-      console.error(`external_source_refs page ${from}: ${error.message}`);
+      console.error(`external_source_refs page after ${afterExternalId ?? "<start>"}: ${error.message}`);
       process.exit(1);
     }
     const rows = (data ?? []) as Array<{ entity_id: string; external_id: string }>;
     refs.push(...rows);
     if (rows.length < 1000) break;
+    afterExternalId = rows[rows.length - 1]!.external_id;
   }
   console.log(`  congress_gov proposal refs: ${refs.length}`);
 

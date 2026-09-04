@@ -12,7 +12,7 @@
  */
 
 import type { createAdminClient, ReadResult } from "@civitics/db";
-import { selectAllOrThrow } from "@civitics/db";
+import { selectAllKeyset } from "@civitics/db";
 import { withDirectClient, withDirectPool, bulkUpsert, refreshPrimarySourceDirect } from "../../lib/direct-pg-upsert";
 import { canonicalizeEntityName } from "../fec-bulk/writer";
 import {
@@ -46,17 +46,30 @@ export async function preloadKnownLittleSisIds(db: Db): Promise<Map<number, Anch
   };
   // FIX-545: this used to destructure `const { data }` with no error check —
   // a dead gateway returned an empty Map and the matcher re-resolved all
-  // 440k entities from scratch on a run that looked clean. selectAllOrThrow
+  // 440k entities from scratch on a run that looked clean. selectAllKeyset
   // throws on any page error instead of degrading to known.size === 0.
-  const rows = await selectAllOrThrow<RefRow>(
+  //
+  // FIX-984: keyset, not OFFSET, and keyed on `external_id` rather than `id`.
+  // `external_source_refs_source_external_id_key` is UNIQUE on
+  // (source, external_id), so with `source` pinned by the .eq() the whole page
+  // predicate — the filter AND the order — is one index range scan that stops
+  // at LIMIT. Keying on `id` instead would have walked the pkey and re-filtered
+  // `source` over all 584,641 rows.
+  //
+  // Prod plans, 2026-09-04, at the tail of this walk (353,995 littlesis refs):
+  //   OFFSET 353000 → cost 29,110 · 590,581 buffers · 10,761 ms  (per page!)
+  //   keyset        → cost    181 ·       757 buffers ·     99 ms
+  const rows = await selectAllKeyset<RefRow, string>(
     "littlesis known-ids preload (external_source_refs)",
-    (from, to) =>
-      (db as unknown as {
+    (after, limit) => {
+      const q = (db as unknown as {
         from: (t: string) => {
           select: (cols: string) => {
             eq: (col: string, v: string) => {
               order: (col: string) => {
-                range: (from: number, to: number) => PromiseLike<ReadResult<RefRow>>;
+                limit: (n: number) => {
+                  gt: (col: string, v: string) => PromiseLike<ReadResult<RefRow>>;
+                } & PromiseLike<ReadResult<RefRow>>;
               };
             };
           };
@@ -65,11 +78,11 @@ export async function preloadKnownLittleSisIds(db: Db): Promise<Map<number, Anch
         .from("external_source_refs")
         .select("external_id, entity_type, entity_id, metadata")
         .eq("source", "littlesis")
-        // FIX-760: stable unique order — unordered .range() pagination can
-        // skip/duplicate rows as page boundaries shift between queries.
-        .order("id")
-        .range(from, to),
-    { pageSize: KNOWN_LOAD_PAGE },
+        .order("external_id")
+        .limit(limit);
+      return after === null ? q : q.gt("external_id", after);
+    },
+    { key: (r) => r.external_id, pageSize: KNOWN_LOAD_PAGE },
   );
   const out = new Map<number, AnchorMatch>();
   for (const r of rows) {

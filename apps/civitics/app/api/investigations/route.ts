@@ -27,8 +27,14 @@ export async function GET(request: NextRequest) {
       .select(
         "id, title, question, scope_type, scope_id, scope_note, status, is_seeded, is_featured, created_by, created_at, updated_at",
       )
+      // OFFSET (FIX-984 exception): `offset` comes off the request's own
+      // ?offset= query param -- it is the route's public paging contract, not a
+      // walk cursor, and one request is issued per call. `id` added as the
+      // unique tiebreaker: is_featured is a boolean and created_at repeats, so
+      // the previous order was far from total and adjacent pages could overlap.
       .order("is_featured", { ascending: false })
       .order("created_at", { ascending: false })
+      .order("id", { ascending: true })
       .range(offset, offset + limit - 1);
 
     if (status && ["open", "closed", "archived"].includes(status)) {

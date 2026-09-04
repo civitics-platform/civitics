@@ -107,7 +107,8 @@ export async function buildMatchIndex(): Promise<MatchIndex> {
     // SESSION timeout past the gateway/role caps (mirrors heavy-rebuild.ts).
     await client.query("SET statement_timeout = '90min'");
 
-    // ── officials (single direct query; ~28.6k rows) ─────────────────────
+    // -- officials (single direct query; 37,294 rows) ---------------------
+    // FIX-976: was "~28.6k". Re-counted on prod 2026-09-04.
     const officials = await client.query<{
       id: string; full_name: string;
       first_name: string | null; last_name: string | null;
@@ -134,12 +135,27 @@ export async function buildMatchIndex(): Promise<MatchIndex> {
       officialsByLastName.set(last, list);
     }
 
-    // ── financial_entities, keyset-chunked to bound memory (~2.45M rows) ──
+    // -- financial_entities, keyset-chunked to bound memory (5,204,854 rows) --
     //
-    // Individuals (~2.37M FEC indiv donors) build only the sort-key index, not
-    // a name-token-prefix index, to keep memory bounded. Org count is ~30k.
-    // Reading in id-ordered chunks keeps peak RSS flat — a single 2.45M-row
-    // buffer would spike past the ~1 GB the paginated path already peaked at.
+    // Individuals (4,975,895 FEC indiv donors) build only the sort-key index,
+    // not a name-token-prefix index, to keep memory bounded. Non-individuals
+    // are 228,959. Reading in id-ordered chunks keeps peak RSS flat -- a single
+    // 5.2M-row buffer would spike past the ~1 GB the paginated path peaked at.
+    //
+    // FIX-976: every figure above was re-counted on prod 2026-09-04. The
+    // comment had said ~2.45M total / ~2.37M individuals / ~30k orgs, sized
+    // when the table was less than half its current size -- the org side is up
+    // 7.5x. CHUNK is UNCHANGED at 100,000: this walk was already keyset (it is
+    // the only one in the repo that was), and the chunk is a memory knob, not a
+    // page-cap knob.
+    //
+    // THE ~1 GB BOUND IS ALREADY EXCEEDED. A full build measured on the local
+    // prod clone 2026-09-04: 93.9 s, peak RSS 1,282 MB, persons=2,551,270
+    // orgs=224,379. The cost is the two Maps this loop fills, not the page
+    // buffer, so lowering CHUNK will not help -- the next lever is not holding
+    // every individual in `personsBySortKey`. Sized against a Node default heap
+    // this is the number to watch; the run prints rss on every pass, so read
+    // that line rather than this comment before deciding anything.
     const CHUNK  = 100_000;
     let   lastId = "00000000-0000-0000-0000-000000000000";
     while (true) {

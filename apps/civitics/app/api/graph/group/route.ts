@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { withPublicCdnCache } from "@/lib/cdn-cache";
 // FIX-883 — fetchIndustryTagsByEntityId dropped: the official branch's per-donor
 // sector resolution moved into get_cohort_top_donors(), and no other branch used it.
-import { createAdminClient, fetchEntityIdsByIndustryTag, currentGoverningBodyMembers } from "@civitics/db";
+import { createAdminClient, fetchEntityIdsByIndustryTag, currentGoverningBodyMembers, fetchAllKeyset, afterKey } from "@civitics/db";
 import { supabaseUnavailable, unavailableResponse, withDbTimeout } from "@/lib/supabase-check";
 import { fetchAllRows, ID_CHUNK_SIZE } from "@/lib/paginate";
 import { isGbExpandableJurisdictionType } from "@/lib/graph-seedable-kinds";
@@ -88,15 +88,20 @@ async function raceWithBudget<T>(
  * batch exceeds `budgetMs`. The caller sets meta.donorFetchError and returns a
  * partial-with-flag payload — never a silent zero (FIX-497).
  */
-async function fetchPagedConnections<T>(
+// FIX-984: keyset, not OFFSET. Each builder now takes `(after, limit)` and must
+// `.order("id").limit(limit)` with the cursor routed through
+// `afterKey(q, "id", after)` -- `id` being the entity_connections pkey these
+// walks already ordered on.
+async function fetchPagedConnections<T extends { id: string }>(
   builders: Array<
-    (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>
+    (after: string | null, limit: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>
   >,
   budgetMs: number,
   label: string,
 ): Promise<{ rows: T[]; fetchFailed: boolean }> {
   const work = Promise.all(
-    builders.map((b) => fetchAllRows<T>(b, { maxRows: 50000 })),
+    builders.map((b, i) =>
+      fetchAllKeyset<T, string>(`${label}:${i}`, b, { key: (r) => r.id, maxRows: 50000 })),
   ).then((results) => {
     const errored = results.find((r) => r.error != null);
     if (errored) console.error(`[graph/group] ${label} page error: ${errored.error?.message}`);
@@ -839,17 +844,17 @@ export async function GET(req: NextRequest) {
       // instead of `for (const r of pacResults) pacData.push(...r.rows)` dropping
       // the per-page error. A timed-out recipient aggregation flags rather than
       // shipping an empty "no PAC recipients" payload.
-      const pacFetch = await fetchPagedConnections<{ to_id: string; amount_cents: number | null }>(
-        pacChunks.map((batch) => (f: number, t: number) =>
-          supabase
+      const pacFetch = await fetchPagedConnections<{ id: string; to_id: string; amount_cents: number | null }>(
+        pacChunks.map((batch) => (after: string | null, limit: number) =>
+          afterKey(supabase
             .from("entity_connections")
-            .select("to_id, amount_cents")
+            .select("id, to_id, amount_cents")
             .eq("connection_type", "donation")
             .eq("from_type", "financial_entity")
             .in("from_id", batch)
             .eq("to_type", "official")
             .order("id", { ascending: true })
-            .range(f, t),
+            .limit(limit), "id", after),
         ),
         DONOR_FETCH_BUDGET_MS,
         "pac-donations",
@@ -1274,33 +1279,33 @@ export async function GET(req: NextRequest) {
 
     const [donationFetch, contractFetch] = await Promise.all([
       // Cohort → official donations (entity_connections_from_id_connection_type).
-      fetchPagedConnections<{ to_id: string; amount_cents: number | null }>(
-        finChunks.map((batch) => (f: number, t: number) =>
-          supabase
+      fetchPagedConnections<{ id: string; to_id: string; amount_cents: number | null }>(
+        finChunks.map((batch) => (after: string | null, limit: number) =>
+          afterKey(supabase
             .from("entity_connections")
-            .select("to_id, amount_cents")
+            .select("id, to_id, amount_cents")
             .eq("connection_type", "donation")
             .eq("from_type", "financial_entity")
             .in("from_id", batch)
             .eq("to_type", "official")
             .order("id", { ascending: true })
-            .range(f, t),
+            .limit(limit), "id", after),
         ),
         DONOR_FETCH_BUDGET_MS,
         "financial-donations",
       ),
       // Agency → cohort contract awards (entity_connections_to).
-      fetchPagedConnections<{ from_id: string; amount_cents: number | null }>(
-        finChunks.map((batch) => (f: number, t: number) =>
-          supabase
+      fetchPagedConnections<{ id: string; from_id: string; amount_cents: number | null }>(
+        finChunks.map((batch) => (after: string | null, limit: number) =>
+          afterKey(supabase
             .from("entity_connections")
-            .select("from_id, amount_cents")
+            .select("id, from_id, amount_cents")
             .eq("connection_type", "contract_award")
             .eq("from_type", "agency")
             .eq("to_type", "financial_entity")
             .in("to_id", batch)
             .order("id", { ascending: true })
-            .range(f, t),
+            .limit(limit), "id", after),
         ),
         DONOR_FETCH_BUDGET_MS,
         "financial-contracts",

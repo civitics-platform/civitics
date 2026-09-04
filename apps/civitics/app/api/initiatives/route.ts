@@ -49,7 +49,13 @@ export async function GET(request: NextRequest) {
     }
 
     const { data, error, count } = await query
+      // OFFSET (FIX-984 exception): caller-supplied ?offset=, one request per
+      // call -- the route's public paging contract. `proposal_id` (the
+      // initiative_details PRIMARY KEY) added as the unique tiebreaker:
+      // mobilise_started_at is nullable and every un-started initiative shares
+      // NULL, so the previous order was not total.
       .order("mobilise_started_at", { ascending: false, nullsFirst: false })
+      .order("proposal_id", { ascending: true })
       .range(offset, offset + limit - 1);
 
     if (error) {
