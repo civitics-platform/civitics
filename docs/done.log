@@ -1375,3 +1375,7 @@
 2026-09-03 | FIX-1129 | 1b91b94a | prod-only | docs(ops): the weekly derived-MV refresh is back on schedule — supervised firing complete, jobid 10 re-enabled
 2026-09-03 | FIX-966 | 1b91b94a | closes-as-superseded | docs(ops): the weekly derived-MV refresh is back on schedule — supervised firing complete, jobid 10 re-enabled
 2026-09-04 | FIX-1133 | 1fabf701 | local+prod | perf(fr): an index census on financial_relationships — role first, callers second, counters last; 1 dropped / 2 held to 2026-09-12
+2026-09-04 | FIX-1037 | e6c630cc | local-only | perf(reads): keyset replaces OFFSET across the bulk-read helpers; fetchChunkedByIds moves into packages/db; the two stale full-table walks get chunked and dated; a nominee expression index
+2026-09-04 | FIX-976 | e6c630cc | local-only | perf(reads): keyset replaces OFFSET across the bulk-read helpers; fetchChunkedByIds moves into packages/db; the two stale full-table walks get chunked and dated; a nominee expression index
+2026-09-04 | FIX-984 | e6c630cc | local-only | perf(reads): keyset replaces OFFSET across the bulk-read helpers; fetchChunkedByIds moves into packages/db; the two stale full-table walks get chunked and dated; a nominee expression index
+2026-09-04 | FIX-988 | e6c630cc | local+prod | perf(reads): keyset replaces OFFSET across the bulk-read helpers; fetchChunkedByIds moves into packages/db; the two stale full-table walks get chunked and dated; a nominee expression index
