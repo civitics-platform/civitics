@@ -24,6 +24,7 @@ import * as readline from "readline";
 
 import type { createAdminClient, Database } from "@civitics/db";
 import { afterKey } from "@civitics/db";
+import { roleMayHoldFecOffice } from "./electable-role";
 import { extractZipEntryToDisk, parseFecName } from "./util";
 
 type AdminDb = ReturnType<typeof createAdminClient>;
@@ -469,12 +470,12 @@ export async function loadOfficialsByFecIds(
 
       const fecId = r.source_ids?.["fec_id"];
       if (fecId) {
-        const prefix = fecId[0]?.toUpperCase() ?? "";
-        const role   = r.role_title ?? "";
-        const isSen  = role.includes("Senator");
-        const isRep  = role.includes("Representative");
-        const isPres = role.includes("President");
-        if ((isSen && prefix === "S") || (isRep && prefix === "H") || (isPres && prefix === "P")) {
+        // FIX-1025 — one rule, ./electable-role. This was the LOOSE spelling:
+        // `role.includes("Senator")` also matches "State Senator" (2,012 rows
+        // on prod) and `.includes("President")` matches "Vice President,
+        // Marketing". A substring test on a role title binds federal money to
+        // whoever happens to share a word with a federal seat.
+        if (roleMayHoldFecOffice(r.role_title, fecId[0])) {
           // Don't clobber an existing fec_candidate_id mapping — that one is
           // more authoritative (set by an explicit cn{yy} ingestion). Only
           // insert when no fec_candidate_id was already recorded for this ID.

@@ -1,4 +1,4 @@
-import { createAdminClient, fetchIndustryTagsByEntityId, fetchEntityIdsByIndustryTag, currentGoverningBodyMembers, afterKey } from "@civitics/db";
+import { createAdminClient, fetchIndustryTagsByEntityId, fetchEntityIdsByIndustryTag, currentGoverningBodyMembers, afterKey, fetchChunkedByIds } from "@civitics/db";
 import { withPublicCdnCache } from "@/lib/cdn-cache";
 import { supabaseUnavailable, unavailableResponse } from "@/lib/supabase-check";
 import { fetchAllRows, ID_CHUNK_SIZE } from "@/lib/paginate";
@@ -425,15 +425,14 @@ export async function GET(request: Request) {
   // FIX-124: select source_ids + jurisdictions.short_name so we can derive
   // state with the same fallback chain the old RPC used. Pure metadata lookups
   // missed every federal Senator/Rep before the state_abbr backfill.
-  // FIX-219: select total_received_cents (May 8 migration) so we can
-  // skip the 1000-row-capped per-batch financial_relationships scan
-  // unless an industry_filter is active. Generated DB types may lag the
-  // migration on the dev box; cast through unknown to keep the strict
-  // build green without regenerating types.
+  // FIX-219: skip the 1000-row-capped per-batch financial_relationships scan
+  // unless an industry_filter is active, by reading a precomputed per-official
+  // total. FIX-942 moved that total from officials.total_received_cents to
+  // official_donor_totals.total_cents — see the read below.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let officialsQuery = (supabase as any)
     .from("officials")
-    .select("id, full_name, party, role_title, metadata, source_ids, total_received_cents, jurisdictions:jurisdiction_id(short_name)");
+    .select("id, full_name, party, role_title, metadata, source_ids, jurisdictions:jurisdiction_id(short_name)");
 
   if (gbId) {
     // FIX-K — governing_body_id cohort + current-member predicate (is_active +
@@ -490,7 +489,6 @@ export async function GET(request: Request) {
     party: string | null;
     role_title: string | null;
     state: string;
-    total_received_cents: number;
   }>();
   for (const o of officials ?? []) {
     // jurisdictions:jurisdiction_id(short_name) collapses to a single object
@@ -506,13 +504,6 @@ export async function GET(request: Request) {
         o.source_ids as Record<string, unknown> | null,
         jur?.short_name ?? null,
       ),
-      // FIX-219: read the denormalized total instead of re-aggregating
-      // financial_relationships per-batch. The previous per-batch query
-      // capped at 1000 rows (PostgREST default) and silently dropped
-      // donations for officials whose rows didn't make the cut — e.g.
-      // Senate Democrats showed $0 for everyone except Maria Cantwell
-      // because her rows happened to be in the first 1000 returned.
-      total_received_cents: Number(o.total_received_cents ?? 0),
     });
   }
 
@@ -529,17 +520,47 @@ export async function GET(request: Request) {
 
   const officialIds = [...officialById.keys()];
 
-  // FIX-219: default donations source is the denormalized
-  // officials.total_received_cents (refreshed by
-  // rebuild_official_donation_totals_full()). Only run a real
-  // financial_relationships scan when an industry_filter is set, since
-  // that requires donor-side filtering not encoded in the precomputed
-  // total. The scan uses range() pagination to defeat the 1000-row
-  // PostgREST default that produced the original Cantwell-only result.
+  // FIX-219 / FIX-942: default donations source is the precomputed per-official
+  // total. That total used to be officials.total_received_cents, written by
+  // rebuild_official_donation_totals_full(); FIX-942 retired both, because the
+  // column lost its writer when the nightly moved to the FIX-836 bulk regime
+  // and has been frozen ever since. official_donor_totals.total_cents sums the
+  // SAME quantity (FR rows, to_type='official', relationship_type='donation')
+  // and is maintained incrementally on every rollup cycle. Prod 2026-09-05:
+  // 4,131 officials disagreed, $2,745,805,506 of |gap|; the whole 2020 Senate
+  // and presidential cohort rendered a fraction of its real money — Joseph
+  // Biden $0.88M against $340.3M.
+  //
+  // A second keyed read, not a PostgREST embed: officials carries no FK to
+  // official_donor_totals, so `official_donor_totals(...)` cannot resolve, and
+  // adding one for a read path is not worth a migration. Missing row = 0, the
+  // honest answer for an official with no donations — and the same value the
+  // frozen column reported for most of them.
+  //
+  // Only run a real financial_relationships scan when an industry_filter is
+  // set, since that requires donor-side filtering not encoded in the
+  // precomputed total.
   if (!filterPacIds) {
-    for (const [id, o] of officialById) {
-      totalByOfficial.set(id, o.total_received_cents);
+    if (officialIds.length > 0) {
+      const { rows: totalRows, complete } = await fetchChunkedByIds<{
+        official_id: string; total_cents: number | null;
+      }>(
+        officialIds,
+        (ids) => supabase
+          .from("official_donor_totals")
+          .select("official_id, total_cents")
+          .in("official_id", ids)
+          .limit(ids.length),
+        { label: "treemap-donor-totals" },
+      );
+      if (!complete) {
+        console.error("[treemap] official_donor_totals read incomplete — totals understated");
+      }
+      for (const r of totalRows) {
+        totalByOfficial.set(r.official_id, Number(r.total_cents ?? 0));
+      }
     }
+    // Officials with no rollup row keep the map's implicit 0.
   } else if (officialIds.length > 0) {
     const PAGE = 1000;
     // FIX-902 (FIX-802 shape): BOTH id lists ride the request URL, so chunking

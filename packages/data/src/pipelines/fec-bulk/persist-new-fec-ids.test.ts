@@ -55,3 +55,31 @@ test("empty input issues no queries", async () => {
   await persistNewFecIds(client, []);
   assert.equal(calls.length, 0);
 });
+
+test("FIX-955/956: the guard refuses a re-claim under EITHER marker shape", async () => {
+  const { client, calls } = fakeClient();
+  await persistNewFecIds(client, [
+    { officialId: "33333333-3333-3333-3333-333333333333", fecId: "S4IN00196", storageKey: "fec_candidate_id" },
+  ]);
+  assert.equal(calls.length, 1);
+  const sql = calls[0]!.sql.replace(/\s+/g, " ");
+
+  // The legacy scalar (86 prod rows as of 2026-09-05).
+  assert.match(
+    sql,
+    /COALESCE\(source_ids->>'merged_fec_candidate_id', ''\) <> \$2::text/,
+    "scalar marker guard must survive",
+  );
+  // FIX-956 — the array shape every writer now emits. Without this arm, a row
+  // that retired TWO ids (expressible only as the array) would be re-claimed
+  // here, which is the exact defect FIX-955 closed for the scalar.
+  assert.match(
+    sql,
+    /NOT \(COALESCE\(source_ids->'merged_fec_candidate_ids', '\[\]'::jsonb\) \? \$2::text\)/,
+    "array marker guard must be present",
+  );
+  // The retired id is the parameter both arms test, not an interpolated literal.
+  assert.deepEqual(calls[0]!.params, [
+    "fec_candidate_id", "S4IN00196", "33333333-3333-3333-3333-333333333333",
+  ]);
+});

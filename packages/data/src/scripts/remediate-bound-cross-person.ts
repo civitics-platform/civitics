@@ -404,7 +404,12 @@ async function main(): Promise<void> {
   const donors = Number(dn?.n ?? 0);
   await client.query("SET statement_timeout = 0");
   await run(client, "donor_rollup_rebuild_recipients", `SELECT donor_rollup_rebuild_recipients(ARRAY(SELECT holder_id FROM _act))`);
-  await run(client, "rebuild_official_donation_totals()", `SELECT rebuild_official_donation_totals()`);
+  // FIX-942 — rebuild_official_donation_totals() call removed. It writes
+  // officials.total_received_cents, a column that no longer has a reader: the
+  // treemap, the small-dollar route and the search index all read
+  // official_donor_totals.total_cents now, which the donor rollup below
+  // maintains. Recomputing the dead column here was a full-table UPDATE for
+  // nothing. The function itself survives (deprecated) as break-glass.
   const CH = 5000;
   for (let i = 0; i < Math.ceil(donors / CH); i++) {
     await run(client, `financial_entity_donation_totals_rebuild ${i + 1}`,

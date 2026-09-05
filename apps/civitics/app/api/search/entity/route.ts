@@ -7,7 +7,7 @@
 export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
-import { createAdminClient } from "@civitics/db";
+import { createAdminClient, isMergeStubSourceIds } from "@civitics/db";
 import { meetingsEnabled } from "@/lib/meetings-flag";
 
 interface EntityDetail {
@@ -78,10 +78,19 @@ export async function GET(req: NextRequest) {
     if (type === "official") {
       const { data } = await db2
         .from("officials")
-        .select("id, full_name, role_title, party, photo_url, is_active, metadata, primary_source, primary_source_url")
+        // FIX-939: source_ids so the merge-stub check below can run.
+        .select("id, full_name, role_title, party, photo_url, is_active, metadata, source_ids, primary_source, primary_source_url")
         .eq("id", id)
         .single();
       if (!data) return NextResponse.json(null, { status: 404 });
+      // FIX-939 — a FIX-933 merge stub is a $0 same-person duplicate of a real
+      // official. It is excluded from entity_search_index, so nothing in the UI
+      // links here any more; a direct hit on the old id is answered the same way
+      // the index answers it. Once the survivor POINTER (`merged_into`) is
+      // written, this is the hook that turns into a redirect rather than a 404.
+      if (isMergeStubSourceIds(data.source_ids)) {
+        return NextResponse.json(null, { status: 404 });
+      }
 
       const [connection_count, aiRes] = await Promise.all([
         getConnectionCount(db2, id),

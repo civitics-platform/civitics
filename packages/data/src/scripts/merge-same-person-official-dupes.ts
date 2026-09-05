@@ -83,6 +83,7 @@ import {
   type SuspectRow,
   usd,
 } from "./fec-orphan-classify";
+import { roleMayHoldFecOffice } from "../pipelines/fec-bulk/electable-role";
 
 /** Sanity bound — the FIX-930 clone measured 47 eligible pairs. */
 const MAX_PAIRS = 200;
@@ -246,6 +247,25 @@ const REPAIR_WINDOW_START = "2026-08-02";
  * Scoped to duplicates that actually hold money again; a retired stub sitting at
  * zero is already correct and is left alone.
  */
+/**
+ * FIX-956 — the retired-claim set of an `officials` row, as a jsonb array, in
+ * SQL. The marker exists in two shapes: the legacy scalar
+ * `merged_fec_candidate_id` (86 prod rows as of 2026-09-05) and the array
+ * `merged_fec_candidate_ids` that every writer now emits. Every predicate in
+ * this file goes through here so the repair paths do not go blind on whichever
+ * shape a row happens to carry — the TS mirror is `retiredClaims()` in
+ * ../pipelines/fec-bulk/index.ts.
+ *
+ * Use `<expr> ? '<id>'` to test membership and `jsonb_array_length(<expr>) > 0`
+ * for the key-PRESENCE test.
+ */
+function retiredClaimsJsonb(alias: string): string {
+  return `(COALESCE(${alias}.source_ids->'merged_fec_candidate_ids', '[]'::jsonb)
+           || CASE WHEN ${alias}.source_ids ? 'merged_fec_candidate_id'
+                   THEN jsonb_build_array(${alias}.source_ids->>'merged_fec_candidate_id')
+                   ELSE '[]'::jsonb END)`;
+}
+
 const REPAIR_MANIFEST_SQL = `
 -- Aliases are QUOTED to preserve camelCase: these rows are consumed directly as
 -- \`Pair\`, and an unquoted \`AS fec_id\` folds to lower case and lands as
@@ -253,7 +273,7 @@ const REPAIR_MANIFEST_SQL = `
 -- on fec_id, which rolled the run back rather than merging on a null id.)
 SELECT s.id                                        AS "survivor",
        d.id                                        AS "dup",
-       d.source_ids->>'merged_fec_candidate_id'    AS "fecId",
+       s.source_ids->>'fec_candidate_id'           AS "fecId",
        COALESCE(s.full_name,'?') || '  ←  ' || COALESCE(d.full_name,'?') AS "name",
        CASE WHEN d.source_ids ? 'fec_candidate_id'
             THEN 'clean-reclaim' ELSE 'no-live-id' END AS "cls"
@@ -261,9 +281,9 @@ SELECT s.id                                        AS "survivor",
   JOIN officials s
     ON s.tier    = 'elected'
    AND s.id     <> d.id
-   AND s.source_ids->>'fec_candidate_id' = d.source_ids->>'merged_fec_candidate_id'
+   AND ${retiredClaimsJsonb("d")} ? s.source_ids->>'fec_candidate_id'
  WHERE d.tier = 'candidate'
-   AND d.source_ids ? 'merged_fec_candidate_id'
+   AND jsonb_array_length(${retiredClaimsJsonb("d")}) > 0
    -- Two damage classes, one survivor join:
    --
    -- (a) CLEAN RE-CLAIM — the stub took back exactly the id it retired. The
@@ -278,14 +298,16 @@ SELECT s.id                                        AS "survivor",
    --     the original predicate, which required the live id to be present.
    --
    -- Deliberately still EXCLUDED: a stub whose live fec_candidate_id differs
-   -- from its retired one (Jim Banks / Ted Budd / Tom Cotton — retired SENATE
-   -- id, freshly-stolen HOUSE id). Their duplicate counterparts are House
-   -- STUBS, not the elected survivor, so the pair-merge machinery is the wrong
-   -- tool; they are reverted by the separate FIX-960 trio step below
-   -- (runTrioRevert). Retiring a second id for real needs
-   -- merged_fec_candidate_id to be multi-valued — that semantics change stays
-   -- filed as FIX-956.
-   AND (   d.source_ids->>'fec_candidate_id' = d.source_ids->>'merged_fec_candidate_id'
+   -- from EVERY id it retired (Jim Banks / Ted Budd / Tom Cotton — retired
+   -- SENATE id, freshly-stolen HOUSE id). Their duplicate counterparts are
+   -- House STUBS, not the elected survivor, so the pair-merge machinery is the
+   -- wrong tool; they are reverted by the separate FIX-960 trio step below
+   -- (runTrioRevert). FIX-956 has since made the marker multi-valued, so
+   -- retiring that second id for real is now expressible — but the trio's
+   -- money decision is still the separate step, and none of these three rows
+   -- exists on prod today (measured 2026-09-05: 0 stubs hold both a retired
+   -- and a live claim).
+   AND (   ${retiredClaimsJsonb("d")} ? d.source_ids->>'fec_candidate_id'
         OR NOT (d.source_ids ? 'fec_candidate_id'))
    AND EXISTS (SELECT 1 FROM financial_relationships fr
                 WHERE fr.to_type = 'official' AND fr.to_id = d.id)
@@ -435,11 +457,11 @@ async function verifyRepairInDb(
     const office = p.fecId[0]?.toUpperCase() ?? "";
     const state = p.fecId.slice(2, 4).toUpperCase();
     const role = r.survivor_role ?? "";
-    const officeOk =
-      (office === "S" && role === "Senator") ||
-      (office === "H" && role === "Representative") ||
-      (office === "P" && role === "President");
-    if (!officeOk || state !== (r.survivor_state ?? "")) {
+    // FIX-1025 — one rule, ../pipelines/fec-bulk/electable-role. This was one
+    // of three identical hand-written copies in this file, and all three were
+    // missing the `Candidate for …` arms the read side has always honoured, so
+    // a candidate-tier survivor failed its own seat re-check.
+    if (!roleMayHoldFecOffice(role, office) || state !== (r.survivor_state ?? "")) {
       rejected.push({
         name: p.name,
         reason: `seat re-check failed (${p.fecId} vs ${role}/${r.survivor_state})`,
@@ -708,11 +730,11 @@ async function verifyOwnSeatInDb(
     const office = p.fecId[0]?.toUpperCase() ?? "";
     const state = p.fecId.slice(2, 4).toUpperCase();
     const role = r.survivor_role ?? "";
-    const officeOk =
-      (office === "S" && role === "Senator") ||
-      (office === "H" && role === "Representative") ||
-      (office === "P" && role === "President");
-    if (!officeOk || state !== (r.survivor_state ?? "")) {
+    // FIX-1025 — one rule, ../pipelines/fec-bulk/electable-role. This was one
+    // of three identical hand-written copies in this file, and all three were
+    // missing the `Candidate for …` arms the read side has always honoured, so
+    // a candidate-tier survivor failed its own seat re-check.
+    if (!roleMayHoldFecOffice(role, office) || state !== (r.survivor_state ?? "")) {
       rejected.push({
         name: p.name,
         reason: `seat re-check failed (${p.fecId} vs ${role}/${r.survivor_state})`,
@@ -1004,9 +1026,10 @@ async function runTrioRevert(client: Client): Promise<bigint> {
   }
   const [lostMarker] = await q<{ n: string }>(
     client,
+    // FIX-956: either shape satisfies the invariant.
     `SELECT count(*)::text AS n FROM _trio t
        JOIN officials o ON o.id = t.stub
-      WHERE NOT (o.source_ids ? 'merged_fec_candidate_id')`,
+      WHERE jsonb_array_length(${retiredClaimsJsonb("o")}) = 0`,
   );
   if (lostMarker?.n !== "0") {
     throw new Error(`${lostMarker?.n} trio stub(s) lost merged_fec_candidate_id — refusing`);
@@ -1072,11 +1095,11 @@ async function verifyManifestInDb(
     const office = p.fecId[0]?.toUpperCase() ?? "";
     const state = p.fecId.slice(2, 4).toUpperCase();
     const role = r.survivor_role ?? "";
-    const officeOk =
-      (office === "S" && role === "Senator") ||
-      (office === "H" && role === "Representative") ||
-      (office === "P" && role === "President");
-    if (!officeOk || state !== (r.survivor_state ?? "")) {
+    // FIX-1025 — one rule, ../pipelines/fec-bulk/electable-role. This was one
+    // of three identical hand-written copies in this file, and all three were
+    // missing the `Candidate for …` arms the read side has always honoured, so
+    // a candidate-tier survivor failed its own seat re-check.
+    if (!roleMayHoldFecOffice(role, office) || state !== (r.survivor_state ?? "")) {
       rejected.push({
         name: p.name,
         reason: `seat re-check failed (${p.fecId} vs ${role}/${r.survivor_state})`,
@@ -1247,12 +1270,12 @@ async function runRollups(client: Client, prod: boolean): Promise<RollupOutcome>
     console.log("      official_small_dollar_rollup, official_sector_affinity_rollup,");
     console.log("      treemap_individuals_rollup, official_donor_bracket_totals");
 
-    await budgeted(
-      client,
-      "rebuild_official_donation_totals()",
-      `SELECT rebuild_official_donation_totals()`,
-      STEP_BUDGET_S["official_totals"]!,
-    );
+    // FIX-942 — rebuild_official_donation_totals() call removed. It writes
+    // officials.total_received_cents, a column that no longer has a reader: the
+    // treemap, the small-dollar route and the search index all read
+    // official_donor_totals.total_cents now, which the rollup step above
+    // maintains. Recomputing the dead column here was a full-table UPDATE for
+    // nothing. The function itself survives (deprecated) as break-glass.
 
     // CHUNKED. Unchunked over 105,778 donors this was the step that ran 66+
     // minutes on prod and forced the first attempt to be cancelled. Per-chunk
@@ -1440,7 +1463,7 @@ async function main(): Promise<void> {
           FROM officials s
           JOIN officials d
             ON d.tier = 'candidate'
-           AND d.source_ids->>'merged_fec_candidate_id' = s.source_ids->>'fec_candidate_id'
+           AND ${retiredClaimsJsonb("d")} ? s.source_ids->>'fec_candidate_id'
          WHERE s.tier = 'elected'
            AND s.source_ids ? 'congress_gov'
            AND s.source_ids ? 'fec_candidate_id';
@@ -1500,11 +1523,23 @@ async function main(): Promise<void> {
   // size is therefore the expected outcome, not a signal to stop. Pairs where
   // the candidate row STILL holds money are deliberately refused — those need
   // the money decision first (FIX-934 / FIX-935).
+  // FIX-956 — the marker is written as an ARRAY (`merged_fec_candidate_ids`),
+  // appended and deduped, never as the single-valued scalar. Someone who ran
+  // for two different federal seats retires an H-id at one merge and an S-id at
+  // another; the scalar could hold only the second, which silently un-retired
+  // the first and let the pipeline re-bind it on the next pass. The legacy
+  // scalar is left in place where it already exists — every reader accepts both
+  // shapes (see `retiredClaims` in ../pipelines/fec-bulk/index.ts) — and the
+  // 86 prod rows still on it are converted by a separate data pass.
   const reconcileSql = `
     UPDATE officials d
        SET source_ids = (d.source_ids - 'fec_candidate_id')
-                      || jsonb_build_object('merged_fec_candidate_id',
-                                            d.source_ids->>'fec_candidate_id'),
+                      || jsonb_build_object('merged_fec_candidate_ids',
+                           (SELECT jsonb_agg(DISTINCT v)
+                              FROM jsonb_array_elements_text(
+                                     COALESCE(d.source_ids->'merged_fec_candidate_ids', '[]'::jsonb)
+                                     || to_jsonb(ARRAY[d.source_ids->>'fec_candidate_id'])
+                                   ) AS v)),
            updated_at = now()
       FROM officials s
      WHERE d.tier = 'candidate'

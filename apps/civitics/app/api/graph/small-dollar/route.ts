@@ -35,8 +35,10 @@ export const dynamic = "force-dynamic";
  * itemized band is honest; the sub-floor half arrives via the bracket rollup.
  *
  * ── Two shares, because two denominators ─────────────────────────────────────
- * `officials.total_received_cents` is derived from FR rows, so it contains the
- * itemized population and NOT the sub-floor one. Adding the residual to the
+ * `official_donor_totals.total_cents` (FIX-942; was
+ * `officials.total_received_cents` until that column lost its writer) is derived
+ * from FR rows, so it contains the itemized population and NOT the sub-floor
+ * one. Adding the residual to the
  * numerator alone would inflate the share. So the route returns both, named for
  * what they measure, and leaves the choice to the caller:
  *
@@ -75,7 +77,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const SMALL_DOLLAR_CENTS_LIMIT = 50_000; // $500
 
 interface DonationLite { amount_cents: number | null }
-interface OfficialRow  { id: string; full_name: string; total_received_cents: number | null }
+interface OfficialRow  { id: string; full_name: string }
 
 // FIX-776 live-compute fallback: paginate every small-dollar donation row for the
 // official and sum. This is the pre-materialization request-path aggregation; it
@@ -129,7 +131,7 @@ export async function GET(req: NextRequest) {
 
   const { data: official, error: oErr } = await supabase
     .from("officials")
-    .select("id, full_name, total_received_cents")
+    .select("id, full_name")
     .eq("id", entityId)
     .maybeSingle();
   if (oErr) {
@@ -171,7 +173,22 @@ export async function GET(req: NextRequest) {
     smallDollarCount = live.count;
   }
 
-  const totalReceivedCents = o.total_received_cents ?? 0;
+  // FIX-942 — the denominator comes from official_donor_totals, not from
+  // officials.total_received_cents. Both sum the SAME quantity (FR rows with
+  // to_type='official' AND relationship_type='donation'), but only the rollup
+  // has a live writer: the column's last writer was retired when the nightly
+  // moved to the FIX-836 bulk regime, so it has been frozen ever since. Prod
+  // 2026-09-05: 4,131 officials disagree, $2,745,805,506 of |gap| — Jon Ossoff
+  // rendered a 4.0x small-dollar share off a denominator $66.4M too low.
+  // Missing rollup row = 0, which is the honest answer for an official with no
+  // donations. Point read on the rollup's PK.
+  const { data: totalsRow, error: tErr } = await supabase
+    .from("official_donor_totals")
+    .select("total_cents")
+    .eq("official_id", entityId)
+    .maybeSingle();
+  if (tErr) console.error("[small-dollar] donor totals read (treating as 0):", tErr.message);
+  const totalReceivedCents = Number(totalsRow?.total_cents ?? 0);
   const smallDollarShare =
     totalReceivedCents > 0 ? smallDollarCents / totalReceivedCents : 0;
   const disclosedCents = totalReceivedCents + subFloorCents;

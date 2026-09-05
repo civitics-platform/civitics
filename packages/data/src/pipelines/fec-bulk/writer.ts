@@ -1733,9 +1733,14 @@ export async function persistNewFecIds(client: Client, ids: NewFecIdRow[]): Prom
     // The guard is in SQL rather than in the caller so it holds even if a
     // concurrent writer retires the claim between match time and now.
     await client.query(
+      // FIX-956: BOTH marker shapes. The array (`merged_fec_candidate_ids`) is
+      // what writers emit now; the scalar is the legacy shape 86 prod rows
+      // still carry. Testing only the scalar would let a row that retired two
+      // ids — which can only be expressed as the array — be re-claimed.
       `UPDATE public.officials
           SET source_ids = COALESCE(source_ids, '{}'::jsonb) || jsonb_build_object($1::text, $2::text)
         WHERE id = $3::uuid
+          AND NOT (COALESCE(source_ids->'merged_fec_candidate_ids', '[]'::jsonb) ? $2::text)
           AND COALESCE(source_ids->>'merged_fec_candidate_id', '') <> $2::text`,
       [storageKey, fecId, officialId],
     );

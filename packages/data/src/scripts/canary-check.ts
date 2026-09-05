@@ -698,6 +698,26 @@ type CanaryLiveness = {
 async function fetchCronJobHealth(): Promise<CronJobHealth | null> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = createAdminClient() as any;
+
+  // FIX-1150 — record every active job in public.cron_job_first_seen BEFORE
+  // asking whether any of them is missing. `missing_daily` escalates, and a
+  // daily job scheduled minutes ago has no run rows for the ordinary reason
+  // that it has not fired yet; the ledger is what lets the detector tell that
+  // apart from a job that has stopped running. Recording first is what makes
+  // the health check's "absent ledger row ⇒ NOT exempt" default safe: by the
+  // time it evaluates, every active job has a row.
+  //
+  // A separate VOLATILE function rather than a write inside
+  // check_cron_job_health() itself, which must stay STABLE —
+  // check_cron_job_escalations() wraps it for the status page, and a
+  // transitive INSERT fails there with "cannot execute INSERT in a read-only
+  // transaction". Non-fatal: a failure here costs the newborn-job exemption
+  // for this run, never the health report.
+  const { error: seenErr } = await db.rpc("record_cron_jobs_seen");
+  if (seenErr) {
+    console.warn(`[canary-check] cron first-seen ledger update failed (non-fatal): ${seenErr.message}`);
+  }
+
   const { data, error } = await db.rpc("check_cron_job_health");
   if (error) {
     // Non-fatal, same contract as every other detector: a missing RPC (env not

@@ -232,12 +232,12 @@ async function runRollups(client: Client, prod: boolean): Promise<void> {
           `(pass --officials <uuid,…> to run it)`,
       );
     }
-    await budgeted(
-      client,
-      "rebuild_official_donation_totals()",
-      `SELECT rebuild_official_donation_totals()`,
-      STEP_BUDGET_S["official_totals"]!,
-    );
+  // FIX-942 — rebuild_official_donation_totals() call removed. It writes
+  // officials.total_received_cents, a column that no longer has a reader: the
+  // treemap, the small-dollar route and the search index all read
+  // official_donor_totals.total_cents now, which the donor rollup below
+  // maintains. Recomputing the dead column here was a full-table UPDATE for
+  // nothing. The function itself survives (deprecated) as break-glass.
 
     const chunks = Math.ceil(donors / DONOR_CHUNK);
     if (chunks === 0) {

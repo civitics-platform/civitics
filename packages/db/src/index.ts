@@ -52,6 +52,8 @@ export {
   listOfficialsByJurisdiction,
   listOfficialsByParty,
   findOfficialsByLocation,
+  MERGE_STUB_MARKER_KEYS,
+  isMergeStubSourceIds,
 } from "./queries/officials";
 
 export {

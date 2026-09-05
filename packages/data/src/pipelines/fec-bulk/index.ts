@@ -163,6 +163,7 @@ import {
   INDIV_STAGE_NAMES,
   type IndivStageName,
 } from "./scope";
+import { isFecElectableRole, roleMayHoldFecOffice } from "./electable-role";
 import { acquireFecPipelineLock } from "./pipeline-lock";
 import { streamIndependentExpenditures, isMintableSpenderName } from "./indep-exp";
 import { resolveOrMintIeTargets, type IeTargetIdentity } from "./mint-ie-targets";
@@ -470,57 +471,55 @@ export interface MatchIndex {
  * everywhere a CAND_ID can select an official: both index passes below, and the
  * name fallback in `matchRow`.
  */
+/**
+ * FIX-956 — the marker is an ARRAY, and both shapes are read here.
+ *
+ * The original marker was a scalar `merged_fec_candidate_id`, which can hold
+ * exactly one retired id. That is wrong for anyone who has run for two
+ * different federal seats: a House member who then wins a Senate race retires
+ * an H-id at one merge and an S-id at another, and the second write silently
+ * overwrote the first — un-retiring the earlier claim, which the pipeline then
+ * re-bound on its next pass. `merged_fec_candidate_ids` (a jsonb array) is the
+ * shape that can hold both.
+ *
+ * READERS ACCEPT BOTH, WRITERS WRITE THE ARRAY. This function is the ONE place
+ * the two shapes are reconciled, so nothing downstream has to know there was a
+ * transition. Prod 2026-09-05: 86 rows carry the scalar, 0 carry the array;
+ * converting those 86 is a DATA pass and is deliberately NOT in this bundle.
+ */
+export function retiredClaims(o: OfficialRecord): string[] {
+  const out: string[] = [];
+  const arr = (o.source_ids as Record<string, unknown>)["merged_fec_candidate_ids"];
+  if (Array.isArray(arr)) {
+    for (const v of arr) if (typeof v === "string" && v) out.push(v);
+  }
+  const scalar = o.source_ids["merged_fec_candidate_id"];
+  if (typeof scalar === "string" && scalar && !out.includes(scalar)) out.push(scalar);
+  return out;
+}
+
+/** FIX-956 — does this row carry a retired claim of ANY id? The key-PRESENCE
+ *  test: a merge stub must never re-enter a name pool, whatever it retired. */
+export function hasAnyRetiredClaim(o: OfficialRecord): boolean {
+  return retiredClaims(o).length > 0;
+}
+
 export function hasRetiredClaim(o: OfficialRecord, key: string): boolean {
-  return o.source_ids["merged_fec_candidate_id"] === key;
+  return retiredClaims(o).includes(key);
 }
 
 /**
- * FIX-937 — the only `role_title`s that can legitimately hold an FEC
- * House / Senate / President CAND_ID.
- *
- * WHY A ROLE ALLOW-LIST AND NOT THE `short_name` SYMPTOM. The bullet found the
- * population via jurisdiction `short_name` values that are not two-letter state
- * codes (`AUS`, `SEA`, `SF`, `US`), because such an official can never satisfy
- * `matchRow`'s state narrowing and therefore only ever bound through the
- * national-pool fallback FIX-936 has now closed. But `short_name` is a
- * *consequence* of where the row came from, not a statement about the seat:
- * `US` is also the jurisdiction of every presidential candidate the cn{yy}
- * stage mints, which IS federally electable. The stable signal is the role.
- *
- * The read side already refuses these ids — `buildMatchIndex` pass 2 honours a
- * stored `fec_id` only when its FEC prefix matches the role (Senator→S,
- * Representative→H), and `loadOfficialsByFecIds` mirrors that with a
- * President→P arm. The write side had NO role check at all, so the pipeline
- * wrote a binding by surname, refused to read it back, and re-derived it by
- * name on the next run, forever. This list is that asymmetry closed: the same
- * vocabulary, applied where the binding is MADE.
- *
- * EXACT strings, never `includes`/`ILIKE`. `"State Senator"` contains
- * `"Senator"`; `"Vice President, Marketing"` (a real USPS row on the clone)
- * contains `"President"`. An allow-list also fails in the recoverable
- * direction — an unrecognised federal role is refused a name match, which
- * lands in FIX-935's UNIQUE HOLDER branch (write the id later), rather than
- * binding someone else's donors (FIX-934).
- *
- * `President` / `Vice President` match nothing on the clone today (the sitting
- * President is not carried as an `officials` row); they are listed so a future
- * seed does not silently fall out of the pool.
+ * FIX-1025 — the role allow-list and its office-prefix companion now live in
+ * ./electable-role, which is the ONE place the rule is spelled. Re-exported
+ * here because FIX-937 published them from this module and six call sites plus
+ * the test suite import them by that path.
  */
-export const FEC_ELECTABLE_ROLE_TITLES: ReadonlySet<string> = new Set([
-  "Senator",
-  "Representative",
-  "President",
-  "Vice President",
-  // Minted by the cn{yy} stage — see roleTitleFor() in ./candidates.ts.
-  "Candidate for Senator",
-  "Candidate for Representative",
-  "Candidate for President",
-]);
-
-/** FIX-937 — may this official hold an FEC candidate id at all? */
-export function isFecElectableRole(o: OfficialRecord): boolean {
-  return FEC_ELECTABLE_ROLE_TITLES.has((o.role_title ?? "").trim());
-}
+export {
+  FEC_ELECTABLE_ROLE_TITLES,
+  isFecElectableRole,
+  fecOfficePrefixFor,
+  roleMayHoldFecOffice,
+} from "./electable-role";
 
 export function buildMatchIndex(officials: OfficialRecord[]): MatchIndex {
   const byFecId    = new Map<string, string>();
@@ -566,10 +565,11 @@ export function buildMatchIndex(officials: OfficialRecord[]): MatchIndex {
     const fecId = o.source_ids["fec_id"];
     if (!fecId) continue;
     if (hasRetiredClaim(o, fecId)) continue; // FIX-955
-    const prefix    = fecId[0]?.toUpperCase() ?? "";
-    const isSenator = o.role_title === "Senator";
-    const isRep     = o.role_title === "Representative";
-    if ((isSenator && prefix === "S") || (isRep && prefix === "H")) {
+    // FIX-1025 — one rule, ./electable-role. This pair used to be spelled
+    // `role_title === "Senator"` / `=== "Representative"` inline, with no
+    // President arm at all, so a `Candidate for Senator` row could not read
+    // back its own stored S-id and the pipeline re-derived it by name forever.
+    if (roleMayHoldFecOffice(o.role_title, fecId[0])) {
       claim(fecId, o);
     }
     // Mismatched prefix (old race) — skip; don't pollute the index
@@ -842,7 +842,9 @@ export function perCycleNameFallback(
       // exactly the enumeration gap FIX-960 was filed for.
       if (!isFecElectableRole(o)) return false;
       // FIX-960 guard 1 — broad key-presence exclusion (see doc comment).
-      if (o.source_ids["merged_fec_candidate_id"] !== undefined) return false;
+      // FIX-956: EITHER marker shape counts. A stub that retired two ids
+      // carries the array and no scalar, and used to sail straight through.
+      if (hasAnyRetiredClaim(o)) return false;
       return !o.source_ids["fec_candidate_id"] && !o.source_ids["fec_id"];
     })
     .sort(
@@ -2385,7 +2387,13 @@ async function runFecBulkPipelineLocked(): Promise<PipelineResult> {
     // outflow from financial_relationships, covering candidate AND committee
     // recipients (FIX-181 + FIX-236) in one pass. Excludes ie_support/
     // ie_oppose/contract/grant/lobbying — only relationship_type='donation'
-    // counts toward this column. Pattern mirrors rebuild_official_donation_totals.
+    // counts toward this column. (The OFFICIALS-side total is a different
+    // column with the same name on a different table: FIX-942 retired
+    // `officials.total_received_cents` and its writers
+    // `rebuild_official_donation_totals()` / `_full()`. The authoritative
+    // per-official donation total is `official_donor_totals.total_cents`,
+    // maintained incrementally by the jobid 24 bulk regime — FIX-836 / FIX-973.
+    // Nothing here writes it.)
     // ── total_donated_cents / total_received_cents: MOVED to pg_cron (FIX-702/726) ─
     // The heavy full-table rebuilds (rebuild_financial_entity_donation_totals /
     // _received_totals) that used to run HERE saturated Pro Small during the

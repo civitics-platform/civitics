@@ -16,6 +16,8 @@
  * for the full derivation rationale.
  */
 
+import { roleMayHoldFecOffice } from "../pipelines/fec-bulk/electable-role";
+
 // ---------------------------------------------------------------------------
 // The enumeration query
 //
@@ -337,14 +339,11 @@ export function seatMatches(
 ): boolean {
   const office = fecOffice(fecId);
   if (!office) return false;
-  const role = roleTitle ?? "";
-  const officeOk =
-    (office === "S" && (role === "Senator" || role === "Candidate for Senator")) ||
-    (office === "H" && (role === "Representative" || role === "Candidate for Representative")) ||
-    (office === "P" && (role === "President" || role === "Candidate for President"));
-  // Anything else (Council Member, Mayor, agency titles…) holds no federal
-  // seat at all, so a federal CAND_ID can never legitimately be theirs.
-  if (!officeOk) return false;
+  // FIX-1025 — one rule, ../pipelines/fec-bulk/electable-role. This was a
+  // fourth hand-written spelling of the same office↔role table. Anything not in
+  // it (Council Member, Mayor, agency titles…) holds no federal seat at all, so
+  // a federal CAND_ID can never legitimately be theirs.
+  if (!roleMayHoldFecOffice(roleTitle, office)) return false;
   return stateMatches(jurisdiction, fecId);
 }
 
