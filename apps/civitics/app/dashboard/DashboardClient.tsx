@@ -866,7 +866,19 @@ function StatsSection({
     ? `${formatNumber(officialsBreakdown.federal)} federal · ${formatNumber(officialsBreakdown.state)} state · ${formatNumber(officialsBreakdown.judges)} judges`
     : "Federal, state & judicial officials";
 
+  // FIX-1146 — Officials, Votes and the "of N total" sublabel are read from the
+  // platform_counts cache, refreshed once a day rather than recomputed on every
+  // 30-minute tick. They are EXACT counts, just not counted a moment ago, so the
+  // row says when they were taken. A cached number whose age is invisible is
+  // worse than a slow one. Absent (a payload written before this shipped, or
+  // before the first refresh) renders nothing rather than a guess.
+  const countsAsOf =
+    !isPartial(database) && typeof database.counts_as_of === "string"
+      ? database.counts_as_of
+      : null;
+
   return (
+    <>
     <StatsRow>
       <StatCard
         icon={<Users size={16} />}
@@ -924,7 +936,28 @@ function StatsSection({
         loading={!chordAvailable}
       />
     </StatsRow>
+    {countsAsOf ? (
+      <p className="mt-2 font-mono text-[11px] text-ink-soft">
+        Officials, Votes and proposal totals counted{" "}
+        <time dateTime={countsAsOf}>{formatCountedAt(countsAsOf)}</time>. Donation
+        flow and open comment periods are live.
+      </p>
+    ) : null}
+    </>
   );
+}
+
+/**
+ * FIX-1146 — "as of" stamp for the daily count cache. UTC deliberately: every
+ * other timestamp this dashboard prints is UTC, the refresh is scheduled in UTC,
+ * and a local-time render would differ between the server pass and hydration.
+ */
+function formatCountedAt(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  const day = d.toISOString().slice(0, 10);
+  const hhmm = d.toISOString().slice(11, 16);
+  return `${day} ${hhmm} UTC`;
 }
 
 function CommentPeriodsSection({ openProposals }: { openProposals: OpenProposal[] }) {

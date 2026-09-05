@@ -19,6 +19,11 @@ export type DatabaseStats = {
   entity_tags: number;
   ai_summary_cache: number;
   page_views_24h: number;
+  // FIX-1146 — when the cached counts were taken (ISO-8601), or null before the
+  // first platform-counts-daily refresh. OPTIONAL, for the same reason
+  // StatusPayload.daily_counts is: a status_snapshot row written before this
+  // shipped must still render, and the caption simply does not draw.
+  counts_as_of?: string | null;
 };
 
 export type PipelineRun = {

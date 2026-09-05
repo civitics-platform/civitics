@@ -603,7 +603,20 @@ before a rollup's watermark read and COMMITS after it leaves rows stamped
 them up again. FIX-983 closes the routine case with a head-lag horizon: no
 watermark may advance past `clock_timestamp() -
 civitics.watermark_lag_seconds` (default 3600), so ordinary writers are safe by
-construction. **A supervised landing that exceeds that lag in one transaction
+construction.
+
+**STANDING RULE — every `updated_at` watermark reader/writer clamps to
+`public.watermark_horizon()`.** Not `NOW()`, not a bare `MAX(updated_at)`. If a
+new incremental rollup keys off an `updated_at` column, it clamps, it bounds its
+dirty set above by the clamped target (`updated_at <= target`), and when the
+clamped target is at or below the current watermark it logs a `complete` cycle
+with rows=0 and leaves the watermark alone — writing it would move the watermark
+BACKWARDS, and a non-`complete` status freezes the freshness clock (FIX-1140).
+`watermark_horizon()` is the canonical name as of FIX-1139;
+`fr_watermark_horizon()` still exists as a one-line wrapper so FIX-983's
+thirteen proven `financial_relationships` call sites need no churn — use the
+canonical name for anything new. The votes arm (`entity_connections_votes`) was
+the last holdout and was brought under the rule by FIX-1139. **A supervised landing that exceeds that lag in one transaction
 is outside the guarantee.** The FIX-933 money move held ~12 minutes atomic;
 that is inside 1 h and therefore covered today, but the shape scales with the
 landing, not with the lag.

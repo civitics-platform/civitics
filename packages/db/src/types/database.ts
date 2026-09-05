@@ -327,21 +327,6 @@ export type Database = {
         }
         Relationships: []
       }
-      _eq_dirty: {
-        Row: {
-          from_id: string | null
-          from_type: string | null
-        }
-        Insert: {
-          from_id?: string | null
-          from_type?: string | null
-        }
-        Update: {
-          from_id?: string | null
-          from_type?: string | null
-        }
-        Relationships: []
-      }
       _proof_recips: {
         Row: {
           to_id: string
@@ -2044,6 +2029,36 @@ export type Database = {
           jobname?: string
           runid?: number
           signaled?: boolean | null
+        }
+        Relationships: []
+      }
+      daily_platform_counts: {
+        Row: {
+          day: string
+          donation_flow_usd: number | null
+          officials: number | null
+          open_proposals: number | null
+          recorded_at: string
+          source: string
+          votes: number | null
+        }
+        Insert: {
+          day: string
+          donation_flow_usd?: number | null
+          officials?: number | null
+          open_proposals?: number | null
+          recorded_at?: string
+          source?: string
+          votes?: number | null
+        }
+        Update: {
+          day?: string
+          donation_flow_usd?: number | null
+          officials?: number | null
+          open_proposals?: number | null
+          recorded_at?: string
+          source?: string
+          votes?: number | null
         }
         Relationships: []
       }
@@ -5226,6 +5241,27 @@ export type Database = {
         }
         Relationships: []
       }
+      platform_counts: {
+        Row: {
+          counted_at: string
+          method: string
+          metric: string
+          value: number
+        }
+        Insert: {
+          counted_at: string
+          method?: string
+          metric: string
+          value: number
+        }
+        Update: {
+          counted_at?: string
+          method?: string
+          metric?: string
+          value?: number
+        }
+        Relationships: []
+      }
       platform_limits: {
         Row: {
           billing_cycle: string | null
@@ -5791,6 +5827,36 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      rollup_watch_overrides: {
+        Row: {
+          cadence_hours: number | null
+          held_since: string | null
+          hold_reason: string | null
+          note: string
+          pipeline: string
+          retired_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          cadence_hours?: number | null
+          held_since?: string | null
+          hold_reason?: string | null
+          note: string
+          pipeline: string
+          retired_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          cadence_hours?: number | null
+          held_since?: string | null
+          hold_reason?: string | null
+          note?: string
+          pipeline?: string
+          retired_at?: string | null
+          updated_at?: string
+        }
+        Relationships: []
       }
       service_usage: {
         Row: {
@@ -6709,6 +6775,7 @@ export type Database = {
         Args: { p_max_age_hours?: number; p_pipeline?: string }
         Returns: Json
       }
+      check_rollup_freshness_batch: { Args: { p_items: Json }; Returns: Json }
       check_sector_affinity_tag_staleness: { Args: never; Returns: Json }
       check_senate_reference_cohort: {
         Args: { p_min_edges?: number }
@@ -7094,6 +7161,7 @@ export type Database = {
           role_title: string
         }[]
       }
+      fr_watermark_horizon: { Args: never; Returns: string }
       get_agency_page: { Args: { p_id: string }; Returns: Json }
       get_agency_page_live: { Args: { p_id: string }; Returns: Json }
       get_browse_facets: {
@@ -7759,6 +7827,7 @@ export type Database = {
       refresh_commons_active_threads_mv: { Args: never; Returns: undefined }
       refresh_connection_type_counts: { Args: never; Returns: undefined }
       refresh_donor_party_rollup_mv: { Args: never; Returns: undefined }
+      refresh_donor_party_rollup_slice: { Args: never; Returns: Json }
       refresh_entity_connection_stats_mv: { Args: never; Returns: undefined }
       refresh_entity_engagement_rollup_mv: { Args: never; Returns: undefined }
       refresh_fe_totals_slice: { Args: never; Returns: Json }
@@ -8082,6 +8151,7 @@ export type Database = {
         }
         Returns: string
       }
+      watermark_horizon: { Args: never; Returns: string }
     }
     Enums: {
       argument_flag: "off_topic" | "misleading" | "duplicate" | "other"

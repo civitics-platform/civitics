@@ -436,23 +436,89 @@ async function fetchRollupRegistry(): Promise<RollupRegistry> {
   };
 }
 
+/** One `check_rollup_freshness` answer, whichever call shape produced it. */
+type FreshnessRow = {
+  pipeline?: string;
+  stale?: boolean;
+  hours_since_complete?: number | null;
+  last_complete_at?: string | null;
+  last_status?: string | null;
+  last_error?: string | null;
+  sweep_in_progress?: boolean | null;
+};
+
+// FIX-1148 — one call for the whole registry instead of one per pipeline.
+//
+// The registry is ~49 pipelines, and the old shape spent 49 sequential
+// PostgREST round trips — each its own connection accept — to build one array,
+// on an instance whose measured failure mode IS connection-accept pressure
+// (FIX-1052, FIX-1073), inside the nightly window where that pressure peaks.
+//
+// `check_rollup_freshness_batch` is the SAME per-pipeline function under a
+// CROSS JOIN LATERAL, so there is no second implementation of the verdict and
+// the two cannot drift. Everything downstream of `rowFor` below is byte-
+// identical to the loop it replaces.
+//
+// The rounding is FIX-1135's and is preserved exactly: `maxAgeHours` is already
+// `Math.max(1, Math.round(...))` where the registry is built, because
+// check_rollup_freshness takes an `int` and a raw fractional cadence made
+// PostgREST reject the call outright ("invalid input syntax for type integer:
+// 245.8"), silently un-checking 20 of 49 pipelines.
+async function fetchFreshnessRows(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  db: any,
+  registry: RollupWatch[],
+): Promise<Map<string, FreshnessRow>> {
+  const byPipeline = new Map<string, FreshnessRow>();
+
+  const { data, error } = await db.rpc("check_rollup_freshness_batch", {
+    p_items: registry.map((w) => ({ pipeline: w.pipeline, cadence_hours: w.maxAgeHours })),
+  });
+
+  if (!error) {
+    for (const row of (data ?? []) as FreshnessRow[]) {
+      if (row?.pipeline) byPipeline.set(row.pipeline, row);
+    }
+    return byPipeline;
+  }
+
+  // Non-fatal, same contract as the other detectors: a missing RPC (env not yet
+  // migrated) must never fail the canary's primary nightly_cron job. Falling
+  // back to the per-pipeline loop rather than returning empty is what lets this
+  // code deploy BEFORE its migration lands without blinding the detector for a
+  // night.
+  console.warn(
+    `[canary-check] batched rollup freshness failed (non-fatal, falling back to per-pipeline): ${error.message}`,
+  );
+  for (const w of registry) {
+    const { data: one, error: oneErr } = await db.rpc("check_rollup_freshness", {
+      p_pipeline: w.pipeline,
+      p_max_age_hours: w.maxAgeHours,
+    });
+    if (oneErr) {
+      console.warn(
+        `[canary-check] rollup freshness query failed for ${w.pipeline} (non-fatal): ${oneErr.message}`,
+      );
+      continue;
+    }
+    byPipeline.set(w.pipeline, (one ?? {}) as FreshnessRow);
+  }
+  return byPipeline;
+}
+
 async function fetchRollupFreshness(registry: RollupWatch[]): Promise<RollupStatus[]> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = createAdminClient() as any;
   const out: RollupStatus[] = [];
+  const rows = await fetchFreshnessRows(db, registry);
   for (const w of registry) {
     const { pipeline, maxAgeHours, escalateAfterHours, cadenceHours, cadenceSource, jobname } = w;
-    const { data, error } = await db.rpc("check_rollup_freshness", {
-      p_pipeline: pipeline,
-      p_max_age_hours: maxAgeHours,
-    });
-    if (error) {
-      // Non-fatal, same contract as the other detectors: a missing RPC (env not
-      // yet migrated) must never fail the canary's primary nightly_cron job.
-      console.warn(`[canary-check] rollup freshness query failed for ${pipeline} (non-fatal): ${error.message}`);
-      continue;
-    }
-    const r = (data ?? {}) as {
+    // A pipeline whose answer did not come back is SKIPPED, exactly as the
+    // per-pipeline loop skipped one whose call errored — never defaulted into a
+    // verdict.
+    const row = rows.get(pipeline);
+    if (!row) continue;
+    const r = row as {
       stale?: boolean;
       hours_since_complete?: number | null;
       last_complete_at?: string | null;

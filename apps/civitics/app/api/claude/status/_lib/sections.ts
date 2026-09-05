@@ -157,6 +157,55 @@ export async function getVersion(db: Db) {
  */
 const DATABASE_COUNT_CONCURRENCY = 3;
 
+// ── FIX-1146: the count cache ────────────────────────────────────────────────
+//
+// `platform_counts` holds one EXACT count per metric, refreshed once a day by
+// refresh_platform_counts() on the platform-counts-daily pg_cron job. Reading it
+// is a primary-key scan of ~14 rows.
+//
+// Scalars are stored under their own metric name; the one map-valued metric,
+// `vote_category_counts`, is stored one row per category under a
+// `vote_category:` prefix so the table can stay (metric, bigint). This helper
+// reassembles it.
+const VOTE_CATEGORY_PREFIX = "vote_category:";
+
+type PlatformCounts = {
+  values: Map<string, number>;
+  voteCategories: Record<string, number>;
+  /** When the cached numbers were taken; null if the cache is unreadable or unfilled. */
+  countedAt: string | null;
+};
+
+async function readPlatformCounts(db: Db): Promise<PlatformCounts> {
+  const empty: PlatformCounts = { values: new Map(), voteCategories: {}, countedAt: null };
+  const { data, error } = await db
+    .from("platform_counts")
+    .select("metric, value, counted_at");
+  // No throw: an unreadable cache degrades to "not yet counted" on the cards
+  // that depend on it, exactly as a failed count did before, and must not take
+  // the whole database/quality section down with it.
+  if (error || !data) return empty;
+
+  const values = new Map<string, number>();
+  const voteCategories: Record<string, number> = {};
+  let countedAt: string | null = null;
+
+  for (const row of data as Array<{ metric: string; value: number | string; counted_at: string }>) {
+    const n = Number(row.value);
+    if (row.metric.startsWith(VOTE_CATEGORY_PREFIX)) {
+      voteCategories[row.metric.slice(VOTE_CATEGORY_PREFIX.length)] = n;
+    } else {
+      values.set(row.metric, n);
+    }
+    // Every row of a given pass shares one counted_at; take the newest so a
+    // partially-rewritten cache reports the age of its freshest number rather
+    // than silently claiming the older one.
+    if (countedAt === null || row.counted_at > countedAt) countedAt = row.counted_at;
+  }
+
+  return { values, voteCategories, countedAt };
+}
+
 // Mode rationale (FIX-206): unfiltered count(*) on proposals / votes /
 // financial_relationships saturates the PostgREST request budget on Vercel
 // when fired alongside 9 other parallel queries — locally the same queries
@@ -195,28 +244,34 @@ const DATABASE_COUNT_CONCURRENCY = 3;
 // count is genuinely expensive. Revisit any of them individually if a large
 // delete ever lands on one — the tell is this same reltuples-vs-count gap.
 //
+// FIX-1146 SUPERSEDES BOTH PARAGRAPHS ABOVE, and Craig's 2026-09-04 decision is
+// why. Eight of these eleven counts no longer run here at all: they are read
+// from `platform_counts`, which refresh_platform_counts() fills with EXACT
+// counts once a day. What that costs is freshness — the numbers are up to a day
+// old, and the page says so via `counts_as_of`. What it buys, measured on prod
+// over 2026-08-29..09-04: 5,806 s of execution in 7 days becomes one 14-row
+// primary-key read per tick.
+//
+// FIX-1095's finding is not reversed, only its remedy. reltuples is still not a
+// count and still overstated votes by 31%; the difference is that the exact
+// count is now taken daily instead of 48 times a day. And the "revisit if a
+// large delete lands" tell above is retired rather than ignored — every cached
+// metric IS a count, so there is no reltuples gap left to watch.
+//
+// Still computed live here, deliberately: the two `planned` proposals counts
+// (planner estimates, no scan, FIX-503) and `page_views_24h` (a rolling 24-hour
+// filtered count, so a daily snapshot would answer a different question).
+//
 // NOTE: the per-request SSR fallback path (dashboard/page.tsx, the two status
-// routes) calls the same helper, so a cold snapshot pays the exact-count cost
-// too. That path is already capped by SNAPSHOT_FALLBACK_TIMEOUT_MS and degrades
-// to the last-known-good snapshot, so the added seconds cannot hang a render.
+// routes) calls the same helper. It used to pay the full exact-count cost on a
+// cold snapshot; it now pays the cache read. That path is capped by
+// SNAPSHOT_FALLBACK_TIMEOUT_MS and degrades to the last-known-good snapshot
+// either way, so the change only removes seconds it never needed to spend.
 export async function getDatabase(db: Db, yesterday: string) {
   const gate = concurrencyGate(DATABASE_COUNT_CONCURRENCY);
-  const [
-    officials,
-    proposals,
-    proposalsBills,
-    proposalsRegs,
-    votes,
-    connections,
-    finRel,
-    finEnt,
-    tags,
-    cache,
-    views,
-  ] = await Promise.all([
-    // FIX-1095: exact, not estimated. See the block comment above getDatabase.
-    gate(() => db.from("officials").select("*", { count: "exact", head: true })),
-    gate(() => db.from("proposals").select("*", { count: "exact", head: true })),
+  const [counts, proposalsBills, proposalsRegs, views] = await Promise.all([
+    // FIX-1146: eight of the eleven counts are now one primary-key read.
+    readPlatformCounts(db),
     gate(() =>
       db
         .from("proposals")
@@ -231,15 +286,6 @@ export async function getDatabase(db: Db, yesterday: string) {
         .select("*", { count: "planned", head: true })
         .eq("type", "regulation"),
     ),
-    // FIX-1095: exact, not estimated. See the block comment above getDatabase.
-    gate(() => db.from("votes").select("*", { count: "exact", head: true })),
-    gate(() => db.from("entity_connections").select("*", { count: "estimated", head: true })),
-    gate(() =>
-      db.from("financial_relationships").select("*", { count: "estimated", head: true }),
-    ),
-    gate(() => db.from("financial_entities").select("*", { count: "estimated", head: true })),
-    gate(() => db.from("entity_tags").select("*", { count: "estimated", head: true })),
-    gate(() => db.from("ai_summary_cache").select("*", { count: "estimated", head: true })),
     gate(() =>
       db
         .from("page_views")
@@ -248,6 +294,22 @@ export async function getDatabase(db: Db, yesterday: string) {
         .eq("is_bot", false),
     ),
   ]);
+
+  // A metric absent from the cache — the read failed, or the first
+  // platform-counts-daily firing has not happened yet — is reported through the
+  // EXISTING failure vocabulary (FIX-1121 `failed`), not as a 0. A consumer
+  // already knows to blank the one card that failed, and blanking is what "not
+  // yet counted" should look like; a 0 would assert the platform tracks
+  // nothing, the same lie FIX-090's NULL-vs-0 rule exists to prevent.
+  const cached = (metric: string) => ({ count: counts.values.get(metric) ?? null });
+  const officials  = cached("officials");
+  const proposals  = cached("proposals");
+  const votes      = cached("votes");
+  const connections = cached("entity_connections");
+  const finRel     = cached("financial_relationships");
+  const finEnt     = cached("financial_entities");
+  const tags       = cached("entity_tags");
+  const cache      = cached("ai_summary_cache");
 
   // Surface partial state if any count failed (don't silently show 0).
   //
@@ -258,16 +320,16 @@ export async function getDatabase(db: Db, yesterday: string) {
   // must keep rendering the way it always did. The addition is what lets a
   // consumer blank the ONE card whose count failed instead of all four.
   const errored = [
-    officials.error && "officials",
-    proposals.error && "proposals",
+    officials.count === null && "officials",
+    proposals.count === null && "proposals",
     proposalsBills.error && "proposals_bills",
     proposalsRegs.error && "proposals_regulations",
-    votes.error && "votes",
-    connections.error && "entity_connections",
-    finRel.error && "financial_relationships",
-    finEnt.error && "financial_entities",
-    tags.error && "entity_tags",
-    cache.error && "ai_summary_cache",
+    votes.count === null && "votes",
+    connections.count === null && "entity_connections",
+    finRel.count === null && "financial_relationships",
+    finEnt.count === null && "financial_entities",
+    tags.count === null && "entity_tags",
+    cache.count === null && "ai_summary_cache",
     views.error && "page_views_24h",
   ].filter(Boolean) as string[];
 
@@ -283,6 +345,12 @@ export async function getDatabase(db: Db, yesterday: string) {
     entity_tags: tags.count ?? 0,
     ai_summary_cache: cache.count ?? 0,
     page_views_24h: views.count ?? 0,
+    // FIX-1146 — when the cached counts were taken, ISO-8601, or null before
+    // the first refresh. The page renders "as of HH:MM UTC" from it: a cached
+    // number whose age is invisible is worse than a slow one. Flows into
+    // status_snapshot automatically, since StatusPayload.database is inferred
+    // from this return type.
+    counts_as_of: counts.countedAt,
     ...countFailureFields(errored),
   };
 }
@@ -597,30 +665,31 @@ export async function getAiCosts(
 // returns vote_category_counts as a JSONB map plus three BIGINT scalars; the
 // tagged_pacs count is now computed over the full PAC population (the prior
 // LIMIT-2000 sampling bias is gone).
+//
+// FIX-1146: that one RPC is now read from platform_counts instead of executed.
+// The four numbers are identical — refresh_platform_counts() runs
+// get_quality_counts()'s query bodies verbatim — they are just a day old rather
+// than 30 minutes old, which is what makes them affordable. The Congress-members
+// SELECT is unchanged and still live: it is a 535-row JSONB read, not a count.
 export async function getQuality(db: Db) {
-  type QualityCountsRow = {
-    vote_category_counts: Record<string, number> | null;
-    total_pacs: number | string | null;
-    tagged_pacs: number | string | null;
-    vote_connection_total: number | string | null;
-  };
-
-  const [congressMembers, qualityCountsRes] = await Promise.all([
+  const [congressMembers, counts] = await Promise.all([
     db
       .from("officials")
       .select("source_ids, metadata")
       .in("role_title", ["Senator", "Representative"]),
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (db as any).rpc("get_quality_counts").then((r: any) => r),
+    // FIX-1146: was `rpc("get_quality_counts")`, the single most expensive
+    // statement on the snapshot path — 240 calls x 15.1 s = 3,636 s of prod
+    // execution in 7 days. The RPC still exists and still computes exactly
+    // these four numbers; refresh_platform_counts() runs its bodies verbatim,
+    // once a day, and nothing on the 30-minute path calls it any more.
+    readPlatformCounts(db),
   ]);
 
-  const counts: QualityCountsRow = (qualityCountsRes.data?.[0] ??
-    {}) as QualityCountsRow;
-  const voteCategoryCountsMap = counts.vote_category_counts ?? {};
-  const totalPacs = Number(counts.total_pacs ?? 0);
-  const taggedPacs = Number(counts.tagged_pacs ?? 0);
-  const voteConnTotal = Number(counts.vote_connection_total ?? 0);
+  const voteCategoryCountsMap = counts.voteCategories;
+  const totalPacs = counts.values.get("total_pacs") ?? 0;
+  const taggedPacs = counts.values.get("tagged_pacs") ?? 0;
+  const voteConnTotal = counts.values.get("vote_connection_total") ?? 0;
 
   type CongressRow = {
     source_ids: Record<string, string> | null;

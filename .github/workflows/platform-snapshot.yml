@@ -209,15 +209,46 @@ jobs:
           #   /officials                        DB-backed index page
           #   /api/officials/<id>/responsiveness  an official-page API
           #
-          # THE "ALL THREE ARE X-Vercel-Cache: MISS" CLAIM IS NO LONGER TRUE OF
-          # THE FIRST ONE. That was verified on 2026-08-12 against the vercel.app
-          # origin. Re-measured 2026-09-04 through Cloudflare against
-          # www.civitics.com: `/` answers `x-vercel-cache: HIT`, so it CAN serve
-          # from the CDN while the database is unreachable and its arm of this
-          # probe is decorative on a DB-down outage. `/officials` and
-          # `/api/.../responsiveness` are both still MISS, so the job as a whole
-          # still fails closed — and `/responsiveness` was chosen precisely
-          # because it 500s on a DB error (see below). Filed as FIX-1143.
+          # FIX-1143 — THE "ALL THREE ARE X-Vercel-Cache: MISS" CLAIM WAS NEVER
+          # TRUE OF ANY OF THEM, and the fix is in this job, not in the app.
+          #
+          # Measured at the vercel.app origin on 2026-09-04, three consecutive
+          # GETs per path (no header needed there — no Cloudflare in front):
+          #
+          #   path                       req1  req2  req3   Cdn-Cache-Control
+          #   /                          MISS  HIT   HIT    public, s-maxage=300,
+          #   /officials                 MISS  HIT   HIT      stale-while-
+          #   /api/.../responsiveness    MISS  HIT   HIT      revalidate=600
+          #
+          # All three carry the same 300 s / 600 s CDN policy, so all three can
+          # serve a cached 200 for up to 900 s after the last successful fill.
+          # The earlier "always MISS" reading was AN ARTIFACT OF THIS JOB'S OWN
+          # SHAPE: the retry loop `break`s on the first 200, so each path is
+          # fetched exactly ONCE per run, and the runs are 30 minutes apart — by
+          # which time every entry has long expired. The probe was measuring its
+          # own cadence, not the app's cache policy.
+          #
+          # FIX: a per-request cache-buster query parameter. The Vercel CDN key
+          # includes the query string, so a unique `_probe=` value forces every
+          # attempt to the origin — verified 2026-09-04, 3/3 MISS on each of the
+          # three paths with the buster, 9/9 overall. Done HERE rather than by
+          # removing the app's CDN headers on purpose: those headers are
+          # load-bearing for cost (the whole point of the FIX-796 handler-owned
+          # allowlist model), and a monitor must not degrade what it monitors.
+          #
+          # No replacement path was adopted, and not for want of looking. The
+          # brief was to swap `/` for a DB-backed route that sends
+          # `Cache-Control: no-store` AND 500s on a DB error rather than serving
+          # a cached 200. Only two such routes exist —
+          # /api/dashboard/anthropic-cost and /api/viewer/engagement — and BOTH
+          # FAIL OPEN: they read through supabase-js and use `.data ?? []`, so a
+          # DB error yields an empty 200, never a 500; their `catch` blocks only
+          # fire on a thrown exception. That is the same blindness /summary was
+          # rejected for below, so neither is an improvement on what is here.
+          #
+          # Each attempt now also LOGS its `x-vercel-cache` value, so the claim
+          # in this comment is re-verified on every run instead of decaying
+          # silently for weeks the way the last one did.
           #
           # The official-page API is /responsiveness and NOT /summary, and that
           # choice is deliberate: /summary FAILS OPEN. Its own header says the
@@ -231,7 +262,9 @@ jobs:
           # on a DB-down-but-Vercel-up partial outage. On the failure mode this
           # job was built for — 2026-08-11, Cloudflare 522, origin unreachable —
           # every endpoint fails, so the probe fires. A partial outage rests on
-          # /responsiveness alone.
+          # /responsiveness alone. The cache-buster does not change that; what it
+          # changes is that all three arms now actually REACH the origin, so
+          # /responsiveness's 500 can happen at all.
           PATHS=(
             "/"
             "/officials"
@@ -258,14 +291,31 @@ jobs:
               # secret is unset it is an empty header, which matches nothing
               # and simply gets challenged, so the failure is loud rather than
               # silent.
-              code=$(curl -sS -o /dev/null -w "%{http_code}" --max-time 25 \
-                -H "x-civitics-probe: ${PROBE_HEADER_SECRET}" "${url}") || code="000"
+              # FIX-1143 cache-buster: the Vercel CDN key includes the query
+              # string, so a value unique per attempt guarantees the request
+              # reaches the origin — and therefore the database — instead of
+              # possibly being answered from a 300 s / 600 s CDN entry.
+              # Alphanumeric and hyphens only, so it cannot trip the Common
+              # Exploit Paths WAF rule that still applies to these requests.
+              bust="_probe=${GITHUB_RUN_ID:-0}-${attempt}-${RANDOM}"
+              case "${url}" in
+                *"?"*) probe_url="${url}&${bust}" ;;
+                *)     probe_url="${url}?${bust}" ;;
+              esac
+              hdrs="$(mktemp)"
+              code=$(curl -sS -o /dev/null -D "${hdrs}" -w "%{http_code}" --max-time 25 \
+                -H "x-civitics-probe: ${PROBE_HEADER_SECRET}" "${probe_url}") || code="000"
+              # Recorded, never asserted on. A HIT here would mean the buster
+              # stopped working — worth seeing in the log, not worth turning a
+              # healthy site red over.
+              vcache=$(grep -i '^x-vercel-cache:' "${hdrs}" 2>/dev/null | tr -d '\r' | awk '{print $2}')
+              rm -f "${hdrs}"
               if [ "${code}" = "200" ]; then
-                echo "ok   ${path} (HTTP 200, attempt ${attempt}/${ATTEMPTS})"
+                echo "ok   ${path} (HTTP 200, x-vercel-cache=${vcache:-none}, attempt ${attempt}/${ATTEMPTS})"
                 ok=1
                 break
               fi
-              echo "warn ${path} → HTTP ${code} (attempt ${attempt}/${ATTEMPTS})"
+              echo "warn ${path} → HTTP ${code} (x-vercel-cache=${vcache:-none}, attempt ${attempt}/${ATTEMPTS})"
               if [ "${attempt}" -lt "${ATTEMPTS}" ]; then sleep "${BACKOFF}"; fi
             done
             if [ "${ok}" -ne 1 ]; then FAILED+=("${path}"); fi

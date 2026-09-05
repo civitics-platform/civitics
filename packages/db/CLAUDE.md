@@ -541,6 +541,24 @@ the same table, this is the recipe.
 | `pipeline_runtime_stats_mv` | Per-pipeline MV | Nightly | `runNightlySync` | Admin |
 | `platform_usage_snapshot` | Rolling table (30 d prune) | 30 min | `platform-snapshot` Vercel cron | Public-readable, admin-displayed |
 | `status_snapshot` | Rolling table (24 h prune) | 30 min | `platform-snapshot` Vercel cron | Admin |
+| `platform_counts` | Keyed count cache (one row per metric, overwritten) | Daily 03:53 UTC | `platform-counts-daily` pg_cron → `refresh_platform_counts()` | Admin |
+
+**`platform_counts` (FIX-1146) is a fourth shape and it is worth naming: a
+count cache.** Not an MV (nothing to aggregate — these are `count(*)`s), not a
+rolling snapshot (no history; `daily_platform_counts` (FIX-090) is the history
+and reads from the payload this feeds). One row per metric, one EXACT count per
+row, overwritten daily, plus `counted_at` so the surface can say how old the
+number is. Reach for it when the request-path cost is *counting* rather than
+aggregating, and the count is allowed to be a day old. Map-valued metrics are
+stored one row per key under a prefix (`vote_category:<category>`) so the table
+stays `(metric, bigint)`.
+
+The rule it encodes: **an exact count taken daily beats a planner estimate taken
+constantly.** `count: estimated` reads `pg_class.reltuples`, which is whatever
+the last vacuum wrote and drifts in exactly one direction after a bulk delete —
+it overstated `votes` by 31% after the vote-stub retirement (FIX-1095). Caching
+a real count removes both the cost and the drift; the price is freshness, and
+freshness is the thing to surface rather than hide.
 
 Audit history of which long poles each one replaced lives in `docs/FIXES.md`
 under the cited FIX ID; full conventions audit at
