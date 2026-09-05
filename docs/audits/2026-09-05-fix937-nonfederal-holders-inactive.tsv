@@ -1,0 +1,127 @@
+# FIX-937 — non-federal-role officials carrying an FEC H/S/P CAND_ID (INACTIVE, prod, 2026-09-05)
+# 115 officials, 62 holding fec_bulk donation rows
+# 2,590 rows / $4,459,571.00
+# with a federal official legitimately holding the same CAND_ID: 62
+#
+# A Council Member / Article III judge cannot stand for federal office, so the
+# carried CAND_ID is not theirs and these donation rows are another person's money.
+# REMEDIATION goes through the FIX-954 machinery (audit -> manifest -> apply ->
+# rollup tail), NEVER a bare DELETE — the deleted rows' recipients must go dirty
+# so jobid 24's donor-rollup regime rebuilds them.
+#
+official_id	full_name	role_title	tier	is_active	jurisdiction	carried_cand_id	federal_owner_id	federal_owner_name	federal_owner_role	fec_rows	fec_cents	cycles	first_at	last_at
+da5de9b1-2c03-4028-9e79-3cb89081aac8	Scott Wiener	Council Member	elected	false	SF	H8CA11116	26be1547-1b37-40fb-b061-f9d7e451c481	Scott Wiener	Candidate for Representative	1169	269522200	1	2023-03-01	2026-03-26
+903facbb-ac16-47e4-a7df-60e2445ad9c6	Christine Jones	Council Member	elected	false	AUS	H6AR02286	c4761443-4156-4a2b-8549-2e7623c4438c	Chris Jones	Candidate for Representative	473	35205100	1	2025-07-24	2026-02-11
+aa966e77-76e5-447a-ba19-2b3d72908ac0	Sarah Duffy	Council Member	elected	false	SF	H0WI07051	1bc4cbd9-8bd1-4992-9f47-8721cc66e599	Sean Duffy	Candidate for Representative	134	32459300	1	2019-01-15	2019-10-03
+cf260409-5d3f-48e8-b5da-6f85a40bc882	Connie Chan	Council Member	elected	false	SF	H6CA11268	e4fa1d4f-ea61-4b8d-8b44-b9617ad9b011	Connie Chan	Candidate for Representative	146	15498800	1	2025-11-15	2026-03-30
+7bfb2e70-a017-4996-83fe-e01eede7a78b	Ken Bruce	Council Member	elected	false	SF	S2SC00145	27a6b2e2-c8a8-4983-b1b3-b1c95bac3a0c	Catherine Bruce	Candidate for Senator	22	7240000	1	2022-02-18	2022-07-27
+9c74136e-221b-4926-90f7-060e8e38d17d	Louis Sarmiento	Council Member	elected	false	SF	H6TX09199	67d51cc2-f503-45a6-8bef-14ded78afcee	Crystal Sarmiento	Candidate for Representative	39	7219200	1	2025-11-14	2026-02-12
+5db50d56-7d3d-42bc-a2e0-b89af2866d84	James May	Council Member	elected	false	AUS	H6TX19230	1b2c91d4-2282-4ae2-9b35-48bb599d4d54	Donald May	Candidate for Representative	61	7093400	3	2022-10-05	2026-03-31
+1dc4c7c9-3e23-47f5-8805-f6187904c20c	Brad Sinclair	Council Member	elected	false	AUS	H4TX28087	134190d0-4661-4e1c-85de-eb430db8ba3b	Kyle Sinclair	Candidate for Representative	17	5555000	2	2022-01-21	2023-03-29
+16e9152a-b560-44f3-a4bc-34eb4c8e98ee	Gabriel Cabrera	Council Member	elected	false	SF	H4MT02056	3aa074ea-9f88-489f-9182-9c7373b70cdb	Ming Cabrera	Candidate for Representative	33	4810000	1	2023-09-05	2024-05-28
+cf1f7fb7-acf4-4351-b34d-5939b09440a2	Cassandra Costello	Council Member	elected	false	SF	S4ME00113	ec86f103-6968-426a-84fb-c8448e298c24	David Costello	Candidate for Senator	30	4238400	3	2019-03-12	2025-12-31
+1d6d10d5-e312-45fc-a83b-45fd805fe32b	Jana Mims	Council Member	elected	false	AUS	H6TX09165	cfbff78f-4576-48d9-8bcf-5206786ce3b7	Dan Mims	Candidate for Representative	36	3835000	1	2025-09-21	2026-03-10
+dc74b7bf-1a38-4576-9d1a-5b5161247c8b	Robert Moyer	Council Member	elected	false	SF	H6NE01135	7f28dc47-0909-4d1b-afaa-e852d318c385	Eric Moyer	Candidate for Representative	43	3828100	1	2025-08-14	2026-03-19
+fadfdaa1-5de6-469d-b1a1-f8de5b2403fc	Emily Diamond	Council Member	elected	false	AUS	H2FL13220	33845e0e-b1ef-4a2e-82e4-2b902844f0d5	Ben Diamond	Candidate for Representative	14	3800000	1	2021-05-25	2022-04-13
+c0b02046-39f3-4e8d-a492-039a73d9ea77	Mona Sanchez	Council Member	elected	false	AUS	H6CA38147	bb6d1bab-e31a-46c5-ba4f-0ba6126c4eac	Monica Sanchez	Candidate for Representative	39	3675000	1	2025-11-13	2025-12-31
+5d123908-fc62-40fc-9e43-753fbd50b5d3	Michele Thompson	Council Member	elected	false	AUS	H6FL01275	9289c005-c009-4684-a445-cbd5247b0dbc	Michael Thompson	Candidate for Representative	21	3062100	2	2023-03-29	2025-01-24
+3a1a8054-b9e2-473c-a621-52c30e596188	Donna Hall	Council Member	elected	false	SF	H4DE00060	a7c210ba-135d-4b5a-8cb3-3ee99e28b6dc	Donyale Hall	Candidate for Representative	38	3006800	1	2023-12-05	2024-09-08
+04f47f04-edb5-4e0f-8089-c120e044fa4c	Marisela Reyes	Council Member	elected	false	AUS	H0TX23177	55cde17e-f176-491f-95b6-f0cd0707ee03	Raul Reyes	Candidate for Representative	10	2675000	2	2020-07-10	2021-08-27
+da3b41c2-5923-49a0-8686-838411fccf80	Carole Reynolds	Council Member	elected	false	AUS	H6TX11112	3e0e6fed-a88a-420d-959f-f2e63e538df7	Claire Reynolds	Candidate for Representative	20	2249400	1	2025-12-07	2026-02-07
+193a4a25-e6a5-4743-a47c-243a42e7a539	Ciara Ortiz	Council Member	elected	false	SEA	H6NY12297	7450a477-f267-459c-a01f-81df9db4ffb8	Karen Ortiz	Candidate for Representative	25	2219900	1	2023-12-02	2024-03-03
+412719f4-2ddc-4bd3-bbbb-f0a3caef98b5	Kelsey Crowe	Council Member	elected	false	SF	H0TN01084	4ce825d9-c555-41c6-9dd3-84d39265cf06	Dewey Crowe	Candidate for Representative	11	2150000	1	2020-04-23	2020-08-26
+3184bde8-987b-4140-9859-94b57c5da040	Maria Su	Council Member	elected	false	SF	H6IL09210	0f98e458-0892-4e0a-8f8c-79f7d1794271	Dongbo Su	Candidate for Representative	5	1901500	1	2025-05-08	2025-12-31
+8a4e1b00-fe98-49fc-aecd-327bec820908	Rebecca Duran	Council Member	elected	false	SEA	H0CO01136	23300f2a-3389-4415-b32b-42483487f0a5	Crisanta Duran	Candidate for Representative	2	1657100	1	2019-09-30	2020-03-30
+db4e6705-9909-47a7-addb-465be4bf0448	Nabil Khazei	Council Member	elected	false	AUS	H0MA04176	534ede7e-8a05-4f75-8a25-1cef22bb0801	Alan Khazei	Candidate for Representative	6	1650000	2	2020-02-05	2022-05-23
+354a140c-950b-4bbe-a6a8-485e26fb98ae	Eric Stockton	Council Member	elected	false	AUS	H4FL06055	ce2547aa-925a-46e4-8634-8fc6f421fe6e	James Stockton	Candidate for Representative	23	1585000	2	2024-04-03	2025-03-23
+62831aa5-7d58-45d5-bb1c-b3758ff54523	Karen Bowers	Council Member	elected	false	AUS	H4TX32147	aca188cd-46fc-4106-aeeb-d371a6aa10a3	Rhetta Bowers	Candidate for Representative	31	1555000	1	2023-09-19	2023-09-30
+c74a2ac0-c1b8-4526-9022-0ce6464c05fc	Jill Goodman	Council Member	elected	false	AUS	S6IL00425	0ebbe4e8-2afd-4344-8ab2-c96254461a30	John Goodman	Candidate for Senator	13	1548300	1	2025-02-22	2025-08-29
+43ee1bdc-97e7-4641-a8ff-90b701f0877c	Sue Blackman	Council Member	elected	false	SF	H2AZ01339	0263ab44-b500-4fb3-9cfe-a972ccf908b4	Walter Blackman	Candidate for Representative	4	1500000	1	2021-09-29	2022-04-27
+9e99cae2-0330-4997-9552-254657cfaadd	Monica Miranda	Council Member	elected	false	AUS	H6CA47072	2fba68c1-6fa8-4eb7-9f7f-2e4b51d9037b	Hunter Miranda	Candidate for Representative	6	1235400	1	2025-05-27	2025-12-15
+a9ec94d8-72ad-4d71-b60f-d29efbcb5d2b	Jay Nath	Council Member	elected	false	SF	H4WI04282	86982ada-e389-4b30-9bae-2172d3d8d74b	Purnima Nath	Candidate for Representative	21	1171200	1	2024-03-15	2024-09-11
+346fabb6-fb16-4dca-8203-572333cc44b7	Jordan Feldman	Council Member	elected	false	AUS	H4NC10146	24e0596f-75a0-4c97-9976-3dd9e1fd71fb	Steven Feldman	Candidate for Representative	19	1150500	2	2024-03-26	2026-01-16
+ee09025f-9725-4e29-9198-7d7eee8cb1c6	Starr Terrell	Council Member	elected	false	SF	H6IA01171	93ef269d-13d1-4471-8576-a968b65b0b6e	Travis Terrell	Candidate for Representative	4	1082500	1	2025-07-10	2025-09-30
+f590f383-5e5b-4e36-9299-af40602cf5b4	Janell Wegman	Council Member	elected	false	SF	H6PA16338	67794597-cc1b-424a-bc6f-04e48ec91cc9	Gary Wegman	Candidate for Representative	2	1000000	1	2020-10-21	2020-10-23
+f9c370ec-f992-45f8-bbc1-b4a0b23e2bb8	Dominica Henderson	Council Member	elected	false	SF	H4OH02263	2d97645c-3d46-4ad4-abcc-a7d70332a2da	Matthew Henderson	Candidate for Representative	5	875000	2	2020-03-03	2024-01-18
+f04faa85-2feb-4967-b921-c6b1dd125832	Quynh Pham	Council Member	elected	false	SEA	H4CA45154	7b63444a-5e59-45a8-8af7-af1ca1128de1	Jimmy Pham	Candidate for Representative	6	836100	1	2023-04-28	2023-09-30
+d93454b4-36e2-4311-8f8c-3828e9c696cc	Sharon Patterson	Council Member	elected	false	AUS	H6TX17119	5ce10a54-51f4-470a-bb29-3960f9f6818a	William Patterson	Candidate for Representative	6	748000	1	2019-09-27	2020-10-21
+65eb956f-b5ee-438f-964c-339301201dd0	Brent Lo	Council Member	elected	false	SEA	H0MN04197	68e5f14b-d4f5-49d7-bfd3-6af13c00ce30	Sia Lo	Candidate for Representative	2	700000	1	2020-05-06	2020-08-08
+ffd9233e-1d94-44c9-b455-99e241a2e52c	Andres Power	Council Member	elected	false	SF	H6FL02315	b9ea5760-23b1-4804-92c7-c99f7ce6bae6	Evan Power	Candidate for Representative	3	700000	1	2026-01-14	2026-02-04
+feb35388-9d04-4e75-864f-233735093de1	Leslie Katz	Council Member	elected	false	SF	S6DE00206	5d990eae-7201-47b4-aa7e-e70c9f8dc629	Michael Katz	Candidate for Senator	3	550000	1	2026-03-04	2026-03-05
+96b19b40-342c-4177-81fe-640ab442423b	Jema Turk	Council Member	elected	false	SF	H6MO05189	11079e2b-d7ee-4487-a71c-90e49c65fb8f	Jacob Turk	Candidate for Representative	1	500000	1	2022-10-24	2022-10-24
+f8eb4447-778f-44f8-a912-2e88094c005c	Rich Bailey	Council Member	elected	false	AUS	H2CA52154	ec060d19-20b0-43f3-8773-fc3998fb6f24	Richard Bailey	Candidate for Representative	1	500000	1	2021-09-22	2021-09-22
+c7975ec7-ff24-49db-a707-d225cb1abc73	Maria Stuart	Council Member	elected	false	AUS	S4OH00226	279bfb8d-b9d1-48bd-ae69-e2202d736a1c	Douglas Stuart	Candidate for Senator	6	480000	1	2023-08-22	2023-09-28
+f4745d1c-c3d4-46c3-a230-e95deb529140	John Carroll	Council Member	elected	false	SF	P00013771	cd99d5b3-ae47-4d58-8019-9c76d35ba0b8	Brian Carroll	Candidate for President	1	396600	1	2020-10-28	2020-10-28
+9f0b4952-f622-4720-8e7c-498bba257508	Dori Cho	Council Member	elected	false	SEA	H4NJ05135	be16c671-7aeb-4e5c-befb-2b2681b6c4bf	Roy Cho	Candidate for Representative	2	330000	2	2024-10-09	2025-10-09
+3992716c-3e98-4f50-9757-ae76b083d73c	Tom Fulmer	Council Member	elected	false	AUS	H6SC01300	69d1921f-ec28-4c3f-9836-640903d3c525	Matthew Fulmer	Candidate for Representative	4	295000	1	2025-12-12	2026-03-18
+535dd9cb-fef0-4a15-a408-5f96b04c5460	Chelsea Pfeifer	Council Member	elected	false	AUS	H4MO02108	66f6ac6a-7565-45d3-ae08-9bd1ce1afe7f	Peter Pfeifer	Candidate for Representative	5	275000	1	2024-03-27	2024-06-22
+c57ad7b9-7328-405f-a0d5-7e17d380b2e0	Leslie Tello	Council Member	elected	false	AUS	H6IL07479	22eaa53d-127a-4fd4-af5f-251260fdd983	Felix Tello	Candidate for Representative	2	260000	1	2025-09-05	2025-09-18
+1295f5c5-5c73-4b59-9bd6-8fc37b4d1ba7	Ammie Calderon	Council Member	elected	false	AUS	H0CA53131	21f01e25-0291-4b06-8a53-ca56eccf09e2	Marisa Calderon	Candidate for Representative	1	250000	1	2019-11-26	2019-11-26
+1bb47808-7952-4bf6-b45e-74992c889b6f	Michelle Rich	Council Member	elected	false	AUS	S8NM00200	6fa9f68f-138f-4e92-9f30-c025b8679d30	Mick Rich	Candidate for Senator	1	250000	1	2019-09-24	2019-09-24
+fd98e2eb-019e-4298-a7e7-f046a1edf439	Phimy Truong	Council Member	elected	false	SF	H0VA10194	17e78ec9-9a16-4160-a418-aaa039deddcd	Matthew Truong	Candidate for Representative	1	230000	1	2020-05-16	2020-05-16
+79103a92-0f8d-4973-b5a2-a5c8ab1a7e2b	AnMarie Rodgers	Council Member	elected	false	SF	H2TX30236	2d28bff8-558a-4a0c-a35a-03052ed1fe4e	James Rodgers	Candidate for Representative	1	200000	1	2022-11-02	2022-11-02
+a9983f2f-aa61-4e8c-815d-d5abd5c24176	Alvin Moses	Council Member	elected	false	SF	S4TN00575	387218d1-adcd-4b3e-9815-8560382fc441	Pamela Moses	Candidate for Senator	4	177500	1	2024-06-07	2024-10-19
+6541e5cd-3a36-4031-be26-9c209c46557d	Kimberly Williams	Council Member	elected	false	AUS	H0CA16112	03a7b402-4a13-4fa3-8d13-2963d3f54c82	Kim Williams	Candidate for Representative	2	175000	1	2019-08-16	2020-02-25
+15b805f5-f526-42a0-ac4d-0d3c3368c7b8	Joe Silva	Council Member	elected	false	AUS	H4WA01282	e772196c-651c-4b32-a64d-94f3a8625eb5	Mary Silva	Candidate for Representative	3	105000	1	2024-02-01	2024-09-20
+ebd49f2e-6ccb-40e5-91d6-ea955392c7d8	Maxwell Burke	Council Member	elected	false	SEA	H6TN01537	3396e12d-ec65-4270-97f0-0437e1bb2f55	Kristi Burke	Candidate for Representative	4	102800	2	2023-03-13	2026-03-06
+aa76cc1b-ff34-42e8-8cbc-c009d4f7a6ae	Gloria Esparza	Council Member	elected	false	AUS	H6TX28082	14c0c205-3e02-448b-8592-b6b27643b3c8	Juan Esparza	Candidate for Representative	2	100000	1	2025-06-04	2025-06-04
+fc2bd152-60f1-44a7-9890-b06023a1d949	Theresa Sparks	Council Member	elected	false	SF	H0CA45129	a56fb4b6-3931-4a75-ad95-7149b80b128a	Lisa Sparks	Candidate for Representative	1	100000	1	2020-02-11	2020-02-11
+c36a5893-c051-43bc-ab96-10b506fb9280	Micah Ellison	Council Member	elected	false	SEA	S2FL00458	0c1b071b-4855-457b-9929-193e581ed4bc	Allen Ellison	Candidate for Senator	1	100000	1	2021-03-22	2021-03-22
+1fb0f2a8-bfce-4592-b784-e45fae070602	David Potter	Council Member	elected	false	AUS	H0OH07153	477366e6-0618-4d41-a944-d767a69826fa	Quentin Potter	Candidate for Representative	1	100000	1	2020-08-28	2020-08-28
+5a8a21dd-c027-4417-bb00-4d4de6e90c0a	Rey Arellano	Council Member	elected	false	AUS	H6CA49136	72f921de-7e5f-4bb1-976d-364abed7a26d	Julian Arellano	Candidate for Representative	1	100000	1	2025-05-15	2025-05-15
+83f08955-3355-4d11-bccd-bdf2edfeb987	Monica Kaspar	Council Member	elected	false	AUS	H2IL06132	08de7133-05fe-46a6-8f42-f6a045c8bc5a	Scott Kaspar	Candidate for Representative	1	66900	1	2022-05-22	2022-05-22
+70d9bb3e-fe77-4a84-80df-19b8438b3bf9	Esther Montoya	Council Member	elected	false	AUS	H6AZ01413	0120c84e-f115-4e1c-a825-84d18a68c383	Angie Montoya	Candidate for Representative	1	50000	1	2025-12-06	2025-12-06
+1ecfb3dc-8518-4312-8b93-d83f09de9d09	Elizabeth Funk	Council Member	elected	false	AUS	H0IL12092	04156415-6982-4034-8d6b-a2571f357504	Joel Funk	Candidate for Representative	1	25000	1	2020-01-03	2020-01-03
+1be32f77-f96b-4750-a525-32252b6357b4	Bridget Molina	Council Member	elected	false	SEA	H0FL27034	2e37cd4e-0b79-43b8-b1ab-44e64995404d	Raymond Molina	Candidate for Representative	0	0	0		
+f74db873-83e5-4ae8-a413-c0fa39d6ec92	Lynne Howe	Council Member	elected	false	SF	H2NY14102	eceebdb3-ebf9-4c17-bbf2-6da7071aedbf	Jonathan Howe	Candidate for Representative	0	0	0		
+4a329d76-9eab-476d-a2da-8697cc6fd004	Jennifer Scaife	Council Member	elected	false	SF	H0IN01218	5c6419d8-eec7-4c2e-8275-6b899481b1e7	Delano Scaife	Candidate for Representative	0	0	0		
+9a90c180-784c-4c4f-be50-fc1cda3c4db5	Ana Alvarez	Council Member	elected	false	SF	H2TX22134	a2ad60ea-831b-4248-bad6-ebc39bf7a259	Andrew Alvarez	Candidate for Representative	0	0	0		
+1af0bfa9-6265-4439-86b8-27eaf801a807	Wilson Ng	Council Member	elected	false	SF	H2TX28123	198022b8-7e88-43fd-b435-5c050bc6ccfe	Willie Ng	Candidate for Representative	0	0	0		
+0da32baf-54c5-4ec2-b9b8-ea5c5e3fe5ce	Victor Lim	Council Member	elected	false	SF	H0TX07212	bc9e5262-0820-4ba0-a633-eaa339e95810	Kenny Lim	Candidate for Representative	0	0	0		
+1dd2bbc1-eb34-47f2-8665-d30cde9f9d72	Gary McCoy	Council Member	elected	false	SF	H2GA07162	31a29413-9a74-4b4e-821d-e81abc4f4e4e	Lisa Mccoy	Candidate for Representative	0	0	0		
+b3111f47-533f-498c-b231-907ebc108170	Martha Yanez	Council Member	elected	false	SF	H2MI10168	4405d480-5cf5-486a-8033-4e162710a1b6	Henry Yanez	Candidate for Representative	0	0	0		
+e5b84a0b-ce52-46bf-b03b-df0b906de08d	Shiamala Choudhury	Council Member	elected	false	SF	H8NY05123	70ced120-41b8-4c8f-b738-7ae15a3b9238	Mizanur Choudhury	Candidate for Representative	0	0	0		
+13a2a60c-b9f5-40c0-8c1f-c8ed00188f6a	Ruth Dalrymple	Council Member	elected	false	AUS	H0NJ05182	7d898f9b-cef9-46a5-944c-d326c390c3f9	Jon Dalrymple	Candidate for Representative	0	0	0		
+25eb5c3c-a4a0-4f66-bab5-787b5a8a7dec	Taras Madison	Council Member	elected	false	SF	H2CA09147	60d6951e-eeb1-4dc7-915f-291cf50c8dd0	Jonathan Madison	Candidate for Representative	0	0	0		
+7a09f33c-7291-43a1-8e25-15f28b201ead	Mary Hays	Council Member	elected	false	SF	H2AR03283	30678ef9-0836-4fc2-b4ee-07b69b619ba3	Lauren Hays	Candidate for Representative	0	0	0		
+26790bac-6339-458d-87c5-5b631ce2e90d	Guianna Henriquez	Council Member	elected	false	SF	H0PR01059	7ce656ac-9383-43bf-a006-8d1701ccb9a0	Ada Henriquez	Candidate for Representative	0	0	0		
+542b95a1-7721-4102-a536-7343e31c601f	Christine Fountain	Council Member	elected	false	SF	H0CA53222	b9c78308-9f9f-480b-8cdb-7e36fc193e07	Joseph Fountain	Candidate for Representative	0	0	0		
+42fa3208-4b30-49f9-95c3-6d780e3010f7	Catherine Dodd	Council Member	elected	false	SF	S0CT00037	ddf158a9-cab5-444f-af25-53c062aed855	Christopher Dodd	Candidate for Senator	0	0	0		
+456cca4c-d6d7-47ad-874a-45a192993ef1	Aaron Starr	Council Member	elected	false	SF	H6MD05347	0d180ec5-fab8-4993-b108-0162d9d7c59e	Tracy Starr	Candidate for Representative	0	0	0		
+dfffc926-fc42-4b03-a05f-2c32f6756566	Eileen McHugh	Council Member	elected	false	SF	H0PA06175	5f42493c-c066-4f56-adc7-503a7b5c2128	John Mchugh	Candidate for Representative	0	0	0		
+d76ebf28-d65c-4571-9d03-908887c2c085	Christina Mendez	Council Member	elected	false	AUS	H6CA40366	934e0358-21c8-4620-8fa3-0a389aefc8ee	Christian Mendez	Candidate for Representative	0	0	0		
+34a174e9-582b-4bc4-81a2-dcf17991391e	Nicole Huff	Council Member	elected	false	AUS	H2LA05274	84fd43b7-1df0-45ce-8c47-e85653b96053	Walter Huff	Candidate for Representative	0	0	0		
+e9aa2207-27b3-4c47-8c2d-9ae5ffa2d935	Yolanda McKnight	Council Member	elected	false	AUS	H2TN05297	dff22c3f-9e80-4501-9792-a94472a32ee7	Quincy Mcknight	Candidate for Representative	0	0	0		
+24bbf791-91d7-493d-bbe2-a85d0779ae17	Cindy Lott	Council Member	elected	false	AUS	H2MI08162	f70f9024-a261-4e23-8bc4-863e0ea02a63	Cherie Lott	Candidate for Representative	0	0	0		
+dba9ecd8-b9f2-4d03-a2cd-fbfc8f239b32	Briana Holt	Council Member	elected	false	AUS	S2OH00451	9f82fede-1b2a-4171-8776-7f4dfe4a09a7	Mike Holt	Candidate for Senator	0	0	0		
+7a329b3d-a21b-43c4-9fcd-02db159abb34	Karl Stephenson	Council Member	elected	false	AUS	H2WA08216	fb6cc3a7-e816-4003-b45c-31a1653170ee	Scott Stephenson	Candidate for Representative	0	0	0		
+06b24c80-54b0-4beb-930c-de59c55116f9	Victoria Rieger	Council Member	elected	false	AUS	H8PA03126	7d7a755c-88bc-4caa-be5b-c504683b91fa	Chris Rieger	Candidate for Representative	0	0	0		
+e3d410c8-b3b7-494f-ab93-9187991303b7	Latonia Stokes	Council Member	elected	false	SF	S6CA00873	1b88025c-b853-450b-a544-5b7864a9a0ef	Steve Stokes	Candidate for Senator	0	0	0		
+f4c8e58d-a153-4ff6-8f24-ee89165e9392	Marija Jukic 	Council Member	elected	false	AUS	H6OH14248	b6bcee11-c477-4930-85f3-d47f05f888f6	Maria Jukic	Candidate for Representative	0	0	0		
+82cfb52e-2aa6-4504-b988-2370e09a7b82	Paula Hoff	Council Member	elected	false	SEA	P40007577	1fcc980b-be8a-4161-b057-dd77fadbeb91	Samuel Hoff	Candidate for President	0	0	0		
+caa0450f-a128-4a8a-ab3c-abcfe599c0d6	Jeanette Blankenship	Council Member	elected	false	SEA	S8WV00150	935b2a2f-6d39-40df-9aca-253384ace422	Don Blankenship	Candidate for Senator	0	0	0		
+78841483-0820-40ec-905b-4b5043f41b8a	Sarah Ballard	Council Member	elected	false	SF	S0MT00116	373b0afc-d861-4b1d-8531-32116450a1b8	Jack Ballard	Candidate for Senator	0	0	0		
+7fc27801-d676-4fcc-93f9-6a72ab046853	Petra DeJesus	Council Member	elected	false	SF	P40015703				0	0	0		
+508172cc-4bed-4712-94a3-4c237e0f84a6	Matt Haney 	Council Member	elected	false	SF	H2CO00035	3fe36809-5aa6-45c0-8936-4c8daf4c2834	Perry Haney	Candidate for Representative	0	0	0		
+e2c41141-cc0a-4a7b-bbcc-53c361c71b1d	Carmen Malone	Council Member	elected	false	AUS	H8MA03213	aa8f1519-60d5-4bf0-9ac8-19799a9f5f8c	Bopha Malone	Candidate for Representative	0	0	0		
+113d7403-a392-4f75-b840-194a45dce3dc	Mark Solomon	Council Member	elected	false	SEA	H2CA16159	d03a86f3-12de-4d42-8fd4-1d79699a2560	Benjamin Solomon	Candidate for Representative	0	0	0		
+6cda3499-89f3-462c-ab02-723e96c27587	Stephanie Duvall	Council Member	elected	false	SEA	H0NJ01207	78e3e881-b7d0-482a-ac87-33286eb4d7b3	Joshua Duvall	Candidate for Representative	0	0	0		
+4645ea8e-ff77-40cc-975e-5ca8fc2efb0e	Chris Daly	Council Member	elected	false	SF	H2MO03183	06f6dfde-881d-41c9-983d-38f0e1c544c2	Andrew Daly	Candidate for Representative	0	0	0		
+a78dddbe-198f-4c17-9c0d-d6cf9be89611	Tim Harris - Law Dept	Council Member	elected	false	SEA	H8OK01165	52bce601-a4e0-42bb-a2d4-fb21266deaab	Tim Harris	Candidate for Representative	0	0	0		
+7e799bd4-9fde-49c9-bf2d-26e1effcfd0f	Matt Hartman	Council Member	elected	false	AUS	H6PA16296	bf76ce8d-355c-422c-8744-7a006a96261b	Christina Hartman	Candidate for Representative	0	0	0		
+a2893e64-5d84-4305-98ff-9748c90a0957	Nicole Hendrickson	Council Member	elected	false	AUS	H8SD01105	bfe69825-103c-4745-b59f-8146e44854db	George Hendrickson	Candidate for Representative	0	0	0		
+58ea303a-33ad-426a-864e-f6d9a955387e	Daniel Mitchell	Council Member	elected	false	SEA	H8TN03208	d68a5de3-4af8-401b-bec8-58fe59776d0d	Danielle Mitchell	Candidate for Representative	0	0	0		
+f4c25d74-1fee-4335-8e70-04a51fd0d9c0	Roberto Trevino	Council Member	elected	false	AUS	H8TX23139	d5b56139-53a7-475b-a575-ba6c9327267c	Ricardo Trevino	Candidate for Representative	0	0	0		
+6f206e50-752b-444a-a70b-6fbc7d18016e	Megan Rosenfeld	Council Member	elected	false	SEA	S2PA00331	b2dde93b-6c3a-4e1f-bb4a-0edb8029f723	Martin Rosenfeld	Candidate for Senator	0	0	0		
+f3c15630-66af-4f65-96e9-74b23fe92134	Mabel Teng	Council Member	elected	false	SF	H6UT03166	1deba351-f841-45dd-9fdb-a6901267737b	Chia-Chi Teng	Candidate for Representative	0	0	0		
+7ea4aac4-735d-4ad1-aa13-a9db7a6491f8	Lolita Espinosa	Council Member	elected	false	SF	H6CA26308	499a0852-5068-4067-9d93-88a01131c2f9	Chris Espinosa	Candidate for Representative	0	0	0		
+fa7f54d2-ac42-4001-a9da-ebf902be665c	Greg Doss (LEG)	Council Member	elected	false	SEA	H2TN03201	4a759912-3add-4b8e-bb50-c8e09781fa1e	Nathaniel Doss	Candidate for Representative	0	0	0		
+7521f7af-2598-416b-a860-38a9b144a05f	Chris Galbraith	Council Member	elected	false	SEA	H8MD01177	b3626326-4dd9-4969-8e37-d86f85be8485	Allison Galbraith	Candidate for Representative	0	0	0		
+d3fa35da-659e-44e6-983a-ee338913bf8f	Steven Smith	Council Member	elected	false	SEA	H0IL13066	b7c0997b-74b0-4f79-b07d-955e891a60ab	Stefanie Smith	Candidate for Representative	0	0	0		
+ccd1ba2a-dfaa-4b38-a222-1a1b7adbd806	Selina Chambliss	Council Member	elected	false	SEA	S2GA00118	bd59bc48-105d-4bd4-8eb7-625799efd2bf	C Chambliss	Candidate for Senator	0	0	0		
+b711806e-aef3-41b4-bcdf-f541bff62326	Ben Noble	Council Member	elected	false	SEA	H2OR06058	9fa6a342-91c6-408c-a497-7e04219762ca	Ron Noble	Candidate for Representative	0	0	0		
+fc97c68f-fc29-4718-8f5e-9b9355ff8a2b	Natasha Goodwin	Council Member	elected	false	AUS	H2TX30186	fa985491-3c27-42fa-b92a-f0b4a6f1fbcf	Kelvin Goodwin	Candidate for Representative	0	0	0		
+7f896047-9f70-44ca-9deb-7cea7efd8f43	Mary Lou Rodriguez	Council Member	elected	false	AUS	H6KY03223	2ef06375-a04c-491c-8cb8-d816f81ea4f5	Maria Rodriguez	Candidate for Representative	0	0	0		
+364e158a-26e6-4703-b3d9-59ed6be11c0b	Jessica Frazier	Council Member	elected	false	AUS	H6IN10075	27376a1e-fac2-42f1-9aa3-9e2bdf7eb420	William Frazier	Candidate for Representative	0	0	0		
+6149c72f-5afa-435a-8ce0-ae5502b2adef	Andrew Boone	Council Member	elected	false	AUS	H2FL10309	673ce3b4-8147-40ed-9e6c-b12fe94b35b8	Jeffrey Boone	Candidate for Representative	0	0	0		
+aea81d2e-165b-4a06-bb37-cdcd89a4f2fe	Andrea Woods	Council Member	elected	false	SF	S0IA00192	b133e5dc-0b93-493c-a593-5d2b96930f66	Cal Woods	Candidate for Senator	0	0	0		

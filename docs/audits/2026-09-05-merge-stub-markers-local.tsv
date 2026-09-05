@@ -1,0 +1,96 @@
+# FIX-956 + FIX-939 — merge-stub marker conversion manifest (local, 2026-09-05)
+# 86 stubs carrying the legacy scalar 'merged_fec_candidate_id'
+# 86 CONVERT (exactly one elected survivor) / 0 REFUSED (0 or >1)
+#
+# REVERSAL RECIPE — source_ids_before is the verbatim pre-write value of each row.
+# To undo a single row:
+#   UPDATE public.officials SET source_ids = '<source_ids_before>'::jsonb WHERE id = '<stub_id>';
+# To undo the whole set, replay that statement for every CONVERT row in this file.
+#
+stub_id	stub_name	stub_tier	stub_is_active	retired_fec_candidate_id	survivor_id	survivor_name	n_survivors	action	refusal_reason	source_ids_before
+2c7cc2d3-5c2b-4625-8056-8c077759f684	Adelita Grijalva	candidate	true	H6AZ07121	e42e07b1-7e6c-47c6-8b10-786454933d51	Adelita S. Grijalva	1	CONVERT		{"merged_fec_candidate_id": "H6AZ07121"}
+9f6a1d10-6808-45f2-8b54-b59cca0bea5a	Alma Adams	candidate	true	H4NC12100	c40ac93d-d1f7-4aa5-9644-2198afc0ae17	Alma S. Adams	1	CONVERT		{"merged_fec_candidate_id": "H4NC12100"}
+a2e79031-fc97-4a9c-a676-04db90dc574f	Amerish Bera	candidate	true	H0CA03078	c44011b4-a981-46a0-a231-4442b671e244	Ami Bera	1	CONVERT		{"merged_fec_candidate_id": "H0CA03078"}
+6596a78c-25dc-4ea6-a250-0ab28e27d6ae	Andrew Garbarino	candidate	true	H0NY02234	a060ecc9-08eb-4d29-8c53-f787d7cc94ba	Andrew R. Garbarino	1	CONVERT		{"merged_fec_candidate_id": "H0NY02234"}
+b90a90d3-7bef-4173-994e-a5dd383bc4bd	Carlos Gimenez	candidate	true	H0FL26036	bfea344c-1620-46c8-ae50-91c0de7e9064	Carlos A. Gimenez	1	CONVERT		{"merged_fec_candidate_id": "H0FL26036"}
+0f2ad6d5-15e2-435e-b05b-59a183470b69	Charles Grassley	candidate	true	S0IA00028	44845d16-71db-4563-aa3c-28cad31f13e3	Chuck Grassley	1	CONVERT		{"merged_fec_candidate_id": "S0IA00028"}
+1cc4b8c8-37cb-4fc5-9f56-63de53cf3aac	Charles Schumer	candidate	true	S8NY00082	1e6efe79-ed26-416d-aa75-908d6f9a1ff4	Charles E. Schumer	1	CONVERT		{"merged_fec_candidate_id": "S8NY00082"}
+39358ffa-c641-4540-a00b-bef73983f635	Christian Menefee	candidate	true	H6TX18232	909c3fc4-5871-47a5-bb0d-55e29bc7ff52	Christian D. Menefee	1	CONVERT		{"merged_fec_candidate_id": "H6TX18232"}
+6166376b-c823-4717-a6e1-ea8387f7d751	Craig Goldman	candidate	true	H4TX12065	884bf3e8-fd4d-4c12-aa8b-6e2de7932f6e	Craig A. Goldman	1	CONVERT		{"merged_fec_candidate_id": "H4TX12065"}
+e544fe5e-f95f-4b35-a488-262cfc1f2940	D Smith	candidate	true	H6WA09025	319a9553-63ae-4763-b5d0-bfeee0ac987a	Adam Smith	1	CONVERT		{"merged_fec_candidate_id": "H6WA09025"}
+9bcdb773-434c-4bf7-99a9-7d671340c9c0	Dave Mccormick	candidate	true	S2PA00661	fafd4df5-26aa-4b32-aa24-51b6a3cb706b	David McCormick	1	CONVERT		{"merged_fec_candidate_id": "S2PA00661"}
+2757db0b-d3ac-406e-ac12-fda74f52f8c6	Deborah Ross	candidate	true	H0NC02125	7d565140-4573-47a5-9b85-54c92568564d	Deborah K. Ross	1	CONVERT		{"merged_fec_candidate_id": "H0NC02125"}
+99023d58-ad90-4309-b8b2-869213fd5e1c	Elizabeth Fletcher	candidate	true	H8TX07140	97f4a42b-1c02-4395-8699-5d287220b81d	Lizzie Fletcher	1	CONVERT		{"merged_fec_candidate_id": "H8TX07140"}
+3d0433ac-4190-41d2-ae99-88d8e4f435b6	Elizabeth Van Duyne	candidate	true	H0TX24209	f29f341e-cc91-4e86-9ff3-f3b359c4be8d	Beth Van Duyne	1	CONVERT		{"merged_fec_candidate_id": "H0TX24209"}
+8e0ac2a1-d3b8-4b25-b67a-fd8cf5bbef44	Emilia Sykes	candidate	true	H2OH13264	f0ca9dc4-039c-4d89-a80b-15f0e32b3fae	Emilia Strong Sykes	1	CONVERT		{"merged_fec_candidate_id": "H2OH13264"}
+168081a6-bb54-4490-b0fd-27a251f3209a	Felix Moore	candidate	true	H8AL02171	8a916c94-dfa8-4971-90f8-2d005e0b7b56	Barry Moore	1	CONVERT		{"merged_fec_candidate_id": "H8AL02171"}
+508c2638-a71a-487b-bed8-30e5436f1a38	Frederica Wilson	candidate	true	H0FL17068	cef24158-98ad-431b-bc4b-494441f0a0a3	Frederica S. Wilson	1	CONVERT		{"merged_fec_candidate_id": "H0FL17068"}
+a80c8905-e869-4079-85c5-d7c606cb4f8e	G Foster	candidate	true	H8IL14067	fa995d54-5789-4cd0-988e-0c3881cabfa7	Bill Foster	1	CONVERT		{"merged_fec_candidate_id": "H8IL14067"}
+76679a73-0d24-4bf4-bf63-cf4eb5131f02	Garland Barr	candidate	true	H0KY06104	1f984c1a-01ea-41be-bbe2-e49ccb6d0554	Andy Barr	1	CONVERT		{"merged_fec_candidate_id": "H0KY06104"}
+cbc755ac-7ca9-4d3b-87dc-453d1f224a62	George Kelly	candidate	true	H0PA03271	9334b652-2fe2-466f-b5ab-b8afbcd8f4bb	Mike Kelly	1	CONVERT		{"merged_fec_candidate_id": "H0PA03271"}
+55c90d95-7078-472b-99d5-4b00f7c7caf8	Greg Steube	candidate	true	H8FL17053	e4b7de2c-2537-433a-911e-02fbf99ab6ba	W. Gregory Steube	1	CONVERT		{"merged_fec_candidate_id": "H8FL17053"}
+1d3dcba6-b87c-4d15-bbdd-5b96e1236fe2	Gregory Murphy	candidate	true	H0NC03172	e5aaf27d-cd87-46b4-b4ba-b8e18fc56461	Gregory F. Murphy	1	CONVERT		{"merged_fec_candidate_id": "H0NC03172"}
+a2e44e5b-76f1-4ca8-98af-69599da760c7	H Griffith	candidate	true	H0VA09055	b6cc2bde-7962-4df2-8d2c-477db9b48d0e	H. Morgan Griffith	1	CONVERT		{"merged_fec_candidate_id": "H0VA09055"}
+19247c49-cf1e-4b3d-ad14-1531581c0082	Hakeem Jeffries	candidate	true	H2NY10092	1942d825-bca9-42da-9dc7-b40fb404bc54	Hakeem S. Jeffries	1	CONVERT		{"merged_fec_candidate_id": "H2NY10092"}
+61a21fdd-1a35-4efc-b0b8-29d82c486e29	James Banks	candidate	true	S4IN00196	ef1811ae-882c-428e-b904-9ca6f2a48681	Jim Banks	1	CONVERT		{"merged_fec_candidate_id": "S4IN00196"}
+123e21fe-6456-403b-a3e2-e0c628d935be	James Hill	candidate	true	H4AR02141	4f9c372a-f214-4d51-b287-815244a9f1f7	J. French Hill	1	CONVERT		{"merged_fec_candidate_id": "H4AR02141"}
+a1762fd3-329b-4136-b113-7d2873bb743a	James Johnson	candidate	true	H6LA04138	3f355499-5163-4da0-a460-6d3e8b90cd49	Mike Johnson	1	CONVERT		{"merged_fec_candidate_id": "H6LA04138"}
+d6e9f954-5926-4a05-a675-70238e129585	James Jordan	candidate	true	H6OH04082	b06aff16-5cf1-4422-a662-c3dcde2417e6	Jim Jordan	1	CONVERT		{"merged_fec_candidate_id": "H6OH04082"}
+c2d0bb8a-f3b8-4a66-b988-c1874f9ddadc	Jim Himes	candidate	true	H8CT04172	57f66dbb-c1ee-4bf1-81fa-197c167ec1af	James A. Himes	1	CONVERT		{"merged_fec_candidate_id": "H8CT04172"}
+afc73786-a5a3-447b-b97b-5d1e2943aadc	John Bergman	candidate	true	H6MI01226	14083a6d-5b92-4ee7-b96f-2b7a4acd978a	Jack Bergman	1	CONVERT		{"merged_fec_candidate_id": "H6MI01226"}
+087ef1db-6efb-4491-92d8-6b5af183fdd8	John Ellzey	candidate	true	H8TX06266	46d45b0e-bdac-46e1-9a78-e2227a8ecc48	Jake Ellzey	1	CONVERT		{"merged_fec_candidate_id": "H8TX06266"}
+36259af8-f30e-441a-9461-7644024249be	John Kelly	candidate	true	H6MS01131	3ec80e8d-8abd-4a75-bed0-b3cad8bcebc4	Trent Kelly	1	CONVERT		{"merged_fec_candidate_id": "H6MS01131"}
+7938e99a-66c6-4b69-ae04-c27b4f1360ad	John Moolenaar	candidate	true	H4MI04126	8efa0cd9-ebe9-4318-abc7-1bc7885cd490	John R. Moolenaar	1	CONVERT		{"merged_fec_candidate_id": "H4MI04126"}
+03820b81-1b02-4e40-9065-19b1e1f5a6dc	John Reed	candidate	true	S6RI00163	52bce3fa-b134-4e85-abb5-299318fb9d48	Jack Reed	1	CONVERT		{"merged_fec_candidate_id": "S6RI00163"}
+b5f2847e-b402-4afa-8ea2-6e63ad16d190	John Rutherford	candidate	true	H6FL04105	c6c13f41-033b-41b5-b911-b4a797ba6204	John H. Rutherford	1	CONVERT		{"merged_fec_candidate_id": "H6FL04105"}
+34297520-67dd-421a-b7be-fe7a567028f8	Joseph Courtney	candidate	true	H2CT02112	3452cc58-de2a-40a4-992b-67eebaf23796	Joe Courtney	1	CONVERT		{"merged_fec_candidate_id": "H2CT02112"}
+95952e73-0fea-4a3b-bbb7-ce93388de1db	Joseph Neguse	candidate	true	H8CO02160	e07587df-5a7e-4888-8090-842d03f04dd2	Joe Neguse	1	CONVERT		{"merged_fec_candidate_id": "H8CO02160"}
+ab186922-00fb-400e-bbe6-22622eac80bb	L Duckworth	candidate	true	S6IL00292	9e6b66e1-09d5-49cf-83dd-bff1a8700ea7	Tammy Duckworth	1	CONVERT		{"merged_fec_candidate_id": "S6IL00292"}
+2e247195-7c36-4d72-a578-a6a998d5f05a	Laurel Lee	candidate	true	H2FL15241	c1807a26-31f4-4830-a8f2-7e7270f0a822	Laurel M. Lee	1	CONVERT		{"merged_fec_candidate_id": "H2FL15241"}
+cdb0ae22-2167-4f92-a64d-88f50bcc47ec	Lou Correa	candidate	true	H6CA46116	715601ce-05c6-4ec2-b87f-49b22a78bb92	J. Luis Correa	1	CONVERT		{"merged_fec_candidate_id": "H6CA46116"}
+96fd8a5b-75eb-4bcd-b879-a2a527ca47b9	M Brown	candidate	true	H2OH11169	f29bbd4e-944f-4840-adbd-16a4706a3c02	Shontel M. Brown	1	CONVERT		{"merged_fec_candidate_id": "H2OH11169"}
+25658ab8-8873-447e-94b8-533340aefc98	Marc Veasey	candidate	true	H2TX33073	5505bb05-21da-43a8-ac46-4129cb3aac36	Marc A. Veasey	1	CONVERT		{"merged_fec_candidate_id": "H2TX33073"}
+b7da95c4-d545-4664-a733-88f44ad1d3f2	Mark Amodei	candidate	true	H2NV02395	cdc760ec-68a6-4548-9aa1-5d44691b2feb	Mark E. Amodei	1	CONVERT		{"merged_fec_candidate_id": "H2NV02395"}
+662bb3ef-b34a-43a5-b3e1-a0a68de85855	Mark Warner	candidate	true	S6VA00093	9539fa43-d1b6-42f6-bf08-e340ee807265	Mark R. Warner	1	CONVERT		{"merged_fec_candidate_id": "S6VA00093"}
+06398880-9c38-4062-8fb2-41013b5eb75c	Matthew Van Epps	candidate	true	H6TN07161	99cc88f5-3d91-4f38-b527-e0e789c590f0	Matt Van Epps	1	CONVERT		{"merged_fec_candidate_id": "H6TN07161"}
+a80eefae-4493-4a67-acc6-b5ccb60bc696	Mazie Hirono	candidate	true	S2HI00106	b077712a-90d1-43db-a6c9-d057ae821844	Mazie K. Hirono	1	CONVERT		{"merged_fec_candidate_id": "S2HI00106"}
+78557dbe-29b7-41ac-abbb-a34804bad1f5	Melanie Stansbury	candidate	true	H2NM01144	e2a7052a-c479-4809-aaed-09fb2dae9f56	Melanie A. Stansbury	1	CONVERT		{"merged_fec_candidate_id": "H2NM01144"}
+1e1d4736-f8ce-406e-a41f-1664bbbe5238	Michael Bost	candidate	true	H4IL12060	f698f0b9-abff-48f6-b93b-b666a288c407	Mike Bost	1	CONVERT		{"merged_fec_candidate_id": "H4IL12060"}
+c64ec823-5bb2-4e9e-8cc2-5fbc3791260d	Michael Collins	candidate	true	H4GA10071	ee27066e-5f25-4abd-85c1-2a98de6e5bf6	Mike Collins	1	CONVERT		{"merged_fec_candidate_id": "H4GA10071"}
+3b663a06-8835-4795-8ff7-61416a31f934	Michael Crapo	candidate	true	S8ID00027	6f0aabbc-6365-4e59-ac1b-4efad1f71fcb	Mike Crapo	1	CONVERT		{"merged_fec_candidate_id": "S8ID00027"}
+372a3da9-531f-48dd-8338-b3d9c3c10440	Michael Rogers	candidate	true	H2AL03032	aeeb1dd5-c6fe-4d29-b3c7-edc4f85032b0	Mike D. Rogers	1	CONVERT		{"merged_fec_candidate_id": "H2AL03032"}
+2c8bee43-2cf6-4648-9709-b93b0363f7e8	Michael Rulli	candidate	true	H4OH06165	88a14539-802f-4837-b025-0a4872fcc5ef	Michael A. Rulli	1	CONVERT		{"merged_fec_candidate_id": "H4OH06165"}
+67cd3fd1-5678-4327-acfc-c6b40c6401b0	Nicholas Begich	candidate	true	H2AK01083	9ff6da5e-a169-4959-bed8-41e91e3f23ba	Nicholas J. Begich	1	CONVERT		{"merged_fec_candidate_id": "H2AK01083"}
+f3587a20-41e9-49da-a84d-9cc3024b8c42	Nicholas Lalota	candidate	true	H0NY02200	61087125-2853-42af-9d0c-c82e73812411	Nick LaLota	1	CONVERT		{"merged_fec_candidate_id": "H0NY02200"}
+72fc7aa5-5d96-4219-9b87-5c1d5dc29b87	Peter Stauber	candidate	true	H8MN08043	cf50b397-1865-4a86-bcb0-50a3604fe84e	Pete Stauber	1	CONVERT		{"merged_fec_candidate_id": "H8MN08043"}
+5e14566f-2dec-4d43-908c-7fe2c22ad18b	Rafael Cruz	candidate	true	S2TX00312	a350def0-25fe-423d-b613-e273dc23ea84	Ted Cruz	1	CONVERT		{"merged_fec_candidate_id": "S2TX00312"}
+b6fcabd9-fa57-4d1b-ba45-d488f6ba98f5	Randall Feenstra	candidate	true	H0IA04145	d27a1829-c668-4f5d-977c-3bd5f06335bf	Randy Feenstra	1	CONVERT		{"merged_fec_candidate_id": "H0IA04145"}
+37f0714a-0dff-449b-8f1f-75038215a073	Raul Ruiz	candidate	true	H2CA36439	3895d42a-4156-4339-99ad-d556318fdd5b	Raul Ruiz	1	CONVERT		{"merged_fec_candidate_id": "H2CA36439"}
+5798c09a-3426-4dd8-a1f2-9e74f8bae7d1	Rebecca Balint	candidate	true	H2VT01076	055f3efc-d3b0-4396-a644-4abd1500f4ff	Becca Balint	1	CONVERT		{"merged_fec_candidate_id": "H2VT01076"}
+1b92e82e-780c-4563-952f-2c1bfa843021	Robert Aderholt	candidate	true	H6AL04098	f5d2947d-3e5a-4898-9b1c-956a98423e60	Robert B. Aderholt	1	CONVERT		{"merged_fec_candidate_id": "H6AL04098"}
+71d0de6f-67d9-416d-b9ee-0c1edb5aef2a	Robert Latta	candidate	true	H8OH05036	bcba5e69-f3c1-459f-a7bd-7df4d5022329	Robert E. Latta	1	CONVERT		{"merged_fec_candidate_id": "H8OH05036"}
+958f9931-46b1-454f-9efe-02389a917218	Rohit Khanna	candidate	true	H4CA12055	eef91ab4-495d-4d32-9b2e-faa59fa19f60	Ro Khanna	1	CONVERT		{"merged_fec_candidate_id": "H4CA12055"}
+189c74a9-2fd0-490c-b11f-8d68c1c414f6	Rosa Delauro	candidate	true	H0CT03072	d060a859-e7b0-4365-bcc5-f252270b32a7	Rosa L. DeLauro	1	CONVERT		{"merged_fec_candidate_id": "H0CT03072"}
+d374964b-0353-4749-a3e6-2f59b0d7faf8	S Guthrie	candidate	true	H8KY02031	06d1e5b4-90ce-4aca-b06a-51c194e51861	Brett Guthrie	1	CONVERT		{"merged_fec_candidate_id": "H8KY02031"}
+b6d6edeb-cb75-4a80-8ca8-5c3ef94c143c	S Krishnamoorthi	candidate	true	H6IL08147	b1db79b2-cf97-4cb1-8ecd-4d45df50d8a2	Raja Krishnamoorthi	1	CONVERT		{"merged_fec_candidate_id": "H6IL08147"}
+48bc4910-b9aa-4806-b897-35540c35635b	Scott Peters	candidate	true	H2CA52089	e7fccd57-9406-452a-a96b-10384765418e	Scott H. Peters	1	CONVERT		{"merged_fec_candidate_id": "H2CA52089"}
+cef7528d-41bf-4e51-8858-e989f91b5766	Sen. Boozman	candidate	true	S0AR00150	0dda6984-32b7-4d6e-88ec-d883763d63aa	John Boozman	1	CONVERT		{"merged_fec_candidate_id": "S0AR00150"}
+bf646f79-f45a-434d-8fcf-6cf4ba714951	Steny Hoyer	candidate	true	H2MD05155	e3cc18ef-131d-424b-aa6f-18d7057de207	Steny H. Hoyer	1	CONVERT		{"merged_fec_candidate_id": "H2MD05155"}
+19a86ba2-0e87-4f39-91dd-6c03b15d135e	Summer Lee	candidate	true	H2PA18200	b2c36d20-1aa2-4d02-b630-cdcccf8e0f42	Summer L. Lee	1	CONVERT		{"merged_fec_candidate_id": "H2PA18200"}
+4719d31a-7db4-4f6f-b933-8442a1fb1f76	T Ossoff	candidate	true	S8GA00180	1376dc1e-f697-40b2-8c0f-780f8fe8ea00	Jon Ossoff	1	CONVERT		{"merged_fec_candidate_id": "S8GA00180"}
+ea447629-1b27-4b78-a6b5-42b6454b1fd6	Theodore Budd	candidate	true	S2NC00505	1fce3e17-64a3-4be0-a692-bfa6063bba8b	Ted Budd	1	CONVERT		{"merged_fec_candidate_id": "S2NC00505"}
+1f76ea3c-3fdb-4ca3-98dc-8d62d38a8af2	Thom Tillis	candidate	true	S4NC00162	2271adc1-254c-4bdf-ba8b-7112609680da	Thomas Tillis	1	CONVERT		{"merged_fec_candidate_id": "S4NC00162"}
+53a27958-09bb-451d-ab7d-5bc631f4e4db	Thomas Barrett	candidate	true	H2MI07123	306b852e-a44a-464e-86e7-9e49afd5544b	Tom Barrett	1	CONVERT		{"merged_fec_candidate_id": "H2MI07123"}
+f3089763-6efe-49fd-9454-35143c4d0f9f	Thomas Cotton	candidate	true	S4AR00103	033ba554-ee71-4609-b531-1252ce4ee531	Tom Cotton	1	CONVERT		{"merged_fec_candidate_id": "S4AR00103"}
+22e289f0-914c-4831-b239-14f96391fb86	Thomas Emmer	candidate	true	H4MN06087	9b84f3bd-c38c-468e-9217-d5306418bc3d	Tom Emmer	1	CONVERT		{"merged_fec_candidate_id": "H4MN06087"}
+65c7e642-578a-4b85-8bfe-719422bf3677	Thomas Mcclintock	candidate	true	H8CA04152	f03d57d7-dc2f-4bfc-96ca-dbd2289b6b36	Tom McClintock	1	CONVERT		{"merged_fec_candidate_id": "H8CA04152"}
+1c22ba19-8ef6-4aee-9a52-333f29fc6596	Thomas Tuberville	candidate	true	S0AL00230	cf7cddcc-cf96-4c3d-8681-48b3e6c05d41	Tommy Tuberville	1	CONVERT		{"merged_fec_candidate_id": "S0AL00230"}
+f2b6928b-d4fd-4945-a8e8-402b8078b7c9	Timothy Evans	candidate	true	H4CO08034	b5f4de8b-4917-4b97-baab-a5dc6d5de991	Gabe Evans	1	CONVERT		{"merged_fec_candidate_id": "H4CO08034"}
+34839e7e-7ef7-44c3-8b1b-8a904eebe03b	Timothy Walberg	candidate	true	H4MI07103	840ac131-9903-4548-ab91-3e4c4fcde099	Tim Walberg	1	CONVERT		{"merged_fec_candidate_id": "H4MI07103"}
+70e0471a-2168-485a-a565-c80e96f9c61e	Tom Tiffany	candidate	true	H0WI07101	c6dbd5bb-cb0e-4974-bcb7-a3ac47ec973e	Thomas P. Tiffany	1	CONVERT		{"merged_fec_candidate_id": "H0WI07101"}
+2da760d8-ea96-44d1-9383-2277a42078df	Walter Ezell	candidate	true	H2MS04258	9af8cd01-f740-4162-b2f1-d1fd15c008b7	Mike Ezell	1	CONVERT		{"merged_fec_candidate_id": "H2MS04258"}
+4cf279fd-ca97-43a9-b772-3ba2ecf7c9da	William Balderson	candidate	true	H8OH12180	ddf04728-27d1-429f-ad73-be67a097ffdf	Troy Balderson	1	CONVERT		{"merged_fec_candidate_id": "H8OH12180"}
+53ab8049-18fc-4b82-a2b9-3b39018c52b4	William Cassidy	candidate	true	S4LA00107	fa237ff5-a496-4f4a-97cb-fed07a08efd0	Bill Cassidy	1	CONVERT		{"merged_fec_candidate_id": "S4LA00107"}
+877a9f19-0d20-45e2-8991-780ce39d945c	William Huizenga	candidate	true	H0MI02094	afe9df3f-872d-4f8b-855f-bc7c91432215	Bill Huizenga	1	CONVERT		{"merged_fec_candidate_id": "H0MI02094"}
+7eeb285f-a294-4793-a6b8-33c3e21fdaaa	William Timmons	candidate	true	H8SC04250	df7b7d78-1a73-4a20-a2f7-ff5dea800bda	William R. Timmons	1	CONVERT		{"merged_fec_candidate_id": "H8SC04250"}
+b2f58622-674b-49f3-9c51-addfb15a6451	Yevgeny Vindman	candidate	true	H4VA07234	0b87ad8d-9d9c-4a0c-897a-22e5324d003d	Eugene Simon Vindman	1	CONVERT		{"merged_fec_candidate_id": "H4VA07234"}

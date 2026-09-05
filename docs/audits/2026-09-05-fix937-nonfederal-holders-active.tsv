@@ -1,0 +1,16 @@
+# FIX-937 — non-federal-role officials carrying an FEC H/S/P CAND_ID (ACTIVE, prod, 2026-09-05)
+# 4 officials, 2 holding fec_bulk donation rows
+# 15 rows / $42,412.00
+# with a federal official legitimately holding the same CAND_ID: 2
+#
+# A Council Member / Article III judge cannot stand for federal office, so the
+# carried CAND_ID is not theirs and these donation rows are another person's money.
+# REMEDIATION goes through the FIX-954 machinery (audit -> manifest -> apply ->
+# rollup tail), NEVER a bare DELETE — the deleted rows' recipients must go dirty
+# so jobid 24's donor-rollup regime rebuilds them.
+#
+official_id	full_name	role_title	tier	is_active	jurisdiction	carried_cand_id	federal_owner_id	federal_owner_name	federal_owner_role	fec_rows	fec_cents	cycles	first_at	last_at
+f716ce68-832a-4ce6-991f-b516014548a8	Mayor Kirk Watson	Council Member	elected	true	AUS	H6NC08202	155faf72-025b-448d-ae25-067c0d710ff9	Colby Watson	Candidate for Representative	12	3381200	3	2019-03-14	2026-03-08
+4a05256c-a1d0-4dad-b0ad-412ca3894235	Julie Christensen	Council Member	elected	true	SF	H0UT04092	fa7aece4-8716-482c-8eee-f5ff2171f448	Trent Christensen	Candidate for Representative	3	860000	1	2020-02-18	2020-10-22
+9c0877b0-c866-4bfb-ac1d-b731b33eb55c	Dan Strauss	Council Member	elected	true	SEA	S2MO00486	a0e90fd1-5880-4033-b484-04c90566db28	Nicholas Strauss	Candidate for Senator	0	0	0		
+f878d653-341b-48a7-a94b-9ac8e5340071	Council Member Vanessa Fuentes	Council Member	elected	true	AUS	H4TX33038	beae1c8d-9ad0-4906-9899-2a5e9d2b9c26	Luis Fuentes	Candidate for Representative	0	0	0		
