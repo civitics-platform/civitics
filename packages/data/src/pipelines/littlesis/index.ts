@@ -21,7 +21,9 @@
  * Pipeline shape:
  *   1. Download entities.json.gz + relationships.json.gz, SHA256 each.
  *   2. Freshness gate: skip if both fingerprints match pipeline_state.littlesis_state.
- *   3. Build match index from existing Civitics rows (officials + financial_entities).
+ *   3a. Stream entities once to collect the person sort keys this run can ask
+ *       about (FIX-1159), so step 3b can bound what it holds in memory.
+ *   3b. Build match index from existing Civitics rows (officials + financial_entities).
  *   4. P1: stream entities, match each → anchor map + ambiguous review queue.
  *   5. P2: stream relationships, collect 0-hop edges + identify 1-hop entity ids.
  *   6. P3: stream relationships, collect 2-hop edges connecting (anchor ∪ hop1).
@@ -50,7 +52,7 @@ import {
   type LittleSisEntity,
   type LittleSisRelationship,
 } from "./util";
-import { buildMatchIndex } from "./matcher";
+import { buildMatchIndex, collectLittleSisPersonKeys } from "./matcher";
 import { pass1AnchorMatch, pass2CollectEdges, pass3CollectEdges, type AnchorMatch } from "./expand";
 import {
   preloadKnownLittleSisIds,
@@ -104,8 +106,19 @@ export async function runLittleSisPipeline(opts: { force?: boolean } = {}): Prom
     }
 
     // ── Build match index + preload existing bindings ───────────────────
+    //
+    // FIX-1159 — two passes, and the order is load-bearing. The entities dump
+    // is already on disk (downloaded above), so the set of person sort keys
+    // this run can ever look up is known BEFORE the financial_entities walk.
+    // Pass 1 collects that set; pass 2 keeps only individuals whose sort key is
+    // in it. Unfiltered, the map held 2,551,270 keys and the build peaked at
+    // 1,282 MB RSS on the prod clone — for a dump that asks about a few tens of
+    // thousands of people.
+    console.log("  Collecting LittleSis person sort keys from the entities dump...");
+    const personKeys = await collectLittleSisPersonKeys(entPath);
+
     console.log("  Building match index from Civitics rows...");
-    const idx = await buildMatchIndex();
+    const idx = await buildMatchIndex(personKeys);
     console.log(
       `    officials lastname keys=${idx.officialsByLastName.size}` +
       `, persons sort-keys=${idx.personsBySortKey.size}` +

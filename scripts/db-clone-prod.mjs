@@ -21,7 +21,41 @@
 //   3. Snapshot cron.job, then park every active job.
 //   4. TRUNCATE every public regular table, then pg_restore --data-only
 //      --disable-triggers (as a superuser; see LOCAL_SUPERUSER_URL).
-//   5. Un-park exactly the cron jobs that were active before.
+//   5. Un-park exactly the cron jobs that were active before, and print the
+//      FIX-946 banner.
+//
+// FIX-946 — cron.job IS NOT CLONED, AND NEVER WAS.
+//
+// The dump is `--schema=public --data-only`; `cron.job` lives in the `cron`
+// schema and is not in it. Steps 3 and 5 above snapshot and restore the LOCAL
+// cron.job around the destructive half — they park local jobs so a nightly
+// rebuild cannot fire into a half-loaded database, and put back exactly what
+// was there. Prod's schedule is never read and never copied.
+//
+// So the clone's cron.job is LOCAL history: rows created by whichever
+// migrations have been applied here, in local order, with whatever `active`
+// flags local runs left behind. Two consequences, both load-bearing:
+//
+//   - jobids DIFFER. Measured 2026-09-05: ec-vacuum-analyze is jobid 6 on prod
+//     and 15 locally; platform-counts-daily is 48 on prod and 69 locally;
+//     donor-rollup-refresh is 24 on prod and 42 locally. Any runbook or query
+//     that names a job by jobid is silently wrong against one of the two.
+//   - `active` DIFFERS. Same date: 33 of 37 jobs active on prod, 21 of 37
+//     locally. The twelve that are ON in prod and OFF here:
+//     donation-edge-orphan-sweep, donor-party-rollup-orphan-sweep,
+//     donor-party-rollup-refresh, donor-rollup-orphan-sweep, ec-crawl,
+//     ec-vacuum-analyze, entity-connection-stats-orphan-sweep, fe-crawl,
+//     refresh-derived-mvs-daily, refresh-derived-mvs-weekly, rule-taggers-daily,
+//     rule-taggers-weekly. FIX-944 nearly went the wrong way on exactly this —
+//     the clone suggested half the prod schedule was disabled and that the
+//     per-official money rollups were stranded on a job that could not run,
+//     which would have justified re-enabling prod jobs that were never off.
+//
+// The clone is deliberately NOT made to mirror prod's flags: a live pg_cron
+// here would run prod-shaped jobs against local data, which is the thing steps
+// 3 and 5 exist to prevent. cron.job is a PROD-ONLY READ. Get it with
+// `node scripts/db-query.mjs --prod "SELECT jobid, jobname, active, schedule
+// FROM cron.job ORDER BY jobname;"` and diff by NAME, never by jobid.
 //   6. CALL refresh_derived_mvs('daily'|'weekly') — repopulates all 13 true
 //      matviews (pg_dump --data-only does NOT carry matview contents).
 //   7. VACUUM (ANALYZE) every public table — a bulk load leaves no stats, and
@@ -228,6 +262,11 @@ if (dryRun) {
   log(`prod  : ${q1(PROD_URL, SIZE_SQL)}`);
   log(`local : ${q1(LOCAL_URL, SIZE_SQL)}`);
   log(`local cron.job: ${q1(LOCAL_URL, "SELECT count(*)||' jobs, '||count(*) FILTER (WHERE active)||' active' FROM cron.job;")}`);
+  // FIX-946: say it here too. A dry run is exactly when someone is deciding
+  // whether the clone can answer a scheduling question. It cannot.
+  log("cron.job is NOT part of the dump (--schema=public) — the local jobids and");
+  log("'active' flags are local history, never prod's. Read cron state from prod:");
+  log('  node scripts/db-query.mjs --prod "SELECT jobid, jobname, active, schedule FROM cron.job ORDER BY jobname;"');
   const stamp = q1(LOCAL_URL, "SELECT coalesce((SELECT value::text FROM public.pipeline_state WHERE key='local_clone_restore'),'(never stamped)');");
   log(`existing stamp: ${stamp}`);
   console.log("");
@@ -335,6 +374,40 @@ if (
 }
 log("cron.alter_job present ✓");
 
+/**
+ * FIX-946 — which jobs' `active` flag changed across the restore, by NAME.
+ *
+ * The expected answer is "none": step 5 un-parks exactly what step 3 parked. A
+ * non-empty result means un-parking did not fully land, which would leave the
+ * local scheduler silently stopped — the failure this clone script exists to
+ * avoid, showing up as "derived data mysteriously stopped updating" weeks later.
+ *
+ * Pure and name-keyed on purpose: jobids are not stable across environments (or
+ * across a local `supabase db reset`), so a jobid-keyed diff would report
+ * phantom changes.
+ */
+function diffCronActive(before, after) {
+  const beforeByName = new Map(before.map((j) => [j.jobname, j.active]));
+  const afterByName = new Map(after.map((j) => [j.jobname, j.active]));
+  const changed = [];
+  for (const [name, wasActive] of beforeByName) {
+    if (!afterByName.has(name)) {
+      changed.push({ jobname: name, before: wasActive, after: null, kind: "vanished" });
+      continue;
+    }
+    const isActive = afterByName.get(name);
+    if (isActive !== wasActive) {
+      changed.push({ jobname: name, before: wasActive, after: isActive, kind: "flag_changed" });
+    }
+  }
+  for (const [name, isActive] of afterByName) {
+    if (!beforeByName.has(name)) {
+      changed.push({ jobname: name, before: null, after: isActive, kind: "appeared" });
+    }
+  }
+  return changed.sort((a, b) => a.jobname.localeCompare(b.jobname));
+}
+
 // ── 3. Park pg_cron ─────────────────────────────────────────────────────────
 // pg_cron 1.6.4 is installed AND live locally. A nightly rebuild firing partway
 // through a multi-GB load corrupts the result silently. Parking via active=false
@@ -426,6 +499,45 @@ END $$;`,
   if (Number(after.split("/")[0]) !== cronAll.length) {
     console.error(`${TAG} WARNING: cron.job row count changed across the restore. Snapshot: ${CRON_SNAPSHOT}`);
   }
+
+  // ── FIX-946 banner ───────────────────────────────────────────────────────
+  const cronAfter = JSON.parse(
+    q1(LOCAL_URL, "SELECT coalesce(jsonb_agg(to_jsonb(j) ORDER BY j.jobid),'[]'::jsonb) FROM cron.job j;"),
+  );
+  const changed = diffCronActive(cronAll, cronAfter);
+  const activeNow = cronAfter.filter((j) => j.active).length;
+
+  console.error("");
+  console.error(`${TAG} ══════════════════════════════════════════════════════════════`);
+  console.error(`${TAG}  FIX-946 — THIS CLONE'S cron.job IS NOT PROD'S.`);
+  console.error(`${TAG} ══════════════════════════════════════════════════════════════`);
+  console.error(`${TAG}  The dump is --schema=public --data-only. cron.job lives in the`);
+  console.error(`${TAG}  'cron' schema and was NEVER restored from prod. What you see`);
+  console.error(`${TAG}  locally is local history: ${cronAfter.length} job(s), ${activeNow} active.`);
+  console.error(`${TAG}`);
+  console.error(`${TAG}  Steps 3 and 5 park and un-park the LOCAL schedule so a nightly`);
+  console.error(`${TAG}  rebuild cannot fire into a half-loaded database. They do not`);
+  console.error(`${TAG}  copy prod's flags, deliberately: a prod-shaped schedule running`);
+  console.error(`${TAG}  against local data is the thing they exist to prevent.`);
+  console.error(`${TAG}`);
+  console.error(`${TAG}  => jobids DIFFER from prod. => 'active' DIFFERS from prod.`);
+  console.error(`${TAG}  => cron.job is a PROD-ONLY READ. Diff by NAME, never by jobid:`);
+  console.error(`${TAG}     node scripts/db-query.mjs --prod "SELECT jobid, jobname,`);
+  console.error(`${TAG}       active, schedule FROM cron.job ORDER BY jobname;"`);
+  console.error(`${TAG} ──────────────────────────────────────────────────────────────`);
+  if (changed.length === 0) {
+    console.error(`${TAG}  Un-park integrity: OK — every job's 'active' flag is back to`);
+    console.error(`${TAG}  what it was before the restore.`);
+  } else {
+    console.error(`${TAG}  ⚠ Un-park integrity: ${changed.length} job(s) CHANGED across the restore.`);
+    console.error(`${TAG}    This should be empty. The local scheduler may be stopped.`);
+    for (const c of changed) {
+      console.error(`${TAG}    - ${c.jobname}: ${c.before} -> ${c.after} (${c.kind})`);
+    }
+    console.error(`${TAG}    Snapshot to repair from: ${CRON_SNAPSHOT}`);
+  }
+  console.error(`${TAG} ══════════════════════════════════════════════════════════════`);
+  console.error("");
 }
 if (restoreStatus !== 0) process.exit(1);
 

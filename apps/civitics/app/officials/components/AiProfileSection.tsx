@@ -35,11 +35,26 @@ export function AiProfileSection({ officialId }: Props) {
 
     let cancelled = false;
 
+    // FIX-1029 — the STATUS is checked, not just the body. The route now
+    // answers an infrastructure failure with 503 `{summary: null, error:
+    // "unavailable"}` and a genuine no-record with 200 `{summary: null}`. Both
+    // carry a null summary, so reading `data.summary` alone would file an
+    // outage into `summaryCache` as "this official has no profile" — and that
+    // Map is module-scoped and never expires, so one 503 during a deploy would
+    // suppress the profile for the rest of the browser session. This is the
+    // client-side twin of the FIX-796 rule that keeps a transient null off the
+    // CDN: a failure is never cached, at any layer.
+    // `answered` is what separates the two null summaries: a 200 null is an
+    // answer worth caching (this official has no record — don't re-ask on every
+    // tab switch), a 503 null is not.
     fetch(`/api/officials/${officialId}/summary`)
-      .then((r) => r.json())
-      .then((data: { summary: string | null }) => {
-        const s = data.summary ?? null;
-        summaryCache.set(officialId, s);
+      .then(async (r): Promise<{ answered: boolean; summary: string | null }> => {
+        if (!r.ok) return { answered: false, summary: null };
+        const data = (await r.json()) as { summary: string | null };
+        return { answered: true, summary: data.summary ?? null };
+      })
+      .then(({ answered, summary: s }) => {
+        if (answered) summaryCache.set(officialId, s);
         if (!cancelled) {
           setSummary(s);
           setLoading(false);

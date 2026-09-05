@@ -112,6 +112,28 @@ is bash-side only.
 | Mixed-shell workflow (PowerShell + bash side-by-side) | Pattern A (consistent across both) |
 | `pnpm dev` against prod for browser-side QA | Pattern A — Next dev reads `.env.local` at startup and caches it for the lifetime of the server, so `source .env.local.prod` followed by `pnpm dev` would silently still read the on-disk `.env.local` |
 
+### `cron.job` is a prod-only read (FIX-946)
+
+**The local prod-clone's `cron.job` is not evidence about prod.** `pnpm
+db:clone:prod` dumps `--schema=public --data-only`; `cron.job` lives in the
+`cron` schema and is never restored from prod. What is local is local history —
+rows created by whichever migrations ran here, with whatever `active` flags
+local runs left. So **jobids differ** (`ec-vacuum-analyze` is jobid 6 on prod
+and 15 locally; `platform-counts-daily` is 48 on prod, 69 locally) and **`active`
+differs** (2026-09-05: 33 of 37 jobs active on prod, 21 of 37 locally). The
+clone is deliberately not mirrored to prod's flags — a live pg_cron here would
+run prod-shaped jobs against local data.
+
+Read cron state from prod, and **diff by NAME, never by jobid**:
+
+```bash
+node scripts/db-query.mjs --prod "SELECT jobid, jobname, active, schedule FROM cron.job ORDER BY jobname;"
+```
+
+FIX-944 nearly went the wrong way on this: the clone suggested half the prod
+schedule was disabled, which would have justified re-enabling prod jobs that
+were never off.
+
 Pipelines run from `packages/data/` read `.env.local` from the repo root. The
 shell that runs the pipeline inherits whichever env is active at invocation
 time — there is no per-script override. With Pattern B, `--env-file=` is the
@@ -442,6 +464,23 @@ broken interactive role-alter login. Two fixes:
 
 `supabase db push --db-url …` is the canonical CLI path to Pro. Never run
 ad-hoc SQL against Pro without explicit user confirmation.
+
+### Ad-hoc queries and CALLs — `scripts/db-query.mjs` (FIX-791)
+
+```bash
+node scripts/db-query.mjs --local "SELECT ..."
+node scripts/db-query.mjs --prod  "SELECT ..."          # READ-ONLY, enforced
+node scripts/db-query.mjs --local --call "CALL public.some_proc();"
+```
+
+`--prod` wraps the SQL in one transaction with `SET TRANSACTION READ ONLY`, so
+any write fails closed. `--call` drops `--single-transaction` so a PROCEDURE
+that COMMITs internally (the FIX-703/704/715/717/718 pg_cron family) can run,
+and prepends `SET statement_timeout` (`--timeout <interval>`, default `60min`)
+as a runaway backstop. **`--call` is local by default:** `--prod --call` is a
+write path, refuses without `--yes-i-mean-prod`, and even then prints the target
+host and statement and waits 5s. It supersedes the untracked
+`scratchpad/prod_call.mjs` wrappers.
 
 **Fallback (Cowork or any sandboxed environment):** If the active shell can't
 reach `127.0.0.1:54322` (Docker Supabase), Claude cannot run migrations, git,

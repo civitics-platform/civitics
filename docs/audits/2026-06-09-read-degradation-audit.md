@@ -157,7 +157,12 @@ at 1,000 rows on big tables (`listVotesByProposal`, `getVoteSummary`,
 `listProposalsByType`, `getPromiseSummary`, `getConnectionsFrom/To`,
 `listDonationsByDonor` second read). These serve the app request path, where
 an implicit 1,000-row cap is a product/perf decision, not a pipeline-state
-corruption — left as-is and recorded here. If a consumer needs exact
+corruption — left as-is and recorded here.
+**FIX-1157 (2026-09-05) struck four of the names above:** `listVotesByProposal`,
+`getVoteSummary` and `listDonationsByDonor` (with the rest of
+`queries/votes.ts` and `queries/financial-relationships.ts`) turned out to have
+ZERO callers, and were deleted rather than paginated. The remaining names in
+this paragraph still stand. If a consumer needs exact
 aggregates, that's a materialization (see `packages/db/CLAUDE.md`), not a
 bigger fetch.
 

@@ -64,24 +64,78 @@ export type VercelUsage = {
    *  because every piece of correct billing math starts by removing it:
    *  `usage = effective_cost_usd - plan_base_usd`, and only `usage` draws down
    *  the $20 of included credit that the subscription BUYS. Deriving it
-   *  downstream from `cost_breakdown` would be fragile — that array is sliced to
-   *  the top 8 before it is persisted (FIX-1041). */
+   *  downstream from `cost_breakdown` would be fragile — that array used to be
+   *  sliced to the top 8 before it was persisted, so the subscription line could
+   *  in principle have fallen out of it. FIX-1041 removed the slice; the field
+   *  stays first-class because deriving billing math from a display array is
+   *  the wrong dependency direction regardless. */
   plan_base_usd: number;
-  /** FIX-648: number of distinct billing days (ChargePeriodStart) in the
-   *  response. billing/charges only ever returns a trailing ~7-day window — it
-   *  ignores `from` (a 90-day request returns the same days) and 404s on
-   *  historical-only ranges. Every quantity/cost above is therefore a sum over
-   *  THIS many days, NOT month-to-date. The snapshot writer projects them to a
-   *  30-day run-rate using this divisor. 0 from the quantity-only fallback. */
+  /** Number of distinct billing days (ChargePeriodStart) in the response.
+   *  Every quantity/cost above is a sum over THIS many days, and the snapshot
+   *  writer projects them to a full-month run-rate using it as the divisor.
+   *  0 from the quantity-only fallback.
+   *
+   *  FIX-1041 — THIS IS MONTH-TO-DATE, and the request honours `from`. FIX-648
+   *  documented the opposite ("only ever a trailing ~7-day window; it ignores
+   *  `from`"), which was true when written and is not true now. Measured on
+   *  prod across 927 snapshots, 2026-08-07..09-05: window_days climbs by
+   *  exactly one per calendar day — 6,7,8 … 30,31 through August — and RESETS
+   *  TO 1 on 09-01, which is the signature of a month-to-date window and could
+   *  not happen under a rolling one. `getVercelUsage` sends
+   *  `from = first-of-current-month`.
+   *
+   *  The projection arithmetic was never affected either way: the divisor is
+   *  derived from the response, not from the assumption. But the comment
+   *  misled anyone reasoning about resolution, which is the whole reason this
+   *  field exists.
+   *
+   *  RESOLUTION, stated where the readers are: values are cumulative MTD and
+   *  step ONCE PER DAY at ~06:00-07:00 UTC (Vercel's ChargePeriodStart days are
+   *  Pacific days), so consecutive snapshots inside a day are byte-identical.
+   *  The platform-snapshot cron runs every 30 minutes — a Vercel cron in
+   *  apps/civitics/vercel.json on a 30-minute slash-schedule, moved there
+   *  from a GitHub Actions 10-minute one by FIX-1127 (the literal
+   *  expressions are not repeated here: a cron slash-star sequence closes
+   *  a block comment). That cadence buys ZERO extra resolution on any
+   *  Vercel metric. An incident
+   *  can be localised to a calendar day and never to an hour. The series IS
+   *  differentiable into per-day usage — that is how the 2026-08-15 cost audit
+   *  was built — but no faster snapshot will change the granularity. */
   window_days: number;
   /** Earliest / latest ChargePeriodStart in the window (ISO), or null. */
   window_start: string | null;
   window_end: string | null;
   /** FIX-648: per-ServiceName EffectiveCost over the window (non-zero only,
    *  descending). The "what spiked" breakdown — the snapshot writer projects
-   *  each to a monthly run-rate and surfaces the top entries on the card and to
-   *  the leading fluid-cost alert. Empty from the quantity-only fallback. */
-  cost_breakdown: { service: string; effective_usd: number }[];
+   *  each to a monthly run-rate and surfaces it on the card and to the leading
+   *  fluid-cost alert. Empty from the quantity-only fallback.
+   *
+   *  FIX-1041 — each line now also carries the RAW metered amount from the same
+   *  charge lines that produced its dollars:
+   *
+   *    quantity  Σ ConsumedQuantity for this ServiceName, or null if Vercel
+   *              sent no quantity for it
+   *    unit      the ConsumedUnit string Vercel used, verbatim
+   *    metric    our metric name when `mapChargeQuantity` recognises the
+   *              service, else null
+   *
+   *  `metric: null` with a non-null quantity is the interesting case: the line
+   *  costs money and IS metered by Vercel, but we do not track it as one of our
+   *  own metrics. That is the state Observability Events was in when the
+   *  2026-08-15 cost-spike audit could report "observability cost rose 3.7x"
+   *  and could not state an event count or a unit — and Observability Events is
+   *  the largest non-subscription line on this account (projected $11.02/mo at
+   *  its August peak). Recording the raw quantity per line makes that gap
+   *  visible on the card instead of leaving it to be inferred, WITHOUT
+   *  inventing a `platform_usage` metric and a limit row for every service
+   *  Vercel happens to bill. */
+  cost_breakdown: {
+    service: string;
+    effective_usd: number;
+    quantity: number | null;
+    unit: string | null;
+    metric: keyof QuantityMetrics | null;
+  }[];
   /** FIX-1089: EffectiveCost over the window, keyed by OUR metric name rather
    *  than by ServiceName — the same `mapChargeQuantity` mapping that produces
    *  the quantities, applied to the dollars. Two things fall out of it:
@@ -152,8 +206,25 @@ const BYTES_PER_GB = 1024 ** 3;
 // ServiceName strings are stable user-facing labels from the FOCUS export.
 // Order matters: more-specific matches (e.g. edge CPU duration) are checked
 // before the generic "edge request" match. Returns null for service lines we
-// don't track (Blob, Queues, Speed Insights, Observability, the "Pro" base
-// line, etc.) — those still contribute to the cost sums, just not a quantity.
+// don't track as one of OUR metrics (Blob, Queues, Speed Insights,
+// Observability Events, ISR Writes, the "Pro" base line) — those still
+// contribute to the cost sums.
+//
+// FIX-1041 — "not one of our metrics" no longer means "unmeasured". Since this
+// change `cost_breakdown` records the raw ConsumedQuantity and ConsumedUnit for
+// EVERY billed service, mapped or not, so an unmapped line shows its quantity
+// on the card rather than showing dollars with no denominator. Services seen on
+// this account over 2026-08-07..09-05 that return null here and still cost
+// money: Observability Events (the largest non-subscription line, $11.02/mo at
+// its August peak), ISR Writes ($3.29), Speed Insights Data Points ($1.34),
+// Speed Insights Plus Events ($0.78).
+//
+// NOTE for whoever adds a mapping next: the check below is `isr read`, and the
+// service Vercel actually bills on this account is "ISR Writes" — so
+// `isr_reads` has been receiving 0 from a live, paid line. Correcting that is
+// NOT a comment change: `isr_reads` is a platform_usage metric with a limit
+// row, and pointing it at writes changes what an existing series means. Left
+// deliberately, now visible via the per-line quantity.
 
 function mapChargeQuantity(
   serviceName: string,
@@ -201,7 +272,8 @@ function mapChargeQuantity(
 
 type ChargeLine = Record<string, unknown>;
 
-function parseChargesBody(text: string): ChargeLine[] {
+/** Exported for tests (FIX-1041). */
+export function parseChargesBody(text: string): ChargeLine[] {
   return text
     .trim()
     .split("\n")
@@ -226,14 +298,20 @@ type ChargesExtract = {
   window_days: number;
   window_start: string | null;
   window_end: string | null;
-  cost_breakdown: { service: string; effective_usd: number }[];
+  cost_breakdown: VercelUsage["cost_breakdown"];
   cost_by_metric: Partial<Record<keyof QuantityMetrics, number>>;
 };
 
-function extractFromCharges(charges: ChargeLine[]): ChargesExtract {
+/** Exported for tests (FIX-1041): the breakdown builder is the thing under test. */
+export function extractFromCharges(charges: ChargeLine[]): ChargesExtract {
   const out = emptyMetrics();
   const days = new Set<string>();
-  const byService = new Map<string, number>();
+  // FIX-1041: dollars AND the raw metered amount, per ServiceName. Lines are
+  // per (day, region) leaves, so both are summed across regions the same way.
+  const byService = new Map<
+    string,
+    { usd: number; quantity: number; sawQuantity: boolean; unit: string | null; metric: keyof QuantityMetrics | null }
+  >();
   const byMetric: Partial<Record<keyof QuantityMetrics, number>> = {};
   for (const c of charges) {
     const serviceName = typeof c["ServiceName"] === "string" ? (c["ServiceName"] as string) : "";
@@ -258,12 +336,37 @@ function extractFromCharges(charges: ChargeLine[]): ChargesExtract {
     const day = c["ChargePeriodStart"];
     if (typeof day === "string") days.add(day);
     if (serviceName && effective !== 0) {
-      byService.set(serviceName, (byService.get(serviceName) ?? 0) + effective);
+      const hit = byService.get(serviceName) ?? {
+        usd: 0,
+        quantity: 0,
+        sawQuantity: false,
+        unit: null as string | null,
+        metric: (mapped?.key ?? null) as keyof QuantityMetrics | null,
+      };
+      hit.usd += effective;
+      // A quantity is only "absent" if Vercel sent no ConsumedQuantity field at
+      // all. A present-but-zero quantity is a real measurement of zero and must
+      // not be laundered into "unmeasured".
+      if (c["ConsumedQuantity"] !== undefined && c["ConsumedQuantity"] !== null) {
+        hit.sawQuantity = true;
+        hit.quantity += qty;
+      }
+      if (hit.unit === null && typeof c["ConsumedUnit"] === "string" && c["ConsumedUnit"]) {
+        hit.unit = c["ConsumedUnit"] as string;
+      }
+      if (hit.metric === null && mapped) hit.metric = mapped.key;
+      byService.set(serviceName, hit);
     }
   }
   const sortedDays = [...days].sort();
   const cost_breakdown = [...byService.entries()]
-    .map(([service, effective_usd]) => ({ service, effective_usd }))
+    .map(([service, v]) => ({
+      service,
+      effective_usd: v.usd,
+      quantity: v.sawQuantity ? v.quantity : null,
+      unit: v.unit,
+      metric: v.metric,
+    }))
     .sort((a, b) => b.effective_usd - a.effective_usd);
   return {
     metrics: out,

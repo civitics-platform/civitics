@@ -13,6 +13,12 @@
 
 import { createAdminClient, agencyFullName, selectAllKeyset, afterKey } from "@civitics/db";
 import {
+  financialEntityPopulation,
+  parseMaxEnqueue,
+  ceilingVerdict,
+  formatPlanTable,
+} from "./seed-plan";
+import {
   zeroCounts,
   buildProposalTagContext,
   buildProposalSummaryContext,
@@ -33,10 +39,52 @@ import {
 
 const DRY_RUN = process.argv.includes("--dry-run");
 // --force: also reseeds items already marked 'done', refreshing context + priority.
+// FIX-1158: it doubles as the override for the --max-enqueue ceiling below.
 const FORCE = process.argv.includes("--force");
 // --pacs-only: skip proposals/officials entirely; only enqueue PAC + party_committee
 // industry tags at priority 100 so they drain ahead of any other backlog.
 const PACS_ONLY = process.argv.includes("--pacs-only");
+
+// ── FIX-1158: the financial-entity arm's default population ──────────────────
+//
+// --all-financial-entities: include entity_type='individual' in the FE arm.
+// OFF by default, and the default is the fix.
+//
+// This arm walks ALL financial_entities (5,204,854 on prod 2026-09-04) and
+// enqueues everything without an industry tag. Individuals are 4,975,895 of
+// that and NONE of them carry an industry tag, so on the default path every
+// single one qualified: one mistyped invocation of a manual script staged ~4.98
+// million rows of downstream drain work, each of which is a model call. Craig is
+// pre-revenue; this is the cost blow-up class the project designs against.
+//
+// Individuals are not a legitimate member of this queue, and that is measured,
+// not assumed. The rule tagger is explicitly scoped to non-individual entities
+// (tags/rules.ts, FIX-437) with a partial index
+// `financial_entities_nonindividual_id ... WHERE entity_type <> 'individual'`
+// built for exactly that predicate. On the prod clone (2026-09-05) the industry
+// tag rows cover corporation 29,157 / other 9,184 / pac 2,918 / union 167 /
+// super_pac 130 / party_committee 77 / nonprofit 3 — and individual ZERO,
+// against a population of 3,453,892 individuals. Every financial_entity row
+// already in enrichment_queue is likewise non-individual.
+//
+// The exclusion goes in the QUERY, not in a post-filter, so the FIX-984 keyset
+// walk itself shrinks from 5.2M rows to ~229k rather than streaming 5M rows to
+// throw them away.
+const ALL_FINANCIAL_ENTITIES = process.argv.includes("--all-financial-entities");
+
+// ── FIX-1158: the ceiling ────────────────────────────────────────────────────
+//
+// Nothing is written until the whole plan is built and counted, and a plan
+// bigger than this refuses rather than running. --dry-run prints the same table
+// and writes nothing at all.
+const MAX_ENQUEUE = (() => {
+  try {
+    return parseMaxEnqueue(process.argv);
+  } catch (err) {
+    console.error(`[seed-backlog] ${err instanceof Error ? err.message : String(err)}`);
+    process.exit(2);
+  }
+})();
 // Pagination size for the snapshot SELECTs (fetchAll). enrichment_queue
 // lacks an index on (entity_type, task_type) for non-pending rows, so each
 // page scan is O(N) on a growing table. 500 keeps a full page inside Pro's
@@ -264,55 +312,78 @@ function classifyAction(
   return "skipped_pending";
 }
 
-async function enqueueAll(
+type SeedRow = {
+  entity_id: string;
+  entity_type: EntityType;
+  task_type: "tag" | "summary";
+  context: unknown;
+  priority: number;
+  entity_updated_at: string;
+};
+
+/**
+ * FIX-1158 — one arm's classified work, NOT yet written.
+ *
+ * Planning is split from applying so the run can count everything it is about
+ * to do before it does any of it. Without that split, the --max-enqueue ceiling
+ * could only ever fire after earlier arms had already committed their rows, and
+ * --dry-run's per-type table could not exist at all.
+ */
+type EnqueuePlan = {
+  entityType: EntityType;
+  taskType: TaskType;
+  label: string;
+  counts: EnqueueCounts;
+  /** Only "created" + "retried" rows — the ones that would actually be upserted. */
+  toWrite: SeedRow[];
+};
+
+async function planEnqueue(
   db: Db,
   entityType: EntityType,
   taskType: TaskType,
-  rows: Array<{
-    entity_id: string;
-    entity_type: EntityType;
-    task_type: "tag" | "summary";
-    context: unknown;
-    priority: number;
-    entity_updated_at: string;
-  }>,
+  rows: SeedRow[],
   label: string,
-): Promise<EnqueueCounts> {
+): Promise<EnqueuePlan> {
   const counts = zeroCounts();
-  if (rows.length === 0) return counts;
+  const empty: EnqueuePlan = { entityType, taskType, label, counts, toWrite: [] };
+  if (rows.length === 0) return empty;
 
   const snapshot = await fetchQueueSnapshot(db, entityType, taskType);
 
-  type Classified = { row: (typeof rows)[number]; action: EnqueueAction };
+  type Classified = { row: SeedRow; action: EnqueueAction };
   const classified: Classified[] = rows.map((row) => ({
     row,
     action: classifyAction(snapshot.get(row.entity_id)),
   }));
   for (const c of classified) counts[c.action]++;
 
-  if (DRY_RUN) {
-    console.log(`   [dry-run] would upsert ${counts.created + counts.retried} ${label} ` +
-      `(${fmt(counts)})`);
-    return counts;
-  }
+  // Only "created" and "retried" rows hit the DB.
+  const toWrite = classified
+    .filter((c) => c.action === "created" || c.action === "retried")
+    .map((c) => c.row);
 
-  // Only "created" and "retried" rows hit the DB. Including status/claimed_*/
-  // last_error in the payload makes INSERT use defaults (which match) and
-  // ON CONFLICT DO UPDATE reset them — matching the RPC's retried path.
-  // retry_count is intentionally omitted so it stays at 0 on INSERT and is
-  // preserved on UPDATE.
-  const toUpsert = classified.filter(
-    (c) => c.action === "created" || c.action === "retried",
-  );
+  return { entityType, taskType, label, counts, toWrite };
+}
+
+async function applyEnqueue(db: Db, plan: EnqueuePlan): Promise<void> {
+  const { toWrite, label } = plan;
+  if (toWrite.length === 0) return;
+
+  // Including status/claimed_*/last_error in the payload makes INSERT use
+  // defaults (which match) and ON CONFLICT DO UPDATE reset them — matching the
+  // RPC's retried path. retry_count is intentionally omitted so it stays at 0
+  // on INSERT and is preserved on UPDATE.
+  const toUpsert = toWrite;
   let errors = 0;
   for (let i = 0; i < toUpsert.length; i += UPSERT_CHUNK) {
-    const chunk = toUpsert.slice(i, i + UPSERT_CHUNK).map((c) => ({
-      entity_id: c.row.entity_id,
-      entity_type: c.row.entity_type,
-      task_type: c.row.task_type,
-      context: c.row.context,
-      priority: c.row.priority,
-      entity_updated_at: c.row.entity_updated_at,
+    const chunk = toUpsert.slice(i, i + UPSERT_CHUNK).map((r) => ({
+      entity_id: r.entity_id,
+      entity_type: r.entity_type,
+      task_type: r.task_type,
+      context: r.context,
+      priority: r.priority,
+      entity_updated_at: r.entity_updated_at,
       status: "pending",
       claimed_at: null,
       claimed_by: null,
@@ -333,7 +404,21 @@ async function enqueueAll(
     }
   }
   if (errors > 0) console.error(`   ✗ ${errors} ${label} upsert chunk(s) failed`);
-  return counts;
+}
+
+/** Flatten every plan's writable rows to the (type, task, priority) keys the table groups on. */
+function planTableRows(plans: EnqueuePlan[]) {
+  return plans.flatMap((p) =>
+    p.toWrite.map((r) => ({
+      entity_type: r.entity_type as string,
+      task_type: r.task_type as string,
+      priority: r.priority,
+    })),
+  );
+}
+
+export function planTotal(plans: EnqueuePlan[]): number {
+  return plans.reduce((sum, p) => sum + p.toWrite.length, 0);
 }
 
 function fmt(counts: EnqueueCounts): string {
@@ -350,10 +435,16 @@ function fmt(counts: EnqueueCounts): string {
 
 async function main(): Promise<void> {
   console.log(`\n═══ Enrichment backlog seed ════════════════════════════════`);
-  console.log(`    Mode: ${DRY_RUN ? "DRY RUN" : "LIVE"}${FORCE ? " + FORCE (reseed done items)" : ""}${PACS_ONLY ? " + PACS-ONLY (skip proposals/officials)" : ""}`);
+  console.log(`    Mode: ${DRY_RUN ? "DRY RUN" : "LIVE"}${FORCE ? " + FORCE (reseed done items; ceiling override)" : ""}${PACS_ONLY ? " + PACS-ONLY (skip proposals/officials)" : ""}${ALL_FINANCIAL_ENTITIES ? " + ALL-FINANCIAL-ENTITIES (individuals INCLUDED)" : ""}`);
+  console.log(`    FE pool: ${PACS_ONLY ? "pac + party_committee only" : ALL_FINANCIAL_ENTITIES ? "every financial_entity INCLUDING individuals" : "every financial_entity EXCEPT individuals (FIX-1158 default)"}`);
+  console.log(`    Ceiling: ${MAX_ENQUEUE.toLocaleString()} rows${FORCE ? " (overridden by --force)" : ""}`);
   console.log(`    Time: ${new Date().toISOString()}\n`);
 
   const db = createAdminClient() as unknown as Db;
+
+  // FIX-1158: every arm plans into here; NOTHING is written until the whole
+  // plan is counted and the ceiling has passed.
+  const plans: EnqueuePlan[] = [];
 
   // In --pacs-only mode skip proposals/officials entirely. The financial-entity
   // industry-tag block at the bottom does its own filtering.
@@ -402,7 +493,9 @@ async function main(): Promise<void> {
     }));
   console.log(`── Proposal tags (${proposalTagRows.length} to seed, with source text) ──`);
   console.log(formatSkipTally(proposalTagSkips));
-  proposalTagCounts = await enqueueAll(db, "proposal", "tag", proposalTagRows, "proposal-tags");
+  const proposalTagPlan = await planEnqueue(db, "proposal", "tag", proposalTagRows, "proposal-tags");
+  plans.push(proposalTagPlan);
+  proposalTagCounts = proposalTagPlan.counts;
   console.log(`   ${fmt(proposalTagCounts)}\n`);
 
   // 2. Proposal summaries — require real source text (FIX-894)
@@ -439,7 +532,9 @@ async function main(): Promise<void> {
     });
   console.log(`── Proposal summaries (${proposalSummaryRows.length} to seed, with source text) ──`);
   console.log(formatSkipTally(proposalSummarySkips));
-  proposalSummaryCounts = await enqueueAll(db, "proposal", "summary", proposalSummaryRows, "proposal-summaries");
+  const proposalSummaryPlan = await planEnqueue(db, "proposal", "summary", proposalSummaryRows, "proposal-summaries");
+  plans.push(proposalSummaryPlan);
+  proposalSummaryCounts = proposalSummaryPlan.counts;
   console.log(`   ${fmt(proposalSummaryCounts)}\n`);
 
   // 3. Official summaries. FIX-896 removed the official TAG leg that used to sit
@@ -480,7 +575,9 @@ async function main(): Promise<void> {
       };
     });
   console.log(`── Official summaries (${officialSummaryRows.length} to seed) ──`);
-  officialSummaryCounts = await enqueueAll(db, "official", "summary", officialSummaryRows, "official-summaries");
+  const officialSummaryPlan = await planEnqueue(db, "official", "summary", officialSummaryRows, "official-summaries");
+  plans.push(officialSummaryPlan);
+  officialSummaryCounts = officialSummaryPlan.counts;
   console.log(`   ${fmt(officialSummaryCounts)}\n`);
   } // end !PACS_ONLY
 
@@ -509,12 +606,25 @@ async function main(): Promise<void> {
       // external-merge-sorted the whole table for EVERY one of the ~5,205 pages
       // (last page measured on prod 2026-09-04: 245,569 buffers + 374 MB temp,
       // 36,420 ms). Keyset is a pkey range scan: 949 buffers, 893 ms.
+      //
+      // FIX-1158: the DEFAULT population excludes individuals, and the
+      // exclusion is a QUERY predicate rather than a post-filter so the walk
+      // itself shrinks -- ~229k non-individual rows instead of streaming all
+      // 5,204,854 and discarding 4,975,895 of them. `entity_type <> 'individual'`
+      // is the same predicate the FIX-437 partial index
+      // `financial_entities_nonindividual_id` was built for, so the rule tagger
+      // and this seeder now walk the population by the same route.
       let q = db
         .from("financial_entities")
         .select("id, display_name, entity_type, total_donated_cents, updated_at")
         .order("id") // FIX-760 (total order) / FIX-984 (keyset key)
         .limit(limit);
-      if (PACS_ONLY) q = q.in("entity_type", ["pac", "party_committee"]);
+      const pop = financialEntityPopulation({
+        pacsOnly: PACS_ONLY,
+        allFinancialEntities: ALL_FINANCIAL_ENTITIES,
+      });
+      if (pop.kind === "pacs_only") q = q.in("entity_type", pop.entityTypes);
+      else if (pop.kind === "exclude_individuals") q = q.neq("entity_type", pop.excludedEntityType);
       return afterKey(q, "id", after);
     },
   );
@@ -540,11 +650,59 @@ async function main(): Promise<void> {
       };
     });
   console.log(`── Financial entity industry tags (${feTagRows.length} to seed) ──`);
-  const feTagCounts = await enqueueAll(db, "financial_entity", "tag", feTagRows, "financial-entity-tags");
+  const feTagPlan = await planEnqueue(db, "financial_entity", "tag", feTagRows, "financial-entity-tags");
+  plans.push(feTagPlan);
+  const feTagCounts = feTagPlan.counts;
   console.log(`   ${fmt(feTagCounts)}\n`);
 
+  // -- FIX-1158: count first, then decide, then write -------------------------
+  //
+  // Everything above only PLANNED. This is the first point at which the run
+  // knows its own total, and the first point at which anything could be
+  // written. That ordering is the whole fix: a ceiling checked after the first
+  // arm has already committed is not a ceiling.
+  console.log(`══ Enqueue plan ═════════════════════════════════════════════`);
+  console.log(formatPlanTable(planTableRows(plans)));
+  console.log("");
+
+  const total = planTotal(plans);
+  const verdict = ceilingVerdict(total, MAX_ENQUEUE, FORCE);
+
+  // --dry-run is a SURVEY: it reports the verdict it would have hit and exits
+  // 0, because it wrote nothing and "tell me what this would do" must not be a
+  // failure. Only a live run refuses.
+  if (DRY_RUN) {
+    console.log(`   [dry-run] ${total.toLocaleString()} row(s) would be upserted -- nothing written.`);
+    if (verdict === "refuse") {
+      console.log(
+        `   [dry-run] a LIVE run would REFUSE this plan: ${total.toLocaleString()} > the ` +
+          `--max-enqueue ceiling of ${MAX_ENQUEUE.toLocaleString()}.`,
+      );
+    }
+    console.log("");
+  } else if (verdict === "refuse") {
+    console.error(
+      `[seed-backlog] REFUSING: this run would enqueue ${total.toLocaleString()} rows, ` +
+        `over the --max-enqueue ceiling of ${MAX_ENQUEUE.toLocaleString()}.`,
+    );
+    console.error(
+      `[seed-backlog] Every row is downstream drain work and a model call, so a plan this ` +
+        `size is a cost decision, not a default.`,
+    );
+    console.error(
+      `[seed-backlog] If it is genuinely intended: re-run with --max-enqueue ${total} ` +
+        `(preferred -- it records the number you agreed to) or with --force. ` +
+        `--dry-run prints this table and writes nothing.`,
+    );
+    process.exit(1);
+  } else {
+    for (const plan of plans) {
+      await applyEnqueue(db, plan);
+    }
+  }
+
   // In --pacs-only mode, also bump priority on already-pending PAC tag rows.
-  // The classifier in `enqueueAll` skips pending rows ("skipped_pending"), so
+  // The classifier in `planEnqueue` skips pending rows ("skipped_pending"), so
   // a fresh seed alone won't reorder a queue that already had PAC rows enqueued
   // at the older priority of 40.
   if (PACS_ONLY && !DRY_RUN) {

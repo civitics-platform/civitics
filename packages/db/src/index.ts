@@ -75,20 +75,26 @@ export {
   searchProposals,
 } from "./queries/proposals";
 
-export {
-  getVoteRecord,
-  getVoteSummary,
-  listVotesByOfficial,
-  listVotesByOfficialAndValue,
-  listVotesByProposal,
-} from "./queries/votes";
-
-export {
-  getDonationsByIndustry,
-  getTopDonorsByOfficial,
-  listDonationsByDonor,
-  listDonationsByOfficial,
-} from "./queries/financial-relationships";
+// FIX-1157 — ./queries/votes and ./queries/financial-relationships are GONE.
+// The nine helpers they exported (listVotesByOfficial, listVotesByProposal,
+// getVoteRecord, getVoteSummary, listVotesByOfficialAndValue,
+// listDonationsByOfficial, getTopDonorsByOfficial, listDonationsByDonor,
+// getDonationsByIndustry) had ZERO callers anywhere in apps/, packages/,
+// scripts/ or supabase/ — a repo-wide grep on 2026-09-05 found them only in
+// their own files, in this export list, and named as findings in two audits.
+//
+// They were deleted rather than kept, because a reader with no callers is an
+// UNAUDITED read path waiting for its first one. The FIX-984 keyset, FIX-1037
+// chunking and FIX-760 total-order conventions were all audited by mechanism
+// across live readers only, and these nine sat outside that sweep: the FIX-902
+// audit had already priced getTopDonorsByOfficial's 1,000-id `.in()` and
+// listDonationsByDonor's uncapped `ilike` feed, and the 2026-06-09
+// read-degradation audit had already flagged listVotesByProposal /
+// getVoteSummary as unbounded at 1,000 rows. Neither was fixed, deliberately —
+// fixing pagination in code nothing calls is work with no beneficiary.
+//
+// If a vote or donation reader is ever needed again, write it against the
+// conventions of the day rather than resurrecting these.
 
 export {
   fetchIndustryTagsByEntityId,

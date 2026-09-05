@@ -17,10 +17,31 @@
 //
 // SAFETY: --prod ALWAYS runs read-only (wraps the SQL in a single
 // transaction with `SET TRANSACTION READ ONLY`, so any INSERT/UPDATE/DELETE/DDL
-// errors out instead of touching production). There is deliberately NO prod
-// write path here — prod schema changes go through `pnpm db:push:prod`, and any
-// ad-hoc prod write still requires the explicit-confirmation flow in CLAUDE.md.
+// errors out instead of touching production). Prod schema changes go through
+// `pnpm db:push:prod`, and any ad-hoc prod write still requires the
+// explicit-confirmation flow in CLAUDE.md.
 // --local is unrestricted (local Docker is disposable dev state).
+//
+// FIX-791 — --call: the ONE documented exception, and it is local by default.
+//
+//     node scripts/db-query.mjs --local --call "CALL public.rebuild_x();"
+//     node scripts/db-query.mjs --local --call --timeout 90min --file step.sql
+//
+// A PROCEDURE that COMMITs internally — the whole FIX-703/704/715/717/718
+// pg_cron family — cannot run inside a wrapping transaction block, so the
+// default `--single-transaction` made every such CALL fail with "invalid
+// transaction termination". --call drops --single-transaction (autocommit,
+// statement by statement) and prepends `SET statement_timeout` so a runaway
+// CALL still has a backstop; --timeout <interval> overrides the 60min default.
+//
+// `--prod --call` IS A WRITE PATH and is gated accordingly: it refuses without
+// --yes-i-mean-prod, and even with it prints the target host and the exact
+// statement and waits 5 seconds before connecting. The read-only contract of
+// the PLAIN --prod path is untouched: no --call, no write, ever.
+//
+// This supersedes the session-scratchpad prod_call.mjs / prod-call.mjs
+// wrappers, which were untracked (scratchpad/ is gitignored) and duplicated the
+// env handling below.
 //
 // Reads SUPABASE_DB_PASSWORD directly from .env.local.prod (the file-read path
 // that sidesteps the `source` non-export trap; mirrors scripts/db-push-prod.mjs)
@@ -45,7 +66,12 @@ function usage(msg) {
     "  node scripts/db-query.mjs --local  \"SELECT ...\"\n" +
     "  node scripts/db-query.mjs --prod   \"SELECT ...\"      (read-only, enforced)\n" +
     "  node scripts/db-query.mjs --prod   --file path/to/q.sql\n" +
+    "  node scripts/db-query.mjs --local  --call \"CALL public.some_proc();\"\n" +
     "Options: --raw (unaligned, tuples-only: psql -At), --csv, --file <path>.\n" +
+    "  --call            autocommit (no --single-transaction) so a COMMITting\n" +
+    "                    PROCEDURE can run. Local by default; --prod --call also\n" +
+    "                    requires --yes-i-mean-prod and is a WRITE path.\n" +
+    "  --timeout <ival>  statement_timeout for --call (default 60min).\n" +
     "Tip: for SQL containing single quotes or a $ / backtick, use --file so the\n" +
     "shell never sees it (write the .sql with the Write tool first).",
   );
@@ -67,6 +93,9 @@ let target = null;   // 'local' | 'prod'
 let file = null;
 let raw = false;
 let csv = false;
+let call = false;           // FIX-791: autocommit mode for COMMITting procedures
+let timeout = "60min";      // statement_timeout used by --call
+let yesIMeanProd = false;   // the --prod --call gate
 const sqlParts = [];
 for (let i = 0; i < argv.length; i++) {
   const a = argv[i];
@@ -75,12 +104,32 @@ for (let i = 0; i < argv.length; i++) {
   else if (a === "--file" || a === "-f") file = argv[++i];
   else if (a === "--raw") raw = true;
   else if (a === "--csv") csv = true;
+  else if (a === "--call" || a === "--no-txn") call = true;
+  else if (a === "--timeout") timeout = argv[++i];
+  else if (a === "--yes-i-mean-prod") yesIMeanProd = true;
   else if (a === "--help" || a === "-h") usage();
   else sqlParts.push(a);
 }
 if (!target) usage("must pass --local or --prod");
 if (!file && sqlParts.length === 0) usage("no SQL given (positional string or --file)");
 if (file && sqlParts.length > 0) usage("pass EITHER a SQL string OR --file, not both");
+
+// FIX-791: --timeout is only meaningful under --call (the plain path's
+// single-transaction wrapper inherits the role/gateway caps as it always has).
+// A bad interval would otherwise be swallowed by psql at SET time.
+if (call && !/^[0-9]+\s*(ms|s|min|h|d|second|seconds|minute|minutes|hour|hours)?$/i.test(String(timeout ?? ""))) {
+  usage(`--timeout must be a postgres interval like 60min / 90s / 2h, got: ${timeout}`);
+}
+
+// FIX-791 — the gate. --prod --call is the ONLY write path in this script, so
+// it is opt-in twice: the mode flag, and an explicit acknowledgement.
+if (call && target === "prod" && !yesIMeanProd) {
+  console.error("[db-query] REFUSING --prod --call without --yes-i-mean-prod.");
+  console.error("[db-query] --call runs OUTSIDE the read-only transaction, so against prod it can WRITE.");
+  console.error("[db-query] Prod schema changes belong in a migration (pnpm db:push:prod). If this is a");
+  console.error("[db-query] supervised runtime CALL, re-run with --yes-i-mean-prod and watch it.");
+  process.exit(2);
+}
 
 // ── Resolve connection URL ──────────────────────────────────────────────────
 let url, label;
@@ -105,7 +154,12 @@ if (target === "local") {
 // TRANSACTION READ ONLY"` becomes five bogus args. Space-free args + stdin
 // sidesteps that entirely, and --single-transaction wraps the whole stdin
 // stream in one transaction so the read-only SET governs it.
-const psqlArgs = ["-v", "ON_ERROR_STOP=1", "--single-transaction"];
+// FIX-791: --call drops --single-transaction. A procedure that runs COMMIT
+// cannot execute inside a wrapping transaction block, which is the whole
+// reason this mode exists. ON_ERROR_STOP still holds, so a failing statement
+// stops the batch rather than plodding on.
+const psqlArgs = ["-v", "ON_ERROR_STOP=1"];
+if (!call) psqlArgs.push("--single-transaction");
 if (raw) psqlArgs.push("-At");
 if (csv) psqlArgs.push("--csv");
 
@@ -119,10 +173,35 @@ if (file) {
 }
 
 // --prod: prepend read-only so any INSERT/UPDATE/DELETE/DDL fails closed.
-const readOnly = target === "prod";
-const stdin = (readOnly ? "SET TRANSACTION READ ONLY;\n" : "") + sqlText + "\n";
+//
+// FIX-791: under --call there is no wrapping transaction for SET TRANSACTION
+// READ ONLY to govern, so it is not emitted — that is exactly why --prod --call
+// needs its own gate above rather than relying on this line. What --call
+// prepends instead is a statement_timeout, so a CALL that livelocks has a
+// backstop rather than running until something else notices.
+const readOnly = target === "prod" && !call;
+const prelude = call
+  ? `SET statement_timeout = '${timeout}';\n`
+  : readOnly
+    ? "SET TRANSACTION READ ONLY;\n"
+    : "";
+const stdin = prelude + sqlText + "\n";
 
-console.error(`[db-query] ${label}`);
+console.error(`[db-query] ${label}${call ? ` — CALL MODE (autocommit, statement_timeout=${timeout})` : ""}`);
+
+// FIX-791: a prod CALL is a supervised action. Say what is about to happen, to
+// which host, and leave a beat to Ctrl-C out of it.
+if (call && target === "prod") {
+  const host = (url.match(/@([^/:]+)/) ?? [])[1] ?? "(unknown host)";
+  console.error(`[db-query] TARGET HOST: ${host}`);
+  console.error("[db-query] STATEMENT(S):");
+  for (const l of sqlText.trimEnd().split(/\r?\n/)) console.error(`[db-query]   ${l}`);
+  console.error("[db-query] This WRITES to production. Ctrl-C within 5s to abort...");
+  // Synchronous sleep: this runs before spawnSync and must not be skippable by
+  // the event loop being empty.
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 5000);
+  console.error("[db-query] proceeding.");
+}
 const res = spawnSync("psql", [url, ...psqlArgs], {
   stdio: ["pipe", "inherit", "inherit"],
   input: stdin,

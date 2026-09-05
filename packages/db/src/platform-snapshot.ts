@@ -164,11 +164,30 @@ export type PlatformUsagePayload = {
   };
   // FIX-648: per-ServiceName Vercel EffectiveCost, projected to a monthly
   // run-rate (descending). The "what spiked" breakdown — surfaced on the card
-  // and read by the leading fluid-cost alert. `window_days` is the trailing
-  // billing window the projection was extrapolated from (typically ~7).
+  // and read by the leading fluid-cost alert.
+  //
+  // FIX-1041 corrected two things here. `window_days` is the MONTH-TO-DATE
+  // billing window the projection was extrapolated from — 1 on the 1st, ~31 by
+  // month end, resetting each month (this comment used to say "trailing,
+  // typically ~7"; see vercel-usage.ts for the measurement). And `services` is
+  // now EVERY non-zero line rather than the top 8, each carrying the raw
+  // metered `quantity` / `unit` behind its dollars and the `metric` name when
+  // it is one of ours. A null `quantity` means Vercel billed the line without
+  // metering it to us; a null `metric` means it is metered but not one we
+  // track. `quantity_note` says which, in words.
+  //
+  // Consumers must NOT assume a length. The leading fluid-cost alert finds its
+  // two lines by name (`.find`), which is why it needed no change.
   vercel_breakdown?: {
     window_days: number;
-    services: { service: string; usd: number }[];
+    services: {
+      service: string;
+      usd: number;
+      quantity: number | null;
+      unit: string | null;
+      metric: string | null;
+      quantity_note: string | null;
+    }[];
   };
   // FIX-1038: the edge rate limiter's backing store. Upstash was the one vendor
   // in the cost chain this snapshot could not see, and its silent exhaustion on
@@ -844,11 +863,51 @@ export async function computePlatformUsagePayload(
         updateUsage(db, "vercel", "monthly_spend_usd", project(v.effective_cost_usd), "estimated"),
       ]);
 
+      // FIX-1041 — EVERY non-zero service line is persisted, and each carries
+      // the raw metered amount behind its dollars.
+      //
+      // This used to end in `.slice(0, 8)`. Measured on prod over the whole
+      // retained window (927 snapshots, 2026-08-07..09-05):
+      // jsonb_array_length was 8 on every single one, so the cap was ALWAYS
+      // binding and never slack — while ten distinct services appeared across
+      // the window. A line could therefore vanish from the audit trail with no
+      // error, no flag and no residual, purely because something else outranked
+      // it that day: on billing day 15 "Speed Insights Data Points" entered the
+      // top 8 and silently displaced "Function Invocations". With 30-day
+      // retention the history is then gone for good. FIX-969's "no silent caps"
+      // rule, applied to the cost record itself.
+      //
+      // There are ~10 lines. This was never a size problem.
+      //
+      // `quantity` is null ONLY when Vercel sent no ConsumedQuantity for the
+      // service — a present-but-zero quantity stays 0. `metric` is null when the
+      // line is not one of ours; Observability Events is the case that matters
+      // (the largest non-subscription line on this account) and the reason the
+      // 2026-08-15 audit could report its cost rising 3.7x but never an event
+      // count. `quantity_note` says which of the two is going on, in words, so
+      // the gap reads off the card instead of being inferred from a null.
+      //
+      // NOT projected: quantity is the RAW window total, deliberately. Dollars
+      // are projected to a monthly run-rate because that is what the card and
+      // the alert compare against a monthly credit; a quantity is evidence, and
+      // extrapolating evidence is how a measurement becomes an estimate nobody
+      // remembers making. `window_days` is right here for anyone who wants a
+      // rate.
       vercelBreakdown = {
         window_days: v.window_days,
-        services: v.cost_breakdown
-          .map((b) => ({ service: b.service, usd: project(b.effective_usd) }))
-          .slice(0, 8),
+        services: v.cost_breakdown.map((b) => ({
+          service: b.service,
+          usd: project(b.effective_usd),
+          quantity: b.quantity,
+          unit: b.unit,
+          metric: b.metric,
+          quantity_note:
+            b.quantity === null
+              ? "no quantity metric in billing/charges"
+              : b.metric === null
+                ? "metered by Vercel, not tracked as a Civitics metric"
+                : null,
+        })),
       };
 
       // FIX-1046 — the billing correction.

@@ -20,7 +20,7 @@
  */
 
 import { canonicalizeEntityName } from "../fec-bulk/writer";
-import { type LittleSisEntity, parseStateHint } from "./util";
+import { type LittleSisEntity, parseStateHint, streamGzipJson } from "./util";
 import { buildDbUrl } from "../../lib/heavy-rebuild";
 
 // ---------------------------------------------------------------------------
@@ -74,6 +74,59 @@ export function personSortKey(canonical: string): string {
 }
 
 /**
+ * FIX-1159 — pass 1 of 2: which person sort keys will this run ever ask about?
+ *
+ * `personsBySortKey` is read in exactly ONE place — `matchPerson` below — and
+ * only ever with `personSortKey(canonicalizeEntityName(ent.name))` for a
+ * LittleSis `primary_ext === "Person"` entity. Every other key in that map is
+ * dead weight that can never be looked up. On the prod clone (2026-09-04) the
+ * map held 2,551,270 keys and the build peaked at 1,282 MB RSS, past the ~1 GB
+ * bound the code was sized against.
+ *
+ * The LittleSis side is enumerable BEFORE the financial_entities walk: the
+ * pipeline downloads entities.json.gz (index.ts) and only then builds the
+ * index, so the dump is already on disk. Streaming it once to collect the keys
+ * costs one extra pass over a file we are about to stream anyway, and turns an
+ * "every individual donor in America" map into a "the people LittleSis has
+ * heard of" map.
+ *
+ * DELIBERATELY A SUPERSET of what `matchPerson` can look up: it collects a key
+ * for every Person entity with a 2+-token canonical name, including entities
+ * that `pass1AnchorMatch` will skip as already-bound and entities that will
+ * match an official and never reach the donor branch. A superset costs a few
+ * unused keys; a subset would silently lose matches, so the asymmetry is the
+ * whole point.
+ *
+ * The mirrored predicate — `canonicalizeEntityName`, the `< 2 tokens` bail, and
+ * `personSortKey` — must stay in step with `matchPerson`. If that guard ever
+ * changes, change it in both places or the filter starts dropping candidates.
+ */
+export async function collectLittleSisPersonKeys(
+  entitiesPath: string,
+): Promise<Set<string>> {
+  const keys = new Set<string>();
+  let seen = 0;
+  const t0 = process.hrtime.bigint();
+  for await (const ent of streamGzipJson<LittleSisEntity>(entitiesPath)) {
+    if (!ent || ent.primary_ext !== "Person" || typeof ent.name !== "string") continue;
+    seen++;
+    const canonical = canonicalizeEntityName(ent.name);
+    if (!canonical) continue;
+    // Same bail as matchPerson: a single-name LittleSis entry is too risky to
+    // match on, so it never reaches personsBySortKey and needs no key here.
+    if (canonical.split(/\s+/).filter(Boolean).length < 2) continue;
+    const key = personSortKey(canonical);
+    if (key) keys.add(key);
+  }
+  const secs = (Number(process.hrtime.bigint() - t0) / 1e9).toFixed(1);
+  console.log(
+    `[littlesis] person key-set built in ${secs}s from ${seen.toLocaleString()} Person entities: ` +
+      `${keys.size.toLocaleString()} distinct sort keys`,
+  );
+  return keys;
+}
+
+/**
  * FIX-294 — load the index via a direct pg.Client, not PostgREST `.range()`
  * pagination.
  *
@@ -93,10 +146,20 @@ export function personSortKey(canonical: string): string {
  * `personSortKey`, and every column read are identical to the paginated path —
  * only the load mechanism changed. Match outputs are invariant by construction.
  */
-export async function buildMatchIndex(): Promise<MatchIndex> {
+export async function buildMatchIndex(
+  /**
+   * FIX-1159 — pass 2 of 2. When given (the normal path, from
+   * `collectLittleSisPersonKeys`), an individual is retained ONLY if its sort
+   * key is one this run can actually ask about. Omitted, every individual is
+   * retained — the pre-FIX-1159 behaviour, kept so a caller without a dump
+   * still gets a working index.
+   */
+  personKeys?: ReadonlySet<string>,
+): Promise<MatchIndex> {
   const officialsByLastName = new Map<string, OfficialRow[]>();
   const personsBySortKey    = new Map<string, FinancialEntityRow[]>();
   const orgsByCanonical     = new Map<string, FinancialEntityRow[]>();
+  let personsSeen = 0;
 
   const t0 = process.hrtime.bigint();
   const { Client } = await import("pg");
@@ -149,13 +212,17 @@ export async function buildMatchIndex(): Promise<MatchIndex> {
     // the only one in the repo that was), and the chunk is a memory knob, not a
     // page-cap knob.
     //
-    // THE ~1 GB BOUND IS ALREADY EXCEEDED. A full build measured on the local
-    // prod clone 2026-09-04: 93.9 s, peak RSS 1,282 MB, persons=2,551,270
-    // orgs=224,379. The cost is the two Maps this loop fills, not the page
-    // buffer, so lowering CHUNK will not help -- the next lever is not holding
-    // every individual in `personsBySortKey`. Sized against a Node default heap
-    // this is the number to watch; the run prints rss on every pass, so read
-    // that line rather than this comment before deciding anything.
+    // THE ~1 GB BOUND WAS ALREADY EXCEEDED, and FIX-1159 is the lever this
+    // comment named. A full UNFILTERED build measured on the local prod clone
+    // 2026-09-04: 93.9 s, peak RSS 1,282 MB, persons=2,551,270 orgs=224,379.
+    // The cost was the two Maps this loop fills, not the page buffer, so
+    // lowering CHUNK never would have helped -- the lever was not holding every
+    // individual in `personsBySortKey`, and it is now pulled: `personKeys`
+    // retains only the sort keys the LittleSis dump can actually ask about.
+    //
+    // CHUNK is UNCHANGED at 100,000 and remains a memory knob, not a page-cap
+    // knob. The run prints rss and both map sizes on every build, so read that
+    // line rather than this comment before deciding anything.
     const CHUNK  = 100_000;
     let   lastId = "00000000-0000-0000-0000-000000000000";
     while (true) {
@@ -171,6 +238,14 @@ export async function buildMatchIndex(): Promise<MatchIndex> {
         if (r.entity_type === "individual") {
           const key  = personSortKey(r.canonical_name);
           if (!key) continue;
+          personsSeen++;
+          // FIX-1159 — the lever. A key the LittleSis dump never asks about can
+          // never be looked up (matchPerson is the only reader, and it only
+          // ever looks up a key derived from a LittleSis Person name), so
+          // holding its rows is pure memory cost. The walk still STREAMS every
+          // individual — there is no SQL twin of personSortKey, so the key has
+          // to be computed here — but it now RETAINS only members.
+          if (personKeys && !personKeys.has(key)) continue;
           const list = personsBySortKey.get(key) ?? [];
           list.push(r);
           personsBySortKey.set(key, list);
@@ -191,7 +266,12 @@ export async function buildMatchIndex(): Promise<MatchIndex> {
   const rssMb = Math.round(process.memoryUsage().rss / 1024 / 1024);
   console.log(
     `[littlesis] match index built in ${secs}s, rss=${rssMb}MB, ` +
-    `officials=${officialsByLastName.size}, persons=${personsBySortKey.size}, orgs=${orgsByCanonical.size}`,
+    `officials=${officialsByLastName.size}, persons=${personsBySortKey.size}, orgs=${orgsByCanonical.size}` +
+    (personKeys
+      ? ` (FIX-1159: ${personsSeen.toLocaleString()} individuals streamed, ` +
+        `${personsBySortKey.size.toLocaleString()} keys retained against a ` +
+        `${personKeys.size.toLocaleString()}-key LittleSis set)`
+      : " (FIX-1159 filter OFF — every individual retained)"),
   );
 
   return { officialsByLastName, personsBySortKey, orgsByCanonical };
