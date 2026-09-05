@@ -21,6 +21,17 @@
  * ("regenerate the token"). Real FOCUS field names confirmed against prod
  * 2026-06-21.
  *
+ * FIX-A — "ISR Writes" now maps to its own metric, `isr_writes`. It had been
+ * falling through `mapChargeQuantity` because the only ISR branch matched
+ * "isr read", a service Vercel does not bill on this account. THE SERIES FOR
+ * `isr_writes` STARTS AT THIS DEPLOY: every earlier `platform_usage` row for it
+ * is absent, and every earlier `isr_reads` row is a structural 0 from an
+ * unmatched line — neither is evidence of "no ISR traffic". Do not read the
+ * pre-deploy window as a baseline. `web_analytics_events` stays 0 for a
+ * different reason and needs no mapping change: Web Analytics is included in
+ * Pro and emits no charge line at all on this account, so there is no quantity
+ * to map (ten services observed 2026-08-07..09-05; none of them Web Analytics).
+ *
  * 5-minute in-memory cache (matches Supabase + Cloudflare helpers).
  *
  * Date format: Vercel's billing endpoints require ISO 8601 with millisecond
@@ -48,7 +59,13 @@ export type VercelUsage = {
   edge_cpu_ms: number;
   build_minutes: number;
   web_analytics_events: number;
+  /** Vercel bills "ISR Reads" on some plans; this account is not billed for
+   *  them, so this stays 0 unless a read line ever appears. Distinct from
+   *  isr_writes — do not fold one into the other. */
   isr_reads: number;
+  /** "ISR Writes" — a live, paid line on this account (~$3.29/mo). Series
+   *  starts at the FIX-A deploy; see the header. */
+  isr_writes: number;
   fluid_memory_gb_hrs: number;
   /** Sum of BilledCost across all charge lines — the dollars Vercel actually
    *  bills (overage above plan allotments). 0 while everything is within the
@@ -190,6 +207,7 @@ function emptyMetrics(): AllMetrics {
     build_minutes: 0,
     web_analytics_events: 0,
     isr_reads: 0,
+    isr_writes: 0,
     fluid_memory_gb_hrs: 0,
     charges_total_usd: 0,
     effective_cost_usd: 0,
@@ -207,8 +225,8 @@ const BYTES_PER_GB = 1024 ** 3;
 // Order matters: more-specific matches (e.g. edge CPU duration) are checked
 // before the generic "edge request" match. Returns null for service lines we
 // don't track as one of OUR metrics (Blob, Queues, Speed Insights,
-// Observability Events, ISR Writes, the "Pro" base line) — those still
-// contribute to the cost sums.
+// Observability Events, the "Pro" base line) — those still contribute to the
+// cost sums.
 //
 // FIX-1041 — "not one of our metrics" no longer means "unmeasured". Since this
 // change `cost_breakdown` records the raw ConsumedQuantity and ConsumedUnit for
@@ -219,12 +237,20 @@ const BYTES_PER_GB = 1024 ** 3;
 // its August peak), ISR Writes ($3.29), Speed Insights Data Points ($1.34),
 // Speed Insights Plus Events ($0.78).
 //
-// NOTE for whoever adds a mapping next: the check below is `isr read`, and the
-// service Vercel actually bills on this account is "ISR Writes" — so
-// `isr_reads` has been receiving 0 from a live, paid line. Correcting that is
-// NOT a comment change: `isr_reads` is a platform_usage metric with a limit
-// row, and pointing it at writes changes what an existing series means. Left
-// deliberately, now visible via the per-line quantity.
+// FIX-A — that mapping gap is now closed, and NOT by widening `isr_reads`.
+// Reads and writes are different services with different prices; folding the
+// paid write line into the read metric would have silently redefined an
+// existing series rather than starting a true one. "ISR Writes" gets its own
+// key, `isr_writes`, and `isr_reads` keeps meaning reads (still 0 on this
+// account, correctly). The `isr_writes` series therefore begins at this
+// deploy — see the file header before treating the earlier window as a
+// baseline. "ISR Writes" also no longer appears in the null-returning list
+// above.
+//
+// Web Analytics needed no change: the ten services billed on this account over
+// 2026-08-07..09-05 include no Web Analytics line, because it is included in
+// Pro. The `web analytics` branch below is correct and simply never matches —
+// `web_analytics_events` is 0 for want of a charge line, not a mapping.
 
 function mapChargeQuantity(
   serviceName: string,
@@ -258,6 +284,12 @@ function mapChargeQuantity(
   // "Build Minutes" and/or "Build CPU Minutes" — both fold into build_minutes.
   if (d.includes("build") && d.includes("minute")) {
     return { key: "build_minutes", value: qty };
+  }
+  // "ISR Writes" is the line this account is actually billed for; checked
+  // before the read branch so a future "ISR Reads and Writes"-style label
+  // cannot land in the wrong series (FIX-A).
+  if (d.includes("isr write")) {
+    return { key: "isr_writes", value: qty };
   }
   if (d.includes("isr read")) {
     return { key: "isr_reads", value: qty };
@@ -395,6 +427,7 @@ const USAGE_KEY_ALIASES: Record<keyof QuantityMetrics, string[]> = {
   build_minutes: ["buildMinutes", "buildTime", "build_minutes"],
   web_analytics_events: ["webAnalyticsEvents", "analyticsEvents", "web_analytics_events"],
   isr_reads: ["isrReads", "isr_reads"],
+  isr_writes: ["isrWrites", "isr_writes"],
   fluid_memory_gb_hrs: ["fluidMemoryGbHours", "fluidMemoryGbHrs", "fluid_memory_gb_hrs"],
 };
 

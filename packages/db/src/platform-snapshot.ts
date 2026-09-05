@@ -855,6 +855,7 @@ export async function computePlatformUsagePayload(
         updateUsage(db, "vercel", "build_minutes", project(v.build_minutes), "estimated"),
         updateUsage(db, "vercel", "web_analytics_events", project(v.web_analytics_events), "estimated"),
         updateUsage(db, "vercel", "isr_reads", project(v.isr_reads), "estimated"),
+        updateUsage(db, "vercel", "isr_writes", project(v.isr_writes), "estimated"),
         updateUsage(db, "vercel", "fluid_memory_gb_hrs", project(v.fluid_memory_gb_hrs), "estimated"),
         // Projected monthly run-rate of EffectiveCost (list value of all
         // consumption incl. the prorated $20 Pro base). NOT BilledCost
@@ -1172,6 +1173,7 @@ export async function computePlatformUsagePayload(
       build_minutes: vercelUsage.build_minutes,
       web_analytics_events: vercelUsage.web_analytics_events,
       isr_reads: vercelUsage.isr_reads,
+      isr_writes: vercelUsage.isr_writes,
       fluid_memory_gb_hrs: vercelUsage.fluid_memory_gb_hrs,
       monthly_spend_usd: vercelUsage.effective_cost_usd,
     };
@@ -1225,6 +1227,7 @@ export async function computePlatformUsagePayload(
           build_minutes: vercelUsage.build_minutes,
           web_analytics_events: vercelUsage.web_analytics_events,
           isr_reads: vercelUsage.isr_reads,
+          isr_writes: vercelUsage.isr_writes,
           fluid_memory_gb_hrs: vercelUsage.fluid_memory_gb_hrs,
         }
       : {};

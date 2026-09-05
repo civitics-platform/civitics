@@ -123,18 +123,47 @@ describe("FIX-1041 (2) — the missing quantity is visible, not inferred", () =>
     assert.equal(byName.get("Build CPU Minutes")!.metric, "build_minutes");
   });
 
-  it("ISR Writes is billed, metered, and NOT one of our metrics", () => {
-    // Documenting live behaviour, not endorsing it: mapChargeQuantity checks
-    // for "isr read" and prod bills "ISR Writes", so `isr_reads` receives 0
-    // from a line costing ~$3.29/mo. Correcting that changes what an existing
-    // platform_usage series means, so it is deliberately NOT done here — but it
-    // is no longer invisible, because the quantity now rides on the line.
+  it("ISR Writes maps to isr_writes — its own metric, never isr_reads (FIX-A)", () => {
+    // Was pinned as `metric: null` by FIX-1041, which documented the gap and
+    // deliberately left it. FIX-A closes it. The line costs ~$3.29/mo and is
+    // the only ISR service billed on this account, so `isr_writes` is where
+    // its quantity belongs; `isr_reads` keeps meaning reads.
     const isr = extractFromCharges(TEN_REAL_SERVICES).cost_breakdown.find(
       (b) => b.service === "ISR Writes",
     );
     assert.ok(isr);
-    assert.equal(isr.metric, null);
+    assert.equal(isr.metric, "isr_writes");
     assert.equal(isr.quantity, 1_100_000);
+  });
+
+  it("an ISR Reads line would still land in isr_reads, not isr_writes (FIX-A)", () => {
+    // The write branch is checked first; that must not swallow a read line.
+    const ex = extractFromCharges([line("ISR Reads", 1.5, { quantity: 900, unit: "Reads" })]);
+    assert.equal(ex.cost_breakdown[0]!.metric, "isr_reads");
+    assert.equal(ex.metrics.isr_reads, 900);
+    assert.equal(ex.metrics.isr_writes, 0);
+  });
+
+  it("the two ISR series stay separate when both are billed (FIX-A)", () => {
+    const ex = extractFromCharges([
+      line("ISR Writes", 3.2857, { quantity: 1_100_000, unit: "Writes" }),
+      line("ISR Reads", 1.5, { quantity: 900, unit: "Reads" }),
+    ]);
+    assert.equal(ex.metrics.isr_writes, 1_100_000);
+    assert.equal(ex.metrics.isr_reads, 900);
+  });
+
+  it("Web Analytics is absent from this account's charge lines, so nothing maps (FIX-A)", () => {
+    // web_analytics_events is 0 for want of a LINE, not for want of a mapping —
+    // Web Analytics is included in Pro. The branch is exercised here so the
+    // distinction stays a measured claim rather than an assumption.
+    assert.equal(
+      TEN_REAL_SERVICES.find((l) => String(l["ServiceName"]).toLowerCase().includes("web analytics")),
+      undefined,
+    );
+    const ex = extractFromCharges([line("Web Analytics Events", 2.0, { quantity: 50_000, unit: "Events" })]);
+    assert.equal(ex.cost_breakdown[0]!.metric, "web_analytics_events");
+    assert.equal(ex.metrics.web_analytics_events, 50_000);
   });
 });
 
