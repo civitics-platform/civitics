@@ -118,3 +118,58 @@ describe("isMetricAvailable / metricValue", () => {
     assert.equal(metricValue({}, "officials"), null);
   });
 });
+
+// ── FIX-1126 ─────────────────────────────────────────────────────────────────
+//
+// proposals_bills and proposals_regulations were the last two counts on this
+// section computed live, and the only two that were count:'planned'. They now
+// come out of platform_counts like the other nine, which moves them from the
+// PostgREST-error failure signal (`res.error`) to the cache-absence one
+// (`count === null`). The vocabulary they report through is unchanged, and that
+// is the point: a consumer blanking a card does not need to know which of the
+// eleven metrics is cached and which is live.
+describe("FIX-1126 — the two cached proposals-by-type counts", () => {
+  /** getDatabase's shape after FIX-1126: the two ride the cached path. */
+  const dbSection = (errored: string[]) => ({
+    officials: 37_242,
+    proposals: 90_201,
+    proposals_bills: errored.includes("proposals_bills") ? 0 : 61_884,
+    proposals_regulations: errored.includes("proposals_regulations") ? 0 : 28_317,
+    page_views_24h: 1_204,
+    counts_as_of: "2026-09-06T23:29:33.000Z",
+    ...countFailureFields(errored),
+  });
+
+  it("renders both when the cache holds them", () => {
+    const s = dbSection([]);
+    assert.equal(metricValue(s, "proposals_bills"), 61_884);
+    assert.equal(metricValue(s, "proposals_regulations"), 28_317);
+    assert.equal(failedMetrics(s), null);
+  });
+
+  it("names a metric the cache is missing, and withholds ONLY that one", () => {
+    // What an unreadable platform_counts, or the window before the first
+    // platform-counts-daily firing, produces for a newly-added key.
+    const s = dbSection(["proposals_bills"]);
+    assert.deepEqual(failedMetrics(s), ["proposals_bills"]);
+    assert.equal(metricValue(s, "proposals_bills"), null);
+    assert.equal(metricValue(s, "proposals_regulations"), 28_317);
+    assert.equal(metricValue(s, "officials"), 37_242);
+  });
+
+  it("never renders the stored 0 for an uncounted type — the FIX-090 rule", () => {
+    // 0 is a defensible count for a proposal type nobody has ingested yet, so
+    // the lying-zero risk is sharper here than on officials or votes: the tile
+    // would read as a measurement rather than as an outage.
+    const s = dbSection(["proposals_regulations"]);
+    assert.equal(s.proposals_regulations, 0, "precondition: payload carries 0");
+    assert.equal(metricValue(s, "proposals_regulations"), null);
+  });
+
+  it("page_views_24h stays live and is unaffected by a cache miss", () => {
+    // The one count FIX-1126 deliberately did NOT cache: a rolling 24h window
+    // snapshotted once a day would answer a different question.
+    const s = dbSection(["proposals_bills", "proposals_regulations"]);
+    assert.equal(metricValue(s, "page_views_24h"), 1_204);
+  });
+});

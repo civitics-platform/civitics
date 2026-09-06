@@ -2032,6 +2032,21 @@ export type Database = {
         }
         Relationships: []
       }
+      cron_job_first_seen: {
+        Row: {
+          first_seen_at: string
+          jobname: string
+        }
+        Insert: {
+          first_seen_at?: string
+          jobname: string
+        }
+        Update: {
+          first_seen_at?: string
+          jobname?: string
+        }
+        Relationships: []
+      }
       daily_platform_counts: {
         Row: {
           day: string
@@ -5009,7 +5024,6 @@ export type Database = {
           term_end: string | null
           term_start: string | null
           tier: string
-          total_received_cents: number
           updated_at: string
           website_url: string | null
         }
@@ -5044,7 +5058,6 @@ export type Database = {
           term_end?: string | null
           term_start?: string | null
           tier?: string
-          total_received_cents?: number
           updated_at?: string
           website_url?: string | null
         }
@@ -5079,7 +5092,6 @@ export type Database = {
           term_end?: string | null
           term_start?: string | null
           tier?: string
-          total_received_cents?: number
           updated_at?: string
           website_url?: string | null
         }
@@ -5451,6 +5463,7 @@ export type Database = {
       position_events: {
         Row: {
           attributed_comment_id: string | null
+          constituent_jurisdiction_id: string | null
           created_at: string
           entity_id: string
           entity_type: string
@@ -5462,6 +5475,7 @@ export type Database = {
         }
         Insert: {
           attributed_comment_id?: string | null
+          constituent_jurisdiction_id?: string | null
           created_at?: string
           entity_id: string
           entity_type: string
@@ -5473,6 +5487,7 @@ export type Database = {
         }
         Update: {
           attributed_comment_id?: string | null
+          constituent_jurisdiction_id?: string | null
           created_at?: string
           entity_id?: string
           entity_type?: string
@@ -7802,13 +7817,12 @@ export type Database = {
         Returns: undefined
       }
       rebuild_financial_entity_size_tags: { Args: never; Returns: number }
-      rebuild_official_donation_totals: { Args: never; Returns: undefined }
-      rebuild_official_donation_totals_full: { Args: never; Returns: undefined }
       rebuild_pre_vote_timing_tags: { Args: never; Returns: number }
       recompute_comment_bridge_scores: {
         Args: { p_entity_id?: string; p_entity_type?: string }
         Returns: number
       }
+      record_cron_jobs_seen: { Args: never; Returns: number }
       record_enrichment_failure: {
         Args: { p_error: string; p_queue_id: number }
         Returns: string

@@ -1,0 +1,72 @@
+# FIX-928 — duplicate ACTIVE entity_grants on prod. MANIFEST ONLY: nothing applied 2026-09-06.
+#
+# READ THIS BEFORE APPLYING ANYTHING.
+#
+# FIX-928's premise was "add a partial unique index on active grants". That index
+# ALREADY EXISTS and has since before this audit:
+#
+#   entity_grants_unique_active
+#     UNIQUE (user_id, role, target_type, target_id) WHERE status = 'active'
+#
+# It is not missing. It is UNREACHABLE for global-scoped grants, because
+# target_type='global' carries target_id IS NULL and a B-tree unique index treats
+# every NULL as distinct. So the constraint holds perfectly for jurisdiction- and
+# official-scoped grants and does nothing at all for global ones. Adding the index
+# FIX-928 describes would be a no-op.
+#
+# Prod census 2026-09-06, active grants grouped by (user_id, role, target_type, target_id):
+#   exactly ONE violating group — 13 rows, all NULL target_id.
+# The other group the coarser (user_id, role, target_type) query surfaces —
+# abd54530.../constituent/jurisdiction, 5 rows — is NOT a duplicate set: those are
+# five different jurisdictions and the index is doing its job on them. Do not
+# retire any of those five.
+#
+# SHAPE OF THE 13: one row at 2026-06-19 09:41:39, then SIX PAIRS ~200-250 ms apart
+# (19:35:10.647/.860, 22:23:18.391/.659, 00:12:39.845/00:12:40.042, 03:53:04.367/.613,
+# 04:19:32.118/.312, 23:44:17.453/.665). All share granted_at 2026-05-01 12:00:00+00
+# and all have expires_at NULL. A ~200 ms pair is a double-submit, not a human
+# granting twice; the write path has no idempotency and the six pairs are six
+# double-fires. That is a second defect and it is NOT fixed by any dedupe.
+#
+# WHY THIS IS WORSE THAN A TIDINESS PROBLEM — the revoke path is single-row:
+#   apps/civitics/app/api/admin/grants/[id]/route.ts:118-121
+#     await admin.from("entity_grants").update({ status: "revoked" }).eq("id", grantId);
+# It revokes ONE row by primary key. Revoking this user's staff/global access
+# through the admin UI therefore flips 1 of 13 rows, returns {ok:true,
+# status:"revoked"}, and leaves 12 ACTIVE. Every has-grant check is an EXISTS over
+# status='active', so the user keeps full platform-staff access while the admin who
+# revoked it has been told, truthfully as far as the route knows, that it is gone.
+# A revocation UI that reports success and does not revoke is a security finding,
+# not a data-hygiene one. FIX-928's severity should be raised accordingly.
+#
+# NOT the same 13 as the "13" in packages/data/src/pipelines/integrity-audit/checks/
+# grants.ts:124 — that line counts anon/authenticated-EXECUTEable PROCEDUREs that
+# FIX-1113 revoked. Unrelated coincidence of number. Do not conflate them.
+#
+# DISPOSITION: keep the OLDEST row per key, retire the rest. Retire = set
+# status='revoked' (the enum's existing terminal value), never DELETE — grant_events
+# and grant_evidence reference these rows and the history is the audit trail.
+#
+# NOT APPLIED TODAY. The dedupe plus the durable constraint are a Craig-gated set:
+#   1. retire the 12 RETIRE rows below
+#   2. close the NULL hole — a second partial unique index
+#        UNIQUE (user_id, role, target_type) WHERE status='active' AND target_id IS NULL
+#      alongside the existing one, so both the NULL and non-NULL cases are covered
+#   3. make the revoke path revoke the KEY, not the row id
+#   4. make the grant path idempotent so a double-submit cannot mint a second row
+# Steps 3 and 4 matter more than 1 and 2: dedupe without them just resets the clock.
+#
+id	user_id	role	target_type	target_id	status	granted_at	created_at	expires_at	disposition
+9e684253-b0b7-4997-b27c-f80f4e6290a7	f29ca898-7232-47a4-8122-bfd9e9a5ab59	staff	global		active	2026-05-01 12:00:00+00	2026-06-19 09:41:39.575857+00		KEEP
+6d0a28a2-74d8-48a9-ac57-33e5ef2b26c9	f29ca898-7232-47a4-8122-bfd9e9a5ab59	staff	global		active	2026-05-01 12:00:00+00	2026-06-19 19:35:10.647643+00		RETIRE
+27f2ea12-393c-45d2-a233-b03556e7eec5	f29ca898-7232-47a4-8122-bfd9e9a5ab59	staff	global		active	2026-05-01 12:00:00+00	2026-06-19 19:35:10.860123+00		RETIRE
+97aaf2be-733e-4ddd-a356-47291fcd1102	f29ca898-7232-47a4-8122-bfd9e9a5ab59	staff	global		active	2026-05-01 12:00:00+00	2026-06-19 22:23:18.391071+00		RETIRE
+b8830402-1704-4043-ab12-4f0946a3768f	f29ca898-7232-47a4-8122-bfd9e9a5ab59	staff	global		active	2026-05-01 12:00:00+00	2026-06-19 22:23:18.659652+00		RETIRE
+3315f99a-4176-4ba1-a415-fb04c674a759	f29ca898-7232-47a4-8122-bfd9e9a5ab59	staff	global		active	2026-05-01 12:00:00+00	2026-06-20 00:12:39.845143+00		RETIRE
+a02ad83e-af28-44c1-9a98-a2101f42d28c	f29ca898-7232-47a4-8122-bfd9e9a5ab59	staff	global		active	2026-05-01 12:00:00+00	2026-06-20 00:12:40.042769+00		RETIRE
+5c0b4a67-db59-4bb9-a182-4dc5b8c73237	f29ca898-7232-47a4-8122-bfd9e9a5ab59	staff	global		active	2026-05-01 12:00:00+00	2026-06-20 03:53:04.367339+00		RETIRE
+bbbfc486-a9ad-4985-9f79-7effc8fa8401	f29ca898-7232-47a4-8122-bfd9e9a5ab59	staff	global		active	2026-05-01 12:00:00+00	2026-06-20 03:53:04.61345+00		RETIRE
+8867988a-9cd6-4ddb-829b-75940acc51ed	f29ca898-7232-47a4-8122-bfd9e9a5ab59	staff	global		active	2026-05-01 12:00:00+00	2026-06-20 04:19:32.118326+00		RETIRE
+ff646e5a-240a-4125-88c6-9d010f1b93b7	f29ca898-7232-47a4-8122-bfd9e9a5ab59	staff	global		active	2026-05-01 12:00:00+00	2026-06-20 04:19:32.312728+00		RETIRE
+d57f246d-608c-4ae6-8850-3c1ab982b0e5	f29ca898-7232-47a4-8122-bfd9e9a5ab59	staff	global		active	2026-05-01 12:00:00+00	2026-06-20 23:44:17.453021+00		RETIRE
+38961d97-d727-4e41-b162-909c46aa55a8	f29ca898-7232-47a4-8122-bfd9e9a5ab59	staff	global		active	2026-05-01 12:00:00+00	2026-06-20 23:44:17.665293+00		RETIRE

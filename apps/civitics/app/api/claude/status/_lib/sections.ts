@@ -258,9 +258,21 @@ async function readPlatformCounts(db: Db): Promise<PlatformCounts> {
 // large delete lands" tell above is retired rather than ignored — every cached
 // metric IS a count, so there is no reltuples gap left to watch.
 //
-// Still computed live here, deliberately: the two `planned` proposals counts
-// (planner estimates, no scan, FIX-503) and `page_views_24h` (a rolling 24-hour
-// filtered count, so a daily snapshot would answer a different question).
+// Still computed live here, deliberately: `page_views_24h` alone. It is a
+// ROLLING 24-hour filtered count, so a once-daily snapshot would answer a
+// different question than the tile asks -- caching it would not make it
+// cheaper-and-equal, it would make it wrong.
+//
+// FIX-1126 took the other two. proposals_bills and proposals_regulations were
+// the last live PostgREST counts here and the only two that were
+// count:'planned' -- planner estimates over a filtered subset, so an estimate
+// (reltuples, which FIX-1095 measured 31% high on votes) scaled by another
+// estimate (the planner's selectivity guess on `type`). They are exact daily
+// now, on the same pass as the other nine.
+//
+// The live fan-out is therefore one query. DATABASE_COUNT_CONCURRENCY stays 3:
+// it is the ceiling this path is allowed, not a target to retune every time the
+// fan-out shrinks, and the next count added here should find it already sized.
 //
 // NOTE: the per-request SSR fallback path (dashboard/page.tsx, the two status
 // routes) calls the same helper. It used to pay the full exact-count cost on a
@@ -269,23 +281,9 @@ async function readPlatformCounts(db: Db): Promise<PlatformCounts> {
 // either way, so the change only removes seconds it never needed to spend.
 export async function getDatabase(db: Db, yesterday: string) {
   const gate = concurrencyGate(DATABASE_COUNT_CONCURRENCY);
-  const [counts, proposalsBills, proposalsRegs, views] = await Promise.all([
-    // FIX-1146: eight of the eleven counts are now one primary-key read.
+  const [counts, views] = await Promise.all([
+    // FIX-1126: ten of the eleven counts are now one primary-key read.
     readPlatformCounts(db),
-    gate(() =>
-      db
-        .from("proposals")
-        .select("*", { count: "planned", head: true })
-        .in("type", ["bill", "resolution", "amendment"]),
-    ),
-    gate(() =>
-      db
-        // FIX-503: status-page tile — 'planned' (planner estimate) is plenty
-        // accurate and avoids an exact count over all regulation rows.
-        .from("proposals")
-        .select("*", { count: "planned", head: true })
-        .eq("type", "regulation"),
-    ),
     gate(() =>
       db
         .from("page_views")
@@ -310,6 +308,12 @@ export async function getDatabase(db: Db, yesterday: string) {
   const finEnt     = cached("financial_entities");
   const tags       = cached("entity_tags");
   const cache      = cached("ai_summary_cache");
+  // FIX-1126 — the last two `planned` counts. They were planner ESTIMATES over
+  // a filtered subset, not counts, so moving them here made them truer as well
+  // as cheaper. They now share the whole cached contract: the same counts_as_of
+  // instant and the same "absent means failed, never 0" rule below.
+  const proposalsBills = cached("proposals_bills");
+  const proposalsRegs  = cached("proposals_regulations");
 
   // Surface partial state if any count failed (don't silently show 0).
   //
@@ -322,8 +326,8 @@ export async function getDatabase(db: Db, yesterday: string) {
   const errored = [
     officials.count === null && "officials",
     proposals.count === null && "proposals",
-    proposalsBills.error && "proposals_bills",
-    proposalsRegs.error && "proposals_regulations",
+    proposalsBills.count === null && "proposals_bills",
+    proposalsRegs.count === null && "proposals_regulations",
     votes.count === null && "votes",
     connections.count === null && "entity_connections",
     finRel.count === null && "financial_relationships",
