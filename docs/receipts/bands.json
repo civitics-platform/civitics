@@ -1,0 +1,33 @@
+{
+  "$comment": "FIX-1176 — hand-edited duration bands for pnpm receipts:daily. The script NEVER writes this file. Keys are pg_cron job NAMES (jobids are not portable between prod and the clone — CLAUDE.md, FIX-946); the one key with a colon is a job:unit band, read from that run row's unit_seconds rather than from the job's wall time. A job with no key here gets verdict `no-band`, never `in-band`. Every entry carries a `source` — an unsourced band is folklore. SEEDED ONLY FROM NUMBERS STATED AS BANDS in cc-prompt-117/118/123 and nightly.yml's cron header; nothing here was measured by this commit, per cc-123's Out of scope. Add a band by writing lo_s, hi_s and a source that says where the numbers came from and over how many runs.",
+
+  "rule-taggers-daily": {
+    "lo_s": 713,
+    "hi_s": 858,
+    "source": "cc-prompt-117 Phase 0 read 6 and cc-prompt-118 Item 5, both stating the band as 713-858 s. Wed 2026-09-09 read 899.5 s (above); cc-118 made a second consecutive above-band run a filing trigger."
+  },
+
+  "ec-vacuum-analyze": {
+    "lo_s": 0,
+    "hi_s": 140,
+    "source": "cc-prompt-123 D3 (<= 140 quiet-day). Consistent with cc-prompt-117 Phase 0 read 4, which made a quiet-day EC run > 120 s the trigger for the pg_class-keyed gate, and with FIX-1169's series (124 s / 133 s over its first points, cc-prompt-118 Item 5)."
+  },
+
+  "fe-vacuum-analyze": {
+    "lo_s": 0,
+    "hi_s": 140,
+    "source": "BORROWED, not independently derived: FIX-1169's series reports ec- and fe-vacuum-analyze together (124 s / 133 s, cc-prompt-118 Item 5) and cc-prompt-123 D3 names only the EC ceiling. Re-derive from this job's own series once the receipts file has collected one."
+  },
+
+  "donor-rollup-refresh": {
+    "lo_s": 0,
+    "hi_s": 400,
+    "source": "cc-prompt-123 D3 (09:00 firing <= 400 / 12:00 firing ~ 0). THE SCHEMA CANNOT EXPRESS THE SECOND HALF: bands are keyed by job name only, and this job's two daily firings have different expected costs, so the looser ceiling is used and the 12:00 firing is trivially in-band. See docs/receipts/README.md."
+  },
+
+  "refresh-derived-mvs-daily:rebuild_entity_search_index": {
+    "lo_s": 0,
+    "hi_s": 300,
+    "source": "cc-prompt-123 D3 and cc-prompt-117 Phase 0 read 5 (FIX-1152's receipt: < 300 s expected; Mon 2026-09-07 was 236.0 s at 88.8% EC all-visible; the failure mode was 1,017 s at 79%). A UNIT band, not a job band — section 3 reports it from the run row's unit_seconds."
+  }
+}
