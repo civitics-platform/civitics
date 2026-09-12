@@ -127,11 +127,21 @@ async function fetchActualDates(daysBack: number): Promise<Set<string> | null> {
   // FIX-290: accept status='partial' too. Partial runs (errors > 0) still
   // indicate the nightly ran. The canary's job is "didn't run at all"
   // detection; error-tracking is the dashboard's job (see FIX-287 banner).
+  //
+  // FIX-950: and 'skipped'. A phase held by a supervised prod session closes
+  // `skipped` deliberately — it ran, read the interlock, and stood down. Left
+  // out of this list it would read as a MISSED nightly, so the interlock would
+  // manufacture the alert it exists to let an operator avoid, which is the same
+  // trap D3a avoided on the FEC drop probe. Nothing else writes `skipped` under
+  // `nightly_cron`, so this cannot mask a real absence: the row's existence IS
+  // the evidence the run happened. The freshness clock is a separate question
+  // and is deliberately NOT advanced (check_rollup_freshness counts only
+  // 'complete') — see docs/ops/prod-holds.md.
   const { data, error } = await db
     .from("data_sync_log")
     .select("started_at, completed_at")
     .eq("pipeline", PIPELINE_NAME)
-    .in("status", ["complete", "partial"])
+    .in("status", ["complete", "partial", "skipped"])
     .gte("started_at", since.toISOString());
 
   if (error) {

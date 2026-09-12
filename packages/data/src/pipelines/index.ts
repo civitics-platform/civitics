@@ -60,6 +60,20 @@ import {
   FEC_HOLD_REASON,
   type FecBulkTriggerInputs,
 } from "./fec-hold";
+// FIX-950 — the supervised-prod-session hold. Same shape as fec-hold above and
+// here for the same reason: the truth table has to be assertable without this
+// module's import graph.
+import {
+  fecChainHeld,
+  nightlyPhaseStatus,
+  probeRecords,
+  prodSessionHoldBanner,
+  prodSessionHoldReason,
+  writersRun,
+  type NightlyHoldInputs,
+} from "./nightly-hold";
+import { readProdSessionState, withClient } from "../lib/prod-session";
+import { buildDbUrl } from "../lib/heavy-rebuild";
 
 // errMsg moved to ./utils (FIX-756) so fec-bulk's catch sites can share it
 // without importing this module (which imports fec-bulk — cycle).
@@ -368,6 +382,13 @@ export interface NightlySyncResults {
   };
   total_ai_cost_usd: number;
   errors: string[];
+  /**
+   * FIX-950 — set only when a supervised prod session held this run. Carries
+   * the label's reason in the same spelling the guarded pg_cron procedures
+   * write into their own `skip_reason`. Absent on every ordinary run, so no
+   * consumer of this payload changes shape unless a human was on the box.
+   */
+  prod_session_hold?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -474,6 +495,20 @@ export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<Nigh
 
   // Seed jurisdictions (idempotent)
   const db = createAdminClient();
+
+  // FIX-950 — is a human holding the box? Read ONCE, at the top, so every
+  // decision in this run is taken against one reading rather than a dozen that
+  // could disagree mid-run. FAIL OPEN: `withClient` and `readProdSessionState`
+  // both return null on any failure (unreachable DB, a database where the
+  // migration has not landed), and null means "not held" — a nightly that
+  // refused to run because its interlock reader was unavailable would have
+  // turned an instrument outage into a missed night.
+  const prodSession = await withClient(buildDbUrl(), readProdSessionState);
+  const hold: NightlyHoldInputs = { sessionHeld: prodSession?.defer === true };
+  if (hold.sessionHeld) {
+    console.warn(`  [nightly] ⏸  ${prodSessionHoldBanner(prodSession?.reason ?? null)}`);
+    results.prod_session_hold = prodSessionHoldReason(prodSession?.reason ?? null);
+  }
 
   // FIX-255: reap any data_sync_log rows stranded in status='running' by a
   // prior uncatchable abort (V8 OOM, SIGKILL, hard crash). Belt-and-braces
@@ -641,13 +676,22 @@ export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<Nigh
   // probe AND the weekly gate, because the two weekday triggers hand off to each
   // other — see pipelines/fec-hold.ts. Unset env ⇒ held === false ⇒ every branch
   // below is byte-identical to pre-FIX-998 behavior.
+  // FIX-950: the second hold source. `held` is now flag OR live supervised
+  // session — one OR, because fec-hold.ts already threads a single `held`
+  // through all three trigger predicates. The reason string differs so the log
+  // and the `skipped` result row say WHICH hold stopped it; they are not
+  // interchangeable (one is a deploy-time decision, the other a live human).
+  const fecFlagHeld = !FLAGS.FEC_NIGHTLY_BULK_ENABLED;
   const fecTrigger: FecBulkTriggerInputs = {
     runFec,
     isWeekly,
-    held: !FLAGS.FEC_NIGHTLY_BULK_ENABLED,
+    held: fecChainHeld(fecFlagHeld, hold),
   };
+  const fecHoldReason = fecFlagHeld
+    ? FEC_HOLD_REASON
+    : prodSessionHoldReason(prodSession?.reason ?? null);
   if (fecBulkHeldThisPhase(fecTrigger)) {
-    console.warn(`  [nightly] ⏸  ${FEC_HOLD_REASON}`);
+    console.warn(`  [nightly] ⏸  ${fecHoldReason}`);
   }
 
   let fecResumeState: FecBulkRunState | null = null;
@@ -689,7 +733,7 @@ export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<Nigh
     // run" (regulations/congress/courtlistener/openstates all use it with the
     // reason in `error`), so every consumer of the payload already understands
     // it and the union does not widen. Never `complete`, never absent.
-    results.pipelines.fec_bulk = { status: "skipped", error: FEC_HOLD_REASON };
+    results.pipelines.fec_bulk = { status: "skipped", error: fecHoldReason };
   } else if (shouldRunFecBulk(fecTrigger, fecResumeState !== null, fecDropPending)) {
     {
       const t0 = Date.now();
@@ -782,7 +826,7 @@ export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<Nigh
   // below on purpose: `runEnrichmentLight`'s in-process stages are all weekly,
   // so a probe placed inside that block would record on Sundays only — the one
   // day the drop is guaranteed to be stale.
-  if (runEnrichmentLight) {
+  if (probeRecords(runEnrichmentLight, hold)) {
     const probeCycle = resolveProbeCycle(new Date(), process.env["FEC_INDIV_CYCLES"]);
     const probe = await probeIndivDrop(db, probeCycle);
     await recordDropProbe(db, probe, "enrichment-light");
@@ -826,7 +870,7 @@ export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<Nigh
     // makes this a no-op (skipSync='dumps_unchanged') until LittleSis
     // publishes new dumps — typically every few months — so weekly cadence
     // is safe.
-    if (runEnrichmentHeavy) {
+    if (writersRun(runEnrichmentHeavy, hold)) {
       const t0 = Date.now();
       try {
         const r = await runLittleSisPipeline();
@@ -839,7 +883,7 @@ export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<Nigh
       }
     }
 
-    if (runEnrichmentLight) {
+    if (writersRun(runEnrichmentLight, hold)) {
 
     // FIX-253: SEC EDGAR weekly DEF 14A reconciliation (officer rosters +
     // donor matching). Runs after FEC so the matcher's donor lookup sees
@@ -1032,7 +1076,7 @@ export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<Nigh
   // prior enrichment-light job, so cross-phase ordering holds via the DB, not
   // in-process. On the unsplit 'enrichment'/'all' path this still runs in-process
   // right after the light block, so ordering holds there too.
-  if (runEnrichmentTail) {
+  if (writersRun(runEnrichmentTail, hold)) {
 
   // 3b. [FIX-715] proposal_trending_24h + proposal_popularity_24h refreshes moved
   //     to the pg_cron procedure refresh_derived_mvs('daily') — off the 120-min
@@ -1189,7 +1233,17 @@ export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<Nigh
     };
 
     const mergedStatus = mergedErrors.length === 0 ? "complete" : "partial";
-    const phaseStatus = results.errors.length === 0 ? "complete" : "partial";
+    // FIX-950 — a phase whose every writer block was held closes `skipped`, not
+    // `complete`. `complete` would be a lie that check_rollup_freshness and
+    // list_scheduled_rollup_pipelines would both believe, and the whole point
+    // of the FIX-1140 rule is that a status other than `complete` freezes the
+    // freshness clock, which is exactly right for a firing that did no work.
+    // `all` never qualifies — its Phase 1 daily ingest still runs.
+    const phaseStatus = nightlyPhaseStatus({
+      phase,
+      hold,
+      hasErrors: results.errors.length > 0,
+    });
 
     await adminDb.from("pipeline_state").upsert(
       {
@@ -1233,7 +1287,19 @@ export async function runNightlySync(opts: RunNightlyOptions = {}): Promise<Nigh
       // FIX-971a: this UPDATE replaces `metadata` wholesale, so the run
       // identity written on the start-row has to be re-applied here or the
       // terminal row loses its only join key back to the GHA record.
-      metadata: { ...results, peak_rss_mb: captureRssMb(), phase, ...githubRunIdentity() },
+      //
+      // FIX-950: `skip_reason` is spelled exactly as the guarded pg_cron
+      // procedures spell theirs, so FIX-1137's re-fire can key on
+      // `skip_reason LIKE 'prod session held%'` across both mechanisms.
+      metadata: {
+        ...results,
+        peak_rss_mb: captureRssMb(),
+        phase,
+        ...githubRunIdentity(),
+        ...(phaseStatus === "skipped"
+          ? { skip_reason: results.prod_session_hold, source: "prod_session_hold" }
+          : {}),
+      },
     };
     if (runningRowId) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
