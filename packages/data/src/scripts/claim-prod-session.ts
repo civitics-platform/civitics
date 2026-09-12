@@ -52,17 +52,22 @@ function argValue(argv: readonly string[], flag: string): string | null {
 
 function usage(): never {
   console.error(
-    "Usage: session:claim-prod --reason \"<what you are doing>\" [--minutes N] [--force]\n" +
+    "Usage: session:claim-prod --reason \"<what you are doing>\" [--minutes N]\n" +
+      "                          [--hold-seconds N] [--force]\n" +
       "\n" +
-      "  --reason   REQUIRED. Reaches every deferred firing's skip_reason, so write\n" +
-      "             what an operator reading data_sync_log in six weeks needs.\n" +
-      `  --minutes  Expected duration; default ${DEFAULT_EXPECTED_MINUTES}. Twice this is the\n` +
-      "             canary's prod_session_overrun threshold. Not an expiry — nothing\n" +
-      "             releases the hold but this process ending.\n" +
-      "  --force    Claim even though heavy writers are live. Recorded in the label.\n" +
-      "             Cannot override another supervised session.\n" +
+      "  --reason        REQUIRED. Reaches every deferred firing's skip_reason, so\n" +
+      "                  write what an operator reading data_sync_log in six weeks needs.\n" +
+      `  --minutes       Expected duration; default ${DEFAULT_EXPECTED_MINUTES}. Twice this is the\n` +
+      "                  canary's prod_session_overrun threshold. NOT an expiry.\n" +
+      "  --hold-seconds  Release after N seconds instead of waiting for a signal.\n" +
+      "                  For scripted holds — a receipt, a smoke test, bracketing a\n" +
+      "                  command whose duration is known. Still not an expiry: it is\n" +
+      "                  this process choosing to exit, through the same release path\n" +
+      "                  Ctrl-C uses.\n" +
+      "  --force         Claim even though heavy writers are live. Recorded in the\n" +
+      "                  label. Cannot override another supervised session.\n" +
       "\n" +
-      "Ctrl-C to release. There is no release command by design — see the header of\n" +
+      "Ctrl-C to release. There is no release COMMAND by design — see the header of\n" +
       "packages/data/src/scripts/claim-prod-session.ts.",
   );
   process.exit(64); // EX_USAGE
@@ -80,12 +85,24 @@ async function main(): Promise<void> {
   const argv = process.argv.slice(2);
   const reason = argValue(argv, "--reason");
   const minutesRaw = argValue(argv, "--minutes");
+  const holdRaw = argValue(argv, "--hold-seconds");
   const force = argv.includes("--force");
 
   if (!reason || reason.trim() === "") usage();
   const expected = minutesRaw == null ? DEFAULT_EXPECTED_MINUTES : Number(minutesRaw);
   if (!Number.isFinite(expected) || expected <= 0) {
     console.error(`✗ --minutes must be a positive number (got ${JSON.stringify(minutesRaw)})`);
+    process.exit(64);
+  }
+  // A bounded hold exists because a signal is not always deliverable. On Windows
+  // a detached console process cannot be asked to stop gracefully — `taskkill`
+  // without /F is refused outright and /F is a hard kill that skips the release
+  // path, leaving the label behind as `prod_session_label_stale`. That is exactly
+  // what happened taking the FIX-950 receipt, and "the mechanism works but you
+  // cannot end it tidily from a script" is a real gap, not an inconvenience.
+  const holdSeconds = holdRaw == null ? null : Number(holdRaw);
+  if (holdRaw != null && (!Number.isFinite(holdSeconds) || (holdSeconds ?? 0) <= 0)) {
+    console.error(`✗ --hold-seconds must be a positive number (got ${JSON.stringify(holdRaw)})`);
     process.exit(64);
   }
 
@@ -121,7 +138,9 @@ async function main(): Promise<void> {
 
   console.log(
     `[prod-session] HELD. Every guarded writer now defers with this reason.\n` +
-      `[prod-session] Ctrl-C to release.\n`,
+      (holdSeconds == null
+        ? `[prod-session] Ctrl-C to release.\n`
+        : `[prod-session] Releasing automatically in ${holdSeconds}s (--hold-seconds); Ctrl-C is still honoured.\n`),
   );
 
   let releasing = false;
@@ -161,9 +180,16 @@ async function main(): Promise<void> {
     process.on(sig, () => { void release(sig); });
   }
 
-  // Park until a signal. Both the lock's pg connection and the ticker hold the
-  // event loop open, so an exit here is always something the operator asked for
-  // or something the ticker above refused to keep quiet about.
+  if (holdSeconds != null) {
+    // Goes through the SAME release() the signal handlers use — the lock is
+    // unlocked and the label DELETEd, rather than the process simply vanishing.
+    setTimeout(() => { void release(`--hold-seconds ${holdSeconds} elapsed`); }, holdSeconds * 1000);
+  }
+
+  // Park until a signal (or the bounded hold above). Both the lock's pg
+  // connection and the ticker hold the event loop open, so an exit here is
+  // always something the operator asked for or something the ticker above
+  // refused to keep quiet about.
   await new Promise<void>(() => { /* until a signal */ });
 }
 
