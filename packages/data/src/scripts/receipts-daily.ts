@@ -38,6 +38,7 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { Client } from "pg";
 import { buildDbUrl } from "../lib/heavy-rebuild";
 import {
@@ -188,7 +189,10 @@ function resolveSlotOffset(args: Args): number {
  * An ABSOLUTE --out is taken verbatim.
  */
 function repoRoot(): string {
-  let dir = resolve(new URL(".", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1"));
+  // fileURLToPath, not URL.pathname — the latter keeps percent-encoding and a
+  // leading slash before a Windows drive letter, and both are silent wrong
+  // answers rather than errors.
+  let dir = resolve(dirname(fileURLToPath(import.meta.url)));
   for (let i = 0; i < 12; i += 1) {
     if (existsSync(join(dir, "pnpm-workspace.yaml"))) return dir;
     const up = dirname(dir);
