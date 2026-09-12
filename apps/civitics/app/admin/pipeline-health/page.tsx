@@ -6,6 +6,7 @@ export const dynamic = "force-dynamic";
 import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
 import { createServerClient, createAdminClient } from "@civitics/db";
+import { withDbTimeout } from "@/lib/supabase-check";
 import { PageHeader, SectionCard, SectionHeader } from "@civitics/ui";
 import {
   budgetTone,
@@ -162,9 +163,18 @@ export default async function PipelineHealthPage() {
     // table means nothing. Swallows its own error like the two helpers above:
     // a page that 500s because an interlock reader is unavailable is worse
     // than a page without one tile.
-    admin
-      .rpc("prod_session_state")
-      .then((r: { data: ProdSessionTile | null }) => r.data ?? null)
+    //
+    // The explicit type parameter is load-bearing, not decoration: `admin` is
+    // `any`, and an `any` builder makes `withDbTimeout<T>` infer T = unknown
+    // (the FIX-1120 family of foot-guns). 2s, because this is one pg_locks scan
+    // and two indexed single-row reads — if it is slow, the box is in a state
+    // where the rest of this page is the more urgent read.
+    withDbTimeout<{ data: ProdSessionTile | null }>(
+      admin.rpc("prod_session_state"),
+      2000,
+      "admin/pipeline-health:prod_session",
+    )
+      .then((r) => r.data ?? null)
       .catch(() => null),
   ]);
 
