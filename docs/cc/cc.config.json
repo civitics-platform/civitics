@@ -1,0 +1,21 @@
+{
+  "$comment": [
+    "FIX-1175 — where CC prompts and reports live. Versioned default.",
+    "",
+    "A machine-local override may sit at .claude/cc.config.json and wins over",
+    "this file; it is NOT tracked (.gitignore excludes .claude/* except for",
+    "agents/, commands/, hooks/ and settings.local.json), which is why the",
+    "versioned copy lives here instead. CIVITICS_CC_PROMPTS_DIR and",
+    "CIVITICS_CC_REPORTS_DIR override both.",
+    "",
+    "Both paths resolve against the MAIN checkout or the current worktree, not",
+    "blindly against the cwd: `git rev-parse --path-format=absolute",
+    "--git-common-dir` returns the primary repo's .git from inside a linked",
+    "worktree too, so its parent is a stable anchor for a path that points",
+    "OUTSIDE the repo. promptsDir uses that anchor; reportsDir is committed and",
+    "so uses the current worktree. An absolute path is taken verbatim.",
+    "See scripts/lib/cc-config.mjs."
+  ],
+  "promptsDir": "../Claude/civitics",
+  "reportsDir": "docs/cc/reports"
+}

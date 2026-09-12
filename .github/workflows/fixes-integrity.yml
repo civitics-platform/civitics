@@ -88,3 +88,10 @@ jobs:
       # Existed since FIX-362 and had never been wired into CI.
       - name: fix-add allocator unit tests
         run: node scripts/test-fix-add.mjs
+
+      # FIX-1175: the CC report verifier. A verifier that cannot fail is worse
+      # than none, so its suite pairs every check with a report that should
+      # trip it — an off-trunk sha, a close not attributable to the run, a
+      # filed id with no marker. Context is injected, so no scratch repo.
+      - name: cc:verify report-claim unit tests
+        run: node scripts/test-cc-verify.mjs

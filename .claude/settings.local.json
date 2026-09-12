@@ -66,8 +66,17 @@
           }
         ]
       }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"C:/Users/Craig/Documents/Civitics/App/.claude/hooks/cc-stop-hook.mjs\""
+          }
+        ]
+      }
     ]
-    
   },
   "autoMode": {
     "environment": [
