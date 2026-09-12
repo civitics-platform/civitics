@@ -1435,3 +1435,4 @@
 2026-09-09 | FIX-1167 | 0e2c93f9 | local-only | feat(admin): active-grants section with a counted, confirmed revoke on /admin/grants
 2026-09-09 | FIX-1168 | 340757f3 | local-only | chore: substitute the remaining FIX-<letter> placeholders with their allocated ids (comments only)
 2026-09-09 | FIX-914 | 42b36de3 | prod-only | chore(sld): record prod verification of FIX-914 — 39 NH floterial districts derived, 58 representatives linked
+2026-09-11 | FIX-950 | 9214414c | prod-only | chore(ops): record prod verification of FIX-950 — the prod-session interlock deferred a scheduled fe-crawl firing and released
