@@ -26,7 +26,7 @@ console.log("markerIds — markers only (FIX-368):");
 // canonical <!--id:FIX-NNN--> marker does. This is the exact regression that
 // burned FIX-362 under the old loose /FIX-\d{3}/g.
 assertEq("ignores [[FIX-NNN]] + prose mentions",
-  markerIds("- [ ] body [[FIX-999]] refs FIX-998 <!--id:FIX-767-->"), [767]);
+  markerIds("- body [[FIX-999]] refs FIX-998 <!--id:FIX-767-->"), [767]);
 assertEq("counts every marker", markerIds("<!--id:FIX-100--> … <!--id:FIX-205-->"), [100, 205]);
 assertEq("no markers → []", markerIds("plain text, [[FIX-500]] only"), []);
 assertEq("4-digit future-proof", markerIds("<!--id:FIX-1000-->"), [1000]);

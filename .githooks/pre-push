@@ -6,7 +6,7 @@
 # Uses `fixes:check:trunk` (--check-trunk), NOT the full `fixes:check`. The
 # standard loop pushes the `Fixes:` code commit and its follow-up `fixes:sync`
 # commit as TWO separate pushes, so the code-commit push is always transiently
-# out of sync (done.log not yet appended, checkbox not yet flipped). The full
+# out of sync (done.log not yet appended). The full
 # drift check would abort that first push every single time — exactly the
 # false-positive that reds-out the CI guard. The trunk-ancestry violation is the
 # dangerous case and is what this hook enforces. Drift is gated on PRs in CI

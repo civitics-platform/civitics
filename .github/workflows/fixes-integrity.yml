@@ -4,8 +4,8 @@ name: fixes-integrity
 # incident (2026-05-31) recorded six FIXes as shipped via a fixes:sync run that
 # scanned an unmerged PR branch — done.log + the archive said "done" while the code
 # sat off-main. `fixes-sync.mjs --check` fails when any completed FIX-ID is backed
-# only by commits that are not ancestors of origin/main, and when FIXES.md checkboxes
-# drift from the trailers.
+# only by commits that are not ancestors of origin/main, and when done.log has drifted
+# from the commit trailers (FIX-1016: FIXES.md no longer carries status).
 #
 # Why its own workflow (FIX-466): the heavy `unit` job in tests.yml now carries
 # `paths-ignore: ['docs/**']` to skip the autonomous loop's docs-only status commits.
@@ -62,8 +62,8 @@ jobs:
       #   push to main → `--check-trunk`: exits 1 ONLY on (b). The standard loop
       #     lands the `Fixes:` code commit and its follow-up `fixes:sync` commit
       #     as two SEPARATE pushes, so the code-commit push is always transiently
-      #     out of sync (done.log not appended, checkbox not flipped until the
-      #     next commit). Enforcing drift there reds-out every fix; the dangerous
+      #     out of sync (done.log has no row for it until the next commit).
+      #     Enforcing drift there reds-out every fix; the dangerous
       #     off-trunk case stays enforced on every push. (FIX split of FIX-461.)
       - name: done.log trunk-ancestry + drift guard (PRs)
         if: github.event_name == 'pull_request'
@@ -75,3 +75,16 @@ jobs:
 
       - name: fixes-sync parser/guard unit tests
         run: node scripts/test-fixes-sync.mjs
+
+      # FIX-1016: the status derivation is now the thing the whole FIXES
+      # workflow rests on — docs/FIXES.md carries no checkbox to cross-check it
+      # against. Fixtures cover the reopen ordering, legacy 4-column rows, prose
+      # in column 4, and CRLF; plus the bullet-shape rules that replaced the
+      # checkbox as the "is this a FIX bullet" discriminator. Pure Node, ~1s.
+      - name: fix-status derivation + bullet-shape unit tests
+        run: node scripts/test-fix-status.mjs
+
+      # The id allocator (FIX-368 markers-only, FIX-771 origin/main fold-in).
+      # Existed since FIX-362 and had never been wired into CI.
+      - name: fix-add allocator unit tests
+        run: node scripts/test-fix-add.mjs

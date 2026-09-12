@@ -115,10 +115,16 @@ read it before touching that package.
 
 Active work items live in [docs/FIXES.md](docs/FIXES.md). Every bullet has
 a stable ID (`<!--id:FIX-NNN-->`); commits reference those IDs via a
-`Fixes:` trailer and a script updates the checkboxes. See
+`Fixes:` trailer, which `fixes:sync` records as a row in
+[docs/done.log](docs/done.log). FIXES.md is hand-edited only and carries no
+status — status is *derived* from the log: an ID is OPEN if it has no row, or
+if its last row says `reopen`; CLOSED otherwise. See
 [CLAUDE.md · FIXES Workflow](CLAUDE.md#fixes-workflow) for the full contract.
 
-- `pnpm fixes:sync` — apply commit trailers to FIXES.md + done.log
+- `pnpm fixes:status [FIX-NNN]` — is it open? (`--json` for a machine)
+- `pnpm fix:add` — append a new bullet, allocating the next free ID
+- `pnpm fix:reopen FIX-NNN --note "…"` — append a `reopen` row
+- `pnpm fixes:sync` — apply commit trailers to done.log
 - `pnpm fixes:sync:dry` — preview without writing
 - `pnpm fixes:check` — CI-friendly; exits 1 if out of sync
 

@@ -15,6 +15,9 @@
 //   5. latest tests.yml run on main  ← the red-CI signal (FIX-794)
 //   6. supabase CLI version vs the pinned sentinel (FIX-530)
 //   7. `pnpm fixes:check` result
+//  7b. derived FIX status — open count, closed in the last 7 days, reopened
+//      (FIX-1016: docs/FIXES.md no longer carries a checkbox, so this is the
+//      glance that replaces reading one off the markdown)
 //   8. an OK / ⚠ ATTENTION summary so strays are obvious at a glance
 //
 // Matches the dependency-free `scripts/*.mjs` Node convention so it runs the
@@ -204,7 +207,66 @@ section("fixes:check");
 const fc = run("pnpm", ["fixes:check"]);
 if (fc.out) console.log(fc.out);
 if (fc.err) console.log(fc.err);
-if (!fc.ok) attention.push("pnpm fixes:check FAILED — FIXES.md/done.log out of sync with trailers");
+if (!fc.ok) attention.push("pnpm fixes:check FAILED — done.log out of sync with trailers");
+
+// ── 7b. FIX status (FIX-1016) ────────────────────────────────────────────
+// docs/FIXES.md no longer carries a checkbox, so "how many are open / what
+// closed / what came back" cannot be read off the markdown at a glance any
+// more. Status derives from docs/done.log; this is the glance that replaces it.
+// Read-only, dependency-free, and degrades to a note if the files are missing.
+section("FIX status (derived from done.log)");
+try {
+  const { readFileSync: readF, existsSync: exists } = await import("node:fs");
+  const { resolve: res } = await import("node:path");
+  const { parseDoneLog, deriveStatus } = await import("./lib/fix-status.mjs");
+  const { walkFixBullets, titleOf } = await import("./lib/fixes-md.mjs");
+
+  const root = git("rev-parse", "--show-toplevel").out;
+  const donePath = res(root, "docs/done.log");
+  const fixesPath = res(root, "docs/FIXES.md");
+  if (!exists(donePath) || !exists(fixesPath)) {
+    console.log("(docs/done.log or docs/FIXES.md missing — skipping)");
+  } else {
+    const rows = parseDoneLog(readF(donePath, "utf8"));
+    const status = deriveStatus(rows);
+    const bullets = walkFixBullets(readF(fixesPath, "utf8")).filter((b) => b.id);
+    const openBullets = bullets.filter((b) => (status.get(b.id)?.status ?? "open") === "open");
+    console.log(
+      `${openBullets.length} open of ${bullets.length} live bullets ` +
+        `(${status.size} ids in done.log) — 'pnpm fixes:status' to list`,
+    );
+
+    // Closed in the last 7 days. "Since the last session" is not knowable — a
+    // session boundary leaves no record — so a fixed window is the honest
+    // approximation rather than a guess dressed up as one.
+    const cutoff = new Date(Date.now() - 7 * 86400_000).toISOString().slice(0, 10);
+    const recent = [...status.entries()]
+      .filter(([, v]) => v.status === "closed" && v.lastRow.date >= cutoff)
+      .sort((a, b) => a[1].lastRow.date.localeCompare(b[1].lastRow.date));
+    console.log(`closed since ${cutoff}: ${recent.length}`);
+    for (const [id, v] of recent.slice(-8)) {
+      console.log(`  ${v.lastRow.date}  ${id.padEnd(9)} ${v.lastRow.sha.padEnd(9)} ${v.lastRow.verified}`);
+    }
+    if (recent.length > 8) console.log(`  …and ${recent.length - 8} more`);
+
+    // Reopened ids are the ones most likely to be mistaken for done — they have
+    // a completion row in the log and reappear only because a LATER row undid
+    // it. Always list them in full.
+    const reopened = [...status.entries()].filter(([, v]) => v.status === "open" && v.lastRow.sha === "reopen");
+    if (reopened.length === 0) {
+      console.log("reopened: (none)");
+    } else {
+      console.log(`reopened (${reopened.length}) — closed once, open again:`);
+      const titles = new Map(bullets.map((b) => [b.id, titleOf(b.rest)]));
+      for (const [id, v] of reopened) {
+        console.log(`  ${v.lastRow.date}  ${id.padEnd(9)} ${titles.get(id) ?? "(archived)"}`);
+      }
+      attention.push(`${reopened.length} FIX(es) are reopened — see 'pnpm fixes:status --open'`);
+    }
+  }
+} catch (e) {
+  console.log(`(could not derive FIX status: ${e.message})`);
+}
 
 // ── 8. summary ───────────────────────────────────────────────────────────
 section("Summary");

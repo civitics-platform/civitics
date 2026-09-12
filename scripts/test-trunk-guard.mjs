@@ -103,7 +103,7 @@ function newRepoPair() {
   writeFileSync(join(work, "docs", "done.log"), "");
   git(work, ["add", "-A"]);
   // The seed commit carries a real trailer, so `fixes:sync` has actual work to
-  // do in this repo — append a done.log row and flip FIX-001 to [x]. Without it
+  // do in this repo — append a done.log row for FIX-001. Without it
   // the "wrote NOTHING" assertion below would pass vacuously (E10).
   git(work, ["commit", "-m", "feat: seed\n\nVerified: local\nFixes: FIX-001"]);
   git(work, ["remote", "add", "origin", origin]);
@@ -115,7 +115,7 @@ const FIXTURE_FIXES_MD = [
   "",
   "## INFRASTRUCTURE & PERFORMANCE",
   "",
-  "- [ ] 🟠 S — **seed bullet** — placeholder. <!--id:FIX-001-->",
+  "- 🟠 S — **seed bullet** — placeholder. <!--id:FIX-001-->",
   "",
 ].join("\n");
 

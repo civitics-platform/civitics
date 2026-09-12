@@ -29,11 +29,14 @@ These are the fastest path to current project state. Git log and code exploratio
 are for verification, not orientation.
 
 **First step of every session:** run `pnpm session:check` (read-only — fetches
-and reports stranded branches/worktrees/PRs and runs `fixes:check`; see
-"Parallel sessions" under Deployment), **then** `pnpm fixes:sync` to pick up any
-new commit-trailer completions since last session, then read `docs/FIXES.md` for
-the current queue. Then verify the active DB before any data work — see "Active
-environment check" below.
+and reports stranded branches/worktrees/PRs, runs `fixes:check`, and prints the
+derived FIX status: open count, closed in the last 7 days, and every reopened
+ID; see "Parallel sessions" under Deployment), **then** `pnpm fixes:sync` to pick
+up any new commit-trailer completions since last session, then read
+`docs/FIXES.md` for the current queue — it is prose only, so ask
+`pnpm fixes:status` whether an item is open rather than looking for a checkbox.
+Then verify the active DB before any data work — see "Active environment check"
+below.
 
 > **Execution model (as of 2026-04-18):** Claude Code (VS Code extension on
 > Windows) runs the full loop autonomously: migrate → build → commit → push →
@@ -213,14 +216,50 @@ Craig keeps `docs/FIXES.md` open in VSCode as a live backlog. Claude keeps a
 separate source of truth in `docs/done.log` to avoid editor collisions, revert
 drift, and duplicate-commit shuffles.
 
+### Status is DERIVED, not stored (FIX-1016, 2026-09-12)
+
+**`docs/FIXES.md` carries no checkbox.** A bullet is prose plus an
+`<!--id:FIX-NNN-->` marker; there is no `[ ]` and no `[x]` to read or flip.
+Status lives in `docs/done.log` alone, under one rule:
+
+> **OPEN** if the ID has no row, or if its **last** row has `reopen` in the sha
+> column. **CLOSED** otherwise.
+
+It keys on **column 3 and row order only** — never on column 4 (`verified`),
+which carries prose and undocumented values in ~9 historical rows and is
+informational. The rule is implemented once, in `scripts/lib/fix-status.mjs`;
+nothing else derives status anywhere.
+
+**Ask with `pnpm fixes:status FIX-NNN`** — never by grepping the markdown:
+
+```
+pnpm fixes:status FIX-914          # FIX-914  closed  2026-09-09 42b36de3 prod-only  …
+pnpm fixes:status                  # the whole open backlog
+pnpm fixes:status --json           # { generated_at, open_count, items: [...] }
+pnpm fixes:status --closed --since 2026-09-01
+```
+
+`pnpm session:check` prints the same summary (open count, closed in the last
+7 days, and every reopened ID) at the top of every session.
+
+**Why:** FIXES.md was both hand-edited (by Craig, live, in an open editor) and
+machine-edited in place (by `fixes:sync`, which read the whole file and wrote
+the whole file back). A hand edit landing inside that read→write window was
+reverted silently — no conflict, no error, and a diff that looked intentional.
+`done.log` never had the problem because it is append-only, and appends from
+two sessions merge. So the cure is that the only machine write to the hand file
+is an append, and status lives in the file that is only ever appended.
+
 **The contract:**
 
 | File | Owner | Direction |
 |---|---|---|
-| `docs/FIXES.md` | Craig (adds, edits, reprioritises) | Claude **only appends new items** or lets `fixes:sync` flip `[ ]` → `[x]` |
-| `docs/done.log` | Claude / `fixes:sync` | **Append-only**, never rewritten |
+| `docs/FIXES.md` | Craig (adds, edits, reprioritises) | Claude **only appends new items** (`pnpm fix:add`). Never machine-edited in place except by `fixes:clean` / `fixes:archive` / `fixes:housekeep`, which a human runs deliberately and which are behind the trunk guard. Holds **no status**. |
+| `docs/done.log` | Claude / `fixes:sync` / `fix:reopen` | **Append-only**, never rewritten. THE source of status. |
+| `docs/archive/fixes-archive.md` | `fixes:archive` | History. Its bullets still show `[x]` — written before the strip, left as they were. Nothing derives status from it. |
 | Git commit trailer `Fixes: FIX-NNN` | Claude (when code lands a fix) | Feeds done.log via `fixes:sync` |
 | Git commit trailer `Closes: FIX-NNN` | Claude (administrative closure, no code change) | Feeds done.log via `fixes:sync` (FIX-314) |
+| Git commit trailer `Reopens: FIX-NNN` | Claude (when a commit discovers a regression) | Appends a `reopen` row via `fixes:sync` (FIX-1016) |
 | Git commit trailer `Verified: …`    | Claude (when code lands a fix) | Records per-environment verification in done.log (FIX-159) |
 
 **Additive changes — no permission needed.** Claude (whether running in
@@ -285,12 +324,25 @@ work should use the script.
      trailer is logged as `unverified` and is greppable, so future-you can
      audit which fixes were merged untested.
 3. After committing, run `pnpm fixes:sync`. The script:
-   - Scans all `Fixes:`, `Closes:`, and `Verified:` trailers across git history
+   - Scans all `Fixes:`, `Closes:`, `Reopens:`, and `Verified:` trailers across
+     git history, dropping any whose commit is not an ancestor of trunk (FIX-461)
    - Appends new `(FIX-ID, sha, verified)` rows to `docs/done.log` (deduplicated)
-   - Flips matching `[ ]` bullets in FIXES.md to `[x]` (only ever one direction)
-4. Commit the resulting FIXES.md + done.log diff as its own status commit, e.g.
+   - **Does not touch `docs/FIXES.md`** — there is no checkbox to flip (FIX-1016)
+4. Commit the resulting done.log diff as its own status commit, e.g.
    `chore(fixes): sync status after FIX-027`. Keep status commits separate from
    code commits so reverts don't drag status with them.
+
+**Reopening a FIX.** Two ways, both appends; neither touches FIXES.md:
+
+- `pnpm fix:reopen FIX-NNN --note "why it is open again"` — when there is no
+  commit to hang it on. Refuses an ID with no bullet marker anywhere, and one
+  that already derives OPEN.
+- A `Reopens: FIX-NNN` commit trailer — when the commit itself is what
+  discovered the regression. `fixes:sync` picks it up like its siblings.
+
+The old recipe ("hand-uncheck FIXES.md **and** hand-append a `reopen` row") is
+retired: there is nothing to uncheck, and doing only one half used to leave the
+two sources of truth silently disagreeing.
 
 **Closure type — `Fixes:` vs `Closes:` trailer (added 2026-05-18, FIX-314):**
 
@@ -374,20 +426,28 @@ grep "| closes-as-" docs/done.log     # administrative closures (FIX-314 onward)
 **Do NOT:**
 
 - Rewrite FIXES.md bullet text mid-session (causes the N-insertion / N-1 deletion
-  churn pattern from editor collisions). Only the checkbox character changes.
+  churn pattern from editor collisions). Append only.
+- Re-introduce a `[ ]`/`[x]` into a FIXES.md bullet. `fixes:check` fails on one
+  that contradicts the log, and warns on one that agrees — the box is dead
+  markup either way (FIX-1016).
 - Remove, renumber, or reassign `FIX-NNN` IDs — they're permanent handles.
-- Rewrite existing lines in `done.log`. If an item was reopened, **append** a new
-  line with `sha: reopen` and hand-uncheck FIXES.md. The sync script treats
-  `reopen` as "remove from completed set".
+- Rewrite existing lines in `done.log`. To reopen, **append**: `pnpm fix:reopen
+  FIX-NNN --note "…"` or a `Reopens:` trailer. The derivation treats a trailing
+  `reopen` row as "open again".
 - Use `git filter-branch`, `git reset --hard`, or force-pushes on branches that
   touch FIXES.md — these caused the status-duplicate commits visible in the April
   reflog.
 
 **Scripts:**
 
-- `pnpm fixes:sync` — scan trailers, append to done.log, update FIXES.md checkboxes
+- `pnpm fixes:status [FIX-NNN …] [--open|--closed] [--since D] [--json]` — is it open?
+- `pnpm fix:add` — append a new bullet, allocating the next free ID atomically
+- `pnpm fix:reopen FIX-NNN --note "…"` — append a `reopen` row
+- `pnpm fixes:sync` — scan trailers, append rows to done.log (never touches FIXES.md)
 - `pnpm fixes:sync:dry` — show what would change, write nothing
-- `pnpm fixes:check` — CI-friendly; exits 1 if FIXES.md is out of sync with trailers
+- `pnpm fixes:check` — CI-friendly; exits 1 on drift, an off-trunk completion, or a
+  bullet whose checkbox contradicts the log
+- `pnpm fixes:test` — the parser/derivation/trunk-guard unit suites
 
 **Adding a new FIX item (Craig, typically):**
 

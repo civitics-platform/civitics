@@ -1,18 +1,26 @@
 #!/usr/bin/env node
 // scripts/fixes-clean.mjs
 //
-// Move completed ([x]) bullets out of live sections in docs/FIXES.md
-// and into `## COMPLETED` at the bottom, grouped by origin section as
+// Move CLOSED bullets out of live sections in docs/FIXES.md and into
+// `## COMPLETED` at the bottom, grouped by origin section as
 // `### SECTION NAME` subsections. Live section headers and `---`
 // separators are preserved even when the section becomes empty.
 //
-// Guardrails:
-//   - Before moving anything, run a sync check against done.log. If any
-//     [x] bullet lacks a matching completion record, we refuse to move
-//     it (pass --force to override).
+// FIX-1016 D6: "closed" is now DERIVED from docs/done.log
+// (scripts/lib/fix-status.mjs), not read off a `[x]` in the markdown.
+// That retires the old `--force` guardrail — it refused to move an `[x]`
+// bullet with no completion row, and there can no longer be one: the log
+// IS the predicate, so a bullet with no row simply never gets selected.
+//
+// Guardrails that remain:
 //   - The STRATEGIC PILLARS section and the existing `## COMPLETED`
-//     block are never touched as sources (PILLARS is non-checkable;
-//     COMPLETED is the destination).
+//     block are never touched as sources (PILLARS is directional, not
+//     trackable; COMPLETED is the destination).
+//   - The trunk guard. This is still a read-modify-write of a
+//     hand-edited file — unlike fixes:sync, which FIX-1016 reduced to an
+//     append — so it must still abort if trunk moves under it. The
+//     difference is that a human now runs it deliberately, rather than
+//     it firing as a side effect of every sync.
 //   - Writes produce a single well-shaped commit when you run them —
 //     commit immediately so any VS Code editor collision is resolvable
 //     from git.
@@ -20,12 +28,19 @@
 // Usage:
 //   node scripts/fixes-clean.mjs            apply in place
 //   node scripts/fixes-clean.mjs --dry-run  preview, write nothing
-//   node scripts/fixes-clean.mjs --force    skip done.log consistency check
 
 import { execSync } from "node:child_process";
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { captureTrunkState, abortOnTrunkMove } from "./lib/trunk-guard.mjs";
+import { parseDoneLog, deriveStatus } from "./lib/fix-status.mjs";
+import {
+  parseFixBullet,
+  ID_MARKER_RE,
+  SECTION_RE,
+  STRATEGIC_RE,
+  COMPLETED_RE,
+} from "./lib/fixes-md.mjs";
 
 const REPO_ROOT = execSync("git rev-parse --show-toplevel").toString().trim();
 const FIXES_PATH = resolve(REPO_ROOT, "docs/FIXES.md");
@@ -36,36 +51,15 @@ const DONE_PATH = resolve(REPO_ROOT, "docs/done.log");
 const TRUNK_BEFORE = captureTrunkState();
 
 const DRY = process.argv.includes("--dry-run");
-const FORCE = process.argv.includes("--force");
 
-const BULLET_RE = /^(\s*- \[)([ xX])(\] )(.*)$/;
-const ID_RE = /<!--\s*id:\s*(FIX-\d+)\s*-->/;
-const SECTION_RE = /^##\s+(.+?)\s*$/;
-const STRATEGIC_RE = /^##\s+STRATEGIC PILLARS\b/i;
-const COMPLETED_RE = /^##\s+COMPLETED\b/i;
-
+// FIX-1016 D1: the ONE derivation, shared with fixes:status and fixes:sync.
+// This replaces a hand-rolled copy of the same walk that lived here — a second
+// implementation of a rule is a second thing that can drift from it.
 function loadCompletedFromDoneLog() {
-  // Per-ID last-write-wins: walking lines in chronological (append) order, a
-  // `reopen` line clears the completed status, and any subsequent non-reopen
-  // line restores it. Earlier code had `else if (!reopened.has(id))` which
-  // permanently disqualified an ID once reopened — that broke FIX-041/042
-  // which were reopened then re-completed.
   const completed = new Set();
   if (!existsSync(DONE_PATH)) return completed;
-  // FIX-361: tolerate CRLF on files saved by a misconfigured editor.
-  const text = readFileSync(DONE_PATH, "utf8").replace(/\r\n/g, "\n");
-  for (const raw of text.split("\n")) {
-    const line = raw.trim();
-    if (!line || line.startsWith("#")) continue;
-    const parts = line.split("|").map((p) => p.trim());
-    if (parts.length < 3) continue;
-    const [, id, sha] = parts;
-    if (sha === "reopen") {
-      completed.delete(id);
-    } else {
-      completed.add(id);
-    }
-  }
+  const status = deriveStatus(parseDoneLog(readFileSync(DONE_PATH, "utf8")));
+  for (const [id, v] of status) if (v.status === "closed") completed.add(id);
   return completed;
 }
 
@@ -94,49 +88,36 @@ const hasCompleted = completedIdx !== -1;
 
 // ── collect completed bullets from live sections ─────────────────────
 const doneLogCompleted = loadCompletedFromDoneLog();
-const moved = []; // { section, bullet }
-const missingTrailer = []; // [x] in FIXES but not in done.log
-const cleanedBlocks = blocks.map((b, i) => {
+const moved = []; // { section, bullet, id }
+const noMarker = []; // bullets with no id — unselectable, reported not moved
+const cleanedBlocks = blocks.map((b) => {
   if (b.kind !== "section") return b;
   if (STRATEGIC_RE.test(b.headerLine)) return b;
   if (COMPLETED_RE.test(b.headerLine)) return b;
 
   const kept = [];
   for (const line of b.bodyLines) {
-    const bm = line.match(BULLET_RE);
-    if (!bm) {
+    const bullet = parseFixBullet(line);
+    if (!bullet) {
       kept.push(line);
       continue;
     }
-    const [, , box, , rest] = bm;
-    if (box.toLowerCase() !== "x") {
+    // A bullet with no <!--id:FIX-NNN--> marker can never be closed (nothing can
+    // reference it in a trailer), so it can never be selected. Report it —
+    // `pnpm fixes:housekeep` assigns the marker.
+    if (!bullet.id) {
+      noMarker.push({ section: b.name, snippet: bullet.rest.slice(0, 70) });
       kept.push(line);
       continue;
     }
-    const idMatch = rest.match(ID_RE);
-    const id = idMatch ? idMatch[1] : null;
-    if (id && !doneLogCompleted.has(id) && !FORCE) {
-      missingTrailer.push({ section: b.name, id, snippet: rest.slice(0, 70) });
-      kept.push(line); // don't move it
+    if (!doneLogCompleted.has(bullet.id)) {
+      kept.push(line);
       continue;
     }
-    moved.push({ section: b.name, bullet: line, id });
+    moved.push({ section: b.name, bullet: line, id: bullet.id });
   }
   return { ...b, bodyLines: kept };
 });
-
-if (missingTrailer.length && !FORCE) {
-  console.error("fixes:clean — REFUSED");
-  console.error(
-    `\n${missingTrailer.length} [x] bullet(s) have no matching entry in done.log.\n` +
-      "Either run `pnpm fixes:sync` first, add a backfill line to done.log, or pass --force.\n"
-  );
-  for (const m of missingTrailer.slice(0, 10)) {
-    console.error(`  ${m.id ?? "(no id)"} [${m.section}] — ${m.snippet}…`);
-  }
-  if (missingTrailer.length > 10) console.error(`  …and ${missingTrailer.length - 10} more`);
-  process.exit(1);
-}
 
 // ── build/update COMPLETED section ───────────────────────────────────
 //
@@ -146,13 +127,13 @@ if (missingTrailer.length && !FORCE) {
 //   _Completed items moved here by `pnpm fixes:clean`. `pnpm fixes:archive` moves them to `docs/archive/fixes-archive.md`._
 //
 //   ### SECTION ONE
-//   - [x] ... <!--id:FIX-NNN-->
+//   - 🟠 S — **title** — body <!--id:FIX-NNN-->
 //
 //   ### SECTION TWO
-//   - [x] ...
+//   - 🟡 M — ...
 //
 //   ### Legacy (pre-FIX-NNN)
-//   - [x] old untagged items
+//   - [x] old untagged items   (historical shape — kept verbatim)
 //
 // We preserve any existing subsections and merge new moves into them.
 
@@ -188,8 +169,10 @@ const legacyLines = [];
 const cleanedIntro = [];
 if (completedBlock) {
   for (const line of existingIntro) {
-    const bm = line.match(BULLET_RE);
-    if (bm && !ID_RE.test(bm[4])) {
+    // A top-level bullet with no id marker sitting loose under COMPLETED is a
+    // pre-FIX-NNN archive line. `parseFixBullet` requires marker-or-emoji, so
+    // test the raw shape here — these predate both conventions.
+    if (/^- (?:\[[ xX]\] )?/.test(line) && !ID_MARKER_RE.test(line)) {
       legacyLines.push(line);
     } else {
       cleanedIntro.push(line);
@@ -276,8 +259,17 @@ console.log("fixes:clean —", DRY ? "DRY RUN" : "APPLIED");
 console.table({
   bulletsMoved: moved.length,
   subsectionsUsed: new Set(moved.map((m) => m.section)).size,
-  missingTrailerRefused: missingTrailer.length,
+  bulletsWithoutIdMarker: noMarker.length,
 });
+
+if (noMarker.length) {
+  console.log(
+    `\n${noMarker.length} live bullet(s) carry no <!--id:FIX-NNN--> marker, so they can never` +
+      " be closed or moved. Run `pnpm fixes:housekeep` to assign ids:",
+  );
+  for (const n of noMarker.slice(0, 10)) console.log(`  [${n.section}] ${n.snippet}…`);
+  if (noMarker.length > 10) console.log(`  …and ${noMarker.length - 10} more`);
+}
 
 if (moved.length) {
   console.log("\nMoved to COMPLETED:");

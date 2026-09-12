@@ -20,7 +20,7 @@
 //     before the next `^## ` header. Empty sections insert right after the
 //     header line.
 //   - Bullet shape:
-//       - [ ] {severity} {size} — **{title}** — {body} <!--id:FIX-NNN-->
+//       - {severity} {size} — **{title}** — {body} <!--id:FIX-NNN-->  (no checkbox: FIX-1016)
 //   - Writes via tmp + atomic rename. Writes LF unconditionally.
 //
 // Usage:
@@ -39,6 +39,7 @@ import { readFileSync, writeFileSync, existsSync, renameSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { captureTrunkState, abortOnTrunkMove } from "./lib/trunk-guard.mjs";
+import { formatFixBullet, parseFixBullet, SECTION_RE } from "./lib/fixes-md.mjs";
 
 const REPO_ROOT = execSync("git rev-parse --show-toplevel").toString().trim();
 const FIXES_PATH = resolve(REPO_ROOT, "docs/FIXES.md");
@@ -48,8 +49,12 @@ const ARCHIVE_PATH = resolve(REPO_ROOT, "docs/archive/fixes-archive.md");
 const ALLOWED_SEVERITY = new Set(["🔴", "🟠", "🟡", "🟢", "⬜"]);
 const ALLOWED_SIZE = new Set(["S", "M", "L", "XL"]);
 
-const SECTION_RE = /^##\s+(.+?)\s*$/;
-const BULLET_RE = /^\s*- \[/;
+// FIX-1016: `findInsertionIdx` looks for the LAST bullet in a section so the
+// new one lands adjacent to it. Its old test was `/^\s*- \[/` — the checkbox —
+// which after the strip matches nothing, silently relocating every new bullet
+// to the top of its section, immediately under the header. `parseFixBullet`
+// (shared, scripts/lib/fixes-md.mjs) is the replacement.
+const isBullet = (line) => parseFixBullet(line) !== null;
 
 function die(msg, code = 1) {
   process.stderr.write(`fix:add — ${msg}\n`);
@@ -217,18 +222,16 @@ function findInsertionIdx(lines, start, end) {
   // bullet block rather than dangling at the bottom of the section.
   let lastBullet = -1;
   for (let i = start + 1; i < end; i++) {
-    if (BULLET_RE.test(lines[i])) lastBullet = i;
+    if (isBullet(lines[i])) lastBullet = i;
   }
   if (lastBullet === -1) return start + 1;
   return lastBullet + 1;
 }
 
-function formatBullet({ severity, size, title, body, id }) {
-  // Bullet shape mirrors the existing FIXES.md convention exactly.
-  // The trailing `<!--id:FIX-NNN-->` marker is the stable handle the rest
-  // of the tooling (commit trailers, fixes:sync) keys on.
-  return `- [ ] ${severity} ${size} — **${title}** — ${body} <!--id:FIX-${id.slice(4)}-->`;
-}
+// Bullet shape lives in scripts/lib/fixes-md.mjs so the writer and every reader
+// agree by construction. FIX-1016: no `[ ]` — a bullet carries prose and an id
+// marker, and status is derived from docs/done.log.
+const formatBullet = formatFixBullet;
 
 function writeAtomic(path, content) {
   const tmp = `${path}.tmp-${process.pid}-${Date.now()}`;

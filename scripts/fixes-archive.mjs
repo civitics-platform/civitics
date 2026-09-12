@@ -20,6 +20,7 @@ import { execSync } from "node:child_process";
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { captureTrunkState, abortOnTrunkMove } from "./lib/trunk-guard.mjs";
+import { parseFixBullet, SECTION_RE, COMPLETED_RE } from "./lib/fixes-md.mjs";
 
 const REPO_ROOT = execSync("git rev-parse --show-toplevel").toString().trim();
 const FIXES_PATH = resolve(REPO_ROOT, "docs/FIXES.md");
@@ -31,9 +32,12 @@ const TRUNK_BEFORE = captureTrunkState();
 
 const DRY = process.argv.includes("--dry-run");
 
-const SECTION_RE = /^##\s+(.+?)\s*$/;
-const COMPLETED_RE = /^##\s+COMPLETED\b/i;
-const BULLET_RE = /^(\s*- \[)([ xX])(\] )(.*)$/;
+// FIX-1016: bullets under `## COMPLETED` are the new checkbox-less shape, but
+// the archive file also holds thousands written before the strip. `isBullet`
+// accepts both — the archive is history and its `[x]` marks stay exactly as
+// they were written. A caller inside COMPLETED is by definition inside a
+// section, so `inSection` is left at its default.
+const isBullet = (line) => parseFixBullet(line) !== null;
 
 // FIX-361: tolerate CRLF on read; writes stay LF via .join("\n") downstream.
 const content = readFileSync(FIXES_PATH, "utf8").replace(/\r\n/g, "\n");
@@ -70,7 +74,7 @@ const bodyLines = completedBlock.bodyLines;
 let cutIdx = -1;
 for (let i = 0; i < bodyLines.length; i++) {
   const l = bodyLines[i];
-  if (/^###\s+/.test(l) || BULLET_RE.test(l)) {
+  if (/^###\s+/.test(l) || isBullet(l)) {
     cutIdx = i;
     break;
   }
@@ -85,7 +89,7 @@ const introLines = bodyLines.slice(0, cutIdx);
 const archivedLines = bodyLines.slice(cutIdx);
 
 // Count what we're archiving for the summary.
-const bulletCount = archivedLines.filter((l) => BULLET_RE.test(l)).length;
+const bulletCount = archivedLines.filter((l) => isBullet(l)).length;
 const subsectionCount = archivedLines.filter((l) => /^###\s+/.test(l)).length;
 
 // ── build the dated archive block ────────────────────────────────────

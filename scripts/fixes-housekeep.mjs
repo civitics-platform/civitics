@@ -17,6 +17,14 @@ import { execSync } from "node:child_process";
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { captureTrunkState, abortOnTrunkMove } from "./lib/trunk-guard.mjs";
+import {
+  parseFixBullet,
+  PRIORITY_EMOJI,
+  ID_MARKER_RE,
+  SECTION_RE,
+  STRATEGIC_RE,
+  COMPLETED_RE,
+} from "./lib/fixes-md.mjs";
 
 const REPO_ROOT = execSync("git rev-parse --show-toplevel").toString().trim();
 const FIXES_PATH = resolve(REPO_ROOT, "docs/FIXES.md");
@@ -29,14 +37,13 @@ const TRUNK_BEFORE = captureTrunkState();
 
 const DRY = process.argv.includes("--dry-run");
 
-const PRIORITY_EMOJI = ["🔴", "🟠", "🟡", "🟢", "⬜"];
-const COMPLEXITY = new Set(["S", "M", "L", "XL"]);
-
-const BULLET_RE = /^(\s*- \[)([ xX])(\] )(.*)$/;
-const ID_RE = /<!--\s*id:\s*(FIX-\d+)\s*-->/;
-const SECTION_RE = /^##\s+(.+?)\s*$/;
-const STRATEGIC_RE = /^##\s+STRATEGIC PILLARS\b/i;
-const COMPLETED_RE = /^##\s+COMPLETED\b/i;
+// FIX-1016: the bullet shape moved to scripts/lib/fixes-md.mjs, because the
+// checkbox that used to identify a bullet is gone and all five scripts that
+// walk this file need the SAME replacement rule. This script is the one with
+// the most at stake in it: its whole job is to find bullets that DON'T yet have
+// an id, so it cannot fall back on the marker, and it must not mistake the
+// preamble's priority key (`- 🔴 Critical — …`) for backlog. `parseFixBullet`
+// carries both clauses; `skipSection` below carries the preamble gate.
 
 function scanAllIds() {
   const ids = new Set();
@@ -105,9 +112,28 @@ const out = lines.map((line, idx) => {
   }
   if (skipSection) return line;
 
-  const m = line.match(BULLET_RE);
-  if (!m) return line;
-  const [, pre, box, mid, rest] = m;
+  // `inSection` is what keeps the FIXES.md preamble out of scope: its five
+  // priority-key lines DO start with a priority emoji, so without this gate
+  // every one of them would be handed a FIX id on the first run after the
+  // FIX-1016 strip.
+  const bullet = parseFixBullet(line, { inSection: currentSection !== null });
+  if (!bullet) {
+    // Before FIX-1016 the checkbox was what made a bullet visible here, so a
+    // hand-typed bullet with no priority emoji still got seen — and warned
+    // about. Now the emoji IS the entry ticket, so an emoji-less, marker-less
+    // bullet would fall out of scope silently. Report it instead: this is the
+    // exact class fixes:housekeep exists to catch.
+    if (currentSection !== null && /^- \S/.test(line)) {
+      warnings.push({
+        line: idx + 1,
+        section: currentSection,
+        issue: "not recognised as a FIX bullet (no priority emoji, no id marker)",
+        snippet: line.slice(2, 72),
+      });
+    }
+    return line;
+  }
+  const { rest } = bullet;
 
   const warns = warnFormat(rest);
   if (warns.length) {
@@ -119,12 +145,14 @@ const out = lines.map((line, idx) => {
     });
   }
 
-  if (ID_RE.test(rest)) return line;
+  if (bullet.id) return line;
 
   const newId = `FIX-${String(nextCounter++).padStart(3, "0")}`;
   assigned.push({ line: idx + 1, section: currentSection, id: newId, snippet: rest.slice(0, 70) });
-  const trimmed = rest.replace(/\s*$/, "");
-  return `${pre}${box}${mid}${trimmed} <!--id:${newId}-->`;
+  // Rebuild from the ORIGINAL line, not from a re-rendered prefix: a legacy
+  // `- [x] ` bullet in the archive keeps its box, and a new `- ` bullet keeps
+  // its shape. Appending the marker is the only edit.
+  return `${line.replace(/\s*$/, "")} <!--id:${newId}-->`;
 });
 
 if (assigned.length && !DRY) {

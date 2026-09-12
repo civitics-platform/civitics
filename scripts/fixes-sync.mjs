@@ -1,29 +1,32 @@
 #!/usr/bin/env node
 // scripts/fixes-sync.mjs
 //
-// One-way sync between git commit trailers and FIXES.md status.
+// One-way sync from git commit trailers into docs/done.log.
 //
 //   1. Scans `git log` for commits whose body contains `Fixes: FIX-NNN[, FIX-MMM]`
-//      (code-level fix) or `Closes: FIX-NNN[, FIX-MMM]` (administrative closure
-//      for superseded / redirected / recognized prior work / no-op — FIX-314).
-//   2. Appends any new (FIX-ID, commit-sha) pairs to docs/done.log.
-//      Append-only — existing lines are never rewritten.
-//      `Reopens: FIX-NNN` (FIX-1016) appends a `reopen` row instead, so the
-//      commit that discovers a regression can reopen the FIX it belongs to.
-//   3. Reads docs/done.log and flips `- [ ]` to `- [x]` for any bullet in FIXES.md
-//      whose trailing `<!--id:FIX-NNN-->` marker appears in the log.
+//      (code-level fix), `Closes: FIX-NNN[, FIX-MMM]` (administrative closure
+//      for superseded / redirected / recognized prior work / no-op — FIX-314),
+//      or `Reopens: FIX-NNN` (FIX-1016).
+//   2. Appends any new rows to docs/done.log. Append-only — existing lines are
+//      never rewritten.
 //
-//   The script NEVER un-checks a bullet. A reopen is `pnpm fix:reopen` or a
-//   `Reopens:` trailer — both append to docs/done.log, and status derives from
-//   there (scripts/lib/fix-status.mjs).
+//   It does NOT touch docs/FIXES.md (FIX-1016 D4). That file is hand-edited
+//   only: prose and an `<!--id:FIX-NNN-->` marker, no status. Status is DERIVED
+//   from docs/done.log by scripts/lib/fix-status.mjs and answered by
+//   `pnpm fixes:status`. Two files, two writer classes, no overlap — which is
+//   what removes the concurrent-write class rather than detecting it. A reopen
+//   is `pnpm fix:reopen` or a `Reopens:` trailer; both are appends.
 //
 // Usage:
-//   node scripts/fixes-sync.mjs              sync + rewrite FIXES.md
+//   node scripts/fixes-sync.mjs              scan trailers, append to docs/done.log
 //   node scripts/fixes-sync.mjs --dry-run    show what would change, write nothing
-//   node scripts/fixes-sync.mjs --check      exit 1 on EITHER drift (FIXES.md/done.log
-//                                            out of sync with trailers) OR a trunk-ancestry
-//                                            violation. Used on PRs, where code + sync
-//                                            commits are evaluated against main together.
+//   node scripts/fixes-sync.mjs --check      exit 1 on ANY of: drift (a trailer on trunk
+//                                            with no done.log row), a trunk-ancestry
+//                                            violation, or a bullet whose checkbox
+//                                            contradicts the derived status (FIX-1016 D7).
+//                                            Used on PRs, where code + sync commits are
+//                                            evaluated against main together. Prints the
+//                                            derived open count.
 //   node scripts/fixes-sync.mjs --check-trunk exit 1 ONLY on a trunk-ancestry violation;
 //                                            ignores drift. Used on push-to-main: the
 //                                            standard loop lands the `Fixes:` code commit
@@ -32,10 +35,13 @@
 //                                            *always* transiently out of sync — failing on
 //                                            drift there is guaranteed noise. The dangerous
 //                                            case (done.log claims a FIX shipped whose code
-//                                            is off-trunk) is still enforced on every push.
+//                                            is off-trunk) is still enforced on every push,
+//                                            as is the FIX-1016 checkbox assertion.
 
 import { execSync } from "node:child_process";
-import { readFileSync, writeFileSync, existsSync, appendFileSync } from "node:fs";
+// No writeFileSync: FIX-1016 D4 left this script with exactly one write, and it
+// is an append to docs/done.log.
+import { readFileSync, existsSync, appendFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { captureTrunkState, abortOnTrunkMove } from "./lib/trunk-guard.mjs";
@@ -444,43 +450,31 @@ function appendNewEntries(existing, completions, { dry }) {
   return newOnes;
 }
 
-function syncFixesMd(completedIds, { dry }) {
-  // FIX-361: tolerate CRLF on read (see readDoneLog). Writes stay LF —
-  // out.join("\n") below preserves the in-memory LF form.
-  const content = readFileSync(FIXES_PATH, "utf8").replace(/\r\n/g, "\n");
-  const lines = content.split("\n");
-  const flipped = [];
-  const missingMarker = [];
-
-  const bulletRe = /^(\s*- \[)([ xX])(\] .+)$/;
-  const idRe = /<!--\s*id:\s*(FIX-\d+)\s*-->/;
-  const archiveHeadingRe = /^##\s+COMPLETED\b/i;
-
-  let inArchive = false;
-  const out = lines.map((line) => {
-    if (archiveHeadingRe.test(line)) inArchive = true;
-    const m = line.match(bulletRe);
-    if (!m) return line;
-    const [, pre, box, rest] = m;
-    const idMatch = rest.match(idRe);
-    if (!idMatch) {
-      if (!inArchive) missingMarker.push(line.slice(0, 80));
-      return line;
-    }
-    const id = idMatch[1];
-    const isChecked = box.toLowerCase() === "x";
-    const shouldBeChecked = completedIds.has(id);
-    if (shouldBeChecked && !isChecked) {
-      flipped.push(id);
-      return `${pre}x${rest}`;
-    }
-    return line;
-  });
-
-  if (flipped.length > 0 && !dry) {
-    writeFileSync(FIXES_PATH, out.join("\n"));
-  }
-  return { flipped, missingMarker };
+// FIX-1016 D4: `syncFixesMd` is gone. It read the whole of docs/FIXES.md,
+// transformed it in memory and wrote the whole file back on every sync — an
+// in-place machine write to a hand-edited file, which is the entire
+// concurrent-write class (a hand edit landing in that window was reverted with
+// no conflict, no error, and a diff that looked intentional). It also carried
+// the CRLF silent no-op: the read normalised CRLF but the bullet regex still had
+// to match, and a mismatch was indistinguishable from nothing-to-do.
+//
+// What replaces it: nothing writes status into the markdown. `readFixesMd`
+// below only READS, to report bullets missing an id marker and to run the D7
+// detector. docs/FIXES.md is opened for writing by exactly two things now —
+// `fix:add` (an append) and the two housekeeping tools a human runs
+// deliberately, both still behind the trunk guard.
+function readFixesMd() {
+  const bullets = walkFixBullets(readFileSync(FIXES_PATH, "utf8"));
+  return {
+    bullets: bullets.filter((b) => b.id),
+    // A live bullet with no `<!--id:FIX-NNN-->` marker cannot be referenced by a
+    // commit trailer, so it can never be closed. `pnpm fixes:housekeep` assigns
+    // one. (Archived bullets are exempt — the COMPLETED section is a holding
+    // pen, and the legacy pre-FIX-NNN entries there never had ids.)
+    missingMarker: bullets
+      .filter((b) => !b.id && !/^COMPLETED\b/i.test(b.section ?? ""))
+      .map((b) => b.line.slice(0, 80)),
+  };
 }
 
 function main() {
@@ -495,6 +489,12 @@ function main() {
   // spans exactly the moment another session's commit would land. Re-checked
   // immediately before the first write below. Check/dry modes write nothing and
   // therefore need no guard.
+  //
+  // FIX-1016 narrowed what this protects: the only write left is an APPEND to
+  // docs/done.log, which merges rather than reverting. The guard stays because a
+  // trunk move still means this run's scan is stale — it would append rows the
+  // other session has already appended, and the dedup key only catches that on
+  // the NEXT run. A loud refusal beats a duplicated row.
   const trunkBefore = captureTrunkState();
 
   const done = readDoneLog();
@@ -526,8 +526,8 @@ function main() {
 
   if (writeMode) {
     abortOnTrunkMove(trunkBefore, {
-      operation: "fixes:sync (append docs/done.log, flip FIXES.md checkboxes)",
-      files: ["docs/done.log", "docs/FIXES.md"],
+      operation: "fixes:sync (append docs/done.log)",
+      files: ["docs/done.log"],
     });
   }
 
@@ -542,15 +542,15 @@ function main() {
   const allCompleted = new Set(
     [...derived].filter(([, v]) => v.status === "closed").map(([id]) => id),
   );
-  const { flipped, missingMarker } = syncFixesMd(allCompleted, { dry: !writeMode });
+  const { bullets: liveBullets, missingMarker } = readFixesMd();
 
-  // FIX-1016 D7 detector — the assertion that licences the checkbox strip.
-  // Every bullet in docs/FIXES.md that still carries a `[ ]`/`[x]` must agree
-  // with the derived status. It ran green (407 bullets, 0 mismatches) at the
-  // moment of the strip; afterwards there are no boxed bullets left and it is
-  // vacuous by construction, which is exactly the point — the information moved
-  // into the log rather than being duplicated into two places that can disagree.
-  const liveBullets = walkFixBullets(readFileSync(FIXES_PATH, "utf8")).filter((b) => b.id);
+  // FIX-1016 D7 detector. It licenced the strip: at the moment the checkboxes
+  // were removed it asserted that every one of them agreed with the derived
+  // status (407 bullets, 0 mismatches, measured twice). Afterwards there are no
+  // boxed bullets and it is vacuous BY CONSTRUCTION — which is the point, the
+  // information moved into the log instead of being duplicated into two places
+  // that can disagree. It is kept, and kept blocking, because it is now the
+  // thing that catches a checkbox being hand-reintroduced.
   const boxMismatches = liveBullets
     .filter((b) => b.box !== null)
     .filter((b) => (b.box.toLowerCase() === "x") !== allCompleted.has(b.id))
@@ -559,9 +559,10 @@ function main() {
   const summary = {
     trailersScanned: trailerCompletions.length,
     newLoggedEntries: newEntries.length,
-    checkboxesFlipped: flipped.length,
     bulletsMissingIdMarker: missingMarker.length,
+    liveBullets: liveBullets.length,
     liveBulletsOpen: liveBullets.filter((b) => !allCompleted.has(b.id)).length,
+    checkboxesFound: liveBullets.filter((b) => b.box !== null).length,
     checkboxMismatches: boxMismatches.length,
   };
 
@@ -572,9 +573,11 @@ function main() {
     for (const e of newEntries)
       console.log(`  ${e.date} | ${e.id} | ${e.sha} | ${e.verified ?? "unverified"} | ${e.note}`);
   }
-  if (flipped.length) {
-    console.log("\nCheckboxes flipped to [x]:");
-    for (const id of flipped) console.log(`  ${id}`);
+  if (summary.checkboxesFound > 0) {
+    console.warn(
+      `\n⚠ ${summary.checkboxesFound} live bullet(s) still carry a \`[ ]\`/\`[x]\` checkbox. ` +
+        "Status is derived from docs/done.log (FIX-1016); the box is dead markup and will drift.",
+    );
   }
   if (boxMismatches.length) {
     console.error(
@@ -628,12 +631,15 @@ function main() {
     }
   }
 
-  // Drift is enforced only by the full `--check` (PRs). On push-to-main
-  // (`--check-trunk`) the code commit and its follow-up fixes:sync commit are
-  // separate pushes, so the code-commit push is always transiently out of sync
-  // — failing on drift there is guaranteed noise (see usage header).
-  if (CHECK && !CHECK_TRUNK && (newEntries.length > 0 || flipped.length > 0)) {
-    console.error("\nFIXES.md is out of sync with commit trailers. Run `pnpm fixes:sync`.");
+  // Drift = a `Fixes:`/`Closes:`/`Reopens:` trailer on a commit that IS on
+  // trunk but has no row in docs/done.log. (`trailerCompletions` is already
+  // trunk-filtered, so an unmerged branch's trailer is not drift.) Enforced
+  // only by the full `--check` (PRs). On push-to-main (`--check-trunk`) the
+  // code commit and its follow-up fixes:sync commit are separate pushes, so the
+  // code-commit push is always transiently out of sync — failing on drift there
+  // is guaranteed noise (see usage header).
+  if (CHECK && !CHECK_TRUNK && newEntries.length > 0) {
+    console.error("\ndocs/done.log is out of sync with commit trailers. Run `pnpm fixes:sync`.");
     process.exit(1);
   }
   // FIX-1016 D7: the derived==checkbox assertion is the detector that licences
