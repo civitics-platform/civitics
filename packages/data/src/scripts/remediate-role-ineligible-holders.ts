@@ -101,6 +101,7 @@ import {
   type DiffInput,
 } from "./remediation-manifest";
 import { drainFrRewrite } from "../lib/fr-rewrite-drain";
+import { runUnderProdSession } from "../lib/prod-session";
 
 /** Sanity bound. The clone measured 84; the reconciliation ceiling is ~200. */
 const MAX_OFFICIALS = 400;
@@ -999,7 +1000,11 @@ async function reconcile(client: Client, pop: PopRow[]): Promise<void> {
   }
 }
 
-main().catch((err) => {
+// FIX-950 — see merge-same-person-official-dupes.ts's tail.
+runUnderProdSession(
+  { script: "remediate-role-ineligible-holders", expectedMinutes: 120 },
+  main,
+).catch((err) => {
   console.error(err);
   process.exit(1);
 });

@@ -86,6 +86,7 @@ import {
 } from "./fec-orphan-classify";
 import { declareRemediationTail, printTailTable } from "./remediation-manifest";
 import { drainFrRewrite } from "../lib/fr-rewrite-drain";
+import { runUnderProdSession } from "../lib/prod-session";
 import { roleMayHoldFecOffice } from "../pipelines/fec-bulk/electable-role";
 
 /** Sanity bound — the FIX-930 clone measured 47 eligible pairs. */
@@ -2307,7 +2308,14 @@ async function main(): Promise<void> {
   await client.end();
 }
 
-main().catch((err) => {
+// FIX-950 — the landing claims the supervised-prod-session lock for its whole
+// run, derivation included, and the guarded pg_cron writers defer while it
+// holds. Refuses to start while a heavy writer is already live (--force to
+// claim over it, recorded in the label).
+runUnderProdSession(
+  { script: "merge-same-person-official-dupes", expectedMinutes: 120 },
+  main,
+).catch((err) => {
   console.error("Fatal:", err instanceof Error ? err.message : String(err));
   process.exit(1);
 });

@@ -50,10 +50,22 @@
  * is a safety interlock, not a correctness gate — a pipeline that cannot reach
  * the DB cannot write anyway, and refusing to run on a transient lock-connection
  * blip would convert a nuisance into a missed weekly ingest. Logged loudly.
+ *
+ * ── FIX-950 ──────────────────────────────────────────────────────────────────
+ * Every paragraph above is now implemented in `lib/session-lock.ts`, because
+ * FIX-950 needed the identical mechanism under a second name
+ * (`prod_supervised_session`). This file is the FEC instance of it: the name,
+ * the env bypass, and the `data_sync_log`-based holder description, which is
+ * FEC-specific. The behaviour is unchanged, and `pipeline-lock.test.ts` is the
+ * proof — it was not touched by the lift.
  */
 
 import type { Client } from "pg";
-import { buildDbUrl } from "../../lib/heavy-rebuild";
+import {
+  acquireNamedSessionLock,
+  noopLock,
+  type NamedSessionLock,
+} from "../../lib/session-lock";
 
 /**
  * Advisory-lock namespace. `hashtext()` is evaluated by Postgres so the value is
@@ -70,16 +82,8 @@ export function pipelineLockDisabled(
   return (raw ?? "").trim().toLowerCase() === "off";
 }
 
-export interface FecPipelineLock {
-  /** True when this process owns the interlock (or it was bypassed/failed open). */
-  readonly acquired: boolean;
-  /** Why the lock was not acquired — set only when `acquired` is false. */
-  readonly blockedBy?: string;
-  /** Release the lock and close its connection. Safe to call twice. */
-  release(): Promise<void>;
-}
-
-const NOOP_LOCK: FecPipelineLock = { acquired: true, async release() { /* nothing held */ } };
+/** Kept as a named type: it is in several call signatures across the pipeline. */
+export type FecPipelineLock = NamedSessionLock;
 
 /**
  * Try to take the FEC-pipeline interlock.
@@ -95,66 +99,14 @@ export async function acquireFecPipelineLock(): Promise<FecPipelineLock> {
     console.warn(
       "  [fec-lock] FEC_PIPELINE_LOCK=off — cross-run interlock BYPASSED (FIX-1067)",
     );
-    return NOOP_LOCK;
+    return noopLock();
   }
 
-  let client: Client;
-  try {
-    const { Client: PgClient } = await import("pg");
-    client = new PgClient({ connectionString: buildDbUrl() });
-    await client.connect();
-  } catch (err) {
-    console.warn(
-      `  [fec-lock] could not open the interlock connection (${errText(err)}) — ` +
-        "FAILING OPEN, the pipeline will run unserialized (FIX-1067)",
-    );
-    return NOOP_LOCK;
-  }
-
-  try {
-    // Keep the lock probe itself from ever inheriting a long ceiling.
-    await client.query("SET statement_timeout = '30s'");
-    const res = await client.query<{ locked: boolean }>(
-      `SELECT pg_try_advisory_lock(hashtext($1)::bigint) AS locked`,
-      [FEC_PIPELINE_LOCK_NAME],
-    );
-    if (res.rows[0]?.locked) {
-      console.log(`  [fec-lock] interlock acquired (${FEC_PIPELINE_LOCK_NAME}) (FIX-1067)`);
-      return makeHeldLock(client);
-    }
-
-    const holder = await describeHolder(client);
-    await client.end().catch(() => { /* best effort */ });
-    return {
-      acquired: false,
-      blockedBy: holder,
-      async release() { /* nothing held */ },
-    };
-  } catch (err) {
-    await client.end().catch(() => { /* best effort */ });
-    console.warn(
-      `  [fec-lock] interlock probe failed (${errText(err)}) — FAILING OPEN (FIX-1067)`,
-    );
-    return NOOP_LOCK;
-  }
-}
-
-function makeHeldLock(client: Client): FecPipelineLock {
-  let released = false;
-  return {
-    acquired: true,
-    async release() {
-      if (released) return;
-      released = true;
-      try {
-        await client.query(`SELECT pg_advisory_unlock(hashtext($1)::bigint)`, [
-          FEC_PIPELINE_LOCK_NAME,
-        ]);
-      } catch { /* the session ending releases it anyway */ }
-      try { await client.end(); } catch { /* best effort */ }
-      console.log(`  [fec-lock] interlock released (${FEC_PIPELINE_LOCK_NAME}) (FIX-1067)`);
-    },
-  };
+  return acquireNamedSessionLock(FEC_PIPELINE_LOCK_NAME, {
+    logTag: "fec-lock",
+    ref: "FIX-1067",
+    describeHolder,
+  });
 }
 
 /**
@@ -182,8 +134,4 @@ async function describeHolder(client: Client): Promise<string> {
   } catch {
     return "another runFecBulkPipeline() invocation";
   }
-}
-
-function errText(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
 }

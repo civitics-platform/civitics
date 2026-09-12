@@ -99,6 +99,7 @@ import {
   requireManifestOnProd,
 } from "./remediation-manifest";
 import { drainFrRewrite } from "../lib/fr-rewrite-drain";
+import { runUnderProdSession } from "../lib/prod-session";
 
 /** Sanity bound — phase 1 measured 59 after exclusions. */
 const MAX_SUSPECTS = 200;
@@ -878,7 +879,13 @@ async function main(): Promise<void> {
 // Only run when invoked as a script (mirrors mark-killed.ts). Importing this
 // module for the FIX-964 unit tests must not open a connection or exit.
 if (require.main === module) {
-  main().catch((err) => {
+  // FIX-950 — see merge-same-person-official-dupes.ts's tail. The claim stays
+  // inside this guard: importing the module for the FIX-964 unit tests must not
+  // take a lock any more than it may open a connection.
+  runUnderProdSession(
+    { script: "remediate-cross-person-misattribution", expectedMinutes: 120 },
+    main,
+  ).catch((err) => {
     console.error("Fatal:", err instanceof Error ? err.message : String(err));
     process.exit(1);
   });

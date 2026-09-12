@@ -59,6 +59,7 @@ import { Client } from "pg";
 import * as fs from "fs";
 import * as path from "path";
 import { constructDbUrlFromEnv, envLabel, PLATFORM_SQL, usd } from "./fec-orphan-classify";
+import { runUnderProdSession } from "../lib/prod-session";
 
 /** Holder must be staler on at least this share of shared keys. */
 const STALE_SHARE_MIN = 0.95;
@@ -440,7 +441,11 @@ async function main(): Promise<void> {
   await client.end();
 }
 
-main().catch((err) => {
+// FIX-950 — see merge-same-person-official-dupes.ts's tail.
+runUnderProdSession(
+  { script: "remediate-bound-cross-person", expectedMinutes: 60 },
+  main,
+).catch((err) => {
   console.error("Fatal:", err instanceof Error ? err.message : String(err));
   process.exit(1);
 });

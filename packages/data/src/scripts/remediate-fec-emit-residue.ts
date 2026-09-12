@@ -35,6 +35,7 @@ import { Client } from "pg";
 import { constructDbUrlFromEnv, deferTails, envLabel, usd } from "./fec-orphan-classify";
 import { manifestArg, requireManifestOnProd, type Manifest } from "./remediation-manifest";
 import { drainFrRewrite, isCancellation } from "../lib/fr-rewrite-drain";
+import { runUnderProdSession } from "../lib/prod-session";
 
 /** Above this the vacuum answer stops being "let the Monday job collect it". */
 const SUPERVISED_VACUUM_ROWS = 1_000_000;
@@ -283,7 +284,11 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((err) => {
+// FIX-950 — see merge-same-person-official-dupes.ts's tail.
+runUnderProdSession(
+  { script: "remediate-fec-emit-residue", expectedMinutes: 120 },
+  main,
+).catch((err) => {
   console.error(err);
   process.exit(1);
 });

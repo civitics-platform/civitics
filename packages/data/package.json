@@ -77,6 +77,8 @@
     "data:drain:claim": "tsx --env-file=../../.env.local src/drain/claim.ts",
     "data:drain:submit": "tsx --env-file=../../.env.local src/drain/submit.ts",
     "data:drain:status": "tsx --env-file=../../.env.local src/drain/status.ts",
+    "session:claim-prod": "tsx --env-file=../../.env.local.prod src/scripts/claim-prod-session.ts",
+    "session:claim": "tsx --env-file=../../.env.local src/scripts/claim-prod-session.ts",
     "data:audit": "tsx --env-file=../../.env.local src/pipelines/integrity-audit/index.ts",
     "data:audit:ci": "tsx src/pipelines/integrity-audit/index.ts --allow-prod",
     "data:moderation-harness": "tsx --env-file=../../.env.local src/pipelines/moderation-harness/index.ts",
