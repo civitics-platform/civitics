@@ -8,11 +8,14 @@
 //      for superseded / redirected / recognized prior work / no-op — FIX-314).
 //   2. Appends any new (FIX-ID, commit-sha) pairs to docs/done.log.
 //      Append-only — existing lines are never rewritten.
+//      `Reopens: FIX-NNN` (FIX-1016) appends a `reopen` row instead, so the
+//      commit that discovers a regression can reopen the FIX it belongs to.
 //   3. Reads docs/done.log and flips `- [ ]` to `- [x]` for any bullet in FIXES.md
 //      whose trailing `<!--id:FIX-NNN-->` marker appears in the log.
 //
-//   The script NEVER un-checks a bullet. Reopens are a manual operation:
-//   hand-uncheck in FIXES.md and add a `reopen` note in done.log.
+//   The script NEVER un-checks a bullet. A reopen is `pnpm fix:reopen` or a
+//   `Reopens:` trailer — both append to docs/done.log, and status derives from
+//   there (scripts/lib/fix-status.mjs).
 //
 // Usage:
 //   node scripts/fixes-sync.mjs              sync + rewrite FIXES.md
@@ -36,6 +39,8 @@ import { readFileSync, writeFileSync, existsSync, appendFileSync } from "node:fs
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { captureTrunkState, abortOnTrunkMove } from "./lib/trunk-guard.mjs";
+import { deriveStatus } from "./lib/fix-status.mjs";
+import { walkFixBullets } from "./lib/fixes-md.mjs";
 
 const REPO_ROOT = execSync("git rev-parse --show-toplevel").toString().trim();
 const FIXES_PATH = resolve(REPO_ROOT, "docs/FIXES.md");
@@ -233,6 +238,10 @@ export function parseCommitTrailers(body) {
   // guards the prose-shadow case regardless of the global flag.
   const fixesRe = /^\s*Fixes:\s*(.+)$/gm;
   const closesRe = /^\s*Closes:\s*(.+)$/gm;
+  // FIX-1016 D5: a reopen can ride the commit that discovered the regression,
+  // instead of being a hand edit in two places. Same case-sensitive,
+  // multi-line, comma-or-stacked shape as its two siblings.
+  const reopensRe = /^\s*Reopens:\s*(.+)$/gm;
   const verifiedRe = /^\s*Verified:\s*(.+)$/m;
   const verifiedPerFixRe = /^\s*Verified\[(FIX-\d+)\]:\s*(.+)$/gm;
   const idRe = /FIX-\d+/g;
@@ -251,6 +260,7 @@ export function parseCommitTrailers(body) {
   };
   const fixesIds = collectIds(fixesRe);
   const closesIds = collectIds(closesRe);
+  const reopensIds = collectIds(reopensRe);
 
   // FIX-314: if an ID appears in both trailers in the same commit, Fixes:
   // wins (code-level fix is the stronger signal). Warn so we notice.
@@ -260,6 +270,18 @@ export function parseCommitTrailers(body) {
       `lists ${conflicts.join(", ")} in both Fixes: and Closes: trailers; Fixes: wins.`,
     );
     for (const id of conflicts) closesIds.delete(id);
+  }
+
+  // FIX-1016: a commit that both closes and reopens the same id is
+  // self-contradictory. Drop the reopen and warn — the closing trailer is the
+  // deliberate one (you do not write `Fixes:` by accident), and a reopen is
+  // always recoverable with `pnpm fix:reopen`.
+  const reopenConflicts = [...reopensIds].filter((id) => fixesIds.has(id) || closesIds.has(id));
+  if (reopenConflicts.length > 0) {
+    warnings.push(
+      `lists ${reopenConflicts.join(", ")} in Reopens: as well as Fixes:/Closes:; the closing trailer wins.`,
+    );
+    for (const id of reopenConflicts) reopensIds.delete(id);
   }
 
   const vMatch = body.match(verifiedRe);
@@ -274,7 +296,7 @@ export function parseCommitTrailers(body) {
   while ((pm = verifiedPerFixRe.exec(body)) !== null) {
     perFixVerified.set(pm[1], pm[2]);
   }
-  const allTrailerIds = new Set([...fixesIds, ...closesIds]);
+  const allTrailerIds = new Set([...fixesIds, ...closesIds, ...reopensIds]);
   for (const id of perFixVerified.keys()) {
     if (!allTrailerIds.has(id)) {
       warnings.push(
@@ -284,7 +306,26 @@ export function parseCommitTrailers(body) {
     }
   }
 
-  return { fixesIds, closesIds, globalVerified, perFixVerified, warnings };
+  return { fixesIds, closesIds, reopensIds, globalVerified, perFixVerified, warnings };
+}
+
+// ── done.log dedup key (FIX-1016) ───────────────────────────────────────────
+// A closing row is unique by (id, sha) — the same commit re-scanned must not
+// append twice. A REOPEN row cannot use that key: its sha column is the literal
+// `reopen`, so (id, 'reopen') would collapse every reopen of one id into the
+// first, and a second, genuinely-new reopen would be silently dropped. The
+// commit sha lives in the note (`reopened by <sha> <subject>`), so the key for a
+// reopen row is (id, 'reopen', that sha). Two reopens of one id on different
+// commits both land; one commit re-scanned still dedups. Hand-written reopen
+// rows — every one of the 22 already in the log — carry no sha in their note and
+// therefore key on the note itself, which can never collide with a trailer
+// reopen. The done.log FORMAT is unchanged; this is purely a read-side key.
+export const REOPEN_NOTE_SHA_RE = /^reopened by ([0-9a-f]{7,40})\b/;
+
+export function doneLogKey(entry) {
+  if (entry.sha !== "reopen") return `${entry.id}|${entry.sha}`;
+  const m = REOPEN_NOTE_SHA_RE.exec(entry.note ?? "");
+  return `${entry.id}|reopen|${m ? m[1] : (entry.note ?? "")}`;
 }
 
 function readDoneLog() {
@@ -316,7 +357,7 @@ function readDoneLog() {
       note = note.join(" | ");
     }
     entries.push({ date, id, sha, verified, note });
-    keys.add(`${id}|${sha}`);
+    keys.add(doneLogKey({ id, sha, note }));
     // Last-write-wins: a `reopen` line clears completion, a subsequent
     // non-reopen line restores it. `reopenedIds` still records every ID that
     // has ever been reopened (used for diagnostics), but it does NOT gate
@@ -343,7 +384,8 @@ function scanCommits() {
   for (const block of blocks) {
     const [sha = "", date = "", subject = "", body = ""] = block.split("\x00");
     const parsed = parseCommitTrailers(body);
-    if (parsed.fixesIds.size === 0 && parsed.closesIds.size === 0) continue;
+    if (parsed.fixesIds.size === 0 && parsed.closesIds.size === 0 && parsed.reopensIds.size === 0)
+      continue;
     const shortSha = sha.trim().slice(0, 8);
     const noteText = subject.trim();
     const dateText = date.trim();
@@ -370,13 +412,28 @@ function scanCommits() {
         note: noteText,
       });
     }
+    // FIX-1016 D5: `Reopens:` appends a reopen row — sha column is the literal
+    // `reopen` (that is what the derivation reads), and the COMMIT sha is
+    // carried in the note so the dedup key can tell two reopens apart.
+    // `commitSha` rides on the object for the off-trunk filter only; it is not
+    // a column and never reaches the file.
+    for (const id of parsed.reopensIds) {
+      completions.push({
+        id,
+        sha: "reopen",
+        commitSha: shortSha,
+        date: dateText,
+        verified: "reopen",
+        note: `reopened by ${shortSha} ${noteText}`,
+      });
+    }
   }
   return completions;
 }
 
 function appendNewEntries(existing, completions, { dry }) {
   const seen = existing.keys;
-  const newOnes = completions.filter((c) => !seen.has(`${c.id}|${c.sha}`));
+  const newOnes = completions.filter((c) => !seen.has(doneLogKey(c)));
   if (newOnes.length === 0) return [];
   // Stable sort: date ascending, then id.
   newOnes.sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
@@ -453,8 +510,12 @@ function main() {
   let trailerCompletions = scanned;
   if (trunk) {
     trailerCompletions = scanned.filter((c) => {
-      if (classifySha(c.sha, trunk) === "not-ancestor") {
-        droppedOffTrunk.push(`${c.id}|${c.sha}`);
+      // `commitSha` for a reopen entry, whose own `sha` column is the literal
+      // `reopen` and would classify as "unknown" — i.e. a `Reopens:` trailer on
+      // an unmerged branch would otherwise sail straight past this filter.
+      const judgeSha = c.commitSha ?? c.sha;
+      if (classifySha(judgeSha, trunk) === "not-ancestor") {
+        droppedOffTrunk.push(`${c.id}|${judgeSha}`);
         return false;
       }
       return true;
@@ -471,18 +532,37 @@ function main() {
   }
 
   const newEntries = appendNewEntries(done, trailerCompletions, { dry: !writeMode });
-  // Last-write-wins across the existing log + newly-discovered trailer commits.
-  // Past reopen state does NOT gate re-completion — a fresh commit with a
-  // `Fixes:` trailer is itself the new "last write".
-  const allCompleted = new Set(done.completedIds);
-  for (const c of newEntries) allCompleted.add(c.id);
+  // FIX-1016 D1: ONE derivation, in scripts/lib/fix-status.mjs. Feed it the
+  // existing log plus this run's new rows, in that order, so a sync that both
+  // records and validates sees the post-sync state. This replaces the
+  // open-coded "add every new id to the completed set", which was wrong the
+  // moment `Reopens:` existed — a reopen row is a new entry that must REMOVE
+  // an id from the completed set, not add it.
+  const derived = deriveStatus([...done.entries, ...newEntries]);
+  const allCompleted = new Set(
+    [...derived].filter(([, v]) => v.status === "closed").map(([id]) => id),
+  );
   const { flipped, missingMarker } = syncFixesMd(allCompleted, { dry: !writeMode });
+
+  // FIX-1016 D7 detector — the assertion that licences the checkbox strip.
+  // Every bullet in docs/FIXES.md that still carries a `[ ]`/`[x]` must agree
+  // with the derived status. It ran green (407 bullets, 0 mismatches) at the
+  // moment of the strip; afterwards there are no boxed bullets left and it is
+  // vacuous by construction, which is exactly the point — the information moved
+  // into the log rather than being duplicated into two places that can disagree.
+  const liveBullets = walkFixBullets(readFileSync(FIXES_PATH, "utf8")).filter((b) => b.id);
+  const boxMismatches = liveBullets
+    .filter((b) => b.box !== null)
+    .filter((b) => (b.box.toLowerCase() === "x") !== allCompleted.has(b.id))
+    .map((b) => ({ id: b.id, box: `[${b.box}]`, derived: allCompleted.has(b.id) ? "closed" : "open" }));
 
   const summary = {
     trailersScanned: trailerCompletions.length,
     newLoggedEntries: newEntries.length,
     checkboxesFlipped: flipped.length,
     bulletsMissingIdMarker: missingMarker.length,
+    liveBulletsOpen: liveBullets.filter((b) => !allCompleted.has(b.id)).length,
+    checkboxMismatches: boxMismatches.length,
   };
 
   console.log("fixes:sync —", DRY ? "DRY RUN" : CHECK_TRUNK ? "CHECK MODE (trunk-only)" : CHECK ? "CHECK MODE" : "APPLIED");
@@ -495,6 +575,18 @@ function main() {
   if (flipped.length) {
     console.log("\nCheckboxes flipped to [x]:");
     for (const id of flipped) console.log(`  ${id}`);
+  }
+  if (boxMismatches.length) {
+    console.error(
+      `\n✗ ${boxMismatches.length} bullet(s) whose checkbox disagrees with the status derived ` +
+        "from docs/done.log (FIX-1016 D7):",
+    );
+    for (const m of boxMismatches) console.error(`    ${m.id}  markdown ${m.box}  derived ${m.derived}`);
+    console.error(
+      "  docs/done.log is the source of truth. Either the bullet was hand-edited, or a\n" +
+        "  completion row is missing. Do NOT hand-fix the box — append the row, or run\n" +
+        "  `pnpm fix:reopen` — then re-run. (`pnpm fixes:status <id>` shows the log's answer.)",
+    );
   }
   if (missingMarker.length && !anyCheck) {
     console.log(`\n${missingMarker.length} bullet(s) without <!--id:FIX-NNN--> marker (first 5):`);
@@ -542,6 +634,17 @@ function main() {
   // — failing on drift there is guaranteed noise (see usage header).
   if (CHECK && !CHECK_TRUNK && (newEntries.length > 0 || flipped.length > 0)) {
     console.error("\nFIXES.md is out of sync with commit trailers. Run `pnpm fixes:sync`.");
+    process.exit(1);
+  }
+  // FIX-1016 D7: the derived==checkbox assertion is the detector that licences
+  // the strip, so it is enforced in BOTH check modes — including on push-to-main,
+  // where a divergence means someone hand-edited a box rather than appending a
+  // row. Once the boxes are gone there are no boxed bullets and this can only
+  // fire on a hand-reintroduced one, which is precisely what it should catch.
+  if (anyCheck && boxMismatches.length > 0) {
+    console.error(
+      "\ndocs/FIXES.md carries checkbox state that contradicts docs/done.log. See above.",
+    );
     process.exit(1);
   }
   // The trunk-ancestry guard is the dangerous case — enforced on every push.

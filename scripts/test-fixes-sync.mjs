@@ -18,6 +18,7 @@ import {
   normalizeVerified,
   evaluateTrunkViolations,
   buildCompletingShasById,
+  doneLogKey,
 } from "./fixes-sync.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -36,6 +37,10 @@ function assertEq(label, actual, expected) {
   const e = JSON.stringify(expected);
   if (a !== e) failures.push(`  ✗ ${label}\n     expected: ${e}\n     actual:   ${a}`);
   else console.log(`  ✓ ${label}`);
+}
+function assertTrue(label, cond, detail = "") {
+  if (cond) console.log(`  ✓ ${label}`);
+  else failures.push(`  ✗ ${label}${detail ? `\n     ${detail}` : ""}`);
 }
 
 const body = extractBody(readFileSync(FIXTURE, "utf8"));
@@ -158,6 +163,71 @@ assertEq(
   "closes-as-superseded",
 );
 assertEq("four-digit override is not dropped as unknown", fourDigitParsed.warnings, []);
+
+// FIX-1016: the `Reopens:` trailer, and the dedup key that makes reopen rows
+// work. Both are pure, so they are exercised here without touching a repo.
+console.log("\nFIX-1016 Reopens: trailer:");
+const reopenBody = [
+  "fix(rollup): the FIX-1163 cron-drift claim does not hold",
+  "",
+  "The measurement it rested on was a clone artefact.",
+  "",
+  "Verified: local",
+  "Fixes: FIX-1200",
+  "Reopens: FIX-1163, FIX-1164",
+  "",
+].join("\n");
+const reopenParsed = parseCommitTrailers(reopenBody);
+assertEq("reopensIds", [...reopenParsed.reopensIds].sort(), ["FIX-1163", "FIX-1164"]);
+assertEq("Fixes: on the same commit is unaffected", [...reopenParsed.fixesIds], ["FIX-1200"]);
+assertEq("no warnings for a clean Reopens:", reopenParsed.warnings, []);
+
+// Stacked `Reopens:` lines, same as its siblings (FIX-874).
+assertEq(
+  "stacked Reopens: lines union",
+  [...parseCommitTrailers("s\n\nReopens: FIX-1\nReopens: FIX-2\n").reopensIds].sort(),
+  ["FIX-1", "FIX-2"],
+);
+// Case sensitivity, same as its siblings (FIX-465) — prose must not shadow.
+assertEq(
+  "lowercase prose `reopens:` is not a trailer",
+  [...parseCommitTrailers("s\n\nreopens: the FIX-9 question\n\nFixes: FIX-8\n").reopensIds],
+  [],
+);
+// Self-contradiction: a commit that both closes and reopens one id.
+const contradictory = parseCommitTrailers("s\n\nFixes: FIX-5\nReopens: FIX-5, FIX-6\n");
+assertEq("a closing trailer beats Reopens: for the same id", [...contradictory.reopensIds], ["FIX-6"]);
+assertEq("...and warns about it", contradictory.warnings.length, 1);
+// A Verified[FIX-NNN] override may name a Reopens:-only id without warning —
+// it is ignored for the row (reopen rows carry the `reopen` sentinel) but the
+// id IS claimed by the commit, so it must not be reported as stray.
+assertEq(
+  "Verified[] naming a Reopens:-only id is not stray",
+  parseCommitTrailers("s\n\nVerified[FIX-7]: local\nReopens: FIX-7\n").warnings,
+  [],
+);
+
+console.log("\nFIX-1016 done.log dedup key:");
+assertEq("a closing row keys on (id, sha)",
+  doneLogKey({ id: "FIX-1", sha: "abc1234", note: "subject" }), "FIX-1|abc1234");
+assertEq("a trailer reopen keys on the sha in its note",
+  doneLogKey({ id: "FIX-1", sha: "reopen", note: "reopened by abc1234 subject" }),
+  "FIX-1|reopen|abc1234");
+assertTrue(
+  "two reopens of one id on DIFFERENT commits do not collide",
+  doneLogKey({ id: "FIX-1", sha: "reopen", note: "reopened by aaaaaaa one" }) !==
+    doneLogKey({ id: "FIX-1", sha: "reopen", note: "reopened by bbbbbbb two" }),
+);
+assertEq(
+  "the same commit re-scanned dedups to the same key",
+  doneLogKey({ id: "FIX-1", sha: "reopen", note: "reopened by abc1234 subject" }),
+  doneLogKey({ id: "FIX-1", sha: "reopen", note: "reopened by abc1234 subject" }),
+);
+assertTrue(
+  "a hand-written reopen (no sha in the note) never collides with a trailer reopen",
+  doneLogKey({ id: "FIX-1", sha: "reopen", note: "graph regression on production" }) !==
+    doneLogKey({ id: "FIX-1", sha: "reopen", note: "reopened by abc1234 subject" }),
+);
 
 // FIX-461: trunk-ancestry guard decision core. `evaluateTrunkViolations` and
 // `buildCompletingShasById` are pure (git is injected via `resolve`), so the
