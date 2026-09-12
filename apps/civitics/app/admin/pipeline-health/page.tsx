@@ -68,6 +68,72 @@ function formatLastRun(iso: string | null): string {
   return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
+/**
+ * FIX-950 — the shape `public.prod_session_state()` returns, narrowed to what
+ * the tile renders. Declared locally rather than imported from @civitics/data:
+ * this is an app page, and the only contract between them is the four keys
+ * below, which the function's SQL comment names.
+ */
+type ProdSessionTile = {
+  held: boolean;
+  label_stale: boolean;
+  reason: string | null;
+  claimed_by: string | null;
+  age_seconds: number | null;
+  expected_minutes: number | null;
+  live_writers: string[] | null;
+};
+
+function formatHoldAge(seconds: number | null): string {
+  if (seconds == null) return "unknown";
+  const m = Math.round(seconds / 60);
+  if (m < 60) return `${m}m`;
+  return `${Math.floor(m / 60)}h${String(m % 60).padStart(2, "0")}m`;
+}
+
+/**
+ * Rendered only while something is true — a held session or a dead label. On an
+ * ordinary day this returns null and the page is exactly as it was, which is
+ * the point: a tile that is always there is a tile nobody reads.
+ */
+function ProdSessionBanner({ session }: { session: ProdSessionTile | null }) {
+  if (!session || (!session.held && !session.label_stale)) return null;
+
+  const stale = !session.held && session.label_stale;
+  const writers = session.live_writers ?? [];
+  const expected = session.expected_minutes;
+  const over =
+    !stale && expected != null && session.age_seconds != null
+      ? session.age_seconds > expected * 120
+      : false;
+
+  return (
+    <div
+      className={`mb-6 rounded-md border px-4 py-3 text-sm ${
+        stale ? "border-rule bg-paper text-ink-soft" : "border-accent bg-paper text-ink"
+      }`}
+    >
+      <p className="font-semibold">
+        {stale
+          ? "Stale prod-session label — nobody is actually holding the box"
+          : `Supervised prod session held${over ? " — OVER ESTIMATE" : ""}`}
+      </p>
+      <p className="mt-1">
+        {session.claimed_by ?? "someone"} · {formatHoldAge(session.age_seconds)}
+        {expected != null ? ` of an expected ${expected}m` : ""} ·{" "}
+        <span className="italic">{session.reason ?? "(no reason given)"}</span>
+      </p>
+      <p className="mt-1 text-ink-soft">
+        {stale
+          ? "The advisory lock is gone, so nothing is deferring. The next claim clears this row."
+          : "Every guarded pg_cron writer and the nightly's writer phases are deferring with " +
+            "this reason. Gaps in the table below are deliberate, not a regression."}
+        {writers.length > 0 ? ` Claimed over: ${writers.join(", ")}.` : ""}
+      </p>
+    </div>
+  );
+}
+
 export default async function PipelineHealthPage() {
   const adminEmail = process.env["ADMIN_EMAIL"];
   const cookieStore = await cookies();
@@ -87,9 +153,19 @@ export default async function PipelineHealthPage() {
   // Data Health card reads the same definition. Both helpers swallow their
   // error and return empty, which is the same degradation the withDbTimeout
   // wrapper gave this page before.
-  const [rows, cronBudgets] = await Promise.all([
+  const [rows, cronBudgets, prodSession] = await Promise.all([
     fetchPipelineRuntimeStats(admin),
     fetchCronJobBudgets(admin),
+    // FIX-950 — is a human holding the box right now? Every duration below is
+    // read as evidence about the platform; while a supervised session is held,
+    // the scheduled writers are standing down ON PURPOSE and a gap in this
+    // table means nothing. Swallows its own error like the two helpers above:
+    // a page that 500s because an interlock reader is unavailable is worse
+    // than a page without one tile.
+    admin
+      .rpc("prod_session_state")
+      .then((r: { data: ProdSessionTile | null }) => r.data ?? null)
+      .catch(() => null),
   ]);
 
   const budgetFor = (pipeline: string) => resolveBudget(pipeline, cronBudgets);
@@ -115,6 +191,8 @@ export default async function PipelineHealthPage() {
               { label: "Pipeline Health" },
             ]}
           />
+
+          <ProdSessionBanner session={prodSession} />
 
           <SectionCard noPadding>
             <div className="p-6 border-b border-rule">

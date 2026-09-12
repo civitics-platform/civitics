@@ -40,6 +40,14 @@ import {
   type StoredDropProbe,
   classifyFecDrop,
 } from "./canary-fec-drop";
+import {
+  KEY_LABEL_STALE,
+  KEY_OVERRUN,
+  type ProdSessionStatus,
+  classifyProdSession,
+} from "./canary-prod-session";
+import { readProdSessionState, withClient } from "../lib/prod-session";
+import { buildDbUrl } from "../lib/heavy-rebuild";
 
 const PIPELINE_NAME      = "nightly_cron";
 const KILLED_PIPELINE    = "nightly_killed";
@@ -694,6 +702,29 @@ async function fetchFecDropStatus(now: Date): Promise<FecDropStatus | null> {
   return classifyFecDrop((probeRow?.value ?? null) as StoredDropProbe | null, lastCollectAt, now);
 }
 
+// FIX-950 — is a human holding the box? One RPC, via the same direct-pg path
+// prod_session_state()'s other callers use (it is a plpgsql function reading
+// pg_locks and pg_stat_activity, and EXECUTE on it is revoked from anon and
+// authenticated, so it is deliberately not a PostgREST surface).
+//
+// A held session is NOT a finding — see canary-prod-session.ts. This exists so
+// the meta row carries the trail, so the tile can say WHY the platform is quiet,
+// and so the two ways a hold goes wrong (an overrun, a dead label) report.
+async function fetchProdSessionStatus(): Promise<ProdSessionStatus | null> {
+  try {
+    const state = await withClient(buildDbUrl(), readProdSessionState);
+    return classifyProdSession(state);
+  } catch (err) {
+    // Non-fatal, same contract as every other detector here.
+    console.warn(
+      `[canary-check] prod session read failed (non-fatal): ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+    return null;
+  }
+}
+
 // FIX-968 — pg_cron FIRING health. Every other detector here watches a
 // CONSEQUENCE (a rollup is stale, a visibility map collapsed). This is the only
 // one that watches whether the scheduled work started at all.
@@ -928,6 +959,7 @@ function buildMetadata(
   failures: string[],
   reportOnly: string[],
   fecDrop: FecDropStatus | null,
+  prodSession: ProdSessionStatus | null,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): Record<string, any> {
   return {
@@ -1001,6 +1033,11 @@ function buildMetadata(
     // weekly), which means this row is the ONLY place the healthy trail exists
     // and the only way an onset is findable after the fact.
     fec_drop_status:  fecDrop,
+    // FIX-950 — recorded on EVERY run, findings or not. A held session is the
+    // mechanism working and carries no tier, which means this row is the ONLY
+    // place the trail exists: "why did nothing run on Tuesday night" is
+    // answerable from here and nowhere else.
+    prod_session:     prodSession,
     peak_rss_mb:      captureRssMb(),
   };
 }
@@ -1115,6 +1152,7 @@ async function sendAlert(
   sectorAffinity: SectorAffinityStaleness | null,
   cronHealth: CronJobHealth | null,
   fecDrop: FecDropStatus | null,
+  prodSession: ProdSessionStatus | null,
   to: string,
   apiKey: string,
 ): Promise<string | null> {
@@ -1172,6 +1210,14 @@ async function sendAlert(
     parts.push(`FEC drop uncollected for ${fecDrop.daysSinceCollect ?? "?"}d`);
   } else if (fecDrop?.tier) {
     parts.push(`FEC drop probe ${fecDrop.state === "probe-blind" ? "blind" : "missing"}`);
+  }
+  // FIX-950 — a held session is never a subject line; the two ways it goes
+  // wrong are. `label-stale` says the dashboard is lying about who is on the
+  // box; `overrun` says a landing is stuck or a claim was left open.
+  if (prodSession?.state === "overrun") {
+    parts.push(`prod session overrunning (${prodSession.ageMinutes ?? "?"}m)`);
+  } else if (prodSession?.state === "label-stale") {
+    parts.push("stale prod-session label");
   }
   if (cronHealth?.canaryLiveness?.silent) parts.push("canary itself went silent");
   const recoveredCount = transitions.filter((t) => t.kind === "recovered").length;
@@ -1328,6 +1374,32 @@ Triage: HEAD the indiv file by hand and check for an FEC-side URL or ` +
 Triage: the missing/killed sections above usually explain it. If the ` +
         `nightly ran and this is still stale, the probe write itself is failing ` +
         `— recordDropProbe swallows its own errors by design.`,
+    );
+  }
+  // FIX-950 — a supervised session is the explanation for a quiet night, so it
+  // goes in the body whether or not it is a finding. Held-and-within-estimate
+  // is the mechanism WORKING and says so; the two failure states say what to do.
+  if (prodSession && prodSession.state !== "clear") {
+    sections.push(
+      prodSession.state === "held"
+        ? `Supervised prod session HELD (FIX-950, not a finding) — the platform's ` +
+            `scheduled writers are deferring on purpose, which is what this ` +
+            `mechanism is for. Anything below that looks stalled may simply be ` +
+            `standing down:\n  - ${prodSession.detail}`
+        : prodSession.state === "overrun"
+          ? `Supervised prod session OVERRUNNING (FIX-950, REPORT-ONLY) — the hold ` +
+              `has outlived twice its own estimate, so every guarded writer has been ` +
+              `deferring for that whole span:\n  - ${prodSession.detail}\n` +
+              `\nTriage: the two shapes are "a landing is stuck" and "someone left a ` +
+              `claim open". pipeline_state.prod_session names the pid and the host; ` +
+              `ending that process releases the hold (there is no release command by ` +
+              `design — see docs/ops/prod-holds.md).`
+          : `Stale prod-session LABEL (FIX-950, REPORT-ONLY) — a ` +
+              `pipeline_state.prod_session row with no advisory lock behind it:\n` +
+              `  - ${prodSession.detail}\n` +
+              `\nTriage: none needed. Nothing is deferring, and the next claim ` +
+              `overwrites the row. It is reported so the dashboard tile is not ` +
+              `believed in the meantime.`,
     );
   }
   // FIX-1073 — the ESCALATING half of the firing signal.
@@ -1505,6 +1577,14 @@ async function main(): Promise<number> {
   console.log(
     `[canary-check] fec drop: ${fecDrop ? `${fecDrop.state} — ${fecDrop.detail}` : "unknown (read failed)"}`,
   );
+  // FIX-950 — read BEFORE the findings are assembled so a held session is
+  // visible in the log next to everything it is the explanation for.
+  const prodSession = await fetchProdSessionStatus();
+  console.log(
+    `[canary-check] prod session: ${
+      prodSession ? `${prodSession.state} — ${prodSession.detail}` : "unknown (read failed)"
+    }`,
+  );
   // FIX-968 — did every scheduled pg_cron job actually START? The only detector
   // here that watches the cause rather than a consequence.
   const cronHealth = await fetchCronJobHealth();
@@ -1620,6 +1700,17 @@ async function main(): Promise<number> {
         `live=${sectorAffinity.liveSig ?? "-"} stored=${sectorAffinity.storedSig ?? "-"})`,
     );
   }
+  // FIX-950 — one key per state, for the FIX-1036 transition classifier's sake:
+  // an overrun clearing and a dead label clearing are different recoveries and
+  // collapsing them would make one read as the other.
+  if (prodSession?.tier) {
+    push(
+      prodSession.state === "overrun" ? KEY_OVERRUN : KEY_LABEL_STALE,
+      prodSession.tier,
+      prodSession.severity,
+      prodSession.detail,
+    );
+  }
   if (fecDrop && fecDrop.tier) {
     // One key per state rather than one shared key: `uncollected` (money at FEC)
     // and `probe blind/missing` (we cannot see FEC) are different problems with
@@ -1648,7 +1739,7 @@ async function main(): Promise<number> {
   // detector ran; writeMetaRow stamps completed_at itself.
   const metadata = buildMetadata(
     missing, killed, autovacuum, rollups, orphans, sectorAffinity, cronHealth,
-    nightlyCheckUnavailable, conditions, failures, reportOnly, fecDrop,
+    nightlyCheckUnavailable, conditions, failures, reportOnly, fecDrop, prodSession,
   );
   const meta = await writeMetaRow(metadata, now);
   if (!meta.ok) {
@@ -1686,7 +1777,7 @@ async function main(): Promise<number> {
       alertError = await sendAlert(
         decision.tier!, transitions, firstRun, missing, killed, autovacuum,
         staleRollups, orphans, rateRegressions, sectorAffinity, cronHealth,
-        fecDrop, adminEmail, resendKey,
+        fecDrop, prodSession, adminEmail, resendKey,
       );
       alertSent = alertError === null;
       if (alertError) {
