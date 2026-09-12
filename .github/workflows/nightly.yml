@@ -486,3 +486,96 @@ jobs:
       - name: Mark nightly-killed if no completion row
         if: always()
         run: pnpm --filter @civitics/data data:mark-killed:ci -- --phase=enrichment-tail
+
+  # FIX-1176 — the receipts job. Chained after the tail phase and `if: always()`,
+  # because the receipt is most valuable on the night something FAILED: a phase
+  # that died still leaves its row, its peak_rss_mb and its skip_reason, and
+  # those are exactly the numbers somebody will want in the morning.
+  #
+  # RULE 83 DOES NOT APPLY HERE. That rule governs edits to a CRON — changing a
+  # schedule can drop or move a run, so it has to be timed against the slot.
+  # This commit ADDS A JOB to an existing workflow and does not touch
+  # `on.schedule` at all, so no run is removed or moved and it can land at any
+  # time, including inside the Saturday 21:00 slot's window. The first firing is
+  # simply the next scheduled nightly.
+  #
+  # WRITES TO THE REPO, NEVER TO PROD. The script it runs sets
+  # `default_transaction_read_only = on` before its first statement, so a write
+  # against the database would fail with SQLSTATE 25006 rather than land. The
+  # only thing this job changes is two files under docs/receipts/.
+  #
+  # WHY IT CAN PUSH TO `main`. `main` carries no branch protection (checked
+  # through the API on 2026-09-12: "Branch not protected"), and audit.yml has
+  # been committing its dated reports straight to main under the same
+  # `github-actions[bot]` identity since 2026-07 without incident. This is that
+  # pattern plus a `git pull --rebase` before the push, which audit.yml does not
+  # need and this does: the tail phase can finish hours after the run started,
+  # so main will often have moved underneath it.
+  #
+  # CI COST: none. tests.yml carries `paths-ignore: ['docs/**']`, so a
+  # receipts-only commit skips it; fixes-integrity.yml has no path filter and
+  # does run (~2 s, pure Node, no install), which is correct and is exactly why
+  # FIX-466 split the two.
+  receipts:
+    needs: enrichment-tail-phase
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    # Job-scoped, not workflow-scoped: this is the only job in nightly.yml that
+    # writes to the repo, and the four phase jobs must keep `contents: read`.
+    permissions:
+      contents: write
+
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: https://xsazcoxinpgttgquwvuf.supabase.co
+      SUPABASE_SECRET_KEY:      ${{ secrets.SUPABASE_SECRET_KEY }}
+      # There is no read-only DSN secret in this repo (checked 2026-09-12), so
+      # the job uses the same password the phases do and the script enforces
+      # read-only in-process instead. If a read-only role is ever provisioned,
+      # set SUPABASE_DB_URL here and buildDbUrl() prefers it with no code change.
+      SUPABASE_DB_PASSWORD:     ${{ secrets.SUPABASE_DB_PASSWORD }}
+      # Mirrors the phase jobs' expression exactly, so the file is named for the
+      # same nominal day the run itself gated on (FIX-1163). A manual dispatch
+      # passes 0 here and 0 there, and the two stay in step.
+      NIGHTLY_SLOT_OFFSET_HOURS: ${{ github.event_name == 'schedule' && '3' || '0' }}
+      # Authenticates the preinstalled `gh` for the one read that is not SQL:
+      # this run's createdAt and conclusion. Without it the script records that
+      # section as UNCHECKED rather than guessing.
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Write the receipts file
+        run: pnpm --filter @civitics/data data:receipts:daily:ci
+
+      - name: Commit and push
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/receipts
+          if git diff --cached --quiet; then
+            echo "No receipts changes — skipping commit."
+            exit 0
+          fi
+          DATE=$(git diff --cached --name-only | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}' | head -1)
+          git commit -m "docs(receipts): ${DATE:-$(date -u +%Y-%m-%d)}"
+          # Rebase rather than merge: this commit touches only
+          # docs/receipts/<date>.{md,json}, which nothing else writes, so there
+          # is nothing for it to conflict with.
+          git pull --rebase origin main
+          git push origin HEAD:main
