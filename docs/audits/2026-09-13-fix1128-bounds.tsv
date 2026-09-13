@@ -1,0 +1,92 @@
+proname	class	claimed	claimed_ms	real_bound	real_basis	observed_calls	observed_mean_ms	observed_max_ms	observed_source	verdict	claimed_vs_real
+add_citation	A	3s	3000	8000 ms	authenticated role 8s				pgss (no row)	unobserved	claimed tighter than real
+add_evidence_card	A	3s	3000	8000 ms	authenticated role 8s				pgss (no row)	unobserved	claimed tighter than real
+backfill_jurisdiction_boundary	B	30s	30000	8000 ms	authenticator 8s, inherited by impersonated service_role (MEASURED)				pgss (no row)	unobserved	claimed LOOSER than real
+check_sector_affinity_tag_staleness	B	60s	60000	8000 ms	authenticator 8s, inherited by impersonated service_role (MEASURED)	4	381.1	475.9	pgss via pgrst_source	within	claimed LOOSER than real
+chord_contract_flows_full	C2	300s	300000	21600000 ms	postgres role 6h, armed on the whole CALL				data_sync_log (no unit/arm row)	unobserved	claimed tighter than real
+clear_financial_entity_rule_tags	D	120s	120000	script/enclosing-owned	the calling script's own SESSION SET (typically 90min or 0)	4		1606	pgss	within	
+clear_private_person_card	D	5s	5000	script/enclosing-owned	the calling script's own SESSION SET (typically 90min or 0)				pgss (no row)	unobserved	
+compute_alignment_score	B	3s	3000	8000 ms	authenticator 8s, inherited by impersonated service_role (MEASURED)				pgss (no row)	unobserved	claimed tighter than real
+create_investigation	A	3s	3000	8000 ms	authenticated role 8s				pgss (no row)	unobserved	claimed tighter than real
+derive_nh_floterials	B	5min	300000	8000 ms	authenticator 8s, inherited by impersonated service_role (MEASURED)	3		412.2	pgss outside pgrst_source	within	claimed LOOSER than real
+entity_comments_bump_activity	E	2s	2000	script/enclosing-owned	the enclosing statement's timer				pgss (no row)	unobserved	
+entity_comments_flag_autotrip	E	2s	2000	script/enclosing-owned	the enclosing statement's timer				pgss (no row)	unobserved	
+entity_comments_refresh_rating_summary	E	2s	2000	script/enclosing-owned	the enclosing statement's timer				pgss (no row)	unobserved	
+entity_comments_stamp_answered	E	2s	2000	script/enclosing-owned	the enclosing statement's timer				pgss (no row)	unobserved	
+entity_statements_flag_autotrip	E	2s	2000	script/enclosing-owned	the enclosing statement's timer				pgss (no row)	unobserved	
+evidence_cards_corroboration_autotrip	E	3s	3000	script/enclosing-owned	the enclosing statement's timer				pgss (no row)	unobserved	
+evidence_cards_flag_autotrip	E	2s	2000	script/enclosing-owned	the enclosing statement's timer				pgss (no row)	unobserved	
+evidence_cards_refresh_rating_summary	E	2s	2000	script/enclosing-owned	the enclosing statement's timer				pgss (no row)	unobserved	
+expire_lapsed_grants	B	30s	30000	8000 ms	authenticator 8s, inherited by impersonated service_role (MEASURED)	1	14.3	14.3	pgss via pgrst_source	within	claimed LOOSER than real
+get_agency_page	A	3s	3000	3000 ms	anon role 3s	20	18.8	64.6	pgss via pgrst_source	within	equal
+get_connection_type_counts	B	5s	5000	8000 ms	authenticator 8s, inherited by impersonated service_role (MEASURED)	215	14.7	333.5	pgss via pgrst_source	within	claimed tighter than real
+get_entity_comment_highlights	B	5s	5000	8000 ms	authenticator 8s, inherited by impersonated service_role (MEASURED)	1	43.2	43.2	pgss via pgrst_source	within	claimed tighter than real
+get_entity_position_rollup	D	5s	5000	script/enclosing-owned	the calling script's own SESSION SET (typically 90min or 0)				pgss (no row)	unobserved	
+get_entity_questions	A	5s	5000	3000 ms	anon role 3s	32	29.0	195.4	pgss via pgrst_source	within	claimed LOOSER than real
+get_entity_statements	A	5s	5000	3000 ms	anon role 3s	1	15.7	15.7	pgss via pgrst_source	within	claimed LOOSER than real
+get_financial_entity_naics	D	120s	120000	script/enclosing-owned	the calling script's own SESSION SET (typically 90min or 0)	4		106951.7	pgss	within	
+get_gb_page	A	3s	3000	3000 ms	anon role 3s	24	30.6	192.2	pgss via pgrst_source	within	equal
+get_group_donor_totals	E	30s	30000	script/enclosing-owned	the enclosing statement's timer				pgss (no row)	unobserved	
+get_institution_recent_votes	A	3s	3000	3000 ms	anon role 3s				pgss (no row)	unobserved	equal
+get_jurisdiction_activity	A	3s	3000	3000 ms	anon role 3s				pgss (no row)	unobserved	equal
+get_jurisdiction_page	A	3s	3000	3000 ms	anon role 3s	5	1.1	1.7	pgss via pgrst_source	within	equal
+get_official_bipartisan_stats_full	E	300s	300000	script/enclosing-owned	the enclosing statement's timer				pgss (no row)	unobserved	
+get_official_donor_rollup_full	E	300s	300000	script/enclosing-owned	the enclosing statement's timer				pgss (no row)	unobserved	
+get_official_page	A	5s	5000	3000 ms	anon role 3s	578	340.5	4608	pgss via pgrst_source	EXCEEDS real	claimed LOOSER than real
+get_position_rollup_display	A	5s	5000	3000 ms	anon role 3s	31	14.9	86.4	pgss via pgrst_source	within	claimed LOOSER than real
+get_proposal_counts_by_agency	A	60s	60000	3000 ms	anon role 3s	2	751.7	1051.2	pgss via pgrst_source	within	claimed LOOSER than real
+get_quality_counts	C2	60s	60000	21600000 ms	postgres role 6h, armed on the whole CALL				data_sync_log (no unit/arm row)	unobserved	claimed tighter than real
+get_supabase_cpu_max	B	5s	5000	8000 ms	authenticator 8s, inherited by impersonated service_role (MEASURED)	427	215.5	4915.5	pgss via pgrst_source	within	claimed tighter than real
+get_top_connected_officials	B	60s	60000	8000 ms	authenticator 8s, inherited by impersonated service_role (MEASURED)				pgss (no row)	unobserved	claimed LOOSER than real
+get_user_receipts	A	3s	3000	8000 ms	authenticated role 8s				pgss (no row)	unobserved	claimed tighter than real
+has_active_answerer_grant	A	2s	2000	8000 ms	authenticated role 8s				pgss (no row)	unobserved	claimed tighter than real
+has_active_constituent_grant	B	2s	2000	8000 ms	authenticator 8s, inherited by impersonated service_role (MEASURED)				pgss (no row)	unobserved	claimed tighter than real
+has_active_official_grant	E	2s	2000	script/enclosing-owned	the enclosing statement's timer				pgss (no row)	unobserved	
+has_active_platform_admin_grant	A	2s	2000	8000 ms	authenticated role 8s				pgss (no row)	unobserved	claimed tighter than real
+jurisdiction_boundary_svg	A	2s	2000	3000 ms	anon role 3s				pgss (no row)	unobserved	claimed tighter than real
+jurisdictions_containing_point	B	3s	3000	8000 ms	authenticator 8s, inherited by impersonated service_role (MEASURED)	1		4	pgss outside pgrst_source	within	claimed tighter than real
+link_officials_to_districts	B	5min	300000	8000 ms	authenticator 8s, inherited by impersonated service_role (MEASURED)	5	9895.4	12402.8	pgss via pgrst_source	EXCEEDS real	claimed LOOSER than real
+position_events_bump_delta	E	2s	2000	script/enclosing-owned	the enclosing statement's timer				pgss (no row)	unobserved	
+promote_evidence_edge	D	5s	5000	script/enclosing-owned	the calling script's own SESSION SET (typically 90min or 0)				pgss (no row)	unobserved	
+rate_evidence	A	2s	2000	8000 ms	authenticated role 8s				pgss (no row)	unobserved	claimed tighter than real
+rebuild_all_primary_sources	C1	5min	300000	21600000 ms	postgres role 6h, armed on the whole CALL	24	33.5	45700	data_sync_log.unit_seconds	within	claimed tighter than real
+rebuild_browse_facet_counts	E	300s	300000	script/enclosing-owned	the enclosing statement's timer				pgss (no row)	unobserved	
+rebuild_entity_connections	B	60min	3600000	8000 ms	authenticator 8s, inherited by impersonated service_role (MEASURED)				pgss (no row)	unobserved	claimed LOOSER than real
+rebuild_entity_connections_appointments	C1	15min	900000	21600000 ms	postgres role 6h, armed on the whole CALL	40	1.3	15000	data_sync_log.arm_timings	within	claimed tighter than real
+rebuild_entity_connections_contracts	C1	30min	1800000	21600000 ms	postgres role 6h, armed on the whole CALL	41	167.8	1878000	data_sync_log.arm_timings	within	claimed tighter than real
+rebuild_entity_connections_cosponsors	C1	10min	600000	21600000 ms	postgres role 6h, armed on the whole CALL	40	1.1	9000	data_sync_log.arm_timings	within	claimed tighter than real
+rebuild_entity_connections_external	C1	15min	900000	21600000 ms	postgres role 6h, armed on the whole CALL	40	186.2	1044000	data_sync_log.arm_timings	within	claimed tighter than real
+rebuild_entity_connections_gifts	C1	10min	600000	21600000 ms	postgres role 6h, armed on the whole CALL	40	1.1	9000	data_sync_log.arm_timings	within	claimed tighter than real
+rebuild_entity_connections_holds	C1	10min	600000	21600000 ms	postgres role 6h, armed on the whole CALL	40	1.2	10000	data_sync_log.arm_timings	within	claimed tighter than real
+rebuild_entity_connections_investigation	C1	5min	300000	21600000 ms	postgres role 6h, armed on the whole CALL	40	0	0	data_sync_log.arm_timings	within	claimed tighter than real
+rebuild_entity_connections_lobbying	C1	10min	600000	21600000 ms	postgres role 6h, armed on the whole CALL	40	1.3	11000	data_sync_log.arm_timings	within	claimed tighter than real
+rebuild_entity_connections_oversight	C1	5min	300000	21600000 ms	postgres role 6h, armed on the whole CALL	40	1.8	10000	data_sync_log.arm_timings	within	claimed tighter than real
+rebuild_entity_connections_votes	C1	15min	900000	21600000 ms	postgres role 6h, armed on the whole CALL	40	10	42000	data_sync_log.arm_timings	within	claimed tighter than real
+rebuild_entity_connections_votes_full	C1	15min	900000	21600000 ms	postgres role 6h, armed on the whole CALL				data_sync_log (no unit/arm row)	unobserved	claimed tighter than real
+rebuild_entity_search_index	C1	1200s	1200000	21600000 ms	postgres role 6h, armed on the whole CALL	29	1080.5	21638300	data_sync_log.unit_seconds	EXCEEDS real	claimed tighter than real
+rebuild_financial_entity_donation_totals	D	30min	1800000	script/enclosing-owned	the calling script's own SESSION SET (typically 90min or 0)				pgss (no row)	unobserved	
+rebuild_financial_entity_donation_totals_full	E	30min	1800000	script/enclosing-owned	the enclosing statement's timer				pgss (no row)	unobserved	
+rebuild_financial_entity_ie_totals	D	10min	600000	script/enclosing-owned	the calling script's own SESSION SET (typically 90min or 0)	1		20872.2	pgss	within	
+rebuild_financial_entity_received_totals	D	30min	1800000	script/enclosing-owned	the calling script's own SESSION SET (typically 90min or 0)				pgss (no row)	unobserved	
+rebuild_financial_entity_size_tags	C1	300s	300000	21600000 ms	postgres role 6h, armed on the whole CALL				data_sync_log (no unit/arm row)	unobserved	claimed tighter than real
+rebuild_pre_vote_timing_tags	C1	300s	300000	21600000 ms	postgres role 6h, armed on the whole CALL				data_sync_log (no unit/arm row)	unobserved	claimed tighter than real
+recompute_comment_bridge_scores	B	120s	120000	8000 ms	authenticator 8s, inherited by impersonated service_role (MEASURED)	4		2970.7	pgss outside pgrst_source	within	claimed LOOSER than real
+refresh_agency_page_cache	B	300s	300000	8000 ms	authenticator 8s, inherited by impersonated service_role (MEASURED)				pgss (no row)	unobserved	claimed LOOSER than real
+refresh_connection_type_counts	C2	5min	300000	21600000 ms	postgres role 6h, armed on the whole CALL				data_sync_log (no unit/arm row)	unobserved	claimed tighter than real
+refresh_gb_page_cache	B	300s	300000	8000 ms	authenticator 8s, inherited by impersonated service_role (MEASURED)				pgss (no row)	unobserved	claimed LOOSER than real
+refresh_group_donor_rollup	C2	300s	300000	21600000 ms	postgres role 6h, armed on the whole CALL				data_sync_log (no unit/arm row)	unobserved	claimed tighter than real
+refresh_jurisdiction_page_cache	B	600s	600000	8000 ms	authenticator 8s, inherited by impersonated service_role (MEASURED)				pgss (no row)	unobserved	claimed LOOSER than real
+refresh_official_content_ids	B	600s	600000	8000 ms	authenticator 8s, inherited by impersonated service_role (MEASURED)				pgss (no row)	unobserved	claimed LOOSER than real
+refresh_primary_source_for_entities	B	60s	60000	8000 ms	authenticator 8s, inherited by impersonated service_role (MEASURED)	479	107.4	9835.7	pgss via pgrst_source	EXCEEDS real	claimed LOOSER than real
+reject_evidence_edge	D	5s	5000	script/enclosing-owned	the calling script's own SESSION SET (typically 90min or 0)				pgss (no row)	unobserved	
+revoke_grant	B	30s	30000	8000 ms	authenticator 8s, inherited by impersonated service_role (MEASURED)				pgss (no row)	unobserved	claimed LOOSER than real
+set_community_note_endorsement	A	3s	3000	8000 ms	authenticated role 8s				pgss (no row)	unobserved	claimed tighter than real
+set_entity_position	A	2s	2000	8000 ms	authenticated role 8s				pgss (no row)	unobserved	claimed tighter than real
+set_investigation_findings	A	3s	3000	8000 ms	authenticated role 8s				pgss (no row)	unobserved	claimed tighter than real
+set_statement_vote	A	2s	2000	8000 ms	authenticated role 8s				pgss (no row)	unobserved	claimed tighter than real
+statement_votes_refresh_summary	E	2s	2000	script/enclosing-owned	the enclosing statement's timer				pgss (no row)	unobserved	
+submit_comment	A	3s	3000	8000 ms	authenticated role 8s				pgss (no row)	unobserved	claimed tighter than real
+submit_statement	A	3s	3000	8000 ms	authenticated role 8s				pgss (no row)	unobserved	claimed tighter than real
+treemap_recipients_by_contracts_full	C2	300s	300000	21600000 ms	postgres role 6h, armed on the whole CALL				data_sync_log (no unit/arm row)	unobserved	claimed tighter than real
+unpromote_evidence_edge	D	5s	5000	script/enclosing-owned	the calling script's own SESSION SET (typically 90min or 0)				pgss (no row)	unobserved	
+upsert_county_jurisdiction	B	5s	5000	8000 ms	authenticator 8s, inherited by impersonated service_role (MEASURED)				pgss (no row)	unobserved	claimed tighter than real
