@@ -120,6 +120,22 @@ jobs:
       - name: Workflow resource-parity guard
         run: pnpm check:workflow-parity
 
+      # Blocking (FIX-1128) — flags a migration that decorates a routine with
+      # `SET statement_timeout`, in a CREATE header or via ALTER FUNCTION. That
+      # form bounds nothing: the timer is armed once, at the start of the
+      # top-level statement, so changing the GUC from inside it only changes
+      # what current_setting() reports. Measured both directions on PG 17 — it
+      # cannot tighten (60s session, 1s proconfig, 3s sleep completed) and it
+      # cannot loosen (2s session, 30s proconfig, cancelled at 2.001s, exactly
+      # like the same body with no proconfig). It is read as a guard anyway:
+      # FIX-1123's 21,638s run carried "1200s", and 2 of the 91 functions the
+      # FIX-1128 migration stripped were written AFTER the FIX was filed.
+      # Scans only migrations sorting after that strip (history is append-only
+      # and would fail wholesale). Deliberate exception: an adjacent
+      # `-- fix1128: <reason>` comment. Pure text scan, no DB or secrets.
+      - name: Inert statement_timeout guard
+        run: pnpm check:proconfig
+
       # Blocking — run-tests.mjs discovers every src/**/*.test.ts under @civitics/data
       # (source-priority drift guard, congress reconcile, fec-bulk indiv fingerprint).
       - name: Unit tests

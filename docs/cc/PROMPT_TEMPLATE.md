@@ -99,7 +99,14 @@ CC reads this before starting. Each line is a rule that has cost a real session.
 
 - `pnpm build` (or `turbo run typecheck` + `lint` for a code-only change) before
   any non-`[skip vercel]` commit.
-- The `scripts/test-*.mjs` suites are fast and dependency-free — run them.
+- **`tests.yml` runs SEVEN blocking checks** (FIX-1128 added the last one):
+  `typecheck` · `lint` · `check:reads` · `check:render-timeouts` ·
+  `check:workflow-parity` · `check:proconfig` · the three unit suites
+  (`@civitics/data`, `@civitics/app-civitics`, `@civitics/db`). Run the ones a
+  change can plausibly break before pushing, not after.
+- The `scripts/test-*.mjs` suites are fast and dependency-free — run them
+  (`fixes:test`, `fix:add:test`, `cc:verify:test`, `session:worktree:test`,
+  `drain:test`, `check:proconfig:test`).
 - `pnpm fixes:check` after each commit.
 - Report what actually happened. A skipped step is reported as skipped.
 

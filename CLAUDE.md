@@ -601,6 +601,37 @@ per-entity MV, rolling-history snapshot table), refresh hook placement,
 read-path conventions with live-compute fallback, and the table of existing
 materializations to model off.
 
+### SQL convention — a routine-level `statement_timeout` bounds nothing (FIX-1128)
+
+**A function-level `SET statement_timeout` does not bound the function — bound
+the caller's statement instead** (a `SET` as its own statement before the call,
+or the pg_cron job's command string, `SET statement_timeout='…'; CALL …`).
+
+`statement_timeout` is armed once, by the server, at the start of a top-level
+statement, from the GUC value at that moment. Changing the GUC from inside that
+statement — a proconfig, a `set_config` in a procedure body, a `SET` after a
+`COMMIT` inside a procedure — changes what `current_setting()` reports and
+nothing else. Measured both directions on PG 17
+(`docs/audits/2026-09-13-fix1128-experiments.md`): it cannot tighten (60 s
+session, 1 s proconfig, a 3 s sleep completed) and it cannot loosen (2 s
+session, 30 s proconfig, cancelled at 2.001 s — identically to the same body
+with no proconfig).
+
+Two consequences worth knowing before writing a pg_cron procedure:
+
+- A routine carrying **any** `SET` clause runs atomic and **cannot `COMMIT`**
+  (`invalid transaction termination`). Proconfig and transaction control are
+  mutually exclusive.
+- Once `statement_timeout` has **fired**, it is disarmed for the rest of that
+  top-level statement. A procedure that catches `query_canceled` and continues
+  runs **every remaining unit unbounded** — 14.0 s of work completed under a 4 s
+  bound in the experiment. Catching a cancel is not "degraded but still
+  bounded".
+
+`pnpm check:proconfig` fails a migration that writes the inert form; a
+deliberate exception carries `-- fix1128: <reason>` on the line or the line
+above.
+
 ---
 
 ## Data-state changes vs schema changes
