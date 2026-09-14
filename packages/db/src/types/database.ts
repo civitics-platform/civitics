@@ -2932,6 +2932,8 @@ export type Database = {
           run_id: string
           source: string
           started_at: string
+          superseded_at: string | null
+          superseded_by: string | null
         }
         Insert: {
           complete_at?: string | null
@@ -2940,6 +2942,8 @@ export type Database = {
           run_id: string
           source: string
           started_at?: string
+          superseded_at?: string | null
+          superseded_by?: string | null
         }
         Update: {
           complete_at?: string | null
@@ -2948,6 +2952,8 @@ export type Database = {
           run_id?: string
           source?: string
           started_at?: string
+          superseded_at?: string | null
+          superseded_by?: string | null
         }
         Relationships: []
       }
@@ -6364,7 +6370,6 @@ export type Database = {
       }
     }
     Functions: {
-      _fix1128_probe_sleep: { Args: { p_seconds: number }; Returns: number }
       add_citation: {
         Args: {
           p_citation_type: string
