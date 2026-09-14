@@ -27,7 +27,7 @@ import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { parseDoneLog, deriveStatus } from "./lib/fix-status.mjs";
 import { ID_MARKER_RE } from "./lib/fixes-md.mjs";
-import { loadCcConfig, reportPath, findPromptFiles } from "./lib/cc-config.mjs";
+import { loadCcConfig, reportPath, reportJsonPath, findPromptFiles } from "./lib/cc-config.mjs";
 
 const PASS = "PASS";
 const FAIL = "FAIL";
@@ -175,6 +175,54 @@ function splitMapPairs(inner) {
 // legitimate empty LIST and is checked as a list, not with this.)
 const missing = (v) => v === undefined || v === null || v === "" || (Array.isArray(v) && v.length === 0);
 
+// ── the .json sidecar ───────────────────────────────────────────────────────
+// A CC report carries its front matter twice: as YAML at the top of the .md,
+// and as `cc-<n>.json` beside it. The .json is what a consumer reads — Cowork
+// stages 1 KB instead of a whole report to learn what a run claimed, and gets
+// the values without re-implementing the small YAML subset above. The .md stays
+// the human record and the home of the free-form sections.
+//
+// Two copies of one fact is a drift hazard, so the sidecar is GENERATED from
+// the .md (`pnpm cc:json <n>`) and never hand-written, and cc:verify FAILs when
+// the two disagree rather than silently preferring one. That is the whole
+// reason the check exists: a hand-edited .md whose .json still claims the old
+// shas is exactly the report a verifier must not pass.
+
+/**
+ * Compare a .md's parsed front matter against a .json sidecar.
+ * Returns null when they agree, else a short human description of the first
+ * few differing keys.
+ */
+export function frontMatterDrift(fromMd, fromJson) {
+  if (!fromJson) return null;
+  const norm = (v) => JSON.stringify(v ?? null);
+  const keys = [...new Set([...Object.keys(fromMd ?? {}), ...Object.keys(fromJson)])].sort();
+  const diffs = keys.filter((k) => norm(fromMd?.[k]) !== norm(fromJson[k]));
+  if (diffs.length === 0) return null;
+  return diffs
+    .slice(0, 4)
+    .map((k) => `${k}: .md ${norm(fromMd?.[k])} vs .json ${norm(fromJson[k])}`)
+    .join("; ") + (diffs.length > 4 ? ` (+${diffs.length - 4} more)` : "");
+}
+
+/**
+ * Resolve the front matter for a report, preferring the sidecar.
+ * Returns { fm, source, drift } — `drift` non-null means the two disagree, and
+ * the caller is expected to surface it as a FAIL, not to pick a winner.
+ */
+export function loadReportFrontMatter(mdPath, io = { existsSync, readFileSync }) {
+  const fromMd = parseFrontMatter(io.readFileSync(mdPath, "utf8"));
+  const jsonPath = reportJsonPath(mdPath);
+  if (!io.existsSync(jsonPath)) return { fm: fromMd, source: "md", drift: null, jsonPath };
+  let fromJson;
+  try {
+    fromJson = JSON.parse(io.readFileSync(jsonPath, "utf8"));
+  } catch (e) {
+    return { fm: fromMd, source: "md", drift: `sidecar is not valid JSON: ${e.message}`, jsonPath };
+  }
+  return { fm: fromJson, source: "json", drift: frontMatterDrift(fromMd, fromJson), jsonPath };
+}
+
 const asList = (v) => (Array.isArray(v) ? v : v === undefined || v === "" ? [] : [v]);
 const asIds = (v) =>
   asList(v)
@@ -187,6 +235,16 @@ export function verifyReport(fm, ctx) {
   const { statusMap, fixesText, archiveText, trunkRef, resolveSha, isAncestor, fileOnTrunk, ghCi } = ctx;
   const results = [];
   const add = (verdict, claim, detail = "") => results.push({ verdict, claim, detail });
+
+  // 0. The .json sidecar, when the caller resolved one. Absent is fine — the
+  //    .md is the source of record and the fallback is deliberate.
+  if (ctx.frontMatterDrift) {
+    add(FAIL, "cc-<n>.json agrees with the .md front matter", String(ctx.frontMatterDrift));
+  } else if (ctx.frontMatterSource === "json") {
+    add(PASS, "cc-<n>.json agrees with the .md front matter", "read from the sidecar");
+  } else if (ctx.frontMatterSource === "md") {
+    add(PASS, "front matter read from the .md", "no .json sidecar — run `pnpm cc:json <n>`");
+  }
 
   // 1. Required fields.
   for (const field of ["cc", "head_before", "head_after"]) {
@@ -330,13 +388,14 @@ function main() {
     process.exit(1);
   }
 
-  let fm;
+  let loaded;
   try {
-    fm = parseFrontMatter(readFileSync(path, "utf8"));
+    loaded = loadReportFrontMatter(path);
   } catch (e) {
     process.stderr.write(`cc:verify — ${e.message}\n`);
     process.exit(1);
   }
+  const fm = loaded.fm;
 
   // Fetch so trunk is current; offline degrades to the cached ref rather than
   // failing, and every ancestry answer then carries that caveat implicitly.
@@ -361,6 +420,8 @@ function main() {
   }
 
   const results = verifyReport(fm, {
+    frontMatterSource: loaded.source,
+    frontMatterDrift: loaded.drift,
     statusMap,
     fixesText: readIf("docs/FIXES.md"),
     archiveText: readIf("docs/archive/fixes-archive.md"),
@@ -381,9 +442,12 @@ function main() {
   };
 
   if (json) {
-    process.stdout.write(`${JSON.stringify({ report: path, trunk: trunkRef, counts, results }, null, 2)}\n`);
+    process.stdout.write(
+      `${JSON.stringify({ report: path, front_matter: loaded.source, trunk: trunkRef, counts, results }, null, 2)}\n`,
+    );
   } else {
     console.log(`cc:verify — ${path}`);
+    console.log(`  front matter: ${loaded.source === "json" ? loaded.jsonPath : "(the .md itself)"}`);
     console.log(`  trunk: ${trunkRef}\n`);
     for (const r of results) {
       const mark = r.verdict === PASS ? "PASS     " : r.verdict === FAIL ? "FAIL     " : "UNCHECKED";

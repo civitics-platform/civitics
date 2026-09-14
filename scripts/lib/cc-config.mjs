@@ -117,3 +117,18 @@ export function findPromptFiles(n, { promptsDir } = loadCcConfig()) {
 export function reportPath(n, cfg = loadCcConfig()) {
   return resolve(cfg.reportsDir, `cc-${Number(n)}.md`);
 }
+
+/**
+ * The .json sidecar beside a report — the report's front matter, generated from
+ * the .md by `pnpm cc:json <n>` so a consumer can read a run's claims without
+ * staging the whole report or re-implementing the YAML subset.
+ *
+ * Takes either a run number or a path to the .md, so callers that already hold
+ * one (cc-verify's `--file`) need no second config lookup.
+ */
+export function reportJsonPath(nOrMdPath, cfg) {
+  if (typeof nOrMdPath === "string" && /\.md$/i.test(nOrMdPath)) {
+    return nOrMdPath.replace(/\.md$/i, ".json");
+  }
+  return reportPath(nOrMdPath, cfg ?? loadCcConfig()).replace(/\.md$/i, ".json");
+}

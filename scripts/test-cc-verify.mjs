@@ -13,7 +13,8 @@
 // context is injected (no git, no fs), so the checks are exercised directly
 // rather than through a scratch repo.
 
-import { parseFrontMatter, verifyReport, PASS, FAIL, UNCHECKED } from "./cc-verify.mjs";
+import { parseFrontMatter, verifyReport, loadReportFrontMatter, PASS, FAIL, UNCHECKED } from "./cc-verify.mjs";
+import { renderSidecar } from "./cc-report-json.mjs";
 import { parseDoneLog, deriveStatus } from "./lib/fix-status.mjs";
 
 const failures = [];
@@ -209,6 +210,79 @@ assertEq(
   verdictFor(verifyReport(mk([["head_after: dddddddd", "head_after:"]]), ctx), "front matter has `head_after`"),
   FAIL,
 );
+
+// -- 3. the cc-<n>.json sidecar --------------------------------------------
+// The sidecar is generated from the .md (`pnpm cc:json`), so the only way the
+// two can disagree is a hand edit to one of them — which is exactly the report
+// a verifier must not pass. Both directions are exercised: a disagreement FAILs,
+// and a report with no sidecar at all still verifies from the .md.
+console.log("\n.json sidecar:");
+
+const SIDECAR_MD = "/fake/docs/cc/reports/cc-999.md";
+const SIDECAR_JSON = "/fake/docs/cc/reports/cc-999.json";
+
+// A tiny injected fs so the loader is exercised without touching disk.
+const io = (files) => ({
+  existsSync: (p) => Object.prototype.hasOwnProperty.call(files, p),
+  readFileSync: (p) => {
+    if (!Object.prototype.hasOwnProperty.call(files, p)) throw new Error(`ENOENT ${p}`);
+    return files[p];
+  },
+});
+
+// (a) agreeing sidecar — read from the .json, no drift
+const agreeing = JSON.stringify(parseFrontMatter(FM_TEXT), null, 2);
+const okLoad = loadReportFrontMatter(SIDECAR_MD, io({ [SIDECAR_MD]: FM_TEXT, [SIDECAR_JSON]: agreeing }));
+assertEq("agreeing sidecar → source json", okLoad.source, "json");
+assertEq("agreeing sidecar → no drift", okLoad.drift, null);
+assertEq(
+  "agreeing sidecar → PASS",
+  verdictFor(
+    verifyReport(okLoad.fm, { ...ctx, frontMatterSource: okLoad.source, frontMatterDrift: okLoad.drift }),
+    "cc-<n>.json agrees",
+  ),
+  PASS,
+);
+
+// (b) the two DISAGREE — the .json still names an old head. FAIL.
+const stale = JSON.stringify({ ...parseFrontMatter(FM_TEXT), head_after: "0000000f" }, null, 2);
+const driftLoad = loadReportFrontMatter(SIDECAR_MD, io({ [SIDECAR_MD]: FM_TEXT, [SIDECAR_JSON]: stale }));
+assertTrue("disagreeing sidecar → drift is reported", driftLoad.drift !== null, `drift was ${driftLoad.drift}`);
+assertTrue(
+  "disagreeing sidecar → drift names the key",
+  String(driftLoad.drift).includes("head_after"),
+  `drift was ${driftLoad.drift}`,
+);
+assertEq(
+  "disagreeing sidecar → FAIL",
+  verdictFor(
+    verifyReport(driftLoad.fm, { ...ctx, frontMatterSource: driftLoad.source, frontMatterDrift: driftLoad.drift }),
+    "cc-<n>.json agrees",
+  ),
+  FAIL,
+);
+
+// (c) no sidecar at all — fall back to the .md and still PASS.
+const mdOnly = loadReportFrontMatter(SIDECAR_MD, io({ [SIDECAR_MD]: FM_TEXT }));
+assertEq("no sidecar → source md", mdOnly.source, "md");
+assertEq("no sidecar → no drift", mdOnly.drift, null);
+assertEq("no sidecar → front matter still parsed", mdOnly.fm.head_after, "dddddddd");
+assertEq(
+  "no sidecar → PASS via fallback",
+  verdictFor(
+    verifyReport(mdOnly.fm, { ...ctx, frontMatterSource: mdOnly.source, frontMatterDrift: mdOnly.drift }),
+    "front matter read from the .md",
+  ),
+  PASS,
+);
+
+// (d) an unparseable sidecar is drift, not a crash.
+const brokenLoad = loadReportFrontMatter(SIDECAR_MD, io({ [SIDECAR_MD]: FM_TEXT, [SIDECAR_JSON]: "{not json" }));
+assertEq("unparseable sidecar → falls back to the .md", brokenLoad.source, "md");
+assertTrue("unparseable sidecar → reported as drift", String(brokenLoad.drift).includes("not valid JSON"));
+
+// (e) the generator's output is exactly what the loader expects to agree with.
+assertEq("renderSidecar round-trips through the loader", renderSidecar(FM_TEXT).trim(), agreeing.trim());
 
 if (failures.length) {
   console.error(`\n${failures.length} failure(s):\n${failures.join("\n")}`);

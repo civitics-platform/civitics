@@ -127,6 +127,26 @@ The prose below the front matter is where the value is. Keep the section the
 prompt asked for, and keep **"anything that contradicted the design"** free-form
 — that is the part a template must not constrain.
 
+Then generate the sidecar — never hand-write it:
+
+```bash
+pnpm cc:json <n>          # writes <reportsDir>/cc-<n>.json from the .md
+```
+
+`cc-<n>.json` is the front matter, parsed, and nothing else. It exists so a
+consumer that only wants a run's *claims* — which commits, which FIXes, whether
+prod was written, whether CI was green — stages about 1 KB instead of the whole
+report, and gets the values without re-implementing the YAML subset in
+`scripts/cc-verify.mjs`. Cowork reads the `.json` first and the `.md` for the
+free-form sections.
+
+It is generated because two copies of one fact drift, and a report whose `.md`
+was corrected while its `.json` still names the old shas is exactly what a
+verifier must not pass. **Re-run `pnpm cc:json <n>` after any front-matter
+edit** — `cc:verify` FAILs on a disagreement rather than picking a winner, and
+`pnpm cc:json <n> --check` says whether the file on disk is stale without
+writing. A report with no sidecar still verifies, from the `.md`.
+
 ### Step 4 — verify, then commit
 
 ```bash
@@ -140,7 +160,7 @@ finishing the work where the claim was premature. Never by deleting the claim.
 Then commit the report alone:
 
 ```bash
-git add docs/cc/reports/cc-<n>.md
+git add docs/cc/reports/cc-<n>.md docs/cc/reports/cc-<n>.json
 git commit -m "docs(cc): report for cc-<n>"
 ```
 

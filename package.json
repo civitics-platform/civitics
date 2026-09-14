@@ -32,6 +32,7 @@
     "fix:reopen": "node scripts/fix-reopen.mjs",
     "cc:verify": "node scripts/cc-verify.mjs",
     "cc:verify:test": "node scripts/test-cc-verify.mjs",
+    "cc:json": "node scripts/cc-report-json.mjs",
     "drain:test": "node scripts/test-drain-ec.mjs",
     "receipts:daily": "pnpm --filter @civitics/data data:receipts:daily",
     "check:reads": "node scripts/check-silent-reads.mjs",
