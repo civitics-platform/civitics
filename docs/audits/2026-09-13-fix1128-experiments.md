@@ -263,3 +263,33 @@ elapsed time against a budget and choosing to stop, which is what the existing
 unit being its own top-level statement. And whatever Half 2 does, it must
 account for case 5c: one caught cancel removes the bound from every unit that
 follows it.
+
+---
+
+## CORRECTION (cc-125, 2026-09-14) — case 6 does not generalise to a PROCEDURE
+
+Case 6 measured a pg_cron command string against
+`SELECT public._fix1128_probe_sleep(20)` — a plain SQL FUNCTION, which never
+COMMITs. Re-measured against a COMMITting PROCEDURE on the same clone, the same
+live scheduler, the form does not bound it; it **stops it running**:
+
+```
+SET statement_timeout = '10s'; CALL public._fix1128_probe_units(5, 4);
+  -> failed at 0.008-0.018 s, "invalid transaction termination", 0 units run
+SELECT 1;                      CALL public._fix1128_probe_units(3, 1);
+  -> failed at 0.013 s, identical
+CALL public._fix1128_probe_units(3, 1);
+  -> succeeded, 3.027 s, all three units run
+```
+
+A pg_cron command with more than one statement runs in an **implicit transaction
+block**, and a procedure cannot COMMIT inside one. It is the multi-statement
+shape, not the `SET` — which is case 2's rule (atomic context implies no COMMIT)
+on a different surface.
+
+So the paragraph above is wrong where it says "the bound for any pg_cron
+procedure has to be set by the job's command string". There is **no** in-backend
+per-job bound available for a COMMITting pg_cron procedure today. The
+`cron_job_budget` watchdog is the only one. Full account, including the two
+transaction-boundary escapes that also fail and the superuser refusal on the
+per-job-role route: `docs/audits/2026-09-14-fix1128-half2-census.md` §4.

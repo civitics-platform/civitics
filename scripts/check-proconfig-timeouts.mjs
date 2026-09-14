@@ -223,8 +223,12 @@ function main(argv) {
           `      A routine-level SET statement_timeout bounds nothing (FIX-1128): the timer is\n` +
           `      armed at the start of the top-level statement, and changing the GUC from inside\n` +
           `      it only changes what current_setting() reports.\n` +
-          `      Bound the CALLER instead — a SET as its own statement before the call, or the\n` +
-          `      pg_cron job's command string ("SET statement_timeout='…'; CALL …").\n` +
+          `      Bound the CALLER instead — a SET as its own statement before the call.\n` +
+          `      NOT the pg_cron command string if the callee COMMITs: "SET ...; CALL <proc>"\n` +
+          `      runs in an implicit transaction block, so the procedure dies at its first\n` +
+          `      COMMIT with "invalid transaction termination" and no unit runs at all\n` +
+          `      (cc-125, docs/audits/2026-09-14-fix1128-half2-census.md). For a COMMITting\n` +
+          `      pg_cron procedure the cron_job_budget watchdog is the only bound available.\n` +
           `      If this one really is deliberate, say why on the line or the line above:\n` +
           `        -- fix1128: <why this is not inert>`,
       );

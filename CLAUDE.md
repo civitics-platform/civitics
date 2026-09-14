@@ -604,8 +604,24 @@ materializations to model off.
 ### SQL convention — a routine-level `statement_timeout` bounds nothing (FIX-1128)
 
 **A function-level `SET statement_timeout` does not bound the function — bound
-the caller's statement instead** (a `SET` as its own statement before the call,
-or the pg_cron job's command string, `SET statement_timeout='…'; CALL …`).
+the caller's statement instead**: a `SET` as its own statement before the call.
+
+**The pg_cron command string is NOT a second option for a procedure that
+COMMITs.** `SET statement_timeout='…'; CALL public.<proc>(…)` in a job's command
+looks like the obvious fix and is measured to break the job outright: a pg_cron
+command with more than one statement runs in an **implicit transaction block**,
+and a procedure cannot `COMMIT` inside one — the run dies at its first `COMMIT`,
+about 10 ms in, with `invalid transaction termination` and zero units executed.
+It is the multi-statement shape, not the `SET`: `SELECT 1; CALL <proc>` fails
+identically. Measured on the clone's live scheduler, cc-125,
+`docs/audits/2026-09-14-fix1128-half2-census.md` §4. The form is only safe for a
+callee that never COMMITs — a `SELECT` of a plain function.
+
+So for a COMMITting pg_cron procedure there is **no in-backend per-job bound
+available today**. The `cron_job_budget` watchdog (FIX-1063) is the only one;
+give every new such job a row. A per-job role carrying the bound as a role-level
+GUC would work but `cron.alter_job(… username := …)` needs superuser, which
+`postgres` is not on Supabase.
 
 `statement_timeout` is armed once, by the server, at the start of a top-level
 statement, from the GUC value at that moment. Changing the GUC from inside that
