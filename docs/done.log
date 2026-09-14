@@ -1438,3 +1438,5 @@
 2026-09-11 | FIX-950 | 9214414c | prod-only | chore(ops): record prod verification of FIX-950 — the prod-session interlock deferred a scheduled fe-crawl firing and released
 2026-09-11 | FIX-1016 | e8afc4b2 | local-only | feat(fixes): FIXES.md is hand-edited only — checkboxes removed, status derived from done.log
 2026-09-11 | FIX-1175 | 36c110d8 | local-only | feat(cc): repo-resident prompts and reports — /cc, report front matter, cc:verify, prompt template
+2026-09-13 | FIX-1163 | bd60f873 | prod-only | chore(nightly): record prod verification of FIX-1163 — nightly.yml on 0 21 * * *, four scheduled starts in UTC hour 22
+2026-09-13 | FIX-1176 | add3b95c | prod-only | chore(receipts): record prod verification of FIX-1176 — first scheduled firing committed docs/receipts/2026-09-13
