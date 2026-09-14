@@ -1,0 +1,47 @@
+{
+  "cc": "125",
+  "prompt": "cc-prompt-125-fix1128-half2-command-string-bounds-record-and-stop-handlers-probe-drop-report-json.md",
+  "started_at": "2026-09-14T01:26:00Z",
+  "finished_at": "2026-09-14T02:55:00Z",
+  "head_before": "4b9cbd55",
+  "head_after": "04c0686e",
+  "commits": [
+    {
+      "sha": "e15d45e1",
+      "subject": "docs(audits): FIX-1128 Half 2 — the command-string bound is unbuildable for a COMMITting procedure"
+    },
+    {
+      "sha": "8f1f92a4",
+      "subject": "feat(db): FIX-1128 Half 2 — cron_job_budget row for rule-taggers-daily; drop the probe; correct the command-string advice"
+    },
+    {
+      "sha": "93b660a7",
+      "subject": "feat(cc): write cc-<n>.json beside the report; cc:verify prefers it and FAILs on drift"
+    },
+    {
+      "sha": "04c0686e",
+      "subject": "docs(fixes): FIX-1128 Half 2 refuted and reopened in substance; FIX-1125 corrected; file FIX-1185, FIX-1186"
+    }
+  ],
+  "fixes_closed": [],
+  "fixes_filed": [
+    "FIX-1185",
+    "FIX-1186"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [
+    "20260914000000_fix1128_half2_rule_taggers_budget_and_probe_drop.sql"
+  ],
+  "prod_writes": "One migration applied via pnpm db:push:prod — a single INSERT into public.cron_job_budget (rule-taggers-daily, 7200 s) and DROP FUNCTION public._fix1128_probe_sleep(int). No procedure redefined, no cron.job altered, no data touched. Everything else against prod was read-only via scripts/db-query.mjs --prod. Every mechanism probe ran on the LOCAL clone's live scheduler and was torn down.",
+  "ci": "green",
+  "stopped_items": [
+    "H1 (the whole of it) — the command-string bound on all ten census jobs. Measured unbuildable, not deferred: it breaks every procedure it would be applied to. Nothing was altered. Successor filed as FIX-1185.",
+    "Item 3 (migration 2, cron.alter_job by name on ~8 jobs) — not written. It is H1.",
+    "H2 (record-and-STOP handlers in the three C1 procedures) — already built. No procedure redefined; prod md5s unchanged and identical to the Phase 0 baseline.",
+    "H4 (the general command-string sweep) — NOT filed as written, because the mechanism it would sweep does not work. Redirected into FIX-1185, which asks which bound replaces it.",
+    "H5's clone proof of the three procedures under a command-string bound — cannot be run. The form does not bound them, it stops them at their first COMMIT.",
+    "Item 6 (the Pattern B record commit closing FIX-1128) — condition does not hold, and cannot: there is no new command string for a daily to run under. FIX-1128 stays open pending FIX-1185.",
+    "The check:proconfig fixture for the cron.alter_job command-string shape — deliberately not added. The scanner already agrees (an existing fixture covers a SET inside a quoted string), and a fixture blessing that shape would lock in the pattern this run refutes. The scanner's failure message, which recommended it, was corrected instead.",
+    "rule-taggers-daily's 7200 s budget is the one place where a computed bound sits below an observed maximum (14,028.2 s, 2026-08-05). Built rather than stopped, with the evidence in the migration header, and revertible by one DELETE. Reasoning in section 9."
+  ]
+}
