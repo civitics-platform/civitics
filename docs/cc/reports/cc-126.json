@@ -1,0 +1,50 @@
+{
+  "cc": "126",
+  "prompt": "cc-prompt-126-fec-emit-set-followups-1182-experiments-1183-tail-table-1184-superseded-runs-1106-append.md",
+  "started_at": "2026-09-14T04:05:00Z",
+  "finished_at": "2026-09-14T05:35:00Z",
+  "head_before": "25c75d0e",
+  "head_after": "b672cd59",
+  "commits": [
+    {
+      "sha": "e7ecc82d",
+      "subject": "fix(fec): FIX-1183 — the residue remediation's dry run prints the tail-step cost-class table before its go-ahead; the structural test covers all four landing scripts"
+    },
+    {
+      "sha": "ddc5057c",
+      "subject": "feat(fec): FIX-1184 — supersede orphaned fec_emit_runs rows at the next begin() and stamp the pac arm complete per cycle; Guard 1 walks complete / superseded / in-flight"
+    },
+    {
+      "sha": "a85c5c89",
+      "subject": "chore(db): regenerate database.ts (fec_emit_runs.superseded_*, _fix1128_probe_sleep gone)"
+    },
+    {
+      "sha": "0dfdef7f",
+      "subject": "docs(audits): FIX-1182 experiment (2) — emit-set residue for cycle 2026 indiv_to_committee and pac, and the per-source decomposition of FIX-1106's figure"
+    },
+    {
+      "sha": "23a9ef44",
+      "subject": "docs(fixes): FIX-1106 / FIX-1182 / FIX-1184 appends; file FIX-1187 — FEC DROPPED-OUT is mostly a binding artefact"
+    },
+    {
+      "sha": "b672cd59",
+      "subject": "chore(fixes): sync status after FIX-1183"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1183"
+  ],
+  "fixes_filed": [
+    "FIX-1187"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [
+    "20260914000100_fix1184_fec_emit_runs_superseded.sql"
+  ],
+  "prod_writes": "One DDL statement — ALTER TABLE public.fec_emit_runs ADD COLUMN superseded_at timestamptz, superseded_by uuid, on an UNLOGGED table holding 6 rows. No data writes. Post-push read confirms the two columns present and all 6 rows byte-identical with both new columns NULL. Everything else against prod was a read.",
+  "ci": "green",
+  "stopped_items": [
+    "The FIX-937 append. Decision D made it conditional on the gate being the cause; it partly is, but FIX-937 is CLOSED and its bullet lives only in docs/archive/fixes-archive.md, which fixes:archive owns and which nothing derives status from. Hand-appending into history is not a thing this contract allows, so the content went into FIX-1187's bullet and the audit doc instead.",
+    "Item 6, the FIX-1184 prod receipt commit. Its condition did not hold: the migration landed 2026-09-14 04:47 UTC and the next scheduled nightly is 22:30 UTC the same day. Supersession only happens at the next begin(), so there is nothing to record yet. The ledger carries it, the way FIX-1176 was carried."
+  ]
+}
