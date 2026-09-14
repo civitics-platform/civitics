@@ -129,6 +129,101 @@ test("every executed tail step appears in the declared tail table", () => {
   }
 });
 
+/**
+ * FIX-1183 — every fr-rewrite landing script prints the tail table BEFORE its
+ * go-ahead point.
+ *
+ * FIX-1165 (c) shipped this behaviour into three scripts and the fourth,
+ * remediate-fec-emit-residue.ts, silently did not have it: its dry run printed
+ * the TO DELETE figure and then `DRY RUN -- nothing written`, with no cost
+ * table anywhere. Nothing caught it, because the test above asks whether every
+ * EXECUTED step is DECLARED, and a script that never prints the declaration
+ * passes that question vacuously.
+ *
+ * The script list is DERIVED, not written down: any file in this directory that
+ * calls drainFrRewrite() is an fr-rewrite landing script and is held to the
+ * rule. Hard-coding the list is what let the fourth script sit outside it.
+ */
+const FR_REWRITE_SCRIPTS = fs
+  .readdirSync(__dirname)
+  .filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts"))
+  .filter((f) => /await drainFrRewrite\(/.test(fs.readFileSync(path.join(__dirname, f), "utf8")))
+  .sort();
+
+test("the fr-rewrite landing scripts are found by source scan, and there are four", () => {
+  // A guard on the guard: if the scan shape drifts the tests below pass over an
+  // empty list and assert nothing, which is worse than not having them.
+  assert.deepEqual(FR_REWRITE_SCRIPTS, [
+    "merge-same-person-official-dupes.ts",
+    "remediate-cross-person-misattribution.ts",
+    "remediate-fec-emit-residue.ts",
+    "remediate-role-ineligible-holders.ts",
+  ]);
+});
+
+test("every fr-rewrite landing script prints the tail table before its go-ahead point", () => {
+  for (const file of FR_REWRITE_SCRIPTS) {
+    const src = fs.readFileSync(path.join(__dirname, file), "utf8");
+
+    const printAt = src.indexOf("printTailTable(declareRemediationTail(defer), defer)");
+    assert.ok(
+      printAt > -1,
+      `${file} calls drainFrRewrite() but never calls printTailTable(). FIX-1165 (c): ` +
+        `the tail's cost must be visible at decision time, not discovered at minute 28.`,
+    );
+
+    const mainAt = src.indexOf("async function main(");
+    assert.ok(mainAt > -1, `${file}: no main() found — has the shape changed?`);
+    assert.ok(
+      printAt > mainAt,
+      `${file}: printTailTable() is called outside main(). It has to run on the path the ` +
+        `operator actually takes, not from a helper nothing calls on a dry run.`,
+    );
+
+    // The go-ahead is the manifest transaction — the LAST BEGIN in the file.
+    // Deliberately not the FIRST: merge-same-person-official-dupes opens and
+    // closes an unrelated step-0 bookkeeping transaction well before the
+    // manifest is even built, and anchoring to that would fail a script that is
+    // in fact correct.
+    const lastBegin = src.lastIndexOf('await client.query("BEGIN")');
+    assert.ok(lastBegin > mainAt, `${file}: no manifest transaction found after main()`);
+    assert.ok(
+      printAt < lastBegin,
+      `${file}: printTailTable() sits AFTER the manifest transaction opens ` +
+        `(${printAt} vs ${lastBegin}). A cost table printed once the run is already ` +
+        `writing is a receipt, not a decision.`,
+    );
+
+    // And it must be on the DRY-RUN path too: every --apply early-return has to
+    // come after it, or the table only ever prints for a run that was already
+    // going ahead. This is the half FIX-1183 was missing.
+    for (const m of src.matchAll(/if \(!apply\) \{/g)) {
+      assert.ok(
+        m.index! > printAt,
+        `${file}: a dry-run return at ${m.index} precedes printTailTable() at ${printAt}. ` +
+          `The dry run is where the go-ahead is given; it is the run that most needs the table.`,
+      );
+    }
+  }
+});
+
+test("no fr-rewrite landing script prints the tail table twice", () => {
+  // drainFrRewrite prints its own table unless told not to. A script that prints
+  // above the go-ahead AND lets the drain print gets two tables on the apply
+  // path, which trains the reader to skip both.
+  for (const file of FR_REWRITE_SCRIPTS) {
+    const src = fs.readFileSync(path.join(__dirname, file), "utf8");
+    const call = src.slice(src.indexOf("await drainFrRewrite("));
+    const opts = call.slice(0, call.indexOf("\n    );"));
+    assert.match(
+      opts,
+      /printTable:\s*false/,
+      `${file}: drainFrRewrite() must be passed printTable: false — the script already ` +
+        `printed the table above its go-ahead point.`,
+    );
+  }
+});
+
 test("the two steps FIX-1165 found unowned are declared, deferred, and owned", () => {
   const tail = declareRemediationTail(true);
   const byLabel = new Map(tail.map((s) => [s.label, s]));

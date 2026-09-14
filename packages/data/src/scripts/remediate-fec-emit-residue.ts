@@ -33,7 +33,13 @@
 
 import { Client } from "pg";
 import { constructDbUrlFromEnv, deferTails, envLabel, usd } from "./fec-orphan-classify";
-import { manifestArg, requireManifestOnProd, type Manifest } from "./remediation-manifest";
+import {
+  declareRemediationTail,
+  manifestArg,
+  printTailTable,
+  requireManifestOnProd,
+  type Manifest,
+} from "./remediation-manifest";
 import { drainFrRewrite, isCancellation } from "../lib/fr-rewrite-drain";
 import { runUnderProdSession } from "../lib/prod-session";
 
@@ -208,6 +214,14 @@ async function main(): Promise<void> {
       );
     }
 
+    // FIX-1183 / FIX-1165 (c) -- the tail's cost table, printed BEFORE the
+    // go-ahead point so the trade is visible at decision time rather than
+    // discovered at minute 28. Placed after the TO DELETE line and before the
+    // `if (!apply)` return, which is the siblings' shape exactly: dry run and
+    // apply both print it, and `printTable: false` on the drain below is what
+    // stops the apply path printing it a second time.
+    printTailTable(declareRemediationTail(defer), defer);
+
     if (!apply) {
       console.log(`\n  DRY RUN -- nothing written. Re-run with --apply${prod ? " --allow-prod" : ""} --defer-tails.`);
       return;
@@ -272,7 +286,13 @@ async function main(): Promise<void> {
           donorTable: "_donor",
           deletedFrRowIds: deleted.map((d) => d.id),
         },
-        { prod, defer, churnedTables: ["financial_relationships", "entity_connections"] },
+        {
+          prod,
+          defer,
+          // FIX-1183 — printed once already, above the go-ahead point.
+          printTable: false,
+          churnedTables: ["financial_relationships", "entity_connections"],
+        },
       );
     } catch (err) {
       if (isCancellation(err)) process.exit(3);
