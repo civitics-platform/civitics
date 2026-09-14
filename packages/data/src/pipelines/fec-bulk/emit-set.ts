@@ -97,6 +97,46 @@ export function createEmitSink(opts: {
     },
     async begin(client: Client): Promise<void> {
       count = 0;
+      // FIX-1184 — supersede any OLDER never-completed run for this slice, and
+      // take its keys with it.
+      //
+      // The pas2 arm opens a row per (cycle, source) on every fec phase and only
+      // ever gets stamped for the ONE cycle FIX-754's clear names, so a run row
+      // with complete_at NULL accumulates per nightly per un-stamped cycle. Guard
+      // 1 takes the NEWEST row for a slice, so one orphan makes the whole slice
+      // unauditable — which is what (2024, fec_bulk_pac) is today.
+      //
+      // The count is written to `keys` BEFORE the delete and from the same
+      // snapshot, so a superseded row still says how much it had emitted. That
+      // distinction is the whole safety of the new guard: keys = 0 is "nothing
+      // was written, skip me", keys > 0 is "a PREFIX was written after the last
+      // complete set, refuse". The keys themselves go because they are
+      // scaffolding and nothing may anti-join against a prefix.
+      //
+      // `run_id <> $1` is what leaves a RESUMED run alone: a resume recomputes
+      // the same deterministic id from (cycle, FEC Last-Modified), so it
+      // supersedes nothing of its own.
+      await client.query(
+        `WITH superseded AS (
+           UPDATE public.fec_emit_runs r
+              SET superseded_at = now(),
+                  superseded_by = $1,
+                  keys = (SELECT count(*) FROM public.fec_emit_keys k
+                           WHERE k.run_id     = r.run_id
+                             AND k.cycle_year = r.cycle_year
+                             AND k.source     = r.source)
+            WHERE r.cycle_year    = $2
+              AND r.source        = $3
+              AND r.run_id       <> $1
+              AND r.complete_at   IS NULL
+              AND r.superseded_at IS NULL
+            RETURNING r.run_id
+         )
+         DELETE FROM public.fec_emit_keys k
+          USING superseded s
+          WHERE k.run_id = s.run_id AND k.cycle_year = $2 AND k.source = $3`,
+        [opts.runId, opts.cycleYear, opts.source],
+      );
       await client.query(
         `DELETE FROM public.fec_emit_keys
           WHERE run_id = $1 AND cycle_year = $2 AND source = $3`,
@@ -106,7 +146,12 @@ export function createEmitSink(opts: {
         `INSERT INTO public.fec_emit_runs (run_id, cycle_year, source, started_at, complete_at, keys)
          VALUES ($1, $2, $3, now(), NULL, 0)
          ON CONFLICT (run_id, cycle_year, source)
-         DO UPDATE SET started_at = now(), complete_at = NULL, keys = 0`,
+         DO UPDATE SET started_at = now(), complete_at = NULL, keys = 0,
+                       -- FIX-1184: reopening a row un-supersedes it. Reachable
+                       -- when a run was superseded by a different run and then
+                       -- resumed; this set is being re-emitted from scratch, so
+                       -- the supersession no longer describes it.
+                       superseded_at = NULL, superseded_by = NULL`,
         [opts.runId, opts.cycleYear, opts.source],
       );
     },
@@ -137,11 +182,30 @@ export function createEmitSink(opts: {
 /**
  * Stamp a cycle's emit sets complete.
  *
- * CALLED FROM EXACTLY ONE PLACE — beside FIX-754's clearRunState(), on the path
- * that already means "cycle complete". Not from the end of a stage, not from a
- * finally block, not from the pipeline's exit handler. Any of those would stamp
- * a killed run's PREFIX as complete, and the audit's whole safety rests on the
- * stamp meaning what clearRunState means.
+ * CALLED FROM EXACTLY TWO PLACES, and the second one (FIX-1184) is sound for a
+ * reason the first does not need.
+ *
+ *   1. Beside FIX-754's clearRunState(), on the path that already means "cycle
+ *      complete". This is the INDIV arms' only stamp. Not from the end of a
+ *      stage, not from a finally block, not from the pipeline's exit handler:
+ *      any of those would stamp a killed run's PREFIX as complete, and the
+ *      audit's whole safety rests on the stamp meaning what clearRunState means.
+ *
+ *   2. At the END OF THE PAS2 ARM, per cycle, for `fec_bulk_pac` only. The
+ *      objection above does not apply to it, because the pas2 arm has no prefix
+ *      to stamp: it is a SINGLE un-cursored batch with no resume
+ *      (upsertDonationRelationshipsBatch brackets one bulkUpsert between begin()
+ *      and record()), and FIX-686's loud-abort contract THROWS on any failed
+ *      chunk rather than returning a short count. So the arm returning normally
+ *      for a cycle IS that (cycle, fec_bulk_pac) set's completion — there is no
+ *      state in which it has emitted some of the cycle and stopped.
+ *
+ *      Measured, not assumed: on prod 2026-09-14 the three never-stamped pac
+ *      rows held FULL key sets (135,192 / 111,729 / 135,192), and the two 2024
+ *      rows from consecutive nightlies held byte-identical counts. They were
+ *      complete in substance and only ever missing their stamp, because
+ *      cycleSinks stamps the one cycle whose INDIV work completed and the pas2
+ *      arm runs for every cycle regardless.
  *
  * `keys` is counted FROM THE TABLE rather than from the in-process sink, because
  * a resumed run legitimately skips stages that a prior process already emitted

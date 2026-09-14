@@ -120,11 +120,65 @@ test("begin() TRUNCATEs this slice and re-opens the ledger with complete_at NULL
   // the same class of lie as a stamped ledger over a truncated key set.
   assert.equal(sink.count, 0);
 
-  const [del, ins] = c.calls.slice(1);
-  assert.match(del!.sql, /DELETE FROM public\.fec_emit_keys/);
+  const [sup, del, ins] = c.calls.slice(1);
+  // FIX-1184 added a first statement: supersede any older never-completed run
+  // for this slice. It must come BEFORE the truncate of this run's own keys.
+  assert.match(sup!.sql, /UPDATE public\.fec_emit_runs/);
+  assert.match(sup!.sql, /superseded_at = now\(\)/);
+  assert.match(del!.sql, /^\s*DELETE FROM public\.fec_emit_keys/);
   assert.match(ins!.sql, /INSERT INTO public\.fec_emit_runs/);
   // complete_at must be cleared, not left standing from a prior run.
   assert.match(ins!.sql, /complete_at = NULL/);
+});
+
+// ---------------------------------------------------------------------------
+// FIX-1184 — supersession
+// ---------------------------------------------------------------------------
+
+test("begin() supersedes only OLDER incomplete runs for the same slice", async () => {
+  const c = fakeClient();
+  const runId = emitRunId(2026, "lm-b");
+  const sink = createEmitSink({ runId, cycleYear: 2026, source: "fec_bulk_pac" });
+  await sink.begin(c as never);
+
+  const sup = c.calls[0]!;
+  // A RESUMED run must not supersede itself: identity is deterministic over
+  // (cycle, Last-Modified), so a resume arrives with the same run_id.
+  assert.match(sup.sql, /r\.run_id\s+<>\s+\$1/);
+  // Only never-completed rows, and never one already superseded (idempotent).
+  assert.match(sup.sql, /r\.complete_at\s+IS NULL/);
+  assert.match(sup.sql, /r\.superseded_at IS NULL/);
+  // Scoped to ONE slice — two cycles' rows are independent.
+  assert.match(sup.sql, /r\.cycle_year\s+= \$2/);
+  assert.match(sup.sql, /r\.source\s+= \$3/);
+  assert.deepEqual(sup.params, [runId, 2026, "fec_bulk_pac"]);
+});
+
+test("a superseded run's keys are COUNTED onto its row and then deleted", async () => {
+  const c = fakeClient();
+  const sink = createEmitSink({ runId: emitRunId(2024, "lm"), cycleYear: 2024, source: "fec_bulk_pac" });
+  await sink.begin(c as never);
+
+  const sup = c.calls[0]!.sql;
+  // The count is taken in the same statement as the delete, so it is read from
+  // the pre-delete snapshot. keys > 0 on a superseded row is what makes Guard 1
+  // refuse rather than skip: a PREFIX was written after the last complete set.
+  assert.match(sup, /keys = \(SELECT count\(\*\) FROM public\.fec_emit_keys/);
+  assert.match(sup, /DELETE FROM public\.fec_emit_keys k\s*\n\s*USING superseded s/);
+  // One statement, not a read-then-write race.
+  assert.equal([...sup.matchAll(/;/g)].length, 0, "supersession must be a single statement");
+});
+
+test("reopening a run un-supersedes its own row", async () => {
+  const c = fakeClient();
+  const sink = createEmitSink({ runId: emitRunId(2026, "lm"), cycleYear: 2026, source: "fec_bulk_indiv" });
+  await sink.begin(c as never);
+
+  const ins = c.calls[2]!.sql;
+  // Reachable when a run was superseded by a DIFFERENT run and then resumed.
+  // The set is being re-emitted from scratch, so the supersession no longer
+  // describes it and must not survive into Guard 1's walk.
+  assert.match(ins, /superseded_at = NULL, superseded_by = NULL/);
 });
 
 // ---------------------------------------------------------------------------
@@ -137,11 +191,27 @@ test("complete_at is stamped from exactly one place, and it is the FIX-754 clear
   const stampCalls = [...idx.matchAll(/stampEmitRunsComplete\(/g)];
   assert.equal(
     stampCalls.length,
-    1,
+    2,
     `stampEmitRunsComplete is called ${stampCalls.length} times in index.ts. It must be ` +
-      `called exactly once. A second call site — a stage end, a finally block, an exit ` +
-      `handler — would stamp a killed run's PREFIX as complete, and the audit's whole ` +
-      `safety rests on the stamp meaning what clearRunState means.`,
+      `called exactly twice: the FIX-754 clear (the INDIV arms' only stamp) and the ` +
+      `FIX-1184 pas2-arm stamp. A THIRD call site — another stage end, a finally block, ` +
+      `an exit handler — would stamp a killed run's PREFIX as complete, and the audit's ` +
+      `whole safety rests on the stamp meaning what clearRunState means.`,
+  );
+
+  // FIX-1184's second site is admissible ONLY for fec_bulk_pac, and only because
+  // that arm is one un-cursored batch that throws rather than returning short.
+  // The guard on it is that the end-of-run stamp excludes pac (so it is not
+  // stamped twice) and that the pas2 stamp names its single sink.
+  assert.match(
+    idx,
+    /stampEmitRunsComplete\(client, \[pacSink\]\)/,
+    "the FIX-1184 stamp must stamp exactly the pas2 sink, never a cycle's whole set",
+  );
+  assert.match(
+    idx,
+    /sk\.source !== "fec_bulk_pac"/,
+    "cycleSinks must exclude fec_bulk_pac — the pas2 arm already stamped itself",
   );
 
   // ...and that one call must sit inside the watermarkPersisted branch, ABOVE
@@ -156,10 +226,14 @@ test("complete_at is stamped from exactly one place, and it is the FIX-754 clear
   assert.ok(branchAt > 0 && stampAt > branchAt, "the stamp must be inside the watermarkPersisted branch");
   assert.ok(stampAt < clearAt, "the stamp must precede clearRunState — same transaction of meaning");
 
-  // And the drop-moved clears above must remain unstamped.
-  assert.equal(
-    [...idx.slice(0, branchAt).matchAll(/stampEmitRunsComplete\(/g)].length,
-    0,
+  // And the drop-moved clears above must remain unstamped. The only stamp
+  // allowed before this branch is FIX-1184's pas2 one, which is scoped to the
+  // pac sink alone and whose arm cannot leave a prefix.
+  const earlyStamps = [...idx.slice(0, branchAt).matchAll(/stampEmitRunsComplete\(([^)]*)\)/g)];
+  assert.equal(earlyStamps.length, 1, "only the FIX-1184 pas2 stamp may precede the FIX-754 branch");
+  assert.match(
+    earlyStamps[0]![1]!,
+    /\[pacSink\]/,
     "a run whose FEC drop moved discards its state; it must not stamp an emit set",
   );
 

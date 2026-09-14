@@ -1565,13 +1565,39 @@ async function runFecBulkPipelineLocked(): Promise<PipelineResult> {
         });
       }
 
-      const relResult = await upsertDonationRelationshipsBatch(
-        relInputs,
-        openEmitSink(CYCLE, "fec_bulk_pac", pacRunIdentity),   // FIX-1106
-      );
+      const pacSink = openEmitSink(CYCLE, "fec_bulk_pac", pacRunIdentity);   // FIX-1106
+      const relResult = await upsertDonationRelationshipsBatch(relInputs, pacSink);
       pacRelsUpserted += relResult.upserted;
       pacRelsFailed   += relResult.failed;
       console.log(`    Relationships — upserted: ${relResult.upserted}  failed: ${relResult.failed}`);
+
+      // FIX-1184 — stamp THIS cycle's pac emit set complete, here, at the end of
+      // the arm. The end-of-run stamp cannot do it: cycleSinks is filtered to the
+      // single cycle whose INDIV work completed, while this arm runs for every
+      // cycle in CYCLES on every fec phase (it sits ahead of the FIX-193 indiv
+      // watermark short-circuit and has no gate of its own). That mismatch is the
+      // whole of FIX-1184's leak — three orphaned rows on prod, each holding a
+      // full key set.
+      //
+      // Safe to stamp at a stage boundary ONLY because this arm is one
+      // un-cursored batch that throws rather than returning short — see
+      // stampEmitRunsComplete's contract. Do NOT copy this to the indiv arms.
+      //
+      // Advisory, like the end-of-run stamp: a failure here must not strand a
+      // cycle that really did complete. An unstamped set makes the audit REFUSE,
+      // which is the safe direction.
+      if (relInputs.length > 0) {
+        try {
+          const pacStamped = await withDirectClient((client) =>
+            stampEmitRunsComplete(client, [pacSink]),
+          );
+          for (const { keys } of pacStamped) {
+            console.log(`    ⟳ emit set complete — cycle ${CYCLE} fec_bulk_pac: ${keys.toLocaleString()} keys (FIX-1184)`);
+          }
+        } catch (emitErr) {
+          console.warn(`    ! failed to stamp cycle ${CYCLE} fec_bulk_pac complete: ${errMsg(emitErr)} (FIX-1184; the audit will refuse this slice)`);
+        }
+      }
 
       // Step 5: individual contributions (indiv{yy}.zip + ccl{yy}.zip) — FIX-181
       // Tolerant of FEC outages on these files: if either download fails, log
@@ -2511,7 +2537,12 @@ async function runFecBulkPipelineLocked(): Promise<PipelineResult> {
         // complete. An unstamped set makes the audit REFUSE, which is the safe
         // direction.
         const cycleSinks = [...emitSinks.values()].filter(
-          (sk) => sk.cycleYear === parseInt(runStateCompletedCycle!, 10),
+          (sk) =>
+            sk.cycleYear === parseInt(runStateCompletedCycle!, 10) &&
+            // FIX-1184: the pas2 arm stamps itself at the end of its own stage,
+            // for EVERY cycle. Re-stamping it here would only push complete_at
+            // later for the one cycle that also completed its indiv work.
+            sk.source !== "fec_bulk_pac",
         );
         if (cycleSinks.length > 0) {
           try {

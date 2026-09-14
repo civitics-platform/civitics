@@ -45,13 +45,15 @@ import { constructDbUrlFromEnv, envLabel, usd } from "./fec-orphan-classify";
 const SOURCES = ["fec_bulk_indiv", "fec_bulk_indiv_to_committee", "fec_bulk_pac"] as const;
 type Source = (typeof SOURCES)[number];
 
-interface EmitRun {
+export interface EmitRun {
   run_id: string;
   cycle_year: number;
   source: Source;
   started_at: string;
   complete_at: string | null;
   keys: string;
+  /** FIX-1184 — set when a later begin() replaced this never-completed run. */
+  superseded_at: string | null;
 }
 
 interface ResidueRow {
@@ -80,24 +82,58 @@ function arg(argv: string[], flag: string): string | null {
   return v;
 }
 
+/** What the guard decided about a slice's run history. */
+export type RunVerdict =
+  | { kind: "use"; run: EmitRun }
+  | { kind: "none" }
+  | { kind: "refuse"; reason: "incomplete" | "superseded-prefix"; run: EmitRun };
+
 /**
- * The newest run for this slice. Newest by started_at, NOT "newest complete" —
- * if the most recent run is incomplete we must refuse rather than silently
- * anti-joining against an older, complete, and now-stale set. An older set's
- * absences are last week's answer, and acting on them would delete rows this
- * week's run legitimately re-emitted.
+ * Guard 1 — which run's emit set may this slice be judged against.
+ *
+ * Newest by started_at, NOT "newest complete", and that has not changed: an
+ * older set's absences are last week's answer, and acting on them would delete
+ * rows this week's run legitimately re-emitted. What FIX-1184 changes is only
+ * the VOCABULARY — the walk can now tell two things apart that both used to
+ * read as "newest row is incomplete, refuse":
+ *
+ *   complete_at set                 -> use it.
+ *   superseded_at set AND keys = 0  -> SKIP. A later begin() replaced a run that
+ *                                      had emitted nothing, so it is not a
+ *                                      prefix of anything and cannot hide a
+ *                                      re-emit. Keep walking.
+ *   superseded_at set AND keys > 0  -> REFUSE, naming the run and its count. A
+ *                                      prefix WAS written after the last
+ *                                      complete set, which is exactly the case
+ *                                      "newest, not newest-complete" exists for.
+ *   neither set                     -> REFUSE. In flight, or killed and not yet
+ *                                      superseded by a later begin().
+ *
+ * The rows must arrive newest-first.
  */
-async function newestRun(client: Client, cycle: number, source: Source): Promise<EmitRun | null> {
+export function resolveEmitRun(rowsNewestFirst: readonly EmitRun[]): RunVerdict {
+  for (const run of rowsNewestFirst) {
+    if (run.complete_at !== null) return { kind: "use", run };
+    if (run.superseded_at !== null) {
+      if (Number(run.keys) > 0) return { kind: "refuse", reason: "superseded-prefix", run };
+      continue;
+    }
+    return { kind: "refuse", reason: "incomplete", run };
+  }
+  return { kind: "none" };
+}
+
+async function resolveRun(client: Client, cycle: number, source: Source): Promise<RunVerdict> {
   const rows = await q<EmitRun>(
     client,
-    `SELECT run_id::text, cycle_year, source, started_at::text, complete_at::text, keys::text
+    `SELECT run_id::text, cycle_year, source, started_at::text, complete_at::text,
+            keys::text, superseded_at::text
        FROM public.fec_emit_runs
       WHERE cycle_year = $1 AND source = $2
-      ORDER BY started_at DESC
-      LIMIT 1`,
+      ORDER BY started_at DESC`,
     [cycle, source],
   );
-  return rows[0] ?? null;
+  return resolveEmitRun(rows);
 }
 
 /**
@@ -185,21 +221,20 @@ async function main(): Promise<void> {
   try {
     console.log(`\n-- FIX-1106 emit-set residue audit -- ${envLabel()} -- cycle ${cycle} / ${source} --\n`);
 
-    const run = await newestRun(client, cycle, source);
-    if (!run) {
+    // -- Guard 1: resolve which run may judge this slice (FIX-1184) ----------
+    const verdict = await resolveRun(client, cycle, source);
+    if (verdict.kind === "none") {
       console.error(
-        `REFUSING -- no fec_emit_runs row for (cycle ${cycle}, ${source}).\n` +
-          `  Nothing has recorded an emit set for this slice yet. The first prod run to\n` +
-          `  write one is the next complete fec-phase (or a drop-probe-triggered run).`,
+        `REFUSING -- no usable fec_emit_runs row for (cycle ${cycle}, ${source}).\n` +
+          `  Nothing has recorded a complete emit set for this slice yet. The first prod run\n` +
+          `  to write one is the next complete fec-phase (or a drop-probe-triggered run).`,
       );
       process.exit(2);
     }
-
-    // -- Guard 1: the run must be COMPLETE -----------------------------------
-    if (run.complete_at === null) {
+    if (verdict.kind === "refuse" && verdict.reason === "incomplete") {
       console.error(
         `REFUSING -- the newest run for this slice is NOT complete.\n` +
-          `  run_id ${run.run_id}  started_at ${run.started_at}  complete_at NULL\n` +
+          `  run_id ${verdict.run.run_id}  started_at ${verdict.run.started_at}  complete_at NULL\n` +
           `  An incomplete run's emit set is a PREFIX of the true set: it was killed, is\n` +
           `  mid-resume, or its FIX-754 watermark persist failed. Anti-joining a prefix\n` +
           `  classifies live rows as residue, so there is no --force for this.\n` +
@@ -207,6 +242,18 @@ async function main(): Promise<void> {
       );
       process.exit(2);
     }
+    if (verdict.kind === "refuse" && verdict.reason === "superseded-prefix") {
+      console.error(
+        `REFUSING -- a SUPERSEDED run for this slice had already emitted keys (FIX-1184).\n` +
+          `  run_id ${verdict.run.run_id}  started_at ${verdict.run.started_at}  keys ${Number(verdict.run.keys).toLocaleString()}\n` +
+          `  It was replaced by a later begin() before it completed, but it wrote a PREFIX\n` +
+          `  after the last complete set. The older complete set's absences would delete\n` +
+          `  rows that prefix emitted -- the same reason this guard is "newest" and not\n` +
+          `  "newest complete". Wait for a run that completes cycle ${cycle}.`,
+      );
+      process.exit(2);
+    }
+    const run = verdict.run;
 
     // -- Guard 2: the keys must still be there -------------------------------
     const [present] = await q<{ n: string }>(
@@ -320,7 +367,12 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+// FIX-1184 — only when invoked directly. resolveEmitRun() is imported by
+// audit-fec-emit-residue.test.ts, and without this guard the import ran main(),
+// which exits on the first argv check.
+if (require.main === module) {
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}
