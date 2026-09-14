@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.4"
+    PostgrestVersion: "14.5"
   }
   public: {
     Tables: {
@@ -119,385 +119,6 @@ export type Database = {
         Update: {
           is_official?: boolean
           to_id?: string
-        }
-        Relationships: []
-      }
-      _eq_a: {
-        Row: {
-          amount_cents: number | null
-          connection_type: Database["public"]["Enums"]["connection_type"] | null
-          ended_at: string | null
-          evidence_count: number | null
-          evidence_sorted: string[] | null
-          evidence_source: string | null
-          from_id: string | null
-          from_type: string | null
-          occurred_at: string | null
-          strength: number | null
-          to_id: string | null
-          to_type: string | null
-        }
-        Insert: {
-          amount_cents?: number | null
-          connection_type?:
-            | Database["public"]["Enums"]["connection_type"]
-            | null
-          ended_at?: string | null
-          evidence_count?: number | null
-          evidence_sorted?: string[] | null
-          evidence_source?: string | null
-          from_id?: string | null
-          from_type?: string | null
-          occurred_at?: string | null
-          strength?: number | null
-          to_id?: string | null
-          to_type?: string | null
-        }
-        Update: {
-          amount_cents?: number | null
-          connection_type?:
-            | Database["public"]["Enums"]["connection_type"]
-            | null
-          ended_at?: string | null
-          evidence_count?: number | null
-          evidence_sorted?: string[] | null
-          evidence_source?: string | null
-          from_id?: string | null
-          from_type?: string | null
-          occurred_at?: string | null
-          strength?: number | null
-          to_id?: string | null
-          to_type?: string | null
-        }
-        Relationships: []
-      }
-      _eq_b: {
-        Row: {
-          amount_cents: number | null
-          connection_type: Database["public"]["Enums"]["connection_type"] | null
-          ended_at: string | null
-          evidence_count: number | null
-          evidence_sorted: string[] | null
-          evidence_source: string | null
-          from_id: string | null
-          from_type: string | null
-          occurred_at: string | null
-          strength: number | null
-          to_id: string | null
-          to_type: string | null
-        }
-        Insert: {
-          amount_cents?: number | null
-          connection_type?:
-            | Database["public"]["Enums"]["connection_type"]
-            | null
-          ended_at?: string | null
-          evidence_count?: number | null
-          evidence_sorted?: string[] | null
-          evidence_source?: string | null
-          from_id?: string | null
-          from_type?: string | null
-          occurred_at?: string | null
-          strength?: number | null
-          to_id?: string | null
-          to_type?: string | null
-        }
-        Update: {
-          amount_cents?: number | null
-          connection_type?:
-            | Database["public"]["Enums"]["connection_type"]
-            | null
-          ended_at?: string | null
-          evidence_count?: number | null
-          evidence_sorted?: string[] | null
-          evidence_source?: string | null
-          from_id?: string | null
-          from_type?: string | null
-          occurred_at?: string | null
-          strength?: number | null
-          to_id?: string | null
-          to_type?: string | null
-        }
-        Relationships: []
-      }
-      _eq_before: {
-        Row: {
-          amount_cents: number | null
-          connection_type: Database["public"]["Enums"]["connection_type"] | null
-          derived_at: string | null
-          ended_at: string | null
-          evidence_count: number | null
-          evidence_ids: string[] | null
-          evidence_source: string | null
-          from_id: string | null
-          from_type: string | null
-          id: string | null
-          metadata: Json | null
-          occurred_at: string | null
-          strength: number | null
-          to_id: string | null
-          to_type: string | null
-        }
-        Insert: {
-          amount_cents?: number | null
-          connection_type?:
-            | Database["public"]["Enums"]["connection_type"]
-            | null
-          derived_at?: string | null
-          ended_at?: string | null
-          evidence_count?: number | null
-          evidence_ids?: string[] | null
-          evidence_source?: string | null
-          from_id?: string | null
-          from_type?: string | null
-          id?: string | null
-          metadata?: Json | null
-          occurred_at?: string | null
-          strength?: number | null
-          to_id?: string | null
-          to_type?: string | null
-        }
-        Update: {
-          amount_cents?: number | null
-          connection_type?:
-            | Database["public"]["Enums"]["connection_type"]
-            | null
-          derived_at?: string | null
-          ended_at?: string | null
-          evidence_count?: number | null
-          evidence_ids?: string[] | null
-          evidence_source?: string | null
-          from_id?: string | null
-          from_type?: string | null
-          id?: string | null
-          metadata?: Json | null
-          occurred_at?: string | null
-          strength?: number | null
-          to_id?: string | null
-          to_type?: string | null
-        }
-        Relationships: []
-      }
-      _eq_c: {
-        Row: {
-          amount_cents: number | null
-          connection_type: Database["public"]["Enums"]["connection_type"] | null
-          ended_at: string | null
-          evidence_count: number | null
-          evidence_sorted: string[] | null
-          evidence_source: string | null
-          from_id: string | null
-          from_type: string | null
-          occurred_at: string | null
-          strength: number | null
-          to_id: string | null
-          to_type: string | null
-        }
-        Insert: {
-          amount_cents?: number | null
-          connection_type?:
-            | Database["public"]["Enums"]["connection_type"]
-            | null
-          ended_at?: string | null
-          evidence_count?: number | null
-          evidence_sorted?: string[] | null
-          evidence_source?: string | null
-          from_id?: string | null
-          from_type?: string | null
-          occurred_at?: string | null
-          strength?: number | null
-          to_id?: string | null
-          to_type?: string | null
-        }
-        Update: {
-          amount_cents?: number | null
-          connection_type?:
-            | Database["public"]["Enums"]["connection_type"]
-            | null
-          ended_at?: string | null
-          evidence_count?: number | null
-          evidence_sorted?: string[] | null
-          evidence_source?: string | null
-          from_id?: string | null
-          from_type?: string | null
-          occurred_at?: string | null
-          strength?: number | null
-          to_id?: string | null
-          to_type?: string | null
-        }
-        Relationships: []
-      }
-      _proof_recips: {
-        Row: {
-          to_id: string
-        }
-        Insert: {
-          to_id: string
-        }
-        Update: {
-          to_id?: string
-        }
-        Relationships: []
-      }
-      _proof_ref_br: {
-        Row: {
-          donor_count: number | null
-          official_id: string | null
-          tier: string | null
-          total_cents: number | null
-        }
-        Insert: {
-          donor_count?: number | null
-          official_id?: string | null
-          tier?: string | null
-          total_cents?: number | null
-        }
-        Update: {
-          donor_count?: number | null
-          official_id?: string | null
-          tier?: string | null
-          total_cents?: number | null
-        }
-        Relationships: []
-      }
-      _proof_ref_odrmv: {
-        Row: {
-          donor_id: string | null
-          donor_name: string | null
-          entity_type: string | null
-          industry_label: string | null
-          industry_tag: string | null
-          official_id: string | null
-          rank: number | null
-          relationship_type: string | null
-          tail_donor_count: number | null
-          total_cents: number | null
-          tx_count: number | null
-        }
-        Insert: {
-          donor_id?: string | null
-          donor_name?: string | null
-          entity_type?: string | null
-          industry_label?: string | null
-          industry_tag?: string | null
-          official_id?: string | null
-          rank?: number | null
-          relationship_type?: string | null
-          tail_donor_count?: number | null
-          total_cents?: number | null
-          tx_count?: number | null
-        }
-        Update: {
-          donor_id?: string | null
-          donor_name?: string | null
-          entity_type?: string | null
-          industry_label?: string | null
-          industry_tag?: string | null
-          official_id?: string | null
-          rank?: number | null
-          relationship_type?: string | null
-          tail_donor_count?: number | null
-          total_cents?: number | null
-          tx_count?: number | null
-        }
-        Relationships: []
-      }
-      _proof_ref_odt: {
-        Row: {
-          donor_count: number | null
-          individual_cents: number | null
-          official_id: string | null
-          pac_cents: number | null
-          total_cents: number | null
-          updated_at: string | null
-        }
-        Insert: {
-          donor_count?: number | null
-          individual_cents?: number | null
-          official_id?: string | null
-          pac_cents?: number | null
-          total_cents?: number | null
-          updated_at?: string | null
-        }
-        Update: {
-          donor_count?: number | null
-          individual_cents?: number | null
-          official_id?: string | null
-          pac_cents?: number | null
-          total_cents?: number | null
-          updated_at?: string | null
-        }
-        Relationships: []
-      }
-      _proof_ref_sa: {
-        Row: {
-          donor_count: number | null
-          industry: string | null
-          official_id: string | null
-          total_cents: number | null
-          updated_at: string | null
-        }
-        Insert: {
-          donor_count?: number | null
-          industry?: string | null
-          official_id?: string | null
-          total_cents?: number | null
-          updated_at?: string | null
-        }
-        Update: {
-          donor_count?: number | null
-          industry?: string | null
-          official_id?: string | null
-          total_cents?: number | null
-          updated_at?: string | null
-        }
-        Relationships: []
-      }
-      _proof_ref_sd: {
-        Row: {
-          official_id: string | null
-          small_dollar_cents: number | null
-          small_dollar_count: number | null
-          updated_at: string | null
-        }
-        Insert: {
-          official_id?: string | null
-          small_dollar_cents?: number | null
-          small_dollar_count?: number | null
-          updated_at?: string | null
-        }
-        Update: {
-          official_id?: string | null
-          small_dollar_cents?: number | null
-          small_dollar_count?: number | null
-          updated_at?: string | null
-        }
-        Relationships: []
-      }
-      _proof_ref_tm: {
-        Row: {
-          donation_count: number | null
-          donor_name: string | null
-          rank: number | null
-          scope_id: string | null
-          state: string | null
-          total_cents: number | null
-        }
-        Insert: {
-          donation_count?: number | null
-          donor_name?: string | null
-          rank?: number | null
-          scope_id?: string | null
-          state?: string | null
-          total_cents?: number | null
-        }
-        Update: {
-          donation_count?: number | null
-          donor_name?: string | null
-          rank?: number | null
-          scope_id?: string | null
-          state?: string | null
-          total_cents?: number | null
         }
         Relationships: []
       }
@@ -3267,6 +2888,66 @@ export type Database = {
           metadata?: Json
           source?: string
           source_url?: string | null
+        }
+        Relationships: []
+      }
+      fec_emit_keys: {
+        Row: {
+          cycle_year: number
+          emitted_at: string
+          from_id: string
+          relationship_type: Database["public"]["Enums"]["financial_relationship_type"]
+          run_id: string
+          source: string
+          to_id: string
+          to_type: string
+        }
+        Insert: {
+          cycle_year: number
+          emitted_at?: string
+          from_id: string
+          relationship_type: Database["public"]["Enums"]["financial_relationship_type"]
+          run_id: string
+          source: string
+          to_id: string
+          to_type: string
+        }
+        Update: {
+          cycle_year?: number
+          emitted_at?: string
+          from_id?: string
+          relationship_type?: Database["public"]["Enums"]["financial_relationship_type"]
+          run_id?: string
+          source?: string
+          to_id?: string
+          to_type?: string
+        }
+        Relationships: []
+      }
+      fec_emit_runs: {
+        Row: {
+          complete_at: string | null
+          cycle_year: number
+          keys: number
+          run_id: string
+          source: string
+          started_at: string
+        }
+        Insert: {
+          complete_at?: string | null
+          cycle_year: number
+          keys?: number
+          run_id: string
+          source: string
+          started_at?: string
+        }
+        Update: {
+          complete_at?: string | null
+          cycle_year?: number
+          keys?: number
+          run_id?: string
+          source?: string
+          started_at?: string
         }
         Relationships: []
       }
@@ -6683,6 +6364,7 @@ export type Database = {
       }
     }
     Functions: {
+      _fix1128_probe_sleep: { Args: { p_seconds: number }; Returns: number }
       add_citation: {
         Args: {
           p_citation_type: string
@@ -7024,6 +6706,7 @@ export type Database = {
         }
       }
       cron_cadence_hours: { Args: { p_schedule: string }; Returns: number }
+      derive_nh_floterials: { Args: never; Returns: number }
       detect_brigade_candidates: {
         Args: {
           p_established_days?: number
@@ -7607,6 +7290,7 @@ export type Database = {
       normalize_pv_path: { Args: { p: string }; Returns: string }
       official_donor_totals_backfill: { Args: never; Returns: number }
       official_is_content_bearing: { Args: { p_id: string }; Returns: boolean }
+      prod_session_state: { Args: never; Returns: Json }
       promote_candidate_to_elected: {
         Args: { p_candidate_id: string; p_elected_id: string }
         Returns: Json
@@ -7897,6 +7581,17 @@ export type Database = {
           p_state?: string
         }
         Returns: string
+      }
+      revoke_grant: {
+        Args: {
+          p_actor_id?: string
+          p_reason?: string
+          p_role: Database["public"]["Enums"]["grant_role"]
+          p_target_id?: string
+          p_target_type: Database["public"]["Enums"]["grant_target_type"]
+          p_user_id: string
+        }
+        Returns: number
       }
       search_graph_entities: {
         Args: { lim?: number; q: string }
@@ -8357,12 +8052,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -8386,11 +8081,11 @@ export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -8411,11 +8106,11 @@ export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -8436,11 +8131,11 @@ export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -8453,11 +8148,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
+    : never) = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -8662,4 +8357,3 @@ export const Constants = {
     },
   },
 } as const
-
