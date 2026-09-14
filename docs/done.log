@@ -1440,3 +1440,4 @@
 2026-09-11 | FIX-1175 | 36c110d8 | local-only | feat(cc): repo-resident prompts and reports — /cc, report front matter, cc:verify, prompt template
 2026-09-13 | FIX-1163 | bd60f873 | prod-only | chore(nightly): record prod verification of FIX-1163 — nightly.yml on 0 21 * * *, four scheduled starts in UTC hour 22
 2026-09-13 | FIX-1176 | add3b95c | prod-only | chore(receipts): record prod verification of FIX-1176 — first scheduled firing committed docs/receipts/2026-09-13
+2026-09-13 | FIX-995 | 2585f7ac | closes-as-recognized | chore(fec): close FIX-995 — cycle 2026 completes inside the cap, on two consecutive weekly drops
