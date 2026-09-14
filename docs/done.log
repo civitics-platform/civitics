@@ -1441,3 +1441,4 @@
 2026-09-13 | FIX-1163 | bd60f873 | prod-only | chore(nightly): record prod verification of FIX-1163 — nightly.yml on 0 21 * * *, four scheduled starts in UTC hour 22
 2026-09-13 | FIX-1176 | add3b95c | prod-only | chore(receipts): record prod verification of FIX-1176 — first scheduled firing committed docs/receipts/2026-09-13
 2026-09-13 | FIX-995 | 2585f7ac | closes-as-recognized | chore(fec): close FIX-995 — cycle 2026 completes inside the cap, on two consecutive weekly drops
+2026-09-13 | FIX-1183 | e7ecc82d | local-only | fix(fec): FIX-1183 — the residue remediation's dry run prints the tail-step cost-class table before its go-ahead; the structural test covers all four landing scripts
