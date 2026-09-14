@@ -44,6 +44,7 @@ import { buildDbUrl } from "../lib/heavy-rebuild";
 import {
   type Bands,
   type CanaryCondition,
+  type JobConclusion,
   type JobFiring,
   type KeyValueRow,
   type PhaseRow,
@@ -550,6 +551,45 @@ function readGhRuns(): { runs: GhRun[]; note: string | null } {
   }
 }
 
+/** `gh run view <id> --json jobs` shape, narrowed to what §1 renders. */
+interface GhJobRaw {
+  name?: string;
+  conclusion?: string | null;
+  startedAt?: string | null;
+  completedAt?: string | null;
+}
+
+/**
+ * The run's per-JOB conclusions.
+ *
+ * Needed because the run-level conclusion is structurally blank in a scheduled
+ * file: the `receipts` job is a job of the run it describes. The four phase
+ * jobs HAVE concluded by then, so this is the honest reading. Degrades to an
+ * empty list on any failure, exactly like {@link readGhRuns} — a missing `gh`
+ * must never fail the receipts job, which runs with `if: always()`.
+ */
+function readGhJobs(runId: number): JobConclusion[] {
+  const res = spawnSync(
+    "gh",
+    ["run", "view", String(runId), "--json", "jobs"],
+    { encoding: "utf8", shell: process.platform === "win32" },
+  );
+  if (res.error !== undefined || res.status !== 0) return [];
+  try {
+    const parsed = JSON.parse(res.stdout) as { jobs?: GhJobRaw[] };
+    return (parsed.jobs ?? []).map((j) => ({
+      name: j.name ?? "(unnamed)",
+      // An in-flight job reports "" — render it as unknown rather than as a
+      // conclusion, the same distinction the run-level cell now makes.
+      conclusion: j.conclusion === undefined || j.conclusion === null || j.conclusion === "" ? null : j.conclusion,
+      started_at: j.startedAt ?? null,
+      completed_at: j.completedAt ?? null,
+    }));
+  } catch {
+    return [];
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
@@ -693,6 +733,7 @@ async function main(): Promise<void> {
         created_at: ghRun?.createdAt ?? null,
         run_id: ghRun?.databaseId ?? null,
         conclusion: ghRun?.conclusion ?? null,
+        jobs: ghRun === null ? [] : readGhJobs(ghRun.databaseId),
         slot_utc: SLOT_UTC,
         offset_hours: offsetHours,
         nominal_date: date,

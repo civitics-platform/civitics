@@ -56,7 +56,7 @@ never a claim without its instrument.
 
 | # | Section | Reads |
 |---|---|---|
-| 1 | The nightly | slot, `createdAt`, offset, nominal day, `isWeekly`; per-phase status / duration / `peak_rss_mb` / `skip_reason` |
+| 1 | The nightly | slot, `createdAt`, offset, nominal day, `isWeekly`; the run's per-**job** conclusions; per-**phase** status / duration / `peak_rss_mb` / `skip_reason` |
 | 2 | pg_cron jobs vs their bands | every job in `cron.job`: last firing, duration, cron status, band, verdict |
 | 3 | The 06:00 UTC daily | `units_ok`/`units`, wall, `rebuild_entity_search_index` vs its band (FIX-1152), the run's own `vm_before`, the visibility map now, and when the weekly last ran |
 | 4 | Hour-04 vacuums | `ec-`/`fe-vacuum-analyze` durations — FIX-1169's series |
@@ -70,12 +70,22 @@ Section 9 is not filler. `57014` cancellation counts live in `postgres_logs`,
 which the Supabase Logs API serves and SQL cannot reach; GHA step logs age out.
 Saying so is the difference between "checked and clean" and "not checked".
 
+**A scheduled file cannot carry the run's conclusion.** The `receipts` job is a
+job *of* the run it describes, so when it reads the API the run is still in
+flight and `gh` reports `conclusion: ""`. Every scheduled file shipped a blank
+cell there, which reads as a missing value rather than as a fact about when the
+file is written. Section 1 now renders that as *in progress (this file is
+written by its last job)* and carries the per-**job** conclusions instead —
+which ARE known at that moment, because the four phase jobs have all finished.
+A hand run (`--date` over a past day) describes a run that has ended, so it
+keeps the run-level conclusion.
+
 ---
 
 ## Verdicts
 
 ```
-in-band | above | below | missing | skipped | no-band | failed | running
+in-band | above | below | missing | inactive | skipped | no-band | failed | running
 ```
 
 Precedence, and the reason for it:
@@ -89,15 +99,28 @@ Precedence, and the reason for it:
 2. **`running`** — no `end_time`, so no duration to compare.
 3. **`failed`** — the number is how long it took to die, not how long it took.
    A crash that died in 3 s must never read as `in-band`.
-4. **`missing`** — no firing in the lookback window.
-5. **`no-band`** — nobody has written down what normal is. This is **not a
+4. **`inactive`** — the job has `active = false` in `cron.job` *and* no firing
+   in the lookback. Nothing is scheduled, so "it did not fire" is the correct
+   observation about it, not a fault; the detail carries the schedule it would
+   fire on if it were re-enabled. A job deactivated *mid*-lookback still has
+   real firings, and those are still band-compared — `inactive` only ever
+   replaces `missing`, never a measurement.
+5. **`missing`** — an **active** job with no firing in the lookback window.
+   Reserved for that: four prod jobs are permanently disabled
+   (`entity-connection-stats-rebuild`, `financial-entity-totals-incremental`,
+   `rebuild-ec-incremental`, `rebuild-ec-incremental-mon`), and rendering them
+   `missing` put four standing false alarms in every file, which is how a reader
+   learns to skim the verdict column.
+6. **`no-band`** — nobody has written down what normal is. This is **not a
    pass**. "Nobody wrote it down" and "this is normal" are different facts, and
    collapsing them is how a detector quietly stops covering what it enumerates.
-6. Only then is the duration compared against the band. Both bounds are
+7. Only then is the duration compared against the band. Both bounds are
    inclusive.
 
 `failed` and `running` are additions to cc-123 D2's list. D2 assumed every
-firing yields a duration; `cron.job_run_details.status` does not.
+firing yields a duration; `cron.job_run_details.status` does not. `inactive` is
+a later addition for the same class of reason: D2 assumed every job in
+`cron.job` is one that should be firing.
 
 ---
 

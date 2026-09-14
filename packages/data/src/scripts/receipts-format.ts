@@ -40,7 +40,8 @@ export type Verdict =
   | "skipped"
   | "no-band"
   | "failed"
-  | "running";
+  | "running"
+  | "inactive";
 
 /** One hand-written band. `hi_s` is the ceiling that matters; `lo_s` is usually 0. */
 export interface Band {
@@ -88,7 +89,16 @@ export interface JobVerdict extends JobFiring {
  *     receipts file reads `data_sync_log` directly so that it can.)
  *  2. STILL RUNNING has no duration, so no band applies.
  *  3. FAILED is not a duration either — the number is how long it took to die.
- *  4. NEVER FIRED is `missing`.
+ *  4. NEVER FIRED splits in two. A job with `active = false` has no schedule
+ *     running, so "no firing in the lookback" is the CORRECT observation about
+ *     it and not a fault: that is `inactive`, and the detail carries the
+ *     schedule it would fire on if someone re-enabled it. `missing` is reserved
+ *     for an ACTIVE job that should have fired and did not. Four prod jobs sit
+ *     in the first class today — entity-connection-stats-rebuild,
+ *     financial-entity-totals-incremental, rebuild-ec-incremental and
+ *     rebuild-ec-incremental-mon — and rendering them `missing` put four
+ *     permanent false alarms in every file, which is how a reader learns to
+ *     skim the verdict column.
  *  5. NO BAND is `no-band`. Never `in-band`.
  *  6. Only then is the duration compared.
  */
@@ -129,6 +139,18 @@ export function verdictFor(firing: JobFiring, band: Band | null): JobVerdict {
     return { ...base, verdict: "running", detail: "in flight at read time — no duration yet" };
   }
   if (firing.last_start === null || firing.duration_s === null) {
+    // Checked only HERE, not at the top: a job deactivated mid-lookback still
+    // has real firings to band-compare, and those are the interesting ones.
+    if (!firing.active) {
+      return {
+        ...base,
+        verdict: "inactive",
+        detail:
+          firing.schedule === null
+            ? "job is disabled (active = false)"
+            : "job is disabled (active = false); schedule would be " + firing.schedule,
+      };
+    }
     return { ...base, verdict: "missing", detail: "no firing in the lookback window" };
   }
   return { ...base, ...compareToBand(firing.duration_s, band) };
@@ -154,6 +176,26 @@ export function compareToBand(
 
 export function verdictsFor(firings: JobFiring[], bands: Bands): JobVerdict[] {
   return firings.map((f) => verdictFor(f, bands[f.jobname] ?? null));
+}
+
+/** Rendered when the run has not concluded, because this file is part of it. */
+export const RUN_IN_PROGRESS = "in progress (this file is written by its last job)";
+
+/**
+ * What goes in §1's `conclusion` cell.
+ *
+ * `gh` reports a run that is still going as `conclusion: ""`. Rendering the
+ * empty string produced a blank cell in every scheduled file — indistinguishable
+ * from "we could not read it" — when the true statement is that the run cannot
+ * have concluded yet. A hand run over a past day reads a finished run and its
+ * conclusion is passed through unchanged.
+ */
+export function runConclusionCell(n: Pick<NightlySection, "conclusion" | "jobs">): string | null {
+  const c = (n.conclusion ?? "").trim();
+  if (c !== "") return c;
+  // No conclusion AND no jobs means `gh` was unavailable — say nothing rather
+  // than claim the run is in flight, which we would not know.
+  return n.jobs.length > 0 ? RUN_IN_PROGRESS : null;
 }
 
 /**
@@ -200,11 +242,37 @@ export interface PhaseRow {
   is_weekly: boolean | null;
 }
 
+/**
+ * One job of the nightly run, from `gh run view <id> --json jobs`.
+ *
+ * These exist because the RUN-level conclusion is structurally unavailable to a
+ * scheduled receipts file: the `receipts` job is a job OF the run it describes,
+ * so at the moment it reads the API the run is still in progress and its
+ * `conclusion` is the empty string. Every scheduled file shipped with a blank
+ * cell there and it read as a missing value rather than as a fact about when
+ * the file is written. The per-JOB conclusions are known at that moment — the
+ * four phase jobs have all finished — so they are what the file can honestly
+ * carry. A hand run (`--date` for a past day) describes a run that has ended,
+ * so it keeps the run-level conclusion as well.
+ */
+export interface JobConclusion {
+  name: string;
+  conclusion: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+}
+
 export interface NightlySection {
   /** From `gh run list`; null when `gh` was unavailable (locally, usually). */
   created_at: string | null;
   run_id: number | null;
+  /**
+   * Run-level conclusion. Empty/null whenever the file is written by a job of
+   * the run it describes — see {@link JobConclusion}.
+   */
   conclusion: string | null;
+  /** Per-job conclusions; empty when `gh` was unavailable. */
+  jobs: JobConclusion[];
   /** UTC hour:minute the cron slot names, e.g. "21:00". */
   slot_utc: string;
   /** createdAt − slot, in hours, when both are known. */
@@ -411,7 +479,7 @@ export function renderMarkdown(d: ReceiptsData): string {
         ["slot (cron)", d.nightly.slot_utc + " UTC, previous day"],
         ["run createdAt", d.nightly.created_at],
         ["GHA run id", d.nightly.run_id],
-        ["conclusion", d.nightly.conclusion],
+        ["conclusion", runConclusionCell(d.nightly)],
         [
           "offset (createdAt − slot)",
           d.nightly.offset_hours === null ? null : d.nightly.offset_hours.toFixed(2) + " h",
@@ -425,6 +493,22 @@ export function renderMarkdown(d: ReceiptsData): string {
   if (d.nightly.gha_note !== null) {
     p("> " + d.nightly.gha_note);
     p("");
+  }
+  if (d.nightly.jobs.length > 0) {
+    p("### Jobs");
+    p("");
+    p(
+      "The run-level conclusion above is blank on a scheduled file by construction — " +
+        "the `receipts` job is a job of the run it describes, so the run is still in " +
+        "flight when this is read. These are known at that moment.",
+    );
+    p("");
+    p(
+      table(
+        ["job", "conclusion", "started (UTC)", "completed (UTC)"],
+        d.nightly.jobs.map((j) => [j.name, j.conclusion, j.started_at, j.completed_at]),
+      ),
+    );
   }
   p("### Phases");
   p("");

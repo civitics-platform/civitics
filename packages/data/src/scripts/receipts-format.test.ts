@@ -27,6 +27,8 @@ import {
   nominalDate,
   renderJson,
   renderMarkdown,
+  RUN_IN_PROGRESS,
+  runConclusionCell,
   verdictFor,
   verdictsFor,
 } from "./receipts-format";
@@ -78,6 +80,43 @@ test("missing: no firing in the lookback window", () => {
     BAND,
   );
   assert.equal(v.verdict, "missing");
+});
+
+test("inactive: a disabled job that never fired is inactive, not missing", () => {
+  const v = verdictFor(
+    firing({
+      jobname: "rebuild-ec-incremental",
+      schedule: "0 8 * * 3",
+      active: false,
+      last_start: null,
+      last_end: null,
+      duration_s: null,
+      cron_status: null,
+      sync_status: null,
+    }),
+    BAND,
+  );
+  assert.equal(v.verdict, "inactive");
+  assert.match(v.detail ?? "", /active = false/);
+  // The schedule it WOULD fire on is the useful half — without it the reader
+  // has to go to cron.job to find out what was turned off.
+  assert.match(v.detail ?? "", /0 8 \* \* 3/);
+});
+
+test("inactive still names the disabled state when the schedule is unknown", () => {
+  const v = verdictFor(
+    firing({ active: false, schedule: null, last_start: null, last_end: null, duration_s: null, cron_status: null, sync_status: null }),
+    BAND,
+  );
+  assert.equal(v.verdict, "inactive");
+  assert.match(v.detail ?? "", /active = false/);
+});
+
+test("missing is reserved for an ACTIVE job — an inactive one that DID fire is still band-compared", () => {
+  // Deactivated mid-lookback: the firing is real and its duration is the
+  // interesting number, so `inactive` must not swallow it.
+  const v = verdictFor(firing({ active: false }), BAND);
+  assert.equal(v.verdict, "in-band");
 });
 
 test("no-band: a perfectly normal firing with nothing written down is NOT in-band", () => {
@@ -248,6 +287,20 @@ function fixture(): ReceiptsData {
       created_at: "2026-09-11T22:54:15Z",
       run_id: 34655954209,
       conclusion: "success",
+      jobs: [
+        {
+          name: "fec-phase",
+          conclusion: "success",
+          started_at: "2026-09-11T22:54:18Z",
+          completed_at: "2026-09-11T23:01:08Z",
+        },
+        {
+          name: "receipts",
+          conclusion: null,
+          started_at: "2026-09-12T06:29:40Z",
+          completed_at: null,
+        },
+      ],
       slot_utc: "21:00",
       offset_hours: 1.904,
       nominal_date: "2026-09-12",
@@ -412,4 +465,51 @@ test("renderMarkdown: a gha_note is surfaced when the GHA half is unchecked", ()
 test("renderJson: round-trips to the same object", () => {
   const d = fixture();
   assert.deepEqual(JSON.parse(renderJson(d)), JSON.parse(JSON.stringify(d)));
+});
+
+// ---------------------------------------------------------------------------
+// The run conclusion, which a scheduled file can never have (D4b)
+// ---------------------------------------------------------------------------
+
+test("runConclusionCell: a finished run's conclusion passes straight through", () => {
+  assert.equal(runConclusionCell({ conclusion: "success", jobs: [] }), "success");
+  assert.equal(runConclusionCell({ conclusion: "failure", jobs: [] }), "failure");
+});
+
+test("runConclusionCell: the blank a scheduled file always gets becomes the in-progress label", () => {
+  // This is the real shape: `gh` reports "" because the receipts job is a job
+  // OF the run it is describing. Every scheduled file shipped a blank cell.
+  const cell = runConclusionCell({
+    conclusion: "",
+    jobs: [{ name: "fec-phase", conclusion: "success", started_at: null, completed_at: null }],
+  });
+  assert.equal(cell, RUN_IN_PROGRESS);
+  assert.match(cell ?? "", /written by its last job/);
+});
+
+test("runConclusionCell: blank AND no jobs is unknown, not in-progress", () => {
+  // `gh` unavailable. Claiming the run is in flight would be a guess, and the
+  // gha_note already says the GHA half is unchecked.
+  assert.equal(runConclusionCell({ conclusion: null, jobs: [] }), null);
+  assert.equal(runConclusionCell({ conclusion: "", jobs: [] }), null);
+});
+
+test("renderMarkdown: the per-job table is rendered, with its reason", () => {
+  const md = renderMarkdown(fixture());
+  assert.match(md, /### Jobs/);
+  assert.match(md, /\| fec-phase \| success \|/);
+  assert.match(md, /a job of the run it describes/);
+});
+
+test("renderMarkdown: no jobs means no Jobs section rather than an empty one", () => {
+  const d = fixture();
+  d.nightly.jobs = [];
+  const md = renderMarkdown(d);
+  assert.ok(!md.includes("### Jobs"));
+});
+
+test("renderMarkdown: an in-flight run renders the label, not a blank cell", () => {
+  const d = fixture();
+  d.nightly.conclusion = "";
+  assert.match(renderMarkdown(d), /written by its last job/);
 });
