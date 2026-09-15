@@ -1,0 +1,30 @@
+{
+  "cc": "127",
+  "prompt": "cc-prompt-127-fix1184-record-fix1185-postgres-role-ceiling-3h-transaction-timeout-read.md",
+  "started_at": "2026-09-15T00:28:00Z",
+  "finished_at": "2026-09-15T01:05:00Z",
+  "head_before": "94fecdab",
+  "head_after": "5a82bda9",
+  "commits": [
+    {
+      "sha": "e5b078cb",
+      "subject": "docs(audits): FIX-1185 — postgres-role long-statement census, the clone arming proof, and the transaction_timeout read"
+    },
+    {
+      "sha": "5a82bda9",
+      "subject": "docs(fixes): FIX-1185 / FIX-1128 / FIX-1186 / FIX-1125 appends"
+    }
+  ],
+  "fixes_closed": [],
+  "fixes_filed": [],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "none",
+  "ci": "green",
+  "stopped_items": [
+    "Item 1 (FIX-1184 record commit) — did not land. The FEC bulk arm did not run on the 2026-09-14 nightly (fec_drop_probe.pending = false; remote Last-Modified equals the watermark), so no emit run began, so FIX-1184's supersede-at-begin() never fired. All three orphans are still un-superseded and still hold live keys.",
+    "Item 2 (the 6h → 3h migration and its prod push) — did not land. The D3 census gate fired: five postgres-role CALLs in the retained window that the procedure itself logged complete, at 11,280.8 / 12,546.6 / 14,028.3 / 14,932.7 / 18,568.4 s, each with no session-level bound of its own. No migration was written.",
+    "Item 5 (FIX-1185 receipt record commit) — not reached; it is conditional on item 2, and the contract-flow-rollups-refresh firing it would cite is Thu 2026-09-17 14:00 UTC regardless.",
+    "FIX-1128's closure — deferred. The prompt closes it on the record commit after the receipt (D4); there is no receipt because there is no push, so it stays open."
+  ]
+}
