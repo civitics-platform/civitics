@@ -1,0 +1,61 @@
+jobname	start_time	dur_s	cron_status	ceiling_hit	proc_status	proc_elapsed_s	active	watchdog_budget_s
+rebuild-ec-incremental-mon	2026-08-10 08:00:00	22379.5	failed	yes	reaped		false	18000
+donor-rollup-refresh	2026-07-27 09:00:00	22079.6	failed	yes	failed		true	14400
+refresh-derived-mvs-daily	2026-08-31 06:00:00	21932.5	succeeded	no	partial	21920.6	true	5400
+rebuild-ec-incremental	2026-08-19 08:00:00	21874.7	succeeded	no	partial	21868	false	18000
+refresh-derived-mvs-weekly	2026-08-11 07:00:00	21802.0	failed	yes	reaped		true	5400
+donor-party-rollup-refresh	2026-08-04 08:45:00	21628.6	failed	yes	reaped		true	1800
+donor-rollup-refresh	2026-07-28 09:00:00	21624.7	failed	yes	failed		true	14400
+treemap-individuals-global-refresh	2026-08-04 08:15:00	21615.9	failed	yes			true	5400
+rebuild-ec-incremental-mon	2026-08-17 08:00:00	21614.9	succeeded	no	partial	21611	false	18000
+rule-taggers-weekly	2026-07-14 10:00:00	21613.3	failed	yes	failed		true	7200
+financial-entity-totals-incremental	2026-07-28 09:00:00	21611.2	failed	yes	failed		false	7200
+entity-connection-stats-rebuild	2026-08-10 11:00:09	21610.9	failed	yes	reaped		false	
+donor-rollup-refresh	2026-08-08 12:28:40	21606.2	failed	yes	reaped		true	14400
+rebuild-ec-incremental-mon	2026-08-03 08:00:08	21602.7	failed	yes	reaped		false	18000
+rule-taggers-weekly	2026-07-28 10:00:02	21601.4	failed	yes	failed		true	7200
+rule-taggers-weekly	2026-07-07 10:00:00	21601.0	failed	yes	failed		true	7200
+donor-rollup-refresh	2026-07-30 09:00:00	21600.5	failed	yes	failed		true	14400
+donor-rollup-refresh	2026-07-29 09:00:01	21600.3	failed	yes	failed		true	14400
+rebuild-ec-incremental-mon	2026-08-24 08:00:00	18976.8	succeeded	no	partial	18976	false	18000
+entity-connection-stats-rebuild	2026-07-27 11:00:01	18568.4	succeeded	no	complete		false	
+entity-connection-stats-rebuild	2026-08-03 11:00:07	14932.7	succeeded	no	complete		false	
+rule-taggers-daily	2026-08-05 06:30:07	14028.3	succeeded	no	complete		true	7200
+donor-rollup-refresh	2026-08-07 09:00:00	12622.3	succeeded	no	partial	12622	true	14400
+refresh-derived-mvs-daily	2026-08-05 06:00:01	12546.6	succeeded	no	complete		true	5400
+donor-rollup-refresh	2026-08-08 09:00:00	12518.6	succeeded	no	partial	12518	true	14400
+donor-rollup-refresh	2026-08-06 09:00:04	11770.7	succeeded	no	partial	11770	true	14400
+donor-rollup-refresh	2026-08-07 12:30:24	11338.7	succeeded	no	partial	11338	true	14400
+donor-rollup-refresh	2026-07-31 09:00:00	11280.8	succeeded	no	complete	11281	true	14400
+donor-rollup-refresh	2026-08-06 12:16:16	11054.5	succeeded	no	partial	11054	true	14400
+donor-rollup-refresh	2026-08-10 12:00:04	9387.9	succeeded	no	partial	9367	true	14400
+donor-rollup-refresh	2026-08-09 12:00:00	8234.2	succeeded	no	complete	8234	true	14400
+financial-entity-totals-incremental	2026-08-25 10:00:00	8047.8	failed	no	reaped		false	7200
+donor-rollup-refresh	2026-07-19 09:00:00	8045.9	succeeded	no	complete		true	14400
+rule-taggers-weekly	2026-09-01 16:00:01	7519.7	failed	no	reaped		true	7200
+refresh-derived-mvs-daily	2026-08-08 06:00:00	7373.6	succeeded	no	complete		true	5400
+rule-taggers-weekly	2026-08-25 16:00:00	7325.8	failed	no	reaped		true	7200
+donor-rollup-refresh	2026-08-02 09:00:00	7243.1	succeeded	no	complete	7243	true	14400
+donor-rollup-refresh	2026-08-26 12:00:00	7201.7	succeeded	no	partial	7202	true	14400
+donor-rollup-refresh	2026-08-26 09:00:00	7172.3	succeeded	no	partial	7172	true	14400
+donor-rollup-refresh	2026-08-12 09:00:00	7163.1	succeeded	no	partial	7163	true	14400
+donor-rollup-refresh	2026-08-21 09:00:00	7145.6	succeeded	no	partial	7145	true	14400
+donor-rollup-refresh	2026-08-18 12:00:00	7134.3	succeeded	no	partial	7134	true	14400
+contract-flow-rollups-refresh	2026-07-30 14:00:02	7125.6	succeeded	no	complete		true	10800
+entity-connection-stats-rebuild	2026-07-13 11:00:04	7111.5	succeeded	no	complete		false	
+entity-connection-stats-rebuild	2026-07-29 11:00:03	7095.5	succeeded	no	complete		false	
+donor-rollup-refresh	2026-08-23 12:00:00	7076.0	succeeded	no	partial	7076	true	14400
+donor-rollup-refresh	2026-07-22 09:00:00	6846.1	succeeded	no	complete		true	14400
+donor-rollup-refresh	2026-09-01 12:00:00	6747.3	succeeded	no	partial	6743	true	14400
+donor-rollup-refresh	2026-09-01 09:00:00	6646.1	succeeded	no	partial	6646	true	14400
+donor-rollup-refresh	2026-08-17 09:00:02	6640.4	succeeded	no	partial	6640	true	14400
+treemap-individuals-global-refresh	2026-08-18 08:15:02	6477.2	failed	no	reaped		true	5400
+donor-rollup-refresh	2026-08-23 09:00:00	6343.7	succeeded	no	partial	6344	true	14400
+donor-rollup-refresh	2026-08-20 12:00:00	6342.3	succeeded	no	partial	6342	true	14400
+financial-entity-totals-incremental	2026-08-18 09:00:01	5539.0	failed	no	partial	3585	false	7200
+treemap-individuals-global-refresh	2026-09-01 14:00:00	5420.7	failed	no	reaped		true	5400
+rebuild-ec-incremental	2026-07-29 08:00:00	5349.8	succeeded	no	complete		false	18000
+rule-taggers-weekly	2026-09-08 16:00:00	4692.4	succeeded	no	complete	4692	true	7200
+donor-rollup-refresh	2026-09-02 09:00:00	4411.6	succeeded	no	complete	4411	true	14400
+donor-rollup-refresh	2026-08-19 09:00:01	4079.9	succeeded	no	partial	4079	true	14400
+refresh-derived-mvs-daily	2026-08-07 06:00:00	4032.6	succeeded	no	complete		true	5400

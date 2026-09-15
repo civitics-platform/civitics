@@ -1,0 +1,6 @@
+rolname	calls	mean_s	max_s	total_s	query
+postgres	7	1433.7	4692.4	10035.7	CALL public.run_rule_taggers($1)
+postgres	615	37.2	2000.8	22865.8	CALL public.run_entity_connections_rebuild($1, p_max_units := $2)
+postgres	1	1920.0	1920.0	1920.0	CALL public.refresh_contract_flow_rollups()
+postgres	1	1832.4	1832.4	1832.4	WITH dropped AS ( SELECT o.id, o.full_name, o.role_title, o.source_ids->>$1 AS cand_id, o.is_active FROM public.officials o WHERE o.id IN ($
+postgres	12	102.5	646.0	1229.9	CALL public.donor_rollup_rebuild_bulk()
