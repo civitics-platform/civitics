@@ -36,7 +36,12 @@ WITH suspect AS (
             AND fr.relationship_type = 'donation'
             AND fr.to_id = o.id
             AND fr.metadata->>'source' LIKE 'fec_bulk%')
+    -- FIX-1187 — "carries no authoritative CAND_ID" means neither the
+    -- current-office id NOR a prior-office one. A House->Senate member whose
+    -- House id moved into prior_fec_candidate_ids still holds an authoritative
+    -- claim and is not an orphan.
     AND o.source_ids->>'fec_candidate_id' IS NULL
+    AND jsonb_array_length(COALESCE(o.source_ids->'prior_fec_candidate_ids', '[]'::jsonb)) = 0
     AND NOT (
       o.source_ids->>'fec_id' IS NOT NULL AND (
         (o.role_title = 'Senator'        AND upper(left(o.source_ids->>'fec_id', 1)) = 'S') OR
@@ -47,7 +52,15 @@ WITH suspect AS (
 lk AS (
   SELECT o.id,
          regexp_replace(upper(COALESCE(NULLIF(o.last_name, ''), o.full_name)), '[^A-Z]', '', 'g') AS lastkey,
-         (o.source_ids ? 'fec_candidate_id' OR o.source_ids ? 'fec_id') AS has_fec
+         -- FIX-1187 — a prior-office CAND_ID counts as "carries an FEC id" for
+         -- twin-pool purposes. NOTE the deliberate asymmetry with twin_fec_id
+         -- below, which stays fec_candidate_id/fec_id only: has_fec asks about
+         -- IDENTITY, twin_fec_id is decoded for a SEAT by stateMatches /
+         -- seatMatches, and a prior-office id describes the wrong seat.
+         (o.source_ids ? 'fec_candidate_id'
+          OR o.source_ids ? 'fec_id'
+          OR jsonb_array_length(COALESCE(o.source_ids->'prior_fec_candidate_ids', '[]'::jsonb)) > 0)
+           AS has_fec
   FROM officials o
 ),
 pair AS (

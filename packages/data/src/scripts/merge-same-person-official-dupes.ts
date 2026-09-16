@@ -295,6 +295,28 @@ function retiredClaimsJsonb(alias: string): string {
                    ELSE '[]'::jsonb END)`;
 }
 
+/**
+ * FIX-1187 — every CAND_ID an `officials` row AUTHORITATIVELY claims, as a jsonb
+ * array, in SQL. The current-office `fec_candidate_id` plus the prior-office
+ * `prior_fec_candidate_ids`. The TS mirror is `authoritativeClaims()` in
+ * ../pipelines/fec-bulk/claims.ts.
+ *
+ * Use `<expr> ? '<id>'` for membership and `jsonb_array_length(<expr>) > 0` for
+ * "carries any authoritative claim at all".
+ *
+ * NEVER use this where an id is DECODED for a seat (office char, state chars,
+ * House district digits). A prior-office id describes the seat the person used
+ * to hold, so feeding it to a seat gate makes the gate wrong. Those sites keep
+ * reading `source_ids->>'fec_candidate_id'` directly — see
+ * OWN_SEAT_MANIFEST_SQL, where the two uses sit four lines apart.
+ */
+function authoritativeClaimsJsonb(alias: string): string {
+  return `(CASE WHEN ${alias}.source_ids ? 'fec_candidate_id'
+                THEN jsonb_build_array(${alias}.source_ids->>'fec_candidate_id')
+                ELSE '[]'::jsonb END
+           || COALESCE(${alias}.source_ids->'prior_fec_candidate_ids', '[]'::jsonb))`;
+}
+
 const REPAIR_MANIFEST_SQL = `
 -- Aliases are QUOTED to preserve camelCase: these rows are consumed directly as
 -- \`Pair\`, and an unquoted \`AS fec_id\` folds to lower case and lands as
@@ -589,6 +611,9 @@ WITH seat AS (
   SELECT o.id, o.tier, o.full_name, o.first_name, o.role_title,
          upper(j.short_name)               AS state,
          o.source_ids->>'fec_candidate_id' AS live_fec,
+         -- FIX-1187 — the IDENTITY set (current + prior office ids). Kept
+         -- separate from live_fec, which is what the seat gate decodes.
+         ${authoritativeClaimsJsonb("o")}  AS auth_claims,
          regexp_replace(upper(COALESCE(NULLIF(o.last_name,''), o.full_name)),'[^A-Z]','','g') AS surname,
          -- District as an int. Elected rows read 'District 11', candidate rows
          -- '11'; Senate / President / at-large collapse to 0 on both sides.
@@ -622,8 +647,15 @@ SELECT s.id        AS "survivor",
    AND (left(d.live_fec,1) <> 'H'
         OR (substr(d.live_fec,5,2) ~ '^[0-9]{2}$'
             AND substr(d.live_fec,5,2)::int = s.district_int))
-   -- FIX-956 exclusion: survivor must be unbound, or bound to THIS id
-   AND (s.live_fec IS NULL OR s.live_fec = d.live_fec)
+   -- FIX-956 exclusion: survivor must be unbound, or bound to THIS id.
+   -- FIX-1187 — "bound to THIS id" now includes a PRIOR-office binding: after
+   -- an office promotion the survivor's fec_candidate_id is the Senate id and
+   -- the House id sits in prior_fec_candidate_ids, and the House stub is still
+   -- the same person. This is an IDENTITY test; the seat gate four lines above
+   -- deliberately stays on d.live_fec.
+   AND (s.live_fec IS NULL
+        OR s.live_fec = d.live_fec
+        OR s.auth_claims ? d.live_fec)
    -- the stub must actually hold something to move
    AND EXISTS (SELECT 1 FROM financial_relationships fr
                 WHERE fr.to_type='official' AND fr.to_id = d.id)
@@ -1100,7 +1132,10 @@ async function verifyManifestInDb(
     client,
     `SELECT m.survivor, m.dup,
             s.tier AS survivor_tier, d.tier AS dup_tier,
-            (s.source_ids ? 'fec_candidate_id') AS survivor_has_fec,
+            -- FIX-1187 — a survivor carrying only a PRIOR-office id still has an
+            -- authoritative identity, so it is not the unbound survivor this
+            -- path requires. has-id, not seat: the array counts.
+            (jsonb_array_length(${authoritativeClaimsJsonb("s")}) > 0) AS survivor_has_fec,
             d.source_ids->>'fec_candidate_id'   AS dup_fec,
             s.role_title                        AS survivor_role,
             upper(js.short_name)                AS survivor_state

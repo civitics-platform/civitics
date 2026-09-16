@@ -773,3 +773,146 @@ test("FIX-937 a null role_title is refused (allow-list default)", () => {
   assert.equal(isFecElectableRole(noRole), false);
   assert.equal(matchRow(weball("S0GA00777", "QUILL, PAT", "GA"), buildMatchIndex([noRole])), null);
 });
+
+// ---------------------------------------------------------------------------
+// FIX-1187 — prior_fec_candidate_ids: a second authoritative CAND_ID for an
+// official who changed office.
+//
+// The five sitting Senators who hold a House CAND_ID (Schiff, Marshall, Peters,
+// Curtis, Lummis) are one person with two authoritative ids. The current-office
+// id lives in fec_candidate_id because the URL and treemap readers decode a SEAT
+// from it; the prior-office id lives in the array because pass 2's role gate
+// (roleMayHoldFecOffice) would refuse it by construction.
+// ---------------------------------------------------------------------------
+
+/** Schiff after the office promotion: Senate id current, House id prior. */
+const SCHIFF_PROMOTED = official(
+  "26876d52-0000-4000-8000-000000000001",
+  "Adam B. Schiff",
+  "Adam",
+  "Schiff",
+  "Senator",
+  "CA",
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  { fec_candidate_id: "S4CA00555", prior_fec_candidate_ids: ["H0CA27085"] as any },
+);
+
+/** The Cand-for-Rep stub that still holds the House id. */
+const SCHIFF_HOUSE_STUB: OfficialRecord = {
+  ...official(
+    "41d2af4c-0000-4000-8000-000000000002",
+    "Adam Schiff",
+    "Adam",
+    "Schiff",
+    "Candidate for Representative",
+    "CA",
+    { fec_candidate_id: "H0CA27085" },
+  ),
+  // FIX-941 tier preference is keyed on `tier`, not on role_title — the
+  // `official()` helper leaves it undefined, which reads as 'elected'.
+  tier: "candidate",
+};
+
+test("FIX-1187 a Senator with a prior House id claims BOTH keys in pass 1", () => {
+  const index = buildMatchIndex([SCHIFF_PROMOTED]);
+  assert.equal(index.byFecId.get("S4CA00555"), SCHIFF_PROMOTED.id, "current-office id");
+  assert.equal(index.byFecId.get("H0CA27085"), SCHIFF_PROMOTED.id, "prior-office id");
+});
+
+test("FIX-1187 the prior-office claim BEATS a candidate stub holding the same id", () => {
+  // Tier preference (FIX-941): the elected row takes a duplicated CAND_ID from a
+  // stub. That has to hold for a prior-office id too, or the House stub keeps
+  // winning the slot and the money re-splits on the next run.
+  const index = buildMatchIndex([SCHIFF_HOUSE_STUB, SCHIFF_PROMOTED]);
+  assert.equal(index.byFecId.get("H0CA27085"), SCHIFF_PROMOTED.id);
+  const matched = matchRow(weball("H0CA27085", "SCHIFF, ADAM", "CA"), index);
+  assert.equal(matched?.officialId, SCHIFF_PROMOTED.id);
+});
+
+test("FIX-1187 order does not matter — the stub loses whichever way round", () => {
+  const index = buildMatchIndex([SCHIFF_PROMOTED, SCHIFF_HOUSE_STUB]);
+  assert.equal(index.byFecId.get("H0CA27085"), SCHIFF_PROMOTED.id);
+});
+
+test("FIX-1187 a prior id that has been RETIRED is still refused", () => {
+  // FIX-955 composes with FIX-1187: authoritativeClaims filters retired ids, so
+  // a row cannot re-claim an id a merge deliberately took away from it.
+  const retired = official(
+    "26876d52-0000-4000-8000-000000000003",
+    "Adam B. Schiff",
+    "Adam",
+    "Schiff",
+    "Senator",
+    "CA",
+    {
+      fec_candidate_id: "S4CA00555",
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      prior_fec_candidate_ids: ["H0CA27085"] as any,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      merged_fec_candidate_ids: ["H0CA27085"] as any,
+    },
+  );
+  const index = buildMatchIndex([retired]);
+  assert.equal(index.byFecId.get("S4CA00555"), retired.id, "the live id still claims");
+  assert.equal(index.byFecId.get("H0CA27085"), undefined, "the retired prior id does not");
+});
+
+test("FIX-1187 a stub whose id is in merged_fec_candidate_ids is still refused", () => {
+  // The neutralise step's post-condition, unchanged by this FIX.
+  const neutralised: OfficialRecord = {
+    ...official(
+      "41d2af4c-0000-4000-8000-000000000004",
+      "Adam Schiff",
+      "Adam",
+      "Schiff",
+      "Candidate for Representative",
+      "CA",
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      { merged_fec_candidate_ids: ["H0CA27085"] as any },
+    ),
+    tier: "candidate",
+  };
+  const index = buildMatchIndex([neutralised]);
+  assert.equal(index.byFecId.get("H0CA27085"), undefined);
+});
+
+test("FIX-1187 a row carrying ONLY a prior id is not a name-fallback candidate", () => {
+  // perCycleNameFallback's pool is "carries no FEC id at all". A prior-office id
+  // IS an FEC id, so the row must not re-enter the pool and re-derive one by
+  // name — the FIX-960 guard-1 shape, applied to the new key.
+  const priorOnly = official(
+    "26876d52-0000-4000-8000-000000000005",
+    "Gary C. Peters",
+    "Gary",
+    "Peters",
+    "Senator",
+    "MI",
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    { prior_fec_candidate_ids: ["H8MI09068"] as any },
+  );
+  const bound = perCycleNameFallback(
+    [priorOnly],
+    [weball("S4MI00355", "PETERS, GARY", "MI")],
+    buildMatchIndex([]),
+  );
+  assert.deepEqual(bound, [], "a prior-office id keeps the row out of the name pool");
+});
+
+test("FIX-1187 an id-less row with the same name IS still a name-fallback candidate", () => {
+  // The control for the test above: the exclusion must be the prior-id key, not
+  // the role or the name.
+  const idless = official(
+    "26876d52-0000-4000-8000-000000000006",
+    "Gary C. Peters",
+    "Gary",
+    "Peters",
+    "Senator",
+    "MI",
+  );
+  const bound = perCycleNameFallback(
+    [idless],
+    [weball("S4MI00355", "PETERS, GARY", "MI")],
+    buildMatchIndex([]),
+  );
+  assert.deepEqual(bound, [{ officialId: idless.id, fecId: "S4MI00355" }]);
+});

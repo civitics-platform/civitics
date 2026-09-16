@@ -24,6 +24,7 @@ import * as readline from "readline";
 
 import type { createAdminClient, Database } from "@civitics/db";
 import { afterKey } from "@civitics/db";
+import { authoritativeClaims } from "./claims";
 import { roleMayHoldFecOffice } from "./electable-role";
 import { extractZipEntryToDisk, parseFecName } from "./util";
 
@@ -452,6 +453,10 @@ export async function loadOfficialsByFecIds(
       .from("officials")
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .select("id, tier, role_title, source_ids" as any)
+      // FIX-1187 — no `prior_fec_candidate_ids` arm is needed here: the array
+      // only ever exists alongside a CURRENT-office `fec_candidate_id` (the
+      // office-promotion write sets both in one statement), so this filter
+      // already loads every row that carries one.
       .or("source_ids->>fec_candidate_id.not.is.null,source_ids->>fec_id.not.is.null")
       // FIX-760: stable unique order (see loadExistingCandidateNames).
       .order("id")
@@ -465,8 +470,14 @@ export async function loadOfficialsByFecIds(
     }>;
     for (const r of rows) {
       const tier   = r.tier ?? "elected";
-      const candId = r.source_ids?.["fec_candidate_id"];
-      if (candId) claimCandId(candId, r.id, tier);
+      // FIX-1187 — the current-office id AND every prior-office id. Claiming
+      // the prior ids here is what stops the cn{yy} stage re-minting a stub for
+      // a House id after the member moved to the Senate: `existingByFecCandId`
+      // (this map) is the resolve step both candidates.ts and mint-ie-targets.ts
+      // consult before minting.
+      for (const candId of authoritativeClaims({ source_ids: r.source_ids ?? {} })) {
+        claimCandId(candId, r.id, tier);
+      }
 
       const fecId = r.source_ids?.["fec_id"];
       if (fecId) {

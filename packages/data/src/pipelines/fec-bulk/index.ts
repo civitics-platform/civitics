@@ -178,6 +178,13 @@ import {
   streamCandidates,
   loadOfficialsByFecIds,
 } from "./candidates";
+import {
+  retiredClaims,
+  hasAnyRetiredClaim,
+  hasRetiredClaim,
+  priorClaims,
+  authoritativeClaims,
+} from "./claims";
 import { seedJurisdictions, seedGoverningBodies } from "../../jurisdictions/us-states";
 import { runHeavyRebuild } from "../../lib/heavy-rebuild";
 import { withDirectClient } from "../../lib/direct-pg-upsert";
@@ -479,41 +486,23 @@ export interface MatchIndex {
  * name fallback in `matchRow`.
  */
 /**
- * FIX-956 — the marker is an ARRAY, and both shapes are read here.
+ * FIX-1187 — the CAND_ID claim helpers moved to ./claims so `candidates.ts`
+ * can call them without an import cycle (index imports ./candidates).
+ * Re-exported here because FIX-956 published them from this module and the
+ * test suite imports them by that path.
  *
- * The original marker was a scalar `merged_fec_candidate_id`, which can hold
- * exactly one retired id. That is wrong for anyone who has run for two
- * different federal seats: a House member who then wins a Senate race retires
- * an H-id at one merge and an S-id at another, and the second write silently
- * overwrote the first — un-retiring the earlier claim, which the pipeline then
- * re-bound on its next pass. `merged_fec_candidate_ids` (a jsonb array) is the
- * shape that can hold both.
- *
- * READERS ACCEPT BOTH, WRITERS WRITE THE ARRAY. This function is the ONE place
- * the two shapes are reconciled, so nothing downstream has to know there was a
- * transition. Prod 2026-09-05: 86 rows carry the scalar, 0 carry the array;
- * converting those 86 is a DATA pass and is deliberately NOT in this bundle.
+ * `authoritativeClaims` is the claim/has-id reader: current-office id plus
+ * every prior-office id, retired claims removed. A display/URL/seat site keeps
+ * reading `source_ids.fec_candidate_id` directly — see ./claims for why.
  */
-export function retiredClaims(o: OfficialRecord): string[] {
-  const out: string[] = [];
-  const arr = (o.source_ids as Record<string, unknown>)["merged_fec_candidate_ids"];
-  if (Array.isArray(arr)) {
-    for (const v of arr) if (typeof v === "string" && v) out.push(v);
-  }
-  const scalar = o.source_ids["merged_fec_candidate_id"];
-  if (typeof scalar === "string" && scalar && !out.includes(scalar)) out.push(scalar);
-  return out;
-}
-
-/** FIX-956 — does this row carry a retired claim of ANY id? The key-PRESENCE
- *  test: a merge stub must never re-enter a name pool, whatever it retired. */
-export function hasAnyRetiredClaim(o: OfficialRecord): boolean {
-  return retiredClaims(o).length > 0;
-}
-
-export function hasRetiredClaim(o: OfficialRecord, key: string): boolean {
-  return retiredClaims(o).includes(key);
-}
+export {
+  retiredClaims,
+  hasAnyRetiredClaim,
+  hasRetiredClaim,
+  priorClaims,
+  authoritativeClaims,
+} from "./claims";
+export type { SourceIdsCarrier } from "./claims";
 
 /**
  * FIX-1025 — the role allow-list and its office-prefix companion now live in
@@ -555,12 +544,13 @@ export function buildMatchIndex(officials: OfficialRecord[]): MatchIndex {
     }
   };
 
-  // Pass 1 — fec_candidate_id is the most authoritative key.
+  // Pass 1 — the authoritative keys. `fec_candidate_id` (current office) plus
+  // FIX-1187's `prior_fec_candidate_ids` (the ids the same person held under a
+  // previous office). Both are stored, explicit ids; neither is role-gated —
+  // that rule belongs to pass 2's name-derived `fec_id`. Retired claims are
+  // already filtered by authoritativeClaims (FIX-955).
   for (const o of officials) {
-    const candidateId = o.source_ids["fec_candidate_id"];
-    // FIX-955: a re-written claim on an id this row already retired is exactly
-    // the defect; refuse it here rather than letting it win a slot.
-    if (candidateId && !hasRetiredClaim(o, candidateId)) claim(candidateId, o);
+    for (const candidateId of authoritativeClaims(o)) claim(candidateId, o);
   }
 
   // Pass 2 — fec_id, only when its FEC prefix matches the official's current
@@ -852,6 +842,12 @@ export function perCycleNameFallback(
       // FIX-956: EITHER marker shape counts. A stub that retired two ids
       // carries the array and no scalar, and used to sail straight through.
       if (hasAnyRetiredClaim(o)) return false;
+      // FIX-1187 — a row carrying a PRIOR-office CAND_ID already has an
+      // authoritative federal identity, so it is not a name-fallback candidate
+      // either. Without this a House->Senate member whose current id is the
+      // Senate one would re-enter the pool the moment the House id moved into
+      // the prior array.
+      if (priorClaims(o).length > 0) return false;
       return !o.source_ids["fec_candidate_id"] && !o.source_ids["fec_id"];
     })
     .sort(
