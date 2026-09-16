@@ -1,0 +1,201 @@
+# FIX-1187 — shared-CAND_ID merge manifest (shape A). THIS FILE IS AN AUTHORISATION.
+#
+# 151 (elected survivor, candidate stub) pairs that hold the SAME
+# source_ids.fec_candidate_id and both hold money. Derived on the local prod-clone
+# 2026-09-16; the population was re-derived READ-ONLY on prod the same day and is
+# IDENTICAL (151 pairs, 151 distinct CAND_IDs, 151 distinct survivors, 151 distinct
+# stubs — a clean 1:1:1). Every fact below is re-read keyed on (survivor, dup)
+# inside the merge transaction by verifySharedIdInDb; a pair that has moved since
+# is refused there and the run continues.
+#
+# Total stub money 2026-09-16: $926,589,966 across 99,217 rows. That figure
+# reproduces the FIX-953 census of 2026-08-10 to the dollar, and the 2026
+# fec_bulk_indiv slice (46,561 rows / $72,951,060 on 88 stubs) reproduces cc-126's
+# prod measurement to the row. Every stub row was last written between 2026-05-13
+# and 2026-07-28 and none since: these are frozen July snapshots left behind when
+# FIX-941 handed the shared binding to the elected rows.
+#
+# IDENTITY IS THE CAND_ID, NOT THE SEAT. old_seat_verdict records what the FIX-953
+# own-seat gate WOULD have said, so the 117 pass / 29 fail-district / 5 fail-office
+# split stays visible — but the shared-id path deliberately does not apply it. The
+# 34 refusals are exactly the cases where the id's encoded seat lags the person's
+# current seat (redistricting; a House->Senate move), which is not evidence about
+# identity for a pair selected by id equality.
+#
+# ATTACHMENTS ARE ZERO ON ALL 151, measured on BOTH clone and prod 2026-09-16
+# (votes, career_history, committee memberships, promises, cosponsorships,
+# comments, civic responses, lobbying, sponsored bills, proposal actions,
+# external_relationships). FIX-1020's class is empty in this population.
+#
+# READ THIS BEFORE APPLYING — the collision tie-break. The design premised that
+# the survivor's row is always the fresher one. IT IS NOT: on prod only 58,568 of
+# 99,217 collisions (59.0%) are survivor-fresher, because updated_at moves only
+# when a row's VALUE changes, so a row that is still correct keeps an old stamp.
+# What IS true, measured on prod 2026-09-16 and on the clone, is strictly
+# stronger for money: in EVERY cell, the count of collisions where the amounts
+# DIFFER and the dup is fresher is ZERO. Where the two rows disagree on amount
+# (8,456 rows on prod) the survivor is always the fresher one and already wins;
+# where the dup wins the tie-break (40,649 rows) the amounts are identical and
+# the outcome is the same either way. The existing keep-the-fresher rule is
+# therefore money-safe here, but it is safe for a different reason than the one
+# written down, and the >=99%-survivor-fresher gate in cc-128 does NOT pass.
+# cc-129 must re-measure `diff_and_dup_fresher = 0` on prod immediately before
+# applying and stop if it is not zero.
+#
+# stub_cents is the stub's FULL holding across all cycles and relationship types.
+# colliding_rows / noncolliding_rows are keyed on
+# (relationship_type, from_id, cycle_year) against the survivor, the same key as
+# financial_relationships_relcycle_unique. Ordered by stub_cents descending, which
+# is the order cc-129's sets are cut in.
+survivor	dup	fec_id	name	survivor_name	dup_name	survivor_role	dup_role	state	old_seat_verdict	stub_rows	stub_cents	colliding_rows	noncolliding_rows	attachments
+09241404-0840-42a4-8c8a-2f885950660f	807b3336-e647-4a47-8404-df4792d89d4b	S0GA00559	Raphael G. Warnock  <-  Raphael Warnock	Raphael G. Warnock	Raphael Warnock	Senator	Candidate for Senator	GA	pass	775	22900705985	636	139	0
+3e559d5c-0763-4f3f-b654-7ae93f1a2a93	c6825cc2-d15c-4e81-a3d3-a647ab0466e7	S6ME00159	Susan M. Collins  <-  Susan Collins	Susan M. Collins	Susan Collins	Senator	Candidate for Senator	ME	pass	3903	7237940268	3854	49	0
+a0f07226-4220-4e68-8c83-bb1ba7d5970a	bb1d2448-46c6-4a0a-b7b6-71f99f8c2f1f	H2CA20094	David G. Valadao  <-  David Valadao	David G. Valadao	David Valadao	Representative	Candidate for Representative	CA	fail-district	1691	3798908264	1684	7	0
+45498fc7-1b0c-4f16-b700-476b01792f83	05d69ad5-4d71-48b1-b514-d137f30fd357	S4MD00327	Angela D. Alsobrooks  <-  Angela Alsobrooks	Angela D. Alsobrooks	Angela Alsobrooks	Senator	Candidate for Senator	MD	pass	250	3650656123	250	0	0
+d5e8be45-e5ff-4a3f-84ac-23f9c6fcc3de	e808570b-613d-401a-9096-bb7e177112c3	S0CO00575	John W. Hickenlooper  <-  John Hickenlooper	John W. Hickenlooper	John Hickenlooper	Senator	Candidate for Senator	CO	pass	2530	2916283517	2500	30	0
+299817e0-3cd9-4016-90af-56c0621c2683	97decde9-e49e-4ba7-b025-56a71836b9ef	H8ME02185	Jared F. Golden  <-  Jared Golden	Jared F. Golden	Jared Golden	Representative	Candidate for Representative	ME	pass	1304	2110650277	1301	3	0
+18c46a64-d7e4-4044-a3d9-d5329dd498db	8ad6e3b9-83b0-40ae-ba2c-35e69e65b19b	S6NH00091	Margaret Wood Hassan  <-  Margaret Hassan	Margaret Wood Hassan	Margaret Hassan	Senator	Candidate for Senator	NH	pass	1112	1949696971	1112	0	0
+9a8c42ac-aa66-43ee-8015-02d8a5bc4c3c	fcaffcc5-5748-44d9-abb6-b7e3fe2e483c	H2IA03119	Zachary Nunn  <-  Zach Nunn	Zachary Nunn	Zach Nunn	Representative	Candidate for Representative	IA	pass	1308	1762355253	1308	0	0
+833499a2-083c-47a0-b4c6-548f1aa3c03d	9a2a2c44-0b24-456c-b3c3-b626c3dccb38	S2AL00145	Katie Boyd Britt  <-  Katie Britt	Katie Boyd Britt	Katie Britt	Senator	Candidate for Senator	AL	pass	1247	1686726214	1247	0	0
+60a002a0-733d-47b0-a9c4-935cf2ff7ba3	63f18ac1-be9c-4ff4-b123-2b4a254d4f18	H2VA02064	Jennifer A. Kiggans  <-  Jennifer Kiggans	Jennifer A. Kiggans	Jennifer Kiggans	Representative	Candidate for Representative	VA	pass	1553	1547035784	1553	0	0
+113e0cf2-d891-443d-9494-11c1e9189d39	04ae1610-c123-4fde-b3e9-b938d4d28629	H6NE02125	Don Bacon  <-  Donald Bacon	Don Bacon	Donald Bacon	Representative	Candidate for Representative	NE	pass	760	1504306680	760	0	0
+5508904f-aae2-44de-89d2-adf06d21ee13	2a02807a-8b4b-4729-bace-823249c1d86b	H4PA08124	Robert P. Bresnahan  <-  Rob Bresnahan	Robert P. Bresnahan	Rob Bresnahan	Representative	Candidate for Representative	PA	pass	231	1487829019	231	0	0
+411ef11c-7e42-4245-8f2b-bce472921387	55e29b9d-55f6-48fe-bb14-56cff394baa7	H6NY03247	Thomas R. Suozzi  <-  Thomas Suozzi	Thomas R. Suozzi	Thomas Suozzi	Representative	Candidate for Representative	NY	pass	2578	1472973778	2577	1	0
+1625e7b3-448b-4c4d-b459-ca19eeaedbd5	e83f928e-f170-4f1a-8fc3-784e86592d81	H0NJ07261	Thomas H. Kean  <-  Thomas Kean	Thomas H. Kean	Thomas Kean	Representative	Candidate for Representative	NJ	pass	1604	1466318397	1597	7	0
+64c31391-3064-4ac4-9e2a-0de4e3000e76	9922bf05-4447-4d5e-9823-c4e84e74b014	H0TX22302	Troy E. Nehls  <-  Troy Nehls	Troy E. Nehls	Troy Nehls	Representative	Candidate for Representative	TX	pass	361	1322872444	355	6	0
+9e2bac3b-2909-469a-8c6f-5c7a26823e70	f373c550-6dd1-43a0-8fc5-c75353f162db	H0OK05205	Stephanie I. Bice  <-  Stephanie Bice	Stephanie I. Bice	Stephanie Bice	Representative	Candidate for Representative	OK	pass	793	1237215554	779	14	0
+52c0344c-a9d6-4cf0-a2d3-56bce88f06a6	7212b945-321f-4ee6-9cb7-2ae21738aa04	H6PA08277	Brian K. Fitzpatrick  <-  Brian Fitzpatrick	Brian K. Fitzpatrick	Brian Fitzpatrick	Representative	Candidate for Representative	PA	fail-district	2003	1206355283	1991	12	0
+d8399eec-61cb-4a96-ae9e-ddbf3b9c18e7	2fc0c3aa-fff1-4795-969a-90bf117976a4	S2NE00094	Deb Fischer  <-  Debra Fischer	Deb Fischer	Debra Fischer	Senator	Candidate for Senator	NE	pass	562	1122687237	562	0	0
+2c41c0cc-8095-4c8e-b63b-7d2aa48f3b15	e966ce8b-2467-4dce-91f5-39742efac473	H8NJ02166	Jefferson Van Drew  <-  Jeff Van Drew	Jefferson Van Drew	Jeff Van Drew	Representative	Candidate for Representative	NJ	pass	892	1046256811	883	9	0
+d2f03361-6384-4538-b8c7-5ab0c96592c3	f2845026-52a7-417e-b175-58a142639bf3	H8GA06393	Lucy McBath  <-  Lucia Mcbath	Lucy McBath	Lucia Mcbath	Representative	Candidate for Representative	GA	pass	623	999497493	615	8	0
+3b9dc303-ace6-401e-9f5d-dad2e3073036	4f575e61-66ad-4dde-a7ef-59a09293bdf8	H4OR05304	Janelle S. Bynum  <-  Janelle Bynum	Janelle S. Bynum	Janelle Bynum	Representative	Candidate for Representative	OR	pass	1785	974713583	1785	0	0
+97ff9034-0fae-495a-b9eb-8bec92187845	4b462f5c-7ad8-4eed-8027-3b4d28a8e05a	H2NC02287	Donald G. Davis  <-  Don Davis	Donald G. Davis	Don Davis	Representative	Candidate for Representative	NC	fail-district	833	972447438	833	0	0
+03200fc2-a0e5-4f47-aebe-b2ba86a5e2a4	e0f2f94d-593f-4227-a9f6-399eec8c4f95	H4NY22085	John W. Mannion  <-  John Mannion	John W. Mannion	John Mannion	Representative	Candidate for Representative	NY	pass	1269	800010455	1269	0	0
+27ee0faf-2c40-4dad-9c34-98652a4f4562	57508663-79d1-4b5e-a1d8-9e4676358437	H2PA17103	Christopher R. Deluzio  <-  Christopher Deluzio	Christopher R. Deluzio	Christopher Deluzio	Representative	Candidate for Representative	PA	pass	1285	783308930	1285	0	0
+206a7288-670c-4469-9244-f8a2af32639f	ccdc4e2b-bce5-4347-a882-5c9b671c8ba8	S4WV00332	James C. Justice  <-  James Justice	James C. Justice	James Justice	Senator	Candidate for Senator	WV	pass	203	718443616	203	0	0
+73dc0acf-c8a3-48e3-a7ae-f6071962cb4a	14e1930a-035f-4877-8ee3-d8ca5af1a14e	H4MT01041	Ryan K. Zinke  <-  Ryan Zinke	Ryan K. Zinke	Ryan Zinke	Representative	Candidate for Representative	MT	pass	300	650198634	300	0	0
+67e0e5f3-c20e-439b-b8c9-2e804aecf1df	69492cbb-c4fa-4607-8bf1-36cb82f447b6	H0MI03316	Hillary J. Scholten  <-  Hillary Scholten	Hillary J. Scholten	Hillary Scholten	Representative	Candidate for Representative	MI	pass	1364	595663506	1356	8	0
+39f916d7-ced4-4d93-aa61-768cd37bca10	f39d5ef5-9585-43e6-92e9-95517dd984dd	H2NY10308	Daniel S. Goldman  <-  Daniel Goldman	Daniel S. Goldman	Daniel Goldman	Representative	Candidate for Representative	NY	pass	2461	583134000	2461	0	0
+b702d04f-3e0d-4a0e-8ec9-4448f9f293c0	526c3ff2-b622-4f96-bccb-69a2f003191c	H2NM02191	Gabe Vasquez  <-  Gabriel Vasquez	Gabe Vasquez	Gabriel Vasquez	Representative	Candidate for Representative	NM	pass	595	580464456	595	0	0
+f7ca909b-38d6-408a-a045-4bd6c6c8e840	d9fc5b37-9a15-4015-860d-801a0a2a4a74	H4MO03221	Robert F. Onder  <-  Robert Onder	Robert F. Onder	Robert Onder	Representative	Candidate for Representative	MO	pass	97	567567936	97	0	0
+ac7de9f0-be89-4def-8143-3597908f9658	b7da3e46-a86d-4e43-875a-9696e508bb07	H2NJ08232	Robert Menendez  <-  Robert Menendez	Robert Menendez	Robert Menendez	Representative	Candidate for Representative	NJ	pass	1122	555010362	1122	0	0
+5c52e3ca-3986-41c1-89f1-b2b27d099c5a	dc1b3e4c-4ba0-481f-abfd-ee911954baab	S4SC00240	Tim Scott  <-  Timothy Scott	Tim Scott	Timothy Scott	Senator	Candidate for Senator	SC	pass	575	533727662	575	0	0
+32388aeb-d379-4297-be5c-3ea5e46ff3ea	67069dc0-8111-4b73-bb09-c0800c41c4e9	S4WV00159	Shelley Moore Capito  <-  Shelley Capito	Shelley Moore Capito	Shelley Capito	Senator	Candidate for Senator	WV	pass	1881	527622492	1880	1	0
+40d17da2-2254-4cd5-a7e8-c52f28257a03	7c34891f-9c82-4976-9739-78baeb0aaad6	H2NC06114	Valerie P. Foushee  <-  Valerie Foushee	Valerie P. Foushee	Valerie Foushee	Representative	Candidate for Representative	NC	fail-district	631	504931828	631	0	0
+9220a26b-93a6-4b7c-bd29-acfb2544ba97	a6ba6b9c-0f7b-4767-bee8-4f7d8d2c6b42	H4MA05084	Katherine M. Clark  <-  Katherine Clark	Katherine M. Clark	Katherine Clark	Representative	Candidate for Representative	MA	pass	1306	496274800	1305	1	0
+4ae687b8-dd8a-480e-b6c4-45df9beac5d4	638571dc-dec4-4df6-98da-3bce61170451	H0UT01205	Blake D. Moore  <-  Blake Moore	Blake D. Moore	Blake Moore	Representative	Candidate for Representative	UT	pass	1127	490774244	1127	0	0
+fb83472a-2d41-4988-8ed0-dd19cf6e0946	31830d8c-6e04-417a-a138-5d4b77f774be	H6MN02131	Angie Craig  <-  Angela Craig	Angie Craig	Angela Craig	Representative	Candidate for Representative	MN	pass	788	447895801	788	0	0
+7c4cd5a7-bdb3-414e-b67d-471de90dec13	d8f24b31-4ff6-4179-b6b2-52c83629647d	H0IN01150	Frank J. Mrvan  <-  Frank Mrvan	Frank J. Mrvan	Frank Mrvan	Representative	Candidate for Representative	IN	pass	1112	420103856	1109	3	0
+a8beedce-d116-42e2-8416-140485446c89	bf66cecd-2ded-4fa7-9b9a-85fd83a730ca	H4CO03357	Jeff Hurd  <-  Jeffrey Hurd	Jeff Hurd	Jeffrey Hurd	Representative	Candidate for Representative	CO	pass	1090	416962067	1090	0	0
+b7741259-ffea-4c27-b23d-891e1a6ace25	f008765d-60b5-4aa2-9188-2a1415015831	H0MI10287	Lisa C. McClain  <-  Lisa Mcclain	Lisa C. McClain	Lisa Mcclain	Representative	Candidate for Representative	MI	fail-district	1265	415223989	1263	2	0
+6b2fea3f-b5fb-4903-b57a-2c6a5ae0401e	77e796df-611e-4a93-940f-a1cbade90b0f	S4NJ00185	Cory A. Booker  <-  Cory Booker	Cory A. Booker	Cory Booker	Senator	Candidate for Senator	NJ	pass	4483	406080100	4483	0	0
+065a4bd2-412a-4abb-943e-1a643c309832	454f218d-3014-48e3-976e-3b634a88a525	H0WA08046	Suzan K. DelBene  <-  Suzan Delbene	Suzan K. DelBene	Suzan Delbene	Representative	Candidate for Representative	WA	fail-district	1479	404294048	1478	1	0
+61380691-3fd3-4759-8b8c-9187547354d1	93d57e4b-6401-44c7-a1ed-2ef36fb4f1a0	H2OR04095	Val T. Hoyle  <-  Valerie Hoyle	Val T. Hoyle	Valerie Hoyle	Representative	Candidate for Representative	OR	pass	755	398114014	755	0	0
+0ab4c5ec-0dd0-453e-9d32-b7f6a72cc54b	bed92332-9eb8-46b0-a60f-eb18bef8ef86	H8ID02064	Michael K. Simpson  <-  Michael Simpson	Michael K. Simpson	Michael Simpson	Representative	Candidate for Representative	ID	pass	707	380147407	706	1	0
+43ab79ec-bf25-4e9a-a3b3-79694bb04161	da4705f5-ff03-4539-a9e0-f11eec910717	H2TN05446	Andrew Ogles  <-  Andy Ogles	Andrew Ogles	Andy Ogles	Representative	Candidate for Representative	TN	pass	284	377300149	284	0	0
+caf06963-e606-48b8-b5cc-a64904bb9ba8	f03e889b-ce39-4d91-bcad-caa0f7c79aa8	H8FL27185	Maria Elvira Salazar  <-  Maria Salazar	Maria Elvira Salazar	Maria Salazar	Representative	Candidate for Representative	FL	pass	576	376608509	572	4	0
+36cf9142-1a65-425d-80c4-34c1e41b59f5	206c808f-b1a1-4ef9-b517-20322bfff055	H4CA16197	Sam T. Liccardo  <-  Sam Liccardo	Sam T. Liccardo	Sam Liccardo	Representative	Candidate for Representative	CA	pass	74	371338256	74	0	0
+bedb096e-991f-42f6-a467-73b192c5ed7a	9d4ee021-790f-4a40-95e1-8c33c253f3e9	H8MA02041	Richard E. Neal  <-  Richard Neal	Richard E. Neal	Richard Neal	Representative	Candidate for Representative	MA	fail-district	834	371158500	834	0	0
+c436717f-bf4a-489d-b8f5-192f88139700	75f40cec-b911-4e9d-87a4-826c4cf03ae8	H0AL07086	Terri A. Sewell  <-  Terri Sewell	Terri A. Sewell	Terri Sewell	Representative	Candidate for Representative	AL	pass	875	337799692	875	0	0
+1b02877c-770a-4e88-8639-4265bdf69caf	3fc254ed-e29e-4315-8a19-98dfc8af2857	S8MO00160	Josh Hawley  <-  Joshua Hawley	Josh Hawley	Joshua Hawley	Senator	Candidate for Senator	MO	pass	258	333267711	257	1	0
+2ba4d741-5a44-4535-ac97-652ae093fc64	43c75821-21c9-45be-bfa5-8b758fd964a8	H2IL03162	Delia C. Ramirez  <-  Delia Ramirez	Delia C. Ramirez	Delia Ramirez	Representative	Candidate for Representative	IL	pass	801	326218187	801	0	0
+2db0be0c-5a36-4c50-bf62-305047f34036	4e02dac9-3175-4ab9-ab5d-589f16fb735b	H2LA02149	Troy A. Carter  <-  Troy Carter	Troy A. Carter	Troy Carter	Representative	Candidate for Representative	LA	pass	755	320531944	755	0	0
+4ff7bf63-97d7-4ea6-978a-dee5ab277420	b4cc5a22-9d33-4146-9d81-7cc6e5ff2124	H0MO06073	Sam Graves  <-  Samuel Graves	Sam Graves	Samuel Graves	Representative	Candidate for Representative	MO	pass	890	320508200	890	0	0
+0f9cf8f9-c40a-4b1b-9742-467595ce8602	35cf5443-5559-4ce9-9a81-5e1a93edebb3	H8CT01046	John B. Larson  <-  John Larson	John B. Larson	John Larson	Representative	Candidate for Representative	CT	pass	1091	316875800	1091	0	0
+0b939682-1183-4efe-9eb0-d28ba51f3f53	1ad0051b-257b-4ab5-925e-0d34708f7af4	H6VA11066	James R. Walkinshaw  <-  James Walkinshaw	James R. Walkinshaw	James Walkinshaw	Representative	Candidate for Representative	VA	pass	977	309879700	977	0	0
+13d2bf6d-6a78-4835-b246-fbeed4a329de	7b3d1864-ce78-4b60-a664-78b1a1807a0b	H2OH14064	David P. Joyce  <-  David Joyce	David P. Joyce	David Joyce	Representative	Candidate for Representative	OH	pass	814	298606202	813	1	0
+93194659-1951-4690-8610-0d33d6522e76	1bcab916-f039-4d06-b917-96ac9692bb02	S8MS00196	Roger F. Wicker  <-  Roger Wicker	Roger F. Wicker	Roger Wicker	Senator	Candidate for Senator	MS	pass	539	298361300	539	0	0
+04afc81e-f922-4ad5-97f5-522021337a7f	c5249585-06e6-4dfd-a9cc-5b47998d9da9	S8ID00092	James E. Risch  <-  James Risch	James E. Risch	James Risch	Senator	Candidate for Senator	ID	pass	1220	297369200	1220	0	0
+5527a121-a0f5-4bd4-b536-8103b7127d56	17a8caa5-ba0e-4c9e-b9e5-ad9cd071d1c4	H4IN08249	Mark B. Messmer  <-  Mark Messmer	Mark B. Messmer	Mark Messmer	Representative	Candidate for Representative	IN	pass	119	287900399	119	0	0
+7a83b300-235e-4e9f-a124-3d34cd5e4d3a	d153a85f-c302-4d39-b12d-e7a48e28e663	H6FL09070	Gus M. Bilirakis  <-  Gus Bilirakis	Gus M. Bilirakis	Gus Bilirakis	Representative	Candidate for Representative	FL	fail-district	835	286114357	833	2	0
+1052791d-4876-4be3-89f5-57d2c767b1de	f0ef9e11-88a1-41e5-8c0f-2b2bac5d9b07	H4NY21079	Elise M. Stefanik  <-  Elise Stefanik	Elise M. Stefanik	Elise Stefanik	Representative	Candidate for Representative	NY	pass	1338	278876861	1335	3	0
+5e72c9ea-44f4-4e2c-b5e9-1570750f7cc2	ea1e5a06-9402-4631-ada5-19144cc91aa4	H8WV03097	Carol D. Miller  <-  Carol Miller	Carol D. Miller	Carol Miller	Representative	Candidate for Representative	WV	fail-district	1010	278626394	1010	0	0
+96615ef6-08c4-4723-ad86-7f9b0261c95d	a089f60e-7e0c-405c-b160-6cb69147ff2f	H4NY26078	Timothy M. Kennedy  <-  Timothy Kennedy	Timothy M. Kennedy	Timothy Kennedy	Representative	Candidate for Representative	NY	pass	1009	271391868	1009	0	0
+16f2ac98-bf5a-4d67-aea3-2ea51b620a08	25d0d3d4-179d-47bc-ba33-bc067749336e	H8NY06048	Gregory W. Meeks  <-  Gregory Meeks	Gregory W. Meeks	Gregory Meeks	Representative	Candidate for Representative	NY	fail-district	816	271256800	816	0	0
+5c4dd857-94bc-45fa-a127-df8e77d4200e	ac60b259-6607-47ad-8c15-67ceae1aa28c	H2NY23228	Nicholas A. Langworthy  <-  Nick Langworthy	Nicholas A. Langworthy	Nick Langworthy	Representative	Candidate for Representative	NY	pass	1009	269113593	1009	0	0
+a42cd1a2-aa86-4e4a-9d46-069b5081ad98	31a3b090-1a36-4e2f-8337-23a45e554ee8	H2IL10068	Bradley Scott Schneider  <-  Bradley Schneider	Bradley Scott Schneider	Bradley Schneider	Representative	Candidate for Representative	IL	pass	727	268412734	727	0	0
+2dad4de9-c266-4422-9954-513bea31c407	62821ee5-d79e-42e4-a36d-af3b1f2631a0	H6CA05195	Doris O. Matsui  <-  Doris Matsui	Doris O. Matsui	Doris Matsui	Representative	Candidate for Representative	CA	fail-district	900	267087800	900	0	0
+f3fcc128-60f5-4056-934f-b85ece863110	f8f4fd05-889a-48c6-be93-e13769cbd4bd	S2VA00142	Tim Kaine  <-  Timothy Kaine	Tim Kaine	Timothy Kaine	Senator	Candidate for Senator	VA	pass	662	258368246	662	0	0
+7ebbaa3d-ec76-45c4-ab7c-d79ab50e6bb8	837041f5-364e-4f54-aded-2a62a2063949	H4PA13199	Brendan F. Boyle  <-  Brendan Boyle	Brendan F. Boyle	Brendan Boyle	Representative	Candidate for Representative	PA	fail-district	800	254245230	799	1	0
+0c50dbf1-0a42-4aff-8b95-421a847c2586	8f8ea393-5a74-4d04-bce1-82058b730831	H0TN03254	Charles J. "Chuck" Fleischmann  <-  Charles Fleischmann	Charles J. "Chuck" Fleischmann	Charles Fleischmann	Representative	Candidate for Representative	TN	pass	813	250137700	813	0	0
+49be389f-4387-499b-9c15-9d89af34c789	618e4c57-3e09-4299-9dae-b0b3a1edafab	H6TX19099	Jodey C. Arrington  <-  Jodey Arrington	Jodey C. Arrington	Jodey Arrington	Representative	Candidate for Representative	TX	pass	826	245649350	826	0	0
+718d6b2f-3505-4b96-b8ea-9516859d22cc	d231f8e7-e9ad-4a54-b678-d2075b2c76f8	H4VA08224	Donald S. Beyer  <-  Donald Beyer	Donald S. Beyer	Donald Beyer	Representative	Candidate for Representative	VA	pass	926	245406600	926	0	0
+c1db8f77-f5fe-477b-91c9-616ef912f8fd	f36e31fc-0532-4804-b82a-d6b45b865157	H4NJ09194	Nellie Pou  <-  Nelida Pou	Nellie Pou	Nelida Pou	Representative	Candidate for Representative	NJ	pass	1248	234631500	1248	0	0
+8dd1cf08-6efe-46dc-8662-d13c49e7bc5b	daeb9a4a-b487-4208-8d1f-a59a8ec26865	H4WV02205	Riley M. Moore  <-  Riley Moore	Riley M. Moore	Riley Moore	Representative	Candidate for Representative	WV	pass	421	232805001	421	0	0
+efdd49dc-ed3c-4b96-8a20-b8303f68a0ae	f110cdfe-3661-4c0e-b975-7076f5db43ac	H2SC02042	James E. Clyburn  <-  James Clyburn	James E. Clyburn	James Clyburn	Representative	Candidate for Representative	SC	fail-district	718	226455800	718	0	0
+5cc3a04d-7a24-4472-9e32-ac5e07c9c532	255713e8-fc47-4250-9652-ea88d96c75eb	H4GA01039	Earl L. "Buddy" Carter  <-  Earl Carter	Earl L. "Buddy" Carter	Earl Carter	Representative	Candidate for Representative	GA	pass	584	221936400	584	0	0
+46bdb81f-c5ca-4b5d-abc6-67128379d2c3	e624037b-ed42-4bd6-b4e0-1de03c1e4690	H8TX29052	Sylvia R. Garcia  <-  Sylvia Garcia	Sylvia R. Garcia	Sylvia Garcia	Representative	Candidate for Representative	TX	pass	603	218795677	602	1	0
+afc05fd0-1d98-4de9-b9ac-f69fe0f1d773	63740b8b-2f40-44c0-a96d-80a125a2208a	H4NC08066	Mark Harris  <-  Mark Harris	Mark Harris	Mark Harris	Representative	Candidate for Representative	NC	pass	76	216812230	76	0	0
+ee4b5b14-6d76-4ec4-998b-a66a0a4e9ffe	f4c02c90-c5de-47ef-9da0-a45cfd3beefd	H2WY00166	Harriet M. Hageman  <-  Harriet Hageman	Harriet M. Hageman	Harriet Hageman	Representative	Candidate for Representative	WY	pass	191	212912811	191	0	0
+9e8dbddd-74d1-4d04-90b2-4682db860b6d	4de7fcb1-1513-45ca-9fc7-205e94a25fa5	H8MI11254	Haley M. Stevens  <-  Haley Stevens	Haley M. Stevens	Haley Stevens	Representative	Candidate for Representative	MI	pass	436	204343720	436	0	0
+1f0fcc25-c88d-4112-9e90-e873d106d32d	bf6d5790-8ff8-494f-a071-2f7a8b6e3f1f	H8CA39174	Gilbert Ray Cisneros  <-  Gilbert Cisneros	Gilbert Ray Cisneros	Gilbert Cisneros	Representative	Candidate for Representative	CA	fail-district	253	196560097	249	4	0
+8a2787ae-0579-41ae-ab9a-3b7fa2a504e5	bcbc37b5-151f-42db-8b86-117fd2626c1e	H0GA09246	Andrew S. Clyde  <-  Andrew Clyde	Andrew S. Clyde	Andrew Clyde	Representative	Candidate for Representative	GA	pass	289	188651496	285	4	0
+ccc50e75-d7ef-4348-84b1-9e1f3dbfe973	07444ea1-b2c8-457c-a6cf-980cf81aab57	H6FL13148	Vern Buchanan  <-  Vernon Buchanan	Vern Buchanan	Vernon Buchanan	Representative	Candidate for Representative	FL	fail-district	501	188100000	501	0	0
+ee01e913-2a9c-439d-8757-669964f0849e	b550b23b-6e07-4a94-956e-0c2016252d38	H2GA02031	Sanford D. Bishop  <-  Sanford Bishop	Sanford D. Bishop	Sanford Bishop	Representative	Candidate for Representative	GA	pass	428	175537592	428	0	0
+0fb6f422-90b5-4d2f-9ff7-44043b7ba138	23ae83ae-0aea-452d-b08e-817c839af038	H2HI02581	Jill N. Tokuda  <-  Jill Tokuda	Jill N. Tokuda	Jill Tokuda	Representative	Candidate for Representative	HI	pass	512	171902384	512	0	0
+b83ab586-59e0-4ad7-92b5-3ca9dc1f7743	d81d285e-d9df-4029-aac7-80d699e373e7	H4AL06098	Gary J. Palmer  <-  Gary Palmer	Gary J. Palmer	Gary Palmer	Representative	Candidate for Representative	AL	pass	446	168581800	446	0	0
+84b91068-ab4b-4e2a-88cc-2113d126065e	50db3897-b4c1-4fcb-82ae-13225dd39c36	H0VA07133	John J. McGuire  <-  John Mcguire	John J. McGuire	John Mcguire	Representative	Candidate for Representative	VA	fail-district	1	167979313	1	0	0
+6a8536b9-811f-4ad2-b7bb-601ade45764f	0ccd2655-f1c7-4716-b55a-d72991a6fa8f	H2IL02172	Robin L. Kelly  <-  Robin Kelly	Robin L. Kelly	Robin Kelly	Representative	Candidate for Representative	IL	pass	462	166221678	462	0	0
+eb905293-4f0b-40df-8352-d6fa395e2795	c3c29b07-8b3c-4728-b96c-ca39c2fd5597	H4OK06056	Frank D. Lucas  <-  Frank Lucas	Frank D. Lucas	Frank Lucas	Representative	Candidate for Representative	OK	fail-district	438	165110196	438	0	0
+07d985c4-f17b-4408-8090-02e6f28edf35	f18d5815-8759-40ec-9e64-854136b9c257	H2TX31044	John R. Carter  <-  John Carter	John R. Carter	John Carter	Representative	Candidate for Representative	TX	pass	531	163093349	529	2	0
+cffffd7a-58e3-4ca3-b6ab-5342cbac5e6a	e391e548-c873-470d-895c-c92a54115f68	H4VA04066	Jennifer L. McClellan  <-  Jennifer Mcclellan	Jennifer L. McClellan	Jennifer Mcclellan	Representative	Candidate for Representative	VA	pass	696	161830784	696	0	0
+3c836a54-8ebf-4f8d-8031-12cdc12ac2ee	428b9a13-d9a7-4ffa-b773-608a69d424e1	H6FL02208	Neal P. Dunn  <-  Neal Dunn	Neal P. Dunn	Neal Dunn	Representative	Candidate for Representative	FL	pass	631	160958000	631	0	0
+40ff9a6f-ec9b-4fb1-8754-0bb84bad1b45	a1e158b4-d7d3-41b8-8adc-dfb2ad510c5b	S2ME00109	Angus S., Jr. King  <-  Angus King	Angus S., Jr. King	Angus King	Senator	Candidate for Senator	ME	pass	346	157999800	346	0	0
+254330b4-1c0b-42a2-8802-b9e4318b0681	d67c74d7-a879-496f-984f-4babf066b575	H0AR01083	Eric A. "Rick" Crawford  <-  Eric Crawford	Eric A. "Rick" Crawford	Eric Crawford	Representative	Candidate for Representative	AR	pass	543	154288900	543	0	0
+442e7a70-f213-4643-bbc8-22881516a7f1	bd90e47d-4af3-456d-bf48-cb63be4c874e	H2GA12121	Rick W. Allen  <-  Richard Allen	Rick W. Allen	Richard Allen	Representative	Candidate for Representative	GA	pass	646	152269800	646	0	0
+248a39e9-ac14-4d3b-8657-f3a821fcf3e5	50f12b8a-075b-47ed-8d69-3705d626b5eb	S0NY00410	Kirsten E. Gillibrand  <-  Kirsten Gillibrand	Kirsten E. Gillibrand	Kirsten Gillibrand	Senator	Candidate for Senator	NY	pass	397	150761350	397	0	0
+0fcc1b87-e6e3-4c00-8594-4e3a93d3cfc0	71a323fc-88ae-4329-8ccf-c561ebc8a083	H8UT03238	John R. Curtis  <-  John Curtis	John R. Curtis	John Curtis	Senator	Candidate for Representative	UT	fail-office	321	147836450	321	0	0
+a8d4fc51-6a11-465a-bd95-5153ddfa8d7a	cda0ed3d-c390-40d6-b0c3-7659aa2c22ad	H4MD02232	Johnny Olszewski  <-  John Olszewski	Johnny Olszewski	John Olszewski	Representative	Candidate for Representative	MD	pass	699	145813490	699	0	0
+85cd5e76-46ad-4973-bf9d-35b93e3b3360	c608f1cc-ccb7-49c7-ac3a-f118abbf2cbe	H8IN04199	James R. Baird  <-  James Baird	James R. Baird	James Baird	Representative	Candidate for Representative	IN	pass	216	142055293	215	1	0
+9b60e52e-0858-4b0a-bafa-045208e4835a	84425497-5021-493f-b0ed-24ab456762a8	H2OH16051	Max L. Miller  <-  Max Miller	Max L. Miller	Max Miller	Representative	Candidate for Representative	OH	fail-district	383	135253866	383	0	0
+74349a45-3cad-4f5a-9638-fb850bbec59d	e11993c6-566d-4d26-a739-375839cb87c2	H2OH03067	Michael R. Turner  <-  Michael Turner	Michael R. Turner	Michael Turner	Representative	Candidate for Representative	OH	fail-district	352	133517002	352	0	0
+91edb2db-42c7-4241-8afb-3586e19cd7ed	4c4f1a8c-5f35-4644-b823-0568779a9eb7	H4AZ08108	Abraham J. Hamadeh  <-  Abraham Hamadeh	Abraham J. Hamadeh	Abraham Hamadeh	Representative	Candidate for Representative	AZ	pass	59	131142965	59	0	0
+9059ea13-fd86-4359-8b3d-71ccbd0e19b5	b8702639-7893-429a-a752-01baf352275f	H4TX10093	Michael T. McCaul  <-  Michael Mccaul	Michael T. McCaul	Michael Mccaul	Representative	Candidate for Representative	TX	pass	262	123007057	254	8	0
+446f1569-bde2-49f1-8ed4-90ec19db7d07	27d58798-1abb-476f-a426-bf89b589a3c2	H8NY25105	Joseph D. Morelle  <-  Joseph Morelle	Joseph D. Morelle	Joseph Morelle	Representative	Candidate for Representative	NY	pass	277	120225100	277	0	0
+33603f98-c597-4c3c-8419-90a5a5361252	43fee7e7-d8ee-4a06-95a9-86fcb83d3689	H4CA35031	Norma J. Torres  <-  Norma Torres	Norma J. Torres	Norma Torres	Representative	Candidate for Representative	CA	pass	434	119455200	433	1	0
+6461587d-53f4-4916-b548-79a509235455	e05c6ac7-65ac-496a-86f5-575cab7a4eba	H2TX14149	Randy K. Sr. Weber  <-  Randy Weber	Randy K. Sr. Weber	Randy Weber	Representative	Candidate for Representative	TX	pass	432	117863122	431	1	0
+88806ba3-54dc-4ec5-b21d-0a44c24feb0f	74ca66bf-379f-4e59-a738-781426a9bb48	H2VI00082	Stacey E. Plaskett  <-  Stacey Plaskett	Stacey E. Plaskett	Stacey Plaskett	Representative	Candidate for Representative	VI	pass	480	111310500	480	0	0
+b8f492a2-47cc-4101-820e-a727de36bedb	e10acd2f-7cae-4285-990e-ed8ffeb3f0a4	H2MA09072	Stephen F. Lynch  <-  Stephen Lynch	Stephen F. Lynch	Stephen Lynch	Representative	Candidate for Representative	MA	fail-district	455	110348327	453	2	0
+f2477e01-cdd8-4ac0-badc-e7d69b1dc533	53eabeaa-f7a2-4fad-9136-4fb4fd842507	H8VA01147	Robert J. Wittman  <-  Robert Wittman	Robert J. Wittman	Robert Wittman	Representative	Candidate for Representative	VA	pass	224	101135000	224	0	0
+ab94496c-c294-449c-a72a-bb169e3681d8	df95102b-c96e-4a14-958b-8a8eebd97d5c	H8ID01124	Russ Fulcher  <-  Russell Fulcher	Russ Fulcher	Russell Fulcher	Representative	Candidate for Representative	ID	pass	409	95261900	409	0	0
+8cfd19b0-cd98-4e40-907b-5f78159cad55	be4496ab-c5c3-426c-a34a-6b3377b7fa90	H6VA01117	Robert C. "Bobby" Scott  <-  Robert Scott	Robert C. "Bobby" Scott	Robert Scott	Representative	Candidate for Representative	VA	fail-district	347	92077600	347	0	0
+b3f125d8-fa54-4a52-bd93-c5f769b45fd3	c0c07bb5-e6e4-4682-ab0e-7c30fc702df1	H4MA03022	James P. McGovern  <-  James Mcgovern	James P. McGovern	James Mcgovern	Representative	Candidate for Representative	MA	fail-district	471	90455300	471	0	0
+638cfc46-d4a9-4a4d-8d4d-17a284559de5	4f46b04a-ea6a-4178-87cc-7712fa342ba5	H8TX02166	Dan Crenshaw  <-  Daniel Crenshaw	Dan Crenshaw	Daniel Crenshaw	Representative	Candidate for Representative	TX	pass	268	87343112	268	0	0
+55daae4a-11f0-4ba7-b4a4-8c9592f5ba8c	ed31d86a-9811-4e3d-83d0-b6d7ceee9d7f	H0TX04219	Pat Fallon  <-  Patrick Fallon	Pat Fallon	Patrick Fallon	Representative	Candidate for Representative	TX	pass	326	87184314	326	0	0
+44ea5573-6bfd-4e3a-a627-c1428e04bfbc	db613396-9340-497b-a5e6-55df38fa7859	H8IL09067	Janice D. Schakowsky  <-  Janice Schakowsky	Janice D. Schakowsky	Janice Schakowsky	Representative	Candidate for Representative	IL	pass	388	87024400	388	0	0
+c598ba36-ab42-462b-80c4-9b6d6fcad056	bb4891c2-feaf-4a7f-931f-b3ca448d97ee	H4MS02068	Bennie G. Thompson  <-  Bennie Thompson	Bennie G. Thompson	Bennie Thompson	Representative	Candidate for Representative	MS	pass	201	84820700	201	0	0
+ecc1ff46-7f16-45d0-bbfe-87e6fd8d191d	8203a8e5-9183-4e10-bbb9-848432b0fc5a	H2AZ01354	Elijah Crane  <-  Eli Crane	Elijah Crane	Eli Crane	Representative	Candidate for Representative	AZ	fail-district	71	84535683	71	0	0
+587b2513-5591-4652-80e7-8991ff22ec7e	273e0e77-c546-4b47-a11f-24e34597aefe	H4NC06177	Addison P. McDowell  <-  Addison Mcdowell	Addison P. McDowell	Addison Mcdowell	Representative	Candidate for Representative	NC	pass	247	82458540	247	0	0
+7603155e-eea1-4b0e-af38-ed263410783a	5b5ce5eb-2ae3-4140-b62a-d03c787cd573	H6CA24303	Salud O. Carbajal  <-  Salud Carbajal	Salud O. Carbajal	Salud Carbajal	Representative	Candidate for Representative	CA	pass	205	81740844	205	0	0
+bea15555-6429-488a-a39f-2b5b4d4d53b9	91baa852-297e-40e7-9c79-ace3f83f43b4	H6GA04129	Henry C. "Hank" Johnson  <-  Henry Johnson	Henry C. "Hank" Johnson	Henry Johnson	Representative	Candidate for Representative	GA	pass	231	80427100	231	0	0
+f79862fe-23cc-4cd2-931c-9e9b5d0a5789	03ae8e3a-151b-4cb3-92bd-94af7e9a2179	H4RI01265	Gabe Amo  <-  Gabriel Amo	Gabe Amo	Gabriel Amo	Representative	Candidate for Representative	RI	pass	205	75443361	205	0	0
+ddb62494-d8a4-429c-bc2c-a5eef442aa3a	a92d631f-d8d3-4496-a811-fa135cc1b115	H4NY11138	Yvette D. Clarke  <-  Yvette Clarke	Yvette D. Clarke	Yvette Clarke	Representative	Candidate for Representative	NY	fail-district	222	74786200	222	0	0
+7a803162-b410-41f1-a261-d00ca0e0db21	0b267487-a8cf-4575-8bda-85cef6855d68	H8PA07200	Mary Gay Scanlon  <-  Mary Scanlon	Mary Gay Scanlon	Mary Scanlon	Representative	Candidate for Representative	PA	fail-district	174	70314509	174	0	0
+e3a94a66-61db-4833-8b02-1a60feabab7d	ad071676-24dc-4d53-9b26-9e3e25954091	H4NJ03080	Herbert C. Conaway  <-  Herb Conaway	Herbert C. Conaway	Herb Conaway	Representative	Candidate for Representative	NJ	pass	225	66806500	225	0	0
+2871bb63-1c44-4a10-948f-07d60308416a	67f77dc5-df8f-47ef-84e1-67c739ae62c9	H0MA10082	William R. Keating  <-  William Keating	William R. Keating	William Keating	Representative	Candidate for Representative	MA	fail-district	297	63422300	297	0	0
+2e690c6a-575e-4d1a-820d-7ca93fff8eee	2ac8ce83-a523-4dba-9034-f55a58c46dcb	H2AL05102	Dale W. Strong  <-  Dale Strong	Dale W. Strong	Dale Strong	Representative	Candidate for Representative	AL	pass	154	59162500	154	0	0
+fca6bb66-7b1a-44d1-a108-3169e885c3ef	3b447af0-52c7-4380-b444-9dcc19f62685	H4IL07037	Danny K. Davis  <-  Danny Davis	Danny K. Davis	Danny Davis	Representative	Candidate for Representative	IL	pass	172	58094357	172	0	0
+c0a258b7-4d6b-4137-b0f7-1cceb644cc4d	b40a3160-8154-4fdd-af4e-067471f06e68	S0DE00092	Christopher A. Coons  <-  Christopher Coons	Christopher A. Coons	Christopher Coons	Senator	Candidate for Senator	DE	pass	197	54169900	197	0	0
+eb63b46f-9758-410e-ab7c-ead2f98cefa9	6b39e4d0-e930-478e-a3ac-737b04e969bd	H2IL01349	Jonathan L. Jackson  <-  Jonathan Jackson	Jonathan L. Jackson	Jonathan Jackson	Representative	Candidate for Representative	IL	pass	170	51890100	170	0	0
+d68920b5-fb7d-4fa5-883e-60a59ffdfb99	645afb51-b15f-494a-934f-61f006bd8240	H8VA06104	Ben Cline  <-  Benjamin Cline	Ben Cline	Benjamin Cline	Representative	Candidate for Representative	VA	pass	152	50563500	152	0	0
+66aadb5c-b268-4043-8dca-aa4a0c04cdc0	428d4aaf-3c9d-4bf8-9cce-8be84ac218b6	H8MD01094	Andy Harris  <-  Andrew Harris	Andy Harris	Andrew Harris	Representative	Candidate for Representative	MD	pass	146	49400000	146	0	0
+b2453f28-7bfa-4a87-993b-aa78260451a1	852d0d6f-ca6c-4210-b6c6-805b49c6d431	H8IN07184	André Carson  <-  Andre Carson	André Carson	Andre Carson	Representative	Candidate for Representative	IN	pass	126	47757200	126	0	0
+cb7be5fd-2b38-4f09-a75d-e3e58fd920c2	b5619164-9e03-4623-a861-ee7ccbba56a0	H6FL18097	Brian J. Mast  <-  Brian Mast	Brian J. Mast	Brian Mast	Representative	Candidate for Representative	FL	fail-district	96	47376143	96	0	0
+f4953d9b-71b1-42aa-aec0-2675e7cd2178	278411fd-2fca-46d4-9015-d1055c87ee84	H8NJ04014	Christopher H. Smith  <-  Christopher Smith	Christopher H. Smith	Christopher Smith	Representative	Candidate for Representative	NJ	pass	88	46118063	88	0	0
+b8682790-5527-480f-a1b9-d7d929c14cff	cc613014-866b-4ec3-b45f-b98b81373c46	H2GU01031	James C. Moylan  <-  James Moylan	James C. Moylan	James Moylan	Representative	Candidate for Representative	GU	fail-district	369	40066000	369	0	0
+dc64474f-4f82-4e5b-b2c8-7c5b18579db8	17c0c0e4-bc02-4ed8-9b19-01cf9ba0aa4d	H0IN03198	Marlin A. Stutzman  <-  Marlin Stutzman	Marlin A. Stutzman	Marlin Stutzman	Representative	Candidate for Representative	IN	pass	1	39322600	1	0	0
+6ea042c5-3b29-4bc0-ac9e-7639e973d11c	55e9df7b-9f7c-4856-ad47-1822f0f5d7a3	S6OR00110	Ron Wyden  <-  Ronald Wyden	Ron Wyden	Ronald Wyden	Senator	Candidate for Senator	OR	pass	140	36785000	140	0	0
+6a0663fe-7767-4683-a02a-ce1c7f704aa7	15411a2b-9b96-4cc0-ad7d-3da0bc237bd8	H4CA29141	Luz M. Rivas  <-  Luz Rivas	Luz M. Rivas	Luz Rivas	Representative	Candidate for Representative	CA	pass	109	36093400	109	0	0
+e31db7c1-bd24-4b75-84a0-5a3a27c096c9	865dbb83-e1f9-488c-aa1f-30bf1964c689	H8TN06094	John W. Rose  <-  John Rose	John W. Rose	John Rose	Representative	Candidate for Representative	TN	pass	98	32940000	98	0	0
+27090d3a-ed66-47de-8f45-24a262cf9e35	ce2b114f-8406-4c84-91e9-c6454d11c897	H6KS01179	Roger Marshall  <-  Roger Marshall	Roger Marshall	Roger Marshall	Senator	Candidate for Senator	KS	fail-office	51	32554040	50	1	0
+e7b73fea-7929-413a-b03a-21c519251875	36907aab-b3e1-4314-a192-ad72f8d2b594	H0IL15129	Mary E. Miller  <-  Mary Miller	Mary E. Miller	Mary Miller	Representative	Candidate for Representative	IL	pass	102	27118408	102	0	0
+3b884b2b-4aeb-49aa-83ca-1775d868a8f4	2af54052-95f9-40fb-8934-a016a2064334	H4OH02248	David J. Taylor  <-  David Taylor	David J. Taylor	David Taylor	Representative	Candidate for Representative	OH	pass	83	27107191	83	0	0
+af77d55d-d593-4a29-a5fd-6648992fa463	2b57d3f6-2fdf-4bdd-bc3b-9563b50bbac8	H0DC00058	Eleanor Holmes Norton  <-  Eleanor Norton	Eleanor Holmes Norton	Eleanor Norton	Representative	Candidate for Representative	DC	pass	125	24405000	125	0	0
+24163175-2f58-4a2e-bfeb-ecdd68ab9ac9	19f08bbe-1d2f-4a27-92b7-4464361a9fac	S6IL00151	Richard J. Durbin  <-  Richard Durbin	Richard J. Durbin	Richard Durbin	Senator	Candidate for Senator	IL	pass	65	16975000	65	0	0
+26876d52-5b98-4352-a560-361048d95cdc	41d2af4c-fc02-49f5-b296-868d3d171d48	H0CA27085	Adam B. Schiff  <-  Adam Schiff	Adam B. Schiff	Adam Schiff	Senator	Candidate for Representative	CA	fail-office	34	11953468	34	0	0
+bb23212c-9844-4ffa-8172-d92655440dd1	39bb2d14-590b-4bef-bb49-9ea182b95260	S4MA00028	Edward J. Markey  <-  Edward Markey	Edward J. Markey	Edward Markey	Senator	Candidate for Senator	MA	pass	31	11150000	31	0	0
+cdffad75-cc85-462f-8030-8237632acb94	609ed38a-7a44-4e9b-887f-506f238a66a1	S0CO00211	Michael F. Bennet  <-  Michael Bennet	Michael F. Bennet	Michael Bennet	Senator	Candidate for Senator	CO	pass	24	5719000	24	0	0
+e7afbf02-9908-4c2f-a443-cc7a00741761	13ab73be-e0c5-4ebd-bcbc-c36a9aeaa54a	S8OR00207	Jeff Merkley  <-  Jeffrey Merkley	Jeff Merkley	Jeffrey Merkley	Senator	Candidate for Senator	OR	pass	15	5572500	15	0	0
+a911c906-1a02-4ba2-af8d-5dcca21c89fd	12b08a65-96b6-4b01-819a-4ae5a5711f1e	H8WY00148	Cynthia M. Lummis  <-  Cynthia Lummis	Cynthia M. Lummis	Cynthia Lummis	Senator	Candidate for Representative	WY	fail-office	6	3000000	6	0	0
+b96f75ed-f480-4d5e-84fc-99c8fc16798f	1160fbb2-2e36-42de-8b43-b7fc65d67f5f	H0AZ01259	Paul A. Gosar  <-  Paul Gosar	Paul A. Gosar	Paul Gosar	Representative	Candidate for Representative	AZ	fail-district	11	3000000	11	0	0
+efd0cd51-0f21-4f54-a702-2aaf762a0368	b05ae301-41b0-4d76-b1fa-cca373262f0f	H8MI09068	Gary C. Peters  <-  Gary Peters	Gary C. Peters	Gary Peters	Senator	Candidate for Representative	MI	fail-office	3	300000	3	0	0
