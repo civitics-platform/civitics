@@ -84,7 +84,7 @@ import {
   type SuspectRow,
   usd,
 } from "./fec-orphan-classify";
-import { declareRemediationTail, printTailTable } from "./remediation-manifest";
+import { declareRemediationTail, printTailTable, readManifest, manifestArg } from "./remediation-manifest";
 import { drainFrRewrite } from "../lib/fr-rewrite-drain";
 import { runUnderProdSession } from "../lib/prod-session";
 import { roleMayHoldFecOffice } from "../pipelines/fec-bulk/electable-role";
@@ -661,6 +661,167 @@ SELECT s.id        AS "survivor",
                 WHERE fr.to_type='official' AND fr.to_id = d.id)
  ORDER BY 4;
 `;
+
+/**
+ * FIX-1187 — the shared-CAND_ID gate, server-side. Every fact re-read here,
+ * keyed on the manifest's two ids, so a pair that was safe on the clone and is
+ * not safe here is refused here (Rule 68).
+ *
+ * WHAT IT CHECKS, and why the list is what it is. Selection is by CAND_ID
+ * EQUALITY, so identity already comes from the id: a CAND_ID names one FEC
+ * candidacy, and the stub was MINTED from it by the cn{yy} stage.
+ *
+ *   survivor tier 'elected' AND is_active
+ *   dup tier 'candidate'
+ *   dup's live fec_candidate_id is still the manifest's id
+ *   the survivor AUTHORITATIVELY claims that id — fec_candidate_id OR
+ *     prior_fec_candidate_ids (FIX-1187; after an office promotion the House id
+ *     lives in the array and the House stub is still the same person)
+ *   first-name keys agree (FIX-929's 3-letter key; undecidable is NOT agreement)
+ *   decision-5: the stub is money + provenance and NOTHING else
+ *
+ * WHAT IT DELIBERATELY DOES NOT CHECK — the FIX-953 seat gate (office char,
+ * state chars, House district digits). FIX-953's own audit established that gate
+ * as *necessary, not sufficient* for a pair selected BY NAME (Grijalva
+ * father/daughter, Letlow spouses, Nehls twins — same surname, office, state and
+ * district, different people). For a pair selected by CAND_ID equality it is
+ * neither: identity is the id, and the 34 pairs it refuses are exactly the cases
+ * where the id's ENCODED seat lags the person's current one — 29 redistricted
+ * (the id encodes the district of first registration: Mast H6FL18097 -> FL-21,
+ * Clyburn 02 -> 06, Gosar 01 -> 09) and 5 office-changed. Applying a seat test
+ * to an id-selected pair tests the wrong proposition.
+ *
+ * A refused pair is REPORTED and the run continues — one bad row in a 151-row
+ * manifest must not cost the other 150.
+ */
+async function verifySharedIdInDb(
+  client: Client,
+  pairs: Pair[],
+): Promise<{ ok: Pair[]; rejected: DroppedPair[] }> {
+  if (pairs.length === 0) return { ok: [], rejected: [] };
+  const rows = await q<{
+    survivor: string;
+    dup: string;
+    survivor_tier: string | null;
+    survivor_active: boolean | null;
+    dup_tier: string | null;
+    dup_fec: string | null;
+    survivor_claims_it: boolean | null;
+    survivor_fkey: string | null;
+    dup_fkey: string | null;
+    dup_attachments: string;
+    dup_attachment_detail: string | null;
+  }>(
+    client,
+    `SELECT m.survivor, m.dup,
+            s.tier AS survivor_tier, s.is_active AS survivor_active,
+            d.tier AS dup_tier,
+            d.source_ids->>'fec_candidate_id' AS dup_fec,
+            -- FIX-1187 identity test: current-office id OR a prior-office one.
+            (${authoritativeClaimsJsonb("s")} ? m.fec_id) AS survivor_claims_it,
+            -- FIX-929's 3-letter first-name key. '' means "cannot compare",
+            -- which the client below treats as undecidable, never as agreement.
+            NULLIF(left(regexp_replace(upper(COALESCE(NULLIF(s.first_name,''),
+                   split_part(s.full_name,' ',1))),'[^A-Z]','','g'), 3), '') AS survivor_fkey,
+            NULLIF(left(regexp_replace(upper(COALESCE(NULLIF(d.first_name,''),
+                   split_part(d.full_name,' ',1))),'[^A-Z]','','g'), 3), '') AS dup_fkey,
+            (att.votes + att.career + att.cmte + att.promises + att.cosponsor
+             + att.comments + att.civic + att.lobby + att.sponsored + att.actions
+             + att.extrel)::text AS dup_attachments,
+            NULLIF(concat_ws(', ',
+              CASE WHEN att.votes     > 0 THEN att.votes     || ' votes'                 END,
+              CASE WHEN att.career    > 0 THEN att.career    || ' career_history'        END,
+              CASE WHEN att.cmte      > 0 THEN att.cmte      || ' committee_memberships' END,
+              CASE WHEN att.promises  > 0 THEN att.promises  || ' promises'              END,
+              CASE WHEN att.cosponsor > 0 THEN att.cosponsor || ' cosponsorships'        END,
+              CASE WHEN att.comments  > 0 THEN att.comments  || ' community_comments'    END,
+              CASE WHEN att.civic     > 0 THEN att.civic     || ' civic_responses'       END,
+              CASE WHEN att.lobby     > 0 THEN att.lobby     || ' lobbying_disclosures'  END,
+              CASE WHEN att.sponsored > 0 THEN att.sponsored || ' sponsored_bills'       END,
+              CASE WHEN att.actions   > 0 THEN att.actions   || ' proposal_actions'      END,
+              CASE WHEN att.extrel    > 0 THEN att.extrel    || ' external_relationships' END
+            ), '') AS dup_attachment_detail
+       FROM _manifest m
+       JOIN officials s ON s.id = m.survivor
+       JOIN officials d ON d.id = m.dup
+       CROSS JOIN LATERAL (
+         SELECT (SELECT count(*) FROM votes v                          WHERE v.official_id = d.id) AS votes,
+                (SELECT count(*) FROM career_history c                 WHERE c.official_id = d.id) AS career,
+                (SELECT count(*) FROM official_committee_memberships k WHERE k.official_id = d.id) AS cmte,
+                (SELECT count(*) FROM promises p                       WHERE p.official_id = d.id) AS promises,
+                (SELECT count(*) FROM proposal_cosponsors pc           WHERE pc.official_id = d.id) AS cosponsor,
+                (SELECT count(*) FROM official_community_comments oc   WHERE oc.official_id = d.id) AS comments,
+                (SELECT count(*) FROM civic_initiative_responses ci    WHERE ci.official_id = d.id) AS civic,
+                (SELECT count(*) FROM lobbying_disclosures ld          WHERE ld.official_id = d.id) AS lobby,
+                (SELECT count(*) FROM bill_details bd                  WHERE bd.primary_sponsor_id = d.id) AS sponsored,
+                (SELECT count(*) FROM proposal_actions pa              WHERE pa.performed_by_id = d.id) AS actions,
+                (SELECT count(*) FROM external_relationships er
+                  WHERE (er.from_type='official' AND er.from_id = d.id)
+                     OR (er.to_type='official'   AND er.to_id   = d.id))                AS extrel
+       ) att`,
+  );
+  const byKey = new Map(rows.map((r) => [`${r.survivor}|${r.dup}`, r]));
+  const ok: Pair[] = [];
+  const rejected: DroppedPair[] = [];
+  for (const p of pairs) {
+    const r = byKey.get(`${p.survivor}|${p.dup}`);
+    if (!r) {
+      rejected.push({ name: p.name, reason: "one of the two officials rows no longer exists" });
+      continue;
+    }
+    if (r.survivor_tier !== "elected" || r.dup_tier !== "candidate") {
+      rejected.push({ name: p.name, reason: `live tiers are ${r.survivor_tier}/${r.dup_tier}` });
+      continue;
+    }
+    if (r.survivor_active !== true) {
+      rejected.push({ name: p.name, reason: "survivor is not is_active" });
+      continue;
+    }
+    if (r.dup_fec !== p.fecId) {
+      rejected.push({
+        name: p.name,
+        reason: `duplicate's live CAND_ID is ${r.dup_fec}, expected ${p.fecId}`,
+      });
+      continue;
+    }
+    if (r.survivor_claims_it !== true) {
+      rejected.push({
+        name: p.name,
+        reason: `survivor does not claim ${p.fecId} (neither fec_candidate_id nor prior_fec_candidate_ids)`,
+      });
+      continue;
+    }
+    // FIX-929 — undecidable is not agreement. A row with fewer than three
+    // comparable first-name letters is refused, not waved through.
+    if (!r.survivor_fkey || !r.dup_fkey) {
+      rejected.push({
+        name: p.name,
+        reason: `first-name key is undecidable (${r.survivor_fkey ?? "-"} vs ${r.dup_fkey ?? "-"})`,
+      });
+      continue;
+    }
+    if (r.survivor_fkey !== r.dup_fkey) {
+      rejected.push({
+        name: p.name,
+        reason: `first names disagree (${r.survivor_fkey} vs ${r.dup_fkey}) — a FIX-934 question, not a merge`,
+      });
+      continue;
+    }
+    // Decision 5: money + provenance and nothing else. FIX-940's lesson — the
+    // "money and nothing else" assumption was once wrong by 1,755 votes — so
+    // this is a hard refusal, not a warning. A stub caught here is FIX-1020's
+    // class and needs the re-anchor step that does not exist yet.
+    if (r.dup_attachments !== "0") {
+      rejected.push({
+        name: p.name,
+        reason: `stub carries non-money records (${r.dup_attachment_detail}) — FIX-1020, would be stranded on a $0 row`,
+      });
+      continue;
+    }
+    ok.push(p);
+  }
+  return { ok, rejected };
+}
 
 /**
  * Own-seat gate, server-side. Same contract as `verifyManifestInDb` except the
@@ -1467,6 +1628,42 @@ async function main(): Promise<void> {
     console.error(`✗ --own-seat-class must be one of orphan | double | both (got '${ownSeatClass}')`);
     process.exit(1);
   }
+  /**
+   * FIX-1187 — the shared-CAND_ID class. Selection is a TSV manifest, not a
+   * derivation: 151 (elected survivor, candidate stub) pairs that hold the SAME
+   * `fec_candidate_id` and both hold money. Identity comes from the id, so the
+   * FIX-953 seat gate is NOT applied — see verifySharedIdInDb.
+   */
+  const sharedIdManifestPath = manifestArg(argv);
+  /**
+   * FIX-1187 shape B — the five sitting Senators holding a House CAND_ID. Each
+   * row promotes the survivor's ids (Senate id becomes current, House id moves
+   * to `prior_fec_candidate_ids`) and then merges the Senate stub as an
+   * ordinary pair.
+   *
+   * ORDERING MATTERS, and it is the reason this is a second manifest rather
+   * than five more rows in the first. `_manifest` is (survivor PRIMARY KEY, dup
+   * UNIQUE) because the merge SQL assumes 1:1 — with two stubs for one survivor
+   * the two stubs' own colliding rows would both move and violate
+   * financial_relationships_relcycle_unique. Each Senator's HOUSE stub is
+   * already an ordinary shape-A pair today (the survivor's live
+   * fec_candidate_id IS the House id), so it rides set 1; this set then takes
+   * the Senate stub. One row per survivor per set, 1:1 intact in both.
+   */
+  const promoteManifestPath = (() => {
+    const i = argv.indexOf("--promote-manifest");
+    if (i === -1) return null;
+    const v = argv[i + 1];
+    if (!v || v.startsWith("--")) {
+      console.error("✗ --promote-manifest needs a path.");
+      process.exit(1);
+    }
+    return v;
+  })();
+  if (sharedIdManifestPath && promoteManifestPath) {
+    console.error("✗ --manifest and --promote-manifest are separate SETS — run them one at a time.");
+    process.exit(1);
+  }
   const apply = argv.includes("--apply") || rollupsOnly || mvsOnly || vacuumOnly;
   const allowProd = argv.includes("--allow-prod");
   const defer = deferTails(argv);
@@ -1493,8 +1690,17 @@ async function main(): Promise<void> {
     return { dup: parts[0]!, survivor: parts[1]! };
   })();
 
-  if (prod && !pairArg && !rollupsOnly && !mvsOnly && !vacuumOnly && !repairResplit) {
-    console.error("✗ PROD requires --pair <dup_id>,<survivor_id>.");
+  // FIX-1187 — --manifest / --promote-manifest are manifests in exactly the
+  // sense Rule 1 means: a reviewed TSV under docs/audits/, derived on the clone,
+  // with every fact re-read HERE keyed on the two ids (verifySharedIdInDb). They
+  // skip the same 81-minute derivation --pair skips, so they exempt the same
+  // guard. --own-seat is still NOT exempt: it DERIVES its population from
+  // OWN_SEAT_MANIFEST_SQL, which is the scan this guard exists to refuse.
+  if (
+    prod && !pairArg && !sharedIdManifestPath && !promoteManifestPath &&
+    !rollupsOnly && !mvsOnly && !vacuumOnly && !repairResplit
+  ) {
+    console.error("✗ PROD requires --pair <dup_id>,<survivor_id>, --manifest <path>, or --promote-manifest <path>.");
     console.error("  merge-same-person-official-dupes derives its manifest with a full audit");
     console.error("  scan of financial_relationships (SUSPECT_SQL + classify + buildManifest).");
     console.error("  On prod that scan is the change's largest cost and it is pure");
@@ -1682,6 +1888,11 @@ async function main(): Promise<void> {
   // ── Derive the manifest (read-only, outside the merge txn) ────────────────
   let candidates: Pair[];
   let trioCandidates: TrioCandidate[] = [];
+  /**
+   * FIX-1187 shape B — the id rewrite each promoted survivor needs BEFORE its
+   * Senate stub's money moves. Empty in every other mode.
+   */
+  const promotions: Array<{ survivor: string; currentId: string; priorId: string; name: string }> = [];
   if (pairArg) {
     // FIX-1165 — the manifest path. Two ids in, both re-read HERE by primary
     // key, every fact the merge acts on recomputed keyed on them. No derivation.
@@ -1795,6 +2006,73 @@ async function main(): Promise<void> {
       );
     }
     for (const d of grouped.dropped) console.log(`  DROPPED  ${d.name.padEnd(50)} ${d.reason}`);
+  } else if (sharedIdManifestPath || promoteManifestPath) {
+    // FIX-1187 — the manifest IS the population. No derivation runs; every fact
+    // is re-read keyed on the two ids inside the merge transaction
+    // (verifySharedIdInDb), so this path costs nothing like SUSPECT_SQL's
+    // 81-minute scan and is safe on prod.
+    const m = readManifest((sharedIdManifestPath ?? promoteManifestPath)!);
+    for (const c of m.comments) console.log(`  # ${c.replace(/^#\s*/, "")}`);
+    if (promoteManifestPath) {
+      const REQUIRED = ["survivor", "senate_stub", "current_id", "prior_id", "evidence"];
+      const missing = REQUIRED.filter((c) => !m.header.includes(c));
+      if (missing.length > 0) {
+        console.error(`✗ --promote-manifest is missing column(s): ${missing.join(", ")}`);
+        await client.end();
+        process.exit(1);
+      }
+      console.log(`\nOFFICE-PROMOTION manifest → ${m.rows.length} row(s) from ${m.path}`);
+      const pairs: Pair[] = [];
+      for (const r of m.rows) {
+        const label = `${r["survivor_name"] ?? r["survivor"]}  ←  ${r["senate_stub_name"] ?? r["senate_stub"]}`;
+        // D2 / §5 — shape B NEVER runs on a row whose evidence column is empty.
+        // The manifest is an AUTHORISATION, and the evidence string (the
+        // fec.gov candidate record for the Senate id) is what authorises it.
+        if (!(r["evidence"] ?? "").trim()) {
+          console.log(`  REFUSED  ${label.padEnd(50)} empty evidence column — shape B requires it`);
+          continue;
+        }
+        promotions.push({
+          survivor: r["survivor"]!,
+          currentId: r["current_id"]!,
+          priorId: r["prior_id"]!,
+          name: label,
+        });
+        pairs.push({
+          survivor: r["survivor"]!,
+          dup: r["senate_stub"]!,
+          fecId: r["current_id"]!,
+          name: label,
+          cls: "office-promotion",
+        });
+      }
+      const unique = enforceOneToOne(pairs);
+      candidates = unique.kept;
+      for (const p of candidates) {
+        console.log(`  PROMOTE  ${p.name.padEnd(52)} ${p.fecId}  (prior → array)`);
+      }
+      for (const d of unique.dropped) console.log(`  DROPPED  ${d.name.padEnd(50)} ${d.reason}`);
+    } else {
+      const REQUIRED = ["survivor", "dup", "fec_id"];
+      const missing = REQUIRED.filter((c) => !m.header.includes(c));
+      if (missing.length > 0) {
+        console.error(`✗ --manifest is missing column(s): ${missing.join(", ")}`);
+        await client.end();
+        process.exit(1);
+      }
+      console.log(`\nSHARED-CAND_ID manifest → ${m.rows.length} row(s) from ${m.path}`);
+      const pairs: Pair[] = m.rows.map((r) => ({
+        survivor: r["survivor"]!,
+        dup: r["dup"]!,
+        fecId: r["fec_id"]!,
+        name: r["name"] ?? `${r["survivor"]} ← ${r["dup"]}`,
+        cls: "shared-id",
+      }));
+      const unique = enforceOneToOne(pairs);
+      candidates = unique.kept;
+      console.log(`  ${candidates.length} pair(s) selected; gates re-applied server-side below.`);
+      for (const d of unique.dropped) console.log(`  DROPPED  ${d.name.padEnd(50)} ${d.reason}`);
+    }
   } else if (ownSeat) {
     // FIX-953 — structural selection, no overlap ranking. See
     // OWN_SEAT_MANIFEST_SQL for why the classifier cannot reach these.
@@ -1880,11 +2158,72 @@ async function main(): Promise<void> {
       ]);
     }
 
+    // ── FIX-1187 shape B — the id rewrite, BEFORE the gates ──────────────
+    // Order is deliberate. verifySharedIdInDb asks "does the survivor
+    // authoritatively claim this pair's CAND_ID?", and for the Senate stub the
+    // answer only becomes yes once the promotion has run. Both statements are
+    // inside the merge transaction, so a gate that refuses afterwards rolls the
+    // rewrite back with everything else.
+    if (promotions.length > 0) {
+      await client.query(`
+        DROP TABLE IF EXISTS _promote;
+        CREATE TEMP TABLE _promote (survivor uuid PRIMARY KEY, current_id text NOT NULL,
+                                    prior_id text NOT NULL);
+      `);
+      for (const p of promotions) {
+        await client.query(`INSERT INTO _promote VALUES ($1::uuid, $2::text, $3::text)`, [
+          p.survivor,
+          p.currentId,
+          p.priorId,
+        ]);
+      }
+      // Pre-write gate, keyed on live values: the survivor must hold exactly the
+      // id the manifest calls prior, and the Senate stub must hold exactly the
+      // id it calls current. Anything else means the tree moved under the
+      // manifest and the whole set stops — unlike a per-pair refusal, a wrong
+      // promotion would rewrite an identity, not just move money.
+      const bad = await q<{ survivor: string; live: string | null; expected: string }>(
+        client,
+        `SELECT p.survivor::text AS survivor,
+                o.source_ids->>'fec_candidate_id' AS live,
+                p.prior_id AS expected
+           FROM _promote p JOIN officials o ON o.id = p.survivor
+          WHERE o.source_ids->>'fec_candidate_id' IS DISTINCT FROM p.prior_id`,
+      );
+      if (bad.length > 0) {
+        for (const b of bad) {
+          console.error(`  ✗ ${b.survivor} holds ${b.live ?? "(none)"}, manifest says prior_id ${b.expected}`);
+        }
+        throw new Error(
+          `${bad.length} promotion row(s) do not match live state — refusing the whole set`,
+        );
+      }
+      // The rewrite. `||` merge on the LIVE row, the same shape persistNewFecIds
+      // uses, so a concurrent writer's other source_ids keys are not clobbered.
+      // The prior array is append-if-absent, never a replace: a member who has
+      // changed office twice keeps both earlier ids.
+      await run(client, "officials.source_ids: promote current_id, prior_id → array", `
+        UPDATE officials o
+           SET source_ids = COALESCE(o.source_ids, '{}'::jsonb)
+                          || jsonb_build_object('fec_candidate_id', p.current_id)
+                          || jsonb_build_object('prior_fec_candidate_ids',
+                               COALESCE(o.source_ids->'prior_fec_candidate_ids', '[]'::jsonb)
+                               || CASE WHEN COALESCE(o.source_ids->'prior_fec_candidate_ids','[]'::jsonb)
+                                            ? p.prior_id
+                                       THEN '[]'::jsonb
+                                       ELSE jsonb_build_array(p.prior_id) END),
+               updated_at = now()
+          FROM _promote p
+         WHERE o.id = p.survivor`);
+    }
+
     const { ok: pairs, rejected } = repairResplit
       ? await verifyRepairInDb(client, candidates)
-      : ownSeat
-        ? await verifyOwnSeatInDb(client, candidates)
-        : await verifyManifestInDb(client, candidates);
+      : sharedIdManifestPath || promoteManifestPath
+        ? await verifySharedIdInDb(client, candidates)
+        : ownSeat
+          ? await verifyOwnSeatInDb(client, candidates)
+          : await verifyManifestInDb(client, candidates);
     for (const r of rejected) console.log(`  REJECTED ${r.name.padEnd(50)} ${r.reason}`);
     if (rejected.length > 0) {
       await client.query(
