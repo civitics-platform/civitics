@@ -1,0 +1,46 @@
+{
+  "cc": "128",
+  "prompt": "cc-prompt-128-fix1185-redecided-3h-30day-window-budget-cuts-ecs-row-fix1187-code-half-shared-id-manifest-path-prior-ids-clone-dry-runs.md",
+  "started_at": "2026-09-16T02:55:00Z",
+  "finished_at": "2026-09-16T03:55:00Z",
+  "head_before": "0296a034",
+  "head_after": "2ca5343f",
+  "commits": [
+    {
+      "sha": "7f5f4d09",
+      "subject": "feat(db): FIX-1185 — postgres role statement_timeout 6h to 3h, sized on the trailing-30-day window; two budgets cut to 9000 s; entity-connection-stats-rebuild gets its first budget row"
+    },
+    {
+      "sha": "92015275",
+      "subject": "feat(fec): FIX-1187 — prior_fec_candidate_ids; every claim/has-id reader takes it, no display reader does"
+    },
+    {
+      "sha": "45db8c0e",
+      "subject": "feat(data): FIX-1187 — merge script shared-CAND_ID manifest mode and the office-promotion carry"
+    },
+    {
+      "sha": "3ffccefb",
+      "subject": "docs(audits): FIX-1187 — shared-CAND_ID census (clone + prod), both manifests, clone dry runs of both sets"
+    },
+    {
+      "sha": "2ca5343f",
+      "subject": "docs(fixes): FIX-1187 / FIX-1019 / FIX-1106 / FIX-1182 / FIX-1020 / FIX-1185 / FIX-1128 appends; file FIX-1188 / FIX-1189 / FIX-1190"
+    }
+  ],
+  "fixes_closed": [],
+  "fixes_filed": [
+    "FIX-1188",
+    "FIX-1189",
+    "FIX-1190"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [
+    "supabase/migrations/20260916000000_fix1185_postgres_role_statement_timeout_3h.sql"
+  ],
+  "prod_writes": "One migration applied to Pro at 2026-09-16 03:24:03 UTC — ALTER ROLE postgres IN DATABASE postgres SET statement_timeout = '3h' (was 6h), two cron_job_budget UPDATEs (donor-rollup-refresh 14400 to 9000, contract-flow-rollups-refresh 10800 to 9000), one INSERT (entity-connection-stats-rebuild, 9000). No FIX-1187 prod write of any kind; every 1187 prod contact was a read. No session claim. No cron.job altered.",
+  "ci": "green",
+  "stopped_items": [
+    "Set 1's claim to READINESS — stopped as the prompt requires. The design's >=99%-survivor-fresher collision gate does NOT pass: prod runs 58,568 of 99,217 survivor-fresher (59.0%), and it is not a clone artefact. The code, the manifests and the dry runs all landed; what is withheld is the assertion that set 1 is ready to apply on the stated gate. The substantive invariant the gate exists to protect DOES hold and is stronger (in every cycle-source cell, collisions where the amounts differ AND the dup is fresher = 0, measured on prod and clone), so this is a re-decision for cc-129, not a blocked build. Detail in section 3.1 of the audit and section 7 below.",
+    "Item 6 (the FIX-1185 receipt record commit) — condition did not hold. A3 needs Thursday 2026-09-17 14:00 UTC contract-flow-rollups-refresh, which is ~34 h after this run ended. FIX-1185 and FIX-1128 therefore stay open and cc-129 carries the record commit."
+  ]
+}
