@@ -10,7 +10,9 @@ spec, not silence.
 
 **Receipts are dated measurements, not constants.** Taken on Supabase **Pro
 Small** (2 vCPU, 256 MB `shared_buffers`, 6 h `statement_timeout` on the
-`postgres` role) against a ~10.3M-row `financial_relationships`. The rules
+`postgres` role — **that ceiling is 3 h from 2026-09-16, FIX-1185**, so every
+receipt below was taken under the older, looser bound) against a ~10.3M-row
+`financial_relationships`. The rules
 survive a bigger box; the numbers do not. Re-derive before quoting — rule **E3**.
 
 **Extended 2026-08-09** with the rollup-saturation arc (FIX-995 → FIX-1015): new

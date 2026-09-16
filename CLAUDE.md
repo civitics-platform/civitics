@@ -623,6 +623,27 @@ give every new such job a row. A per-job role carrying the bound as a role-level
 GUC would work but `cron.alter_job(… username := …)` needs superuser, which
 `postgres` is not on Supabase.
 
+**The `postgres` role's in-backend ceiling is 3 h (FIX-1185; was 6 h).** It is
+the one timer that DOES arm across a procedure's intra-procedure `COMMIT`s, so
+it is the backstop for the two cases the watchdog cannot cover: the box cannot
+fork (2026-08-29 — a canceller that must fork cannot bound a failure whose
+signature is the inability to fork), and the watchdog late by more than the
+budget's slack. It is sized on the **trailing-30-day window**, stated as such in
+the migration header; quoting it against the whole retained window gives a
+different and much larger number. Three rules follow:
+
+- **It is a DEFAULT, not a cap.** A supervised landing that legitimately needs
+  more than 3 h in one statement sets `SET statement_timeout` as its own
+  statement and says so in its header. A pg_cron job **cannot** take that
+  hatch, because its command must stay single-statement. That asymmetry is the
+  point.
+- **A per-job budget must sit at least one max-watchdog-lateness UNDER the
+  ceiling**, or the ceiling silently demotes the watchdog for that job — the run
+  then ends on a global timer that records nothing job-specific. Today:
+  10,800 − 963.8 = 9,836.2, and the largest active budget is 9,000.
+- **Roll back with `SET statement_timeout = '6h'`, never `RESET`** — a `RESET`
+  removes the ceiling entirely instead of restoring it.
+
 `statement_timeout` is armed once, by the server, at the start of a top-level
 statement, from the GUC value at that moment. Changing the GUC from inside that
 statement — a proconfig, a `set_config` in a procedure body, a `SET` after a
