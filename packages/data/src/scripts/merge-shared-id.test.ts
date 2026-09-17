@@ -239,3 +239,68 @@ test("FIX-1187 the five House stubs ride set 1, and are NOT merged by set 2", ()
     );
   }
 });
+
+// ---------------------------------------------------------------------------
+// FIX-1192 — the _collision CTAS drives from the stub side
+// ---------------------------------------------------------------------------
+
+/** The _collision CTAS body, from CREATE to its terminating semicolon. */
+function collisionCtas(): string {
+  const start = SCRIPT.indexOf("CREATE TEMP TABLE _collision ON COMMIT DROP AS");
+  assert.notEqual(start, -1, "the _collision CTAS must exist");
+  const end = SCRIPT.indexOf("CREATE INDEX ON _collision(surv_row);", start);
+  assert.notEqual(end, -1, "the surv_row index must still follow the CTAS");
+  return SCRIPT.slice(start, end);
+}
+
+test("FIX-1192 _collision joins the STUB side (m.dup) FIRST, not the survivor", () => {
+  const ctas = collisionCtas();
+  const dupJoin  = ctas.indexOf("d.to_id = m.dup");
+  const survJoin = ctas.indexOf("s.to_id = m.survivor");
+  assert.notEqual(dupJoin,  -1, "the CTAS must still bind the stub side to m.dup");
+  assert.notEqual(survJoin, -1, "the CTAS must still bind the survivor side to m.survivor");
+
+  // THE invariant. Driving from the survivor materialises a sitting member's
+  // whole career before probing the stub; measured on the local prod-clone
+  // (2026-09-17, 151-pair manifest) that leg builds 573,884 rows / 252,812
+  // block reads against 99,217 rows / 54,429 reads for the stub-driven form.
+  // On prod it cost 97 minutes (FIX-1192). A refactor that reorders these two
+  // JOINs silently reinstates that cost, so the order is asserted, not trusted.
+  assert.ok(
+    dupJoin < survJoin,
+    "financial_relationships must be joined on m.dup BEFORE m.survivor (FIX-1192)",
+  );
+});
+
+test("FIX-1192 the _collision output contract is unchanged", () => {
+  const ctas = collisionCtas();
+  // Every column the three consumers read: the census print (relationship_type,
+  // dup_upd/surv_upd, keep_dup, surv_cents/dup_cents) and the two loser DELETEs
+  // (surv_row, dup_row, keep_dup). Flipping the join must not drop or rename one.
+  for (const col of [
+    "relationship_type",
+    "surv_row", "dup_row",
+    "surv_upd", "dup_upd",
+    "surv_cents", "dup_cents",
+    "keep_dup",
+  ]) {
+    assert.ok(ctas.includes(col), `_collision must still emit ${col}`);
+  }
+  // keep_dup's tie-break direction is load-bearing: >= keeps the DUP on a tie.
+  assert.ok(
+    ctas.includes("(d.updated_at >= s.updated_at) AS keep_dup"),
+    "keep_dup must stay (d.updated_at >= s.updated_at)",
+  );
+});
+
+test("FIX-1165 the ANALYZE that feeds the planner survives the FIX-1192 reorder", () => {
+  // The reorder only changes which side the planner is ASKED to drive from;
+  // without statistics on _manifest it is still free to ignore the request.
+  const start = SCRIPT.indexOf("ANALYZE _manifest;");
+  assert.notEqual(start, -1, "ANALYZE _manifest must still run before the CTAS");
+  assert.ok(
+    start < SCRIPT.indexOf("CREATE TEMP TABLE _collision ON COMMIT DROP AS"),
+    "ANALYZE _manifest must precede the _collision CTAS",
+  );
+  assert.ok(SCRIPT.includes("ANALYZE _trio;"), "ANALYZE _trio must still run too");
+});

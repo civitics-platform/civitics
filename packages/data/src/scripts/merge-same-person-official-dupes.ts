@@ -2338,20 +2338,36 @@ async function main(): Promise<void> {
       -- cause as the _pop bound in remediate-role-ineligible-holders.
       ANALYZE _manifest;
       ANALYZE _trio;
+      -- FIX-1192 — drive this join from the STUB (m.dup) side, not the survivor.
+      -- The two forms are the same inner join: the predicates are symmetric
+      -- equalities on (relationship_type, from_id, cycle_year) plus a to_id
+      -- pinned per side by the manifest row, so swapping which side is the outer
+      -- relation cannot change the result set -- only the plan. But the two
+      -- sides are wildly different sizes. A survivor is a sitting member with
+      -- the full career on it (Schiff 30,434 FR rows on prod); a stub is one
+      -- CAND_ID's slice (1,850-23,464 across the five). Driving from the
+      -- survivor materialises the big side first and probes the small one, and
+      -- on prod that cost 97 minutes for the 151-pair manifest (FIX-1192).
+      -- Driving from the stub materialises the small side and probes the
+      -- survivor on relcycle_unique, which is exactly the index that predicate
+      -- is shaped for.
+      --
+      -- relationship_type comes off d here rather than s; the join enforces
+      -- d.relationship_type = s.relationship_type, so the value is identical.
       CREATE TEMP TABLE _collision ON COMMIT DROP AS
-        SELECT s.relationship_type,
+        SELECT d.relationship_type,
                s.id AS surv_row, d.id AS dup_row,
                s.updated_at AS surv_upd, d.updated_at AS dup_upd,
                s.amount_cents AS surv_cents, d.amount_cents AS dup_cents,
                (d.updated_at >= s.updated_at) AS keep_dup
           FROM _manifest m
-          JOIN financial_relationships s
-            ON s.to_type='official' AND s.to_id = m.survivor
           JOIN financial_relationships d
             ON d.to_type='official' AND d.to_id = m.dup
-           AND d.relationship_type = s.relationship_type
-           AND d.from_id           = s.from_id
-           AND d.cycle_year        = s.cycle_year;
+          JOIN financial_relationships s
+            ON s.to_type='official' AND s.to_id = m.survivor
+           AND s.relationship_type = d.relationship_type
+           AND s.from_id           = d.from_id
+           AND s.cycle_year        = d.cycle_year;
       CREATE INDEX ON _collision(surv_row);
       CREATE INDEX ON _collision(dup_row);
     `);
