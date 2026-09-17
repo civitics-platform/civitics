@@ -23,7 +23,8 @@
   "fixes_filed": [
     "FIX-1191",
     "FIX-1192",
-    "FIX-1193"
+    "FIX-1193",
+    "FIX-1194"
   ],
   "fixes_reopened": [],
   "migrations_pushed": [],
@@ -33,6 +34,6 @@
     "Set 2 (the five Senators' office promotion) was NOT applied. Attempt 1 at 04:01:01 was refused by the FIX-950 preflight with two live writers - the 14 entity_connections_rebuild and 7 financial_entity_totals_refresh firings set 1 had deferred resumed the instant it released at 03:53. --force was not used. Attempt 2 started 04:05:54, reached the merge steps with numbers matching the rehearsal exactly ($39,807,556 loser dollars, 23,821/9 deletes, all five PROMOTE rows accepted), then stalled 66 minutes in FR move because the 04:30 ec-vacuum-analyze - a job the interlock does not guard - was collecting set 1's own deferred 87,206 dead EC tuples. Front door reached 51.7% errors (14x500 of 29 requests), cancellations 85x baseline, fe-vacuum-analyze failed with a pg_cron job startup timeout. Cancelled at 05:22:12 on the operator's call; rolled back atomically, nothing written. This departs from the prompt's 'do not cancel a running merge transaction from outside' and was taken deliberately with Craig, on three grounds: 51.7% front-door errors, the 05:45 UTC blackout 23 minutes away with no chance of finishing, and the fact that cancelling an uncommitted transaction is atomic so the only cost is elapsed time. The five Senators still hold their House ids and $39.8M is still un-reunited.",
     "Set 2's post-apply proofs were not run, because set 2 did not land and there is nothing to prove.",
     "Item 5 (the FIX-1185 / FIX-1128 record commit) did not land - condition not met for the second consecutive run. contract-flow-rollups-refresh is '0 14 * * 4' and had not fired; next Thu 2026-09-17 14:00 UTC, roughly 8 hours after this run ended. The rest of read 5 is clean and is recorded on both bullets.",
-    "Item 3's record commit deliberately carries NO Fixes: and NO Closes: trailer, per G4, because set 2 did not land. FIX-1187 and FIX-1019 therefore stay OPEN and nothing closes in this run. Open count 69 -> 72 (three filings, zero closures)."
+    "Item 3's record commit deliberately carries NO Fixes: and NO Closes: trailer, per G4, because set 2 did not land. FIX-1187 and FIX-1019 therefore stay OPEN and nothing closes in this run. Open count 69 -> 73 (four filings, zero closures)."
   ]
 }
