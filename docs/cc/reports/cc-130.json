@@ -1,0 +1,36 @@
+{
+  "cc": "130",
+  "prompt": "cc-prompt-130-fix1187-set2-five-senators-drain-and-wait-1185-1128-record-1187-1019-record-fix1192-collision-join-stub-side.md",
+  "started_at": "2026-09-17T23:20:00Z",
+  "finished_at": "2026-09-18T00:05:00Z",
+  "head_before": "5d56ba3a",
+  "head_after": "5080c3c4",
+  "commits": [
+    {
+      "sha": "42729f93",
+      "subject": "perf(data): FIX-1192 — merge-same-person-official-dupes builds _collision from the stub side"
+    },
+    {
+      "sha": "5500a3b7",
+      "subject": "docs(audits): FIX-1187 — set 2 stopped; the nightly promotion deleted three of set 1's survivors"
+    },
+    {
+      "sha": "5080c3c4",
+      "subject": "docs(fixes): FIX-1187 / FIX-1019 / FIX-1185 / FIX-1128 / FIX-1192 / FIX-1193 / FIX-1194 / FIX-1191 appends; file FIX-1195 / FIX-1196"
+    }
+  ],
+  "fixes_closed": [],
+  "fixes_filed": [
+    "FIX-1195",
+    "FIX-1196"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "none",
+  "ci": "green",
+  "stopped_items": [
+    "Item 1 — set 2 apply. STOPPED, terminal, not waitable. The manifest names survivor 27090d3a for Roger Marshall and that row no longer exists on prod; his Senate stub is now tier=elected holding a House id, and S0KS00315 is held by nobody. Read 2a/2c/2g also failed. Nothing was written.",
+    "Item 3 — the FIX-1185 / FIX-1128 record. STOPPED. Thursday's contract-flow refresh is clean, but the first daily (refresh_derived_mvs 09-17 06:00) was watchdog-cancelled at 8 of 13 units, so the record's claim that it completed would be false. FIX-1185 and FIX-1128 stay open.",
+    "Item 4 — the FIX-1187 / FIX-1019 record. Not earned: item 1 did not land, so per S4 no trailer for 1187 or 1019 rode this run."
+  ]
+}
