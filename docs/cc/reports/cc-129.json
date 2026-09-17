@@ -1,0 +1,38 @@
+{
+  "cc": "129",
+  "prompt": "cc-prompt-129-fix1187-prod-apply-set1-151-shared-id-pairs-set2-five-senators-interlocked-clocked-record-commits-1019-superseded.md",
+  "started_at": "2026-09-16T23:14:00Z",
+  "finished_at": "2026-09-17T05:45:00Z",
+  "head_before": "1ca6dd9c",
+  "head_after": "0de9ac43",
+  "commits": [
+    {
+      "sha": "6e04faaf",
+      "subject": "chore(fec): record prod apply of FIX-1187 set 1 - 151 shared-CAND_ID stubs neutralised; set 2 rolled back and NOT applied"
+    },
+    {
+      "sha": "58768e1e",
+      "subject": "docs(audits): FIX-1187 - prod apply record, both sets"
+    },
+    {
+      "sha": "0de9ac43",
+      "subject": "docs(fixes): FIX-1187 / FIX-1019 / FIX-1020 / FIX-1106 / FIX-1182 / FIX-1185 / FIX-1128 appends; file FIX-1191 / FIX-1192 / FIX-1193"
+    }
+  ],
+  "fixes_closed": [],
+  "fixes_filed": [
+    "FIX-1191",
+    "FIX-1192",
+    "FIX-1193"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "Set 1 of FIX-1187 applied to Pro 2026-09-17 00:23:36-03:53:00 UTC under the FIX-950 interlock with --defer-tails: 151/151 pairs merged in one committed transaction - 40,649 + 58,568 financial_relationships rows deleted, 40,649 moved onto survivors, 87,206 entity_connections money edges deleted, 149 official_donor_totals rows deleted, 151 CAND_IDs retired - plus the three manifest-scoped tail rollups over 302 officials and 430,411 donors. Conservation difference $0; platform donation dollars $9,511,927,976.00 to $9,246,595,108.00. Set 2 was attempted twice and WROTE NOTHING: refused by the preflight at 04:01 (exit 2), re-run 04:05:54, and cancelled at 05:22:12 via pg_cancel_backend(191875) by operator decision, rolling back atomically. That cancel is the only other prod write-path action taken. No migration, no cron.job change, no --force, no prod dry run.",
+  "ci": "green",
+  "stopped_items": [
+    "Set 2 (the five Senators' office promotion) was NOT applied. Attempt 1 at 04:01:01 was refused by the FIX-950 preflight with two live writers - the 14 entity_connections_rebuild and 7 financial_entity_totals_refresh firings set 1 had deferred resumed the instant it released at 03:53. --force was not used. Attempt 2 started 04:05:54, reached the merge steps with numbers matching the rehearsal exactly ($39,807,556 loser dollars, 23,821/9 deletes, all five PROMOTE rows accepted), then stalled 66 minutes in FR move because the 04:30 ec-vacuum-analyze - a job the interlock does not guard - was collecting set 1's own deferred 87,206 dead EC tuples. Front door reached 51.7% errors (14x500 of 29 requests), cancellations 85x baseline, fe-vacuum-analyze failed with a pg_cron job startup timeout. Cancelled at 05:22:12 on the operator's call; rolled back atomically, nothing written. This departs from the prompt's 'do not cancel a running merge transaction from outside' and was taken deliberately with Craig, on three grounds: 51.7% front-door errors, the 05:45 UTC blackout 23 minutes away with no chance of finishing, and the fact that cancelling an uncommitted transaction is atomic so the only cost is elapsed time. The five Senators still hold their House ids and $39.8M is still un-reunited.",
+    "Set 2's post-apply proofs were not run, because set 2 did not land and there is nothing to prove.",
+    "Item 5 (the FIX-1185 / FIX-1128 record commit) did not land - condition not met for the second consecutive run. contract-flow-rollups-refresh is '0 14 * * 4' and had not fired; next Thu 2026-09-17 14:00 UTC, roughly 8 hours after this run ended. The rest of read 5 is clean and is recorded on both bullets.",
+    "Item 3's record commit deliberately carries NO Fixes: and NO Closes: trailer, per G4, because set 2 did not land. FIX-1187 and FIX-1019 therefore stay OPEN and nothing closes in this run. Open count 69 -> 72 (three filings, zero closures)."
+  ]
+}
