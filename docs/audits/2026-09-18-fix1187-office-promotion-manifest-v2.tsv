@@ -1,0 +1,78 @@
+# FIX-1187 — office-promotion manifest (shape B), SET 2, VERSION 2.
+# THIS FILE IS AN AUTHORISATION. It SUPERSEDES
+# docs/audits/2026-09-16-fix1187-office-promotion-manifest.tsv.
+#
+# WHY A NEW FILE RATHER THAN AN EDIT. cc-130 stopped set 2 at its pre-write
+# check because the 2026-09-16 manifest had gone DEAD, not merely blocked: the
+# nightly promotion of 2026-09-17 23:20:46 UTC deleted Marshall's survivor row
+# (27090d3a), which that file names as a survivor UUID. A manifest is an
+# authorisation, and an authorisation that names a row which no longer exists
+# cannot be corrected in place and stay an authorisation. The old file keeps its
+# SUPERSEDED comment and is not deleted.
+#
+# WHAT CHANGED, in one line: FIVE rows became FOUR. Marshall is gone from the
+# set.
+#
+# WHY MARSHALL IS NOT HERE. The same promotion that killed his manifest row also
+# merged his Senate stub's money onto the promoted row, and cc-131's FIX-1195
+# restore (2026-09-18 02:42 UTC) put S0KS00315 back as that row's live
+# fec_candidate_id with H6KS01179 in prior_fec_candidate_ids. So 60f87348 is
+# already an elected Senator holding a Senate id with the Senate money
+# ($11,374,334 across 4,867 FR rows) — which is exactly what a set-2 row is for.
+# There is no Senate stub left to merge. Re-deriving the census on prod
+# confirms it: the keyed shape-B query now returns exactly these FOUR and
+# Marshall is absent.
+#
+# RE-DERIVED ON PROD 2026-09-18 02:47 UTC. Every active elected row whose
+# role_title is Senator and whose live fec_candidate_id carries an H prefix,
+# joined to a tier='candidate' "Candidate for Senator" row of the same person
+# (surname, first name, and the CAND_ID's state characters) holding an S id with
+# live FR rows. Exactly four. The survivor UUIDs and both ids per row are
+# UNCHANGED from the 2026-09-16 derivation for all four — only Marshall moved.
+#
+# PROD STATE READ 2026-09-18 02:5x UTC, all twelve rows:
+#   survivor (elected Senator, holds the HOUSE id)      FR rows   official_donor_totals
+#     Adam B. Schiff     26876d52  H0CA27085             30,434   $33,133,309
+#     Gary C. Peters     efd0cd51  H8MI09068              2,240    $5,689,033
+#     John R. Curtis     0fcc1b87  H8UT03238              3,215    $7,761,678
+#     Cynthia M. Lummis  a911c906  H8WY00148                845    $2,798,905
+#   senate stub (candidate, holds the SENATE id and the live money)
+#     Adam Schiff        2c0f0bd2  S4CA00555             19,632   $23,670,328
+#     Gary Peters        cdc8ae79  S4MI00355             23,464   $27,906,385
+#     John Curtis        f073c8ba  S4UT00282              1,850    $4,109,074
+#     Cynthia Lummis     60bfd339  S0WY00137              1,852    $3,951,283
+#   house stub — ALREADY MERGED BY SET 1, listed for cross-reference ONLY
+#     41d2af4c / b05ae301 / 71a323fc / 12b08a65 each now carry
+#     {"merged_fec_candidate_ids": [<the house id>]} and ZERO FR rows.
+#   Set 1 is therefore confirmed complete for all four, which is the
+#   precondition the 2026-09-16 file spelled out as "SET 1 MUST RUN BEFORE
+#   SET 2" (two stubs for one survivor would violate
+#   financial_relationships_relcycle_unique, because _manifest is
+#   (survivor PRIMARY KEY, dup UNIQUE) and the merge SQL assumes 1:1).
+#
+# TOTAL TO MOVE: 46,798 stub FR rows.
+#
+# WHAT A ROW AUTHORISES, in one transaction:
+#   1. survivor.source_ids.fec_candidate_id      <- current_id (the SENATE id)
+#      survivor.source_ids.prior_fec_candidate_ids += prior_id (the HOUSE id)
+#   2. merge senate_stub into survivor as an ordinary pair on current_id
+#   3. retire current_id on senate_stub (fec_candidate_id -> merged_fec_candidate_ids)
+#
+# EVIDENCE. Every Senate id was verified against the OpenFEC API on 2026-09-16
+# (https://api.open.fec.gov/v1/candidate/<ID>/); the evidence column carries the
+# returned name / state / office_full / party verbatim, and a row with an empty
+# evidence column is REFUSED by the script. Shape B rewrites an identity, not
+# just money, so the authorisation has to be per-row and checkable. Nothing
+# about those four candidacies changed between 09-16 and 09-18, and the ids
+# themselves are unchanged, so the 09-16 verification stands.
+#
+# NOT YET APPLIED. cc-131 derived and committed this file but did NOT run set 2:
+# its drain-and-wait window is Saturday 2026-09-19 ~12:00-21:30 UTC and the
+# session was Friday 09-18 ~03:00 UTC. cc-132 applies it after repeating cc-131's
+# read 7 in full. The point of committing it unapplied is that cc-132 then
+# applies a REVIEWED file rather than deriving one under time pressure.
+survivor	survivor_name	senate_stub	senate_stub_name	current_id	prior_id	house_stub	state	evidence
+26876d52-5b98-4352-a560-361048d95cdc	Adam B. Schiff	2c0f0bd2-3b0c-4d12-a6a6-a6d9116485f3	Adam Schiff	S4CA00555	H0CA27085	41d2af4c-fc02-49f5-b296-868d3d171d48	CA	OpenFEC 2026-09-16 S4CA00555: name "SCHIFF, ADAM", state "CA", office "S" (Senate), party "DEM"
+efd0cd51-0f21-4f54-a702-2aaf762a0368	Gary C. Peters	cdc8ae79-9603-49ee-8fc7-4a16a46df2e5	Gary Peters	S4MI00355	H8MI09068	b05ae301-41b0-4d76-b1fa-cca373262f0f	MI	OpenFEC 2026-09-16 S4MI00355: name "PETERS, GARY", state "MI", office "S" (Senate), party "DEM"
+0fcc1b87-e6e3-4c00-8594-4e3a93d3cfc0	John R. Curtis	f073c8ba-f3bb-4100-aa23-06c65a4ef6dc	John Curtis	S4UT00282	H8UT03238	71a323fc-88ae-4329-8ccf-c561ebc8a083	UT	OpenFEC 2026-09-16 S4UT00282: name "CURTIS, JOHN", state "UT", office "S" (Senate), party "REPUBLICAN PARTY"
+a911c906-1a02-4ba2-af8d-5dcca21c89fd	Cynthia M. Lummis	60bfd339-b9e1-41f9-beb0-b894c45419be	Cynthia Lummis	S0WY00137	H8WY00148	12b08a65-96b6-4b01-819a-4ae5a5711f1e	WY	OpenFEC 2026-09-16 S0WY00137: name "LUMMIS, CYNTHIA MARIE MRS.", state "WY", office "S" (Senate), party "REP"
