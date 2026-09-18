@@ -1444,3 +1444,6 @@
 2026-09-13 | FIX-1183 | e7ecc82d | local-only | fix(fec): FIX-1183 — the residue remediation's dry run prints the tail-step cost-class table before its go-ahead; the structural test covers all four landing scripts
 2026-09-17 | FIX-1195 | 5f4b7948 | prod-only | docs(audits): FIX-1195 — three CAND_IDs restored on prod; the RPC precedence fixed
 2026-09-17 | FIX-1196 | 009b0600 | local-only | fix(congress): FIX-1196 — promote-candidates skips an elected row that already holds fec_candidate_id; skipped_bound in the summary; structural test
+2026-09-17 | FIX-1173 | 1f4159a6 | local-only | refactor(kill-switches): delete the dead `cron` switch, and filter the map at the parse boundary
+2026-09-17 | FIX-1179 | cb239dc6 | prod-only | feat(db): drop two dead census functions, label the third as deliberately unwired
+2026-09-17 | FIX-1190 | 0b37ebca | local-only | fix(receipts): the cron-jobs table keys on the job's OWN pipeline, not the clock
