@@ -94,6 +94,51 @@ const CENSUS_SQL = `
               OR o.source_ids->>'merged_fec_candidate_id' = $1)                                 AS merged,
          (SELECT count(*) FROM officials o WHERE o.source_ids->>'fec_id' = $1)                   AS fec_id`;
 
+/**
+ * The SQL mirror of `authoritativeClaims()`: fec_candidate_id plus
+ * prior_fec_candidate_ids, MINUS anything the SAME row has retired (FIX-955).
+ *
+ * This, not the all-surfaces census above, is what "has a holder" means AFTER a
+ * write. A retired marker on some OTHER row is not a claim — it is the correct
+ * post-merge shape, a stub recording the id it gave up while the survivor holds
+ * it live. Counting those as holders reports a correct restore as a failure,
+ * which is exactly what the first prod run did on 2026-09-18: all three ids
+ * restored to exactly one authoritative holder each, and the check called it
+ * "2 holders" because set 1's merge stubs still carry the retired markers.
+ *
+ * COALESCE on the scalar comparison is load-bearing: `NULL = 'X'` is NULL, so a
+ * bare `NOT (… OR …)` evaluates to NULL and drops every row.
+ */
+const AUTH_CENSUS_SQL = `
+  SELECT $1::text AS cand_id,
+         count(*) AS holders,
+         COALESCE(string_agg(t.name || ' [' || t.tier || ']', ', '), '(none)') AS who
+    FROM (
+      SELECT o.id, o.tier, o.full_name AS name
+        FROM officials o,
+             LATERAL (
+               SELECT o.source_ids->>'fec_candidate_id' AS c
+               UNION ALL
+               SELECT jsonb_array_elements_text(
+                        CASE WHEN jsonb_typeof(o.source_ids->'prior_fec_candidate_ids') = 'array'
+                             THEN o.source_ids->'prior_fec_candidate_ids' ELSE '[]'::jsonb END)
+             ) x
+       WHERE x.c = $1::text
+         AND NOT (
+           COALESCE(o.source_ids->'merged_fec_candidate_ids', '[]'::jsonb) ? x.c
+           OR COALESCE(o.source_ids->>'merged_fec_candidate_id' = x.c, false)
+         )
+    ) t`;
+
+async function authCensus(client: Client, ids: string[]) {
+  const rows: Array<{ cand_id: string; holders: string; who: string }> = [];
+  for (const id of ids) {
+    const r = await client.query(AUTH_CENSUS_SQL, [id]);
+    rows.push(r.rows[0]);
+  }
+  return rows;
+}
+
 async function census(client: Client, ids: string[]) {
   const rows: Array<{ cand_id: string; live: string; prior: string; merged: string; fec_id: string }> = [];
   for (const id of ids) {
@@ -214,34 +259,39 @@ async function main(): Promise<void> {
       process.exit(2);
     }
 
-    // ── Post-write census. Every id must now have exactly ONE holder. ───────
-    console.log("── Holder census AFTER ──────────────────────────────────");
-    const after = await census(client, plans.map((p) => p.restore));
+    // ── Post-write census. Every id must now have exactly ONE AUTHORITATIVE
+    // holder — see AUTH_CENSUS_SQL for why a retired marker elsewhere is not one.
+    console.log("── Authoritative holders AFTER ──────────────────────────");
     let bad = 0;
-    for (const r of after) {
-      const n = Number(r.live) + Number(r.prior) + Number(r.merged) + Number(r.fec_id);
-      if (n !== 1) bad++;
-      console.log(
-        `  ${r.cand_id}  live=${r.live} prior=${r.prior} merged=${r.merged} fec_id=${r.fec_id}` +
-        (n === 1 ? "   ✓ one holder" : `   ← ${n} holders`),
-      );
+    const check = async (ids: string[], label: string) => {
+      console.log(`  ${label}`);
+      for (const r of await authCensus(client, ids)) {
+        const n = Number(r.holders);
+        if (n !== 1) bad++;
+        console.log(`    ${r.cand_id}  holders=${n}  ${r.who}` + (n === 1 ? "   ✓" : "   ← expected 1"));
+      }
+    };
+    await check(plans.map((p) => p.restore),  "restored ids:");
+    await check(plans.map((p) => p.expected), "previously-live ids (must be untouched):");
+
+    // Informational: retired markers are the correct post-merge shape and are
+    // reported, never counted.
+    const retired = await client.query(
+      `SELECT o.full_name, o.tier, o.source_ids->'merged_fec_candidate_ids' AS retired
+         FROM officials o
+        WHERE o.source_ids->'merged_fec_candidate_ids' ?| $1::text[]`,
+      [plans.map((p) => p.expected)],
+    );
+    if (retired.rowCount) {
+      console.log("\n  retired markers on other rows (expected — set 1's merge stubs):");
+      for (const r of retired.rows) console.log(`    ${r.full_name} [${r.tier}] ${JSON.stringify(r.retired)}`);
     }
-    // Also re-census the ids that were already live, so the restore is shown not
-    // to have displaced anything.
-    console.log("\n── Previously-live ids, unchanged ───────────────────────");
-    for (const r of await census(client, plans.map((p) => p.expected))) {
-      const n = Number(r.live) + Number(r.prior) + Number(r.merged) + Number(r.fec_id);
-      if (n !== 1) bad++;
-      console.log(
-        `  ${r.cand_id}  live=${r.live} prior=${r.prior} merged=${r.merged} fec_id=${r.fec_id}` +
-        (n === 1 ? "   ✓ one holder" : `   ← ${n} holders`),
-      );
-    }
+
     if (bad > 0) {
-      console.error(`\n✗ ${bad} id(s) do NOT have exactly one holder after the write. Investigate.`);
+      console.error(`\n✗ ${bad} id(s) do NOT have exactly one authoritative holder. Investigate.`);
       process.exit(2);
     }
-    console.log("\n  ✓ every id has exactly one holder\n");
+    console.log("\n  ✓ every id has exactly one authoritative holder\n");
   } finally {
     await client.end().catch(() => {});
   }
