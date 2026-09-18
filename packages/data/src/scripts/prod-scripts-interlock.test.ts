@@ -61,6 +61,8 @@ const READ_ONLY: Record<string, string> = {
     "FIX-470 membership audit; sets default_transaction_read_only = on first",
   "data:receipts:daily:prod":
     "FIX-1176 standing reads; sets default_transaction_read_only = on before anything else",
+  "data:census:cancellations:prod":
+    "Logs API only; opens no Postgres connection",
   "data:donor-rollup:status:prod":
     "--status mode of a wrapped writer: reports the sweep cursor and exits",
   "data:donor-rollup:bulk:status:prod":

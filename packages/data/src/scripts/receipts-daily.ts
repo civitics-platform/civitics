@@ -515,11 +515,11 @@ ORDER BY count(*) DESC, p.name`;
 /** Reads that were asked for and have no SQL surface. Never silently dropped. */
 const NOT_CAPTURABLE = [
   "**57014 (statement cancelled) counts.** They live in `postgres_logs`, which the Supabase " +
-    "Analytics (Logflare) API serves and SQL does not reach at all. There is no repo script for " +
-    "it today: query `GET https://api.supabase.com/v1/projects/{ref}/analytics/endpoints/" +
-    "logs.all?sql=…&iso_timestamp_start=…&iso_timestamp_end=…` with a " +
-    "`SUPABASE_MANAGEMENT_API_KEY` bearer token when a cancellation census is needed (the " +
-    "FIX-1165 method).",
+    "Analytics (Logflare) API serves and SQL does not reach at all — so they are not capturable " +
+    "from HERE, which is a Postgres session. They ARE capturable: " +
+    "`pnpm --filter @civitics/data data:census:cancellations:prod` reads them (and the " +
+    "front-door 5xx rate) through the Logs API and prints both against the cc-131 read 7 (f) " +
+    "gates, exiting non-zero when either fails.",
   "**GHA step logs and per-step timings.** `gh run view --log` only, and they age out. This file " +
     "carries the run's `createdAt`/`conclusion` from the API, not its logs.",
   "**Vercel edge / CDN volume.** Cloudflare analytics only — see `scripts/cf-analytics.mjs`.",
