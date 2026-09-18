@@ -1447,3 +1447,6 @@
 2026-09-17 | FIX-1173 | 1f4159a6 | local-only | refactor(kill-switches): delete the dead `cron` switch, and filter the map at the parse boundary
 2026-09-17 | FIX-1179 | cb239dc6 | prod-only | feat(db): drop two dead census functions, label the third as deliberately unwired
 2026-09-17 | FIX-1190 | 0b37ebca | local-only | fix(receipts): the cron-jobs table keys on the job's OWN pipeline, not the clock
+2026-09-18 | FIX-1174 | d9a1c030 | local-only | feat(data): FIX-1174 — every operator-run :prod writer claims the supervised prod session
+2026-09-18 | FIX-1193 | 4306bc45 | local-only | feat(data): FIX-1193 — owner schedule + guarded columns in the tail cost table, read live from cron.job
+2026-09-18 | FIX-1197 | 518ecd33 | local-only | test(data): FIX-1197 — canary condition-key census; registry + source-scan test
