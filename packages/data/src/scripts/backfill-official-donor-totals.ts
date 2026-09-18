@@ -23,6 +23,7 @@
  */
 
 import { runHeavyRebuild } from "../lib/heavy-rebuild";
+import { runUnderProdSession } from "../lib/prod-session";
 
 async function main(): Promise<void> {
   const url = process.env["NEXT_PUBLIC_SUPABASE_URL"] ?? "(unset)";
@@ -37,7 +38,10 @@ async function main(): Promise<void> {
   console.log(`[backfill-donor-totals] ✓ ${count.toLocaleString()} official rows in ${dur}s`);
 }
 
-main().catch((e) => {
+runUnderProdSession(
+  { script: "backfill-official-donor-totals", expectedMinutes: 30 },
+  main,
+).catch((e) => {
   console.error("[backfill-donor-totals] fatal:", e instanceof Error ? e.stack : String(e));
   process.exit(1);
 });

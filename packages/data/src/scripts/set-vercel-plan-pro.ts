@@ -20,6 +20,7 @@
  */
 
 import { createAdminClient, upgradeServicePlan } from "@civitics/db";
+import { runUnderProdSession } from "../lib/prod-session";
 
 async function main(): Promise<void> {
   const db = createAdminClient();
@@ -50,7 +51,10 @@ async function main(): Promise<void> {
   console.log("[set-vercel-plan-pro] OK — vercel = pro");
 }
 
-main().catch((err) => {
+runUnderProdSession(
+  { script: "set-vercel-plan-pro", expectedMinutes: 5 },
+  main,
+).catch((err) => {
   console.error(err);
   process.exit(1);
 });

@@ -35,6 +35,7 @@
 import { Client } from "pg";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { runUnderProdSession } from "../lib/prod-session";
 
 function buildDbUrl(): string {
   const explicit = process.env["SUPABASE_DB_URL"];
@@ -154,7 +155,10 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((e) => {
+runUnderProdSession(
+  { script: "recategorize-proposal-complexity-tags", expectedMinutes: 30 },
+  main,
+).catch((e) => {
   console.error(
     "[recategorize-complexity-tags] fatal:",
     e instanceof Error ? e.message : String(e),

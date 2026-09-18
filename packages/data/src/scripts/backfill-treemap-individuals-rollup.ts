@@ -19,6 +19,7 @@
  */
 
 import { callHeavyProcedure, selectDirect } from "../lib/heavy-rebuild";
+import { runUnderProdSession } from "../lib/prod-session";
 
 async function main(): Promise<void> {
   const url = process.env["NEXT_PUBLIC_SUPABASE_URL"] ?? "(unset)";
@@ -57,7 +58,10 @@ async function main(): Promise<void> {
   );
 }
 
-main().catch((e) => {
+runUnderProdSession(
+  { script: "backfill-treemap-individuals-rollup", expectedMinutes: 90 },
+  main,
+).catch((e) => {
   console.error("[backfill-treemap-individuals] fatal:", e instanceof Error ? e.stack : String(e));
   process.exit(1);
 });

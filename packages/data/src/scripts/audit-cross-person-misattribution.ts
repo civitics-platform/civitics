@@ -1,6 +1,15 @@
 /**
  * FIX-934 phase 1 — reviewed manifest for the CROSS-PERSON MISATTRIBUTION
- * branch of the FIX-930 audit. READ-ONLY. No writes, no --apply.
+ * branch of the FIX-930 audit. COMMITS NOTHING. No --apply.
+ *
+ * NOT read-only, and the header used to say it was (FIX-1174). The trial move
+ * below runs a genuine UPDATE over the whole non-colliding population inside
+ * BEGIN ... ROLLBACK. Nothing is committed, so it writes no DATA — but an
+ * aborted UPDATE still writes a new heap tuple per row, still takes the row
+ * locks, and still leaves every one of those tuples dead for autovacuum to
+ * collect. Against prod that is exactly the shape FIX-1165 rule 1 is about
+ * (its derivation scan was 80% of 2026-09-07's front-door damage for a 28-row
+ * change), so it claims the supervised prod session like any other writer.
  *
  * WHAT THIS BRANCH IS
  * -------------------
@@ -73,6 +82,7 @@ import {
   ZERO_OWNER_SQL,
   type ZeroOwnerRow,
 } from "./fec-orphan-classify";
+import { runUnderProdSession } from "../lib/prod-session";
 
 /**
  * Excluded BY NAME, per the PR-2b scope decision.
@@ -575,7 +585,10 @@ async function main(): Promise<void> {
   await client.end();
 }
 
-main().catch((err) => {
+runUnderProdSession(
+  { script: "audit-cross-person-misattribution", expectedMinutes: 120 },
+  main,
+).catch((err) => {
   console.error("Fatal:", err instanceof Error ? err.message : String(err));
   process.exit(1);
 });

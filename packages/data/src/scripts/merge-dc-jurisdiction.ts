@@ -57,6 +57,7 @@
  */
 
 import { Client } from "pg";
+import { runUnderProdSession } from "../lib/prod-session";
 
 function buildDbUrl(): string {
   const explicit = process.env["SUPABASE_DB_URL"];
@@ -453,7 +454,10 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((err) => {
+runUnderProdSession(
+  { script: "merge-dc-jurisdiction", expectedMinutes: 30 },
+  main,
+).catch((err) => {
   console.error(err);
   process.exit(1);
 });

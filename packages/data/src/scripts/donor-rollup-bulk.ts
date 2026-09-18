@@ -42,6 +42,7 @@ import { Client } from "pg";
 
 import { constructDbUrlFromEnv } from "./fec-orphan-classify";
 import { ARMED_PROBE_SQL, isTimeoutDisarmed, type ArmedProbeRow } from "../lib/statement-timeout-probe";
+import { runUnderProdSession } from "../lib/prod-session";
 
 const LOCAL_DB_URL = "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
 const PIPELINE = "donor_rollup_bulk";
@@ -354,8 +355,25 @@ async function main(): Promise<number> {
   }
 }
 
-main()
-  .then((code) => process.exit(code))
+// FIX-1174 — the supervised prod session, claimed at the entry point.
+//
+// `--status` bypasses it deliberately. That mode reports the sweep cursor and
+// exits, writing nothing; making a read claim the interlock would hold the
+// seventeen guarded pipelines (suppressing every freshness threshold on them,
+// FIX-1177) and REFUSE while another session is up — so the cheapest possible
+// check would be the one you cannot run when you most want it.
+const STATUS_ONLY = process.argv.slice(2).includes("--status");
+
+let exitCode = 1;
+const run = async (): Promise<void> => {
+  exitCode = await main();
+};
+
+(STATUS_ONLY
+  ? run()
+  : runUnderProdSession({ script: "donor-rollup-bulk", expectedMinutes: 240 }, run)
+)
+  .then(() => process.exit(exitCode))
   .catch((err) => {
     console.error(`[bulk] failed: ${errMsg(err)}`);
     process.exit(1);

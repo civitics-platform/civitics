@@ -53,6 +53,7 @@
 
 import { Client } from "pg";
 import { LEGISLATURE_SHAPES } from "../jurisdictions/legislature-shapes";
+import { runUnderProdSession } from "../lib/prod-session";
 
 // The four conversions. Jurisdictions resolved live by (fips, type, name) —
 // never hardcode UUIDs (prod UUIDs differ from local in general; gb rows are
@@ -496,7 +497,10 @@ async function main(): Promise<void> {
   if (!allOk) process.exitCode = 1;
 }
 
-main().catch((err) => {
+runUnderProdSession(
+  { script: "merge-unicameral-legislatures", expectedMinutes: 30 },
+  main,
+).catch((err) => {
   console.error(err);
   process.exit(1);
 });

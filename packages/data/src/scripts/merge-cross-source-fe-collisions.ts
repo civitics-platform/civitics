@@ -94,6 +94,7 @@
  */
 
 import { Client } from "pg";
+import { runUnderProdSession } from "../lib/prod-session";
 
 const MAX_LOSERS = 2000; // sanity bound; investigation measured ~277 on prod-clone
 
@@ -636,7 +637,10 @@ async function main(): Promise<void> {
   await client.end();
 }
 
-main().catch((err) => {
+runUnderProdSession(
+  { script: "merge-cross-source-fe-collisions", expectedMinutes: 60 },
+  main,
+).catch((err) => {
   console.error("Fatal:", err instanceof Error ? err.message : String(err));
   process.exit(1);
 });

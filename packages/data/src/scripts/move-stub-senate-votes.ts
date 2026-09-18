@@ -60,6 +60,7 @@ import { Client } from "pg";
 import { buildDbUrl } from "../lib/heavy-rebuild";
 import { callHeavyProcedure } from "../lib/heavy-rebuild";
 import { normalizeSurname } from "../pipelines/congress/votes-maps";
+import { runUnderProdSession } from "../lib/prod-session";
 
 /** Sanity bound — the clone measured 49 stubs. A wildly larger set means the
  *  query drifted, not that the problem grew; refuse rather than mass-rewrite. */
@@ -438,7 +439,10 @@ async function main(): Promise<void> {
   console.log(`  ✓ official_vote_stats rebuilt in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
 }
 
-main().catch((e) => {
+runUnderProdSession(
+  { script: "move-stub-senate-votes", expectedMinutes: 30 },
+  main,
+).catch((e) => {
   console.error("[move-stub-senate-votes] fatal:", e instanceof Error ? e.stack : String(e));
   process.exit(1);
 });

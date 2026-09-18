@@ -56,6 +56,7 @@
  */
 
 import { Client } from "pg";
+import { runUnderProdSession } from "../lib/prod-session";
 
 // The five territories. Resolved live by (fips, type, name) — never hardcode
 // UUIDs (prod UUIDs differ from local).
@@ -511,7 +512,10 @@ async function main(): Promise<void> {
   if (!allOk) process.exitCode = 1;
 }
 
-main().catch((err) => {
+runUnderProdSession(
+  { script: "merge-territory-jurisdictions", expectedMinutes: 30 },
+  main,
+).catch((err) => {
   console.error(err);
   process.exit(1);
 });
