@@ -1,0 +1,49 @@
+{
+  "cc": "134",
+  "prompt": "cc-prompt-134-fix1193-drain-and-wait-template-owner-schedule-guarded-columns-fix1174-wrap-prod-writers-interlock-test-cancellation-census-script-canary-key-census.md",
+  "started_at": "2026-09-18T22:05:00Z",
+  "finished_at": "2026-09-18T23:45:00Z",
+  "head_before": "c65599c3",
+  "head_after": "d9fe6eea",
+  "commits": [
+    {
+      "sha": "4306bc45",
+      "subject": "feat(data): FIX-1193 — owner schedule + guarded columns in the tail cost table, read live from cron.job"
+    },
+    {
+      "sha": "d9a1c030",
+      "subject": "feat(data): FIX-1174 — every operator-run :prod writer claims the supervised prod session"
+    },
+    {
+      "sha": "d80a7a28",
+      "subject": "feat(data): cancellation census — 57014/min and front-door 5xx from the Logs API, with verdicts"
+    },
+    {
+      "sha": "518ecd33",
+      "subject": "test(data): FIX-1197 — canary condition-key census; registry + source-scan test"
+    },
+    {
+      "sha": "e9f21bfd",
+      "subject": "docs(fixes): FIX-1193 / FIX-1174 / FIX-1183 / FIX-1177 appends"
+    },
+    {
+      "sha": "d9fe6eea",
+      "subject": "chore(fixes): sync status after FIX-1193 / FIX-1174 / FIX-1197"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1193",
+    "FIX-1174",
+    "FIX-1197"
+  ],
+  "fixes_filed": [
+    "FIX-1197"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "none",
+  "ci": "green",
+  "stopped_items": [
+    "The FIX-1165 append. Its bullet is not in docs/FIXES.md — fixes:archive moved it to docs/archive/fixes-archive.md, which the FIXES contract owns and which nothing hand-edits. The follow-up it would have carried (NOT SCHEDULED as the orphan signal at print time) is in FIX-1193's append, which names it, and in §5 below. Four appends landed instead of five."
+  ]
+}
