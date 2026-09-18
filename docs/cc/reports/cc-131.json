@@ -1,0 +1,55 @@
+{
+  "cc": "131",
+  "prompt": "cc-prompt-131-fix1195-rpc-precedence-and-three-id-restore-fix1196-promotion-guard-fix1187-set2-rederived-four-senators-corrected-drain-gates-1185-1128-record-1187-1019-1192-record.md",
+  "started_at": "2026-09-18T01:14:00Z",
+  "finished_at": "2026-09-18T04:10:00Z",
+  "head_before": "d4e62bd8",
+  "head_after": "a7d08940",
+  "commits": [
+    {
+      "sha": "009b0600",
+      "subject": "fix(congress): FIX-1196 — promote-candidates skips an elected row that already holds fec_candidate_id; skipped_bound in the summary; structural test"
+    },
+    {
+      "sha": "104baa86",
+      "subject": "fix(db): FIX-1195 — promote_candidate_to_elected keeps the candidate's source_ids on conflict and files the elected row's fec_candidate_id into prior instead of dropping it"
+    },
+    {
+      "sha": "f1fb4707",
+      "subject": "feat(data): FIX-1195 — restore-fec-ids, the keyed three-row repair for the CAND_IDs the promotion erased"
+    },
+    {
+      "sha": "5f4b7948",
+      "subject": "docs(audits): FIX-1195 — three CAND_IDs restored on prod; the RPC precedence fixed"
+    },
+    {
+      "sha": "7f456627",
+      "subject": "docs(audits): FIX-1187 — set 2 re-derived and reviewed but NOT applied; the corrected drain-and-wait readings and why it waited"
+    },
+    {
+      "sha": "be79eda8",
+      "subject": "docs(fixes): FIX-1195 / FIX-1196 / FIX-1187 / FIX-1019 / FIX-1192 / FIX-1185 / FIX-1128 / FIX-1193 / FIX-1191 / FIX-1194 appends"
+    },
+    {
+      "sha": "a7d08940",
+      "subject": "chore(fixes): sync status after FIX-1195 / FIX-1196"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1195",
+    "FIX-1196"
+  ],
+  "fixes_filed": [],
+  "fixes_reopened": [],
+  "migrations_pushed": [
+    "supabase/migrations/20260919000000_fix1195_promote_rpc_precedence.sql"
+  ],
+  "prod_writes": "Two, both authorised by the prompt's posture line. (i) pnpm db:push:prod of ONE migration at 01:47:37 UTC — CREATE OR REPLACE of promote_candidate_to_elected, signature unchanged, pending count 1 to 0, verified against the live catalogue afterwards. (ii) The three-row CAND_ID restore at 02:42:53–02:42:56 UTC — one transaction, UPDATE officials keyed by UUID with the current live fec_candidate_id asserted in each WHERE, under runUnderProdSession, committed. Holder census 0/0/0 before and 1/1/1 after. No VACUUM, no cron.job change, no set 2, no second set.",
+  "ci": "green",
+  "stopped_items": [
+    "Item 4 — set 2 apply. NOT RUN, on the clock alone and by the prompt's own instruction. Its window is Saturday 2026-09-19 12:00–21:30 UTC and this session was Friday 01:14–04:15 UTC. cc-131's loop names this branch in advance: stop, commit a REVIEWED v2 manifest, carry the apply to cc-132. The manifest is derived, validated against prod, dry-run clean on the clone, and committed unapplied. Nothing was written.",
+    "Item 5 — the FIX-1185 / FIX-1128 record. STOPPED on read 6, which requires the 2026-09-18 refresh-derived-mvs-daily clean on both instruments. It fires at 06:00 UTC and had not fired. The latest daily is 09-17 and is partial — watchdog-cancelled at 8 of 13 units while pg_cron recorded succeeded. FIX-1185 and FIX-1128 stay open.",
+    "Item 7 — the FIX-1187 / FIX-1019 / FIX-1192 record. Not earned: item 4 did not run, so no trailer for 1187, 1019 or 1192 rode this run.",
+    "Read 7 was taken in full as the record (FIX-1193's first satisfiable instance) but is NOT a go decision, because set 2 was already deferred on the clock. Eleven of thirteen gates pass; the two failures are both the clock."
+  ]
+}
