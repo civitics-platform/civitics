@@ -1,0 +1,66 @@
+# FIX-1195 — CAND_ID restore manifest. THIS FILE IS AN AUTHORISATION.
+#
+# Three CAND_IDs were ERASED from prod on 2026-09-17 by the nightly promotion.
+# promote_candidate_to_elected() merged source_ids as (candidate || elected),
+# and jsonb concatenation keeps the RIGHT operand on key conflict, so the
+# DELETED elected row's fec_candidate_id overwrote the SURVIVING candidate row's
+# own. The code defect is fixed by migration 20260919000000 (on prod
+# 2026-09-18 01:47 UTC). This file repairs the data it already destroyed.
+#
+# WHY THIS IS URGENT RATHER THAN TIDY. A CAND_ID that no officials row claims is
+# re-minted: the cn{yy} stage of the weekly FEC drop creates a fresh candidate
+# stub for it. The next drop is the Sunday 2026-09-20 22:44 UTC nightly. Left
+# alone, all three return as NEW stubs carrying NEW money and the repair stops
+# being a three-row UPDATE.
+#
+# HOLDER CENSUS, prod, read 2026-09-18 01:30 UTC — every erased id, every
+# surface (live fec_candidate_id / merged_fec_candidate_ids +
+# merged_fec_candidate_id / prior_fec_candidate_ids / fec_id):
+#     H6NC09200   0 / 0 / 0 / 0
+#     H2NJ13075   0 / 0 / 0 / 0
+#     S0KS00315   0 / 0 / 0 / 0
+# The script re-reads this census and REFUSES if any id already has a holder.
+#
+# WHAT A ROW AUTHORISES, all three in ONE transaction:
+#   1. officials(uuid).source_ids.prior_fec_candidate_ids += restore_id
+#   2. for Marshall ONLY, additionally: fec_candidate_id <- S0KS00315, and the
+#      House id it currently holds moves into prior_fec_candidate_ids.
+#   The UPDATE is keyed by uuid AND asserts expected_current_live_id in its
+#   WHERE, so a row that moved since this census was taken matches zero rows and
+#   the whole transaction refuses.
+#
+# WHY prior_fec_candidate_ids AND NOT merged_fec_candidate_ids, for all three,
+# including the two same-chamber cases. Measured from the parsers
+# (packages/data/src/pipelines/fec-bulk/claims.ts, index.ts, candidates.ts):
+#
+#   array                      | claimed by buildMatchIndex pass 1 | blocks cn re-mint
+#   fec_candidate_id           | YES                               | YES
+#   prior_fec_candidate_ids    | YES                               | YES
+#   merged_fec_candidate_ids   | NO  (authoritativeClaims FILTERS  | NO
+#                              |      retired ids out, FIX-955)    |
+#
+# So filing an erased id as "retired" leaves it exactly as re-mintable as
+# leaving it erased. Only prior_fec_candidate_ids actually restores a claim.
+# That array is explicitly NOT role-gated (claims.ts), so a same-chamber entry
+# is legitimate — and these are genuinely different seats: H4NC08066/H6NC09200
+# are NC-08 and NC-09, H2NJ08232/H2NJ13075 are NJ-08 and NJ-13.
+#
+# MARSHALL IS THE ONE THAT ALSO MOVES ITS LIVE ID. 60f87348 is an elected
+# Senator holding a HOUSE id (H6KS01179) — the FIX-1187 office-prefix shape. The
+# promotion put the Senate stub's money on this row already
+# (official_donor_totals $11,374,334, 4,867 FR rows), so restoring S0KS00315 as
+# its live id both repairs FIX-1195 and completes FIX-1187 for Marshall. That is
+# why Marshall is NOT a row in the set-2 promotion manifest.
+#
+# EVIDENCE that each erased id belonged to the row it is restored to: the local
+# prod clone, which predates the 2026-09-17 promotion, read 2026-09-18 01:28 UTC:
+#     c0af0396  tier=candidate  "Candidate for Representative"  fec_candidate_id=H6NC09200
+#     747c96d0  tier=candidate  "Candidate for Representative"  fec_candidate_id=H2NJ13075
+#     60f87348  tier=candidate  "Candidate for Senator"         fec_candidate_id=S0KS00315
+# and the elected rows the promotion deleted held the ids that survived:
+#     afc05fd0 = H4NC08066, ac7de9f0 = H2NJ08232, 27090d3a = H6KS01179.
+# Each erased id was the promoted row's OWN id. This is a restore, not a guess.
+uuid	key	restore_id	expected_current_live_id	official	note
+c0af0396-bf73-47e5-8e5d-291d3122ef68	prior_fec_candidate_ids	H6NC09200	H4NC08066	Mark Harris (NC, Representative)	NC-09 registration; live NC-08 id is left untouched
+747c96d0-962a-4448-a405-e055dbce8f69	prior_fec_candidate_ids	H2NJ13075	H2NJ08232	Robert Menendez (NJ, Representative)	NJ-13 registration; live NJ-08 id is left untouched
+60f87348-1ffc-427f-b80c-5f416967cd41	fec_candidate_id	S0KS00315	H6KS01179	Roger Marshall (KS, Senator)	Senate id becomes live; H6KS01179 moves to prior_fec_candidate_ids
