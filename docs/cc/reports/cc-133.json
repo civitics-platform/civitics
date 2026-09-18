@@ -1,0 +1,47 @@
+{
+  "cc": "133",
+  "prompt": "(pasted directly — no cc-prompt-133-*.md file in promptsDir)",
+  "started_at": "2026-09-18T04:45:00Z",
+  "finished_at": "2026-09-18T05:40:00Z",
+  "head_before": "782c284f",
+  "head_after": "d2341e67",
+  "commits": [
+    {
+      "sha": "0b37ebca",
+      "subject": "fix(receipts): the cron-jobs table keys on the job's OWN pipeline, not the clock"
+    },
+    {
+      "sha": "cd81917c",
+      "subject": "feat(prod-session): a supervised session HOLDS the guarded pipelines and clears its own holds"
+    },
+    {
+      "sha": "1f4159a6",
+      "subject": "refactor(kill-switches): delete the dead cron switch, and filter the map at the parse boundary"
+    },
+    {
+      "sha": "cb239dc6",
+      "subject": "feat(db): drop two dead census functions, label the third as deliberately unwired"
+    },
+    {
+      "sha": "f7e79fe1",
+      "subject": "docs(fixes): FIX-1190 / FIX-1173 / FIX-1179 / FIX-1177 / FIX-1172 / FIX-1194 appends"
+    },
+    {
+      "sha": "d2341e67",
+      "subject": "chore(fixes): sync status after FIX-1190 / FIX-1173 / FIX-1179"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1190",
+    "FIX-1173",
+    "FIX-1179"
+  ],
+  "fixes_filed": [],
+  "fixes_reopened": [],
+  "migrations_pushed": [
+    "20260919010000_fix1179_drop_dead_census_functions.sql"
+  ],
+  "prod_writes": "One DDL migration (20260919010000) applied 2026-09-18 05:22:16 UTC - two DROP FUNCTION IF EXISTS plus one COMMENT ON FUNCTION. No data written, no VACUUM, no cron.job change, no session claim on prod. Everything else against prod was a read via scripts/db-query.mjs --prod (read-only by construction) or receipts-daily.ts --prod --dry-run (SET default_transaction_read_only = on, writes no files).",
+  "ci": "green",
+  "stopped_items": []
+}
