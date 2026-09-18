@@ -26,7 +26,12 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { flipSwitch, type KillSwitchName, type KillSwitchesMap } from "./kill-switches";
+import {
+  filterKillSwitchesMap,
+  flipSwitch,
+  type KillSwitchName,
+  type KillSwitchesMap,
+} from "./kill-switches";
 import type { PlatformMetric } from "./platform-usage";
 
 export type AutoTripAction =
@@ -83,7 +88,12 @@ export async function evaluateAutoTrips(
     .maybeSingle();
   if (switchErr) throw new Error(`auto-trip kill-switch state read: ${switchErr.message}`);
 
-  const switches = (row?.value as Partial<KillSwitchesMap> | null) ?? {};
+  // FIX-1173 — filtered at the parse boundary. prod's row still carries a
+  // `cron` key, and the loop below casts each key to KillSwitchName; without
+  // the filter that cast would hand a retired switch to typed code and push a
+  // decision row naming a switch that no longer exists.
+  const switches =
+    filterKillSwitchesMap(row?.value as Record<string, unknown> | null) ?? {};
 
   const metricsByKey = new Map<string, PlatformMetric>();
   for (const m of freshSnapshotMetrics) metricsByKey.set(metricKey(m), m);

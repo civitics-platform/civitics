@@ -245,6 +245,10 @@ export {
   setKillSwitch,
   flipSwitch,
   clearKillSwitchCache,
+  // FIX-1173 — the parse boundary, exported so a new reader of the map filters
+  // rather than casts. prod's JSONB still carries the retired `cron` key.
+  isKillSwitchName,
+  filterKillSwitchesMap,
 } from "./kill-switches";
 export type {
   KillSwitchName,

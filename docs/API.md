@@ -488,7 +488,7 @@ or an admin session and may be restricted further in production.
 
 | Route | Notes |
 |---|---|
-| `GET /api/cron/nightly-sync` | Vercel Cron trigger (02:00 UTC). Requires `Authorization: Bearer $CRON_SECRET`. Records into `data_sync_log`; the scheduler picks up and runs `runNightlySync()`. Set `CRON_DISABLED=true` to halt without a deploy. |
+| `GET /api/cron/nightly-sync` | Vercel Cron trigger (02:00 UTC). Requires `Authorization: Bearer $CRON_SECRET`. Records into `data_sync_log`; the scheduler picks up and runs `runNightlySync()`. Set `CRON_DISABLED=true` to halt without a deploy — this route and `notify-followers` are the ONLY things that env var stops (FIX-1173); the GHA nightly and every pg_cron job are unaffected. |
 | `GET /api/dashboard/stats` | Platform-wide counts for the public dashboard. |
 | `GET /api/dashboard/pipeline-ops` | Pipeline health snapshot. |
 | `GET /api/dashboard/anthropic-cost` | Monthly Claude spend rollup. |

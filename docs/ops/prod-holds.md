@@ -186,33 +186,48 @@ and the log line says which of the two stopped it.
 
 ---
 
-## 3. `pipeline_state.kill_switches.cron` — **dead, as of 2026-09-11**
+## 3. `pipeline_state.kill_switches.cron` — **removed by FIX-1173 (cc-133)**
 
-| | |
-|---|---|
-| **Scope** | None. |
-| **Lifetime** | n/a |
-| **Who sets it** | `/api/admin/kill-switches` |
-| **Reader** | **Nothing.** |
+There is no `cron` kill switch. It was removed from `KillSwitchName`, from
+`ENV_RULES`, and from the admin route's `ALLOWED_NAMES`, and `FLAGS.CRON_ENABLED`
+was deleted.
 
-Enumerated as a Phase 0 question for FIX-950 and answered by reading every
-caller. The finding:
+Why it went rather than being made real: it was flippable from
+`/api/admin/kill-switches` alongside switches that DO work, and read by nothing.
+`isKillSwitchEnabled(db, "cron")` was never called; `FLAGS.CRON_ENABLED` had zero
+consumers. So an operator who flipped "cron" off expecting the platform's
+scheduled work to stop would have been wrong, would have got no feedback saying
+so, and would then have been surprised by a rollup rebuild landing mid-incident.
+A dead switch that looks live is worse than no switch.
 
-- `isKillSwitchEnabled(db, "cron")` is **never called**. The DB-backed switch is
-  listed in `KillSwitchName`, is flippable from the admin route, and is consulted
-  by no runtime path.
-- `FLAGS.CRON_ENABLED` in `packages/data/src/feature-flags.ts` is **defined and
-  never consumed**.
-- The env half, `CRON_DISABLED=true`, **is** live — but only in
-  `apps/civitics/app/api/cron/nightly-sync/route.ts` and
-  `apps/civitics/app/api/cron/notify-followers/route.ts`, i.e. the two **Vercel**
-  cron routes. It does not affect the GitHub-Actions nightly and it does not
-  affect a single pg_cron job.
+**`CRON_DISABLED` remains the env-only control for the two Vercel cron routes
+and nothing else:**
 
-So an operator who flips "cron" off in the admin UI expecting the platform's
-scheduled work to stop **would be wrong, and nothing would tell them.** Filed as
-FIX-1173; documented here because a dead switch that looks live is worse than no
-switch.
+- `apps/civitics/app/api/cron/nightly-sync/route.ts`
+- `apps/civitics/app/api/cron/notify-followers/route.ts`
+
+Both read `process.env["CRON_DISABLED"] === "true"` directly. It does not affect
+the GitHub-Actions nightly and it does not affect a single one of the 38 pg_cron
+jobs.
+
+**A real platform-wide cron stop does not exist and was deliberately not built
+here.** FIX-1173's options (b) "make it real by having the pg_cron guard family
+consult it the way they consult `prod_session_state()`" and (c) "rename it to
+what it gates" are both out of scope: (b) is a genuine design decision about
+whether an indefinite operator-level platform-wide stop should exist at all,
+which is a different question from removing a switch that never worked. What
+exists today for stopping scheduled work is section 1 — claim the box — which is
+bounded by a live process rather than by somebody remembering to undo it.
+
+**The data was NOT migrated.** Prod's `pipeline_state.kill_switches` row still
+carries a `cron` key, and `kill_switch_events` still carries its flip history.
+Rewriting a JSONB blob to satisfy a TypeScript union is a schema change in
+service of a type, and the history rows would survive either way. Instead the
+union is enforced at the parse boundary: `filterKillSwitchesMap()` in
+`packages/db/src/kill-switches.ts` drops keys outside the union, so the retired
+key never reaches typed code. Any new reader of that map must filter, not cast —
+`auto-trip-evaluator.ts` iterates the keys, and its cast to `KillSwitchName` was
+only ever true because of this filter.
 
 ---
 

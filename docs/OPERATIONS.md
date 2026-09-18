@@ -497,7 +497,7 @@ Set these in Vercel Dashboard → Settings → Environment Variables (no code de
 
 | Variable | Value | Effect |
 |----------|-------|--------|
-| `CRON_DISABLED` | `true` | Stops nightly cron from running |
+| `CRON_DISABLED` | `true` | Stops the two **Vercel** cron routes only (`/api/cron/nightly-sync`, `/api/cron/notify-followers`). It does **not** stop the GitHub-Actions nightly and does **not** stop any of the 38 pg_cron jobs — see `docs/ops/prod-holds.md` for what does (FIX-1173) |
 | `SUPABASE_AVAILABLE` | `false` | Prevents 10-second timeout burns when Supabase is paused |
 | `CONNECTIONS_PIPELINE_ENABLED` | `false` | Disables connections pipeline |
 | `AI_SUMMARIES_ENABLED` | `false` | Disables AI summary generation (officials/proposals summaries, ai-tagger pipeline, ai-summaries pipeline, and `/api/graph/narrative` — the graph header ✨ Explain button hides) |

@@ -1,8 +1,9 @@
 /**
  * Feature flags for data pipelines and cron jobs.
  *
- * Boolean flags default to enabled. Set the env var to 'false' (or 'true' for
- * CRON_DISABLED) to disable without a code deploy.
+ * Boolean flags default to enabled. Set the env var to 'false' to disable
+ * without a code deploy. The two *_DISABLED vars are the inverse: their only
+ * truthy value is the literal 'true'.
  *
  * Usage in a pipeline:
  *   import { checkFlag } from '../feature-flags'
@@ -25,13 +26,12 @@ export const FLAGS = {
   AI_TAGGER_ENABLED:
     process.env["AI_TAGGER_ENABLED"] !== "false",
 
-  CRON_ENABLED:
-    process.env["CRON_DISABLED"] !== "true",
-
   // FIX-998 — TEMPORARY hold on the nightly path's fec_bulk invocation while
-  // FIX-995 is open. Deliberately shaped like CRON_ENABLED (opt-out via a
-  // *_DISABLED var whose only truthy value is the literal "true") so an unset
-  // env is exactly today's behavior. Read ONCE in the nightly orchestrator and
+  // FIX-995 is open. Opt-OUT rather than opt-in: a *_DISABLED var whose only
+  // truthy value is the literal "true", so an unset env is exactly today's
+  // behavior. (FLAGS.CRON_ENABLED used to be the other flag of this shape and
+  // was removed by FIX-1173 — it had no consumer. The live `CRON_DISABLED`
+  // check lives in the two Vercel cron routes and reads process.env directly.) Read ONCE in the nightly orchestrator and
   // passed to the pure trigger predicates in pipelines/fec-hold.ts — this is
   // the single place the env var is parsed.
   //

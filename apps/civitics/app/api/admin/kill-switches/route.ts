@@ -16,7 +16,10 @@
  * — flipping a DB switch on while its corresponding env hard-kill is set
  * is a no-op until the env var is also cleared. Env hard-kills are
  * per-feature (FIX-311): AI_SUMMARIES_ENABLED, AI_NARRATIVE_ENABLED,
- * AI_TAGGER_ENABLED, CONNECTIONS_PIPELINE_ENABLED, CRON_DISABLED.
+ * AI_TAGGER_ENABLED, CONNECTIONS_PIPELINE_ENABLED.
+ *
+ * `cron` was removed from ALLOWED_NAMES by FIX-1173: it was flippable here and
+ * read by nothing, which is worse than no switch. See packages/db/src/kill-switches.ts.
  */
 
 export const dynamic = "force-dynamic";
@@ -38,7 +41,6 @@ const ALLOWED_NAMES: ReadonlyArray<KillSwitchName> = [
   "ai_narrative",
   "ai_tagger",
   "connection_graph_live",
-  "cron",
 ];
 
 function isAllowedName(s: unknown): s is KillSwitchName {

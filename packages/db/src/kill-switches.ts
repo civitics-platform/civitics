@@ -5,7 +5,6 @@
  *
  *   1. process.env.<X> === "false"  → hard kill, ignore DB. Panic button
  *      that always works even if the DB read fails or the row is missing.
- *      (Inverted for cron: CRON_DISABLED="true" === cron off.)
  *   2. DB switch                     → pipeline_state.kill_switches[name].enabled
  *   3. Default                       → on (true)
  *
@@ -33,7 +32,6 @@ export type KillSwitchName =
   | "ai_narrative"
   | "ai_tagger"
   | "connection_graph_live"
-  | "cron"
   | "mapbox_geocode"
   // FIX-1045: arms the closed-loop Cloudflare auto-mitigation WRITE. Turning it
   // off leaves detection, the snapshot metric and every alert fully live — only
@@ -66,9 +64,15 @@ export type KillSwitchEventInput = {
 // ── Env-var mapping ───────────────────────────────────────────────────────────
 //
 // Each AI sub-feature has its own env-level hard kill, matching the
-// granularity of the DB-backed switches and the auto-trip evaluator
-// (FIX-311). CRON_DISABLED is inverted ("true" = off) to match the
-// existing /api/cron/nightly-sync code path.
+// granularity of the DB-backed switches and the auto-trip evaluator (FIX-311).
+//
+// FIX-1173 removed a `cron` switch from here. It had no reader: nothing called
+// isKillSwitchEnabled(db, "cron"), FLAGS.CRON_ENABLED had no consumer, and the
+// admin route offered the flip anyway — so an operator turning "cron" off to
+// stop the platform's scheduled work would have been wrong and nothing would
+// have told them. The live env control, CRON_DISABLED, is read directly by the
+// two Vercel cron routes (api/cron/nightly-sync, api/cron/notify-followers)
+// and stops neither the GitHub-Actions nightly nor a single pg_cron job.
 
 type EnvRule =
   | { envVar: string; off: "false" }
@@ -79,7 +83,6 @@ const ENV_RULES: Record<KillSwitchName, EnvRule> = {
   ai_narrative:          { envVar: "AI_NARRATIVE_ENABLED",       off: "false" },
   ai_tagger:             { envVar: "AI_TAGGER_ENABLED",          off: "false" },
   connection_graph_live: { envVar: "CONNECTIONS_PIPELINE_ENABLED", off: "false" },
-  cron:                  { envVar: "CRON_DISABLED",              off: "true"  },
   mapbox_geocode:        { envVar: "MAPBOX_GEOCODING_ENABLED",   off: "false" },
   cf_auto_mitigation:    { envVar: "CF_AUTO_MITIGATION_ENABLED", off: "false" },
 };
@@ -87,6 +90,46 @@ const ENV_RULES: Record<KillSwitchName, EnvRule> = {
 function envKillSwitchIsOff(name: KillSwitchName): boolean {
   const rule = ENV_RULES[name];
   return process.env[rule.envVar] === rule.off;
+}
+
+/**
+ * The parse boundary (FIX-1173).
+ *
+ * `pipeline_state.kill_switches` is a JSONB row written over months by the
+ * admin route and the auto-trip evaluator, and prod's copy STILL carries a
+ * `cron` key — FIX-1173 removed the switch from the union, not the data. That
+ * is deliberate: migrating a key out of a JSONB blob to satisfy a TypeScript
+ * union is a schema change in service of a type, and `kill_switch_events` would
+ * still carry the history either way.
+ *
+ * So the union has to be enforced where the JSON enters the program rather than
+ * assumed. Without this, `loadMap`'s cast is a lie and
+ * `auto-trip-evaluator.ts`'s `Object.entries(switches)` hands a `cron` key to
+ * code typed as receiving a `KillSwitchName` — which today only produces a
+ * `skip_no_metrics` decision naming a switch that no longer exists, and
+ * tomorrow is whatever the next reader assumes about its keys.
+ */
+export function isKillSwitchName(s: unknown): s is KillSwitchName {
+  return typeof s === "string" && Object.prototype.hasOwnProperty.call(ENV_RULES, s);
+}
+
+/**
+ * Drop keys that are not in the union, keeping everything that is.
+ *
+ * Filtering rather than throwing: an unknown key is not a reason to fail every
+ * kill-switch read on the platform. `isKillSwitchEnabled` already falls through
+ * to "on" for a missing key, so a dropped key behaves exactly like one that was
+ * never there — which is what a retired switch should do.
+ */
+export function filterKillSwitchesMap(
+  value: Record<string, unknown> | null | undefined,
+): KillSwitchesMap | null {
+  if (!value) return null;
+  const out: Partial<KillSwitchesMap> = {};
+  for (const [k, v] of Object.entries(value)) {
+    if (isKillSwitchName(k)) out[k] = v as KillSwitchState;
+  }
+  return out as KillSwitchesMap;
 }
 
 // ── 30s module cache ──────────────────────────────────────────────────────────
@@ -116,9 +159,10 @@ async function loadMap(
       .eq("key", "kill_switches")
       .maybeSingle();
     if (error || !data) return null;
-    const value = data.value as Partial<KillSwitchesMap> | null;
-    if (!value) return null;
-    cachedMap = value as KillSwitchesMap;
+    // FIX-1173 — filtered, not cast. See filterKillSwitchesMap.
+    const filtered = filterKillSwitchesMap(data.value as Record<string, unknown> | null);
+    if (!filtered) return null;
+    cachedMap = filtered;
     cacheExpiresAt = Date.now() + CACHE_TTL_MS;
     return cachedMap;
   } catch {
