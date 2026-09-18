@@ -36,6 +36,7 @@
  */
 
 import * as fs from "fs";
+import type { OwnerSchedule } from "../lib/cron-job-pipelines";
 
 // ---------------------------------------------------------------------------
 // Tail cost classes
@@ -102,20 +103,110 @@ const CLASS_LABEL: Record<TailClass, string> = {
 };
 
 /**
- * FIX-1165 (c) — the dry run prints this BEFORE the go-ahead, so the trade is
- * visible at decision time rather than discovered at minute 28.
+ * The two owner strings that are NOT pg_cron job names.
+ *
+ * FIX-1193 makes the `schedule` column a LOOKUP of the owner name in
+ * `cron.job`, and a lookup that misses is the FIX-1165 orphan signal:
+ * `NOT SCHEDULED`, in caps, at print time. That only works if "this is not a
+ * cron job at all" and "this cron job does not exist" are distinguishable, so
+ * the non-cron owners are named here rather than inferred from the string's
+ * shape. A new owner that is neither a jobname nor one of these renders
+ * NOT SCHEDULED, which is the correct default: an owner nobody can find is an
+ * orphan until someone shows otherwise.
  */
-export function printTailTable(steps: readonly TailStep[], defer: boolean): void {
+export const OWNER_THIS_RUN = "this run (no other owner exists)";
+
+/** The table's two "not applicable" fills, named so they cannot drift apart. */
+const DASH = "—";
+const NO_OWNER = "— none —";
+
+/** Owners collected by a GitHub Actions workflow rather than by pg_cron. */
+export const GHA_OWNERS: ReadonlySet<string> = new Set([
+  "fec-bulk pipeline (weekly + drop probe)",
+]);
+
+/**
+ * How one step's owner renders in the `schedule` / `guarded` columns.
+ *
+ * `guarded` answers "would a supervised prod session defer this owner too?",
+ * which is the question an operator deferring a tail actually has: a tail
+ * handed to an UNGUARDED owner can fire in the middle of the very session that
+ * deferred to it. The four VACUUM jobs and both every-two-minute watchdogs are
+ * unguarded (cc-133 read 2), so a deferred VACUUM is exactly that shape, and
+ * the column says so at print time instead of leaving it to be discovered.
+ *
+ * GHA-owned steps render `gate`: the nightly does not consult
+ * `prod_session_state()` in SQL, but its phase gates skip every writer block
+ * under a hold (`pipelines/nightly-hold.ts`, FIX-950 D3a - the fec_bulk chain
+ * takes a `held` input and is HELD), so the effect is the same and the
+ * mechanism is not.
+ */
+export function ownerColumns(
+  owner: string | null,
+  owners?: ReadonlyMap<string, OwnerSchedule>,
+): { schedule: string; guarded: string } {
+  if (owner === null || owner === OWNER_THIS_RUN) return { schedule: DASH, guarded: DASH };
+  if (GHA_OWNERS.has(owner)) return { schedule: "gha", guarded: "gate" };
+  if (!owners) return { schedule: "?", guarded: "?" };
+  const hit = owners.get(owner);
+  if (!hit) return { schedule: "NOT SCHEDULED", guarded: "NO" };
+  return {
+    // An inactive job is on the books and collects nothing, which is a
+    // different state from absent and must not read as a live schedule.
+    schedule: hit.active ? hit.schedule : `${hit.schedule} [INACTIVE]`,
+    guarded: hit.guarded ? "yes" : "NO",
+  };
+}
+
+/**
+ * FIX-1165 (c) - the dry run prints this BEFORE the go-ahead, so the trade is
+ * visible at decision time rather than discovered at minute 28.
+ *
+ * FIX-1193 adds `schedule` and `guarded`, both read live from `cron.job` via
+ * `readOwnerSchedules()`. The owner strings used to carry their schedule as a
+ * hard-coded parenthetical after the job name; the parenthetical is the half
+ * that goes stale, and FIX-1191 moving fr-vacuum-analyze from weekly to daily
+ * makes that one wrong the day it lands.
+ *
+ * Pass `owners` or both columns render `?`. "Not read" is deliberately not
+ * spelled the same as "not scheduled": a missing connection rendering as
+ * NOT SCHEDULED would manufacture a dozen orphan signals out of a table nobody
+ * looked up.
+ */
+export function printTailTable(
+  steps: readonly TailStep[],
+  defer: boolean,
+  owners?: ReadonlyMap<string, OwnerSchedule>,
+): void {
   console.log(`\n── Tail steps ${defer ? "(--defer-tails)" : "(NO --defer-tails)"} ──────────────────`);
   const w = Math.max(40, ...steps.map((s) => s.label.length));
-  console.log(`  ${"step".padEnd(w)}  ${"cost class".padEnd(24)}  ${"owner".padEnd(34)}  runs`);
-  console.log(`  ${"-".repeat(w)}  ${"-".repeat(24)}  ${"-".repeat(34)}  ----`);
-  for (const s of steps) {
+  const cols = steps.map((s) => ownerColumns(s.owner, owners));
+  const sw = Math.max(8, ...cols.map((c) => c.schedule.length));
+  const ow = Math.max(34, ...steps.map((s) => (s.owner ?? NO_OWNER).length));
+  console.log(
+    `  ${"step".padEnd(w)}  ${"cost class".padEnd(24)}  ${"owner".padEnd(ow)}  ` +
+      `${"schedule".padEnd(sw)}  guarded  runs`,
+  );
+  console.log(
+    `  ${"-".repeat(w)}  ${"-".repeat(24)}  ${"-".repeat(ow)}  ` +
+      `${"-".repeat(sw)}  -------  ----`,
+  );
+  steps.forEach((s, i) => {
+    const c = cols[i]!;
     console.log(
       `  ${s.label.padEnd(w)}  ${CLASS_LABEL[s.cls].padEnd(24)}  ` +
-        `${(s.owner ?? "— none —").padEnd(34)}  ${s.deferred ? "deferred" : "HERE"}`,
+        `${(s.owner ?? NO_OWNER).padEnd(ow)}  ${c.schedule.padEnd(sw)}  ` +
+        `${c.guarded.padEnd(7)}  ${s.deferred ? "deferred" : "HERE"}`,
+    );
+  });
+  if (!owners) {
+    console.log(
+      "\n  ! owner schedules NOT READ - pass readOwnerSchedules(client) to populate\n" +
+        "    the schedule/guarded columns. `?` is 'nobody looked', not 'nothing owns it'.",
     );
   }
+  const orphaned = steps.filter((s, i) => s.deferred && cols[i]!.schedule === "NOT SCHEDULED");
+  const unguarded = steps.filter((s, i) => s.deferred && cols[i]!.guarded === "NO");
   const here = steps.filter((s) => !s.deferred);
   const plat = here.filter((s) => s.cls !== "manifest");
   console.log(
@@ -129,6 +220,26 @@ export function printTailTable(steps: readonly TailStep[], defer: boolean): void
     console.log(
       `    Their cost is independent of the manifest. On prod this is the FIX-1165\n` +
         `    shape — pass --defer-tails unless you specifically intend to pay it.`,
+    );
+  }
+  if (orphaned.length > 0) {
+    console.log(
+      `  ! ${orphaned.length} deferred step(s) name an owner with NO cron.job row: ` +
+        `${orphaned.map((s) => s.owner).join(", ")}`,
+    );
+    console.log(
+      `    That is the FIX-1165 orphan caught at print time rather than by a census:\n` +
+        `    deferring to a name nothing schedules is deferring to nobody.`,
+    );
+  }
+  if (unguarded.length > 0) {
+    console.log(
+      `  ! ${unguarded.length} deferred step(s) go to an UNGUARDED owner: ` +
+        `${unguarded.map((s) => `${s.label} -> ${s.owner}`).join(", ")}`,
+    );
+    console.log(
+      `    An unguarded owner does not consult prod_session_state(), so it can fire\n` +
+        `    INSIDE the supervised session that deferred to it (FIX-1193).`,
     );
   }
 }
@@ -302,9 +413,9 @@ export function formatDiffLine(d: DiffInput, v: DiffVerdict): string {
  * cron.job.command, pg_proc.prosrc and the GHA workflows — not assumed.
  */
 export function declareRemediationTail(defer: boolean): TailStep[] {
-  const MANIFEST_OWNER = "this run (no other owner exists)";
-  const DAILY = "refresh-derived-mvs-daily (06:00)";
-  const WEEKLY = "refresh-derived-mvs-weekly (Tue 00:47)";
+  const MANIFEST_OWNER = OWNER_THIS_RUN;
+  const DAILY = "refresh-derived-mvs-daily";
+  const WEEKLY = "refresh-derived-mvs-weekly";
   return [
     // Phase 2 — cost scales with the manifest. These are the change.
     tailStep("donor_rollup_rebuild_recipients(affected)", "manifest", MANIFEST_OWNER, defer),
@@ -312,9 +423,9 @@ export function declareRemediationTail(defer: boolean): TailStep[] {
     tailStep("donor_party_rollup_rebuild_donors", "manifest", MANIFEST_OWNER, defer),
     // Phase 2 — cost is the platform's. All four defer.
     tailStep("rebuild_financial_entity_ie_totals()", "platform-owned", "fec-bulk pipeline (weekly + drop probe)", defer),
-    tailStep("refresh_group_donor_rollup()", "platform-owned", "group-donor-rollup-refresh (Wed 03:10)", defer),
+    tailStep("refresh_group_donor_rollup()", "platform-owned", "group-donor-rollup-refresh", defer),
     tailStep("rebuild_entity_search_index()", "platform-owned", DAILY, defer),
-    tailStep("refresh_treemap_individuals_global()", "platform-owned", "treemap-individuals-global-refresh (Tue 14:00)", defer),
+    tailStep("refresh_treemap_individuals_global()", "platform-owned", "treemap-individuals-global-refresh", defer),
     // Phase 3 — the MV loop.
     tailStep("refresh_official_sector_dollars_mv()", "platform-owned", WEEKLY, defer),
     tailStep("refresh_official_homepage_stats_mv()", "platform-owned", DAILY, defer),
@@ -323,10 +434,10 @@ export function declareRemediationTail(defer: boolean): TailStep[] {
     tailStep("refresh_chord_donor_type_party_flows_mv()", "platform-owned", WEEKLY, defer),
     tailStep("refresh_chord_donor_state_party_flows_mv()", "platform-owned", WEEKLY, defer),
     // Vacuum — FIX-943's convention, handed to the FIX-1152 owners on prod.
-    tailStep("VACUUM ANALYZE financial_relationships", "platform-owned", "fr-vacuum-analyze (Mon 01:00)", defer),
-    tailStep("VACUUM ANALYZE entity_connections", "platform-owned", "ec-vacuum-analyze (daily 04:30)", defer),
-    tailStep("VACUUM ANALYZE officials", "platform-owned", "officials-vacuum-analyze (Mon 01:30)", defer),
-    tailStep("VACUUM ANALYZE financial_entities", "platform-owned", "fe-vacuum-analyze (daily 04:50)", defer),
+    tailStep("VACUUM ANALYZE financial_relationships", "platform-owned", "fr-vacuum-analyze", defer),
+    tailStep("VACUUM ANALYZE entity_connections", "platform-owned", "ec-vacuum-analyze", defer),
+    tailStep("VACUUM ANALYZE officials", "platform-owned", "officials-vacuum-analyze", defer),
+    tailStep("VACUUM ANALYZE financial_entities", "platform-owned", "fe-vacuum-analyze", defer),
   ];
 }
 

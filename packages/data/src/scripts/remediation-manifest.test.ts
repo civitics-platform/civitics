@@ -19,6 +19,9 @@ import * as path from "path";
 
 import {
   declareRemediationTail,
+  GHA_OWNERS,
+  ownerColumns,
+  OWNER_THIS_RUN,
   deferredUnder,
   diffActionable,
   diffVerdict,
@@ -165,11 +168,25 @@ test("every fr-rewrite landing script prints the tail table before its go-ahead 
   for (const file of FR_REWRITE_SCRIPTS) {
     const src = fs.readFileSync(path.join(__dirname, file), "utf8");
 
-    const printAt = src.indexOf("printTailTable(declareRemediationTail(defer), defer)");
+    const printAt = src.indexOf(
+      "printTailTable(declareRemediationTail(defer), defer, owners)",
+    );
     assert.ok(
       printAt > -1,
       `${file} calls drainFrRewrite() but never calls printTailTable(). FIX-1165 (c): ` +
         `the tail's cost must be visible at decision time, not discovered at minute 28.`,
+    );
+
+    // FIX-1193 - the schedule/guarded columns are only populated when the
+    // owners map is read first. A call that passes `owners` without reading it
+    // would not compile, but a call that drops the third argument compiles fine
+    // and silently prints `?` in both columns, which is the shape this pins.
+    const readAt = src.indexOf("readOwnerSchedules(client)");
+    assert.ok(
+      readAt > -1 && readAt < printAt,
+      `${file}: readOwnerSchedules(client) must be called before printTailTable() ` +
+        `(${readAt} vs ${printAt}). Without it the schedule/guarded columns render ` +
+        `'?', which reads as 'nothing owns this' to anyone who did not write it.`,
     );
 
     const mainAt = src.indexOf("async function main(");
@@ -407,4 +424,99 @@ test("the real FIX-1153 manifest parses to the numbers the prompt was written ag
   assert.equal(sum("only_rows"), 3);
   assert.equal(sum("only_cents"), 1130000);
   assert.equal(manifestColumn(m, "official_id").length, 84);
+});
+
+// ---------------------------------------------------------------------------
+// FIX-1193 — the schedule / guarded columns
+// ---------------------------------------------------------------------------
+
+const OWNERS: ReadonlyMap<string, { schedule: string; guarded: boolean; active: boolean }> =
+  new Map([
+    // A bare-VACUUM job: no procedure, so nothing consults prod_session_state().
+    ["fr-vacuum-analyze", { schedule: "0 1 * * 1", guarded: false, active: true }],
+    // A CALL job whose procedure does consult it.
+    ["refresh-derived-mvs-daily", { schedule: "0 6 * * *", guarded: true, active: true }],
+    // On the books, switched off — collects nothing today.
+    ["group-donor-rollup-refresh", { schedule: "10 3 * * 3", guarded: true, active: false }],
+  ]);
+
+test("ownerColumns renders a VACUUM owner as scheduled but UNGUARDED", () => {
+  assert.deepEqual(ownerColumns("fr-vacuum-analyze", OWNERS), {
+    schedule: "0 1 * * 1",
+    guarded: "NO",
+  });
+});
+
+test("ownerColumns renders a guarded CALL owner as guarded", () => {
+  assert.deepEqual(ownerColumns("refresh-derived-mvs-daily", OWNERS), {
+    schedule: "0 6 * * *",
+    guarded: "yes",
+  });
+});
+
+test("ownerColumns marks an INACTIVE job — on the books, collecting nothing", () => {
+  // Distinct from NOT SCHEDULED on purpose: a disabled job is a different
+  // problem from an absent one and has a different fix (turn it on vs. give
+  // the step an owner at all).
+  assert.deepEqual(ownerColumns("group-donor-rollup-refresh", OWNERS), {
+    schedule: "10 3 * * 3 [INACTIVE]",
+    guarded: "yes",
+  });
+});
+
+test("ownerColumns renders a GHA owner as gha/gate, never as an orphan", () => {
+  const gha = [...GHA_OWNERS][0]!;
+  assert.deepEqual(ownerColumns(gha, OWNERS), { schedule: "gha", guarded: "gate" });
+});
+
+test("ownerColumns renders the manifest owner as not-applicable", () => {
+  const dashed = ownerColumns(OWNER_THIS_RUN, OWNERS);
+  assert.equal(dashed.schedule, dashed.guarded);
+  assert.notEqual(dashed.schedule, "NOT SCHEDULED");
+  assert.deepEqual(ownerColumns(null, OWNERS), dashed);
+});
+
+test("ownerColumns renders an unknown owner NOT SCHEDULED — the FIX-1165 orphan", () => {
+  assert.deepEqual(ownerColumns("no-such-job", OWNERS), {
+    schedule: "NOT SCHEDULED",
+    guarded: "NO",
+  });
+});
+
+test("ownerColumns distinguishes 'not read' from 'not scheduled'", () => {
+  // The wrong-but-plausible shape: rendering NOT SCHEDULED when the map was
+  // never read would manufacture an orphan signal for every owner in the table
+  // out of a query nobody ran.
+  assert.deepEqual(ownerColumns("fr-vacuum-analyze", undefined), {
+    schedule: "?",
+    guarded: "?",
+  });
+});
+
+test("every declared owner is a jobname, a GHA owner, or the manifest owner", () => {
+  // The census that keeps the two non-cron sets honest: a new owner string
+  // that is prose rather than a job name would render NOT SCHEDULED and read
+  // as an orphan. Job names have no spaces; the two exceptions are named.
+  for (const s of declareRemediationTail(true)) {
+    if (s.owner === null || s.owner === OWNER_THIS_RUN || GHA_OWNERS.has(s.owner)) continue;
+    assert.ok(
+      !/\s/.test(s.owner),
+      `owner ${JSON.stringify(s.owner)} is neither a bare cron job name nor a declared ` +
+        `non-cron owner. Add it to GHA_OWNERS, or drop the prose — FIX-1193 looks this ` +
+        `string up in cron.job verbatim.`,
+    );
+  }
+});
+
+test("no declared owner still carries a hard-coded schedule parenthetical", () => {
+  // The thing FIX-1193 removed. A parenthetical is a second source of truth
+  // for a fact the table now reads live, and FIX-1191 makes the fr one wrong.
+  for (const s of declareRemediationTail(true)) {
+    if (s.owner === null || s.owner === OWNER_THIS_RUN || GHA_OWNERS.has(s.owner)) continue;
+    assert.ok(
+      !s.owner.includes("("),
+      `owner ${JSON.stringify(s.owner)} carries a parenthetical. The schedule is read ` +
+        `from cron.job now; a written-down copy goes stale the day the job moves.`,
+    );
+  }
 });

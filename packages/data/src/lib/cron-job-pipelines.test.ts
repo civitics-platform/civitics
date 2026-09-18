@@ -20,6 +20,7 @@ import {
   RE_PIPELINE_FROM_INSERT,
   RE_PIPELINE_FROM_LOCAL,
   RE_PROC_FROM_COMMAND,
+  readOwnerSchedules,
   sqlRegexToJs,
 } from "./cron-job-pipelines";
 
@@ -228,4 +229,70 @@ test("Q_CRON_JOBS still bounds the correlation by the ±90 s window", () => {
 test("Q_GUARDED_PIPELINES filters the shared derivation, never a hand-written list", () => {
   assert.ok(Q_GUARDED_PIPELINES.includes(Q_CRON_JOB_PIPELINES));
   assert.ok(Q_GUARDED_PIPELINES.includes("WHERE guarded AND pipeline IS NOT NULL"));
+});
+
+// ---------------------------------------------------------------------------
+// FIX-1193 — the schedule column and readOwnerSchedules()
+// ---------------------------------------------------------------------------
+
+test("the derivation selects j.schedule, in the CTE and in the outer list", () => {
+  // Both halves matter: the CTE is where it enters, the outer SELECT is where
+  // a caller can see it. Adding one without the other compiles as SQL and
+  // returns a column nobody selected.
+  assert.match(Q_CRON_JOB_PIPELINES, /SELECT j\.jobid, j\.jobname, j\.active, j\.schedule,/);
+  assert.match(Q_CRON_JOB_PIPELINES, /SELECT jobid, jobname, active, schedule, proc,/);
+});
+
+test("every reader of the derivation selects by NAME, so a new column is additive", () => {
+  // The guard on the column add: a positional reader (SELECT * consumed by
+  // index, or a row destructured by ordinal) would silently shift. Both of the
+  // derivation's consumers name their columns, and this pins that.
+  assert.ok(Q_GUARDED_PIPELINES.includes("SELECT DISTINCT pipeline FROM jp"));
+  assert.ok(Q_CRON_JOBS.includes("jp.pipeline"));
+  assert.ok(!/SELECT\s+\*\s+FROM\s+jp/i.test(Q_GUARDED_PIPELINES + Q_CRON_JOBS));
+});
+
+test("readOwnerSchedules keys by jobname and carries schedule, guarded, active", async () => {
+  const rows = [
+    { jobid: 15, jobname: "ec-vacuum-analyze", active: false, schedule: "30 4 * * *", proc: null, pipeline: null, writes_dsl: false, guarded: false },
+    { jobid: 69, jobname: "refresh-derived-mvs-daily", active: true, schedule: "0 6 * * *", proc: "refresh_derived_mvs", pipeline: "refresh_derived_mvs", writes_dsl: true, guarded: true },
+  ];
+  let sawSql = "";
+  const owners = await readOwnerSchedules({
+    query: async (sql: string) => {
+      sawSql = sql;
+      return { rows };
+    },
+  });
+
+  assert.equal(sawSql, Q_CRON_JOB_PIPELINES, "must run the SHARED derivation, not a second query");
+  assert.deepEqual(owners.get("ec-vacuum-analyze"), {
+    schedule: "30 4 * * *",
+    guarded: false,
+    active: false,
+  });
+  assert.deepEqual(owners.get("refresh-derived-mvs-daily"), {
+    schedule: "0 6 * * *",
+    guarded: true,
+    active: true,
+  });
+  assert.equal(owners.get("no-such-job"), undefined);
+});
+
+test("readOwnerSchedules keys by NAME and never by jobid", async () => {
+  // FIX-946: the clone's cron.job is local history, so jobids differ between
+  // prod and here — ec-vacuum-analyze is jobid 6 on prod and 15 locally. A map
+  // keyed on jobid read off one database and used against the other names a
+  // different job, silently. The two rows below share a name across different
+  // ids to make that concrete.
+  const owners = await readOwnerSchedules({
+    query: async () => ({
+      rows: [
+        { jobid: 6, jobname: "ec-vacuum-analyze", active: true, schedule: "30 4 * * *", proc: null, pipeline: null, writes_dsl: false, guarded: false },
+      ],
+    }),
+  });
+  assert.ok(owners.has("ec-vacuum-analyze"));
+  assert.ok(!owners.has("6"));
+  assert.equal(owners.size, 1);
 });

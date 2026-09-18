@@ -100,6 +100,7 @@ import {
   requireManifestOnProd,
   type DiffInput,
 } from "./remediation-manifest";
+import { readOwnerSchedules } from "../lib/cron-job-pipelines";
 import { drainFrRewrite } from "../lib/fr-rewrite-drain";
 import { runUnderProdSession } from "../lib/prod-session";
 
@@ -763,7 +764,8 @@ async function main(): Promise<void> {
 
   // FIX-1165 (c) — the tail's cost table, printed BEFORE the go-ahead so the
   // trade is visible at decision time rather than discovered at minute 28.
-  printTailTable(declareRemediationTail(defer), defer);
+  const owners = await readOwnerSchedules(client);
+  printTailTable(declareRemediationTail(defer), defer, owners);
 
   if (!apply) {
     console.log("\nDRY RUN — nothing written to the database. Re-run with --apply to commit.");

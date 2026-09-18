@@ -43,6 +43,8 @@ export interface CronJobPipeline {
   jobid: number;
   jobname: string;
   active: boolean;
+  /** The job's live `cron.job.schedule` expression, e.g. `30 4 * * *`. */
+  schedule: string;
   /** The procedure the job's command CALLs / SELECTs, or null for a bare VACUUM. */
   proc: string | null;
   /** The `data_sync_log.pipeline` literal that procedure writes, or null. */
@@ -103,7 +105,7 @@ export function sqlRegexToJs(pattern: string, flags = "i"): RegExp {
  */
 export const Q_CRON_JOB_PIPELINES = `
 WITH job AS (
-  SELECT j.jobid, j.jobname, j.active,
+  SELECT j.jobid, j.jobname, j.active, j.schedule,
          (regexp_match(j.command, '${RE_PROC_FROM_COMMAND}', 'i'))[1] AS proc
   FROM cron.job j
 ), src AS (
@@ -117,7 +119,7 @@ WITH job AS (
          ON pr.proname = job.proc
         AND pr.pronamespace = 'public'::regnamespace
 )
-SELECT jobid, jobname, active, proc,
+SELECT jobid, jobname, active, schedule, proc,
        COALESCE(
          (regexp_match(body, '${RE_PIPELINE_FROM_INSERT}', 'i'))[1],
          (regexp_match(body, '${RE_PIPELINE_FROM_LOCAL}', 'i'))[1]
@@ -133,3 +135,46 @@ WITH jp AS (${Q_CRON_JOB_PIPELINES})
 SELECT DISTINCT pipeline FROM jp
 WHERE guarded AND pipeline IS NOT NULL
 ORDER BY pipeline`;
+
+// ---------------------------------------------------------------------------
+// Owner schedules — FIX-1193 (ii)
+// ---------------------------------------------------------------------------
+
+/** What the tail cost table needs to know about one scheduled owner. */
+export interface OwnerSchedule {
+  /** The live `cron.job.schedule` expression. */
+  schedule: string;
+  /** True when the job's command reaches a procedure consulting `prod_session_state()`. */
+  guarded: boolean;
+  /** `cron.job.active` — a scheduled owner that is switched off collects nothing. */
+  active: boolean;
+}
+
+/**
+ * Every `cron.job` row keyed by NAME, for a caller that has an owner name and
+ * wants to know when it next runs and whether a supervised session defers it.
+ *
+ * Keyed by NAME and never by jobid, because jobids differ between prod and the
+ * local clone by construction — the clone's `cron` schema is local history
+ * (CLAUDE.md / FIX-946): `ec-vacuum-analyze` is jobid 6 on prod and 15 here.
+ * A jobid read off one database and used against the other names a different
+ * job, silently.
+ *
+ * The point of reading this rather than writing it down: the tail cost table
+ * carried its owners' schedules as hard-coded parentheticals
+ * ("fr-vacuum-analyze (Mon 01:00)") until FIX-1193, and a parenthetical is a
+ * second source of truth that goes stale the day the schedule moves — which is
+ * exactly what FIX-1191's daily-FR change does to that one. One query, called
+ * once per run, is cheaper than a stale string that reads as authoritative.
+ */
+export async function readOwnerSchedules(client: {
+  query: (sql: string) => Promise<{ rows: CronJobPipeline[] }>;
+}): Promise<Map<string, OwnerSchedule>> {
+  const res = await client.query(Q_CRON_JOB_PIPELINES);
+  return new Map(
+    res.rows.map((r) => [
+      r.jobname,
+      { schedule: r.schedule, guarded: r.guarded, active: r.active },
+    ]),
+  );
+}

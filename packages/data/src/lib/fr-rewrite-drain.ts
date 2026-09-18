@@ -41,6 +41,7 @@ import {
   printTailTable,
   type TailStep,
 } from "../scripts/remediation-manifest";
+import { readOwnerSchedules } from "./cron-job-pipelines";
 
 /** Chunk width for the two per-donor rollups. Matches the three scripts. */
 export const DONOR_CHUNK = 5000;
@@ -164,7 +165,12 @@ export async function drainFrRewrite(
   opts: DrainOptions,
 ): Promise<{ ran: string[]; deferred: string[] }> {
   const steps = declareDrainTail(opts.defer);
-  if (opts.printTable !== false) printTailTable(steps, opts.defer);
+  // FIX-1193 - the owners' live cron.job schedule and guard state. Read here
+  // rather than passed in, because this helper already holds the connection and
+  // a second source for the same fact is what the parentheticals were.
+  if (opts.printTable !== false) {
+    printTailTable(steps, opts.defer, await readOwnerSchedules(client));
+  }
 
   const ran: string[] = [];
   const deferred = steps.filter((s) => s.deferred).map((s) => s.label);

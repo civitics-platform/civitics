@@ -40,6 +40,7 @@ import {
   requireManifestOnProd,
   type Manifest,
 } from "./remediation-manifest";
+import { readOwnerSchedules } from "../lib/cron-job-pipelines";
 import { drainFrRewrite, isCancellation } from "../lib/fr-rewrite-drain";
 import { runUnderProdSession } from "../lib/prod-session";
 
@@ -220,7 +221,8 @@ async function main(): Promise<void> {
     // `if (!apply)` return, which is the siblings' shape exactly: dry run and
     // apply both print it, and `printTable: false` on the drain below is what
     // stops the apply path printing it a second time.
-    printTailTable(declareRemediationTail(defer), defer);
+    const owners = await readOwnerSchedules(client);
+    printTailTable(declareRemediationTail(defer), defer, owners);
 
     if (!apply) {
       console.log(`\n  DRY RUN -- nothing written. Re-run with --apply${prod ? " --allow-prod" : ""} --defer-tails.`);

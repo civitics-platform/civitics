@@ -95,6 +95,52 @@ CC reads this before starting. Each line is a rule that has cost a real session.
   rewrote.
 - No heavy prod rebuilds or MV refreshes during Craig's active hours.
 
+#### Drain-and-wait before any second prod op
+
+A supervised landing does not end when its transaction commits. It ends when
+the derived work it created has drained and the box is back where it started.
+So a prompt that lands a second prod op after a first one states these gates,
+and **states each as a number WITH the time it was read** — a gate with no
+timestamp is an assertion, not a reading, and every figure names its instrument
+and its database.
+
+- **(a) Unguarded owners, derived from the database.** A pg_cron job whose
+  command does not reach a procedure referencing `prod_session_state()` is
+  UNGUARDED: it fires inside a supervised session rather than deferring to it.
+  Derive the set (`cron.job` JOIN `pg_proc` — `packages/data/src/lib/cron-job-pipelines.ts`,
+  the `guarded` column); today it is the twelve `*-vacuum-analyze` jobs, both
+  `*/2` watchdogs, `abuse-events-retention` and `platform-counts-daily`. Start
+  **≥ 90 min after the last unguarded VACUUM job's END**, with **none scheduled
+  inside `[start, start + 2 × expected wall]`**.
+- **(b) Autovacuum headroom, not a dead-tuple absolute.**
+  `(trigger − n_dead_tup) / rate > 2 × expected wall` on `entity_connections`,
+  `financial_entities` and `financial_relationships`, with `rate` from **two
+  readings ≥ 30 min apart**. A rate of zero measured at the 03:00 UTC trough is
+  the weakest possible input to a rate gate — re-read it inside the window the
+  op will actually run in.
+- **(c) Crawl arms.** No crawl unit past its own job's interval in the last
+  60 min. `partial` is the crawl arm's DESIGNED terminal status and is
+  ALLOWED; what is not allowed is a unit still `running` at start, or a unit
+  whose wall exceeded its job's interval.
+- **(d) Watchdogs.** Both `*/2` jobs 60/60 in the last 60 min, no
+  `job startup timeout` on any job, and no budgeted job left `running`.
+- **(e) Interlock.** `prod_session_state()` clear, `live_writers` empty.
+- **(f) Front door.** 57014/min over the last 60 min **≤ 2 ×** the 0.033/min
+  baseline, and front-door 5xx **≤ 1 %** over the last closed 15-min bucket.
+  Read both with `pnpm --filter @civitics/data data:census:cancellations:prod`
+  (Logs API; opens no Postgres connection) and quote the baseline it printed.
+- **(g) Clock.** Outside 22:30–01:00 and 05:45–09:00 UTC, **≥ 60 min** before
+  the next of those, and ≥ 60 min before any weekend-only job.
+
+> A gate must describe a state prod actually visits — `partial` is a terminal
+> status; "≤ 5,000 dead" is twelve minutes after a vacuum you are forbidden to
+> be near. Write gates from the instrument's own state vocabulary as ratios or
+> headroom, never as absolutes only a vacuum can reach.
+
+The measured instance is cc-131's read 7, written up in
+`docs/audits/2026-09-18-fix1187-set2-deferred.md` §2: thirteen gates, eleven
+passing, and both failures the clock rather than the data.
+
 ### Verification
 
 - `pnpm build` (or `turbo run typecheck` + `lint` for a code-only change) before

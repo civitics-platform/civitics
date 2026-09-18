@@ -85,6 +85,7 @@ import {
   usd,
 } from "./fec-orphan-classify";
 import { declareRemediationTail, printTailTable, readManifest, manifestArg } from "./remediation-manifest";
+import { readOwnerSchedules } from "../lib/cron-job-pipelines";
 import { drainFrRewrite } from "../lib/fr-rewrite-drain";
 import { runUnderProdSession } from "../lib/prod-session";
 import { roleMayHoldFecOffice } from "../pipelines/fec-bulk/electable-role";
@@ -2126,7 +2127,8 @@ async function main(): Promise<void> {
   }
 
   // FIX-1165 (c) — the cost table, before anything is written.
-  printTailTable(declareRemediationTail(defer), defer);
+  const owners = await readOwnerSchedules(client);
+  printTailTable(declareRemediationTail(defer), defer, owners);
   await client.query("BEGIN");
   try {
     // NOT `ON COMMIT DROP` — phase 2 runs after COMMIT and needs the manifest

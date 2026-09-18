@@ -44,14 +44,19 @@ test("--defer-tails defers every platform-scoped step and no manifest-scoped one
 });
 
 test("there is no scheduled owner missing from the tail's own claims", () => {
-  // Every owner names a real prod schedule or pipeline. FIX-1165 found
+  // Every owner names a real prod job or pipeline. FIX-1165 found
   // refresh_group_donor_rollup() with none at all, which is why the field
   // exists; group-donor-rollup-refresh ran for the first time 2026-09-09 03:10.
+  //
+  // The names are now BARE job names: FIX-1193 reads the schedule out of
+  // cron.job at print time instead of carrying it as a parenthetical, so an
+  // exact-match assertion here is also the guard against the parenthetical
+  // coming back.
   const owners = declareDrainTail(false)
     .filter((s) => s.cls === "platform-owned")
     .map((s) => s.owner!);
-  assert.ok(owners.includes("group-donor-rollup-refresh (Wed 03:10)"));
-  assert.ok(owners.some((o) => o.startsWith("fr-vacuum-analyze")));
+  assert.ok(owners.includes("group-donor-rollup-refresh"));
+  assert.ok(owners.includes("fr-vacuum-analyze"));
 });
 
 // ---------------------------------------------------------------------------

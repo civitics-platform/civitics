@@ -98,6 +98,7 @@ import {
   printTailTable,
   requireManifestOnProd,
 } from "./remediation-manifest";
+import { readOwnerSchedules } from "../lib/cron-job-pipelines";
 import { drainFrRewrite } from "../lib/fr-rewrite-drain";
 import { runUnderProdSession } from "../lib/prod-session";
 
@@ -619,7 +620,8 @@ async function main(): Promise<void> {
   }
 
   // FIX-1165 (c) — the cost table, before anything is written.
-  printTailTable(declareRemediationTail(defer), defer);
+  const owners = await readOwnerSchedules(client);
+  printTailTable(declareRemediationTail(defer), defer, owners);
 
   await client.query("BEGIN");
   try {
