@@ -136,3 +136,105 @@ export function classifyProdSession(state: ProdSessionState | null): ProdSession
       (liveWriters.length > 0 ? ` — claimed over ${liveWriters.join(", ")}` : ""),
   };
 }
+
+// ---------------------------------------------------------------------------
+// FIX-1177 / FIX-1172 — a hold that outlived its session
+// ---------------------------------------------------------------------------
+
+/**
+ * `prod_session_hold_stale` — session-set holds with nobody on the box.
+ *
+ * WHY THIS HAS TO EXIST AT ALL. `claimProdSession()` writes `held_since` on
+ * every guarded pipeline so a long supervised session stops reporting
+ * `stale rollup: financial_entity_totals_refresh` at the operator causing it
+ * (FIX-1172). A hold does that by SUPPRESSING two thresholds —
+ * `list_scheduled_rollup_pipelines()` NULLs `report_after_hours` and
+ * `escalate_after_hours` for a held pipeline — which means a hold that outlives
+ * its session is not harmless bookkeeping. It is a blindfold on the freshness
+ * instruments, and a silent one, because the suppressed finding is exactly the
+ * finding that would have told you.
+ *
+ * So the rule the FIX-943 canary keeps for bloat applies here too, one level
+ * up: a mechanism that hides a finding must itself be watched. Three things
+ * bound a leftover hold — the release clears it, the next claim clears it
+ * before its own preflight, and this reports it — and the third is the only one
+ * that works when nobody claims again for a week.
+ *
+ * `report`, not `escalate`. Nothing is broken and no data is at risk; some
+ * thresholds are off and a human should turn them back on (or just claim
+ * again, which does it). Escalating would page for a bookkeeping row, which is
+ * how a tier stops meaning anything.
+ */
+export const KEY_HOLD_STALE = "prod_session_hold_stale";
+
+/** One session-set row of `public.rollup_watch_overrides`. */
+export type SessionHoldRow = {
+  pipeline: string;
+  /** ISO-8601, or null if the column somehow reads null. */
+  held_since: string | null;
+};
+
+export type HoldStaleStatus = {
+  tier: "report" | null;
+  severity: number;
+  detail: string;
+  pipelines: string[];
+  oldestAgeHours: number | null;
+};
+
+/**
+ * Classify session-set holds against whether a session actually holds the box.
+ *
+ * @param rows  rows of `rollup_watch_overrides` whose `hold_reason` carries the
+ *              session prefix — a human's own hold is NOT one of these and must
+ *              never be reported as stale, because a human hold is a decision
+ *              with no session behind it by design.
+ * @param held  `prod_session_state()->>'held'`. The LOCK is the truth about
+ *              whether a session is live, for the same reason the label is not
+ *              (FIX-950): a killed process drops the lock and leaves the row.
+ * @param now   injected so this stays pure.
+ */
+export function classifyHoldStale(
+  rows: readonly SessionHoldRow[],
+  held: boolean,
+  now: Date = new Date(),
+): HoldStaleStatus {
+  const pipelines = rows.map((r) => r.pipeline).sort();
+
+  if (pipelines.length === 0) {
+    return { tier: null, severity: 0, detail: "no session-set rollup holds", pipelines: [], oldestAgeHours: null };
+  }
+
+  const ages = rows
+    .map((r) => (r.held_since === null ? null : (now.getTime() - new Date(r.held_since).getTime()) / 3_600_000))
+    .filter((a): a is number => a !== null && Number.isFinite(a));
+  const oldestAgeHours = ages.length === 0 ? null : round1(Math.max(...ages));
+
+  // A live session SHOULD have these rows. That is the mechanism, not a fault.
+  if (held) {
+    return {
+      tier: null,
+      severity: 0,
+      detail:
+        `${pipelines.length} guarded pipeline(s) held by the live supervised session` +
+        (oldestAgeHours === null ? "" : ` (oldest ${oldestAgeHours}h)`),
+      pipelines,
+      oldestAgeHours,
+    };
+  }
+
+  return {
+    tier: "report",
+    severity: oldestAgeHours ?? 0.1,
+    detail:
+      `${pipelines.length} rollup pipeline(s) still HELD with no supervised session on the box` +
+      (oldestAgeHours === null ? "" : `; oldest held ${oldestAgeHours}h`) +
+      `: ${pipelines.join(", ")}. A held pipeline reports and escalates NOTHING ` +
+      "(list_scheduled_rollup_pipelines NULLs both thresholds), so freshness is " +
+      "unwatched for these until the hold clears. The next claimProdSession() " +
+      "clears it; `pnpm --filter @civitics/data session:claim` and Ctrl-C is the " +
+      "one-liner. A hold a HUMAN declared is not counted here and is not stale.",
+    pipelines,
+    oldestAgeHours,
+  };
+}

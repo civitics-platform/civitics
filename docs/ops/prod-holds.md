@@ -90,13 +90,24 @@ run") moved out of prompt prose and into code.
 - **`refresh_platform_counts`, `purge_abuse_events`, the canary.**
   Observational; a session must not blind the instruments.
 
-### ⚠ A long hold WILL trip a freshness report
+### A long hold no longer trips a freshness report — the session holds the guarded set
+
+**Changed by FIX-1177 / FIX-1172 (cc-133).** Before that, this section warned
+that a hold past ~48 minutes would be reported stale. It no longer will, for the
+guarded pipelines.
 
 `check_rollup_freshness()` and `list_scheduled_rollup_pipelines()` both count
 only `status='complete'` (FIX-1140), so a `skipped` firing correctly does **not**
-advance the freshness clock. That is the honest reading — nothing happened — but
-it means a hold long enough to cross a pipeline's report threshold will be
-reported stale by the nightly canary. Measured on prod 2026-09-11:
+advance the freshness clock. That is still the honest reading — nothing happened.
+What changed is that `claimProdSession()` now writes `held_since` /
+`hold_reason` into `rollup_watch_overrides` for every **guarded** pipeline for
+the duration of the session, and `list_scheduled_rollup_pipelines()` NULLs both
+`report_after_hours` and `escalate_after_hours` on a held pipeline. So the
+thresholds below are suppressed while a session holds the box, and restored the
+moment it releases.
+
+The thresholds are still the measured facts, and still what applies the instant
+a hold ends (prod, 2026-09-11):
 
 | Pipeline | cadence | reports after | escalates after |
 |---|---|---|---|
@@ -105,13 +116,54 @@ reported stale by the nightly canary. Measured on prod 2026-09-11:
 | `donor_rollup_refresh` | 12 h | 18 h | 30 h |
 | everything else | ≥ 24 h | ≥ 36 h | ≥ 60 h |
 
-**So: a hold under ~45 minutes is invisible to the canary. Past 48 minutes,
-expect a `report` on `financial_entity_totals_refresh`; past 78 minutes, an
-escalation.** That is not a reason to avoid holding the box — a `report` that
-says "the rollup is stale because a human was landing a migration" is correct
-and cheap — but it should not arrive as a surprise at 3 a.m. `rollup_watch_overrides`
-(`held_since` / `hold_reason`) is the existing census-suppression mechanism and
-is the natural place to wire this properly; see FIX-1172.
+**Which pipelines get held: the guarded set only** — the ones whose writer
+procedure consults `prod_session_state()`, derived at claim time from
+`cron.job.command` → the procedure → its `data_sync_log` pipeline literal
+(`packages/data/src/lib/cron-job-pipelines.ts`, shared with the receipts file).
+Sixteen rows get written today: seventeen guarded pipelines minus
+`entity_connection_stats_rebuild`, which carries a `retired_at` and is left
+alone by the upsert.
+
+A GHA-driven or Vercel-driven pipeline is **not** held, and that is the point: a
+hold cannot make one of those late for its own reasons, so suppressing its
+threshold would turn the hold into a blindfold rather than a mute.
+
+Two holds are never overwritten by a session: a row with `retired_at` set (the
+`not_both` CHECK forbids holding it, and it reports nothing anyway) and a row
+somebody **already** holds — a human's stated reason is the one an operator
+needs to see.
+
+### `prod_session_hold_stale` — a hold that outlived its session
+
+A hold suppresses instruments, so a hold nobody is behind has blinded them. The
+nightly canary reports `prod_session_hold_stale` (tier `report`, never
+`escalate`) when `rollup_watch_overrides` carries session-prefixed holds and
+`prod_session_state()->>'held'` is false. The detail names the pipelines and the
+age of the oldest hold.
+
+It happens when a claim is killed hard — SIGKILL, a `process.exit()` from inside
+a landing's `main()`, the machine going away. The advisory lock dies with the
+backend; the rows do not.
+
+Three things clear it, and you rarely need to do anything:
+
+1. **A normal release** clears the holds it set, then drops the lock.
+2. **The next claim** sweeps leftovers *before* its own preflight and says so
+   (`swept N leftover hold(s) from a session that did not release`). So the
+   blind window is bounded by "until somebody claims again".
+3. **By hand**, if neither is coming soon — claim and release, which is
+   `pnpm --filter @civitics/data session:claim --reason "clearing a stale hold"
+   --hold-seconds 5`.
+
+A hold a **human** declared is not counted by this finding and is never cleared
+by a release. The discriminator is the `hold_reason` prefix
+`prod session held: `, which is the same prefix the guard procedures write into
+`skip_reason` — so one `LIKE 'prod session held:%'` finds every artefact a
+session caused, the deferred firings and the threshold suppressions together.
+
+Session-created rows that end up declaring nothing (no hold, no retirement, no
+asserted cadence) are deleted on release, so `rollup_watch_overrides` stays a
+table of human decisions rather than a residue of sessions.
 
 ---
 

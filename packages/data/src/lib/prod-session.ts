@@ -52,6 +52,7 @@
 import os from "node:os";
 import type { Client } from "pg";
 import { buildDbUrl } from "./heavy-rebuild";
+import { Q_GUARDED_PIPELINES } from "./cron-job-pipelines";
 import {
   acquireNamedSessionLock,
   errText,
@@ -279,6 +280,27 @@ export async function claimProdSession(opts: ProdSessionOptions): Promise<NamedS
   const dbUrl = opts.dbUrl ?? buildDbUrl();
   const expected = opts.expectedMinutes ?? DEFAULT_EXPECTED_MINUTES;
 
+  // FIX-1177/1172 self-heal, FIRST. A session killed with SIGKILL drops its
+  // advisory lock with its backend but leaves its holds behind, and a hold
+  // suppresses freshness instruments. Clearing leftovers before this claim's
+  // own preflight bounds that to "until the next claim" — the same shape as
+  // the FIX-950 label, which the next claim also overwrites. It runs even if
+  // this claim goes on to be REFUSED: a leftover hold from a dead session is
+  // not this claim's to keep, whichever way the preflight goes.
+  const swept = await clearGuardedHolds(dbUrl).catch((err: unknown) => {
+    console.warn(`  [prod-session] leftover-hold sweep failed (${errText(err)}) — continuing`);
+    return 0;
+  });
+  // Said out loud, because a non-zero sweep is EVIDENCE: the previous session
+  // did not release, and its holds had been suppressing freshness thresholds
+  // in the meantime. Clearing that silently would delete the only trace.
+  if (swept > 0) {
+    console.warn(
+      `  [prod-session] swept ${swept} leftover hold(s) from a session that did not ` +
+        "release — freshness was unwatched for those pipelines until now (FIX-1177)",
+    );
+  }
+
   // The preflight runs on its own short-lived connection, BEFORE anything is
   // held: a refusal must not have taken the lock it is refusing to take.
   const state = await withClient(dbUrl, readProdSessionState);
@@ -308,7 +330,7 @@ export async function claimProdSession(opts: ProdSessionOptions): Promise<NamedS
   };
   if (verdict.forced) value["forced_over"] = verdict.forcedOver;
 
-  return acquireNamedSessionLock(PROD_SESSION_LOCK_NAME, {
+  const lock = await acquireNamedSessionLock(PROD_SESSION_LOCK_NAME, {
     logTag: "prod-session",
     ref: "FIX-950",
     label: { key: PROD_SESSION_LABEL_KEY, value },
@@ -316,6 +338,178 @@ export async function claimProdSession(opts: ProdSessionOptions): Promise<NamedS
     // would let the preflight and the hold land on different databases.
     dbUrl,
   });
+
+  // AFTER the lock, BEFORE it is returned. Holding before the lock is taken
+  // would suppress instruments for a claim that then gets refused; holding
+  // after the caller already has the lock back would leave a window in which
+  // the session is live and the thresholds are not yet suppressed.
+  const held = await setGuardedHolds(dbUrl, opts.reason).catch((err: unknown) => {
+    console.warn(
+      `  [prod-session] could not hold guarded pipelines (${errText(err)}) — ` +
+        "the session proceeds; a long one may report a stale rollup (FIX-1172)",
+    );
+    return 0;
+  });
+  if (held > 0) {
+    console.log(`  [prod-session] held ${held} guarded pipeline(s) (FIX-1177/1172)`);
+  }
+
+  // The same `dbUrl` again (the FIX-950 same-dsn rule): the release must clear
+  // the holds on the database the claim set them on.
+  return {
+    get acquired() {
+      return lock.acquired;
+    },
+    get blockedBy() {
+      return lock.blockedBy;
+    },
+    async release() {
+      const cleared = await clearGuardedHolds(dbUrl).catch((err: unknown) => {
+        console.warn(
+          `  [prod-session] could not clear holds (${errText(err)}) — the next ` +
+            "claim will, and canary-prod-session reports prod_session_hold_stale " +
+            "until something does",
+        );
+        return 0;
+      });
+      if (cleared > 0) console.log(`  [prod-session] cleared ${cleared} hold(s)`);
+      await lock.release();
+    },
+  };
+}
+
+
+// ---------------------------------------------------------------------------
+// FIX-1177 / FIX-1172 — the session HOLDS the guarded pipelines
+// ---------------------------------------------------------------------------
+
+/**
+ * A supervised session is a deliberate operator action. The FIX-950 interlock
+ * turns it into a `skipped` data_sync_log row on every guarded pipeline that
+ * fires during it — correctly — and `check_rollup_freshness()` counts only
+ * `status = 'complete'`, so a skip advances nothing. Past ~48 minutes on prod
+ * that is enough for `financial_entity_totals_refresh` to cross its report
+ * threshold and the nightly canary to raise `stale rollup: …` at an operator
+ * who was doing the right thing (FIX-1172). FIX-1177 is the same asymmetry
+ * stated generally: a correct skip is invisible to every freshness reader.
+ *
+ * The suppression mechanism already exists on the READ side and needs no
+ * migration. `list_scheduled_rollup_pipelines()` NULLs both
+ * `report_after_hours` and `escalate_after_hours` when a pipeline is `held`,
+ * and `canary-check.ts` gates its finding on `!w.held`. What was missing is a
+ * WRITER: nothing set `held_since` for the duration of a session.
+ *
+ * ── WHICH PIPELINES (D1(a)) ─────────────────────────────────────────────────
+ * The GUARDED set only — the pipelines whose writer procedure consults
+ * `prod_session_state()`, derived at claim time from
+ * `Q_GUARDED_PIPELINES` (seventeen of them today). A hold cannot make a
+ * GHA-driven or Vercel-driven pipeline late for its own reasons, so those keep
+ * their thresholds: suppressing a threshold a session cannot affect would turn
+ * the hold into a blindfold.
+ *
+ * Deriving the set rather than listing it in code is the same decision as
+ * FIX-1190's: a list here would silently stop covering a pipeline the next
+ * migration adds a guard to.
+ *
+ * ── WHY BEST-EFFORT ─────────────────────────────────────────────────────────
+ * Neither the set nor the clear can fail a claim or a release. This is the
+ * FIX-1067 label rule applied one layer out: a bookkeeping write that can veto
+ * the safety mechanism is worse than no bookkeeping. Every failure is one
+ * `[prod-session]` warn line and the session proceeds.
+ *
+ * ── WHY A STALE HOLD IS A FINDING ───────────────────────────────────────────
+ * A hold suppresses instruments, so a hold that outlives its session has
+ * blinded them. Three things bound that. The next claim clears leftovers
+ * before its own preflight (self-healing, the FIX-950 label pattern); the
+ * release clears them; and `canary-prod-session.ts` reports
+ * `prod_session_hold_stale` when held rows exist with no session holding the
+ * lock. A hold must not be able to become permanent quietly.
+ */
+
+/** The `hold_reason` prefix. Shared with the guard procedures' `skip_reason`. */
+export const SESSION_HOLD_PREFIX = "prod session held: ";
+
+/**
+ * The `note` a session-created row carries.
+ *
+ * `rollup_watch_overrides.note` is NOT NULL because the table is a table of
+ * human decisions and an unexplained row is not one. A row this code creates
+ * has to say so, both so an operator reading the table knows it is machinery
+ * and so the release can tell its own rows from a human's when deciding what
+ * to delete.
+ */
+export const SESSION_HOLD_NOTE =
+  "FIX-1177/1172 — set by claimProdSession(); cleared by release(); " +
+  "a row with this note and no hold is inert";
+
+/**
+ * Hold every guarded pipeline for the duration of this session.
+ *
+ * Two rows are deliberately left alone:
+ *
+ *   retired_at IS NOT NULL — the `not_both` CHECK forbids holding a retired
+ *     pipeline, and a retired pipeline reports nothing anyway.
+ *   held_since IS NOT NULL — somebody already holds it. If that somebody is a
+ *     human, their reason is the one an operator needs to see, and a session's
+ *     generic reason must not overwrite it. If it is a previous session's
+ *     leftover, `clearGuardedHolds()` has already run above this.
+ *
+ * Returns how many pipelines this session now holds.
+ */
+export async function setGuardedHolds(dbUrl: string, reason: string): Promise<number> {
+  const n = await withClient(dbUrl, async (client) => {
+    const res = await client.query<{ pipeline: string }>(
+      `INSERT INTO public.rollup_watch_overrides (pipeline, held_since, hold_reason, note)
+       SELECT g.pipeline, now(), $1, $2
+       FROM (${Q_GUARDED_PIPELINES}) AS g
+       ON CONFLICT (pipeline) DO UPDATE
+         SET held_since  = EXCLUDED.held_since,
+             hold_reason = EXCLUDED.hold_reason,
+             updated_at  = now()
+         WHERE public.rollup_watch_overrides.retired_at IS NULL
+           AND public.rollup_watch_overrides.held_since IS NULL
+       RETURNING pipeline`,
+      [SESSION_HOLD_PREFIX + reason, SESSION_HOLD_NOTE],
+    );
+    return res.rowCount ?? 0;
+  });
+  return n ?? 0;
+}
+
+/**
+ * Clear every hold THIS mechanism set, and remove the rows it created that now
+ * declare nothing.
+ *
+ * The `LIKE` on the prefix is the whole safety property: a human-declared hold
+ * is never cleared by a session release. Widening it to "clear all holds" would
+ * make a release silently un-pause a pipeline an operator paused on purpose,
+ * which is why the unit suite asserts the predicate rather than the behaviour.
+ *
+ * The DELETE then garbage-collects: a row this code created, whose hold is now
+ * gone, which carries no asserted cadence and is not retired, declares nothing
+ * at all — and `rollup_watch_overrides` is supposed to be a table of decisions,
+ * not a residue of sessions. A row a human has since given a `cadence_hours`
+ * or a `retired_at` survives, as does any row whose note they changed.
+ */
+export async function clearGuardedHolds(dbUrl: string): Promise<number> {
+  const n = await withClient(dbUrl, async (client) => {
+    const res = await client.query(
+      `UPDATE public.rollup_watch_overrides
+          SET held_since = NULL, hold_reason = NULL, updated_at = now()
+        WHERE hold_reason LIKE $1`,
+      [SESSION_HOLD_PREFIX + "%"],
+    );
+    await client.query(
+      `DELETE FROM public.rollup_watch_overrides
+        WHERE note = $1
+          AND held_since    IS NULL
+          AND retired_at    IS NULL
+          AND cadence_hours IS NULL`,
+      [SESSION_HOLD_NOTE],
+    );
+    return res.rowCount ?? 0;
+  });
+  return n ?? 0;
 }
 
 /** Open a client, run `fn`, always close. Returns null on a connect failure. */

@@ -41,12 +41,16 @@ import {
   classifyFecDrop,
 } from "./canary-fec-drop";
 import {
+  KEY_HOLD_STALE,
   KEY_LABEL_STALE,
   KEY_OVERRUN,
   type ProdSessionStatus,
+  classifyHoldStale,
   classifyProdSession,
+  type HoldStaleStatus,
+  type SessionHoldRow,
 } from "./canary-prod-session";
-import { readProdSessionState, withClient } from "../lib/prod-session";
+import { SESSION_HOLD_PREFIX, readProdSessionState, withClient } from "../lib/prod-session";
 import { buildDbUrl } from "../lib/heavy-rebuild";
 
 const PIPELINE_NAME      = "nightly_cron";
@@ -725,6 +729,42 @@ async function fetchProdSessionStatus(): Promise<ProdSessionStatus | null> {
   }
 }
 
+/**
+ * FIX-1177/1172 — the session-set rollup holds, and whether anyone is on the box.
+ *
+ * Read on the SAME direct-pg path as `prod_session_state()` and in the same
+ * connection, so the two halves of the verdict cannot disagree about time: a
+ * hold read before the lock, with a claim landing in between, would report a
+ * live session's holds as stale.
+ *
+ * `hold_reason LIKE 'prod session held:%'` is the filter that keeps a HUMAN's
+ * declared hold out of this. A human hold has no session behind it by design
+ * and reporting it as stale would train an operator to ignore the finding.
+ */
+async function fetchHoldStale(): Promise<HoldStaleStatus | null> {
+  try {
+    return await withClient(buildDbUrl(), async (client) => {
+      const state = await readProdSessionState(client);
+      const res = await client.query<{ pipeline: string; held_since: string | null }>(
+        `SELECT pipeline, held_since::text AS held_since
+           FROM public.rollup_watch_overrides
+          WHERE hold_reason LIKE $1
+          ORDER BY pipeline`,
+        [SESSION_HOLD_PREFIX + "%"],
+      );
+      const rows: SessionHoldRow[] = res.rows;
+      return classifyHoldStale(rows, state?.held === true);
+    });
+  } catch (err) {
+    console.warn(
+      `[canary-check] session-hold read failed (non-fatal): ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+    return null;
+  }
+}
+
 // FIX-968 — pg_cron FIRING health. Every other detector here watches a
 // CONSEQUENCE (a rollup is stale, a visibility map collapsed). This is the only
 // one that watches whether the scheduled work started at all.
@@ -960,6 +1000,7 @@ function buildMetadata(
   reportOnly: string[],
   fecDrop: FecDropStatus | null,
   prodSession: ProdSessionStatus | null,
+  holdStale: HoldStaleStatus | null,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): Record<string, any> {
   return {
@@ -1038,6 +1079,10 @@ function buildMetadata(
     // place the trail exists: "why did nothing run on Tuesday night" is
     // answerable from here and nowhere else.
     prod_session:     prodSession,
+    // FIX-1177/1172 — the hold set on every run, tier or not. Same reason as
+    // prod_session above: when the holds are correct they carry no tier, so
+    // this row is the only record of which pipelines were unwatched and when.
+    session_holds:    holdStale,
     peak_rss_mb:      captureRssMb(),
   };
 }
@@ -1585,6 +1630,10 @@ async function main(): Promise<number> {
       prodSession ? `${prodSession.state} — ${prodSession.detail}` : "unknown (read failed)"
     }`,
   );
+  const holdStale = await fetchHoldStale();
+  console.log(
+    `[canary-check] session holds: ${holdStale ? holdStale.detail : "unknown (read failed)"}`,
+  );
   // FIX-968 — did every scheduled pg_cron job actually START? The only detector
   // here that watches the cause rather than a consequence.
   const cronHealth = await fetchCronJobHealth();
@@ -1711,6 +1760,13 @@ async function main(): Promise<number> {
       prodSession.detail,
     );
   }
+  // FIX-1177/1172 — its OWN key, not folded into the prod-session keys: a
+  // leftover hold and an overrunning session are different problems (one has
+  // nobody on the box, the other has somebody), and the FIX-1036 transition
+  // classifier would read a recovery from one as a recovery from the other.
+  if (holdStale?.tier) {
+    push(KEY_HOLD_STALE, holdStale.tier, holdStale.severity, holdStale.detail);
+  }
   if (fecDrop && fecDrop.tier) {
     // One key per state rather than one shared key: `uncollected` (money at FEC)
     // and `probe blind/missing` (we cannot see FEC) are different problems with
@@ -1740,6 +1796,7 @@ async function main(): Promise<number> {
   const metadata = buildMetadata(
     missing, killed, autovacuum, rollups, orphans, sectorAffinity, cronHealth,
     nightlyCheckUnavailable, conditions, failures, reportOnly, fecDrop, prodSession,
+    holdStale,
   );
   const meta = await writeMetaRow(metadata, now);
   if (!meta.ok) {

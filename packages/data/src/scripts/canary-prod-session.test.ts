@@ -14,8 +14,11 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   classifyProdSession,
+  KEY_HOLD_STALE,
   KEY_LABEL_STALE,
   KEY_OVERRUN,
+  classifyHoldStale,
+  type SessionHoldRow,
   OVERRUN_FACTOR,
 } from "./canary-prod-session";
 import { DEFAULT_EXPECTED_MINUTES, type ProdSessionState } from "../lib/prod-session";
@@ -140,4 +143,72 @@ test("an unreadable interlock is reported as nothing, never as health", () => {
 test("the condition keys are stable", () => {
   assert.equal(KEY_OVERRUN, "prod_session_overrun");
   assert.equal(KEY_LABEL_STALE, "prod_session_label_stale");
+});
+
+// ---------------------------------------------------------------------------
+// FIX-1177 / FIX-1172 — the hold-stale detector
+// ---------------------------------------------------------------------------
+
+const NOW = new Date("2026-09-18T12:00:00Z");
+const held2h = (pipeline: string): SessionHoldRow => ({
+  pipeline,
+  held_since: "2026-09-18T10:00:00Z",
+});
+
+test("no session-set holds is clear, and carries no tier", () => {
+  const s = classifyHoldStale([], false, NOW);
+  assert.equal(s.tier, null);
+  assert.equal(s.pipelines.length, 0);
+  assert.equal(s.oldestAgeHours, null);
+});
+
+test("holds WITH a live session are the mechanism working — no tier", () => {
+  // This is the case that happens on every supervised landing. Tiering it would
+  // page on the interlock doing its job, which is the FIX-943 cause-vs-
+  // consequence rule and the same reason `held` itself carries no tier.
+  const s = classifyHoldStale([held2h("financial_entity_totals_refresh")], true, NOW);
+  assert.equal(s.tier, null);
+  assert.match(s.detail, /held by the live supervised session/);
+  assert.equal(s.oldestAgeHours, 2);
+});
+
+test("holds with NOBODY on the box report — a hold must not blind instruments silently", () => {
+  const s = classifyHoldStale(
+    [held2h("financial_entity_totals_refresh"), held2h("donor_rollup_refresh")],
+    false,
+    NOW,
+  );
+  assert.equal(s.tier, "report");
+  assert.equal(s.severity, 2);
+  assert.deepEqual(s.pipelines, ["donor_rollup_refresh", "financial_entity_totals_refresh"]);
+  // The detail has to say what the hold COSTS, not just that it exists.
+  assert.match(s.detail, /reports and escalates NOTHING/);
+  assert.match(s.detail, /next claimProdSession\(\) clears it/);
+});
+
+test("the oldest hold drives the severity, not the newest or the count", () => {
+  const s = classifyHoldStale(
+    [
+      { pipeline: "a", held_since: "2026-09-18T11:30:00Z" },
+      { pipeline: "b", held_since: "2026-09-15T12:00:00Z" },
+    ],
+    false,
+    NOW,
+  );
+  assert.equal(s.oldestAgeHours, 72);
+  assert.equal(s.severity, 72);
+});
+
+test("a null held_since still reports — a row with no timestamp is not health", () => {
+  // The column is populated by the upsert, so a null means something else wrote
+  // it. Treating "I cannot date this hold" as clear would be the exact
+  // fail-open the canary contract forbids.
+  const s = classifyHoldStale([{ pipeline: "a", held_since: null }], false, NOW);
+  assert.equal(s.tier, "report");
+  assert.equal(s.oldestAgeHours, null);
+  assert.ok(s.severity > 0, "an undateable stale hold must still sort above clear");
+});
+
+test("the condition key is stable", () => {
+  assert.equal(KEY_HOLD_STALE, "prod_session_hold_stale");
 });

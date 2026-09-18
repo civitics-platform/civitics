@@ -405,6 +405,27 @@ no override row — appears in the registry's top-level `orphans` array and in t
 nightly canary email as report-only. That list is the backlog of retirements
 nobody wrote down.
 
+**The table has a second writer as of FIX-1177/1172 (cc-133): `claimProdSession()`.**
+A supervised prod session holds every GUARDED pipeline for its duration
+(`held_since` + `hold_reason` prefixed `prod session held: `) and clears its own
+holds on release, so a long landing no longer reports
+`stale rollup: financial_entity_totals_refresh` at the operator causing it. Two
+consequences for anyone writing a row by hand:
+
+- **A human hold wins.** The session's upsert skips a row that already has
+  `held_since` set, and its release clears only rows whose `hold_reason`
+  carries the session prefix. Your hold and your reason survive a session.
+- **A leftover session hold is a canary finding**, `prod_session_hold_stale`
+  (report tier) — because a hold suppresses both thresholds, so one nobody is
+  behind has blinded the instrument. The next claim sweeps it. See
+  `docs/ops/prod-holds.md`.
+
+The table's own COMMENT still says "Read only by
+`list_scheduled_rollup_pipelines()`", which was true when FIX-1059 wrote it and
+is now stale in two ways: `canary-prod-session.ts` reads it, and
+`claimProdSession()` writes it. The comment is migration text and is left as it
+is rather than rewritten in place; this paragraph is the correction.
+
 ### Read path convention
 
 - Wrap snapshot reads in `withDbTimeout<{...}>(2000)` (from
