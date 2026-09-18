@@ -6975,16 +6975,6 @@ export type Database = {
           to_id: string
         }[]
       }
-      get_group_donor_totals: {
-        Args: { p_official_ids: string[] }
-        Returns: {
-          entity_name: string
-          entity_type: string
-          financial_entity_id: string
-          member_count: number
-          total_cents: number
-        }[]
-      }
       get_group_sector_totals: {
         Args: { p_member_ids: string[]; p_min_usd?: number }
         Returns: {
@@ -7493,10 +7483,6 @@ export type Database = {
       }
       rebuild_entity_search_index: { Args: never; Returns: number }
       rebuild_financial_entity_donation_totals: {
-        Args: never
-        Returns: undefined
-      }
-      rebuild_financial_entity_donation_totals_full: {
         Args: never
         Returns: undefined
       }
