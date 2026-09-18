@@ -41,6 +41,7 @@ function firing(over: Partial<JobFiring> = {}): JobFiring {
     jobid: 6,
     schedule: "30 4 * * *",
     active: true,
+    pipeline: null,
     last_start: "2026-09-12T04:30:00Z",
     last_end: "2026-09-12T04:32:04Z",
     duration_s: 124.3,
@@ -512,4 +513,91 @@ test("renderMarkdown: an in-flight run renders the label, not a blank cell", () 
   const d = fixture();
   d.nightly.conclusion = "";
   assert.match(renderMarkdown(d), /written by its last job/);
+});
+
+// ---------------------------------------------------------------------------
+// FIX-1190 — a job with no writer of its own must not inherit a verdict
+// ---------------------------------------------------------------------------
+
+/**
+ * THE 2026-09-15 SHAPE, as a fixture.
+ *
+ * `ec-vacuum-analyze` is a bare `VACUUM (ANALYZE)` command. It calls no
+ * procedure, writes no `data_sync_log` row, and therefore has no pipeline —
+ * which is what `pipeline: null` says. The old TIME-FIRST correlation gave it
+ * `ec_crawl`'s row anyway, because that row happened to start inside ±90 s,
+ * and the file rendered:
+ *
+ *   | ec-vacuum-analyze | yes | 30 4 * * * | … | 132.9 s | succeeded | 0–140 s |
+ *   | **skipped** | peer crawl ec_crawl is backed off until … |
+ *
+ * A 132.9-second vacuum that ran to completion, reported as an interlock skip
+ * on another job's reason. The band it was inside of was never even consulted.
+ */
+test("FIX-1190: a pipeline-less job renders from its cron status, never a neighbour's skip", () => {
+  const v = verdictFor(
+    firing({ jobname: "ec-vacuum-analyze", pipeline: null, sync_status: null, skip_reason: null }),
+    BAND,
+  );
+  assert.equal(v.verdict, "in-band");
+  assert.equal(v.detail, null);
+});
+
+test("FIX-1190: the same job with no band is no-band — still not skipped", () => {
+  const v = verdictFor(
+    firing({ jobname: "officials-vacuum-analyze", duration_s: 3.8, pipeline: null, sync_status: null }),
+    null,
+  );
+  assert.equal(v.verdict, "no-band");
+});
+
+/**
+ * THE WRONG-BUT-GREEN SHAPE. This is what the OLD query produced, and it is
+ * asserted here on purpose: the fixture exists to record that `verdictFor` is
+ * not where the bug lived. Given a `skipped` sync_status the matrix correctly
+ * says `skipped` — it has no way to know the status belonged to `ec_crawl`.
+ * The fix had to be in the SQL key, which is why the next test reads the query
+ * text itself.
+ */
+test("FIX-1190: verdictFor is NOT the bug — fed the inherited status it still says skipped", () => {
+  const v = verdictFor(
+    firing({
+      jobname: "ec-vacuum-analyze",
+      pipeline: null,
+      sync_status: "skipped",
+      skip_reason: "peer crawl ec_crawl is backed off until 2026-09-14 06:21:44.694017+00",
+    }),
+    BAND,
+  );
+  assert.equal(v.verdict, "skipped");
+  assert.match(v.detail ?? "", /ec_crawl is backed off/);
+});
+
+test("FIX-1190: a job WITH a pipeline still honours a real skip of its own", () => {
+  const v = verdictFor(
+    firing({
+      jobname: "ec-crawl",
+      pipeline: "entity_connections_rebuild",
+      sync_status: "skipped",
+      skip_reason: "prod session held: manual FEC landing",
+    }),
+    BAND,
+  );
+  assert.equal(v.verdict, "skipped");
+});
+
+test("renderMarkdown: the cron table carries the resolved pipeline, and an em dash for none", () => {
+  const d = fixture();
+  d.cron_jobs = verdictsFor(
+    [
+      firing({ jobname: "ec-vacuum-analyze", pipeline: null, sync_status: null }),
+      firing({ jobname: "vote-stats-refresh", pipeline: "official_vote_stats_rebuild", duration_s: 27.3 }),
+    ],
+    { "ec-vacuum-analyze": BAND },
+  );
+  const md = renderMarkdown(d);
+  assert.match(md, /\| ec-vacuum-analyze \| yes \| 30 4 \* \* \* \| — \|/);
+  assert.match(md, /\| vote-stats-refresh \| yes \| 30 4 \* \* \* \| `official_vote_stats_rebuild` \|/);
+  // The header gained a column; a reader must be told what it means.
+  assert.match(md, /job's OWN `data_sync_log` writer/);
 });

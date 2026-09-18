@@ -41,6 +41,7 @@ import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Client } from "pg";
 import { buildDbUrl } from "../lib/heavy-rebuild";
+import { Q_CRON_JOB_PIPELINES } from "../lib/cron-job-pipelines";
 import {
   type Bands,
   type CanaryCondition,
@@ -309,17 +310,36 @@ WHERE pipeline IN ('nightly_cron','nightly_killed')
 ORDER BY started_at`;
 
 /**
- * Every job in cron.job with its last firing, correlated to whatever
- * data_sync_log row that firing wrote.
+ * Every job in cron.job with its last firing, correlated to the data_sync_log
+ * row THAT JOB'S OWN WRITER wrote.
  *
- * The correlation is TIME-FIRST with a name tiebreak, not name-first: several
- * pg_cron jobs CALL a procedure that logs under a different pipeline name
- * (`refresh-derived-mvs-daily` writes `refresh_derived_mvs`), so a pure name
- * join would silently lose the `skipped` status on exactly the jobs the FIX-950
- * interlock guards — which is the one status this file must not miss.
+ * The key is the job's DERIVED pipeline (`Q_CRON_JOB_PIPELINES`), not its name
+ * and not the clock. A name join was never possible — several jobs CALL a
+ * procedure that logs under a different pipeline (`refresh-derived-mvs-daily`
+ * writes `refresh_derived_mvs`) — but the TIME-FIRST join that stood in for it
+ * had a worse failure: a job with NO writer of its own silently inherited
+ * whichever neighbour wrote inside ±90 s. On 2026-09-15 `ec-vacuum-analyze`
+ * and `officials-vacuum-analyze` both rendered `skipped` on `ec_crawl`'s
+ * backoff reason, which is a vacuum reported as an interlock skip it had no
+ * part in (FIX-1190).
+ *
+ * The ±90 s window survives as the DISAMBIGUATOR, not the key: six jobs share
+ * three pipelines (the three EC jobs → `entity_connections_rebuild`;
+ * daily/weekly `refresh-derived-mvs` → `refresh_derived_mvs`; daily/weekly
+ * `rule-taggers` → `run_rule_taggers`; and `fe-crawl` +
+ * `financial-entity-totals-incremental` → `financial_entity_totals_refresh`),
+ * so the pipeline alone does not identify a firing. Closest `started_at` to the
+ * firing's `start_time` wins.
+ *
+ * When `jp.pipeline IS NULL` the LATERAL returns nothing BY CONSTRUCTION, so
+ * `sync_status` is NULL and `verdictFor()` falls through to the cron status
+ * alone — which is the rule FIX-1190 asks for, and needs no change to the
+ * verdict matrix.
  */
 const Q_CRON_JOBS = `
-WITH last_run AS (
+WITH jp AS (
+${Q_CRON_JOB_PIPELINES}
+), last_run AS (
   SELECT DISTINCT ON (d.jobid)
          d.jobid, d.status, d.return_message, d.start_time, d.end_time
   FROM cron.job_run_details d
@@ -327,6 +347,7 @@ WITH last_run AS (
   ORDER BY d.jobid, d.start_time DESC
 )
 SELECT j.jobid, j.jobname, j.schedule, j.active,
+       jp.pipeline,
        r.start_time, r.end_time,
        r.status                                                   AS cron_status,
        r.return_message,
@@ -334,16 +355,18 @@ SELECT j.jobid, j.jobname, j.schedule, j.active,
        s.status                                                   AS sync_status,
        s.metadata->>'skip_reason'                                 AS skip_reason
 FROM cron.job j
+JOIN jp ON jp.jobid = j.jobid
 LEFT JOIN last_run r ON r.jobid = j.jobid
 LEFT JOIN LATERAL (
   SELECT l.status, l.metadata
   FROM public.data_sync_log l
   WHERE r.start_time IS NOT NULL
+    AND jp.pipeline IS NOT NULL
+    AND l.pipeline = jp.pipeline
     AND l.metadata->>'source' LIKE 'pg_cron%'
     AND l.started_at BETWEEN r.start_time - interval '90 seconds'
                          AND COALESCE(r.end_time, r.start_time) + interval '90 seconds'
-  ORDER BY (l.pipeline = replace(j.jobname, '-', '_')) DESC,
-           abs(EXTRACT(epoch FROM (l.started_at - r.start_time))) ASC
+  ORDER BY abs(EXTRACT(epoch FROM (l.started_at - r.start_time))) ASC
   LIMIT 1
 ) s ON true
 ORDER BY j.jobname`;
@@ -657,6 +680,7 @@ async function main(): Promise<void> {
       jobid: num(row["jobid"]),
       schedule: str(row["schedule"]),
       active: Boolean(row["active"]),
+      pipeline: str(row["pipeline"]),
       last_start: iso(row["start_time"]),
       last_end: iso(row["end_time"]),
       duration_s: num(row["duration_s"]),

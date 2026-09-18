@@ -59,6 +59,15 @@ export interface JobFiring {
   jobid: number | null;
   schedule: string | null;
   active: boolean;
+  /**
+   * The `data_sync_log.pipeline` this job's own writer writes, DERIVED from
+   * `cron.job.command` → the procedure → its pipeline literal
+   * (`lib/cron-job-pipelines.ts`). NULL for the twelve bare-`VACUUM` jobs, the
+   * two watchdogs and `abuse-events-retention`, none of which write a row of
+   * their own — and a NULL here is exactly why `sync_status` must also be NULL
+   * for them rather than a neighbour's status (FIX-1190).
+   */
+  pipeline: string | null;
   /** ISO-8601 UTC, or null when the job has not fired in the lookback. */
   last_start: string | null;
   last_end: string | null;
@@ -533,16 +542,20 @@ export function renderMarkdown(d: ReceiptsData): string {
   p(
     "Every job in `cron.job`, matched **by NAME** — jobids differ between prod and the local " +
       "clone and are not portable (CLAUDE.md, FIX-946). `no-band` means nobody has written a " +
-      "band for this job in `docs/receipts/bands.json`; it is not a pass.",
+      "band for this job in `docs/receipts/bands.json`; it is not a pass. The `pipeline` " +
+      "column is the job's OWN `data_sync_log` writer, derived from its command (FIX-1190); " +
+      "`—` means the job writes no row, so its verdict comes from the cron status alone and " +
+      "can never be a neighbour's `skipped`.",
   );
   p("");
   p(
     table(
-      ["job", "active", "schedule", "last firing (UTC)", "duration", "cron status", "band", "verdict", "detail"],
+      ["job", "active", "schedule", "pipeline", "last firing (UTC)", "duration", "cron status", "band", "verdict", "detail"],
       d.cron_jobs.map((j) => [
         j.jobname,
         j.active ? "yes" : "**no**",
         j.schedule,
+        j.pipeline === null ? "—" : "`" + j.pipeline + "`",
         j.last_start,
         fmtSeconds(j.duration_s),
         j.cron_status,
