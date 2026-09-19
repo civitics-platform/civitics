@@ -1,0 +1,53 @@
+{
+  "cc": "135",
+  "prompt": "cc-prompt-135-fix1171-tiger-centroid-on-both-upsert-paths-fix1170-nh-floterial-overlay-layer-and-p-limit-smalls-residue-audit-out-dir-bot-pr3-fix1178-rule-taggers-band-read.md",
+  "started_at": "2026-09-19T00:24:31Z",
+  "finished_at": "2026-09-19T01:47:13Z",
+  "head_before": "955b5d3b",
+  "head_after": "cdad266a",
+  "commits": [
+    {
+      "sha": "55fb1a2a",
+      "subject": "feat(data): FIX-1198 — audit-fec-emit-residue writes its default --out-dir under the repo root, not the cwd"
+    },
+    {
+      "sha": "1801de36",
+      "subject": "feat(graph): FIX-1170 — floterial overlay layer on the SLD choropleth; voting-divergence fills with floterials included and a measured p_limit"
+    },
+    {
+      "sha": "b69763c0",
+      "subject": "feat(db): FIX-1171 — upsert_district_jurisdiction writes centroid on both paths; FIX-1170 — query_districts(p_include_floterial) with a floterial output column"
+    },
+    {
+      "sha": "cef555ca",
+      "subject": "docs(fixes): FIX-1171 / FIX-1170 / FIX-1178 / FIX-1198 appends"
+    },
+    {
+      "sha": "c1df5842",
+      "subject": "chore(fixes): sync status after FIX-1171 / FIX-1170 / FIX-1198"
+    },
+    {
+      "sha": "cdad266a",
+      "subject": "docs(fixes): file FIX-1199 — the monthly disposable-email refresh has been failing at push since 2026-09-03"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1171",
+    "FIX-1170",
+    "FIX-1198"
+  ],
+  "fixes_filed": [
+    "FIX-1198",
+    "FIX-1199"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [
+    "supabase/migrations/20260919011000_fix1171_district_upsert_centroid.sql",
+    "supabase/migrations/20260919011500_fix1170_query_districts_include_floterial.sql"
+  ],
+  "prod_writes": "Two DDL migrations applied to Pro 2026-09-19 01:39:28-01:39:29 UTC via db-push-prod (CREATE OR REPLACE on upsert_district_jurisdiction; DROP + CREATE on query_districts). No table data written, no pipeline run, no VACUUM, no cron.job change. Everything else prod-side was a read.",
+  "ci": "green",
+  "stopped_items": [
+    "The FIX-914 append item 6 asked for was not written: FIX-914 has no live bullet in docs/FIXES.md (closed 2026-09-09, bullet archived). Its content — that D7's partition still holds because the overlay is opt-in — is folded into the FIX-1170 append instead."
+  ]
+}
