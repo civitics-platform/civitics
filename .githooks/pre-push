@@ -30,6 +30,58 @@ if ! pnpm --filter @civitics/data typecheck; then
 fi
 echo "[pre-push] ✓ @civitics/data typecheck clean."
 
+# ── Scope of the trunk gate (FIX-1199) ──────────────────────────────────────
+# `prepare` runs on EVERY `pnpm install`, CI included, so this hook also fires
+# for the three workflows that push after an install: refresh-disposable-emails
+# (peter-evans/create-pull-request), nightly (receipts) and audit. In those
+# checkouts the gate cannot do its job, and it fails in BOTH directions:
+#
+#   * `actions/checkout@v4` defaults to `fetch-depth: 1`, so `origin/main`
+#     resolves but `git rev-list origin/main` yields exactly one commit. Every
+#     done.log SHA is then "object not in this clone" → classified `unknown` →
+#     skipped. The gate is inert, and passes for reasons unrelated to trunk.
+#     (Measured: nightly run 35403626528, receipts push, `trailersScanned 0`.)
+#
+#   * When something deepens the object store WITHOUT deepening origin/main,
+#     the gate turns actively wrong. create-pull-request fetches its long-lived
+#     branch at `--depth=11`; that branch's ancestry IS early-August `main`, so
+#     those objects become present while `origin/main` stays depth 1.
+#     `merge-base --is-ancestor` then answers "false" for genuine ancestors and
+#     the push is aborted on a false positive. That is run 33769138373
+#     (2026-09-03): FIX-960 and FIX-962 reported as "recorded as done but never
+#     shipped" when all three of their SHAs are, and were, on main.
+#
+# So: under GITHUB_ACTIONS, if the repository is shallow or no trunk ref
+# resolves, ancestry is not decidable here — step aside and say so. This is
+# narrower than `--no-verify` (which would also drop the typecheck gate above,
+# for humans too) and narrower than `--ignore-scripts` (which would unwire the
+# hook for every other consumer of `pnpm install`). Drift and ancestry are both
+# still gated on PRs by fixes-integrity.yml, which checks out `fetch-depth: 0`.
+
+trunk_skip_reason=""
+if [ -n "$GITHUB_ACTIONS" ]; then
+  is_shallow=$(git rev-parse --is-shallow-repository 2>/dev/null)
+  if [ "$is_shallow" != "true" ] && [ "$is_shallow" != "false" ]; then
+    # git < 2.15 has no --is-shallow-repository; fall back to the marker file.
+    git_dir=$(git rev-parse --git-dir 2>/dev/null)
+    [ -n "$git_dir" ] && [ -f "$git_dir/shallow" ] && is_shallow="true"
+  fi
+
+  if [ "$is_shallow" = "true" ]; then
+    trunk_skip_reason="shallow checkout — ancestry is not decidable"
+  elif ! git rev-parse --verify --quiet origin/main >/dev/null 2>&1 &&
+       ! git rev-parse --verify --quiet refs/remotes/origin/main >/dev/null 2>&1 &&
+       ! git rev-parse --verify --quiet main >/dev/null 2>&1; then
+    trunk_skip_reason="no trunk ref (origin/main|main) resolves"
+  fi
+fi
+
+if [ -n "$trunk_skip_reason" ]; then
+  echo "[pre-push] fixes:check:trunk SKIPPED under GITHUB_ACTIONS: $trunk_skip_reason."
+  echo "[pre-push]   Ancestry is gated on PRs by fixes-integrity.yml (fetch-depth: 0). FIX-1199."
+  exit 0
+fi
+
 echo "[pre-push] running pnpm fixes:check:trunk ..."
 if ! pnpm fixes:check:trunk; then
   echo ""
