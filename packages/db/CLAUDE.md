@@ -863,3 +863,83 @@ Never: **AWS S3** (egress fees are prohibitive)
    without --local flag.
    NEVER connect to prod DB during
    development."
+
+---
+
+## Regenerating `src/types/database.ts` (`pnpm db:types`)
+
+`pnpm db:types` is `supabase gen types typescript --project-id …` — it generates
+from **prod**. That is the right default and the committed file is prod-faithful.
+
+Generate from **local** instead when a migration is on disk but not yet applied
+to Pro and the app must typecheck first (`supabase.rpc("new_fn")` fails
+typecheck until the `Database` type knows the function):
+
+```bash
+# --workdir is REQUIRED from a worktree: the CLI locates the running stack by
+# the project id derived from the workdir, and a worktree is not where the local
+# stack was started. Without it: "supabase start is not running".
+supabase --workdir /path/to/primary/checkout gen types typescript \
+  --db-url "postgresql://postgres:postgres@127.0.0.1:54322/postgres" > /abs/path/local.ts
+```
+
+Write the temp file to an **absolute** path — Node on Windows resolves `/tmp/x`
+to `C:\tmp\x`.
+
+### The local gen differs from the prod gen by four artifacts, none of them schema
+
+Do **not** overwrite the committed file with the local gen. Measured 2026-09-19
+(CLI 2.78.1), a local gen against a clean clone is 50 insertions / 14 deletions
+against the committed file, and every one of them is an artifact:
+
+| # | artifact | lines | fix |
+|---|---|---|---|
+| 1 | local gen OMITS the `__InternalSupabase` `PostgrestVersion` header | −4 | splice the committed header back on |
+| 2 | local gen ADDS a `graphql_public` schema block to `Database` | +24 | the same splice drops it |
+| 3 | local gen ADDS `graphql_public` to the `Constants` export | +4 | strip it — see below |
+| 4 | generic-constraint parentheses differ by CLI version (`TableName extends (X extends … : never) = never` vs the same unparenthesised) | 10 pairs | leave alone; a prod-side `db:types` flips it straight back |
+
+Splice the committed header onto the local `public` schema:
+
+```js
+const marker = "\n  public: {";   // unique — "graphql_public" is followed by "graphql_public:"
+merged = committed.slice(0, committed.indexOf(marker)) + local.slice(local.indexOf(marker));
+```
+
+**The `Constants` `graphql_public` entry is MULTI-LINE as of CLI 2.78.1:**
+
+```
+  graphql_public: {
+    Enums: {},
+  },
+```
+
+not the single-line `graphql_public: { Enums: {} },` an older regex was written
+for. A regex for the single-line shape matches **nothing** and the churn lands in
+the commit silently. **Assert after stripping** rather than trusting the replace:
+
+```js
+if (/graphql_public/.test(merged)) throw new Error("graphql_public survived the strip");
+```
+
+### The local clone carries objects prod does not
+
+Proof/audit sessions leave scratch tables on the local Docker clone. A wholesale
+splice pulls them into `database.ts`, where they are indistinguishable from real
+schema. Before generating, check:
+
+```bash
+node scripts/db-query.mjs --local "SELECT relname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relkind='r' AND relname LIKE '\_%' ORDER BY 1;"
+```
+
+and confirm each hit against prod by name before deciding it is scratch — some
+underscore-prefixed tables are real (`_drb_chunk_fe`, `_drb_donor`, `_drb_fe`,
+`_drb_targets` exist on prod and belong in the generated types). 2026-09-19
+dropped ten local-only scratch tables (`_eq_a`, `_eq_b`, `_eq_c`, `_eq_before`,
+`_proof_ref_br`, `_proof_ref_odrmv`, `_proof_ref_odt`, `_proof_ref_sa`,
+`_proof_ref_sd`, `_proof_ref_tm` — 916 MB), which took the local-gen diff from
+392/10 to 50/14. `_proof_recips` is still there and still local-only.
+
+**When the real change is small, patch the committed file surgically instead of
+splicing.** Then the diff is only what you added, which is also what the future
+prod-side gen produces.
