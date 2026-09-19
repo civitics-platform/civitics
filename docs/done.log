@@ -1450,3 +1450,6 @@
 2026-09-18 | FIX-1174 | d9a1c030 | local-only | feat(data): FIX-1174 — every operator-run :prod writer claims the supervised prod session
 2026-09-18 | FIX-1193 | 4306bc45 | local-only | feat(data): FIX-1193 — owner schedule + guarded columns in the tail cost table, read live from cron.job
 2026-09-18 | FIX-1197 | 518ecd33 | local-only | test(data): FIX-1197 — canary condition-key census; registry + source-scan test
+2026-09-18 | FIX-1170 | b69763c0 | prod-only | feat(db): FIX-1171 — upsert_district_jurisdiction writes centroid on both paths; FIX-1170 — query_districts(p_include_floterial) with a floterial output column
+2026-09-18 | FIX-1171 | b69763c0 | prod-only | feat(db): FIX-1171 — upsert_district_jurisdiction writes centroid on both paths; FIX-1170 — query_districts(p_include_floterial) with a floterial output column
+2026-09-18 | FIX-1198 | 55fb1a2a | local-only | feat(data): FIX-1198 — audit-fec-emit-residue writes its default --out-dir under the repo root, not the cwd
