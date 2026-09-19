@@ -1,0 +1,33 @@
+{
+  "cc": "137",
+  "prompt": "cc-prompt-137-fix1180-anon-3s-cancel-split-for-get-official-page-fix1181-service-role-rpcs-past-the-8s-bound-census-script-attribution-mode.md",
+  "started_at": "2026-09-19T03:06:00Z",
+  "finished_at": "2026-09-19T03:40:00Z",
+  "head_before": "704ea062",
+  "head_after": "07f9679e",
+  "commits": [
+    {
+      "sha": "6059c675",
+      "subject": "feat(data): cancellation census — --by <field> / --like attribution mode over postgres_logs"
+    },
+    {
+      "sha": "555071fe",
+      "subject": "docs(audits): FIX-1180 / FIX-1181 — the anon-vs-authenticated cancel split for get_official_page; how two service_role RPCs ran past 8s"
+    },
+    {
+      "sha": "07f9679e",
+      "subject": "docs(fixes): FIX-1180 / FIX-1181 / FIX-1128 appends"
+    }
+  ],
+  "fixes_closed": [],
+  "fixes_filed": [],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "none",
+  "ci": "green",
+  "stopped_items": [
+    "Item 2 (the FIX-1181 SET LOCAL fix + check:timeout-scope guard) was not built. This is the prompt's own conditional branch, not a blockage: D3's classification found no session-scoped SET statement_timeout on any PostgREST path, so there was nothing to make LOCAL and a lexical guard would have guarded an empty set. Every such site in the repo is on a pg.Client the code constructs and closes itself.",
+    "Read 6's sanctioned probe re-measurement could not run. public._fix1128_probe_sleep no longer exists on prod — pg_proc returns no row for it, in the same query that returned all three other functions, so this is absence rather than a failed read. Nothing was created to replace it; the 2026-09-13 bounds table remains the only measured calibration, and section 4 leans on it.",
+    "D2's 'run over the longest window the API keeps' could not be run as written. The Logs API silently answers a >24h window from the day containing the window START and ignores the end, so the literal instruction returns day 1 of 7 while looking like 7 days. Walked four epoch-aligned 24h windows instead and summed them; the census now refuses the shape that would have produced the wrong number."
+  ]
+}
