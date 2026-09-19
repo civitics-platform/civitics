@@ -17,6 +17,11 @@
  *                             Belknap 8 representatives.
  *   id     (exact lookup)  -> the row asked for, overlay or not, or the
  *                             floterial's own /districts/[id] page has no map.
+ *   FIX-1170 added a fourth: an explicit p_include_floterial := true, which
+ *                             returns BOTH layers with a `floterial` column
+ *                             saying which is which, for the overlay layer on
+ *                             the choropleth. It is an opt-in, so the fill case
+ *                             above is unchanged and stays the default.
  *
  * Skips when 127.0.0.1:54322 is unreachable.
  */
@@ -147,5 +152,47 @@ test("every floterial's representatives are linked to it and its seat count is r
       assert.ok(Number(r.linked) <= Number(r.seats),
         `${r.district_id}: ${r.linked} linked but only ${r.seats} seats`);
     }
+  } finally { await client.end().catch(() => {}); }
+});
+
+test("FIX-1170 — the OVERLAY reader opts in explicitly and gets 203 rows, 39 of them tagged", async (t) => {
+  const client = await connectOrNull();
+  if (!client) { t.skip("local Postgres unreachable"); return; }
+  try {
+    // The fourth path, added by FIX-1170: /api/graph/voting-divergence asks for
+    // the base layer AND the overlay in one round trip, and draws them as two
+    // layers. It is a new reader rather than a relaxation of the fill — the
+    // case above still pins the default at 164, and must keep doing so.
+    const { rows } = await client.query<{ district_id: string; floterial: boolean }>(
+      `SELECT district_id, floterial
+         FROM public.query_districts('lower','NH',NULL,NULL,NULL,NULL,NULL,NULL,0.01,400,NULL,true)`,
+    );
+    assert.equal(rows.length, 203, "164 base + 39 overlay");
+    assert.equal(rows.filter((r) => r.floterial).length, 39);
+    assert.equal(rows.filter((r) => !r.floterial).length, 164);
+  } finally { await client.end().catch(() => {}); }
+});
+
+test("FIX-1170 — p_limit 400 clears the largest band in the country, which is NOT New Hampshire", async (t) => {
+  const client = await connectOrNull();
+  if (!client) { t.skip("local Postgres unreachable"); return; }
+  try {
+    // The 200 that FIX-914's header flagged as an NH hazard was ALREADY
+    // truncating Pennsylvania: PA's lower chamber is 203 base districts with no
+    // floterial anywhere near it, so three have been missing from the
+    // choropleth since FIX-217. Pin the measurement the new limit was chosen
+    // from, so a future state crossing 400 fails here rather than on the map.
+    const { rows } = await client.query<{ st: string; ch: string; n: string }>(
+      `SELECT metadata->>'state_abbr' AS st, metadata->>'chamber' AS ch, count(*)::text AS n
+         FROM public.jurisdictions
+        WHERE type = 'district'
+        GROUP BY 1, 2 ORDER BY count(*) DESC LIMIT 1`,
+    );
+    const largest = Number(rows[0]!.n);
+    assert.ok(largest <= 400,
+      `voting-divergence pages query_districts at p_limit 400; the largest band is ` +
+      `${rows[0]!.st}/${rows[0]!.ch} at ${largest} rows, which would truncate`);
+    assert.ok(largest > 200,
+      "fixture check: if no band exceeds 200 any more, the p_limit finding has changed and this case should be re-read");
   } finally { await client.end().catch(() => {}); }
 });

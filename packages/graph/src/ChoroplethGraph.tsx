@@ -28,6 +28,8 @@ interface DistrictRow {
   measureValue: number | null;
   officialIds: string[];
   primaryParty: string | null;
+  /** FIX-1170 — an NH floterial overlay polygon rather than a base district. */
+  floterial?: boolean;
 }
 
 export interface ChoroplethGraphProps {
@@ -50,6 +52,9 @@ export function ChoroplethGraph({
   const [rows, setRows] = useState<DistrictRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // FIX-1170 — overlay layer visibility. On by default: the 58 floterial
+  // representatives are the reason the rows are fetched at all.
+  const [showFloterial, setShowFloterial] = useState(true);
 
   const measure    = vizOptions?.measure    ?? "party_cohesion";
   const bandLevel  = vizOptions?.bandLevel  ?? "congressional";
@@ -77,16 +82,26 @@ export function ChoroplethGraph({
     const width  = container?.clientWidth  ?? 800;
     const height = container?.clientHeight ?? 600;
 
-    const features: GeoJSON.Feature[] = rows
-      .filter(r => r.geojson)
-      .map((r) => ({
-        type: "Feature",
-        geometry: r.geojson as GeoJSON.Geometry,
-        properties: { ...r },
-      }));
-    if (features.length === 0) return;
+    // FIX-1170 — two layers, not one. Floterial districts OVERLAP the base
+    // districts they sit on, so painting them into the same fill would cover
+    // whatever drew last and stop the state reading as a partition of itself
+    // (FIX-914 D7). Base fills first; overlay outlines over the top.
+    const toFeature = (r: DistrictRow): GeoJSON.Feature => ({
+      type: "Feature",
+      geometry: r.geojson as GeoJSON.Geometry,
+      properties: { ...r },
+    });
+    const withGeom = rows.filter(r => r.geojson);
+    const features        = withGeom.filter(r => !r.floterial).map(toFeature);
+    const overlayFeatures = showFloterial ? withGeom.filter(r => r.floterial).map(toFeature) : [];
+    if (features.length === 0 && overlayFeatures.length === 0) return;
 
-    const collection: GeoJSON.FeatureCollection = { type: "FeatureCollection", features };
+    // The projection is fitted on the BASE layer alone where one exists, so
+    // toggling the overlay never re-frames the map under the reader.
+    const collection: GeoJSON.FeatureCollection = {
+      type: "FeatureCollection",
+      features: features.length > 0 ? features : overlayFeatures,
+    };
 
     // Albers USA projection for congressional districts; mercator for state SLDs.
     const projection = d3
@@ -155,6 +170,37 @@ export function ChoroplethGraph({
         return `${p.districtName}\n${labelFor(measure)}: ${fmtMeasure(p.measureValue, isDiverging)}`;
       });
 
+    // FIX-1170 — the floterial overlay. Dashed outline, no fill, so the base
+    // choropleth stays fully readable underneath it. `fill: none` plus
+    // pointer-events on the stroke keeps the interior click-through to the base
+    // district, which is the one a reader is usually after.
+    if (overlayFeatures.length > 0) {
+      g.selectAll("path.floterial")
+        .data(overlayFeatures)
+        .join("path")
+        .attr("class", "floterial")
+        .attr("d", d => path(d) ?? "")
+        .attr("fill", "none")
+        .attr("stroke", d => {
+          const props = d.properties as DistrictRow;
+          return primaryEntityId && props.officialIds.includes(primaryEntityId)
+            ? T.amber
+            : T.dim;
+        })
+        .attr("stroke-width", d => {
+          const props = d.properties as DistrictRow;
+          return primaryEntityId && props.officialIds.includes(primaryEntityId) ? 2.5 : 1.5;
+        })
+        .attr("stroke-dasharray", "4 3")
+        .style("pointer-events", "stroke")
+        .style("cursor", "pointer")
+        .append("title")
+        .text(d => {
+          const p = d.properties as DistrictRow;
+          return `${p.districtName} (floterial)\n${labelFor(measure)}: ${fmtMeasure(p.measureValue, isDiverging)}`;
+        });
+    }
+
     // Legend (compact, bottom-left). Party-control (diverging) gradients run over
     // the fixed [−1,1] party domain with Dem/Rep endpoints; sequential measures
     // keep the data-extent percentage endpoints.
@@ -184,7 +230,7 @@ export function ChoroplethGraph({
       .attr("x", legendW).attr("y", legendH + 12).attr("text-anchor", "end")
       .attr("font-size", 9).attr("fill", T.dim)
       .text(isDiverging ? "Republican" : `${(hiLeg * 100).toFixed(0)}%`);
-  }, [rows, measure, colorScale, primaryEntityId, svgRef]);
+  }, [rows, measure, colorScale, primaryEntityId, svgRef, showFloterial]);
 
   if (error) {
     return (
@@ -240,8 +286,31 @@ export function ChoroplethGraph({
     );
   }
 
+  // FIX-1170 — the overlay control appears only when this response actually
+  // carries overlay rows, which today means the NH lower-chamber band. Keying
+  // it on the data rather than on a hard-coded state keeps it correct if a
+  // second state's floterials are ever derived.
+  const floterialCount = rows.filter(r => r.floterial).length;
+
   return (
-    <div ref={containerRef} className={`w-full h-full ${className}`}>
+    <div ref={containerRef} className={`w-full h-full relative ${className}`}>
+      {floterialCount > 0 && (
+        <div className="absolute top-3 right-3 z-10 flex items-center gap-1.5 bg-term-bg/80 rounded-full px-2.5 py-1">
+          <span aria-hidden="true" className="text-[10px] text-ink-soft">
+            Floterial districts (NH)
+          </span>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={showFloterial}
+            aria-label={`Floterial districts (NH) — ${floterialCount} overlay districts`}
+            onClick={() => setShowFloterial(v => !v)}
+            className={`w-7 h-4 rounded-full transition-colors relative focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1 ${showFloterial ? 'bg-accent' : 'bg-ink/20'}`}
+          >
+            <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-paper shadow transition-transform ${showFloterial ? 'translate-x-3.5' : 'translate-x-0.5'}`} />
+          </button>
+        </div>
+      )}
       <svg id="choropleth-svg" ref={svgRef} className="w-full h-full" />
     </div>
   );

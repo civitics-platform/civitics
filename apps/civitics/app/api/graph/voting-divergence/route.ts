@@ -30,6 +30,13 @@ interface ResponseRow {
   measureValue: number | null;
   officialIds: string[];
   primaryParty: string | null;
+  /**
+   * FIX-1170 — true for a New Hampshire floterial district: an overlay polygon
+   * that OVERLAPS the base districts rather than tiling with them. The client
+   * draws these as a separate outlined layer over the base fill, so the base
+   * layer stays a partition of the state (FIX-914 D7).
+   */
+  floterial: boolean;
 }
 
 const VALID_MEASURES = new Set(["party_cohesion", "divergence", "small_dollar_share"]);
@@ -70,7 +77,7 @@ export async function GET(req: NextRequest) {
   // Fetch districts + their boundaries via the existing query_districts RPC,
   // which returns ST_AsGeoJSON-converted polygons rather than raw PostGIS.
   // For 'state' band, query the jurisdictions table directly.
-  let jRows: Array<{ id: string; name: string; geom_geojson: string | null }>;
+  let jRows: Array<{ id: string; name: string; geom_geojson: string | null; floterial: boolean }>;
   if (isStateBand) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data, error } = await (supabase as any)
@@ -83,7 +90,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
     jRows = (data ?? []).map((r: { id: string; name: string }) => ({
-      id: r.id, name: r.name, geom_geojson: null,
+      id: r.id, name: r.name, geom_geojson: null, floterial: false,
     }));
   } else {
     // FIX-217: query_districts RPC, paginated per-state. Server-side
@@ -92,21 +99,39 @@ export async function GET(req: NextRequest) {
     // single call hit a Supabase statement timeout; per-state slices stay
     // well under both timeout and payload limits.
     const stateAbbrs = ["AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","WV","WI","WY","DC"];
-    const allRows: Array<{ id: string; name: string; geom_geojson: string | null }> = [];
+    const allRows: Array<{ id: string; name: string; geom_geojson: string | null; floterial: boolean }> = [];
     for (const st of stateAbbrs) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data, error } = await (supabase as any).rpc("query_districts", {
         p_chamber: chamberFilter,
         p_state:   st,
         p_simplify_tolerance: 0.01,
-        p_limit:   200,
+        // FIX-1170. Two bugs in one number, and only the second was known.
+        //
+        // p_limit was 200 against a MEASURED largest per-state band of 203 —
+        // PA lower is 203 base districts and NH lower is 164 base + 39
+        // floterial. So PA has been silently losing three districts off this
+        // map since FIX-217, with no floterial anywhere near it; the ORDER BY
+        // inside query_districts makes it the same three every time.
+        //
+        // 400 is ~2x the measured maximum. Redistricting moves these counts by
+        // single digits a decade, so the headroom is real rather than a guess.
+        p_limit:   400,
+        // FIX-1170 — the overlay rows, which the fill deliberately excludes by
+        // default (FIX-914 D7). They arrive tagged and are drawn as their own
+        // layer; without them the 58 floterial representatives have no district
+        // on this map and no divergence row at all.
+        p_include_floterial: true,
       });
       if (error) {
         console.error(`[voting-divergence] ${st}: ${error.message}`);
         continue;
       }
-      for (const r of (data ?? []) as Array<{ id: string; name: string; geom_geojson: string }>) {
-        allRows.push({ id: r.id, name: r.name, geom_geojson: r.geom_geojson });
+      for (const r of (data ?? []) as Array<{ id: string; name: string; geom_geojson: string; floterial: boolean | null }>) {
+        allRows.push({
+          id: r.id, name: r.name, geom_geojson: r.geom_geojson,
+          floterial: r.floterial === true,
+        });
       }
     }
     jRows = allRows;
@@ -247,6 +272,7 @@ export async function GET(req: NextRequest) {
       measureValue: measureByDistrict.get(d.id) ?? null,
       officialIds:  reps.map(r => r.id),
       primaryParty,
+      floterial:    d.floterial,
     };
   });
 
