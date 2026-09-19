@@ -35,8 +35,17 @@
  */
 
 import {
+  buildAttributionSql,
   edgeVerdictFor,
+  formatAttribution,
+  isAttributableField,
+  sanitizeLike,
   verdictFor,
+  ATTRIBUTABLE_FIELDS,
+  LOGS_RETENTION_DAYS,
+  MAX_ATTRIBUTION_MINUTES,
+  type AttributableField,
+  type AttributionRow,
   type CancellationBucket,
   type EdgeBucket,
 } from "../lib/cancellation-census";
@@ -101,10 +110,20 @@ interface Args {
   endMs: number;
   baseline: number;
   json: boolean;
+  /** Non-null puts the script in attribution mode: no verdict, always exit 0. */
+  by: AttributableField | null;
+  like: string | null;
 }
 
 function parseArgs(argv: readonly string[]): Args {
-  const a: Args = { minutes: 60, endMs: Date.now(), baseline: DEFAULT_BASELINE, json: false };
+  const a: Args = {
+    minutes: 60,
+    endMs: Date.now(),
+    baseline: DEFAULT_BASELINE,
+    json: false,
+    by: null,
+    like: null,
+  };
   for (let i = 0; i < argv.length; i++) {
     const v = argv[i + 1];
     switch (argv[i]) {
@@ -123,12 +142,38 @@ function parseArgs(argv: readonly string[]): Args {
         a.baseline = Number(v);
         i++;
         break;
+      case "--by": {
+        const f = String(v);
+        if (!isAttributableField(f)) {
+          throw new Error(
+            `--by ${f} is not a parsed field on a cancellation row. ` +
+              `Known: ${ATTRIBUTABLE_FIELDS.join(", ")}`,
+          );
+        }
+        a.by = f;
+        i++;
+        break;
+      }
+      case "--like": {
+        const l = sanitizeLike(String(v));
+        if (l === null) {
+          throw new Error(
+            `--like ${v} is not usable: 1-120 chars of [A-Za-z0-9_. :/-] only ` +
+              "(it is interpolated into a SQL string literal)",
+          );
+        }
+        a.like = l;
+        i++;
+        break;
+      }
       case "--json":
         a.json = true;
         break;
       case "--help":
         console.log(
-          "Usage: cancellation-census [--minutes N] [--end <iso>] [--baseline <per-min>] [--json]",
+          "Usage: cancellation-census [--minutes N] [--end <iso>] [--baseline <per-min>] [--json]\n" +
+            "       cancellation-census --by <field> [--like <substring>] [--minutes N] [--end <iso>] [--json]\n" +
+            `       fields: ${ATTRIBUTABLE_FIELDS.join(", ")}`,
         );
         process.exit(0);
         break;
@@ -138,6 +183,17 @@ function parseArgs(argv: readonly string[]): Args {
   }
   if (!Number.isFinite(a.minutes) || a.minutes <= 0) throw new Error("--minutes must be > 0");
   if (!Number.isFinite(a.baseline) || a.baseline < 0) throw new Error("--baseline must be >= 0");
+  if (a.like !== null && a.by === null) throw new Error("--like needs --by (it narrows an attribution)");
+  // The clamp, refused rather than silently under-reported. See
+  // MAX_ATTRIBUTION_MINUTES for the measurement this rests on.
+  if (a.by !== null && a.minutes > MAX_ATTRIBUTION_MINUTES) {
+    throw new Error(
+      `--minutes ${a.minutes} exceeds the Logs API's measured ${MAX_ATTRIBUTION_MINUTES}-minute ` +
+        "answer window. Above it the API returns the OLDEST 24 h of the range asked for, with " +
+        "no error and no short result — a wrong answer that looks like a right one. Walk a " +
+        `longer span with repeated --end runs instead (retention is ${LOGS_RETENTION_DAYS} days).`,
+    );
+  }
   return a;
 }
 
@@ -180,6 +236,60 @@ async function main(): Promise<void> {
   }
 
   const startMs = args.endMs - args.minutes * 60_000;
+
+  // ── attribution mode ──────────────────────────────────────────────────────
+  // Deliberately BEFORE the gate queries and deliberately terminal: this asks
+  // which statement is being cancelled, which is not a health question, so it
+  // runs neither gate and exits 0 on every outcome including "nothing matched".
+  // Conflating the two is how an instrument becomes a gate nobody trusts.
+  if (args.by !== null) {
+    const sql = buildAttributionSql(args.by, args.like);
+    const rows = await query<{ g: string | null; n: number }>(sql, startMs, args.endMs, token);
+    if (rows === null) {
+      console.error("[census] the Logs API did not answer — no attribution. (exit 2)");
+      process.exit(2);
+    }
+    const parsed: AttributionRow[] = rows.map((r) => ({
+      group: r.g === null || r.g === "" ? "(null)" : String(r.g),
+      count: Number(r.n) || 0,
+    }));
+    if (args.json) {
+      console.log(
+        JSON.stringify(
+          {
+            window: { start: iso(startMs), end: iso(args.endMs), minutes: args.minutes },
+            by: args.by,
+            like: args.like,
+            sql,
+            rows: parsed,
+            gate: null,
+          },
+          null,
+          2,
+        ),
+      );
+    } else {
+      console.log(
+        `\n${formatAttribution({
+          rows: parsed,
+          field: args.by,
+          like: args.like,
+          startIso: iso(startMs),
+          endIso: iso(args.endMs),
+        })}`,
+      );
+    }
+    // RETURN, not process.exit(0). Calling process.exit() here aborts the
+    // process on Windows — `Assertion failed: !(handle->flags &
+    // UV_HANDLE_CLOSING), src\win\async.c` — and the shell sees 127, not 0.
+    // The gate path below survives it only because awaiting TWO fetches leaves
+    // undici's handle far enough through teardown by the time it exits. One
+    // fetch does not, so this path lets the loop drain on its own instead.
+    // Measured both ways on this box; the exit code is the whole contract here.
+    process.exitCode = 0;
+    return;
+  }
+
   // The edge half is bucketed at 15 min and gated on the last CLOSED bucket, so
   // it reads a whole-bucket-aligned window ending at the last boundary already
   // past. Sharing the cancellation window would gate on a bucket still filling.

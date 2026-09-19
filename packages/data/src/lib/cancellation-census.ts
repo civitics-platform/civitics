@@ -111,3 +111,160 @@ export function edgeVerdictFor(buckets: readonly EdgeBucket[]): EdgeVerdict {
     note: `${last.n5xx} of ${last.requests} request(s) = ${pct.toFixed(2)} %`,
   };
 }
+
+// ───────────────────────────── attribution mode ─────────────────────────────
+//
+// The gate above answers "is the box healthy enough to start". Attribution
+// answers a different question — WHICH statement is being cancelled — and the
+// two must not be confused, so this half returns no verdict and the caller
+// exits 0 regardless. It is an instrument, not a gate.
+//
+// It exists because pgss CANNOT answer it. `pg_stat_statements` does not record
+// a statement that was cancelled (measured on local PG17, cc-137 read 2: a
+// `SET statement_timeout='1s'` + `pg_sleep(3.5)` leaves ZERO pgss rows), so
+// every 57014 is invisible there by construction and the Logs API is the only
+// instrument that can see one.
+
+/** One attribution group: a field value and how many cancellations carried it. */
+export interface AttributionRow {
+  group: string;
+  count: number;
+}
+
+/**
+ * The `metadata.parsed` fields a cancellation row actually carries, PROBED on
+ * prod (cc-137 read 2) rather than assumed. Allow-listed because `--by` is
+ * interpolated into the SQL string.
+ *
+ * `user_name` is deliberately included and is deliberately near-useless for
+ * splitting a PostgREST request by its effective role: PostgREST logs in as
+ * `authenticator` and then `SET ROLE`s to anon / authenticated / service_role,
+ * and the Postgres log records the LOGIN role. Measured over 24 h of prod: all
+ * 38 cancellations carried `user_name = authenticator`, none carried anon,
+ * authenticated or service_role. So the role split is not readable here; the
+ * QUERY is, which is what `--by query` is for.
+ */
+export const ATTRIBUTABLE_FIELDS = [
+  "query",
+  "user_name",
+  "application_name",
+  "backend_type",
+  "command_tag",
+  "database_name",
+  "connection_from",
+  "error_severity",
+  "sql_state_code",
+  "session_id",
+] as const;
+
+export type AttributableField = (typeof ATTRIBUTABLE_FIELDS)[number];
+
+export function isAttributableField(v: string): v is AttributableField {
+  return (ATTRIBUTABLE_FIELDS as readonly string[]).includes(v);
+}
+
+/**
+ * THE 24-HOUR CLAMP — the single most important thing to know about this API.
+ *
+ * The Logs API answers a query from the partition holding `iso_timestamp_start`
+ * and silently ignores an `iso_timestamp_end` more than 24 h later. It does not
+ * error, it does not warn, and it does not return a short window — it returns a
+ * FULL, PLAUSIBLE 24 h of rows that are the OLDEST day of the range asked for.
+ *
+ * Measured on prod (cc-137 read 2), each request made at 2026-09-19T03:07Z:
+ *
+ *   lookback   rows   rows actually covering
+ *   1 day      3790   2026-09-18T03:08 → 2026-09-19T03:06   (the whole window)
+ *   2 days     4824   2026-09-17T03:08 → 2026-09-18T03:06   (the OLDEST day)
+ *   3 days     3857   2026-09-16T03:08 → 2026-09-17T03:06   (the OLDEST day)
+ *   7 days     3874   2026-09-12T03:08 → 2026-09-13T03:06   (the OLDEST day)
+ *
+ * A caller asking for "the last 7 days" therefore gets day 1 of 7 and no
+ * indication of it. That is a wrong answer wearing a right answer's clothes, so
+ * this refuses above the clamp rather than quietly under-reporting; walk a
+ * longer span with repeated `--end` runs, which is what the audit did.
+ */
+export const MAX_ATTRIBUTION_MINUTES = 1440;
+
+/**
+ * Retention, measured the same way: a window STARTING 7 days back returns rows;
+ * one starting 8, 9 or 10 days back returns zero. Supabase Pro keeps 7 days.
+ */
+export const LOGS_RETENTION_DAYS = 7;
+
+/**
+ * `--like` is interpolated into a BigQuery string literal, so it is restricted
+ * to characters that cannot close one or start a comment. Returns null when the
+ * value is unusable, and the caller turns that into a refusal.
+ */
+export function sanitizeLike(raw: string): string | null {
+  if (raw.length === 0 || raw.length > 120) return null;
+  return /^[A-Za-z0-9_. :/-]+$/.test(raw) ? raw : null;
+}
+
+/**
+ * Render the attribution table. Pure, so the shape is a test rather than a
+ * thing you confirm by eye against prod.
+ */
+export function formatAttribution(input: {
+  rows: readonly AttributionRow[];
+  field: string;
+  like: string | null;
+  startIso: string;
+  endIso: string;
+}): string {
+  const { rows, field, like, startIso, endIso } = input;
+  const total = rows.reduce((n, r) => n + r.count, 0);
+  const head =
+    `── 57014 attribution ── by ${field}` +
+    (like ? ` · query like %${like}%` : "") +
+    `\n   ${startIso} → ${endIso}`;
+  if (rows.length === 0) {
+    return `${head}\n   no statement-timeout cancellation matched in this window`;
+  }
+  const width = Math.max(...rows.map((r) => r.group.length), 5);
+  const lines = rows.map((r) => {
+    const pct = total > 0 ? ((r.count / total) * 100).toFixed(1) : "0.0";
+    return `   ${r.group.padEnd(width)}  ${String(r.count).padStart(6)}  ${pct.padStart(5)} %`;
+  });
+  return [
+    head,
+    `   ${"group".padEnd(width)}  ${"count".padStart(6)}  ${"share".padStart(5)}  `,
+    ...lines,
+    `   ${"".padEnd(width)}  ${String(total).padStart(6)}  total`,
+    "",
+    "   NOT A GATE — attribution only; this exits 0 whatever it finds.",
+  ].join("\n");
+}
+
+/**
+ * The attribution query, server-side aggregated so the ~100-row cap that makes
+ * the gate queries safe holds here too: `limit 20` over a `group by` returns at
+ * most 20 rows however busy the window was.
+ *
+ * `--by query` does NOT group by the query text. PostgREST wraps every RPC in a
+ * ~600-character `WITH pgrst_source AS (…)` envelope, so grouping on the raw
+ * text would return one row per distinct bind-parameter shape and blow the cap
+ * while telling you nothing. It groups by the FUNCTION NAME extracted from the
+ * envelope (`"public"."get_official_page"` → `get_official_page`), falling back
+ * to the first 60 characters for a table-level query with no function in it.
+ */
+export function buildAttributionSql(field: AttributableField, like: string | null): string {
+  const groupExpr =
+    field === "query"
+      ? `coalesce(regexp_extract(p.query, r'"public"[.]"([a-z0-9_]+)"'), ` +
+        `substr(regexp_replace(coalesce(p.query, t.event_message), r'\s+', ' '), 1, 60))`
+      : `coalesce(cast(p.${field} as string), '(null)')`;
+  const likeClause = like ? `\n  and p.query like '%${like}%'` : "";
+  return `
+select
+  ${groupExpr} as g,
+  count(*) as n
+from postgres_logs t
+cross join unnest(t.metadata) as m
+cross join unnest(m.parsed) as p
+where p.sql_state_code = '57014'${likeClause}
+group by g
+order by n desc
+limit 20`;
+}

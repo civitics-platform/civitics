@@ -8,13 +8,22 @@
  */
 
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
+  buildAttributionSql,
   edgeVerdictFor,
+  formatAttribution,
+  isAttributableField,
+  sanitizeLike,
   verdictFor,
+  ATTRIBUTABLE_FIELDS,
+  LOGS_RETENTION_DAYS,
+  MAX_ATTRIBUTION_MINUTES,
   PCT_5XX_GATE,
   RATIO_GATE,
+  type AttributionRow,
   type CancellationBucket,
   type EdgeBucket,
 } from "./cancellation-census";
@@ -132,4 +141,132 @@ test("an empty bucket list is the same case as empty buckets", () => {
   const v = edgeVerdictFor([]);
   assert.equal(v.pass, true);
   assert.match(v.note, /no traffic/);
+});
+
+// ───────────────────────── attribution mode (cc-137) ─────────────────────────
+
+const row = (group: string, count: number): AttributionRow => ({ group, count });
+
+const FIXTURE: AttributionRow[] = [
+  row("get_official_page", 10),
+  row("enrichment_queue", 9),
+  row("check_senate_reference_cohort", 7),
+  row("link_officials_to_districts", 1),
+];
+
+test("attribution renders every group with its share, and a total", () => {
+  const out = formatAttribution({
+    rows: FIXTURE,
+    field: "query",
+    like: null,
+    startIso: "2026-09-18T03:12:52Z",
+    endIso: "2026-09-19T03:12:52Z",
+  });
+  assert.match(out, /by query/);
+  assert.match(out, /get_official_page\s+10\s+37\.0 %/);
+  assert.match(out, /link_officials_to_districts\s+1\s+3\.7 %/);
+  assert.match(out, /27\s+total/);
+  // Attribution is not a gate, and the output says so — the one line that stops
+  // a reader quoting it as one.
+  assert.match(out, /NOT A GATE/);
+});
+
+test("--like is echoed into the header so a quoted number carries its filter", () => {
+  const out = formatAttribution({
+    rows: [row("get_official_page", 10)],
+    field: "query",
+    like: "get_official_page",
+    startIso: "a",
+    endIso: "b",
+  });
+  assert.match(out, /query like %get_official_page%/);
+});
+
+test("no match is stated, not rendered as an empty table", () => {
+  const out = formatAttribution({
+    rows: [],
+    field: "user_name",
+    like: null,
+    startIso: "a",
+    endIso: "b",
+  });
+  assert.match(out, /no statement-timeout cancellation matched/);
+  assert.doesNotMatch(out, /total/);
+});
+
+test("--by query groups by the function name, never the pgrst envelope", () => {
+  const sql = buildAttributionSql("query", null);
+  // The envelope is ~600 chars and differs per bind shape; grouping on it would
+  // return one row per shape and blow the ~100-row cap.
+  assert.match(sql, /regexp_extract\(p\.query/);
+  assert.match(sql, /"public"/);
+  assert.match(sql, /group by g/);
+  assert.match(sql, /limit 20/);
+});
+
+test("a non-query field groups on the field itself", () => {
+  const sql = buildAttributionSql("user_name", null);
+  assert.match(sql, /cast\(p\.user_name as string\)/);
+  assert.doesNotMatch(sql, /regexp_extract/);
+});
+
+test("--like lands in the WHERE clause, not the grouping", () => {
+  const sql = buildAttributionSql("query", "get_official_page");
+  assert.match(sql, /and p\.query like '%get_official_page%'/);
+});
+
+test("every attributable field is a field a cancel row actually carries", () => {
+  // Probed on prod, cc-137 read 2. A field not in metadata.parsed makes the
+  // whole query error rather than return a null column, so this list is load-
+  // bearing and not decoration.
+  for (const f of ATTRIBUTABLE_FIELDS) assert.equal(isAttributableField(f), true);
+  assert.equal(isAttributableField("duration"), false);
+  assert.equal(isAttributableField("role"), false);
+});
+
+test("sanitizeLike rejects anything that could close the SQL string literal", () => {
+  assert.equal(sanitizeLike("get_official_page"), "get_official_page");
+  assert.equal(sanitizeLike("public.votes"), "public.votes");
+  assert.equal(sanitizeLike("a'b"), null);
+  assert.equal(sanitizeLike("a--b"), "a--b"); // hyphens are fine INSIDE a literal
+  assert.equal(sanitizeLike("a\b"), null);
+  assert.equal(sanitizeLike(""), null);
+  assert.equal(sanitizeLike("x".repeat(121)), null);
+});
+
+test("the 24h clamp and the 7-day retention are stated as constants, not prose", () => {
+  // Measured (cc-137 read 2): above 1440 minutes the Logs API returns the
+  // OLDEST 24 h of the range with no error — a wrong answer that looks right.
+  assert.equal(MAX_ATTRIBUTION_MINUTES, 1440);
+  assert.equal(LOGS_RETENTION_DAYS, 7);
+});
+
+test("the attribution path RETURNS — a process.exit(0) there exits 127 on Windows", () => {
+  // Not a style point. `process.exit(0)` after a single fetch aborts the
+  // process on Windows (libuv UV_HANDLE_CLOSING assertion) and the shell reads
+  // 127, so a prompt gating on `exit 0` sees a failure. Measured on this box.
+  // The gate path below it still exits explicitly and is fine — it awaits two
+  // fetches. This pins the asymmetry, which is otherwise invisible.
+  const src = readFileSync(
+    new URL("../scripts/cancellation-census.ts", import.meta.url),
+    "utf8",
+  );
+  // Anchored to the attribution block alone — `--help` legitimately calls
+  // process.exit(0) from parseArgs, before any fetch has been opened.
+  const from = src.indexOf("── attribution mode ──");
+  const to = src.indexOf("// The edge half is bucketed");
+  assert.ok(from > 0 && to > from, "attribution block not found where expected");
+  const block = src.slice(from, to);
+  assert.match(block, /process\.exitCode = 0;\s*\n\s*return;/);
+  assert.doesNotMatch(block, /process\.exit\(0\);/);
+});
+
+test("--by is allow-listed before it reaches the SQL string", () => {
+  // buildAttributionSql interpolates the field name directly, so the guard has
+  // to be the type predicate rather than anything downstream of it.
+  const src = readFileSync(
+    new URL("../scripts/cancellation-census.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(src, /isAttributableField\(f\)/);
 });
