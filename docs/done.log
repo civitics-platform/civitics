@@ -1453,3 +1453,4 @@
 2026-09-18 | FIX-1170 | b69763c0 | prod-only | feat(db): FIX-1171 — upsert_district_jurisdiction writes centroid on both paths; FIX-1170 — query_districts(p_include_floterial) with a floterial output column
 2026-09-18 | FIX-1171 | b69763c0 | prod-only | feat(db): FIX-1171 — upsert_district_jurisdiction writes centroid on both paths; FIX-1170 — query_districts(p_include_floterial) with a floterial output column
 2026-09-18 | FIX-1198 | 55fb1a2a | local-only | feat(data): FIX-1198 — audit-fec-emit-residue writes its default --out-dir under the repo root, not the cwd
+2026-09-18 | FIX-1199 | ad623386 | local-only | fix(hooks): FIX-1199 — pre-push trunk gate steps aside in a shallow CI checkout where trunk is unreachable; the drift gate stays on PRs
