@@ -1,0 +1,42 @@
+{
+  "cc": "136",
+  "prompt": "cc-prompt-136-fix1199-scope-pre-push-hook-in-ci-fix1178-diagnosis-entity-tags-delete-reinsert-bloat-local-clone-scratch-tables-db-types-recipe.md",
+  "started_at": "2026-09-19T02:07:00Z",
+  "finished_at": "2026-09-19T03:05:00Z",
+  "head_before": "03edf289",
+  "head_after": "0f958f01",
+  "commits": [
+    {
+      "sha": "ad623386",
+      "subject": "fix(hooks): FIX-1199 — pre-push trunk gate steps aside in a shallow CI checkout"
+    },
+    {
+      "sha": "2d0cf2ff",
+      "subject": "docs(db): the db:types recipe strips the multi-line graphql_public Constants entry"
+    },
+    {
+      "sha": "7b093e5b",
+      "subject": "docs(fixes): FIX-1178 / FIX-1199 / FIX-1169 appends; file FIX-1200"
+    },
+    {
+      "sha": "0f958f01",
+      "subject": "chore(fixes): sync status after FIX-1199"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1199"
+  ],
+  "fixes_filed": [
+    "FIX-1200"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [],
+  "prod_writes": "none",
+  "ci": "green",
+  "stopped_items": [
+    "FIX-943 append not written — its bullet closed 2026-07-31 and lives in docs/archive/fixes-archive.md; nothing derives status from the archive, so appending there would be writing into a dead file. Substance folded into the FIX-1178 append. Same shape as cc-135's FIX-914 case.",
+    "D3 partially scoped out: read 7's patterns (_proof_ref_%, _eq_%) match TEN local tables, not the eleven cc-135 counted. Five further underscore-prefixed tables exist locally; four of them (_drb_chunk_fe, _drb_donor, _drb_fe, _drb_targets) are REAL — they exist on prod and belong in database.ts — and the fifth (_proof_recips) is local-only scratch but outside the names Craig authorised. Dropped exactly the ten; left _proof_recips standing.",
+    "Smoke-dispatch run id could not go in item 1's commit body as the prompt asked — the dispatch has to run against a main that already carries the fix, so the id (35415836771) exists only after the commit. Recorded in the FIX-1199 append and here instead.",
+    "Prod-side entity_tags compaction (VACUUM FULL / REINDEX) explicitly NOT run — out of scope, and a cc-132 input. It is proposal (b) on FIX-1178 for Craig."
+  ]
+}
