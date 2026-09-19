@@ -1,0 +1,51 @@
+{
+  "cc": "132",
+  "prompt": "cc-prompt-132-set2-carry-if-waited-fix1191-fr-daily-vacuum-owner-ec-second-slot-decision-fix1193-template-drain-and-wait-and-1183-owner-columns-fix1174-wrap-the-operator-prod-scripts.md",
+  "started_at": "2026-09-19T17:45:17Z",
+  "finished_at": "2026-09-19T19:43:20Z",
+  "head_before": "149f351e",
+  "head_after": "019e82da",
+  "commits": [
+    {
+      "sha": "63693521",
+      "subject": "docs(audits): FIX-1187 set 2 — the prod apply; 46,790 FR rows moved, conservation $0, one cancellation"
+    },
+    {
+      "sha": "e60a65c8",
+      "subject": "fix(officials): FIX-1187 set 2 — four Senators hold their Senate money; FIX-1192's stub-side join measured on prod"
+    },
+    {
+      "sha": "1504b7a9",
+      "subject": "feat(db): FIX-1191 — fr-vacuum-analyze runs daily at 03:00 UTC (was weekly Monday 01:00)"
+    },
+    {
+      "sha": "3c2e312b",
+      "subject": "fix(db): FIX-1185 / FIX-1128 — the replacement bound has its prod receipt; two consecutive clean dailies"
+    },
+    {
+      "sha": "af263b46",
+      "subject": "docs(fixes): FIX-1191 / 1169 / 1194 / 1187 / 1019 / 1192 / 1196 / 1177 / 1185 / 1128 appends; file FIX-1201"
+    },
+    {
+      "sha": "019e82da",
+      "subject": "chore(fixes): sync status after FIX-1187 / FIX-1192 / FIX-1019 / FIX-1185 / FIX-1128"
+    }
+  ],
+  "fixes_closed": [
+    "FIX-1187",
+    "FIX-1192",
+    "FIX-1019",
+    "FIX-1185",
+    "FIX-1128"
+  ],
+  "fixes_filed": [
+    "FIX-1201"
+  ],
+  "fixes_reopened": [],
+  "migrations_pushed": [
+    "supabase/migrations/20260920000000_fix1191_fr_vacuum_daily.sql"
+  ],
+  "prod_writes": "Two, both authorised by the prompt's posture line. (i) FIX-1187 set 2 — data:merge:official-dupes:prod with the v2 manifest, --defer-tails --apply, run from the PRIMARY checkout, 18:50:32–19:17:25 UTC (26m53s) under the FIX-950 interlock; one transaction COMMITted, 46,790 FR rows moved, 22,233+8 colliding losers deleted, 43,843 EC money edges deleted, 4 officials repointed, plus three manifest-scoped rollups post-commit. Conservation difference $0. (ii) pnpm db:push:prod of ONE migration at 19:36:28 UTC — cron.alter_job on fr-vacuum-analyze, pending 1 to 0, verified against prod's live cron.job afterwards. No VACUUM by hand, no hand firing, no second EC slot, no --force, no ad-hoc SQL.",
+  "ci": "green",
+  "stopped_items": []
+}
