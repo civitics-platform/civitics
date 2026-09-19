@@ -37,8 +37,8 @@
 
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, isAbsolute, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
+import { resolveUnderRepoRoot } from "../lib/repo-root";
 import type { Client } from "pg";
 import { buildDbUrl } from "../lib/heavy-rebuild";
 import { Q_CRON_JOB_PIPELINES } from "../lib/cron-job-pipelines";
@@ -179,36 +179,16 @@ function resolveSlotOffset(args: Args): number {
 }
 
 /**
- * The repo root, walking up from this file until the workspace marker.
- *
  * A RELATIVE --out MUST NOT resolve against process.cwd(). `pnpm --filter
  * @civitics/data …` runs with the cwd at `packages/data`, so `docs/receipts`
- * would silently become `packages/data/docs/receipts` — the same class of bug
- * the enrichment-drain runbook warns about for `--output` (CLAUDE.md: "pnpm
- * resolves --output paths from package cwd; running from repo root claims 12
- * batches then fails to write the files"). Here it would put the receipts file
- * and bands.json in a directory nothing reads, and the run would look clean.
- * An ABSOLUTE --out is taken verbatim.
+ * would silently become `packages/data/docs/receipts` — a directory nothing
+ * reads, with the run still looking clean. An ABSOLUTE --out is taken verbatim.
+ *
+ * FIX-1198 lifted the walk-up into lib/repo-root.ts so this and
+ * audit-fec-emit-residue share one copy instead of two that can drift.
  */
-function repoRoot(): string {
-  // fileURLToPath, not URL.pathname — the latter keeps percent-encoding and a
-  // leading slash before a Windows drive letter, and both are silent wrong
-  // answers rather than errors.
-  let dir = resolve(dirname(fileURLToPath(import.meta.url)));
-  for (let i = 0; i < 12; i += 1) {
-    if (existsSync(join(dir, "pnpm-workspace.yaml"))) return dir;
-    const up = dirname(dir);
-    if (up === dir) break;
-    dir = up;
-  }
-  // Falling back to cwd is wrong in the pnpm --filter case, so say so loudly
-  // rather than writing somewhere surprising.
-  console.warn("[receipts] could not locate the repo root (no pnpm-workspace.yaml above this file) — resolving --out against the cwd");
-  return process.cwd();
-}
-
 function resolveOutDir(outDir: string): string {
-  return isAbsolute(outDir) ? outDir : join(repoRoot(), outDir);
+  return resolveUnderRepoRoot(outDir, "receipts");
 }
 
 function resolveDbUrl(target: Args["target"]): string {

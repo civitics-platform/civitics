@@ -41,6 +41,7 @@ import { Client } from "pg";
 import * as fs from "fs";
 import * as path from "path";
 import { constructDbUrlFromEnv, envLabel, usd } from "./fec-orphan-classify";
+import { resolveUnderRepoRoot } from "../lib/repo-root";
 
 const SOURCES = ["fec_bulk_indiv", "fec_bulk_indiv_to_committee", "fec_bulk_pac"] as const;
 type Source = (typeof SOURCES)[number];
@@ -199,7 +200,11 @@ async function main(): Promise<void> {
   const cycle = Number(arg(argv, "--cycle") ?? "2026");
   const source = (arg(argv, "--source") ?? "fec_bulk_indiv") as Source;
   const explain = argv.includes("--explain");
-  const outDir = arg(argv, "--out-dir") ?? path.join("docs", "audits");
+  // FIX-1198 — resolved against the REPO ROOT, not the cwd. Both this default
+  // and a relative --out-dir: `pnpm --filter @civitics/data` runs in
+  // packages/data, so a cwd-relative "docs/audits" silently wrote
+  // packages/data/docs/audits/ and still printed a success line.
+  const outDir = resolveUnderRepoRoot(arg(argv, "--out-dir") ?? path.join("docs", "audits"), "fec-residue");
 
   if (!SOURCES.includes(source)) {
     console.error(`FAIL --source must be one of ${SOURCES.join(", ")}`);
