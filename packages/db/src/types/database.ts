@@ -7329,6 +7329,7 @@ export type Database = {
           p_bbox_w?: number
           p_chamber?: string
           p_id?: string
+          p_include_floterial?: boolean
           p_limit?: number
           p_point_lat?: number
           p_point_lng?: number
@@ -7338,6 +7339,7 @@ export type Database = {
         Returns: {
           chamber: string
           district_id: string
+          floterial: boolean
           geom_geojson: string
           id: string
           name: string
